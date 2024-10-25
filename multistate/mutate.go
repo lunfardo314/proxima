@@ -225,11 +225,10 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID, out *l
 				if !oid.Timestamp().After(prevOutputID.Timestamp()) {
 					fmt.Println("breakpoint")
 				}
-				util.Assertf(oid.Timestamp().After(prevOutputID.Timestamp()),
-					"addOutputToTrie: chain output ID violates time constraint:\n   previous: %s\n   next: %s",
-					func() any { return prevOutputID.StringShort() },
-					func() any { return oid.StringShort() },
-				)
+				if !oid.Timestamp().After(prevOutputID.Timestamp()) {
+					return fmt.Errorf("addOutputToTrie: chain output ID violates time constraint:\n   previous: %s\n   next: %s",
+						prevOutputID.StringShort(), oid.StringShort())
+				}
 			}
 		}
 		trie.Update(chainKey, oid[:])

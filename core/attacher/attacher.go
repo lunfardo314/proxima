@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyargs"
 	"github.com/lunfardo314/proxima/util/lines"
-	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -23,9 +22,9 @@ func newPastConeAttacher(env Environment, name string) attacher {
 		pastCone:    vertex.NewPastCone(env, name),
 	}
 	// standard conflict checker
-	ret.checkConflictsFunc = func(_ *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
-		return ret.stdCheckConflictsFunc(consumerTx)
-	}
+	//ret.checkConflictsFunc = func(_ *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
+	//	return ret.stdCheckConflictsFunc(consumerTx)
+	//}
 	return ret
 }
 
@@ -637,42 +636,8 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 		return nil, false
 	}
 
-	conflict := vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped, a.checkConflictsFunc(consumerVertex, consumerTxUnwrapped))
-	a.Assertf(conflict == nil, "conflict==nil")
-
-	// conflict detection. We check if input is not consumed by some known transaction in the attacher scope
-	//if conflict := vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped, a.checkConflictsFunc(consumerVertex, consumerTxUnwrapped)); conflict != nil {
-	//	err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend)",
-	//		inputOid.StringShort(), consumerTxUnwrapped.IDShortString(), conflict.IDShortString(), a.baseline.IDShortString())
-	//	a.setError(err)
-	//	return nil, false
-	//}
+	vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped)
 	return vidInputTx, true
-}
-
-// stdCheckConflictsFunc standard conflict checker. For the milestone attacher
-// In incremental attacher is replaced with the extended one
-func (a *attacher) stdCheckConflictsFunc(consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
-	return func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
-		existingConsumers.ForEach(func(potentialConflicts *vertex.WrappedTx) bool {
-			if potentialConflicts == consumerTx {
-				return true
-			}
-			if a.pastCone.IsKnown(potentialConflicts) {
-				conflict = potentialConflicts
-			}
-			return conflict == nil
-		})
-		return
-	}
-}
-
-func (a *attacher) isKnownConsumed(wOut vertex.WrappedOutput) (isConsumed bool) {
-	wOut.VID.ConsumersOf(wOut.Index).ForEach(func(consumer *vertex.WrappedTx) bool {
-		isConsumed = a.pastCone.IsKnown(consumer)
-		return !isConsumed
-	})
-	return
 }
 
 // setBaseline sets baseline, references it from the attacher

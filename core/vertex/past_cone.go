@@ -140,7 +140,7 @@ func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
 	if cond {
 		return
 	}
-	pcStr := pc.Lines("      ").Join("\n")
+	pcStr := pc.LinesNoRooted("      ").Join("\n")
 	argsExt := append(slices.Clone(args), pcStr)
 	pc.Logging.Assertf(cond, format+"\n---- past cone ----\n%s", argsExt...)
 }
@@ -425,6 +425,30 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+func (pc *PastCone) LinesNoRooted(prefix ...string) *lines.Lines {
+	pc.Assertf(pc.delta == nil, "pc.delta==nil")
+	ret := lines.New(prefix...)
+	ret.Add("------ past cone: '%s'", pc.name).
+		Add("------ baseline: %s, coverage: %s",
+			util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()),
+			pc.baseline.GetLedgerCoverageString(),
+		)
+	sorted := util.KeysSorted(pc.vertices, func(vid1, vid2 *WrappedTx) bool {
+		return vid1.Before(vid2)
+	})
+	for i, vid := range sorted {
+		consumedIndices := pc.consumedIndices(vid)
+		ret.Add("#%d %s : %s, consumed: %+v", i, vid.IDShortString(), pc.vertices[vid].String(), maps.Keys(consumedIndices))
+	}
+	if len(pc.virtuallyConsumed) > 0 {
+		ret.Add("----- virtually consumed ----")
+		for vid, consumedIndices := range pc.virtuallyConsumed {
+			ret.Add("   %s: %+v", vid.IDShortString(), maps.Keys(consumedIndices))
+		}
+	}
+	return ret
+}
+
 func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
@@ -505,16 +529,14 @@ func (pc *PastCone) FindConsumerOf(wOut WrappedOutput) (ret *WrappedTx, found bo
 		return nil, virtuallyConsumed
 	}
 	// check for double spend. If output is consumed by vertex, it cannot be consumed virtually
-	pc.Assertf(!virtuallyConsumed, "!virtuallyConsumed")
+	pc.Assertf(!virtuallyConsumed, "expected !virtuallyConsumed %s", wOut.IDShortString)
 	return consumer, true
 }
 
-// CanBeAdded returns true if output can be consistently added to the past cone, i.e. it does not produce double-spend
-func (pc *PastCone) CanBeAdded(wOut WrappedOutput, consumer *WrappedTx) bool {
-	if existingConsumer, found := pc.FindConsumerOf(wOut); found {
-		return consumer == existingConsumer
-	}
-	return true
+// CanBeVirtuallyConsumed returns true if output can be consistently added as virtually consumed
+func (pc *PastCone) CanBeVirtuallyConsumed(wOut WrappedOutput) bool {
+	_, found := pc.FindConsumerOf(wOut)
+	return !found
 }
 
 // _findConsumingVertex selects 0 or 1 consumer from the set which is known in the past cone
@@ -523,7 +545,8 @@ func (pc *PastCone) CanBeAdded(wOut WrappedOutput, consumer *WrappedTx) bool {
 func (pc *PastCone) _findConsumingVertex(consumers set.Set[*WrappedTx]) (ret *WrappedTx) {
 	for vid := range consumers {
 		if pc.IsKnown(vid) {
-			pc.Assertf(ret == nil, "inconsistency: double-spend in the past cone %s", pc.name)
+			pc.Assertf(ret == nil, "inconsistency: double-spend in the past cone %s\n    first: %s\n    second: %s",
+				pc.name, ret.IDShortString, vid.IDShortString)
 			ret = vid
 		}
 	}

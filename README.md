@@ -45,9 +45,10 @@ There is no need for any kind of permissions, registration, committee selection 
 **No ASICs, no GPUs, no mining rigs**
 * **Leaderless determinism**. The system operates without a consensus leader or block proposers, providing a more decentralized approach.
 * **Nash equilibrium**. It is achieved with the optimal strategy of **biggest ledger coverage rule**, which is analogous to the Bitcoin's _longest chain rule_ in PoW blockchains.
-* Unlike in blockchains, the optimal strategy is **cooperative**, rather than **competitive**. This facilitates social consensus among participants
+* Unlike in blockchains, the optimal strategy is **cooperative**, rather than **competitive**. Consensus is achieved by cooperation between actors rather than
+choosing one wining proposal among many. This facilitates social consensus among participants
 * **Auto-healing after network partitioning**. Network partitioning usually leads to forking to several branches with less coverage. 
-After network connections is restored, the fork with the biggest ledger coverage prevails, while other forks will be orphaned. Similarly to Bitcoin's _longest chain_.      
+After network connections is restored, the fork with the biggest ledger coverage prevails, while other forks are be orphaned. Similarly to Bitcoin's _longest chain_.      
 * **High throughput**, as a result of **massive parallelism** and **absence of global bottlenecks**
 * **High level of decentralization**, probably the highest achievable in distributed ledgers 
 * **Low energy requirements**, unlike PoW. 

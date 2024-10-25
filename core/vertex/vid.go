@@ -541,7 +541,7 @@ func (vid *WrappedTx) EnsureOutputWithID(o *ledger.OutputWithID) (err error) {
 
 // AddConsumer stores consumer of the vid[outputIndex] consumed output.
 // Function checkConflicts checks if new consumer conflicts with already existing ones
-func (vid *WrappedTx) AddConsumer(outputIndex byte, consumer *WrappedTx, checkConflicts func(existingConsumers set.Set[*WrappedTx]) (conflict *WrappedTx)) (conflict *WrappedTx) {
+func (vid *WrappedTx) AddConsumer(outputIndex byte, consumer *WrappedTx) {
 	vid.mutexDescendants.Lock()
 	defer vid.mutexDescendants.Unlock()
 
@@ -555,7 +555,6 @@ func (vid *WrappedTx) AddConsumer(outputIndex byte, consumer *WrappedTx, checkCo
 		outputConsumers.Insert(consumer)
 	}
 	vid.consumed[outputIndex] = outputConsumers
-	return checkConflicts(outputConsumers)
 }
 
 func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx]) []byte {

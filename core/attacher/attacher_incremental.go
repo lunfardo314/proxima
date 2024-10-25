@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 )
 
 const TraceTagIncrementalAttacher = "incAttach"
@@ -67,41 +66,12 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		inputs:   make([]vertex.WrappedOutput, 0),
 		targetTs: targetTs,
 	}
-	// replacing standard conflict checker with extended.
-	// The extended one also checks inputs of the transaction being constructed
-	ret.checkConflictsFunc = ret.extendedConflictChecker
 
 	if err := ret.initIncrementalAttacher(baseline, targetTs, extend, endorse...); err != nil {
 		ret.Close()
 		return nil, err
 	}
 	return ret, nil
-}
-
-// extendedConflictChecker is used in the incremental attacher to check is new vertex does not conflict with the inputs
-// of the new transaction (which does not exist yet). For the milestone attacher it is not needed because all
-// potentially conflicting consumers are already in the past cone
-func (a *IncrementalAttacher) extendedConflictChecker(consumerVertex *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
-	return func(potentialPastConeConflicts set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx) {
-		if conflict = a.checkConflictsWithInputs(consumerVertex); conflict != nil {
-			return
-		}
-		return a.stdCheckConflictsFunc(consumerTx)(potentialPastConeConflicts)
-	}
-}
-
-func (a *IncrementalAttacher) checkConflictsWithInputs(consumerVertex *vertex.Vertex) (conflict *vertex.WrappedTx) {
-	consumerVertex.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
-		consumed := vertex.WrappedOutput{VID: vidInput, Index: i}
-		for _, wOut := range a.inputs {
-			if wOut == consumed {
-				conflict = &vertex.WrappedTx{} // not nil, the no-name transaction being constructed is conflicting
-				return false
-			}
-		}
-		return true
-	})
-	return
 }
 
 // Close releases all references of Vertices. Incremental attacher must be closed before disposing it,
@@ -133,7 +103,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		}
 	}
 	// extend input will always be at index 0
-	if err := a.insertOutput(extend); err != nil {
+	if err := a.insertVirtuallyConsumedOutput(extend); err != nil {
 		return err
 	}
 
@@ -145,7 +115,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 		if a.stemOutput.VID == nil {
 			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baseline.IDShortString())
 		}
-		if err := a.insertOutput(a.stemOutput); err != nil {
+		if err := a.insertVirtuallyConsumedOutput(a.stemOutput); err != nil {
 			return err
 		}
 	}
@@ -156,8 +126,8 @@ func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 	return a.baseline
 }
 
-func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
-	if a.isKnownConsumed(wOut) {
+func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedOutput) error {
+	if !a.pastCone.CanBeVirtuallyConsumed(wOut) {
 		return fmt.Errorf("output %s is already consumed", wOut.IDShortString())
 	}
 	ok, defined := a.attachOutput(wOut)
@@ -167,7 +137,7 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 	}
 
 	if !defined {
-		return fmt.Errorf("insertOutput: %w", ErrPastConeNotSolidYet)
+		return fmt.Errorf("insertVirtuallyConsumedOutput: %w", ErrPastConeNotSolidYet)
 	}
 	a.pastCone.AddVirtuallyConsumedOutput(wOut)
 	a.inputs = append(a.inputs, wOut)
