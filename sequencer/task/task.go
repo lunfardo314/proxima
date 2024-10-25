@@ -167,9 +167,10 @@ func Run(env environment, targetTs ledger.Time, slotData *SlotData) (*transactio
 		return p1.coverage < p2.coverage
 	})
 
-	const printBestProposal = true
+	const printBestProposal = false
 	if printBestProposal {
-		task.Log().Infof(">>>>>> best proposal past cone:\n%s", best.pastConeForDebug.Lines("      ").Join("\n"))
+		task.Log().Infof(">>>>>> best proposal past cone:\n%s\n    Ledger coverage: %s",
+			best.pastConeForDebug.Lines("      ").Join("\n"), util.Th(best.pastConeForDebug.LedgerCoverage(task.targetTs)))
 	}
 
 	// check if newly generated non-branch transaction has coverage strongly bigger than previously generated

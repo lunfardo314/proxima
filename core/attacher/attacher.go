@@ -549,6 +549,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 	if !ok {
 		return false, false
 	}
+
 	if a.pastCone.IsRootedOutput(wOut) {
 		a.Assertf(wOut.IsAvailable(), "wOut.IsAvailable(): %s", wOut.IDShortString)
 		a.Tracef(TraceTagAttachOutput, "%s is 'rooted'", wOut.IDShortString)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/global"
@@ -852,4 +853,8 @@ func (vid *WrappedTx) IsContainingBranchOf(vid1 *WrappedTx, getStateReader func(
 		return true
 	}
 	return getStateReader(vid).KnowsCommittedTransaction(&vid1.ID)
+}
+
+func (vid *WrappedTx) IDHasFragment(frag string) bool {
+	return strings.Contains(vid.ID.String(), frag)
 }

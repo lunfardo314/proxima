@@ -378,7 +378,7 @@ func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
 func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	for vid := range pc.vertices {
-		if pc.IsKnownInTheState(vid) && vid.IsSequencerMilestone() {
+		if pc.IsNotInTheState(vid) && vid.IsSequencerMilestone() {
 			ret += vid.InflationAmountOfSequencerMilestone()
 		}
 	}
@@ -629,7 +629,7 @@ func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
 	}
 	// it is in the state
 	consumer, found := pc.FindConsumerOf(wOut)
-	return found && (consumer == nil || pc.IsNotInTheState(consumer))
+	return !found || (consumer == nil || pc.IsNotInTheState(consumer))
 }
 
 func (pc *PastCone) hasRooted() bool {
@@ -792,5 +792,9 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 	ret := NewPastCone(env, name+"_debug_clone")
 	ret.baseline = pc.baseline
 	ret.vertices = maps.Clone(pc.vertices)
+	ret.virtuallyConsumed = make(map[*WrappedTx]set.Set[byte])
+	for vid, consumedIndices := range pc.virtuallyConsumed {
+		ret.virtuallyConsumed[vid] = consumedIndices.Clone()
+	}
 	return ret
 }
