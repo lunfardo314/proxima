@@ -515,21 +515,21 @@ func (pc *PastCone) FindConsumerOf(wOut WrappedOutput) (ret *WrappedTx, found bo
 	if !pc.IsKnown(wOut.VID) {
 		return nil, false
 	}
-	virtuallyConsumed := pc.isVirtuallyConsumed(wOut)
+	if virtuallyConsumed := pc.isVirtuallyConsumed(wOut); virtuallyConsumed {
+		return nil, true
+	}
 
 	wOut.VID.mutexDescendants.RLock()
 	defer wOut.VID.mutexDescendants.RUnlock()
 
 	consumers, found := wOut.VID.consumed[wOut.Index]
 	if !found {
-		return nil, virtuallyConsumed
+		return nil, false
 	}
 	consumer := pc._findConsumingVertex(consumers)
 	if consumer == nil {
-		return nil, virtuallyConsumed
+		return nil, false
 	}
-	// check for double spend. If output is consumed by vertex, it cannot be consumed virtually
-	pc.Assertf(!virtuallyConsumed, "expected !virtuallyConsumed %s", wOut.IDShortString)
 	return consumer, true
 }
 
