@@ -165,6 +165,8 @@ func (a *IncrementalAttacher) insertOutput(wOut vertex.WrappedOutput) error {
 		util.AssertMustError(a.err)
 		return a.err
 	}
+	a.pastCone.AddVirtuallyConsumedOutput(wOut)
+
 	if !defined {
 		return fmt.Errorf("insertOutput: %w", ErrPastConeNotSolidYet)
 	}

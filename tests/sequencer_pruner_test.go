@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -25,7 +24,7 @@ func Test1SequencerPruner(t *testing.T) {
 		testData := initWorkflowTest(t, 1, true)
 		t.Logf("%s", testData.wrk.Info())
 
-		testData.env.StartTracingTags(task.TraceTagBaseProposer)
+		//testData.env.StartTracingTags(task.TraceTagBaseProposer)
 		//testData.env.StartTracingTags(tippool.TraceTag)
 		//testData.env.StartTracingTags(task.TraceTagEndorse1Proposer)
 		//testData.env.StartTracingTags(task.TraceTagChooseFirstExtendEndorsePair)

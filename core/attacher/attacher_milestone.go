@@ -150,7 +150,7 @@ func (a *milestoneAttacher) run() error {
 	a.AssertNoError(err)
 
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage(a.vid.Timestamp()))
-	fmt.Printf(">>>>>>>>>>>> SetTxStatusGood to %s, cov = %s\n", a.vid.IDShortString(), util.Th(a.pastCone.LedgerCoverage(a.vid.Timestamp())))
+	//fmt.Printf(">>>>>>>>>>>> SetTxStatusGood to %s, cov = %s\n", a.vid.IDShortString(), util.Th(a.pastCone.LedgerCoverage(a.vid.Timestamp())))
 
 	const printPastCone = false
 	if printPastCone {
