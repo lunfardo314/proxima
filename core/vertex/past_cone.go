@@ -332,8 +332,8 @@ func (pc *PastCone) MustMarkVertexWithFlags(vid *WrappedTx, flags FlagsPastCone)
 
 	flagsOld := pc.Flags(vid)
 	defer pc.MustConflictFreeCond(func() {
-		pc.Log().Errorf(">>>>>>> before panic on defer MustMarkVertexWithFlags:\n    flagsOld: %s\n    flagsNew: %s",
-			flagsOld.String(), flags.String())
+		pc.Log().Errorf(">>>>>>> before panic on defer MustMarkVertexWithFlags %s:\n    flagsOld: %s\n    flagsNew: %s",
+			vid.IDShortString(), flagsOld.String(), flags.String())
 	})
 
 	flags &= ^FlagAttachedVertexAskedForPoke
@@ -487,6 +487,7 @@ func (pc *PastCone) LinesBasic(prefix ...string) *lines.Lines {
 	counter := 0
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		ret.Add("#%d %s : %s", counter, vid.IDShortString(), pc.vertices[vid].String())
+		counter++
 		return true
 	}, true)
 	if len(pc.virtuallyConsumed) > 0 {
@@ -572,6 +573,7 @@ func (pc *PastCone) findConsumerNoLock(wOut WrappedOutput) (ret *WrappedTx, foun
 		return nil, false
 	}
 	if virtuallyConsumed := pc.isVirtuallyConsumed(wOut); virtuallyConsumed {
+		// nil is virtual consumer
 		return nil, true
 	}
 
@@ -601,7 +603,7 @@ func (pc *PastCone) _mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedT
 			if ret != nil && len(beforePanic) > 0 {
 				beforePanic[0]()
 			}
-			pc.Assertf(ret == nil, "inconsistency: double-spend in the past cone %s\n    first: %s\n    second: %s",
+			pc.Assertf(ret == nil, "inconsistency: double-spend in the past cone %s\n    consumer 1: %s\n    consumer 2: %s",
 				pc.name, ret.IDShortString, vid.IDShortString)
 			ret = vid
 		}
@@ -667,16 +669,19 @@ func (pc *PastCone) consumedIndexSet(vid *WrappedTx) set.Set[byte] {
 	return ret
 }
 
-func (pc *PastCone) consumedIndexSlice(vid *WrappedTx) []byte {
+func (pc *PastCone) consumedIndexWithConsumer(vid *WrappedTx) map[byte]*WrappedTx {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
-	ret := pc._virtuallyConsumedIndexSlice(vid)
+	ret := make(map[byte]*WrappedTx)
+	for _, idx := range pc._virtuallyConsumedIndexSlice(vid) {
+		ret[idx] = nil // virtual consumer
+	}
 
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
 
 	for idx, consumers := range vid.consumed {
-		if pc._mustFindConsumingVertexInTheSet(consumers) != nil {
-			ret = append(ret, idx)
+		if consumer := pc._mustFindConsumingVertexInTheSet(consumers); consumer != nil {
+			ret[idx] = consumer
 		}
 	}
 	return ret
@@ -803,15 +808,10 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 	for vid, flags := range pcb.vertices {
 		if pc.IsKnown(vid) {
 			// it already exists in the target past cone. Check each output consumed in the appended past cone
-			for _, idx := range pc1.consumedIndexSlice(vid) {
-				// for each output in the appended past cone, check if it is not consumed by different consumer
-				// in the target past cone
+			for idx, consumer1 := range pc1.consumedIndexWithConsumer(vid) {
+				// for each output in the appended past cone, check if it is not consumed by different consumer in the target past cone
 				wOut := WrappedOutput{VID: vid, Index: idx}
-
 				vid.WithConsumersRLock(func() {
-					consumer1, found1 := pc1.findConsumerNoLock(wOut)
-					pc.Assertf(found1, "inconsistency: can't find consumer for consumed output")
-
 					consumer, found := pc.findConsumerNoLock(wOut)
 					if found && consumer1 != consumer {
 						conflict = &wOut

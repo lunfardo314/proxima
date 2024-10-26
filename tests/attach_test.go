@@ -23,13 +23,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTime(t *testing.T) {
+func TestAttachTime(t *testing.T) {
 	ts := ledger.TimeNow()
 	t.Logf("tick duration:\n%v\nledger time now: %s", ledger.TickDuration(), ts.String())
 	require.True(t, ledger.ValidTime(ts))
 }
 
-func TestBasic(t *testing.T) {
+func TestAttachBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
 		stateStore := common.NewInMemoryKVStore()
 		bootstrapChainID, root := multistate.InitStateStore(*ledger.L().ID, stateStore)
@@ -268,7 +268,7 @@ func TestBasic(t *testing.T) {
 	})
 }
 
-func TestConflicts1Attacher(t *testing.T) {
+func TestAttachConflicts1Attacher(t *testing.T) {
 	t.Run("n double spends", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const nConflicts = 10
@@ -523,7 +523,7 @@ func TestConflicts1Attacher(t *testing.T) {
 	})
 }
 
-func TestConflictsNAttachersSeqStartTx(t *testing.T) {
+func TestAttachConflictsNAttachersSeqStartTx(t *testing.T) {
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 10
@@ -555,7 +555,7 @@ func TestConflictsNAttachersSeqStartTx(t *testing.T) {
 	}
 }
 
-func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
+func TestAttachConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 5
@@ -612,7 +612,7 @@ func TestConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	//testData.wrk.SaveGraph("utangle")
 }
 
-func TestConflictsNAttachersOneFork(t *testing.T) {
+func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	const (
 		nConflicts = 5  // 2
 		nChains    = 5  // 2
@@ -685,7 +685,7 @@ func TestConflictsNAttachersOneFork(t *testing.T) {
 	//testData.wrk.SaveGraph("utangle")
 }
 
-func TestConflictsNAttachersOneForkBranches(t *testing.T) {
+func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 	const (
 		nConflicts = 5  // 2
 		nChains    = 5  // 2
@@ -750,7 +750,7 @@ func TestConflictsNAttachersOneForkBranches(t *testing.T) {
 	//testData.wrk.SaveGraph("utangle")
 }
 
-func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
+func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	//attacher.SetTraceOn()
 	const (
 		nConflicts = 5
@@ -843,7 +843,7 @@ func TestConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	util.RequireErrorWith(t, vid.GetError(), "is incompatible with the baseline branch", tx1.IDShortString())
 }
 
-func TestSeqChains(t *testing.T) {
+func TestAttachSeqChains(t *testing.T) {
 	t.Run("no pull order normal", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
