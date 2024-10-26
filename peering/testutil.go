@@ -53,6 +53,7 @@ func MakeConfigFor(n, hostIdx int) *Config {
 		HostPort:              BeginPort + hostIdx,
 		PreConfiguredPeers:    make(map[string]_multiaddr),
 		ForcePullFromAllPeers: true,
+		MaxDynamicPeers:       10, // allow dynamic peers
 	}
 	ids := hostID[:n]
 	for i := range ids {
