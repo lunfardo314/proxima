@@ -561,62 +561,67 @@ func (pc *PastCone) NumVertices() int {
 
 // FindConsumerOf return single consumer of the output with flag if found
 // (nil, true) means it is virtually consumed output
-func (pc *PastCone) FindConsumerOf(wOut WrappedOutput) (*WrappedTx, bool) {
+func (pc *PastCone) FindConsumerOf(wOut WrappedOutput) (ret *WrappedTx, found, doubleSpend bool) {
 	wOut.VID.mutexDescendants.RLock()
 	defer wOut.VID.mutexDescendants.RUnlock()
 
 	return pc.findConsumerNoLock(wOut)
 }
 
-func (pc *PastCone) findConsumerNoLock(wOut WrappedOutput) (ret *WrappedTx, found bool) {
-	if !pc.IsKnown(wOut.VID) {
-		return nil, false
-	}
-	if virtuallyConsumed := pc.isVirtuallyConsumed(wOut); virtuallyConsumed {
-		// nil is virtual consumer
-		return nil, true
-	}
+func (pc *PastCone) findConsumerNoLock(wOut WrappedOutput) (ret *WrappedTx, found, doubleSpend bool) {
+	virtuallyConsumed := pc.isVirtuallyConsumed(wOut)
 
 	consumers, found := wOut.VID.consumed[wOut.Index]
 	if !found {
-		return nil, false
+		return nil, virtuallyConsumed, false
 	}
-	consumer := pc._mustFindConsumingVertexInTheSet(consumers)
-	if consumer == nil {
-		return nil, false
+
+	ret, doubleSpend = pc.findConsumingVertexInTheSet(consumers)
+	if doubleSpend{
+		return nil, false, true
 	}
-	return consumer, true
+	if ret != nil{
+		if virtuallyConsumed{
+			return nil, false, true
+		}
+		return ret, true, false
+	}
+	// ret == nil
+	return nil, false, false
 }
 
 // CanBeVirtuallyConsumed returns true if output can be consistently added as virtually consumed
 func (pc *PastCone) CanBeVirtuallyConsumed(wOut WrappedOutput) bool {
-	_, found := pc.FindConsumerOf(wOut)
-	return !found
+	_, found, doubleSpend := pc.FindConsumerOf(wOut)
+	return !found && !doubleSpend
 }
 
-// _mustFindConsumingVertexInTheSet selects 0 or 1 consumer from the set which is known in the past cone
+// findConsumingVertexInTheSet selects 0 or 1 consumer from the set which is known in the past cone
 // Returns vertex if it consumes, returns nil if none vertex consumes (virtual ones does not count)
 // It panics if there's more than one consumer in the same past cone (double spends must not appear in the past cone),
-func (pc *PastCone) _mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedTx], beforePanic ...func()) (ret *WrappedTx) {
+func (pc *PastCone) findConsumingVertexInTheSet(consumers set.Set[*WrappedTx]) (ret *WrappedTx, doubleSpend bool) {
 	for vid := range consumers {
 		if pc.IsKnown(vid) {
-			if ret != nil && len(beforePanic) > 0 {
-				beforePanic[0]()
+			if ret != nil{
+				return nil, true
 			}
-			pc.Assertf(ret == nil, "inconsistency: double-spend in the past cone %s\n    consumer 1: %s\n    consumer 2: %s",
-				pc.name, ret.IDShortString, vid.IDShortString)
 			ret = vid
 		}
 	}
 	return
 }
 
-// MustConflictFree panics if any vertex has more than one consumer
-func (pc *PastCone) MustConflictFree(onPanic ...func()) {
+func (pc *PastCone) ContainsConflict() (conflict *WrappedOutput) {
 	pc.forAllVertices(func(vid *WrappedTx) bool {
+		for pc.consumedIndexSet()
+
 		vid.WithConsumersRLock(func() {
 			for _, consumers := range vid.consumed {
-				pc._mustFindConsumingVertexInTheSet(consumers, onPanic...)
+				if _, doubleSpend := pc.findConsumingVertexInTheSet(consumers); doubleSpend{
+					conflict = WrappedOutput{
+						VID: vid, Index:
+					}
+				}
 			}
 		})
 		return true
@@ -654,45 +659,64 @@ func (pb *PastConeBase) _virtuallyConsumedIndexSlice(vid *WrappedTx) []byte {
 }
 
 // consumedIndexSet returns indices which are virtually or really consumed for the vertex
-// Makes no sense for uncommitted past cone
-func (pc *PastCone) consumedIndexSet(vid *WrappedTx) set.Set[byte] {
+func (pc *PastCone) consumedIndexSet(vid *WrappedTx) (set.Set[byte], *WrappedOutput) {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
-	ret := pc._virtuallyConsumedIndexSet(vid)
+
+	consumedIndices := pc._virtuallyConsumedIndexSet(vid)
+	var conflict *WrappedOutput
 
 	vid.WithConsumersRLock(func() {
 		for idx, consumers := range vid.consumed {
-			if pc._mustFindConsumingVertexInTheSet(consumers) != nil {
-				ret.Insert(idx)
+			_, doubleSpend := pc.findConsumingVertexInTheSet(consumers)
+			if doubleSpend{
+				conflict = &WrappedOutput{VID: vid, Index: idx}
+				return
 			}
+			consumedIndices.Insert(idx)
 		}
 	})
-	return ret
+	if conflict != nil{
+		return nil, conflict
+	}
+	return consumedIndices, nil
 }
 
-func (pc *PastCone) consumedIndexWithConsumer(vid *WrappedTx) map[byte]*WrappedTx {
+func (pc *PastCone) consumedIndexWithConsumer(vid *WrappedTx) (map[byte]*WrappedTx, *WrappedOutput) {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
 	ret := make(map[byte]*WrappedTx)
 	for _, idx := range pc._virtuallyConsumedIndexSlice(vid) {
 		ret[idx] = nil // virtual consumer
 	}
+	var conflict *WrappedOutput
 
-	vid.mutexDescendants.RLock()
-	defer vid.mutexDescendants.RUnlock()
-
-	for idx, consumers := range vid.consumed {
-		if consumer := pc._mustFindConsumingVertexInTheSet(consumers); consumer != nil {
-			ret[idx] = consumer
+	vid.WithConsumersRLock(func() {
+		for idx, consumers := range vid.consumed {
+			consumer, doubleSpend := pc.findConsumingVertexInTheSet(consumers)
+			if doubleSpend{
+				conflict = &WrappedOutput{VID: vid, Index: idx}
+				return
+			}
+			if consumer != nil{
+				ret[idx] = consumer
+			}
 		}
+	})
+	if conflict != nil{
+		return nil, conflict
 	}
-	return ret
+	return ret, nil
 }
 
-func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
+func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int, *WrappedOutput) {
 	numProduced := vid.NumProducedOutputs()
 	if numProduced == 0 {
-		return nil, 0
+		return nil, 0, nil
 	}
-	consumedIndices := pc.consumedIndexSet(vid)
+
+	consumedIndices, conflict := pc.consumedIndexSet(vid)
+	if conflict != nil{
+		return nil, 0, conflict
+	}
 	ret := make([]byte, 0, numProduced-len(consumedIndices))
 
 	for i := 0; i < numProduced; i++ {
@@ -700,16 +724,19 @@ func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 			ret = append(ret, byte(i))
 		}
 	}
-	return ret, numProduced
+	return ret, numProduced, nil
 }
 
-func (pc *PastCone) rootedIndices(vid *WrappedTx) []byte {
+func (pc *PastCone) rootedIndices(vid *WrappedTx) ([]byte, *WrappedOutput) {
 	if !pc.IsKnownInTheState(vid) {
-		return nil
+		return nil, nil
 	}
-	consumedIndices := pc.consumedIndexSet(vid)
+	consumedIndices, conflict := pc.consumedIndexSet(vid)
+	if conflict != nil{
+		return nil, conflict
+	}
 	if len(consumedIndices) == 0 {
-		return nil
+		return nil, nil
 	}
 	ret := make([]byte, 0, len(consumedIndices))
 	for idx := range consumedIndices {
@@ -717,7 +744,7 @@ func (pc *PastCone) rootedIndices(vid *WrappedTx) []byte {
 			ret = append(ret, idx)
 		}
 	}
-	return ret
+	return ret, nil
 }
 
 type MutationStats struct {
