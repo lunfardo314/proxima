@@ -327,20 +327,15 @@ func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
 	pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 }
 
-func (pc *PastCone) MustMarkVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
+func (pc *PastCone) MarkVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) *WrappedOutput {
 	pc.MustConflictFreeCond()
-
-	flagsOld := pc.Flags(vid)
-	defer pc.MustConflictFreeCond(func() {
-		pc.Log().Errorf(">>>>>>> before panic on defer MustMarkVertexWithFlags %s:\n    flagsOld: %s\n    flagsNew: %s",
-			vid.IDShortString(), flagsOld.String(), flags.String())
-	})
 
 	flags &= ^FlagAttachedVertexAskedForPoke
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
 	}
 	pc.SetFlagsUp(vid, flags)
+	return pc.Conflict()
 }
 
 func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
@@ -450,7 +445,7 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	})
 	rooted := make([]WrappedOutput, 0)
 	for i, vid := range sorted {
-		consumedIndices := pc.consumedIndexSet(vid)
+		consumedIndices, _ := pc.consumedIndexSet(vid)
 		ret.Add("#%d %s : %s, consumed: %+v", i, vid.IDShortString(), pc.vertices[vid].String(), maps.Keys(consumedIndices))
 		for idx := range consumedIndices {
 			wOut := WrappedOutput{VID: vid, Index: idx}
@@ -503,6 +498,8 @@ func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uin
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
 	pc.Assertf(currentTs.After(pc.baseline.Timestamp()), "currentTs.After(pc.baseline.Timestamp())")
+	pc.MustConflictFreeCond()
+
 	for vid := range pc.vertices {
 		consumedIndices := pc.rootedIndices(vid)
 		for _, idx := range consumedIndices {
@@ -577,11 +574,11 @@ func (pc *PastCone) findConsumerNoLock(wOut WrappedOutput) (ret *WrappedTx, foun
 	}
 
 	ret, doubleSpend = pc.findConsumingVertexInTheSet(consumers)
-	if doubleSpend{
+	if doubleSpend {
 		return nil, false, true
 	}
-	if ret != nil{
-		if virtuallyConsumed{
+	if ret != nil {
+		if virtuallyConsumed {
 			return nil, false, true
 		}
 		return ret, true, false
@@ -602,7 +599,7 @@ func (pc *PastCone) CanBeVirtuallyConsumed(wOut WrappedOutput) bool {
 func (pc *PastCone) findConsumingVertexInTheSet(consumers set.Set[*WrappedTx]) (ret *WrappedTx, doubleSpend bool) {
 	for vid := range consumers {
 		if pc.IsKnown(vid) {
-			if ret != nil{
+			if ret != nil {
 				return nil, true
 			}
 			ret = vid
@@ -611,28 +608,31 @@ func (pc *PastCone) findConsumingVertexInTheSet(consumers set.Set[*WrappedTx]) (
 	return
 }
 
-func (pc *PastCone) ContainsConflict() (conflict *WrappedOutput) {
+func (pc *PastCone) Conflict() (conflict *WrappedOutput) {
 	pc.forAllVertices(func(vid *WrappedTx) bool {
-		for pc.consumedIndexSet()
-
 		vid.WithConsumersRLock(func() {
-			for _, consumers := range vid.consumed {
-				if _, doubleSpend := pc.findConsumingVertexInTheSet(consumers); doubleSpend{
-					conflict = WrappedOutput{
-						VID: vid, Index:
-					}
+			for idx, consumers := range vid.consumed {
+				if _, doubleSpend := pc.findConsumingVertexInTheSet(consumers); doubleSpend {
+					conflict = &WrappedOutput{VID: vid, Index: idx}
+					return
 				}
 			}
 		})
-		return true
+		return conflict == nil
 	})
+	return
 }
 
-const enforceMassiveConflictFreeCheck = true
+func (pc *PastCone) MustConflictFree() {
+	conflict := pc.Conflict()
+	pc.Assertf(conflict != nil, "past cone %s contains double-spent output %s", pc.name, conflict.IDShortString())
+}
 
-func (pc *PastCone) MustConflictFreeCond(onPanic ...func()) {
-	if enforceMassiveConflictFreeCheck {
-		pc.MustConflictFree(onPanic...)
+const enforceConflictChecking = true
+
+func (pc *PastCone) MustConflictFreeCond() {
+	if enforceConflictChecking {
+		pc.MustConflictFree()
 	}
 }
 
@@ -668,14 +668,14 @@ func (pc *PastCone) consumedIndexSet(vid *WrappedTx) (set.Set[byte], *WrappedOut
 	vid.WithConsumersRLock(func() {
 		for idx, consumers := range vid.consumed {
 			_, doubleSpend := pc.findConsumingVertexInTheSet(consumers)
-			if doubleSpend{
+			if doubleSpend {
 				conflict = &WrappedOutput{VID: vid, Index: idx}
 				return
 			}
 			consumedIndices.Insert(idx)
 		}
 	})
-	if conflict != nil{
+	if conflict != nil {
 		return nil, conflict
 	}
 	return consumedIndices, nil
@@ -692,16 +692,16 @@ func (pc *PastCone) consumedIndexWithConsumer(vid *WrappedTx) (map[byte]*Wrapped
 	vid.WithConsumersRLock(func() {
 		for idx, consumers := range vid.consumed {
 			consumer, doubleSpend := pc.findConsumingVertexInTheSet(consumers)
-			if doubleSpend{
+			if doubleSpend {
 				conflict = &WrappedOutput{VID: vid, Index: idx}
 				return
 			}
-			if consumer != nil{
+			if consumer != nil {
 				ret[idx] = consumer
 			}
 		}
 	})
-	if conflict != nil{
+	if conflict != nil {
 		return nil, conflict
 	}
 	return ret, nil
@@ -714,7 +714,7 @@ func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int, *WrappedOut
 	}
 
 	consumedIndices, conflict := pc.consumedIndexSet(vid)
-	if conflict != nil{
+	if conflict != nil {
 		return nil, 0, conflict
 	}
 	ret := make([]byte, 0, numProduced-len(consumedIndices))
@@ -732,7 +732,7 @@ func (pc *PastCone) rootedIndices(vid *WrappedTx) ([]byte, *WrappedOutput) {
 		return nil, nil
 	}
 	consumedIndices, conflict := pc.consumedIndexSet(vid)
-	if conflict != nil{
+	if conflict != nil {
 		return nil, conflict
 	}
 	if len(consumedIndices) == 0 {
@@ -754,7 +754,8 @@ type MutationStats struct {
 }
 
 func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, stats MutationStats) {
-	pc.MustConflictFree()
+	pc.Assertf(pc.Conflict() == nil, "")
+
 	muts = multistate.NewMutations()
 
 	// generate ADD TX and ADD OUTPUT mutations
@@ -850,7 +851,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 			}
 		}
 		// append new vertex with inherited flags from the appended past cone because it is deterministic
-		pc.MustMarkVertexWithFlags(vid, flags)
+		pc.MarkVertexWithFlags(vid, flags)
 		// check if the appended vertex is known in the target and mark if necessary
 		if !pc.IsKnownInTheState(vid) && baselineStateReader.KnowsCommittedTransaction(&vid.ID) {
 			pc.SetFlagsUp(vid, FlagAttachedVertexCheckedInTheState|FlagAttachedVertexInTheState)
