@@ -26,25 +26,41 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		return
 	}
 
+	ps.Log().Infof("[peering] pull: ******** streamHandler started")
 	id := stream.Conn().RemotePeer()
 
 	known, blacklisted, static := ps.knownPeer(id, func(p *Peer) {
 	})
-	if !known || blacklisted {
+	if blacklisted {
 		// just ignore
 		return
 	}
+	if !known {
+		if !ps.isAutopeeringEnabled() {
+			// node does not take any incoming dynamic peers
+			ps.Log().Errorf("[peering] node does not take any incoming dynamic peers")
+			return
+		}
+		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
+	}
+
 	if !static && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
 		// ignore pull requests from automatic peers
 		return
 	}
 
+	// receive start
+	_, err := readFrame(stream)
+	if err != nil {
+		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
+		return
+	}
 	for {
 		msgData, err := readFrame(stream)
-		known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
+		_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingPull++
 		})
-		if !known || blacklisted {
+		if blacklisted {
 			// just ignore
 			return
 		}

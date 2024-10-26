@@ -264,7 +264,17 @@ func (ps *Peers) addPeer(addrInfo *peer.AddrInfo, name string, static bool) (suc
 func (ps *Peers) NewStream(peerID peer.ID, pID protocol.ID, timeout time.Duration) (network.Stream, error) {
 	ctx, cancel := context.WithTimeout(ps.Ctx(), timeout)
 	defer cancel()
-	return ps.host.NewStream(ctx, peerID, pID)
+	stream, err := ps.host.NewStream(ctx, peerID, pID)
+	if err == nil {
+		// force the start of the streamHandler on the peer to avoid the stream reset error
+		err = writeFrame(stream, []byte("Start"))
+		if err != nil {
+			stream.Close()
+			return nil, err
+		}
+	}
+
+	return stream, err
 }
 
 func (ps *Peers) dialPeer(peerID peer.ID, peer *Peer, static bool) error {
@@ -272,6 +282,7 @@ func (ps *Peers) dialPeer(peerID peer.ID, peer *Peer, static bool) error {
 
 	peer.streams = make(map[protocol.ID]*peerStream)
 	// the NewStream waits until context is done
+
 	stream, err := ps.NewStream(peerID, ps.lppProtocolHeartbeat, timeout)
 	if err != nil {
 		return err
@@ -279,25 +290,32 @@ func (ps *Peers) dialPeer(peerID peer.ID, peer *Peer, static bool) error {
 	peer.streams[ps.lppProtocolHeartbeat] = &peerStream{
 		stream: stream,
 	}
-	time.Sleep(1000 * time.Millisecond) //?? Delay
+	//time.Sleep(1000 * time.Millisecond) //?? Delay
 	stream, err = ps.NewStream(peerID, ps.lppProtocolPull, timeout)
 	if err != nil {
 		// if static {
 		// 	time.Sleep(1 * time.Second)
 		// 	continue
 		// } else {
-		peer.streams[ps.lppProtocolHeartbeat].stream.Close()
+		for _, s := range peer.streams {
+			if s.stream != nil {
+				s.stream.Close()
+			}
+		}
 		return err
 		//}
 	}
 	peer.streams[ps.lppProtocolPull] = &peerStream{
 		stream: stream,
 	}
-	time.Sleep(1000 * time.Millisecond) //?? Delay
+	//time.Sleep(1000 * time.Millisecond) //?? Delay
 	stream, err = ps.NewStream(peerID, ps.lppProtocolGossip, timeout)
 	if err != nil {
-		peer.streams[ps.lppProtocolHeartbeat].stream.Close()
-		peer.streams[ps.lppProtocolPull].stream.Close()
+		for _, s := range peer.streams {
+			if s.stream != nil {
+				s.stream.Close()
+			}
+		}
 		return err
 	}
 	peer.streams[ps.lppProtocolGossip] = &peerStream{
@@ -321,8 +339,8 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 	}
 
 	go func() {
-		time.Sleep(1000 * time.Millisecond) //?? Delay
-		time.Sleep(100 * time.Millisecond)  //?? Delay
+		//time.Sleep(1000 * time.Millisecond) //?? Delay
+		time.Sleep(100 * time.Millisecond) //?? Delay
 		err := ps.dialPeer(addrInfo.ID, p, static)
 		if err != nil {
 			ps.Log().Errorf("[peering] dialPeer err %s", err.Error())

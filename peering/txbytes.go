@@ -16,21 +16,37 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		ps.Log().Infof("[peering] gossip: streamHandler exit")
 	}()
 
+	ps.Log().Infof("[peering] gossip: ******** streamHandler started")
 	id := stream.Conn().RemotePeer()
 
 	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
 	})
-	if !known || blacklisted {
+	if blacklisted {
 		// ignore
+		return
+	}
+	if !known {
+		if !ps.isAutopeeringEnabled() {
+			// node does not take any incoming dynamic peers
+			ps.Log().Errorf("[peering] node does not take any incoming dynamic peers")
+			return
+		}
+		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
+	}
+
+	// receive start
+	_, err := readFrame(stream)
+	if err != nil {
+		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
 	for {
 		txBytesWithMetadata, err := readFrame(stream)
 		ps.inMsgCounter.Inc()
-		known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
+		_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingTx++
 		})
-		if !known || blacklisted {
+		if blacklisted {
 			// ignore
 			return
 		}

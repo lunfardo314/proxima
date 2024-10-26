@@ -98,6 +98,15 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
+	ps.Log().Info("[peering] hb: ******** streamHandler started for %s", ShortPeerIDString(id))
+
+	// receive start
+	_, err := readFrame(stream)
+	if err != nil {
+		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
+		return
+	}
+
 	for {
 		var hbInfo heartbeatInfo
 		msgData, err := readFrame(stream)
