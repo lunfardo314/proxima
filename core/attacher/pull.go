@@ -24,7 +24,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
 	defer a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT: %s", deptVID.IDShortString)
 
-	a.Assertf(a.pastCone.IsKnown(deptVID), "a.IsKnown(deptVID): %s", deptVID.IDShortString)
+	//a.Assertf(a.pastCone.IsKnown(deptVID), "a.IsKnown(deptVID): %s", deptVID.IDShortString)
 
 	repeatPullAfter, maxPullAttempts, numPeers := a.TxPullParameters()
 

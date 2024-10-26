@@ -303,9 +303,11 @@ func (pc *PastCone) IsKnownInTheState(vid *WrappedTx) (rooted bool) {
 	return pc.IsKnown(vid) && pc.isVertexInTheState(vid)
 }
 
-// MarkVertexUndefined vertex becomes 'known' but undefined and 'referenced'
-func (pc *PastCone) MarkVertexUndefined(vid *WrappedTx) bool {
-	pc.Assertf(!pc.IsKnownDefined(vid), "!pc.IsKnownDefined(vid)")
+// MarkVertexKnown vertex becomes 'known' but undefined and 'referenced'
+func (pc *PastCone) MarkVertexKnown(vid *WrappedTx) bool {
+	pc.MustConflictFreeCond()
+	defer pc.MustConflictFreeCond()
+
 	// prevent repeated referencing
 	if !pc.IsKnown(vid) {
 		if !pc.reference(vid) {
@@ -318,11 +320,22 @@ func (pc *PastCone) MarkVertexUndefined(vid *WrappedTx) bool {
 
 // MarkVertexDefined marks 'defined' and enforces rooting has been checked
 func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
+	pc.MustConflictFreeCond()
+	defer pc.MustConflictFreeCond()
+
 	pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedInTheState), "flags.FlagsUp(FlagAttachedVertexCheckedInTheState): %s", vid.IDShortString)
 	pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 }
 
 func (pc *PastCone) MustMarkVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
+	pc.MustConflictFreeCond()
+
+	flagsOld := pc.Flags(vid)
+	defer pc.MustConflictFreeCond(func() {
+		pc.Log().Errorf(">>>>>>> before panic on defer MustMarkVertexWithFlags:\n    flagsOld: %s\n    flagsNew: %s",
+			flagsOld.String(), flags.String())
+	})
+
 	flags &= ^FlagAttachedVertexAskedForPoke
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
@@ -331,6 +344,9 @@ func (pc *PastCone) MustMarkVertexWithFlags(vid *WrappedTx, flags FlagsPastCone)
 }
 
 func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
+	pc.MustConflictFreeCond()
+	defer pc.MustConflictFreeCond()
+
 	flags := pc.Flags(vid)
 	if pc.IsKnownInTheState(vid) {
 		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
@@ -351,6 +367,9 @@ func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
 
 // MustMarkVertexInTheState vertex becomes 'known' and marked Rooted and 'defined'
 func (pc *PastCone) MustMarkVertexInTheState(vid *WrappedTx) {
+	pc.MustConflictFreeCond()
+	defer pc.MustConflictFreeCond()
+
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
 	}
@@ -361,6 +380,9 @@ func (pc *PastCone) MustMarkVertexInTheState(vid *WrappedTx) {
 
 // MustMarkVertexNotInTheState is marked definitely not rooted
 func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
+	pc.MustConflictFreeCond()
+	defer pc.MustConflictFreeCond()
+
 	pc.Assertf(!pc.IsKnownInTheState(vid), "!pc.IsKnownInTheState(vid)")
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
@@ -387,6 +409,32 @@ func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
 		}
 	}
 	return
+}
+
+func (pc *PastCone) forAllVertices(fun func(vid *WrappedTx) bool, sortAsc ...bool) {
+	all := set.New[*WrappedTx]()
+	for vid := range pc.vertices {
+		all.Insert(vid)
+	}
+	if pc.delta != nil {
+		for vid := range pc.delta.vertices {
+			all.Insert(vid)
+		}
+	}
+	allSlice := maps.Keys(all)
+	if len(sortAsc) > 0 {
+		sort.Slice(allSlice, func(i, j int) bool {
+			if !sortAsc[0] {
+				i, j = j, i
+			}
+			return allSlice[i].Before(allSlice[j])
+		})
+	}
+	for _, vid := range allSlice {
+		if !fun(vid) {
+			return
+		}
+	}
 }
 
 func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
@@ -430,19 +478,17 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 }
 
 func (pc *PastCone) LinesBasic(prefix ...string) *lines.Lines {
-	pc.Assertf(pc.delta == nil, "pc.delta==nil")
 	ret := lines.New(prefix...)
 	ret.Add("------ past cone: '%s'", pc.name).
 		Add("------ baseline: %s, coverage: %s",
 			util.Cond(pc.baseline == nil, "<nil>", pc.baseline.IDShortString()),
 			pc.baseline.GetLedgerCoverageString(),
 		)
-	sorted := util.KeysSorted(pc.vertices, func(vid1, vid2 *WrappedTx) bool {
-		return vid1.Before(vid2)
-	})
-	for i, vid := range sorted {
-		ret.Add("#%d %s : %s", i, vid.IDShortString(), pc.vertices[vid].String())
-	}
+	counter := 0
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		ret.Add("#%d %s : %s", counter, vid.IDShortString(), pc.vertices[vid].String())
+		return true
+	}, true)
 	if len(pc.virtuallyConsumed) > 0 {
 		ret.Add("----- virtually consumed ----")
 		for vid, consumedIndices := range pc.virtuallyConsumed {
@@ -533,7 +579,7 @@ func (pc *PastCone) findConsumerNoLock(wOut WrappedOutput) (ret *WrappedTx, foun
 	if !found {
 		return nil, false
 	}
-	consumer := pc._findConsumingVertexInThSet(consumers)
+	consumer := pc._mustFindConsumingVertexInTheSet(consumers)
 	if consumer == nil {
 		return nil, false
 	}
@@ -546,18 +592,41 @@ func (pc *PastCone) CanBeVirtuallyConsumed(wOut WrappedOutput) bool {
 	return !found
 }
 
-// _findConsumingVertexInThSet selects 0 or 1 consumer from the set which is known in the past cone
+// _mustFindConsumingVertexInTheSet selects 0 or 1 consumer from the set which is known in the past cone
 // Returns vertex if it consumes, returns nil if none vertex consumes (virtual ones does not count)
-// It panics if there's more than one consumer in the same past cone (double spends are not allowed in the past cone),
-func (pc *PastCone) _findConsumingVertexInThSet(consumers set.Set[*WrappedTx]) (ret *WrappedTx) {
+// It panics if there's more than one consumer in the same past cone (double spends must not appear in the past cone),
+func (pc *PastCone) _mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedTx], beforePanic ...func()) (ret *WrappedTx) {
 	for vid := range consumers {
 		if pc.IsKnown(vid) {
+			if ret != nil && len(beforePanic) > 0 {
+				beforePanic[0]()
+			}
 			pc.Assertf(ret == nil, "inconsistency: double-spend in the past cone %s\n    first: %s\n    second: %s",
 				pc.name, ret.IDShortString, vid.IDShortString)
 			ret = vid
 		}
 	}
 	return
+}
+
+// MustConflictFree panics if any vertex has more than one consumer
+func (pc *PastCone) MustConflictFree(onPanic ...func()) {
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		vid.WithConsumersRLock(func() {
+			for _, consumers := range vid.consumed {
+				pc._mustFindConsumingVertexInTheSet(consumers, onPanic...)
+			}
+		})
+		return true
+	})
+}
+
+const enforceMassiveConflictFreeCheck = true
+
+func (pc *PastCone) MustConflictFreeCond(onPanic ...func()) {
+	if enforceMassiveConflictFreeCheck {
+		pc.MustConflictFree(onPanic...)
+	}
 }
 
 func (pb *PastConeBase) _virtuallyConsumedIndexSet(vid *WrappedTx) set.Set[byte] {
@@ -573,11 +642,11 @@ func (pb *PastConeBase) _virtuallyConsumedIndexSet(vid *WrappedTx) set.Set[byte]
 
 func (pb *PastConeBase) _virtuallyConsumedIndexSlice(vid *WrappedTx) []byte {
 	if len(pb.virtuallyConsumed) == 0 {
-		return nil
+		return make([]byte, 0)
 	}
 	ret := pb.virtuallyConsumed[vid]
 	if len(ret) == 0 {
-		return nil
+		return make([]byte, 0)
 	}
 	return maps.Keys(ret)
 }
@@ -590,7 +659,7 @@ func (pc *PastCone) consumedIndexSet(vid *WrappedTx) set.Set[byte] {
 
 	vid.WithConsumersRLock(func() {
 		for idx, consumers := range vid.consumed {
-			if pc._findConsumingVertexInThSet(consumers) != nil {
+			if pc._mustFindConsumingVertexInTheSet(consumers) != nil {
 				ret.Insert(idx)
 			}
 		}
@@ -606,7 +675,7 @@ func (pc *PastCone) consumedIndexSlice(vid *WrappedTx) []byte {
 	defer vid.mutexDescendants.RUnlock()
 
 	for idx, consumers := range vid.consumed {
-		if pc._findConsumingVertexInThSet(consumers) != nil {
+		if pc._mustFindConsumingVertexInTheSet(consumers) != nil {
 			ret = append(ret, idx)
 		}
 	}
@@ -653,6 +722,7 @@ type MutationStats struct {
 }
 
 func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, stats MutationStats) {
+	pc.MustConflictFree()
 	muts = multistate.NewMutations()
 
 	// generate ADD TX and ADD OUTPUT mutations
@@ -712,6 +782,9 @@ func (pc *PastCone) getBaseline() *WrappedTx {
 
 // AppendPastCone appends deterministic past cone to the current one. Returns conflict info if any
 func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch *WrappedTx) global.IndexedStateReader) (conflict *WrappedOutput) {
+	pc.MustConflictFree()
+	defer pc.MustConflictFree()
+
 	baseline := pc.getBaseline()
 	pc.Assertf(baseline != nil, "pc.hasBaseline()")
 	pc.Assertf(pcb.baseline != nil, "pcb.baseline != nil")

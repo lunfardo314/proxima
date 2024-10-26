@@ -70,7 +70,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 	)
 
 	// here it is referenced from the attacher
-	if !a.pastCone.MarkVertexUndefined(stemVid) {
+	if !a.pastCone.MarkVertexKnown(stemVid) {
 		// failed to reference (pruned), but it is ok (rare event)
 		return true
 	}
@@ -123,7 +123,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 		a.Tracef(TraceTagSolidifySequencerBaseline, "follow the predecessor %s", baselineDirection.IDShortString)
 	}
 	// here we reference baseline direction
-	if !a.pastCone.MarkVertexUndefined(baselineDirection) {
+	if !a.pastCone.MarkVertexKnown(baselineDirection) {
 		// wasn't able to reference baseline direction (pruned) but it is ok
 		return true
 	}
@@ -162,7 +162,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 	if a.pastCone.IsKnownDefined(vid) {
 		return true, true
 	}
-	a.pastCone.MarkVertexUndefined(vid)
+	a.pastCone.MarkVertexKnown(vid)
 
 	var deterministicPastCone *vertex.PastConeBase
 
@@ -373,16 +373,12 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 		return false, false
 	}
 
-	a.pastCone.MarkVertexUndefined(vidEndorsed)
-
-	a.checkTransactionInTheState(vidEndorsed)
-
+	inTheState := a.checkTransactionInTheState(vidEndorsed)
 	if a.pastCone.IsKnownInTheState(vidEndorsed) {
 		// definitely in the state -> fully defined
 		a.pastCone.MarkVertexDefined(vidEndorsed)
 		return true, true
 	}
-
 	if !a.pullIfNeeded(vidEndorsed) {
 		return false, false
 	}
@@ -417,32 +413,41 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return false, false
 	}
+	a.pastCone.MarkVertexKnown(vidEndorsed)
+	if inTheState {
+		a.pastCone.MustMarkVertexInTheState(vidEndorsed)
+	}
+
 	a.AssertNoError(a.err)
 	return true, defined
 }
 
 // checkTransactionInTheState checks if dependency is rooted and marks it 'rooted' if defined
-func (a *attacher) checkTransactionInTheState(vid *vertex.WrappedTx) {
+func (a *attacher) checkTransactionInTheState(vid *vertex.WrappedTx) (inTheState bool) {
 	defer func() {
-		a.Assertf(a.baseline == nil || a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState)")
+		if a.baseline != nil && a.pastCone.IsKnown(vid) {
+			a.Assertf(a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState)")
+		}
 	}()
-	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState) {
-		// already checked
-		return
+	if a.pastCone.IsKnownInTheState(vid) {
+		return true
 	}
+	if a.pastCone.IsNotInTheState(vid) {
+		return false
+	}
+	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState), "!a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState)")
 	if a.baseline == nil {
 		return
 	}
-	if vid.Timestamp().After(a.baseline.Timestamp()) {
-		// output is later than baseline -> can't be Rooted in it
-		a.pastCone.MustMarkVertexNotInTheState(vid)
-		return
+	if a.pastCone.IsKnown(vid) {
+		if a.baselineStateReader().KnowsCommittedTransaction(&vid.ID) {
+			a.pastCone.MustMarkVertexInTheState(vid)
+			inTheState = true
+		} else {
+			a.pastCone.MustMarkVertexNotInTheState(vid)
+		}
 	}
-	if a.baselineStateReader().KnowsCommittedTransaction(&vid.ID) {
-		a.pastCone.MustMarkVertexInTheState(vid)
-	} else {
-		a.pastCone.MustMarkVertexNotInTheState(vid)
-	}
+	return
 }
 
 const TraceTagAttachInputs = "attachInputs"
@@ -473,11 +478,17 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 }
 
 func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *vertex.WrappedTx) (ok, defined bool) {
+	a.pastCone.MustConflictFreeCond()
+	defer a.pastCone.MustConflictFreeCond()
+
 	vidInputTx, ok := a.attachInputID(v, vidUnwrapped, inputIdx)
 	if !ok {
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)
 		return false, false
 	}
+	// past cone is conflict free
+	a.Assertf(a.pastCone.IsKnown(vidInputTx), "a.pastCone.IsKnown(vidInputTx)")
+
 	// only will become solid if successfully referencedSet
 	if v.Inputs[inputIdx] == nil {
 		if refOk := v.ReferenceInput(inputIdx, vidInputTx); !refOk {
@@ -499,6 +510,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 		a.Assertf(a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagAttachedVertexDefined|vertex.FlagAttachedVertexCheckedInTheState), "must be checked 'rooted' status")
 		a.Tracef(TraceTagAttachVertex, "input #%d (%s) has been solidified", inputIdx, wOut.IDShortString)
 	}
+
 	return true, defined
 }
 
@@ -511,7 +523,7 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 		return true, true
 	}
 
-	a.Assertf(a.pastCone.IsKnownInTheState(wOut.VID), "a.pastCone.IsKnownInTheState(wOut.VID)")
+	a.Assertf(!a.pastCone.IsKnown(wOut.VID) || a.pastCone.IsKnownInTheState(wOut.VID), "!a.pastCone.IsKnown(wOut.VID) || a.pastCone.IsKnownInTheState(wOut.VID)")
 
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
 	stateReader := a.baselineStateReader()
@@ -596,6 +608,9 @@ func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
 
 // attachInputID links input vertex with the consumer, detects conflicts in the scope of the attacher
 func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrapped *vertex.WrappedTx, inputIdx byte) (vidInputTx *vertex.WrappedTx, ok bool) {
+	a.pastCone.MustConflictFreeCond()
+	defer a.pastCone.MustConflictFreeCond()
+
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 
 	vidInputTx = consumerVertex.Inputs[inputIdx]
@@ -623,10 +638,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 		}
 	}
 
-	// not pulling, no need for the transaction to check double-spends of its outputs
-
-	// check conflicts
-
+	// check for conflicts
 	consumer, found := a.pastCone.FindConsumerOf(vertex.WrappedOutput{VID: vidInputTx, Index: inputOid.Index()})
 	a.Assertf(consumer != nil || !found, "consumer!=nil || !found")
 	if found && consumer != consumerTxUnwrapped {
@@ -637,6 +649,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 	}
 
 	vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped)
+	a.pastCone.MarkVertexKnown(vidInputTx)
 	return vidInputTx, true
 }
 
