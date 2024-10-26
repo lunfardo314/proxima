@@ -557,6 +557,12 @@ func (vid *WrappedTx) AddConsumer(outputIndex byte, consumer *WrappedTx) {
 	vid.consumed[outputIndex] = outputConsumers
 }
 
+func (vid *WrappedTx) WithConsumersRLock(fun func()) {
+	vid.mutexDescendants.RLock()
+	fun()
+	vid.mutexDescendants.RUnlock()
+}
+
 func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx]) []byte {
 	vid.mutexDescendants.Lock()
 	defer vid.mutexDescendants.Unlock()
@@ -605,18 +611,16 @@ func (vid *WrappedTx) GetLedgerCoverageString() string {
 // NumConsumers returns:
 // - number of consumed outputs
 // - number of conflict sets
-func (vid *WrappedTx) NumConsumers() (int, int) {
-	vid.mutexDescendants.RLock()
-	defer vid.mutexDescendants.RUnlock()
-
-	retConsumed := len(vid.consumed)
-	retCS := 0
-	for _, ds := range vid.consumed {
-		if len(ds) > 1 {
-			retCS++
+func (vid *WrappedTx) NumConsumers() (numConsumedOutputs, numConflictSets int) {
+	vid.WithConsumersRLock(func() {
+		numConsumedOutputs = len(vid.consumed)
+		for _, ds := range vid.consumed {
+			if len(ds) > 1 {
+				numConflictSets++
+			}
 		}
-	}
-	return retConsumed, retCS
+	})
+	return
 }
 
 func (vid *WrappedTx) ConsumersOf(outIdx byte) set.Set[*WrappedTx] {

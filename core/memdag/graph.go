@@ -102,7 +102,7 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	})
 	util.AssertNoError(err)
 	if vid.GetTxStatus() == vertex.Bad {
-		attr = append(attr, graph.VertexAttribute("color", "ret"))
+		attr = append(attr, graph.VertexAttribute("color", "red"))
 	}
 }
 
