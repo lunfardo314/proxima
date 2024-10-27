@@ -396,6 +396,8 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 }
 
 func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
+	ps.Log().Infof("[peering] ****** add to blacklist peer %s", ShortPeerIDString(id))
+	ps._removeFromCoolOffList(id)
 	ps.blacklist[id] = _deadlineWithReason{
 		Time:   time.Now().Add(blacklistTTL),
 		reason: reason,
@@ -415,7 +417,18 @@ func (ps *Peers) restartBlacklistTime(id peer.ID) {
 func (ps *Peers) _addToCoolOfflist(id peer.ID) {
 	ps.Log().Infof("[peering] ****** add to cooloff list peer %s", ShortPeerIDString(id))
 
-	ps.cooloffList[id] = time.Now().Add(cooloffTTL)
+	if !ps._isInBlacklist(id) {
+		ps.cooloffList[id] = time.Now().Add(cooloffTTL)
+	}
+}
+
+func (ps *Peers) _removeFromCoolOffList(id peer.ID) {
+	ps.Log().Infof("[peering] ****** add to cooloff list peer %s", ShortPeerIDString(id))
+
+	_, found := ps.cooloffList[id]
+	if found {
+		delete(ps.cooloffList, id)
+	}
 }
 
 func (ps *Peers) _addToConnectList(id peer.ID) {

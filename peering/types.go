@@ -151,7 +151,7 @@ const (
 	heartbeatRate      = 2 * time.Second
 	aliveNumHeartbeats = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
 	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	blacklistTTL       = 10 * time.Second //?? 2 * time.Minute //20 * time.Second  //??
+	blacklistTTL       = 2 * time.Minute
 	cooloffTTL         = 10 * time.Second
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 15 * heartbeatRate

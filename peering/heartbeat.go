@@ -80,7 +80,6 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	remote := stream.Conn().RemoteMultiaddr()
 
 	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
-		p.numIncomingHB++
 	})
 	if blacklisted {
 		// ignore
