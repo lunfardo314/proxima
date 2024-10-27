@@ -210,7 +210,6 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 		a.setError(nil)
 		return false, err
 	}
-	a.inputs = append(a.inputs, wOut)
 	util.AssertNoError(a.err)
 
 	a.pastCone.CommitDelta()
