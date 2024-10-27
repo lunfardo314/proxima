@@ -177,7 +177,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 				}
 				// non-sequencer transaction
 				ok = a.attachVertexUnwrapped(v, vid)
-				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexInputsSolid|vertex.FlagAttachedVertexEndorsementsSolid) {
+				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
 					a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 					defined = true
 				}
@@ -191,7 +191,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 
 				//ok = a.attachVertexUnwrapped(v, vid)
 				//if ok {
-				//	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexInputsSolid | vertex.FlagAttachedVertexEndorsementsSolid) {
+				//	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid | vertex.FlagPastConeVertexEndorsementsSolid) {
 				//		a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 				//		defined = true
 				//	}
@@ -245,7 +245,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vidUnwrapped.IDShortString)
 	a.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
 
-	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagAttachedVertexEndorsementsSolid) {
+	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.Tx.IDShortString)
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vidUnwrapped) { // <<< recursive
@@ -255,7 +255,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		}
 	}
 	// check consistency
-	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagAttachedVertexEndorsementsSolid) {
+	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
 		err := a.allEndorsementsDefined(v)
 		a.Assertf(err == nil, "%w:\nVertices: %s", err, func() string { return a.pastCone.Lines("       ").String() })
 
@@ -269,7 +269,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		return false
 	}
 
-	if !v.Tx.IsSequencerMilestone() && a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagAttachedVertexInputsSolid) {
+	if !v.Tx.IsSequencerMilestone() && a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
 		if !a.finalTouchNonSequencer(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
@@ -317,7 +317,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 	a.Tracef(TraceTagAttachEndorsements, "attachEndorsements IN: of %s, num endorsements %d", vid.IDShortString, v.Tx.NumEndorsements)
 	defer a.Tracef(TraceTagAttachEndorsements, "attachEndorsements OUT: of %s, num endorsements %d", vid.IDShortString, v.Tx.NumEndorsements)
 
-	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
+	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid), "!v.FlagsUp(vertex.FlagAttachedvertexEndorsementsSolid)")
 
 	numUndefined := len(v.Endorsements)
 	for i := range v.Endorsements {
@@ -335,7 +335,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) b
 
 	if numUndefined == 0 {
 		a.AssertNoError(a.allEndorsementsDefined(v))
-		a.pastCone.SetFlagsUp(vid, vertex.FlagAttachedVertexEndorsementsSolid)
+		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexEndorsementsSolid)
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are all good in %s", a.name, v.Tx.IDShortString)
 	} else {
 		a.Tracef(TraceTagAttachEndorsements, "attachEndorsements(%s): endorsements are NOT all good in %s", a.name, v.Tx.IDShortString)
@@ -374,7 +374,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	}
 
 	inTheState := a.checkTransactionInTheState(vidEndorsed)
-	if a.pastCone.IsKnownInTheState(vidEndorsed) {
+	if a.pastCone.IsInTheState(vidEndorsed) {
 		// definitely in the state -> fully defined
 		a.pastCone.MarkVertexDefined(vidEndorsed)
 		return true, true
@@ -426,16 +426,16 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 func (a *attacher) checkTransactionInTheState(vid *vertex.WrappedTx) (inTheState bool) {
 	defer func() {
 		if a.baseline != nil && a.pastCone.IsKnown(vid) {
-			a.Assertf(a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState)")
+			a.Assertf(a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
 		}
 	}()
-	if a.pastCone.IsKnownInTheState(vid) {
+	if a.pastCone.IsInTheState(vid) {
 		return true
 	}
 	if a.pastCone.IsNotInTheState(vid) {
 		return false
 	}
-	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState), "!a.pastCone.Flags(vid).FlagsUp(vertex.FlagAttachedVertexCheckedInTheState)")
+	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
 	if a.baseline == nil {
 		return
 	}
@@ -471,7 +471,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 		}
 	}
 	if numUndefined == 0 {
-		a.pastCone.SetFlagsUp(vidUnwrapped, vertex.FlagAttachedVertexInputsSolid)
+		a.pastCone.SetFlagsUp(vidUnwrapped, vertex.FlagPastConeVertexInputsSolid)
 	}
 	a.Tracef(TraceTagAttachInputs, "attachInputs OK: %s", vidUnwrapped.IDShortString)
 	return true
@@ -507,7 +507,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 		return false, false
 	}
 	if defined {
-		a.Assertf(a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagAttachedVertexDefined|vertex.FlagAttachedVertexCheckedInTheState), "must be checked 'rooted' status")
+		a.Assertf(a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagPastConeVertexDefined|vertex.FlagPastConeVertexCheckedInTheState), "must be checked 'rooted' status")
 		a.Tracef(TraceTagAttachVertex, "input #%d (%s) has been solidified", inputIdx, wOut.IDShortString)
 	}
 
@@ -523,7 +523,7 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 		return true, true
 	}
 
-	a.Assertf(!a.pastCone.IsKnown(wOut.VID) || a.pastCone.IsKnownInTheState(wOut.VID), "!a.pastCone.IsKnown(wOut.VID) || a.pastCone.IsKnownInTheState(wOut.VID)")
+	a.Assertf(!a.pastCone.IsKnown(wOut.VID) || a.pastCone.IsInTheState(wOut.VID), "!a.pastCone.IsKnown(wOut.VID) || a.pastCone.IsInTheState(wOut.VID)")
 
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
 	stateReader := a.baselineStateReader()

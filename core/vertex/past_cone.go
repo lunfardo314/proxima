@@ -15,14 +15,12 @@ import (
 )
 
 // Attacher keeps list of past cone vertices.
-// The vertices of consideration are all Vertices in the past cone back to the 'Rooted' ones, i.e. those which belong
-// to the baseline state.
+// The vertices of consideration are all vertices in the past cone back to the 'rooted' ones
+// 'rooted' are the ones which belong to the baseline state.
 // each vertex in the attacher has local flags, which defines its status in the scope of the attacher
-// The goal of the attacher is to make all vertices marked as 'defined', i.e. either 'Rooted' or with its past cone checked
+// The goal of the attacher is to make all vertices marked as 'defined', i.e. either 'rooted' or with its past cone checked
 // and valid
 // Flags (except 'asked for poke') become final and immutable after they are set 'ON'
-
-// MarkVertexDefinedDoNotEnforceRootedCheck marks 'defined' without enforcing rooting has been checked
 
 type (
 	FlagsPastCone byte
@@ -45,13 +43,13 @@ type (
 )
 
 const (
-	FlagAttachedVertexKnown             = FlagsPastCone(0b00000001) // each vertex of consideration has this flag on
-	FlagAttachedVertexDefined           = FlagsPastCone(0b00000010) // means vertex is 'defined', i.e. its validity is checked
-	FlagAttachedVertexCheckedInTheState = FlagsPastCone(0b00000100) // means vertex has been checked if it is in the state (it may or may not be there)
-	FlagAttachedVertexInTheState        = FlagsPastCone(0b00001000) // means vertex is definitely in the state (must be checked before)
-	FlagAttachedVertexEndorsementsSolid = FlagsPastCone(0b00010000) // means all endorsements were validated
-	FlagAttachedVertexInputsSolid       = FlagsPastCone(0b00100000) // means all consumed inputs are checked and valid
-	FlagAttachedVertexAskedForPoke      = FlagsPastCone(0b01000000) //
+	FlagPastConeVertexKnown             = FlagsPastCone(0b00000001) // each vertex of consideration has this flag on
+	FlagPastConeVertexDefined           = FlagsPastCone(0b00000010) // means vertex is 'defined', i.e. its validity is checked
+	FlagPastConeVertexCheckedInTheState = FlagsPastCone(0b00000100) // means vertex has been checked if it is in the state (it may or may not be there)
+	FlagPastConeVertexInTheState        = FlagsPastCone(0b00001000) // means vertex is definitely in the state (must be checked before)
+	FlagPastConeVertexEndorsementsSolid = FlagsPastCone(0b00010000) // means all endorsements were validated
+	FlagPastConeVertexInputsSolid       = FlagsPastCone(0b00100000) // means all consumed inputs are checked and valid
+	FlagPastConeVertexAskedForPoke      = FlagsPastCone(0b01000000) //
 )
 
 func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
@@ -61,13 +59,13 @@ func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
 func (f FlagsPastCone) String() string {
 	return fmt.Sprintf("%08b known: %v, defined: %v, rooted: (%v,%v), endorsementsOk: %v, inputsOk: %v, poke: %v",
 		f,
-		f.FlagsUp(FlagAttachedVertexKnown),
-		f.FlagsUp(FlagAttachedVertexDefined),
-		f.FlagsUp(FlagAttachedVertexCheckedInTheState),
-		f.FlagsUp(FlagAttachedVertexInTheState),
-		f.FlagsUp(FlagAttachedVertexEndorsementsSolid),
-		f.FlagsUp(FlagAttachedVertexInputsSolid),
-		f.FlagsUp(FlagAttachedVertexAskedForPoke),
+		f.FlagsUp(FlagPastConeVertexKnown),
+		f.FlagsUp(FlagPastConeVertexDefined),
+		f.FlagsUp(FlagPastConeVertexCheckedInTheState),
+		f.FlagsUp(FlagPastConeVertexInTheState),
+		f.FlagsUp(FlagPastConeVertexEndorsementsSolid),
+		f.FlagsUp(FlagPastConeVertexInputsSolid),
+		f.FlagsUp(FlagPastConeVertexAskedForPoke),
 	)
 }
 
@@ -271,24 +269,16 @@ func (pc *PastCone) reference(vid *WrappedTx) bool {
 }
 
 func (pc *PastCone) IsKnown(vid *WrappedTx) bool {
-	return pc.Flags(vid).FlagsUp(FlagAttachedVertexKnown)
+	return pc.Flags(vid).FlagsUp(FlagPastConeVertexKnown)
 }
 
 func (pc *PastCone) IsKnownDefined(vid *WrappedTx) bool {
-	return pc.Flags(vid).FlagsUp(FlagAttachedVertexKnown | FlagAttachedVertexDefined)
-}
-
-func (pc *PastCone) IsKnownUndefined(vid *WrappedTx) bool {
-	f := pc.Flags(vid)
-	if !f.FlagsUp(FlagAttachedVertexKnown) {
-		return false
-	}
-	return !f.FlagsUp(FlagAttachedVertexDefined)
+	return pc.Flags(vid).FlagsUp(FlagPastConeVertexKnown | FlagPastConeVertexDefined)
 }
 
 func (pc *PastCone) isVertexInTheState(vid *WrappedTx) (rooted bool) {
-	if rooted = pc.Flags(vid).FlagsUp(FlagAttachedVertexInTheState); rooted {
-		pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedInTheState), "pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedInTheState)")
+	if rooted = pc.Flags(vid).FlagsUp(FlagPastConeVertexInTheState); rooted {
+		pc.Assertf(pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState), "pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState)")
 	}
 	return
 }
@@ -296,39 +286,33 @@ func (pc *PastCone) isVertexInTheState(vid *WrappedTx) (rooted bool) {
 // IsNotInTheState is definitely known it is not in the state
 func (pc *PastCone) IsNotInTheState(vid *WrappedTx) bool {
 	return pc.IsKnown(vid) &&
-		pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedInTheState) &&
-		!pc.Flags(vid).FlagsUp(FlagAttachedVertexInTheState)
+		pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState) &&
+		!pc.Flags(vid).FlagsUp(FlagPastConeVertexInTheState)
 }
 
-func (pc *PastCone) IsKnownInTheState(vid *WrappedTx) (rooted bool) {
+// IsInTheState is definitely known it is in the state
+func (pc *PastCone) IsInTheState(vid *WrappedTx) (rooted bool) {
 	return pc.IsKnown(vid) && pc.isVertexInTheState(vid)
 }
 
-// MarkVertexKnown vertex becomes 'known' but undefined and 'referenced'
 func (pc *PastCone) MarkVertexKnown(vid *WrappedTx) bool {
-	pc.MustConflictFreeCond()
-	defer pc.MustConflictFreeCond()
-
 	// prevent repeated referencing
 	if !pc.IsKnown(vid) {
 		if !pc.reference(vid) {
 			return false
 		}
 	}
-	pc.SetFlagsUp(vid, FlagAttachedVertexKnown)
+	pc.SetFlagsUp(vid, FlagPastConeVertexKnown)
 	return true
 }
 
 // MarkVertexDefined marks 'defined' and enforces rooting has been checked
 func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
-	pc.MustConflictFreeCond()
-	defer pc.MustConflictFreeCond()
-
-	pc.Assertf(pc.Flags(vid).FlagsUp(FlagAttachedVertexCheckedInTheState), "flags.FlagsUp(FlagAttachedVertexCheckedInTheState): %s", vid.IDShortString)
+	pc.Assertf(pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState), "flags.FlagsUp(FlagPastConeVertexCheckedInTheState): %s", vid.IDShortString)
 	pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 }
 
-func (pc *PastCone) MarkVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
+func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
 	}
@@ -336,57 +320,48 @@ func (pc *PastCone) MarkVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
 }
 
 func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
-	pc.MustConflictFreeCond()
-	defer pc.MustConflictFreeCond()
-
 	flags := pc.Flags(vid)
-	if pc.IsKnownInTheState(vid) {
-		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
+	if pc.IsInTheState(vid) {
+		pc.Assertf(!flags.FlagsUp(FlagPastConeVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagPastConeVertexInputsSolid): %s\n     %s",
 			vid.IDShortString, flags.String)
-		pc.Assertf(!flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
+		pc.Assertf(!flags.FlagsUp(FlagPastConeVertexEndorsementsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagPastConeVertexInputsSolid): %s\n     %s",
 			vid.IDShortString, flags.String)
 	}
 	if !vid.IsSequencerMilestone() {
 		if pc.IsNotInTheState(vid) {
-			pc.Assertf(flags.FlagsUp(FlagAttachedVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
+			pc.Assertf(flags.FlagsUp(FlagPastConeVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: flags.FlagsUp(FlagPastConeVertexInputsSolid): %s\n     %s",
 				vid.IDShortString, flags.String)
-			pc.Assertf(flags.FlagsUp(FlagAttachedVertexEndorsementsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: flags.FlagsUp(FlagAttachedVertexInputsSolid): %s\n     %s",
+			pc.Assertf(flags.FlagsUp(FlagPastConeVertexEndorsementsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: flags.FlagsUp(FlagPastConeVertexInputsSolid): %s\n     %s",
 				vid.IDShortString, flags.String)
 		}
 	}
-	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexDefined)
+	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexDefined)
 }
 
 // MustMarkVertexInTheState vertex becomes 'known' and marked Rooted and 'defined'
 func (pc *PastCone) MustMarkVertexInTheState(vid *WrappedTx) {
-	pc.MustConflictFreeCond()
-	defer pc.MustConflictFreeCond()
-
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
 	}
 	util.Assertf(!pc.IsNotInTheState(vid), "!pc.IsNotInTheState(vid)")
-	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedInTheState|FlagAttachedVertexDefined|FlagAttachedVertexInTheState)
-	pc.Assertf(pc.IsKnownInTheState(vid), "pc.IsNotInTheState(vid)")
+	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexDefined|FlagPastConeVertexInTheState)
+	pc.Assertf(pc.IsInTheState(vid), "pc.IsNotInTheState(vid)")
 }
 
 // MustMarkVertexNotInTheState is marked definitely not rooted
 func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
-	pc.MustConflictFreeCond()
-	defer pc.MustConflictFreeCond()
-
-	pc.Assertf(!pc.IsKnownInTheState(vid), "!pc.IsKnownInTheState(vid)")
+	pc.Assertf(!pc.IsInTheState(vid), "!pc.IsInTheState(vid)")
 	if !pc.IsKnown(vid) {
 		pc.mustReference(vid)
 	}
-	pc.SetFlagsUp(vid, FlagAttachedVertexKnown|FlagAttachedVertexCheckedInTheState)
+	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState)
 	pc.Assertf(pc.IsNotInTheState(vid), "pc.IsNotInTheState(vid)")
 }
 
 func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
 	util.Assertf(pc.delta == nil, "pc.delta==nil")
 	for vid, flags := range pc.vertices {
-		if !flags.FlagsUp(FlagAttachedVertexDefined) && vid != except {
+		if !flags.FlagsUp(FlagPastConeVertexDefined) && vid != except {
 			return true
 		}
 	}
@@ -505,7 +480,7 @@ func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uin
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
 	pc.Assertf(currentTs.After(pc.baseline.Timestamp()), "currentTs.After(pc.baseline.Timestamp())")
-	pc.MustConflictFreeCond()
+	pc.MustConflictFree()
 
 	for vid := range pc.vertices {
 		consumedIndices := pc.rootedIndices(vid)
@@ -540,7 +515,7 @@ func (pc *PastCone) UndefinedList() []*WrappedTx {
 
 	ret := make([]*WrappedTx, 0)
 	for vid, flags := range pc.vertices {
-		if !flags.FlagsUp(FlagAttachedVertexDefined) {
+		if !flags.FlagsUp(FlagPastConeVertexDefined) {
 			ret = append(ret, vid)
 		}
 	}
@@ -563,22 +538,18 @@ func (pc *PastCone) NumVertices() int {
 	return len(pc.vertices)
 }
 
-// FindConsumerOf return single consumer of the output with flag if found
-// (nil, true) means it is virtually consumed output
-func (pc *PastCone) FindConsumerOf(wOut WrappedOutput) (ret *WrappedTx, found, doubleSpend bool) {
-	wOut.VID.mutexDescendants.RLock()
-	defer wOut.VID.mutexDescendants.RUnlock()
-
-	return pc.findConsumerNoLock(wOut)
-}
-
 func (pc *PastCone) MustFindConsumerOf(wOut WrappedOutput) (*WrappedTx, bool) {
-	ret, found, doubleSpend := pc.FindConsumerOf(wOut)
+	ret, found, doubleSpend := pc.findConsumerOf(wOut)
 	pc.Assertf(!doubleSpend, "double-spent %s in past cone %s", wOut.IDShortString, pc.name)
 	return ret, found
 }
 
-func (pc *PastCone) findConsumerNoLock(wOut WrappedOutput) (ret *WrappedTx, found, doubleSpend bool) {
+// findConsumerOf return single consumer of the output with flag if found
+// (nil, true) means it is virtually consumed output
+func (pc *PastCone) findConsumerOf(wOut WrappedOutput) (ret *WrappedTx, found, doubleSpend bool) {
+	wOut.VID.mutexDescendants.RLock()
+	defer wOut.VID.mutexDescendants.RUnlock()
+
 	virtuallyConsumed := pc.isVirtuallyConsumed(wOut)
 
 	consumers, found := wOut.VID.consumed[wOut.Index]
@@ -602,7 +573,7 @@ func (pc *PastCone) findConsumerNoLock(wOut WrappedOutput) (ret *WrappedTx, foun
 
 // findConsumingVertexInTheSet selects 0 or 1 consumer from the set which is known in the past cone
 // Returns vertex if it consumes, returns nil if none vertex consumes (virtual ones does not count)
-func (pc *PastCone) findConsumingVertexInTheSet(consumers set.Set[*WrappedTx]) (ret *WrappedTx, doubleSpend bool) {
+func (pc *PastCone) findConsumingVertexInTheSet(consumers set.Set[*WrappedTx]) (ret *WrappedTx, containsDoubleSpend bool) {
 	for vid := range consumers {
 		if pc.IsKnown(vid) {
 			if ret != nil {
@@ -615,16 +586,19 @@ func (pc *PastCone) findConsumingVertexInTheSet(consumers set.Set[*WrappedTx]) (
 }
 
 func (pc *PastCone) mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedTx]) *WrappedTx {
-	ret, doubleSpend := pc.findConsumingVertexInTheSet(consumers)
-	pc.Assertf(!doubleSpend, "mustFindConsumingVertexInTheSet: double-spent %s in the past cone %s", ret.IDShortString, pc.name)
+	ret, containsDoubleSpend := pc.findConsumingVertexInTheSet(consumers)
+	pc.Assertf(!containsDoubleSpend, "mustFindConsumingVertexInTheSet: double-spent %s in the past cone %s", ret.IDShortString, pc.name)
 	return ret
 }
 
+// Conflict returns double-spent output (conflict), or nil if past cone is consistent
+// The complexity is O(NxM) where N is number of vertices and M is average number of conflicts in the UTXO tangle
+// Practically, it is linear wrt number of vertices because M is 1 or close to 1.
 func (pc *PastCone) Conflict() (conflict *WrappedOutput) {
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		vid.WithConsumersRLock(func() {
 			for idx, consumers := range vid.consumed {
-				if _, doubleSpend := pc.findConsumingVertexInTheSet(consumers); doubleSpend {
+				if _, containsDoubleSpend := pc.findConsumingVertexInTheSet(consumers); containsDoubleSpend {
 					conflict = &WrappedOutput{VID: vid, Index: idx}
 					return
 				}
@@ -637,10 +611,10 @@ func (pc *PastCone) Conflict() (conflict *WrappedOutput) {
 
 func (pc *PastCone) MustConflictFree() {
 	conflict := pc.Conflict()
-	pc.Assertf(conflict == nil, "past cone %s contains double-spent output %s", pc.name, conflict.IDShortString())
+	pc.Assertf(conflict == nil, "past cone %s contains double-spent output %s", pc.name, conflict.IDShortString)
 }
 
-const enforceConflictChecking = false
+const enforceConflictChecking = true
 
 func (pc *PastCone) MustConflictFreeCond() {
 	if enforceConflictChecking {
@@ -657,17 +631,6 @@ func (pb *PastConeBase) _virtuallyConsumedIndexSet(vid *WrappedTx) set.Set[byte]
 		return set.New[byte]()
 	}
 	return ret.Clone()
-}
-
-func (pb *PastConeBase) _virtuallyConsumedIndexSlice(vid *WrappedTx) []byte {
-	if len(pb.virtuallyConsumed) == 0 {
-		return make([]byte, 0)
-	}
-	ret := pb.virtuallyConsumed[vid]
-	if len(ret) == 0 {
-		return make([]byte, 0)
-	}
-	return maps.Keys(ret)
 }
 
 // consumedIndexSet returns indices which are virtually or really consumed for the vertex
@@ -703,7 +666,7 @@ func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 }
 
 func (pc *PastCone) rootedIndices(vid *WrappedTx) []byte {
-	if !pc.IsKnownInTheState(vid) {
+	if !pc.IsInTheState(vid) {
 		return nil
 	}
 	consumedIndices := pc.consumedIndexSet(vid)
@@ -726,13 +689,13 @@ type MutationStats struct {
 }
 
 func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, stats MutationStats) {
-	pc.Assertf(pc.Conflict() == nil, "")
+	pc.MustConflictFree()
 
 	muts = multistate.NewMutations()
 
 	// generate ADD TX and ADD OUTPUT mutations
 	for vid := range pc.vertices {
-		if pc.IsKnownInTheState(vid) {
+		if pc.IsInTheState(vid) {
 			// generate DEL mutations
 			for _, idx := range pc.rootedIndices(vid) {
 				muts.InsertDelOutputMutation(vid.OutputID(idx))
@@ -754,7 +717,7 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 }
 
 func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
-	if !pc.IsKnownInTheState(wOut.VID) {
+	if !pc.IsInTheState(wOut.VID) {
 		return false
 	}
 	// it is in the state
@@ -764,7 +727,7 @@ func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
 
 func (pc *PastCone) hasRooted() bool {
 	for _, flags := range pc.vertices {
-		if flags.FlagsUp(FlagAttachedVertexInTheState) {
+		if flags.FlagsUp(FlagPastConeVertexInTheState) {
 			return true
 		}
 	}
@@ -796,22 +759,26 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 	// we require baselines must be compatible (on the same chain) of pcb should not be younger than pc
 	if !baseline.IsContainingBranchOf(pcb.baseline, getStateReader) {
 		// baselines not compatible
-		return &WrappedOutput{} // >>>>>>>>>>>>>>>> conflict
+		return &WrappedOutput{} // >>>>>>>>>>>>>>>> conflicting baselines
 	}
 
 	baselineStateReader := getStateReader(baseline)
 
-	// pcb must be deterministic, i.e. immutable and all vertices in it must be 'known defined'
-	// it does not need locking anymore
+	// pcb is assumed to be deterministic at this point, i.e. immutable and all vertices in it must be 'known defined'
+	// it does not need any locking
 	for vid, flags := range pcb.vertices {
-		if !flags.FlagsUp(FlagAttachedVertexInTheState) {
+		if !flags.FlagsUp(FlagPastConeVertexInTheState) {
+			// if vertex is in the state of the appended past cone, it will be in the state of the new baseline
+			// When vertex not in appended baseline, check if it didn't become known in the new one
 			if baselineStateReader.KnowsCommittedTransaction(&vid.ID) {
-				flags |= FlagAttachedVertexCheckedInTheState | FlagAttachedVertexInTheState
+				flags |= FlagPastConeVertexCheckedInTheState | FlagPastConeVertexInTheState
 			}
 		}
-		flags &= ^FlagAttachedVertexAskedForPoke
-		pc.MarkVertexWithFlags(vid, flags)
+		flags &= ^FlagPastConeVertexAskedForPoke
+		// it will also create a new entry in the target past cone if necessary
+		pc.markVertexWithFlags(vid, flags)
 	}
+	// there's no guarantee that merged past cone is conflict-free
 	return pc.Conflict()
 }
 
@@ -825,7 +792,7 @@ func (pc *PastCone) CheckFinalPastCone() (err error) {
 		return fmt.Errorf("CheckFinalPastCone: still contains undefined Vertices")
 	}
 
-	// should be at least one Rooted output ( ledger baselineCoverage must be > 0)
+	// should be at least one 'rooted' output ( ledger baselineCoverage must be > 0)
 	if !pc.hasRooted() {
 		return fmt.Errorf("CheckFinalPastCone: at least one rooted output is expected")
 	}
@@ -840,7 +807,7 @@ func (pc *PastCone) CheckFinalPastCone() (err error) {
 		if status == Bad {
 			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
 		}
-		if pc.IsKnownInTheState(vid) {
+		if pc.IsInTheState(vid) {
 			// do not check dependencies if transaction is Rooted
 			continue
 		}
@@ -855,6 +822,9 @@ func (pc *PastCone) CheckFinalPastCone() (err error) {
 			return
 		}
 	}
+	if conflict := pc.Conflict(); conflict != nil {
+		return fmt.Errorf("past cone %s contains double-spent output %s", pc.name, conflict.IDShortString())
+	}
 	return nil
 }
 
@@ -865,13 +835,13 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 	pc.Assertf(pc.baseline != nil, "checkFinalFlags: pc.baseline != nil")
 
 	switch {
-	case !flags.FlagsUp(FlagAttachedVertexKnown):
-		wrongFlag = "FlagAttachedVertexKnown"
-	case !flags.FlagsUp(FlagAttachedVertexDefined):
-		wrongFlag = "FlagAttachedVertexDefined"
-	case flags.FlagsUp(FlagAttachedVertexInTheState):
-		if !flags.FlagsUp(FlagAttachedVertexCheckedInTheState) {
-			wrongFlag = "FlagAttachedVertexCheckedInTheState"
+	case !flags.FlagsUp(FlagPastConeVertexKnown):
+		wrongFlag = "FlagPastConeVertexKnown"
+	case !flags.FlagsUp(FlagPastConeVertexDefined):
+		wrongFlag = "FlagPastConeVertexDefined"
+	case flags.FlagsUp(FlagPastConeVertexInTheState):
+		if !flags.FlagsUp(FlagPastConeVertexCheckedInTheState) {
+			wrongFlag = "FlagPastConeVertexCheckedInTheState"
 		}
 	case vid.IsBranchTransaction():
 		switch {
@@ -880,10 +850,10 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 		}
 	default:
 		switch {
-		case !flags.FlagsUp(FlagAttachedVertexInputsSolid):
-			wrongFlag = "FlagAttachedVertexEndorsementsSolid"
-		case !flags.FlagsUp(FlagAttachedVertexEndorsementsSolid):
-			wrongFlag = "FlagAttachedVertexEndorsementsSolid"
+		case !flags.FlagsUp(FlagPastConeVertexInputsSolid):
+			wrongFlag = "FlagPastConeVertexEndorsementsSolid"
+		case !flags.FlagsUp(FlagPastConeVertexEndorsementsSolid):
+			wrongFlag = "FlagPastConeVertexEndorsementsSolid"
 		}
 	}
 	if wrongFlag != "" {

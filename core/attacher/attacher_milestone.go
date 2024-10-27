@@ -303,7 +303,7 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		return true, false
 	}
 	flags := a.pastCone.Flags(a.vid)
-	if !flags.FlagsUp(vertex.FlagAttachedVertexEndorsementsSolid) || !flags.FlagsUp(vertex.FlagAttachedVertexInputsSolid) {
+	if !flags.FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) || !flags.FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
 		return true, false
 	}
 	// inputs solid
@@ -340,10 +340,10 @@ func (a *milestoneAttacher) _doPoke() {
 func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
 	flags := a.pastCone.Flags(with)
 	util.Assertf(a.pastCone.IsKnown(with), "must be marked known %s", with.IDShortString)
-	if !flags.FlagsUp(vertex.FlagAttachedVertexAskedForPoke) {
+	if !flags.FlagsUp(vertex.FlagPastConeVertexAskedForPoke) {
 		a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString())
 		a.PokeMe(a.vid, with)
-		a.pastCone.SetFlagsUp(with, vertex.FlagAttachedVertexAskedForPoke)
+		a.pastCone.SetFlagsUp(with, vertex.FlagPastConeVertexAskedForPoke)
 	}
 }
 
