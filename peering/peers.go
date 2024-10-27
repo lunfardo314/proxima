@@ -68,7 +68,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		cfg:                  cfg,
 		host:                 lppHost,
 		peers:                make(map[peer.ID]*Peer),
-		staticPeers:          set.New[peer.ID](),
+		staticPeers:          make(map[peer.ID]*staticPeerInfo),
 		blacklist:            make(map[peer.ID]_deadlineWithReason),
 		cooloffList:          make(map[peer.ID]time.Time),
 		connectList:          set.New[peer.ID](),
@@ -244,7 +244,14 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString strin
 	}
 	ps.Log().Infof("[peering] added pre-configured peer %s as '%s'", addrString, name)
 	ps.addPeer(info, name, true)
-	ps.staticPeers.Insert(info.ID)
+	_, found := ps.staticPeers[info.ID]
+	if !found {
+		ps.staticPeers[info.ID] = &staticPeerInfo{
+			maddr:      maddr,
+			name:       name,
+			addrString: addrString,
+		}
+	}
 	return nil
 }
 
@@ -363,15 +370,15 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 }
 
 // dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
-func (ps *Peers) dropPeer(id peer.ID, reason string) {
+func (ps *Peers) dropPeer(id peer.ID, reason string, blacklist bool) {
 	ps.withPeer(id, func(p *Peer) {
 		if p != nil {
-			ps._dropPeer(p, reason)
+			ps._dropPeer(p, reason, blacklist)
 		}
 	})
 }
 
-func (ps *Peers) _dropPeer(p *Peer, reason string) {
+func (ps *Peers) _dropPeer(p *Peer, reason string, blacklist bool) {
 
 	why := ""
 	if len(reason) > 0 {
@@ -390,7 +397,11 @@ func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	_ = ps.host.Network().ClosePeer(p.id)
 	delete(ps.peers, p.id)
 
-	ps._addToCoolOfflist(p.id)
+	if blacklist {
+		ps._addToBlacklist(p.id, "")
+	} else {
+		ps._addToCoolOfflist(p.id)
+	}
 
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
 }
@@ -399,7 +410,7 @@ func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
 	ps.Log().Infof("[peering] ****** add to blacklist peer %s", ShortPeerIDString(id))
 	ps._removeFromCoolOffList(id)
 	ps.blacklist[id] = _deadlineWithReason{
-		Time:   time.Now().Add(blacklistTTL),
+		Time:   time.Now().Add(time.Duration(ps.cfg.BlacklistTTL)),
 		reason: reason,
 	}
 }
@@ -409,7 +420,7 @@ func (ps *Peers) restartBlacklistTime(id peer.ID) {
 	defer ps.mutex.Unlock()
 
 	if entry, exists := ps.blacklist[id]; exists {
-		entry.Time = time.Now().Add(blacklistTTL)
+		entry.Time = time.Now().Add(time.Duration(ps.cfg.BlacklistTTL))
 		ps.blacklist[id] = entry
 	}
 }
@@ -418,12 +429,12 @@ func (ps *Peers) _addToCoolOfflist(id peer.ID) {
 	ps.Log().Infof("[peering] ****** add to cooloff list peer %s", ShortPeerIDString(id))
 
 	if !ps._isInBlacklist(id) {
-		ps.cooloffList[id] = time.Now().Add(cooloffTTL)
+		ps.cooloffList[id] = time.Now().Add(time.Duration(ps.cfg.CooloffListTTL))
 	}
 }
 
 func (ps *Peers) _removeFromCoolOffList(id peer.ID) {
-	ps.Log().Infof("[peering] ****** add to cooloff list peer %s", ShortPeerIDString(id))
+	ps.Log().Infof("[peering] ****** remove from cooloff list peer %s", ShortPeerIDString(id))
 
 	_, found := ps.cooloffList[id]
 	if found {
@@ -548,7 +559,6 @@ func (ps *Peers) cleanBlacklist() {
 
 func (ps *Peers) cleanCoolofflist() {
 	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
 
 	toDelete := make([]peer.ID, 0, len(ps.cooloffList))
 	nowis := time.Now()
@@ -559,6 +569,13 @@ func (ps *Peers) cleanCoolofflist() {
 	}
 	for _, id := range toDelete {
 		delete(ps.cooloffList, id)
+	}
+	ps.mutex.Unlock()
+	for _, id := range toDelete {
+		p, static := ps.staticPeers[id]
+		if static {
+			ps.addStaticPeer(p.maddr, p.name, p.addrString)
+		}
 	}
 }
 
@@ -576,6 +593,13 @@ func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
 			isAlive = p._isAlive()
 		}
 	})
+	return
+}
+
+func (ps *Peers) IsBlacklisted(id peer.ID) (isBlacklisted bool) {
+	ps.mutex.Lock()
+	defer ps.mutex.Unlock()
+	_, isBlacklisted = ps.blacklist[id]
 	return
 }
 

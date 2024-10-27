@@ -45,12 +45,22 @@ type (
 		ForcePullFromAllPeers bool
 		// timeout for heartbeat. If not set, used special defaultSendHeartbeatTimeout
 		SendTimeoutHeartbeat time.Duration
+
+		BlacklistTTL   int
+		CooloffListTTL int
 	}
 
 	_multiaddr struct {
 		addrString string
 		multiaddr.Multiaddr
 	}
+
+	staticPeerInfo struct {
+		maddr      multiaddr.Multiaddr
+		name       string
+		addrString string
+	}
+
 	Peers struct {
 		environment
 
@@ -61,7 +71,7 @@ type (
 		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
 		routingDiscovery *routing.RoutingDiscovery
 		peers            map[peer.ID]*Peer // except self/host
-		staticPeers      set.Set[peer.ID]
+		staticPeers      map[peer.ID]*staticPeerInfo
 		blacklist        map[peer.ID]_deadlineWithReason
 		cooloffList      map[peer.ID]time.Time
 		connectList      set.Set[peer.ID]
@@ -151,7 +161,7 @@ const (
 	heartbeatRate      = 2 * time.Second
 	aliveNumHeartbeats = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
 	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	blacklistTTL       = 2 * time.Minute
+	blacklistTTL       = 30 * time.Second //??2 * time.Minute
 	cooloffTTL         = 10 * time.Second
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 15 * heartbeatRate
@@ -175,8 +185,6 @@ const (
 	// default timeouts for QUIC
 	// HB must dial usually
 	defaultSendHeartbeatTimeout = 10 * time.Second
-	// gossip, pull sends usually do not do dial
-	sendTimeout = time.Second
 )
 
 func readPeeringConfig() (*Config, error) {
@@ -239,6 +247,14 @@ func readPeeringConfig() (*Config, error) {
 	cfg.SendTimeoutHeartbeat = time.Duration(viper.GetInt("peering.send_timeout_hb_millis")) * time.Millisecond
 	if cfg.SendTimeoutHeartbeat == 0 {
 		cfg.SendTimeoutHeartbeat = defaultSendHeartbeatTimeout
+	}
+	cfg.BlacklistTTL = viper.GetInt("blacklist_ttl")
+	if cfg.BlacklistTTL == 0 {
+		cfg.BlacklistTTL = int(blacklistTTL)
+	}
+	cfg.CooloffListTTL = viper.GetInt("coolofflist_ttl")
+	if cfg.CooloffListTTL == 0 {
+		cfg.CooloffListTTL = int(cooloffTTL)
 	}
 	return cfg, nil
 }

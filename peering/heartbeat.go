@@ -85,7 +85,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		// ignore
 		ps.Log().Errorf("[peering] node %s blacklisted", id.String())
 		// extend blacklisting
-		ps.restartBlacklistTime(id)
+		//ps.restartBlacklistTime(id)
 		return
 	}
 	if !known {
@@ -116,14 +116,14 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 		if err != nil {
 			ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
-			ps.dropPeer(id, err.Error())
+			ps.dropPeer(id, err.Error(), false) // peer probably just restart
 			return
 		}
 		if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
 			// protocol violation
 			err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset connection", ShortPeerIDString(id), err)
 			ps.Log().Error(err)
-			ps.dropPeer(id, err.Error())
+			ps.dropPeer(id, err.Error(), true)
 			return
 		}
 
@@ -171,7 +171,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	if ps.cfg.IgnoreAllPullRequests {
 		respondsToPull = false
 	} else if ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
-		respondsToPull = ps.staticPeers.Contains(id)
+		_, respondsToPull = ps.staticPeers[id]
 	}
 	peer := ps.getPeer(id)
 	if peer == nil {
@@ -199,7 +199,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 		peer.numHBSendErr++
 		if peer.numHBSendErr > 2 {
 			ps.Log().Errorf("[peering] error sending heartbeat. Drop peer.")
-			ps.dropPeer(id, "hb send error")
+			ps.dropPeer(id, "hb send error", false) // peer probably just restart
 			peer.numHBSendErr = 0
 		}
 	}
