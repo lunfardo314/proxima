@@ -90,8 +90,8 @@ func NewPastConeFromBase(env global.Logging, name string, pb *PastConeBase) *Pas
 	}
 }
 
-func (pb *PastConeBase) referenceBaseline(vid *WrappedTx) bool {
-	util.Assertf(pb.baseline == nil, "referenceBaseline: pb.baseline == nil")
+func (pb *PastConeBase) setBaseline(vid *WrappedTx) bool {
+	util.Assertf(pb.baseline == nil, "setBaseline: pb.baseline == nil")
 	if !vid.Reference() {
 		return false
 	}
@@ -148,17 +148,20 @@ func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
 	pc.Logging.Assertf(cond, format+"\n---- past cone ----\n%s", argsExt...)
 }
 
-func (pc *PastCone) ReferenceBaseline(vid *WrappedTx) (ret bool) {
-	util.Assertf(pc.baseline == nil, "ReferenceBaseline: pc.baseline == nil")
+func (pc *PastCone) SetBaseline(vid *WrappedTx) (ret bool) {
+	pc.Assertf(pc.baseline == nil, "SetBaseline: pc.baseline == nil")
+	pc.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction(): %s", vid.IDShortString)
+
 	if pc.delta == nil {
-		ret = pc.referenceBaseline(vid)
+		ret = pc.setBaseline(vid)
 	} else {
-		ret = pc.delta.referenceBaseline(vid)
+		ret = pc.delta.setBaseline(vid)
 	}
 	if ret {
 		pc.refCounter++
 		pc.traceLines.Trace("ref baseline: %s", vid.IDShortString)
 	}
+	pc.markVertexWithFlags(vid, FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState)
 	return
 }
 

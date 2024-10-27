@@ -373,7 +373,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 		return false, false
 	}
 
-	inTheState := a.checkTransactionInTheState(vidEndorsed)
+	a.checkInTheStateStatus(vidEndorsed)
 	if a.pastCone.IsInTheState(vidEndorsed) {
 		// definitely in the state -> fully defined
 		a.pastCone.MarkVertexDefined(vidEndorsed)
@@ -414,40 +414,30 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 		return false, false
 	}
 	a.pastCone.MarkVertexKnown(vidEndorsed)
-	if inTheState {
-		a.pastCone.MustMarkVertexInTheState(vidEndorsed)
-	}
 
 	a.AssertNoError(a.err)
 	return true, defined
 }
 
-// checkTransactionInTheState checks if dependency is rooted and marks it 'rooted' if defined
-func (a *attacher) checkTransactionInTheState(vid *vertex.WrappedTx) (inTheState bool) {
+// checkInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly
+func (a *attacher) checkInTheStateStatus(vid *vertex.WrappedTx) {
 	defer func() {
-		if a.baseline != nil && a.pastCone.IsKnown(vid) {
+		if a.baseline != nil {
 			a.Assertf(a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
 		}
 	}()
-	if a.pastCone.IsInTheState(vid) {
-		return true
-	}
-	if a.pastCone.IsNotInTheState(vid) {
-		return false
+	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
+		return
 	}
 	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
 	if a.baseline == nil {
 		return
 	}
-	if a.pastCone.IsKnown(vid) {
-		if a.baselineStateReader().KnowsCommittedTransaction(&vid.ID) {
-			a.pastCone.MustMarkVertexInTheState(vid)
-			inTheState = true
-		} else {
-			a.pastCone.MustMarkVertexNotInTheState(vid)
-		}
+	if a.baselineStateReader().KnowsCommittedTransaction(&vid.ID) {
+		a.pastCone.MustMarkVertexInTheState(vid)
+	} else {
+		a.pastCone.MustMarkVertexNotInTheState(vid)
 	}
-	return
 }
 
 const TraceTagAttachInputs = "attachInputs"
@@ -516,7 +506,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 
 func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "attachIfRooted %s IN", wOut.IDShortString)
-	a.checkTransactionInTheState(wOut.VID)
+	a.checkInTheStateStatus(wOut.VID)
 
 	if a.pastCone.IsNotInTheState(wOut.VID) {
 		// it is definitely not in the state
@@ -553,6 +543,9 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "IN %s", wOut.IDShortString)
 
+	if wOut.VID.IDHasFragment("45d0") {
+		fmt.Println()
+	}
 	ok, definedRootedStatus := a.attachIfRooted(wOut)
 	if !definedRootedStatus {
 		return true, false
@@ -660,7 +653,7 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 	a.Assertf(baselineVID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
 
 	// it may already be referenced but this ensures it is done only once
-	if !a.pastCone.ReferenceBaseline(baselineVID) {
+	if !a.pastCone.SetBaseline(baselineVID) {
 		return false
 	}
 
