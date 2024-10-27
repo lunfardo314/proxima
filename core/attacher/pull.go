@@ -46,7 +46,9 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 	// pull rules have not been defined yet
-	a.checkInTheStateStatus(deptVID)
+	if ok := a.checkInTheStateStatus(deptVID); !ok {
+		return false
+	}
 
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules not defined", deptVID.IDShortString)
 	if a.pastCone.IsInTheState(deptVID) {

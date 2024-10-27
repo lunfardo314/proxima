@@ -483,7 +483,7 @@ func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uin
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
 	pc.Assertf(currentTs.After(pc.baseline.Timestamp()), "currentTs.After(pc.baseline.Timestamp())")
-	pc.MustConflictFree()
+	pc.MustConflictFreeCond()
 
 	for vid := range pc.vertices {
 		consumedIndices := pc.rootedIndices(vid)
@@ -553,6 +553,10 @@ func (pc *PastCone) findConsumerOf(wOut WrappedOutput) (ret *WrappedTx, found, d
 	wOut.VID.mutexDescendants.RLock()
 	defer wOut.VID.mutexDescendants.RUnlock()
 
+	return pc.findConsumerOfNoLock(wOut)
+}
+
+func (pc *PastCone) findConsumerOfNoLock(wOut WrappedOutput) (ret *WrappedTx, found, doubleSpend bool) {
 	virtuallyConsumed := pc.isVirtuallyConsumed(wOut)
 
 	consumers, found := wOut.VID.consumed[wOut.Index]
@@ -599,15 +603,17 @@ func (pc *PastCone) mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedTx
 // Practically, it is linear wrt number of vertices because M is 1 or close to 1.
 func (pc *PastCone) Conflict() (conflict *WrappedOutput) {
 	pc.forAllVertices(func(vid *WrappedTx) bool {
-		vid.WithConsumersRLock(func() {
-			for idx, consumers := range vid.consumed {
-				if _, containsDoubleSpend := pc.findConsumingVertexInTheSet(consumers); containsDoubleSpend {
-					conflict = &WrappedOutput{VID: vid, Index: idx}
-					return
-				}
+		vid.mutexDescendants.RLock()
+		defer vid.mutexDescendants.RUnlock()
+
+		for idx, _ := range vid.consumed {
+			wOut := WrappedOutput{VID: vid, Index: idx}
+			if _, _, doubleSpend := pc.findConsumerOfNoLock(wOut); doubleSpend {
+				conflict = &wOut
+				return false
 			}
-		})
-		return conflict == nil
+		}
+		return true
 	})
 	return
 }
@@ -617,7 +623,7 @@ func (pc *PastCone) MustConflictFree() {
 	pc.Assertf(conflict == nil, "past cone %s contains double-spent output %s", pc.name, conflict.IDShortString)
 }
 
-const enforceConflictChecking = true
+const enforceConflictChecking = false
 
 func (pc *PastCone) MustConflictFreeCond() {
 	if enforceConflictChecking {
@@ -692,7 +698,7 @@ type MutationStats struct {
 }
 
 func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, stats MutationStats) {
-	pc.MustConflictFree()
+	pc.MustConflictFreeCond()
 
 	muts = multistate.NewMutations()
 
@@ -753,7 +759,7 @@ func (pc *PastCone) getBaseline() *WrappedTx {
 
 // AppendPastCone appends deterministic past cone to the current one. Returns conflict info if any
 func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch *WrappedTx) global.IndexedStateReader) (conflict *WrappedOutput) {
-	pc.MustConflictFree()
+	pc.MustConflictFreeCond()
 
 	baseline := pc.getBaseline()
 	pc.Assertf(baseline != nil, "pc.hasBaseline()")

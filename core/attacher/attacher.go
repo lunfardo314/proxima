@@ -162,7 +162,6 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 	if a.pastCone.IsKnownDefined(vid) {
 		return true, true
 	}
-	a.pastCone.MarkVertexKnown(vid)
 
 	var deterministicPastCone *vertex.PastConeBase
 
@@ -185,17 +184,9 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
 
 				// here cut the recursion and merge 'good' past cone
-
 				deterministicPastCone = vid.GetPastConeNoLock()
 				a.Assertf(deterministicPastCone != nil, "deterministicPastCone!=nil")
 
-				//ok = a.attachVertexUnwrapped(v, vid)
-				//if ok {
-				//	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid | vertex.FlagPastConeVertexEndorsementsSolid) {
-				//		a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
-				//		defined = true
-				//	}
-				//}
 			case vertex.Bad:
 				a.setError(vid.GetErrorNoLock())
 
@@ -223,6 +214,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 		a.pokeMe(vid)
 	}
 	a.Assertf(ok || a.err != nil, "ok || a.err != nil")
+	a.pastCone.MarkVertexKnown(vid)
 	return
 }
 
@@ -373,7 +365,9 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 		return false, false
 	}
 
-	a.checkInTheStateStatus(vidEndorsed)
+	if ok = a.checkInTheStateStatus(vidEndorsed); !ok {
+		return false, false
+	}
 	if a.pastCone.IsInTheState(vidEndorsed) {
 		// definitely in the state -> fully defined
 		a.pastCone.MarkVertexDefined(vidEndorsed)
@@ -420,24 +414,29 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 }
 
 // checkInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly
-func (a *attacher) checkInTheStateStatus(vid *vertex.WrappedTx) {
+func (a *attacher) checkInTheStateStatus(vid *vertex.WrappedTx) bool {
 	defer func() {
 		if a.baseline != nil {
 			a.Assertf(a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
 		}
 	}()
 	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
-		return
+		return true
 	}
 	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
 	if a.baseline == nil {
-		return
+		return true
 	}
 	if a.baselineStateReader().KnowsCommittedTransaction(&vid.ID) {
 		a.pastCone.MustMarkVertexInTheState(vid)
 	} else {
 		a.pastCone.MustMarkVertexNotInTheState(vid)
 	}
+	if conflict := a.pastCone.Conflict(); conflict != nil {
+		a.setError(fmt.Errorf("conflict in the past cone: %s", conflict.IDShortString()))
+		return false
+	}
+	return true
 }
 
 const TraceTagAttachInputs = "attachInputs"
@@ -506,7 +505,9 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 
 func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "attachIfRooted %s IN", wOut.IDShortString)
-	a.checkInTheStateStatus(wOut.VID)
+	if ok = a.checkInTheStateStatus(wOut.VID); !ok {
+		return
+	}
 
 	if a.pastCone.IsNotInTheState(wOut.VID) {
 		// it is definitely not in the state
@@ -543,9 +544,8 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "IN %s", wOut.IDShortString)
 
-	if wOut.VID.IDHasFragment("45d0") {
-		fmt.Println()
-	}
+	a.pastCone.MustConflictFreeCond()
+
 	ok, definedRootedStatus := a.attachIfRooted(wOut)
 	if !definedRootedStatus {
 		return true, false
@@ -554,11 +554,15 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 		return false, false
 	}
 
+	a.pastCone.MustConflictFreeCond()
+
 	if a.pastCone.IsRootedOutput(wOut) {
 		a.Assertf(wOut.IsAvailable(), "wOut.IsAvailable(): %s", wOut.IDShortString)
 		a.Tracef(TraceTagAttachOutput, "%s is 'rooted'", wOut.IDShortString)
 		return true, true
 	}
+	a.pastCone.MustConflictFreeCond()
+
 	// not Rooted
 	a.Tracef(TraceTagAttachOutput, "%s is NOT 'rooted'", wOut.IDShortString)
 

@@ -67,9 +67,16 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		targetTs: targetTs,
 	}
 
+	ret.pastCone.MustConflictFreeCond()
+
 	if err := ret.initIncrementalAttacher(baseline, targetTs, extend, endorse...); err != nil {
 		ret.Close()
 		return nil, err
+	}
+	if conflict := ret.Conflict(); conflict != nil {
+		ret.Close()
+		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to create incremental attacher extending  %s: double-spend (conflict) %s in the past cone",
+			name, extend.IDShortString(), conflict.IDShortString())
 	}
 	return ret, nil
 }
@@ -102,10 +109,13 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 			return err
 		}
 	}
+	a.pastCone.MustConflictFreeCond()
+
 	// extend input will always be at index 0
 	if err := a.insertVirtuallyConsumedOutput(extend); err != nil {
 		return err
 	}
+	a.pastCone.MustConflictFreeCond()
 
 	if targetTs.IsSlotBoundary() {
 		// stem input, if any, will be at index 1
@@ -119,6 +129,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 			return err
 		}
 	}
+	a.pastCone.MustConflictFreeCond()
 	return nil
 }
 
@@ -166,11 +177,11 @@ func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) e
 // insertEndorsement in case of error, attacher remains inconsistent
 func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
 	if endorsement.IsBadOrDeleted() {
-		return fmt.Errorf("NewIncrementalAttacher: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
+		return fmt.Errorf("insertEndorsement: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
 	}
 	endBaseline := endorsement.BaselineBranch()
 	if !a.branchesCompatible(&a.baseline.ID, &endBaseline.ID) {
-		return fmt.Errorf("baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
+		return fmt.Errorf("insertEndorsement: baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
 			endBaseline.IDShortString, endorsement.IDShortString(), a.baseline.IDShortString())
 	}
 	if endorsement.IsBranchTransaction() {
@@ -187,6 +198,9 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		if !defined {
 			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
 		}
+	}
+	if conflict := a.Conflict(); conflict != nil {
+		return fmt.Errorf("insertEndorsement: double-spend (conflict) %s in the past cone", conflict.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)
 	return nil
@@ -311,4 +325,8 @@ func (a *IncrementalAttacher) Extending() vertex.WrappedOutput {
 
 func (a *IncrementalAttacher) Endorsing() []*vertex.WrappedTx {
 	return a.endorse
+}
+
+func (a *IncrementalAttacher) Conflict() *vertex.WrappedOutput {
+	return a.pastCone.Conflict()
 }
