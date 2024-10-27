@@ -127,9 +127,6 @@ func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 }
 
 func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedOutput) error {
-	if !a.pastCone.CanBeVirtuallyConsumed(wOut) {
-		return fmt.Errorf("output %s is already consumed", wOut.IDShortString())
-	}
 	ok, defined := a.attachOutput(wOut)
 	if !ok {
 		util.AssertMustError(a.err)
@@ -137,9 +134,11 @@ func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedO
 	}
 
 	if !defined {
-		return fmt.Errorf("insertVirtuallyConsumedOutput: %w", ErrPastConeNotSolidYet)
+		return ErrPastConeNotSolidYet
 	}
-	a.pastCone.AddVirtuallyConsumedOutput(wOut)
+	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut); conflict != nil {
+		return fmt.Errorf("past cone contains double-spend %s", conflict.IDShortString())
+	}
 	a.inputs = append(a.inputs, wOut)
 	return nil
 }
@@ -189,9 +188,6 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
 		}
 	}
-	//if !a.pastCone.Reference(endorsement) {
-	//	return fmt.Errorf("insertEndorsement: failed to reference endorsement %s", endorsement.IDShortString())
-	//}
 	a.endorse = append(a.endorse, endorsement)
 	return nil
 }
@@ -204,20 +200,15 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	a.pastCone.BeginDelta()
-	ok, defined := a.attachOutput(wOut)
-	if !ok || !defined {
+	err := a.insertVirtuallyConsumedOutput(wOut)
+	if err != nil {
 		// it is either conflicting, or not solid yet
 		// in either case rollback
 		a.pastCone.RollbackDelta()
-		var retErr error
-		if !ok {
-			retErr = a.err
-		} else if !defined {
-			retErr = fmt.Errorf("InsertTagAlongInput: %w", ErrPastConeNotSolidYet)
-		}
+		err = fmt.Errorf("InsertTagAlongInput: %w", err)
 
 		a.setError(nil)
-		return false, retErr
+		return false, err
 	}
 	a.inputs = append(a.inputs, wOut)
 	util.AssertNoError(a.err)

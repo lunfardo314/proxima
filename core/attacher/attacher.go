@@ -638,8 +638,8 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 		}
 	}
 
-	// check for conflicts
-	consumer, found := a.pastCone.FindConsumerOf(vertex.WrappedOutput{VID: vidInputTx, Index: inputOid.Index()})
+	// check for conflicts. It will panic if wOut is double-spent
+	consumer, found := a.pastCone.MustFindConsumerOf(vertex.WrappedOutput{VID: vidInputTx, Index: inputOid.Index()})
 	a.Assertf(consumer != nil || !found, "consumer!=nil || !found")
 	if found && consumer != consumerTxUnwrapped {
 		err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend)",
@@ -650,6 +650,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 
 	vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped)
 	a.pastCone.MarkVertexKnown(vidInputTx)
+
 	return vidInputTx, true
 }
 
