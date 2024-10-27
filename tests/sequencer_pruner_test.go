@@ -59,7 +59,6 @@ func Test1SequencerPruner(t *testing.T) {
 		testData := initWorkflowTest(t, 1, true)
 		//t.Logf("%s", testData.wrk.Info())
 
-		//testData.wrk.StartTracingTags(backlog.TraceTag)
 		//testData.wrk.StartTracingTags(task.TraceTagBaseProposer)
 		//testData.wrk.StartTracingTags(task.TraceTagInsertTagAlongInputs)
 
