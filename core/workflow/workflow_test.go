@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/unitrie/common"
@@ -42,9 +43,11 @@ func (d *workflowDummyEnvironment) GetOwnSequencerID() *ledger.ChainID {
 }
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
+	stateStore := common.NewInMemoryKVStore()
+	multistate.InitStateStore(*ledger.L().ID, stateStore)
 	return &workflowDummyEnvironment{
 		Global:       global.NewDefault(),
-		stateStore:   common.NewInMemoryKVStore(),
+		stateStore:   stateStore,
 		txBytesStore: txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore()),
 	}
 }
