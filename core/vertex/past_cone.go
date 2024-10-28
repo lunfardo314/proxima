@@ -429,7 +429,9 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		maxTs = ledger.MaximumTime(maxTs, vid.Timestamp())
 		consumedIndices := pc.consumedIndexSet(vid)
-		ret.Add("#%d %s : %s, consumed: %+v", counter, vid.IDShortString(), pc.vertices[vid].String(), maps.Keys(consumedIndices))
+		notConsumedIndices, _ := pc.notConsumedIndices(vid)
+		ret.Add("#%d %s : %s, consumed: %+v, not consumed: %+v",
+			counter, vid.IDShortString(), pc.vertices[vid].String(), maps.Keys(consumedIndices), notConsumedIndices)
 		counter++
 		for idx := range consumedIndices {
 			wOut := WrappedOutput{VID: vid, Index: idx}
@@ -677,6 +679,28 @@ func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 	return ret, numProduced
 }
 
+func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
+	if !pc.IsInTheState(wOut.VID) {
+		return false
+	}
+	// it is in the state
+	consumer, found := pc.MustFindConsumerOf(wOut)
+	if !found {
+		// it is not consumed in the past cone
+		return true
+	}
+	//
+	if consumer == nil {
+		// it is consumed by the virtual consumer
+		return true
+	}
+	if pc.IsNotInTheState(consumer) {
+		return true
+	}
+	return false
+	//return !found || (consumer == nil || pc.IsNotInTheState(consumer))
+}
+
 func (pc *PastCone) rootedIndices(vid *WrappedTx) []byte {
 	if !pc.IsInTheState(vid) {
 		return nil
@@ -726,15 +750,6 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 		}
 	}
 	return
-}
-
-func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
-	if !pc.IsInTheState(wOut.VID) {
-		return false
-	}
-	// it is in the state
-	consumer, found := pc.MustFindConsumerOf(wOut)
-	return !found || (consumer == nil || pc.IsNotInTheState(consumer))
 }
 
 func (pc *PastCone) hasRooted() bool {

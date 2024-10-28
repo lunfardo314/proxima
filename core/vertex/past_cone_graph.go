@@ -113,7 +113,7 @@ func (pc *PastCone) nodeAttributes(vid *WrappedTx, seqMap map[ledger.ChainID]int
 	ret = append(ret, fillColor(vid, seqMap))
 	if pc.baseline == vid {
 		ret = append(ret,
-			graph.VertexAttribute("penwidth", "4"),
+			graph.VertexAttribute("penwidth", "5"),
 			graph.VertexAttribute("color", "red"),
 		)
 	} else {
