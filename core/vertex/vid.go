@@ -482,11 +482,12 @@ func (vid *WrappedTx) NumInputs() int {
 }
 
 func (vid *WrappedTx) NumProducedOutputs() int {
-	ret := 0
-	vid.RUnwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		ret = v.Tx.NumProducedOutputs()
-	}})
-	return ret
+	return vid.ID.NumProducedOutputs()
+	//ret := 0
+	//vid.RUnwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+	//	ret = v.Tx.NumProducedOutputs()
+	//}})
+	//return ret
 }
 
 func (vid *WrappedTx) convertToVirtualTxNoLock() {
