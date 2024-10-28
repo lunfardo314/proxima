@@ -60,6 +60,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			// protocol violation
 			err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
+			ps.dropPeer(id, err.Error(), true)
 			return
 		}
 		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
@@ -67,6 +68,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			// protocol violation
 			err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
+			ps.dropPeer(id, err.Error(), true)
 			return
 		}
 
