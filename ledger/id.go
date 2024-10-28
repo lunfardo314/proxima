@@ -177,8 +177,8 @@ func TransactionIDStringVeryShort(ts Time, txHash TransactionIDShort, sequencerF
 	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, true), hex.EncodeToString(txHash[:3]))
 }
 
-func TransactionIDAsFileName(ts Time, txHash TransactionIDShort, sequencerFlag, branchFlag bool) string {
-	return fmt.Sprintf("%s_%s", timestampPrefixStringAsFileName(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash[:]))
+func TransactionIDAsFileName(ts Time, txHash []byte, sequencerFlag, branchFlag bool) string {
+	return fmt.Sprintf("%s_%s", timestampPrefixStringAsFileName(ts, sequencerFlag, branchFlag), hex.EncodeToString(txHash))
 }
 
 func (txid *TransactionID) String() string {
@@ -198,7 +198,13 @@ func (txid *TransactionID) StringVeryShort() string {
 }
 
 func (txid *TransactionID) AsFileName() string {
-	return TransactionIDAsFileName(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	id := txid.ShortID()
+	return TransactionIDAsFileName(txid.Timestamp(), id[:], txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+}
+
+func (txid *TransactionID) AsFileNameShort() string {
+	id := txid.VeryShortID4()
+	return TransactionIDAsFileName(txid.Timestamp(), id[:], txid.IsSequencerMilestone(), txid.IsBranchTransaction())
 }
 
 // LessTxID compares tx IDs b timestamp and by tx hash

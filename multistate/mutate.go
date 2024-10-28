@@ -223,9 +223,6 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID, out *l
 				prevOutputID, err := ledger.OutputIDFromBytes(prevBin)
 				util.AssertNoError(err)
 				if !oid.Timestamp().After(prevOutputID.Timestamp()) {
-					fmt.Println("breakpoint")
-				}
-				if !oid.Timestamp().After(prevOutputID.Timestamp()) {
 					return fmt.Errorf("addOutputToTrie: chain output ID violates time constraint:\n   previous: %s\n   next: %s",
 						prevOutputID.StringShort(), oid.StringShort())
 				}

@@ -2,8 +2,8 @@ package attacher
 
 import (
 	"fmt"
+	"time"
 
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -77,8 +77,10 @@ func (a *milestoneAttacher) commitBranch() {
 		NumTransactions: a.finals.numNewTransactions,
 	})
 	if err != nil {
-		err = fmt.Errorf("%w:\n-------- past cone --------\n%s", err, a.pastCone.Lines("     ").Join("\n"))
-		memdag.SaveGraphPastCone(a.vid, fmt.Sprintf("failed_update"))
+		err = fmt.Errorf("%w:\n-------- past cone of %s --------\n%s", err, a.Name(), a.pastCone.Lines("     ").Join("\n"))
+		a.pastCone.SaveGraph(a.vid.ID.AsFileNameShort())
+		time.Sleep(time.Second)
+		//memdag.SaveGraphPastCone(a.vid, fmt.Sprintf("failed_update"))
 	}
 	a.AssertNoError(err)
 
