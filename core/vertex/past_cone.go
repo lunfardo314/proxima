@@ -57,7 +57,7 @@ func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
 }
 
 func (f FlagsPastCone) String() string {
-	return fmt.Sprintf("%08b known: %v, defined: %v, rooted: (%v,%v), endorsementsOk: %v, inputsOk: %v, poke: %v",
+	return fmt.Sprintf("%08b known: %v, defined: %v, inTheState: (%v,%v), endorsementsOk: %v, inputsOk: %v, poke: %v",
 		f,
 		f.FlagsUp(FlagPastConeVertexKnown),
 		f.FlagsUp(FlagPastConeVertexDefined),
@@ -143,7 +143,7 @@ func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
 	if cond {
 		return
 	}
-	pcStr := pc.LinesBasic("      ").Join("\n")
+	pcStr := pc.LinesShort("      ").Join("\n")
 	argsExt := append(slices.Clone(args), pcStr)
 	pc.Logging.Assertf(cond, format+"\n---- past cone ----\n%s", argsExt...)
 }
@@ -425,7 +425,9 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 
 	rooted := make([]WrappedOutput, 0)
 	counter := 0
+	var maxTs ledger.Time
 	pc.forAllVertices(func(vid *WrappedTx) bool {
+		maxTs = ledger.MaximumTime(maxTs, vid.Timestamp())
 		consumedIndices := pc.consumedIndexSet(vid)
 		ret.Add("#%d %s : %s, consumed: %+v", counter, vid.IDShortString(), pc.vertices[vid].String(), maps.Keys(consumedIndices))
 		counter++
@@ -453,10 +455,11 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 		}
 		ret.Add("   %s: amount: %s", wOut.IDShortString(), covStr)
 	}
+	ret.Add("ledger coverage (%s): %s", maxTs.String(), util.Th(pc.LedgerCoverage(maxTs)))
 	return ret
 }
 
-func (pc *PastCone) LinesBasic(prefix ...string) *lines.Lines {
+func (pc *PastCone) LinesShort(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	blStr := "<nil>"
 	if pc.baseline != nil {
