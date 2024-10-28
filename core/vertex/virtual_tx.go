@@ -131,7 +131,7 @@ func (v *VirtualTransaction) sequencerID(txid *ledger.TransactionID) (ret *ledge
 		util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputIndices[0])
 		idData := seqOData.ChainConstraint.ID
 		if idData == ledger.NilChainID {
-			oid := ledger.NewOutputID(txid, v.sequencerOutputIndices[0])
+			oid := ledger.MustNewOutputID(txid, v.sequencerOutputIndices[0])
 			ret = util.Ref(ledger.MakeOriginChainID(&oid))
 		} else {
 			ret = util.Ref(idData)
@@ -185,7 +185,7 @@ func (v *VirtualTransaction) findChainOutput(txid *ledger.TransactionID, chainID
 	for outIdx, o := range v.outputs {
 		if c, cIdx := o.ChainConstraint(); cIdx != 0xff && c.ID == *chainID {
 			return &ledger.OutputWithID{
-				ID:     ledger.NewOutputID(txid, outIdx),
+				ID:     ledger.MustNewOutputID(txid, outIdx),
 				Output: o,
 			}
 		}

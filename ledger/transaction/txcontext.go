@@ -215,5 +215,5 @@ func (ctx *TxContext) TotalAmountStored() uint64 {
 }
 
 func (ctx *TxContext) OutputID(idx byte) ledger.OutputID {
-	return ledger.NewOutputID(ctx.txid, idx)
+	return ledger.MustNewOutputID(ctx.txid, idx)
 }

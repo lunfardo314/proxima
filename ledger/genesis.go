@@ -10,7 +10,8 @@ import (
 const (
 	BootstrapSequencerName = "boot"
 	// BoostrapSequencerIDHex is a constant
-	BoostrapSequencerIDHex = "af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963"
+	//BoostrapSequencerIDHex = "af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963"  // deprecated old one
+	BoostrapSequencerIDHex = "6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc"
 )
 
 // BoostrapSequencerID is a constant
@@ -26,7 +27,9 @@ func init() {
 	// calculate directly and check
 	var zero33 [33]byte
 	zero33[0] = 0b10000000
-	util.Assertf(BoostrapSequencerID == blake2b.Sum256(zero33[:]), "BoostrapSequencerID must be equal to the blake2b hash of 33-long zero bytes array with first 1 bit set to 1")
+	genesisOutputID := GenesisOutputID()
+	bootSeqIDDirect := blake2b.Sum256(genesisOutputID[:])
+	util.Assertf(BoostrapSequencerID == bootSeqIDDirect, "BoostrapSequencerID must be equal to the blake2b hash of genesis output ID, got %s", hex.EncodeToString(bootSeqIDDirect[:]))
 	// more checks
 	oid := GenesisOutputID()
 	util.Assertf(MakeOriginChainID(&oid) == BoostrapSequencerID, "MakeOriginChainID(&oid) == BoostrapSequencerID")

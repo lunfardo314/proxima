@@ -93,7 +93,7 @@ func (ctx *TxContext) Lines(prefix ...string) *lines.Lines {
 		if cc, i := out.ChainConstraint(); i != 0xff {
 			var cid ledger.ChainID
 			if cc.IsOrigin() {
-				oid := ledger.NewOutputID(txid, idx)
+				oid := ledger.MustNewOutputID(txid, idx)
 				cid = ledger.MakeOriginChainID(&oid)
 			} else {
 				cid = cc.ID

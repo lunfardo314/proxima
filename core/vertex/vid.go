@@ -249,7 +249,7 @@ func (vid *WrappedTx) OutputWithIDAt(idx byte) (ledger.OutputWithID, error) {
 		return ledger.OutputWithID{}, err
 	}
 	return ledger.OutputWithID{
-		ID:     ledger.NewOutputID(&vid.ID, idx),
+		ID:     ledger.MustNewOutputID(&vid.ID, idx),
 		Output: ret,
 	}, nil
 }
@@ -379,7 +379,7 @@ func (vid *WrappedTx) _ofKindString() (ret string) {
 }
 
 func (vid *WrappedTx) OutputID(idx byte) (ret ledger.OutputID) {
-	ret = ledger.NewOutputID(&vid.ID, idx)
+	ret = ledger.MustNewOutputID(&vid.ID, idx)
 	return
 }
 

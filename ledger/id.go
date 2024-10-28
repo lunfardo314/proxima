@@ -7,20 +7,24 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
 
 const (
-	TransactionIDShortLength = 27
-	TransactionIDLength      = TimeByteLength + TransactionIDShortLength
-	OutputIDLength           = TransactionIDLength + 1
-	ChainIDLength            = 32
+	TransactionIDShortLength     = 27
+	TransactionIDLength          = TimeByteLength + TransactionIDShortLength
+	OutputIDLength               = TransactionIDLength + 1
+	ChainIDLength                = 32
+	MaxOutputIndexPositionInTxID = 5
 
 	SequencerTxFlagHigherByte = byte(0b10000000)
 )
 
 type (
-	// TransactionIDShort is [0:28] of the blake2b 32-byte hash of transaction bytes
+	// TransactionIDShort
+	// byte 0 is maximum index of produced outputs
+	// the rest 26 bytes is bytes [1:28] (26 bytes) of the blake2b 32-byte hash of transaction bytes
 	TransactionIDShort [TransactionIDShortLength]byte
 	// TransactionIDVeryShort4 is first 4 bytes of TransactionIDShort.
 	// Warning. Collisions cannot be ruled out
@@ -37,9 +41,10 @@ type (
 	ChainID [ChainIDLength]byte
 )
 
-func HashTransactionBytes(txBytes []byte) (ret TransactionIDShort) {
+func TransactionIDShortFromTxBytes(txBytes []byte, maxOutputIndex byte) (ret TransactionIDShort) {
 	h := blake2b.Sum256(txBytes)
-	copy(ret[:], h[:TransactionIDShortLength])
+	ret[0] = maxOutputIndex
+	copy(ret[1:], h[:TransactionIDShortLength-1])
 	return
 }
 
@@ -84,6 +89,10 @@ func RandomTransactionID(sequencerFlag bool) TransactionID {
 	var hash TransactionIDShort
 	_, _ = rand.Read(hash[:])
 	return NewTransactionID(TimeNow(), hash, sequencerFlag)
+}
+
+func (txid *TransactionID) NumProducedOutputs() int {
+	return int(txid[MaxOutputIndexPositionInTxID])
 }
 
 // ShortID return hash part of ID
@@ -227,15 +236,28 @@ func TooCloseOnTimeAxis(txid1, txid2 *TransactionID) bool {
 	return !ValidTransactionPace(txid1.Timestamp(), txid2.Timestamp()) && *txid1 != *txid2
 }
 
-func NewOutputID(id *TransactionID, idx byte) (ret OutputID) {
+func NewOutputID(id *TransactionID, idx byte) (ret OutputID, err error) {
+	if int(idx) > id.NumProducedOutputs() {
+		return OutputID{}, fmt.Errorf("wrong output index")
+	}
 	copy(ret[:TransactionIDLength], id[:])
 	ret[TransactionIDLength] = idx
 	return
 }
 
+func MustNewOutputID(id *TransactionID, idx byte) OutputID {
+	ret, err := NewOutputID(id, idx)
+	util.AssertNoError(err)
+	return ret
+}
+
 func OutputIDFromBytes(data []byte) (ret OutputID, err error) {
 	if len(data) != OutputIDLength {
 		err = errors.New("OutputIDFromBytes: wrong data length")
+		return
+	}
+	if ret[OutputIDLength-1] > data[MaxOutputIndexPositionInTxID] {
+		err = errors.New("OutputIDFromBytes: wrong output index")
 		return
 	}
 	copy(ret[:], data)
@@ -247,12 +269,13 @@ func OutputIDFromHexString(str string) (ret OutputID, err error) {
 	if data, err = hex.DecodeString(str); err != nil {
 		return
 	}
-	ret, err = OutputIDFromBytes(data)
-	return
+	return OutputIDFromBytes(data)
 }
 
 func MustOutputIndexFromIDBytes(data []byte) byte {
-	return data[TransactionIDLength]
+	ret, err := OutputIDIndexFromBytes(data)
+	util.AssertNoError(err)
+	return ret
 }
 
 // OutputIDIndexFromBytes optimizes memory usage
@@ -261,7 +284,11 @@ func OutputIDIndexFromBytes(data []byte) (ret byte, err error) {
 		err = errors.New("OutputIDIndexFromBytes: wrong data length")
 		return
 	}
-	return data[TransactionIDLength], nil
+	ret = data[TransactionIDLength]
+	if ret > data[MaxOutputIndexPositionInTxID] {
+		err = errors.New("OutputIDIndexFromBytes: wrong output index")
+	}
+	return ret, nil
 }
 
 func (oid *OutputID) IsSequencerTransaction() bool {

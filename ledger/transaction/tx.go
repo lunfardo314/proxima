@@ -24,7 +24,7 @@ import (
 type (
 	Transaction struct {
 		tree                     *lazybytes.Tree
-		txHash                   ledger.TransactionIDShort
+		txIDShort                ledger.TransactionIDShort
 		sequencerMilestoneFlag   bool
 		sender                   ledger.AddressED25519
 		timestamp                ledger.Time
@@ -138,7 +138,11 @@ func BaseValidation() TxValidationOption {
 			return fmt.Errorf("wrong total amount bytes, must be 8 bytes")
 		}
 		tx.totalAmount = binary.BigEndian.Uint64(totalAmountBin)
-		tx.txHash = ledger.HashTransactionBytes(tx.tree.Bytes())
+		numProducedOutputs := tx.tree.NumElements(Path(ledger.TxOutputs))
+		if numProducedOutputs <= 0 || numProducedOutputs > 256 {
+			return fmt.Errorf("number of outputs can't be 0")
+		}
+		tx.txIDShort = ledger.TransactionIDShortFromTxBytes(tx.tree.Bytes(), byte(numProducedOutputs-1))
 
 		return nil
 	}
@@ -401,20 +405,20 @@ func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Outp
 }
 
 func (tx *Transaction) ID() *ledger.TransactionID {
-	ret := ledger.NewTransactionID(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
+	ret := ledger.NewTransactionID(tx.timestamp, tx.txIDShort, tx.sequencerMilestoneFlag)
 	return &ret
 }
 
 func (tx *Transaction) IDString() string {
-	return ledger.TransactionIDString(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
+	return ledger.TransactionIDString(tx.timestamp, tx.txIDShort, tx.sequencerMilestoneFlag)
 }
 
 func (tx *Transaction) IDShortString() string {
-	return ledger.TransactionIDStringShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
+	return ledger.TransactionIDStringShort(tx.timestamp, tx.txIDShort, tx.sequencerMilestoneFlag)
 }
 
 func (tx *Transaction) IDVeryShortString() string {
-	return ledger.TransactionIDStringVeryShort(tx.timestamp, tx.txHash, tx.sequencerMilestoneFlag)
+	return ledger.TransactionIDStringVeryShort(tx.timestamp, tx.txIDShort, tx.sequencerMilestoneFlag)
 }
 
 func (tx *Transaction) Slot() ledger.Slot {
@@ -422,7 +426,7 @@ func (tx *Transaction) Slot() ledger.Slot {
 }
 
 func (tx *Transaction) Hash() ledger.TransactionIDShort {
-	return tx.txHash
+	return tx.txIDShort
 }
 
 // SequencerTransactionData returns nil it is not a sequencer milestone
@@ -689,7 +693,7 @@ func (tx *Transaction) SequencerAndStemOutputIndices() (byte, byte) {
 }
 
 func (tx *Transaction) OutputID(idx byte) ledger.OutputID {
-	return ledger.NewOutputID(tx.ID(), idx)
+	return ledger.MustNewOutputID(tx.ID(), idx)
 }
 
 func (tx *Transaction) InflationAmount() uint64 {

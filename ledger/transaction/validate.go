@@ -87,7 +87,7 @@ func (ctx *TxContext) writeStateMutationsTo(mut common.KVWriter) {
 	// add produced outputs to the ledger
 
 	ctx.ForEachProducedOutputData(func(i byte, outputData []byte) bool {
-		oid := ledger.NewOutputID(ctx.txid, i)
+		oid := ledger.MustNewOutputID(ctx.txid, i)
 		mut.Set(oid[:], outputData)
 		return true
 	})
