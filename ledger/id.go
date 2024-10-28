@@ -92,7 +92,7 @@ func RandomTransactionID(sequencerFlag bool) TransactionID {
 }
 
 func (txid *TransactionID) NumProducedOutputs() int {
-	return int(txid[MaxOutputIndexPositionInTxID])
+	return int(txid[MaxOutputIndexPositionInTxID]) + 1
 }
 
 // ShortID return hash part of ID
