@@ -65,8 +65,9 @@ func TestBasic1(t *testing.T) {
 		t.Logf("%s : %s", name, ma.String())
 	}
 	env := newEnvironment()
-	_, err := New(env, cfg)
+	peers, err := New(env, cfg)
 	require.NoError(t, err)
+	peers.host.Close()
 }
 
 func TestBasic2(t *testing.T) {

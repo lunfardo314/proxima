@@ -234,7 +234,6 @@ func (ps *Peers) Stop() {
 		ps.Log().Infof("[peering] stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.Log().Sync()
 		_ = ps.kademliaDHT.Close()
-		_ = ps.host.Network().Close()
 		_ = ps.host.Close()
 		ps.Log().Infof("[peering] libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
 	})
