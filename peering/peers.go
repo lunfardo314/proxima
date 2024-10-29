@@ -18,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	reuse "github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
@@ -46,16 +47,22 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wrong private key: %w", err)
 	}
-	lppHost, err := libp2p.New(
-		libp2p.Identity(hostIDPrivateKey),
 
+	options := []libp2p.Option{
+		libp2p.Identity(hostIDPrivateKey),
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", cfg.HostPort)),
 		libp2p.Transport(p2pquic.NewTransport),
 		libp2p.NoSecurity,
 		libp2p.DisableRelay(),
 		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
-		//libp2p.QUICReuse(reuse.NewConnManager),
-	)
+	}
+
+	if !cfg.DisableQuicreuse {
+		options = append(options, libp2p.QUICReuse(reuse.NewConnManager))
+	}
+
+	lppHost, err := libp2p.New(options...)
+
 	if err != nil {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
@@ -226,6 +233,8 @@ func (ps *Peers) Stop() {
 
 		ps.Log().Infof("[peering] stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.Log().Sync()
+		_ = ps.kademliaDHT.Close()
+		_ = ps.host.Network().Close()
 		_ = ps.host.Close()
 		ps.Log().Infof("[peering] libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
 	})

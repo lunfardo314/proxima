@@ -48,6 +48,9 @@ type (
 
 		BlacklistTTL   int
 		CooloffListTTL int
+
+		// disable Quicreuse
+		DisableQuicreuse bool
 	}
 
 	_multiaddr struct {
@@ -256,5 +259,6 @@ func readPeeringConfig() (*Config, error) {
 	if cfg.CooloffListTTL == 0 {
 		cfg.CooloffListTTL = int(cooloffTTL)
 	}
+	cfg.DisableQuicreuse = viper.GetBool("peering.disable_quicreuse")
 	return cfg, nil
 }
