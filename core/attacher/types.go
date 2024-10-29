@@ -50,6 +50,7 @@ type (
 		postEventEnvironment
 		GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata)
 		ParseMilestoneData(msVID *vertex.WrappedTx) *ledger.MilestoneData
+		SaveFullDAG(fname string)
 	}
 
 	attacher struct {

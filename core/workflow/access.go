@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/tippool"
@@ -125,4 +126,10 @@ func (w *Workflow) MilestoneArrivedSince(when time.Time) bool {
 
 func (w *Workflow) EarliestSlot() ledger.Slot {
 	return w.earliestSlot
+}
+
+func (w *Workflow) SaveFullDAG(fname string) {
+	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(w.StateStore())
+	tmpDag := memdag.MakeDAGFromTxStore(w.TxBytesStore(), 0, branchTxIDS...)
+	tmpDag.SaveGraph(fname)
 }

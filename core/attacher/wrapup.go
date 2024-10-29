@@ -79,8 +79,8 @@ func (a *milestoneAttacher) commitBranch() {
 	if err != nil {
 		err = fmt.Errorf("%w:\n-------- past cone of %s --------\n%s", err, a.Name(), a.pastCone.Lines("     ").Join("\n"))
 		a.pastCone.SaveGraph(a.vid.ID.AsFileNameShort())
-		time.Sleep(time.Second)
-		//memdag.SaveGraphPastCone(a.vid, fmt.Sprintf("failed_update"))
+		a.SaveFullDAG("full_dag_failed_upd")
+		time.Sleep(2 * time.Second)
 	}
 	a.AssertNoError(err)
 
