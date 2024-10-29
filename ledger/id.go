@@ -101,17 +101,17 @@ func (txid *TransactionID) ShortID() (ret TransactionIDShort) {
 	return
 }
 
-// VeryShortID4 returns first 8 bytes of the ShortID, i.e. of the hash
+// VeryShortID4 returns last 4 bytes of the ShortID, i.e. of the hash
 // Collisions cannot be ruled out! Intended use is in Bloom filtering, when false positives are acceptable
 func (txid *TransactionID) VeryShortID4() (ret TransactionIDVeryShort4) {
-	copy(ret[:], txid[TimeByteLength:TimeByteLength+4])
+	copy(ret[:], txid[TransactionIDLength-4:])
 	return
 }
 
-// VeryShortID8 returns first 8 bytes of the ShortID, i.e. of the hash
+// VeryShortID8 returns last 8 bytes of the ShortID, i.e. of the hash
 // Collisions cannot be ruled out! Intended use is in Bloom filtering, when false positives are acceptable
 func (txid *TransactionID) VeryShortID8() (ret TransactionIDVeryShort8) {
-	copy(ret[:], txid[TimeByteLength:TimeByteLength+8])
+	copy(ret[:], txid[TransactionIDLength-8:])
 	return
 }
 
@@ -212,8 +212,9 @@ func (txid *TransactionID) AsFileName() string {
 }
 
 func (txid *TransactionID) AsFileNameShort() string {
-	id := txid.VeryShortID4()
-	return TransactionIDAsFileName(txid.Timestamp(), id[:], txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	id := txid.ShortID()
+	prefix4 := id[:4]
+	return TransactionIDAsFileName(txid.Timestamp(), prefix4[:], txid.IsSequencerMilestone(), txid.IsBranchTransaction())
 }
 
 // LessTxID compares tx IDs b timestamp and by tx hash
