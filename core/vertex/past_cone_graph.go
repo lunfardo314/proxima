@@ -1,6 +1,7 @@
 package vertex
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -44,6 +45,12 @@ var (
 		colorScheme,
 		graph.VertexAttribute("shape", "octagon"),
 		graph.VertexAttribute("style", "filled"),
+	}
+	missingNodeAttributes = []func(*graph.VertexProperties){
+		fontsizeAttribute,
+		graph.VertexAttribute("shape", "box"),
+		//graph.VertexAttribute("style", "filled"),
+		//graph.VertexAttribute("fillcolor", "black"),
 	}
 )
 
@@ -163,6 +170,9 @@ func (pc *PastCone) makeEndorsementEdges(vid *WrappedTx, gr graph.Graph[string, 
 			graph.EdgeAttribute("fontsize", "10"),
 		}
 		err := gr.AddEdge(vertexID(vid), vertexID(vidEndorsed), edgeAttributes...)
-		pc.AssertNoError(err, "makeEndorsementEdges")
+		if errors.Is(err, graph.ErrEdgeNotFound) {
+			_ = gr.AddVertex(vertexID(vid), missingNodeAttributes...)
+			_ = gr.AddVertex(vertexID(vidEndorsed), missingNodeAttributes...)
+		}
 	}
 }

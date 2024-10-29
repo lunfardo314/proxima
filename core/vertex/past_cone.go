@@ -557,10 +557,10 @@ func (pc *PastCone) findConsumerOf(wOut WrappedOutput) (ret *WrappedTx, found, d
 	wOut.VID.mutexDescendants.RLock()
 	defer wOut.VID.mutexDescendants.RUnlock()
 
-	return pc.findConsumerOfNoLock(wOut)
+	return pc.findConsumerNoLock(wOut)
 }
 
-func (pc *PastCone) findConsumerOfNoLock(wOut WrappedOutput) (ret *WrappedTx, found, doubleSpend bool) {
+func (pc *PastCone) findConsumerNoLock(wOut WrappedOutput) (ret *WrappedTx, found, doubleSpend bool) {
 	virtuallyConsumed := pc.isVirtuallyConsumed(wOut)
 
 	consumers, found := wOut.VID.consumed[wOut.Index]
@@ -624,11 +624,8 @@ func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedSta
 
 	for idx, _ := range vid.consumed {
 		wOut := WrappedOutput{VID: vid, Index: idx}
-		if consumer, isConsumed, doubleSpend = pc.findConsumerOfNoLock(wOut); doubleSpend {
+		if consumer, isConsumed, doubleSpend = pc.findConsumerNoLock(wOut); doubleSpend {
 			conflict = &wOut
-			if wOut.IDHasFragment("01cadb") {
-				fmt.Printf(">>>>>>>>>>>>>>>>>>> 22222: consumer %s, output: %s\n", consumer.IDShortString(), wOut.IDShortString())
-			}
 			return &wOut
 		}
 		if !isConsumed || !inTheState {
@@ -639,9 +636,7 @@ func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedSta
 		}
 		// consumed && in the state -> check if still available
 		if !stateReader.HasUTXO(wOut.DecodeID()) {
-			if wOut.IDHasFragment("01cadb") {
-				fmt.Printf(">>>>>>>>>>>>>>>>>>> 22222: consumer %s, output: %s\n", consumer.IDShortString(), wOut.IDShortString())
-			}
+			fmt.Printf(">>>>>>>>>>>>>>>>>>> : consumer %s, output: %s\n", consumer.IDShortString(), wOut.IDShortString())
 			return &wOut
 		}
 	}
@@ -689,11 +684,17 @@ func (pc *PastCone) consumedIndexSet(vid *WrappedTx) set.Set[byte] {
 
 func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 	numProduced := vid.NumProducedOutputs()
-	if numProduced == 0 {
-		return nil, 0
+	pc.Assertf(numProduced > 0, "numProduced>0")
+
+	if vid.IDHasFragment("01cad") {
+		fmt.Println()
+	}
+	consumedIndices := pc.consumedIndexSet(vid)
+	if vid.IDHasFragment("01cad") {
+		consumer, _, _ := pc.findConsumerOf(WrappedOutput{VID: vid, Index: 0})
+		fmt.Printf(">>>>>>>>>>>>> consumer of 01cad[0] is %s\n", consumer.IDShortString())
 	}
 
-	consumedIndices := pc.consumedIndexSet(vid)
 	ret := make([]byte, 0, numProduced-len(consumedIndices))
 
 	for i := 0; i < numProduced; i++ {

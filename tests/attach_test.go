@@ -1199,7 +1199,7 @@ func TestAttachSeqChains(t *testing.T) {
 
 		testData.storeTransactions(branches...)
 
-		testData.env.StartTracingTags("persist_txbytes")
+		//testData.env.StartTracingTags("persist_txbytes")
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -1211,6 +1211,7 @@ func TestAttachSeqChains(t *testing.T) {
 		testData.stopAndWait()
 		testData.logDAGInfo()
 		//memdag.SaveGraphPastCone(vidBranch, "utangle")
+
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 		time.Sleep(500 * time.Millisecond)

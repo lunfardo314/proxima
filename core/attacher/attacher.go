@@ -645,16 +645,13 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 		return nil, false
 	}
 
-	vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped)
 	a.pastCone.MarkVertexKnown(vidInputTx)
 
 	if conflict := a.pastCone.Conflict(a.baselineStateReader); conflict != nil {
-		//err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend). Conflict = %s",
-		//	inputOid.StringShort(), consumerTxUnwrapped.IDShortString(), consumer.IDShortString(), a.baseline.IDShortString(), conflict.IDShortString())
-
-		a.setError(fmt.Errorf("attachInputID: conflict in the past cone: %s", conflict.IDShortString()))
+		a.setError(fmt.Errorf("attachInputID: conflict in the past cone: %s -- after adding %s", conflict.IDShortString(), vidInputTx.IDShortString()))
 		return nil, false
 	}
+	vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped)
 	return vidInputTx, true
 }
 

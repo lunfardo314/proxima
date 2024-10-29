@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/memdag"
@@ -116,13 +117,13 @@ func (a *milestoneAttacher) run() error {
 	if status := a.solidifyPastCone(); status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		a.Assertf(a.err != nil, "a.err!=nil")
-		//
-		//if a.vid.IDHasFragment("00336") {
-		//	go a.pastCone.SaveGraph("01cad")
-		//	time.Sleep(10 * time.Second)
-		//	a.Log().Fatalf(">>>>>>>>>>>>>>>>>>>>>>>>>>\n%s", a.pastCone.Lines("     ").Join("\n"))
-		//}
-		//
+
+		if strings.Contains(a.err.Error(), "01cadb") {
+			a.pastCone.SaveGraph(a.vid.ID.AsFileNameShort())
+			//time.Sleep(10 * time.Second)
+			//a.Log().Fatalf(">>>>>>>>>>>>>>>>>>>>>>>>>>\n%s", a.pastCone.Lines("     ").Join("\n"))
+		}
+
 		return a.err
 	}
 
