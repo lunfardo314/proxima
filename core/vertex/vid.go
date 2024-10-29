@@ -838,7 +838,7 @@ func (vid *WrappedTx) GetAttachmentDepthNoLock() int {
 	return vid.attachmentDepth
 }
 
-func (vid *WrappedTx) IsContainingBranchOf(vid1 *WrappedTx, getStateReader func(branch *WrappedTx) global.IndexedStateReader) bool {
+func (vid *WrappedTx) IsContainingBranchOf(vid1 *WrappedTx, getStateReader func() global.IndexedStateReader) bool {
 	util.Assertf(vid.IsBranchTransaction(), "descendant must be a branch: %s", vid.IDShortString)
 	util.Assertf(vid1.IsBranchTransaction(), "predecessor must be a branch: %s", vid1.IDShortString)
 	if vid == vid1 {
@@ -851,7 +851,7 @@ func (vid *WrappedTx) IsContainingBranchOf(vid1 *WrappedTx, getStateReader func(
 	if base := vid.BaselineBranch(); base == vid1 || (base != nil && base.BaselineBranch() == vid1) {
 		return true
 	}
-	return getStateReader(vid).KnowsCommittedTransaction(&vid1.ID)
+	return getStateReader().KnowsCommittedTransaction(&vid1.ID)
 }
 
 func (vid *WrappedTx) IDHasFragment(frag string) bool {

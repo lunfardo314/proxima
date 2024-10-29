@@ -116,6 +116,13 @@ func (a *milestoneAttacher) run() error {
 	if status := a.solidifyPastCone(); status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		a.Assertf(a.err != nil, "a.err!=nil")
+		//
+		//if a.vid.IDHasFragment("00336") {
+		//	go a.pastCone.SaveGraph("01cad")
+		//	time.Sleep(10 * time.Second)
+		//	a.Log().Fatalf(">>>>>>>>>>>>>>>>>>>>>>>>>>\n%s", a.pastCone.Lines("     ").Join("\n"))
+		//}
+		//
 		return a.err
 	}
 
@@ -141,7 +148,7 @@ func (a *milestoneAttacher) run() error {
 
 	a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(a.vid)
 
-	err = a.pastCone.CheckFinalPastCone()
+	err = a.pastCone.CheckFinalPastCone(a.baselineStateReader)
 	if err != nil {
 		err = fmt.Errorf("%w\n------ past cone of %s ------\n%s",
 			err, a.vid.IDShortString(), a.pastCone.Lines("     ").Join("\n"))

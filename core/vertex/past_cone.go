@@ -110,16 +110,16 @@ func (pb *PastConeBase) addVirtuallyConsumedOutput(wOut WrappedOutput) {
 	}
 }
 
-func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput) *WrappedOutput {
+func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, getStateReader func() global.IndexedStateReader) *WrappedOutput {
 	if pc.delta == nil {
 		pc.addVirtuallyConsumedOutput(wOut)
-		return pc.Conflict()
+		return pc.Conflict(getStateReader)
 	}
 	if pc.isVirtuallyConsumed(wOut) || pc.delta.isVirtuallyConsumed(wOut) {
 		return nil
 	}
 	pc.delta.addVirtuallyConsumedOutput(wOut)
-	return pc.Conflict()
+	return pc.Conflict(getStateReader)
 }
 
 func (pb *PastConeBase) isVirtuallyConsumed(wOut WrappedOutput) bool {
@@ -488,7 +488,6 @@ func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uin
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
 	pc.Assertf(currentTs.After(pc.baseline.Timestamp()), "currentTs.After(pc.baseline.Timestamp())")
-	pc.MustConflictFreeCond()
 
 	for vid := range pc.vertices {
 		consumedIndices := pc.rootedIndices(vid)
@@ -606,33 +605,59 @@ func (pc *PastCone) mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedTx
 // Conflict returns double-spent output (conflict), or nil if past cone is consistent
 // The complexity is O(NxM) where N is number of vertices and M is average number of conflicts in the UTXO tangle
 // Practically, it is linear wrt number of vertices because M is 1 or close to 1.
-func (pc *PastCone) Conflict() (conflict *WrappedOutput) {
+func (pc *PastCone) Conflict(getStateReader func() global.IndexedStateReader) (conflict *WrappedOutput) {
+	stateReader := getStateReader()
 	pc.forAllVertices(func(vid *WrappedTx) bool {
-		vid.mutexDescendants.RLock()
-		defer vid.mutexDescendants.RUnlock()
-
-		for idx, _ := range vid.consumed {
-			wOut := WrappedOutput{VID: vid, Index: idx}
-			if _, _, doubleSpend := pc.findConsumerOfNoLock(wOut); doubleSpend {
-				conflict = &wOut
-				return false
-			}
-		}
-		return true
+		conflict = pc.checkConsumers(vid, stateReader)
+		return conflict == nil
 	})
 	return
 }
 
-func (pc *PastCone) MustConflictFree() {
-	conflict := pc.Conflict()
+func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
+
+	var doubleSpend, isConsumed bool
+	var consumer *WrappedTx
+	inTheState := pc.IsInTheState(vid)
+
+	for idx, _ := range vid.consumed {
+		wOut := WrappedOutput{VID: vid, Index: idx}
+		if consumer, isConsumed, doubleSpend = pc.findConsumerOfNoLock(wOut); doubleSpend {
+			conflict = &wOut
+			if wOut.IDHasFragment("01cadb") {
+				fmt.Printf(">>>>>>>>>>>>>>>>>>> 22222: consumer %s, output: %s\n", consumer.IDShortString(), wOut.IDShortString())
+			}
+			return &wOut
+		}
+		if !isConsumed || !inTheState {
+			continue
+		}
+		if consumer == nil || pc.IsInTheState(consumer) {
+			continue
+		}
+		// consumed && in the state -> check if still available
+		if !stateReader.HasUTXO(wOut.DecodeID()) {
+			if wOut.IDHasFragment("01cadb") {
+				fmt.Printf(">>>>>>>>>>>>>>>>>>> 22222: consumer %s, output: %s\n", consumer.IDShortString(), wOut.IDShortString())
+			}
+			return &wOut
+		}
+	}
+	return
+}
+
+func (pc *PastCone) MustConflictFree(getStateReader func() global.IndexedStateReader) {
+	conflict := pc.Conflict(getStateReader)
 	pc.Assertf(conflict == nil, "past cone %s contains double-spent output %s", pc.name, conflict.IDShortString)
 }
 
-const enforceConflictChecking = false
+const enforceConflictChecking = true
 
-func (pc *PastCone) MustConflictFreeCond() {
+func (pc *PastCone) MustConflictFreeCond(getStateReader func() global.IndexedStateReader) {
 	if enforceConflictChecking {
-		pc.MustConflictFree()
+		pc.MustConflictFree(getStateReader)
 	}
 }
 
@@ -725,8 +750,6 @@ type MutationStats struct {
 }
 
 func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, stats MutationStats) {
-	pc.MustConflictFreeCond()
-
 	muts = multistate.NewMutations()
 
 	// generate ADD TX and ADD OUTPUT mutations
@@ -776,8 +799,8 @@ func (pc *PastCone) getBaseline() *WrappedTx {
 }
 
 // AppendPastCone appends deterministic past cone to the current one. Returns conflict info if any
-func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch *WrappedTx) global.IndexedStateReader) (conflict *WrappedOutput) {
-	pc.MustConflictFreeCond()
+func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() global.IndexedStateReader) (conflict *WrappedOutput) {
+	pc.MustConflictFreeCond(getStateReader)
 
 	baseline := pc.getBaseline()
 	pc.Assertf(baseline != nil, "pc.hasBaseline()")
@@ -789,7 +812,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 		return &WrappedOutput{} // >>>>>>>>>>>>>>>> conflicting baselines
 	}
 
-	baselineStateReader := getStateReader(baseline)
+	baselineStateReader := getStateReader()
 
 	// pcb is assumed to be deterministic at this point, i.e. immutable and all vertices in it must be 'known defined'
 	// it does not need any locking
@@ -805,13 +828,14 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func(branch
 		// it will also create a new entry in the target past cone if necessary
 		pc.markVertexWithFlags(vid, flags)
 	}
+
 	// there's no guarantee that merged past cone is conflict-free
-	return pc.Conflict()
+	return pc.Conflict(getStateReader)
 }
 
 // CheckFinalPastCone check determinism consistency of the past cone
 // If rootVid == nil, past cone must be fully deterministic
-func (pc *PastCone) CheckFinalPastCone() (err error) {
+func (pc *PastCone) CheckFinalPastCone(getStateReader func() global.IndexedStateReader) (err error) {
 	if pc.delta != nil {
 		return fmt.Errorf("CheckFinalPastCone: past cone has uncommitted delta")
 	}
@@ -849,7 +873,7 @@ func (pc *PastCone) CheckFinalPastCone() (err error) {
 			return
 		}
 	}
-	if conflict := pc.Conflict(); conflict != nil {
+	if conflict := pc.Conflict(getStateReader); conflict != nil {
 		return fmt.Errorf("past cone %s contains double-spent output %s", pc.name, conflict.IDShortString())
 	}
 	return nil

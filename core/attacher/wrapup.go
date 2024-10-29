@@ -60,7 +60,7 @@ func (a *milestoneAttacher) commitBranch() {
 	a.finals.numNewTransactions, a.finals.numDeletedOutputs, a.finals.numCreatedOutputs = uint32(stats.NumTransactions), stats.NumDeleted, stats.NumCreated
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
-	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineStateReader().Root())
+	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineSugaredStateReader().Root())
 	a.finals.supply = a.baselineSupply + a.finals.slotInflation
 	//coverage := a.vid.GetLedgerCoverage()
 	coverage := a.LedgerCoverage(a.vid.Timestamp())

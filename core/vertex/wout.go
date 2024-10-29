@@ -1,6 +1,8 @@
 package vertex
 
 import (
+	"strings"
+
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util/lines"
 )
@@ -39,6 +41,10 @@ func (o *WrappedOutput) IsAvailable() (available bool) {
 		},
 	})
 	return
+}
+
+func (o *WrappedOutput) IDHasFragment(frag string) bool {
+	return strings.Contains(o.DecodeID().String(), frag)
 }
 
 func WrappedOutputsShortLines(wOuts []WrappedOutput) *lines.Lines {

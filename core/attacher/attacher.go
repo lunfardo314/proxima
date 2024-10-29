@@ -38,8 +38,12 @@ func (a *attacher) Name() string {
 	return a.name
 }
 
-func (a *attacher) baselineStateReader() multistate.SugaredStateReader {
-	return multistate.MakeSugared(a.GetStateReaderForTheBranch(&a.baseline.ID))
+func (a *attacher) baselineSugaredStateReader() multistate.SugaredStateReader {
+	return multistate.MakeSugared(a.baselineStateReader())
+}
+
+func (a *attacher) baselineStateReader() global.IndexedStateReader {
+	return a.GetStateReaderForTheBranch(&a.baseline.ID)
 }
 
 func (a *attacher) setError(err error) {
@@ -199,9 +203,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 		},
 	})
 	if deterministicPastCone != nil {
-		conflict := a.pastCone.AppendPastCone(deterministicPastCone, func(branch *vertex.WrappedTx) global.IndexedStateReader {
-			return a.GetStateReaderForTheBranch(&branch.ID)
-		})
+		conflict := a.pastCone.AppendPastCone(deterministicPastCone, a.baselineStateReader)
 		if conflict != nil {
 			a.setError(fmt.Errorf("past cones conflicting due to %s", conflict.DecodeID().StringShort()))
 			return false, false
@@ -235,7 +237,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	}
 
 	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vidUnwrapped.IDShortString)
-	a.Assertf(!util.IsNil(a.baselineStateReader), "!util.IsNil(a.baselineStateReader)")
+	a.Assertf(!util.IsNil(a.baselineSugaredStateReader), "!util.IsNil(a.baselineSugaredStateReader)")
 
 	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.Tx.IDShortString)
@@ -427,12 +429,12 @@ func (a *attacher) checkInTheStateStatus(vid *vertex.WrappedTx) bool {
 	if a.baseline == nil {
 		return true
 	}
-	if a.baselineStateReader().KnowsCommittedTransaction(&vid.ID) {
+	if a.baselineSugaredStateReader().KnowsCommittedTransaction(&vid.ID) {
 		a.pastCone.MustMarkVertexInTheState(vid)
 	} else {
 		a.pastCone.MustMarkVertexNotInTheState(vid)
 	}
-	if conflict := a.pastCone.Conflict(); conflict != nil {
+	if conflict := a.pastCone.Conflict(a.baselineStateReader); conflict != nil {
 		a.setError(fmt.Errorf("conflict in the past cone: %s", conflict.IDShortString()))
 		return false
 	}
@@ -467,8 +469,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 }
 
 func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *vertex.WrappedTx) (ok, defined bool) {
-	a.pastCone.MustConflictFreeCond()
-	defer a.pastCone.MustConflictFreeCond()
+	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
 	vidInputTx, ok := a.attachInputID(v, vidUnwrapped, inputIdx)
 	if !ok {
@@ -517,7 +518,7 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 	a.Assertf(!a.pastCone.IsKnown(wOut.VID) || a.pastCone.IsInTheState(wOut.VID), "!a.pastCone.IsKnown(wOut.VID) || a.pastCone.IsInTheState(wOut.VID)")
 
 	// transaction is known in the state -> check if output is in the state (i.e. not consumed yet)
-	stateReader := a.baselineStateReader()
+	stateReader := a.baselineSugaredStateReader()
 	out, err := stateReader.GetOutputWithID(wOut.DecodeID())
 	if errors.Is(err, multistate.ErrNotFound) {
 		// output has not been found in the state -> Bad (already consumed)
@@ -544,7 +545,7 @@ func (a *attacher) attachIfRooted(wOut vertex.WrappedOutput) (ok bool, defined b
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 	a.Tracef(TraceTagAttachOutput, "IN %s", wOut.IDShortString)
 
-	a.pastCone.MustConflictFreeCond()
+	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
 	ok, definedRootedStatus := a.attachIfRooted(wOut)
 	if !definedRootedStatus {
@@ -554,14 +555,14 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) (ok, defined bool) {
 		return false, false
 	}
 
-	a.pastCone.MustConflictFreeCond()
+	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
 	if a.pastCone.IsRootedOutput(wOut) {
 		a.Assertf(wOut.IsAvailable(), "wOut.IsAvailable(): %s", wOut.IDShortString)
 		a.Tracef(TraceTagAttachOutput, "%s is 'rooted'", wOut.IDShortString)
 		return true, true
 	}
-	a.pastCone.MustConflictFreeCond()
+	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
 	// not Rooted
 	a.Tracef(TraceTagAttachOutput, "%s is NOT 'rooted'", wOut.IDShortString)
@@ -605,8 +606,7 @@ func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
 
 // attachInputID links input vertex with the consumer, detects conflicts in the scope of the attacher
 func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrapped *vertex.WrappedTx, inputIdx byte) (vidInputTx *vertex.WrappedTx, ok bool) {
-	a.pastCone.MustConflictFreeCond()
-	defer a.pastCone.MustConflictFreeCond()
+	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
 
@@ -648,6 +648,13 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 	vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped)
 	a.pastCone.MarkVertexKnown(vidInputTx)
 
+	if conflict := a.pastCone.Conflict(a.baselineStateReader); conflict != nil {
+		//err := fmt.Errorf("input %s of consumer %s conflicts with another consumer %s in the baseline state %s (double spend). Conflict = %s",
+		//	inputOid.StringShort(), consumerTxUnwrapped.IDShortString(), consumer.IDShortString(), a.baseline.IDShortString(), conflict.IDShortString())
+
+		a.setError(fmt.Errorf("attachInputID: conflict in the past cone: %s", conflict.IDShortString()))
+		return nil, false
+	}
 	return vidInputTx, true
 }
 
