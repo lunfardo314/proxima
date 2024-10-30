@@ -113,6 +113,12 @@ func WithPace(pace int) ConfigOption {
 	}
 }
 
+func WithDelayStart(delay time.Duration) ConfigOption {
+	return func(o *ConfigOptions) {
+		o.DelayStart = delay
+	}
+}
+
 func WithMaxTagAlongInputs(maxInputs int) ConfigOption {
 	return func(o *ConfigOptions) {
 		if maxInputs >= 1 {

@@ -238,6 +238,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 		sequencer.WithName("boot"),
 		sequencer.WithMaxTagAlongInputs(30),
 		sequencer.WithPace(5),
+		sequencer.WithDelayStart(3*time.Second),
 	)
 	require.NoError(t, err)
 
@@ -245,7 +246,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 
 	testData.bootstrapSeq.Start()
 
-	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(*chainOriginsTxID, 5*time.Second)
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(*chainOriginsTxID, 10*time.Second)
 	require.NoError(t, err)
 	t.Logf("chain origins transaction %s has been created and finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
 	return testData

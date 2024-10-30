@@ -178,12 +178,14 @@ func TransactionIDString(ts Time, txHash TransactionIDShort, sequencerFlag bool)
 	return fmt.Sprintf("[%s]%s", timestampPrefixString(ts, sequencerFlag), hex.EncodeToString(txHash[:]))
 }
 
+// prefix of 3 makes collisions
+
 func TransactionIDStringShort(ts Time, txHash TransactionIDShort, sequencerFlag bool) string {
-	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag), hex.EncodeToString(txHash[:3]))
+	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag), hex.EncodeToString(txHash[:6]))
 }
 
 func TransactionIDStringVeryShort(ts Time, txHash TransactionIDShort, sequencerFlag bool) string {
-	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, true), hex.EncodeToString(txHash[:3]))
+	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, true), hex.EncodeToString(txHash[:4]))
 }
 
 func TransactionIDAsFileName(ts Time, txHash []byte, sequencerFlag, branchFlag bool) string {
