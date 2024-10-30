@@ -62,7 +62,6 @@ func (a *milestoneAttacher) commitBranch() {
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineSugaredStateReader().Root())
 	a.finals.supply = a.baselineSupply + a.finals.slotInflation
-	//coverage := a.vid.GetLedgerCoverage()
 	coverage := a.LedgerCoverage(a.vid.Timestamp())
 
 	util.Assertf(a.slotInflation == a.finals.slotInflation, "a.slotInflation == a.finals.slotInflation")

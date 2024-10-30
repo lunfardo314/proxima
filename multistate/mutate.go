@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"strings"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -42,9 +41,6 @@ type (
 )
 
 func (m *mutationDelOutput) mutate(trie *immutable.TrieUpdatable) error {
-	if strings.Contains(m.ID.String(), "01cadb") {
-		fmt.Printf(">>>>>>>>>>>>> DEL mutation %s\n", m.ID.StringShort())
-	}
 	return deleteOutputFromTrie(trie, &m.ID)
 }
 
@@ -61,13 +57,6 @@ func (m *mutationDelOutput) timestamp() ledger.Time {
 }
 
 func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable) error {
-	if strings.Contains(m.ID.String(), "01cadb") {
-		fmt.Printf(">>>>>>>>>>>>> ADD mutation %s\n", m.ID.StringShort())
-	}
-	if strings.Contains(m.ID.String(), "01d10") {
-		fmt.Printf(">>>>>>>>>>>>> ADD mutation %s\n", m.ID.StringShort())
-	}
-
 	return addOutputToTrie(trie, &m.ID, m.Output)
 }
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/memdag"
@@ -117,13 +116,6 @@ func (a *milestoneAttacher) run() error {
 	if status := a.solidifyPastCone(); status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		a.Assertf(a.err != nil, "a.err!=nil")
-
-		if strings.Contains(a.err.Error(), "01cadb") {
-			a.pastCone.SaveGraph(a.vid.ID.AsFileNameShort())
-			time.Sleep(2 * time.Second)
-			a.Log().Fatalf(">>>>>>>>>>>>>>>>>>>>>>>>>>\n%s", a.pastCone.Lines("     ").Join("\n"))
-		}
-
 		return a.err
 	}
 
@@ -153,12 +145,11 @@ func (a *milestoneAttacher) run() error {
 	if err != nil {
 		err = fmt.Errorf("%w\n------ past cone of %s ------\n%s",
 			err, a.vid.IDShortString(), a.pastCone.Lines("     ").Join("\n"))
-		memdag.SaveGraphPastCone(a.vid, "past_cone")
+		memdag.SaveGraphPastCone(a.vid, "past_cone_CheckFinalPastCone")
 	}
 	a.AssertNoError(err)
 
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage(a.vid.Timestamp()))
-	//fmt.Printf(">>>>>>>>>>>> SetTxStatusGood to %s, cov = %s\n", a.vid.IDShortString(), util.Th(a.pastCone.LedgerCoverage(a.vid.Timestamp())))
 
 	const printPastCone = false
 	if printPastCone {
@@ -174,7 +165,7 @@ func (a *milestoneAttacher) run() error {
 }
 
 const (
-	enableDeadlockCatching      = false
+	enableDeadlockCatching      = true
 	deadlockIndicationThreshold = 10 * time.Second
 )
 

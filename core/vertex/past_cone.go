@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"strings"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -240,17 +239,10 @@ func (pc *PastCone) Flags(vid *WrappedTx) FlagsPastCone {
 }
 
 func (pc *PastCone) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
-	before := pc.Flags(vid)
 	if pc.delta == nil {
 		pc.vertices[vid] = pc.Flags(vid) | f
 	} else {
 		pc.delta.vertices[vid] = pc.Flags(vid) | f
-	}
-	after := pc.Flags(vid)
-
-	if vid.IDHasFragment("01d106") && before != after && strings.Contains(pc.name, "003363") {
-		fmt.Printf("++++++++++++++++++++(%s): set flags: %08b, %s flags BEFORE %s\n", pc.name, f, vid.IDShortString(), before.String())
-		fmt.Printf("++++++++++++++++++++(%s): set flags: %08b, %s flags AFTER %s\n", pc.name, f, vid.IDShortString(), after.String())
 	}
 }
 
@@ -645,8 +637,6 @@ func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedSta
 		}
 		// consumed && in the state -> check if still available
 		if !stateReader.HasUTXO(wOut.DecodeID()) {
-			fmt.Printf(">>>>>>>>>>>>>>>>>>> (%s): consumer %s (inTheState: %v), output: %s\n",
-				pc.name, consumer.IDShortString(), pc.IsInTheState(consumer), wOut.IDShortString())
 			return &wOut
 		}
 	}
@@ -658,7 +648,7 @@ func (pc *PastCone) MustConflictFree(getStateReader func() global.IndexedStateRe
 	pc.Assertf(conflict == nil, "past cone %s contains double-spent output %s", pc.name, conflict.IDShortString)
 }
 
-const enforceConflictChecking = true
+const enforceConflictChecking = false
 
 func (pc *PastCone) MustConflictFreeCond(getStateReader func() global.IndexedStateReader) {
 	if enforceConflictChecking {
@@ -696,14 +686,7 @@ func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 	numProduced := vid.NumProducedOutputs()
 	pc.Assertf(numProduced > 0, "numProduced>0")
 
-	//if vid.IDHasFragment("01cad") {
-	//	fmt.Println()
-	//}
 	consumedIndices := pc.consumedIndexSet(vid)
-	//if vid.IDHasFragment("01cad") {
-	//	consumer, _, _ := pc.findConsumerOf(WrappedOutput{VID: vid, Index: 0})
-	//	fmt.Printf(">>>>>>>>>>>>> consumer of 01cad[0] is %s\n", consumer.IDShortString())
-	//}
 
 	ret := make([]byte, 0, numProduced-len(consumedIndices))
 
@@ -837,16 +820,8 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() glob
 				flags |= FlagPastConeVertexCheckedInTheState | FlagPastConeVertexInTheState
 			}
 		}
-		if vid.IDHasFragment("01d106", "01cad") {
-			fmt.Printf(">>>>>>>>>BEFORE>>>>>>(%s) ... baseline: %s, vertex: %s, flags %s\n",
-				pc.name, pc.baseline.IDShortString(), vid.IDShortString(), pc.Flags(vid).String())
-		}
 		// it will also create a new entry in the target past cone if necessary
 		pc.markVertexWithFlags(vid, flags & ^FlagPastConeVertexAskedForPoke)
-		if vid.IDHasFragment("01d106", "01cad") {
-			fmt.Printf(">>>>>>>>>AFTER>>>>>>(%s) ... baseline: %s, vertex: %s, flags %s\n",
-				pc.name, pc.baseline.IDShortString(), vid.IDShortString(), pc.Flags(vid).String())
-		}
 	}
 
 	// there's no guarantee that merged past cone is conflict-free
