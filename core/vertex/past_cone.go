@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -239,10 +240,17 @@ func (pc *PastCone) Flags(vid *WrappedTx) FlagsPastCone {
 }
 
 func (pc *PastCone) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
+	before := pc.Flags(vid)
 	if pc.delta == nil {
 		pc.vertices[vid] = pc.Flags(vid) | f
 	} else {
 		pc.delta.vertices[vid] = pc.Flags(vid) | f
+	}
+	after := pc.Flags(vid)
+
+	if vid.IDHasFragment("01d106") && before != after && strings.Contains(pc.name, "003363") {
+		fmt.Printf("++++++++++++++++++++(%s): set flags: %08b, %s flags BEFORE %s\n", pc.name, f, vid.IDShortString(), before.String())
+		fmt.Printf("++++++++++++++++++++(%s): set flags: %08b, %s flags AFTER %s\n", pc.name, f, vid.IDShortString(), after.String())
 	}
 }
 
@@ -628,15 +636,17 @@ func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedSta
 			conflict = &wOut
 			return &wOut
 		}
-		if !isConsumed || !inTheState {
+		if !isConsumed || !inTheState || consumer == nil {
 			continue
 		}
-		if consumer == nil || pc.IsInTheState(consumer) {
+		if !pc.IsNotInTheState(consumer) {
+			// it is in the state, or it is not checked yet. This is important
 			continue
 		}
 		// consumed && in the state -> check if still available
 		if !stateReader.HasUTXO(wOut.DecodeID()) {
-			fmt.Printf(">>>>>>>>>>>>>>>>>>> : consumer %s, output: %s\n", consumer.IDShortString(), wOut.IDShortString())
+			fmt.Printf(">>>>>>>>>>>>>>>>>>> (%s): consumer %s (inTheState: %v), output: %s\n",
+				pc.name, consumer.IDShortString(), pc.IsInTheState(consumer), wOut.IDShortString())
 			return &wOut
 		}
 	}
@@ -686,14 +696,14 @@ func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 	numProduced := vid.NumProducedOutputs()
 	pc.Assertf(numProduced > 0, "numProduced>0")
 
-	if vid.IDHasFragment("01cad") {
-		fmt.Println()
-	}
+	//if vid.IDHasFragment("01cad") {
+	//	fmt.Println()
+	//}
 	consumedIndices := pc.consumedIndexSet(vid)
-	if vid.IDHasFragment("01cad") {
-		consumer, _, _ := pc.findConsumerOf(WrappedOutput{VID: vid, Index: 0})
-		fmt.Printf(">>>>>>>>>>>>> consumer of 01cad[0] is %s\n", consumer.IDShortString())
-	}
+	//if vid.IDHasFragment("01cad") {
+	//	consumer, _, _ := pc.findConsumerOf(WrappedOutput{VID: vid, Index: 0})
+	//	fmt.Printf(">>>>>>>>>>>>> consumer of 01cad[0] is %s\n", consumer.IDShortString())
+	//}
 
 	ret := make([]byte, 0, numProduced-len(consumedIndices))
 
@@ -818,6 +828,8 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() glob
 	// pcb is assumed to be deterministic at this point, i.e. immutable and all vertices in it must be 'known defined'
 	// it does not need any locking
 	for vid, flags := range pcb.vertices {
+		pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined), "inconsistent flag in appended past cone: %s", flags.String())
+
 		if !flags.FlagsUp(FlagPastConeVertexInTheState) {
 			// if vertex is in the state of the appended past cone, it will be in the state of the new baseline
 			// When vertex not in appended baseline, check if it didn't become known in the new one
@@ -825,9 +837,16 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() glob
 				flags |= FlagPastConeVertexCheckedInTheState | FlagPastConeVertexInTheState
 			}
 		}
-		flags &= ^FlagPastConeVertexAskedForPoke
+		if vid.IDHasFragment("01d106", "01cad") {
+			fmt.Printf(">>>>>>>>>BEFORE>>>>>>(%s) ... baseline: %s, vertex: %s, flags %s\n",
+				pc.name, pc.baseline.IDShortString(), vid.IDShortString(), pc.Flags(vid).String())
+		}
 		// it will also create a new entry in the target past cone if necessary
-		pc.markVertexWithFlags(vid, flags)
+		pc.markVertexWithFlags(vid, flags & ^FlagPastConeVertexAskedForPoke)
+		if vid.IDHasFragment("01d106", "01cad") {
+			fmt.Printf(">>>>>>>>>AFTER>>>>>>(%s) ... baseline: %s, vertex: %s, flags %s\n",
+				pc.name, pc.baseline.IDShortString(), vid.IDShortString(), pc.Flags(vid).String())
+		}
 	}
 
 	// there's no guarantee that merged past cone is conflict-free

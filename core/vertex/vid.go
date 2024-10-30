@@ -854,6 +854,11 @@ func (vid *WrappedTx) IsContainingBranchOf(vid1 *WrappedTx, getStateReader func(
 	return getStateReader().KnowsCommittedTransaction(&vid1.ID)
 }
 
-func (vid *WrappedTx) IDHasFragment(frag string) bool {
-	return strings.Contains(vid.ID.String(), frag)
+func (vid *WrappedTx) IDHasFragment(frag ...string) bool {
+	for _, fr := range frag {
+		if strings.Contains(vid.ID.String(), fr) {
+			return true
+		}
+	}
+	return false
 }

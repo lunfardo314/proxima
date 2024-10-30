@@ -120,8 +120,8 @@ func (a *milestoneAttacher) run() error {
 
 		if strings.Contains(a.err.Error(), "01cadb") {
 			a.pastCone.SaveGraph(a.vid.ID.AsFileNameShort())
-			//time.Sleep(10 * time.Second)
-			//a.Log().Fatalf(">>>>>>>>>>>>>>>>>>>>>>>>>>\n%s", a.pastCone.Lines("     ").Join("\n"))
+			time.Sleep(2 * time.Second)
+			a.Log().Fatalf(">>>>>>>>>>>>>>>>>>>>>>>>>>\n%s", a.pastCone.Lines("     ").Join("\n"))
 		}
 
 		return a.err
@@ -174,7 +174,7 @@ func (a *milestoneAttacher) run() error {
 }
 
 const (
-	enableDeadlockCatching      = true
+	enableDeadlockCatching      = false
 	deadlockIndicationThreshold = 10 * time.Second
 )
 
