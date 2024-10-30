@@ -17,6 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
+	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	reuse "github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/lunfardo314/proxima/api"
@@ -48,6 +49,15 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("wrong private key: %w", err)
 	}
 
+	connManager, err := connmgr.NewConnManager(
+		cfg.MaxDynamicPeers,   // lo,
+		cfg.MaxDynamicPeers+5, // hi,
+		connmgr.WithEmergencyTrim(true),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create ConnManager: %w", err)
+	}
+
 	options := []libp2p.Option{
 		libp2p.Identity(hostIDPrivateKey),
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", cfg.HostPort)),
@@ -55,6 +65,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		libp2p.NoSecurity,
 		libp2p.DisableRelay(),
 		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
+		libp2p.ConnectionManager(connManager),
 	}
 
 	if !cfg.DisableQuicreuse {
