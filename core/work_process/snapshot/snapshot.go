@@ -53,7 +53,10 @@ func Start(env environment) {
 		ret.directory = defaultSnapshotDirectory
 	}
 	env.Log().Infof("%s directory is '%s'", Name, ret.directory)
-	util.Assertf(directoryExists(ret.directory), "snapshot directory '%s' is wrong or does not exist", ret.directory)
+	if !directoryExists(ret.directory) {
+		err := os.MkdirAll(ret.directory, 0644)
+		util.AssertNoError(err, "can't create snapshot directory ", ret.directory)
+	}
 
 	periodInSlots := viper.GetInt("snapshot.period_in_slots")
 	if periodInSlots <= 0 {
