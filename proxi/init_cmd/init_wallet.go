@@ -36,11 +36,13 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 		"we need some entropy from you for the private key of the account\nPlease enter at least 10 seed symbols as randomly as possible and press ENTER:", 10)
 
 	data := struct {
-		PrivateKey string
-		Account    string
+		PrivateKey     string
+		Account        string
+		BootstrapSeqID string
 	}{
-		PrivateKey: hex.EncodeToString(privateKey),
-		Account:    ledger.AddressED25519FromPrivateKey(privateKey).String(),
+		PrivateKey:     hex.EncodeToString(privateKey),
+		Account:        ledger.AddressED25519FromPrivateKey(privateKey).String(),
+		BootstrapSeqID: ledger.BoostrapSequencerIDHex,
 	}
 	var buf bytes.Buffer
 	err = templ.Execute(&buf, data)
@@ -64,9 +66,9 @@ api:
 
 tag_along:
     # ID of the tag-along sequencer. Currently only one is supported
-    # In the bootstrap phase it normally is pre-defined bootstrap chain ID: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    # In the bootstrap phase it often is the pre-defined bootstrap chain ID: {{.BootstrapSeqID}}
     # Later it is up to the wallet owner to set the preferred tag-along sequencer
-    sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    sequencer_id: {{.BootstrapSeqID}}
     fee: 500
 finality:
     # finality rule used by the wallet. It has no effect on the way transaction is treated by the network, 
@@ -94,7 +96,7 @@ spammer:
     tag_along:
         fee: 500
         # <sequencer ID hex encoded> is tag-along sequencer ID for the tip transaction in the bundle
-        # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+        # For example the bootstrap sequencer {{.BootstrapSeqID}}
         sequencer_id: <sequencer ID hex encoded>
     # target address
     target: <target lock in EasyFL format>
