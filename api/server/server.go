@@ -227,6 +227,10 @@ func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 		resp.LRBID = lrbid.StringHex()
 		return nil
 	})
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

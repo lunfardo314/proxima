@@ -191,7 +191,8 @@ func (c *APIClient) GetChainOutputData(chainID ledger.ChainID) (*ledger.OutputDa
 
 	oid, err := ledger.OutputIDFromHexString(res.OutputID)
 	if err != nil {
-		return nil, fmt.Errorf("wrong output ID data received from server: %s: '%v\n-----\n%s'", res.OutputID, err, string(body))
+		return nil, fmt.Errorf("GetChainOutputData for %s: wrong output ID data received from server: %s: '%v\n-----\n%s'",
+			chainID.StringShort(), res.OutputID, err, string(body))
 	}
 	oData, err := hex.DecodeString(res.OutputData)
 	if err != nil {
