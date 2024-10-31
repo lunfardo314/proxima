@@ -121,10 +121,12 @@ func SaveSnapshot(state global.StateStoreReader, branch *BranchData, ctx context
 		return makeErr(err.Error())
 	}
 
-	outFileStream, err := common.CreateKVStreamFile(fpathtmp)
+	file, err := os.Open(fpathtmp)
 	if err != nil {
 		return makeErr(err.Error())
 	}
+
+	outFileStream := common.BinaryStreamWriterFromFile(file)
 
 	// write header with version
 	err = outFileStream.Write(nil, headerBin)
@@ -175,10 +177,11 @@ func SaveSnapshot(state global.StateStoreReader, branch *BranchData, ctx context
 // OpenSnapshotFileStream reads first 3 records in the snapshot file and returns
 // channel for remaining key/value pairs
 func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
-	iter, err := common.OpenKVStreamFile(fname)
+	file, err := os.Open(fname)
 	if err != nil {
 		return nil, err
 	}
+	iter := common.BinaryStreamIteratorFromFile(file)
 	ret := &SnapshotFileStream{}
 	ctx, cancel := context.WithCancel(context.Background())
 	ret.Close = cancel
