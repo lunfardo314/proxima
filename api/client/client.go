@@ -159,11 +159,11 @@ func (c *APIClient) getAccountOutputs(accountable ledger.Accountable, maxOutputs
 	for idStr, dataStr := range res.Outputs {
 		id, err := ledger.OutputIDFromHexString(idStr)
 		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output ID data from server: %s", idStr)
+			return nil, nil, fmt.Errorf("wrong output ID data from server: %s: '%v'", idStr, err)
 		}
 		oData, err := hex.DecodeString(dataStr)
 		if err != nil {
-			return nil, nil, fmt.Errorf("wrong output data from server: %s", dataStr)
+			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
 		}
 		ret = append(ret, &ledger.OutputDataWithID{
 			ID:         id,
@@ -191,11 +191,11 @@ func (c *APIClient) GetChainOutputData(chainID ledger.ChainID) (*ledger.OutputDa
 
 	oid, err := ledger.OutputIDFromHexString(res.OutputID)
 	if err != nil {
-		return nil, fmt.Errorf("wrong output ID data from server: %s", res.OutputID)
+		return nil, fmt.Errorf("wrong output ID data received from server: %s: '%v'", res.OutputID, err)
 	}
 	oData, err := hex.DecodeString(res.OutputData)
 	if err != nil {
-		return nil, fmt.Errorf("wrong output data from server: %s", res.OutputData)
+		return nil, fmt.Errorf("wrong output data received from server: %s: '%v'", res.OutputData, err)
 	}
 
 	return &ledger.OutputDataWithID{

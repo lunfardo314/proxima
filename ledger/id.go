@@ -256,14 +256,15 @@ func MustNewOutputID(id *TransactionID, idx byte) OutputID {
 
 func OutputIDFromBytes(data []byte) (ret OutputID, err error) {
 	if len(data) != OutputIDLength {
-		err = errors.New("OutputIDFromBytes: wrong data length")
-		return
-	}
-	if ret[OutputIDLength-1] > data[MaxOutputIndexPositionInTxID] {
-		err = errors.New("OutputIDFromBytes: wrong output index")
+		err = fmt.Errorf("OutputIDFromBytes: wrong data length %d", len(data))
 		return
 	}
 	copy(ret[:], data)
+
+	if ret[OutputIDLength-1] > data[MaxOutputIndexPositionInTxID] {
+		err = fmt.Errorf("OutputIDFromBytes: wrong output index in %s", ret.String())
+		return
+	}
 	return
 }
 
