@@ -54,7 +54,7 @@ func Start(env environment) {
 	}
 	env.Log().Infof("%s directory is '%s'", Name, ret.directory)
 	if !directoryExists(ret.directory) {
-		err := os.MkdirAll(ret.directory, 0666)
+		err := os.MkdirAll(ret.directory, 0777)
 		util.AssertNoError(err, "can't create snapshot directory ", ret.directory)
 	}
 
