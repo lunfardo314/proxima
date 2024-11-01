@@ -113,13 +113,13 @@ func (pb *PastConeBase) addVirtuallyConsumedOutput(wOut WrappedOutput) {
 func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, getStateReader func() global.IndexedStateReader) *WrappedOutput {
 	if pc.delta == nil {
 		pc.addVirtuallyConsumedOutput(wOut)
-		return pc.Conflict(getStateReader)
+		return pc.Conflict(getStateReader, wOut.Timestamp())
 	}
 	if pc.isVirtuallyConsumed(wOut) || pc.delta.isVirtuallyConsumed(wOut) {
 		return nil
 	}
 	pc.delta.addVirtuallyConsumedOutput(wOut)
-	return pc.Conflict(getStateReader)
+	return pc.Conflict(getStateReader, wOut.Timestamp())
 }
 
 func (pb *PastConeBase) isVirtuallyConsumed(wOut WrappedOutput) bool {
@@ -605,12 +605,23 @@ func (pc *PastCone) mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedTx
 // Conflict returns double-spent output (conflict), or nil if past cone is consistent
 // The complexity is O(NxM) where N is number of vertices and M is average number of conflicts in the UTXO tangle
 // Practically, it is linear wrt number of vertices because M is 1 or close to 1.
-func (pc *PastCone) Conflict(getStateReader func() global.IndexedStateReader) (conflict *WrappedOutput) {
+// for optimization, latest time value can be specified
+func (pc *PastCone) Conflict(getStateReader func() global.IndexedStateReader, before ...ledger.Time) (conflict *WrappedOutput) {
 	stateReader := getStateReader()
-	pc.forAllVertices(func(vid *WrappedTx) bool {
-		conflict = pc.checkConsumers(vid, stateReader)
-		return conflict == nil
-	})
+	if len(before) > 0 {
+		beforeTs := before[0]
+		pc.forAllVertices(func(vid *WrappedTx) bool {
+			if vid.Timestamp().Before(beforeTs) {
+				conflict = pc.checkConsumers(vid, stateReader)
+			}
+			return conflict == nil
+		})
+	} else {
+		pc.forAllVertices(func(vid *WrappedTx) bool {
+			conflict = pc.checkConsumers(vid, stateReader)
+			return conflict == nil
+		})
+	}
 	return
 }
 
@@ -810,6 +821,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() glob
 
 	// pcb is assumed to be deterministic at this point, i.e. immutable and all vertices in it must be 'known defined'
 	// it does not need any locking
+	var latest ledger.Time
 	for vid, flags := range pcb.vertices {
 		pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined), "inconsistent flag in appended past cone: %s", flags.String())
 
@@ -822,10 +834,11 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() glob
 		}
 		// it will also create a new entry in the target past cone if necessary
 		pc.markVertexWithFlags(vid, flags & ^FlagPastConeVertexAskedForPoke)
+		latest = ledger.MaximumTime(latest, vid.Timestamp())
 	}
 
 	// there's no guarantee that merged past cone is conflict-free
-	return pc.Conflict(getStateReader)
+	return pc.Conflict(getStateReader, latest)
 }
 
 // CheckFinalPastCone check determinism consistency of the past cone

@@ -434,7 +434,7 @@ func (a *attacher) checkInTheStateStatus(vid *vertex.WrappedTx) bool {
 	} else {
 		a.pastCone.MustMarkVertexNotInTheState(vid)
 	}
-	if conflict := a.pastCone.Conflict(a.baselineStateReader); conflict != nil {
+	if conflict := a.pastCone.Conflict(a.baselineStateReader, vid.Timestamp()); conflict != nil {
 		a.setError(fmt.Errorf("conflict in the past cone: %s", conflict.IDShortString()))
 		return false
 	}
@@ -647,7 +647,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 
 	a.pastCone.MarkVertexKnown(vidInputTx)
 
-	if conflict := a.pastCone.Conflict(a.baselineStateReader); conflict != nil {
+	if conflict := a.pastCone.Conflict(a.baselineStateReader, vidInputTx.Timestamp()); conflict != nil {
 		a.setError(fmt.Errorf("attachInputID: conflict in the past cone: %s -- after adding %s", conflict.IDShortString(), vidInputTx.IDShortString()))
 		return nil, false
 	}
