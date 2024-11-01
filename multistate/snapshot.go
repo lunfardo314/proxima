@@ -121,7 +121,7 @@ func SaveSnapshot(state global.StateStoreReader, branch *BranchData, ctx context
 		return makeErr(err.Error())
 	}
 
-	file, err := os.Open(fpathtmp)
+	file, err := os.Create(fpathtmp)
 	if err != nil {
 		return makeErr(err.Error())
 	}
