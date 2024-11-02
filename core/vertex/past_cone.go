@@ -939,3 +939,7 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 	}
 	return ret
 }
+
+func (pb *PastConeBase) Len() int {
+	return len(pb.vertices)
+}

@@ -31,6 +31,7 @@ type (
 		TxBytesStore() global.TxBytesStore
 		PullFromNPeers(nPeers int, txid *ledger.TransactionID) int
 		GetOwnSequencerID() *ledger.ChainID
+		EvidencePastConeSize(sz int)
 	}
 
 	Workflow struct {
