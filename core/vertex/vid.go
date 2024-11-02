@@ -862,3 +862,13 @@ func (vid *WrappedTx) IDHasFragment(frag ...string) bool {
 	}
 	return false
 }
+
+func (vid *WrappedTx) forEachConsumerNoLock(fun func(consumer *WrappedTx, outputIndex byte) bool) {
+	for idx, consumers := range vid.consumed {
+		for consumer := range consumers {
+			if !fun(consumer, idx) {
+				return
+			}
+		}
+	}
+}

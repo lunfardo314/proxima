@@ -87,20 +87,21 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 
 func displaySpammerConfig() spammerConfig {
 	cfg := readSpammerConfigIn(viper.Sub("spammer"))
-	glb.Infof("output amount: %d", cfg.outputAmount)
-	glb.Infof("bundle size: %d", cfg.bundleSize)
-	glb.Infof("pace: %d", cfg.pace)
-	glb.Infof("max transactions: %d", cfg.maxTransactions)
-	glb.Infof("max duration: %v", cfg.maxDuration)
-	glb.Infof("tag-along sequencer: %s", cfg.tagAlongSequencer.String())
-	glb.Infof("tag-along fee: %d", cfg.tagAlongFee)
-	glb.Infof("finality slots: %d", cfg.finalitySlots)
+	glb.Infof("\nspammer configuration:")
+	glb.Infof("     output amount: %d", cfg.outputAmount)
+	glb.Infof("     bundle size: %d", cfg.bundleSize)
+	glb.Infof("     pace: %d", cfg.pace)
+	//glb.Infof("max transactions: %d", cfg.maxTransactions)
+	//glb.Infof("max duration: %v", cfg.maxDuration)
+	glb.Infof("     tag-along sequencer: %s", cfg.tagAlongSequencer.String())
+	glb.Infof("     tag-along fee: %d", cfg.tagAlongFee)
+	//glb.Infof("     finality slots: %d", cfg.finalitySlots)
 
 	walletData := glb.GetWalletData()
-	glb.Infof("source account (wallet): %s", walletData.Account.String())
-	glb.Infof("target account: %s", cfg.target.String())
+	glb.Infof("     source account (wallet): %s", walletData.Account.String())
+	glb.Infof("     target account: %s", cfg.target.String())
 
-	glb.Assertf(glb.YesNoPrompt("start spamming?", true, glb.BypassYesNoPrompt()), "exit")
+	glb.Assertf(glb.YesNoPrompt("\nstart spamming?", true, glb.BypassYesNoPrompt()), "exit")
 
 	return cfg
 }

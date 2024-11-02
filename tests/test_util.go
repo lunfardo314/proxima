@@ -48,6 +48,9 @@ func (w *workflowDummyEnvironment) PullFromNPeers(nPeers int, txid *ledger.Trans
 	return 0
 }
 
+func (w *workflowDummyEnvironment) EvidencePastConeSize(sz int) {
+}
+
 func (w *workflowDummyEnvironment) GetOwnSequencerID() *ledger.ChainID {
 	panic("not implemented")
 }

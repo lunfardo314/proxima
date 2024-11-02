@@ -943,3 +943,42 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 func (pb *PastConeBase) Len() int {
 	return len(pb.vertices)
 }
+
+// Clean removes vertices which are in the state and all consumed outputs are consumed by vertices in the state
+// Assumes fully deterministic set of vertices
+func (pc *PastCone) Clean() {
+	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+
+	toDelete := make([]*WrappedTx, 0)
+	for vid, flags := range pc.vertices {
+		pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState), "wrong flag in %s", vid.IDShortString)
+		if pc._canBeRemoved(vid) {
+			toDelete = append(toDelete, vid)
+		}
+	}
+	for _, vid := range toDelete {
+		delete(pc.vertices, vid)
+		vid.UnReference()
+		pc.refCounter--
+	}
+}
+
+func (pc *PastCone) _canBeRemoved(vid *WrappedTx) bool {
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
+
+	hasConsumerNotInTheState := false
+	hasConsumer := false
+	vid.forEachConsumerNoLock(func(consumer *WrappedTx, outputIndex byte) bool {
+		if pc.IsKnown(consumer) {
+			hasConsumer = true
+			if pc.IsNotInTheState(consumer) {
+				hasConsumerNotInTheState = true
+				return false
+			}
+		}
+		return true
+	})
+	return hasConsumer && !hasConsumerNotInTheState
+}
