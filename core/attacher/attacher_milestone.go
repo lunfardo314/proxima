@@ -351,7 +351,7 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 
 	msDataStr := " (n/a)"
 	if msData != nil {
-		msDataStr = fmt.Sprintf(" (%s %d/%d)", msData.Name, msData.BranchHeight, msData.ChainHeight)
+		msDataStr = fmt.Sprintf(" %d/%d", msData.BranchHeight, msData.ChainHeight)
 	}
 	inflChainStr := "-"
 	inflBranchStr := "-"
@@ -361,12 +361,12 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 	}
 
 	if a.vid.IsBranchTransaction() {
-		msg = fmt.Sprintf("ATTACH BRANCH%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s, %s, lnow: %s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions,
-			inflChainStr, inflBranchStr, global.IsHealthyCoverageString(a.finals.coverage, a.finals.supply, global.FractionHealthyBranch), ledger.TimeNow().String())
+		msg = fmt.Sprintf("--- BRANCH%s %s(in %d, tx: %d), ci=%s/bi=%s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numNewTransactions,
+			inflChainStr, inflBranchStr)
 	} else {
-		msg = fmt.Sprintf("ATTACH SEQ TX%s %s(in %d/out %d, new tx: %d), ci=%s/bi=%s, lnow: %s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numOutputs, a.finals.numNewTransactions, inflChainStr, inflBranchStr, ledger.TimeNow().String())
+		msg = fmt.Sprintf("--- SEQ TX%s %s(in %d, new tx: %d), ci=%s/bi=%s, lnow: %s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numNewTransactions, inflChainStr, inflBranchStr, ledger.TimeNow().String())
 	}
 	if a.vid.GetTxStatus() == vertex.Bad {
 		msg += fmt.Sprintf("BAD: err = '%v'", a.vid.GetError())
