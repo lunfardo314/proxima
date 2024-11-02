@@ -365,8 +365,8 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numNewTransactions,
 			inflChainStr, inflBranchStr)
 	} else {
-		msg = fmt.Sprintf("--- SEQ TX%s %s(in %d, new tx: %d), ci=%s/bi=%s, lnow: %s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.numNewTransactions, inflChainStr, inflBranchStr, ledger.TimeNow().String())
+		msg = fmt.Sprintf("--- SEQ TX%s %s(in %d), ci=%s/bi=%s, lnow: %s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, inflChainStr, inflBranchStr, ledger.TimeNow().String())
 	}
 	if a.vid.GetTxStatus() == vertex.Bad {
 		msg += fmt.Sprintf("BAD: err = '%v'", a.vid.GetError())
