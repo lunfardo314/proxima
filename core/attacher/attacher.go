@@ -188,7 +188,11 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
 
 				// here cut the recursion and merge 'good' past cone
-				deterministicPastCone = vid.GetPastConeNoLock()
+				if vid.IsBranchTransaction() {
+					deterministicPastCone = vertex.NewPastConeBase(vid)
+				} else {
+					deterministicPastCone = vid.GetPastConeNoLock()
+				}
 				a.Assertf(deterministicPastCone != nil, "deterministicPastCone!=nil")
 
 			case vertex.Bad:
@@ -434,6 +438,7 @@ func (a *attacher) checkInTheStateStatus(vid *vertex.WrappedTx) bool {
 	} else {
 		a.pastCone.MustMarkVertexNotInTheState(vid)
 	}
+	// checks for conflicts because it changes its status
 	if conflict := a.pastCone.Conflict(a.baselineStateReader, vid.Timestamp()); conflict != nil {
 		a.setError(fmt.Errorf("conflict in the past cone: %s", conflict.IDShortString()))
 		return false
@@ -635,7 +640,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 		}
 	}
 
-	// check for conflicts. It will panic if wOut is double-spent
+	// check if it conflicts with existing consumers
 	consumer, found := a.pastCone.MustFindConsumerOf(vertex.WrappedOutput{VID: vidInputTx, Index: inputOid.Index()})
 	a.Assertf(consumer != nil || !found, "consumer!=nil || !found")
 	if found && consumer != consumerTxUnwrapped {
@@ -644,14 +649,18 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 		a.setError(err)
 		return nil, false
 	}
-
-	a.pastCone.MarkVertexKnown(vidInputTx)
-
-	if conflict := a.pastCone.Conflict(a.baselineStateReader, vidInputTx.Timestamp()); conflict != nil {
-		a.setError(fmt.Errorf("attachInputID: conflict in the past cone: %s -- after adding %s", conflict.IDShortString(), vidInputTx.IDShortString()))
-		return nil, false
-	}
+	// add consumer to the vertex
 	vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped)
+
+	if !a.pastCone.IsKnown(vidInputTx) {
+		// it is a new vertex in the past cone. Mark it known and check if it does not bring new conflicts
+		a.pastCone.MarkVertexKnown(vidInputTx)
+
+		if conflict := a.pastCone.Conflict(a.baselineStateReader, vidInputTx.Timestamp()); conflict != nil {
+			a.setError(fmt.Errorf("attachInputID: conflict in the past cone: %s -- after adding %s", conflict.IDShortString(), vidInputTx.IDShortString()))
+			return nil, false
+		}
+	}
 	return vidInputTx, true
 }
 

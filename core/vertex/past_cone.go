@@ -69,7 +69,7 @@ func (f FlagsPastCone) String() string {
 	)
 }
 
-func newPastConeBase(baseline *WrappedTx) *PastConeBase {
+func NewPastConeBase(baseline *WrappedTx) *PastConeBase {
 	return &PastConeBase{
 		vertices: make(map[*WrappedTx]FlagsPastCone),
 		baseline: baseline,
@@ -77,7 +77,7 @@ func newPastConeBase(baseline *WrappedTx) *PastConeBase {
 }
 
 func NewPastCone(env global.Logging, name string) *PastCone {
-	return NewPastConeFromBase(env, name, newPastConeBase(nil))
+	return NewPastConeFromBase(env, name, NewPastConeBase(nil))
 }
 
 func NewPastConeFromBase(env global.Logging, name string, pb *PastConeBase) *PastCone {
@@ -184,7 +184,7 @@ func (pc *PastCone) UnReferenceAll() {
 
 func (pc *PastCone) BeginDelta() {
 	util.Assertf(pc.delta == nil, "BeginDelta: pc.delta == nil")
-	pc.delta = newPastConeBase(pc.baseline)
+	pc.delta = NewPastConeBase(pc.baseline)
 }
 
 func (pc *PastCone) CommitDelta() {
@@ -821,6 +821,9 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() glob
 		return &WrappedOutput{} // >>>>>>>>>>>>>>>> conflicting baselines
 	}
 
+	if len(pcb.vertices) == 0 {
+		return nil
+	}
 	baselineStateReader := getStateReader()
 
 	// pcb is assumed to be deterministic at this point, i.e. immutable and all vertices in it must be 'known defined'
@@ -841,7 +844,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() glob
 		latest = ledger.MaximumTime(latest, vid.Timestamp())
 	}
 
-	// there's no guarantee that merged past cone is conflict-free
+	// check for newly appeared conflicts
 	return pc.Conflict(getStateReader, latest)
 }
 
