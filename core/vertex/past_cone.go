@@ -508,7 +508,11 @@ func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uin
 		delta += o.Inflation(true)
 	}
 	diffSlots := currentTs.Slot() - pc.baseline.Slot()
-	coverage = (pc.baseline.GetLedgerCoverage() >> diffSlots) + delta
+	if currentTs.IsSlotBoundary() {
+		coverage = (pc.baseline.GetLedgerCoverage() >> diffSlots) + delta
+	} else {
+		coverage = (pc.baseline.GetLedgerCoverage() >> (diffSlots + 1)) + delta
+	}
 	return
 }
 
