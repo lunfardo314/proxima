@@ -351,7 +351,7 @@ func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) s
 
 	msDataStr := " (n/a)"
 	if msData != nil {
-		msDataStr = fmt.Sprintf("%s %d/%d", msData.Name, msData.BranchHeight, msData.ChainHeight)
+		msDataStr = fmt.Sprintf(" %s %d/%d", msData.Name, msData.BranchHeight, msData.ChainHeight)
 	}
 	inflChainStr := "-"
 	inflBranchStr := "-"
