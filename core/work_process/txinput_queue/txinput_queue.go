@@ -37,6 +37,10 @@ type (
 		// bloom filter
 		inGate *inGate[ledger.TransactionIDVeryShort4]
 		// metrics
+		metrics
+	}
+
+	metrics struct {
 		inputTxCounter        prometheus.Counter
 		pulledTxCounter       prometheus.Counter
 		badTxCounter          prometheus.Counter
@@ -44,6 +48,7 @@ type (
 		gossipedCounter       prometheus.Counter
 		queueSize             prometheus.Gauge
 		nonSequencerTxCounter prometheus.Counter
+		txBytesSizeReceived   prometheus.Gauge
 	}
 )
 
@@ -82,6 +87,7 @@ func New(env environment) *TxInputQueue {
 
 func (q *TxInputQueue) consume(inp Input) {
 	q.inputTxCounter.Inc()
+	q.txBytesSizeReceived.Set(float64(len(inp.TxBytes)))
 
 	switch inp.Cmd {
 	case CmdFromPeer:
@@ -180,8 +186,21 @@ func (q *TxInputQueue) registerMetrics() {
 		Name: "proxima_txInputQueue_nonSequencer",
 		Help: "number of non-sequencer transactions",
 	})
+	q.txBytesSizeReceived = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_txInputQueue_txBytesSize",
+		Help: "size of the received transaction bytes",
+	})
 
-	q.MetricsRegistry().MustRegister(q.inputTxCounter, q.pulledTxCounter, q.badTxCounter, q.filterHitCounter, q.gossipedCounter, q.queueSize, q.nonSequencerTxCounter)
+	q.MetricsRegistry().MustRegister(
+		q.inputTxCounter,
+		q.pulledTxCounter,
+		q.badTxCounter,
+		q.filterHitCounter,
+		q.gossipedCounter,
+		q.queueSize,
+		q.nonSequencerTxCounter,
+		q.txBytesSizeReceived,
+	)
 }
 
 // AddWantedTransaction adds transaction short id to the wanted filter.
