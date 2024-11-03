@@ -39,12 +39,13 @@ type (
 	}
 
 	metrics struct {
-		lrbSlotsBehind    prometheus.Gauge
-		lrbCoverage       prometheus.Gauge
-		lrbSupply         prometheus.Gauge
-		lrbNumTx          prometheus.Gauge
-		pastConeSize      prometheus.Gauge
-		numTxDependencies prometheus.Gauge
+		lrbSlotsBehind        prometheus.Gauge
+		lrbCoverage           prometheus.Gauge
+		lrbSupply             prometheus.Gauge
+		lrbNumTx              prometheus.Gauge
+		pastConeSize          prometheus.Gauge
+		numTxDependencies     prometheus.Gauge
+		counterTxDependencies prometheus.Counter
 	}
 )
 
@@ -302,6 +303,10 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_num_tx_dependencies",
 		Help: "number of inputs plus endorsements in the transaction",
 	})
+	p.counterTxDependencies = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_counter_tx_dependencies",
+		Help: "cumulative number of inputs plus endorsements in the transaction",
+	})
 	p.MetricsRegistry().MustRegister(
 		p.lrbCoverage,
 		p.lrbSlotsBehind,
@@ -309,6 +314,7 @@ func (p *ProximaNode) registerMetrics() {
 		p.lrbNumTx,
 		p.pastConeSize,
 		p.numTxDependencies,
+		p.counterTxDependencies,
 	)
 }
 
@@ -318,4 +324,5 @@ func (p *ProximaNode) EvidencePastConeSize(sz int) {
 
 func (p *ProximaNode) EvidenceNumberOfTxDependencies(n int) {
 	p.numTxDependencies.Set(float64(n))
+	p.counterTxDependencies.Add(float64(n))
 }
