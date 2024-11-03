@@ -71,7 +71,6 @@ if [ ! -f "$INITIALIZED_FILE" ]; then
 
         kill_proxima
         sleep 2  # let process die
-        #sleep 10  # wait for end of blacklisting
     fi 
 
     # Create the initialized file to mark the container as initialized
