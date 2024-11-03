@@ -220,7 +220,9 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok, defined boo
 		a.pokeMe(vid)
 	}
 	a.Assertf(ok || a.err != nil, "ok || a.err != nil")
-	a.pastCone.MarkVertexKnown(vid)
+	if !a.pastCone.MarkVertexKnown(vid) {
+		return true, false
+	}
 	return
 }
 
@@ -413,9 +415,11 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return false, false
 	}
-	a.pastCone.MarkVertexKnown(vidEndorsed)
-
 	a.AssertNoError(a.err)
+
+	if !a.pastCone.MarkVertexKnown(vidEndorsed) {
+		return true, false
+	}
 	return true, defined
 }
 
@@ -480,6 +484,10 @@ func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *ve
 	if !ok {
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)
 		return false, false
+	}
+	if vidInputTx == nil {
+		// failed to reference
+		return true, false
 	}
 	// past cone is conflict free
 	a.Assertf(a.pastCone.IsKnown(vidInputTx), "a.pastCone.IsKnown(vidInputTx)")
@@ -654,7 +662,10 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 
 	if !a.pastCone.IsKnown(vidInputTx) {
 		// it is a new vertex in the past cone. Mark it known and check if it does not bring new conflicts
-		a.pastCone.MarkVertexKnown(vidInputTx)
+		if !a.pastCone.MarkVertexKnown(vidInputTx) {
+			// failed to reference
+			return nil, true
+		}
 
 		if conflict := a.pastCone.Conflict(a.baselineStateReader, vidInputTx.Timestamp()); conflict != nil {
 			a.setError(fmt.Errorf("attachInputID: conflict in the past cone: %s -- after adding %s", conflict.IDShortString(), vidInputTx.IDShortString()))
