@@ -13,7 +13,7 @@ var displayEndpointOnce sync.Once
 
 func GetClient() *client.APIClient {
 	endpoint := viper.GetString("api.endpoint")
-	Assertf(endpoint != "", "node API endpoint not specified")
+	Assertf(endpoint != "", "GetClient: node API endpoint not specified")
 	var timeout []time.Duration
 	if timeoutSec := viper.GetInt("api.timeout_sec"); timeoutSec > 0 {
 		timeout = []time.Duration{time.Duration(timeoutSec) * time.Second}

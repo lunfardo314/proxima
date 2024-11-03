@@ -694,7 +694,7 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, *ledger.T
 }
 
 func (c *APIClient) CheckTransactionIDInLRB(txid ledger.TransactionID) (lrbID ledger.TransactionID, included bool, err error) {
-	path := api.PathCheckTxIDInLRB + "?txid=%s" + txid.StringHex()
+	path := api.PathCheckTxIDInLRB + "?txid=" + txid.StringHex()
 	body, err := c.getBody(path)
 	if err != nil {
 		return
