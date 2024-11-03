@@ -32,6 +32,7 @@ type (
 		PullFromNPeers(nPeers int, txid *ledger.TransactionID) int
 		GetOwnSequencerID() *ledger.ChainID
 		EvidencePastConeSize(sz int)
+		EvidenceNumberOfTxDependencies(n int)
 	}
 
 	Workflow struct {

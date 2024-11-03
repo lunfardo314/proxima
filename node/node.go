@@ -39,11 +39,12 @@ type (
 	}
 
 	metrics struct {
-		lrbSlotsBehind prometheus.Gauge
-		lrbCoverage    prometheus.Gauge
-		lrbSupply      prometheus.Gauge
-		lrbNumTx       prometheus.Gauge
-		pastConeSize   prometheus.Gauge
+		lrbSlotsBehind    prometheus.Gauge
+		lrbCoverage       prometheus.Gauge
+		lrbSupply         prometheus.Gauge
+		lrbNumTx          prometheus.Gauge
+		pastConeSize      prometheus.Gauge
+		numTxDependencies prometheus.Gauge
 	}
 )
 
@@ -297,9 +298,24 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_past_cone_size",
 		Help: "number of transactions in the past cone delta of the sequencer transaction",
 	})
-	p.MetricsRegistry().MustRegister(p.lrbCoverage, p.lrbSlotsBehind, p.lrbSupply, p.lrbNumTx, p.pastConeSize)
+	p.numTxDependencies = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_num_tx_dependencies",
+		Help: "number of inputs plus endorsements in the transaction",
+	})
+	p.MetricsRegistry().MustRegister(
+		p.lrbCoverage,
+		p.lrbSlotsBehind,
+		p.lrbSupply,
+		p.lrbNumTx,
+		p.pastConeSize,
+		p.numTxDependencies,
+	)
 }
 
 func (p *ProximaNode) EvidencePastConeSize(sz int) {
 	p.pastConeSize.Set(float64(sz))
+}
+
+func (p *ProximaNode) EvidenceNumberOfTxDependencies(n int) {
+	p.numTxDependencies.Set(float64(n))
 }

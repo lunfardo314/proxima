@@ -149,6 +149,8 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 		return err
 	}
 
+	w.EvidenceNumberOfTxDependencies(tx.NumInputs() + tx.NumEndorsements())
+
 	if options.txMetadata.SourceTypeNonPersistent != txmetadata.SourceTypeTxStore {
 		// persisting all raw transactions which pass pre-validation
 		w.MustPersistTxBytesWithMetadata(tx.Bytes(), &options.txMetadata)

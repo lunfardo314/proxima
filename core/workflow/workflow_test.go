@@ -42,6 +42,10 @@ func (d *workflowDummyEnvironment) GetOwnSequencerID() *ledger.ChainID {
 	panic("not implemented")
 }
 
+func (d *workflowDummyEnvironment) EvidenceNumberOfTxDependencies(_ int) {}
+
+func (d *workflowDummyEnvironment) EvidencePastConeSize(_ int) {}
+
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	stateStore := common.NewInMemoryKVStore()
 	multistate.InitStateStore(*ledger.L().ID, stateStore)
