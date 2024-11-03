@@ -1,6 +1,7 @@
 package snapshot_cmd
 
 import (
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -54,9 +55,11 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 
 	lrbID, included, err := clnt.CheckTransactionIDInLRB(kvStream.BranchID)
 	glb.AssertNoError(err)
-	glb.Infof("\n-----------------------\n latest reliable branch: %s", lrbID.String())
+	glb.Infof("\n-----------------------\nlatest reliable branch (LRB) is %s", lrbID.String())
 	if included {
-		glb.Infof("the snapshot is INCLUDED in the current LRB of the network. It CAN BE USED to start a node")
+		glb.Infof("the snapshot:")
+		glb.Infof("      - is INCLUDED in the current LRB of the network. It CAN BE USED to start a node")
+		glb.Infof("      - is %d slots back from LRB and %d slots back from now", lrbID.Slot()-kvStream.BranchID.Slot(), ledger.TimeNow().Slot()-kvStream.BranchID.Slot())
 	} else {
 		glb.Infof("the snapshot is NOT INCLUDED in the current LRB of the network. It CANNOT BE USED used to start a node")
 	}
