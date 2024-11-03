@@ -693,6 +693,39 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, *ledger.T
 	return rr, &res.BranchID, nil
 }
 
+func (c *APIClient) CheckTransactionIDInLRB(txid ledger.TransactionID) (lrbID ledger.TransactionID, included bool, err error) {
+	path := api.PathCheckTxIDInLRB + "?txid=%s" + txid.StringHex()
+	body, err := c.getBody(path)
+	if err != nil {
+		return
+	}
+
+	var res api.CheckRxIDInLRB
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		err = fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+		return
+	}
+	if res.Error.Error != "" {
+		err = fmt.Errorf("from server: %s", res.Error.Error)
+		return
+	}
+	var resTxID ledger.TransactionID
+	resTxID, err = ledger.TransactionIDFromHexString(res.TxID)
+	if err != nil {
+		return
+	}
+	if resTxID != txid {
+		return ledger.TransactionID{}, false, fmt.Errorf("inconsistency: wrong txid from server")
+	}
+	lrbID, err = ledger.TransactionIDFromHexString(res.LRBID)
+	if err != nil {
+		return
+	}
+	included = res.Included
+	return
+}
+
 type MakeTransferTransactionParams struct {
 	Inputs        []*ledger.OutputWithID
 	Target        ledger.Lock

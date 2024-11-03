@@ -18,6 +18,7 @@ const (
 	PathGetNodeInfo             = "/node_info"
 	PathGetPeersInfo            = "/peers_info"
 	PathGetLatestReliableBranch = "/get_latest_reliable_branch"
+	PathCheckTxIDInLRB          = "/check_txid_in_lrb"
 	PathGetDashboard            = "/dashboard"
 )
 
@@ -130,6 +131,13 @@ type (
 		Error
 		RootData multistate.RootRecordJSONAble `json:"root_record,omitempty"`
 		BranchID ledger.TransactionID          `json:"branch_id,omitempty"`
+	}
+
+	CheckRxIDInLRB struct {
+		Error
+		LRBID    string `json:"lrb_id"`
+		TxID     string `json:"txid"`
+		Included bool   `json:"included"`
 	}
 )
 

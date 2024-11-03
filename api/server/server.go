@@ -76,6 +76,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
 	// GET latest reliable branch '/get_latest_reliable_branch'
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
+	// GET latest reliable branch and check if transaction ID is in it '/check_txid_in_lrb?txid=<hex-encoded transaction ID>'
+	srv.addHandler(api.PathCheckTxIDInLRB, srv.checkTxIDIncludedInLRB)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
 }
@@ -508,15 +510,55 @@ func (srv *server) queryTxInclusionScore(w http.ResponseWriter, r *http.Request)
 }
 
 func (srv *server) getLatestReliableBranch(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
 	bd := srv.GetLatestReliableBranch()
 	if bd == nil {
-		writeErr(w, "latest reliable branch has not been found")
+		writeErr(w, "latest reliable branch (LRB) has not been found")
 		return
 	}
 
 	resp := &api.LatestReliableBranch{
 		RootData: *bd.RootRecord.JSONAble(),
 		BranchID: bd.Stem.ID.TransactionID(),
+	}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func (srv *server) checkTxIDIncludedInLRB(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
+	var txid ledger.TransactionID
+	var err error
+
+	lst, ok := r.URL.Query()["txid"]
+	if !ok || len(lst) != 1 {
+		writeErr(w, "txid expected")
+		return
+	}
+	txid, err = ledger.TransactionIDFromHexString(lst[0])
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+
+	var resp api.CheckRxIDInLRB
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		resp.TxID = txid.StringHex()
+		resp.Included = rdr.KnowsCommittedTransaction(&txid)
+		return nil
+	})
+	if err != nil {
+		writeErr(w, err.Error())
+		return
 	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
