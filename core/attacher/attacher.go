@@ -359,6 +359,11 @@ func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.W
 		// not on the state, so it is not defined
 		a.pastCone.SetFlagsUp(vidEndorsed, vertex.FlagPastConeVertexCheckedInTheState)
 	}
+
+	if !a.pullIfNeeded(vidEndorsed) {
+		return false, false
+	}
+
 	return true, flagsBefore != a.pastCone.Flags(vidEndorsed)
 }
 
