@@ -9,8 +9,6 @@ import (
 
 const TraceTagPull = "pull"
 
-// TODO pull every transaction which is not in the state?
-
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 	a.Tracef(TraceTagPull, "pullIfNeeded IN: %s", deptVID.IDShortString)
 	defer a.Tracef(TraceTagPull, "pullIfNeeded OUT: %s", deptVID.IDShortString)
@@ -25,8 +23,6 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
 	defer a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT: %s", deptVID.IDShortString)
-
-	//a.Assertf(a.pastCone.IsKnown(deptVID), "a.IsKnown(deptVID): %s", deptVID.IDShortString)
 
 	repeatPullAfter, maxPullAttempts, numPeers := a.TxPullParameters()
 
@@ -50,14 +46,30 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// at this point inTheState status must be fully defined
 	flags := a.pastCone.Flags(deptVID)
-	a.Assertf(flags.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "a.pastCone.Flags(deptVID).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
-
-	if flags.FlagsUp(vertex.FlagPastConeVertexInTheState) {
+	if flags.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
+		if flags.FlagsUp(vertex.FlagPastConeVertexInTheState) {
+			virtualTx.SetPullNotNeeded()
+			return true
+		} else {
+			virtualTx.SetPullNeeded()
+			return a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
+		}
+	}
+	// not known 'inTheState status'
+	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
+	if len(txBytesWithMetadata) > 0 {
 		virtualTx.SetPullNotNeeded()
+		go func() {
+			a.IncCounter("store")
+			defer a.DecCounter("store")
+
+			if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
+				a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
+			}
+		}()
 		return true
 	}
-	virtualTx.SetPullNeeded()
-	return a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
+
 }
 
 func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nPeers int) bool {
