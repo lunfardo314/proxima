@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -39,26 +38,24 @@ func readFrame(stream network.Stream) ([]byte, error) {
 	return msgBuf, nil
 }
 
-var writeMutex sync.Mutex
-
 func writeFrame(stream network.Stream, payload []byte) error {
-	writeMutex.Lock()
-	defer writeMutex.Unlock()
-
 	if len(payload) > MaxPayloadSize {
 		return fmt.Errorf("payload size %d exceeds maximum %d bytes", len(payload), MaxPayloadSize)
 	}
-	if err := binary.Write(stream, binary.BigEndian, uint32(len(payload))); err != nil {
-		return fmt.Errorf("writeFrame: failed to write size prefix: %v", err)
-	}
-	if len(payload) == 0 {
-		return nil
-	}
-	if n, err := stream.Write(payload); err != nil || n != len(payload) {
+
+	// Allocate a single buffer for the length prefix and payload
+	frame := make([]byte, 4+len(payload))
+	// Write the length prefix to the first 4 bytes
+	binary.BigEndian.PutUint32(frame[:4], uint32(len(payload)))
+	// Copy the payload into the buffer after the prefix
+	copy(frame[4:], payload)
+
+	// Write the entire frame in one go
+	if n, err := stream.Write(frame); err != nil || n != len(frame) {
 		if err == nil {
-			err = fmt.Errorf("expected %d bytes written", len(payload))
+			err = fmt.Errorf("expected %d bytes written", len(frame))
 		}
-		return fmt.Errorf("failed to write paylod: %v", err)
+		return fmt.Errorf("failed to write payload: %v", err)
 	}
 	return nil
 }
