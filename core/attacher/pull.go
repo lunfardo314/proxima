@@ -25,10 +25,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	defer a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT: %s", deptVID.IDShortString)
 
 	repeatPullAfter, maxPullAttempts, numPeers := a.TxPullParameters()
-
 	if virtualTx.PullRulesDefined() {
-		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined", deptVID.IDShortString)
-
 		if virtualTx.PullPatienceExpired(maxPullAttempts) {
 			// solidification deadline
 			a.Log().Errorf("SOLIDIFICATION FAILURE %s at depth %d, hex: %s attacher: %s ",
@@ -38,24 +35,17 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			return false
 		}
 		if virtualTx.PullNeeded() {
-			return a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
+			a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
 		}
-		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined. Pull NOT NEEDED", deptVID.IDShortString)
 		return true
 	}
 
-	// at this point inTheState status must be fully defined
-	flags := a.pastCone.Flags(deptVID)
-	if flags.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
-		if flags.FlagsUp(vertex.FlagPastConeVertexInTheState) {
-			virtualTx.SetPullNotNeeded()
-			return true
-		} else {
-			virtualTx.SetPullNeeded()
-			return a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
-		}
+	if a.pastCone.IsInTheState(deptVID) {
+		virtualTx.SetPullNotNeeded()
+		return true
 	}
-	// not known 'inTheState status'
+
+	// no in the state or not known 'inTheState status'
 	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
 	if len(txBytesWithMetadata) > 0 {
 		virtualTx.SetPullNotNeeded()
@@ -69,39 +59,15 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		}()
 		return true
 	}
-
+	virtualTx.SetPullNeeded()
+	a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
+	return true
 }
 
-func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nPeers int) bool {
-	a.Tracef(TraceTagPull, "pull IN %s", deptVID.IDShortString)
-	defer a.Tracef(TraceTagPull, "pull OUT %s", deptVID.IDShortString)
-
-	// TODO prevent repetitive reading from DB every pull
-
-	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
-	if len(txBytesWithMetadata) > 0 {
-		a.Tracef(TraceTagPull, "pull found in store %s", deptVID.IDShortString)
-
-		virtualTx.SetPullNotNeeded()
-
-		go func() {
-			a.IncCounter("store")
-			defer a.DecCounter("store")
-
-			if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
-				a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
-			}
-		}()
-		return true
-	}
-	a.Tracef(TraceTagPull, "pull NOT found in store %s", deptVID.IDShortString)
-	// failed to load txBytes from store -> pull it from peers
+func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nPeers int) {
 	a.pokeMe(deptVID)
-
 	// add transaction to the wanted/expected list
-
 	a.AddWantedTransaction(&deptVID.ID)
 	nPulls := a.PullFromNPeers(nPeers, &deptVID.ID)
 	virtualTx.SetPullHappened(nPulls, repeatPullAfter)
-	return true
 }

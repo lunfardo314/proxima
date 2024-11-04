@@ -612,6 +612,7 @@ func TestAttachConflictsNAttachersSeqStartTxFee(t *testing.T) {
 	//testData.wrk.SaveGraph("utangle")
 }
 
+// TODO failing
 func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	const (
 		nConflicts = 5  // 2
@@ -1036,6 +1037,7 @@ func TestAttachSeqChains(t *testing.T) {
 		}
 		//testData.wrk.SaveGraph("utangle")
 	})
+	// TODO failing
 	t.Run("with 1 branch pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
@@ -1156,7 +1158,6 @@ func TestAttachSeqChains(t *testing.T) {
 			runtime.NumGoroutine(),
 		)
 	})
-
 	t.Run("with N branches and transfers", func(t *testing.T) {
 		const (
 			nConflicts            = 3

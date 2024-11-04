@@ -341,20 +341,23 @@ func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.W
 	if a.baseline == nil {
 		return true, false
 	}
+
+	if !flagsBefore.FlagsUp(vertex.FlagPastConeVertexKnown) {
+		if !a.pastCone.MarkVertexKnown(vidEndorsed) {
+			return true, false
+		}
+	}
+
 	if a.baselineSugaredStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
 		// once endorsement is on the baseline, it is fully defined
 		a.pastCone.SetFlagsUp(vidEndorsed,
-			vertex.FlagPastConeVertexKnown|
-				vertex.FlagPastConeVertexCheckedInTheState|
+			vertex.FlagPastConeVertexCheckedInTheState|
 				vertex.FlagPastConeVertexInTheState|
 				vertex.FlagPastConeVertexDefined,
 		)
 	} else {
 		// not on the state, so it is not defined
-		a.pastCone.SetFlagsUp(vidEndorsed,
-			vertex.FlagPastConeVertexKnown|
-				vertex.FlagPastConeVertexCheckedInTheState,
-		)
+		a.pastCone.SetFlagsUp(vidEndorsed, vertex.FlagPastConeVertexCheckedInTheState)
 	}
 	return true, flagsBefore != a.pastCone.Flags(vidEndorsed)
 }
