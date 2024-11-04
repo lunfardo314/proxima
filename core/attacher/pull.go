@@ -9,6 +9,8 @@ import (
 
 const TraceTagPull = "pull"
 
+// TODO pull every transaction which is not in the state?
+
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 	a.Tracef(TraceTagPull, "pullIfNeeded IN: %s", deptVID.IDShortString)
 	defer a.Tracef(TraceTagPull, "pullIfNeeded OUT: %s", deptVID.IDShortString)
@@ -45,20 +47,15 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules defined. Pull NOT NEEDED", deptVID.IDShortString)
 		return true
 	}
-	// pull rules have not been defined yet
-	if ok := a.checkInTheStateStatus(deptVID); !ok {
-		return false
-	}
 
-	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Pull rules not defined", deptVID.IDShortString)
-	if a.pastCone.IsInTheState(deptVID) {
+	// at this point inTheState status must be fully defined
+	flags := a.pastCone.Flags(deptVID)
+	a.Assertf(flags.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "a.pastCone.Flags(deptVID).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
+
+	if flags.FlagsUp(vertex.FlagPastConeVertexInTheState) {
 		virtualTx.SetPullNotNeeded()
 		return true
 	}
-
-	// wasn't checked root status yet or not Rooted transaction
-	// define pull rules by setting pull deadline and pull
-	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: %s. Set pull timeout and pull", deptVID.IDShortString)
 	virtualTx.SetPullNeeded()
 	return a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
 }

@@ -279,11 +279,15 @@ func (pc *PastCone) IsKnownDefined(vid *WrappedTx) bool {
 	return pc.Flags(vid).FlagsUp(FlagPastConeVertexKnown | FlagPastConeVertexDefined)
 }
 
-func (pc *PastCone) isVertexInTheState(vid *WrappedTx) (rooted bool) {
-	if rooted = pc.Flags(vid).FlagsUp(FlagPastConeVertexInTheState); rooted {
+func (pc *PastCone) isVertexInTheState(vid *WrappedTx) (inTheState bool) {
+	if inTheState = pc.Flags(vid).FlagsUp(FlagPastConeVertexInTheState); inTheState {
 		pc.Assertf(pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState), "pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState)")
 	}
 	return
+}
+
+func (pc *PastCone) IsCheckedInTheState(vid *WrappedTx) bool {
+	return pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState)
 }
 
 // IsNotInTheState is definitely known it is not in the state
