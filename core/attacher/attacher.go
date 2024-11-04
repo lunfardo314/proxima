@@ -263,7 +263,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	} else {
 		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.Tx.IDShortString)
 	}
-	inputsOk := a.attachInputsOfTheVertex(v, vidUnwrapped) // deep recursion
+	inputsOk := a.attachInputsOfTheVertexOld(v, vidUnwrapped) // deep recursion
 	if !inputsOk {
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return false
@@ -309,8 +309,6 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	return true
 }
 
-// referenceEndorsement checks and solidifies specific endorsement in the vertex.
-// If necessary, check its status wrt the baseline state and marks flags on the attacher
 func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) (ok, stateHasChanged bool) {
 	vidEndorsed := v.Endorsements[index]
 
@@ -342,28 +340,10 @@ func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.W
 		return true, false
 	}
 
-	if !flagsBefore.FlagsUp(vertex.FlagPastConeVertexKnown) {
-		if !a.pastCone.MarkVertexKnown(vidEndorsed) {
-			return true, false
-		}
-	}
-
-	if a.baselineSugaredStateReader().KnowsCommittedTransaction(&vidEndorsed.ID) {
-		// once endorsement is on the baseline, it is fully defined
-		a.pastCone.SetFlagsUp(vidEndorsed,
-			vertex.FlagPastConeVertexCheckedInTheState|
-				vertex.FlagPastConeVertexInTheState|
-				vertex.FlagPastConeVertexDefined,
-		)
-	} else {
-		// not on the state, so it is not defined
-		a.pastCone.SetFlagsUp(vidEndorsed, vertex.FlagPastConeVertexCheckedInTheState)
-	}
-
+	a.defineInTheStateStatus(vidEndorsed)
 	if !a.pullIfNeeded(vidEndorsed) {
 		return false, false
 	}
-
 	return true, flagsBefore != a.pastCone.Flags(vidEndorsed)
 }
 
@@ -412,7 +392,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (
 			return false
 		}
 
-		// at this point all branch transactions must already be allDefined
+		// at this point all branch transactions must already be allDefined, so do not reach here
 		a.Assertf(!vidEndorsed.IsBranchTransaction(), "unexpected branch, got %s", vidEndorsed.IDShortString)
 
 		// it will pull if needed
@@ -430,37 +410,28 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (
 	return true
 }
 
-// checkInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly
-func (a *attacher) checkInTheStateStatus(vid *vertex.WrappedTx) bool {
-	defer func() {
-		if a.baseline != nil {
-			a.Assertf(a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
+// defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly
+func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
+	flagsBefore := a.pastCone.Flags(vid)
+	if !flagsBefore.FlagsUp(vertex.FlagPastConeVertexKnown) {
+		if !a.pastCone.MarkVertexKnown(vid) {
+			return
 		}
-	}()
-	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
-		return true
 	}
-	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState), "!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState)")
-	if a.baseline == nil {
-		return true
-	}
+
 	if a.baselineSugaredStateReader().KnowsCommittedTransaction(&vid.ID) {
-		a.pastCone.MustMarkVertexInTheState(vid)
+		// once endorsement is on the baseline, it is fully defined
+		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 	} else {
-		a.pastCone.MustMarkVertexNotInTheState(vid)
+		// not on the state, so it is not defined
+		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState)
 	}
-	// checks for conflicts because it changes its status
-	if conflict := a.pastCone.Conflict(a.baselineStateReader, vid.Timestamp()); conflict != nil {
-		a.setError(fmt.Errorf("conflict in the past cone: %s", conflict.IDShortString()))
-		return false
-	}
-	return true
 }
 
 const TraceTagAttachInputs = "attachInputs"
 
-func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
-	a.Tracef(TraceTagAttachInputs, "attachInputsOfTheVertex IN: %s", vidUnwrapped.IDShortString)
+func (a *attacher) attachInputsOfTheVertexOld(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
+	a.Tracef(TraceTagAttachInputs, "attachInputsOfTheVertexOld IN: %s", vidUnwrapped.IDShortString)
 
 	numUndefined := v.Tx.NumInputs()
 	var success bool
@@ -487,7 +458,7 @@ func (a *attacher) attachInputsOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 func (a *attacher) attachInput(v *vertex.Vertex, inputIdx byte, vidUnwrapped *vertex.WrappedTx) (ok, defined bool) {
 	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
-	vidInputTx, ok := a.attachInputID(v, vidUnwrapped, inputIdx)
+	vidInputTx, ok := a.attachInputIDOld(v, vidUnwrapped, inputIdx)
 	if !ok {
 		a.Tracef(TraceTagAttachVertex, "bad input %d", inputIdx)
 		return false, false
@@ -624,8 +595,79 @@ func (a *attacher) branchesCompatible(txid1, txid2 *ledger.TransactionID) bool {
 	}
 }
 
-// attachInputID links input vertex with the consumer, detects conflicts in the scope of the attacher
-func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrapped *vertex.WrappedTx, inputIdx byte) (vidInputTx *vertex.WrappedTx, ok bool) {
+func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrapped *vertex.WrappedTx, inputIdx byte) (vidInputTx *vertex.WrappedTx, ok, stateChanged bool) {
+	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
+	vidInputTx = consumerVertex.Inputs[inputIdx]
+
+	if vidInputTx == nil {
+		vidInputTx = AttachTxID(inputOid.TransactionID(), a,
+			WithInvokedBy(a.name),
+			WithAttachmentDepth(consumerTxUnwrapped.GetAttachmentDepthNoLock()+1),
+		)
+	}
+	a.Assertf(vidInputTx != nil, "vidInputTx != nil")
+
+	if vidInputTx.GetTxStatus() == vertex.Bad {
+		a.setError(vidInputTx.GetError())
+		return nil, false, false
+	}
+
+	if !consumerVertex.ReferenceInput(inputIdx, vidInputTx) {
+		// input remains nil
+		return nil, true, false
+	}
+
+	flagsBefore := a.pastCone.Flags(vidInputTx)
+
+	if !flagsBefore.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
+		if a.baselineStateReader().KnowsCommittedTransaction(&vidInputTx.ID) {
+			a.pastCone.SetFlagsUp(vidInputTx, vertex.FlagPastConeVertexKnown|vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState)
+		} else {
+			a.pastCone.SetFlagsUp(vidInputTx, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState)
+		}
+	}
+
+	if !flagsBefore.FlagsUp(vertex.FlagPastConeVertexKnown) {
+		if vidInputTx.IsSequencerMilestone() {
+			// if input is a sequencer milestones, check if baselines are compatible
+			if inputBaselineBranch := vidInputTx.BaselineBranch(); inputBaselineBranch != nil {
+				if !a.branchesCompatible(&a.baseline.ID, &inputBaselineBranch.ID) {
+					err := fmt.Errorf("branches %s and %s not compatible", a.baseline.IDShortString(), inputBaselineBranch.IDShortString())
+					a.setError(err)
+					return nil, false, false
+				}
+			}
+		}
+		if !a.pastCone.MarkVertexKnown(vidInputTx) {
+			return nil, false, false
+		}
+		stateChanged = true
+	}
+
+	if !flagsBefore.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
+
+	}
+
+	// add consumer to the vertex. This may cause conflicting past cone
+	vidInputTx.AddConsumer(inputOid.Index(), consumerTxUnwrapped)
+
+	if !a.pastCone.IsKnown(vidInputTx) {
+		// it is a new vertex in the past cone. Mark it known and check if it does not bring new conflicts
+		if !a.pastCone.MarkVertexKnown(vidInputTx) {
+			// failed to reference
+			return nil, true
+		}
+
+		if conflict := a.pastCone.Conflict(a.baselineStateReader, vidInputTx.Timestamp()); conflict != nil {
+			a.setError(fmt.Errorf("attachInputIDOld: conflict in the past cone: %s -- after adding %s", conflict.IDShortString(), vidInputTx.IDShortString()))
+			return nil, false
+		}
+	}
+
+}
+
+// attachInputIDOld links input vertex with the consumer, detects conflicts in the scope of the attacher
+func (a *attacher) attachInputIDOld(consumerVertex *vertex.Vertex, consumerTxUnwrapped *vertex.WrappedTx, inputIdx byte) (vidInputTx *vertex.WrappedTx, ok bool) {
 	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
 	inputOid := consumerVertex.Tx.MustInputAt(inputIdx)
@@ -675,7 +717,7 @@ func (a *attacher) attachInputID(consumerVertex *vertex.Vertex, consumerTxUnwrap
 		}
 
 		if conflict := a.pastCone.Conflict(a.baselineStateReader, vidInputTx.Timestamp()); conflict != nil {
-			a.setError(fmt.Errorf("attachInputID: conflict in the past cone: %s -- after adding %s", conflict.IDShortString(), vidInputTx.IDShortString()))
+			a.setError(fmt.Errorf("attachInputIDOld: conflict in the past cone: %s -- after adding %s", conflict.IDShortString(), vidInputTx.IDShortString()))
 			return nil, false
 		}
 	}
