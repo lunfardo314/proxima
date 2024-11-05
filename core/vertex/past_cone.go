@@ -144,19 +144,16 @@ func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
 	pc.Logging.Assertf(cond, format+"\n---- past cone ----\n%s", argsExt...)
 }
 
-func (pc *PastCone) SetBaseline(vid *WrappedTx) (ret bool) {
+func (pc *PastCone) SetBaseline(vid *WrappedTx) bool {
 	pc.Assertf(pc.baseline == nil, "SetBaseline: pc.baseline == nil")
 	pc.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction(): %s", vid.IDShortString)
-
-	fmt.Printf(">>>>>>>>>>>> SetBaseline %s\n", vid.IDShortString())
 
 	if pc.delta == nil {
 		pc.setBaseline(vid)
 	} else {
 		pc.delta.setBaseline(vid)
 	}
-	pc.markVertexWithFlags(vid, FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState)
-	return
+	return pc.markVertexWithFlags(vid, FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState)
 }
 
 func (pc *PastCone) UnReferenceAll() {
@@ -256,7 +253,6 @@ func (pc *PastCone) reference(vid *WrappedTx) bool {
 	if !vid.Reference() {
 		return false
 	}
-	fmt.Printf(">>>>>>> ++ %s\n", vid.IDShortString())
 	pc.refCounter++
 	if pc.delta == nil {
 		pc.traceLines.Trace("ref %s", vid.IDShortString)
@@ -298,8 +294,6 @@ func (pc *PastCone) IsInTheState(vid *WrappedTx) (rooted bool) {
 }
 
 func (pc *PastCone) MarkVertexKnown(vid *WrappedTx) bool {
-	fmt.Printf(">>>>>>> MarkVertexKnown %s\n", vid.IDShortString())
-
 	// prevent repeated referencing
 	if !pc.IsKnown(vid) {
 		return pc.reference(vid)
@@ -314,11 +308,14 @@ func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
 	pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
 }
 
-func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
+func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) bool {
 	if !pc.IsKnown(vid) {
-		pc.mustReference(vid)
+		if !pc.reference(vid) {
+			return false
+		}
 	}
 	pc.SetFlagsUp(vid, flags)
+	return true
 }
 
 func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {

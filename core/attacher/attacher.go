@@ -63,7 +63,7 @@ func (a *attacher) solidifyBaselineVertex(v *vertex.Vertex, vidUnwrapped *vertex
 }
 
 func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
-	a.Assertf(v.BaselineBranch == nil, "v.BaselineBranchTxID == nil")
+	a.Assertf(v.BaselineBranch == nil, "v.BaselineBranch == nil")
 
 	stemInputIdx := v.StemInputIndex()
 	stemInputOid := v.Tx.MustInputAt(stemInputIdx)
