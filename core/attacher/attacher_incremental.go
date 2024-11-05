@@ -138,15 +138,21 @@ func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 }
 
 func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedOutput) error {
-	a.attachInput()
-	ok, defined := a.attachOutputOld(wOut)
-	if !ok {
-		util.AssertMustError(a.err)
-		return a.err
-	}
+	a.Assertf(wOut.ValidID(), "wOut.ValidID()")
 
-	if !defined {
-		return ErrPastConeNotSolidYet
+	if wOut.VID.IsBranchTransaction() {
+		if !a.branchesCompatible(a.baseline, wOut.VID) {
+			return fmt.Errorf("conflicting branch output %s", wOut.IDShortString())
+		}
+	} else {
+		if !a.refreshDependencyStatus(wOut.VID) {
+			return ErrPastConeNotSolidYet
+		}
+	}
+	if a.pastCone.IsInTheState(wOut.VID) {
+		if !a.checkOutputInTheState(wOut.VID, wOut.Index) {
+			return ErrPastConeNotSolidYet
+		}
 	}
 	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut, a.baselineStateReader); conflict != nil {
 		return fmt.Errorf("past cone contains double-spend %s", conflict.IDShortString())
@@ -181,7 +187,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		return fmt.Errorf("insertEndorsement: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
 	}
 	endBaseline := endorsement.BaselineBranch()
-	if !a.branchesCompatible(&a.baseline.ID, &endBaseline.ID) {
+	if !a.branchesCompatible(a.baseline, endBaseline) {
 		return fmt.Errorf("insertEndorsement: baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
 			endBaseline.IDShortString, endorsement.IDShortString(), a.baseline.IDShortString())
 	}
@@ -189,14 +195,14 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		// branch is compatible with the baseline
 		a.pastCone.MustMarkVertexInTheState(endorsement)
 	} else {
-		ok, defined := a.attachVertexNonBranch(endorsement)
+		ok := a.attachVertexNonBranch(endorsement)
 		a.Assertf(ok || a.err != nil, "ok || a.err != nil")
 		if !ok {
 			a.Assertf(a.err != nil, "a.err != nil")
 			return a.err
 		}
 		a.Assertf(a.err == nil, "a.err == nil")
-		if !defined {
+		if !a.pastCone.Flags(endorsement).FlagsUp(vertex.FlagPastConeVertexDefined) {
 			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
 		}
 	}

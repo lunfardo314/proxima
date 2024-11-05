@@ -113,13 +113,13 @@ func (pb *PastConeBase) addVirtuallyConsumedOutput(wOut WrappedOutput) {
 func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, getStateReader func() global.IndexedStateReader) *WrappedOutput {
 	if pc.delta == nil {
 		pc.addVirtuallyConsumedOutput(wOut)
-		return pc.Conflict(getStateReader, wOut.Timestamp())
+		return pc.Conflict(getStateReader)
 	}
 	if pc.isVirtuallyConsumed(wOut) || pc.delta.isVirtuallyConsumed(wOut) {
 		return nil
 	}
 	pc.delta.addVirtuallyConsumedOutput(wOut)
-	return pc.Conflict(getStateReader, wOut.Timestamp())
+	return pc.Conflict(getStateReader)
 }
 
 func (pb *PastConeBase) isVirtuallyConsumed(wOut WrappedOutput) bool {
@@ -608,29 +608,6 @@ func (pc *PastCone) mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedTx
 	return ret
 }
 
-// Conflict returns double-spent output (conflict), or nil if past cone is consistent
-// The complexity is O(NxM) where N is number of vertices and M is average number of conflicts in the UTXO tangle
-// Practically, it is linear wrt number of vertices because M is 1 or close to 1.
-// for optimization, latest time value can be specified
-func (pc *PastCone) Conflict(getStateReader func() global.IndexedStateReader, before ...ledger.Time) (conflict *WrappedOutput) {
-	stateReader := getStateReader()
-	if len(before) > 0 {
-		beforeTs := before[0]
-		pc.forAllVertices(func(vid *WrappedTx) bool {
-			if vid.Timestamp().Before(beforeTs) {
-				conflict = pc.checkConsumers(vid, stateReader)
-			}
-			return conflict == nil
-		})
-	} else {
-		pc.forAllVertices(func(vid *WrappedTx) bool {
-			conflict = pc.checkConsumers(vid, stateReader)
-			return conflict == nil
-		})
-	}
-	return
-}
-
 func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
@@ -809,28 +786,18 @@ func (pc *PastCone) getBaseline() *WrappedTx {
 	return nil
 }
 
-// AppendPastCone appends deterministic past cone to the current one. Returns conflict info if any
-func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() global.IndexedStateReader) (conflict *WrappedOutput) {
-	pc.MustConflictFreeCond(getStateReader)
-
+// AppendPastCone appends deterministic past cone to the current one. Does not check for conflicts
+func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() global.IndexedStateReader) {
 	baseline := pc.getBaseline()
 	pc.Assertf(baseline != nil, "pc.hasBaseline()")
 	pc.Assertf(pcb.baseline != nil, "pcb.baseline != nil")
-
+	pc.Assertf(baseline.IsContainingBranchOf(pcb.baseline, getStateReader), "baseline.IsContainingBranchOf(pcb.baseline, getStateReader)")
 	// we require baselines must be compatible (on the same chain) of pcb should not be younger than pc
-	if !baseline.IsContainingBranchOf(pcb.baseline, getStateReader) {
-		// baselines not compatible
-		return &WrappedOutput{} // >>>>>>>>>>>>>>>> conflicting baselines
-	}
-
 	if len(pcb.vertices) == 0 {
-		return nil
+		return
 	}
 	baselineStateReader := getStateReader()
 
-	// pcb is assumed to be deterministic at this point, i.e. immutable and all vertices in it must be 'known defined'
-	// it does not need any locking
-	var latest ledger.Time
 	for vid, flags := range pcb.vertices {
 		pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined), "inconsistent flag in appended past cone: %s", flags.String())
 
@@ -843,11 +810,7 @@ func (pc *PastCone) AppendPastCone(pcb *PastConeBase, getStateReader func() glob
 		}
 		// it will also create a new entry in the target past cone if necessary
 		pc.markVertexWithFlags(vid, flags & ^FlagPastConeVertexAskedForPoke)
-		latest = ledger.MaximumTime(latest, vid.Timestamp())
 	}
-
-	// check for newly appeared conflicts
-	return pc.Conflict(getStateReader, latest)
 }
 
 // CheckFinalPastCone check determinism consistency of the past cone
@@ -946,16 +909,21 @@ func (pb *PastConeBase) Len() int {
 	return len(pb.vertices)
 }
 
-// Clean removes vertices which are in the state and all consumed outputs are consumed by vertices in the state
-// Assumes fully deterministic set of vertices
-func (pc *PastCone) Clean() {
+// CheckAndClean iterates past cone, checks for conflicts and removes those vertices
+// which has consumers and all consumers are already in the state
+func (pc *PastCone) CheckAndClean() (conflict *WrappedOutput) {
 	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 
+	var canBeRemoved bool
 	toDelete := make([]*WrappedTx, 0)
 	for vid, flags := range pc.vertices {
 		pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState), "wrong flag in %s", vid.IDShortString)
-		if pc._canBeRemoved(vid) {
+		conflict, canBeRemoved = pc._checkVertex(vid)
+		if conflict != nil {
+			return
+		}
+		if canBeRemoved {
 			toDelete = append(toDelete, vid)
 		}
 	}
@@ -964,23 +932,45 @@ func (pc *PastCone) Clean() {
 		vid.UnReference()
 		pc.refCounter--
 	}
+	return
 }
 
-func (pc *PastCone) _canBeRemoved(vid *WrappedTx) bool {
+func (pc *PastCone) _checkVertex(vid *WrappedTx) (doubleSpend *WrappedOutput, canBeRemoved bool) {
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
 
-	hasConsumerNotInTheState := false
-	hasConsumer := false
-	vid.forEachConsumerNoLock(func(consumer *WrappedTx, outputIndex byte) bool {
-		if pc.IsKnown(consumer) {
-			hasConsumer = true
-			if pc.IsNotInTheState(consumer) {
-				hasConsumerNotInTheState = true
-				return false
+	allConsumersInTheState := true
+	hasConsumers := false
+
+	for idx, consumers := range vid.consumed {
+		for consumer := range consumers {
+			var firstConsumer *WrappedTx
+			if pc.IsKnown(consumer) {
+				if firstConsumer != nil {
+					// double spend
+					doubleSpend = &WrappedOutput{VID: vid, Index: idx}
+					return
+				}
+				firstConsumer = consumer
+				hasConsumers = true
+				if pc.IsNotInTheState(consumer) {
+					allConsumersInTheState = false
+				}
 			}
 		}
-		return true
+	}
+	return nil, hasConsumers && allConsumersInTheState
+}
+
+// Conflict returns double-spent output (conflict), or nil if past cone is consistent
+// The complexity is O(NxM) where N is number of vertices and M is average number of conflicts in the UTXO tangle
+// Practically, it is linear wrt number of vertices because M is 1 or close to 1.
+// for optimization, latest time value can be specified
+func (pc *PastCone) Conflict(getStateReader func() global.IndexedStateReader) (conflict *WrappedOutput) {
+	stateReader := getStateReader()
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		conflict = pc.checkConsumers(vid, stateReader)
+		return conflict == nil
 	})
-	return hasConsumer && !hasConsumerNotInTheState
+	return
 }

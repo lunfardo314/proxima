@@ -54,3 +54,7 @@ func WrappedOutputsShortLines(wOuts []WrappedOutput) *lines.Lines {
 	}
 	return ret
 }
+
+func (o *WrappedOutput) ValidID() bool {
+	return int(o.Index) < o.VID.NumProducedOutputs()
+}

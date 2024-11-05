@@ -149,8 +149,6 @@ func (a *milestoneAttacher) run() error {
 	}
 	a.AssertNoError(err)
 
-	a.pastCone.Clean()
-
 	// TODO optimization in the branch is not necessary to keep the past cone
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage(a.vid.Timestamp()))
 	a.EvidencePastConeSize(a.pastCone.PastConeBase.Len())
@@ -169,7 +167,7 @@ func (a *milestoneAttacher) run() error {
 }
 
 const (
-	enableDeadlockCatching      = true
+	enableDeadlockCatching      = false
 	deadlockIndicationThreshold = 10 * time.Second
 )
 
@@ -320,6 +318,11 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	}
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.Tx.IDShortString)
+
+	if conflict := a.pastCone.Conflict(a.baselineStateReader); conflict != nil {
+		a.setError(fmt.Errorf("past cone contains double-spent output %s", conflict.IDShortString()))
+		return false, false
+	}
 	return true, true
 }
 

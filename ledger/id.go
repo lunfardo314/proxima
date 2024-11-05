@@ -346,6 +346,11 @@ func (oid *OutputID) Index() byte {
 	return oid[TransactionIDLength]
 }
 
+func (oid *OutputID) Valid() bool {
+	txid := oid.TransactionID()
+	return int(oid.Index()) < txid.NumProducedOutputs()
+}
+
 func (oid *OutputID) Bytes() []byte {
 	return oid[:]
 }

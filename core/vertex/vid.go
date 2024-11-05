@@ -538,6 +538,8 @@ func (vid *WrappedTx) EnsureOutputWithID(o *ledger.OutputWithID) (err error) {
 // AddConsumer stores consumer of the vid[outputIndex] consumed output.
 // Function checkConflicts checks if new consumer conflicts with already existing ones
 func (vid *WrappedTx) AddConsumer(outputIndex byte, consumer *WrappedTx) {
+	util.Assertf(int(outputIndex) < vid.NumProducedOutputs(), "wrong output index")
+
 	vid.mutexDescendants.Lock()
 	defer vid.mutexDescendants.Unlock()
 
