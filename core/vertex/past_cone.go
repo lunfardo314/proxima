@@ -305,9 +305,7 @@ func (pc *PastCone) IsInTheState(vid *WrappedTx) (rooted bool) {
 func (pc *PastCone) MarkVertexKnown(vid *WrappedTx) bool {
 	// prevent repeated referencing
 	if !pc.IsKnown(vid) {
-		if !pc.reference(vid) {
-			return false
-		}
+		return pc.reference(vid)
 	}
 	pc.SetFlagsUp(vid, FlagPastConeVertexKnown)
 	return true

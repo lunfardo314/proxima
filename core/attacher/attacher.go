@@ -309,116 +309,99 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	return true
 }
 
-func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) (ok, stateHasChanged bool) {
+func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
+	if vidDep.GetTxStatus() == vertex.Bad {
+		a.setError(vidDep.GetError())
+		return false
+	}
+	if !a.pastCone.MarkVertexKnown(vidDep) {
+		// not referenced but it is ok
+		return true
+	}
+	a.defineInTheStateStatus(vidDep)
+	if !a.pullIfNeeded(vidDep) {
+		return false
+	}
+	return true
+}
+
+func (a *attacher) referenceDependencyTxID(txid ledger.TransactionID, referencingVid *vertex.WrappedTx) (*vertex.WrappedTx, bool) {
+	vidDep := AttachTxID(txid, a,
+		WithInvokedBy(a.name),
+		WithAttachmentDepth(referencingVid.GetAttachmentDepthNoLock()+1),
+	)
+	if a.refreshDependencyStatus(vidDep) {
+		return vidDep, true
+	}
+	return nil, false
+}
+
+func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) (ok bool) {
 	vidEndorsed := v.Endorsements[index]
 
 	if vidEndorsed == nil {
-		// solidify the input on the vertex. It does not change state of the attacher
-		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(index), a,
-			WithInvokedBy(a.name),
-			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
-		)
-		if !v.ReferenceEndorsement(index, vidEndorsed) {
-			// if failed to reference, remains nil
-			return true, false
+		vidEndorsed, ok = a.referenceDependencyTxID(v.Tx.EndorsementAt(index), vidUnwrapped)
+		if !ok {
+			return false
+		}
+		if vidEndorsed == nil {
+			return true
+		}
+		v.Endorsements[index] = vidEndorsed
+	} else {
+		if a.refreshDependencyStatus(vidEndorsed) {
+			return false
 		}
 	}
-	a.Assertf(vidEndorsed != nil, "vidEndorsed != nil")
-
-	if vidEndorsed.GetTxStatus() == vertex.Bad {
-		a.setError(vidEndorsed.GetError())
-		return false, false
-	}
-
-	flagsBefore := a.pastCone.Flags(vidEndorsed)
-	if flagsBefore.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
-		// nothing to do for this function, all clear
-		return true, false
-	}
-
-	if a.baseline == nil {
-		return true, false
-	}
-
-	a.defineInTheStateStatus(vidEndorsed)
-	if !a.pullIfNeeded(vidEndorsed) {
-		return false, false
-	}
-	return true, flagsBefore != a.pastCone.Flags(vidEndorsed)
+	return
 }
 
 func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
-	a.Assertf(!a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid), "endorsement expected not to be fully solid")
+	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
+		return true
+	}
 
-	stateHasChanged := false
-	nothingChanged := true
 	for i := range v.Endorsements {
-		if ok, stateHasChanged = a.referenceEndorsement(v, vid, byte(i)); !ok {
-			return false
-		}
-		if stateHasChanged {
-			nothingChanged = false
-		}
-	}
-
-	ts := vid.Timestamp()
-	if !nothingChanged {
-		// some vertices in the past cone changed their state -> check for conflicts
-		if conflict := a.pastCone.Conflict(a.baselineStateReader, ts); conflict != nil {
-			a.setError(fmt.Errorf("attachEndorsements: conflict %s in the past cone of %s", conflict.IDShortString(), a.name))
+		if !a.referenceEndorsement(v, vid, byte(i)) {
 			return false
 		}
 	}
 
-	atLeastOneNotDefined := false
+	allDefined := true
 	for _, vidEndorsed := range v.Endorsements {
 		if vidEndorsed == nil {
-			atLeastOneNotDefined = true
+			allDefined = false
 			continue
 		}
-		if a.pastCone.Flags(vidEndorsed).FlagsUp(vertex.FlagPastConeVertexDefined) {
-			// endorsed branches must already be allDefined
+		if vidEndorsed.IsBranchTransaction() {
+			if vidEndorsed != a.baseline {
+				a.setError(fmt.Errorf("conflicting endorsement %s", vidEndorsed.IDShortString()))
+				return false
+			}
+			a.Assertf(a.pastCone.IsKnownDefined(vidEndorsed), "expected to be 'defined': %s", vidEndorsed.IDShortString())
 			continue
 		}
-		baselineBranch := vidEndorsed.BaselineBranch()
-		if baselineBranch == nil {
-			atLeastOneNotDefined = true
-			continue
-		}
-		// baseline of the endorsement must be compatible with baseline of the attacher
-		if !a.branchesCompatible(&a.baseline.ID, &baselineBranch.ID) {
-			a.setError(fmt.Errorf("attachEndorsements: baseline %s of endorsement %s is incompatible with the baseline branch %s",
-				baselineBranch.IDShortString(), vidEndorsed.IDShortString(), a.baseline.IDShortString()))
-			return false
-		}
-
-		// at this point all branch transactions must already be allDefined, so do not reach here
-		a.Assertf(!vidEndorsed.IsBranchTransaction(), "unexpected branch, got %s", vidEndorsed.IDShortString)
-
-		// it will pull if needed
 		ok1, defined := a.attachVertexNonBranch(vidEndorsed)
 		if !ok1 {
 			return false
 		}
 		if !defined {
-			atLeastOneNotDefined = true
+			allDefined = false
 		}
 	}
-	if !atLeastOneNotDefined {
+	if allDefined {
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexEndorsementsSolid)
 	}
 	return true
 }
 
-// defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly
+// defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly, if possible
 func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
-	flagsBefore := a.pastCone.Flags(vid)
-	if !flagsBefore.FlagsUp(vertex.FlagPastConeVertexKnown) {
-		if !a.pastCone.MarkVertexKnown(vid) {
-			return
-		}
-	}
+	a.Assertf(a.pastCone.IsKnown(vid), "a.pastCone.IsKnown(vid): %s", vid.IDShortString)
 
+	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) || a.baseline == nil {
+		return
+	}
 	if a.baselineSugaredStateReader().KnowsCommittedTransaction(&vid.ID) {
 		// once endorsement is on the baseline, it is fully defined
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
