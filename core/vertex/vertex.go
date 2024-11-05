@@ -66,7 +66,8 @@ func (v *Vertex) UnReferenceDependencies() {
 func (v *Vertex) InputLoaderByIndex(i byte) (*ledger.Output, error) {
 	o := v.GetConsumedOutput(i)
 	if o == nil {
-		return nil, fmt.Errorf("InputLoaderByIndex: consumed output at index %d is not available", i)
+		oid := v.Tx.MustInputAt(i)
+		return nil, fmt.Errorf("InputLoaderByIndex: consumed output %s at index %d is not available", oid.StringShort(), i)
 	}
 	return o, nil
 }

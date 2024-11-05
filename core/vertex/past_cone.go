@@ -159,11 +159,11 @@ func (pc *PastCone) SetBaseline(vid *WrappedTx) bool {
 func (pc *PastCone) UnReferenceAll() {
 	pc.Assertf(pc.delta == nil, "UnReferenceAll: pc.delta == nil")
 	unrefCounter := 0
-	if pc.baseline != nil {
-		pc.baseline.UnReference()
-		unrefCounter++
-		pc.traceLines.Trace("UnReferenceAll: unref baseline: %s", pc.baseline.IDShortString)
-	}
+	//if pc.baseline != nil {
+	//	pc.baseline.UnReference()
+	//	unrefCounter++
+	//	pc.traceLines.Trace("UnReferenceAll: unref baseline: %s", pc.baseline.IDShortString)
+	//}
 	for vid := range pc.vertices {
 		vid.UnReference()
 		unrefCounter++
@@ -296,7 +296,9 @@ func (pc *PastCone) IsInTheState(vid *WrappedTx) (rooted bool) {
 func (pc *PastCone) MarkVertexKnown(vid *WrappedTx) bool {
 	// prevent repeated referencing
 	if !pc.IsKnown(vid) {
-		return pc.reference(vid)
+		if !pc.reference(vid) {
+			return false
+		}
 	}
 	pc.SetFlagsUp(vid, FlagPastConeVertexKnown)
 	return true

@@ -47,7 +47,7 @@ func (a *attacher) baselineStateReader() global.IndexedStateReader {
 }
 
 func (a *attacher) setError(err error) {
-	a.Tracef(TraceTagAttach, "set err: '%v'", err)
+	fmt.Printf(">>>>>>>>>>>>>>>>>> set err (%s): %v", a.name, err)
 	a.err = err
 }
 
@@ -194,7 +194,6 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				// here cut the recursion and merge 'good' past cone
 				deterministicPastCone = vid.GetPastConeNoLock()
 				a.Assertf(deterministicPastCone != nil, "deterministicPastCone!=nil")
-
 			case vertex.Bad:
 				a.setError(vid.GetErrorNoLock())
 
@@ -202,12 +201,13 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				a.Log().Fatalf("inconsistency: wrong tx status")
 			}
 		},
-		//VirtualTx: func(v *vertex.VirtualTransaction) {
-		//	ok = a.pullIfNeededUnwrapped(v, vid)
-		//},
+		VirtualTx: func(v *vertex.VirtualTransaction) {
+			ok = true
+			//ok = a.pullIfNeededUnwrapped(v, vid)
+		},
 	})
 	if !ok {
-		a.Assertf(a.err != nil, "a.err != nil")
+		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
 		return
 	}
 	if deterministicPastCone != nil {
