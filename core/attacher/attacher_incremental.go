@@ -138,7 +138,8 @@ func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 }
 
 func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedOutput) error {
-	ok, defined := a.attachOutput(wOut)
+	a.attachInput()
+	ok, defined := a.attachOutputOld(wOut)
 	if !ok {
 		util.AssertMustError(a.err)
 		return a.err

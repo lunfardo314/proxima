@@ -39,7 +39,7 @@ It also contains some tools, which includes basic wallet functionality.
 * **Fully permissionless**, unbounded, and globally unknown set of pseudonymous participants. 
 Participation in the ledger as a user is fully open, and it is equivalent to participation as "validator". 
 There is no need for any kind of permissions, registration, committee selection or voting processes. Nobody tracks existing participants nor a category of it.
-* **Token holders are the only actors** authorized to update the ledger. No miners, no validators, no committees nor any other third parties with their interest.
+* **Token holders are the only actors** authorized to update the ledger. No miners, no validators, no committees nor any other paid third parties with their interest.
 * **Influence of the participant** is proportional to the amount of its holdings, i.e. to it's _skin-in-the-game_. Being a _malicious token holder_ is an oxymoron.
 * **Liquidity of the token** is the only condition for the system to be fully permissionless. Ownership of tokens is the only prerequisite for participation in any role. 
 **No ASICs, no GPUs, no mining rigs**
