@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -624,8 +625,9 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 	testData.makeSeqBeginnings(true)
-	//testData.printTxIDs()
+	testData.printTxIDs()
 
+	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
 	//testData.env.StartTracingTags(attacher.TraceTagAttach)
 
 	if pullYN {
@@ -667,6 +669,14 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	//testData.env.StartTracingTags(attacher.TraceTagAttachEndorsements)
 	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
 	//testData.env.StartTracingTags(attacher.TraceTagSolidifySequencerBaseline)
+
+	const saveGraph = false
+	if saveGraph {
+		txid1, err := testData.txStore.PersistTxBytesWithMetadata(txBytesSeq, nil)
+		require.NoError(t, err)
+		require.EqualValues(t, txid, txid1)
+		memdag.SavePastConeFromTxStore(txid, testData.txStore, 0, "pastCone_TestAttachConflictsNAttachersOneFork")
+	}
 
 	waitCh := make(chan struct{})
 	vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {

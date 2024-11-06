@@ -31,7 +31,7 @@ func newPastConeAttacher(env Environment, name string) attacher {
 const (
 	TraceTagAttach       = "attach"
 	TraceTagAttachOutput = "attachOutputOld"
-	TraceTagAttachVertex = "attachVertexUnwrapped"
+	TraceTagAttachVertex = "attachVertex"
 )
 
 func (a *attacher) Name() string {
@@ -186,7 +186,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				}
 			case vertex.Good:
 				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerMilestone()")
-				if !a.branchesCompatible(a.baseline, vid.BaselineBranch()) {
+				if !a.branchesCompatible(a.baseline, v.BaselineBranch) {
 					a.setError(fmt.Errorf("conflicting baseline of %s", vid.IDShortString()))
 					return
 				}
@@ -225,12 +225,12 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 }
 
 // attachVertexUnwrapped: vid corresponds to the vertex v
-// it solidifies vertex by traversing the past cone down to Rooted outputs or undefined Vertices
-// Repetitive calling of the function reaches all past Vertices down to the Rooted outputs
+// it solidifies vertex by traversing the past cone down to rooted outputs or undefined Vertices
+// Repetitive calling of the function reaches all past vertices down to the rooted outputs
 // The exit condition of the loop is fully determined states of the past cone.
 // It results in all Vertices are vertex.Good
-// Otherwise, repetition reaches conflict (double spend) or vertex.Bad vertex and exits
-// Returns OK (= not bad)
+// Otherwise, repetition reaches vertex.Bad vertex and exits
+// Returns OK (== not bad)
 func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!v.Tx.IsSequencerMilestone() || a.baseline != nil, "!v.Tx.IsSequencerMilestone() || a.baseline != nil in %s", v.Tx.IDShortString)
 
@@ -261,12 +261,12 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	} else {
 		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.Tx.IDShortString)
 	}
-	inputsOk := a.attachInputs(v, vidUnwrapped) // deep recursion
+
+	inputsOk := a.attachInputs(v, vidUnwrapped)
 	if !inputsOk {
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return false
 	}
-
 	if !v.Tx.IsSequencerMilestone() && a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
 		if !a.finalTouchNonSequencer(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
@@ -338,34 +338,25 @@ func (a *attacher) referenceDependencyTxID(txid ledger.TransactionID, referencin
 	return nil, false
 }
 
-func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) (ok bool) {
-	vidEndorsed := v.Endorsements[index]
-
-	if vidEndorsed == nil {
+func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) bool {
+	if vidEndorsed := v.Endorsements[index]; vidEndorsed == nil {
+		var ok bool
 		vidEndorsed, ok = a.referenceDependencyTxID(v.Tx.EndorsementAt(index), vidUnwrapped)
 		if !ok {
 			return false
 		}
-		if vidEndorsed == nil {
-			return true
-		}
-		if !v.ReferenceEndorsement(index, vidEndorsed) {
-			// remains nil but it is ok
-			return true
-		}
+		v.ReferenceEndorsement(index, vidEndorsed)
+		// does not matter if referenced successfully, it can remain nil
+		return true
 	} else {
-		if a.refreshDependencyStatus(vidEndorsed) {
-			return false
-		}
+		return a.refreshDependencyStatus(vidEndorsed)
 	}
-	return
 }
 
 func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
 	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
 		return true
 	}
-
 	for i := range v.Endorsements {
 		if !a.referenceEndorsement(v, vid, byte(i)) {
 			return false
@@ -484,9 +475,6 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 
 func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID *ledger.OutputID) bool {
 	a.Assertf(a.pastCone.IsInTheState(vid), "a.pastCone.IsInTheState(wOut.VID)")
-	if vid.IDHasFragment("04fbb0a8") {
-		fmt.Printf(">>>>>>>>>>>>>>>>> checkOutputInTheState: %s\n", inputID.StringShort())
-	}
 	o, err := a.baselineSugaredStateReader().GetOutputWithID(inputID)
 	if errors.Is(err, multistate.ErrNotFound) {
 		a.setError(fmt.Errorf("output %s is already consumed", inputID.StringShort()))

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/memdag"
@@ -166,10 +167,19 @@ func (a *milestoneAttacher) run() error {
 	return nil
 }
 
-const (
-	enableDeadlockCatching      = false
-	deadlockIndicationThreshold = 10 * time.Second
-)
+// deadlock catcher, if enabled, calls callback function whenever lazyRepeat loop is stuck for more than
+// set duration threshold. EnableDeadlockCatching(0) disables deadlock catching
+// Default is enabled for 10 seconds
+
+var deadlockCatchingThreshold atomic.Int64
+
+func init() {
+	EnableDeadlockCatching(10 * time.Second)
+}
+
+func EnableDeadlockCatching(deadlockIndicationThreshold time.Duration) {
+	deadlockCatchingThreshold.Store(deadlockIndicationThreshold.Nanoseconds())
+}
 
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
@@ -177,12 +187,12 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 	// ===== deadlock catching ====
 	var checkpoint *checkpoints.Checkpoints
 	checkName := a.Name() + "_" + loopName
-	if enableDeadlockCatching {
+	if deadlockCatchingThreshold.Load() > 0 {
 		checkpoint = checkpoints.New(func(name string) {
 			buf := make([]byte, 2*math.MaxUint16)
 			runtime.Stack(buf, true)
 			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
-				checkName, deadlockIndicationThreshold, string(buf))
+				checkName, time.Duration(deadlockCatchingThreshold.Load()), string(buf))
 		})
 		defer checkpoint.Close()
 	}
@@ -207,8 +217,8 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 			a.Tracef(TraceTagAttachMilestone, "periodic check")
 		}
 
-		if enableDeadlockCatching {
-			checkpoint.Check(checkName, deadlockIndicationThreshold)
+		if d := deadlockCatchingThreshold.Load(); d > 0 {
+			checkpoint.Check(checkName, time.Duration(d))
 		}
 	}
 }
