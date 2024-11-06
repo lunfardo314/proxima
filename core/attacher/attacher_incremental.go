@@ -150,7 +150,7 @@ func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedO
 		}
 	}
 	if a.pastCone.IsInTheState(wOut.VID) {
-		if !a.checkOutputInTheState(wOut.VID, wOut.Index) {
+		if !a.checkOutputInTheState(wOut.VID, wOut.DecodeID()) {
 			return ErrPastConeNotSolidYet
 		}
 	}

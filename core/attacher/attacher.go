@@ -447,9 +447,9 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx
 }
 
 // attachInput
-func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, idx byte) (ok bool) {
-	vidDep := v.Inputs[idx]
-	oid := v.Tx.MustInputAt(idx)
+func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte) (ok bool) {
+	vidDep := v.Inputs[inputIdx]
+	oid := v.Tx.MustInputAt(inputIdx)
 
 	if !oid.Valid() {
 		a.setError(fmt.Errorf("wrong input %s", oid.String()))
@@ -464,7 +464,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 		if vidDep == nil {
 			return true
 		}
-		if !v.ReferenceInput(idx, vidDep) {
+		if !v.ReferenceInput(inputIdx, vidDep) {
 			// remains nil but it is ok
 			return true
 		}
@@ -474,7 +474,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 		}
 	}
 	if a.pastCone.IsInTheState(vidDep) {
-		if !a.checkOutputInTheState(vidDep, idx) {
+		if !a.checkOutputInTheState(vidDep, &oid) {
 			return false
 		}
 	}
@@ -482,12 +482,14 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	return true
 }
 
-func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, idx byte) bool {
+func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID *ledger.OutputID) bool {
 	a.Assertf(a.pastCone.IsInTheState(vid), "a.pastCone.IsInTheState(wOut.VID)")
-	oid := vid.OutputID(idx)
-	o, err := a.baselineSugaredStateReader().GetOutputWithID(&oid)
+	if vid.IDHasFragment("04fbb0a8") {
+		fmt.Printf(">>>>>>>>>>>>>>>>> checkOutputInTheState: %s\n", inputID.StringShort())
+	}
+	o, err := a.baselineSugaredStateReader().GetOutputWithID(inputID)
 	if errors.Is(err, multistate.ErrNotFound) {
-		a.setError(fmt.Errorf("output %s is already consumed", oid.StringShort()))
+		a.setError(fmt.Errorf("output %s is already consumed", inputID.StringShort()))
 		return false
 	}
 	a.AssertNoError(err)
