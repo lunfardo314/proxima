@@ -411,25 +411,19 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	for i := range v.Inputs {
 		if !a.attachInput(v, vidUnwrapped, byte(i)) {
+			a.Assertf(a.err != nil, "a.err!=nil in %s, idx %d", a.name, i)
 			return false
 		}
 	}
 	allDefined := true
-	for _, vidDep := range v.Inputs {
-		if vidDep == nil {
+	for _, vidInp := range v.Inputs {
+		if vidInp == nil {
 			allDefined = false
-			continue
+			break
 		}
-		isDefined := a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagPastConeVertexDefined)
-		if vidDep.IsBranchTransaction() {
-			a.Assertf(isDefined, "branch output must be 'defined'")
-			continue
-		}
-		if ok = a.attachVertexNonBranch(vidDep); !ok {
-			return
-		}
-		if !a.pastCone.Flags(vidDep).FlagsUp(vertex.FlagPastConeVertexDefined) {
+		if !a.pastCone.Flags(vidInp).FlagsUp(vertex.FlagPastConeVertexDefined) {
 			allDefined = false
+			break
 		}
 	}
 	if allDefined {
@@ -439,19 +433,15 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx
 }
 
 // attachInput
-func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte) (ok bool) {
+func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte) bool {
 	vidDep := v.Inputs[inputIdx]
 	oid := v.Tx.MustInputAt(inputIdx)
 
-	if !oid.Valid() {
-		a.setError(fmt.Errorf("wrong input %s", oid.String()))
-		return false
-	}
-
+	var ok bool
 	if vidDep == nil {
 		vidDep, ok = a.referenceDependencyTxID(oid.TransactionID(), vidUnwrapped)
 		if !ok {
-			return
+			return false
 		}
 		if vidDep == nil {
 			return true
@@ -460,15 +450,14 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 			// remains nil but it is ok
 			return true
 		}
-	} else {
-		if !a.refreshDependencyStatus(vidDep) {
-			return false
-		}
 	}
-	if a.pastCone.IsInTheState(vidDep) {
-		if !a.checkOutputInTheState(vidDep, &oid) {
-			return false
-		}
+	a.Assertf(vidDep != nil, "vidDep!=nil")
+	ok = a.attachOutput(vertex.WrappedOutput{
+		VID:   vidDep,
+		Index: oid.Index(),
+	})
+	if !ok {
+		return false
 	}
 	vidDep.AddConsumer(oid.Index(), vidUnwrapped)
 	return true
@@ -488,6 +477,26 @@ func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID *ledger.
 		return false
 	}
 	return true
+}
+
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput) bool {
+	if !wOut.ValidID() {
+		return false
+	}
+	if !a.refreshDependencyStatus(wOut.VID) {
+		return false
+	}
+	if a.pastCone.IsInTheState(wOut.VID) {
+		if !a.checkOutputInTheState(wOut.VID, wOut.DecodeID()) {
+			return false
+		}
+	}
+	if a.pastCone.Flags(wOut.VID).FlagsUp(vertex.FlagPastConeVertexDefined) {
+		return true
+	}
+	// not defined: not in the state or unknown
+	a.Assertf(!wOut.VID.IsBranchTransaction(), "!wOut.VID.IsBranchTransaction(): %s", wOut.IDShortString)
+	return a.attachVertexNonBranch(wOut.VID)
 }
 
 func (a *attacher) branchesCompatible(vidBranch1, vidBranch2 *vertex.WrappedTx) bool {
