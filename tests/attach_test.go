@@ -688,8 +688,6 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	testData.stopAndWait()
 	testData.logDAGInfo()
 
-	// memdag.SaveGraphPastCone(vidSeq, "with_conflict")
-
 	t.Logf("expected BAD transaction %s", vidSeq.IDShortString())
 	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
 	util.RequireErrorWith(t, vidSeq.GetError(), "conflicts with another consumer", "(double spend)", testData.forkOutput.IDShort())
