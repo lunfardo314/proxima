@@ -312,6 +312,7 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 		a.setError(vidDep.GetError())
 		return false
 	}
+
 	if !a.pastCone.MarkVertexKnown(vidDep) {
 		// not referenced but it is ok
 		return true

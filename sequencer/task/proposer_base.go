@@ -1,6 +1,7 @@
 package task
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -83,6 +84,8 @@ func baseProposeGenerator(p *Proposer) (*attacher.IncrementalAttacher, bool) {
 		p.Tracef(TraceTagBaseProposer, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", p.Name, extend.IDShortString)
 
 		numInserted := p.InsertTagAlongInputs(a)
+		fmt.Printf("++++++++++++++++++ %s inserted %d tag-along inputs\n", p.Name, numInserted)
+
 		p.Tracef(TraceTagBaseProposer, "%s inserted %d tag-along inputs", p.Name, numInserted)
 	}
 

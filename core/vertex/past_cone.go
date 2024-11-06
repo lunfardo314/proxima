@@ -769,7 +769,15 @@ func (pc *PastCone) hasRooted() bool {
 }
 
 func (pc *PastCone) IsComplete() bool {
-	return pc.delta == nil && !pc.ContainsUndefinedExcept(nil) && pc.hasRooted()
+	switch {
+	case pc.delta != nil:
+		return false
+	case pc.ContainsUndefinedExcept(nil):
+		return false
+	case !pc.hasRooted():
+		return false
+	}
+	return true
 }
 
 func (pc *PastCone) getBaseline() *WrappedTx {

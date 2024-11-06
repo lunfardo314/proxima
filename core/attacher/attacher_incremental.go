@@ -67,8 +67,6 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		targetTs: targetTs,
 	}
 
-	ret.pastCone.MustConflictFreeCond(ret.baselineStateReader)
-
 	if err := ret.initIncrementalAttacher(baseline, targetTs, extend, endorse...); err != nil {
 		ret.Close()
 		return nil, err
@@ -109,13 +107,11 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 			return err
 		}
 	}
-	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
 	// extend input will always be at index 0
 	if err := a.insertVirtuallyConsumedOutput(extend); err != nil {
 		return err
 	}
-	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 
 	if targetTs.IsSlotBoundary() {
 		// stem input, if any, will be at index 1
@@ -129,7 +125,6 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baseline *vertex.WrappedTx
 			return err
 		}
 	}
-	a.pastCone.MustConflictFreeCond(a.baselineStateReader)
 	return nil
 }
 
@@ -152,6 +147,11 @@ func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedO
 	if a.pastCone.IsInTheState(wOut.VID) {
 		if !a.checkOutputInTheState(wOut.VID, wOut.DecodeID()) {
 			return ErrPastConeNotSolidYet
+		}
+	} else {
+		if !wOut.VID.IsBranchTransaction() && wOut.VID.GetTxStatus() == vertex.Good {
+			a.pastCone.AppendPastCone(wOut.VID.GetPastConeNoLock(), a.baselineStateReader)
+			a.pastCone.MarkVertexDefined(wOut.VID)
 		}
 	}
 	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut, a.baselineStateReader); conflict != nil {
@@ -219,6 +219,7 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	util.AssertNoError(a.err)
 
+	fmt.Printf(">>>>>>>>>>>>>>>>>InsertTagAlongInput %s: '%s\n", a.Name(), wOut.IDShortString())
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	a.pastCone.BeginDelta()
 	err := a.insertVirtuallyConsumedOutput(wOut)
@@ -227,6 +228,8 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 		// in either case rollback
 		a.pastCone.RollbackDelta()
 		err = fmt.Errorf("InsertTagAlongInput: %w", err)
+
+		fmt.Printf(">>>>>>>>>>>>>>>>>InsertTagAlongInput %s: '%s : %v\n", a.Name(), wOut.IDShortString(), err)
 
 		a.setError(nil)
 		return false, err

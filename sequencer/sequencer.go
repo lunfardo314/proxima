@@ -332,9 +332,13 @@ func (seq *Sequencer) doSequencerStep() bool {
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
 		seq.slotData.NotGoodEnough()
+		seq.Tracef(TraceTag, "'not good enough' for the target logical time %s in %v",
+			targetTs, time.Since(timerStart))
 		return true
 	case errors.Is(err, task.ErrNoProposals):
 		seq.slotData.NoProposals()
+		seq.Tracef(TraceTag, "'no proposals' for the target logical time %s in %v",
+			targetTs, time.Since(timerStart))
 		return true
 	case err != nil:
 		seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",

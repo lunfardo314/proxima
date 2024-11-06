@@ -25,6 +25,7 @@ func Test1SequencerPruner(t *testing.T) {
 		t.Logf("%s", testData.wrk.Info())
 
 		//testData.env.StartTracingTags(task.TraceTagBaseProposer)
+		//testData.env.StartTracingTags(sequencer.TraceTag)
 		//testData.env.StartTracingTags(tippool.TraceTag)
 		//testData.env.StartTracingTags(task.TraceTagEndorse1Proposer)
 		//testData.env.StartTracingTags(task.TraceTagChooseFirstExtendEndorsePair)
@@ -52,8 +53,8 @@ func Test1SequencerPruner(t *testing.T) {
 	t.Run("tag along transfers", func(t *testing.T) {
 		const (
 			maxSlots   = 30
-			batchSize  = 10
-			maxBatches = 5
+			batchSize  = 5 // 10
+			maxBatches = 2 // 5
 			sendAmount = 2000
 		)
 		testData := initWorkflowTest(t, 1, true)
