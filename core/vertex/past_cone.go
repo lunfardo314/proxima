@@ -420,7 +420,7 @@ func (pc *PastCone) _addVertexLine(n int, vid *WrappedTx, ln *lines.Lines) {
 		}
 		lnOut.Add("%d: {%s}", idx, lnCons.Join(", "))
 	}
-	ln.Add("#%d STATE%s consumers: {%s}", n, stateStr, lnOut.Join(", "))
+	ln.Add("#%d STATE%s %08b consumers: {%s}", n, stateStr, pc.Flags(vid), lnOut.Join(", "))
 }
 
 func (pc *PastCone) LinesShort(prefix ...string) *lines.Lines {
@@ -458,7 +458,7 @@ func (pc *PastCone) MustCoverageAndDelta(currentTs ledger.Time) (coverage, delta
 			continue
 		}
 		for idx, consumers := range pc.consumersByOutputIndex(vid) {
-			pc.Assertf(len(consumers) == 1, "MustCoverageAndDelta: unexpected double spend in the past con of %s", pc.name)
+			pc.Assertf(len(consumers) == 1, "MustCoverageAndDelta: unexpected double spend in the past cone of %s", pc.name)
 
 			wOut := WrappedOutput{VID: vid, Index: idx}
 			o, err := wOut.VID.OutputAt(wOut.Index)
