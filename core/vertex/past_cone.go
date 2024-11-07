@@ -212,9 +212,6 @@ func (pc *PastCone) RollbackDelta() {
 	}
 	pc.refCounter -= unrefCounter
 	expected := len(pc.vertices)
-	if pc.baseline != nil {
-		expected++
-	}
 	pc.Assertf(pc.refCounter == expected, "RollbackDelta: pc.refCounter(%d) not equal to expected(%d)", pc.refCounter, expected)
 	pc.delta = nil
 }

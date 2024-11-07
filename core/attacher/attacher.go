@@ -47,7 +47,6 @@ func (a *attacher) baselineStateReader() global.IndexedStateReader {
 }
 
 func (a *attacher) setError(err error) {
-	fmt.Printf(">>>>>>>>>>>>>>>>>> set err (%s): %v", a.name, err)
 	a.err = err
 }
 
@@ -160,6 +159,8 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 	panic("wrong vertex state")
 }
 
+// attachVertexNonBranch if vertex undefined, recursively attaches past cone
+// Does not check for past cone consistency -> resulting past cone may contain double spends util attacher solidifies all of it
 func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
@@ -203,7 +204,6 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			ok = true
-			//ok = a.pullIfNeededUnwrapped(v, vid)
 		},
 	})
 	if !ok {
@@ -378,6 +378,10 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	}
 	a.Assertf(vidEndorsed != nil, "vidEndorsed!=nil")
 
+	return a.attachEndorsementDependency(vidEndorsed)
+}
+
+func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx) bool {
 	if !a.refreshDependencyStatus(vidEndorsed) {
 		return false
 	}

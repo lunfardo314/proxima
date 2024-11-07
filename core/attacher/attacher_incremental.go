@@ -135,24 +135,14 @@ func (a *IncrementalAttacher) BaselineBranch() *vertex.WrappedTx {
 func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedOutput) error {
 	a.Assertf(wOut.ValidID(), "wOut.ValidID()")
 
-	if wOut.VID.IsBranchTransaction() {
-		if !a.branchesCompatible(a.baseline, wOut.VID) {
-			return fmt.Errorf("conflicting branch output %s", wOut.IDShortString())
-		}
-	} else {
-		if !a.refreshDependencyStatus(wOut.VID) {
-			return ErrPastConeNotSolidYet
-		}
+	if !a.refreshDependencyStatus(wOut.VID) {
+		return a.err
 	}
-	if a.pastCone.IsInTheState(wOut.VID) {
-		if !a.checkOutputInTheState(wOut.VID, wOut.DecodeID()) {
-			return ErrPastConeNotSolidYet
-		}
-	} else {
-		if !wOut.VID.IsBranchTransaction() && wOut.VID.GetTxStatus() == vertex.Good {
-			a.pastCone.AppendPastCone(wOut.VID.GetPastConeNoLock(), a.baselineStateReader)
-			a.pastCone.MarkVertexDefined(wOut.VID)
-		}
+	if !a.attachOutput(wOut) {
+		return a.err
+	}
+	if !a.pastCone.IsKnownDefined(wOut.VID) {
+		return fmt.Errorf("output %s not solid yet", wOut.IDShortString())
 	}
 	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut, a.baselineStateReader); conflict != nil {
 		return fmt.Errorf("past cone contains double-spend %s", conflict.IDShortString())
@@ -160,9 +150,6 @@ func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedO
 	a.inputs = append(a.inputs, wOut)
 	return nil
 }
-
-// saving attacher's past cone state to be able to restore in case it becomes inconsistent when
-// attempting to adding conflicting outputs or endorsements
 
 // InsertEndorsement preserves consistency in case of failure
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
@@ -183,29 +170,10 @@ func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) e
 
 // insertEndorsement in case of error, attacher remains inconsistent
 func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
-	if endorsement.IsBadOrDeleted() {
-		return fmt.Errorf("insertEndorsement: can't endorse %s. Reason: '%s'", endorsement.IDShortString(), endorsement.GetError())
+	if !a.attachEndorsementDependency(endorsement) {
+		return a.err
 	}
-	endBaseline := endorsement.BaselineBranch()
-	if !a.branchesCompatible(a.baseline, endBaseline) {
-		return fmt.Errorf("insertEndorsement: baseline branch %s of the endorsement branch %s is incompatible with the baseline %s",
-			endBaseline.IDShortString, endorsement.IDShortString(), a.baseline.IDShortString())
-	}
-	if endorsement.IsBranchTransaction() {
-		// branch is compatible with the baseline
-		a.pastCone.MustMarkVertexInTheState(endorsement)
-	} else {
-		ok := a.attachVertexNonBranch(endorsement)
-		a.Assertf(ok || a.err != nil, "ok || a.err != nil")
-		if !ok {
-			a.Assertf(a.err != nil, "a.err != nil")
-			return a.err
-		}
-		a.Assertf(a.err == nil, "a.err == nil")
-		if !a.pastCone.Flags(endorsement).FlagsUp(vertex.FlagPastConeVertexDefined) {
-			return fmt.Errorf("insertEndorsement: %w", ErrPastConeNotSolidYet)
-		}
-	}
+
 	if conflict := a.Conflict(); conflict != nil {
 		return fmt.Errorf("insertEndorsement: double-spend (conflict) %s in the past cone", conflict.IDShortString())
 	}
@@ -219,7 +187,6 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	util.AssertNoError(a.err)
 
-	fmt.Printf(">>>>>>>>>>>>>>>>>InsertTagAlongInput %s: '%s\n", a.Name(), wOut.IDShortString())
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	a.pastCone.BeginDelta()
 	err := a.insertVirtuallyConsumedOutput(wOut)
@@ -228,9 +195,6 @@ func (a *IncrementalAttacher) InsertTagAlongInput(wOut vertex.WrappedOutput) (bo
 		// in either case rollback
 		a.pastCone.RollbackDelta()
 		err = fmt.Errorf("InsertTagAlongInput: %w", err)
-
-		fmt.Printf(">>>>>>>>>>>>>>>>>InsertTagAlongInput %s: '%s : %v\n", a.Name(), wOut.IDShortString(), err)
-
 		a.setError(nil)
 		return false, err
 	}
