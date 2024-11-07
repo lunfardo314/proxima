@@ -143,10 +143,10 @@ func (pc *PastCone) makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string]
 }
 
 func (pc *PastCone) makeConsumerEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
-	for idx := range pc.mustConsumedIndexSet(vid) {
+	for idx := range pc.consumersByOutputIndex(vid) {
 		wOut := WrappedOutput{VID: vid, Index: idx}
-		consumer, found, _ := pc.findConsumerOf(wOut)
-		if found {
+
+		for _, consumer := range pc.findConsumersOf(wOut) {
 			edgeAttributes := []func(_ *graph.EdgeProperties){
 				graph.EdgeAttribute("label", fmt.Sprintf("#%d", idx)),
 				graph.EdgeAttribute("fontsize", "10"),

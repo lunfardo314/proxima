@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -160,7 +161,7 @@ func (a *milestoneAttacher) run() error {
 	const printPastCone = false
 	if printPastCone {
 		a.Log().Infof(">>>>>>>>>>>>> past cone of attacher %s\n%s", a.Name(), a.pastCone.Lines("      ").String())
-		coverage, delta := a.pastCone.CoverageAndDelta(a.vid.Timestamp())
+		coverage, delta := a.pastCone.MustCoverageAndDelta(a.vid.Timestamp())
 		a.Log().Infof(">>>>> directly calculated coverage: %s, delta: %s", util.Th(coverage), util.Th(delta))
 	}
 
@@ -292,17 +293,26 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 					return
 				}
 				if sequencerSolid {
+					if strings.Contains(a.name, "00d58c18") {
+						fmt.Printf("---------- BEFORE ----------\n%s\n", a.pastCone.Lines("    ").Join("\n"))
+					}
 					// it still can contain conflicts
 					// check double spends in the past cone once, after it is fully solid
 					// same function cleans redundant vertices in the past cone
-					conflict := a.pastCone.CheckAndCleanExcept(a.vid)
+					conflict := a.pastCone.CheckConflictsAndClean(a.vid, a.baselineStateReader())
 					if conflict != nil {
 						a.setError(fmt.Errorf("double-spend %s in the past cone", conflict.IDShortString()))
 					}
 					finalSuccess = conflict == nil
+
 				}
 				if finalSuccess {
-					a.Assertf(a.pastCone.Conflict(a.baselineStateReader) == nil, "unexpected conflict")
+					if strings.Contains(a.name, "00d58c18") {
+						fmt.Printf("---------- AFTER ----------\n%s\n", a.pastCone.Lines("    ").Join("\n"))
+					}
+
+					conflict := a.pastCone.CheckConflicts(a.baselineStateReader())
+					a.Assertf(conflict == nil, "unexpected conflict %s in %s", conflict.IDShortString(), a.name)
 				}
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {

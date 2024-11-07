@@ -144,7 +144,7 @@ func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedO
 	if !a.pastCone.IsKnownDefined(wOut.VID) {
 		return fmt.Errorf("output %s not solid yet", wOut.IDShortString())
 	}
-	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut, a.baselineStateReader); conflict != nil {
+	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut, a.baselineStateReader()); conflict != nil {
 		return fmt.Errorf("past cone contains double-spend %s", conflict.IDShortString())
 	}
 	a.inputs = append(a.inputs, wOut)
@@ -302,5 +302,5 @@ func (a *IncrementalAttacher) Endorsing() []*vertex.WrappedTx {
 }
 
 func (a *IncrementalAttacher) Conflict() *vertex.WrappedOutput {
-	return a.pastCone.Conflict(a.baselineStateReader)
+	return a.pastCone.CheckConflicts(a.baselineStateReader())
 }

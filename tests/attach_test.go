@@ -524,6 +524,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 	})
 }
 
+// FIXME
 func TestAttachConflictsNAttachersSeqStartTx(t *testing.T) {
 	//attacher.SetTraceOn()
 	const (

@@ -573,7 +573,7 @@ func (a *attacher) FinalSupply() uint64 {
 }
 
 func (a *attacher) CoverageDelta(currentTs ledger.Time) (coverage, delta uint64) {
-	return a.pastCone.CoverageAndDelta(currentTs)
+	return a.pastCone.MustCoverageAndDelta(currentTs)
 }
 
 func (a *attacher) LedgerCoverage(currentTs ledger.Time) uint64 {
