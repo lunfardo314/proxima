@@ -550,35 +550,6 @@ func (pc *PastCone) mustFindConsumingVertexInTheSet(consumers set.Set[*WrappedTx
 	return ret
 }
 
-func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
-	vid.mutexDescendants.RLock()
-	defer vid.mutexDescendants.RUnlock()
-
-	var doubleSpend, isConsumed bool
-	var consumer *WrappedTx
-	inTheState := pc.IsInTheState(vid)
-
-	for idx, _ := range vid.consumed {
-		wOut := WrappedOutput{VID: vid, Index: idx}
-		if consumer, isConsumed, doubleSpend = pc.findConsumerNoLock(wOut); doubleSpend {
-			conflict = &wOut
-			return &wOut
-		}
-		if !isConsumed || !inTheState || consumer == nil {
-			continue
-		}
-		if !pc.isNotInTheState(consumer) {
-			// it is in the state, or it is not checked yet. This is important
-			continue
-		}
-		// consumed && in the state -> check if still available
-		if !stateReader.HasUTXO(wOut.DecodeID()) {
-			return &wOut
-		}
-	}
-	return
-}
-
 func (pb *PastConeBase) _virtuallyConsumedIndexSet(vid *WrappedTx) set.Set[byte] {
 	if len(pb.virtuallyConsumed) == 0 {
 		return set.New[byte]()
@@ -852,15 +823,60 @@ func (pb *PastConeBase) Len() int {
 	return len(pb.vertices)
 }
 
-// CheckAndClean iterates past cone, checks for conflicts and removes those vertices
+// Conflict returns double-spent output (conflict), or nil if past cone is consistent
+// The complexity is O(NxM) where N is number of vertices and M is average number of conflicts in the UTXO tangle
+// Practically, it is linear wrt number of vertices because M is 1 or close to 1.
+// for optimization, latest time value can be specified
+func (pc *PastCone) Conflict(getStateReader func() global.IndexedStateReader) (conflict *WrappedOutput) {
+	stateReader := getStateReader()
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		conflict = pc.checkConsumers(vid, stateReader)
+		return conflict == nil
+	})
+	return
+}
+
+func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
+	vid.mutexDescendants.RLock()
+	defer vid.mutexDescendants.RUnlock()
+
+	var doubleSpend, isConsumed bool
+	var consumer *WrappedTx
+	inTheState := pc.IsInTheState(vid)
+
+	for idx, _ := range vid.consumed {
+		wOut := WrappedOutput{VID: vid, Index: idx}
+		if consumer, isConsumed, doubleSpend = pc.findConsumerNoLock(wOut); doubleSpend {
+			conflict = &wOut
+			return &wOut
+		}
+		if !isConsumed || !inTheState || consumer == nil {
+			continue
+		}
+		if !pc.isNotInTheState(consumer) {
+			// it is in the state, or it is not checked yet. This is important
+			continue
+		}
+		// consumed && in the state -> check if still available
+		if !stateReader.HasUTXO(wOut.DecodeID()) {
+			return &wOut
+		}
+	}
+	return
+}
+
+// CheckAndCleanExcept iterates past cone, checks for conflicts and removes those vertices
 // which has consumers and all consumers are already in the state
-func (pc *PastCone) CheckAndClean() (conflict *WrappedOutput) {
+func (pc *PastCone) CheckAndCleanExcept(tipVid *WrappedTx) (conflict *WrappedOutput) {
 	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 
 	var canBeRemoved bool
 	toDelete := make([]*WrappedTx, 0)
 	for vid, flags := range pc.vertices {
+		if vid == tipVid {
+			continue
+		}
 		pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState), "wrong flag in %s", vid.IDShortString)
 		conflict, canBeRemoved = pc._checkVertex(vid)
 		if conflict != nil {
@@ -882,7 +898,7 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx) (doubleSpend *WrappedOutput, ca
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
 
-	allConsumersInTheState := true
+	allConsumersAreInTheState := true
 	hasConsumers := false
 
 	for idx, consumers := range vid.consumed {
@@ -897,23 +913,10 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx) (doubleSpend *WrappedOutput, ca
 				firstConsumer = consumer
 				hasConsumers = true
 				if pc.isNotInTheState(consumer) {
-					allConsumersInTheState = false
+					allConsumersAreInTheState = false
 				}
 			}
 		}
 	}
-	return nil, hasConsumers && allConsumersInTheState
-}
-
-// Conflict returns double-spent output (conflict), or nil if past cone is consistent
-// The complexity is O(NxM) where N is number of vertices and M is average number of conflicts in the UTXO tangle
-// Practically, it is linear wrt number of vertices because M is 1 or close to 1.
-// for optimization, latest time value can be specified
-func (pc *PastCone) Conflict(getStateReader func() global.IndexedStateReader) (conflict *WrappedOutput) {
-	stateReader := getStateReader()
-	pc.forAllVertices(func(vid *WrappedTx) bool {
-		conflict = pc.checkConsumers(vid, stateReader)
-		return conflict == nil
-	})
-	return
+	return nil, hasConsumers && allConsumersAreInTheState
 }

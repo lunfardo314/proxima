@@ -153,11 +153,6 @@ func (a *milestoneAttacher) run() error {
 		a.AssertNoError(err)
 	}
 
-	if conflict := a.pastCone.CheckAndClean(); conflict != nil {
-		a.Log().Fatalf("unexpected conflict %s in the past cone\n----------------\n%s",
-			conflict.IDShortString(), a.pastCone.Lines("       ").Join("\n"))
-	}
-
 	// TODO optimization in the branch is not necessary to keep the past cone
 	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage(a.vid.Timestamp()))
 	a.EvidencePastConeSize(a.pastCone.PastConeBase.Len())
@@ -289,11 +284,25 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 					a.Assertf(a.err != nil, "a.err != nil")
 					return
 				}
-				if ok, finalSuccess = a.validateSequencerTxUnwrapped(v); !ok {
-					a.Tracef(TraceTagValidateSequencer, "validateSequencerTxUnwrapped: ok = %v, finalSuccess = %v", ok, finalSuccess)
+				var sequencerSolid bool
+				if ok, sequencerSolid = a.validateSequencerTxUnwrapped(v); !ok {
 					a.Assertf(a.err != nil, "a.err != nil")
 					// dispose vertex
 					v.UnReferenceDependencies()
+					return
+				}
+				if sequencerSolid {
+					// it still can contain conflicts
+					// check double spends in the past cone once, after it is fully solid
+					// same function cleans redundant vertices in the past cone
+					conflict := a.pastCone.CheckAndCleanExcept(a.vid)
+					if conflict != nil {
+						a.setError(fmt.Errorf("double-spend %s in the past cone", conflict.IDShortString()))
+					}
+					finalSuccess = conflict == nil
+				}
+				if finalSuccess {
+					a.Assertf(a.pastCone.Conflict(a.baselineStateReader) == nil, "unexpected conflict")
 				}
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {
@@ -336,11 +345,6 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	}
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.Tx.IDShortString)
-
-	if conflict := a.pastCone.Conflict(a.baselineStateReader); conflict != nil {
-		a.setError(fmt.Errorf("past cone contains double-spent output %s", conflict.IDShortString()))
-		return false, false
-	}
 	return true, true
 }
 
