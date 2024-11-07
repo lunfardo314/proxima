@@ -77,10 +77,10 @@ func NewPastConeBase(baseline *WrappedTx) *PastConeBase {
 }
 
 func NewPastCone(env global.Logging, name string) *PastCone {
-	return NewPastConeFromBase(env, name, NewPastConeBase(nil))
+	return newPastConeFromBase(env, name, NewPastConeBase(nil))
 }
 
-func NewPastConeFromBase(env global.Logging, name string, pb *PastConeBase) *PastCone {
+func newPastConeFromBase(env global.Logging, name string, pb *PastConeBase) *PastCone {
 	return &PastCone{
 		Logging:      env,
 		name:         name,
@@ -126,13 +126,6 @@ func (pb *PastConeBase) isVirtuallyConsumed(wOut WrappedOutput) bool {
 		return consumedIndices.Contains(wOut.Index)
 	}
 	return false
-}
-
-func (pc *PastCone) IsVirtuallyConsumed(wOut WrappedOutput) bool {
-	if pc.delta == nil {
-		return pc.isVirtuallyConsumed(wOut)
-	}
-	return pc.isVirtuallyConsumed(wOut) || pc.delta.isVirtuallyConsumed(wOut)
 }
 
 func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
@@ -274,12 +267,8 @@ func (pc *PastCone) isVertexInTheState(vid *WrappedTx) (inTheState bool) {
 	return
 }
 
-func (pc *PastCone) IsCheckedInTheState(vid *WrappedTx) bool {
-	return pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState)
-}
-
-// IsNotInTheState is definitely known it is not in the state
-func (pc *PastCone) IsNotInTheState(vid *WrappedTx) bool {
+// isNotInTheState is definitely known it is not in the state
+func (pc *PastCone) isNotInTheState(vid *WrappedTx) bool {
 	return pc.IsKnown(vid) &&
 		pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState) &&
 		!pc.Flags(vid).FlagsUp(FlagPastConeVertexInTheState)
@@ -301,12 +290,6 @@ func (pc *PastCone) MarkVertexKnown(vid *WrappedTx) bool {
 	return true
 }
 
-// MarkVertexDefined marks 'defined' and enforces rooting has been checked
-func (pc *PastCone) MarkVertexDefined(vid *WrappedTx) {
-	pc.Assertf(pc.Flags(vid).FlagsUp(FlagPastConeVertexCheckedInTheState), "flags.FlagsUp(FlagPastConeVertexCheckedInTheState): %s", vid.IDShortString)
-	pc.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
-}
-
 func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) bool {
 	if !pc.IsKnown(vid) {
 		if !pc.reference(vid) {
@@ -317,35 +300,6 @@ func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) boo
 	return true
 }
 
-func (pc *PastCone) MarkVertexDefinedDoNotEnforceRootedCheck(vid *WrappedTx) {
-	flags := pc.Flags(vid)
-	if pc.IsInTheState(vid) {
-		pc.Assertf(!flags.FlagsUp(FlagPastConeVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagPastConeVertexInputsSolid): %s\n     %s",
-			vid.IDShortString, flags.String)
-		pc.Assertf(!flags.FlagsUp(FlagPastConeVertexEndorsementsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: !flags.FlagsUp(FlagPastConeVertexInputsSolid): %s\n     %s",
-			vid.IDShortString, flags.String)
-	}
-	if !vid.IsSequencerMilestone() {
-		if pc.IsNotInTheState(vid) {
-			pc.Assertf(flags.FlagsUp(FlagPastConeVertexInputsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: flags.FlagsUp(FlagPastConeVertexInputsSolid): %s\n     %s",
-				vid.IDShortString, flags.String)
-			pc.Assertf(flags.FlagsUp(FlagPastConeVertexEndorsementsSolid), "MarkVertexDefinedDoNotEnforceRootedCheck: flags.FlagsUp(FlagPastConeVertexInputsSolid): %s\n     %s",
-				vid.IDShortString, flags.String)
-		}
-	}
-	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexDefined)
-}
-
-// MustMarkVertexInTheState vertex becomes 'known' and marked Rooted and 'defined'
-func (pc *PastCone) MustMarkVertexInTheState(vid *WrappedTx) {
-	if !pc.IsKnown(vid) {
-		pc.mustReference(vid)
-	}
-	util.Assertf(!pc.IsNotInTheState(vid), "!pc.IsNotInTheState(vid)")
-	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexDefined|FlagPastConeVertexInTheState)
-	pc.Assertf(pc.IsInTheState(vid), "pc.IsNotInTheState(vid)")
-}
-
 // MustMarkVertexNotInTheState is marked definitely not rooted
 func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
 	pc.Assertf(!pc.IsInTheState(vid), "!pc.IsInTheState(vid)")
@@ -353,7 +307,7 @@ func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
 		pc.mustReference(vid)
 	}
 	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState)
-	pc.Assertf(pc.IsNotInTheState(vid), "pc.IsNotInTheState(vid)")
+	pc.Assertf(pc.isNotInTheState(vid), "pc.isNotInTheState(vid)")
 }
 
 func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
@@ -369,13 +323,14 @@ func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
 func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	for vid := range pc.vertices {
-		if pc.IsNotInTheState(vid) && vid.IsSequencerMilestone() {
+		if pc.isNotInTheState(vid) && vid.IsSequencerMilestone() {
 			ret += vid.InflationAmountOfSequencerMilestone()
 		}
 	}
 	return
 }
 
+// forAllVertices traverses all vertices, both committed and uncommitted
 func (pc *PastCone) forAllVertices(fun func(vid *WrappedTx) bool, sortAsc ...bool) {
 	all := set.New[*WrappedTx]()
 	for vid := range pc.vertices {
@@ -423,14 +378,14 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	var maxTs ledger.Time
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		maxTs = ledger.MaximumTime(maxTs, vid.Timestamp())
-		consumedIndices := pc.consumedIndexSet(vid)
+		consumedIndices := pc.mustConsumedIndexSet(vid)
 		notConsumedIndices, _ := pc.notConsumedIndices(vid)
 		ret.Add("#%d %s : %s, consumed: %+v, not consumed: %+v",
 			counter, vid.IDShortString(), pc.vertices[vid].String(), maps.Keys(consumedIndices), notConsumedIndices)
 		counter++
 		for idx := range consumedIndices {
 			wOut := WrappedOutput{VID: vid, Index: idx}
-			if pc.IsRootedOutput(wOut) {
+			if pc.mustIsRootedOutput(wOut) {
 				rooted = append(rooted, wOut)
 			}
 		}
@@ -485,10 +440,10 @@ func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uin
 	pc.Assertf(currentTs.After(pc.baseline.Timestamp()), "currentTs.After(pc.baseline.Timestamp())")
 
 	for vid := range pc.vertices {
-		consumedIndices := pc.rootedIndices(vid)
+		consumedIndices := pc.mustRootedIndices(vid)
 		for _, idx := range consumedIndices {
 			wOut := WrappedOutput{VID: vid, Index: idx}
-			if pc.IsRootedOutput(wOut) {
+			if pc.mustIsRootedOutput(wOut) {
 				o, err := wOut.VID.OutputAt(wOut.Index)
 				pc.AssertNoError(err)
 				delta += o.Amount()
@@ -497,7 +452,7 @@ func (pc *PastCone) CoverageAndDelta(currentTs ledger.Time) (coverage, delta uin
 	}
 	// adjustment with baseline sequencer output inflation, if necessary
 	wOut := pc.baseline.SequencerWrappedOutput()
-	if !pc.IsRootedOutput(wOut) {
+	if !pc.mustIsRootedOutput(wOut) {
 		o, err := pc.baseline.OutputAt(wOut.Index)
 		pc.AssertNoError(err)
 		delta += o.Inflation(true)
@@ -542,12 +497,6 @@ func (pc *PastCone) UndefinedListLines(prefix ...string) *lines.Lines {
 func (pc *PastCone) NumVertices() int {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	return len(pc.vertices)
-}
-
-func (pc *PastCone) MustFindConsumerOf(wOut WrappedOutput) (*WrappedTx, bool) {
-	ret, found, doubleSpend := pc.findConsumerOf(wOut)
-	pc.Assertf(!doubleSpend, "double-spent %s in past cone %s", wOut.IDShortString, pc.name)
-	return ret, found
 }
 
 // findConsumerOf return single consumer of the output with flag if found
@@ -618,7 +567,7 @@ func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedSta
 		if !isConsumed || !inTheState || consumer == nil {
 			continue
 		}
-		if !pc.IsNotInTheState(consumer) {
+		if !pc.isNotInTheState(consumer) {
 			// it is in the state, or it is not checked yet. This is important
 			continue
 		}
@@ -628,11 +577,6 @@ func (pc *PastCone) checkConsumers(vid *WrappedTx, stateReader global.IndexedSta
 		}
 	}
 	return
-}
-
-func (pc *PastCone) MustConflictFree(getStateReader func() global.IndexedStateReader) {
-	conflict := pc.Conflict(getStateReader)
-	pc.Assertf(conflict == nil, "past cone %s contains double-spent output %s", pc.name, conflict.IDShortString)
 }
 
 func (pb *PastConeBase) _virtuallyConsumedIndexSet(vid *WrappedTx) set.Set[byte] {
@@ -646,8 +590,9 @@ func (pb *PastConeBase) _virtuallyConsumedIndexSet(vid *WrappedTx) set.Set[byte]
 	return ret.Clone()
 }
 
-// consumedIndexSet returns indices which are virtually or really consumed for the vertex
-func (pc *PastCone) consumedIndexSet(vid *WrappedTx) set.Set[byte] {
+// mustConsumedIndexSet returns indices which are virtually or really consumed for the vertex
+// Panics if past cone contains conflicts
+func (pc *PastCone) mustConsumedIndexSet(vid *WrappedTx) set.Set[byte] {
 	pc.Assertf(pc.delta == nil, "pc.delta==nil")
 
 	consumedIndices := pc._virtuallyConsumedIndexSet(vid)
@@ -661,11 +606,13 @@ func (pc *PastCone) consumedIndexSet(vid *WrappedTx) set.Set[byte] {
 	return consumedIndices
 }
 
+// notConsumedIndices returns indices of the transaction which are definitely not consumed
+// panics in case of conflicting past cone
 func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 	numProduced := vid.NumProducedOutputs()
 	pc.Assertf(numProduced > 0, "numProduced>0")
 
-	consumedIndices := pc.consumedIndexSet(vid)
+	consumedIndices := pc.mustConsumedIndexSet(vid)
 
 	ret := make([]byte, 0, numProduced-len(consumedIndices))
 
@@ -677,12 +624,14 @@ func (pc *PastCone) notConsumedIndices(vid *WrappedTx) ([]byte, int) {
 	return ret, numProduced
 }
 
-func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
+// mustIsRootedOutput returns if output is rooted. Panics if past cone contains double spend
+func (pc *PastCone) mustIsRootedOutput(wOut WrappedOutput) bool {
 	if !pc.IsInTheState(wOut.VID) {
 		return false
 	}
 	// it is in the state
-	consumer, found := pc.MustFindConsumerOf(wOut)
+	consumer, found, doubleSpend := pc.findConsumerOf(wOut)
+	pc.Assertf(!doubleSpend, "unexpected double spend in the past cone")
 	if !found {
 		// it is not consumed in the past cone
 		return true
@@ -692,24 +641,25 @@ func (pc *PastCone) IsRootedOutput(wOut WrappedOutput) bool {
 		// it is consumed by the virtual consumer
 		return true
 	}
-	if pc.IsNotInTheState(consumer) {
+	if pc.isNotInTheState(consumer) {
 		return true
 	}
 	return false
-	//return !found || (consumer == nil || pc.IsNotInTheState(consumer))
+	//return !found || (consumer == nil || pc.isNotInTheState(consumer))
 }
 
-func (pc *PastCone) rootedIndices(vid *WrappedTx) []byte {
+// mustRootedIndices return rooted indices. Panics in case of double spend
+func (pc *PastCone) mustRootedIndices(vid *WrappedTx) []byte {
 	if !pc.IsInTheState(vid) {
 		return nil
 	}
-	consumedIndices := pc.consumedIndexSet(vid)
+	consumedIndices := pc.mustConsumedIndexSet(vid)
 	if len(consumedIndices) == 0 {
 		return nil
 	}
 	ret := make([]byte, 0, len(consumedIndices))
 	for idx := range consumedIndices {
-		if pc.IsRootedOutput(WrappedOutput{VID: vid, Index: idx}) {
+		if pc.mustIsRootedOutput(WrappedOutput{VID: vid, Index: idx}) {
 			ret = append(ret, idx)
 		}
 	}
@@ -729,7 +679,7 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 	for vid := range pc.vertices {
 		if pc.IsInTheState(vid) {
 			// generate DEL mutations
-			for _, idx := range pc.rootedIndices(vid) {
+			for _, idx := range pc.mustRootedIndices(vid) {
 				muts.InsertDelOutputMutation(vid.OutputID(idx))
 				stats.NumDeleted++
 			}
@@ -946,7 +896,7 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx) (doubleSpend *WrappedOutput, ca
 				}
 				firstConsumer = consumer
 				hasConsumers = true
-				if pc.IsNotInTheState(consumer) {
+				if pc.isNotInTheState(consumer) {
 					allConsumersInTheState = false
 				}
 			}

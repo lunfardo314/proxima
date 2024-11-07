@@ -143,7 +143,7 @@ func (pc *PastCone) makeGraphNode(vid *WrappedTx, gr graph.Graph[string, string]
 }
 
 func (pc *PastCone) makeConsumerEdges(vid *WrappedTx, gr graph.Graph[string, string]) {
-	for idx := range pc.consumedIndexSet(vid) {
+	for idx := range pc.mustConsumedIndexSet(vid) {
 		wOut := WrappedOutput{VID: vid, Index: idx}
 		consumer, found, _ := pc.findConsumerOf(wOut)
 		if found {

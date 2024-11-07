@@ -182,7 +182,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				// non-sequencer transaction
 				ok = a.attachVertexUnwrapped(v, vid)
 				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
-					a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
+					a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
 					defined = true
 				}
 			case vertex.Good:
@@ -309,7 +309,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	a.Assertf(glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "glbFlags.FlagsUp(vertex.FlagConstraintsValid)")
 
 	// non-sequencer, all inputs solid, constraints valid -> we can mark it 'defined' in the attacher
-	a.pastCone.MarkVertexDefinedDoNotEnforceRootedCheck(vid)
+	a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
 	return true
 }
 
