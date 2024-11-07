@@ -254,25 +254,31 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	}
 	// check consistency
 	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
-		err := a.allEndorsementsDefined(v)
-		a.Assertf(err == nil, "%w:\nVertices: %s", err, func() string { return a.pastCone.Lines("       ").String() })
+		a.Assertf(a.allEndorsementsDefined(v), "not all endorsements defined:\n%s", func() string { return a.pastCone.Lines("       ").String() })
 
 		a.Tracef(TraceTagAttachVertex, "endorsements are all solid in %s", v.Tx.IDShortString)
 	} else {
 		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.Tx.IDShortString)
 	}
 
-	inputsOk := a.attachInputs(v, vidUnwrapped)
-	if !inputsOk {
-		a.Assertf(a.err != nil, "a.err!=nil")
-		return false
-	}
-	if !v.Tx.IsSequencerMilestone() && a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
-		if !a.finalTouchNonSequencer(v, vidUnwrapped) {
+	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
+		if !a.attachInputs(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
 		}
 	}
+
+	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
+		a.Assertf(a.allInputsDefined(v), "a.allInputsDefined(v)")
+
+		if !v.Tx.IsSequencerMilestone() {
+			if !a.finalTouchNonSequencer(v, vidUnwrapped) {
+				a.Assertf(a.err != nil, "a.err!=nil")
+				return false
+			}
+		}
+	}
+
 	a.Tracef(TraceTagAttachVertex, "return OK: %s", v.Tx.IDShortString)
 	return true
 }
@@ -307,6 +313,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 	return true
 }
 
+// refreshDependencyStatus ensures it is known in the past cone, checks in the state status, pulls if needed
 func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 	if vidDep.GetTxStatus() == vertex.Bad {
 		a.setError(vidDep.GetError())
@@ -320,74 +327,6 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 	a.defineInTheStateStatus(vidDep)
 	if !a.pullIfNeeded(vidDep) {
 		return false
-	}
-	return true
-}
-
-func (a *attacher) referenceDependencyTxID(txid ledger.TransactionID, referencingVid *vertex.WrappedTx) (vidDep *vertex.WrappedTx, ok bool) {
-	if referencingVid != nil {
-		vidDep = AttachTxID(txid, a,
-			WithInvokedBy(a.name),
-			WithAttachmentDepth(referencingVid.GetAttachmentDepthNoLock()+1),
-		)
-	} else {
-		vidDep = AttachTxID(txid, a, WithInvokedBy(a.name))
-	}
-	if a.refreshDependencyStatus(vidDep) {
-		return vidDep, true
-	}
-	return nil, false
-}
-
-func (a *attacher) referenceEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) bool {
-	if vidEndorsed := v.Endorsements[index]; vidEndorsed == nil {
-		var ok bool
-		vidEndorsed, ok = a.referenceDependencyTxID(v.Tx.EndorsementAt(index), vidUnwrapped)
-		if !ok {
-			return false
-		}
-		v.ReferenceEndorsement(index, vidEndorsed)
-		// does not matter if referenced successfully, it can remain nil
-		return true
-	} else {
-		return a.refreshDependencyStatus(vidEndorsed)
-	}
-}
-
-func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
-	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
-		return true
-	}
-	for i := range v.Endorsements {
-		if !a.referenceEndorsement(v, vid, byte(i)) {
-			return false
-		}
-	}
-
-	allDefined := true
-	for _, vidEndorsed := range v.Endorsements {
-		if vidEndorsed == nil {
-			allDefined = false
-			continue
-		}
-		if vidEndorsed.IsBranchTransaction() {
-			if vidEndorsed != a.baseline {
-				a.setError(fmt.Errorf("conflicting branch endorsement %s", vidEndorsed.IDShortString()))
-				return false
-			}
-			a.Assertf(a.pastCone.IsKnownDefined(vidEndorsed), "expected to be 'defined': %s", vidEndorsed.IDShortString())
-			continue
-		}
-		ok1 := a.attachVertexNonBranch(vidEndorsed)
-		if !ok1 {
-			return false
-		}
-		if !a.pastCone.Flags(vidEndorsed).FlagsUp(vertex.FlagPastConeVertexDefined) {
-			allDefined = false
-		}
-	}
-	if allDefined {
-		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexEndorsementsSolid)
 	}
 	return true
 }
@@ -408,50 +347,71 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	}
 }
 
-func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
-	for i := range v.Inputs {
-		if !a.attachInput(v, vidUnwrapped, byte(i)) {
-			a.Assertf(a.err != nil, "a.err!=nil in %s, idx %d", a.name, i)
+func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
+	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
+		return true
+	}
+	for i := range v.Endorsements {
+		if !a.attachEndorsement(v, vid, byte(i)) {
 			return false
 		}
 	}
-	allDefined := true
-	for _, vidInp := range v.Inputs {
-		if vidInp == nil {
-			allDefined = false
-			break
-		}
-		if !a.pastCone.Flags(vidInp).FlagsUp(vertex.FlagPastConeVertexDefined) {
-			allDefined = false
-			break
-		}
-	}
-	if allDefined {
-		a.pastCone.SetFlagsUp(vidUnwrapped, vertex.FlagPastConeVertexInputsSolid)
+
+	if a.allEndorsementsDefined(v) {
+		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexEndorsementsSolid)
 	}
 	return true
 }
 
-// attachInput
+func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) bool {
+	vidEndorsed := v.Endorsements[index]
+	if vidEndorsed == nil {
+		vidEndorsed = AttachTxID(v.Tx.EndorsementAt(index), a,
+			WithInvokedBy(a.name),
+			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+		)
+
+		if !v.ReferenceEndorsement(index, vidEndorsed) {
+			// does not matter if referenced successfully, it can remain nil
+			return true
+		}
+	}
+	a.Assertf(vidEndorsed != nil, "vidEndorsed!=nil")
+
+	if !a.refreshDependencyStatus(vidEndorsed) {
+		return false
+	}
+	if vidEndorsed.IsBranchTransaction() {
+		if vidEndorsed != a.baseline {
+			a.setError(fmt.Errorf("conflicting branch endorsement %s", vidEndorsed.IDShortString()))
+			return false
+		}
+		a.Assertf(a.pastCone.IsKnownDefined(vidEndorsed), "expected to be 'defined': %s", vidEndorsed.IDShortString())
+		return true
+	}
+	return a.attachVertexNonBranch(vidEndorsed)
+}
+
 func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte) bool {
-	vidDep := v.Inputs[inputIdx]
 	oid := v.Tx.MustInputAt(inputIdx)
+	vidDep := v.Inputs[inputIdx]
 
 	var ok bool
 	if vidDep == nil {
-		vidDep, ok = a.referenceDependencyTxID(oid.TransactionID(), vidUnwrapped)
-		if !ok {
-			return false
-		}
-		if vidDep == nil {
-			return true
-		}
+		vidDep = AttachTxID(oid.TransactionID(), a,
+			WithInvokedBy(a.name),
+			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
+		)
 		if !v.ReferenceInput(inputIdx, vidDep) {
 			// remains nil but it is ok
 			return true
 		}
 	}
 	a.Assertf(vidDep != nil, "vidDep!=nil")
+
+	if !a.refreshDependencyStatus(vidDep) {
+		return false
+	}
 	ok = a.attachOutput(vertex.WrappedOutput{
 		VID:   vidDep,
 		Index: oid.Index(),
@@ -460,6 +420,31 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 		return false
 	}
 	vidDep.AddConsumer(oid.Index(), vidUnwrapped)
+	return true
+}
+
+func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
+	for i := range v.Inputs {
+		if !a.attachInput(v, vidUnwrapped, byte(i)) {
+			a.Assertf(a.err != nil, "a.err!=nil in %s, idx %d", a.name, i)
+			return false
+		}
+	}
+	if a.allInputsDefined(v) {
+		a.pastCone.SetFlagsUp(vidUnwrapped, vertex.FlagPastConeVertexInputsSolid)
+	}
+	return true
+}
+
+func (a *attacher) allInputsDefined(v *vertex.Vertex) bool {
+	for _, vidInp := range v.Inputs {
+		if vidInp == nil {
+			return false
+		}
+		if !a.pastCone.IsKnownDefined(vidInp) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -481,9 +466,6 @@ func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID *ledger.
 
 func (a *attacher) attachOutput(wOut vertex.WrappedOutput) bool {
 	if !wOut.ValidID() {
-		return false
-	}
-	if !a.refreshDependencyStatus(wOut.VID) {
 		return false
 	}
 	if a.pastCone.IsInTheState(wOut.VID) {
@@ -553,14 +535,16 @@ func (a *attacher) dumpLinesString(prefix ...string) string {
 	return a.dumpLines(prefix...).String()
 }
 
-func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) (err error) {
-	v.ForEachEndorsement(func(i byte, vidEndorsed *vertex.WrappedTx) bool {
-		if !a.pastCone.IsKnownDefined(vidEndorsed) {
-			err = fmt.Errorf("attacher %s: endorsement by %s must be 'defined' %s", a.name, v.Tx.IDShortString(), vidEndorsed.String())
+func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) bool {
+	for _, vid := range v.Endorsements {
+		if vid == nil {
+			return false
 		}
-		return err == nil
-	})
-	return
+		if !a.pastCone.IsKnownDefined(vid) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *attacher) SetTraceAttacher(name string) {
