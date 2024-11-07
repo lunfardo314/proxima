@@ -100,7 +100,7 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 
 func (p *Proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction.Transaction, error) {
 	cmdParser := commands.NewCommandParser(ledger.AddressED25519FromPrivateKey(p.ControllerPrivateKey()))
-	nm := p.strategy.ShortName + "." + p.environment.SequencerName()
+	nm := p.environment.SequencerName() + "." + p.strategy.ShortName
 	tx, err := a.MakeSequencerTransaction(nm, p.ControllerPrivateKey(), cmdParser)
 	// attacher and references not needed anymore, should be released
 	a.Close()

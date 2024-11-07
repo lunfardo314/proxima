@@ -635,14 +635,6 @@ func (pc *PastCone) MustConflictFree(getStateReader func() global.IndexedStateRe
 	pc.Assertf(conflict == nil, "past cone %s contains double-spent output %s", pc.name, conflict.IDShortString)
 }
 
-const enforceConflictChecking = false
-
-func (pc *PastCone) MustConflictFreeCond(getStateReader func() global.IndexedStateReader) {
-	if enforceConflictChecking {
-		pc.MustConflictFree(getStateReader)
-	}
-}
-
 func (pb *PastConeBase) _virtuallyConsumedIndexSet(vid *WrappedTx) set.Set[byte] {
 	if len(pb.virtuallyConsumed) == 0 {
 		return set.New[byte]()
