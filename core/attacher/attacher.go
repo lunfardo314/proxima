@@ -14,17 +14,13 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-func newPastConeAttacher(env Environment, name string) attacher {
+func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, targetTs ledger.Time, name string) attacher {
 	ret := attacher{
 		Environment: env,
 		name:        name,
 		pokeMe:      func(_ *vertex.WrappedTx) {},
-		pastCone:    vertex.NewPastCone(env, name),
+		pastCone:    vertex.NewPastCone(env, tip, targetTs, name),
 	}
-	// standard conflict checker
-	//ret.checkConflictsFunc = func(_ *vertex.Vertex, consumerTx *vertex.WrappedTx) checkConflictingConsumersFunc {
-	//	return ret.stdCheckConflictsFunc(consumerTx)
-	//}
 	return ret
 }
 
@@ -416,6 +412,8 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	if !a.refreshDependencyStatus(vidDep) {
 		return false
 	}
+	vidDep.AddConsumer(oid.Index(), vidUnwrapped)
+
 	ok = a.attachOutput(vertex.WrappedOutput{
 		VID:   vidDep,
 		Index: oid.Index(),
@@ -423,7 +421,6 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	if !ok {
 		return false
 	}
-	vidDep.AddConsumer(oid.Index(), vidUnwrapped)
 	return true
 }
 
@@ -472,6 +469,8 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput) bool {
 	if !wOut.ValidID() {
 		return false
 	}
+	a.Assertf(a.pastCone.IsKnown(wOut.VID), "a.pastCone.IsKnown(wOut.VID)")
+
 	if a.pastCone.IsInTheState(wOut.VID) {
 		if !a.checkOutputInTheState(wOut.VID, wOut.DecodeID()) {
 			return false

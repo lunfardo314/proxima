@@ -27,7 +27,9 @@ type (
 
 	PastCone struct {
 		global.Logging
-		name string
+		tip      *WrappedTx
+		targetTs ledger.Time
+		name     string
 
 		*PastConeBase
 		delta      *PastConeBase
@@ -76,18 +78,24 @@ func NewPastConeBase(baseline *WrappedTx) *PastConeBase {
 	}
 }
 
-func NewPastCone(env global.Logging, name string) *PastCone {
-	return newPastConeFromBase(env, name, NewPastConeBase(nil))
+func NewPastCone(env global.Logging, tip *WrappedTx, targetTs ledger.Time, name string) *PastCone {
+	return newPastConeFromBase(env, tip, targetTs, name, NewPastConeBase(nil))
 }
 
-func newPastConeFromBase(env global.Logging, name string, pb *PastConeBase) *PastCone {
+func newPastConeFromBase(env global.Logging, tip *WrappedTx, targetTs ledger.Time, name string, pb *PastConeBase) *PastCone {
 	return &PastCone{
 		Logging:      env,
+		tip:          tip,
+		targetTs:     targetTs,
 		name:         name,
 		PastConeBase: pb,
 		traceLines:   lines.NewDummy(),
 		//traceLines: lines.New("     "),
 	}
+}
+
+func (pc *PastCone) Tip() *WrappedTx {
+	return pc.tip
 }
 
 func (pb *PastConeBase) setBaseline(vid *WrappedTx) {
@@ -310,10 +318,10 @@ func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
 	pc.Assertf(pc.isNotInTheState(vid), "pc.isNotInTheState(vid)")
 }
 
-func (pc *PastCone) ContainsUndefinedExcept(except *WrappedTx) bool {
+func (pc *PastCone) ContainsUndefined() bool {
 	util.Assertf(pc.delta == nil, "pc.delta==nil")
 	for vid, flags := range pc.vertices {
-		if !flags.FlagsUp(FlagPastConeVertexDefined) && vid != except {
+		if !flags.FlagsUp(FlagPastConeVertexDefined) && vid != pc.tip {
 			return true
 		}
 	}
@@ -373,7 +381,7 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 			pc.baseline.GetLedgerCoverageString(),
 		)
 
-	rooted := make([]WrappedOutput, 0)
+	//rooted := make([]WrappedOutput, 0)
 	counter := 0
 	var maxTs ledger.Time
 	pc.forAllVertices(func(vid *WrappedTx) bool {
@@ -389,16 +397,16 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 			ret.Add("   %s: %+v", vid.IDShortString(), maps.Keys(consumedIndices))
 		}
 	}
-	ret.Add("----- rooted ----")
-	for _, wOut := range rooted {
-		covStr := "n/a"
-		o, err := wOut.VID.OutputAt(wOut.Index)
-		if err == nil && o != nil {
-			covStr = util.Th(o.Amount())
-		}
-		ret.Add("   %s: amount: %s", wOut.IDShortString(), covStr)
-	}
-	ret.Add("ledger coverage (%s): %s", maxTs.String(), util.Th(pc.LedgerCoverage(maxTs)))
+	//ret.Add("----- rooted ----")
+	//for _, wOut := range rooted {
+	//	covStr := "n/a"
+	//	o, err := wOut.VID.OutputAt(wOut.Index)
+	//	if err == nil && o != nil {
+	//		covStr = util.Th(o.Amount())
+	//	}
+	//	ret.Add("   %s: amount: %s", wOut.IDShortString(), covStr)
+	//}
+	//ret.Add("ledger coverage (%s): %s", maxTs.String(), util.Th(pc.LedgerCoverage(maxTs)))
 	return ret
 }
 
@@ -420,7 +428,7 @@ func (pc *PastCone) _addVertexLine(n int, vid *WrappedTx, ln *lines.Lines) {
 		}
 		lnOut.Add("%d: {%s}", idx, lnCons.Join(", "))
 	}
-	ln.Add("#%d STATE%s %08b consumers: {%s}", n, stateStr, pc.Flags(vid), lnOut.Join(", "))
+	ln.Add("#%d S%s %s consumers: {%s} flags: %s", n, stateStr, vid.IDShortString(), lnOut.Join(", "), pc.Flags(vid).String())
 }
 
 func (pc *PastCone) LinesShort(prefix ...string) *lines.Lines {
@@ -641,7 +649,7 @@ func (pc *PastCone) IsComplete() bool {
 	switch {
 	case pc.delta != nil:
 		return false
-	case pc.ContainsUndefinedExcept(nil):
+	case pc.ContainsUndefined():
 		return false
 	case !pc.hasRooted():
 		return false
@@ -692,7 +700,7 @@ func (pc *PastCone) CheckFinalPastCone(getStateReader func() global.IndexedState
 	if pc.delta != nil {
 		return fmt.Errorf("CheckFinalPastCone: past cone has uncommitted delta")
 	}
-	if pc.ContainsUndefinedExcept(nil) {
+	if pc.ContainsUndefined() {
 		return fmt.Errorf("CheckFinalPastCone: still contains undefined Vertices")
 	}
 
@@ -768,7 +776,7 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 
 func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
-	ret := NewPastCone(env, name+"_debug_clone")
+	ret := NewPastCone(env, pc.tip, pc.targetTs, name+"_debug_clone")
 	ret.baseline = pc.baseline
 	ret.vertices = maps.Clone(pc.vertices)
 	ret.virtuallyConsumed = make(map[*WrappedTx]set.Set[byte])
@@ -796,14 +804,14 @@ func (pc *PastCone) CheckConflicts(stateReader global.IndexedStateReader) (confl
 
 // CheckConflictsAndClean iterates past cone, checks for conflicts and removes those vertices
 // which has consumers and all consumers are already in the state
-func (pc *PastCone) CheckConflictsAndClean(tipVid *WrappedTx, stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
+func (pc *PastCone) CheckConflictsAndClean(stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
 	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 
 	var canBeRemoved bool
 	toDelete := make([]*WrappedTx, 0)
 	for vid, flags := range pc.vertices {
-		if vid == tipVid {
+		if vid == pc.tip {
 			continue
 		}
 		pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState), "wrong flag in %s", vid.IDShortString)

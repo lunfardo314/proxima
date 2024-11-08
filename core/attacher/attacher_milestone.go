@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -70,7 +69,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	env.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s is not a sequencer milestone", vid.IDShortString)
 
 	ret := &milestoneAttacher{
-		attacher: newPastConeAttacher(env, vid.IDShortString()),
+		attacher: newPastConeAttacher(env, vid, ledger.Time{}, vid.IDShortString()),
 		vid:      vid,
 		metadata: metadata,
 		pokeChan: make(chan struct{}),
@@ -285,31 +284,33 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 					a.Assertf(a.err != nil, "a.err != nil")
 					return
 				}
+
 				var sequencerSolid bool
 				if ok, sequencerSolid = a.validateSequencerTxUnwrapped(v); !ok {
 					a.Assertf(a.err != nil, "a.err != nil")
 					// dispose vertex
-					v.UnReferenceDependencies()
 					return
 				}
 				if sequencerSolid {
-					if strings.Contains(a.name, "00d58c18") {
-						fmt.Printf("---------- BEFORE ----------\n%s\n", a.pastCone.Lines("    ").Join("\n"))
-					}
+					//if strings.Contains(a.name, "00d58c18") {
+					//	fmt.Printf("---------- BEFORE ----------\n%s\n", a.pastCone.Lines("    ").Join("\n"))
+					//}
 					// it still can contain conflicts
 					// check double spends in the past cone once, after it is fully solid
 					// same function cleans redundant vertices in the past cone
-					conflict := a.pastCone.CheckConflictsAndClean(a.vid, a.baselineStateReader())
+					conflict := a.pastCone.CheckConflictsAndClean(a.baselineStateReader())
 					if conflict != nil {
 						a.setError(fmt.Errorf("double-spend %s in the past cone", conflict.IDShortString()))
+						v.UnReferenceDependencies()
+						ok = false
 					}
 					finalSuccess = conflict == nil
 
 				}
 				if finalSuccess {
-					if strings.Contains(a.name, "00d58c18") {
-						fmt.Printf("---------- AFTER ----------\n%s\n", a.pastCone.Lines("    ").Join("\n"))
-					}
+					//if strings.Contains(a.name, "00d58c18") {
+					//	fmt.Printf("---------- AFTER ----------\n%s\n", a.pastCone.Lines("    ").Join("\n"))
+					//}
 
 					conflict := a.pastCone.CheckConflicts(a.baselineStateReader())
 					a.Assertf(conflict == nil, "unexpected conflict %s in %s", conflict.IDShortString(), a.name)
@@ -323,7 +324,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		case !ok:
 			return vertex.Bad
 		case finalSuccess:
-			util.Assertf(!a.pastCone.ContainsUndefinedExcept(a.vid),
+			util.Assertf(!a.pastCone.ContainsUndefined(),
 				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined Vertices. LinesVerbose:\n%s",
 				a.name, a.dumpLinesString)
 			return vertex.Good
@@ -336,7 +337,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 const TraceTagValidateSequencer = "validateSeq"
 
 func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, finalSuccess bool) {
-	if a.pastCone.ContainsUndefinedExcept(a.vid) {
+	if a.pastCone.ContainsUndefined() {
 		a.Tracef(TraceTagValidateSequencer, "contains undefined in the past cone")
 		return true, false
 	}
@@ -350,6 +351,7 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 
 	if err := v.ValidateConstraints(); err != nil {
 		a.setError(err)
+		v.UnReferenceDependencies()
 		a.Tracef(TraceTagValidateSequencer, "constraint validation failed in %s: '%v'", a.vid.IDShortString, err)
 		return false, false
 	}

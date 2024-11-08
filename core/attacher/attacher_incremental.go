@@ -61,7 +61,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 	}
 
 	ret := &IncrementalAttacher{
-		attacher: newPastConeAttacher(env, name),
+		attacher: newPastConeAttacher(env, nil, targetTs, name),
 		endorse:  make([]*vertex.WrappedTx, 0),
 		inputs:   make([]vertex.WrappedOutput, 0),
 		targetTs: targetTs,
