@@ -575,6 +575,10 @@ func (a *attacher) LedgerCoverage() uint64 {
 	return a.pastCone.LedgerCoverage()
 }
 
+func (a *attacher) CoverageAndDelta() (uint64, uint64) {
+	return a.pastCone.CoverageAndDelta()
+}
+
 func (a *attacher) PastConeForDebugOnly(env global.Logging, name string) *vertex.PastCone {
 	return a.pastCone.CloneForDebugOnly(env, name)
 }

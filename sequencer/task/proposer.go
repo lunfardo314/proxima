@@ -2,6 +2,7 @@ package task
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -50,8 +51,17 @@ func (p *Proposer) run() {
 			// attempt may be no luck. Keep trying if it is not the end yet
 			continue
 		}
+
+		{ //FIXME
+			conflict := a.Check()
+			p.Assertf(conflict == nil, "conflict==nil")
+			_, delta := a.CoverageAndDelta()
+			if delta == 0 {
+				fmt.Printf(">>>>>>>>>>>>>>>>>>> %s coverage delta = %d\n", p.targetTs.String(), delta)
+			}
+			p.Assertf(delta > 0, "delta > 0")
+		}
 		// attacher has been created and it is complete. Propose it
-		//p.Assertf(a.IsCoverageAdjusted(), "coverage must be adjusted")
 		if err = p.propose(a); err != nil {
 			p.Log().Warnf("%v", err)
 			return
@@ -68,13 +78,14 @@ func (p *Proposer) run() {
 func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 	util.Assertf(a.TargetTs() == p.targetTs, "a.targetTs() == p.task.targetTs")
 
+	coverage := a.LedgerCoverage()
+
 	tx, err := p.makeTxProposal(a)
 	util.Assertf(a.IsClosed(), "a.IsClosed()")
 
 	if err != nil {
 		return err
 	}
-	coverage := a.LedgerCoverage()
 	_proposal := &proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
