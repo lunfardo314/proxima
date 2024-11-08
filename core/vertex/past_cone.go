@@ -705,6 +705,7 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	ret := NewPastCone(env, pc.tip, pc.targetTs, name+"_debug_clone")
 	ret.baseline = pc.baseline
+	ret.coverageDelta = pc.coverageDelta
 	ret.vertices = maps.Clone(pc.vertices)
 	ret.virtuallyConsumed = make(map[*WrappedTx]set.Set[byte])
 	for vid, consumedIndices := range pc.virtuallyConsumed {
@@ -837,9 +838,20 @@ func (pc *PastCone) CoverageAndDelta() (coverage, delta uint64) {
 	} else {
 		coverage = (pc.baseline.GetLedgerCoverage() >> (diffSlots + 1)) + delta
 	}
-	// adjust
-	// TODO
+	coverage += pc.ledgerCoverageAdjustment()
 	return
+}
+
+// ledgerCoverageAdjustment if sequencer output of the baseline in not consumed,
+// ledger coverage must be adjusted by the branch inflation
+func (pc *PastCone) ledgerCoverageAdjustment() uint64 {
+	wOut := pc.baseline.SequencerWrappedOutput()
+	if len(pc.findConsumersOf(wOut)) == 0 {
+		o, err := pc.baseline.OutputAt(wOut.Index)
+		pc.AssertNoError(err)
+		return o.Inflation(true)
+	}
+	return 0
 }
 
 func (pc *PastCone) LedgerCoverage() uint64 {
