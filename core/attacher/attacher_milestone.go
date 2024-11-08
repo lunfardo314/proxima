@@ -114,7 +114,10 @@ func (a *milestoneAttacher) run() error {
 
 	// then solidify past cone
 
-	if status := a.solidifyPastCone(); status != vertex.Good {
+	status := a.solidifyPastCone()
+	a.Assertf(status != vertex.Undefined, "status!=vertex.Undefined")
+
+	if status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return a.err
@@ -154,14 +157,12 @@ func (a *milestoneAttacher) run() error {
 	}
 
 	// TODO optimization in the branch is not necessary to keep the past cone
-	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage(a.vid.Timestamp()))
+	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage())
 	a.EvidencePastConeSize(a.pastCone.PastConeBase.Len())
 
 	const printPastCone = false
 	if printPastCone {
 		a.Log().Infof(">>>>>>>>>>>>> past cone of attacher %s\n%s", a.Name(), a.pastCone.Lines("      ").String())
-		coverage, delta := a.pastCone.MustCoverageAndDelta(a.vid.Timestamp())
-		a.Log().Infof(">>>>> directly calculated coverage: %s, delta: %s", util.Th(coverage), util.Th(delta))
 	}
 
 	a.PostEventNewGood(a.vid)
@@ -285,35 +286,17 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 					return
 				}
 
-				var sequencerSolid bool
-				if ok, sequencerSolid = a.validateSequencerTxUnwrapped(v); !ok {
+				if ok, finalSuccess = a.validateSequencerTxUnwrapped(v); !ok {
 					a.Assertf(a.err != nil, "a.err != nil")
 					// dispose vertex
 					return
 				}
-				if sequencerSolid {
-					//if strings.Contains(a.name, "00d58c18") {
-					//	fmt.Printf("---------- BEFORE ----------\n%s\n", a.pastCone.Lines("    ").Join("\n"))
-					//}
-					// it still can contain conflicts
-					// check double spends in the past cone once, after it is fully solid
-					// same function cleans redundant vertices in the past cone
-					conflict := a.pastCone.CheckConflictsAndClean(a.baselineStateReader())
-					if conflict != nil {
-						a.setError(fmt.Errorf("double-spend %s in the past cone", conflict.IDShortString()))
-						v.UnReferenceDependencies()
-						ok = false
-					}
-					finalSuccess = conflict == nil
-
-				}
 				if finalSuccess {
-					//if strings.Contains(a.name, "00d58c18") {
-					//	fmt.Printf("---------- AFTER ----------\n%s\n", a.pastCone.Lines("    ").Join("\n"))
-					//}
-
-					conflict := a.pastCone.CheckConflicts(a.baselineStateReader())
+					// double check
+					lc := a.LedgerCoverage()
+					conflict := a.pastCone.Check(a.baselineStateReader())
 					a.Assertf(conflict == nil, "unexpected conflict %s in %s", conflict.IDShortString(), a.name)
+					a.Assertf(lc == a.LedgerCoverage(), "lc == a.LedgerCoverage()")
 				}
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {
@@ -322,12 +305,15 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		})
 		switch {
 		case !ok:
+			a.Assertf(a.err != nil, "a.err!=nil")
 			return vertex.Bad
+
 		case finalSuccess:
 			util.Assertf(!a.pastCone.ContainsUndefined(),
 				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined Vertices. LinesVerbose:\n%s",
 				a.name, a.dumpLinesString)
 			return vertex.Good
+
 		default:
 			return vertex.Undefined
 		}
@@ -357,6 +343,13 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	}
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.Tx.IDShortString)
+
+	conflict := a.pastCone.CheckAndClean(a.baselineStateReader())
+	if conflict != nil {
+		a.setError(fmt.Errorf("double-spend %s in the past cone", conflict.IDShortString()))
+		v.UnReferenceDependencies()
+		return false, false
+	}
 	return true, true
 }
 

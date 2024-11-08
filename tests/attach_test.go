@@ -1104,8 +1104,8 @@ func TestAttachSeqChains(t *testing.T) {
 		const (
 			nConflicts            = 5
 			nChains               = 5
-			howLongConflictChains = 5  // 97 fails when crosses slot boundary
-			howLongSeqChains      = 10 // 10 // 95 fails
+			howLongConflictChains = 5 // 97 fails when crosses slot boundary
+			howLongSeqChains      = 5 // 10 // 10 // 95 fails
 			nSlots                = 5
 		)
 

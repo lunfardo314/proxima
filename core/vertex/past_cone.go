@@ -27,9 +27,11 @@ type (
 
 	PastCone struct {
 		global.Logging
-		tip      *WrappedTx
-		targetTs ledger.Time
-		name     string
+		tip                *WrappedTx
+		targetTs           ledger.Time
+		name               string
+		coverageDelta      uint64
+		savedCoverageDelta uint64
 
 		*PastConeBase
 		delta      *PastConeBase
@@ -117,13 +119,13 @@ func (pb *PastConeBase) addVirtuallyConsumedOutput(wOut WrappedOutput) {
 func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, stateReader global.IndexedStateReader) *WrappedOutput {
 	if pc.delta == nil {
 		pc.addVirtuallyConsumedOutput(wOut)
-		return pc.CheckConflicts(stateReader)
+		return pc.Check(stateReader)
 	}
 	if pc.isVirtuallyConsumed(wOut) || pc.delta.isVirtuallyConsumed(wOut) {
 		return nil
 	}
 	pc.delta.addVirtuallyConsumedOutput(wOut)
-	return pc.CheckConflicts(stateReader)
+	return pc.Check(stateReader)
 }
 
 func (pb *PastConeBase) isVirtuallyConsumed(wOut WrappedOutput) bool {
@@ -177,6 +179,7 @@ func (pc *PastCone) UnReferenceAll() {
 func (pc *PastCone) BeginDelta() {
 	util.Assertf(pc.delta == nil, "BeginDelta: pc.delta == nil")
 	pc.delta = NewPastConeBase(pc.baseline)
+	pc.savedCoverageDelta = pc.coverageDelta
 }
 
 func (pc *PastCone) CommitDelta() {
@@ -215,6 +218,7 @@ func (pc *PastCone) RollbackDelta() {
 	expected := len(pc.vertices)
 	pc.Assertf(pc.refCounter == expected, "RollbackDelta: pc.refCounter(%d) not equal to expected(%d)", pc.refCounter, expected)
 	pc.delta = nil
+	pc.coverageDelta = pc.savedCoverageDelta
 }
 
 func (pc *PastCone) Flags(vid *WrappedTx) FlagsPastCone {
@@ -328,16 +332,6 @@ func (pc *PastCone) ContainsUndefined() bool {
 	return false
 }
 
-func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
-	pc.Assertf(pc.delta == nil, "pc.delta == nil")
-	for vid := range pc.vertices {
-		if pc.isNotInTheState(vid) && vid.IsSequencerMilestone() {
-			ret += vid.InflationAmountOfSequencerMilestone()
-		}
-	}
-	return
-}
-
 // forAllVertices traverses all vertices, both committed and uncommitted
 func (pc *PastCone) forAllVertices(fun func(vid *WrappedTx) bool, sortAsc ...bool) {
 	all := set.New[*WrappedTx]()
@@ -383,9 +377,7 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 
 	//rooted := make([]WrappedOutput, 0)
 	counter := 0
-	var maxTs ledger.Time
 	pc.forAllVertices(func(vid *WrappedTx) bool {
-		maxTs = ledger.MaximumTime(maxTs, vid.Timestamp())
 		pc._addVertexLine(counter, vid, ret)
 		counter++
 		return true
@@ -406,7 +398,8 @@ func (pc *PastCone) Lines(prefix ...string) *lines.Lines {
 	//	}
 	//	ret.Add("   %s: amount: %s", wOut.IDShortString(), covStr)
 	//}
-	//ret.Add("ledger coverage (%s): %s", maxTs.String(), util.Th(pc.LedgerCoverage(maxTs)))
+	coverage, delta := pc.CoverageAndDelta()
+	ret.Add("ledger coverage: %s, delta: %s", util.Th(coverage), util.Th(delta))
 	return ret
 }
 
@@ -454,75 +447,6 @@ func (pc *PastCone) LinesShort(prefix ...string) *lines.Lines {
 	return ret
 }
 
-// MustCoverageAndDelta panics for past cone with conflict
-// Assumed past cone does not contain transactions which are in the state and fully consumed in the state
-func (pc *PastCone) MustCoverageAndDelta(currentTs ledger.Time) (coverage, delta uint64) {
-	pc.Assertf(pc.delta == nil, "pc.delta == nil")
-	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
-	pc.Assertf(currentTs.After(pc.baseline.Timestamp()), "currentTs.After(pc.baseline.Timestamp())")
-
-	for vid := range pc.vertices {
-		if !pc.IsInTheState(vid) {
-			continue
-		}
-		for idx, consumers := range pc.consumersByOutputIndex(vid) {
-			pc.Assertf(len(consumers) == 1, "MustCoverageAndDelta: unexpected double spend in the past cone of %s", pc.name)
-
-			wOut := WrappedOutput{VID: vid, Index: idx}
-			o, err := wOut.VID.OutputAt(wOut.Index)
-			pc.AssertNoError(err)
-			delta += o.Amount()
-		}
-	}
-	// adjustment with baseline sequencer output inflation, if necessary
-	wOut := pc.baseline.SequencerWrappedOutput()
-	if !pc.IsInTheState(wOut.VID) {
-		o, err := pc.baseline.OutputAt(wOut.Index)
-		pc.AssertNoError(err)
-		delta += o.Inflation(true)
-	}
-	diffSlots := currentTs.Slot() - pc.baseline.Slot()
-	if currentTs.IsSlotBoundary() {
-		coverage = (pc.baseline.GetLedgerCoverage() >> diffSlots) + delta
-	} else {
-		coverage = (pc.baseline.GetLedgerCoverage() >> (diffSlots + 1)) + delta
-	}
-	return
-}
-
-func (pc *PastCone) LedgerCoverage(currentTs ledger.Time) uint64 {
-	ret, _ := pc.MustCoverageAndDelta(currentTs)
-	return ret
-}
-
-func (pc *PastCone) UndefinedList() []*WrappedTx {
-	pc.Assertf(pc.delta == nil, "pc.delta==nil")
-
-	ret := make([]*WrappedTx, 0)
-	for vid, flags := range pc.vertices {
-		if !flags.FlagsUp(FlagPastConeVertexDefined) {
-			ret = append(ret, vid)
-		}
-	}
-	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].Timestamp().Before(ret[j].Timestamp())
-	})
-	return ret
-}
-
-func (pc *PastCone) UndefinedListLines(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	for _, vid := range pc.UndefinedList() {
-		ret.Add(vid.IDVeryShort())
-	}
-	return ret
-}
-
-func (pc *PastCone) NumVertices() int {
-	pc.Assertf(pc.delta == nil, "pc.delta == nil")
-	return len(pc.vertices)
-}
-
 func (pc *PastCone) findConsumersOf(wOut WrappedOutput) []*WrappedTx {
 	wOut.VID.mutexDescendants.RLock()
 	defer wOut.VID.mutexDescendants.RUnlock()
@@ -568,14 +492,12 @@ func (pc *PastCone) consumersByOutputIndex(vid *WrappedTx) map[byte][]*WrappedTx
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
 
-	vid.WithConsumersRLock(func() {
-		for idx, allConsumers := range vid.consumed {
-			consumers := pc._filterConsumingVertices(allConsumers)
-			if len(consumers) > 0 {
-				ret[idx] = consumers
-			}
+	for idx, allConsumers := range vid.consumed {
+		consumers := pc._filterConsumingVertices(allConsumers)
+		if len(consumers) > 0 {
+			ret[idx] = consumers
 		}
-	})
+	}
 	if len(ret) > 0 {
 		return ret
 	}
@@ -588,6 +510,9 @@ func (pc *PastCone) producedIndices(vid *WrappedTx) []byte {
 	numProduced := vid.NumProducedOutputs()
 	pc.Assertf(numProduced > 0, "numProduced>0")
 
+	if pc.IsInTheState(vid) {
+		return nil
+	}
 	byIdx := pc.consumersByOutputIndex(vid)
 
 	ret := make([]byte, 0, numProduced-len(byIdx))
@@ -618,8 +543,10 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 			for idx, consumersOfRooted := range pc.consumersByOutputIndex(vid) {
 				pc.Assertf(len(consumersOfRooted) == 1, "Mutations: len(consumersOfRooted)==1")
 
-				muts.InsertDelOutputMutation(vid.OutputID(idx))
-				stats.NumDeleted++
+				if pc.isNotInTheState(consumersOfRooted[0]) {
+					muts.InsertDelOutputMutation(vid.OutputID(idx))
+					stats.NumDeleted++
+				}
 			}
 		} else {
 			// TODO no need to store number of outputs: now all is contained in the ID
@@ -734,7 +661,7 @@ func (pc *PastCone) CheckFinalPastCone(getStateReader func() global.IndexedState
 			return
 		}
 	}
-	if conflict := pc.CheckConflicts(getStateReader()); conflict != nil {
+	if conflict := pc.Check(getStateReader()); conflict != nil {
 		return fmt.Errorf("past cone %s contains double-spent output %s", pc.name, conflict.IDShortString())
 	}
 	return nil
@@ -790,37 +717,49 @@ func (pb *PastConeBase) Len() int {
 	return len(pb.vertices)
 }
 
-// CheckConflicts returns double-spent output (conflict), or nil if past cone is consistent
+// Check returns double-spent output (conflict), or nil if past cone is consistent
 // The complexity is O(NxM) where N is number of vertices and M is average number of conflicts in the UTXO tangle
 // Practically, it is linear wrt number of vertices because M is 1 or close to 1.
 // for optimization, latest time value can be specified
-func (pc *PastCone) CheckConflicts(stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
+func (pc *PastCone) Check(stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
+	pc.coverageDelta = 0
+	var coverageDelta uint64
+	pc.coverageDelta = 0
 	pc.forAllVertices(func(vid *WrappedTx) bool {
-		conflict, _ = pc._checkVertex(vid, stateReader)
+		conflict, _, coverageDelta = pc._checkVertex(vid, stateReader)
+		pc.coverageDelta += coverageDelta
 		return conflict == nil
 	})
+	if conflict != nil {
+		pc.coverageDelta = 0
+	}
 	return
 }
 
-// CheckConflictsAndClean iterates past cone, checks for conflicts and removes those vertices
+// CheckAndClean iterates past cone, checks for conflicts and removes those vertices
 // which has consumers and all consumers are already in the state
-func (pc *PastCone) CheckConflictsAndClean(stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
+func (pc *PastCone) CheckAndClean(stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
+	pc.Assertf(pc.baseline != nil, "pc.baseline!=nil")
 	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 
 	var canBeRemoved bool
+	var coverageDelta uint64
 	toDelete := make([]*WrappedTx, 0)
 	for vid, flags := range pc.vertices {
 		if vid == pc.tip {
 			continue
 		}
 		pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState), "wrong flag in %s", vid.IDShortString)
-		conflict, canBeRemoved = pc._checkVertex(vid, stateReader)
+		conflict, canBeRemoved, coverageDelta = pc._checkVertex(vid, stateReader)
 		if conflict != nil {
+			pc.coverageDelta = 0
 			return
 		}
 		if canBeRemoved {
 			toDelete = append(toDelete, vid)
+		} else {
+			pc.coverageDelta += coverageDelta
 		}
 	}
 	for _, vid := range toDelete {
@@ -831,27 +770,95 @@ func (pc *PastCone) CheckConflictsAndClean(stateReader global.IndexedStateReader
 	return
 }
 
-func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader global.IndexedStateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
+func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader global.IndexedStateReader) (doubleSpend *WrappedOutput, canBeRemoved bool, coverageDelta uint64) {
 	allConsumersAreInTheState := true
 	inTheState := pc.IsInTheState(vid)
 	byIdx := pc.consumersByOutputIndex(vid)
 	for idx, consumers := range byIdx {
 		wOut := WrappedOutput{VID: vid, Index: idx}
-		pc.Assertf(len(consumers) > 0, "")
+		pc.Assertf(len(consumers) > 0, "len(consumers) > 0")
 		if len(consumers) != 1 {
-			return &wOut, false
+			return &wOut, false, 0
 		}
-		if consumers[0] != nil {
+		pc.Assertf(len(consumers) == 1, "len(consumers) == 1")
+		if consumers[0] == nil {
+			// virtual consumer
 			allConsumersAreInTheState = false
 		} else {
-			if !pc.isNotInTheState(consumers[0]) {
+			// real consumer
+			pc.Assertf(pc.Flags(consumers[0]).FlagsUp(FlagPastConeVertexCheckedInTheState), "pc.Flags(consumers[0]).FlagsUp(FlagPastConeVertexCheckedInTheState)")
+			if !pc.IsInTheState(consumers[0]) {
 				allConsumersAreInTheState = false
 				// must be in the state
 				if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
-					return &wOut, false
+					return &wOut, false, 0
 				}
+				coverageDelta += vid.MustOutputAt(idx).Amount()
 			}
 		}
 	}
-	return nil, len(byIdx) > 0 && allConsumersAreInTheState
+	canBeRemoved = len(byIdx) > 0 && allConsumersAreInTheState
+	pc.Assertf(!canBeRemoved || coverageDelta == 0, "!canBeRemoved || coverageDelta == 0")
+	return
+}
+
+func (pc *PastCone) CalculateSlotInflation() (ret uint64) {
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	for vid := range pc.vertices {
+		if pc.isNotInTheState(vid) && vid.IsSequencerMilestone() {
+			ret += vid.InflationAmountOfSequencerMilestone()
+		}
+	}
+	return
+}
+
+func (pc *PastCone) CoverageAndDelta() (coverage, delta uint64) {
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	pc.Assertf(pc.baseline != nil, "pc.baseline != nil")
+
+	delta = pc.coverageDelta
+	ts := pc.targetTs
+	if pc.tip != nil {
+		ts = pc.tip.Timestamp()
+	}
+	diffSlots := ts.Slot() - pc.baseline.Slot()
+	if ts.IsSlotBoundary() {
+		coverage = (pc.baseline.GetLedgerCoverage() >> diffSlots) + delta
+	} else {
+		coverage = (pc.baseline.GetLedgerCoverage() >> (diffSlots + 1)) + delta
+	}
+	return
+}
+
+func (pc *PastCone) LedgerCoverage() uint64 {
+	ret, _ := pc.CoverageAndDelta()
+	return ret
+}
+
+func (pc *PastCone) UndefinedList() []*WrappedTx {
+	pc.Assertf(pc.delta == nil, "pc.delta==nil")
+
+	ret := make([]*WrappedTx, 0)
+	for vid, flags := range pc.vertices {
+		if !flags.FlagsUp(FlagPastConeVertexDefined) {
+			ret = append(ret, vid)
+		}
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].Timestamp().Before(ret[j].Timestamp())
+	})
+	return ret
+}
+
+func (pc *PastCone) UndefinedListLines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	for _, vid := range pc.UndefinedList() {
+		ret.Add(vid.IDVeryShort())
+	}
+	return ret
+}
+
+func (pc *PastCone) NumVertices() int {
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	return len(pc.vertices)
 }

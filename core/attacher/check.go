@@ -34,7 +34,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (
 			err = fmt.Errorf("ledger coverage not set in the endorsed %s", vidEndorsed.IDShortString())
 			return false
 		}
-		lcCalc := a.LedgerCoverage(a.vid.Timestamp())
+		lcCalc := a.LedgerCoverage()
 		if lcCalc < *lc {
 			diff := *lc - lcCalc
 			err = fmt.Errorf("ledger coverage should not decrease along endorsement.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
@@ -60,7 +60,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 			err = fmt.Errorf("ledger coverage not set in the input tx %s", vidInp.IDShortString())
 			return false
 		}
-		lcCalc := a.LedgerCoverage(a.vid.Timestamp())
+		lcCalc := a.LedgerCoverage()
 		if lcCalc < *lc {
 			diff := *lc - lcCalc
 			err = fmt.Errorf("ledger overage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
@@ -88,7 +88,7 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 		return
 	}
 	var err error
-	lcCalc := a.LedgerCoverage(a.vid.Timestamp())
+	lcCalc := a.LedgerCoverage()
 	switch {
 	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != lcCalc:
 		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency:\n   computed coverage (%s) not equal to the\n   ledger overage provided in the metadata (%s).\n   Diff=%s",

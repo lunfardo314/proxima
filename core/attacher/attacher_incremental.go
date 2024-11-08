@@ -71,7 +71,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 		ret.Close()
 		return nil, err
 	}
-	if conflict := ret.Conflict(); conflict != nil {
+	if conflict := ret.Check(); conflict != nil {
 		ret.Close()
 		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to create incremental attacher extending  %s: double-spend (conflict) %s in the past cone",
 			name, extend.IDShortString(), conflict.IDShortString())
@@ -174,7 +174,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		return a.err
 	}
 
-	if conflict := a.Conflict(); conflict != nil {
+	if conflict := a.Check(); conflict != nil {
 		return fmt.Errorf("insertEndorsement: double-spend (conflict) %s in the past cone", conflict.IDShortString())
 	}
 	a.endorse = append(a.endorse, endorsement)
@@ -301,6 +301,6 @@ func (a *IncrementalAttacher) Endorsing() []*vertex.WrappedTx {
 	return a.endorse
 }
 
-func (a *IncrementalAttacher) Conflict() *vertex.WrappedOutput {
-	return a.pastCone.CheckConflicts(a.baselineStateReader())
+func (a *IncrementalAttacher) Check() *vertex.WrappedOutput {
+	return a.pastCone.Check(a.baselineStateReader())
 }

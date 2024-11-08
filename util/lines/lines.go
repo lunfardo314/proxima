@@ -58,6 +58,10 @@ func (l *Lines) Join(sep string) string {
 	return strings.Join(l.l, sep)
 }
 
+func (l *Lines) EOL() string {
+	return l.Join("\n")
+}
+
 func (l *Lines) String() string {
 	if l.dummy {
 		return ""

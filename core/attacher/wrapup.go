@@ -20,7 +20,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.baseline = &a.baseline.ID
 	a.finals.numVertices = a.pastCone.NumVertices()
 
-	a.finals.coverage = a.LedgerCoverage(a.vid.Timestamp())
+	a.finals.coverage = a.LedgerCoverage()
 	a.finals.slotInflation = a.slotInflation
 
 	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s",
@@ -62,7 +62,7 @@ func (a *milestoneAttacher) commitBranch() {
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.baselineSugaredStateReader().Root())
 	a.finals.supply = a.baselineSupply + a.finals.slotInflation
-	coverage := a.LedgerCoverage(a.vid.Timestamp())
+	coverage := a.LedgerCoverage()
 
 	util.Assertf(a.slotInflation == a.finals.slotInflation, "a.slotInflation == a.finals.slotInflation")
 	supply := a.FinalSupply()

@@ -74,7 +74,7 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 	if err != nil {
 		return err
 	}
-	coverage := a.LedgerCoverage(p.targetTs)
+	coverage := a.LedgerCoverage()
 	_proposal := &proposal{
 		tx: tx,
 		txMetadata: &txmetadata.TransactionMetadata{
@@ -191,18 +191,18 @@ func (p *Proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, ex
 			ret = a
 			p.Tracef(TraceTagChooseFirstExtendEndorsePair,
 				"first proposal: %s, extend %s, endorse %s, cov: %s",
-				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage(p.targetTs)))
+				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage()))
 
-		case a.LedgerCoverage(p.targetTs) > ret.LedgerCoverage(p.targetTs):
+		case a.LedgerCoverage() > ret.LedgerCoverage():
 			p.Tracef(TraceTagChooseFirstExtendEndorsePair,
 				"new proposal: %s, extend %s, endorse %s, cov: %s",
-				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage(p.targetTs)))
+				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage()))
 			ret.Close()
 			ret = a
 		default:
 			p.Tracef(TraceTagChooseFirstExtendEndorsePair,
 				"discard proposal: %s, extend %s, endorse %s, cov: %s",
-				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage(p.targetTs)))
+				p.targetTs.String, extend.IDShortString, endorse.IDShortString, util.Th(a.LedgerCoverage()))
 			a.Close()
 		}
 	}

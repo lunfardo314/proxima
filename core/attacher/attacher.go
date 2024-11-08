@@ -571,12 +571,8 @@ func (a *attacher) FinalSupply() uint64 {
 	return a.baselineSupply + a.slotInflation
 }
 
-func (a *attacher) CoverageDelta(currentTs ledger.Time) (coverage, delta uint64) {
-	return a.pastCone.MustCoverageAndDelta(currentTs)
-}
-
-func (a *attacher) LedgerCoverage(currentTs ledger.Time) uint64 {
-	return a.pastCone.LedgerCoverage(currentTs)
+func (a *attacher) LedgerCoverage() uint64 {
+	return a.pastCone.LedgerCoverage()
 }
 
 func (a *attacher) PastConeForDebugOnly(env global.Logging, name string) *vertex.PastCone {
