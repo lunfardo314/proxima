@@ -2,7 +2,6 @@ package task
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -52,15 +51,6 @@ func (p *Proposer) run() {
 			continue
 		}
 
-		{ //FIXME
-			conflict := a.Check()
-			p.Assertf(conflict == nil, "conflict==nil")
-			_, delta := a.CoverageAndDelta()
-			if delta == 0 {
-				fmt.Printf(">>>>>>>>>>>>>>>>>>> %s coverage delta = %d\n", p.targetTs.String(), delta)
-			}
-			p.Assertf(delta > 0, "delta > 0")
-		}
 		// attacher has been created and it is complete. Propose it
 		if err = p.propose(a); err != nil {
 			p.Log().Warnf("%v", err)

@@ -167,7 +167,7 @@ func Run(env environment, targetTs ledger.Time, slotData *SlotData) (*transactio
 		return p1.coverage < p2.coverage
 	})
 
-	const printBestProposal = true
+	const printBestProposal = false
 	if printBestProposal {
 		task.Log().Infof(">>>>>> best proposal past cone:\n%s\n    Ledger coverage: %s",
 			best.pastConeForDebug.Lines("      ").Join("\n"), util.Th(best.pastConeForDebug.LedgerCoverage()))

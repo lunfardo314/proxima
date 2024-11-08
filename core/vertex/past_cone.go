@@ -417,7 +417,11 @@ func (pc *PastCone) _addVertexLine(n int, vid *WrappedTx, ln *lines.Lines) {
 	for idx, consumers := range pc.consumersByOutputIndex(vid) {
 		lnCons := lines.New()
 		for _, consumer := range consumers {
-			lnCons.Add("%s", consumer.IDShortString())
+			if consumer != nil {
+				lnCons.Add("%s", consumer.IDShortString())
+			} else {
+				lnCons.Add("<nil>")
+			}
 		}
 		lnOut.Add("%d: {%s}", idx, lnCons.Join(", "))
 	}
@@ -489,6 +493,11 @@ func (pb *PastConeBase) _virtuallyConsumedIndexSet(vid *WrappedTx) set.Set[byte]
 func (pc *PastCone) consumersByOutputIndex(vid *WrappedTx) map[byte][]*WrappedTx {
 	ret := make(map[byte][]*WrappedTx)
 
+	virtuallyConsumedIndices := pc._virtuallyConsumedIndexSet(vid)
+	if pc.delta != nil {
+		virtuallyConsumedIndices.AddAll(pc.delta._virtuallyConsumedIndexSet(vid))
+	}
+
 	vid.mutexDescendants.RLock()
 	defer vid.mutexDescendants.RUnlock()
 
@@ -498,6 +507,17 @@ func (pc *PastCone) consumersByOutputIndex(vid *WrappedTx) map[byte][]*WrappedTx
 			ret[idx] = consumers
 		}
 	}
+
+	for idx := range virtuallyConsumedIndices {
+		lst := ret[idx]
+		if len(lst) > 0 {
+			lst = append(lst, nil)
+		} else {
+			lst = []*WrappedTx{nil}
+		}
+		ret[idx] = lst
+	}
+
 	if len(ret) > 0 {
 		return ret
 	}
