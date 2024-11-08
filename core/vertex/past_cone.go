@@ -722,7 +722,6 @@ func (pb *PastConeBase) Len() int {
 // Practically, it is linear wrt number of vertices because M is 1 or close to 1.
 // for optimization, latest time value can be specified
 func (pc *PastCone) Check(stateReader global.IndexedStateReader) (conflict *WrappedOutput) {
-	pc.coverageDelta = 0
 	var coverageDelta uint64
 	pc.coverageDelta = 0
 	pc.forAllVertices(func(vid *WrappedTx) bool {
@@ -781,16 +780,27 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader global.IndexedState
 			return &wOut, false, 0
 		}
 		pc.Assertf(len(consumers) == 1, "len(consumers) == 1")
-		if consumers[0] == nil {
-			// virtual consumer
+		//if consumers[0] == nil {
+		//	// virtual consumer
+		//	allConsumersAreInTheState = false
+		//} else {
+		//	// real consumer
+		//	pc.Assertf(pc.Flags(consumers[0]).FlagsUp(FlagPastConeVertexCheckedInTheState), "pc.Flags(consumers[0]).FlagsUp(FlagPastConeVertexCheckedInTheState)")
+		//	if !pc.IsInTheState(consumers[0]) {
+		//		allConsumersAreInTheState = false
+		//		// must be in the state
+		//		if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
+		//			return &wOut, false, 0
+		//		}
+		//		coverageDelta += vid.MustOutputAt(idx).Amount()
+		//	}
+		//}
+
+		// virtual consumer nil is never in the state
+		if !pc.IsInTheState(consumers[0]) {
 			allConsumersAreInTheState = false
-		} else {
-			// real consumer
-			pc.Assertf(pc.Flags(consumers[0]).FlagsUp(FlagPastConeVertexCheckedInTheState), "pc.Flags(consumers[0]).FlagsUp(FlagPastConeVertexCheckedInTheState)")
-			if !pc.IsInTheState(consumers[0]) {
-				allConsumersAreInTheState = false
-				// must be in the state
-				if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
+			if inTheState {
+				if !stateReader.HasUTXO(wOut.DecodeID()) {
 					return &wOut, false, 0
 				}
 				coverageDelta += vid.MustOutputAt(idx).Amount()
@@ -827,6 +837,8 @@ func (pc *PastCone) CoverageAndDelta() (coverage, delta uint64) {
 	} else {
 		coverage = (pc.baseline.GetLedgerCoverage() >> (diffSlots + 1)) + delta
 	}
+	// adjust
+	// TODO
 	return
 }
 

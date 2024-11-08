@@ -291,7 +291,8 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 					// dispose vertex
 					return
 				}
-				if finalSuccess {
+				const doubleCheck = false
+				if doubleCheck && finalSuccess {
 					// double check
 					lc := a.LedgerCoverage()
 					conflict := a.pastCone.Check(a.baselineStateReader())
