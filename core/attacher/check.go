@@ -63,7 +63,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 		lcCalc := a.LedgerCoverage()
 		if lcCalc < *lc {
 			diff := *lc - lcCalc
-			err = fmt.Errorf("ledger overage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
+			err = fmt.Errorf("ledger coverage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",
 				util.Th(lcCalc), a.vid.Timestamp().String(), util.Th(*lc), vidInp.IDShortString(), util.Th(diff))
 			return false
 		}
@@ -91,7 +91,7 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	lcCalc := a.LedgerCoverage()
 	switch {
 	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != lcCalc:
-		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency:\n   computed coverage (%s) not equal to the\n   ledger overage provided in the metadata (%s).\n   Diff=%s",
+		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency:\n   computed coverage (%s) not equal to the\n   ledger coverage provided in the metadata (%s).\n   Diff=%s",
 			a.vid.IDShortString(), util.Th(lcCalc), util.Th(*a.metadata.LedgerCoverage),
 			util.Th(int64(lcCalc)-int64(*a.metadata.LedgerCoverage)))
 	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
