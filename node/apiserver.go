@@ -1,6 +1,7 @@
 package node
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/api"
@@ -10,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/viper"
 )
 
@@ -101,6 +103,13 @@ func (p *ProximaNode) GetTxInclusion(txid *ledger.TransactionID, slotsBack int) 
 	return p.workflow.GetTxInclusion(txid, slotsBack)
 }
 
-func (p *ProximaNode) GetLatestReliableBranch() *multistate.BranchData {
-	return multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
+func (p *ProximaNode) GetLatestReliableBranch() (ret *multistate.BranchData) {
+	err := util.CatchPanicOrError(func() error {
+		ret = multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
+		return nil
+	})
+	if !errors.Is(err, common.ErrDBUnavailable) {
+		p.Fatal(err)
+	}
+	return
 }
