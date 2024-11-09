@@ -108,7 +108,10 @@ func (p *ProximaNode) GetLatestReliableBranch() (ret *multistate.BranchData) {
 		ret = multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
 		return nil
 	})
-	if !errors.Is(err, common.ErrDBUnavailable) {
+	if err != nil {
+		if errors.Is(err, common.ErrDBUnavailable) {
+			return nil
+		}
 		p.Fatal(err)
 	}
 	return
