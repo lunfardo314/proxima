@@ -121,14 +121,24 @@ func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, stateReader g
 		pc.addVirtuallyConsumedOutput(wOut)
 		return pc.Check(stateReader)
 	}
-	if pc.isVirtuallyConsumed(wOut) || pc.delta.isVirtuallyConsumed(wOut) {
+	if pc.isVirtuallyConsumed(wOut) {
 		return nil
 	}
 	pc.delta.addVirtuallyConsumedOutput(wOut)
 	return pc.Check(stateReader)
 }
 
-func (pb *PastConeBase) isVirtuallyConsumed(wOut WrappedOutput) bool {
+func (pc *PastCone) isVirtuallyConsumed(wOut WrappedOutput) bool {
+	if pc.PastConeBase._isVirtuallyConsumed(wOut) {
+		return true
+	}
+	if pc.delta != nil {
+		return pc.delta._isVirtuallyConsumed(wOut)
+	}
+	return false
+}
+
+func (pb *PastConeBase) _isVirtuallyConsumed(wOut WrappedOutput) bool {
 	if len(pb.virtuallyConsumed) == 0 {
 		return false
 	}
