@@ -80,7 +80,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 // A malicious node could crash other peers by sending inconsistent metadata,
 // therefore in the production environment enforceConsistencyWithTxMetadata should be false
 // and the connection with the malicious peer should be immediately severed
-const enforceConsistencyWithTxMetadata = true
+const enforceConsistencyWithTxMetadata = false
 
 // checkConsistencyWithMetadata does not check root
 func (a *milestoneAttacher) checkConsistencyWithMetadata() {
