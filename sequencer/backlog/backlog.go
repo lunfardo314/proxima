@@ -245,7 +245,9 @@ func (b *InputBacklog) LoadSequencerStartTips(seqID ledger.ChainID) error {
 	if b.IsBootstrapMode() {
 		branchData = multistate.FindLatestReliableBranchWithSequencerID(b.StateStore(), b.SequencerID(), global.FractionHealthyBranch)
 	} else {
-		branchData = multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
+		//branchData = multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
+		const startSlotsBehindLRB = 5
+		branchData = multistate.FindLatestReliableBranchAndNSlotsBack(b.StateStore(), startSlotsBehindLRB, global.FractionHealthyBranch)
 	}
 	if branchData == nil {
 		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
