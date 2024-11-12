@@ -45,28 +45,49 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 	}
 
 	glb.Infof("reading snapshot file %s", fname)
-	kvStream, err := multistate.OpenSnapshotFileStream(fname)
+	ssData, err := readASnapshotFile(fname)
 	glb.AssertNoError(err)
-	defer kvStream.Close()
 
-	glb.Infof("snapshot format version: %s", kvStream.Header.Version)
-	glb.Infof("snapshot branch ID: %s", kvStream.BranchID.String())
-	glb.Infof("snapshot root record:\n%s", kvStream.RootRecord.Lines("    ").String())
+	glb.Infof("snapshot format version: %s", ssData.fmtVersion)
+	glb.Infof("snapshot branch ID: %s", ssData.branchID.String())
+	glb.Infof("snapshot root record:\n%s", ssData.rootRecord.Lines("    ").String())
 
-	if kvStream.LedgerID.Hash() != ledger.L().ID.Hash() {
+	if ssData.ledgerID.Hash() != ledger.L().ID.Hash() {
 		glb.Infof("ledger ID hash in snapshot file %s is not equal to the ledger ID hash on the node on '%s'.\nThe snapshot file CANNOT BE USED to start a node",
 			fname, viper.GetString("api.endpoint"))
 		return
 	}
 
-	lrbID, included, err := clnt.CheckTransactionIDInLRB(kvStream.BranchID)
+	lrbID, included, err := clnt.CheckTransactionIDInLRB(ssData.branchID)
 	glb.AssertNoError(err)
 	glb.Infof("\n-----------------------\nlatest reliable branch (LRB) is %s", lrbID.String())
 	if included {
 		glb.Infof("the snapshot:")
 		glb.Infof("      - is INCLUDED in the current LRB of the network. It CAN BE USED to start a node")
-		glb.Infof("      - is %d slots back from LRB and %d slots back from now", lrbID.Slot()-kvStream.BranchID.Slot(), ledger.TimeNow().Slot()-kvStream.BranchID.Slot())
+		glb.Infof("      - is %d slots back from LRB and %d slots back from now", lrbID.Slot()-ssData.branchID.Slot(), ledger.TimeNow().Slot()-ssData.branchID.Slot())
 	} else {
 		glb.Infof("the snapshot is NOT INCLUDED in the current LRB of the network. It CANNOT BE USED to start a node")
 	}
+}
+
+type _snapshotFileData struct {
+	fmtVersion string
+	branchID   ledger.TransactionID
+	rootRecord multistate.RootRecord
+	ledgerID   *ledger.IdentityData
+}
+
+func readASnapshotFile(fname string) (*_snapshotFileData, error) {
+	kvStream, err := multistate.OpenSnapshotFileStream(fname)
+	if err != nil {
+		return nil, err
+	}
+	defer kvStream.Close()
+
+	return &_snapshotFileData{
+		fmtVersion: kvStream.Header.Version,
+		branchID:   kvStream.BranchID,
+		rootRecord: kvStream.RootRecord,
+		ledgerID:   kvStream.LedgerID,
+	}, nil
 }

@@ -72,8 +72,27 @@ func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
 }
 
 func findLatestSnapshotFile() (string, bool) {
-	entries, err := os.ReadDir(".")
+	lst, err := listSnapshotFiles()
 	glb.AssertNoError(err)
+	if len(lst) == 0 {
+		return "", false
+	}
+	return lst[0], true
+}
+
+func _outKVPair(k, v []byte, counter int, out io.Writer) {
+	common.Assert(len(k) > 0, "len(k)>0")
+
+	_, _ = fmt.Fprintf(out, "rec #%d: %s %s, value len: %d\n",
+		counter, multistate.PartitionToString(k[0]), hex.EncodeToString(k[1:]), len(v))
+}
+
+// listSnapshotFiles returns sorted snapshot files in time-descending order
+func listSnapshotFiles() ([]string, error) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		return nil, err
+	}
 
 	var ok bool
 	var fi os.FileInfo
@@ -87,19 +106,17 @@ func findLatestSnapshotFile() (string, bool) {
 		return err == nil && ok
 	})
 	if len(entries) == 0 {
-		return "", false
+		return nil, nil
 	}
+
 	sort.Slice(entries, func(i, j int) bool {
 		fii, _ := entries[i].Info()
 		fij, _ := entries[j].Info()
 		return fii.ModTime().After(fij.ModTime())
 	})
-	return entries[0].Name(), true
-}
-
-func _outKVPair(k, v []byte, counter int, out io.Writer) {
-	common.Assert(len(k) > 0, "len(k)>0")
-
-	_, _ = fmt.Fprintf(out, "rec #%d: %s %s, value len: %d\n",
-		counter, multistate.PartitionToString(k[0]), hex.EncodeToString(k[1:]), len(v))
+	ret := make([]string, 0, len(entries))
+	for i := range entries {
+		ret = append(ret, entries[i].Name())
+	}
+	return ret, nil
 }
