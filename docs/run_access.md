@@ -30,7 +30,29 @@ Go there and download the latest out of three snapshot files to the directory on
 
 The snapshot file name is made out of the transaction ID of the branch which represents snapshot state. 
 
-### 3. Create multi-state database
+### 3. Check of snapshot file if suitable to start a node
+In the directory with the downloaded snapshot file run a command:
+
+`proxi snapshot check --api.endpoint <APIendpoint>`
+
+This command check the snapshot file against the current ledger state which is seen in the latest reliable branch (LRB)
+of specified node in the network. It makes sure that branch of the snapshot is in the past cone of all current branches
+on the network. This prevents situations, when branch of the snapshot was orphaned (small yet positive probability).
+
+If you see something like:
+```text
+latest reliable branch (LRB) is [101018|0br]01b14af9f0eae05b1e457ae140d6812a47e8151f10ac382c97d92a
+the snapshot:
+      - is INCLUDED in the current LRB of the network. It CAN BE USED to start a node
+      - is 889 slots back from LRB and 890 slots back from now
+```
+
+Command `proxi snapshot check_all --api.endpoint <APIendpoint>` scans all snapshot files in the current directory and check each of it.
+
+snapshot file can be used to start a node and it will be synced.
+Otherwise snapshot represents a ledger state which cannot be synced with the network.
+
+### 4. Create multi-state database
 In the directory with the snapshot file run command `proxi snapshot restore -v`.
 Depending on the computer, it may take several minutes to build the database. Interrupting the process makes DB inconsistent,
 the `proximadb` directory must be deleted and the command run again.
@@ -50,7 +72,7 @@ Currently, the ledger state DB keeps IDs of all transactions committed since gen
 
 The result of the command will be `proximadb` directory in the working directory. 
 
-### 4. Prepare node configuration profile
+### 5. Prepare node configuration profile
 Run the command `proxi init node`. It will ask to enter some entropy needed for generation of the private key and the
 ID of the libp2p host of the node. The private key is used only to secure communications between peers, 
 it is not a private key which protects tokens.
@@ -73,7 +95,7 @@ There are additional information embedded as comments right into the generated `
 For example, if you want to expose node's metrics to a Prometheus server , respective `metrics` sector must be adjusted.
 Proxima node provides a lot of Prometheus-compatible metrics, all start with prefix `proxima_`.
 
-### 5. Run the node
+### 6. Run the node
 **Ensure that the clock of your computer is in sync with the global world clock**. 
 Few seconds difference is tolerated, but the lesser, the better. 
 Significant clock differences between peers may make the network non-operational. 
