@@ -23,7 +23,7 @@ func initSnapshotCheckCmd() *cobra.Command {
 	err := viper.BindPFlag("config", snapshotCheckCmd.PersistentFlags().Lookup("config"))
 	glb.AssertNoError(err)
 
-	snapshotCheckCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port")
+	snapshotCheckCmd.PersistentFlags().String("api.endpoint", "n", "<DNS name>:port used as endpoint to access the network")
 	err = viper.BindPFlag("api.endpoint", snapshotCheckCmd.PersistentFlags().Lookup("api.endpoint"))
 	glb.AssertNoError(err)
 
@@ -53,6 +53,12 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 	glb.Infof("snapshot branch ID: %s", kvStream.BranchID.String())
 	glb.Infof("snapshot root record:\n%s", kvStream.RootRecord.Lines("    ").String())
 
+	if kvStream.LedgerID.Hash() != ledger.L().ID.Hash() {
+		glb.Infof("ledger ID hash in snapshot file %s is not equal to the ledger ID hash on the node on '%s'.\nThe snapshot file CANNOT BE USED to start a node",
+			fname, viper.GetString("api.endpoint"))
+		return
+	}
+
 	lrbID, included, err := clnt.CheckTransactionIDInLRB(kvStream.BranchID)
 	glb.AssertNoError(err)
 	glb.Infof("\n-----------------------\nlatest reliable branch (LRB) is %s", lrbID.String())
@@ -61,6 +67,6 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 		glb.Infof("      - is INCLUDED in the current LRB of the network. It CAN BE USED to start a node")
 		glb.Infof("      - is %d slots back from LRB and %d slots back from now", lrbID.Slot()-kvStream.BranchID.Slot(), ledger.TimeNow().Slot()-kvStream.BranchID.Slot())
 	} else {
-		glb.Infof("the snapshot is NOT INCLUDED in the current LRB of the network. It CANNOT BE USED used to start a node")
+		glb.Infof("the snapshot is NOT INCLUDED in the current LRB of the network. It CANNOT BE USED to start a node")
 	}
 }
