@@ -19,14 +19,6 @@ func initSnapshotCheckCmd() *cobra.Command {
 		},
 	}
 
-	snapshotCheckCmd.PersistentFlags().StringP("config", "c", "", "proxi config profile name")
-	err := viper.BindPFlag("config", snapshotCheckCmd.PersistentFlags().Lookup("config"))
-	glb.AssertNoError(err)
-
-	snapshotCheckCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port endpoint to access the network")
-	err = viper.BindPFlag("api.endpoint", snapshotCheckCmd.PersistentFlags().Lookup("api.endpoint"))
-	glb.AssertNoError(err)
-
 	snapshotCheckCmd.InitDefaultHelpCmd()
 	return snapshotCheckCmd
 }
