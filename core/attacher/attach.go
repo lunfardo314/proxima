@@ -21,12 +21,6 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		opt(options)
 	}
 
-	//by := ""
-	//if options.calledBy != "" {
-	//	by = " by " + options.calledBy
-	//}
-	//env.Tracef(TraceTagAttach, "AttachTxID: %s%s", txid.StringShort, by)
-
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
@@ -35,8 +29,6 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			//env.TraceTx(&txid, "AttachTxID: found existing")
 			return
 		}
-		//env.Tracef(TraceTagAttach, "AttachTxID: new ID %s%s", txid.StringShort, by)
-		//env.TraceTx(&txid, "AttachTxID: new ID")
 
 		if options.depth > 0 && options.depth%100 == 0 {
 			env.Log().Warnf("AttachTxID: solidification reached depth %d with %s", options.depth, txid.StringShort())
