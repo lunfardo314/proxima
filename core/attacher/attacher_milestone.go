@@ -157,7 +157,7 @@ func (a *milestoneAttacher) run() error {
 	}
 
 	// TODO optimization in the branch is not necessary to keep the past cone
-	a.vid.SetTxStatusGood(a.pastCone.PastConeBase, a.pastCone.LedgerCoverage())
+	a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.pastCone.LedgerCoverage())
 	a.EvidencePastConeSize(a.pastCone.PastConeBase.Len())
 
 	const printPastCone = false

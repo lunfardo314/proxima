@@ -100,6 +100,19 @@ func (pc *PastCone) Tip() *WrappedTx {
 	return pc.tip
 }
 
+func (pb *PastConeBase) CloneImmutable() *PastConeBase {
+	util.Assertf(len(pb.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
+
+	ret := &PastConeBase{
+		baseline: pb.baseline,
+		vertices: make(map[*WrappedTx]FlagsPastCone, len(pb.vertices)),
+	}
+	for vid, flags := range pb.vertices {
+		ret.vertices[vid] = flags
+	}
+	return ret
+}
+
 func (pb *PastConeBase) setBaseline(vid *WrappedTx) {
 	util.Assertf(pb.baseline == nil, "setBaseline: pb.baseline == nil")
 	pb.baseline = vid
