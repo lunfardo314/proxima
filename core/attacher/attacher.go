@@ -26,7 +26,6 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, targetTs ledger
 
 const (
 	TraceTagAttach       = "attach"
-	TraceTagAttachOutput = "attachOutputOld"
 	TraceTagAttachVertex = "attachVertex"
 )
 
