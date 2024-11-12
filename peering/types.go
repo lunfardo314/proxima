@@ -46,7 +46,9 @@ type (
 		// timeout for heartbeat. If not set, used special defaultSendHeartbeatTimeout
 		SendTimeoutHeartbeat time.Duration
 
-		BlacklistTTL   int
+		// wait time to allow a blacklisted peer to connect again
+		BlacklistTTL int
+		// wait time after a disconnected peer can be reconnected again
 		CooloffListTTL int
 
 		// disable Quicreuse
