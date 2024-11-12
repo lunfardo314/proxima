@@ -23,7 +23,7 @@ func initSnapshotCheckCmd() *cobra.Command {
 	err := viper.BindPFlag("config", snapshotCheckCmd.PersistentFlags().Lookup("config"))
 	glb.AssertNoError(err)
 
-	snapshotCheckCmd.PersistentFlags().String("api.endpoint", "n", "<DNS name>:port used as endpoint to access the network")
+	snapshotCheckCmd.PersistentFlags().String("api.endpoint", "", "<DNS name>:port endpoint to access the network")
 	err = viper.BindPFlag("api.endpoint", snapshotCheckCmd.PersistentFlags().Lookup("api.endpoint"))
 	glb.AssertNoError(err)
 

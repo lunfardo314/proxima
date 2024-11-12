@@ -4,7 +4,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func initSnapshotCheckAllCmd() *cobra.Command {
@@ -18,19 +17,11 @@ func initSnapshotCheckAllCmd() *cobra.Command {
 		},
 	}
 
-	snapshotCheckAllCmd.PersistentFlags().StringP("config", "c", "", "proxi config profile name")
-	err := viper.BindPFlag("config", snapshotCheckAllCmd.PersistentFlags().Lookup("config"))
-	glb.AssertNoError(err)
-
-	snapshotCheckAllCmd.PersistentFlags().String("api.endpoint", "n", "<DNS name>:port used as endpoint to access the network")
-	err = viper.BindPFlag("api.endpoint", snapshotCheckAllCmd.PersistentFlags().Lookup("api.endpoint"))
-	glb.AssertNoError(err)
-
 	snapshotCheckAllCmd.InitDefaultHelpCmd()
 	return snapshotCheckAllCmd
 }
 
-func runSnapshotCheckAllCmd(_ *cobra.Command, args []string) {
+func runSnapshotCheckAllCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromNode()
 	clnt := glb.GetClient()
 
