@@ -50,8 +50,8 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	if len(txBytesWithMetadata) > 0 {
 		virtualTx.SetPullNotNeeded()
 		go func() {
-			a.IncCounter("store")
-			defer a.DecCounter("store")
+			//a.IncCounter("store")
+			//defer a.DecCounter("store")
 
 			if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
 				a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)

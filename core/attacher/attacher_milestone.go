@@ -35,9 +35,9 @@ func runMilestoneAttacher(
 
 	defer func() {
 		go func() {
-			a.IncCounter("close")
+			//a.IncCounter("close")
 			a.close()
-			a.DecCounter("close")
+			//a.DecCounter("close")
 		}()
 		// it is guaranteed callback will always be called, if any
 		if callback != nil {

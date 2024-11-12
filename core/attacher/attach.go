@@ -113,9 +113,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			// case with already attached transaction
 			if options.attachmentCallback != nil {
 				go func() {
-					env.IncCounter("call")
+					//env.IncCounter("call")
 					options.attachmentCallback(vid, vid.GetErrorNoLock())
-					env.DecCounter("call")
+					//env.DecCounter("call")
 				}()
 			}
 			return
