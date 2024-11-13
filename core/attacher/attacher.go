@@ -73,6 +73,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 		return true
 	}
 	a.Assertf(stemVid.IsBranchTransaction(), "stemVid.IsBranchTransaction()")
+
 	switch stemVid.GetTxStatus() {
 	case vertex.Good:
 		// it is 'good' and referenced branch -> make it baseline

@@ -1,3 +1,5 @@
+TODO needs review
+
 The package `attacher` contains core functions dedicated to the construction of the _UTXO tangle_.
 
 Each transaction if first parsed and then is **attached** to the UTXO tangle. 

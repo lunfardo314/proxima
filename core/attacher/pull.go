@@ -47,8 +47,8 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	//	virtualTx.SetPullNotNeeded()
 	//	return true
 	//}
-
 	// no in the state or not known 'inTheState status'
+
 	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
 	if len(txBytesWithMetadata) > 0 {
 		virtualTx.SetPullNotNeeded()
@@ -72,6 +72,6 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	a.pokeMe(deptVID)
 	// add transaction to the wanted/expected list
 	a.AddWantedTransaction(&deptVID.ID)
-	nPulls := a.PullFromNPeers(nPeers, &deptVID.ID)
-	virtualTx.SetPullHappened(nPulls, repeatPullAfter)
+	a.PullFromNPeers(nPeers, &deptVID.ID)
+	virtualTx.SetPullHappened(repeatPullAfter)
 }

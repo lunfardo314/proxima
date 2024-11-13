@@ -160,13 +160,9 @@ func (v *VirtualTransaction) SetPullNotNeeded() {
 }
 
 // SetPullHappened increases pull counter and sets nex pull deadline
-func (v *VirtualTransaction) SetPullHappened(nTimes int, repeatAfter time.Duration) {
+func (v *VirtualTransaction) SetPullHappened(repeatAfter time.Duration) {
 	util.Assertf(v.pullRulesDefined, "v.pullRulesDefined")
-	if nTimes <= 0 {
-		// not happened
-		return
-	}
-	v.timesPulled += nTimes
+	v.timesPulled++
 	v.nextPull = time.Now().Add(repeatAfter)
 }
 

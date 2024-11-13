@@ -50,6 +50,7 @@ type Global struct {
 	attachmentTimeMilliseconds prometheus.Gauge
 	attachmentsCounter         prometheus.Counter
 	// transaction pull parameters
+	// repeat pull after. Default 2 sec
 	txPullRepeatPeriod time.Duration
 	txPullMaxAttempts  int
 	txPullFromPeers    int
@@ -60,7 +61,7 @@ var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
 	PullRepeatPeriodDefault = 2 * time.Second
-	PullMaxAttemptsDefault  = 60
+	PullMaxAttemptsDefault  = 10
 	PullFromNumPeersDefault = 2
 )
 
