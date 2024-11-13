@@ -79,6 +79,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 	case vertex.Good:
 		// it is 'good' and referenced branch -> make it baseline
 		v.BaselineBranch = stemVid
+		// !!!!
 		a.pastCone.SetFlagsUp(stemVid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 		return true
 
