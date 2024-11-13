@@ -11,12 +11,15 @@ const TraceTagPull = "pull"
 
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 	a.Tracef(TraceTagPull, "pullIfNeeded IN: %s", deptVID.IDShortString)
-	defer a.Tracef(TraceTagPull, "pullIfNeeded OUT: %s", deptVID.IDShortString)
 
 	ok := true
+	virtual := false
 	deptVID.UnwrapVirtualTx(func(virtualTx *vertex.VirtualTransaction) {
 		ok = a.pullIfNeededUnwrapped(virtualTx, deptVID)
+		virtual = true
 	})
+
+	a.Tracef(TraceTagPull, "pullIfNeeded OUT (virtual = %v): %s", virtual, deptVID.IDShortString)
 	return ok
 }
 

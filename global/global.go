@@ -123,6 +123,10 @@ func NewFromConfig() *Global {
 	if v := viper.GetInt("transaction_pull.from_random_peers"); v > 0 {
 		ret.txPullFromPeers = v
 	}
+
+	ret.SugaredLogger.Infof("transaction pull paraneters:: repeat period: %v, max attempts: %d, num peers: %d",
+		ret.txPullRepeatPeriod, ret.txPullMaxAttempts, ret.txPullFromPeers)
+
 	return ret
 }
 
@@ -510,6 +514,6 @@ func (l *Global) AttachmentFinished(started ...time.Time) {
 	}
 }
 
-func (l *Global) TxPullParameters() (time.Duration, int, int) {
+func (l *Global) TxPullParameters() (repeatPeriod time.Duration, maxAttempts int, numPeers int) {
 	return l.txPullRepeatPeriod, l.txPullMaxAttempts, l.txPullFromPeers
 }

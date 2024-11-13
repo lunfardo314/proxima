@@ -87,7 +87,7 @@ type (
 		AttachmentFinished(started ...time.Time)
 
 		// TxPullParameters repeat after period, max attempts, num peers
-		TxPullParameters() (time.Duration, int, int)
+		TxPullParameters() (repeatPeriod time.Duration, maxAttempts int, numPeers int)
 	}
 
 	// StartStop interface of the global objects which coordinates graceful shutdown
