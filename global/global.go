@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyargs"
@@ -55,6 +54,8 @@ type Global struct {
 	txPullRepeatPeriod time.Duration
 	txPullMaxAttempts  int
 	txPullFromPeers    int
+	//
+	disableDeadlockCatching bool
 }
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close")
@@ -129,8 +130,8 @@ func NewFromConfig() *Global {
 	ret.SugaredLogger.Infof("transaction pull paraneters:: repeat period: %v, max attempts: %d, num peers: %d",
 		ret.txPullRepeatPeriod, ret.txPullMaxAttempts, ret.txPullFromPeers)
 
-	if viper.GetBool("disable_deadlock_catcher") {
-		attacher.EnableDeadlockCatching(0)
+	ret.disableDeadlockCatching = viper.GetBool("disable_deadlock_catcher")
+	if ret.disableDeadlockCatching {
 		ret.SugaredLogger.Infof("deadlock catching in the attacher has been disabled")
 	}
 	return ret
@@ -522,4 +523,8 @@ func (l *Global) AttachmentFinished(started ...time.Time) {
 
 func (l *Global) TxPullParameters() (repeatPeriod time.Duration, maxAttempts int, numPeers int) {
 	return l.txPullRepeatPeriod, l.txPullMaxAttempts, l.txPullFromPeers
+}
+
+func (l *Global) DeadlockCatchingDisabled() bool {
+	return l.disableDeadlockCatching
 }

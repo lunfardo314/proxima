@@ -88,6 +88,8 @@ type (
 
 		// TxPullParameters repeat after period, max attempts, num peers
 		TxPullParameters() (repeatPeriod time.Duration, maxAttempts int, numPeers int)
+		// DeadlockCatchingDisabled config parameter to disdable deadlock catching
+		DeadlockCatchingDisabled() bool
 	}
 
 	// StartStop interface of the global objects which coordinates graceful shutdown
