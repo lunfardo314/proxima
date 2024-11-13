@@ -43,10 +43,10 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 
-	if a.pastCone.IsInTheState(deptVID) {
-		virtualTx.SetPullNotNeeded()
-		return true
-	}
+	//if a.pastCone.IsInTheState(deptVID) {
+	//	virtualTx.SetPullNotNeeded()
+	//	return true
+	//}
 
 	// no in the state or not known 'inTheState status'
 	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)

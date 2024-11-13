@@ -175,7 +175,7 @@ func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int) bool {
 }
 
 func (v *VirtualTransaction) PullNeeded() bool {
-	return v.pullRulesDefined && v.needsPull && !v.nextPull.After(time.Now())
+	return v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
 }
 
 func (v *VirtualTransaction) findChainOutput(txid *ledger.TransactionID, chainID *ledger.ChainID) *ledger.OutputWithID {
