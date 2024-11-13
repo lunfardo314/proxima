@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyargs"
@@ -128,6 +129,10 @@ func NewFromConfig() *Global {
 	ret.SugaredLogger.Infof("transaction pull paraneters:: repeat period: %v, max attempts: %d, num peers: %d",
 		ret.txPullRepeatPeriod, ret.txPullMaxAttempts, ret.txPullFromPeers)
 
+	if viper.GetBool("disable_deadlock_catcher") {
+		attacher.EnableDeadlockCatching(0)
+		ret.SugaredLogger.Infof("deadlock catching in the attacher has been disabled")
+	}
 	return ret
 }
 
