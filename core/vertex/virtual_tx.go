@@ -50,6 +50,7 @@ func (v *VirtualTransaction) wrapWithID(txid ledger.TransactionID) *WrappedTx {
 	return _newVID(_virtualTx{VirtualTransaction: v}, txid, v.sequencerID(&txid))
 }
 
+// WrapBranchDataAsVirtualTx branch vertex immediately becomes 'good'
 func WrapBranchDataAsVirtualTx(branchData *multistate.BranchData) *WrappedTx {
 	ret := newVirtualBranchTx(branchData).wrapWithID(branchData.Stem.ID.TransactionID())
 	cov := branchData.LedgerCoverage

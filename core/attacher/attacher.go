@@ -67,17 +67,19 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 		WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
 	)
 
+	a.Assertf(stemVid.IsBranchTransaction(), "stemVid.IsBranchTransaction()")
+
 	// here it is referenced from the attacher
 	if !a.pastCone.MarkVertexKnown(stemVid) {
 		// failed to reference (pruned), but it is ok (rare event)
 		return true
 	}
-	a.Assertf(stemVid.IsBranchTransaction(), "stemVid.IsBranchTransaction()")
 
 	switch stemVid.GetTxStatus() {
 	case vertex.Good:
 		// it is 'good' and referenced branch -> make it baseline
 		v.BaselineBranch = stemVid
+		a.pastCone.SetFlagsUp(stemVid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 		return true
 
 	case vertex.Bad:

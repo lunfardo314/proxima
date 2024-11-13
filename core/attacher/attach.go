@@ -59,6 +59,8 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			// corresponding state has been found, it is solid -> put virtual branch tx to the memDAG
 			vid = vertex.WrapBranchDataAsVirtualTx(&branchData)
 			env.AddVertexNoLock(vid)
+			env.Assertf(vid.GetTxStatusNoLock() == vertex.Good, "vid.GetTxStatusNoLock()==vertex.Good")
+
 			env.PostEventNewGood(vid)
 			env.SendToTippool(vid)
 			return
@@ -113,7 +115,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			return
 		}
 
-		if vid.Slot() <= env.EarliestSlot() {
+		if vid.IsSequencerMilestone() && vid.Slot() <= env.EarliestSlot() {
 			// transaction below the earliest slot will not be attached
 			return
 		}
