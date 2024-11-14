@@ -74,7 +74,8 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		if txid.Slot() < env.EarliestSlot() {
 			// new branch is at or before the earliest slot in the state. Invalidate the transaction
 			// This prevents from never ending solidification against wrong orphaned snapshot
-			vid.SetTxStatusBad(fmt.Errorf("branch solidification error: transaction is before the snapshot slot %d", env.EarliestSlot()))
+			vid.SetTxStatusBad(fmt.Errorf("branch solidification error: transaction %s is before the snapshot slot %d",
+				txid.StringShort(), env.EarliestSlot()))
 			return
 		}
 		// all ok
