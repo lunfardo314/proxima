@@ -71,18 +71,13 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		vid = vertex.WrapTxID(txid)
 		env.AddVertexNoLock(vid)
 
-		//if txid.Slot() < env.EarliestSlot() {
-		//	// new branch is at or before the earliest slot in the state. Invalidate the transaction
-		//	// This prevents from never ending solidification against wrong orphaned snapshot
-		//	vid.SetTxStatusBad(fmt.Errorf("branch solidification error: transaction %s is before the snapshot slot %d",
-		//		txid.StringShort(), env.EarliestSlot()))
-		//	return
-		//}
-		// all ok
+		if txid.Slot() < env.EarliestSlot() {
+			// new branch is before the earliest slot in the state. Invalidate the transaction
+			// This prevents from never ending solidification against wrong orphaned snapshot
+			vid.SetTxStatusBad(fmt.Errorf("branch solidification error: transaction %s is before the snapshot slot %d", txid.StringShort(), env.EarliestSlot()))
+			return
+		}
 		vid.SetAttachmentDepthNoLock(options.depth)
-
-		//env.Tracef(TraceTagAttach, "AttachTxID: added new branch vertex and pulled %s%s", txid.StringShort(), by)
-		//env.TraceTx(&txid, "AttachTxID: added new branch vertex and pulled")
 	})
 	return
 }

@@ -69,6 +69,9 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nPeers int) {
 	a.Tracef(TraceTagPull, "pull: %s", deptVID.IDShortString)
+	if deptVID.IsBranchTransaction() {
+		fmt.Printf(">>>>>>>>>>>>>>>>> pull branch %d\n", deptVID.IDShortString())
+	}
 	a.pokeMe(deptVID)
 	// add transaction to the wanted/expected list
 	a.AddWantedTransaction(&deptVID.ID)
