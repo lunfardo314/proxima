@@ -108,7 +108,7 @@ peering:
   # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
   peers:
     # Example -> boot: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
-	# nodes for testnet:
+    # nodes for testnet:
     boot-acc: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
     loc0-acc: /ip4/63.250.56.190/udp/4001/quic-v1/p2p/12D3KooWN35e2ikeiJAUpotsmD6YTmHrmypHk9QgKo3QAotF4G2a
     seq1-acc: /ip4/83.229.84.197/udp/4001/quic-v1/p2p/12D3KooWB4JtN4266XqLhKLo3c8SS4aTdD32dnsrqfWyrLfbwFw3

@@ -115,10 +115,10 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			return
 		}
 
-		if vid.IsSequencerMilestone() && vid.Slot() <= env.EarliestSlot() {
-			// transaction below the earliest slot will not be attached
-			return
-		}
+		//if vid.IsSequencerMilestone() && vid.Slot() <= env.EarliestSlot() {
+		//	// transaction below the earliest slot will not be attached
+		//	return
+		//}
 		env.Tracef(TraceTagPull, "AttachTransaction %s. Since attachID: %v", tx.IDShortString, time.Since(v.Created))
 
 		// mark the vertex in order to prevent repetitive attachment
