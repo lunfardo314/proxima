@@ -25,7 +25,7 @@ type (
 	ProximaNode struct {
 		*global.Global
 		multiStateDB              *badger_adaptor.DB
-		firstSlot                 ledger.Slot
+		snapshotBranchID          ledger.TransactionID
 		txStoreDB                 *badger_adaptor.DB
 		txBytesStore              global.TxBytesStore
 		peers                     *peering.Peers
@@ -325,4 +325,8 @@ func (p *ProximaNode) EvidencePastConeSize(sz int) {
 func (p *ProximaNode) EvidenceNumberOfTxDependencies(n int) {
 	p.numTxDependencies.Set(float64(n))
 	p.counterTxDependencies.Add(float64(n))
+}
+
+func (p *ProximaNode) SnapshotBranchID() *ledger.TransactionID {
+	return &p.snapshotBranchID
 }

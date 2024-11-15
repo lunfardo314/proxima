@@ -97,9 +97,22 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 
 const TraceTagSolidifySequencerBaseline = "seqBase"
 
+func (a *attacher) getSnapshotBranch() *vertex.WrappedTx {
+	ret := AttachTxID(*a.SnapshotBranchID(), a, WithInvokedBy(a.name))
+	a.Assertf(ret.GetTxStatus() == vertex.Good, "getSnapshotBranch: inconsistency")
+	return ret
+}
+
 func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	a.Tracef(TraceTagSolidifySequencerBaseline, "IN for %s", v.Tx.IDShortString)
 	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT for %s", v.Tx.IDShortString)
+
+	if a.SnapshotBranchID().Timestamp().AfterOrEqual(vidUnwrapped.Timestamp()) {
+		// transaction is not after the snapshot -> its baseline is before the snapshot
+		// set baseline equal to the snapshot branch
+		v.BaselineBranch = a.getSnapshotBranch()
+		return true
+	}
 
 	// regular sequencer tx. Go to the direction of the baseline branch
 	predOid, _ := v.Tx.SequencerChainPredecessor()

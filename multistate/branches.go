@@ -57,6 +57,15 @@ func FetchEarliestSlot(store common.KVReader) ledger.Slot {
 	return ret
 }
 
+func FetchSnapshotBranchID(store common.KVTraversableReader) ledger.TransactionID {
+	earliestSlot := FetchEarliestSlot(store)
+	roots := FetchRootRecords(store, earliestSlot)
+	util.Assertf(len(roots) == 1, "expected exactly 1 root record in the earliest slot %d", earliestSlot)
+
+	branchData := FetchBranchDataByRoot(store, roots[0])
+	return branchData.Stem.ID.TransactionID()
+}
+
 const numberOfElementsInRootRecord = 6
 
 func (r *RootRecord) Bytes() []byte {

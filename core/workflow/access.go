@@ -124,10 +124,6 @@ func (w *Workflow) MilestoneArrivedSince(when time.Time) bool {
 	return w.tippool.MilestoneArrivedSince(when)
 }
 
-func (w *Workflow) EarliestSlot() ledger.Slot {
-	return w.earliestSlot
-}
-
 func (w *Workflow) SaveFullDAG(fname string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(w.StateStore())
 	tmpDag := memdag.MakeDAGFromTxStore(w.TxBytesStore(), 0, branchTxIDS...)

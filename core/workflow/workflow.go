@@ -33,6 +33,7 @@ type (
 		GetOwnSequencerID() *ledger.ChainID
 		EvidencePastConeSize(sz int)
 		EvidenceNumberOfTxDependencies(n int)
+		SnapshotBranchID() *ledger.TransactionID
 	}
 
 	Workflow struct {

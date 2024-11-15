@@ -56,6 +56,10 @@ func (w *workflowDummyEnvironment) GetOwnSequencerID() *ledger.ChainID {
 	panic("not implemented")
 }
 
+func (w *workflowDummyEnvironment) SnapshotBranchID() *ledger.TransactionID {
+	return ledger.GenesisTransactionID()
+}
+
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
 		Global:       global.NewDefault(false),

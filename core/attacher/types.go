@@ -29,7 +29,6 @@ type (
 		TxBytesStore() global.TxBytesStore
 		TxBytesFromStoreIn(txBytesWithMetadata []byte) (*ledger.TransactionID, error)
 		AddWantedTransaction(txid *ledger.TransactionID)
-		EarliestSlot() ledger.Slot
 	}
 
 	pullEnvironment interface {
@@ -52,6 +51,7 @@ type (
 		ParseMilestoneData(msVID *vertex.WrappedTx) *ledger.MilestoneData
 		SaveFullDAG(fname string)
 		EvidencePastConeSize(sz int)
+		SnapshotBranchID() *ledger.TransactionID
 	}
 
 	attacher struct {
