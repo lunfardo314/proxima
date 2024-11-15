@@ -295,9 +295,11 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 				return false
 			}
 		}
+	} else {
+		a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) not all inputs solid", v.Tx.IDShortString)
 	}
 
-	a.Tracef(TraceTagAttachVertex, "return OK: %s", v.Tx.IDShortString)
+	a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) return OK", v.Tx.IDShortString)
 	return true
 }
 
