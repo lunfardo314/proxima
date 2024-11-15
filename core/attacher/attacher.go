@@ -533,10 +533,12 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 	a.baseline = baselineVID
 	a.baselineSupply = rr.Supply
 
-	if currentTS.IsSlotBoundary() {
-		a.Assertf(baselineVID.Slot() < currentTS.Slot(), "baselineVID.Slot() < currentTS.Slot()")
-	} else {
-		a.Assertf(baselineVID.Slot() == currentTS.Slot(), "baselineVID.Slot() == currentTS.Slot()")
+	if currentTS.After(a.SnapshotBranchID().Timestamp()) {
+		if currentTS.IsSlotBoundary() {
+			a.Assertf(baselineVID.Slot() < currentTS.Slot(), "baselineVID.Slot() < currentTS.Slot()")
+		} else {
+			a.Assertf(baselineVID.Slot() == currentTS.Slot(), "baselineVID.Slot() == currentTS.Slot()")
+		}
 	}
 	return true
 }
