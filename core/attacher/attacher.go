@@ -447,7 +447,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	if !ok {
 		return false
 	}
-	a.Tracef(TraceTagBranchAvailable, "before attachOutput(%s): %s", wOut.IDShortString, a.pastCone.Flags(vidDep).String())
+	a.Tracef(TraceTagBranchAvailable, "after attachOutput(%s): %s", wOut.IDShortString, a.pastCone.Flags(vidDep).String())
 	return true
 }
 
