@@ -262,7 +262,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	a.Assertf(!util.IsNil(a.baselineSugaredStateReader), "!util.IsNil(a.baselineSugaredStateReader)")
 
 	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
-		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsementsOld", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.Tx.IDShortString)
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vidUnwrapped) { // <<< recursive
 			// not ok -> leave attacher
@@ -584,7 +584,7 @@ func (a *attacher) SetTraceAttacher(name string) {
 func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
 	if a.forceTrace != "" {
 		lazyArgs := fmt.Sprintf(format, lazyargs.Eval(args...)...)
-		a.Log().Infof("LOCAL TRACE(%s//%s) %s", traceLabel, a.forceTrace, lazyArgs)
+		a.Log().Infof("%s LOCAL TRACE(%s//%s) %s", a.name, traceLabel, a.forceTrace, lazyArgs)
 		return
 	}
 	a.Environment.Tracef(traceLabel, a.name+format+" ", args...)
