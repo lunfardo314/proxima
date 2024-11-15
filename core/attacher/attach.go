@@ -11,6 +11,8 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+const TraceTagBranchAvailable = "branchAvailable"
+
 // AttachTxID ensures the txid is on the MemDAG
 // It load existing branches but does not pull anything
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
@@ -51,7 +53,9 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 	// new branch transaction. DB look up outside the global lock -> prevent congestion
 	branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid)
 	if branchAvailable {
-		env.Tracef(TraceTagAttach, "$$$$$$ branch available: %s", txid.StringShort())
+		env.Tracef(TraceTagBranchAvailable, "$$$$$$ branch available: %s", txid.StringShort())
+	} else {
+		env.Tracef(TraceTagBranchAvailable, "$$$$$$ branch NOT available: %s", txid.StringShort())
 	}
 
 	env.WithGlobalWriteLock(func() {
