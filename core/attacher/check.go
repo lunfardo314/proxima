@@ -12,6 +12,10 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 	if a.vid.GetTxStatus() == vertex.Bad {
 		return fmt.Errorf("checkConsistencyBeforeWrapUp: vertex %s is BAD", a.vid.IDShortString())
 	}
+	if a.SnapshotBranchID().Timestamp().AfterOrEqual(a.vid.Timestamp()) {
+		// no need to check inputs, it must be in the state anyway
+		return nil
+	}
 	a.vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 		if err = a._checkMonotonicityOfInputTransactions(v); err != nil {
 			return
