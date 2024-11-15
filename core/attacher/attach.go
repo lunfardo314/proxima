@@ -50,6 +50,9 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 
 	// new branch transaction. DB look up outside the global lock -> prevent congestion
 	branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid)
+	if branchAvailable {
+		env.Tracef(TraceTagAttach, "$$$$$$ branch available: %s", txid.StringShort())
+	}
 
 	env.WithGlobalWriteLock(func() {
 		if vid = env.GetVertexNoLock(&txid); vid != nil {
