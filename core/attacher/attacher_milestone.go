@@ -113,7 +113,7 @@ func (a *milestoneAttacher) run() error {
 
 	// then solidify past cone
 
-	if a.vid.IDHasFragment("011fc7826c6e") {
+	if a.vid.IDHasFragment("011fc7826c6e", "00e5c36923bc") {
 		a.SetTraceAttacher("@@@>>")
 	}
 
