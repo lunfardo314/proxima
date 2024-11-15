@@ -3,6 +3,7 @@ package attacher
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -465,11 +466,18 @@ func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx
 }
 
 func (a *attacher) allInputsDefined(v *vertex.Vertex) bool {
-	for _, vidInp := range v.Inputs {
+	for i, vidInp := range v.Inputs {
+		inpID := v.Tx.MustInputAt(byte(i))
 		if vidInp == nil {
+			if strings.Contains(v.Tx.IDShortString(), "008238d07142") {
+				a.Tracef(TraceTagBranchAvailable, ">>?? input %d (%s) = nil", i, inpID.String())
+			}
 			return false
 		}
 		if !a.pastCone.IsKnownDefined(vidInp) {
+			if strings.Contains(v.Tx.IDShortString(), "008238d07142") {
+				a.Tracef(TraceTagBranchAvailable, ">>?? input %d (%s) not defined", i, inpID.String())
+			}
 			return false
 		}
 	}
