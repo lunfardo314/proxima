@@ -101,9 +101,9 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 
 func (a *milestoneAttacher) run() error {
 	// first solidify baseline state
-	if a.vid.IDHasFragment("00e5c36923bc") {
-		a.Log().Infof(">>>>>>>> attachTransaction %s inside run attacher", a.vid.IDShortString())
-		a.SetTraceAttacher("@@@>>22")
+	if a.vid.IDHasFragment("[125419|77sq]") {
+		a.Log().Infof(">>>>>>>> inside run attacher %s", a.vid.IDShortString())
+		a.SetTraceAttacher(fmt.Sprintf("@@@>>2 ((%s))", a.vid.IDShortString()))
 	}
 
 	if status := a.solidifyBaseline(); status != vertex.Good {
