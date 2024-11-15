@@ -90,7 +90,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 		return false
 
 	case vertex.Undefined:
-		return a.pullIfNeeded(stemVid)
+		return a.pullIfNeeded(stemVid, "solidifyStem")
 	}
 	panic("wrong vertex state")
 }
@@ -170,7 +170,7 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 	case vertex.Undefined:
 		a.Tracef(TraceTagSolidifySequencerBaseline, "baselineDirection %s is UNDEF -> pullIfNeeded", baselineDirection.IDShortString)
 
-		return a.pullIfNeeded(baselineDirection)
+		return a.pullIfNeeded(baselineDirection, "solidifySequencerBaseline")
 	}
 	panic("wrong vertex state")
 }
@@ -341,7 +341,7 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 		return true
 	}
 	a.defineInTheStateStatus(vidDep)
-	if !a.pullIfNeeded(vidDep) {
+	if !a.pullIfNeeded(vidDep, "refreshDependencyStatus") {
 		return false
 	}
 	return true

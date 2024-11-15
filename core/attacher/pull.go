@@ -9,8 +9,8 @@ import (
 
 const TraceTagPull = "pull"
 
-func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
-	a.Tracef(TraceTagPull, "pullIfNeeded IN: %s", deptVID.IDShortString)
+func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
+	a.Tracef(TraceTagPull, "pullIfNeeded IN (%s): %s", tag, deptVID.IDShortString)
 
 	ok := true
 	virtual := false
@@ -19,7 +19,7 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 		virtual = true
 	})
 
-	a.Tracef(TraceTagPull, "pullIfNeeded OUT (virtual = %v): %s", virtual, deptVID.IDShortString)
+	a.Tracef(TraceTagPull, "pullIfNeeded OUT (%s) (virtual = %v): %s", tag, virtual, deptVID.IDShortString)
 	return ok
 }
 
