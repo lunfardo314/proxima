@@ -111,6 +111,8 @@ func (a *attacher) solidifySequencerBaseline(v *vertex.Vertex, vidUnwrapped *ver
 		// transaction is not after the snapshot -> its baseline is before the snapshot
 		// set baseline equal to the snapshot branch
 		v.BaselineBranch = a.getSnapshotBranch()
+		a.Log().Infof("%s: snapshot branch %s assumed as the baseline for transaction %s",
+			a.name, v.BaselineBranch.IDShortString(), vidUnwrapped.IDShortString())
 		return true
 	}
 
