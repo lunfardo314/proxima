@@ -49,8 +49,8 @@ the snapshot:
 
 Command `proxi snapshot check_all --api.endpoint <APIendpoint>` scans all snapshot files in the current directory and check each of it.
 
-snapshot file can be used to start a node and it will be synced.
-Otherwise snapshot represents a ledger state which cannot be synced with the network.
+snapshot file can be used to start a node, and it will be synced.
+Otherwise, snapshot represents a ledger state which cannot be synced with the network (it is on the orphaned branch).
 
 ### 4. Create multi-state database
 In the directory with the snapshot file run command `proxi snapshot restore -v`.
@@ -113,7 +113,7 @@ Look for something like this in the log:
 [sync] latest reliable branch is 1 slots behind from now, current slot: 75613, coverage: 1_702_419_177_591_708 (1.636152ms)
 ```
 
-Node is synced if `latest reliable branch` is just few, normally 2-5, slots behind from now and
+Node is synced if `latest reliable branch` is just few, normally 1-3, slots behind from now and
 coverage is at least `1_300_000_000_000_000`.
 
 You also can check current parameters of the network by running `proxi node lrb` command. 
