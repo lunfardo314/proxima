@@ -113,7 +113,9 @@ func (a *milestoneAttacher) run() error {
 
 	// then solidify past cone
 
-	a.SetTraceAttacher("@@@@@@@@")
+	if a.vid.IDHasFragment("011fc7826c6e") {
+		a.SetTraceAttacher("@@@>>")
+	}
 
 	status := a.solidifyPastCone()
 	a.Assertf(status != vertex.Undefined, "status!=vertex.Undefined")

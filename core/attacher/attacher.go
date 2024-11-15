@@ -438,13 +438,16 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	}
 	vidDep.AddConsumer(oid.Index(), vidUnwrapped)
 
-	ok = a.attachOutput(vertex.WrappedOutput{
+	wOut := vertex.WrappedOutput{
 		VID:   vidDep,
 		Index: oid.Index(),
-	})
+	}
+	a.Tracef(TraceTagBranchAvailable, "before attachOutput(%s): %s", wOut.IDShortString, a.pastCone.Flags(vidDep).String())
+	ok = a.attachOutput(wOut)
 	if !ok {
 		return false
 	}
+	a.Tracef(TraceTagBranchAvailable, "before attachOutput(%s): %s", wOut.IDShortString, a.pastCone.Flags(vidDep).String())
 	return true
 }
 
