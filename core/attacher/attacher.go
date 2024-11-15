@@ -90,7 +90,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 		return false
 
 	case vertex.Undefined:
-		a.Log().Infof(">>>>>>>>>>>>>>>>>>>> before pullIfNeeded(%s)", stemVid.IDShortString())
+		a.Tracef(TraceTagPull, ">>>>>>>>>>>>>>>>>>>> before pullIfNeeded(%s) %s", stemVid.IDShortString(), a.pastCone.Flags(stemVid).String())
 		return a.pullIfNeeded(stemVid, "solidifyStem")
 	}
 	panic("wrong vertex state")
