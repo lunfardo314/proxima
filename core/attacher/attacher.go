@@ -470,13 +470,13 @@ func (a *attacher) allInputsDefined(v *vertex.Vertex) bool {
 		inpID := v.Tx.MustInputAt(byte(i))
 		if vidInp == nil {
 			if strings.Contains(v.Tx.IDShortString(), "008238d07142") {
-				a.Tracef(TraceTagBranchAvailable, ">>?? input %d (%s) = nil", i, inpID.String())
+				a.Tracef(TraceTagBranchAvailable, ">>?? input %d (%s) = nil", i, inpID.StringShort())
 			}
 			return false
 		}
 		if !a.pastCone.IsKnownDefined(vidInp) {
 			if strings.Contains(v.Tx.IDShortString(), "008238d07142") {
-				a.Tracef(TraceTagBranchAvailable, ">>?? input %d (%s) not defined", i, inpID.String())
+				a.Tracef(TraceTagBranchAvailable, ">>?? input %d (%s) not defined", i, inpID.StringShort())
 			}
 			return false
 		}
