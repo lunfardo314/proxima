@@ -81,6 +81,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 		v.BaselineBranch = stemVid
 		// !!!!
 		a.pastCone.SetFlagsUp(stemVid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
+		a.Tracef(TraceTagBranchAvailable, "$$$$$$$ stemVid GOOD: %s", stemVid.IDShortString)
 		return true
 
 	case vertex.Bad:
@@ -90,7 +91,7 @@ func (a *attacher) solidifyStemOfTheVertex(v *vertex.Vertex, vidUnwrapped *verte
 		return false
 
 	case vertex.Undefined:
-		a.Tracef(TraceTagPull, ">>>>>>>>>>>>>>>>>>>> before pullIfNeeded(%s) %s", stemVid.IDShortString(), a.pastCone.Flags(stemVid).String())
+		a.Tracef(TraceTagBranchAvailable, "$$$$$$$ stemVid UNDEF: %s", stemVid.IDShortString)
 		return a.pullIfNeeded(stemVid, "solidifyStem")
 	}
 	panic("wrong vertex state")
