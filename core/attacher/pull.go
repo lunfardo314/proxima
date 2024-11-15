@@ -15,8 +15,7 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 	ok := true
 	virtual := false
 	deptVID.UnwrapVirtualTx(func(virtualTx *vertex.VirtualTransaction) {
-		a.Assertf(deptVID.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted), "deptVID.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)")
-		if deptVID.FlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished) {
+		if deptVID.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted | vertex.FlagVertexTxAttachmentFinished) {
 			return
 		}
 		ok = a.pullIfNeededUnwrapped(virtualTx, deptVID)
