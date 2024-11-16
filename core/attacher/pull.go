@@ -10,6 +10,10 @@ import (
 const TraceTagPull = "pull"
 
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
+	if deptVID.IDHasFragment("009d20") {
+		a.Log().Infof("@@>> pullIfNeeded %s", deptVID.IDShortString())
+	}
+
 	a.Tracef(TraceTagPull, "pullIfNeeded IN (%s): %s", tag, deptVID.IDShortString)
 
 	ok := true
@@ -24,6 +28,10 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 }
 
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
+	if deptVID.IDHasFragment("009d20") {
+		a.Log().Infof("@@>> pullIfNeededUnwrapped %s", deptVID.IDShortString())
+	}
+
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
 
 	repeatPullAfter, maxPullAttempts, numPeers := a.TxPullParameters()
