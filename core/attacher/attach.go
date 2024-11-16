@@ -45,6 +45,10 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		}
 	})
 	if vid != nil {
+		if vid.IDHasFragment("009d20") {
+			env.Log().Infof("@@>> attach tx ID %s", vid.IDShortString())
+		}
+
 		// already on the memDAG
 		return
 	}
@@ -106,6 +110,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	env.TraceTx(tx.ID(), "AttachTransaction")
 
 	vid = AttachTxID(*tx.ID(), env, WithInvokedBy("addTx"))
+
+	if vid.IDHasFragment("009d20") {
+		env.Log().Infof("@@>> attach transaction %s", vid.IDShortString())
+	}
+
 	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
