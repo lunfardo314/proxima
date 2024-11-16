@@ -361,6 +361,9 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	}
 	if a.baselineSugaredStateReader().KnowsCommittedTransaction(&vid.ID) {
 		// once endorsement is on the baseline, it is fully defined
+		if vid.IDHasFragment("009d20") {
+			a.Log().Infof(">>$$ %s defineInTheStateStatus -------- \n%s", a.name, a.pastCone.Lines("      ").Join("\n"))
+		}
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 	} else {
 		// not on the state, so it is not defined
@@ -403,6 +406,9 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 }
 
 func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx) bool {
+	if vidEndorsed.IDHasFragment("009d20") {
+		a.Log().Infof(">>>>>> %s in attachEndorsementDependency %s before refresh", a.name, vidEndorsed.IDShortString())
+	}
 	if !a.refreshDependencyStatus(vidEndorsed) {
 		return false
 	}
@@ -434,6 +440,9 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	}
 	a.Assertf(vidDep != nil, "vidDep!=nil")
 
+	if vidDep.IDHasFragment("009d20") {
+		a.Log().Infof(">>>>>> %s in attachInput %s before refresh", a.name, vidDep.IDShortString())
+	}
 	if !a.refreshDependencyStatus(vidDep) {
 		return false
 	}
