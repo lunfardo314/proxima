@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +22,7 @@ func initFindTxCmd() *cobra.Command {
 	findTxCmd.PersistentFlags().Uint32VarP(&findInSlot, "slot", "s", 0, "slot prefix")
 	findTxCmd.PersistentFlags().StringVarP(&findWithHexFragment, "hex_fragment", "x", "", "hex fragment")
 	findTxCmd.PersistentFlags().BoolVarP(&findFirst, "find_first", "1", false, "break when first found")
+	findTxCmd.PersistentFlags().StringVarP(&branchIDStr, "branch", "b", "", "tip branch ID hex")
 	findTxCmd.InitDefaultHelpCmd()
 
 	return findTxCmd
@@ -30,6 +32,7 @@ var (
 	findInSlot          uint32
 	findWithHexFragment string
 	findFirst           bool
+	branchIDStr         string
 )
 
 func runFindTxCmd(_ *cobra.Command, args []string) {
@@ -39,12 +42,25 @@ func runFindTxCmd(_ *cobra.Command, args []string) {
 
 	glb.Assertf(findInSlot != 0 || findWithHexFragment != "", "at least one of slot or fragment must be specified")
 
-	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
-	glb.Assertf(lrb != nil, "can't find latest reliable branch (LRB)")
-
 	var filterSlots []ledger.Slot
 	if findInSlot != 0 {
 		filterSlots = []ledger.Slot{ledger.Slot(findInSlot)}
+	}
+
+	var branchID *ledger.TransactionID
+	var root common.VCommitment
+	if branchIDStr != "" {
+		b, err := ledger.TransactionIDFromHexString(branchIDStr)
+		glb.AssertNoError(err)
+		rr, found := multistate.FetchBranchData(glb.StateStore(), b)
+		glb.Assertf(found, "didn't find branch %s", b.String())
+		glb.Infof("branch id: %s", branchID.String())
+		root = rr.Root
+	} else {
+		lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+		glb.Assertf(lrb != nil, "can't find latest reliable branch (LRB)")
+		root = lrb.Root
+		glb.Infof("latest reliable branch will be used")
 	}
 
 	if findInSlot > 0 {
@@ -58,7 +74,7 @@ func runFindTxCmd(_ *cobra.Command, args []string) {
 		glb.Infof("find with hex fragment: N/A")
 	}
 
-	rdr := multistate.MustNewReadable(glb.StateStore(), lrb.Root)
+	rdr := multistate.MustNewReadable(glb.StateStore(), root)
 	nTx := 0
 	nFound := 0
 	rdr.IterateKnownCommittedTransactions(func(txid *ledger.TransactionID, _ ledger.Slot) bool {
