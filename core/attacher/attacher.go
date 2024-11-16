@@ -363,6 +363,7 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 		// once endorsement is on the baseline, it is fully defined
 		if vid.IDHasFragment("009d20") {
 			a.Log().Infof(">>$$ %s defineInTheStateStatus -------- \n%s", a.name, a.pastCone.Lines("      ").Join("\n"))
+			a.Log().Infof(">>$$ %s baseline %s is '%s'", a.name, a.baseline.IDShortString(), a.baseline.GetTxStatus().String())
 		}
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 	} else {
