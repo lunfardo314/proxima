@@ -35,7 +35,7 @@ func runFindTxCmd(_ *cobra.Command, args []string) {
 	glb.InitTxStoreDB()
 	defer glb.CloseDatabases()
 
-	glb.Assertf(findInSlot != 0 || findWithHexFragment != "", "ate least one of slot or fragment must be specified")
+	glb.Assertf(findInSlot != 0 || findWithHexFragment != "", "at least one of slot or fragment must be specified")
 
 	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
 	glb.Assertf(lrb != nil, "can't find latest reliable branch (LRB)")
@@ -58,13 +58,16 @@ func runFindTxCmd(_ *cobra.Command, args []string) {
 
 	rdr := multistate.MustNewReadable(glb.StateStore(), lrb.Root)
 	nTx := 0
+	nFound := 0
 	rdr.IterateKnownCommittedTransactions(func(txid *ledger.TransactionID, _ ledger.Slot) bool {
 		if findWithHexFragment == "" || strings.Contains(txid.String(), findWithHexFragment) {
-			glb.Infof("%6d   %s    %s", txid.StringHex(), txid.String())
+			glb.Infof("%6d   %s    %s", nFound, txid.StringHex(), txid.String())
+			nFound++
 		}
 		nTx++
 		return true
 	}, filterSlots...)
 
-	glb.Infof("---------\ntotal: %d transactions", nTx)
+	glb.Infof("---------\ntotal: %d transaction IDs found", nFound)
+	glb.Infof("---------\ntotal: %d transaction scanned", nTx)
 }
