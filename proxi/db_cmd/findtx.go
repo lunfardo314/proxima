@@ -19,7 +19,7 @@ func initFindTxCmd() *cobra.Command {
 	}
 
 	findTxCmd.PersistentFlags().Uint32VarP(&findInSlot, "slot", "s", 0, "slot prefix")
-	findTxCmd.PersistentFlags().StringVarP(&findWithHexFragment, "fragment", "f", "", "hex fragment")
+	findTxCmd.PersistentFlags().StringVarP(&findWithHexFragment, "hex_fragment", "x", "", "hex fragment")
 	findTxCmd.InitDefaultHelpCmd()
 
 	return findTxCmd
