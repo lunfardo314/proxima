@@ -47,14 +47,13 @@ func runFindTxCmd(_ *cobra.Command, args []string) {
 		filterSlots = []ledger.Slot{ledger.Slot(findInSlot)}
 	}
 
-	var branchID *ledger.TransactionID
 	var root common.VCommitment
 	if branchIDStr != "" {
 		b, err := ledger.TransactionIDFromHexString(branchIDStr)
 		glb.AssertNoError(err)
 		rr, found := multistate.FetchBranchData(glb.StateStore(), b)
 		glb.Assertf(found, "didn't find branch %s", b.String())
-		glb.Infof("branch id: %s", branchID.String())
+		glb.Infof("branch id: %s", b.String())
 		root = rr.Root
 	} else {
 		lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
