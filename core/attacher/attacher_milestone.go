@@ -151,7 +151,7 @@ func (a *milestoneAttacher) run() error {
 		a.vid.ConvertVertexToVirtualTx()
 	}
 
-	if a.vid.Slot() == 125417 || a.vid.Slot() == 125418 {
+	if a.vid.Slot() == 125417 || a.vid.Slot() == 125418 || a.vid.Slot() == 125419 {
 		a.Log().Infof("@@@@>>>>> finalized %s <<<<<<@@@@", a.vid.IDShortString())
 	}
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)
