@@ -20,6 +20,7 @@ func initFindTxCmd() *cobra.Command {
 
 	findTxCmd.PersistentFlags().Uint32VarP(&findInSlot, "slot", "s", 0, "slot prefix")
 	findTxCmd.PersistentFlags().StringVarP(&findWithHexFragment, "hex_fragment", "x", "", "hex fragment")
+	findTxCmd.PersistentFlags().BoolVarP(&findFirst, "find_first", "1", false, "break when first found")
 	findTxCmd.InitDefaultHelpCmd()
 
 	return findTxCmd
@@ -28,6 +29,7 @@ func initFindTxCmd() *cobra.Command {
 var (
 	findInSlot          uint32
 	findWithHexFragment string
+	findFirst           bool
 )
 
 func runFindTxCmd(_ *cobra.Command, args []string) {
