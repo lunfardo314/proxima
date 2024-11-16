@@ -67,7 +67,7 @@ func runFindTxCmd(_ *cobra.Command, args []string) {
 			nFound++
 		}
 		nTx++
-		return true
+		return !findFirst || nFound == 0
 	}, filterSlots...)
 
 	glb.Infof("---------\ntotal: %d transaction IDs found", nFound)
