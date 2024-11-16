@@ -46,11 +46,12 @@ func runBranchesCmd(_ *cobra.Command, args []string) {
 
 	for i, bd := range branchData {
 		txid := bd.Stem.ID.TransactionID()
-		glb.Infof("%3d: %18s   numTx: %d, seqID: %s, root: %s",
+		glb.Infof("%3d: %18s   numTx: %d, seqID: %s, hex: %s, root: %s",
 			i,
 			txid.StringShort(),
 			bd.NumTransactions,
 			bd.SequencerID.String(),
+			txid.StringHex(),
 			bd.Root.String(),
 		)
 	}
