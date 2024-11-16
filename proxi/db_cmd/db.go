@@ -24,6 +24,7 @@ func Init() *cobra.Command {
 		initReliableBranchCmd(),
 		txstore.Init(),
 		initChainsCmd(),
+		initFindTxCmd(),
 	)
 	return dbCmd
 }
