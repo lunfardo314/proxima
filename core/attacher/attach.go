@@ -106,9 +106,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	env.TraceTx(tx.ID(), "AttachTransaction")
 
 	vid = AttachTxID(*tx.ID(), env, WithInvokedBy("addTx"))
-	if vid.IDHasFragment("00e5c36923bc") {
-		env.Log().Infof(">>>>>>>> attachTransaction %s", vid.IDShortString())
-	}
 	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
