@@ -102,10 +102,10 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 func (a *milestoneAttacher) run() error {
 	// first solidify baseline state
 	//if a.vid.IDHasFragment("0008e9e5") {
-	if a.vid.IDHasFragment("003af7") {
-		a.Log().Infof(">>>>>>>> inside run attacher %s", a.vid.IDShortString())
-		a.SetTraceAttacher("@@@>>")
-	}
+	//if a.vid.IDHasFragment("003af7") {
+	//	a.Log().Infof(">>>>>>>> inside run attacher %s", a.vid.IDShortString())
+	//	a.SetTraceAttacher("@@@>>")
+	//}
 
 	if status := a.solidifyBaseline(); status != vertex.Good {
 		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.err)
@@ -151,6 +151,9 @@ func (a *milestoneAttacher) run() error {
 		a.vid.ConvertVertexToVirtualTx()
 	}
 
+	if a.vid.Slot() == 125417 || a.vid.Slot() == 125418 {
+		a.Log().Infof("@@@@>>>>> finalized %s <<<<<<@@@@", a.vid.IDShortString())
+	}
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)
 
 	const lastCheck = false
