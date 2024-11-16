@@ -29,7 +29,7 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
 	if deptVID.IDHasFragment("009d20") {
-		a.Log().Infof("@@>> pullIfNeededUnwrapped %s", deptVID.IDShortString())
+		a.Log().Infof("@@>> %s pullIfNeededUnwrapped %s", a.name, deptVID.IDShortString())
 	}
 
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
@@ -58,7 +58,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		virtualTx.SetPullNotNeeded()
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 2: %s", deptVID.IDShortString)
 		if deptVID.IDHasFragment("009d20") {
-			a.Log().Infof("@@>> pullIfNeededUnwrapped >> 2 %s", deptVID.IDShortString())
+			a.Log().Infof("@@>> %s pullIfNeededUnwrapped >> 2 %s  %s", a.name, deptVID.IDShortString(), a.pastCone.Flags(deptVID).String())
 		}
 		return true
 	}
