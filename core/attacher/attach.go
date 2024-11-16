@@ -135,8 +135,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			// for sequencer milestones start attacher
 			metadata := options.metadata
 
-			if vid.IDHasFragment("00e5c36923bc") {
-				env.Log().Infof(">>>>>>>> attachTransaction %s before run attacher", vid.IDShortString())
+			//if vid.IDHasFragment("00e5c36923bc") {
+			//	env.Log().Infof(">>>>>>>> attachTransaction %s before run attacher", vid.IDShortString())
+			//}
+			if vid.Slot() <= 125420 {
+				env.Log().Infof("~~~~~~~~~ %s    %s", vid.IDShortString(), vid.ID.StringHex())
 			}
 
 			// start attacher routine
