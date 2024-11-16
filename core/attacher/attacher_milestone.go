@@ -102,7 +102,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 func (a *milestoneAttacher) run() error {
 	// first solidify baseline state
 	//if a.vid.IDHasFragment("0008e9e5") {
-	if a.vid.IDHasFragment("009d20") {
+	if a.vid.IDHasFragment("007d") {
 		a.Log().Infof(">>>>>>>> inside run attacher %s", a.vid.IDShortString())
 		a.SetTraceAttacher("@@@>>")
 	}

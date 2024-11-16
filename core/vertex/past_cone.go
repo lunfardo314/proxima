@@ -255,7 +255,7 @@ func (pc *PastCone) Flags(vid *WrappedTx) FlagsPastCone {
 }
 
 func (pc *PastCone) SetFlagsUp(vid *WrappedTx, f FlagsPastCone) {
-	if vid.IDHasFragment("009d20") {
+	if vid.IDHasFragment("007d") {
 		pc.Log().Infof(">>#### %s SetFlagsUp: %s", pc.name, f.String())
 	}
 	if pc.delta == nil {
