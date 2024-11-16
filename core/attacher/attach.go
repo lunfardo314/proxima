@@ -57,9 +57,9 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 	// new branch transaction. DB look up outside the global lock -> prevent congestion
 	branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid)
 	if branchAvailable {
-		env.Tracef(TraceTagBranchAvailable, "$$$$$$ branch available 1: %s", txid.StringShort())
+		env.Log().Infof("$$$$$$ branch available 1: %s", txid.StringShort())
 	} else {
-		env.Tracef(TraceTagBranchAvailable, "$$$$$$ branch NOT available: %s", txid.StringShort())
+		env.Log().Infof("$$$$$$ branch is NOT available 1: %s", txid.StringShort())
 	}
 
 	env.WithGlobalWriteLock(func() {
@@ -67,7 +67,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			return
 		}
 		if branchAvailable {
-			env.Tracef(TraceTagBranchAvailable, "$$$$$$ branch available 2: %s", txid.StringShort())
+			env.Log().Infof("$$$$$$ branch available 2: %s", txid.StringShort())
 			// corresponding state has been found, it is solid -> put virtual branch tx to the memDAG
 			vid = vertex.WrapBranchDataAsVirtualTx(&branchData)
 			env.AddVertexNoLock(vid)
