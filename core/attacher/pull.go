@@ -49,7 +49,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	}
 
 	if a.pastCone.IsInTheState(deptVID) {
-		virtualTx.SetPullNotNeeded()
+		//virtualTx.SetPullNotNeeded()  // <<<<<<<<<< !!!!!!!!!!!!!!
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 2: %s", deptVID.IDShortString)
 		return true
 	}
@@ -57,7 +57,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
 	if len(txBytesWithMetadata) > 0 {
-		virtualTx.SetPullNotNeeded()
+		//virtualTx.SetPullNotNeeded()
 		go func() {
 			//a.IncCounter("store")
 			//defer a.DecCounter("store")
