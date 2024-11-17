@@ -52,11 +52,6 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 
 	// new branch transaction. DB look up outside the global lock -> prevent congestion
 	branchData, branchAvailable := multistate.FetchBranchData(env.StateStore(), txid)
-	//if branchAvailable {
-	//	env.Log().Infof("$$$$$$ branch available 1: %s", txid.StringShort())
-	//} else {
-	//	env.Log().Infof("$$$$$$ branch is NOT available 1: %s", txid.StringShort())
-	//}
 
 	env.WithGlobalWriteLock(func() {
 		if vid = env.GetVertexNoLock(&txid); vid != nil {
@@ -132,10 +127,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		if vid.IsSequencerMilestone() {
 			// for sequencer milestones start attacher
 			metadata := options.metadata
-
-			if vid.Slot() <= 125420 {
-				env.Log().Infof("~~~~~~~~~attachTransaction %s    %s", vid.IDShortString(), vid.ID.StringHex())
-			}
 
 			// start attacher routine
 			go func() {

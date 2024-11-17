@@ -26,7 +26,8 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 	util.AssertNoError(err)
 	err = v.addOutput(br.Stem.ID.Index(), br.Stem.Output)
 	util.AssertNoError(err)
-	v.SetPullNotNeeded()
+	v.pullRulesDefined = true
+	v.needsPull = false
 	return v
 }
 
@@ -153,11 +154,6 @@ func (v *VirtualTransaction) SetPullNeeded() {
 	v.needsPull = true
 	v.timesPulled = 0
 	v.nextPull = time.Now()
-}
-
-func (v *VirtualTransaction) SetPullNotNeeded() {
-	v.pullRulesDefined = true
-	v.needsPull = false
 }
 
 // SetPullHappened increases pull counter and sets nex pull deadline
