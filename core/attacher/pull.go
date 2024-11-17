@@ -11,7 +11,9 @@ const TraceTagPull = "pull"
 
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 	a.Tracef(TraceTagPull, "pullIfNeeded IN (%s): %s", tag, deptVID.IDShortString)
-
+	if deptVID.Slot() <= 125420 {
+		a.Log().Infof("%s @@>> pullIfNeeded %s -- %s", a.name, deptVID.IDShortString(), a.pastCone.Flags(deptVID))
+	}
 	ok := true
 	virtual := false
 	deptVID.UnwrapVirtualTx(func(virtualTx *vertex.VirtualTransaction) {
@@ -25,6 +27,9 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
+	if deptVID.Slot() <= 125420 {
+		a.Log().Infof("%s @@>> pullIfNeeded %s -- %s", a.name, deptVID.IDShortString(), a.pastCone.Flags(deptVID))
+	}
 
 	repeatPullAfter, maxPullAttempts, numPeers := a.TxPullParameters()
 	if virtualTx.PullRulesDefined() {
@@ -72,6 +77,10 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nPeers int) {
 	a.Tracef(TraceTagPull, "pull: %s", deptVID.IDShortString)
+	if deptVID.Slot() <= 125420 {
+		a.Log().Infof("%s @@>> pull %s -- %s", a.name, deptVID.IDShortString(), a.pastCone.Flags(deptVID))
+	}
+
 	a.pokeMe(deptVID)
 	// add transaction to the wanted/expected list
 	a.AddWantedTransaction(&deptVID.ID)
