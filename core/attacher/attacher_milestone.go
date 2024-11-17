@@ -101,10 +101,9 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 
 func (a *milestoneAttacher) run() error {
 	// first solidify baseline state
-	//if a.vid.IDHasFragment("0008e9e5") {
-	if a.vid.IDHasFragment("007d5b335") {
-		a.Log().Infof(">>>>>>>> inside run attacher %s", a.vid.IDShortString())
-		a.SetTraceAttacher("@@@>>")
+
+	if a.vid.Slot() <= 125420 {
+		a.Log().Infof("@@@>>> start attacher %s", a.vid.IDShortString())
 	}
 
 	if status := a.solidifyBaseline(); status != vertex.Good {
@@ -117,10 +116,6 @@ func (a *milestoneAttacher) run() error {
 	a.Tracef(TraceTagBranchAvailable, "baseline is OK <- %s", a.baseline.IDShortString)
 
 	// then solidify past cone
-
-	//if a.vid.IDHasFragment("011fc7826c6e", "00e5c36923bc") {
-	//	a.SetTraceAttacher("@@@>>")
-	//}
 
 	status := a.solidifyPastCone()
 	a.Assertf(status != vertex.Undefined, "status!=vertex.Undefined")
@@ -151,7 +146,7 @@ func (a *milestoneAttacher) run() error {
 		a.vid.ConvertVertexToVirtualTx()
 	}
 
-	if a.vid.Slot() == 125417 || a.vid.Slot() == 125418 || a.vid.Slot() == 125419 {
+	if a.vid.Slot() <= 125420 {
 		a.Log().Infof("@@@@>>>>> finalized %s <<<<<<@@@@", a.vid.IDShortString())
 	}
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)

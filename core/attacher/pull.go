@@ -10,10 +10,6 @@ import (
 const TraceTagPull = "pull"
 
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
-	if deptVID.IDHasFragment("007d5b335") {
-		a.Log().Infof("@@>> pullIfNeeded %s", deptVID.IDShortString())
-	}
-
 	a.Tracef(TraceTagPull, "pullIfNeeded IN (%s): %s", tag, deptVID.IDShortString)
 
 	ok := true
@@ -28,10 +24,6 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 }
 
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
-	if deptVID.IDHasFragment("007d5b335") {
-		a.Log().Infof("@@>> %s pullIfNeededUnwrapped %s", a.name, deptVID.IDShortString())
-	}
-
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
 
 	repeatPullAfter, maxPullAttempts, numPeers := a.TxPullParameters()
@@ -48,18 +40,12 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
 		}
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 1: %s", deptVID.IDShortString)
-		if deptVID.IDHasFragment("007d5b335") {
-			a.Log().Infof("@@>> pullIfNeededUnwrapped >> 1 %s", deptVID.IDShortString())
-		}
 		return true
 	}
 
 	if a.pastCone.IsInTheState(deptVID) {
 		virtualTx.SetPullNotNeeded()
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 2: %s", deptVID.IDShortString)
-		if deptVID.IDHasFragment("007d5b335") {
-			a.Log().Infof("@@>> %s pullIfNeededUnwrapped >> 2 %s  %s", a.name, deptVID.IDShortString(), a.pastCone.Flags(deptVID).String())
-		}
 		return true
 	}
 	// no in the state or not known 'inTheState status'
@@ -76,25 +62,15 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			}
 		}()
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3: %s", deptVID.IDShortString)
-		if deptVID.IDHasFragment("007d5b335") {
-			a.Log().Infof("@@>> pullIfNeededUnwrapped >> 3 %s", deptVID.IDShortString())
-		}
 		return true
 	}
 	virtualTx.SetPullNeeded()
 	a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
-	if deptVID.IDHasFragment("007d5b335") {
-		a.Log().Infof("@@>> pullIfNeededUnwrapped >> 4 %s", deptVID.IDShortString())
-	}
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 4: %s", deptVID.IDShortString)
 	return true
 }
 
 func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nPeers int) {
-	if deptVID.IDHasFragment("007d5b335") {
-		a.Log().Infof("@@>> pull %s", deptVID.IDShortString())
-	}
-
 	a.Tracef(TraceTagPull, "pull: %s", deptVID.IDShortString)
 	a.pokeMe(deptVID)
 	// add transaction to the wanted/expected list
