@@ -239,7 +239,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
 	} else {
 		if vid.Slot() <= 125420 {
-			a.Log().Infof("%s @@@@>>>>> attachVertexNonBranch undefined %s", a.name, vid.IDShortString())
+			a.Log().Infof("%s @@@@>>>>> attachVertexNonBranch -> NOT defined %s (BL %s)", a.name, vid.IDShortString(), a.baseline.IDShortString())
 		}
 
 		a.pokeMe(vid)
