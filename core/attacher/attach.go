@@ -45,7 +45,7 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		}
 	})
 	if vid != nil {
-		if vid.IDHasFragment("007d") {
+		if vid.IDHasFragment("007d5b335") {
 			env.Log().Infof("@@>> attach tx ID %s", vid.IDShortString())
 		}
 
@@ -111,7 +111,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 	vid = AttachTxID(*tx.ID(), env, WithInvokedBy("addTx"))
 
-	if vid.IDHasFragment("007d") {
+	if vid.IDHasFragment("007d5b335") {
 		env.Log().Infof("@@>> attach transaction %s", vid.IDShortString())
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lazyargs"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -355,20 +356,30 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 // defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly, if possible
 func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	a.Assertf(a.pastCone.IsKnown(vid), "a.pastCone.IsKnown(vid): %s", vid.IDShortString)
+	a.Assertf(a.baseline != nil, "a.baseline != nil")
 
-	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) || a.baseline == nil {
+	traceFun := func(msg string) {
+		if set.New[ledger.Slot](125417, 125418, 125419).Contains(vid.Slot()) {
+			a.Log().Infof("%s defineInTheStateStatus: %s -> '%s'", a.name, vid.IDShortString(), msg)
+		}
+	}
+
+	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
+		traceFun("already")
 		return
 	}
+
 	if a.baselineSugaredStateReader().KnowsCommittedTransaction(&vid.ID) {
-		// once endorsement is on the baseline, it is fully defined
-		if vid.IDHasFragment("007d") {
-			a.Log().Infof(">>$$ %s defineInTheStateStatus -------- \n%s", a.name, a.pastCone.Lines("      ").Join("\n"))
-			a.Log().Infof(">>$$ %s baseline %s is '%s'", a.name, a.baseline.IDShortString(), a.baseline.GetTxStatus().String())
-		}
+		//if vid.IDHasFragment("007d5b335") {
+		//	a.Log().Infof(">>$$ %s defineInTheStateStatus -------- \n%s", a.name, a.pastCone.Lines("      ").Join("\n"))
+		//	a.Log().Infof(">>$$ %s baseline %s is '%s'", a.name, a.baseline.IDShortString(), a.baseline.GetTxStatus().String())
+		//}
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
+		traceFun("IN THE STATE, defined")
 	} else {
 		// not on the state, so it is not defined
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState)
+		traceFun("NOT IN THE STATE, undef")
 	}
 }
 
@@ -407,7 +418,7 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 }
 
 func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx) bool {
-	if vidEndorsed.IDHasFragment("007d") {
+	if vidEndorsed.IDHasFragment("007d5b335") {
 		a.Log().Infof(">>>>>> %s in attachEndorsementDependency %s before refresh", a.name, vidEndorsed.IDShortString())
 	}
 	if !a.refreshDependencyStatus(vidEndorsed) {
@@ -441,7 +452,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	}
 	a.Assertf(vidDep != nil, "vidDep!=nil")
 
-	if vidDep.IDHasFragment("007d") {
+	if vidDep.IDHasFragment("007d5b335") {
 		a.Log().Infof(">>>>>> %s in attachInput %s before refresh", a.name, vidDep.IDShortString())
 	}
 	if !a.refreshDependencyStatus(vidDep) {
@@ -550,6 +561,8 @@ func (a *attacher) setBaseline(baselineVID *vertex.WrappedTx, currentTS ledger.T
 	if !a.pastCone.SetBaseline(baselineVID) {
 		return false
 	}
+
+	a.Tracef(TraceTagSolidifySequencerBaseline, "setBaseline %s", baselineVID.IDShortString)
 
 	rr, found := multistate.FetchRootRecord(a.StateStore(), baselineVID.ID)
 	a.Assertf(found, "setBaseline: can't fetch root record for %s", baselineVID.IDShortString)
