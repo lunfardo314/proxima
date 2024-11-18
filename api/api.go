@@ -1,10 +1,14 @@
 package api
 
 import (
+	"encoding/hex"
+
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
+	"github.com/lunfardo314/proxima/util"
 )
 
 const (
@@ -178,14 +182,39 @@ type (
 		ChainID string `json:"chain_id,omitempty"`
 	}
 
+	Input struct {
+		OutputID   string `json:"output_id"`
+		UnlockData string `json:"unlock_data"`
+	}
+
+	MilestoneData struct {
+		Name         string `json:"name"`
+		MinimumFee   uint64 `json:"minimum_fee"`
+		ChainHeight  uint32 `json:"chain_height"`
+		BranchHeight uint32 `json:"branch_height"`
+	}
+
+	SequencerTxData struct {
+		SequencerID          string `json:"sequencer_id"`
+		SequencerOutputIndex byte   `json:"sequencer_output_index"`
+		StemOutputIndex      *byte  `json:"stem_output_index,omitempty"` // nil for non-branch transaction
+		*MilestoneData       `json:"milestone_data,omitempty"`
+	}
+
 	// TransactionJSONAble is more or less human-readable form of the transaction
 	// It is not a canonical form
 	TransactionJSONAble struct {
 		// hex-encoded transaction ID
-		ID      string         `json:"id"`
-		Inputs  []string       `json:"inputs"`
-		Outputs []ParsedOutput `json:"outputs"`
-		// TODO
+		ID               string         `json:"id"`
+		Inputs           []Input        `json:"inputs"`
+		Outputs          []ParsedOutput `json:"outputs"`
+		Endorsements     []string       `json:"endorsements,omitempty"`
+		TotalAmount      uint64         `json:"total_amount"`
+		TotalInflation   uint64         `json:"total_inflation"`
+		IsBranch         bool           `json:"is_branch"`
+		Sender           string         `json:"sender"`
+		*SequencerTxData `json:"sequencer_tx_data,omitempty"`
+		TxMetadata       *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
 	}
 )
 
@@ -219,5 +248,68 @@ func CalcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator,
 	if numDominatingBranches > 0 {
 		ret.StrongScore = (numIncludedInDominating * 100) / numDominatingBranches
 	}
+	return ret
+}
+
+func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
+	ret := &TransactionJSONAble{
+		ID:             tx.ID().StringHex(),
+		Inputs:         make([]Input, tx.NumInputs()),
+		Outputs:        make([]ParsedOutput, tx.NumProducedOutputs()),
+		Endorsements:   make([]string, tx.NumEndorsements()),
+		TotalAmount:    tx.TotalAmount(),
+		TotalInflation: tx.InflationAmount(),
+		IsBranch:       tx.IsBranchTransaction(),
+	}
+
+	if seqData := tx.SequencerTransactionData(); seqData != nil {
+		ret.SequencerTxData = &SequencerTxData{
+			SequencerID:          seqData.SequencerID.StringHex(),
+			SequencerOutputIndex: seqData.SequencerOutputIndex,
+		}
+		if tx.IsBranchTransaction() {
+			ret.SequencerTxData.StemOutputIndex = util.Ref(seqData.StemOutputIndex)
+		}
+		if md := seqData.SequencerOutputData.MilestoneData; md != nil {
+			ret.SequencerTxData.MilestoneData = &MilestoneData{
+				Name:         md.Name,
+				MinimumFee:   md.MinimumFee,
+				ChainHeight:  md.ChainHeight,
+				BranchHeight: md.BranchHeight,
+			}
+		}
+	}
+
+	tx.ForEachEndorsement(func(i byte, txid *ledger.TransactionID) bool {
+		ret.Endorsements[i] = txid.StringHex()
+		return true
+	})
+
+	tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
+		ret.Inputs[i] = Input{
+			OutputID:   oid.StringHex(),
+			UnlockData: hex.EncodeToString(tx.MustUnlockDataAt(i)),
+		}
+		return true
+	})
+
+	tx.ForEachProducedOutput(func(i byte, o *ledger.Output, oid *ledger.OutputID) bool {
+		ret.Outputs[i] = ParsedOutput{
+			Data:        hex.EncodeToString(o.Bytes()),
+			Constraints: o.LinesPlain().Slice(),
+			Amount:      o.Amount(),
+		}
+		if cc, idx := o.ChainConstraint(); idx != 0xff {
+			var chainID ledger.ChainID
+			if cc.IsOrigin() {
+				chainID = ledger.MakeOriginChainID(oid)
+			} else {
+				chainID = cc.ID
+			}
+			ret.Outputs[i].ChainID = chainID.StringHex()
+		}
+		return true
+	})
+	ret.Sender = tx.SenderAddress().String()
 	return ret
 }
