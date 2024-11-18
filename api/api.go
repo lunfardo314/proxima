@@ -205,15 +205,15 @@ type (
 	// It is not a canonical form
 	TransactionJSONAble struct {
 		// hex-encoded transaction ID
-		ID               string         `json:"id"`
-		Inputs           []Input        `json:"inputs"`
-		Outputs          []ParsedOutput `json:"outputs"`
-		Endorsements     []string       `json:"endorsements,omitempty"`
-		TotalAmount      uint64         `json:"total_amount"`
-		TotalInflation   uint64         `json:"total_inflation"`
-		IsBranch         bool           `json:"is_branch"`
-		Sender           string         `json:"sender"`
+		ID               string `json:"id"`
+		TotalAmount      uint64 `json:"total_amount"`
+		TotalInflation   uint64 `json:"total_inflation"`
+		IsBranch         bool   `json:"is_branch"`
 		*SequencerTxData `json:"sequencer_tx_data,omitempty"`
+		Sender           string                                  `json:"sender"`
+		Inputs           []Input                                 `json:"inputs"`
+		Outputs          []ParsedOutput                          `json:"outputs"`
+		Endorsements     []string                                `json:"endorsements,omitempty"`
 		TxMetadata       *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
 	}
 )
