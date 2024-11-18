@@ -100,7 +100,7 @@ func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := api.ParsedOutput{Constraints: o.Lines().Slice()}
+	resp := api.ParsedOutput{Constraints: o.LinesPlain().Slice()}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())

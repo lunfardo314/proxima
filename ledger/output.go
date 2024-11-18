@@ -354,6 +354,20 @@ func (o *Output) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+func (o *Output) LinesPlain() *lines.Lines {
+	ret := lines.New()
+	o.arr.ForEach(func(i int, data []byte) bool {
+		c, err := ConstraintFromBytes(data)
+		if err != nil {
+			ret.Add(err.Error())
+		} else {
+			ret.Add(c.String())
+		}
+		return true
+	})
+	return ret
+}
+
 func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWithID, error) {
 	ret, err := OutputFromBytesReadOnly(o.OutputData, validOpt...)
 	if err != nil {
