@@ -7,19 +7,31 @@ import (
 )
 
 const (
-	PathGetLedgerID             = "/get_ledger_id"
-	PathGetAccountOutputs       = "/get_account_outputs"
-	PathGetChainOutput          = "/get_chain_output"
-	PathGetOutput               = "/get_output"
-	PathQueryTxStatus           = "/query_tx_status"
-	PathQueryInclusionScore     = "/query_inclusion_score"
-	PathSubmitTransaction       = "/submit_tx"
-	PathGetSyncInfo             = "/sync_info"
-	PathGetNodeInfo             = "/node_info"
-	PathGetPeersInfo            = "/peers_info"
-	PathGetLatestReliableBranch = "/get_latest_reliable_branch"
-	PathCheckTxIDInLRB          = "/check_txid_in_lrb"
-	PathGetDashboard            = "/dashboard"
+	PrefixAPIV1   = "/api/v1"
+	PrefixTxAPIV1 = "/txapi/v1"
+
+	PathGetLedgerID             = PrefixAPIV1 + "/get_ledger_id"
+	PathGetAccountOutputs       = PrefixAPIV1 + "/get_account_outputs"
+	PathGetChainOutput          = PrefixAPIV1 + "/get_chain_output"
+	PathGetOutput               = PrefixAPIV1 + "/get_output"
+	PathQueryTxStatus           = PrefixAPIV1 + "/query_tx_status"
+	PathQueryInclusionScore     = PrefixAPIV1 + "/query_inclusion_score"
+	PathSubmitTransaction       = PrefixAPIV1 + "/submit_tx"
+	PathGetSyncInfo             = PrefixAPIV1 + "/sync_info"
+	PathGetNodeInfo             = PrefixAPIV1 + "/node_info"
+	PathGetPeersInfo            = PrefixAPIV1 + "/peers_info"
+	PathGetLatestReliableBranch = PrefixAPIV1 + "/get_latest_reliable_branch"
+	PathCheckTxIDInLRB          = PrefixAPIV1 + "/check_txid_in_lrb"
+	// PathGetDashboard returns dashboard
+	PathGetDashboard = "/dashboard"
+
+	// Transaction API calls
+
+	PathCompileScript        = PrefixTxAPIV1 + "/compile_script"
+	PathDecompileBytecode    = PrefixTxAPIV1 + "/decompile_bytecode"
+	PathParseOutput          = PrefixTxAPIV1 + "/parse_output"
+	PathGetTxBytes           = PrefixTxAPIV1 + "/get_txbytes"
+	PathGetParsedTransaction = PrefixTxAPIV1 + "/get_parsed_transaction"
 )
 
 type (
