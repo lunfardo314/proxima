@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -150,6 +151,14 @@ type (
 		LRBID    string `json:"lrb_id"`
 		TxID     string `json:"txid"`
 		Included bool   `json:"included"`
+	}
+
+	TxMetadata struct {
+	}
+
+	TxBytes struct {
+		TxBytes    string                                  `json:"tx_bytes"`
+		TxMetadata *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
 	}
 )
 

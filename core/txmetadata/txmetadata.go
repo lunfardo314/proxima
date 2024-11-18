@@ -27,6 +27,14 @@ type (
 		TxBytesReceived         *time.Time // not-persistent, used for metrics
 	}
 
+	TransactionMetadataJSONAble struct {
+		// persistent
+		StateRoot      string `json:"state_root,omitempty"`
+		LedgerCoverage uint64 `json:"ledger_coverage,omitempty"`
+		SlotInflation  uint64 `json:"slot_inflation,omitempty"`
+		Supply         uint64 `json:"supply,omitempty"`
+	}
+
 	PortionInfo struct {
 		LastIndex uint16
 		Index     uint16
@@ -178,7 +186,7 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 
 // SplitTxBytesWithMetadata splits received bytes into two pieces
 // Returns: metadata bytes, txBytes
-func SplitTxBytesWithMetadata(txBytesWithMetadata []byte) ([]byte, []byte, error) {
+func SplitTxBytesWithMetadata(txBytesWithMetadata []byte) (metadataBytes []byte, txBytes []byte, err error) {
 	if len(txBytesWithMetadata) == 0 {
 		return nil, nil, fmt.Errorf("SplitTxBytesWithMetadata: empty bytes")
 	}
@@ -188,8 +196,9 @@ func SplitTxBytesWithMetadata(txBytesWithMetadata []byte) ([]byte, []byte, error
 	return txBytesWithMetadata[:txBytesWithMetadata[0]+1], txBytesWithMetadata[txBytesWithMetadata[0]+1:], nil
 }
 
-func ParseTxMetadata(txBytesWithMetadata []byte) ([]byte, *TransactionMetadata, error) {
-	metaBytes, txBytes, err := SplitTxBytesWithMetadata(txBytesWithMetadata)
+func ParseTxMetadata(txBytesWithMetadata []byte) (txBytes []byte, metadata *TransactionMetadata, err error) {
+	var metaBytes []byte
+	metaBytes, txBytes, err = SplitTxBytesWithMetadata(txBytesWithMetadata)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -216,4 +225,29 @@ func (m *TransactionMetadata) String() string {
 	}
 	return fmt.Sprintf("coverage: %s, slot inflation: %s, root: %s, source type: '%s'",
 		lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
+}
+
+func (m *TransactionMetadata) JSONAble() *TransactionMetadataJSONAble {
+	ret := &TransactionMetadataJSONAble{}
+	notEmpty := false
+	if !util.IsNil(m.StateRoot) {
+		notEmpty = true
+		ret.StateRoot = m.StateRoot.String()
+	}
+	if m.LedgerCoverage != nil {
+		notEmpty = true
+		ret.LedgerCoverage = *m.LedgerCoverage
+	}
+	if m.SlotInflation != nil {
+		notEmpty = true
+		ret.SlotInflation = *m.SlotInflation
+	}
+	if m.Supply != nil {
+		notEmpty = true
+		ret.Supply = *m.Supply
+	}
+	if notEmpty {
+		return ret
+	}
+	return nil
 }

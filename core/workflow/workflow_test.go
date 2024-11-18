@@ -46,6 +46,10 @@ func (d *workflowDummyEnvironment) EvidenceNumberOfTxDependencies(_ int) {}
 
 func (d *workflowDummyEnvironment) EvidencePastConeSize(_ int) {}
 
+func (d *workflowDummyEnvironment) SnapshotBranchID() *ledger.TransactionID {
+	return ledger.GenesisTransactionID()
+}
+
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	stateStore := common.NewInMemoryKVStore()
 	multistate.InitStateStore(*ledger.L().ID, stateStore)

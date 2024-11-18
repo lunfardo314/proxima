@@ -33,6 +33,8 @@ type (
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
 		GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion
 		GetLatestReliableBranch() *multistate.BranchData
+		StateStore() global.StateStore
+		TxBytesStore() global.TxBytesStore
 	}
 
 	server struct {
@@ -56,17 +58,17 @@ const TraceTag = "apiServer"
 func (srv *server) registerHandlers() {
 	// GET request format: '/api/v1/get_ledger_id'
 	srv.addHandler(api.PathGetLedgerID, srv.getLedgerID)
-	// GET request format: '/api/v1//get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	// GET request format: '/api/v1/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
 	srv.addHandler(api.PathGetAccountOutputs, srv.getAccountOutputs)
-	// GET request format: '/api/v1//get_chain_output?chainid=<hex-encoded chain ID>'
+	// GET request format: '/api/v1/get_chain_output?chainid=<hex-encoded chain ID>'
 	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)
-	// GET request format: '/api/v1//get_output?id=<hex-encoded output ID>'
+	// GET request format: '/api/v1/get_output?id=<hex-encoded output ID>'
 	srv.addHandler(api.PathGetOutput, srv.getOutput)
-	// GET request format: '/api/v1//query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
+	// GET request format: '/api/v1/query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
 	srv.addHandler(api.PathQueryTxStatus, srv.queryTxStatus)
-	// GET request format: '/api/v1//query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
+	// GET request format: '/api/v1/query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
 	srv.addHandler(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
-	// POST request format '/api/v1//submit_nowait'. Feedback only on parsing error, otherwise async posting
+	// POST request format '/api/v1/submit_nowait'. Feedback only on parsing error, otherwise async posting
 	srv.addHandler(api.PathSubmitTransaction, srv.submitTx)
 	// GET sync info from the node
 	srv.addHandler(api.PathGetSyncInfo, srv.getSyncInfo)
@@ -74,7 +76,7 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetNodeInfo, srv.getNodeInfo)
 	// GET peers info from the node
 	srv.addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
-	// GET latest reliable branch '/api/v1//get_latest_reliable_branch'
+	// GET latest reliable branch '/api/v1/get_latest_reliable_branch'
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
 	// GET latest reliable branch and check if transaction ID is in it '/check_txid_in_lrb?txid=<hex-encoded transaction ID>'
 	srv.addHandler(api.PathCheckTxIDInLRB, srv.checkTxIDIncludedInLRB)
