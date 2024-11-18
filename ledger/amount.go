@@ -64,7 +64,8 @@ func (a Amount) Bytes() []byte {
 }
 
 func (a Amount) String() string {
-	return fmt.Sprintf("%s(%s)", AmountConstraintName, util.Th(int(a)))
+	return a.source()
+	//return fmt.Sprintf("%s(%s)", AmountConstraintName, util.Th(int(a)))
 }
 
 func NewAmount(a uint64) Amount {
