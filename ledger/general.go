@@ -28,10 +28,18 @@ func (u GeneralScript) Bytes() []byte {
 	return u
 }
 
-func (u GeneralScript) String() string {
+func (u GeneralScript) StringExt() string {
 	src, err := L().DecompileBytecode(u)
 	if err != nil {
 		src = fmt.Sprintf("failed decompile")
 	}
 	return fmt.Sprintf("GeneralScript(%s) (decompile: %s)", easyfl.Fmt(u), src)
+}
+
+func (u GeneralScript) String() string {
+	src, err := L().DecompileBytecode(u)
+	if err != nil {
+		src = fmt.Sprintf("failed decompile")
+	}
+	return src
 }
