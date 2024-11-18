@@ -163,7 +163,11 @@ type (
 	}
 
 	ScriptSource struct {
-		ScriptSource string `json:"script_source"`
+		Source string `json:"source"`
+	}
+
+	ParsedOutput struct {
+		Constraints []string `json:"constraints"`
 	}
 )
 

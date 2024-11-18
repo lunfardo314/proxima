@@ -69,6 +69,10 @@ func (l *Lines) String() string {
 	return l.Join("\n")
 }
 
+func (l *Lines) Slice() []string {
+	return l.l
+}
+
 func SliceToLines[T fmt.Stringer](slice []T, prefix ...string) *Lines {
 	ret := New(prefix...)
 	for i := range slice {

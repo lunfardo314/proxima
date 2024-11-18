@@ -16,6 +16,7 @@ func (srv *server) registerTxAPIHandlers() {
 	srv.addHandler(api.PathCompileScript, srv.compileScript)
 	// '/txapi/v1/decompile_bytecode?bytecode=<hex-encoded bytecode>'
 	srv.addHandler(api.PathDecompileBytecode, srv.decompileBytecode)
+	// '/txapi/v1/parse_output?output_binary=<hex-encoded output binary>'
 	srv.addHandler(api.PathParseOutput, srv.parseOutput)
 	// '/txapi/v1/get_txbytes?txid=<hex-encoded transaction ID>'
 	srv.addHandler(api.PathGetTxBytes, srv.getTxBytes)
@@ -44,6 +45,7 @@ func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
 }
 
 func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {
@@ -67,19 +69,45 @@ func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := api.ScriptSource{ScriptSource: src}
+	resp := api.ScriptSource{Source: src}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())
 		return
 	}
 	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
 }
 
 func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 	setHeader(w)
 
-	writeNotImplemented(w)
+	lst, ok := r.URL.Query()["output_binary"]
+	if !ok || len(lst) != 1 {
+		writeErr(w, "hex encoded output binary is expected")
+		return
+	}
+
+	outBin, err := hex.DecodeString(lst[0])
+	if err != nil {
+		writeErr(w, fmt.Sprintf("can't decode hex string: '%v'", err))
+		return
+	}
+
+	o, err := ledger.OutputFromBytesReadOnly(outBin)
+	if err != nil {
+		writeErr(w, fmt.Sprintf("can't parse output: '%v'", err))
+		return
+	}
+
+	resp := api.ParsedOutput{Constraints: o.Lines().Slice()}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
 }
 
 func (srv *server) getTxBytes(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +150,7 @@ func (srv *server) getTxBytes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
 }
 
 func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) {
