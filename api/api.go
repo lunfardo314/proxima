@@ -161,6 +161,10 @@ type (
 	Bytecode struct {
 		Bytecode string `json:"bytecode"`
 	}
+
+	ScriptSource struct {
+		ScriptSource string `json:"script_source"`
+	}
 )
 
 const ErrGetOutputNotFound = "output not found"

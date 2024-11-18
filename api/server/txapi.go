@@ -14,6 +14,7 @@ import (
 func (srv *server) registerTxAPIHandlers() {
 	// '/txapi/v1/compile_script?source=<script source in EasyFL>'
 	srv.addHandler(api.PathCompileScript, srv.compileScript)
+	// '/txapi/v1/decompile_bytecode?bytecode=<hex-encoded bytecode>'
 	srv.addHandler(api.PathDecompileBytecode, srv.decompileBytecode)
 	srv.addHandler(api.PathParseOutput, srv.parseOutput)
 	// '/txapi/v1/get_txbytes?txid=<hex-encoded transaction ID>'
@@ -48,7 +49,31 @@ func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
 func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {
 	setHeader(w)
 
-	writeNotImplemented(w)
+	lst, ok := r.URL.Query()["bytecode"]
+	if !ok || len(lst) != 1 {
+		writeErr(w, "hex encoded bytecode is expected")
+		return
+	}
+
+	bytecode, err := hex.DecodeString(lst[0])
+	if err != nil {
+		writeErr(w, fmt.Sprintf("can't decode hex string: '%v'", err))
+		return
+	}
+
+	src, err := ledger.L().DecompileBytecode(bytecode)
+	if err != nil {
+		writeErr(w, fmt.Sprintf("can't decompile bytecode: '%v'", err))
+		return
+	}
+
+	resp := api.ScriptSource{ScriptSource: src}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
 }
 
 func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
