@@ -1,8 +1,6 @@
 package txstore
 
 import (
-	"fmt"
-
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -83,8 +81,6 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 	}
 
 	s.s.Set(txid[:], common.ConcatBytes(metadata.Bytes(), txBytes))
-
-	fmt.Printf("$$$$$$ persisted %s\n", txid.String())
 
 	if s.metricsEnabled {
 		size := float64(len(txBytes))
