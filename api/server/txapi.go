@@ -57,7 +57,7 @@ func (srv *server) getTxBytes(w http.ResponseWriter, r *http.Request) {
 
 	txBytesWithMetadata := srv.TxBytesStore().GetTxBytesWithMetadata(&txid)
 	if len(txBytesWithMetadata) == 0 {
-		writeErr(w, "transaction not found")
+		writeErr(w, fmt.Sprintf("transaction %s has not been found in the txBytesStore", txid.String()))
 		return
 	}
 
