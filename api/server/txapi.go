@@ -12,6 +12,7 @@ import (
 )
 
 func (srv *server) registerTxAPIHandlers() {
+	// '/txapi/v1/compile_script?source=<script source in EasyFL>'
 	srv.addHandler(api.PathCompileScript, srv.compileScript)
 	srv.addHandler(api.PathDecompileBytecode, srv.decompileBytecode)
 	srv.addHandler(api.PathParseOutput, srv.parseOutput)
@@ -23,7 +24,25 @@ func (srv *server) registerTxAPIHandlers() {
 func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
 	setHeader(w)
 
-	writeNotImplemented(w)
+	lst, ok := r.URL.Query()["source"]
+	if !ok || len(lst) != 1 {
+		writeErr(w, "script source is expected")
+		return
+	}
+
+	_, _, bytecode, err := ledger.L().CompileExpression(lst[0])
+	if err != nil {
+		writeErr(w, fmt.Sprintf("EasyFL compile error: '%v'", err))
+		return
+	}
+
+	resp := api.Bytecode{Bytecode: hex.EncodeToString(bytecode)}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
 }
 
 func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {

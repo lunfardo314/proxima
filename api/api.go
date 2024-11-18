@@ -153,12 +153,13 @@ type (
 		Included bool   `json:"included"`
 	}
 
-	TxMetadata struct {
-	}
-
 	TxBytes struct {
 		TxBytes    string                                  `json:"tx_bytes"`
 		TxMetadata *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
+	}
+
+	Bytecode struct {
+		Bytecode string `json:"bytecode"`
 	}
 )
 
