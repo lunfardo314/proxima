@@ -201,8 +201,8 @@ type (
 		*MilestoneData       `json:"milestone_data,omitempty"`
 	}
 
-	// TransactionJSONAble is more or less human-readable form of the transaction
-	// It is not a canonical form
+	// TransactionJSONAble is more or less human-readable form of the transaction. Intended mostly for display
+	// It is not a canonical form. The canonical form is binary blob. It cannot be reproduced from the TransactionJSONAble
 	TransactionJSONAble struct {
 		// hex-encoded transaction ID
 		ID               string `json:"id"`
