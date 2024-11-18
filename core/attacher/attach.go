@@ -58,7 +58,6 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 			return
 		}
 		if branchAvailable {
-			env.Log().Infof("$$$$$$ branch available 2: %s", txid.StringShort())
 			// corresponding state has been found, it is solid -> put virtual branch tx to the memDAG
 			vid = vertex.WrapBranchDataAsVirtualTx(&branchData)
 			env.AddVertexNoLock(vid)
