@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/multistate"
 )
 
 func (srv *server) registerTxAPIHandlers() {
@@ -16,8 +17,10 @@ func (srv *server) registerTxAPIHandlers() {
 	srv.addHandler(api.PathCompileScript, srv.compileScript)
 	// '/txapi/v1/decompile_bytecode?bytecode=<hex-encoded bytecode>'
 	srv.addHandler(api.PathDecompileBytecode, srv.decompileBytecode)
-	// '/txapi/v1/parse_output?output_binary=<hex-encoded output binary>'
+	// '/txapi/v1/parse_output?output_id=<hex-encoded output ID>'
 	srv.addHandler(api.PathParseOutput, srv.parseOutput)
+	// '/txapi/v1/parse_output_data?output_data=<hex-encoded output binary>'
+	srv.addHandler(api.PathParseOutputData, srv.parseOutputData)
 	// '/txapi/v1/get_txbytes?txid=<hex-encoded transaction ID>'
 	srv.addHandler(api.PathGetTxBytes, srv.getTxBytes)
 	srv.addHandler(api.PathGetParsedTransaction, srv.getParsedTransaction)
@@ -82,9 +85,61 @@ func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {
 func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 	setHeader(w)
 
-	lst, ok := r.URL.Query()["output_binary"]
+	lst, ok := r.URL.Query()["output_id"]
 	if !ok || len(lst) != 1 {
-		writeErr(w, "hex encoded output binary is expected")
+		writeErr(w, "hex encoded output data is expected")
+		return
+	}
+
+	oid, err := ledger.OutputIDFromHexString(lst[0])
+	if err != nil {
+		writeErr(w, fmt.Sprintf("can't parse output ID: %v", err))
+		return
+	}
+
+	var o *ledger.Output
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		o = rdr.GetOutput(&oid)
+		if o == nil {
+			return fmt.Errorf("no found %s in LRB", oid.String())
+		}
+		return nil
+	})
+	if err != nil {
+		writeErr(w, fmt.Sprintf("can't get output in LRB: %v", err))
+		return
+	}
+
+	resp := api.ParsedOutput{
+		Data:        hex.EncodeToString(o.Bytes()),
+		Constraints: o.LinesPlain().Slice(),
+		Amount:      o.Amount(),
+	}
+	if cc, pos := o.ChainConstraint(); pos != 0xff {
+		var chainID ledger.ChainID
+		if cc.IsOrigin() {
+			chainID = ledger.MakeOriginChainID(&oid)
+		} else {
+			chainID = cc.ID
+		}
+		resp.ChainID = hex.EncodeToString(chainID[:])
+	}
+
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
+}
+
+func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
+	lst, ok := r.URL.Query()["output_data"]
+	if !ok || len(lst) != 1 {
+		writeErr(w, "hex encoded output data is expected")
 		return
 	}
 
@@ -100,7 +155,15 @@ func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := api.ParsedOutput{Constraints: o.LinesPlain().Slice()}
+	resp := api.ParsedOutput{
+		Data:        hex.EncodeToString(outBin),
+		Constraints: o.LinesPlain().Slice(),
+		Amount:      o.Amount(),
+	}
+	if cc, pos := o.ChainConstraint(); pos != 0xff {
+		resp.ChainID = hex.EncodeToString(cc.ID[:])
+	}
+
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())

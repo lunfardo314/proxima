@@ -30,6 +30,7 @@ const (
 
 	PathCompileScript        = PrefixTxAPIV1 + "/compile_script"
 	PathDecompileBytecode    = PrefixTxAPIV1 + "/decompile_bytecode"
+	PathParseOutputData      = PrefixTxAPIV1 + "/parse_output_data"
 	PathParseOutput          = PrefixTxAPIV1 + "/parse_output"
 	PathGetTxBytes           = PrefixTxAPIV1 + "/get_txbytes"
 	PathGetParsedTransaction = PrefixTxAPIV1 + "/get_parsed_transaction"
@@ -167,7 +168,24 @@ type (
 	}
 
 	ParsedOutput struct {
+		// raw hex-encoded output data
+		Data string `json:"data"`
+		// parsed constraints for display
 		Constraints []string `json:"constraints"`
+		// amount
+		Amount uint64 `json:"amount"`
+		// Chain ID for chain outputs
+		ChainID string `json:"chain_id,omitempty"`
+	}
+
+	// TransactionJSONAble is more or less human-readable form of the transaction
+	// It is not a canonical form
+	TransactionJSONAble struct {
+		// hex-encoded transaction ID
+		ID      string         `json:"id"`
+		Inputs  []string       `json:"inputs"`
+		Outputs []ParsedOutput `json:"outputs"`
+		// TODO
 	}
 )
 
