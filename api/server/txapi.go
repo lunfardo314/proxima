@@ -247,7 +247,7 @@ func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tx, err := transaction.FromBytes(txBytes, transaction.BaseValidation())
+	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	if err != nil {
 		writeErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return
