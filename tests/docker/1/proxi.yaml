@@ -7,7 +7,7 @@ wallet:
 api:
     endpoint: http://0.0.0.0:8000
 tag_along:
-    sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    sequencer_id: 6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc
     fee: 500
 finality:
     inclusion_threshold:
@@ -29,8 +29,8 @@ spammer:
     tag_along:
         fee: 500
         # <sequencer ID hex encoded> is tag-along sequencer ID for the tip transaction in the bundle
-        # For example the bootstrap sequencer af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
-        sequencer: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+        # For example the bootstrap sequencer 6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc
+        sequencer: 6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc
     # target address
     target: a(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
     trace_on_node: false

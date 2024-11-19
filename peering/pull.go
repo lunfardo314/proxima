@@ -15,52 +15,78 @@ import (
 const PullTransactions = byte(iota)
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
-	ps.inMsgCounter.Inc()
+
+	defer func() {
+		stream.Close()
+		ps.Log().Errorf("[peering] pull: streamHandler exit")
+	}()
+
 	if ps.cfg.IgnoreAllPullRequests {
 		// ignore all pull requests
-		_ = stream.Close()
 		return
 	}
 
+	ps.Log().Infof("[peering] pull: ******** streamHandler started")
 	id := stream.Conn().RemotePeer()
 
 	known, blacklisted, static := ps.knownPeer(id, func(p *Peer) {
-		p.numIncomingPull++
 	})
-	if !known || blacklisted {
+	if blacklisted {
 		// just ignore
-		_ = stream.Close()
 		return
 	}
+	if !known {
+		if !ps.isAutopeeringEnabled() {
+			// node does not take any incoming dynamic peers
+			ps.Log().Errorf("[peering] node does not take any incoming dynamic peers")
+			return
+		}
+		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
+	}
+
 	if !static && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
 		// ignore pull requests from automatic peers
-		_ = stream.Close()
 		return
 	}
 
-	msgData, err := readFrame(stream)
-	_ = stream.Close()
-
-	switch {
-	case err != nil:
-		ps.Log().Error("pull: error while reading message from peer %s: %v", id.String(), err)
-		return
-	case len(msgData) == 0:
-		ps.Log().Error("pull: error while reading message from peer %s: empty data", id.String())
-		return
-	case msgData[0] != PullTransactions:
-		ps.Log().Error("pull: wrong msg type '%d'", msgData[0])
-		return
-	}
-
-	var txid ledger.TransactionID
-	txid, err = decodePullTransactionMsg(msgData)
+	// receive start
+	_, err := readFrame(stream)
 	if err != nil {
-		ps.Log().Error("pull: error while decoding message: %v", err)
+		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
-	ps.onReceivePullTx(id, txid)
-	ps.pullRequestsIn.Inc()
+	for {
+		msgData, err := readFrame(stream)
+		_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
+			p.numIncomingPull++
+		})
+		if blacklisted {
+			// just ignore
+			return
+		}
+
+		ps.inMsgCounter.Inc()
+		switch {
+		case err != nil:
+			ps.Log().Error("pull: error while reading message from peer %s: %v", id.String(), err)
+			return
+		case len(msgData) == 0:
+			ps.Log().Error("pull: error while reading message from peer %s: empty data", id.String())
+			return
+		case msgData[0] != PullTransactions:
+			ps.Log().Error("pull: wrong msg type '%d'", msgData[0])
+			return
+		}
+
+		var txid ledger.TransactionID
+		txid, err = decodePullTransactionMsg(msgData)
+		if err != nil {
+			ps.Log().Error("pull: error while decoding message: %v", err)
+			return
+		}
+		go ps.onReceivePullTx(id, txid)
+		ps.pullRequestsIn.Inc()
+	}
 }
 
 func (ps *Peers) sendPullTransactionToPeers(ids []peer.ID, txid ledger.TransactionID) {

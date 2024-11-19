@@ -25,6 +25,10 @@ kill_proxima() {
     fi
 }
 
+# increase the maximum buffer for quic
+sysctl -w net.core.rmem_max=7500000
+sysctl -w net.core.wmem_max=7500000
+
 boot_param=""
 if [ "$NODE_NAME" = "boot" ]; then
 boot_param="boot"

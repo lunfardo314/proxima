@@ -20,7 +20,7 @@ func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 		return
 	}
 	ps.withPeer(id, func(p *Peer) {
-		yes = p == nil && !ps._isInBlacklist(id)
+		yes = p == nil && !ps._isInBlacklist(id) && !ps._isInCoolOffList(id) && !ps._isInConnectList(id)
 	})
 	return
 }
@@ -77,7 +77,7 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 	}
 	for _, p := range sortedDynamicPeers[:len(sortedDynamicPeers)-ps.cfg.MaxDynamicPeers] {
 		if time.Since(p.whenAdded) > gracePeriodAfterAdded {
-			ps._dropPeer(p, "excess peer (by rank)")
+			ps._dropPeer(p, "excess peer (by rank)", true)
 		}
 	}
 }

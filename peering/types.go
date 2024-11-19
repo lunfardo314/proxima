@@ -10,6 +10,7 @@ import (
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
@@ -44,12 +45,27 @@ type (
 		ForcePullFromAllPeers bool
 		// timeout for heartbeat. If not set, used special defaultSendHeartbeatTimeout
 		SendTimeoutHeartbeat time.Duration
+
+		// wait time to allow a blacklisted peer to connect again
+		BlacklistTTL int
+		// wait time after a disconnected peer can be reconnected again
+		CooloffListTTL int
+
+		// disable Quicreuse
+		DisableQuicreuse bool
 	}
 
 	_multiaddr struct {
 		addrString string
 		multiaddr.Multiaddr
 	}
+
+	staticPeerInfo struct {
+		maddr      multiaddr.Multiaddr
+		name       string
+		addrString string
+	}
+
 	Peers struct {
 		environment
 
@@ -60,8 +76,11 @@ type (
 		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
 		routingDiscovery *routing.RoutingDiscovery
 		peers            map[peer.ID]*Peer // except self/host
-		staticPeers      set.Set[peer.ID]
+		staticPeers      map[peer.ID]*staticPeerInfo
 		blacklist        map[peer.ID]_deadlineWithReason
+		cooloffList      map[peer.ID]time.Time
+		connectList      set.Set[peer.ID]
+
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
 		onReceivePullTx func(from peer.ID, txid ledger.TransactionID)
@@ -85,9 +104,15 @@ type (
 		peersPullTargets int
 	}
 
+	peerStream struct {
+		mutex  sync.RWMutex
+		stream network.Stream
+	}
+
 	Peer struct {
 		id                     peer.ID
 		name                   string
+		streams                map[protocol.ID]*peerStream
 		isStatic               bool // statically pre-configured (manual peering)
 		respondsToPullRequests bool // from hb info
 		whenAdded              time.Time
@@ -108,6 +133,8 @@ type (
 		numIncomingHB   int
 		numIncomingPull int
 		numIncomingTx   int
+
+		numHBSendErr int
 	}
 )
 
@@ -140,6 +167,7 @@ const (
 	aliveNumHeartbeats = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
 	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
 	blacklistTTL       = 2 * time.Minute
+	cooloffTTL         = 10 * time.Second
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 15 * heartbeatRate
 	logPeersEvery         = 5 * time.Second
@@ -162,8 +190,6 @@ const (
 	// default timeouts for QUIC
 	// HB must dial usually
 	defaultSendHeartbeatTimeout = 10 * time.Second
-	// gossip, pull sends usually do not do dial
-	sendTimeout = time.Second
 )
 
 func readPeeringConfig() (*Config, error) {
@@ -227,5 +253,14 @@ func readPeeringConfig() (*Config, error) {
 	if cfg.SendTimeoutHeartbeat == 0 {
 		cfg.SendTimeoutHeartbeat = defaultSendHeartbeatTimeout
 	}
+	cfg.BlacklistTTL = viper.GetInt("blacklist_ttl")
+	if cfg.BlacklistTTL == 0 {
+		cfg.BlacklistTTL = int(blacklistTTL)
+	}
+	cfg.CooloffListTTL = viper.GetInt("coolofflist_ttl")
+	if cfg.CooloffListTTL == 0 {
+		cfg.CooloffListTTL = int(cooloffTTL)
+	}
+	cfg.DisableQuicreuse = viper.GetBool("peering.disable_quicreuse")
 	return cfg, nil
 }

@@ -82,11 +82,11 @@ sequencer:
     # start sequencer yes/no
     enable: true
     # chain ID of the sequencer
-    # chain ID af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963 is
+    # chain ID 6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc is
     # predefined chain ID of the genesis chain (the bootstrap sequencer)
     # Sequencer chain is created by 'proxi node mkchain' command
     # All chains controlled by the wallet can be displayed by 'proxi node chains'
-    chain_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+    chain_id: 6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc
     # sequencer chain controller's private key (hex-encoded)
     controller_key: cd9e2cbfccff43c55f6127869762814431203203f359e86b57d804ff50a1b36dc07e104fcbec1daf388ffe50a6fd3ddf006d1e24a384ff81277fee6eff808738
     # sequencer pace. Distance in ticks between two subsequent sequencer transactions
