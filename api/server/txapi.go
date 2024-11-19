@@ -37,6 +37,7 @@ func (srv *server) registerTxAPIHandlers() {
 	// is to use it in frontends, like explorers and visualizers.
 	// '/txapi/v1/get_parsed_transaction?txid=<hex-encoded transaction ID>'
 	srv.addHandler(api.PathGetParsedTransaction, srv.getParsedTransaction)
+	srv.addHandler(api.PathGetParsedTransaction, srv.getParsedTransaction)
 }
 
 func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
@@ -269,6 +270,50 @@ func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) 
 		resp.TxMetadata = metadata.JSONAble()
 	}
 
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
+}
+
+func (srv *server) getVertexWithDependencies(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
+	var txid ledger.TransactionID
+	var err error
+
+	lst, ok := r.URL.Query()["txid"]
+	if !ok || len(lst) != 1 {
+		writeErr(w, "hex encoded transaction ID expected")
+		return
+	}
+	txid, err = ledger.TransactionIDFromHexString(lst[0])
+	if err != nil {
+		writeErr(w, fmt.Sprintf("failed to parse transaction ID from hex encoded string: '%v'", err))
+		return
+	}
+
+	txBytesWithMetadata := srv.TxBytesStore().GetTxBytesWithMetadata(&txid)
+	if len(txBytesWithMetadata) == 0 {
+		writeErr(w, fmt.Sprintf("transaction %s has not been found in the txBytesStore", txid.String()))
+		return
+	}
+
+	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
+	if err != nil {
+		writeErr(w, fmt.Sprintf("error while parsing DB data: '%v'", err))
+		return
+	}
+
+	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	if err != nil {
+		writeErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
+		return
+	}
+	resp := api.VertexWithDependenciesFromTransaction(tx)
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())
