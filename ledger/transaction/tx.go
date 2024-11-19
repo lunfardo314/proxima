@@ -116,6 +116,10 @@ func (tx *Transaction) Validate(opt ...TxValidationOption) error {
 	})
 }
 
+func (tx *Transaction) SignatureBytes() []byte {
+	return tx.tree.BytesAtPath(Path(ledger.TxSignature))
+}
+
 // BaseValidation is a checking of being able to extract ID. If not, bytes are not identifiable as a transaction
 func BaseValidation() TxValidationOption {
 	return func(tx *Transaction) error {
@@ -229,7 +233,7 @@ func ScanSequencerData() TxValidationOption {
 func CheckSender() TxValidationOption {
 	return func(tx *Transaction) error {
 		// mandatory sender signature
-		sigData := tx.tree.BytesAtPath(Path(ledger.TxSignature))
+		sigData := tx.SignatureBytes()
 		senderPubKey := ed25519.PublicKey(sigData[64:])
 		tx.sender = ledger.AddressED25519FromPublicKey(senderPubKey)
 		if !ed25519.Verify(senderPubKey, tx.EssenceBytes(), sigData[0:64]) {

@@ -42,7 +42,8 @@ func (st *StemLock) Bytes() []byte {
 }
 
 func (st *StemLock) String() string {
-	return fmt.Sprintf("stem(%s)", st.PredecessorOutputID.StringShort())
+	return st.source()
+	//return fmt.Sprintf("stem(%s)", st.PredecessorOutputID.StringShort())
 }
 
 func (st *StemLock) Accounts() []Accountable {

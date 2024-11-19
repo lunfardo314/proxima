@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/util"
 )
 
 // Inflation constraint script, when added to the chain-constrained output, adds inflation the transaction.
@@ -56,13 +55,14 @@ func (i *InflationConstraint) Bytes() []byte {
 }
 
 func (i *InflationConstraint) String() string {
-	return fmt.Sprintf("%s(%s, 0x%s, %d, %d)",
-		InflationConstraintName,
-		util.Th(i.ChainInflation),
-		hex.EncodeToString(i.VRFProof),
-		i.ChainConstraintIndex,
-		i.DelayedInflationIndex,
-	)
+	return i.source()
+	//return fmt.Sprintf("%s(%s, 0x%s, %d, %d)",
+	//	InflationConstraintName,
+	//	util.Th(i.ChainInflation),
+	//	hex.EncodeToString(i.VRFProof),
+	//	i.ChainConstraintIndex,
+	//	i.DelayedInflationIndex,
+	//)
 }
 
 func (i *InflationConstraint) source() string {

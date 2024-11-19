@@ -211,6 +211,7 @@ type (
 		IsBranch         bool   `json:"is_branch"`
 		*SequencerTxData `json:"sequencer_tx_data,omitempty"`
 		Sender           string                                  `json:"sender"`
+		Signature        string                                  `json:"signature"`
 		Inputs           []Input                                 `json:"inputs"`
 		Outputs          []ParsedOutput                          `json:"outputs"`
 		Endorsements     []string                                `json:"endorsements,omitempty"`
@@ -311,5 +312,6 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		return true
 	})
 	ret.Sender = tx.SenderAddress().String()
+	ret.Signature = hex.EncodeToString(tx.SignatureBytes())
 	return ret
 }

@@ -14,16 +14,27 @@ import (
 )
 
 func (srv *server) registerTxAPIHandlers() {
+	// Compiles EasyFL script in the context of the ledger of the node and returns bytecode
 	// '/txapi/v1/compile_script?source=<script source in EasyFL>'
 	srv.addHandler(api.PathCompileScript, srv.compileScript)
+	// Decompiles bytecode in the context of the ledger of the node to EasyFL script
 	// '/txapi/v1/decompile_bytecode?bytecode=<hex-encoded bytecode>'
 	srv.addHandler(api.PathDecompileBytecode, srv.decompileBytecode)
+	// By given output ID, finds raw output data on LRB state, parses the it as lazyarray
+	// and decompiles each of constraint scripts. Returns list of decompiled constraint scripts
 	// '/txapi/v1/parse_output?output_id=<hex-encoded output ID>'
 	srv.addHandler(api.PathParseOutput, srv.parseOutput)
+	// By given raw data of the output, parses it as lazyarray
+	// and decompiles each of constraint scripts. Returns list of decompiled constraint scripts
+	// Essential difference with the parse-output is that it does not need to assume particular LRB
 	// '/txapi/v1/parse_output_data?output_data=<hex-encoded output binary>'
 	srv.addHandler(api.PathParseOutputData, srv.parseOutputData)
+	// By given transaction ID, returns raw transaction bytes (canonical form of tx) and metadata (if it exists)
 	// '/txapi/v1/get_txbytes?txid=<hex-encoded transaction ID>'
 	srv.addHandler(api.PathGetTxBytes, srv.getTxBytes)
+	// By the given transaction ID, returns parsed transaction in JSON form. The JSON form contains all elements
+	// of the transaction except signature, but it is not a canonical form. Primary purpose of JSON form of the transaction
+	// is to use it in frontends, like explorers and visualizers.
 	// '/txapi/v1/get_parsed_transaction?txid=<hex-encoded transaction ID>'
 	srv.addHandler(api.PathGetParsedTransaction, srv.getParsedTransaction)
 }
