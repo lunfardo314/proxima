@@ -113,11 +113,6 @@ func (pb *PastConeBase) CloneImmutable() *PastConeBase {
 	return ret
 }
 
-func (pb *PastConeBase) setBaseline(vid *WrappedTx) {
-	util.Assertf(pb.baseline == nil, "setBaseline: pb.baseline == nil")
-	pb.baseline = vid
-}
-
 func (pb *PastConeBase) addVirtuallyConsumedOutput(wOut WrappedOutput) {
 	if pb.virtuallyConsumed == nil {
 		pb.virtuallyConsumed = map[*WrappedTx]set.Set[byte]{}
@@ -174,12 +169,16 @@ func (pc *PastCone) SetBaseline(vid *WrappedTx) bool {
 	pc.Assertf(pc.baseline == nil, "SetBaseline: pc.baseline == nil")
 	pc.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction(): %s", vid.IDShortString)
 
-	if pc.delta == nil {
-		pc.setBaseline(vid)
-	} else {
-		pc.delta.setBaseline(vid)
+	if !pc.markVertexWithFlags(vid, FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState) {
+		return false
 	}
-	return pc.markVertexWithFlags(vid, FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState)
+	if pc.delta == nil {
+		pc.baseline = vid
+	} else {
+		pc.Assertf(pc.delta.baseline == nil, "SetBaseline: pc.delta.baseline == nil")
+		pc.delta.baseline = vid
+	}
+	return true
 }
 
 func (pc *PastCone) UnReferenceAll() {

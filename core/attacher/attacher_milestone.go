@@ -241,6 +241,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 		a.vid.Unwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
 				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined:\n%s", a.vid.StringNoLock)
+				a.Assertf(a.baseline == nil, "a.baseline == nil")
 
 				ok = a.solidifyBaselineVertex(v, a.vid)
 				if ok && v.BaselineBranch != nil {
