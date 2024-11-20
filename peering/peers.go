@@ -28,7 +28,9 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-//reuse "github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
+const (
+	TraceTagPeeringPeers = "peering_peers"
+)
 
 func NewPeersDummy() *Peers {
 	ret := &Peers{
@@ -421,7 +423,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string, blacklist bool) {
 }
 
 func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
-	ps.Log().Infof("[peering] ****** add to blacklist peer %s", ShortPeerIDString(id))
+	ps.Tracef(TraceTagPeeringPeers, "[peering] add to blacklist peer %s", ShortPeerIDString(id))
 	ps._removeFromCoolOffList(id)
 	ps.blacklist[id] = _deadlineWithReason{
 		Time:   time.Now().Add(time.Duration(ps.cfg.BlacklistTTL)),
@@ -440,7 +442,7 @@ func (ps *Peers) restartBlacklistTime(id peer.ID) {
 }
 
 func (ps *Peers) _addToCoolOfflist(id peer.ID) {
-	ps.Log().Infof("[peering] ****** add to cooloff list peer %s", ShortPeerIDString(id))
+	ps.Tracef(TraceTagPeeringPeers, "[peering] add to cooloff list peer %s", ShortPeerIDString(id))
 
 	if !ps._isInBlacklist(id) {
 		ps.cooloffList[id] = time.Now().Add(time.Duration(ps.cfg.CooloffListTTL))
@@ -448,7 +450,7 @@ func (ps *Peers) _addToCoolOfflist(id peer.ID) {
 }
 
 func (ps *Peers) _removeFromCoolOffList(id peer.ID) {
-	ps.Log().Infof("[peering] ****** remove from cooloff list peer %s", ShortPeerIDString(id))
+	ps.Tracef(TraceTagPeeringPeers, "[peering] remove from cooloff list peer %s", ShortPeerIDString(id))
 
 	_, found := ps.cooloffList[id]
 	if found {
@@ -458,7 +460,7 @@ func (ps *Peers) _removeFromCoolOffList(id peer.ID) {
 
 func (ps *Peers) _addToConnectList(id peer.ID) {
 	if !ps.connectList.Contains(id) {
-		ps.Log().Infof("[peering] ****** add to connect list peer %s", ShortPeerIDString(id))
+		ps.Tracef(TraceTagPeeringPeers, "[peering] add to connect list peer %s", ShortPeerIDString(id))
 		ps.connectList.Insert(id)
 	}
 }

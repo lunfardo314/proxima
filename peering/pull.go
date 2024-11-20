@@ -26,7 +26,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		return
 	}
 
-	ps.Log().Infof("[peering] pull: ******** streamHandler started")
 	id := stream.Conn().RemotePeer()
 
 	known, blacklisted, static := ps.knownPeer(id, func(p *Peer) {

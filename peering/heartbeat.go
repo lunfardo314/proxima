@@ -73,7 +73,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	// received heartbeat message from peer
 	defer func() {
 		stream.Close()
-		ps.Log().Errorf("[peering] hb: streamHandler exit")
+		ps.Tracef(TraceTagHeartBeatRecv, "[peering] hb: streamHandler exit")
 	}()
 
 	id := stream.Conn().RemotePeer()
@@ -83,7 +83,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	})
 	if blacklisted {
 		// ignore
-		ps.Log().Errorf("[peering] node %s blacklisted", id.String())
+		ps.Tracef(TraceTagHeartBeatRecv, "[peering] node %s blacklisted", id.String())
 		// extend blacklisting
 		//ps.restartBlacklistTime(id)
 		return
@@ -91,18 +91,18 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
-			ps.Log().Errorf("[peering] node does not take any incoming dynamic peers")
+			ps.Tracef(TraceTagHeartBeatRecv, "[peering] node does not take any incoming dynamic peers")
 			return
 		}
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
-	ps.Log().Info("[peering] hb: ******** streamHandler started for %s", ShortPeerIDString(id))
+	ps.Tracef(TraceTagHeartBeatRecv, "[peering] hb: ******** streamHandler started for %s", ShortPeerIDString(id))
 
 	// receive start
 	_, err := readFrame(stream)
 	if err != nil {
-		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
+		ps.Tracef(TraceTagHeartBeatRecv, "[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
 
