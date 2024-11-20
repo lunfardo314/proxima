@@ -96,7 +96,7 @@ const dashboardHTML = `
         // Function to fetch peers info and update the UI
         async function fetchPeersInfo() {
             try {
-                const response = await fetch('http://'+host+'/peers_info');
+                const response = await fetch('http://'+host+'/api/v1/peers_info');
                 const data = await response.json();
                 updatePeersInfo(data);
             } catch (error) {
@@ -105,7 +105,7 @@ const dashboardHTML = `
         }
         async function fetchNodeInfo() {
             try {
-                const response = await fetch('http://'+host+'/node_info');
+                const response = await fetch('http://'+host+'/api/v1/node_info');
                 const data = await response.json();
                 updateNodeInfo(data);
             } catch (error) {
@@ -114,7 +114,7 @@ const dashboardHTML = `
         }
         async function fetchSyncInfo() {
             try {
-                const response = await fetch('http://'+host+'/sync_info');
+                const response = await fetch('http://'+host+'/api/v1/sync_info');
                 const data = await response.json();
                 updateSyncInfo(data);
             } catch (error) {
