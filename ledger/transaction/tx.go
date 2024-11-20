@@ -782,6 +782,20 @@ func (tx *Transaction) InputLoaderFromState(rdr global.StateReader) func(idx byt
 	})
 }
 
+func (tx *Transaction) SequencerAndStemInputData() (seqInputIdx *byte, stemInput *ledger.OutputID) {
+	if !tx.IsSequencerMilestone() {
+		return
+	}
+	seqMeta := tx.SequencerTransactionData()
+	if !seqMeta.SequencerOutputData.ChainConstraint.IsOrigin() {
+		seqInputIdx = util.Ref(seqMeta.SequencerOutputData.ChainConstraint.PredecessorInputIndex)
+	}
+	if tx.IsBranchTransaction() {
+		stemInput = util.Ref(seqMeta.StemOutputData.PredecessorOutputID)
+	}
+	return
+}
+
 // SequencerChainPredecessor returns chain predecessor output ID
 // If it is chain origin, it returns nil. Otherwise, it may or may not be a sequencer ID
 // It also returns index of the inout

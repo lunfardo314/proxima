@@ -228,14 +228,16 @@ type (
 	}
 
 	VertexWithDependencies struct {
-		ID                string            `json:"id"`
-		TotalAmount       uint64            `json:"total_amount"`
-		TotalInflation    uint64            `json:"total_inflation"`
-		IsSequencerTx     bool              `json:"is_sequencer_tx"`
-		IsBranch          bool              `json:"is_branch"`
-		SequencerID       string            `json:"sequencer_id,omitempty"`
-		InputDependencies []InputDependency `json:"input_dependencies"`
-		Endorsements      []string          `json:"endorsements,omitempty"`
+		ID                  string   `json:"id"`
+		TotalAmount         uint64   `json:"total_amount"`
+		TotalInflation      uint64   `json:"total_inflation"`
+		IsSequencerTx       bool     `json:"is_sequencer_tx"`
+		IsBranch            bool     `json:"is_branch"`
+		SequencerID         string   `json:"sequencer_id,omitempty"`
+		SequencerInputIndex *byte    `json:"sequencer_input_index,omitempty"`
+		StemInputIndex      *byte    `json:"stem_input_index,omitempty"`
+		InputDependencies   []string `json:"input_dependencies"`
+		Endorsements        []string `json:"endorsements,omitempty"`
 	}
 )
 
@@ -343,18 +345,19 @@ func VertexWithDependenciesFromTransaction(tx *transaction.Transaction) *VertexW
 		TotalInflation:    tx.InflationAmount(),
 		IsSequencerTx:     tx.IsSequencerMilestone(),
 		IsBranch:          tx.IsBranchTransaction(),
-		InputDependencies: make([]InputDependency, tx.NumInputs()),
+		InputDependencies: make([]string, tx.NumInputs()),
 		Endorsements:      make([]string, tx.NumEndorsements()),
 	}
+	seqInputIdx, stemInput := tx.SequencerAndStemInputData()
+
 	if tx.IsSequencerMilestone() {
-		ret.SequencerID = tx.SequencerTransactionData().SequencerID.StringHex()
+		ret.SequencerInputIndex = seqInputIdx
 	}
 
 	tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
-		ret.InputDependencies[i] = InputDependency{
-			ID:               oid.StringHex(),
-			IsSeqPredecessor: tx.IsSequencerMilestone() && i == tx.SequencerTransactionData().SequencerOutputIndex,
-			IsStem:           tx.IsBranchTransaction() && i == tx.SequencerTransactionData().StemOutputIndex,
+		ret.InputDependencies[i] = oid.StringHex()
+		if stemInput != nil && *stemInput == *oid {
+			ret.StemInputIndex = util.Ref(i)
 		}
 		return true
 	})
