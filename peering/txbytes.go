@@ -16,7 +16,6 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		ps.Log().Infof("[peering] gossip: streamHandler exit")
 	}()
 
-	ps.Log().Infof("[peering] gossip: ******** streamHandler started")
 	id := stream.Conn().RemotePeer()
 
 	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
