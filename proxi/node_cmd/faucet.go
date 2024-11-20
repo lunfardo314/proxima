@@ -37,26 +37,29 @@ func initFaucetCmd() *cobra.Command {
 		Run:   runFaucetCmd,
 	}
 
-	cmd.PersistentFlags().Uint64("faucet.output_amount", 1000000, "amount on the output")
+	cmd.PersistentFlags().Uint64("faucet.output_amount", 1000000, "amount to send to the requester")
 	err := viper.BindPFlag("faucet.output_amount", cmd.PersistentFlags().Lookup("faucet.output_amount"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint64("faucet.port", 9500, "amount on the output")
+	cmd.PersistentFlags().Uint64("faucet.port", 9500, "faucet port")
 	err = viper.BindPFlag("faucet.port", cmd.PersistentFlags().Lookup("faucet.port"))
 	glb.AssertNoError(err)
-
-	// cmd.PersistentFlags().String("faucet.addr", "http://127.0.0.1", "amount on the output")
-	// err = viper.BindPFlag("faucet.addr", cmd.PersistentFlags().Lookup("faucet.addr"))
-	// glb.AssertNoError(err)
 
 	return cmd
 }
 
 func readFaucetConfigIn(sub *viper.Viper) (ret faucetConfig) {
-	glb.Assertf(sub != nil, "faucet configuration is not available")
-	ret.outputAmount = sub.GetUint64("output_amount")
-	ret.port = sub.GetUint64("port")
-	ret.addr = sub.GetString("addr")
+	//glb.Assertf(sub != nil, "faucet configuration is not available")
+	if sub != nil {
+		ret.outputAmount = sub.GetUint64("output_amount")
+		ret.port = sub.GetUint64("port")
+		ret.addr = sub.GetString("addr")
+	} else {
+		// get default values
+		ret.outputAmount = viper.GetUint64("faucet.output_amount")
+		ret.port = viper.GetUint64("faucet.port")
+		ret.addr = viper.GetString("faucet.addr")
+	}
 	return
 }
 
@@ -144,7 +147,7 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeResponse(w, "")
+	writeResponse(w, "") // send ok
 
 	// txid, err := transaction.IDFromTransactionBytes(txBytes)
 	// glb.AssertNoError(err)
@@ -184,11 +187,7 @@ func initGetFundsCmd() *cobra.Command {
 		Run:   getFundsCmd,
 	}
 
-	// cmd.PersistentFlags().Uint64("faucet.output_amount", 1000000, "amount on the output")
-	// err := viper.BindPFlag("faucet.output_amount", cmd.PersistentFlags().Lookup("faucet.output_amount"))
-	// glb.AssertNoError(err)
-
-	cmd.PersistentFlags().Uint64("faucet.port", 9500, "amount on the output")
+	cmd.PersistentFlags().Uint64("faucet.port", 9500, "faucet port")
 	err := viper.BindPFlag("faucet.port", cmd.PersistentFlags().Lookup("faucet.port"))
 	glb.AssertNoError(err)
 
