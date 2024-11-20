@@ -37,7 +37,9 @@ func (srv *server) registerTxAPIHandlers() {
 	// is to use it in frontends, like explorers and visualizers.
 	// '/txapi/v1/get_parsed_transaction?txid=<hex-encoded transaction ID>'
 	srv.addHandler(api.PathGetParsedTransaction, srv.getParsedTransaction)
-	srv.addHandler(api.PathGetParsedTransaction, srv.getParsedTransaction)
+	// By the given transaction ID, returns compressed for of the DAG vertex. Its primary use is DAG visualizers
+	// '/txapi/v1/get_vertex_dep?txid=<hex-encoded transaction ID>'
+	srv.addHandler(api.PathGetVertexWithDependencies, srv.getVertexWithDependencies)
 }
 
 func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
