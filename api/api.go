@@ -32,12 +32,13 @@ const (
 
 	// Transaction API calls
 
-	PathCompileScript        = PrefixTxAPIV1 + "/compile_script"
-	PathDecompileBytecode    = PrefixTxAPIV1 + "/decompile_bytecode"
-	PathParseOutputData      = PrefixTxAPIV1 + "/parse_output_data"
-	PathParseOutput          = PrefixTxAPIV1 + "/parse_output"
-	PathGetTxBytes           = PrefixTxAPIV1 + "/get_txbytes"
-	PathGetParsedTransaction = PrefixTxAPIV1 + "/get_parsed_transaction"
+	PathCompileScript             = PrefixTxAPIV1 + "/compile_script"
+	PathDecompileBytecode         = PrefixTxAPIV1 + "/decompile_bytecode"
+	PathParseOutputData           = PrefixTxAPIV1 + "/parse_output_data"
+	PathParseOutput               = PrefixTxAPIV1 + "/parse_output"
+	PathGetTxBytes                = PrefixTxAPIV1 + "/get_txbytes"
+	PathGetParsedTransaction      = PrefixTxAPIV1 + "/get_parsed_transaction"
+	PathGetVertexWithDependencies = PrefixTxAPIV1 + "/get_vertex_dep"
 )
 
 type (
@@ -217,6 +218,27 @@ type (
 		Endorsements     []string                                `json:"endorsements,omitempty"`
 		TxMetadata       *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
 	}
+
+	// VertexWithDependencies primary purpose is streaming vertices for DAG visualization
+
+	InputDependency struct {
+		ID               string `json:"id"`
+		IsStem           bool   `json:"is_stem,omitempty"`
+		IsSeqPredecessor bool   `json:"is_seq_predecessor,omitempty"`
+	}
+
+	VertexWithDependencies struct {
+		ID                  string   `json:"id"`
+		TotalAmount         uint64   `json:"total_amount"`
+		TotalInflation      uint64   `json:"total_inflation"`
+		IsSequencerTx       bool     `json:"is_sequencer_tx"`
+		IsBranch            bool     `json:"is_branch"`
+		SequencerID         string   `json:"sequencer_id,omitempty"`
+		SequencerInputIndex *byte    `json:"sequencer_input_index,omitempty"`
+		StemInputIndex      *byte    `json:"stem_input_index,omitempty"`
+		InputDependencies   []string `json:"input_dependencies"`
+		Endorsements        []string `json:"endorsements,omitempty"`
+	}
 )
 
 const ErrGetOutputNotFound = "output not found"
@@ -313,5 +335,36 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 	})
 	ret.Sender = tx.SenderAddress().String()
 	ret.Signature = hex.EncodeToString(tx.SignatureBytes())
+	return ret
+}
+
+func VertexWithDependenciesFromTransaction(tx *transaction.Transaction) *VertexWithDependencies {
+	ret := &VertexWithDependencies{
+		ID:                tx.ID().StringHex(),
+		TotalAmount:       tx.TotalAmount(),
+		TotalInflation:    tx.InflationAmount(),
+		IsSequencerTx:     tx.IsSequencerMilestone(),
+		IsBranch:          tx.IsBranchTransaction(),
+		InputDependencies: make([]string, tx.NumInputs()),
+		Endorsements:      make([]string, tx.NumEndorsements()),
+	}
+	seqInputIdx, stemInput := tx.SequencerAndStemInputData()
+
+	if tx.IsSequencerMilestone() {
+		ret.SequencerInputIndex = seqInputIdx
+	}
+
+	tx.ForEachInput(func(i byte, oid *ledger.OutputID) bool {
+		ret.InputDependencies[i] = oid.StringHex()
+		if stemInput != nil && *stemInput == *oid {
+			ret.StemInputIndex = util.Ref(i)
+		}
+		return true
+	})
+
+	tx.ForEachEndorsement(func(i byte, txid *ledger.TransactionID) bool {
+		ret.Endorsements[i] = txid.StringHex()
+		return true
+	})
 	return ret
 }
