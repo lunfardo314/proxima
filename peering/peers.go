@@ -623,12 +623,11 @@ func (p *Peer) _isAlive() bool {
 	return time.Since(p.lastHeartbeatReceived) < aliveDuration
 }
 
-// for QUIC timeout 'NewStream' is necessary, otherwise it may hang if peer is unavailable
-
 //const TraceTagSendMsg = "sendMsg"
 
-func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
+const sendDefaultTimeout = 4 * time.Second
 
+func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
 	var err error
 	var stream network.Stream
 
@@ -646,11 +645,35 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s stream==nil", ShortPeerIDString(peerID), len(data), protocolID)
 		return false
 	}
-	if err = writeFrame(stream, data); err != nil {
-		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, err)
+
+	// Set up timeout context
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if len(timeout) > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), timeout[0])
+	} else {
+		ctx, cancel = context.WithTimeout(context.Background(), sendDefaultTimeout) // Default timeout
 	}
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- writeFrame(stream, data)
+	}()
+
+	select {
+	case <-ctx.Done():
+		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, ctx.Err())
+		return false
+	case err = <-done:
+		if err != nil {
+			ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, err)
+			return false
+		}
+	}
+
 	ps.outMsgCounter.Inc()
-	return err == nil
+	return true
 }
 
 // sendMsgBytesOutMulti send to multiple peers in parallel
