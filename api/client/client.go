@@ -496,6 +496,10 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	return txCtx, err
 }
 
+func (c *APIClient) Get(path string) ([]byte, error) {
+	return c.getBody(path)
+}
+
 func (c *APIClient) getBody(path string) ([]byte, error) {
 	url := c.prefix + path
 	resp, err := c.c.Get(url)
