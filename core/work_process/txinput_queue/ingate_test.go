@@ -9,7 +9,7 @@ import (
 
 func TestInputGate(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		g := newInGate[int](5*time.Second, 10*time.Second)
+		g := newInGate[int](5*time.Second, 10*time.Second, func() time.Duration { return 0 })
 		pass, wanted := g.checkPass(1)
 		require.True(t, pass)
 		require.False(t, wanted)

@@ -21,6 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/spf13/viper"
+	"go.uber.org/atomic"
 )
 
 type (
@@ -77,6 +78,7 @@ type (
 		routingDiscovery *routing.RoutingDiscovery
 		peers            map[peer.ID]*Peer // except self/host
 		staticPeers      map[peer.ID]*staticPeerInfo
+		lastHBReceived   atomic.Time
 		blacklist        map[peer.ID]_deadlineWithReason
 		cooloffList      map[peer.ID]time.Time
 		connectList      set.Set[peer.ID]

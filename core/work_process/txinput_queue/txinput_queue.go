@@ -21,6 +21,7 @@ type (
 		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
 		TxInFromAPI(tx *transaction.Transaction, trace bool) error
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID)
+		IsDisconnectedForDuration() time.Duration
 	}
 
 	Input struct {
@@ -60,8 +61,8 @@ const (
 const (
 	Name = "txInputQueue"
 
-	inGateBlackListTTLSlots = 60 // 10 min
-	inGateWhiteListTTLSlots = 6  // 1 min
+	inGateBlackListTTLSlots = 600 // 100 min
+	inGateWhiteListTTLSlots = 600 // 100 min
 	inGateCleanupPeriod     = 10 * time.Second
 )
 
@@ -71,6 +72,7 @@ func New(env environment) *TxInputQueue {
 		inGate: newInGate[ledger.TransactionIDVeryShort4](
 			inGateWhiteListTTLSlots*ledger.L().ID.SlotDuration(),
 			inGateBlackListTTLSlots*ledger.L().ID.SlotDuration(),
+			env.IsDisconnectedForDuration,
 		),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
