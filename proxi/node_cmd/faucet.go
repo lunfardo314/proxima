@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer/commands"
@@ -29,6 +30,11 @@ type faucet struct {
 	walletData glb.WalletData
 }
 
+const (
+	defaultFaucetOutputAmount = 1_000_000
+	defaultFaucetPort         = 9500
+)
+
 func initFaucetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "faucet",
@@ -37,11 +43,11 @@ func initFaucetCmd() *cobra.Command {
 		Run:   runFaucetCmd,
 	}
 
-	cmd.PersistentFlags().Uint64("faucet.output_amount", 1000000, "amount to send to the requester")
+	cmd.PersistentFlags().Uint64("faucet.output_amount", defaultFaucetOutputAmount, "amount to send to the requester")
 	err := viper.BindPFlag("faucet.output_amount", cmd.PersistentFlags().Lookup("faucet.output_amount"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint64("faucet.port", 9500, "faucet port")
+	cmd.PersistentFlags().Uint64("faucet.port", defaultFaucetPort, "faucet port")
 	err = viper.BindPFlag("faucet.port", cmd.PersistentFlags().Lookup("faucet.port"))
 	glb.AssertNoError(err)
 
@@ -76,7 +82,7 @@ func runFaucetCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer ID")
-	glb.Infof("sequencer ID (source): %s", walletData.Sequencer.String())
+	glb.Infof("sequencer ID (funds source): %s", walletData.Sequencer.String())
 	cfg := displayFaucetConfig()
 	fct := &faucet{
 		cfg:        cfg,
@@ -138,7 +144,8 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	glb.Infof("submitting the transaction...")
+	txid, err := transaction.IDFromTransactionBytes(txBytes)
+	glb.AssertNoError(err)
 
 	err = glb.GetClient().SubmitTransaction(txBytes)
 	if err != nil {
@@ -147,11 +154,11 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeResponse(w, "") // send ok
+	glb.Infof("requested faucet transfer of %s tokens to %s from sequencer %s...",
+		util.Th(fct.cfg.outputAmount), targetLock.String(), fct.walletData.Sequencer.StringShort())
+	glb.Infof("             transaction %s (hex = %s)", txid.String(), txid.StringHex())
 
-	// txid, err := transaction.IDFromTransactionBytes(txBytes)
-	// glb.AssertNoError(err)
-	// glb.ReportTxInclusion(txid, time.Second)
+	writeResponse(w, "") // send ok
 }
 
 func writeResponse(w http.ResponseWriter, respStr string) {
