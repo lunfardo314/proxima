@@ -56,3 +56,4 @@ faucet:
     port:	9500
     account: a(0xe141252fd0ff04d12f9d485abfee4976e81e95cde436e8b9afde5b859d121e3e)
     priv_key: 36c821559e43cb665cda00cf244c4fe6f1c7336056c7af3c2f483d3096476c5de3922e3138fb163af608a5f4feada96495c038f6e179850efa30e81ea8ec1604
+    time_between_requests: 30

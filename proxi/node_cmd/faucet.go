@@ -2,6 +2,7 @@ package node_cmd
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,12 +24,13 @@ import (
 const getFundsPath = "/"
 
 type faucetConfig struct {
-	redrawFromChain bool
-	outputAmount    uint64
-	port            uint64
-	addr            string
-	account         ledger.Accountable
-	privKey         ed25519.PrivateKey
+	redrawFromChain     bool
+	outputAmount        uint64
+	port                uint64
+	addr                string
+	account             ledger.Accountable
+	privKey             ed25519.PrivateKey
+	timeBetweenRequests time.Duration
 }
 
 type faucet struct {
@@ -42,6 +44,7 @@ type faucet struct {
 const (
 	defaultFaucetOutputAmount = 1_000_000
 	defaultFaucetPort         = 9500
+	defaultTimeBetweeRequests = 30
 )
 
 func initFaucetCmd() *cobra.Command {
@@ -68,11 +71,14 @@ func initFaucetCmd() *cobra.Command {
 	err = viper.BindPFlag("faucet.priv_key", cmd.PersistentFlags().Lookup("faucet.priv_key"))
 	glb.AssertNoError(err)
 
+	cmd.PersistentFlags().Uint64("faucet.time_between_requests", defaultTimeBetweeRequests, "minimal time allowed between requests [sec]")
+	err = viper.BindPFlag("faucet.time_between_requests", cmd.PersistentFlags().Lookup("faucet.time_between_requests"))
+	glb.AssertNoError(err)
+
 	return cmd
 }
 
 func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
-	//glb.Assertf(sub != nil, "faucet configuration is not available")
 	if sub != nil {
 		ret.port = sub.GetUint64("port")
 		if server {
@@ -90,12 +96,13 @@ func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 		} else {
 			ret.addr = sub.GetString("addr")
 		}
+		ret.timeBetweenRequests = time.Duration(sub.GetUint64("time_between_requests")) * time.Second
 	} else {
 		// get default values
 		ret.port = viper.GetUint64("faucet.port")
 		if server {
 			ret.outputAmount = viper.GetUint64("faucet.output_amount")
-			privateKeyStr := viper.GetString("priv_key")
+			privateKeyStr := viper.GetString("faucet.priv_key")
 			if len(privateKeyStr) > 0 {
 				var err error
 				ret.privKey, err = util.ED25519PrivateKeyFromHexString(privateKeyStr)
@@ -108,6 +115,8 @@ func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 		} else {
 			ret.addr = viper.GetString("faucet.addr")
 		}
+		ret.timeBetweenRequests = time.Duration(viper.GetUint64("faucet.time_between_requests")) * time.Second
+
 	}
 	return
 }
@@ -115,9 +124,10 @@ func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 func displayFaucetConfig() faucetConfig {
 	cfg := readFaucetConfigIn(viper.Sub("faucet"), true)
 	glb.Infof("faucet configuration:")
-	glb.Infof("     output amount: %d", cfg.outputAmount)
-	glb.Infof("     port:          %d", cfg.port)
-	glb.Infof("     priv_key:      %s", cfg.privKey)
+	glb.Infof("     output amount: 			%d", cfg.outputAmount)
+	glb.Infof("     port:          			%d", cfg.port)
+	glb.Infof("     priv_key:      			%s", hex.EncodeToString(cfg.privKey))
+	glb.Infof("     time between requests:  %s [sec]", cfg.timeBetweenRequests)
 
 	return cfg
 }
@@ -247,26 +257,28 @@ func (fct *faucet) redrawFromAccount(targetLock ledger.Accountable) (string, *le
 }
 
 func (fct *faucet) isAllowed(account string, addr string) bool {
-	timeBetweenRequests := 100 * time.Second
-
 	fct.mutex.Lock()
 	defer fct.mutex.Unlock()
 
 	now := time.Now()
 	lastTime, exists := fct.accountRequestList[account]
-	if !exists || now.Sub(lastTime) > timeBetweenRequests {
-		// Either new entry or enough time has passed
-		fct.accountRequestList[account] = now
+	if !exists || now.Sub(lastTime) > fct.cfg.timeBetweenRequests {
 		lastTime, exists := fct.addressRequestList[addr]
-		if !exists || now.Sub(lastTime) > timeBetweenRequests {
-			// Either new entry or enough time has passed
-			fct.addressRequestList[account] = now
+		if !exists || now.Sub(lastTime) > fct.cfg.timeBetweenRequests {
 			return true
 		}
 	}
 
-	// Entry exists but period has not expired
 	return false
+}
+
+func (fct *faucet) updateRequestTime(account string, addr string) {
+	fct.mutex.Lock()
+	defer fct.mutex.Unlock()
+
+	now := time.Now()
+	fct.accountRequestList[account] = now
+	fct.addressRequestList[addr] = now
 }
 
 func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +315,9 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	glb.Infof("             transaction %s (hex = %s)", txid.String(), txid.StringHex())
 	writeResponse(w, result) // send ok
 
-	//writeResponse(w, "") // send ok
+	if len(result) == 0 {
+		fct.updateRequestTime(targetStr[0], r.RemoteAddr)
+	}
 }
 
 func writeResponse(w http.ResponseWriter, respStr string) {
@@ -361,11 +375,13 @@ func getFundsCmd(_ *cobra.Command, _ []string) {
 
 	c := client.NewWithGoogleDNS(faucetAddr)
 	answer, err := c.Get(path)
-	if err != nil || len(answer) > 0 {
-		if len(answer) > 0 {
-			glb.Infof("error requesting funds from: %s", string(answer))
-		} else {
+	glb.Infof("answer len: %d", len(answer))
+
+	if err != nil || len(answer) > 2 {
+		if err != nil {
 			glb.Infof("error requesting funds from: %s", err.Error())
+		} else {
+			glb.Infof("error requesting funds from: %s", string(answer))
 		}
 	} else {
 		glb.Infof("Funds requested successfully!")
