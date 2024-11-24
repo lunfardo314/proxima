@@ -209,7 +209,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	} else {
 		peer.numHBSendErr++
 		if peer.numHBSendErr > 2 {
-			ps.Log().Errorf("[peering] error sending heartbeat. Drop peer.")
+			ps.Log().Warnf("[peering] error sending heartbeat. Drop peer.")
 			ps.dropPeer(id, "hb send error", false) // peer probably just restart
 			peer.numHBSendErr = 0
 		}

@@ -27,7 +27,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
-			ps.Log().Errorf("[peering] node does not take any incoming dynamic peers")
+			ps.Log().Warnf("[peering] node does not take any incoming dynamic peers")
 			return
 		}
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
