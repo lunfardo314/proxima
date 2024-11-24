@@ -15,10 +15,9 @@ import (
 const PullTransactions = byte(iota)
 
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
-
 	defer func() {
 		stream.Close()
-		ps.Log().Errorf("[peering] pull: streamHandler exit")
+		ps.Log().Warnf("[peering] pull: streamHandler exit")
 	}()
 
 	if ps.cfg.IgnoreAllPullRequests {
@@ -37,7 +36,7 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
-			ps.Log().Errorf("[peering] node does not take any incoming dynamic peers")
+			ps.Log().Warnf("[peering] node does not take any incoming dynamic peers")
 			return
 		}
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
@@ -67,20 +66,20 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		ps.inMsgCounter.Inc()
 		switch {
 		case err != nil:
-			ps.Log().Error("pull: error while reading message from peer %s: %v", id.String(), err)
+			ps.Log().Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
 			return
 		case len(msgData) == 0:
-			ps.Log().Error("pull: error while reading message from peer %s: empty data", id.String())
+			ps.Log().Errorf("pull: error while reading message from peer %s: empty data", id.String())
 			return
 		case msgData[0] != PullTransactions:
-			ps.Log().Error("pull: wrong msg type '%d'", msgData[0])
+			ps.Log().Errorf("pull: wrong msg type '%d'", msgData[0])
 			return
 		}
 
 		var txid ledger.TransactionID
 		txid, err = decodePullTransactionMsg(msgData)
 		if err != nil {
-			ps.Log().Error("pull: error while decoding message: %v", err)
+			ps.Log().Errorf("pull: error while decoding message: %v", err)
 			return
 		}
 		go ps.onReceivePullTx(id, txid)

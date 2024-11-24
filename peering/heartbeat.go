@@ -79,8 +79,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 	remote := stream.Conn().RemoteMultiaddr()
 
-	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
-	})
+	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {})
 	if blacklisted {
 		// ignore
 		ps.Tracef(TraceTagHeartBeatRecv, "[peering] node %s blacklisted", id.String())
@@ -108,7 +107,9 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 
 	for {
 		var hbInfo heartbeatInfo
-		msgData, err := readFrame(stream)
+		var msgData []byte
+
+		msgData, err = readFrame(stream)
 		ps.inMsgCounter.Inc()
 		ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingHB++
@@ -127,6 +128,8 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			return
 		}
 
+		ps.lastHBReceived.Store(time.Now())
+
 		ps.withPeer(id, func(p *Peer) {
 			if p == nil {
 				addrInfo := &peer.AddrInfo{
@@ -138,6 +141,14 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			ps._evidenceHeartBeat(p, hbInfo)
 		})
 	}
+}
+
+func (ps *Peers) IsDisconnectedForDuration() time.Duration {
+	var nilTime time.Time
+	if ps.lastHBReceived.Load() == nilTime {
+		return 0
+	}
+	return time.Since(ps.lastHBReceived.Load())
 }
 
 func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
@@ -198,7 +209,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	} else {
 		peer.numHBSendErr++
 		if peer.numHBSendErr > 2 {
-			ps.Log().Errorf("[peering] error sending heartbeat. Drop peer.")
+			ps.Log().Warnf("[peering] error sending heartbeat. Drop peer.")
 			ps.dropPeer(id, "hb send error", false) // peer probably just restart
 			peer.numHBSendErr = 0
 		}

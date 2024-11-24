@@ -136,6 +136,13 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	ret.registerMetrics()
 
+	ret.RepeatInBackground("disconn_loop", 10*time.Second, func() bool {
+		if ret.IsDisconnectedForDuration() > 5*time.Second {
+			ret.Log().Warnf("[peering] node is DISCONNECTED from the network for %v", ret.IsDisconnectedForDuration())
+		}
+		return true
+	})
+
 	env.Log().Infof("[peering] initialized successfully")
 
 	return ret, nil
@@ -362,7 +369,7 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		time.Sleep(100 * time.Millisecond) //?? Delay
 		err := ps.dialPeer(addrInfo.ID, p, static)
 		if err != nil {
-			ps.Log().Errorf("[peering] dialPeer err %s", err.Error())
+			ps.Log().Warnf("[peering] dialPeer err %s", err.Error())
 			ps.host.Peerstore().RemovePeer(addrInfo.ID)
 			ps.mutex.Lock()
 			ps._removeFromConnectList(addrInfo.ID)
@@ -642,7 +649,7 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	})
 
 	if stream == nil {
-		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s stream==nil", ShortPeerIDString(peerID), len(data), protocolID)
+		ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s stream==nil", ShortPeerIDString(peerID), len(data), protocolID)
 		return false
 	}
 
@@ -663,11 +670,11 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 
 	select {
 	case <-ctx.Done():
-		ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, ctx.Err())
+		ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, ctx.Err())
 		return false
 	case err = <-done:
 		if err != nil {
-			ps.Log().Errorf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, err)
+			ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, err)
 			return false
 		}
 	}
