@@ -144,6 +144,10 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 }
 
 func (ps *Peers) IsDisconnectedForDuration() time.Duration {
+	var nilTime time.Time
+	if ps.lastHBReceived.Load() == nilTime {
+		return 0
+	}
 	return time.Since(ps.lastHBReceived.Load())
 }
 
