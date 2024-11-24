@@ -61,8 +61,8 @@ const (
 const (
 	Name = "txInputQueue"
 
-	inGateBlackListTTLSlots = 600 // 100 min
-	inGateWhiteListTTLSlots = 600 // 100 min
+	inGateBlackListTTLSlots = 60 // 10 min
+	inGateWhiteListTTLSlots = 60 // 10 min
 	inGateCleanupPeriod     = 10 * time.Second
 )
 
@@ -78,7 +78,7 @@ func New(env environment) *TxInputQueue {
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
 	ret.WorkProcess.Start()
 
-	ret.RepeatInBackground(Name+"_inFilterCleanup", inGateCleanupPeriod, func() bool {
+	ret.RepeatInBackground(Name+"_inGateCleanup", inGateCleanupPeriod, func() bool {
 		ret.inGate.purge()
 		return true
 	})

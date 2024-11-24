@@ -136,6 +136,13 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	ret.registerMetrics()
 
+	ret.RepeatInBackground("disconn_loop", 10*time.Second, func() bool {
+		if ret.IsDisconnectedForDuration() > 5*time.Second {
+			ret.Log().Warnf("[peering] node is DISCONNECTED from the network for %v", ret.IsDisconnectedForDuration())
+		}
+		return true
+	})
+
 	env.Log().Infof("[peering] initialized successfully")
 
 	return ret, nil

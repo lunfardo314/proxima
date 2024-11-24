@@ -14,12 +14,13 @@ type inGate[T comparable] struct {
 	disconnectedForDurationFun func() time.Duration
 }
 
-func newInGate[T comparable](ttlWhite, ttlBlack time.Duration, connectedForFun func() time.Duration) *inGate[T] {
+func newInGate[T comparable](ttlWhite, ttlBlack time.Duration, disconnectedForFun func() time.Duration) *inGate[T] {
 	return &inGate[T]{
-		whiteList: make(map[T]time.Time),
-		blackList: make(map[T]time.Time),
-		ttlWhite:  ttlWhite,
-		ttlBlack:  ttlBlack,
+		whiteList:                  make(map[T]time.Time),
+		blackList:                  make(map[T]time.Time),
+		ttlWhite:                   ttlWhite,
+		ttlBlack:                   ttlBlack,
+		disconnectedForDurationFun: disconnectedForFun,
 	}
 }
 
