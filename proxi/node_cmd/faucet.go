@@ -157,14 +157,14 @@ func getAccountTotal(accountable ledger.Accountable) uint64 {
 	return sum
 }
 
-func (fct *faucet) redrawFromChain(targetLock ledger.Accountable) (result string, txid ledger.TransactionID) {
+func (fct *faucet) redrawFromChain(targetLock ledger.Accountable) (string, *ledger.TransactionID) {
 	glb.Infof("querying wallet's outputs..")
 	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputs(fct.walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	if err != nil {
 		glb.Infof("Error from GetAccountOutputs: %s", err.Error())
-		return err.Error()
+		return err.Error(), nil
 	}
 
 	glb.PrintLRB(lrbid)
@@ -176,7 +176,7 @@ func (fct *faucet) redrawFromChain(targetLock ledger.Accountable) (result string
 	cmdConstr, err := commands.MakeSequencerWithdrawCommand(fct.cfg.outputAmount, targetLock.AsLock())
 	if err != nil {
 		glb.Infof("Error from MakeSequencerWithdrawCommand: %s", err.Error())
-		return err.Error()
+		return err.Error(), nil
 	}
 
 	transferData := txbuilder.NewTransferData(fct.walletData.PrivateKey, fct.walletData.Account, ledger.TimeNow()).
@@ -189,26 +189,26 @@ func (fct *faucet) redrawFromChain(targetLock ledger.Accountable) (result string
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
 	if err != nil {
 		glb.Infof("Error from MakeSimpleTransferTransaction: %s", err.Error())
-		return err.Error()
+		return err.Error(), nil
 	}
 
-	txid, err = transaction.IDFromTransactionBytes(txBytes)
+	txid, err := transaction.IDFromTransactionBytes(txBytes)
 	glb.AssertNoError(err)
 
 	err = glb.GetClient().SubmitTransaction(txBytes)
 	if err != nil {
 		glb.Infof("Error from SubmitTransaction: %s", err.Error())
-		return err.Error()
+		return err.Error(), nil
 	}
 
-	return "", txid
+	return "", &txid
 }
 
-func (fct *faucet) redrawFromAccount(targetLock ledger.Accountable) string {
+func (fct *faucet) redrawFromAccount(targetLock ledger.Accountable) (string, *ledger.TransactionID) {
 	funds := getAccountTotal(fct.cfg.account)
 	glb.Infof(" wallet funds: %d", funds)
 	if funds < fct.cfg.outputAmount {
-		return "Error not enough funds in wallet"
+		return "Error not enough funds in wallet", nil
 	}
 
 	glb.Infof("source is the wallet account: %s", fct.cfg.account.String())
@@ -237,13 +237,13 @@ func (fct *faucet) redrawFromAccount(targetLock ledger.Accountable) string {
 	})
 
 	if err != nil {
-		return err.Error()
+		return err.Error(), nil
 	}
 
 	glb.Assertf(txCtx != nil, "inconsistency: txCtx == nil")
 	glb.Infof("transaction submitted successfully")
 
-	return ""
+	return "", txCtx.TransactionID()
 }
 
 func (fct *faucet) isAllowed(account string, addr string) bool {
@@ -289,12 +289,13 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	glb.Infof("Sending funds to %s", targetStr[0])
 	var result string
+	var txid *ledger.TransactionID
 	if fct.cfg.redrawFromChain {
 		glb.Infof("redrawing from sequencer chain")
-		result = fct.redrawFromChain(targetLock)
+		result, txid = fct.redrawFromChain(targetLock)
 	} else {
 		glb.Infof("redrawing from accout")
-		result = fct.redrawFromAccount(targetLock)
+		result, txid = fct.redrawFromAccount(targetLock)
 	}
 
 	glb.Infof("requested faucet transfer of %s tokens to %s from sequencer %s...",
