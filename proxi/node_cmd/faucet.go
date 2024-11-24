@@ -64,8 +64,8 @@ func readFaucetConfigIn(sub *viper.Viper) (ret faucetConfig) {
 }
 
 func displayFaucetConfig() faucetConfig {
-	cfg := readFaucetConfigIn(viper.Sub("Faucet"))
-	glb.Infof("\faucet configuration:")
+	cfg := readFaucetConfigIn(viper.Sub("faucet"))
+	glb.Infof("faucet configuration:")
 	glb.Infof("     output amount: %d", cfg.outputAmount)
 	glb.Infof("     port:          %d", cfg.port)
 
@@ -85,7 +85,7 @@ func runFaucetCmd(_ *cobra.Command, args []string) {
 	fct.faucetServer()
 }
 
-const ownSequencerCmdFee = 500
+const ownSequencerCmdFee = 50
 
 func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	targetStr, ok := r.URL.Query()["addr"]
@@ -173,10 +173,8 @@ func writeResponse(w http.ResponseWriter, respStr string) {
 func (fct *faucet) faucetServer() {
 	http.HandleFunc(getFundsPath, fct.handler) // Route for the handler function
 	sport := fmt.Sprintf(":%d", fct.cfg.port)
-	err := http.ListenAndServe(sport, nil)
-	if err != nil {
-		fmt.Println("Server error:", err)
-	}
+	glb.Infof("running proxi faucet server on %s. Press Ctrl-C to stop..", sport)
+	glb.AssertNoError(http.ListenAndServe(sport, nil))
 }
 
 func initGetFundsCmd() *cobra.Command {
@@ -198,10 +196,10 @@ func initGetFundsCmd() *cobra.Command {
 	return cmd
 }
 
-func getFundsCmd(_ *cobra.Command, args []string) {
+func getFundsCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
-	cfg := readFaucetConfigIn(viper.Sub("Faucet"))
+	cfg := readFaucetConfigIn(viper.Sub("faucet"))
 
 	faucetAddr := fmt.Sprintf("%s:%d", cfg.addr, cfg.port)
 
