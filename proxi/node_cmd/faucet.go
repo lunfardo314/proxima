@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -124,9 +126,9 @@ func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 func displayFaucetConfig() faucetConfig {
 	cfg := readFaucetConfigIn(viper.Sub("faucet"), true)
 	glb.Infof("faucet configuration:")
-	glb.Infof("     output amount: 			%d", cfg.outputAmount)
-	glb.Infof("     port:          			%d", cfg.port)
-	glb.Infof("     priv_key:      			%s", hex.EncodeToString(cfg.privKey))
+	glb.Infof("     output amount:          %d", cfg.outputAmount)
+	glb.Infof("     port:                   %d", cfg.port)
+	glb.Infof("     priv_key:               %s", hex.EncodeToString(cfg.privKey))
 	glb.Infof("     time between requests:  %s [sec]", cfg.timeBetweenRequests)
 
 	return cfg
@@ -281,6 +283,23 @@ func (fct *faucet) updateRequestTime(account string, addr string) {
 	fct.addressRequestList[addr] = now
 }
 
+const faucet_log = "faucet_requests.log"
+
+func logRequest(account string, ipAddress string, funds uint64) error {
+	// Open the log file in append mode, creating it if it doesn't exist
+	file, err := os.OpenFile(faucet_log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %v", err)
+	}
+	defer file.Close()
+
+	// Create a logger
+	logger := log.New(file, "", log.LstdFlags)
+
+	// Log the request
+	logger.Printf("Time: %s, Account: %s, IP: %s, Funds: %d\n", time.Now().Format(time.RFC3339), account, ipAddress, funds)
+	return nil
+}
 func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	targetStr, ok := r.URL.Query()["addr"]
 	if !ok || len(targetStr) != 1 {
@@ -317,6 +336,7 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 
 	if len(result) == 0 {
 		fct.updateRequestTime(targetStr[0], r.RemoteAddr)
+		logRequest(targetStr[0], r.RemoteAddr, fct.cfg.outputAmount)
 	}
 }
 
