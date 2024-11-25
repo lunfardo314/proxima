@@ -12,4 +12,7 @@ distribution:
   - account: "a(0xaad6a0102e6f51834bf26b6d8367cc424cf78713f59dd3bc6d54eab23ccdee52)"
     amount: 150000000000000    
     chain:  false
+  - account: "a(0xe141252fd0ff04d12f9d485abfee4976e81e95cde436e8b9afde5b859d121e3e)"
+    amount:  10000000000    
+    chain:  false
     

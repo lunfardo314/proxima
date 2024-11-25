@@ -1,9 +1,15 @@
 package node_cmd
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"sync"
+	"time"
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
@@ -20,19 +26,27 @@ import (
 const getFundsPath = "/"
 
 type faucetConfig struct {
-	outputAmount uint64
-	port         uint64
-	addr         string
+	redrawFromChain     bool
+	outputAmount        uint64
+	port                uint64
+	addr                string
+	account             ledger.Accountable
+	privKey             ed25519.PrivateKey
+	timeBetweenRequests time.Duration
 }
 
 type faucet struct {
-	cfg        faucetConfig
-	walletData glb.WalletData
+	cfg                faucetConfig
+	walletData         glb.WalletData
+	mutex              sync.Mutex
+	accountRequestList map[string]time.Time
+	addressRequestList map[string]time.Time
 }
 
 const (
 	defaultFaucetOutputAmount = 1_000_000
 	defaultFaucetPort         = 9500
+	defaultTimeBetweeRequests = 30
 )
 
 func initFaucetCmd() *cobra.Command {
@@ -51,29 +65,71 @@ func initFaucetCmd() *cobra.Command {
 	err = viper.BindPFlag("faucet.port", cmd.PersistentFlags().Lookup("faucet.port"))
 	glb.AssertNoError(err)
 
+	cmd.PersistentFlags().String("faucet.account", "a(0xe141252fd0ff04d12f9d485abfee4976e81e95cde436e8b9afde5b859d121e3e)", "faucet account")
+	err = viper.BindPFlag("faucet.port", cmd.PersistentFlags().Lookup("faucet.account"))
+	glb.AssertNoError(err)
+
+	cmd.PersistentFlags().String("faucet.priv_key", "", "faucet private key")
+	err = viper.BindPFlag("faucet.priv_key", cmd.PersistentFlags().Lookup("faucet.priv_key"))
+	glb.AssertNoError(err)
+
+	cmd.PersistentFlags().Uint64("faucet.time_between_requests", defaultTimeBetweeRequests, "minimal time allowed between requests [sec]")
+	err = viper.BindPFlag("faucet.time_between_requests", cmd.PersistentFlags().Lookup("faucet.time_between_requests"))
+	glb.AssertNoError(err)
+
 	return cmd
 }
 
-func readFaucetConfigIn(sub *viper.Viper) (ret faucetConfig) {
-	//glb.Assertf(sub != nil, "faucet configuration is not available")
+func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 	if sub != nil {
-		ret.outputAmount = sub.GetUint64("output_amount")
 		ret.port = sub.GetUint64("port")
-		ret.addr = sub.GetString("addr")
+		if server {
+			ret.outputAmount = sub.GetUint64("output_amount")
+			privateKeyStr := sub.GetString("priv_key")
+			if len(privateKeyStr) > 0 {
+				var err error
+				ret.privKey, err = util.ED25519PrivateKeyFromHexString(privateKeyStr)
+				glb.AssertNoError(err)
+				ret.account = ledger.AddressED25519FromPrivateKey(ret.privKey)
+				ret.redrawFromChain = false
+			} else {
+				ret.redrawFromChain = true
+			}
+		} else {
+			ret.addr = sub.GetString("addr")
+		}
+		ret.timeBetweenRequests = time.Duration(sub.GetUint64("time_between_requests")) * time.Second
 	} else {
 		// get default values
-		ret.outputAmount = viper.GetUint64("faucet.output_amount")
 		ret.port = viper.GetUint64("faucet.port")
-		ret.addr = viper.GetString("faucet.addr")
+		if server {
+			ret.outputAmount = viper.GetUint64("faucet.output_amount")
+			privateKeyStr := viper.GetString("faucet.priv_key")
+			if len(privateKeyStr) > 0 {
+				var err error
+				ret.privKey, err = util.ED25519PrivateKeyFromHexString(privateKeyStr)
+				glb.AssertNoError(err)
+				ret.account = ledger.AddressED25519FromPrivateKey(ret.privKey)
+				ret.redrawFromChain = false
+			} else {
+				ret.redrawFromChain = true
+			}
+		} else {
+			ret.addr = viper.GetString("faucet.addr")
+		}
+		ret.timeBetweenRequests = time.Duration(viper.GetUint64("faucet.time_between_requests")) * time.Second
+
 	}
 	return
 }
 
 func displayFaucetConfig() faucetConfig {
-	cfg := readFaucetConfigIn(viper.Sub("faucet"))
+	cfg := readFaucetConfigIn(viper.Sub("faucet"), true)
 	glb.Infof("faucet configuration:")
-	glb.Infof("     output amount: %d", cfg.outputAmount)
-	glb.Infof("     port:          %d", cfg.port)
+	glb.Infof("     output amount:          %d", cfg.outputAmount)
+	glb.Infof("     port:                   %d", cfg.port)
+	glb.Infof("     priv_key:               %s", hex.EncodeToString(cfg.privKey))
+	glb.Infof("     time between requests:  %s [sec]", cfg.timeBetweenRequests)
 
 	return cfg
 }
@@ -85,36 +141,42 @@ func runFaucetCmd(_ *cobra.Command, args []string) {
 	glb.Infof("sequencer ID (funds source): %s", walletData.Sequencer.String())
 	cfg := displayFaucetConfig()
 	fct := &faucet{
-		cfg:        cfg,
-		walletData: walletData,
+		cfg:                cfg,
+		walletData:         walletData,
+		accountRequestList: make(map[string]time.Time),
+		addressRequestList: make(map[string]time.Time),
+	}
+	funds := getAccountTotal(cfg.account)
+	glb.Infof(" wallet funds: %d", funds)
+	if funds < cfg.outputAmount {
+		glb.Infof("Error not enough funds in waller")
+		return
 	}
 	fct.faucetServer()
 }
 
 const ownSequencerCmdFee = 50
 
-func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
-	targetStr, ok := r.URL.Query()["addr"]
-	if !ok || len(targetStr) != 1 {
-		writeResponse(w, "wrong parameter 'addr' in request 'get_funds'")
-		return
+func getAccountTotal(accountable ledger.Accountable) uint64 {
+	var sum uint64
+	outs, _, err := glb.GetClient().GetAccountOutputs(accountable)
+	glb.AssertNoError(err)
+
+	for _, o := range outs {
+		sum += o.Output.Amount()
 	}
 
-	glb.Infof("Sending funds to %s", targetStr[0])
-	targetLock, err := ledger.AccountableFromSource(targetStr[0])
-	if err != nil {
-		glb.Infof("Error from AccountableFromSource: %s", err.Error())
-		writeResponse(w, err.Error())
-		return
-	}
+	return sum
+}
+
+func (fct *faucet) redrawFromChain(targetLock ledger.Accountable) (string, *ledger.TransactionID) {
 	glb.Infof("querying wallet's outputs..")
 	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputs(fct.walletData.Account, func(_ *ledger.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	if err != nil {
 		glb.Infof("Error from GetAccountOutputs: %s", err.Error())
-		writeResponse(w, err.Error())
-		return
+		return err.Error(), nil
 	}
 
 	glb.PrintLRB(lrbid)
@@ -126,8 +188,7 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	cmdConstr, err := commands.MakeSequencerWithdrawCommand(fct.cfg.outputAmount, targetLock.AsLock())
 	if err != nil {
 		glb.Infof("Error from MakeSequencerWithdrawCommand: %s", err.Error())
-		writeResponse(w, err.Error())
-		return
+		return err.Error(), nil
 	}
 
 	transferData := txbuilder.NewTransferData(fct.walletData.PrivateKey, fct.walletData.Account, ledger.TimeNow()).
@@ -140,8 +201,7 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
 	if err != nil {
 		glb.Infof("Error from MakeSimpleTransferTransaction: %s", err.Error())
-		writeResponse(w, err.Error())
-		return
+		return err.Error(), nil
 	}
 
 	txid, err := transaction.IDFromTransactionBytes(txBytes)
@@ -150,15 +210,134 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	err = glb.GetClient().SubmitTransaction(txBytes)
 	if err != nil {
 		glb.Infof("Error from SubmitTransaction: %s", err.Error())
+		return err.Error(), nil
+	}
+
+	return "", &txid
+}
+
+func (fct *faucet) redrawFromAccount(targetLock ledger.Accountable) (string, *ledger.TransactionID) {
+	funds := getAccountTotal(fct.cfg.account)
+	glb.Infof(" wallet funds: %d", funds)
+	if funds < fct.cfg.outputAmount {
+		return "Error not enough funds in wallet", nil
+	}
+
+	glb.Infof("source is the wallet account: %s", fct.cfg.account.String())
+
+	var tagAlongSeqID *ledger.ChainID
+	feeAmount := getTagAlongFee()
+	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
+	if feeAmount > 0 {
+		tagAlongSeqID = GetTagAlongSequencerID()
+		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+
+		md, err := glb.GetClient().GetMilestoneData(*tagAlongSeqID)
+		glb.AssertNoError(err)
+
+		if md != nil && md.MinimumFee > feeAmount {
+			feeAmount = ownSequencerCmdFee
+		}
+	}
+	txCtx, err := glb.GetClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
+		WalletPrivateKey: fct.cfg.privKey,
+		TagAlongSeqID:    tagAlongSeqID,
+		TagAlongFee:      feeAmount,
+		Amount:           fct.cfg.outputAmount,
+		Target:           targetLock.AsLock(),
+		TraceTx:          glb.TraceTx(),
+	})
+
+	if err != nil {
+		return err.Error(), nil
+	}
+
+	glb.Assertf(txCtx != nil, "inconsistency: txCtx == nil")
+	glb.Infof("transaction submitted successfully")
+
+	return "", txCtx.TransactionID()
+}
+
+func (fct *faucet) isAllowed(account string, addr string) bool {
+	fct.mutex.Lock()
+	defer fct.mutex.Unlock()
+
+	now := time.Now()
+	lastTime, exists := fct.accountRequestList[account]
+	if !exists || now.Sub(lastTime) > fct.cfg.timeBetweenRequests {
+		lastTime, exists := fct.addressRequestList[addr]
+		if !exists || now.Sub(lastTime) > fct.cfg.timeBetweenRequests {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (fct *faucet) updateRequestTime(account string, addr string) {
+	fct.mutex.Lock()
+	defer fct.mutex.Unlock()
+
+	now := time.Now()
+	fct.accountRequestList[account] = now
+	fct.addressRequestList[addr] = now
+}
+
+const faucet_log = "faucet_requests.log"
+
+func logRequest(account string, ipAddress string, funds uint64) error {
+	// Open the log file in append mode, creating it if it doesn't exist
+	file, err := os.OpenFile(faucet_log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %v", err)
+	}
+	defer file.Close()
+
+	// Create a logger
+	logger := log.New(file, "", log.LstdFlags)
+
+	// Log the request
+	logger.Printf("Time: %s, Account: %s, IP: %s, Funds: %d\n", time.Now().Format(time.RFC3339), account, ipAddress, funds)
+	return nil
+}
+func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
+	targetStr, ok := r.URL.Query()["addr"]
+	if !ok || len(targetStr) != 1 {
+		writeResponse(w, "wrong parameter 'addr' in request 'get_funds'")
+		return
+	}
+
+	if !fct.isAllowed(targetStr[0], r.RemoteAddr) {
+		writeResponse(w, "too short time between requests")
+		return
+	}
+
+	targetLock, err := ledger.AccountableFromSource(targetStr[0])
+	if err != nil {
+		glb.Infof("Error from AccountableFromSource: %s", err.Error())
 		writeResponse(w, err.Error())
 		return
+	}
+	glb.Infof("Sending funds to %s", targetStr[0])
+	var result string
+	var txid *ledger.TransactionID
+	if fct.cfg.redrawFromChain {
+		glb.Infof("redrawing from sequencer chain")
+		result, txid = fct.redrawFromChain(targetLock)
+	} else {
+		glb.Infof("redrawing from accout")
+		result, txid = fct.redrawFromAccount(targetLock)
 	}
 
 	glb.Infof("requested faucet transfer of %s tokens to %s from sequencer %s...",
 		util.Th(fct.cfg.outputAmount), targetLock.String(), fct.walletData.Sequencer.StringShort())
 	glb.Infof("             transaction %s (hex = %s)", txid.String(), txid.StringHex())
+	writeResponse(w, result) // send ok
 
-	writeResponse(w, "") // send ok
+	if len(result) == 0 {
+		fct.updateRequestTime(targetStr[0], r.RemoteAddr)
+		logRequest(targetStr[0], r.RemoteAddr, fct.cfg.outputAmount)
+	}
 }
 
 func writeResponse(w http.ResponseWriter, respStr string) {
@@ -206,7 +385,7 @@ func initGetFundsCmd() *cobra.Command {
 func getFundsCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
-	cfg := readFaucetConfigIn(viper.Sub("faucet"))
+	cfg := readFaucetConfigIn(viper.Sub("faucet"), false)
 
 	faucetAddr := fmt.Sprintf("%s:%d", cfg.addr, cfg.port)
 
@@ -215,9 +394,15 @@ func getFundsCmd(_ *cobra.Command, _ []string) {
 	path := fmt.Sprintf(getFundsPath+"?addr=%s", walletData.Account.String())
 
 	c := client.NewWithGoogleDNS(faucetAddr)
-	_, err := c.Get(path)
-	if err != nil {
-		glb.Infof("error requesting funds from: %s", err.Error())
+	answer, err := c.Get(path)
+	glb.Infof("answer len: %d", len(answer))
+
+	if err != nil || len(answer) > 2 {
+		if err != nil {
+			glb.Infof("error requesting funds from: %s", err.Error())
+		} else {
+			glb.Infof("error requesting funds from: %s", string(answer))
+		}
 	} else {
 		glb.Infof("Funds requested successfully!")
 	}
