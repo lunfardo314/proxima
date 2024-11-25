@@ -60,6 +60,10 @@ func (w *workflowDummyEnvironment) SnapshotBranchID() *ledger.TransactionID {
 	return ledger.GenesisTransactionID()
 }
 
+func (w *workflowDummyEnvironment) IsDisconnectedForDuration() time.Duration {
+	return 0
+}
+
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	return &workflowDummyEnvironment{
 		Global:       global.NewDefault(false),

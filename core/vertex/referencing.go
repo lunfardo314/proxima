@@ -81,6 +81,8 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished) && nowis.After(vid.dontPruneUntil) {
 					vid.numReferences = 0
 					v.UnReferenceDependencies()
+					vid.pastCone = nil
+					vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 					unreferencedPastCone = true
 					markedForDeletion = true
 				}
@@ -95,6 +97,8 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 						vid.convertToVirtualTxNoLock()
 						//vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
 						v.UnReferenceDependencies() // to help GC and pruner
+						vid.pastCone = nil
+						vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 						unreferencedPastCone = true
 					}
 				}
