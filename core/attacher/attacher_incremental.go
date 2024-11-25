@@ -85,6 +85,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, 
 func (a *IncrementalAttacher) Close() {
 	if a != nil && !a.IsClosed() {
 		a.pastCone.UnReferenceAll()
+		a.pastCone = nil
 		a.closed = true
 	}
 }

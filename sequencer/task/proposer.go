@@ -87,7 +87,6 @@ func (p *Proposer) propose(a *attacher.IncrementalAttacher) error {
 		coverage:          coverage,
 		attacherName:      a.Name(),
 		strategyShortName: p.strategy.ShortName,
-		pastConeForDebug:  a.PastConeForDebugOnly(p.Task, p.Name),
 	}
 
 	if p.targetTs.IsSlotBoundary() {
