@@ -21,7 +21,6 @@ type (
 		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
 		TxInFromAPI(tx *transaction.Transaction, trace bool) error
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID)
-		IsDisconnectedForDuration() time.Duration
 	}
 
 	Input struct {
@@ -36,7 +35,7 @@ type (
 		environment
 		*work_process.WorkProcess[Input]
 		// bloom filter
-		inGate *inGate[ledger.TransactionIDVeryShort4]
+		inGate *inGate[ledger.TransactionID]
 		// metrics
 		metrics
 	}
@@ -62,24 +61,21 @@ const (
 	Name = "txInputQueue"
 
 	inGateBlackListTTLSlots = 60 // 10 min
-	inGateWhiteListTTLSlots = 60 // 10 min
-	inGateCleanupPeriod     = 10 * time.Second
+	cleanIfExceeds          = 10_000
+	blackListCleanupPeriod  = 10 * time.Second
 )
 
 func New(env environment) *TxInputQueue {
+	blackTTL := inGateBlackListTTLSlots * ledger.L().ID.SlotDuration()
 	ret := &TxInputQueue{
 		environment: env,
-		inGate: newInGate[ledger.TransactionIDVeryShort4](
-			inGateWhiteListTTLSlots*ledger.L().ID.SlotDuration(),
-			inGateBlackListTTLSlots*ledger.L().ID.SlotDuration(),
-			env.IsDisconnectedForDuration,
-		),
+		inGate:      newInGate[ledger.TransactionID](blackTTL, cleanIfExceeds),
 	}
 	ret.WorkProcess = work_process.New[Input](env, Name, ret.consume)
 	ret.WorkProcess.Start()
 
-	ret.RepeatInBackground(Name+"_inGateCleanup", inGateCleanupPeriod, func() bool {
-		ret.inGate.purge()
+	ret.RepeatInBackground(Name+"_inGateCleanup", blackListCleanupPeriod, func() bool {
+		ret.inGate.purgeBlackList()
 		return true
 	})
 
@@ -108,7 +104,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		q.Log().Warn("TxInputQueue: %v", err)
 		return
 	}
-	pass, wanted := q.inGate.checkPass(tx.ID().VeryShortID4())
+	pass, wanted := q.inGate.checkPass(*tx.ID())
 	if !pass {
 		// repeating transaction
 		q.filterHitCounter.Inc()
@@ -143,7 +139,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		q.Log().Warn("TxInputQueue from API: %v", err)
 		return
 	}
-	pass, _ := q.inGate.checkPass(tx.ID().VeryShortID4())
+	pass, _ := q.inGate.checkPass(*tx.ID())
 	if !pass {
 		// repeating transaction
 		q.filterHitCounter.Inc()
@@ -208,7 +204,7 @@ func (q *TxInputQueue) registerMetrics() {
 // AddWantedTransaction adds transaction short id to the wanted filter.
 // It makes the transaction go directly for attachment without checking other filters and without gossiping
 func (q *TxInputQueue) AddWantedTransaction(txid *ledger.TransactionID) {
-	q.inGate.addWanted(txid.VeryShortID4())
+	q.inGate.addWanted(*txid)
 }
 
 func (q *TxInputQueue) EvidenceNonSequencerTx() {

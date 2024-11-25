@@ -7,9 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO more tests
+
 func TestInputGate(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		g := newInGate[int](5*time.Second, 10*time.Second, func() time.Duration { return 0 })
+		g := newInGate[int](10*time.Second, 10000)
 		pass, wanted := g.checkPass(1)
 		require.True(t, pass)
 		require.False(t, wanted)
@@ -27,7 +29,7 @@ func TestInputGate(t *testing.T) {
 
 		g.addWanted(5)
 		pass, wanted = g.checkPass(5)
-		require.False(t, pass)
-		require.False(t, wanted)
+		require.True(t, pass)
+		require.True(t, wanted)
 	})
 }

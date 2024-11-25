@@ -23,7 +23,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.coverage = a.LedgerCoverage()
 	a.finals.slotInflation = a.slotInflation
 
-	a.Tracef(TraceTagAttachMilestone, "set ledger baselineCoverage in %s to %s",
+	a.Tracef(TraceTagAttachMilestone, "set ledger coverage in %s to %s",
 		a.vid.IDShortString, func() string { return util.Th(a.finals.coverage) })
 
 	if a.vid.IsBranchTransaction() {
