@@ -34,3 +34,7 @@ spammer:
     # target address
     target: a(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)
     trace_on_node: false
+
+faucet:
+    port:	9500
+    addr:  http://172.16.238.10
