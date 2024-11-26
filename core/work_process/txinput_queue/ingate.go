@@ -3,25 +3,28 @@ package txinput_queue
 import (
 	"sync"
 	"time"
-
-	"github.com/lunfardo314/proxima/util/set"
 )
 
-type inGate[T comparable] struct {
-	mutex sync.Mutex
-	// list of transactions which are waited by attachers
-	whiteList set.Set[T]
-	// list of transaction which should be ignored (they are already known)
-	blackList map[T]time.Time // deadline to be purged
-	// TTL of the blacklist
-	ttlBlack       time.Duration
-	cleanIfExceeds int
-}
+// the purpose of inGate is to let the transaction in no more than once and also prevent
+// gossiping iof pulled transactions
+
+type (
+	inGateEntry struct {
+		purgeDeadline time.Time
+		isWanted      bool
+	}
+
+	inGate[T comparable] struct {
+		mutex          sync.Mutex
+		m              map[T]inGateEntry
+		ttlBlack       time.Duration
+		cleanIfExceeds int
+	}
+)
 
 func newInGate[T comparable](ttlBlack time.Duration, cleanIfExceeds int) *inGate[T] {
 	return &inGate[T]{
-		whiteList:      set.New[T](),
-		blackList:      make(map[T]time.Time),
+		m:              make(map[T]inGateEntry),
 		ttlBlack:       ttlBlack,
 		cleanIfExceeds: cleanIfExceeds,
 	}
@@ -31,47 +34,36 @@ func (g *inGate[T]) checkPass(key T) (pass, wanted bool) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
-	nowis := time.Now()
-	if _, inWhite := g.whiteList[key]; inWhite {
-		// transaction is waited. Remove from WL and move to BL
-		g.whiteList.Remove(key)
-		g.blackList[key] = nowis.Add(g.ttlBlack)
-		return true, true
-	}
-	// not in WL
-	_, inBlack := g.blackList[key]
-	// update when arrived in BL
-	g.blackList[key] = nowis.Add(g.ttlBlack)
-	// pass if wasn't in the BL
-	return !inBlack, false
+	entry, found := g.m[key]
+	g.m[key] = inGateEntry{purgeDeadline: time.Now().Add(g.ttlBlack)}
+
+	return !found || entry.isWanted, entry.isWanted
 }
 
 func (g *inGate[T]) addWanted(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
-	// force to WL and remove from BL
-	g.whiteList.Insert(key)
-	delete(g.blackList, key)
+	g.m[key] = inGateEntry{isWanted: true}
 }
 
 func (g *inGate[T]) purgeBlackList() {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
-	if len(g.blackList) <= g.cleanIfExceeds {
+	if len(g.m) <= g.cleanIfExceeds {
 		return
 	}
 
 	toDelete := make([]T, 0)
 	nowis := time.Now()
 
-	for key, deadline := range g.blackList {
-		if nowis.After(deadline) {
+	for key, entry := range g.m {
+		if !entry.isWanted && nowis.After(entry.purgeDeadline) {
 			toDelete = append(toDelete, key)
 		}
 	}
 	for _, key := range toDelete {
-		delete(g.blackList, key)
+		delete(g.m, key)
 	}
 }
