@@ -36,6 +36,7 @@ type (
 		EvidenceNumberOfTxDependencies(n int)
 		SnapshotBranchID() *ledger.TransactionID
 		DurationSinceLastMessageFromPeer() time.Duration
+		SelfPeerID() peer.ID
 	}
 
 	Workflow struct {

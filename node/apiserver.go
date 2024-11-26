@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/server"
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -42,7 +43,7 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 	aliveStaticPeers, aliveDynamicPeers, _ := p.peers.NumAlive()
 
 	ret := &global.NodeInfo{
-		ID:              p.peers.SelfID(),
+		ID:              p.peers.SelfPeerID(),
 		Version:         global.Version,
 		NumStaticAlive:  uint16(aliveStaticPeers),
 		NumDynamicAlive: uint16(aliveDynamicPeers),
@@ -115,4 +116,8 @@ func (p *ProximaNode) GetLatestReliableBranch() (ret *multistate.BranchData) {
 		p.Fatal(err)
 	}
 	return
+}
+
+func (p *ProximaNode) SelfPeerID() peer.ID {
+	return p.peers.SelfPeerID()
 }

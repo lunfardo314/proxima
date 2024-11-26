@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -207,60 +206,64 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachT
 	}
 }
 
+func (w *Workflow) OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata) {
+	w.TxBytesInFromPeerQueued(txBytes, meta, w.SelfPeerID())
+}
+
 // SequencerMilestoneAttachWait attaches sequencer transaction synchronously.
 // Waits up to timeout until attacher finishes
-func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error) {
-	var vid *vertex.WrappedTx
-	var err error
+//func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error) {
+//	var vid *vertex.WrappedTx
+//	var err error
+//
+//	const defaultTimeout = 5 * time.Second
+//	if timeout == 0 {
+//		timeout = defaultTimeout
+//	}
+//	errTimeoutCause := fmt.Errorf("exceeded timeout %v", timeout)
+//	ctx, cancelFun := context.WithTimeoutCause(w.Ctx(), timeout, errTimeoutCause)
+//
+//	// we need end channel so that to be sure callback has been called before we use err and vid
+//	endCh := make(chan struct{})
+//	txid, errParse := w.TxBytesIn(txBytes,
+//		WithContext(ctx),
+//		WithMetadata(meta),
+//		WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
+//			// it is guaranteed the callback will always be called, unless parse error
+//			vid = vidSubmit
+//			err = errSubmit
+//			cancelFun()
+//			close(endCh)
+//		}),
+//	)
+//	if errParse == nil {
+//		<-ctx.Done()
+//		<-endCh
+//
+//		if errors.Is(context.Cause(ctx), errTimeoutCause) {
+//			err = errTimeoutCause
+//		}
+//	} else {
+//		err = errParse
+//		cancelFun()
+//		close(endCh)
+//	}
+//
+//	if err != nil {
+//		txidStr := "txid=???"
+//		if txid != nil {
+//			txidStr = txid.StringShort()
+//		}
+//		return vid, fmt.Errorf("SequencerMilestoneAttachWait: %w, txid=%s", err, txidStr)
+//	}
+//	return vid, nil
+//}
 
-	const defaultTimeout = 5 * time.Second
-	if timeout == 0 {
-		timeout = defaultTimeout
-	}
-	errTimeoutCause := fmt.Errorf("exceeded timeout %v", timeout)
-	ctx, cancelFun := context.WithTimeoutCause(w.Ctx(), timeout, errTimeoutCause)
-
-	// we need end channel so that to be sure callback has been called before we use err and vid
-	endCh := make(chan struct{})
-	txid, errParse := w.TxBytesIn(txBytes,
-		WithContext(ctx),
-		WithMetadata(meta),
-		WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
-			// it is guaranteed the callback will always be called, unless parse error
-			vid = vidSubmit
-			err = errSubmit
-			cancelFun()
-			close(endCh)
-		}),
-	)
-	if errParse == nil {
-		<-ctx.Done()
-		<-endCh
-
-		if errors.Is(context.Cause(ctx), errTimeoutCause) {
-			err = errTimeoutCause
-		}
-	} else {
-		err = errParse
-		cancelFun()
-		close(endCh)
-	}
-
-	if err != nil {
-		txidStr := "txid=???"
-		if txid != nil {
-			txidStr = txid.StringShort()
-		}
-		return vid, fmt.Errorf("SequencerMilestoneAttachWait: %w, txid=%s", err, txidStr)
-	}
-	return vid, nil
-}
-
-func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TxInOption {
-	return func(opts *txInOptions) {
-		opts.callback = fun
-	}
-}
+//func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TxInOption {
+//	return func(opts *txInOptions) {
+//		opts.callback = fun
+//	}
+//}
 
 func WithMetadata(metadata *txmetadata.TransactionMetadata) TxInOption {
 	return func(opts *txInOptions) {

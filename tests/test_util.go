@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -62,6 +63,10 @@ func (w *workflowDummyEnvironment) SnapshotBranchID() *ledger.TransactionID {
 
 func (w *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Duration {
 	return 0
+}
+
+func (w *workflowDummyEnvironment) SelfPeerID() peer.ID {
+	return "self"
 }
 
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {

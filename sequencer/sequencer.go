@@ -30,7 +30,7 @@ type (
 		attacher.Environment
 		IsSynced() bool
 		TxBytesStore() global.TxBytesStore
-		SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error)
+		//SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error)
 		GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx
 		LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		LatestMilestonesShuffled(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
@@ -38,6 +38,7 @@ type (
 		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
 		MustEnsureBranch(txid ledger.TransactionID) *vertex.WrappedTx
 		MilestoneArrivedSince(when time.Time) bool
+		OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata)
 	}
 
 	Sequencer struct {
@@ -419,10 +420,14 @@ func (seq *Sequencer) getNextTargetTime() ledger.Time {
 	return targetAbsoluteMinimum
 }
 
-// TODO optimize very verbose logging when not able to issue branch. decideSubmitMilestone and base proposer
+const disconnectTolerance = 4 * time.Second
 
 // decideSubmitMilestone branch transactions are issued only if healthy, or bootstrap mode enabled
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
+	if seq.DurationSinceLastMessageFromPeer() >= disconnectTolerance {
+		seq.Log().Infof("WON'T SUBMIT BRANCH %s: node is disconnected for %v", seq.DurationSinceLastMessageFromPeer())
+		return false
+	}
 	if tx.IsBranchTransaction() {
 		healthy := global.IsHealthyCoverage(*meta.LedgerCoverage, *meta.Supply, global.FractionHealthyBranch)
 		bootstrapMode := seq.IsBootstrapMode()
@@ -450,7 +455,6 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	}
 
 	const submitTimeout = 5 * time.Second
-
 	{
 		nm := "submit_" + tx.IDShortString()
 		check := checkpoints.New(func(name string) {
@@ -460,17 +464,22 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 		defer check.CheckAndClose(nm)
 	}
 
-	deadline := time.Now().Add(submitTimeout)
-	vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
-	if err != nil {
-		seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
-		return nil
-	}
-	util.Assertf(vid != nil, "submitMilestone: vid != nil")
+	seq.OwnSequencerMilestoneIn(tx.Bytes(), meta)
+
+	//
+	//deadline := time.Now().Add(submitTimeout)
+	//vid, err := seq.SequencerMilestoneAttachWait(tx.Bytes(), meta, submitTimeout)
+	//if err != nil {
+	//	seq.Log().Errorf("failed to submit new milestone %s: '%v'", tx.IDShortString(), err)
+	//	return nil
+	//}
+	//util.Assertf(vid != nil, "submitMilestone: vid != nil")
 
 	seq.Tracef(TraceTag, "new milestone %s submitted successfully", tx.IDShortString)
 
-	if err = seq.waitMilestoneInTippool(vid, deadline); err != nil {
+	vid, err := seq.waitMilestoneInTippool(tx.ID(), time.Now().Add(submitTimeout))
+
+	if err != nil {
 		seq.Log().Error(err)
 		return nil
 	}
@@ -478,18 +487,19 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	return vid
 }
 
-func (seq *Sequencer) waitMilestoneInTippool(vid *vertex.WrappedTx, deadline time.Time) error {
+func (seq *Sequencer) waitMilestoneInTippool(txid *ledger.TransactionID, deadline time.Time) (*vertex.WrappedTx, error) {
 	for {
 		select {
 		case <-seq.Ctx().Done():
-			return fmt.Errorf("waitMilestoneInTippool: %s has been cancelled", vid.IDShortString())
+			return nil, fmt.Errorf("waitMilestoneInTippool: %s has been cancelled", txid.ShortID())
 		case <-time.After(10 * time.Millisecond):
 			if time.Now().After(deadline) {
-				return fmt.Errorf("waitMilestoneInTippool: deadline has been missed while waiting for %s in the tippool", vid.IDShortString())
+				return nil, fmt.Errorf("waitMilestoneInTippool: deadline has been missed while waiting for %s in the tippool", txid.StringShort())
 			}
 		default:
-			if seq.GetLatestMilestone(seq.sequencerID) == vid {
-				return nil
+			vid := seq.GetLatestMilestone(seq.sequencerID)
+			if vid != nil && vid.ID == *txid {
+				return vid, nil
 			}
 		}
 	}

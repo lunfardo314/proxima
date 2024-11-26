@@ -157,7 +157,7 @@ func NewPeersFromConfig(env environment) (*Peers, error) {
 	return New(env, cfg)
 }
 
-func (ps *Peers) SelfID() peer.ID {
+func (ps *Peers) SelfPeerID() peer.ID {
 	return ps.host.ID()
 }
 
