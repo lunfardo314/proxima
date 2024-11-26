@@ -13,6 +13,9 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 	a.Tracef(TraceTagPull, "pullIfNeeded IN (%s): %s", tag, deptVID.IDShortString)
 	ok := true
 	virtual := false
+	// pull is only may be needed for the virtual tx
+	// all information about pull is contained in the vertex. It is equally available to all attacher
+	// which needs the vertex
 	deptVID.UnwrapVirtualTx(func(virtualTx *vertex.VirtualTransaction) {
 		ok = a.pullIfNeededUnwrapped(virtualTx, deptVID)
 		virtual = true
@@ -31,7 +34,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			// solidification deadline
 			a.Log().Errorf("SOLIDIFICATION FAILURE %s at depth %d, hex: %s attacher: %s ",
 				deptVID.IDShortString(), deptVID.GetAttachmentDepthNoLock(), deptVID.ID.StringHex(), a.Name())
-			a.setError(fmt.Errorf("%w(%d x %v): can't solidify dependency %s",
+			a.setError(fmt.Errorf("%w(%d x %v): can't solidify %s",
 				ErrSolidificationDeadline, maxPullAttempts, repeatPullAfter, deptVID.IDShortString()))
 			return false
 		}
@@ -46,8 +49,10 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 2: %s", deptVID.IDShortString)
 		return true
 	}
-	// no in the state or not known 'inTheState status'
 
+	// not in the state or not known 'inTheState status'
+
+	// try to find in the local txBytes store
 	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(&deptVID.ID)
 	if len(txBytesWithMetadata) > 0 {
 		go func() {
@@ -68,11 +73,17 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 }
 
 func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nPeers int) {
-	a.Tracef(TraceTagPull, "pull: %s", deptVID.IDShortString)
-
+	// notify poker to poke add this attacher to notification list of the dependency
 	a.pokeMe(deptVID)
-	// add transaction to the wanted/expected list
+	// add transaction to the wanted/expected list in the input queue
 	a.AddWantedTransaction(&deptVID.ID)
-	a.PullFromNPeers(nPeers, &deptVID.ID)
-	virtualTx.SetPullHappened(repeatPullAfter)
+	// do not pull is node is not connected to any peer longer than 2 pull repeat periods
+	if a.DurationSinceLastHeartbeatFromPeer() <= 2*repeatPullAfter {
+		a.PullFromNPeers(nPeers, &deptVID.ID)
+		virtualTx.SetPullHappened(repeatPullAfter)
+
+		a.Tracef(TraceTagPull, "pull: %s", deptVID.IDShortString)
+	} else {
+		a.Tracef(TraceTagPull, "pull postponed (node disconnected): %s", deptVID.IDShortString)
+	}
 }

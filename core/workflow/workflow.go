@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/memdag"
@@ -34,6 +35,7 @@ type (
 		EvidencePastConeSize(sz int)
 		EvidenceNumberOfTxDependencies(n int)
 		SnapshotBranchID() *ledger.TransactionID
+		DurationSinceLastHeartbeatFromPeer() time.Duration
 	}
 
 	Workflow struct {

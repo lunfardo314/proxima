@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -48,6 +49,10 @@ func (d *workflowDummyEnvironment) EvidencePastConeSize(_ int) {}
 
 func (d *workflowDummyEnvironment) SnapshotBranchID() *ledger.TransactionID {
 	return ledger.GenesisTransactionID()
+}
+
+func (d *workflowDummyEnvironment) DurationSinceLastHeartbeatFromPeer() time.Duration {
+	return 0
 }
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {

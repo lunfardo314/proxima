@@ -52,6 +52,7 @@ type (
 		SaveFullDAG(fname string)
 		EvidencePastConeSize(sz int)
 		SnapshotBranchID() *ledger.TransactionID
+		DurationSinceLastHeartbeatFromPeer() time.Duration
 	}
 
 	attacher struct {

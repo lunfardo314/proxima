@@ -331,6 +331,6 @@ func (p *ProximaNode) SnapshotBranchID() *ledger.TransactionID {
 	return &p.snapshotBranchID
 }
 
-func (p *ProximaNode) IsDisconnectedForDuration() time.Duration {
-	return p.peers.IsDisconnectedForDuration()
+func (p *ProximaNode) DurationSinceLastHeartbeatFromPeer() time.Duration {
+	return p.peers.DurationSinceLastHeartbeatFromPeer()
 }

@@ -94,7 +94,7 @@ func (ps *Peers) sendPullTransactionToPeers(ids []peer.ID, txid ledger.Transacti
 	ps.sendMsgBytesOutMulti(ids, ps.lppProtocolPull, msg.Bytes())
 }
 
-// PullTransactionsFromNPeers sends pull request to the random peer which has txStore
+// PullTransactionsFromNPeers sends pull request to the random peers which has txStore
 // Return number of peer pull request was sent to
 func (ps *Peers) PullTransactionsFromNPeers(nPeers int, txid ledger.TransactionID) int {
 	util.Assertf(nPeers >= 1, "nPeers")

@@ -66,7 +66,7 @@ func (ps *Peers) pullTargetsByRankDescLines(prefix ...string) *lines.Lines {
 }
 
 func (ps *Peers) chooseNPullTargets(n int) []peer.ID {
-	return ps.chooseBestNPullTargetsBestAndRandom(n)
+	return ps.chooseNPullTargetsBestAndRandom(n)
 }
 
 // chooseBestNPullTargetsRandom just select random n out of all pull targets
@@ -85,7 +85,7 @@ func (ps *Peers) chooseBestNPullTargetsRandom(n int) []peer.ID {
 	return ret
 }
 
-func (ps *Peers) chooseBestNPullTargetsBestAndRandom(n int) []peer.ID {
+func (ps *Peers) chooseNPullTargetsBestAndRandom(n int) []peer.ID {
 	if n <= 0 {
 		return nil
 	}

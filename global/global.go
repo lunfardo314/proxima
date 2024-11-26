@@ -63,8 +63,8 @@ var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
 	PullRepeatPeriodDefault = 2 * time.Second
-	PullMaxAttemptsDefault  = 10
-	PullFromNumPeersDefault = 2
+	PullMaxAttemptsDefault  = 30
+	PullFromNumPeersDefault = 3
 )
 
 const TraceTag = "global"

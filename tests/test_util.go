@@ -60,7 +60,7 @@ func (w *workflowDummyEnvironment) SnapshotBranchID() *ledger.TransactionID {
 	return ledger.GenesisTransactionID()
 }
 
-func (w *workflowDummyEnvironment) IsDisconnectedForDuration() time.Duration {
+func (w *workflowDummyEnvironment) DurationSinceLastHeartbeatFromPeer() time.Duration {
 	return 0
 }
 
