@@ -137,8 +137,8 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	ret.registerMetrics()
 
 	ret.RepeatInBackground("disconn_log_loop", 3*heartbeatRate, func() bool {
-		if ret.DurationSinceLastHeartbeatFromPeer() > 2*heartbeatRate {
-			ret.Log().Warnf("[peering] node is DISCONNECTED from the network for %v", ret.DurationSinceLastHeartbeatFromPeer())
+		if ret.DurationSinceLastMessageFromPeer() > 2*heartbeatRate {
+			ret.Log().Warnf("[peering] node is DISCONNECTED from the network for %v", ret.DurationSinceLastMessageFromPeer())
 		}
 		return true
 	})

@@ -35,7 +35,7 @@ type (
 		EvidencePastConeSize(sz int)
 		EvidenceNumberOfTxDependencies(n int)
 		SnapshotBranchID() *ledger.TransactionID
-		DurationSinceLastHeartbeatFromPeer() time.Duration
+		DurationSinceLastMessageFromPeer() time.Duration
 	}
 
 	Workflow struct {

@@ -51,7 +51,7 @@ func (d *workflowDummyEnvironment) SnapshotBranchID() *ledger.TransactionID {
 	return ledger.GenesisTransactionID()
 }
 
-func (d *workflowDummyEnvironment) DurationSinceLastHeartbeatFromPeer() time.Duration {
+func (d *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Duration {
 	return 0
 }
 

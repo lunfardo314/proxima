@@ -71,6 +71,8 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			return
 		}
 
+		ps.evidenceMessage()
+
 		ps.transactionsReceivedCounter.Inc()
 		ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
 

@@ -331,6 +331,6 @@ func (p *ProximaNode) SnapshotBranchID() *ledger.TransactionID {
 	return &p.snapshotBranchID
 }
 
-func (p *ProximaNode) DurationSinceLastHeartbeatFromPeer() time.Duration {
-	return p.peers.DurationSinceLastHeartbeatFromPeer()
+func (p *ProximaNode) DurationSinceLastMessageFromPeer() time.Duration {
+	return p.peers.DurationSinceLastMessageFromPeer()
 }

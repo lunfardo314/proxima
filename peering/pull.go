@@ -82,6 +82,9 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 			ps.Log().Errorf("pull: error while decoding message: %v", err)
 			return
 		}
+
+		ps.evidenceMessage()
+
 		go ps.onReceivePullTx(id, txid)
 		ps.pullRequestsIn.Inc()
 	}

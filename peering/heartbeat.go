@@ -128,7 +128,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			return
 		}
 
-		ps.lastHBReceived.Store(time.Now())
+		ps.evidenceMessage()
 
 		ps.withPeer(id, func(p *Peer) {
 			if p == nil {
@@ -143,12 +143,16 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	}
 }
 
-func (ps *Peers) DurationSinceLastHeartbeatFromPeer() time.Duration {
+func (ps *Peers) evidenceMessage() {
+	ps.lastMsgReceived.Store(time.Now())
+}
+
+func (ps *Peers) DurationSinceLastMessageFromPeer() time.Duration {
 	var nilTime time.Time
-	if ps.lastHBReceived.Load() == nilTime {
+	if ps.lastMsgReceived.Load() == nilTime {
 		return 0
 	}
-	return time.Since(ps.lastHBReceived.Load())
+	return time.Since(ps.lastMsgReceived.Load())
 }
 
 func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {

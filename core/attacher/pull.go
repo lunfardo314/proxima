@@ -78,7 +78,7 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	// add transaction to the wanted/expected list in the input queue
 	a.AddWantedTransaction(&deptVID.ID)
 	// do not pull is node is not connected to any peer longer than 2 pull repeat periods
-	if a.DurationSinceLastHeartbeatFromPeer() <= 2*repeatPullAfter {
+	if a.DurationSinceLastMessageFromPeer() <= 2*repeatPullAfter {
 		a.PullFromNPeers(nPeers, &deptVID.ID)
 		virtualTx.SetPullHappened(repeatPullAfter)
 
