@@ -265,6 +265,13 @@ func (w *Workflow) OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.Tran
 //	}
 //}
 
+//
+//func WithContext(ctx context.Context) TxInOption {
+//	return func(opts *txInOptions) {
+//		opts.ctx = ctx
+//	}
+//}
+
 func WithMetadata(metadata *txmetadata.TransactionMetadata) TxInOption {
 	return func(opts *txInOptions) {
 		if metadata != nil {
@@ -291,11 +298,5 @@ func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) 
 func WithTxTraceFlag(trace bool) TxInOption {
 	return func(opts *txInOptions) {
 		opts.txTrace = trace
-	}
-}
-
-func WithContext(ctx context.Context) TxInOption {
-	return func(opts *txInOptions) {
-		opts.ctx = ctx
 	}
 }

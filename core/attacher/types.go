@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -47,7 +46,7 @@ type (
 		memDAGAccessEnvironment
 		pullEnvironment
 		postEventEnvironment
-		GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata)
+		//GossipAttachedTransaction(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata)
 		ParseMilestoneData(msVID *vertex.WrappedTx) *ledger.MilestoneData
 		SaveFullDAG(fname string)
 		EvidencePastConeSize(sz int)
