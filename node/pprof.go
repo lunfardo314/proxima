@@ -19,7 +19,13 @@ func (p *ProximaNode) startPProfIfEnabled() {
 	if port == 0 {
 		port = defaultPprofPort
 	}
-	url := fmt.Sprintf("localhost:%d", port)
+	var host string
+	if viper.GetBool("pprof.external_access_enabled") {
+		host = "0.0.0.0"
+	} else {
+		host = "localhost"
+	}
+	url := fmt.Sprintf("%s:%d", host, port)
 	p.Log().Infof("starting pprof on '%s'", url)
 
 	go func() {
