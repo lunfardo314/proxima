@@ -68,7 +68,9 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 				// the vertex is already marked for deletion and will not be referenced by any part of the system
 				// do nothing
 				util.Assertf(vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished),
-					"attachment expected to be over 1: %s", vid.StringNoLock)
+					"expected: 0 references -> attachment must be finished: %s", vid.StringNoLock)
+				vid.pastCone = nil
+				vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 				markedForDeletion = true
 			case 1:
 				// the vertex is not referenced by any part of the system. It will be marked for deletion now,
@@ -81,6 +83,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished) && nowis.After(vid.dontPruneUntil) {
 					vid.numReferences = 0
 					v.UnReferenceDependencies()
+					// avoid hidden referencing and memory leak
 					vid.pastCone = nil
 					vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 					unreferencedPastCone = true
@@ -95,7 +98,6 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 						// vertex is old enough or bad, un-reference its past cone by converting vertex to virtual tx
 						// baseline remains available in the virtual tx
 						vid.convertToVirtualTxNoLock()
-						//vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
 						v.UnReferenceDependencies() // to help GC and pruner
 						vid.pastCone = nil
 						vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
