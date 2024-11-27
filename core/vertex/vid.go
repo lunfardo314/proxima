@@ -34,7 +34,7 @@ func _newVID(g _genericVertex, txid ledger.TransactionID, seqID *ledger.ChainID)
 		ID:             txid,
 		_genericVertex: g,
 		numReferences:  1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
-		dontPruneUntil: time.Now().Add(vertexTTLSlots * ledger.SlotDuration()),
+		dontPruneUntil: time.Now().Add(vertexTTLDuration()),
 	}
 	ret.SequencerID.Store(seqID)
 	ret.onPoke.Store(func() {})
@@ -133,7 +133,7 @@ func (vid *WrappedTx) SetSequencerAttachmentFinished() {
 
 	util.Assertf(vid.flags.FlagsUp(FlagVertexTxAttachmentStarted), "vid.flags.FlagsUp(FlagVertexTxAttachmentStarted)")
 	vid.flags.SetFlagsUp(FlagVertexTxAttachmentFinished)
-	vid.dontPruneUntil = time.Now().Add(vertexTTLSlots * ledger.L().ID.SlotDuration())
+	vid.dontPruneUntil = time.Now().Add(vertexTTLDuration())
 }
 
 func (vid *WrappedTx) SetTxStatusBad(reason error) {

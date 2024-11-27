@@ -111,8 +111,10 @@ func (d *MemDAG) PurgeDeletedVertices(deleted []*vertex.WrappedTx) {
 	})
 }
 
+const stateReaderTTLSlots = 2
+
 func _stateReaderCacheTTL() time.Duration {
-	return 3 * ledger.SlotDuration()
+	return stateReaderTTLSlots * ledger.SlotDuration()
 }
 
 func (d *MemDAG) PurgeCachedStateReaders() (int, int) {

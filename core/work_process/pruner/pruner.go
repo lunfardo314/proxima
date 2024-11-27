@@ -18,6 +18,7 @@ type (
 		PurgeCachedStateReaders() (int, int)
 		NumVertices() int
 		NumStateReaders() int
+		DurationSinceLastMessageFromPeer() time.Duration
 	}
 	Pruner struct {
 		environment
@@ -47,8 +48,14 @@ func New(env environment) *Pruner {
 	return ret
 }
 
+const disconnectThreshold = 4 * time.Second
+
 // pruneVertices returns how many marked for deletion and how many past cones unreferenced
 func (p *Pruner) pruneVertices() (markedForDeletionCount, unreferencedPastConeCount int, refStats [6]uint32) {
+	if p.DurationSinceLastMessageFromPeer() > disconnectThreshold {
+		p.Log().Warnf("[memDAG pruner] is inactive: node is disconnected for %v", p.DurationSinceLastMessageFromPeer())
+		return
+	}
 	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
 	for _, vid := range p.Vertices() {

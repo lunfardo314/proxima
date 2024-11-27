@@ -5,6 +5,8 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/spf13/viper"
+	"go.uber.org/atomic"
 )
 
 // Keeping track of references in vertex is crucial for the memDAG pruning.
@@ -21,10 +23,24 @@ import (
 // abandon vertex alone (not store VID) and it will be cleaned by usual Go garbage collector.
 // The transaction can be pulled and attached again, then it will receive different VID
 
-const vertexTTLSlots = 5
+const vertexTTLSlotsDefault = 5
+
+var _vertexTTLDuration atomic.Duration
+
+func vertexTTLDuration() time.Duration {
+	if ret := _vertexTTLDuration.Load(); ret != 0 {
+		return ret
+	}
+	ttl := viper.GetInt("workflow.vertex_ttl_slots")
+	if ttl == 0 {
+		ttl = vertexTTLSlotsDefault
+	}
+	_vertexTTLDuration.Store(time.Duration(ttl) * ledger.L().ID.SlotDuration())
+	return _vertexTTLDuration.Load()
+}
 
 // Reference increments reference counter for the vertex which is not deleted yet (counter > 0).
-// It also sets TTL for vertex if it has noo references (counter == 1)
+// It also updates TTL for the vertex
 func (vid *WrappedTx) Reference() bool {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
@@ -33,10 +49,8 @@ func (vid *WrappedTx) Reference() bool {
 	if vid.numReferences == 0 {
 		return false
 	}
-	if vid.numReferences == 1 {
-		// lifetime of the vertex starts (or re-starts, if completely unreferenced before)
-		vid.dontPruneUntil = time.Now().Add(vertexTTLSlots * ledger.L().ID.SlotDuration())
-	}
+	// prune time counts starting from last reference
+	vid.dontPruneUntil = time.Now().Add(vertexTTLDuration())
 	vid.numReferences++
 	return true
 }
@@ -51,7 +65,8 @@ func (vid *WrappedTx) UnReference() {
 	vid.numReferences--
 	util.Assertf(vid.numReferences >= 1, "UnReference: reference counter can't go below 1: %s", vid.ID.StringShort)
 	if vid.numReferences == 1 {
-		vid.dontPruneUntil = time.Now().Add(vertexTTLSlots * ledger.L().ID.SlotDuration())
+		// just keep it for some time longer unreferenced but not deleted yet. It may be referenced again until deleted
+		vid.dontPruneUntil = time.Now().Add(vertexTTLDuration())
 	}
 }
 
