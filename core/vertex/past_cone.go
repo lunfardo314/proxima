@@ -73,7 +73,7 @@ func (f FlagsPastCone) String() string {
 	)
 }
 
-func NewPastConeBase(baseline *WrappedTx) *PastConeBase {
+func newPastConeBase(baseline *WrappedTx) *PastConeBase {
 	return &PastConeBase{
 		vertices: make(map[*WrappedTx]FlagsPastCone),
 		baseline: baseline,
@@ -81,7 +81,7 @@ func NewPastConeBase(baseline *WrappedTx) *PastConeBase {
 }
 
 func NewPastCone(env global.Logging, tip *WrappedTx, targetTs ledger.Time, name string) *PastCone {
-	return newPastConeFromBase(env, tip, targetTs, name, NewPastConeBase(nil))
+	return newPastConeFromBase(env, tip, targetTs, name, newPastConeBase(nil))
 }
 
 func newPastConeFromBase(env global.Logging, tip *WrappedTx, targetTs ledger.Time, name string, pb *PastConeBase) *PastCone {
@@ -200,7 +200,7 @@ func (pc *PastCone) UnReferenceAll() {
 
 func (pc *PastCone) BeginDelta() {
 	util.Assertf(pc.delta == nil, "BeginDelta: pc.delta == nil")
-	pc.delta = NewPastConeBase(pc.baseline)
+	pc.delta = newPastConeBase(pc.baseline)
 	pc.savedCoverageDelta = pc.coverageDelta
 }
 
@@ -787,7 +787,7 @@ func (pc *PastCone) CheckAndClean(stateReader global.IndexedStateReader) (confli
 
 	var canBeRemoved bool
 	var coverageDelta uint64
-	toDelete := make([]*WrappedTx, 0)
+
 	for vid, flags := range pc.vertices {
 		if vid == pc.tip {
 			continue
@@ -799,15 +799,12 @@ func (pc *PastCone) CheckAndClean(stateReader global.IndexedStateReader) (confli
 			return
 		}
 		if canBeRemoved {
-			toDelete = append(toDelete, vid)
+			delete(pc.vertices, vid)
+			vid.UnReference()
+			pc.refCounter--
 		} else {
 			pc.coverageDelta += coverageDelta
 		}
-	}
-	for _, vid := range toDelete {
-		delete(pc.vertices, vid)
-		vid.UnReference()
-		pc.refCounter--
 	}
 	return
 }

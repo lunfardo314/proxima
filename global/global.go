@@ -377,22 +377,12 @@ func (l *Global) purgeTraceTxIDs() {
 	defer l.txTraceMutex.Unlock()
 
 	nowis := time.Now()
-	var toDelete []ledger.TransactionID
 
 	for txid, ttl := range l.txTraceIDs {
-		if nowis.Before(ttl) {
-			continue
+		if ttl.Before(nowis) {
+			delete(l.txTraceIDs, txid)
+			l.SugaredLogger.Infof("TRACE_TX(%s) stopped tracing", txid.StringShort())
 		}
-		if len(toDelete) == 0 {
-			toDelete = []ledger.TransactionID{txid}
-		} else {
-			toDelete = append(toDelete, txid)
-		}
-	}
-
-	for i := range toDelete {
-		delete(l.txTraceIDs, toDelete[i])
-		l.SugaredLogger.Infof("TRACE_TX(%s) stopped tracing", toDelete[i].StringShort())
 	}
 }
 

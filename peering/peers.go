@@ -567,16 +567,12 @@ func (ps *Peers) cleanBlacklist() {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	toDelete := make([]peer.ID, 0, len(ps.blacklist))
 	nowis := time.Now()
 	for id, deadline := range ps.blacklist {
 		if deadline.Before(nowis) {
-			toDelete = append(toDelete, id)
+			delete(ps.blacklist, id)
+			ps._addToCoolOfflist(id)
 		}
-	}
-	for _, id := range toDelete {
-		delete(ps.blacklist, id)
-		ps._addToCoolOfflist(id)
 	}
 }
 

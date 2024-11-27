@@ -106,18 +106,16 @@ func (d *Poker) pokeAllCmd(wanted *vertex.WrappedTx) {
 }
 
 func (d *Poker) periodicCleanup() {
-	toDelete := make([]*vertex.WrappedTx, 0)
 	nowis := time.Now()
+	count := 0
 	for wanted, lst := range d.m {
 		if nowis.After(lst.keepUntil) {
-			toDelete = append(toDelete, wanted)
+			delete(d.m, wanted)
+			count++
 		}
 	}
-	for _, vid := range toDelete {
-		delete(d.m, vid)
-	}
-	if len(toDelete) > 0 {
-		d.Infof1("[poker] purged %d entries", len(toDelete))
+	if count > 0 {
+		d.Infof1("[poker] purged %d entries", count)
 	}
 	d.Tracef(TraceTag, "wanted list size: %d", len(d.m))
 }

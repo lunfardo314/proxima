@@ -199,7 +199,6 @@ func (t *SequencerTips) purgeAndLog() {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
-	toDelete := make([]ledger.ChainID, 0)
 	for chainID, md := range t.latestMilestones {
 		nothingLogged := !md.loggedActive && !md.loggedInactive
 
@@ -219,14 +218,10 @@ func (t *SequencerTips) purgeAndLog() {
 			}
 		}
 		if md.BaselineBranch() == nil {
-			toDelete = append(toDelete, chainID)
+			t.latestMilestones[chainID].UnReference()
+			delete(t.latestMilestones, chainID)
+			t.Log().Infof("[tippool] chainID %s has been removed from the sequencer tippool", chainID.StringShort())
 		}
-	}
-
-	for _, chainID := range toDelete {
-		t.latestMilestones[chainID].UnReference()
-		delete(t.latestMilestones, chainID)
-		t.Log().Infof("[tippool] chainID %s has been removed from the sequencer tippool", chainID.StringShort())
 	}
 }
 

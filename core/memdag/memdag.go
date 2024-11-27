@@ -118,21 +118,19 @@ func _stateReaderCacheTTL() time.Duration {
 }
 
 func (d *MemDAG) PurgeCachedStateReaders() (int, int) {
-	toDelete := make([]ledger.TransactionID, 0)
 	ttl := _stateReaderCacheTTL()
+	count := 0
 
 	d.stateReadersMutex.Lock()
 	defer d.stateReadersMutex.Unlock()
 
 	for txid, b := range d.stateReaders {
 		if time.Since(b.lastActivity) > ttl {
-			toDelete = append(toDelete, txid)
+			delete(d.stateReaders, txid)
+			count++
 		}
 	}
-	for i := range toDelete {
-		delete(d.stateReaders, toDelete[i])
-	}
-	return len(toDelete), len(d.stateReaders)
+	return count, len(d.stateReaders)
 }
 
 func (d *MemDAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader {

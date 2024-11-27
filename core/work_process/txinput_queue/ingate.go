@@ -55,15 +55,11 @@ func (g *inGate[T]) purgeBlackList() {
 		return
 	}
 
-	toDelete := make([]T, 0)
 	nowis := time.Now()
 
 	for key, entry := range g.m {
 		if !entry.isWanted && nowis.After(entry.purgeDeadline) {
-			toDelete = append(toDelete, key)
+			delete(g.m, key)
 		}
-	}
-	for _, key := range toDelete {
-		delete(g.m, key)
 	}
 }
