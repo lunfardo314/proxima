@@ -1,14 +1,12 @@
 package workflow
 
 import (
-	"context"
 	"fmt"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/txmetadata"
-	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/work_process/txinput_queue"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -19,9 +17,9 @@ type (
 	txInOptions struct {
 		txMetadata       txmetadata.TransactionMetadata
 		receivedFromPeer *peer.ID
-		callback         func(vid *vertex.WrappedTx, err error)
-		txTrace          bool
-		ctx              context.Context
+		//callback         func(vid *vertex.WrappedTx, err error)
+		txTrace bool
+		//ctx              context.Context
 	}
 
 	TxInOption func(options *txInOptions)
@@ -113,10 +111,10 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
 	// bytes are identifiable as transaction
 
-	if !tx.IsSequencerMilestone() {
-		// callback is only possible when tx is sequencer milestone
-		options.callback = func(_ *vertex.WrappedTx, _ error) {}
-	}
+	//if !tx.IsSequencerMilestone() {
+	//	// callback is only possible when tx is sequencer milestone
+	//	options.callback = func(_ *vertex.WrappedTx, _ error) {}
+	//}
 
 	// check time bounds
 	// TODO revisit checking lower time bounds
@@ -161,14 +159,14 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 	txTime := txid.Timestamp().Time()
 
 	attachOpts := []attacher.AttachTxOption{
-		attacher.WithContext(options.ctx),
+		//attacher.WithContext(options.ctx),
 		attacher.WithTransactionMetadata(&options.txMetadata),
 		attacher.WithInvokedBy("txInput"),
 		attacher.WithEnforceTimestampBeforeRealTime,
 	}
-	if options.callback != nil {
-		attachOpts = append(attachOpts, attacher.WithAttachmentCallback(options.callback))
-	}
+	//if options.callback != nil {
+	//	attachOpts = append(attachOpts, attacher.WithAttachmentCallback(options.callback))
+	//}
 
 	if time.Until(txTime) <= 0 {
 		// timestamp is in the past -> attach immediately
@@ -209,55 +207,6 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachT
 func (w *Workflow) OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata) {
 	w.TxBytesInFromPeerQueued(txBytes, meta, w.SelfPeerID())
 }
-
-// SequencerMilestoneAttachWait attaches sequencer transaction synchronously.
-// Waits up to timeout until attacher finishes
-//func (w *Workflow) SequencerMilestoneAttachWait(txBytes []byte, meta *txmetadata.TransactionMetadata, timeout time.Duration) (*vertex.WrappedTx, error) {
-//	var vid *vertex.WrappedTx
-//	var err error
-//
-//	const defaultTimeout = 5 * time.Second
-//	if timeout == 0 {
-//		timeout = defaultTimeout
-//	}
-//	errTimeoutCause := fmt.Errorf("exceeded timeout %v", timeout)
-//	ctx, cancelFun := context.WithTimeoutCause(w.Ctx(), timeout, errTimeoutCause)
-//
-//	// we need end channel so that to be sure callback has been called before we use err and vid
-//	endCh := make(chan struct{})
-//	txid, errParse := w.TxBytesIn(txBytes,
-//		WithContext(ctx),
-//		WithMetadata(meta),
-//		WithAttachmentCallback(func(vidSubmit *vertex.WrappedTx, errSubmit error) {
-//			// it is guaranteed the callback will always be called, unless parse error
-//			vid = vidSubmit
-//			err = errSubmit
-//			cancelFun()
-//			close(endCh)
-//		}),
-//	)
-//	if errParse == nil {
-//		<-ctx.Done()
-//		<-endCh
-//
-//		if errors.Is(context.Cause(ctx), errTimeoutCause) {
-//			err = errTimeoutCause
-//		}
-//	} else {
-//		err = errParse
-//		cancelFun()
-//		close(endCh)
-//	}
-//
-//	if err != nil {
-//		txidStr := "txid=???"
-//		if txid != nil {
-//			txidStr = txid.StringShort()
-//		}
-//		return vid, fmt.Errorf("SequencerMilestoneAttachWait: %w, txid=%s", err, txidStr)
-//	}
-//	return vid, nil
-//}
 
 //func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TxInOption {
 //	return func(opts *txInOptions) {
