@@ -99,6 +99,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 					vid.numReferences = 0
 					v.UnReferenceDependencies()
 					// avoid hidden referencing and memory leak
+					vid.pastCone.Dispose()
 					vid.pastCone = nil
 					vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 					unreferencedPastCone = true
@@ -114,6 +115,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 						// baseline remains available in the virtual tx
 						vid.convertToVirtualTxNoLock()
 						v.UnReferenceDependencies() // to help GC and pruner
+						vid.pastCone.Dispose()
 						vid.pastCone = nil
 						vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 						unreferencedPastCone = true

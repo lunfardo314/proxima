@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -36,7 +37,6 @@ type (
 		*PastConeBase
 		delta      *PastConeBase
 		refCounter int
-		traceLines *lines.Lines
 	}
 
 	PastConeBase struct {
@@ -73,15 +73,42 @@ func (f FlagsPastCone) String() string {
 	)
 }
 
-func newPastConeBase(baseline *WrappedTx) *PastConeBase {
+// we are using sync.Pool for heap optimization
+
+var _pastConePool sync.Pool
+
+func NewPastConeBase(baseline *WrappedTx) *PastConeBase {
+	if r := _pastConePool.Get(); r != nil {
+		ret := r.(*PastConeBase)
+		ret.baseline = baseline
+	}
 	return &PastConeBase{
 		vertices: make(map[*WrappedTx]FlagsPastCone),
 		baseline: baseline,
 	}
 }
 
+func (pb *PastConeBase) Dispose() {
+	if pb == nil {
+		return
+	}
+	pb.baseline = nil
+	maps.Clear(pb.vertices)
+	maps.Clear(pb.virtuallyConsumed)
+	_pastConePool.Put(pb)
+}
+
+func (pc *PastCone) DisposeAll() {
+	if pc == nil {
+		return
+	}
+	pc.tip = nil
+	pc.PastConeBase.Dispose()
+	pc.delta.Dispose()
+}
+
 func NewPastCone(env global.Logging, tip *WrappedTx, targetTs ledger.Time, name string) *PastCone {
-	return newPastConeFromBase(env, tip, targetTs, name, newPastConeBase(nil))
+	return newPastConeFromBase(env, tip, targetTs, name, NewPastConeBase(nil))
 }
 
 func newPastConeFromBase(env global.Logging, tip *WrappedTx, targetTs ledger.Time, name string, pb *PastConeBase) *PastCone {
@@ -91,8 +118,6 @@ func newPastConeFromBase(env global.Logging, tip *WrappedTx, targetTs ledger.Tim
 		targetTs:     targetTs,
 		name:         name,
 		PastConeBase: pb,
-		traceLines:   lines.NewDummy(),
-		//traceLines: lines.New("     "),
 	}
 }
 
@@ -192,15 +217,14 @@ func (pc *PastCone) UnReferenceAll() {
 	for vid := range pc.vertices {
 		vid.UnReference()
 		unrefCounter++
-		pc.traceLines.Trace("UnReferenceAll: unref tx %s", vid.IDShortString)
 	}
-	pc.Assertf(unrefCounter == pc.refCounter, "UnReferenceAll: unrefCounter(%d) not equal to pc.refCounter(%d) in %s\n%s",
-		unrefCounter, pc.refCounter, pc.name, pc.traceLines.String)
+	pc.Assertf(unrefCounter == pc.refCounter, "UnReferenceAll: unrefCounter(%d) not equal to pc.refCounter(%d) in %s",
+		unrefCounter, pc.refCounter, pc.name)
 }
 
 func (pc *PastCone) BeginDelta() {
 	util.Assertf(pc.delta == nil, "BeginDelta: pc.delta == nil")
-	pc.delta = newPastConeBase(pc.baseline)
+	pc.delta = NewPastConeBase(pc.baseline)
 	pc.savedCoverageDelta = pc.coverageDelta
 }
 
@@ -217,6 +241,7 @@ func (pc *PastCone) CommitDelta() {
 			pc.addVirtuallyConsumedOutput(WrappedOutput{VID: vid, Index: idx})
 		}
 	}
+	pc.delta.Dispose()
 	pc.delta = nil
 }
 
@@ -230,15 +255,14 @@ func (pc *PastCone) RollbackDelta() {
 			vid.UnReference()
 			unrefCounter++
 		}
-		pc.traceLines.Add("RollbackDelta: unref %s", vid.IDShortString())
 	}
 	if pc.delta.baseline != nil && pc.baseline == nil {
 		pc.delta.baseline.UnReference()
-		pc.traceLines.Add("RollbackDelta: unref baseline %s", pc.delta.baseline.IDShortString())
 	}
 	pc.refCounter -= unrefCounter
 	expected := len(pc.vertices)
 	pc.Assertf(pc.refCounter == expected, "RollbackDelta: pc.refCounter(%d) not equal to expected(%d)", pc.refCounter, expected)
+	pc.delta.Dispose()
 	pc.delta = nil
 	pc.coverageDelta = pc.savedCoverageDelta
 }
@@ -278,11 +302,6 @@ func (pc *PastCone) reference(vid *WrappedTx) bool {
 		return false
 	}
 	pc.refCounter++
-	if pc.delta == nil {
-		pc.traceLines.Trace("ref %s", vid.IDShortString)
-	} else {
-		pc.traceLines.Trace("ref (delta) %s", vid.IDShortString)
-	}
 	return true
 }
 
