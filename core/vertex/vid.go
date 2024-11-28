@@ -85,7 +85,7 @@ func (vid *WrappedTx) convertToVirtualTxUnlocked(v *Vertex) {
 	util.Assertf(vid.numReferences > 0, "convertToVirtualTxUnlocked: access deleted tx in %s", vid.IDShortString)
 	vid._put(_virtualTx{v.toVirtualTx()})
 	v.UnReferenceDependencies()
-	//v.Dispose()
+	v.Dispose()
 	vid.pastCone.Dispose()
 	vid.pastCone = nil
 	vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)

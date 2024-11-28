@@ -50,7 +50,7 @@ func (vid *WrappedTx) Reference() bool {
 		return false
 	}
 	// prune time counts starting from last reference
-	vid.dontPruneUntil = time.Now().Add(TTLDuration())
+	//vid.dontPruneUntil = time.Now().Add(TTLDuration())
 	vid.numReferences++
 	return true
 }
