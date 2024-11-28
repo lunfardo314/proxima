@@ -64,10 +64,10 @@ func (vid *WrappedTx) UnReference() {
 	// must be references >= 1. Only pruner can put it to 0
 	vid.numReferences--
 	util.Assertf(vid.numReferences >= 1, "UnReference: reference counter can't go below 1: %s", vid.ID.StringShort)
-	if vid.numReferences == 1 {
-		// just keep it for some time longer unreferenced but not deleted yet. It may be referenced again until deleted
-		vid.dontPruneUntil = time.Now().Add(vertexTTLDuration())
-	}
+	//if vid.numReferences == 1 {
+	//	// just keep it for some time longer unreferenced but not deleted yet. It may be referenced again until deleted
+	//	vid.dontPruneUntil = time.Now().Add(vertexTTLDuration())
+	//}
 }
 
 // DoPruningIfRelevant either marks vertex deleted (counter = 0), or, if it already deleted (counter=0)
