@@ -108,6 +108,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	if !pass {
 		// repeating transaction
 		q.filterHitCounter.Inc()
+		// TODO dispose memory
 		return
 	}
 

@@ -68,6 +68,7 @@ type (
 	Logging interface {
 		Log() *zap.SugaredLogger
 		Tracef(tag string, format string, args ...any)
+		// TODO remove TraceTx
 		TraceTxEnable()
 		TraceTx(txid *ledger.TransactionID, format string, args ...any)
 		// Assertf asserts only if global shutdown wasn't issued
