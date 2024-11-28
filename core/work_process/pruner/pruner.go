@@ -27,6 +27,7 @@ type (
 		metricsEnabled       bool
 		numVerticesGauge     prometheus.Gauge
 		numStateReadersGauge prometheus.Gauge
+		numVerticesPrev      int
 	}
 )
 
@@ -88,8 +89,10 @@ func (p *Pruner) doPrune() {
 	nDeleted, nUnReferenced, refStats := p.pruneVertices()
 	nReadersPurged, readersLeft := p.PurgeCachedStateReaders()
 
-	p.Log().Infof("[memDAG pruner] vertices: %d, deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: %v (%v)",
-		p.NumVertices(), nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats, time.Since(start))
+	n := p.NumVertices()
+	p.Log().Infof("[memDAG pruner] vertices: %d(%d), deleted: %d, detached past cones: %d. state readers purged: %d, left: %d. Ref stats: %v (%v)",
+		n, p.numVerticesPrev-n, nDeleted, nUnReferenced, nReadersPurged, readersLeft, refStats, time.Since(start))
+	p.numVerticesPrev = n
 }
 
 func (p *Pruner) registerMetrics() {
