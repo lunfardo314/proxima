@@ -139,7 +139,7 @@ func (a *milestoneAttacher) run() error {
 		// Thus branch transaction does not reference past cone
 		a.Tracef(TraceTagAttachMilestone, ">>>>>>>>>>>>>>> ConvertVertexToVirtualTx: %s", a.vid.IDShortString())
 
-		a.vid.ConvertVertexToVirtualTx()
+		a.vid.ConvertToVirtualTx()
 	}
 
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)

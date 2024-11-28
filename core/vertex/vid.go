@@ -34,7 +34,7 @@ func _newVID(g _genericVertex, txid ledger.TransactionID, seqID *ledger.ChainID)
 		ID:             txid,
 		_genericVertex: g,
 		numReferences:  1, // we always start with 1 reference, which is reference by the MemDAG itself. 0 references means it is deleted
-		dontPruneUntil: time.Now().Add(vertexTTLDuration()),
+		dontPruneUntil: time.Now().Add(TTLDuration()),
 	}
 	ret.SequencerID.Store(seqID)
 	ret.onPoke.Store(func() {})
@@ -74,12 +74,23 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	}
 }
 
-// ConvertVertexToVirtualTx detaches past cone and leaves only a collection of produced outputs
-func (vid *WrappedTx) ConvertVertexToVirtualTx() {
+// ConvertToVirtualTx detaches past cone and leaves only a collection of produced outputs
+func (vid *WrappedTx) ConvertToVirtualTx() {
 	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-		vid._put(_virtualTx{VirtualTxFromTx(v.Tx)})
-		v.UnReferenceDependencies()
+		vid.convertToVirtualTxUnlocked(v)
 	}})
+}
+
+func (vid *WrappedTx) convertToVirtualTxUnlocked(v *Vertex) {
+	util.Assertf(vid.numReferences > 0, "convertToVirtualTxUnlocked: access deleted tx in %s", vid.IDShortString)
+	vid._put(_virtualTx{VirtualTransaction: v.toVirtualTx()})
+
+	vid._put(_virtualTx{v.toVirtualTx()})
+	v.UnReferenceDependencies()
+	v.Dispose()
+	vid.pastCone.Dispose()
+	vid.pastCone = nil
+	vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 }
 
 func (vid *WrappedTx) GetTxStatus() Status {
@@ -133,7 +144,7 @@ func (vid *WrappedTx) SetSequencerAttachmentFinished() {
 
 	util.Assertf(vid.flags.FlagsUp(FlagVertexTxAttachmentStarted), "vid.flags.FlagsUp(FlagVertexTxAttachmentStarted)")
 	vid.flags.SetFlagsUp(FlagVertexTxAttachmentFinished)
-	vid.dontPruneUntil = time.Now().Add(vertexTTLDuration())
+	vid.dontPruneUntil = time.Now().Add(TTLDuration())
 }
 
 func (vid *WrappedTx) SetTxStatusBad(reason error) {
@@ -483,15 +494,6 @@ func (vid *WrappedTx) NumInputs() int {
 
 func (vid *WrappedTx) NumProducedOutputs() int {
 	return vid.ID.NumProducedOutputs()
-}
-
-func (vid *WrappedTx) convertToVirtualTxNoLock() {
-	util.Assertf(vid.numReferences > 0, "convertToVirtualTxNoLock: access deleted tx in %s", vid.IDShortString)
-	v, isVertex := vid._genericVertex.(_vertex)
-	util.Assertf(isVertex, "convertToVirtualTxNoLock: must be full vertex %s", vid.IDShortString)
-
-	vid._put(_virtualTx{VirtualTransaction: VirtualTxFromTx(v.Tx)})
-	v.Dispose()
 }
 
 func (vid *WrappedTx) PanicAccessDeleted() {

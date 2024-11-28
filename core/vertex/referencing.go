@@ -27,7 +27,7 @@ const vertexTTLSlotsDefault = 5
 
 var _vertexTTLDuration atomic.Duration
 
-func vertexTTLDuration() time.Duration {
+func TTLDuration() time.Duration {
 	if ret := _vertexTTLDuration.Load(); ret != 0 {
 		return ret
 	}
@@ -50,7 +50,7 @@ func (vid *WrappedTx) Reference() bool {
 		return false
 	}
 	// prune time counts starting from last reference
-	vid.dontPruneUntil = time.Now().Add(vertexTTLDuration())
+	vid.dontPruneUntil = time.Now().Add(TTLDuration())
 	vid.numReferences++
 	return true
 }
@@ -66,7 +66,7 @@ func (vid *WrappedTx) UnReference() {
 	util.Assertf(vid.numReferences >= 1, "UnReference: reference counter can't go below 1: %s", vid.ID.StringShort)
 	//if vid.numReferences == 1 {
 	//	// just keep it for some time longer unreferenced but not deleted yet. It may be referenced again until deleted
-	//	vid.dontPruneUntil = time.Now().Add(vertexTTLDuration())
+	//	vid.dontPruneUntil = time.Now().Add(TTLDuration())
 	//}
 }
 
@@ -96,13 +96,10 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 				// do not mark for deletion vertices which just have been added to the memDAG
 				// the state of the vertex should never be accessed again
 				if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted|FlagVertexTxAttachmentFinished) && nowis.After(vid.dontPruneUntil) {
+					vid.convertToVirtualTxUnlocked(v)
 					vid.numReferences = 0
-					v.UnReferenceDependencies()
-					// avoid hidden referencing and memory leak
-					vid.pastCone.Dispose()
-					vid.pastCone = nil
+
 					vid.consumed = nil
-					vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 					unreferencedPastCone = true
 					markedForDeletion = true
 				}
@@ -114,11 +111,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 					if nowis.After(vid.dontPruneUntil) || vid.GetTxStatusNoLock() == Bad {
 						// vertex is old enough or bad, un-reference its past cone by converting vertex to virtual tx
 						// baseline remains available in the virtual tx
-						vid.convertToVirtualTxNoLock()
-						v.UnReferenceDependencies() // to help GC and pruner
-						vid.pastCone.Dispose()
-						vid.pastCone = nil
-						vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
+						vid.convertToVirtualTxUnlocked(v)
 						unreferencedPastCone = true
 					}
 				}
