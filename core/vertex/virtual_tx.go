@@ -44,7 +44,7 @@ func (v *Vertex) toVirtualTx() *VirtualTransaction {
 		ret.outputs[idx] = o.Clone()
 		return true
 	})
-	ret.baselineBranch = v.BaselineBranch
+	//ret.baselineBranch = v.BaselineBranch
 	return ret
 }
 
