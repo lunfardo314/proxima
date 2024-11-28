@@ -101,6 +101,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 					// avoid hidden referencing and memory leak
 					vid.pastCone.Dispose()
 					vid.pastCone = nil
+					vid.consumed = nil
 					vid.SetFlagsUpNoLock(FlagVertexIgnoreAbsenceOfPastCone)
 					unreferencedPastCone = true
 					markedForDeletion = true
