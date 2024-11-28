@@ -490,7 +490,8 @@ func (vid *WrappedTx) convertToVirtualTxNoLock() {
 	v, isVertex := vid._genericVertex.(_vertex)
 	util.Assertf(isVertex, "convertToVirtualTxNoLock: must be full vertex %s", vid.IDShortString)
 
-	vid._put(_virtualTx{VirtualTransaction: v.toVirtualTx()})
+	vid._put(_virtualTx{VirtualTransaction: VirtualTxFromTx(v.Tx)})
+	v.Dispose()
 }
 
 func (vid *WrappedTx) PanicAccessDeleted() {

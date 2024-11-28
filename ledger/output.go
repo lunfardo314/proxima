@@ -143,7 +143,8 @@ func (o *Output) Bytes() []byte {
 // Clone clones output and makes it read-only. Optional function overrideReadOnly gives a chance
 // to modify the output before it is locked for modification
 func (o *Output) Clone(overrideReadOnly ...func(o *Output)) *Output {
-	ret, err := OutputFromBytesReadOnly(o.Bytes())
+	// clone underlying byte array
+	ret, err := OutputFromBytesReadOnly(bytes.Clone(o.Bytes()))
 	util.AssertNoError(err)
 	if len(overrideReadOnly) > 0 {
 		ret.arr.SetReadOnly(false)

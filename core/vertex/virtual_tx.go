@@ -37,7 +37,7 @@ func VirtualTxFromTx(tx *transaction.Transaction) *VirtualTransaction {
 		outputs: make(map[byte]*ledger.Output),
 	}
 	for i := 0; i < tx.NumProducedOutputs(); i++ {
-		ret.outputs[byte(i)] = tx.MustProducedOutputAt(byte(i))
+		ret.outputs[byte(i)] = tx.MustProducedOutputAt(byte(i)).Clone()
 	}
 	if tx.IsSequencerMilestone() {
 		seqIdx, stemIdx := tx.SequencerAndStemOutputIndices()

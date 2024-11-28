@@ -11,15 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-func New(tx *transaction.Transaction) *Vertex {
-	ret := &Vertex{
-		Tx:           tx,
-		Inputs:       make([]*WrappedTx, tx.NumInputs()),
-		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
-	}
-	return ret
-}
-
 func (v *Vertex) TimeSlot() ledger.Slot {
 	return v.Tx.ID().Slot()
 }
@@ -229,22 +220,4 @@ func (v *Vertex) Wrap() *WrappedTx {
 		seqID = util.Ref(v.Tx.SequencerTransactionData().SequencerID)
 	}
 	return _newVID(_vertex{Vertex: v}, *v.Tx.ID(), seqID)
-}
-
-// toVirtualTx preserves information about all outputs and baseline in the virtualTx
-func (v *Vertex) toVirtualTx() *VirtualTransaction {
-	ret := &VirtualTransaction{
-		outputs: make(map[byte]*ledger.Output, v.Tx.NumProducedOutputs()),
-	}
-	if v.Tx.IsSequencerMilestone() {
-		seqIdx, stemIdx := v.Tx.SequencerAndStemOutputIndices()
-		ret.sequencerOutputIndices = &[2]byte{seqIdx, stemIdx}
-	}
-
-	v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, _ *ledger.OutputID) bool {
-		ret.outputs[idx] = o.Clone()
-		return true
-	})
-	ret.baselineBranch = v.BaselineBranch
-	return ret
 }
