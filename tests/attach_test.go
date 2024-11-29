@@ -832,7 +832,7 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 		SeqName:      "dummy",
 		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
 		Timestamp:    ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(ledger.TransactionPaceSequencer())),
-		Endorsements: util.List(tx1.ID()),
+		Endorsements: util.List(tx1.IDRef()),
 		PrivateKey:   testData.privKeyAux,
 	})
 	require.NoError(t, err)
@@ -1030,7 +1030,7 @@ func TestAttachSeqChains(t *testing.T) {
 					require.NoError(t, err)
 				} else {
 					wg.Add(1)
-					testData.env.StartTracingTx(*tx.ID())
+					testData.env.StartTracingTx(tx.ID())
 					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 						wg.Done()
 					}))

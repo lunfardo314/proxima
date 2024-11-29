@@ -276,7 +276,7 @@ func CalcTxInclusionScore(inclusion *multistate.TxInclusion, thresholdNumerator,
 
 func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 	ret := &TransactionJSONAble{
-		ID:             tx.ID().StringHex(),
+		ID:             tx.IDStringHex(),
 		Inputs:         make([]Input, tx.NumInputs()),
 		Outputs:        make([]ParsedOutput, tx.NumProducedOutputs()),
 		Endorsements:   make([]string, tx.NumEndorsements()),
@@ -340,7 +340,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 
 func VertexWithDependenciesFromTransaction(tx *transaction.Transaction) *VertexWithDependencies {
 	ret := &VertexWithDependencies{
-		ID:                tx.ID().StringHex(),
+		ID:                tx.IDStringHex(),
 		TotalAmount:       tx.TotalAmount(),
 		TotalInflation:    tx.InflationAmount(),
 		IsSequencerTx:     tx.IsSequencerMilestone(),

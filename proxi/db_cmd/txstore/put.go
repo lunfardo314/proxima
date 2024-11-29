@@ -37,8 +37,9 @@ func runPutCmd(_ *cobra.Command, args []string) {
 	tx, err := transaction.FromBytes(txBytes)
 	glb.AssertNoError(err)
 
-	glb.Assertf(args[0] == tx.ID().AsFileName(), "transaction ID does not correspond to the file name")
-	glb.Assertf(!glb.TxBytesStore().HasTxBytes(tx.ID()), "txStore already contains transactions %s", tx.IDString())
+	txid := tx.ID()
+	glb.Assertf(args[0] == txid.AsFileName(), "transaction ID does not correspond to the file name")
+	glb.Assertf(!glb.TxBytesStore().HasTxBytes(&txid), "txStore already contains transactions %s", tx.IDString())
 
 	_, err = glb.TxBytesStore().PersistTxBytesWithMetadata(txBytes, meta)
 	glb.AssertNoError(err)

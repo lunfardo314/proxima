@@ -152,7 +152,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 	ret.distributionBranchTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	require.NoError(t, err)
-	ret.distributionBranchTxID = *ret.distributionBranchTx.ID()
+	ret.distributionBranchTxID = ret.distributionBranchTx.ID()
 	t.Logf("distribution txID: %s", ret.distributionBranchTxID.StringShort())
 
 	ret.faucetOutput = ret.distributionBranchTx.MustProducedOutputWithIDAt(4)
@@ -364,7 +364,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 	for i := 0; i < howLong; i++ {
 		for seqNr := range td.seqChain {
 			endorsedSeqNr := (seqNr + 1) % len(td.seqChain)
-			endorse := td.seqChain[endorsedSeqNr][i].ID()
+			endorse := td.seqChain[endorsedSeqNr][i].IDRef()
 			txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", seqNr),
 				ChainInput:   td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
@@ -392,11 +392,11 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 				ret[seqNr] = make([]*transaction.Transaction, 0)
 				extend = extendBegin[seqNr].SequencerOutput().MustAsChainOutput()
 				endorseIdx := (seqNr + 1) % len(extendBegin)
-				endorse = extendBegin[endorseIdx].ID()
+				endorse = extendBegin[endorseIdx].IDRef()
 			} else {
 				extend = ret[seqNr][i-1].SequencerOutput().MustAsChainOutput()
 				endorseIdx := (seqNr + 1) % len(extendBegin)
-				endorse = ret[endorseIdx][i-1].ID()
+				endorse = ret[endorseIdx][i-1].IDRef()
 			}
 			ts = ledger.MaximumTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
 
@@ -443,11 +443,11 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 				ret[seqNr] = make([]*transaction.Transaction, 0)
 				extend = extendBegin[seqNr].SequencerOutput().MustAsChainOutput()
 				endorseIdx := (seqNr + 1) % len(extendBegin)
-				endorse = extendBegin[endorseIdx].ID()
+				endorse = extendBegin[endorseIdx].IDRef()
 			} else {
 				extend = ret[seqNr][i-1].SequencerOutput().MustAsChainOutput()
 				endorseIdx := (seqNr + 1) % len(extendBegin)
-				endorse = ret[endorseIdx][i-1].ID()
+				endorse = ret[endorseIdx][i-1].IDRef()
 			}
 			ts = ledger.MaximumTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
 
@@ -497,7 +497,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 	for i := range prevSlot {
 		// FIXME
 		extendOut = prevSlot[i][len(prevSlot[i])-1].SequencerOutput().MustAsChainOutput()
-		endorse = []*ledger.TransactionID{branch.ID()}
+		endorse = []*ledger.TransactionID{branch.IDRef()}
 		if extendOut.ChainID == branchChainID {
 			extendOut = branch.SequencerOutput().MustAsChainOutput()
 			endorse = nil
@@ -603,7 +603,7 @@ func (td *longConflictTestData) storeTransactions(txs ...*transaction.Transactio
 
 func (td *longConflictTestData) startTraceTx(txs ...*transaction.Transaction) {
 	for _, tx := range txs {
-		td.env.StartTracingTx(*tx.ID())
+		td.env.StartTracingTx(tx.ID())
 	}
 }
 

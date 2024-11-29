@@ -106,7 +106,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		q.Log().Warn("TxInputQueue: %v", err)
 		return
 	}
-	pass, wanted := q.inGate.checkPass(*tx.ID())
+	pass, wanted := q.inGate.checkPass(tx.ID())
 	if !pass {
 		// repeating transaction
 		q.filterHitCounter.Inc()
@@ -145,7 +145,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		q.Log().Warn("TxInputQueue from API: %v", err)
 		return
 	}
-	pass, _ := q.inGate.checkPass(*tx.ID())
+	pass, _ := q.inGate.checkPass(tx.ID())
 	if !pass {
 		// repeating transaction
 		q.filterHitCounter.Inc()

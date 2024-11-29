@@ -146,7 +146,7 @@ func Run(env environment, targetTs ledger.Time, slotData *SlotData) (*transactio
 
 	go func() {
 		for p := range task.proposalChan {
-			proposals[*p.tx.ID()] = p
+			proposals[*p.tx.IDRef()] = p
 			task.slotData.ProposalSubmitted(p.strategyShortName)
 			task.EvidenceProposal(p.strategyShortName)
 		}

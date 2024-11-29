@@ -12,7 +12,7 @@ import (
 )
 
 func (v *Vertex) TimeSlot() ledger.Slot {
-	return v.Tx.ID().Slot()
+	return v.Tx.Slot()
 }
 
 // ReferenceInput puts new input and references it. If referencing fails, no change happens and returns false
@@ -219,5 +219,5 @@ func (v *Vertex) Wrap() *WrappedTx {
 	if v.Tx.IsSequencerMilestone() {
 		seqID = util.Ref(v.Tx.SequencerTransactionData().SequencerID)
 	}
-	return _newVID(_vertex{Vertex: v}, *v.Tx.ID(), seqID)
+	return _newVID(_vertex{Vertex: v}, v.Tx.ID(), seqID)
 }

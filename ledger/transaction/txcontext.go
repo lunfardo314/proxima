@@ -36,7 +36,7 @@ func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (
 		tree:            nil,
 		traceOption:     TraceOptionNone,
 		dataContext:     nil,
-		txid:            tx.ID(),
+		txid:            tx.IDRef(),
 		sender:          tx.SenderAddress(),
 		inflationAmount: tx.InflationAmount(),
 	}

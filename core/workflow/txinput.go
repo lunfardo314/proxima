@@ -57,7 +57,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxInOption) (*ledger.Transa
 		// any malformed data chunk will be rejected immediately before all the advanced validations
 		return nil, err
 	}
-	return tx.ID(), w.TxIn(tx, opts...)
+	return tx.IDRef(), w.TxIn(tx, opts...)
 }
 
 func (w *Workflow) TxInFromAPI(tx *transaction.Transaction, trace bool) error {
@@ -100,7 +100,7 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 		opt(options)
 	}
 	// base validation
-	txid := tx.ID()
+	txid := tx.IDRef()
 
 	if !txid.IsSequencerMilestone() {
 		w.EvidenceNonSequencerTx()
@@ -195,7 +195,7 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachT
 	tsTime := tx.TimestampTime()
 	util.Assertf(nowis.After(tsTime), "nowis(%d).After(tsTime(%d))", nowis.UnixNano(), tsTime.UnixNano())
 
-	w.TraceTx(tx.ID(), "TxBytesIn: send to attach")
+	w.TraceTx(tx.IDRef(), "TxBytesIn: send to attach")
 	w.Tracef(TraceTagTxInput, "-> attach tx %s", tx.IDShortString)
 	if vid := attacher.AttachTransaction(tx, w, opts...); vid.IsBadOrDeleted() {
 		// rare event. If tx is already purged, this was an unlucky try.

@@ -97,9 +97,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	}
 
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
-	env.TraceTx(tx.ID(), "AttachTransaction")
+	env.TraceTx(tx.IDRef(), "AttachTransaction")
 
-	vid = AttachTxID(*tx.ID(), env, WithInvokedBy("addTx"))
+	vid = AttachTxID(tx.ID(), env, WithInvokedBy("addTx"))
 
 	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {

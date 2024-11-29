@@ -65,7 +65,7 @@ func (vid *WrappedTx) FlagsUpNoLock(f Flags) bool {
 }
 
 func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
-	util.Assertf(vid.ID == *v.Tx.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.ID.StringShort)
+	util.Assertf(vid.ID == v.Tx.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.ID.StringShort)
 	_, isVirtualTx := vid._genericVertex.(_virtualTx)
 	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertexNoLock: virtual tx target expected %s", vid.ID.StringShort)
 	vid._put(_vertex{Vertex: v})

@@ -477,7 +477,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 
 	seq.Tracef(TraceTag, "new milestone %s submitted successfully", tx.IDShortString)
 
-	vid, err := seq.waitMilestoneInTippool(tx.ID(), time.Now().Add(submitTimeout))
+	vid, err := seq.waitMilestoneInTippool(tx.IDRef(), time.Now().Add(submitTimeout))
 
 	if err != nil {
 		seq.Log().Error(err)

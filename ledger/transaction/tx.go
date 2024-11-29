@@ -94,7 +94,7 @@ func IDAndTimestampFromTransactionBytes(txBytes []byte) (ledger.TransactionID, l
 	if err != nil {
 		return ledger.TransactionID{}, ledger.Time{}, err
 	}
-	return *tx.ID(), tx.Timestamp(), nil
+	return tx.ID(), tx.Timestamp(), nil
 }
 
 func IDFromTransactionBytes(txBytes []byte) (ledger.TransactionID, error) {
@@ -102,7 +102,7 @@ func IDFromTransactionBytes(txBytes []byte) (ledger.TransactionID, error) {
 	if err != nil {
 		return ledger.TransactionID{}, err
 	}
-	return *tx.ID(), nil
+	return tx.ID(), nil
 }
 
 func (tx *Transaction) Validate(opt ...TxValidationOption) error {
@@ -408,7 +408,11 @@ func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Outp
 	}
 }
 
-func (tx *Transaction) ID() *ledger.TransactionID {
+func (tx *Transaction) ID() ledger.TransactionID {
+	return ledger.NewTransactionID(tx.timestamp, tx.txIDShort, tx.sequencerMilestoneFlag)
+}
+
+func (tx *Transaction) IDRef() *ledger.TransactionID {
 	ret := ledger.NewTransactionID(tx.timestamp, tx.txIDShort, tx.sequencerMilestoneFlag)
 	return &ret
 }
@@ -423,6 +427,11 @@ func (tx *Transaction) IDShortString() string {
 
 func (tx *Transaction) IDVeryShortString() string {
 	return ledger.TransactionIDStringVeryShort(tx.timestamp, tx.txIDShort, tx.sequencerMilestoneFlag)
+}
+
+func (tx *Transaction) IDStringHex() string {
+	id := tx.ID()
+	return id.StringHex()
 }
 
 func (tx *Transaction) Slot() ledger.Slot {
@@ -697,7 +706,7 @@ func (tx *Transaction) SequencerAndStemOutputIndices() (byte, byte) {
 }
 
 func (tx *Transaction) OutputID(idx byte) ledger.OutputID {
-	return ledger.MustNewOutputID(tx.ID(), idx)
+	return ledger.MustNewOutputID(tx.IDRef(), idx)
 }
 
 func (tx *Transaction) InflationAmount() uint64 {
@@ -874,7 +883,7 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 		ret.InsertAddOutputMutation(*oid, o)
 		return true
 	})
-	ret.InsertAddTxMutation(*tx.ID(), tx.Slot(), byte(tx.NumProducedOutputs()-1))
+	ret.InsertAddTxMutation(tx.ID(), tx.Slot(), byte(tx.NumProducedOutputs()-1))
 	return ret
 }
 
@@ -904,7 +913,7 @@ func (tx *Transaction) ProducedOutputsWithTargetLock(lock ledger.Lock) []*ledger
 
 func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("ID: %s", tx.ID().String())
+	ret.Add("ID: %s", tx.IDString())
 	ret.Add("Sender address: %s", tx.SenderAddress().String())
 	ret.Add("Total: %s", util.Th(tx.TotalAmount()))
 	ret.Add("Inflation: %s", util.Th(tx.InflationAmount()))
