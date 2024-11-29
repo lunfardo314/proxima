@@ -8,6 +8,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/bytepool"
 )
 
 // pull request message 1st byte is the type of the message. The rest is message body
@@ -53,9 +54,11 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
+	var msgData []byte
+
 	for {
-		msgData, err := readFrame(stream)
-		_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
+		msgData, err = readFrame(stream)
+		_, blacklisted, _ = ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingPull++
 		})
 		if blacklisted {
@@ -87,6 +90,9 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 		go ps.onReceivePullTx(id, txid)
 		ps.pullRequestsIn.Inc()
+
+		// return buffer for reuse
+		bytepool.DisposeArray(msgData)
 	}
 }
 

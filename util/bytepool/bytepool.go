@@ -50,8 +50,6 @@ func GetArray(capacity int) []byte {
 	for i := poolIndex; i < maxPools; i++ {
 		if r := bytePool[i].Get(); r != nil {
 			ret := r.([]byte)
-			util.Assertf(cap(ret) >= capacity, "cap(ret)>= capacity")
-
 			if len(ret) >= capacity {
 				return ret[:capacity]
 			}

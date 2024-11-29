@@ -8,6 +8,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/util/bytepool"
 )
 
 // MaxPayloadSize caps the message size. It includes 4 bytes of the size
@@ -27,7 +28,11 @@ func readFrame(stream network.Stream) ([]byte, error) {
 	if size == 0 {
 		return nil, nil
 	}
-	msgBuf := make([]byte, size)
+
+	//msgBuf := make([]byte, size)
+	// makes it possible to return it to the pool for reuse
+	msgBuf := bytepool.GetArray(int(size))
+
 	if n, err := io.ReadFull(stream, msgBuf); err != nil || n != int(size) {
 		if err == nil {
 			err = fmt.Errorf("exactly %d bytes expected", size)

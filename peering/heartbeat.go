@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/bytepool"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/exp/maps"
@@ -140,6 +141,8 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 			}
 			ps._evidenceHeartBeat(p, hbInfo)
 		})
+		// return buffer for reuse
+		bytepool.DisposeArray(msgData)
 	}
 }
 
