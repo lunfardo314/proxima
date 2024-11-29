@@ -98,6 +98,11 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 		})
 	})
 
+	// hopefully protects against memory leak
+	ret.RepeatInBackground("recreate_vertex_map_loop", 30*time.Second, func() bool {
+		ret.RecreateTheMap()
+		return true
+	})
 	return ret
 }
 
