@@ -64,6 +64,8 @@ var (
 	EventNewTx     = eventtype.RegisterNew[*vertex.WrappedTx]("new tx") // event may be posted more than once for the transaction
 )
 
+const recreateMapPeriod = time.Minute
+
 func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
 	for _, opt := range opts {
@@ -99,8 +101,8 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	})
 
 	// hopefully protects against memory leak
-	ret.RepeatInBackground("recreate_vertex_map_loop", 30*time.Second, func() bool {
-		ret.RecreateTheMap()
+	ret.RepeatInBackground("workflow_recreate_map_loop", recreateMapPeriod, func() bool {
+		ret.RecreateVertexMap()
 		return true
 	})
 	return ret

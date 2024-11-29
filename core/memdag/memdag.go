@@ -308,15 +308,10 @@ func (d *MemDAG) TipBranchHasTransaction(branchID, txid *ledger.TransactionID) b
 	return false
 }
 
-// RecreateTheMap to avoid memory leak
-func (d *MemDAG) RecreateTheMap() {
+// RecreateVertexMap to avoid memory leak
+func (d *MemDAG) RecreateVertexMap() {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	// 10% more than current size
-	m := make(map[ledger.TransactionID]*vertex.WrappedTx, (len(d.vertices)*110)/100)
-	for k, v := range d.vertices {
-		m[k] = v
-	}
-	d.vertices = m
+	d.vertices = maps.Clone(d.vertices)
 }

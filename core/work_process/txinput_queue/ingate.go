@@ -3,6 +3,8 @@ package txinput_queue
 import (
 	"sync"
 	"time"
+
+	"golang.org/x/exp/maps"
 )
 
 // the purpose of inGate is to let the transaction in no more than once and also prevent
@@ -62,4 +64,11 @@ func (g *inGate[T]) purgeBlackList() {
 			delete(g.m, key)
 		}
 	}
+}
+
+func (g *inGate[T]) recreateMap() {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+
+	g.m = maps.Clone(g.m)
 }

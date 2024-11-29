@@ -64,6 +64,7 @@ const (
 	inGateBlackListTTLSlots = 60 // 10 min
 	cleanIfExceeds          = 10_000
 	blackListCleanupPeriod  = 10 * time.Second
+	recreateMapPeriod       = time.Minute
 )
 
 func New(env environment) *TxInputQueue {
@@ -77,6 +78,11 @@ func New(env environment) *TxInputQueue {
 
 	ret.RepeatInBackground(Name+"_inGateCleanup", blackListCleanupPeriod, func() bool {
 		ret.inGate.purgeBlackList()
+		return true
+	})
+
+	ret.RepeatInBackground(Name+"_recreateMap", recreateMapPeriod, func() bool {
+		ret.inGate.recreateMap()
 		return true
 	})
 
