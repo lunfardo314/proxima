@@ -24,7 +24,6 @@ func initSeqWithdrawCmd() *cobra.Command {
 	}
 
 	glb.AddFlagTarget(seqSendCmd)
-	glb.AddFlagTraceTx(seqSendCmd)
 
 	seqSendCmd.InitDefaultHelpCmd()
 	return seqSendCmd

@@ -149,7 +149,7 @@ func doSpamming(cfg spammerConfig) {
 		glb.Infof("submitting bundle of %d transactions, total duration %d ticks, %v", len(bundle), bundlePace, bundleDuration)
 
 		for i, txBytes := range bundle {
-			err = glb.GetClient().SubmitTransaction(txBytes, false)
+			err = glb.GetClient().SubmitTransaction(txBytes)
 			glb.AssertNoError(err)
 			txid, err := transaction.IDFromTransactionBytes(txBytes)
 			glb.AssertNoError(err)

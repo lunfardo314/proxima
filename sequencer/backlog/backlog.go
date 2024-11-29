@@ -64,14 +64,12 @@ func New(env Environment) (*InputBacklog, error) {
 	// start listening to chain-locked account
 	env.ListenToAccount(seqID.AsChainLock(), func(wOut vertex.WrappedOutput) {
 		env.Tracef(TraceTag, "[%s] output IN: %s", ret.SequencerName, wOut.IDShortString)
-		env.TraceTx(&wOut.VID.ID, "[%s] backlog: output #%d IN", ret.SequencerName, wOut.Index)
 
 		ret.mutex.Lock()
 		defer ret.mutex.Unlock()
 
 		if _, already := ret.outputs[wOut]; already {
 			env.Tracef(TraceTag, "repeating output %s", wOut.IDShortString)
-			env.TraceTx(&wOut.VID.ID, "[%s] output #%d is already in the backlog", ret.SequencerName, wOut.Index)
 			return
 		}
 		// reference it
@@ -85,7 +83,6 @@ func New(env Environment) (*InputBacklog, error) {
 		ret.lastOutputArrived = nowis
 		ret.outputCount++
 		env.Tracef(TraceTag, "output stored in input backlog: %s (total: %d)", wOut.IDShortString, len(ret.outputs))
-		env.TraceTx(&wOut.VID.ID, "[%s] output #%d stored in the backlog", ret.SequencerName, wOut.Index)
 	})
 
 	// start periodic cleanup in background
@@ -115,22 +112,17 @@ func (b *InputBacklog) ChangedSince(t time.Time) bool {
 func (b *InputBacklog) checkAndReferenceCandidate(wOut vertex.WrappedOutput) bool {
 	if wOut.VID.IsBranchTransaction() {
 		// outputs of branch transactions are filtered out
-		// TODO probably ordinary outputs must not be allowed at the ledger constraints level
-		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: is branch", b.SequencerName, wOut.Index)
 		return false
 	}
 	if !wOut.VID.Reference() {
-		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: failed to reference", b.SequencerName, wOut.Index)
 		return false
 	}
 	if wOut.VID.GetTxStatus() == vertex.Bad {
 		wOut.VID.UnReference()
-		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: is BAD", b.SequencerName, wOut.Index)
 		return false
 	}
 	o, err := wOut.VID.OutputAt(wOut.Index)
 	if err != nil {
-		b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: OutputAt failed for #%d: %v", b.SequencerName, wOut.Index, err)
 		wOut.VID.UnReference()
 		return false
 	}
@@ -138,13 +130,11 @@ func (b *InputBacklog) checkAndReferenceCandidate(wOut vertex.WrappedOutput) boo
 		if _, idx := o.ChainConstraint(); idx != 0xff {
 			// filter out all chain constrained outputs
 			// TODO must be revisited with delegated accounts (delegation-locked on the current sequencer)
-			b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: #%d is chain-constrained", b.SequencerName, wOut.Index)
 			wOut.VID.UnReference()
 			return false
 		}
 	}
 	// it is referenced
-	b.TraceTx(&wOut.VID.ID, "[%s] backlog::checkAndReferenceCandidate: #%d success", b.SequencerName, wOut.Index)
 	return true
 }
 
@@ -232,7 +222,6 @@ func (b *InputBacklog) purgeBacklog(ttl time.Duration) int {
 	for _, wOut := range toDelete {
 		wOut.VID.UnReference()
 		delete(b.outputs, wOut)
-		b.TraceTx(&wOut.VID.ID, "[%s] output #%d has been deleted from the backlog", b.SequencerName, wOut.Index)
 	}
 
 	b.EvidenceBacklogSize(len(b.outputs))

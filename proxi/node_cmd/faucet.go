@@ -245,7 +245,6 @@ func (fct *faucet) redrawFromAccount(targetLock ledger.Accountable) (string, *le
 		TagAlongFee:      feeAmount,
 		Amount:           fct.cfg.outputAmount,
 		Target:           targetLock.AsLock(),
-		TraceTx:          glb.TraceTx(),
 	})
 
 	if err != nil {

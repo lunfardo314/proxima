@@ -20,7 +20,6 @@ func initMakeChainCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run:   runMakeChainCmd,
 	}
-	glb.AddFlagTraceTx(makeChainCmd)
 	makeChainCmd.InitDefaultHelpCmd()
 
 	return makeChainCmd
@@ -47,8 +46,6 @@ func MakeChain(onChainAmount uint64) (*transaction.TxContext, ledger.ChainID, er
 			feeAmount = md.MinimumFee
 		}
 	}
-	glb.Infof("trace on node: %v", glb.TraceTx())
-
 	glb.Infof("Creating new chain origin:")
 	glb.Infof("   on-chain balance: %s", util.Th(onChainAmount))
 	glb.Infof("   tag-along fee %s to the sequencer %s", util.Th(feeAmount), tagAlongSeqID)

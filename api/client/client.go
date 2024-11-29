@@ -254,11 +254,8 @@ func (c *APIClient) GetOutputData(oid *ledger.OutputID) ([]byte, error) {
 	return oData, nil
 }
 
-func (c *APIClient) SubmitTransaction(txBytes []byte, trace ...bool) error {
+func (c *APIClient) SubmitTransaction(txBytes []byte) error {
 	url := c.prefix + api.PathSubmitTransaction
-	if len(trace) > 0 && trace[0] {
-		url += "?trace=true"
-	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(txBytes))
 	if err != nil {
 		return err
@@ -462,7 +459,6 @@ type TransferFromED25519WalletParams struct {
 	Amount           uint64
 	Target           ledger.Lock
 	MaxOutputs       int
-	TraceTx          bool
 }
 
 const minimumTransferAmount = uint64(1000)
@@ -492,7 +488,7 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	if err != nil {
 		return nil, err
 	}
-	err = c.SubmitTransaction(txBytes, par.TraceTx)
+	err = c.SubmitTransaction(txBytes)
 	return txCtx, err
 }
 
@@ -667,7 +663,7 @@ func (c *APIClient) DeleteChainOrigin(par DeleteChainOriginParams) (*transaction
 	if err != nil {
 		return nil, err
 	}
-	if err = c.SubmitTransaction(txBytes, par.TraceTx); err != nil {
+	if err = c.SubmitTransaction(txBytes); err != nil {
 		return nil, err
 	}
 

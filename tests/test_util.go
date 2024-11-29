@@ -601,12 +601,6 @@ func (td *longConflictTestData) storeTransactions(txs ...*transaction.Transactio
 	td.storeTxBytes(txBytes...)
 }
 
-func (td *longConflictTestData) startTraceTx(txs ...*transaction.Transaction) {
-	for _, tx := range txs {
-		td.env.StartTracingTx(tx.ID())
-	}
-}
-
 func (td *longConflictTestData) attachTxBytes(txBytesMulti ...[]byte) {
 	for _, txBytes := range txBytesMulti {
 		_, err := attacher.AttachTransactionFromBytes(txBytes, td.wrk)
@@ -695,7 +689,6 @@ func (td *workflowTestData) spamTransfers(par *spammerParams, ctx context.Contex
 			wg.Add(1)
 			txid, err := td.wrk.TxBytesIn(txBytes,
 				workflow.WithSourceType(txmetadata.SourceTypeAPI),
-				workflow.WithTxTraceFlag(par.traceTx),
 			)
 			require.NoError(td.t, err)
 			par.spammedTxIDs = append(par.spammedTxIDs, *txid)

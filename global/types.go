@@ -68,9 +68,6 @@ type (
 	Logging interface {
 		Log() *zap.SugaredLogger
 		Tracef(tag string, format string, args ...any)
-		// TODO remove TraceTx
-		TraceTxEnable()
-		TraceTx(txid *ledger.TransactionID, format string, args ...any)
 		// Assertf asserts only if global shutdown wasn't issued
 		Assertf(cond bool, format string, args ...any)
 		AssertNoError(err error, prefix ...string)
@@ -104,20 +101,12 @@ type (
 		RepeatInBackground(name string, period time.Duration, fun func() bool, skipFirst ...bool) // runs background goroutine
 	}
 
-	TraceTx interface {
-		StartTracingTx(txid ledger.TransactionID)
-		StopTracingTx(txid ledger.TransactionID)
-		StartTracingTags(tags ...string)
-		StopTracingTag(string)
-	}
-
 	Metrics interface {
 		MetricsRegistry() *prometheus.Registry
 	}
 
 	NodeGlobal interface {
 		Logging
-		TraceTx
 		StartStop
 		Metrics
 		IsBootstrapMode() bool

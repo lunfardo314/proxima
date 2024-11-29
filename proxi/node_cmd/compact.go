@@ -22,8 +22,6 @@ func initCompactOutputsCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		Run:   runCompactCmd,
 	}
-	glb.AddFlagTraceTx(compactCmd)
-
 	compactCmd.InitDefaultHelpCmd()
 	return compactCmd
 }
@@ -67,7 +65,6 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 
 	var prompt string
 	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
-	glb.Infof("TraceTx: %v", glb.TraceTx())
 
 	prompt = fmt.Sprintf("compacting will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.StringShort())
 	if !glb.YesNoPrompt(prompt, true) {
@@ -83,7 +80,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(txCtx != nil, "something wrong: transaction context is nil")
 	txBytes := txCtx.TransactionBytes()
 	glb.Infof("Submitting compacting transaction with %d inputs (%d bytes)..", txCtx.NumInputs(), len(txBytes))
-	err = glb.GetClient().SubmitTransaction(txBytes, glb.TraceTx())
+	err = glb.GetClient().SubmitTransaction(txBytes)
 	glb.AssertNoError(err)
 
 	if !glb.NoWait() {

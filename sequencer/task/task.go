@@ -217,15 +217,10 @@ func (t *Task) InsertTagAlongInputs(a *attacher.IncrementalAttacher) (numInserte
 
 	preSelected := t.Backlog().FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
 		if !ledger.ValidSequencerPace(wOut.Timestamp(), a.TargetTs()) {
-			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs:#%d  not valid pace -> not pre-selected (target %s)", wOut.Index, a.TargetTs().String)
 			return false
 		}
 		// fast filtering out already consumed outputs in the predecessor milestone context
-		already := t.IsConsumedInThePastPath(wOut, a.Extending().VID)
-		if already {
-			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs: #%d already consumed in the past path -> not pre-selected", wOut.Index)
-		}
-		return !already
+		return !t.IsConsumedInThePastPath(wOut, a.Extending().VID)
 	})
 	t.Tracef(TraceTagInsertTagAlongInputs, "%s. Pre-selected: %d", a.Name, len(preSelected))
 
@@ -235,14 +230,11 @@ func (t *Task) InsertTagAlongInputs(a *attacher.IncrementalAttacher) (numInserte
 			return
 		default:
 		}
-		t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs: pre-selected #%d", wOut.Index)
 		if success, err := a.InsertTagAlongInput(wOut); success {
 			numInserted++
 			t.Tracef(TraceTagInsertTagAlongInputs, "%s. Inserted %s", a.Name, wOut.IDShortString)
-			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs %s. Inserted #%d", a.Name, wOut.Index)
 		} else {
 			t.Tracef(TraceTagInsertTagAlongInputs, "%s. Failed to insert %s: '%v'", a.Name, wOut.IDShortString, err)
-			t.TraceTx(&wOut.VID.ID, "InsertTagAlongInputs %s. Failed to insert #%d: '%v'", a.Name, wOut.Index, err)
 		}
 		if a.NumInputs() >= t.MaxTagAlongInputs() {
 			return

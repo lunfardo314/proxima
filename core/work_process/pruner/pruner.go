@@ -77,9 +77,6 @@ func (p *Pruner) pruneVertices() (markedForDeletionCount, unreferencedPastConeCo
 		}
 	}
 	p.PurgeDeletedVertices(toDelete)
-	for _, deleted := range toDelete {
-		p.StopTracingTx(deleted.ID)
-	}
 	return
 }
 

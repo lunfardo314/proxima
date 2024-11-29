@@ -19,7 +19,6 @@ func initDeleteChainCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run:   runDeleteChainCmd,
 	}
-	glb.AddFlagTraceTx(deleteChainCmd)
 	deleteChainCmd.InitDefaultHelpCmd()
 
 	return deleteChainCmd
@@ -44,8 +43,6 @@ func DeleteChain(chainId *ledger.ChainID) (*transaction.TxContext, error) {
 			feeAmount = md.MinimumFee
 		}
 	}
-	glb.Infof("trace on node: %v", glb.TraceTx())
-
 	glb.Infof("Deleting chain origin:")
 	glb.Infof("   chain id: %s", chainId.String())
 	glb.Infof("   tag-along fee %s to the sequencer %s", util.Th(feeAmount), tagAlongSeqID)

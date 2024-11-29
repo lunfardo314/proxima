@@ -92,8 +92,8 @@ func (p *ProximaNode) LatestReliableState() (multistate.SugaredStateReader, erro
 	return p.workflow.LatestReliableState()
 }
 
-func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte, trace bool) {
-	p.workflow.TxBytesInFromAPIQueued(txBytes, trace)
+func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) {
+	p.workflow.TxBytesInFromAPIQueued(txBytes)
 }
 
 func (p *ProximaNode) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble {

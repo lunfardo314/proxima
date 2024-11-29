@@ -29,7 +29,7 @@ type (
 		GetSyncInfo() *api.SyncInfo
 		GetPeersInfo() *api.PeersInfo
 		LatestReliableState() (multistate.SugaredStateReader, error)
-		SubmitTxBytesFromAPI(txBytes []byte, trace bool)
+		SubmitTxBytesFromAPI(txBytes []byte)
 		QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble
 		GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion
 		GetLatestReliableBranch() *multistate.BranchData
@@ -325,9 +325,8 @@ func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// tx tracing on server parameter
-	_, trace := r.URL.Query()["trace"]
 	err = util.CatchPanicOrError(func() error {
-		srv.SubmitTxBytesFromAPI(slices.Clip(txBytes), trace)
+		srv.SubmitTxBytesFromAPI(slices.Clip(txBytes))
 		return nil
 	})
 	if err != nil {

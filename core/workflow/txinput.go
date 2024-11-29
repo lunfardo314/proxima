@@ -18,8 +18,6 @@ type (
 		txMetadata       txmetadata.TransactionMetadata
 		receivedFromPeer *peer.ID
 		//callback         func(vid *vertex.WrappedTx, err error)
-		txTrace bool
-		//ctx              context.Context
 	}
 
 	TxInOption func(options *txInOptions)
@@ -60,18 +58,14 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxInOption) (*ledger.Transa
 	return tx.IDRef(), w.TxIn(tx, opts...)
 }
 
-func (w *Workflow) TxInFromAPI(tx *transaction.Transaction, trace bool) error {
-	return w.TxIn(tx,
-		WithSourceType(txmetadata.SourceTypeAPI),
-		WithTxTraceFlag(trace),
-	)
+func (w *Workflow) TxInFromAPI(tx *transaction.Transaction) error {
+	return w.TxIn(tx, WithSourceType(txmetadata.SourceTypeAPI))
 }
 
-func (w *Workflow) TxBytesInFromAPIQueued(txBytes []byte, trace bool) {
+func (w *Workflow) TxBytesInFromAPIQueued(txBytes []byte) {
 	w.txInputQueue.Push(txinput_queue.Input{
 		Cmd:        txinput_queue.CmdFromAPI,
 		TxBytes:    txBytes,
-		TraceFlag:  trace,
 		TxMetaData: &txmetadata.TransactionMetadata{TxBytesReceived: util.Ref(time.Now())},
 	})
 }
@@ -106,16 +100,8 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 		w.EvidenceNonSequencerTx()
 	}
 
-	if options.txTrace {
-		w.StartTracingTx(*txid)
-	}
 	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
 	// bytes are identifiable as transaction
-
-	//if !tx.IsSequencerMilestone() {
-	//	// callback is only possible when tx is sequencer milestone
-	//	options.callback = func(_ *vertex.WrappedTx, _ error) {}
-	//}
 
 	// check time bounds
 	// TODO revisit checking lower time bounds
@@ -135,14 +121,12 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 			return err
 		}
 		w.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
-		w.TraceTx(txid, "TxBytesIn: checking time bounds: '%v'", err)
 	}
 
 	// run remaining pre-validations on the transaction
 	if err = tx.Validate(transaction.MainTxValidationOptions...); err != nil {
 		err = fmt.Errorf("error while pre-validating transaction %s: '%w'", txid.StringShort(), err)
 		w.Tracef(TraceTagTxInput, "%v", err)
-		w.TraceTx(txid, "TxBytesIn: %v", err)
 		attacher.InvalidateTxID(*txid, w, err)
 		return err
 	}
@@ -181,7 +165,6 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 			w.ClockCatchUpWithLedgerTime(txid.Timestamp())
 
 			w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
-			w.TraceTx(txid, "TxBytesIn: -> release")
 
 			w._attach(tx, attachOpts...)
 		}()
@@ -195,12 +178,10 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachT
 	tsTime := tx.TimestampTime()
 	util.Assertf(nowis.After(tsTime), "nowis(%d).After(tsTime(%d))", nowis.UnixNano(), tsTime.UnixNano())
 
-	w.TraceTx(tx.IDRef(), "TxBytesIn: send to attach")
 	w.Tracef(TraceTagTxInput, "-> attach tx %s", tx.IDShortString)
 	if vid := attacher.AttachTransaction(tx, w, opts...); vid.IsBadOrDeleted() {
 		// rare event. If tx is already purged, this was an unlucky try.
 		// Transaction will be erased from the dag and pulled again, if necessary
-		w.TraceTx(&vid.ID, "TxBytesIn: -> failed to attach: bad or deleted: err = %v", vid.GetError)
 		w.Tracef(TraceTagTxInput, "-> failed to attach tx %s: it is bad or deleted: err = %v", vid.IDShortString, vid.GetError)
 	}
 }
@@ -208,19 +189,6 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachT
 func (w *Workflow) OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata) {
 	w.TxBytesInFromPeerQueued(txBytes, meta, w.SelfPeerID(), nil)
 }
-
-//func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TxInOption {
-//	return func(opts *txInOptions) {
-//		opts.callback = fun
-//	}
-//}
-
-//
-//func WithContext(ctx context.Context) TxInOption {
-//	return func(opts *txInOptions) {
-//		opts.ctx = ctx
-//	}
-//}
 
 func WithMetadata(metadata *txmetadata.TransactionMetadata) TxInOption {
 	return func(opts *txInOptions) {
@@ -242,11 +210,5 @@ func WithPeerMetadata(peerID peer.ID, metadata *txmetadata.TransactionMetadata) 
 			opts.txMetadata = *metadata
 		}
 		opts.receivedFromPeer = &peerID
-	}
-}
-
-func WithTxTraceFlag(trace bool) TxInOption {
-	return func(opts *txInOptions) {
-		opts.txTrace = trace
 	}
 }

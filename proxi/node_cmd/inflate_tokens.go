@@ -16,7 +16,6 @@ func initInflateTokensCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(3),
 		Run:   runInflateTokensCmd,
 	}
-	glb.AddFlagTraceTx(inflateChainCmd)
 	inflateChainCmd.InitDefaultHelpCmd()
 
 	return inflateChainCmd

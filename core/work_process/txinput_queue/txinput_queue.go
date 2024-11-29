@@ -20,7 +20,7 @@ type (
 	environment interface {
 		global.NodeGlobal
 		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
-		TxInFromAPI(tx *transaction.Transaction, trace bool) error
+		TxInFromAPI(tx *transaction.Transaction) error
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, except ...peer.ID)
 	}
 
@@ -29,7 +29,6 @@ type (
 		TxBytes    []byte
 		TxMetaData *txmetadata.TransactionMetadata
 		FromPeer   peer.ID
-		TraceFlag  bool
 		TxData     []byte // full data buffer of the transaction
 	}
 
@@ -151,7 +150,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		q.filterHitCounter.Inc()
 		return
 	}
-	if err = q.TxInFromAPI(tx, inp.TraceFlag); err != nil {
+	if err = q.TxInFromAPI(tx); err != nil {
 		q.badTxCounter.Inc()
 		q.Log().Warn("TxInputQueue from API: %v", err)
 		return

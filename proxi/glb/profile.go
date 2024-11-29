@@ -65,18 +65,6 @@ func MustGetTarget() ledger.Accountable {
 	return ret
 }
 
-var traceTx bool
-
-func AddFlagTraceTx(cmd *cobra.Command) {
-	cmd.PersistentFlags().BoolVarP(&traceTx, "trace", "x", false, "trace transaction on the node")
-	err := viper.BindPFlag("trace", cmd.PersistentFlags().Lookup("trace"))
-	AssertNoError(err)
-}
-
-func TraceTx() bool {
-	return traceTx
-}
-
 func GetOwnSequencerID() *ledger.ChainID {
 	seqIDStr := viper.GetString("wallet.sequencer_id")
 	if seqIDStr == "" {

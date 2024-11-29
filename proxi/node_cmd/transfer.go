@@ -21,7 +21,6 @@ func initTransferCmd() *cobra.Command {
 	}
 
 	glb.AddFlagTarget(transferCmd)
-	glb.AddFlagTraceTx(transferCmd)
 
 	transferCmd.InitDefaultHelpCmd()
 	return transferCmd
@@ -53,7 +52,6 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 			feeAmount = md.MinimumFee
 		}
 	}
-	glb.Infof("trace on node: %v", glb.TraceTx())
 	prompt := fmt.Sprintf("transfer will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.StringShort())
 
 	if !glb.YesNoPrompt(prompt, true) {
@@ -67,7 +65,6 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 		TagAlongFee:      feeAmount,
 		Amount:           amount,
 		Target:           target.AsLock(),
-		TraceTx:          glb.TraceTx(),
 	})
 
 	if txCtx != nil {

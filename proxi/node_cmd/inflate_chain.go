@@ -20,7 +20,6 @@ func initInflateChainCmd() *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		Run:     runInflateChainCmd,
 	}
-	glb.AddFlagTraceTx(inflateChainCmd)
 	inflateChainCmd.InitDefaultHelpCmd()
 
 	inflateChainCmd.PersistentFlags().IntVarP(&periodInSlots, "slots", "s", 10, "period in slots")
@@ -109,7 +108,7 @@ func inflateChain(chainTransitionPeriodSlots ledger.Slot, chainId ledger.ChainID
 		}
 		glb.Infof("submitting the transaction %s", txid.String())
 
-		err = glb.GetClient().SubmitTransaction(txBytes, false)
+		err = glb.GetClient().SubmitTransaction(txBytes)
 		glb.AssertNoError(err)
 
 		glb.ReportTxInclusion(txid, time.Second)

@@ -16,8 +16,6 @@ const TraceTagBranchAvailable = "branchAvailable"
 // AttachTxID ensures the txid is on the MemDAG
 // It load existing branches but does not pull anything
 func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
-	//env.TraceTx(&txid, "AttachTxID")
-
 	options := &_attacherOptions{}
 	for _, opt := range opts {
 		opt(options)
@@ -27,8 +25,6 @@ func AttachTxID(txid ledger.TransactionID, env Environment, opts ...AttachTxOpti
 		vid = env.GetVertexNoLock(&txid)
 		if vid != nil {
 			// found existing -> return it
-			//env.Tracef(TraceTagAttach, "AttachTxID: found existing %s%s", txid.StringShort, by)
-			//env.TraceTx(&txid, "AttachTxID: found existing")
 			return
 		}
 
@@ -95,9 +91,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		now := ledger.TimeNow()
 		util.Assertf(!now.Before(tx.Timestamp()), "!now(%s).Before(tx.Timestamp())(%s)", now.String, tx.Timestamp().String)
 	}
-
 	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
-	env.TraceTx(tx.IDRef(), "AttachTransaction")
 
 	vid = AttachTxID(tx.ID(), env, WithInvokedBy("addTx"))
 
@@ -133,11 +127,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 				defer env.DecCounter("att")
 
 				env.MarkWorkProcessStarted(vid.IDShortString())
-				env.TraceTx(&vid.ID, "runMilestoneAttacher: start")
-
 				runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
-
-				env.TraceTx(&vid.ID, "runMilestoneAttacher: exit")
 				env.MarkWorkProcessStopped(vid.IDShortString())
 
 				if metadata != nil && metadata.TxBytesReceived != nil {
@@ -169,7 +159,6 @@ func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...AttachT
 // InvalidateTxID marks existing vertex as BAD or creates new BAD
 func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *vertex.WrappedTx {
 	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
-	env.TraceTx(&txid, "InvalidateTxID")
 
 	vid := AttachTxID(txid, env, WithInvokedBy("InvalidateTxID"))
 	vid.SetTxStatusBad(reason)
@@ -177,7 +166,6 @@ func InvalidateTxID(txid ledger.TransactionID, env Environment, reason error) *v
 }
 
 func AttachOutputID(oid ledger.OutputID, env Environment, opts ...AttachTxOption) vertex.WrappedOutput {
-	env.TraceTx(util.Ref(oid.TransactionID()), "AttachOutputID: #%d", oid.Index())
 	return vertex.WrappedOutput{
 		VID:   AttachTxID(oid.TransactionID(), env, opts...),
 		Index: oid.Index(),

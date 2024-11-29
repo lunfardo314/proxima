@@ -280,19 +280,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		}
 		testData.logDAGInfo()
 	})
-	t.Run("n double spends with TraceTx", func(t *testing.T) {
-		//attacher.SetTraceOn()
-		const nConflicts = 10
-		testData := initWorkflowTestWithConflicts(t, nConflicts, 1, false)
-		for _, txBytes := range testData.txBytesConflicting {
-			txid, err := transaction.IDFromTransactionBytes(txBytes)
-			require.NoError(t, err)
-			testData.env.StartTracingTx(txid)
-			_, err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
-			require.NoError(t, err)
-		}
-		testData.logDAGInfo()
-	})
 	t.Run("n double spends consumed", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const nConflicts = 5
@@ -967,7 +954,6 @@ func TestAttachSeqChains(t *testing.T) {
 		}
 	})
 	t.Run("with pull", func(t *testing.T) {
-		//attacher.SetTraceOn()
 		const (
 			nConflicts            = 5
 			nChains               = 5
@@ -1006,47 +992,6 @@ func TestAttachSeqChains(t *testing.T) {
 		}
 		//testData.wrk.SaveGraph("utangle")
 	})
-	t.Run("with pull TraceTx", func(t *testing.T) {
-		const (
-			nConflicts            = 5
-			nChains               = 5
-			howLongConflictChains = 2  // 97 fails when crosses slot boundary
-			howLongSeqChains      = 30 // 90 // 95 fails
-		)
-
-		testData := initLongConflictTestData(t, nConflicts, nChains, howLongConflictChains)
-		testData.makeSeqBeginnings(false)
-		testData.makeSeqChains(howLongSeqChains)
-		//testData.printTxIDs()
-
-		var wg sync.WaitGroup
-
-		testData.txBytesAttach()
-		vids := make([]*vertex.WrappedTx, len(testData.seqChain))
-		for seqNr, txSequence := range testData.seqChain {
-			for i, tx := range txSequence {
-				if i < len(txSequence)-1 {
-					_, err := testData.wrk.TxBytesStore().PersistTxBytesWithMetadata(tx.Bytes(), nil)
-					require.NoError(t, err)
-				} else {
-					wg.Add(1)
-					testData.env.StartTracingTx(tx.ID())
-					vids[seqNr] = attacher.AttachTransaction(tx, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-						wg.Done()
-					}))
-				}
-			}
-		}
-		wg.Wait()
-
-		testData.stopAndWait()
-		//testData.logDAGInfo()
-		for _, vid := range vids {
-			require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
-		}
-		//testData.wrk.SaveGraph("utangle")
-	})
-	// TODO failing
 	t.Run("with 1 branch pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
