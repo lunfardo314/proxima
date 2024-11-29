@@ -113,16 +113,14 @@ func (seq *Sequencer) purgeOwnMilestones(ttl time.Duration) (int, int) {
 	seq.ownMilestonesMutex.Lock()
 	defer seq.ownMilestonesMutex.Unlock()
 
-	toDelete := make([]*vertex.WrappedTx, 0)
+	count := 0
 	for vid, withTime := range seq.ownMilestones {
 		if withTime.since.Before(horizon) {
-			toDelete = append(toDelete, vid)
+			vid.UnReference()
+			delete(seq.ownMilestones, vid)
+			count++
 		}
 	}
 
-	for _, vid := range toDelete {
-		vid.UnReference()
-		delete(seq.ownMilestones, vid)
-	}
-	return len(toDelete), len(seq.ownMilestones)
+	return count, len(seq.ownMilestones)
 }
