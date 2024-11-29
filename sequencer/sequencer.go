@@ -144,7 +144,6 @@ func (seq *Sequencer) Start() {
 		seq.log.Infof("sequencer has been STARTED %s", util.Ref(seq.SequencerID()).String())
 
 		ttl := time.Duration(seq.config.MilestonesTTLSlots) * ledger.L().ID.SlotDuration()
-		seq.Log().Infof("purge own milestones TTL: %v", ttl)
 
 		seq.RepeatInBackground(seq.SequencerName()+"_own_milestone_purge", ownMilestonePurgePeriod, func() bool {
 			if n, remain := seq.purgeOwnMilestones(ttl); n > 0 {

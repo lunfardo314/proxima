@@ -31,7 +31,7 @@ type (
 const (
 	DefaultMaxTagAlongInputs  = 20
 	MinimumBacklogTTLSlots    = 10
-	MinimumMilestonesTTLSlots = 100 // 10
+	MinimumMilestonesTTLSlots = 24 // 10
 )
 
 func defaultConfigOptions() *ConfigOptions {
