@@ -212,20 +212,16 @@ func (b *InputBacklog) purgeBacklog(ttl time.Duration) int {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	toDelete := make([]vertex.WrappedOutput, 0)
+	count := 0
 	for wOut, since := range b.outputs {
 		if since.Before(horizon) {
-			toDelete = append(toDelete, wOut)
+			wOut.VID.UnReference()
+			delete(b.outputs, wOut)
+			count++
 		}
 	}
-
-	for _, wOut := range toDelete {
-		wOut.VID.UnReference()
-		delete(b.outputs, wOut)
-	}
-
 	b.EvidenceBacklogSize(len(b.outputs))
-	return len(toDelete)
+	return count
 }
 
 // LoadSequencerStartTips loads tip transactions relevant to the sequencer startup from persistent state to the memDAG
