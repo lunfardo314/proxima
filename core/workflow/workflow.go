@@ -87,8 +87,8 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.pruner = pruner.New(ret)
 	snapshot.Start(ret)
 
-	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata) {
-		ret.TxBytesInFromPeerQueued(txBytes, metadata, from)
+	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txData []byte) {
+		ret.TxBytesInFromPeerQueued(txBytes, metadata, from, txData)
 	})
 
 	ret.peers.OnReceivePullTxRequest(func(from peer.ID, txid ledger.TransactionID) {

@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/util/bytepool"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -29,6 +30,7 @@ type (
 		TxMetaData *txmetadata.TransactionMetadata
 		FromPeer   peer.ID
 		TraceFlag  bool
+		TxData     []byte // full data buffer of the transaction
 	}
 
 	TxInputQueue struct {
@@ -108,7 +110,8 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	if !pass {
 		// repeating transaction
 		q.filterHitCounter.Inc()
-		// TODO dispose memory
+		// transaction will not be used, return data buffer for reuse
+		bytepool.DisposeArray(inp.TxData)
 		return
 	}
 
@@ -124,6 +127,8 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
 		q.badTxCounter.Inc()
 		q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
+		// transaction will not be used, return data buffer for reuse
+		bytepool.DisposeArray(inp.TxData)
 		return
 	}
 	if !wanted {

@@ -30,6 +30,9 @@ func poolIndexByCapacity(capacity int) int {
 }
 
 func DisposeArray(s []byte) {
+	if len(s) == 0 {
+		return
+	}
 	poolIndex := poolIndexByCapacity(cap(s))
 	if poolIndex < 0 {
 		// very big chunks -> feed to GC

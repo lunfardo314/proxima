@@ -133,7 +133,7 @@ func TestSendMsg(t *testing.T) {
 
 		for _, h := range hosts {
 			h1 := h
-			h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
+			h.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata, _ []byte) {
 				t.Logf("host %s received %d bytes from %s", h1.host.ID().String(), len(txBytes), from.String())
 			})
 		}
@@ -161,7 +161,7 @@ func TestSendMsg(t *testing.T) {
 		var counter1 atomic.Int64
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata, _ []byte) {
 				counter1.Inc()
 				counter.Tick()
 			})
@@ -201,7 +201,7 @@ func TestSendMsg(t *testing.T) {
 		var counter1 atomic.Int64
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata, _ []byte) {
 				counter1.Inc()
 				counter.Tick()
 			})
@@ -249,7 +249,7 @@ func TestSendMsg(t *testing.T) {
 		var counter1 atomic.Int64
 		for _, h := range hosts {
 			h1 := h
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata, _ []byte) {
 				counter1.Inc()
 				counter.Tick()
 			})
@@ -299,7 +299,7 @@ func TestSendMsg(t *testing.T) {
 				go h1.SendTxBytesWithMetadataToPeer(from, txid[:], nil)
 			})
 
-			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata) {
+			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata, _ []byte) {
 				require.True(t, len(txBytes) == 32)
 				var txid ledger.TransactionID
 				copy(txid[:], txBytes)

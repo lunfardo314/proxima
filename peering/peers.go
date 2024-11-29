@@ -37,7 +37,7 @@ func NewPeersDummy() *Peers {
 		peers:           make(map[peer.ID]*Peer),
 		blacklist:       make(map[peer.ID]_deadlineWithReason),
 		cooloffList:     make(map[peer.ID]time.Time),
-		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
+		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ []byte) {},
 		onReceivePullTx: func(_ peer.ID, _ ledger.TransactionID) {},
 	}
 	//ret.registerMetrics()
@@ -91,7 +91,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		blacklist:            make(map[peer.ID]_deadlineWithReason),
 		cooloffList:          make(map[peer.ID]time.Time),
 		connectList:          set.New[peer.ID](),
-		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata) {},
+		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ []byte) {},
 		onReceivePullTx:      func(_ peer.ID, _ ledger.TransactionID) {},
 		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
 		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
@@ -487,7 +487,7 @@ func (ps *Peers) _isInConnectList(id peer.ID) bool {
 	return yes
 }
 
-func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata)) {
+func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txData []byte)) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 

@@ -76,7 +76,7 @@ func (w *Workflow) TxBytesInFromAPIQueued(txBytes []byte, trace bool) {
 	})
 }
 
-func (w *Workflow) TxBytesInFromPeerQueued(txBytes []byte, metaData *txmetadata.TransactionMetadata, from peer.ID) {
+func (w *Workflow) TxBytesInFromPeerQueued(txBytes []byte, metaData *txmetadata.TransactionMetadata, from peer.ID, txData []byte) {
 	if metaData == nil {
 		metaData = &txmetadata.TransactionMetadata{}
 	}
@@ -86,6 +86,7 @@ func (w *Workflow) TxBytesInFromPeerQueued(txBytes []byte, metaData *txmetadata.
 		TxBytes:    txBytes,
 		TxMetaData: metaData,
 		FromPeer:   from,
+		TxData:     txData,
 	})
 }
 
@@ -205,7 +206,7 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachT
 }
 
 func (w *Workflow) OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata) {
-	w.TxBytesInFromPeerQueued(txBytes, meta, w.SelfPeerID())
+	w.TxBytesInFromPeerQueued(txBytes, meta, w.SelfPeerID(), nil)
 }
 
 //func WithAttachmentCallback(fun func(vid *vertex.WrappedTx, err error)) TxInOption {

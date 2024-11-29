@@ -6,6 +6,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/util/bytepool"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -39,10 +40,14 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
+
+	var txBytesWithMetadata, metadataBytes, txBytes []byte
+	var metadata *txmetadata.TransactionMetadata
+
 	for {
-		txBytesWithMetadata, err := readFrame(stream)
+		txBytesWithMetadata, err = readFrame(stream)
 		ps.inMsgCounter.Inc()
-		_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
+		_, blacklisted, _ = ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingTx++
 		})
 		if blacklisted {
@@ -54,20 +59,22 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			return
 		}
 
-		metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
+		metadataBytes, txBytes, err = txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 		if err != nil {
 			// protocol violation
 			err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
 			ps.dropPeer(id, err.Error(), true)
+			bytepool.DisposeArray(txBytesWithMetadata)
 			return
 		}
-		metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
+		metadata, err = txmetadata.TransactionMetadataFromBytes(metadataBytes)
 		if err != nil {
 			// protocol violation
 			err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
 			ps.dropPeer(id, err.Error(), true)
+			bytepool.DisposeArray(txBytesWithMetadata)
 			return
 		}
 
@@ -76,7 +83,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		ps.transactionsReceivedCounter.Inc()
 		ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
 
-		go ps.onReceiveTx(id, txBytes, metadata)
+		go ps.onReceiveTx(id, txBytes, metadata, txBytesWithMetadata)
 	}
 }
 

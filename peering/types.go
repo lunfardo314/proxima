@@ -84,7 +84,7 @@ type (
 		connectList      set.Set[peer.ID]
 
 		// on receive handlers
-		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata)
+		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata, txData []byte)
 		onReceivePullTx func(from peer.ID, txid ledger.TransactionID)
 		// lpp protocol names
 		lppProtocolGossip    protocol.ID
