@@ -218,16 +218,9 @@ func (t *SequencerTips) purgeAndLog() {
 			}
 		}
 		if md.BaselineBranch() == nil {
-			t.latestMilestones[chainID].UnReference()
+			md.UnReference()
 			delete(t.latestMilestones, chainID)
 			t.Log().Infof("[tippool] chainID %s has been removed from the sequencer tippool", chainID.StringShort())
 		}
 	}
-}
-
-func (t *SequencerTips) MilestoneArrivedSince(when time.Time) bool {
-	t.mutex.RLock()
-	defer t.mutex.RUnlock()
-
-	return when.Before(t.latestMilestoneAddedWhen)
 }

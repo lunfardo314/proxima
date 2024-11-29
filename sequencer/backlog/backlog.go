@@ -28,7 +28,6 @@ type (
 		NumSequencerTips() int
 		BacklogTTLSlots() int
 		MustEnsureBranch(txid ledger.TransactionID) *vertex.WrappedTx
-		MilestoneArrivedSince(when time.Time) bool
 		EvidenceBacklogSize(size int)
 	}
 
@@ -102,10 +101,6 @@ func (b *InputBacklog) ArrivedOutputsSince(t time.Time) bool {
 	defer b.mutex.RUnlock()
 
 	return b.lastOutputArrived.After(t)
-}
-
-func (b *InputBacklog) ChangedSince(t time.Time) bool {
-	return b.ArrivedOutputsSince(t) || b.MilestoneArrivedSince(t)
 }
 
 // checkAndReferenceCandidate if returns false, it is unreferenced, otherwise referenced
