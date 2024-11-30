@@ -2,7 +2,6 @@ package attacher
 
 import (
 	"crypto/ed25519"
-	"errors"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -13,8 +12,6 @@ import (
 )
 
 const TraceTagIncrementalAttacher = "incAttach"
-
-var ErrPastConeNotSolidYet = errors.New("past cone not solid yet")
 
 func NewIncrementalAttacher(name string, env Environment, targetTs ledger.Time, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
 	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
