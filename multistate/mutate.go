@@ -92,17 +92,6 @@ func (m *mutationAddTx) valueBytes() []byte {
 	return common.ConcatBytes(m.TimeSlot.Bytes(), []byte{m.LastOutputIndex})
 }
 
-func addTxValueFromBytes(data []byte) (ledger.Slot, byte, error) {
-	if len(data) != 5 {
-		return 0, 0, fmt.Errorf("wrong data length")
-	}
-	retSlot, err := ledger.SlotFromBytes(data[:4])
-	if err != nil {
-		return 0, 0, err
-	}
-	return retSlot, data[4], nil
-}
-
 func NewMutations() *Mutations {
 	return &Mutations{
 		mut: make([]mutationCmd, 0),
