@@ -11,7 +11,7 @@ require (
 	github.com/libp2p/go-libp2p v0.35.1
 	github.com/libp2p/go-libp2p-kad-dht v0.25.2
 	github.com/lunfardo314/easyfl v0.0.0-20240809093522-2e2fc7c578b2
-	github.com/lunfardo314/unitrie v0.0.0-20241129171742-2ef9ad4e2859
+	github.com/lunfardo314/unitrie v0.0.0-20241130104338-997b5d9d5b81
 	github.com/multiformats/go-multiaddr v0.12.4
 	github.com/prometheus/client_golang v1.19.1
 	github.com/spf13/cobra v1.8.1
