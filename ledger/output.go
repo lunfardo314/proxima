@@ -519,19 +519,3 @@ func (o *Output) MustValidOutput() {
 	_, err := LockFromBytes(o.ConstraintAt(1))
 	util.AssertNoError(err)
 }
-
-func EqualOutputs(o1, o2 *OutputWithID) bool {
-	if o1 == o2 {
-		return true
-	}
-	if o1 == nil || o2 == nil {
-		return o1 == o2
-	}
-	if o1.ID != o2.ID {
-		return false
-	}
-	if !bytes.Equal(o1.Output.Bytes(), o2.Output.Bytes()) {
-		return false
-	}
-	return true
-}

@@ -191,8 +191,8 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	} else if ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
 		_, respondsToPull = ps.staticPeers[id]
 	}
-	peer := ps.getPeer(id)
-	if peer == nil {
+	p := ps.getPeer(id)
+	if p == nil {
 		ps.Tracef(TraceTagHeartBeatSend, "peer for node #%d nil. Ignore", ShortPeerIDString(id))
 		return
 	}
@@ -201,7 +201,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	if blacklisted {
 		// ignore
 		ps.Tracef(TraceTagHeartBeatSend, "node #%s blacklisted. Ignore", ShortPeerIDString(id))
-		peer.numHBSendErr = 0
+		p.numHBSendErr = 0
 		return
 	}
 
@@ -214,11 +214,11 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	if ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes()) {
 		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
 	} else {
-		peer.numHBSendErr++
-		if peer.numHBSendErr > 2 {
+		p.numHBSendErr++
+		if p.numHBSendErr > 2 {
 			ps.Log().Warnf("[peering] error sending heartbeat. Drop peer.")
 			ps.dropPeer(id, "hb send error", false) // peer probably just restart
-			peer.numHBSendErr = 0
+			p.numHBSendErr = 0
 		}
 	}
 }

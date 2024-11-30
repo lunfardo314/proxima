@@ -34,10 +34,10 @@ const (
 	DefaultInflationEpochDuration = DaysPerYear * 24 * time.Hour // standard inflation epoch is 365 days
 	DefaultSlotsPerInflationEpoch = uint64(DefaultInflationEpochDuration / DefaultSlotDuration)
 
-	DustPerProxi         = 1_000_000
-	BaseTokenName        = "Proxi"
-	BaseTokenNameTicker  = "PRXI"
-	DustTokenName        = "dust"
+	DustPerProxi = 1_000_000
+	//BaseTokenName        = "Proxi"
+	//BaseTokenNameTicker  = "PRXI"
+	//DustTokenName        = "dust"
 	PRXI                 = DustPerProxi
 	InitialSupplyProxi   = 1_000_000_000
 	DefaultInitialSupply = InitialSupplyProxi * PRXI

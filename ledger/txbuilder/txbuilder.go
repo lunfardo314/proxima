@@ -389,17 +389,6 @@ func (t *TransferData) TotalAdjustedAmount() uint64 {
 	return t.Amount + t.TagAlong.Amount
 }
 
-func StorageDepositOnChainOutput(lock ledger.Lock, addConstraints ...[]byte) uint64 {
-	outTentative := ledger.NewOutput(func(o *ledger.Output) {
-		o.WithAmount(math.MaxUint64).WithLock(lock)
-		for _, c := range addConstraints {
-			_, err := o.PushConstraint(c)
-			util.AssertNoError(err)
-		}
-	})
-	return ledger.MinimumStorageDeposit(outTentative, 0)
-}
-
 // MakeTransferTransaction makes transaction
 // disableEndorsementChecking is an option to disable endorsement timestamp checking, i.e. it can produce
 // tx with invalid endorsements. Used only for testing

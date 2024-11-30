@@ -68,6 +68,7 @@ type (
 	Logging interface {
 		Log() *zap.SugaredLogger
 		Tracef(tag string, format string, args ...any)
+		StartTracingTags(tags ...string)
 		// Assertf asserts only if global shutdown wasn't issued
 		Assertf(cond bool, format string, args ...any)
 		AssertNoError(err error, prefix ...string)
@@ -141,11 +142,4 @@ func IsHealthyCoverage(coverage, supply uint64, fraction Fraction) bool {
 
 func (f *Fraction) String() string {
 	return fmt.Sprintf("%d/%d", f.Numerator, f.Denominator)
-}
-
-func IsHealthyCoverageString(coverage, supply uint64, fraction Fraction) string {
-	if IsHealthyCoverage(coverage, supply, fraction) {
-		return fmt.Sprintf("healthy(%s)", fraction.String())
-	}
-	return fmt.Sprintf("not-healthy(%s)", fraction.String())
 }

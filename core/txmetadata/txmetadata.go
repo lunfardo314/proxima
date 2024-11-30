@@ -134,11 +134,6 @@ func _readUint64(r io.Reader) (ret uint64, err error) {
 	return
 }
 
-func _readUint16(r io.Reader) (ret uint16, err error) {
-	err = binary.Read(r, binary.BigEndian, &ret)
-	return
-}
-
 func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("txmetadata must be at least 1 byte")

@@ -383,7 +383,3 @@ func printTraceIfEnabled(evalCtx easyfl.GlobalData) {
 		evalCtx.(*easyfl.GlobalDataLog).PrintLog()
 	}
 }
-
-func SetPrintEasyFLTraceOnFail(v bool) {
-	__printLogOnFail.Store(v)
-}

@@ -264,7 +264,7 @@ func (c *APIClient) SubmitTransaction(txBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -502,7 +502,7 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("GET returned: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

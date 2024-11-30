@@ -28,8 +28,6 @@ func TestOutput(t *testing.T) {
 	pubKey, _, err := ed25519.GenerateKey(rnd)
 	require.NoError(t, err)
 
-	const msg = "message to be signed"
-
 	t.Run("basic", func(t *testing.T) {
 		out := ledger.OutputBasic(0, ledger.AddressED25519Null())
 		outBack, err := ledger.OutputFromBytesReadOnly(out.Bytes())

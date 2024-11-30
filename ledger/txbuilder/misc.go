@@ -10,7 +10,7 @@ import (
 
 // MakeTransactionSequence make sequence of transactions, which moves all tokens from firstUTXO to the same adddress
 // again and again. Timestamps are auto automatically adjusted according to tx pace
-// Deprecated: will be moved to testing tools
+// TODO: move to testing tools
 func MakeTransactionSequence(howLong int, firstUTXO *ledger.OutputWithID, privK ed25519.PrivateKey) ([][]byte, error) {
 	pubK := privK.Public().(ed25519.PublicKey)
 	addr := ledger.AddressED25519FromPublicKey(pubK)

@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -122,8 +121,6 @@ type (
 		numPeriodic        int
 		numRooted          int
 	}
-
-	checkConflictingConsumersFunc func(existingConsumers set.Set[*vertex.WrappedTx]) (conflict *vertex.WrappedTx)
 
 	SequencerCommandParser interface {
 		// ParseSequencerCommandToOutput analyzes consumed output for sequencer command and produces

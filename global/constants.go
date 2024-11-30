@@ -13,10 +13,6 @@ const (
 
 	// MaxSyncPortionSlots max number of slots in the sync portion
 	MaxSyncPortionSlots = 100
-
-	// DefaultSyncToleranceThresholdSlots specifies threshold of diff between current slot and latest slot in DB
-	// when start pulling sync portions
-	DefaultSyncToleranceThresholdSlots = 50
 )
 
 func init() {

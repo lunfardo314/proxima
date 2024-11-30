@@ -23,7 +23,10 @@ func (srv *server) getDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute the template
-	tmpl.Execute(w, data)
+	err := tmpl.Execute(w, data)
+	if err != nil {
+		writeErr(w, err.Error())
+	}
 }
 
 const dashboardHTML = `
