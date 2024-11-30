@@ -12,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/cobra"
 )
 
@@ -81,7 +80,7 @@ func findLatestSnapshotFile() (string, bool) {
 }
 
 func _outKVPair(k, v []byte, counter int, out io.Writer) {
-	common.Assert(len(k) > 0, "len(k)>0")
+	glb.Assertf(len(k) > 0, "len(k)>0")
 
 	_, _ = fmt.Fprintf(out, "rec #%d: %s %s, value len: %d\n",
 		counter, multistate.PartitionToString(k[0]), hex.EncodeToString(k[1:]), len(v))
