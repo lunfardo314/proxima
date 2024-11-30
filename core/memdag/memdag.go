@@ -281,15 +281,19 @@ func (d *MemDAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *ledger.Milest
 }
 
 // Vertices to avoid global lock while traversing all utangle
-func (d *MemDAG) Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx {
+func (d *MemDAG) Vertices() []*vertex.WrappedTx {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	if len(filterByID) == 0 {
-		return maps.Values(d.vertices)
-	}
+	return maps.Values(d.vertices)
+}
+
+func (d *MemDAG) VerticesFiltered(filterByID func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
 	return util.ValuesFiltered(d.vertices, func(vid *vertex.WrappedTx) bool {
-		return filterByID[0](&vid.ID)
+		return filterByID(&vid.ID)
 	})
 }
 

@@ -13,7 +13,7 @@ type (
 	environment interface {
 		global.NodeGlobal
 		WithGlobalWriteLock(func())
-		Vertices(filterByID ...func(txid *ledger.TransactionID) bool) []*vertex.WrappedTx
+		Vertices() []*vertex.WrappedTx
 		PurgeDeletedVertices(deleted []*vertex.WrappedTx)
 		PurgeCachedStateReaders() (int, int)
 		NumVertices() int

@@ -53,7 +53,7 @@ func (d *MemDAG) InfoLines(verbose ...bool) *lines.Lines {
 }
 
 func (d *MemDAG) VerticesInSlotAndAfter(slot ledger.Slot) []*vertex.WrappedTx {
-	ret := d.Vertices(func(txid *ledger.TransactionID) bool {
+	ret := d.VerticesFiltered(func(txid *ledger.TransactionID) bool {
 		return txid.Slot() >= slot
 	})
 	sort.Slice(ret, func(i, j int) bool {
