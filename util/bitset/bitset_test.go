@@ -9,6 +9,8 @@ import (
 func TestBitSet(t *testing.T) {
 	var bs Bitset
 
+	t.Log(bs.String())
+
 	require.False(t, bs.Contains(5))
 	require.False(t, bs.Contains(0))
 	require.False(t, bs.Contains(17))
@@ -16,7 +18,7 @@ func TestBitSet(t *testing.T) {
 
 	b := bs.Bytes()
 	require.EqualValues(t, 1, len(b))
-	bBack, err := BitsetFromBytes(b)
+	bBack, err := FromBytes(b)
 	require.NoError(t, err)
 	require.EqualValues(t, bs, bBack)
 
@@ -26,9 +28,10 @@ func TestBitSet(t *testing.T) {
 	require.False(t, bs.Contains(17))
 	require.False(t, bs.Contains(255))
 	require.EqualValues(t, 1, len(b))
+	t.Log(bs.String())
 
 	b = bs.Bytes()
-	bBack, err = BitsetFromBytes(b)
+	bBack, err = FromBytes(b)
 	require.NoError(t, err)
 	require.EqualValues(t, bs, bBack)
 
@@ -38,10 +41,11 @@ func TestBitSet(t *testing.T) {
 	require.False(t, bs.Contains(17))
 	require.False(t, bs.Contains(255))
 	require.EqualValues(t, 1, len(b))
+	t.Log(bs.String())
 
 	b = bs.Bytes()
 	require.EqualValues(t, 1, len(b))
-	bBack, err = BitsetFromBytes(b)
+	bBack, err = FromBytes(b)
 	require.NoError(t, err)
 	require.EqualValues(t, bs, bBack)
 
@@ -53,9 +57,10 @@ func TestBitSet(t *testing.T) {
 
 	b = bs.Bytes()
 	require.EqualValues(t, 1, len(b))
-	bBack, err = BitsetFromBytes(b)
+	bBack, err = FromBytes(b)
 	require.NoError(t, err)
 	require.EqualValues(t, bs, bBack)
+	t.Log(bs.String())
 
 	bs.Insert(17)
 	require.False(t, bs.Contains(5))
@@ -65,9 +70,10 @@ func TestBitSet(t *testing.T) {
 
 	b = bs.Bytes()
 	require.EqualValues(t, 3, len(b))
-	bBack, err = BitsetFromBytes(b)
+	bBack, err = FromBytes(b)
 	require.NoError(t, err)
 	require.EqualValues(t, bs, bBack)
+	t.Log(bs.String())
 
 	bs.Remove(20)
 	require.False(t, bs.Contains(5))
@@ -83,9 +89,10 @@ func TestBitSet(t *testing.T) {
 
 	b = bs.Bytes()
 	require.EqualValues(t, 32, len(b))
-	bBack, err = BitsetFromBytes(b)
+	bBack, err = FromBytes(b)
 	require.NoError(t, err)
 	require.EqualValues(t, bs, bBack)
+	t.Log(bs.String())
 
 	bs.Remove(255)
 	require.False(t, bs.Contains(5))
@@ -95,8 +102,9 @@ func TestBitSet(t *testing.T) {
 
 	b = bs.Bytes()
 	require.EqualValues(t, 3, len(b))
-	bBack, err = BitsetFromBytes(b)
+	bBack, err = FromBytes(b)
 	require.NoError(t, err)
 	require.EqualValues(t, bs, bBack)
+	t.Log(bs.String())
 
 }

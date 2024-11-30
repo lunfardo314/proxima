@@ -7,6 +7,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/bitset"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -30,13 +31,20 @@ type (
 	}
 
 	mutationAddTx struct {
-		ID              ledger.TransactionID
-		TimeSlot        ledger.Slot
-		LastOutputIndex byte
+		ID        ledger.TransactionID
+		TimeSlot  ledger.Slot
+		OutputSet bitset.Bitset
+	}
+
+	mutationUpdateTx struct {
+		ID        ledger.TransactionID
+		TimeSlot  ledger.Slot
+		OutputSet bitset.Bitset
 	}
 
 	Mutations struct {
-		mut []mutationCmd
+		mut                  []mutationCmd
+		consumedTransactions map[ledger.TransactionID]bitset.Bitset
 	}
 )
 
@@ -73,7 +81,7 @@ func (m *mutationAddOutput) timestamp() ledger.Time {
 }
 
 func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable) error {
-	return addTxToTrie(trie, &m.ID, m.TimeSlot, m.LastOutputIndex)
+	return addTxToTrie(trie, &m.ID, m.TimeSlot, m.OutputSet)
 }
 
 func (m *mutationAddTx) text() string {
@@ -89,12 +97,33 @@ func (m *mutationAddTx) timestamp() ledger.Time {
 }
 
 func (m *mutationAddTx) valueBytes() []byte {
-	return common.ConcatBytes(m.TimeSlot.Bytes(), []byte{m.LastOutputIndex})
+	return common.ConcatBytes(m.TimeSlot.Bytes(), m.OutputSet.Bytes())
+}
+
+func (m *mutationUpdateTx) mutate(trie *immutable.TrieUpdatable) error {
+	return addTxToTrie(trie, &m.ID, m.TimeSlot, m.OutputSet)
+}
+
+func (m *mutationUpdateTx) text() string {
+	return fmt.Sprintf("UPDTX %s : slot %d, out: %s", m.ID.StringShort(), m.TimeSlot, m.OutputSet.String())
+}
+
+func (m *mutationUpdateTx) sortOrder() byte {
+	return 2
+}
+
+func (m *mutationUpdateTx) timestamp() ledger.Time {
+	return m.ID.Timestamp()
+}
+
+func (m *mutationUpdateTx) valueBytes() []byte {
+	return common.ConcatBytes(m.TimeSlot.Bytes(), m.OutputSet.Bytes())
 }
 
 func NewMutations() *Mutations {
 	return &Mutations{
-		mut: make([]mutationCmd, 0),
+		mut:                  make([]mutationCmd, 0),
+		consumedTransactions: make(map[ledger.TransactionID]bitset.Bitset),
 	}
 }
 
@@ -120,11 +149,11 @@ func (mut *Mutations) InsertDelOutputMutation(id ledger.OutputID) {
 	mut.mut = append(mut.mut, &mutationDelOutput{ID: id})
 }
 
-func (mut *Mutations) InsertAddTxMutation(id ledger.TransactionID, slot ledger.Slot, lastOutputIndex byte) {
+func (mut *Mutations) InsertAddTxMutation(id ledger.TransactionID, slot ledger.Slot, outs bitset.Bitset) {
 	mut.mut = append(mut.mut, &mutationAddTx{
-		ID:              id,
-		TimeSlot:        slot,
-		LastOutputIndex: lastOutputIndex,
+		ID:        id,
+		TimeSlot:  slot,
+		OutputSet: outs,
 	})
 }
 
@@ -224,14 +253,26 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid *ledger.OutputID, out *l
 	return nil
 }
 
-func addTxToTrie(trie *immutable.TrieUpdatable, txid *ledger.TransactionID, slot ledger.Slot, lastOutputIndex byte) error {
+func addTxToTrie(trie *immutable.TrieUpdatable, txid *ledger.TransactionID, slot ledger.Slot, outputSet bitset.Bitset) error {
 	var stateKey [1 + ledger.TransactionIDLength]byte
 	stateKey[0] = TriePartitionCommittedTransactionID
 	copy(stateKey[1:], txid[:])
 
-	if trie.Update(stateKey[:], slot.Bytes()) {
+	if trie.Update(stateKey[:], common.ConcatBytes(slot.Bytes(), outputSet.Bytes())) {
 		// key should not exist
 		return fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.StringShort())
+	}
+	return nil
+}
+
+func updateTxToTrie(trie *immutable.TrieUpdatable, txid *ledger.TransactionID, slot ledger.Slot, outputSet bitset.Bitset) error {
+	var stateKey [1 + ledger.TransactionIDLength]byte
+	stateKey[0] = TriePartitionCommittedTransactionID
+	copy(stateKey[1:], txid[:])
+
+	if !trie.Update(stateKey[:], common.ConcatBytes(slot.Bytes(), outputSet.Bytes())) {
+		// key should exist
+		return fmt.Errorf("updateTxToTrie: transaction should exist: %s", txid.StringShort())
 	}
 	return nil
 }

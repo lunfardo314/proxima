@@ -6,6 +6,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/bitset"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -48,7 +49,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *Mu
 	ret := NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
-	ret.InsertAddTxMutation(*ledger.GenesisTransactionID(), genesisOut.ID.Slot(), 1)
+	ret.InsertAddTxMutation(*ledger.GenesisTransactionID(), genesisOut.ID.Slot(), bitset.New(0, 1))
 	return ret
 }
 

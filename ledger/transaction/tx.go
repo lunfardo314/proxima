@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/bitset"
 	"github.com/lunfardo314/proxima/util/lazybytes"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
@@ -879,11 +880,13 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 		ret.InsertDelOutputMutation(*oid)
 		return true
 	})
-	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, oid *ledger.OutputID) bool {
+	var outputSet bitset.Bitset
+	tx.ForEachProducedOutput(func(i byte, o *ledger.Output, oid *ledger.OutputID) bool {
 		ret.InsertAddOutputMutation(*oid, o)
+		outputSet.Insert(i)
 		return true
 	})
-	ret.InsertAddTxMutation(tx.ID(), tx.Slot(), byte(tx.NumProducedOutputs()-1))
+	ret.InsertAddTxMutation(tx.ID(), tx.Slot(), outputSet)
 	return ret
 }
 

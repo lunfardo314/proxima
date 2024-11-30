@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/bitset"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/maps"
@@ -610,8 +611,7 @@ func (pc *PastCone) Mutations(slot ledger.Slot) (muts *multistate.Mutations, sta
 				}
 			}
 		} else {
-			// TODO no need to store number of outputs: now all is contained in the ID
-			muts.InsertAddTxMutation(vid.ID, slot, byte(vid.ID.NumProducedOutputs()-1))
+			muts.InsertAddTxMutation(vid.ID, slot, bitset.NewWithFirstElements(byte(vid.ID.NumProducedOutputs())))
 			stats.NumTransactions++
 
 			// ADD OUTPUT mutations only for not consumed outputs

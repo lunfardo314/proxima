@@ -1,12 +1,29 @@
 package bitset
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 type Bitset [32]byte
 
-func BitsetFromBytes(data []byte) (ret Bitset, err error) {
+func New(elems ...byte) (ret Bitset) {
+	ret.Insert(elems...)
+	return
+}
+
+func NewWithFirstElements(n byte) (ret Bitset) {
+	for i := 0; i < int(n); i++ {
+		ret.insert(byte(i))
+	}
+	return
+}
+
+func FromBytes(data []byte) (ret Bitset, err error) {
 	if len(data) > 32 {
-		err = errors.New("BitsetFromBytes: wrong data length")
+		err = errors.New("FromBytes: wrong data length")
 		return
 	}
 	copy(ret[:], data)
@@ -39,7 +56,13 @@ func (b *Bitset) Contains(idx byte) bool {
 	return b[pos]&(byte(0x1)<<bit) != 0
 }
 
-func (b *Bitset) Insert(idx byte) {
+func (b *Bitset) Insert(idx ...byte) {
+	for _, i := range idx {
+		b.insert(i)
+	}
+}
+
+func (b *Bitset) insert(idx byte) {
 	pos := idx / 8
 	bit := idx % 8
 
@@ -51,4 +74,14 @@ func (b *Bitset) Remove(idx byte) {
 	bit := idx % 8
 
 	b[pos] &= ^(0x1 << bit)
+}
+
+func (b *Bitset) String() string {
+	ln := make([]string, 0)
+	for i := 0; i < 256; i++ {
+		if b.Contains(byte(i)) {
+			ln = append(ln, strconv.Itoa(i))
+		}
+	}
+	return fmt.Sprintf("{%s}", strings.Join(ln, ","))
 }
