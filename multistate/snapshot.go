@@ -79,7 +79,7 @@ func writeState(state global.StateStoreReader, target common.KVStreamWriter, roo
 }
 
 func _outKVPair(k, v []byte, counter int, out io.Writer) {
-	common.Assert(len(k) > 0, "len(k)>0")
+	util.Assertf(len(k) > 0, "len(k)>0")
 
 	_, _ = fmt.Fprintf(out, "[SaveSnapshot] rec #%d: %s %s, value len: %d\n",
 		counter, PartitionToString(k[0]), hex.EncodeToString(k[1:]), len(v))
