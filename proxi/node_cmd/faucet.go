@@ -146,11 +146,13 @@ func runFaucetCmd(_ *cobra.Command, args []string) {
 		accountRequestList: make(map[string]time.Time),
 		addressRequestList: make(map[string]time.Time),
 	}
-	funds := getAccountTotal(cfg.account)
-	glb.Infof(" wallet funds: %d", funds)
-	if funds < cfg.outputAmount {
-		glb.Infof("Error not enough funds in waller")
-		return
+	if !cfg.redrawFromChain {
+		funds := getAccountTotal(cfg.account)
+		glb.Infof(" wallet funds: %d", funds)
+		if funds < cfg.outputAmount {
+			glb.Infof("Error not enough funds in waller")
+			return
+		}
 	}
 	fct.faucetServer()
 }
@@ -185,6 +187,21 @@ func (fct *faucet) redrawFromChain(targetLock ledger.Accountable) (string, *ledg
 		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.Th(o.Output.Amount()))
 	}
 
+	var tagAlongSeqID *ledger.ChainID
+	feeAmount := getTagAlongFee()
+	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
+	if feeAmount > 0 {
+		tagAlongSeqID = GetTagAlongSequencerID()
+		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+
+		md, err := glb.GetClient().GetMilestoneData(*tagAlongSeqID)
+		glb.AssertNoError(err)
+
+		if md != nil && md.MinimumFee > feeAmount {
+			feeAmount = ownSequencerCmdFee
+		}
+	}
+
 	cmdConstr, err := commands.MakeSequencerWithdrawCommand(fct.cfg.outputAmount, targetLock.AsLock())
 	if err != nil {
 		glb.Infof("Error from MakeSequencerWithdrawCommand: %s", err.Error())
@@ -192,7 +209,7 @@ func (fct *faucet) redrawFromChain(targetLock ledger.Accountable) (string, *ledg
 	}
 
 	transferData := txbuilder.NewTransferData(fct.walletData.PrivateKey, fct.walletData.Account, ledger.TimeNow()).
-		WithAmount(ownSequencerCmdFee).
+		WithAmount(feeAmount).
 		WithTargetLock(ledger.ChainLockFromChainID(*fct.walletData.Sequencer)).
 		MustWithInputs(walletOutputs...).
 		WithSender().
