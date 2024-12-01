@@ -36,6 +36,6 @@ func AskEntropyGenEd25519PrivateKey(msg string, minSeedLength ...int) ed25519.Pr
 	AssertNoError(err)
 	Assertf(n == 32, "error while generating random bytes")
 
-	seed := blake2b.Sum256(common.ConcatBytes(seedSymbols, rndBytes[:]))
+	seed := blake2b.Sum256(common.Concat(seedSymbols, rndBytes[:]))
 	return ed25519.NewKeyFromSeed(seed[:])
 }
