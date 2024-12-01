@@ -140,7 +140,7 @@ func MakeSequencerWithdrawCmdOutput(par MakeSequencerWithdrawCmdOutputParams) (*
 		binary.BigEndian.PutUint64(amountBin[:], par.Amount)
 		cmdParamsArr := lazybytes.MakeArrayFromDataReadOnly(par.TargetLock.Bytes(), amountBin[:])
 
-		rawData := common.ConcatBytes([]byte{CommandCodeWithdrawAmount}, cmdParamsArr.Bytes())
+		rawData := common.Concat([]byte{CommandCodeWithdrawAmount}, cmdParamsArr.Bytes())
 		src := fmt.Sprintf("concat(0x%s)", hex.EncodeToString(rawData))
 
 		cmdConstraint, _, err := ledger.L().ExpressionSourceToBytecode(src)

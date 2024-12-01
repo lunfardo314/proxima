@@ -23,8 +23,9 @@ const (
 )
 
 func WriteRootRecord(w common.KVWriter, branchTxID ledger.TransactionID, rootData RootRecord) {
-	key := common.ConcatBytes([]byte{rootRecordDBPartition}, branchTxID[:])
-	w.Set(key, rootData.Bytes())
+	common.UseConcatBytes(func(key []byte) {
+		w.Set(key, rootData.Bytes())
+	}, []byte{rootRecordDBPartition}, branchTxID[:])
 }
 
 func WriteLatestSlotRecord(w common.KVWriter, slot ledger.Slot) {

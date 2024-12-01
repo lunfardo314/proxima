@@ -88,10 +88,6 @@ func (m *mutationAddTx) timestamp() ledger.Time {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationAddTx) valueBytes() []byte {
-	return common.ConcatBytes(m.TimeSlot.Bytes(), []byte{m.LastOutputIndex})
-}
-
 func NewMutations() *Mutations {
 	return &Mutations{
 		mut: make([]mutationCmd, 0),
@@ -237,11 +233,11 @@ func addTxToTrie(trie *immutable.TrieUpdatable, txid *ledger.TransactionID, slot
 }
 
 func makeAccountKey(id ledger.AccountID, oid *ledger.OutputID) []byte {
-	return common.ConcatBytes([]byte{TriePartitionAccounts, byte(len(id))}, id[:], oid[:])
+	return common.Concat([]byte{TriePartitionAccounts, byte(len(id))}, id[:], oid[:])
 }
 
 func makeChainIDKey(chainID *ledger.ChainID) []byte {
-	return common.ConcatBytes([]byte{TriePartitionChainID}, chainID[:])
+	return common.Concat([]byte{TriePartitionChainID}, chainID[:])
 }
 
 func UpdateTrie(trie *immutable.TrieUpdatable, mut *Mutations) (err error) {

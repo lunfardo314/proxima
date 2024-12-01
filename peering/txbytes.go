@@ -115,5 +115,5 @@ type gossipMsgWrapper struct {
 }
 
 func (gm gossipMsgWrapper) Bytes() []byte {
-	return common.ConcatBytes(gm.metadata.Bytes(), gm.txBytes)
+	return common.Concat(gm.metadata.Bytes(), gm.txBytes)
 }
