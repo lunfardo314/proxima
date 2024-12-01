@@ -169,7 +169,10 @@ func (r *Readable) HasUTXO(oid *ledger.OutputID) bool {
 
 // KnowsCommittedTransaction transaction IDs are purged after some time, so the result may be
 func (r *Readable) KnowsCommittedTransaction(txid *ledger.TransactionID) bool {
-	return common.MakeReaderPartition(r.trie, TriePartitionCommittedTransactionID).Has(txid[:])
+	part := common.MakeReaderPartition(r.trie, TriePartitionCommittedTransactionID)
+	defer part.Dispose()
+
+	return part.Has(txid[:])
 }
 
 func (r *Readable) GetIDsLockedInAccount(addr ledger.AccountID) ([]ledger.OutputID, error) {
