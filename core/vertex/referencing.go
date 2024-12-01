@@ -127,7 +127,7 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 			case 1:
 				if nowis.After(vid.dontPruneUntil) || vid.GetTxStatusNoLock() == Bad {
 					vid.numReferences = 0
-					v.baselineBranch = nil // to help GC
+					//v.baselineBranch = nil // to help GC
 					markedForDeletion = true
 				}
 			}

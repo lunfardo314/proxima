@@ -27,7 +27,7 @@ type (
 		mutex                  sync.RWMutex
 		outputs                map[byte]*ledger.Output
 		sequencerOutputIndices *[2]byte // if nil, it is unknown
-		baselineBranch         *WrappedTx
+		//baselineBranch         *WrappedTx
 		// pull rules
 		pullRulesDefined bool
 		needsPull        bool

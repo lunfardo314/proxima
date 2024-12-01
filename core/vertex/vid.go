@@ -509,9 +509,9 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranch *WrappedTx) {
 		Vertex: func(v *Vertex) {
 			baselineBranch = v.BaselineBranch
 		},
-		VirtualTx: func(v *VirtualTransaction) {
-			baselineBranch = v.baselineBranch
-		},
+		//VirtualTx: func(v *VirtualTransaction) {
+		//	baselineBranch = v.baselineBranch
+		//},
 	})
 	return
 }
