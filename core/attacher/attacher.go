@@ -39,7 +39,7 @@ func (a *attacher) baselineSugaredStateReader() multistate.SugaredStateReader {
 }
 
 func (a *attacher) baselineStateReader() global.IndexedStateReader {
-	return a.GetStateReaderForTheBranch(&a.baseline.ID)
+	return a.GetStateReaderForTheBranch(a.baseline.ID)
 }
 
 func (a *attacher) setError(err error) {

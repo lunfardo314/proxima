@@ -133,33 +133,27 @@ func (d *MemDAG) PurgeCachedStateReaders() (int, int) {
 	return count, len(d.stateReaders)
 }
 
-func (d *MemDAG) GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader {
-	ret, _ := d.GetStateReaderForTheBranchExt(branch)
-	return ret
-}
-
-func (d *MemDAG) GetStateReaderForTheBranchExt(branch *ledger.TransactionID) (global.IndexedStateReader, *multistate.RootRecord) {
-	util.Assertf(branch != nil, "branch != nil")
-	util.Assertf(branch.IsBranchTransaction(), "GetStateReaderForTheBranchExt: branch tx expected. Got: %s", branch.StringShort())
+func (d *MemDAG) GetStateReaderForTheBranch(branchID ledger.TransactionID) global.IndexedStateReader {
+	util.Assertf(branchID.IsBranchTransaction(), "GetStateReaderForTheBranchExt: branch tx expected. Got: %s", branchID.StringShort())
 
 	d.stateReadersMutex.Lock()
 	defer d.stateReadersMutex.Unlock()
 
-	ret := d.stateReaders[*branch]
+	ret := d.stateReaders[branchID]
 	if ret != nil {
 		ret.lastActivity = time.Now()
-		return ret.IndexedStateReader, ret.rootRecord
+		return ret.IndexedStateReader
 	}
-	rootRecord, found := multistate.FetchRootRecord(d.StateStore(), *branch)
+	rootRecord, found := multistate.FetchRootRecord(d.StateStore(), branchID)
 	if !found {
-		return nil, nil
+		return nil
 	}
-	d.stateReaders[*branch] = &cachedStateReader{
+	d.stateReaders[branchID] = &cachedStateReader{
 		IndexedStateReader: multistate.MustNewReadable(d.StateStore(), rootRecord.Root, sharedStateReaderCacheSize),
 		rootRecord:         &rootRecord,
 		lastActivity:       time.Now(),
 	}
-	return d.stateReaders[*branch], &rootRecord
+	return d.stateReaders[branchID]
 }
 
 func (d *MemDAG) GetStemWrappedOutput(branch *ledger.TransactionID) (ret vertex.WrappedOutput) {
@@ -303,13 +297,6 @@ func (d *MemDAG) VerticesDescending() []*vertex.WrappedTx {
 		return ret[i].Timestamp().After(ret[j].Timestamp())
 	})
 	return ret
-}
-
-func (d *MemDAG) TipBranchHasTransaction(branchID, txid *ledger.TransactionID) bool {
-	if rdr, _ := d.GetStateReaderForTheBranchExt(branchID); !util.IsNil(rdr) {
-		return rdr.KnowsCommittedTransaction(txid)
-	}
-	return false
 }
 
 // RecreateVertexMap to avoid memory leak

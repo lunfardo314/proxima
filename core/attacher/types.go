@@ -20,7 +20,7 @@ type (
 		GetVertexNoLock(txid *ledger.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
 		StateStore() global.StateStore
-		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
+		GetStateReaderForTheBranch(branchID ledger.TransactionID) global.IndexedStateReader
 		GetStemWrappedOutput(branch *ledger.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)
 		EvidenceBranchSlot(s ledger.Slot, healthy bool)

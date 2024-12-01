@@ -556,7 +556,7 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		if baseline == nil {
 			continue
 		}
-		rdr := multistate.MakeSugared(seq.GetStateReaderForTheBranch(&baseline.ID))
+		rdr := multistate.MakeSugared(seq.GetStateReaderForTheBranch(baseline.ID))
 		chainOut, _, err := rdr.GetChainTips(&seq.sequencerID)
 		if errors.Is(err, multistate.ErrNotFound) {
 			continue

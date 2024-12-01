@@ -15,7 +15,7 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
-		GetStateReaderForTheBranch(branch *ledger.TransactionID) global.IndexedStateReader
+		GetStateReaderForTheBranch(branchID ledger.TransactionID) global.IndexedStateReader
 	}
 
 	Input struct {
