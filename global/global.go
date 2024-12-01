@@ -123,7 +123,7 @@ func NewFromConfig() *Global {
 		ret.txPullFromPeers = v
 	}
 
-	ret.SugaredLogger.Infof("transaction pull paraneters:: repeat period: %v, max attempts: %d, num peers: %d",
+	ret.SugaredLogger.Infof("transaction pull parameters:: repeat period: %v, max attempts: %d, num peers: %d",
 		ret.txPullRepeatPeriod, ret.txPullMaxAttempts, ret.txPullFromPeers)
 
 	ret.disableDeadlockCatching = viper.GetBool("disable_deadlock_catcher")
