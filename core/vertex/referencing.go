@@ -100,6 +100,9 @@ func (vid *WrappedTx) DoPruningIfRelevant(nowis time.Time) (markedForDeletion, u
 					vid.numReferences = 0
 
 					vid.consumed = nil
+					vid._genericVertex = nil
+					vid.onPoke.Store(func() {})
+					util.Assertf(vid.pastCone == nil, "vid.pastCone == nil")
 					unreferencedPastCone = true
 					markedForDeletion = true
 				}
