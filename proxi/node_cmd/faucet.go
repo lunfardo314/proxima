@@ -128,7 +128,7 @@ func displayFaucetConfig() faucetConfig {
 	glb.Infof("faucet configuration:")
 	glb.Infof("     output amount:          %d", cfg.outputAmount)
 	glb.Infof("     port:                   %d", cfg.port)
-	glb.Infof("     priv_key:               %s", hex.EncodeToString(cfg.privKey))
+	glb.Infof("     private key:            %s", hex.EncodeToString(cfg.privKey))
 	glb.Infof("     time between requests:  %s [sec]", cfg.timeBetweenRequests)
 
 	return cfg
