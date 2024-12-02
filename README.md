@@ -1,4 +1,4 @@
-*Warning! This repository contains an ongoing development. Currently, it is in an early alpha version. It definitely contains bugs.
+*Warning! This repository contains an ongoing development. Currently, it is in an alpha version. It definitely contains bugs.
 The code should not be used in production!*
 
 *For up-to-date information see `develop` branch*
