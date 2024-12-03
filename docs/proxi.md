@@ -143,7 +143,7 @@ by all the current healthy ledger states, i.e. it is the **consensus ledger stat
   ```yaml
   faucet:
       port:  9500
-      addr:  http://172.16.238.10
+      addr:  http://5.180.181.103
   ```
   
 
