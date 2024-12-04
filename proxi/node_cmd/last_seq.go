@@ -40,9 +40,9 @@ func runLastMilestonesCmd(_ *cobra.Command, _ []string) {
 		if sd.LastBranchTxID != "" {
 			branchID, err = ledger.TransactionIDFromHexString(sd.LastBranchTxID)
 			glb.AssertNoError(err)
-			glb.Infof("    %s :    %s   %5d  %v   %s", chainID, txid, sd.MilestoneCount, activity, branchID.StringShort())
+			glb.Infof("    %s :    %s   %5d  %v   %s", chainID.String(), txid.String(), sd.MilestoneCount, activity, branchID.StringShort())
 		} else {
-			glb.Infof("    %s :    %s   %5d  %v", chainID, txid, sd.MilestoneCount, activity)
+			glb.Infof("    %s :    %s   %5d  %v", chainID.String(), txid.String(), sd.MilestoneCount, activity)
 		}
 	}
 }
