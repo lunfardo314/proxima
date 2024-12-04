@@ -49,6 +49,8 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 		NumStaticAlive:  uint16(aliveStaticPeers),
 		NumDynamicAlive: uint16(aliveDynamicPeers),
 		Sequencer:       p.GetOwnSequencerID(),
+		CommitHash:      global.CommitHash,
+		CommitTime:      global.CommitTime,
 	}
 	return ret
 }
