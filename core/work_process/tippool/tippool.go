@@ -142,6 +142,7 @@ func (t *SequencerTips) updateLatestSequencerData(vid *vertex.WrappedTx, seqID l
 	}
 	seqData.MilestoneCount++
 	seqData.LastActivity = time.Now()
+	t.latestSequencerData[seqID] = seqData
 }
 
 func (t *SequencerTips) isActive(m *_activeMilestoneData) bool {
