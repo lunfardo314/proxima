@@ -60,6 +60,7 @@ func Init() *cobra.Command {
 		initInflateChainCmd(),
 		initFaucetCmd(),
 		initGetFundsCmd(),
+		initLastSeqCmd(),
 	)
 	return nodeCmd
 }

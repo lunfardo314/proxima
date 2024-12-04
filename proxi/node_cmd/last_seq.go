@@ -12,7 +12,7 @@ import (
 func initLastSeqCmd() *cobra.Command {
 	getPeersInfoCmd := &cobra.Command{
 		Use:   "last_seq",
-		Short: `retrieves list of latest known sequncer milestones from the node`,
+		Short: `retrieves list of latest known sequencer milestones from the node`,
 		Args:  cobra.NoArgs,
 		Run:   runLastMilestonesCmd,
 	}
