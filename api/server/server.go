@@ -72,11 +72,11 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
 	// POST request format '/api/v1/submit_nowait'. Feedback only on parsing error, otherwise async posting
 	srv.addHandler(api.PathSubmitTransaction, srv.submitTx)
-	// GET sync info from the node
+	// GET sync info from the node '/api/v1/sync_info'
 	srv.addHandler(api.PathGetSyncInfo, srv.getSyncInfo)
-	// GET sync info from the node
+	// GET node info from the node '/api/v1/node_info'
 	srv.addHandler(api.PathGetNodeInfo, srv.getNodeInfo)
-	// GET peers info from the node
+	// GET peers info from the node '/api/v1/peers_info'
 	srv.addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
 	// GET latest reliable branch '/api/v1/get_latest_reliable_branch'
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
