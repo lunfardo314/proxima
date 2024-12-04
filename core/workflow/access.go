@@ -63,16 +63,16 @@ func (w *Workflow) IsSynced() bool {
 
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
-	return w.tippool.LatestMilestonesDescending(filter...)
+	return w.tippool.LatestActiveMilestonesDescending(filter...)
 }
 
 // LatestMilestonesShuffled returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesShuffled(filter ...func(seqID ledger.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
-	return w.tippool.LatestMilestonesShuffled(filter...)
+	return w.tippool.LatestActiveMilestonesShuffled(filter...)
 }
 
 func (w *Workflow) GetLatestMilestone(seqID ledger.ChainID) *vertex.WrappedTx {
-	return w.tippool.GetLatestMilestone(seqID)
+	return w.tippool.GetLatestActiveMilestone(seqID)
 }
 
 func (w *Workflow) NumSequencerTips() int {
@@ -124,4 +124,8 @@ func (w *Workflow) SaveFullDAG(fname string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(w.StateStore())
 	tmpDag := memdag.MakeDAGFromTxStore(w.TxBytesStore(), 0, branchTxIDS...)
 	tmpDag.SaveGraph(fname)
+}
+
+func (w *Workflow) GetKnownLatestSequencerDataJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble {
+	return w.tippool.GetKnownLatestSequencerDataJSONAble()
 }

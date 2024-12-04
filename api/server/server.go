@@ -13,6 +13,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -35,6 +36,7 @@ type (
 		GetLatestReliableBranch() *multistate.BranchData
 		StateStore() global.StateStore
 		TxBytesStore() global.TxBytesStore
+		GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble
 	}
 
 	server struct {
@@ -80,8 +82,11 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
 	// GET latest reliable branch and check if transaction ID is in it '/check_txid_in_lrb?txid=<hex-encoded transaction ID>'
 	srv.addHandler(api.PathCheckTxIDInLRB, srv.checkTxIDIncludedInLRB)
+	// GET last milestone list
+	srv.addHandler(api.PathGetLastKnownSequencerMilestones, srv.getMilestoneList)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
+
 	// register handlers of tx API
 	srv.registerTxAPIHandlers()
 }
@@ -368,6 +373,21 @@ func (srv *server) getNodeInfo(w http.ResponseWriter, r *http.Request) {
 
 	nodeInfo := srv.GetNodeInfo()
 	respBin, err := json.MarshalIndent(nodeInfo, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func (srv *server) getMilestoneList(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
+	resp := api.KnownLatestMilestones{
+		Sequencers: srv.GetKnownLatestMilestonesJSONAble(),
+	}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())
 		return

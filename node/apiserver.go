@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/server"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/multistate"
@@ -120,4 +121,8 @@ func (p *ProximaNode) GetLatestReliableBranch() (ret *multistate.BranchData) {
 
 func (p *ProximaNode) SelfPeerID() peer.ID {
 	return p.peers.SelfPeerID()
+}
+
+func (p *ProximaNode) GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble {
+	return p.workflow.GetKnownLatestSequencerDataJSONAble()
 }

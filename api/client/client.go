@@ -15,6 +15,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -691,6 +692,23 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, *ledger.T
 		return nil, nil, fmt.Errorf("parse failed: %v", err)
 	}
 	return rr, &res.BranchID, nil
+}
+
+func (c *APIClient) GetLastKnownSequencerData() (map[string]tippool.LatestSequencerTipDataJSONAble, error) {
+	body, err := c.getBody(api.PathGetLastKnownSequencerMilestones)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.KnownLatestMilestones
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	return res.Sequencers, nil
 }
 
 func (c *APIClient) CheckTransactionIDInLRB(txid ledger.TransactionID) (lrbID ledger.TransactionID, included bool, err error) {

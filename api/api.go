@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/multistate"
@@ -15,18 +16,19 @@ const (
 	PrefixAPIV1   = "/api/v1"
 	PrefixTxAPIV1 = "/txapi/v1"
 
-	PathGetLedgerID             = PrefixAPIV1 + "/get_ledger_id"
-	PathGetAccountOutputs       = PrefixAPIV1 + "/get_account_outputs"
-	PathGetChainOutput          = PrefixAPIV1 + "/get_chain_output"
-	PathGetOutput               = PrefixAPIV1 + "/get_output"
-	PathQueryTxStatus           = PrefixAPIV1 + "/query_tx_status"
-	PathQueryInclusionScore     = PrefixAPIV1 + "/query_inclusion_score"
-	PathSubmitTransaction       = PrefixAPIV1 + "/submit_tx"
-	PathGetSyncInfo             = PrefixAPIV1 + "/sync_info"
-	PathGetNodeInfo             = PrefixAPIV1 + "/node_info"
-	PathGetPeersInfo            = PrefixAPIV1 + "/peers_info"
-	PathGetLatestReliableBranch = PrefixAPIV1 + "/get_latest_reliable_branch"
-	PathCheckTxIDInLRB          = PrefixAPIV1 + "/check_txid_in_lrb"
+	PathGetLedgerID                     = PrefixAPIV1 + "/get_ledger_id"
+	PathGetAccountOutputs               = PrefixAPIV1 + "/get_account_outputs"
+	PathGetChainOutput                  = PrefixAPIV1 + "/get_chain_output"
+	PathGetOutput                       = PrefixAPIV1 + "/get_output"
+	PathQueryTxStatus                   = PrefixAPIV1 + "/query_tx_status"
+	PathQueryInclusionScore             = PrefixAPIV1 + "/query_inclusion_score"
+	PathSubmitTransaction               = PrefixAPIV1 + "/submit_tx"
+	PathGetSyncInfo                     = PrefixAPIV1 + "/sync_info"
+	PathGetNodeInfo                     = PrefixAPIV1 + "/node_info"
+	PathGetPeersInfo                    = PrefixAPIV1 + "/peers_info"
+	PathGetLatestReliableBranch         = PrefixAPIV1 + "/get_latest_reliable_branch"
+	PathCheckTxIDInLRB                  = PrefixAPIV1 + "/check_txid_in_lrb"
+	PathGetLastKnownSequencerMilestones = PrefixAPIV1 + "/last_known_milestones"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
 
@@ -238,6 +240,11 @@ type (
 		StemInputIndex      *byte    `json:"stem_input_index,omitempty"`
 		InputDependencies   []string `json:"input_dependencies"`
 		Endorsements        []string `json:"endorsements,omitempty"`
+	}
+
+	KnownLatestMilestones struct {
+		Error
+		Sequencers map[string]tippool.LatestSequencerTipDataJSONAble `json:"sequencers"`
 	}
 )
 
