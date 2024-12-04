@@ -12,6 +12,8 @@ import (
 type NodeInfo struct {
 	ID              peer.ID         `json:"id"`
 	Version         string          `json:"version"`
+	CommitHash      string          `json:"commit_hash"`
+	CommitTime      string          `json:"commit_time"`
 	NumStaticAlive  uint16          `json:"num_static_peers"`
 	NumDynamicAlive uint16          `json:"num_dynamic_alive"`
 	Sequencer       *ledger.ChainID `json:"sequencers,omitempty"`
@@ -41,6 +43,8 @@ func (ni *NodeInfo) Lines(prefix ...string) *lines.Lines {
 	ret.Add("lpp host ID: %s", ni.ID.String()).
 		Add("static peers alive: %d", ni.NumStaticAlive).
 		Add("dynamic peers alive: %d", ni.NumDynamicAlive).
-		Add("sequencer: %s", seqStr)
+		Add("sequencer: %s", seqStr).
+		Add("commit hash: %s", ni.CommitHash).
+		Add("commit time: %s", ni.CommitTime)
 	return ret
 }
