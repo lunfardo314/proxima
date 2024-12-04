@@ -109,7 +109,7 @@ func (p *ProximaNode) readInTraceTags() {
 
 // Start starts the node
 func (p *ProximaNode) Start() {
-	p.Log().Info(global.BannerString())
+	p.Log().Infof(global.BannerString())
 	if p.IsBootstrapMode() {
 		p.Log().Info("it is a bootstrap node")
 	}
