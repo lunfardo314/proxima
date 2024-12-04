@@ -223,6 +223,9 @@ func (m *TransactionMetadata) String() string {
 }
 
 func (m *TransactionMetadata) JSONAble() *TransactionMetadataJSONAble {
+	if m == nil {
+		return nil
+	}
 	ret := &TransactionMetadataJSONAble{}
 	notEmpty := false
 	if !util.IsNil(m.StateRoot) {

@@ -268,9 +268,7 @@ func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) 
 	}
 
 	resp := api.JSONAbleFromTransaction(tx)
-	if metadata != nil {
-		resp.TxMetadata = metadata.JSONAble()
-	}
+	resp.TxMetadata = metadata.JSONAble()
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
