@@ -412,7 +412,9 @@ func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	if maxDepth <= 0 {
+		maxDepth = 1
+	}
 	main, err := multistate.GetMainChain(srv.StateStore(), global.FractionHealthyBranch, maxDepth)
 	if err != nil {
 		writeErr(w, err.Error())
