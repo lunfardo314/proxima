@@ -246,6 +246,16 @@ type (
 		Error
 		Sequencers map[string]tippool.LatestSequencerTipDataJSONAble `json:"sequencers"`
 	}
+
+	BranchData struct {
+		ID   string                        `json:"id"`
+		Data multistate.BranchDataJSONAble `json:"data"`
+	}
+
+	MainChain struct {
+		Error
+		Branches []BranchData `json:"branches"`
+	}
 )
 
 const ErrGetOutputNotFound = "output not found"

@@ -47,14 +47,6 @@ type (
 		// TODO probably there's a need for other deterministic values, such as total number of outputs, of transactions, of chains
 	}
 
-	RootRecordJSONAble struct {
-		Root           string `json:"root"`
-		SequencerID    string `json:"sequencer_id"`
-		LedgerCoverage uint64 `json:"ledger_coverage"`
-		SlotInflation  uint64 `json:"slot_inflation"`
-		Supply         uint64 `json:"supply"`
-	}
-
 	BranchData struct {
 		RootRecord
 		Stem            *ledger.OutputWithID
