@@ -84,6 +84,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathCheckTxIDInLRB, srv.checkTxIDIncludedInLRB)
 	// GET last milestone list
 	srv.addHandler(api.PathGetLastKnownSequencerMilestones, srv.getMilestoneList)
+	// GET main chain of branches /get_mainchain?[max=]
+	srv.addHandler(api.PathGetMainChain, srv.getMainChain)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
 
@@ -387,6 +389,48 @@ func (srv *server) getMilestoneList(w http.ResponseWriter, r *http.Request) {
 	resp := api.KnownLatestMilestones{
 		Sequencers: srv.GetKnownLatestMilestonesJSONAble(),
 	}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+const defaultMaxMainChainDepth = 20
+
+func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
+	setHeader(w)
+
+	var err error
+	maxDepth := defaultMaxMainChainDepth
+	lst, ok := r.URL.Query()["max"]
+	if ok || len(lst) == 1 {
+		if maxDepth, err = strconv.Atoi(lst[0]); err != nil {
+			writeErr(w, "wrong parameter 'max'")
+			return
+		}
+	}
+
+	main, err := multistate.GetMainChain(srv.StateStore(), global.FractionHealthyBranch, maxDepth)
+	if err != nil {
+		writeErr(w, err.Error())
+		return
+	}
+
+	resp := api.MainChain{
+		Branches: make([]api.BranchData, 0),
+	}
+
+	for _, br := range main {
+		txid := br.Stem.ID.TransactionID()
+		resp.Branches = append(resp.Branches, api.BranchData{
+			ID:   txid.StringHex(),
+			Data: *br.JSONAble(),
+		})
+	}
+
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		writeErr(w, err.Error())

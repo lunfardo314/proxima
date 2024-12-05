@@ -616,3 +616,19 @@ func FindLatestReliableBranchWithSequencerID(store global.StateStoreReader, seqI
 	})
 	return
 }
+
+func GetMainChain(store global.StateStoreReader, fraction global.Fraction, max ...int) ([]*BranchData, error) {
+	lrb := FindLatestReliableBranch(store, fraction)
+	if lrb == nil {
+		return nil, fmt.Errorf("can't find latest reliable brancg")
+	}
+	ret := make([]*BranchData, 0)
+	IterateBranchChainBack(store, lrb, func(branchID *ledger.TransactionID, branch *BranchData) bool {
+		ret = append(ret, branch)
+		if len(max) > 0 && len(ret) >= max[0] {
+			return false
+		}
+		return true
+	})
+	return ret, nil
+}

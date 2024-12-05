@@ -29,6 +29,7 @@ const (
 	PathGetLatestReliableBranch         = PrefixAPIV1 + "/get_latest_reliable_branch"
 	PathCheckTxIDInLRB                  = PrefixAPIV1 + "/check_txid_in_lrb"
 	PathGetLastKnownSequencerMilestones = PrefixAPIV1 + "/last_known_milestones"
+	PathGetMainChain                    = PrefixAPIV1 + "/get_mainchain"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
 
