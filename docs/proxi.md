@@ -11,7 +11,7 @@ Most of the commands require configuration profile in the working directory.
 
 `proxi` configuration profile usually is file `proxi.yaml`. If we use a file 
 with another name, say `proxi2.yaml`, we have to specify it explicitly in the command line with flag `-c` 
-and profile file mame without extension, for example `proxi node balance -c proxi2`.
+and profile file name without extension, for example `proxi node balance -c proxi2`.
 
 `proxi` commands has a form `proxi <cmd group> <subcommand> <args and flags>`, where `<cmd group>` is one of the following:
 
@@ -30,12 +30,12 @@ The file will contain something like this (with comments):
 
 ```yaml
 private_key: af274b0363f484f8d113a9e17831ff3acd285fd152c5179db42ab0ff976e23153a51eabb1c19f1b5e784d086a6bf176c8ada3c248f25da93f7362c35eb1fc660
-account: addressED25519(0x7450c426206c4164bc84ff30a14bdf72603b563e26a1d43973bc67cdb59033d8)
+account: a(0x7450c426206c4164bc84ff30a14bdf72603b563e26a1d43973bc67cdb59033d8)
 sequencer_id: <own sequencer ID>
 api:
   endpoint: http://127.0.0.1:8000
 tag_along:
-  sequencer_id: af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963
+  sequencer_id: 6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc
   fee: 500
 finality:
   inclusion_threshold:
@@ -47,7 +47,7 @@ spammer:
   output_amount: 1000
   pace: 25
   tag_along:
-    fee: 500
+    fee: 50
     sequencer_id: <sequencer ID hex encoded>
   target: <target address in EasyFL format>
 ```
@@ -57,51 +57,50 @@ Usually some adjustments are needed to complete the profile.
 `wallet.private_key` contains hex encoded raw data of the ED25519 private key. The file must be kept secret 
 because of this private key. 
 
-`wallet.account` contains address constraint in the _EasyFL_ format which matches the private key. 
+`wallet.account` contains address constraint in the _EasyFL_ format which matches the private key. It is usually has the form of `a(0x...)`, which is the
+_EasyFL_ script fro the ED25519 lock.
 
-`sequencer_id` is an optional field if you do not run sequencer. It contains `sequencer ID` of the sequencer controlled by this wallet. 
+`sequencer_id` is an optional field. It is irrelevant if you do not run sequencer. It contains `sequencer ID` of the sequencer controlled by this wallet. 
 It is necessary in order to access sequencer controlled by this private key with the `proxi node seq withdraw ..` command. 
 
-`api.endpoint` must contain endpoint for the node's API
+`api.endpoint` must contain URL for the node's API in the form of `http://<ip>:<port>`
 
-`tag_along.sequencer_id` is a mandatory field for any commands which issue transactions, such as `proxi node transfer`.
+`tag_along.sequencer_id` is a mandatory field for any commands which create transactions, such as `proxi node transfer`.
 It must contain sequencer which is used as tag-along sequencer. Each issued transaction will contain so-called _tag-along output_.
 The *tag-along output* simply sends amount of tokens specified in `tag_along.fee` to the sequencer in `tag_along.sequencer_id`. 
 The sequencer will consume the fee in its transaction. This will pull the transaction into the next ledger state. 
 By default, `proxi.yaml` is initialized with the static constant of 
-bootstrap sequencer ID `af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963`. 
+bootstrap sequencer ID `6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc`. 
 
-Other default values can be left as is in the beginning.
-
-### Transaction and other IDs
-Transaction ID in proxima is 32 byte array. First 5 bytes are the timestamp of the transaction, the rest 27 bytes are 
-taken from `blake2b` hash of the transaction bytes.
+### How to understand transaction and other IDs
+Transaction ID in proxima is 32 byte array. First 5 bytes are the timestamp of the transaction, the byte at index 6 contains number of outputs produced 
+by the transaction minus 1, the rest 26 bytes are taken from `blake2b` hash of the raw transaction bytes.
 
 The transaction ID or its short (trimmed) form is often displayed like this:
 
-`[58514|30sq]fd9d612d07f0d235c627b720f70fe5c84ac6b0f7f296097197fed5`
+`[58514|30sq]029d612d07f0d235c627b720f70fe5c84ac6b0f7f296097197fed5`
 or
-`[58565|0br]bf8b9bc628dacecc923dcb68715b94556f81c856674f1383a7b945`
+`[58565|0br]018b9bc628dacecc923dcb68715b94556f81c856674f1383a7b945`
 
-The `58514` is slot number. The `sq` means it is non-branch sequencer transaction and `30` is number of ticks in the slot.
-The rest is hex-encoded 27 bytes of transaction hash.
+Here `58514` is slot number. The `sq` means it is non-branch sequencer transaction and `30` is number of ticks in the slot.
+The rest is hex-encoded 26 bytes of transaction hash, prefixed with the one byte with the number of produced outputs minus 1.
 
-If `br` is used instead of `sq`, it means it is branch transaction. Baranch transactions always have `0` ticks, i.e. they are
+If `br` is used instead of `sq`, it means it is branch transaction. Branch transactions always have `0` ticks, i.e. they are
 _on the slot boundary_.
 If `sq` and `br` are skipped, it is an ordinary, non-sequencer transaction, produced by user wallet. 
 
-The output (aka UTXO) on the ledger belongs to a transaction and has index in it. 
+The output (aka UTXO) on the ledger belongs to a transaction which produced it and index in the transaction from 0 to 255. 
 Index is displayed as postfix of the transaction ID.
 
-For example `[58579|25]6f0b55301a97884f3fd8b4f44ef2c682b81ecda38d2b35a2116bfb[3]` is output of the non-sequencer transaction with index 3. 
-Short for of the same output (only for display) would be `[58579|25]6f0b55..[3]`
+For example `[58579|25]010b55301a97884f3fd8b4f44ef2c682b81ecda38d2b35a2116bfb[3]` is output of the non-sequencer transaction with index 3. 
+Short for of the same output (only for display) would be `[58579|25]010b55..[3]`
 
 Usual ED25519 address takes form `a(0x370563b1f08fcc06fa250c59034acfd4ab5a29b60640f751d644e9c3b84004d0)`, which contains 
 hash of the public key. We will skip details here.
 
 Chain ID is a 32 byte array. It is displayed in the hex-encoded form, often with prefix `$/`. 
 
-For example `$/af7bedde1fea222230b82d63d5b665ac75afbe4ad3f75999bb3386cf994a6963` is the pre-defined constant chain ID of the bootstrap 
+For example `$/6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc` is the pre-defined constant chain ID of the bootstrap 
 (genesis) chain.
 
 ### Some useful `proxi node` commands
@@ -118,7 +117,7 @@ by all the current healthy ledger states, i.e. it is the **consensus ledger stat
 
    The _ledger coverage_ must be > of the supply for the branch to be _healthy_. The maximum possible value of the ledger coverage is _2 x supply_.
 
-* `proxi node balance` displays token balance on the usual (ED25519) address and on chains, controlled by the account in the LRB branch.  
+* `proxi node balance` displays token balance on the usual (ED25519) address and on chains, controlled by the wallet's account in the LRB branch.  
    Token balance is sum of tokens contained in non-chain outputs plus sum of balances contained in chain outputs. 
 
 * `proxi node chains` displays all chain outputs controlled by the account on LRB state
@@ -145,7 +144,6 @@ by all the current healthy ledger states, i.e. it is the **consensus ledger stat
       port:  9500
       addr:  http://5.180.181.103
   ```
-  
 
 ### 2. Run spammer from the wallet
 
@@ -182,7 +180,7 @@ faucet:
 
 `faucet.output_amount` contains the amount that is returned upon a request. 
 
-`faucet.port` specifies the port on which the server will listen for requests. 
+`faucet.port` specifies the port on which the faucet server will listen for requests. 
 
 `faucet.account` specifies the account from which the server will redraw the funds. 
 
