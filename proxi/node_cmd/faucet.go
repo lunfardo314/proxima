@@ -107,6 +107,10 @@ func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 		if ret.maxRequestsPerHour == 0 {
 			ret.maxRequestsPerHour = defaultMaxRequestsPerHour
 		}
+		ret.maxRequestsPerDay = sub.GetInt("max_requests_per_day")
+		if ret.maxRequestsPerDay == 0 {
+			ret.maxRequestsPerDay = defaultMaxRequestsPerDay
+		}
 	} else {
 		// get default values
 		ret.port = viper.GetUint64("faucet.port")
@@ -126,6 +130,7 @@ func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 			ret.addr = viper.GetString("faucet.addr")
 		}
 		ret.maxRequestsPerHour = sub.GetInt("faucet.max_requests_per_hour")
+		ret.maxRequestsPerDay = sub.GetInt("faucet.max_requests_per_day")
 	}
 	return
 }
