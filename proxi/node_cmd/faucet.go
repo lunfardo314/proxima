@@ -33,6 +33,7 @@ type faucetConfig struct {
 	account            ledger.Accountable
 	privKey            ed25519.PrivateKey
 	maxRequestsPerHour int
+	maxRequestsPerDay  int
 }
 
 type faucet struct {
@@ -46,7 +47,8 @@ type faucet struct {
 const (
 	defaultFaucetOutputAmount = 1_000_000
 	defaultFaucetPort         = 9500
-	defaultMaxRequestsPerHour = 6
+	defaultMaxRequestsPerHour = 5
+	defaultMaxRequestsPerDay  = 10
 )
 
 func initFaucetCmd() *cobra.Command {
@@ -75,6 +77,10 @@ func initFaucetCmd() *cobra.Command {
 
 	cmd.PersistentFlags().Uint64("faucet.max_requests_per_hour", defaultMaxRequestsPerHour, "maximum number of requests per hour")
 	err = viper.BindPFlag("faucet.max_requests_per_hour", cmd.PersistentFlags().Lookup("faucet.max_requests_per_hour"))
+	glb.AssertNoError(err)
+
+	cmd.PersistentFlags().Uint64("faucet.max_requests_per_day", defaultMaxRequestsPerDay, "maximum number of requests per day")
+	err = viper.BindPFlag("faucet.max_requests_per_day", cmd.PersistentFlags().Lookup("faucet.max_requests_per_day"))
 	glb.AssertNoError(err)
 	return cmd
 }
@@ -130,7 +136,7 @@ func displayFaucetConfig() faucetConfig {
 	glb.Infof("     output amount:          %d", cfg.outputAmount)
 	glb.Infof("     port:                   %d", cfg.port)
 	glb.Infof("     private key:            %s", hex.EncodeToString(cfg.privKey))
-	glb.Infof("     maximum number of requests per hour: %d", cfg.maxRequestsPerHour)
+	glb.Infof("     maximum number of requests per hour: %d, per day: %s", cfg.maxRequestsPerHour, cfg.maxRequestsPerDay)
 
 	return cfg
 }
@@ -275,20 +281,29 @@ func (fct *faucet) redrawFromAccount(targetLock ledger.Accountable) (string, *le
 	return "", txCtx.TransactionID()
 }
 
-func _trimToLastHour(lst []time.Time) []time.Time {
-	return util.PurgeSlice(lst, func(when time.Time) bool {
-		return time.Since(when) <= time.Hour
+func _trimToLastDay(lst []time.Time) ([]time.Time, int) {
+	ret := util.PurgeSlice(lst, func(when time.Time) bool {
+		return time.Since(when) <= 24*time.Hour
 	})
+	lastHour := 0
+	for _, when := range ret {
+		if time.Since(when) <= time.Hour {
+			lastHour++
+		}
+	}
+	return ret, lastHour
 }
 
 func (fct *faucet) checkAndUpdateRequestTime(account string, addr string) bool {
 	fct.mutex.Lock()
 	defer fct.mutex.Unlock()
 
+	var lastHour int
+
 	lst, ok := fct.accountRequestList[account]
 	if ok {
-		lst = _trimToLastHour(lst)
-		if len(lst) >= fct.cfg.maxRequestsPerHour {
+		lst, lastHour = _trimToLastDay(lst)
+		if len(lst) >= fct.cfg.maxRequestsPerDay || lastHour >= fct.cfg.maxRequestsPerHour {
 			return false
 		}
 		lst = append(lst, time.Now())
@@ -299,8 +314,8 @@ func (fct *faucet) checkAndUpdateRequestTime(account string, addr string) bool {
 
 	lst, ok = fct.addressRequestList[addr]
 	if ok {
-		lst = _trimToLastHour(lst)
-		if len(lst) >= fct.cfg.maxRequestsPerHour {
+		lst, lastHour = _trimToLastDay(lst)
+		if len(lst) >= fct.cfg.maxRequestsPerDay || lastHour >= fct.cfg.maxRequestsPerHour {
 			return false
 		}
 		lst = append(lst, time.Now())
