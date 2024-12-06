@@ -3,6 +3,7 @@ package attacher
 import (
 	"fmt"
 
+	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -24,6 +25,7 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 	}})
 	if err != nil {
 		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
+		memdag.SavePastConeFromTxStore(a.vid.ID, a.TxBytesStore(), a.vid.Slot()-2, "inconsist_"+a.vid.ID.AsFileNameShort())
 	}
 	return err
 }
