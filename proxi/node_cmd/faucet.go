@@ -136,7 +136,7 @@ func displayFaucetConfig() faucetConfig {
 	glb.Infof("     output amount:          %d", cfg.outputAmount)
 	glb.Infof("     port:                   %d", cfg.port)
 	glb.Infof("     private key:            %s", hex.EncodeToString(cfg.privKey))
-	glb.Infof("     maximum number of requests per hour: %d, per day: %s", cfg.maxRequestsPerHour, cfg.maxRequestsPerDay)
+	glb.Infof("     maximum number of requests per hour: %d, per day: %d", cfg.maxRequestsPerHour, cfg.maxRequestsPerDay)
 
 	return cfg
 }
