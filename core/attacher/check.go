@@ -25,7 +25,7 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 	}})
 	if err != nil {
 		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
-		memdag.SavePastConeFromTxStore(a.vid.ID, a.TxBytesStore(), a.vid.Slot()-2, "inconsist_"+a.vid.ID.AsFileNameShort()+".gv")
+		memdag.SavePastConeFromTxStore(a.vid.ID, a.TxBytesStore(), a.vid.Slot()-3, "inconsist_"+a.vid.ID.AsFileNameShort()+".gv")
 	}
 	return err
 }
