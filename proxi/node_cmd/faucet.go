@@ -336,17 +336,18 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !fct.checkAndUpdateRequestTime(targetStr[0], r.RemoteAddr) {
+		glb.Infof("funds refused to send to %s (remote = %s)", targetStr[0], r.RemoteAddr)
 		writeResponse(w, fmt.Sprintf("maximum %d requests per hour are allowed", fct.cfg.maxRequestsPerHour))
 		return
 	}
 
 	targetLock, err := ledger.AccountableFromSource(targetStr[0])
 	if err != nil {
-		glb.Infof("Error from AccountableFromSource: %s", err.Error())
+		glb.Infof("error from AccountableFromSource: %s", err.Error())
 		writeResponse(w, err.Error())
 		return
 	}
-	glb.Infof("Sending funds to %s", targetStr[0])
+	glb.Infof("sending funds to %s", targetStr[0])
 	var result string
 	var txid *ledger.TransactionID
 	if fct.cfg.redrawFromChain {
@@ -357,8 +358,8 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 		result, txid = fct.redrawFromAccount(targetLock)
 	}
 
-	glb.Infof("requested faucet transfer of %s tokens to %s from sequencer %s...",
-		util.Th(fct.cfg.outputAmount), targetLock.String(), fct.walletData.Sequencer.StringShort())
+	glb.Infof("requested faucet transfer of %s tokens to %s from sequencer %s (remote = %s)",
+		util.Th(fct.cfg.outputAmount), targetLock.String(), fct.walletData.Sequencer.StringShort(), r.RemoteAddr)
 	glb.Infof("             transaction %s (hex = %s)", txid.String(), txid.StringHex())
 	writeResponse(w, result) // send ok
 
