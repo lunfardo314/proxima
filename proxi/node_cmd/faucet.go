@@ -435,7 +435,7 @@ func getFundsCmd(_ *cobra.Command, _ []string) {
 
 	faucetAddr := fmt.Sprintf("%s:%d", cfg.addr, cfg.port)
 
-	glb.Infof("requesting funds from: %s", faucetAddr)
+	glb.Infof("requesting funds from faucet at %s", faucetAddr)
 
 	path := fmt.Sprintf(getFundsPath+"?addr=%s", walletData.Account.String())
 
