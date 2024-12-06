@@ -26,27 +26,27 @@ import (
 const getFundsPath = "/"
 
 type faucetConfig struct {
-	redrawFromChain     bool
-	outputAmount        uint64
-	port                uint64
-	addr                string
-	account             ledger.Accountable
-	privKey             ed25519.PrivateKey
-	timeBetweenRequests time.Duration
+	redrawFromChain    bool
+	outputAmount       uint64
+	port               uint64
+	addr               string
+	account            ledger.Accountable
+	privKey            ed25519.PrivateKey
+	maxRequestsPerHour int
 }
 
 type faucet struct {
 	cfg                faucetConfig
 	walletData         glb.WalletData
 	mutex              sync.Mutex
-	accountRequestList map[string]time.Time
-	addressRequestList map[string]time.Time
+	accountRequestList map[string][]time.Time
+	addressRequestList map[string][]time.Time
 }
 
 const (
 	defaultFaucetOutputAmount = 1_000_000
 	defaultFaucetPort         = 9500
-	defaultTimeBetweeRequests = 30
+	defaultMaxRequestsPerHour = 6
 )
 
 func initFaucetCmd() *cobra.Command {
@@ -73,10 +73,9 @@ func initFaucetCmd() *cobra.Command {
 	err = viper.BindPFlag("faucet.priv_key", cmd.PersistentFlags().Lookup("faucet.priv_key"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint64("faucet.time_between_requests", defaultTimeBetweeRequests, "minimal time allowed between requests [sec]")
-	err = viper.BindPFlag("faucet.time_between_requests", cmd.PersistentFlags().Lookup("faucet.time_between_requests"))
+	cmd.PersistentFlags().Uint64("faucet.max_requests_per_hour", defaultMaxRequestsPerHour, "maximum number of requests per hour")
+	err = viper.BindPFlag("faucet.max_requests_per_hour", cmd.PersistentFlags().Lookup("faucet.max_requests_per_hour"))
 	glb.AssertNoError(err)
-
 	return cmd
 }
 
@@ -98,7 +97,7 @@ func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 		} else {
 			ret.addr = sub.GetString("addr")
 		}
-		ret.timeBetweenRequests = time.Duration(sub.GetUint64("time_between_requests")) * time.Second
+		ret.maxRequestsPerHour = sub.GetInt("max_requests_per_hour")
 	} else {
 		// get default values
 		ret.port = viper.GetUint64("faucet.port")
@@ -117,8 +116,7 @@ func readFaucetConfigIn(sub *viper.Viper, server bool) (ret faucetConfig) {
 		} else {
 			ret.addr = viper.GetString("faucet.addr")
 		}
-		ret.timeBetweenRequests = time.Duration(viper.GetUint64("faucet.time_between_requests")) * time.Second
-
+		ret.maxRequestsPerHour = sub.GetInt("faucet.max_requests_per_hour")
 	}
 	return
 }
@@ -129,7 +127,7 @@ func displayFaucetConfig() faucetConfig {
 	glb.Infof("     output amount:          %d", cfg.outputAmount)
 	glb.Infof("     port:                   %d", cfg.port)
 	glb.Infof("     private key:            %s", hex.EncodeToString(cfg.privKey))
-	glb.Infof("     time between requests:  %s [sec]", cfg.timeBetweenRequests)
+	glb.Infof("     maximum number of requests per hour: %d", cfg.maxRequestsPerHour)
 
 	return cfg
 }
@@ -143,8 +141,8 @@ func runFaucetCmd(_ *cobra.Command, args []string) {
 	fct := &faucet{
 		cfg:                cfg,
 		walletData:         walletData,
-		accountRequestList: make(map[string]time.Time),
-		addressRequestList: make(map[string]time.Time),
+		accountRequestList: make(map[string][]time.Time),
+		addressRequestList: make(map[string][]time.Time),
 	}
 	if !cfg.redrawFromChain {
 		funds := getAccountTotal(cfg.account)
@@ -274,29 +272,40 @@ func (fct *faucet) redrawFromAccount(targetLock ledger.Accountable) (string, *le
 	return "", txCtx.TransactionID()
 }
 
-func (fct *faucet) isAllowed(account string, addr string) bool {
-	fct.mutex.Lock()
-	defer fct.mutex.Unlock()
-
-	now := time.Now()
-	lastTime, exists := fct.accountRequestList[account]
-	if !exists || now.Sub(lastTime) > fct.cfg.timeBetweenRequests {
-		lastTime, exists := fct.addressRequestList[addr]
-		if !exists || now.Sub(lastTime) > fct.cfg.timeBetweenRequests {
-			return true
-		}
-	}
-
-	return false
+func _trimToLastHour(lst []time.Time) []time.Time {
+	return util.PurgeSlice(lst, func(when time.Time) bool {
+		return time.Since(when) <= time.Hour
+	})
 }
 
-func (fct *faucet) updateRequestTime(account string, addr string) {
+func (fct *faucet) checkAndUpdateRequestTime(account string, addr string) bool {
 	fct.mutex.Lock()
 	defer fct.mutex.Unlock()
 
-	now := time.Now()
-	fct.accountRequestList[account] = now
-	fct.addressRequestList[addr] = now
+	lst, ok := fct.accountRequestList[account]
+	if ok {
+		lst = _trimToLastHour(lst)
+		if len(lst) >= fct.cfg.maxRequestsPerHour {
+			return false
+		}
+		lst = append(lst, time.Now())
+	} else {
+		lst = []time.Time{time.Now()}
+	}
+	fct.accountRequestList[account] = lst
+
+	lst, ok = fct.addressRequestList[addr]
+	if ok {
+		lst = _trimToLastHour(lst)
+		if len(lst) >= fct.cfg.maxRequestsPerHour {
+			return false
+		}
+		lst = append(lst, time.Now())
+	} else {
+		lst = []time.Time{time.Now()}
+	}
+	fct.addressRequestList[addr] = lst
+	return true
 }
 
 const faucet_log = "faucet_requests.log"
@@ -323,8 +332,8 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !fct.isAllowed(targetStr[0], r.RemoteAddr) {
-		writeResponse(w, "too short time between requests")
+	if !fct.checkAndUpdateRequestTime(targetStr[0], r.RemoteAddr) {
+		writeResponse(w, fmt.Sprintf("maximum %d requests per hour are allowed", fct.cfg.maxRequestsPerHour))
 		return
 	}
 
@@ -341,7 +350,7 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 		glb.Infof("redrawing from sequencer chain")
 		result, txid = fct.redrawFromChain(targetLock)
 	} else {
-		glb.Infof("redrawing from accout")
+		glb.Infof("redrawing from account")
 		result, txid = fct.redrawFromAccount(targetLock)
 	}
 
@@ -350,10 +359,7 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 	glb.Infof("             transaction %s (hex = %s)", txid.String(), txid.StringHex())
 	writeResponse(w, result) // send ok
 
-	if len(result) == 0 {
-		fct.updateRequestTime(targetStr[0], r.RemoteAddr)
-		logRequest(targetStr[0], r.RemoteAddr, fct.cfg.outputAmount)
-	}
+	logRequest(targetStr[0], r.RemoteAddr, fct.cfg.outputAmount)
 }
 
 func writeResponse(w http.ResponseWriter, respStr string) {
