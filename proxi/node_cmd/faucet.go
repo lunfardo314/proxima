@@ -331,11 +331,11 @@ func (fct *faucet) checkAndUpdateRequestTime(account string, addr string) bool {
 	return true
 }
 
-const faucet_log = "faucet_requests.log"
+const faucetLogName = "faucet_requests.log"
 
 func logRequest(account string, ipAddress string, funds uint64) error {
 	// Open the log file in append mode, creating it if it doesn't exist
-	file, err := os.OpenFile(faucet_log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(faucetLogName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %v", err)
 	}
@@ -357,7 +357,7 @@ func (fct *faucet) handler(w http.ResponseWriter, r *http.Request) {
 
 	if !fct.checkAndUpdateRequestTime(targetStr[0], r.RemoteAddr) {
 		glb.Infof("funds refused to send to %s (remote = %s)", targetStr[0], r.RemoteAddr)
-		writeResponse(w, fmt.Sprintf("maximum %d requests per hour are allowed", fct.cfg.maxRequestsPerHour))
+		writeResponse(w, fmt.Sprintf("maximum %d requests per hour and %d per day are allowed", fct.cfg.maxRequestsPerHour, fct.cfg.maxRequestsPerDay))
 		return
 	}
 
