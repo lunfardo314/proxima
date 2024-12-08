@@ -9,6 +9,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -201,25 +202,27 @@ func ParseTxMetadata(txBytesWithMetadata []byte) (txBytes []byte, metadata *Tran
 	return txBytes, txMetadata, err
 }
 
+func (m *TransactionMetadata) Lines(prefix ...string) *lines.Lines {
+	if m == nil || m.flags() == 0 {
+		return lines.New(prefix...).Add("<empty>")
+	}
+	ret := lines.New(prefix...)
+	if m.LedgerCoverage != nil {
+		ret.Add("coverage: %s", util.Th(*m.LedgerCoverage))
+	}
+	if !util.IsNil(m.StateRoot) {
+		ret.Add("root: %s", m.StateRoot.String())
+	}
+	if m.SlotInflation != nil {
+		ret.Add("slot inflation: %s", *m.SlotInflation)
+	}
+	ret.Add("source type: %s", m.SourceTypeNonPersistent.String())
+	return ret
+}
+
 // String returns info of the persistent part
 func (m *TransactionMetadata) String() string {
-	if m == nil || m.flags() == 0 {
-		return "<empty>"
-	}
-	lcStr := "<nil>"
-	if m.LedgerCoverage != nil {
-		lcStr = util.Th(*m.LedgerCoverage)
-	}
-	rootStr := "<nil>"
-	if !util.IsNil(m.StateRoot) {
-		rootStr = m.StateRoot.String()
-	}
-	inflationStr := "<nil>"
-	if m.SlotInflation != nil {
-		inflationStr = util.Th(*m.SlotInflation)
-	}
-	return fmt.Sprintf("coverage: %s, slot inflation: %s, root: %s, source type: '%s'",
-		lcStr, inflationStr, rootStr, m.SourceTypeNonPersistent.String())
+	return m.Lines().Join(", ")
 }
 
 func (m *TransactionMetadata) JSONAble() *TransactionMetadataJSONAble {
@@ -248,4 +251,23 @@ func (m *TransactionMetadata) JSONAble() *TransactionMetadataJSONAble {
 		return ret
 	}
 	return nil
+}
+
+func (m *TransactionMetadata) IsConsistentWith(m1 *TransactionMetadata) bool {
+	if m == nil || m1 == nil {
+		return true
+	}
+	if !util.IsNil(m.StateRoot) && !util.IsNil(m1.StateRoot) && !ledger.CommitmentModel.EqualCommitments(m.StateRoot, m1.StateRoot) {
+		return false
+	}
+	if m.LedgerCoverage != nil && m1.LedgerCoverage != nil && *m.LedgerCoverage != *m1.LedgerCoverage {
+		return false
+	}
+	if m.SlotInflation != nil && m1.SlotInflation != nil && *m.SlotInflation != *m1.SlotInflation {
+		return false
+	}
+	if m.Supply != nil && m1.Supply != nil && *m.Supply != *m1.Supply {
+		return false
+	}
+	return true
 }

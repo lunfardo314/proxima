@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/memdag"
+	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -78,59 +78,20 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 	return
 }
 
-// enforceConsistencyWithTxMetadata :
-// if true, node is crashed immediately upon inconsistency with provided transaction metadata
-// if false, an error is reported
-// The transaction metadata is optionally provided together with the sequencer transaction bytes by other nodes
-// or by the tx store, therefore is not trust-less.
-// A malicious node could crash other peers by sending inconsistent metadata,
-// therefore in the production environment enforceConsistencyWithTxMetadata should be false
-// and the connection with the malicious peer should be immediately severed
-const enforceConsistencyWithTxMetadata = false
-
-// checkConsistencyWithMetadata does not check root
-func (a *milestoneAttacher) checkConsistencyWithMetadata() {
-	if a.metadata == nil {
-		return
-	}
-	var err error
-	lcCalc := a.LedgerCoverage()
-	switch {
-	case a.metadata.LedgerCoverage != nil && *a.metadata.LedgerCoverage != lcCalc:
-		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency:\n   computed coverage (%s) not equal to the\n   ledger coverage provided in the metadata (%s).\n   Diff=%s",
-			a.vid.IDShortString(), util.Th(lcCalc), util.Th(*a.metadata.LedgerCoverage),
-			util.Th(int64(lcCalc)-int64(*a.metadata.LedgerCoverage)))
-	case a.metadata.SlotInflation != nil && *a.metadata.SlotInflation != a.slotInflation:
-		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed slot inflation (%s) not equal to the slot inflation provided in the metadata (%s)",
-			a.vid.IDShortString(), util.Th(a.slotInflation), util.Th(*a.metadata.SlotInflation))
-	case a.metadata.Supply != nil && *a.metadata.Supply != a.baselineSupply+a.slotInflation:
-		err = fmt.Errorf("checkConsistencyWithMetadata %s: major inconsistency: computed supply (%s) not equal to the supply provided in the metadata (%s)",
-			a.vid.IDShortString(), util.Th(a.baselineSupply+a.slotInflation), util.Th(*a.metadata.Supply))
-	}
-	if err == nil {
-		return
-	}
-	if enforceConsistencyWithTxMetadata {
-		//go memdag.SaveGraphPastCone(a.vid, "checkConsistencyWithMetadata.gv")
-		//time.Sleep(10 * time.Second)
-		//
-		err = fmt.Errorf("%v\n================\n%s", err, a.pastCone.Lines("        ").Join("\n"))
-		a.Log().Fatal(err)
-	} else {
-		a.Log().Error(err)
+func (a *milestoneAttacher) calculatedMetadata() *txmetadata.TransactionMetadata {
+	return &txmetadata.TransactionMetadata{
+		StateRoot:      nil,
+		LedgerCoverage: util.Ref(a.LedgerCoverage()),
+		SlotInflation:  util.Ref(a.slotInflation),
+		Supply:         util.Ref(a.baselineSupply + a.slotInflation),
 	}
 }
 
-func (a *milestoneAttacher) checkStateRootConsistentWithMetadata() {
-	if a.metadata == nil || util.IsNil(a.metadata.StateRoot) {
-		return
-	}
-	if !ledger.CommitmentModel.EqualCommitments(a.finals.root, a.metadata.StateRoot) {
-		err := fmt.Errorf("commitBranch %s: major inconsistency: state root not equal to the state root provided in metadata", a.vid.IDShortString())
-		if enforceConsistencyWithTxMetadata {
-			a.Log().Fatal(err)
-		} else {
-			a.Log().Error(err)
-		}
+// checkConsistencyWithMetadata does not check root
+func (a *milestoneAttacher) checkConsistencyWithMetadata() {
+	calcMeta := a.calculatedMetadata()
+	if !a.metadata.IsConsistentWith(calcMeta) {
+		a.Log().Errorf("inconsistency in metadata of %s (source seq: %s):\n   calculated metadata: %s\n   provided metadata: %s",
+			a.vid.IDShortString(), a.vid.SequencerID.Load().StringShort(), calcMeta.String(), a.metadata.String())
 	}
 }

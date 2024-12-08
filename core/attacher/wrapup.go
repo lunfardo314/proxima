@@ -85,7 +85,4 @@ func (a *milestoneAttacher) commitBranch() {
 	a.finals.root = upd.Root()
 
 	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverage(coverage, supply, global.FractionHealthyBranch))
-
-	// check consistency with state root provided with metadata
-	a.checkStateRootConsistentWithMetadata()
 }
