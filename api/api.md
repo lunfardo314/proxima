@@ -16,7 +16,7 @@ Compiles EasyFL script in the context of the ledger of the node and returns byte
 
 Example:
 ``` bash
-curl -L -X GET http://localhost:8001/txapi/v1/compile_script?source="slice(0x0102,0,0)"
+curl -L -X GET http://localhost:8000/txapi/v1/compile_script?source="slice(0x0102,0,0)"
 ```
 
 ```json
@@ -32,7 +32,7 @@ Decompiles bytecode in the context of the ledger of the node to EasyFL script
 
 Example:
 ``` bash
-curl -L -X GET http://localhost:9000//txapi/v1/decompile_bytecode?bytecode=1182010281008100
+curl -L -X GET http://localhost:8000//txapi/v1/decompile_bytecode?bytecode=1182010281008100
 ```
 
 ```json
