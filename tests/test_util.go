@@ -876,7 +876,7 @@ func TestGenesisPrivKey() ed25519.PrivateKey {
 	return genesisPrivateKey
 }
 
-func InitTestEnv() (*workflowDummyEnvironment, ledger.TransactionID, error) {
+func StartTestEnv() (*workflowDummyEnvironment, *ledger.TransactionID, error) {
 	privKey := genesisPrivateKey
 	ledger.DefaultIdentityData(privKey)
 	addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
@@ -888,18 +888,21 @@ func InitTestEnv() (*workflowDummyEnvironment, ledger.TransactionID, error) {
 	}
 
 	stateStore := common.NewInMemoryKVStore()
-	multistate.InitStateStore(*ledger.L().ID, stateStore)
+	_, root := multistate.InitStateStore(*ledger.L().ID, stateStore)
 	txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 	env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-
-	env.StartTracingTags(global.TraceTag)
+	env.root = root
 
 	workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
 
 	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
-	//assert.NoError(t, err)
+	if err != nil {
+		return nil, nil, err
+	}
 	txid, err := txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
-	//require.NoError(t, err)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return env, txid, err
+	return env, &txid, err
 }
