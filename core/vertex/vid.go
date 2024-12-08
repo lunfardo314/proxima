@@ -875,3 +875,17 @@ func (vid *WrappedTx) forEachConsumerNoLock(fun func(consumer *WrappedTx, output
 		}
 	}
 }
+
+func (vid *WrappedTx) SequencerName() (ret string) {
+	ret = "(N/A)"
+	vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
+		if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			if outData := seqData.SequencerOutputData; outData != nil {
+				if outData.MilestoneData != nil {
+					ret = outData.MilestoneData.Name
+				}
+			}
+		}
+	}})
+	return
+}

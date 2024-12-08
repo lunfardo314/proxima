@@ -91,7 +91,7 @@ func (a *milestoneAttacher) calculatedMetadata() *txmetadata.TransactionMetadata
 func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	calcMeta := a.calculatedMetadata()
 	if !a.metadata.IsConsistentWith(calcMeta) {
-		a.Log().Errorf("inconsistency in metadata of %s (source seq: %s):\n   calculated metadata: %s\n   provided metadata: %s",
-			a.vid.IDShortString(), a.vid.SequencerID.Load().StringShort(), calcMeta.String(), a.metadata.String())
+		a.Log().Errorf("inconsistency in metadata of %s (source seq: %s, '%s'):\n   calculated metadata: %s\n   provided metadata: %s",
+			a.vid.IDShortString(), a.vid.SequencerID.Load().StringShort(), a.vid.SequencerName(), calcMeta.String(), a.metadata.String())
 	}
 }
