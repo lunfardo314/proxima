@@ -14,7 +14,6 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.Tracef(TraceTagAttachMilestone, "wrapUpAttacher")
 
 	a.slotInflation = a.pastCone.CalculateSlotInflation()
-	a.checkConsistencyWithMetadata()
 
 	a.finals.baseline = &a.baseline.ID
 	a.finals.numVertices = a.pastCone.NumVertices()
@@ -31,6 +30,8 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	} else {
 		a.Tracef(TraceTagAttachMilestone, "finalized sequencer milestone")
 	}
+
+	a.checkConsistencyWithMetadata()
 
 	calculatedMetadata := txmetadata.TransactionMetadata{
 		LedgerCoverage: util.Ref(a.finals.coverage),

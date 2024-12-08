@@ -80,14 +80,14 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 
 func (a *milestoneAttacher) calculatedMetadata() *txmetadata.TransactionMetadata {
 	return &txmetadata.TransactionMetadata{
-		StateRoot:      nil,
+		StateRoot:      a.finals.root,
 		LedgerCoverage: util.Ref(a.LedgerCoverage()),
 		SlotInflation:  util.Ref(a.slotInflation),
 		Supply:         util.Ref(a.baselineSupply + a.slotInflation),
 	}
 }
 
-// checkConsistencyWithMetadata does not check root
+// checkConsistencyWithMetadata check but not enforces
 func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 	calcMeta := a.calculatedMetadata()
 	if !a.metadata.IsConsistentWith(calcMeta) {
