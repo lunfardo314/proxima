@@ -9,9 +9,12 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/core/work_process/tippool"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -34,6 +37,7 @@ type workflowDummyEnvironment struct {
 	*global.Global
 	stateStore   global.StateStore
 	txBytesStore global.TxBytesStore
+	root         common.VCommitment
 }
 
 func (w *workflowDummyEnvironment) StateStore() global.StateStore {
@@ -67,6 +71,41 @@ func (w *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Durat
 
 func (w *workflowDummyEnvironment) SelfPeerID() peer.ID {
 	return "self"
+}
+
+func (wrk *workflowDummyEnvironment) GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble {
+	return nil
+}
+
+func (p *workflowDummyEnvironment) GetLatestReliableBranch() (ret *multistate.BranchData) {
+	return nil
+}
+
+func (p *workflowDummyEnvironment) GetNodeInfo() *global.NodeInfo {
+	return nil
+}
+
+func (p *workflowDummyEnvironment) GetPeersInfo() *api.PeersInfo {
+	return nil
+}
+
+func (p *workflowDummyEnvironment) GetSyncInfo() *api.SyncInfo {
+	return nil
+}
+
+func (p *workflowDummyEnvironment) GetTxInclusion(txid *ledger.TransactionID, slotsBack int) *multistate.TxInclusion {
+	return nil
+}
+
+func (p *workflowDummyEnvironment) LatestReliableState() (multistate.SugaredStateReader, error) {
+	return multistate.MakeSugared(multistate.MustNewReadable(p.stateStore, p.root, 0)), nil
+}
+
+func (p *workflowDummyEnvironment) QueryTxIDStatusJSONAble(txid *ledger.TransactionID) vertex.TxIDStatusJSONAble {
+	return vertex.TxIDStatusJSONAble{}
+}
+
+func (p *workflowDummyEnvironment) SubmitTxBytesFromAPI(txBytes []byte) {
 }
 
 func newWorkflowDummyEnvironment(stateStore global.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
@@ -831,4 +870,39 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 		}
 		td.bootstrapSeq.Stop()
 	}()
+}
+
+func TestGenesisPrivKey() ed25519.PrivateKey {
+	return genesisPrivateKey
+}
+
+func StartTestEnv() (*workflowDummyEnvironment, *ledger.TransactionID, error) {
+	privKey := genesisPrivateKey
+	ledger.DefaultIdentityData(privKey)
+	addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
+	addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+	distrib := []ledger.LockBalance{
+		{Lock: addr1, Balance: 1_000_000, ChainOrigin: false},
+		{Lock: addr2, Balance: 1_000_000, ChainOrigin: false},
+		{Lock: addr2, Balance: 1_000_000, ChainOrigin: true},
+	}
+
+	stateStore := common.NewInMemoryKVStore()
+	_, root := multistate.InitStateStore(*ledger.L().ID, stateStore)
+	txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+	env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
+	env.root = root
+
+	workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDoNotStartPruner)
+
+	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
+	if err != nil {
+		return nil, nil, err
+	}
+	txid, err := txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return env, &txid, err
 }
