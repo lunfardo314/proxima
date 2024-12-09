@@ -66,7 +66,7 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: '/api/v1/get_output?id=<hex-encoded output ID>'
 	srv.addHandler(api.PathGetOutput, srv.getOutput)
-	// GET request format: '/api/v1/query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
+	// GET request format: '/api/v1/query_tx_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
 	srv.addHandler(api.PathQueryTxStatus, srv.queryTxStatus)
 	// GET request format: '/api/v1/query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
 	srv.addHandler(api.PathQueryInclusionScore, srv.queryTxInclusionScore)

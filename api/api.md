@@ -227,7 +227,7 @@ curl -L -X GET 'http://localhost:8000/txapi/v1/get_vertex_dep?txid=8000001400017
 * [get_account_outputs](#get_account_outputs)
 * [get_chain_output](#get_chain_output)
 * [get_output](#get_output)
-* [query_txid_status](#query_txid_status)
+* [query_tx_status](#query_tx_status)
 * [query_inclusion_score](#query_inclusion_score)
 * [submit_nowait](#submit_nowait)
 * [sync_info](#sync_info)
@@ -235,10 +235,12 @@ curl -L -X GET 'http://localhost:8000/txapi/v1/get_vertex_dep?txid=8000001400017
 * [peers_info](#peers_info)
 * [get_latest_reliable_branch](#get_latest_reliable_branch)
 * [check_txid_in_lrb](#check_txid_in_lrb)
+* [last_known_milestones](#last_known_milestones)
+* [get_mainchain](#get_mainchain)
 
 
 ## get_ledger_id
-TODO
+GET hex-encoded ledger id bytes
 `/api/v1/get_ledger_id`
 
 Example:
@@ -255,7 +257,7 @@ curl -L -X GET 'http://localhost:8000/api/v1/get_ledger_id'
 
 
 ## get_account_outputs
-TODO
+Get in general non-deterministic set of outputs because of random ordering and limits
 `/api/v1/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>`
 
 Example:
@@ -276,7 +278,7 @@ curl -L -X GET 'http://localhost:8000/api/v1/get_account_outputs?accountable=a(0
 ```
 
 ## get_chain_output
-TODO
+Get the chain output for the provided chain id
 `/api/v1/get_chain_output?chainid=<hex-encoded chain ID>`
 
 Example:
@@ -294,7 +296,7 @@ curl -L -X GET 'http://localhost:8000/api/v1/get_chain_output?chainid=6393b67812
 ```
 
 ## get_output
-TODO
+Get output data for the provided output id
 `/api/v1/get_output?id=<hex-encoded output ID>`
 
 Example:
@@ -310,16 +312,53 @@ curl -L -X GET 'http://localhost:8000/api/v1/get_output?id=80003d180001780694657
 }
 ```
 
-## query_txid_status
-TODO
-`/api/v1/query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]`
+## query_tx_status
+GET status for provided transacion id
+`/api/v1/query_tx_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]`
 
 Example:
-TODO
 
+``` bash
+curl -L -X GET 'http://localhost:8000/api/v1/query_tx_status?txid=8000e1ed00014ff2a17201cd31c0b05e7e63f8ed8a451d6fcaff23d4a0156544'
+```
+
+```json
+{
+  "txid_status": {
+    "id": "8000e1ed00014ff2a17201cd31c0b05e7e63f8ed8a451d6fcaff23d4a0156544",
+    "on_dag": false,
+    "in_storage": true,
+    "virtual_tx": true,
+    "deleted": false,
+    "status": "GOOD",
+    "flags": 13,
+    "err": null
+  },
+  "inclusion": {
+    "txid": "8000e1ed00014ff2a17201cd31c0b05e7e63f8ed8a451d6fcaff23d4a0156544",
+    "latest_slot": 58410,
+    "earliest_slot": 58410,
+    "inclusion": [
+      {
+        "branch_id": "8000e42a0001c7f9ef2587843a7b922a959355f418b0ce7bad88475ed4d86485",
+        "root_record": {
+          "root": "c9a865c08f99dbb6394a799218e52e4a4b9fe5c32ebeb1d7cfe798c0e5d9ba9a",
+          "sequencer_id": "6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc",
+          "ledger_coverage": 1999982687604168,
+          "slot_inflation": 8245162,
+          "supply": 1000006619616135
+        },
+        "included": true
+      }
+    ],
+    "lrbid": "8000e42a0001c7f9ef2587843a7b922a959355f418b0ce7bad88475ed4d86485",
+    "included_in_lrb": true
+  }
+}
+```
 
 ## submit_nowait
-TODO
+POST transaction bytes
 Feedback only on parsing error, otherwise async posting
 `/api/v1/submit_nowait`
 
@@ -448,4 +487,102 @@ GET latest reliable branch and check if transaction ID is in it
 `/api/v1/check_txid_in_lrb?txid=<hex-encoded transaction ID>`
 
 Example:
-TODO
+``` bash
+curl -L -X GET 'http://localhost:8000/api/v1/check_txid_in_lrb?txid=8000e1ed00014ff2a17201cd31c0b05e7e63f8ed8a451d6fcaff23d4a0156544'
+```
+
+```json
+{
+  "lrb_id": "8000e1ed00014ff2a17201cd31c0b05e7e63f8ed8a451d6fcaff23d4a0156544",
+  "txid": "8000e1ed00014ff2a17201cd31c0b05e7e63f8ed8a451d6fcaff23d4a0156544",
+  "included": true
+}
+```
+
+## last_known_milestones
+GET latest known milestone list
+`/api/v1/last_known_milestones`
+
+Example:
+
+``` bash
+curl -L -X GET 'http://localhost:8000/api/v1/last_known_milestones'
+```
+
+```json
+{
+  "sequencers": {
+    "6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc": {
+      "latest_milestone_txid": "8000e094190045abb5df0bcb56c40f0aed7186738145c382534b0f6c51220890",
+      "last_branch_txid": "8000e094190045abb5df0bcb56c40f0aed7186738145c382534b0f6c51220890",
+      "milestone_count": 9,
+      "last_activity_unix_nano": 1733757110088545254
+    }
+  }
+}
+```
+
+## get_mainchain
+GET main chain of branches /get_mainchain?[max=]
+`/api/v1/get_mainchain?[max=]`
+
+Example:
+
+``` bash
+curl -L -X GET 'http://localhost:8000/api/v1/get_mainchain?max=3'
+```
+
+```json
+{
+  "branches": [
+    {
+      "id": "8000e0ab0001da67ddc750dd991b23ff3ee60311fdbf538eeb1ae6f87d348195",
+      "data": {
+        "root": {
+          "root": "5d1194c327d62b18f3f931dff5f5d70d06455b1ffb1c8cb1a26a105e41e072aa",
+          "sequencer_id": "6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc",
+          "ledger_coverage": 2000012648973651,
+          "slot_inflation": 7961922,
+          "supply": 1000006349006291
+        },
+        "stem_output_index": 1,
+        "sequencer_output_index": 0,
+        "on_chain_amount": 1000006347006791,
+        "branch_inflation": 3865922
+      }
+    },
+    {
+      "id": "8000e0aa00017f84eb61f9fa57ee53f962cd8fcb960524ebed7feebea5afe2ba",
+      "data": {
+        "root": {
+          "root": "8d332206e59a9fcbab7d67bb8ea44f6011896e771e8fb5623795705e395bb6a8",
+          "sequencer_id": "6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc",
+          "ledger_coverage": 2000012619857565,
+          "slot_inflation": 7220170,
+          "supply": 1000006341044369
+        },
+        "stem_output_index": 1,
+        "sequencer_output_index": 0,
+        "on_chain_amount": 1000006339044869,
+        "branch_inflation": 3124170
+      }
+    },
+    {
+      "id": "8000e0a90001f30cb3d7cbe27ef332cf3101f35030768d008f49dac3a63693cf",
+      "data": {
+        "root": {
+          "root": "88050479542316255c52603657bc0c4e1414e7d038a4e0f6ccb020c595cd8efb",
+          "sequencer_id": "6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc",
+          "ledger_coverage": 2000012576065733,
+          "slot_inflation": 7086286,
+          "supply": 1000006333824199
+        },
+        "stem_output_index": 1,
+        "sequencer_output_index": 0,
+        "on_chain_amount": 1000006331824699,
+        "branch_inflation": 2990286
+      }
+    }
+  ]
+}
+```
