@@ -66,17 +66,17 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: '/api/v1/get_output?id=<hex-encoded output ID>'
 	srv.addHandler(api.PathGetOutput, srv.getOutput)
-	// GET request format: '/api/v1/query_txid_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
+	// GET request format: '/api/v1/query_tx_status?txid=<hex-encoded transaction ID>[&slots=<slot span>]'
 	srv.addHandler(api.PathQueryTxStatus, srv.queryTxStatus)
 	// GET request format: '/api/v1/query_inclusion_score?txid=<hex-encoded transaction ID>&threshold=N-D[&slots=<slot span>]'
 	srv.addHandler(api.PathQueryInclusionScore, srv.queryTxInclusionScore)
 	// POST request format '/api/v1/submit_nowait'. Feedback only on parsing error, otherwise async posting
 	srv.addHandler(api.PathSubmitTransaction, srv.submitTx)
-	// GET sync info from the node
+	// GET sync info from the node '/api/v1/sync_info'
 	srv.addHandler(api.PathGetSyncInfo, srv.getSyncInfo)
-	// GET sync info from the node
+	// GET node info from the node '/api/v1/node_info'
 	srv.addHandler(api.PathGetNodeInfo, srv.getNodeInfo)
-	// GET peers info from the node
+	// GET peers info from the node '/api/v1/peers_info'
 	srv.addHandler(api.PathGetPeersInfo, srv.getPeersInfo)
 	// GET latest reliable branch '/api/v1/get_latest_reliable_branch'
 	srv.addHandler(api.PathGetLatestReliableBranch, srv.getLatestReliableBranch)
