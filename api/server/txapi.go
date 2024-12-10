@@ -218,13 +218,9 @@ func (srv *server) getTxBytes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var txmJSON *txmetadata.TransactionMetadataJSONAble
-	if metadata != nil {
-		txmJSON = metadata.JSONAble()
-	}
 	resp := api.TxBytes{
 		TxBytes:    hex.EncodeToString(txBytes),
-		TxMetadata: txmJSON,
+		TxMetadata: metadata.JSONAble(),
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
