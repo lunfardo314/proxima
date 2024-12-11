@@ -17,14 +17,14 @@ import (
 )
 
 func TestCompileScript(t *testing.T) {
-	server := &server{}
+	srv := &server{}
 
 	// Prepare request
 	req := httptest.NewRequest(http.MethodGet, "/txapi/v1/compile_script?source=slice(0x0102,0,0)", nil)
 	w := httptest.NewRecorder()
 
 	// Call handler
-	server.compileScript(w, req)
+	srv.compileScript(w, req)
 
 	// Validate response
 	resp := w.Result()
@@ -43,14 +43,14 @@ func TestCompileScript(t *testing.T) {
 }
 
 func TestDecompileBytecode(t *testing.T) {
-	server := &server{}
+	srv := &server{}
 
 	// Prepare request
 	req := httptest.NewRequest(http.MethodGet, "/txapi/v1/decompile_bytecode?bytecode=1182010281008100", nil)
 	w := httptest.NewRecorder()
 
 	// Call handler
-	server.decompileBytecode(w, req)
+	srv.decompileBytecode(w, req)
 
 	// Validate response
 	resp := w.Result()
@@ -68,14 +68,14 @@ func TestDecompileBytecode(t *testing.T) {
 }
 
 func TestParseOutputData(t *testing.T) {
-	server := &server{}
+	srv := &server{}
 
 	// Prepare request
 	req := httptest.NewRequest(http.MethodGet, "/txapi/v1/parse_output_data?output_data=40060b45ab8800038d7ff693a50e2345b3a0033d48aa6f02b3f37811ae82d9c383855d3d23373cbd28ab94639fdd94a4f02d2645c2a36393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc0002000d49d181028800038d7ff693a50e1d504287626f6f742e623084000006ad840000035c8800000000000000006151d7880000000000386580d1022cee903827166af9c0257be156222ae34c9279831a294fb5213647a3bcbe7a3e203d100f3ec2095fb076c65ed1d29a680c05c7993d43e7fdd0a779e8f783943a50b0a1ba3b373830cc2f447a030edb35810281ff", nil)
 	w := httptest.NewRecorder()
 
 	// Call handler
-	server.parseOutputData(w, req)
+	srv.parseOutputData(w, req)
 
 	// Validate response
 	resp := w.Result()
