@@ -10,7 +10,7 @@ require (
 	github.com/gammazero/deque v0.2.1
 	github.com/libp2p/go-libp2p v0.35.1
 	github.com/libp2p/go-libp2p-kad-dht v0.25.2
-	github.com/lunfardo314/easyfl v0.0.0-20241220164819-65acc7cf14dc
+	github.com/lunfardo314/easyfl v0.0.0-20241220192652-d6fac839a94a
 	github.com/lunfardo314/unitrie v0.0.0-20241201105640-bfb0b026a9cf
 	github.com/multiformats/go-multiaddr v0.12.4
 	github.com/prometheus/client_golang v1.19.1
