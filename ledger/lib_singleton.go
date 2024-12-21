@@ -30,6 +30,7 @@ func InitLocally(id *IdentityData, verbose ...bool) *Library {
 	}
 
 	ret.upgrade0(id)
+	ret.upgrade1()
 
 	if len(verbose) > 0 && verbose[0] {
 		fmt.Printf("------ Extended EasyFL library:\n")
