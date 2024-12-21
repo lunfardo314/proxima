@@ -4,7 +4,7 @@ import "fmt"
 
 // DelegationLock is a basic delegation lock which is:
 // - unlockable by owner any slot
-// = unlockable by delegation target on odd slots (slot mod 2 == 0) with additional constraints
+// = unlockable by delegation target on even slots (slot mod 2 == 0) with additional constraints
 type DelegationLock struct {
 	TargetLock Accountable
 	OwnerLock  Accountable
@@ -19,17 +19,43 @@ const (
 
 const delegationLockSource = `
 
+// Enfoces delegation target lock and additional constraints, such as immutable chain 
+// transition with non-decreasing amount
 // $0 chain constraint index
 // $1 target lock
-func _enforceDelegationTargetConstraints : concat($0, $1)
+// $2 successor output
+func _enforceDelegationTargetConstraintsOnSuccessor : and(
+    $1,  // target lock must be unlocked
+    require(lessOrEqualThan(selfAmountValue, amountValue($2)), !!!amount_should_not_decrease),
+    require(equal(@Array8($2, lockConstraintIndex), selfSiblingConstraint(lockConstraintIndex)), !!!lock_must_be_immutable),
+    require(equal(byte(selfUnlockParameters,2), 0), !!!chain_must_be_state_transition)
+)
+	
 
 // $0 chain constraint index
 // $1 target lock
 // $2 owner lock
-func delegationLock: if(
-   isZero(mod(txTimeSlot,2)),
-   _enforceDelegationTargetConstraints($0, $1),
-   $2
+func delegationLock: and(
+	mustSize($0,1),
+	require(not(equal($0, 0xff)), !!!chain_constraint_index_0xff_is_not_alowed),
+    require(equal(parsePrefixBytecode(selfSiblingConstraint($0)), #chain), !!!wrong_chain_constraint_index),
+    or(
+		and(selfIsProducedOutput, $1, $2),  // check general consistency on produced output
+        and(
+            selfIsConsumedOutput,
+            or(
+               and(  // check delegation case on even slots
+                   isZero(bitwiseAND(txTimeSlot,u32/1)),   // check if even
+                  _enforceDelegationTargetConstraintsOnSuccessor(
+                      $0,
+                      $1, 
+                      producedOutputByIndex(byte(selfUnlockParameters,0))
+                  ), // check successor
+               ),
+               $2 // otherwise check owner's lock
+            )
+        )
+    )
 )
 `
 

@@ -217,7 +217,7 @@ func validSuccessorData : and(
 		equal(predecessorConstraintIndex($1), selfConstraintIndex)
 )
 
-// chain successor data is computed form in the context of the consumed output
+// chain successor data is computed in the context of the consumed output
 // from the selfUnlock data
 func chainSuccessorData : 
 	evalArgumentBytecode(
