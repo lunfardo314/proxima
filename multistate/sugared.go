@@ -86,6 +86,18 @@ func (s SugaredStateReader) GetOutputsForAccount(addr ledger.AccountID) ([]*ledg
 	return txutils.ParseAndSortOutputData(oDatas, nil)
 }
 
+func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Accountable, fun func(oid ledger.OutputID, o *ledger.Output) bool) (err error) {
+	var o *ledger.Output
+	var err1 error
+	return s.IterateUTXOsLockedInAccount(addr.AccountID(), func(oid ledger.OutputID, odata []byte) bool {
+		o, err1 = ledger.OutputFromBytesReadOnly(odata)
+		if err1 != nil {
+			return true
+		}
+		return fun(oid, o)
+	})
+}
+
 func (s SugaredStateReader) GetStemOutput() *ledger.OutputWithID {
 	oData, err := s.IndexedStateReader.GetUTXOsLockedInAccount(ledger.StemAccountID)
 	util.AssertNoError(err)
@@ -165,4 +177,22 @@ func (s SugaredStateReader) BalanceOnChain(chainID *ledger.ChainID) uint64 {
 		return 0
 	}
 	return o.Output.Amount()
+}
+
+func (s SugaredStateReader) GetOutputsDelegatedToAccount(addr ledger.Accountable) ([]*ledger.OutputWithID, error) {
+	ret := make([]*ledger.OutputWithID, 0)
+	err := s.IterateOutputsForAccount(addr, func(oid ledger.OutputID, o *ledger.Output) bool {
+		lock := o.DelegationLock()
+		if lock != nil && ledger.EqualAccountables(lock.TargetLock, addr) {
+			ret = append(ret, &ledger.OutputWithID{
+				ID:     oid,
+				Output: o,
+			})
+		}
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }

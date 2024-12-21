@@ -333,6 +333,14 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	}, true
 }
 
+func (o *Output) DelegationLock() *DelegationLock {
+	lock := o.Lock()
+	if lock.Name() != DelegationLockName {
+		return nil
+	}
+	return lock.(*DelegationLock)
+}
+
 func (o *Output) ToString(prefix ...string) string {
 	return o.Lines(prefix...).String()
 }

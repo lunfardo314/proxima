@@ -195,39 +195,57 @@ func (r *Readable) GetIDsLockedInAccount(addr ledger.AccountID) ([]ledger.Output
 }
 
 func (r *Readable) GetUTXOsLockedInAccount(addr ledger.AccountID) ([]*ledger.OutputDataWithID, error) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	if len(addr) > 255 {
-		return nil, fmt.Errorf("accountID length should be <= 255")
-	}
-	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(addr)), addr)
-
-	ret := make([]*ledger.OutputDataWithID, 0)
-	var err error
-	var found bool
-
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
-		o := &ledger.OutputDataWithID{}
-		o.ID, err = ledger.OutputIDFromBytes(k[len(accountPrefix):])
-		if err != nil {
-			return false
-		}
-		o.OutputData, found = r._getUTXO(&o.ID, partition)
-		if !found {
-			// skip this output ID
-			return true
-		}
-		ret = append(ret, o)
+	ret := make([]*ledger.OutputDataWithID, 0)
+	err := r.IterateUTXOsLockedInAccount(addr, func(oid ledger.OutputID, odata []byte) bool {
+		ret = append(ret, &ledger.OutputDataWithID{
+			ID:         oid,
+			OutputData: odata,
+		})
 		return true
 	})
 	if err != nil {
 		return nil, err
 	}
-	return ret, err
+	return ret, nil
+}
+
+func (r *Readable) IterateUTXOsLockedInAccount(addr ledger.AccountID, fun func(oid ledger.OutputID, odata []byte) bool) (err error) {
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	defer partition.Dispose()
+
+	return r.IterateUTXOIDsLockedInAccount(addr, func(oid ledger.OutputID) bool {
+		if odata, found := r._getUTXO(&oid, partition); found {
+			return fun(oid, odata)
+		}
+		return true
+	})
+}
+
+func (r *Readable) IterateUTXOIDsLockedInAccount(addr ledger.AccountID, fun func(oid ledger.OutputID) bool) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if len(addr) > 255 {
+		return fmt.Errorf("accountID length should be <= 255")
+	}
+	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(addr)), addr)
+
+	var oid ledger.OutputID
+
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	defer partition.Dispose()
+
+	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
+		oid, err = ledger.OutputIDFromBytes(k[len(accountPrefix):])
+		if err != nil {
+			return false
+		}
+		return fun(oid)
+	})
+	return err
 }
 
 func (r *Readable) GetUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWithID, error) {

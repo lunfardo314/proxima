@@ -1,6 +1,12 @@
 package ledger
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+
+	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/util"
+)
 
 // DelegationLock is a basic delegation lock which is:
 // - unlockable by owner any slot
@@ -75,11 +81,12 @@ func DelegationLockFromBytes(data []byte) (*DelegationLock, error) {
 	if sym != DelegationLockName {
 		return nil, fmt.Errorf("DelegationLockFromBytes: not a DelegationLock")
 	}
+	arg0 := easyfl.StripDataPrefix(args[0])
 	ret := &DelegationLock{}
-	if len(args[0]) != 1 || args[0][0] == 255 {
+	if len(arg0) != 1 || arg0[0] == 255 {
 		return nil, fmt.Errorf("DelegationLockFromBytes: wrong chain constraint index")
 	}
-	ret.ChainConstraintIndex = args[0][0]
+	ret.ChainConstraintIndex = arg0[0]
 
 	ret.TargetLock, err = AccountableFromBytes(args[1])
 	if err != nil {
@@ -115,5 +122,22 @@ func (d *DelegationLock) String() string {
 func addDelegationLock(lib *Library) {
 	lib.extendWithConstraint(DelegationLockName, delegationLockSource, 3, func(data []byte) (Constraint, error) {
 		return DelegationLockFromBytes(data)
-	})
+	}, initTestDelegationConstraint)
+}
+
+func initTestDelegationConstraint() {
+	a1 := AddressED25519Random()
+	a2 := AddressED25519Random()
+	example := NewDelegationLock(a1, a2, 1)
+	exampleBack, err := DelegationLockFromBytes(example.Bytes())
+	util.AssertNoError(err)
+	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency "+DelegationLockName)
+
+	pref1, err := L().ParsePrefixBytecode(example.Bytes())
+	util.AssertNoError(err)
+
+	pref2, err := L().EvalFromSource(nil, "#delegationLock")
+	util.AssertNoError(err)
+	util.Assertf(bytes.Equal(pref1, pref2), "bytes.Equal(pref1, pref2)")
+	util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
 }

@@ -149,6 +149,8 @@ func LockFromBytes(data []byte) (Lock, error) {
 		return ChainLockFromBytes(data)
 	case StemLockName:
 		return StemLockFromBytes(data)
+	case DelegationLockName:
+		return DelegationLockFromBytes(data)
 	case ConditionalLockName:
 		return ConditionalLockFromBytes(data)
 	case DeadlineLockName:

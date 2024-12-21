@@ -24,8 +24,10 @@ type (
 	StateIndexReader interface {
 		// GetIDsLockedInAccount TODO limit maximum number of output
 		GetIDsLockedInAccount(addr ledger.AccountID) ([]ledger.OutputID, error)
-		// GetUTXOsLockedInAccount TODO limit maximum number of output
-		GetUTXOsLockedInAccount(accountID ledger.AccountID) ([]*ledger.OutputDataWithID, error)
+		IterateUTXOIDsLockedInAccount(addr ledger.AccountID, fun func(oid ledger.OutputID) bool) (err error)
+		IterateUTXOsLockedInAccount(addr ledger.AccountID, fun func(oid ledger.OutputID, odata []byte) bool) (err error)
+
+		GetUTXOsLockedInAccount(accountID ledger.AccountID) ([]*ledger.OutputDataWithID, error) // TODO leave Iterate.. only?
 		GetUTXOForChainID(id *ledger.ChainID) (*ledger.OutputDataWithID, error)
 		Root() common.VCommitment
 		MustLedgerIdentityBytes() []byte // either state identity consistent or panic

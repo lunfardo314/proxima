@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
@@ -443,12 +444,16 @@ func (u *UTXODB) ValidationContextFromTransaction(txBytes []byte) (*transaction.
 	return transaction.TxContextFromTransferableBytes(txBytes, u.state.Readable().GetUTXO)
 }
 
-func (u *UTXODB) TxToString(txbytes []byte) string {
-	ctx, err := u.ValidationContextFromTransaction(txbytes)
+func (u *UTXODB) TxToLines(txBytes []byte, prefix ...string) *lines.Lines {
+	ctx, err := u.ValidationContextFromTransaction(txBytes)
 	if err != nil {
-		return fmt.Sprintf("error: %v", err)
+		return lines.New(prefix...).Add("error: %v", err)
 	}
-	return ctx.String()
+	return ctx.Lines(prefix...)
+}
+
+func (u *UTXODB) TxToString(txBytes []byte) string {
+	return u.TxToLines(txBytes).String()
 }
 
 // CreateChainOrigin takes all tokens from controller address and puts them on the chain output
