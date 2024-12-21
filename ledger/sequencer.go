@@ -121,10 +121,10 @@ const (
 )
 
 type SequencerConstraint struct {
-	// must point to the sibling chain constraint
-	ChainConstraintIndex byte
 	// must be equal to the total produced amount of the transaction
 	TotalProducedAmount uint64
+	// must point to the sibling chain constraint
+	ChainConstraintIndex byte
 }
 
 func NewSequencerConstraint(chainConstraintIndex byte, totalProducedAmount uint64) *SequencerConstraint {
@@ -139,14 +139,14 @@ func (s *SequencerConstraint) Name() string {
 }
 
 func (s *SequencerConstraint) Bytes() []byte {
-	return mustBinFromSource(s.source())
+	return mustBinFromSource(s.Source())
 }
 
 func (s *SequencerConstraint) String() string {
 	return fmt.Sprintf("%s(%d, u64/%d)", SequencerConstraintName, s.ChainConstraintIndex, s.TotalProducedAmount)
 }
 
-func (s *SequencerConstraint) source() string {
+func (s *SequencerConstraint) Source() string {
 	return fmt.Sprintf(sequencerConstraintTemplate, s.ChainConstraintIndex, s.TotalProducedAmount)
 }
 

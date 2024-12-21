@@ -28,7 +28,7 @@ func (u GeneralScript) Bytes() []byte {
 	return u
 }
 
-func (u GeneralScript) StringExt() string {
+func (u GeneralScript) String() string {
 	src, err := L().DecompileBytecode(u)
 	if err != nil {
 		src = fmt.Sprintf("failed decompile")
@@ -36,7 +36,7 @@ func (u GeneralScript) StringExt() string {
 	return fmt.Sprintf("GeneralScript(%s) (decompile: %s)", easyfl.Fmt(u), src)
 }
 
-func (u GeneralScript) String() string {
+func (u GeneralScript) Source() string {
 	src, err := L().DecompileBytecode(u)
 	if err != nil {
 		src = fmt.Sprintf("failed decompile")

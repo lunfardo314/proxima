@@ -61,14 +61,14 @@ func (ch *ChainConstraint) Name() string {
 }
 
 func (ch *ChainConstraint) Bytes() []byte {
-	return mustBinFromSource(ch.source())
+	return mustBinFromSource(ch.Source())
 }
 
 func (ch *ChainConstraint) String() string {
-	return ch.source()
+	return ch.Source()
 }
 
-func (ch *ChainConstraint) source() string {
+func (ch *ChainConstraint) Source() string {
 	return fmt.Sprintf(chainConstraintTemplate,
 		hex.EncodeToString(common.Concat(ch.ID[:], ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode)))
 }
@@ -226,7 +226,7 @@ func chainSuccessorData :
 		0
 	)
 
-// Constraint source: chain($0)
+// Constraint Source: chain($0)
 // $0 - 35-bytes data: 
 //     32 bytes chain id
 //     1 byte predecessor input index 

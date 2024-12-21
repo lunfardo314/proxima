@@ -33,16 +33,16 @@ func (st *StemLock) Name() string {
 	return StemLockName
 }
 
-func (st *StemLock) source() string {
+func (st *StemLock) Source() string {
 	return fmt.Sprintf(stemTemplate, hex.EncodeToString(st.PredecessorOutputID[:]))
 }
 
 func (st *StemLock) Bytes() []byte {
-	return mustBinFromSource(st.source())
+	return mustBinFromSource(st.Source())
 }
 
 func (st *StemLock) String() string {
-	return st.source()
+	return st.Source()
 	//return fmt.Sprintf("stem(%s)", st.PredecessorOutputID.StringShort())
 }
 

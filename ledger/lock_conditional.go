@@ -70,7 +70,7 @@ func ConditionalLockFromBytes(data []byte) (*ConditionalLock, error) {
 	return ret, nil
 }
 
-func (c *ConditionalLock) source() string {
+func (c *ConditionalLock) Source() string {
 	args := make([]string, 8)
 	for i := range c.Conditions {
 		if util.IsNil(c.Conditions[i]) {
@@ -89,7 +89,7 @@ func (c *ConditionalLock) source() string {
 }
 
 func (c *ConditionalLock) Bytes() []byte {
-	return mustBinFromSource(c.source())
+	return mustBinFromSource(c.Source())
 }
 
 func (c *ConditionalLock) Accounts() []Accountable {
@@ -101,7 +101,7 @@ func (c *ConditionalLock) Name() string {
 }
 
 func (c *ConditionalLock) String() string {
-	return c.source()
+	return c.Source()
 }
 
 func addConditionalLock(lib *Library) {

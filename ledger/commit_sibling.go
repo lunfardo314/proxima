@@ -54,12 +54,12 @@ func CommitToSiblingFromBytes(data []byte) (*CommitToSibling, error) {
 	return NewCommitToSibling(idxBin[0], hash), nil
 }
 
-func (cs *CommitToSibling) source() string {
+func (cs *CommitToSibling) Source() string {
 	return fmt.Sprintf(commitToSiblingTemplate, cs.SiblingIndex, hex.EncodeToString(cs.SiblingHash))
 }
 
 func (cs *CommitToSibling) Bytes() []byte {
-	return mustBinFromSource(cs.source())
+	return mustBinFromSource(cs.Source())
 }
 
 func (cs *CommitToSibling) Name() string {
@@ -67,7 +67,7 @@ func (cs *CommitToSibling) Name() string {
 }
 
 func (cs *CommitToSibling) String() string {
-	return cs.source()
+	return cs.Source()
 }
 
 func addCommitToSiblingConstraint(lib *Library) {

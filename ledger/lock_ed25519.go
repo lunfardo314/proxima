@@ -73,12 +73,12 @@ func AddressED25519Random() AddressED25519 {
 	return AddressED25519FromPrivateKey(priv)
 }
 
-func (a AddressED25519) source() string {
+func (a AddressED25519) Source() string {
 	return fmt.Sprintf(addressED25519Template, hex.EncodeToString(a))
 }
 
 func (a AddressED25519) Bytes() []byte {
-	return mustBinFromSource(a.source())
+	return mustBinFromSource(a.Source())
 }
 
 func (a AddressED25519) Clone() AddressED25519 {
@@ -98,7 +98,7 @@ func (a AddressED25519) Name() string {
 }
 
 func (a AddressED25519) String() string {
-	return a.source()
+	return a.Source()
 }
 
 func (a AddressED25519) Short() string {

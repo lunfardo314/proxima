@@ -51,11 +51,11 @@ func (i *InflationConstraint) Name() string {
 }
 
 func (i *InflationConstraint) Bytes() []byte {
-	return mustBinFromSource(i.source())
+	return mustBinFromSource(i.Source())
 }
 
 func (i *InflationConstraint) String() string {
-	return i.source()
+	return i.Source()
 	//return fmt.Sprintf("%s(%s, 0x%s, %d, %d)",
 	//	InflationConstraintName,
 	//	util.Th(i.ChainInflation),
@@ -65,7 +65,7 @@ func (i *InflationConstraint) String() string {
 	//)
 }
 
-func (i *InflationConstraint) source() string {
+func (i *InflationConstraint) Source() string {
 	var chainInflationBin [8]byte
 	binary.BigEndian.PutUint64(chainInflationBin[:], i.ChainInflation)
 	chainInflationStr := "0x" + hex.EncodeToString(chainInflationBin[:])

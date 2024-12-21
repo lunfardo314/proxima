@@ -26,7 +26,7 @@ func NewDeadlineLock(deadline Slot, main, expiry Accountable) *DeadlineLock {
 	}
 }
 
-func (dl *DeadlineLock) source() string {
+func (dl *DeadlineLock) Source() string {
 	return fmt.Sprintf(deadlineLockTemplate,
 		dl.Deadline,
 		dl.ConstraintMain.String(),
@@ -35,7 +35,7 @@ func (dl *DeadlineLock) source() string {
 }
 
 func (dl *DeadlineLock) Bytes() []byte {
-	return mustBinFromSource(dl.source())
+	return mustBinFromSource(dl.Source())
 }
 
 func (dl *DeadlineLock) String() string {

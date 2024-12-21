@@ -348,7 +348,7 @@ func (o *Output) Lines(prefix ...string) *lines.Lines {
 		if err != nil {
 			ret.Add("%s%d: %v (%d bytes)", pref, i, err, len(data))
 		} else {
-			ret.Add("%s%d: %s (%d bytes)", pref, i, c.String(), len(data))
+			ret.Add("%s%d: %s (%d bytes)", pref, i, c.Source(), len(data))
 		}
 		return true
 	})
@@ -362,7 +362,7 @@ func (o *Output) LinesPlain() *lines.Lines {
 		if err != nil {
 			ret.Add(err.Error())
 		} else {
-			ret.Add(c.String())
+			ret.Add(c.Source())
 		}
 		return true
 	})

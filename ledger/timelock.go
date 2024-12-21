@@ -40,14 +40,14 @@ func (t Timelock) Name() string {
 }
 
 func (t Timelock) Bytes() []byte {
-	return mustBinFromSource(t.source())
+	return mustBinFromSource(t.Source())
 }
 
 func (t Timelock) String() string {
 	return fmt.Sprintf("%s(%d)", TimelockName, t)
 }
 
-func (t Timelock) source() string {
+func (t Timelock) Source() string {
 	return fmt.Sprintf(timelockTemplate, t)
 }
 

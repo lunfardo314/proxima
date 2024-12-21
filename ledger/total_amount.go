@@ -31,12 +31,12 @@ func (a TotalAmount) Name() string {
 	return TotalAmountConstraintName
 }
 
-func (a TotalAmount) source() string {
+func (a TotalAmount) Source() string {
 	return fmt.Sprintf(totalAmountTemplate, uint64(a))
 }
 
 func (a TotalAmount) Bytes() []byte {
-	return mustBinFromSource(a.source())
+	return mustBinFromSource(a.Source())
 }
 
 func (a TotalAmount) String() string {

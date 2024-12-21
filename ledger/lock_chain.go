@@ -40,12 +40,12 @@ func ChainLockFromBytes(data []byte) (ChainLock, error) {
 	return ChainLockFromChainID(chainID), nil
 }
 
-func (cl ChainLock) source() string {
+func (cl ChainLock) Source() string {
 	return fmt.Sprintf(chainLockTemplate, hex.EncodeToString(cl))
 }
 
 func (cl ChainLock) Bytes() []byte {
-	return mustBinFromSource(cl.source())
+	return mustBinFromSource(cl.Source())
 }
 
 func (cl ChainLock) Accounts() []Accountable {
@@ -61,7 +61,7 @@ func (cl ChainLock) Name() string {
 }
 
 func (cl ChainLock) String() string {
-	return cl.source()
+	return cl.Source()
 }
 
 func (cl ChainLock) AsLock() Lock {

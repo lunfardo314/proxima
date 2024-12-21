@@ -48,20 +48,20 @@ func RoyaltiesED25519FromBytes(data []byte) (*RoyaltiesED25519, error) {
 	return NewRoyalties(addr, binary.BigEndian.Uint64(amountBin)), nil
 }
 
-func (cl *RoyaltiesED25519) source() string {
+func (cl *RoyaltiesED25519) Source() string {
 	return fmt.Sprintf(royaltiesED25519Template, hex.EncodeToString(cl.Address.Bytes()), cl.Amount)
 }
 
 func (cl *RoyaltiesED25519) Bytes() []byte {
-	return mustBinFromSource(cl.source())
+	return mustBinFromSource(cl.Source())
 }
 
 func (cl *RoyaltiesED25519) Name() string {
 	return RoyaltiesED25519Name
 }
 
-func (cl RoyaltiesED25519) String() string {
-	return cl.source()
+func (cl *RoyaltiesED25519) String() string {
+	return cl.Source()
 }
 
 func addRoyaltiesED25519Constraint(lib *Library) {

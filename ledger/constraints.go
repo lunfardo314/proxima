@@ -14,8 +14,8 @@ type (
 	Constraint interface {
 		Name() string
 		Bytes() []byte
-		// TODO implement string human-readable and plain compilable source options
-		String() string
+		Source() string
+		String() string // human readable
 	}
 
 	AccountID []byte

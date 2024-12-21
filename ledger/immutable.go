@@ -42,12 +42,12 @@ func ImmutableFromBytes(data []byte) (*Immutable, error) {
 	return NewImmutable(d[0], d[1]), nil
 }
 
-func (d *Immutable) source() string {
+func (d *Immutable) Source() string {
 	return fmt.Sprintf(immutableTemplate, hex.EncodeToString([]byte{d.ChainBlockIndex, d.DataBlockIndex}))
 }
 
 func (d *Immutable) Bytes() []byte {
-	return mustBinFromSource(d.source())
+	return mustBinFromSource(d.Source())
 }
 
 func (d *Immutable) Name() string {
@@ -55,7 +55,7 @@ func (d *Immutable) Name() string {
 }
 
 func (d *Immutable) String() string {
-	return d.source()
+	return d.Source()
 }
 
 func addImmutableConstraint(lib *Library) {

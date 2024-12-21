@@ -46,14 +46,14 @@ func (s *SenderED25519) Name() string {
 }
 
 func (s *SenderED25519) Bytes() []byte {
-	return mustBinFromSource(s.source())
+	return mustBinFromSource(s.Source())
 }
 
 func (s *SenderED25519) String() string {
 	return fmt.Sprintf("%s(%s)", SenderAddressED25519Name, easyfl.Fmt(s.Address))
 }
 
-func (s *SenderED25519) source() string {
+func (s *SenderED25519) Source() string {
 	return fmt.Sprintf(senderED25519Template, hex.EncodeToString(s.Address))
 }
 

@@ -55,16 +55,16 @@ func (a Amount) Name() string {
 	return AmountConstraintName
 }
 
-func (a Amount) source() string {
+func (a Amount) Source() string {
 	return fmt.Sprintf(amountTemplate, uint64(a))
 }
 
 func (a Amount) Bytes() []byte {
-	return mustBinFromSource(a.source())
+	return mustBinFromSource(a.Source())
 }
 
 func (a Amount) String() string {
-	return a.source()
+	return a.Source()
 	//return fmt.Sprintf("%s(%s)", AmountConstraintName, util.Th(int(a)))
 }
 
