@@ -19,7 +19,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/blake2b"
 )
@@ -317,7 +316,7 @@ func TestMsgWithSenderED25519(t *testing.T) {
 
 	outDatas, err := u.StateReader().GetUTXOsInAccount(addr1.AccountID())
 	require.NoError(t, err)
-	outs, err := txutils.ParseAndSortOutputData(outDatas, nil)
+	outs, err := ledger.ParseAndSortOutputData(outDatas, nil)
 	require.NoError(t, err)
 
 	require.EqualValues(t, 1, len(outs))
@@ -351,7 +350,7 @@ func TestChain1(t *testing.T) {
 		require.EqualValues(t, 10000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		require.EqualValues(t, 2, len(outs))
-		chains, err := txutils.FilterChainOutputs(outs)
+		chains, err := ledger.FilterChainOutputs(outs)
 		require.NoError(t, err)
 		return chains
 	}
@@ -533,7 +532,7 @@ func TestChain2(t *testing.T) {
 		require.EqualValues(t, 10000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		require.EqualValues(t, 2, len(outs))
-		chains, err := txutils.FilterChainOutputs(outs)
+		chains, err := ledger.FilterChainOutputs(outs)
 		require.NoError(t, err)
 		return chains
 	}
@@ -691,7 +690,7 @@ func TestChain3(t *testing.T) {
 		require.EqualValues(t, 10000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		require.EqualValues(t, 2, len(outs))
-		chains, err := txutils.FilterChainOutputs(outs)
+		chains, err := ledger.FilterChainOutputs(outs)
 		require.NoError(t, err)
 		return chains
 	}
@@ -772,7 +771,7 @@ func TestChainLock(t *testing.T) {
 		require.EqualValues(t, 10000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		require.EqualValues(t, 2, len(outs))
-		chains, err := txutils.FilterChainOutputs(outs)
+		chains, err := ledger.FilterChainOutputs(outs)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(chains))
 
@@ -914,7 +913,7 @@ func TestHashUnlock(t *testing.T) {
 	outs, err := u.DoTransferOutputs(par)
 	require.NoError(t, err)
 
-	outs = txutils.FilterOutputsSortByAmount(outs, func(o *ledger.Output) bool {
+	outs = ledger.FilterOutputsSortByAmount(outs, func(o *ledger.Output) bool {
 		return o.Amount() == 1000
 	})
 
@@ -972,7 +971,7 @@ func TestImmutable(t *testing.T) {
 	require.EqualValues(t, 10000, u.Balance(addr0))
 	require.EqualValues(t, 2, u.NumUTXOs(addr0))
 	require.EqualValues(t, 2, len(outs))
-	chains, err := txutils.FilterChainOutputs(outs)
+	chains, err := ledger.FilterChainOutputs(outs)
 	require.NoError(t, err)
 
 	theChainData := chains[0]

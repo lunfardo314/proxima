@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/testutil"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 )
@@ -144,7 +143,7 @@ func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.AddressED25519, amountPar
 	if err != nil {
 		return nil, fmt.Errorf("UTXODB faucet: %v", err)
 	}
-	faucetInputs, err := txutils.ParseAndSortOutputData(faucetOutputs, nil)
+	faucetInputs, err := ledger.ParseAndSortOutputData(faucetOutputs, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +173,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25
 	}
 	totalAmount := amount * uint64(len(addrs))
 	faucetOutputs, err := u.StateReader().GetUTXOsInAccount(u.faucetAddress.AccountID())
-	faucetInputs, inpAmount, ts, err := txutils.ParseAndSortOutputDataUpToAmount(faucetOutputs, totalAmount, nil)
+	faucetInputs, inpAmount, ts, err := ledger.ParseAndSortOutputDataUpToAmount(faucetOutputs, totalAmount, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +324,7 @@ func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...
 	if err != nil {
 		return err
 	}
-	outs, err := txutils.ParseAndSortOutputData(outsData, nil, desc...)
+	outs, err := ledger.ParseAndSortOutputData(outsData, nil, desc...)
 	if err != nil {
 		return err
 	}
@@ -379,7 +378,7 @@ func (u *UTXODB) account(addr ledger.Accountable) (uint64, int) {
 	outs, err := u.StateReader().GetUTXOsInAccount(addr.AccountID())
 	util.AssertNoError(err)
 	balance := uint64(0)
-	outs1, err := txutils.ParseAndSortOutputData(outs, nil)
+	outs1, err := ledger.ParseAndSortOutputData(outs, nil)
 	util.AssertNoError(err)
 
 	for _, o := range outs1 {
@@ -520,7 +519,7 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts b
 	if err != nil {
 		return nil, err
 	}
-	chains, err := txutils.FilterChainOutputs(outs)
+	chains, err := ledger.FilterChainOutputs(outs)
 	if err != nil {
 		return nil, err
 	}

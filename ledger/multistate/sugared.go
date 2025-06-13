@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -85,7 +84,7 @@ func (s SugaredStateReader) GetOutputsForAccount(addr ledger.AccountID) ([]*ledg
 	if err != nil {
 		return nil, err
 	}
-	return txutils.ParseAndSortOutputData(oDatas, nil)
+	return ledger.ParseAndSortOutputData(oDatas, nil)
 }
 
 func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Accountable, fun func(oid base.OutputID, o *ledger.Output) bool) (err error) {

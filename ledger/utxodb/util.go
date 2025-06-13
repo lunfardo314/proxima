@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/util/txutils"
 )
 
 func (u *UTXODB) MakeParallelTransferSequences(nSeq, howLong int, amount uint64) ([][][]byte, error) {
@@ -20,7 +19,7 @@ func (u *UTXODB) MakeParallelTransferSequences(nSeq, howLong int, amount uint64)
 		if len(odatas) != 1 {
 			return nil, fmt.Errorf("inconsistency: len(odatas) != 1")
 		}
-		outs, err := txutils.ParseAndSortOutputData(odatas, nil)
+		outs, err := ledger.ParseAndSortOutputData(odatas, nil)
 		if err != nil {
 			return nil, err
 		}

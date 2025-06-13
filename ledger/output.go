@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"sort"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
@@ -640,4 +641,148 @@ func HashOutputs(outs ...*Output) [32]byte {
 		arr.MustPush(o.Bytes())
 	}
 	return blake2b.Sum256(arr.Bytes())
+}
+
+func ParseAndSortOutputData(outs []*OutputDataWithID, filter func(oid *base.OutputID, o *Output) bool, desc ...bool) ([]*OutputWithID, error) {
+	ret, err := ParseOutputDataAndFilter(outs, filter)
+	if err != nil {
+		return nil, err
+	}
+	if len(desc) > 0 && desc[0] {
+		sort.Slice(ret, func(i, j int) bool {
+			return ret[i].Output.Amount() > ret[j].Output.Amount()
+		})
+	} else {
+		sort.Slice(ret, func(i, j int) bool {
+			return ret[i].Output.Amount() < ret[j].Output.Amount()
+		})
+	}
+	return ret, nil
+}
+
+func ParseOutputDataAndFilter(outs []*OutputDataWithID, filter func(oid *base.OutputID, o *Output) bool) ([]*OutputWithID, error) {
+	ret := make([]*OutputWithID, 0, len(outs))
+	for _, od := range outs {
+		out, err := OutputFromBytesReadOnly(od.Data)
+		if err != nil {
+			return nil, err
+		}
+		if filter != nil && !filter(&od.ID, out) {
+			continue
+		}
+		ret = append(ret, &OutputWithID{
+			ID:     od.ID,
+			Output: out,
+		})
+	}
+	return ret, nil
+}
+
+func FilterOutputsSortByAmount(outs []*OutputWithID, filter func(o *Output) bool, desc ...bool) []*OutputWithID {
+	ret := make([]*OutputWithID, 0, len(outs))
+	for _, out := range outs {
+		if filter != nil && !filter(out.Output) {
+			continue
+		}
+		ret = append(ret, out)
+	}
+	if len(desc) > 0 && desc[0] {
+		sort.Slice(ret, func(i, j int) bool {
+			return ret[i].Output.Amount() > ret[j].Output.Amount()
+		})
+	} else {
+		sort.Slice(ret, func(i, j int) bool {
+			return ret[i].Output.Amount() < ret[j].Output.Amount()
+		})
+	}
+	return ret
+}
+
+func ParseAndSortOutputDataUpToAmount(outs []*OutputDataWithID, amount uint64, filter func(oid *base.OutputID, o *Output) bool, desc ...bool) ([]*OutputWithID, uint64, base.LedgerTime, error) {
+	outsWitID, err := ParseAndSortOutputData(outs, filter, desc...)
+	if err != nil {
+		return nil, 0, base.NilLedgerTime, err
+	}
+	retTs := base.NilLedgerTime
+	retSum := uint64(0)
+	retOuts := make([]*OutputWithID, 0, len(outs))
+	for _, o := range outsWitID {
+		retSum += o.Output.Amount()
+		retTs = base.MaximumTime(retTs, o.Timestamp())
+		retOuts = append(retOuts, o)
+		if retSum >= amount {
+			break
+		}
+	}
+	if retSum < amount {
+		return nil, 0, base.NilLedgerTime, fmt.Errorf("not enough tokens")
+	}
+	return retOuts, retSum, retTs, nil
+}
+
+func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
+	ret := make([]*OutputWithChainID, 0)
+	for _, o := range outs {
+		ch, constraintIndex := o.Output.ChainConstraint()
+		if constraintIndex == 0xff {
+			continue
+		}
+		d := &OutputWithChainID{
+			OutputWithID: OutputWithID{
+				ID:     o.ID,
+				Output: o.Output,
+			},
+			PredecessorConstraintIndex: constraintIndex,
+		}
+		if ch.IsOrigin() {
+			h := blake2b.Sum256(o.ID[:])
+			d.ChainID = h
+		} else {
+			d.ChainID = ch.ID
+		}
+		ret = append(ret, d)
+	}
+	return ret, nil
+}
+
+func forEachOutputReadOnly(outs []*OutputDataWithID, fun func(o *Output, odata *OutputDataWithID) bool) error {
+	for _, odata := range outs {
+		o, err := OutputFromBytesReadOnly(odata.Data)
+		if err != nil {
+			return err
+		}
+		if !fun(o, odata) {
+			return nil
+		}
+	}
+	return nil
+}
+
+func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChainID, error) {
+	ret := make([]*OutputWithChainID, 0)
+	err := forEachOutputReadOnly(outs, func(o *Output, odata *OutputDataWithID) bool {
+		ch, constraintIndex := o.ChainConstraint()
+		if constraintIndex == 0xff {
+			return true
+		}
+		d := &OutputWithChainID{
+			OutputWithID: OutputWithID{
+				ID:     odata.ID,
+				Output: o,
+			},
+			PredecessorConstraintIndex: constraintIndex,
+		}
+		if ch.IsOrigin() {
+			h := blake2b.Sum256(odata.ID[:])
+			d.ChainID = h
+		} else {
+			d.ChainID = ch.ID
+		}
+		ret = append(ret, d)
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }

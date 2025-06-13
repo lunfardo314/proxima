@@ -16,7 +16,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -830,7 +829,7 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 	if err != nil {
 		return nil, nil, err
 	}
-	chainData, err := txutils.ParseChainConstraintsFromData([]*ledger.OutputDataWithID{chainOutData})
+	chainData, err := ledger.ParseChainConstraintsFromData([]*ledger.OutputDataWithID{chainOutData})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -841,7 +840,7 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 	if err != nil {
 		return nil, nil, err
 	}
-	ret, err := txutils.ParseAndSortOutputData(retData, nil, desc...)
+	ret, err := ledger.ParseAndSortOutputData(retData, nil, desc...)
 	if err != nil {
 		return nil, nil, err
 	}

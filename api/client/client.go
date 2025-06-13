@@ -22,7 +22,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/txutils"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -466,7 +465,7 @@ func (c *APIClient) GetAccountOutputsExt(account ledger.Accountable, maxOutputs 
 		return nil, nil, err
 	}
 
-	outs, err := txutils.ParseOutputDataAndFilter(oData, filterFun)
+	outs, err := ledger.ParseOutputDataAndFilter(oData, filterFun)
 	if err != nil {
 		return nil, nil, err
 	}
