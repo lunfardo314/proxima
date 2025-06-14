@@ -20,11 +20,11 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	}
 
 	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
-	err = util.ErrorConditionf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys do not match")
+	err = util.ErrorCondf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys do not match")
 	if err != nil {
 		return nil, err
 	}
-	err = util.ErrorConditionf(len(genesisDistribution) < 253, "too many addresses in the genesis distribution. Maximum is 252")
+	err = util.ErrorCondf(len(genesisDistribution) < 253, "too many addresses in the genesis distribution. Maximum is 252")
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	for i := range genesisDistribution {
 		distributeTotal += genesisDistribution[i].Balance
 		minimumAmountOnSequencer := ledger.L().Const().MinimumAmountOnSequencer()
-		err = util.ErrorConditionf(distributeTotal+minimumAmountOnSequencer <= stateID.InitialSupply,
+		err = util.ErrorCondf(distributeTotal+minimumAmountOnSequencer <= stateID.InitialSupply,
 			"condition failed: distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < InitialSupply(%d)",
 			distributeTotal, minimumAmountOnSequencer, stateID.InitialSupply)
 		if err != nil {

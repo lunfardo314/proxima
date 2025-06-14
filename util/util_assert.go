@@ -18,7 +18,7 @@ func Assertf(cond bool, format string, args ...any) {
 	}
 }
 
-func ErrorConditionf(cond bool, format string, args ...any) error {
+func ErrorCondf(cond bool, format string, args ...any) error {
 	if !cond {
 		return fmt.Errorf("assertion failed:: "+format, lazyargs.Eval(args...)...)
 	}
@@ -44,10 +44,6 @@ func AssertMustError(err error, target ...error) {
 	} else {
 		Assertf(err != nil, "an error was expected")
 	}
-}
-func AssertNotNil[T comparable](el T) {
-	var nilT T
-	Assertf(el != nilT, "must not be nil, got %v", el)
 }
 
 func IsNil(p interface{}) bool {
