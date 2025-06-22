@@ -175,7 +175,7 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 
 	ret := make(map[string]LockedAccountInfo)
 
-	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	partition := common.MakeReaderPartition(r.trie, TriePartitionState)
 	defer partition.Dispose()
 
 	r.trie.Iterator([]byte{TriePartitionAccounts}).IterateKeys(func(k []byte) bool {

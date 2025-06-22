@@ -151,7 +151,7 @@ func (mut *Mutations) InsertAddTxMutation(id base.TransactionID, slot base.Slot,
 }
 
 func (mut *Mutations) InsertDelChainMutation(id base.ChainID) {
-	mut.mut = append(mut.mut, &mutationDelChain{ChainID: id})
+	mut.mut = append(mut.mut, &mutationDelChain{id})
 }
 
 func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
@@ -174,7 +174,7 @@ func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
 
 func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (delta supplyDelta, err error) {
 	var stateKey [1 + base.OutputIDLength]byte
-	stateKey[0] = TriePartitionLedgerState
+	stateKey[0] = TriePartitionState
 	copy(stateKey[1:], oid[:])
 
 	oData := trie.Get(stateKey[:])
@@ -205,7 +205,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 	delta.amount = out.Amount()
 
 	var stateKey [1 + base.OutputIDLength]byte
-	stateKey[0] = TriePartitionLedgerState
+	stateKey[0] = TriePartitionState
 	copy(stateKey[1:], oid[:])
 	if trie.Update(stateKey[:], out.Bytes()) {
 		// key should not exist
@@ -255,17 +255,11 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 		}
 		trie.Update(chainKey, oid[:])
 	}
-
-	// TODO terminating the chain
 	return
 }
 
 func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, slot base.Slot, lastOutputIndex byte) (delta supplyDelta, err error) {
-	var stateKey [1 + base.TransactionIDLength]byte
-	stateKey[0] = TriePartitionCommittedTransactionID
-	copy(stateKey[1:], txid[:])
-
-	if trie.Update(stateKey[:], slot.Bytes()) {
+	if trie.Update(txid[:], slot.Bytes()) {
 		// key should not exist
 		err = fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.StringShort())
 	}

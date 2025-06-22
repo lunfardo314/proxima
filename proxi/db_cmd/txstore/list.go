@@ -42,8 +42,8 @@ func runListCmd(_ *cobra.Command, args []string) {
 	rdr := multistate.MustNewReadable(glb.StateStore(), branches[0].Root)
 
 	nTx := 0
-	rdr.IterateKnownCommittedTransactions(func(txid *base.TransactionID, slot base.Slot) bool {
-		hasBytes := glb.TxBytesStore().HasTxBytes(txid)
+	rdr.IterateKnownCommittedTransactions(func(txid base.TransactionID, slot base.Slot) bool {
+		hasBytes := glb.TxBytesStore().HasTxBytes(&txid)
 		glb.Infof("%s, hex id = %s, has txBytes = %v ", txid.StringShort(), txid.StringHex(), hasBytes)
 		nTx++
 		return true

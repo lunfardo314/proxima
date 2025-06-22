@@ -54,6 +54,12 @@ func NewTransactionID(ts LedgerTime, h TransactionIDShort, sequencerTxFlag bool)
 	return
 }
 
+func MustTransactionIDFromBytes(data []byte) (ret TransactionID) {
+	util.Assertf(len(data) == TransactionIDLength, "32 bytes exected")
+	copy(ret[:], data)
+	return
+}
+
 func TransactionIDFromBytes(data []byte) (ret TransactionID, err error) {
 	if len(data) != TransactionIDLength {
 		err = errors.New("TransactionIDFromBytes: wrong data length")

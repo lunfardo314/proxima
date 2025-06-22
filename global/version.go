@@ -11,7 +11,7 @@ const (
 	// B is the minor version. Change of the version means breaking change
 	// C is the subversion. Change of it means non-breaking change
 	// <label> is an arbitrary label
-	Version        = "v0.5.1-testnet"
+	Version        = "v0.6.0-testnet"
 	bannerTemplate = `
 ___  ____ ____ _  _ _ _  _ ____ 
 |__] |__/ |  |  \/  | |\/| |__| 
