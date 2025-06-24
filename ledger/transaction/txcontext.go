@@ -21,7 +21,7 @@ type TxContext struct {
 	sender          ledger.AddressED25519
 	inflationAmount uint64
 	// EasyFL constraint validation context
-	dataContext *base.DataContext
+	dataContext *base.EvalContext
 }
 
 var Path = tuples.Path
@@ -64,7 +64,7 @@ func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (
 	if err := ret.validateInputCommitmentSafe(); err != nil {
 		return nil, fmt.Errorf("TxContextFromTransaction: %w\n>>>>>>>>>>>>>>>>>>\n%s", err, ret.String())
 	}
-	ret.dataContext = base.NewDataContext(ret.tree)
+	ret.dataContext = base.NewEvalContext(ret)
 	return ret, nil
 }
 
@@ -77,6 +77,10 @@ func TxContextFromTransferableBytes(txBytes []byte, fetchInput func(oid base.Out
 	return TxContextFromTransaction(tx, tx.InputLoaderByIndex(fetchInput), traceOption...)
 }
 
+func (ctx *TxContext) BytesAtPath(path []byte) ([]byte, error) {
+	return ctx.tree.BytesAtPath(path)
+}
+
 // unlockScriptBinary finds the script from the data of unlock block
 func (ctx *TxContext) unlockScriptBinary(invocationFullPath tuples.TreePath) []byte {
 	unlockBlockPath := common.Concat(invocationFullPath)
@@ -84,7 +88,7 @@ func (ctx *TxContext) unlockScriptBinary(invocationFullPath tuples.TreePath) []b
 	return ctx.tree.MustBytesAtPath(unlockBlockPath)
 }
 
-func (ctx *TxContext) rootContext() easyfl.GlobalData {
+func (ctx *TxContext) rootContext() easyfl.GlobalData[*base.EvalContext] {
 	return ctx.makeEvalContext(nil)
 }
 

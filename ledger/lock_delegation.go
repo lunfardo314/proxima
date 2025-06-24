@@ -211,9 +211,9 @@ func initTestDelegationConstraint() {
 	util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
 }
 
-var __precompiledIsOpenDelegationSlotVar atomic.Pointer[easyfl.Expression]
+var __precompiledIsOpenDelegationSlotVar atomic.Pointer[easyfl.Expression[*base.EvalContext]]
 
-func __precompiledIsOpenDelegationSlot() (ret *easyfl.Expression) {
+func __precompiledIsOpenDelegationSlot() (ret *easyfl.Expression[*base.EvalContext]) {
 	if ret = __precompiledIsOpenDelegationSlotVar.Load(); ret != nil {
 		return ret
 	}

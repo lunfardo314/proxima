@@ -41,7 +41,7 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 		glb.Infof("ledger ID data is already compiled. Will recompile it..")
 	}
 
-	lib := easyfl.NewLibrary()
+	lib := easyfl.NewLibrary[*base.EvalContext]()
 	err = lib.UpgradeFromYAML(yamlData, base.GetEmbeddedFunctionResolver(lib))
 	glb.AssertNoError(err)
 

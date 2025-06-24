@@ -19,15 +19,15 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-func (ctx *TxContext) makeEvalContext(path []byte) easyfl.GlobalData {
-	ctx.dataContext.SetPath(path)
+func (ctx *TxContext) makeEvalContext(path []byte) easyfl.GlobalData[*base.EvalContext] {
+	ctx.dataContext.SetEvalPath(path)
 	switch ctx.traceOption {
 	case TraceOptionNone:
-		return easyfl.NewGlobalDataNoTrace(ctx.dataContext)
+		return ledger.L().NewGlobalDataNoTrace(ctx.dataContext)
 	case TraceOptionAll:
-		return easyfl.NewGlobalDataTracePrint(ctx.dataContext)
+		return ledger.L().NewGlobalDataTracePrint(ctx.dataContext)
 	case TraceOptionFailedConstraints:
-		return easyfl.NewGlobalDataLog(ctx.dataContext)
+		return ledger.L().NewGlobalDataLog(ctx.dataContext)
 	default:
 		panic("wrong trace option")
 	}
@@ -380,8 +380,8 @@ func (ctx *TxContext) evalConstraint(bytecode []byte, path tuples.TreePath, spoo
 // __printLogOnFail is global var for controlling printing failed validation trace or not
 var __printLogOnFail atomic.Bool
 
-func printTraceIfEnabled(evalCtx easyfl.GlobalData) {
+func printTraceIfEnabled(evalCtx easyfl.GlobalData[*base.EvalContext]) {
 	if __printLogOnFail.Load() {
-		evalCtx.(*easyfl.GlobalDataLog).PrintLog()
+		evalCtx.(*easyfl.GlobalDataLog[*base.EvalContext]).PrintLog()
 	}
 }

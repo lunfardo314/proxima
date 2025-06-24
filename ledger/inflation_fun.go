@@ -15,9 +15,9 @@ import (
 // This file contains definitions of the inflation calculation functions in EasyFL (on-ledger)
 // The Go functions interprets EasyFL function to guarantee consistent values
 
-var calcChainInflationAmountExpression atomic.Pointer[easyfl.Expression]
+var calcChainInflationAmountExpression atomic.Pointer[easyfl.Expression[*base.EvalContext]]
 
-func __precompiledChainInflation() (ret *easyfl.Expression) {
+func __precompiledChainInflation() (ret *easyfl.Expression[*base.EvalContext]) {
 	if ret = calcChainInflationAmountExpression.Load(); ret == nil {
 		var err error
 		ret, _, _, err = L().CompileExpression("calcChainInflationAmount($0,$1,$2)")

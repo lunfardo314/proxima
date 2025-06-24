@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
 type (
 	Library struct {
-		*easyfl.Library
+		*easyfl.Library[*base.EvalContext]
 		idData             []byte
 		ID                 *IdentityParameters
 		constraintByPrefix map[string]*constraintRecord
@@ -26,7 +27,7 @@ type (
 	}
 )
 
-func newLibrary(lib *easyfl.Library, idParams *IdentityParameters, idData []byte) *Library {
+func newLibrary(lib *easyfl.Library[*base.EvalContext], idParams *IdentityParameters, idData []byte) *Library {
 	ret := &Library{
 		Library:            lib,
 		idData:             idData,
@@ -39,7 +40,7 @@ func newLibrary(lib *easyfl.Library, idParams *IdentityParameters, idData []byte
 }
 
 func newBaseLibrary(id *IdentityParameters) *Library {
-	return newLibrary(easyfl.NewBaseLibrary(), id, nil)
+	return newLibrary(easyfl.NewBaseLibrary[*base.EvalContext](), id, nil)
 }
 
 func (lib *Library) Const() LibraryConst {

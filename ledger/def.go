@@ -39,7 +39,10 @@ func LibraryYAMLFromIdentityParameters(id *IdentityParameters, compiled bool) []
 	return LibraryFromIdentityParameters(id).ToYAML(compiled, "# Proxima ledger definitions")
 }
 
-func ParseLedgerIdYAML(yamlData []byte, getResolver ...func(lib *easyfl.Library) func(sym string) easyfl.EmbeddedFunction) (*easyfl.Library, *IdentityParameters, error) {
+func ParseLedgerIdYAML(
+	yamlData []byte,
+	getResolver ...func(lib *easyfl.Library[*base.EvalContext],
+	) func(sym string) easyfl.EmbeddedFunction[*base.EvalContext]) (*easyfl.Library[*base.EvalContext], *IdentityParameters, error) {
 	lib, err := easyfl.NewLibraryFromYAML(yamlData, getResolver...)
 	if err != nil {
 		return nil, nil, err
@@ -51,7 +54,7 @@ func ParseLedgerIdYAML(yamlData []byte, getResolver ...func(lib *easyfl.Library)
 	return lib, idParams, nil
 }
 
-func _uint64FromConst(lib *easyfl.Library, constName string) (uint64, error) {
+func _uint64FromConst(lib *easyfl.Library[*base.EvalContext], constName string) (uint64, error) {
 	res, err := lib.EvalFromSource(nil, constName)
 	if err != nil {
 		return 0, err
@@ -59,7 +62,7 @@ func _uint64FromConst(lib *easyfl.Library, constName string) (uint64, error) {
 	return easyfl_util.Uint64FromBytes(res)
 }
 
-func idParametersFromLibrary(lib *easyfl.Library) (*IdentityParameters, error) {
+func idParametersFromLibrary(lib *easyfl.Library[*base.EvalContext]) (*IdentityParameters, error) {
 	ret := &IdentityParameters{}
 	var err error
 	var res []byte
@@ -137,7 +140,7 @@ func idParametersFromLibrary(lib *easyfl.Library) (*IdentityParameters, error) {
 	return ret, nil
 }
 
-func upgrade0(lib *easyfl.Library, id *IdentityParameters) {
+func upgrade0(lib *easyfl.Library[*base.EvalContext], id *IdentityParameters) {
 	err := base.EmbedHardcoded(lib)
 	util.AssertNoError(err)
 

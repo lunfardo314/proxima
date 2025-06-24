@@ -1,51 +1,58 @@
 package base
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math/big"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
-	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 )
 
-// DataContext is the data structure passed to the eval call. It contains:
-// - tree: all validation context of the transaction, all data which is to be validated
+// EvalContext is the data structure passed to the eval call. It contains:
+// - access interface to the transaction context
 // - path: a path in the validation context of the constraint being validated in the eval call
-type DataContext struct {
-	tree *tuples.Tree
-	path tuples.TreePath
+type (
+	TxContextAccess interface {
+		BytesAtPath([]byte) ([]byte, error)
+	}
+
+	EvalContext struct {
+		TxContextAccess
+		path []byte
+	}
+)
+
+func NewEvalContext(ctx TxContextAccess) *EvalContext {
+	return &EvalContext{
+		TxContextAccess: ctx,
+	}
 }
 
-func NewDataContext(tree *tuples.Tree) *DataContext {
-	return &DataContext{tree: tree}
+func (c *EvalContext) TxContext() TxContextAccess {
+	return c.TxContextAccess
 }
 
-func (c *DataContext) DataTree() *tuples.Tree {
-	return c.tree
-}
-
-func (c *DataContext) Path() tuples.TreePath {
+func (c *EvalContext) EvalPath() []byte {
 	return c.path
 }
 
-func (c *DataContext) SetPath(path tuples.TreePath) {
-	c.path = common.Concat(path.Bytes())
+func (c *EvalContext) SetEvalPath(path []byte) {
+	c.path = bytes.Clone(path)
 }
 
-var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction{
+var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"at":             evalPath,
 	"atPath":         evalAtPath,
 	"ticksBefore":    evalTicksBefore64, // TODO make it extended in pure EasyFL
 	"randomFromSeed": evalRandomFromSeed,
 }
 
-func GetEmbeddedFunctionResolver(lib *easyfl.Library) func(sym string) easyfl.EmbeddedFunction {
+func GetEmbeddedFunctionResolver(lib *easyfl.Library[*EvalContext]) func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
 	baseResolver := easyfl.EmbeddedFunctions(lib)
-	return func(sym string) easyfl.EmbeddedFunction {
+	return func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
 		if ret, found := _unboundedEmbedded[sym]; found {
 			return ret
 		}
@@ -54,7 +61,7 @@ func GetEmbeddedFunctionResolver(lib *easyfl.Library) func(sym string) easyfl.Em
 }
 
 // EmbedHardcoded upgrades library with hardcoded (embedded) functions of the proxima ledger
-func EmbedHardcoded(lib *easyfl.Library) error {
+func EmbedHardcoded(lib *easyfl.Library[*EvalContext]) error {
 	return lib.UpgradeFromYAML([]byte(_definitionsEmbeddedYAML), GetEmbeddedFunctionResolver(lib))
 }
 
@@ -88,20 +95,20 @@ functions:
 
 // embedded functions
 
-func evalPath[T any](par *easyfl.CallParams[T]) []byte {
-	return par.AllocData([]byte(par.DataContext().(*DataContext).Path())...)
+func evalPath(par *easyfl.CallParams[*EvalContext]) []byte {
+	return par.AllocData(par.DataContext().EvalPath()...)
 }
 
-func evalAtPath(par *easyfl.CallParams) []byte {
+func evalAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
 	path := par.Arg(0)
-	res, err := par.DataContext().(*DataContext).DataTree().BytesAtPath(path)
+	res, err := par.DataContext().BytesAtPath(path)
 	if err != nil {
 		par.TracePanic("evalAtPath: path=%+v -> %v", path, err)
 	}
 	return par.AllocData(res...)
 }
 
-func evalRandomFromSeed(par *easyfl.CallParams) []byte {
+func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 	data := par.Arg(0)
 	scale := easyfl_util.MustUint64FromBytes(par.Arg(1))
 
@@ -123,7 +130,7 @@ func evalRandomFromSeed(par *easyfl.CallParams) []byte {
 // returns:
 // nil, if ts1 is before ts0
 // number of ticks between ts0 and ts1 otherwise, as big-endian uint64
-func evalTicksBefore64(par *easyfl.CallParams) []byte {
+func evalTicksBefore64(par *easyfl.CallParams[*EvalContext]) []byte {
 	ts0bin, ts1bin := par.Arg(0), par.Arg(1)
 	ts0, err := LedgerTimeFromBytes(ts0bin)
 	if err != nil {

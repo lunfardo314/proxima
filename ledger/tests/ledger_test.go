@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -157,7 +156,7 @@ func TestTxID(t *testing.T) {
 	require.NoError(t, err)
 
 	txID := ctx.TransactionID()
-	dctx := easyfl.NewGlobalDataTracePrint(base.NewDataContext(ctx.Tree()))
+	dctx := ledger.L().NewGlobalDataTracePrint(base.NewEvalContext(ctx))
 	res, err := ledger.L().EvalFromSource(dctx, "txID")
 
 	require.NoError(t, err)
