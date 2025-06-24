@@ -174,7 +174,7 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool
 			return !failFast
 		}
 
-		if extraDepositWeight, err = ctx.runOutput(consumedBranch, o, path, spool); err != nil {
+		if extraDepositWeight, err = ctx.runOutput(o, path, spool); err != nil {
 			if !failFast {
 				failedOutputs.WriteByte(i)
 			}
@@ -213,7 +213,7 @@ func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte
 }
 
 // runOutput checks constraints of the output one-by-one
-func (ctx *TxContext) runOutput(consumedBranch bool, output *ledger.Output, path tuples.TreePath, spool *slicepool.SlicePool) (uint32, error) {
+func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spool *slicepool.SlicePool) (uint32, error) {
 	blockPath := common.Concat(path, byte(0))
 	var err error
 	extraStorageDepositWeight := uint32(0)
