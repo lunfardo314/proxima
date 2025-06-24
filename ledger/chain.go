@@ -150,8 +150,8 @@ const chainConstraintSource = `
 // - 33 byte predecessor block index 
 // - 34 byte transition mode 
 
-// reserved value of the chain constraint data at origin
-func originChainData: concat(repeat(0,32), 0xffffff)
+// check $0 reserved value of the chain constraint data at origin
+func isOriginChainData: equal($0, 0x0000000000000000000000000000000000000000000000000000000000000000ffffff)
 func destroyUnlockParams : 0xffffff
 
 // parsing chain constraint data
@@ -175,7 +175,7 @@ func validPredecessorData : and(
 		isZero(chainID($1)), 
 		and(
 			// case 1: predecessor is origin. ChainID must be blake2b hash of the corresponding input id 
-			equal($1, originChainData),
+			isOriginChainData($1),
 			equal(chainID($0), blake2b(inputIDByIndex(byte($0,32))))
 		),
 		and(
@@ -205,7 +205,7 @@ func validSuccessorData : and(
 			// if chainID = 0, it must be origin data
 			// otherwise chain IDs must be equal on both sides
 			isZero(chainID($0)),
-			equal($0, originChainData),
+			isOriginChainData($0),
 			equal(chainID($0),chainID($1))
 		),
 		// the successor (produced) must point to the consumed (self)
@@ -247,7 +247,7 @@ func chain: and(
          ),
          or(
             // enforcing valid constraint data of the origin: concat(repeat(0,32), 0xffffff)
-            equal($0, originChainData), 
+            isOriginChainData($0), 
             !!!chain_wrong_origin
          ),
          nil

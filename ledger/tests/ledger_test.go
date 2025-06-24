@@ -355,9 +355,11 @@ func TestChain1(t *testing.T) {
 		return chains
 	}
 	t.Run("compile", func(t *testing.T) {
-		const source = "chain(originChainData)"
-		_, _, _, err := ledger.L().CompileExpression(source)
+		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000ffffff)"
+		_, _, code, err := ledger.L().CompileExpression(source)
 		require.NoError(t, err)
+		origBytecode := ledger.NewChainOrigin().Bytes()
+		require.EqualValues(t, origBytecode, code)
 	})
 	t.Run("create origin ok", func(t *testing.T) {
 		initTest2()
@@ -365,15 +367,11 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin ok 2", func(t *testing.T) {
 		initTest()
 
-		const source = "chain(originChainData)"
-		_, _, code, err := ledger.L().CompileExpression(source)
-		require.NoError(t, err)
-
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		err = u.DoTransfer(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
-			WithConstraintBinary(code),
+			WithConstraintBinary(ledger.NewChainOrigin().Bytes()),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
@@ -384,10 +382,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin twice in the same output", func(t *testing.T) {
 		initTest()
 
-		const source = "chain(originChainData)"
-		_, _, code, err := ledger.L().CompileExpression(source)
-		require.NoError(t, err)
-
+		code := ledger.NewChainOrigin().Bytes()
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
 		err = u.DoTransfer(par.
 			WithAmount(2000).
