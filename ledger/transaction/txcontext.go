@@ -85,7 +85,7 @@ func (ctx *TxContext) unlockScriptBinary(invocationFullPath tuples.TreePath) []b
 }
 
 func (ctx *TxContext) rootContext() easyfl.GlobalData {
-	return ctx.evalContext(nil)
+	return ctx.makeEvalContext(nil)
 }
 
 func (ctx *TxContext) TransactionBytes() []byte {

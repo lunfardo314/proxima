@@ -381,7 +381,7 @@ func TestChain1(t *testing.T) {
 		require.EqualValues(t, 10000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 	})
-	t.Run("create origin twice in same output", func(t *testing.T) {
+	t.Run("create origin twice in the same output", func(t *testing.T) {
 		initTest()
 
 		const source = "chain(originChainData)"

@@ -19,7 +19,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-func (ctx *TxContext) evalContext(path []byte) easyfl.GlobalData {
+func (ctx *TxContext) makeEvalContext(path []byte) easyfl.GlobalData {
 	ctx.dataContext.SetPath(path)
 	switch ctx.traceOption {
 	case TraceOptionNone:
@@ -35,18 +35,17 @@ func (ctx *TxContext) evalContext(path []byte) easyfl.GlobalData {
 
 // checkConstraint checks the constraint at path. In-line and unlock scripts are ignored
 // for 'produces output' context
-func (ctx *TxContext) checkConstraint(constraintData []byte, constraintPath tuples.TreePath, spool *slicepool.SlicePool) ([]byte, string, error) {
+func (ctx *TxContext) checkConstraint(bytecode []byte, constraintPath tuples.TreePath, spool *slicepool.SlicePool) ([]byte, error) {
 	var ret []byte
-	var name string
 	err := util.CatchPanicOrError(func() error {
 		var err1 error
-		ret, name, err1 = ctx.evalConstraint(constraintData, constraintPath, spool)
+		ret, err1 = ctx.evalConstraint(bytecode, constraintPath, spool)
 		return err1
 	})
 	if err != nil {
-		return nil, name, err
+		return nil, err
 	}
-	return ret, name, nil
+	return ret, nil
 }
 
 func (ctx *TxContext) Validate() error {
@@ -220,10 +219,11 @@ func (ctx *TxContext) runOutput(consumedBranch bool, output *ledger.Output, path
 	extraStorageDepositWeight := uint32(0)
 	checkDuplicates := make(map[string]struct{})
 
-	output.ForEachConstraint(func(idx byte, data []byte) bool {
+	output.ForEachConstraint(func(idx byte, bytecode []byte) bool {
+		// TODO checking of duplicates removed. Makes no sense
 		// checking for duplicated constraints in produced outputs
 		if !consumedBranch {
-			sd := string(data)
+			sd := string(bytecode)
 			if _, already := checkDuplicates[sd]; already {
 				err = fmt.Errorf("duplicated constraints not allowed. Path %s", PathToString(blockPath))
 				return false
@@ -232,16 +232,15 @@ func (ctx *TxContext) runOutput(consumedBranch bool, output *ledger.Output, path
 		}
 		blockPath[len(blockPath)-1] = idx
 		var res []byte
-		var name string
 
-		res, name, err = ctx.checkConstraint(data, blockPath, spool)
+		res, err = ctx.checkConstraint(bytecode, blockPath, spool)
 		if err != nil {
-			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", name, err, PathToString(blockPath))
+			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", constraintName(bytecode), err, PathToString(blockPath))
 			return false
 		}
 		if len(res) == 0 {
 			var decomp string
-			decomp, err = ledger.L().DecompileBytecode(data)
+			decomp, err = ledger.L().DecompileBytecode(bytecode)
 			if err != nil {
 				decomp = fmt.Sprintf("(error while decompiling constraint: '%v')", err)
 			}
@@ -354,38 +353,37 @@ func constraintName(binCode []byte) string {
 	return fmt.Sprintf("constraint_call_prefix(%s)", easyfl_util.Fmt(prefix))
 }
 
-func (ctx *TxContext) evalConstraint(constr []byte, path tuples.TreePath, spool *slicepool.SlicePool) ([]byte, string, error) {
-	if len(constr) == 0 {
-		return nil, "", fmt.Errorf("constraint can't be empty")
+func (ctx *TxContext) evalConstraint(bytecode []byte, path tuples.TreePath, spool *slicepool.SlicePool) ([]byte, error) {
+	if len(bytecode) == 0 {
+		return nil, fmt.Errorf("constraint can't be empty")
 	}
 	var err error
-	name := constraintName(constr)
-	evalCtx := ctx.evalContext(path)
+	evalCtx := ctx.makeEvalContext(path)
 	if evalCtx.Trace() {
-		evalCtx.PutTrace(fmt.Sprintf("--- check constraint '%s' at path %s", name, PathToString(path)))
+		evalCtx.PutTrace(fmt.Sprintf("--- check constraint '%s' at path %s", constraintName(bytecode), PathToString(path)))
 	}
 
 	var ret []byte
-	if constr[0] == 0 {
-		return nil, "", fmt.Errorf("binary code cannot begin with 0-byte")
+	if bytecode[0] == 0 {
+		return nil, fmt.Errorf("binary code cannot begin with 0-byte")
 	}
-	ret, err = ledger.L().EvalFromBytecodeWithSlicePool(evalCtx, spool, constr)
+	ret, err = ledger.L().EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
 
 	if evalCtx.Trace() {
 		if err != nil {
-			evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED with '%v'", name, PathToString(path), err))
+			evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED with '%v'", constraintName(bytecode), PathToString(path), err))
 			printTraceIfEnabled(evalCtx)
 		} else {
 			if len(ret) == 0 {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED", name, PathToString(path)))
+				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED", constraintName(bytecode), PathToString(path)))
 				printTraceIfEnabled(evalCtx)
 			} else {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: OK", name, PathToString(path)))
+				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: OK", constraintName(bytecode), PathToString(path)))
 			}
 		}
 	}
 
-	return ret, name, err
+	return ret, err
 }
 
 // __printLogOnFail is global var for controlling printing failed validation trace or not
