@@ -382,15 +382,54 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin twice in the same output", func(t *testing.T) {
 		initTest()
 
+		// chain constrained output with two origins will be valid, however there will be no way to create a predecessor of it
+		// the only way is to destroy output with two chain origins
+
 		code := ledger.NewChainOrigin().Bytes()
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
-		err = u.DoTransfer(par.
+		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
 			WithConstraintBinary(code).
 			WithConstraintBinary(code),
 		)
-		util.RequireErrorWith(t, err, "duplicated constraints")
+		require.NoError(t, err)
+		for _, o := range outs {
+			t.Logf("---------------\n%s", o)
+		}
+
+		_, idx := outs[1].Output.ChainConstraint()
+		require.EqualValues(t, 2, idx)
+
+		_, err = ledger.ChainConstraintFromBytes(outs[1].Output.MustAt(2))
+		require.NoError(t, err)
+		_, err = ledger.ChainConstraintFromBytes(outs[1].Output.MustAt(3))
+		require.NoError(t, err)
+
+		// create destroying transaction
+		txb := txbuilder.New()
+		total, ts, err := txb.ConsumeOutputs(outs...)
+		require.NoError(t, err)
+		txb.PutSignatureUnlock(0)
+		// unlock data must be for both
+		txb.PutUnlockParams(1, 2, ledger.EndChainUnlockParams)
+		txb.PutUnlockParams(1, 3, ledger.EndChainUnlockParams)
+
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmount(total).WithLock(outs[0].Output.Lock())
+		}))
+		require.NoError(t, err)
+
+		txb.TransactionData.Timestamp = ts.AddSlots(1)
+		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SignED25519(privKey0)
+
+		txBytes := txb.TransactionData.Bytes()
+		t.Logf("------------ chain destroying transaction:\n%s", u.TxStringFromBytes(txBytes))
+
+		err = u.AddTransaction(txBytes)
+		require.NoError(t, err)
+
 	})
 	t.Run("create origin wrong 1", func(t *testing.T) {
 		initTest()
@@ -467,7 +506,7 @@ func TestChain1(t *testing.T) {
 		// We explicitly specify input index and the index of the chain constraint in the output.
 		// This is because we assume chain constraint do not have pre-defined index in the output,
 		// it can be any except 0xff, therefore must always be explicit.
-		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, []byte{0xff, 0xff, 0xff})
+		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.EndChainUnlockParams)
 
 		// put unlock parameters for the chain controller lock. It is locked with usual sig lock
 		// The signature unlock of the address25519 constraint just refers to the signature at the

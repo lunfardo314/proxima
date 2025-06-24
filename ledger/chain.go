@@ -107,6 +107,8 @@ func NewChainUnlockParams(successorOutputIdx, successorConstraintIndex, transiti
 	return []byte{successorOutputIdx, successorConstraintIndex, transitionMode}
 }
 
+var EndChainUnlockParams = []byte{0xff, 0xff, 0xff}
+
 func registerChainConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainConstraintName, 1, func(data []byte) (Constraint, error) {
 		return ChainConstraintFromBytes(data)

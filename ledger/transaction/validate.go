@@ -217,19 +217,10 @@ func (ctx *TxContext) runOutput(consumedBranch bool, output *ledger.Output, path
 	blockPath := common.Concat(path, byte(0))
 	var err error
 	extraStorageDepositWeight := uint32(0)
-	checkDuplicates := make(map[string]struct{})
+
+	// checking of script duplicates has been removed. Makes no sense
 
 	output.ForEachConstraint(func(idx byte, bytecode []byte) bool {
-		// TODO checking of duplicates removed. Makes no sense
-		// checking for duplicated constraints in produced outputs
-		if !consumedBranch {
-			sd := string(bytecode)
-			if _, already := checkDuplicates[sd]; already {
-				err = fmt.Errorf("duplicated constraints not allowed. Path %s", PathToString(blockPath))
-				return false
-			}
-			checkDuplicates[sd] = struct{}{}
-		}
 		blockPath[len(blockPath)-1] = idx
 		var res []byte
 
