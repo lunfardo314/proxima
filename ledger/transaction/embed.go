@@ -1,4 +1,4 @@
-package base
+package transaction
 
 import (
 	"encoding/binary"
@@ -12,27 +12,27 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-// DataContext is the data structure passed to the eval call. It contains:
+// EvalContext is the data structure passed to the eval call. It contains:
 // - tree: all validation context of the transaction, all data which is to be validated
 // - path: a path in the validation context of the constraint being validated in the eval call
-type DataContext struct {
-	tree *tuples.Tree
+type EvalContext struct {
+	*TxContext
 	path tuples.TreePath
 }
 
-func NewDataContext(tree *tuples.Tree) *DataContext {
-	return &DataContext{tree: tree}
+func NewEvalContext(tree *tuples.Tree) *EvalContext {
+	return &EvalContext{tree: tree}
 }
 
-func (c *DataContext) DataTree() *tuples.Tree {
+func (c *EvalContext) DataTree() *tuples.Tree {
 	return c.tree
 }
 
-func (c *DataContext) Path() tuples.TreePath {
+func (c *EvalContext) Path() tuples.TreePath {
 	return c.path
 }
 
-func (c *DataContext) SetPath(path tuples.TreePath) {
+func (c *EvalContext) SetPath(path tuples.TreePath) {
 	c.path = common.Concat(path.Bytes())
 }
 
@@ -89,12 +89,12 @@ functions:
 // embedded functions
 
 func evalPath[T any](par *easyfl.CallParams[T]) []byte {
-	return par.AllocData([]byte(par.DataContext().(*DataContext).Path())...)
+	return par.AllocData([]byte(par.DataContext().(*EvalContext).Path())...)
 }
 
 func evalAtPath(par *easyfl.CallParams) []byte {
 	path := par.Arg(0)
-	res, err := par.DataContext().(*DataContext).DataTree().BytesAtPath(path)
+	res, err := par.DataContext().(*EvalContext).DataTree().BytesAtPath(path)
 	if err != nil {
 		par.TracePanic("evalAtPath: path=%+v -> %v", path, err)
 	}

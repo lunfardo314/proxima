@@ -239,6 +239,12 @@ github.com/libp2p/go-yamux/v5 v5.0.0 h1:2djUh96d3Jiac/JpGkKs4TO49YhsfLopAoryfPmf
 github.com/libp2p/go-yamux/v5 v5.0.0/go.mod h1:en+3cdX51U0ZslwRdRLrvQsdayFt3TSUKvBGErzpWbU=
 github.com/lunfardo314/easyfl v0.0.0-20250609103122-ae561269e20d h1:tHXBGIj+wYjbnSPH1W9Q+OOVykg0L7gtrd0hpgXAg68=
 github.com/lunfardo314/easyfl v0.0.0-20250609103122-ae561269e20d/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
+github.com/lunfardo314/easyfl v0.0.0-20250624090955-aeaca39001ca h1:msw+8njxYzFH1qcMZVDuNFTcJioOTgJ927wsOYtjBbE=
+github.com/lunfardo314/easyfl v0.0.0-20250624090955-aeaca39001ca/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
+github.com/lunfardo314/easyfl v0.0.0-20250624094652-f234a9a9e272 h1:hlAkAc0s6ngQjrJE5Vudr5C80Mx4w0/qSrN0U1JUeSw=
+github.com/lunfardo314/easyfl v0.0.0-20250624094652-f234a9a9e272/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
+github.com/lunfardo314/easyfl v0.0.0-20250624095624-90757c533995 h1:iuybaMZMuSG6yVynFC8gLg2SQXJxY/YfT6nxdvr44Yc=
+github.com/lunfardo314/easyfl v0.0.0-20250624095624-90757c533995/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
 github.com/lunfardo314/unitrie v0.0.0-20250428060929-782e8c6f527d h1:AR6RGRkmq8zOlGJEaqD3Znm98b95UzpvnQAf5Q0Bblc=
 github.com/lunfardo314/unitrie v0.0.0-20250428060929-782e8c6f527d/go.mod h1:UF0sUDag70c6Jx6vkKbbLqrOirQjTiJfSnuKKOFNRpA=
 github.com/lunixbochs/vtclean v1.0.0/go.mod h1:pHhQNgMf3btfWnGBVipUOjRYhoOsdGqdm/+2c2E2WMI=
