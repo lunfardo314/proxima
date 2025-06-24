@@ -2,7 +2,6 @@ package transaction
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"math"
 
@@ -33,13 +32,12 @@ func (ctx *TxContext) makeEvalContext(path []byte) easyfl.GlobalData[*base.EvalC
 	}
 }
 
-// checkConstraint checks the constraint at path. In-line and unlock scripts are ignored
-// for 'produces output' context
-func (ctx *TxContext) checkConstraint(bytecode []byte, constraintPath tuples.TreePath, spool *slicepool.SlicePool) ([]byte, error) {
+// EvalBytecode safely runs the bytecode in the context of the path
+func (ctx *TxContext) EvalBytecode(bytecode []byte, evalPath []byte, spool *slicepool.SlicePool) ([]byte, error) {
 	var ret []byte
 	err := util.CatchPanicOrError(func() error {
 		var err1 error
-		ret, err1 = ctx.evalConstraint(bytecode, constraintPath, spool)
+		ret, err1 = ctx._evalBytecode(bytecode, evalPath, spool)
 		return err1
 	})
 	if err != nil {
@@ -158,7 +156,6 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool
 	}
 	var lastErr error
 	var sum uint64
-	var extraDepositWeight uint32
 	var failedOutputs bytes.Buffer
 
 	path := common.Concat(branch, 0)
@@ -174,14 +171,14 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool
 			return !failFast
 		}
 
-		if extraDepositWeight, err = ctx.runOutput(o, path, spool); err != nil {
+		if err = ctx.runOutput(o, path, spool); err != nil {
 			if !failFast {
 				failedOutputs.WriteByte(i)
 			}
 			lastErr = fmt.Errorf("%w :\n%s", err, o.ToString("   "))
 			return !failFast
 		}
-		minDeposit := o.MinimumStorageDeposit(extraDepositWeight)
+		minDeposit := o.MinimumStorageDeposit(0)
 		amount := o.Amount()
 		if amount < minDeposit {
 			lastErr = fmt.Errorf("not enough storage deposit in output %s. Minimum %d, got %d",
@@ -213,20 +210,19 @@ func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte
 }
 
 // runOutput checks constraints of the output one-by-one
-func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spool *slicepool.SlicePool) (uint32, error) {
-	blockPath := common.Concat(path, byte(0))
+func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spool *slicepool.SlicePool) error {
+	evalPath := common.Concat(path, byte(0))
 	var err error
-	extraStorageDepositWeight := uint32(0)
 
 	// checking of script duplicates has been removed. Makes no sense
 
 	output.ForEachConstraint(func(idx byte, bytecode []byte) bool {
-		blockPath[len(blockPath)-1] = idx
+		evalPath[len(evalPath)-1] = idx
 		var res []byte
 
-		res, err = ctx.checkConstraint(bytecode, blockPath, spool)
+		res, err = ctx.EvalBytecode(bytecode, evalPath, spool)
 		if err != nil {
-			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", constraintName(bytecode), err, PathToString(blockPath))
+			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", constraintName(bytecode), err, PathToString(evalPath))
 			return false
 		}
 		if len(res) == 0 {
@@ -235,19 +231,15 @@ func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spo
 			if err != nil {
 				decomp = fmt.Sprintf("(error while decompiling constraint: '%v')", err)
 			}
-			err = fmt.Errorf("constraint '%s' failed. Path: %s", decomp, PathToString(blockPath))
+			err = fmt.Errorf("constraint '%s' failed. Path: %s", decomp, PathToString(evalPath))
 			return false
-		}
-		if len(res) == 4 {
-			// 4 bytes long slice returned by the constraint is interpreted as 'true' and as uint32 extraStorageWeight
-			extraStorageDepositWeight += binary.BigEndian.Uint32(res)
 		}
 		return true
 	})
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return extraStorageDepositWeight, nil
+	return nil
 }
 
 func (ctx *TxContext) validateInputCommitmentSafe() error {
@@ -262,7 +254,7 @@ func (ctx *TxContext) validateInputCommitmentSafe() error {
 	})
 }
 
-// ConsumedOutputHash is ias blake2b hash of the lazyarray composed of output data
+// ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
 func (ctx *TxContext) ConsumedOutputHash() [32]byte {
 	consumedOutputBytes := ctx.tree.MustBytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch))
 	return blake2b.Sum256(consumedOutputBytes)
@@ -344,7 +336,7 @@ func constraintName(binCode []byte) string {
 	return fmt.Sprintf("constraint_call_prefix(%s)", easyfl_util.Fmt(prefix))
 }
 
-func (ctx *TxContext) evalConstraint(bytecode []byte, path tuples.TreePath, spool *slicepool.SlicePool) ([]byte, error) {
+func (ctx *TxContext) _evalBytecode(bytecode []byte, path []byte, spool *slicepool.SlicePool) ([]byte, error) {
 	if len(bytecode) == 0 {
 		return nil, fmt.Errorf("constraint can't be empty")
 	}
