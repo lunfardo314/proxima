@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/lunfardo314/unitrie/common"
@@ -43,9 +43,9 @@ func main() {
 		}
 
 		curProof = util.Maximum(optionsProofs, func(proof1, proof2 []byte) bool {
-			return base.RandomFromSeed(proof1[:], scale) < base.RandomFromSeed(proof2[:], scale)
+			return ledger.RandomFromSeed(proof1[:], scale) < ledger.RandomFromSeed(proof2[:], scale)
 		})
-		rnd := base.RandomFromSeed(curProof[:], scale)
+		rnd := ledger.RandomFromSeed(curProof[:], scale)
 		//fmt.Printf("%4d      rnd = %s\n", i, util.Th(rnd))
 
 		nBucket := (nBuckets * int(rnd)) / scale

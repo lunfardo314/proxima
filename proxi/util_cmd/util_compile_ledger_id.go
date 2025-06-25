@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -41,8 +41,8 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 		glb.Infof("ledger ID data is already compiled. Will recompile it..")
 	}
 
-	lib := easyfl.NewLibrary[*base.EvalContext]()
-	err = lib.UpgradeFromYAML(yamlData, base.GetEmbeddedFunctionResolver(lib))
+	lib := easyfl.NewLibrary[*ledger.EvalContext]()
+	err = lib.UpgradeFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver(lib))
 	glb.AssertNoError(err)
 
 	h := lib.LibraryHash()

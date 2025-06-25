@@ -21,7 +21,7 @@ type TxContext struct {
 	sender          ledger.AddressED25519
 	inflationAmount uint64
 	// EasyFL constraint validation context
-	dataContext *base.EvalContext
+	dataContext *ledger.EvalContext
 }
 
 var Path = tuples.Path
@@ -64,7 +64,7 @@ func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (
 	if err := ret.validateInputCommitmentSafe(); err != nil {
 		return nil, fmt.Errorf("TxContextFromTransaction: %w\n>>>>>>>>>>>>>>>>>>\n%s", err, ret.String())
 	}
-	ret.dataContext = base.NewEvalContext(ret)
+	ret.dataContext = ledger.NewEvalContext(ret)
 	return ret, nil
 }
 
@@ -88,7 +88,7 @@ func (ctx *TxContext) unlockScriptBinary(invocationFullPath tuples.TreePath) []b
 	return ctx.tree.MustBytesAtPath(unlockBlockPath)
 }
 
-func (ctx *TxContext) rootContext() easyfl.GlobalData[*base.EvalContext] {
+func (ctx *TxContext) rootContext() easyfl.GlobalData[*ledger.EvalContext] {
 	return ctx.makeEvalContext(nil)
 }
 
@@ -143,9 +143,10 @@ func (ctx *TxContext) ForEachEndorsement(fun func(idx byte, txid *base.Transacti
 }
 
 func (ctx *TxContext) ForEachProducedOutputData(fun func(idx byte, oData []byte) bool) {
-	ctx.tree.ForEach(func(i byte, outputData []byte) bool {
+	err := ctx.tree.ForEach(func(i byte, outputData []byte) bool {
 		return fun(i, outputData)
 	}, ledger.PathToProducedOutputs)
+	util.AssertNoError(err)
 }
 
 func (ctx *TxContext) ForEachProducedOutput(fun func(idx byte, out *ledger.Output, oid *base.OutputID) bool) {

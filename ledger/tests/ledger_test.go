@@ -156,7 +156,7 @@ func TestTxID(t *testing.T) {
 	require.NoError(t, err)
 
 	txID := ctx.TransactionID()
-	dctx := ledger.L().NewGlobalDataTracePrint(base.NewEvalContext(ctx))
+	dctx := ledger.L().NewGlobalDataTracePrint(ledger.NewEvalContext(ctx))
 	res, err := ledger.L().EvalFromSource(dctx, "txID")
 
 	require.NoError(t, err)

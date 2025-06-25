@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -27,7 +26,7 @@ func MustInitSingleton(identityData []byte) {
 
 	util.Assertf(libraryGlobal == nil, "ledger is already initialized")
 
-	lib, idParams, err := ParseLedgerIdYAML(identityData, base.GetEmbeddedFunctionResolver)
+	lib, idParams, err := ParseLedgerIdYAML(identityData, GetEmbeddedFunctionResolver)
 	util.AssertNoError(err)
 
 	libraryGlobal = newLibrary(lib, idParams, identityData)

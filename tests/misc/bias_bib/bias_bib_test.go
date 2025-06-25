@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/crypto/blake2b"
@@ -24,7 +24,7 @@ const (
 func TestBias(t *testing.T) {
 	file, err := os.Open(fname)
 	util.AssertNoError(err)
-	defer file.Close()
+	defer util.MustClose(file)
 
 	bucketsVrf := make([]int, nBuckets)
 	bucketsOrd := make([]int, nBuckets)
@@ -37,7 +37,7 @@ func TestBias(t *testing.T) {
 
 	fout, err := os.Create("strings.txt")
 	util.AssertNoError(err)
-	defer fout.Close()
+	defer util.MustClose(fout)
 
 	for scanner.Scan() {
 
@@ -95,14 +95,14 @@ func TestBias(t *testing.T) {
 }
 
 const (
-	nBuckets1 = 100
-	fname1    = "strings.txt"
+	//nBuckets1 = 100
+	fname1 = "strings.txt"
 )
 
 func TestBias1(t *testing.T) {
 	file, err := os.Open("strings.txt")
 	util.AssertNoError(err)
-	defer file.Close()
+	defer util.MustClose(file)
 
 	bucketsVrf := make([]int, 100)
 
@@ -135,7 +135,7 @@ func TestBias2(t *testing.T) {
 	s1 := set.New[string]()
 	file, err := os.Open(fname1)
 	util.AssertNoError(err)
-	defer file.Close()
+	defer util.MustClose(file)
 
 	// Create a scanner to read the file line by line
 	scanner := bufio.NewScanner(file)
@@ -148,7 +148,7 @@ func TestBias2(t *testing.T) {
 func TestScaling(t *testing.T) {
 	file, err := os.Open("vrf3.txt")
 	util.AssertNoError(err)
-	defer file.Close()
+	defer util.MustClose(file)
 
 	bucketsVrf := make([]int, 10)
 
@@ -161,7 +161,7 @@ func TestScaling(t *testing.T) {
 
 		lineBin, err := hex.DecodeString(line)
 		util.AssertNoError(err)
-		v := base.RandomFromSeed(lineBin, 5_000_000)
+		v := ledger.RandomFromSeed(lineBin, 5_000_000)
 		count++
 		bucketNo := (10 * int(v)) / 5_000_000
 		bucketsVrf[bucketNo]++

@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,7 +33,7 @@ func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
 	yamlData, err := os.ReadFile(glb.LedgerIDFileName)
 	glb.AssertNoError(err)
 
-	lib, idParams, err := ledger.ParseLedgerIdYAML(yamlData, base.GetEmbeddedFunctionResolver)
+	lib, idParams, err := ledger.ParseLedgerIdYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
 	glb.AssertNoError(err)
 	h := lib.LibraryHash()
 	glb.Infof("hash of the library: %s", hex.EncodeToString(h[:]))

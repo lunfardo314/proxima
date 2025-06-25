@@ -17,10 +17,10 @@ import (
 // Validating and making sense of inflation-related constants
 
 func TestScaleBytesAsBigInt(t *testing.T) {
-	r := base.RandomFromSeed([]byte("abc"), 3)
+	r := ledger.RandomFromSeed([]byte("abc"), 3)
 	require.True(t, r < 3)
 	h := blake2b.Sum256([]byte("abc"))
-	r = base.RandomFromSeed(h[:], 1337)
+	r = ledger.RandomFromSeed(h[:], 1337)
 	require.True(t, r < 1337)
 
 	for i := 0; i < 1000; i++ {
@@ -29,7 +29,7 @@ func TestScaleBytesAsBigInt(t *testing.T) {
 		if scale <= 0 {
 			scale = 1 - scale
 		}
-		r = base.RandomFromSeed(h[:], uint64(scale))
+		r = ledger.RandomFromSeed(h[:], uint64(scale))
 		require.True(t, r < uint64(scale))
 	}
 }

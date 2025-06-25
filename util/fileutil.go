@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -54,7 +55,11 @@ func AppendLineToFile(filename string, format string, args ...any) {
 		fmt.Printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>> Error opening file: %v", err)
 		return
 	}
-	defer f.Close()
+	defer MustClose(f)
 
 	_, _ = fmt.Fprintf(f, format+"\n", args...)
+}
+
+func MustClose(f io.Closer) {
+	AssertNoError(f.Close())
 }

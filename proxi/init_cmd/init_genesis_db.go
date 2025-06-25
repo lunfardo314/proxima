@@ -8,7 +8,6 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -52,7 +51,7 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	}
 
 	// parse and validate
-	lib, idParams, err := ledger.ParseLedgerIdYAML(idDataYAML, base.GetEmbeddedFunctionResolver)
+	lib, idParams, err := ledger.ParseLedgerIdYAML(idDataYAML, ledger.GetEmbeddedFunctionResolver)
 	glb.AssertNoError(err)
 
 	glb.Infof("Will be creating genesis with the following ledger identity parameters:")

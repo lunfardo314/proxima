@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -42,7 +41,7 @@ func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
 	// create ledger identity
 	idParams := ledger.DefaultIdentityParameters(privKey, uint32(time.Now().Unix()))
 	yamlData := ledger.LibraryYAMLFromIdentityParameters(idParams, true)
-	lib, err := easyfl.NewLibraryFromYAML[*base.EvalContext](yamlData)
+	lib, err := easyfl.NewLibraryFromYAML[*ledger.EvalContext](yamlData)
 	glb.AssertNoError(err)
 
 	err = os.WriteFile(glb.LedgerIDFileName, yamlData, 0666)

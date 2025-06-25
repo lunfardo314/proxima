@@ -15,9 +15,9 @@ import (
 // This file contains definitions of the inflation calculation functions in EasyFL (on-ledger)
 // The Go functions interprets EasyFL function to guarantee consistent values
 
-var calcChainInflationAmountExpression atomic.Pointer[easyfl.Expression[*base.EvalContext]]
+var calcChainInflationAmountExpression atomic.Pointer[easyfl.Expression[*EvalContext]]
 
-func __precompiledChainInflation() (ret *easyfl.Expression[*base.EvalContext]) {
+func __precompiledChainInflation() (ret *easyfl.Expression[*EvalContext]) {
 	if ret = calcChainInflationAmountExpression.Load(); ret == nil {
 		var err error
 		ret, _, _, err = L().CompileExpression("calcChainInflationAmount($0,$1,$2)")
@@ -44,7 +44,7 @@ func (lib *Library) BranchInflationBonusBase() uint64 {
 }
 
 func (lib *Library) BranchInflationBonusDirect(proof []byte) uint64 {
-	return base.RandomFromSeed(proof, lib.BranchInflationBonusBase()) + 1
+	return RandomFromSeed(proof, lib.BranchInflationBonusBase()) + 1
 }
 
 // BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchInflationBonusBase (incl)

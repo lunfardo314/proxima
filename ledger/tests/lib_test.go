@@ -6,7 +6,6 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +34,7 @@ func TestLedgerToYAMLFile(t *testing.T) {
 	yamlData := ledger.L().ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
 	t.Logf("Full library YAML size: %d bytes", len(yamlData))
 	//_ = os.WriteFile("ledger.yaml", yamlData, 0644)
-	libBack, err := easyfl.NewLibraryFromYAML[*base.EvalContext](yamlData)
+	libBack, err := easyfl.NewLibraryFromYAML[*ledger.EvalContext](yamlData)
 	require.NoError(t, err)
 	require.EqualValues(t, h, libBack.LibraryHash())
 }

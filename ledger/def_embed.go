@@ -1,4 +1,4 @@
-package base
+package ledger
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
@@ -132,15 +133,15 @@ func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 // number of ticks between ts0 and ts1 otherwise, as big-endian uint64
 func evalTicksBefore64(par *easyfl.CallParams[*EvalContext]) []byte {
 	ts0bin, ts1bin := par.Arg(0), par.Arg(1)
-	ts0, err := LedgerTimeFromBytes(ts0bin)
+	ts0, err := base.LedgerTimeFromBytes(ts0bin)
 	if err != nil {
 		par.TracePanic("evalTicksBefore64: %v", err)
 	}
-	ts1, err := LedgerTimeFromBytes(ts1bin)
+	ts1, err := base.LedgerTimeFromBytes(ts1bin)
 	if err != nil {
 		par.TracePanic("evalTicksBefore64: %v", err)
 	}
-	diff := DiffTicks(ts1, ts0)
+	diff := base.DiffTicks(ts1, ts0)
 	if diff < 0 {
 		// ts1 is before ts0
 		return nil
