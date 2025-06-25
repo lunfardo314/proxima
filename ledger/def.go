@@ -137,9 +137,6 @@ func IDParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*IdentityParame
 		return nil, err
 	}
 	ret.Description = string(res)
-	if ret.DelegationEpochSlots, err = _uint64FromConst(lib, "constDelegationEpochSlots"); err != nil {
-		return nil, err
-	}
 	return ret, nil
 }
 

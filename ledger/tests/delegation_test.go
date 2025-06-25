@@ -15,6 +15,12 @@ import (
 )
 
 func TestDelegationLock2(t *testing.T) {
+	require.EqualValues(t, 512, ledger.DelegationEpochSlots())
+	require.EqualValues(t, 24, ledger.DelegationSafeRevocationSlots())
+	require.True(t, ledger.DelegationSafeRevocationSlots() < ledger.DelegationEpochSlots())
+	// require safe revocation window to be up to 5% of the epoch
+	require.True(t, ledger.DelegationSafeRevocationSlots()/ledger.DelegationEpochSlots() < 5)
+
 	var u *utxodb.UTXODB
 	var targetAddr, masterAddr ledger.AddressED25519
 	var delegationPrivateKey, ownerPrivateKey ed25519.PrivateKey
