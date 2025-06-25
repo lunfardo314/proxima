@@ -14,6 +14,82 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDelegationLock2(t *testing.T) {
+	var u *utxodb.UTXODB
+	var targetAddr, masterAddr ledger.AddressED25519
+	var delegationPrivateKey, ownerPrivateKey ed25519.PrivateKey
+
+	const (
+		tokensFromFaucet0 = 200_000_000_000
+		tokensFromFaucet1 = 200_000_000_001
+		delegatedTokens   = 1_000_000_000 // 150_000_000_000
+	)
+	var delegationLock *ledger.DelegationLock2
+	var txBytes []byte
+	var delegatedOutput *ledger.OutputWithChainID
+
+	initTest := func() base.ChainID {
+		u = utxodb.NewUTXODB(genesisPrivateKey, true)
+
+		privKey, _, addr := u.GenerateAddresses(0, 2)
+		ownerPrivateKey = privKey[0]
+		delegationPrivateKey = privKey[1]
+		masterAddr = addr[0]
+		targetAddr = addr[1]
+		t.Logf("\n==== owner    : %s\n==== delegator: %s", masterAddr.String(), targetAddr.String())
+
+		err := u.TokensFromFaucet(addr[0], tokensFromFaucet0)
+		require.NoError(t, err)
+		err = u.TokensFromFaucet(addr[1], tokensFromFaucet1)
+		require.NoError(t, err)
+
+		par, err := u.MakeTransferInputData(privKey[0], nil, base.NilLedgerTime)
+		require.NoError(t, err)
+
+		delegationLock = ledger.NewDelegationLock2(2, masterAddr, targetAddr, 1, ledger.TimeNow().Slot, delegatedTokens)
+		txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
+			WithAmount(delegatedTokens).
+			WithTargetLock(delegationLock).
+			WithConstraint(ledger.NewChainOrigin()),
+		)
+		require.NoError(t, err)
+
+		err = u.AddTransaction(txBytes)
+		if err != nil {
+			t.Logf("============ failing transaction ==============\n%s", u.TxToString(txBytes))
+		}
+		require.NoError(t, err)
+
+		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-tokensFromFaucet0-tokensFromFaucet1, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, tokensFromFaucet0, u.Balance(masterAddr))
+		require.EqualValues(t, 2, u.NumUTXOs(masterAddr))
+		require.EqualValues(t, 2, u.NumUTXOs(targetAddr))
+
+		rdr := multistate.MakeSugared(u.StateReader())
+
+		outs, err := rdr.GetOutputsDelegatedToAccount2(masterAddr)
+		require.NoError(t, err)
+		require.EqualValues(t, 0, len(outs))
+
+		outs, err = rdr.GetOutputsDelegatedToAccount2(targetAddr)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(outs))
+
+		delegatedOutput = outs[0]
+		chainID, _, _ := delegatedOutput.ExtractChainID()
+		return chainID
+	}
+
+	t.Run("1", func(t *testing.T) {
+		chainID := initTest()
+		t.Logf("delegation ID: %s", chainID.String())
+		t.Logf("delegated output 0:\n%s", delegatedOutput.Lines("      ").String())
+		_ = delegationPrivateKey
+		_ = ownerPrivateKey
+	})
+}
+
 func TestIsOpenDelegationWindow(t *testing.T) {
 	chainID := base.RandomChainID()
 	t.Logf("chainID : %s", chainID.String())

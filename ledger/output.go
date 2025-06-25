@@ -406,6 +406,14 @@ func (o *Output) DelegationLock() *DelegationLock {
 	return lock.(*DelegationLock)
 }
 
+func (o *Output) DelegationLock2() *DelegationLock2 {
+	lock := o.Lock()
+	if lock.Name() != DelegationLock2Name {
+		return nil
+	}
+	return lock.(*DelegationLock2)
+}
+
 func (o *Output) ToString(prefix ...string) string {
 	return o.Lines(prefix...).String()
 }

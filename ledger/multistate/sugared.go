@@ -210,6 +210,34 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount(addr ledger.Accountable
 	return ret, nil
 }
 
+func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountable) ([]*ledger.OutputWithChainID, error) {
+	ret := make([]*ledger.OutputWithChainID, 0)
+	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
+		lock := o.DelegationLock2()
+		if lock != nil && ledger.EqualAccountables(lock.TargetLock, addr) {
+			cc, idx := o.ChainConstraint()
+			chainID := cc.ID
+			if cc.IsOrigin() {
+				chainID = base.MakeOriginChainID(oid)
+			}
+			util.Assertf(idx != 0xff, "inconsistency: chain constraint expected")
+			ret = append(ret, &ledger.OutputWithChainID{
+				OutputWithID: ledger.OutputWithID{
+					ID:     oid,
+					Output: o,
+				},
+				ChainID:                    chainID,
+				PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
+			})
+		}
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget ledger.Accountable, fun func(oid base.OutputID, o *ledger.Output, dLock *ledger.DelegationLock) bool) {
 	var dLock *ledger.DelegationLock
 	err := s.IterateOutputsForAccount(delegationTarget, func(oid base.OutputID, o *ledger.Output) bool {
