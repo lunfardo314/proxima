@@ -117,6 +117,13 @@ func registerAddressED25519Constraint(lib *Library) {
 	lib.mustRegisterConstraint(AddressED25519Name, 1, func(data []byte) (Constraint, error) {
 		return AddressED25519FromBytes(data)
 	}, initTestAddressED25519Constraint)
+	lib.mustRegisterLock(AddressED25519Name, func(bytes []byte) (Lock, error) {
+		ret, err := AddressED25519FromBytes(bytes)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
+	})
 }
 
 func initTestAddressED25519Constraint() {

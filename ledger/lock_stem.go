@@ -64,6 +64,13 @@ func registerStemLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(StemLockName, 2, func(data []byte) (Constraint, error) {
 		return StemLockFromBytes(data)
 	}, initTestStemLockConstraint)
+	lib.mustRegisterLock(StemLockName, func(bytes []byte) (Lock, error) {
+		ret, err := StemLockFromBytes(bytes)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
+	})
 }
 
 func initTestStemLockConstraint() {

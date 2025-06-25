@@ -88,6 +88,13 @@ func registerChainLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainLockName, 1, func(data []byte) (Constraint, error) {
 		return ChainLockFromBytes(data)
 	}, initTestChainLockConstraint)
+	lib.mustRegisterLock(ChainLockName, func(bytes []byte) (Lock, error) {
+		ret, err := ChainLockFromBytes(bytes)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
+	})
 }
 
 func initTestChainLockConstraint() {

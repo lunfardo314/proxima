@@ -191,6 +191,13 @@ func registerDelegationLock(lib *Library) {
 	lib.mustRegisterConstraint(DelegationLockName, 5, func(data []byte) (Constraint, error) {
 		return DelegationLockFromBytes(data)
 	}, initTestDelegationConstraint)
+	lib.mustRegisterLock(DelegationLockName, func(bytes []byte) (Lock, error) {
+		ret, err := DelegationLockFromBytes(bytes)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
+	})
 }
 
 func initTestDelegationConstraint() {

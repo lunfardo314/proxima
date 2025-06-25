@@ -112,4 +112,11 @@ func registerConditionalLock(lib *Library) {
 	lib.mustRegisterConstraint(ConditionalLockName, 8, func(data []byte) (Constraint, error) {
 		return ConditionalLockFromBytes(data)
 	})
+	lib.mustRegisterLock(ConditionalLockName, func(bytes []byte) (Lock, error) {
+		ret, err := ConditionalLockFromBytes(bytes)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
+	})
 }

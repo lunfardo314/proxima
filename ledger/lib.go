@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
@@ -14,7 +15,8 @@ type (
 		idData             []byte
 		ID                 *IdentityParameters
 		constraintByPrefix map[string]*constraintRecord
-		constraintNames    map[string]struct{}
+		constraintNames    set.Set[string]
+		locksByName        map[string]LockParser
 		inlineTests        []func()
 	}
 )
@@ -25,7 +27,8 @@ func newLibrary(lib *easyfl.Library[*EvalContext], idParams *IdentityParameters,
 		idData:             idData,
 		ID:                 idParams,
 		constraintByPrefix: make(map[string]*constraintRecord),
-		constraintNames:    make(map[string]struct{}),
+		constraintNames:    set.New[string](),
+		locksByName:        make(map[string]LockParser),
 		inlineTests:        make([]func(), 0),
 	}
 	return ret

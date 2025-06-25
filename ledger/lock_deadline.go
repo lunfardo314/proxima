@@ -59,6 +59,13 @@ func registerDeadlineLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(DeadlineLockName, 3, func(data []byte) (Constraint, error) {
 		return DeadlineLockFromBytes(data)
 	}, initTestDeadlineLockConstraint)
+	lib.mustRegisterLock(DeadlineLockName, func(bytes []byte) (Lock, error) {
+		ret, err := DeadlineLockFromBytes(bytes)
+		if err != nil {
+			return nil, err
+		}
+		return ret, nil
+	})
 }
 
 func initTestDeadlineLockConstraint() {

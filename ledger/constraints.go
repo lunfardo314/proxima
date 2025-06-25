@@ -34,12 +34,13 @@ type (
 		Master() Accountable
 	}
 
-	Parser func([]byte) (Constraint, error)
+	ConstraintParser func([]byte) (Constraint, error)
+	LockParser       func([]byte) (Lock, error)
 
 	constraintRecord struct {
 		name   string
 		prefix []byte
-		parser Parser
+		parser ConstraintParser
 	}
 
 	// LockBalance is an amount/target pair used in distribution list
@@ -55,12 +56,11 @@ type (
 	}
 )
 
-func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser Parser, inlineTests ...func()) {
+func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser ConstraintParser, inlineTests ...func()) {
 	prefix, err := lib.FunctionCallPrefixByName(name, nArgs)
 	util.AssertNoError(err)
-	_, already := lib.constraintNames[name]
-	util.Assertf(!already, "repeating constraint name '%s'", name)
-	_, already = lib.constraintByPrefix[string(prefix)]
+	util.Assertf(!lib.constraintNames.Contains(name), "repeating constraint name '%s'", name)
+	_, already := lib.constraintByPrefix[string(prefix)]
 	util.Assertf(!already, "repeating constraint prefix %s with name '%s'", easyfl_util.Fmt(prefix), name)
 	util.Assertf(0 < len(prefix) && len(prefix) <= 2, "wrong constraint prefix %s, name: %s", easyfl_util.Fmt(prefix), name)
 	lib.constraintByPrefix[string(prefix)] = &constraintRecord{
@@ -68,8 +68,16 @@ func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser Parse
 		prefix: common.Concat(prefix),
 		parser: parser,
 	}
-	lib.constraintNames[name] = struct{}{}
+	lib.constraintNames.Insert(name)
 	lib.appendInlineTests(inlineTests...)
+}
+
+func (lib *Library) mustRegisterLock(name string, parser LockParser) {
+	util.Assertf(lib.constraintNames.Contains(name), "mustRegisterLock: unknown constraint '%s'", name)
+	_, already := lib.locksByName[name]
+	util.Assertf(!already, "mustRegisterLock: repeating lock '%s'", name)
+
+	lib.locksByName[name] = parser
 }
 
 func (lib *Library) appendInlineTests(fun ...func()) {
@@ -89,7 +97,7 @@ func NameByPrefix(prefix []byte) (string, bool) {
 	return "", false
 }
 
-func parserByPrefix(prefix []byte) (Parser, bool) {
+func constraintParserByPrefix(prefix []byte) (ConstraintParser, bool) {
 	if ret, found := L().constraintByPrefix[string(prefix)]; found {
 		return ret.parser, true
 	}
@@ -123,7 +131,7 @@ func ConstraintFromBytes(data []byte) (Constraint, error) {
 		return nil, err
 	}
 
-	if parser, ok := parserByPrefix(prefix); ok {
+	if parser, ok := constraintParserByPrefix(prefix); ok {
 		return parser(data)
 	}
 	return NewGeneralScript(data), nil
@@ -140,26 +148,14 @@ func LockFromBytes(data []byte) (Lock, error) {
 	}
 	name, ok := NameByPrefix(prefix)
 	if !ok {
-		return nil, fmt.Errorf("unknown constraint with prefix '%s'", easyfl_util.Fmt(prefix))
+		return nil, fmt.Errorf("LockFromBytes: unknown constraint with prefix '%s'", easyfl_util.Fmt(prefix))
 	}
-	switch name {
-	case AddressED25519Name:
-		return AddressED25519FromBytes(data)
-	//case DeadlineLockName:
-	//	return DeadlineLockFromBytes(data)
-	case ChainLockName:
-		return ChainLockFromBytes(data)
-	case StemLockName:
-		return StemLockFromBytes(data)
-	case DelegationLockName:
-		return DelegationLockFromBytes(data)
-	case ConditionalLockName:
-		return ConditionalLockFromBytes(data)
-	case DeadlineLockName:
-		return DeadlineLockFromBytes(data)
-	default:
-		return nil, fmt.Errorf("unknown lock '%s'", name)
+
+	parser, ok := L().locksByName[name]
+	if !ok {
+		return nil, fmt.Errorf("LockFromBytes: unknown lock '%s'", name)
 	}
+	return parser(data)
 }
 
 func AccountableFromBytes(data []byte) (Accountable, error) {
