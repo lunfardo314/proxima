@@ -47,7 +47,7 @@ func ParseLedgerIdYAML(
 	if err != nil {
 		return nil, nil, err
 	}
-	idParams, err := idParametersFromLibrary(lib)
+	idParams, err := IDParametersFromLibrary(lib)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -62,7 +62,7 @@ func _uint64FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint
 	return easyfl_util.Uint64FromBytes(res)
 }
 
-func idParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*IdentityParameters, error) {
+func IDParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*IdentityParameters, error) {
 	ret := &IdentityParameters{}
 	var err error
 	var res []byte
@@ -137,6 +137,9 @@ func idParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*IdentityParame
 		return nil, err
 	}
 	ret.Description = string(res)
+	if ret.DelegationEpochSlots, err = _uint64FromConst(lib, "constDelegationEpochSlots"); err != nil {
+		return nil, err
+	}
 	return ret, nil
 }
 

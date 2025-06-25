@@ -195,29 +195,13 @@ functions:
       numArgs: 0
       source: "tail(at, 3)"
    -
-      sym: selfBranch
-      numArgs: 0
-      source: "slice(at,0,1)"
-   -
       sym: selfConstraintIndex
       numArgs: 0
       source: "slice(at, 2, 3)"
    -
-      sym: constraintData
-      numArgs: 1
-      source: tail($0,1)
-   -
-      sym: selfConstraintData
-      numArgs: 0
-      source: constraintData(self)
-   -
       sym: selfUnlockParameters
       numArgs: 0
       source: "atPath(concat(pathToUnlockParams, selfConstraintIndex))"
-   -
-      sym: selfReferencedPath
-      numArgs: 0
-      source: concat(selfBranch, selfUnlockParameters, selfBlockIndex)
    -
       sym: selfSiblingUnlockBlock
       numArgs: 1

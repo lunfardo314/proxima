@@ -44,6 +44,7 @@ type IdentityParameters struct {
 	// value 0 of PreBranchConsolidationTicks effectively means no constraint
 	PreBranchConsolidationTicks  uint8
 	PostBranchConsolidationTicks uint8
+	DelegationEpochSlots         uint64
 }
 
 // default ledger constants
@@ -75,6 +76,7 @@ const (
 	DefaultPreBranchConsolidationTicks  = 25
 	DefaultPostBranchConsolidationTicks = 12
 	defaultDescription                  = "Proxima ledger definitions"
+	DefaultDelegationEpochSlots         = 512
 )
 
 func init() {
@@ -103,6 +105,7 @@ func DefaultIdentityParameters(privateKey ed25519.PrivateKey, genesisTimeUnix ui
 		MaxNumberOfEndorsements:      DefaultMaxNumberOfEndorsements,
 		PreBranchConsolidationTicks:  DefaultPreBranchConsolidationTicks,
 		PostBranchConsolidationTicks: DefaultPostBranchConsolidationTicks,
+		DelegationEpochSlots:         DefaultDelegationEpochSlots,
 		Description:                  dscr,
 	}
 }
@@ -125,6 +128,7 @@ func ConstantsYAMLFromIdentity(id *IdentityParameters) []byte {
 		id.TransactionPaceSequencer,
 		id.VBCost,
 		hex.EncodeToString([]byte(id.Description)),
+		id.DelegationEpochSlots,
 	))
 }
 
@@ -216,6 +220,7 @@ func (id *IdentityParameters) Lines(prefix ...string) *lines.Lines {
 		Add("Sequencer pace: %d", id.TransactionPaceSequencer).
 		Add("VB cost: %d", id.VBCost).
 		Add("Max number of endorsements: %d", id.MaxNumberOfEndorsements).
+		Add("Delegation epoch slots: %d", id.DelegationEpochSlots).
 		Add("Origin chain id (calculated): %s", originChainID.String())
 }
 
@@ -247,6 +252,7 @@ func (id *IdentityParameters) TimeConstantsToString() string {
 		Add("timestampNowis.UnixNano() = %v ", UnixNanoFromLedgerTime(timestampNowis)).
 		Add("rounding: nowis.UnixNano() - timestampNowis.UnixNano() = %d", nowis.UnixNano()-UnixNanoFromLedgerTime(timestampNowis)).
 		Add("tick duration nano = %d", int64(TickDuration())).
+		Add("delegation epoch slots = %d", id.DelegationEpochSlots).
 		String()
 }
 
@@ -330,4 +336,9 @@ functions:
       sym: timestampByteSize
       description: constant for the storage deposit constraint  
       source: 5
+# delegation related
+   -
+      sym: constDelegationEpochSlots
+      description: number of slots in delegation epoch 
+      source: u64/%d
 `

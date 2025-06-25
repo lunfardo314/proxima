@@ -146,10 +146,10 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 	// amount on produced chain output
 	chainOutAmount := chainInAmount + additionalIn + mainChainInflationAmount + delegationMargin - withdrawOut // >= 0
-	if chainOutAmount < ledger.L().Const().MinimumAmountOnSequencer() {
+	if chainOutAmount < ledger.L().ID.MinimumAmountOnSequencer {
 		return nil, nil, errP("amount %s on the produced chain output is below minimum %s required for the sequencer",
 			util.Th(chainOutAmount),
-			util.Th(ledger.L().Const().MinimumAmountOnSequencer()))
+			util.Th(ledger.L().ID.MinimumAmountOnSequencer))
 	}
 
 	// total produced amount on transaction

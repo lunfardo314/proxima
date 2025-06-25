@@ -13,8 +13,15 @@ import (
 func TestLoad(t *testing.T) {
 	id, _ := ledger.GetTestingIdentityData()
 	lib := ledger.LibraryFromIdentityParameters(id, true)
-	t.Logf("------------------\n%s", lib.ID.String())
+
+	t.Logf("------------------ ORIG \n%s", lib.ID.String())
 	t.Logf("------------------\n%s", lib.ID.TimeConstantsToString())
+
+	idBack, err := ledger.IDParametersFromLibrary(lib.Library)
+	require.NoError(t, err)
+	t.Logf("------------------ ID LOADED FROM LIBRARY \n%s", idBack.String())
+
+	require.EqualValues(t, id, idBack)
 }
 
 func TestLedgerToYAML(t *testing.T) {

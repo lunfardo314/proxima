@@ -71,7 +71,6 @@ func New() *ProximaNode {
 		started:                   time.Now(),
 	}
 	ret.registerMetrics()
-	//global.SetGlobalLogger(ret.Global)
 	return ret
 }
 
