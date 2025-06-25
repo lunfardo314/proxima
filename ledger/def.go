@@ -178,6 +178,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], id *IdentityParameters) {
 	lib.MustExtendMany(delegationLockSource)
 	lib.MustExtendMany(totalAmountSource)
 	lib.MustExtendMany(delegationLock2Source)
+	lib.MustExtendMany(freezeDelegationLockSource)
 }
 
 // registerConstraints mass-registers all wrappers of constraints
@@ -198,6 +199,7 @@ func (lib *Library) registerConstraints() {
 	registerDelegationLock(lib)
 	registerTotalAmountConstraint(lib)
 	registerDelegationLock2(lib)
+	registerDelegationLockFreeze(lib)
 
 	lib.appendInlineTests(func() {
 		// inline tests

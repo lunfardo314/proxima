@@ -57,6 +57,7 @@ func TestDelegationLock2(t *testing.T) {
 			WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
 			WithConstraint(ledger.NewChainOrigin()),
+		//WithConstraint(ledger.NewFreezeDelegationLock(10001)), // TODO temporary
 		)
 		require.NoError(t, err)
 
