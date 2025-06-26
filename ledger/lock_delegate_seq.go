@@ -13,8 +13,8 @@ import (
 )
 
 type (
-	DelegationLock2 struct {
-		TargetLock Accountable
+	DelegateToSequencerLock struct {
+		Target     ChainLock
 		MasterLock Accountable
 		// must point to the sibling chain constraint
 		ChainConstraintIndex byte
@@ -27,21 +27,21 @@ type (
 )
 
 const (
-	DelegationLock2Name       = "delegationLock2"
-	delegationLock2Template   = DelegationLock2Name + "(%d, %s, %s, %d, z64/%d, z32/%d)"
-	delegationLock2TemplateHR = DelegationLock2Name + "(chainIdx=%d, target=%s, master=%s, maxCoverageLockSlots=%d, startSlot=%d, startAmount=%s)"
+	DelegateToSequencerLockName       = "delegateToSequencerLock"
+	delegateToSequencerLockTemplate   = DelegateToSequencerLockName + "(%d, %s, %s, %d, z64/%d, z32/%d)"
+	delegateToSequencerLockTemplateHR = DelegateToSequencerLockName + "(chainIdx=%d, target=%s, master=%s, maxCoverageLockSlots=%d, startSlot=%d, startAmount=%s)"
 
 	FreezeDelegationLockName       = "freezeDelegationLock"
 	delegationLockFreezeTemplate   = FreezeDelegationLockName + "(z32/%d)"
 	delegationLockFreezeTemplateHR = FreezeDelegationLockName + "(freezeSlot=%d)"
 )
 
-//------------ DelegationLock2
+//------------ DelegateToSequencerLock
 
-func NewDelegationLock2(chainConstraintIndex byte, owner, target Accountable, maxCoverageLockSlots byte, startSlot base.Slot, startAmount uint64) *DelegationLock2 {
-	return &DelegationLock2{
-		TargetLock:           target,
-		MasterLock:           owner,
+func NewDelegateToSequencerLock(chainConstraintIndex byte, target ChainLock, master Accountable, maxCoverageLockSlots byte, startSlot base.Slot, startAmount uint64) *DelegateToSequencerLock {
+	return &DelegateToSequencerLock{
+		Target:               target,
+		MasterLock:           master,
 		ChainConstraintIndex: chainConstraintIndex,
 		StartSlot:            startSlot,
 		StartAmount:          startAmount,
@@ -49,47 +49,65 @@ func NewDelegationLock2(chainConstraintIndex byte, owner, target Accountable, ma
 	}
 }
 
-func DelegationLock2FromBytes(data []byte) (*DelegationLock2, error) {
+func (d *DelegateToSequencerLock) Source() string {
+	return fmt.Sprintf(delegateToSequencerLockTemplate,
+		d.ChainConstraintIndex, d.Target.Source(), d.MasterLock.Source(), d.MaxLockCoverageSlots, d.StartSlot, d.StartAmount)
+}
+
+func (d *DelegateToSequencerLock) String() string {
+	return fmt.Sprintf(delegateToSequencerLockTemplateHR,
+		d.ChainConstraintIndex, d.Target.String(), d.MasterLock.String(), d.MaxLockCoverageSlots, d.StartSlot, util.Th(d.StartAmount))
+}
+
+func (d *DelegateToSequencerLock) Bytes() []byte {
+	return mustBinFromSource(d.Source())
+}
+
+func (d *DelegateToSequencerLock) Accounts() []Accountable {
+	return NoDuplicatesAccountables([]Accountable{d.Target, d.MasterLock})
+}
+
+func DelegateToSequencerLockFromBytes(data []byte) (*DelegateToSequencerLock, error) {
 	sym, _, args, err := L().ParseBytecodeOneLevel(data, 6)
 	if err != nil {
-		return nil, fmt.Errorf("DelegationLock2FromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: %w", err)
 	}
-	if sym != DelegationLock2Name {
-		return nil, fmt.Errorf("DelegationLock2FromBytes: not a DelegationLock2")
+	if sym != DelegateToSequencerLockName {
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: not a DelegateToSequencerLock")
 	}
 	// chain constraint index
 	arg0 := easyfl.StripDataPrefix(args[0])
-	ret := &DelegationLock2{}
+	ret := &DelegateToSequencerLock{}
 	if len(arg0) != 1 || arg0[0] == 255 {
-		return nil, fmt.Errorf("DelegationLockFromBytes: wrong chain constraint index")
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: wrong chain constraint index")
 	}
 	ret.ChainConstraintIndex = arg0[0]
 
 	// target lock
-	ret.TargetLock, err = AccountableFromBytes(args[1])
+	ret.Target, err = ChainLockFromBytes(args[1])
 	if err != nil {
-		return nil, fmt.Errorf("DelegationLock2FromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: %w", err)
 	}
 	// master lock
 	ret.MasterLock, err = AccountableFromBytes(args[2])
 	if err != nil {
-		return nil, fmt.Errorf("DelegationLock2FromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: %w", err)
 	}
 
 	// max coverage lock slots
 	arg3 := easyfl.StripDataPrefix(args[3])
 	if len(arg3) != 1 {
-		return nil, fmt.Errorf("DelegationLock2FromBytes: wrong max coverage lock slots")
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: wrong max coverage lock slots")
 	}
 	ret.MaxLockCoverageSlots = arg3[0]
 
 	// start slot
 	startSlot64, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[4]))
 	if err != nil {
-		return nil, fmt.Errorf("DelegationLock2FromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: %w", err)
 	}
 	if startSlot64 >= base.MaxSlot {
-		return nil, fmt.Errorf("DelegationLock2FromBytes: start slot %d out of range", startSlot64)
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: start slot %d out of range", startSlot64)
 	}
 	ret.StartSlot = base.Slot(startSlot64)
 
@@ -101,38 +119,20 @@ func DelegationLock2FromBytes(data []byte) (*DelegationLock2, error) {
 	return ret, nil
 }
 
-func (d *DelegationLock2) Source() string {
-	return fmt.Sprintf(delegationLock2Template,
-		d.ChainConstraintIndex, d.TargetLock.Source(), d.MasterLock.Source(), d.MaxLockCoverageSlots, d.StartSlot, d.StartAmount)
+func (d *DelegateToSequencerLock) Name() string {
+	return DelegateToSequencerLockName
 }
 
-func (d *DelegationLock2) String() string {
-	return fmt.Sprintf(delegationLock2TemplateHR,
-		d.ChainConstraintIndex, d.TargetLock.Source(), d.MasterLock.Source(), d.MaxLockCoverageSlots, d.StartSlot, util.Th(d.StartAmount))
-}
-
-func (d *DelegationLock2) Bytes() []byte {
-	return mustBinFromSource(d.Source())
-}
-
-func (d *DelegationLock2) Accounts() []Accountable {
-	return NoDuplicatesAccountables([]Accountable{d.TargetLock, d.MasterLock})
-}
-
-func (d *DelegationLock2) Name() string {
-	return DelegationLock2Name
-}
-
-func (d *DelegationLock2) Master() Accountable {
+func (d *DelegateToSequencerLock) Master() Accountable {
 	return d.MasterLock
 }
 
 func registerDelegationLock2(lib *Library) {
-	lib.mustRegisterConstraint(DelegationLock2Name, 6, func(data []byte) (Constraint, error) {
-		return DelegationLock2FromBytes(data)
+	lib.mustRegisterConstraint(DelegateToSequencerLockName, 6, func(data []byte) (Constraint, error) {
+		return DelegateToSequencerLockFromBytes(data)
 	}, initTestDelegation2Constraint)
-	lib.mustRegisterLock(DelegationLock2Name, func(bytes []byte) (Lock, error) {
-		ret, err := DelegationLock2FromBytes(bytes)
+	lib.mustRegisterLock(DelegateToSequencerLockName, func(bytes []byte) (Lock, error) {
+		ret, err := DelegateToSequencerLockFromBytes(bytes)
 		if err != nil {
 			return nil, err
 		}
@@ -141,31 +141,31 @@ func registerDelegationLock2(lib *Library) {
 }
 
 func initTestDelegation2Constraint() {
-	a1 := AddressED25519Random()
-	a2 := AddressED25519Random()
+	target := ChainLockFromChainID(base.RandomChainID())
+	master := AddressED25519Random()
 	slotNow := TimeNow().Slot
-	example := NewDelegationLock2(4, a1, a2, 3, slotNow, 1337)
+	example := NewDelegateToSequencerLock(4, target, master, 3, slotNow, 1337)
 
-	exampleBack, err := DelegationLock2FromBytes(example.Bytes())
+	exampleBack, err := DelegateToSequencerLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(example.ChainConstraintIndex == 4, "DelegationLock2FromBytes: wrong back")
-	util.Assertf(exampleBack.ChainConstraintIndex == example.ChainConstraintIndex, "DelegationLock2FromBytes: wrong back")
-	util.Assertf(example.MaxLockCoverageSlots == 3, "DelegationLock2FromBytes: wrong back")
-	util.Assertf(exampleBack.MaxLockCoverageSlots == example.MaxLockCoverageSlots, "DelegationLock2FromBytes: wrong back")
-	util.Assertf(example.StartSlot == slotNow, "DelegationLock2FromBytes: wrong back")
-	util.Assertf(exampleBack.StartSlot == example.StartSlot, "DelegationLock2FromBytes: wrong back")
-	util.Assertf(example.StartAmount == 1337, "DelegationLock2FromBytes: wrong back")
-	util.Assertf(example.StartAmount == exampleBack.StartAmount, "DelegationLock2FromBytes: wrong back")
+	util.Assertf(example.ChainConstraintIndex == 4, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(exampleBack.ChainConstraintIndex == example.ChainConstraintIndex, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(example.MaxLockCoverageSlots == 3, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(exampleBack.MaxLockCoverageSlots == example.MaxLockCoverageSlots, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(example.StartSlot == slotNow, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(exampleBack.StartSlot == example.StartSlot, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(example.StartAmount == 1337, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(example.StartAmount == exampleBack.StartAmount, "DelegateToSequencerLockFromBytes: wrong back")
 
-	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegationLock2Name)
+	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateToSequencerLockName)
 	exampleBack2, err := LockFromBytes(example.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegationLock2Name)
+	util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegateToSequencerLockName)
 
 	pref1, err := L().ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 
-	pref2, err := L().EvalFromSource(nil, "#delegationLock2")
+	pref2, err := L().EvalFromSource(nil, "#"+DelegateToSequencerLockName)
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(pref1, pref2), "bytes.Equal(pref1, pref2)")
 	util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
@@ -228,12 +228,12 @@ func _enforceDelegation2TargetConstraintsOnSuccessor : and(
 
 // Delegation lock output. Immutable 
 // $0 chain constraint index
-// $1 target lock
+// $1 target chain lock
 // $2 master lock
 // $3 max freeze epochs
 // $4 start slot 
 // $5 start amount
-func delegationLock2: and(
+func delegateToSequencerLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
     or(
        and(
@@ -256,11 +256,11 @@ func delegationLock2: and(
 )
 
 // chain ID from delegation lock
-func selfChainIDFromDelegation : chainID(selfChainData(parseInlineDataArgument(selfSiblingConstraint(1), 0, #delegationLock2)))
+func selfChainIDFromDelegation : chainID(selfChainData(parseInlineDataArgument(selfSiblingConstraint(1), 0, #delegateToSequencerLock)))
 
 func selfDelegationEpochOffset : div(slice(selfChainIDFromDelegation,0,7), constDelegationEpochSlots)
 
-func selfMaxFreezeEpochs64 : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(1), 3, #delegationLock2))
+func selfMaxFreezeEpochs64 : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(1), 3, #delegateToSequencerLock))
 
 `
 
@@ -276,7 +276,7 @@ func DelegationLockFreezeFromBytes(data []byte) (DelegationLockFreeze, error) {
 		return 0, fmt.Errorf("DelegationLockFreezeFromBytes: %w", err)
 	}
 	if sym != FreezeDelegationLockName {
-		return 0, fmt.Errorf("DelegationLockFreezeFromBytes: not a DelegationLock2")
+		return 0, fmt.Errorf("DelegationLockFreezeFromBytes: not a DelegateToSequencerLock")
 	}
 	ret, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
 	if err != nil {
@@ -342,4 +342,7 @@ or(
 		 !!!delegation2_output_is_frozen
 	  )
    )
-)`
+)
+
+func revoked : true
+`

@@ -406,12 +406,12 @@ func (o *Output) DelegationLock() *DelegationLock {
 	return lock.(*DelegationLock)
 }
 
-func (o *Output) DelegationLock2() *DelegationLock2 {
+func (o *Output) DelegationLock2() *DelegateToSequencerLock {
 	lock := o.Lock()
-	if lock.Name() != DelegationLock2Name {
+	if lock.Name() != DelegateToSequencerLockName {
 		return nil
 	}
-	return lock.(*DelegationLock2)
+	return lock.(*DelegateToSequencerLock)
 }
 
 func (o *Output) ToString(prefix ...string) string {

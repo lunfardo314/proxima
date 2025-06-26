@@ -214,7 +214,7 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountabl
 	ret := make([]*ledger.OutputWithChainID, 0)
 	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
 		lock := o.DelegationLock2()
-		if lock != nil && ledger.EqualAccountables(lock.TargetLock, addr) {
+		if lock != nil && ledger.EqualAccountables(lock.Target, addr) {
 			cc, idx := o.ChainConstraint()
 			chainID := cc.ID
 			if cc.IsOrigin() {

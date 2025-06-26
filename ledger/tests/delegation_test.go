@@ -22,7 +22,9 @@ func TestDelegationLock2(t *testing.T) {
 	require.True(t, ledger.DelegationSafeRevocationSlots()/ledger.DelegationEpochSlots() < 5)
 
 	var u *utxodb.UTXODB
-	var targetAddr, masterAddr ledger.AddressED25519
+	var target ledger.ChainLock
+	var masterAddr ledger.AddressED25519
+
 	var delegationPrivateKey, ownerPrivateKey ed25519.PrivateKey
 
 	const (
@@ -30,7 +32,7 @@ func TestDelegationLock2(t *testing.T) {
 		tokensFromFaucet1 = 200_000_000_001
 		delegatedTokens   = 1_000_000_000 // 150_000_000_000
 	)
-	var delegationLock *ledger.DelegationLock2
+	var delegationLock *ledger.DelegateToSequencerLock
 	var txBytes []byte
 	var delegatedOutput *ledger.OutputWithChainID
 
@@ -41,8 +43,8 @@ func TestDelegationLock2(t *testing.T) {
 		ownerPrivateKey = privKey[0]
 		delegationPrivateKey = privKey[1]
 		masterAddr = addr[0]
-		targetAddr = addr[1]
-		t.Logf("\n==== owner    : %s\n==== delegator: %s", masterAddr.String(), targetAddr.String())
+		target = ledger.ChainLockFromChainID(base.RandomChainID())
+		t.Logf("\n==== owner    : %s\n==== delegator: %s", masterAddr.String(), target.String())
 
 		err := u.TokensFromFaucet(addr[0], tokensFromFaucet0)
 		require.NoError(t, err)
@@ -52,7 +54,7 @@ func TestDelegationLock2(t *testing.T) {
 		par, err := u.MakeTransferInputData(privKey[0], nil, base.NilLedgerTime)
 		require.NoError(t, err)
 
-		delegationLock = ledger.NewDelegationLock2(2, masterAddr, targetAddr, 1, ledger.TimeNow().Slot, delegatedTokens)
+		delegationLock = ledger.NewDelegateToSequencerLock(2, target, masterAddr, 1, ledger.TimeNow().Slot, delegatedTokens)
 		txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 			WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
@@ -60,6 +62,8 @@ func TestDelegationLock2(t *testing.T) {
 		//WithConstraint(ledger.NewFreezeDelegationLock(10001)), // TODO temporary
 		)
 		require.NoError(t, err)
+
+		//t.Logf("============ transaction ==============\n%s", u.TxToString(txBytes))
 
 		err = u.AddTransaction(txBytes)
 		if err != nil {
@@ -71,7 +75,7 @@ func TestDelegationLock2(t *testing.T) {
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-tokensFromFaucet0-tokensFromFaucet1, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, tokensFromFaucet0, u.Balance(masterAddr))
 		require.EqualValues(t, 2, u.NumUTXOs(masterAddr))
-		require.EqualValues(t, 2, u.NumUTXOs(targetAddr))
+		require.EqualValues(t, 1, u.NumUTXOs(target))
 
 		rdr := multistate.MakeSugared(u.StateReader())
 
@@ -79,7 +83,7 @@ func TestDelegationLock2(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, 0, len(outs))
 
-		outs, err = rdr.GetOutputsDelegatedToAccount2(targetAddr)
+		outs, err = rdr.GetOutputsDelegatedToAccount2(target)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(outs))
 
