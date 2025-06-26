@@ -54,12 +54,13 @@ func TestDelegationLock2(t *testing.T) {
 		par, err := u.MakeTransferInputData(privKey[0], nil, base.NilLedgerTime)
 		require.NoError(t, err)
 
-		delegationLock = ledger.NewDelegateToSequencerLock(2, target, masterAddr, 1, ledger.TimeNow().Slot, delegatedTokens)
+		delegationLock = ledger.NewDelegateToSequencerLock(target, masterAddr, 1, ledger.TimeNow().Slot+1, delegatedTokens)
 		txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 			WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
-			WithConstraint(ledger.NewChainOrigin()),
-		//WithConstraint(ledger.NewFreezeDelegationLock(10001)), // TODO temporary
+			WithConstraint(ledger.NewChainOrigin()).
+			WithConstraint(ledger.NewDelegateToSequencerLockState(0)),
+		//WithConstraint(ledger.NewDelegateToSequencerLockState(10001)), // TODO temporary
 		)
 		require.NoError(t, err)
 
