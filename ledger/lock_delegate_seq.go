@@ -28,9 +28,9 @@ type (
 )
 
 const (
-	DelegateToSequencerLockStateInit    = byte(0)
-	DelegateToSequencerLockStateFrozen  = byte(1)
-	DelegateToSequencerLockStateRevoked = byte(2)
+	DelegateToSequencerLockStateUnfrozen = byte(0)
+	DelegateToSequencerLockStateFrozen   = byte(1)
+	DelegateToSequencerLockStateRevoked  = byte(2)
 )
 
 const (
@@ -260,6 +260,11 @@ func constDelegationEpochSlots : lshift64(u64/1, constDelegationEpochSlotsShiftB
 func constDelegationSafeRevocationSlots  : u64/24
 func constDelegationMaxLockEpochs : u64/4
 
+//----------------------------------------------------
+// $0 chainID
+// ($0>>9 + 'max freeze slots') << 9
+func _delegationEpochOffset : rshift64(slice($0,0,7),constDelegationEpochSlotsShiftBits)
+
 // $0 index of the chain constraint in the consumed output
 func pathToSuccessorOutput : concat(pathToProducedOutputs, byte(selfSiblingUnlockParams($0), 0))
 
@@ -281,6 +286,60 @@ func delegateToSequencerLockState : or($0,true)
 func _delegationState : parseInlineDataArgument(selfSiblingConstraint(3),#delegateToSequencerLockState, 0)
 func _isInitDelegationState : isZero(_delegationState)
 
+// $0 max freeze epochs
+// $1 start slot 
+// $2 start amount
+func _validDelegationProduced :
+and(
+  selfIsProducedOutput,
+  enforceMinimumStorageDeposit,
+  require(
+	 equal(selfNumConstraints, u64/4), 
+	 !!!delegation_must_have_4_constraints
+  ), // prevent attacks
+  require(
+	 not(isBranchTransaction), 
+	 !!!delegation_should_not_be_branch
+  ),
+  require(
+	 equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
+	 !!!#chain_is_expected_at_index_2
+  ),
+  require(
+	 equal(parsePrefixBytecode(selfSiblingConstraint(3)), #delegateToSequencerLockState), 
+	 !!!#delegateToSequencerLockState_is_expected_at_index_3
+  ),
+  require(
+	 or(not(_isInitDelegationState), equalUint(txSlot,$1)), 
+	 !!!wrong_start_slot
+  ),
+  require(
+	 or(not(_isInitDelegationState), equalUint(selfAmountValue,$2)), 
+	 !!!wrong_start_amount
+  ),
+  require(
+     lessOrEqualThan(uint8Bytes($0), constDelegationMaxLockEpochs),
+     !!!wrong_max_freeze_epochs
+  )
+)
+
+// $0 target chain lock
+// $1 master lock
+// $2 max freeze epochs
+func _validDelegationConsumed :
+and(
+   selfIsConsumedOutput,
+      // target lock must be unlocked
+   $0,  
+      // amount should not decrease
+   require(lessOrEqualThan(selfAmountValue, amountValueByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))), !!!amount_should_not_decrease),
+      // delegation lock must be immutable
+   require(equal(successorConstraint(2), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_must_be_immutable),
+      // chain must be state transition
+   require(equal(byte(selfSiblingUnlockParams(2),2), 0), !!!chain_must_be_state_transition),
+   concat($2)
+)
+
 // Delegation lock output. Immutable 
 // $0 target chain lock
 // $1 master lock
@@ -290,41 +349,8 @@ func _isInitDelegationState : isZero(_delegationState)
 func delegateToSequencerLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
     or(
-       and(
-          selfIsProducedOutput,
-	      enforceMinimumStorageDeposit,
-          require(
-             equal(selfNumConstraints, u64/4), 
-             !!!delegation_must_have_4_constraints
-          ), // prevent attacks
-          require(
-             not(isBranchTransaction), 
-             !!!delegation_should_not_be_branch
-          ),
-          require(
-             equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
-             !!!#chain_is_expected_at_index_2
-          ),
-          require(
-             equal(parsePrefixBytecode(selfSiblingConstraint(3)), #delegateToSequencerLockState), 
-             !!!#delegateToSequencerLockState_is_expected_at_index_3
-          ),
-          require(
-             or(not(_isInitDelegationState), equalUint(txSlot,$3)), 
-             !!!wrong_start_slot
-          ),
-          require(
-             or(not(_isInitDelegationState), equalUint(selfAmountValue,$4)), 
-             !!!wrong_start_amount
-          ),
-       ),
-       and(
-          selfIsConsumedOutput,
-          require(_enforceDelegation2TargetConstraintsOnSuccessor(
-             $1, 
-             concat(pathToProducedOutputs, byte(selfSiblingUnlockParams($0), 0)),  // TODO
-          ), !!!wrong_delegation_target_successor)
-       ),
+       _validDelegationProduced($2,$3,$4),
+       _validDelegationConsumed($0,$1,$2)
     )
 )
 
@@ -334,10 +360,5 @@ func selfChainIDFromDelegation : chainID(selfChainData(parseInlineDataArgument(s
 func selfDelegationEpochOffset : div(slice(selfChainIDFromDelegation,0,7), constDelegationEpochSlots)
 
 func selfMaxFreezeEpochs64 : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(1), 3, #delegateToSequencerLock))
-
-//----------------------------------------------------
-// $0 frozen slot
-// ($0>>9 + 'max freeze slots') << 9
-func _unfreezeSlot : lshift64(add(rshift64($0,constDelegationEpochSlotsShiftBits), selfMaxFreezeEpochs64), constDelegationEpochSlotsShiftBits)
 
 `
