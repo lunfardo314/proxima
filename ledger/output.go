@@ -418,12 +418,24 @@ func (o *Output) ToString(prefix ...string) string {
 	return o.Lines(prefix...).String()
 }
 
+func (o *Output) ToSource(prefix ...string) string {
+	return o.LinesSource(prefix...).String()
+}
+
 func (o *Output) Lines(prefix ...string) *lines.Lines {
 	pref := ""
 	if len(prefix) > 0 {
 		pref = prefix[0]
 	}
-	return o._lines(pref, false)
+	return o._lines(pref, false, false)
+}
+
+func (o *Output) LinesSource(prefix ...string) *lines.Lines {
+	pref := ""
+	if len(prefix) > 0 {
+		pref = prefix[0]
+	}
+	return o._lines(pref, true, false)
 }
 
 func (o *Output) LinesVerbose(prefix ...string) *lines.Lines {
@@ -431,14 +443,14 @@ func (o *Output) LinesVerbose(prefix ...string) *lines.Lines {
 	if len(prefix) > 0 {
 		pref = prefix[0]
 	}
-	return o._lines(pref, true)
+	return o._lines(pref, false, true)
 }
 
 func (o *Output) String() string {
 	return o.Lines().String()
 }
 
-func (o *Output) _lines(prefix string, verbose bool) *lines.Lines {
+func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	ret := lines.New()
 	o.ForEachConstraint(func(i byte, data []byte) bool {
 		bc := ""
@@ -449,7 +461,11 @@ func (o *Output) _lines(prefix string, verbose bool) *lines.Lines {
 		if err != nil {
 			ret.Add("%s%d: %v%s", prefix, i, err, bc)
 		} else {
-			ret.Add("%s%d: %s%s", prefix, i, c.String(), bc)
+			if source {
+				ret.Add("%s%d: %s%s", prefix, i, c.Source(), bc)
+			} else {
+				ret.Add("%s%d: %s%s", prefix, i, c.String(), bc)
+			}
 		}
 		return true
 	})

@@ -175,7 +175,7 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool
 			if !failFast {
 				failedOutputs.WriteByte(i)
 			}
-			lastErr = fmt.Errorf("%w :\n%s", err, o.ToString("   "))
+			lastErr = fmt.Errorf("%w :\n%s", err, o.ToSource("   "))
 			return !failFast
 		}
 		minDeposit := o.MinimumStorageDeposit(0)
