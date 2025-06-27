@@ -21,16 +21,10 @@ type (
 		StartSlot            base.Slot
 		StartAmount          uint64
 	}
-
 	DelegateToSequencerLockState struct {
-		State byte
+		Unfreeze base.Slot
+		Revoked  bool
 	}
-)
-
-const (
-	DelegateToSequencerLockStateUnfrozen = byte(0)
-	DelegateToSequencerLockStateFrozen   = byte(1)
-	DelegateToSequencerLockStateRevoked  = byte(2)
 )
 
 const (
@@ -39,8 +33,8 @@ const (
 	delegateToSequencerLockTemplateHR = DelegateToSequencerLockName + "(target=%s, master=%s, maxCoverageLockSlots=%d, startSlot=%d, startAmount=%s)"
 
 	delegateToSequencerLockStateName       = "delegateToSequencerLockState"
-	delegateToSequencerLockStateTemplate   = delegateToSequencerLockStateName + "(z32/%d)"
-	delegateToSequencerLockStateTemplateHR = delegateToSequencerLockStateName + "(state=%d)"
+	delegateToSequencerLockStateTemplate   = delegateToSequencerLockStateName + "(z32/%d, %v)"
+	delegateToSequencerLockStateTemplateHR = delegateToSequencerLockStateName + "(unfreeze=%d, revoked=%v)"
 )
 
 //------------ DelegateToSequencerLock
@@ -169,7 +163,7 @@ func registerDelegateToSequencerLock(lib *Library) {
 		}
 		return ret, nil
 	})
-	lib.mustRegisterConstraint(delegateToSequencerLockStateName, 1, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(delegateToSequencerLockStateName, 2, func(data []byte) (Constraint, error) {
 		return DelegateToSequencerLockStateFromBytes(data)
 	}, initTestDelegateToSequencerLockState)
 
@@ -206,35 +200,33 @@ func initTestDelegateToSequencerConstraint() {
 
 //--------------------------- delegationLockFreeze
 
-func NewDelegateToSequencerLockState(state byte) DelegateToSequencerLockState {
-	return DelegateToSequencerLockState{state}
-}
-
 func DelegateToSequencerLockStateFromBytes(data []byte) (DelegateToSequencerLockState, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return DelegateToSequencerLockState{}, fmt.Errorf("DelegateToSequencerLockStateFromBytes: %w", err)
 	}
 	if sym != delegateToSequencerLockStateName {
 		return DelegateToSequencerLockState{}, fmt.Errorf("DelegateToSequencerLockStateFromBytes: not a DelegateToSequencerLockState")
 	}
-	arg0 := easyfl.StripDataPrefix(args[0])
-	if len(arg0) > 1 {
+	fr, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
+	if err != nil {
 		return DelegateToSequencerLockState{}, fmt.Errorf("DelegateToSequencerLockStateFromBytes: wrong argument 0: %w", err)
 	}
-	s := byte(0)
-	if len(arg0) == 1 {
-		s = arg0[0]
+	if fr >= base.MaxSlot {
+		return DelegateToSequencerLockState{}, fmt.Errorf("DelegateToSequencerLockStateFromBytes: wrong argument 0")
 	}
-	return DelegateToSequencerLockState{s}, nil
+	return DelegateToSequencerLockState{
+		Unfreeze: base.Slot(fr),
+		Revoked:  !easyfl_util.IsZero(args[1]),
+	}, nil
 }
 
 func (d DelegateToSequencerLockState) Source() string {
-	return fmt.Sprintf(delegateToSequencerLockStateTemplate, d.State)
+	return fmt.Sprintf(delegateToSequencerLockStateTemplate, d.Unfreeze, d.Revoked)
 }
 
 func (d DelegateToSequencerLockState) String() string {
-	return fmt.Sprintf(delegateToSequencerLockStateTemplateHR, d.State)
+	return fmt.Sprintf(delegateToSequencerLockStateTemplateHR, d.Unfreeze, d.Revoked)
 }
 
 func (d DelegateToSequencerLockState) Bytes() []byte {
@@ -246,12 +238,13 @@ func (d DelegateToSequencerLockState) Name() string {
 }
 
 func initTestDelegateToSequencerLockState() {
-	dlz := NewDelegateToSequencerLockState(DelegateToSequencerLockStateFrozen)
+	dlz := DelegateToSequencerLockState{1337, true}
 
 	dlzBack, err := DelegateToSequencerLockStateFromBytes(dlz.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(dlzBack.State == DelegateToSequencerLockStateFrozen, "DelegateToSequencerLockState: inconsistency 1")
-	util.Assertf(dlz == dlzBack, "DelegateToSequencerLockState: inconsistency 2")
+	util.Assertf(dlzBack.Unfreeze == 1337, "DelegateToSequencerLockState: inconsistency 1")
+	util.Assertf(dlzBack.Revoked, "DelegateToSequencerLockState: inconsistency 2")
+	util.Assertf(dlz == dlzBack, "DelegateToSequencerLockState: inconsistency 3")
 }
 
 const delegateToSequencerLockSource = `
@@ -260,10 +253,15 @@ func constDelegationEpochSlots : lshift64(u64/1, constDelegationEpochSlotsShiftB
 func constDelegationSafeRevocationSlots  : u64/24
 func constDelegationMaxLockEpochs : u64/4
 
-//----------------------------------------------------
-// $0 chainID
-// ($0>>9 + 'max freeze slots') << 9
-func _delegationEpochOffset : rshift64(slice($0,0,7),constDelegationEpochSlotsShiftBits)
+func _isDelegationOrigin : isOriginChainData(selfChainData(2))
+func _selfChainID : chainID(selfChainData(3))
+
+// $0 max freeze epochs
+func _delegationEpochOffset : mod(rshift64(tail(_selfChainID, 28), constDelegationEpochSlotsShiftBits), $0)
+func _delegationEpoch : rshift64(txSlot, constDelegationEpochSlotsShiftBits)
+// $0 max freeze epochs
+func _maxFreezeEpoch : add(_delegationEpoch, _delegationEpochOffset($0)) 
+func _maxFreezeSlot : sub(add(txSlot, mul(_maxFreezeEpoch($0), constDelegationEpochSlots)), constDelegationSafeRevocationSlots)
 
 // $0 index of the chain constraint in the consumed output
 func pathToSuccessorOutput : concat(pathToProducedOutputs, byte(selfSiblingUnlockParams($0), 0))
@@ -281,10 +279,14 @@ func _enforceDelegation2TargetConstraintsOnSuccessor : and(
     require(equal(byte(selfSiblingUnlockParams(2),2), 0), !!!chain_must_be_state_transition)
 )
 
-func delegateToSequencerLockState : or($0,true)
 
-func _delegationState : parseInlineDataArgument(selfSiblingConstraint(3),#delegateToSequencerLockState, 0)
-func _isInitDelegationState : isZero(_delegationState)
+// $0 unfreeze after slot
+// $1 revoked
+// placeholder for args. Always returns true
+func delegateToSequencerLockState : concat($1,1)
+
+func _unfreezeAtSlot : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateToSequencerLockState, 0))
+func _isRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateToSequencerLockState, 1)
 
 // $0 max freeze epochs
 // $1 start slot 
@@ -298,8 +300,8 @@ and(
 	 !!!delegation_must_have_4_constraints
   ), // prevent attacks
   require(
-	 not(isBranchTransaction), 
-	 !!!delegation_should_not_be_branch
+	 not(isSequencerTransaction), 
+	 !!!delegation_should_not_be_sequencer
   ),
   require(
 	 equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
@@ -310,34 +312,47 @@ and(
 	 !!!#delegateToSequencerLockState_is_expected_at_index_3
   ),
   require(
-	 or(not(_isInitDelegationState), equalUint(txSlot,$1)), 
+	 or(not(_isDelegationOrigin), equalUint(txSlot,$1)), 
 	 !!!wrong_start_slot
   ),
   require(
-	 or(not(_isInitDelegationState), equalUint(selfAmountValue,$2)), 
+	 or(not(_isDelegationOrigin), equalUint(selfAmountValue,$2)), 
 	 !!!wrong_start_amount
   ),
   require(
      lessOrEqualThan(uint8Bytes($0), constDelegationMaxLockEpochs),
      !!!wrong_max_freeze_epochs
+  ),
+  require(
+     or(_isRevoked, lessThan($0, _maxFreezeSlot($0))),
+      !!!invalid_delegation_lock_state
   )
 )
+
+func _amountAtSuccessor : amountValueByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
 
 // $0 target chain lock
 // $1 master lock
 // $2 max freeze epochs
-func _validDelegationConsumed :
-and(
+func _validDelegationConsumed : and(
    selfIsConsumedOutput,
-      // target lock must be unlocked
-   $0,  
-      // amount should not decrease
-   require(lessOrEqualThan(selfAmountValue, amountValueByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))), !!!amount_should_not_decrease),
-      // delegation lock must be immutable
-   require(equal(successorConstraint(2), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_must_be_immutable),
-      // chain must be state transition
-   require(equal(byte(selfSiblingUnlockParams(2),2), 0), !!!chain_must_be_state_transition),
-   concat($2)
+        // can only be consumed is revoked or unfrozen
+   or( _isRevoked, lessThan(_unfreezeAtSlot, uint8Bytes(txSlot))),
+   or(
+        // master unlocked
+      $1,
+        // or target unlocked with conditions
+      and(
+              // if it is revoked, only master can unlock it
+         not(_isRevoked),
+			  // target lock must be unlocked
+		 $0,  
+			  // amount should not decrease
+		 require(lessOrEqualThan(selfAmountValue, _amountAtSuccessor), !!!amount_should_not_decrease),
+			  // delegation lock must be immutable
+		 require(equal(successorConstraint(2), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_must_be_immutable),
+      )
+   )
 )
 
 // Delegation lock output. Immutable 
@@ -350,7 +365,7 @@ func delegateToSequencerLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
     or(
        _validDelegationProduced($2,$3,$4),
-       _validDelegationConsumed($0,$1,$2)
+       _validDelegationConsumed($0,$1)
     )
 )
 
