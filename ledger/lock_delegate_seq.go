@@ -14,12 +14,11 @@ import (
 
 type (
 	DelegateToSequencerLock struct {
-		Target     ChainLock
-		MasterLock Accountable
-		// must point to the sibling chain constraint
-		MaxLockCoverageSlots byte
-		StartSlot            base.Slot
-		StartAmount          uint64
+		Target          ChainLock
+		MasterLock      Accountable
+		MaxFreezeEpochs byte
+		StartSlot       base.Slot
+		StartAmount     uint64
 	}
 	DelegateToSequencerLockState struct {
 		UnfreezeEpoch uint64
@@ -30,7 +29,7 @@ type (
 const (
 	DelegateToSequencerLockName       = "delegateToSequencerLock"
 	delegateToSequencerLockTemplate   = DelegateToSequencerLockName + "(%s, %s, %d, z64/%d, z32/%d)"
-	delegateToSequencerLockTemplateHR = DelegateToSequencerLockName + "(target=%s, master=%s, maxCoverageLockSlots=%d, startSlot=%d, startAmount=%s)"
+	delegateToSequencerLockTemplateHR = DelegateToSequencerLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, startSlot=%d, startAmount=%s)"
 
 	delegateToSequencerLockStateName       = "delegateToSequencerLockState"
 	delegateToSequencerLockStateTemplate   = delegateToSequencerLockStateName + "(z32/%d, %s)"
@@ -39,22 +38,22 @@ const (
 
 //------------ DelegateToSequencerLock
 
-func NewDelegateToSequencerLock(target ChainLock, master Accountable, maxCoverageLockSlots byte, startSlot base.Slot, startAmount uint64) *DelegateToSequencerLock {
+func NewDelegateToSequencerLock(target ChainLock, master Accountable, maxFreezeEpochs byte, startSlot base.Slot, startAmount uint64) *DelegateToSequencerLock {
 	return &DelegateToSequencerLock{
-		Target:               target,
-		MasterLock:           master,
-		StartSlot:            startSlot,
-		StartAmount:          startAmount,
-		MaxLockCoverageSlots: maxCoverageLockSlots,
+		Target:          target,
+		MasterLock:      master,
+		StartSlot:       startSlot,
+		StartAmount:     startAmount,
+		MaxFreezeEpochs: maxFreezeEpochs,
 	}
 }
 
 func (d *DelegateToSequencerLock) Source() string {
-	return fmt.Sprintf(delegateToSequencerLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxLockCoverageSlots, d.StartSlot, d.StartAmount)
+	return fmt.Sprintf(delegateToSequencerLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxFreezeEpochs, d.StartSlot, d.StartAmount)
 }
 
 func (d *DelegateToSequencerLock) String() string {
-	return fmt.Sprintf(delegateToSequencerLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxLockCoverageSlots, d.StartSlot, util.Th(d.StartAmount))
+	return fmt.Sprintf(delegateToSequencerLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFreezeEpochs, d.StartSlot, util.Th(d.StartAmount))
 }
 
 func (d *DelegateToSequencerLock) Bytes() []byte {
@@ -92,7 +91,7 @@ func DelegateToSequencerLockFromBytes(data []byte) (*DelegateToSequencerLock, er
 	if len(arg2) != 1 {
 		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: wrong max coverage lock slots")
 	}
-	ret.MaxLockCoverageSlots = arg2[0]
+	ret.MaxFreezeEpochs = arg2[0]
 
 	// start slot
 	startSlot64, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3]))
@@ -124,6 +123,7 @@ var (
 	_delegationEpochSlotsShiftBits atomic.Uint64
 	_delegationEpochSlots          atomic.Uint64
 	_safeRevocationSlots           atomic.Uint64
+	_delegationMaxFreezeEpochs     atomic.Uint64
 )
 
 func DelegationEpochSlots() int {
@@ -151,6 +151,15 @@ func DelegationEpochFromSlot(slot base.Slot) uint64 {
 	return DelegationEpochFromSlot(slot)
 }
 
+func DelegationMaxFreezeEpochs() byte {
+	ret := _delegationMaxFreezeEpochs.Load()
+	if ret > 0 {
+		return byte(ret)
+	}
+	_precalcDelegationConstants()
+	return DelegationMaxFreezeEpochs()
+}
+
 func _precalcDelegationConstants() {
 	res, err := L().EvalFromSource(nil, "constDelegationEpochSlotsShiftBits")
 	util.AssertNoError(err)
@@ -166,6 +175,9 @@ func _precalcDelegationConstants() {
 	util.AssertNoError(err)
 	_safeRevocationSlots.Store(binary.BigEndian.Uint64(res))
 
+	res, err = L().EvalFromSource(nil, "constDelegationMaxFreezeEpochs")
+	util.AssertNoError(err)
+	_delegationMaxFreezeEpochs.Store(binary.BigEndian.Uint64(res))
 }
 
 func registerDelegateToSequencerLock(lib *Library) {
@@ -193,8 +205,8 @@ func initTestDelegateToSequencerConstraint() {
 
 	exampleBack, err := DelegateToSequencerLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(example.MaxLockCoverageSlots == 3, "DelegateToSequencerLockFromBytes: wrong back")
-	util.Assertf(exampleBack.MaxLockCoverageSlots == example.MaxLockCoverageSlots, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(example.MaxFreezeEpochs == 3, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(exampleBack.MaxFreezeEpochs == example.MaxFreezeEpochs, "DelegateToSequencerLockFromBytes: wrong back")
 	util.Assertf(example.StartSlot == slotNow, "DelegateToSequencerLockFromBytes: wrong back")
 	util.Assertf(exampleBack.StartSlot == example.StartSlot, "DelegateToSequencerLockFromBytes: wrong back")
 	util.Assertf(example.StartAmount == 1337, "DelegateToSequencerLockFromBytes: wrong back")
@@ -271,7 +283,7 @@ const delegateToSequencerLockSource = `
 func constDelegationEpochSlotsShiftBits : u64/9
 func constDelegationEpochSlots : lshift64(u64/1, constDelegationEpochSlotsShiftBits)
 func constDelegationSafeRevocationSlots  : u64/24
-func constDelegationMaxLockEpochs : u64/4
+func constDelegationMaxFreezeEpochs : u64/4
 
 // $0 slot
 func delegationEpochFromSlot : lshift64(uint8Bytes($0), constDelegationEpochSlotsShiftBits)
@@ -325,7 +337,7 @@ and(
 	 !!!wrong_start_amount
   ),
   require(
-     lessOrEqualThan(uint8Bytes($0), constDelegationMaxLockEpochs),
+     lessOrEqualThan(uint8Bytes($0), constDelegationMaxFreezeEpochs),
      !!!wrong_max_freeze_epochs
   ),
   require(

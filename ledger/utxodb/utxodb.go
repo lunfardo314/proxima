@@ -499,8 +499,20 @@ func (u *UTXODB) TxToLines(txBytes []byte, prefix ...string) *lines.Lines {
 	return ctx.Lines(prefix...)
 }
 
+func (u *UTXODB) TxToLinesSource(txBytes []byte, prefix ...string) *lines.Lines {
+	ctx, err := u.TxContextFromBytes(txBytes)
+	if err != nil {
+		return lines.New(prefix...).Add("error: %v", err)
+	}
+	return ctx.LinesSource(prefix...)
+}
+
 func (u *UTXODB) TxToString(txBytes []byte) string {
 	return u.TxToLines(txBytes).String()
+}
+
+func (u *UTXODB) TxToSource(txBytes []byte) string {
+	return u.TxToLinesSource(txBytes).String()
 }
 
 // CreateChainOrigin takes all tokens from controller address and puts them on the chain output

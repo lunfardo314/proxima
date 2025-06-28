@@ -35,6 +35,18 @@ func (ctx *TxContext) String() string {
 }
 
 func (ctx *TxContext) Lines(prefix ...string) *lines.Lines {
+	return ctx._lines(func(o *ledger.Output, prefix ...string) *lines.Lines {
+		return o.Lines(prefix...)
+	}, prefix...)
+}
+
+func (ctx *TxContext) LinesSource(prefix ...string) *lines.Lines {
+	return ctx._lines(func(o *ledger.Output, prefix ...string) *lines.Lines {
+		return o.LinesSource(prefix...)
+	}, prefix...)
+}
+
+func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string) *lines.Lines, prefix ...string) *lines.Lines {
 	txid := ctx.TransactionID()
 	ret := lines.New(prefix...)
 	ret.Add("Transaction id: %s, size: %d", txid.String(), len(ctx.TransactionBytes()))
@@ -74,29 +86,29 @@ func (ctx *TxContext) Lines(prefix ...string) *lines.Lines {
 	})
 
 	ret.Add("Inputs (%d consumed outputs): ", ctx.NumInputs())
-	ctx.ForEachConsumedOutput(func(idx byte, oid *base.OutputID, out *ledger.Output) bool {
-		if out == nil {
+	ctx.ForEachConsumedOutput(func(idx byte, oid *base.OutputID, o *ledger.Output) bool {
+		if o == nil {
 			ret.Add("  #%d: %s (parse error)", idx, oid.String())
 			return true
 		}
 		unlockBin := ctx.UnlockDataAt(idx)
 		ret.Add("  #%d: %s", idx, oid.String()).
-			Add("       bytes (%d): %s", len(out.Bytes()), hex.EncodeToString(out.Bytes())).
-			Append(out.Lines("     ")).
+			Add("       bytes (%d): %s", len(o.Bytes()), hex.EncodeToString(o.Bytes())).
+			Append(utxoToLines(o, "     ")).
 			Add("     Unlock data: %s", UnlockDataToString(unlockBin))
 		return true
 	})
 
 	ret.Add("Outputs (%d produced): ", ctx.NumProducedOutputs())
 	totalSum := uint64(0)
-	ctx.ForEachProducedOutput(func(idx byte, out *ledger.Output, oid *base.OutputID) bool {
-		if out == nil {
+	ctx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid *base.OutputID) bool {
+		if o == nil {
 			ret.Add("  #%d : parse error", idx)
 			return true
 		}
-		totalSum += out.Amount()
+		totalSum += o.Amount()
 		chainIdStr := ""
-		if cc, i := out.ChainConstraint(); i != 0xff {
+		if cc, i := o.ChainConstraint(); i != 0xff {
 			var cid base.ChainID
 			if cc.IsOrigin() {
 				oid1 := base.MustNewOutputID(txid, idx)
@@ -107,11 +119,11 @@ func (ctx *TxContext) Lines(prefix ...string) *lines.Lines {
 			chainIdStr = "                      chainID: " + cid.StringShort()
 		}
 		ret.Add("  #%d %s", idx, oid.String()).
-			Add("       bytes (%d): %s", len(out.Bytes()), hex.EncodeToString(out.Bytes()))
-		if msd := ledger.ParseMilestoneData(out); msd != nil {
+			Add("       bytes (%d): %s", len(o.Bytes()), hex.EncodeToString(o.Bytes()))
+		if msd := ledger.ParseMilestoneData(o); msd != nil {
 			ret.Add("       seq: %s", msd.Name)
 		}
-		ret.Append(out.Lines("     ")).
+		ret.Append(utxoToLines(o, "     ")).
 			Add(chainIdStr)
 		return true
 	})
