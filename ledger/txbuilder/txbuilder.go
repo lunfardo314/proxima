@@ -82,16 +82,19 @@ func (txb *TransactionBuilder) ConsumeOutput(out *ledger.Output, oid base.Output
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
 
-func (txb *TransactionBuilder) ConsumeOutputWithIDMany(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
+func (txb *TransactionBuilder) ConsumeOutputUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
 	var err error
 	if len(outs) >= 256 {
-		return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputWithIDMany: number of inputs can't be greater than 256")
+		return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputUnlock: number of inputs can't be greater than 256")
 	}
 	total := uint64(0)
 	maxTs := base.LedgerTime{}
 	for i, o := range outs {
+		if o.Output.Lock().Name() != ledger.AddressED25519Name {
+			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputUnlock: only AddressED25519 locks are allowed")
+		}
 		if o.Output.Amount() >= math.MaxUint64-total {
-			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputWithIDMany: amount overflow")
+			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputUnlock: amount overflow")
 		}
 		if _, err = txb.ConsumeOutput(o.Output, o.ID); err != nil {
 			return 0, base.LedgerTime{}, err
@@ -109,8 +112,8 @@ func (txb *TransactionBuilder) ConsumeOutputWithIDMany(outs ...*ledger.OutputWit
 	return total, maxTs, nil
 }
 
-// ConsumeOutputs returns total sum and maximal timestamp
-func (txb *TransactionBuilder) ConsumeOutputs(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
+// ConsumeOutputsNoUnlock returns total sum and maximal timestamp
+func (txb *TransactionBuilder) ConsumeOutputsNoUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
 	retTotal := uint64(0)
 	retTs := base.NilLedgerTime
 	for _, o := range outs {
@@ -214,7 +217,7 @@ func (txb *TransactionBuilder) BytesWithValidation() ([]byte, base.TransactionID
 	if err = ctx.Validate(); err != nil {
 		return nil, base.TransactionID{}, ctx.String(), err
 	}
-	return txBytes, tx.ID(), "", nil
+	return txBytes, tx.ID(), ctx.LinesSource("    ").String(), nil
 }
 
 func (txb *TransactionBuilder) ProducedAmount() (uint64, uint64) {
@@ -521,7 +524,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 
 	txb := New()
-	checkTotal, inputTs, err := txb.ConsumeOutputs(consumedOuts...)
+	checkTotal, inputTs, err := txb.ConsumeOutputsNoUnlock(consumedOuts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -768,7 +771,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	if par.MarkAsSequencerTx {
 		txb.TransactionData.SequencerOutputIndex = 0
 	}
-	checkAmount, inputTs, err := txb.ConsumeOutputs(consumedOuts...)
+	checkAmount, inputTs, err := txb.ConsumeOutputsNoUnlock(consumedOuts...)
 	if err != nil {
 		return nil, err
 	}
@@ -957,7 +960,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 	txb := New()
 
-	_, tsIn, err := txb.ConsumeOutputWithIDMany(inps...)
+	_, tsIn, err := txb.ConsumeOutputUnlock(inps...)
 	if err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}

@@ -186,7 +186,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25
 	ts = ts.AddTicks(ledger.TransactionPace())
 	txb := txbuilder.New()
 
-	_, _, err = txb.ConsumeOutputs(faucetInputs...)
+	_, _, err = txb.ConsumeOutputsNoUnlock(faucetInputs...)
 	if err != nil {
 		return nil, err
 	}

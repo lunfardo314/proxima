@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
@@ -192,6 +193,13 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeEpochs b
 	if err != nil {
 		return nil, txString, err
 	}
+	tx, err := transaction.FromBytes(txBytes)
+	require.NoError(td, err)
+	do := tx.MustProducedOutputWithIDAt(0)
+	dc, err := do.AsChainOutput()
+	require.NoError(td, err)
+	td.delegatedOutput = dc
+
 	err = td.u.AddTransaction(txBytes)
 	return txBytes, txString, err
 
@@ -203,11 +211,49 @@ func TestDelegationLock2Consume(t *testing.T) {
 	var err error
 	var txString string
 
-	t.Run("ok", func(t *testing.T) {
+	t.Run("ok 1", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
 		_, txString, err = td.initDelegationUTXOMake(ts, 4)
 		require.NoError(t, err)
 		td.Logf("---------------- transaction -----------------\n%s", txString)
+	})
+	t.Run("ok 2", func(t *testing.T) {
+		td.init()
+		ts := td.chainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		_, txString, err = td.initDelegationUTXOMake(ts, 4)
+		require.NoError(t, err)
+		//td.Logf("---------------- transaction -----------------\n%s", txString)
+
+		txb := txbuilder.New()
+		amount, ts, err := txb.ConsumeOutputsNoUnlock(&td.delegatedOutput.OutputWithID)
+		require.NoError(t, err)
+
+		txb.PutUnlockParams(0, 2, ledger.EndChainUnlockParams)
+
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmount(amount - tagAlongFee).WithLock(td.masterAddr)
+		}))
+		require.NoError(t, err)
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmount(tagAlongFee).WithLock(ledger.ChainLockFromChainID(base.RandomChainID()))
+		}))
+		require.NoError(t, err)
+
+		ts = ts.AddTicks(int(ledger.L().ID.TransactionPace))
+		if ts.IsSlotBoundary() {
+			ts = ts.AddTicks(int(ledger.L().ID.PostBranchConsolidationTicks))
+		}
+		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.TransactionData.Timestamp = ts
+		txb.SignED25519(td.masterPrivateKey)
+
+		_, _, txString, err := txb.BytesWithValidation()
+		if err != nil {
+			t.Logf(">>>> %v\n----------------\n%s", err, txString)
+		} else {
+			t.Logf("----------------\n%s", txString)
+		}
+		require.NoError(t, err)
 	})
 }

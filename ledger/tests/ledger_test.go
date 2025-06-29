@@ -407,7 +407,7 @@ func TestChain1(t *testing.T) {
 
 		// create destroying transaction
 		txb := txbuilder.New()
-		total, ts, err := txb.ConsumeOutputs(outs...)
+		total, ts, err := txb.ConsumeOutputsNoUnlock(outs...)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 		// unlock data must be for both
@@ -1258,7 +1258,7 @@ func TestTotalAmount(t *testing.T) {
 		require.EqualValues(t, len(utxos), u.NumUTXOs(addr0))
 
 		txb := txbuilder.New()
-		total, ts, err := txb.ConsumeOutputs(utxos...)
+		total, ts, err := txb.ConsumeOutputsNoUnlock(utxos...)
 		require.NoError(t, err)
 
 		txb.PutSignatureUnlock(0)
@@ -1296,7 +1296,7 @@ func TestTotalAmount(t *testing.T) {
 		require.EqualValues(t, len(utxos), u.NumUTXOs(addr0))
 
 		txb := txbuilder.New()
-		total, ts, err := txb.ConsumeOutputs(utxos...)
+		total, ts, err := txb.ConsumeOutputsNoUnlock(utxos...)
 		require.NoError(t, err)
 
 		txb.PutSignatureUnlock(0)

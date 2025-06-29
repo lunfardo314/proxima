@@ -88,7 +88,7 @@ func runDelegateCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(sumIn >= amount+feeAmount, "not enough tokens. Needed %s, got %s", util.Th(amount+feeAmount), util.Th(sumIn))
 
 	txb := txbuilder.New()
-	_, inTs, err := txb.ConsumeOutputs(walletOutputs...)
+	_, inTs, err := txb.ConsumeOutputsNoUnlock(walletOutputs...)
 	glb.AssertNoError(err)
 
 	ts := base.MaximumTime(inTs, ledger.TimeNow())

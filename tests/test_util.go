@@ -249,7 +249,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	td.t.Logf("auxiliary output id: %s", td.auxOutput.IDShort())
 
 	txb := txbuilder.New()
-	_, _, err = txb.ConsumeOutputWithIDMany(td.auxOutput)
+	_, _, err = txb.ConsumeOutputUnlock(td.auxOutput)
 	require.NoError(td.t, err)
 
 	amount := (td.auxOutput.Output.Amount() - tagAlongFee) / uint64(n)

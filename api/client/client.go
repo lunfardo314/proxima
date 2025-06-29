@@ -768,7 +768,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	})
 
 	txb := txbuilder.New()
-	_, ts1, err := txb.ConsumeOutputs(inps...)
+	_, ts1, err := txb.ConsumeOutputsNoUnlock(inps...)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
@@ -919,7 +919,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
 	txb := txbuilder.New()
-	inTotal, inTs, err := txb.ConsumeOutputs(par.Inputs...)
+	inTotal, inTs, err := txb.ConsumeOutputsNoUnlock(par.Inputs...)
 	if err != nil {
 		return nil, err
 	}
