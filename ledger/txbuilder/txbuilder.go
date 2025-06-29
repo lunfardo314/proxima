@@ -929,7 +929,7 @@ func (txb *TransactionBuilder) LoadInput(i byte) (*ledger.Output, error) {
 	return txb.ConsumedOutputs[i].Clone(), nil
 }
 
-type MakeInitDelegationTransactionParams struct {
+type MakeDelegationInitTransactionParams struct {
 	Timestamp         base.LedgerTime
 	Amount            uint64
 	Master            ledger.AddressED25519
@@ -941,7 +941,7 @@ type MakeInitDelegationTransactionParams struct {
 	TagAlongFee       uint64
 }
 
-func MakeDelegationInitTransaction(par MakeInitDelegationTransactionParams) ([]byte, error) {
+func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]byte, error) {
 	if !ledger.AddressED25519MatchesPrivateKey(par.Master, par.MasterPrivateKey) {
 		return nil, fmt.Errorf("MakeDelegationInitTransaction: private key does not match master address")
 	}
@@ -957,7 +957,7 @@ func MakeDelegationInitTransaction(par MakeInitDelegationTransactionParams) ([]b
 	}
 	txb := New()
 
-	_, tsIn, err := txb.ConsumeOutputs(inps...)
+	_, tsIn, err := txb.ConsumeOutputWithIDMany(inps...)
 	if err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}

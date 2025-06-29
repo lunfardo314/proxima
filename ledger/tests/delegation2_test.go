@@ -89,7 +89,7 @@ func (td *testData) init() {
 	require.NoError(td, err)
 }
 
-func (td *testData) initDelegationUTXO(ts base.LedgerTime, revoked bool, maxFreezeEpochs byte, startSlot base.Slot, startAmount uint64, prnOnError bool) ([]byte, error) {
+func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, maxFreezeEpochs byte, startSlot base.Slot, startAmount uint64, prnOnError bool) ([]byte, error) {
 	var txBytes []byte
 
 	// create delegation output
@@ -133,51 +133,81 @@ func TestDelegationLock2Init(t *testing.T) {
 
 	var err error
 
-	t.Run("init ok 1", func(t *testing.T) {
+	t.Run("ok 1", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXO(ts, false, 1, ts.Slot, delegatedTokens, true)
+		_, err = td.initDelegationUTXODirect(ts, false, 1, ts.Slot, delegatedTokens, true)
 		require.NoError(t, err)
 	})
-	t.Run("init ok 2", func(t *testing.T) {
+	t.Run("ok 2", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXO(ts, false, ledger.DelegationMaxFreezeEpochs(), ts.Slot, delegatedTokens, true)
+		_, err = td.initDelegationUTXODirect(ts, false, ledger.DelegationMaxFreezeEpochs(), ts.Slot, delegatedTokens, true)
 		require.NoError(t, err)
 	})
-	t.Run("init fail 1", func(t *testing.T) {
+	t.Run("fail 1", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXO(ts, false, 1, ts.Slot+1, delegatedTokens, false)
+		_, err = td.initDelegationUTXODirect(ts, false, 1, ts.Slot+1, delegatedTokens, false)
 		util.RequireErrorWith(t, err, "wrong start parameters")
 	})
-	t.Run("init fail 2", func(t *testing.T) {
+	t.Run("fail 2", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXO(ts, false, 1, ts.Slot, delegatedTokens-1, false)
+		_, err = td.initDelegationUTXODirect(ts, false, 1, ts.Slot, delegatedTokens-1, false)
 		util.RequireErrorWith(t, err, "wrong start parameters")
 	})
-	t.Run("init fail 3", func(t *testing.T) {
+	t.Run("fail 3", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXO(ts, true, 1, ts.Slot, delegatedTokens, true)
+		_, err = td.initDelegationUTXODirect(ts, true, 1, ts.Slot, delegatedTokens, true)
 		util.RequireErrorWith(t, err, "wrong start parameters")
 	})
-	t.Run("init fail 4", func(t *testing.T) {
+	t.Run("fail 4", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXO(ts, false, ledger.DelegationMaxFreezeEpochs()+1, ts.Slot, delegatedTokens, true)
+		_, err = td.initDelegationUTXODirect(ts, false, ledger.DelegationMaxFreezeEpochs()+1, ts.Slot, delegatedTokens, true)
 		util.RequireErrorWith(t, err, "wrong max freeze epochs")
 	})
+}
+
+const tagAlongFee = 500
+
+func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeEpochs byte) ([]byte, string, error) {
+	outs, availableTokens := td.u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(td.masterAddr, delegatedTokens+tagAlongFee)
+	require.True(td, availableTokens >= delegatedTokens+tagAlongFee)
+
+	txBytes, err := txbuilder.MakeDelegationInitTransaction(txbuilder.MakeDelegationInitTransactionParams{
+		Timestamp:         ts,
+		Amount:            delegatedTokens,
+		Master:            td.masterAddr,
+		Target:            td.target,
+		MaxFreezeEpochs:   maxFreezeEpochs,
+		MasterPrivateKey:  td.masterPrivateKey,
+		Inputs:            outs,
+		TagAlongSequencer: base.RandomChainID(),
+		TagAlongFee:       tagAlongFee,
+	})
+	txString := td.u.TxToSource(txBytes)
+	if err != nil {
+		return nil, txString, err
+	}
+	err = td.u.AddTransaction(txBytes)
+	return txBytes, txString, err
+
 }
 
 func TestDelegationLock2Consume(t *testing.T) {
 	td := &testData{T: t}
 
 	var err error
+	var txString string
 
-	t.Run("consume ok", func(t *testing.T) {
+	t.Run("ok", func(t *testing.T) {
 		td.init()
+		ts := td.chainOrigin.Timestamp().AddTicks(1)
+		_, txString, err = td.initDelegationUTXOMake(ts, 4)
 		require.NoError(t, err)
+		td.Logf("---------------- transaction -----------------\n%s", txString)
 	})
 }
