@@ -82,8 +82,31 @@ func (txb *TransactionBuilder) ConsumeOutput(out *ledger.Output, oid base.Output
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
 
-func (txb *TransactionBuilder) ConsumeOutputWithID(o *ledger.OutputWithID) (byte, error) {
-	return txb.ConsumeOutput(o.Output, o.ID)
+func (txb *TransactionBuilder) ConsumeOutputWithIDMany(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
+	var err error
+	if len(outs) >= 256 {
+		return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputWithIDMany: number of inputs can't be greater than 256")
+	}
+	total := uint64(0)
+	maxTs := base.LedgerTime{}
+	for i, o := range outs {
+		if o.Output.Amount() >= math.MaxUint64-total {
+			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputWithIDMany: amount overflow")
+		}
+		if _, err = txb.ConsumeOutput(o.Output, o.ID); err != nil {
+			return 0, base.LedgerTime{}, err
+		}
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			if err = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0); err != nil {
+				return 0, base.LedgerTime{}, err
+			}
+		}
+		total += o.Output.Amount()
+		maxTs = base.MaximumTime(maxTs, o.Timestamp())
+	}
+	return total, maxTs, nil
 }
 
 // ConsumeOutputs returns total sum and maximal timestamp
@@ -446,23 +469,26 @@ func MakeTransferTransaction(par *TransferData, disableEndorsementValidation ...
 	return ret, err
 }
 
-func outputsToConsumeSimple(par *TransferData, amount uint64) (uint64, []*ledger.OutputWithID, error) {
-	consumedOuts := par.Inputs[:0]
+func filterInputs(outs []*ledger.OutputWithID, amount uint64, ed25519Only ...bool) (uint64, []*ledger.OutputWithID, error) {
+	ret := make([]*ledger.OutputWithID, 0, len(outs))
 	availableTokens := uint64(0)
-	numConsumedOutputs := 0
 
-	for _, o := range par.Inputs {
-		if numConsumedOutputs >= 256 {
+	filterNotED25519 := len(ed25519Only) > 0 && ed25519Only[0]
+
+	for _, o := range outs {
+		if filterNotED25519 && o.Output.Lock().Name() != ledger.AddressED25519Name {
+			continue
+		}
+		if len(ret) >= 256 {
 			return 0, nil, fmt.Errorf("exceeded max number of consumed outputs 256")
 		}
-		consumedOuts = append(consumedOuts, o)
-		numConsumedOutputs++
+		ret = append(ret, o)
 		availableTokens += o.Output.Amount()
 		if availableTokens >= amount {
 			break
 		}
 	}
-	return availableTokens, consumedOuts, nil
+	return availableTokens, ret, nil
 }
 
 func MakeSimpleTransferTransaction(par *TransferData, disableEndorsementChecking ...bool) ([]byte, error) {
@@ -482,7 +508,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: target lock is not specified")
 	}
 	amount := par.TotalAdjustedAmount()
-	availableTokens, consumedOuts, err := outputsToConsumeSimple(par, amount)
+	availableTokens, consumedOuts, err := filterInputs(par.Inputs, amount)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -720,7 +746,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 	amount := par.TotalAdjustedAmount()
 	// we are trying to consume non-chain outputs for the amount. Only if it is not enough, we are taking tokens from the chain
-	availableTokens, consumedOuts, err := outputsToConsumeSimple(par, amount)
+	availableTokens, consumedOuts, err := filterInputs(par.Inputs, amount)
 	if err != nil {
 		return nil, err
 	}
@@ -901,4 +927,80 @@ func (txb *TransactionBuilder) LoadInput(i byte) (*ledger.Output, error) {
 		return nil, fmt.Errorf("can't load input #%d", i)
 	}
 	return txb.ConsumedOutputs[i].Clone(), nil
+}
+
+type MakeInitDelegationTransactionParams struct {
+	Timestamp         base.LedgerTime
+	Amount            uint64
+	Master            ledger.AddressED25519
+	Target            ledger.ChainLock
+	MaxFreezeEpochs   byte
+	MasterPrivateKey  ed25519.PrivateKey
+	Inputs            []*ledger.OutputWithID
+	TagAlongSequencer base.ChainID
+	TagAlongFee       uint64
+}
+
+func MakeDelegationInitTransaction(par MakeInitDelegationTransactionParams) ([]byte, error) {
+	if !ledger.AddressED25519MatchesPrivateKey(par.Master, par.MasterPrivateKey) {
+		return nil, fmt.Errorf("MakeDelegationInitTransaction: private key does not match master address")
+	}
+	inputTotal, inps, err := filterInputs(par.Inputs, par.Amount+par.TagAlongFee, true)
+	if err != nil {
+		return nil, err
+	}
+	if inputTotal < par.Amount+par.TagAlongFee {
+		return nil, fmt.Errorf("MakeInitDelegationTransaction: not enough tokens")
+	}
+	if par.MaxFreezeEpochs > ledger.DelegationMaxFreezeEpochs() {
+		return nil, fmt.Errorf("MakeInitDelegationTransaction: wrong max freeze epochs")
+	}
+	txb := New()
+
+	_, tsIn, err := txb.ConsumeOutputs(inps...)
+	if err != nil {
+		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
+	}
+	if tsIn.AddTicks(int(ledger.L().ID.TransactionPace)).After(par.Timestamp) {
+		return nil, fmt.Errorf("MakeInitDelegationTransaction: transaction pace constraint violated")
+	}
+
+	delegateOutput := ledger.MakeDelegateToSequencerOutput(ledger.MakeDelegateToSequencerOutputParams{
+		Amount:          par.Amount,
+		Master:          par.Master,
+		Target:          par.Target,
+		MaxFreezeEpochs: par.MaxFreezeEpochs,
+		StartSlot:       par.Timestamp.Slot,
+		StartAmount:     par.Amount,
+	})
+	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
+		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
+	}
+	tagAlong := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmount(par.TagAlongFee)
+		o.WithLock(ledger.ChainLockFromChainID(par.TagAlongSequencer))
+	})
+	if _, err = txb.ProduceOutput(tagAlong); err != nil {
+		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
+	}
+	if inputTotal > par.Amount+par.TagAlongFee {
+		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmount(inputTotal - par.Amount - par.TagAlongFee)
+			o.WithLock(par.Master.AsLock())
+		})
+		if _, err = txb.ProduceOutput(remainder); err != nil {
+			return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
+		}
+	}
+
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.TransactionData.Timestamp = par.Timestamp
+	txb.SignED25519(par.MasterPrivateKey)
+
+	txBytes := txb.TransactionData.Bytes()
+
+	if err = transaction.ValidateTxBytes(txBytes, txb.LoadInput); err != nil {
+		return nil, err
+	}
+	return txBytes, nil
 }

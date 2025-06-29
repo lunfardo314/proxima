@@ -103,6 +103,10 @@ func (u *UTXODB) StateReader() *multistate.Readable {
 	return u.state.Readable()
 }
 
+func (u *UTXODB) SugaredStateReader() multistate.SugaredStateReader {
+	return multistate.MakeSugared(u.state.Readable())
+}
+
 func (u *UTXODB) GenesisKeys() (ed25519.PrivateKey, ed25519.PublicKey) {
 	return u.genesisPrivateKey, u.genesisPublicKey
 }

@@ -120,10 +120,9 @@ func (d *DelegateToSequencerLock) Master() Accountable {
 }
 
 var (
-	_delegationEpochSlotsShiftBits atomic.Uint64
-	_delegationEpochSlots          atomic.Uint64
-	_safeRevocationSlots           atomic.Uint64
-	_delegationMaxFreezeEpochs     atomic.Uint64
+	_delegationEpochSlots      atomic.Uint64
+	_safeRevocationSlots       atomic.Uint64
+	_delegationMaxFreezeEpochs atomic.Uint64
 )
 
 func DelegationEpochSlots() int {
@@ -143,9 +142,9 @@ func DelegationSafeRevocationSlots() int {
 }
 
 func DelegationEpochFromSlot(slot base.Slot) uint64 {
-	shift := _delegationEpochSlotsShiftBits.Load()
-	if shift > 0 {
-		return uint64(slot) >> shift
+	ret := _delegationEpochSlots.Load()
+	if ret > 0 {
+		return uint64(slot) / ret
 	}
 	_precalcDelegationConstants()
 	return DelegationEpochFromSlot(slot)
@@ -161,15 +160,9 @@ func DelegationMaxFreezeEpochs() byte {
 }
 
 func _precalcDelegationConstants() {
-	res, err := L().EvalFromSource(nil, "constDelegationEpochSlotsShiftBits")
-	util.AssertNoError(err)
-	_delegationEpochSlotsShiftBits.Store(binary.BigEndian.Uint64(res))
-
-	res, err = L().EvalFromSource(nil, "constDelegationEpochSlots")
+	res, err := L().EvalFromSource(nil, "constDelegationEpochSlots")
 	util.AssertNoError(err)
 	_delegationEpochSlots.Store(binary.BigEndian.Uint64(res))
-
-	util.Assertf(_delegationEpochSlots.Load() == 0x01<<_delegationEpochSlotsShiftBits.Load(), "inconsistenct ledger constants")
 
 	res, err = L().EvalFromSource(nil, "constDelegationSafeRevocationSlots")
 	util.AssertNoError(err)
@@ -194,7 +187,6 @@ func registerDelegateToSequencerLock(lib *Library) {
 	lib.mustRegisterConstraint(delegateToSequencerLockStateName, 2, func(data []byte) (Constraint, error) {
 		return DelegateToSequencerLockStateFromBytes(data)
 	}, initTestDelegateToSequencerLockState)
-
 }
 
 func initTestDelegateToSequencerConstraint() {
@@ -279,14 +271,36 @@ func initTestDelegateToSequencerLockState() {
 	util.Assertf(dlz == dlzBack, "DelegateToSequencerLockState: inconsistency 3")
 }
 
+type MakeDelegateToSequencerOutputParams struct {
+	Amount          uint64
+	Master          Accountable
+	Target          ChainLock
+	MaxFreezeEpochs byte
+	StartSlot       base.Slot
+	StartAmount     uint64
+	Revoked         bool
+	UnfreezeEpoch   uint64
+}
+
+func MakeDelegateToSequencerOutput(par MakeDelegateToSequencerOutputParams) *Output {
+	return NewOutput(func(o *OutputBuilder) {
+		o.WithAmount(par.Amount)
+		o.WithLock(NewDelegateToSequencerLock(par.Target, par.Master, par.MaxFreezeEpochs, par.StartSlot, par.StartAmount))
+		o.MustPushConstraint(NewChainOrigin().Bytes())
+		o.MustPushConstraint(DelegateToSequencerLockState{
+			UnfreezeEpoch: par.UnfreezeEpoch,
+			Revoked:       par.Revoked,
+		}.Bytes())
+	})
+}
+
 const delegateToSequencerLockSource = `
-func constDelegationEpochSlotsShiftBits : u64/9
-func constDelegationEpochSlots : lshift64(u64/1, constDelegationEpochSlotsShiftBits)
+func constDelegationEpochSlots : u64/512
 func constDelegationSafeRevocationSlots  : u64/24
 func constDelegationMaxFreezeEpochs : u64/4
 
 // $0 slot
-func delegationEpochFromSlot : lshift64(uint8Bytes($0), constDelegationEpochSlotsShiftBits)
+func delegationEpochFromSlot : mul(uint8Bytes($0), constDelegationEpochSlots)
 
 func _isDelegationOrigin : isOriginChainData(selfChainData(2))
 func _selfChainID : chainID(selfChainData(2))
@@ -314,12 +328,8 @@ and(
   enforceMinimumStorageDeposit,
   require(
 	 equal(selfNumConstraints, u64/4), 
-	 !!!delegation_must_have_4_constraints
+	 !!!delegation_must_have_exactly_4_constraints
   ), // prevent attacks
-  require(
-	 not(isSequencerTransaction), 
-	 !!!delegation_should_not_be_sequencer
-  ),
   require(
 	 equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
 	 !!!#chain_is_expected_at_index_2
@@ -329,12 +339,8 @@ and(
 	 !!!#delegateToSequencerLockState_is_expected_at_index_3
   ),
   require(
-	 or(not(_isDelegationOrigin), equalUint(txSlot,$1)), 
-	 !!!wrong_start_slot
-  ),
-  require(
-	 or(not(_isDelegationOrigin), equalUint(selfAmountValue,$2)), 
-	 !!!wrong_start_amount
+	 or(not(_isDelegationOrigin), and(not(_isRevoked), equalUint(txSlot,$1), equalUint(selfAmountValue,$2))), 
+	 !!!wrong_start_parameters
   ),
   require(
      lessOrEqualThan(uint8Bytes($0), constDelegationMaxFreezeEpochs),
@@ -350,7 +356,7 @@ func _amountAtSuccessor : amountValueByOutputPath(concat(pathToProducedOutputs, 
 
 func _outsideSafeRevocationWindow : or(
 	lessThan(delegationEpochFromSlot(txSlot), _unfreezeEpoch),
-    lessThan(add(lshift64(_unfreezeEpoch, constDelegationEpochSlotsShiftBits), constDelegationSafeRevocationSlots), txSlot)
+    lessThan(add(mul(_unfreezeEpoch, constDelegationEpochSlots), constDelegationSafeRevocationSlots), txSlot)
 )
 
 // $0 target chain lock

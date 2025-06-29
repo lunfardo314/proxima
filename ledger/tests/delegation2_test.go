@@ -93,14 +93,13 @@ func TestDelegationLock2(t *testing.T) {
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
-
 	}
 
-	initDelegationUTXO := func(ts base.LedgerTime, maxFreezeEpochs byte, startSlot base.Slot, startAmount uint64) error {
+	initDelegationUTXO := func(ts base.LedgerTime, revoked bool, maxFreezeEpochs byte, startSlot base.Slot, startAmount uint64, prnOnError bool) ([]byte, error) {
 		// create delegation output
 		par, err := u.MakeTransferInputData(masterPrivateKey, nil, ts)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		delegationLock = ledger.NewDelegateToSequencerLock(target, masterAddr, maxFreezeEpochs, startSlot, startAmount)
@@ -108,51 +107,65 @@ func TestDelegationLock2(t *testing.T) {
 			WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
 			WithConstraint(ledger.NewChainOrigin()).
-			WithConstraint(ledger.DelegateToSequencerLockState{}),
+			WithConstraint(ledger.DelegateToSequencerLockState{Revoked: revoked}),
 		)
-		if err != nil {
-			return err
+		if err != nil && prnOnError {
+			t.Logf(">>>>> %v\n============ transaction ==============\n%s", err, u.TxToSource(txBytes))
+			return nil, err
 		}
-
-		t.Logf("============ transaction ==============\n%s", u.TxToSource(txBytes))
-
-		err = u.AddTransaction(txBytes)
-		if err != nil {
-			t.Logf("============ failing transaction ==============\n%s", u.TxToSource(txBytes))
-			return err
+		if err = u.AddTransaction(txBytes); err == nil {
+			outs, err := u.SugaredStateReader().GetOutputsDelegatedToAccount2(target)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, len(outs))
+			delegatedOutput = outs[0]
+			delegationID = delegatedOutput.ChainID
+			t.Logf("delegation ID: %s", delegationID.String())
+			t.Logf("delegated UTXO:\n%s", delegatedOutput.Output.ToSource("     "))
 		}
-		t.Logf("delegation ID: %s", delegationID.String())
-		return nil
+		return txBytes, err
 	}
 
+	var err error
 	t.Run("init ok", func(t *testing.T) {
 		initBase()
 		ts := chainOrigin.Timestamp().AddTicks(1)
-		err := initDelegationUTXO(ts, 1, ts.Slot, delegatedTokens)
+		txBytes, err = initDelegationUTXO(ts, false, 1, ts.Slot, delegatedTokens, true)
+		require.NoError(t, err)
+	})
+	t.Run("init ok 2", func(t *testing.T) {
+		initBase()
+		ts := chainOrigin.Timestamp().AddTicks(1)
+		txBytes, err = initDelegationUTXO(ts, false, ledger.DelegationMaxFreezeEpochs(), ts.Slot, delegatedTokens, true)
 		require.NoError(t, err)
 	})
 	t.Run("init fail 1", func(t *testing.T) {
 		initBase()
 		ts := chainOrigin.Timestamp().AddTicks(1)
-		err := initDelegationUTXO(ts, 1, ts.Slot+1, delegatedTokens)
-		util.RequireErrorWith(t, err, "wrong start slot")
+		_, err = initDelegationUTXO(ts, false, 1, ts.Slot+1, delegatedTokens, false)
+		util.RequireErrorWith(t, err, "wrong start parameters")
 	})
 	t.Run("init fail 2", func(t *testing.T) {
 		initBase()
 		ts := chainOrigin.Timestamp().AddTicks(1)
-		err := initDelegationUTXO(ts, 1, ts.Slot, delegatedTokens-1)
-		util.RequireErrorWith(t, err, "wrong start amount")
-	})
-	t.Run("init ok 2", func(t *testing.T) {
-		initBase()
-		ts := chainOrigin.Timestamp().AddTicks(1)
-		err := initDelegationUTXO(ts, ledger.DelegationMaxFreezeEpochs(), ts.Slot, delegatedTokens)
-		require.NoError(t, err)
+		_, err = initDelegationUTXO(ts, false, 1, ts.Slot, delegatedTokens-1, false)
+		util.RequireErrorWith(t, err, "wrong start parameters")
 	})
 	t.Run("init fail 3", func(t *testing.T) {
 		initBase()
 		ts := chainOrigin.Timestamp().AddTicks(1)
-		err := initDelegationUTXO(ts, ledger.DelegationMaxFreezeEpochs()+1, ts.Slot, delegatedTokens)
+		_, err = initDelegationUTXO(ts, true, 1, ts.Slot, delegatedTokens, true)
+		util.RequireErrorWith(t, err, "wrong start parameters")
+	})
+	t.Run("init fail 4", func(t *testing.T) {
+		initBase()
+		ts := chainOrigin.Timestamp().AddTicks(1)
+		_, err = initDelegationUTXO(ts, false, ledger.DelegationMaxFreezeEpochs()+1, ts.Slot, delegatedTokens, true)
+		util.RequireErrorWith(t, err, "wrong max freeze epochs")
+	})
+	t.Run("init fail 5", func(t *testing.T) {
+		initBase()
+		ts := chainOrigin.Timestamp().AddTicks(1)
+		_, err = initDelegationUTXO(ts, false, ledger.DelegationMaxFreezeEpochs()+1, ts.Slot, delegatedTokens, true)
 		util.RequireErrorWith(t, err, "wrong max freeze epochs")
 	})
 }
