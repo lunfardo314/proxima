@@ -937,7 +937,7 @@ type MakeDelegationInitTransactionParams struct {
 	Amount            uint64
 	Master            ledger.AddressED25519
 	Target            ledger.ChainLock
-	MaxFreezeEpochs   byte
+	MaxFreezeSlots    uint16
 	MasterPrivateKey  ed25519.PrivateKey
 	Inputs            []*ledger.OutputWithID
 	TagAlongSequencer base.ChainID
@@ -955,9 +955,6 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	if inputTotal < par.Amount+par.TagAlongFee {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: not enough tokens")
 	}
-	if par.MaxFreezeEpochs > ledger.DelegationMaxFreezeEpochs() {
-		return nil, fmt.Errorf("MakeInitDelegationTransaction: wrong max freeze epochs")
-	}
 	txb := New()
 
 	_, tsIn, err := txb.ConsumeOutputUnlock(inps...)
@@ -969,12 +966,10 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 
 	delegateOutput := ledger.MakeDelegateToSequencerOutput(ledger.MakeDelegateToSequencerOutputParams{
-		Amount:          par.Amount,
-		Master:          par.Master,
-		Target:          par.Target,
-		MaxFreezeEpochs: par.MaxFreezeEpochs,
-		StartSlot:       par.Timestamp.Slot,
-		StartAmount:     par.Amount,
+		Amount:         par.Amount,
+		Master:         par.Master,
+		Target:         par.Target,
+		MaxFreezeSlots: par.MaxFreezeSlots,
 	})
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)

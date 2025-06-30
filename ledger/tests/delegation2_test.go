@@ -90,7 +90,7 @@ func (td *testData) init() {
 	require.NoError(td, err)
 }
 
-func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, maxFreezeEpochs byte, startSlot base.Slot, startAmount uint64, prnOnError bool) ([]byte, error) {
+func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, maxFreezeSlots uint16, prnOnError bool) ([]byte, error) {
 	var txBytes []byte
 
 	// create delegation output
@@ -99,7 +99,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		return nil, err
 	}
 
-	td.delegationLock = ledger.NewDelegateToSequencerLock(td.target, td.masterAddr, maxFreezeEpochs, startSlot, startAmount)
+	td.delegationLock = ledger.NewDelegateToSequencerLock(td.target, td.masterAddr, maxFreezeSlots)
 	txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 		WithAmount(delegatedTokens).
 		WithTargetLock(td.delegationLock).
@@ -124,11 +124,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 }
 
 func TestDelegationLock2Init(t *testing.T) {
-	require.EqualValues(t, 512, ledger.DelegationEpochSlots())
-	require.EqualValues(t, 24, ledger.DelegationSafeRevocationSlots())
-	require.True(t, ledger.DelegationSafeRevocationSlots() < ledger.DelegationEpochSlots())
-	// require safe revocation window to be up to 5% of the epoch
-	require.True(t, ledger.DelegationSafeRevocationSlots()/ledger.DelegationEpochSlots() < 5)
+	require.EqualValues(t, 30, ledger.DelegationSafeRevocationSlots())
 
 	td := &testData{T: t}
 
@@ -137,44 +133,26 @@ func TestDelegationLock2Init(t *testing.T) {
 	t.Run("ok 1", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, false, 1, ts.Slot, delegatedTokens, true)
+		_, err = td.initDelegationUTXODirect(ts, false, 1, true)
 		require.NoError(t, err)
 	})
 	t.Run("ok 2", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, false, ledger.DelegationMaxFreezeEpochs(), ts.Slot, delegatedTokens, true)
+		_, err = td.initDelegationUTXODirect(ts, false, 1337, true)
 		require.NoError(t, err)
 	})
-	t.Run("fail 1", func(t *testing.T) {
+	t.Run("fail", func(t *testing.T) {
 		td.init()
 		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, false, 1, ts.Slot+1, delegatedTokens, false)
+		_, err = td.initDelegationUTXODirect(ts, true, 1, true)
 		util.RequireErrorWith(t, err, "wrong start parameters")
-	})
-	t.Run("fail 2", func(t *testing.T) {
-		td.init()
-		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, false, 1, ts.Slot, delegatedTokens-1, false)
-		util.RequireErrorWith(t, err, "wrong start parameters")
-	})
-	t.Run("fail 3", func(t *testing.T) {
-		td.init()
-		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, true, 1, ts.Slot, delegatedTokens, true)
-		util.RequireErrorWith(t, err, "wrong start parameters")
-	})
-	t.Run("fail 4", func(t *testing.T) {
-		td.init()
-		ts := td.chainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, false, ledger.DelegationMaxFreezeEpochs()+1, ts.Slot, delegatedTokens, true)
-		util.RequireErrorWith(t, err, "wrong max freeze epochs")
 	})
 }
 
 const tagAlongFee = 500
 
-func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeEpochs byte) ([]byte, string, error) {
+func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots uint16) ([]byte, string, error) {
 	outs, availableTokens := td.u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(td.masterAddr, delegatedTokens+tagAlongFee)
 	require.True(td, availableTokens >= delegatedTokens+tagAlongFee)
 
@@ -183,7 +161,7 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeEpochs b
 		Amount:            delegatedTokens,
 		Master:            td.masterAddr,
 		Target:            td.target,
-		MaxFreezeEpochs:   maxFreezeEpochs,
+		MaxFreezeSlots:    maxFreezeSlots,
 		MasterPrivateKey:  td.masterPrivateKey,
 		Inputs:            outs,
 		TagAlongSequencer: base.RandomChainID(),

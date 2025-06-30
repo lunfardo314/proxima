@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"sync/atomic"
 
 	"github.com/lunfardo314/easyfl"
@@ -14,11 +15,9 @@ import (
 
 type (
 	DelegateToSequencerLock struct {
-		Target          ChainLock
-		MasterLock      Accountable
-		MaxFreezeEpochs byte
-		StartSlot       base.Slot
-		StartAmount     uint64
+		Target         ChainLock
+		MasterLock     Accountable
+		MaxFreezeSlots uint16
 	}
 	DelegateToSequencerLockState struct {
 		UnfreezeEpoch uint64
@@ -28,8 +27,8 @@ type (
 
 const (
 	DelegateToSequencerLockName       = "delegateToSequencerLock"
-	delegateToSequencerLockTemplate   = DelegateToSequencerLockName + "(%s, %s, %d, z64/%d, z32/%d)"
-	delegateToSequencerLockTemplateHR = DelegateToSequencerLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, startSlot=%d, startAmount=%s)"
+	delegateToSequencerLockTemplate   = DelegateToSequencerLockName + "(%s, %s, z16/%d)"
+	delegateToSequencerLockTemplateHR = DelegateToSequencerLockName + "(target=%s, master=%s, maxFreezeSlots=%d)"
 
 	delegateToSequencerLockStateName       = "delegateToSequencerLockState"
 	delegateToSequencerLockStateTemplate   = delegateToSequencerLockStateName + "(z32/%d, %s)"
@@ -38,22 +37,20 @@ const (
 
 //------------ DelegateToSequencerLock
 
-func NewDelegateToSequencerLock(target ChainLock, master Accountable, maxFreezeEpochs byte, startSlot base.Slot, startAmount uint64) *DelegateToSequencerLock {
+func NewDelegateToSequencerLock(target ChainLock, master Accountable, maxFreezeSlots uint16) *DelegateToSequencerLock {
 	return &DelegateToSequencerLock{
-		Target:          target,
-		MasterLock:      master,
-		StartSlot:       startSlot,
-		StartAmount:     startAmount,
-		MaxFreezeEpochs: maxFreezeEpochs,
+		Target:         target,
+		MasterLock:     master,
+		MaxFreezeSlots: maxFreezeSlots,
 	}
 }
 
 func (d *DelegateToSequencerLock) Source() string {
-	return fmt.Sprintf(delegateToSequencerLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxFreezeEpochs, d.StartSlot, d.StartAmount)
+	return fmt.Sprintf(delegateToSequencerLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxFreezeSlots)
 }
 
 func (d *DelegateToSequencerLock) String() string {
-	return fmt.Sprintf(delegateToSequencerLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFreezeEpochs, d.StartSlot, util.Th(d.StartAmount))
+	return fmt.Sprintf(delegateToSequencerLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFreezeSlots)
 }
 
 func (d *DelegateToSequencerLock) Bytes() []byte {
@@ -65,7 +62,7 @@ func (d *DelegateToSequencerLock) Accounts() []Accountable {
 }
 
 func DelegateToSequencerLockFromBytes(data []byte) (*DelegateToSequencerLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 5)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 3)
 	if err != nil {
 		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: %w", err)
 	}
@@ -87,27 +84,14 @@ func DelegateToSequencerLockFromBytes(data []byte) (*DelegateToSequencerLock, er
 	}
 
 	// max coverage lock slots
-	arg2 := easyfl.StripDataPrefix(args[2])
-	if len(arg2) != 1 {
+	a2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
+	if err != nil {
+		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: wrong max coverage lock slots: %v", err)
+	}
+	if a2 >= math.MaxUint16 {
 		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: wrong max coverage lock slots")
 	}
-	ret.MaxFreezeEpochs = arg2[0]
-
-	// start slot
-	startSlot64, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3]))
-	if err != nil {
-		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: %w", err)
-	}
-	if startSlot64 >= base.MaxSlot {
-		return nil, fmt.Errorf("DelegateToSequencerLockFromBytes: start slot %d out of range", startSlot64)
-	}
-	ret.StartSlot = base.Slot(startSlot64)
-
-	// start amount
-	ret.StartAmount, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[4]))
-	if err != nil {
-		return nil, fmt.Errorf("DelegationLockFromBytes: wrong start amount")
-	}
+	ret.MaxFreezeSlots = uint16(a2)
 	return ret, nil
 }
 
@@ -120,18 +104,8 @@ func (d *DelegateToSequencerLock) Master() Accountable {
 }
 
 var (
-	_delegationEpochSlots      atomic.Uint64
-	_safeRevocationSlots       atomic.Uint64
-	_delegationMaxFreezeEpochs atomic.Uint64
+	_safeRevocationSlots atomic.Uint64
 )
-
-func DelegationEpochSlots() int {
-	if ret := _delegationEpochSlots.Load(); ret != 0 {
-		return int(ret)
-	}
-	_precalcDelegationConstants()
-	return DelegationEpochSlots()
-}
 
 func DelegationSafeRevocationSlots() int {
 	if ret := _safeRevocationSlots.Load(); ret != 0 {
@@ -141,40 +115,14 @@ func DelegationSafeRevocationSlots() int {
 	return DelegationSafeRevocationSlots()
 }
 
-func DelegationEpochFromSlot(slot base.Slot) uint64 {
-	ret := _delegationEpochSlots.Load()
-	if ret > 0 {
-		return uint64(slot) / ret
-	}
-	_precalcDelegationConstants()
-	return DelegationEpochFromSlot(slot)
-}
-
-func DelegationMaxFreezeEpochs() byte {
-	ret := _delegationMaxFreezeEpochs.Load()
-	if ret > 0 {
-		return byte(ret)
-	}
-	_precalcDelegationConstants()
-	return DelegationMaxFreezeEpochs()
-}
-
 func _precalcDelegationConstants() {
-	res, err := L().EvalFromSource(nil, "constDelegationEpochSlots")
-	util.AssertNoError(err)
-	_delegationEpochSlots.Store(binary.BigEndian.Uint64(res))
-
-	res, err = L().EvalFromSource(nil, "constDelegationSafeRevocationSlots")
+	res, err := L().EvalFromSource(nil, "constDelegationSafeRevocationSlots")
 	util.AssertNoError(err)
 	_safeRevocationSlots.Store(binary.BigEndian.Uint64(res))
-
-	res, err = L().EvalFromSource(nil, "constDelegationMaxFreezeEpochs")
-	util.AssertNoError(err)
-	_delegationMaxFreezeEpochs.Store(binary.BigEndian.Uint64(res))
 }
 
 func registerDelegateToSequencerLock(lib *Library) {
-	lib.mustRegisterConstraint(DelegateToSequencerLockName, 5, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(DelegateToSequencerLockName, 3, func(data []byte) (Constraint, error) {
 		return DelegateToSequencerLockFromBytes(data)
 	}, initTestDelegateToSequencerConstraint)
 	lib.mustRegisterLock(DelegateToSequencerLockName, func(bytes []byte) (Lock, error) {
@@ -192,17 +140,12 @@ func registerDelegateToSequencerLock(lib *Library) {
 func initTestDelegateToSequencerConstraint() {
 	target := ChainLockFromChainID(base.RandomChainID())
 	master := AddressED25519Random()
-	slotNow := TimeNow().Slot
-	example := NewDelegateToSequencerLock(target, master, 3, slotNow, 1337)
+	example := NewDelegateToSequencerLock(target, master, 3000)
 
 	exampleBack, err := DelegateToSequencerLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(example.MaxFreezeEpochs == 3, "DelegateToSequencerLockFromBytes: wrong back")
-	util.Assertf(exampleBack.MaxFreezeEpochs == example.MaxFreezeEpochs, "DelegateToSequencerLockFromBytes: wrong back")
-	util.Assertf(example.StartSlot == slotNow, "DelegateToSequencerLockFromBytes: wrong back")
-	util.Assertf(exampleBack.StartSlot == example.StartSlot, "DelegateToSequencerLockFromBytes: wrong back")
-	util.Assertf(example.StartAmount == 1337, "DelegateToSequencerLockFromBytes: wrong back")
-	util.Assertf(example.StartAmount == exampleBack.StartAmount, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(example.MaxFreezeSlots == 3000, "DelegateToSequencerLockFromBytes: wrong back")
+	util.Assertf(exampleBack.MaxFreezeSlots == example.MaxFreezeSlots, "DelegateToSequencerLockFromBytes: wrong back")
 
 	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateToSequencerLockName)
 	exampleBack2, err := LockFromBytes(example.Bytes())
@@ -232,7 +175,7 @@ func DelegateToSequencerLockStateFromBytes(data []byte) (DelegateToSequencerLock
 	if err != nil {
 		return DelegateToSequencerLockState{}, fmt.Errorf("DelegateToSequencerLockStateFromBytes: wrong argument 0: %w", err)
 	}
-	if fr >= DelegationEpochFromSlot(base.MaxSlot) {
+	if fr >= base.MaxSlot {
 		return DelegateToSequencerLockState{}, fmt.Errorf("DelegateToSequencerLockStateFromBytes: wrong argument 0")
 	}
 	return DelegateToSequencerLockState{
@@ -272,20 +215,18 @@ func initTestDelegateToSequencerLockState() {
 }
 
 type MakeDelegateToSequencerOutputParams struct {
-	Amount          uint64
-	Master          Accountable
-	Target          ChainLock
-	MaxFreezeEpochs byte
-	StartSlot       base.Slot
-	StartAmount     uint64
-	Revoked         bool
-	UnfreezeEpoch   uint64
+	Amount         uint64
+	Master         Accountable
+	Target         ChainLock
+	MaxFreezeSlots uint16
+	Revoked        bool
+	UnfreezeEpoch  uint64
 }
 
 func MakeDelegateToSequencerOutput(par MakeDelegateToSequencerOutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmount(par.Amount)
-		o.WithLock(NewDelegateToSequencerLock(par.Target, par.Master, par.MaxFreezeEpochs, par.StartSlot, par.StartAmount))
+		o.WithLock(NewDelegateToSequencerLock(par.Target, par.Master, par.MaxFreezeSlots))
 		o.MustPushConstraint(NewChainOrigin().Bytes())
 		o.MustPushConstraint(DelegateToSequencerLockState{
 			UnfreezeEpoch: par.UnfreezeEpoch,
@@ -295,12 +236,7 @@ func MakeDelegateToSequencerOutput(par MakeDelegateToSequencerOutputParams) *Out
 }
 
 const delegateToSequencerLockSource = `
-func constDelegationEpochSlots : u64/512
-func constDelegationSafeRevocationSlots  : u64/24
-func constDelegationMaxFreezeEpochs : u64/4
-
-// $0 slot
-func delegationEpochFromSlot : mul(uint8Bytes($0), constDelegationEpochSlots)
+func constDelegationSafeRevocationSlots  : u64/30
 
 func _isDelegationOrigin : isOriginChainData(selfChainData(2))
 func _selfChainID : chainID(selfChainData(2))
@@ -311,17 +247,16 @@ func pathToSuccessorOutput : concat(pathToProducedOutputs, byte(selfSiblingUnloc
 // $0 index of the chain constraint on the predecessor (consumed output)
 func successorConstraint : atPath(concat(pathToSuccessorOutput($0), lockConstraintIndex))
 
-// $0 unfreeze epoch
+// $0 unfreeze slot
 // $1 revoked
 // placeholder for args. Always returns true
 func delegateToSequencerLockState : concat($1,1)
 
-func _unfreezeEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateToSequencerLockState, 0))
+func _unfreezeSlot : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateToSequencerLockState, 0))
 func _isRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateToSequencerLockState, 1)
 
-// $0 max freeze epochs
-// $1 start slot 
-// $2 start amount
+// checks validity of the composition of the produced constraint 
+// $0 max freeze slots
 func _validDelegationProduced :
 and(
   selfIsProducedOutput,
@@ -329,7 +264,7 @@ and(
   require(
 	 equal(selfNumConstraints, u64/4), 
 	 !!!delegation_must_have_exactly_4_constraints
-  ), // prevent attacks
+  ), // prevent injection attacks
   require(
 	 equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
 	 !!!#chain_is_expected_at_index_2
@@ -339,42 +274,38 @@ and(
 	 !!!#delegateToSequencerLockState_is_expected_at_index_3
   ),
   require(
-	 or(not(_isDelegationOrigin), and(not(_isRevoked), equalUint(txSlot,$1), equalUint(selfAmountValue,$2))), 
+	 or(not(_isDelegationOrigin), and(not(_isRevoked), isZero(_unfreezeSlot))), 
 	 !!!wrong_start_parameters
   ),
   require(
-     lessOrEqualThan(uint8Bytes($0), constDelegationMaxFreezeEpochs),
-     !!!wrong_max_freeze_epochs
+     lessOrEqualThan(len($0), u64/2),
+     !!!too_long_max_freeze_slots_parameter
   ),
-  require(
-    or(_isRevoked, lessThan(_unfreezeEpoch, add(delegationEpochFromSlot(txSlot),$0) )),
-     !!!invalid_delegation_lock_state
-  )
 )
 
 func _amountAtSuccessor : amountValueByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
 
-func _outsideSafeRevocationWindow : or(
-	lessThan(delegationEpochFromSlot(txSlot), _unfreezeEpoch),
-    lessThan(add(mul(_unfreezeEpoch, constDelegationEpochSlots), constDelegationSafeRevocationSlots), txSlot)
+func _insideSafeRevocationWindow : and(
+	lessOrEqualThan(uint8Bytes(_unfreezeSlot), uint8Bytes(txSlot)),
+    lessThan(uint8Bytes(txSlot), add(_unfreezeSlot, constDelegationSafeRevocationSlots))
 )
 
 // $0 target chain lock
 // $1 master lock
-// $2 max freeze epochs
+// $2 max freeze slots
 func _validDelegationConsumed : and(
    selfIsConsumedOutput,
    or(
         // master unlocked
       and(
          $1,
-         require( or(_isRevoked, lessOrEqualThan(_unfreezeEpoch, delegationEpochFromSlot(txSlot))), !!!master_can_only_unlock_revoked_or_unfrozen),
+         require( or(_isRevoked, lessOrEqualThan(uint8Bytes(_unfreezeSlot), uint8Bytes(txSlot))), !!!master_can_only_unlock_revoked_or_unfrozen),
       ),
         // or target unlocked with conditions
       and(
               // if it is revoked, only master can unlock it
          not(_isRevoked),
-         _outsideSafeRevocationWindow,
+         not(_insideSafeRevocationWindow),
 			  // target lock must be unlocked
 		 $0,  
 			  // amount should not decrease
@@ -388,13 +319,11 @@ func _validDelegationConsumed : and(
 // Delegation lock output. Immutable 
 // $0 target chain lock
 // $1 master lock
-// $2 max freeze epochs
-// $3 start slot 
-// $4 start amount
+// $2 max freeze slots
 func delegateToSequencerLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
     or(
-       _validDelegationProduced($2,$3,$4),
+       _validDelegationProduced($2),
        _validDelegationConsumed($0,$1)
     )
 )

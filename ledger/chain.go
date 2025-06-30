@@ -12,6 +12,8 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
+// TODO add start slot and start amount
+
 // ChainConstraint is a chain constraint
 type ChainConstraint struct {
 	// ID all-0 for origin
