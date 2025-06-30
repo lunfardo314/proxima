@@ -411,8 +411,8 @@ func TestChain1(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 		// unlock data must be for both
-		txb.PutUnlockParams(1, 2, ledger.EndChainUnlockParams)
-		txb.PutUnlockParams(1, 3, ledger.EndChainUnlockParams)
+		txb.PutUnlockParams(1, 2, ledger.FinishChainUnlockParams)
+		txb.PutUnlockParams(1, 3, ledger.FinishChainUnlockParams)
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(total).WithLock(outs[0].Output.Lock())
@@ -505,7 +505,7 @@ func TestChain1(t *testing.T) {
 		// We explicitly specify input index and the index of the chain constraint in the output.
 		// This is because we assume chain constraint do not have pre-defined index in the output,
 		// it can be any except 0xff, therefore must always be explicit.
-		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.EndChainUnlockParams)
+		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.FinishChainUnlockParams)
 
 		// put unlock parameters for the chain controller lock. It is locked with usual sig lock
 		// The signature unlock of the address25519 constraint just refers to the signature at the
@@ -593,17 +593,17 @@ func TestChain2(t *testing.T) {
 		switch option1 {
 		case 0:
 			// good
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 0, cc.StartSlot, cc.StartAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
 		case 1:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, constraintIdx, 0, cc.StartSlot, cc.StartAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, constraintIdx, cc.OriginSlot, cc.OriginAmount)
 		case 2:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, 0xff, 0, cc.StartSlot, cc.StartAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, 0xff, cc.OriginSlot, cc.OriginAmount)
 		case 3:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, 0, cc.StartSlot, cc.StartAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, cc.OriginSlot, cc.OriginAmount)
 		case 4:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 1, cc.StartSlot, cc.StartAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
 		case 5:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, 0xff, cc.StartSlot, cc.StartAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, cc.OriginSlot, cc.OriginAmount)
 		default:
 			panic("wrong test option 1")
 		}
@@ -746,7 +746,7 @@ func TestChain3(t *testing.T) {
 	require.NoError(t, err)
 
 	var nextChainConstraint *ledger.ChainConstraint
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, 0, cc.StartSlot, cc.StartAmount)
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
 
 	chainOut := chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextChainConstraint.Bytes(), constraintIdx)
@@ -1026,7 +1026,7 @@ func TestImmutable(t *testing.T) {
 	require.NoError(t, err)
 
 	var nextChainConstraint *ledger.ChainConstraint
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0, cc.StartSlot, cc.StartAmount)
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
 
 	var dataConstraintIdx, immutableConstraintIdx byte
 	chainOut := chainIN.Output.Clone(func(o *ledger.OutputBuilder) {
@@ -1071,7 +1071,7 @@ func TestImmutable(t *testing.T) {
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0, cc.StartSlot, cc.StartAmount)
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
 
 	chainOut = chainIN.Output.Clone()
 
@@ -1109,7 +1109,7 @@ func TestImmutable(t *testing.T) {
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
 	require.NoError(t, err)
 
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0, cc.StartSlot, cc.StartAmount)
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
 
 	chainOut = chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
 		// put wrong data
@@ -1154,7 +1154,7 @@ func TestImmutable(t *testing.T) {
 	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
 	require.NoError(t, err)
 
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, 0, cc.StartSlot, cc.StartAmount)
+	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
 
 	chainOut = chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
 		// put wrong data

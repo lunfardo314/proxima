@@ -47,7 +47,7 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 		}
 	}
 
-	txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.EndChainUnlockParams)
+	txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.FinishChainUnlockParams)
 	txb.PutSignatureUnlock(consumedIndex)
 
 	// finalize the transaction

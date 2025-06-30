@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -19,33 +18,33 @@ import (
 type ChainConstraint struct {
 	// ID all-0 for origin
 	ID base.ChainID
-	// 0xFF for origin, 0x00 for state transition, other reserved
-	TransitionMode byte
-	// Previous index of the consumed chain input with the same ID. Must be 0xFF for the origin
-	PredecessorInputIndex      byte
+	// Predecessor output index with the same ID. Must be 0xFF for the origin
+	PredecessorInputIndex byte
+	// Predecessor constraint index. Must be 0xff for the origin
 	PredecessorConstraintIndex byte
-	StartSlot                  base.Slot
-	StartAmount                uint64
+	// slot of the origin chain output
+	OriginSlot base.Slot
+	// amount on the chain at the origin
+	OriginAmount uint64
 }
 
 const (
 	ChainConstraintName     = "chain"
-	chainConstraintTemplate = ChainConstraintName + "(0x%s, z32/%d, z64/%d)"
+	chainConstraintTemplate = ChainConstraintName + "(0x%s, z1/%d, z1/%d, z32/%d, z64/%d)"
 )
 
-func NewChainConstraint(id base.ChainID, prevOut, predecessorConstraintIndex, mode byte, startSlot base.Slot, startAmount uint64) *ChainConstraint {
+func NewChainConstraint(id base.ChainID, predOutputIndex, predConstraintIndex byte, originSlot base.Slot, originAmount uint64) *ChainConstraint {
 	return &ChainConstraint{
 		ID:                         id,
-		TransitionMode:             mode,
-		PredecessorInputIndex:      prevOut,
-		PredecessorConstraintIndex: predecessorConstraintIndex,
-		StartSlot:                  startSlot,
-		StartAmount:                startAmount,
+		PredecessorInputIndex:      predOutputIndex,
+		PredecessorConstraintIndex: predConstraintIndex,
+		OriginSlot:                 originSlot,
+		OriginAmount:               originAmount,
 	}
 }
 
 func NewChainOrigin(startSlot base.Slot, startAmount uint64) *ChainConstraint {
-	return NewChainConstraint(base.NilChainID, 0xff, 0xff, 0xff, startSlot, startAmount)
+	return NewChainConstraint(base.NilChainID, 0xff, 0xff, startSlot, startAmount)
 }
 
 func (ch *ChainConstraint) IsOrigin() bool {
@@ -56,9 +55,6 @@ func (ch *ChainConstraint) IsOrigin() bool {
 		return false
 	}
 	if ch.PredecessorConstraintIndex != 0xff {
-		return false
-	}
-	if ch.TransitionMode != 0xff {
 		return false
 	}
 	return true
@@ -76,49 +72,44 @@ func (ch *ChainConstraint) String() string {
 	if ch.IsOrigin() {
 		return fmt.Sprintf("%s(ORIGIN)", ChainConstraintName)
 	}
-	return fmt.Sprintf("%s(%s, predInIdx=%d, predConstrIdx=%d, transitionMode=%d, startSlot=%d, startAmount=%s)",
-		ChainConstraintName, ch.ID.String(), ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode,
-		ch.StartSlot, util.Th(ch.StartAmount))
+	return fmt.Sprintf("%s(%s, predOutIdx=%d, predConstrIdx=%d, originSlot=%d, originAmount=%s)",
+		ChainConstraintName, ch.ID.String(), ch.PredecessorInputIndex, ch.PredecessorConstraintIndex,
+		ch.OriginSlot, util.Th(ch.OriginAmount))
 }
 
 func (ch *ChainConstraint) Source() string {
 	return fmt.Sprintf(chainConstraintTemplate,
-		hex.EncodeToString(common.Concat(ch.ID[:], ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode)),
-		ch.StartSlot, ch.StartAmount)
+		hex.EncodeToString(ch.ID[:]), ch.PredecessorInputIndex, ch.PredecessorConstraintIndex,
+		ch.OriginSlot, ch.OriginAmount)
 }
 
 func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 3)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 5)
 	if err != nil {
 		return nil, err
 	}
 	if sym != ChainConstraintName {
 		return nil, fmt.Errorf("ChainConstraintFromBytes: not a chain constraint")
 	}
-	constraintData := easyfl.StripDataPrefix(args[0])
-	if len(constraintData) != base.ChainIDLength+3 {
-		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong data len")
-	}
-	arg1, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[1]))
-	if err != nil {
-		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong start slot: %w", err)
-	}
-	if arg1 >= base.MaxSlot {
-		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong start slot")
-	}
-	arg2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
-	if err != nil {
-		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong start amount: %w", err)
-	}
 
-	ret := &ChainConstraint{
-		PredecessorInputIndex:      constraintData[base.ChainIDLength],
-		PredecessorConstraintIndex: constraintData[base.ChainIDLength+1],
-		TransitionMode:             constraintData[base.ChainIDLength+2],
-		StartSlot:                  base.Slot(arg1),
-		StartAmount:                arg2,
+	ret := &ChainConstraint{}
+	if ret.ID, err = base.ChainIDFromBytes(easyfl.StripDataPrefix(args[0])); err != nil {
+		return nil, err
 	}
-	copy(ret.ID[:], constraintData[:base.ChainIDLength])
+	if ret.PredecessorInputIndex, err = easyfl_util.ByteFromBytes(easyfl.StripDataPrefix(args[1])); err != nil {
+		return nil, err
+	}
+	if ret.PredecessorConstraintIndex, err = easyfl_util.ByteFromBytes(easyfl.StripDataPrefix(args[2])); err != nil {
+		return nil, err
+	}
+	sl, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[3]))
+	if err != nil {
+		return nil, err
+	}
+	ret.OriginSlot = base.Slot(sl)
+	if ret.OriginAmount, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[4])); err != nil {
+		return nil, err
+	}
 	return ret, nil
 }
 
@@ -130,10 +121,10 @@ func NewChainUnlockParams(successorOutputIdx, successorConstraintIndex, transiti
 	return []byte{successorOutputIdx, successorConstraintIndex, transitionMode}
 }
 
-var EndChainUnlockParams = []byte{0xff, 0xff, 0xff}
+var FinishChainUnlockParams = []byte{0xff, 0xff, 0xff}
 
 func registerChainConstraint(lib *Library) {
-	lib.mustRegisterConstraint(ChainConstraintName, 3, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(ChainConstraintName, 5, func(data []byte) (Constraint, error) {
 		return ChainConstraintFromBytes(data)
 	}, initTestChainConstraintInlineTest)
 }
@@ -144,8 +135,8 @@ func initTestChainConstraintInlineTest() {
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
 	//util.Assertf(back == example, "inconsistency: back==example")
-	util.Assertf(back.StartSlot == 1000, "back.StartSlot == 1000")
-	util.Assertf(back.StartAmount == 10_000_000, "back.StartAmount == 10_000_000")
+	util.Assertf(back.OriginSlot == 1000, "back.StartSlot == 1000")
+	util.Assertf(back.OriginAmount == 10_000_000, "back.StartAmount == 10_000_000")
 
 	var chainID base.ChainID
 	chainID = blake2b.Sum256([]byte("dummy"))
@@ -155,14 +146,16 @@ func initTestChainConstraintInlineTest() {
 		util.Assertf(chainIDBack == chainID, "chainIDBack == chainID")
 	}
 	{
-		chainConstr := NewChainConstraint(chainID, 0, 0, 0xff, 1000, 10_000_000)
+		chainConstr := NewChainConstraint(chainID, 0, 0, 1000, 10_000_000)
 		chainConstrBack, err := ChainConstraintFromBytes(chainConstr.Bytes())
 		util.AssertNoError(err)
 		util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
 	}
 }
 
-const chainConstraintSource = `
+// TODO rewrite chain constraint
+
+const chainConstraintSourceOld = `
 // chain(<chain constraint data>)
 // <chain constraint data: 35 bytes:
 // - 0-31 bytes chain id 
@@ -190,7 +183,7 @@ func predecessorConstraintIndex : slice($0, 32, 33) // 2 bytes
 // only called for produced output
 // $0 - self produced constraint data
 // $1 - predecessor data
-func validPredecessorData : and(
+func _validPredecessorData : and(
 	if(
 		isZero(chainID($1)), 
 		and(
@@ -201,6 +194,7 @@ func validPredecessorData : and(
 		and(
 			// case 2: normal transition
 			equal(chainID($0), chainID($1)),
+            equal(),
 		)
 	),
 	equal(
@@ -220,7 +214,7 @@ func chainPredecessorData:
 
 // $0 - self chain data (consumed)
 // $1 - successor constraint parsed data (produced)
-func validSuccessorData : and(
+func _validSuccessorData : and(
 		if (
 			// if chainID = 0, it must be origin data
 			// otherwise chain IDs must be equal on both sides
@@ -231,6 +225,12 @@ func validSuccessorData : and(
 		// the successor (produced) must point to the consumed (self)
 		equal(predecessorConstraintIndex($1), selfConstraintIndex)
 )
+
+// $0 - chain data
+// $1 - origin slot
+// $2 - origin amount
+func _validOriginData : concat($2, 1)
+
 
 // chain successor data is computed in the context of the consumed output
 // from the selfUnlock data
@@ -272,12 +272,7 @@ func chain: and(
              ),
              !!!wrong_chain_origin_data
          ),
-         //or(
-         //   // enforcing valid constraint data of the origin: concat(repeat(0,32), 0xffffff)
-         //   isOriginChainData($0), 
-         //   !!!chain_wrong_origin
-         //),
-         nil
+         0x
        ),
         // check validity of chain transition. Unlock data of the constraint 
         // must point to the valid successor (in case of consumed output) 
@@ -289,18 +284,15 @@ func chain: and(
                // consumed chain output is being destroyed (no successor)
             equal(selfUnlockParameters, destroyUnlockParams),
                // or it must be unlocked by pointing to the successor
-            validSuccessorData($0, chainSuccessorData),     
+            _validSuccessorData($0, chainSuccessorData),     
             !!!chain_wrong_successor
           )	
        ), 
        and(
           // 'produced' side case, checking if predecessor is valid
            selfIsProducedOutput,
-           or(
-              // 'produced' side case checking if predecessor is valid
-              validPredecessorData($0, chainPredecessorData( predecessorConstraintIndex($0) )),
-              !!!chain_wrong_predecessor
-           )
+           require(_validPredecessorData($0, chainPredecessorData( predecessorConstraintIndex($0) )), !!!chain_wrong_predecessor_chain_data),
+           require(_validOriginData($0, $1, $2), !!!invalid_chain_origin_data)
        ),
        !!!chain_constraint_failed
    )
@@ -315,6 +307,99 @@ func selfChainPredecessorInputIndex : byte(selfChainData($0),32)
 
 // $0 - chain constraint index in the produced output
 // Returns chain predecessor timestamp in the context of produced successor by by 1-byte index of the chain constraint 
+func selfChainPredecessorTimestamp : timestampOfInputByIndex(selfChainPredecessorInputIndex($0))
+
+`
+
+const chainConstraintSource = `
+func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000000000000000000000)
+func destroyUnlockParams : 0xffffff
+
+// $0 - predecessor output index
+// $1 - predecessor constraint index
+func chainPredecessorChainID:
+	parseInlineDataArgument(
+		consumedConstraintByIndex($0,$1),
+		selfBytecodePrefix,
+		0
+	)
+// $0 - predecessor output index
+// $1 - predecessor constraint index
+func chainPredecessorOriginSlot:
+	parseInlineDataArgument(
+		consumedConstraintByIndex($0,$1),
+		selfBytecodePrefix,
+		3
+	)
+// $0 - predecessor output index
+// $1 - predecessor constraint index
+func chainPredecessorOriginAmount:
+	parseInlineDataArgument(
+		consumedConstraintByIndex($0,$1),
+		selfBytecodePrefix,
+		4
+	)
+
+// $0 - chain ID
+// $1 - predecessor output index
+// $2 - predecessor constraint index
+// $3 - origin slot
+// $4 - origin amount
+func _validChainProduced : 
+if(
+   isChainOriginID($0),
+   require(
+     and(equal($1, 0xff), equal($2, 0xff), equalUint($3, txSlot), equalUint($4, selfAmountValue)),
+     !!!invalid_chain_origin_data
+   ),
+   and(
+	   if(
+		 isChainOriginID(chainPredecessorChainID($1,$2)),
+		 require( equal( blake2b( inputIDByIndex($1) ), $0),  !!!wrong_predecessor_chain_ID_1),
+		 require( equal( chainPredecessorChainID($1,$2), $0), !!!wrong_predecessor_chain_ID_2) 
+	   ),
+       require(equalUint($3, chainPredecessorOriginSlot($1,$2)), !!!invalid_origin_slot),
+       require(equalUint($4, chainPredecessorOriginAmount($1,$2)), !!!invalid_origin_amount),
+   )
+)
+
+    
+// $0 - chain ID
+// $1 - predecessor output index
+// $2 - predecessor constraint index
+// $3 - origin slot
+// $4 - origin amount
+func _validChainConsumed : concat($4, 1)
+
+// $0 - chain ID
+// $1 - predecessor output index
+// $2 - predecessor constraint index
+// $3 - origin slot
+// $4 - origin amount
+func chain : and(
+      // chain constraint cannot be on output with index 0xff = 255
+   not(equal(selfOutputIndex, 0xff)),  
+   or(
+      and(
+         selfIsProducedOutput,
+         _validChainProduced($0,$1,$2,$3,$4)
+      ),
+      and(
+         selfIsConsumedOutput,
+         _validChainConsumed($0,$1,$2,$3,$4)
+      ),
+
+   )
+)
+
+// $0 - chain constraint index
+func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 0)
+func selfChainPredInputIndex : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 1)
+func selfChainPredConstraintIndex : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 2)
+func selfOriginSlot : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 3)
+func selfOriginAmount : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 4)
+
+TODO
 func selfChainPredecessorTimestamp : timestampOfInputByIndex(selfChainPredecessorInputIndex($0))
 
 `

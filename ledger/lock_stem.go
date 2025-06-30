@@ -114,7 +114,7 @@ func _vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, se
 
 // $0 - stem predecessor index
 func _predVRFProof : parseInlineDataArgument(
-    consumedConstraintByIndex(concat($0,1)), 
+    consumedConstraintByIndex($0,1), 
     selfBytecodePrefix, 
     1
 )

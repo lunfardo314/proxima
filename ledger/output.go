@@ -527,8 +527,8 @@ func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error
 		OutputWithID:               *ret,
 		ChainID:                    chainID,
 		PredecessorConstraintIndex: chainConstr.PredecessorInputIndex,
-		StartSlot:                  chainConstr.StartSlot,
-		StartAmount:                chainConstr.StartAmount,
+		StartSlot:                  chainConstr.OriginSlot,
+		StartAmount:                chainConstr.OriginAmount,
 	}, idx, nil
 }
 

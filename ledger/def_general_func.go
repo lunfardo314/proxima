@@ -1,5 +1,7 @@
 package ledger
 
+// TODO minimize use of atTuple8
+
 const _generalFunctionsYAML = `
 functions:
    -
@@ -49,15 +51,11 @@ functions:
    -
       sym: consumedConstraintByIndex
       numArgs: 1
-      source: "atTuple8(consumedOutputByIndex(byte($0,0)), byte($0,1))"
+      source: "atPath(concat(pathToConsumedOutputs,$0,$1))"
    -
       sym: unlockParamsByConstraintIndex
       numArgs: 1
       source: "atTuple8(unlockParamsByIndex(byte($0,0)), byte($0,1))"
-   -
-      sym: consumedLockByInputIndex
-      numArgs: 1
-      source: consumedConstraintByIndex(concat($0, lockConstraintIndex))
    -
       sym: inputIDByIndex
       numArgs: 1

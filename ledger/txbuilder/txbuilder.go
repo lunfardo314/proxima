@@ -217,7 +217,7 @@ func (txb *TransactionBuilder) BytesWithValidation() ([]byte, base.TransactionID
 	if err = ctx.Validate(); err != nil {
 		return nil, base.TransactionID{}, ctx.String(), err
 	}
-	return txBytes, tx.ID(), ctx.LinesSource("    ").String(), nil
+	return txBytes, tx.ID(), ctx.LinesSource().String(), nil
 }
 
 func (txb *TransactionBuilder) ProducedAmount() (uint64, uint64) {
@@ -702,7 +702,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, 0, chainInConstraint.StartSlot, chainInConstraint.StartAmount)
+		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, chainInConstraint.OriginSlot, chainInConstraint.OriginAmount)
 		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
 
 		if inflationConstraint != nil {
@@ -791,7 +791,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		}
 	}
 
-	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex, 0, par.ChainOutput.StartSlot, par.ChainOutput.StartAmount)
+	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex, par.ChainOutput.StartSlot, par.ChainOutput.StartAmount)
 	util.Assertf(availableTokens > amount, "availableTokens > amount")
 	chainSuccessorOutput := par.ChainOutput.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmount(availableTokens-amount).
@@ -891,7 +891,7 @@ func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.O
 	if err != nil {
 		return err
 	}
-	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, 0, cc.StartSlot, cc.StartAmount)
+	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, cc.OriginSlot, cc.OriginAmount)
 	chainOut := chainIN.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(successor.Bytes(), predecessorConstraintIndex)
 	})

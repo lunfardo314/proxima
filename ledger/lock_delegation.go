@@ -69,7 +69,7 @@ func _selfSuccessorChainData : parseInlineDataArgument(producedConstraintByIndex
 
 // $0 chain constraint index
 func _validDelegationChainPace : or(
-	isZero(chainID(selfChainData($0))),  // origin
+	isZero(selfChainID($0)),  // origin
     require(lessOrEqualThan(delegationPaceTicks, ticksBefore(selfChainPredecessorTimestamp($0),txTimestampBytes)), !!!wrong_delegation_chain_pace)
 )
 

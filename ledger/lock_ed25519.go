@@ -163,7 +163,7 @@ func unlockedByReference: and(
     equal(len($0), u64/1),                     // prevent panic in compound locks
 	lessThan($0, selfOutputIndex),             // unlock parameter must point to another input with 
                                                // strictly smaller index. This prevents reference cycles	
-	equal(self, consumedLockByInputIndex($0))  // the referenced constraint bytes must be equal to the self constraint bytes
+	equal(self, consumedConstraintByIndex($0, lockConstraintIndex))  // the referenced constraint bytes must be equal to the self constraint bytes
 )
 
 // if it is 'produced' invocation context (constraint invoked in the input), only size of the address is checked

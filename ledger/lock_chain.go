@@ -111,7 +111,7 @@ const chainLockConstraintSource = `
 
 func selfReferencedChainData : 
 	parseInlineDataArgument(
-		consumedConstraintByIndex(selfUnlockParameters),
+		consumedConstraintByIndex(byte(selfUnlockParameters, 0), byte(selfUnlockParameters, 1)),
 		#chain,
 		0
 	)

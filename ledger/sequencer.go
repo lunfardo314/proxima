@@ -103,7 +103,7 @@ func sequencer: and(
 			checkPreBranchConsolidationTicks,
 			checkPostBranchConsolidationTicks,
             // check chain's past
-			_sequencer( selfChainPredecessorInputIndex($0) )
+			_sequencer( selfChainPredInputIndex($0) )
 		)
     )
 )
