@@ -180,7 +180,7 @@ func DelegateToSequencerLockStateFromBytes(data []byte) (DelegateToSequencerLock
 	}
 	return DelegateToSequencerLockState{
 		UnfreezeEpoch: fr,
-		Revoked:       !easyfl_util.IsZero(args[1]),
+		Revoked:       !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
 	}, nil
 }
 
@@ -212,6 +212,14 @@ func initTestDelegateToSequencerLockState() {
 	util.Assertf(dlzBack.UnfreezeEpoch == 1337, "DelegateToSequencerLockState: inconsistency 1")
 	util.Assertf(dlzBack.Revoked, "DelegateToSequencerLockState: inconsistency 2")
 	util.Assertf(dlz == dlzBack, "DelegateToSequencerLockState: inconsistency 3")
+
+	dlz = DelegateToSequencerLockState{222, false}
+
+	dlzBack, err = DelegateToSequencerLockStateFromBytes(dlz.Bytes())
+	util.AssertNoError(err)
+	util.Assertf(dlzBack.UnfreezeEpoch == 222, "DelegateToSequencerLockState: inconsistency 1")
+	util.Assertf(!dlzBack.Revoked, "DelegateToSequencerLockState: inconsistency 4")
+	util.Assertf(dlz == dlzBack, "DelegateToSequencerLockState: inconsistency 5")
 }
 
 type MakeDelegateToSequencerOutputParams struct {
@@ -286,6 +294,7 @@ and(
 func _amountAtSuccessor : amountValueByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
 
 func _insideSafeRevocationWindow : and(
+    not(_isDelegationOrigin),
 	lessOrEqualThan(uint8Bytes(_unfreezeSlot), uint8Bytes(txSlot)),
     lessThan(uint8Bytes(txSlot), add(_unfreezeSlot, constDelegationSafeRevocationSlots))
 )
@@ -304,10 +313,10 @@ func _validDelegationConsumed : and(
         // or target unlocked with conditions
       and(
               // if it is revoked, only master can unlock it
-         not(_isRevoked),
-         not(_insideSafeRevocationWindow),
+         require(not(_isRevoked), !!!delegation_target_should_not_be_revoked),
+         require(not(_insideSafeRevocationWindow), !!!delegation_target_should_not_be_unlocked_inside_safe_revocation_window),
 			  // target lock must be unlocked
-		 $0,  
+		 require($0, !!!delegation_target_must_be_unlocked),  
 			  // amount should not decrease
 		 require(lessOrEqualThan(selfAmountValue, _amountAtSuccessor), !!!amount_should_not_decrease),
 			  // delegation lock must be immutable

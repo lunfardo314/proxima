@@ -80,8 +80,8 @@ func (cl ChainLock) Master() Accountable {
 	return cl
 }
 
-func NewChainLockUnlockParams(succChainOutputIndex, sucChainConstraintIndex byte) []byte {
-	return []byte{succChainOutputIndex, sucChainConstraintIndex}
+func NewChainLockUnlockParams(predChainOutputIndex, predChainConstraintIndex byte) []byte {
+	return []byte{predChainOutputIndex, predChainConstraintIndex}
 }
 
 func registerChainLockConstraint(lib *Library) {

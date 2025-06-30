@@ -272,7 +272,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		_, _, err = txb.ConsumeOutputsNoUnlock(&td.delegatedOutput.OutputWithID)
 		require.NoError(t, err)
 
-		err = txb.PutUnlockReference(1, 1, 0)
+		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
 		txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2, 0))
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -291,6 +291,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		}
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 		txb.TransactionData.Timestamp = ts
+		txb.TransactionData.SequencerOutputIndex = 0
 		txb.SignED25519(td.seqPrivateKey)
 
 		_, _, txString, err := txb.BytesWithValidation()
