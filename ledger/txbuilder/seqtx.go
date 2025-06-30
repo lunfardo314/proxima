@@ -179,7 +179,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0)
+		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, 0, chainInConstraint.StartSlot, chainInConstraint.StartAmount)
 		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
 		// put sequencer constraint
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
@@ -343,7 +343,7 @@ func makeDelegationTransitions(inputs []*ledger.OutputWithChainID, offs byte, ta
 		ret[i] = ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(outChainAmount).
 				WithLock(in.Output.Lock())
-			ccSucc := ledger.NewChainConstraint(chainID, byte(i)+offs, ccIdx, 0)
+			ccSucc := ledger.NewChainConstraint(chainID, byte(i)+offs, ccIdx, 0, cc.StartSlot, cc.StartAmount)
 			o.MustPushConstraint(ccSucc.Bytes())
 
 			if delegationInflation > 0 {

@@ -68,7 +68,7 @@ func TestDelegationSigLock(t *testing.T) {
 		txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 			WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
-			WithConstraint(ledger.NewChainOrigin()),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, delegatedTokens)),
 		)
 		require.NoError(t, err)
 
@@ -122,7 +122,7 @@ func TestDelegationSigLock(t *testing.T) {
 		_, err := txb.ConsumeOutput(delegatedOutput.Output, delegatedOutput.ID)
 		require.NoError(t, err)
 
-		chainConstraint := ledger.NewChainConstraint(chainID, 0, idx, 0)
+		chainConstraint := ledger.NewChainConstraint(chainID, 0, idx, 0, delegatedOutput.StartSlot, delegatedOutput.StartAmount)
 		succOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(nextDelegationAmount).
 				WithLock(delegatedOutput.Output.DelegationLock())
@@ -339,7 +339,7 @@ func TestDelegationChainLock(t *testing.T) {
 		txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 			WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
-			WithConstraint(ledger.NewChainOrigin()),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, delegatedTokens)),
 		)
 		require.NoError(t, err)
 		t.Logf("\n==== owner    : %s\n==== delegation lock: %s", ownerAddr.String(), delegationLock.String())
@@ -381,7 +381,7 @@ func TestDelegationChainLock(t *testing.T) {
 		targetChainOutSucc := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(targetChainOut.Output.Amount()).
 				WithLock(targetChainOut.Output.Lock())
-			cc := ledger.NewChainConstraint(targetChainID, 0, 2, 0)
+			cc := ledger.NewChainConstraint(targetChainID, 0, 2, 0, targetChainOut.StartSlot, targetChainOut.StartAmount)
 			o.MustPushConstraint(cc.Bytes())
 		})
 		_, err = txb.ProduceOutput(targetChainOutSucc)
@@ -412,7 +412,7 @@ func TestDelegationChainLock(t *testing.T) {
 		_, err = txb.ConsumeOutput(delegatedOutput.Output, delegatedOutput.ID)
 		require.NoError(t, err)
 
-		chainConstraint := ledger.NewChainConstraint(delegationID, 1, ccIdx, 0)
+		chainConstraint := ledger.NewChainConstraint(delegationID, 1, ccIdx, 0, delegatedOutput.StartSlot, delegatedOutput.StartAmount)
 		succOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(nextDelegationAmount).
 				WithLock(delegatedOutput.Output.DelegationLock())

@@ -252,12 +252,13 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	_, _, err = txb.ConsumeOutputsUnlock(td.auxOutput)
 	require.NoError(td.t, err)
 
+	ts := td.auxOutput.Timestamp().AddTicks(ledger.TransactionPace())
 	amount := (td.auxOutput.Output.Amount() - tagAlongFee) / uint64(n)
 	for i := 0; i < n; i++ {
 		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(amount)
 			o.WithLock(td.addrAux)
-			o.MustPushConstraint(ledger.NewChainOrigin().Bytes())
+			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot, amount).Bytes())
 		})
 		_, _ = txb.ProduceOutput(o)
 	}
@@ -268,7 +269,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	_, _ = txb.ProduceOutput(tagAlongOut)
 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = td.auxOutput.Timestamp().AddTicks(ledger.TransactionPace())
+	txb.TransactionData.Timestamp = ts
 	txb.SignED25519(td.privKeyAux)
 
 	txBytes := txb.TransactionData.Bytes()

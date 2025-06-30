@@ -466,8 +466,8 @@ func (u *UTXODB) MakeNewChain(amount uint64, privateKey ed25519.PrivateKey, chai
 		return nil, err
 	}
 	par.WithAmount(amount, true).
-		WithTargetLock(chainController).
-		WithConstraint(ledger.NewChainOrigin())
+		WithTargetLock(chainController)
+	par.WithConstraint(ledger.NewChainOrigin(ts.Slot, par.Amount))
 
 	outs, err := u.DoTransferOutputs(par)
 	if err != nil {
@@ -530,7 +530,7 @@ func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts b
 	outs, err := u.DoTransferOutputs(td.
 		WithAmount(amount).
 		WithTargetLock(controllerAddress).
-		WithConstraint(ledger.NewChainOrigin()),
+		WithConstraint(ledger.NewChainOrigin(ts.Slot, amount)),
 	)
 	if err != nil {
 		return nil, err

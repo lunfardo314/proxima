@@ -42,6 +42,8 @@ type (
 		OutputWithID
 		ChainID                    base.ChainID
 		PredecessorConstraintIndex byte
+		StartSlot                  base.Slot
+		StartAmount                uint64
 	}
 
 	SequencerOutputData struct {
@@ -525,6 +527,8 @@ func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error
 		OutputWithID:               *ret,
 		ChainID:                    chainID,
 		PredecessorConstraintIndex: chainConstr.PredecessorInputIndex,
+		StartSlot:                  chainConstr.StartSlot,
+		StartAmount:                chainConstr.StartAmount,
 	}, idx, nil
 }
 

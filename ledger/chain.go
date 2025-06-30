@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -23,24 +24,28 @@ type ChainConstraint struct {
 	// Previous index of the consumed chain input with the same ID. Must be 0xFF for the origin
 	PredecessorInputIndex      byte
 	PredecessorConstraintIndex byte
+	StartSlot                  base.Slot
+	StartAmount                uint64
 }
 
 const (
 	ChainConstraintName     = "chain"
-	chainConstraintTemplate = ChainConstraintName + "(0x%s)"
+	chainConstraintTemplate = ChainConstraintName + "(0x%s, z32/%d, z64/%d)"
 )
 
-func NewChainConstraint(id base.ChainID, prevOut, predecessorConstraintIndex, mode byte) *ChainConstraint {
+func NewChainConstraint(id base.ChainID, prevOut, predecessorConstraintIndex, mode byte, startSlot base.Slot, startAmount uint64) *ChainConstraint {
 	return &ChainConstraint{
 		ID:                         id,
 		TransitionMode:             mode,
 		PredecessorInputIndex:      prevOut,
 		PredecessorConstraintIndex: predecessorConstraintIndex,
+		StartSlot:                  startSlot,
+		StartAmount:                startAmount,
 	}
 }
 
-func NewChainOrigin() *ChainConstraint {
-	return NewChainConstraint(base.NilChainID, 0xff, 0xff, 0xff)
+func NewChainOrigin(startSlot base.Slot, startAmount uint64) *ChainConstraint {
+	return NewChainConstraint(base.NilChainID, 0xff, 0xff, 0xff, startSlot, startAmount)
 }
 
 func (ch *ChainConstraint) IsOrigin() bool {
@@ -71,17 +76,19 @@ func (ch *ChainConstraint) String() string {
 	if ch.IsOrigin() {
 		return fmt.Sprintf("%s(ORIGIN)", ChainConstraintName)
 	}
-	return fmt.Sprintf("%s(%s, predInIdx=%d, predConstrIdx=%d, transitionMode=%d)",
-		ChainConstraintName, ch.ID.String(), ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode)
+	return fmt.Sprintf("%s(%s, predInIdx=%d, predConstrIdx=%d, transitionMode=%d, startSlot=%d, startAmount=%s)",
+		ChainConstraintName, ch.ID.String(), ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode,
+		ch.StartSlot, util.Th(ch.StartAmount))
 }
 
 func (ch *ChainConstraint) Source() string {
 	return fmt.Sprintf(chainConstraintTemplate,
-		hex.EncodeToString(common.Concat(ch.ID[:], ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode)))
+		hex.EncodeToString(common.Concat(ch.ID[:], ch.PredecessorInputIndex, ch.PredecessorConstraintIndex, ch.TransitionMode)),
+		ch.StartSlot, ch.StartAmount)
 }
 
 func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 3)
 	if err != nil {
 		return nil, err
 	}
@@ -92,10 +99,24 @@ func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
 	if len(constraintData) != base.ChainIDLength+3 {
 		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong data len")
 	}
+	arg1, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[1]))
+	if err != nil {
+		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong start slot: %w", err)
+	}
+	if arg1 >= base.MaxSlot {
+		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong start slot")
+	}
+	arg2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
+	if err != nil {
+		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong start amount: %w", err)
+	}
+
 	ret := &ChainConstraint{
 		PredecessorInputIndex:      constraintData[base.ChainIDLength],
 		PredecessorConstraintIndex: constraintData[base.ChainIDLength+1],
 		TransitionMode:             constraintData[base.ChainIDLength+2],
+		StartSlot:                  base.Slot(arg1),
+		StartAmount:                arg2,
 	}
 	copy(ret.ID[:], constraintData[:base.ChainIDLength])
 	return ret, nil
@@ -112,25 +133,20 @@ func NewChainUnlockParams(successorOutputIdx, successorConstraintIndex, transiti
 var EndChainUnlockParams = []byte{0xff, 0xff, 0xff}
 
 func registerChainConstraint(lib *Library) {
-	lib.mustRegisterConstraint(ChainConstraintName, 1, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(ChainConstraintName, 3, func(data []byte) (Constraint, error) {
 		return ChainConstraintFromBytes(data)
-	}, initTestChainConstraint)
+	}, initTestChainConstraintInlineTest)
 }
 
-func initTestChainConstraint() {
-	example := NewChainOrigin()
+func initTestChainConstraintInlineTest() {
+	example := NewChainOrigin(1000, 10_000_000)
 	back, err := ChainConstraintFromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
+	//util.Assertf(back == example, "inconsistency: back==example")
+	util.Assertf(back.StartSlot == 1000, "back.StartSlot == 1000")
+	util.Assertf(back.StartAmount == 10_000_000, "back.StartAmount == 10_000_000")
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
-
-	chainConstraintInlineTest()
-}
-
-// inline test
-func chainConstraintInlineTest() {
 	var chainID base.ChainID
 	chainID = blake2b.Sum256([]byte("dummy"))
 	{
@@ -139,7 +155,7 @@ func chainConstraintInlineTest() {
 		util.Assertf(chainIDBack == chainID, "chainIDBack == chainID")
 	}
 	{
-		chainConstr := NewChainConstraint(chainID, 0, 0, 0xff)
+		chainConstr := NewChainConstraint(chainID, 0, 0, 0xff, 1000, 10_000_000)
 		chainConstrBack, err := ChainConstraintFromBytes(chainConstr.Bytes())
 		util.AssertNoError(err)
 		util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
@@ -234,6 +250,8 @@ func chainSuccessorData :
 // Transition mode: 
 //     0x00 - state transition
 //     0xff - origin state, can be any other values. 
+// $1 - origin slot
+// $2 - origin amount
 // -----
 // unlock parameters for the chain constraint. 3 bytes:
 // 0 - successor output index
@@ -245,15 +263,20 @@ func chain: and(
    or(
       if(
         // if it is produced output with zero-chainID, it is chain origin.
-         and(
-            isZero(chainID($0)),
-            selfIsProducedOutput
+         and( selfIsProducedOutput, isZero(chainID($0))),
+         require(
+             and(
+                isOriginChainData($0),
+                equalUint($1, txSlot),
+                equalUint(selfAmountValue, $2)
+             ),
+             !!!wrong_chain_origin_data
          ),
-         or(
-            // enforcing valid constraint data of the origin: concat(repeat(0,32), 0xffffff)
-            isOriginChainData($0), 
-            !!!chain_wrong_origin
-         ),
+         //or(
+         //   // enforcing valid constraint data of the origin: concat(repeat(0,32), 0xffffff)
+         //   isOriginChainData($0), 
+         //   !!!chain_wrong_origin
+         //),
          nil
        ),
         // check validity of chain transition. Unlock data of the constraint 

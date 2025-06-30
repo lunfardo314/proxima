@@ -702,7 +702,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, 0)
+		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, 0, chainInConstraint.StartSlot, chainInConstraint.StartAmount)
 		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
 
 		if inflationConstraint != nil {
@@ -791,7 +791,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		}
 	}
 
-	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex, 0)
+	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex, 0, par.ChainOutput.StartSlot, par.ChainOutput.StartAmount)
 	util.Assertf(availableTokens > amount, "availableTokens > amount")
 	chainSuccessorOutput := par.ChainOutput.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmount(availableTokens-amount).
@@ -883,7 +883,7 @@ func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.O
 	if err != nil {
 		return err
 	}
-	_, predecessorConstraintIndex := chainIN.ChainConstraint()
+	cc, predecessorConstraintIndex := chainIN.ChainConstraint()
 	if predecessorConstraintIndex == 0xff {
 		return fmt.Errorf("can't find chain constrain in the output")
 	}
@@ -891,7 +891,7 @@ func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.O
 	if err != nil {
 		return err
 	}
-	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, 0)
+	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, 0, cc.StartSlot, cc.StartAmount)
 	chainOut := chainIN.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(successor.Bytes(), predecessorConstraintIndex)
 	})
@@ -965,11 +965,12 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: transaction pace constraint violated")
 	}
 
-	delegateOutput := ledger.MakeDelegateToSequencerOutput(ledger.MakeDelegateToSequencerOutputParams{
+	delegateOutput := ledger.MakeDelegateToSequencerInitOutput(ledger.MakeDelegateToSequencerOutputParams{
 		Amount:         par.Amount,
 		Master:         par.Master,
 		Target:         par.Target,
 		MaxFreezeSlots: par.MaxFreezeSlots,
+		StartSlot:      par.Timestamp.Slot,
 	})
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)

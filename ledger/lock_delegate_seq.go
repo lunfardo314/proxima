@@ -233,19 +233,15 @@ type MakeDelegateToSequencerOutputParams struct {
 	Master         Accountable
 	Target         ChainLock
 	MaxFreezeSlots uint16
-	Revoked        bool
-	UnfreezeEpoch  uint64
+	StartSlot      base.Slot
 }
 
-func MakeDelegateToSequencerOutput(par MakeDelegateToSequencerOutputParams) *Output {
+func MakeDelegateToSequencerInitOutput(par MakeDelegateToSequencerOutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmount(par.Amount)
 		o.WithLock(NewDelegateToSequencerLock(par.Target, par.Master, par.MaxFreezeSlots))
-		o.MustPushConstraint(NewChainOrigin().Bytes())
-		o.MustPushConstraint(DelegateToSequencerLockState{
-			UnfreezeEpoch: par.UnfreezeEpoch,
-			Revoked:       par.Revoked,
-		}.Bytes())
+		o.MustPushConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes())
+		o.MustPushConstraint(DelegateToSequencerLockState{}.Bytes())
 	})
 }
 

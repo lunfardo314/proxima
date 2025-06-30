@@ -39,16 +39,6 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 			return nil, err
 		}
 	}
-	genesisDistributionOutputs := make([]*ledger.Output, len(genesisDistribution))
-	for i := range genesisDistribution {
-		genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(genesisDistribution[i].Balance).
-				WithLock(genesisDistribution[i].Lock)
-			if genesisDistribution[i].ChainOrigin {
-				o.MustPushConstraint(ledger.NewChainOrigin().Bytes())
-			}
-		})
-	}
 
 	rdr, err := multistate.NewSugaredReadableState(stateStore, genesisRoot)
 	if err != nil {
@@ -56,6 +46,18 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	}
 
 	genesisStem := rdr.GetStemOutput()
+	ts := base.NewLedgerTime(genesisStem.Timestamp().Slot+1, 0)
+	genesisDistributionOutputs := make([]*ledger.Output, len(genesisDistribution))
+	for i := range genesisDistribution {
+		genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmount(genesisDistribution[i].Balance).
+				WithLock(genesisDistribution[i].Lock)
+			if genesisDistribution[i].ChainOrigin {
+				o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot, genesisDistribution[i].Balance).Bytes())
+			}
+		})
+	}
+
 	bootstrapChainID := stateID.OriginChainID()
 	initSupplyOutput, err := rdr.GetChainOutput(bootstrapChainID)
 	if err != nil {
@@ -69,7 +71,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 			ChainID:      bootstrapChainID,
 		},
 		StemInput:        genesisStem,
-		Timestamp:        base.NewLedgerTime(genesisStem.Timestamp().Slot+1, 0),
+		Timestamp:        ts,
 		MinimumFee:       0,
 		AdditionalInputs: nil,
 		WithdrawOutputs:  genesisDistributionOutputs,
