@@ -214,6 +214,10 @@ func (o *Output) MustConstraintAt(idx byte) []byte {
 	return o.MustAt(int(idx))
 }
 
+func (o *Output) ConstraintAt(idx byte) ([]byte, error) {
+	return o.At(int(idx))
+}
+
 func (o *OutputBuilder) NumConstraints() int {
 	return o.NumElements()
 }

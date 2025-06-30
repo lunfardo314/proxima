@@ -23,6 +23,12 @@ type (
 		UnfreezeEpoch uint64
 		Revoked       bool
 	}
+
+	DelegateToSequencerOutput struct {
+		OutputWithChainID
+		DelegateToSequencerLock
+		DelegateToSequencerLockState
+	}
 )
 
 const (
@@ -241,6 +247,23 @@ func MakeDelegateToSequencerOutput(par MakeDelegateToSequencerOutputParams) *Out
 			Revoked:       par.Revoked,
 		}.Bytes())
 	})
+}
+
+func AsDelegateToSequencerOutput(o *OutputWithChainID) (ret DelegateToSequencerOutput, err error) {
+	ret.OutputWithChainID = *o
+	lock := o.Output.Lock()
+	if lock.Name() != DelegateToSequencerLockName {
+		err = fmt.Errorf("AsDelegateToSequencerOutput: not a DelegationToSequencerLock")
+		return
+	}
+	dLock, ok := lock.(*DelegateToSequencerLock)
+	util.Assertf(ok, "AsDelegateToSequencerOutput: inconsistency")
+	ret.DelegateToSequencerLock = *dLock
+
+	if data, err := o.Output.ConstraintAt(3); err == nil {
+		ret.DelegateToSequencerLockState, err = DelegateToSequencerLockStateFromBytes(data)
+	}
+	return
 }
 
 const delegateToSequencerLockSource = `

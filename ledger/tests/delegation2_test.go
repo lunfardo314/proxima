@@ -28,7 +28,8 @@ type testData struct {
 
 	seqPrivateKey, masterPrivateKey ed25519.PrivateKey
 	delegationLock                  *ledger.DelegateToSequencerLock
-	seqChainOrigin, delegatedOutput *ledger.OutputWithChainID
+	seqChainOrigin                  *ledger.OutputWithChainID
+	delegatedOutput                 ledger.DelegateToSequencerOutput
 	seqID, delegationID             base.ChainID
 }
 
@@ -123,7 +124,8 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		outs, err := td.u.SugaredStateReader().GetOutputsDelegatedToAccount2(td.target)
 		require.NoError(td, err)
 		require.EqualValues(td, 1, len(outs))
-		td.delegatedOutput = outs[0]
+		td.delegatedOutput, err = ledger.AsDelegateToSequencerOutput(outs[0])
+		require.NoError(td, err)
 		td.delegationID = td.delegatedOutput.ChainID
 		td.Logf("delegation ID: %s", td.delegationID.String())
 		td.Logf("delegated UTXO:\n%s", td.delegatedOutput.Output.ToSource("     "))
@@ -185,7 +187,8 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots ui
 	do := tx.MustProducedOutputWithIDAt(0)
 	dc, err := do.AsChainOutput()
 	require.NoError(td, err)
-	td.delegatedOutput = dc
+	td.delegatedOutput, err = ledger.AsDelegateToSequencerOutput(dc)
+	require.NoError(td, err)
 	td.delegationID = dc.ChainID
 
 	err = td.u.AddTransaction(txBytes)
@@ -246,8 +249,8 @@ func TestDelegationLock2Consume(t *testing.T) {
 		}
 		require.NoError(t, err)
 	})
-	t.Run("target+init+repeat", func(t *testing.T) {
-		// create delegation output and destroy it with next tx
+	t.Run("target+init", func(t *testing.T) {
+		// target consumes initial delegation.
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 1024)
