@@ -82,19 +82,19 @@ func (txb *TransactionBuilder) ConsumeOutput(out *ledger.Output, oid base.Output
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
 
-func (txb *TransactionBuilder) ConsumeOutputUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
+func (txb *TransactionBuilder) ConsumeOutputsUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
 	var err error
 	if len(outs) >= 256 {
-		return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputUnlock: number of inputs can't be greater than 256")
+		return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputsUnlock: number of inputs can't be greater than 256")
 	}
 	total := uint64(0)
 	maxTs := base.LedgerTime{}
 	for i, o := range outs {
 		if o.Output.Lock().Name() != ledger.AddressED25519Name {
-			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputUnlock: only AddressED25519 locks are allowed")
+			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputsUnlock: only AddressED25519 locks are allowed")
 		}
 		if o.Output.Amount() >= math.MaxUint64-total {
-			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputUnlock: amount overflow")
+			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputsUnlock: amount overflow")
 		}
 		if _, err = txb.ConsumeOutput(o.Output, o.ID); err != nil {
 			return 0, base.LedgerTime{}, err
@@ -876,7 +876,7 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 	return chainData[0], ret, nil
 }
 
-// InsertSimpleChainTransition inserts a simple chain transition (surprise, surprise). Takes output with chain constraint from parameters,
+// InsertSimpleChainTransition inserts a simple chain transition. Takes output with chain constraint from parameters,
 // Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
 func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, _ base.LedgerTime) error {
 	chainIN, err := ledger.OutputFromBytesReadOnly(inChainData.Data)
@@ -957,7 +957,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 	txb := New()
 
-	_, tsIn, err := txb.ConsumeOutputUnlock(inps...)
+	_, tsIn, err := txb.ConsumeOutputsUnlock(inps...)
 	if err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
