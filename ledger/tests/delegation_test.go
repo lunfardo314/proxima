@@ -68,7 +68,7 @@ func TestDelegationSigLock(t *testing.T) {
 		txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 			WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, delegatedTokens)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot+1, delegatedTokens)),
 		)
 		require.NoError(t, err)
 
@@ -323,7 +323,7 @@ func TestDelegationChainLock(t *testing.T) {
 		require.NoError(t, err)
 
 		require.EqualValues(t, tokensFromFaucet0, u.Balance(ownerAddr))
-		targetChainOut, err = u.MakeNewChain(tokensOnTargetChain, ownerPrivateKey, delegationAddr)
+		targetChainOut, err = u.MakeNewChain(tokensOnTargetChain, ownerPrivateKey, delegationAddr, ledger.TimeNow().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID = targetChainOut.ChainID
 		t.Logf("target chain: %s", targetChainID.String())
@@ -335,11 +335,11 @@ func TestDelegationChainLock(t *testing.T) {
 		par, err := u.MakeTransferInputData(privKey[0], nil, base.NilLedgerTime)
 		require.NoError(t, err)
 
-		delegationLock = ledger.NewDelegationLock(addr[0], ledger.ChainLockFromChainID(targetChainID), 2, ledger.TimeNow(), delegatedTokens)
+		delegationLock = ledger.NewDelegationLock(addr[0], ledger.ChainLockFromChainID(targetChainID), 2, ledger.TimeNow().AddSlots(1), delegatedTokens)
 		txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 			WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, delegatedTokens)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot+2, delegatedTokens)),
 		)
 		require.NoError(t, err)
 		t.Logf("\n==== owner    : %s\n==== delegation lock: %s", ownerAddr.String(), delegationLock.String())

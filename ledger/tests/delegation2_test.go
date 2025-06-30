@@ -48,7 +48,7 @@ func (td *testData) init() {
 	require.NoError(td, err)
 
 	// create chain for sequencer
-	par, err := td.u.MakeTransferInputData(td.seqPrivateKey, nil, base.NilLedgerTime)
+	par, err := td.u.MakeTransferInputData(td.seqPrivateKey, nil, ledger.TimeNow().AddSlots(1))
 	require.NoError(td, err)
 	outs, err := td.u.DoTransferOutputs(par.
 		WithAmount(seqOnChainBalance).

@@ -337,7 +337,7 @@ func TestChain1(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -366,7 +366,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin ok 2", func(t *testing.T) {
 		initTest()
 
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		err = u.DoTransfer(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -384,7 +384,7 @@ func TestChain1(t *testing.T) {
 		// chain constrained output with two origins will be valid, however there will be no way to create a predecessor of it
 		// the only way is to destroy output with two chain origins
 
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		code := ledger.NewChainOrigin(par.Timestamp.Slot, 2000).Bytes()
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
@@ -553,7 +553,7 @@ func TestChain2(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -711,7 +711,7 @@ func TestChain3(t *testing.T) {
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -792,7 +792,7 @@ func TestChainLock(t *testing.T) {
 	}
 	initTest2 := func() *ledger.OutputWithChainID {
 		initTest()
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
+		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(2000).
 			WithTargetLock(addr0).
@@ -988,7 +988,7 @@ func TestImmutable(t *testing.T) {
 	require.NoError(t, err)
 
 	// create origin chain
-	par, err := u.MakeTransferInputData(privKey, nil, ledger.TimeNow())
+	par, err := u.MakeTransferInputData(privKey, nil, ledger.TimeNow().AddSlots(1))
 	require.NoError(t, err)
 	par.WithAmount(2000).
 		WithTargetLock(addr0).
