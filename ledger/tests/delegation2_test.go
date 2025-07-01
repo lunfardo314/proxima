@@ -263,7 +263,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
 		require.NoError(t, err)
 
-		successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.StartSlot, td.seqChainOrigin.StartAmount)
+		successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 		_, err = txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 			o.PutConstraint(successorChainConstraint.Bytes(), 2)
 		}))
@@ -281,7 +281,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(td.delegatedOutput.Output.Amount())
 			o.WithLock(td.delegatedOutput.Output.Lock())
-			o.MustPushConstraint(ledger.NewChainConstraint(td.delegationID, 1, 2, td.delegatedOutput.StartSlot, td.delegatedOutput.StartAmount).Bytes())
+			o.MustPushConstraint(ledger.NewChainConstraint(td.delegationID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount).Bytes())
 			o.MustPushConstraint(td.delegatedOutput.Output.MustConstraintAt(3))
 		}))
 		require.NoError(t, err)

@@ -69,12 +69,13 @@ func (ch *ChainConstraint) Bytes() []byte {
 }
 
 func (ch *ChainConstraint) String() string {
-	if ch.IsOrigin() {
-		return fmt.Sprintf("%s(ORIGIN)", ChainConstraintName)
+	chID := "ORIGIN"
+	if !ch.IsOrigin() {
+		chID = ch.ID.String()
 	}
 	predRef := []byte{ch.PredecessorInputIndex, ch.PredecessorConstraintIndex}
 	return fmt.Sprintf("%s(%s, predRef=%s, originSlot=%d, originAmount=%s)",
-		ChainConstraintName, ch.ID.String(), hex.EncodeToString(predRef), ch.OriginSlot, util.Th(ch.OriginAmount))
+		ChainConstraintName, chID, hex.EncodeToString(predRef), ch.OriginSlot, util.Th(ch.OriginAmount))
 }
 
 func (ch *ChainConstraint) Source() string {
@@ -134,8 +135,8 @@ func initTestChainConstraintInlineTest() {
 	back, err := ChainConstraintFromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
-	util.Assertf(back.OriginSlot == 1000, "back.StartSlot == 1000")
-	util.Assertf(back.OriginAmount == 10_000_000, "back.StartAmount == 10_000_000")
+	util.Assertf(back.OriginSlot == 1000, "back.OriginSlot == 1000")
+	util.Assertf(back.OriginAmount == 10_000_000, "back.OriginAmount == 10_000_000")
 
 	var chainID base.ChainID
 	chainID = blake2b.Sum256([]byte("dummy"))
@@ -167,10 +168,10 @@ if(
      and(equal($1, 0xffff), equalUint($2, txSlot), equalUint($3, selfAmountValue)),
      !!!invalid_chain_origin_data
    ),
-        // NOT chain origin. Check if $1 points to the #chain constraint predecessor
+        // NOT chain origin. Crosscheck reference
    require(
-     equal(parsePrefixBytecode(atPath(concat(pathToConsumedOutputs,$1))), selfBytecodePrefix),
-     !!!must_point_to_predecessor_#chain_constraint
+     equal($1, atPath(concat(pathToUnlockParams, $1))),
+     !!!predecessor_reference_crosscheck_failed
    )
 )
 
@@ -191,11 +192,8 @@ or(
    equal(selfUnlockParameters, 0xffff),
       // chain continues
    and (
-         // check if unlock data is pointing to the #chain constraint. 
-      require(
-         equal(selfBytecodePrefix, parsePrefixBytecode(atPath(concat(pathToProducedOutputs, selfUnlockParameters)))), 
-         !!!unlock_data_must_point_to_#chain_constraint
-      ),
+      require(equal(len(selfUnlockParameters), u64/2), !!!unlock_parameters_must_be_2_bytes),
+        // check chainID match
       require(
          if(
            isChainOriginID($0),
@@ -204,17 +202,18 @@ or(
          ),
          !!!chain_ID_mismatch_with_successor
       ),
+        // crosscheck successor reference
       require(
          equal(selfUnlockParameters, _chainSuccessorParam(1)),
-         !!!unlock_parameters_mismatch_with_successor
+         !!!successor_reference_crosscheck_failed
       ),
       require(
          equal($1, _chainSuccessorParam(2)),
-         !!!origin_slot_mismatch_with_successor
+         !!!origin_slot_is_immutable
       ),
       require(
          equal($2, _chainSuccessorParam(3)),
-         !!!origin_amount_mismatch_with_successor
+         !!!origin_amount_is_immutable
       ),
    )
 )
@@ -227,7 +226,8 @@ or(
 // --- unlock data: 2 bytes: (successor output index || successor chain constraint), 0xffff means discontinue chain
 func chain : and(
       // chain constraint cannot be on output with index 0xff = 255
-   not(equal(selfOutputIndex, 0xff)),  
+   not(equal(selfOutputIndex, 0xff)),
+   require(equal(len($0),u64/32), !!!chainID_must_be_32_bytes_long),
    or(
       and(
          selfIsProducedOutput,
@@ -242,10 +242,7 @@ func chain : and(
 
 // $0 - chain constraint index
 func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 0)
-func selfChainPredInputIndex : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 1)
-func selfChainPredConstraintIndex : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 2)
-func selfOriginSlot : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 3)
-func selfOriginAmount : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 4)
+func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), #chain, 1), 0)
 
 // $0 chain constrain index
 func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0),#chain,1),0) )

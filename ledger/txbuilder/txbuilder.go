@@ -215,7 +215,7 @@ func (txb *TransactionBuilder) BytesWithValidation() ([]byte, base.TransactionID
 		return nil, base.TransactionID{}, "", err
 	}
 	if err = ctx.Validate(); err != nil {
-		return nil, base.TransactionID{}, ctx.String(), err
+		return nil, base.TransactionID{}, ctx.LinesSource().String(), err
 	}
 	return txBytes, tx.ID(), ctx.LinesSource().String(), nil
 }
@@ -791,7 +791,8 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		}
 	}
 
-	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex, par.ChainOutput.StartSlot, par.ChainOutput.StartAmount)
+	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex,
+		par.ChainOutput.OriginSlot, par.ChainOutput.OriginAmount)
 	util.Assertf(availableTokens > amount, "availableTokens > amount")
 	chainSuccessorOutput := par.ChainOutput.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmount(availableTokens-amount).
@@ -824,7 +825,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 	// unlock chain input
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, par.ChainOutput.PredecessorConstraintIndex, []byte{0, par.ChainOutput.PredecessorConstraintIndex, 0})
+	txb.PutUnlockParams(0, par.ChainOutput.PredecessorConstraintIndex, []byte{0, par.ChainOutput.PredecessorConstraintIndex})
 
 	// always reference chain input
 	for i := range consumedOuts {

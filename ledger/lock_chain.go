@@ -109,30 +109,26 @@ func initTestChainLockConstraint() {
 
 const chainLockConstraintSource = `
 
-func selfReferencedChainData : 
+// $0 selfUnlockParameters
+func _selfReferencedChainID : 
 	parseInlineDataArgument(
-		consumedConstraintByIndex(byte(selfUnlockParameters, 0), byte(selfUnlockParameters, 1)),
+		consumedConstraintByIndex(byte($0, 0), byte($0, 1)),
 		#chain,
 		0
 	)
 
-// $0 - parsed referenced chain constraint
-func selfReferencedChainIDAdjusted : if(
-	isZero($0),
-	blake2b(inputIDByIndex(byte(selfUnlockParameters, 0))),
-	$0
+// $0 - unlock params
+func _selfReferencedChainIDAdjusted : if(
+	isZero(_selfReferencedChainID($0)),
+	blake2b(inputIDByIndex(byte($0, 0))),
+	_selfReferencedChainID($0)
 )
 
 // $0 - chainID
 // $1 - self unlock parameters
-func validChainUnlock : and(
+func _validChainUnlock : and(
     equal(len($1), u64/2),                          // prevent panic in compound locks
-	equal($0, selfReferencedChainIDAdjusted(slice(selfReferencedChainData,0,31))), // chain id must be equal to the referenced chain id 
-	equal(
-		// the chain must be unlocked for state transition (mode = 0) 
-		byte(unlockParamsByConstraintIndex($1),2),
-		0
-	)
+	equal($0, _selfReferencedChainIDAdjusted(selfUnlockParameters)) // chain id must be equal to the referenced chain id 
 )
 
 // $0 - chainID
@@ -149,7 +145,7 @@ func chainLock : and(
 		and(
 			selfIsConsumedOutput,
 			not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing 
-			validChainUnlock($0, selfUnlockParameters)
+			_validChainUnlock($0, selfUnlockParameters)
 		)
 	)
 )

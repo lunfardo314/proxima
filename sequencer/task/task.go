@@ -276,7 +276,7 @@ func (t *taskData) InsertDelegationInputs(a *attacher.IncrementalAttacher, maxIn
 		if t.IsConsumedInThePastPath(wOut, a.Extending().VID) {
 			return true
 		}
-		delegationID, _, ok := ledger.ExtractChainID(o, oid)
+		delegationID, ok := ledger.ExtractChainID(o, oid)
 		if !ok {
 			return true
 		}

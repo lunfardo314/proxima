@@ -354,7 +354,7 @@ func TestChain1(t *testing.T) {
 		return chains
 	}
 	t.Run("compile", func(t *testing.T) {
-		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000ffffff, z32/1000, z64/2000)"
+		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0xffff, z32/1000, z64/2000)"
 		_, _, code, err := ledger.L().CompileExpression(source)
 		require.NoError(t, err)
 		origBytecode := ledger.NewChainOrigin(1000, 2000).Bytes()
@@ -433,7 +433,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin wrong 1", func(t *testing.T) {
 		initTest()
 
-		const source = "chain(0x0001, 1, 5)"
+		const source = "chain(0x0001, 0x0102, 1, 5)"
 		_, _, code, err := ledger.L().CompileExpression(source)
 		require.NoError(t, err)
 
@@ -569,7 +569,7 @@ func TestChain2(t *testing.T) {
 		require.NoError(t, err)
 		return chains
 	}
-	runOption := func(option1, option2 int) error {
+	runOption := func(optionConstraint, optionUnlock int) (string, error) {
 		chains := initTest2()
 		require.EqualValues(t, 1, len(chains))
 		theChainData := chains[0]
@@ -590,7 +590,7 @@ func TestChain2(t *testing.T) {
 
 		var nextChainConstraint *ledger.ChainConstraint
 		// options of making it wrong
-		switch option1 {
+		switch optionConstraint {
 		case 0:
 			// good
 			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
@@ -601,9 +601,9 @@ func TestChain2(t *testing.T) {
 		case 3:
 			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, cc.OriginSlot, cc.OriginAmount)
 		case 4:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot+1, cc.OriginAmount)
 		case 5:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, cc.OriginSlot, cc.OriginAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount+1)
 		default:
 			panic("wrong test option 1")
 		}
@@ -616,18 +616,16 @@ func TestChain2(t *testing.T) {
 		require.NoError(t, err)
 
 		// options of wrong unlock params
-		switch option2 {
+		switch optionUnlock {
 		case 0:
 			// good
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx, 0})
+			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx})
 		case 1:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{0xff, constraintIdx, 0})
+			txb.PutUnlockParams(predIdx, constraintIdx, []byte{0xff, constraintIdx})
 		case 2:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, 0xff, 0})
+			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, 0xff})
 		case 3:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{0xff, 0xff, 0})
-		case 4:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx, 1})
+			txb.PutUnlockParams(predIdx, constraintIdx, []byte{0xff, 0xff})
 		default:
 			panic("wrong test option 2")
 		}
@@ -638,11 +636,13 @@ func TestChain2(t *testing.T) {
 
 		txb.SignED25519(privKey0)
 
-		txbytes := txb.TransactionData.Bytes()
-		err = u.AddTransaction(txbytes)
+		txBytes, _, txString, err := txb.BytesWithValidation()
 		if err != nil {
-			return err
+			t.Logf("\n---- error: %v", err)
+			return txString, err
 		}
+		err = u.AddTransaction(txBytes)
+		require.NoError(t, err)
 
 		_, err = u.StateReader().GetUTXOForChainID(chainID)
 		require.NoError(t, err)
@@ -651,51 +651,59 @@ func TestChain2(t *testing.T) {
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 10000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
-		return nil
+		return txString, nil
 	}
+	const printTx = false
+	prn := func(str string) {
+		if printTx {
+			t.Logf("---------------------------\n%s", str)
+		}
+	}
+
 	t.Run("transit 0,0", func(t *testing.T) {
-		err := runOption(0, 0)
+		txString, err := runOption(0, 0)
+		prn(txString)
 		require.NoError(t, err)
 	})
 	t.Run("transit 1,0", func(t *testing.T) {
-		err := runOption(1, 0)
-		require.Error(t, err)
+		txString, err := runOption(1, 0)
+		prn(txString)
+		util.RequireErrorWith(t, err, "successor reference crosscheck failed")
 	})
 	t.Run("transit 2,0", func(t *testing.T) {
-		err := runOption(2, 0)
-		require.Error(t, err)
+		txString, err := runOption(2, 0)
+		prn(txString)
+		util.RequireErrorWith(t, err, "successor reference crosscheck failed")
 	})
 	t.Run("transit 3,0", func(t *testing.T) {
-		err := runOption(3, 0)
-		require.Error(t, err)
+		txString, err := runOption(3, 0)
+		prn(txString)
+		util.RequireErrorWith(t, err, "successor reference crosscheck failed")
 	})
 	t.Run("transit 4,0", func(t *testing.T) {
-		err := runOption(4, 0)
-		require.Error(t, err)
+		txString, err := runOption(4, 0)
+		prn(txString)
+		util.RequireErrorWith(t, err, "origin slot is immutable")
 	})
 	t.Run("transit 5,0", func(t *testing.T) {
-		err := runOption(5, 0)
-		require.Error(t, err)
+		txString, err := runOption(5, 0)
+		prn(txString)
+		util.RequireErrorWith(t, err, "origin amount is immutable")
 	})
 	t.Run("transit 0,1", func(t *testing.T) {
-		err := runOption(0, 1)
-		require.Error(t, err)
+		txString, err := runOption(0, 1)
+		prn(txString)
+		util.RequireErrorWith(t, err, "index is out of range")
 	})
 	t.Run("transit 0,2", func(t *testing.T) {
-		err := runOption(0, 2)
-		require.Error(t, err)
+		txString, err := runOption(0, 2)
+		prn(txString)
+		util.RequireErrorWith(t, err, "index is out of range")
 	})
 	t.Run("transit 0,3", func(t *testing.T) {
-		err := runOption(0, 3)
-		require.Error(t, err)
-	})
-	t.Run("transit 0,4", func(t *testing.T) {
-		err := runOption(0, 4)
-		require.Error(t, err)
-	})
-	t.Run("transit 4,4", func(t *testing.T) {
-		err := runOption(4, 4)
-		require.NoError(t, err)
+		txString, err := runOption(0, 3)
+		prn(txString)
+		util.RequireErrorWith(t, err, "predecessor reference crosscheck failed")
 	})
 }
 
@@ -754,7 +762,7 @@ func TestChain3(t *testing.T) {
 	succIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx, 0})
+	txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx})
 	txb.PutSignatureUnlock(0)
 
 	txb.TransactionData.Timestamp = ts
@@ -762,7 +770,10 @@ func TestChain3(t *testing.T) {
 
 	txb.SignED25519(privKey0)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes, _, txString, err := txb.BytesWithValidation()
+	if err != nil {
+		t.Logf("error: %v\n---------------------------\n%s", err, txString)
+	}
 
 	err = u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -1043,7 +1054,7 @@ func TestImmutable(t *testing.T) {
 	succIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx, 0})
+	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
 	txb.PutSignatureUnlock(0)
 
 	txb.TransactionData.Timestamp = ts
@@ -1078,7 +1089,7 @@ func TestImmutable(t *testing.T) {
 	succIdx, err = txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx, 0})
+	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
 	// skip immutable unlock
 	txb.PutSignatureUnlock(0)
 
@@ -1120,7 +1131,7 @@ func TestImmutable(t *testing.T) {
 	succIdx, err = txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx, 0})
+	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
 	// put correct unlock params
 	txb.PutUnlockParams(predIdx, dataConstraintIdx, []byte{dataConstraintIdx, immutableConstraintIdx})
 
@@ -1166,7 +1177,7 @@ func TestImmutable(t *testing.T) {
 	succIdx, err = txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx, 0})
+	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
 	// put correct unlock params
 	txb.PutUnlockParams(predIdx, immutableConstraintIdx, []byte{dataConstraintIdx, immutableConstraintIdx})
 
