@@ -136,7 +136,7 @@ func TestDelegationSigLock(t *testing.T) {
 			}
 		})
 
-		txb.PutUnlockParams(0, idx, ledger.NewChainUnlockParams(0, idx, 0))
+		txb.PutUnlockParams(0, idx, ledger.NewChainUnlockParams(0, idx))
 		_, err = txb.ProduceOutput(succOut)
 		require.NoError(t, err)
 
@@ -387,7 +387,7 @@ func TestDelegationChainLock(t *testing.T) {
 		_, err = txb.ProduceOutput(targetChainOutSucc)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
-		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2, 0))
+		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
 
 		// delegation output
 		cc, ccIdx := delegatedOutput.Output.ChainConstraint()
@@ -426,7 +426,7 @@ func TestDelegationChainLock(t *testing.T) {
 			}
 		})
 		txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2))
-		txb.PutUnlockParams(1, ccIdx, ledger.NewChainUnlockParams(1, ccIdx, 0))
+		txb.PutUnlockParams(1, ccIdx, ledger.NewChainUnlockParams(1, ccIdx))
 		_, err = txb.ProduceOutput(succOut)
 		require.NoError(t, err)
 

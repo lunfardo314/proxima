@@ -265,8 +265,8 @@ func AsDelegateToSequencerOutput(o *OutputWithChainID) (ret DelegateToSequencerO
 const delegateToSequencerLockSource = `
 func constDelegationSafeRevocationSlots  : u64/30
 
-func _isDelegationOrigin : isOriginChainData(selfChainData(2))
-func _selfChainID : chainID(selfChainData(2))
+func _selfChainID : parseInlineDataArgument(selfSiblingConstraint(2), #chain, 0)
+func _isDelegationOrigin : isChainOriginID(_selfChainID)
 
 // $0 index of the chain constraint in the consumed output
 func pathToSuccessorOutput : concat(pathToProducedOutputs, byte(selfSiblingUnlockParams($0), 0))

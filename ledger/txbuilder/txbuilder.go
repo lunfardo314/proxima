@@ -716,7 +716,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		return nil, 0, nil, errP(err)
 	}
 	// unlock chain input (chain constraint unlock + inflation (optionally)
-	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx, 0))
+	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
 
 	if par.WithdrawAmount > 0 {
 		withdrawOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {

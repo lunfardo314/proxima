@@ -269,14 +269,14 @@ func TestDelegationLock2Consume(t *testing.T) {
 		}))
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
-		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2, 0))
+		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
 
 		// transit delegation
 		_, _, err = txb.ConsumeOutputsNoUnlock(&td.delegatedOutput.OutputWithID)
 		require.NoError(t, err)
 
 		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
-		txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2, 0))
+		txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(td.delegatedOutput.Output.Amount())

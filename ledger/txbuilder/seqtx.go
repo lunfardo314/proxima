@@ -215,7 +215,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		return nil, nil, errP(err)
 	}
 	// unlock chain input (chain constraint unlock + inflation (optionally)
-	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx, 0))
+	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
 
 	// transit delegation outputs
 	util.Assertf(len(par.DelegationOutputs) == len(delegationTransitions), "len(par.DelegationOutputs)==len(delegationTransitions)")
@@ -227,7 +227,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		succIdx, err := txb.ProduceOutput(delegationTransitions[i])
 		util.AssertNoError(err)
 		_, ccIdx := delegationTransitions[i].ChainConstraint()
-		txb.PutUnlockParams(byte(i+1), ccIdx, ledger.NewChainUnlockParams(succIdx, ccIdx, 0))
+		txb.PutUnlockParams(byte(i+1), ccIdx, ledger.NewChainUnlockParams(succIdx, ccIdx))
 	}
 
 	// make stem input/output if it is a branch transaction
