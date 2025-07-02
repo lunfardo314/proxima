@@ -95,16 +95,14 @@ func TestDelegationSigLock(t *testing.T) {
 		require.EqualValues(t, 1, len(outs))
 
 		delegatedOutput = outs[0]
-		chainID, _, _ := delegatedOutput.ExtractChainID()
-		return chainID
+		return delegatedOutput.ChainID
 	}
 
 	transitDelegation := func(ts base.LedgerTime, inflate bool, nextDelegationAmount uint64, unlockByOwner bool, printtTx ...bool) error {
 		cc, idx := delegatedOutput.Output.ChainConstraint()
 		require.True(t, idx != 0xff)
 		require.True(t, cc.IsOrigin())
-		chainID, _, ok := delegatedOutput.ExtractChainID()
-		require.True(t, ok)
+		chainID := delegatedOutput.ChainID
 
 		var inflation uint64
 		if inflate {
@@ -162,9 +160,11 @@ func TestDelegationSigLock(t *testing.T) {
 		} else {
 			txb.SignED25519(delegationPrivateKey)
 		}
-		txBytes = txb.TransactionData.Bytes()
-		if len(printtTx) > 0 && printtTx[0] {
-			t.Logf("------------------ delegation transition tx --------------\n%s", u.TxToString(txBytes))
+		var txString string
+		txBytes, _, txString, err = txb.BytesWithValidation()
+		if len(printtTx) > 0 && printtTx[0] || err != nil {
+			t.Logf("------------------ delegation transition tx --------------\n>>> err = '%v'\n%s", err, txString)
+			return err
 		}
 
 		return u.AddTransaction(txBytes)

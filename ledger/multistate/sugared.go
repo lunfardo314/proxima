@@ -200,6 +200,8 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount(addr ledger.Accountable
 				},
 				ChainID:                    chainID,
 				PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
+				OriginSlot:                 cc.OriginSlot,
+				OriginAmount:               cc.OriginAmount,
 			})
 		}
 		return true

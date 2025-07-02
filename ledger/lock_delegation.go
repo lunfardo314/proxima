@@ -47,8 +47,7 @@ func selfSiblingUnlockParams : atTuple8(unlockParamsByIndex(selfOutputIndex), $0
 func _enforceDelegationTargetConstraintsOnSuccessor : and(
     $1,  // target lock must be unlocked
     require(lessOrEqualThan(selfAmountValue, amountValueByOutputPath($2)), !!!amount_should_not_decrease),
-    require(equal(atPath(concat($2, lockConstraintIndex)), selfSiblingConstraint(lockConstraintIndex)), !!!lock_must_be_immutable),
-    require(equal(byte(selfSiblingUnlockParams($0),2), 0), !!!chain_must_be_state_transition)
+    require(equal(atPath(concat($2, lockConstraintIndex)), selfSiblingConstraint(lockConstraintIndex)), !!!lock_must_be_immutable)
 )
 
 // constant. A map with!= 0 at bytes where delegation transaction is open  
