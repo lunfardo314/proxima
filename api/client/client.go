@@ -597,7 +597,7 @@ func (c *APIClient) GetDelegationsBySequencer() (map[string]api.DelegationsOnSeq
 	return res.Sequencers, &lrbid, nil
 }
 
-// GetTransferableOutputs returns reasonable maximum number of outputs owned by accountable with only 2 constraints and returns total
+// GetTransferableOutputs returns a reasonable maximum number of outputs owned by accountable with only 2 constraints and returns total
 func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
 	maxO := 256
 	if len(maxOutputs) > 0 && maxOutputs[0] < 256 && maxOutputs[0] > 0 {
