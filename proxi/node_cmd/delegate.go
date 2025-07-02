@@ -105,7 +105,7 @@ func runDelegateCmd(_ *cobra.Command, args []string) {
 	outDelegation := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmount(amount)
 		o.WithLock(ledger.NewDelegationLock(walletData.Account, ledger.ChainLockFromChainID(targetSeqID), 2, ts, amount))
-		o.MustPushConstraint(ledger.NewChainOrigin().Bytes())
+		o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot, amount).Bytes())
 	})
 	delegationOutputIdx, _ := txb.ProduceOutput(outDelegation)
 
