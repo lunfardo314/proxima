@@ -27,9 +27,9 @@ type testData struct {
 	masterAddr ledger.AddressED25519
 
 	seqPrivateKey, masterPrivateKey ed25519.PrivateKey
-	delegationLock                  *ledger.DelegateToSequencerLock
+	delegationLock                  *ledger.DelegateLock2
 	seqChainOrigin                  *ledger.OutputWithChainID
-	delegatedOutput                 ledger.DelegateToSequencerOutput
+	delegatedOutput                 ledger.Delegate2Output
 	seqID, delegationID             base.ChainID
 }
 
@@ -109,12 +109,12 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		return nil, err
 	}
 
-	td.delegationLock = ledger.NewDelegateToSequencerLock(td.target, td.masterAddr, maxFreezeSlots)
+	td.delegationLock = ledger.NewDelegate2Lock(td.target, td.masterAddr, maxFreezeSlots)
 	txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 		WithAmount(delegatedTokens).
 		WithTargetLock(td.delegationLock).
 		WithConstraint(ledger.NewChainOrigin(ts.Slot, delegatedTokens)).
-		WithConstraint(ledger.DelegateToSequencerLockState{Revoked: revoked}),
+		WithConstraint(ledger.DelegateLock2State{Revoked: revoked}),
 	)
 	if err != nil && prnOnError {
 		td.Logf(">>>>> %v\n============ transaction ==============\n%s", err, td.u.TxToSource(txBytes))
@@ -124,7 +124,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		outs, err := td.u.SugaredStateReader().GetOutputsDelegatedToAccount2(td.target)
 		require.NoError(td, err)
 		require.EqualValues(td, 1, len(outs))
-		td.delegatedOutput, err = ledger.AsDelegateToSequencerOutput(outs[0])
+		td.delegatedOutput, err = ledger.AsDelegate2Output(outs[0])
 		require.NoError(td, err)
 		td.delegationID = td.delegatedOutput.ChainID
 		td.Logf("delegation ID: %s", td.delegationID.String())
@@ -187,7 +187,7 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots ui
 	do := tx.MustProducedOutputWithIDAt(0)
 	dc, err := do.AsChainOutput()
 	require.NoError(td, err)
-	td.delegatedOutput, err = ledger.AsDelegateToSequencerOutput(dc)
+	td.delegatedOutput, err = ledger.AsDelegate2Output(dc)
 	require.NoError(td, err)
 	td.delegationID = dc.ChainID
 
