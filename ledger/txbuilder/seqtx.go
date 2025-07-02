@@ -86,12 +86,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	util.Assertf(delegationTotalIn <= delegationTotalOut+delegationMargin, "delegationTotalIn<=delegationTotalOut+delegationMargin")
 	delegationInflation := delegationTotalOut - delegationTotalIn + delegationMargin
 
-	// find main chain constraint
-	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
-	if chainInConstraintIdx == 0xff {
-		return nil, nil, errP("is not a chain output: %s", par.ChainInput.ID.StringShort())
-	}
-
 	// count sums of additional inputs and outputs
 	additionalIn, withdrawOut := uint64(0), uint64(0)
 	for _, o := range par.AdditionalInputs {
@@ -168,18 +162,13 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 	txb.PutSignatureUnlock(chainPredIdx)
 
-	seqID := chainInConstraint.ID
-	if chainInConstraint.IsOrigin() {
-		seqID = base.MakeOriginChainID(par.ChainInput.ID)
-	}
-
 	var chainOutConstraintIdx byte
 
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.PutAmount(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(seqID, chainPredIdx, chainInConstraintIdx, chainInConstraint.OriginSlot, chainInConstraint.OriginAmount)
+		chainOutConstraint := ledger.NewChainConstraint(par.ChainInput.ChainID, chainPredIdx, par.ChainInput.ChainConstraintIndex, par.ChainInput.OriginSlot, par.ChainInput.OriginAmount)
 		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
 		// put sequencer constraint
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
@@ -215,14 +204,14 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		return nil, nil, errP(err)
 	}
 	// unlock chain input (chain constraint unlock + inflation (optionally)
-	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
+	txb.PutUnlockParams(chainPredIdx, par.ChainInput.ChainConstraintIndex, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
 
 	// transit delegation outputs
 	util.Assertf(len(par.DelegationOutputs) == len(delegationTransitions), "len(par.DelegationOutputs)==len(delegationTransitions)")
 	for i, o := range par.DelegationOutputs {
 		_, err = txb.ConsumeOutput(o.Output, o.ID)
 		util.AssertNoError(err)
-		txb.PutUnlockParams(byte(i+1), ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, chainInConstraintIdx))
+		txb.PutUnlockParams(byte(i+1), ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, par.ChainInput.ChainConstraintIndex))
 
 		succIdx, err := txb.ProduceOutput(delegationTransitions[i])
 		util.AssertNoError(err)
@@ -266,7 +255,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 				return nil, nil, err
 			}
 		case ledger.ChainLockName:
-			txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, chainInConstraintIdx))
+			txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, par.ChainInput.ChainConstraintIndex))
 		default:
 			return nil, nil, errP("unsupported type of additional input: %s", lockName)
 		}

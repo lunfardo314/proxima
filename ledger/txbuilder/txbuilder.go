@@ -791,14 +791,18 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		}
 	}
 
-	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.PredecessorConstraintIndex,
+	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.ChainConstraintIndex,
 		par.ChainOutput.OriginSlot, par.ChainOutput.OriginAmount)
 	util.Assertf(availableTokens > amount, "availableTokens > amount")
-	chainSuccessorOutput := par.ChainOutput.Output.Clone(func(o *ledger.OutputBuilder) {
-		o.WithAmount(availableTokens-amount).
-			PutConstraint(chainConstr.Bytes(), par.ChainOutput.PredecessorConstraintIndex)
+
+	var outChainConstraintIdx byte
+	chainSuccessorOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmount(availableTokens - amount)
+		o.WithLock(par.ChainOutput.Output.Lock())
+		outChainConstraintIdx = o.MustPushConstraint(chainConstr.Bytes())
 	})
-	if _, err = txb.ProduceOutput(chainSuccessorOutput); err != nil {
+	outChainOutputIdx, err := txb.ProduceOutput(chainSuccessorOutput)
+	if err != nil {
 		return nil, err
 	}
 
@@ -824,12 +828,12 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		return nil, err
 	}
 	// unlock chain input
-	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, par.ChainOutput.PredecessorConstraintIndex, []byte{0, par.ChainOutput.PredecessorConstraintIndex})
+	txb.PutSignatureUnlock(outChainOutputIdx)
+	txb.PutUnlockParams(0, par.ChainOutput.ChainConstraintIndex, []byte{outChainOutputIdx, outChainConstraintIdx})
 
 	// always reference chain input
 	for i := range consumedOuts {
-		chainUnlockRef := ledger.NewChainLockUnlockParams(0, par.ChainOutput.PredecessorConstraintIndex)
+		chainUnlockRef := ledger.NewChainLockUnlockParams(0, outChainConstraintIdx)
 		txb.PutUnlockParams(byte(i+1), ledger.ConstraintIndexLock, chainUnlockRef)
 		util.AssertNoError(err)
 	}
@@ -1004,3 +1008,15 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 	return txBytes, nil
 }
+
+//func MakeChainSuccessorTransactionSimple(chainIn *ledger.OutputWithChainID, privKey ed25519.PrivateKey, ts ...base.LedgerTime) ([]byte, error) {
+//	cc, idx := chainIn.Output.ChainConstraint()
+//	timestamp := chainIn.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+//	if len(ts) > 0 {
+//		timestamp = ts[0]
+//	}
+//	txb := New()
+//	if _, _, err := txb.ConsumeOutputsUnlock(&chainIn.OutputWithID); err != nil {
+//		return nil, err
+//	}
+//}

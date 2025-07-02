@@ -68,7 +68,11 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
 		ChainInput: &ledger.OutputWithChainID{
 			OutputWithID: *initSupplyOutput,
-			ChainID:      bootstrapChainID,
+			ChainConstraintData: ledger.ChainConstraintData{
+				ChainID:              bootstrapChainID,
+				OriginAmount:         initSupplyOutput.Output.Amount(),
+				ChainConstraintIndex: 2,
+			},
 		},
 		StemInput:        genesisStem,
 		Timestamp:        ts,

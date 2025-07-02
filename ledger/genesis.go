@@ -26,7 +26,11 @@ func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *Outp
 				util.Assertf(idxMsData == MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
 			}),
 		},
-		ChainID: base.BoostrapSequencerID,
+		ChainConstraintData: ChainConstraintData{
+			ChainID:              base.BoostrapSequencerID,
+			OriginAmount:         initialSupply,
+			ChainConstraintIndex: 2,
+		},
 	}
 }
 

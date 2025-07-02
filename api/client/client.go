@@ -308,23 +308,12 @@ func (c *APIClient) GetChainedOutputs(accountable ledger.Accountable) ([]*ledger
 		if err != nil {
 			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
 		}
-		cc, idx := o.ChainConstraint()
-		if idx == 0xff {
-			return nil, nil, fmt.Errorf("chained output expected from server: %s: '%v'", dataStr, err)
-		}
-		chainID := cc.ID
-		if cc.IsOrigin() {
-			chainID = base.MakeOriginChainID(oid)
-		}
 
-		ret = append(ret, &ledger.OutputWithChainID{
-			OutputWithID: ledger.OutputWithID{
-				ID:     oid,
-				Output: o,
-			},
-			ChainID:                    chainID,
-			PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
-		})
+		ret1, ok := ledger.AsOutputWithChainID(o, oid)
+		if !ok {
+			return nil, nil, fmt.Errorf("not a chain output: ID=%s:\n%s:", oid.String(), o.String())
+		}
+		ret = append(ret, &ret1)
 	}
 	return ret, &retLRBID, nil
 }
@@ -567,11 +556,7 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 	}
 
 	ret := make([]*ledger.OutputWithChainID, 0, len(res.Chains))
-	for chainIDStr, ci := range res.Chains {
-		chainID, err := base.ChainIDFromHexString(chainIDStr)
-		if err != nil {
-			return nil, nil, err
-		}
+	for _, ci := range res.Chains {
 		o, err := ledger.OutputFromHexString(ci.Data)
 		if err != nil {
 			return nil, nil, err
@@ -580,18 +565,12 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 		if err != nil {
 			return nil, nil, err
 		}
-		cc, idx := o.ChainConstraint()
-		if idx == 0xff {
+
+		cData, ok := ledger.AsOutputWithChainID(o, oid)
+		if !ok {
 			return nil, nil, fmt.Errorf("invalid chain constraint")
 		}
-		ret = append(ret, &ledger.OutputWithChainID{
-			OutputWithID: ledger.OutputWithID{
-				ID:     oid,
-				Output: o,
-			},
-			ChainID:                    chainID,
-			PredecessorConstraintIndex: cc.PredecessorInputIndex,
-		})
+		ret = append(ret, &cData)
 	}
 	return ret, &lrbid, nil
 }

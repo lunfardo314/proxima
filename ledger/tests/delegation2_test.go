@@ -30,7 +30,6 @@ type testData struct {
 	delegationLock                  *ledger.DelegateLock2
 	seqChainOrigin                  *ledger.OutputWithChainID
 	delegatedOutput                 ledger.Delegate2Output
-	seqID, delegationID             base.ChainID
 }
 
 func (td *testData) init() {
@@ -62,15 +61,12 @@ func (td *testData) init() {
 	require.EqualValues(td, 1, len(chOuts))
 
 	td.seqChainOrigin = chOuts[0]
-	var ok bool
-	td.seqID, _, ok = td.seqChainOrigin.ExtractChainID()
-	require.True(td, ok)
 	td.Logf("seq chain origin:\n%s", td.seqChainOrigin.String())
 
-	td.target = ledger.ChainLockFromChainID(td.seqID)
+	td.target = ledger.ChainLockFromChainID(td.seqChainOrigin.ChainID)
 	td.Logf("==== master address    : %s (%s)", td.masterAddr.String(), util.Th(td.u.Balance(td.masterAddr)))
 	td.Logf("==== seq controller    : %s (%s)", seqControllerAddr.String(), util.Th(td.u.Balance(seqControllerAddr)))
-	_, onChain, err := td.u.BalanceOnChain(td.seqID)
+	_, onChain, err := td.u.BalanceOnChain(td.seqChainOrigin.ChainID)
 	require.NoError(td, err)
 	td.Logf("==== seq on-chain      : %s", util.Th(onChain))
 	td.Logf("==== delegation target : %s (%s)", td.target.String(), util.Th(td.u.Balance(td.target)))
@@ -96,8 +92,6 @@ func (td *testData) init() {
 
 	td.seqChainOrigin, err = seqOut.AsChainOutput()
 	require.NoError(td, err)
-
-	require.EqualValues(td, td.seqID, td.seqChainOrigin.ChainID)
 }
 
 func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, maxFreezeSlots uint16, prnOnError bool) ([]byte, error) {
@@ -126,8 +120,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		require.EqualValues(td, 1, len(outs))
 		td.delegatedOutput, err = ledger.AsDelegate2Output(outs[0])
 		require.NoError(td, err)
-		td.delegationID = td.delegatedOutput.ChainID
-		td.Logf("delegation ID: %s", td.delegationID.String())
+		td.Logf("delegation ID: %s", td.delegatedOutput.ChainID.String())
 		td.Logf("delegated UTXO:\n%s", td.delegatedOutput.Output.ToSource("     "))
 	}
 	return txBytes, err
@@ -189,7 +182,6 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots ui
 	require.NoError(td, err)
 	td.delegatedOutput, err = ledger.AsDelegate2Output(dc)
 	require.NoError(td, err)
-	td.delegationID = dc.ChainID
 
 	err = td.u.AddTransaction(txBytes)
 	return txBytes, txString, err
@@ -281,7 +273,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmount(td.delegatedOutput.Output.Amount())
 			o.WithLock(td.delegatedOutput.Output.Lock())
-			o.MustPushConstraint(ledger.NewChainConstraint(td.delegationID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount).Bytes())
+			o.MustPushConstraint(ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount).Bytes())
 			o.MustPushConstraint(td.delegatedOutput.Output.MustConstraintAt(3))
 		}))
 		require.NoError(t, err)

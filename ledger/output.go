@@ -40,10 +40,15 @@ type (
 
 	OutputWithChainID struct {
 		OutputWithID
+		ChainConstraintData
+	}
+
+	ChainConstraintData struct {
 		ChainID                    base.ChainID
 		PredecessorConstraintIndex byte
 		OriginSlot                 base.Slot
 		OriginAmount               uint64
+		ChainConstraintIndex       byte
 	}
 
 	SequencerOutputData struct {
@@ -524,11 +529,14 @@ func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error
 		return nil, 0, err
 	}
 	return &OutputWithChainID{
-		OutputWithID:               *ret,
-		ChainID:                    chainID,
-		PredecessorConstraintIndex: chainConstr.PredecessorInputIndex,
-		OriginSlot:                 chainConstr.OriginSlot,
-		OriginAmount:               chainConstr.OriginAmount,
+		OutputWithID: *ret,
+		ChainConstraintData: ChainConstraintData{
+			ChainID:                    chainID,
+			PredecessorConstraintIndex: chainConstr.PredecessorInputIndex,
+			OriginSlot:                 chainConstr.OriginSlot,
+			OriginAmount:               chainConstr.OriginAmount,
+			ChainConstraintIndex:       idx,
+		},
 	}, idx, nil
 }
 
@@ -538,16 +546,33 @@ func (o *OutputDataWithID) MustParse() *OutputWithID {
 	return ret
 }
 
-func ExtractChainData(o *Output, oid base.OutputID) (chainID base.ChainID, predecessorConstraintIndex byte, originSlot base.Slot, originAmount uint64, ok bool) {
-	cc, blockIdx := o.ChainConstraint()
-	if blockIdx == 0xff {
-		return base.ChainID{}, 0, 0, 0, false
+func AsOutputWithChainID(o *Output, oid base.OutputID) (OutputWithChainID, bool) {
+	cData, ok := ExtractChainData(o, oid)
+	if !ok {
+		return OutputWithChainID{}, false
 	}
-	ret := cc.ID
+	return OutputWithChainID{
+		OutputWithID:        OutputWithID{ID: oid, Output: o},
+		ChainConstraintData: cData,
+	}, true
+}
+
+func ExtractChainData(o *Output, oid base.OutputID) (chainConstraintData ChainConstraintData, ok bool) {
+	cc, idx := o.ChainConstraint()
+	if idx == 0xff {
+		return ChainConstraintData{}, false
+	}
+	ret := ChainConstraintData{
+		ChainID:                    cc.ID,
+		PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
+		OriginSlot:                 cc.OriginSlot,
+		OriginAmount:               cc.OriginAmount,
+		ChainConstraintIndex:       idx,
+	}
 	if cc.ID == base.NilChainID {
-		ret = blake2b.Sum256(oid[:])
+		ret.ChainID = blake2b.Sum256(oid[:])
 	}
-	return ret, cc.PredecessorConstraintIndex, cc.OriginSlot, cc.OriginAmount, true
+	return ret, true
 }
 
 func ExtractChainID(o *Output, oid base.OutputID) (chainID base.ChainID, ok bool) {
@@ -565,21 +590,18 @@ func ExtractChainID(o *Output, oid base.OutputID) (chainID base.ChainID, ok bool
 
 // ExtractChainID return chainID, predecessor constraint index, existence flag
 func (o *OutputWithID) ExtractChainID() (chainID base.ChainID, predecessorConstraintIndex byte, ok bool) {
-	ret, idx, _, _, ok := ExtractChainData(o.Output, o.ID)
-	return ret, idx, ok
+	ret, ok := ExtractChainData(o.Output, o.ID)
+	return ret.ChainID, ret.PredecessorConstraintIndex, ok
 }
 
 func (o *OutputWithID) AsChainOutput() (*OutputWithChainID, error) {
-	chainID, predecessorConstraintIdx, genesisSlot, genesisAmount, ok := ExtractChainData(o.Output, o.ID)
+	cdata, ok := ExtractChainData(o.Output, o.ID)
 	if !ok {
 		return nil, fmt.Errorf("not a chain output")
 	}
 	return &OutputWithChainID{
-		OutputWithID:               *o,
-		ChainID:                    chainID,
-		PredecessorConstraintIndex: predecessorConstraintIdx,
-		OriginSlot:                 genesisSlot,
-		OriginAmount:               genesisAmount,
+		OutputWithID:        *o,
+		ChainConstraintData: cdata,
 	}, nil
 }
 
@@ -779,7 +801,12 @@ func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 				ID:     o.ID,
 				Output: o.Output,
 			},
-			PredecessorConstraintIndex: constraintIndex,
+			ChainConstraintData: ChainConstraintData{
+				PredecessorConstraintIndex: ch.PredecessorConstraintIndex,
+				OriginSlot:                 ch.OriginSlot,
+				OriginAmount:               ch.OriginAmount,
+				ChainConstraintIndex:       constraintIndex,
+			},
 		}
 		if ch.IsOrigin() {
 			h := blake2b.Sum256(o.ID[:])
@@ -817,9 +844,12 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 				ID:     odata.ID,
 				Output: o,
 			},
-			PredecessorConstraintIndex: constraintIndex,
-			OriginSlot:                 ch.OriginSlot,
-			OriginAmount:               ch.OriginAmount,
+			ChainConstraintData: ChainConstraintData{
+				PredecessorConstraintIndex: ch.PredecessorConstraintIndex,
+				OriginSlot:                 ch.OriginSlot,
+				OriginAmount:               ch.OriginAmount,
+				ChainConstraintIndex:       constraintIndex,
+			},
 		}
 		if ch.IsOrigin() {
 			h := blake2b.Sum256(odata.ID[:])

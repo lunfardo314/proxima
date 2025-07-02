@@ -198,10 +198,13 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount(addr ledger.Accountable
 					ID:     oid,
 					Output: o,
 				},
-				ChainID:                    chainID,
-				PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
-				OriginSlot:                 cc.OriginSlot,
-				OriginAmount:               cc.OriginAmount,
+				ChainConstraintData: ledger.ChainConstraintData{
+					ChainID:                    chainID,
+					PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
+					OriginSlot:                 cc.OriginSlot,
+					OriginAmount:               cc.OriginAmount,
+					ChainConstraintIndex:       idx,
+				},
 			})
 		}
 		return true
@@ -228,8 +231,13 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountabl
 					ID:     oid,
 					Output: o,
 				},
-				ChainID:                    chainID,
-				PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
+				ChainConstraintData: ledger.ChainConstraintData{
+					ChainID:                    chainID,
+					PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
+					OriginSlot:                 cc.OriginSlot,
+					OriginAmount:               cc.OriginAmount,
+					ChainConstraintIndex:       idx,
+				},
 			})
 		}
 		return true
@@ -346,8 +354,13 @@ func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWith
 				ID:     tip.oid,
 				Output: o,
 			},
-			ChainID:                    tip.chainID,
-			PredecessorConstraintIndex: cc.PredecessorInputIndex,
+			ChainConstraintData: ledger.ChainConstraintData{
+				ChainID:                    tip.chainID,
+				PredecessorConstraintIndex: cc.PredecessorConstraintIndex,
+				OriginSlot:                 cc.OriginSlot,
+				OriginAmount:               cc.OriginAmount,
+				ChainConstraintIndex:       idx,
+			},
 		})
 		if exit {
 			return nil

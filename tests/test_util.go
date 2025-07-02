@@ -31,7 +31,6 @@ import (
 	"github.com/lunfardo314/proxima/util/testutil/inittest"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/blake2b"
 )
 
 type workflowDummyEnvironment struct {
@@ -286,13 +285,13 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 		if int(idx) >= n {
 			return true
 		}
-		td.chainOrigins[idx] = &ledger.OutputWithChainID{
-			OutputWithID: ledger.OutputWithID{
-				ID:     oid,
-				Output: o,
-			},
-			ChainID: blake2b.Sum256(oid[:]),
+		otmp := ledger.OutputWithID{
+			ID:     oid,
+			Output: o,
 		}
+		ochain, err := otmp.AsChainOutput()
+		require.NoError(td.t, err)
+		td.chainOrigins[idx] = ochain
 		td.t.Logf("chain origin %s : %s, lock: %s", oid.StringShort(), td.chainOrigins[idx].ChainID.String(), td.chainOrigins[idx].Output.Lock().String())
 		return true
 	})

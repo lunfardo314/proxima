@@ -479,17 +479,14 @@ func (u *UTXODB) MakeNewChain(amount uint64, privateKey ed25519.PrivateKey, chai
 	})
 	util.Assertf(len(outs) == 1, "len(outs)>0")
 
-	chainID, predecessorConstraintIndex, originSlot, originAmount, ok := ledger.ExtractChainData(outs[0].Output, outs[0].ID)
+	chainData, ok := ledger.ExtractChainData(outs[0].Output, outs[0].ID)
 	if !ok {
-		return nil, fmt.Errorf("error extracting chainID")
+		return nil, fmt.Errorf("error extracting chain data")
 	}
 
 	return &ledger.OutputWithChainID{
-		OutputWithID:               *outs[0],
-		ChainID:                    chainID,
-		PredecessorConstraintIndex: predecessorConstraintIndex,
-		OriginSlot:                 originSlot,
-		OriginAmount:               originAmount,
+		OutputWithID:        *outs[0],
+		ChainConstraintData: chainData,
 	}, nil
 }
 
