@@ -282,35 +282,41 @@ func delegateLock2State : concat($1,1)
 func _unfreezeSlot : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateLock2State, 0))
 func _isRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLock2State, 1)
 
+func _equalTo1Of2 : or(equal($0,$1), equal($0,$2))
+
 // checks validity of the composition of the produced constraint 
-// $0 max freeze slots
+// $1 max freeze slots
 func _validDelegation2Produced :
 and(
-  selfIsProducedOutput,
-  enforceMinimumStorageDeposit,
-  require(
-	 equal(selfNumConstraints, u64/4), 
-	 !!!delegation_must_have_exactly_4_constraints
-  ), // prevent injection attacks
-  require(
-	 equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
-	 !!!#chain_is_expected_at_index_2
-  ),
-  require(
-	 equal(parsePrefixBytecode(selfSiblingConstraint(3)), #delegateLock2State), 
-	 !!!#delegateLock2State_is_expected_at_index_3
-  ),
-  require(
-	 or(not(_isDelegationOrigin), and(not(_isRevoked), isZero(_unfreezeSlot))), 
-	 !!!wrong_start_parameters
-  ),
-  require(
-     lessOrEqualThan(len($0), u64/2),
-     !!!too_long_max_freeze_slots_parameter
-  ),
+    selfIsProducedOutput,
+    enforceMinimumStorageDeposit,
+    require(
+	   equal(selfNumConstraints, u64/4), 
+	   !!!delegation_must_have_exactly_4_constraints
+    ), // to prevent injection attacks
+    require( 
+        _equalTo1Of2(parsePrefixBytecode(parseArgumentBytecode(self,selfBytecodePrefix,0)), #c, #chainLock),
+        !!!delegation_target_must_by_chainLock
+    ),
+    require(
+	   equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
+	   !!!#chain_is_expected_at_index_2
+    ),
+    require(
+	   equal(parsePrefixBytecode(selfSiblingConstraint(3)), #delegateLock2State), 
+	   !!!#delegateLock2State_is_expected_at_index_3
+    ),
+    require(
+	   or(not(_isDelegationOrigin), and(not(_isRevoked), isZero(_unfreezeSlot))), 
+	   !!!wrong_start_parameters
+    ),
+    require(
+       lessOrEqualThan(len($0), u64/2),
+       !!!too_long_max_freeze_slots_parameter
+    )
 )
 
-func _amountAtSuccessor : amountValueByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
+func _amountOnSuccessor : amountValueByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
 
 func _insideSafeRevocationWindow : and(
     not(_isDelegationOrigin),
@@ -337,7 +343,7 @@ func _validDelegation2Consumed : and(
 			  // target lock must be unlocked
 		 require($0, !!!delegation_target_must_be_unlocked),  
 			  // amount should not decrease
-		 require(lessOrEqualThan(selfAmountValue, _amountAtSuccessor), !!!amount_should_not_decrease),
+		 require(lessOrEqualThan(selfAmountValue, _amountOnSuccessor), !!!amount_should_not_decrease),
 			  // delegation lock must be immutable
 		 require(equal(successorConstraint(2), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_must_be_immutable),
       )
@@ -355,5 +361,4 @@ func delegateLock2: and(
        _validDelegation2Consumed($0,$1)
     )
 )
-
 `
