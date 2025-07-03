@@ -113,7 +113,7 @@ func (s SugaredStateReader) GetStemOutput() *ledger.OutputWithID {
 	return ret
 }
 
-func (s SugaredStateReader) GetChainOutput(chainID base.ChainID) (*ledger.OutputWithID, error) {
+func (s SugaredStateReader) GetChainOutputWithID(chainID base.ChainID) (*ledger.OutputWithID, error) {
 	oData, err := s.IndexedStateReader.GetUTXOForChainID(chainID)
 	if err != nil {
 		return nil, err
@@ -126,6 +126,26 @@ func (s SugaredStateReader) GetChainOutput(chainID base.ChainID) (*ledger.Output
 		ID:     oData.ID,
 		Output: ret,
 	}, nil
+}
+
+func (s SugaredStateReader) GetChainOutputWithChainID(chainID base.ChainID) (ledger.OutputWithChainID, error) {
+	o, err := s.GetChainOutputWithID(chainID)
+	if err != nil {
+		return ledger.OutputWithChainID{}, err
+	}
+	ret, ok := ledger.AsOutputWithChainID(o.Output, o.ID)
+	util.Assertf(ok, "GetChainOutputWithChainID: inconsistency")
+	return ret, nil
+}
+
+func (s SugaredStateReader) GetDelegatedOutput(delegationID base.ChainID) (ret ledger.Delegate2Output, err error) {
+	var o ledger.OutputWithChainID
+	o, err = s.GetChainOutputWithChainID(delegationID)
+	if err != nil {
+		return
+	}
+	ret, err = ledger.AsDelegate2Output(&o)
+	return
 }
 
 // GetChainTips return chain output and, if relevant, stem output for the chain id.
@@ -175,7 +195,7 @@ func (s SugaredStateReader) NumOutputs(addr ledger.AccountID) int {
 }
 
 func (s SugaredStateReader) BalanceOnChain(chainID base.ChainID) uint64 {
-	o, err := s.GetChainOutput(chainID)
+	o, err := s.GetChainOutputWithID(chainID)
 	if err != nil {
 		return 0
 	}

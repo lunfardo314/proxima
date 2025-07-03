@@ -632,9 +632,9 @@ func (o *OutputWithID) Lines(prefix ...string) *lines.Lines {
 		} else {
 			chainID = cc.ID
 		}
-		ret.Add("ChainID: %s", chainID.String())
+		ret.Add("      chainID: %s", chainID.String())
 	}
-	ret.Append(o.Output.Lines(prefix...))
+	ret.Append(o.Output.LinesSource(prefix...))
 	return ret
 }
 

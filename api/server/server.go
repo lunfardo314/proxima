@@ -422,7 +422,7 @@ func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 
 	resp := &api.ChainOutput{}
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
-		o, err1 := rdr.GetChainOutput(chainID)
+		o, err1 := rdr.GetChainOutputWithID(chainID)
 		if err1 != nil {
 			return err1
 		}

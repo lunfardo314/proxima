@@ -266,7 +266,7 @@ func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 	loadedTxs.Insert(vidBranch)
 
 	// load sequencer output for the chain
-	chainOut, err := rdr.GetChainOutput(seqID)
+	chainOut, err := rdr.GetChainOutputWithID(seqID)
 	if err != nil {
 		return fmt.Errorf("LoadSequencerStartTips: can't load chain output for %s: %w", seqID.StringShort(), err)
 	}

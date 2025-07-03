@@ -633,7 +633,7 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		return vertex.WrappedOutput{}
 	}
 	rdr := multistate.MakeSugared(seq.Branches().GetStateReaderForTheBranch(branchData.TxID()))
-	chainOut, err := rdr.GetChainOutput(seq.SequencerID())
+	chainOut, err := rdr.GetChainOutputWithID(seq.SequencerID())
 	if err != nil {
 		seq.Log().Warnf("bootstrapOwnMilestoneOutput: can't load own milestone output from LRB")
 		return vertex.WrappedOutput{}

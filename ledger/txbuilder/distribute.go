@@ -59,7 +59,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	}
 
 	bootstrapChainID := stateID.OriginChainID()
-	initSupplyOutput, err := rdr.GetChainOutput(bootstrapChainID)
+	initSupplyOutput, err := rdr.GetChainOutputWithID(bootstrapChainID)
 	if err != nil {
 		return nil, err
 	}

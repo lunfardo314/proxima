@@ -57,7 +57,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	originChainID, genesisRoot := multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 
-	genesisOut, err := rdr.GetChainOutput(originChainID)
+	genesisOut, err := rdr.GetChainOutputWithID(originChainID)
 	util.AssertNoError(err)
 
 	genesisStemOut := rdr.GetStemOutput()

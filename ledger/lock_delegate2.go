@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 )
 
 type (
@@ -20,8 +21,8 @@ type (
 		MaxFreezeSlots uint16
 	}
 	DelegateLock2State struct {
-		UnfreezeEpoch uint64
-		Revoked       bool
+		UnfreezeSlot uint64
+		Revoked      bool
 	}
 
 	Delegate2Output struct {
@@ -38,7 +39,7 @@ const (
 
 	Delegate2LockStateName       = "delegateLock2State"
 	Delegate2LockStateTemplate   = Delegate2LockStateName + "(z32/%d, %s)"
-	Delegate2LockStateTemplateHR = Delegate2LockStateName + "(unfreezeEpoch=%d, revoked=%v)"
+	Delegate2LockStateTemplateHR = Delegate2LockStateName + "(unfreezeSlot=%d, revoked=%v)"
 )
 
 //------------ DelegateLock2
@@ -185,8 +186,8 @@ func Delegate2LockStateFromBytes(data []byte) (DelegateLock2State, error) {
 		return DelegateLock2State{}, fmt.Errorf("Delegate2LockStateFromBytes: wrong argument 0")
 	}
 	return DelegateLock2State{
-		UnfreezeEpoch: fr,
-		Revoked:       !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
+		UnfreezeSlot: fr,
+		Revoked:      !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
 	}, nil
 }
 
@@ -195,11 +196,11 @@ func (d DelegateLock2State) Source() string {
 	if d.Revoked {
 		r = "0xff"
 	}
-	return fmt.Sprintf(Delegate2LockStateTemplate, d.UnfreezeEpoch, r)
+	return fmt.Sprintf(Delegate2LockStateTemplate, d.UnfreezeSlot, r)
 }
 
 func (d DelegateLock2State) String() string {
-	return fmt.Sprintf(Delegate2LockStateTemplateHR, d.UnfreezeEpoch, d.Revoked)
+	return fmt.Sprintf(Delegate2LockStateTemplateHR, d.UnfreezeSlot, d.Revoked)
 }
 
 func (d DelegateLock2State) Bytes() []byte {
@@ -215,7 +216,7 @@ func initTestDelegate2LockState() {
 
 	dlzBack, err := Delegate2LockStateFromBytes(dlz.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(dlzBack.UnfreezeEpoch == 1337, "DelegateLock2State: inconsistency 1")
+	util.Assertf(dlzBack.UnfreezeSlot == 1337, "DelegateLock2State: inconsistency 1")
 	util.Assertf(dlzBack.Revoked, "DelegateLock2State: inconsistency 2")
 	util.Assertf(dlz == dlzBack, "DelegateLock2State: inconsistency 3")
 
@@ -223,7 +224,7 @@ func initTestDelegate2LockState() {
 
 	dlzBack, err = Delegate2LockStateFromBytes(dlz.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(dlzBack.UnfreezeEpoch == 222, "DelegateLock2State: inconsistency 1")
+	util.Assertf(dlzBack.UnfreezeSlot == 222, "DelegateLock2State: inconsistency 1")
 	util.Assertf(!dlzBack.Revoked, "DelegateLock2State: inconsistency 4")
 	util.Assertf(dlz == dlzBack, "DelegateLock2State: inconsistency 5")
 }
@@ -260,6 +261,33 @@ func AsDelegate2Output(o *OutputWithChainID) (ret Delegate2Output, err error) {
 		ret.DelegateLock2State, err = Delegate2LockStateFromBytes(data)
 	}
 	return
+}
+
+// SafeRevocationSlots return slots from-to (inclusive) when target cannot consume the delegation output
+// (0, 0) means it is revoked, i.e., it cannot be consumed by the target
+func (o *Delegate2Output) SafeRevocationSlots() (from, to base.Slot) {
+	if o.Revoked {
+		return
+	}
+	return base.Slot(o.UnfreezeSlot), base.Slot(o.UnfreezeSlot) + base.Slot(DelegationSafeRevocationSlots()) - 1
+}
+
+func (o *Delegate2Output) LinesSource(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("---- delegation output ----")
+	ret.Append(o.OutputWithChainID.Lines("   "))
+	ret.Add("Master: %s", o.MasterLock.Source())
+	ret.Add("Target: %s", o.Target.Source())
+	ret.Add("MaxFreezeSlots: %d", o.MaxFreezeSlots)
+	ret.Add("Unfreeze slot: %d", o.UnfreezeSlot)
+	revStr := "all (permanently revoked by the master)"
+	f, t := o.SafeRevocationSlots()
+	util.Assertf(f <= t, "f<=t")
+	if f != 0 || t != 0 {
+		revStr = fmt.Sprintf("from %d to %d (inclusive)", f, t)
+	}
+	ret.Add("Safe revocation slots: %s", revStr)
+	return ret
 }
 
 const delegateLock2Source = `

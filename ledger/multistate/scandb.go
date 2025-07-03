@@ -116,16 +116,16 @@ func FetchSummarySupply(stateStore StateStore, nBack int) *SummarySupplyAndInfla
 
 	for seqID, seqInfo := range ret.InfoPerSeqID {
 		rdr := MustNewSugaredReadableState(stateStore, branchData[0].Root) // heaviest
-		o, err := rdr.GetChainOutput(seqID)
+		o, err := rdr.GetChainOutputWithID(seqID)
 		if err == nil {
 			seqInfo.EndBalance = o.Output.Amount()
 		}
-		stem, err := rdr.GetChainOutput(seqID)
+		stem, err := rdr.GetChainOutputWithID(seqID)
 		util.AssertNoError(err)
 		seqInfo.StemInTheHeaviest = stem.ID
 
 		rdr = MustNewSugaredReadableState(stateStore, branchData[len(branchData)-1].Root)
-		o, err = rdr.GetChainOutput(seqID)
+		o, err = rdr.GetChainOutputWithID(seqID)
 		if err == nil {
 			seqInfo.BeginBalance = o.Output.Amount()
 		}

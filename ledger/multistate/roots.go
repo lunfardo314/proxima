@@ -260,7 +260,7 @@ func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchDat
 	rdr, err := NewSugaredReadableState(store, rootData.Root, 0)
 	util.AssertNoError(err)
 
-	seqOut, err := rdr.GetChainOutput(rootData.SequencerID)
+	seqOut, err := rdr.GetChainOutputWithID(rootData.SequencerID)
 	util.AssertNoError(err)
 
 	return BranchData{
