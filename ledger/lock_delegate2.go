@@ -21,7 +21,7 @@ type (
 		MaxFreezeSlots uint16
 	}
 	DelegateLock2State struct {
-		UnfreezeSlot uint64
+		UnfreezeSlot base.Slot
 		Revoked      bool
 	}
 
@@ -186,7 +186,7 @@ func Delegate2LockStateFromBytes(data []byte) (DelegateLock2State, error) {
 		return DelegateLock2State{}, fmt.Errorf("Delegate2LockStateFromBytes: wrong argument 0")
 	}
 	return DelegateLock2State{
-		UnfreezeSlot: fr,
+		UnfreezeSlot: base.Slot(fr),
 		Revoked:      !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
 	}, nil
 }
@@ -313,7 +313,7 @@ func _isRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLock
 func _equalTo1Of2 : or(equal($0,$1), equal($0,$2))
 
 // checks validity of the composition of the produced constraint 
-// $1 max freeze slots
+// $0 max freeze slots
 func _validDelegation2Produced :
 and(
     selfIsProducedOutput,
@@ -340,7 +340,11 @@ and(
     ),
     require(
        lessOrEqualThan(len($0), u64/2),
-       !!!too_long_max_freeze_slots_parameter
+       !!!too_max_freeze_slots_must_be_max_2_bytes 
+    ),
+    require(
+       lessThan(_unfreezeSlot, add(txSlot, $0)),
+       !!!unfreeze_slot_cannot_exceed_maximum_set_by_delegator
     )
 )
 
