@@ -422,4 +422,55 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.discontinueDelegation(ts, false)
 		require.NoError(t, err)
 	})
+	t.Run("revoke", func(t *testing.T) {
+		// target consumes initial delegation
+		td.init()
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		_, txString, err = td.initDelegationUTXOMake(ts, 512)
+		require.NoError(t, err)
+
+		// freeze for 512 slots
+		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
+		err = td.transitChainWithDelegation(1, transitParams{
+			ts: ts,
+			delegationState: ledger.DelegateLock2State{
+				UnfreezeSlot: ts.Slot + 512 - 1,
+			},
+			prntx: false,
+		})
+		require.NoError(t, err)
+
+		// fail to unlock by master
+		ts = base.NewLedgerTime(td.delegatedOutput.UnfreezeSlot-100, 5)
+		err = td.discontinueDelegation(ts, false)
+		util.RequireErrorWith(t, err, "master can only unlock revoked or unfrozen")
+
+		// succeed to unlock by target to mark output revoked
+		err = td.transitChainWithDelegation(2, transitParams{
+			ts: ts,
+			delegationState: ledger.DelegateLock2State{
+				UnfreezeSlot: 0,
+				Revoked:      true,
+			},
+			prntx: false,
+		})
+		require.NoError(t, err)
+
+		// fail to unlock by target
+		ts = td.timestampSlotsForward(20)
+		err = td.transitChainWithDelegation(3, transitParams{
+			ts: ts,
+			delegationState: ledger.DelegateLock2State{
+				UnfreezeSlot: 0,
+				Revoked:      true,
+			},
+			prntx: false,
+		})
+		util.RequireErrorWith(t, err, "revoked delegation cannot be unlocked by the target")
+
+		// succeed to kill chain by master
+		err = td.discontinueDelegation(ts, false)
+		require.NoError(t, err)
+
+	})
 }

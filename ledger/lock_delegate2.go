@@ -370,7 +370,7 @@ func _validDelegation2Consumed : and(
         // or target unlocked with conditions
       and(
               // if it is revoked, only master can unlock it
-         require(not(_isRevoked), !!!delegation_target_should_not_be_revoked),
+         require(not(_isRevoked), !!!revoked_delegation_cannot_be_unlocked_by_the_target),
          require(not(_insideSafeRevocationWindow), !!!delegation_target_should_not_be_unlocked_inside_safe_revocation_window),
 			  // target lock must be unlocked
 		 require($0, !!!delegation_target_must_be_unlocked),  
