@@ -375,7 +375,7 @@ func _validDelegation2Consumed : and(
 			  // target lock must be unlocked
 		 require($0, !!!delegation_target_must_be_unlocked),  
 			  // amount should not decrease
-		 require(lessOrEqualThan(selfAmountValue, _amountOnSuccessor), !!!amount_should_not_decrease),
+		 require(lessOrEqualThan(selfAmountValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease),
 			  // delegation lock must be immutable
 		 require(equal(successorConstraint(2), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_must_be_immutable),
       )

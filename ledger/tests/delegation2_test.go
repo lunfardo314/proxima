@@ -169,6 +169,7 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots ui
 type transitParams struct {
 	ts              base.LedgerTime
 	delegationState ledger.DelegateLock2State
+	addAmount       int64
 	prntx           bool
 }
 
@@ -181,6 +182,8 @@ func (td *testData) transitChainWithDelegation(n int, par transitParams) (err er
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
+		amount := uint64(int64(td.seqChainOrigin.Output.Amount()) - par.addAmount)
+		o.WithAmount(amount)
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
 	}))
 	require.NoError(td, err)
@@ -195,7 +198,8 @@ func (td *testData) transitChainWithDelegation(n int, par transitParams) (err er
 	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmount(td.delegatedOutput.Output.Amount())
+		amount := uint64(int64(td.delegatedOutput.Output.Amount()) + par.addAmount)
+		o.WithAmount(amount)
 		o.WithLock(td.delegatedOutput.Output.Lock())
 		o.MustPushConstraint(ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount).Bytes())
 		o.MustPushConstraint(par.delegationState.Bytes())
@@ -393,6 +397,42 @@ func TestDelegationLock2Consume(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
+	t.Run("target_freeze_ok_add_amount", func(t *testing.T) {
+		// target consumes initial delegation
+		td.init()
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		_, txString, err = td.initDelegationUTXOMake(ts, 512)
+		require.NoError(t, err)
+
+		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
+		err = td.transitChainWithDelegation(1, transitParams{
+			ts: ts,
+			delegationState: ledger.DelegateLock2State{
+				UnfreezeSlot: ts.Slot + 512 - 1,
+			},
+			addAmount: 1000,
+			prntx:     false,
+		})
+		require.NoError(t, err)
+	})
+	t.Run("target_freeze_ok_steal_from_delegation", func(t *testing.T) {
+		// target consumes initial delegation
+		td.init()
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		_, txString, err = td.initDelegationUTXOMake(ts, 512)
+		require.NoError(t, err)
+
+		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
+		err = td.transitChainWithDelegation(1, transitParams{
+			ts: ts,
+			delegationState: ledger.DelegateLock2State{
+				UnfreezeSlot: ts.Slot + 512 - 1,
+			},
+			addAmount: -1000,
+			prntx:     false,
+		})
+		util.RequireErrorWith(t, err, "delegated amount should not decrease")
+	})
 	t.Run("master_unlock_frozen", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
@@ -456,7 +496,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// fail to unlock by target
+		// fail to unlock by target revoked delegation
 		ts = td.timestampSlotsForward(20)
 		err = td.transitChainWithDelegation(3, transitParams{
 			ts: ts,
@@ -468,7 +508,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		})
 		util.RequireErrorWith(t, err, "revoked delegation cannot be unlocked by the target")
 
-		// succeed to kill chain by master
+		// succeed to kill the delegation chain by master
 		err = td.discontinueDelegation(ts, false)
 		require.NoError(t, err)
 
