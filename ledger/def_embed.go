@@ -47,6 +47,7 @@ func (c *EvalContext) SetEvalPath(path []byte) {
 var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"at":             evalPath,
 	"atPath":         evalAtPath,
+	"amounts":        evalAmounts,
 	"ticksBefore":    evalTicksBefore64, // TODO make it extended in pure EasyFL
 	"randomFromSeed": evalRandomFromSeed,
 }
@@ -82,6 +83,11 @@ functions:
       embedded: true
       short: true
 # long
+   -
+      sym: "amounts"
+      description: "UTXO constraint for the vector of amounts"
+      numArgs: -1
+      embedded: true
    -
       sym: ticksBefore
       description: "number of ticks between timestamps $0 and $1 as big-endian uint64 if $0 is before $1, or 0x otherwise"

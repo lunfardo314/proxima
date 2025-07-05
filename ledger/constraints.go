@@ -7,7 +7,6 @@ import (
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -65,9 +64,31 @@ func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser Const
 	util.Assertf(0 < len(prefix) && len(prefix) <= 2, "wrong constraint prefix %s, name: %s", easyfl_util.Fmt(prefix), name)
 	lib.constraintByPrefix[string(prefix)] = &constraintRecord{
 		name:   name,
-		prefix: common.Concat(prefix),
+		prefix: bytes.Clone(prefix),
 		parser: parser,
 	}
+	lib.constraintNames.Insert(name)
+	lib.appendInlineTests(inlineTests...)
+}
+
+// mustRegisterVarargConstraint registers one parser for each possible number of args (0 to 15)
+func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintParser, inlineTests ...func()) {
+	util.Assertf(!lib.constraintNames.Contains(name), "repeating constraint name '%s'", name)
+
+	for i := 0; i <= 15; i++ {
+		prefix, err := lib.FunctionCallPrefixByName(name, byte(i))
+		util.AssertNoError(err)
+
+		_, already := lib.constraintByPrefix[string(prefix)]
+		util.Assertf(!already, "repeating constraint prefix %s with name '%s'", easyfl_util.Fmt(prefix), name)
+		util.Assertf(0 < len(prefix) && len(prefix) <= 2, "wrong constraint prefix %s, name: %s", easyfl_util.Fmt(prefix), name)
+		lib.constraintByPrefix[string(prefix)] = &constraintRecord{
+			name:   name,
+			prefix: bytes.Clone(prefix),
+			parser: parser,
+		}
+	}
+
 	lib.constraintNames.Insert(name)
 	lib.appendInlineTests(inlineTests...)
 }

@@ -182,6 +182,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], id *IdentityParameters) {
 
 // registerConstraints mass-registers all wrappers of constraints
 func (lib *Library) registerConstraints() {
+	registerAmountsConstraint(lib)
 	registerAmountConstraint(lib)
 	registerAddressED25519Constraint(lib)
 	registerConditionalLock(lib)
