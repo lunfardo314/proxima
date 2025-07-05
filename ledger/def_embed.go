@@ -22,7 +22,8 @@ type (
 
 	EvalContext struct {
 		TxContextAccess
-		path []byte
+		path    []byte
+		amounts Amounts // cached value
 	}
 )
 
@@ -36,12 +37,42 @@ func (c *EvalContext) TxContext() TxContextAccess {
 	return c.TxContextAccess
 }
 
+func (c *EvalContext) SelfSiblingPath(idx byte) (ret []byte) {
+	ret = bytes.Clone(c.path)
+	ret[len(ret)-1] = idx
+	return
+}
+
+func (c *EvalContext) SelfSiblingBytes(idx byte) (ret []byte) {
+	var err error
+	ret, err = c.BytesAtPath(c.SelfSiblingPath(idx))
+	util.AssertNoError(err)
+	return
+}
+
+func (c *EvalContext) SelfAmounts() Amounts {
+	if c.amounts != nil {
+		return c.amounts
+	}
+	var err error
+	c.amounts, err = AmountsFromBytes(c.SelfSiblingBytes(0))
+	util.AssertNoError(err)
+	return c.amounts
+}
+
 func (c *EvalContext) EvalPath() []byte {
 	return c.path
 }
 
 func (c *EvalContext) SetEvalPath(path []byte) {
 	c.path = bytes.Clone(path)
+}
+
+func (c *EvalContext) SelfOutputBytes() (ret []byte) {
+	var err error
+	ret, err = c.BytesAtPath(c.path[:len(c.path)-1])
+	util.AssertNoError(err)
+	return
 }
 
 var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{

@@ -17,11 +17,9 @@ const (
 	AmountsName = "amounts"
 )
 
-func NewAmounts(args ...uint64) (Amounts, error) {
-	if len(args) > 15 {
-		return nil, fmt.Errorf("NewAmounts: too many arguments")
-	}
-	return slices.Clone(args), nil
+func NewAmounts(args ...uint64) Amounts {
+	util.Assertf(len(args) <= 15, "NewAmounts: too many arguments")
+	return slices.Clone(args)
 }
 
 func (a Amounts) Name() string {
@@ -50,6 +48,21 @@ func (a Amounts) String() string {
 	return a.Source()
 }
 
+func (a Amounts) Amount(i int) (uint64, error) {
+	if i < 0 || i > 15 {
+		return 0, fmt.Errorf("amount index is out of range: %d", i)
+	}
+	if i >= len(a) {
+		return 0, nil
+	}
+	return a[i], nil
+}
+
+func (a Amounts) TokenBalance() (ret uint64) {
+	ret, _ = a.Amount(0)
+	return
+}
+
 func AmountsFromBytes(data []byte) (Amounts, error) {
 	sym, _, args, err := L().ParseBytecodeOneLevel(data)
 	if err != nil {
@@ -74,8 +87,7 @@ func registerAmountsConstraint(lib *Library) {
 }
 
 func initTestAmountsConstraint() {
-	example, err := NewAmounts(1, 2, 1337, 0x01020304050607)
-	util.AssertNoError(err)
+	example := NewAmounts(1, 2, 1337, 0x01020304050607)
 
 	exampleBack, err := ConstraintFromBytes(example.Bytes())
 	util.AssertNoError(err)
@@ -89,6 +101,26 @@ func initTestAmountsConstraint() {
 	util.Assertf(exampleBack1[3] == 0x01020304050607, "exampleBack1[3]==0x01020304050607")
 }
 
+const vByteCost = 1
+
+func storageDepositByOutputBytes(data []byte) uint64 {
+	return vByteCost * uint64(len(data))
+}
+
+func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext]) bool {
+	ctx := par.DataContext()
+	bal := ctx.SelfAmounts().TokenBalance()
+	deposit := storageDepositByOutputBytes(ctx.SelfOutputBytes())
+	if bal < deposit {
+		par.TracePanic("token balance (%d) is less than required storage deposit (%d)", bal, deposit)
+		return false
+	}
+	return true
+}
+
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
+	//if !_checkMinimumStorageDeposit(par) {
+	//	return nil
+	//}
 	return []byte{0xff}
 }
