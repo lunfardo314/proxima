@@ -14,7 +14,7 @@ import (
 type Amounts []uint64
 
 const (
-	AmountsName = "amounts"
+	AmountsConstraintName = "amounts"
 )
 
 func NewAmounts(args ...uint64) Amounts {
@@ -23,7 +23,7 @@ func NewAmounts(args ...uint64) Amounts {
 }
 
 func (a Amounts) Name() string {
-	return AmountsName
+	return AmountsConstraintName
 }
 
 func (a Amounts) Bytes() []byte {
@@ -41,11 +41,15 @@ func (a Amounts) Source() string {
 			argsStr[i] = "z64/" + strconv.FormatUint(arg, 10)
 		}
 	}
-	return AmountsName + "(" + strings.Join(argsStr, ",") + ")"
+	return AmountsConstraintName + "(" + strings.Join(argsStr, ",") + ")"
 }
 
 func (a Amounts) String() string {
-	return a.Source()
+	argsStr := make([]string, len(a))
+	for i, arg := range a {
+		argsStr[i] = util.Th(arg)
+	}
+	return AmountsConstraintName + "(" + strings.Join(argsStr, ",") + ")"
 }
 
 func (a Amounts) Amount(i int) (uint64, error) {
@@ -68,7 +72,7 @@ func AmountsFromBytes(data []byte) (Amounts, error) {
 	if err != nil {
 		return nil, err
 	}
-	if sym != AmountsName {
+	if sym != AmountsConstraintName {
 		return nil, fmt.Errorf("AmountsFromBytes: not 'amounts' constraint")
 	}
 	ret := make(Amounts, len(args))
@@ -81,7 +85,7 @@ func AmountsFromBytes(data []byte) (Amounts, error) {
 }
 
 func registerAmountsConstraint(lib *Library) {
-	lib.mustRegisterVarargConstraint(AmountsName, func(data []byte) (Constraint, error) {
+	lib.mustRegisterVarargConstraint(AmountsConstraintName, func(data []byte) (Constraint, error) {
 		return AmountsFromBytes(data)
 	}, initTestAmountsConstraint)
 }
@@ -91,7 +95,7 @@ func initTestAmountsConstraint() {
 
 	exampleBack, err := ConstraintFromBytes(example.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(example.Name() == AmountsName, "inconsistency 1")
+	util.Assertf(example.Name() == AmountsConstraintName, "inconsistency 1")
 	exampleBack1 := exampleBack.(Amounts)
 	util.Assertf(len(exampleBack1) == 4, "inconsistency 2")
 
@@ -119,8 +123,32 @@ func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext]) bool {
 }
 
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
-	//if !_checkMinimumStorageDeposit(par) {
-	//	return nil
-	//}
+	path := par.DataContext().EvalPath()
+	if path[len(path)-1] != ConstraintIndexAmounts {
+		par.TracePanic("'amounts' must be at index %d", ConstraintIndexAmounts)
+		return nil
+	}
+	if !_checkMinimumStorageDeposit(par) {
+		return nil
+	}
 	return []byte{0xff}
 }
+
+const amountsAuxSource = `
+
+// $0 path to output
+// Returns amount value 8 bytes from the output at path given in $0
+func tokenBalanceByOutputPath : uint8Bytes(parseInlineDataArgument(atPath(concat($0, amountConstraintIndex)), #amounts,0))
+
+func selfTokenBalanceValue: tokenBalanceByOutputPath(selfOutputPath)
+
+// $0 number of output bytes
+func storageDeposit : mul(constVBCost16,$0)
+
+// enforces storage deposit
+func enforceMinimumStorageDeposit: 
+	require(
+		not(lessThan(selfTokenBalanceValue, storageDeposit(len(selfOutputBytes)))),
+		!!!amount_on_output_is_smaller_than_allowed_minimum
+	)
+`

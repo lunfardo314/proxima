@@ -89,10 +89,10 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	// count sums of additional inputs and outputs
 	additionalIn, withdrawOut := uint64(0), uint64(0)
 	for _, o := range par.AdditionalInputs {
-		additionalIn += o.Output.Amount()
+		additionalIn += o.Output.TokenBalance()
 	}
 	for _, o := range par.WithdrawOutputs {
-		withdrawOut += o.Amount()
+		withdrawOut += o.TokenBalance()
 	}
 
 	var vrfProof []byte
@@ -120,7 +120,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			mainChainInflationAmount = ledger.L().BranchInflationBonusFromRandomnessProof(vrfProof)
 		} else {
 			// for non-branch
-			mainChainInflationAmount = ledger.L().CalcChainInflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.Amount())
+			mainChainInflationAmount = ledger.L().CalcChainInflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.TokenBalance())
 		}
 		mainChainInflationConstraint = &ledger.InflationConstraint{
 			InflationAmount: mainChainInflationAmount,
@@ -128,7 +128,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 
 	// total input amount on the chain
-	chainInAmount := par.ChainInput.Output.Amount()
+	chainInAmount := par.ChainInput.Output.TokenBalance()
 
 	// check if withdrawals are possible
 	if chainInAmount+additionalIn+mainChainInflationAmount+delegationMargin < withdrawOut {
@@ -165,7 +165,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	var chainOutConstraintIdx byte
 
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.PutAmount(chainOutAmount)
+		o.PutTokenBalance(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
 		chainOutConstraint := ledger.NewChainConstraint(par.ChainInput.ChainID, chainPredIdx, par.ChainInput.ChainConstraintIndex, par.ChainInput.OriginSlot, par.ChainInput.OriginAmount)
@@ -229,7 +229,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		util.Assertf(len(vrfProof) > 0, "len(vrfProof)>0")
 
 		stemOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(par.StemInput.Output.Amount())
+			o.WithTokenBalance(par.StemInput.Output.TokenBalance())
 			o.WithLock(&ledger.StemLock{
 				PredecessorOutputID: par.StemInput.ID,
 				VRFProof:            vrfProof,
@@ -318,7 +318,7 @@ func makeDelegationTransitions(inputs []*ledger.OutputWithChainID, offs byte, ta
 			return
 		}
 
-		inChainAmount := in.Output.Amount()
+		inChainAmount := in.Output.TokenBalance()
 		delegationInflation := ledger.L().CalcChainInflationAmount(in.ID.Timestamp(), targetTs, inChainAmount)
 
 		inflationTotal += delegationInflation
@@ -330,7 +330,7 @@ func makeDelegationTransitions(inputs []*ledger.OutputWithChainID, offs byte, ta
 		retTotalOut += outChainAmount
 
 		ret[i] = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(outChainAmount).
+			o.WithTokenBalance(outChainAmount).
 				WithLock(in.Output.Lock())
 			ccSucc := ledger.NewChainConstraint(chainID, byte(i)+offs, ccIdx, cc.OriginSlot, cc.OriginAmount)
 			o.MustPushConstraint(ccSucc.Bytes())
@@ -343,9 +343,6 @@ func makeDelegationTransitions(inputs []*ledger.OutputWithChainID, offs byte, ta
 				o.MustPushConstraint(ic.Bytes())
 			}
 		})
-		if err != nil {
-			return
-		}
 	}
 	util.Assertf(retTotalOut == retTotalIn+inflationTotal, "retTotalOut == retTotalIn+inflationTotal")
 	util.Assertf(retTotalIn+inflationTotal == retMargin+retTotalOut, "retTotalIn+inflationTotal == retMargin+retTotalOut")

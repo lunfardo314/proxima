@@ -79,7 +79,7 @@ var (
 
 // Mandatory output block indices
 const (
-	ConstraintIndexAmount = byte(iota)
+	ConstraintIndexAmounts = byte(iota)
 	ConstraintIndexLock
 	ConstraintIndexFirstOptionalConstraint
 )
@@ -99,7 +99,7 @@ func pathConstants() string {
 		PathToTimestamp.Hex(),
 		PathToTotalProducedAmount.Hex(),
 		PathToLocalLibraries.Hex(),
-		ConstraintIndexAmount,
+		ConstraintIndexAmounts,
 		ConstraintIndexLock,
 	)
 }

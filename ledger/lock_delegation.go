@@ -46,7 +46,7 @@ func selfSiblingUnlockParams : atTuple8(unlockParamsByIndex(selfOutputIndex), $0
 // $2 path to successor output
 func _enforceDelegationTargetConstraintsOnSuccessor : and(
     $1,  // target lock must be unlocked
-    require(lessOrEqualThan(selfAmountValue, amountValueByOutputPath($2)), !!!amount_should_not_decrease),
+    require(lessOrEqualThan(selfTokenBalanceValue, tokenBalanceByOutputPath($2)), !!!amount_should_not_decrease),
     require(equal(atPath(concat($2, lockConstraintIndex)), selfSiblingConstraint(lockConstraintIndex)), !!!lock_must_be_immutable)
 )
 
@@ -88,7 +88,7 @@ func delegationLock: and(
              // check general consistency of the lock on the produced output
             selfIsProducedOutput,
             require(equal(parsePrefixBytecode(selfSiblingConstraint($0)), #chain), !!!wrong_chain_constraint_index),
-            require(greaterOrEqualThan(selfAmountValue, minimumDelegatedAmount), !!!delegation_amount_is_below_minimum),
+            require(greaterOrEqualThan(selfTokenBalanceValue, minimumDelegatedAmount), !!!delegation_amount_is_below_minimum),
 	        require(not(equal($0, 0xff)), !!!chain_constraint_index_0xff_is_not_alowed),
             _validDelegationChainPace($0),
             $1, $2

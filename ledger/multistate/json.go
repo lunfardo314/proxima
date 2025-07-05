@@ -63,7 +63,7 @@ func (br *BranchData) JSONAble() *BranchDataJSONAble {
 		Root:                 *br.RootRecord.JSONAble(),
 		StemOutputIndex:      br.Stem.ID.Index(),
 		SequencerOutputIndex: br.SequencerOutput.ID.Index(),
-		OnChainAmount:        br.SequencerOutput.Output.Amount(),
+		OnChainAmount:        br.SequencerOutput.Output.TokenBalance(),
 		BranchInflation:      br.SequencerOutput.Output.Inflation(),
 	}
 }

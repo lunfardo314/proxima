@@ -100,7 +100,7 @@ func TestAttachBasic(t *testing.T) {
 		rdr := multistate.MakeSugared(wrk.Branches().GetStateReaderForTheBranch(distribVID.ID()))
 		stemOut := rdr.GetStemOutput()
 		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
-		require.EqualValues(t, 0, stemOut.Output.Amount())
+		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribVID.ID())
 		require.True(t, ok)
@@ -170,7 +170,7 @@ func TestAttachBasic(t *testing.T) {
 		stemOut := rdr.GetStemOutput()
 
 		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
-		require.EqualValues(t, 0, stemOut.Output.Amount())
+		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribTxID)
 		require.True(t, ok)
@@ -240,7 +240,7 @@ func TestAttachBasic(t *testing.T) {
 		require.NoError(t, err)
 
 		require.EqualValues(t, int(stemOut.ID.Slot()), int(distribTxID.Slot()))
-		require.EqualValues(t, 0, stemOut.Output.Amount())
+		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())
 		require.True(t, ok)
@@ -287,7 +287,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		amount := uint64(0)
 		for _, o := range testData.conflictingOutputs {
-			amount += o.Output.Amount()
+			amount += o.Output.TokenBalance()
 		}
 
 		branches := multistate.FetchLatestBranches(testData.wrk.StateStore())
@@ -347,7 +347,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		amount := uint64(0)
 		for _, o := range testData.conflictingOutputs {
-			amount += o.Output.Amount()
+			amount += o.Output.TokenBalance()
 		}
 
 		inTS := make([]base.LedgerTime, 0)
@@ -423,7 +423,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		amount := uint64(0)
 		for _, o := range testData.terminalOutputs {
 			inTS = append(inTS, o.Timestamp())
-			amount += o.Output.Amount()
+			amount += o.Output.TokenBalance()
 		}
 
 		ts := base.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer())
@@ -508,7 +508,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		amount := uint64(0)
 		for _, o := range testData.terminalOutputs {
 			inTS = append(inTS, o.Timestamp())
-			amount += o.Output.Amount()
+			amount += o.Output.TokenBalance()
 		}
 		for _, ts := range inTS {
 			t.Logf("inTS : %s", ts.String())

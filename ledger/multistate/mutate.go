@@ -71,7 +71,7 @@ func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable) (delta supplyD
 }
 
 func (m *mutationAddOutput) text() string {
-	return fmt.Sprintf("ADD   %s (%s, inflation %s)", m.ID.StringShort(), util.Th(m.Output.Amount()), util.Th(m.Output.Inflation()))
+	return fmt.Sprintf("ADD   %s (%s, inflation %s)", m.ID.StringShort(), util.Th(m.Output.TokenBalance()), util.Th(m.Output.Inflation()))
 }
 
 func (m *mutationAddOutput) sortOrder() byte {
@@ -187,7 +187,7 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 	util.AssertNoError(err)
 
 	delta.decrease = true
-	delta.amount = o.Amount()
+	delta.amount = o.TokenBalance()
 
 	var existed bool
 	existed = trie.Delete(stateKey[:])
@@ -202,7 +202,7 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 }
 
 func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledger.Output) (delta supplyDelta, err error) {
-	delta.amount = out.Amount()
+	delta.amount = out.TokenBalance()
 
 	var stateKey [1 + base.OutputIDLength]byte
 	stateKey[0] = TriePartitionState

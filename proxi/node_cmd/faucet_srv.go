@@ -81,7 +81,7 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 	if fct.cfg.fromChain {
 		o, _, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
 		glb.AssertNoError(err)
-		glb.Assertf(o.Output.Amount() > ledger.L().ID.MinimumAmountOnSequencer+fct.cfg.amount,
+		glb.Assertf(o.Output.TokenBalance() > ledger.L().ID.MinimumAmountOnSequencer+fct.cfg.amount,
 			"not enough balance on own sequencer %s", fct.walletData.Sequencer.String())
 	} else {
 		_, _, _, err := fct.client.GetOutputsForAmount(walletData.Account, fct.cfg.amount+glb.GetTagAlongFee())
@@ -130,9 +130,9 @@ func (fct *faucetServer) checkBottom() error {
 		if err != nil {
 			return err
 		}
-		if o.Output.Amount() < abs {
+		if o.Output.TokenBalance() < abs {
 			return fmt.Errorf("not enough balance on own sequencer %s. Must be at least %s, got %s",
-				fct.walletData.Sequencer.String(), util.Th(abs), util.Th(o.Output.Amount()))
+				fct.walletData.Sequencer.String(), util.Th(abs), util.Th(o.Output.TokenBalance()))
 		}
 	} else {
 		balance, _, err := fct.client.GetNonChainBalance(fct.walletData.Account)
@@ -163,7 +163,7 @@ func (fct *faucetServer) displayFaucetConfig() {
 	if fct.cfg.fromChain {
 		chainOut, _, _, err := fct.client.GetChainOutput(*fct.walletData.Sequencer)
 		glb.AssertNoError(err)
-		glb.Infof("     funds will be drawn from: %s (balance %s)", fct.walletData.Sequencer.String(), util.Th(chainOut.Output.Amount()))
+		glb.Infof("     funds will be drawn from: %s (balance %s)", fct.walletData.Sequencer.String(), util.Th(chainOut.Output.TokenBalance()))
 
 	} else {
 		glb.Infof("     funds will be drawn from: %s (balance %s)", fct.walletData.Account.String(), util.Th(walletBalance))
@@ -227,7 +227,7 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.Tr
 	if err != nil {
 		return base.TransactionID{}, err
 	}
-	if o.Output.Amount() < ledger.L().ID.MinimumAmountOnSequencer+fct.cfg.amount {
+	if o.Output.TokenBalance() < ledger.L().ID.MinimumAmountOnSequencer+fct.cfg.amount {
 		return base.TransactionID{}, fmt.Errorf("not enough tokens on the sequencer %s", glb.GetOwnSequencerID().String())
 	}
 	walletOutputs, _, _, err := clnt.GetOutputsForAmount(fct.walletData.Account, glb.GetTagAlongFee())
@@ -330,7 +330,7 @@ func logRequest(account string, remote string, funds uint64, err error) {
 	// Open the log file in append mode, creating it if it doesn't exist
 	file, err := os.OpenFile(faucetLogName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	glb.AssertNoError(err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Create a logger
 	logger := log.New(file, "", log.LstdFlags)

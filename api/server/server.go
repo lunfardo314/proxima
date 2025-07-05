@@ -205,7 +205,7 @@ func _writeParsedOutputs(w http.ResponseWriter, outs []*ledger.OutputWithID, lrb
 		po := api.ParsedOutput{
 			Data:        o.Output.Hex(),
 			Constraints: o.Output.LinesPlain().Slice(),
-			Amount:      o.Output.Amount(),
+			Amount:      o.Output.TokenBalance(),
 			LockName:    o.Output.Lock().Name(),
 			ChainID:     "",
 		}
@@ -323,7 +323,7 @@ func (srv *server) getNonChainBalance(w http.ResponseWriter, r *http.Request) {
 			if _, idx := o.ChainConstraint(); idx != 0xff {
 				return true
 			}
-			resp.Amount += o.Amount()
+			resp.Amount += o.TokenBalance()
 			return true
 		})
 		if err1 != nil {
@@ -383,7 +383,7 @@ func (srv *server) getOutputsForAmount(w http.ResponseWriter, r *http.Request) {
 				return true
 			}
 			resp.Outputs[oid.StringHex()] = o.Hex()
-			sum += o.Amount()
+			sum += o.TokenBalance()
 			return sum < uint64(amount)
 		})
 		if err1 != nil {
@@ -749,7 +749,7 @@ func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Requ
 		}
 		resp.Sequencers[chainID.StringHex()] = api.DelegationsOnSequencer{
 			SequencerOutputID: di.SequencerOutput.ID.StringHex(),
-			Balance:           di.SequencerOutput.Output.Amount(),
+			Balance:           di.SequencerOutput.Output.TokenBalance(),
 			SequencerName:     name,
 			Delegations:       dlg,
 		}
@@ -758,7 +758,7 @@ func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Requ
 			srv.Assertf(dl != nil, "dl != nil")
 
 			dlg[delegationID.StringHex()] = api.DelegationData{
-				Amount:      delegationOut.Output.Amount(),
+				Amount:      delegationOut.Output.TokenBalance(),
 				SinceSlot:   uint32(dl.StartTime.Slot),
 				StartAmount: dl.StartAmount,
 			}

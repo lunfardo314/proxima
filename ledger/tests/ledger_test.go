@@ -57,7 +57,7 @@ func TestOutput(t *testing.T) {
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("output: %d bytes", len(out.Bytes()))
 
-		tokensBack := outBack.Amount()
+		tokensBack := outBack.TokenBalance()
 		require.EqualValues(t, 1337, tokensBack)
 	})
 }
@@ -415,7 +415,7 @@ func TestChain1(t *testing.T) {
 		txb.PutUnlockParams(1, 3, ledger.FinishChainUnlockParams)
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(total).WithLock(outs[0].Output.Lock())
+			o.WithTokenBalance(total).WithLock(outs[0].Output.Lock())
 		}))
 		require.NoError(t, err)
 
@@ -493,7 +493,7 @@ func TestChain1(t *testing.T) {
 		// produce new output with same amount but without chain constraint
 		// it will be the only produced output of the transaction
 		outNonChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(chainIN.Output.Amount()).
+			o.WithTokenBalance(chainIN.Output.TokenBalance()).
 				WithLock(chainIN.Output.Lock())
 		})
 		_, err = txb.ProduceOutput(outNonChain)
@@ -958,7 +958,7 @@ func TestHashUnlock(t *testing.T) {
 	require.NoError(t, err)
 
 	outs = ledger.FilterOutputsSortByAmount(outs, func(o *ledger.Output) bool {
-		return o.Amount() == 1000
+		return o.TokenBalance() == 1000
 	})
 
 	// produce transaction without providing hash unlocking library for the output with script
@@ -1202,7 +1202,7 @@ func TestGGG(t *testing.T) {
 	jan1 := time.Date(2023, 1, 1, 0, 0, 0, 0, loc)
 	t.Logf("Jan 1, 2023 UTC = %d", uint32(jan1.Unix()))
 
-	_, _, bin, err := ledger.L().CompileExpression("amount(u64/1337)")
+	_, _, bin, err := ledger.L().CompileExpression("amounts(u64/1337)")
 	require.NoError(t, err)
 	prefix, err := ledger.L().ParsePrefixBytecode(bin)
 	require.NoError(t, err)
@@ -1278,7 +1278,7 @@ func TestTotalAmount(t *testing.T) {
 			require.NoError(t, err)
 		}
 		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(total).WithLock(addr0)
+			o.WithTokenBalance(total).WithLock(addr0)
 			o.MustPushConstraint(ledger.NewTotalAmount(total).Bytes())
 		})
 
@@ -1316,7 +1316,7 @@ func TestTotalAmount(t *testing.T) {
 			require.NoError(t, err)
 		}
 		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(total).WithLock(addr0)
+			o.WithTokenBalance(total).WithLock(addr0)
 			o.MustPushConstraint(ledger.NewTotalAmount(total / 3).Bytes())
 		})
 

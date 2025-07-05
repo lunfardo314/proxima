@@ -423,20 +423,21 @@ func ScanOutputs(tx *Transaction) error {
 		return fmt.Errorf("scanning outputs: '%v'", err)
 	}
 	var totalAmount uint64
-	var amount ledger.Amount
+	var amounts ledger.Amounts
 
 	var o *ledger.Output
 	path := []byte{ledger.TxOutputs, 0}
 	for i := 0; i < numOutputs; i++ {
 		path[1] = byte(i)
-		o, amount, _, err = ledger.OutputFromBytesMain(tx.tree.MustBytesAtPath(path))
+		o, amounts, _, err = ledger.OutputFromBytesMain(tx.tree.MustBytesAtPath(path))
 		if err != nil {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
-		if uint64(amount) > math.MaxUint64-totalAmount {
+		bal := amounts.TokenBalance()
+		if bal > math.MaxUint64-totalAmount {
 			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
-		totalAmount += uint64(amount)
+		totalAmount += bal
 		tx.totalInflation += o.Inflation()
 	}
 	if tx.totalAmount != totalAmount {
@@ -745,7 +746,7 @@ func (tx *Transaction) ForEachEndorsement(fun func(idx byte, txid base.Transacti
 }
 
 func (tx *Transaction) ForEachOutputData(fun func(idx byte, oData []byte) bool) {
-	tx.tree.ForEach(func(i byte, data []byte) bool {
+	_ = tx.tree.ForEach(func(i byte, data []byte) bool {
 		return fun(i, data)
 	}, Path(ledger.TxOutputs))
 }

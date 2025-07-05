@@ -55,7 +55,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.PrintLRB(lrbid)
 	glb.Infof("will be using %d tokens as tag-along fee. Outputs in the wallet:", ownSequencerCmdFee)
 	for i, o := range walletOutputs {
-		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.Th(o.Output.Amount()))
+		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.Th(o.Output.TokenBalance()))
 	}
 
 	prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",

@@ -109,11 +109,11 @@ func runChainStats() {
 		seqStatsRec.numBranches++
 		seqStatsRec.sumInflation += bib
 		if seqStatsRec.minBalance == 0 {
-			seqStatsRec.minBalance = br.SequencerOutput.Output.Amount()
+			seqStatsRec.minBalance = br.SequencerOutput.Output.TokenBalance()
 		} else {
-			seqStatsRec.minBalance = min(br.SequencerOutput.Output.Amount(), seqStatsRec.minBalance)
+			seqStatsRec.minBalance = min(br.SequencerOutput.Output.TokenBalance(), seqStatsRec.minBalance)
 		}
-		seqStatsRec.maxBalance = max(br.SequencerOutput.Output.Amount(), seqStatsRec.maxBalance)
+		seqStatsRec.maxBalance = max(br.SequencerOutput.Output.TokenBalance(), seqStatsRec.maxBalance)
 		if seqStatsRec.minSlot == 0 {
 			seqStatsRec.minSlot = int(br.SequencerOutput.ID.Slot())
 		} else {

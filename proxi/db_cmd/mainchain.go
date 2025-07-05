@@ -50,7 +50,7 @@ func runMainChainCmd(_ *cobra.Command, _ []string) {
 
 		for _, bd := range mainBranches {
 			_, _ = fmt.Fprintf(outFile, "%s, %d, %s, %s\n",
-				bd.SequencerID.String(), bd.CoverageDelta, bd.Stem.ID.String(), util.Th(bd.SequencerOutput.Output.Amount()))
+				bd.SequencerID.String(), bd.CoverageDelta, bd.Stem.ID.String(), util.Th(bd.SequencerOutput.Output.TokenBalance()))
 		}
 	}
 	type seqData struct {
@@ -64,7 +64,7 @@ func runMainChainCmd(_ *cobra.Command, _ []string) {
 		sd := bySeqID[bd.SequencerID]
 		sd.numOccurrences++
 		if sd.onChainBalance == 0 {
-			sd.onChainBalance = bd.SequencerOutput.Output.Amount()
+			sd.onChainBalance = bd.SequencerOutput.Output.TokenBalance()
 		}
 		if sd.name == "" {
 			if md := ledger.ParseMilestoneData(bd.SequencerOutput.Output); md != nil {

@@ -826,7 +826,7 @@ func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.Transacti
 	for vid := range pc.vertices {
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			if o := rdr.GetOutput(vid.OutputID(idx)); o != nil {
-				delta += o.Amount()
+				delta += o.TokenBalance()
 			}
 		}
 	}

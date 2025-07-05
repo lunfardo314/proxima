@@ -77,7 +77,7 @@ func listChainedOutputs(addr ledger.AddressED25519, outs []*ledger.OutputWithCha
 			}
 		}
 		glb.Infof("\n%2d: %s -- %s, hex: %s, sequencer: "+seq, i, o.ChainID.String(), o.ID.StringShort(), o.ID.StringHex())
-		glb.Infof("      balance     : %s", util.Th(o.Output.Amount()))
+		glb.Infof("      balance     : %s", util.Th(o.Output.TokenBalance()))
 		glb.Infof("      lock        : %s", lock.String())
 		thisControls := ""
 		if ledger.EqualAccountables(addr, lock.Master()) {
@@ -114,9 +114,9 @@ func listDelegations(addr ledger.AddressED25519, outs []*ledger.OutputWithChainI
 			continue
 		}
 		chainID, _, _ := o.ExtractChainID()
-		glb.Infof("%s   %s  \t\t-> %s", chainID.String(), util.Th(o.Output.Amount()), dlock.TargetLock.String())
+		glb.Infof("%s   %s  \t\t-> %s", chainID.String(), util.Th(o.Output.TokenBalance()), dlock.TargetLock.String())
 
-		earned := o.Output.Amount() - dlock.StartAmount
+		earned := o.Output.TokenBalance() - dlock.StartAmount
 		slots := nowis.Slot - dlock.StartTime.Slot
 		perSlot := earned / uint64(slots)
 		annualExtrapolationEarnings := uint64(ledger.L().ID.SlotsPerYear()) * perSlot
@@ -128,7 +128,7 @@ func listDelegations(addr ledger.AddressED25519, outs []*ledger.OutputWithChainI
 			o.ID.String(), o.ID.StringHex(),
 		)
 
-		total += o.Output.Amount()
+		total += o.Output.TokenBalance()
 	}
 	glb.Infof("\nTotal delegated in %d outputs: %s", len(outs), util.Th(total))
 }

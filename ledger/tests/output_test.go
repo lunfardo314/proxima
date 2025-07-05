@@ -10,7 +10,7 @@ import (
 
 func TestRawOutputBytes(t *testing.T) {
 	o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmount(1337).WithLock(ledger.AddressED25519FromPrivateKey(genesisPrivateKey))
+		o.WithTokenBalance(1337).WithLock(ledger.AddressED25519FromPrivateKey(genesisPrivateKey))
 	})
 
 	rawBytes := o.Bytes()

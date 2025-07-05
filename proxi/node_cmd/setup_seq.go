@@ -107,7 +107,7 @@ func waitForFunds(accountable ledger.Accountable, amount uint64) {
 		for _, o := range outs {
 			if _, idx := o.Output.ChainConstraint(); idx != 0xff {
 			} else {
-				sumOutsideChains += o.Output.Amount()
+				sumOutsideChains += o.Output.TokenBalance()
 			}
 		}
 		if sumOutsideChains >= amount {

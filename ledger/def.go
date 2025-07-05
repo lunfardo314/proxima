@@ -162,7 +162,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], id *IdentityParameters) {
 
 	lib.MustExtendMany(_inflationFunctionsSource)
 
-	lib.MustExtendMany(amountSource)
+	lib.MustExtendMany(amountsAuxSource)
 	lib.MustExtendMany(addressED25519ConstraintSource)
 	lib.MustExtendMany(conditionalLockSource)
 	lib.MustExtendMany(deadlineLockSource)
@@ -183,7 +183,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], id *IdentityParameters) {
 // registerConstraints mass-registers all wrappers of constraints
 func (lib *Library) registerConstraints() {
 	registerAmountsConstraint(lib)
-	registerAmountConstraint(lib)
 	registerAddressED25519Constraint(lib)
 	registerConditionalLock(lib)
 	registerDeadlineLockConstraint(lib)

@@ -16,7 +16,7 @@ func BalanceOnLock(rdr StateIndexReader, account ledger.Accountable) (uint64, in
 	for _, od := range oDatas {
 		o, err := od.Parse()
 		util.AssertNoError(err)
-		balance += o.Output.Amount()
+		balance += o.Output.TokenBalance()
 		num++
 	}
 	return balance, num
@@ -29,5 +29,5 @@ func BalanceOnChainOutput(rdr StateIndexReader, chainID base.ChainID) uint64 {
 	}
 	o, _, err := oData.ParseAsChainOutput()
 	util.AssertNoError(err)
-	return o.Output.Amount()
+	return o.Output.TokenBalance()
 }

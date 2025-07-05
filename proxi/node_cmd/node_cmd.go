@@ -1,10 +1,8 @@
 package node_cmd
 
 import (
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -70,26 +68,4 @@ func Init() *cobra.Command {
 		initNodeGetLedgerIDCmd(),
 	)
 	return nodeCmd
-}
-
-func displayTotals(outs []*ledger.OutputWithID) {
-	var sumOnChains, sumOutsideChains uint64
-	var numChains, numNonChains int
-
-	for _, o := range outs {
-		if _, idx := o.Output.ChainConstraint(); idx != 0xff {
-			numChains++
-			sumOnChains += o.Output.Amount()
-		} else {
-			numNonChains++
-			sumOutsideChains += o.Output.Amount()
-		}
-	}
-	if numNonChains > 0 {
-		glb.Infof("amount controlled on %d non-chain outputs: %s", numNonChains, util.Th(sumOutsideChains))
-	}
-	if numChains > 0 {
-		glb.Infof("amount controlled on %d chain outputs: %s", numChains, util.Th(sumOnChains))
-	}
-	glb.Infof("TOTAL controlled on %d outputs: %s", numChains+numNonChains, util.Th(sumOnChains+sumOutsideChains))
 }

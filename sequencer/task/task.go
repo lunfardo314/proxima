@@ -283,7 +283,7 @@ func (t *taskData) InsertDelegationInputs(a *attacher.IncrementalAttacher, maxIn
 		if !ledger.IsOpenDelegationSlot(delegationID, a.TargetTs().Slot) {
 			return true
 		}
-		if ledger.L().CalcChainInflationAmount(oid.Timestamp(), a.TargetTs(), o.Amount()) == 0 {
+		if ledger.L().CalcChainInflationAmount(oid.Timestamp(), a.TargetTs(), o.TokenBalance()) == 0 {
 			return true
 		}
 		preSelected = append(preSelected, wOut)

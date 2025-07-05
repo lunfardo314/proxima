@@ -78,7 +78,7 @@ func (p CommandParser) ParseSequencerCommandToOutputs(input *ledger.OutputWithID
 	}
 	// make withdrawal output
 	o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmount(amount).WithLock(targetLock)
+		o.WithTokenBalance(amount).WithLock(targetLock)
 	})
 	return []*ledger.Output{o}, nil
 }
@@ -99,7 +99,7 @@ func MakeSequencerWithdrawCmdOutput(par MakeSequencerWithdrawCmdOutputParams) (*
 	msg := ledger.NewMessageWithED25519SenderFromAddress(par.ControllerAddr, cmdData)
 
 	ret := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmount(par.TagAlongFee)
+		o.WithTokenBalance(par.TagAlongFee)
 		o.WithLock(ledger.ChainLockFromChainID(par.SeqID))
 		o.MustPushConstraint(msg.Bytes())
 	})
@@ -109,7 +109,7 @@ func MakeSequencerWithdrawCmdOutput(par MakeSequencerWithdrawCmdOutputParams) (*
 	out, err := cmdParserDummy.ParseSequencerCommandToOutputs(oWithIDDummy)
 	util.AssertNoError(err)
 	util.Assertf(len(out) == 1, "len(out)==1")
-	util.Assertf(out[0].Amount() == par.Amount, "out[0].Amount()==par.Amount")
+	util.Assertf(out[0].TokenBalance() == par.Amount, "out[0].TokenBalance()==par.TokenBalance")
 	util.Assertf(ledger.EqualConstraints(par.TargetLock, out[0].Lock()), "ledger.EqualConstraints(par.TargetLock, out[0].Lock())")
 	return ret, nil
 }

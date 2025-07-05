@@ -51,10 +51,10 @@ func inflateChain(chainTransitionPeriodSlots base.Slot, chainId base.ChainID) {
 	glb.AssertNoError(err)
 	glb.Assertf(!chainOutput.ID.IsSequencerTransaction(), "must be non-sequencer output")
 
-	estimated := ledger.L().CalcChainInflationAmount(base.NewLedgerTime(0, 1), base.NewLedgerTime(chainTransitionPeriodSlots, 1), chainOutput.Output.Amount())
+	estimated := ledger.L().CalcChainInflationAmount(base.NewLedgerTime(0, 1), base.NewLedgerTime(chainTransitionPeriodSlots, 1), chainOutput.Output.TokenBalance())
 	msg := lines.New().
 		Add("will be inflating chain %s every %d slots", chainId.StringShort(), chainTransitionPeriodSlots).
-		Add("Initial chain balance is %s, Tag-along fee to %s is %d", util.Th(chainOutput.Output.Amount()), tagAlongSeq.StringShort(), tagAlongFee).
+		Add("Initial chain balance is %s, Tag-along fee to %s is %d", util.Th(chainOutput.Output.TokenBalance()), tagAlongSeq.StringShort(), tagAlongFee).
 		Add("Estimated net earnings per loop will be %s", util.Th(int64(estimated)-int64(tagAlongFee)))
 	if jumpToPresent {
 		msg.Add("forced jump to presence with 0 inflation, if necessary")
@@ -125,6 +125,6 @@ func inflateChain(chainTransitionPeriodSlots base.Slot, chainId base.ChainID) {
 			}
 		}
 		tsOut = chainOutput.Timestamp().AddSlots(chainTransitionPeriodSlots)
-		glb.Infof("amount on chain: %s", util.Th(chainOutput.Output.Amount()))
+		glb.Infof("amount on chain: %s", util.Th(chainOutput.Output.TokenBalance()))
 	}
 }

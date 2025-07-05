@@ -39,7 +39,7 @@ func TestBase(t *testing.T) {
 		t.Logf("send output:\n%s", sendOutput[0].ToString("    "))
 
 		require.True(t, ledger.EqualConstraints(sendOutput[0].Lock(), addrTarget))
-		require.EqualValues(t, 1_000_000, sendOutput[0].Amount())
+		require.EqualValues(t, 1_000_000, sendOutput[0].TokenBalance())
 	})
 	t.Run("not ok", func(t *testing.T) {
 		addrController := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1000))

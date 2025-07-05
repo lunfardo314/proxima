@@ -2,7 +2,6 @@ package tests
 
 import (
 	"crypto/ed25519"
-	"fmt"
 	"testing"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -44,7 +43,7 @@ func TestAmountsBase(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	t.Run("basic", func(t *testing.T) {
+	t.Run("fail not at index 0", func(t *testing.T) {
 		initTest()
 		const transferAmount = 1_000_000
 		outs, amount := u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(addr0, transferAmount)
@@ -56,12 +55,12 @@ func TestAmountsBase(t *testing.T) {
 		require.NoError(t, err)
 
 		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(transferAmount).
+			o.WithTokenBalance(transferAmount).
 				WithLock(addr0).
 				MustPushConstraint(ledger.NewAmounts(1, 2).Bytes())
 		}))
 		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(amountFromFaucet - transferAmount).
+			o.WithTokenBalance(amountFromFaucet - transferAmount).
 				WithLock(addr0)
 		}))
 
@@ -69,13 +68,7 @@ func TestAmountsBase(t *testing.T) {
 		txb.TransactionData.Timestamp = ts.AddTicks(int(ledger.L().ID.TransactionPace))
 		txb.SignED25519(privKey0)
 
-		txBytes, _, txString, err := txb.BytesWithValidation()
-		if err != nil {
-			t.Fatal(fmt.Errorf("error: %v\n-------------- failing tx ---------------\n%s", err, txString))
-		} else {
-			t.Logf("-------------- valid tx ---------------\n%s", txString)
-			err = u.AddTransaction(txBytes)
-			require.NoError(t, err)
-		}
+		_, _, _, err = txb.BytesWithValidation()
+		util.RequireErrorWith(t, err, "'amounts' must be at index 0")
 	})
 }

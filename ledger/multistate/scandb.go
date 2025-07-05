@@ -118,7 +118,7 @@ func FetchSummarySupply(stateStore StateStore, nBack int) *SummarySupplyAndInfla
 		rdr := MustNewSugaredReadableState(stateStore, branchData[0].Root) // heaviest
 		o, err := rdr.GetChainOutputWithID(seqID)
 		if err == nil {
-			seqInfo.EndBalance = o.Output.Amount()
+			seqInfo.EndBalance = o.Output.TokenBalance()
 		}
 		stem, err := rdr.GetChainOutputWithID(seqID)
 		util.AssertNoError(err)
@@ -127,7 +127,7 @@ func FetchSummarySupply(stateStore StateStore, nBack int) *SummarySupplyAndInfla
 		rdr = MustNewSugaredReadableState(stateStore, branchData[len(branchData)-1].Root)
 		o, err = rdr.GetChainOutputWithID(seqID)
 		if err == nil {
-			seqInfo.BeginBalance = o.Output.Amount()
+			seqInfo.BeginBalance = o.Output.TokenBalance()
 		}
 		ret.InfoPerSeqID[seqID] = seqInfo
 	}
@@ -185,12 +185,12 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 		oData, found := r._getUTXO(oid, partition)
 		util.Assertf(found, "can't get output")
 
-		_, amount, lock, err := ledger.OutputFromBytesMain(oData)
+		_, amounts, lock, err := ledger.OutputFromBytesMain(oData)
 		util.AssertNoError(err)
 
 		lockStr := lock.String()
 		lockInfo := ret[lockStr]
-		lockInfo.Balance += uint64(amount)
+		lockInfo.Balance += amounts.TokenBalance()
 		lockInfo.NumOutputs++
 		ret[lockStr] = lockInfo
 
@@ -238,7 +238,7 @@ func (r *Readable) ScanState() *ScannedState {
 
 	r.IterateUTXOs(func(o ledger.OutputWithID) bool {
 		ret.NumUTXOs++
-		ret.Supply += o.Output.Amount()
+		ret.Supply += o.Output.TokenBalance()
 		if _, isStemOutput := o.Output.StemLock(); isStemOutput {
 			if ret.Stem != nil {
 				ret.AddInconsistency("duplicate stem:\n--- 1\n%s--- 2\n%s",
@@ -266,7 +266,7 @@ func (r *Readable) ScanState() *ScannedState {
 			if _, err := r.GetUTXOForChainID(chainID); err != nil {
 				ret.AddInconsistency("chain record %s is not in the UTXO index: %v", chainID.String(), err)
 			}
-			ret.TotalOnChains += o.Output.Amount()
+			ret.TotalOnChains += o.Output.TokenBalance()
 		}
 		return true
 	})

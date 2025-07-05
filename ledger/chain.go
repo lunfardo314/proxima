@@ -165,7 +165,7 @@ if(
    isChainOriginID($0),
         // chain origin
    require(
-     and(equal($1, 0xffff), equalUint($2, txSlot), equalUint($3, selfAmountValue)),
+     and(equal($1, 0xffff), equalUint($2, txSlot), equalUint($3, selfTokenBalanceValue)),
      !!!invalid_chain_origin_data
    ),
         // NOT chain origin. Crosscheck reference

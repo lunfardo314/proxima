@@ -10,7 +10,7 @@ import (
 const sequencerConstraintSource = `
 func mustMinimumAmountOnSequencer : 
 	require(
- 	 	 not(lessThan(selfAmountValue, constMinimumAmountOnSequencer)), 
+ 	 	 not(lessThan(selfTokenBalanceValue, constMinimumAmountOnSequencer)), 
 		 !!!minimum_sequencer_amount_constraint_failed
 	)
 

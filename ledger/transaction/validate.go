@@ -179,7 +179,7 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool
 			return !failFast
 		}
 		minDeposit := o.MinimumStorageDeposit(0)
-		amount := o.Amount()
+		amount := o.TokenBalance()
 		if amount < minDeposit {
 			lastErr = fmt.Errorf("not enough storage deposit in output %s. Minimum %d, got %d",
 				PathToString(path), minDeposit, amount)

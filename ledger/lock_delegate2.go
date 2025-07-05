@@ -239,7 +239,7 @@ type MakeDelegate2OutputParams struct {
 
 func MakeDelegate2InitOutput(par MakeDelegate2OutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
-		o.WithAmount(par.Amount)
+		o.WithTokenBalance(par.Amount)
 		o.WithLock(NewDelegate2Lock(par.Target, par.Master, par.MaxFreezeSlots))
 		o.MustPushConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes())
 		o.MustPushConstraint(DelegateLock2State{}.Bytes())
@@ -348,7 +348,7 @@ and(
     )
 )
 
-func _amountOnSuccessor : amountValueByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
+func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
 
 func _insideSafeRevocationWindow : and(
     not(_isDelegationOrigin),
@@ -375,7 +375,7 @@ func _validDelegation2Consumed : and(
 			  // target lock must be unlocked
 		 require($0, !!!delegation_target_must_be_unlocked),  
 			  // amount should not decrease
-		 require(lessOrEqualThan(selfAmountValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease),
+		 require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease),
 			  // delegation lock must be immutable
 		 require(equal(successorConstraint(2), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_must_be_immutable),
       )

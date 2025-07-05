@@ -182,8 +182,8 @@ func (td *testData) transitChainWithDelegation(n int, par transitParams) (err er
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
-		amount := uint64(int64(td.seqChainOrigin.Output.Amount()) - par.addAmount)
-		o.WithAmount(amount)
+		amount := uint64(int64(td.seqChainOrigin.Output.TokenBalance()) - par.addAmount)
+		o.WithTokenBalance(amount)
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
 	}))
 	require.NoError(td, err)
@@ -198,8 +198,8 @@ func (td *testData) transitChainWithDelegation(n int, par transitParams) (err er
 	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		amount := uint64(int64(td.delegatedOutput.Output.Amount()) + par.addAmount)
-		o.WithAmount(amount)
+		amount := uint64(int64(td.delegatedOutput.Output.TokenBalance()) + par.addAmount)
+		o.WithTokenBalance(amount)
 		o.WithLock(td.delegatedOutput.Output.Lock())
 		o.MustPushConstraint(ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount).Bytes())
 		o.MustPushConstraint(par.delegationState.Bytes())
@@ -254,11 +254,11 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	txb.PutUnlockParams(0, 2, ledger.FinishChainUnlockParams)
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmount(amount - tagAlongFee).WithLock(td.masterAddr)
+		o.WithTokenBalance(amount - tagAlongFee).WithLock(td.masterAddr)
 	}))
 	require.NoError(td, err)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmount(tagAlongFee).WithLock(ledger.ChainLockFromChainID(base.RandomChainID()))
+		o.WithTokenBalance(tagAlongFee).WithLock(ledger.ChainLockFromChainID(base.RandomChainID()))
 	}))
 	require.NoError(td, err)
 
@@ -509,7 +509,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		util.RequireErrorWith(t, err, "revoked delegation cannot be unlocked by the target")
 
 		// succeed to kill the delegation chain by master
-		err = td.discontinueDelegation(ts, false)
+		err = td.discontinueDelegation(ts, true)
 		require.NoError(t, err)
 
 	})

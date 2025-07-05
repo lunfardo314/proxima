@@ -69,7 +69,7 @@ func NewOutput(buildFun func(o *OutputBuilder)) *Output {
 
 func OutputBasic(amount uint64, lock Lock) *Output {
 	return NewOutput(func(o *OutputBuilder) {
-		o.WithLock(lock).WithAmount(amount)
+		o.WithLock(lock).WithTokenBalance(amount)
 	})
 }
 
@@ -111,31 +111,31 @@ func OutputFromHexString(hexStr string, validateOpt ...func(*Output) error) (*Ou
 	return ret, nil
 }
 
-func OutputFromBytesMain(data []byte) (*Output, Amount, Lock, error) {
+func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
 	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, nil, nil, err
 	}
 	ret := &Output{arr}
 
-	var amount Amount
+	var amount Amounts
 	var lock Lock
 	if ret.NumElements() < 2 {
-		return nil, 0, nil, fmt.Errorf("at least 2 constraints expected")
+		return nil, nil, nil, fmt.Errorf("at least 2 constraints expected")
 	}
-	amountBin, err := ret.At(int(ConstraintIndexAmount))
+	amountBin, err := ret.At(int(ConstraintIndexAmounts))
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, nil, nil, err
 	}
-	if amount, err = AmountFromBytes(amountBin); err != nil {
-		return nil, 0, nil, err
+	if amount, err = AmountsFromBytes(amountBin); err != nil {
+		return nil, nil, nil, err
 	}
 	lockBin, err := ret.At(int(ConstraintIndexLock))
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, nil, nil, err
 	}
 	if lock, err = LockFromBytes(lockBin); err != nil {
-		return nil, 0, nil, err
+		return nil, nil, nil, err
 	}
 	return ret, amount, lock, nil
 }
@@ -160,18 +160,18 @@ func (o *Output) MustStemLock() *StemLock {
 	return ret
 }
 
-// WithAmount can only be used inside r/o override closure
-func (o *OutputBuilder) WithAmount(amount uint64) *OutputBuilder {
-	o.MustPutAtIdxWithPadding(ConstraintIndexAmount, NewAmount(amount).Bytes())
+// WithTokenBalance can only be used inside r/o override closure
+func (o *OutputBuilder) WithTokenBalance(amount uint64) *OutputBuilder {
+	o.MustPutAtIdxWithPadding(ConstraintIndexAmounts, NewAmounts(amount).Bytes())
 	return o
 }
 
-func (o *Output) Amount() uint64 {
-	bin, err := o.At(int(ConstraintIndexAmount))
+func (o *Output) TokenBalance() uint64 {
+	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)
-	ret, err := AmountFromBytes(bin)
+	ret, err := AmountsFromBytes(bin)
 	util.AssertNoError(err)
-	return uint64(ret)
+	return ret.TokenBalance()
 }
 
 // WithLock can only be used inside r/o override closure
@@ -209,8 +209,8 @@ func (o *OutputBuilder) PutConstraint(c []byte, idx byte) {
 	o.MustPutAtIdxWithPadding(idx, c)
 }
 
-func (o *OutputBuilder) PutAmount(amount uint64) {
-	o.PutConstraint(NewAmount(amount).Bytes(), ConstraintIndexAmount)
+func (o *OutputBuilder) PutTokenBalance(amount uint64) {
+	o.PutConstraint(NewAmounts(amount).Bytes(), ConstraintIndexAmounts)
 }
 
 func (o *OutputBuilder) PutLock(lock Lock) {
@@ -404,7 +404,7 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 		SequencerConstraintIndex: seqConstraintIndex,
 		SequencerConstraint:      seqConstraint,
 		ChainConstraint:          chainConstraint,
-		AmountOnChain:            o.Amount(),
+		AmountOnChain:            o.TokenBalance(),
 		MilestoneData:            ParseMilestoneData(o),
 	}, true
 }
@@ -683,17 +683,17 @@ func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
 
 // MustValidOutput checks if amount and lock constraints are as expected
 func (o *Output) MustValidOutput() {
-	o.MustHaveConstraintAnyOfAt(0, AmountConstraintName)
+	o.MustHaveConstraintAnyOfAt(0, AmountsConstraintName)
 	_, err := LockFromBytes(o.MustConstraintAt(1))
 	util.AssertNoError(err)
 }
 
 func (o *Output) EnoughAmountForStorageDeposit() error {
-	if o.Amount() >= o.MinimumStorageDeposit(0) {
+	if o.TokenBalance() >= o.MinimumStorageDeposit(0) {
 		return nil
 	}
 	return fmt.Errorf("not enough tokens (%s) for the minimum storage deposit (%s)",
-		util.Th(o.Amount()), util.Th(o.MinimumStorageDeposit(0)))
+		util.Th(o.TokenBalance()), util.Th(o.MinimumStorageDeposit(0)))
 }
 
 func (o *Output) MinimumStorageDeposit(extraWeight uint32) uint64 {
@@ -719,11 +719,11 @@ func ParseAndSortOutputData(outs []*OutputDataWithID, filter func(oid *base.Outp
 	}
 	if len(desc) > 0 && desc[0] {
 		sort.Slice(ret, func(i, j int) bool {
-			return ret[i].Output.Amount() > ret[j].Output.Amount()
+			return ret[i].Output.TokenBalance() > ret[j].Output.TokenBalance()
 		})
 	} else {
 		sort.Slice(ret, func(i, j int) bool {
-			return ret[i].Output.Amount() < ret[j].Output.Amount()
+			return ret[i].Output.TokenBalance() < ret[j].Output.TokenBalance()
 		})
 	}
 	return ret, nil
@@ -757,11 +757,11 @@ func FilterOutputsSortByAmount(outs []*OutputWithID, filter func(o *Output) bool
 	}
 	if len(desc) > 0 && desc[0] {
 		sort.Slice(ret, func(i, j int) bool {
-			return ret[i].Output.Amount() > ret[j].Output.Amount()
+			return ret[i].Output.TokenBalance() > ret[j].Output.TokenBalance()
 		})
 	} else {
 		sort.Slice(ret, func(i, j int) bool {
-			return ret[i].Output.Amount() < ret[j].Output.Amount()
+			return ret[i].Output.TokenBalance() < ret[j].Output.TokenBalance()
 		})
 	}
 	return ret
@@ -776,7 +776,7 @@ func ParseAndSortOutputDataUpToAmount(outs []*OutputDataWithID, amount uint64, f
 	retSum := uint64(0)
 	retOuts := make([]*OutputWithID, 0, len(outs))
 	for _, o := range outsWitID {
-		retSum += o.Output.Amount()
+		retSum += o.Output.TokenBalance()
 		retTs = base.MaximumTime(retTs, o.Timestamp())
 		retOuts = append(retOuts, o)
 		if retSum >= amount {

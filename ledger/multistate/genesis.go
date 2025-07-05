@@ -86,7 +86,7 @@ func ScanGenesisState(stateStore StateStore) (*ledger.IdentityParameters, common
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)
 	}
-	if out.Amount() != stateID.InitialSupply {
+	if out.TokenBalance() != stateID.InitialSupply {
 		return nil, nil, fmt.Errorf("different amounts in genesis output and state identity")
 	}
 	return stateID, branchData.Root, nil

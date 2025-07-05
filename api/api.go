@@ -336,7 +336,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		ret.Outputs[i] = ParsedOutput{
 			Data:        hex.EncodeToString(o.Bytes()),
 			Constraints: o.LinesPlain().Slice(),
-			Amount:      o.Amount(),
+			Amount:      o.TokenBalance(),
 			LockName:    o.Lock().Name(),
 		}
 		if cc, idx := o.ChainConstraint(); idx != 0xff {

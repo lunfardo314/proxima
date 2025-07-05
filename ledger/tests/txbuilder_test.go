@@ -38,7 +38,7 @@ func TestBasics(t *testing.T) {
 
 		stemOut, _, _, err := ledger.OutputFromBytesMain(stemOutData)
 		require.NoError(t, err)
-		require.EqualValues(t, 0, stemOut.Amount())
+		require.EqualValues(t, 0, stemOut.TokenBalance())
 		_, ok := stemOut.StemLock()
 		require.True(t, ok)
 
@@ -370,7 +370,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		require.NoError(t, err)
 		profit := int64(inflation) - fee
 		t.Logf("inflation of %s tokens over %d slots is %s, profit is %s",
-			util.Th(chainInput.Output.Amount()), slots, util.Th(inflation), util.Th(profit))
+			util.Th(chainInput.Output.TokenBalance()), slots, util.Th(inflation), util.Th(profit))
 
 		err = u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
 			if err != nil {
@@ -387,7 +387,6 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		const (
 			numAddr    = 100
 			initAmount = 100_000_000
-			fee        = 300
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 

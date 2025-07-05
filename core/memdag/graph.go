@@ -120,7 +120,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
 			amountStr := "???"
 			if o != nil {
-				amountStr = util.Th(o.Amount())
+				amountStr = util.Th(o.TokenBalance())
 			}
 			edgeAttributes := []func(_ *graph.EdgeProperties){
 				graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", amountStr, outIndex)),
@@ -271,7 +271,7 @@ func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, strin
 				outIndex := v.Tx.MustOutputIndexOfTheInput(i)
 				amountStr := "???"
 				if o != nil {
-					amountStr = util.Th(o.Amount())
+					amountStr = util.Th(o.TokenBalance())
 				}
 				edgeAttributes := []func(_ *graph.EdgeProperties){
 					graph.EdgeAttribute("label", fmt.Sprintf("%s(#%d)", amountStr, outIndex)),

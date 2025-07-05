@@ -252,17 +252,17 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	require.NoError(td.t, err)
 
 	ts := td.auxOutput.Timestamp().AddTicks(ledger.TransactionPace())
-	amount := (td.auxOutput.Output.Amount() - tagAlongFee) / uint64(n)
+	amount := (td.auxOutput.Output.TokenBalance() - tagAlongFee) / uint64(n)
 	for i := 0; i < n; i++ {
 		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(amount)
+			o.WithTokenBalance(amount)
 			o.WithLock(td.addrAux)
 			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot, amount).Bytes())
 		})
 		_, _ = txb.ProduceOutput(o)
 	}
 	tagAlongOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmount(tagAlongFee)
+		o.WithTokenBalance(tagAlongFee)
 		o.WithLock(ledger.ChainLockFromChainID(td.bootstrapChainID))
 	})
 	_, _ = txb.ProduceOutput(tagAlongOut)
@@ -319,7 +319,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 
 	ret.forkOutput, err = oDatas[0].Parse()
 	require.NoError(t, err)
-	require.EqualValues(t, initBalance, int(ret.forkOutput.Output.Amount()))
+	require.EqualValues(t, initBalance, int(ret.forkOutput.Output.TokenBalance()))
 	t.Logf("forked output:\n%s", ret.forkOutput.Lines("      ").String())
 
 	oDatas, err = rdr.GetUTXOsInAccount(ret.addrAux.AccountID())
@@ -328,7 +328,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 
 	ret.auxOutput, err = oDatas[0].Parse()
 	require.NoError(t, err)
-	require.EqualValues(t, initBalance, int(ret.forkOutput.Output.Amount()))
+	require.EqualValues(t, initBalance, int(ret.forkOutput.Output.TokenBalance()))
 	t.Logf("auxiliary output id: %s", ret.forkOutput.IDShort())
 
 	ret.txBytesConflicting = make([][]byte, nConflicts)
@@ -357,7 +357,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 		require.NoError(t, err)
 		t.Logf("conflicting tx ts: %s", tx.Timestamp().String())
 		ret.conflictingOutputs[i] = tx.MustProducedOutputWithIDAt(1)
-		require.EqualValues(t, 100_000+i, int(ret.conflictingOutputs[i].Output.Amount()))
+		require.EqualValues(t, 100_000+i, int(ret.conflictingOutputs[i].Output.TokenBalance()))
 	}
 	return ret
 }
@@ -608,7 +608,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 			ts := originOut.Timestamp().AddTicks(ledger.TransactionPace() * (i + 1))
 
 			trd := txbuilder.NewTransferData(td.privKey, td.addr, ts)
-			trd.WithAmount(originOut.Output.Amount())
+			trd.WithAmount(originOut.Output.TokenBalance())
 			trd.MustWithInputs(prev)
 			if i < howLong-1 {
 				trd.WithTargetLock(td.addr)
@@ -825,7 +825,7 @@ func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, c
 		_, err := txb.ConsumeOutput(par.remainder.Output, par.remainder.ID)
 		require.NoError(td.t, err)
 		reminder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(par.remainder.Output.Amount() - 500).WithLock(par.remainder.Output.Lock())
+			o.WithTokenBalance(par.remainder.Output.TokenBalance() - 500).WithLock(par.remainder.Output.Lock())
 		})
 		_, err = txb.ProduceOutput(reminder)
 		require.NoError(td.t, err)

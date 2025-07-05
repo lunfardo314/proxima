@@ -71,7 +71,7 @@ func MakeChain(onChainAmount uint64) (*transaction.TxContext, base.ChainID, erro
 	totalInputs = 0
 	inps = util.PurgeSlice(inps, func(o *ledger.OutputWithID) bool {
 		if totalInputs < onChainAmount+feeAmount {
-			totalInputs += o.Output.Amount()
+			totalInputs += o.Output.TokenBalance()
 			return true
 		}
 		return false

@@ -130,7 +130,7 @@ func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 	resp := api.ParsedOutput{
 		Data:        hex.EncodeToString(o.Bytes()),
 		Constraints: o.LinesPlain().Slice(),
-		Amount:      o.Amount(),
+		Amount:      o.TokenBalance(),
 		LockName:    o.Lock().Name(),
 	}
 	if cc, pos := o.ChainConstraint(); pos != 0xff {
@@ -176,7 +176,7 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 	resp := api.ParsedOutput{
 		Data:        hex.EncodeToString(outBin),
 		Constraints: o.LinesPlain().Slice(),
-		Amount:      o.Amount(),
+		Amount:      o.TokenBalance(),
 		LockName:    o.Lock().Name(),
 	}
 	if cc, pos := o.ChainConstraint(); pos != 0xff {

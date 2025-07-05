@@ -90,7 +90,7 @@ func listChains(chains []*ledger.OutputWithChainID) {
 		}
 
 		glb.Infof("\n%2d: %s, sequencer: "+seq, i, o.ChainID.String())
-		glb.Infof("      balance         : %s", util.Th(o.Output.Amount()))
+		glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
 		glb.Infof("      controller lock : %s", lock.String())
 		glb.Infof("      output          : %s", o.ID.String())
 		count++
@@ -124,13 +124,13 @@ func listGrouped(chains []*ledger.OutputWithChainID) {
 		totalForTarget := uint64(0)
 		for _, o := range m[tl] {
 			glb.Infof("\n      id              : %s", o.ChainID.String())
-			glb.Infof("      balance         : %s", util.Th(o.Output.Amount()))
+			glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
 			glb.Infof("      controller lock : %s", o.Output.Lock().String())
 			glb.Infof("      output          : %s", o.ID.String())
-			totalForTarget += o.Output.Amount()
+			totalForTarget += o.Output.TokenBalance()
 			count++
 		}
-		glb.Infof("\n------ Amount delegated to the target lock: %s", util.Th(totalForTarget))
+		glb.Infof("\n------ TokenBalance delegated to the target lock: %s", util.Th(totalForTarget))
 		total += totalForTarget
 	}
 	glb.Infof("\nTOTAL delegations: %d, delegated amount: %s", count, util.Th(total))

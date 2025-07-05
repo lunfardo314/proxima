@@ -183,7 +183,7 @@ func (s SugaredStateReader) BalanceOf(addr ledger.AccountID) uint64 {
 	util.AssertNoError(err)
 	ret := uint64(0)
 	for _, o := range outs {
-		ret += o.Output.Amount()
+		ret += o.Output.TokenBalance()
 	}
 	return ret
 }
@@ -199,7 +199,7 @@ func (s SugaredStateReader) BalanceOnChain(chainID base.ChainID) uint64 {
 	if err != nil {
 		return 0
 	}
-	return o.Output.Amount()
+	return o.Output.TokenBalance()
 }
 
 func (s SugaredStateReader) GetOutputsDelegatedToAccount(addr ledger.Accountable) ([]*ledger.OutputWithChainID, error) {
@@ -291,7 +291,7 @@ func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledge
 				ID:     oid,
 				Output: o,
 			})
-			retAmount += o.Amount()
+			retAmount += o.TokenBalance()
 		}
 		return retAmount < targetAmount
 	})
@@ -330,7 +330,7 @@ func (s SugaredStateReader) GetAllChainsOld() (map[base.ChainID]ChainRecordInfo,
 			return nil, fmt.Errorf("inconsistency: cannot get chainID: %s, oid: %s", chainID.String(), oid.String())
 		}
 		ret[chainID] = ChainRecordInfo{
-			Balance: o.Amount(),
+			Balance: o.TokenBalance(),
 			Output: &ledger.OutputDataWithID{
 				ID:   oid,
 				Data: o.Bytes(),

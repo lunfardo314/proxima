@@ -54,23 +54,23 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, target ledger.Accountable
 				continue
 			}
 			numDelegation++
-			sumDelegation += o.Output.Amount()
+			sumDelegation += o.Output.TokenBalance()
 			delegationID, _, ok := o.ExtractChainID()
 			glb.Assertf(ok, "extractChainID")
 			delegations[delegationID] = _delegation{
-				amount:     o.Output.Amount(),
-				inflation:  o.Output.Amount() - dl.StartAmount,
+				amount:     o.Output.TokenBalance(),
+				inflation:  o.Output.TokenBalance() - dl.StartAmount,
 				sinceSlot:  dl.StartTime.Slot,
 				lastActive: o.ID.Slot(),
 			}
 		}
 		if ccIdx != 0xff {
 			numChains++
-			sumOnChains += o.Output.Amount()
+			sumOnChains += o.Output.TokenBalance()
 
 		} else {
 			numNonChains++
-			sumOutsideChains += o.Output.Amount()
+			sumOutsideChains += o.Output.TokenBalance()
 		}
 	}
 	glb.Infof("Total amounts controlled on:")

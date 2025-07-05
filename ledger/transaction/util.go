@@ -106,7 +106,7 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 			ret.Add("  #%d : parse error", idx)
 			return true
 		}
-		totalSum += o.Amount()
+		totalSum += o.TokenBalance()
 		chainIdStr := ""
 		if cc, i := o.ChainConstraint(); i != 0xff {
 			var cid base.ChainID

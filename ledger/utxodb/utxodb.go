@@ -201,7 +201,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25
 	}
 	// remainder
 	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmount(remainderAmount).WithLock(u.faucetAddress)
+		o.WithTokenBalance(remainderAmount).WithLock(u.faucetAddress)
 	})
 	if _, err = txb.ProduceOutput(out); err != nil {
 		return nil, err
@@ -209,7 +209,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25
 	// target outputs
 	for _, a := range addrs {
 		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmount(amount).WithLock(a)
+			o.WithTokenBalance(amount).WithLock(a)
 		})
 		if _, err := txb.ProduceOutput(o); err != nil {
 			return nil, err
@@ -386,7 +386,7 @@ func (u *UTXODB) account(addr ledger.Accountable) (uint64, int) {
 	util.AssertNoError(err)
 
 	for _, o := range outs1 {
-		balance += o.Output.Amount()
+		balance += o.Output.TokenBalance()
 	}
 	return balance, len(outs1)
 }
@@ -406,9 +406,9 @@ func (u *UTXODB) BalanceOnChain(chainID base.ChainID) (uint64, uint64, error) {
 	}
 	amount := uint64(0)
 	for _, odata := range outs {
-		amount += odata.Output.Amount()
+		amount += odata.Output.TokenBalance()
 	}
-	return amount, outChain.Output.Amount(), nil
+	return amount, outChain.Output.TokenBalance(), nil
 }
 
 // NumUTXOs returns number of outputs in the address
