@@ -15,8 +15,11 @@ import (
 
 type Amounts []uint64
 
+const AmountsConstraintName = "amounts"
+
 const (
-	AmountsConstraintName = "amounts"
+	AmountIndexTokenBalance = byte(iota)
+	AmountIndexInflation
 )
 
 func NewAmounts(args ...uint64) Amounts {
@@ -63,12 +66,12 @@ func (a Amounts) Amount(i byte) (ret uint64) {
 }
 
 func (a Amounts) TokenBalance() (ret uint64) {
-	ret = a.Amount(0)
+	ret = a.Amount(AmountIndexTokenBalance)
 	return
 }
 
 func (a Amounts) InflationAmount() (ret uint64) {
-	ret = a.Amount(1)
+	ret = a.Amount(AmountIndexInflation)
 	return
 }
 
@@ -129,8 +132,8 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext]) {
 		// don't check on consumed outputs
 		return
 	}
-	inflation := ctx.SelfAmounts().InflationAmount()
-	if inflation == 0 {
+	inflationGiven := ctx.SelfAmounts().InflationAmount()
+	if inflationGiven == 0 {
 		// nothing to enforce
 		return
 	}
@@ -149,7 +152,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext]) {
 		par.RequireNoError(err)
 
 		bibCalc := L().BranchInflationBonusDirect(stemLock.VRFProof)
-		par.Require(inflation == bibCalc, "wrong branch inflation bonus value: expected %d, got %d", bibCalc, inflation)
+		par.Require(inflationGiven == bibCalc, "wrong branch inflation bonus value: expected %d, got %d", bibCalc, inflationGiven)
 		return
 	}
 	// non-branch
@@ -166,8 +169,8 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext]) {
 	predOutput, err := OutputFromBytes(predBytes)
 	par.RequireNoError(err)
 
-	inflCalc := L().CalcChainInflationAmount(predTimestamp, txid.Timestamp(), predOutput.TokenBalance())
-	par.Require(inflation == inflCalc, "wrong inflation amount. Expected %d, got %d", inflCalc, inflation)
+	inflationCalculated := L().CalcChainInflationAmountDirect(predTimestamp, txid.Timestamp(), predOutput.TokenBalance())
+	par.Require(inflationGiven == inflationCalculated, "wrong inflation amount. Expected %d, got %d", inflationCalculated, inflationGiven)
 }
 
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {

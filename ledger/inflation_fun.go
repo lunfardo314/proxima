@@ -36,6 +36,22 @@ func (lib *Library) CalcChainInflationAmount(inTs, outTs base.LedgerTime, inAmou
 	return binary.BigEndian.Uint64(ret)
 }
 
+func (lib *Library) CalcChainInflationAmountDirect(inTs, outTs base.LedgerTime, inAmount uint64) uint64 {
+	util.Assertf(inTs.Before(outTs), "inTs.Before(outTs)")
+	if outTs.IsSlotBoundary() {
+		return 0
+	}
+	adjustedDiffSlots := uint64(outTs.Slot - inTs.Slot)
+	if inTs.IsSlotBoundary() {
+		adjustedDiffSlots++
+	}
+	baseInflation := inAmount / (lib.ID.InitialSupply/lib.ID.SlotInflationBase + uint64(inTs.Slot))
+	if adjustedDiffSlots > lib.ID.LinearInflationSlots {
+		return lib.ID.LinearInflationSlots * baseInflation
+	}
+	return adjustedDiffSlots * baseInflation
+}
+
 func (lib *Library) BranchInflationBonusBase() uint64 {
 	res, err := lib.EvalFromSource(nil, "constBranchInflationBonusBase")
 	util.AssertNoError(err)

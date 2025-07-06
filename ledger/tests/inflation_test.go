@@ -34,6 +34,40 @@ func TestScaleBytesAsBigInt(t *testing.T) {
 	}
 }
 
+func TestInflationFun(t *testing.T) {
+	runTest := func(tsIn, tsOut base.LedgerTime, inAmount uint64) {
+		c := ledger.L().CalcChainInflationAmount(tsIn, tsOut, inAmount)
+		d := ledger.L().CalcChainInflationAmountDirect(tsIn, tsOut, inAmount)
+		if c != d {
+			t.Fatalf("failed with tsIn=%s, tsOut=%s, inAmount=%d", tsIn.String(), tsOut.String(), inAmount)
+		} else {
+			t.Logf("tsIn=%s, tsOut=%s, inAmount=%d -> %d", tsIn.String(), tsOut.String(), inAmount, c)
+		}
+	}
+	tsIn := base.NewLedgerTime(100, 5)
+
+	tsOut := base.NewLedgerTime(101, 5)
+	runTest(tsIn, tsOut, 1_000_000_000)
+
+	tsOut = base.NewLedgerTime(102, 5)
+	runTest(tsIn, tsOut, 1_000_000_000)
+
+	tsOut = base.NewLedgerTime(103, 5)
+	runTest(tsIn, tsOut, 1_000_000_000)
+
+	tsOut = base.NewLedgerTime(104, 5)
+	runTest(tsIn, tsOut, 1_000_000_000)
+
+	tsOut = base.NewLedgerTime(200, 5)
+	runTest(tsIn, tsOut, 1_000_000_000)
+
+	tsOut = base.NewLedgerTime(200, 0)
+	runTest(tsIn, tsOut, 1_000_000_000)
+
+	tsOut = base.NewLedgerTime(100, 100)
+	runTest(tsIn, tsOut, 1_000_000_000)
+}
+
 func TestInflation(t *testing.T) {
 	t.Logf("slotInflationBase: %s", util.Th(ledger.L().ID.SlotInflationBase))
 	t.Logf("linearInflationSlots: %s", util.Th(ledger.L().ID.LinearInflationSlots))
