@@ -183,7 +183,7 @@ func (td *testData) transitChainWithDelegation(n int, par transitParams) (err er
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		amount := uint64(int64(td.seqChainOrigin.Output.TokenBalance()) - par.addAmount)
-		o.WithTokenBalance(amount)
+		o.WithAmounts(amount)
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
 	}))
 	require.NoError(td, err)
@@ -199,7 +199,7 @@ func (td *testData) transitChainWithDelegation(n int, par transitParams) (err er
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		amount := uint64(int64(td.delegatedOutput.Output.TokenBalance()) + par.addAmount)
-		o.WithTokenBalance(amount)
+		o.WithAmounts(amount)
 		o.WithLock(td.delegatedOutput.Output.Lock())
 		o.MustPushConstraint(ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount).Bytes())
 		o.MustPushConstraint(par.delegationState.Bytes())
@@ -254,11 +254,11 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	txb.PutUnlockParams(0, 2, ledger.FinishChainUnlockParams)
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(amount - tagAlongFee).WithLock(td.masterAddr)
+		o.WithAmounts(amount - tagAlongFee).WithLock(td.masterAddr)
 	}))
 	require.NoError(td, err)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(tagAlongFee).WithLock(ledger.ChainLockFromChainID(base.RandomChainID()))
+		o.WithAmounts(tagAlongFee).WithLock(ledger.ChainLockFromChainID(base.RandomChainID()))
 	}))
 	require.NoError(td, err)
 

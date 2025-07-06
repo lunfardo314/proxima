@@ -15,6 +15,7 @@ const (
 	inflationConstraintTemplate = InflationConstraintName + "(z64/%d, %d)"
 )
 
+// Deprecated:
 type InflationConstraint struct {
 	// either it is nil, which means 0 inflation, or 8 bytes of chain inflation or VRF randomness proof (on the branch only)
 	InflationAmount      uint64

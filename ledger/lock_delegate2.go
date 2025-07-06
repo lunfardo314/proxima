@@ -239,7 +239,7 @@ type MakeDelegate2OutputParams struct {
 
 func MakeDelegate2InitOutput(par MakeDelegate2OutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
-		o.WithTokenBalance(par.Amount)
+		o.WithAmounts(par.Amount)
 		o.WithLock(NewDelegate2Lock(par.Target, par.Master, par.MaxFreezeSlots))
 		o.MustPushConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes())
 		o.MustPushConstraint(DelegateLock2State{}.Bytes())

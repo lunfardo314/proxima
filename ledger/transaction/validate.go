@@ -3,8 +3,6 @@ package transaction
 import (
 	"bytes"
 	"fmt"
-	"math"
-
 	"sync/atomic"
 
 	"github.com/lunfardo314/easyfl"
@@ -56,7 +54,6 @@ func (ctx *TxContext) Validate() error {
 // _validate runs scripts on consumed and produced parts. Does not check the consistency of input commitment, because
 // it already checked upon creation of the transaction context
 func (ctx *TxContext) _validate() error {
-	var inSum, outSum uint64
 	var err error
 
 	spool := slicepool.New()
@@ -64,10 +61,10 @@ func (ctx *TxContext) _validate() error {
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		if inSum, err1 = ctx.validateOutputsFailFast(true, spool); err1 != nil {
+		if err1 = ctx.validateOutputsFailFast(true, spool); err1 != nil {
 			return err1
 		}
-		if outSum, err1 = ctx.validateOutputsFailFast(false, spool); err1 != nil {
+		if err1 = ctx.validateOutputsFailFast(false, spool); err1 != nil {
 			return err1
 		}
 		return nil
@@ -75,9 +72,9 @@ func (ctx *TxContext) _validate() error {
 	if err != nil {
 		return err
 	}
-	if inSum+ctx.inflationAmount != outSum {
+	if ctx.totalConsumedAmounts[0]+ctx.totalProducedAmounts[1] != ctx.totalProducedAmounts[0] {
 		return fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s, inflation: %s",
-			util.Th(inSum), util.Th(outSum), util.Th(ctx.inflationAmount))
+			util.Th(ctx.totalConsumedAmounts[0]), util.Th(ctx.totalProducedAmounts[0]), util.Th(ctx.totalProducedAmounts[1]))
 	}
 	return nil
 }
@@ -97,57 +94,16 @@ func (ctx *TxContext) writeStateMutationsTo(mut common.KVWriter) {
 	})
 }
 
-// ValidateWithReportOnConsumedOutputs validates the transaction and returns indices of failing consumed outputs, if any
-// This for the convenience of automated VMs and sequencers
-//func (ctx *TxContext) ValidateWithReportOnConsumedOutputs() ([]byte, error) {
-//	var inSum, outSum uint64
-//	var err error
-//	var retFailedConsumed []byte
-//
-//	spool := slicepool.New()
-//	defer spool.Dispose()
-//
-//	err = util.CatchPanicOrError(func() error {
-//		var err1 error
-//		inSum, retFailedConsumed, err1 = ctx._validateOutputs(true, false, spool)
-//		return err1
-//	})
-//	if err != nil {
-//		// return list of failed consumed outputs
-//		return retFailedConsumed, err
-//	}
-//	err = util.CatchPanicOrError(func() error {
-//		var err1 error
-//		outSum, _, err1 = ctx._validateOutputs(false, true, spool)
-//		return err1
-//	})
-//	if err != nil {
-//		return nil, err
-//	}
-//	err = util.CatchPanicOrError(func() error {
-//		return ctx.validateInputCommitmentSafe()
-//	})
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	if inSum+ctx.inflationAmount != outSum {
-//		return nil, fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s + inflation: %s != outputs %s",
-//			util.Th(inSum), util.Th(ctx.inflationAmount), util.Th(outSum))
-//	}
-//	return nil, nil
-//}
-
-func (ctx *TxContext) validateOutputsFailFast(consumedBranch bool, spool *slicepool.SlicePool) (uint64, error) {
-	totalAmount, _, err := ctx._validateOutputs(consumedBranch, true, spool)
-	return totalAmount, err
+func (ctx *TxContext) validateOutputsFailFast(consumedBranch bool, spool *slicepool.SlicePool) error {
+	_, err := ctx._validateOutputs(consumedBranch, true, spool)
+	return err
 }
 
 // _validateOutputs validates consumed or produced outputs and, optionally, either fails fast,
 // or return the list of indices of failed outputs
 // If err != nil and failFast = false, returns list of failed consumed and produced output respectively
-// if failFast = true, returns (totalAmount, nil, nil, error)
-func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool *slicepool.SlicePool) (uint64, []byte, error) {
+// if failFast = true, returns (totalAmountPersisted, nil, nil, error)
+func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool *slicepool.SlicePool) ([]byte, error) {
 	var branch tuples.TreePath
 	if consumedBranch {
 		branch = Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch)
@@ -155,7 +111,6 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool
 		branch = Path(ledger.TransactionBranch, ledger.TxOutputs)
 	}
 	var lastErr error
-	var sum uint64
 	var failedOutputs bytes.Buffer
 
 	path := common.Concat(branch, 0)
@@ -178,31 +133,24 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool
 			lastErr = fmt.Errorf("%w :\n%s", err, o.ToSource("   "))
 			return !failFast
 		}
-		minDeposit := o.MinimumStorageDeposit(0)
-		amount := o.TokenBalance()
-		if amount < minDeposit {
-			lastErr = fmt.Errorf("not enough storage deposit in output %s. Minimum %d, got %d",
-				PathToString(path), minDeposit, amount)
-			if !failFast {
-				failedOutputs.WriteByte(i)
+
+		if consumedBranch {
+			// for produced outputs amount vector was calculated during transaction validation
+			if overflow := o.Amounts().AddToVector(&ctx.totalConsumedAmounts); overflow {
+				lastErr = fmt.Errorf("validateOutputsFailFast @ path %s: uint64 arithmetic overflow", PathToString(path))
+				if !failFast {
+					failedOutputs.WriteByte(i)
+				}
+				return !failFast
 			}
-			return !failFast
 		}
-		if amount > math.MaxUint64-sum {
-			lastErr = fmt.Errorf("validateOutputsFailFast @ path %s: uint64 arithmetic overflow", PathToString(path))
-			if !failFast {
-				failedOutputs.WriteByte(i)
-			}
-			return !failFast
-		}
-		sum += amount
 		return true
 	}, branch)
 	if lastErr != nil {
 		util.Assertf(failFast || failedOutputs.Len() > 0, "failedOutputs.Len()>0")
-		return 0, failedOutputs.Bytes(), lastErr
+		return failedOutputs.Bytes(), lastErr
 	}
-	return sum, nil, nil
+	return nil, nil
 }
 
 func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {

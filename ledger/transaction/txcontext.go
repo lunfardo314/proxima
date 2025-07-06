@@ -17,11 +17,11 @@ type TxContext struct {
 	tree        *tuples.Tree
 	traceOption int
 	// calculated and cached values
-	txid            base.TransactionID
-	sender          ledger.AddressED25519
-	inflationAmount uint64
-	// EasyFL constraint validation context
-	dataContext *ledger.EvalContext
+	txid                 base.TransactionID
+	sender               ledger.AddressED25519
+	totalProducedAmounts [16]uint64
+	totalConsumedAmounts [16]uint64
+	dataContext          *ledger.EvalContext // EasyFL constraint validation context
 }
 
 var Path = tuples.Path
@@ -34,12 +34,12 @@ const (
 
 func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*ledger.Output, error), traceOption ...int) (*TxContext, error) {
 	ret := &TxContext{
-		tree:            nil,
-		traceOption:     TraceOptionNone,
-		dataContext:     nil,
-		txid:            tx.ID(),
-		sender:          tx.SenderAddress(),
-		inflationAmount: tx.InflationAmount(),
+		tree:                 nil,
+		traceOption:          TraceOptionNone,
+		dataContext:          nil,
+		txid:                 tx.ID(),
+		sender:               tx.SenderAddress(),
+		totalProducedAmounts: tx.TotalProducedAmounts(),
 	}
 	if len(traceOption) > 0 {
 		ret.traceOption = traceOption[0]
@@ -239,7 +239,7 @@ func (ctx *TxContext) TotalAmountStored() uint64 {
 }
 
 func (ctx *TxContext) TotalInflation() uint64 {
-	return ctx.inflationAmount
+	return ctx.totalProducedAmounts[ledger.AmountIndexInflation]
 }
 
 func (ctx *TxContext) OutputID(idx byte) base.OutputID {

@@ -19,7 +19,7 @@ func TestTTT(t *testing.T) {
 	t.Logf("bytecode: %s", hex.EncodeToString(tl.Bytes()))
 
 	utxo := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(1337)
+		o.WithAmounts(1337)
 		o.WithLock(ledger.AddressED25519Random())
 		o.MustPushConstraint(tl.Bytes())
 	})

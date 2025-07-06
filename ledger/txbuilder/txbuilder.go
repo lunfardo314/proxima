@@ -438,7 +438,7 @@ func (t *TransferData) TotalAdjustedAmount() uint64 {
 	}
 
 	outTentative := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(t.Amount).WithLock(t.Lock)
+		o.WithAmounts(t.Amount).WithLock(t.Lock)
 		for _, c := range t.AddConstraints {
 			o.MustPushConstraint(c)
 		}
@@ -548,7 +548,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 
 	mainOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(amount).WithLock(par.Lock)
+		o.WithAmounts(amount).WithLock(par.Lock)
 		if par.AddMessage {
 			msg := ledger.NewMessageWithED25519SenderFromPublicKey(par.SenderPublicKey, par.MessageData)
 			o.MustPushConstraint(msg.Bytes())
@@ -569,7 +569,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	var tagAlongOut *ledger.Output
 	if par.TagAlong != nil {
 		tagAlongOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(par.TagAlong.Amount).
+			o.WithAmounts(par.TagAlong.Amount).
 				WithLock(ledger.ChainLockFromChainID(par.TagAlong.SeqID))
 		})
 		tagAlongFee = par.TagAlong.Amount
@@ -579,7 +579,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	var remainderIndex byte
 	if availableTokens > amount+tagAlongFee {
 		remainderOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(availableTokens - amount - tagAlongFee).
+			o.WithAmounts(availableTokens - amount - tagAlongFee).
 				WithLock(par.SourceAccount.AsLock())
 		})
 	}
@@ -699,7 +699,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	// make chain output
 	var chainOutConstraintIdx byte
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.PutTokenBalance(chainOutAmount)
+		o.PutAmounts(chainOutAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
 		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, chainInConstraint.OriginSlot, chainInConstraint.OriginAmount)
@@ -720,7 +720,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 
 	if par.WithdrawAmount > 0 {
 		withdrawOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(par.WithdrawAmount).
+			o.WithAmounts(par.WithdrawAmount).
 				WithLock(par.WithdrawTarget)
 		})
 		if _, err = txb.ProduceOutput(withdrawOut); err != nil {
@@ -797,7 +797,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 
 	var outChainConstraintIdx byte
 	chainSuccessorOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(availableTokens - amount)
+		o.WithAmounts(availableTokens - amount)
 		o.WithLock(par.ChainOutput.Output.Lock())
 		outChainConstraintIdx = o.MustPushConstraint(chainConstr.Bytes())
 	})
@@ -807,7 +807,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 
 	mainOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(amount).WithLock(par.Lock)
+		o.WithAmounts(amount).WithLock(par.Lock)
 		if par.AddMessage {
 			msg := ledger.NewMessageWithED25519SenderFromPublicKey(par.SenderPublicKey, par.MessageData)
 			o.MustPushConstraint(msg.Bytes())
@@ -981,7 +981,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
 	tagAlong := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(par.TagAlongFee)
+		o.WithAmounts(par.TagAlongFee)
 		o.WithLock(ledger.ChainLockFromChainID(par.TagAlongSequencer))
 	})
 	if _, err = txb.ProduceOutput(tagAlong); err != nil {
@@ -989,7 +989,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 	if inputTotal > par.Amount+par.TagAlongFee {
 		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(inputTotal - par.Amount - par.TagAlongFee)
+			o.WithAmounts(inputTotal - par.Amount - par.TagAlongFee)
 			o.WithLock(par.Master.AsLock())
 		})
 		if _, err = txb.ProduceOutput(remainder); err != nil {

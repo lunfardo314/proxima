@@ -110,7 +110,6 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	}
 
 	var mainChainInflationAmount uint64
-	var mainChainInflationConstraint *ledger.InflationConstraint
 
 	if par.InflateMainChain {
 		// calculate main chain inflation amount
@@ -120,10 +119,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			mainChainInflationAmount = ledger.L().BranchInflationBonusFromRandomnessProof(vrfProof)
 		} else {
 			// for non-branch
-			mainChainInflationAmount = ledger.L().CalcChainInflationAmount(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.TokenBalance())
-		}
-		mainChainInflationConstraint = &ledger.InflationConstraint{
-			InflationAmount: mainChainInflationAmount,
+			mainChainInflationAmount = ledger.L().CalcChainInflationAmountDirect(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.TokenBalance())
 		}
 	}
 
@@ -165,7 +161,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	var chainOutConstraintIdx byte
 
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.PutTokenBalance(chainOutAmount)
+		o.PutAmounts(chainOutAmount, mainChainInflationAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
 		chainOutConstraint := ledger.NewChainConstraint(par.ChainInput.ChainID, chainPredIdx, par.ChainInput.ChainConstraintIndex, par.ChainInput.OriginSlot, par.ChainInput.OriginAmount)
@@ -192,18 +188,13 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		// milestone data is on fixed index. For some reason TODO
 		idxMsData := o.MustPushConstraint(outData.AsConstraint().Bytes())
 		util.Assertf(idxMsData == ledger.MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
-
-		if mainChainInflationConstraint != nil {
-			mainChainInflationConstraint.ChainConstraintIndex = chainOutConstraintIdx
-			o.MustPushConstraint(mainChainInflationConstraint.Bytes())
-		}
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
 	if err != nil {
 		return nil, nil, errP(err)
 	}
-	// unlock chain input (chain constraint unlock + inflation (optionally)
+	// unlock chain input
 	txb.PutUnlockParams(chainPredIdx, par.ChainInput.ChainConstraintIndex, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
 
 	// transit delegation outputs
@@ -229,7 +220,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		util.Assertf(len(vrfProof) > 0, "len(vrfProof)>0")
 
 		stemOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(par.StemInput.Output.TokenBalance())
+			o.WithAmounts(par.StemInput.Output.TokenBalance())
 			o.WithLock(&ledger.StemLock{
 				PredecessorOutputID: par.StemInput.ID,
 				VRFProof:            vrfProof,
@@ -319,7 +310,7 @@ func makeDelegationTransitions(inputs []*ledger.OutputWithChainID, offs byte, ta
 		}
 
 		inChainAmount := in.Output.TokenBalance()
-		delegationInflation := ledger.L().CalcChainInflationAmount(in.ID.Timestamp(), targetTs, inChainAmount)
+		delegationInflation := ledger.L().CalcChainInflationAmountDirect(in.ID.Timestamp(), targetTs, inChainAmount)
 
 		inflationTotal += delegationInflation
 		delegationMargin := uint64(delegationMarginPromille) * delegationInflation / 1000
@@ -330,18 +321,10 @@ func makeDelegationTransitions(inputs []*ledger.OutputWithChainID, offs byte, ta
 		retTotalOut += outChainAmount
 
 		ret[i] = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(outChainAmount).
-				WithLock(in.Output.Lock())
+			o.WithAmounts(outChainAmount, delegationInflation)
+			o.WithLock(in.Output.Lock())
 			ccSucc := ledger.NewChainConstraint(chainID, byte(i)+offs, ccIdx, cc.OriginSlot, cc.OriginAmount)
 			o.MustPushConstraint(ccSucc.Bytes())
-
-			if delegationInflation > 0 {
-				ic := ledger.InflationConstraint{
-					InflationAmount:      delegationInflation,
-					ChainConstraintIndex: ccIdx,
-				}
-				o.MustPushConstraint(ic.Bytes())
-			}
 		})
 	}
 	util.Assertf(retTotalOut == retTotalIn+inflationTotal, "retTotalOut == retTotalIn+inflationTotal")

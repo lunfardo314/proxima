@@ -190,7 +190,7 @@ func (lib *Library) registerConstraints() {
 	registerChainConstraint(lib)
 	registerStemLockConstraint(lib)
 	registerSequencerConstraint(lib)
-	registerInflationConstraint(lib)
+	//registerInflationConstraint(lib)
 	registerMessageWithSenderED25519Constraint(lib)
 	registerChainLockConstraint(lib)
 	registerImmutableConstraint(lib)

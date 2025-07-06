@@ -55,12 +55,12 @@ func TestAmountsBase(t *testing.T) {
 		require.NoError(t, err)
 
 		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(transferAmount).
+			o.WithAmounts(transferAmount).
 				WithLock(addr0).
 				MustPushConstraint(ledger.NewAmounts(1, 2).Bytes())
 		}))
 		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(amountFromFaucet - transferAmount).
+			o.WithAmounts(amountFromFaucet - transferAmount).
 				WithLock(addr0)
 		}))
 

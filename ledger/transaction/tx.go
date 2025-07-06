@@ -3,7 +3,6 @@ package transaction
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -30,8 +29,8 @@ type (
 		txid                     base.TransactionID
 		sender                   ledger.AddressED25519
 		timestamp                base.LedgerTime
-		totalAmount              uint64                    // persisted in tx
-		totalInflation           uint64                    // calculated
+		totalAmountPersisted     uint64                    // persisted in tx
+		producedAmountTotals     [16]uint64                // calculated by summing up amount vectors
 		sequencerTransactionData *SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
 
@@ -47,7 +46,7 @@ type (
 	}
 )
 
-// MainTxValidationOptions is all except Base, time bounds and input context validation. Fastest first
+// MainTxValidationOptions is all except Base, the time bounds and input context validation. Fastest first
 var MainTxValidationOptions = []TxValidationOption{
 	ParseTotalProducedAmount,
 	ParseSequencerData,
@@ -237,7 +236,7 @@ func ParseTotalProducedAmount(tx *Transaction) error {
 	if err != nil {
 		return err
 	}
-	tx.totalAmount, err = easyfl_util.Uint64FromBytes(totalAmountBin)
+	tx.totalAmountPersisted, err = easyfl_util.Uint64FromBytes(totalAmountBin)
 	if err != nil {
 		return fmt.Errorf("wrong total amount in transaction: %v", err)
 	}
@@ -422,25 +421,29 @@ func ScanOutputs(tx *Transaction) error {
 	if err != nil {
 		return fmt.Errorf("scanning outputs: '%v'", err)
 	}
-	var totalAmount uint64
 	var amounts ledger.Amounts
 
-	var o *ledger.Output
-	path := []byte{ledger.TxOutputs, 0}
+	pathToAmounts := []byte{ledger.TxOutputs, 0, 0}
+	pathToLock := []byte{ledger.TxOutputs, 0, 1}
+
 	for i := 0; i < numOutputs; i++ {
-		path[1] = byte(i)
-		o, amounts, _, err = ledger.OutputFromBytesMain(tx.tree.MustBytesAtPath(path))
+		pathToAmounts[1] = byte(i)
+		amounts, err = ledger.AmountsFromBytes(tx.tree.MustBytesAtPath(pathToAmounts))
 		if err != nil {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
-		bal := amounts.TokenBalance()
-		if bal > math.MaxUint64-totalAmount {
+
+		// just enforcing known lock at index 1
+		if _, err = ledger.LockFromBytes(tx.tree.MustBytesAtPath(pathToLock)); err != nil {
+			return fmt.Errorf("scanning output #%d: '%v'", i, err)
+		}
+
+		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
 			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
-		totalAmount += bal
-		tx.totalInflation += o.Inflation()
 	}
-	if tx.totalAmount != totalAmount {
+	// check the total amounts constraint
+	if tx.totalAmountPersisted != tx.producedAmountTotals[0] {
 		return fmt.Errorf("wrong total produced amount")
 	}
 	return nil
@@ -583,7 +586,7 @@ func (tx *Transaction) TimestampTime() time.Time {
 }
 
 func (tx *Transaction) TotalAmount() uint64 {
-	return tx.totalAmount
+	return tx.totalAmountPersisted
 }
 
 func (tx *Transaction) Bytes() []byte {
@@ -790,7 +793,7 @@ func (tx *Transaction) OutputID(idx byte) base.OutputID {
 }
 
 func (tx *Transaction) InflationAmount() uint64 {
-	return tx.totalInflation
+	return tx.producedAmountTotals[ledger.AmountIndexInflation]
 }
 
 func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*ledger.OutputWithID, error) {
@@ -1050,7 +1053,7 @@ func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger
 }
 
 // BaselineDirection is the input, endorsement or explicit baseline of the sequencer transaction where to look for a baseline branch
-// It is not a baseline yet (but it can be one).
+// It is not a baseline yet, (but it can be one).
 // It is assumed tx is a sequencer transaction and not the origin of the sequencer chain
 func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	util.Assertf(tx.IsSequencerTransaction(), "tx.IsSequencerTransaction()")
@@ -1077,5 +1080,10 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	// it enforces at least one endorsement
 	util.Assertf(tx.NumEndorsements() > 0, "tx.NumEndorsements()>0\n>>>>>>>>>>>>>>>>>>\n%s", tx.String())
 	ret = tx.MustEndorsementAt(0)
+	return
+}
+
+func (tx *Transaction) TotalProducedAmounts() (ret [16]uint64) {
+	ret = tx.producedAmountTotals
 	return
 }

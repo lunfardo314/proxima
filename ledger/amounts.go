@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,7 +25,16 @@ const (
 
 func NewAmounts(args ...uint64) Amounts {
 	util.Assertf(len(args) <= 15, "NewAmounts: too many arguments")
-	return slices.Clone(args)
+	lastNotZero := -1
+	for i, arg := range args {
+		if arg > 0 {
+			lastNotZero = i
+		}
+	}
+	if lastNotZero == -1 {
+		return nil
+	}
+	return slices.Clone(args[:lastNotZero+1])
 }
 
 func (a Amounts) Name() string {
@@ -36,6 +46,9 @@ func (a Amounts) Bytes() []byte {
 }
 
 func (a Amounts) Source() string {
+	if len(a) == 0 {
+		return AmountsConstraintName
+	}
 	argsStr := make([]string, len(a))
 	for i, arg := range a {
 		if arg == 0 {
@@ -72,6 +85,19 @@ func (a Amounts) TokenBalance() (ret uint64) {
 
 func (a Amounts) InflationAmount() (ret uint64) {
 	ret = a.Amount(AmountIndexInflation)
+	return
+}
+
+// AddToVector adds amounts to vector with safe arithmetics
+// Returns false in case of arithmetic overflow, but does not panic
+// It is up to the caller to process overflow
+func (a Amounts) AddToVector(vect *[16]uint64) (overflow bool) {
+	for i, v := range a {
+		if vect[i] >= math.MaxUint64-v {
+			overflow = true
+		}
+		vect[i] += v
+	}
 	return
 }
 

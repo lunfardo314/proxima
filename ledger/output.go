@@ -69,7 +69,7 @@ func NewOutput(buildFun func(o *OutputBuilder)) *Output {
 
 func OutputBasic(amount uint64, lock Lock) *Output {
 	return NewOutput(func(o *OutputBuilder) {
-		o.WithLock(lock).WithTokenBalance(amount)
+		o.WithAmounts(amount).WithLock(lock)
 	})
 }
 
@@ -160,9 +160,9 @@ func (o *Output) MustStemLock() *StemLock {
 	return ret
 }
 
-// WithTokenBalance can only be used inside r/o override closure
-func (o *OutputBuilder) WithTokenBalance(amount uint64) *OutputBuilder {
-	o.MustPutAtIdxWithPadding(ConstraintIndexAmounts, NewAmounts(amount).Bytes())
+// WithAmounts can only be used inside r/o override closure
+func (o *OutputBuilder) WithAmounts(amount ...uint64) *OutputBuilder {
+	o.MustPutAtIdxWithPadding(ConstraintIndexAmounts, NewAmounts(amount...).Bytes())
 	return o
 }
 
@@ -213,8 +213,8 @@ func (o *OutputBuilder) PutConstraint(c []byte, idx byte) {
 	o.MustPutAtIdxWithPadding(idx, c)
 }
 
-func (o *OutputBuilder) PutTokenBalance(amount uint64) {
-	o.PutConstraint(NewAmounts(amount).Bytes(), ConstraintIndexAmounts)
+func (o *OutputBuilder) PutAmounts(amount ...uint64) {
+	o.PutConstraint(NewAmounts(amount...).Bytes(), ConstraintIndexAmounts)
 }
 
 func (o *OutputBuilder) PutLock(lock Lock) {
@@ -349,32 +349,29 @@ func (o *Output) IsSequencerOutput() bool {
 }
 
 // InflationConstraint finds and parses inflation constraint. Returns its constraintIndex or 0xff if not found
-func (o *Output) InflationConstraint() (*InflationConstraint, byte) {
-	var ret *InflationConstraint
-	var err error
-	found := byte(0xff)
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
-		}
-		ret, err = InflationConstraintFromBytes(constr)
-		if err == nil {
-			found = idx
-			return false
-		}
-		return true
-	})
-	if found != 0xff {
-		return ret, found
-	}
-	return nil, 0xff
-}
+//func (o *Output) InflationConstraint() (*InflationConstraint, byte) {
+//	var ret *InflationConstraint
+//	var err error
+//	found := byte(0xff)
+//	o.ForEachConstraint(func(idx byte, constr []byte) bool {
+//		if idx < ConstraintIndexFirstOptionalConstraint {
+//			return true
+//		}
+//		ret, err = InflationConstraintFromBytes(constr)
+//		if err == nil {
+//			found = idx
+//			return false
+//		}
+//		return true
+//	})
+//	if found != 0xff {
+//		return ret, found
+//	}
+//	return nil, 0xff
+//}
 
 func (o *Output) Inflation() uint64 {
-	if inflationConstraint, idx := o.InflationConstraint(); idx != 0xff {
-		return inflationConstraint.InflationAmount
-	}
-	return 0
+	return o.Amounts().InflationAmount()
 }
 
 func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
