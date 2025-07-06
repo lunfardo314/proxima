@@ -81,7 +81,7 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 	return &OutputBuilder{ret}, nil
 }
 
-func OutputFromBytesReadOnly(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
+func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
 	ret, _, _, err := OutputFromBytesMain(data)
 	if err != nil {
 		return nil, err
@@ -166,12 +166,16 @@ func (o *OutputBuilder) WithTokenBalance(amount uint64) *OutputBuilder {
 	return o
 }
 
-func (o *Output) TokenBalance() uint64 {
+func (o *Output) Amounts() Amounts {
 	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)
 	ret, err := AmountsFromBytes(bin)
 	util.AssertNoError(err)
-	return ret.TokenBalance()
+	return ret
+}
+
+func (o *Output) TokenBalance() uint64 {
+	return o.Amounts().TokenBalance()
 }
 
 // WithLock can only be used inside r/o override closure
@@ -187,7 +191,7 @@ func (o *Output) Hex() string {
 // Clone clones output and gives a chance to modify it
 func (o *Output) Clone(buildFun ...func(o *OutputBuilder)) *Output {
 	if len(buildFun) == 0 {
-		ret, err := OutputFromBytesReadOnly(o.Bytes())
+		ret, err := OutputFromBytes(o.Bytes())
 		util.AssertNoError(err)
 		return ret
 	}
@@ -498,7 +502,7 @@ func (o *Output) LinesPlain() *lines.Lines {
 }
 
 func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWithID, error) {
-	ret, err := OutputFromBytesReadOnly(o.Data, validOpt...)
+	ret, err := OutputFromBytes(o.Data, validOpt...)
 	if err != nil {
 		return nil, err
 	}
@@ -732,7 +736,7 @@ func ParseAndSortOutputData(outs []*OutputDataWithID, filter func(oid *base.Outp
 func ParseOutputDataAndFilter(outs []*OutputDataWithID, filter func(oid *base.OutputID, o *Output) bool) ([]*OutputWithID, error) {
 	ret := make([]*OutputWithID, 0, len(outs))
 	for _, od := range outs {
-		out, err := OutputFromBytesReadOnly(od.Data)
+		out, err := OutputFromBytes(od.Data)
 		if err != nil {
 			return nil, err
 		}
@@ -821,7 +825,7 @@ func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 
 func forEachOutputReadOnly(outs []*OutputDataWithID, fun func(o *Output, odata *OutputDataWithID) bool) error {
 	for _, odata := range outs {
-		o, err := OutputFromBytesReadOnly(odata.Data)
+		o, err := OutputFromBytes(odata.Data)
 		if err != nil {
 			return err
 		}

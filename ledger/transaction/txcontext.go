@@ -151,7 +151,7 @@ func (ctx *TxContext) ForEachProducedOutputData(fun func(idx byte, oData []byte)
 
 func (ctx *TxContext) ForEachProducedOutput(fun func(idx byte, out *ledger.Output, oid *base.OutputID) bool) {
 	ctx.ForEachProducedOutputData(func(idx byte, oData []byte) bool {
-		out, _ := ledger.OutputFromBytesReadOnly(oData)
+		out, _ := ledger.OutputFromBytes(oData)
 		oid := ctx.OutputID(idx)
 		if !fun(idx, out, &oid) {
 			return false
@@ -175,7 +175,7 @@ func (ctx *TxContext) ConsumedOutputData(idx byte) []byte {
 }
 
 func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
-	return ledger.OutputFromBytesReadOnly(ctx.ConsumedOutputData(idx))
+	return ledger.OutputFromBytes(ctx.ConsumedOutputData(idx))
 }
 
 func (ctx *TxContext) UnlockDataAt(idx byte) []byte {

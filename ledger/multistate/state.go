@@ -367,7 +367,7 @@ func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) {
 	r.Iterator([]byte{TriePartitionState}).Iterate(func(key, oData []byte) bool {
 		oid, err := base.OutputIDFromBytes(key[1:])
 		util.AssertNoError(err)
-		o, err := ledger.OutputFromBytesReadOnly(oData)
+		o, err := ledger.OutputFromBytes(oData)
 		util.AssertNoError(err)
 		return fun(ledger.OutputWithID{
 			ID:     oid,

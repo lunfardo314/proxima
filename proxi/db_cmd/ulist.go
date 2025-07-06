@@ -67,7 +67,7 @@ func runUlist(_ *cobra.Command, args []string) {
 	var err1 error
 	count := 0
 	err = rdr.IterateUTXOsInSlot(slot, func(oid base.OutputID, oData []byte) bool {
-		o, err1 = ledger.OutputFromBytesReadOnly(oData)
+		o, err1 = ledger.OutputFromBytes(oData)
 		glb.AssertNoError(err1)
 		glb.Infof("%s", oid.String())
 		if glb.IsVerbose() {

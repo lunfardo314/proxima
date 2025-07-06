@@ -18,11 +18,14 @@ import (
 type (
 	TxContextAccess interface {
 		BytesAtPath([]byte) ([]byte, error)
+		TransactionID() base.TransactionID
+		SequencerAndStemOutputIndices() (byte, byte)
 	}
 
 	EvalContext struct {
 		TxContextAccess
 		path    []byte
+		output  *Output
 		amounts Amounts // cached value
 	}
 )
@@ -35,6 +38,30 @@ func NewEvalContext(ctx TxContextAccess) *EvalContext {
 
 func (c *EvalContext) TxContext() TxContextAccess {
 	return c.TxContextAccess
+}
+
+func (c *EvalContext) SelfIsConsumedOutput() bool {
+	return bytes.HasPrefix(c.path, PathToConsumedOutputs)
+}
+
+func (c *EvalContext) SelfIsProducedOutput() bool {
+	return bytes.HasPrefix(c.path, PathToProducedOutputs)
+}
+
+func (c *EvalContext) SelfOutputBytes() (ret []byte) {
+	var err error
+	ret, err = c.BytesAtPath(c.path[:len(c.path)-1])
+	util.AssertNoError(err)
+	return
+}
+
+func (c *EvalContext) SelfOutput() *Output {
+	if c.output == nil {
+		var err error
+		c.output, err = OutputFromBytes(c.SelfOutputBytes())
+		util.AssertNoError(err)
+	}
+	return c.output
 }
 
 func (c *EvalContext) SelfSiblingPath(idx byte) (ret []byte) {
@@ -51,12 +78,9 @@ func (c *EvalContext) SelfSiblingBytes(idx byte) (ret []byte) {
 }
 
 func (c *EvalContext) SelfAmounts() Amounts {
-	if c.amounts != nil {
-		return c.amounts
+	if c.amounts == nil {
+		c.amounts = c.SelfOutput().Amounts()
 	}
-	var err error
-	c.amounts, err = AmountsFromBytes(c.SelfSiblingBytes(0))
-	util.AssertNoError(err)
 	return c.amounts
 }
 
@@ -66,13 +90,6 @@ func (c *EvalContext) EvalPath() []byte {
 
 func (c *EvalContext) SetEvalPath(path []byte) {
 	c.path = bytes.Clone(path)
-}
-
-func (c *EvalContext) SelfOutputBytes() (ret []byte) {
-	var err error
-	ret, err = c.BytesAtPath(c.path[:len(c.path)-1])
-	util.AssertNoError(err)
-	return
 }
 
 var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{

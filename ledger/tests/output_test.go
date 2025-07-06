@@ -15,7 +15,7 @@ func TestRawOutputBytes(t *testing.T) {
 
 	rawBytes := o.Bytes()
 
-	o, err := ledger.OutputFromBytesReadOnly(rawBytes)
+	o, err := ledger.OutputFromBytes(rawBytes)
 	require.NoError(t, err)
 
 	t.Logf("Decompiled:\n%s", o.ToString())

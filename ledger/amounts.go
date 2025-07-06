@@ -8,7 +8,9 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/unitrie/common"
 )
 
 type Amounts []uint64
@@ -52,18 +54,21 @@ func (a Amounts) String() string {
 	return AmountsConstraintName + "(" + strings.Join(argsStr, ",") + ")"
 }
 
-func (a Amounts) Amount(i int) (uint64, error) {
-	if i < 0 || i > 15 {
-		return 0, fmt.Errorf("amount index is out of range: %d", i)
+func (a Amounts) Amount(i byte) (ret uint64) {
+	util.Assertf(i <= 15, "amount index is out of range: %d", i)
+	if int(i) < len(a) {
+		ret = a[i]
 	}
-	if i >= len(a) {
-		return 0, nil
-	}
-	return a[i], nil
+	return
 }
 
 func (a Amounts) TokenBalance() (ret uint64) {
-	ret, _ = a.Amount(0)
+	ret = a.Amount(0)
+	return
+}
+
+func (a Amounts) InflationAmount() (ret uint64) {
+	ret = a.Amount(1)
 	return
 }
 
@@ -111,26 +116,65 @@ func storageDepositByOutputBytes(data []byte) uint64 {
 	return vByteCost * uint64(len(data))
 }
 
-func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext]) bool {
+func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext]) {
 	ctx := par.DataContext()
 	bal := ctx.SelfAmounts().TokenBalance()
 	deposit := storageDepositByOutputBytes(ctx.SelfOutputBytes())
-	if bal < deposit {
-		par.TracePanic("token balance (%d) is less than required storage deposit (%d)", bal, deposit)
-		return false
+	par.Require(bal >= deposit, "token balance (%d) is less than required storage deposit (%d)", bal, deposit)
+}
+
+func _checkInflation(par *easyfl.CallParams[*EvalContext]) {
+	ctx := par.DataContext()
+	if ctx.SelfIsConsumedOutput() {
+		// don't check on consumed outputs
+		return
 	}
-	return true
+	inflation := ctx.SelfAmounts().InflationAmount()
+	if inflation == 0 {
+		// nothing to enforce
+		return
+	}
+	// inflation > 0
+	cc, idx := ctx.SelfOutput().ChainConstraint()
+	par.Require(idx != 0xff, "inflation must be 0 on non-chain output")
+
+	txid := ctx.TransactionID()
+	// produced, chain-constrained output with non-zero inflation value
+	if txid.IsBranchTransaction() {
+		_, stemIdx := ctx.SequencerAndStemOutputIndices()
+		pathToStemLock := common.Concat(PathToProducedOutputs, stemIdx, ConstraintIndexLock)
+		stemLockData, err := ctx.BytesAtPath(pathToStemLock)
+		par.RequireNoError(err)
+		stemLock, err := StemLockFromBytes(stemLockData)
+		par.RequireNoError(err)
+
+		bibCalc := L().BranchInflationBonusDirect(stemLock.VRFProof)
+		par.Require(inflation == bibCalc, "wrong branch inflation bonus value: expected %d, got %d", bibCalc, inflation)
+		return
+	}
+	// non-branch
+	par.Require(!cc.IsOrigin(), "inflation must be 0 at chain origin")
+	pathToPredecessorInput := common.Concat(PathToInputIDs, cc.PredecessorInputIndex)
+	inputIDData, err := ctx.BytesAtPath(pathToPredecessorInput)
+	par.RequireNoError(err)
+	predTimestamp, err := base.LedgerTimeFromBytes(inputIDData[:base.LedgerTimeByteLength])
+	par.RequireNoError(err)
+
+	pathToPredecessorOutput := common.Concat(PathToConsumedOutputs, cc.PredecessorInputIndex, cc.PredecessorConstraintIndex)
+	predBytes, err := ctx.BytesAtPath(pathToPredecessorOutput)
+	par.RequireNoError(err)
+	predOutput, err := OutputFromBytes(predBytes)
+	par.RequireNoError(err)
+
+	inflCalc := L().CalcChainInflationAmount(predTimestamp, txid.Timestamp(), predOutput.TokenBalance())
+	par.Require(inflation == inflCalc, "wrong inflation amount. Expected %d, got %d", inflCalc, inflation)
 }
 
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	path := par.DataContext().EvalPath()
-	if path[len(path)-1] != ConstraintIndexAmounts {
-		par.TracePanic("'amounts' must be at index %d", ConstraintIndexAmounts)
-		return nil
-	}
-	if !_checkMinimumStorageDeposit(par) {
-		return nil
-	}
+	par.Require(path[len(path)-1] == ConstraintIndexAmounts, "'amounts' must be at index %d", ConstraintIndexAmounts)
+	_checkMinimumStorageDeposit(par)
+	_checkInflation(par)
 	return []byte{0xff}
 }
 

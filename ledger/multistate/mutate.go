@@ -183,7 +183,7 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 		return
 	}
 
-	o, err := ledger.OutputFromBytesReadOnly(oData)
+	o, err := ledger.OutputFromBytes(oData)
 	util.AssertNoError(err)
 
 	delta.decrease = true

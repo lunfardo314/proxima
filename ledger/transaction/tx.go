@@ -607,7 +607,7 @@ func (tx *Transaction) MustOutputDataAt(idx byte) []byte {
 }
 
 func (tx *Transaction) MustProducedOutputAt(idx byte) *ledger.Output {
-	ret, err := ledger.OutputFromBytesReadOnly(tx.MustOutputDataAt(idx))
+	ret, err := ledger.OutputFromBytes(tx.MustOutputDataAt(idx))
 	util.AssertNoError(err)
 	return ret
 }
@@ -616,7 +616,7 @@ func (tx *Transaction) ProducedOutputAt(idx byte) (*ledger.Output, error) {
 	if int(idx) >= tx.NumProducedOutputs() {
 		return nil, fmt.Errorf("wrong output index")
 	}
-	out, err := ledger.OutputFromBytesReadOnly(tx.MustOutputDataAt(idx))
+	out, err := ledger.OutputFromBytes(tx.MustOutputDataAt(idx))
 	if err != nil {
 		return nil, err
 	}
@@ -756,7 +756,7 @@ func (tx *Transaction) ForEachOutputData(fun func(idx byte, oData []byte) bool) 
 // because stem output ID has a special form
 func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output, oid base.OutputID) bool) {
 	tx.ForEachOutputData(func(idx byte, oData []byte) bool {
-		o, _ := ledger.OutputFromBytesReadOnly(oData)
+		o, _ := ledger.OutputFromBytes(oData)
 		oid := tx.OutputID(idx)
 		if !fun(idx, o, oid) {
 			return false
@@ -830,7 +830,7 @@ func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, boo
 		if !ok {
 			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
 		}
-		o, err1 := ledger.OutputFromBytesReadOnly(oData)
+		o, err1 := ledger.OutputFromBytes(oData)
 		if err1 != nil {
 			return nil, err1
 		}
@@ -857,7 +857,7 @@ func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([
 		if !ok {
 			return nil, fmt.Errorf("can't load input #%d: %s", idx, inp.String())
 		}
-		o, err := ledger.OutputFromBytesReadOnly(odata)
+		o, err := ledger.OutputFromBytes(odata)
 		if err != nil {
 			return nil, fmt.Errorf("can't load input #%d: %s, '%v'", idx, inp.String(), err)
 		}

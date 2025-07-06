@@ -304,7 +304,7 @@ func (c *APIClient) GetChainedOutputs(accountable ledger.Accountable) ([]*ledger
 		if err != nil {
 			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
 		}
-		o, err := ledger.OutputFromBytesReadOnly(oData)
+		o, err := ledger.OutputFromBytes(oData)
 		if err != nil {
 			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
 		}

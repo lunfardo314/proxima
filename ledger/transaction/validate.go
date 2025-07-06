@@ -162,7 +162,7 @@ func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool
 	_ = ctx.tree.ForEach(func(i byte, data []byte) bool {
 		var err error
 		path[len(path)-1] = i
-		o, err := ledger.OutputFromBytesReadOnly(data)
+		o, err := ledger.OutputFromBytes(data)
 		if err != nil {
 			if !failFast {
 				failedOutputs.WriteByte(i)

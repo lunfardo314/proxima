@@ -167,7 +167,7 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	o, err := ledger.OutputFromBytesReadOnly(outBin)
+	o, err := ledger.OutputFromBytes(outBin)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("can't parse output: '%v'", err))
 		return
