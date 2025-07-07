@@ -61,10 +61,7 @@ func (ctx *TxContext) _validate() error {
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		if err1 = ctx.validateOutputsFailFast(true, spool); err1 != nil {
-			return err1
-		}
-		if err1 = ctx.validateOutputsFailFast(false, spool); err1 != nil {
+		if err1 = ctx.validateOutputs(spool); err1 != nil {
 			return err1
 		}
 		return nil
@@ -94,63 +91,77 @@ func (ctx *TxContext) writeStateMutationsTo(mut common.KVWriter) {
 	})
 }
 
-func (ctx *TxContext) validateOutputsFailFast(consumedBranch bool, spool *slicepool.SlicePool) error {
-	_, err := ctx._validateOutputs(consumedBranch, true, spool)
-	return err
+var (
+	_consumedBranch = Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch)
+	_producedBranch = Path(ledger.TransactionBranch, ledger.TxOutputs)
+)
+
+func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
+	outs, err := ctx._scanOutputs(_consumedBranch)
+	if err != nil {
+		return err
+	}
+	if overflow, idx := ctx._sumConsumedTotals(outs); overflow {
+		return fmt.Errorf("validateOutputs: arithmetic overflow in consumed output #%d", idx)
+	}
+	if ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance] != ctx.totalConsumedAmounts[ledger.AmountIndexTokenBalance]+ctx.totalProducedAmounts[ledger.AmountIndexInflation] {
+		return fmt.Errorf("mismatch between token amounts: consumed(%s) + inflation(%s) != produced(%s)",
+			util.Th(ctx.totalConsumedAmounts[ledger.AmountIndexTokenBalance]),
+			util.Th(ctx.totalProducedAmounts[ledger.AmountIndexInflation]),
+			util.Th(ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance]),
+		)
+	}
+	if err = ctx._runOutputs(_consumedBranch, outs, spool); err != nil {
+		return err
+	}
+	outs, err = ctx._scanOutputs(_producedBranch)
+	if err != nil {
+		return err
+	}
+	if err = ctx._runOutputs(_producedBranch, outs, spool); err != nil {
+		return err
+	}
+	return nil
 }
 
-// _validateOutputs validates consumed or produced outputs and, optionally, either fails fast,
-// or return the list of indices of failed outputs
-// If err != nil and failFast = false, returns list of failed consumed and produced output respectively
-// if failFast = true, returns (totalAmountPersisted, nil, nil, error)
-func (ctx *TxContext) _validateOutputs(consumedBranch bool, failFast bool, spool *slicepool.SlicePool) ([]byte, error) {
-	var branch tuples.TreePath
-	if consumedBranch {
-		branch = Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch)
-	} else {
-		branch = Path(ledger.TransactionBranch, ledger.TxOutputs)
+func (ctx *TxContext) _scanOutputs(branch []byte) ([]*ledger.Output, error) {
+	var err error
+	ret := make([]*ledger.Output, ctx.tree.MustNumElementsAtPath(branch))
+	path := common.Concat(branch, 0)
+
+	_ = ctx.tree.ForEach(func(i byte, data []byte) bool {
+		path[len(path)-1] = i
+		ret[i], err = ledger.OutputFromBytes(data)
+		return err == nil
+	}, branch)
+	if err != nil {
+		return nil, err
 	}
-	var lastErr error
-	var failedOutputs bytes.Buffer
+	return ret, nil
+}
+
+func (ctx *TxContext) _runOutputs(branch []byte, outs []*ledger.Output, spool *slicepool.SlicePool) error {
+	util.Assertf(len(outs) < 256, "len(outs)<256")
 
 	path := common.Concat(branch, 0)
-	_ = ctx.tree.ForEach(func(i byte, data []byte) bool {
+	for i, o := range outs {
 		var err error
-		path[len(path)-1] = i
-		o, err := ledger.OutputFromBytes(data)
-		if err != nil {
-			if !failFast {
-				failedOutputs.WriteByte(i)
-			}
-			lastErr = err
-			return !failFast
-		}
-
+		path[len(path)-1] = byte(i)
 		if err = ctx.runOutput(o, path, spool); err != nil {
-			if !failFast {
-				failedOutputs.WriteByte(i)
-			}
-			lastErr = fmt.Errorf("%w :\n%s", err, o.ToSource("   "))
-			return !failFast
+			return fmt.Errorf("%w :\n%s", err, o.ToSource("   "))
 		}
-
-		if consumedBranch {
-			// for produced outputs amount vector was calculated during transaction validation
-			if overflow := o.Amounts().AddToVector(&ctx.totalConsumedAmounts); overflow {
-				lastErr = fmt.Errorf("validateOutputsFailFast @ path %s: uint64 arithmetic overflow", PathToString(path))
-				if !failFast {
-					failedOutputs.WriteByte(i)
-				}
-				return !failFast
-			}
-		}
-		return true
-	}, branch)
-	if lastErr != nil {
-		util.Assertf(failFast || failedOutputs.Len() > 0, "failedOutputs.Len()>0")
-		return failedOutputs.Bytes(), lastErr
 	}
-	return nil, nil
+	return nil
+}
+
+func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) (overflow bool, idx byte) {
+	for i, o := range outs {
+		if overflow = o.Amounts().AddToVector(&ctx.totalConsumedAmounts); overflow {
+			idx = byte(i)
+			return
+		}
+	}
+	return
 }
 
 func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
