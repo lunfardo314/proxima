@@ -209,9 +209,17 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 
 const amountsAuxSource = `
 
-// $0 path to output
+// $0 'amounts' constraint bytecode
 // Returns amount value 8 bytes from the output at path given in $0
-func tokenBalanceByOutputPath : uint8Bytes(parseInlineDataArgument(atPath(concat($0, amountConstraintIndex)), #amounts,0))
+func _tokenBalanceByOutputPath : 
+if(
+   isZero(parseNumArgs($0)),
+   u64/0,
+   uint8Bytes(parseInlineDataArgument($0, #amounts,0))
+)
+
+// $0 path to output
+func tokenBalanceByOutputPath : _tokenBalanceByOutputPath(atPath(concat($0, amountsConstraintIndex)))
 
 func selfTokenBalanceValue: tokenBalanceByOutputPath(selfOutputPath)
 

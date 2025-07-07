@@ -7,7 +7,7 @@ functions:
    -
       sym: amountConstraint
       numArgs: 1
-      source: "atTuple8($0, amountConstraintIndex)"
+      source: "atTuple8($0, amountsConstraintIndex)"
    -
       sym: lockConstraint
       numArgs: 1

@@ -159,7 +159,7 @@ functions:
       numArgs: 0
       source: 0x%s
    -
-      sym: amountConstraintIndex
+      sym: amountsConstraintIndex
       numArgs: 0
       source: %d
    -
