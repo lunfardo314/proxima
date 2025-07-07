@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -145,26 +147,29 @@ func storageDepositByOutputBytes(data []byte) uint64 {
 	return vByteCost * uint64(len(data))
 }
 
-func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext]) {
-	ctx := par.DataContext()
-	bal := ctx.SelfAmounts().TokenBalance()
+var _locksExemptOfStorageDeposit = set.New(StemLockName)
+
+func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
+	if _locksExemptOfStorageDeposit.Contains(o.Lock().Name()) {
+		return
+	}
+	bal := o.Amounts().TokenBalance()
 	deposit := storageDepositByOutputBytes(ctx.SelfOutputBytes())
 	par.Require(bal >= deposit, "token balance (%d) is less than required storage deposit (%d)", bal, deposit)
 }
 
-func _checkInflation(par *easyfl.CallParams[*EvalContext]) {
-	ctx := par.DataContext()
+func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
 	if ctx.SelfIsConsumedOutput() {
 		// don't check on consumed outputs
 		return
 	}
-	inflationGiven := ctx.SelfAmounts().InflationAmount()
+	inflationGiven := o.Amounts().InflationAmount()
 	if inflationGiven == 0 {
 		// nothing to enforce
 		return
 	}
 	// inflation > 0
-	cc, idx := ctx.SelfOutput().ChainConstraint()
+	cc, idx := o.ChainConstraint()
 	par.Require(idx != 0xff, "inflation must be 0 on non-chain output")
 
 	txid := ctx.TransactionID()
@@ -178,7 +183,8 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext]) {
 		par.RequireNoError(err)
 
 		bibCalc := L().BranchInflationBonusDirect(stemLock.VRFProof)
-		par.Require(inflationGiven == bibCalc, "wrong branch inflation bonus value: expected %d, got %d", bibCalc, inflationGiven)
+		par.Require(inflationGiven == bibCalc, "wrong branch inflation bonus value: expected %d (vrfProof=%s), got %d",
+			bibCalc, hex.EncodeToString(stemLock.VRFProof), inflationGiven)
 		return
 	}
 	// non-branch
@@ -186,10 +192,11 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext]) {
 	pathToPredecessorInput := common.Concat(PathToInputIDs, cc.PredecessorInputIndex)
 	inputIDData, err := ctx.BytesAtPath(pathToPredecessorInput)
 	par.RequireNoError(err)
-	predTimestamp, err := base.LedgerTimeFromBytes(inputIDData[:base.LedgerTimeByteLength])
+	inputID, err := base.OutputIDFromBytes(inputIDData)
 	par.RequireNoError(err)
+	predTimestamp := inputID.Timestamp()
 
-	pathToPredecessorOutput := common.Concat(PathToConsumedOutputs, cc.PredecessorInputIndex, cc.PredecessorConstraintIndex)
+	pathToPredecessorOutput := common.Concat(PathToConsumedOutputs, cc.PredecessorInputIndex)
 	predBytes, err := ctx.BytesAtPath(pathToPredecessorOutput)
 	par.RequireNoError(err)
 	predOutput, err := OutputFromBytes(predBytes)
@@ -202,8 +209,10 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext]) {
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	path := par.DataContext().EvalPath()
 	par.Require(path[len(path)-1] == ConstraintIndexAmounts, "'amounts' must be at index %d", ConstraintIndexAmounts)
-	_checkMinimumStorageDeposit(par)
-	_checkInflation(par)
+	ctx := par.DataContext()
+	o := ctx.SelfOutput()
+	_checkMinimumStorageDeposit(par, ctx, o)
+	_checkInflation(par, ctx, o)
 	return []byte{0xff}
 }
 

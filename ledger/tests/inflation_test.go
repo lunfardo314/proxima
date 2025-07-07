@@ -35,37 +35,57 @@ func TestScaleBytesAsBigInt(t *testing.T) {
 }
 
 func TestInflationFun(t *testing.T) {
-	runTest := func(tsIn, tsOut base.LedgerTime, inAmount uint64) {
-		c := ledger.L().CalcChainInflationAmount(tsIn, tsOut, inAmount)
-		d := ledger.L().CalcChainInflationAmountDirect(tsIn, tsOut, inAmount)
-		if c != d {
-			t.Fatalf("failed with tsIn=%s, tsOut=%s, inAmount=%d", tsIn.String(), tsOut.String(), inAmount)
-		} else {
-			t.Logf("tsIn=%s, tsOut=%s, inAmount=%d -> %d", tsIn.String(), tsOut.String(), inAmount, c)
+	t.Run("chain inflation", func(t *testing.T) {
+		runTest := func(tsIn, tsOut base.LedgerTime, inAmount uint64) {
+			c := ledger.L().CalcChainInflationAmount(tsIn, tsOut, inAmount)
+			d := ledger.L().CalcChainInflationAmountDirect(tsIn, tsOut, inAmount)
+			if c != d {
+				t.Fatalf("failed with tsIn=%s, tsOut=%s, inAmount=%d", tsIn.String(), tsOut.String(), inAmount)
+			} else {
+				t.Logf("tsIn=%s, tsOut=%s, inAmount=%d -> %d", tsIn.String(), tsOut.String(), inAmount, c)
+			}
 		}
-	}
-	tsIn := base.NewLedgerTime(100, 5)
+		tsIn := base.NewLedgerTime(100, 5)
 
-	tsOut := base.NewLedgerTime(101, 5)
-	runTest(tsIn, tsOut, 1_000_000_000)
+		tsOut := base.NewLedgerTime(101, 5)
+		runTest(tsIn, tsOut, 1_000_000_000)
 
-	tsOut = base.NewLedgerTime(102, 5)
-	runTest(tsIn, tsOut, 1_000_000_000)
+		tsOut = base.NewLedgerTime(102, 5)
+		runTest(tsIn, tsOut, 1_000_000_000)
 
-	tsOut = base.NewLedgerTime(103, 5)
-	runTest(tsIn, tsOut, 1_000_000_000)
+		tsOut = base.NewLedgerTime(103, 5)
+		runTest(tsIn, tsOut, 1_000_000_000)
 
-	tsOut = base.NewLedgerTime(104, 5)
-	runTest(tsIn, tsOut, 1_000_000_000)
+		tsOut = base.NewLedgerTime(104, 5)
+		runTest(tsIn, tsOut, 1_000_000_000)
 
-	tsOut = base.NewLedgerTime(200, 5)
-	runTest(tsIn, tsOut, 1_000_000_000)
+		tsOut = base.NewLedgerTime(200, 5)
+		runTest(tsIn, tsOut, 1_000_000_000)
 
-	tsOut = base.NewLedgerTime(200, 0)
-	runTest(tsIn, tsOut, 1_000_000_000)
+		tsOut = base.NewLedgerTime(200, 0)
+		runTest(tsIn, tsOut, 1_000_000_000)
 
-	tsOut = base.NewLedgerTime(100, 100)
-	runTest(tsIn, tsOut, 1_000_000_000)
+		tsOut = base.NewLedgerTime(100, 100)
+		runTest(tsIn, tsOut, 1_000_000_000)
+	})
+	t.Run("branch inflation", func(t *testing.T) {
+		runTest := func(proof []byte) {
+			c := ledger.L().BranchInflationBonusDirect(proof)
+			d := ledger.L().BranchInflationBonusFromRandomnessProof(proof)
+			if c != d {
+				t.Fatalf("failed: c = %d, d = %d", c, d)
+			} else {
+				t.Logf("ok: c = %d, d = %d", c, d)
+			}
+		}
+		h := blake2b.Sum256([]byte("abc"))
+		runTest(h[:])
+		h = blake2b.Sum256(h[:])
+		runTest(h[:])
+		proof, err := hex.DecodeString("50a9c10f0deb2bf0f527a24c17e6a10c874c97b6a0a627e2a164600bd6a24bde17ac5870b6b64f1dc6f3162b8f333b921af0ef2af3561c7490fd807f5a18af0a")
+		require.NoError(t, err)
+		runTest(proof)
+	})
 }
 
 func TestInflation(t *testing.T) {

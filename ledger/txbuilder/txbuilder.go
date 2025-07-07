@@ -662,14 +662,6 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		return nil, 0, nil, errP("not enough tokens to withdraw specified amount %d", par.WithdrawAmount)
 	}
 
-	var inflationConstraint *ledger.InflationConstraint
-	if inflationAmount > 0 {
-		inflationConstraint = &ledger.InflationConstraint{
-			InflationAmount:      inflationAmount,
-			ChainConstraintIndex: chainInConstraintIdx,
-		}
-	}
-
 	chainOutAmount := chainInAmount + inflationAmount - par.WithdrawAmount
 	util.Assertf(chainOutAmount > 0, "chainOutAmount > 0")
 
@@ -699,16 +691,11 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	// make chain output
 	var chainOutConstraintIdx byte
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.PutAmounts(chainOutAmount)
+		o.PutAmounts(chainOutAmount, inflationAmount)
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
 		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, chainInConstraint.OriginSlot, chainInConstraint.OriginAmount)
 		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
-
-		if inflationConstraint != nil {
-			inflationConstraint.ChainConstraintIndex = chainOutConstraintIdx
-			o.MustPushConstraint(inflationConstraint.Bytes())
-		}
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)

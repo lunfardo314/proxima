@@ -78,7 +78,7 @@ func (p CommandParser) ParseSequencerCommandToOutputs(input *ledger.OutputWithID
 	}
 	// make withdrawal output
 	o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(amount).WithLock(targetLock)
+		o.WithAmounts(amount).WithLock(targetLock)
 	})
 	return []*ledger.Output{o}, nil
 }
@@ -99,7 +99,7 @@ func MakeSequencerWithdrawCmdOutput(par MakeSequencerWithdrawCmdOutputParams) (*
 	msg := ledger.NewMessageWithED25519SenderFromAddress(par.ControllerAddr, cmdData)
 
 	ret := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(par.TagAlongFee)
+		o.WithAmounts(par.TagAlongFee)
 		o.WithLock(ledger.ChainLockFromChainID(par.SeqID))
 		o.MustPushConstraint(msg.Bytes())
 	})

@@ -91,13 +91,8 @@ func (ctx *TxContext) writeStateMutationsTo(mut common.KVWriter) {
 	})
 }
 
-var (
-	_consumedBranch = Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch)
-	_producedBranch = Path(ledger.TransactionBranch, ledger.TxOutputs)
-)
-
 func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
-	outs, err := ctx._scanOutputs(_consumedBranch)
+	outs, err := ctx._scanOutputs(ledger.PathToConsumedOutputs)
 	if err != nil {
 		return err
 	}
@@ -111,39 +106,39 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 			util.Th(ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance]),
 		)
 	}
-	if err = ctx._runOutputs(_consumedBranch, outs, spool); err != nil {
+	if err = ctx._runOutputs(ledger.PathToConsumedOutputs, outs, spool); err != nil {
 		return err
 	}
-	outs, err = ctx._scanOutputs(_producedBranch)
+	outs, err = ctx._scanOutputs(ledger.PathToProducedOutputs)
 	if err != nil {
 		return err
 	}
-	if err = ctx._runOutputs(_producedBranch, outs, spool); err != nil {
+	if err = ctx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (ctx *TxContext) _scanOutputs(branch []byte) ([]*ledger.Output, error) {
+func (ctx *TxContext) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, error) {
 	var err error
-	ret := make([]*ledger.Output, ctx.tree.MustNumElementsAtPath(branch))
-	path := common.Concat(branch, 0)
+	ret := make([]*ledger.Output, ctx.tree.MustNumElementsAtPath(pathToOutputs))
+	path := common.Concat(pathToOutputs, 0)
 
 	_ = ctx.tree.ForEach(func(i byte, data []byte) bool {
 		path[len(path)-1] = i
 		ret[i], err = ledger.OutputFromBytes(data)
 		return err == nil
-	}, branch)
+	}, pathToOutputs)
 	if err != nil {
 		return nil, err
 	}
 	return ret, nil
 }
 
-func (ctx *TxContext) _runOutputs(branch []byte, outs []*ledger.Output, spool *slicepool.SlicePool) error {
-	util.Assertf(len(outs) < 256, "len(outs)<256")
+func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, spool *slicepool.SlicePool) error {
+	util.Assertf(len(outs) <= 256, "len(outs)<=256")
 
-	path := common.Concat(branch, 0)
+	path := common.Concat(pathToOutputs, 0)
 	for i, o := range outs {
 		var err error
 		path[len(path)-1] = byte(i)

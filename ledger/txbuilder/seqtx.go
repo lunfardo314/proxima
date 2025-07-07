@@ -106,7 +106,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 
 		// sign concatenation of predecessor VRFProof with slot number and next VRF proof
 		msg := common.Concat(prevStem.VRFProof, par.Timestamp.Slot.Bytes())
-		vrfProof = ed25519.Sign(par.PrivateKey, msg[:])
+		vrfProof = ed25519.Sign(par.PrivateKey, msg)
 	}
 
 	var mainChainInflationAmount uint64

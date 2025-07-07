@@ -103,14 +103,14 @@ func runDelegateCmd(_ *cobra.Command, args []string) {
 	}
 
 	outDelegation := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(amount)
+		o.WithAmounts(amount)
 		o.WithLock(ledger.NewDelegationLock(walletData.Account, ledger.ChainLockFromChainID(targetSeqID), 2, ts, amount))
 		o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot, amount).Bytes())
 	})
 	delegationOutputIdx, _ := txb.ProduceOutput(outDelegation)
 
 	outTagAlong := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(feeAmount)
+		o.WithAmounts(feeAmount)
 		o.WithLock(ledger.ChainLockFromChainID(*tagAlongSeqID))
 	})
 	_, _ = txb.ProduceOutput(outTagAlong)
@@ -120,7 +120,7 @@ func runDelegateCmd(_ *cobra.Command, args []string) {
 
 	if totalAmountConsumed > totalAmountProduced {
 		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(totalAmountConsumed - totalAmountProduced)
+			o.WithAmounts(totalAmountConsumed - totalAmountProduced)
 			o.WithLock(walletData.Account)
 		})
 		_, _ = txb.ProduceOutput(remainderOut)

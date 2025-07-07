@@ -24,9 +24,7 @@ type (
 
 	EvalContext struct {
 		TxContextAccess
-		path    []byte
-		output  *Output
-		amounts Amounts // cached value
+		path []byte
 	}
 )
 
@@ -56,12 +54,9 @@ func (c *EvalContext) SelfOutputBytes() (ret []byte) {
 }
 
 func (c *EvalContext) SelfOutput() *Output {
-	if c.output == nil {
-		var err error
-		c.output, err = OutputFromBytes(c.SelfOutputBytes())
-		util.AssertNoError(err)
-	}
-	return c.output
+	ret, err := OutputFromBytes(c.SelfOutputBytes())
+	util.AssertNoError(err)
+	return ret
 }
 
 func (c *EvalContext) SelfSiblingPath(idx byte) (ret []byte) {
@@ -75,13 +70,6 @@ func (c *EvalContext) SelfSiblingBytes(idx byte) (ret []byte) {
 	ret, err = c.BytesAtPath(c.SelfSiblingPath(idx))
 	util.AssertNoError(err)
 	return
-}
-
-func (c *EvalContext) SelfAmounts() Amounts {
-	if c.amounts == nil {
-		c.amounts = c.SelfOutput().Amounts()
-	}
-	return c.amounts
 }
 
 func (c *EvalContext) EvalPath() []byte {

@@ -757,7 +757,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	util.AssertNoError(err)
 
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(par.Amount).
+		o.WithAmounts(par.Amount).
 			WithLock(par.Target).
 			MustPushConstraint(ledger.NewChainOrigin(ts.Slot, par.Amount).Bytes())
 	})
@@ -766,7 +766,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 
 	if par.TagAlongFee > 0 {
 		tagAlongFeeOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(par.TagAlongFee).
+			o.WithAmounts(par.TagAlongFee).
 				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
 		})
 		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
@@ -776,7 +776,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 
 	if totalInputs > par.Amount+par.TagAlongFee {
 		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(totalInputs - par.Amount - par.TagAlongFee).
+			o.WithAmounts(totalInputs - par.Amount - par.TagAlongFee).
 				WithLock(walletAccount)
 		})
 		if _, err = txb.ProduceOutput(remainder); err != nil {
@@ -918,7 +918,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	}
 
 	mainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(par.Amount).
+		o.WithAmounts(par.Amount).
 			WithLock(par.Target)
 	})
 	if _, err = txb.ProduceOutput(mainOut); err != nil {
@@ -930,7 +930,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 			return nil, fmt.Errorf("tag-along sequencer not specified")
 		}
 		feeOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(par.TagAlongFee).
+			o.WithAmounts(par.TagAlongFee).
 				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
 		})
 		if _, err = txb.ProduceOutput(feeOut); err != nil {
@@ -944,7 +944,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 			remainderLock = ledger.AddressED25519FromPrivateKey(par.PrivateKey)
 		}
 		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(inTotal - par.Amount - par.TagAlongFee).
+			o.WithAmounts(inTotal - par.Amount - par.TagAlongFee).
 				WithLock(remainderLock)
 		})
 		if _, err = txb.ProduceOutput(remainderOut); err != nil {
