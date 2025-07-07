@@ -249,3 +249,13 @@ func (ctx *TxContext) OutputID(idx byte) base.OutputID {
 func (ctx *TxContext) Tree() *tuples.Tree {
 	return ctx.tree
 }
+
+func (ctx *TxContext) ConsumedTotal(i byte) uint64 {
+	util.Assertf(int(i) < len(ctx.totalConsumedAmounts), "ConsumedTotal: wrong index %d", i)
+	return ctx.totalConsumedAmounts[i]
+}
+
+func (ctx *TxContext) ProducedTotal(i byte) uint64 {
+	util.Assertf(int(i) < len(ctx.totalProducedAmounts), "ProducedTotal: wrong index %d", i)
+	return ctx.totalProducedAmounts[i]
+}

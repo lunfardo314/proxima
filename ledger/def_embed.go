@@ -20,6 +20,8 @@ type (
 		BytesAtPath([]byte) ([]byte, error)
 		TransactionID() base.TransactionID
 		SequencerAndStemOutputIndices() (byte, byte)
+		ConsumedTotal(i byte) uint64
+		ProducedTotal(i byte) uint64
 	}
 
 	EvalContext struct {
@@ -84,6 +86,8 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"at":             evalPath,
 	"atPath":         evalAtPath,
 	"amounts":        evalAmounts,
+	"totalConsumed":  evalTotalConsumed,
+	"totalProduced":  evalTotalProduced,
 	"ticksBefore":    evalTicksBefore64, // TODO make it extended in pure EasyFL
 	"randomFromSeed": evalRandomFromSeed,
 }
@@ -122,6 +126,16 @@ functions:
    -
       sym: "amounts"
       description: "UTXO constraint for the vector of amounts"
+      numArgs: -1
+      embedded: true
+   -
+      sym: "totalConsumed"
+      description: "sum of consumed amounts by the transaction at index $0 (1 byte, max 15)"
+      numArgs: -1
+      embedded: true
+   -
+      sym: "totalProduced"
+      description: "sum of produced amounts by the transaction at index $0 (1 byte, max 15)"
       numArgs: -1
       embedded: true
    -

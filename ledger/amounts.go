@@ -216,6 +216,18 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	return []byte{0xff}
 }
 
+func evalTotalConsumed(par *easyfl.CallParams[*EvalContext]) []byte {
+	idxBin := par.Arg(0)
+	ret := easyfl_util.Uint64To8Bytes(par.DataContext().ConsumedTotal(idxBin[0]))
+	return par.AllocData(ret[:]...)
+}
+
+func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
+	idxBin := par.Arg(0)
+	ret := easyfl_util.Uint64To8Bytes(par.DataContext().ProducedTotal(idxBin[0]))
+	return par.AllocData(ret[:]...)
+}
+
 const amountsAuxSource = `
 
 // $0 'amounts' constraint bytecode
