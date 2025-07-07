@@ -117,7 +117,7 @@ func MustDistributeInitialSupply(stateStore multistate.StateStore, originPrivate
 	return ret
 }
 
-// MustDistributeInitialSupplyExt makes distribution transaction and commits it into the multi-ledger state with branch record
+// MustDistributeInitialSupplyExt makes a distribution transaction and commits it into the multi-ledger state with branch record
 func MustDistributeInitialSupplyExt(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID) {
 	txBytes, err := MakeDistributionTransaction(stateStore, originPrivateKey, genesisDistribution)
 	util.AssertNoError(err)

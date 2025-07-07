@@ -42,9 +42,20 @@ func TestAmountsBase(t *testing.T) {
 		err := u.TokensFromFaucet(addr0, amountFromFaucet)
 		require.NoError(t, err)
 	}
-
+	//t.Run("zzz", func(t *testing.T) {
+	//	_, _, acode, err := ledger.L().CompileExpression("amounts(100)")
+	//	t.Logf("acode = %s", hex.EncodeToString(acode))
+	//
+	//	const zzz = "00038d7ea4c68000"
+	//	bytecode, err := hex.DecodeString(zzz)
+	//	require.NoError(t, err)
+	//	deco, err := ledger.L().DecompileBytecode(bytecode)
+	//	require.NoError(t, err)
+	//	t.Logf("deco: %s", deco)
+	//})
 	t.Run("fail not at index 0", func(t *testing.T) {
 		initTest()
+
 		const transferAmount = 1_000_000
 		outs, amount := u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(addr0, transferAmount)
 		util.Assertf(len(outs) == 1, "expected 1 output")
