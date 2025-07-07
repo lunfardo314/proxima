@@ -106,7 +106,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 }
 
 func TestDelegationLock2Init(t *testing.T) {
-	require.EqualValues(t, 30, ledger.DelegationSafeRevocationSlots())
+	require.EqualValues(t, 30, ledger.DelegationConstants().SafeRevocationSlots)
 
 	td := &testData{T: t}
 

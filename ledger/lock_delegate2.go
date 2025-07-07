@@ -110,23 +110,15 @@ func (d *DelegateLock2) Master() Accountable {
 	return d.MasterLock
 }
 
+type Delegation2Constants struct {
+	SafeRevocationSlots  int
+	DelegationEpochSlots int
+	MaxFrozenEpochs      int
+}
+
 var (
-	_safeRevocationSlots atomic.Uint64
+	_delegationConstants atomic.Pointer[Delegation2Constants]
 )
-
-func DelegationSafeRevocationSlots() int {
-	if ret := _safeRevocationSlots.Load(); ret != 0 {
-		return int(ret)
-	}
-	_precalcDelegationConstants()
-	return DelegationSafeRevocationSlots()
-}
-
-func _precalcDelegationConstants() {
-	res, err := L().EvalFromSource(nil, "constDelegationSafeRevocationSlots")
-	util.AssertNoError(err)
-	_safeRevocationSlots.Store(binary.BigEndian.Uint64(res))
-}
 
 func registerDelegate2Lock(lib *Library) {
 	lib.mustRegisterConstraint(Delegate2LockName, 3, func(data []byte) (Constraint, error) {
@@ -269,7 +261,8 @@ func (o *Delegate2Output) SafeRevocationSlots() (from, to base.Slot) {
 	if o.Revoked {
 		return
 	}
-	return base.Slot(o.UnfreezeSlot), base.Slot(o.UnfreezeSlot) + base.Slot(DelegationSafeRevocationSlots()) - 1
+	c := DelegationConstants()
+	return o.UnfreezeSlot, o.UnfreezeSlot + base.Slot(c.SafeRevocationSlots) - 1
 }
 
 func (o *Delegate2Output) LinesSource(prefix ...string) *lines.Lines {
@@ -290,8 +283,55 @@ func (o *Delegate2Output) LinesSource(prefix ...string) *lines.Lines {
 	return ret
 }
 
-const delegateLock2Source = `
-func constDelegationSafeRevocationSlots  : u64/30
+func DelegationConstants() Delegation2Constants {
+	if ret := _delegationConstants.Load(); ret != nil {
+		return *ret
+	}
+	c := _precalcDelegationConstants()
+	_delegationConstants.Store(c)
+	return *c
+}
+
+func _precalcDelegationConstants() *Delegation2Constants {
+	resRevoc, err := L().EvalFromSource(nil, "constDelegationSafeRevocationSlots")
+	util.AssertNoError(err)
+
+	resEpochSlots, err := L().EvalFromSource(nil, "constDelegationEpochSlots")
+	util.AssertNoError(err)
+
+	resMaxFrozenEpochs, err := L().EvalFromSource(nil, "constDelegationMaxFrozenEpochs")
+	util.AssertNoError(err)
+
+	return &Delegation2Constants{
+		SafeRevocationSlots:  int(easyfl_util.MustUint64FromBytes(resRevoc)),
+		DelegationEpochSlots: int(easyfl_util.MustUint64FromBytes(resEpochSlots)),
+		MaxFrozenEpochs:      int(easyfl_util.MustUint64FromBytes(resMaxFrozenEpochs)),
+	}
+}
+
+// DelegationEpochOffsetSlots deterministic pseudo-random number between 0 and epoch slots (not including)
+// with the seed equal to the first 8 bytes of chain ID
+func DelegationEpochOffsetSlots(delegationTargetChainID base.ChainID) base.Slot {
+	return base.Slot(binary.BigEndian.Uint64(delegationTargetChainID[:8]) % uint64(DelegationConstants().DelegationEpochSlots))
+}
+
+func CoverageFreezeVector(balance uint64, txSlot, maxFreezeSlots base.Slot, delegationTargetChainID base.ChainID) (unfreeze base.Slot, ret [DelegationMaxFrozenEpochs]uint64) {
+	return
+}
+
+const (
+	DelegationSafeRevocationSlots = 30
+	DelegationEpochSlots          = 512
+	DelegationMaxFrozenEpochs     = 4
+)
+
+var delegateLock2Source = fmt.Sprintf(_delegateLock2Source,
+	DelegationSafeRevocationSlots, DelegationEpochSlots, DelegationMaxFrozenEpochs)
+
+const _delegateLock2Source = `
+func constDelegationSafeRevocationSlots  : %d
+func constDelegationEpochSlots : u64/%d
+func constDelegationMaxFrozenEpochs : %d
 
 func _selfChainID : parseInlineDataArgument(selfSiblingConstraint(2), #chain, 0)
 func _isDelegationOrigin : isChainOriginID(_selfChainID)
