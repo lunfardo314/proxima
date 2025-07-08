@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ed25519"
 )
@@ -513,4 +514,29 @@ func TestDelegationLock2Consume(t *testing.T) {
 		require.NoError(t, err)
 
 	})
+}
+
+func TestDelegation2Related(t *testing.T) {
+	runTest := func(masterID, targetID base.ChainID, txSlot, maxFreezeSlots, delegationEpochSlots base.Slot, maxFreezeEpochs int) {
+		epochOffset := ledger.EpochOffsetSlots(masterID, targetID, delegationEpochSlots)
+		unfreeze, split := ledger.FreezeUntilSlot(epochOffset, txSlot, maxFreezeSlots, delegationEpochSlots, maxFreezeEpochs)
+		ln := lines.New()
+		ln.Add("-----------------------")
+		ln.Add("masterID: %s", masterID.String())
+		ln.Add("targetID: %s", targetID.String())
+		ln.Add("epoch offset: %d", epochOffset)
+		ln.Add("maxFreezeSlots: %d", maxFreezeSlots)
+		ln.Add("delegationEpochSlots: %d", delegationEpochSlots)
+		ln.Add("txSlot: %d", txSlot)
+		ln.Add("unfreezeSlot: %d", unfreeze)
+		ln.Add("split: %+v", split)
+		t.Logf("\n%s", ln.String())
+	}
+	masterID, targetID := base.ChainID{}, base.ChainID{}
+	runTest(masterID, targetID, 0, 1024, 512, 6)
+	masterID = base.RandomChainID()
+	runTest(masterID, targetID, 0, 1024, 512, 6)
+	targetID = base.RandomChainID()
+	runTest(masterID, targetID, 0, 1024, 512, 6)
+	runTest(masterID, targetID, 1000, 1024, 512, 6)
 }
