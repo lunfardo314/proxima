@@ -319,6 +319,27 @@ func CoverageFreezeVector(balance uint64, txSlot, maxFreezeSlots base.Slot, dele
 	return
 }
 
+func UnfreezeSlots(txSlot base.Slot) (ret [DelegationMaxFrozenEpochs]base.Slot) {
+	dconst := DelegationConstants()
+	unfrozenSince := base.Slot(dconst.DelegationEpochSlots) * (txSlot / base.Slot(dconst.DelegationEpochSlots))
+	ret[0] = unfrozenSince + base.Slot(dconst.DelegationEpochSlots)
+	for i := 1; i < DelegationMaxFrozenEpochs; i++ {
+		ret[i] = ret[i-1] + base.Slot(dconst.DelegationEpochSlots)
+	}
+	return
+}
+
+func FreezeUntilSlot(txSlot, maxFreezeSlots base.Slot) (ret base.Slot) {
+	dconst := DelegationConstants()
+	unfreezeSlot := txSlot - txSlot%base.Slot(dconst.DelegationEpochSlots)
+	if unfreezeSlot > txSlot+maxFreezeSlots {
+		return
+	}
+	for ret = unfreezeSlot; ret+base.Slot(dconst.DelegationEpochSlots) < txSlot+maxFreezeSlots; ret += base.Slot(dconst.DelegationEpochSlots) {
+	}
+	return
+}
+
 const (
 	DelegationSafeRevocationSlots = 30
 	DelegationEpochSlots          = 512
