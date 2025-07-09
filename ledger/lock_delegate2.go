@@ -323,31 +323,24 @@ func EpochOffsetSlots(targetID base.ChainID, delegationEpochSlots base.Slot) bas
 	return base.Slot(binary.BigEndian.Uint32(targetID[:4])) % delegationEpochSlots
 }
 
-func CoverageEpochVector(epochOffsetSlots, txSlot, delegationEpochSlots base.Slot, maxFreezeEpochs int) []base.Slot {
-	util.Assertf(epochOffsetSlots < delegationEpochSlots, "epochOffsetSlots < delegationEpochSlots")
-	ret := make([]base.Slot, maxFreezeEpochs)
-	coveredInCurrentEpoch := delegationEpochSlots - (txSlot+epochOffsetSlots)%delegationEpochSlots
-	util.Assertf(coveredInCurrentEpoch > 0, "coveredInCurrentEpoch > 0")
-	ret[0] = txSlot + coveredInCurrentEpoch
-	for i := range ret {
-		if i == 0 {
-			continue
-		}
-		ret[i] += ret[i-1] + delegationEpochSlots
-	}
-	return ret
+func CoveredSlotsInCurrentEpoch(epochOffsetSlots, txSlot, delegationEpochSlots base.Slot) base.Slot {
+	return delegationEpochSlots - (txSlot+epochOffsetSlots)%delegationEpochSlots
 }
 
-func FreezeUntilSlot(txSlot, maxFreezeSlots base.Slot, coverageEpochVector []base.Slot) (ret base.Slot) {
-	util.Assertf(len(coverageEpochVector) >= 1, "len(coverageEpochVector) >= 1")
-	upper := txSlot + maxFreezeSlots
-	for _, unfreeze := range coverageEpochVector {
-		if unfreeze > upper {
-			break
-		}
-		ret = unfreeze
+func EpochsCovered(epochOffsetSlots, txSlot, delegationEpochSlots, maxFreezeSlots base.Slot, maxFreezeEpochs int) int {
+	coveredInTheCurrentEpoch := CoveredSlotsInCurrentEpoch(epochOffsetSlots, txSlot, delegationEpochSlots)
+	if coveredInTheCurrentEpoch > maxFreezeSlots {
+		return 0
 	}
-	return
+	return min(maxFreezeEpochs, int((maxFreezeSlots-coveredInTheCurrentEpoch)/delegationEpochSlots)+1)
+}
+
+func FreezeUntilSlot(epochOffsetSlots, txSlot, delegationEpochSlots, maxFreezeSlots base.Slot, maxFreezeEpochs int) base.Slot {
+	epochs := EpochsCovered(epochOffsetSlots, txSlot, delegationEpochSlots, maxFreezeSlots, maxFreezeEpochs)
+	if epochs == 0 {
+		return 0
+	}
+	return txSlot + CoveredSlotsInCurrentEpoch(epochOffsetSlots, txSlot, delegationEpochSlots) + base.Slot(epochs-1)*delegationEpochSlots
 }
 
 const (

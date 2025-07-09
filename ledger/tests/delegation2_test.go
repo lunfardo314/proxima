@@ -517,46 +517,28 @@ func TestDelegationLock2Consume(t *testing.T) {
 }
 
 func TestDelegation2Related(t *testing.T) {
+	const _delegationEpochSlots = base.Slot(512)
+	const _maxFreezeEpochs = 6
+
 	t.Run("1", func(t *testing.T) {
-		runTest := func(offs, txSlot, maxFreezeSlots, delegationEpochSlots base.Slot, maxFreezeEpochs int, short ...bool) {
-			vect := ledger.CoverageEpochVector(offs, txSlot, delegationEpochSlots, maxFreezeEpochs)
-			unfreeze := ledger.FreezeUntilSlot(txSlot, maxFreezeSlots, vect)
+		runTest := func(offs, txSlot, maxFreezeSlots base.Slot, short ...bool) {
+			epochsCovered := ledger.EpochsCovered(offs, txSlot, _delegationEpochSlots, maxFreezeSlots, _maxFreezeEpochs)
+			coveredInCurrent := ledger.CoveredSlotsInCurrentEpoch(offs, txSlot, _delegationEpochSlots)
+			unfreeze := ledger.FreezeUntilSlot(offs, txSlot, _delegationEpochSlots, maxFreezeSlots, _maxFreezeEpochs)
 
 			ln := lines.New()
-			if len(short) > 0 && short[0] {
-				ln.Add("txSlot: %d", txSlot)
-				ln.Add("split: %+v", vect)
-				ln.Add("unfreeze: %d", unfreeze)
-				ln.Add("offs: %d", offs)
-				ln.Add("covered: %d", unfreeze-txSlot)
-				t.Logf("%s", ln.Join(", "))
-			} else {
-				ln.Add("-----------------------")
-				ln.Add("epoch offset: %d", offs)
-				ln.Add("maxFreezeSlots: %d", maxFreezeSlots)
-				ln.Add("delegationEpochSlots: %d", delegationEpochSlots)
-				ln.Add("txSlot: %d", txSlot)
-				ln.Add("unfreezeSlot: %d", unfreeze)
-				ln.Add("split: %+v", vect)
-				t.Logf("\n%s", ln.String())
-			}
+			ln.Add("txSlot: %4d", txSlot)
+			ln.Add("covered current: %4d", coveredInCurrent)
+			ln.Add("unfreeze: %4d", unfreeze)
+			ln.Add("offs: %4d", offs)
+			ln.Add("covered epochs: %2d", epochsCovered)
+			ln.Add("frozen slots: %4d", unfreeze-txSlot)
+			ln.Add("max freeze slots: %4d", maxFreezeSlots)
+			t.Logf("%s", ln.Join(", "))
 			require.True(t, unfreeze-txSlot <= maxFreezeSlots)
 		}
-		epochOffset := ledger.EpochOffsetSlots(base.ChainID{}, 512)
-		runTest(epochOffset, 0, 1024, 512, 6)
-		epochOffset = ledger.EpochOffsetSlots(base.RandomChainID(), 512)
-		runTest(epochOffset, 0, 1024, 512, 6)
-		for i := 0; i < 1200; i++ {
-			runTest(10, base.Slot(i), 5*512, 512, 6, true)
-		}
-	})
-	t.Run("2", func(t *testing.T) {
-		runTest := func(offs, txSlot, delegationEpochSlots base.Slot, maxFreezeEpochs int) {
-			vect := ledger.CoverageEpochVector(offs, txSlot, delegationEpochSlots, maxFreezeEpochs)
-			t.Logf("    offs: %d  txSlot: %d  vect: %+v", offs, txSlot, vect)
-		}
-		for i := 0; i < 2000; i++ {
-			runTest(100, base.Slot(i), 512, 8)
+		for i := 0; i < 2050; i++ {
+			runTest(0, base.Slot(i), 4*512)
 		}
 	})
 }
