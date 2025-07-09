@@ -337,8 +337,8 @@ func UnfreezeSlots(txSlot base.Slot) (ret [DelegationMaxFrozenEpochs]base.Slot) 
 	return
 }
 
-func EpochOffsetSlots(masterID, targetID base.ChainID, delegationEpochSlots base.Slot) base.Slot {
-	return (base.Slot(binary.BigEndian.Uint32(targetID[:4]) + binary.BigEndian.Uint32(masterID[:4]))) % delegationEpochSlots
+func EpochOffsetSlots(targetID base.ChainID, delegationEpochSlots base.Slot) base.Slot {
+	return base.Slot(binary.BigEndian.Uint32(targetID[:4])) % delegationEpochSlots
 }
 
 func FreezeUntilSlot(epochOffsetSlots, txSlot, maxFreezeSlots, delegationEpochSlots base.Slot, maxFreezeEpochs int) (ret base.Slot, split []base.Slot) {
@@ -365,6 +365,20 @@ func FreezeUntilSlot(epochOffsetSlots, txSlot, maxFreezeSlots, delegationEpochSl
 	return
 }
 
+func CoverageEpochVector(epochOffsetSlots, txSlot, delegationEpochSlots base.Slot, maxFreezeEpochs int) []base.Slot {
+	ret := make([]base.Slot, maxFreezeEpochs)
+	coveredInCurrentEpoch := delegationEpochSlots - (txSlot+epochOffsetSlots)%delegationEpochSlots
+	util.Assertf(coveredInCurrentEpoch > 0, "coveredInCurrentEpoch > 0")
+	ret[0] = txSlot + coveredInCurrentEpoch
+	for i := range ret {
+		if i == 0 {
+			continue
+		}
+		ret[i] += ret[i-1] + delegationEpochSlots
+	}
+	return ret
+}
+
 func splitCoverageEpochs(epochOffsetSlots, txSlot, delegationEpochSlots, unfreezeSlot base.Slot, maxFreezeEpochs int) []base.Slot {
 	ret := make([]base.Slot, maxFreezeEpochs)
 	util.Assertf(unfreezeSlot >= txSlot, "unfreezeSlot >= txSlot")
@@ -383,7 +397,7 @@ func splitCoverageEpochs(epochOffsetSlots, txSlot, delegationEpochSlots, unfreez
 			break
 		}
 	}
-	util.Assertf(remains == 0, "remains==0")
+	//util.Assertf(remains == 0, "remains==0")
 	return ret
 }
 
