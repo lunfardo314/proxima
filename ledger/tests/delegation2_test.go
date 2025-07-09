@@ -519,11 +519,14 @@ func TestDelegationLock2Consume(t *testing.T) {
 func TestDelegation2Related(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
 		runTest := func(offs, txSlot, maxFreezeSlots, delegationEpochSlots base.Slot, maxFreezeEpochs int, short ...bool) {
-			unfreeze, split := ledger.FreezeUntilSlot(offs, txSlot, maxFreezeSlots, delegationEpochSlots, maxFreezeEpochs)
+			vect := ledger.CoverageEpochVector(offs, txSlot, delegationEpochSlots, maxFreezeEpochs)
+			unfreeze := ledger.FreezeUntilSlot(txSlot, maxFreezeSlots, vect)
+
 			ln := lines.New()
 			if len(short) > 0 && short[0] {
 				ln.Add("txSlot: %d", txSlot)
-				ln.Add("split: %+v", split)
+				ln.Add("split: %+v", vect)
+				ln.Add("unfreeze: %d", unfreeze)
 				ln.Add("offs: %d", offs)
 				ln.Add("covered: %d", unfreeze-txSlot)
 				t.Logf("%s", ln.Join(", "))
@@ -534,25 +537,17 @@ func TestDelegation2Related(t *testing.T) {
 				ln.Add("delegationEpochSlots: %d", delegationEpochSlots)
 				ln.Add("txSlot: %d", txSlot)
 				ln.Add("unfreezeSlot: %d", unfreeze)
-				ln.Add("split: %+v", split)
+				ln.Add("split: %+v", vect)
 				t.Logf("\n%s", ln.String())
 			}
 			require.True(t, unfreeze-txSlot <= maxFreezeSlots)
-			var m base.Slot
-			for _, v := range split {
-				if v > m {
-					m = v
-				}
-			}
-			require.EqualValues(t, unfreeze, m)
-
 		}
 		epochOffset := ledger.EpochOffsetSlots(base.ChainID{}, 512)
 		runTest(epochOffset, 0, 1024, 512, 6)
 		epochOffset = ledger.EpochOffsetSlots(base.RandomChainID(), 512)
 		runTest(epochOffset, 0, 1024, 512, 6)
-		for i := 0; i < 100; i++ {
-			runTest(511, base.Slot(i), 8*512, 512, 6, true)
+		for i := 0; i < 1200; i++ {
+			runTest(10, base.Slot(i), 5*512, 512, 6, true)
 		}
 	})
 	t.Run("2", func(t *testing.T) {
@@ -563,6 +558,5 @@ func TestDelegation2Related(t *testing.T) {
 		for i := 0; i < 2000; i++ {
 			runTest(100, base.Slot(i), 512, 8)
 		}
-
 	})
 }

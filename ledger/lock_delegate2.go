@@ -310,62 +310,21 @@ func _precalcDelegationConstants() *Delegation2Constants {
 	resMaxFrozenEpochs, err := L().EvalFromSource(nil, "constDelegationMaxFrozenEpochs")
 	util.AssertNoError(err)
 
-	return &Delegation2Constants{
+	ret := &Delegation2Constants{
 		SafeRevocationSlots:  int(easyfl_util.MustUint64FromBytes(resRevoc)),
 		DelegationEpochSlots: int(easyfl_util.MustUint64FromBytes(resEpochSlots)),
 		MaxFrozenEpochs:      int(easyfl_util.MustUint64FromBytes(resMaxFrozenEpochs)),
 	}
-}
-
-// DelegationEpochOffsetSlots deterministic pseudo-random number between 0 and epoch slots (not including)
-// with the seed equal to the first 8 bytes of chain ID
-func DelegationEpochOffsetSlots(delegationTargetChainID base.ChainID) base.Slot {
-	return base.Slot(binary.BigEndian.Uint64(delegationTargetChainID[:8]) % uint64(DelegationConstants().DelegationEpochSlots))
-}
-
-func CoverageFreezeVector(balance uint64, txSlot, maxFreezeSlots base.Slot, delegationTargetChainID base.ChainID) (unfreeze base.Slot, ret [DelegationMaxFrozenEpochs]uint64) {
-	return
-}
-
-func UnfreezeSlots(txSlot base.Slot) (ret [DelegationMaxFrozenEpochs]base.Slot) {
-	dconst := DelegationConstants()
-	unfrozenSince := base.Slot(dconst.DelegationEpochSlots) * (txSlot / base.Slot(dconst.DelegationEpochSlots))
-	ret[0] = unfrozenSince + base.Slot(dconst.DelegationEpochSlots)
-	for i := 1; i < DelegationMaxFrozenEpochs; i++ {
-		ret[i] = ret[i-1] + base.Slot(dconst.DelegationEpochSlots)
-	}
-	return
+	util.Assertf(int(AmountIndexLockedCoverage)+ret.MaxFrozenEpochs <= 16, "int(AmountIndexLockedCoverage)+MaxFrozenEpochs <= 16")
+	return ret
 }
 
 func EpochOffsetSlots(targetID base.ChainID, delegationEpochSlots base.Slot) base.Slot {
 	return base.Slot(binary.BigEndian.Uint32(targetID[:4])) % delegationEpochSlots
 }
 
-func FreezeUntilSlot(epochOffsetSlots, txSlot, maxFreezeSlots, delegationEpochSlots base.Slot, maxFreezeEpochs int) (ret base.Slot, split []base.Slot) {
-	// how much covered in the current epoch
-	coveredInCurrentEpoch := delegationEpochSlots - (txSlot+epochOffsetSlots)%delegationEpochSlots
-	util.Assertf(coveredInCurrentEpoch > 0, "coveredInCurrentEpoch > 0")
-	if coveredInCurrentEpoch > maxFreezeSlots {
-		// can freeze as per maxFreezeSlots constraint
-		return
-	}
-	// remaining maximum to be covered yet
-	remainsFromMaxFreezeSlots := maxFreezeSlots - coveredInCurrentEpoch
-	// round it up to even epochs
-	remainingFreezeSlots := remainsFromMaxFreezeSlots - remainsFromMaxFreezeSlots%delegationEpochSlots
-	util.Assertf(remainingFreezeSlots%delegationEpochSlots == 0, "remainingFreezeSlots % base.Slot(dconst.DelegationEpochSlots) == 0")
-	// enforce absolute maximum of covered epochs
-	remainingFreezeEpochs := min(int(remainingFreezeSlots/delegationEpochSlots), maxFreezeEpochs-1)
-	remainingFreezeSlots = base.Slot(remainingFreezeEpochs) * delegationEpochSlots
-	freezeSlots := coveredInCurrentEpoch + remainingFreezeSlots
-	util.Assertf(freezeSlots <= maxFreezeSlots, "freezeSlots <= maxFreezeSlots")
-	ret = txSlot + freezeSlots
-
-	split = splitCoverageEpochs(epochOffsetSlots, txSlot, delegationEpochSlots, ret, maxFreezeEpochs)
-	return
-}
-
 func CoverageEpochVector(epochOffsetSlots, txSlot, delegationEpochSlots base.Slot, maxFreezeEpochs int) []base.Slot {
+	util.Assertf(epochOffsetSlots < delegationEpochSlots, "epochOffsetSlots < delegationEpochSlots")
 	ret := make([]base.Slot, maxFreezeEpochs)
 	coveredInCurrentEpoch := delegationEpochSlots - (txSlot+epochOffsetSlots)%delegationEpochSlots
 	util.Assertf(coveredInCurrentEpoch > 0, "coveredInCurrentEpoch > 0")
@@ -379,26 +338,16 @@ func CoverageEpochVector(epochOffsetSlots, txSlot, delegationEpochSlots base.Slo
 	return ret
 }
 
-func splitCoverageEpochs(epochOffsetSlots, txSlot, delegationEpochSlots, unfreezeSlot base.Slot, maxFreezeEpochs int) []base.Slot {
-	ret := make([]base.Slot, maxFreezeEpochs)
-	util.Assertf(unfreezeSlot >= txSlot, "unfreezeSlot >= txSlot")
-	coveredInCurrentEpoch := delegationEpochSlots - (txSlot+epochOffsetSlots)%delegationEpochSlots
-	util.Assertf(coveredInCurrentEpoch > 0, "coveredInCurrentEpoch > 0")
-	remains := unfreezeSlot - txSlot
-	for i := 0; i < maxFreezeEpochs; i++ {
-		if i == 0 {
-			ret[0] = txSlot + coveredInCurrentEpoch
-			remains -= coveredInCurrentEpoch
-		} else {
-			ret[i] = ret[i-1] + delegationEpochSlots
-			remains -= delegationEpochSlots
-		}
-		if ret[i] >= unfreezeSlot {
+func FreezeUntilSlot(txSlot, maxFreezeSlots base.Slot, coverageEpochVector []base.Slot) (ret base.Slot) {
+	util.Assertf(len(coverageEpochVector) >= 1, "len(coverageEpochVector) >= 1")
+	upper := txSlot + maxFreezeSlots
+	for _, unfreeze := range coverageEpochVector {
+		if unfreeze > upper {
 			break
 		}
+		ret = unfreeze
 	}
-	//util.Assertf(remains == 0, "remains==0")
-	return ret
+	return
 }
 
 const (

@@ -23,6 +23,7 @@ const AmountsConstraintName = "amounts"
 const (
 	AmountIndexTokenBalance = byte(iota)
 	AmountIndexInflation
+	AmountIndexLockedCoverage
 )
 
 func NewAmounts(args ...uint64) Amounts {
@@ -150,6 +151,10 @@ func storageDepositByOutputBytes(data []byte) uint64 {
 var _locksExemptOfStorageDeposit = set.New(StemLockName)
 
 func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
+	if !ctx.SelfIsProducedOutput() {
+		// only check on produced outputs
+		return
+	}
 	if _locksExemptOfStorageDeposit.Contains(o.Lock().Name()) {
 		return
 	}
@@ -159,8 +164,8 @@ func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *Eval
 }
 
 func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
-	if ctx.SelfIsConsumedOutput() {
-		// don't check on consumed outputs
+	if !ctx.SelfIsProducedOutput() {
+		// only check on produced outputs
 		return
 	}
 	inflationGiven := o.Amounts().InflationAmount()
@@ -206,6 +211,18 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 	par.Require(inflationGiven == inflationCalculated, "wrong inflation amount. Expected %d, got %d", inflationCalculated, inflationGiven)
 }
 
+func _checkLockedCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
+	if !ctx.SelfIsProducedOutput() {
+		// only check on produced outputs
+		return
+	}
+	//dconst := DelegationConstants()
+	//amounts := o.Amounts()
+	//frozenCoverage := o.Amounts()[AmountIndexLockedCoverage: int(AmountIndexLockedCoverage)+dconst.MaxFrozenEpochs]
+
+	// TODO make chain produced output
+}
+
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	path := par.DataContext().EvalPath()
 	par.Require(path[len(path)-1] == ConstraintIndexAmounts, "'amounts' must be at index %d", ConstraintIndexAmounts)
@@ -213,6 +230,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	o := ctx.SelfOutput()
 	_checkMinimumStorageDeposit(par, ctx, o)
 	_checkInflation(par, ctx, o)
+	_checkLockedCoverage(par, ctx, o)
 	return []byte{0xff}
 }
 
