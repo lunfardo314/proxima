@@ -21,7 +21,7 @@ type (
 		MaxFreezeSlots uint16
 	}
 	DelegateLock2State struct {
-		UnfreezeSlot base.Slot
+		UnfreezeSlot uint32
 		Revoked      bool
 	}
 
@@ -111,9 +111,9 @@ func (d *DelegateLock2) Master() Accountable {
 }
 
 type Delegation2Constants struct {
-	SafeRevocationSlots  int
-	DelegationEpochSlots int
-	MaxFrozenEpochs      int
+	SafeRevocationSlots  uint32
+	DelegationEpochSlots uint32
+	MaxFrozenEpochs      uint32
 }
 
 var (
@@ -170,15 +170,12 @@ func Delegate2LockStateFromBytes(data []byte) (DelegateLock2State, error) {
 	if sym != Delegate2LockStateName {
 		return DelegateLock2State{}, fmt.Errorf("Delegate2LockStateFromBytes: not a DelegateLock2State")
 	}
-	fr, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
+	fr, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[0]))
 	if err != nil {
 		return DelegateLock2State{}, fmt.Errorf("Delegate2LockStateFromBytes: wrong argument 0: %w", err)
 	}
-	if fr >= base.MaxSlot {
-		return DelegateLock2State{}, fmt.Errorf("Delegate2LockStateFromBytes: wrong argument 0")
-	}
 	return DelegateLock2State{
-		UnfreezeSlot: base.Slot(fr),
+		UnfreezeSlot: fr,
 		Revoked:      !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
 	}, nil
 }
@@ -257,12 +254,12 @@ func AsDelegate2Output(o *OutputWithChainID) (ret Delegate2Output, err error) {
 
 // SafeRevocationSlots return slots from-to (inclusive) when target cannot consume the delegation output
 // (0, 0) means it is revoked, i.e., it cannot be consumed by the target
-func (o *Delegate2Output) SafeRevocationSlots() (from, to base.Slot) {
+func (o *Delegate2Output) SafeRevocationSlots() (from, to uint32) {
 	if o.Revoked {
 		return
 	}
 	c := DelegationConstants()
-	return o.UnfreezeSlot, o.UnfreezeSlot + base.Slot(c.SafeRevocationSlots) - 1
+	return o.UnfreezeSlot, o.UnfreezeSlot + c.SafeRevocationSlots - 1
 }
 
 func (o *Delegate2Output) LinesSource(prefix ...string) *lines.Lines {
@@ -311,43 +308,47 @@ func _precalcDelegationConstants() *Delegation2Constants {
 	util.AssertNoError(err)
 
 	ret := &Delegation2Constants{
-		SafeRevocationSlots:  int(easyfl_util.MustUint64FromBytes(resRevoc)),
-		DelegationEpochSlots: int(easyfl_util.MustUint64FromBytes(resEpochSlots)),
-		MaxFrozenEpochs:      int(easyfl_util.MustUint64FromBytes(resMaxFrozenEpochs)),
+		SafeRevocationSlots:  easyfl_util.MustUint32FromBytes(resRevoc),
+		DelegationEpochSlots: easyfl_util.MustUint32FromBytes(resEpochSlots),
+		MaxFrozenEpochs:      easyfl_util.MustUint32FromBytes(resMaxFrozenEpochs),
 	}
-	util.Assertf(int(AmountIndexLockedCoverage)+ret.MaxFrozenEpochs <= 16, "int(AmountIndexLockedCoverage)+MaxFrozenEpochs <= 16")
+	util.Assertf(uint32(AmountIndexLockedCoverage)+ret.MaxFrozenEpochs <= 16, "int(AmountIndexLockedCoverage)+MaxFrozenEpochs <= 16")
 	return ret
 }
 
-func EpochOffsetSlots(targetID base.ChainID, delegationEpochSlots base.Slot) base.Slot {
-	return base.Slot(binary.BigEndian.Uint32(targetID[:4])) % delegationEpochSlots
+// EpochOffsetSlots returns slot offset unique for the delegation target chain ID.
+// Each chain ID defines own grid of epochs. It spreads delegation output consumption among sequencers
+func (c *Delegation2Constants) EpochOffsetSlots(targetID base.ChainID) uint32 {
+	return binary.BigEndian.Uint32(targetID[:4]) % c.DelegationEpochSlots
 }
 
-func CoveredSlotsInCurrentEpoch(epochOffsetSlots, txSlot, delegationEpochSlots base.Slot) base.Slot {
-	return delegationEpochSlots - (txSlot+epochOffsetSlots)%delegationEpochSlots
+func (c *Delegation2Constants) CoveredSlotsInCurrentEpoch(target base.ChainID, txSlot uint32) uint32 {
+	offs := c.EpochOffsetSlots(target)
+	return c.DelegationEpochSlots - (txSlot+offs)%c.DelegationEpochSlots
 }
 
-func EpochsCovered(epochOffsetSlots, txSlot, delegationEpochSlots, maxFreezeSlots base.Slot, maxFreezeEpochs int) int {
-	coveredInTheCurrentEpoch := CoveredSlotsInCurrentEpoch(epochOffsetSlots, txSlot, delegationEpochSlots)
+func (c *Delegation2Constants) EpochsCovered(target base.ChainID, txSlot, maxFreezeSlots uint32) uint32 {
+	coveredInTheCurrentEpoch := c.CoveredSlotsInCurrentEpoch(target, txSlot)
 	if coveredInTheCurrentEpoch > maxFreezeSlots {
 		return 0
 	}
-	return min(maxFreezeEpochs, int((maxFreezeSlots-coveredInTheCurrentEpoch)/delegationEpochSlots)+1)
+	return min(c.MaxFrozenEpochs, (maxFreezeSlots-coveredInTheCurrentEpoch)/c.DelegationEpochSlots+1)
+
 }
 
-func FreezeUntilSlot(epochOffsetSlots, txSlot, delegationEpochSlots, maxFreezeSlots base.Slot, maxFreezeEpochs int) base.Slot {
-	epochs := EpochsCovered(epochOffsetSlots, txSlot, delegationEpochSlots, maxFreezeSlots, maxFreezeEpochs)
+func (c *Delegation2Constants) FreezeUntilSlot(target base.ChainID, txSlot, maxFreezeSlots uint32) uint32 {
+	epochs := c.EpochsCovered(target, txSlot, maxFreezeSlots)
 	if epochs == 0 {
 		return 0
 	}
-	ret := txSlot + CoveredSlotsInCurrentEpoch(epochOffsetSlots, txSlot, delegationEpochSlots) + base.Slot(epochs-1)*delegationEpochSlots
-	util.Assertf(ValidUnfreezeSlot(epochOffsetSlots, ret, delegationEpochSlots), "ValidUnfreezeSlot(epochOffsetSlots, ret, delegationEpochSlots)")
+	ret := txSlot + c.CoveredSlotsInCurrentEpoch(target, txSlot) + (epochs-1)*c.DelegationEpochSlots
+	util.Assertf(c.ValidUnfreezeSlot(target, ret), "c.ValidUnfreezeSlot(target, ret)")
+
 	return ret
 }
 
-// ValidUnfreezeSlot returns true only if the 'unfreeze' slot is on the delegation epoch edge
-func ValidUnfreezeSlot(offs, unfreezeSlot, delegationEpochSlots base.Slot) bool {
-	return (unfreezeSlot+offs)%delegationEpochSlots == 0
+func (c *Delegation2Constants) ValidUnfreezeSlot(target base.ChainID, unfreezeSlot uint32) bool {
+	return (unfreezeSlot+c.EpochOffsetSlots(target))%c.DelegationEpochSlots == 0
 }
 
 const (
@@ -361,7 +362,7 @@ var delegateLock2Source = fmt.Sprintf(_delegateLock2Source,
 
 const _delegateLock2Source = `
 func constDelegationSafeRevocationSlots  : %d
-func constDelegationEpochSlots : u64/%d
+func constDelegationEpochSlots : u32/%d
 func constDelegationMaxFrozenEpochs : %d
 // $0 target chain ID
 func delegationEpochOffset : mod( slice($0, 0, 3), constDelegationEpochSlots)
@@ -391,7 +392,10 @@ func _selfDelegationEpochOffset : delegationEpochOffset(_selfTargetChainID)
 
 // $0 unfreeze slot
 // $1 delegation epoch offset
-func _validUnfreezeSlot : isZero(mod(add($0,$1), constDelegationEpochSlots))
+func _validUnfreezeSlot : or(
+  isZero($0),
+  isZero(mod(add($0,$1), constDelegationEpochSlots))
+)
 
 // checks validity of the composition of the produced constraint 
 // $0 max freeze slots
@@ -428,7 +432,7 @@ and(
        !!!too_max_freeze_slots_must_be_max_2_bytes 
     ),
     require(
-       lessThan(_unfreezeSlot, add(txSlot, $0)),
+       lessOrEqualThan(_unfreezeSlot, add(txSlot, $0)),
        !!!unfreeze_slot_cannot_exceed_maximum_set_by_delegator
     )
 )

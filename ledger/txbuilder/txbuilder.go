@@ -988,11 +988,15 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	txb.TransactionData.Timestamp = par.Timestamp
 	txb.SignED25519(par.MasterPrivateKey)
 
-	txBytes := txb.TransactionData.Bytes()
-
-	if err = transaction.ValidateTxBytes(txBytes, txb.LoadInput); err != nil {
-		return nil, err
+	txBytes, _, txString, err := txb.BytesWithValidation()
+	if err != nil {
+		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w\n----- failing tx --------\n%s", err, txString)
 	}
+	//txBytes := txb.TransactionData.Bytes()
+	//
+	//if err = transaction.ValidateTxBytes(txBytes, txb.LoadInput); err != nil {
+	//	return nil, err
+	//}
 	return txBytes, nil
 }
 
