@@ -322,32 +322,36 @@ func (c *Delegation2Constants) EpochOffsetSlots(targetID base.ChainID) uint32 {
 	return binary.BigEndian.Uint32(targetID[:4]) % c.DelegationEpochSlots
 }
 
+// CoveredSlotsInCurrentEpoch returns how many slots are covered in the current epoch defined by txSlot and
+// taking into account the offset calculated from the target
 func (c *Delegation2Constants) CoveredSlotsInCurrentEpoch(target base.ChainID, txSlot uint32) uint32 {
 	offs := c.EpochOffsetSlots(target)
 	return c.DelegationEpochSlots - (txSlot+offs)%c.DelegationEpochSlots
 }
 
+// EpochsCovered returns number of full epochs (respective to the target), which can be covered in the txSlot
+// and constrained by maxFreezeSlots. It is a number of non-zero elements of the frozen coverage vector
 func (c *Delegation2Constants) EpochsCovered(target base.ChainID, txSlot, maxFreezeSlots uint32) uint32 {
 	coveredInTheCurrentEpoch := c.CoveredSlotsInCurrentEpoch(target, txSlot)
 	if coveredInTheCurrentEpoch > maxFreezeSlots {
 		return 0
 	}
 	return min(c.MaxFrozenEpochs, (maxFreezeSlots-coveredInTheCurrentEpoch)/c.DelegationEpochSlots+1)
-
 }
 
+// FreezeUntilSlot calculates maximal slot until which delegated tokens can correctly and safely frozen
 func (c *Delegation2Constants) FreezeUntilSlot(target base.ChainID, txSlot, maxFreezeSlots uint32) uint32 {
 	epochs := c.EpochsCovered(target, txSlot, maxFreezeSlots)
 	if epochs == 0 {
 		return 0
 	}
 	ret := txSlot + c.CoveredSlotsInCurrentEpoch(target, txSlot) + (epochs-1)*c.DelegationEpochSlots
-	util.Assertf(c.ValidUnfreezeSlot(target, ret), "c.ValidUnfreezeSlot(target, ret)")
+	util.Assertf(c._validUnfreezeSlot(target, ret), "c._validUnfreezeSlot(target, ret)")
 
 	return ret
 }
 
-func (c *Delegation2Constants) ValidUnfreezeSlot(target base.ChainID, unfreezeSlot uint32) bool {
+func (c *Delegation2Constants) _validUnfreezeSlot(target base.ChainID, unfreezeSlot uint32) bool {
 	return (unfreezeSlot+c.EpochOffsetSlots(target))%c.DelegationEpochSlots == 0
 }
 
@@ -392,7 +396,7 @@ func _selfDelegationEpochOffset : delegationEpochOffset(_selfTargetChainID)
 
 // $0 unfreeze slot
 // $1 delegation epoch offset
-func _validUnfreezeSlot : or(
+func _unfreezeSlotOnEpochBoundary : or(
   isZero($0),
   isZero(mod(add($0,$1), constDelegationEpochSlots))
 )
@@ -412,7 +416,7 @@ and(
         !!!delegation_target_must_by_chainLock
     ),
     require(
-        _validUnfreezeSlot(_unfreezeSlot, _selfDelegationEpochOffset),
+        _unfreezeSlotOnEpochBoundary(_unfreezeSlot, _selfDelegationEpochOffset),
         !!!unfreeze_slot_must_be_on_delegation_epoch_boundary
     ),
     require(
