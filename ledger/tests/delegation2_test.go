@@ -538,7 +538,7 @@ func TestDelegation2Related(t *testing.T) {
 			require.True(t, unfreeze-txSlot <= maxFreezeSlots)
 		}
 		for i := 0; i < 2050; i++ {
-			runTest(0, base.Slot(i), 4*512)
+			runTest(1, base.Slot(i), 4*512)
 		}
 	})
 }

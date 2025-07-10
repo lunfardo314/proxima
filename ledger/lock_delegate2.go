@@ -340,7 +340,14 @@ func FreezeUntilSlot(epochOffsetSlots, txSlot, delegationEpochSlots, maxFreezeSl
 	if epochs == 0 {
 		return 0
 	}
-	return txSlot + CoveredSlotsInCurrentEpoch(epochOffsetSlots, txSlot, delegationEpochSlots) + base.Slot(epochs-1)*delegationEpochSlots
+	ret := txSlot + CoveredSlotsInCurrentEpoch(epochOffsetSlots, txSlot, delegationEpochSlots) + base.Slot(epochs-1)*delegationEpochSlots
+	util.Assertf(ValidUnfreezeSlot(epochOffsetSlots, ret, delegationEpochSlots), "ValidUnfreezeSlot(epochOffsetSlots, ret, delegationEpochSlots)")
+	return ret
+}
+
+// ValidUnfreezeSlot returns true only if the 'unfreeze' slot is on the delegation epoch edge
+func ValidUnfreezeSlot(offs, unfreezeSlot, delegationEpochSlots base.Slot) bool {
+	return (unfreezeSlot+offs)%delegationEpochSlots == 0
 }
 
 const (
@@ -356,6 +363,8 @@ const _delegateLock2Source = `
 func constDelegationSafeRevocationSlots  : %d
 func constDelegationEpochSlots : u64/%d
 func constDelegationMaxFrozenEpochs : %d
+// $0 target chain ID
+func delegationEpochOffset : mod( slice($0, 0, 3), constDelegationEpochSlots)
 
 func _selfChainID : parseInlineDataArgument(selfSiblingConstraint(2), #chain, 0)
 func _isDelegationOrigin : isChainOriginID(_selfChainID)
@@ -376,6 +385,14 @@ func _isRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLock
 
 func _equalTo1Of2 : or(equal($0,$1), equal($0,$2))
 
+func _selfTarget : parseArgumentBytecode(self,selfBytecodePrefix,0)
+func _selfTargetChainID : parseInlineDataArgumentAnyPrefix(_selfTarget,0)
+func _selfDelegationEpochOffset : delegationEpochOffset(_selfTargetChainID)
+
+// $0 unfreeze slot
+// $1 delegation epoch offset
+func _validUnfreezeSlot : isZero(mod(add($0,$1), constDelegationEpochSlots))
+
 // checks validity of the composition of the produced constraint 
 // $0 max freeze slots
 func _validDelegation2Produced :
@@ -387,8 +404,12 @@ and(
 	   !!!delegation_must_have_exactly_4_constraints
     ), // to prevent injection attacks
     require( 
-        _equalTo1Of2(parsePrefixBytecode(parseArgumentBytecode(self,selfBytecodePrefix,0)), #c, #chainLock),
+        _equalTo1Of2(parsePrefixBytecode(_selfTarget), #c, #chainLock),
         !!!delegation_target_must_by_chainLock
+    ),
+    require(
+        _validUnfreezeSlot(_unfreezeSlot, _selfDelegationEpochOffset),
+        !!!unfreeze_slot_must_be_on_delegation_epoch_boundary
     ),
     require(
 	   equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
