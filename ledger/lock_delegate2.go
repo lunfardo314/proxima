@@ -21,7 +21,7 @@ type (
 		MaxFreezeSlots uint16
 	}
 	DelegateLock2State struct {
-		UnfreezeSlot uint32
+		FrozenEpochs byte
 		Revoked      bool
 	}
 
@@ -38,8 +38,8 @@ const (
 	Delegate2LockTemplateHR = Delegate2LockName + "(target=%s, master=%s, maxFreezeSlots=%d)"
 
 	Delegate2LockStateName       = "delegateLock2State"
-	Delegate2LockStateTemplate   = Delegate2LockStateName + "(z32/%d, %s)"
-	Delegate2LockStateTemplateHR = Delegate2LockStateName + "(unfreezeSlot=%d, revoked=%v)"
+	Delegate2LockStateTemplate   = Delegate2LockStateName + "(%d, %s)"
+	Delegate2LockStateTemplateHR = Delegate2LockStateName + "(frozenEpochs=%d, revoked=%v)"
 )
 
 //------------ DelegateLock2
@@ -170,12 +170,16 @@ func Delegate2LockStateFromBytes(data []byte) (DelegateLock2State, error) {
 	if sym != Delegate2LockStateName {
 		return DelegateLock2State{}, fmt.Errorf("Delegate2LockStateFromBytes: not a DelegateLock2State")
 	}
-	fr, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[0]))
+	fr, err := easyfl_util.ByteFromBytes(easyfl.StripDataPrefix(args[0]))
 	if err != nil {
 		return DelegateLock2State{}, fmt.Errorf("Delegate2LockStateFromBytes: wrong argument 0: %w", err)
 	}
+	dconst := DelegationConstants()
+	if uint32(fr) > dconst.MaxFrozenEpochs {
+		return DelegateLock2State{}, fmt.Errorf("Delegate2LockStateFromBytes: wrong argument 0. Must be <= %d", dconst.MaxFrozenEpochs)
+	}
 	return DelegateLock2State{
-		UnfreezeSlot: fr,
+		FrozenEpochs: fr,
 		Revoked:      !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
 	}, nil
 }
@@ -185,11 +189,11 @@ func (d DelegateLock2State) Source() string {
 	if d.Revoked {
 		r = "0xff"
 	}
-	return fmt.Sprintf(Delegate2LockStateTemplate, d.UnfreezeSlot, r)
+	return fmt.Sprintf(Delegate2LockStateTemplate, d.FrozenEpochs, r)
 }
 
 func (d DelegateLock2State) String() string {
-	return fmt.Sprintf(Delegate2LockStateTemplateHR, d.UnfreezeSlot, d.Revoked)
+	return fmt.Sprintf(Delegate2LockStateTemplateHR, d.FrozenEpochs, d.Revoked)
 }
 
 func (d DelegateLock2State) Bytes() []byte {
@@ -201,19 +205,19 @@ func (d DelegateLock2State) Name() string {
 }
 
 func initTestDelegate2LockState() {
-	dlz := DelegateLock2State{1337, true}
+	dlz := DelegateLock2State{5, true}
 
 	dlzBack, err := Delegate2LockStateFromBytes(dlz.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(dlzBack.UnfreezeSlot == 1337, "DelegateLock2State: inconsistency 1")
+	util.Assertf(dlzBack.FrozenEpochs == 5, "DelegateLock2State: inconsistency 1")
 	util.Assertf(dlzBack.Revoked, "DelegateLock2State: inconsistency 2")
 	util.Assertf(dlz == dlzBack, "DelegateLock2State: inconsistency 3")
 
-	dlz = DelegateLock2State{222, false}
+	dlz = DelegateLock2State{3, false}
 
 	dlzBack, err = Delegate2LockStateFromBytes(dlz.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(dlzBack.UnfreezeSlot == 222, "DelegateLock2State: inconsistency 1")
+	util.Assertf(dlzBack.FrozenEpochs == 3, "DelegateLock2State: inconsistency 1")
 	util.Assertf(!dlzBack.Revoked, "DelegateLock2State: inconsistency 4")
 	util.Assertf(dlz == dlzBack, "DelegateLock2State: inconsistency 5")
 }
@@ -252,6 +256,11 @@ func AsDelegate2Output(o *OutputWithChainID) (ret Delegate2Output, err error) {
 	return
 }
 
+func (o *Delegate2Output) UnfreezeSlot() uint32 {
+	dconst := DelegationConstants()
+	return uint32(o.ID.Slot()) + dconst.FrozenSlotsFromEpochs(o.Target.ChainID(), uint32(o.ID.Slot()), o.FrozenEpochs) + 1
+}
+
 // SafeRevocationSlots return slots from-to (inclusive) when target cannot consume the delegation output
 // (0, 0) means it is revoked, i.e., it cannot be consumed by the target
 func (o *Delegate2Output) SafeRevocationSlots() (from, to uint32) {
@@ -259,7 +268,7 @@ func (o *Delegate2Output) SafeRevocationSlots() (from, to uint32) {
 		return
 	}
 	c := DelegationConstants()
-	return o.UnfreezeSlot, o.UnfreezeSlot + c.SafeRevocationSlots - 1
+	return o.UnfreezeSlot(), o.UnfreezeSlot() + c.SafeRevocationSlots - 1
 }
 
 func (o *Delegate2Output) LinesSource(prefix ...string) *lines.Lines {
@@ -355,11 +364,20 @@ func (c *Delegation2Constants) _validUnfreezeSlot(target base.ChainID, unfreezeS
 	return (unfreezeSlot+c.EpochOffsetSlots(target))%c.DelegationEpochSlots == 0
 }
 
+func (c *Delegation2Constants) FrozenSlotsFromEpochs(target base.ChainID, txSlot uint32, frozenEpochs byte) uint32 {
+	if frozenEpochs == 0 {
+		return 0
+	}
+	return c.CoveredSlotsInCurrentEpoch(target, txSlot) + uint32(frozenEpochs-1)*c.DelegationEpochSlots
+}
+
 const (
 	DelegationSafeRevocationSlots = 30
 	DelegationEpochSlots          = 512
 	DelegationMaxFrozenEpochs     = 4
 )
+
+// TODO refactor to frozen epochs
 
 var delegateLock2Source = fmt.Sprintf(_delegateLock2Source,
 	DelegationSafeRevocationSlots, DelegationEpochSlots, DelegationMaxFrozenEpochs)
@@ -379,6 +397,9 @@ func pathToSuccessorOutput : concat(pathToProducedOutputs, byte(selfSiblingUnloc
 
 // $0 index of the chain constraint on the predecessor (consumed output)
 func successorConstraint : atPath(concat(pathToSuccessorOutput($0), lockConstraintIndex))
+
+// 
+func _validFrozenCoverage : true
 
 // $0 unfreeze slot
 // $1 revoked
