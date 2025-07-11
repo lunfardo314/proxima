@@ -86,20 +86,20 @@ func initTestInflationConstraint() {
 }
 
 const inflationConstraintSource = `
-func _producedVRFProof : 
-     parseInlineDataArgument(
-        producedConstraintByIndex(concat(txStemOutputIndex, lockConstraintIndex)), 
-        #stemLock, 
-        1
-     )
-
-// $0 - chain predecessor input index
-func _calcChainInflationAmountForPredecessor :
-     calcChainInflationAmount(
-	    timestampOfInputByIndex($0), 
-        txTimestampBytes,
-	    tokenBalanceByOutputPath(concat(pathToConsumedOutputs,$0)),
-	 )
+//func _producedVRFProof : 
+//     parseInlineDataArgument(
+//        producedConstraintByIndex(concat(txStemOutputIndex, lockConstraintIndex)), 
+//        #stemLock, 
+//        1
+//     )
+//
+//// $0 - chain predecessor input index
+//func _calcChainInflationAmountForPredecessor :
+//     calcChainInflationAmount(
+//	    timestampOfInputByIndex($0), 
+//        txTimestampBytes,
+//	    tokenBalanceByOutputPath(concat(pathToConsumedOutputs,$0)),
+//	 )
 
 // inflation(<inflation amount>, <chain constraint index>)
 // $0 - inflation amount (zero prefix trimmed up to 8 bytes).  

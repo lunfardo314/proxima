@@ -247,20 +247,22 @@ func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
 }
 
 const amountsAuxSource = `
-
-// $0 'amounts' constraint bytecode
-// Returns amount value 8 bytes from the output at path given in $0
-func _tokenBalanceByOutputPath : 
+// $0 - 'amounts'' bytecode
+// $1 - index of 'amounts' vector element, 1 byte
+func amountAt:
 if(
-   isZero(parseNumArgs($0)),
-   u64/0,
-   uint8Bytes(parseInlineDataArgument($0, #amounts,0))
+   lessThan($1, parseNumArgs($0)),
+   uint8Bytes(parseInlineDataArgument($0, #amounts,$1)),
+   u64/0
 )
 
 // $0 path to output
-func tokenBalanceByOutputPath : _tokenBalanceByOutputPath(atPath(concat($0, amountsConstraintIndex)))
+func tokenBalanceByOutputPath : amountAt(atPath(concat($0, amountsConstraintIndex)), 0)
 
-func selfTokenBalanceValue: tokenBalanceByOutputPath(selfOutputPath)
+// $0 amounts index
+func selfAmountAt : amountAt(selfSiblingConstraint(amountsConstraintIndex),$0)
+
+func selfTokenBalanceValue: selfAmountAt(0)
 
 // $0 number of output bytes
 func storageDeposit : mul(constVBCost16,$0)

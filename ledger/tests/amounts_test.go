@@ -2,6 +2,8 @@ package tests
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
 	"testing"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -14,17 +16,44 @@ import (
 
 func TestAmountsBase(t *testing.T) {
 	t.Run("compile", func(t *testing.T) {
-		compFun := func(src string) {
+		compFun := func(src string) []byte {
 			_, _, code, err := ledger.L().CompileExpression(src)
 			require.NoError(t, err)
 			srcBack, err := ledger.L().DecompileBytecode(code)
 			require.NoError(t, err)
 			t.Logf("\n    src: '%s'\n    bytecode: %s\n    decompiled: '%s'", src, easyfl_util.Fmt(code), srcBack)
+			return code
 		}
-		compFun("amounts")
-		compFun("amounts(1)")
-		compFun("amounts(0x)")
-		compFun("amounts(1,2,3)")
+		checkNargs := func(code []byte, nargs string) {
+			src := fmt.Sprintf("parseNumArgs(0x%s)", hex.EncodeToString(code))
+			ledger.L().MustEqual(src, nargs)
+		}
+		checkArg := func(code []byte, idx, val string) {
+			src := fmt.Sprintf("amountAt(0x%s,%s)", hex.EncodeToString(code), idx)
+			ledger.L().MustEqual(src, val)
+
+		}
+		code := compFun("amounts")
+		checkNargs(code, "0")
+		checkArg(code, "0", "u64/0")
+
+		code = compFun("amounts(1)")
+		checkNargs(code, "1")
+		checkArg(code, "0", "u64/1")
+		checkArg(code, "5", "u64/0")
+
+		code = compFun("amounts(0x)")
+		checkNargs(code, "1")
+		checkArg(code, "0", "u64/0")
+		checkArg(code, "11", "u64/0")
+
+		code = compFun("amounts(1,2,3)")
+		checkNargs(code, "3")
+		checkArg(code, "0", "u64/1")
+		checkArg(code, "1", "u64/2")
+		checkArg(code, "2", "u64/3")
+		checkArg(code, "11", "u64/0")
+
 		compFun("amounts(0x,0x,3)")
 		compFun("amounts(1,2,3,4,5,6,7,8,9,10,11,12,13,14,0x010203040506)")
 		compFun("amounts(z64/1000, z64/0,z64/11111111111111111111)")
