@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
 	"slices"
@@ -10,10 +9,8 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type Amounts []uint64
@@ -163,52 +160,68 @@ func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *Eval
 	par.Require(bal >= deposit, "token balance (%d) is less than required storage deposit (%d)", bal, deposit)
 }
 
+//func _checkInflationFull(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
+//	if !ctx.SelfIsProducedOutput() {
+//		// only check on produced outputs
+//		return
+//	}
+//	inflationGiven := o.Amounts().InflationAmount()
+//	if inflationGiven == 0 {
+//		// nothing to enforce
+//		return
+//	}
+//	// inflation > 0
+//	cc, idx := o.ChainConstraint()
+//	par.Require(idx != 0xff, "inflation must be 0 on non-chain output")
+//
+//	txid := ctx.TransactionID()
+//	// produced, chain-constrained output with non-zero inflation value
+//	if txid.IsBranchTransaction() {
+//		_, stemIdx := ctx.SequencerAndStemOutputIndices()
+//		pathToStemLock := common.Concat(PathToProducedOutputs, stemIdx, ConstraintIndexLock)
+//		stemLockData, err := ctx.BytesAtPath(pathToStemLock)
+//		par.RequireNoError(err)
+//		stemLock, err := StemLockFromBytes(stemLockData)
+//		par.RequireNoError(err)
+//
+//		bibCalc := L().BranchInflationBonusDirect(stemLock.VRFProof)
+//		par.Require(inflationGiven == bibCalc, "wrong branch inflation bonus value: expected %d (vrfProof=%s), got %d",
+//			bibCalc, hex.EncodeToString(stemLock.VRFProof), inflationGiven)
+//		return
+//	}
+//	// non-branch
+//	par.Require(!cc.IsOrigin(), "inflation must be 0 at chain origin")
+//	pathToPredecessorInput := common.Concat(PathToInputIDs, cc.PredecessorInputIndex)
+//	inputIDData, err := ctx.BytesAtPath(pathToPredecessorInput)
+//	par.RequireNoError(err)
+//	inputID, err := base.OutputIDFromBytes(inputIDData)
+//	par.RequireNoError(err)
+//	predTimestamp := inputID.Timestamp()
+//
+//	pathToPredecessorOutput := common.Concat(PathToConsumedOutputs, cc.PredecessorInputIndex)
+//	predBytes, err := ctx.BytesAtPath(pathToPredecessorOutput)
+//	par.RequireNoError(err)
+//	predOutput, err := OutputFromBytes(predBytes)
+//	par.RequireNoError(err)
+//
+//	inflationCalculated := L().CalcChainInflationAmountDirect(predTimestamp, txid.Timestamp(), predOutput.TokenBalance())
+//	par.Require(inflationGiven == inflationCalculated, "wrong inflation amount. Expected %d, got %d", inflationCalculated, inflationGiven)
+//}
+
+// _checkInflation The inflation constraint on the amount(1) is fully checked by the 'chain' constraint.
+// The 'amounts' constraint only ensures, that amount(1)==0 if 'chain' constraint is not present
 func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
 	if !ctx.SelfIsProducedOutput() {
 		// only check on produced outputs
 		return
 	}
-	inflationGiven := o.Amounts().InflationAmount()
-	if inflationGiven == 0 {
+	if o.Amounts().InflationAmount() == 0 {
 		// nothing to enforce
 		return
 	}
 	// inflation > 0
-	cc, idx := o.ChainConstraint()
+	_, idx := o.ChainConstraint()
 	par.Require(idx != 0xff, "inflation must be 0 on non-chain output")
-
-	txid := ctx.TransactionID()
-	// produced, chain-constrained output with non-zero inflation value
-	if txid.IsBranchTransaction() {
-		_, stemIdx := ctx.SequencerAndStemOutputIndices()
-		pathToStemLock := common.Concat(PathToProducedOutputs, stemIdx, ConstraintIndexLock)
-		stemLockData, err := ctx.BytesAtPath(pathToStemLock)
-		par.RequireNoError(err)
-		stemLock, err := StemLockFromBytes(stemLockData)
-		par.RequireNoError(err)
-
-		bibCalc := L().BranchInflationBonusDirect(stemLock.VRFProof)
-		par.Require(inflationGiven == bibCalc, "wrong branch inflation bonus value: expected %d (vrfProof=%s), got %d",
-			bibCalc, hex.EncodeToString(stemLock.VRFProof), inflationGiven)
-		return
-	}
-	// non-branch
-	par.Require(!cc.IsOrigin(), "inflation must be 0 at chain origin")
-	pathToPredecessorInput := common.Concat(PathToInputIDs, cc.PredecessorInputIndex)
-	inputIDData, err := ctx.BytesAtPath(pathToPredecessorInput)
-	par.RequireNoError(err)
-	inputID, err := base.OutputIDFromBytes(inputIDData)
-	par.RequireNoError(err)
-	predTimestamp := inputID.Timestamp()
-
-	pathToPredecessorOutput := common.Concat(PathToConsumedOutputs, cc.PredecessorInputIndex)
-	predBytes, err := ctx.BytesAtPath(pathToPredecessorOutput)
-	par.RequireNoError(err)
-	predOutput, err := OutputFromBytes(predBytes)
-	par.RequireNoError(err)
-
-	inflationCalculated := L().CalcChainInflationAmountDirect(predTimestamp, txid.Timestamp(), predOutput.TokenBalance())
-	par.Require(inflationGiven == inflationCalculated, "wrong inflation amount. Expected %d, got %d", inflationCalculated, inflationGiven)
 }
 
 func _checkLockedCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
@@ -216,11 +229,27 @@ func _checkLockedCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext
 		// only check on produced outputs
 		return
 	}
-	//dconst := DelegationConstants()
-	//amounts := o.Amounts()
-	//frozenCoverage := o.Amounts()[AmountIndexLockedCoverage: int(AmountIndexLockedCoverage)+dconst.MaxFrozenEpochs]
-
-	// TODO make chain produced output
+	dconst := DelegationConstants()
+	amounts := o.Amounts()
+	allZero := true
+	for i := 0; i < int(dconst.MaxFrozenEpochs); i++ {
+		if amounts.Amount(AmountIndexLockedCoverage+byte(i)) != 0 {
+			allZero = false
+		}
+	}
+	if allZero {
+		// all 0 is all fine
+		return
+	}
+	// frozen coverage is non-zero. DelegationLock2 or sequencer constraints must be present
+	if o.Lock().Name() == Delegate2LockName {
+		return
+	}
+	if _, idx := o.SequencerConstraint(); idx == 0xff {
+		par.TracePanic("non-zero frozen coverage %s requires either '%s' lock or '%s' constraint on the output",
+			amounts.String(), Delegate2LockName, SequencerConstraintName)
+	}
+	return
 }
 
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
