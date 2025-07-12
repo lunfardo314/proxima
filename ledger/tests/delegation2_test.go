@@ -89,8 +89,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		WithConstraint(ledger.NewChainOrigin(ts.Slot, delegatedTokens)).
 		WithConstraint(ledger.DelegateLock2State{Revoked: revoked}),
 	)
-	if err != nil && prnOnError {
-		td.Logf(">>>>> %v\n============ transaction ==============\n%s", err, td.u.TxToSource(txBytes))
+	if err != nil {
 		return nil, err
 	}
 	if err = td.u.AddTransaction(txBytes); err == nil {
@@ -101,6 +100,10 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		require.NoError(td, err)
 		td.Logf("delegation ID: %s", td.delegatedOutput.ChainID.String())
 		td.Logf("delegated UTXO:\n%s", td.delegatedOutput.Output.ToSource("     "))
+	} else {
+		if prnOnError {
+			td.Logf(">>>>> %v\n============ transaction ==============\n%s", err, td.u.TxToSource(txBytes))
+		}
 	}
 	return txBytes, err
 
@@ -129,7 +132,7 @@ func TestDelegationLock2Init(t *testing.T) {
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(1)
 		_, err = td.initDelegationUTXODirect(ts, true, 1, true)
-		util.RequireErrorWith(t, err, "wrong start parameters")
+		util.RequireErrorWith(t, err, "wrong delegation origin parameters")
 	})
 }
 
@@ -175,7 +178,13 @@ type transitParams struct {
 }
 
 func (td *testData) transitChainWithDelegation(n int, par transitParams) (err error) {
-	td.Logf(">>>> transit %d", n)
+	require.NoError(td, err)
+	from, to := td.delegatedOutput.SafeRevocationSlots()
+	dconst := ledger.DelegationConstants()
+
+	td.Logf(">>>> transit %d, -> %s, safe revocation from %d to %d, unfreeze slot: %d",
+		n, par.ts.String(), from, to, dconst.UnfreezeSlot(&td.delegatedOutput))
+
 	txb := txbuilder.New()
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
@@ -349,7 +358,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegation(3, transitParams{
 			ts: base.MaximumTime(
 				td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
-				base.NewLedgerTime(base.Slot(to), 5),
+				base.NewLedgerTime(base.Slot(to-1), 5),
 			),
 			prntx: false,
 		})
@@ -360,28 +369,9 @@ func TestDelegationLock2Consume(t *testing.T) {
 				td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
 				base.NewLedgerTime(base.Slot(to+1), 5),
 			),
-			prntx: false,
+			prntx: true,
 		})
 		require.NoError(t, err)
-	})
-	t.Run("not_epoch_boundary", func(t *testing.T) {
-		// target consumes initial delegation
-		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 3000)
-		require.NoError(t, err)
-
-		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
-		dconst := ledger.DelegationConstants()
-		unfreeze := dconst.FreezeUntilSlot(td.target.ChainID(), uint32(ts.Slot), 700)
-		err = td.transitChainWithDelegation(1, transitParams{
-			ts: ts,
-			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: unfreeze - 1,
-			},
-			prntx: false,
-		})
-		util.RequireErrorWith(t, err, "'unfreeze slot must be on delegation epoch boundary")
 	})
 	t.Run("target_freeze_fail", func(t *testing.T) {
 		// target consumes initial delegation
@@ -392,12 +382,12 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
 		dconst := ledger.DelegationConstants()
-		unfreeze := dconst.FreezeUntilSlot(td.target.ChainID(), uint32(ts.Slot), 2048)
+		frozenEpochs := dconst.EpochsCovered(td.target.ChainID(), uint32(ts.Slot), 2048)
 
 		err = td.transitChainWithDelegation(1, transitParams{
 			ts: ts,
 			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: unfreeze,
+				FrozenEpochs: byte(frozenEpochs),
 			},
 			prntx: true,
 		})
@@ -412,11 +402,11 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
 		dconst := ledger.DelegationConstants()
-		unfreeze := dconst.FreezeUntilSlot(td.target.ChainID(), uint32(ts.Slot), 2048)
+		frozenEpochs := dconst.EpochsCovered(td.target.ChainID(), uint32(ts.Slot), 2048)
 		err = td.transitChainWithDelegation(1, transitParams{
 			ts: ts,
 			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: unfreeze,
+				FrozenEpochs: byte(frozenEpochs),
 			},
 			prntx: true,
 		})
@@ -431,11 +421,11 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
 		dconst := ledger.DelegationConstants()
-		unfreeze := dconst.FreezeUntilSlot(td.target.ChainID(), uint32(ts.Slot), 2048)
+		frozenEpochs := dconst.EpochsCovered(td.target.ChainID(), uint32(ts.Slot), 2048)
 		err = td.transitChainWithDelegation(1, transitParams{
 			ts: ts,
 			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: unfreeze,
+				FrozenEpochs: byte(frozenEpochs),
 			},
 			addAmount: 1000,
 			prntx:     false,
@@ -453,7 +443,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegation(1, transitParams{
 			ts: ts,
 			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: uint32(ts.Slot) + 512 - 1,
+				FrozenEpochs: 1,
 			},
 			addAmount: -1000,
 			prntx:     false,
@@ -469,17 +459,17 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
 		dconst := ledger.DelegationConstants()
-		unfreeze := dconst.FreezeUntilSlot(td.target.ChainID(), uint32(ts.Slot), 1000)
-		t.Logf("unfreeze: %d", unfreeze)
+		frozenEpochs := dconst.EpochsCovered(td.target.ChainID(), uint32(ts.Slot), 1000)
 
 		err = td.transitChainWithDelegation(1, transitParams{
 			ts: ts,
 			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: unfreeze,
+				FrozenEpochs: byte(frozenEpochs),
 			},
 			prntx: false,
 		})
 		require.NoError(t, err)
+		unfreeze := dconst.UnfreezeSlotFromEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-100, 5)
 		err = td.discontinueDelegation(ts, false)
@@ -503,15 +493,17 @@ func TestDelegationLock2Consume(t *testing.T) {
 		// freeze for 512 slots
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
 		dconst := ledger.DelegationConstants()
-		unfreeze := dconst.FreezeUntilSlot(td.target.ChainID(), uint32(ts.Slot), 1000)
+		frozenEpochs := dconst.EpochsCovered(td.target.ChainID(), uint32(ts.Slot), 1000)
 		err = td.transitChainWithDelegation(1, transitParams{
 			ts: ts,
 			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: unfreeze,
+				FrozenEpochs: byte(frozenEpochs),
 			},
 			prntx: true,
 		})
 		require.NoError(t, err)
+
+		unfreeze := dconst.UnfreezeSlotFromEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
@@ -522,7 +514,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegation(2, transitParams{
 			ts: ts,
 			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: 0,
+				FrozenEpochs: 0,
 				Revoked:      true,
 			},
 			prntx: false,
@@ -534,7 +526,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegation(3, transitParams{
 			ts: ts,
 			delegationState: ledger.DelegateLock2State{
-				UnfreezeSlot: 0,
+				FrozenEpochs: 0,
 				Revoked:      true,
 			},
 			prntx: false,
