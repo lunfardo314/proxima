@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/maps"
@@ -36,6 +37,14 @@ func Th[T Integer](v T, separator ...string) string {
 		sep = defaultThousandsSeparator
 	}
 	return strings.Replace(prn.Sprintf("%d", v), ",", sep, -1)
+}
+
+func ThSlice[T Integer](v ...T) string {
+	ln := lines.New()
+	for _, i := range v {
+		ln.Add(Th(i))
+	}
+	return ln.Join(", ")
 }
 
 func ThLazy[T Integer](v T, separator ...string) func() string {

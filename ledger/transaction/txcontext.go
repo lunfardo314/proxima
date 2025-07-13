@@ -230,18 +230,6 @@ func (ctx *TxContext) SequencerAndStemOutputIndices() (byte, byte) {
 	return ret[0], ret[1]
 }
 
-func (ctx *TxContext) TotalAmountStoredBin() []byte {
-	return ctx.tree.MustBytesAtPath(ledger.PathToTotalProducedAmount)
-}
-
-func (ctx *TxContext) TotalAmountStored() uint64 {
-	return easyfl_util.MustUint64FromBytes(ctx.TotalAmountStoredBin())
-}
-
-func (ctx *TxContext) TotalInflation() uint64 {
-	return ctx.totalProducedAmounts[ledger.AmountIndexInflation]
-}
-
 func (ctx *TxContext) OutputID(idx byte) base.OutputID {
 	return base.MustNewOutputID(ctx.txid, idx)
 }
@@ -258,4 +246,38 @@ func (ctx *TxContext) ConsumedTotal(i byte) uint64 {
 func (ctx *TxContext) ProducedTotal(i byte) uint64 {
 	util.Assertf(int(i) < len(ctx.totalProducedAmounts), "ProducedTotal: wrong index %d", i)
 	return ctx.totalProducedAmounts[i]
+}
+
+func (ctx *TxContext) TotalAmountStoredBin() []byte {
+	return ctx.tree.MustBytesAtPath(ledger.PathToTotalProducedAmount)
+}
+
+func (ctx *TxContext) TotalAmountStored() uint64 {
+	return easyfl_util.MustUint64FromBytes(ctx.TotalAmountStoredBin())
+}
+
+func (ctx *TxContext) TotalInflation() uint64 {
+	return ctx.totalProducedAmounts[ledger.AmountIndexInflation]
+}
+
+// TotalConsumedAmounts returns consumed amount totals up to the last non-zero
+func (ctx *TxContext) TotalConsumedAmounts() []uint64 {
+	lastNonZero := -1
+	for i, a := range ctx.totalConsumedAmounts {
+		if a != 0 {
+			lastNonZero = i
+		}
+	}
+	return ctx.totalConsumedAmounts[:lastNonZero+1]
+}
+
+// TotalProducedAmounts returns produced amount totals up to the last non-zero
+func (ctx *TxContext) TotalProducedAmounts() []uint64 {
+	lastNonZero := -1
+	for i, a := range ctx.totalProducedAmounts {
+		if a != 0 {
+			lastNonZero = i
+		}
+	}
+	return ctx.totalProducedAmounts[:lastNonZero+1]
 }

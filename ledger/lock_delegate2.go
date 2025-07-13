@@ -262,6 +262,7 @@ type MakeDelegate2SuccessorOutputParams struct {
 	FrozenEpochs            byte
 	PredOutputIndex         byte
 	Inflation               uint64
+	HarvestInflation        uint64
 	DoNotAdjustFrozenEpochs bool // for testing
 }
 
@@ -278,15 +279,19 @@ func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2Successo
 	if par.Timestamp.IsSlotBoundary() {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: can't be a branch transaction")
 	}
+	if par.HarvestInflation > par.Inflation {
+		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: can't harvest more inflation (%s) than generate (%s)",
+			util.Th(par.HarvestInflation), util.Th(par.Inflation))
+	}
 	if par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
-		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong inflation amount: %d", par.Inflation)
+		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
 	amountsVector := make([]uint64, epochsCovered+2)
-	amountsVector[0] = o.Output.TokenBalance()
+	amountsVector[0] = o.Output.TokenBalance() + par.Inflation - par.HarvestInflation
 	amountsVector[1] = par.Inflation
 	for i := 2; i < len(amountsVector); i++ {
-		amountsVector[i] = o.Output.TokenBalance()
+		amountsVector[i] = amountsVector[0]
 	}
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
@@ -298,23 +303,28 @@ func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2Successo
 }
 
 type MakeDelegate2RevokeOutputParams struct {
-	Timestamp       base.LedgerTime
-	PredTimestamp   base.LedgerTime
-	PredOutputIndex byte
-	Inflation       uint64
+	Timestamp        base.LedgerTime
+	PredTimestamp    base.LedgerTime
+	PredOutputIndex  byte
+	Inflation        uint64
+	HarvestInflation uint64
 }
 
 func (o *Delegate2Output) MakeDelegate2RevokeOutput(par MakeDelegate2RevokeOutputParams) (*Output, error) {
 	if par.Timestamp.IsSlotBoundary() {
-		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: can't be a branch transaction")
+		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: can't be a branch transaction")
+	}
+	if par.HarvestInflation > par.Inflation {
+		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: can't harvest more inflation (%s) than generate (%s)",
+			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
 	if par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
-		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong inflation amount: %d", par.Inflation)
+		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
-		o1.WithAmounts(o.Output.TokenBalance(), par.Inflation)
+		o1.WithAmounts(o.Output.TokenBalance()+par.Inflation-par.HarvestInflation, par.Inflation)
 		o1.WithLock(NewDelegate2Lock(o.Target, o.MasterLock, o.MaxFreezeSlots))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLock2State{Revoked: true}.Bytes())

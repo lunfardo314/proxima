@@ -57,8 +57,10 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 	ret.Add("Sequencer output index: %d, sequencer milestone: %v", seqIdx, seqIdx != 0xff)
 	ret.Add("Stem output index: %d, stem output: %v", stemIdx, seqIdx != 0xff && stemIdx != 0xff)
 
-	ret.Add("Total amount produced: %s (0x%s) (including inflation: %s)",
-		util.Th(ctx.TotalAmountStored()), hex.EncodeToString(ctx.TotalAmountStoredBin()), util.Th(ctx.TotalInflation()))
+	ret.Add("Total consumed amounts: [%s]", util.ThSlice(ctx.TotalConsumedAmounts()...))
+	ret.Add("Total produced amounts: [%s]", util.ThSlice(ctx.TotalProducedAmounts()...))
+	ret.Add("Total amount produced (given): %s (0x%s)",
+		util.Th(ctx.TotalAmountStored()), hex.EncodeToString(ctx.TotalAmountStoredBin()))
 
 	inpCom := ctx.InputCommitment()
 	ret.Add("Input commitment: %s", easyfl_util.Fmt(inpCom))
