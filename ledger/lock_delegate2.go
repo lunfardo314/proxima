@@ -257,11 +257,12 @@ func AsDelegate2Output(o *OutputWithChainID) (ret Delegate2Output, err error) {
 }
 
 type MakeDelegate2SuccessorOutputParams struct {
-	Timestamp       base.LedgerTime
-	PredTimestamp   base.LedgerTime
-	FrozenEpochs    byte
-	PredOutputIndex byte
-	Inflation       uint64
+	Timestamp               base.LedgerTime
+	PredTimestamp           base.LedgerTime
+	FrozenEpochs            byte
+	PredOutputIndex         byte
+	Inflation               uint64
+	DoNotAdjustFrozenEpochs bool // for testing
 }
 
 func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2SuccessorOutputParams) (*Output, error) {
@@ -269,8 +270,11 @@ func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2Successo
 	if uint32(par.FrozenEpochs) > dconst.MaxFrozenEpochs {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong frozen epochs parameter: %d", par.FrozenEpochs)
 	}
-	epochsCovered := dconst.EpochsCovered(o.Target.ChainID(), uint32(par.Timestamp.Slot), uint32(o.MaxFreezeSlots))
-	util.Assertf(epochsCovered <= dconst.MaxFrozenEpochs, "epochsCovered<=dconst.MaxFrozenEpochs")
+	epochsCovered := par.FrozenEpochs
+	if !par.DoNotAdjustFrozenEpochs {
+		epochsCovered = byte(dconst.EpochsCovered(o.Target.ChainID(), uint32(par.Timestamp.Slot), uint32(o.MaxFreezeSlots)))
+		util.Assertf(epochsCovered <= byte(dconst.MaxFrozenEpochs), "epochsCovered <= byte(dconst.MaxFrozenEpochs)")
+	}
 	if par.Timestamp.IsSlotBoundary() {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: can't be a branch transaction")
 	}
@@ -290,6 +294,30 @@ func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2Successo
 		o1.WithLock(NewDelegate2Lock(o.Target, o.MasterLock, o.MaxFreezeSlots))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLock2State{FrozenEpochs: byte(epochsCovered)}.Bytes())
+	}), nil
+}
+
+type MakeDelegate2RevokeOutputParams struct {
+	Timestamp       base.LedgerTime
+	PredTimestamp   base.LedgerTime
+	PredOutputIndex byte
+	Inflation       uint64
+}
+
+func (o *Delegate2Output) MakeDelegate2RevokeOutput(par MakeDelegate2RevokeOutputParams) (*Output, error) {
+	if par.Timestamp.IsSlotBoundary() {
+		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: can't be a branch transaction")
+	}
+	if par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
+		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong inflation amount: %d", par.Inflation)
+	}
+
+	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
+	return NewOutput(func(o1 *OutputBuilder) {
+		o1.WithAmounts(o.Output.TokenBalance(), par.Inflation)
+		o1.WithLock(NewDelegate2Lock(o.Target, o.MasterLock, o.MaxFreezeSlots))
+		o1.MustPushConstraint(chainConstraint.Bytes())
+		o1.MustPushConstraint(DelegateLock2State{Revoked: true}.Bytes())
 	}), nil
 }
 
@@ -430,7 +458,7 @@ func _pathToSuccessorOutput : concat(pathToProducedOutputs, byte(selfSiblingUnlo
 func successorConstraint : atPath(concat(_pathToSuccessorOutput($0), lockConstraintIndex))
 
 // $0 selfTokenBalanceValue
-// $1 frozen epochs
+// $1 frozen epochs + 2
 // $2 frozen coverage vector index (1 byte)
 func _validFrozenCoverage :
 if(
@@ -440,7 +468,7 @@ if(
 )
 
 // $0 selfTokenAmount
-// $1 frozen epochs
+// $1 frozen epochs + 2 (
 func _validFrozenCoverageVector :
 and(
   _validFrozenCoverage($0, $1, 2),
@@ -458,7 +486,7 @@ and(
      lessOrEqualThan(uint8Bytes($0),uint8Bytes(constDelegationMaxFrozenEpochs)),
      !!!frozen_epochs_exceeds_constDelegationMaxFrozenEpochs
   ),
-  _validFrozenCoverageVector(selfTokenBalanceValue, $0),
+  _validFrozenCoverageVector(selfTokenBalanceValue, add($0,2)),
   concat($1,1) // always returns true
 )
 
