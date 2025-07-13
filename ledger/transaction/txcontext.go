@@ -170,12 +170,22 @@ func (ctx *TxContext) ForEachConsumedOutput(fun func(idx byte, oid *base.OutputI
 	})
 }
 
-func (ctx *TxContext) ConsumedOutputData(idx byte) []byte {
-	return ctx.tree.MustBytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch, idx))
+func (ctx *TxContext) ConsumedOutputData(idx byte) ([]byte, error) {
+	return ctx.tree.BytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch, idx))
+}
+
+func (ctx *TxContext) MustConsumedOutputData(idx byte) []byte {
+	ret, err := ctx.ConsumedOutputData(idx)
+	util.AssertNoError(err)
+	return ret
 }
 
 func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
-	return ledger.OutputFromBytes(ctx.ConsumedOutputData(idx))
+	data, err := ctx.ConsumedOutputData(idx)
+	if err != nil {
+		return nil, err
+	}
+	return ledger.OutputFromBytes(data)
 }
 
 func (ctx *TxContext) UnlockDataAt(idx byte) []byte {
@@ -210,9 +220,20 @@ func (ctx *TxContext) NumEndorsements() int {
 	return ctx.tree.MustNumElementsAtPath([]byte{ledger.TransactionBranch, ledger.TxEndorsements})
 }
 
-func (ctx *TxContext) InputID(idx byte) base.OutputID {
-	data := ctx.tree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxInputIDs, idx))
+func (ctx *TxContext) InputID(idx byte) (base.OutputID, error) {
+	data, err := ctx.tree.BytesAtPath(Path(ledger.TransactionBranch, ledger.TxInputIDs, idx))
+	if err != nil {
+		return base.OutputID{}, fmt.Errorf("InputID @ %d: %w", idx, err)
+	}
 	ret, err := base.OutputIDFromBytes(data)
+	if err != nil {
+		return base.OutputID{}, fmt.Errorf("InputID @ %d: %w", idx, err)
+	}
+	return ret, nil
+}
+
+func (ctx *TxContext) MustInputID(idx byte) base.OutputID {
+	ret, err := ctx.InputID(idx)
 	util.AssertNoError(err)
 	return ret
 }

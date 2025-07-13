@@ -392,7 +392,7 @@ func _precalcDelegationConstants() *Delegation2Constants {
 		DelegationEpochSlots: easyfl_util.MustUint32FromBytes(resEpochSlots),
 		MaxFrozenEpochs:      easyfl_util.MustUint32FromBytes(resMaxFrozenEpochs),
 	}
-	util.Assertf(uint32(AmountIndexLockedCoverage)+ret.MaxFrozenEpochs <= 16, "int(AmountIndexLockedCoverage)+MaxFrozenEpochs <= 16")
+	util.Assertf(uint32(AmountIndexFrozenCoverage)+ret.MaxFrozenEpochs <= 16, "int(AmountIndexFrozenCoverage)+MaxFrozenEpochs <= 16")
 	return ret
 }
 
@@ -448,6 +448,10 @@ func (c *Delegation2Constants) FrozenSlotsFromEpochs(target base.ChainID, txSlot
 
 func (c *Delegation2Constants) UnfreezeSlotFromEpochs(target base.ChainID, txSlot uint32, frozenEpochs byte) uint32 {
 	return txSlot + c.FrozenSlotsFromEpochs(target, txSlot, frozenEpochs)
+}
+
+func (c *Delegation2Constants) EpochFromSlot(target base.ChainID, txSlot uint32) uint32 {
+	return (txSlot + c.EpochOffsetSlots(target)) / c.DelegationEpochSlots
 }
 
 const delegateLock2Source = `

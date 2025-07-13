@@ -22,6 +22,8 @@ type (
 		SequencerAndStemOutputIndices() (byte, byte)
 		ConsumedTotal(i byte) uint64
 		ProducedTotal(i byte) uint64
+		ConsumedOutput(idx byte) (*Output, error)
+		InputID(idx byte) (base.OutputID, error)
 	}
 
 	EvalContext struct {

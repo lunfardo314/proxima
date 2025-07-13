@@ -20,7 +20,7 @@ const AmountsConstraintName = "amounts"
 const (
 	AmountIndexTokenBalance = byte(iota)
 	AmountIndexInflation
-	AmountIndexLockedCoverage
+	AmountIndexFrozenCoverage
 )
 
 func NewAmounts(args ...uint64) Amounts {
@@ -86,6 +86,15 @@ func (a Amounts) TokenBalance() (ret uint64) {
 func (a Amounts) InflationAmount() (ret uint64) {
 	ret = a.Amount(AmountIndexInflation)
 	return
+}
+
+func (a Amounts) FrozenCoverage() []uint64 {
+	dconst := DelegationConstants()
+	ret := make([]uint64, dconst.MaxFrozenEpochs)
+	for i := 0; i < int(dconst.MaxFrozenEpochs); i++ {
+		ret[i] = a.Amount(AmountIndexFrozenCoverage + byte(i))
+	}
+	return ret
 }
 
 // AddToVector adds amounts to vector with safe arithmetics
@@ -160,54 +169,6 @@ func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *Eval
 	par.Require(bal >= deposit, "token balance (%d) is less than required storage deposit (%d)", bal, deposit)
 }
 
-//func _checkInflationFull(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
-//	if !ctx.SelfIsProducedOutput() {
-//		// only check on produced outputs
-//		return
-//	}
-//	inflationGiven := o.Amounts().InflationAmount()
-//	if inflationGiven == 0 {
-//		// nothing to enforce
-//		return
-//	}
-//	// inflation > 0
-//	cc, idx := o.ChainConstraint()
-//	par.Require(idx != 0xff, "inflation must be 0 on non-chain output")
-//
-//	txid := ctx.TransactionID()
-//	// produced, chain-constrained output with non-zero inflation value
-//	if txid.IsBranchTransaction() {
-//		_, stemIdx := ctx.SequencerAndStemOutputIndices()
-//		pathToStemLock := common.Concat(PathToProducedOutputs, stemIdx, ConstraintIndexLock)
-//		stemLockData, err := ctx.BytesAtPath(pathToStemLock)
-//		par.RequireNoError(err)
-//		stemLock, err := StemLockFromBytes(stemLockData)
-//		par.RequireNoError(err)
-//
-//		bibCalc := L().BranchInflationBonusDirect(stemLock.VRFProof)
-//		par.Require(inflationGiven == bibCalc, "wrong branch inflation bonus value: expected %d (vrfProof=%s), got %d",
-//			bibCalc, hex.EncodeToString(stemLock.VRFProof), inflationGiven)
-//		return
-//	}
-//	// non-branch
-//	par.Require(!cc.IsOrigin(), "inflation must be 0 at chain origin")
-//	pathToPredecessorInput := common.Concat(PathToInputIDs, cc.PredecessorInputIndex)
-//	inputIDData, err := ctx.BytesAtPath(pathToPredecessorInput)
-//	par.RequireNoError(err)
-//	inputID, err := base.OutputIDFromBytes(inputIDData)
-//	par.RequireNoError(err)
-//	predTimestamp := inputID.Timestamp()
-//
-//	pathToPredecessorOutput := common.Concat(PathToConsumedOutputs, cc.PredecessorInputIndex)
-//	predBytes, err := ctx.BytesAtPath(pathToPredecessorOutput)
-//	par.RequireNoError(err)
-//	predOutput, err := OutputFromBytes(predBytes)
-//	par.RequireNoError(err)
-//
-//	inflationCalculated := L().CalcChainInflationAmountDirect(predTimestamp, txid.Timestamp(), predOutput.TokenBalance())
-//	par.Require(inflationGiven == inflationCalculated, "wrong inflation amount. Expected %d, got %d", inflationCalculated, inflationGiven)
-//}
-
 // _checkInflation The inflation constraint on the amount(1) is fully checked by the 'chain' constraint.
 // The 'amounts' constraint only ensures, that amount(1)==0 if 'chain' constraint is not present
 func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
@@ -224,32 +185,62 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 	par.Require(idx != 0xff, "inflation must be 0 on non-chain output")
 }
 
-func _checkLockedCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
+func _checkFrozenCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
 	if !ctx.SelfIsProducedOutput() {
 		// only check on produced outputs
 		return
 	}
-	dconst := DelegationConstants()
 	amounts := o.Amounts()
-	allZero := true
-	for i := 0; i < int(dconst.MaxFrozenEpochs); i++ {
-		if amounts.Amount(AmountIndexLockedCoverage+byte(i)) != 0 {
-			allZero = false
-		}
-	}
-	if allZero {
-		// all 0 is all fine
-		return
-	}
-	// frozen coverage is non-zero. DelegationLock2 or sequencer constraints must be present
+	frozenCoverage := amounts.FrozenCoverage()
 	if o.Lock().Name() == Delegate2LockName {
+		// delegation output -> all constraints are checked by the delegate2 lock
 		return
 	}
-	if _, idx := o.SequencerConstraint(); idx == 0xff {
+	if _, idx := o.SequencerConstraint(); idx != 0xff {
+		// sequencer output
+		_checkLockedCoverageOnSequencer(par, ctx, o, frozenCoverage)
+		return
+	}
+	if !util.AllZero(frozenCoverage...) {
 		par.TracePanic("non-zero frozen coverage %s requires either '%s' lock or '%s' constraint on the output",
 			amounts.String(), Delegate2LockName, SequencerConstraintName)
 	}
 	return
+}
+
+func _checkLockedCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, frozenCoverage []uint64) {
+	cc, idx := o.ChainConstraint()
+	par.Require(!cc.IsOrigin(), "_checkLockedCoverageOnSequencer: unexpected chain origin")
+	seqID := cc.ID
+	par.Require(idx != 0xff, "_checkLockedCoverageOnSequencer: inconsistency 1")
+	predID, err := ctx.InputID(cc.PredecessorInputIndex)
+	par.RequireNoError(err)
+	predTs := predID.Timestamp()
+	txid := ctx.TransactionID()
+	succTs := txid.Timestamp()
+
+	dcons := DelegationConstants()
+	predEpoch := dcons.EpochFromSlot(seqID, uint32(predTs.Slot))
+	succEpoch := dcons.EpochFromSlot(seqID, uint32(succTs.Slot))
+	par.Require(predEpoch <= succEpoch, "_checkLockedCoverageOnSequencer: inconsistency 2")
+	diffEpochs := succEpoch - predEpoch
+
+	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)
+	par.RequireNoError(err)
+
+	predFrozenCoverage := predOut.Amounts().FrozenCoverage()
+
+	deltaFrozen := make([]uint64, dcons.MaxFrozenEpochs)
+	if diffEpochs < dcons.MaxFrozenEpochs {
+		for i := diffEpochs; i < dcons.MaxFrozenEpochs; i++ {
+			deltaFrozen[i] = predFrozenCoverage[i+diffEpochs]
+		}
+	}
+	for i := 0; i < int(dcons.MaxFrozenEpochs); i++ {
+		par.Require(deltaFrozen[i] <= frozenCoverage[i], "inconsistency: deltaFrozen[i]<frozenCoverage")
+		deltaFrozen[i] = frozenCoverage[i] - deltaFrozen[i]
+	}
+	// TODO sums must match
 }
 
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
@@ -259,7 +250,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	o := ctx.SelfOutput()
 	_checkMinimumStorageDeposit(par, ctx, o)
 	_checkInflation(par, ctx, o)
-	_checkLockedCoverage(par, ctx, o)
+	_checkFrozenCoverage(par, ctx, o)
 	return []byte{0xff}
 }
 

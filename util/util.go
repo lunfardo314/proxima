@@ -53,6 +53,15 @@ func ThLazy[T Integer](v T, separator ...string) func() string {
 	}
 }
 
+func AllZero[T Integer](v ...T) bool {
+	for _, val := range v {
+		if val != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func ForEachUniquePair[T any](sl []T, fun func(a1, a2 T) bool) {
 	for i, r1 := range sl {
 		for _, r2 := range sl[i+1:] {
