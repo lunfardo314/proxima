@@ -273,7 +273,10 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	txb.PutSignatureUnlock(0)
 	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
 
-	inflation := ledger.L().CalcChainInflationAmount(td.delegatedOutput.Timestamp(), ts, td.delegatedOutput.Output.TokenBalance())
+	inflation := uint64(0)
+	if inflate {
+		inflation = ledger.L().CalcChainInflationAmount(td.delegatedOutput.Timestamp(), ts, td.delegatedOutput.Output.TokenBalance())
+	}
 	delegatedOutPar := ledger.MakeDelegate2RevokeOutputParams{
 		Timestamp:     ts,
 		PredTimestamp: td.delegatedOutput.Timestamp(),
