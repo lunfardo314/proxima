@@ -239,15 +239,23 @@ func MakeDelegate2InitOutput(par MakeDelegate2InitOutputParams) *Output {
 	})
 }
 
-func AsDelegate2Output(o *OutputWithChainID) (ret Delegate2Output, err error) {
+func AsDelegate2Output(o *Output, oid base.OutputID) (ret Delegate2Output, err error) {
+	out, ok := AsOutputWithChainID(o, oid)
+	if !ok {
+		return Delegate2Output{}, fmt.Errorf("not a Delegate2Output")
+	}
+	return Delegate2OutputFromOutputWithChainID(&out)
+}
+
+func Delegate2OutputFromOutputWithChainID(o *OutputWithChainID) (ret Delegate2Output, err error) {
 	ret.OutputWithChainID = *o
 	lock := o.Output.Lock()
 	if lock.Name() != Delegate2LockName {
-		err = fmt.Errorf("AsDelegate2Output: not a DelegationToSequencerLock")
+		err = fmt.Errorf("Delegate2OutputFromOutputWithChainID: not a DelegationToSequencerLock")
 		return
 	}
 	dLock, ok := lock.(*DelegateLock2)
-	util.Assertf(ok, "AsDelegate2Output: inconsistency")
+	util.Assertf(ok, "Delegate2OutputFromOutputWithChainID: inconsistency")
 	ret.DelegateLock2 = *dLock
 
 	if data, err := o.Output.ConstraintAt(3); err == nil {

@@ -144,7 +144,7 @@ func (s SugaredStateReader) GetDelegatedOutput(delegationID base.ChainID) (ret l
 	if err != nil {
 		return
 	}
-	ret, err = ledger.AsDelegate2Output(&o)
+	ret, err = ledger.Delegate2OutputFromOutputWithChainID(&o)
 	return
 }
 

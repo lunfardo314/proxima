@@ -245,9 +245,9 @@ func _checkLockedCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *
 		predecessorFrozenCoverageAdjusted := predFrozenCoverageAdjusted(byte(i))
 		par.Require(successorFrozenCoverage >= predecessorFrozenCoverageAdjusted, "inconsistency 3 at index %d", i)
 		sum := ctx.ProducedTotal(idx)
-		par.Require(successorFrozenCoverage-predecessorFrozenCoverageAdjusted == sum/2,
-			"_checkLockedCoverageOnSequencer: mismatch between frozen coverage totals at index %d: succCov=%d, predCov=%d, producedSum=%d",
-			successorFrozenCoverage, predecessorFrozenCoverageAdjusted, sum)
+		par.Require(2*successorFrozenCoverage == sum+predecessorFrozenCoverageAdjusted,
+			"_checkLockedCoverageOnSequencer: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",
+			i, predecessorFrozenCoverageAdjusted, successorFrozenCoverage, successorFrozenCoverage-predecessorFrozenCoverageAdjusted, sum)
 	}
 }
 
