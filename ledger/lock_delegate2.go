@@ -323,6 +323,12 @@ func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2Successo
 	}), nil
 }
 
+func (o *Delegate2Output) MinRequiredInflationAdvance(ts base.LedgerTime, frozenEpochs byte) uint64 {
+	dconst := DelegationConstants()
+	frozenSlotsFromEpochs := dconst.FrozenSlotsFromEpochs(o.Target.ChainID(), uint32(ts.Slot), frozenEpochs)
+	return (uint64(frozenSlotsFromEpochs) * o.MinInflationAdvancePerEpoch) / uint64(dconst.DelegationEpochSlots)
+}
+
 type MakeDelegate2RevokeOutputParams struct {
 	Timestamp        base.LedgerTime
 	PredTimestamp    base.LedgerTime
@@ -439,17 +445,19 @@ func (c *Delegation2Constants) UnfreezeSlot(o *Delegate2Output) uint32 {
 
 // EpochsCovered returns number of full epochs (respective to the target), which can be covered in the txSlot
 // and constrained by maxFreezeSlots. It is a number of non-zero elements of the frozen coverage vector
-func (c *Delegation2Constants) EpochsCovered(target base.ChainID, txSlot, maxFreezeSlots uint32) uint32 {
+func (c *Delegation2Constants) EpochsCovered(target base.ChainID, txSlot, maxFreezeSlots uint32) byte {
 	coveredInTheCurrentEpoch := c.CoveredSlotsInCurrentEpoch(target, txSlot)
 	if coveredInTheCurrentEpoch > maxFreezeSlots {
 		return 0
 	}
-	return min(c.MaxFrozenEpochs, (maxFreezeSlots-coveredInTheCurrentEpoch)/c.DelegationEpochSlots+1)
+	ret := min(c.MaxFrozenEpochs, (maxFreezeSlots-coveredInTheCurrentEpoch)/c.DelegationEpochSlots+1)
+	util.Assertf(ret < 256, "ret<256")
+	return byte(ret)
 }
 
 // FreezeUntilSlot calculates maximal slot until which delegated tokens can correctly and safely frozen
 func (c *Delegation2Constants) FreezeUntilSlot(target base.ChainID, txSlot, maxFreezeSlots uint32) uint32 {
-	epochs := c.EpochsCovered(target, txSlot, maxFreezeSlots)
+	epochs := uint32(c.EpochsCovered(target, txSlot, maxFreezeSlots))
 	if epochs == 0 {
 		return 0
 	}
@@ -673,7 +681,7 @@ func _validDelegation2Consumed : and(
 // $2 max freeze slots
 // $3 minimum advance inflation upon freeze per full epoch. In order to freeze coverage, target just provide in advance inflation  
 func delegateLock2: and(
-	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1), 
+	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1),
     or(
        _validDelegation2Produced($2, $3),
        _validDelegation2Consumed($0,$1)
