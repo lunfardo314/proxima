@@ -519,12 +519,16 @@ and(
      lessOrEqualThan(uint8Bytes($0),uint8Bytes(constDelegationMaxFrozenEpochs)),
      !!!frozen_epochs_exceeds_constDelegationMaxFrozenEpochs
   ),
-  require(
-     or( not($1), equalUint($0, _predecessorFrozenEpochs) ),
-     !!!revocation_cant_mutate_frozen_epochs
-  ),
-  _validFrozenCoverageVector(selfTokenBalanceValue, add($0,2), $1),
-  concat($1,1) // always returns true
+  or(
+     selfIsConsumedOutput,
+     and(
+         require(
+           or( not($1), equalUint($0, _predecessorFrozenEpochs) ),
+           !!!revocation_cant_mutate_frozen_epochs
+        ),
+        _validFrozenCoverageVector(selfTokenBalanceValue, add($0,2), $1)
+     )
+  )
 )
 
 func _selfTarget : parseArgumentBytecode(self,selfBytecodePrefix,0)
