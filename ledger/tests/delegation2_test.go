@@ -672,8 +672,8 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
-		err = td.discontinueDelegation(ts, true)
-		util.RequireErrorWith(t, err, "master can only unlock revoked or unfrozen")
+		err = td.discontinueDelegation(ts, false)
+		util.RequireErrorWith(t, err, "master can only unlock unfrozen delegation output")
 
 		// succeed to unlock by target to mark output revoked
 		err = td.revokeDelegation(ts, false, false)
@@ -685,6 +685,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		util.RequireErrorWith(t, err, "revoked delegation cannot be unlocked by the target")
 
 		// succeed to kill the delegation chain by master
+		ts = td.timestampSlotsForward(1000)
 		err = td.discontinueDelegation(ts, true)
 		require.NoError(t, err)
 
