@@ -82,7 +82,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		return nil, err
 	}
 
-	delegationLock := ledger.NewDelegate2Lock(td.target, td.masterAddr, maxFreezeSlots)
+	delegationLock := ledger.NewDelegateLock2(td.target, td.masterAddr, maxFreezeSlots, 0)
 	txBytes, err = txbuilder.MakeSimpleTransferTransaction(par.
 		WithAmount(delegatedTokens).
 		WithTargetLock(delegationLock).
