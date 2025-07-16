@@ -557,7 +557,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 			prntx:        false,
 		})
 		require.NoError(t, err)
-		unfreeze := dconst.UnfreezeSlotFromEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
+		unfreeze := dconst.UnfreezeSlotFromFrozenEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-100, 5)
 		err = td.discontinueDelegation(ts, false)
@@ -589,7 +589,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		unfreeze := dconst.UnfreezeSlotFromEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
+		unfreeze := dconst.UnfreezeSlotFromFrozenEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
@@ -629,7 +629,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		unfreeze := dconst.UnfreezeSlotFromEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
+		unfreeze := dconst.UnfreezeSlotFromFrozenEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
