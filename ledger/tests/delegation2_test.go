@@ -597,7 +597,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		util.RequireErrorWith(t, err, "master can only unlock unfrozen delegation output")
 
 		// succeed to unlock by target to mark output revoked
-		err = td.revokeDelegation(ts, false, false)
+		err = td.revokeDelegation(ts, false, true)
 		require.NoError(t, err)
 
 		// fail to unlock by target revoked delegation
