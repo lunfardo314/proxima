@@ -200,10 +200,9 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
 
 	delegatedOutPar := ledger.MakeDelegate2SuccessorOutputParams{
-		Timestamp:               par.ts,
-		PredTimestamp:           td.delegatedOutput.Timestamp(),
-		FrozenEpochs:            par.frozenEpochs,
-		DoNotAdjustFrozenEpochs: !par.adjustFrozenEpochs,
+		Timestamp:        par.ts,
+		PredTimestamp:    td.delegatedOutput.Timestamp(),
+		FreezeUntilEpoch: td.delegatedOutput.Epoch() + uint32(par.frozenEpochs),
 	}
 	delegatedOutPar.PredOutputIndex, err = txb.ConsumeOutput(td.delegatedOutput.Output, td.delegatedOutput.ID)
 	if par.inflate {
@@ -685,8 +684,8 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 		o.WithLock(td.delegatedOutput.Output.Lock())
 		o.MustPushConstraint(cc.Bytes())
 		o.MustPushConstraint(ledger.DelegateLock2State{
-			FrozenEpochs: par.frozenEpochs,
-			Revoked:      false,
+			LastFrozenEpoch: td.delegatedOutput.Epoch() + uint32(par.frozenEpochs),
+			Revoked:         false,
 		}.Bytes())
 	}))
 	util.AssertNoError(err)
