@@ -563,8 +563,9 @@ func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPred
 func delegateLock2State : 
 or(
    not(selfIsProducedOutput),
+   // 'produced' context
    require(
-     lessThanUint(sub($0, txSlot), constDelegationMaxFrozenEpochs),
+     or( lessThanUint($0, txSlot), lessThanUint(sub($0, txSlot), constDelegationMaxFrozenEpochs)),
      !!!number_of_frozen_epochs_exceeds_constDelegationMaxFrozenEpochs
    ),
    require(
@@ -594,7 +595,13 @@ sub(
 
 // $0 slot of the output
 // $1 last frozen epoch
-func _frozenSlots : sub( firstSlotInDelegationEpoch(_selfTargetChainID, add($1,1)), $0 )
+func _frozenSlots : 
+if(
+   isZero($1),
+   u64/0,
+   sub( firstSlotInDelegationEpoch(_selfTargetChainID, add($1,1)), $0 )
+)
+
 
 // $0 slot of the output (either consumed or produced context)
 func _selfFrozenSlots : _frozenSlots($0, _selfLastFrozenEpoch)
@@ -641,7 +648,7 @@ and(
     ),
     require(
        lessOrEqualThan(_selfFrozenSlots(txSlot), uint8Bytes($0)),
-       !!!unfreeze_slot_cannot_exceed_maximum_set_by_delegator
+       !!!frozen_slots_cannot_exceed_maximum_set_by_delegator
     ),
     require(
        or(_isDelegationOrigin, lessOrEqualThan(_calcMinimumAdvanceForSuccessor($1), sub(selfTokenBalanceValue, _predecessorTokenBalance))),
