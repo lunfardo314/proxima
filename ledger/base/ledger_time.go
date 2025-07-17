@@ -106,6 +106,10 @@ func (s Slot) Hex() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(s.Bytes()))
 }
 
+func (s Slot) Uint32() uint32 {
+	return uint32(s)
+}
+
 func (t LedgerTime) IsSlotBoundary() bool {
 	return t.Tick == 0 && t != NilLedgerTime
 }

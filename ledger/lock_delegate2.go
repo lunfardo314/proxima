@@ -272,31 +272,32 @@ type MakeDelegate2SuccessorOutputParams struct {
 	Inflation                   uint64
 	HarvestInflation            uint64
 	MinInflationAdvancePerEpoch uint64
+	DisableConsistencyChecks    bool
 }
 
 func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2SuccessorOutputParams) (*Output, error) {
-	if par.Timestamp.IsSlotBoundary() {
+	if !par.DisableConsistencyChecks && par.Timestamp.IsSlotBoundary() {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: can't be a branch transaction")
 	}
-	if par.HarvestInflation > par.Inflation {
+	if !par.DisableConsistencyChecks && par.HarvestInflation > par.Inflation {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: can't harvest more inflation (%s) than generate (%s)",
 			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
 
 	dconst := DelegationConstants()
 	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.Timestamp.Slot))
-	if txEpoch > par.FreezeUntilEpoch {
+	if !par.DisableConsistencyChecks && txEpoch > par.FreezeUntilEpoch {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong FreezeUntilEpoch: %d", par.FreezeUntilEpoch)
 	}
 	frozenEpochs := par.FreezeUntilEpoch - txEpoch + 1
-	if frozenEpochs >= dconst.MaxFrozenEpochs {
+	if !par.DisableConsistencyChecks && frozenEpochs >= dconst.MaxFrozenEpochs {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: FreezeUntilEpoch too far in the future: %d", par.FreezeUntilEpoch)
 	}
 
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(par.Timestamp.Slot), byte(frozenEpochs))
-	if frozenSlots > uint32(o.MaxFrozenSlots) {
-		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: FreezeUntilEpoch %d not consistent with MaxFrozenSlots set by delegator: %d",
-			par.FreezeUntilEpoch, o.MaxFrozenSlots)
+	if !par.DisableConsistencyChecks && frozenSlots > uint32(o.MaxFrozenSlots) {
+		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: FreezeUntilEpoch %d (%d frozen epochs, %d frozen slots) inconsistent with MaxFrozenSlots set by delegator: %d",
+			par.FreezeUntilEpoch, frozenEpochs, frozenSlots, o.MaxFrozenSlots)
 	}
 
 	if par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
@@ -324,27 +325,44 @@ func (o *Delegate2Output) MinRequiredInflationAdvance(ts base.LedgerTime, frozen
 	return (uint64(frozenSlotsFromEpochs) * o.MinInflationAdvancePerEpoch) / uint64(dconst.DelegationEpochSlots)
 }
 
+func (o *Delegate2Output) UnfreezeSlot() uint32 {
+	return DelegationConstants().UnfreezeSlot(o)
+}
+
+func (o *Delegate2Output) FreezeUntilLatestEpoch(ts base.LedgerTime) uint32 {
+	dconst := DelegationConstants()
+	slotsToFreeze := dconst.CoveredSlotsInCurrentEpoch(o.Target.ChainID(), ts.Slot.Uint32())
+	epochsToFreeze := uint32(0)
+	for epochsToFreeze <= dconst.MaxFrozenEpochs && slotsToFreeze+dconst.DelegationEpochSlots <= uint32(o.MaxFrozenSlots) {
+		slotsToFreeze += dconst.DelegationEpochSlots
+		epochsToFreeze++
+	}
+	util.Assertf(epochsToFreeze < 256, "ret<256")
+	return dconst.EpochFromSlot(o.Target.ChainID(), ts.Slot.Uint32()) + epochsToFreeze
+}
+
 type MakeDelegate2RevokeOutputParams struct {
-	Timestamp        base.LedgerTime
-	PredTimestamp    base.LedgerTime
-	PredOutputIndex  byte
-	Inflation        uint64
-	HarvestInflation uint64
+	Timestamp                base.LedgerTime
+	PredTimestamp            base.LedgerTime
+	PredOutputIndex          byte
+	Inflation                uint64
+	HarvestInflation         uint64
+	DisableConsistencyChecks bool
 }
 
 func (o *Delegate2Output) MakeDelegate2RevokeOutput(par MakeDelegate2RevokeOutputParams) (*Output, error) {
-	if par.Timestamp.IsSlotBoundary() {
+	if !par.DisableConsistencyChecks && par.Timestamp.IsSlotBoundary() {
 		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: can't be a branch transaction")
 	}
-	if par.HarvestInflation > par.Inflation {
+	if !par.DisableConsistencyChecks && par.HarvestInflation > par.Inflation {
 		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: can't harvest more inflation (%s) than generate (%s)",
 			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
-	if par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
+	if !par.DisableConsistencyChecks && par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
 		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 	dconst := DelegationConstants()
-	if dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.Timestamp.Slot)) > o.LastFrozenEpoch {
+	if !par.DisableConsistencyChecks && dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.Timestamp.Slot)) > o.LastFrozenEpoch {
 		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: revoke tx epoch is after last frozen epoch")
 	}
 
@@ -394,13 +412,13 @@ func (o *Delegate2Output) Epoch() uint32 {
 	return dconst.EpochFromSlot(o.Target.ChainID(), uint32(o.ID.Slot()))
 }
 
-func DelegationConstants() Delegation2Constants {
+func DelegationConstants() *Delegation2Constants {
 	if ret := _delegationConstants.Load(); ret != nil {
-		return *ret
+		return ret
 	}
 	c := _precalcDelegationConstants()
 	_delegationConstants.Store(c)
-	return *c
+	return c
 }
 
 func (c *Delegation2Constants) Lines(prefix ...string) *lines.Lines {
@@ -444,7 +462,10 @@ func (c *Delegation2Constants) CoveredSlotsInCurrentEpoch(target base.ChainID, t
 }
 
 func (c *Delegation2Constants) UnfreezeSlot(o *Delegate2Output) uint32 {
-	return c.FirstSlotInEpoch(o.Target.ChainID(), o.LastFrozenEpoch) + c.DelegationEpochSlots
+	if o.LastFrozenEpoch == 0 {
+		return uint32(o.ID.Slot())
+	}
+	return c.FirstSlotInEpoch(o.Target.ChainID(), o.LastFrozenEpoch+1)
 }
 
 // EpochsCovered returns number of full epochs (respective to the target), which can be covered in the txSlot
@@ -602,7 +623,6 @@ if(
    sub( firstSlotInDelegationEpoch(_selfTargetChainID, add($1,1)), $0 )
 )
 
-
 // $0 slot of the output (either consumed or produced context)
 func _selfFrozenSlots : _frozenSlots($0, _selfLastFrozenEpoch)
 
@@ -668,15 +688,19 @@ func _insideSafeRevocationWindow : and(
 func _consumedUnfreezeSlot : _selfUnfreezeSlot( timeSlotOfInputByIndex( selfOutputIndex ) )
 
 // $0 master lock
+// $1 _selfLastFrozenEpoch
 // (consumed context)
-func _masterUnlocked :
+func __masterUnlocked :
 and(
    $0,
    require( 
-      lessThan(_selfLastFrozenEpoch, delegationEpochFromSlot(_selfTargetChainID,txSlot)), 
+      or( isZero($1), lessThan($1, delegationEpochFromSlot(_selfTargetChainID,txSlot))), 
       !!!master_can_only_unlock_unfrozen_delegation_output
    )
 )
+
+// $0 master lock
+func _masterUnlocked : __masterUnlocked($0, _selfLastFrozenEpoch)
 
 func _successorFrozenEpochs : parseInlineDataArgument(successorConstraint(3),#delegateLock2State,0)
 func _successorIsRevoked : parseInlineDataArgument(successorConstraint(3),#delegateLock2State,1)
