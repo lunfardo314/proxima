@@ -276,6 +276,10 @@ type MakeDelegate2SuccessorOutputParams struct {
 }
 
 func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2SuccessorOutputParams) (*Output, error) {
+	dconst := DelegationConstants()
+	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.Timestamp.Slot))
+	freeze := par.FreezeUntilEpoch != 0 && par.FreezeUntilEpoch >= txEpoch
+
 	if !par.DisableConsistencyChecks && par.Timestamp.IsSlotBoundary() {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: can't be a branch transaction")
 	}
@@ -284,31 +288,37 @@ func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2Successo
 			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
 
-	dconst := DelegationConstants()
-	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.Timestamp.Slot))
 	if !par.DisableConsistencyChecks && txEpoch > par.FreezeUntilEpoch {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong FreezeUntilEpoch: %d", par.FreezeUntilEpoch)
 	}
-	frozenEpochs := par.FreezeUntilEpoch - txEpoch + 1
-	if !par.DisableConsistencyChecks && frozenEpochs >= dconst.MaxFrozenEpochs {
-		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: FreezeUntilEpoch too far in the future: %d", par.FreezeUntilEpoch)
-	}
-
-	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(par.Timestamp.Slot), byte(frozenEpochs))
-	if !par.DisableConsistencyChecks && frozenSlots > uint32(o.MaxFrozenSlots) {
-		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: FreezeUntilEpoch %d (%d frozen epochs, %d frozen slots) inconsistent with MaxFrozenSlots set by delegator: %d",
-			par.FreezeUntilEpoch, frozenEpochs, frozenSlots, o.MaxFrozenSlots)
+	var frozenEpochs, frozenSlots uint32
+	if freeze {
+		frozenEpochs = par.FreezeUntilEpoch - txEpoch + 1
+		if !par.DisableConsistencyChecks && frozenEpochs >= dconst.MaxFrozenEpochs {
+			return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: FreezeUntilEpoch too far in the future: %d", par.FreezeUntilEpoch)
+		}
+		frozenSlots = dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(par.Timestamp.Slot), byte(frozenEpochs))
+		if !par.DisableConsistencyChecks && frozenSlots > uint32(o.MaxFrozenSlots) {
+			return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: FreezeUntilEpoch %d (%d frozen epochs, %d frozen slots) inconsistent with MaxFrozenSlots set by delegator: %d",
+				par.FreezeUntilEpoch, frozenEpochs, frozenSlots, o.MaxFrozenSlots)
+		}
 	}
 
 	if par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
-	amountsVector := make([]uint64, frozenEpochs+2)
-	amountsVector[0] = o.Output.TokenBalance() + par.Inflation - par.HarvestInflation
-	amountsVector[1] = par.Inflation
-	for i := 2; i < len(amountsVector); i++ {
-		amountsVector[i] = amountsVector[0]
+	var amountsVector []uint64
+
+	if freeze {
+		amountsVector = make([]uint64, frozenEpochs+2)
+		amountsVector[0] = o.Output.TokenBalance() + par.Inflation - par.HarvestInflation
+		amountsVector[1] = par.Inflation
+		for i := 2; i < len(amountsVector); i++ {
+			amountsVector[i] = amountsVector[0]
+		}
+	} else {
+		amountsVector = []uint64{o.Output.TokenBalance() + par.Inflation - par.HarvestInflation}
 	}
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
@@ -549,31 +559,41 @@ func _isDelegationOrigin : isChainOriginID(_selfChainID)
 // $0 index of the constraint on the successor output
 func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2),0), $0))
 
+
 // $0 selfTokenBalanceValue
 // $1 frozen epochs + 2
 // $2 frozen coverage vector index (1 byte)
-// $3 revoked
 func _validFrozenCoverage :
-if(
-   $3,
-   require(isZero(selfAmountAt($2)), !!!frozen_coverage_value_must_be_0_in_revoked_output),
    if(
       lessThanUint($2, $1),
       require( equalUint(selfAmountAt($2), $0), !!!wrong_frozen_coverage_value),
       require( isZero(selfAmountAt($2)), !!!not_frozen_coverage_value_must_be_0) 
    )
+
+// $0 selfTokenBalanceValue
+// $1 frozen epochs + 2
+func _validFrozenCoverages :
+and(
+  _validFrozenCoverage($0, $1, 2),
+  _validFrozenCoverage($0, $1, 3),
+  _validFrozenCoverage($0, $1, 4),
+  _validFrozenCoverage($0, $1, 5),
 )
 
+func _isZeroFrozenCoverage : and(isZero(selfAmountAt(2)), isZero(selfAmountAt(3)),isZero(selfAmountAt(4)),isZero(selfAmountAt(5)))
+
+// $0 last frozen epoch
+func _notFrozen : isZero($0) // TODO not correct
+
 // $0 selfTokenAmount
-// $1 frozen epochs + 2
+// $1 last frozen epoch
 // $2 revoked
 func _validFrozenCoverageVector :
-and(
-  _validFrozenCoverage($0, $1, 2, $2),
-  _validFrozenCoverage($0, $1, 3, $2),
-  _validFrozenCoverage($0, $1, 4, $2),
-  _validFrozenCoverage($0, $1, 5, $2),
-)
+if(
+   or($2, _notFrozen($1)), // revoked or not frozen
+   require(_isZeroFrozenCoverage, !!!frozen_coverage_value_must_be_0),
+   _validFrozenCoverages($0, add(sub($1, txSlot), 3)) // TODO not correct
+)   
 
 func _predecessorLastFrozenEpoch : parseInlineDataArgument(consumedConstraintByIndex(selfChainPredInputIndex(2), 3),selfBytecodePrefix, 0)
 func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPredInputIndex(2), 0), 0)
@@ -585,15 +605,17 @@ func delegateLock2State :
 or(
    not(selfIsProducedOutput),
    // 'produced' context
-   require(
-     or( lessThanUint($0, txSlot), lessThanUint(sub($0, txSlot), constDelegationMaxFrozenEpochs)),
-     !!!number_of_frozen_epochs_exceeds_constDelegationMaxFrozenEpochs
-   ),
-   require(
-     or( not($1), equalUint($0, _predecessorLastFrozenEpoch) ),
-     !!!revocation_cant_mutate_frozen_epochs
-   ),
-   _validFrozenCoverageVector(selfTokenBalanceValue, add($0,2), $1)
+   and(
+      require(
+        or( lessThanUint($0, txSlot), lessThanUint(sub($0, txSlot), constDelegationMaxFrozenEpochs)),
+        !!!number_of_frozen_epochs_exceeds_constDelegationMaxFrozenEpochs
+      ),
+      require(
+        or( not($1), equalUint($0, _predecessorLastFrozenEpoch) ),
+        !!!revocation_cant_mutate_frozen_epochs
+      ),
+      _validFrozenCoverageVector(selfTokenBalanceValue, $0, $1)
+   )
 )
 
 // self id delegation output
