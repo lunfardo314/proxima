@@ -777,7 +777,7 @@ func TestFrozenCoverage(t *testing.T) {
 		_, txString, err = td.initDelegationUTXOMake(ts, 1024, minInflationAdvancePerEpoch)
 		require.NoError(t, err)
 
-		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
+		ts = td.timestampSlotsForward(700)
 		advance := td.delegatedOutput.MinRequiredInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
@@ -874,7 +874,7 @@ func TestFrozenCoverage(t *testing.T) {
 		_, txString, err = td.initDelegationUTXOMake(ts, 1024, minInflationAdvancePerEpoch)
 		require.NoError(t, err)
 
-		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
+		ts = td.timestampSlotsForward(900)
 		advance := td.delegatedOutput.MinRequiredInflationAdvance(ts, frozenEpochs) - 1
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{

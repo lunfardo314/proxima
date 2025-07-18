@@ -560,41 +560,6 @@ func _isDelegationOrigin : isChainOriginID(_selfChainID)
 func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2),0), $0))
 
 
-// $0 selfTokenBalanceValue
-// $1 frozen epochs + 2
-// $2 frozen coverage vector index (1 byte)
-func _validFrozenCoverage :
-   if(
-      lessThanUint($2, $1),
-      require( equalUint(selfAmountAt($2), $0), !!!wrong_frozen_coverage_value),
-      require( isZero(selfAmountAt($2)), !!!not_frozen_coverage_value_must_be_0) 
-   )
-
-// $0 selfTokenBalanceValue
-// $1 frozen epochs + 2
-func _validFrozenCoverages :
-and(
-  _validFrozenCoverage($0, $1, 2),
-  _validFrozenCoverage($0, $1, 3),
-  _validFrozenCoverage($0, $1, 4),
-  _validFrozenCoverage($0, $1, 5),
-)
-
-func _isZeroFrozenCoverage : and(isZero(selfAmountAt(2)), isZero(selfAmountAt(3)),isZero(selfAmountAt(4)),isZero(selfAmountAt(5)))
-
-// $0 last frozen epoch
-func _notFrozen : isZero($0) // TODO not correct
-
-// $0 selfTokenAmount
-// $1 last frozen epoch
-// $2 revoked
-func _validFrozenCoverageVector :
-if(
-   or($2, _notFrozen($1)), // revoked or not frozen
-   require(_isZeroFrozenCoverage, !!!frozen_coverage_value_must_be_0),
-   _validFrozenCoverages($0, add(sub($1, txSlot), 3)) // TODO not correct
-)   
-
 func _predecessorLastFrozenEpoch : parseInlineDataArgument(consumedConstraintByIndex(selfChainPredInputIndex(2), 3),selfBytecodePrefix, 0)
 func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPredInputIndex(2), 0), 0)
 
@@ -613,8 +578,7 @@ or(
       require(
         or( not($1), equalUint($0, _predecessorLastFrozenEpoch) ),
         !!!revocation_cant_mutate_frozen_epochs
-      ),
-      _validFrozenCoverageVector(selfTokenBalanceValue, $0, $1)
+      )
    )
 )
 
@@ -625,6 +589,39 @@ func _selfTargetChainID : parseInlineDataArgumentAnyPrefix(_selfTarget,0)
 func _selfDelegationEpochOffset : delegationEpochOffset(_selfTargetChainID)
 func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateLock2State, 0))
 func _selfIsRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLock2State, 1)
+func _selfEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
+func _selfIsZeroFrozenCoverage : and(isZero(selfAmountAt(2)), isZero(selfAmountAt(3)),isZero(selfAmountAt(4)),isZero(selfAmountAt(5)))
+
+// $0 selfTokenBalanceValue
+// $1 frozen epochs + 2
+// $2 frozen coverage vector index (1 byte)
+func _validFrozenCoverage :
+   if(
+      lessThanUint($2, $1),
+      require( equalUint(selfAmountAt($2), $0), !!!wrong_frozen_coverage_value),
+      require( isZero(selfAmountAt($2)), !!!not_frozen_coverage_value_must_be_0) 
+   )
+
+// $0 selfTokenBalanceValue
+// $1 frozen epochs + 2
+func _validFrozenCoverages :
+and(
+  _validFrozenCoverage($0, $1, 2),
+  _validFrozenCoverage($0, $1, 3),
+  _validFrozenCoverage($0, $1, 4),
+  _validFrozenCoverage($0, $1, 5)
+)
+
+// $0 last frozen epoch
+func _notFrozen : or(isZero($0), lessThanUint($0, _selfEpoch))
+
+// $0 last frozen epoch
+func _validFrozenCoverageVector :
+if(
+   or(_selfIsRevoked, _notFrozen($0)), // revoked or not frozen
+   require(_selfIsZeroFrozenCoverage, !!!frozen_coverage_value_must_be_all_0),
+   _validFrozenCoverages(selfTokenBalanceValue, add(sub($0, _selfEpoch), 3))
+)   
 
 // $0 output slot
 func _coveredSlotsInCurrentEpoch :
@@ -695,7 +692,8 @@ and(
     require(
        or(_isDelegationOrigin, lessOrEqualThan(_calcMinimumAdvanceForSuccessor($1), sub(selfTokenBalanceValue, _predecessorTokenBalance))),
        !!!not_enough_inflation_advance
-    )
+    ),
+	_validFrozenCoverageVector(_selfLastFrozenEpoch)
 )
 
 func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
