@@ -336,7 +336,11 @@ func (o *Delegate2Output) MinRequiredInflationAdvance(ts base.LedgerTime, frozen
 }
 
 func (o *Delegate2Output) UnfreezeSlot() uint32 {
-	return DelegationConstants().UnfreezeSlot(o)
+	if o.LastFrozenEpoch == 0 {
+		return uint32(o.ID.Slot())
+	}
+	dconst := DelegationConstants()
+	return (o.LastFrozenEpoch+1)*dconst.DelegationEpochSlots - dconst.EpochOffsetSlots(o.Target.ChainID())
 }
 
 func (o *Delegate2Output) FreezeUntilLatestEpoch(ts base.LedgerTime) uint32 {
@@ -394,9 +398,8 @@ func (o *Delegate2Output) SafeRevocationSlots() (from, to uint32) {
 	if o.Revoked {
 		return
 	}
-	c := DelegationConstants()
-	unfreeze := c.UnfreezeSlot(o)
-	return unfreeze, unfreeze + c.SafeRevocationSlots - 1
+	unfreeze := o.UnfreezeSlot()
+	return unfreeze, unfreeze + DelegationConstants().SafeRevocationSlots - 1
 }
 
 func (o *Delegate2Output) LinesSource(prefix ...string) *lines.Lines {
@@ -471,37 +474,6 @@ func (c *Delegation2Constants) CoveredSlotsInCurrentEpoch(target base.ChainID, t
 	return c.DelegationEpochSlots - (txSlot+offs)%c.DelegationEpochSlots
 }
 
-func (c *Delegation2Constants) UnfreezeSlot(o *Delegate2Output) uint32 {
-	if o.LastFrozenEpoch == 0 {
-		return uint32(o.ID.Slot())
-	}
-	return c.FirstSlotInEpoch(o.Target.ChainID(), o.LastFrozenEpoch+1)
-}
-
-// EpochsCovered returns number of full epochs (respective to the target), which can be covered in the txSlot
-// and constrained by maxFreezeSlots. It is a number of non-zero elements of the frozen coverage vector
-func (c *Delegation2Constants) EpochsCovered(target base.ChainID, txSlot, maxFreezeSlots uint32) byte {
-	coveredInTheCurrentEpoch := c.CoveredSlotsInCurrentEpoch(target, txSlot)
-	if coveredInTheCurrentEpoch > maxFreezeSlots {
-		return 0
-	}
-	ret := min(c.MaxFrozenEpochs, (maxFreezeSlots-coveredInTheCurrentEpoch)/c.DelegationEpochSlots+1)
-	util.Assertf(ret < 256, "ret<256")
-	return byte(ret)
-}
-
-// FreezeUntilSlot calculates maximal slot until which delegated tokens can correctly and safely frozen
-func (c *Delegation2Constants) FreezeUntilSlot(target base.ChainID, txSlot, maxFreezeSlots uint32) uint32 {
-	epochs := uint32(c.EpochsCovered(target, txSlot, maxFreezeSlots))
-	if epochs == 0 {
-		return 0
-	}
-	ret := txSlot + c.CoveredSlotsInCurrentEpoch(target, txSlot) + (epochs-1)*c.DelegationEpochSlots
-	util.Assertf(c._validUnfreezeSlot(target, ret), "c._validUnfreezeSlot(target, ret)")
-
-	return ret
-}
-
 func (c *Delegation2Constants) _validUnfreezeSlot(target base.ChainID, unfreezeSlot uint32) bool {
 	return (unfreezeSlot+c.EpochOffsetSlots(target))%c.DelegationEpochSlots == 0
 }
@@ -513,19 +485,8 @@ func (c *Delegation2Constants) FrozenSlotsFromFrozenEpochs(target base.ChainID, 
 	return c.CoveredSlotsInCurrentEpoch(target, txSlot) + uint32(frozenEpochs-1)*c.DelegationEpochSlots
 }
 
-func (c *Delegation2Constants) UnfreezeSlotFromFrozenEpochs(target base.ChainID, txSlot uint32, frozenEpochs byte) uint32 {
-	return txSlot + c.FrozenSlotsFromFrozenEpochs(target, txSlot, frozenEpochs)
-}
-
 func (c *Delegation2Constants) EpochFromSlot(target base.ChainID, txSlot uint32) uint32 {
 	return (txSlot + c.EpochOffsetSlots(target)) / c.DelegationEpochSlots
-}
-
-func (c *Delegation2Constants) FirstSlotInEpoch(target base.ChainID, epoch uint32) uint32 {
-	if epoch == 0 {
-		return 0
-	}
-	return epoch*c.DelegationEpochSlots - c.EpochOffsetSlots(target)
 }
 
 const delegateLock2Source = `
@@ -558,7 +519,6 @@ func _isDelegationOrigin : isChainOriginID(_selfChainID)
 
 // $0 index of the constraint on the successor output
 func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2),0), $0))
-
 
 func _predecessorLastFrozenEpoch : parseInlineDataArgument(consumedConstraintByIndex(selfChainPredInputIndex(2), 3),selfBytecodePrefix, 0)
 func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPredInputIndex(2), 0), 0)

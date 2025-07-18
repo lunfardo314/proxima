@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ed25519"
 )
@@ -181,9 +180,8 @@ type transitWithMakeParams struct {
 
 func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMakeParams) (err error) {
 	from, to := td.delegatedOutput.SafeRevocationSlots()
-	dconst := ledger.DelegationConstants()
 	td.Logf(">>>> transit %d, -> %s, safe revocation from %d to %d, unfreeze slot: %d",
-		n, par.ts.String(), from, to, dconst.UnfreezeSlot(&td.delegatedOutput))
+		n, par.ts.String(), from, to, td.delegatedOutput.UnfreezeSlot())
 
 	txb := txbuilder.New()
 
@@ -253,10 +251,9 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (err error) {
 	require.NoError(td, err)
 	from, to := td.delegatedOutput.SafeRevocationSlots()
-	dconst := ledger.DelegationConstants()
 
 	td.Logf(">>>> revoke -> %s, safe revocation from %d to %d, unfreeze slot: %d",
-		ts.String(), from, to, dconst.UnfreezeSlot(&td.delegatedOutput))
+		ts.String(), from, to, td.delegatedOutput.UnfreezeSlot())
 
 	txb := txbuilder.New()
 
@@ -626,17 +623,16 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		// freeze for 512 slots
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
-		dconst := ledger.DelegationConstants()
-		frozenEpochs := dconst.EpochsCovered(td.target.ChainID(), uint32(ts.Slot), 1000)
+		freezeUntil := td.delegatedOutput.FreezeUntilLatestEpoch(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
-			freezeUntilEpoch:         uint32(frozenEpochs),
+			freezeUntilEpoch:         freezeUntil,
 			prntx:                    false,
 			disableConsistencyChecks: true,
 		})
 		require.NoError(t, err)
 
-		unfreeze := dconst.UnfreezeSlotFromFrozenEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
+		unfreeze := td.delegatedOutput.UnfreezeSlot()
 
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
@@ -889,37 +885,38 @@ func TestFrozenCoverage(t *testing.T) {
 	})
 }
 
-func TestDelegation2Related(t *testing.T) {
-	const _delegationEpochSlots = 512
-	const _maxFreezeEpochs = 6
-
-	dconst := ledger.Delegation2Constants{
-		SafeRevocationSlots:  30,
-		DelegationEpochSlots: _delegationEpochSlots,
-		MaxFrozenEpochs:      _maxFreezeEpochs,
-	}
-
-	t.Run("1", func(t *testing.T) {
-		runTest := func(target base.ChainID, txSlot, maxFreezeSlots uint32, short ...bool) {
-
-			epochsCovered := dconst.EpochsCovered(target, txSlot, maxFreezeSlots)
-			coveredInCurrent := dconst.CoveredSlotsInCurrentEpoch(target, txSlot)
-			unfreeze := dconst.FreezeUntilSlot(target, txSlot, maxFreezeSlots)
-
-			ln := lines.New()
-			ln.Add("txSlot: %4d", txSlot)
-			ln.Add("covered current: %4d", coveredInCurrent)
-			ln.Add("unfreeze: %4d", unfreeze)
-			ln.Add("offs: %4d", dconst.EpochOffsetSlots(target))
-			ln.Add("covered epochs: %2d", epochsCovered)
-			ln.Add("frozen slots: %4d", unfreeze-txSlot)
-			ln.Add("max freeze slots: %4d", maxFreezeSlots)
-			t.Logf("%s", ln.Join(", "))
-			require.True(t, unfreeze-txSlot <= maxFreezeSlots)
-		}
-		target := base.RandomChainID()
-		for i := 0; i < 2050; i++ {
-			runTest(target, uint32(i), 4*512)
-		}
-	})
-}
+//
+//func TestDelegation2Related(t *testing.T) {
+//	const _delegationEpochSlots = 512
+//	const _maxFreezeEpochs = 6
+//
+//	dconst := ledger.Delegation2Constants{
+//		SafeRevocationSlots:  30,
+//		DelegationEpochSlots: _delegationEpochSlots,
+//		MaxFrozenEpochs:      _maxFreezeEpochs,
+//	}
+//
+//	t.Run("1", func(t *testing.T) {
+//		runTest := func(target base.ChainID, txSlot, maxFreezeSlots uint32, short ...bool) {
+//
+//			epochsCovered := dconst.EpochsCovered(target, txSlot, maxFreezeSlots)
+//			coveredInCurrent := dconst.CoveredSlotsInCurrentEpoch(target, txSlot)
+//			unfreeze := dconst.FreezeUntilSlot(target, txSlot, maxFreezeSlots)
+//
+//			ln := lines.New()
+//			ln.Add("txSlot: %4d", txSlot)
+//			ln.Add("covered current: %4d", coveredInCurrent)
+//			ln.Add("unfreeze: %4d", unfreeze)
+//			ln.Add("offs: %4d", dconst.EpochOffsetSlots(target))
+//			ln.Add("covered epochs: %2d", epochsCovered)
+//			ln.Add("frozen slots: %4d", unfreeze-txSlot)
+//			ln.Add("max freeze slots: %4d", maxFreezeSlots)
+//			t.Logf("%s", ln.Join(", "))
+//			require.True(t, unfreeze-txSlot <= maxFreezeSlots)
+//		}
+//		target := base.RandomChainID()
+//		for i := 0; i < 2050; i++ {
+//			runTest(target, uint32(i), 4*512)
+//		}
+//	})
+//}
