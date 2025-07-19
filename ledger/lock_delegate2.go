@@ -294,8 +294,8 @@ func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2Successo
 	var frozenEpochs, frozenSlots uint32
 	if freeze {
 		frozenEpochs = par.FreezeUntilEpoch - txEpoch + 1
-		if !par.DisableConsistencyChecks && frozenEpochs >= dconst.MaxFrozenEpochs {
-			return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: FreezeUntilEpoch too far in the future: %d", par.FreezeUntilEpoch)
+		if !par.DisableConsistencyChecks && frozenEpochs > dconst.MaxFrozenEpochs {
+			return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: too many frozen epochs: %d", par.FreezeUntilEpoch)
 		}
 		frozenSlots = dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(par.Timestamp.Slot), byte(frozenEpochs))
 		if !par.DisableConsistencyChecks && frozenSlots > uint32(o.MaxFrozenSlots) {
@@ -343,16 +343,16 @@ func (o *Delegate2Output) UnfreezeSlot() uint32 {
 	return (o.LastFrozenEpoch+1)*dconst.DelegationEpochSlots - dconst.EpochOffsetSlots(o.Target.ChainID())
 }
 
-func (o *Delegate2Output) FreezeUntilLatestEpoch(ts base.LedgerTime) uint32 {
+func (o *Delegate2Output) FreezeUntilLatestEpoch(ts base.LedgerTime) (ret uint32) {
 	dconst := DelegationConstants()
+	ret = dconst.EpochFromSlot(o.Target.ChainID(), ts.Slot.Uint32())
 	slotsToFreeze := dconst.CoveredSlotsInCurrentEpoch(o.Target.ChainID(), ts.Slot.Uint32())
-	epochsToFreeze := uint32(0)
-	for epochsToFreeze <= dconst.MaxFrozenEpochs && slotsToFreeze+dconst.DelegationEpochSlots <= uint32(o.MaxFrozenSlots) {
+	maxRet := ret + dconst.MaxFrozenEpochs - 1
+	for ret < maxRet && slotsToFreeze+dconst.DelegationEpochSlots <= uint32(o.MaxFrozenSlots) {
 		slotsToFreeze += dconst.DelegationEpochSlots
-		epochsToFreeze++
+		ret++
 	}
-	util.Assertf(epochsToFreeze < 256, "ret<256")
-	return dconst.EpochFromSlot(o.Target.ChainID(), ts.Slot.Uint32()) + epochsToFreeze
+	return
 }
 
 type MakeDelegate2RevokeOutputParams struct {
@@ -528,17 +528,12 @@ func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPred
 // mutable part of the delegation output
 func delegateLock2State : 
 or(
+   // not checked in the consumed context
    not(selfIsProducedOutput),
    // 'produced' context
-   and(
-      require(
-        or( lessThanUint($0, txSlot), lessThanUint(sub($0, txSlot), constDelegationMaxFrozenEpochs)),
-        !!!number_of_frozen_epochs_exceeds_constDelegationMaxFrozenEpochs
-      ),
-      require(
-        or( not($1), equalUint($0, _predecessorLastFrozenEpoch) ),
-        !!!revocation_cant_mutate_frozen_epochs
-      )
+   require(
+      or( not($1), equalUint($0, _predecessorLastFrozenEpoch) ),
+      !!!revocation_cant_mutate_frozen_epochs
    )
 )
 
@@ -551,6 +546,11 @@ func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstr
 func _selfIsRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLock2State, 1)
 func _selfEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
 func _selfIsZeroFrozenCoverage : and(isZero(selfAmountAt(2)), isZero(selfAmountAt(3)),isZero(selfAmountAt(4)),isZero(selfAmountAt(5)))
+
+// $0 _selfLastFrozenEpoch
+// $1 _selfEpoch
+func __selfFrozenEpochs : if( lessThanUint($0, $1), u64/0, add(sub($0, $1),1) ) 
+func _selfFrozenEpochs : __selfFrozenEpochs(_selfLastFrozenEpoch, _selfEpoch)
 
 // $0 selfTokenBalanceValue
 // $1 frozen epochs + 2
@@ -614,13 +614,30 @@ func _equalTo1Of2 : or(equal($0,$1), equal($0,$2))
 // returns minimum required amount of inflation advance
 func _calcMinimumAdvanceForSuccessor : div(mul(_frozenSlots(txSlot, _selfLastFrozenEpoch),$0), constDelegationEpochSlots)
 
-// checks validity of the composition of the produced constraint 
 // $0 max freeze slots
 // $1 minimum advance inflation upon freeze per full epoch 
-func _validDelegation2Produced :
+func _validLimits :
 and(
-    selfIsProducedOutput,
-    enforceMinimumStorageDeposit,
+    require(
+       lessOrEqualThan(len($0), u64/2),
+       !!!max_freeze_slots_must_be_max_2_bytes 
+    ),
+    require(
+       lessOrEqualThan(uint8Bytes(_selfFrozenSlots(txSlot)), uint8Bytes($0)),
+       !!!frozen_slots_cannot_exceed_maximum_set_by_delegator
+    ),
+    require(
+       lessOrEqualThan(uint8Bytes(_selfFrozenEpochs), uint8Bytes(constDelegationMaxFrozenEpochs)),
+       !!!frozen_epochs_cannot_exceed_constDelegationMaxFrozenEpochs
+    ),
+    require(
+       or(_isDelegationOrigin, lessOrEqualThan(_calcMinimumAdvanceForSuccessor($1), sub(selfTokenBalanceValue, _predecessorTokenBalance))),
+       !!!not_enough_inflation_advance
+    )
+)
+
+func _validBase :
+and(
     require(
 	   equal(selfNumConstraints, u64/4), 
 	   !!!delegation_must_have_exactly_4_constraints
@@ -640,19 +657,18 @@ and(
     require(
 	   or(not(_isDelegationOrigin), and(not(_selfIsRevoked), isZero(_selfLastFrozenEpoch))), 
 	   !!!wrong_delegation_origin_parameters
-    ),
-    require(
-       lessOrEqualThan(len($0), u64/2),
-       !!!max_freeze_slots_must_be_max_2_bytes 
-    ),
-    require(
-       lessOrEqualThan(_selfFrozenSlots(txSlot), uint8Bytes($0)),
-       !!!frozen_slots_cannot_exceed_maximum_set_by_delegator
-    ),
-    require(
-       or(_isDelegationOrigin, lessOrEqualThan(_calcMinimumAdvanceForSuccessor($1), sub(selfTokenBalanceValue, _predecessorTokenBalance))),
-       !!!not_enough_inflation_advance
-    ),
+    )
+)
+
+// checks validity of the composition of the produced constraint 
+// $0 max freeze slots
+// $1 minimum advance inflation upon freeze per full epoch 
+func _validDelegation2Produced :
+and(
+    selfIsProducedOutput,
+    enforceMinimumStorageDeposit,
+    _validBase,
+    _validLimits($0,$1),
 	_validFrozenCoverageVector(_selfLastFrozenEpoch)
 )
 
