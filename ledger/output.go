@@ -392,14 +392,6 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	}, true
 }
 
-func (o *Output) DelegationLock() *DelegationLock {
-	lock := o.Lock()
-	if lock.Name() != DelegationLockName {
-		return nil
-	}
-	return lock.(*DelegationLock)
-}
-
 func (o *Output) DelegationLock2() *DelegateLock2 {
 	lock := o.Lock()
 	if lock.Name() != Delegate2LockName {

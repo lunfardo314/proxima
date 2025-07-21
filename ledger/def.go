@@ -177,7 +177,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], id *IdentityParameters) {
 	lib.MustExtendMany(chainLockConstraintSource)
 	lib.MustExtendMany(immutableDataConstraintSource)
 	lib.MustExtendMany(commitToSiblingSource)
-	lib.MustExtendMany(delegationLockSource)
 	lib.MustExtendMany(totalAmountSource)
 	lib.MustExtendMany(delegateLock2Source)
 }
@@ -197,7 +196,6 @@ func (lib *Library) registerConstraints() {
 	registerChainLockConstraint(lib)
 	registerImmutableConstraint(lib)
 	registerCommitToSiblingConstraint(lib)
-	registerDelegationLock(lib)
 	registerTotalAmountConstraint(lib)
 	registerDelegate2Lock(lib)
 
