@@ -72,7 +72,7 @@ func (p *proposer) run() {
 func (p *proposer) propose(a *attacher.IncrementalAttacher) error {
 	util.Assertf(a.TargetTs() == p.targetTs, "a.targetTs() == p.taskData.targetTs")
 
-	coverageDelta := a.CoverageDelta()
+	coverageDelta, frozen := a.CoverageDelta()
 	ledgerCoverage := a.FinalLedgerCoverage(p.targetTs, coverageDelta)
 	slotInflation := a.SlotInflation() // tip inflation is not included
 	baselineSupply := a.BaselineSupply()
@@ -85,12 +85,17 @@ func (p *proposer) propose(a *attacher.IncrementalAttacher) error {
 	slotInflation += tx.InflationAmount() // include tip inflation
 	supply := baselineSupply + slotInflation
 
+	var frozenP *uint64
+	if frozen > 0 {
+		frozenP = util.Ref(frozen)
+	}
 	_proposal := &proposal{
 		tx:     tx,
 		txSize: len(tx.Bytes()),
 		txMetadata: &txmetadata.TransactionMetadata{
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
 			CoverageDelta:           util.Ref(coverageDelta),
+			FrozenCoverage:          frozenP,
 			LedgerCoverage:          util.Ref(ledgerCoverage),
 		},
 		hrString:          hrString,

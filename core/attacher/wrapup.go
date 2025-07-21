@@ -17,10 +17,11 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.baseline = *a.pastCone.GetBaseline()
 	a.finals.numVertices = a.pastCone.NumVertices()
 
-	delta := a.CoverageDelta()
+	delta, frozen := a.CoverageDelta()
 	slotInflation := a.SlotInflation()
 	a.finals.TransactionMetadata = txmetadata.TransactionMetadata{
 		CoverageDelta:  util.Ref(delta),
+		FrozenCoverage: util.Ref(frozen),
 		LedgerCoverage: util.Ref(a.FinalLedgerCoverage(a.vid.Timestamp(), delta)),
 		SlotInflation:  util.Ref(slotInflation),
 		Supply:         util.Ref(a.BaselineSupply() + slotInflation),
@@ -44,6 +45,7 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 		StemOutputID:    stemOID,
 		SeqID:           seqID,
 		CoverageDelta:   *a.finals.CoverageDelta,
+		FrozenCoverage:  *a.finals.FrozenCoverage,
 		SlotInflation:   *a.finals.SlotInflation,
 		Supply:          *a.finals.Supply,
 		NumTransactions: uint32(a.finals.MutationStats.NumTransactions),

@@ -88,7 +88,7 @@ func (a Amounts) InflationAmount() (ret uint64) {
 	return
 }
 
-func (a Amounts) FrozenCoverageZero() bool {
+func (a Amounts) IsFrozenCoverageZero() bool {
 	dconst := DelegationConstants()
 	for i := 0; i < int(dconst.MaxFrozenEpochs); i++ {
 		if a.Amount(AmountIndexFrozenCoverage+byte(i)) != 0 {
@@ -96,6 +96,11 @@ func (a Amounts) FrozenCoverageZero() bool {
 		}
 	}
 	return true
+}
+
+func (a Amounts) FrozenCoverage(i byte) (ret uint64) {
+	util.Assertf(uint32(i) < DelegationConstants().MaxFrozenEpochs, "Amounts.FrozenCoverage: wrong vector index %d", i)
+	return a.Amount(AmountIndexFrozenCoverage + i)
 }
 
 // AddToVector adds amounts to vector with safe arithmetics
@@ -202,7 +207,7 @@ func _checkFrozenCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext
 func _checkLockedCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
 	amounts := o.Amounts()
 	if _, idx := o.SequencerConstraint(); idx == 0xff {
-		if !amounts.FrozenCoverageZero() {
+		if !amounts.IsFrozenCoverageZero() {
 			par.TracePanic("non-zero frozen coverage %s requires either '%s' lock or '%s' constraint on the output",
 				amounts.String(), Delegate2LockName, SequencerConstraintName)
 		}

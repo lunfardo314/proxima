@@ -33,10 +33,13 @@ type (
 	RootRecord struct {
 		Root        common.VCommitment
 		SequencerID base.ChainID
-		// Note: CoverageDelta, SlotInflation and Supply are deterministic values calculated from the ledger past cone
+		// Note: CoverageDelta, SlotInflation, FrozenCoverage and Supply are deterministic values calculated from the ledger past cone
 		// Each node calculates them itself, and they must be equal on each
+		// CoverageDelta in includes FrozenCoverage
 		CoverageDelta uint64
-		// Supply: total supply of the ledger. It is a sum of all outputs of the ledger, including the branch tx outputs
+		// FrozenCoverage is the sum of all frozen delegation outputs. They are not moved, but their coverage is accounted for
+		FrozenCoverage uint64
+		// Supply: total supply of the ledger. It is a sum of all outputs on the ledger, including the branch tx outputs
 		Supply uint64
 		// SlotInflation: total inflation delta from previous root. It is a sum of individual transaction inflation values
 		// of the previous slot/past cone. It includes the branch tx inflation itself and does not include inflation of the previous branch
@@ -408,6 +411,7 @@ type RootRecordParams struct {
 	StemOutputID      base.OutputID
 	SeqID             base.ChainID
 	CoverageDelta     uint64
+	FrozenCoverage    uint64
 	SlotInflation     uint64
 	Supply            uint64
 	NumTransactions   uint32
@@ -455,6 +459,7 @@ func (u *Updatable) updateUTXOLedgerDB(updateFun func(updatable *immutable.TrieU
 			Root:            newRoot,
 			SequencerID:     rootRecordsParams.SeqID,
 			CoverageDelta:   rootRecordsParams.CoverageDelta,
+			FrozenCoverage:  rootRecordsParams.FrozenCoverage,
 			SlotInflation:   rootRecordsParams.SlotInflation,
 			Supply:          rootRecordsParams.Supply,
 			NumTransactions: rootRecordsParams.NumTransactions,

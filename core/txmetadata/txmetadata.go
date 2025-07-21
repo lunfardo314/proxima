@@ -21,6 +21,7 @@ type (
 		// persistent
 		StateRoot      common.VCommitment // not nil may be for branch transactions
 		CoverageDelta  *uint64            // not nil may be for sequencer transactions
+		FrozenCoverage *uint64            // not nil may be for sequencer transactions
 		LedgerCoverage *uint64            // not nil may be for sequencer transactions
 		SlotInflation  *uint64            // not nil may be for sequencer transactions
 		Supply         *uint64            // not nil may be for branch transactions
@@ -33,6 +34,7 @@ type (
 		// persistent
 		StateRoot      string `json:"state_root,omitempty"`
 		CoverageDelta  uint64 `json:"coverage_delta,omitempty"`
+		FrozenCoverage uint64 `json:"frozen_coverage,omitempty"`
 		LedgerCoverage uint64 `json:"ledger_coverage,omitempty"`
 		SlotInflation  uint64 `json:"slot_inflation,omitempty"`
 		Supply         uint64 `json:"supply,omitempty"`
@@ -63,9 +65,10 @@ var allSourceTypes = map[SourceType]string{
 const (
 	flagRootProvided           = 0b00000001
 	flagCoverageDeltaProvided  = 0b00000010
-	flagLedgerCoverageProvided = 0b00000100
-	flagSlotInflationProvided  = 0b00001000
-	flagSupplyProvided         = 0b00010000
+	flagFrozenCoverageProvided = 0b00000100
+	flagLedgerCoverageProvided = 0b00001000
+	flagSlotInflationProvided  = 0b00010000
+	flagSupplyProvided         = 0b00100000
 )
 
 func (s SourceType) String() string {
@@ -80,6 +83,9 @@ func (m *TransactionMetadata) flags() (ret byte) {
 	}
 	if m.CoverageDelta != nil {
 		ret |= flagCoverageDeltaProvided
+	}
+	if m.FrozenCoverage != nil {
+		ret |= flagFrozenCoverageProvided
 	}
 	if m.LedgerCoverage != nil {
 		ret |= flagLedgerCoverageProvided
@@ -113,6 +119,9 @@ func (m *TransactionMetadata) Bytes() []byte {
 	}
 	if m.CoverageDelta != nil {
 		_ = binary.Write(&buf, binary.BigEndian, *m.CoverageDelta)
+	}
+	if m.FrozenCoverage != nil {
+		_ = binary.Write(&buf, binary.BigEndian, *m.FrozenCoverage)
 	}
 	if m.LedgerCoverage != nil {
 		_ = binary.Write(&buf, binary.BigEndian, *m.LedgerCoverage)
@@ -161,6 +170,12 @@ func TransactionMetadataFromBytes(data []byte) (*TransactionMetadata, error) {
 	if flags&flagCoverageDeltaProvided != 0 {
 		ret.CoverageDelta = new(uint64)
 		if *ret.CoverageDelta, err = _readUint64(rdr); err != nil {
+			return nil, err
+		}
+	}
+	if flags&flagFrozenCoverageProvided != 0 {
+		ret.FrozenCoverage = new(uint64)
+		if *ret.FrozenCoverage, err = _readUint64(rdr); err != nil {
 			return nil, err
 		}
 	}
@@ -217,6 +232,11 @@ func (m *TransactionMetadata) Lines(prefix ...string) *lines.Lines {
 	} else {
 		ret.Add("coverage delta: n/a")
 	}
+	if m.FrozenCoverage != nil {
+		ret.Add("frozen coverage: %s", util.Th(*m.CoverageDelta))
+	} else {
+		ret.Add("frozen coverage: n/a")
+	}
 	if m.LedgerCoverage != nil {
 		ret.Add("coverage: %s", util.Th(*m.LedgerCoverage))
 	} else {
@@ -259,6 +279,10 @@ func (m *TransactionMetadata) JSONAble() *TransactionMetadataJSONAble {
 	if m.LedgerCoverage != nil {
 		notEmpty = true
 		ret.LedgerCoverage = *m.LedgerCoverage
+	}
+	if m.FrozenCoverage != nil {
+		notEmpty = true
+		ret.FrozenCoverage = *m.FrozenCoverage
 	}
 	if m.SlotInflation != nil {
 		notEmpty = true

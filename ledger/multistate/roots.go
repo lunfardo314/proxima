@@ -68,16 +68,17 @@ func FetchSnapshotBranchID(store common.KVTraversableReader) base.TransactionID 
 	return branchData.Stem.ID.TransactionID()
 }
 
-const numberOfElementsInRootRecord = 6
+const numberOfElementsInRootRecord = 7
 
 func (r *RootRecord) Bytes() []byte {
 	arr := tuples.EmptyTupleEditable(numberOfElementsInRootRecord)
 	arr.MustPush(r.SequencerID.Bytes())   // 0
 	arr.MustPush(r.Root.Bytes())          // 1
 	arr.MustPushUint64(r.CoverageDelta)   // 2
-	arr.MustPushUint64(r.SlotInflation)   // 3
-	arr.MustPushUint64(r.Supply)          // 4
-	arr.MustPushUint32(r.NumTransactions) // 5
+	arr.MustPushUint64(r.FrozenCoverage)  // 3
+	arr.MustPushUint64(r.SlotInflation)   // 4
+	arr.MustPushUint64(r.Supply)          // 5
+	arr.MustPushUint32(r.NumTransactions) // 6
 
 	util.Assertf(arr.NumElements() == numberOfElementsInRootRecord, "arr.NumElements() == %d", numberOfElementsInRootRecord)
 	return arr.Bytes()
@@ -99,29 +100,31 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 	if err != nil {
 		return RootRecord{}, err
 	}
-	for _, i := range []int{2, 3, 4} {
+	for _, i := range []int{2, 3, 4, 5} {
 		if len(arr.MustAt(i)) != 8 {
 			return RootRecord{}, fmt.Errorf("wrong data length")
 		}
 	}
-	if len(arr.MustAt(5)) != 4 {
+	if len(arr.MustAt(6)) != 4 {
 		return RootRecord{}, fmt.Errorf("wrong data length")
 	}
 	return RootRecord{
 		Root:            root,
 		SequencerID:     chainID,
 		CoverageDelta:   binary.BigEndian.Uint64(arr.MustAt(2)),
-		SlotInflation:   binary.BigEndian.Uint64(arr.MustAt(3)),
-		Supply:          binary.BigEndian.Uint64(arr.MustAt(4)),
-		NumTransactions: binary.BigEndian.Uint32(arr.MustAt(5)),
+		FrozenCoverage:  binary.BigEndian.Uint64(arr.MustAt(3)),
+		SlotInflation:   binary.BigEndian.Uint64(arr.MustAt(4)),
+		Supply:          binary.BigEndian.Uint64(arr.MustAt(5)),
+		NumTransactions: binary.BigEndian.Uint32(arr.MustAt(6)),
 	}, nil
 }
 
 func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
+	proc := (float32(r.FrozenCoverage) * 100) / float32(r.CoverageDelta)
 	ret.Add("sequencer id: %s", r.SequencerID.String()).
 		Add("supply: %s", util.Th(r.Supply)).
-		Add("coverage delta: %s", util.Th(r.CoverageDelta)).
+		Add("coverage delta: %s (%s, %.02f%%)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc).
 		Add("healthy(%s): %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverageDelta(r.CoverageDelta, r.Supply, global.FractionHealthyBranch))
 	return ret
 }

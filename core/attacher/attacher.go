@@ -531,19 +531,21 @@ func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint6
 	if len(delta) > 0 {
 		d = delta[0]
 	} else {
-		d = a.CoverageDelta()
+		d, _ = a.CoverageDelta()
 	}
 	return baselineLC + d
 }
 
-func (a *attacher) CoverageDelta() uint64 {
-	return a.pastCone.CoverageDeltaRaw(a.Branches().GetStateReaderForTheBranch) + a.coverageDeltaAdjustment()
+func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
+	delta, frozen = a.pastCone.CoverageDeltaRaw(a.Branches().GetStateReaderForTheBranch)
+	delta += a.coverageDeltaAdjustment()
+	return
 }
 
 // coverageDeltaAdjustment is equal:
 // - zero if the sequencer output of the baseline is consumed
 // - inflation of the branch, if the output is not consumed
-// This makes the minimum value of the coverage delta equal to the inflation of the baseline branch
+// This makes the minimum value of the coverage delta equal to the inflation (branch bonus inflation) of the baseline branch
 func (a *attacher) coverageDeltaAdjustment() uint64 {
 	bl := a.pastCone.GetBaseline()
 	a.Assertf(bl != nil, "baseline != nil")

@@ -66,7 +66,8 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 			err = fmt.Errorf("ledger coverage not set in the input tx %s", vidInp.IDShortString())
 			return false
 		}
-		lcCalc := a.FinalLedgerCoverage(a.vid.Timestamp(), a.CoverageDelta())
+		delta, _ := a.CoverageDelta()
+		lcCalc := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 		if lcCalc < *lc {
 			diff := *lc - lcCalc
 			err = fmt.Errorf("ledger coverage should not decrease along consumed transactions on the same slot.\nGot: delta(%s) at %s <= delta(%s) in %s. diff: %s",

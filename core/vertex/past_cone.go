@@ -818,7 +818,11 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 
 // CoverageDeltaRaw is not adjusted. Function does not check the consistency of the past cone.
 // Calculates coverage by checking them right in the state
-func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (delta uint64) {
+// Accounts for the frozen coverage in sequencer outputs
+// returns:
+// - total coverage delta
+// - frozen coverage (included in the delta)
+func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (delta, frozen uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
@@ -827,6 +831,12 @@ func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.Transacti
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			if o := rdr.GetOutput(vid.OutputID(idx)); o != nil {
 				delta += o.TokenBalance()
+				if vid.IsSequencerMilestone() {
+					// add coverage frozen in the current epoch
+					fr := o.FrozenCoverage(0)
+					delta += fr
+					frozen += fr
+				}
 			}
 		}
 	}
