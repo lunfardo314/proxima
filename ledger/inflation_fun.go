@@ -13,7 +13,7 @@ import (
 )
 
 // This file contains definitions of the inflation calculation functions in EasyFL (on-ledger)
-// The Go functions interprets EasyFL function to guarantee consistent values
+// The Go functions interpret EasyFL function to guarantee consistent values
 
 var calcChainInflationAmountExpression atomic.Pointer[easyfl.Expression[*EvalContext]]
 
