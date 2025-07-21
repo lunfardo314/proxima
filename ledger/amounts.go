@@ -175,9 +175,8 @@ func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *Eval
 	par.Require(bal >= deposit, "token balance (%d) is less than required storage deposit (%d)", bal, deposit)
 }
 
-// _checkInflation The inflation constraint on the amount(1) is fully checked by the 'chain' constraint.
-// The 'amounts' constraint only ensures, that amount(1)==0 if 'chain' constraint is not present
-func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
+// _checkInflation enforces correct inflation amount taking into account frozen coverage.
+func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, cc *ChainConstraint, seq *SequencerConstraint) {
 	if !ctx.SelfIsProducedOutput() {
 		// only check on produced outputs
 		return
@@ -187,11 +186,11 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 		return
 	}
 	// inflation > 0
-	_, idx := o.ChainConstraint()
-	par.Require(idx != 0xff, "inflation must be 0 on non-chain output")
+	par.Require(cc != nil, "inflation must be 0 on non-chain output")
+	// TODO
 }
 
-func _checkFrozenCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
+func _checkFrozenCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, cc *ChainConstraint, seq *SequencerConstraint) {
 	if !ctx.SelfIsProducedOutput() {
 		// only check on produced outputs
 		return
@@ -200,25 +199,23 @@ func _checkFrozenCoverage(par *easyfl.CallParams[*EvalContext], ctx *EvalContext
 		// delegation output -> all constraints are checked by the delegate2 lock
 		return
 	}
-	_checkFrozenCoverageOnSequencer(par, ctx, o)
-	return
-}
-
-// TODO in the future it makes sense to rewrite it all in EasyFL
-
-func _checkFrozenCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
 	amounts := o.Amounts()
-	if _, idx := o.SequencerConstraint(); idx == 0xff {
+	if seq != nil {
 		if !amounts.IsFrozenCoverageZero() {
 			par.TracePanic("non-zero frozen coverage %s requires either '%s' lock or '%s' constraint on the output",
 				amounts.String(), Delegate2LockName, SequencerConstraintName)
 		}
 		return
 	}
+	_checkFrozenCoverageOnSequencer(par, ctx, o, cc, amounts)
+	return
+}
 
-	cc, idx := o.ChainConstraint()
+// TODO in the future it makes sense to rewrite it all in EasyFL
+
+func _checkFrozenCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, cc *ChainConstraint, amounts Amounts) {
+	par.Require(cc != nil, "_checkFrozenCoverageOnSequencer: inconsistency 1")
 	par.Require(!cc.IsOrigin(), "_checkFrozenCoverageOnSequencer: unexpected chain origin")
-	par.Require(idx != 0xff, "_checkFrozenCoverageOnSequencer: inconsistency 1")
 	predID, err := ctx.InputID(cc.PredecessorInputIndex)
 	par.RequireNoError(err)
 	txid := ctx.TransactionID()
@@ -262,8 +259,36 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
 	o := ctx.SelfOutput()
 	_checkMinimumStorageDeposit(par, ctx, o)
-	_checkInflation(par, ctx, o)
-	_checkFrozenCoverage(par, ctx, o)
+	cc, _ := o.ChainConstraint()
+	var seq *SequencerConstraint
+	if cc != nil {
+		seq, _ = o.SequencerConstraint()
+	}
+	if !ctx.SelfIsProducedOutput() {
+		// only enforce amount on produced outputs
+		return []byte{0xff}
+	}
+	amounts := o.Amounts()
+	// produced output
+	if cc == nil || cc.IsOrigin() {
+		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(), "evalAmounts: inflation and frozen coverage must be 0 on a non-chain output")
+		return []byte{0xff}
+	}
+	if o.Lock().Name() == Delegate2LockName {
+		// delegation output -> all amount constraints are enforced by the delegate2 lock
+		return []byte{0xff}
+	}
+
+	predID, err := ctx.InputID(cc.PredecessorInputIndex)
+	par.RequireNoError(err)
+	txid := ctx.TransactionID()
+	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)
+	par.RequireNoError(err)
+
+	// todo wip
+
+	_checkInflation(par, ctx, o, cc, seq)
+	_checkFrozenCoverage(par, ctx, o, cc, seq)
 	return []byte{0xff}
 }
 
