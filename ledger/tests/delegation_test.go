@@ -488,7 +488,7 @@ func TestDelegationChainLock(t *testing.T) {
 		ts = ts.AddSlots(10)
 		ts = ledger.NextOpenDelegationTimestamp(chainID, ts)
 
-		expectedInflation := ledger.L().CalcChainInflationAmount(tsPrev, ts, delegatedOutput.Output.TokenBalance())
+		expectedInflation := ledger.L().CalcChainInflationAmountOneSlot(tsPrev.Slot, delegatedOutput.Output.TokenBalance())
 		t.Logf("tsIn: %s, tsOut: %s, amountIn: %s -> expected inflation: %d",
 			tsPrev.String(), ts.String(), util.Th(delegatedOutput.Output.TokenBalance()), expectedInflation)
 

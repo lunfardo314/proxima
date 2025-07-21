@@ -351,7 +351,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			slots      = 10
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
-
+		_ = addrs
 		chainInput, err := u.CreateChainOrigin(privKeys[0], ledger.TimeNow().AddSlots(1))
 		require.NoError(t, err)
 
@@ -366,21 +366,22 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			WithdrawTarget:       ledger.ChainLockFromChainID(target.ChainID),
 			PrivateKey:           privKeys[0],
 		}
-		txBytes, inflation, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
-		require.NoError(t, err)
-		profit := int64(inflation) - fee
-		t.Logf("inflation of %s tokens over %d slots is %s, profit is %s",
-			util.Th(chainInput.Output.TokenBalance()), slots, util.Th(inflation), util.Th(profit))
-
-		err = u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
-			if err != nil {
-				return fmt.Errorf("Error: %v\n%s", err, ctx.String())
-			}
-			return nil
-		})
-		require.NoError(t, err)
-		require.EqualValues(t, util.Th(initAmount+inflation-fee), util.Th(u.Balance(addrs[0])))
-		require.EqualValues(t, initAmount, u.Balance(addrs[1]))
+		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		util.RequireErrorWith(t, err, "chain transition is not profitable")
+		//require.NoError(t, err)
+		//profit := int64(inflation) - fee
+		//t.Logf("inflation of %s tokens over %d slots is %s, profit is %s",
+		//	util.Th(chainInput.Output.TokenBalance()), slots, util.Th(inflation), util.Th(profit))
+		//
+		//err = u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+		//	if err != nil {
+		//		return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+		//	}
+		//	return nil
+		//})
+		//require.NoError(t, err)
+		//require.EqualValues(t, util.Th(initAmount+inflation-fee), util.Th(u.Balance(addrs[0])))
+		//require.EqualValues(t, initAmount, u.Balance(addrs[1]))
 	})
 	t.Run("benchmark tx validation", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)

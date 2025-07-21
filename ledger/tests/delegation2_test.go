@@ -205,7 +205,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	}
 	delegatedOutPar.PredOutputIndex, err = txb.ConsumeOutput(td.delegatedOutput.Output, td.delegatedOutput.ID)
 	if par.inflate {
-		delegatedOutPar.Inflation = ledger.L().CalcChainInflationAmount(td.delegatedOutput.Timestamp(), par.ts, td.delegatedOutput.Output.TokenBalance())
+		delegatedOutPar.Inflation = ledger.L().CalcChainInflationAmountOneSlot(td.delegatedOutput.Timestamp().Slot, td.delegatedOutput.Output.TokenBalance())
 	}
 	delegatedOut, err := td.delegatedOutput.MakeDelegate2SuccessorOutput(delegatedOutPar)
 	require.NoError(td, err)
@@ -271,7 +271,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 
 	inflation := uint64(0)
 	if inflate {
-		inflation = ledger.L().CalcChainInflationAmount(td.delegatedOutput.Timestamp(), ts, td.delegatedOutput.Output.TokenBalance())
+		inflation = ledger.L().CalcChainInflationAmountOneSlot(td.delegatedOutput.Timestamp().Slot, td.delegatedOutput.Output.TokenBalance())
 	}
 	delegatedOutPar := ledger.MakeDelegate2RevokeOutputParams{
 		Timestamp:                ts,
