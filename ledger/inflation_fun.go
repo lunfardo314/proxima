@@ -28,7 +28,7 @@ func __precompiledChainInflation() (ret *easyfl.Expression[*EvalContext]) {
 }
 
 // CalcChainInflationAmount interprets EasyFl formula. Return chain inflation amount for given in and out ledger times,
-// input amount of tokens and delayed
+// the input amount of tokens and delayed
 func (lib *Library) CalcChainInflationAmount(inTs, outTs base.LedgerTime, inAmount uint64) uint64 {
 	var amountBin [8]byte
 	binary.BigEndian.PutUint64(amountBin[:], inAmount)
@@ -50,6 +50,17 @@ func (lib *Library) CalcChainInflationAmountDirect(inTs, outTs base.LedgerTime, 
 		return lib.ID.LinearInflationSlots * baseInflation
 	}
 	return adjustedDiffSlots * baseInflation
+}
+
+type FrozenCoverageContribution struct {
+	TargetChainID  base.ChainID
+	FrozenCoverage []uint64
+}
+
+// CalcChainInflationAmountOneSlot calculates inflation for one slot. Inflation cannot be bigger than one slot.
+// This makes token holder move the output every slot to earn maximum inflation
+func (lib *Library) CalcChainInflationAmountOneSlot(inSlot base.Slot, inCoverage uint64) uint64 {
+	return inCoverage / (lib.ID.SlotInflationFraction + uint64(inSlot))
 }
 
 func (lib *Library) BranchInflationBonusBase() uint64 {

@@ -123,6 +123,7 @@ type Delegation2Constants struct {
 	SafeRevocationSlots  uint32
 	DelegationEpochSlots uint32
 	MaxFrozenEpochs      uint32
+	SlotInflationBase    uint64
 }
 
 var (
@@ -452,10 +453,14 @@ func _precalcDelegationConstants() *Delegation2Constants {
 	resMaxFrozenEpochs, err := L().EvalFromSource(nil, "constDelegationMaxFrozenEpochs")
 	util.AssertNoError(err)
 
+	resSlotInflationBase, err := L().EvalFromSource(nil, "constSlotInflationBase")
+	util.AssertNoError(err)
+
 	ret := &Delegation2Constants{
 		SafeRevocationSlots:  easyfl_util.MustUint32FromBytes(resRevoc),
 		DelegationEpochSlots: easyfl_util.MustUint32FromBytes(resEpochSlots),
 		MaxFrozenEpochs:      easyfl_util.MustUint32FromBytes(resMaxFrozenEpochs),
+		SlotInflationBase:    easyfl_util.MustUint64FromBytes(resSlotInflationBase),
 	}
 	util.Assertf(uint32(AmountIndexFrozenCoverage)+ret.MaxFrozenEpochs <= 16, "int(AmountIndexFrozenCoverage)+MaxFrozenEpochs <= 16")
 	return ret

@@ -86,6 +86,8 @@ func IDParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*IdentityParame
 	if ret.SlotInflationBase, err = _uint64FromConst(lib, "constSlotInflationBase"); err != nil {
 		return nil, err
 	}
+	ret.SlotInflationFraction = ret.InitialSupply / ret.SlotInflationBase
+
 	if ret.LinearInflationSlots, err = _uint64FromConst(lib, "constLinearInflationSlots"); err != nil {
 		return nil, err
 	}
