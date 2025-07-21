@@ -691,7 +691,7 @@ and(
    $0,
    require( 
       or( isZero($1), lessThan($1, delegationEpochFromSlot(_selfTargetChainID,txSlot))), 
-      !!!master_can_only_unlock_unfrozen_delegation_output
+      !!!master_can't_unlock_frozen_delegation_output
    )
 )
 
