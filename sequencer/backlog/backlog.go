@@ -135,13 +135,15 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput) bool {
 		// filter out all which cannot be consumed by the sequencer
 		return false
 	}
-	if dl, ok := lock.(*ledger.DelegationLock); ok {
-		seqID := b.SequencerID()
-		if !ledger.EqualAccountables(ledger.ChainLockFromChainID(seqID), dl.TargetLock) {
-			// filter out delegation locks is delegation target cannot be consumed
-			return false
-		}
-	}
+
+	// TODO --
+	//if dl, ok := lock.(*ledger.DelegationLock); ok {
+	//	seqID := b.SequencerID()
+	//	if !ledger.EqualAccountables(ledger.ChainLockFromChainID(seqID), dl.TargetLock) {
+	//		// filter out delegation locks is delegation target cannot be consumed
+	//		return false
+	//	}
+	//}
 	return true
 }
 
@@ -214,8 +216,9 @@ func (b *TagAlongBacklog) numOutputs() int {
 
 func (b *TagAlongBacklog) purgeBacklog() int {
 	ttlTagAlongSlots, ttlDelegationSlots := b.BacklogTTLSlots()
+	_ = ttlDelegationSlots
 	horizonTagAlong := time.Now().Add(-time.Duration(ttlTagAlongSlots) * ledger.L().ID.SlotDuration())
-	horizonDelegation := time.Now().Add(-time.Duration(ttlDelegationSlots) * ledger.L().ID.SlotDuration())
+	//horizonDelegation := time.Now().Add(-time.Duration(ttlDelegationSlots) * ledger.L().ID.SlotDuration())
 
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -226,8 +229,9 @@ func (b *TagAlongBacklog) purgeBacklog() int {
 		switch wOut.LockName() {
 		case ledger.ChainLockName:
 			del = whenAdded.Before(horizonTagAlong)
-		case ledger.DelegationLockName:
-			del = whenAdded.Before(horizonDelegation)
+		// TODO --
+		//case ledger.DelegationLockName:
+		//	del = whenAdded.Before(horizonDelegation)
 		default:
 			b.Log().Fatalf("unexpected type of the lock in backlog: '%s'", wOut.LockName())
 		}

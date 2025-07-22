@@ -4,53 +4,11 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"sync/atomic"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
-
-// This file contains definitions of the inflation calculation functions in EasyFL (on-ledger)
-// The Go functions interpret EasyFL function to guarantee consistent values
-
-var calcChainInflationAmountExpression atomic.Pointer[easyfl.Expression[*EvalContext]]
-
-func __precompiledChainInflation() (ret *easyfl.Expression[*EvalContext]) {
-	if ret = calcChainInflationAmountExpression.Load(); ret == nil {
-		var err error
-		ret, _, _, err = L().CompileExpression("calcChainInflationAmount($0,$1,$2)")
-		util.AssertNoError(err)
-		calcChainInflationAmountExpression.Store(ret)
-	}
-	return ret
-}
-
-// CalcChainInflationAmount interprets EasyFl formula. Return chain inflation amount for given in and out ledger times,
-// the input amount of tokens and delayed
-func (lib *Library) CalcChainInflationAmount(inTs, outTs base.LedgerTime, inAmount uint64) uint64 {
-	var amountBin [8]byte
-	binary.BigEndian.PutUint64(amountBin[:], inAmount)
-	ret := easyfl.EvalExpression(nil, __precompiledChainInflation(), inTs.Bytes(), outTs.Bytes(), amountBin[:])
-	return binary.BigEndian.Uint64(ret)
-}
-
-func (lib *Library) CalcChainInflationAmountDirect(inTs, outTs base.LedgerTime, inAmount uint64) uint64 {
-	util.Assertf(inTs.Before(outTs), "inTs.Before(outTs)")
-	if outTs.IsSlotBoundary() {
-		return 0
-	}
-	adjustedDiffSlots := uint64(outTs.Slot - inTs.Slot)
-	if inTs.IsSlotBoundary() {
-		adjustedDiffSlots++
-	}
-	baseInflation := inAmount / (lib.ID.InitialSupply/lib.ID.SlotInflationBase + uint64(inTs.Slot))
-	if adjustedDiffSlots > lib.ID.LinearInflationSlots {
-		return lib.ID.LinearInflationSlots * baseInflation
-	}
-	return adjustedDiffSlots * baseInflation
-}
 
 // CalcChainInflationAmountOneSlot calculates inflation for one slot. Inflation cannot be bigger than one slot.
 // This makes token holder move the output every slot to earn maximum inflation

@@ -119,7 +119,8 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			mainChainInflationAmount = ledger.L().BranchInflationBonusFromRandomnessProof(vrfProof)
 		} else {
 			// for non-branch
-			mainChainInflationAmount = ledger.L().CalcChainInflationAmountDirect(par.ChainInput.Timestamp(), par.Timestamp, par.ChainInput.Output.TokenBalance())
+			mainChainInflationAmount = ledger.L().CalcChainInflationAmountOneSlot(par.ChainInput.Timestamp().Slot,
+				par.ChainInput.Output.TokenBalance()+par.ChainInput.Output.FrozenCoverage(0))
 		}
 	}
 
@@ -286,49 +287,51 @@ func makeDelegationTransitions(inputs []*ledger.OutputWithChainID, offs byte, ta
 	retMargin uint64,
 	err error,
 ) {
-	if len(inputs) == 0 {
-		return
-	}
-	ret = make([]*ledger.Output, len(inputs))
-	inflationTotal := uint64(0)
-
-	for i, in := range inputs {
-		cc, ccIdx := in.Output.ChainConstraint()
-		if ccIdx == 0xff {
-			err = fmt.Errorf("delegation output must be chain output")
-			return
-		}
-		chainID := cc.ID
-		if cc.IsOrigin() {
-			chainID = base.MakeOriginChainID(in.ID)
-		}
-		if !ledger.IsOpenDelegationSlot(chainID, targetTs.Slot) {
-			// only considering delegated outputs which can be consumed in the target slot
-			err = fmt.Errorf("delegation is not open for %s: chainID: %s, oid: %s",
-				targetTs.String(), chainID.StringShort(), in.ID.StringShort())
-			return
-		}
-
-		inChainAmount := in.Output.TokenBalance()
-		delegationInflation := ledger.L().CalcChainInflationAmountDirect(in.ID.Timestamp(), targetTs, inChainAmount)
-
-		inflationTotal += delegationInflation
-		delegationMargin := uint64(delegationMarginPromille) * delegationInflation / 1000
-
-		retTotalIn += inChainAmount
-		retMargin += delegationMargin
-		outChainAmount := inChainAmount + delegationInflation - delegationMargin
-		retTotalOut += outChainAmount
-
-		ret[i] = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(outChainAmount, delegationInflation)
-			o.WithLock(in.Output.Lock())
-			ccSucc := ledger.NewChainConstraint(chainID, byte(i)+offs, ccIdx, cc.OriginSlot, cc.OriginAmount)
-			o.MustPushConstraint(ccSucc.Bytes())
-		})
-	}
-	util.Assertf(retTotalOut == retTotalIn+inflationTotal, "retTotalOut == retTotalIn+inflationTotal")
-	util.Assertf(retTotalIn+inflationTotal == retMargin+retTotalOut, "retTotalIn+inflationTotal == retMargin+retTotalOut")
-
-	return ret, retTotalIn, retTotalOut, retMargin, nil
+	// TODO --
+	return
+	//if len(inputs) == 0 {
+	//	return
+	//}
+	//ret = make([]*ledger.Output, len(inputs))
+	//inflationTotal := uint64(0)
+	//
+	//for i, in := range inputs {
+	//	cc, ccIdx := in.Output.ChainConstraint()
+	//	if ccIdx == 0xff {
+	//		err = fmt.Errorf("delegation output must be chain output")
+	//		return
+	//	}
+	//	chainID := cc.ID
+	//	if cc.IsOrigin() {
+	//		chainID = base.MakeOriginChainID(in.ID)
+	//	}
+	//	if !ledger.IsOpenDelegationSlot(chainID, targetTs.Slot) {
+	//		// only considering delegated outputs which can be consumed in the target slot
+	//		err = fmt.Errorf("delegation is not open for %s: chainID: %s, oid: %s",
+	//			targetTs.String(), chainID.StringShort(), in.ID.StringShort())
+	//		return
+	//	}
+	//
+	//	inChainAmount := in.Output.TokenBalance()
+	//	delegationInflation := ledger.L().CalcChainInflationAmountDirect(in.ID.Timestamp(), targetTs, inChainAmount)
+	//
+	//	inflationTotal += delegationInflation
+	//	delegationMargin := uint64(delegationMarginPromille) * delegationInflation / 1000
+	//
+	//	retTotalIn += inChainAmount
+	//	retMargin += delegationMargin
+	//	outChainAmount := inChainAmount + delegationInflation - delegationMargin
+	//	retTotalOut += outChainAmount
+	//
+	//	ret[i] = ledger.NewOutput(func(o *ledger.OutputBuilder) {
+	//		o.WithAmounts(outChainAmount, delegationInflation)
+	//		o.WithLock(in.Output.Lock())
+	//		ccSucc := ledger.NewChainConstraint(chainID, byte(i)+offs, ccIdx, cc.OriginSlot, cc.OriginAmount)
+	//		o.MustPushConstraint(ccSucc.Bytes())
+	//	})
+	//}
+	//util.Assertf(retTotalOut == retTotalIn+inflationTotal, "retTotalOut == retTotalIn+inflationTotal")
+	//util.Assertf(retTotalIn+inflationTotal == retMargin+retTotalOut, "retTotalIn+inflationTotal == retMargin+retTotalOut")
+	//
+	//return ret, retTotalIn, retTotalOut, retMargin, nil
 }

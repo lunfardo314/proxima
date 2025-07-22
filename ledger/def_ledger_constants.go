@@ -24,8 +24,7 @@ type IdentityParameters struct {
 	TickDuration time.Duration
 	// ----------- begin inflation-related
 	SlotInflationBase     uint64 // constant C
-	LinearInflationSlots  uint64 // constant lambda
-	SlotInflationFraction uint64
+	SlotInflationFraction uint64 // calculated -> initial supply / slot inflation base
 	// BranchInflationBonusBase inflation bonus
 	BranchInflationBonusBase uint64
 	// ----------- end inflation-related
@@ -100,7 +99,6 @@ func DefaultIdentityParameters(privateKey ed25519.PrivateKey, genesisTimeUnix ui
 		BranchInflationBonusBase:     DefaultBranchInflationBonusBase,
 		SlotInflationBase:            DefaultSlotInflationBase,
 		SlotInflationFraction:        DefaultInitialSupply / DefaultSlotInflationBase,
-		LinearInflationSlots:         DefaultLinearInflationSlots,
 		MinimumAmountOnSequencer:     DefaultMinimumAmountOnSequencer,
 		MaxNumberOfEndorsements:      DefaultMaxNumberOfEndorsements,
 		PreBranchConsolidationTicks:  DefaultPreBranchConsolidationTicks,
@@ -117,7 +115,6 @@ func ConstantsYAMLFromIdentity(id *IdentityParameters) []byte {
 		uint64(id.TickDuration),
 		base.MaxTickValue,
 		id.SlotInflationBase,
-		id.LinearInflationSlots,
 		id.BranchInflationBonusBase,
 		id.MinimumAmountOnSequencer,
 		id.MaxNumberOfEndorsements,
@@ -209,7 +206,6 @@ func (id *IdentityParameters) Lines(prefix ...string) *lines.Lines {
 		Add("Tick duration: %v", id.TickDuration).
 		Add("Slot inflation base (constant C): %s", util.Th(id.SlotInflationBase)).
 		Add("Slot inflation fraction: %s", util.Th(id.SlotInflationFraction)).
-		Add("Linear inflation slots (constant lambda): %s", util.Th(id.LinearInflationSlots)).
 		Add("Constant initial supply/slot inflation base: %s", util.Th(id.InitialSupply/id.SlotInflationBase)).
 		Add("Branch inflation bonus base: %s", util.Th(id.BranchInflationBonusBase)).
 		Add("Pre-branch consolidation ticks: %v", id.PreBranchConsolidationTicks).
@@ -284,10 +280,6 @@ functions:
    -
       sym: constSlotInflationBase
       description: maximum inflation of the total supply in slot 0. Usually 33000000 
-      source: u64/%d
-   -
-      sym: constLinearInflationSlots
-      description: number of slot with linear inflation
       source: u64/%d
    -
       sym: constBranchInflationBonusBase

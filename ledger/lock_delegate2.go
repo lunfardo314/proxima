@@ -240,19 +240,18 @@ func MakeDelegate2InitOutput(par MakeDelegate2InitOutputParams) *Output {
 	})
 }
 
-func AsDelegate2Output(o *Output, oid base.OutputID) (ret Delegate2Output, err error) {
+func AsDelegate2Output(o *Output, oid base.OutputID) (ret Delegate2Output, ok bool) {
 	out, ok := AsOutputWithChainID(o, oid)
 	if !ok {
-		return Delegate2Output{}, fmt.Errorf("not a Delegate2Output")
+		return
 	}
 	return Delegate2OutputFromOutputWithChainID(&out)
 }
 
-func Delegate2OutputFromOutputWithChainID(o *OutputWithChainID) (ret Delegate2Output, err error) {
+func Delegate2OutputFromOutputWithChainID(o *OutputWithChainID) (ret Delegate2Output, ok bool) {
 	ret.OutputWithChainID = *o
 	lock := o.Output.Lock()
 	if lock.Name() != Delegate2LockName {
-		err = fmt.Errorf("Delegate2OutputFromOutputWithChainID: not a DelegationToSequencerLock")
 		return
 	}
 	dLock, ok := lock.(*DelegateLock2)
@@ -305,7 +304,7 @@ func (o *Delegate2Output) MakeDelegate2SuccessorOutput(par MakeDelegate2Successo
 		}
 	}
 
-	if par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
+	if par.Inflation > L().CalcChainInflationAmountOneSlot(par.PredTimestamp.Slot, o.Output.TokenBalance()) {
 		return nil, fmt.Errorf("MakeDelegate2SuccessorOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
@@ -373,7 +372,7 @@ func (o *Delegate2Output) MakeDelegate2RevokeOutput(par MakeDelegate2RevokeOutpu
 		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: can't harvest more inflation (%s) than generate (%s)",
 			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
-	if !par.DisableConsistencyChecks && par.Inflation > L().CalcChainInflationAmount(par.PredTimestamp, par.Timestamp, o.Output.TokenBalance()) {
+	if !par.DisableConsistencyChecks && par.Inflation > L().CalcChainInflationAmountOneSlot(par.PredTimestamp.Slot, o.Output.TokenBalance()) {
 		return nil, fmt.Errorf("MakeDelegate2RevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 	dconst := DelegationConstants()

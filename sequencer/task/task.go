@@ -263,31 +263,32 @@ func (t *taskData) InsertTagAlongInputs(a *attacher.IncrementalAttacher, maxInpu
 
 func (t *taskData) InsertDelegationInputs(a *attacher.IncrementalAttacher, maxInputs int) (numInserted int) {
 	t.Tracef(TraceTagInsertInputs, "IN InsertDelegationInputs: %s, maxInputs: %d", a.Name, maxInputs)
-
-	rdr := a.BaselineSugaredStateReader()
-	seqID := t.SequencerID()
-	preSelected := make([]vertex.WrappedOutput, 0, maxInputs-a.NumInputs())
-
-	rdr.IterateDelegatedOutputs(ledger.ChainLockFromChainID(seqID), func(oid base.OutputID, o *ledger.Output, dLock *ledger.DelegationLock) bool {
-		wOut := attacher.AttachOutputWithID(ledger.OutputWithID{ID: oid, Output: o}, a)
-		if !ledger.ValidDelegationPace(wOut.Timestamp(), a.TargetTs()) {
-			return false
-		}
-		if t.IsConsumedInThePastPath(wOut, a.Extending().VID) {
-			return true
-		}
-		delegationID, ok := ledger.ExtractChainID(o, oid)
-		if !ok {
-			return true
-		}
-		if !ledger.IsOpenDelegationSlot(delegationID, a.TargetTs().Slot) {
-			return true
-		}
-		if ledger.L().CalcChainInflationAmount(oid.Timestamp(), a.TargetTs(), o.TokenBalance()) == 0 {
-			return true
-		}
-		preSelected = append(preSelected, wOut)
-		return true
-	})
-	return t.insertInputs(a, preSelected, maxInputs)
+	// TODO --
+	return
+	//rdr := a.BaselineSugaredStateReader()
+	//seqID := t.SequencerID()
+	//preSelected := make([]vertex.WrappedOutput, 0, maxInputs-a.NumInputs())
+	//
+	//rdr.IterateDelegatedOutputs(ledger.ChainLockFromChainID(seqID), func(oid base.OutputID, o *ledger.Output, dLock *ledger.DelegationLock) bool {
+	//	wOut := attacher.AttachOutputWithID(ledger.OutputWithID{ID: oid, Output: o}, a)
+	//	if !ledger.ValidDelegationPace(wOut.Timestamp(), a.TargetTs()) {
+	//		return false
+	//	}
+	//	if t.IsConsumedInThePastPath(wOut, a.Extending().VID) {
+	//		return true
+	//	}
+	//	delegationID, ok := ledger.ExtractChainID(o, oid)
+	//	if !ok {
+	//		return true
+	//	}
+	//	if !ledger.IsOpenDelegationSlot(delegationID, a.TargetTs().Slot) {
+	//		return true
+	//	}
+	//	if ledger.L().CalcChainInflationAmount(oid.Timestamp(), a.TargetTs(), o.TokenBalance()) == 0 {
+	//		return true
+	//	}
+	//	preSelected = append(preSelected, wOut)
+	//	return true
+	//})
+	//return t.insertInputs(a, preSelected, maxInputs)
 }

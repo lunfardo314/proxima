@@ -144,7 +144,10 @@ func (s SugaredStateReader) GetDelegatedOutput(delegationID base.ChainID) (ret l
 	if err != nil {
 		return
 	}
-	ret, err = ledger.Delegate2OutputFromOutputWithChainID(&o)
+	var ok bool
+	if ret, ok = ledger.Delegate2OutputFromOutputWithChainID(&o); !ok {
+		err = fmt.Errorf("GetDelegatedOutput: not a Delegate2Output")
+	}
 	return
 }
 
@@ -237,8 +240,8 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountabl
 
 func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget ledger.Accountable, fun func(o *ledger.Delegate2Output) bool) {
 	err := s.IterateOutputsForAccount(delegationTarget, func(oid base.OutputID, o *ledger.Output) bool {
-		out, err1 := ledger.AsDelegate2Output(o, oid)
-		if err1 == nil && ledger.EqualAccountables(delegationTarget, out.Target) {
+		out, ok := ledger.AsDelegate2Output(o, oid)
+		if ok && ledger.EqualAccountables(delegationTarget, out.Target) {
 			return fun(&out)
 		}
 		return true
@@ -356,7 +359,7 @@ func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWith
 
 type DelegationsOnSequencer struct {
 	SequencerOutput ledger.OutputWithID
-	Delegations     map[base.ChainID]*ledger.Delegate2Output
+	Delegations     map[base.ChainID]ledger.Delegate2Output
 }
 
 func (s SugaredStateReader) GetDelegationsBySequencer() (map[base.ChainID]DelegationsOnSequencer, error) {
@@ -382,24 +385,21 @@ func (s SugaredStateReader) GetDelegationsBySequencer() (map[base.ChainID]Delega
 	}
 
 	for _, delegation := range nonSeq {
-		dl := delegation.OutputWithID.Output.DelegationLock()
-		if dl == nil {
+		dl, ok := ledger.Delegate2OutputFromOutputWithChainID(delegation)
+		if !ok {
 			// chain but not delegation
 			continue
 		}
-		if dl.TargetLock.Name() == ledger.ChainLockName {
-			cl := dl.TargetLock.(ledger.ChainLock)
-			seq, ok := ret[cl.ChainID()]
-			if !ok {
-				// delegated to nonexistent sequencer
-				continue
-			}
-			if len(seq.Delegations) == 0 {
-				seq.Delegations = make(map[base.ChainID]ledger.OutputWithID)
-			}
-			seq.Delegations[delegation.ChainID] = delegation.OutputWithID
-			ret[cl.ChainID()] = seq
+		seq, ok := ret[dl.Target.ChainID()]
+		if !ok {
+			// delegated to nonexistent sequencer
+			continue
 		}
+		if len(seq.Delegations) == 0 {
+			seq.Delegations = make(map[base.ChainID]ledger.Delegate2Output)
+		}
+		seq.Delegations[delegation.ChainID] = dl
+		ret[dl.ChainID] = seq
 	}
 	return ret, nil
 }

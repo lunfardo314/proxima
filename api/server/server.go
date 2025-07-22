@@ -754,13 +754,11 @@ func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Requ
 			Delegations:       dlg,
 		}
 		for delegationID, delegationOut := range di.Delegations {
-			dl := delegationOut.Output.DelegationLock()
-			srv.Assertf(dl != nil, "dl != nil")
 
 			dlg[delegationID.StringHex()] = api.DelegationData{
 				Amount:      delegationOut.Output.TokenBalance(),
-				SinceSlot:   uint32(dl.StartTime.Slot),
-				StartAmount: dl.StartAmount,
+				SinceSlot:   uint32(delegationOut.OriginSlot),
+				StartAmount: delegationOut.OriginAmount,
 			}
 		}
 	}
