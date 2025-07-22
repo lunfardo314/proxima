@@ -9,6 +9,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
@@ -177,6 +178,35 @@ func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *Eval
 
 // TODO in the future it makes sense to rewrite it all in EasyFL
 
+func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, predAmounts Amounts, predSlot base.Slot) {
+	var expectedInflation uint64
+	inflation := o.Inflation()
+
+	if ctx.IsBranchTransaction() {
+		_, stemIdx := ctx.SequencerAndStemOutputIndices()
+		stemOut, err := ctx.ProducedOutput(stemIdx)
+		par.RequireNoError(err)
+		stemLock, ok := stemOut.Output.StemLock()
+		par.Require(ok, "inconsistency: can't find stemLock")
+		expectedInflation = L().BranchInflationBonusDirect(stemLock.VRFProof)
+
+		par.Require(expectedInflation == inflation, "evalAmounts: wrong branch inflation bonus. Expected %s, got %s",
+			util.Th(expectedInflation), util.Th(inflation))
+	} else {
+		txSlot := ctx.Timestamp().Slot
+		if inflation > 0 && predSlot != txSlot {
+			inAmount := predAmounts.Amount(AmountIndexTokenBalance)
+			// do not inflate frozen coverage on delegation output, otherwise standard one-slot inflation
+			if o.Lock().Name() != DelegateLockName {
+				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
+			}
+			expectedInflation = L().CalcChainInflationAmountOneSlot(txSlot, inAmount)
+		}
+		par.Require(expectedInflation == inflation, "evalAmounts: wrong chain inflation value. Expected %s, got %s",
+			util.Th(expectedInflation), util.Th(inflation))
+	}
+}
+
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	path := par.DataContext().EvalPath()
 	par.Require(path[len(path)-1] == ConstraintIndexAmounts, "'amounts' must be at index %d", ConstraintIndexAmounts)
@@ -207,25 +237,14 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	predAmounts := predOut.Amounts()
 
 	// check inflation:
-	if inflation := o.Inflation(); inflation > 0 {
-		expectedInflation := uint64(0)
-		if predID.Slot() < txid.Slot() {
-			inAmount := predAmounts.Amount(AmountIndexTokenBalance)
-			// do not inflate frozen coverage on delegation output, otherwise standard one-slot inflation
-			if o.Lock().Name() != DelegateLockName {
-				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
-			}
-			expectedInflation = L().CalcChainInflationAmountOneSlot(txid.Slot(), inAmount)
-		}
-		par.Require(expectedInflation == inflation, "evalAmounts: wrong inflation value. Expected %s, got %s", util.Th(expectedInflation), util.Th(inflation))
-	}
-	// TODO -- branch inflation
+	_checkInflation(par, ctx, o, predAmounts, predID.Slot())
 
 	if o.Lock().Name() == DelegateLockName {
 		// delegation output -> frozen coverage constraints are enforced by the delegate2 lock
 		// TODO move it here?
 		return []byte{0xff}
 	}
+
 	// check frozen coverage
 	if seq == nil {
 		par.Require(amounts.IsFrozenCoverageZero(), "evalAmounts: expected all-0 frozen coverage")

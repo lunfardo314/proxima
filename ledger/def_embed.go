@@ -23,7 +23,11 @@ type (
 		ConsumedTotal(i byte) uint64
 		ProducedTotal(i byte) uint64
 		ConsumedOutput(idx byte) (*Output, error)
+		ProducedOutput(idx byte) (*OutputWithID, error)
 		InputID(idx byte) (base.OutputID, error)
+		IsSequencerTransaction() bool
+		IsBranchTransaction() bool
+		Timestamp() base.LedgerTime
 	}
 
 	EvalContext struct {

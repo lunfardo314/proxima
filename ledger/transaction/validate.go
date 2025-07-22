@@ -323,7 +323,7 @@ func (ctx *TxContext) _evalBytecode(bytecode []byte, path []byte, spool *slicepo
 	return ret, err
 }
 
-// __printLogOnFail is global var for controlling printing failed validation trace or not
+// __printLogOnFail is a global var for controlling printing failed validation trace or not
 var __printLogOnFail atomic.Bool
 
 func printTraceIfEnabled(evalCtx easyfl.GlobalData[*ledger.EvalContext]) {

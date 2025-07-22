@@ -822,7 +822,7 @@ func TestFrozenCoverage(t *testing.T) {
 		td.init()
 		const (
 			frozenEpochs                = 1
-			minInflationAdvancePerEpoch = 10
+			minInflationAdvancePerEpoch = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 1024, minInflationAdvancePerEpoch)
@@ -830,6 +830,7 @@ func TestFrozenCoverage(t *testing.T) {
 
 		ts = td.timestampSlotsForward(700)
 		advance := td.delegatedOutput.MinRequiredInflationAdvance(ts, frozenEpochs)
+		require.True(t, advance > 0)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
 			ts:                      ts,

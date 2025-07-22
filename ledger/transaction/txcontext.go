@@ -302,3 +302,15 @@ func (ctx *TxContext) TotalProducedAmounts() []uint64 {
 	}
 	return ctx.totalProducedAmounts[:lastNonZero+1]
 }
+
+func (ctx *TxContext) IsSequencerTransaction() bool {
+	return ctx.txid.IsSequencerMilestone()
+}
+
+func (ctx *TxContext) IsBranchTransaction() bool {
+	return ctx.txid.IsBranchTransaction()
+}
+
+func (ctx *TxContext) Timestamp() base.LedgerTime {
+	return ctx.txid.Timestamp()
+}
