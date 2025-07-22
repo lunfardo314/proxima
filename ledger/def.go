@@ -159,7 +159,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], id *IdentityParameters) {
 	err = lib.UpgradeFromYAML([]byte(_generalFunctionsYAML))
 	util.AssertNoError(err)
 
-	lib.MustExtendMany(_inflationFunctionsSource)
+	//lib.MustExtendMany(_inflationFunctionsSource)
 
 	lib.MustExtendMany(amountsAuxSource)
 	lib.MustExtendMany(addressED25519ConstraintSource)
@@ -169,7 +169,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], id *IdentityParameters) {
 	lib.MustExtendMany(stemLockSource)
 	lib.MustExtendMany(chainConstraintSource)
 	lib.MustExtendMany(sequencerConstraintSource)
-	lib.MustExtendMany(inflationConstraintSource)
 	lib.MustExtendMany(messageWithED25519SenderSource)
 	lib.MustExtendMany(chainLockConstraintSource)
 	lib.MustExtendMany(immutableDataConstraintSource)
@@ -188,7 +187,6 @@ func (lib *Library) registerConstraints() {
 	registerStemLockConstraint(lib)
 	registerChainConstraint(lib)
 	registerSequencerConstraint(lib)
-	//registerInflationConstraint(lib)
 	registerMessageWithSenderED25519Constraint(lib)
 	registerChainLockConstraint(lib)
 	registerImmutableConstraint(lib)

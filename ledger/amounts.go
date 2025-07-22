@@ -219,6 +219,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 		}
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong inflation value. Expected %s, got %s", util.Th(expectedInflation), util.Th(inflation))
 	}
+	// TODO -- branch inflation
 
 	if o.Lock().Name() == Delegate2LockName {
 		// delegation output -> frozen coverage constraints are enforced by the delegate2 lock

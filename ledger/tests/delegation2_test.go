@@ -91,12 +91,13 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 	if err != nil {
 		return nil, err
 	}
+	var ok bool
 	if err = td.u.AddTransaction(txBytes); err == nil {
 		outs, err := td.u.SugaredStateReader().GetOutputsDelegatedToAccount2(td.target)
 		require.NoError(td, err)
 		require.EqualValues(td, 1, len(outs))
-		td.delegatedOutput, err = ledger.Delegate2OutputFromOutputWithChainID(outs[0])
-		require.NoError(td, err)
+		td.delegatedOutput, ok = ledger.Delegate2OutputFromOutputWithChainID(outs[0])
+		require.True(td, ok)
 		td.Logf("delegation ID: %s", td.delegatedOutput.ChainID.String())
 		td.Logf("delegated UTXO:\n%s", td.delegatedOutput.Output.ToSource("     "))
 	} else {
@@ -162,8 +163,9 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots ui
 	do := tx.MustProducedOutputWithIDAt(0)
 	dc, err := do.AsChainOutput()
 	require.NoError(td, err)
-	td.delegatedOutput, err = ledger.Delegate2OutputFromOutputWithChainID(dc)
-	require.NoError(td, err)
+	var ok bool
+	td.delegatedOutput, ok = ledger.Delegate2OutputFromOutputWithChainID(dc)
+	require.True(td, ok)
 
 	err = td.u.AddTransaction(txBytes)
 	return txBytes, txString, err

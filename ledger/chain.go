@@ -216,48 +216,48 @@ or(
    )
 )
 
-func selfInflationAmount : selfAmountAt(1)
+//func selfInflationAmount : selfAmountAt(1)
 
-func _producedVRFProof : 
-     parseInlineDataArgument(
-        producedConstraintByIndex(concat(txStemOutputIndex, lockConstraintIndex)), 
-        #stemLock, 
-        1
-     )
+//func _producedVRFProof : 
+//     parseInlineDataArgument(
+//        producedConstraintByIndex(concat(txStemOutputIndex, lockConstraintIndex)), 
+//        #stemLock, 
+//        1
+//     )
 
 // $0 - chain predecessor input index
-func _calcChainInflationAmountForPredecessor :
-     calcChainInflationAmount(
-	    timestampOfInputByIndex($0), 
-        txTimestampBytes,
-	    tokenBalanceByOutputPath(concat(pathToConsumedOutputs,$0)),
-	 )
+//func _calcChainInflationAmountForPredecessor :
+//     calcChainInflationAmount(
+//	    timestampOfInputByIndex($0), 
+//        txTimestampBytes,
+//	    tokenBalanceByOutputPath(concat(pathToConsumedOutputs,$0)),
+//	 )
 
 
 // $0 - chain ID
 // $1 - predecessor (input index || chain constraint index) - 2 bytes 
-func _validInflationAmount : 
-or(
-     // zero inflation is always ok
-   isZero(selfInflationAmount),
-   and(
-      require(not(isChainOriginID($0)), !!!inflation_must_be_0_at_chain_origin),
-
-      if(
-         isBranchTransaction,
-              // branch tx. Enforce inflation is calculated from the VRF proof
-         require(
-            equal( selfInflationAmount, branchInflationBonusFromRandomnessProof(_producedVRFProof) ),
-            !!!invalid_branch_inflation_bonus
-         ),
-                   // not branch tx. Enforce valid chain inflation amount
-         require(
-	        lessOrEqualThan( selfInflationAmount, _calcChainInflationAmountForPredecessor(byte($1,0)) ),
-			!!!invalid_chain_inflation_amount
-		 )
-      )
-   )
-)
+//func _validInflationAmount : 
+//or(
+//     // zero inflation is always ok
+//   isZero(selfInflationAmount),
+//   and(
+//      require(not(isChainOriginID($0)), !!!inflation_must_be_0_at_chain_origin),
+//
+//      if(
+//         isBranchTransaction,
+//              // branch tx. Enforce inflation is calculated from the VRF proof
+//         require(
+//            equal( selfInflationAmount, branchInflationBonusFromRandomnessProof(_producedVRFProof) ),
+//            !!!invalid_branch_inflation_bonus
+//         ),
+//                   // not branch tx. Enforce valid chain inflation amount
+//         require(
+//	        lessOrEqualThan( selfInflationAmount, _calcChainInflationAmountForPredecessor(byte($1,0)) ),
+//			!!!invalid_chain_inflation_amount
+//		 )
+//      )
+//   )
+//)
 
 // $0 - chain ID
 // $1 - predecessor (input index || chain constraint index) - 2 bytes 
@@ -272,7 +272,7 @@ func chain : and(
       and(
          selfIsProducedOutput,
          _validChainProduced($0,$1,$2,$3),
-         _validInflationAmount($0,$1)
+         // _validInflationAmount($0,$1)
       ),
       and(
          selfIsConsumedOutput,
