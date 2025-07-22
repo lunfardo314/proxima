@@ -1,10 +1,6 @@
 package ledger
 
 import (
-	"encoding/binary"
-	"encoding/hex"
-	"fmt"
-
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -27,12 +23,12 @@ func (lib *Library) BranchInflationBonusDirect(proof []byte) uint64 {
 }
 
 // BranchInflationBonusFromRandomnessProof makes uint64 in the range from 0 to BranchInflationBonusBase (incl)
-func (lib *Library) BranchInflationBonusFromRandomnessProof(proof []byte) uint64 {
-	src := fmt.Sprintf("branchInflationBonusFromRandomnessProof(0x%s)", hex.EncodeToString(proof))
-	res, err := lib.EvalFromSource(nil, src)
-	util.AssertNoError(err)
-	return binary.BigEndian.Uint64(res)
-}
+//func (lib *Library) BranchInflationBonusFromRandomnessProof(proof []byte) uint64 {
+//	src := fmt.Sprintf("branchInflationBonusFromRandomnessProof(0x%s)", hex.EncodeToString(proof))
+//	res, err := lib.EvalFromSource(nil, src)
+//	util.AssertNoError(err)
+//	return binary.BigEndian.Uint64(res)
+//}
 
 const _inflationFunctionsSource = `
 

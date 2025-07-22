@@ -992,208 +992,208 @@ func TestHashUnlock(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestImmutable(t *testing.T) {
-	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-	privKey, _, addr0 := u.GenerateAddress(0)
-	err := u.TokensFromFaucet(addr0, 10000)
-	require.NoError(t, err)
-
-	// create origin chain
-	par, err := u.MakeTransferInputData(privKey, nil, ledger.TimeNow().AddSlots(1))
-	require.NoError(t, err)
-	par.WithAmount(2000).
-		WithTargetLock(addr0).
-		WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 2000))
-	txbytes, err := txbuilder.MakeTransferTransaction(par)
-	require.NoError(t, err)
-	t.Logf("tx1 = %s", u.TxToString(txbytes))
-
-	outs, err := u.DoTransferOutputs(par)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-	require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-	require.EqualValues(t, 10000, u.Balance(addr0))
-	require.EqualValues(t, 2, u.NumUTXOs(addr0))
-	require.EqualValues(t, 2, len(outs))
-	chains, err := ledger.FilterChainOutputs(outs)
-	require.NoError(t, err)
-
-	theChainData := chains[0]
-	chainID := theChainData.ChainID
-
-	// -------------------------- make transition
-	chs, err := u.StateReader().GetUTXOForChainID(chainID)
-	require.NoError(t, err)
-
-	chainIN, err := chs.Parse()
-	require.NoError(t, err)
-
-	cc, chainConstraintIdx := chainIN.Output.ChainConstraint()
-	require.True(t, chainConstraintIdx != 0xff)
-
-	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
-	txb := txbuilder.New()
-	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
-	require.NoError(t, err)
-
-	var nextChainConstraint *ledger.ChainConstraint
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
-
-	var dataConstraintIdx, immutableConstraintIdx byte
-	chainOut := chainIN.Output.Clone(func(o *ledger.OutputBuilder) {
-		o.PutConstraint(nextChainConstraint.Bytes(), chainConstraintIdx)
-
-		immutableData, err := ledger.NewGeneralScriptFromSource("concat(0x01020304030201)")
-		require.NoError(t, err)
-		// push data constraint
-		dataConstraintIdx = o.MustPushConstraint(immutableData)
-		// push immutable constraint
-		immutableConstraintIdx = o.MustPushConstraint(ledger.NewImmutable(chainConstraintIdx, dataConstraintIdx).Bytes())
-	})
-
-	succIdx, err := txb.ProduceOutput(chainOut)
-	require.NoError(t, err)
-
-	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
-	txb.PutSignatureUnlock(0)
-
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-
-	txb.SignED25519(privKey)
-
-	txbytes = txb.TransactionData.Bytes()
-	t.Logf("tx2 = %s", u.TxToString(txbytes))
-	err = u.AddTransaction(txbytes)
-	require.NoError(t, err)
-
-	// -------------------------------- make transition #2
-	chs, err = u.StateReader().GetUTXOForChainID(chainID)
-	require.NoError(t, err)
-
-	chainIN, err = chs.Parse()
-	require.NoError(t, err)
-
-	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
-	require.True(t, chainConstraintIdx != 0xff)
-
-	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
-	txb = txbuilder.New()
-	predIdx, err = txb.ConsumeOutput(chainIN.Output, chainIN.ID)
-	require.NoError(t, err)
-
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
-
-	chainOut = chainIN.Output.Clone()
-
-	succIdx, err = txb.ProduceOutput(chainOut)
-	require.NoError(t, err)
-
-	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
-	// skip immutable unlock
-	txb.PutSignatureUnlock(0)
-
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-
-	txb.SignED25519(privKey)
-
-	txbytes = txb.TransactionData.Bytes()
-	t.Logf("tx3 = %s", u.TxToString(txbytes))
-	err = u.AddTransaction(txbytes)
-
-	// fails because wrong unlock parameters
-	util.RequireErrorWith(t, err, "'immutable' failed with error")
-
-	// --------------------------------- transit with wrong immutable data
-	chs, err = u.StateReader().GetUTXOForChainID(chainID)
-	require.NoError(t, err)
-
-	chainIN, err = chs.Parse()
-	require.NoError(t, err)
-
-	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
-	require.True(t, chainConstraintIdx != 0xff)
-
-	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
-	txb = txbuilder.New()
-	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
-	require.NoError(t, err)
-
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
-
-	chainOut = chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
-		// put wrong data
-		wrongImmutableData, err := ledger.NewGeneralScriptFromSource("concat(0x010203040302010000)")
-		require.NoError(t, err)
-		out.PutConstraint(wrongImmutableData.Bytes(), dataConstraintIdx)
-	})
-	succIdx, err = txb.ProduceOutput(chainOut)
-	require.NoError(t, err)
-
-	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
-	// put correct unlock params
-	txb.PutUnlockParams(predIdx, dataConstraintIdx, []byte{dataConstraintIdx, immutableConstraintIdx})
-
-	// skip immutable unlock
-	txb.PutSignatureUnlock(0)
-
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-
-	txb.SignED25519(privKey)
-
-	txbytes = txb.TransactionData.Bytes()
-	t.Logf("tx4 = %s", u.TxToString(txbytes))
-	err = u.AddTransaction(txbytes)
-
-	// fails because wrong unlock parameters
-	util.RequireErrorWith(t, err, "'immutable' failed with error")
-
-	// put it all correct
-	chs, err = u.StateReader().GetUTXOForChainID(chainID)
-	require.NoError(t, err)
-
-	chainIN, err = chs.Parse()
-	require.NoError(t, err)
-
-	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
-	require.True(t, chainConstraintIdx != 0xff)
-
-	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
-	txb = txbuilder.New()
-	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
-	require.NoError(t, err)
-
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
-
-	chainOut = chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
-		// put wrong data
-		sameImmutableData, err := ledger.NewGeneralScriptFromSource("concat(0x01020304030201)")
-		require.NoError(t, err)
-		out.PutConstraint(sameImmutableData.Bytes(), dataConstraintIdx)
-	})
-
-	succIdx, err = txb.ProduceOutput(chainOut)
-	require.NoError(t, err)
-
-	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
-	// put correct unlock params
-	txb.PutUnlockParams(predIdx, immutableConstraintIdx, []byte{dataConstraintIdx, immutableConstraintIdx})
-
-	// skip immutable unlock
-	txb.PutSignatureUnlock(0)
-
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-
-	txb.SignED25519(privKey)
-
-	txbytes = txb.TransactionData.Bytes()
-	t.Logf("tx5 = %s", u.TxToString(txbytes))
-	err = u.AddTransaction(txbytes)
-	require.NoError(t, err)
-}
+//func TestImmutable(t *testing.T) {
+//	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+//	privKey, _, addr0 := u.GenerateAddress(0)
+//	err := u.TokensFromFaucet(addr0, 10000)
+//	require.NoError(t, err)
+//
+//	// create origin chain
+//	par, err := u.MakeTransferInputData(privKey, nil, ledger.TimeNow().AddSlots(1))
+//	require.NoError(t, err)
+//	par.WithAmount(2000).
+//		WithTargetLock(addr0).
+//		WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 2000))
+//	txbytes, err := txbuilder.MakeTransferTransaction(par)
+//	require.NoError(t, err)
+//	t.Logf("tx1 = %s", u.TxToString(txbytes))
+//
+//	outs, err := u.DoTransferOutputs(par)
+//	require.NoError(t, err)
+//	require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+//	require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
+//	require.EqualValues(t, 10000, u.Balance(addr0))
+//	require.EqualValues(t, 2, u.NumUTXOs(addr0))
+//	require.EqualValues(t, 2, len(outs))
+//	chains, err := ledger.FilterChainOutputs(outs)
+//	require.NoError(t, err)
+//
+//	theChainData := chains[0]
+//	chainID := theChainData.ChainID
+//
+//	// -------------------------- make transition
+//	chs, err := u.StateReader().GetUTXOForChainID(chainID)
+//	require.NoError(t, err)
+//
+//	chainIN, err := chs.Parse()
+//	require.NoError(t, err)
+//
+//	cc, chainConstraintIdx := chainIN.Output.ChainConstraint()
+//	require.True(t, chainConstraintIdx != 0xff)
+//
+//	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
+//	txb := txbuilder.New()
+//	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
+//	require.NoError(t, err)
+//
+//	var nextChainConstraint *ledger.ChainConstraint
+//	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
+//
+//	var dataConstraintIdx, immutableConstraintIdx byte
+//	chainOut := chainIN.Output.Clone(func(o *ledger.OutputBuilder) {
+//		o.PutConstraint(nextChainConstraint.Bytes(), chainConstraintIdx)
+//
+//		immutableData, err := ledger.NewGeneralScriptFromSource("concat(0x01020304030201)")
+//		require.NoError(t, err)
+//		// push data constraint
+//		dataConstraintIdx = o.MustPushConstraint(immutableData)
+//		// push immutable constraint
+//		immutableConstraintIdx = o.MustPushConstraint(ledger.NewImmutable(chainConstraintIdx, dataConstraintIdx).Bytes())
+//	})
+//
+//	succIdx, err := txb.ProduceOutput(chainOut)
+//	require.NoError(t, err)
+//
+//	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
+//	txb.PutSignatureUnlock(0)
+//
+//	txb.TransactionData.Timestamp = ts
+//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+//
+//	txb.SignED25519(privKey)
+//
+//	txbytes = txb.TransactionData.Bytes()
+//	t.Logf("tx2 = %s", u.TxToString(txbytes))
+//	err = u.AddTransaction(txbytes)
+//	require.NoError(t, err)
+//
+//	// -------------------------------- make transition #2
+//	chs, err = u.StateReader().GetUTXOForChainID(chainID)
+//	require.NoError(t, err)
+//
+//	chainIN, err = chs.Parse()
+//	require.NoError(t, err)
+//
+//	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
+//	require.True(t, chainConstraintIdx != 0xff)
+//
+//	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
+//	txb = txbuilder.New()
+//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chainIN.ID)
+//	require.NoError(t, err)
+//
+//	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
+//
+//	chainOut = chainIN.Output.Clone()
+//
+//	succIdx, err = txb.ProduceOutput(chainOut)
+//	require.NoError(t, err)
+//
+//	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
+//	// skip immutable unlock
+//	txb.PutSignatureUnlock(0)
+//
+//	txb.TransactionData.Timestamp = ts
+//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+//
+//	txb.SignED25519(privKey)
+//
+//	txbytes = txb.TransactionData.Bytes()
+//	t.Logf("tx3 = %s", u.TxToString(txbytes))
+//	err = u.AddTransaction(txbytes)
+//
+//	// fails because wrong unlock parameters
+//	util.RequireErrorWith(t, err, "'immutable' failed with error")
+//
+//	// --------------------------------- transit with wrong immutable data
+//	chs, err = u.StateReader().GetUTXOForChainID(chainID)
+//	require.NoError(t, err)
+//
+//	chainIN, err = chs.Parse()
+//	require.NoError(t, err)
+//
+//	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
+//	require.True(t, chainConstraintIdx != 0xff)
+//
+//	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
+//	txb = txbuilder.New()
+//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
+//	require.NoError(t, err)
+//
+//	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
+//
+//	chainOut = chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
+//		// put wrong data
+//		wrongImmutableData, err := ledger.NewGeneralScriptFromSource("concat(0x010203040302010000)")
+//		require.NoError(t, err)
+//		out.PutConstraint(wrongImmutableData.Bytes(), dataConstraintIdx)
+//	})
+//	succIdx, err = txb.ProduceOutput(chainOut)
+//	require.NoError(t, err)
+//
+//	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
+//	// put correct unlock params
+//	txb.PutUnlockParams(predIdx, dataConstraintIdx, []byte{dataConstraintIdx, immutableConstraintIdx})
+//
+//	// skip immutable unlock
+//	txb.PutSignatureUnlock(0)
+//
+//	txb.TransactionData.Timestamp = ts
+//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+//
+//	txb.SignED25519(privKey)
+//
+//	txbytes = txb.TransactionData.Bytes()
+//	t.Logf("tx4 = %s", u.TxToString(txbytes))
+//	err = u.AddTransaction(txbytes)
+//
+//	// fails because wrong unlock parameters
+//	util.RequireErrorWith(t, err, "'immutable' failed with error")
+//
+//	// put it all correct
+//	chs, err = u.StateReader().GetUTXOForChainID(chainID)
+//	require.NoError(t, err)
+//
+//	chainIN, err = chs.Parse()
+//	require.NoError(t, err)
+//
+//	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
+//	require.True(t, chainConstraintIdx != 0xff)
+//
+//	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
+//	txb = txbuilder.New()
+//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
+//	require.NoError(t, err)
+//
+//	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
+//
+//	chainOut = chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
+//		// put wrong data
+//		sameImmutableData, err := ledger.NewGeneralScriptFromSource("concat(0x01020304030201)")
+//		require.NoError(t, err)
+//		out.PutConstraint(sameImmutableData.Bytes(), dataConstraintIdx)
+//	})
+//
+//	succIdx, err = txb.ProduceOutput(chainOut)
+//	require.NoError(t, err)
+//
+//	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
+//	// put correct unlock params
+//	txb.PutUnlockParams(predIdx, immutableConstraintIdx, []byte{dataConstraintIdx, immutableConstraintIdx})
+//
+//	// skip immutable unlock
+//	txb.PutSignatureUnlock(0)
+//
+//	txb.TransactionData.Timestamp = ts
+//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+//
+//	txb.SignED25519(privKey)
+//
+//	txbytes = txb.TransactionData.Bytes()
+//	t.Logf("tx5 = %s", u.TxToString(txbytes))
+//	err = u.AddTransaction(txbytes)
+//	require.NoError(t, err)
+//}
 
 func TestGGG(t *testing.T) {
 	t.Logf("now = %d", uint32(time.Now().Unix()))

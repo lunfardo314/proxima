@@ -104,7 +104,7 @@ func immutable : or(
 			selfSiblingConstraint(byte($0,1)),  
 			producedConstraintByIndex(
 				concat(
-					byte(selfSiblingUnlockBlock(byte($0,0)),0), // successor output index
+					byte(selfSiblingUnlockParams(byte($0,0)),0), // successor output index
 					byte(selfUnlockParameters, 0)       // successor immutable data index
 				)
 			)
@@ -114,7 +114,7 @@ func immutable : or(
 			parseInlineDataArgument(
 				producedConstraintByIndex(
 					concat(
-						byte(selfSiblingUnlockBlock(byte($0,0)),0), // successor output index
+						byte(selfSiblingUnlockParams(byte($0,0)),0), // successor output index
 						byte(selfUnlockParameters, 1)               // successor 'immutable' constraint index
 					)
 				),
@@ -122,7 +122,7 @@ func immutable : or(
 				0
 			),
 			concat(
-				byte(selfSiblingUnlockBlock(byte($0,0)),1),  // chain successor block index
+				byte(selfSiblingUnlockParams(byte($0,0)),1),  // chain successor block index
 				byte(selfUnlockParameters, 0)                // reference to the immutable data block
 			)
 		)

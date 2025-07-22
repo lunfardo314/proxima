@@ -201,7 +201,7 @@ functions:
       numArgs: 0
       source: "atPath(concat(pathToUnlockParams, selfConstraintIndex))"
    -
-      sym: selfSiblingUnlockBlock
+      sym: selfSiblingUnlockParams
       numArgs: 1
       source: "atTuple8(atPath(concat(pathToUnlockParams, selfOutputIndex)), $0)"
    -

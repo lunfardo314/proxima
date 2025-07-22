@@ -116,7 +116,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		if par.Timestamp.IsSlotBoundary() {
 			// from VRF proof for branch
 			util.Assertf(len(vrfProof) > 0, "len(vrfProof)>0")
-			mainChainInflationAmount = ledger.L().BranchInflationBonusFromRandomnessProof(vrfProof)
+			mainChainInflationAmount = ledger.L().BranchInflationBonusDirect(vrfProof)
 		} else {
 			// for non-branch
 			mainChainInflationAmount = ledger.L().CalcChainInflationAmountOneSlot(par.ChainInput.Timestamp().Slot,
