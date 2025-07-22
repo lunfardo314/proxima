@@ -212,6 +212,39 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 	}
 }
 
+func _checkFrozenCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, seqID base.ChainID, amounts, predAmounts Amounts, txSlot, predSlot base.Slot) {
+	// sequencer output
+	dcons := DelegationConst()
+	predEpoch := dcons.EpochFromSlot(seqID, uint32(predSlot))
+	succEpoch := dcons.EpochFromSlot(seqID, uint32(txSlot))
+	par.Require(predEpoch <= succEpoch, "evalAmounts: inconsistency 1")
+
+	// adjustment to the difference between epochs of predecessor and successor
+	diffEpochs := byte(succEpoch - predEpoch)
+	// frozen coverage at the predecessor adjusted to the epoch of the successor
+	// if diffEpochs >= dconst.MaxFrozenEpochs it will always be 0
+	predFrozenCoverageAdjusted := func(i byte) (ret uint64) {
+		if i >= diffEpochs {
+			ret = predAmounts.Amount(AmountIndexFrozenCoverage + i - diffEpochs)
+		}
+		return
+	}
+	// Enforce correct frozen coverage on sequencer output.
+	// Must be: 2*successorFrozenCoverage == sumOfFrozenDelegations + predecessorFrozenCoverageAdjusted
+	for i := 0; i < int(dcons.MaxFrozenEpochs); i++ {
+		idx := AmountIndexFrozenCoverage + byte(i)
+		successorFrozenCoverage := amounts.Amount(idx)
+		predecessorFrozenCoverageAdjusted := predFrozenCoverageAdjusted(byte(i))
+		par.Require(successorFrozenCoverage >= predecessorFrozenCoverageAdjusted, "inconsistency 3 at index %d", i)
+		sum := ctx.ProducedTotal(idx)
+		par.Require(2*successorFrozenCoverage == sum+predecessorFrozenCoverageAdjusted,
+			"_checkFrozenCoverageOnSequencer: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",
+			i, predecessorFrozenCoverageAdjusted, successorFrozenCoverage, successorFrozenCoverage-predecessorFrozenCoverageAdjusted, sum)
+	}
+}
+
+// DelegateLock is a special case in amounts and inflation validation
+
 func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	path := par.DataContext().EvalPath()
 	par.Require(path[len(path)-1] == ConstraintIndexAmounts, "'amounts' must be at index %d", ConstraintIndexAmounts)
@@ -219,10 +252,6 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	o := ctx.SelfOutput()
 	_checkMinimumStorageDeposit(par, ctx, o)
 	cc, _ := o.ChainConstraint()
-	var seq *SequencerConstraint
-	if cc != nil {
-		seq, _ = o.SequencerConstraint()
-	}
 	if !ctx.SelfIsProducedOutput() {
 		// only enforce amount on produced outputs
 		return []byte{0xff}
@@ -251,37 +280,12 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	}
 
 	// check frozen coverage
-	if seq == nil {
+	if _, idx := o.SequencerConstraint(); idx != 0xff {
+		// check frozen coverage on sequencer
+		_checkFrozenCoverageOnSequencer(par, ctx, cc.ID, amounts, predAmounts, txid.Slot(), predID.Slot())
+	} else {
+		// only sequencer and delegation outputs can have non-zero frozen coverage
 		par.Require(amounts.IsFrozenCoverageZero(), "evalAmounts: expected all-0 frozen coverage")
-		return []byte{0xff}
-	}
-	// sequencer output
-	dcons := DelegationConst()
-	predEpoch := dcons.EpochFromSlot(cc.ID, uint32(predID.Timestamp().Slot))
-	succEpoch := dcons.EpochFromSlot(cc.ID, uint32(txid.Timestamp().Slot))
-	par.Require(predEpoch <= succEpoch, "evalAmounts: inconsistency 1")
-
-	// adjustment to the difference between epochs of predecessor and successor
-	diffEpochs := byte(succEpoch - predEpoch)
-	// frozen coverage at the predecessor adjusted to the epoch of the successor
-	// if diffEpochs >= dconst.MaxFrozenEpochs it will always be 0
-	predFrozenCoverageAdjusted := func(i byte) (ret uint64) {
-		if i >= diffEpochs {
-			ret = predAmounts.Amount(AmountIndexFrozenCoverage + i - diffEpochs)
-		}
-		return
-	}
-	// Enforce correct frozen coverage on sequencer output.
-	// Must be: 2*successorFrozenCoverage == sumOfFrozenDelegations + predecessorFrozenCoverageAdjusted
-	for i := 0; i < int(dcons.MaxFrozenEpochs); i++ {
-		idx := AmountIndexFrozenCoverage + byte(i)
-		successorFrozenCoverage := amounts.Amount(idx)
-		predecessorFrozenCoverageAdjusted := predFrozenCoverageAdjusted(byte(i))
-		par.Require(successorFrozenCoverage >= predecessorFrozenCoverageAdjusted, "inconsistency 3 at index %d", i)
-		sum := ctx.ProducedTotal(idx)
-		par.Require(2*successorFrozenCoverage == sum+predecessorFrozenCoverageAdjusted,
-			"_checkFrozenCoverageOnSequencer: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",
-			i, predecessorFrozenCoverageAdjusted, successorFrozenCoverage, successorFrozenCoverage-predecessorFrozenCoverageAdjusted, sum)
 	}
 	return []byte{0xff}
 }
