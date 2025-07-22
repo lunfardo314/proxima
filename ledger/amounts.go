@@ -182,6 +182,11 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 	var expectedInflation uint64
 	inflation := o.Inflation()
 
+	// inflation must be either 0 or exactly expected non-zero value
+	if inflation == 0 {
+		return
+	}
+
 	if ctx.IsBranchTransaction() {
 		_, stemIdx := ctx.SequencerAndStemOutputIndices()
 		stemOut, err := ctx.ProducedOutput(stemIdx)
@@ -194,7 +199,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 			util.Th(expectedInflation), util.Th(inflation))
 	} else {
 		txSlot := ctx.Timestamp().Slot
-		if inflation > 0 && predSlot != txSlot {
+		if predSlot != txSlot {
 			inAmount := predAmounts.Amount(AmountIndexTokenBalance)
 			// do not inflate frozen coverage on delegation output, otherwise standard one-slot inflation
 			if o.Lock().Name() != DelegateLockName {
