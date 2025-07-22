@@ -89,7 +89,7 @@ func (a Amounts) InflationAmount() (ret uint64) {
 }
 
 func (a Amounts) IsFrozenCoverageZero() bool {
-	dconst := DelegationConstants()
+	dconst := DelegationConst()
 	for i := 0; i < int(dconst.MaxFrozenEpochs); i++ {
 		if a.Amount(AmountIndexFrozenCoverage+byte(i)) != 0 {
 			return false
@@ -99,7 +99,7 @@ func (a Amounts) IsFrozenCoverageZero() bool {
 }
 
 func (a Amounts) FrozenCoverage(i byte) (ret uint64) {
-	util.Assertf(uint32(i) < DelegationConstants().MaxFrozenEpochs, "Amounts.FrozenCoverage: wrong vector index %d", i)
+	util.Assertf(uint32(i) < DelegationConst().MaxFrozenEpochs, "Amounts.FrozenCoverage: wrong vector index %d", i)
 	return a.Amount(AmountIndexFrozenCoverage + i)
 }
 
@@ -212,7 +212,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 		if predID.Slot() < txid.Slot() {
 			inAmount := predAmounts.Amount(AmountIndexTokenBalance)
 			// do not inflate frozen coverage on delegation output, otherwise standard one-slot inflation
-			if o.Lock().Name() != Delegate2LockName {
+			if o.Lock().Name() != DelegateLockName {
 				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
 			}
 			expectedInflation = L().CalcChainInflationAmountOneSlot(txid.Slot(), inAmount)
@@ -221,7 +221,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	}
 	// TODO -- branch inflation
 
-	if o.Lock().Name() == Delegate2LockName {
+	if o.Lock().Name() == DelegateLockName {
 		// delegation output -> frozen coverage constraints are enforced by the delegate2 lock
 		// TODO move it here?
 		return []byte{0xff}
@@ -232,7 +232,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 		return []byte{0xff}
 	}
 	// sequencer output
-	dcons := DelegationConstants()
+	dcons := DelegationConst()
 	predEpoch := dcons.EpochFromSlot(cc.ID, uint32(predID.Timestamp().Slot))
 	succEpoch := dcons.EpochFromSlot(cc.ID, uint32(txid.Timestamp().Slot))
 	par.Require(predEpoch <= succEpoch, "evalAmounts: inconsistency 1")

@@ -192,7 +192,7 @@ func (lib *Library) registerConstraints() {
 	//registerImmutableConstraint(lib)
 	registerCommitToSiblingConstraint(lib)
 	registerTotalAmountConstraint(lib)
-	registerDelegate2Lock(lib)
+	registerDelegateLock(lib)
 
 	lib.appendInlineTests(func() {
 		// inline tests

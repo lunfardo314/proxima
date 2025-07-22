@@ -138,15 +138,15 @@ func (s SugaredStateReader) GetChainOutputWithChainID(chainID base.ChainID) (led
 	return ret, nil
 }
 
-func (s SugaredStateReader) GetDelegatedOutput(delegationID base.ChainID) (ret ledger.Delegate2Output, err error) {
+func (s SugaredStateReader) GetDelegatedOutput(delegationID base.ChainID) (ret ledger.DelegateOutput, err error) {
 	var o ledger.OutputWithChainID
 	o, err = s.GetChainOutputWithChainID(delegationID)
 	if err != nil {
 		return
 	}
 	var ok bool
-	if ret, ok = ledger.Delegate2OutputFromOutputWithChainID(&o); !ok {
-		err = fmt.Errorf("GetDelegatedOutput: not a Delegate2Output")
+	if ret, ok = ledger.DelegateOutputFromOutputWithChainID(&o); !ok {
+		err = fmt.Errorf("GetDelegatedOutput: not a DelegateOutput")
 	}
 	return
 }
@@ -238,9 +238,9 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountabl
 	return ret, nil
 }
 
-func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget ledger.Accountable, fun func(o *ledger.Delegate2Output) bool) {
+func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget ledger.Accountable, fun func(o *ledger.DelegateOutput) bool) {
 	err := s.IterateOutputsForAccount(delegationTarget, func(oid base.OutputID, o *ledger.Output) bool {
-		out, ok := ledger.AsDelegate2Output(o, oid)
+		out, ok := ledger.AsDelegateOutput(o, oid)
 		if ok && ledger.EqualAccountables(delegationTarget, out.Target) {
 			return fun(&out)
 		}
@@ -359,7 +359,7 @@ func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWith
 
 type DelegationsOnSequencer struct {
 	SequencerOutput ledger.OutputWithID
-	Delegations     map[base.ChainID]ledger.Delegate2Output
+	Delegations     map[base.ChainID]ledger.DelegateOutput
 }
 
 func (s SugaredStateReader) GetDelegationsBySequencer() (map[base.ChainID]DelegationsOnSequencer, error) {
@@ -385,7 +385,7 @@ func (s SugaredStateReader) GetDelegationsBySequencer() (map[base.ChainID]Delega
 	}
 
 	for _, delegation := range nonSeq {
-		dl, ok := ledger.Delegate2OutputFromOutputWithChainID(delegation)
+		dl, ok := ledger.DelegateOutputFromOutputWithChainID(delegation)
 		if !ok {
 			// chain but not delegation
 			continue
@@ -396,7 +396,7 @@ func (s SugaredStateReader) GetDelegationsBySequencer() (map[base.ChainID]Delega
 			continue
 		}
 		if len(seq.Delegations) == 0 {
-			seq.Delegations = make(map[base.ChainID]ledger.Delegate2Output)
+			seq.Delegations = make(map[base.ChainID]ledger.DelegateOutput)
 		}
 		seq.Delegations[delegation.ChainID] = dl
 		ret[dl.ChainID] = seq
