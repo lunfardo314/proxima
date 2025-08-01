@@ -67,7 +67,7 @@ func NewOutput(buildFun func(o *OutputBuilder)) *Output {
 	return &Output{arr.Tuple()}
 }
 
-func OutputBasic(amount uint64, lock Lock) *Output {
+func OutputBasic(amount int64, lock Lock) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmounts(amount).WithLock(lock)
 	})
@@ -161,7 +161,7 @@ func (o *Output) MustStemLock() *StemLock {
 }
 
 // WithAmounts can only be used inside r/o override closure
-func (o *OutputBuilder) WithAmounts(amount ...uint64) *OutputBuilder {
+func (o *OutputBuilder) WithAmounts(amount ...int64) *OutputBuilder {
 	o.MustPutAtIdxWithPadding(ConstraintIndexAmounts, NewAmounts(amount...).Bytes())
 	return o
 }
@@ -178,7 +178,7 @@ func (o *Output) TokenBalance() uint64 {
 	return o.Amounts().TokenBalance()
 }
 
-func (o *Output) FrozenCoverage(i byte) uint64 {
+func (o *Output) FrozenCoverage(i byte) int64 {
 	return o.Amounts().FrozenCoverage(i)
 }
 
@@ -217,7 +217,7 @@ func (o *OutputBuilder) PutConstraint(c []byte, idx byte) {
 	o.MustPutAtIdxWithPadding(idx, c)
 }
 
-func (o *OutputBuilder) PutAmounts(amount ...uint64) {
+func (o *OutputBuilder) PutAmounts(amount ...int64) {
 	o.PutConstraint(NewAmounts(amount...).Bytes(), ConstraintIndexAmounts)
 }
 

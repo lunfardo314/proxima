@@ -192,7 +192,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(td.seqChainOrigin.Output.TokenBalance())
+		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance()))
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
 	}))
 	require.NoError(td, err)
@@ -264,7 +264,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(td.seqChainOrigin.Output.TokenBalance())
+		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance()))
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
 	}))
 	require.NoError(td, err)
@@ -342,7 +342,7 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	txb.PutUnlockParams(0, 2, ledger.FinishChainUnlockParams)
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(amount - tagAlongFee).WithLock(td.masterAddr)
+		o.WithAmounts(int64(amount - tagAlongFee)).WithLock(td.masterAddr)
 	}))
 	require.NoError(td, err)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -677,9 +677,14 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	util.AssertNoError(err)
 
 	amounts := append([]uint64{td.seqChainOrigin.Output.TokenBalance() - par.inflationAdvance, 0}, par.sequencerFrozenCoverage...)
+	amountsInt := make([]int64, len(amounts))
+
+	for i, v := range amounts {
+		amountsInt[i] = int64(v)
+	}
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(amounts...)
+		o.WithAmounts(amountsInt[:]...)
 		o.WithLock(td.seqChainOrigin.Output.Lock())
 		o.MustPushConstraint(successorChainConstraint.Bytes())
 		o.MustPushConstraint(ledger.NewSequencerConstraint(2).Bytes())
@@ -687,9 +692,14 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	util.AssertNoError(err)
 
 	amounts = append([]uint64{td.delegatedOutput.Output.TokenBalance() + par.inflationAdvance, 0}, par.successorFrozenCoverage...)
+	amountsInt = make([]int64, len(amounts))
+
+	for i, v := range amounts {
+		amountsInt[i] = int64(v)
+	}
 	cc := ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(amounts...)
+		o.WithAmounts(amountsInt[:]...)
 		o.WithLock(td.delegatedOutput.Output.Lock())
 		o.MustPushConstraint(cc.Bytes())
 		freezeUntil := uint32(0)

@@ -120,7 +120,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		} else {
 			// for non-branch
 			mainChainInflationAmount = ledger.L().CalcChainInflationAmountOneSlot(par.ChainInput.Timestamp().Slot,
-				par.ChainInput.Output.TokenBalance()+par.ChainInput.Output.FrozenCoverage(0))
+				par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)))
 		}
 	}
 
@@ -162,7 +162,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 	var chainOutConstraintIdx byte
 
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.PutAmounts(chainOutAmount, mainChainInflationAmount)
+		o.PutAmounts(int64(chainOutAmount), int64(mainChainInflationAmount))
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
 		chainOutConstraint := ledger.NewChainConstraint(par.ChainInput.ChainID, chainPredIdx, par.ChainInput.ChainConstraintIndex, par.ChainInput.OriginSlot, par.ChainInput.OriginAmount)
@@ -221,7 +221,7 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		util.Assertf(len(vrfProof) > 0, "len(vrfProof)>0")
 
 		stemOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(par.StemInput.Output.TokenBalance())
+			o.WithAmounts(int64(par.StemInput.Output.TokenBalance()))
 			o.WithLock(&ledger.StemLock{
 				PredecessorOutputID: par.StemInput.ID,
 				VRFProof:            vrfProof,

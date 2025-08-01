@@ -1,6 +1,8 @@
 package ledger
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"slices"
@@ -14,7 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-type Amounts []uint64
+type Amounts []int64
 
 const AmountsConstraintName = "amounts"
 
@@ -24,7 +26,7 @@ const (
 	AmountIndexFrozenCoverage
 )
 
-func NewAmounts(args ...uint64) Amounts {
+func NewAmounts(args ...int64) Amounts {
 	util.Assertf(len(args) <= 15, "NewAmounts: too many arguments")
 	lastNotZero := -1
 	for i, arg := range args {
@@ -52,12 +54,15 @@ func (a Amounts) Source() string {
 	}
 	argsStr := make([]string, len(a))
 	for i, arg := range a {
-		if arg == 0 {
-			argsStr[i] = "0x"
-		} else if arg <= 255 {
-			argsStr[i] = strconv.FormatUint(arg, 10)
+		if 0 < arg && arg <= 255 {
+			// one byte
+			argsStr[i] = strconv.FormatInt(arg, 10)
 		} else {
-			argsStr[i] = "z64/" + strconv.FormatUint(arg, 10)
+			// zero-trimmed 8 uint64 bytes
+			var b [8]byte
+			binary.BigEndian.PutUint64(b[:], uint64(arg))
+			trimmed := easyfl_util.TrimLeadingZeroBytes(b[:])
+			argsStr[i] = "0x" + hex.EncodeToString(trimmed)
 		}
 	}
 	return AmountsConstraintName + "(" + strings.Join(argsStr, ",") + ")"
@@ -71,7 +76,7 @@ func (a Amounts) String() string {
 	return AmountsConstraintName + "(" + strings.Join(argsStr, ",") + ")"
 }
 
-func (a Amounts) Amount(i byte) (ret uint64) {
+func (a Amounts) Amount(i byte) (ret int64) {
 	util.Assertf(i <= 15, "amount index is out of range: %d", i)
 	if int(i) < len(a) {
 		ret = a[i]
@@ -79,14 +84,16 @@ func (a Amounts) Amount(i byte) (ret uint64) {
 	return
 }
 
-func (a Amounts) TokenBalance() (ret uint64) {
-	ret = a.Amount(AmountIndexTokenBalance)
-	return
+func (a Amounts) TokenBalance() uint64 {
+	ret := a.Amount(AmountIndexTokenBalance)
+	util.Assertf(ret >= 0, "token balance can't be negative. Got %d", a)
+	return uint64(ret)
 }
 
-func (a Amounts) InflationAmount() (ret uint64) {
-	ret = a.Amount(AmountIndexInflation)
-	return
+func (a Amounts) InflationAmount() uint64 {
+	ret := a.Amount(AmountIndexInflation)
+	util.Assertf(ret >= 0, "inflation amount must can't be negative. Got %d", a)
+	return uint64(ret)
 }
 
 func (a Amounts) IsFrozenCoverageZero() bool {
@@ -99,7 +106,7 @@ func (a Amounts) IsFrozenCoverageZero() bool {
 	return true
 }
 
-func (a Amounts) FrozenCoverage(i byte) (ret uint64) {
+func (a Amounts) FrozenCoverage(i byte) (ret int64) {
 	util.Assertf(uint32(i) < DelegationConst().MaxFrozenEpochs, "Amounts.FrozenCoverage: wrong vector index %d", i)
 	return a.Amount(AmountIndexFrozenCoverage + i)
 }
@@ -107,10 +114,16 @@ func (a Amounts) FrozenCoverage(i byte) (ret uint64) {
 // AddToVector adds amounts to vector with safe arithmetics
 // Returns false in case of arithmetic overflow, but does not panic
 // It is up to the caller to process overflow
-func (a Amounts) AddToVector(vect *[16]uint64) (overflow bool) {
+func (a Amounts) AddToVector(vect *[16]int64) (overflow bool) {
 	for i, v := range a {
-		if vect[i] >= math.MaxUint64-v {
-			overflow = true
+		if v >= 0 {
+			if vect[i] >= math.MaxInt64-v {
+				overflow = true
+			}
+		} else {
+			if vect[i] < -v {
+				overflow = true
+			}
 		}
 		vect[i] += v
 	}
@@ -126,10 +139,13 @@ func AmountsFromBytes(data []byte) (Amounts, error) {
 		return nil, fmt.Errorf("AmountsFromBytes: not 'amounts' constraint")
 	}
 	ret := make(Amounts, len(args))
+	var v uint64
 	for i, arg := range args {
-		if ret[i], err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(arg)); err != nil {
+		v, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(arg))
+		if err != nil {
 			return nil, fmt.Errorf("AmountsFromBytes: %w", err)
 		}
+		ret[i] = int64(v)
 	}
 	return ret, nil
 }
@@ -205,7 +221,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 			if o.Lock().Name() != DelegateLockName {
 				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
 			}
-			expectedInflation = L().CalcChainInflationAmountOneSlot(txSlot, inAmount)
+			expectedInflation = L().CalcChainInflationAmountOneSlot(txSlot, uint64(inAmount))
 		}
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong chain inflation value. Expected %s, got %s",
 			util.Th(expectedInflation), util.Th(inflation))
@@ -223,7 +239,7 @@ func _checkFrozenCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *
 	diffEpochs := byte(succEpoch - predEpoch)
 	// frozen coverage at the predecessor adjusted to the epoch of the successor
 	// if diffEpochs >= dconst.MaxFrozenEpochs it will always be 0
-	predFrozenCoverageAdjusted := func(i byte) (ret uint64) {
+	predFrozenCoverageAdjusted := func(i byte) (ret int64) {
 		if i >= diffEpochs {
 			ret = predAmounts.Amount(AmountIndexFrozenCoverage + i - diffEpochs)
 		}
@@ -237,7 +253,7 @@ func _checkFrozenCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *
 		predecessorFrozenCoverageAdjusted := predFrozenCoverageAdjusted(byte(i))
 		par.Require(successorFrozenCoverage >= predecessorFrozenCoverageAdjusted, "inconsistency 3 at index %d", i)
 		sum := ctx.ProducedTotal(idx)
-		par.Require(2*successorFrozenCoverage == sum+predecessorFrozenCoverageAdjusted,
+		par.Require(2*successorFrozenCoverage == int64(sum)+predecessorFrozenCoverageAdjusted,
 			"_checkFrozenCoverageOnSequencer: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",
 			i, predecessorFrozenCoverageAdjusted, successorFrozenCoverage, successorFrozenCoverage-predecessorFrozenCoverageAdjusted, sum)
 	}

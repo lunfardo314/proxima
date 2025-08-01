@@ -29,8 +29,8 @@ type (
 		txid                     base.TransactionID
 		sender                   ledger.AddressED25519
 		timestamp                base.LedgerTime
-		totalAmountPersisted     uint64                    // persisted in tx
-		producedAmountTotals     [16]uint64                // calculated by summing up amount vectors
+		totalAmountPersisted     uint64                    // persisted in tx, always positive
+		producedAmountTotals     [16]uint64                // calculated by summing up amount vectors (which are int64, however, sums must be positive)
 		sequencerTransactionData *SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
 
@@ -426,6 +426,8 @@ func ScanOutputs(tx *Transaction) error {
 	pathToAmounts := []byte{ledger.TxOutputs, 0, 0}
 	pathToLock := []byte{ledger.TxOutputs, 0, 1}
 
+	var producedAmountTotals [16]int64
+
 	for i := 0; i < numOutputs; i++ {
 		pathToAmounts[1] = byte(i)
 		amounts, err = ledger.AmountsFromBytes(tx.tree.MustBytesAtPath(pathToAmounts))
@@ -438,10 +440,17 @@ func ScanOutputs(tx *Transaction) error {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
 
-		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
+		if overflow := amounts.AddToVector(&producedAmountTotals); overflow {
 			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
 	}
+	for i, v := range producedAmountTotals {
+		if v < 0 {
+			return fmt.Errorf("scanning outputs: negative total value")
+		}
+		tx.producedAmountTotals[i] = uint64(producedAmountTotals[i])
+	}
+
 	// check the total amounts constraint
 	if tx.totalAmountPersisted != tx.producedAmountTotals[0] {
 		return fmt.Errorf("wrong total produced amount")

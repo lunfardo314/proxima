@@ -415,7 +415,7 @@ func TestChain1(t *testing.T) {
 		txb.PutUnlockParams(1, 3, ledger.FinishChainUnlockParams)
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(total).WithLock(outs[0].Output.Lock())
+			o.WithAmounts(int64(total)).WithLock(outs[0].Output.Lock())
 		}))
 		require.NoError(t, err)
 
@@ -493,7 +493,7 @@ func TestChain1(t *testing.T) {
 		// produce new output with same amount but without chain constraint
 		// it will be the only produced output of the transaction
 		outNonChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(chainIN.Output.TokenBalance()).
+			o.WithAmounts(int64(chainIN.Output.TokenBalance())).
 				WithLock(chainIN.Output.Lock())
 		})
 		_, err = txb.ProduceOutput(outNonChain)
@@ -1278,7 +1278,7 @@ func TestTotalAmount(t *testing.T) {
 			require.NoError(t, err)
 		}
 		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(total).WithLock(addr0)
+			o.WithAmounts(int64(total)).WithLock(addr0)
 			o.MustPushConstraint(ledger.NewTotalAmount(total).Bytes())
 		})
 
@@ -1316,7 +1316,7 @@ func TestTotalAmount(t *testing.T) {
 			require.NoError(t, err)
 		}
 		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(total).WithLock(addr0)
+			o.WithAmounts(int64(total)).WithLock(addr0)
 			o.MustPushConstraint(ledger.NewTotalAmount(total / 3).Bytes())
 		})
 

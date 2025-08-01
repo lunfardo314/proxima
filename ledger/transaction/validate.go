@@ -96,8 +96,8 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 	if err != nil {
 		return err
 	}
-	if overflow, idx := ctx._sumConsumedTotals(outs); overflow {
-		return fmt.Errorf("validateOutputs: arithmetic overflow in consumed output #%d", idx)
+	if err = ctx._sumConsumedTotals(outs); err != nil {
+		return fmt.Errorf("validateOutputs: %w", err)
 	}
 	if ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance] != ctx.totalConsumedAmounts[ledger.AmountIndexTokenBalance]+ctx.totalProducedAmounts[ledger.AmountIndexInflation] {
 		return fmt.Errorf("mismatch between token amounts: consumed(%s) + inflation(%s) != produced(%s)",
@@ -149,14 +149,21 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 	return nil
 }
 
-func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) (overflow bool, idx byte) {
+func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) error {
+	var totalConsumedAmounts [16]int64
+	var overflow bool
 	for i, o := range outs {
-		if overflow = o.Amounts().AddToVector(&ctx.totalConsumedAmounts); overflow {
-			idx = byte(i)
-			return
+		if overflow = o.Amounts().AddToVector(&totalConsumedAmounts); overflow {
+			return fmt.Errorf("arithmetic overflow in consumed output #%d", i)
 		}
 	}
-	return
+	for i, v := range totalConsumedAmounts {
+		if v < 0 {
+			return fmt.Errorf("negative total amount #%d", i)
+		}
+		ctx.totalConsumedAmounts[i] = uint64(totalConsumedAmounts[i])
+	}
+	return nil
 }
 
 func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {

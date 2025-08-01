@@ -222,7 +222,7 @@ type MakeDelegateInitOutputParams struct {
 
 func MakeDelegateInitOutput(par MakeDelegateInitOutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
-		o.WithAmounts(par.Amount)
+		o.WithAmounts(int64(par.Amount))
 		o.WithLock(NewDelegateLock(par.Target, par.Master, par.MaxFreezeSlots, par.MinInflationAdvancePerEpoch))
 		o.MustPushConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes())
 		o.MustPushConstraint(DelegateLockState{}.Bytes())
@@ -297,17 +297,17 @@ func (o *DelegateOutput) MakeDelegateSuccessorOutput(par MakeDelegateSuccessorOu
 		return nil, fmt.Errorf("MakeDelegateSuccessorOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
-	var amountsVector []uint64
+	var amountsVector []int64
 
 	if freeze {
-		amountsVector = make([]uint64, frozenEpochs+2)
-		amountsVector[0] = o.Output.TokenBalance() + par.Inflation - par.HarvestInflation
-		amountsVector[1] = par.Inflation
+		amountsVector = make([]int64, frozenEpochs+2)
+		amountsVector[0] = int64(o.Output.TokenBalance() + par.Inflation - par.HarvestInflation)
+		amountsVector[1] = int64(par.Inflation)
 		for i := 2; i < len(amountsVector); i++ {
 			amountsVector[i] = amountsVector[0]
 		}
 	} else {
-		amountsVector = []uint64{o.Output.TokenBalance() + par.Inflation - par.HarvestInflation}
+		amountsVector = []int64{int64(o.Output.TokenBalance() + par.Inflation - par.HarvestInflation)}
 	}
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
@@ -371,7 +371,7 @@ func (o *DelegateOutput) MakeDelegateRevokeOutput(par MakeDelegateRevokeOutputPa
 
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
-		o1.WithAmounts(o.Output.TokenBalance()+par.Inflation-par.HarvestInflation, par.Inflation)
+		o1.WithAmounts(int64(o.Output.TokenBalance()+par.Inflation-par.HarvestInflation), int64(par.Inflation))
 		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenSlots, 0))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{
@@ -656,7 +656,7 @@ and(
 // checks validity of the composition of the produced constraint 
 // $0 max freeze slots
 // $1 minimum advance inflation upon freeze per full epoch 
-func _validDelegation2Produced :
+func _validDelegationProduced :
 and(
     selfIsProducedOutput,
     enforceMinimumStorageDeposit,
@@ -712,7 +712,7 @@ and(
 
 // $0 target chain lock
 // $1 master lock
-func _validDelegation2Consumed : and(
+func _validDelegationConsumed : and(
    selfIsConsumedOutput,
    or(
       _masterUnlocked($1),
@@ -728,8 +728,8 @@ func _validDelegation2Consumed : and(
 func delegateLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1),
     or(
-       _validDelegation2Produced($2, $3),
-       _validDelegation2Consumed($0,$1)
+       _validDelegationProduced($2, $3),
+       _validDelegationConsumed($0,$1)
     )
 )
 `

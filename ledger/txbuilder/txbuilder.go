@@ -438,7 +438,7 @@ func (t *TransferData) TotalAdjustedAmount() uint64 {
 	}
 
 	outTentative := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(t.Amount).WithLock(t.Lock)
+		o.WithAmounts(int64(t.Amount)).WithLock(t.Lock)
 		for _, c := range t.AddConstraints {
 			o.MustPushConstraint(c)
 		}
@@ -548,7 +548,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 
 	mainOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(amount).WithLock(par.Lock)
+		o.WithAmounts(int64(amount)).WithLock(par.Lock)
 		if par.AddMessage {
 			msg := ledger.NewMessageWithED25519SenderFromPublicKey(par.SenderPublicKey, par.MessageData)
 			o.MustPushConstraint(msg.Bytes())
@@ -569,7 +569,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	var tagAlongOut *ledger.Output
 	if par.TagAlong != nil {
 		tagAlongOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(par.TagAlong.Amount).
+			o.WithAmounts(int64(par.TagAlong.Amount)).
 				WithLock(ledger.ChainLockFromChainID(par.TagAlong.SeqID))
 		})
 		tagAlongFee = par.TagAlong.Amount
@@ -579,7 +579,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	var remainderIndex byte
 	if availableTokens > amount+tagAlongFee {
 		remainderOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(availableTokens - amount - tagAlongFee).
+			o.WithAmounts(int64(availableTokens - amount - tagAlongFee)).
 				WithLock(par.SourceAccount.AsLock())
 		})
 	}
@@ -655,7 +655,8 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		return nil, 0, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
 	// calculate inflation amount and create inflation constraint
-	inflationAmount := ledger.L().CalcChainInflationAmountOneSlot(par.ChainInput.Timestamp().Slot, par.ChainInput.Output.TokenBalance()+par.ChainInput.Output.FrozenCoverage(0))
+	inflationAmount := ledger.L().CalcChainInflationAmountOneSlot(par.ChainInput.Timestamp().Slot,
+		par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)))
 	chainInAmount := par.ChainInput.Output.TokenBalance()
 	if chainInAmount+inflationAmount <= par.WithdrawAmount {
 		// we do not handle complete withdrawal of funds from the chain
@@ -691,7 +692,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	// make chain output
 	var chainOutConstraintIdx byte
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.PutAmounts(chainOutAmount, inflationAmount)
+		o.PutAmounts(int64(chainOutAmount), int64(inflationAmount))
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint
 		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, chainInConstraint.OriginSlot, chainInConstraint.OriginAmount)
@@ -707,7 +708,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 
 	if par.WithdrawAmount > 0 {
 		withdrawOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(par.WithdrawAmount).
+			o.WithAmounts(int64(par.WithdrawAmount)).
 				WithLock(par.WithdrawTarget)
 		})
 		if _, err = txb.ProduceOutput(withdrawOut); err != nil {
@@ -784,7 +785,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 
 	var outChainConstraintIdx byte
 	chainSuccessorOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(availableTokens - amount)
+		o.WithAmounts(int64(availableTokens - amount))
 		o.WithLock(par.ChainOutput.Output.Lock())
 		outChainConstraintIdx = o.MustPushConstraint(chainConstr.Bytes())
 	})
@@ -794,7 +795,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 
 	mainOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(amount).WithLock(par.Lock)
+		o.WithAmounts(int64(amount)).WithLock(par.Lock)
 		if par.AddMessage {
 			msg := ledger.NewMessageWithED25519SenderFromPublicKey(par.SenderPublicKey, par.MessageData)
 			o.MustPushConstraint(msg.Bytes())
@@ -970,7 +971,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
 	tagAlong := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(par.TagAlongFee)
+		o.WithAmounts(int64(par.TagAlongFee))
 		o.WithLock(ledger.ChainLockFromChainID(par.TagAlongSequencer))
 	})
 	if _, err = txb.ProduceOutput(tagAlong); err != nil {
@@ -978,7 +979,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 	if inputTotal > par.Amount+par.TagAlongFee {
 		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(inputTotal - par.Amount - par.TagAlongFee)
+			o.WithAmounts(int64(inputTotal - par.Amount - par.TagAlongFee))
 			o.WithLock(par.Master.AsLock())
 		})
 		if _, err = txb.ProduceOutput(remainder); err != nil {

@@ -208,7 +208,8 @@ func TestInflationConst(t *testing.T) {
 		t.Logf("max slot = %s --> years %s", util.Th(maxSlot), util.Th(maxSlot/slotsPerYear))
 	})
 	t.Run("inflation yearly", func(t *testing.T) {
-
+		t.Logf("max uint64: %s", util.Th(uint64(math.MaxUint64)))
+		t.Logf("max int64: %s", util.Th(int64(math.MaxInt64)))
 		amount := uint64(ledger.DefaultInitialSupply)
 		for year := 0; year < 10; year++ {
 			amountStart := amount
@@ -218,8 +219,9 @@ func TestInflationConst(t *testing.T) {
 				amount += infl
 				slot += 1
 			}
-			t.Logf("year %2d   final supply: %s      annual inflation: %.2f%%",
-				year, util.Th(amount), float32(amount-amountStart)*100/float32(amountStart))
+			b := bits(int64(amount))
+			t.Logf("year %2d   final supply: %s      annual inflation: %.2f%%  occupied bits: %d, remaining: %d",
+				year, util.Th(amount), float32(amount-amountStart)*100/float32(amountStart), b, 64-b)
 		}
 	})
 	t.Run("inflation advance", func(t *testing.T) {
@@ -229,4 +231,12 @@ func TestInflationConst(t *testing.T) {
 			t.Logf("amount: %s, advance: %d", util.Th(a), adv)
 		}
 	})
+}
+
+func bits(v int64) (ret int) {
+	for v > 0 {
+		ret++
+		v >>= 1
+	}
+	return
 }

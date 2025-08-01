@@ -17,7 +17,7 @@ func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *Outp
 		OutputWithID: OutputWithID{
 			ID: oid,
 			Output: NewOutput(func(o *OutputBuilder) {
-				o.WithAmounts(initialSupply).WithLock(controllerAddress)
+				o.WithAmounts(int64(initialSupply)).WithLock(controllerAddress)
 				chainIdx := o.MustPushConstraint(NewChainOrigin(0, initialSupply).Bytes())
 				o.MustPushConstraint(NewSequencerConstraint(chainIdx).Bytes())
 

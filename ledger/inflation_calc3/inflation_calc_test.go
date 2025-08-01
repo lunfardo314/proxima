@@ -93,7 +93,7 @@ func TestInflation3Final(t *testing.T) {
 	startTime := time.Now()
 	for s := 0; s < slotsPerYear*years; s++ {
 		ts := base.NewLedgerTime(base.Slot(s), 5)
-		inflationSlot := ledger.L().CalcChainInflationAmount(ts, ts.AddSlots(1), supply)
+		inflationSlot := ledger.L().CalcChainInflationAmountOneSlot(ts.Slot, supply)
 
 		if s > 0 && s%slotsPerYear == 0 {
 			inflationAnnual := supply - supplyYearStart
