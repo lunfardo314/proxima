@@ -47,7 +47,7 @@ func (ctx *TxContext) LinesSource(prefix ...string) *lines.Lines {
 }
 
 func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string) *lines.Lines, prefix ...string) *lines.Lines {
-	txid := ctx.TransactionID()
+	txid := ctx.ID()
 	ret := lines.New(prefix...)
 	ret.Add("Transaction id: %s, size: %d", txid.String(), len(ctx.TransactionBytes()))
 	tsBin, ts := ctx.MustTimestampData()
@@ -70,7 +70,7 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 		eqCom = "   !!! NOT EQUAL WITH INPUT COMMITMENT !!!!"
 	}
 	ret.Add("Consumed output hash: %s%s", easyfl_util.Fmt(h[:]), eqCom)
-	sign := ctx.Signature()
+	sign := ctx.SignatureBytes()
 	ret.Add("Signature: %s", easyfl_util.Fmt(sign))
 	if len(sign) == 96 {
 		sender := blake2b.Sum256(sign[64:])
@@ -93,7 +93,7 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 			ret.Add("  #%d: %s (parse error)", idx, oid.String())
 			return true
 		}
-		unlockBin := ctx.UnlockDataAt(idx)
+		unlockBin := ctx.MustUnlockDataAt(idx)
 		ret.Add("  #%d: %s", idx, oid.String()).
 			Add("       bytes (%d): %s", len(o.Bytes()), hex.EncodeToString(o.Bytes())).
 			Append(utxoToLines(o, "     ")).

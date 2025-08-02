@@ -85,6 +85,6 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	if !glb.NoWait() {
-		glb.TrackTxInclusion(txCtx.TransactionID(), time.Second)
+		glb.TrackTxInclusion(txCtx.ID(), time.Second)
 	}
 }

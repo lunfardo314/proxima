@@ -18,12 +18,12 @@ import (
 type (
 	TxContextAccess interface {
 		BytesAtPath([]byte) ([]byte, error)
-		TransactionID() base.TransactionID
+		ID() base.TransactionID
 		SequencerAndStemOutputIndices() (byte, byte)
 		ConsumedTotal(i byte) uint64
 		ProducedTotal(i byte) uint64
 		ConsumedOutput(idx byte) (*Output, error)
-		ProducedOutput(idx byte) (*OutputWithID, error)
+		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
 		InputID(idx byte) (base.OutputID, error)
 		IsSequencerTransaction() bool
 		IsBranchTransaction() bool

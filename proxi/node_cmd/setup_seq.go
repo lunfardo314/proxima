@@ -58,7 +58,7 @@ func runSeqSetupCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 		glb.Infof("new chain id is %s", cid.String())
 		if !glb.NoWait() {
-			glb.TrackTxInclusion(txCtx.TransactionID(), time.Second)
+			glb.TrackTxInclusion(txCtx.ID(), time.Second)
 		}
 		chainId = &cid
 	} else {

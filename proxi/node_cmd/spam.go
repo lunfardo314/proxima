@@ -197,7 +197,7 @@ func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, base
 	var lastOuts []*ledger.OutputWithID
 	if txCtx != nil {
 		ret = append(ret, txCtx.TransactionBytes())
-		lastOut, _ := txCtx.ProducedOutput(0)
+		lastOut, _ := txCtx.ProducedOutputWithIDAt(0)
 		lastOuts = []*ledger.OutputWithID{lastOut}
 		numTx--
 	} else {

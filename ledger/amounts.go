@@ -205,7 +205,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 
 	if ctx.IsBranchTransaction() {
 		_, stemIdx := ctx.SequencerAndStemOutputIndices()
-		stemOut, err := ctx.ProducedOutput(stemIdx)
+		stemOut, err := ctx.ProducedOutputWithIDAt(stemIdx)
 		par.RequireNoError(err)
 		stemLock, ok := stemOut.Output.StemLock()
 		par.Require(ok, "inconsistency: can't find stemLock")
@@ -302,7 +302,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	// it is a chain output
 	predID, err := ctx.InputID(cc.PredecessorInputIndex)
 	par.RequireNoError(err)
-	succID, err := base.NewOutputID(ctx.TransactionID(), path[len(path)-2])
+	succID, err := base.NewOutputID(ctx.ID(), path[len(path)-2])
 	par.RequireNoError(err)
 
 	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)

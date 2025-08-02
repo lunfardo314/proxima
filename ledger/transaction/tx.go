@@ -1093,3 +1093,7 @@ func (tx *Transaction) TotalProducedAmounts() (ret [16]uint64) {
 	ret = tx.producedAmountTotals
 	return
 }
+
+func (tx *Transaction) InputCommitment() []byte {
+	return tx.tree.MustBytesAtPath(Path(ledger.TxInputCommitment))
+}

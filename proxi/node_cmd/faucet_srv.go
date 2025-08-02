@@ -272,7 +272,7 @@ func (fct *faucetServer) redrawFromAccount(targetLock ledger.Accountable) (base.
 	if err != nil {
 		return base.TransactionID{}, err
 	}
-	return txCtx.TransactionID(), nil
+	return txCtx.ID(), nil
 }
 
 func _trimToLastDay(lst []time.Time) ([]time.Time, int) {

@@ -93,29 +93,7 @@ func (ctx *TxContext) rootContext() easyfl.GlobalData[*ledger.EvalContext] {
 }
 
 func (ctx *TxContext) TransactionBytes() []byte {
-	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch))
-}
-
-func (ctx *TxContext) TransactionID() base.TransactionID {
-	return ctx.txid
-}
-
-func (ctx *TxContext) InputCommitment() []byte {
-	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxInputCommitment))
-}
-
-func (ctx *TxContext) ExplicitBaseline() (base.TransactionID, bool) {
-	data := ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxExplicitBaseline))
-	if len(data) == 0 {
-		return base.TransactionID{}, false
-	}
-	ret, err := base.TransactionIDFromBytes(data)
-	util.AssertNoError(err)
-	return ret, true
-}
-
-func (ctx *TxContext) Signature() []byte {
-	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxSignature))
+	return ctx.Transaction.Bytes()
 }
 
 func (ctx *TxContext) ForEachInputID(fun func(idx byte, oid *base.OutputID) bool) {
@@ -161,28 +139,8 @@ func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
 	return ledger.OutputFromBytes(data)
 }
 
-func (ctx *TxContext) UnlockDataAt(idx byte) []byte {
-	return ctx.Transaction.MustUnlockDataAt(idx)
-}
-
 func (ctx *TxContext) ProducedOutputData(idx byte) []byte {
 	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxOutputs, idx))
-}
-
-func (ctx *TxContext) ProducedOutput(idx byte) (*ledger.OutputWithID, error) {
-	return ctx.Transaction.ProducedOutputWithIDAt(idx)
-}
-
-func (ctx *TxContext) NumProducedOutputs() int {
-	return ctx.Transaction.NumProducedOutputs()
-}
-
-func (ctx *TxContext) NumInputs() int {
-	return ctx.Transaction.NumInputs()
-}
-
-func (ctx *TxContext) NumEndorsements() int {
-	return ctx.Transaction.NumEndorsements()
 }
 
 func (ctx *TxContext) InputID(idx byte) (base.OutputID, error) {
@@ -206,10 +164,6 @@ func (ctx *TxContext) SequencerAndStemOutputIndices() (byte, byte) {
 	ret := ctx.ctxTree.MustBytesAtPath(ledger.PathToSequencerAndStemOutputIndices)
 	util.Assertf(len(ret) == 2, "len(ret)==2")
 	return ret[0], ret[1]
-}
-
-func (ctx *TxContext) Tree() *tuples.Tree {
-	return ctx.ctxTree
 }
 
 func (ctx *TxContext) ConsumedTotal(i byte) uint64 {
