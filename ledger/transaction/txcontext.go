@@ -209,3 +209,7 @@ func (ctx *TxContext) TotalProducedAmounts() []uint64 {
 	}
 	return ctx.totalProducedAmounts[:lastNonZero+1]
 }
+
+func (ctx *TxContext) Tx() *Transaction {
+	return ctx.Transaction
+}

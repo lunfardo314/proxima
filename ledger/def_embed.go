@@ -18,16 +18,16 @@ import (
 type (
 	TxContextAccess interface {
 		BytesAtPath([]byte) ([]byte, error)
-		ID() base.TransactionID
-		SequencerAndStemOutputIndices() (byte, byte)
+		ConsumedOutput(idx byte) (*Output, error)
 		ConsumedTotal(i byte) uint64
 		ProducedTotal(i byte) uint64
-		ConsumedOutput(idx byte) (*Output, error)
-		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
-		InputID(idx byte) (base.OutputID, error)
-		IsSequencerTransaction() bool
 		IsBranchTransaction() bool
+		IsSequencerTransaction() bool
+		MustSequencerAndStemOutputIndices() (byte, byte)
+		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
 		Timestamp() base.LedgerTime
+		InputAt(idx byte) (base.OutputID, error)
+		OutputID(idx byte) base.OutputID
 	}
 
 	EvalContext struct {
