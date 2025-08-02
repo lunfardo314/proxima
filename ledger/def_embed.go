@@ -28,6 +28,9 @@ type (
 		Timestamp() base.LedgerTime
 		InputAt(idx byte) (base.OutputID, error)
 		OutputID(idx byte) base.OutputID
+		SequencerTransactionData() *SequencerTransactionData
+		IsUnlockedBy(account Accountable) bool
+		SenderAddress() AddressED25519
 	}
 
 	EvalContext struct {

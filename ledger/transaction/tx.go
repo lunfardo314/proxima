@@ -26,21 +26,12 @@ type (
 		txid                     base.TransactionID
 		sender                   ledger.AddressED25519
 		timestamp                base.LedgerTime
-		totalAmountPersisted     uint64                    // persisted in tx, always positive
-		producedAmountTotals     [16]uint64                // calculated by summing up amount vectors (which are int64, however, sums must be positive)
-		sequencerTransactionData *SequencerTransactionData // if != nil it is sequencer milestone transaction
+		totalAmountPersisted     uint64                           // persisted in tx, always positive
+		producedAmountTotals     [16]uint64                       // calculated by summing up amount vectors (which are int64, however, sums must be positive)
+		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
 
 	TxValidationOption func(tx *Transaction) error
-
-	// SequencerTransactionData represents sequencer and stem data on the transaction
-	SequencerTransactionData struct {
-		SequencerOutputData  *ledger.SequencerOutputData
-		StemOutputData       *ledger.StemLock // nil if does not contain stem output
-		SequencerID          base.ChainID     // adjusted for chain origin
-		SequencerOutputIndex byte
-		StemOutputIndex      byte // 0xff if not a branch transaction
-	}
 )
 
 // MainTxValidationOptions is all except Base, the time bounds and input context validation. Fastest first
@@ -270,7 +261,7 @@ func ParseSequencerData(tx *Transaction) error {
 	}
 
 	// it is a sequencer milestone transaction
-	tx.sequencerTransactionData = &SequencerTransactionData{
+	tx.sequencerTransactionData = &ledger.SequencerTransactionData{
 		SequencerOutputData: seqOutputData,
 		SequencerID:         sequencerID,
 		StemOutputIndex:     stemOutputIndex,
@@ -536,7 +527,7 @@ func (tx *Transaction) Hash() base.TransactionIDShort {
 }
 
 // SequencerTransactionData returns nil it is not a sequencer milestone
-func (tx *Transaction) SequencerTransactionData() *SequencerTransactionData {
+func (tx *Transaction) SequencerTransactionData() *ledger.SequencerTransactionData {
 	return tx.sequencerTransactionData
 }
 
@@ -563,10 +554,6 @@ func (tx *Transaction) StemOutputData() *ledger.StemLock {
 		return tx.sequencerTransactionData.StemOutputData
 	}
 	return nil
-}
-
-func (m *SequencerTransactionData) Short() string {
-	return fmt.Sprintf("SEQ(%s)", m.SequencerID.StringVeryShort())
 }
 
 func (tx *Transaction) SequencerOutput() *ledger.OutputWithID {
@@ -1096,4 +1083,8 @@ func (tx *Transaction) TotalProducedAmounts() (ret [16]uint64) {
 
 func (tx *Transaction) InputCommitment() []byte {
 	return tx.tree.MustBytesAtPath(Path(ledger.TxInputCommitment))
+}
+
+func (tx *Transaction) IsUnlockedBy(account ledger.Accountable) bool {
+	return ledger.EqualAccountables(tx.SenderAddress(), account)
 }

@@ -259,25 +259,29 @@ func _checkFrozenCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *
 	}
 }
 
-// _checkFrozenCoverageOnDelegateOutput assumes produced delegation output. Enforces correct frozen coverage values
+// _checkFrozenCoverageOnDelegateOutput assumes produced, not-origin delegation output. Enforces correct frozen coverage values
 func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, amounts, predAmounts Amounts, succID, predID base.OutputID) {
-	//seqIdx, _ := ctx.SequencerAndStemOutputIndices()
-	//
-	//if !ctx.IsSequencerTransaction(){
-	//	// it is not a sequencer transaction -> cannot be target unlock
-	//	par.Require(amounts.IsFrozenCoverageZero(), "_checkFrozenCoverageOnDelegateOutput: expected all-0 frozen coverage due to reason 1")
-	//	return
-	//}
-	//dOut, ok := AsDelegateOutput(o, succID)
-	//par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expected")
-	//
-	//ctx.TxContext()
-	//// only two options of transition
-	//if dOut.Revoked{
-	//	// delegation UTXO is revoked -> it was not frozen in the predecessor -> unfreeze remaining frozen coverage
-	//} else {
-	//	// delegation is not revoked -> it freezes some coverage
-	//}
+	dOut, ok := AsDelegateOutput(o, succID)
+	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expected")
+
+	if ctx.IsUnlockedBy(dOut.MasterLock) {
+		// transition by the master -> must be all-0
+		par.Require(amounts.IsFrozenCoverageZero(), "_checkFrozenCoverageOnDelegateOutput: expected all-0 frozen coverage due to reason: unlocked by the master")
+		return
+	}
+	// unlocked by the target as enforced by the delegation lock
+
+	// only two options of transition by the target: freezing and revoking
+	if dOut.Revoked {
+		// delegation UTXO is revoked -> it was not frozen in the predecessor -> unfreeze remaining frozen coverage
+		panic("not implemented")
+	} else {
+		// delegation is not revoked -> it freezes some coverage
+		expected := dOut.ExpectedProducedFrozenCoverageAmounts(succID.Slot().Uint32())
+		for i, v := range expected {
+			par.Require(o.FrozenCoverage(byte(i)) == v, "wrong frozen coverage value in %s", succID.StringShort)
+		}
+	}
 }
 
 // DelegateLock is a special case in amounts and inflation validation

@@ -355,6 +355,21 @@ func (o *DelegateOutput) FreezeUntilLatestEpoch(ts base.LedgerTime) (ret uint32)
 	return
 }
 
+func (o *DelegateOutput) ExpectedProducedFrozenCoverageAmounts(txSlot uint32) []int64 {
+	if o.LastFrozenEpoch < txSlot {
+		return nil
+	}
+	frozenSlots := o.LastFrozenEpoch - txSlot + 1
+	mx := DelegationConst().MaxFrozenEpochs
+	util.Assertf(frozenSlots <= mx, "frozenSlots <= mx")
+	ret := make([]int64, mx)
+	amount := o.Output.Amounts().Amount(0)
+	for i := uint32(0); i < frozenSlots; i++ {
+		ret[i] = amount
+	}
+	return ret
+}
+
 type MakeDelegateRevokeOutputParams struct {
 	Timestamp                base.LedgerTime
 	PredTimestamp            base.LedgerTime

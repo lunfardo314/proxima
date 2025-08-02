@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -114,9 +115,23 @@ const (
 	sequencerConstraintTemplate = SequencerConstraintName + "(%d)"
 )
 
-type SequencerConstraint struct {
-	// must point to the sibling chain constraint
-	ChainConstraintIndex byte
+type (
+	SequencerConstraint struct {
+		// must point to the sibling chain constraint
+		ChainConstraintIndex byte
+	}
+	// SequencerTransactionData represents sequencer and stem data on the transaction
+	SequencerTransactionData struct {
+		SequencerOutputData  *SequencerOutputData
+		StemOutputData       *StemLock    // nil if does not contain stem output
+		SequencerID          base.ChainID // adjusted for chain origin
+		SequencerOutputIndex byte
+		StemOutputIndex      byte // 0xff if not a branch transaction
+	}
+)
+
+func (m *SequencerTransactionData) Short() string {
+	return fmt.Sprintf("SEQ(%s)", m.SequencerID.StringVeryShort())
 }
 
 func NewSequencerConstraint(chainConstraintIndex byte) *SequencerConstraint {
