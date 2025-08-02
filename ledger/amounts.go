@@ -214,14 +214,13 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong branch inflation bonus. Expected %s, got %s",
 			util.Th(expectedInflation), util.Th(inflation))
 	} else {
-		txSlot := ctx.Timestamp().Slot
-		if predSlot != txSlot {
+		if predSlot != ctx.Timestamp().Slot {
 			inAmount := predAmounts.Amount(AmountIndexTokenBalance)
 			// do not inflate frozen coverage on delegation output, otherwise standard one-slot inflation
 			if o.Lock().Name() != DelegateLockName {
 				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
 			}
-			expectedInflation = L().CalcChainInflationAmountOneSlot(txSlot, uint64(inAmount))
+			expectedInflation = L().CalcChainInflationAmountOneSlot(predSlot, uint64(inAmount))
 		}
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong chain inflation value. Expected %s, got %s",
 			util.Th(expectedInflation), util.Th(inflation))

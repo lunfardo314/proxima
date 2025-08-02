@@ -347,6 +347,7 @@ func (o *Output) SequencerConstraint() (*SequencerConstraint, byte) {
 	return nil, 0xff
 }
 
+// IsSequencerOutput output contains sequencer constraint
 func (o *Output) IsSequencerOutput() bool {
 	_, idx := o.SequencerConstraint()
 	return idx != 0xff

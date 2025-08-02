@@ -238,11 +238,11 @@ func AsDelegateOutput(o *Output, oid base.OutputID) (ret DelegateOutput, ok bool
 }
 
 func DelegateOutputFromOutputWithChainID(o *OutputWithChainID) (ret DelegateOutput, ok bool) {
-	ret.OutputWithChainID = *o
 	lock := o.Output.Lock()
 	if lock.Name() != DelegateLockName {
 		return
 	}
+	ret.OutputWithChainID = *o
 	dLock, ok := lock.(*DelegateLock)
 	util.Assertf(ok, "DelegateOutputFromOutputWithChainID: inconsistency")
 	ret.DelegateLock = *dLock
@@ -251,6 +251,17 @@ func DelegateOutputFromOutputWithChainID(o *OutputWithChainID) (ret DelegateOutp
 		ret.DelegateLockState, err = DelegateLockStateFromBytes(data)
 	}
 	return
+}
+
+func IsFrozenDelegateOutput(o *Output, oid base.OutputID, txSlot base.Slot) bool {
+	lock := o.Lock()
+	if lock.Name() != DelegateLockName {
+		return false
+	}
+	dOut, ok := AsDelegateOutput(o, oid)
+	util.Assertf(ok, "IsFrozenDelegateOutput: inconsistency 1")
+
+	return dOut.UnfreezeSlot() <= uint32(txSlot)
 }
 
 type MakeDelegateSuccessorOutputParams struct {

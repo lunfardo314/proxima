@@ -119,8 +119,10 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 			mainChainInflationAmount = ledger.L().BranchInflationBonusDirect(vrfProof)
 		} else {
 			// for non-branch
-			mainChainInflationAmount = ledger.L().CalcChainInflationAmountOneSlot(par.ChainInput.Timestamp().Slot,
-				par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)))
+			if par.ChainInput.Timestamp().Slot != par.Timestamp.Slot {
+				mainChainInflationAmount = ledger.L().CalcChainInflationAmountOneSlot(par.ChainInput.Timestamp().Slot,
+					par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)))
+			}
 		}
 	}
 

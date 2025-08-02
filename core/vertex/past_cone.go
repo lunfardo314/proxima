@@ -7,6 +7,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
@@ -816,10 +817,10 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 	return
 }
 
-// CoverageDeltaRaw is not adjusted. Function does not check the consistency of the past cone.
-// Calculates coverage by checking them right in the state
-// Accounts for the frozen coverage in sequencer outputs
-// returns:
+// CoverageDeltaRaw is not adjusted for sequencer output. Function does not check the consistency of the past cone.
+// Calculates coverage by checking them right in the state and skipping frozen delegation outputs.
+// Accounts for the frozen coverage in sequencer outputs.
+// Returns:
 // - total coverage delta
 // - frozen coverage (included in the delta)
 func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (delta, frozen uint64) {
@@ -829,11 +830,16 @@ func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.Transacti
 	rdr := multistate.MakeSugared(getStateReader(*pc.GetBaseline()))
 	for vid := range pc.vertices {
 		for _, idx := range pc.consumedUTXOIndices(vid) {
-			if o := rdr.GetOutput(vid.OutputID(idx)); o != nil {
+			oid := vid.OutputID(idx)
+			if o := rdr.GetOutput(oid); o != nil {
+				if ledger.IsFrozenDelegateOutput(o, oid, pc.targetTs.Slot) {
+					// skip frozen output (this can be consumed when delegation is revoked)
+					continue
+				}
 				delta += o.TokenBalance()
-				if vid.IsSequencerMilestone() {
-					// add coverage frozen in the current epoch
-					fr := o.FrozenCoverage(0)
+				if o.IsSequencerOutput() {
+					// add coverage frozen by the sequencer in the current epoch
+					fr := uint64(o.FrozenCoverage(0))
 					delta += fr
 					frozen += fr
 				}
