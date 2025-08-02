@@ -19,9 +19,6 @@ import (
 	"golang.org/x/crypto/ed25519"
 )
 
-// TODO optimize transaction ID hashing only the essence (i.e. except the signature)
-//  and signing the transaction ID. That will speed-up signature validation
-
 // Transaction provides access to the tree of transferable transaction
 type (
 	Transaction struct {

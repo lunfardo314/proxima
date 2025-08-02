@@ -121,10 +121,10 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 
 func (ctx *TxContext) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, error) {
 	var err error
-	ret := make([]*ledger.Output, ctx.tree.MustNumElementsAtPath(pathToOutputs))
+	ret := make([]*ledger.Output, ctx.ctxTree.MustNumElementsAtPath(pathToOutputs))
 	path := common.Concat(pathToOutputs, 0)
 
-	_ = ctx.tree.ForEach(func(i byte, data []byte) bool {
+	_ = ctx.ctxTree.ForEach(func(i byte, data []byte) bool {
 		path[len(path)-1] = i
 		ret[i], err = ledger.OutputFromBytes(data)
 		return err == nil
@@ -167,7 +167,7 @@ func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) error {
 }
 
 func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
-	return ctx.tree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockData, consumedOutputIdx, constraintIdx))
+	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockData, consumedOutputIdx, constraintIdx))
 }
 
 // runOutput checks constraints of the output one-by-one
@@ -217,7 +217,7 @@ func (ctx *TxContext) validateInputCommitmentSafe() error {
 
 // ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
 func (ctx *TxContext) ConsumedOutputHash() [32]byte {
-	consumedOutputBytes := ctx.tree.MustBytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch))
+	consumedOutputBytes := ctx.ctxTree.MustBytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch))
 	return blake2b.Sum256(consumedOutputBytes)
 }
 

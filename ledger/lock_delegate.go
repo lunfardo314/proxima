@@ -421,6 +421,7 @@ func (o *DelegateOutput) LinesSource(prefix ...string) *lines.Lines {
 }
 
 // ------------------ delegation constants
+
 type DelegationConstants struct {
 	SafeRevocationSlots  uint32
 	DelegationEpochSlots uint32
@@ -582,7 +583,7 @@ func _notFrozen : or(isZero($0), lessThanUint($0, _selfEpoch))
 // $0 last frozen epoch
 func _validFrozenCoverageVector :
 if(
-   or(_selfIsRevoked, _notFrozen($0)), // revoked or not frozen
+   or(_selfIsRevoked, _notFrozen($0)), // if revoked or not frozen
    require(_selfIsZeroFrozenCoverage, !!!frozen_coverage_value_must_be_all_0),
    _validFrozenCoverages(selfTokenBalanceValue, add(sub($0, _selfEpoch), 3))
 )   
