@@ -234,6 +234,97 @@ func (txb *TransactionBuilder) ProducedAmount() (uint64, uint64) {
 	return retTotal, retInflation
 }
 
+// InsertSimpleChainTransition inserts a simple chain transition. Takes output with chain constraint from parameters,
+// Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
+func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, _ base.LedgerTime) error {
+	chainIN, err := ledger.OutputFromBytes(inChainData.Data)
+	if err != nil {
+		return err
+	}
+	cc, predecessorConstraintIndex := chainIN.ChainConstraint()
+	if predecessorConstraintIndex == 0xff {
+		return fmt.Errorf("can't find chain constrain in the output")
+	}
+	predecessorOutputIndex, err := txb.ConsumeOutput(chainIN, inChainData.ID)
+	if err != nil {
+		return err
+	}
+	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, cc.OriginSlot, cc.OriginAmount)
+	chainOut := chainIN.Clone(func(out *ledger.OutputBuilder) {
+		out.PutConstraint(successor.Bytes(), predecessorConstraintIndex)
+	})
+	successorOutputIndex, err := txb.ProduceOutput(chainOut)
+	if err != nil {
+		return err
+	}
+	txb.PutUnlockParams(predecessorOutputIndex, predecessorConstraintIndex, []byte{successorOutputIndex, predecessorConstraintIndex, 0})
+	txb.PutSignatureUnlock(successorOutputIndex)
+
+	return nil
+}
+
+func (txb *TransactionBuilder) String() string {
+	ret := []string{"TransactionBuilder:"}
+	ret = append(ret, fmt.Sprintf("Consumed outputs (%d):", len(txb.ConsumedOutputs)))
+	util.Assertf(len(txb.ConsumedOutputs) == len(txb.TransactionData.InputIDs), "len(txb.ConsumedOutputs) == len(txb.Transaction.InputIDs)")
+	for i := range txb.ConsumedOutputs {
+		ret = append(ret, fmt.Sprintf("%d : %s\n", i, txb.TransactionData.InputIDs[i].StringShort()))
+		ret = append(ret, txb.ConsumedOutputs[i].ToString("     "))
+	}
+	ret = append(ret, fmt.Sprintf("Produced outputs (%d):", len(txb.TransactionData.Outputs)))
+	for i, o := range txb.TransactionData.Outputs {
+		ret = append(ret, fmt.Sprintf("%d :%s", i, o.ToString("    ")))
+	}
+	ret = append(ret, fmt.Sprintf("Endorsements (%d):", len(txb.TransactionData.Endorsements)))
+	for i, txid := range txb.TransactionData.Endorsements {
+		ret = append(ret, fmt.Sprintf("%d : %s", i, txid.StringShort()))
+	}
+	return strings.Join(ret, "\n")
+}
+
+// LoadInput returns clone of the consumed output
+func (txb *TransactionBuilder) LoadInput(i byte) (*ledger.Output, error) {
+	if int(i) >= len(txb.ConsumedOutputs) {
+		return nil, fmt.Errorf("can't load input #%d", i)
+	}
+	return txb.ConsumedOutputs[i].Clone(), nil
+}
+
+// CalcFrozenCoverageDelta sums up frozen coverage vectors of all delegation outputs
+func (txb *TransactionBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
+	sum := new([15]int64)
+	for _, o := range txb.TransactionData.Outputs {
+		if o.Lock().Name() == ledger.DelegateLockName {
+			if overflow := o.Amounts().AddToVector(sum); overflow {
+				return nil, fmt.Errorf("CalcFrozenCoverageDelta: arithmetic overflow")
+			}
+		}
+	}
+	return sum[2 : 2+ledger.DelegationConst().MaxFrozenEpochs], nil
+}
+
+func (txb *TransactionBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
+	o := txb.TransactionData.Outputs[producedOutputIdx]
+	a := new([15]int64)
+	copy(a[:], o.Amounts())
+	copy(a[2:], frozenCoverageDeltaVector)
+
+	// find the predecessor and adjust its vector
+	cc, idx := o.ChainConstraint()
+	util.Assertf(idx != 0xff, "MustPutFrozenCoverage: inconsistency 1")
+	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
+	predVector := oPred.Amounts().FrozenCoverageVector()
+	predTs := txb.TransactionData.InputIDs[producedOutputIdx].Timestamp()
+	predVectorAdjusted := ledger.DelegationConst().AdjustFrozenCoverageVector(cc.ID, predVector, predTs, targetTs)
+	for i := range frozenCoverageDeltaVector {
+		a[i+2] += predVectorAdjusted[i]
+	}
+
+	txb.TransactionData.Outputs[producedOutputIdx] = o.Clone(func(o *ledger.OutputBuilder) {
+		o.PutConstraint(ledger.NewAmounts(a[:]...).Bytes(), ledger.ConstraintIndexAmounts)
+	})
+}
+
 func (tx *transactionData) ToTuple() *tuples.Tuple {
 	unlockParams := tuples.EmptyTupleEditable(256)
 	inputIDs := tuples.EmptyTupleEditable(256)
@@ -873,62 +964,6 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 	return chainData[0], ret, nil
 }
 
-// InsertSimpleChainTransition inserts a simple chain transition. Takes output with chain constraint from parameters,
-// Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
-func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, _ base.LedgerTime) error {
-	chainIN, err := ledger.OutputFromBytes(inChainData.Data)
-	if err != nil {
-		return err
-	}
-	cc, predecessorConstraintIndex := chainIN.ChainConstraint()
-	if predecessorConstraintIndex == 0xff {
-		return fmt.Errorf("can't find chain constrain in the output")
-	}
-	predecessorOutputIndex, err := txb.ConsumeOutput(chainIN, inChainData.ID)
-	if err != nil {
-		return err
-	}
-	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, cc.OriginSlot, cc.OriginAmount)
-	chainOut := chainIN.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(successor.Bytes(), predecessorConstraintIndex)
-	})
-	successorOutputIndex, err := txb.ProduceOutput(chainOut)
-	if err != nil {
-		return err
-	}
-	txb.PutUnlockParams(predecessorOutputIndex, predecessorConstraintIndex, []byte{successorOutputIndex, predecessorConstraintIndex, 0})
-	txb.PutSignatureUnlock(successorOutputIndex)
-
-	return nil
-}
-
-func (txb *TransactionBuilder) String() string {
-	ret := []string{"TransactionBuilder:"}
-	ret = append(ret, fmt.Sprintf("Consumed outputs (%d):", len(txb.ConsumedOutputs)))
-	util.Assertf(len(txb.ConsumedOutputs) == len(txb.TransactionData.InputIDs), "len(txb.ConsumedOutputs) == len(txb.Transaction.InputIDs)")
-	for i := range txb.ConsumedOutputs {
-		ret = append(ret, fmt.Sprintf("%d : %s\n", i, txb.TransactionData.InputIDs[i].StringShort()))
-		ret = append(ret, txb.ConsumedOutputs[i].ToString("     "))
-	}
-	ret = append(ret, fmt.Sprintf("Produced outputs (%d):", len(txb.TransactionData.Outputs)))
-	for i, o := range txb.TransactionData.Outputs {
-		ret = append(ret, fmt.Sprintf("%d :%s", i, o.ToString("    ")))
-	}
-	ret = append(ret, fmt.Sprintf("Endorsements (%d):", len(txb.TransactionData.Endorsements)))
-	for i, txid := range txb.TransactionData.Endorsements {
-		ret = append(ret, fmt.Sprintf("%d : %s", i, txid.StringShort()))
-	}
-	return strings.Join(ret, "\n")
-}
-
-// LoadInput returns clone of the consumed output
-func (txb *TransactionBuilder) LoadInput(i byte) (*ledger.Output, error) {
-	if int(i) >= len(txb.ConsumedOutputs) {
-		return nil, fmt.Errorf("can't load input #%d", i)
-	}
-	return txb.ConsumedOutputs[i].Clone(), nil
-}
-
 type MakeDelegationInitTransactionParams struct {
 	Timestamp                   base.LedgerTime
 	Amount                      uint64
@@ -1006,15 +1041,3 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	//}
 	return txBytes, nil
 }
-
-//func MakeChainSuccessorTransactionSimple(chainIn *ledger.OutputWithChainID, privKey ed25519.PrivateKey, ts ...base.LedgerTime) ([]byte, error) {
-//	cc, idx := chainIn.Output.ChainConstraint()
-//	timestamp := chainIn.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-//	if len(ts) > 0 {
-//		timestamp = ts[0]
-//	}
-//	txb := New()
-//	if _, _, err := txb.ConsumeOutputsUnlock(&chainIn.OutputWithID); err != nil {
-//		return nil, err
-//	}
-//}

@@ -537,6 +537,21 @@ func (c *DelegationConstants) EpochFromSlot(target base.ChainID, txSlot uint32) 
 	return (txSlot + c.EpochOffsetSlots(target)) / c.DelegationEpochSlots
 }
 
+func (c *DelegationConstants) AdjustFrozenCoverageVector(chainID base.ChainID, vect []int64, predTs, succTs base.LedgerTime) []int64 {
+	util.Assertf(predTs.Before(succTs), "predTs.Before(succTs)")
+	predEpoch := c.EpochFromSlot(chainID, predTs.Slot.Uint32())
+	succEpoch := c.EpochFromSlot(chainID, succTs.Slot.Uint32())
+	shift := succEpoch - predEpoch
+	ret := make([]int64, c.MaxFrozenEpochs)
+	if shift >= c.MaxFrozenEpochs {
+		return ret
+	}
+	for i, v := range vect[shift:] {
+		ret[i] = v
+	}
+	return ret
+}
+
 const delegateLock2Source = `
 func constDelegationSafeRevocationSlots  : 30
 func constDelegationEpochSlots : u32/512

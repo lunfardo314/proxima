@@ -19,8 +19,8 @@ type TxContext struct {
 	traceOption int
 	// calculated and cached values
 	sender               ledger.AddressED25519
-	totalProducedAmounts [16]uint64
-	totalConsumedAmounts [16]uint64
+	totalProducedAmounts [15]uint64
+	totalConsumedAmounts [15]uint64
 	dataContext          *ledger.EvalContext // EasyFL constraint validation context
 }
 

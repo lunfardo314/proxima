@@ -179,7 +179,7 @@ func (o *Output) TokenBalance() uint64 {
 }
 
 func (o *Output) FrozenCoverage(i byte) int64 {
-	return o.Amounts().FrozenCoverage(i)
+	return o.Amounts().FrozenCoverageAt(i)
 }
 
 // WithLock can only be used inside r/o override closure

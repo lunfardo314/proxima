@@ -27,7 +27,7 @@ type (
 		sender                   ledger.AddressED25519
 		timestamp                base.LedgerTime
 		totalAmountPersisted     uint64                           // persisted in tx, always positive
-		producedAmountTotals     [16]uint64                       // calculated by summing up amount vectors (which are int64, however, sums must be positive)
+		producedAmountTotals     [15]uint64                       // calculated by summing up amount vectors (which are int64, however, sums must be positive)
 		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
 
@@ -414,7 +414,7 @@ func ScanOutputs(tx *Transaction) error {
 	pathToAmounts := []byte{ledger.TxOutputs, 0, 0}
 	pathToLock := []byte{ledger.TxOutputs, 0, 1}
 
-	var producedAmountTotals [16]int64
+	var producedAmountTotals [15]int64
 
 	for i := 0; i < numOutputs; i++ {
 		pathToAmounts[1] = byte(i)
@@ -1079,7 +1079,7 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	return
 }
 
-func (tx *Transaction) TotalProducedAmounts() (ret [16]uint64) {
+func (tx *Transaction) TotalProducedAmounts() (ret [15]uint64) {
 	ret = tx.producedAmountTotals
 	return
 }

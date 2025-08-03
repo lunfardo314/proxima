@@ -191,7 +191,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	require.NoError(td, err)
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
-	_, err = txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
+	seqChainIdx, err := txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance()))
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
 	}))
@@ -219,6 +219,10 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 
 	_, err = txb.ProduceOutput(delegatedOut)
 	require.NoError(td, err)
+
+	fcDelta, err := txb.CalcFrozenCoverageDelta()
+	require.NoError(td, err)
+	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, par.ts)
 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 	txb.TransactionData.Timestamp = par.ts
@@ -263,7 +267,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	require.NoError(td, err)
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
-	_, err = txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
+	succChainIdx, err := txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance()))
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
 	}))
@@ -285,8 +289,6 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	delegatedOut, err := td.delegatedOutput.MakeDelegateRevokeOutput(delegatedOutPar)
 	require.NoError(td, err)
 
-	fmt.Printf("=============\n%s\n=============\n", delegatedOut.LinesHR("    "))
-
 	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
 	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
 
@@ -294,6 +296,11 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 
 	_, err = txb.ProduceOutput(delegatedOut)
 	require.NoError(td, err)
+
+	frozenCoverageDelta, err := txb.CalcFrozenCoverageDelta()
+	require.NoError(td, err)
+
+	txb.MustPutFrozenCoverage(succChainIdx, frozenCoverageDelta, ts)
 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 	txb.TransactionData.Timestamp = ts
@@ -595,7 +602,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
 			prntx:                    false,
-			disableConsistencyChecks: true,
+			disableConsistencyChecks: false,
 		})
 		require.NoError(t, err)
 
