@@ -260,27 +260,25 @@ func _checkFrozenCoverageOnSequencer(par *easyfl.CallParams[*EvalContext], ctx *
 }
 
 // _checkFrozenCoverageOnDelegateOutput assumes produced, not-origin delegation output. Enforces correct frozen coverage values
-func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, amounts, predAmounts Amounts, succID, predID base.OutputID) {
+func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o, predOut *Output, succID, predID base.OutputID) {
 	dOut, ok := AsDelegateOutput(o, succID)
-	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expected")
+	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expected 1")
+	amounts := o.Amounts()
 
 	if ctx.IsUnlockedBy(dOut.MasterLock) {
 		// transition by the master -> must be all-0
-		par.Require(amounts.IsFrozenCoverageZero(), "_checkFrozenCoverageOnDelegateOutput: expected all-0 frozen coverage due to reason: unlocked by the master")
+		par.Require(amounts.IsFrozenCoverageZero(),
+			"_checkFrozenCoverageOnDelegateOutput: expected all-0 frozen coverage due to reason: unlocked by the master in delegation chain %s", dOut.ChainID.String())
 		return
 	}
 	// unlocked by the target as enforced by the delegation lock
-
-	// only two options of transition by the target: freezing and revoking
-	if dOut.Revoked {
-		// delegation UTXO is revoked -> it was not frozen in the predecessor -> unfreeze remaining frozen coverage
-		panic("not implemented")
-	} else {
-		// delegation is not revoked -> it freezes some coverage
-		expected := dOut.ExpectedProducedFrozenCoverageAmounts(succID.Slot().Uint32())
-		for i, v := range expected {
-			par.Require(o.FrozenCoverage(byte(i)) == v, "wrong frozen coverage value in %s", succID.StringShort)
+	expected := dOut.ExpectedProducedFrozenCoverageAmounts(succID.Slot().Uint32())
+	for i, v := range expected {
+		if dOut.Revoked {
+			// enforce negative frozen coverage delta
+			v = -v
 		}
+		par.Require(o.FrozenCoverage(byte(i)) == v, "_checkFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation chain %s", dOut.ChainID.String)
 	}
 }
 
@@ -303,21 +301,21 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(), "evalAmounts: inflation and frozen coverage must be 0 on a non-chain output")
 		return []byte{0xff}
 	}
-	// it is a chain output
-	predID, err := ctx.InputAt(cc.PredecessorInputIndex)
-	par.RequireNoError(err)
-	succID := ctx.OutputID(path[len(path)-2])
-
+	// it is a non-origin chain output
 	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)
 	par.RequireNoError(err)
 	predAmounts := predOut.Amounts()
+
+	predID, err := ctx.InputAt(cc.PredecessorInputIndex)
+	par.RequireNoError(err)
+	succID := ctx.OutputID(path[len(path)-2])
 
 	// check inflation:
 	// TODO on frozen delegation
 	_checkInflation(par, ctx, o, predAmounts, predID.Slot())
 
 	if o.Lock().Name() == DelegateLockName {
-		_checkFrozenCoverageOnDelegateOutput(par, ctx, o, amounts, predAmounts, succID, predID)
+		_checkFrozenCoverageOnDelegateOutput(par, ctx, o, predOut, succID, predID)
 		return []byte{0xff}
 	}
 

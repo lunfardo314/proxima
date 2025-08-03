@@ -565,43 +565,16 @@ func _selfDelegationEpochOffset : delegationEpochOffset(_selfTargetChainID)
 func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 0))
 func _selfIsRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 1)
 func _selfEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
-func _selfIsZeroFrozenCoverage : and(isZero(selfAmountAt(2)), isZero(selfAmountAt(3)),isZero(selfAmountAt(4)),isZero(selfAmountAt(5)))
 
 // $0 _selfLastFrozenEpoch
 // $1 _selfEpoch
 func __selfFrozenEpochs : if( lessThanUint($0, $1), u64/0, add(sub($0, $1),1) ) 
 func _selfFrozenEpochs : __selfFrozenEpochs(_selfLastFrozenEpoch, _selfEpoch)
 
-// $0 selfTokenBalanceValue
-// $1 frozen epochs + 2
-// $2 frozen coverage vector index (1 byte)
-func _validFrozenCoverage :
-   if(
-      lessThanUint($2, $1),
-      require( equalUint(selfAmountAt($2), $0), !!!wrong_frozen_coverage_value),
-      require( isZero(selfAmountAt($2)), !!!not_frozen_coverage_value_must_be_0) 
-   )
+// $0 - _selfLastFrozenEpoch
+func __selfIsNotFrozen : or( isZero($0), lessThan( $0, delegationEpochFromSlot(_selfTargetChainID,txSlot) ) )
 
-// $0 selfTokenBalanceValue
-// $1 frozen epochs + 2
-func _validFrozenCoverages :
-and(
-  _validFrozenCoverage($0, $1, 2),
-  _validFrozenCoverage($0, $1, 3),
-  _validFrozenCoverage($0, $1, 4),
-  _validFrozenCoverage($0, $1, 5)
-)
-
-// $0 last frozen epoch
-func _notFrozen : or(isZero($0), lessThanUint($0, _selfEpoch))
-
-// $0 last frozen epoch
-func _validFrozenCoverageVector :
-if(
-   or(_selfIsRevoked, _notFrozen($0)), // if revoked or not frozen
-   require(_selfIsZeroFrozenCoverage, !!!frozen_coverage_value_must_be_all_0),
-   _validFrozenCoverages(selfTokenBalanceValue, add(sub($0, _selfEpoch), 3))
-)   
+func _selfIsNotFrozen : __selfIsNotFrozen(_selfLastFrozenEpoch)
 
 // $0 output slot
 func _coveredSlotsInCurrentEpoch :
@@ -689,8 +662,12 @@ and(
     enforceMinimumStorageDeposit,
     _validBase,
     _validLimits($0,$1),
-	_validFrozenCoverageVector(_selfLastFrozenEpoch)
+	//_validFrozenCoverageVector(_selfLastFrozenEpoch)
 )
+
+// $0 master lock
+// (consumed context)
+func _masterUnlocked : and( $0, require(_selfIsNotFrozen, !!!master_can't_unlock_frozen_delegation_output) )
 
 func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
 
@@ -703,22 +680,7 @@ func _insideSafeRevocationWindow : and(
 
 func _consumedUnfreezeSlot : _selfUnfreezeSlot( timeSlotOfInputByIndex( selfOutputIndex ) )
 
-// $0 master lock
-// $1 _selfLastFrozenEpoch
-// (consumed context)
-func __masterUnlocked :
-and(
-   $0,
-   require( 
-      or( isZero($1), lessThan($1, delegationEpochFromSlot(_selfTargetChainID,txSlot))), 
-      !!!master_can't_unlock_frozen_delegation_output
-   )
-)
-
-// $0 master lock
-func _masterUnlocked : __masterUnlocked($0, _selfLastFrozenEpoch)
-
-func _successorFrozenEpochs : parseInlineDataArgument(successorConstraint(3),#delegateLockState,0)
+//func _successorFrozenEpochs : parseInlineDataArgument(successorConstraint(3),#delegateLockState,0)
 func _successorIsRevoked : parseInlineDataArgument(successorConstraint(3),#delegateLockState,1)
 
 // $0 target lock
@@ -728,8 +690,9 @@ and(
 	  // if it is revoked, only master can unlock it
    require(not(_selfIsRevoked), !!!revoked_delegation_cannot_be_unlocked_by_the_target),
    require(not(_insideSafeRevocationWindow(_consumedUnfreezeSlot)), !!!delegation_target_should_not_be_unlocked_inside_safe_revocation_window),
+   require( or( _successorIsRevoked, _selfIsNotFrozen ), !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_revocation),
 	  // target lock must be unlocked
-   require($0, !!!delegation_target_must_be_unlocked),  
+   require($0, !!!delegation_target_chain_must_be_unlocked),  
 	  // amount should not decrease
    require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease),
 	  // delegation lock must be immutable
