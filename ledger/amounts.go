@@ -30,7 +30,7 @@ func NewAmounts(args ...int64) Amounts {
 	util.Assertf(len(args) <= 15, "NewAmounts: too many arguments")
 	lastNotZero := -1
 	for i, arg := range args {
-		if arg > 0 {
+		if arg != 0 {
 			lastNotZero = i
 		}
 	}
@@ -121,7 +121,7 @@ func (a Amounts) AddToVector(vect *[16]int64) (overflow bool) {
 				overflow = true
 			}
 		} else {
-			if vect[i] < -v {
+			if vect[i] < math.MinInt64-v {
 				overflow = true
 			}
 		}
@@ -272,12 +272,10 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 		return
 	}
 	// unlocked by the target as enforced by the delegation lock
-	expected := dOut.ExpectedProducedFrozenCoverageAmounts(succID.Slot().Uint32())
+	txEpoch := DelegationConst().EpochFromSlot(dOut.Target.ChainID(), succID.Slot().Uint32())
+	expected, err := dOut.MakeProducedFrozenCoverageAmounts(txEpoch, dOut.Revoked)
+	par.RequireNoError(err)
 	for i, v := range expected {
-		if dOut.Revoked {
-			// enforce negative frozen coverage delta
-			v = -v
-		}
 		par.Require(o.FrozenCoverage(byte(i)) == v, "_checkFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation chain %s", dOut.ChainID.String)
 	}
 }

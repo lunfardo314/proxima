@@ -208,16 +208,20 @@ func (txb *TransactionBuilder) BytesWithValidation() ([]byte, base.TransactionID
 	txBytes := txb.TransactionData.Bytes()
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	if err != nil {
-		return nil, base.TransactionID{}, "", err
+		txString := ""
+		if tx != nil {
+			txString = tx.Lines(txb.LoadInput).String()
+		}
+		return nil, base.TransactionID{}, txString, err
 	}
 	ctx, err := transaction.TxContextFromTransaction(tx, txb.LoadInput)
 	if err != nil {
 		return nil, base.TransactionID{}, "", err
 	}
 	if err = ctx.Validate(); err != nil {
-		return nil, base.TransactionID{}, ctx.LinesSource().String(), err
+		return nil, base.TransactionID{}, ctx.LinesHR().String(), err
 	}
-	return txBytes, tx.ID(), ctx.LinesSource().String(), nil
+	return txBytes, tx.ID(), ctx.LinesHR().String(), nil
 }
 
 func (txb *TransactionBuilder) ProducedAmount() (uint64, uint64) {

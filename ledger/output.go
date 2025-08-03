@@ -433,6 +433,14 @@ func (o *Output) LinesVerbose(prefix ...string) *lines.Lines {
 	return o._lines(pref, false, true)
 }
 
+func (o *Output) LinesHR(prefix ...string) *lines.Lines {
+	pref := ""
+	if len(prefix) > 0 {
+		pref = prefix[0]
+	}
+	return o._lines(pref, false, false)
+}
+
 func (o *Output) String() string {
 	return o.Lines().String()
 }

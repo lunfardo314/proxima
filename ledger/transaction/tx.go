@@ -428,13 +428,16 @@ func ScanOutputs(tx *Transaction) error {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
 
+		if amounts.Amount(2) < 0 {
+			println()
+		}
 		if overflow := amounts.AddToVector(&producedAmountTotals); overflow {
 			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
 	}
 	for i, v := range producedAmountTotals {
 		if v < 0 {
-			return fmt.Errorf("scanning outputs: negative total value")
+			return fmt.Errorf("scanning outputs: negative total value %s at index %d", util.Th(v), i)
 		}
 		tx.producedAmountTotals[i] = uint64(producedAmountTotals[i])
 	}

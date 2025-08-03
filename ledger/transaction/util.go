@@ -46,6 +46,12 @@ func (ctx *TxContext) LinesSource(prefix ...string) *lines.Lines {
 	}, prefix...)
 }
 
+func (ctx *TxContext) LinesHR(prefix ...string) *lines.Lines {
+	return ctx._lines(func(o *ledger.Output, prefix ...string) *lines.Lines {
+		return o.LinesHR(prefix...)
+	}, prefix...)
+}
+
 func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string) *lines.Lines, prefix ...string) *lines.Lines {
 	txid := ctx.ID()
 	ret := lines.New(prefix...)
