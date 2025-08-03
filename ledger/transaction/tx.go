@@ -27,7 +27,7 @@ type (
 		sender                   ledger.AddressED25519
 		timestamp                base.LedgerTime
 		totalAmountPersisted     uint64                           // persisted in tx, always positive
-		producedAmountTotals     [15]uint64                       // calculated by summing up amount vectors (which are int64, however, sums must be positive)
+		producedAmountTotals     [15]int64                        // calculated by summing up amount vectors
 		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
 
@@ -414,8 +414,6 @@ func ScanOutputs(tx *Transaction) error {
 	pathToAmounts := []byte{ledger.TxOutputs, 0, 0}
 	pathToLock := []byte{ledger.TxOutputs, 0, 1}
 
-	var producedAmountTotals [15]int64
-
 	for i := 0; i < numOutputs; i++ {
 		pathToAmounts[1] = byte(i)
 		amounts, err = ledger.AmountsFromBytes(tx.tree.MustBytesAtPath(pathToAmounts))
@@ -431,19 +429,13 @@ func ScanOutputs(tx *Transaction) error {
 		if amounts.Amount(2) < 0 {
 			println()
 		}
-		if overflow := amounts.AddToVector(&producedAmountTotals); overflow {
+		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
 			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
 	}
-	for i, v := range producedAmountTotals {
-		if v < 0 {
-			return fmt.Errorf("scanning outputs: negative total value %s at index %d", util.Th(v), i)
-		}
-		tx.producedAmountTotals[i] = uint64(producedAmountTotals[i])
-	}
 
 	// check the total amounts constraint
-	if tx.totalAmountPersisted != tx.producedAmountTotals[0] {
+	if tx.totalAmountPersisted != uint64(tx.producedAmountTotals[0]) {
 		return fmt.Errorf("wrong total produced amount")
 	}
 	return nil
@@ -789,7 +781,7 @@ func (tx *Transaction) OutputID(idx byte) base.OutputID {
 }
 
 func (tx *Transaction) InflationAmount() uint64 {
-	return tx.producedAmountTotals[ledger.AmountIndexInflation]
+	return uint64(tx.producedAmountTotals[ledger.AmountIndexInflation])
 }
 
 func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*ledger.OutputWithID, error) {
@@ -1079,9 +1071,8 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	return
 }
 
-func (tx *Transaction) TotalProducedAmounts() (ret [15]uint64) {
-	ret = tx.producedAmountTotals
-	return
+func (tx *Transaction) TotalProducedAmounts() [15]int64 {
+	return tx.producedAmountTotals
 }
 
 func (tx *Transaction) InputCommitment() []byte {

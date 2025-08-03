@@ -19,8 +19,8 @@ type (
 	TxContextAccess interface {
 		BytesAtPath([]byte) ([]byte, error)
 		ConsumedOutput(idx byte) (*Output, error)
-		ConsumedTotal(i byte) uint64
-		ProducedTotal(i byte) uint64
+		ConsumedTotal(i byte) int64
+		ProducedTotal(i byte) int64
 		IsBranchTransaction() bool
 		IsSequencerTransaction() bool
 		MustSequencerAndStemOutputIndices() (byte, byte)

@@ -261,7 +261,8 @@ func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContex
 		predecessorFrozenCoverageValue := predecessorFrozenCoverageAdjusted(uint32(i))
 		par.Require(successorFrozenCoverage >= predecessorFrozenCoverageValue, "inconsistency 3 at index %d", i)
 		sum := ctx.ProducedTotal(idx)
-		par.Require(2*successorFrozenCoverage == int64(sum)+predecessorFrozenCoverageValue,
+		// FIXME something wrong with adjustment
+		par.Require(2*successorFrozenCoverage == sum+predecessorFrozenCoverageValue,
 			"_checkFrozenCoverageOnNonDelegationChain: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",
 			i, predecessorFrozenCoverageValue, successorFrozenCoverage, successorFrozenCoverage-predecessorFrozenCoverageValue, sum)
 	}
@@ -332,13 +333,13 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 
 func evalTotalConsumed(par *easyfl.CallParams[*EvalContext]) []byte {
 	idxBin := par.Arg(0)
-	ret := easyfl_util.Uint64To8Bytes(par.DataContext().ConsumedTotal(idxBin[0]))
+	ret := easyfl_util.Uint64To8Bytes(uint64(par.DataContext().ConsumedTotal(idxBin[0])))
 	return par.AllocData(ret[:]...)
 }
 
 func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
 	idxBin := par.Arg(0)
-	ret := easyfl_util.Uint64To8Bytes(par.DataContext().ProducedTotal(idxBin[0]))
+	ret := easyfl_util.Uint64To8Bytes(uint64(par.DataContext().ProducedTotal(idxBin[0])))
 	return par.AllocData(ret[:]...)
 }
 

@@ -150,18 +150,11 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 }
 
 func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) error {
-	var totalConsumedAmounts [15]int64
 	var overflow bool
 	for i, o := range outs {
-		if overflow = o.Amounts().AddToVector(&totalConsumedAmounts); overflow {
+		if overflow = o.Amounts().AddToVector(&ctx.totalConsumedAmounts); overflow {
 			return fmt.Errorf("arithmetic overflow in consumed output #%d", i)
 		}
-	}
-	for i, v := range totalConsumedAmounts {
-		if v < 0 {
-			return fmt.Errorf("negative total amount #%d", i)
-		}
-		ctx.totalConsumedAmounts[i] = uint64(totalConsumedAmounts[i])
 	}
 	return nil
 }
