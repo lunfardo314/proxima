@@ -416,7 +416,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:               td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
 			freezeUntilEpoch: 0,
-			prntx:            true,
+			prntx:            false,
 		})
 		require.NoError(t, err)
 	})
@@ -463,7 +463,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 				base.NewLedgerTime(base.Slot(to+1), 5),
 			),
 			disableConsistencyChecks: true,
-			prntx:                    true,
+			prntx:                    false,
 		})
 		require.NoError(t, err)
 	})
@@ -487,7 +487,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
-			prntx:                    true,
+			prntx:                    false,
 			disableConsistencyChecks: true,
 		})
 		require.NoError(t, err)
@@ -531,7 +531,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
 			inflate:                  true,
-			prntx:                    true,
+			prntx:                    false,
 			disableConsistencyChecks: true,
 		})
 		require.NoError(t, err)
@@ -552,7 +552,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
-			prntx:                    true,
+			prntx:                    false,
 			disableConsistencyChecks: true,
 		})
 		require.NoError(t, err)
@@ -570,7 +570,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
-			prntx:                    true,
+			prntx:                    false,
 			disableConsistencyChecks: true,
 		})
 		require.NoError(t, err)
@@ -626,7 +626,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		// succeed to kill the delegation chain by master
 		ts = td.timestampSlotsForward(1000)
-		err = td.discontinueDelegation(ts, true)
+		err = td.discontinueDelegation(ts, false)
 		require.NoError(t, err)
 
 	})
@@ -656,7 +656,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		util.RequireErrorWith(t, err, "master can't unlock frozen delegation output")
 
 		// succeed to unlock by target to mark output revoked
-		err = td.revokeDelegation(ts, true, true)
+		err = td.revokeDelegation(ts, true, false)
 		require.NoError(t, err)
 
 		// fail to unlock by target revoked delegation

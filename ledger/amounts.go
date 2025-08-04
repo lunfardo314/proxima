@@ -276,34 +276,38 @@ func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContex
 // _checkFrozenCoverageOnDelegateOutput assumes produced, not-origin delegation output. Enforces correct frozen coverage values
 func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o, predOut *Output, succID, predID base.OutputID) {
 	dOut, ok := AsDelegateOutput(o, succID)
-	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expected 1")
+	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expectedVector 1")
 	amounts := o.Amounts()
 
 	if ctx.IsUnlockedBy(dOut.MasterLock) {
 		// transition by the master -> must be all-0
 		par.Require(amounts.IsFrozenCoverageZero(),
-			"_checkFrozenCoverageOnDelegateOutput: expected all-0 frozen coverage due to reason: unlocked by the master in delegation chain %s", dOut.ChainID.String())
+			"_checkFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to reason: unlocked by the master in delegation chain %s", dOut.ChainID.String())
 		return
 	}
 	// unlocked by the target as enforced by the delegation lock
-	var expected []int64
+	var expectedVector []int64
+	// the expected vector is different for frozen and revoked delegation outputs
 	if dOut.Revoked {
 		pred, err := ctx.ConsumedOutput(dOut.PredecessorInputIndex)
 		par.RequireNoError(err)
 		dOutPred, ok := AsDelegateOutput(pred, ctx.MustInputAt(dOut.PredecessorInputIndex))
-		par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: delegation output expected 2")
-		expected = dOutPred.MakeFrozenCoverageAmountDeltasForRevoking(ctx.Timestamp())
+		par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: delegation output expectedVector at predecessor")
+
+		// the expected vector contains negative deltas of revoked frozen coverage in the current transaction (adjusted to the epoch difference)
+		expectedVector = dOutPred.MakeFrozenCoverageAmountDeltasForRevoking(ctx.Timestamp())
 	} else {
 		frozenEpochs, err := dOut.FrozenEpochs(ctx.Timestamp())
 		par.RequireNoError(err)
-		expected, err = dOut.MakeFrozenCoverageAmounts(frozenEpochs, dOut.Output.TokenBalance())
+
+		// the expected vector contains frozen coverages for the span of the frozen epochs
+		expectedVector, err = dOut.MakeFrozenCoverageAmounts(frozenEpochs, dOut.Output.TokenBalance())
 		par.RequireNoError(err)
 	}
-	par.Require(len(expected) == int(DelegationConst().MaxFrozenEpochs), "len(expected)==int(DelegationConst().MaxFrozenEpochs)")
 
-	for i, v := range expected {
-		par.Require(o.FrozenCoverage(byte(i)) == v, "_checkFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation chain %s", dOut.ChainID.String)
-	}
+	vectorToCheck := o.Amounts().FrozenCoverageVector()
+	par.Require(len(expectedVector) == len(vectorToCheck), "len(expectedVector) == len(vectorToCheck)")
+	par.Require(slices.Equal(expectedVector, vectorToCheck), "_checkFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation chain %s", dOut.ChainID.String)
 }
 
 // DelegateLock is a special case in amounts and inflation validation

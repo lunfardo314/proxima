@@ -386,9 +386,11 @@ func (o *DelegateOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.Led
 	util.Assertf(diffEpochs >= 0, "MakeFrozenCoverageAmountDeltasForRevoking: wrong timestamp %s", txTs.String)
 
 	fc := o.Output.Amounts().FrozenCoverageVector()
-	ret := make([]int64, 0)
+	ret := make([]int64, dconst.MaxFrozenEpochs)
+	idx := 0
 	for i := diffEpochs; i < len(fc); i++ {
-		ret = append(ret, -fc[i])
+		ret[idx] = -fc[i]
+		idx++
 	}
 	return ret
 }
