@@ -211,24 +211,23 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountabl
 		lock := o.DelegationLock2()
 		if lock != nil && ledger.EqualAccountables(lock.Target, addr) {
 			cc, idx := o.ChainConstraint()
-			chainID := cc.ID
+			chainID := cc.ChainID
 			if cc.IsOrigin() {
 				chainID = base.MakeOriginChainID(oid)
 			}
 			util.Assertf(idx != 0xff, "inconsistency: chain constraint expected")
-			ret = append(ret, &ledger.OutputWithChainID{
+			out := &ledger.OutputWithChainID{
 				OutputWithID: ledger.OutputWithID{
 					ID:     oid,
 					Output: o,
 				},
 				ChainConstraintData: ledger.ChainConstraintData{
-					ChainID:               chainID,
-					PredecessorInputIndex: cc.PredecessorConstraintIndex,
-					OriginSlot:            cc.OriginSlot,
-					OriginAmount:          cc.OriginAmount,
-					ChainConstraintIndex:  idx,
+					ChainConstraint:      *cc,
+					ChainConstraintIndex: idx,
 				},
-			})
+			}
+			out.ChainID = chainID
+			ret = append(ret, out)
 		}
 		return true
 	})
@@ -273,7 +272,7 @@ func (s SugaredStateReader) IterateChainsInAccount(addr ledger.Accountable, fun 
 			if cc.IsOrigin() {
 				return fun(oid, o, base.MakeOriginChainID(oid))
 			}
-			return fun(oid, o, cc.ID)
+			return fun(oid, o, cc.ChainID)
 		}
 		return true
 	})
@@ -337,19 +336,18 @@ func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWith
 		}
 		cc, idx := o.ChainConstraint()
 		util.Assertf(idx != 0xff, "inconsistency: chain constraint expected")
-		exit = !fun(ledger.OutputWithChainID{
+		out := ledger.OutputWithChainID{
 			OutputWithID: ledger.OutputWithID{
 				ID:     tip.oid,
 				Output: o,
 			},
 			ChainConstraintData: ledger.ChainConstraintData{
-				ChainID:               tip.chainID,
-				PredecessorInputIndex: cc.PredecessorConstraintIndex,
-				OriginSlot:            cc.OriginSlot,
-				OriginAmount:          cc.OriginAmount,
-				ChainConstraintIndex:  idx,
+				ChainConstraint:      *cc,
+				ChainConstraintIndex: idx,
 			},
-		})
+		}
+		out.ChainID = tip.chainID
+		exit = !fun(out)
 		if exit {
 			return nil
 		}

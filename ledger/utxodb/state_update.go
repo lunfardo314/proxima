@@ -94,14 +94,14 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 		}
 
 		// chain record must exist and must be consistent with chain input
-		oData, err = r.GetUTXOForChainID(chainConstraint.ID)
+		oData, err = r.GetUTXOForChainID(chainConstraint.ChainID)
 		if err != nil {
-			err = fmt.Errorf("BeforeAddTransaction: chainID %s should be present in the state", chainConstraint.ID.StringShort())
+			err = fmt.Errorf("BeforeAddTransaction: chainID %s should be present in the state", chainConstraint.ChainID.StringShort())
 			return false
 		}
 		chainInput = tx.MustInputAt(chainConstraint.PredecessorInputIndex)
 		if chainInput != oData.ID {
-			err = fmt.Errorf("BeforeAddTransaction: inconsistent chain input with chain record for chain %s", chainConstraint.ID.StringShort())
+			err = fmt.Errorf("BeforeAddTransaction: inconsistent chain input with chain record for chain %s", chainConstraint.ChainID.StringShort())
 			return false
 		}
 		return true
@@ -135,7 +135,7 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 		if chainConstraint.IsOrigin() {
 			chainID = base.MakeOriginChainID(oid)
 		} else {
-			chainID = chainConstraint.ID
+			chainID = chainConstraint.ChainID
 		}
 		oData, err = r.GetUTXOForChainID(chainID)
 		if err != nil {

@@ -229,7 +229,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 	if chainConstraint.IsOrigin() {
 		chainID = base.MakeOriginChainID(oid)
 	} else {
-		chainID = chainConstraint.ID
+		chainID = chainConstraint.ChainID
 	}
 	chainKey := makeChainIDKey(&chainID)
 

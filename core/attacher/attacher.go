@@ -404,7 +404,7 @@ func (a *attacher) allInputsDefined(v *vertex.Vertex) bool {
 	return true
 }
 
-// checkOutputInTheState expects the produced UTXO ID of the transaction is in the state.
+// checkOutputInTheState expects the produced UTXO ChainID of the transaction is in the state.
 // If it is not, sets an error that UTXO is already consumed
 func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.OutputID) bool {
 	a.Assertf(a.pastCone.IsInTheState(vid), "a.pastCone.IsInTheState(wOut.VID)")

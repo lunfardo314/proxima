@@ -23,7 +23,7 @@ type (
 	TxBytesPersist interface {
 		// PersistTxBytesWithMetadata saves txBytes prefixed with metadata bytes.
 		// metadata == nil is interpreted as empty metadata (one 0 byte as prefix)
-		// optionally, transaction ID can be provided to avoid the need to parse the transaction bytes. In the latter case txid is used as DB key as is
+		// optionally, transaction ChainID can be provided to avoid the need to parse the transaction bytes. In the latter case txid is used as DB key as is
 		PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid ...base.TransactionID) (base.TransactionID, error)
 	}
 

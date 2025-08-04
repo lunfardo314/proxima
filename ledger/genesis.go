@@ -27,8 +27,10 @@ func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *Outp
 			}),
 		},
 		ChainConstraintData: ChainConstraintData{
-			ChainID:              base.BoostrapSequencerID,
-			OriginAmount:         initialSupply,
+			ChainConstraint: ChainConstraint{
+				ChainID:      base.BoostrapSequencerID,
+				OriginAmount: initialSupply,
+			},
 			ChainConstraintIndex: 2,
 		},
 	}

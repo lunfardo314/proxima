@@ -14,9 +14,9 @@ import (
 
 // ChainConstraint is a chain constraint
 type ChainConstraint struct {
-	// ID all-0 for origin
-	ID base.ChainID
-	// Predecessor output index with the same ID. Must be 0xFF for the origin
+	// ChainID all-0 for origin
+	ChainID base.ChainID
+	// Predecessor output index with the same ChainID. Must be 0xFF for the origin
 	PredecessorInputIndex byte
 	// Predecessor constraint index. Must be 0xff for the origin
 	PredecessorConstraintIndex byte
@@ -33,7 +33,7 @@ const (
 
 func NewChainConstraint(id base.ChainID, predOutputIndex, predConstraintIndex byte, originSlot base.Slot, originAmount uint64) *ChainConstraint {
 	return &ChainConstraint{
-		ID:                         id,
+		ChainID:                    id,
 		PredecessorInputIndex:      predOutputIndex,
 		PredecessorConstraintIndex: predConstraintIndex,
 		OriginSlot:                 originSlot,
@@ -45,41 +45,41 @@ func NewChainOrigin(startSlot base.Slot, startAmount uint64) *ChainConstraint {
 	return NewChainConstraint(base.NilChainID, 0xff, 0xff, startSlot, startAmount)
 }
 
-func (ch *ChainConstraint) IsOrigin() bool {
-	if ch.ID != base.NilChainID {
+func (cc *ChainConstraint) IsOrigin() bool {
+	if cc.ChainID != base.NilChainID {
 		return false
 	}
-	if ch.PredecessorInputIndex != 0xff {
+	if cc.PredecessorInputIndex != 0xff {
 		return false
 	}
-	if ch.PredecessorConstraintIndex != 0xff {
+	if cc.PredecessorConstraintIndex != 0xff {
 		return false
 	}
 	return true
 }
 
-func (ch *ChainConstraint) Name() string {
+func (cc *ChainConstraint) Name() string {
 	return ChainConstraintName
 }
 
-func (ch *ChainConstraint) Bytes() []byte {
-	return mustBinFromSource(ch.Source())
+func (cc *ChainConstraint) Bytes() []byte {
+	return mustBinFromSource(cc.Source())
 }
 
-func (ch *ChainConstraint) String() string {
+func (cc *ChainConstraint) String() string {
 	chID := "ORIGIN"
-	if !ch.IsOrigin() {
-		chID = ch.ID.String()
+	if !cc.IsOrigin() {
+		chID = cc.ChainID.String()
 	}
-	predRef := []byte{ch.PredecessorInputIndex, ch.PredecessorConstraintIndex}
+	predRef := []byte{cc.PredecessorInputIndex, cc.PredecessorConstraintIndex}
 	return fmt.Sprintf("%s(%s, predRef=%s, originSlot=%d, originAmount=%s)",
-		ChainConstraintName, chID, hex.EncodeToString(predRef), ch.OriginSlot, util.Th(ch.OriginAmount))
+		ChainConstraintName, chID, hex.EncodeToString(predRef), cc.OriginSlot, util.Th(cc.OriginAmount))
 }
 
-func (ch *ChainConstraint) Source() string {
-	predRef := []byte{ch.PredecessorInputIndex, ch.PredecessorConstraintIndex}
+func (cc *ChainConstraint) Source() string {
+	predRef := []byte{cc.PredecessorInputIndex, cc.PredecessorConstraintIndex}
 	return fmt.Sprintf(chainConstraintTemplate,
-		hex.EncodeToString(ch.ID[:]), hex.EncodeToString(predRef), ch.OriginSlot, ch.OriginAmount)
+		hex.EncodeToString(cc.ChainID[:]), hex.EncodeToString(predRef), cc.OriginSlot, cc.OriginAmount)
 }
 
 func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
@@ -92,7 +92,7 @@ func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
 	}
 
 	ret := &ChainConstraint{}
-	if ret.ID, err = base.ChainIDFromBytes(easyfl.StripDataPrefix(args[0])); err != nil {
+	if ret.ChainID, err = base.ChainIDFromBytes(easyfl.StripDataPrefix(args[0])); err != nil {
 		return nil, err
 	}
 	args1 := easyfl.StripDataPrefix(args[1])
@@ -154,7 +154,7 @@ func initTestChainConstraintInlineTest() {
 const chainConstraintSource = `
 func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000000000000000000000)
 
-// $0 - chain ID
+// $0 - chain ChainID
 // $1 - predecessor output index || predecessor constraint index (2 bytes)
 // $2 - origin slot
 // $3 - origin amount
@@ -181,7 +181,7 @@ func _chainSuccessorParam :
 		$0
 	)
 
-// $0 - chain ID
+// $0 - chain ChainID
 // $1 - origin slot
 // $2 - origin amount
 func _validChainConsumed : 
@@ -234,7 +234,7 @@ or(
 //	 )
 
 
-// $0 - chain ID
+// $0 - chain ChainID
 // $1 - predecessor (input index || chain constraint index) - 2 bytes 
 //func _validInflationAmount : 
 //or(
@@ -259,7 +259,7 @@ or(
 //   )
 //)
 
-// $0 - chain ID
+// $0 - chain ChainID
 // $1 - predecessor (input index || chain constraint index) - 2 bytes 
 // $2 - origin slot
 // $3 - origin amount

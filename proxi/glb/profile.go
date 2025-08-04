@@ -74,10 +74,10 @@ func GetDefaultSequencerID() *base.ChainID {
 	}
 	ret, err := base.ChainIDFromHexString(seqIDStr)
 	if err != nil {
-		Infof("invalid default sequencer ID: %v", err)
+		Infof("invalid default sequencer ChainID: %v", err)
 		return nil
 	}
-	Infof("default sequencer ID is: %s", seqIDStr)
+	Infof("default sequencer ChainID is: %s", seqIDStr)
 	return &ret
 
 }
@@ -85,7 +85,7 @@ func GetDefaultSequencerID() *base.ChainID {
 func GetOwnSequencerID() *base.ChainID {
 	seqIDStr := viper.GetString("wallet.sequencer_id")
 	if seqIDStr == "" {
-		Infof("own sequencer ID not specified. Using default sequencer ID instead")
+		Infof("own sequencer ChainID not specified. Using default sequencer ChainID instead")
 		return GetDefaultSequencerID()
 	}
 	ret, err := base.ChainIDFromHexString(seqIDStr)

@@ -294,8 +294,8 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 		par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: delegation output expected 2")
 		expected = dOutPred.MakeFrozenCoverageAmountDeltasForRevoking(ctx.Timestamp())
 	} else {
-		frozenEpochs := dOut.FrozenEpochs(ctx.Timestamp())
-		var err error
+		frozenEpochs, err := dOut.FrozenEpochs(ctx.Timestamp())
+		par.RequireNoError(err)
 		expected, err = dOut.MakeFrozenCoverageAmounts(frozenEpochs, dOut.Output.TokenBalance())
 		par.RequireNoError(err)
 	}
@@ -341,7 +341,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	if o.Lock().Name() == DelegateLockName {
 		_checkFrozenCoverageOnDelegateOutput(par, ctx, o, predOut, succID, predID)
 	} else {
-		_checkFrozenCoverageOnNonDelegationChain(par, ctx, cc.ID, amounts, predAmounts, succID.Timestamp(), predID.Timestamp())
+		_checkFrozenCoverageOnNonDelegationChain(par, ctx, cc.ChainID, amounts, predAmounts, succID.Timestamp(), predID.Timestamp())
 	}
 
 	return []byte{0xff}

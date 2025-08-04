@@ -151,7 +151,7 @@ func SaveSnapshot(state StateStoreReader, branch *BranchData, ctx context.Contex
 		return makeErr(err.Error())
 	}
 
-	// parse ledger ID data to validate and to print params (not needed?)
+	// parse ledger ChainID data to validate and to print params (not needed?)
 	_, ledgerIDParams, err := ledger.ParseLedgerIdYAML(ledgerIDBytes)
 	if err != nil {
 		return makeErr(err.Error())

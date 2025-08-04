@@ -303,19 +303,19 @@ func makeDelegationTransitions(inputs []*ledger.OutputWithChainID, offs byte, ta
 	//		err = fmt.Errorf("delegation output must be chain output")
 	//		return
 	//	}
-	//	chainID := cc.ID
+	//	chainID := cc.ChainID
 	//	if cc.IsOrigin() {
-	//		chainID = base.MakeOriginChainID(in.ID)
+	//		chainID = base.MakeOriginChainID(in.ChainID)
 	//	}
 	//	if !ledger.IsOpenDelegationSlot(chainID, targetTs.Slot) {
 	//		// only considering delegated outputs which can be consumed in the target slot
 	//		err = fmt.Errorf("delegation is not open for %s: chainID: %s, oid: %s",
-	//			targetTs.String(), chainID.StringShort(), in.ID.StringShort())
+	//			targetTs.String(), chainID.StringShort(), in.ChainID.StringShort())
 	//		return
 	//	}
 	//
 	//	inChainAmount := in.Output.TokenBalance()
-	//	delegationInflation := ledger.L().CalcChainInflationAmountDirect(in.ID.Timestamp(), targetTs, inChainAmount)
+	//	delegationInflation := ledger.L().CalcChainInflationAmountDirect(in.ChainID.Timestamp(), targetTs, inChainAmount)
 	//
 	//	inflationTotal += delegationInflation
 	//	delegationMargin := uint64(delegationMarginPromille) * delegationInflation / 1000

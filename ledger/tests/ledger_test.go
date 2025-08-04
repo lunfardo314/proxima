@@ -1033,7 +1033,7 @@ func TestHashUnlock(t *testing.T) {
 //
 //	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 //	txb := txbuilder.New()
-//	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
+//	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ChainID)
 //	require.NoError(t, err)
 //
 //	var nextChainConstraint *ledger.ChainConstraint
@@ -1079,7 +1079,7 @@ func TestHashUnlock(t *testing.T) {
 //
 //	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 //	txb = txbuilder.New()
-//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chainIN.ID)
+//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chainIN.ChainID)
 //	require.NoError(t, err)
 //
 //	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
@@ -1117,7 +1117,7 @@ func TestHashUnlock(t *testing.T) {
 //
 //	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 //	txb = txbuilder.New()
-//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
+//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ChainID)
 //	require.NoError(t, err)
 //
 //	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
@@ -1162,7 +1162,7 @@ func TestHashUnlock(t *testing.T) {
 //
 //	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
 //	txb = txbuilder.New()
-//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ID)
+//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ChainID)
 //	require.NoError(t, err)
 //
 //	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)

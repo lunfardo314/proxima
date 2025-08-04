@@ -64,7 +64,7 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			env.SendToTippool(vid)
 			return
 		}
-		// the corresponding state is not in the multistate DB. Create virtual Tx for the ID
+		// the corresponding state is not in the multistate DB. Create virtual Tx for the ChainID
 		vid = vertex.WrapTxID(txid)
 		env.AddVertexNoLock(vid)
 		vid.SetAttachmentDepthNoLock(options.depth)

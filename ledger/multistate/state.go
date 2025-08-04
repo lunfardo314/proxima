@@ -58,7 +58,7 @@ type (
 
 // partitions of the state store on the trie
 // Ledger state contains records of UTXOs (keys 33 bytes long output IDs ) and all past transaction IDs (32 byte long keys)
-// reason why we put index entries (accounts, chain ID) inti the trie is because index is ledger state-specific
+// reason why we put index entries (accounts, chain ChainID) inti the trie is because index is ledger state-specific
 const (
 	TriePartitionState = byte(iota)
 	TriePartitionAccounts

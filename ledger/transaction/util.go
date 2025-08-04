@@ -122,7 +122,7 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 				oid1 := base.MustNewOutputID(txid, idx)
 				cid = base.MakeOriginChainID(oid1)
 			} else {
-				cid = cc.ID
+				cid = cc.ChainID
 			}
 			chainIdStr = "                      chainID: " + cid.StringShort()
 		}

@@ -270,7 +270,7 @@ func (t *taskData) InsertDelegationInputs(a *attacher.IncrementalAttacher, maxIn
 	//preSelected := make([]vertex.WrappedOutput, 0, maxInputs-a.NumInputs())
 	//
 	//rdr.IterateDelegatedOutputs(ledger.ChainLockFromChainID(seqID), func(oid base.OutputID, o *ledger.Output, dLock *ledger.DelegationLock) bool {
-	//	wOut := attacher.AttachOutputWithID(ledger.OutputWithID{ID: oid, Output: o}, a)
+	//	wOut := attacher.AttachOutputWithID(ledger.OutputWithID{ChainID: oid, Output: o}, a)
 	//	if !ledger.ValidDelegationPace(wOut.Timestamp(), a.TargetTs()) {
 	//		return false
 	//	}

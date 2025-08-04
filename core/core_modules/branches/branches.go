@@ -69,7 +69,7 @@ func New(env environment) *Branches {
 }
 
 func (b *Branches) Get(branchTxID base.TransactionID) *multistate.BranchData {
-	util.Assertf(branchTxID.IsBranchTransaction(), "branch transaction ID expected. Got %s", branchTxID.StringShort)
+	util.Assertf(branchTxID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchTxID.StringShort)
 
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -148,7 +148,7 @@ func (b *Branches) _ledgerCoverage(br branchDataWithLedgerCoverage) (ret uint64)
 //   - if the snapshot is N slots behind the branchID, it is guaranteed that the returned value differs from
 //     the real value no more than by 1/2^N
 func (b *Branches) LedgerCoverage(branchID base.TransactionID) uint64 {
-	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ID expected. Got %s", branchID.StringShort)
+	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchID.StringShort)
 
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -168,7 +168,7 @@ func (b *Branches) LedgerCoverage(branchID base.TransactionID) uint64 {
 }
 
 func (b *Branches) Supply(branchID base.TransactionID) uint64 {
-	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ID expected. Got %s", branchID.StringShort)
+	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchID.StringShort)
 
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -206,7 +206,7 @@ func (b *Branches) _cleanupBranches() (int, int) {
 }
 
 func (b *Branches) SequencerOutputID(branchID base.TransactionID) (base.OutputID, bool) {
-	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ID expected. Got %s", branchID.StringShort)
+	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchID.StringShort)
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
@@ -218,7 +218,7 @@ func (b *Branches) SequencerOutputID(branchID base.TransactionID) (base.OutputID
 }
 
 // GetStateReaderForTheBranch returns a state reader for the branch or nil if the state does not exist.
-// If the branch is before the snapshot and branch ID is known in the snapshot state, it returns the snapshot state (which always exists)
+// If the branch is before the snapshot and branch ChainID is known in the snapshot state, it returns the snapshot state (which always exists)
 func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multistate.IndexedStateReader {
 	util.Assertf(branchID.IsBranchTransaction(), "GetStateReaderForTheBranchExt: branch tx expected. Got: %s", branchID.StringShort())
 

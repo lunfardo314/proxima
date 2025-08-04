@@ -76,7 +76,7 @@ func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte,
 	return
 }
 
-// TxIDFromTransactionDataTree validates timestamp, sequencer and stem indices and makes transaction ID
+// TxIDFromTransactionDataTree validates timestamp, sequencer and stem indices and makes transaction ChainID
 // This is minimal check to pass for the blob to be a raw transaction.
 // If it is impossible to extract txid from the blob, it is not a transaction
 func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, err error) {
@@ -108,7 +108,7 @@ func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, e
 	if ret, err = hashEssenceBytesFromTransactionDataTree(txTree); err != nil {
 		return
 	}
-	// replace first 5 bytes with transaction ID prefix
+	// replace first 5 bytes with transaction ChainID prefix
 	copy(ret[:], tsBin)
 	if isSeqTx {
 		ret[base.TickByteIndex] |= base.SequencerBitMaskInTick
@@ -257,7 +257,7 @@ func ParseSequencerData(tx *Transaction) error {
 	if seqOutputData.ChainConstraint.IsOrigin() {
 		sequencerID = base.MakeOriginChainID(out.ID)
 	} else {
-		sequencerID = seqOutputData.ChainConstraint.ID
+		sequencerID = seqOutputData.ChainConstraint.ChainID
 	}
 
 	// it is a sequencer milestone transaction
@@ -330,7 +330,7 @@ func ScanInputs(tx *Transaction) error {
 
 	for i := 0; i < numInputs; i++ {
 		path[1] = byte(i)
-		// parse output ID
+		// parse output ChainID
 		oid, err = base.OutputIDFromBytes(tx.tree.MustBytesAtPath(path))
 		if err != nil {
 			return fmt.Errorf("parsing input #%d: '%v'", i, err)
@@ -380,7 +380,7 @@ func ScanEndorsements(tx *Transaction) error {
 	path := []byte{ledger.TxEndorsements, 0}
 	for i := 0; i < numEndorsements; i++ {
 		path[1] = byte(i)
-		// parse transaction ID
+		// parse transaction ChainID
 		endorsementID, err = base.TransactionIDFromBytes(tx.tree.MustBytesAtPath(path))
 		if err != nil {
 			return fmt.Errorf("parsing endorsement #%d: '%v'", i, err)
@@ -468,7 +468,7 @@ func CheckExplicitBaseline(tx *Transaction) error {
 		return fmt.Errorf("checking explicit baseline: %v", err)
 	}
 	if !txid.IsBranchTransaction() {
-		return fmt.Errorf("explicit baseline must be a branch transaction ID, got %s", txid.String())
+		return fmt.Errorf("explicit baseline must be a branch transaction ChainID, got %s", txid.String())
 	}
 	if !ledger.ValidSequencerPace(txid.Timestamp(), tx.timestamp) {
 		return fmt.Errorf("explicit baseline violates sequencer pace constraint: %s", txid.String())
@@ -909,7 +909,7 @@ func (tx *Transaction) FindChainOutput(chainID base.ChainID) *ledger.OutputWithI
 		if idx == 0xff {
 			return true
 		}
-		cID := cc.ID
+		cID := cc.ChainID
 		if cc.IsOrigin() {
 			cID = base.MakeOriginChainID(oid)
 		}

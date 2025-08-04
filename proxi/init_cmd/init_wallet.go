@@ -70,9 +70,9 @@ api:
 
 tag_along:
     # id of the tag-along sequencer. Currently only one tag-along sequencer is supported
-    # If not specified, the default sequencer ID will be used
+    # If not specified, the default sequencer ChainID will be used
     # uncomment the line and specify your preferred sequencer
-#    sequencer_id: <your sequencer ID>
+#    sequencer_id: <your sequencer ChainID>
     fee: 200
 
 # provides parameters for 'proxi node getfunds' command
@@ -89,7 +89,7 @@ spammer:
     pace: 25
     tag_along:
         fee: 50
-        # <sequencer ID hex encoded> is tag-along sequencer id for the tip transaction in the bundle
+        # <sequencer ChainID hex encoded> is tag-along sequencer id for the tip transaction in the bundle
         # If not specified, the default sequencer id will be used
         # sequencer_id: <sequencer id hex encoded>
     # target address

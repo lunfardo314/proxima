@@ -315,7 +315,7 @@ func (txb *TransactionBuilder) MustPutFrozenCoverage(producedOutputIdx byte, fro
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
 	predVector := oPred.Amounts().FrozenCoverageVector()
 	predTs := txb.TransactionData.InputIDs[producedOutputIdx].Timestamp()
-	predVectorAdjusted := ledger.DelegationConst().AdjustFrozenCoverageVector(cc.ID, predVector, predTs, targetTs)
+	predVectorAdjusted := ledger.DelegationConst().AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
 	for i := range frozenCoverageDeltaVector {
 		a[i+2] += predVectorAdjusted[i]
 	}
@@ -779,7 +779,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	}
 	txb.PutSignatureUnlock(chainPredIdx)
 
-	chainID := chainInConstraint.ID
+	chainID := chainInConstraint.ChainID
 	if chainInConstraint.IsOrigin() {
 		chainID = base.MakeOriginChainID(par.ChainInput.ID)
 	}

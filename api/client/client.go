@@ -311,7 +311,7 @@ func (c *APIClient) GetChainedOutputs(accountable ledger.Accountable) ([]*ledger
 
 		ret1, ok := ledger.AsOutputWithChainID(o, oid)
 		if !ok {
-			return nil, nil, fmt.Errorf("not a chain output: ID=%s:\n%s:", oid.String(), o.String())
+			return nil, nil, fmt.Errorf("not a chain output: ChainID=%s:\n%s:", oid.String(), o.String())
 		}
 		ret = append(ret, &ret1)
 	}

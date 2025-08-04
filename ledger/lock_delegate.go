@@ -367,15 +367,17 @@ func (o *DelegateOutput) FreezeUntilLatestEpoch(ts base.LedgerTime) (ret uint32)
 	return
 }
 
-func (o *DelegateOutput) FrozenEpochs(txTs base.LedgerTime) byte {
+func (o *DelegateOutput) FrozenEpochs(txTs base.LedgerTime) (byte, error) {
 	dconst := DelegationConst()
-	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), o.Timestamp().Slot.Uint32())
+	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), txTs.Slot.Uint32())
 	if txEpoch > o.LastFrozenEpoch {
-		return 0
+		return 0, nil
 	}
 	ret := o.LastFrozenEpoch - txEpoch + 1
-	util.Assertf(ret <= dconst.MaxFrozenEpochs, "ret <= dconst.MaxFrozenEpochs")
-	return byte(ret)
+	if ret > dconst.MaxFrozenEpochs {
+		return 0, fmt.Errorf("frozen epochs cannot exceed %d", dconst.MaxFrozenEpochs)
+	}
+	return byte(ret), nil
 }
 
 func (o *DelegateOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.LedgerTime) []int64 {
@@ -393,7 +395,7 @@ func (o *DelegateOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.Led
 
 func (o *DelegateOutput) MakeFrozenCoverageAmounts(frozenEpochs byte, tokenBalance uint64) ([]int64, error) {
 	mx := byte(DelegationConst().MaxFrozenEpochs)
-	if mx > frozenEpochs {
+	if frozenEpochs > mx {
 		return nil, fmt.Errorf("MakeFrozenCoverageAmounts: frozen epochs value (%d) exceed maximum %d", frozenEpochs, mx)
 	}
 	ret := make([]int64, mx)
@@ -517,8 +519,8 @@ func _precalcDelegationConstants() *DelegationConstants {
 	return ret
 }
 
-// EpochOffsetSlots returns slot offset unique for the delegation target chain ID.
-// Each chain ID defines own grid of epochs. It spreads delegation output consumption among sequencers
+// EpochOffsetSlots returns slot offset unique for the delegation target chain ChainID.
+// Each chain ChainID defines own grid of epochs. It spreads delegation output consumption among sequencers
 func (c *DelegationConstants) EpochOffsetSlots(targetID base.ChainID) uint32 {
 	return binary.BigEndian.Uint32(targetID[:4]) % c.DelegationEpochSlots
 }
@@ -570,10 +572,10 @@ func constDelegationSafeRevocationSlots  : 30
 func constDelegationEpochSlots : u32/512
 func constDelegationMaxFrozenEpochs : 4
 
-// $0 target chain ID
+// $0 target chain ChainID
 func delegationEpochOffset : mod( slice($0, 0, 3), constDelegationEpochSlots)
 
-// $0 target chain ID
+// $0 target chain ChainID
 // $1 epoch
 func firstSlotInDelegationEpoch :
 if(
@@ -582,7 +584,7 @@ if(
    sub(mul($1, constDelegationEpochSlots), delegationEpochOffset($0))
 )
 
-// $0 target chain ID
+// $0 target chain ChainID
 // $1 slot
 func delegationEpochFromSlot :
 div(

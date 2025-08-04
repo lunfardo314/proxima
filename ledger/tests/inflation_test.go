@@ -109,13 +109,13 @@ func TestInflation(t *testing.T) {
 	//		return inflation
 	//	}
 	//	i := calc(base.T(0, 0), ledger.DefaultInitialSupply)
-	//	require.EqualValues(t, ledger.L().ID.SlotInflationBase, i)
+	//	require.EqualValues(t, ledger.L().ChainID.SlotInflationBase, i)
 	//
 	//	i = calc(base.T(0, 0), base.T(0, 50), ledger.DefaultInitialSupply)
-	//	require.EqualValues(t, ledger.L().ID.SlotInflationBase, i)
+	//	require.EqualValues(t, ledger.L().ChainID.SlotInflationBase, i)
 	//
 	//	i = calc(base.T(0, 0), base.T(0, 127), ledger.DefaultInitialSupply)
-	//	require.EqualValues(t, ledger.L().ID.SlotInflationBase, i)
+	//	require.EqualValues(t, ledger.L().ChainID.SlotInflationBase, i)
 	//
 	//	i = calc(base.T(0, 0), base.T(1, 0), ledger.DefaultInitialSupply)
 	//	require.EqualValues(t, 0, i)
@@ -128,20 +128,20 @@ func TestInflation(t *testing.T) {
 	//
 	//	for s := 1; s < 30; s++ {
 	//		m := s
-	//		if uint64(m) > ledger.L().ID.LinearInflationSlots {
-	//			m = int(ledger.L().ID.LinearInflationSlots)
+	//		if uint64(m) > ledger.L().ChainID.LinearInflationSlots {
+	//			m = int(ledger.L().ChainID.LinearInflationSlots)
 	//		}
 	//		i = calc(base.T(0, 1), base.T(base.Slot(s), 1), ledger.DefaultInitialSupply)
-	//		require.EqualValues(t, int(ledger.L().ID.SlotInflationBase)*m, int(i))
+	//		require.EqualValues(t, int(ledger.L().ChainID.SlotInflationBase)*m, int(i))
 	//
 	//		i = calc(base.T(0, 1), base.T(base.Slot(s), 127), ledger.DefaultInitialSupply)
-	//		require.EqualValues(t, int(ledger.L().ID.SlotInflationBase)*m, i)
+	//		require.EqualValues(t, int(ledger.L().ChainID.SlotInflationBase)*m, i)
 	//
 	//		i = calc(base.T(0, 1), base.T(base.Slot(s), 1), ledger.DefaultInitialSupply/100_000)
-	//		require.EqualValues(t, int(ledger.L().ID.SlotInflationBase)*m/100_000, int(i))
+	//		require.EqualValues(t, int(ledger.L().ChainID.SlotInflationBase)*m/100_000, int(i))
 	//
 	//		i = calc(base.T(0, 1), base.T(base.Slot(s), 127), ledger.DefaultInitialSupply/100_000)
-	//		require.EqualValues(t, int(ledger.L().ID.SlotInflationBase)*m/100_000, i)
+	//		require.EqualValues(t, int(ledger.L().ChainID.SlotInflationBase)*m/100_000, i)
 	//	}
 	//})
 }

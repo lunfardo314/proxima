@@ -175,7 +175,7 @@ sequencer:
   name: <mandatory name>
     # start sequencer yes/no
   enable: false
-    # chain ID of the sequencer
+    # chain ChainID of the sequencer
     # Sequencer chain is created by 'proxi node mkchain' command
     # All chains controlled by the wallet can be displayed by 'proxi node mychains'
   chain_id: <sequencer id hex encoded>

@@ -218,7 +218,7 @@ func (b *TagAlongBacklog) purgeBacklog() int {
 	ttlTagAlongSlots, ttlDelegationSlots := b.BacklogTTLSlots()
 	_ = ttlDelegationSlots
 	horizonTagAlong := time.Now().Add(-time.Duration(ttlTagAlongSlots) * ledger.L().ID.SlotDuration())
-	//horizonDelegation := time.Now().Add(-time.Duration(ttlDelegationSlots) * ledger.L().ID.SlotDuration())
+	//horizonDelegation := time.Now().Add(-time.Duration(ttlDelegationSlots) * ledger.L().ChainID.SlotDuration())
 
 	b.mutex.Lock()
 	defer b.mutex.Unlock()

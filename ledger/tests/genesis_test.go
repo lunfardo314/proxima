@@ -24,11 +24,11 @@ func TestOriginBase(t *testing.T) {
 	fmt.Printf("short (trimmed) human readable (non-sequencer): %s\n", rndtxid.StringShort())
 
 	rndtxid = base.RandomTransactionID(true, 1, base.NewLedgerTime(1337, 0))
-	fmt.Printf("raw hexadecimal branch transaction ID %s\n", rndtxid.StringHex())
-	fmt.Printf("full human readable branch transaction ID: %s\n", rndtxid.String())
-	fmt.Printf("short (trimmed) human readable branch transaction ID: %s\n", rndtxid.StringShort())
+	fmt.Printf("raw hexadecimal branch transaction ChainID %s\n", rndtxid.StringHex())
+	fmt.Printf("full human readable branch transaction ChainID: %s\n", rndtxid.String())
+	fmt.Printf("short (trimmed) human readable branch transaction ChainID: %s\n", rndtxid.StringShort())
 	rndtxid = base.RandomTransactionID(true, 1, base.NewLedgerTime(1337, 50))
-	fmt.Printf("short (trimmed) human readable non-branch sequencer transaction ID: %s\n", rndtxid.StringShort())
+	fmt.Printf("short (trimmed) human readable non-branch sequencer transaction ChainID: %s\n", rndtxid.StringShort())
 
 	const supply = 10_000_000_000
 	addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey())

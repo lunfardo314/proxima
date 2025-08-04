@@ -344,7 +344,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 			if cc.IsOrigin() {
 				chainID = base.MakeOriginChainID(oid)
 			} else {
-				chainID = cc.ID
+				chainID = cc.ChainID
 			}
 			ret.Outputs[i].ChainID = chainID.StringHex()
 		}

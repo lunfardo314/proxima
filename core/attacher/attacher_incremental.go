@@ -283,7 +283,7 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 
 		switch o.Output.Lock().Name() {
 		//case ledger.DelegationLockName:
-		//	chainData, ok := ledger.ExtractChainData(o.Output, o.ID)
+		//	chainData, ok := ledger.ExtractChainData(o.Output, o.ChainID)
 		//	util.Assertf(ok, "must be delegation output")
 		//
 		//	delegationInputs = append(delegationInputs, &ledger.OutputWithChainID{

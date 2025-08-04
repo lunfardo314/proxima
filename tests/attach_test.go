@@ -438,7 +438,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			PrivateKey:       genesisPrivateKey,
 			ExplicitBaseline: explicitBaseline,
 		})
-		util.RequireErrorWith(t, err, "explicit baseline must be a branch transaction ID", explicitBaseline.String())
+		util.RequireErrorWith(t, err, "explicit baseline must be a branch transaction ChainID", explicitBaseline.String())
 
 		// now this must pass without error
 		explicitBaseline = util.Ref(base.RandomTransactionID(true, 5, base.NewLedgerTime(ts.Slot, 0)))

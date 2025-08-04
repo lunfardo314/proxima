@@ -98,7 +98,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		require.EqualValues(td, 1, len(outs))
 		td.delegatedOutput, ok = ledger.DelegateOutputFromOutputWithChainID(outs[0])
 		require.True(td, ok)
-		td.Logf("delegation ID: %s", td.delegatedOutput.ChainID.String())
+		td.Logf("delegation ChainID: %s", td.delegatedOutput.ChainID.String())
 		td.Logf("delegated UTXO:\n%s", td.delegatedOutput.Output.ToSource("     "))
 	} else {
 		if prnOnError {

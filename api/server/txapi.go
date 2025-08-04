@@ -138,7 +138,7 @@ func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 		if cc.IsOrigin() {
 			chainID = base.MakeOriginChainID(oid)
 		} else {
-			chainID = cc.ID
+			chainID = cc.ChainID
 		}
 		resp.ChainID = hex.EncodeToString(chainID[:])
 	}
@@ -180,7 +180,7 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 		LockName:    o.Lock().Name(),
 	}
 	if cc, pos := o.ChainConstraint(); pos != 0xff {
-		resp.ChainID = hex.EncodeToString(cc.ID[:])
+		resp.ChainID = hex.EncodeToString(cc.ChainID[:])
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")

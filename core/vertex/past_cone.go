@@ -534,7 +534,7 @@ func (pc *PastCone) Mutations(slot base.Slot) (muts *multistate.Mutations, stats
 					oid := vid.OutputID(idx)
 					o := vid.MustOutputAt(idx)
 					if cc, ccIdx := o.ChainConstraint(); ccIdx != 0xff {
-						chainID := cc.ID
+						chainID := cc.ChainID
 						if cc.IsOrigin() {
 							chainID = base.MakeOriginChainID(oid)
 						}
@@ -558,7 +558,7 @@ func (pc *PastCone) Mutations(slot base.Slot) (muts *multistate.Mutations, stats
 				stats.NumCreated++
 
 				if cc, ccIdx := o.ChainConstraint(); ccIdx != 0xff {
-					chainID := cc.ID
+					chainID := cc.ChainID
 					if cc.IsOrigin() {
 						chainID = base.MakeOriginChainID(oid)
 					}

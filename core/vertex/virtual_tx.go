@@ -114,7 +114,7 @@ func (v *VirtualTransaction) sequencerID(txid base.TransactionID) (ret *base.Cha
 	if v.sequencerOutputIndices != nil {
 		seqOData, ok := v.outputs[v.sequencerOutputIndices[0]].SequencerOutputData()
 		util.Assertf(ok, "sequencer output data unavailable for the output #%d", v.sequencerOutputIndices[0])
-		idData := seqOData.ChainConstraint.ID
+		idData := seqOData.ChainConstraint.ChainID
 		if idData == base.NilChainID {
 			oid := base.MustNewOutputID(txid, v.sequencerOutputIndices[0])
 			ret = util.Ref(base.MakeOriginChainID(oid))
@@ -159,7 +159,7 @@ func (v *VirtualTransaction) findChainOutput(txid base.TransactionID, chainID *b
 	defer v.mutex.RUnlock()
 
 	for outIdx, o := range v.outputs {
-		if c, cIdx := o.ChainConstraint(); cIdx != 0xff && c.ID == *chainID {
+		if c, cIdx := o.ChainConstraint(); cIdx != 0xff && c.ChainID == *chainID {
 			return &ledger.OutputWithID{
 				ID:     base.MustNewOutputID(txid, outIdx),
 				Output: o,

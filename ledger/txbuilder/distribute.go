@@ -69,8 +69,10 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 		ChainInput: &ledger.OutputWithChainID{
 			OutputWithID: *initSupplyOutput,
 			ChainConstraintData: ledger.ChainConstraintData{
-				ChainID:              bootstrapChainID,
-				OriginAmount:         initSupplyOutput.Output.TokenBalance(),
+				ChainConstraint: ledger.ChainConstraint{
+					ChainID:      base.BoostrapSequencerID,
+					OriginAmount: initSupplyOutput.Output.TokenBalance(),
+				},
 				ChainConstraintIndex: 2,
 			},
 		},
