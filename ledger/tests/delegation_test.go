@@ -256,10 +256,11 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 
 func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (err error) {
 	require.NoError(td, err)
-	from, to := td.delegatedOutput.SafeRevocationSlots()
 
-	td.Logf(">>>> revoke -> %s, safe revocation from %d to %d, unfreeze slot: %d",
-		ts.String(), from, to, td.delegatedOutput.UnfreezeSlot())
+	diffSlots := ts.Slot - td.delegatedOutput.Timestamp().Slot
+	diffEpochs := ledger.DelegationConst().DiffEpochs(td.delegatedOutput.Target.ChainID(), ts, td.delegatedOutput.Timestamp())
+	td.Logf(">>>> revoke -----\nts = %s, diffSlots = %d, diffEpochs = %d\n-----\n%s",
+		ts.String(), diffSlots, diffEpochs, td.delegatedOutput.LinesSource("   ").String())
 
 	txb := txbuilder.New()
 
@@ -655,7 +656,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		util.RequireErrorWith(t, err, "master can't unlock frozen delegation output")
 
 		// succeed to unlock by target to mark output revoked
-		err = td.revokeDelegation(ts, true, false)
+		err = td.revokeDelegation(ts, true, true)
 		require.NoError(t, err)
 
 		// fail to unlock by target revoked delegation

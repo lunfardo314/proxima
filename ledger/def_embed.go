@@ -26,7 +26,7 @@ type (
 		MustSequencerAndStemOutputIndices() (byte, byte)
 		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
 		Timestamp() base.LedgerTime
-		InputAt(idx byte) (base.OutputID, error)
+		MustInputAt(idx byte) base.OutputID
 		OutputID(idx byte) base.OutputID
 		SequencerTransactionData() *SequencerTransactionData
 		IsUnlockedBy(account Accountable) bool

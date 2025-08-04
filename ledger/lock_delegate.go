@@ -367,22 +367,38 @@ func (o *DelegateOutput) FreezeUntilLatestEpoch(ts base.LedgerTime) (ret uint32)
 	return
 }
 
-func (o *DelegateOutput) MakeProducedFrozenCoverageAmounts(txEpoch uint32, revoking bool) ([]int64, error) {
-	if o.LastFrozenEpoch < txEpoch {
-		return nil, nil
+func (o *DelegateOutput) FrozenEpochs(txTs base.LedgerTime) byte {
+	dconst := DelegationConst()
+	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), o.Timestamp().Slot.Uint32())
+	if txEpoch > o.LastFrozenEpoch {
+		return 0
 	}
-	frozenEpochs := o.LastFrozenEpoch - txEpoch + 1
-	mx := DelegationConst().MaxFrozenEpochs
-	if frozenEpochs > mx {
-		return nil, fmt.Errorf("frozen epochs cannot exceed %d. Got: LastFrozenEpoch = %d, txEpoch = %d", mx, frozenEpochs, txEpoch)
+	ret := o.LastFrozenEpoch - txEpoch + 1
+	util.Assertf(ret <= dconst.MaxFrozenEpochs, "ret <= dconst.MaxFrozenEpochs")
+	return byte(ret)
+}
+
+func (o *DelegateOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.LedgerTime) []int64 {
+	dconst := DelegationConst()
+	diffEpochs := dconst.DiffEpochs(o.Target.ChainID(), txTs, o.Timestamp())
+	util.Assertf(diffEpochs >= 0, "MakeFrozenCoverageAmountDeltasForRevoking: wrong timestamp %s", txTs.String)
+
+	fc := o.Output.Amounts().FrozenCoverageVector()
+	ret := make([]int64, 0)
+	for i := diffEpochs; i < len(fc); i++ {
+		ret = append(ret, -fc[i])
+	}
+	return ret
+}
+
+func (o *DelegateOutput) MakeFrozenCoverageAmounts(frozenEpochs byte, tokenBalance uint64) ([]int64, error) {
+	mx := byte(DelegationConst().MaxFrozenEpochs)
+	if mx > frozenEpochs {
+		return nil, fmt.Errorf("MakeFrozenCoverageAmounts: frozen epochs value (%d) exceed maximum %d", frozenEpochs, mx)
 	}
 	ret := make([]int64, mx)
-	amount := o.Output.Amounts().Amount(0)
-	if revoking {
-		amount = -amount
-	}
-	for i := uint32(0); i < frozenEpochs; i++ {
-		ret[i] = amount
+	for i := 0; i < int(frozenEpochs); i++ {
+		ret[i] = int64(tokenBalance)
 	}
 	return ret, nil
 }
@@ -410,17 +426,9 @@ func (o *DelegateOutput) MakeDelegateRevokeOutput(par MakeDelegateRevokeOutputPa
 	if !par.DisableConsistencyChecks && par.Inflation > L().CalcChainInflationAmountOneSlot(par.PredTimestamp.Slot, o.Output.TokenBalance()) {
 		return nil, fmt.Errorf("MakeDelegateRevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
-	dconst := DelegationConst()
-	//if !par.DisableConsistencyChecks && txEpoch > o.LastFrozenEpoch {
-	//	return nil, fmt.Errorf("MakeDelegateRevokeOutput: revoke tx epoch is after last frozen epoch")
-	//}
 
 	amounts := []int64{int64(o.Output.TokenBalance() + par.Inflation - par.HarvestInflation), int64(par.Inflation)}
-	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.Timestamp.Slot))
-	frozenCoverageVector, err := o.MakeProducedFrozenCoverageAmounts(txEpoch, true)
-	if err != nil {
-		return nil, fmt.Errorf("MakeDelegateRevokeOutput: %w", err)
-	}
+	frozenCoverageVector := o.MakeFrozenCoverageAmountDeltasForRevoking(par.Timestamp)
 	amounts = append(amounts, frozenCoverageVector...)
 
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
@@ -537,13 +545,18 @@ func (c *DelegationConstants) EpochFromSlot(target base.ChainID, txSlot uint32) 
 	return (txSlot + c.EpochOffsetSlots(target)) / c.DelegationEpochSlots
 }
 
-func (c *DelegationConstants) AdjustFrozenCoverageVector(chainID base.ChainID, vect []int64, predTs, succTs base.LedgerTime) []int64 {
-	util.Assertf(predTs.Before(succTs), "predTs.Before(succTs)")
-	predEpoch := c.EpochFromSlot(chainID, predTs.Slot.Uint32())
-	succEpoch := c.EpochFromSlot(chainID, succTs.Slot.Uint32())
-	shift := succEpoch - predEpoch
+func (c *DelegationConstants) DiffEpochs(targetID base.ChainID, ts1, ts2 base.LedgerTime) int {
+	dconst := DelegationConst()
+	epoch1 := dconst.EpochFromSlot(targetID, ts1.Slot.Uint32())
+	epoch2 := dconst.EpochFromSlot(targetID, ts2.Slot.Uint32())
+	return int(epoch1) - int(epoch2)
+}
+
+func (c *DelegationConstants) AdjustFrozenCoverageVector(targetID base.ChainID, vect []int64, predTs, succTs base.LedgerTime) []int64 {
+	shift := c.DiffEpochs(targetID, succTs, predTs)
+	util.Assertf(shift >= 0, "wrong order of timestamps %s and %s", predTs.String, succTs.String)
 	ret := make([]int64, c.MaxFrozenEpochs)
-	if shift >= c.MaxFrozenEpochs {
+	if uint32(shift) >= c.MaxFrozenEpochs {
 		return ret
 	}
 	for i, v := range vect[shift:] {
