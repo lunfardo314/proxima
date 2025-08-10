@@ -69,3 +69,10 @@ func TestCallWithTimeout(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	require.True(t, timeoutExceeded.Load())
 }
+
+func TestGoland(t *testing.T) {
+	for i := 1; i <= 200; i++ {
+		println(i)
+		time.Sleep(200 * time.Millisecond)
+	}
+}
