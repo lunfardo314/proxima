@@ -116,7 +116,7 @@ func (p *workflowDummyEnvironment) EvidenceBranchInflationBonus(ib uint64) {
 
 func newWorkflowDummyEnvironment(stateStore multistate.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	ret := &workflowDummyEnvironment{
-		Global:       global.NewDefault(false),
+		Global:       global.NewDefault(),
 		stateStore:   stateStore,
 		txBytesStore: txStore,
 	}

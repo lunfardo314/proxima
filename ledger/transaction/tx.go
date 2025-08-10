@@ -199,15 +199,6 @@ func _baseValidation(tx *Transaction) (err error) {
 	return nil
 }
 
-func CheckTimestampLowerBound(lowerBound time.Time) TxValidationOption {
-	return func(tx *Transaction) error {
-		if ledger.ClockTime(tx.timestamp).Before(lowerBound) {
-			return fmt.Errorf("transaction is too old")
-		}
-		return nil
-	}
-}
-
 func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
 	return func(tx *Transaction) error {
 		ts := ledger.ClockTime(tx.timestamp)

@@ -97,12 +97,8 @@ func NewFromConfig() *Global {
 			}
 		}
 	}
-	bootMode := len(os.Args) >= 2 && os.Args[1] == "boot"
-	ret := _new(lvl, output, bootMode)
+	ret := _new(lvl, output)
 
-	if bootMode {
-		ret.SugaredLogger.Infof("node is starting in BOOT mode")
-	}
 	if erasedPrev {
 		ret.SugaredLogger.Warnf("previous logfile has been erased")
 	}
@@ -132,14 +128,11 @@ func NewFromConfig() *Global {
 	return ret
 }
 
-func NewDefault(bootstrap ...bool) *Global {
-	if len(bootstrap) > 0 && bootstrap[0] {
-		return _new(zapcore.DebugLevel, []string{"stderr"}, true)
-	}
-	return _new(zapcore.DebugLevel, []string{"stderr"}, false)
+func NewDefault() *Global {
+	return _new(zapcore.DebugLevel, []string{"stderr"})
 }
 
-func _new(logLevel zapcore.Level, outputs []string, bootstrap bool) *Global {
+func _new(logLevel zapcore.Level, outputs []string) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	ret := &Global{
 		ctx:                ctx,

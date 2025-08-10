@@ -274,7 +274,7 @@ func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContex
 }
 
 // _checkFrozenCoverageOnDelegateOutput assumes produced, not-origin delegation output. Enforces correct frozen coverage values
-func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o, predOut *Output, succID, predID base.OutputID) {
+func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, succID base.OutputID) {
 	dOut, ok := AsDelegateOutput(o, succID)
 	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expectedVector 1")
 	amounts := o.Amounts()
@@ -343,7 +343,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	_checkInflation(par, ctx, o, predAmounts, predID.Slot())
 
 	if o.Lock().Name() == DelegateLockName {
-		_checkFrozenCoverageOnDelegateOutput(par, ctx, o, predOut, succID, predID)
+		_checkFrozenCoverageOnDelegateOutput(par, ctx, o, succID)
 	} else {
 		_checkFrozenCoverageOnNonDelegationChain(par, ctx, cc.ChainID, amounts, predAmounts, succID.Timestamp(), predID.Timestamp())
 	}

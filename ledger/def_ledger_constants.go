@@ -60,7 +60,6 @@ const (
 	// default inflation constants adjusted to the annual inflation cap of approx 12-13% first year
 
 	DefaultSlotInflationBase        = 33_000_000
-	DefaultLinearInflationSlots     = 3
 	DefaultBranchInflationBonusBase = 5_000_000
 	// used to enforce approx validity of defaults
 

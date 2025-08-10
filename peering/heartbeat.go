@@ -72,7 +72,7 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	// received heartbeat message from peer
 	defer func() {
-		stream.Close()
+		_ = stream.Close()
 		ps.Tracef(TraceTagHeartBeatRecv, "[peering] hb: streamHandler exit")
 	}()
 

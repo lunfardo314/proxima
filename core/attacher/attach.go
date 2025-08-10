@@ -12,8 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-const TraceTagBranchAvailable = "branchAvailable"
-
 // AttachTxID ensures the txid is on the MemDAG
 // It load existing branches but does not pull anything
 func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {

@@ -207,10 +207,6 @@ func RandomSlot() Slot {
 	return Slot(rand.Uint32())
 }
 
-func RandomTick() Tick {
-	return Tick(rand.Intn(256))
-}
-
 func RandomLedgerTime(ticks ...Tick) (ret LedgerTime) {
 	ret.Slot = RandomSlot()
 	if len(ticks) > 0 {
