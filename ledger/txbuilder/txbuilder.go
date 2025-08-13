@@ -305,7 +305,7 @@ func (txb *TransactionBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 
 func (txb *TransactionBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
 	o := txb.TransactionData.Outputs[producedOutputIdx]
-	a := new([15]int64)
+	a := new([15]int64) // TODO strange code
 	copy(a[:], o.Amounts())
 	copy(a[2:], frozenCoverageDeltaVector)
 

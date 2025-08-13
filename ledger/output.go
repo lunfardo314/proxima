@@ -179,6 +179,17 @@ func (o *Output) FrozenCoverage(i byte) int64 {
 	return o.Amounts().FrozenCoverageAt(i)
 }
 
+func (o *OutputWithChainID) AdjustedFrozenCoverage(txTs base.LedgerTime) int64 {
+	predTs := o.ID.Timestamp()
+	util.Assertf(txTs.AfterOrEqual(predTs), "txTs.AfterOrEqual(predTs)")
+	dconst := DelegationConst()
+	diff := dconst.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp())
+	if diff >= int(dconst.MaxFrozenEpochs) {
+		return 0
+	}
+	return o.Output.FrozenCoverage(byte(diff))
+}
+
 // WithLock can only be used inside r/o override closure
 func (o *OutputBuilder) WithLock(lock Lock) *OutputBuilder {
 	o.PutConstraint(lock.Bytes(), ConstraintIndexLock)

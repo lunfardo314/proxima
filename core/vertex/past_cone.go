@@ -832,17 +832,20 @@ func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.Transacti
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			oid := vid.OutputID(idx)
 			if o := rdr.GetOutput(oid); o != nil {
-				if ledger.IsFrozenDelegateOutput(o, oid, pc.targetTs.Slot) {
+				chainOut, isDelegate, isFrozen := ledger.ExamineChainOutput(o, oid, pc.targetTs.Slot)
+				if isDelegate && isFrozen {
+					util.Assertf(chainOut != nil, "inconsistency: chainOut != nil")
 					// skip frozen output (this can be consumed when delegation is revoked)
 					continue
 				}
 				delta += o.TokenBalance()
-				if o.IsSequencerOutput() {
-					// add coverage frozen by the sequencer in the current epoch
-					fr := uint64(o.FrozenCoverage(0))
-					delta += fr
-					frozen += fr
+				if isDelegate || chainOut == nil {
+					continue
 				}
+				// chained outputs may contain frozen coverage which will be added to the total
+				fr := chainOut.AdjustedFrozenCoverage(pc.targetTs)
+				delta += uint64(fr)
+				frozen += uint64(fr)
 			}
 		}
 	}
