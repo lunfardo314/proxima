@@ -179,15 +179,17 @@ func initTestAmountsConstraint() {
 	util.Assertf(exampleBack1[3] == 0x01020304050607, "exampleBack1[3]==0x01020304050607")
 }
 
+// TODO proper implementation of the storage deposit
+
 const vByteCost = 1
 
-func storageDepositByOutputBytes(data []byte) uint64 {
+func StorageDepositByOutputBytes(data []byte) uint64 {
 	return vByteCost * uint64(len(data))
 }
 
 var _locksExemptOfStorageDeposit = set.New(StemLockName)
 
-func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
+func _enforceMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
 	if !ctx.SelfIsProducedOutput() {
 		// only check on produced outputs
 		return
@@ -196,7 +198,7 @@ func _checkMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *Eval
 		return
 	}
 	bal := o.Amounts().TokenBalance()
-	deposit := storageDepositByOutputBytes(ctx.SelfOutputBytes())
+	deposit := StorageDepositByOutputBytes(ctx.SelfOutputBytes())
 	par.Require(bal >= deposit, "token balance (%d) is less than required storage deposit (%d)", bal, deposit)
 }
 
@@ -317,7 +319,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	par.Require(path[len(path)-1] == ConstraintIndexAmounts, "'amounts' must be at index %d", ConstraintIndexAmounts)
 	ctx := par.DataContext()
 	o := ctx.SelfOutput()
-	_checkMinimumStorageDeposit(par, ctx, o)
+	_enforceMinimumStorageDeposit(par, ctx, o)
 	if !ctx.SelfIsProducedOutput() {
 		// only enforce the validity of amounts on produced outputs
 		return []byte{0xff}
@@ -382,12 +384,6 @@ func selfAmountAt : amountAt(selfSiblingConstraint(amountsConstraintIndex),$0)
 func selfTokenBalanceValue: selfAmountAt(0)
 
 // $0 number of output bytes
-func storageDeposit : mul(constVBCost16,$0)
+//func storageDeposit : mul(constVBCost16,$0)
 
-// enforces storage deposit
-func enforceMinimumStorageDeposit: 
-	require(
-		not(lessThan(selfTokenBalanceValue, storageDeposit(len(selfOutputBytes)))),
-		!!!amount_on_output_is_smaller_than_allowed_minimum
-	)
 `

@@ -135,7 +135,6 @@ func _validChainUnlock : and(
 // Unlock parameters 2 bytes: [unlocked chain output index, chain constraint index]
 func chainLock : and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
-	enforceMinimumStorageDeposit,
 	or(
 		and(
 			selfIsProducedOutput, 

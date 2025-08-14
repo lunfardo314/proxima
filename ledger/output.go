@@ -673,7 +673,7 @@ func (o *Output) MinimumStorageDeposit(extraWeight uint32) uint64 {
 	if _, isStem := o.StemLock(); isStem {
 		return 0
 	}
-	return StorageDeposit(len(o.Bytes()))
+	return StorageDepositByOutputBytes(o.Bytes())
 }
 
 // HashOutputs calculates input commitment from outputs: the hash of lazyarray composed of output data

@@ -172,7 +172,6 @@ func unlockedByReference: and(
 // Unlock data is 1 byte with reference index to the previous input or signature unlock with 0xff
 func addressED25519: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
-	enforceMinimumStorageDeposit,
 	or(
 		and(
 			selfIsProducedOutput, 

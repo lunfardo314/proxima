@@ -352,7 +352,6 @@ and(
 func _validDelegationProduced :
 and(
     selfIsProducedOutput,
-    enforceMinimumStorageDeposit,
     _validBase,
     _validLimits($0,$1),
 	//_validFrozenCoverageVector(_selfLastFrozenEpoch)
