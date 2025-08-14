@@ -71,19 +71,28 @@ func DelegateOutputFromOutputWithChainID(o *OutputWithChainID) (ret DelegateOutp
 	return
 }
 
-// ExamineChainOutput returns if it is a chained delegate output and if it is frozen
-func ExamineChainOutput(o *Output, oid base.OutputID, txSlot base.Slot) (out *OutputWithChainID, isDelegate bool, isFrozen bool) {
+// Coverage returns for the consumed output in the transaction with specified timestamp
+// - coverage presented by the output, which includes frozen coverage part
+// - frozen part separately
+func Coverage(o *Output, oid base.OutputID, txTs base.LedgerTime) (coverage, frozen uint64) {
 	outChain, isChain := AsOutputWithChainID(o, oid)
 	if !isChain {
-		return
+		// if not a chain, coverage is equal to the toke balance
+		return o.TokenBalance(), 0
 	}
-	out = &outChain
-	var dOut DelegateOutput
-	dOut, isDelegate = DelegateOutputFromOutputWithChainID(out)
-	if !isDelegate {
-		return
+
+	if dOut, isDelegate := DelegateOutputFromOutputWithChainID(&outChain); isDelegate {
+		if dOut.IsFrozen(txTs.Slot) {
+			// delegated frozen outputs have zero coverage
+			return 0, 0
+		}
+		// delegated not-frozen output coverage is equal to the token balance
+		return o.TokenBalance(), 0
 	}
-	return out, true, dOut.IsFrozen(txSlot)
+
+	// otherwise, it is token balance plus adjusted frozen coverage stored in the chained output
+	fr := uint64(outChain.AdjustedFrozenCoverage(txTs))
+	return o.TokenBalance() + fr, fr
 }
 
 func (o *DelegateOutput) IsFrozen(txSlot base.Slot) bool {

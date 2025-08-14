@@ -30,7 +30,7 @@ type (
 	PastCone struct {
 		global.Logging // TODO not very necessary
 		tip            *WrappedTx
-		targetTs       base.LedgerTime
+		txTs           base.LedgerTime
 		name           string
 
 		*PastConeBase
@@ -82,15 +82,15 @@ func NewPastConeBase(baselineID *base.TransactionID) *PastConeBase {
 	return ret
 }
 
-func NewPastCone(env global.Logging, tip *WrappedTx, targetTs base.LedgerTime, name string) *PastCone {
-	return newPastConeFromBase(env, tip, targetTs, name, NewPastConeBase(nil))
+func NewPastCone(env global.Logging, tip *WrappedTx, txTs base.LedgerTime, name string) *PastCone {
+	return newPastConeFromBase(env, tip, txTs, name, NewPastConeBase(nil))
 }
 
 func newPastConeFromBase(env global.Logging, tip *WrappedTx, targetTs base.LedgerTime, name string, pb *PastConeBase) *PastCone {
 	return &PastCone{
 		Logging:      env,
 		tip:          tip,
-		targetTs:     targetTs,
+		txTs:         targetTs,
 		name:         name,
 		PastConeBase: pb,
 	}
@@ -733,7 +733,7 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 
 func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
-	ret := NewPastCone(env, pc.tip, pc.targetTs, name+"_debug_clone")
+	ret := NewPastCone(env, pc.tip, pc.txTs, name+"_debug_clone")
 	ret.baselineBranchID = pc.baselineBranchID
 	ret.vertices = maps.Clone(pc.vertices)
 	ret.virtuallyConsumed = make(map[*WrappedTx]set.Set[byte])
@@ -818,7 +818,7 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 }
 
 // CoverageDeltaRaw is not adjusted for sequencer output. Function does not check the consistency of the past cone.
-// Calculates coverage by checking them right in the state and skipping frozen delegation outputs.
+// Calculates coverage by checking them right in the state. For chained outputs adds non-frozen coverage .
 // Accounts for the frozen coverage in sequencer outputs.
 // Returns:
 // - total coverage delta
@@ -832,20 +832,9 @@ func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.Transacti
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			oid := vid.OutputID(idx)
 			if o := rdr.GetOutput(oid); o != nil {
-				chainOut, isDelegate, isFrozen := ledger.ExamineChainOutput(o, oid, pc.targetTs.Slot)
-				if isDelegate && isFrozen {
-					util.Assertf(chainOut != nil, "inconsistency: chainOut != nil")
-					// skip frozen output (this can be consumed when delegation is revoked)
-					continue
-				}
-				delta += o.TokenBalance()
-				if isDelegate || chainOut == nil {
-					continue
-				}
-				// chained outputs may contain frozen coverage which will be added to the total
-				fr := chainOut.AdjustedFrozenCoverage(pc.targetTs)
-				delta += uint64(fr)
-				frozen += uint64(fr)
+				cov, fr := ledger.Coverage(o, oid, pc.txTs)
+				delta += cov
+				frozen += fr
 			}
 		}
 	}

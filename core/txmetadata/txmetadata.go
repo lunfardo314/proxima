@@ -20,8 +20,8 @@ type (
 	TransactionMetadata struct {
 		// persistent
 		StateRoot      common.VCommitment // not nil may be for branch transactions
-		CoverageDelta  *uint64            // not nil may be for sequencer transactions
-		FrozenCoverage *uint64            // not nil may be for sequencer transactions
+		CoverageDelta  *uint64            // not nil may be for sequencer transactions, includes frozen part
+		FrozenCoverage *uint64            // not nil may be for sequencer transactions, frozen part separately
 		LedgerCoverage *uint64            // not nil may be for sequencer transactions
 		SlotInflation  *uint64            // not nil may be for sequencer transactions
 		Supply         *uint64            // not nil may be for branch transactions

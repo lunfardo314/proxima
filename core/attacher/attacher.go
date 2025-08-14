@@ -13,12 +13,14 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, targetTs base.LedgerTime, name string) attacher {
+func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.LedgerTime, name string) attacher {
+	util.Assertf(txTs != base.LedgerTime{}, "newPastConeAttacher: txTs must be a non-zero value")
+
 	ret := attacher{
 		Environment: env,
 		name:        name,
 		pokeMe:      func(_ *vertex.WrappedTx) {},
-		pastCone:    vertex.NewPastCone(env, tip, targetTs, name),
+		pastCone:    vertex.NewPastCone(env, tip, txTs, name),
 	}
 	return ret
 }
@@ -536,6 +538,9 @@ func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint6
 	return baselineLC + d
 }
 
+// CoverageDelta returns
+// - coverage delta (including frozen part)
+// - frozen part separately
 func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
 	delta, frozen = a.pastCone.CoverageDeltaRaw(a.Branches().GetStateReaderForTheBranch)
 	delta += a.coverageDeltaAdjustment()
