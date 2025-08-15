@@ -21,5 +21,9 @@ func TestSequencerData(t *testing.T) {
 	if sdBack.Name != sd.Name || sdBack.MinimumFee != sd.MinimumFee || sdBack.ChainHeight != sd.ChainHeight || sdBack.BranchHeight != sd.BranchHeight || sdBack.Pace != sd.Pace {
 		t.Error("wrong sequencer data")
 	}
-	t.Logf("------------\n%s", sd.Lines("    ").String())
+	jsonData := sd.JSON()
+	t.Logf("------------\n%s", string(jsonData))
+	sdBack, err = SequencerDataFromJSON(jsonData)
+	require.NoError(t, err)
+	require.EqualValues(t, sdBack.Bytes(), sdBack.Bytes())
 }
