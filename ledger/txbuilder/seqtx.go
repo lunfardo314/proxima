@@ -4,9 +4,11 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -21,8 +23,6 @@ type MakeSequencerTransactionParams struct {
 	StemInput *ledger.OutputWithID // it is branch tx if != nil
 	// timestamp of the transaction
 	Timestamp base.LedgerTime
-	// minimum fee
-	MinimumFee uint64
 	// additional inputs to consume. Must be unlockable by chain
 	// can contain sender commands to the sequencer
 	AdditionalInputs []*ledger.OutputWithID
@@ -173,24 +173,21 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
 		o.MustPushConstraint(sequencerConstraint.Bytes())
 
-		outData := ledger.ParseMilestoneData(par.ChainInput.Output)
-		if outData == nil {
-			outData = &ledger.MilestoneData{
-				Name:         par.SeqName,
-				MinimumFee:   par.MinimumFee,
-				BranchHeight: 0,
-				ChainHeight:  0,
+		seqData := ledger.ParseSeqMilestoneData(par.ChainInput.Output)
+		if seqData == nil {
+			seqData = &seqdata.SequencerData{
+				Name: par.SeqName,
 			}
 		} else {
-			outData.ChainHeight += 1
+			seqData.ChainHeight += 1
 			if par.StemInput != nil {
-				outData.BranchHeight += 1
+				seqData.BranchHeight += 1
 			}
-			outData.Name = par.SeqName
+			seqData.Name = par.SeqName
 		}
 		// milestone data is on fixed index. For some reason TODO
-		idxMsData := o.MustPushConstraint(outData.AsConstraint().Bytes())
-		util.Assertf(idxMsData == ledger.MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
+		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(seqData.Bytes()))
+		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)

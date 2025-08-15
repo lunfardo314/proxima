@@ -948,8 +948,8 @@ func (vid *WrappedTx) SequencerName() (ret string) {
 	if tx := vid.GetTransaction(); tx != nil {
 		if seqData := tx.SequencerTransactionData(); seqData != nil {
 			if outData := seqData.SequencerOutputData; outData != nil {
-				if outData.MilestoneData != nil {
-					ret = outData.MilestoneData.Name
+				if outData.SequencerData != nil {
+					ret = outData.SequencerData.Name
 				}
 			}
 		}

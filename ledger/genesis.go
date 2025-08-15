@@ -1,7 +1,9 @@
 package ledger
 
 import (
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -21,9 +23,9 @@ func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *Outp
 				chainIdx := o.MustPushConstraint(NewChainOrigin(0, initialSupply).Bytes())
 				o.MustPushConstraint(NewSequencerConstraint(chainIdx).Bytes())
 
-				msData := MilestoneData{Name: BootstrapSequencerName}
-				idxMsData := o.MustPushConstraint(msData.AsConstraint().Bytes())
-				util.Assertf(idxMsData == MilestoneDataFixedIndex, "idxMsData == MilestoneDataFixedIndex")
+				msData := seqdata.SequencerData{Name: BootstrapSequencerName}
+				idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(msData.Bytes()))
+				util.Assertf(idxMsData == SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
 			}),
 		},
 		ChainConstraintData: ChainConstraintData{

@@ -78,7 +78,6 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 		},
 		StemInput:        genesisStem,
 		Timestamp:        ts,
-		MinimumFee:       0,
 		AdditionalInputs: nil,
 		WithdrawOutputs:  genesisDistributionOutputs,
 		Endorsements:     nil,

@@ -309,7 +309,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		if tx.IsBranchTransaction() {
 			ret.SequencerTxData.StemOutputIndex = util.Ref(seqData.StemOutputIndex)
 		}
-		if md := seqData.SequencerOutputData.MilestoneData; md != nil {
+		if md := seqData.SequencerOutputData.SequencerData; md != nil {
 			ret.SequencerTxData.MilestoneData = &MilestoneData{
 				Name:         md.Name,
 				MinimumFee:   md.MinimumFee,

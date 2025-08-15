@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/checkpoints"
 )
@@ -386,7 +387,7 @@ func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
 	}
 }
 
-func (a *milestoneAttacher) logFinalStatusString(msData *ledger.MilestoneData) string {
+func (a *milestoneAttacher) logFinalStatusString(msData *seqdata.SequencerData) string {
 	var msg string
 
 	msDataStr := " (n/a)"

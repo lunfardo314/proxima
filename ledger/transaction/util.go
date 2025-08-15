@@ -128,7 +128,7 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 		}
 		ret.Add("  #%d %s", idx, oid.String()).
 			Add("       bytes (%d): %s", len(o.Bytes()), hex.EncodeToString(o.Bytes()))
-		if msd := ledger.ParseMilestoneData(o); msd != nil {
+		if msd := ledger.ParseSeqMilestoneData(o); msd != nil {
 			ret.Add("       seq: %s", msd.Name)
 		}
 		ret.Append(utxoToLines(o, "     ")).

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"golang.org/x/crypto/blake2b"
@@ -53,7 +55,7 @@ type (
 		ChainConstraint          *ChainConstraint
 		AmountOnChain            uint64
 		SequencerConstraintIndex byte
-		MilestoneData            *MilestoneData
+		SequencerData            *seqdata.SequencerData
 	}
 )
 
@@ -397,7 +399,7 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 		SequencerConstraint:      seqConstraint,
 		ChainConstraint:          chainConstraint,
 		AmountOnChain:            o.TokenBalance(),
-		MilestoneData:            ParseMilestoneData(o),
+		SequencerData:            ParseSeqMilestoneData(o),
 	}, true
 }
 
@@ -827,4 +829,18 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 		return nil, err
 	}
 	return ret, nil
+}
+
+const SeqMilestoneDataFixedIndex = 4
+
+// ParseSeqMilestoneData expected at index 4, otherwise nil
+func ParseSeqMilestoneData(o *Output) *seqdata.SequencerData {
+	if o.NumConstraints() <= SeqMilestoneDataFixedIndex {
+		return nil
+	}
+	data := easyfl.StripDataPrefix(o.MustConstraintAt(SeqMilestoneDataFixedIndex))
+	if ret, err := seqdata.SequencerDataFromBytes(data); err == nil {
+		return ret
+	}
+	return nil
 }

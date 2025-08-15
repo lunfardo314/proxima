@@ -65,7 +65,7 @@ func listChainedOutputs(addr ledger.AddressED25519, outs []*ledger.OutputWithCha
 				continue
 			}
 			seq = "YES"
-			if md := sd.MilestoneData; md != nil {
+			if md := sd.SequencerData; md != nil {
 				seq = fmt.Sprintf("%s (%d/%d)", md.Name, md.ChainHeight, md.BranchHeight)
 			}
 		}

@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/maps"
@@ -292,17 +293,17 @@ func (d *MemDAG) LatestHealthySlot() base.Slot {
 	return ret
 }
 
-func (d *MemDAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *ledger.MilestoneData) {
+func (d *MemDAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *seqdata.SequencerData) {
 	msVID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			ret = ledger.ParseMilestoneData(v.Tx.SequencerOutput().Output)
+			ret = ledger.ParseSeqMilestoneData(v.Tx.SequencerOutput().Output)
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			ret = ledger.ParseMilestoneData(v.Tx.SequencerOutput().Output)
+			ret = ledger.ParseSeqMilestoneData(v.Tx.SequencerOutput().Output)
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			seqOut, _ := v.SequencerOutputs()
-			ret = ledger.ParseMilestoneData(seqOut)
+			ret = ledger.ParseSeqMilestoneData(seqOut)
 		},
 	})
 	return

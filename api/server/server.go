@@ -744,8 +744,8 @@ func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Requ
 		sd, ok := di.SequencerOutput.Output.SequencerOutputData()
 		srv.Assertf(ok, "inconsistency")
 		name := ""
-		if sd.MilestoneData != nil {
-			name, _, _ = strings.Cut(sd.MilestoneData.Name, ".")
+		if sd.SequencerData != nil {
+			name, _, _ = strings.Cut(sd.SequencerData.Name, ".")
 		}
 		resp.Sequencers[chainID.StringHex()] = api.DelegationsOnSequencer{
 			SequencerOutputID: di.SequencerOutput.ID.StringHex(),

@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 )
 
 type (
@@ -44,7 +45,7 @@ type (
 		memDAGAccessEnvironment
 		pullEnvironment
 		postEventEnvironment
-		ParseMilestoneData(msVID *vertex.WrappedTx) *ledger.MilestoneData
+		ParseMilestoneData(msVID *vertex.WrappedTx) *seqdata.SequencerData
 		SaveFullDAG(fname string)
 		EvidencePastConeSize(sz int)
 		DurationSinceLastMessageFromPeer() time.Duration
