@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/sequencer/commands"
+	"github.com/lunfardo314/proxima/sequencer/commands_old"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -117,7 +117,7 @@ func (p *proposer) propose(a *attacher.IncrementalAttacher) error {
 }
 
 func (p *proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction.Transaction, string, error) {
-	cmdParser := commands.NewCommandParser(ledger.AddressED25519FromPrivateKey(p.ControllerPrivateKey()))
+	cmdParser := commands_old.NewCommandParser(ledger.AddressED25519FromPrivateKey(p.ControllerPrivateKey()))
 	nm := p.environment.SequencerName() + "." + p.strategy.ShortName
 	tx, err := a.MakeSequencerTransaction(nm, p.ControllerPrivateKey(), cmdParser)
 	// attacher and references are not needed anymore, it should be released

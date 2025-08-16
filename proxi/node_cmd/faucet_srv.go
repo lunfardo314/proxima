@@ -17,7 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer/commands"
+	"github.com/lunfardo314/proxima/sequencer/commands_old"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -234,7 +234,7 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.Tr
 	if err != nil {
 		return base.TransactionID{}, err
 	}
-	withdrawCmd, err := commands.NewWithdrawCommandData(fct.cfg.amount, targetLock.AsLock())
+	withdrawCmd, err := commands_old.NewWithdrawCommandData(fct.cfg.amount, targetLock.AsLock())
 	if err != nil {
 		return base.TransactionID{}, err
 	}

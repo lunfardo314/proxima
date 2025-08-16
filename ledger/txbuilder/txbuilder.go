@@ -816,7 +816,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	txb.SignED25519(par.PrivateKey)
 
 	inputLoader := func(i byte) (*ledger.Output, error) {
-		panic("MakeSequencerTransactionWithInputLoader: par.ReturnInputLoader parameter must be set to true")
+		panic("MakeSequencerTransactionWithInputLoaderOld: par.ReturnInputLoader parameter must be set to true")
 	}
 	if par.ReturnInputLoader {
 		inputLoader = func(i byte) (*ledger.Output, error) {

@@ -318,7 +318,7 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 		endorsements[i] = vid.ID()
 	}
 	// create sequencer transaction
-	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoader(txbuilder.MakeSequencerTransactionParams{
+	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoaderOld(txbuilder.MakeSequencerTransactionParamsOld{
 		SeqName:           seqName,
 		ChainInput:        chainIn.MustAsChainOutput(),
 		StemInput:         stemIn,
@@ -351,7 +351,7 @@ func (a *IncrementalAttacher) makeSequencerTransactionWithExplicitBaseline(seqNa
 	a.Assertf(len(a.inputs) == 1, "a.inputs==1")
 
 	chainIn := a.inputs[0].OutputWithID()
-	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoader(txbuilder.MakeSequencerTransactionParams{
+	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoaderOld(txbuilder.MakeSequencerTransactionParamsOld{
 		SeqName:          seqName,
 		ChainInput:       chainIn.MustAsChainOutput(),
 		Timestamp:        a.targetTs,

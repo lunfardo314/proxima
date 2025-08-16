@@ -24,7 +24,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/commands"
+	"github.com/lunfardo314/proxima/sequencer/commands_old"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -391,7 +391,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 		ts = ts.AddTicks(ledger.TransactionPaceSequencer())
 
 		td.seqChain[i] = make([]*transaction.Transaction, 0)
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 			SeqName:          "1",
 			ChainInput:       chainOrigin,
 			Timestamp:        ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts),
@@ -411,7 +411,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 		for seqNr := range td.seqChain {
 			endorsedSeqNr := (seqNr + 1) % len(td.seqChain)
 			endorse := td.seqChain[endorsedSeqNr][i].ID()
-			txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			txBytesSeq, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 				SeqName:      fmt.Sprintf("seq%d", seqNr),
 				ChainInput:   td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
 				Timestamp:    td.seqChain[seqNr][i].Timestamp().AddTicks(ledger.TransactionPaceSequencer()),
@@ -446,7 +446,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 			}
 			ts = base.MaximumTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
 
-			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 				SeqName:      fmt.Sprintf("seq%d", i),
 				ChainInput:   extend,
 				Timestamp:    ts,
@@ -497,7 +497,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 			}
 			ts = base.MaximumTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
 
-			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+			txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 				SeqName:          fmt.Sprintf("seq%d", i),
 				ChainInput:       extend,
 				AdditionalInputs: []*ledger.OutputWithID{transferOut},
@@ -519,7 +519,7 @@ func (td *longConflictTestData) makeBranch(extend *ledger.OutputWithChainID, pre
 	td.t.Logf("extendTS: %s, prevBranchTS: %s", extend.Timestamp().String(), prevBranch.Timestamp().String())
 	require.True(td.t, extend.Timestamp().After(prevBranch.Timestamp()))
 
-	txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+	txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 		SeqName:    "seq0",
 		ChainInput: extend,
 		StemInput:  prevBranch.StemOutput(),
@@ -550,7 +550,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 		}
 		ts := branch.Timestamp().AddTicks(ledger.TransactionPaceSequencer())
 		ts = ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts)
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParams{
+		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 			SeqName:      "seq0",
 			ChainInput:   extendOut,
 			Timestamp:    ts,
@@ -813,7 +813,7 @@ type spammerWithdrawCmdParams struct {
 func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, ctx context.Context) {
 	srcAddr := ledger.AddressED25519FromPrivateKey(par.seqControllerPrivateKey)
 
-	const withdrawAmount = commands.MinimumAmountToRequestFromSequencer
+	const withdrawAmount = commands_old.MinimumAmountToRequestFromSequencer
 
 	for {
 		select {
@@ -829,7 +829,7 @@ func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, c
 		})
 		_, err = txb.ProduceOutput(reminder)
 		require.NoError(td.t, err)
-		cmdOut, err := commands.MakeSequencerWithdrawCmdOutput(commands.MakeSequencerWithdrawCmdOutputParams{
+		cmdOut, err := commands_old.MakeSequencerWithdrawCmdOutput(commands_old.MakeSequencerWithdrawCmdOutputParams{
 			SeqID:          par.seqID,
 			ControllerAddr: srcAddr,
 			TargetLock:     par.target,

@@ -65,7 +65,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	}
 
 	// create origin branch transaction at the next slot after genesis time slot
-	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParams{
+	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParamsOld{
 		ChainInput: &ledger.OutputWithChainID{
 			OutputWithID: *initSupplyOutput,
 			ChainConstraintData: ledger.ChainConstraintData{

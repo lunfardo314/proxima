@@ -165,6 +165,10 @@ func (o *OutputBuilder) WithAmounts(amount ...int64) *OutputBuilder {
 	return o
 }
 
+func (o *OutputBuilder) WithTokenBalance(bal uint64) *OutputBuilder {
+	return o.WithAmounts(int64(bal))
+}
+
 func (o *Output) Amounts() Amounts {
 	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)

@@ -13,8 +13,8 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-// MakeSequencerTransactionParams contains parameters for the sequencer transaction builder
-type MakeSequencerTransactionParams struct {
+// MakeSequencerTransactionParamsOld contains parameters for the sequencer transaction builder
+type MakeSequencerTransactionParamsOld struct {
 	// sequencer name. By convention, can be <sequencer name>.<proposer name>
 	SeqName string
 	// predecessor
@@ -43,12 +43,12 @@ type MakeSequencerTransactionParams struct {
 	InflateMainChain bool
 }
 
-func MakeSequencerTransaction(par MakeSequencerTransactionParams) ([]byte, error) {
-	ret, _, err := MakeSequencerTransactionWithInputLoader(par)
+func MakeSequencerTransaction(par MakeSequencerTransactionParamsOld) ([]byte, error) {
+	ret, _, err := MakeSequencerTransactionWithInputLoaderOld(par)
 	return ret, err
 }
 
-func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
+func MakeSequencerTransactionWithInputLoaderOld(par MakeSequencerTransactionParamsOld) ([]byte, func(i byte) (*ledger.Output, error), error) {
 	errP := util.MakeErrFuncForPrefix("MakeSequencerTransaction")
 
 	if !par.Timestamp.IsSlotBoundary() && !ledger.L().ID.IsPostBranchConsolidationTimestamp(par.Timestamp) {

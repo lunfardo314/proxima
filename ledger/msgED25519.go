@@ -16,7 +16,7 @@ import (
 // MessageWithED25519Sender is a constraint which enforces trust-less sender identity next to arbitrary data in the UTXO
 type MessageWithED25519Sender struct {
 	SenderHash [32]byte // blake2b hash of the sender public key
-	Msg        []byte   // arbitrary data attached. Interpreted by the receiver, such as a sequencer
+	Msg        []byte   // arbitrary data attached. Interpreted by the receiver such as a sequencer
 }
 
 const messageWithED25519SenderSource = `
