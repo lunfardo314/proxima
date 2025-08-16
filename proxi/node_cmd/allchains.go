@@ -79,7 +79,7 @@ func listChains(chains []*ledger.OutputWithChainID) {
 			}
 			seq = "YES"
 			if md := sd.SequencerData; md != nil {
-				seq = fmt.Sprintf("%s (%d/%d)", md.Name, md.ChainHeight, md.BranchHeight)
+				seq = fmt.Sprintf("%s (%d/%d)", md.Name(), md.ChainHeight(), md.BranchHeight())
 			}
 		}
 

@@ -13,8 +13,8 @@ type SmallPersistentMap struct {
 	m map[byte][]byte
 }
 
-func NewSmallPersistentMap() *SmallPersistentMap {
-	return &SmallPersistentMap{
+func NewSmallPersistentMap() SmallPersistentMap {
+	return SmallPersistentMap{
 		m: make(map[byte][]byte),
 	}
 }
@@ -48,10 +48,10 @@ func (m *SmallPersistentMap) Bytes() []byte {
 	return arr.Bytes()
 }
 
-func SmallPersistentMapFromBytes(data []byte) (*SmallPersistentMap, error) {
+func SmallPersistentMapFromBytes(data []byte) (SmallPersistentMap, error) {
 	arr, err := tuples.TupleFromBytes(data, 256)
 	if err != nil {
-		return nil, fmt.Errorf("SmallPersistentMapFromBytes: %w", err)
+		return SmallPersistentMap{}, fmt.Errorf("SmallPersistentMapFromBytes: %w", err)
 	}
 	ret := NewSmallPersistentMap()
 	arr.ForEach(func(i int, data []byte) bool {
@@ -63,7 +63,7 @@ func SmallPersistentMapFromBytes(data []byte) (*SmallPersistentMap, error) {
 		return true
 	})
 	if err != nil {
-		return nil, err
+		return SmallPersistentMap{}, err
 	}
 	return ret, nil
 }

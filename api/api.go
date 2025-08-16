@@ -311,10 +311,10 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		}
 		if md := seqData.SequencerOutputData.SequencerData; md != nil {
 			ret.SequencerTxData.MilestoneData = &MilestoneData{
-				Name:         md.Name,
-				MinimumFee:   md.MinimumFee,
-				ChainHeight:  md.ChainHeight,
-				BranchHeight: md.BranchHeight,
+				Name:         md.Name(),
+				MinimumFee:   md.MinimumFee(),
+				ChainHeight:  md.ChainHeight(),
+				BranchHeight: md.BranchHeight(),
 			}
 		}
 	}

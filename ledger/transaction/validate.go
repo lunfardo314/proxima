@@ -149,6 +149,8 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 	return nil
 }
 
+// TODO no need to sum inflation and frozen coverage in the consumed side
+
 func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) error {
 	var overflow bool
 	for i, o := range outs {

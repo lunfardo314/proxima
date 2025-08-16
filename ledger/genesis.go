@@ -23,7 +23,8 @@ func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *Outp
 				chainIdx := o.MustPushConstraint(NewChainOrigin(0, initialSupply).Bytes())
 				o.MustPushConstraint(NewSequencerConstraint(chainIdx).Bytes())
 
-				msData := seqdata.SequencerData{Name: BootstrapSequencerName}
+				msData := seqdata.New()
+				msData.SetName(BootstrapSequencerName)
 				idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(msData.Bytes()))
 				util.Assertf(idxMsData == SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
 			}),

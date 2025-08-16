@@ -20,7 +20,7 @@ import (
 )
 
 type (
-	TransactionBuilder struct {
+	TxBuilder struct {
 		ConsumedOutputs []*ledger.Output
 		TransactionData *transactionData
 	}
@@ -44,8 +44,8 @@ type (
 	}
 )
 
-func New() *TransactionBuilder {
-	return &TransactionBuilder{
+func New() *TxBuilder {
+	return &TxBuilder{
 		ConsumedOutputs: make([]*ledger.Output, 0),
 		TransactionData: &transactionData{
 			InputIDs:             make([]*base.OutputID, 0),
@@ -61,17 +61,17 @@ func New() *TransactionBuilder {
 	}
 }
 
-func (txb *TransactionBuilder) NumInputs() int {
+func (txb *TxBuilder) NumInputs() int {
 	ret := len(txb.ConsumedOutputs)
 	util.Assertf(ret == len(txb.TransactionData.InputIDs), "ret==len(ctx.Transaction.InputIDs)")
 	return ret
 }
 
-func (txb *TransactionBuilder) NumOutputs() int {
+func (txb *TxBuilder) NumOutputs() int {
 	return len(txb.TransactionData.Outputs)
 }
 
-func (txb *TransactionBuilder) ConsumeOutput(out *ledger.Output, oid base.OutputID) (byte, error) {
+func (txb *TxBuilder) ConsumeOutput(out *ledger.Output, oid base.OutputID) (byte, error) {
 	if txb.NumInputs() >= 256 {
 		return 0, fmt.Errorf("too many consumed outputs")
 	}
@@ -82,7 +82,7 @@ func (txb *TransactionBuilder) ConsumeOutput(out *ledger.Output, oid base.Output
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
 
-func (txb *TransactionBuilder) ConsumeOutputsUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
+func (txb *TxBuilder) ConsumeOutputsUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
 	var err error
 	if len(outs) >= 256 {
 		return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputsUnlock: number of inputs can't be greater than 256")
@@ -113,7 +113,7 @@ func (txb *TransactionBuilder) ConsumeOutputsUnlock(outs ...*ledger.OutputWithID
 }
 
 // ConsumeOutputsNoUnlock returns total sum and maximal timestamp
-func (txb *TransactionBuilder) ConsumeOutputsNoUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
+func (txb *TxBuilder) ConsumeOutputsNoUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
 	retTotal := uint64(0)
 	retTs := base.NilLedgerTime
 	for _, o := range outs {
@@ -130,18 +130,18 @@ func (txb *TransactionBuilder) ConsumeOutputsNoUnlock(outs ...*ledger.OutputWith
 	return retTotal, retTs, nil
 }
 
-func (txb *TransactionBuilder) PutUnlockParams(inputIndex, constraintIndex byte, unlockParamData []byte) {
+func (txb *TxBuilder) PutUnlockParams(inputIndex, constraintIndex byte, unlockParamData []byte) {
 	txb.TransactionData.UnlockBlocks[inputIndex].array.MustPutAtIdxWithPadding(constraintIndex, unlockParamData)
 }
 
 // PutSignatureUnlock marker 0xff references the signature of the transaction.
 // It can be distinguished from any reference because it cannot be strictly less than any other reference
-func (txb *TransactionBuilder) PutSignatureUnlock(inputIndex byte) {
+func (txb *TxBuilder) PutSignatureUnlock(inputIndex byte) {
 	txb.PutUnlockParams(inputIndex, ledger.ConstraintIndexLock, []byte{0xff})
 }
 
 // PutUnlockReference references some preceding output
-func (txb *TransactionBuilder) PutUnlockReference(inputIndex, constraintIndex, referencedInputIndex byte) error {
+func (txb *TxBuilder) PutUnlockReference(inputIndex, constraintIndex, referencedInputIndex byte) error {
 	if referencedInputIndex >= inputIndex {
 		return fmt.Errorf("referenced input index must be strongly less than the unlocked output index")
 	}
@@ -149,7 +149,7 @@ func (txb *TransactionBuilder) PutUnlockReference(inputIndex, constraintIndex, r
 	return nil
 }
 
-func (txb *TransactionBuilder) PutStandardInputUnlocks(n int) error {
+func (txb *TxBuilder) PutStandardInputUnlocks(n int) error {
 	util.Assertf(n > 0, "n > 0")
 	txb.PutSignatureUnlock(0)
 	for i := 1; i < n; i++ {
@@ -160,15 +160,15 @@ func (txb *TransactionBuilder) PutStandardInputUnlocks(n int) error {
 	return nil
 }
 
-func (txb *TransactionBuilder) PushEndorsements(txid ...base.TransactionID) {
+func (txb *TxBuilder) PushEndorsements(txid ...base.TransactionID) {
 	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid...)
 }
 
-func (txb *TransactionBuilder) PutExplicitBaseline(txid *base.TransactionID) {
+func (txb *TxBuilder) PutExplicitBaseline(txid *base.TransactionID) {
 	txb.TransactionData.ExplicitBaseline = txid
 }
 
-func (txb *TransactionBuilder) ProduceOutput(o *ledger.Output) (byte, error) {
+func (txb *TxBuilder) ProduceOutput(o *ledger.Output) (byte, error) {
 	if err := o.EnoughAmountForStorageDeposit(); err != nil {
 		return 0, err
 	}
@@ -180,7 +180,7 @@ func (txb *TransactionBuilder) ProduceOutput(o *ledger.Output) (byte, error) {
 	return byte(len(txb.TransactionData.Outputs) - 1), nil
 }
 
-func (txb *TransactionBuilder) ProduceOutputs(outs ...*ledger.Output) (uint64, error) {
+func (txb *TxBuilder) ProduceOutputs(outs ...*ledger.Output) (uint64, error) {
 	total := uint64(0)
 	for _, o := range outs {
 		if _, err := txb.ProduceOutput(o); err != nil {
@@ -191,7 +191,7 @@ func (txb *TransactionBuilder) ProduceOutputs(outs ...*ledger.Output) (uint64, e
 	return total, nil
 }
 
-func (txb *TransactionBuilder) ConsumedAmount() uint64 {
+func (txb *TxBuilder) ConsumedAmount() uint64 {
 	ret := uint64(0)
 	for _, o := range txb.ConsumedOutputs {
 		ret += o.TokenBalance()
@@ -199,12 +199,12 @@ func (txb *TransactionBuilder) ConsumedAmount() uint64 {
 	return ret
 }
 
-func (txb *TransactionBuilder) Transaction() (*transaction.Transaction, error) {
+func (txb *TxBuilder) Transaction() (*transaction.Transaction, error) {
 	txBytes := txb.TransactionData.Bytes()
 	return transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 }
 
-func (txb *TransactionBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
+func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
 	txBytes := txb.TransactionData.Bytes()
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	if err != nil {
@@ -224,7 +224,7 @@ func (txb *TransactionBuilder) BytesWithValidation() ([]byte, base.TransactionID
 	return txBytes, tx.ID(), ctx.LinesHR().String(), nil
 }
 
-func (txb *TransactionBuilder) ProducedAmount() (uint64, uint64) {
+func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {
 	retTotal := uint64(0)
 	retInflation := uint64(0)
 	for _, o := range txb.TransactionData.Outputs {
@@ -236,7 +236,7 @@ func (txb *TransactionBuilder) ProducedAmount() (uint64, uint64) {
 
 // InsertSimpleChainTransition inserts a simple chain transition. Takes output with chain constraint from parameters,
 // Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
-func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, _ base.LedgerTime) error {
+func (txb *TxBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, _ base.LedgerTime) error {
 	chainIN, err := ledger.OutputFromBytes(inChainData.Data)
 	if err != nil {
 		return err
@@ -263,8 +263,8 @@ func (txb *TransactionBuilder) InsertSimpleChainTransition(inChainData *ledger.O
 	return nil
 }
 
-func (txb *TransactionBuilder) String() string {
-	ret := []string{"TransactionBuilder:"}
+func (txb *TxBuilder) String() string {
+	ret := []string{"TxBuilder:"}
 	ret = append(ret, fmt.Sprintf("Consumed outputs (%d):", len(txb.ConsumedOutputs)))
 	util.Assertf(len(txb.ConsumedOutputs) == len(txb.TransactionData.InputIDs), "len(txb.ConsumedOutputs) == len(txb.Transaction.InputIDs)")
 	for i := range txb.ConsumedOutputs {
@@ -283,7 +283,7 @@ func (txb *TransactionBuilder) String() string {
 }
 
 // LoadInput returns clone of the consumed output
-func (txb *TransactionBuilder) LoadInput(i byte) (*ledger.Output, error) {
+func (txb *TxBuilder) LoadInput(i byte) (*ledger.Output, error) {
 	if int(i) >= len(txb.ConsumedOutputs) {
 		return nil, fmt.Errorf("can't load input #%d", i)
 	}
@@ -291,7 +291,7 @@ func (txb *TransactionBuilder) LoadInput(i byte) (*ledger.Output, error) {
 }
 
 // CalcFrozenCoverageDelta sums up frozen coverage vectors of all delegation outputs
-func (txb *TransactionBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
+func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 	sum := new([15]int64)
 	for _, o := range txb.TransactionData.Outputs {
 		if o.Lock().Name() == ledger.DelegateLockName {
@@ -303,7 +303,7 @@ func (txb *TransactionBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 	return sum[2 : 2+ledger.DelegationConst().MaxFrozenEpochs], nil
 }
 
-func (txb *TransactionBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
+func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
 	o := txb.TransactionData.Outputs[producedOutputIdx]
 	a := new([15]int64) // TODO strange code
 	copy(a[:], o.Amounts())
@@ -373,7 +373,7 @@ func (tx *transactionData) Bytes() []byte {
 
 var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-func (txb *TransactionBuilder) SignED25519(privKey ed25519.PrivateKey) {
+func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey) {
 	txid, err := transaction.TxIDFromTransactionDataTree(txb.TransactionData.ToTuple().AsTree())
 	util.AssertNoError(err)
 	sig, err := privKey.Sign(rnd, txid[:], crypto.Hash(0))

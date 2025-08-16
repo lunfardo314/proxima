@@ -499,14 +499,14 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch)
 		if healthy {
 			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, proposer: %s, coverage: %s, inflation: %s",
-				tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name,
+				tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name(),
 				util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
 			return true
 		}
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
 			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. Now: %s, p: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
-				tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name,
+				tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name(),
 				util.Th(*meta.LedgerCoverage), util.Th(*meta.CoverageDelta), util.Th(*meta.Supply), util.Th(tx.InflationAmount()), util.Th(*meta.SlotInflation))
 			seq.wontSubmitBranchID = tx.ID()
 		}
@@ -514,7 +514,7 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 	}
 
 	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, proposer: %s, coverage: %s, inflation: %s",
-		tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name,
+		tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name(),
 		util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
 	return true
 }

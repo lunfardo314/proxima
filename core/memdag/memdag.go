@@ -296,14 +296,20 @@ func (d *MemDAG) LatestHealthySlot() base.Slot {
 func (d *MemDAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *seqdata.SequencerData) {
 	msVID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			ret = ledger.ParseSeqMilestoneData(v.Tx.SequencerOutput().Output)
+			if r, err := ledger.ParseSeqMilestoneData(v.Tx.SequencerOutput().Output); err == nil {
+				ret = &r
+			}
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			ret = ledger.ParseSeqMilestoneData(v.Tx.SequencerOutput().Output)
+			if r, err := ledger.ParseSeqMilestoneData(v.Tx.SequencerOutput().Output); err == nil {
+				ret = &r
+			}
 		},
 		VirtualTx: func(v *vertex.VirtualTransaction) {
 			seqOut, _ := v.SequencerOutputs()
-			ret = ledger.ParseSeqMilestoneData(seqOut)
+			if r, err := ledger.ParseSeqMilestoneData(seqOut); err == nil {
+				ret = &r
+			}
 		},
 	})
 	return

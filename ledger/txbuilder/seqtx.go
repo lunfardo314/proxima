@@ -173,17 +173,16 @@ func MakeSequencerTransactionWithInputLoader(par MakeSequencerTransactionParams)
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
 		o.MustPushConstraint(sequencerConstraint.Bytes())
 
-		seqData := ledger.ParseSeqMilestoneData(par.ChainInput.Output)
-		if seqData == nil {
-			seqData = &seqdata.SequencerData{
-				Name: par.SeqName,
-			}
+		seqData, err := ledger.ParseSeqMilestoneData(par.ChainInput.Output)
+		if err != nil {
+			seqData = seqdata.New()
+			seqData.SetName(par.SeqName)
 		} else {
-			seqData.ChainHeight += 1
+			seqData.IncChainHeight()
 			if par.StemInput != nil {
-				seqData.BranchHeight += 1
+				seqData.IncBranchHeight()
 			}
-			seqData.Name = par.SeqName
+			seqData.SetName(par.SeqName)
 		}
 		// milestone data is on fixed index. For some reason TODO
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(seqData.Bytes()))

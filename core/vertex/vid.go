@@ -949,7 +949,7 @@ func (vid *WrappedTx) SequencerName() (ret string) {
 		if seqData := tx.SequencerTransactionData(); seqData != nil {
 			if outData := seqData.SequencerOutputData; outData != nil {
 				if outData.SequencerData != nil {
-					ret = outData.SequencerData.Name
+					ret = outData.SequencerData.Name()
 				}
 			}
 		}
