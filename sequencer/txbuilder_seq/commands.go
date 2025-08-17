@@ -130,7 +130,7 @@ func (cmd *WithdrawCommand) RequireAdditionalOutputs() int {
 }
 
 func (cmd NoopCommand) IsAuthenticated(_ *SequencerTxBuilder) bool {
-	return true
+	return false
 }
 
 func (cmd NoopCommand) Apply(_ *SequencerTxBuilder) {

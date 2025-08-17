@@ -146,8 +146,12 @@ func (txb *SequencerTxBuilder) AddEndorsement(txid base.TransactionID) error {
 
 func (txb *SequencerTxBuilder) AddTagAlongInput(o *ledger.OutputWithID) (byte, error) {
 	seqCmd := ParseCommandFromOutput(o.Output)
-	if len(txb.ConsumedOutputs) >= 255-seqCmd.RequireAdditionalOutputs() {
-		return 0, fmt.Errorf("SequencerTxBuilder: too many outputs")
+	expectedNumberOfProducedOutputs := len(txb.TransactionData.Outputs) + seqCmd.RequireAdditionalOutputs() + 1
+	if txb.TransactionData.Timestamp.IsSlotBoundary() {
+		expectedNumberOfProducedOutputs++
+	}
+	if expectedNumberOfProducedOutputs > 255 {
+		return 0, fmt.Errorf("SequencerTxBuilder: too many produced outputs")
 	}
 	idx, err := txb.ConsumeTagAlongOutputUnlock(o.Output, o.ID, 0, txb.chainInput.ChainConstraintIndex)
 	if err != nil {

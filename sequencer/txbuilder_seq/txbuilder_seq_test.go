@@ -2,6 +2,7 @@ package txbuilder_seq
 
 import (
 	"crypto/ed25519"
+	"math/rand"
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
@@ -187,6 +188,34 @@ func TestBase(t *testing.T) {
 		}
 		_, err := txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
+
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("many rnd withdraw", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+
+		rndWithdraw := func(amount uint64, slot base.Slot) error {
+			cmd := NewWithdrawCommandBytecode(privKey, amount, addr)
+			tagAlongOut := ledger.OutputWithID{
+				ID: base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(slot, 50)), 1),
+				Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
+					o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
+					o.MustPushConstraint(cmd)
+				}),
+			}
+			_, err := txb.AddTagAlongInput(&tagAlongOut)
+			return err
+		}
+
+		for i := 0; i < 254; i++ {
+			rnd := rand.Intn(500)
+			err := rndWithdraw(10_000_000-uint64(rnd), predTs.Slot-base.Slot(rnd))
+			require.NoError(t, err)
+		}
 
 		_, _, txString, err := txb.BytesWithValidation()
 		t.Logf("\n--------- tx --------\n%s", txString)
