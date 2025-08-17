@@ -65,7 +65,7 @@ func runChainsCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("--------Stem Output-------------")
 	rdr := multistate.MustNewSugaredReadableState(glb.StateStore(), branchData.Root, 0)
 	stem := rdr.GetStemOutput()
-	lines := stem.Lines("  ")
+	lines := stem.LinesSource("  ")
 	glb.Infof(lines.String())
 
 }

@@ -320,7 +320,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 	ret.forkOutput, err = oDatas[0].Parse()
 	require.NoError(t, err)
 	require.EqualValues(t, initBalance, int(ret.forkOutput.Output.TokenBalance()))
-	t.Logf("forked output:\n%s", ret.forkOutput.Lines("      ").String())
+	t.Logf("forked output:\n%s", ret.forkOutput.LinesSource("      ").String())
 
 	oDatas, err = rdr.GetUTXOsInAccount(ret.addrAux.AccountID())
 	require.NoError(t, err)

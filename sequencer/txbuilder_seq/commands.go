@@ -88,9 +88,10 @@ func (cmd *WithdrawCommand) Apply(txb *SequencerTxBuilder) error {
 		return fmt.Errorf("SequencerCommand: insufficient amount to withdraw. Minimum is %s, got %s",
 			util.Th(MinimumAmountToRequestFromSequencer), util.Th(cmd.Amount))
 	}
-	if txb.onChainAmount <= cmd.Amount || txb.onChainAmount-cmd.Amount < ledger.L().ID.MinimumAmountOnSequencer {
+	onChainAmount := txb.producedAmounts[ledger.AmountIndexTokenBalance]
+	if onChainAmount <= int64(cmd.Amount) || onChainAmount-int64(cmd.Amount) < int64(ledger.L().ID.MinimumAmountOnSequencer) {
 		return fmt.Errorf("SequencerCommand: %s is too big amount to withdraw. Remaining on-chain balance is %s",
-			util.Th(cmd.Amount), util.Th(txb.onChainAmount))
+			util.Th(cmd.Amount), util.Th(onChainAmount))
 	}
 	_, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(cmd.Amount).WithLock(cmd.Target)
@@ -98,6 +99,6 @@ func (cmd *WithdrawCommand) Apply(txb *SequencerTxBuilder) error {
 	if err != nil {
 		return err
 	}
-	txb.onChainAmount -= cmd.Amount
+	txb.producedAmounts[ledger.AmountIndexTokenBalance] -= int64(cmd.Amount)
 	return nil
 }

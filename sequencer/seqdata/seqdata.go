@@ -19,16 +19,17 @@ const (
 	KeyPace
 )
 
-func New() SequencerData {
-	return SequencerData{base.NewSmallPersistentMap()}
+func New() *SequencerData {
+	return &SequencerData{base.NewSmallPersistentMap()}
 }
 
 func (sd *SequencerData) Name() string {
 	return string(sd.Get(KeyName))
 }
 
-func (sd *SequencerData) SetName(name string) {
+func (sd *SequencerData) SetName(name string) *SequencerData {
 	sd.Set(KeyName, []byte(name))
+	return sd
 }
 
 func (sd *SequencerData) MinimumFee() (ret uint64) {
@@ -36,8 +37,9 @@ func (sd *SequencerData) MinimumFee() (ret uint64) {
 	return
 }
 
-func (sd *SequencerData) SetMinimumFee(fee uint64) {
+func (sd *SequencerData) SetMinimumFee(fee uint64) *SequencerData {
 	sd.Set(KeyMinimumFee, easyfl_util.TrimmedLeadingZeroUint64(fee))
+	return sd
 }
 
 func (sd *SequencerData) ChainHeight() (ret uint32) {
@@ -45,8 +47,13 @@ func (sd *SequencerData) ChainHeight() (ret uint32) {
 	return
 }
 
-func (sd *SequencerData) IncChainHeight() {
-	sd.Set(KeyChainHeight, easyfl_util.TrimmedLeadingZeroUint32(sd.ChainHeight()+1))
+func (sd *SequencerData) IncChainHeight(add ...uint32) *SequencerData {
+	s := uint32(1)
+	if len(add) > 0 {
+		s = add[0]
+	}
+	sd.Set(KeyChainHeight, easyfl_util.TrimmedLeadingZeroUint32(sd.ChainHeight()+s))
+	return sd
 }
 
 func (sd *SequencerData) BranchHeight() (ret uint32) {
@@ -54,8 +61,13 @@ func (sd *SequencerData) BranchHeight() (ret uint32) {
 	return
 }
 
-func (sd *SequencerData) IncBranchHeight() {
-	sd.Set(KeyBranchHeight, easyfl_util.TrimmedLeadingZeroUint32(sd.BranchHeight()+1))
+func (sd *SequencerData) IncBranchHeight(add ...uint32) *SequencerData {
+	s := uint32(1)
+	if len(add) > 0 {
+		s = add[0]
+	}
+	sd.Set(KeyBranchHeight, easyfl_util.TrimmedLeadingZeroUint32(sd.BranchHeight()+s))
+	return sd
 }
 
 func (sd *SequencerData) InflationMarginPromille() (ret uint16) {
@@ -63,8 +75,9 @@ func (sd *SequencerData) InflationMarginPromille() (ret uint16) {
 	return
 }
 
-func (sd *SequencerData) SetInflationMarginPromille(margin uint16) {
+func (sd *SequencerData) SetInflationMarginPromille(margin uint16) *SequencerData {
 	sd.Set(KeyInflationMarginPromille, easyfl_util.TrimmedLeadingZeroUint16(margin))
+	return sd
 }
 
 func (sd *SequencerData) Pace() (ret byte) {
@@ -72,15 +85,16 @@ func (sd *SequencerData) Pace() (ret byte) {
 	return
 }
 
-func (sd *SequencerData) SetPace(pace byte) {
+func (sd *SequencerData) SetPace(pace byte) *SequencerData {
 	if pace == 0 {
 		sd.Set(KeyPace, nil)
 	} else {
 		sd.Set(KeyPace, []byte{pace})
 	}
+	return sd
 }
 
-func SequencerDataFromBytes(data []byte) (ret SequencerData, err error) {
+func FromBytes(data []byte) (ret SequencerData, err error) {
 	ret.SmallPersistentMap, err = base.SmallPersistentMapFromBytes(data)
 	return
 }

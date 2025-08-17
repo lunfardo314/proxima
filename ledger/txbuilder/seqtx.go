@@ -175,7 +175,7 @@ func MakeSequencerTransactionWithInputLoaderOld(par MakeSequencerTransactionPara
 
 		seqData, err := ledger.ParseSeqMilestoneData(par.ChainInput.Output)
 		if err != nil {
-			seqData = seqdata.New()
+			seqData = *seqdata.New()
 			seqData.SetName(par.SeqName)
 		} else {
 			seqData.IncChainHeight()

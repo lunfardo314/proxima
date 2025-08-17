@@ -280,7 +280,7 @@ func (o *DelegateOutput) SafeRevocationSlots() (from, to uint32) {
 func (o *DelegateOutput) LinesSource(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("---- delegation output ----")
-	ret.Append(o.OutputWithChainID.Lines("   "))
+	ret.Append(o.OutputWithChainID.LinesSource("   "))
 	ret.Add("Master: %s", o.MasterLock.Source())
 	ret.Add("Target: %s", o.Target.Source())
 	ret.Add("MaxFrozenSlots: %d", o.MaxFrozenSlots)

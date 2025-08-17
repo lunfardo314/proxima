@@ -16,7 +16,7 @@ import (
 type (
 	SequencerTxBuilder struct {
 		*txbuilder.TxBuilder
-		seqdata.SequencerData
+		*seqdata.SequencerData
 		privateKey            ed25519.PrivateKey
 		chainInput            *ledger.OutputWithChainID
 		stemInput             *ledger.OutputWithID // it is branch tx if != nil
@@ -40,9 +40,12 @@ func New(ts base.LedgerTime,
 	}
 
 	var err error
-	if ret.SequencerData, err = ledger.ParseSeqMilestoneData(predecessor.Output); err != nil {
+	sd, err := ledger.ParseSeqMilestoneData(predecessor.Output)
+
+	if err != nil {
 		ret.SequencerData = seqdata.New()
 	} else {
+		ret.SequencerData = &sd
 		ret.SequencerData.IncChainHeight()
 		if stem != nil {
 			ret.SequencerData.IncBranchHeight()
@@ -197,6 +200,10 @@ func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
 }
 
 func (txb *SequencerTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
+	if err := txb.buildSequencerAndStemOutputs(); err != nil {
+		return nil, [32]byte{}, "", fmt.Errorf("SequencerTxBuilder: %w", err)
+	}
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 	txb.SignED25519(txb.privateKey)
 	return txb.TxBuilder.BytesWithValidation()
 }

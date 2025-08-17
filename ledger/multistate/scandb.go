@@ -242,8 +242,8 @@ func (r *Readable) ScanState() *ScannedState {
 		if _, isStemOutput := o.Output.StemLock(); isStemOutput {
 			if ret.Stem != nil {
 				ret.AddInconsistency("duplicate stem:\n--- 1\n%s--- 2\n%s",
-					ret.Stem.Lines("   ").String(),
-					o.Lines("   ").String())
+					ret.Stem.LinesSource("   ").String(),
+					o.LinesSource("   ").String())
 			}
 			if _, stemBytes := r.GetStem(); !bytes.Equal(stemBytes, o.Output.Bytes()) {
 				ret.AddInconsistency("stem output %s inconsistent with the stem index", o.ID.String())
@@ -259,8 +259,8 @@ func (r *Readable) ScanState() *ScannedState {
 		if chainID, _, ok := o.ExtractChainID(); ok {
 			if _, already := ret.Chains[chainID]; already {
 				ret.AddInconsistency("duplicated chain record:\n--- 1\n%s--- 2\n%s",
-					ret.Chains[chainID].Lines("   ").String(),
-					o.Lines("   ").String())
+					ret.Chains[chainID].LinesSource("   ").String(),
+					o.LinesSource("   ").String())
 			}
 			ret.Chains[chainID] = util.Ref(o)
 			if _, err := r.GetUTXOForChainID(chainID); err != nil {

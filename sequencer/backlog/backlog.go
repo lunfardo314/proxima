@@ -278,7 +278,7 @@ func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 	loadedTxs.Insert(wOut.VID)
 
 	b.Log().Infof("loaded sequencer start output from branch %s\n%s",
-		vidBranch.IDShortString(), chainOut.Lines("         ").String())
+		vidBranch.IDShortString(), chainOut.LinesSource("         ").String())
 
 	// load pending tag-along outputs
 	oids, err := rdr.GetUTXOIDsInAccount(ledger.ChainLockFromChainID(seqID).AccountID())

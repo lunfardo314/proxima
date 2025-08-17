@@ -589,9 +589,9 @@ func (br *BranchData) IsHealthy(fraction global.Fraction) bool {
 func (br *BranchData) LinesVerbose(prefix ...string) *lines.Lines {
 	ret := br.RootRecord.Lines(prefix...)
 	ret.Add("---- Stem ----").
-		Append(br.Stem.Lines(prefix...)).
+		Append(br.Stem.LinesSource(prefix...)).
 		Add("---- Sequencer output ----").
-		Append(br.SequencerOutput.Lines(prefix...))
+		Append(br.SequencerOutput.LinesSource(prefix...))
 	return ret
 }
 

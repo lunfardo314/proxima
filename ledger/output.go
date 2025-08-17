@@ -472,8 +472,16 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 			bc = fmt.Sprintf(prefix+"   bytecode: %s", easyfl_util.Fmt(data))
 		}
 		c, err := ConstraintFromBytes(data)
+
 		if err != nil {
-			ret.Add("%s%d: %v%s", prefix, i, err, bc)
+			if src, err := L().DecompileBytecode(data); err != nil {
+				ret.Add("%s%d: bytecode=%s (%v)", hex.EncodeToString(data), err)
+			} else {
+				ret.Add("%s%d: decompiled=%s (len=%d)", prefix, i, src, len(data))
+				if sd, err := seqdata.FromBytes(easyfl.StripDataPrefix(data)); err == nil {
+					ret.Add("      parsed seq data -> " + sd.Lines().Join(", "))
+				}
+			}
 		} else {
 			if source {
 				ret.Add("%s%d: %s%s", prefix, i, c.Source(), bc)
@@ -606,7 +614,7 @@ func (o *OutputWithID) Clone() *OutputWithID {
 	}
 }
 
-func (o *OutputWithID) Lines(prefix ...string) *lines.Lines {
+func (o *OutputWithID) LinesSource(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("id: %s, hex: %s", o.ID.String(), o.ID.StringHex())
 	if cc, idx := o.Output.ChainConstraint(); idx != 0xff {
@@ -622,8 +630,28 @@ func (o *OutputWithID) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+func (o *OutputWithID) LinesHR(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("id: %s, hex: %s", o.ID.String(), o.ID.StringHex())
+	if cc, idx := o.Output.ChainConstraint(); idx != 0xff {
+		var chainID base.ChainID
+		if cc.IsOrigin() {
+			chainID = blake2b.Sum256(o.ID[:])
+		} else {
+			chainID = cc.ChainID
+		}
+		ret.Add("      chainID: %s", chainID.String())
+	}
+	ret.Append(o.Output.LinesHR(prefix...))
+	return ret
+}
+
 func (o *OutputWithID) String() string {
-	return o.Lines().String()
+	return o.LinesHR().String()
+}
+
+func (o *OutputWithID) Source() string {
+	return o.LinesSource().String()
 }
 
 func (o *OutputWithID) Short() string {
@@ -849,5 +877,5 @@ func ParseSeqMilestoneData(o *Output) (ret seqdata.SequencerData, err error) {
 		return
 	}
 	data := easyfl.StripDataPrefix(o.MustConstraintAt(SeqMilestoneDataFixedIndex))
-	return seqdata.SequencerDataFromBytes(data)
+	return seqdata.FromBytes(data)
 }

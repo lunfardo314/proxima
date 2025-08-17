@@ -21,7 +21,7 @@ func TestSequencerData(t *testing.T) {
 		sd.IncBranchHeight()
 		sd.SetPace(3)
 		sdBin := sd.Bytes()
-		sdBack, err := SequencerDataFromBytes(sdBin)
+		sdBack, err := FromBytes(sdBin)
 		require.NoError(t, err)
 		require.EqualValues(t, sdBack.Bytes(), sdBin)
 		if sdBack.Name() != sd.Name() ||
