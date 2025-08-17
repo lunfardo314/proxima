@@ -3,6 +3,7 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"maps"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
@@ -17,6 +18,13 @@ func NewSmallPersistentMap() SmallPersistentMap {
 	return SmallPersistentMap{
 		m: make(map[byte][]byte),
 	}
+}
+
+func (m *SmallPersistentMap) Clone() SmallPersistentMap {
+	return SmallPersistentMap{
+		m: maps.Clone(m.m),
+	}
+
 }
 
 func (m *SmallPersistentMap) Set(k byte, v []byte) {

@@ -30,7 +30,8 @@ func TestBase(t *testing.T) {
 	sd := seqdata.New().
 		SetName("test_seq").
 		IncBranchHeight(2).
-		IncChainHeight(4)
+		IncChainHeight(4).
+		SetMinimumFee(1)
 
 	predTs := base.NewLedgerTime(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
@@ -216,6 +217,32 @@ func TestBase(t *testing.T) {
 			err := rndWithdraw(10_000_000-uint64(rnd), predTs.Slot-base.Slot(rnd))
 			require.NoError(t, err)
 		}
+
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("change seq name", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+
+		predSeqData, err := ledger.ParseSequencerData(txb.chainInput.Output)
+		require.NoError(t, err)
+
+		cmd := NewSetSequencerDataCommandBytecode(privKey, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
+			sdUpdated.SetName("newName").IncChainHeight()
+		}))
+
+		tagAlongOut := ledger.OutputWithID{
+			ID: base.OutputID{},
+			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
+				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
+				o.MustPushConstraint(cmd)
+			}),
+		}
+		_, err = txb.AddTagAlongInput(&tagAlongOut)
+		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
 		t.Logf("\n--------- tx --------\n%s", txString)

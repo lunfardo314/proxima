@@ -23,6 +23,14 @@ func New() *SequencerData {
 	return &SequencerData{base.NewSmallPersistentMap()}
 }
 
+func (sd *SequencerData) Clone(modify ...func(sdUpdated *SequencerData)) *SequencerData {
+	ret := &SequencerData{sd.SmallPersistentMap.Clone()}
+	if len(modify) > 0 {
+		modify[0](ret)
+	}
+	return ret
+}
+
 func (sd *SequencerData) Name() string {
 	return string(sd.Get(KeyName))
 }

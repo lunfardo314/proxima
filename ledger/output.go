@@ -399,7 +399,7 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	}
 
 	var pSeqData *seqdata.SequencerData
-	if seqData, err := ParseSeqMilestoneData(o); err == nil {
+	if seqData, err := ParseSequencerData(o); err == nil {
 		pSeqData = &seqData
 	}
 
@@ -870,10 +870,10 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 
 const SeqMilestoneDataFixedIndex = 4
 
-// ParseSeqMilestoneData expected at index 4
-func ParseSeqMilestoneData(o *Output) (ret seqdata.SequencerData, err error) {
+// ParseSequencerData expected at index 4
+func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
 	if o.NumConstraints() <= SeqMilestoneDataFixedIndex {
-		err = fmt.Errorf("ParseSeqMilestoneData: wrong number of constraints")
+		err = fmt.Errorf("ParseSequencerData: wrong number of constraints")
 		return
 	}
 	data := easyfl.StripDataPrefix(o.MustConstraintAt(SeqMilestoneDataFixedIndex))

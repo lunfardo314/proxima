@@ -17,6 +17,7 @@ type (
 	SequencerTxBuilder struct {
 		*txbuilder.TxBuilder
 		*seqdata.SequencerData
+		nextSeqData           *seqdata.SequencerData
 		privateKey            ed25519.PrivateKey
 		chainInput            *ledger.OutputWithChainID
 		stemInput             *ledger.OutputWithID // it is branch tx if != nil
@@ -40,7 +41,7 @@ func New(ts base.LedgerTime,
 	}
 
 	var err error
-	sd, err := ledger.ParseSeqMilestoneData(predecessor.Output)
+	sd, err := ledger.ParseSequencerData(predecessor.Output)
 
 	if err != nil {
 		ret.SequencerData = seqdata.New()
@@ -51,7 +52,7 @@ func New(ts base.LedgerTime,
 			ret.SequencerData.IncBranchHeight()
 		}
 	}
-
+	ret.nextSeqData = ret.SequencerData.Clone()
 	diffTicksChain := base.DiffTicks(ts, predecessor.Timestamp())
 	if diffTicksChain < int64(ledger.L().ID.TransactionPaceSequencer) ||
 		diffTicksChain < int64(ret.SequencerData.Pace()) {
@@ -188,7 +189,7 @@ func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
 		// put sequencer constraint
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
 		o.MustPushConstraint(sequencerConstraint.Bytes())
-		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.SequencerData.Bytes()))
+		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
 		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
 
 	}))

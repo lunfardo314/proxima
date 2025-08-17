@@ -54,7 +54,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 	}
 
 	var branchIndex, msIndex uint32
-	if od, err := ledger.ParseSeqMilestoneData(sequencerOutput.Output); err == nil {
+	if od, err := ledger.ParseSequencerData(sequencerOutput.Output); err == nil {
 		branchIndex = od.BranchHeight()
 		msIndex = od.ChainHeight()
 	}

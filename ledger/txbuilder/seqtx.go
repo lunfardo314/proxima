@@ -173,7 +173,7 @@ func MakeSequencerTransactionWithInputLoaderOld(par MakeSequencerTransactionPara
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
 		o.MustPushConstraint(sequencerConstraint.Bytes())
 
-		seqData, err := ledger.ParseSeqMilestoneData(par.ChainInput.Output)
+		seqData, err := ledger.ParseSequencerData(par.ChainInput.Output)
 		if err != nil {
 			seqData = *seqdata.New()
 			seqData.SetName(par.SeqName)

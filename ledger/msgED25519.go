@@ -44,6 +44,13 @@ const (
 	messageWithED25519SenderTemplate = MessageWithED25519SenderName + "(0x%s,0x%s)"
 )
 
+func NewMessageWithED25519SenderFromPrivateKey(privKey ed25519.PrivateKey, data []byte) *MessageWithED25519Sender {
+	return &MessageWithED25519Sender{
+		Msg:        data,
+		SenderHash: blake2b.Sum256(privKey.Public().(ed25519.PublicKey)),
+	}
+}
+
 func NewMessageWithED25519SenderFromPublicKey(pubKey ed25519.PublicKey, data []byte) *MessageWithED25519Sender {
 	return &MessageWithED25519Sender{
 		Msg:        data,

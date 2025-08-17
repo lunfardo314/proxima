@@ -603,7 +603,7 @@ func (br *BranchData) Lines(prefix ...string) *lines.Lines {
 
 func (br *BranchData) LinesShort(prefix ...string) *lines.Lines {
 	name := "(no name)"
-	if msData, err := ledger.ParseSeqMilestoneData(br.SequencerOutput.Output); err == nil {
+	if msData, err := ledger.ParseSequencerData(br.SequencerOutput.Output); err == nil {
 		name = msData.Name()
 	}
 	return lines.New(prefix...).Add("%s hex=%s (%s) supply: %s, infl: %s, on chain: %s, cov.delta: %s",
