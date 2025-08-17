@@ -194,7 +194,7 @@ func (t LedgerTime) AddTicks(ticks int) LedgerTime {
 
 // AddSlots adds slots to timestamp
 func (t LedgerTime) AddSlots(slot Slot) LedgerTime {
-	return t.AddTicks(int(slot << 8))
+	return t.AddTicks(int(slot << 7))
 }
 
 func MaximumTime(ts ...LedgerTime) LedgerTime {

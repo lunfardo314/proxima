@@ -133,8 +133,16 @@ func (txb *SequencerTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	return nil
 }
 
-func (txb *SequencerTxBuilder) AddTagAlongInput(out *ledger.OutputWithID) error {
-	panic("implement me")
+func (txb *SequencerTxBuilder) AddTagAlongInput(out *ledger.OutputWithID, chainOutIdx, chaiConstraintIdx byte) (byte, error) {
+	if len(txb.ConsumedOutputs) >= 256 {
+		return 0, fmt.Errorf("SequencerTxBuilder: too many outputs")
+	}
+	idx, err := txb.ConsumeTagAlongOutputUnlock(out.Output, out.ID, chainOutIdx, chaiConstraintIdx)
+	if err != nil {
+		return 0, err
+	}
+	txb.producedAmounts[ledger.AmountIndexTokenBalance] += int64(out.Output.TokenBalance())
+	return idx, nil
 }
 
 func (txb *SequencerTxBuilder) AddDelegationInput(out *ledger.DelegateOutput) error {

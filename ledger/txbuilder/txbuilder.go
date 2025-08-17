@@ -82,6 +82,19 @@ func (txb *TxBuilder) ConsumeOutput(out *ledger.Output, oid base.OutputID) (byte
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
 
+func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.OutputID, chainInIdx, chainConstraintIndex byte) (byte, error) {
+	lock := o.Lock()
+	if lock.Name() != ledger.ChainLockName {
+		return 0, fmt.Errorf("not a chain lock")
+	}
+	idx, err := txb.ConsumeOutput(o, oid)
+	if err != nil {
+		return 0, err
+	}
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(chainInIdx, chainConstraintIndex))
+	return idx, nil
+}
+
 func (txb *TxBuilder) ConsumeOutputsUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
 	var err error
 	if len(outs) >= 256 {

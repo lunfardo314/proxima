@@ -101,11 +101,9 @@ func FromBytes(data []byte) (ret SequencerData, err error) {
 
 func (sd *SequencerData) Lines(prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
-	ln.Add("Name: %s", sd.Name())
+	ln.Add("%s(%d/%d)", sd.Name(), sd.ChainHeight(), sd.BranchHeight())
 	ln.Add("Minimum fee: %d", sd.MinimumFee())
 	ln.Add("Pace: %d", sd.Pace())
 	ln.Add("Inflation margin promille: %d", sd.InflationMarginPromille())
-	ln.Add("Chain height: %d", sd.ChainHeight())
-	ln.Add("Branch height: %d", sd.BranchHeight())
 	return ln
 }

@@ -31,30 +31,128 @@ func TestBase(t *testing.T) {
 		IncBranchHeight(2).
 		IncChainHeight(4)
 
-	predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(bal)
-		o.WithLock(addr)
-		ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, bal).Bytes())
-		_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
-		_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
-	})
 	predTs := base.NewLedgerTime(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
 
-	pred, ok := ledger.AsOutputWithChainID(predChain, predID)
-	require.True(t, ok)
-	t.Logf("\n--------- predecessor --------\n%s", pred.String())
+	newPredChain := func(frozen ...int64) *ledger.OutputWithChainID {
+		amounts := append(append(make([]int64, 0), int64(bal), 0), frozen...)
 
-	ts := predTs.AddSlots(1)
-	txb, err := New(ts, &pred, nil, privKey)
-	require.NoError(t, err)
-	rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
-	err = txb.AddEndorsement(rndEndorsement)
-	require.NoError(t, err)
+		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(amounts...).WithLock(addr)
+			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, bal).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
+		})
 
-	_, _, txString, err := txb.BytesWithValidation()
-	t.Logf("\n--------- tx --------\n%s", txString)
+		pred, ok := ledger.AsOutputWithChainID(predChain, predID)
+		require.True(t, ok)
+		return &pred
+	}
 
-	require.NoError(t, err)
+	newTxb := func(ts base.LedgerTime, frozen ...int64) *SequencerTxBuilder {
+		txb, err := New(ts, newPredChain(frozen...), nil, privKey)
+		require.NoError(t, err)
+		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
+		err = txb.AddEndorsement(rndEndorsement)
+		require.NoError(t, err)
+		return txb
+	}
+	t.Run("+1 slot", func(t *testing.T) {
+		ts := predTs.AddSlots(1)
+		txb := newTxb(ts)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
 
+		require.NoError(t, err)
+	})
+	t.Run("+100 slots", func(t *testing.T) {
+		ts := predTs.AddSlots(100)
+		txb := newTxb(ts)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+1000 slots", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		txb := newTxb(ts)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+1 slot frozen 1 epoch", func(t *testing.T) {
+		ts := predTs.AddSlots(1)
+		txb := newTxb(ts, 11_000_000)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+100 slots frozen 1 epoch", func(t *testing.T) {
+		ts := predTs.AddSlots(100)
+		txb := newTxb(ts, 11_000_000)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+1000 slots frozen 1 epoch", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		txb := newTxb(ts, 11_000_000)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+1 slot frozen 4 epochs", func(t *testing.T) {
+		ts := predTs.AddSlots(1)
+		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+100 slots frozen 4 epochs", func(t *testing.T) {
+		ts := predTs.AddSlots(100)
+		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+1000 slots frozen 4 epochs", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+2000 slots frozen 4 epochs", func(t *testing.T) {
+		ts := predTs.AddSlots(2000)
+		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+1 slot tag_along", func(t *testing.T) {
+		ts := predTs.AddSlots(1)
+		txb := newTxb(ts)
+
+		tagAlongOut := ledger.OutputWithID{
+			ID: base.OutputID{},
+			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
+				o.WithTokenBalance(1000).WithLock(ledger.ChainLockFromChainID(seqID))
+			}),
+		}
+		_, err := txb.AddTagAlongInput(&tagAlongOut, 0, 2)
+		require.NoError(t, err)
+
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
 }
