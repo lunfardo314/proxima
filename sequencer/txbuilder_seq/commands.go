@@ -36,6 +36,11 @@ type (
 		SequencerCommandBase
 		seqdata.SequencerData
 	}
+
+	RevokeDelegationCommand struct {
+		SequencerCommandBase
+		// TODO
+	}
 )
 
 const (
