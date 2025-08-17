@@ -137,17 +137,55 @@ func TestBase(t *testing.T) {
 
 		require.NoError(t, err)
 	})
-	t.Run("+1 slot tag_along", func(t *testing.T) {
-		ts := predTs.AddSlots(1)
+	t.Run("+100 slot tag_along", func(t *testing.T) {
+		ts := predTs.AddSlots(100)
 		txb := newTxb(ts)
 
 		tagAlongOut := ledger.OutputWithID{
 			ID: base.OutputID{},
 			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
-				o.WithTokenBalance(1000).WithLock(ledger.ChainLockFromChainID(seqID))
+				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
 			}),
 		}
-		_, err := txb.AddTagAlongInput(&tagAlongOut, 0, 2)
+		_, err := txb.AddTagAlongInput(&tagAlongOut)
+		require.NoError(t, err)
+
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+1000 slot tag_along", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+
+		tagAlongOut := ledger.OutputWithID{
+			ID: base.OutputID{},
+			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
+				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
+			}),
+		}
+		_, err := txb.AddTagAlongInput(&tagAlongOut)
+		require.NoError(t, err)
+
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("+1000 slot withdraw", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+
+		cmd := NewWithdrawCommandBytecode(privKey, 10_000_000, addr)
+		tagAlongOut := ledger.OutputWithID{
+			ID: base.OutputID{},
+			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
+				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
+				o.MustPushConstraint(cmd)
+			}),
+		}
+		_, err := txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()

@@ -168,7 +168,7 @@ if(
    ),
         // NOT chain origin. Crosscheck reference
    require(
-     equal($1, atPath(concat(pathToUnlockParams, $1))),
+     equal(unlockParamsByConstraintIndex($1), selfConstraintIndex),
      !!!predecessor_reference_crosscheck_failed
    )
 )
@@ -202,7 +202,7 @@ or(
       ),
         // crosscheck successor reference
       require(
-         equal(selfUnlockParameters, _chainSuccessorParam(1)),
+         equal(selfConstraintIndex, _chainSuccessorParam(1)),
          !!!successor_reference_crosscheck_failed
       ),
       require(

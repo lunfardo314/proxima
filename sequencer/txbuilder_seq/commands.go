@@ -1,12 +1,13 @@
 package txbuilder_seq
 
 import (
-	"fmt"
+	"crypto/ed25519"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"golang.org/x/crypto/blake2b"
 )
 
 type (
@@ -17,7 +18,9 @@ type (
 	}
 
 	SequencerCommand interface {
-		Apply(txb *SequencerTxBuilder) error
+		IsAuthenticated(txb *SequencerTxBuilder) bool
+		Apply(txb *SequencerTxBuilder)
+		RequireAdditionalOutputs() int
 	}
 
 	WithdrawCommand struct {
@@ -25,6 +28,8 @@ type (
 		Amount uint64
 		Target ledger.Lock
 	}
+
+	NoopCommand struct{}
 )
 
 const (
@@ -40,18 +45,18 @@ const (
 )
 
 // ParseCommandFromOutput ok flag is false if command does not exist or si malformed
-func ParseCommandFromOutput(o *ledger.Output) (SequencerCommand, bool) {
+func ParseCommandFromOutput(o *ledger.Output) SequencerCommand {
 	msg, idx := o.MessageWithED25519Sender()
 	if idx == 0xff {
-		return nil, false
+		return NoopCommand{}
 	}
 	m, err := base.SmallPersistentMapFromBytes(msg.Msg)
 	if err != nil {
-		return nil, false
+		return NoopCommand{}
 	}
 	cmd := m.Get(FieldCmdCode)
 	if cmd == nil || len(cmd) != 1 {
-		return nil, false
+		return NoopCommand{}
 	}
 
 	cmdBase := SequencerCommandBase{
@@ -63,10 +68,10 @@ func ParseCommandFromOutput(o *ledger.Output) (SequencerCommand, bool) {
 	switch cmdBase.CmdCode {
 	case WithdrawCmdCode:
 		if ret, ok := parseWithdrawCommand(cmdBase); ok {
-			return ret, true
+			return ret
 		}
 	}
-	return nil, false
+	return NoopCommand{}
 }
 
 func parseWithdrawCommand(cmdBase SequencerCommandBase) (*WithdrawCommand, bool) {
@@ -83,22 +88,55 @@ func parseWithdrawCommand(cmdBase SequencerCommandBase) (*WithdrawCommand, bool)
 	return ret, true
 }
 
-func (cmd *WithdrawCommand) Apply(txb *SequencerTxBuilder) error {
+func NewWithdrawCommandBytecode(privKey ed25519.PrivateKey, amount uint64, target ledger.Lock) []byte {
+	body := base.NewSmallPersistentMap()
+	body.Set(FieldCmdCode, []byte{WithdrawCmdCode})
+	body.Set(FieldWithdrawAmount, easyfl_util.TrimmedLeadingZeroUint64(amount))
+	body.Set(FieldWithdrawTarget, target.Bytes())
+
+	msg := ledger.NewMessageWithED25519SenderFromPublicKey(privKey.Public().(ed25519.PublicKey), body.Bytes())
+	return msg.Bytes()
+}
+
+func (cmd *WithdrawCommand) IsAuthenticated(txb *SequencerTxBuilder) bool {
+	pubKey := txb.privateKey.Public().(ed25519.PublicKey)
+	return cmd.MessageWithED25519Sender.SenderHash == blake2b.Sum256(pubKey)
+}
+
+func (cmd *WithdrawCommand) Apply(txb *SequencerTxBuilder) {
+	util.Assertf(cmd.IsAuthenticated(txb), "sequencer command is not authenticated")
 	if cmd.Amount < MinimumAmountToRequestFromSequencer {
-		return fmt.Errorf("SequencerCommand: insufficient amount to withdraw. Minimum is %s, got %s",
-			util.Th(MinimumAmountToRequestFromSequencer), util.Th(cmd.Amount))
+		// too small amount to withdraw
+		return
 	}
 	onChainAmount := txb.producedAmounts[ledger.AmountIndexTokenBalance]
 	if onChainAmount <= int64(cmd.Amount) || onChainAmount-int64(cmd.Amount) < int64(ledger.L().ID.MinimumAmountOnSequencer) {
-		return fmt.Errorf("SequencerCommand: %s is too big amount to withdraw. Remaining on-chain balance is %s",
-			util.Th(cmd.Amount), util.Th(onChainAmount))
+		// insufficient balance on the chain
+		return
 	}
+
 	_, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(cmd.Amount).WithLock(cmd.Target)
 	}))
 	if err != nil {
-		return err
+		return
 	}
 	txb.producedAmounts[ledger.AmountIndexTokenBalance] -= int64(cmd.Amount)
-	return nil
+	return
+}
+
+func (cmd *WithdrawCommand) RequireAdditionalOutputs() int {
+	return 1
+}
+
+func (cmd NoopCommand) IsAuthenticated(_ *SequencerTxBuilder) bool {
+	return true
+}
+
+func (cmd NoopCommand) Apply(_ *SequencerTxBuilder) {
+	return
+}
+
+func (cmd NoopCommand) RequireAdditionalOutputs() int {
+	return 0
 }

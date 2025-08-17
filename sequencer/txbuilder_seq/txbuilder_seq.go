@@ -114,6 +114,17 @@ func New(ts base.LedgerTime,
 	for i := uint32(0); i < dconst.MaxFrozenEpochs; i++ {
 		ret.producedAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
 	}
+
+	// consume chain and stem (optionally) outputs but do not unlock it
+	idx, err := ret.ConsumeOutput(ret.chainInput.Output, ret.chainInput.ID)
+	util.AssertNoError(err)
+	util.Assertf(idx == 0, "idx==0")
+
+	if stem != nil {
+		idx, err = ret.ConsumeOutput(ret.stemInput.Output, ret.stemInput.ID)
+		util.AssertNoError(err)
+		util.Assertf(idx == 1, "idx==1")
+	}
 	return ret, nil
 }
 
@@ -133,15 +144,19 @@ func (txb *SequencerTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	return nil
 }
 
-func (txb *SequencerTxBuilder) AddTagAlongInput(out *ledger.OutputWithID, chainOutIdx, chaiConstraintIdx byte) (byte, error) {
-	if len(txb.ConsumedOutputs) >= 256 {
+func (txb *SequencerTxBuilder) AddTagAlongInput(o *ledger.OutputWithID) (byte, error) {
+	seqCmd := ParseCommandFromOutput(o.Output)
+	if len(txb.ConsumedOutputs) >= 255-seqCmd.RequireAdditionalOutputs() {
 		return 0, fmt.Errorf("SequencerTxBuilder: too many outputs")
 	}
-	idx, err := txb.ConsumeTagAlongOutputUnlock(out.Output, out.ID, chainOutIdx, chaiConstraintIdx)
+	idx, err := txb.ConsumeTagAlongOutputUnlock(o.Output, o.ID, 0, txb.chainInput.ChainConstraintIndex)
 	if err != nil {
 		return 0, err
 	}
-	txb.producedAmounts[ledger.AmountIndexTokenBalance] += int64(out.Output.TokenBalance())
+	txb.producedAmounts[ledger.AmountIndexTokenBalance] += int64(o.Output.TokenBalance())
+	if seqCmd.IsAuthenticated(txb) {
+		seqCmd.Apply(txb)
+	}
 	return idx, nil
 }
 
@@ -156,11 +171,7 @@ func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
 			util.Th(ledger.L().ID.MinimumAmountOnSequencer))
 	}
 	// sequencer input
-	chainPredIdx, err := txb.ConsumeOutput(txb.chainInput.Output, txb.chainInput.ID)
-	if err != nil {
-		return fmt.Errorf("SequencerTxBuilder: %w", err)
-	}
-	txb.PutSignatureUnlock(chainPredIdx)
+	txb.PutSignatureUnlock(0)
 
 	// sequencer produced output
 	var chainOutConstraintIdx byte
@@ -168,7 +179,7 @@ func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
 		o.PutAmounts(txb.producedAmounts[:]...)
 		o.PutLock(txb.chainInput.Output.Lock())
 
-		chainOutConstraint := ledger.NewChainConstraint(txb.chainInput.ChainID, chainPredIdx, txb.chainInput.ChainConstraintIndex, txb.chainInput.OriginSlot, txb.chainInput.OriginAmount)
+		chainOutConstraint := ledger.NewChainConstraint(txb.chainInput.ChainID, 0, txb.chainInput.ChainConstraintIndex, txb.chainInput.OriginSlot, txb.chainInput.OriginAmount)
 		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
 		// put sequencer constraint
 		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
@@ -180,19 +191,15 @@ func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
 	if err != nil {
 		return fmt.Errorf("SequencerTxBuilder: %w", err)
 	}
-	txb.PutUnlockParams(chainPredIdx, txb.chainInput.ChainConstraintIndex, ledger.NewChainUnlockParams(chainOutIdx, chainOutConstraintIdx))
+
+	// unlock sequencer chain constraint
+	txb.PutUnlockParams(0, txb.chainInput.ChainConstraintIndex, ledger.NewChainUnlockParams(chainOutIdx, chainOutConstraintIdx))
 	txb.TransactionData.SequencerOutputIndex = chainOutIdx
 
 	if txb.stemInput == nil {
 		return nil
 	}
 	// handle stem
-	_, err = txb.ConsumeOutput(txb.stemInput.Output, txb.stemInput.ID)
-	if err != nil {
-		return fmt.Errorf("SequencerTxBuilder: %w", err)
-	}
-	util.Assertf(len(txb.vrfProof) > 0, "len(txb.vrfProof)>0")
-
 	stemOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(txb.stemInput.Output.TokenBalance()))
 		o.WithLock(&ledger.StemLock{
