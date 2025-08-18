@@ -21,7 +21,16 @@ const (
 )
 
 func init() {
-	registerSequencerCommand(SetSequencerDataCmdCode, parseSetSequencerDataCommand)
+	registerSequencerCommand(SetSequencerDataCmdCode, func(cmdBase SequencerCommandBase) (SequencerCommand, bool) {
+		sd, err := seqdata.FromBytes(cmdBase.Get(FieldSetSequencerDataBinary))
+		if err != nil {
+			return nil, false
+		}
+		return &SetSequencerDataCommand{
+			SequencerCommandBase: cmdBase,
+			SequencerData:        sd,
+		}, true
+	})
 }
 
 func NewSetSequencerDataCommandBytecode(privKey ed25519.PrivateKey, seqData *seqdata.SequencerData) []byte {
@@ -31,17 +40,6 @@ func NewSetSequencerDataCommandBytecode(privKey ed25519.PrivateKey, seqData *seq
 
 	msg := ledger.NewMessageWithED25519SenderFromPrivateKey(privKey, body.Bytes())
 	return msg.Bytes()
-}
-
-func parseSetSequencerDataCommand(cmdBase SequencerCommandBase) (SequencerCommand, bool) {
-	sd, err := seqdata.FromBytes(cmdBase.Get(FieldSetSequencerDataBinary))
-	if err != nil {
-		return nil, false
-	}
-	return &SetSequencerDataCommand{
-		SequencerCommandBase: cmdBase,
-		SequencerData:        sd,
-	}, true
 }
 
 func (cmd *SetSequencerDataCommand) CheckPreconditions(txb *SequencerTxBuilder) (bool, bool) {
@@ -54,6 +52,6 @@ func (cmd *SetSequencerDataCommand) Apply(txb *SequencerTxBuilder) {
 	return
 }
 
-func (cmd *SetSequencerDataCommand) RequireAdditionalOutputs() int {
+func (cmd *SetSequencerDataCommand) ProducesAdditionalOutputs() int {
 	return 0
 }

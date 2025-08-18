@@ -151,7 +151,7 @@ func (txb *SequencerTxBuilder) AddEndorsement(txid base.TransactionID) error {
 
 func (txb *SequencerTxBuilder) AddTagAlongInput(o *ledger.OutputWithID) error {
 	seqCmd := ParseCommandFromOutput(o.Output)
-	expectedNumberOfProducedOutputs := len(txb.TransactionData.Outputs) + seqCmd.RequireAdditionalOutputs() + 1
+	expectedNumberOfProducedOutputs := len(txb.TransactionData.Outputs) + seqCmd.ProducesAdditionalOutputs() + 1
 	if txb.TransactionData.Timestamp.IsSlotBoundary() {
 		expectedNumberOfProducedOutputs++
 	}

@@ -414,4 +414,28 @@ func delegateLock: and(
        _validDelegationConsumed($0,$1)
     )
 )
+
+// $0 - delegation chain ID
+// $1 - index of the produced delegation output
+// checks if produced output is indeed a chain output with the ID and it has revoked state 
+func _producedDelegationIsRevoked : or($0,$1)
+
+// $0 delegation chain ID
+// Checks unlock conditions. Conditions are satisfied when unlock data is one bte with the number of
+// produced output that is delegation output with the given delegation chain ID and it is revoked
+// 
+// This constraint script is attached to the sequencer command. 
+// Its purpose is to enforce real revocation of the delegation by the sequencer  
+func ensureRevocation :
+or(
+   selfIsProducedOutput,
+   and(
+      selfIsConsumedOutput,
+      require(
+          _producedDelegationIsRevoked($0, selfUnlockParameters),
+          !!!delegation_output_is_not_revoked_as_expected
+      )
+   )
+)
+
 `

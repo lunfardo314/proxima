@@ -24,21 +24,19 @@ const (
 )
 
 func init() {
-	registerSequencerCommand(WithdrawCmdCode, parseWithdrawCommand)
-}
-
-func parseWithdrawCommand(cmdBase SequencerCommandBase) (SequencerCommand, bool) {
-	ret := &WithdrawCommand{
-		SequencerCommandBase: cmdBase,
-	}
-	var err error
-	if ret.Amount, err = easyfl_util.Uint64FromBytes(cmdBase.Get(FieldWithdrawAmount)); err != nil {
-		return nil, false
-	}
-	if ret.Target, err = ledger.LockFromBytes(cmdBase.Get(FieldWithdrawTarget)); err != nil {
-		return nil, false
-	}
-	return ret, true
+	registerSequencerCommand(WithdrawCmdCode, func(cmdBase SequencerCommandBase) (SequencerCommand, bool) {
+		ret := &WithdrawCommand{
+			SequencerCommandBase: cmdBase,
+		}
+		var err error
+		if ret.Amount, err = easyfl_util.Uint64FromBytes(cmdBase.Get(FieldWithdrawAmount)); err != nil {
+			return nil, false
+		}
+		if ret.Target, err = ledger.LockFromBytes(cmdBase.Get(FieldWithdrawTarget)); err != nil {
+			return nil, false
+		}
+		return ret, true
+	})
 }
 
 func NewWithdrawCommandBytecode(privKey ed25519.PrivateKey, amount uint64, target ledger.Lock) []byte {
@@ -77,6 +75,6 @@ func (cmd *WithdrawCommand) Apply(txb *SequencerTxBuilder) {
 	return
 }
 
-func (cmd *WithdrawCommand) RequireAdditionalOutputs() int {
+func (cmd *WithdrawCommand) ProducesAdditionalOutputs() int {
 	return 1
 }

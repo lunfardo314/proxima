@@ -16,7 +16,7 @@ type (
 	SequencerCommand interface {
 		CheckPreconditions(txb *SequencerTxBuilder) (isAuth bool, consume bool) //
 		Apply(txb *SequencerTxBuilder)
-		RequireAdditionalOutputs() int
+		ProducesAdditionalOutputs() int
 	}
 
 	NoopCommand struct{}
@@ -72,6 +72,6 @@ func (cmd NoopCommand) Apply(_ *SequencerTxBuilder) {
 	return
 }
 
-func (cmd NoopCommand) RequireAdditionalOutputs() int {
+func (cmd NoopCommand) ProducesAdditionalOutputs() int {
 	return 0
 }
