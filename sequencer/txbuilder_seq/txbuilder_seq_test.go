@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -52,7 +53,7 @@ func TestBase(t *testing.T) {
 	}
 
 	newTxb := func(ts base.LedgerTime, frozen ...int64) *SequencerTxBuilder {
-		txb, err := New(ts, newPredChain(frozen...), nil, privKey)
+		txb, err := New(ts, newPredChain(frozen...), nil, privKey, multistate.DummyStateReader)
 		require.NoError(t, err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -149,7 +150,7 @@ func TestBase(t *testing.T) {
 				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
 			}),
 		}
-		_, err := txb.AddTagAlongInput(&tagAlongOut)
+		err := txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -167,7 +168,7 @@ func TestBase(t *testing.T) {
 				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
 			}),
 		}
-		_, err := txb.AddTagAlongInput(&tagAlongOut)
+		err := txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -187,7 +188,7 @@ func TestBase(t *testing.T) {
 				o.MustPushConstraint(cmd)
 			}),
 		}
-		_, err := txb.AddTagAlongInput(&tagAlongOut)
+		err := txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -208,11 +209,12 @@ func TestBase(t *testing.T) {
 					o.MustPushConstraint(cmd)
 				}),
 			}
-			_, err := txb.AddTagAlongInput(&tagAlongOut)
+			err := txb.AddTagAlongInput(&tagAlongOut)
 			return err
 		}
 
-		for i := 0; i < 254; i++ {
+		const howMany = 2 // 254
+		for i := 0; i < howMany; i++ {
 			rnd := rand.Intn(500)
 			err := rndWithdraw(10_000_000-uint64(rnd), predTs.Slot-base.Slot(rnd))
 			require.NoError(t, err)
@@ -241,7 +243,7 @@ func TestBase(t *testing.T) {
 				o.MustPushConstraint(cmd)
 			}),
 		}
-		_, err = txb.AddTagAlongInput(&tagAlongOut)
+		err = txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()

@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
@@ -17,12 +18,13 @@ type (
 	SequencerTxBuilder struct {
 		*txbuilder.TxBuilder
 		*seqdata.SequencerData
+		rdr                   multistate.IndexedStateReader
 		nextSeqData           *seqdata.SequencerData
 		privateKey            ed25519.PrivateKey
 		chainInput            *ledger.OutputWithChainID
 		stemInput             *ledger.OutputWithID // it is branch tx if != nil
 		doNotInflateMainChain bool                 // default is inflate
-		producedAmounts       [15]int64
+		chainOutAmounts       [15]int64
 		vrfProof              []byte
 	}
 )
@@ -31,13 +33,15 @@ type (
 func New(ts base.LedgerTime,
 	predecessor *ledger.OutputWithChainID,
 	stem *ledger.OutputWithID,
-	privateKey ed25519.PrivateKey) (*SequencerTxBuilder, error) {
+	privateKey ed25519.PrivateKey,
+	rdr multistate.IndexedStateReader) (*SequencerTxBuilder, error) {
 
 	ret := &SequencerTxBuilder{
 		privateKey: privateKey,
 		chainInput: predecessor,
 		stemInput:  stem,
 		TxBuilder:  txbuilder.New(),
+		rdr:        rdr,
 	}
 
 	var err error
@@ -88,17 +92,17 @@ func New(ts base.LedgerTime,
 		if ret.IsSlotBoundary() {
 			// from VRF proof for branch
 			util.Assertf(len(ret.vrfProof) > 0, "len(vrfProof)>0")
-			ret.producedAmounts[ledger.AmountIndexInflation] = int64(ledger.L().BranchInflationBonusDirect(ret.vrfProof))
+			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.L().BranchInflationBonusDirect(ret.vrfProof))
 		} else {
 			// for non-branch
 			if ret.chainInput.Timestamp().Slot != ret.TransactionData.Timestamp.Slot {
-				ret.producedAmounts[ledger.AmountIndexInflation] = int64(ledger.L().CalcChainInflationAmountOneSlot(ret.chainInput.Timestamp().Slot,
+				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.L().CalcChainInflationAmountOneSlot(ret.chainInput.Timestamp().Slot,
 					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0))))
 			}
 		}
 	}
 	predAmounts := predecessor.Output.Amounts()
-	ret.producedAmounts[ledger.AmountIndexTokenBalance] = int64(predAmounts.TokenBalance()) + ret.producedAmounts[ledger.AmountIndexInflation]
+	ret.chainOutAmounts[ledger.AmountIndexTokenBalance] = int64(predAmounts.TokenBalance()) + ret.chainOutAmounts[ledger.AmountIndexInflation]
 
 	// frozen coverage at the predecessor adjusted to the epoch of the successor
 	dconst := ledger.DelegationConst()
@@ -113,7 +117,7 @@ func New(ts base.LedgerTime,
 		return
 	}
 	for i := uint32(0); i < dconst.MaxFrozenEpochs; i++ {
-		ret.producedAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
+		ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
 	}
 
 	// consume chain and stem (optionally) outputs but do not unlock it
@@ -145,24 +149,30 @@ func (txb *SequencerTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	return nil
 }
 
-func (txb *SequencerTxBuilder) AddTagAlongInput(o *ledger.OutputWithID) (byte, error) {
+func (txb *SequencerTxBuilder) AddTagAlongInput(o *ledger.OutputWithID) error {
 	seqCmd := ParseCommandFromOutput(o.Output)
 	expectedNumberOfProducedOutputs := len(txb.TransactionData.Outputs) + seqCmd.RequireAdditionalOutputs() + 1
 	if txb.TransactionData.Timestamp.IsSlotBoundary() {
 		expectedNumberOfProducedOutputs++
 	}
 	if expectedNumberOfProducedOutputs > 255 {
-		return 0, fmt.Errorf("SequencerTxBuilder: too many produced outputs")
+		return fmt.Errorf("SequencerTxBuilder: too many produced outputs")
 	}
-	idx, err := txb.ConsumeTagAlongOutputUnlock(o.Output, o.ID, 0, txb.chainInput.ChainConstraintIndex)
-	if err != nil {
-		return 0, err
+
+	isAuthenticated, consume := seqCmd.CheckPreconditions(txb)
+
+	if consume {
+		_, err := txb.ConsumeTagAlongOutputUnlock(o.Output, o.ID, 0, txb.chainInput.ChainConstraintIndex)
+		if err != nil {
+			return err
+		}
+		txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(o.Output.TokenBalance())
 	}
-	txb.producedAmounts[ledger.AmountIndexTokenBalance] += int64(o.Output.TokenBalance())
-	if seqCmd.IsAuthenticated(txb) {
+
+	if isAuthenticated {
 		seqCmd.Apply(txb)
 	}
-	return idx, nil
+	return nil
 }
 
 func (txb *SequencerTxBuilder) AddDelegationInput(out *ledger.DelegateOutput) error {
@@ -170,9 +180,9 @@ func (txb *SequencerTxBuilder) AddDelegationInput(out *ledger.DelegateOutput) er
 }
 
 func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
-	if txb.producedAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.L().ID.MinimumAmountOnSequencer) {
+	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.L().ID.MinimumAmountOnSequencer) {
 		return fmt.Errorf("SequencerTxBuilder: amount %s on the produced chain output is below minimum %s required for the sequencer",
-			util.Th(txb.producedAmounts[ledger.AmountIndexTokenBalance]),
+			util.Th(txb.chainOutAmounts[ledger.AmountIndexTokenBalance]),
 			util.Th(ledger.L().ID.MinimumAmountOnSequencer))
 	}
 	// sequencer input
@@ -181,7 +191,7 @@ func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
 	// sequencer produced output
 	var chainOutConstraintIdx byte
 	chainOutIdx, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.PutAmounts(txb.producedAmounts[:]...)
+		o.PutAmounts(txb.chainOutAmounts[:]...)
 		o.PutLock(txb.chainInput.Output.Lock())
 
 		chainOutConstraint := ledger.NewChainConstraint(txb.chainInput.ChainID, 0, txb.chainInput.ChainConstraintIndex, txb.chainInput.OriginSlot, txb.chainInput.OriginAmount)
