@@ -22,6 +22,10 @@ type (
 		LastFrozenEpoch uint32
 		Revoked         bool
 	}
+
+	EnsureRevocation struct {
+		base.ChainID
+	}
 )
 
 const (
@@ -32,6 +36,10 @@ const (
 	DelegateLockStateName       = "delegateLockState"
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %s)"
 	DelegateLockStateTemplateHR = DelegateLockStateName + "(frozenUntilEpoch=%d, revoked=%v)"
+
+	EnsureRevocationName       = "ensureRevocation"
+	EnsureRevocationTemplate   = EnsureRevocationName + "(0x%s)"
+	EnsureRevocationTemplateHR = EnsureRevocationName + "(%s)"
 )
 
 //------------ DelegateLock
@@ -124,6 +132,9 @@ func registerDelegateLock(lib *Library) {
 	lib.mustRegisterConstraint(DelegateLockStateName, 2, func(data []byte) (Constraint, error) {
 		return DelegateLockStateFromBytes(data)
 	}, initTestDelegate2LockState)
+	lib.mustRegisterConstraint(EnsureRevocationName, 1, func(data []byte) (Constraint, error) {
+		return EnsureRevocationFromBytes(data)
+	}, initTestEnsureRevocation)
 }
 
 func initTestDelegateConstraint() {
@@ -152,7 +163,7 @@ func initTestDelegateConstraint() {
 	util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
 }
 
-//--------------------------- delegationLockFreeze
+//--------------------------- delegationLockState
 
 func DelegateLockStateFromBytes(data []byte) (DelegateLockState, error) {
 	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
@@ -202,6 +213,47 @@ func initTestDelegate2LockState() {
 	util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
 }
 
+//--------------------------- delegationLockState
+
+func EnsureRevocationFromBytes(data []byte) (*EnsureRevocation, error) {
+	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+	if err != nil {
+		return nil, fmt.Errorf("EnsureRevocationFromBytes: %w", err)
+	}
+	if sym != EnsureRevocationName {
+		return nil, fmt.Errorf("EnsureRevocationFromBytes: not a EnsureRevocation")
+	}
+	delegationID, err := base.ChainIDFromBytes(easyfl.StripDataPrefix(args[0]))
+	if err != nil {
+		return nil, err
+	}
+	return &EnsureRevocation{delegationID}, nil
+}
+
+func (d *EnsureRevocation) Source() string {
+	return fmt.Sprintf(EnsureRevocationTemplate, d.ChainID.StringHex())
+}
+
+func (d *EnsureRevocation) String() string {
+	return fmt.Sprintf(EnsureRevocationTemplateHR, d.ChainID.String())
+}
+
+func (d *EnsureRevocation) Bytes() []byte {
+	return mustBinFromSource(d.Source())
+}
+
+func (d *EnsureRevocation) Name() string {
+	return EnsureRevocationName
+}
+
+func initTestEnsureRevocation() {
+	e := EnsureRevocation{base.RandomChainID()}
+
+	eBack, err := EnsureRevocationFromBytes(e.Bytes())
+	util.AssertNoError(err)
+	util.Assertf(eBack.ChainID == e.ChainID, "EnsureRevocation: inconsistency")
+}
+
 const delegateLock2Source = `
 func constDelegationSafeRevocationSlots  : 30
 func constDelegationEpochSlots : u32/512
@@ -247,6 +299,30 @@ or(
    require(
       or( not($1), equalUint($0, _predecessorLastFrozenEpoch) ),
       !!!revocation_cant_mutate_frozen_epochs
+   )
+)
+
+// $0 delegation chain ID
+// Checks unlock conditions. Conditions are satisfied when unlock data is one bte with the number of
+// produced output that is delegation output with the given delegation chain ID and it is revoked
+// 
+// This constraint script is attached to the sequencer command. 
+// Its purpose is to enforce real revocation of the delegation by the sequencer  
+func ensureRevocation :
+or(
+   selfIsProducedOutput,
+   and(
+      selfIsConsumedOutput,
+      require(
+		and(
+		   equal(
+			  parseArgumentBytecode(producedConstraintByIndex(concat(selfUnlockParameters,2)),#chain,0), 
+			  $0
+		   ),
+		   parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)),#delegateLockState,1)
+		),
+        !!!delegation_output_is_not_revoked_as_expected
+      )
    )
 )
 
@@ -411,30 +487,6 @@ func delegateLock: and(
        _validDelegationProduced($2, $3),
        _validDelegationConsumed($0,$1)
     )
-)
-
-// $0 delegation chain ID
-// Checks unlock conditions. Conditions are satisfied when unlock data is one bte with the number of
-// produced output that is delegation output with the given delegation chain ID and it is revoked
-// 
-// This constraint script is attached to the sequencer command. 
-// Its purpose is to enforce real revocation of the delegation by the sequencer  
-func ensureRevocation :
-or(
-   selfIsProducedOutput,
-   and(
-      selfIsConsumedOutput,
-      require(
-		and(
-		   equal(
-			  parseArgumentBytecode(producedConstraintByIndex(concat(selfUnlockParameters,2)),#chain,0), 
-			  $0
-		   ),
-		   parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)),#delegateLockState,1)
-		),
-        !!!delegation_output_is_not_revoked_as_expected
-      )
-   )
 )
 
 `

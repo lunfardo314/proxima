@@ -42,6 +42,13 @@ func NewSetSequencerDataCommandBytecode(privKey ed25519.PrivateKey, seqData *seq
 	return msg.Bytes()
 }
 
+func NewSeqDataCommandOutput(targetChain base.ChainID, privKey ed25519.PrivateKey, fee uint64, seqData *seqdata.SequencerData) *ledger.Output {
+	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(fee).WithLock(ledger.ChainLockFromChainID(targetChain))
+		o.MustPushConstraint(NewSetSequencerDataCommandBytecode(privKey, seqData))
+	})
+}
+
 func (cmd *SetSequencerDataCommand) CheckPreconditions(txb *SequencerTxBuilder) (bool, bool, int) {
 	pubKey := txb.privateKey.Public().(ed25519.PublicKey)
 	return cmd.MessageWithED25519Sender.SenderHash == blake2b.Sum256(pubKey), true, 0

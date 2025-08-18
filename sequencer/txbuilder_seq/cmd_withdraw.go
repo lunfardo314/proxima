@@ -49,6 +49,13 @@ func NewWithdrawCommandBytecode(privKey ed25519.PrivateKey, amount uint64, targe
 	return msg.Bytes()
 }
 
+func NewWithdrawCommandOutput(targetChain base.ChainID, privKey ed25519.PrivateKey, fee, amount uint64, target ledger.Lock) *ledger.Output {
+	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(fee).WithLock(ledger.ChainLockFromChainID(targetChain))
+		o.MustPushConstraint(NewWithdrawCommandBytecode(privKey, amount, target))
+	})
+}
+
 func (cmd *WithdrawCommand) CheckPreconditions(txb *SequencerTxBuilder) (isAuth bool, consume bool, producesOutputs int) {
 	pubKey := txb.privateKey.Public().(ed25519.PublicKey)
 	consume = true

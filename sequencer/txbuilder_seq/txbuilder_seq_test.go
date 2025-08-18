@@ -145,10 +145,8 @@ func TestBase(t *testing.T) {
 		txb := newTxb(ts)
 
 		tagAlongOut := ledger.OutputWithID{
-			ID: base.OutputID{},
-			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
-				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
-			}),
+			ID:     base.OutputID{},
+			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1000, addr),
 		}
 		err := txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
@@ -163,10 +161,8 @@ func TestBase(t *testing.T) {
 		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 
 		tagAlongOut := ledger.OutputWithID{
-			ID: base.OutputID{},
-			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
-				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
-			}),
+			ID:     base.OutputID{},
+			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1000, addr),
 		}
 		err := txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
@@ -180,13 +176,9 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 
-		cmd := NewWithdrawCommandBytecode(privKey, 10_000_000, addr)
 		tagAlongOut := ledger.OutputWithID{
-			ID: base.OutputID{},
-			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
-				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
-				o.MustPushConstraint(cmd)
-			}),
+			ID:     base.OutputID{},
+			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 10_000_000, addr),
 		}
 		err := txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)
@@ -201,13 +193,9 @@ func TestBase(t *testing.T) {
 		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 
 		rndWithdraw := func(amount uint64, slot base.Slot) error {
-			cmd := NewWithdrawCommandBytecode(privKey, amount, addr)
 			tagAlongOut := ledger.OutputWithID{
-				ID: base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(slot, 50)), 1),
-				Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
-					o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
-					o.MustPushConstraint(cmd)
-				}),
+				ID:     base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(slot, 50)), 1),
+				Output: NewWithdrawCommandOutput(seqID, privKey, 200, amount, addr),
 			}
 			err := txb.AddTagAlongInput(&tagAlongOut)
 			return err
@@ -232,16 +220,11 @@ func TestBase(t *testing.T) {
 		predSeqData, err := ledger.ParseSequencerData(txb.chainInput.Output)
 		require.NoError(t, err)
 
-		cmd := NewSetSequencerDataCommandBytecode(privKey, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
-			sdUpdated.SetName("newName").IncChainHeight()
-		}))
-
 		tagAlongOut := ledger.OutputWithID{
 			ID: base.OutputID{},
-			Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
-				o.WithTokenBalance(1_000).WithLock(ledger.ChainLockFromChainID(seqID))
-				o.MustPushConstraint(cmd)
-			}),
+			Output: NewSeqDataCommandOutput(seqID, privKey, 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
+				sdUpdated.SetName("newName").IncChainHeight()
+			})),
 		}
 		err = txb.AddTagAlongInput(&tagAlongOut)
 		require.NoError(t, err)

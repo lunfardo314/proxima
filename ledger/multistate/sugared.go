@@ -208,7 +208,7 @@ func (s SugaredStateReader) BalanceOnChain(chainID base.ChainID) uint64 {
 func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountable) ([]*ledger.OutputWithChainID, error) {
 	ret := make([]*ledger.OutputWithChainID, 0)
 	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
-		lock := o.DelegationLock2()
+		lock := o.DelegationLock()
 		if lock != nil && ledger.EqualAccountables(lock.Target, addr) {
 			cc, idx := o.ChainConstraint()
 			chainID := cc.ChainID

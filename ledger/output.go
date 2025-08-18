@@ -412,12 +412,33 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	}, true
 }
 
-func (o *Output) DelegationLock2() *DelegateLock {
+func (o *Output) DelegationLock() *DelegateLock {
 	lock := o.Lock()
 	if lock.Name() != DelegateLockName {
 		return nil
 	}
 	return lock.(*DelegateLock)
+}
+
+func (o *Output) EnsureRevocationConstraint() (*EnsureRevocation, byte) {
+	var ret *EnsureRevocation
+	var err error
+	found := byte(0xff)
+	o.ForEachConstraint(func(idx byte, constr []byte) bool {
+		if idx < ConstraintIndexFirstOptionalConstraint {
+			return true
+		}
+		ret, err = EnsureRevocationFromBytes(constr)
+		if err == nil {
+			found = idx
+			return false
+		}
+		return true
+	})
+	if found != 0xff {
+		return ret, found
+	}
+	return nil, 0xff
 }
 
 func (o *Output) ToString(prefix ...string) string {

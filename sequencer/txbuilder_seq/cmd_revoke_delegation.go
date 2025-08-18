@@ -2,6 +2,7 @@ package txbuilder_seq
 
 import (
 	"bytes"
+	"crypto/ed25519"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -10,14 +11,17 @@ import (
 
 type RevokeDelegationCommand struct {
 	SequencerCommandBase
-	delegationID   base.ChainID
-	delegationUTXO ledger.DelegateOutput // filled up by CheckPreconditions
+	delegationID     base.ChainID
+	delegationUTXO   ledger.DelegateOutput // filled up by CheckPreconditions
+	ensureRevocation *ledger.EnsureRevocation
 }
 
 const (
 	RevokeDelegationCmdCode = byte(3)
 	FieldRevokeDelegationID = byte(1)
 )
+
+// TODO parsing revocation command with ensure revocation constraint
 
 func init() {
 	registerSequencerCommand(RevokeDelegationCmdCode, func(cmdBase SequencerCommandBase) (SequencerCommand, bool) {
@@ -32,6 +36,24 @@ func init() {
 			SequencerCommandBase: cmdBase,
 			delegationID:         delegationID,
 		}, true
+	})
+}
+
+func NewRevokeDelegationCommandBytecode(privKey ed25519.PrivateKey, delegationID base.ChainID) []byte {
+	body := base.NewSmallPersistentMap()
+	body.Set(FieldCmdCode, []byte{RevokeDelegationCmdCode})
+	body.Set(FieldRevokeDelegationID, delegationID[:])
+
+	msg := ledger.NewMessageWithED25519SenderFromPrivateKey(privKey, body.Bytes())
+	return msg.Bytes()
+}
+
+func NewRevokeDelegationCommandOutput(targetChain base.ChainID, privKey ed25519.PrivateKey, fee uint64, delegationID base.ChainID) *ledger.Output {
+	ensureDelegation := ledger.EnsureRevocation{ChainID: delegationID}
+	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(fee).WithLock(ledger.ChainLockFromChainID(targetChain))
+		o.MustPushConstraint(NewRevokeDelegationCommandBytecode(privKey, delegationID))
+		o.MustPushConstraint(ensureDelegation.Bytes())
 	})
 }
 
