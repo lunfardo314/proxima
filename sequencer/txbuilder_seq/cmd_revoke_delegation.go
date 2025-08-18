@@ -35,24 +35,26 @@ func init() {
 	})
 }
 
-func (r *RevokeDelegationCommand) CheckPreconditions(txb *SequencerTxBuilder) (isAuth bool, consume bool) {
+func (r *RevokeDelegationCommand) CheckPreconditions(txb *SequencerTxBuilder) (isAuth bool, consume bool, producesOutputs int) {
 	// retrieves delegation output by chainID from the state. Checks if master lock (owner's public key hash) of
 	// the delegation output is equal to the sender hash
 	sugared := multistate.MakeSugared(txb.rdr)
 	out, err := sugared.GetChainOutputWithID(r.delegationID)
 	if err != nil {
-		return false, false
+		return false, false, 0
 	}
 	var ok bool
 	if r.delegationUTXO, ok = ledger.AsDelegateOutput(out.Output, out.ID); !ok {
-		return false, false
+		return false, false, 0
 	}
 	masterAddr, ok := r.delegationUTXO.MasterLock.(ledger.AddressED25519)
 	if !ok {
-		return false, false
+		return false, false, 0
 	}
-	isAuth = bytes.Equal(masterAddr, r.SenderHash[:])
-	return isAuth, isAuth
+	if isAuth = bytes.Equal(masterAddr, r.SenderHash[:]); isAuth {
+		producesOutputs = 1
+	}
+	return isAuth, isAuth, producesOutputs
 }
 
 func (r *RevokeDelegationCommand) Apply(txb *SequencerTxBuilder) {

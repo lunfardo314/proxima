@@ -49,9 +49,13 @@ func NewWithdrawCommandBytecode(privKey ed25519.PrivateKey, amount uint64, targe
 	return msg.Bytes()
 }
 
-func (cmd *WithdrawCommand) CheckPreconditions(txb *SequencerTxBuilder) (bool, bool) {
+func (cmd *WithdrawCommand) CheckPreconditions(txb *SequencerTxBuilder) (isAuth bool, consume bool, producesOutputs int) {
 	pubKey := txb.privateKey.Public().(ed25519.PublicKey)
-	return cmd.MessageWithED25519Sender.SenderHash == blake2b.Sum256(pubKey), true
+	consume = true
+	if isAuth = cmd.MessageWithED25519Sender.SenderHash == blake2b.Sum256(pubKey); isAuth {
+		producesOutputs = 1
+	}
+	return
 }
 
 func (cmd *WithdrawCommand) Apply(txb *SequencerTxBuilder) {
@@ -73,8 +77,4 @@ func (cmd *WithdrawCommand) Apply(txb *SequencerTxBuilder) {
 	}
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(cmd.Amount)
 	return
-}
-
-func (cmd *WithdrawCommand) ProducesAdditionalOutputs() int {
-	return 1
 }

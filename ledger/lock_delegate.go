@@ -353,8 +353,7 @@ func _validDelegationProduced :
 and(
     selfIsProducedOutput,
     _validBase,
-    _validLimits($0,$1),
-	//_validFrozenCoverageVector(_selfLastFrozenEpoch)
+    _validLimits($0,$1)
 )
 
 // $0 master lock
@@ -372,7 +371,6 @@ func _insideSafeRevocationWindow : and(
 
 func _consumedUnfreezeSlot : _selfUnfreezeSlot( timeSlotOfInputByIndex( selfOutputIndex ) )
 
-//func _successorFrozenEpochs : parseInlineDataArgument(successorConstraint(3),#delegateLockState,0)
 func _successorIsRevoked : parseInlineDataArgument(successorConstraint(3),#delegateLockState,1)
 
 // $0 target lock
@@ -415,11 +413,6 @@ func delegateLock: and(
     )
 )
 
-// $0 - delegation chain ID
-// $1 - index of the produced delegation output
-// checks if produced output is indeed a chain output with the ID and it has revoked state 
-func _producedDelegationIsRevoked : or($0,$1)
-
 // $0 delegation chain ID
 // Checks unlock conditions. Conditions are satisfied when unlock data is one bte with the number of
 // produced output that is delegation output with the given delegation chain ID and it is revoked
@@ -432,8 +425,14 @@ or(
    and(
       selfIsConsumedOutput,
       require(
-          _producedDelegationIsRevoked($0, selfUnlockParameters),
-          !!!delegation_output_is_not_revoked_as_expected
+		and(
+		   equal(
+			  parseArgumentBytecode(producedConstraintByIndex(concat(selfUnlockParameters,2)),#chain,0), 
+			  $0
+		   ),
+		   parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)),#delegateLockState,1)
+		),
+        !!!delegation_output_is_not_revoked_as_expected
       )
    )
 )

@@ -42,16 +42,12 @@ func NewSetSequencerDataCommandBytecode(privKey ed25519.PrivateKey, seqData *seq
 	return msg.Bytes()
 }
 
-func (cmd *SetSequencerDataCommand) CheckPreconditions(txb *SequencerTxBuilder) (bool, bool) {
+func (cmd *SetSequencerDataCommand) CheckPreconditions(txb *SequencerTxBuilder) (bool, bool, int) {
 	pubKey := txb.privateKey.Public().(ed25519.PublicKey)
-	return cmd.MessageWithED25519Sender.SenderHash == blake2b.Sum256(pubKey), true
+	return cmd.MessageWithED25519Sender.SenderHash == blake2b.Sum256(pubKey), true, 0
 }
 
 func (cmd *SetSequencerDataCommand) Apply(txb *SequencerTxBuilder) {
 	txb.nextSeqData = cmd.SequencerData.Clone()
 	return
-}
-
-func (cmd *SetSequencerDataCommand) ProducesAdditionalOutputs() int {
-	return 0
 }

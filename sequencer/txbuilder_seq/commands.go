@@ -14,9 +14,8 @@ type (
 	}
 
 	SequencerCommand interface {
-		CheckPreconditions(txb *SequencerTxBuilder) (isAuth bool, consume bool) //
+		CheckPreconditions(txb *SequencerTxBuilder) (isAuth bool, consume bool, producesOutputs int) //
 		Apply(txb *SequencerTxBuilder)
-		ProducesAdditionalOutputs() int
 	}
 
 	NoopCommand struct{}
@@ -64,14 +63,10 @@ func ParseCommandFromOutput(o *ledger.Output) SequencerCommand {
 	return NoopCommand{}
 }
 
-func (cmd NoopCommand) CheckPreconditions(_ *SequencerTxBuilder) (bool, bool) {
-	return false, false
+func (cmd NoopCommand) CheckPreconditions(_ *SequencerTxBuilder) (bool, bool, int) {
+	return false, false, 0
 }
 
 func (cmd NoopCommand) Apply(_ *SequencerTxBuilder) {
 	return
-}
-
-func (cmd NoopCommand) ProducesAdditionalOutputs() int {
-	return 0
 }

@@ -47,7 +47,7 @@ functions:
    -
       sym: producedConstraintByIndex
       numArgs: 1
-      source: "atTuple8(producedOutputByIndex(byte($0,0)), byte($0,1))"
+      source: "atPath(concat(producedOutputPathByIndex(byte($0,0)), byte($0,1)))"
    -
       sym: consumedConstraintByIndex
       numArgs: 1
