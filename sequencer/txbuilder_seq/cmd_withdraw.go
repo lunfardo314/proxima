@@ -2,17 +2,19 @@ package txbuilder_seq
 
 import (
 	"crypto/ed25519"
+	"fmt"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
 
 type WithdrawCommand struct {
-	SequencerCommandBase
-	Amount uint64
-	Target ledger.Lock
+	o      ledger.OutputWithID
+	amount uint64
+	target ledger.Lock
 }
 
 const (
@@ -24,19 +26,34 @@ const (
 )
 
 func init() {
-	registerSequencerCommand(WithdrawCmdCode, func(cmdBase SequencerCommandBase) (SequencerCommand, bool) {
-		ret := &WithdrawCommand{
-			SequencerCommandBase: cmdBase,
-		}
-		var err error
-		if ret.Amount, err = easyfl_util.Uint64FromBytes(cmdBase.Get(FieldWithdrawAmount)); err != nil {
-			return nil, false
-		}
-		if ret.Target, err = ledger.LockFromBytes(cmdBase.Get(FieldWithdrawTarget)); err != nil {
-			return nil, false
-		}
-		return ret, true
-	})
+	registerSequencerCommand(WithdrawCmdCode, _parseWithdrawOutput)
+}
+
+func _parseWithdrawOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqCommandMessage) (cmd TxBuilderCommand, isValid bool) {
+	if o.Output.NumConstraints() != 3 {
+		// unexpected structure -> may be attack
+		return nil, false
+	}
+	// authenticate
+	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
+	if msg.SenderHash != blake2b.Sum256(publicKey) {
+		// wrong sender -> may be attack
+		return
+	}
+	ret := &WithdrawCommand{o: o}
+	var err error
+	if ret.amount, err = easyfl_util.Uint64FromBytes(msg.Get(FieldWithdrawAmount)); err != nil {
+		return
+	}
+	if ret.amount < MinimumAmountToRequestFromSequencer {
+		// too small amount to withdraw
+		return
+	}
+	if ret.target, err = ledger.LockFromBytes(msg.Get(FieldWithdrawTarget)); err != nil {
+		return
+	}
+	return ret, true
+
 }
 
 func NewWithdrawCommandBytecode(privKey ed25519.PrivateKey, amount uint64, target ledger.Lock) []byte {
@@ -56,32 +73,24 @@ func NewWithdrawCommandOutput(targetChain base.ChainID, privKey ed25519.PrivateK
 	})
 }
 
-func (cmd *WithdrawCommand) CheckPreconditions(txb *SequencerTxBuilder) (isAuth bool, consume bool, producesOutputs int) {
-	pubKey := txb.privateKey.Public().(ed25519.PublicKey)
-	consume = true
-	if isAuth = cmd.MessageWithED25519Sender.SenderHash == blake2b.Sum256(pubKey); isAuth {
-		producesOutputs = 1
-	}
-	return
-}
-
-func (cmd *WithdrawCommand) Apply(txb *SequencerTxBuilder) {
-	if cmd.Amount < MinimumAmountToRequestFromSequencer {
-		// too small amount to withdraw
-		return
+func (cmd *WithdrawCommand) Apply(txb *SeqTxBuilder) error {
+	if len(txb.ConsumedOutputs)+txb.reservedInputs() > 256 {
+		return fmt.Errorf("WithdrawCommand: too many inputs")
 	}
 	onChainAmount := txb.chainOutAmounts[ledger.AmountIndexTokenBalance]
-	if onChainAmount <= int64(cmd.Amount) || onChainAmount-int64(cmd.Amount) < int64(ledger.L().ID.MinimumAmountOnSequencer) {
-		// insufficient balance on the chain
-		return
+	if onChainAmount <= int64(cmd.amount) || onChainAmount-int64(cmd.amount) < int64(ledger.L().ID.MinimumAmountOnSequencer) {
+		return fmt.Errorf("WithdrawCommand: insufficient balance on chain")
 	}
+	_, err := txb.ConsumeTagAlongOutputUnlock(cmd.o.Output, cmd.o.ID, 0, txb.chainInput.ChainConstraintIndex)
+	util.AssertNoError(err)
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(cmd.o.Output.TokenBalance())
 
-	_, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(cmd.Amount).WithLock(cmd.Target)
+	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(cmd.amount).WithLock(cmd.target)
 	}))
 	if err != nil {
-		return
+		return fmt.Errorf("WithdrawCommand: %w", err)
 	}
-	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(cmd.Amount)
-	return
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(cmd.amount)
+	return nil
 }

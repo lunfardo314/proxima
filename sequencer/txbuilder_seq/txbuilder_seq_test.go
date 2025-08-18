@@ -52,7 +52,7 @@ func TestBase(t *testing.T) {
 		return &pred
 	}
 
-	newTxb := func(ts base.LedgerTime, frozen ...int64) *SequencerTxBuilder {
+	newTxb := func(ts base.LedgerTime, frozen ...int64) *SeqTxBuilder {
 		txb, err := New(ts, newPredChain(frozen...), nil, privKey, multistate.DummyStateReader)
 		require.NoError(t, err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
@@ -146,9 +146,9 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.OutputID{},
-			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1000, addr),
+			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
 		}
-		err := txb.AddTagAlongInput(&tagAlongOut)
+		err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -162,9 +162,9 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.OutputID{},
-			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1000, addr),
+			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
 		}
-		err := txb.AddTagAlongInput(&tagAlongOut)
+		err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -180,7 +180,7 @@ func TestBase(t *testing.T) {
 			ID:     base.OutputID{},
 			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 10_000_000, addr),
 		}
-		err := txb.AddTagAlongInput(&tagAlongOut)
+		err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -197,7 +197,7 @@ func TestBase(t *testing.T) {
 				ID:     base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(slot, 50)), 1),
 				Output: NewWithdrawCommandOutput(seqID, privKey, 200, amount, addr),
 			}
-			err := txb.AddTagAlongInput(&tagAlongOut)
+			err := txb.AddTagAlongInput(tagAlongOut)
 			return err
 		}
 
@@ -226,7 +226,7 @@ func TestBase(t *testing.T) {
 				sdUpdated.SetName("newName").IncChainHeight()
 			})),
 		}
-		err = txb.AddTagAlongInput(&tagAlongOut)
+		err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()

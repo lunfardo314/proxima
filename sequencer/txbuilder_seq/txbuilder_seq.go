@@ -15,7 +15,7 @@ import (
 )
 
 type (
-	SequencerTxBuilder struct {
+	SeqTxBuilder struct {
 		*txbuilder.TxBuilder
 		*seqdata.SequencerData
 		rdr                   multistate.IndexedStateReader
@@ -27,6 +27,26 @@ type (
 		chainOutAmounts       [15]int64
 		vrfProof              []byte
 	}
+
+	SeqCommandMessage struct {
+		base.SmallPersistentMap
+		ledger.MessageWithED25519Sender
+		CmdCode byte
+	}
+
+	TxBuilderCommand interface {
+		Apply(txb *SeqTxBuilder) error
+	}
+
+	SeqCommandBase struct {
+		o ledger.OutputWithID
+	}
+
+	cmdParser func(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqCommandMessage) (cmd TxBuilderCommand, isValid bool)
+
+	SimpleTagAlongOutput struct {
+		SeqCommandBase
+	}
 )
 
 // New initializes sequencer tx builder and performs necessary validity check
@@ -34,9 +54,9 @@ func New(ts base.LedgerTime,
 	predecessor *ledger.OutputWithChainID,
 	stem *ledger.OutputWithID,
 	privateKey ed25519.PrivateKey,
-	rdr multistate.IndexedStateReader) (*SequencerTxBuilder, error) {
+	rdr multistate.IndexedStateReader) (*SeqTxBuilder, error) {
 
-	ret := &SequencerTxBuilder{
+	ret := &SeqTxBuilder{
 		privateKey: privateKey,
 		chainInput: predecessor,
 		stemInput:  stem,
@@ -60,18 +80,18 @@ func New(ts base.LedgerTime,
 	diffTicksChain := base.DiffTicks(ts, predecessor.Timestamp())
 	if diffTicksChain < int64(ledger.L().ID.TransactionPaceSequencer) ||
 		diffTicksChain < int64(ret.SequencerData.Pace()) {
-		return nil, fmt.Errorf("SequencerTxBuilder: pace constraint violated: %s", ts.String())
+		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", ts.String())
 	}
 
 	ret.TransactionData.Timestamp = ts
 
 	if ret.IsSlotBoundary() {
 		if stem == nil {
-			return nil, fmt.Errorf("SequencerTxBuilder: wrong timestamp or stem for branch transaction: %s", ts.String())
+			return nil, fmt.Errorf("SeqTxBuilder: wrong timestamp or stem for branch transaction: %s", ts.String())
 		}
 	} else {
 		if !ledger.L().ID.IsPostBranchConsolidationTimestamp(ts) {
-			return nil, fmt.Errorf("SequencerTxBuilder: timestamp violates post-branch timestamp constraint: %s", ts.String())
+			return nil, fmt.Errorf("SeqTxBuilder: timestamp violates post-branch timestamp constraint: %s", ts.String())
 		}
 	}
 
@@ -133,55 +153,36 @@ func New(ts base.LedgerTime,
 	return ret, nil
 }
 
-func (txb *SequencerTxBuilder) IsSlotBoundary() bool {
+func (txb *SeqTxBuilder) IsSlotBoundary() bool {
 	return txb.TransactionData.Timestamp.IsSlotBoundary()
 }
 
-func (txb *SequencerTxBuilder) SetInflateMainChain(inflate bool) {
+func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
 	txb.doNotInflateMainChain = !inflate
 }
 
-func (txb *SequencerTxBuilder) AddEndorsement(txid base.TransactionID) error {
+func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid)
 	if len(txb.TransactionData.Endorsements) > int(ledger.L().ID.MaxNumberOfEndorsements) {
-		return fmt.Errorf("SequencerTxBuilder: too many endorsements")
+		return fmt.Errorf("SeqTxBuilder: too many endorsements")
 	}
 	return nil
 }
 
-func (txb *SequencerTxBuilder) AddTagAlongInput(o *ledger.OutputWithID) error {
-	seqCmd := ParseCommandFromOutput(o.Output)
-	isAuthenticated, consume, numOutputs := seqCmd.CheckPreconditions(txb)
-
-	expectedNumberOfProducedOutputs := len(txb.TransactionData.Outputs) + numOutputs + 1
-	if txb.TransactionData.Timestamp.IsSlotBoundary() {
-		expectedNumberOfProducedOutputs++
+func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) error {
+	if cmd, ok := txb.TxBuilderCommandFromOutput(o); ok {
+		return cmd.Apply(txb)
 	}
-	if expectedNumberOfProducedOutputs > 255 {
-		return fmt.Errorf("SequencerTxBuilder: too many produced outputs")
-	}
-
-	if consume {
-		_, err := txb.ConsumeTagAlongOutputUnlock(o.Output, o.ID, 0, txb.chainInput.ChainConstraintIndex)
-		if err != nil {
-			return err
-		}
-		txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(o.Output.TokenBalance())
-	}
-
-	if isAuthenticated {
-		seqCmd.Apply(txb)
-	}
-	return nil
+	return fmt.Errorf("SeqTxBuilder: cannot use output as tag-along:\n%s", o.String())
 }
 
-func (txb *SequencerTxBuilder) AddDelegationInput(out *ledger.DelegateOutput) error {
+func (txb *SeqTxBuilder) AddDelegationInput(out *ledger.DelegateOutput) error {
 	panic("implement me")
 }
 
-func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
+func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.L().ID.MinimumAmountOnSequencer) {
-		return fmt.Errorf("SequencerTxBuilder: amount %s on the produced chain output is below minimum %s required for the sequencer",
+		return fmt.Errorf("SeqTxBuilder: amount %s on the produced chain output is below minimum %s required for the sequencer",
 			util.Th(txb.chainOutAmounts[ledger.AmountIndexTokenBalance]),
 			util.Th(ledger.L().ID.MinimumAmountOnSequencer))
 	}
@@ -204,7 +205,7 @@ func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
 
 	}))
 	if err != nil {
-		return fmt.Errorf("SequencerTxBuilder: %w", err)
+		return fmt.Errorf("SeqTxBuilder: %w", err)
 	}
 
 	// unlock sequencer chain constraint
@@ -224,16 +225,24 @@ func (txb *SequencerTxBuilder) buildSequencerAndStemOutputs() error {
 	})
 	txb.TransactionData.StemOutputIndex, err = txb.ProduceOutput(stemOut)
 	if err != nil {
-		return fmt.Errorf("SequencerTxBuilder: %w", err)
+		return fmt.Errorf("SeqTxBuilder: %w", err)
 	}
 	return nil
 }
 
-func (txb *SequencerTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
+func (txb *SeqTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
 	if err := txb.buildSequencerAndStemOutputs(); err != nil {
-		return nil, [32]byte{}, "", fmt.Errorf("SequencerTxBuilder: %w", err)
+		return nil, [32]byte{}, "", fmt.Errorf("SeqTxBuilder: %w", err)
 	}
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 	txb.SignED25519(txb.privateKey)
 	return txb.TxBuilder.BytesWithValidation()
+}
+
+func (txb *SeqTxBuilder) reservedInputs() (ret int) {
+	ret = 1
+	if txb.stemInput != nil {
+		ret = 2
+	}
+	return
 }

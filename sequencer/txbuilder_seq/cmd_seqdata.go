@@ -10,7 +10,7 @@ import (
 )
 
 type SetSequencerDataCommand struct {
-	SequencerCommandBase
+	o ledger.OutputWithID
 	seqdata.SequencerData
 }
 
@@ -21,16 +21,25 @@ const (
 )
 
 func init() {
-	registerSequencerCommand(SetSequencerDataCmdCode, func(cmdBase SequencerCommandBase) (SequencerCommand, bool) {
-		sd, err := seqdata.FromBytes(cmdBase.Get(FieldSetSequencerDataBinary))
-		if err != nil {
-			return nil, false
-		}
-		return &SetSequencerDataCommand{
-			SequencerCommandBase: cmdBase,
-			SequencerData:        sd,
-		}, true
-	})
+	registerSequencerCommand(SetSequencerDataCmdCode, _parseSetSequencerDataOutput)
+}
+
+func _parseSetSequencerDataOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqCommandMessage) (cmd TxBuilderCommand, isValid bool) {
+	if o.Output.NumConstraints() != 3 {
+		// unexpected structure -> may be attack
+		return
+	}
+	// authenticate
+	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
+	if msg.SenderHash != blake2b.Sum256(publicKey) {
+		// wrong sender -> may be attack
+		return
+	}
+	sd, err := seqdata.FromBytes(msg.Get(FieldSetSequencerDataBinary))
+	if err != nil {
+		return
+	}
+	return &SetSequencerDataCommand{o: o, SequencerData: sd}, true
 }
 
 func NewSetSequencerDataCommandBytecode(privKey ed25519.PrivateKey, seqData *seqdata.SequencerData) []byte {
@@ -49,12 +58,12 @@ func NewSeqDataCommandOutput(targetChain base.ChainID, privKey ed25519.PrivateKe
 	})
 }
 
-func (cmd *SetSequencerDataCommand) CheckPreconditions(txb *SequencerTxBuilder) (bool, bool, int) {
-	pubKey := txb.privateKey.Public().(ed25519.PublicKey)
-	return cmd.MessageWithED25519Sender.SenderHash == blake2b.Sum256(pubKey), true, 0
-}
-
-func (cmd *SetSequencerDataCommand) Apply(txb *SequencerTxBuilder) {
+func (cmd *SetSequencerDataCommand) Apply(txb *SeqTxBuilder) error {
+	_, err := txb.ConsumeTagAlongOutputUnlock(cmd.o.Output, cmd.o.ID, 0, txb.chainInput.ChainConstraintIndex)
+	if err != nil {
+		return err
+	}
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(cmd.o.Output.TokenBalance())
 	txb.nextSeqData = cmd.SequencerData.Clone()
-	return
+	return nil
 }
