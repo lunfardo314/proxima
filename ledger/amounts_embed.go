@@ -108,7 +108,7 @@ func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContex
 
 // _checkFrozenCoverageOnDelegateOutput assumes produced, not-origin delegation output. Enforces correct frozen coverage values
 func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, succID base.OutputID) {
-	dOut, ok := AsDelegateOutput(o, succID)
+	dOut, ok := AsDelegationOutput(o, succID)
 	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expectedVector 1")
 	amounts := o.Amounts()
 
@@ -124,7 +124,7 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 	if dOut.Revoked {
 		pred, err := ctx.ConsumedOutput(dOut.PredecessorInputIndex)
 		par.RequireNoError(err)
-		dOutPred, ok := AsDelegateOutput(pred, ctx.MustInputAt(dOut.PredecessorInputIndex))
+		dOutPred, ok := AsDelegationOutput(pred, ctx.MustInputAt(dOut.PredecessorInputIndex))
 		par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: delegation output expectedVector at predecessor")
 
 		// the expected vector contains negative deltas of revoked frozen coverage in the current transaction (adjusted to the epoch difference)

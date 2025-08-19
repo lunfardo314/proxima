@@ -14,7 +14,7 @@ import (
 type RevokeDelegationCommand struct {
 	o                ledger.OutputWithID
 	delegationID     base.ChainID
-	delegation       ledger.DelegateOutput // filled up by CheckPreconditions
+	delegation       ledger.DelegationOutput // filled up by CheckPreconditions
 	ensureRevocation *ledger.EnsureRevocation
 }
 
@@ -48,7 +48,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	}
 
 	var ok bool
-	ret.delegation, ok = ledger.DelegateOutputFromOutputWithChainID(&_dOut)
+	ret.delegation, ok = ledger.DelegationOutputFromOutputWithChainID(&_dOut)
 	if !ok {
 		// is not a valid delegation chain output
 		return
@@ -133,7 +133,7 @@ func (r *RevokeDelegationCommand) Apply(txb *SeqTxBuilder) error {
 	predOutputIdx, err := txb.ConsumeOutput(r.delegation.Output, r.delegation.ID)
 	util.AssertNoError(err)
 
-	oProduce, err := r.delegation.MakeDelegateRevokeOutput(ledger.MakeDelegateRevokeOutputParams{
+	oProduce, err := r.delegation.MakeDelegationRevokeOutput(ledger.MakeDelegationRevokeOutputParams{
 		Timestamp:        txb.TransactionData.Timestamp,
 		PredOutputIndex:  predOutputIdx,
 		Inflation:        0, // TODO

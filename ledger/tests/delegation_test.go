@@ -29,7 +29,7 @@ type testData struct {
 
 	seqPrivateKey, masterPrivateKey ed25519.PrivateKey
 	seqChainOrigin                  ledger.OutputWithChainID
-	delegatedOutput                 ledger.DelegateOutput
+	delegatedOutput                 ledger.DelegationOutput
 }
 
 func (td *testData) init() {
@@ -96,7 +96,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		outs, err := td.u.SugaredStateReader().GetOutputsDelegatedToAccount2(td.target)
 		require.NoError(td, err)
 		require.EqualValues(td, 1, len(outs))
-		td.delegatedOutput, ok = ledger.DelegateOutputFromOutputWithChainID(outs[0])
+		td.delegatedOutput, ok = ledger.DelegationOutputFromOutputWithChainID(outs[0])
 		require.True(td, ok)
 		td.Logf("delegation ChainID: %s", td.delegatedOutput.ChainID.String())
 		td.Logf("delegated UTXO:\n%s", td.delegatedOutput.Output.ToSource("     "))
@@ -164,7 +164,7 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots ui
 	dc, err := do.AsChainOutput()
 	require.NoError(td, err)
 	var ok bool
-	td.delegatedOutput, ok = ledger.DelegateOutputFromOutputWithChainID(dc)
+	td.delegatedOutput, ok = ledger.DelegationOutputFromOutputWithChainID(dc)
 	require.True(td, ok)
 
 	err = td.u.AddTransaction(txBytes)
@@ -280,13 +280,13 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	if inflate {
 		inflation = ledger.L().CalcChainInflationAmountOneSlot(td.delegatedOutput.Timestamp().Slot, td.delegatedOutput.Output.TokenBalance())
 	}
-	delegatedOutPar := ledger.MakeDelegateRevokeOutputParams{
+	delegatedOutPar := ledger.MakeDelegationRevokeOutputParams{
 		Timestamp:                ts,
 		Inflation:                inflation,
 		DisableConsistencyChecks: true,
 	}
 	delegatedOutPar.PredOutputIndex, err = txb.ConsumeOutput(td.delegatedOutput.Output, td.delegatedOutput.ID)
-	delegatedOut, err := td.delegatedOutput.MakeDelegateRevokeOutput(delegatedOutPar)
+	delegatedOut, err := td.delegatedOutput.MakeDelegationRevokeOutput(delegatedOutPar)
 	require.NoError(td, err)
 
 	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))

@@ -1011,7 +1011,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: transaction pace constraint violated")
 	}
 
-	delegateOutput := ledger.MakeDelegateInitOutput(ledger.MakeDelegateInitOutputParams{
+	delegateOutput := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                      par.Amount,
 		Master:                      par.Master,
 		Target:                      par.Target,

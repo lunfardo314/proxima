@@ -176,7 +176,7 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) error {
 	return fmt.Errorf("SeqTxBuilder: cannot use output as tag-along:\n%s", o.String())
 }
 
-func (txb *SeqTxBuilder) AddDelegationInput(out *ledger.DelegateOutput) error {
+func (txb *SeqTxBuilder) AddDelegationInput(out *ledger.DelegationOutput) error {
 	panic("implement me")
 }
 

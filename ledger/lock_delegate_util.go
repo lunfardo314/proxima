@@ -12,7 +12,7 @@ import (
 )
 
 type (
-	DelegateOutput struct {
+	DelegationOutput struct {
 		OutputWithChainID
 		DelegateLock
 		DelegateLockState
@@ -38,7 +38,7 @@ type (
 	}
 )
 
-func MakeDelegateInitOutput(par MakeDelegateInitOutputParams) *Output {
+func MakeDelegationInitOutput(par MakeDelegateInitOutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmounts(int64(par.Amount))
 		o.WithLock(NewDelegateLock(par.Target, par.Master, par.MaxFreezeSlots, par.MinInflationAdvancePerEpoch))
@@ -47,22 +47,22 @@ func MakeDelegateInitOutput(par MakeDelegateInitOutputParams) *Output {
 	})
 }
 
-func AsDelegateOutput(o *Output, oid base.OutputID) (ret DelegateOutput, ok bool) {
+func AsDelegationOutput(o *Output, oid base.OutputID) (ret DelegationOutput, ok bool) {
 	out, ok := AsOutputWithChainID(o, oid)
 	if !ok {
 		return
 	}
-	return DelegateOutputFromOutputWithChainID(&out)
+	return DelegationOutputFromOutputWithChainID(&out)
 }
 
-func DelegateOutputFromOutputWithChainID(o *OutputWithChainID) (ret DelegateOutput, ok bool) {
+func DelegationOutputFromOutputWithChainID(o *OutputWithChainID) (ret DelegationOutput, ok bool) {
 	lock := o.Output.Lock()
 	if lock.Name() != DelegateLockName {
 		return
 	}
 	ret.OutputWithChainID = *o
 	dLock, ok := lock.(*DelegateLock)
-	util.Assertf(ok, "DelegateOutputFromOutputWithChainID: inconsistency")
+	util.Assertf(ok, "DelegationOutputFromOutputWithChainID: inconsistency")
 	ret.DelegateLock = *dLock
 
 	if data, err := o.Output.ConstraintAt(3); err == nil {
@@ -81,7 +81,7 @@ func Coverage(o *Output, oid base.OutputID, txTs base.LedgerTime) (coverage, fro
 		return o.TokenBalance(), 0
 	}
 
-	if dOut, isDelegate := DelegateOutputFromOutputWithChainID(&outChain); isDelegate {
+	if dOut, isDelegate := DelegationOutputFromOutputWithChainID(&outChain); isDelegate {
 		if dOut.IsFrozen(txTs.Slot) {
 			// delegated frozen outputs have zero coverage
 			return 0, 0
@@ -95,19 +95,19 @@ func Coverage(o *Output, oid base.OutputID, txTs base.LedgerTime) (coverage, fro
 	return o.TokenBalance() + fr, fr
 }
 
-func (o *DelegateOutput) IsFrozen(txSlot base.Slot) bool {
+func (o *DelegationOutput) IsFrozen(txSlot base.Slot) bool {
 	return o.UnfreezeSlot() <= uint32(txSlot)
 }
 
-func (o *DelegateOutput) IsUnlockableByTarget(txSlot base.Slot) bool {
+func (o *DelegationOutput) IsUnlockableByTarget(txSlot base.Slot) bool {
 	return o.IsFrozen(txSlot) || txSlot.Uint32() >= o.UnfreezeSlot()+DelegationConst().SafeRevocationSlots
 }
 
-func (o *DelegateOutput) IsUnlockableByMaster(txSlot base.Slot) bool {
+func (o *DelegationOutput) IsUnlockableByMaster(txSlot base.Slot) bool {
 	return !o.IsFrozen(txSlot)
 }
 
-func (o *DelegateOutput) MakeDelegateSuccessorOutput(par MakeDelegateSuccessorOutputParams) (*Output, error) {
+func (o *DelegationOutput) MakeDelegateSuccessorOutput(par MakeDelegateSuccessorOutputParams) (*Output, error) {
 	dconst := DelegationConst()
 	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.Timestamp.Slot))
 	freeze := par.FreezeUntilEpoch >= txEpoch
@@ -161,13 +161,13 @@ func (o *DelegateOutput) MakeDelegateSuccessorOutput(par MakeDelegateSuccessorOu
 	}), nil
 }
 
-func (o *DelegateOutput) MinRequiredInflationAdvance(ts base.LedgerTime, frozenEpochs byte) uint64 {
+func (o *DelegationOutput) MinRequiredInflationAdvance(ts base.LedgerTime, frozenEpochs byte) uint64 {
 	dconst := DelegationConst()
 	frozenSlotsFromEpochs := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(ts.Slot), frozenEpochs)
 	return (uint64(frozenSlotsFromEpochs) * o.MinInflationAdvancePerEpoch) / uint64(dconst.DelegationEpochSlots)
 }
 
-func (o *DelegateOutput) UnfreezeSlot() uint32 {
+func (o *DelegationOutput) UnfreezeSlot() uint32 {
 	if o.LastFrozenEpoch == 0 {
 		return uint32(o.ID.Slot())
 	}
@@ -175,7 +175,7 @@ func (o *DelegateOutput) UnfreezeSlot() uint32 {
 	return (o.LastFrozenEpoch+1)*dconst.DelegationEpochSlots - dconst.EpochOffsetSlots(o.Target.ChainID())
 }
 
-func (o *DelegateOutput) FreezeUntilLatestEpoch(ts base.LedgerTime) (ret uint32) {
+func (o *DelegationOutput) FreezeUntilLatestEpoch(ts base.LedgerTime) (ret uint32) {
 	dconst := DelegationConst()
 	ret = dconst.EpochFromSlot(o.Target.ChainID(), ts.Slot.Uint32())
 	slotsToFreeze := dconst.CoveredSlotsInCurrentEpoch(o.Target.ChainID(), ts.Slot.Uint32())
@@ -187,7 +187,7 @@ func (o *DelegateOutput) FreezeUntilLatestEpoch(ts base.LedgerTime) (ret uint32)
 	return
 }
 
-func (o *DelegateOutput) FrozenEpochs(txTs base.LedgerTime) (byte, error) {
+func (o *DelegationOutput) FrozenEpochs(txTs base.LedgerTime) (byte, error) {
 	dconst := DelegationConst()
 	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), txTs.Slot.Uint32())
 	if txEpoch > o.LastFrozenEpoch {
@@ -200,7 +200,7 @@ func (o *DelegateOutput) FrozenEpochs(txTs base.LedgerTime) (byte, error) {
 	return byte(ret), nil
 }
 
-func (o *DelegateOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.LedgerTime) []int64 {
+func (o *DelegationOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.LedgerTime) []int64 {
 	dconst := DelegationConst()
 	diffEpochs := dconst.DiffEpochs(o.Target.ChainID(), txTs, o.Timestamp())
 	util.Assertf(diffEpochs >= 0, "MakeFrozenCoverageAmountDeltasForRevoking: wrong timestamp %s", txTs.String)
@@ -215,7 +215,7 @@ func (o *DelegateOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.Led
 	return ret
 }
 
-func (o *DelegateOutput) MakeFrozenCoverageAmounts(frozenEpochs byte, tokenBalance uint64) ([]int64, error) {
+func (o *DelegationOutput) MakeFrozenCoverageAmounts(frozenEpochs byte, tokenBalance uint64) ([]int64, error) {
 	mx := byte(DelegationConst().MaxFrozenEpochs)
 	if frozenEpochs > mx {
 		return nil, fmt.Errorf("MakeFrozenCoverageAmounts: frozen epochs value (%d) exceed maximum %d", frozenEpochs, mx)
@@ -227,7 +227,7 @@ func (o *DelegateOutput) MakeFrozenCoverageAmounts(frozenEpochs byte, tokenBalan
 	return ret, nil
 }
 
-type MakeDelegateRevokeOutputParams struct {
+type MakeDelegationRevokeOutputParams struct {
 	Timestamp                base.LedgerTime
 	PredOutputIndex          byte
 	Inflation                uint64
@@ -235,19 +235,19 @@ type MakeDelegateRevokeOutputParams struct {
 	DisableConsistencyChecks bool
 }
 
-func (o *DelegateOutput) MakeDelegateRevokeOutput(par MakeDelegateRevokeOutputParams) (*Output, error) {
+func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOutputParams) (*Output, error) {
 	if !par.DisableConsistencyChecks && par.Timestamp.IsSlotBoundary() {
-		return nil, fmt.Errorf("MakeDelegateRevokeOutput: can't be a branch transaction")
+		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't be a branch transaction")
 	}
 	if !par.DisableConsistencyChecks && !o.IsUnlockableByTarget(par.Timestamp.Slot) {
-		return nil, fmt.Errorf("MakeDelegateRevokeOutput: can't be unlocked by target in slot %d", par.Timestamp.Slot)
+		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't be unlocked by target in slot %d", par.Timestamp.Slot)
 	}
 	if !par.DisableConsistencyChecks && par.HarvestInflation > par.Inflation {
-		return nil, fmt.Errorf("MakeDelegateRevokeOutput: can't harvest more inflation (%s) than generate (%s)",
+		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't harvest more inflation (%s) than generate (%s)",
 			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
 	if !par.DisableConsistencyChecks && par.Inflation > L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance()) {
-		return nil, fmt.Errorf("MakeDelegateRevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
+		return nil, fmt.Errorf("MakeDelegationRevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
 	amounts := []int64{int64(o.Output.TokenBalance() + par.Inflation - par.HarvestInflation), int64(par.Inflation)}
@@ -268,7 +268,7 @@ func (o *DelegateOutput) MakeDelegateRevokeOutput(par MakeDelegateRevokeOutputPa
 
 // SafeRevocationSlots return slots from-to (inclusive) when target cannot consume the delegation output
 // (0, 0) means it is revoked, i.e., it cannot be consumed by the target
-func (o *DelegateOutput) SafeRevocationSlots() (from, to uint32) {
+func (o *DelegationOutput) SafeRevocationSlots() (from, to uint32) {
 	if o.Revoked {
 		return
 	}
@@ -276,7 +276,7 @@ func (o *DelegateOutput) SafeRevocationSlots() (from, to uint32) {
 	return unfreeze, unfreeze + DelegationConst().SafeRevocationSlots - 1
 }
 
-func (o *DelegateOutput) LinesSource(prefix ...string) *lines.Lines {
+func (o *DelegationOutput) LinesSource(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("---- delegation output ----")
 	ret.Append(o.OutputWithChainID.LinesSource("   "))
