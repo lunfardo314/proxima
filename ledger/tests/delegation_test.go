@@ -199,7 +199,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	txb.PutSignatureUnlock(0)
 	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
 
-	delegatedOutPar := ledger.MakeDelegateSuccessorOutputParams{
+	delegatedOutPar := ledger.MakeDelegationSuccessorOutputParams{
 		Timestamp:                par.ts,
 		PredTimestamp:            td.delegatedOutput.Timestamp(),
 		FreezeUntilEpoch:         par.freezeUntilEpoch,
@@ -209,7 +209,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	if par.inflate {
 		delegatedOutPar.Inflation = ledger.L().CalcChainInflationAmountOneSlot(td.delegatedOutput.Timestamp().Slot, td.delegatedOutput.Output.TokenBalance())
 	}
-	delegatedOut, err := td.delegatedOutput.MakeDelegateSuccessorOutput(delegatedOutPar)
+	delegatedOut, err := td.delegatedOutput.MakeDelegationSuccessorOutput(delegatedOutPar)
 	require.NoError(td, err)
 
 	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
@@ -478,7 +478,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		ts = td.timestampSlotsForward(1000)
 		txEpoch := ledger.DelegationConst().EpochFromSlot(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.FreezeUntilLatestEpoch(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
 		frozenEpochs := freezeUntilEpoch - txEpoch + 1
 		frozenSlots := ledger.DelegationConst().FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 		t.Logf(">>>>>>>>> freezeUntilEpoch: %d, frozenEpochs: %d, frozenSlots: %d", freezeUntilEpoch, frozenEpochs, frozenSlots)
@@ -503,7 +503,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		ts = td.timestampSlotsForward(500)
 		txEpoch := ledger.DelegationConst().EpochFromSlot(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.FreezeUntilLatestEpoch(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
 
 		frozenEpochs := freezeUntilEpoch - txEpoch + 1
 		frozenSlots := ledger.DelegationConst().FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
@@ -525,7 +525,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(100)
-		freezeUntilEpoch := td.delegatedOutput.FreezeUntilLatestEpoch(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
@@ -545,7 +545,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		ts = td.timestampSlotsForward(700)
 		txEpoch := ledger.DelegationConst().EpochFromSlot(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.FreezeUntilLatestEpoch(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
 		frozen := freezeUntilEpoch - txEpoch + 1
 		_ = frozen
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
@@ -564,7 +564,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
-		freezeUntilEpoch := td.delegatedOutput.FreezeUntilLatestEpoch(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
@@ -597,7 +597,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		// freeze for 512 slots
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
-		freezeUntilEpoch := td.delegatedOutput.FreezeUntilLatestEpoch(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
@@ -638,7 +638,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		// freeze for 512 slots
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
-		freezeUntil := td.delegatedOutput.FreezeUntilLatestEpoch(ts)
+		freezeUntil := td.delegatedOutput.LatestEpochToFreeze(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntil,

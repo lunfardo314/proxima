@@ -176,8 +176,61 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) error {
 	return fmt.Errorf("SeqTxBuilder: cannot use output as tag-along:\n%s", o.String())
 }
 
-func (txb *SeqTxBuilder) AddDelegationInput(out *ledger.DelegationOutput) error {
-	panic("implement me")
+func (txb *SeqTxBuilder) FreezeDelegation(in *ledger.DelegationOutput) error {
+	if in.Target.ChainID() != txb.chainInput.ChainID || !in.IsUnlockableByTarget(txb.TransactionData.Timestamp.Slot) {
+		return fmt.Errorf("SeqTxBuilder: cannot be unlocked by the sequencer in %s", txb.TransactionData.Timestamp.String())
+	}
+	if len(txb.ConsumedOutputs) > 255 {
+		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many inputs")
+	}
+	if len(txb.TransactionData.Outputs) > 254 {
+		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
+	}
+
+	lastEpochToFreeze := in.LatestEpochToFreeze(txb.TransactionData.Timestamp)
+	dconst := ledger.DelegationConst()
+	frozenEpochs := lastEpochToFreeze - dconst.EpochFromSlot(in.Target.ChainID(), txb.TransactionData.Timestamp.Uint32()) + 1
+	util.Assertf(frozenEpochs <= dconst.MaxFrozenEpochs, "frozenEpochs <= dcost.MaxFrozenEpochs")
+
+	// handle inflation advance
+	advance := in.MinRequiredInflationAdvance(txb.TransactionData.Timestamp, byte(frozenEpochs))
+	onChainAmount := txb.chainOutAmounts[ledger.AmountIndexTokenBalance]
+	if onChainAmount <= int64(advance) || onChainAmount-int64(advance) < int64(ledger.L().ID.MinimumAmountOnSequencer) {
+		return fmt.Errorf("WithdrawCommand: insufficient balance on chain for inflation advance")
+	}
+
+	predIdx := byte(len(txb.ConsumedOutputs))
+	out, err := in.MakeDelegationSuccessorOutput(ledger.MakeDelegationSuccessorOutputParams{
+		Timestamp:        txb.TransactionData.Timestamp,
+		FreezeUntilEpoch: lastEpochToFreeze,
+		PredOutputIndex:  predIdx,
+		Inflation:        0, // TODO
+	})
+	if err != nil {
+		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+	}
+	idx, err := txb.ConsumeOutput(in.Output, in.ID)
+	if err != nil {
+		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+	}
+	util.Assertf(idx == predIdx, "idx == predIdx")
+
+	succIdx, err := txb.ProduceOutput(out)
+	if err != nil {
+		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+	}
+	// unlock lock
+	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0, 2))
+	// unlock chain
+	txb.PutUnlockParams(idx, 2, ledger.NewChainUnlockParams(succIdx, 2))
+
+	// add frozen coverage to the sequencer output
+	a := out.Amounts()
+	for i := byte(0); i < byte(dconst.MaxFrozenEpochs); i++ {
+		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+i] = a.FrozenCoverageAt(i)
+	}
+
+	return nil
 }
 
 func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
