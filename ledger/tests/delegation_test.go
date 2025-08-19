@@ -282,7 +282,6 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	}
 	delegatedOutPar := ledger.MakeDelegateRevokeOutputParams{
 		Timestamp:                ts,
-		PredTimestamp:            td.delegatedOutput.Timestamp(),
 		Inflation:                inflation,
 		DisableConsistencyChecks: true,
 	}

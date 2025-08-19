@@ -229,7 +229,6 @@ func (o *DelegateOutput) MakeFrozenCoverageAmounts(frozenEpochs byte, tokenBalan
 
 type MakeDelegateRevokeOutputParams struct {
 	Timestamp                base.LedgerTime
-	PredTimestamp            base.LedgerTime
 	PredOutputIndex          byte
 	Inflation                uint64
 	HarvestInflation         uint64
@@ -247,7 +246,7 @@ func (o *DelegateOutput) MakeDelegateRevokeOutput(par MakeDelegateRevokeOutputPa
 		return nil, fmt.Errorf("MakeDelegateRevokeOutput: can't harvest more inflation (%s) than generate (%s)",
 			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
-	if !par.DisableConsistencyChecks && par.Inflation > L().CalcChainInflationAmountOneSlot(par.PredTimestamp.Slot, o.Output.TokenBalance()) {
+	if !par.DisableConsistencyChecks && par.Inflation > L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance()) {
 		return nil, fmt.Errorf("MakeDelegateRevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
