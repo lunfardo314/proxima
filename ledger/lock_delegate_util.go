@@ -158,10 +158,18 @@ func (o *DelegationOutput) MakeDelegationSuccessorOutput(par MakeDelegationSucce
 	}), nil
 }
 
-func (o *DelegationOutput) MinRequiredInflationAdvance(ts base.LedgerTime, frozenEpochs byte) uint64 {
+// ProjectedInflation max inflation that could be generated on the output for a number of frozen epochs
+func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs byte) uint64 {
 	dconst := DelegationConst()
-	frozenSlotsFromEpochs := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(ts.Slot), frozenEpochs)
-	return (uint64(frozenSlotsFromEpochs) * o.MinInflationAdvancePerEpoch) / uint64(dconst.DelegationEpochSlots)
+	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), frozenEpochs)
+	return InflationForSlots(o.Output.TokenBalance(), frozenSlots)
+}
+
+func (o *DelegationOutput) RequiredInflationAdvance(txTs base.LedgerTime) uint64 {
+	util.Assertf(o.IsFrozen(txTs.Slot), "o.IsFrozen(txTs.Slot)")
+	frozenEpochs, err := o.FrozenEpochs(txTs)
+	util.AssertNoError(err)
+	return o.ProjectedInflation(txTs, frozenEpochs)
 }
 
 func (o *DelegationOutput) UnfreezeSlot() uint32 {
@@ -195,6 +203,14 @@ func (o *DelegationOutput) FrozenEpochs(txTs base.LedgerTime) (byte, error) {
 		return 0, fmt.Errorf("frozen epochs cannot exceed %d", dconst.MaxFrozenEpochs)
 	}
 	return byte(ret), nil
+}
+
+func (o *DelegationOutput) FrozenSlots(txTs base.LedgerTime) uint32 {
+	unfreezeSlot := o.UnfreezeSlot()
+	if unfreezeSlot < txTs.Slot.Uint32() {
+		return 0
+	}
+	return unfreezeSlot - txTs.Slot.Uint32() + 1
 }
 
 func (o *DelegationOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.LedgerTime) []int64 {

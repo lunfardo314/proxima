@@ -1,6 +1,8 @@
 package seqdata
 
 import (
+	"math"
+
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -81,6 +83,21 @@ func (sd *SequencerData) IncBranchHeight(add ...uint32) *SequencerData {
 func (sd *SequencerData) InflationMarginPromille() (ret uint16) {
 	ret, _ = easyfl_util.Uint16FromBytes(sd.Get(KeyInflationMarginPromille))
 	return
+}
+
+func (sd *SequencerData) InflationMargin(amount uint64) (ret uint64) {
+	p := sd.InflationMarginPromille()
+	if p == 0 {
+		return 0
+	}
+	if p > 1000 {
+		// everything is taken
+		return amount
+	}
+	if amount > math.MaxUint64/uint64(p) {
+		return 0
+	}
+	return (amount * uint64(p)) / 1000
 }
 
 func (sd *SequencerData) SetInflationMarginPromille(margin uint16) *SequencerData {

@@ -187,24 +187,39 @@ func (txb *SeqTxBuilder) FreezeDelegation(in *ledger.DelegationOutput) error {
 		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
 	}
 
+	if txb.TransactionData.Timestamp.Slot+1 < in.ID.Slot() {
+		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: too short period")
+	}
 	lastEpochToFreeze := in.LatestEpochToFreeze(txb.TransactionData.Timestamp)
 	dconst := ledger.DelegationConst()
 	frozenEpochs := lastEpochToFreeze - dconst.EpochFromSlot(in.Target.ChainID(), txb.TransactionData.Timestamp.Uint32()) + 1
 	util.Assertf(frozenEpochs <= dconst.MaxFrozenEpochs, "frozenEpochs <= dcost.MaxFrozenEpochs")
 
+	// handle balance on chain
+	inflation := ledger.L().CalcChainInflationAmountOneSlot(in.ID.Slot(), in.Output.TokenBalance())
+
 	// handle inflation advance
-	advance := in.MinRequiredInflationAdvance(txb.TransactionData.Timestamp, byte(frozenEpochs))
-	onChainAmount := txb.chainOutAmounts[ledger.AmountIndexTokenBalance]
+
+	// expected inflation until the end of freeze, taking into account inflation margin
+	advance := in.ProjectedInflation(txb.TransactionData.Timestamp, byte(frozenEpochs))
+	// charge inflation margin
+	advance -= advance - txb.SequencerData.InflationMargin(advance)
+
+	// all inflation is harvested
+	onChainAmount := txb.chainOutAmounts[ledger.AmountIndexTokenBalance] + int64(inflation)
 	if onChainAmount <= int64(advance) || onChainAmount-int64(advance) < int64(ledger.L().ID.MinimumAmountOnSequencer) {
 		return fmt.Errorf("WithdrawCommand: insufficient balance on chain for inflation advance")
 	}
+
+	// TODO fix mess with inflation advance
 
 	predIdx := byte(len(txb.ConsumedOutputs))
 	out, err := in.MakeDelegationSuccessorOutput(ledger.MakeDelegationSuccessorOutputParams{
 		Timestamp:        txb.TransactionData.Timestamp,
 		FreezeUntilEpoch: lastEpochToFreeze,
 		PredOutputIndex:  predIdx,
-		Inflation:        0, // TODO
+		Inflation:        inflation,
+		HarvestInflation: inflation,
 	})
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
@@ -214,6 +229,9 @@ func (txb *SeqTxBuilder) FreezeDelegation(in *ledger.DelegationOutput) error {
 		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 	}
 	util.Assertf(idx == predIdx, "idx == predIdx")
+
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(inflation)
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(advance)
 
 	succIdx, err := txb.ProduceOutput(out)
 	if err != nil {
