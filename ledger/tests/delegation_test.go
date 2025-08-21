@@ -200,7 +200,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
 
 	delegatedOutPar := ledger.MakeDelegationSuccessorOutputParams{
-		Timestamp:                par.ts,
+		TxTs:                     par.ts,
 		FreezeUntilEpoch:         par.freezeUntilEpoch,
 		DisableConsistencyChecks: par.disableConsistencyChecks,
 	}
@@ -208,7 +208,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	if par.inflate {
 		delegatedOutPar.Inflation = ledger.L().CalcChainInflationAmountOneSlot(td.delegatedOutput.Timestamp().Slot, td.delegatedOutput.Output.TokenBalance())
 	}
-	delegatedOut, err := td.delegatedOutput.MakeDelegationSuccessorOutput(delegatedOutPar)
+	delegatedOut, err := td.delegatedOutput.MakeDelegationFreezeOutput(delegatedOutPar)
 	require.NoError(td, err)
 
 	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))

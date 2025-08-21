@@ -28,11 +28,9 @@ type (
 		StartSlot                   base.Slot
 	}
 	MakeDelegationSuccessorOutputParams struct {
-		Timestamp                base.LedgerTime
+		TxTs                     base.LedgerTime
 		FreezeUntilEpoch         uint32
 		PredOutputIndex          byte
-		Inflation                uint64
-		HarvestInflation         uint64
 		DisableConsistencyChecks bool
 	}
 )
@@ -106,68 +104,57 @@ func (o *DelegationOutput) IsUnlockableByMaster(txSlot base.Slot) bool {
 	return !o.IsFrozen(txSlot)
 }
 
-func (o *DelegationOutput) MakeDelegationSuccessorOutput(par MakeDelegationSuccessorOutputParams) (*Output, error) {
+func (o *DelegationOutput) MakeDelegationFreezeOutput(par MakeDelegationSuccessorOutputParams) (ret *Output, projectedInflation uint64, err error) {
+	if !par.DisableConsistencyChecks && o.ID.Slot() >= par.TxTs.Slot {
+		return nil, 0, fmt.Errorf("MakeDelegationFreezeOutput: successor timestamp must be at least 1 slot after")
+	}
+	if !par.DisableConsistencyChecks && par.TxTs.IsSlotBoundary() {
+		return nil, 0, fmt.Errorf("MakeDelegationFreezeOutput: can't be a branch transaction")
+	}
 	dconst := DelegationConst()
-	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.Timestamp.Slot))
-	freeze := par.FreezeUntilEpoch >= txEpoch
+	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(par.TxTs.Slot))
+	util.Assertf(txEpoch <= par.FreezeUntilEpoch, "txEpoch <= par.FreezeUntilEpoch")
 
-	if !par.DisableConsistencyChecks && par.Timestamp.IsSlotBoundary() {
-		return nil, fmt.Errorf("MakeDelegationSuccessorOutput: can't be a branch transaction")
-	}
-	if !par.DisableConsistencyChecks && par.HarvestInflation > par.Inflation {
-		return nil, fmt.Errorf("MakeDelegationSuccessorOutput: can't harvest more inflation (%s) than generate (%s)",
-			util.Th(par.HarvestInflation), util.Th(par.Inflation))
+	frozenEpochs := par.FreezeUntilEpoch - txEpoch + 1
+	if !par.DisableConsistencyChecks && frozenEpochs > dconst.MaxFrozenEpochs {
+		return nil, 0, fmt.Errorf("MakeDelegationFreezeOutput: too many frozen epochs: %d", par.FreezeUntilEpoch)
 	}
 
-	if !par.DisableConsistencyChecks && txEpoch > par.FreezeUntilEpoch {
-		return nil, fmt.Errorf("MakeDelegationSuccessorOutput: wrong FreezeUntilEpoch: %d", par.FreezeUntilEpoch)
-	}
-	var frozenEpochs, frozenSlots uint32
-	if freeze {
-		frozenEpochs = par.FreezeUntilEpoch - txEpoch + 1
-		if !par.DisableConsistencyChecks && frozenEpochs > dconst.MaxFrozenEpochs {
-			return nil, fmt.Errorf("MakeDelegationSuccessorOutput: too many frozen epochs: %d", par.FreezeUntilEpoch)
-		}
-		frozenSlots = dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(par.Timestamp.Slot), byte(frozenEpochs))
-		if !par.DisableConsistencyChecks && frozenSlots > uint32(o.MaxFrozenSlots) {
-			return nil, fmt.Errorf("MakeDelegationSuccessorOutput: FreezeUntilEpoch %d (%d frozen epochs, %d frozen slots) inconsistent with MaxFrozenSlots set by delegator: %d",
-				par.FreezeUntilEpoch, frozenEpochs, frozenSlots, o.MaxFrozenSlots)
-		}
+	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(par.TxTs.Slot), byte(frozenEpochs))
+	if !par.DisableConsistencyChecks && frozenSlots > uint32(o.MaxFrozenSlots) {
+		return nil, 0, fmt.Errorf("MakeDelegationFreezeOutput: FreezeUntilEpoch %d (%d frozen epochs, %d frozen slots) inconsistent with MaxFrozenSlots set by delegator: %d",
+			par.FreezeUntilEpoch, frozenEpochs, frozenSlots, o.MaxFrozenSlots)
 	}
 
-	if par.Inflation > L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance()) {
-		return nil, fmt.Errorf("MakeDelegationSuccessorOutput: wrong inflation amount: %s", util.Th(par.Inflation))
-	}
+	requiredAdvanceByOutput := o.RequiredInflationAdvance(par.TxTs, frozenEpochs)
+	inflation := L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
 
-	var amountsVector []int64
-	if freeze {
-		amountsVector = make([]int64, frozenEpochs+2)
-		amountsVector[0] = int64(o.Output.TokenBalance() + par.Inflation - par.HarvestInflation)
-		amountsVector[1] = int64(par.Inflation)
-		for i := 2; i < len(amountsVector); i++ {
-			amountsVector[i] = amountsVector[0]
-		}
-	} else {
-		amountsVector = []int64{int64(o.Output.TokenBalance() + par.Inflation - par.HarvestInflation)}
+	successorTokenBalance := o.Output.TokenBalance() + inflation + requiredAdvanceByOutput
+	var amountsVector [15]int64
+	amountsVector[AmountIndexTokenBalance] = int64(successorTokenBalance)
+	amountsVector[AmountIndexInflation] = int64(inflation)
+	for i := byte(0); i < byte(frozenEpochs); i++ {
+		amountsVector[AmountIndexFrozenCoverage+i] = int64(successorTokenBalance)
 	}
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
+
 	return NewOutput(func(o1 *OutputBuilder) {
-		o1.WithAmounts(amountsVector...)
+		o1.WithAmounts(amountsVector[:]...)
 		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenSlots, o.MinInflationAdvancePerFullEpoch))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: par.FreezeUntilEpoch}.Bytes())
-	}), nil
+	}), InflationForSlots(successorTokenBalance, frozenSlots), nil
 }
 
 // ProjectedInflation max inflation that could be generated on the output for a number of frozen epochs
-func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs byte, addInitAmount ...uint64) uint64 {
-	dconst := DelegationConst()
-	add := uint64(0)
-	if len(addInitAmount) > 0 {
-		add = addInitAmount[0]
+func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs byte) uint64 {
+	if o.ID.Slot() >= txTs.Slot {
+		return 0
 	}
+	dconst := DelegationConst()
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), frozenEpochs)
-	return InflationForSlots(o.Output.TokenBalance()+add, frozenSlots)
+	amount := o.Output.TokenBalance() + L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
+	return InflationForSlots(amount, frozenSlots)
 }
 
 // RequiredInflationAdvance calculates how big advance requires the delegation output for freezing it,
