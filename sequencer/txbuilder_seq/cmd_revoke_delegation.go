@@ -28,10 +28,11 @@ func init() {
 }
 
 func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqCommandMessage) (cmd TxBuilderCommand, isValid bool) {
-	if o.Output.NumConstraints() != 4 {
+	if o.Output.NumConstraints() > 4 {
 		// unexpected structure -> may be attack
 		return
 	}
+	// ---------- fetch delegation output from the baseline state
 	delegationID, err := base.ChainIDFromBytes(msg.Get(FieldRevokeDelegationID))
 	if err != nil {
 		return
@@ -53,7 +54,18 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 		// is not a valid delegation chain output
 		return
 	}
-	// authenticate
+	// ----------
+
+	// ---------- check if revocation even makes sense
+	if !ret.delegation.IsUnlockableByTarget(o.Timestamp().Slot) {
+		// cannot be unlocked by target in the slot
+		return
+	}
+	if ret.delegation.ID.Slot()+1 >= o.Timestamp().Slot {
+		// the revocation request must be at least 1 slot after the delegation output
+		return
+	}
+	// ---------- authenticate: check if the sender of the request and the sequencer must be entitled to revoke particular delegation ID
 	if ret.delegation.Target.ChainID() != txb.chainInput.ChainID {
 		// this sequencer cannot revoke specific delegation
 		return
@@ -67,31 +79,28 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 		// this sender cannot revoke delegation -> may be an attack
 		return
 	}
+	//------------
 
-	// check if revocation even makes sense
-	if ret.delegation.ID.Slot()+1 >= o.Timestamp().Slot ||
-		ret.delegation.Revoked ||
-		!ret.delegation.IsFrozen(txb.TransactionData.Timestamp.Slot) {
-		// too old request, already revoked or not frozen
+	// ------------ check if revocation makes economic sense for the sequencer:
+	// tokens provided in the tag-along output must at least cover the remaining projected inflation from the frozen amount
+	unfreezeSlot := ret.delegation.UnfreezeSlot()
+	util.Assertf(unfreezeSlot > txb.TransactionData.Timestamp.Slot.Uint32(), "ret.delegation.IsFrozen(txb.TransactionData.Timestamp.Slot)")
+
+	const patienceMargin = 6
+	lostSlots := txb.TransactionData.Timestamp.Slot.Uint32() - unfreezeSlot
+	if lostSlots <= patienceMargin {
+		// less than 1 min slots until the end of the freeze, refuse to revoke.
+		// Just 1 min of patience, and it will be released to the safe revocation window without revocation command
 		return
 	}
-	// check if tokens provided in the tag-along output compensate for the already commited inflation
-	unfreeze := ret.delegation.UnfreezeSlot()
-	util.Assertf(unfreeze > txb.TransactionData.Timestamp.Slot.Uint32(), "ret.delegation.IsFrozen(txb.TransactionData.Timestamp.Slot)")
-
-	const patienceMargin = 6 // slots
-	lostSlots := txb.TransactionData.Timestamp.Slot.Uint32() - unfreeze
-	if lostSlots < patienceMargin {
-		// just 1 min of patience and it will be released to the safe revocation window without revocation command
-		return
-	}
+	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
 	neededCompensation := ledger.InflationForSlots(ret.delegation.Output.TokenBalance(), lostSlots)
 	if neededCompensation < o.Output.TokenBalance() {
-		// remaining inflation advance is bigger than number of tokens in the revocation output
+		// projected inflation advance is bigger than number of tokens in the revocation output
 		// -> sequencer do not want loss -> ignore the revocation request
 		return
 	}
-	// check if 'ensure revocation' exists, if yes, sequencer will need to unlock it
+	// check if 'ensure revocation' constraint exists, if yes, sequencer will need to unlock it
 	if ens, idx := o.Output.EnsureRevocationConstraint(); idx != 0xff {
 		if idx != 3 || ens.ChainID != delegationID {
 			// wrong structure. Ensure revocation constraint expected at index 3
@@ -128,21 +137,24 @@ func (r *RevokeDelegationCommand) Apply(txb *SeqTxBuilder) error {
 	if len(txb.TransactionData.Outputs) > 255 {
 		return fmt.Errorf("RevokeDelegationCommand: too many outputs to produce")
 	}
-	tagAlongOutputIdx, err := txb.ConsumeTagAlongOutputUnlock(r.o.Output, r.o.ID, 0, txb.chainInput.ChainConstraintIndex)
-	util.AssertNoError(err)
-	predOutputIdx, err := txb.ConsumeOutput(r.delegation.Output, r.delegation.ID)
-	util.AssertNoError(err)
-
 	oProduce, err := r.delegation.MakeDelegationRevokeOutput(ledger.MakeDelegationRevokeOutputParams{
-		Timestamp:        txb.TransactionData.Timestamp,
-		PredOutputIndex:  predOutputIdx,
-		Inflation:        0, // TODO
-		HarvestInflation: 0,
+		Timestamp:       txb.TransactionData.Timestamp,
+		PredOutputIndex: byte(len(txb.ConsumedOutputs) + 2),
 	})
 	if err != nil {
 		return fmt.Errorf("RevokeDelegationCommand: %w", err)
 	}
+
+	// consume tag-along with the revoke command message
+	tagAlongOutputIdx, err := txb.ConsumeTagAlongOutputUnlock(r.o.Output, r.o.ID, 0, txb.chainInput.ChainConstraintIndex)
+	util.AssertNoError(err)
+	// consume the delegation predecessor
+	_, err = txb.ConsumeOutput(r.delegation.Output, r.delegation.ID)
+	util.AssertNoError(err)
+
+	// produce revoked delegation output
 	revocationOutputIndex, err := txb.ProduceOutput(oProduce)
+
 	if r.ensureRevocation != nil {
 		// unlock ensure revocation constraint
 		txb.PutUnlockParams(tagAlongOutputIdx, 3, []byte{revocationOutputIndex})
@@ -150,6 +162,7 @@ func (r *RevokeDelegationCommand) Apply(txb *SeqTxBuilder) error {
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(r.o.Output.TokenBalance() + oProduce.TokenBalance())
 	maxFrozenEpochs := byte(ledger.DelegationConst().MaxFrozenEpochs)
 	a := oProduce.Amounts()
+	// add negative deltas to the sequencer totals
 	for i := byte(0); i < maxFrozenEpochs; i++ {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+i] += a.FrozenCoverageAt(i)
 	}

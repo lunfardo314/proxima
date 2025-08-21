@@ -176,8 +176,8 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) error {
 	return fmt.Errorf("SeqTxBuilder: cannot use output as tag-along:\n%s", o.String())
 }
 
-func (txb *SeqTxBuilder) FreezeDelegation(in *ledger.DelegationOutput) error {
-	if in.Target.ChainID() != txb.chainInput.ChainID || !in.IsUnlockableByTarget(txb.TransactionData.Timestamp.Slot) {
+func (txb *SeqTxBuilder) FreezeDelegation(inDelegation *ledger.DelegationOutput) error {
+	if inDelegation.Target.ChainID() != txb.chainInput.ChainID || !inDelegation.IsUnlockableByTarget(txb.TransactionData.Timestamp.Slot) {
 		return fmt.Errorf("SeqTxBuilder: cannot be unlocked by the sequencer in %s", txb.TransactionData.Timestamp.String())
 	}
 	if len(txb.ConsumedOutputs) > 255 {
@@ -187,23 +187,18 @@ func (txb *SeqTxBuilder) FreezeDelegation(in *ledger.DelegationOutput) error {
 		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
 	}
 
-	if txb.TransactionData.Timestamp.Slot+1 < in.ID.Slot() {
-		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: too short period")
+	if txb.TransactionData.Timestamp.Slot < inDelegation.ID.Slot()+1 {
+		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: delegation predecessor must be at least 1 slot old")
 	}
-	lastEpochToFreeze := in.LatestEpochToFreeze(txb.TransactionData.Timestamp)
-	dconst := ledger.DelegationConst()
-	frozenEpochs := lastEpochToFreeze - dconst.EpochFromSlot(in.Target.ChainID(), txb.TransactionData.Timestamp.Uint32()) + 1
-	util.Assertf(frozenEpochs <= dconst.MaxFrozenEpochs, "frozenEpochs <= dcost.MaxFrozenEpochs")
+	lastEpochToFreeze, frozenEpochs := inDelegation.LatestPossibleEpochToFreeze(txb.TransactionData.Timestamp)
 
-	// handle balance on chain
-	inflation := ledger.L().CalcChainInflationAmountOneSlot(in.ID.Slot(), in.Output.TokenBalance())
-
-	// handle inflation advance
-
-	// expected inflation until the end of freeze, taking into account inflation margin
-	advance := in.ProjectedInflation(txb.TransactionData.Timestamp, byte(frozenEpochs))
-	// charge inflation margin
-	advance -= advance - txb.SequencerData.InflationMargin(advance)
+	// advance required by the delegation output
+	inflation := ledger.L().CalcChainInflationAmountOneSlot() // TODO
+	requiredMinAdvance := inDelegation.RequiredInflationAdvance(txb.TransactionData.Timestamp, frozenEpochs)
+	// calculate break even advance from the POV of the sequencer. It is equal from
+	breakEvenAdvance := inDelegation.ProjectedInflation(txb.TransactionData.Timestamp, byte(frozenEpochs))
+	// charge inflation margin as defined in the sequencer data profile
+	breakEvenAdvance += txb.SequencerData.InflationMargin(breakEvenAdvance)
 
 	// all inflation is harvested
 	onChainAmount := txb.chainOutAmounts[ledger.AmountIndexTokenBalance] + int64(inflation)
@@ -214,7 +209,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(in *ledger.DelegationOutput) error {
 	// TODO fix mess with inflation advance
 
 	predIdx := byte(len(txb.ConsumedOutputs))
-	out, err := in.MakeDelegationSuccessorOutput(ledger.MakeDelegationSuccessorOutputParams{
+	out, err := inDelegation.MakeDelegationSuccessorOutput(ledger.MakeDelegationSuccessorOutputParams{
 		Timestamp:        txb.TransactionData.Timestamp,
 		FreezeUntilEpoch: lastEpochToFreeze,
 		PredOutputIndex:  predIdx,
@@ -224,7 +219,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(in *ledger.DelegationOutput) error {
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 	}
-	idx, err := txb.ConsumeOutput(in.Output, in.ID)
+	idx, err := txb.ConsumeOutput(inDelegation.Output, inDelegation.ID)
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 	}

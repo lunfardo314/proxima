@@ -86,7 +86,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		WithAmount(delegatedTokens).
 		WithTargetLock(delegationLock).
 		WithConstraint(ledger.NewChainOrigin(ts.Slot, delegatedTokens)).
-		WithConstraint(ledger.DelegateLockState{Revoked: revoked}),
+		WithConstraint(ledger.DelegateLockState{IsRevoked: revoked}),
 	)
 	if err != nil {
 		return nil, err
@@ -477,7 +477,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		ts = td.timestampSlotsForward(1000)
 		txEpoch := ledger.DelegationConst().EpochFromSlot(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestPossibleEpochToFreeze(ts)
 		frozenEpochs := freezeUntilEpoch - txEpoch + 1
 		frozenSlots := ledger.DelegationConst().FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 		t.Logf(">>>>>>>>> freezeUntilEpoch: %d, frozenEpochs: %d, frozenSlots: %d", freezeUntilEpoch, frozenEpochs, frozenSlots)
@@ -502,7 +502,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		ts = td.timestampSlotsForward(500)
 		txEpoch := ledger.DelegationConst().EpochFromSlot(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestPossibleEpochToFreeze(ts)
 
 		frozenEpochs := freezeUntilEpoch - txEpoch + 1
 		frozenSlots := ledger.DelegationConst().FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
@@ -524,7 +524,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(100)
-		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestPossibleEpochToFreeze(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
@@ -544,7 +544,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		ts = td.timestampSlotsForward(700)
 		txEpoch := ledger.DelegationConst().EpochFromSlot(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestPossibleEpochToFreeze(ts)
 		frozen := freezeUntilEpoch - txEpoch + 1
 		_ = frozen
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
@@ -563,7 +563,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
-		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestPossibleEpochToFreeze(ts)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
@@ -596,7 +596,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		// freeze for 512 slots
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
-		freezeUntilEpoch := td.delegatedOutput.LatestEpochToFreeze(ts)
+		freezeUntilEpoch := td.delegatedOutput.LatestPossibleEpochToFreeze(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
@@ -637,7 +637,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		// freeze for 512 slots
 		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
-		freezeUntil := td.delegatedOutput.LatestEpochToFreeze(ts)
+		freezeUntil := td.delegatedOutput.LatestPossibleEpochToFreeze(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntil,
@@ -709,7 +709,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 		}
 		o.MustPushConstraint(ledger.DelegateLockState{
 			LastFrozenEpoch: freezeUntil,
-			Revoked:         false,
+			IsRevoked:       false,
 		}.Bytes())
 	}))
 	util.AssertNoError(err)
@@ -1095,7 +1095,7 @@ func (td *testData) transitChainWithDelegation(par transitParams) (err error) {
 		}
 		o.MustPushConstraint(ledger.DelegateLockState{
 			LastFrozenEpoch: freezeUntil,
-			Revoked:         false,
+			IsRevoked:       false,
 		}.Bytes())
 	}))
 	util.AssertNoError(err)

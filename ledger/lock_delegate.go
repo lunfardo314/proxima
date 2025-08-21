@@ -13,14 +13,14 @@ import (
 
 type (
 	DelegateLock struct {
-		Target                      ChainLock
-		MasterLock                  Accountable
-		MaxFrozenSlots              uint16
-		MinInflationAdvancePerEpoch uint64
+		Target                          ChainLock
+		MasterLock                      Accountable
+		MaxFrozenSlots                  uint16
+		MinInflationAdvancePerFullEpoch uint64
 	}
 	DelegateLockState struct {
 		LastFrozenEpoch uint32
-		Revoked         bool
+		IsRevoked       bool
 	}
 
 	EnsureRevocation struct {
@@ -46,19 +46,19 @@ const (
 
 func NewDelegateLock(target ChainLock, master Accountable, maxFreezeSlots uint16, minInflationAdvancePerEpoch uint64) *DelegateLock {
 	return &DelegateLock{
-		Target:                      target,
-		MasterLock:                  master,
-		MaxFrozenSlots:              maxFreezeSlots,
-		MinInflationAdvancePerEpoch: minInflationAdvancePerEpoch,
+		Target:                          target,
+		MasterLock:                      master,
+		MaxFrozenSlots:                  maxFreezeSlots,
+		MinInflationAdvancePerFullEpoch: minInflationAdvancePerEpoch,
 	}
 }
 
 func (d *DelegateLock) Source() string {
-	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxFrozenSlots, d.MinInflationAdvancePerEpoch)
+	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxFrozenSlots, d.MinInflationAdvancePerFullEpoch)
 }
 
 func (d *DelegateLock) String() string {
-	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenSlots, util.Th(d.MinInflationAdvancePerEpoch))
+	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenSlots, util.Th(d.MinInflationAdvancePerFullEpoch))
 }
 
 func (d *DelegateLock) Bytes() []byte {
@@ -102,7 +102,7 @@ func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
 	ret.MaxFrozenSlots = uint16(a2)
 
 	// minimum inflation advance
-	ret.MinInflationAdvancePerEpoch, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3]))
+	ret.MinInflationAdvancePerFullEpoch, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3]))
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong inflation advance per epoch: %v", err)
 	}
@@ -146,8 +146,8 @@ func initTestDelegateConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(example.MaxFrozenSlots == 3000, "Delegate2LockFromBytes: wrong back 1")
 	util.Assertf(exampleBack.MaxFrozenSlots == example.MaxFrozenSlots, "Delegate2LockFromBytes: wrong back 2")
-	util.Assertf(exampleBack.MinInflationAdvancePerEpoch == example.MinInflationAdvancePerEpoch, "Delegate2LockFromBytes: wrong back 3")
-	util.Assertf(example.MinInflationAdvancePerEpoch == 10, "Delegate2LockFromBytes: wrong back 4")
+	util.Assertf(exampleBack.MinInflationAdvancePerFullEpoch == example.MinInflationAdvancePerFullEpoch, "Delegate2LockFromBytes: wrong back 3")
+	util.Assertf(example.MinInflationAdvancePerFullEpoch == 10, "Delegate2LockFromBytes: wrong back 4")
 
 	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
 	exampleBack2, err := LockFromBytes(example.Bytes())
@@ -179,20 +179,20 @@ func DelegateLockStateFromBytes(data []byte) (DelegateLockState, error) {
 	}
 	return DelegateLockState{
 		LastFrozenEpoch: fr,
-		Revoked:         !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
+		IsRevoked:       !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
 	}, nil
 }
 
 func (d DelegateLockState) Source() string {
 	r := "0x"
-	if d.Revoked {
+	if d.IsRevoked {
 		r = "0xff"
 	}
 	return fmt.Sprintf(DelegateLockStateTemplate, d.LastFrozenEpoch, r)
 }
 
 func (d DelegateLockState) String() string {
-	return fmt.Sprintf(DelegateLockStateTemplateHR, d.LastFrozenEpoch, d.Revoked)
+	return fmt.Sprintf(DelegateLockStateTemplateHR, d.LastFrozenEpoch, d.IsRevoked)
 }
 
 func (d DelegateLockState) Bytes() []byte {
@@ -209,7 +209,7 @@ func initTestDelegate2LockState() {
 	dlzBack, err := DelegateLockStateFromBytes(dlz.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(dlzBack.LastFrozenEpoch == 3001, "DelegateLockState: inconsistency 1")
-	util.Assertf(dlzBack.Revoked, "DelegateLockState: inconsistency 2")
+	util.Assertf(dlzBack.IsRevoked, "DelegateLockState: inconsistency 2")
 	util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
 }
 
@@ -485,7 +485,7 @@ func delegateLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1),
     or(
        _validDelegationProduced($2, $3),
-       _validDelegationConsumed($0,$1)
+       _validDelegationConsumed($0, $1)
     )
 )
 

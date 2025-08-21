@@ -121,7 +121,7 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 	// unlocked by the target as enforced by the delegation lock
 	var expectedVector []int64
 	// the expected vector is different for frozen and revoked delegation outputs
-	if dOut.Revoked {
+	if dOut.IsRevoked {
 		pred, err := ctx.ConsumedOutput(dOut.PredecessorInputIndex)
 		par.RequireNoError(err)
 		dOutPred, ok := AsDelegationOutput(pred, ctx.MustInputAt(dOut.PredecessorInputIndex))

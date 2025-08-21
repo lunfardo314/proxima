@@ -3,6 +3,7 @@ package ledger
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"sync/atomic"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -98,7 +99,7 @@ func (o *DelegationOutput) IsFrozen(txSlot base.Slot) bool {
 }
 
 func (o *DelegationOutput) IsUnlockableByTarget(txSlot base.Slot) bool {
-	return o.IsFrozen(txSlot) || txSlot.Uint32() >= o.UnfreezeSlot()+DelegationConst().SafeRevocationSlots
+	return !o.IsRevoked && (o.IsFrozen(txSlot) || txSlot.Uint32() >= o.UnfreezeSlot()+DelegationConst().SafeRevocationSlots)
 }
 
 func (o *DelegationOutput) IsUnlockableByMaster(txSlot base.Slot) bool {
@@ -152,24 +153,40 @@ func (o *DelegationOutput) MakeDelegationSuccessorOutput(par MakeDelegationSucce
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amountsVector...)
-		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenSlots, o.MinInflationAdvancePerEpoch))
+		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenSlots, o.MinInflationAdvancePerFullEpoch))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: par.FreezeUntilEpoch}.Bytes())
 	}), nil
 }
 
 // ProjectedInflation max inflation that could be generated on the output for a number of frozen epochs
-func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs byte) uint64 {
+func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs byte, addInitAmount ...uint64) uint64 {
 	dconst := DelegationConst()
+	add := uint64(0)
+	if len(addInitAmount) > 0 {
+		add = addInitAmount[0]
+	}
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), frozenEpochs)
-	return InflationForSlots(o.Output.TokenBalance(), frozenSlots)
+	return InflationForSlots(o.Output.TokenBalance()+add, frozenSlots)
 }
 
-func (o *DelegationOutput) RequiredInflationAdvance(txTs base.LedgerTime) uint64 {
-	util.Assertf(o.IsFrozen(txTs.Slot), "o.IsFrozen(txTs.Slot)")
-	frozenEpochs, err := o.FrozenEpochs(txTs)
-	util.AssertNoError(err)
-	return o.ProjectedInflation(txTs, frozenEpochs)
+// RequiredInflationAdvance calculates how big advance requires the delegation output for freezing it,
+// as calculated from immutable MinInflationAdvancePerFullEpoch value on it
+func (o *DelegationOutput) RequiredInflationAdvance(txTs base.LedgerTime, frozenEpochs uint32) uint64 {
+	dconst := DelegationConst()
+	if frozenEpochs == 0 {
+		return 0
+	}
+	slotsCoveredInFirstEpoch := dconst.CoveredSlotsInCurrentEpoch(o.Target.ChainID(), uint32(txTs.Slot))
+	if o.MinInflationAdvancePerFullEpoch == 0 || uint64(slotsCoveredInFirstEpoch) > math.MaxUint64/o.MinInflationAdvancePerFullEpoch {
+		// safe arithmetics
+		return 0
+	}
+	ret := (uint64(slotsCoveredInFirstEpoch) * o.MinInflationAdvancePerFullEpoch) / uint64(dconst.DelegationEpochSlots) // first epoch
+	if frozenEpochs > 1 {
+		ret += o.MinInflationAdvancePerFullEpoch * (uint64(frozenEpochs) - 1)
+	}
+	return ret
 }
 
 func (o *DelegationOutput) UnfreezeSlot() uint32 {
@@ -180,15 +197,18 @@ func (o *DelegationOutput) UnfreezeSlot() uint32 {
 	return (o.LastFrozenEpoch+1)*dconst.DelegationEpochSlots - dconst.EpochOffsetSlots(o.Target.ChainID())
 }
 
-func (o *DelegationOutput) LatestEpochToFreeze(ts base.LedgerTime) (latestEpoch uint32) {
+func (o *DelegationOutput) LatestPossibleEpochToFreeze(ts base.LedgerTime) (freezeUntilEpoch, frozenEpochs uint32) {
 	dconst := DelegationConst()
-	latestEpoch = dconst.EpochFromSlot(o.Target.ChainID(), ts.Slot.Uint32())
+	startEpoch := dconst.EpochFromSlot(o.Target.ChainID(), ts.Slot.Uint32())
+	freezeUntilEpoch = startEpoch
 	slotsToFreeze := dconst.CoveredSlotsInCurrentEpoch(o.Target.ChainID(), ts.Slot.Uint32())
-	maxRet := latestEpoch + dconst.MaxFrozenEpochs - 1
-	for latestEpoch < maxRet && slotsToFreeze+dconst.DelegationEpochSlots <= uint32(o.MaxFrozenSlots) {
+	maxRet := freezeUntilEpoch + dconst.MaxFrozenEpochs - 1
+	for freezeUntilEpoch < maxRet && slotsToFreeze+dconst.DelegationEpochSlots <= uint32(o.MaxFrozenSlots) {
 		slotsToFreeze += dconst.DelegationEpochSlots
-		latestEpoch++
+		freezeUntilEpoch++
 	}
+	util.Assertf(freezeUntilEpoch >= startEpoch, "freezeUntilEpoch >= startEpoch")
+	frozenEpochs = freezeUntilEpoch - startEpoch + 1
 	return
 }
 
@@ -274,7 +294,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{
 			LastFrozenEpoch: o.LastFrozenEpoch,
-			Revoked:         true,
+			IsRevoked:       true,
 		}.Bytes())
 	}), nil
 }
@@ -282,7 +302,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 // SafeRevocationSlots return slots from-to (inclusive) when target cannot consume the delegation output
 // (0, 0) means it is revoked, i.e., it cannot be consumed by the target
 func (o *DelegationOutput) SafeRevocationSlots() (from, to uint32) {
-	if o.Revoked {
+	if o.IsRevoked {
 		return
 	}
 	unfreeze := o.UnfreezeSlot()
