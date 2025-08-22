@@ -235,3 +235,62 @@ func TestBase(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestFreeze(t *testing.T) {
+	privKey := testutil.GetTestingPrivateKey()
+	addr := ledger.AddressED25519FromPrivateKey(privKey)
+	seqID := base.RandomChainID()
+	bal := ledger.L().ID.MinimumAmountOnSequencer << 8
+
+	sd := seqdata.New().
+		SetName("test_seq").
+		IncBranchHeight(2).
+		IncChainHeight(4).
+		SetMinimumFee(1)
+
+	predTs := base.NewLedgerTime(1000, 50)
+	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
+
+	newPredChain := func(frozen ...int64) *ledger.OutputWithChainID {
+		amounts := append(append(make([]int64, 0), int64(bal), 0), frozen...)
+
+		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(amounts...).WithLock(addr)
+			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, bal).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
+		})
+
+		pred, ok := ledger.AsOutputWithChainID(predChain, predID)
+		require.True(t, ok)
+		return &pred
+	}
+
+	newTxb := func(ts base.LedgerTime, frozen ...int64) *SeqTxBuilder {
+		txb, err := New(ts, newPredChain(frozen...), nil, privKey, multistate.DummyStateReader)
+		require.NoError(t, err)
+		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
+		err = txb.AddEndorsement(rndEndorsement)
+		require.NoError(t, err)
+		return txb
+	}
+	//dcons := ledger.DelegationConst()
+
+	t.Run("1", func(t *testing.T) {
+		ts := predTs.AddSlots(1)
+		txb := newTxb(ts)
+
+		//delegationInit := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
+		//	Amount:                      10_000_000,
+		//	Master:                      addr,
+		//	Target:                      ledger.ChainLockFromChainID(seqID),
+		//	MaxFreezeSlots:              uint16(dcons.MaxFrozenEpochs*dcons.DelegationEpochSlots),
+		//	MinInflationAdvancePerEpoch: 0,
+		//	StartSlot:                   0,
+		//})
+
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+		require.NoError(t, err)
+	})
+}
