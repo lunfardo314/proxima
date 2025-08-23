@@ -65,7 +65,7 @@ functions:
       numArgs: 1
       source: timestampBytesFromPrefix(inputIDByIndex($0))
    -
-      sym: timeSlotOfInputByIndex
+      sym: slotOfInputByIndex
       numArgs: 1
       source: first4Bytes(inputIDByIndex($0))
    -

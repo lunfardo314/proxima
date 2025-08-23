@@ -3,7 +3,6 @@ package ledger
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
 	"sync/atomic"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -20,19 +19,19 @@ type (
 	}
 
 	MakeDelegateInitOutputParams struct {
-		Amount                      uint64
-		Master                      Accountable
-		Target                      ChainLock
-		MaxFreezeSlots              uint16
-		MinInflationAdvancePerEpoch uint64
-		StartSlot                   base.Slot
+		Amount                          uint64
+		Master                          Accountable
+		Target                          ChainLock
+		MaxFreezeSlots                  uint16
+		MaxToleratedInflationCostMargin uint16
+		StartSlot                       base.Slot
 	}
 )
 
 func MakeDelegationInitOutput(par MakeDelegateInitOutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmounts(int64(par.Amount))
-		o.WithLock(NewDelegateLock(par.Target, par.Master, par.MaxFreezeSlots, par.MinInflationAdvancePerEpoch))
+		o.WithLock(NewDelegateLock(par.Target, par.Master, par.MaxFreezeSlots, par.MaxToleratedInflationCostMargin))
 		o.MustPushConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes())
 		o.MustPushConstraint(DelegateLockState{}.Bytes())
 	})
@@ -125,7 +124,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	}
 
 	inflation := L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
-	requiredAdvance = o.RequiredInflationAdvance(txTs, frozenEpochs)
+	requiredAdvance = o.RequiredInflationAdvance(txTs, byte(frozenEpochs))
 
 	ownTokenBalance := o.Output.TokenBalance() + inflation
 	successorTokenBalance := ownTokenBalance + requiredAdvance
@@ -139,7 +138,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 
 	ret = NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amountsVector[:]...)
-		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenSlots, o.MinInflationAdvancePerFullEpoch))
+		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenSlots, o.MaxInflationCostMargin))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: freezeUntilEpoch}.Bytes())
 	})
@@ -160,21 +159,19 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 
 // RequiredInflationAdvance calculates how big advance requires the delegation output for freezing it,
 // as calculated from immutable MinInflationAdvancePerFullEpoch value on it
-func (o *DelegationOutput) RequiredInflationAdvance(txTs base.LedgerTime, frozenEpochs uint32) uint64 {
+func (o *DelegationOutput) RequiredInflationAdvance(txTs base.LedgerTime, frozenEpochs byte) uint64 {
 	dconst := DelegationConst()
-	if frozenEpochs == 0 {
-		return 0
-	}
-	slotsCoveredInFirstEpoch := dconst.CoveredSlotsInCurrentEpoch(o.Target.ChainID(), uint32(txTs.Slot))
-	if o.MinInflationAdvancePerFullEpoch == 0 || uint64(slotsCoveredInFirstEpoch) > math.MaxUint64/o.MinInflationAdvancePerFullEpoch {
-		// safe arithmetics
-		return 0
-	}
-	ret := (uint64(slotsCoveredInFirstEpoch) * o.MinInflationAdvancePerFullEpoch) / uint64(dconst.DelegationEpochSlots) // first epoch
-	if frozenEpochs > 1 {
-		ret += o.MinInflationAdvancePerFullEpoch * (uint64(frozenEpochs) - 1)
-	}
-	return ret
+	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot.Uint32(), frozenEpochs)
+	src := fmt.Sprintf("requiredMinimumInflationAdvance(u64/%d, u64/%d, u64/%d, u64/%d)",
+		frozenSlots,
+		o.ID.Slot(),
+		o.Output.TokenBalance(),
+		o.MaxInflationCostMargin,
+	)
+	resBin, err := L().EvalFromSource(nil, src)
+	util.AssertNoError(err)
+
+	return binary.BigEndian.Uint64(resBin)
 }
 
 func (o *DelegationOutput) UnfreezeSlot() uint32 {
@@ -378,9 +375,7 @@ func (c *DelegationConstants) _validUnfreezeSlot(target base.ChainID, unfreezeSl
 }
 
 func (c *DelegationConstants) FrozenSlotsFromFrozenEpochs(target base.ChainID, txSlot uint32, frozenEpochs byte) uint32 {
-	if frozenEpochs == 0 {
-		return 0
-	}
+	util.Assertf(frozenEpochs > 0, "frozenEpochs > 0")
 	return c.CoveredSlotsInCurrentEpoch(target, txSlot) + uint32(frozenEpochs-1)*c.DelegationEpochSlots
 }
 

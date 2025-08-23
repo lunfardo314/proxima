@@ -19,7 +19,7 @@ func mustMinimumAmountOnSequencer :
 func _inputSameSlot :
 equal(
 	txSlot,
-	timeSlotOfInputByIndex($0)
+	slotOfInputByIndex($0)
 )
 
 // no param

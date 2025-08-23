@@ -275,7 +275,6 @@ functions:
       sym: ticksPerSlot64
       description: number of ticks in the slot. Usually 128
       source: add(constMaxTickValuePerSlot, u64/1)
-# inflation related
    -
       sym: constSlotInflationBase
       description: maximum inflation of the total supply in slot 0. Usually 33000000 
@@ -324,4 +323,8 @@ functions:
       sym: timestampByteSize
       description: constant for the storage deposit constraint  
       source: 5
+   - 
+      sym: chainInflationOneSlot
+      description: calculates one-slot inflation in slot $0 of amount $1
+      source: div($1, add(div(constInitialSupply, constSlotInflationBase), $0))
 `

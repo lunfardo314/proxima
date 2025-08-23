@@ -13,10 +13,10 @@ import (
 
 type (
 	DelegateLock struct {
-		Target                          ChainLock
-		MasterLock                      Accountable
-		MaxFrozenSlots                  uint16
-		MinInflationAdvancePerFullEpoch uint64
+		Target                 ChainLock
+		MasterLock             Accountable
+		MaxFrozenSlots         uint16
+		MaxInflationCostMargin uint16 // in promille, <= 1000
 	}
 	DelegateLockState struct {
 		LastFrozenEpoch uint32
@@ -30,8 +30,8 @@ type (
 
 const (
 	DelegateLockName       = "delegateLock"
-	DelegateLockTemplate   = DelegateLockName + "(%s, %s, z16/%d, z64/%d)"
-	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeSlots=%d, inflAdvancePerEpoch=%s)"
+	DelegateLockTemplate   = DelegateLockName + "(%s, %s, z16/%d, z16/%d)"
+	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeSlots=%d, maxInflationCostMargin=%s%%%%)"
 
 	DelegateLockStateName       = "delegateLockState"
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %s)"
@@ -44,21 +44,21 @@ const (
 
 //------------ DelegateLock
 
-func NewDelegateLock(target ChainLock, master Accountable, maxFreezeSlots uint16, minInflationAdvancePerEpoch uint64) *DelegateLock {
+func NewDelegateLock(target ChainLock, master Accountable, maxFreezeSlots uint16, maxToleratedCostMargin uint16) *DelegateLock {
 	return &DelegateLock{
-		Target:                          target,
-		MasterLock:                      master,
-		MaxFrozenSlots:                  maxFreezeSlots,
-		MinInflationAdvancePerFullEpoch: minInflationAdvancePerEpoch,
+		Target:                 target,
+		MasterLock:             master,
+		MaxFrozenSlots:         maxFreezeSlots,
+		MaxInflationCostMargin: maxToleratedCostMargin,
 	}
 }
 
 func (d *DelegateLock) Source() string {
-	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxFrozenSlots, d.MinInflationAdvancePerFullEpoch)
+	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxFrozenSlots, d.MaxInflationCostMargin)
 }
 
 func (d *DelegateLock) String() string {
-	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenSlots, util.Th(d.MinInflationAdvancePerFullEpoch))
+	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenSlots, util.Th(d.MaxInflationCostMargin))
 }
 
 func (d *DelegateLock) Bytes() []byte {
@@ -102,9 +102,9 @@ func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
 	ret.MaxFrozenSlots = uint16(a2)
 
 	// minimum inflation advance
-	ret.MinInflationAdvancePerFullEpoch, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3]))
+	ret.MaxInflationCostMargin, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
 	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong inflation advance per epoch: %v", err)
+		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong max inflation margin: %v", err)
 	}
 
 	return ret, nil
@@ -146,8 +146,8 @@ func initTestDelegateConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(example.MaxFrozenSlots == 3000, "Delegate2LockFromBytes: wrong back 1")
 	util.Assertf(exampleBack.MaxFrozenSlots == example.MaxFrozenSlots, "Delegate2LockFromBytes: wrong back 2")
-	util.Assertf(exampleBack.MinInflationAdvancePerFullEpoch == example.MinInflationAdvancePerFullEpoch, "Delegate2LockFromBytes: wrong back 3")
-	util.Assertf(example.MinInflationAdvancePerFullEpoch == 10, "Delegate2LockFromBytes: wrong back 4")
+	util.Assertf(exampleBack.MaxInflationCostMargin == example.MaxInflationCostMargin, "Delegate2LockFromBytes: wrong back 3")
+	util.Assertf(example.MaxInflationCostMargin == 10, "Delegate2LockFromBytes: wrong back 4")
 
 	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
 	exampleBack2, err := LockFromBytes(example.Bytes())
@@ -372,12 +372,49 @@ func _selfUnfreezeSlot : add($0, _frozenSlots($0, _selfLastFrozenEpoch))
 
 func _equalTo1Of2 : or(equal($0,$1), equal($0,$2))
 
-// $0 minimum advance inflation upon freeze per full epoch 
-// returns minimum required amount of inflation advance
-func _calcMinimumAdvanceForSuccessor : div(mul(_frozenSlots(txSlot, _selfLastFrozenEpoch),$0), constDelegationEpochSlots)
+// $0 amount
+// $1 margin in promille
+// = a(1-margin/1000) = (a*(1000-margin))/1000
+func _shaveMargin : div( mul($0, sub(u64/1000,$1)), u64/1000 )
+
+// $0 frozen slots in the transaction
+// $1 slot of the input
+// $2 predecessor token balance
+// $3 margin to shave in promille
+func requiredMinimumInflationAdvance :
+	_shaveMargin(
+	  mul(
+		add($0, u64/1),  // plus 1 slot for the inflation in the current transaction 
+		chainInflationOneSlot($1, $2)
+	  ),
+	  $3
+	)
+
+
+// $0 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
+// $1 _predecessorTokenBalance
+//
+// It uses an approximation (linear extrapolation) of the future projected inflation (non-linear)
+// At the sequencer side, it must be taken into account that margins are not the same for 
+// the delegator and the sequencer. The difference is minor, however
+func _requiredMinimumInflationAdvance :
+     requiredMinimumInflationAdvance(_selfFrozenSlots(txSlot), slotOfInputByIndex(selfChainPredInputIndex(2)), $1, $0) 
+
+// $0 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
+// $1 _predecessorTokenBalance
+func _validInflationAdvance :
+and(
+    require(
+       lessOrEqualThan($0, u64/1000),
+       !!!max_inflation_cost_margin_must_be_in_promille_less_or_equal_than_1000
+    ),
+    require(
+       lessOrEqualThan( _requiredMinimumInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1)),
+       !!!not_enough_inflation_advance
+    )
+)
 
 // $0 max freeze slots
-// $1 minimum advance inflation upon freeze per full epoch 
 func _validLimits :
 and(
     require(
@@ -385,16 +422,12 @@ and(
        !!!max_freeze_slots_must_be_max_2_bytes 
     ),
     require(
-       lessOrEqualThan(uint8Bytes(_selfFrozenSlots(txSlot)), uint8Bytes($0)),
+       lessOrEqualThan(uint8Bytes(_selfFrozenSlots(txSlot)), $0),
        !!!frozen_slots_cannot_exceed_maximum_set_by_delegator
     ),
     require(
        lessOrEqualThan(uint8Bytes(_selfFrozenEpochs), uint8Bytes(constDelegationMaxFrozenEpochs)),
        !!!frozen_epochs_cannot_exceed_constDelegationMaxFrozenEpochs
-    ),
-    require(
-       or(_isDelegationOrigin, lessOrEqualThan(_calcMinimumAdvanceForSuccessor($1), sub(selfTokenBalanceValue, _predecessorTokenBalance))),
-       !!!not_enough_inflation_advance
     )
 )
 
@@ -424,12 +457,13 @@ and(
 
 // checks validity of the composition of the produced constraint 
 // $0 max freeze slots
-// $1 minimum advance inflation upon freeze per full epoch 
+// $1 max inflation cost margin, the part of the inflation shaved by the sequencer 
 func _validDelegationProduced :
 and(
     selfIsProducedOutput,
     _validBase,
-    _validLimits($0,$1)
+    _validLimits(uint8Bytes($0)),
+    _validInflationAdvance(uint8Bytes($1), _predecessorTokenBalance)
 )
 
 // $0 master lock
@@ -445,7 +479,7 @@ func _insideSafeRevocationWindow : and(
     lessThan(uint8Bytes(txSlot), add($0, constDelegationSafeRevocationSlots))
 )
 
-func _consumedUnfreezeSlot : _selfUnfreezeSlot( timeSlotOfInputByIndex( selfOutputIndex ) )
+func _consumedUnfreezeSlot : _selfUnfreezeSlot( slotOfInputByIndex( selfOutputIndex ) )
 
 func _successorIsRevoked : parseInlineDataArgument(successorConstraint(3),#delegateLockState,1)
 
@@ -480,7 +514,7 @@ func _validDelegationConsumed : and(
 // $0 target chain lock
 // $1 master lock
 // $2 max freeze slots
-// $3 minimum advance inflation upon freeze per full epoch. In order to freeze coverage, target just provide in advance inflation  
+// $3 max tolerated inflation cost margin, the part of inflation sequencer is allowed to shave from the inflation. In promille    
 func delegateLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1),
     or(

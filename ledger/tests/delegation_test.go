@@ -138,21 +138,21 @@ func TestDelegationLock2Init(t *testing.T) {
 
 const tagAlongFee = 500
 
-func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots uint16, minInflationAdvancePerEpoch uint64) ([]byte, string, error) {
+func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFreezeSlots uint16, maxToleratedInflationCostMargin uint16) ([]byte, string, error) {
 	outs, availableTokens := td.u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(td.masterAddr, delegatedTokens+tagAlongFee)
 	require.True(td, availableTokens >= delegatedTokens+tagAlongFee)
 
 	txBytes, err := txbuilder.MakeDelegationInitTransaction(txbuilder.MakeDelegationInitTransactionParams{
-		Timestamp:                   ts,
-		Amount:                      delegatedTokens,
-		Master:                      td.masterAddr,
-		Target:                      td.target,
-		MaxFreezeSlots:              maxFreezeSlots,
-		MinInflationAdvancePerEpoch: minInflationAdvancePerEpoch,
-		MasterPrivateKey:            td.masterPrivateKey,
-		Inputs:                      outs,
-		TagAlongSequencer:           base.RandomChainID(),
-		TagAlongFee:                 tagAlongFee,
+		Timestamp:                       ts,
+		Amount:                          delegatedTokens,
+		Master:                          td.masterAddr,
+		Target:                          td.target,
+		MaxFreezeSlots:                  maxFreezeSlots,
+		MaxToleratedInflationCostMargin: maxToleratedInflationCostMargin,
+		MasterPrivateKey:                td.masterPrivateKey,
+		Inputs:                          outs,
+		TagAlongSequencer:               base.RandomChainID(),
+		TagAlongFee:                     tagAlongFee,
 	})
 	txString := td.u.TxToSource(txBytes)
 	if err != nil {

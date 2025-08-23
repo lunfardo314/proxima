@@ -242,7 +242,7 @@ func chain : and(
 func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 0)
 func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), #chain, 1), 0)
 
-// $0 chain constrain index
+// $0 chain constraint index
 func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0),#chain,1),0) )
 
 `

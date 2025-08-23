@@ -1,6 +1,9 @@
 package ledger
 
 import (
+	"encoding/binary"
+	"fmt"
+
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -10,6 +13,13 @@ import (
 // This makes token holder move the output every slot to earn maximum inflation
 func (lib *Library) CalcChainInflationAmountOneSlot(inSlot base.Slot, inCoverage uint64) uint64 {
 	return inCoverage / (lib.ID.SlotInflationFraction + uint64(inSlot))
+}
+
+func (lib *Library) CalcChainInflationAmountOneSlotFromSource(inSlot base.Slot, inCoverage uint64) uint64 {
+	src := fmt.Sprintf("chainInflationOneSlot(u64/%d, u64/%d)", inSlot, inCoverage)
+	resBin, err := lib.EvalFromSource(nil, src)
+	util.AssertNoError(err)
+	return binary.BigEndian.Uint64(resBin)
 }
 
 func (lib *Library) BranchInflationBonusBase() uint64 {
