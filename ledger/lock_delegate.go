@@ -414,12 +414,12 @@ and(
     )
 )
 
-// $0 max freeze slots
+// $0 max freeze slots (uint64)
 func _validLimits :
 and(
     require(
-       lessOrEqualThan(len($0), u64/2),
-       !!!max_freeze_slots_must_be_max_2_bytes 
+       lessOrEqualThan($0, uint8Bytes(constDelegationMaxFrozenEpochs)),
+       !!!wrong_value_of_max_freeze_slots 
     ),
     require(
        lessOrEqualThan(uint8Bytes(_selfFrozenSlots(txSlot)), $0),

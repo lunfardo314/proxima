@@ -113,7 +113,6 @@ func TestDelegationLock2Init(t *testing.T) {
 	require.EqualValues(t, 30, ledger.DelegationConst().SafeRevocationSlots)
 
 	td := &testData{T: t}
-
 	var err error
 
 	t.Run("ok 1", func(t *testing.T) {
