@@ -403,15 +403,18 @@ func _requiredMinimumInflationAdvance :
 // $0 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
 // $1 _predecessorTokenBalance
 func _validInflationAdvance :
-and(
-    require(
-       lessOrEqualThan($0, u64/1000),
-       !!!max_inflation_cost_margin_must_be_in_promille_less_or_equal_than_1000
-    ),
-    require(
-       lessOrEqualThan( _requiredMinimumInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1)),
-       !!!not_enough_inflation_advance
-    )
+or(
+    _isDelegationOrigin,
+	and(
+		require(
+		   lessOrEqualThan($0, u64/1000),
+		   !!!max_inflation_cost_margin_must_be_in_promille_less_or_equal_than_1000
+		),
+		require(
+		   lessOrEqualThan( _requiredMinimumInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1)),
+		   !!!not_enough_inflation_advance
+		)
+	)
 )
 
 // $0 max freeze slots (uint64)
@@ -419,14 +422,14 @@ func _validLimits :
 and(
     require(
        lessOrEqualThan($0, uint8Bytes(constDelegationMaxFrozenEpochs)),
-       !!!wrong_value_of_max_freeze_slots 
+       !!!wrong_value_of_max_frozen_epochs 
     ),
     require(
        lessOrEqualThan(uint8Bytes(_selfFrozenSlots(txSlot)), $0),
        !!!frozen_slots_cannot_exceed_maximum_set_by_delegator
     ),
     require(
-       lessOrEqualThan(uint8Bytes(_selfFrozenEpochs), uint8Bytes(constDelegationMaxFrozenEpochs)),
+       lessOrEqualThan(_selfFrozenEpochs, uint8Bytes(constDelegationMaxFrozenEpochs)),
        !!!frozen_epochs_cannot_exceed_constDelegationMaxFrozenEpochs
     )
 )
@@ -456,14 +459,14 @@ and(
 )
 
 // checks validity of the composition of the produced constraint 
-// $0 max freeze slots
+// $0 max freeze slots uint64
 // $1 max inflation cost margin, the part of the inflation shaved by the sequencer 
 func _validDelegationProduced :
 and(
     selfIsProducedOutput,
     _validBase,
-    _validLimits(uint8Bytes($0)),
-    _validInflationAdvance(uint8Bytes($1), _predecessorTokenBalance)
+    _validLimits($0),
+    _validInflationAdvance($1, _predecessorTokenBalance)
 )
 
 // $0 master lock
@@ -518,7 +521,7 @@ func _validDelegationConsumed : and(
 func delegateLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1),
     or(
-       _validDelegationProduced($2, $3),
+       _validDelegationProduced(uint8Bytes($2), uint8Bytes($3)),
        _validDelegationConsumed($0, $1)
     )
 )
