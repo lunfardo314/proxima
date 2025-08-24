@@ -9,13 +9,13 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/libp2p/go-libp2p v0.41.0
 	github.com/libp2p/go-libp2p-kad-dht v0.29.2
-	github.com/lunfardo314/easyfl v0.0.0-20250815112730-24f6dfe7bb82
+	github.com/lunfardo314/easyfl v0.0.0-20250824180637-0adcab032681
 	github.com/lunfardo314/unitrie v0.0.0-20250428060929-782e8c6f527d
 	github.com/multiformats/go-multiaddr v0.15.0
 	github.com/prometheus/client_golang v1.21.0
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 	github.com/whyrusleeping/multiaddr-filter v0.0.0-20160516205228-e903e4adabd7
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.41.0

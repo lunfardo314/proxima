@@ -243,6 +243,8 @@ github.com/lunfardo314/easyfl v0.0.0-20250815105226-faea4d2bfeec h1:Yy4WjWlkEoAd
 github.com/lunfardo314/easyfl v0.0.0-20250815105226-faea4d2bfeec/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
 github.com/lunfardo314/easyfl v0.0.0-20250815112730-24f6dfe7bb82 h1:5/SVy1RrhoEDKmHJ6Kt/MirlAclIewzWnRBBXuqpsc4=
 github.com/lunfardo314/easyfl v0.0.0-20250815112730-24f6dfe7bb82/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
+github.com/lunfardo314/easyfl v0.0.0-20250824180637-0adcab032681 h1:Yn6w/7t9lfYEPS/uBKXOT1OMlVZ6jixMNyBubD+FWD4=
+github.com/lunfardo314/easyfl v0.0.0-20250824180637-0adcab032681/go.mod h1:sbC4lEPEdSVEi0VyMUQa6jz987/MDB+2EM2co4MfMbk=
 github.com/lunfardo314/unitrie v0.0.0-20250428060929-782e8c6f527d h1:AR6RGRkmq8zOlGJEaqD3Znm98b95UzpvnQAf5Q0Bblc=
 github.com/lunfardo314/unitrie v0.0.0-20250428060929-782e8c6f527d/go.mod h1:UF0sUDag70c6Jx6vkKbbLqrOirQjTiJfSnuKKOFNRpA=
 github.com/lunixbochs/vtclean v1.0.0/go.mod h1:pHhQNgMf3btfWnGBVipUOjRYhoOsdGqdm/+2c2E2WMI=
@@ -455,6 +457,8 @@ github.com/stretchr/testify v1.8.3/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXl
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/stretchr/testify v1.10.0 h1:Xv5erBjTwe/5IxqUQTdXv5kgmIvbHo3QQyRwhJsOfJA=
 github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
+github.com/stretchr/testify v1.11.0 h1:ib4sjIrwZKxE5u/Japgo/7SJV3PvgjGiRNAvTVGqQl8=
+github.com/stretchr/testify v1.11.0/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8=
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
 github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cbyO7IOYJZWg1U88JhDg3PB6klq9Hg2pA=

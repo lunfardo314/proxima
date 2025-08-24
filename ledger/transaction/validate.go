@@ -139,7 +139,9 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 	util.Assertf(len(outs) <= 256, "len(outs)<=256")
 
 	path := common.Concat(pathToOutputs, 0)
-	for i, o := range outs {
+	// reverse order of constraint validations -> to evaluate 'amounts' last
+	for i := len(outs) - 1; i >= 0; i-- {
+		o := outs[i]
 		var err error
 		path[len(path)-1] = byte(i)
 		if err = ctx.runOutput(o, path, spool); err != nil {
