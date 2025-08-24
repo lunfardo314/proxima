@@ -277,17 +277,29 @@ func TestFreeze(t *testing.T) {
 	//dcons := ledger.DelegationConst()
 
 	t.Run("1", func(t *testing.T) {
-		ts := predTs.AddSlots(1)
+
+		dcons := ledger.DelegationConst()
+
+		delegationInit := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
+			Amount:                          10_000_000,
+			Master:                          addr,
+			Target:                          ledger.ChainLockFromChainID(seqID),
+			MaxFreezeSlots:                  uint16(dcons.MaxFrozenEpochs * dcons.DelegationEpochSlots),
+			MaxToleratedInflationCostMargin: 1000,
+			StartSlot:                       0,
+		})
+		delegationInitOid := base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(2, 50)), 1)
+
+		dout, ok := ledger.AsDelegationOutput(delegationInit, delegationInitOid)
+		require.True(t, ok)
+
+		t.Logf("------------\n%s", dout.LinesHR("    ").String())
+
+		ts := base.MaximumTime(predTs.AddSlots(1), delegationInitOid.Timestamp().AddTicks(10))
 		txb := newTxb(ts)
 
-		//delegationInit := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		//	Amount:                      10_000_000,
-		//	Master:                      addr,
-		//	Target:                      ledger.ChainLockFromChainID(seqID),
-		//	MaxFreezeSlots:              uint16(dcons.MaxFrozenEpochs*dcons.DelegationEpochSlots),
-		//	MinInflationAdvancePerEpoch: 0,
-		//	StartSlot:                   0,
-		//})
+		err := txb.FreezeDelegation(&dout)
+		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
 		t.Logf("\n--------- tx --------\n%s", txString)
