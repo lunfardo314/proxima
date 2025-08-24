@@ -50,7 +50,7 @@ func IsNil(p interface{}) bool {
 	return p == nil || (reflect.ValueOf(p).Kind() == reflect.Ptr && reflect.ValueOf(p).IsNil())
 }
 
-func RequireErrorWith(t *testing.T, err error, fragments ...string) {
+func RequireErrorWithOld(t *testing.T, err error, fragments ...string) {
 	t.Logf("error: %v, fragments: %+v", err, fragments)
 	if err == nil {
 		println()
@@ -64,6 +64,18 @@ func RequireErrorWith(t *testing.T, err error, fragments ...string) {
 	}
 }
 
+func MustErrorWith(err error, fragments ...string) error {
+	if err == nil {
+		return fmt.Errorf("-------------- error was expected -------------------")
+	}
+	for _, f := range fragments {
+		if !strings.Contains(err.Error(), f) {
+			return fmt.Errorf("\n-------------- error does not contain required fragment -------------------\nERROR: %w\nREQUIRED FRAGMENT: '%s'", err, f)
+		}
+	}
+	return nil
+}
+
 func RequirePanicOrErrorWith(t *testing.T, f func() error, fragments ...string) {
-	RequireErrorWith(t, CatchPanicOrError(f), fragments...)
+	RequireErrorWithOld(t, CatchPanicOrError(f), fragments...)
 }

@@ -98,6 +98,6 @@ func TestAmountsBase(t *testing.T) {
 		txb.SignED25519(privKey0)
 
 		_, _, _, err = txb.BytesWithValidation()
-		util.RequireErrorWith(t, err, "'amounts' must be at index 0")
+		util.RequireErrorWithOld(t, err, "'amounts' must be at index 0")
 	})
 }

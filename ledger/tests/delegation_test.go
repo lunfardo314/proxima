@@ -124,14 +124,14 @@ func TestDelegationLock2Init(t *testing.T) {
 	t.Run("ok 2", func(t *testing.T) {
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, false, 1337, true)
+		_, err = td.initDelegationUTXODirect(ts, false, 4, true)
 		require.NoError(t, err)
 	})
-	t.Run("fail", func(t *testing.T) {
+	t.Run("fail 1", func(t *testing.T) {
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(1)
 		_, err = td.initDelegationUTXODirect(ts, true, 1, true)
-		util.RequireErrorWith(t, err, "wrong delegation origin parameters")
+		util.RequireErrorWithOld(t, err, "wrong delegation origin parameters")
 	})
 }
 
@@ -184,14 +184,23 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	td.Logf(">>>> transit %d, -> %s, safe revocation from %d to %d, unfreeze slot: %d",
 		n, par.ts.String(), from, to, td.delegatedOutput.UnfreezeSlot())
 
+	delegatedOut, requiredAdvance, _, err := td.delegatedOutput.MakeDelegationFreezeOutput(par.ts, par.freezeUntilEpoch, 1, par.disableConsistencyChecks)
+	if err != nil {
+		return err
+	}
+
 	txb := txbuilder.New()
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
 	require.NoError(td, err)
 
+	if requiredAdvance >= td.seqChainOrigin.Output.TokenBalance() {
+		return fmt.Errorf("required advance > balance on chain")
+	}
+
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	seqChainIdx, err := txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance()))
+		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance() - requiredAdvance))
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
 	}))
 	require.NoError(td, err)
@@ -200,10 +209,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 
 	predOutputIndex, err := txb.ConsumeOutput(td.delegatedOutput.Output, td.delegatedOutput.ID)
 	require.NoError(td, err)
-	delegatedOut, _, _, err := td.delegatedOutput.MakeDelegationFreezeOutput(par.ts, par.freezeUntilEpoch, predOutputIndex, par.disableConsistencyChecks)
-	if err != nil {
-		return err
-	}
+	require.EqualValues(td, 1, predOutputIndex)
 
 	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
 	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
@@ -369,7 +375,7 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	return td.u.AddTransaction(txBytes)
 }
 
-func TestDelegationLock2Consume(t *testing.T) {
+func TestDelegationLockConsume(t *testing.T) {
 	td := &testData{T: t}
 
 	var err error
@@ -408,7 +414,8 @@ func TestDelegationLock2Consume(t *testing.T) {
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:               td.timestampSlotsForward(1),
 			freezeUntilEpoch: 0,
-			prntx:            false,
+			inflate:          true,
+			prntx:            true,
 		})
 		require.NoError(t, err)
 	})
@@ -424,7 +431,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 			freezeUntilEpoch: 0,
 			prntx:            false,
 		})
-		util.RequireErrorWith(t, err, "successor timestamp must be at least 1 slot after")
+		util.RequireErrorWithOld(t, err, "successor timestamp must be at least 1 slot after")
 	})
 	t.Run("target_test_safe_revocation_window", func(t *testing.T) {
 		// target consumes initial delegation
@@ -451,24 +458,17 @@ func TestDelegationLock2Consume(t *testing.T) {
 			prntx:                    false,
 			disableConsistencyChecks: true,
 		})
-		util.RequireErrorWith(t, err, "delegation target should not be unlocked inside safe revocation window")
+		require.NoError(t, util.MustErrorWith(err, "delegation target should not be unlocked inside safe revocation window"))
 
-		err = td.transitChainWithDelegationWithMake(3, transitWithMakeParams{
-			ts: base.MaximumTime(
-				td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
-				base.NewLedgerTime(base.Slot(to-1), 5),
-			),
-			disableConsistencyChecks: true,
-			prntx:                    false,
-		})
-		util.RequireErrorWith(t, err, "delegation target should not be unlocked inside safe revocation window")
-
+		ts = base.MaximumTime(
+			td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
+			base.NewLedgerTime(base.Slot(to+1), 5),
+		)
+		freezeUntilEpoch := td.delegatedOutput.LatestPossibleEpochToFreeze(ts)
 		err = td.transitChainWithDelegationWithMake(4, transitWithMakeParams{
-			ts: base.MaximumTime(
-				td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
-				base.NewLedgerTime(base.Slot(to+1), 5),
-			),
+			ts:                       ts,
 			disableConsistencyChecks: true,
+			freezeUntilEpoch:         freezeUntilEpoch,
 			prntx:                    false,
 		})
 		require.NoError(t, err)
@@ -522,7 +522,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 			prntx:                    false,
 			disableConsistencyChecks: true,
 		})
-		util.RequireErrorWith(t, err, "frozen slots cannot exceed maximum set by delegator")
+		util.RequireErrorWithOld(t, err, "frozen slots cannot exceed maximum set by delegator")
 	})
 	t.Run("target_freeze_ok_inflate", func(t *testing.T) {
 		// target consumes initial delegation
@@ -585,11 +585,11 @@ func TestDelegationLock2Consume(t *testing.T) {
 
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-100, 5)
 		err = td.discontinueDelegation(ts, false)
-		util.RequireErrorWith(t, err, "master can't unlock frozen delegation output")
+		util.RequireErrorWithOld(t, err, "master can't unlock frozen delegation output")
 
 		ts = base.NewLedgerTime(base.Slot(unfreeze-1), 5)
 		err = td.discontinueDelegation(ts, false)
-		util.RequireErrorWith(t, err, "master can't unlock frozen delegation output")
+		util.RequireErrorWithOld(t, err, "master can't unlock frozen delegation output")
 
 		ts = base.NewLedgerTime(base.Slot(unfreeze), 5)
 		err = td.discontinueDelegation(ts, false)
@@ -619,7 +619,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
 		err = td.discontinueDelegation(ts, false)
-		util.RequireErrorWith(t, err, "master can't unlock frozen delegation output")
+		util.RequireErrorWithOld(t, err, "master can't unlock frozen delegation output")
 
 		// succeed to unlock by target to mark output revoked
 		err = td.revokeDelegation(ts, false, true)
@@ -628,7 +628,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		// fail to unlock by target revoked delegation
 		ts = td.timestampSlotsForward(20)
 		err = td.revokeDelegation(ts, false, false)
-		util.RequireErrorWith(t, err, "revoked delegation cannot be unlocked by the target")
+		util.RequireErrorWithOld(t, err, "revoked delegation cannot be unlocked by the target")
 
 		// succeed to kill the delegation chain by master
 		ts = td.timestampSlotsForward(1000)
@@ -659,7 +659,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
 		err = td.discontinueDelegation(ts, false)
-		util.RequireErrorWith(t, err, "master can't unlock frozen delegation output")
+		util.RequireErrorWithOld(t, err, "master can't unlock frozen delegation output")
 
 		// succeed to unlock by target to mark output revoked
 		err = td.revokeDelegation(ts, true, false)
@@ -668,7 +668,7 @@ func TestDelegationLock2Consume(t *testing.T) {
 		// fail to unlock by target revoked delegation
 		ts = td.timestampSlotsForward(20)
 		err = td.revokeDelegation(ts, true, false)
-		util.RequireErrorWith(t, err, "revoked delegation cannot be unlocked by the target")
+		util.RequireErrorWithOld(t, err, "revoked delegation cannot be unlocked by the target")
 
 		// succeed to kill the delegation chain by master
 		ts = td.timestampSlotsForward(1000)
@@ -775,7 +775,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 1024, 0)
+		_, txString, err = td.initDelegationUTXOMake(ts, 1024, 1000)
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegationRaw(transitRawParams{
@@ -786,6 +786,23 @@ func TestFrozenCoverage1(t *testing.T) {
 			prntx:                   true,
 		})
 		require.NoError(t, err)
+	})
+	t.Run("init fail", func(t *testing.T) {
+		// target consumes initial delegation
+		td.init()
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		_, txString, err = td.initDelegationUTXOMake(ts, 1024, 968)
+		require.NoError(t, err)
+
+		err = td.transitChainWithDelegationRaw(transitRawParams{
+			ts:                      td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
+			frozenEpochs:            0,
+			successorFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
+			sequencerFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
+			inflationAdvance:        0,
+			prntx:                   true,
+		})
+		require.NoError(t, util.MustErrorWith(err, "not enough inflation advance"))
 	})
 	t.Run("frozen epochs 1", func(t *testing.T) {
 		// target consumes initial delegation
@@ -834,7 +851,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   true,
 		})
-		util.RequireErrorWith(t, err, "not enough inflation advance")
+		util.RequireErrorWithOld(t, err, "not enough inflation advance")
 	})
 	t.Run("frozen epochs 1 fail 2", func(t *testing.T) {
 		// target consumes initial delegation
@@ -859,7 +876,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   true,
 		})
-		util.RequireErrorWith(t, err, "wrong frozen coverage value")
+		util.RequireErrorWithOld(t, err, "wrong frozen coverage value")
 	})
 	t.Run("frozen epochs 2", func(t *testing.T) {
 		// target consumes initial delegation
@@ -909,7 +926,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   true,
 		})
-		util.RequireErrorWith(t, err, "not enough inflation advance")
+		util.RequireErrorWithOld(t, err, "not enough inflation advance")
 	})
 	t.Run("frozen epochs 3", func(t *testing.T) {
 		// target consumes initial delegation
@@ -967,7 +984,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   false,
 		})
-		util.RequireErrorWith(t, err, "not enough inflation advance")
+		util.RequireErrorWithOld(t, err, "not enough inflation advance")
 	})
 	t.Run("frozen epochs 4", func(t *testing.T) {
 		// target consumes initial delegation
@@ -1027,7 +1044,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   false,
 		})
-		util.RequireErrorWith(t, err, "not enough inflation advance")
+		util.RequireErrorWithOld(t, err, "not enough inflation advance")
 	})
 	t.Run("frozen epochs 5 fail", func(t *testing.T) {
 		// target consumes initial delegation
@@ -1058,7 +1075,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   true,
 		})
-		util.RequireErrorWith(t, err, "frozen epochs cannot exceed")
+		util.RequireErrorWithOld(t, err, "frozen epochs cannot exceed")
 	})
 }
 
@@ -1160,7 +1177,7 @@ func TestFrozenCoverage2(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 1024, 0)
+		_, txString, err = td.initDelegationUTXOMake(ts, 1024, 969)
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegation(transitParams{
@@ -1168,6 +1185,7 @@ func TestFrozenCoverage2(t *testing.T) {
 			frozenEpochs:            0,
 			successorFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
 			sequencerFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
+			inflationAdvance:        0,
 			prntx:                   true,
 		})
 		require.NoError(t, err)

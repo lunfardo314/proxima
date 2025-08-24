@@ -110,7 +110,9 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	}
 	dconst := DelegationConst()
 	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(txTs.Slot))
-	util.Assertf(txEpoch <= freezeUntilEpoch, "txEpoch <= par.FreezeUntilEpoch")
+	if freezeUntilEpoch < txEpoch {
+		return nil, 0, 0, fmt.Errorf("MakeDelegationFreezeOutput: wrong value for 'freeze until epoch'")
+	}
 
 	frozenEpochs := freezeUntilEpoch - txEpoch + 1
 	if checkConsistency && frozenEpochs > dconst.MaxFrozenEpochs {

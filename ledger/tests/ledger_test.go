@@ -111,7 +111,7 @@ func TestMainConstraints(t *testing.T) {
 		in.SenderPrivateKey = privKeyWrong
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1000))
-		util.RequireErrorWith(t, err, "failed")
+		util.RequireErrorWithOld(t, err, "failed")
 	})
 	t.Run("not enough deposit", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -127,7 +127,7 @@ func TestMainConstraints(t *testing.T) {
 		in, err := u.MakeTransferInputData(privKey1, nil, base.NilLedgerTime)
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1))
-		util.RequireErrorWith(t, err, "not enough tokens", "for the minimum storage deposit")
+		util.RequireErrorWithOld(t, err, "not enough tokens", "for the minimum storage deposit")
 	})
 }
 
@@ -214,7 +214,7 @@ func TestTimelock(t *testing.T) {
 			WithTargetLock(addr0),
 		)
 
-		util.RequireErrorWith(t, err, "timelock(", "failed")
+		util.RequireErrorWithOld(t, err, "timelock(", "failed")
 		require.EqualValues(t, 2200, u.Balance(addr1)) // funds weren't moved
 		t.Logf("failed tx with ts %s", par.Timestamp)
 
@@ -277,7 +277,7 @@ func TestTimelock(t *testing.T) {
 			WithAmount(2000).
 			WithTargetLock(addr0),
 		)
-		util.RequireErrorWith(t, err, "failed")
+		util.RequireErrorWithOld(t, err, "failed")
 		require.EqualValues(t, 2200, u.Balance(addr1))
 
 		par, err = u.MakeTransferInputData(priv1, nil, ts.AddSlots(12))
@@ -668,42 +668,42 @@ func TestChain2(t *testing.T) {
 	t.Run("transit 1,0", func(t *testing.T) {
 		txString, err := runOption(1, 0)
 		prn(txString)
-		util.RequireErrorWith(t, err, "successor reference crosscheck failed")
+		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
 	})
 	t.Run("transit 2,0", func(t *testing.T) {
 		txString, err := runOption(2, 0)
 		prn(txString)
-		util.RequireErrorWith(t, err, "successor reference crosscheck failed")
+		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
 	})
 	t.Run("transit 3,0", func(t *testing.T) {
 		txString, err := runOption(3, 0)
 		prn(txString)
-		util.RequireErrorWith(t, err, "successor reference crosscheck failed")
+		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
 	})
 	t.Run("transit 4,0", func(t *testing.T) {
 		txString, err := runOption(4, 0)
 		prn(txString)
-		util.RequireErrorWith(t, err, "origin slot is immutable")
+		util.RequireErrorWithOld(t, err, "origin slot is immutable")
 	})
 	t.Run("transit 5,0", func(t *testing.T) {
 		txString, err := runOption(5, 0)
 		prn(txString)
-		util.RequireErrorWith(t, err, "origin amount is immutable")
+		util.RequireErrorWithOld(t, err, "origin amount is immutable")
 	})
 	t.Run("transit 0,1", func(t *testing.T) {
 		txString, err := runOption(0, 1)
 		prn(txString)
-		util.RequireErrorWith(t, err, "index is out of range")
+		util.RequireErrorWithOld(t, err, "index is out of range")
 	})
 	t.Run("transit 0,2", func(t *testing.T) {
 		txString, err := runOption(0, 2)
 		prn(txString)
-		util.RequireErrorWith(t, err, "index is out of range")
+		util.RequireErrorWithOld(t, err, "index is out of range")
 	})
 	t.Run("transit 0,3", func(t *testing.T) {
 		txString, err := runOption(0, 3)
 		prn(txString)
-		util.RequireErrorWith(t, err, "predecessor reference crosscheck failed")
+		util.RequireErrorWithOld(t, err, "predecessor reference crosscheck failed")
 	})
 }
 
@@ -1330,6 +1330,6 @@ func TestTotalAmount(t *testing.T) {
 		txBytes := txb.TransactionData.Bytes()
 
 		err = transaction.ValidateTxBytes(txBytes, txb.LoadInput)
-		util.RequireErrorWith(t, err, "total amount constraint failed")
+		util.RequireErrorWithOld(t, err, "total amount constraint failed")
 	})
 }

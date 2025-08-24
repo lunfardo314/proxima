@@ -405,6 +405,7 @@ func _requiredMinimumInflationAdvance :
 func _validInflationAdvance :
 or(
     _isDelegationOrigin,
+    _selfIsRevoked,
 	and(
 		require(
 		   lessOrEqualThan($0, u64/1000),
@@ -420,10 +421,6 @@ or(
 // $0 max freeze slots (uint64)
 func _validLimits :
 and(
-    require(
-       lessOrEqualThan($0, uint8Bytes(constDelegationMaxFrozenEpochs)),
-       !!!wrong_value_of_max_frozen_epochs 
-    ),
     require(
        lessOrEqualThan(uint8Bytes(_selfFrozenSlots(txSlot)), $0),
        !!!frozen_slots_cannot_exceed_maximum_set_by_delegator

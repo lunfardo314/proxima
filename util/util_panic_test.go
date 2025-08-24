@@ -19,13 +19,13 @@ func TestCatchPanicOrError(t *testing.T) {
 		err := CatchPanicOrError(func() error {
 			return errors.New("--- error 314")
 		})
-		RequireErrorWith(t, err, "--- error", "314")
+		RequireErrorWithOld(t, err, "--- error", "314")
 	})
 	t.Run("return error", func(t *testing.T) {
 		err := CatchPanicOrError(func() error {
 			return errors.New("--- error 314")
 		}, true)
-		RequireErrorWith(t, err, "--- error", "314")
+		RequireErrorWithOld(t, err, "--- error", "314")
 		//t.Logf("ERROR: %v", err)
 	})
 	t.Run("nil pointer", func(t *testing.T) {
@@ -34,7 +34,7 @@ func TestCatchPanicOrError(t *testing.T) {
 			fmt.Println(*pnil)
 			return errors.New("no panic")
 		}, true)
-		RequireErrorWith(t, err, "invalid memory address or nil pointer dereference")
+		RequireErrorWithOld(t, err, "invalid memory address or nil pointer dereference")
 		//t.Logf("ERROR: %v", err)
 	})
 

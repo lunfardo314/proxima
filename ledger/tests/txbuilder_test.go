@@ -135,7 +135,7 @@ func TestBasics(t *testing.T) {
 			require.EqualValues(t, numOuts, u.NumUTXOs(addr))
 		}
 		err := u.TransferTokens(privKey, addr, u.Balance(addr))
-		util.RequireErrorWith(t, err, "exceeded max number of consumed outputs")
+		util.RequireErrorWithOld(t, err, "exceeded max number of consumed outputs")
 	})
 	t.Run("utxodb fan out outputs", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -243,11 +243,11 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		par.Timestamp = base.NewLedgerTime(100000, 0)
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
-		util.RequireErrorWith(t, err, "timestamp is on slot boundary")
+		util.RequireErrorWithOld(t, err, "timestamp is on slot boundary")
 
 		par.Timestamp = par.ChainInput.Timestamp()
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
-		util.RequireErrorWith(t, err, "is inconsistent with latest chain output timestamp")
+		util.RequireErrorWithOld(t, err, "is inconsistent with latest chain output timestamp")
 
 	})
 	t.Run("normal run", func(t *testing.T) {
@@ -316,7 +316,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		par.WithdrawAmount = inflationAmount + initAmount + fee
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
-		util.RequireErrorWith(t, err, "not enough tokens")
+		util.RequireErrorWithOld(t, err, "not enough tokens")
 
 		par.WithdrawAmount = inflationAmount + initAmount - 200
 		_, inflationAmount1, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
@@ -326,7 +326,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		par.WithdrawAmount = inflationAmount + 1
 		par.EnforceProfitability = true
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
-		util.RequireErrorWith(t, err, "not profitable")
+		util.RequireErrorWithOld(t, err, "not profitable")
 
 		par.WithdrawAmount = inflationAmount
 		par.EnforceProfitability = true
@@ -367,7 +367,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			PrivateKey:           privKeys[0],
 		}
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
-		util.RequireErrorWith(t, err, "chain transition is not profitable")
+		util.RequireErrorWithOld(t, err, "chain transition is not profitable")
 		//require.NoError(t, err)
 		//profit := int64(inflation) - fee
 		//t.Logf("inflation of %s tokens over %d slots is %s, profit is %s",

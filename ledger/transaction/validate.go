@@ -143,7 +143,7 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 		var err error
 		path[len(path)-1] = byte(i)
 		if err = ctx.runOutput(o, path, spool); err != nil {
-			return fmt.Errorf("%w :\n%s", err, o.ToSource("   "))
+			return fmt.Errorf("%w :\n%s", err, o.LinesHR("   ").String())
 		}
 	}
 	return nil
