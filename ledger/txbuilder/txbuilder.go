@@ -143,14 +143,14 @@ func (txb *TxBuilder) ConsumeOutputsNoUnlock(outs ...*ledger.OutputWithID) (uint
 	return retTotal, retTs, nil
 }
 
-func (txb *TxBuilder) PutUnlockParams(inputIndex, constraintIndex byte, unlockParamData []byte) {
-	txb.TransactionData.UnlockBlocks[inputIndex].array.MustPutAtIdxWithPadding(constraintIndex, unlockParamData)
+func (txb *TxBuilder) PutUnlockParams(inputIndex, constraintIndex byte, unlockParamData []byte, additionalBytes ...byte) {
+	txb.TransactionData.UnlockBlocks[inputIndex].array.MustPutAtIdxWithPadding(constraintIndex, common.Concat(unlockParamData, additionalBytes))
 }
 
 // PutSignatureUnlock marker 0xff references the signature of the transaction.
 // It can be distinguished from any reference because it cannot be strictly less than any other reference
-func (txb *TxBuilder) PutSignatureUnlock(inputIndex byte) {
-	txb.PutUnlockParams(inputIndex, ledger.ConstraintIndexLock, []byte{0xff})
+func (txb *TxBuilder) PutSignatureUnlock(inputIndex byte, additionalBytes ...byte) {
+	txb.PutUnlockParams(inputIndex, ledger.ConstraintIndexLock, append([]byte{0xff}, additionalBytes...))
 }
 
 // PutUnlockReference references some preceding output

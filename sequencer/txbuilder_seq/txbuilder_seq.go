@@ -214,7 +214,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 	}
 	// unlock lock
-	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
 	// unlock chain
 	txb.PutUnlockParams(idx, 2, ledger.NewChainUnlockParams(succIdx, 2))
 

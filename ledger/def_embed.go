@@ -29,8 +29,8 @@ type (
 		MustInputAt(idx byte) base.OutputID
 		OutputID(idx byte) base.OutputID
 		SequencerTransactionData() *SequencerTransactionData
-		IsUnlockedBy(account Accountable) bool
 		SenderAddress() AddressED25519
+		UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
 	}
 
 	EvalContext struct {

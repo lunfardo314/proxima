@@ -466,9 +466,16 @@ and(
     _validInflationAdvance($1, _predecessorTokenBalance)
 )
 
+func _selfIsMasterUnlocked : equal(byte(selfUnlockParameters,2), 0xff)
+
 // $0 master lock
 // (consumed context)
-func _masterUnlocked : and( $0, require(_selfIsNotFrozen, !!!master_can't_unlock_frozen_delegation_output) )
+func _masterUnlocked : 
+and( 
+    _selfIsMasterUnlocked, 
+    $0, require(_selfIsNotFrozen, 
+    !!!master_can't_unlock_frozen_delegation_output) 
+)
 
 func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
 
@@ -487,6 +494,7 @@ func _successorIsRevoked : parseInlineDataArgument(successorConstraint(3),#deleg
 // 'consumed' context
 func _targetUnlocked :
 and(
+   not(_selfIsMasterUnlocked),
 	  // if it is revoked, only master can unlock it
    require(not(_selfIsRevoked), !!!revoked_delegation_cannot_be_unlocked_by_the_target),
    require(not(_insideSafeRevocationWindow(_consumedUnfreezeSlot)), !!!delegation_target_should_not_be_unlocked_inside_safe_revocation_window),
@@ -504,6 +512,10 @@ and(
 // $1 master lock
 func _validDelegationConsumed : and(
    selfIsConsumedOutput,
+   require(
+      equal(len(selfUnlockParameters), u64/3), 
+      !!!unlock_parameters_of_the_delegation_lock_must_be_3_bytes_long
+   ),
    or(
       _masterUnlocked($1),
       _targetUnlocked($0)
@@ -514,7 +526,10 @@ func _validDelegationConsumed : and(
 // $0 target chain lock
 // $1 master lock
 // $2 max freeze slots
-// $3 max tolerated inflation cost margin, the part of inflation sequencer is allowed to shave from the inflation. In promille    
+// $3 max tolerated inflation cost margin, the part of inflation sequencer is allowed to shave from the inflation. In promille   
+//
+// Unlock parameters 3 bytes first 1 or 2 bytes are used to unlock address or chain locks
+// Bytes with index 2 must be 0xff for master unlock, otherwise it is target unlock 
 func delegateLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1),
     or(

@@ -124,15 +124,17 @@ func _selfReferencedChainIDAdjusted : if(
 	_selfReferencedChainID($0)
 )
 
-// $0 - chainID
-// $1 - self unlock parameters
-func _validChainUnlock : and(
-    equal(len($1), u64/2),                          // prevent panic in compound locks
-	equal($0, _selfReferencedChainIDAdjusted(selfUnlockParameters)) // chain id must be equal to the referenced chain id 
-)
+// $0 selfUnlockParameters
+func _chainLockUnlock : if( lessThan(len($0), u64/2), 0xffff, slice($0,0,1) )
 
 // $0 - chainID
-// Unlock parameters 2 bytes: [unlocked chain output index, chain constraint index]
+func _validChainUnlock : 
+       // chain id must be equal to the referenced chain id 
+   equal($0, _selfReferencedChainIDAdjusted(_chainLockUnlock(selfUnlockParameters))) 
+
+
+// $0 - chainID
+// Unlock parameters first 2 bytes: [unlocked chain output index, chain constraint index]
 func chainLock : and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
 	or(
@@ -144,7 +146,7 @@ func chainLock : and(
 		and(
 			selfIsConsumedOutput,
 			not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing 
-			_validChainUnlock($0, selfUnlockParameters)
+			_validChainUnlock($0)
 		)
 	)
 )

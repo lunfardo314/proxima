@@ -698,6 +698,14 @@ func (tx *Transaction) MustEndorsementAt(idx byte) base.TransactionID {
 	return ret
 }
 
+func (tx *Transaction) UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error) {
+	ret, err := tx.tree.BytesAtPath(common.Concat(ledger.TxUnlockData, inputIdx, constraintIdx))
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 // HashInputsAndEndorsements blake2b of concatenated input IDs and endorsements
 // independent of any other tx data but inputs
 func (tx *Transaction) HashInputsAndEndorsements() [32]byte {
@@ -1068,8 +1076,4 @@ func (tx *Transaction) TotalProducedAmounts() [15]int64 {
 
 func (tx *Transaction) InputCommitment() []byte {
 	return tx.tree.MustBytesAtPath(Path(ledger.TxInputCommitment))
-}
-
-func (tx *Transaction) IsUnlockedBy(account ledger.Accountable) bool {
-	return ledger.EqualAccountables(tx.SenderAddress(), account)
 }

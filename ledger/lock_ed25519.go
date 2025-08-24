@@ -166,6 +166,9 @@ func unlockedByReference: and(
 	equal(self, consumedConstraintByIndex($0, lockConstraintIndex))  // the referenced constraint bytes must be equal to the self constraint bytes
 )
 
+// $0 selfUnlockParameters
+func _referencedIndex : if( isZero(len($0)), 0xff, byte($0,0))
+
 // if it is 'produced' invocation context (constraint invoked in the input), only size of the address is checked
 // Otherwise the first will check first condition if it is unlocked by reference, otherwise checks unlocking signature
 // $0 - ED25519 address, 32 byte blake2b hash of the public key
@@ -181,7 +184,7 @@ func addressED25519: and(
 			selfIsConsumedOutput, 
 			or(
 					// if it is unlocked with reference, the signature is not checked
-				unlockedByReference(selfUnlockParameters),
+				unlockedByReference(_referencedIndex(selfUnlockParameters)),
 					// checks if tx signature corresponds to the address
                 equal($0, blake2b(publicKeyED25519(txSignature)))
 				// deprecated: unlockedWithSigED25519($0, signatureED25519(txSignature), publicKeyED25519(txSignature)) 

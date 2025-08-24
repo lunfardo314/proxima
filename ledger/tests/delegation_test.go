@@ -211,7 +211,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	require.NoError(td, err)
 	require.EqualValues(td, 1, predOutputIndex)
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
 	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
 
 	require.NoError(td, err)
@@ -288,7 +288,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	delegatedOut, err := td.delegatedOutput.MakeDelegationRevokeOutput(delegatedOutPar)
 	require.NoError(td, err)
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
 	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
 
 	require.NoError(td, err)
@@ -344,9 +344,11 @@ func (td *testData) timestampSlotsForward(slots base.Slot) base.LedgerTime {
 func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error {
 
 	txb := txbuilder.New()
+
 	amount, _, err := txb.ConsumeOutputsNoUnlock(&td.delegatedOutput.OutputWithID)
 	require.NoError(td, err)
 
+	txb.PutUnlockParams(0, 1, []byte{0xff, 0xff, 0xff})
 	txb.PutUnlockParams(0, 2, ledger.FinishChainUnlockParams)
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -726,7 +728,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	txb.PutSignatureUnlock(0)
 	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
 	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
 
 	require.NoError(td, err)
@@ -1128,7 +1130,7 @@ func (td *testData) transitChainWithDelegation(par transitParams) (err error) {
 	txb.PutSignatureUnlock(0)
 	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
 	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
 
 	require.NoError(td, err)

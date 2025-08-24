@@ -112,8 +112,13 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expectedVector 1")
 	amounts := o.Amounts()
 
-	if ctx.IsUnlockedBy(dOut.MasterLock) {
-		// transition by the master -> must be all-0
+	unlock, err := par.DataContext().UnlockParameters(dOut.PredecessorInputIndex, dOut.PredecessorInputIndex)
+	par.RequireNoError(err)
+	par.Require(len(unlock) >= 3, "_checkFrozenCoverageOnDelegateOutput: unlock parameters must be 3 bytes")
+
+	unlockedByMaster := unlock[2] == 0xff
+	if unlockedByMaster {
+		// transition by master -> must be all-0
 		par.Require(amounts.IsFrozenCoverageZero(),
 			"_checkFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to reason: unlocked by the master in delegation chain %s", dOut.ChainID.String())
 		return
