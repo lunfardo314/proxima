@@ -84,7 +84,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	// ------------ check if revocation makes economic sense for the sequencer:
 	// tokens provided in the tag-along output must at least cover the remaining projected inflation from the frozen amount
 	unfreezeSlot := ret.delegation.UnfreezeSlot()
-	util.Assertf(unfreezeSlot > txb.TransactionData.Timestamp.Slot.Uint32(), "ret.delegation.IsFrozen(txb.TransactionData.Timestamp.Slot)")
+	util.Assertf(unfreezeSlot > txb.TransactionData.Timestamp.Slot.Uint32(), "ret.delegation.IsInFrozenSlot(txb.TransactionData.Timestamp.Slot)")
 
 	const patienceMargin = 6
 	lostSlots := txb.TransactionData.Timestamp.Slot.Uint32() - unfreezeSlot

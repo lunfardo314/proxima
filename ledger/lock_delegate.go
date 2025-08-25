@@ -20,7 +20,7 @@ type (
 	}
 	DelegateLockState struct {
 		LastFrozenEpoch uint32
-		IsRevoked       bool
+		State           byte
 	}
 
 	EnsureRevocation struct {
@@ -34,8 +34,12 @@ const (
 	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeSlots=%d, maxInflationMarginTolerance=%d%%%%)"
 
 	DelegateLockStateName       = "delegateLockState"
-	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %s)"
-	DelegateLockStateTemplateHR = DelegateLockStateName + "(frozenUntilEpoch=%d, revoked=%v)"
+	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"
+	DelegateLockStateTemplateHR = DelegateLockStateName + "(frozenUntilEpoch=%d, state=%s)"
+
+	DelegateLockStateUndef   = byte(0)
+	DelegateLockStateFrozen  = byte(1)
+	DelegateLockStateRevoked = byte(2)
 
 	EnsureRevocationName       = "ensureRevocation"
 	EnsureRevocationTemplate   = EnsureRevocationName + "(0x%s)"
@@ -177,22 +181,29 @@ func DelegateLockStateFromBytes(data []byte) (DelegateLockState, error) {
 	if err != nil {
 		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: wrong argument 0: %w", err)
 	}
+	state := easyfl.StripDataPrefix(args[1])
+	if len(state) != 1 {
+		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: argument 1 must be one byte")
+	}
 	return DelegateLockState{
 		LastFrozenEpoch: fr,
-		IsRevoked:       !easyfl_util.IsZero(easyfl.StripDataPrefix(args[1])),
+		State:           state[0],
 	}, nil
 }
 
 func (d DelegateLockState) Source() string {
-	r := "0x"
-	if d.IsRevoked {
-		r = "0xff"
-	}
-	return fmt.Sprintf(DelegateLockStateTemplate, d.LastFrozenEpoch, r)
+	return fmt.Sprintf(DelegateLockStateTemplate, d.LastFrozenEpoch, d.State)
 }
 
 func (d DelegateLockState) String() string {
-	return fmt.Sprintf(DelegateLockStateTemplateHR, d.LastFrozenEpoch, d.IsRevoked)
+	s := "undef"
+	switch d.State {
+	case DelegateLockStateFrozen:
+		s = "frozen"
+	case DelegateLockStateRevoked:
+		s = "revoked"
+	}
+	return fmt.Sprintf(DelegateLockStateTemplateHR, d.LastFrozenEpoch, s)
 }
 
 func (d DelegateLockState) Bytes() []byte {
@@ -204,12 +215,12 @@ func (d DelegateLockState) Name() string {
 }
 
 func initTestDelegate2LockState() {
-	dlz := DelegateLockState{3001, true}
+	dlz := DelegateLockState{3001, DelegateLockStateFrozen}
 
 	dlzBack, err := DelegateLockStateFromBytes(dlz.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(dlzBack.LastFrozenEpoch == 3001, "DelegateLockState: inconsistency 1")
-	util.Assertf(dlzBack.IsRevoked, "DelegateLockState: inconsistency 2")
+	util.Assertf(dlzBack.State == DelegateLockStateFrozen, "DelegateLockState: inconsistency 2")
 	util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
 }
 
@@ -289,16 +300,22 @@ func _predecessorLastFrozenEpoch : parseInlineDataArgument(consumedConstraintByI
 func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPredInputIndex(2), 0), 0)
 
 // $0 last frozen epoch
-// $1 revoked
+// $1 state. 1 byte-long. 
+//  - 0x01 means 'frozen'
+//  - 0x02 means 'revoked'. 
+//  - The rest combinations means 'neither revoked, not frozen'
+// 
 // mutable part of the delegation output
 func delegateLockState : 
 or(
    // not checked in the consumed context
    not(selfIsProducedOutput),
    // 'produced' context
+   require(equal(len($1), u64/1), !!!delegateLockState_$1_must_be_1_byte), 
+       // TODO why we need this?
    require(
-      or( not($1), equalUint($0, _predecessorLastFrozenEpoch) ),
-      !!!revocation_cant_mutate_frozen_epochs
+     or( not(equal($1,2)), equalUint($0, _predecessorLastFrozenEpoch) ),
+     !!!revocation_cant_mutate_frozen_epochs
    )
 )
 
@@ -326,24 +343,28 @@ or(
    )
 )
 
-// self id delegation output
+// self id delegation output - does not depend on consumed/produced context
 
 func _selfTarget : parseArgumentBytecode(self,selfBytecodePrefix,0)
 func _selfTargetChainID : parseInlineDataArgumentAnyPrefix(_selfTarget,0)
 func _selfDelegationEpochOffset : delegationEpochOffset(_selfTargetChainID)
 func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 0))
-func _selfIsRevoked : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 1)
-func _selfEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
+func _selfStatus : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 1)
+func _selfIsFrozen : equal(_selfStatus, 1)
+func _selfIsRevoked : equal(_selfStatus, 2)
+func _selfIsStatusUndef : and(not(_selfIsRevoked), not(_selfIsFrozen))
+
+func _successorEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
+func _successorStatus : parseInlineDataArgument(successorConstraint(3),#delegateLockState, 1)
 
 // $0 _selfLastFrozenEpoch
-// $1 _selfEpoch
-func __selfFrozenEpochs : if( lessThanUint($0, $1), u64/0, add(sub($0, $1),1) ) 
-func _selfFrozenEpochs : __selfFrozenEpochs(_selfLastFrozenEpoch, _selfEpoch)
+// $1 _successorEpoch
+func __txFrozenEpochs : if( lessThanUint($0, $1), u64/0, add(sub($0, $1),1) ) 
+func _txFrozenEpochs : __txFrozenEpochs(_selfLastFrozenEpoch, _successorEpoch)
 
 // $0 - _selfLastFrozenEpoch
-func __selfIsNotFrozen : or( isZero($0), lessThan( $0, delegationEpochFromSlot(_selfTargetChainID,txSlot) ) )
-
-func _selfIsNotFrozen : __selfIsNotFrozen(_selfLastFrozenEpoch)
+func __txIsNotFrozen : or( isZero($0), lessThan( $0, delegationEpochFromSlot(_selfTargetChainID,txSlot) ) )
+func _txIsNotFrozen : __txIsNotFrozen(_selfLastFrozenEpoch)
 
 // $0 output slot
 func _coveredSlotsInCurrentEpoch :
@@ -402,10 +423,9 @@ func _requiredMinimumInflationAdvance :
 
 // $0 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
 // $1 _predecessorTokenBalance
-func _validInflationAdvance :
+func _validInflationAdvanceProduced :
 or(
-    _isDelegationOrigin,
-    _selfIsRevoked,
+    not(_selfIsFrozen),
 	and(
 		require(
 		   lessOrEqualThan($0, u64/1000),
@@ -419,19 +439,24 @@ or(
 )
 
 // $0 max freeze slots (uint64)
-func _validLimits :
+func _validLimitsProduced :
 and(
     require(
        lessOrEqualThan(uint8Bytes(_selfFrozenSlots(txSlot)), $0),
        !!!frozen_slots_cannot_exceed_maximum_set_by_delegator
     ),
     require(
-       lessOrEqualThan(_selfFrozenEpochs, uint8Bytes(constDelegationMaxFrozenEpochs)),
+       lessOrEqualThan(_txFrozenEpochs, uint8Bytes(constDelegationMaxFrozenEpochs)),
        !!!frozen_epochs_cannot_exceed_constDelegationMaxFrozenEpochs
+    ),
+    if(
+       or(_isDelegationOrigin, _selfIsStatusUndef),
+       require( and(isZero(_selfLastFrozenEpoch), equal(_selfStatus, 0)), !!!wrong_delegation_origin_parameters),
+       true
     )
 )
 
-func _validBase :
+func _validStructureProduced :
 and(
     require(
 	   equal(selfNumConstraints, u64/4), 
@@ -448,10 +473,6 @@ and(
     require(
 	   equal(parsePrefixBytecode(selfSiblingConstraint(3)), #delegateLockState), 
 	   !!!#delegateLockState_is_expected_at_index_3
-    ),
-    require(
-	   or(not(_isDelegationOrigin), and(not(_selfIsRevoked), isZero(_selfLastFrozenEpoch))), 
-	   !!!wrong_delegation_origin_parameters
     )
 )
 
@@ -461,26 +482,26 @@ and(
 func _validDelegationProduced :
 and(
     selfIsProducedOutput,
-    _validBase,
-    _validLimits($0),
-    _validInflationAdvance($1, _predecessorTokenBalance)
+    _validStructureProduced,
+    _validLimitsProduced($0),
+    _validInflationAdvanceProduced($1, _predecessorTokenBalance)
 )
 
-func _selfIsMasterUnlocked : equal(byte(selfUnlockParameters,2), 0xff)
+func _consumedIsMasterUnlocked : equal(byte(selfUnlockParameters,2), 0xff)
 
 // $0 master lock
 // (consumed context)
-func _masterUnlocked : 
+func _masterUnlockedConsumed : 
 and( 
-    _selfIsMasterUnlocked, 
-    $0, require(_selfIsNotFrozen, 
-    !!!master_can't_unlock_frozen_delegation_output) 
+    _consumedIsMasterUnlocked, 
+    $0, 
+    require(_txIsNotFrozen, !!!master_can't_unlock_frozen_delegation_output) 
 )
 
 func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
 
 // $0 unfreezeSlot
-func _insideSafeRevocationWindow : and(
+func _txInsideSafeRevocationWindow : and(
     not(_isDelegationOrigin),
 	lessOrEqualThan(uint8Bytes($0), uint8Bytes(txSlot)),
     lessThan(uint8Bytes(txSlot), add($0, constDelegationSafeRevocationSlots))
@@ -492,13 +513,13 @@ func _successorIsRevoked : parseInlineDataArgument(successorConstraint(3),#deleg
 
 // $0 target lock
 // 'consumed' context
-func _targetUnlocked :
+func _targetUnlockedConsumed :
 and(
-   not(_selfIsMasterUnlocked),
+   not(_consumedIsMasterUnlocked),
 	  // if it is revoked, only master can unlock it
    require(not(_selfIsRevoked), !!!revoked_delegation_cannot_be_unlocked_by_the_target),
-   require(not(_insideSafeRevocationWindow(_consumedUnfreezeSlot)), !!!delegation_target_should_not_be_unlocked_inside_safe_revocation_window),
-   require( or( _successorIsRevoked, _selfIsNotFrozen ), !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_revocation),
+   require(not(_txInsideSafeRevocationWindow(_consumedUnfreezeSlot)), !!!delegation_target_should_not_be_unlocked_inside_safe_revocation_window),
+   require( or( _successorIsRevoked, _txIsNotFrozen ), !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_revocation),
 	  // target lock must be unlocked
    require($0, !!!delegation_target_chain_must_be_unlocked),  
 	  // amount should not decrease
@@ -517,8 +538,8 @@ func _validDelegationConsumed : and(
       !!!unlock_parameters_of_the_delegation_lock_must_be_3_bytes_long
    ),
    or(
-      _masterUnlocked($1),
-      _targetUnlocked($0)
+      _masterUnlockedConsumed($1),
+      _targetUnlockedConsumed($0)
    )
 )
 
