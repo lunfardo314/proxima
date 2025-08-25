@@ -9,7 +9,9 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -262,47 +264,66 @@ func TestFreeze(t *testing.T) {
 		})
 
 		pred, ok := ledger.AsOutputWithChainID(predChain, predID)
-		require.True(t, ok)
+		util.Assertf(ok, "AsOutputWithChainID")
 		return &pred
 	}
 
 	newTxb := func(ts base.LedgerTime, frozen ...int64) *SeqTxBuilder {
 		txb, err := New(ts, newPredChain(frozen...), nil, privKey, multistate.DummyStateReader)
-		require.NoError(t, err)
+		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
-		require.NoError(t, err)
+		util.AssertNoError(err)
 		return txb
 	}
-	//dcons := ledger.DelegationConst()
+	dcons := ledger.DelegationConst()
 
-	t.Run("1", func(t *testing.T) {
-
-		dcons := ledger.DelegationConst()
-
+	delegationInit := func(maxMargin uint16) ledger.DelegationOutput {
 		delegationInit := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-			Amount:                          10_000_000,
+			Amount:                          1_000_000_000,
 			Master:                          addr,
 			Target:                          ledger.ChainLockFromChainID(seqID),
 			MaxFreezeSlots:                  uint16(dcons.MaxFrozenEpochs * dcons.DelegationEpochSlots),
-			MaxToleratedInflationCostMargin: 1000,
+			MaxToleratedInflationCostMargin: maxMargin,
 			StartSlot:                       0,
 		})
 		delegationInitOid := base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(2, 50)), 1)
 
 		dout, ok := ledger.AsDelegationOutput(delegationInit, delegationInitOid)
-		require.True(t, ok)
+		util.Assertf(ok, "AsDelegationOutput")
+		return dout
+	}
 
-		t.Logf("------------\n%s", dout.LinesHR("    ").String())
-
-		ts := base.MaximumTime(predTs.AddSlots(1), delegationInitOid.Timestamp().AddTicks(10))
+	t.Run("1", func(t *testing.T) {
+		dIn := delegationInit(1000)
+		t.Logf("------------\n%s", dIn.LinesHR("    ").String())
+		ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddTicks(10))
 		txb := newTxb(ts)
 
-		err := txb.FreezeDelegation(&dout)
+		succIdx, err := txb.FreezeDelegation(&dIn)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		txBytes, _, txString, errTx := txb.BytesWithValidation()
 		t.Logf("\n--------- tx --------\n%s", txString)
+
+		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 		require.NoError(t, err)
+		o := tx.MustProducedOutputAt(succIdx)
+		oid := tx.OutputID(succIdx)
+		dOut, ok := ledger.AsDelegationOutput(o, oid)
+		require.True(t, ok)
+
+		t.Logf("\n%s", dOut.LinesHR("    ").String())
+		{
+			_, _, frozenEpochs := dOut.FrozenEpochs(ts)
+			requiredAdvance := dIn.RequiredInflationAdvance(ts, byte(frozenEpochs))
+			inflationDirect := ledger.L().CalcChainInflationAmountOneSlot(ts.Slot, dIn.Output.TokenBalance())
+			inflationFromSource := ledger.L().CalcChainInflationAmountOneSlotFromSource(ts.Slot, dIn.Output.TokenBalance())
+			require.EqualValues(t, inflationFromSource, inflationDirect)
+			t.Logf("inflation one slot: %s, required advance: %s", util.Th(inflationDirect), util.Th(requiredAdvance))
+		}
+
+		require.NoError(t, errTx)
+
 	})
 }

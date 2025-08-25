@@ -176,16 +176,19 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) error {
 	return fmt.Errorf("SeqTxBuilder: cannot use output as tag-along:\n%s", o.String())
 }
 
-func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput) error {
+func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput) (successorIdx byte, err error) {
 	if len(txb.ConsumedOutputs) > 255 {
-		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many inputs")
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many inputs")
+		return
 	}
 	if len(txb.TransactionData.Outputs) > 254 {
-		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
+		return
 	}
 
 	if delegationIn.Target.ChainID() != txb.chainInput.ChainID {
-		return fmt.Errorf("SeqTxBuilder: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
+		err = fmt.Errorf("SeqTxBuilder: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
+		return
 	}
 
 	lastEpochToFreeze := delegationIn.LatestPossibleEpochToFreeze(txb.TransactionData.Timestamp)
@@ -193,30 +196,34 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 	delegationOut, requiredAdvance, projectedContributionToInflation, err := delegationIn.MakeDelegationFreezeOutput(
 		txb.TransactionData.Timestamp, lastEpochToFreeze, predIdx)
 	if err != nil {
-		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+		return
 	}
 
 	if projectedContributionToInflation < requiredAdvance+txb.SequencerData.InflationMargin(projectedContributionToInflation) {
 		// makes no economic sense for the sequencer
-		return fmt.Errorf("SeqTxBuilder.FreezeDelegation:  advance required by the delegation output is goo big")
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation:  advance required by the delegation output is too big")
+		return
 	}
 
 	idx, err := txb.ConsumeOutput(delegationIn.Output, delegationIn.ID)
 	if err != nil {
-		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+		return
 	}
 	util.Assertf(idx == predIdx, "idx == predIdx")
 
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(requiredAdvance)
 
-	succIdx, err := txb.ProduceOutput(delegationOut)
+	successorIdx, err = txb.ProduceOutput(delegationOut)
 	if err != nil {
-		return fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+		return
 	}
 	// unlock lock
 	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
 	// unlock chain
-	txb.PutUnlockParams(idx, 2, ledger.NewChainUnlockParams(succIdx, 2))
+	txb.PutUnlockParams(idx, 2, ledger.NewChainUnlockParams(successorIdx, 2))
 
 	// add frozen coverage to the sequencer output
 	a := delegationOut.Amounts().FrozenCoverageVector()
@@ -224,7 +231,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] += c
 	}
 
-	return nil
+	return
 }
 
 func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {

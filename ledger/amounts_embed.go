@@ -135,11 +135,10 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 		// the expected vector contains negative deltas of revoked frozen coverage in the current transaction (adjusted to the epoch difference)
 		expectedVector = dOutPred.MakeFrozenCoverageAmountDeltasForRevoking(ctx.Timestamp())
 	} else {
-		frozenEpochs, err := dOut.FrozenEpochs(ctx.Timestamp())
-		par.RequireNoError(err)
-
+		_, _, frozenEpochs := dOut.FrozenEpochs(ctx.Timestamp())
+		par.Require(frozenEpochs <= 256, "inconsistency: frozenEpochs <= 256")
 		// the expected vector contains frozen coverages for the span of the frozen epochs
-		expectedVector, err = dOut.MakeFrozenCoverageAmounts(frozenEpochs, dOut.Output.TokenBalance())
+		expectedVector, err = dOut.MakeFrozenCoverageAmounts(byte(frozenEpochs), dOut.Output.TokenBalance())
 		par.RequireNoError(err)
 	}
 

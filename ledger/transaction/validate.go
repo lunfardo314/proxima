@@ -140,6 +140,8 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 
 	path := common.Concat(pathToOutputs, 0)
 	// reverse order of constraint validations -> to evaluate 'amounts' last
+	// For valid UTXOs order how we run scripts does not matter.
+	// For invalid UTXOs, order affects what error is detected first
 	for i := len(outs) - 1; i >= 0; i-- {
 		o := outs[i]
 		var err error
