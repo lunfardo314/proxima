@@ -72,7 +72,7 @@ func (td *testData) init() {
 	td.Logf("==== delegation target : %s (%s)", td.target.String(), util.Th(td.u.Balance(td.target)))
 }
 
-func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, maxFreezeSlots uint16, prnOnError bool) ([]byte, error) {
+func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, maxFreezeSlots uint16, inflationMarginTolerance uint16, prnOnError bool) ([]byte, error) {
 	var txBytes []byte
 
 	// create delegation output
@@ -81,7 +81,7 @@ func (td *testData) initDelegationUTXODirect(ts base.LedgerTime, revoked bool, m
 		return nil, err
 	}
 
-	delegationLock := ledger.NewDelegateLock(td.target, td.masterAddr, maxFreezeSlots, 0)
+	delegationLock := ledger.NewDelegateLock(td.target, td.masterAddr, maxFreezeSlots, inflationMarginTolerance)
 	s := ledger.DelegateLockStateUndef
 	if revoked {
 		s = ledger.DelegateLockStateRevoked
@@ -122,20 +122,20 @@ func TestDelegationLock2Init(t *testing.T) {
 	t.Run("ok 1", func(t *testing.T) {
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, false, 1, true)
+		_, err = td.delegationOriginDirect(ts, false, 1, 0, true)
 		require.NoError(t, err)
 	})
 	t.Run("ok 2", func(t *testing.T) {
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, false, 4, true)
+		_, err = td.delegationOriginDirect(ts, false, 4, 1000, true)
 		require.NoError(t, err)
 	})
 	t.Run("fail 1", func(t *testing.T) {
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(1)
-		_, err = td.initDelegationUTXODirect(ts, true, 1, true)
-		util.RequireErrorWithOld(t, err, "wrong delegation origin parameters")
+		_, err = td.delegationOriginDirect(ts, true, 1, 5000, true)
+		require.NoError(t, util.MustErrorWith(err, "max inflation cost margin must be in promille less or equal than 1000"))
 	})
 }
 

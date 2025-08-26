@@ -52,9 +52,6 @@ func IsNil(p interface{}) bool {
 
 func RequireErrorWithOld(t *testing.T, err error, fragments ...string) {
 	t.Logf("error: %v, fragments: %+v", err, fragments)
-	if err == nil {
-		println()
-	}
 	require.Error(t, err)
 	for _, f := range fragments {
 		if !strings.Contains(err.Error(), f) {
