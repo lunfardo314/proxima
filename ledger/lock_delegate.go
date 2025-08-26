@@ -352,7 +352,7 @@ func _successorEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
 func _consumedIsFrozenInTx : 
 and(
    _selfIsMarkedFrozen,
-   lessThan(txSlot, firstSlotInDelegationEpoch(_selfTargetChainID, add(_selfLastFrozenEpoch,u64/1)))
+   lessThan(uint8Bytes(txSlot), firstSlotInDelegationEpoch(_selfTargetChainID, add(_selfLastFrozenEpoch,u64/1)))
 )
 
 func _consumedIsInTheSafeRevocationWindowTx : 
@@ -505,6 +505,7 @@ func _successorIsRevoked : equal(parseInlineDataArgument(successorConstraint(3),
 func _requireUnlockableByTheTarget :
 and(
    require(not(_selfIsMarkedRevoked), !!!revoked_delegation_cannot_be_unlocked_by_the_target),
+   require(lessThan(slotOfInputByIndex(selfOutputIndex), txSlot), !!!delegation_successor_timestamp_must_be_at_least_1_slot_after),
    or(
       not(_selfIsMarkedFrozen),
       if(

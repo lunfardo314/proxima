@@ -414,10 +414,11 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
-			ts:               td.timestampSlotsForward(1),
-			freezeUntilEpoch: 0,
-			inflate:          true,
-			prntx:            true,
+			ts:                       td.timestampSlotsForward(1),
+			freezeUntilEpoch:         0,
+			inflate:                  true,
+			prntx:                    true,
+			disableConsistencyChecks: true,
 		})
 		require.NoError(t, err)
 	})
@@ -429,11 +430,12 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
-			ts:               td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
-			freezeUntilEpoch: 0,
-			prntx:            false,
+			ts:                       td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
+			freezeUntilEpoch:         0,
+			prntx:                    true,
+			disableConsistencyChecks: true,
 		})
-		util.RequireErrorWithOld(t, err, "successor timestamp must be at least 1 slot after")
+		util.RequireErrorWithOld(t, err, "delegation successor timestamp must be at least 1 slot after")
 	})
 	t.Run("target_test_safe_revocation_window", func(t *testing.T) {
 		// target consumes initial delegation
@@ -456,7 +458,7 @@ func TestDelegationLockConsume(t *testing.T) {
 				td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
 				base.NewLedgerTime(base.Slot(unfreeze+1), 5),
 			),
-			prntx:                    false,
+			prntx:                    true,
 			disableConsistencyChecks: true,
 		})
 		require.NoError(t, util.MustErrorWith(err, "delegation target should not be unlocked inside safe revocation window"))

@@ -180,7 +180,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 		o1.WithAmounts(amountsVector[:]...)
 		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenSlots, o.MaxInflationMarginTolerance))
 		o1.MustPushConstraint(chainConstraint.Bytes())
-		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: freezeUntilEpoch}.Bytes())
+		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: freezeUntilEpoch, State: DelegateLockStateFrozen}.Bytes())
 	})
 	projectedInflation = InflationForSlots(ownTokenBalance, frozenSlots)
 	return
@@ -423,7 +423,9 @@ func (c *DelegationConstants) EpochLimitsFromSlot(targetID base.ChainID, txSlot 
 	offs := c.epochOffsetSlots(targetID)
 	epoch = (txSlot + offs) / c.DelegationEpochSlots
 	coveredInFirstEpoch = c.DelegationEpochSlots - (txSlot+offs)%c.DelegationEpochSlots
-	firstSlot = txSlot - coveredInFirstEpoch
+	if txSlot > coveredInFirstEpoch {
+		firstSlot = txSlot - coveredInFirstEpoch
+	}
 	lastSlot = firstSlot + c.DelegationEpochSlots - 1
 	return
 }
