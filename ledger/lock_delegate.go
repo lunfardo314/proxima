@@ -275,12 +275,7 @@ func delegationEpochOffset : mod( slice($0, 0, 3), constDelegationEpochSlots)
 
 // $0 target chain ChainID
 // $1 epoch
-func firstSlotInDelegationEpoch :
-if(
-   isZero($1),
-   u64/0,
-   sub(mul($1, constDelegationEpochSlots), delegationEpochOffset($0))
-)
+func firstSlotInDelegationEpoch : add( mul($1, constDelegationEpochSlots), delegationEpochOffset($0))
 
 // $0 target chain ChainID
 // $1 slot
@@ -349,17 +344,28 @@ func _selfIsMarkedUndef : and(not(_selfIsMarkedRevoked), not(_selfIsMarkedFrozen
 
 func _successorEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
 
+func _selfFirstSlotInDelegationEpoch : firstSlotInDelegationEpoch(_selfTargetChainID, add(_selfLastFrozenEpoch,u64/1))
+
 func _consumedIsFrozenInTx : 
 and(
    _selfIsMarkedFrozen,
-   lessThan(uint8Bytes(txSlot), firstSlotInDelegationEpoch(_selfTargetChainID, add(_selfLastFrozenEpoch,u64/1)))
+   lessThan(uint8Bytes(txSlot), _selfFirstSlotInDelegationEpoch)
 )
 
-func _consumedIsInTheSafeRevocationWindowTx : 
+// $0 uint8Bytes(txSlot)
+// $1 _selfFirstSlotInDelegationEpoch   )
+func __consumedIsInTheSafeRevocationWindowTx : 
 and(
    _selfIsMarkedFrozen,
-   not(_consumedIsFrozenInTx)
+   not(lessThan($0, $1)),
+   lessThan($0, add($1, constDelegationSafeRevocationSlots))
 )
+
+func _consumedIsInTheSafeRevocationWindowTx :
+   __consumedIsInTheSafeRevocationWindowTx(
+      uint8Bytes(txSlot), 
+      _selfFirstSlotInDelegationEpoch
+   )
 
 func _equalTo1Of2 : or(equal($0,$1), equal($0,$2))
 
@@ -381,7 +387,7 @@ func requiredMinimumInflationAdvance :
 	  $3
 	)
 
-func _txFrozenSlots : sub( firstSlotInDelegationEpoch(_selfTargetChainID, add(_selfLastFrozenEpoch,1)), txSlot )
+func _txFrozenSlots : sub( _selfFirstSlotInDelegationEpoch, txSlot )
 
 // $0 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
 // $1 _predecessorTokenBalance

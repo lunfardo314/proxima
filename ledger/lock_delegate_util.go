@@ -153,7 +153,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 		return nil, 0, 0, fmt.Errorf("MakeDelegationFreezeOutput: wrong value for 'freeze until epoch'")
 	}
 	frozenEpochs := freezeUntilEpoch - txEpoch + 1
-	if checkConsistency && frozenEpochs > dconst.MaxFrozenEpochs {
+	if frozenEpochs > dconst.MaxFrozenEpochs {
 		return nil, 0, 0, fmt.Errorf("MakeDelegationFreezeOutput: too many frozen epochs: %d", freezeUntilEpoch)
 	}
 
@@ -427,6 +427,13 @@ func (c *DelegationConstants) EpochLimitsFromSlot(targetID base.ChainID, txSlot 
 		firstSlot = txSlot - coveredInFirstEpoch
 	}
 	lastSlot = firstSlot + c.DelegationEpochSlots - 1
+	return
+}
+
+func (c *DelegationConstants) EpochLimits(targetID base.ChainID, txEpoch uint32) (firstSlot, lastSlot uint32) {
+	offs := c.epochOffsetSlots(targetID)
+	firstSlot = txEpoch*c.DelegationEpochSlots + offs
+	lastSlot = c.DelegationEpochSlots*(txEpoch+1) - 1
 	return
 }
 

@@ -452,28 +452,29 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		unfreeze := td.delegatedOutput.UnfreezeSlot()
-
-		err = td.transitChainWithDelegationWithMake(2, transitWithMakeParams{
-			ts: base.MaximumTime(
-				td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
-				base.NewLedgerTime(base.Slot(unfreeze+1), 5),
-			),
-			prntx:                    true,
-			disableConsistencyChecks: true,
-		})
-		require.NoError(t, util.MustErrorWith(err, "delegation target should not be unlocked inside safe revocation window"))
-
-		unfreeze = td.delegatedOutput.UnfreezeSlot()
 		ts = base.MaximumTime(
 			td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
 			base.NewLedgerTime(base.Slot(unfreeze+1), 5),
 		)
-		freezeUntilEpoch, _ := td.delegatedOutput.FreezeLimits(ts)
+		err = td.transitChainWithDelegationWithMake(2, transitWithMakeParams{
+			ts:                       ts,
+			freezeUntilEpoch:         0,
+			prntx:                    true,
+			disableConsistencyChecks: true,
+		})
+		require.NoError(t, util.MustErrorWith(err, "frozen delegation can be unlocked by the target only for revocation"))
+
+		dconst := ledger.DelegationConst()
+		first, last := dconst.EpochLimits(td.delegatedOutput.Target.ChainID(), 0)
+		txSlot := last + 1 + dconst.SafeRevocationSlots + 1
+		ts = base.NewLedgerTime(base.Slot(txSlot), 5)
+		t.Logf("epoch 0: slots %d - %d, safe revocation window: %d, txSlot: %d, ts: %s", first, last, dconst.SafeRevocationSlots, txSlot, ts.String())
+
 		err = td.transitChainWithDelegationWithMake(4, transitWithMakeParams{
 			ts:                       ts,
 			disableConsistencyChecks: true,
-			freezeUntilEpoch:         freezeUntilEpoch,
-			prntx:                    false,
+			freezeUntilEpoch:         3,
+			prntx:                    true,
 		})
 		require.NoError(t, err)
 	})
