@@ -312,11 +312,12 @@ or(
    not(selfIsProducedOutput),
    // 'produced' context
    require(equal(len($1), u64/1), !!!delegateLockState_$1_must_be_1_byte), 
-       // TODO why we need this?
-   require(
-     or( not(equal($1,2)), equalUint($0, _predecessorLastFrozenEpoch) ),
-     !!!revocation_cant_mutate_frozen_epochs
-   )
+
+   // TODO why we need this?
+   //require(
+   //  or( not(equal($1,2)), equalUint($0, _predecessorLastFrozenEpoch) ),
+   //  !!!revocation_cant_mutate_frozen_epochs
+   //)
 )
 
 // $0 delegation chain ID
@@ -350,9 +351,9 @@ func _selfTargetChainID : parseInlineDataArgumentAnyPrefix(_selfTarget,0)
 func _selfDelegationEpochOffset : delegationEpochOffset(_selfTargetChainID)
 func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 0))
 func _selfStatus : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 1)
-func _selfIsFrozen : equal(_selfStatus, 1)
-func _selfIsRevoked : equal(_selfStatus, 2)
-func _selfIsStatusUndef : and(not(_selfIsRevoked), not(_selfIsFrozen))
+func _selfIsMarkedFrozen : equal(_selfStatus, 1)
+func _selfIsMarkedRevoked : equal(_selfStatus, 2)
+func _selfIsMarkedUndef : and(not(_selfIsMarkedRevoked), not(_selfIsMarkedFrozen))
 
 func _successorEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
 func _successorStatus : parseInlineDataArgument(successorConstraint(3),#delegateLockState, 1)
@@ -363,8 +364,11 @@ func __txFrozenEpochs : if( lessThanUint($0, $1), u64/0, add(sub($0, $1),1) )
 func _txFrozenEpochs : __txFrozenEpochs(_selfLastFrozenEpoch, _successorEpoch)
 
 // $0 - _selfLastFrozenEpoch
-func __txIsNotFrozen : or( isZero($0), lessThan( $0, delegationEpochFromSlot(_selfTargetChainID,txSlot) ) )
-func _txIsNotFrozen : __txIsNotFrozen(_selfLastFrozenEpoch)
+func _consumedIsNotFrozen : 
+or(
+   not(_selfIsMarkedFrozen)
+   
+)
 
 // $0 output slot
 func _coveredSlotsInCurrentEpoch :
@@ -375,6 +379,8 @@ sub(
       constDelegationEpochSlots 
    )
 )
+
+func _txEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
 
 // $0 slot of the output
 // $1 last frozen epoch
@@ -424,23 +430,24 @@ func _requiredMinimumInflationAdvance :
 // $0 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
 // $1 _predecessorTokenBalance
 func _validInflationAdvanceProduced :
-or(
-    not(_selfIsFrozen),
-	and(
-		require(
-		   lessOrEqualThan($0, u64/1000),
-		   !!!max_inflation_cost_margin_must_be_in_promille_less_or_equal_than_1000
-		),
-		require(
-		   lessOrEqualThan( _requiredMinimumInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1)),
-		   !!!not_enough_inflation_advance
-		)
+and(
+	require(
+	   lessOrEqualThan($0, u64/1000),
+	   !!!max_inflation_cost_margin_must_be_in_promille_less_or_equal_than_1000
+	),
+	require(
+	   lessOrEqualThan( _requiredMinimumInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1)),
+	   !!!not_enough_inflation_advance
 	)
 )
 
 // $0 max freeze slots (uint64)
-func _validLimitsProduced :
+func _validLimitsProducedFrozen :
 and(
+    require(
+       lessOrEqualThan(_txEpoch, _selfLastFrozenEpoch),
+       !!!last_frozen_epoch_cannot_be_in_the_past
+    ),
     require(
        lessOrEqualThan(uint8Bytes(_selfFrozenSlots(txSlot)), $0),
        !!!frozen_slots_cannot_exceed_maximum_set_by_delegator
@@ -449,11 +456,32 @@ and(
        lessOrEqualThan(_txFrozenEpochs, uint8Bytes(constDelegationMaxFrozenEpochs)),
        !!!frozen_epochs_cannot_exceed_constDelegationMaxFrozenEpochs
     ),
-    if(
-       or(_isDelegationOrigin, _selfIsStatusUndef),
-       require( and(isZero(_selfLastFrozenEpoch), equal(_selfStatus, 0)), !!!wrong_delegation_origin_parameters),
-       true
+    require(
+       not(_isDelegationOrigin),
+       !!!delegation_origin_cannot_be_frozen
     )
+)   
+
+// $0 max freeze slots (uint64)
+// $1 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
+func _validLimitsProduced :
+or(
+   and( // frozen
+      _selfIsMarkedFrozen, 
+      _validLimitsProducedFrozen($0), 
+      _validInflationAdvanceProduced($1, _predecessorTokenBalance)
+   ),
+   and( // revoked
+      _selfIsMarkedRevoked,
+      require( isZero(_selfLastFrozenEpoch), !!!last_frozen_epoch_must_be_0_on_revoked_output), 
+   ),
+   and( // undef
+      _selfIsMarkedUndef,
+      and(
+          require( equal(_selfStatus, 0), !!!undef_status_mark_must_be_0 ),
+          require( isZero(_selfLastFrozenEpoch), !!!last_frozen_epoch_must_be_0_on_marked_undef_output), 
+      )
+   )
 )
 
 func _validStructureProduced :
@@ -478,13 +506,12 @@ and(
 
 // checks validity of the composition of the produced constraint 
 // $0 max freeze slots uint64
-// $1 max inflation margin tolerance, the part of the inflation shaved by the sequencer 
+// $1 max inflation margin tolerance, the part of the inflation shaved by the sequencer uint64
 func _validDelegationProduced :
 and(
     selfIsProducedOutput,
     _validStructureProduced,
-    _validLimitsProduced($0),
-    _validInflationAdvanceProduced($1, _predecessorTokenBalance)
+    _validLimitsProduced($0, $1)
 )
 
 func _consumedIsMasterUnlocked : equal(byte(selfUnlockParameters,2), 0xff)
@@ -495,7 +522,7 @@ func _masterUnlockedConsumed :
 and( 
     _consumedIsMasterUnlocked, 
     $0, 
-    require(_txIsNotFrozen, !!!master_can't_unlock_frozen_delegation_output) 
+    require(_consumedIsNotFrozen, !!!master_can't_unlock_frozen_delegation_output) 
 )
 
 func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
@@ -517,7 +544,7 @@ func _targetUnlockedConsumed :
 and(
    not(_consumedIsMasterUnlocked),
 	  // if it is revoked, only master can unlock it
-   require(not(_selfIsRevoked), !!!revoked_delegation_cannot_be_unlocked_by_the_target),
+   require(not(_selfIsMarkedRevoked), !!!revoked_delegation_cannot_be_unlocked_by_the_target),
    require(not(_txInsideSafeRevocationWindow(_consumedUnfreezeSlot)), !!!delegation_target_should_not_be_unlocked_inside_safe_revocation_window),
    require( or( _successorIsRevoked, _txIsNotFrozen ), !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_revocation),
 	  // target lock must be unlocked
