@@ -982,7 +982,7 @@ type MakeDelegationInitTransactionParams struct {
 	Amount                          uint64
 	Master                          ledger.AddressED25519
 	Target                          ledger.ChainLock
-	MaxFreezeSlots                  uint16
+	MaxFrozenEpochs                 byte
 	MaxToleratedInflationCostMargin uint16
 	MasterPrivateKey                ed25519.PrivateKey
 	Inputs                          []*ledger.OutputWithID
@@ -1015,7 +1015,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		Amount:                          par.Amount,
 		Master:                          par.Master,
 		Target:                          par.Target,
-		MaxFreezeSlots:                  par.MaxFreezeSlots,
+		MaxFreezeEpochs:                 par.MaxFrozenEpochs,
 		MaxToleratedInflationCostMargin: par.MaxToleratedInflationCostMargin,
 		StartSlot:                       par.Timestamp.Slot,
 	})
