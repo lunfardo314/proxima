@@ -277,9 +277,9 @@ func lastSlotInDelegationEpoch : add( mul($1, constDelegationEpochSlots), delega
 
 // $0 slot uint32
 // $1 delegationEpochOffset
-// -> (slot - offs) / slots-in-epoch if offs <= slot, otherwise 0
+// -> 1 + (slot-offs-1) / slots-in-epoch if offs <= slot, otherwise 0
 func _delegationEpochFromSlot :
-if( lessOrEqualThan($0, $1), u64/0, div(sub($0,$1), constDelegationEpochSlots) )
+if( lessOrEqualThan($0, $1), u64/0, add(div(sub(sub($0,$1), u64/1), constDelegationEpochSlots), u64/1 ))
 
 // $0 target chain ChainID
 // $1 slot

@@ -94,13 +94,12 @@ func (o *DelegationOutput) IsMarkedRevoked() bool {
 }
 
 // IsInFrozenSlot true means only target can consume it in the slot
-func (o *DelegationOutput) IsInFrozenSlot(txSlot uint32) bool {
+func (o *DelegationOutput) IsInFrozenSlot(slot uint32) bool {
 	if o.IsMarkedRevoked() || !o.IsMarkedFrozen() {
 		return false
 	}
-	dconst := DelegationConst()
-	_, _, firstSlot, lastSlot := dconst.EpochLimitsFromSlot(o.Target.ChainID(), o.LastFrozenEpoch)
-	return firstSlot <= txSlot && txSlot <= lastSlot
+	firstSlot, lastSlot := DelegationConst().EpochLimits(o.Target.ChainID(), o.LastFrozenEpoch)
+	return firstSlot <= slot && slot <= lastSlot
 }
 
 func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
@@ -108,7 +107,7 @@ func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
 		return false
 	}
 	dconst := DelegationConst()
-	_, _, _, lastSlot := dconst.EpochLimitsFromSlot(o.Target.ChainID(), o.LastFrozenEpoch)
+	lastSlot := dconst.LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch)
 	return lastSlot < txSlot && txSlot <= lastSlot+dconst.SafeRevocationSlots
 }
 
@@ -133,7 +132,7 @@ func (o *DelegationOutput) UnfreezeSlot() uint32 {
 		return uint32(o.ID.Slot())
 	}
 	dconst := DelegationConst()
-	return (o.LastFrozenEpoch+1)*dconst.DelegationEpochSlots - dconst.epochOffsetSlots(o.Target.ChainID())
+	return (o.LastFrozenEpoch+1)*dconst.DelegationEpochSlots - dconst.EpochOffsetSlotsDirect(o.Target.ChainID())
 }
 
 func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, disableConsistencyCheck ...bool) (ret *Output, requiredAdvance, projectedInflation uint64, err error) {
@@ -148,7 +147,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 		return nil, 0, 0, fmt.Errorf("MakeDelegationFreezeOutput: can't be a branch transaction")
 	}
 	dconst := DelegationConst()
-	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), uint32(txTs.Slot))
+	txEpoch := dconst.EpochFromSlotDirect(o.Target.ChainID(), uint32(txTs.Slot))
 	if freezeUntilEpoch < txEpoch {
 		return nil, 0, 0, fmt.Errorf("MakeDelegationFreezeOutput: wrong value for 'freeze until epoch'")
 	}
@@ -215,7 +214,7 @@ func (o *DelegationOutput) FreezeLimits(ts base.LedgerTime) (freezeUntilEpoch ui
 		return
 	}
 	dconst := DelegationConst()
-	startEpoch := dconst.EpochFromSlot(o.Target.ChainID(), ts.Slot.Uint32())
+	startEpoch := dconst.EpochFromSlotDirect(o.Target.ChainID(), ts.Slot.Uint32())
 	freezeUntilEpoch = startEpoch + uint32(o.MaxFrozenEpochs) - 1
 	return
 }
@@ -225,7 +224,7 @@ func (o *DelegationOutput) FrozenEpochs(txTs base.LedgerTime) (from, to, total u
 		return
 	}
 	dconst := DelegationConst()
-	txEpoch := dconst.EpochFromSlot(o.Target.ChainID(), txTs.Slot.Uint32())
+	txEpoch := dconst.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot.Uint32())
 	if txEpoch > o.LastFrozenEpoch {
 		return 0, 0, 0
 	}
@@ -383,17 +382,25 @@ func _precalcDelegationConstants() *DelegationConstants {
 	return ret
 }
 
-// epochOffsetSlots returns slot offset unique for the delegation target chain ChainID.
+// EpochOffsetSlotsDirect returns slot offset unique for the delegation target chain ChainID.
 // Each chain ChainID defines own grid of epochs. It spreads delegation output consumption among sequencers
-func (c *DelegationConstants) epochOffsetSlots(targetID base.ChainID) uint32 {
+func (c *DelegationConstants) EpochOffsetSlotsDirect(targetID base.ChainID) uint32 {
 	return binary.BigEndian.Uint32(targetID[:4]) % c.DelegationEpochSlots
+}
+
+func (c *DelegationConstants) EpochOffsetSlotsFromSource(targetID base.ChainID) uint32 {
+	src := fmt.Sprintf("delegationEpochOffset(0x%s)", targetID.StringHex())
+	resBin, err := L().EvalFromSource(nil, src)
+	util.AssertNoError(err)
+	return uint32(easyfl_util.MustUint64FromBytes(resBin))
 }
 
 // CoveredSlotsInCurrentEpoch returns how many slots are covered in the current epoch defined by txSlot and
 // taking into account the offset calculated from the target
-func (c *DelegationConstants) CoveredSlotsInCurrentEpoch(targetID base.ChainID, txSlot uint32) uint32 {
-	_, ret, _, _ := c.EpochLimitsFromSlot(targetID, txSlot)
-	return ret
+func (c *DelegationConstants) CoveredSlotsInCurrentEpoch(targetID base.ChainID, slot uint32) uint32 {
+	last := c.LastSlotInEpochDirect(targetID, c.EpochFromSlotDirect(targetID, slot))
+	util.Assertf(slot <= last, "slot<=last")
+	return last - slot + 1
 }
 
 func (c *DelegationConstants) FrozenSlotsFromFrozenEpochs(target base.ChainID, txSlot uint32, frozenEpochs byte) uint32 {
@@ -401,34 +408,49 @@ func (c *DelegationConstants) FrozenSlotsFromFrozenEpochs(target base.ChainID, t
 	return c.CoveredSlotsInCurrentEpoch(target, txSlot) + uint32(frozenEpochs-1)*c.DelegationEpochSlots
 }
 
-func (c *DelegationConstants) EpochFromSlot(targetID base.ChainID, txSlot uint32) uint32 {
-	ret, _, _, _ := c.EpochLimitsFromSlot(targetID, txSlot)
-	return ret
-}
-
-func (c *DelegationConstants) EpochLimitsFromSlot(targetID base.ChainID, txSlot uint32) (epoch, coveredInFirstEpoch, firstSlot, lastSlot uint32) {
-	offs := c.epochOffsetSlots(targetID)
-	epoch = (txSlot + offs) / c.DelegationEpochSlots
-	coveredInFirstEpoch = c.DelegationEpochSlots - (txSlot+offs)%c.DelegationEpochSlots
-	if txSlot > coveredInFirstEpoch {
-		firstSlot = txSlot - coveredInFirstEpoch
+// EpochFromSlotDirect which delegation epoch slot belongs to
+func (c *DelegationConstants) EpochFromSlotDirect(targetID base.ChainID, slot uint32) (epoch uint32) {
+	offs := c.EpochOffsetSlotsDirect(targetID)
+	if slot > offs {
+		epoch = (slot-offs-1)/c.DelegationEpochSlots + 1
 	}
-	lastSlot = firstSlot + c.DelegationEpochSlots - 1
 	return
 }
 
-func (c *DelegationConstants) EpochLimits(targetID base.ChainID, txEpoch uint32) (firstSlot, lastSlot uint32) {
-	offs := c.epochOffsetSlots(targetID)
-	firstSlot = txEpoch*c.DelegationEpochSlots + offs
-	lastSlot = c.DelegationEpochSlots*(txEpoch+1) - 1
+// EpochFromSlotFromSource which delegation epoch slot belongs to
+func (c *DelegationConstants) EpochFromSlotFromSource(targetID base.ChainID, slot uint32) (epoch uint32) {
+	src := fmt.Sprintf("delegationEpochFromSlot(0x%s, u32/%d)", targetID.StringHex(), slot)
+	resBin, err := L().EvalFromSource(nil, src)
+	util.AssertNoError(err)
+	return uint32(easyfl_util.MustUint64FromBytes(resBin))
+}
+
+func (c *DelegationConstants) EpochLimits(targetID base.ChainID, epoch uint32) (firstSlot, lastSlot uint32) {
+	offs := c.EpochOffsetSlotsDirect(targetID)
+	lastSlot = epoch*c.DelegationEpochSlots + offs
+	if epoch > 0 {
+		firstSlot = lastSlot - c.DelegationEpochSlots + 1
+	}
 	return
+}
+
+func (c *DelegationConstants) LastSlotInEpochDirect(targetID base.ChainID, epoch uint32) (lastSlot uint32) {
+	_, lastSlot = c.EpochLimits(targetID, epoch)
+	return
+}
+
+func (c *DelegationConstants) LastSlotInEpochFromSource(targetID base.ChainID, epoch uint32) (lastSlot uint32) {
+	src := fmt.Sprintf("lastSlotInDelegationEpoch(0x%s, u32/%d)", targetID.StringHex(), epoch)
+	resBin, err := L().EvalFromSource(nil, src)
+	util.AssertNoError(err)
+	return uint32(easyfl_util.MustUint64FromBytes(resBin))
 }
 
 // DiffEpochs return ts1 - ts2 in delegation epochs
 func (c *DelegationConstants) DiffEpochs(targetID base.ChainID, ts1, ts2 base.LedgerTime) int {
 	dconst := DelegationConst()
-	epoch1 := dconst.EpochFromSlot(targetID, ts1.Slot.Uint32())
-	epoch2 := dconst.EpochFromSlot(targetID, ts2.Slot.Uint32())
+	epoch1 := dconst.EpochFromSlotDirect(targetID, ts1.Slot.Uint32())
+	epoch2 := dconst.EpochFromSlotDirect(targetID, ts2.Slot.Uint32())
 	return int(epoch1) - int(epoch2)
 }
 
