@@ -191,7 +191,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		return
 	}
 
-	lastEpochToFreeze := delegationIn.FreezeLimits(txb.TransactionData.Timestamp)
+	lastEpochToFreeze := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
 	predIdx := byte(len(txb.ConsumedOutputs))
 	delegationOut, requiredAdvance, projectedContributionToInflation, err := delegationIn.MakeDelegationFreezeOutput(
 		txb.TransactionData.Timestamp, lastEpochToFreeze, predIdx)

@@ -144,7 +144,7 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 
 	vectorToCheck := o.Amounts().FrozenCoverageVector()
 	par.Require(len(expectedVector) == len(vectorToCheck), "len(expectedVector) == len(vectorToCheck)")
-	par.Require(slices.Equal(expectedVector, vectorToCheck), "_checkFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation chain %s", dOut.ChainID.String)
+	par.Require(slices.Equal(expectedVector, vectorToCheck), "_checkFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation output: %s", dOut.ChainID.String)
 }
 
 // DelegateLock is a special case in amounts and inflation validation

@@ -269,7 +269,7 @@ func TestAdvance(t *testing.T) {
 	require.Equal(t, inflationDirect, inflationSource)
 
 	ts := dInit.ID.Timestamp().AddSlots(1000)
-	dInit.FreezeLimits(ts)
+	dInit.FreezeUntilMax(ts)
 
 	dconst := ledger.DelegationConst()
 	dInit.FrozenEpochs(ts)

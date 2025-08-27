@@ -95,11 +95,12 @@ func (o *DelegationOutput) IsMarkedRevoked() bool {
 
 // IsInFrozenSlot true means only target can consume it in the slot
 func (o *DelegationOutput) IsInFrozenSlot(slot uint32) bool {
+	util.Assertf(uint32(o.ID.Slot()) <= slot, "uint32(o.ID.Slot()) <= slot")
 	if o.IsMarkedRevoked() || !o.IsMarkedFrozen() {
 		return false
 	}
-	firstSlot, lastSlot := DelegationConst().EpochLimits(o.Target.ChainID(), o.LastFrozenEpoch)
-	return firstSlot <= slot && slot <= lastSlot
+	lastSlot := DelegationConst().LastSlotInEpochFromSource(o.Target.ChainID(), o.LastFrozenEpoch)
+	return slot <= lastSlot
 }
 
 func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
@@ -128,11 +129,10 @@ func (o *DelegationOutput) IsUnlockableByMaster(txSlot uint32) bool {
 }
 
 func (o *DelegationOutput) UnfreezeSlot() uint32 {
-	if o.LastFrozenEpoch == 0 {
-		return uint32(o.ID.Slot())
+	if !o.IsMarkedFrozen() {
+		return 0
 	}
-	dconst := DelegationConst()
-	return (o.LastFrozenEpoch+1)*dconst.DelegationEpochSlots - dconst.EpochOffsetSlotsDirect(o.Target.ChainID())
+	return DelegationConst().LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch) + 1
 }
 
 func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, disableConsistencyCheck ...bool) (ret *Output, requiredAdvance, projectedInflation uint64, err error) {
@@ -153,7 +153,8 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	}
 	frozenEpochs := freezeUntilEpoch - txEpoch + 1
 	if frozenEpochs > uint32(o.MaxFrozenEpochs) {
-		return nil, 0, 0, fmt.Errorf("MakeDelegationFreezeOutput: frozen epochs exceed limit set by the delegation outputs: %d", freezeUntilEpoch)
+		return nil, 0, 0, fmt.Errorf("MakeDelegationFreezeOutput: frozen epochs exceed limit set by the delegation output (%d): got %d",
+			o.MaxFrozenEpochs, freezeUntilEpoch)
 	}
 
 	inflation := L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
@@ -209,7 +210,7 @@ func (o *DelegationOutput) RequiredInflationAdvance(txTs base.LedgerTime, frozen
 	return binary.BigEndian.Uint64(resBin)
 }
 
-func (o *DelegationOutput) FreezeLimits(ts base.LedgerTime) (freezeUntilEpoch uint32) {
+func (o *DelegationOutput) FreezeUntilMax(ts base.LedgerTime) (freezeUntilEpoch uint32) {
 	if o.IsInFrozenSlot(uint32(ts.Slot)) {
 		return
 	}
@@ -301,7 +302,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenEpochs, 0))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{
-			LastFrozenEpoch: o.LastFrozenEpoch,
+			LastFrozenEpoch: 0,
 			State:           DelegateLockStateRevoked,
 		}.Bytes())
 	}), nil

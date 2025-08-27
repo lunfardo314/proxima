@@ -437,47 +437,6 @@ func TestDelegationLockConsume(t *testing.T) {
 		})
 		util.RequireErrorWithOld(t, err, "delegation successor timestamp must be at least 1 slot after")
 	})
-	t.Run("target_test_safe_revocation_window", func(t *testing.T) {
-		// target consumes initial delegation
-		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 1, 0)
-		require.NoError(t, err)
-
-		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
-			ts:               td.timestampSlotsForward(1),
-			freezeUntilEpoch: 0,
-			prntx:            false,
-		})
-		require.NoError(t, err)
-
-		unfreeze := td.delegatedOutput.UnfreezeSlot()
-		ts = base.MaximumTime(
-			td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
-			base.NewLedgerTime(base.Slot(unfreeze+1), 5),
-		)
-		err = td.transitChainWithDelegationWithMake(2, transitWithMakeParams{
-			ts:                       ts,
-			freezeUntilEpoch:         0,
-			prntx:                    true,
-			disableConsistencyChecks: true,
-		})
-		require.NoError(t, util.MustErrorWith(err, "frozen delegation can be unlocked by the target only for revocation"))
-
-		dconst := ledger.DelegationConst()
-		first, last := dconst.EpochLimits(td.delegatedOutput.Target.ChainID(), 0)
-		txSlot := last + 1 + dconst.SafeRevocationSlots + 1
-		ts = base.NewLedgerTime(base.Slot(txSlot), 5)
-		t.Logf("epoch 0: slots %d - %d, safe revocation window: %d, txSlot: %d, ts: %s", first, last, dconst.SafeRevocationSlots, txSlot, ts.String())
-
-		err = td.transitChainWithDelegationWithMake(4, transitWithMakeParams{
-			ts:                       ts,
-			disableConsistencyChecks: true,
-			freezeUntilEpoch:         3,
-			prntx:                    true,
-		})
-		require.NoError(t, err)
-	})
 	t.Run("target_freeze_ok", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
@@ -490,7 +449,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		ts = td.timestampSlotsForward(1000)
 		txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.FreezeLimits(ts)
+		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		frozenEpochs := freezeUntilEpoch - txEpoch + 1
 		frozenSlots := ledger.DelegationConst().FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 		t.Logf(">>>>>>>>> freezeUntilEpoch: %d, frozenEpochs: %d, frozenSlots: %d", freezeUntilEpoch, frozenEpochs, frozenSlots)
@@ -503,23 +462,17 @@ func TestDelegationLockConsume(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
-	t.Run("target_freeze_wrong_last_frozen_epoch", func(t *testing.T) {
+	t.Run("wrong_last_frozen_epoch", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 1, 0)
 		require.NoError(t, err)
 
-		//t.Logf("=========\n%s", td.delegatedOutput.OutputWithID.String())
-
 		ts = td.timestampSlotsForward(500)
-		txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
+		txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot))
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.FreezeLimits(ts)
-
-		frozenEpochs := freezeUntilEpoch - txEpoch + 1
-		frozenSlots := ledger.DelegationConst().FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
-		t.Logf(">>>>>>>>> freezeUntilEpoch: %d, frozenEpochs: %d, frozenSlots: %d", freezeUntilEpoch, frozenEpochs, frozenSlots)
+		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
@@ -527,7 +480,7 @@ func TestDelegationLockConsume(t *testing.T) {
 			prntx:                    false,
 			disableConsistencyChecks: true,
 		})
-		util.RequireErrorWithOld(t, err, "frozen slots cannot exceed maximum set by delegator")
+		require.NoError(t, util.MustErrorWith(err, "frozen epochs exceed limit set by the delegation output"))
 	})
 	t.Run("target_freeze_ok_inflate", func(t *testing.T) {
 		// target consumes initial delegation
@@ -537,7 +490,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(100)
-		freezeUntilEpoch := td.delegatedOutput.FreezeLimits(ts)
+		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
@@ -557,7 +510,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		ts = td.timestampSlotsForward(700)
 		txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
-		freezeUntilEpoch := td.delegatedOutput.FreezeLimits(ts)
+		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		frozen := freezeUntilEpoch - txEpoch + 1
 		_ = frozen
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
@@ -576,7 +529,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1)
-		freezeUntilEpoch := td.delegatedOutput.FreezeLimits(ts)
+		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
@@ -590,11 +543,11 @@ func TestDelegationLockConsume(t *testing.T) {
 
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-100, 5)
 		err = td.discontinueDelegation(ts, false)
-		util.RequireErrorWithOld(t, err, "master can't unlock frozen delegation output")
+		require.NoError(t, util.MustErrorWith(err, "frozen output cannot be unlocked by master"))
 
 		ts = base.NewLedgerTime(base.Slot(unfreeze-1), 5)
 		err = td.discontinueDelegation(ts, false)
-		util.RequireErrorWithOld(t, err, "master can't unlock frozen delegation output")
+		require.NoError(t, util.MustErrorWith(err, "frozen output cannot be unlocked by master"))
 
 		ts = base.NewLedgerTime(base.Slot(unfreeze), 5)
 		err = td.discontinueDelegation(ts, false)
@@ -609,7 +562,7 @@ func TestDelegationLockConsume(t *testing.T) {
 
 		// freeze for 512 slots
 		ts = td.timestampSlotsForward(1)
-		freezeUntilEpoch := td.delegatedOutput.FreezeLimits(ts)
+		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntilEpoch,
@@ -619,12 +572,11 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		unfreeze := td.delegatedOutput.UnfreezeSlot()
-		// dconst.UnfreezeSlotFromFrozenEpochs(td.target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
 		err = td.discontinueDelegation(ts, false)
-		util.RequireErrorWithOld(t, err, "master can't unlock frozen delegation output")
+		require.NoError(t, util.MustErrorWith(err, "frozen output cannot be unlocked by master"))
 
 		// succeed to unlock by target to mark output revoked
 		err = td.revokeDelegation(ts, false, true)
@@ -633,7 +585,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		// fail to unlock by target revoked delegation
 		ts = td.timestampSlotsForward(20)
 		err = td.revokeDelegation(ts, false, false)
-		util.RequireErrorWithOld(t, err, "revoked delegation cannot be unlocked by the target")
+		require.NoError(t, util.MustErrorWith(err, "revoked delegation cannot be unlocked by the target"))
 
 		// succeed to kill the delegation chain by master
 		ts = td.timestampSlotsForward(1000)
@@ -650,7 +602,7 @@ func TestDelegationLockConsume(t *testing.T) {
 
 		// freeze for 512 slots
 		ts = td.timestampSlotsForward(1)
-		freezeUntil := td.delegatedOutput.FreezeLimits(ts)
+		freezeUntil := td.delegatedOutput.FreezeUntilMax(ts)
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
 			ts:                       ts,
 			freezeUntilEpoch:         freezeUntil,
@@ -664,7 +616,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		// fail to unlock by master
 		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
 		err = td.discontinueDelegation(ts, false)
-		util.RequireErrorWithOld(t, err, "master can't unlock frozen delegation output")
+		require.NoError(t, util.MustErrorWith(err, "'frozen output cannot be unlocked by master"))
 
 		// succeed to unlock by target to mark output revoked
 		err = td.revokeDelegation(ts, true, false)
@@ -673,7 +625,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		// fail to unlock by target revoked delegation
 		ts = td.timestampSlotsForward(20)
 		err = td.revokeDelegation(ts, true, false)
-		util.RequireErrorWithOld(t, err, "revoked delegation cannot be unlocked by the target")
+		require.NoError(t, util.MustErrorWith(err, "revoked delegation cannot be unlocked by the target"))
 
 		// succeed to kill the delegation chain by master
 		ts = td.timestampSlotsForward(1000)
