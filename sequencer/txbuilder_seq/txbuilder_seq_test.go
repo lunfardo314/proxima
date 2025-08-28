@@ -244,7 +244,7 @@ func delegationInit(master ledger.Accountable, seqID base.ChainID, maxMargin uin
 		Amount:                          1_000_000_000,
 		Master:                          master,
 		Target:                          ledger.ChainLockFromChainID(seqID),
-		MaxFreezeSlots:                  uint16(dcons.MaxFrozenEpochs * dcons.DelegationEpochSlots),
+		MaxFreezeEpochs:                 byte(dcons.MaxFrozenEpochs),
 		MaxToleratedInflationCostMargin: maxMargin,
 		StartSlot:                       0,
 	})
@@ -253,26 +253,6 @@ func delegationInit(master ledger.Accountable, seqID base.ChainID, maxMargin uin
 	dout, ok := ledger.AsDelegationOutput(ret, delegationInitOid)
 	util.Assertf(ok, "AsDelegationOutput")
 	return dout
-}
-
-func TestAdvance(t *testing.T) {
-	privKey := testutil.GetTestingPrivateKey()
-	addr := ledger.AddressED25519FromPrivateKey(privKey)
-	seqID := base.RandomChainID()
-	dInit := delegationInit(addr, seqID, 1000)
-
-	inflationDirect := ledger.L().CalcChainInflationAmountOneSlot(dInit.ID.Slot(), dInit.Output.TokenBalance())
-	inflationSource := ledger.L().CalcChainInflationAmountOneSlotFromSource(dInit.ID.Slot(), dInit.Output.TokenBalance())
-
-	t.Logf("inflationDirect: %s", util.Th(inflationDirect))
-	t.Logf("inflationSource: %s", util.Th(inflationSource))
-	require.Equal(t, inflationDirect, inflationSource)
-
-	ts := dInit.ID.Timestamp().AddSlots(1000)
-	dInit.FreezeUntilMax(ts)
-
-	dconst := ledger.DelegationConst()
-	dInit.FrozenEpochs(ts)
 }
 
 func TestFreeze(t *testing.T) {

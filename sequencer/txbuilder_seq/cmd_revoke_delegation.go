@@ -57,7 +57,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	// ----------
 
 	// ---------- check if revocation even makes sense
-	if !ret.delegation.IsUnlockableByTarget(o.Timestamp().Slot) {
+	if !ret.delegation.IsUnlockableByTarget(uint32(o.Timestamp().Slot)) {
 		// cannot be unlocked by target in the slot
 		return
 	}
