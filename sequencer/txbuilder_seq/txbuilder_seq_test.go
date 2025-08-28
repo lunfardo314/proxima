@@ -238,13 +238,17 @@ func TestBase(t *testing.T) {
 	})
 }
 
-func delegationInit(master ledger.Accountable, seqID base.ChainID, maxMargin uint16) ledger.DelegationOutput {
+func delegationInit(master ledger.Accountable, seqID base.ChainID, maxMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
 	dcons := ledger.DelegationConst()
+	maxEpochs := byte(dcons.MaxFrozenEpochs)
+	if len(maxFreezeEpochs) > 0 {
+		maxEpochs = maxFreezeEpochs[0]
+	}
 	ret := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                          1_000_000_000,
 		Master:                          master,
 		Target:                          ledger.ChainLockFromChainID(seqID),
-		MaxFreezeEpochs:                 byte(dcons.MaxFrozenEpochs),
+		MaxFreezeEpochs:                 maxEpochs,
 		MaxToleratedInflationCostMargin: maxMargin,
 		StartSlot:                       0,
 	})

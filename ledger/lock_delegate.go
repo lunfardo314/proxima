@@ -29,7 +29,7 @@ type (
 
 const (
 	DelegateLockName       = "delegateLock"
-	DelegateLockTemplate   = DelegateLockName + "(%s, %s, %d, z16/%d)"
+	DelegateLockTemplate   = DelegateLockName + "(%s, %s, %s, z16/%d)"
 	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, maxInflationMarginTolerance=%d%%%%)"
 
 	DelegateLockStateName       = "delegateLockState"
@@ -57,7 +57,14 @@ func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte,
 }
 
 func (d *DelegateLock) Source() string {
-	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), d.MaxFrozenEpochs, d.MaxInflationMarginTolerance)
+	dconst := DelegationConst()
+
+	util.Assertf(d.MaxFrozenEpochs <= byte(dconst.MaxFrozenEpochs), "d.MaxFrozenEpochs<=byte(dconst.MaxFrozenEpochs)")
+	m := "0x"
+	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(dconst.MaxFrozenEpochs) {
+		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
+	}
+	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), m, d.MaxInflationMarginTolerance)
 }
 
 func (d *DelegateLock) String() string {
@@ -100,6 +107,10 @@ func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong max frozen epochs: %v", err)
 	}
 	ret.MaxFrozenEpochs = byte(a2)
+	if ret.MaxFrozenEpochs == 0 {
+		// set default
+		ret.MaxFrozenEpochs = byte(DelegationConst().MaxFrozenEpochs)
+	}
 
 	// minimum inflation advance
 	ret.MaxInflationMarginTolerance, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
@@ -554,10 +565,14 @@ func _validDelegationConsumed : and(
    )
 )
 
+// $0 - max frozen epochs as set in the output
+// return uin64: isZero is constDelegationMaxFrozenEpochs, otherwise must be between 1 and constDelegationMaxFrozenEpochs inclusive
+func _adjustedMaxFrozenEpochs: if( isZero($0), uint8Bytes(constDelegationMaxFrozenEpochs), uint8Bytes($0))
+
 // Delegation lock output. Immutable 
 // $0 target chain lock
 // $1 master lock
-// $2 max frozen epochs limit set by the delegator. Must be <= constDelegationMaxFrozenEpochs
+// $2 max frozen epochs limit set by the delegator. If isZero, then default constDelegationMaxFrozenEpochs, otherwise must be <= constDelegationMaxFrozenEpochs
 // $3 max tolerated inflation cost margin, the part of inflation sequencer is allowed to shave from the inflation. In promille   
 //
 // Unlock parameters 3 bytes first 1 or 2 bytes are used to unlock address or chain locks
@@ -565,7 +580,7 @@ func _validDelegationConsumed : and(
 func delegateLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1),
     or(
-       _validDelegationProduced(uint8Bytes($2), uint8Bytes($3)),
+       _validDelegationProduced(_adjustedMaxFrozenEpochs($2), uint8Bytes($3)),
        _validDelegationConsumed($0, $1)
     )
 )
