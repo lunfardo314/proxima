@@ -317,14 +317,18 @@ func TestFreeze(t *testing.T) {
 		dOut, ok := ledger.AsDelegationOutput(o, oid)
 		require.True(t, ok)
 
-		t.Logf("\n%s", dOut.LinesHR("    ").String())
+		t.Logf("\n%s", dOut.LinesSource("    ").String())
 		{
 			_, _, frozenEpochs := dOut.FrozenEpochs(ts)
-			requiredAdvance := dIn.RequiredInflationAdvance(ts, byte(frozenEpochs))
-			inflationDirect := ledger.L().CalcChainInflationAmountOneSlot(ts.Slot, dIn.Output.TokenBalance())
-			inflationFromSource := ledger.L().CalcChainInflationAmountOneSlotFromSource(ts.Slot, dIn.Output.TokenBalance())
-			require.EqualValues(t, inflationFromSource, inflationDirect)
-			t.Logf("inflation one slot: %s, required advance: %s", util.Th(inflationDirect), util.Th(requiredAdvance))
+			requiredAdvance := dIn.RequiredMinimumInflationAdvance(ts, byte(frozenEpochs))
+			inflationOneSlot := ledger.L().CalcChainInflationAmountOneSlot(ts.Slot, dIn.Output.TokenBalance())
+			t.Logf("inflation one slot: %s, required advance: %s", util.Th(inflationOneSlot), util.Th(requiredAdvance))
+			dconst := ledger.DelegationConst()
+			frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(dOut.Target.ChainID(), uint32(dOut.ID.Slot()), byte(frozenEpochs))
+			inflationProjection := ledger.InflationProjection(dOut.Output.TokenBalance(), frozenSlots)
+			t.Logf("frozen epochs: %d, frozen slots: %d, inflation projection: %s", frozenEpochs, frozenSlots, util.Th(inflationProjection))
+			profit := int64(inflationProjection) - int64(requiredAdvance)
+			t.Logf("total profit earned by sequencer: %s (%.2f%%)", util.Th(profit), float64(profit*100)/float64(requiredAdvance))
 		}
 
 		require.NoError(t, errTx)

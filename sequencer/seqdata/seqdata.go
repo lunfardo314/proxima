@@ -15,7 +15,8 @@ type SequencerData struct {
 const (
 	KeyName = byte(iota)
 	KeyMinimumFee
-	KeyInflationMarginPromille
+	KeyInflationProfitMarginPromille
+	KeyGenerous
 	KeyChainHeight
 	KeyBranchHeight
 	KeyPace
@@ -80,13 +81,13 @@ func (sd *SequencerData) IncBranchHeight(add ...uint32) *SequencerData {
 	return sd
 }
 
-func (sd *SequencerData) InflationMarginPromille() (ret uint16) {
-	ret, _ = easyfl_util.Uint16FromBytes(sd.Get(KeyInflationMarginPromille))
+func (sd *SequencerData) InflationProfitMarginPromille() (ret uint16) {
+	ret, _ = easyfl_util.Uint16FromBytes(sd.Get(KeyInflationProfitMarginPromille))
 	return
 }
 
-func (sd *SequencerData) InflationMargin(amount uint64) (ret uint64) {
-	p := sd.InflationMarginPromille()
+func (sd *SequencerData) InflationProfitMargin(amount uint64) (ret uint64) {
+	p := sd.InflationProfitMarginPromille()
 	if p == 0 {
 		return 0
 	}
@@ -101,7 +102,7 @@ func (sd *SequencerData) InflationMargin(amount uint64) (ret uint64) {
 }
 
 func (sd *SequencerData) SetInflationMarginPromille(margin uint16) *SequencerData {
-	sd.Set(KeyInflationMarginPromille, easyfl_util.TrimmedLeadingZeroUint16(margin))
+	sd.Set(KeyInflationProfitMarginPromille, easyfl_util.TrimmedLeadingZeroUint16(margin))
 	return sd
 }
 
@@ -119,6 +120,19 @@ func (sd *SequencerData) SetPace(pace byte) *SequencerData {
 	return sd
 }
 
+func (sd *SequencerData) SetGenerous(generous bool) *SequencerData {
+	if generous {
+		sd.Set(KeyGenerous, []byte{0xff})
+	} else {
+		sd.Set(KeyGenerous, nil)
+	}
+	return sd
+}
+
+func (sd *SequencerData) IsGenerous() bool {
+	return len(sd.Get(KeyGenerous)) > 0
+}
+
 func FromBytes(data []byte) (ret SequencerData, err error) {
 	ret.SmallPersistentMap, err = base.SmallPersistentMapFromBytes(data)
 	return
@@ -129,6 +143,7 @@ func (sd *SequencerData) Lines(prefix ...string) *lines.Lines {
 	ln.Add("%s(%d/%d)", sd.Name(), sd.ChainHeight(), sd.BranchHeight())
 	ln.Add("Minimum fee: %d", sd.MinimumFee())
 	ln.Add("Pace: %d", sd.Pace())
-	ln.Add("Inflation margin promille: %d", sd.InflationMarginPromille())
+	ln.Add("Inflation margin promille: %d", sd.InflationProfitMarginPromille())
+	ln.Add("Generous: %v", sd.IsGenerous())
 	return ln
 }

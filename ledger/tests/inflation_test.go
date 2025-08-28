@@ -224,13 +224,6 @@ func TestInflationConst(t *testing.T) {
 				year, util.Th(amount), float32(amount-amountStart)*100/float32(amountStart), b, 64-b)
 		}
 	})
-	t.Run("inflation advance", func(t *testing.T) {
-		target := base.RandomChainID()
-		for a := uint64(1_000_000_000); a < 20_000_000_000; a += 1_000_000_000 {
-			adv := ledger.InflationAdvanceFromFrozenEpochs(target, 1000, 4, a, 0)
-			t.Logf("amount: %s, advance: %d", util.Th(a), adv)
-		}
-	})
 }
 
 func bits(v int64) (ret int) {

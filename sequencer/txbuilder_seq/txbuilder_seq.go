@@ -190,19 +190,30 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		err = fmt.Errorf("SeqTxBuilder: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
 		return
 	}
-
 	lastEpochToFreeze := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
-	predIdx := byte(len(txb.ConsumedOutputs))
-	delegationOut, requiredAdvance, projectedContributionToInflation, err := delegationIn.MakeDelegationFreezeOutput(
-		txb.TransactionData.Timestamp, lastEpochToFreeze, predIdx)
-	if err != nil {
-		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
+
+	requiredAdvance, projectedContributedInflation, _, _, err := delegationIn.FreezeProjections(txb.TransactionData.Timestamp, lastEpochToFreeze)
+	projectedProfitMargin := int64(projectedContributedInflation) - int64(requiredAdvance)
+	if projectedProfitMargin < 0 {
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation:  required advance is loss-making for the sequencer")
 		return
 	}
-
-	if projectedContributionToInflation < requiredAdvance+txb.SequencerData.InflationMargin(projectedContributionToInflation) {
+	requiredMinimumProfitMarginBySequencer := txb.SequencerData.InflationProfitMargin(projectedContributedInflation)
+	if uint64(projectedProfitMargin) < requiredMinimumProfitMarginBySequencer {
 		// makes no economic sense for the sequencer
-		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation:  advance required by the delegation output is too big")
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation:  required advance makes freezing not profitable enough for the sequencer")
+		return
+	}
+	advance := requiredAdvance
+	if uint64(projectedProfitMargin) > requiredMinimumProfitMarginBySequencer && txb.SequencerData.IsGenerous() {
+		advance = requiredAdvance + uint64(projectedProfitMargin) - requiredMinimumProfitMarginBySequencer
+	}
+
+	predIdx := byte(len(txb.ConsumedOutputs))
+	delegationOut, err := delegationIn.MakeDelegationFreezeOutput(
+		txb.TransactionData.Timestamp, lastEpochToFreeze, predIdx, advance)
+	if err != nil {
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 		return
 	}
 
@@ -213,7 +224,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 	}
 	util.Assertf(idx == predIdx, "idx == predIdx")
 
-	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(requiredAdvance)
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(advance)
 
 	successorIdx, err = txb.ProduceOutput(delegationOut)
 	if err != nil {

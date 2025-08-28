@@ -12,10 +12,10 @@ import (
 
 type (
 	DelegateLock struct {
-		Target                      ChainLock
-		MasterLock                  Accountable
-		MaxFrozenEpochs             byte
-		MaxInflationMarginTolerance uint16 // in promille, <= 1000
+		Target                   ChainLock
+		MasterLock               Accountable
+		MaxFrozenEpochs          byte
+		MaxInflationProfitMargin uint16 // in promille, <= 1000
 	}
 	DelegateLockState struct {
 		LastFrozenEpoch uint32
@@ -49,10 +49,10 @@ const (
 
 func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte, maxToleratedCostMargin uint16) *DelegateLock {
 	return &DelegateLock{
-		Target:                      target,
-		MasterLock:                  master,
-		MaxFrozenEpochs:             maxFreezeEpochs,
-		MaxInflationMarginTolerance: maxToleratedCostMargin,
+		Target:                   target,
+		MasterLock:               master,
+		MaxFrozenEpochs:          maxFreezeEpochs,
+		MaxInflationProfitMargin: maxToleratedCostMargin,
 	}
 }
 
@@ -64,11 +64,11 @@ func (d *DelegateLock) Source() string {
 	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(dconst.MaxFrozenEpochs) {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
 	}
-	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), m, d.MaxInflationMarginTolerance)
+	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), m, d.MaxInflationProfitMargin)
 }
 
 func (d *DelegateLock) String() string {
-	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenEpochs, d.MaxInflationMarginTolerance)
+	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenEpochs, d.MaxInflationProfitMargin)
 }
 
 func (d *DelegateLock) Bytes() []byte {
@@ -113,7 +113,7 @@ func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
 	}
 
 	// minimum inflation advance
-	ret.MaxInflationMarginTolerance, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
+	ret.MaxInflationProfitMargin, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong max inflation margin: %v", err)
 	}
@@ -157,8 +157,8 @@ func initTestDelegateConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(example.MaxFrozenEpochs == 3, "Delegate2LockFromBytes: wrong back 1")
 	util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "Delegate2LockFromBytes: wrong back 2")
-	util.Assertf(exampleBack.MaxInflationMarginTolerance == example.MaxInflationMarginTolerance, "Delegate2LockFromBytes: wrong back 3")
-	util.Assertf(example.MaxInflationMarginTolerance == 10, "Delegate2LockFromBytes: wrong back 4")
+	util.Assertf(exampleBack.MaxInflationProfitMargin == example.MaxInflationProfitMargin, "Delegate2LockFromBytes: wrong back 3")
+	util.Assertf(example.MaxInflationProfitMargin == 10, "Delegate2LockFromBytes: wrong back 4")
 
 	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
 	exampleBack2, err := LockFromBytes(example.Bytes())

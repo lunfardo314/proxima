@@ -797,7 +797,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1000)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		advance -= 1
 		err = td.transitChainWithDelegationRaw(transitRawParams{
@@ -822,7 +822,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(700)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		require.True(t, advance > 0)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
@@ -847,7 +847,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		fc := int64(td.delegatedOutput.Output.TokenBalance() + advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
@@ -872,7 +872,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(900)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs) - 1
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs) - 1
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		fc := int64(td.delegatedOutput.Output.TokenBalance() + advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
@@ -897,7 +897,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
@@ -926,7 +926,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(900)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs) - 1
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs) - 1
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
@@ -955,7 +955,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
@@ -985,7 +985,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(900)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs) - 1
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs) - 1
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
@@ -1015,7 +1015,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(900)
-		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
+		advance := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),

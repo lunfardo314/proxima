@@ -185,6 +185,10 @@ func (o *Output) FrozenCoverage(i byte) int64 {
 	return o.Amounts().FrozenCoverageAt(i)
 }
 
+func (o *Output) InflatableAmount() uint64 {
+	return o.TokenBalance() + uint64(o.FrozenCoverage(0))
+}
+
 func (o *OutputWithChainID) AdjustedFrozenCoverage(txTs base.LedgerTime) int64 {
 	predTs := o.ID.Timestamp()
 	util.Assertf(txTs.AfterOrEqual(predTs), "txTs.AfterOrEqual(predTs)")

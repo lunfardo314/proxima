@@ -94,7 +94,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 		return
 	}
 	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
-	neededCompensation := ledger.InflationForSlots(ret.delegation.Output.TokenBalance(), lostSlots)
+	neededCompensation := ledger.InflationProjection(ret.delegation.Output.TokenBalance(), lostSlots)
 	if neededCompensation < o.Output.TokenBalance() {
 		// projected inflation advance is bigger than number of tokens in the revocation output
 		// -> sequencer do not want loss -> ignore the revocation request
