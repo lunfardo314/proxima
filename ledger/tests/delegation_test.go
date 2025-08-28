@@ -674,6 +674,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 		}
 		o.MustPushConstraint(ledger.DelegateLockState{
 			LastFrozenEpoch: freezeUntil,
+			State:           ledger.DelegateLockStateFrozen,
 		}.Bytes())
 	}))
 	util.AssertNoError(err)
@@ -735,11 +736,11 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegationRaw(transitRawParams{
-			ts:                      td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
-			frozenEpochs:            0,
+			ts:                      td.timestampSlotsForward(1),
+			frozenEpochs:            1,
 			successorFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
 			sequencerFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
-			prntx:                   true,
+			prntx:                   false,
 		})
 		require.NoError(t, err)
 	})
@@ -751,12 +752,12 @@ func TestFrozenCoverage1(t *testing.T) {
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegationRaw(transitRawParams{
-			ts:                      td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
+			ts:                      td.timestampSlotsForward(1),
 			frozenEpochs:            0,
 			successorFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
 			sequencerFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
 			inflationAdvance:        0,
-			prntx:                   true,
+			prntx:                   false,
 		})
 		require.NoError(t, util.MustErrorWith(err, "not enough inflation advance"))
 	})
@@ -780,7 +781,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			successorFrozenCoverage: []int64{int64(td.delegatedOutput.Output.TokenBalance() + advance)},
 			sequencerFrozenCoverage: []int64{int64(td.delegatedOutput.Output.TokenBalance() + advance)},
 			inflationAdvance:        advance,
-			prntx:                   true,
+			prntx:                   false,
 		})
 		require.NoError(t, err)
 	})
@@ -805,7 +806,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			successorFrozenCoverage: []int64{int64(td.delegatedOutput.Output.TokenBalance() + advance)},
 			sequencerFrozenCoverage: []int64{int64(td.delegatedOutput.Output.TokenBalance() + advance)},
 			inflationAdvance:        advance,
-			prntx:                   true,
+			prntx:                   false,
 		})
 		util.RequireErrorWithOld(t, err, "not enough inflation advance")
 	})
@@ -830,7 +831,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			successorFrozenCoverage: []int64{int64(td.delegatedOutput.Output.TokenBalance())},
 			sequencerFrozenCoverage: []int64{int64(td.delegatedOutput.Output.TokenBalance())},
 			inflationAdvance:        advance,
-			prntx:                   true,
+			prntx:                   false,
 		})
 		util.RequireErrorWithOld(t, err, "wrong frozen coverage value")
 	})
@@ -845,7 +846,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, minInflationAdvancePerEpoch)
 		require.NoError(t, err)
 
-		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
+		ts = td.timestampSlotsForward(1)
 		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		fc := int64(td.delegatedOutput.Output.TokenBalance() + advance)
@@ -880,7 +881,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			successorFrozenCoverage: []int64{fc, fc},
 			sequencerFrozenCoverage: []int64{fc, fc},
 			inflationAdvance:        advance,
-			prntx:                   true,
+			prntx:                   false,
 		})
 		util.RequireErrorWithOld(t, err, "not enough inflation advance")
 	})
@@ -892,10 +893,10 @@ func TestFrozenCoverage1(t *testing.T) {
 			minInflationAdvancePerEpoch = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 2, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 4, minInflationAdvancePerEpoch)
 		require.NoError(t, err)
 
-		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
+		ts = td.timestampSlotsForward(1)
 		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		covVect := []int64{
@@ -953,7 +954,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, minInflationAdvancePerEpoch)
 		require.NoError(t, err)
 
-		ts = td.timestampTicksForward(int(ledger.L().ID.TransactionPace))
+		ts = td.timestampSlotsForward(1)
 		advance := td.delegatedOutput.RequiredInflationAdvance(ts, frozenEpochs)
 		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
 		covVect := []int64{
@@ -1029,123 +1030,124 @@ func TestFrozenCoverage1(t *testing.T) {
 			successorFrozenCoverage: covVect,
 			sequencerFrozenCoverage: covVect,
 			inflationAdvance:        advance,
-			prntx:                   true,
+			prntx:                   false,
 		})
-		util.RequireErrorWithOld(t, err, "frozen epochs cannot exceed")
+		util.RequireErrorWithOld(t, err, "frozen epochs value (5) exceed maximum")
 	})
 }
 
-type transitParams struct {
-	ts                      base.LedgerTime
-	frozenEpochs            byte
-	successorFrozenCoverage []int64
-	sequencerFrozenCoverage []int64
-	inflationAdvance        uint64
-	prntx                   bool
-}
+//
+//type transitParams struct {
+//	ts                      base.LedgerTime
+//	frozenEpochs            byte
+//	successorFrozenCoverage []int64
+//	sequencerFrozenCoverage []int64
+//	inflationAdvance        uint64
+//	prntx                   bool
+//}
+//
+//func (td *testData) transitChainWithDelegation(par transitParams) (err error) {
+//	txb := txbuilder.New()
+//
+//	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID, &td.delegatedOutput.OutputWithID)
+//	util.AssertNoError(err)
+//
+//	amounts := append([]int64{int64(td.seqChainOrigin.Output.TokenBalance() - par.inflationAdvance), 0}, par.sequencerFrozenCoverage...)
+//
+//	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
+//	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+//		o.WithAmounts(amounts...)
+//		o.WithLock(td.seqChainOrigin.Output.Lock())
+//		o.MustPushConstraint(successorChainConstraint.Bytes())
+//		o.MustPushConstraint(ledger.NewSequencerConstraint(2).Bytes())
+//	}))
+//	util.AssertNoError(err)
+//
+//	amounts = append([]int64{int64(td.delegatedOutput.Output.TokenBalance() + par.inflationAdvance), 0}, par.successorFrozenCoverage...)
+//
+//	cc := ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount)
+//	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+//		o.WithAmounts(amounts...)
+//		o.WithLock(td.delegatedOutput.Output.Lock())
+//		o.MustPushConstraint(cc.Bytes())
+//		freezeUntil := uint32(0)
+//		if par.frozenEpochs > 0 {
+//			txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot.Uint32())
+//			freezeUntil = txEpoch + uint32(par.frozenEpochs) - 1
+//		}
+//		o.MustPushConstraint(ledger.DelegateLockState{
+//			LastFrozenEpoch: freezeUntil,
+//		}.Bytes())
+//	}))
+//	util.AssertNoError(err)
+//
+//	// unlock
+//	txb.PutSignatureUnlock(0)
+//	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+//
+//	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
+//	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
+//
+//	require.NoError(td, err)
+//
+//	dummyTxId := base.NewTransactionID(par.ts.AddTicks(-5), base.TransactionIDShort{}, true)
+//	txb.PushEndorsements(dummyTxId)
+//
+//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+//	txb.TransactionData.Timestamp = par.ts
+//	txb.TransactionData.SequencerOutputIndex = 0
+//	txb.SignED25519(td.seqPrivateKey)
+//
+//	txBytes, _, txString, err := txb.BytesWithValidation()
+//	if err != nil {
+//		if par.prntx {
+//			err = fmt.Errorf("error: '%v'\n---------------- failing tx --------------\n%s", err, txString)
+//		}
+//		return
+//	}
+//	if par.prntx {
+//		td.Logf("------------- valid transaction -------------:\n%s", txString)
+//	}
+//	err = td.u.AddTransaction(txBytes)
+//
+//	// get delegation tips
+//	td.delegatedOutput, err = td.u.SugaredStateReader().GetDelegatedOutput(td.delegatedOutput.ChainID)
+//	require.NoError(td, err)
+//	if par.prntx {
+//		td.Logf("%s", td.delegatedOutput.LinesSource("     ").String())
+//	}
+//
+//	// get chain tip
+//	td.seqChainOrigin, err = td.u.SugaredStateReader().GetChainOutputWithChainID(td.seqChainOrigin.ChainID)
+//	require.NoError(td, err)
+//
+//	return
+//}
 
-func (td *testData) transitChainWithDelegation(par transitParams) (err error) {
-	txb := txbuilder.New()
-
-	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID, &td.delegatedOutput.OutputWithID)
-	util.AssertNoError(err)
-
-	amounts := append([]int64{int64(td.seqChainOrigin.Output.TokenBalance() - par.inflationAdvance), 0}, par.sequencerFrozenCoverage...)
-
-	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
-	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(amounts...)
-		o.WithLock(td.seqChainOrigin.Output.Lock())
-		o.MustPushConstraint(successorChainConstraint.Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint(2).Bytes())
-	}))
-	util.AssertNoError(err)
-
-	amounts = append([]int64{int64(td.delegatedOutput.Output.TokenBalance() + par.inflationAdvance), 0}, par.successorFrozenCoverage...)
-
-	cc := ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount)
-	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(amounts...)
-		o.WithLock(td.delegatedOutput.Output.Lock())
-		o.MustPushConstraint(cc.Bytes())
-		freezeUntil := uint32(0)
-		if par.frozenEpochs > 0 {
-			txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot.Uint32())
-			freezeUntil = txEpoch + uint32(par.frozenEpochs) - 1
-		}
-		o.MustPushConstraint(ledger.DelegateLockState{
-			LastFrozenEpoch: freezeUntil,
-		}.Bytes())
-	}))
-	util.AssertNoError(err)
-
-	// unlock
-	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
-
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
-
-	require.NoError(td, err)
-
-	dummyTxId := base.NewTransactionID(par.ts.AddTicks(-5), base.TransactionIDShort{}, true)
-	txb.PushEndorsements(dummyTxId)
-
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = par.ts
-	txb.TransactionData.SequencerOutputIndex = 0
-	txb.SignED25519(td.seqPrivateKey)
-
-	txBytes, _, txString, err := txb.BytesWithValidation()
-	if err != nil {
-		if par.prntx {
-			err = fmt.Errorf("error: '%v'\n---------------- failing tx --------------\n%s", err, txString)
-		}
-		return
-	}
-	if par.prntx {
-		td.Logf("------------- valid transaction -------------:\n%s", txString)
-	}
-	err = td.u.AddTransaction(txBytes)
-
-	// get delegation tips
-	td.delegatedOutput, err = td.u.SugaredStateReader().GetDelegatedOutput(td.delegatedOutput.ChainID)
-	require.NoError(td, err)
-	if par.prntx {
-		td.Logf("%s", td.delegatedOutput.LinesSource("     ").String())
-	}
-
-	// get chain tip
-	td.seqChainOrigin, err = td.u.SugaredStateReader().GetChainOutputWithChainID(td.seqChainOrigin.ChainID)
-	require.NoError(td, err)
-
-	return
-}
-
-func TestFrozenCoverage2(t *testing.T) {
-	td := &testData{T: t}
-	var err error
-	var txString string
-	_ = txString
-
-	t.Run("init", func(t *testing.T) {
-		// target consumes initial delegation
-		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 2, 969)
-		require.NoError(t, err)
-
-		err = td.transitChainWithDelegation(transitParams{
-			ts:                      td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
-			frozenEpochs:            0,
-			successorFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
-			sequencerFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
-			inflationAdvance:        0,
-			prntx:                   true,
-		})
-		require.NoError(t, err)
-	})
-}
+//func TestFrozenCoverage2(t *testing.T) {
+//	td := &testData{T: t}
+//	var err error
+//	var txString string
+//	_ = txString
+//
+//	t.Run("init", func(t *testing.T) {
+//		// target consumes initial delegation
+//		td.init()
+//		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+//		_, txString, err = td.initDelegationUTXOMake(ts, 2, 969)
+//		require.NoError(t, err)
+//
+//		err = td.transitChainWithDelegation(transitParams{
+//			ts:                      td.timestampSlotsForward(1),
+//			frozenEpochs:            1,
+//			successorFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
+//			sequencerFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
+//			inflationAdvance:        0,
+//			prntx:                   true,
+//		})
+//		require.NoError(t, err)
+//	})
+//}
 
 func TestDelegationUtil(t *testing.T) {
 	dconst := ledger.DelegationConst()
