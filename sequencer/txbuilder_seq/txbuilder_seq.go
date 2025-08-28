@@ -192,7 +192,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 	}
 	lastEpochToFreeze := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
 
-	requiredAdvance, projectedContributedInflation, _, _, err := delegationIn.FreezeProjections(txb.TransactionData.Timestamp, lastEpochToFreeze)
+	requiredAdvance, projectedContributedInflation, _, _, err := delegationIn.GetFreezeProjections(txb.TransactionData.Timestamp, lastEpochToFreeze)
 	projectedProfitMargin := int64(projectedContributedInflation) - int64(requiredAdvance)
 	if projectedProfitMargin < 0 {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation:  required advance is loss-making for the sequencer")

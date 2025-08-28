@@ -184,7 +184,11 @@ type transitWithMakeParams struct {
 }
 
 func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMakeParams) (err error) {
-	delegatedOut, requiredAdvance, _, err := td.delegatedOutput.MakeDelegationFreezeOutput(par.ts, par.freezeUntilEpoch, 1, par.disableConsistencyChecks)
+	requiredAdvance, _, _, _, err := td.delegatedOutput.GetFreezeProjections(par.ts, par.freezeUntilEpoch)
+	if err != nil {
+		return err
+	}
+	delegatedOut, err := td.delegatedOutput.MakeDelegationFreezeOutput(par.ts, par.freezeUntilEpoch, 1, requiredAdvance, par.disableConsistencyChecks)
 	if err != nil {
 		return err
 	}
@@ -193,10 +197,6 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
 	require.NoError(td, err)
-
-	if requiredAdvance >= td.seqChainOrigin.Output.TokenBalance() {
-		return fmt.Errorf("required advance > balance on chain")
-	}
 
 	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	seqChainIdx, err := txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {

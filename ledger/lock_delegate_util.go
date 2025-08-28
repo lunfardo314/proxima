@@ -135,16 +135,16 @@ func (o *DelegationOutput) UnfreezeSlot() uint32 {
 	return DelegationConst().LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch) + 1
 }
 
-func (o *DelegationOutput) FreezeProjections(txTs base.LedgerTime, freezeUntilEpoch uint32) (requiredAdvance, contributedInflation, inflationOneSlo uint64, frozenEpochs uint32, err error) {
+func (o *DelegationOutput) GetFreezeProjections(txTs base.LedgerTime, freezeUntilEpoch uint32) (requiredAdvance, contributedInflation, inflationOneSlo uint64, frozenEpochs uint32, err error) {
 	dconst := DelegationConst()
 	txEpoch := dconst.EpochFromSlotDirect(o.Target.ChainID(), uint32(txTs.Slot))
 	if freezeUntilEpoch < txEpoch {
-		err = fmt.Errorf("FreezeProjections: wrong value for 'freeze until epoch'")
+		err = fmt.Errorf("GetFreezeProjections: wrong value for 'freeze until epoch'")
 		return
 	}
 	frozenEpochs = freezeUntilEpoch - txEpoch + 1
 	if frozenEpochs > uint32(o.MaxFrozenEpochs) {
-		err = fmt.Errorf("FreezeProjections: frozen epochs exceed limit set by the delegation output (%d): got %d",
+		err = fmt.Errorf("GetFreezeProjections: frozen epochs exceed limit set by the delegation output (%d): got %d",
 			o.MaxFrozenEpochs, freezeUntilEpoch)
 		return
 	}
@@ -173,7 +173,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	var inflationOneSlot, requiredAdvance uint64
 	var frozenEpochs uint32
 
-	if requiredAdvance, _, inflationOneSlot, frozenEpochs, err = o.FreezeProjections(txTs, freezeUntilEpoch); err != nil {
+	if requiredAdvance, _, inflationOneSlot, frozenEpochs, err = o.GetFreezeProjections(txTs, freezeUntilEpoch); err != nil {
 		err = fmt.Errorf("MakeDelegationFreezeOutput: %w", err)
 		return
 	}
