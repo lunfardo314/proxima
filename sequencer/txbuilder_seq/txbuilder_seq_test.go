@@ -270,7 +270,7 @@ func TestFreeze(t *testing.T) {
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
 
 	newPredChain := func(requiredSeqProfitMargin uint16, generous bool, frozen ...int64) *ledger.OutputWithChainID {
-		amounts := append(append(make([]int64, 0), int64(bal), 0), frozen...)
+		amounts := append([]int64{int64(bal), 0}, frozen...)
 
 		sd := seqdata.New().
 			SetName("test_seq").

@@ -135,7 +135,7 @@ func (o *DelegationOutput) UnfreezeSlot() uint32 {
 	return DelegationConst().LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch) + 1
 }
 
-func (o *DelegationOutput) GetFreezeProjections(txTs base.LedgerTime, freezeUntilEpoch uint32) (requiredAdvance, contributedInflation, inflationOneSlo uint64, frozenEpochs uint32, err error) {
+func (o *DelegationOutput) GetFreezeProjections(txTs base.LedgerTime, freezeUntilEpoch uint32) (requiredAdvance, contributedInflation, inflationOneSlot uint64, frozenEpochs uint32, err error) {
 	dconst := DelegationConst()
 	txEpoch := dconst.EpochFromSlotDirect(o.Target.ChainID(), uint32(txTs.Slot))
 	if freezeUntilEpoch < txEpoch {
@@ -149,7 +149,7 @@ func (o *DelegationOutput) GetFreezeProjections(txTs base.LedgerTime, freezeUnti
 		return
 	}
 	requiredAdvance = o.RequiredMinimumInflationAdvance(txTs, byte(frozenEpochs))
-	inflationOneSlot := L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
+	inflationOneSlot = L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), byte(frozenEpochs))
 	contributedInflation = InflationProjection(o.Output.TokenBalance()+inflationOneSlot, uint32(txTs.Slot), frozenSlots)
 	return
