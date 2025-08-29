@@ -264,13 +264,13 @@ func TestFreeze(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.AddressED25519FromPrivateKey(privKey)
 	seqID := base.RandomChainID()
-	bal := ledger.L().ID.MinimumAmountOnSequencer << 8
+	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
 
 	predTs := base.NewLedgerTime(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
 
 	newPredChain := func(requiredSeqProfitMargin uint16, generous bool, frozen ...int64) *ledger.OutputWithChainID {
-		amounts := append([]int64{int64(bal), 0}, frozen...)
+		amounts := append([]int64{int64(seqInitBalance), 0}, frozen...)
 
 		sd := seqdata.New().
 			SetName("test_seq").
@@ -282,7 +282,7 @@ func TestFreeze(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, bal).Bytes())
+			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, seqInitBalance).Bytes())
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
@@ -302,10 +302,10 @@ func TestFreeze(t *testing.T) {
 		return txb
 	}
 
-	runTest := func(seqProfitMargin, maxProfitMargin uint16, generous bool, maxFreezeEpochs byte, prnTx bool) {
-		name := fmt.Sprintf("seqProfit=%d, maxProfit=%d, generous=%v, maxFreezeEpochs=%d", seqProfitMargin, maxProfitMargin, generous, maxFreezeEpochs)
+	runTest := func(seqProfitMargin, maxProfitMarginByDelegator uint16, generous bool, maxFreezeEpochs byte, prnTx bool) {
+		name := fmt.Sprintf("seqProfit=%d, maxProfit=%d, generous=%v, maxFreezeEpochs=%d", seqProfitMargin, maxProfitMarginByDelegator, generous, maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			dIn := delegationInit(addr, seqID, maxProfitMargin, maxFreezeEpochs)
+			dIn := delegationInit(addr, seqID, maxProfitMarginByDelegator, maxFreezeEpochs)
 			//t.Logf("------------\n%s", dIn.LinesHR("    ").String())
 
 			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddTicks(10))
@@ -331,20 +331,39 @@ func TestFreeze(t *testing.T) {
 			dOut, ok := ledger.AsDelegationOutput(o, oid)
 			require.True(t, ok)
 
-			//t.Logf("\n%s", dOut.LinesSource("    ").String())
-			_, _, frozenEpochs := dOut.FrozenEpochs(ts)
-			inflationOneSlot := ledger.L().CalcChainInflationAmountOneSlot(ts.Slot, dIn.Output.TokenBalance())
-			advance := dOut.Output.TokenBalance() - dIn.Output.TokenBalance() - inflationOneSlot
-			t.Logf("advance = %s", util.Th(advance))
-			dconst := ledger.DelegationConst()
-			frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(dOut.Target.ChainID(), uint32(dOut.ID.Slot()), byte(frozenEpochs))
-			inflationContributionProjection := ledger.InflationProjection(dOut.Output.TokenBalance(), uint32(dOut.ID.Slot()), frozenSlots)
-			profit := int64(inflationContributionProjection) - int64(advance)
-			t.Logf("total profit earned by sequencer: %s (%.2f%%)", util.Th(profit), float64(profit*100)/float64(advance))
-			t.Logf("total inflation projection earned by sequencer: %s", util.Th(inflationContributionProjection))
-			t.Logf("profit by sequencer: %s (%.2f%%)", util.Th(profit), float64(profit*100)/float64(advance))
+			// calculate profitability of freezing
+			inflationOneSlotDelegator := ledger.L().CalcChainInflationAmountOneSlot(dIn.ID.Slot(), dIn.Output.TokenBalance())
+			advance := dOut.Output.TokenBalance() - dIn.Output.TokenBalance() - inflationOneSlotDelegator
 
-			require.NoError(t, errTx)
+			_, _, frozenSlots := dOut.FrozenSlots()
+			t.Logf("frozen slots: %d", frozenSlots)
+			t.Logf("advance     : %s", util.Th(advance))
+			dInInflationOneSlot := ledger.L().CalcChainInflationAmountOneSlot(dIn.ID.Slot(), dIn.Output.TokenBalance())
+			frozenAmount := dIn.Output.TokenBalance() + dInInflationOneSlot
+			t.Logf("frozen amount: %s", util.Th(frozenAmount))
+
+			inflationOneSlotSeq := ledger.L().CalcChainInflationAmountOneSlot(predTs.Slot, seqInitBalance)
+			seqInflatableBalanceDoNothing := seqInitBalance + inflationOneSlotSeq
+			seqInflationDoNothing := ledger.InflationProjection(seqInflatableBalanceDoNothing, uint32(ts.Slot), frozenSlots)
+			seqInflatableBalanceFreeze := seqInitBalance + inflationOneSlotSeq - advance + frozenAmount
+			seqInflationFreeze := ledger.InflationProjection(seqInflatableBalanceFreeze, uint32(ts.Slot), frozenSlots)
+			repaymentSeq := int64(seqInflationFreeze) - int64(seqInflationDoNothing)
+			roiSeq := repaymentSeq - int64(advance)
+			roiSeqPercent := 100 * (float64(roiSeq) / float64(advance))
+
+			t.Logf("inflatable balance do nothing: %s, inflation: %s", util.Th(seqInflatableBalanceDoNothing), util.Th(seqInflationDoNothing))
+			t.Logf("    inflatable balance freeze: %s, inflation: %s", util.Th(seqInflatableBalanceFreeze), util.Th(seqInflationFreeze))
+			t.Logf("    Repayment: %s, ROI: %s (%.2f%%)", util.Th(repaymentSeq), util.Th(roiSeq), roiSeqPercent)
+			//
+			//seqOneSlotInflation := ledger.L().CalcChainInflationAmountOneSlot(ts.Slot, advance)
+			//doNothingFinalSeqBalance := seqInitBalance + ledger.InflationProjection(seqInitBalance, uint32(ts.Slot), frozenSlots)
+			//freezeFinalBalance := (dIn.Output.TokenBalance() - advance) + ledger.InflationProjection(dOut.Output.InflatableAmount(), uint32(ts.Slot), frozenSlots)
+			//t.Logf("doNothing final balance = %s", util.Th(doNothingFinalBalance))
+			//t.Logf("   freeze final balance = %s", util.Th(freezeFinalBalance))
+			//t.Logf("                advance = %s", util.Th(advance))
+			//repaymentSeq := int64(freezeFinalBalance) - int64(doNothingFinalBalance)
+			//t.Logf("                    ROI = %s (%.2f%%)", util.Th(repaymentSeq), float64(repaymentSeq*100)/float64(advance))
+
 		})
 
 	}
@@ -352,4 +371,6 @@ func TestFreeze(t *testing.T) {
 	runTest(0, 0, true, 4, false)
 	runTest(0, 500, false, 4, false)
 	runTest(0, 500, true, 4, false)
+	runTest(10, 20, false, 4, false)
+	runTest(10, 20, true, 4, false)
 }

@@ -253,9 +253,13 @@ func (o *DelegationOutput) FrozenEpochs(txTs base.LedgerTime) (from, to, total u
 	return txEpoch, o.LastFrozenEpoch, ret
 }
 
-func (o *DelegationOutput) FrozenSlots(txTs base.LedgerTime) (from, to, total uint32) {
+func (o *DelegationOutput) FrozenSlots(txTs ...base.LedgerTime) (from, to, total uint32) {
+	ts := o.ID.Timestamp()
+	if len(txTs) > 0 {
+		ts = txTs[0]
+	}
 	to = o.UnfreezeSlot() - 1
-	from = txTs.Slot.Uint32()
+	from = ts.Uint32()
 	if to < from {
 		return 0, 0, 0
 	}
