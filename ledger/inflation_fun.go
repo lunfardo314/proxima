@@ -32,10 +32,10 @@ func (lib *Library) BranchInflationBonusDirect(proof []byte) uint64 {
 	return RandomFromSeed(proof, lib.BranchInflationBonusBase()) + 1
 }
 
-func InflationProjection(amount uint64, slots uint32) uint64 {
+func InflationProjection(amount uint64, startSlot, nSlots uint32) uint64 {
 	total := amount
-	for s := uint32(0); s < slots; s++ {
-		total += L().CalcChainInflationAmountOneSlot(base.Slot(s), total)
+	for i := uint32(0); i < nSlots; i++ {
+		total += L().CalcChainInflationAmountOneSlot(base.Slot(startSlot+i), total)
 	}
 	return total - amount
 }

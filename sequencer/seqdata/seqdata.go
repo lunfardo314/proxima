@@ -15,7 +15,7 @@ type SequencerData struct {
 const (
 	KeyName = byte(iota)
 	KeyMinimumFee
-	KeyInflationProfitMarginPromille
+	KeySeqProfitMarginPromille
 	KeyGenerous
 	KeyChainHeight
 	KeyBranchHeight
@@ -82,7 +82,7 @@ func (sd *SequencerData) IncBranchHeight(add ...uint32) *SequencerData {
 }
 
 func (sd *SequencerData) InflationProfitMarginPromille() (ret uint16) {
-	ret, _ = easyfl_util.Uint16FromBytes(sd.Get(KeyInflationProfitMarginPromille))
+	ret, _ = easyfl_util.Uint16FromBytes(sd.Get(KeySeqProfitMarginPromille))
 	return
 }
 
@@ -101,8 +101,8 @@ func (sd *SequencerData) InflationProfitMargin(amount uint64) (ret uint64) {
 	return (amount * uint64(p)) / 1000
 }
 
-func (sd *SequencerData) SetInflationMarginPromille(margin uint16) *SequencerData {
-	sd.Set(KeyInflationProfitMarginPromille, easyfl_util.TrimmedLeadingZeroUint16(margin))
+func (sd *SequencerData) SetSeqProfitMarginPromille(margin uint16) *SequencerData {
+	sd.Set(KeySeqProfitMarginPromille, easyfl_util.TrimmedLeadingZeroUint16(margin))
 	return sd
 }
 

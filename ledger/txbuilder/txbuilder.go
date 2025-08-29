@@ -1012,12 +1012,12 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 
 	delegateOutput := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:                          par.Amount,
-		Master:                          par.Master,
-		Target:                          par.Target,
-		MaxFreezeEpochs:                 par.MaxFrozenEpochs,
-		MaxToleratedInflationCostMargin: par.MaxToleratedInflationCostMargin,
-		StartSlot:                       par.Timestamp.Slot,
+		Amount:             par.Amount,
+		Master:             par.Master,
+		Target:             par.Target,
+		MaxFreezeEpochs:    par.MaxFrozenEpochs,
+		MaxSeqProfitMargin: par.MaxToleratedInflationCostMargin,
+		StartSlot:          par.Timestamp.Slot,
 	})
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)

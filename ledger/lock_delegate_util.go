@@ -19,19 +19,19 @@ type (
 	}
 
 	MakeDelegateInitOutputParams struct {
-		Amount                          uint64
-		Master                          Accountable
-		Target                          ChainLock
-		MaxFreezeEpochs                 byte
-		MaxToleratedInflationCostMargin uint16
-		StartSlot                       base.Slot
+		Amount             uint64
+		Master             Accountable
+		Target             ChainLock
+		MaxFreezeEpochs    byte
+		MaxSeqProfitMargin uint16
+		StartSlot          base.Slot
 	}
 )
 
 func MakeDelegationInitOutput(par MakeDelegateInitOutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmounts(int64(par.Amount))
-		o.WithLock(NewDelegateLock(par.Target, par.Master, par.MaxFreezeEpochs, par.MaxToleratedInflationCostMargin))
+		o.WithLock(NewDelegateLock(par.Target, par.Master, par.MaxFreezeEpochs, par.MaxSeqProfitMargin))
 		o.MustPushConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes())
 		o.MustPushConstraint(DelegateLockState{}.Bytes())
 	})
@@ -151,10 +151,13 @@ func (o *DelegationOutput) GetFreezeProjections(txTs base.LedgerTime, freezeUnti
 	requiredAdvance = o.RequiredMinimumInflationAdvance(txTs, byte(frozenEpochs))
 	inflationOneSlot := L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), byte(frozenEpochs))
-	contributedInflation = InflationProjection(o.Output.TokenBalance()+inflationOneSlot, frozenSlots)
+	contributedInflation = InflationProjection(o.Output.TokenBalance()+inflationOneSlot, uint32(txTs.Slot), frozenSlots)
 	return
 }
 
+// MakeDelegationFreezeOutput constructs successor of the delegation output using maximum possible frozen epochs
+// We do not check correctness of advance here, it must be obtained by GetFreezeProjections and calculated according
+// to the sequencer's logic. If advance is less than required, transaction will be invalid
 func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, advance uint64, disableConsistencyCheck ...bool) (ret *Output, err error) {
 	checkConsistency := len(disableConsistencyCheck) == 0 || !disableConsistencyCheck[0]
 	if checkConsistency && !o.IsUnlockableByTarget(uint32(txTs.Slot)) {
@@ -170,20 +173,16 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 		return
 	}
 
-	var inflationOneSlot, requiredAdvance uint64
+	var inflationOneSlot uint64
 	var frozenEpochs uint32
 
-	if requiredAdvance, _, inflationOneSlot, frozenEpochs, err = o.GetFreezeProjections(txTs, freezeUntilEpoch); err != nil {
+	// Note that GetFreezeProjections is usually called twice: in sequencer and here
+	if _, _, inflationOneSlot, frozenEpochs, err = o.GetFreezeProjections(txTs, freezeUntilEpoch); err != nil {
 		err = fmt.Errorf("MakeDelegationFreezeOutput: %w", err)
 		return
 	}
-	if requiredAdvance > advance {
-		err = fmt.Errorf("MakeDelegationFreezeOutput: advance requirement is loss-making for the sequencer")
-		return
-	}
-
 	ownTokenBalance := o.Output.TokenBalance() + inflationOneSlot
-	successorTokenBalance := ownTokenBalance + requiredAdvance
+	successorTokenBalance := ownTokenBalance + advance
 
 	var amountsVector [15]int64
 	amountsVector[AmountIndexTokenBalance] = int64(successorTokenBalance)
@@ -210,7 +209,7 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 	dconst := DelegationConst()
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), frozenEpochs)
 	amount := o.Output.TokenBalance() + L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
-	return InflationProjection(amount, frozenSlots)
+	return InflationProjection(amount, uint32(txTs.Slot), frozenSlots)
 }
 
 // RequiredMinimumInflationAdvance calculates how big advance requires the delegation output for freezing it,
@@ -349,11 +348,18 @@ func (o *DelegationOutput) _lines(insert func(ln *lines.Lines), prefix ...string
 	ret.Add("Target: %s", o.Target.Source())
 	ret.Add("MaxFrozenEpochs: %d", o.MaxFrozenEpochs)
 	ret.Add("MaxInflationProfitMargin: %d%%", o.MaxInflationProfitMargin)
-	ret.Add("Frozen until epoch: %d", o.LastFrozenEpoch)
-	from, to, total := o.FrozenEpochs(o.Timestamp())
-	ret.Add("Frozen epochs: %d - %d (total: %d)", from, to, total)
-	from, to, total = o.FrozenSlots(o.Timestamp())
-	ret.Add("Frozen slots: %d - %d (total: %d)", from, to, total)
+	if o.IsMarkedFrozen() {
+		ret.Add("Status: frozen")
+		ret.Add("   frozen until epoch: %d", o.LastFrozenEpoch)
+		from, to, total := o.FrozenEpochs(o.Timestamp())
+		ret.Add("   frozen epochs: %d - %d (total: %d)", from, to, total)
+		from, to, total = o.FrozenSlots(o.Timestamp())
+		ret.Add("   frozen slots: %d - %d (total: %d)", from, to, total)
+	} else if o.IsMarkedRevoked() {
+		ret.Add("Status: revoked")
+	} else {
+		ret.Add("Status: undef")
+	}
 	return ret
 
 }
