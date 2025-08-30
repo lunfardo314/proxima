@@ -177,6 +177,10 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) error {
 }
 
 func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput) (successorIdx byte, err error) {
+	if !delegationIn.IsUnlockableByTargetForFreezing(uint32(txb.TransactionData.Timestamp.Slot)) {
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: output cannot be unlocked by the target for freezing:\n%s", delegationIn.LinesHR("   ").String())
+		return
+	}
 	if len(txb.ConsumedOutputs) > 255 {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many inputs")
 		return

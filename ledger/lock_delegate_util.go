@@ -124,6 +124,10 @@ func (o *DelegationOutput) IsUnlockableByTarget(txSlot uint32) bool {
 	return !o.IsInSafeRevocationWindow(txSlot)
 }
 
+func (o *DelegationOutput) IsUnlockableByTargetForFreezing(txSlot uint32) bool {
+	return o.IsUnlockableByTarget(txSlot) && !o.IsInFrozenSlot(txSlot)
+}
+
 func (o *DelegationOutput) IsUnlockableByMaster(txSlot uint32) bool {
 	return !o.IsInFrozenSlot(txSlot)
 }
@@ -160,10 +164,11 @@ func (o *DelegationOutput) GetFreezeProjections(txTs base.LedgerTime, freezeUnti
 // to the sequencer's logic. If advance is less than required, transaction will be invalid
 func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, advance uint64, disableConsistencyCheck ...bool) (ret *Output, err error) {
 	checkConsistency := len(disableConsistencyCheck) == 0 || !disableConsistencyCheck[0]
-	if checkConsistency && !o.IsUnlockableByTarget(uint32(txTs.Slot)) {
-		err = fmt.Errorf("MakeDelegationFreezeOutput: delegation output cannot be unlocked by the target")
+	if checkConsistency && !o.IsUnlockableByTargetForFreezing(uint32(txTs.Slot)) {
+		err = fmt.Errorf("MakeDelegationFreezeOutput: delegation output cannot be unlocked by the target for freezing")
 		return
 	}
+
 	if checkConsistency && o.ID.Slot() >= txTs.Slot {
 		err = fmt.Errorf("MakeDelegationFreezeOutput: successor timestamp must be at least 1 slot after")
 		return

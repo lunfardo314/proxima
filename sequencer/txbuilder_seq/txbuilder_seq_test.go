@@ -260,7 +260,7 @@ func delegationInit(master ledger.Accountable, seqID base.ChainID, startSlot uin
 	return dout
 }
 
-func TestFreeze(t *testing.T) {
+func TestFreezeOneStep(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.AddressED25519FromPrivateKey(privKey)
 	seqID := base.RandomChainID()
@@ -340,7 +340,7 @@ func TestFreeze(t *testing.T) {
 			dOut, ok := ledger.AsDelegationOutput(o, oid)
 			require.True(t, ok)
 
-			// TODO something is fishy. Seq profit projections slightly inconsistent (too good) compared with produced output
+			// TODO something is fishy. Seq profit projections slightly inconsistent (too good) compared to the produced output
 
 			// calculate profitability of freezing
 			inflationOneSlotDelegator := ledger.L().CalcChainInflationAmountOneSlot(dIn.ID.Slot(), dIn.Output.TokenBalance())
@@ -410,4 +410,101 @@ func TestFreeze(t *testing.T) {
 	require.NoError(t, err)
 	err = runTest(100_000_000, 0, 1000, false, 4, false)
 	require.NoError(t, err)
+}
+
+func TestFreezeMultipleSteps(t *testing.T) {
+	privKey := testutil.GetTestingPrivateKey()
+	addr := ledger.AddressED25519FromPrivateKey(privKey)
+	seqID := base.RandomChainID()
+	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
+
+	predTs := base.NewLedgerTime(1000, 50)
+	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
+
+	newPredChain := func(requiredSeqProfitMargin uint16, greedy bool, frozen ...int64) *ledger.OutputWithChainID {
+		amounts := append([]int64{int64(seqInitBalance), 0}, frozen...)
+
+		sd := seqdata.New().
+			SetName("test_seq").
+			IncBranchHeight(2).
+			IncChainHeight(4).
+			SetMinimumFee(1).
+			SetSeqProfitMarginPromille(requiredSeqProfitMargin).
+			SetGreedy(greedy)
+
+		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(amounts...).WithLock(addr)
+			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, seqInitBalance).Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+
+			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
+		})
+
+		pred, ok := ledger.AsOutputWithChainID(predChain, predID)
+		util.Assertf(ok, "AsOutputWithChainID")
+		return &pred
+	}
+
+	newTxb := func(predChain *ledger.OutputWithChainID, ts base.LedgerTime, seqProfitMargin uint16, greedy bool, frozen ...int64) *SeqTxBuilder {
+		txb, err := New(ts, predChain, nil, privKey, multistate.DummyStateReader)
+		util.AssertNoError(err)
+		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
+		err = txb.AddEndorsement(rndEndorsement)
+		util.AssertNoError(err)
+		return txb
+	}
+
+	runTest := func(startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
+		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, greedy, maxFreezeEpochs)
+		t.Run(name, func(t *testing.T) {
+			delegationOutput := delegationInit(addr, seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
+			seqOut := newPredChain(seqProfitMargin, greedy)
+
+			const howMany = 5
+			for i := 0; i < howMany; i++ {
+				ts := base.MaximumTime(predTs.AddSlots(1), delegationOutput.Timestamp().AddSlots(1))
+				t.Logf("ts = %s", ts.String())
+				txb := newTxb(seqOut, ts, seqProfitMargin, greedy)
+
+				succIdx, err := txb.FreezeDelegation(&delegationOutput)
+				if err != nil {
+					errTest = err
+					return
+				}
+				util.Assertf(succIdx == 0, "succIdx==0")
+
+				txBytes, _, txString, errTx := txb.BytesWithValidation()
+				if prnTx {
+					if errTx != nil {
+						t.Logf("------- ERROR: %v\n--------- failing tx --------\n%s", errTx, txString)
+					} else {
+						t.Logf("--------- valid tx --------\n%s", txString)
+					}
+				}
+				if errTx != nil {
+					errTest = err
+					return
+				}
+
+				tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+				if err != nil {
+					errTest = err
+					return
+				}
+				var ok bool
+				delegationOutput, ok = ledger.AsDelegationOutput(tx.MustProducedOutputAt(succIdx), tx.OutputID(0))
+				require.True(t, ok)
+
+				seqOutTmp, ok := ledger.AsOutputWithChainID(tx.MustProducedOutputAt(1), tx.OutputID(1))
+				require.True(t, ok)
+				seqOut = &seqOutTmp
+			}
+
+		})
+		return
+	}
+	var err error
+	err = runTest(0, 10, 990, false, 4, false)
+	require.NoError(t, err)
+
 }
