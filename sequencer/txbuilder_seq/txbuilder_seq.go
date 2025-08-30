@@ -198,15 +198,16 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation:  required advance is loss-making for the sequencer")
 		return
 	}
-	requiredMinimumProfitMarginBySequencer := txb.SequencerData.InflationProfitMargin(projectedContributedInflation)
-	if uint64(projectedProfitMargin) < requiredMinimumProfitMarginBySequencer {
+	requiredMinimumProfitBySequencer := txb.SequencerData.InflationProfitMargin(projectedContributedInflation)
+	if uint64(projectedProfitMargin) < requiredMinimumProfitBySequencer {
 		// makes no economic sense for the sequencer
-		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation:  required advance makes freezing not profitable enough for the sequencer")
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator (%s) makes freezing not profitable enough for the sequencer, expected at least %s",
+			util.Th(requiredAdvance), util.Th(requiredMinimumProfitBySequencer))
 		return
 	}
 	advance := requiredAdvance
-	if uint64(projectedProfitMargin) > requiredMinimumProfitMarginBySequencer && txb.SequencerData.IsGenerous() {
-		advance = requiredAdvance + uint64(projectedProfitMargin) - requiredMinimumProfitMarginBySequencer
+	if uint64(projectedProfitMargin) > requiredMinimumProfitBySequencer && !txb.SequencerData.IsGreedy() {
+		advance = requiredAdvance + uint64(projectedProfitMargin) - requiredMinimumProfitBySequencer
 	}
 
 	predIdx := byte(len(txb.ConsumedOutputs))

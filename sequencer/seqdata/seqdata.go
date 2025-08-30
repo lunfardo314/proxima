@@ -16,7 +16,7 @@ const (
 	KeyName = byte(iota)
 	KeyMinimumFee
 	KeySeqProfitMarginPromille
-	KeyGenerous
+	KeyGreedy
 	KeyChainHeight
 	KeyBranchHeight
 	KeyPace
@@ -120,17 +120,17 @@ func (sd *SequencerData) SetPace(pace byte) *SequencerData {
 	return sd
 }
 
-func (sd *SequencerData) SetGenerous(generous bool) *SequencerData {
-	if generous {
-		sd.Set(KeyGenerous, []byte{0xff})
+func (sd *SequencerData) SetGreedy(greedy bool) *SequencerData {
+	if greedy {
+		sd.Set(KeyGreedy, []byte{0xff})
 	} else {
-		sd.Set(KeyGenerous, nil)
+		sd.Set(KeyGreedy, nil)
 	}
 	return sd
 }
 
-func (sd *SequencerData) IsGenerous() bool {
-	return len(sd.Get(KeyGenerous)) > 0
+func (sd *SequencerData) IsGreedy() bool {
+	return len(sd.Get(KeyGreedy)) > 0
 }
 
 func FromBytes(data []byte) (ret SequencerData, err error) {
@@ -144,6 +144,6 @@ func (sd *SequencerData) Lines(prefix ...string) *lines.Lines {
 	ln.Add("Minimum fee: %d", sd.MinimumFee())
 	ln.Add("Pace: %d", sd.Pace())
 	ln.Add("Inflation margin promille: %d", sd.InflationProfitMarginPromille())
-	ln.Add("Generous: %v", sd.IsGenerous())
+	ln.Add("Greedy: %v", sd.IsGreedy())
 	return ln
 }

@@ -20,7 +20,7 @@ func TestSequencerData(t *testing.T) {
 		sd.IncBranchHeight()
 		sd.IncBranchHeight()
 		sd.SetPace(3)
-		sd.SetGenerous(true)
+		sd.SetGreedy(true)
 		sdBin := sd.Bytes()
 		sdBack, err := FromBytes(sdBin)
 		require.NoError(t, err)
@@ -30,7 +30,7 @@ func TestSequencerData(t *testing.T) {
 			sdBack.ChainHeight() != sd.ChainHeight() ||
 			sdBack.BranchHeight() != sd.BranchHeight() ||
 			sdBack.InflationProfitMarginPromille() != sd.InflationProfitMarginPromille() ||
-			sdBack.IsGenerous() != sd.IsGenerous() ||
+			sdBack.IsGreedy() != sd.IsGreedy() ||
 			sdBack.Pace() != sd.Pace() {
 			t.Error("wrong sequencer data")
 		}

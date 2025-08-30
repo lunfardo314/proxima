@@ -239,7 +239,7 @@ func TestBase(t *testing.T) {
 	})
 }
 
-func delegationInit(master ledger.Accountable, seqID base.ChainID, maxSeqProfitMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
+func delegationInit(master ledger.Accountable, seqID base.ChainID, startSlot uint32, maxSeqProfitMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
 	dcons := ledger.DelegationConst()
 	maxEpochs := byte(dcons.MaxFrozenEpochs)
 	if len(maxFreezeEpochs) > 0 {
@@ -251,9 +251,9 @@ func delegationInit(master ledger.Accountable, seqID base.ChainID, maxSeqProfitM
 		Target:             ledger.ChainLockFromChainID(seqID),
 		MaxFreezeEpochs:    maxEpochs,
 		MaxSeqProfitMargin: maxSeqProfitMargin,
-		StartSlot:          0,
+		StartSlot:          base.Slot(startSlot),
 	})
-	delegationInitOid := base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(2, 50)), 1)
+	delegationInitOid := base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(base.Slot(startSlot), 50)), 1)
 
 	dout, ok := ledger.AsDelegationOutput(ret, delegationInitOid)
 	util.Assertf(ok, "AsDelegationOutput")
@@ -269,7 +269,7 @@ func TestFreeze(t *testing.T) {
 	predTs := base.NewLedgerTime(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
 
-	newPredChain := func(requiredSeqProfitMargin uint16, generous bool, frozen ...int64) *ledger.OutputWithChainID {
+	newPredChain := func(requiredSeqProfitMargin uint16, greedy bool, frozen ...int64) *ledger.OutputWithChainID {
 		amounts := append([]int64{int64(seqInitBalance), 0}, frozen...)
 
 		sd := seqdata.New().
@@ -278,7 +278,7 @@ func TestFreeze(t *testing.T) {
 			IncChainHeight(4).
 			SetMinimumFee(1).
 			SetSeqProfitMarginPromille(requiredSeqProfitMargin).
-			SetGenerous(generous)
+			SetGreedy(greedy)
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
@@ -293,8 +293,8 @@ func TestFreeze(t *testing.T) {
 		return &pred
 	}
 
-	newTxb := func(ts base.LedgerTime, seqProfitMargin uint16, generous bool, frozen ...int64) *SeqTxBuilder {
-		txb, err := New(ts, newPredChain(seqProfitMargin, generous, frozen...), nil, privKey, multistate.DummyStateReader)
+	newTxb := func(ts base.LedgerTime, seqProfitMargin uint16, greedy bool, frozen ...int64) *SeqTxBuilder {
+		txb, err := New(ts, newPredChain(seqProfitMargin, greedy, frozen...), nil, privKey, multistate.DummyStateReader)
 		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -302,17 +302,20 @@ func TestFreeze(t *testing.T) {
 		return txb
 	}
 
-	runTest := func(seqProfitMargin, inflationShareByDelegator uint16, generous bool, maxFreezeEpochs byte, prnTx bool) {
-		name := fmt.Sprintf("seqProfit=%d, inflationShare=%d, generous=%v, maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, generous, maxFreezeEpochs)
+	runTest := func(startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
+		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, greedy, maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			dIn := delegationInit(addr, seqID, inflationShareByDelegator, maxFreezeEpochs)
+			dIn := delegationInit(addr, seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
 			//t.Logf("------------\n%s", dIn.LinesHR("    ").String())
 
-			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddTicks(10))
-			txb := newTxb(ts, seqProfitMargin, generous)
+			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddSlots(1))
+			txb := newTxb(ts, seqProfitMargin, greedy)
 
 			succIdx, err := txb.FreezeDelegation(&dIn)
-			require.NoError(t, err)
+			if err != nil {
+				errTest = err
+				return
+			}
 
 			txBytes, _, txString, errTx := txb.BytesWithValidation()
 			if prnTx {
@@ -322,24 +325,32 @@ func TestFreeze(t *testing.T) {
 					t.Logf("--------- valid tx --------\n%s", txString)
 				}
 			}
-			require.NoError(t, errTx)
+			if errTx != nil {
+				errTest = err
+				return
+			}
 
 			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
-			require.NoError(t, err)
+			if err != nil {
+				errTest = err
+				return
+			}
 			o := tx.MustProducedOutputAt(succIdx)
 			oid := tx.OutputID(succIdx)
 			dOut, ok := ledger.AsDelegationOutput(o, oid)
 			require.True(t, ok)
 
+			// TODO something is fishy. Seq profit projections slightly inconsistent (too good) compared with produced output
+
 			// calculate profitability of freezing
 			inflationOneSlotDelegator := ledger.L().CalcChainInflationAmountOneSlot(dIn.ID.Slot(), dIn.Output.TokenBalance())
 			advance := dOut.Output.TokenBalance() - dIn.Output.TokenBalance() - inflationOneSlotDelegator
 
+			t.Logf("delegation init ID: %s", dIn.ID.String())
 			_, _, frozenSlots := dOut.FrozenSlots()
 			t.Logf("frozen slots: %d", frozenSlots)
 			t.Logf("advance     : %s", util.Th(advance))
-			dInInflationOneSlot := ledger.L().CalcChainInflationAmountOneSlot(dIn.ID.Slot(), dIn.Output.TokenBalance())
-			frozenAmount := dIn.Output.TokenBalance() + dInInflationOneSlot
+			frozenAmount := dIn.Output.TokenBalance() + inflationOneSlotDelegator
 			t.Logf("frozen amount: %s", util.Th(frozenAmount))
 
 			inflationOneSlotSeq := ledger.L().CalcChainInflationAmountOneSlot(predTs.Slot, seqInitBalance)
@@ -353,14 +364,50 @@ func TestFreeze(t *testing.T) {
 
 			t.Logf("inflatable balance do nothing: %s, inflation: %s", util.Th(seqInflatableBalanceDoNothing), util.Th(seqInflationDoNothing))
 			t.Logf("    inflatable balance freeze: %s, inflation: %s", util.Th(seqInflatableBalanceFreeze), util.Th(seqInflationFreeze))
-			t.Logf("    Repayment: %s, ROI: %s (%.2f%%)", util.Th(repaymentSeq), util.Th(roiSeq), roiSeqPercent)
+			t.Logf("Repayment: %s", util.Th(repaymentSeq))
+			t.Logf("Projected profit by sequencer: %s (%.2f%% of advance)", util.Th(roiSeq), roiSeqPercent)
 		})
-
+		return
 	}
-	runTest(0, 1000, false, 4, false)
-	runTest(0, 1000, true, 4, false)
-	runTest(0, 500, false, 4, false)
-	runTest(0, 500, true, 4, false)
-	runTest(10, 980, false, 4, false)
-	runTest(10, 980, true, 4, false)
+	var err error
+	err = runTest(0, 0, 1000, true, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 0, 1000, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 0, 500, true, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 0, 500, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 10, 980, true, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 10, 980, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 10, 990, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 5, 995, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(1000000, 0, 995, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(1000000, 0, 995, true, 4, false)
+	require.NoError(t, err)
+	err = runTest(1000000, 0, 0, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(1000000, 0, 0, true, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 10, 990, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(0, 10, 991, false, 4, false)
+	require.NoError(t, util.MustErrorWith(err, "freezing not profitable enough for the sequencer"))
+	err = runTest(100_000_000, 10, 990, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(100_000_000, 10, 991, false, 4, false)
+	require.NoError(t, util.MustErrorWith(err, "freezing not profitable enough for the sequencer"))
+	err = runTest(100_000_000, 2, 998, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(100_000_000, 2, 999, false, 4, false)
+	require.NoError(t, util.MustErrorWith(err, "freezing not profitable enough for the sequencer"))
+	err = runTest(100_000_000, 1, 999, false, 4, false)
+	require.NoError(t, err)
+	err = runTest(100_000_000, 0, 1000, false, 4, false)
+	require.NoError(t, err)
 }
