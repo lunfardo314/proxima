@@ -12,10 +12,10 @@ import (
 
 type (
 	DelegateLock struct {
-		Target                   ChainLock
-		MasterLock               Accountable
-		MaxFrozenEpochs          byte
-		MaxInflationProfitMargin uint16 // in promille, <= 1000
+		Target                 ChainLock
+		MasterLock             Accountable
+		MaxFrozenEpochs        byte
+		RequiredInflationShare uint16 // in promille, <= 1000
 	}
 	DelegateLockState struct {
 		LastFrozenEpoch uint32
@@ -30,7 +30,7 @@ type (
 const (
 	DelegateLockName       = "delegateLock"
 	DelegateLockTemplate   = DelegateLockName + "(%s, %s, %s, z16/%d)"
-	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, maxInflationMarginTolerance=%d%%%%)"
+	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%%%)"
 
 	DelegateLockStateName       = "delegateLockState"
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"
@@ -49,10 +49,10 @@ const (
 
 func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte, maxToleratedCostMargin uint16) *DelegateLock {
 	return &DelegateLock{
-		Target:                   target,
-		MasterLock:               master,
-		MaxFrozenEpochs:          maxFreezeEpochs,
-		MaxInflationProfitMargin: maxToleratedCostMargin,
+		Target:                 target,
+		MasterLock:             master,
+		MaxFrozenEpochs:        maxFreezeEpochs,
+		RequiredInflationShare: maxToleratedCostMargin,
 	}
 }
 
@@ -64,11 +64,11 @@ func (d *DelegateLock) Source() string {
 	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(dconst.MaxFrozenEpochs) {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
 	}
-	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), m, d.MaxInflationProfitMargin)
+	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), m, d.RequiredInflationShare)
 }
 
 func (d *DelegateLock) String() string {
-	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenEpochs, d.MaxInflationProfitMargin)
+	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenEpochs, d.RequiredInflationShare)
 }
 
 func (d *DelegateLock) Bytes() []byte {
@@ -113,7 +113,7 @@ func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
 	}
 
 	// minimum inflation advance
-	ret.MaxInflationProfitMargin, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
+	ret.RequiredInflationShare, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong max inflation margin: %v", err)
 	}
@@ -157,8 +157,8 @@ func initTestDelegateConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(example.MaxFrozenEpochs == 3, "Delegate2LockFromBytes: wrong back 1")
 	util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "Delegate2LockFromBytes: wrong back 2")
-	util.Assertf(exampleBack.MaxInflationProfitMargin == example.MaxInflationProfitMargin, "Delegate2LockFromBytes: wrong back 3")
-	util.Assertf(example.MaxInflationProfitMargin == 10, "Delegate2LockFromBytes: wrong back 4")
+	util.Assertf(exampleBack.RequiredInflationShare == example.RequiredInflationShare, "Delegate2LockFromBytes: wrong back 3")
+	util.Assertf(example.RequiredInflationShare == 10, "Delegate2LockFromBytes: wrong back 4")
 
 	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
 	exampleBack2, err := LockFromBytes(example.Bytes())
@@ -384,16 +384,19 @@ func _consumedIsInTheSafeRevocationWindowTx :
 func _equalTo1Of2 : or(equal($0,$1), equal($0,$2))
 
 // $0 amount
-// $1 margin in promille
-// = a(1-margin/1000) = (a*(1000-margin))/1000
-func _shaveMargin : div( mul($0, sub(u64/1000,$1)), u64/1000 )
+// $1 share in promille
+// = (a * share)/1000
+func _takeShare : div( mul($0, $1), u64/1000 )
 
 // $0 frozen slots in the transaction
 // $1 slot of the transaction
 // $2 predecessor token balance
-// $3 margin to shave in promille
+// $3 required inflation share in promille (0-1000, uint64)
+// Linear extrapolation rather than precise calculation.
+// Result will be slightly bigger than the precise inflation projection 
+// due to the degrading inflation rate each slot
 func requiredMinimumInflationAdvance :
-	_shaveMargin(
+	_takeShare(
 	  mul(
 		add($0, u64/1),  // plus 1 slot for the inflation in the current transaction 
 		chainInflationOneSlot($1, $2)
@@ -403,16 +406,16 @@ func requiredMinimumInflationAdvance :
 
 func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 
-// $0 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
+// $0 required inflation share in promille (0-1000, uint64)
 // $1 _predecessorTokenBalance
 //
 // It uses an approximation (linear extrapolation) of the future projected inflation (non-linear)
 // At the sequencer side, it must be taken into account that margins are not the same for 
-// the delegator and the sequencer. The difference is minor, however
+// the delegator and the sequencer. The difference is expected to be minor
 func _requiredMinimumInflationAdvance :
      requiredMinimumInflationAdvance(_txFrozenSlots, txSlot, $1, $0) 
 
-// $0 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
+// $0 required inflation share in promille (0-1000, uint64)
 // $1 _predecessorTokenBalance
 func _validInflationAdvanceProduced :
 require(
@@ -441,12 +444,12 @@ and(
 )   
 
 // $0 max frozen epochs (uint64)
-// $1 max tolerated inflation cost margin, the part of the inflation shaved by the sequencer. uint64
+// $1 required inflation share in promille (0-1000, uint64)
 func _validLimitsProduced :
 and(
    	require(
 	   lessOrEqualThan($1, u64/1000),
-	   !!!max_inflation_cost_margin_must_be_in_promille_less_or_equal_than_1000
+	   !!!max_required_inflation_share_must_be_in_promille_less_or_equal_than_1000
 	),
 	or(
 	   and( // frozen
@@ -495,7 +498,7 @@ and(
 
 // checks validity of the composition of the produced constraint 
 // $0 max frozen epochs uint64
-// $1 max inflation margin tolerance, the part of the inflation shaved by the sequencer uint64
+// $1 required inflation share in promille (0-1000, uint64)
 func _validDelegationProduced :
 and(
     selfIsProducedOutput,
@@ -573,7 +576,7 @@ func _adjustedMaxFrozenEpochs: if( isZero($0), uint8Bytes(constDelegationMaxFroz
 // $0 target chain lock
 // $1 master lock
 // $2 max frozen epochs limit set by the delegator. If isZero, then default constDelegationMaxFrozenEpochs, otherwise must be <= constDelegationMaxFrozenEpochs
-// $3 max tolerated inflation cost margin, the part of inflation sequencer is allowed to shave from the inflation. In promille   
+// $3 required inflation share in promille (0-1000, z64).    
 //
 // Unlock parameters 3 bytes first 1 or 2 bytes are used to unlock address or chain locks
 // Bytes with index 2 must be 0xff for master unlock, otherwise it is target unlock 

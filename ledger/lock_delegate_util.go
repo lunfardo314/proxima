@@ -194,7 +194,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 
 	ret = NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amountsVector[:]...)
-		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenEpochs, o.MaxInflationProfitMargin))
+		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenEpochs, o.RequiredInflationShare))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: freezeUntilEpoch, State: DelegateLockStateFrozen}.Bytes())
 	})
@@ -221,7 +221,7 @@ func (o *DelegationOutput) RequiredMinimumInflationAdvance(txTs base.LedgerTime,
 		frozenSlots,
 		txTs.Slot,
 		o.Output.TokenBalance(),
-		o.MaxInflationProfitMargin,
+		o.RequiredInflationShare,
 	)
 
 	resBin, err := L().EvalFromSource(nil, src)
@@ -351,7 +351,7 @@ func (o *DelegationOutput) _lines(insert func(ln *lines.Lines), prefix ...string
 	ret.Add("Master: %s", o.MasterLock.Source())
 	ret.Add("Target: %s", o.Target.Source())
 	ret.Add("MaxFrozenEpochs: %d", o.MaxFrozenEpochs)
-	ret.Add("MaxInflationProfitMargin: %d%%", o.MaxInflationProfitMargin)
+	ret.Add("RequiredInflationShare: %d%%", o.RequiredInflationShare)
 	if o.IsMarkedFrozen() {
 		ret.Add("Status: frozen")
 		ret.Add("   frozen until epoch: %d", o.LastFrozenEpoch)

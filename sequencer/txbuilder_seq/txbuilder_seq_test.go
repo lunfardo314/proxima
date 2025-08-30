@@ -302,10 +302,10 @@ func TestFreeze(t *testing.T) {
 		return txb
 	}
 
-	runTest := func(seqProfitMargin, maxProfitMarginByDelegator uint16, generous bool, maxFreezeEpochs byte, prnTx bool) {
-		name := fmt.Sprintf("seqProfit=%d, maxProfit=%d, generous=%v, maxFreezeEpochs=%d", seqProfitMargin, maxProfitMarginByDelegator, generous, maxFreezeEpochs)
+	runTest := func(seqProfitMargin, inflationShareByDelegator uint16, generous bool, maxFreezeEpochs byte, prnTx bool) {
+		name := fmt.Sprintf("seqProfit=%d, inflationShare=%d, generous=%v, maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, generous, maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			dIn := delegationInit(addr, seqID, maxProfitMarginByDelegator, maxFreezeEpochs)
+			dIn := delegationInit(addr, seqID, inflationShareByDelegator, maxFreezeEpochs)
 			//t.Logf("------------\n%s", dIn.LinesHR("    ").String())
 
 			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddTicks(10))
@@ -354,23 +354,13 @@ func TestFreeze(t *testing.T) {
 			t.Logf("inflatable balance do nothing: %s, inflation: %s", util.Th(seqInflatableBalanceDoNothing), util.Th(seqInflationDoNothing))
 			t.Logf("    inflatable balance freeze: %s, inflation: %s", util.Th(seqInflatableBalanceFreeze), util.Th(seqInflationFreeze))
 			t.Logf("    Repayment: %s, ROI: %s (%.2f%%)", util.Th(repaymentSeq), util.Th(roiSeq), roiSeqPercent)
-			//
-			//seqOneSlotInflation := ledger.L().CalcChainInflationAmountOneSlot(ts.Slot, advance)
-			//doNothingFinalSeqBalance := seqInitBalance + ledger.InflationProjection(seqInitBalance, uint32(ts.Slot), frozenSlots)
-			//freezeFinalBalance := (dIn.Output.TokenBalance() - advance) + ledger.InflationProjection(dOut.Output.InflatableAmount(), uint32(ts.Slot), frozenSlots)
-			//t.Logf("doNothing final balance = %s", util.Th(doNothingFinalBalance))
-			//t.Logf("   freeze final balance = %s", util.Th(freezeFinalBalance))
-			//t.Logf("                advance = %s", util.Th(advance))
-			//repaymentSeq := int64(freezeFinalBalance) - int64(doNothingFinalBalance)
-			//t.Logf("                    ROI = %s (%.2f%%)", util.Th(repaymentSeq), float64(repaymentSeq*100)/float64(advance))
-
 		})
 
 	}
-	runTest(0, 0, false, 4, false)
-	runTest(0, 0, true, 4, false)
+	runTest(0, 1000, false, 4, false)
+	runTest(0, 1000, true, 4, false)
 	runTest(0, 500, false, 4, false)
 	runTest(0, 500, true, 4, false)
-	runTest(10, 20, false, 4, false)
-	runTest(10, 20, true, 4, false)
+	runTest(10, 980, false, 4, false)
+	runTest(10, 980, true, 4, false)
 }

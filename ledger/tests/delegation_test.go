@@ -72,7 +72,7 @@ func (td *testData) init() {
 	td.Logf("==== delegation target : %s (%s)", td.target.String(), util.Th(td.u.Balance(td.target)))
 }
 
-func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, maxFrozenEpochs byte, inflationMarginTolerance uint16, prnOnError bool) ([]byte, error) {
+func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, maxFrozenEpochs byte, inflationShare uint16, prnOnError bool) ([]byte, error) {
 	var txBytes []byte
 
 	// create delegation output
@@ -81,7 +81,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 		return nil, err
 	}
 
-	delegationLock := ledger.NewDelegateLock(td.target, td.masterAddr, maxFrozenEpochs, inflationMarginTolerance)
+	delegationLock := ledger.NewDelegateLock(td.target, td.masterAddr, maxFrozenEpochs, inflationShare)
 	s := ledger.DelegateLockStateUndef
 	if revoked {
 		s = ledger.DelegateLockStateRevoked
@@ -134,14 +134,14 @@ func TestDelegationLock2Init(t *testing.T) {
 	t.Run("fail 1", func(t *testing.T) {
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(1)
-		_, err = td.delegationOriginDirect(ts, true, 1, 5000, true)
-		require.NoError(t, util.MustErrorWith(err, "max inflation cost margin must be in promille less or equal than 1000"))
+		_, err = td.delegationOriginDirect(ts, true, 1, 1200, true)
+		require.NoError(t, util.MustErrorWith(err, "max required inflation share must be in promille less or equal than 1000"))
 	})
 }
 
 const tagAlongFee = 500
 
-func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFrozenEpochs byte, maxToleratedInflationCostMargin uint16) ([]byte, string, error) {
+func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFrozenEpochs byte, inflationShare uint16) ([]byte, string, error) {
 	outs, availableTokens := td.u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(td.masterAddr, delegatedTokens+tagAlongFee)
 	require.True(td, availableTokens >= delegatedTokens+tagAlongFee)
 
@@ -151,7 +151,7 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFrozenEpochs b
 		Master:                          td.masterAddr,
 		Target:                          td.target,
 		MaxFrozenEpochs:                 maxFrozenEpochs,
-		MaxToleratedInflationCostMargin: maxToleratedInflationCostMargin,
+		MaxToleratedInflationCostMargin: inflationShare,
 		MasterPrivateKey:                td.masterPrivateKey,
 		Inputs:                          outs,
 		TagAlongSequencer:               base.RandomChainID(),
@@ -732,7 +732,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 2, 1000)
+		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegationRaw(transitRawParams{
