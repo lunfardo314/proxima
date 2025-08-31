@@ -178,6 +178,22 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) error {
 	return fmt.Errorf("SeqTxBuilder: cannot use output as tag-along:\n%s", o.String())
 }
 
+func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, frozenEpochs byte) (uint64, error) {
+	delegatorRequirement := delegationIn.RequiredInflationShare
+	seqTolerance := 1000 - txb.SequencerData.InflationProfitMarginPromille()
+	if seqTolerance < delegatorRequirement {
+		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
+	}
+	dconst := ledger.DelegationConst()
+	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot), frozenEpochs)
+	projectedInflation := ledger.L().ChainInflation(delegationIn.Output.TokenBalance(), uint32(txb.TransactionData.Timestamp.Slot), frozenSlots)
+
+	if txb.SequencerData.IsGreedy() {
+		return (projectedInflation * uint64(delegatorRequirement)) / 1000, nil
+	}
+	return (projectedInflation * uint64(seqTolerance)) / 1000, nil
+}
+
 func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput) (successorIdx byte, err error) {
 	if !delegationIn.IsUnlockableByTargetForFreezing(uint32(txb.TransactionData.Timestamp.Slot)) {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: output cannot be unlocked by the target for freezing:\n%s", delegationIn.LinesHR("   ").String())
@@ -191,31 +207,20 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
 		return
 	}
-
 	if delegationIn.Target.ChainID() != txb.chainInput.ChainID {
 		err = fmt.Errorf("SeqTxBuilder: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
 		return
 	}
 	lastEpochToFreeze := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
+	dconst := ledger.DelegationConst()
+	txEpoch := dconst.EpochFromSlotDirect(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot))
+	util.Assertf(lastEpochToFreeze >= txEpoch, "lastEpochToFreeze>=txEpoch")
 
-	requiredAdvance, projectedContributedInflation, inflationOneSlot, _, err := delegationIn.GetFreezeProjections(txb.TransactionData.Timestamp, lastEpochToFreeze)
-	projectedProfitMargin := int64(projectedContributedInflation) - int64(requiredAdvance) + int64(inflationOneSlot)
-	if projectedProfitMargin < 0 {
-		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation:  required advance is loss-making for the sequencer")
+	frozenEpochs := lastEpochToFreeze - txEpoch + 1
+	var advance uint64
+	if advance, err = txb.calcAdvance(delegationIn, byte(frozenEpochs)); err != nil {
 		return
 	}
-	requiredMinimumProfitBySequencer := txb.SequencerData.InflationProfitMargin(projectedContributedInflation)
-	if uint64(projectedProfitMargin) < requiredMinimumProfitBySequencer {
-		// makes no economic sense for the sequencer
-		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator (%s) makes freezing not profitable enough for the sequencer, expected at least %s",
-			util.Th(requiredAdvance), util.Th(requiredMinimumProfitBySequencer))
-		return
-	}
-	advance := requiredAdvance
-	if uint64(projectedProfitMargin) > requiredMinimumProfitBySequencer && !txb.SequencerData.IsGreedy() {
-		advance = requiredAdvance + uint64(projectedProfitMargin) - requiredMinimumProfitBySequencer
-	}
-
 	predIdx := byte(len(txb.ConsumedOutputs))
 	delegationOut, err := delegationIn.MakeDelegationFreezeOutput(
 		txb.TransactionData.Timestamp, lastEpochToFreeze, predIdx, advance)
