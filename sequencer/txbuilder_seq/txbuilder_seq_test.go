@@ -454,35 +454,35 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		return txb
 	}
 
-	runTest := func(startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
+	runTest := func(howMany int, startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
 		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, greedy, maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
 			delegationOutput := delegationInit(addr, seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
 			seqOut := newPredChain(seqProfitMargin, greedy)
+			var ok bool
 
-			const howMany = 5
 			for i := 0; i < howMany; i++ {
-				ts := base.MaximumTime(predTs.AddSlots(1), delegationOutput.Timestamp().AddSlots(1))
-				t.Logf("ts = %s", ts.String())
+				ts := base.MaximumTime(seqOut.ID.Timestamp().AddSlots(1), delegationOutput.Timestamp().AddSlots(1))
 				txb := newTxb(seqOut, ts, seqProfitMargin, greedy)
 
-				succIdx, err := txb.FreezeDelegation(&delegationOutput)
-				if err != nil {
-					errTest = err
-					return
-				}
-				util.Assertf(succIdx == 0, "succIdx==0")
+				freeze := delegationOutput.IsUnlockableByTargetForFreezing(uint32(ts.Slot))
+				revocationWindow := delegationOutput.IsInSafeRevocationWindow(uint32(ts.Slot))
 
-				txBytes, _, txString, errTx := txb.BytesWithValidation()
-				if prnTx {
-					if errTx != nil {
-						t.Logf("------- ERROR: %v\n--------- failing tx --------\n%s", errTx, txString)
-					} else {
-						t.Logf("--------- valid tx --------\n%s", txString)
+				if freeze {
+					succIdx, err := txb.FreezeDelegation(&delegationOutput)
+					if err != nil {
+						errTest = err
+						return
 					}
+					util.Assertf(succIdx == 0, "succIdx==0")
+				}
+
+				txBytes, txid, txString, errTx := txb.BytesWithValidation()
+				if errTx != nil {
+					t.Logf("------- ERROR: %v\n--------- failing tx --------\n%s", errTx, txString)
 				}
 				if errTx != nil {
-					errTest = err
+					errTest = errTx
 					return
 				}
 
@@ -491,20 +491,34 @@ func TestFreezeMultipleSteps(t *testing.T) {
 					errTest = err
 					return
 				}
-				var ok bool
-				delegationOutput, ok = ledger.AsDelegationOutput(tx.MustProducedOutputAt(succIdx), tx.OutputID(0))
-				require.True(t, ok)
+				seqOutIdx := byte(0)
+				if freeze {
+					delegationOutput, ok = ledger.AsDelegationOutput(tx.MustProducedOutputAt(0), tx.OutputID(0))
+					require.True(t, ok)
+					seqOutIdx = 1
+				}
 
-				seqOutTmp, ok := ledger.AsOutputWithChainID(tx.MustProducedOutputAt(1), tx.OutputID(1))
+				seqOutTmp, ok := ledger.AsOutputWithChainID(tx.MustProducedOutputAt(seqOutIdx), tx.OutputID(seqOutIdx))
 				require.True(t, ok)
 				seqOut = &seqOutTmp
-			}
 
+				t.Logf("%4d -- %s   SEQ freeze = %v, revocation window = %v  amounts: %s",
+					i, txid.StringShort(), freeze, revocationWindow, seqOut.Output.Amounts().String())
+				if freeze {
+					t.Logf("             delegation amounts: %s", delegationOutput.Output.Amounts().String())
+				}
+				if prnTx {
+					if freeze {
+						t.Logf("\n--------- freeze tx --------\n%s", txString)
+					}
+				}
+
+			}
 		})
 		return
 	}
 	var err error
-	err = runTest(0, 10, 990, false, 4, false)
+	err = runTest(2100, 0, 10, 990, false, 1, false)
 	require.NoError(t, err)
 
 }
