@@ -120,8 +120,10 @@ func MakeSequencerTransactionWithInputLoaderOld(par MakeSequencerTransactionPara
 		} else {
 			// for non-branch
 			if par.ChainInput.Timestamp().Slot != par.Timestamp.Slot {
-				mainChainInflationAmount = ledger.L().CalcChainInflationAmountOneSlot(par.ChainInput.Timestamp().Slot,
-					par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)))
+				mainChainInflationAmount = ledger.L().ChainInflationOneSlot(
+					par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)),
+					uint32(par.ChainInput.Timestamp().Slot),
+				)
 			}
 		}
 	}

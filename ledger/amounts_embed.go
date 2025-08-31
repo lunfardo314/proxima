@@ -61,7 +61,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 			if o.Lock().Name() != DelegateLockName {
 				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
 			}
-			expectedInflation = L().CalcChainInflationAmountOneSlot(predSlot, uint64(inAmount))
+			expectedInflation = L().ChainInflationOneSlot(uint64(inAmount), uint32(predSlot))
 		}
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong chain inflation value. Expected %s, got %s",
 			util.Th(expectedInflation), util.Th(inflation))

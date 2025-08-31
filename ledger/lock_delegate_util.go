@@ -153,9 +153,9 @@ func (o *DelegationOutput) GetFreezeProjections(txTs base.LedgerTime, freezeUnti
 		return
 	}
 	requiredAdvance = o.RequiredMinimumInflationAdvance(txTs, byte(frozenEpochs))
-	inflationOneSlot = L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
+	inflationOneSlot = L().ChainInflationOneSlotDirect(o.Output.TokenBalance(), uint32(o.ID.Slot()))
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), byte(frozenEpochs))
-	contributedInflation = InflationProjection(o.Output.TokenBalance()+inflationOneSlot, uint32(txTs.Slot), frozenSlots)
+	contributedInflation = L().ChainInflationDirect(o.Output.TokenBalance()+inflationOneSlot, uint32(txTs.Slot), frozenSlots)
 	return
 }
 
@@ -213,8 +213,8 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 	}
 	dconst := DelegationConst()
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), frozenEpochs)
-	amount := o.Output.TokenBalance() + L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance())
-	return InflationProjection(amount, uint32(txTs.Slot), frozenSlots)
+	amount := o.Output.TokenBalance() + L().ChainInflationOneSlot(o.Output.TokenBalance(), uint32(o.ID.Slot()))
+	return L().ChainInflationDirect(amount, uint32(txTs.Slot), frozenSlots)
 }
 
 // RequiredMinimumInflationAdvance calculates how big advance requires the delegation output for freezing it,
@@ -317,7 +317,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't harvest more inflation (%s) than generate (%s)",
 			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
-	if !par.DisableConsistencyChecks && par.Inflation > L().CalcChainInflationAmountOneSlot(o.ID.Slot(), o.Output.TokenBalance()) {
+	if !par.DisableConsistencyChecks && par.Inflation > L().ChainInflationOneSlot(o.Output.TokenBalance(), uint32(o.ID.Slot())) {
 		return nil, fmt.Errorf("MakeDelegationRevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
