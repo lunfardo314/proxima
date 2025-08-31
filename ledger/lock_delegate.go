@@ -395,14 +395,7 @@ func _takeShare : div( mul($0, $1), u64/1000 )
 // Linear extrapolation rather than precise calculation.
 // Result will be slightly bigger than the precise inflation projection 
 // due to the degrading inflation rate each slot
-func requiredMinimumInflationAdvance :
-	_takeShare(
-	  mul(
-		add($0, u64/1),  // plus 1 slot for the inflation in the current transaction 
-		chainInflationOneSlot($1, $2)
-	  ),
-	  $3
-	)
+func requiredInflationAdvance : _takeShare( chainInflation( $2, $1, $0), $3 )
 
 func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 
@@ -412,14 +405,14 @@ func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 // It uses an approximation (linear extrapolation) of the future projected inflation (non-linear)
 // At the sequencer side, it must be taken into account that margins are not the same for 
 // the delegator and the sequencer. The difference is expected to be minor
-func _requiredMinimumInflationAdvance :
-     requiredMinimumInflationAdvance(_txFrozenSlots, txSlot, $1, $0) 
+func _requiredInflationAdvance :
+     requiredInflationAdvance(_txFrozenSlots, txSlot, $1, $0) 
 
 // $0 required inflation share in promille (0-1000, uint64)
 // $1 _predecessorTokenBalance
 func _validInflationAdvanceProduced :
 require(
-   lessOrEqualThan( _requiredMinimumInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1)),
+   lessOrEqualThan( _requiredInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1)),
    !!!not_enough_inflation_advance
 )
 

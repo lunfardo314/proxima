@@ -116,8 +116,10 @@ func New(ts base.LedgerTime,
 		} else {
 			// for non-branch
 			if ret.chainInput.Timestamp().Slot != ret.TransactionData.Timestamp.Slot {
-				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.L().CalcChainInflationAmountOneSlot(ret.chainInput.Timestamp().Slot,
-					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0))))
+				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.L().ChainInflationOneSlot(
+					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0)),
+					uint32(ret.chainInput.Timestamp().Slot),
+				))
 			}
 		}
 	}

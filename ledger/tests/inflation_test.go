@@ -195,7 +195,7 @@ func TestInflationConst(t *testing.T) {
 	t.Run("minimum inflatable", func(t *testing.T) {
 		const slot = base.Slot(0)
 		for inAmount := uint64(1_000_000); inAmount < 500_000_000; inAmount += 1 {
-			i := ledger.L().ChainInflationOneSlotDirect(inAmount, uint32(slot))
+			i := ledger.L().ChainInflationOneSlot(inAmount, uint32(slot))
 			if i > 0 {
 				t.Logf("slot: %d, minimum inflatable amount: %s  --> inflation = %d", slot, util.Th(inAmount), i)
 				break
@@ -215,7 +215,7 @@ func TestInflationConst(t *testing.T) {
 			amountStart := amount
 			slot := year * slotsPerYear
 			for i := 0; i < slotsPerYear; i++ {
-				infl := ledger.L().ChainInflationOneSlotDirect(amount, uint32(slot)) + ledger.L().ID.BranchInflationBonusBase
+				infl := ledger.L().ChainInflationOneSlot(amount, uint32(slot)) + ledger.L().ID.BranchInflationBonusBase
 				amount += infl
 				slot += 1
 			}

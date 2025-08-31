@@ -153,9 +153,9 @@ func (o *DelegationOutput) GetFreezeProjections(txTs base.LedgerTime, freezeUnti
 		return
 	}
 	requiredAdvance = o.RequiredMinimumInflationAdvance(txTs, byte(frozenEpochs))
-	inflationOneSlot = L().ChainInflationOneSlotDirect(o.Output.TokenBalance(), uint32(o.ID.Slot()))
+	inflationOneSlot = L().ChainInflationOneSlot(o.Output.TokenBalance(), uint32(o.ID.Slot()))
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), byte(frozenEpochs))
-	contributedInflation = L().ChainInflationDirect(o.Output.TokenBalance()+inflationOneSlot, uint32(txTs.Slot), frozenSlots)
+	contributedInflation = L().ChainInflation(o.Output.TokenBalance()+inflationOneSlot, uint32(txTs.Slot), frozenSlots)
 	return
 }
 
@@ -214,7 +214,7 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 	dconst := DelegationConst()
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), frozenEpochs)
 	amount := o.Output.TokenBalance() + L().ChainInflationOneSlot(o.Output.TokenBalance(), uint32(o.ID.Slot()))
-	return L().ChainInflationDirect(amount, uint32(txTs.Slot), frozenSlots)
+	return L().ChainInflation(amount, uint32(txTs.Slot), frozenSlots)
 }
 
 // RequiredMinimumInflationAdvance calculates how big advance requires the delegation output for freezing it,
@@ -222,7 +222,7 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 func (o *DelegationOutput) RequiredMinimumInflationAdvance(txTs base.LedgerTime, frozenEpochs byte) uint64 {
 	dconst := DelegationConst()
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot.Uint32(), frozenEpochs)
-	src := fmt.Sprintf("requiredMinimumInflationAdvance(u64/%d, u64/%d, u64/%d, u64/%d)",
+	src := fmt.Sprintf("requiredInflationAdvance(u64/%d, u64/%d, u64/%d, u64/%d)",
 		frozenSlots,
 		txTs.Slot,
 		o.Output.TokenBalance(),
