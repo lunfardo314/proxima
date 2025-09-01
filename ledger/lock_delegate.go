@@ -52,12 +52,12 @@ const (
 
 //------------ DelegateLock
 
-func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte, maxToleratedCostMargin uint16) *DelegateLock {
+func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte, requiredInflationShare uint16) *DelegateLock {
 	return &DelegateLock{
 		Target:                 target,
 		MasterLock:             master,
 		MaxFrozenEpochs:        maxFreezeEpochs,
-		RequiredInflationShare: maxToleratedCostMargin,
+		RequiredInflationShare: requiredInflationShare,
 	}
 }
 

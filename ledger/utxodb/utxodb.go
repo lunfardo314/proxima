@@ -328,7 +328,10 @@ func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...
 	if err != nil {
 		return err
 	}
-	outs, err := ledger.ParseAndSortOutputData(outsData, nil, desc...)
+	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
+		_, idx := o.ChainConstraint()
+		return idx == 0xff && o.Lock().Name() == ledger.AddressED25519Name
+	}, desc...)
 	if err != nil {
 		return err
 	}
@@ -519,9 +522,14 @@ func (u *UTXODB) TxToSource(txBytes []byte) string {
 }
 
 // CreateChainOrigin takes all tokens from controller address and puts them on the chain output
-func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts base.LedgerTime) (*ledger.OutputWithChainID, error) {
+func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts base.LedgerTime, initAmount ...uint64) (*ledger.OutputWithChainID, error) {
 	controllerAddress := ledger.AddressED25519FromPrivateKey(controllerPrivateKey)
-	amount := u.Balance(controllerAddress)
+	var amount uint64
+	if len(initAmount) > 0 {
+		amount = initAmount[0]
+	} else {
+		amount = u.Balance(controllerAddress)
+	}
 	td, err := u.MakeTransferInputData(controllerPrivateKey, controllerAddress, ts)
 	if err != nil {
 		return nil, err

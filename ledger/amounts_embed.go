@@ -112,7 +112,8 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expectedVector 1")
 	amounts := o.Amounts()
 
-	// unlock parameters of the delegation lock bust be 3 bytes
+	// unlock parameters of the delegation lock must be 3 bytes
+	// FIXME only if predecessor is delegation lock
 	unlock, err := par.DataContext().UnlockParameters(dOut.PredecessorInputIndex, ConstraintIndexLock)
 	par.RequireNoError(err)
 	par.Require(len(unlock) >= 3, "_checkFrozenCoverageOnDelegateOutput: unlock parameters (%d, %d) must be 3 bytes",

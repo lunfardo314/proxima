@@ -11,6 +11,8 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -425,6 +427,15 @@ type testFreezeMultipleStepsParams struct {
 	prnSlotStats              bool
 }
 
+type _epochStats struct {
+	epoch           uint32
+	firstSlot       uint32
+	nSeqSteps       int
+	nFreezes        int
+	amountsSeqStart ledger.Amounts
+	maxTxBytes      int
+}
+
 func TestFreezeMultipleSteps(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.AddressED25519FromPrivateKey(privKey)
@@ -447,7 +458,6 @@ func TestFreezeMultipleSteps(t *testing.T) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
 			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, seqInitBalance).Bytes())
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
-
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -465,120 +475,108 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		return txb
 	}
 
-	type _epochStats struct {
-		epoch           uint32
-		firstSlot       uint32
-		nSeqSteps       int
-		nFreezes        int
-		amountsSeqStart ledger.Amounts
-		maxTxBytes      int
-	}
-
 	dconst := ledger.DelegationConst()
+	var delegations []ledger.DelegationOutput
 
 	runTest := func(par testFreezeMultipleStepsParams) (errTest error) {
-		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", par.seqProfitMargin, par.inflationShareByDelegator, par.greedy, par.maxFreezeEpochs)
-		t.Run(name, func(t *testing.T) {
-			delegations := make([]ledger.DelegationOutput, par.numDelegations)
-			for i := range delegations {
-				maxFreeze := byte(i) % par.maxFreezeEpochs
-				delegations[i] = delegationInit(addr, seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
+		delegations = make([]ledger.DelegationOutput, par.numDelegations)
+		for i := range delegations {
+			maxFreeze := byte(i) % par.maxFreezeEpochs
+			delegations[i] = delegationInit(addr, seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
+		}
+		seqOut := newPredChain(par.seqProfitMargin, par.greedy)
+		var ok bool
+
+		ts := base.NewLedgerTime(base.Slot(par.startSlot)+base.Slot(par.numDelegations), 50)
+		var txSlot uint32
+		var epochStats *_epochStats
+
+		for step := 0; step < par.howManySteps; step++ {
+			ts = ts.AddSlots(1)
+			txSlot = uint32(ts.Slot)
+			epoch := dconst.EpochFromSlotDirect(seqID, txSlot)
+			if epochStats == nil || epochStats.epoch != epoch {
+				if epochStats != nil && par.prnEpochStats {
+					a := seqOut.Output.TokenBalance()
+					b := epochStats.amountsSeqStart.TokenBalance()
+					var earnings uint64
+					if a > b {
+						earnings = a - b
+					}
+					t.Logf("#%3d (%3d)  start slot: %5d freezes: %3d max txBytes: %5d earned: %s   %s",
+						epochStats.epoch, epochStats.nSeqSteps, epochStats.firstSlot, epochStats.nFreezes, epochStats.maxTxBytes, util.Th(earnings), epochStats.amountsSeqStart.String())
+				}
+				epochStats = &_epochStats{
+					epoch:           epoch,
+					amountsSeqStart: seqOut.Output.Amounts(),
+					firstSlot:       txSlot,
+				}
 			}
-			seqOut := newPredChain(par.seqProfitMargin, par.greedy)
-			var ok bool
+			epochStats.nSeqSteps++
 
-			ts := base.NewLedgerTime(base.Slot(par.startSlot)+base.Slot(par.numDelegations), 50)
-			var txSlot uint32
-			var epochStats *_epochStats
+			txb := newTxb(seqOut, ts, par.seqProfitMargin, par.greedy)
 
-			for step := 0; step < par.howManySteps; step++ {
-				ts = ts.AddSlots(1)
-				txSlot = uint32(ts.Slot)
-				epoch := dconst.EpochFromSlotDirect(seqID, txSlot)
-				if epochStats == nil || epochStats.epoch != epoch {
-					if epochStats != nil && par.prnEpochStats {
-						a := seqOut.Output.TokenBalance()
-						b := epochStats.amountsSeqStart.TokenBalance()
-						var earnings uint64
-						if a > b {
-							earnings = a - b
-						}
-						t.Logf("#%3d (%3d)  start slot: %5d freezes: %3d max txBytes: %5d earned: %s   %s",
-							epochStats.epoch, epochStats.nSeqSteps, epochStats.firstSlot, epochStats.nFreezes, epochStats.maxTxBytes, util.Th(earnings), epochStats.amountsSeqStart.String())
-					}
-					epochStats = &_epochStats{
-						epoch:           epoch,
-						amountsSeqStart: seqOut.Output.Amounts(),
-						firstSlot:       txSlot,
-					}
+			unlockableIndices := make([]int, 0)
+			nInWindow := 0
+			for i := range delegations {
+				if delegations[i].IsUnlockableByTargetForFreezing(uint32(ts.Slot)) {
+					unlockableIndices = append(unlockableIndices, i)
 				}
-				epochStats.nSeqSteps++
-
-				txb := newTxb(seqOut, ts, par.seqProfitMargin, par.greedy)
-
-				unlockableIndices := make([]int, 0)
-				nInWindow := 0
-				for i := range delegations {
-					if delegations[i].IsUnlockableByTargetForFreezing(uint32(ts.Slot)) {
-						unlockableIndices = append(unlockableIndices, i)
-					}
-					if delegations[i].IsInSafeRevocationWindow(uint32(ts.Slot)) {
-						nInWindow++
-					}
+				if delegations[i].IsInSafeRevocationWindow(uint32(ts.Slot)) {
+					nInWindow++
 				}
+			}
 
-				for _, j := range unlockableIndices {
-					_, err := txb.FreezeDelegation(&delegations[j])
-					if err != nil {
-						errTest = err
-						return
-					}
-					epochStats.nFreezes++
-				}
-
-				txBytes, txid, txString, errTx := txb.BytesWithValidation()
-
-				if epochStats.maxTxBytes < len(txBytes) {
-					epochStats.maxTxBytes = len(txBytes)
-				}
-				if errTx != nil {
-					t.Logf("------- ERROR: %v\n--------- failing tx --------\n%s", errTx, txString)
-				}
-				if errTx != nil {
-					errTest = errTx
-					return
-				}
-
-				tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			for _, j := range unlockableIndices {
+				_, err := txb.FreezeDelegation(&delegations[j])
 				if err != nil {
 					errTest = err
 					return
 				}
-				for i, j := range unlockableIndices {
-					delegations[j], ok = ledger.AsDelegationOutput(tx.MustProducedOutputAt(byte(i)), tx.OutputID(byte(i)))
-					require.True(t, ok)
-				}
+				epochStats.nFreezes++
+			}
+			txBytes, txid, txString, errTx := txb.BytesWithValidation()
 
-				seqOutIdx := byte(len(unlockableIndices))
-				seqOutTmp, ok := ledger.AsOutputWithChainID(tx.MustProducedOutputAt(seqOutIdx), tx.OutputID(seqOutIdx))
+			if epochStats.maxTxBytes < len(txBytes) {
+				epochStats.maxTxBytes = len(txBytes)
+			}
+			if errTx != nil {
+				t.Logf("------- ERROR: %v\n--------- failing tx --------\n%s", errTx, txString)
+			}
+			if errTx != nil {
+				errTest = errTx
+				return
+			}
+
+			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			if err != nil {
+				errTest = err
+				return
+			}
+			for i, j := range unlockableIndices {
+				delegations[j], ok = ledger.AsDelegationOutput(tx.MustProducedOutputAt(byte(i)), tx.OutputID(byte(i)))
 				require.True(t, ok)
-				seqOut = &seqOutTmp
-				if par.prnSlotStats {
-					t.Logf("%4d -- %s freeze: %v, safed: %d amounts: %s", step, txid.StringShort(), len(unlockableIndices) > 0, nInWindow, seqOut.Output.Amounts().String())
-					for _, j := range unlockableIndices {
-						t.Logf("            freeze %d, amounts: %s", j, delegations[j].Output.Amounts().String())
-						if par.prnTx {
-							t.Logf("\n--------- freeze tx --------\n%s", txString)
-						}
+			}
+
+			seqOutIdx := byte(len(unlockableIndices))
+			seqOutTmp, ok := ledger.AsOutputWithChainID(tx.MustProducedOutputAt(seqOutIdx), tx.OutputID(seqOutIdx))
+			require.True(t, ok)
+			seqOut = &seqOutTmp
+			if par.prnSlotStats {
+				t.Logf("%4d -- %s freeze: %v, safed: %d amounts: %s", step, txid.StringShort(), len(unlockableIndices) > 0, nInWindow, seqOut.Output.Amounts().String())
+				for _, j := range unlockableIndices {
+					t.Logf("            freeze %d, amounts: %s", j, delegations[j].Output.Amounts().String())
+					if par.prnTx {
+						t.Logf("\n--------- freeze tx --------\n%s", txString)
 					}
 				}
 			}
-		})
+		}
 		return
 	}
 	var err error
-	err = runTest(testFreezeMultipleStepsParams{
-		howManySteps:              1000,
+	par := testFreezeMultipleStepsParams{
+		howManySteps:              2000,
 		numDelegations:            254,
 		startSlot:                 10000,
 		seqProfitMargin:           20,
@@ -588,7 +586,116 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		prnTx:                     false,
 		prnSlotStats:              false,
 		prnEpochStats:             true,
-	})
+	}
+	err = runTest(par)
 	require.NoError(t, err)
 
+}
+
+type (
+	testWithUTXODBData struct {
+		*testing.T
+		privKey       ed25519.PrivateKey
+		addr          ledger.AddressED25519
+		u             *utxodb.UTXODB
+		seqID         base.ChainID
+		delegationIDs []base.ChainID
+	}
+)
+
+func newTestWithUTXODBData(t *testing.T, nDelegations int) *testWithUTXODBData {
+	u := utxodb.NewUTXODB(genesisPrivateKey)
+	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
+	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 1, seqInitBalance*2)
+	ret := &testWithUTXODBData{
+		T:             t,
+		u:             u,
+		privKey:       pk[0],
+		addr:          addrs[0],
+		delegationIDs: make([]base.ChainID, nDelegations),
+	}
+	initTs := base.NewLedgerTime(1000, 50)
+
+	// sequncer chain origin
+	seqChainOrig, err := ret.u.CreateChainOrigin(ret.privKey, initTs, seqInitBalance)
+	require.NoError(t, err)
+	ret.seqID = seqChainOrig.ChainID
+	t.Logf("seqID: %s", ret.seqID.String())
+	ts := seqChainOrig.ID.Timestamp().AddSlots(1)
+	txbSeq, err := New(ts, seqChainOrig, nil, ret.privKey, nil)
+	require.NoError(t, err)
+	rndTxid := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
+	err = txbSeq.AddEndorsement(rndTxid)
+	require.NoError(t, err)
+	txBytes, _, _, err := txbSeq.BytesWithValidation()
+	require.NoError(t, err)
+	err = ret.u.AddTransaction(txBytes)
+	require.NoError(t, err)
+
+	const delegatedAmount = 1_000_000_000
+
+	for i := range ret.delegationIDs {
+		out, err := ret.u.CreateChainOrigin(ret.privKey, initTs.AddSlots(base.Slot(i)), delegatedAmount)
+		require.NoError(t, err)
+
+		ret.delegationIDs[i] = out.ChainID
+		t.Logf("delegation %d: %s", i, out.ChainID.String())
+	}
+
+	txb := txbuilder.New()
+	var ts1 base.LedgerTime
+	for i := range ret.delegationIDs {
+		out := ret.delegationChain(i)
+		ts1 = base.MaximumTime(ts1, out.ID.Timestamp())
+
+		_, err = txb.ConsumeOutput(out.Output, out.ID)
+		require.NoError(t, err)
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			err = txb.PutUnlockReference(byte(i), 1, 0)
+			require.NoError(t, err)
+		}
+		txb.PutUnlockParams(byte(i), 2, ledger.NewChainUnlockParams(byte(i), 2))
+
+		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(out.Output.Amounts()...)
+			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), ret.addr, 4, 980)
+			o.WithLock(delegateLock)
+			o.MustPushConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), 2, out.OriginSlot, out.OriginAmount).Bytes())
+			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
+		}))
+	}
+	txb.TransactionData.Timestamp = ts1.AddSlots(1)
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(ret.privKey)
+
+	var txString string
+	txBytes, _, txString, err = txb.BytesWithValidation()
+	if err != nil {
+		t.Logf("--------- failing tx --------------\n%s", txString)
+	}
+	require.NoError(t, err)
+
+	err = u.AddTransaction(txBytes)
+	require.NoError(t, err)
+
+	return ret
+}
+
+func (td *testWithUTXODBData) seqOutput() *ledger.OutputWithChainID {
+	ret, err := td.u.SugaredStateReader().GetChainOutputWithChainID(td.seqID)
+	util.AssertNoError(err)
+	return &ret
+}
+
+func (td *testWithUTXODBData) delegationChain(i int) *ledger.OutputWithChainID {
+	ret, err := td.u.SugaredStateReader().GetChainOutputWithChainID(td.delegationIDs[i])
+	util.AssertNoError(err)
+	return &ret
+}
+
+func TestWithUTXODB(t *testing.T) {
+	td := newTestWithUTXODBData(t, 3)
+	t.Logf("----- seq init:\n%s", td.seqOutput().LinesHR("   ").String())
 }
