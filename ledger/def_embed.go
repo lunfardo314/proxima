@@ -97,7 +97,7 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"amounts":        evalAmounts,
 	"totalConsumed":  evalTotalConsumed,
 	"totalProduced":  evalTotalProduced,
-	"ticksBefore":    evalTicksBefore64, // TODO make it extended in pure EasyFL
+	"ticksBefore":    evalTicksBefore64, // TODO make it in pure EasyFL
 	"randomFromSeed": evalRandomFromSeed,
 }
 

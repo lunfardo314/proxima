@@ -421,6 +421,8 @@ type testFreezeMultipleStepsParams struct {
 	greedy                    bool
 	maxFreezeEpochs           byte
 	prnTx                     bool
+	prnEpochStats             bool
+	prnSlotStats              bool
 }
 
 func TestFreezeMultipleSteps(t *testing.T) {
@@ -463,28 +465,65 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		return txb
 	}
 
+	type _epochStats struct {
+		epoch           uint32
+		firstSlot       uint32
+		nSeqSteps       int
+		nFreezes        int
+		amountsSeqStart ledger.Amounts
+		maxTxBytes      int
+	}
+
+	dconst := ledger.DelegationConst()
+
 	runTest := func(par testFreezeMultipleStepsParams) (errTest error) {
 		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", par.seqProfitMargin, par.inflationShareByDelegator, par.greedy, par.maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			util.Assertf(par.numDelegations > 0, "par.numDelegations>0")
-
 			delegations := make([]ledger.DelegationOutput, par.numDelegations)
 			for i := range delegations {
-				delegations[i] = delegationInit(addr, seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, par.maxFreezeEpochs)
+				maxFreeze := byte(i) % par.maxFreezeEpochs
+				delegations[i] = delegationInit(addr, seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
 			}
 			seqOut := newPredChain(par.seqProfitMargin, par.greedy)
 			var ok bool
 
 			ts := base.NewLedgerTime(base.Slot(par.startSlot)+base.Slot(par.numDelegations), 50)
+			var txSlot uint32
+			var epochStats *_epochStats
 
 			for step := 0; step < par.howManySteps; step++ {
 				ts = ts.AddSlots(1)
+				txSlot = uint32(ts.Slot)
+				epoch := dconst.EpochFromSlotDirect(seqID, txSlot)
+				if epochStats == nil || epochStats.epoch != epoch {
+					if epochStats != nil && par.prnEpochStats {
+						a := seqOut.Output.TokenBalance()
+						b := epochStats.amountsSeqStart.TokenBalance()
+						var earnings uint64
+						if a > b {
+							earnings = a - b
+						}
+						t.Logf("#%3d (%3d)  start slot: %5d freezes: %3d max txBytes: %5d earned: %s   %s",
+							epochStats.epoch, epochStats.nSeqSteps, epochStats.firstSlot, epochStats.nFreezes, epochStats.maxTxBytes, util.Th(earnings), epochStats.amountsSeqStart.String())
+					}
+					epochStats = &_epochStats{
+						epoch:           epoch,
+						amountsSeqStart: seqOut.Output.Amounts(),
+						firstSlot:       txSlot,
+					}
+				}
+				epochStats.nSeqSteps++
+
 				txb := newTxb(seqOut, ts, par.seqProfitMargin, par.greedy)
 
 				unlockableIndices := make([]int, 0)
+				nInWindow := 0
 				for i := range delegations {
 					if delegations[i].IsUnlockableByTargetForFreezing(uint32(ts.Slot)) {
 						unlockableIndices = append(unlockableIndices, i)
+					}
+					if delegations[i].IsInSafeRevocationWindow(uint32(ts.Slot)) {
+						nInWindow++
 					}
 				}
 
@@ -494,9 +533,14 @@ func TestFreezeMultipleSteps(t *testing.T) {
 						errTest = err
 						return
 					}
+					epochStats.nFreezes++
 				}
 
 				txBytes, txid, txString, errTx := txb.BytesWithValidation()
+
+				if epochStats.maxTxBytes < len(txBytes) {
+					epochStats.maxTxBytes = len(txBytes)
+				}
 				if errTx != nil {
 					t.Logf("------- ERROR: %v\n--------- failing tx --------\n%s", errTx, txString)
 				}
@@ -519,11 +563,13 @@ func TestFreezeMultipleSteps(t *testing.T) {
 				seqOutTmp, ok := ledger.AsOutputWithChainID(tx.MustProducedOutputAt(seqOutIdx), tx.OutputID(seqOutIdx))
 				require.True(t, ok)
 				seqOut = &seqOutTmp
-				t.Logf("%4d -- %s freeze: %d, amounts: %s", step, txid.StringShort(), len(unlockableIndices), seqOut.Output.Amounts().String())
-				for _, j := range unlockableIndices {
-					t.Logf("            freeze %d, amounts: %s", j, delegations[j].Output.Amounts().String())
-					if par.prnTx {
-						t.Logf("\n--------- freeze tx --------\n%s", txString)
+				if par.prnSlotStats {
+					t.Logf("%4d -- %s freeze: %v, safed: %d amounts: %s", step, txid.StringShort(), len(unlockableIndices) > 0, nInWindow, seqOut.Output.Amounts().String())
+					for _, j := range unlockableIndices {
+						t.Logf("            freeze %d, amounts: %s", j, delegations[j].Output.Amounts().String())
+						if par.prnTx {
+							t.Logf("\n--------- freeze tx --------\n%s", txString)
+						}
 					}
 				}
 			}
@@ -532,14 +578,16 @@ func TestFreezeMultipleSteps(t *testing.T) {
 	}
 	var err error
 	err = runTest(testFreezeMultipleStepsParams{
-		howManySteps:              2100,
-		numDelegations:            2,
+		howManySteps:              1000,
+		numDelegations:            254,
 		startSlot:                 10000,
-		seqProfitMargin:           10,
-		inflationShareByDelegator: 990,
+		seqProfitMargin:           20,
+		inflationShareByDelegator: 980,
 		greedy:                    false,
-		maxFreezeEpochs:           2,
+		maxFreezeEpochs:           4,
 		prnTx:                     false,
+		prnSlotStats:              false,
+		prnEpochStats:             true,
 	})
 	require.NoError(t, err)
 
