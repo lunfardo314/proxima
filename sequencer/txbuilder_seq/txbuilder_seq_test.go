@@ -412,6 +412,17 @@ func TestFreezeOneStep(t *testing.T) {
 	require.NoError(t, err)
 }
 
+type testFreezeMultipleStepsParams struct {
+	howManySteps              int
+	numDelegations            int
+	startSlot                 uint32
+	seqProfitMargin           uint16
+	inflationShareByDelegator uint16
+	greedy                    bool
+	maxFreezeEpochs           byte
+	prnTx                     bool
+}
+
 func TestFreezeMultipleSteps(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.AddressED25519FromPrivateKey(privKey)
@@ -421,9 +432,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 	predTs := base.NewLedgerTime(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
 
-	newPredChain := func(requiredSeqProfitMargin uint16, greedy bool, frozen ...int64) *ledger.OutputWithChainID {
-		amounts := append([]int64{int64(seqInitBalance), 0}, frozen...)
-
+	newPredChain := func(requiredSeqProfitMargin uint16, greedy bool) *ledger.OutputWithChainID {
 		sd := seqdata.New().
 			SetName("test_seq").
 			IncBranchHeight(2).
@@ -433,7 +442,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 			SetGreedy(greedy)
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(amounts...).WithLock(addr)
+			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
 			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, seqInitBalance).Bytes())
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
 
@@ -445,7 +454,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		return &pred
 	}
 
-	newTxb := func(predChain *ledger.OutputWithChainID, ts base.LedgerTime, seqProfitMargin uint16, greedy bool, frozen ...int64) *SeqTxBuilder {
+	newTxb := func(predChain *ledger.OutputWithChainID, ts base.LedgerTime, seqProfitMargin uint16, greedy bool) *SeqTxBuilder {
 		txb, err := New(ts, predChain, nil, privKey, multistate.DummyStateReader)
 		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
@@ -454,27 +463,37 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		return txb
 	}
 
-	runTest := func(howMany int, startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
-		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, greedy, maxFreezeEpochs)
+	runTest := func(par testFreezeMultipleStepsParams) (errTest error) {
+		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", par.seqProfitMargin, par.inflationShareByDelegator, par.greedy, par.maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			delegationOutput := delegationInit(addr, seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
-			seqOut := newPredChain(seqProfitMargin, greedy)
+			util.Assertf(par.numDelegations > 0, "par.numDelegations>0")
+
+			delegations := make([]ledger.DelegationOutput, par.numDelegations)
+			for i := range delegations {
+				delegations[i] = delegationInit(addr, seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, par.maxFreezeEpochs)
+			}
+			seqOut := newPredChain(par.seqProfitMargin, par.greedy)
 			var ok bool
 
-			for i := 0; i < howMany; i++ {
-				ts := base.MaximumTime(seqOut.ID.Timestamp().AddSlots(1), delegationOutput.Timestamp().AddSlots(1))
-				txb := newTxb(seqOut, ts, seqProfitMargin, greedy)
+			ts := base.NewLedgerTime(base.Slot(par.startSlot)+base.Slot(par.numDelegations), 50)
 
-				freeze := delegationOutput.IsUnlockableByTargetForFreezing(uint32(ts.Slot))
-				revocationWindow := delegationOutput.IsInSafeRevocationWindow(uint32(ts.Slot))
+			for step := 0; step < par.howManySteps; step++ {
+				ts = ts.AddSlots(1)
+				txb := newTxb(seqOut, ts, par.seqProfitMargin, par.greedy)
 
-				if freeze {
-					succIdx, err := txb.FreezeDelegation(&delegationOutput)
+				unlockableIndices := make([]int, 0)
+				for i := range delegations {
+					if delegations[i].IsUnlockableByTargetForFreezing(uint32(ts.Slot)) {
+						unlockableIndices = append(unlockableIndices, i)
+					}
+				}
+
+				for _, j := range unlockableIndices {
+					_, err := txb.FreezeDelegation(&delegations[j])
 					if err != nil {
 						errTest = err
 						return
 					}
-					util.Assertf(succIdx == 0, "succIdx==0")
 				}
 
 				txBytes, txid, txString, errTx := txb.BytesWithValidation()
@@ -491,34 +510,37 @@ func TestFreezeMultipleSteps(t *testing.T) {
 					errTest = err
 					return
 				}
-				seqOutIdx := byte(0)
-				if freeze {
-					delegationOutput, ok = ledger.AsDelegationOutput(tx.MustProducedOutputAt(0), tx.OutputID(0))
+				for i, j := range unlockableIndices {
+					delegations[j], ok = ledger.AsDelegationOutput(tx.MustProducedOutputAt(byte(i)), tx.OutputID(byte(i)))
 					require.True(t, ok)
-					seqOutIdx = 1
 				}
 
+				seqOutIdx := byte(len(unlockableIndices))
 				seqOutTmp, ok := ledger.AsOutputWithChainID(tx.MustProducedOutputAt(seqOutIdx), tx.OutputID(seqOutIdx))
 				require.True(t, ok)
 				seqOut = &seqOutTmp
-
-				t.Logf("%4d -- %s   SEQ freeze = %v, revocation window = %v  amounts: %s",
-					i, txid.StringShort(), freeze, revocationWindow, seqOut.Output.Amounts().String())
-				if freeze {
-					t.Logf("             delegation amounts: %s", delegationOutput.Output.Amounts().String())
-				}
-				if prnTx {
-					if freeze {
+				t.Logf("%4d -- %s freeze: %d, amounts: %s", step, txid.StringShort(), len(unlockableIndices), seqOut.Output.Amounts().String())
+				for _, j := range unlockableIndices {
+					t.Logf("            freeze %d, amounts: %s", j, delegations[j].Output.Amounts().String())
+					if par.prnTx {
 						t.Logf("\n--------- freeze tx --------\n%s", txString)
 					}
 				}
-
 			}
 		})
 		return
 	}
 	var err error
-	err = runTest(2100, 0, 10, 990, false, 1, false)
+	err = runTest(testFreezeMultipleStepsParams{
+		howManySteps:              2100,
+		numDelegations:            2,
+		startSlot:                 10000,
+		seqProfitMargin:           10,
+		inflationShareByDelegator: 990,
+		greedy:                    false,
+		maxFreezeEpochs:           2,
+		prnTx:                     false,
+	})
 	require.NoError(t, err)
 
 }

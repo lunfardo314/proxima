@@ -95,7 +95,9 @@ func (o *DelegationOutput) IsMarkedRevoked() bool {
 
 // IsInFrozenSlot true means only target can consume it in the slot
 func (o *DelegationOutput) IsInFrozenSlot(slot uint32) bool {
-	util.Assertf(uint32(o.ID.Slot()) <= slot, "uint32(o.ID.Slot()) <= slot")
+	if slot < uint32(o.ID.Slot()) {
+		return false
+	}
 	if o.IsMarkedRevoked() || !o.IsMarkedFrozen() {
 		return false
 	}

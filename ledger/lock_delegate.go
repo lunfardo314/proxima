@@ -43,6 +43,11 @@ const (
 	EnsureRevocationName       = "ensureRevocation"
 	EnsureRevocationTemplate   = EnsureRevocationName + "(0x%s)"
 	EnsureRevocationTemplateHR = EnsureRevocationName + "(%s)"
+
+	// 3rd unlock byte in the delegation output unlock parameters
+
+	DelegationUnlockedByTarget = byte(0)
+	DelegationUnlockedByMaster = byte(0xff)
 )
 
 //------------ DelegateLock
