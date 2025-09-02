@@ -155,6 +155,22 @@ func New(ts base.LedgerTime,
 	return ret, nil
 }
 
+func NewWithSequencerID(ts base.LedgerTime,
+	seqID base.ChainID,
+	privateKey ed25519.PrivateKey,
+	rdr multistate.SugaredStateReader) (*SeqTxBuilder, error) {
+
+	seqIn, err := rdr.GetChainOutputWithChainID(seqID)
+	if err != nil {
+		return nil, fmt.Errorf("error while retrieving chain origin for %s: %w", seqID.String(), err)
+	}
+	var stemIn *ledger.OutputWithID
+	if ts.IsSlotBoundary() {
+		stemIn = rdr.GetStemOutput()
+	}
+	return New(ts, &seqIn, stemIn, privateKey, rdr)
+}
+
 func (txb *SeqTxBuilder) IsSlotBoundary() bool {
 	return txb.TransactionData.Timestamp.IsSlotBoundary()
 }

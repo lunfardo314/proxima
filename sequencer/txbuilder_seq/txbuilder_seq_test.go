@@ -603,7 +603,7 @@ type (
 	}
 )
 
-func newTestWithUTXODBData(t *testing.T, nDelegations int) *testWithUTXODBData {
+func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData, base.LedgerTime) {
 	u := utxodb.NewUTXODB(genesisPrivateKey)
 	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
 	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 1, seqInitBalance*2)
@@ -616,7 +616,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) *testWithUTXODBData {
 	}
 	initTs := base.NewLedgerTime(1000, 50)
 
-	// sequncer chain origin
+	// sequencer chain origin
 	seqChainOrig, err := ret.u.CreateChainOrigin(ret.privKey, initTs, seqInitBalance)
 	require.NoError(t, err)
 	ret.seqID = seqChainOrig.ChainID
@@ -658,9 +658,11 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) *testWithUTXODBData {
 		}
 		txb.PutUnlockParams(byte(i), 2, ledger.NewChainUnlockParams(byte(i), 2))
 
+		maxFreezeEpochs := byte(uint32(i)%ledger.DelegationConst().MaxFrozenEpochs + 1)
+
 		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(out.Output.Amounts()...)
-			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), ret.addr, 4, 980)
+			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), ret.addr, maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
 			o.MustPushConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), 2, out.OriginSlot, out.OriginAmount).Bytes())
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
@@ -680,7 +682,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) *testWithUTXODBData {
 	err = u.AddTransaction(txBytes)
 	require.NoError(t, err)
 
-	return ret
+	return ret, ts
 }
 
 func (td *testWithUTXODBData) seqOutput() *ledger.OutputWithChainID {
@@ -695,7 +697,63 @@ func (td *testWithUTXODBData) delegationChain(i int) *ledger.OutputWithChainID {
 	return &ret
 }
 
+func (td *testWithUTXODBData) freezableDelegations(ts base.LedgerTime, rdr multistate.SugaredStateReader) []ledger.DelegationOutput {
+	ret := make([]ledger.DelegationOutput, 0)
+	for _, did := range td.delegationIDs {
+		o, err := rdr.GetChainOutputWithChainID(did)
+		require.NoError(td, err)
+		dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID)
+		require.True(td, ok)
+		if dOut.IsUnlockableByTargetForFreezing(uint32(ts.Slot)) {
+			ret = append(ret, dOut)
+		}
+	}
+	return ret
+}
+
 func TestWithUTXODB(t *testing.T) {
-	td := newTestWithUTXODBData(t, 3)
-	t.Logf("----- seq init:\n%s", td.seqOutput().LinesHR("   ").String())
+	const (
+		numDelegations = 10
+		howManySteps   = 4000
+	)
+	td, ts := newTestWithUTXODBData(t, numDelegations)
+	//t.Logf("----- seq init:\n%s", td.seqOutput().LinesHR("   ").String())
+
+	var txSize int
+
+	for i := 0; i < howManySteps; i++ {
+		rdr := td.u.SugaredStateReader()
+		seqOut, err := rdr.GetChainOutputWithID(td.seqID)
+		require.NoError(t, err)
+
+		ts = ts.AddSlots(1)
+		freezable := td.freezableDelegations(ts, rdr)
+		freeze := ""
+		if len(freezable) > 0 {
+			freeze = fmt.Sprintf("   <- freeze %d", len(freezable))
+		}
+		t.Logf("%4d %s seq balance: %s, txSize: %d txTs: %s %s",
+			i, seqOut.ID.StringShort(), util.Th(seqOut.Output.TokenBalance()), txSize, ts.String(), freeze)
+
+		txb, err := NewWithSequencerID(ts, td.seqID, td.privKey, rdr)
+		require.NoError(t, err)
+		err = txb.AddEndorsement(base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0)))
+		require.NoError(t, err)
+
+		for _, dIn := range freezable {
+			_, err = txb.FreezeDelegation(&dIn)
+			require.NoError(t, err)
+
+			t.Logf("    freeze %s (%s) -- %s", dIn.ID.StringShort(), util.Th(dIn.Output.TokenBalance()), dIn.ChainID.StringShort())
+		}
+
+		txBytes, _, txString, err := txb.BytesWithValidation()
+		if err != nil {
+			t.Logf("--------- failing tx --------------\n%s", txString)
+		}
+		require.NoError(t, err)
+		err = td.u.AddTransaction(txBytes)
+		txSize = len(txBytes)
+	}
+
 }

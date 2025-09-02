@@ -116,6 +116,9 @@ func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
 
 // IsUnlockableByTarget true if it is not revoked and not in the safe revocation window
 func (o *DelegationOutput) IsUnlockableByTarget(txSlot uint32) bool {
+	if uint32(o.ID.Timestamp().Slot) >= txSlot {
+		return false
+	}
 	if o.IsMarkedRevoked() {
 		return false
 	}
@@ -364,7 +367,7 @@ func (o *DelegationOutput) _lines(insert func(ln *lines.Lines), prefix ...string
 	ret.Add("Master: %s", o.MasterLock.Source())
 	ret.Add("Target: %s", o.Target.Source())
 	ret.Add("MaxFrozenEpochs: %d", o.MaxFrozenEpochs)
-	ret.Add("RequiredInflationShare: %d%%", o.RequiredInflationShare)
+	ret.Add("RequiredInflationShare: %d%%%%", o.RequiredInflationShare)
 	if o.IsMarkedFrozen() {
 		ret.Add("Status: frozen")
 		ret.Add("   frozen until epoch: %d", o.LastFrozenEpoch)
