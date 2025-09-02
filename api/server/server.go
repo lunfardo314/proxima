@@ -726,7 +726,7 @@ func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Requ
 
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
 		var err1 error
-		bySeq, err1 = rdr.GetDelegationsBySequencer()
+		bySeq, err1 = rdr.GetAllDelegationsBySequencer()
 		if err1 != nil {
 			return err1
 		}

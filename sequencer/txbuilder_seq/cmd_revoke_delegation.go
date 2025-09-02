@@ -1,6 +1,7 @@
 package txbuilder_seq
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"fmt"
 
@@ -8,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
 )
 
 type RevokeDelegationCommand struct {
@@ -75,7 +75,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 		// wrong master (cannot be)
 		return
 	}
-	if msg.SenderHash != blake2b.Sum256(master) {
+	if !bytes.Equal(msg.SenderHash[:], master) {
 		// this sender cannot revoke delegation -> may be an attack
 		return
 	}

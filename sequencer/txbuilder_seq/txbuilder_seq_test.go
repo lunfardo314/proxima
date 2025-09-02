@@ -699,17 +699,11 @@ func (td *testWithUTXODBData) delegationChain(i int) *ledger.OutputWithChainID {
 	return &ret
 }
 
-func (td *testWithUTXODBData) freezableDelegations(ts base.LedgerTime, rdr multistate.SugaredStateReader) map[base.ChainID]ledger.DelegationOutput {
-	ret := make(map[base.ChainID]ledger.DelegationOutput)
-	for _, did := range td.delegationIDs {
-		o, err := rdr.GetChainOutputWithChainID(did)
-		require.NoError(td, err)
-		dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID)
-		require.True(td, ok)
-		if dOut.IsUnlockableByTargetForFreezing(uint32(ts.Slot)) {
-			ret[did] = dOut
-		}
-	}
+func (td *testWithUTXODBData) freezableDelegations(ts base.LedgerTime) []ledger.DelegationOutput {
+	ret, err := td.u.SugaredStateReader().GetDelegationsForSequencer(td.seqID, func(o *ledger.DelegationOutput) bool {
+		return o.IsUnlockableByTargetForFreezing(uint32(ts.Slot))
+	})
+	util.AssertNoError(err)
 	return ret
 }
 
@@ -754,7 +748,9 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) {
 }
 
 func (td *testWithUTXODBData) tagAlongBacklog() []ledger.OutputWithID {
-	return []ledger.OutputWithID{}
+	ret, err := td.u.SugaredStateReader().GetTagAlongBacklogForSequencer(td.seqID)
+	util.AssertNoError(err)
+	return ret
 }
 
 func TestWithUTXODB(t *testing.T) {
@@ -789,7 +785,7 @@ func TestWithUTXODB(t *testing.T) {
 			}
 		}
 		stats.nSeqSteps++
-		freezable := td.freezableDelegations(ts, rdr)
+		freezable := td.freezableDelegations(ts)
 		//freeze := ""
 		//if len(freezable) > 0 {
 		//	freeze = fmt.Sprintf("   <- freeze %d", len(freezable))

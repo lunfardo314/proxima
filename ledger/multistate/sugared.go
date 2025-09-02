@@ -360,7 +360,7 @@ type DelegationsOnSequencer struct {
 	Delegations     map[base.ChainID]ledger.DelegationOutput
 }
 
-func (s SugaredStateReader) GetDelegationsBySequencer() (map[base.ChainID]DelegationsOnSequencer, error) {
+func (s SugaredStateReader) GetAllDelegationsBySequencer() (map[base.ChainID]DelegationsOnSequencer, error) {
 	allOuts := make([]ledger.OutputWithChainID, 0)
 	err := s.IterateChainedOutputs(func(out ledger.OutputWithChainID) bool {
 		allOuts = append(allOuts, out)
@@ -398,6 +398,61 @@ func (s SugaredStateReader) GetDelegationsBySequencer() (map[base.ChainID]Delega
 		}
 		seq.Delegations[delegation.ChainID] = dl
 		ret[dl.ChainID] = seq
+	}
+	return ret, nil
+}
+
+func (s SugaredStateReader) GetDelegationsForSequencer(seqID base.ChainID, filter ...func(o *ledger.DelegationOutput) bool) ([]ledger.DelegationOutput, error) {
+	flt := func(o *ledger.DelegationOutput) bool { return true }
+	if len(filter) > 0 {
+		flt = filter[0]
+	}
+	seqChainLock := ledger.ChainLockFromChainID(seqID)
+	ret := make([]ledger.DelegationOutput, 0)
+	err := s.IterateChainedOutputs(func(out ledger.OutputWithChainID) bool {
+		lock := out.Output.Lock()
+		if lock.Name() != ledger.DelegateLockName {
+			return true
+		}
+		delegateLock := lock.(*ledger.DelegateLock)
+		if !ledger.EqualAccountables(delegateLock.Target, seqChainLock) {
+			return true
+		}
+		if dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID); ok && flt(&dOut) {
+			ret = append(ret, dOut)
+		}
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (s SugaredStateReader) GetTagAlongBacklogForSequencer(seqID base.ChainID, filter ...func(o ledger.OutputWithID) bool) ([]ledger.OutputWithID, error) {
+	flt := func(o ledger.OutputWithID) bool { return true }
+	if len(filter) > 0 {
+		flt = filter[0]
+	}
+	seqChainLock := ledger.ChainLockFromChainID(seqID)
+	ret := make([]ledger.OutputWithID, 0)
+
+	err := s.IterateOutputsForAccount(seqChainLock, func(oid base.OutputID, o *ledger.Output) bool {
+		if _, idx := o.ChainConstraint(); idx != 0xff {
+			// skip chained outputs
+			return true
+		}
+		out := ledger.OutputWithID{
+			ID:     oid,
+			Output: o,
+		}
+		if flt(out) {
+			ret = append(ret, out)
+		}
+		return true
+	})
+	if err != nil {
+		return nil, err
 	}
 	return ret, nil
 }
