@@ -238,6 +238,10 @@ func initTestDelegate2LockState() {
 
 //--------------------------- delegationLockState
 
+func EnsureRevocationFromDelegationID(chainID base.ChainID) EnsureRevocation {
+	return EnsureRevocation{chainID}
+}
+
 func EnsureRevocationFromBytes(data []byte) (*EnsureRevocation, error) {
 	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {

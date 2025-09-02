@@ -111,20 +111,20 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	return ret, true
 }
 
-func NewRevokeDelegationCommandBytecode(privKey ed25519.PrivateKey, delegationID base.ChainID) []byte {
+func NewRevokeDelegationCommandConstraint(privKey ed25519.PrivateKey, delegationID base.ChainID) ledger.Constraint {
 	body := base.NewSmallPersistentMap()
 	body.Set(FieldCmdCode, []byte{RevokeDelegationCmdCode})
 	body.Set(FieldRevokeDelegationID, delegationID[:])
 
 	msg := ledger.NewMessageWithED25519SenderFromPrivateKey(privKey, body.Bytes())
-	return msg.Bytes()
+	return msg
 }
 
 func NewRevokeDelegationCommandOutput(targetChain base.ChainID, privKey ed25519.PrivateKey, fee uint64, delegationID base.ChainID) *ledger.Output {
 	ensureDelegation := ledger.EnsureRevocation{ChainID: delegationID}
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(fee).WithLock(ledger.ChainLockFromChainID(targetChain))
-		o.MustPushConstraint(NewRevokeDelegationCommandBytecode(privKey, delegationID))
+		o.MustPushConstraint(NewRevokeDelegationCommandConstraint(privKey, delegationID).Bytes())
 		o.MustPushConstraint(ensureDelegation.Bytes())
 	})
 }

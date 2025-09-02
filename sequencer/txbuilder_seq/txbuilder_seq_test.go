@@ -600,6 +600,7 @@ type (
 		u             *utxodb.UTXODB
 		seqID         base.ChainID
 		delegationIDs []base.ChainID
+		dconst        *ledger.DelegationConstants
 	}
 )
 
@@ -613,6 +614,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		privKey:       pk[0],
 		addr:          addrs[0],
 		delegationIDs: make([]base.ChainID, nDelegations),
+		dconst:        ledger.DelegationConst(),
 	}
 	initTs := base.NewLedgerTime(1000, 50)
 
@@ -639,7 +641,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		require.NoError(t, err)
 
 		ret.delegationIDs[i] = out.ChainID
-		t.Logf("delegation %d: %s", i, out.ChainID.String())
+		//t.Logf("delegation %d: %s", i, out.ChainID.String())
 	}
 
 	txb := txbuilder.New()
@@ -697,29 +699,74 @@ func (td *testWithUTXODBData) delegationChain(i int) *ledger.OutputWithChainID {
 	return &ret
 }
 
-func (td *testWithUTXODBData) freezableDelegations(ts base.LedgerTime, rdr multistate.SugaredStateReader) []ledger.DelegationOutput {
-	ret := make([]ledger.DelegationOutput, 0)
+func (td *testWithUTXODBData) freezableDelegations(ts base.LedgerTime, rdr multistate.SugaredStateReader) map[base.ChainID]ledger.DelegationOutput {
+	ret := make(map[base.ChainID]ledger.DelegationOutput)
 	for _, did := range td.delegationIDs {
 		o, err := rdr.GetChainOutputWithChainID(did)
 		require.NoError(td, err)
 		dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID)
 		require.True(td, ok)
 		if dOut.IsUnlockableByTargetForFreezing(uint32(ts.Slot)) {
-			ret = append(ret, dOut)
+			ret[did] = dOut
 		}
 	}
 	return ret
 }
 
+// epoch -> which (delegatio idx, relative slot) to be revoked
+
+var _revokeSchedule = map[uint32][]struct{ d, s uint32 }{
+	4:  {{1, 40}},
+	5:  {{5, 10}, {3, 35}},
+	8:  {{2, 100}},
+	10: {{4, 50}, {6, 60}},
+}
+
+// postRevokeRequestsInEpoch creates revocation requests
+func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) {
+	epoch := td.dconst.EpochFromSlotDirect(td.seqID, slot)
+	lst, ok := _revokeSchedule[epoch]
+	if !ok {
+		return
+	}
+	firstSlot, _ := td.dconst.EpochLimits(td.seqID, epoch)
+	nrSlotInEpoch := slot - firstSlot + 1
+	for i := range lst {
+		if lst[i].s != nrSlotInEpoch {
+			continue
+		}
+		did := td.delegationIDs[lst[i].d]
+
+		transferData, err := td.u.MakeTransferInputData(td.privKey, td.addr, base.NewLedgerTime(base.Slot(slot), 50))
+		util.AssertNoError(err)
+		delegationCmdOutput := NewRevokeDelegationCommandConstraint(td.privKey, did)
+		ensureConstraint := ledger.EnsureRevocationFromDelegationID(did)
+
+		transferData.WithAmount(10_000).
+			WithTargetLock(ledger.ChainLockFromChainID(td.seqID)).
+			WithConstraint(delegationCmdOutput).
+			WithConstraint(&ensureConstraint)
+		err = td.u.DoTransfer(transferData)
+		util.AssertNoError(err)
+
+		td.Logf("revoke request for %s epoch %d, slot %d, slot in epoch: %d", did.StringShort(), epoch, slot, nrSlotInEpoch)
+	}
+}
+
+func (td *testWithUTXODBData) tagAlongBacklog() []ledger.OutputWithID {
+	return []ledger.OutputWithID{}
+}
+
 func TestWithUTXODB(t *testing.T) {
 	const (
 		numDelegations = 10
-		howManySteps   = 4000
+		howManySteps   = 8000
 	)
 	td, ts := newTestWithUTXODBData(t, numDelegations)
 	//t.Logf("----- seq init:\n%s", td.seqOutput().LinesHR("   ").String())
 
-	var txSize int
+	//var txSize int
+	var stats *_epochStats
 
 	for i := 0; i < howManySteps; i++ {
 		rdr := td.u.SugaredStateReader()
@@ -727,24 +774,46 @@ func TestWithUTXODB(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = ts.AddSlots(1)
-		freezable := td.freezableDelegations(ts, rdr)
-		freeze := ""
-		if len(freezable) > 0 {
-			freeze = fmt.Sprintf("   <- freeze %d", len(freezable))
+		txSlot := uint32(ts.Slot)
+
+		epoch := td.dconst.EpochFromSlotDirect(td.seqID, uint32(ts.Slot))
+		if stats == nil || epoch != stats.epoch {
+			if stats != nil {
+				t.Logf("%4d (%5d + %3d slots), freezes: %3d   maxTx: %5d    %s",
+					stats.epoch, stats.firstSlot, stats.nSeqSteps, stats.nFreezes, stats.maxTxBytes, stats.amountsSeqStart.String())
+			}
+			stats = &_epochStats{
+				epoch:           epoch,
+				firstSlot:       txSlot,
+				amountsSeqStart: seqOut.Output.Amounts(),
+			}
 		}
-		t.Logf("%4d %s seq balance: %s, txSize: %d txTs: %s %s",
-			i, seqOut.ID.StringShort(), util.Th(seqOut.Output.TokenBalance()), txSize, ts.String(), freeze)
+		stats.nSeqSteps++
+		freezable := td.freezableDelegations(ts, rdr)
+		//freeze := ""
+		//if len(freezable) > 0 {
+		//	freeze = fmt.Sprintf("   <- freeze %d", len(freezable))
+		//}
+		//t.Logf("%4d %s seq balance: %s, txSize: %d txTs: %s %s",
+		//	i, seqOut.ID.StringShort(), util.Th(seqOut.Output.TokenBalance()), txSize, ts.String(), freeze)
 
 		txb, err := NewWithSequencerID(ts, td.seqID, td.privKey, rdr)
 		require.NoError(t, err)
 		err = txb.AddEndorsement(base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0)))
 		require.NoError(t, err)
 
+		// non-deterministic
 		for _, dIn := range freezable {
 			_, err = txb.FreezeDelegation(&dIn)
 			require.NoError(t, err)
+			stats.nFreezes++
+			//t.Logf("    freeze %s (%s) -- %s", dIn.ID.StringShort(), util.Th(dIn.Output.TokenBalance()), dIn.ChainID.StringShort())
+		}
 
-			t.Logf("    freeze %s (%s) -- %s", dIn.ID.StringShort(), util.Th(dIn.Output.TokenBalance()), dIn.ChainID.StringShort())
+		tagAlongBacklog := td.tagAlongBacklog()
+		for _, o := range tagAlongBacklog {
+			err = txb.AddTagAlongInput(o)
+			require.NoError(t, err)
 		}
 
 		txBytes, _, txString, err := txb.BytesWithValidation()
@@ -753,7 +822,11 @@ func TestWithUTXODB(t *testing.T) {
 		}
 		require.NoError(t, err)
 		err = td.u.AddTransaction(txBytes)
-		txSize = len(txBytes)
+		if stats.maxTxBytes < len(txBytes) {
+			stats.maxTxBytes = len(txBytes)
+		}
+
+		td.postRevokeRequestsInEpoch(txSlot)
 	}
 
 }
