@@ -301,7 +301,7 @@ if( lessOrEqualThan($0, $1), u64/0, add(div(sub(sub($0,$1), u64/1), constDelegat
 // $1 slot
 func delegationEpochFromSlot : _delegationEpochFromSlot(uint8Bytes($1), delegationEpochOffset($0))
 
-func _isDelegationOrigin : isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(2), #chain, 0))
+func _selfIsDelegationOrigin : isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(2), #chain, 0))
 
 // $0 index of the constraint on the successor output
 func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2),0), $0))
@@ -417,7 +417,12 @@ func _requiredInflationAdvance :
 // $1 _predecessorTokenBalance
 func _validInflationAdvanceProduced :
 require(
-   lessOrEqualThan( _requiredInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1)),
+       // not checked if predecessor is not a delegation
+   or(
+     _selfIsDelegationOrigin,
+      not(equal(parsePrefixBytecode(consumedConstraintByIndex(selfChainPredInputIndex(2), 1)), selfBytecodePrefix)),
+      lessOrEqualThan( _requiredInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1))
+   ),
    !!!not_enough_inflation_advance
 )
 
@@ -436,7 +441,7 @@ and(
        !!!frozen_epochs_cannot_exceed_maximum_set_by_delegator
     ),
     require(
-       not(_isDelegationOrigin),
+       not(_selfIsDelegationOrigin),
        !!!delegation_origin_cannot_be_frozen
     )
 )   
@@ -517,7 +522,7 @@ func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs,
 
 // $0 unfreezeSlot
 func _txInsideSafeRevocationWindow : and(
-    not(_isDelegationOrigin),
+    not(_selfIsDelegationOrigin),
 	lessOrEqualThan(uint8Bytes($0), uint8Bytes(txSlot)),
     lessThan(uint8Bytes(txSlot), add($0, constDelegationSafeRevocationSlots))
 )

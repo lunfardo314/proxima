@@ -112,25 +112,33 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 	par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: inconsistency, delegation output expectedVector 1")
 	amounts := o.Amounts()
 
-	// unlock parameters of the delegation lock must be 3 bytes
-	// FIXME only if predecessor is delegation lock
+	pred, err := ctx.ConsumedOutput(dOut.PredecessorInputIndex)
+	par.RequireNoError(err)
+
+	if pred.Lock().Name() != DelegateLockName {
+		// predecessor is not delegation -> must be all-0
+		par.Require(amounts.IsFrozenCoverageZero(),
+			"_checkFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: chain predecessor is not a delegation")
+		return
+	}
+	// predecessor is delegation
+	// unlock parameters of predecessor delegation lock must be 3 bytes
 	unlock, err := par.DataContext().UnlockParameters(dOut.PredecessorInputIndex, ConstraintIndexLock)
 	par.RequireNoError(err)
-	par.Require(len(unlock) >= 3, "_checkFrozenCoverageOnDelegateOutput: unlock parameters (%d, %d) must be 3 bytes",
+	par.Require(len(unlock) >= 3, "_checkFrozenCoverageOnDelegateOutput: unlock parameters of predecessor delegation lock at (%d, %d) must be 3 bytes",
 		dOut.PredecessorInputIndex, ConstraintIndexLock)
 
 	if unlock[2] == DelegationUnlockedByMaster {
-		// transition by master -> must be all-0
+		// predecessor is delegation unlocked by master  -> must be all-0
 		par.Require(amounts.IsFrozenCoverageZero(),
-			"_checkFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to reason: unlocked by the master in delegation chain %s", dOut.ChainID.String())
+			"_checkFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: predecessor is unlocked by the master")
 		return
 	}
+
 	// unlocked by the target as enforced by the delegation lock
 	var expectedVector []int64
 	// the expected vector is different for frozen and revoked delegation outputs
 	if dOut.State == DelegateLockStateRevoked {
-		pred, err := ctx.ConsumedOutput(dOut.PredecessorInputIndex)
-		par.RequireNoError(err)
 		dOutPred, ok := AsDelegationOutput(pred, ctx.MustInputAt(dOut.PredecessorInputIndex))
 		par.Require(ok, "_checkFrozenCoverageOnDelegateOutput: delegation output expectedVector at predecessor")
 

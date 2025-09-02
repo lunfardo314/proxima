@@ -757,7 +757,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			successorFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
 			sequencerFrozenCoverage: []int64{td.delegatedOutput.Output.Amounts().Amount(0)},
 			inflationAdvance:        0,
-			prntx:                   false,
+			prntx:                   true,
 		})
 		require.NoError(t, util.MustErrorWith(err, "not enough inflation advance"))
 	})
