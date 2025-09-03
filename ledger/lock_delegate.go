@@ -340,17 +340,18 @@ or(
    and(
       selfIsConsumedOutput,
       require(
-		and(
-		   equal(
-			  parseArgumentBytecode(producedConstraintByIndex(concat(selfUnlockParameters,2)),#chain,0), 
-			  $0
-		   ),
-           equal(
-		      parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)),#delegateLockState,1),
-              2 // 2 means revoked
-           )
-		),
-        !!!delegation_output_is_not_revoked_as_expected
+         equal(
+			parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,2)),#chain,0), 
+			$0
+         ),
+         !!!ensureRevocation:_revoked_produced_delegationID_is_wrong
+      ),
+      require(
+         equal(
+		    parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)),#delegateLockState,1),
+            2 // 2 means revoked
+        ),
+        !!!ensureRevocation:_delegation_produced_state_is_not_revoked
       )
    )
 )

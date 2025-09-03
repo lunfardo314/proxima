@@ -811,7 +811,7 @@ func TestWithUTXODB(t *testing.T) {
 			err = txb.AddTagAlongInput(o)
 			require.NoError(t, err)
 		}
-
+		const a = 257_007_175_064 + 8_777
 		txBytes, _, txString, err := txb.BytesWithValidation()
 		if err != nil {
 			t.Logf("--------- failing tx --------------\n%s", txString)

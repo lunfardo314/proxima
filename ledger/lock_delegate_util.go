@@ -339,7 +339,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amounts...)
-		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenEpochs, 0))
+		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenEpochs, o.RequiredInflationShare))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{
 			LastFrozenEpoch: 0,

@@ -99,11 +99,15 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 	if err = ctx._sumConsumedTotals(outs); err != nil {
 		return fmt.Errorf("validateOutputs: %w", err)
 	}
-	if ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance] != ctx.totalConsumedAmounts[ledger.AmountIndexTokenBalance]+ctx.totalProducedAmounts[ledger.AmountIndexInflation] {
-		return fmt.Errorf("mismatch between token amounts: consumed(%s) + inflation(%s) != produced(%s)",
-			util.Th(ctx.totalConsumedAmounts[ledger.AmountIndexTokenBalance]),
-			util.Th(ctx.totalProducedAmounts[ledger.AmountIndexInflation]),
-			util.Th(ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance]),
+	producedSide := ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance]
+	consumedSide := ctx.totalConsumedAmounts[ledger.AmountIndexTokenBalance]
+	inflation := ctx.totalProducedAmounts[ledger.AmountIndexInflation]
+	if producedSide != consumedSide+inflation {
+		return fmt.Errorf("mismatch between token amounts: consumed(%s) + inflation(%s) != produced(%s), diff c+i-p = %s",
+			util.Th(consumedSide),
+			util.Th(inflation),
+			util.Th(producedSide),
+			util.Th(consumedSide+inflation-producedSide),
 		)
 	}
 	if err = ctx._runOutputs(ledger.PathToConsumedOutputs, outs, spool); err != nil {
