@@ -3,6 +3,7 @@ package txbuilder_seq
 import (
 	"bytes"
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -11,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-type RevokeDelegationCommand struct {
+type RevokeDelegationRequest struct {
 	o                ledger.OutputWithID
 	delegationID     base.ChainID
 	delegation       ledger.DelegationOutput // filled up by CheckPreconditions
@@ -27,24 +28,27 @@ func init() {
 	registerSequencerCommand(RevokeDelegationCmdCode, _parseRevokeDelegationOutput)
 }
 
-func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqCommandMessage) (cmd TxBuilderCommand, isValid bool) {
+func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqRequestMessage) (cmd TxBuilderCommand, valid bool, reason error) {
 	if o.Output.NumConstraints() > 4 {
 		// unexpected structure -> may be attack
+		reason = fmt.Errorf("RevokeDelegationRequest: failed to parse")
 		return
 	}
 	// ---------- fetch delegation output from the baseline state
-	delegationID, err := base.ChainIDFromBytes(msg.Get(FieldRevokeDelegationID))
-	if err != nil {
+	delegationID, reason := base.ChainIDFromBytes(msg.Get(FieldRevokeDelegationID))
+	if reason != nil {
+		reason = fmt.Errorf("RevokeDelegationRequest: parsing delegationID: %w", reason)
 		return
 	}
-	ret := &RevokeDelegationCommand{
+	ret := &RevokeDelegationRequest{
 		o:            o,
 		delegationID: delegationID,
 	}
 	rdr := multistate.MakeSugared(txb.rdr)
-	_dOut, err := rdr.GetChainOutputWithChainID(delegationID)
-	if err != nil {
+	_dOut, reason := rdr.GetChainOutputWithChainID(delegationID)
+	if reason != nil {
 		// wrong chain ID
+		reason = fmt.Errorf("RevokeDelegationRequest: failed to find delegation output %s: %w", delegationID.StringShort(), reason)
 		return
 	}
 
@@ -52,6 +56,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	ret.delegation, ok = ledger.DelegationOutputFromOutputWithChainID(&_dOut)
 	if !ok {
 		// is not a valid delegation chain output
+		reason = fmt.Errorf("RevokeDelegationRequest: failed to parse delegation output %s: %w", delegationID.StringShort(), reason)
 		return
 	}
 	// ----------
@@ -59,24 +64,27 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	// ---------- check if revocation even makes sense
 	if !ret.delegation.IsUnlockableByTarget(uint32(o.Timestamp().Slot)) {
 		// cannot be unlocked by target in the slot
+		valid = true
+		reason = fmt.Errorf("RevokeDelegationRequest: delegation %s is not unlockable by the target in %s",
+			delegationID.String(), txb.TransactionData.Timestamp.String())
 		return
 	}
-	//if ret.delegation.ID.Slot()+1 >= o.Timestamp().Slot {
-	//	// the revocation request must be at least 1 slot after the delegation output
-	//	return
-	//}
 	// ---------- authenticate: check if the sender of the request and the sequencer must be entitled to revoke particular delegation ID
 	if ret.delegation.Target.ChainID() != txb.chainInput.ChainID {
 		// this sequencer cannot revoke specific delegation
+		reason = fmt.Errorf("RevokeDelegationRequest: the sequencer cannot revoke delegation %s (fail auth)", delegationID.String())
 		return
 	}
 	master, ok := ret.delegation.MasterLock.(ledger.AddressED25519)
 	if !ok {
 		// wrong master (cannot be)
+		reason = fmt.Errorf("RevokeDelegationRequest: inconsistecy while checking master lock")
 		return
 	}
 	if !bytes.Equal(msg.SenderHash[:], master) {
 		// this sender cannot revoke delegation -> may be an attack
+		reason = fmt.Errorf("RevokeDelegationRequest: sender with hash %s cannot revoke delegation %s (fail auth)",
+			hex.EncodeToString(msg.SenderHash[:]), delegationID.String())
 		return
 	}
 	//------------
@@ -91,6 +99,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	if lostSlots <= patienceMargin {
 		// less than 1 min slots until the end of the freeze, refuse to revoke.
 		// Just 1 min of patience, and it will be released to the safe revocation window without revocation command
+		reason = fmt.Errorf("RevokeDelegationRequest: less than %d slots remain until safe revocation window. Wait a bit", patienceMargin)
 		return
 	}
 	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
@@ -108,7 +117,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 		}
 		ret.ensureRevocation = ens
 	}
-	return ret, true
+	return ret, true, nil
 }
 
 func NewRevokeDelegationCommandConstraint(privKey ed25519.PrivateKey, delegationID base.ChainID) ledger.Constraint {
@@ -129,24 +138,24 @@ func NewRevokeDelegationCommandOutput(targetChain base.ChainID, privKey ed25519.
 	})
 }
 
-func (r *RevokeDelegationCommand) Apply(txb *SeqTxBuilder) error {
+func (r *RevokeDelegationRequest) Apply(txb *SeqTxBuilder) (bool, error) {
 	// need to reserve at least 2 outputs
 	if len(txb.ConsumedOutputs) > 254 {
-		return fmt.Errorf("RevokeDelegationCommand: too many outputs to consume")
+		return true, fmt.Errorf("RevokeDelegationRequest: too many outputs to consume")
 	}
 	if len(txb.TransactionData.Outputs) > 255 {
-		return fmt.Errorf("RevokeDelegationCommand: too many outputs to produce")
+		return true, fmt.Errorf("RevokeDelegationRequest: too many outputs to produce")
 	}
 	inflation := ledger.L().ChainInflationOneSlot(r.delegation.Output.TokenBalance(), uint32(r.delegation.ID.Slot()))
 
 	oProduce, err := r.delegation.MakeDelegationRevokeOutput(ledger.MakeDelegationRevokeOutputParams{
-		Timestamp:        txb.TransactionData.Timestamp,
+		TxTs:             txb.TransactionData.Timestamp,
 		PredOutputIndex:  byte(len(txb.ConsumedOutputs) + 1),
 		Inflation:        inflation,
 		HarvestInflation: inflation, // take last inflation bit from delegation
 	})
 	if err != nil {
-		return fmt.Errorf("RevokeDelegationCommand: %w", err)
+		return true, fmt.Errorf("RevokeDelegationRequest: %w", err)
 	}
 
 	// consume tag-along with the revoke command message
@@ -175,5 +184,5 @@ func (r *RevokeDelegationCommand) Apply(txb *SeqTxBuilder) error {
 	for i := byte(0); i < maxFrozenEpochs; i++ {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+i] += a.FrozenCoverageAt(i)
 	}
-	return nil
+	return true, nil
 }

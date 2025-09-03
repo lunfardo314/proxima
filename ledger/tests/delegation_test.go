@@ -280,7 +280,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 		inflation = ledger.L().ChainInflationOneSlot(td.delegatedOutput.Output.TokenBalance(), uint32(td.delegatedOutput.Timestamp().Slot))
 	}
 	delegatedOutPar := ledger.MakeDelegationRevokeOutputParams{
-		Timestamp:                ts,
+		TxTs:                     ts,
 		Inflation:                inflation,
 		DisableConsistencyChecks: true,
 	}

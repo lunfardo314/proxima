@@ -154,7 +154,7 @@ func TestBase(t *testing.T) {
 			ID:     base.OutputID{},
 			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
 		}
-		err := txb.AddTagAlongInput(tagAlongOut)
+		_, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -170,7 +170,7 @@ func TestBase(t *testing.T) {
 			ID:     base.OutputID{},
 			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
 		}
-		err := txb.AddTagAlongInput(tagAlongOut)
+		_, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -186,7 +186,7 @@ func TestBase(t *testing.T) {
 			ID:     base.OutputID{},
 			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 10_000_000, addr),
 		}
-		err := txb.AddTagAlongInput(tagAlongOut)
+		_, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -203,7 +203,7 @@ func TestBase(t *testing.T) {
 				ID:     base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(slot, 50)), 1),
 				Output: NewWithdrawCommandOutput(seqID, privKey, 200, amount, addr),
 			}
-			err := txb.AddTagAlongInput(tagAlongOut)
+			_, err := txb.AddTagAlongInput(tagAlongOut)
 			return err
 		}
 
@@ -232,7 +232,7 @@ func TestBase(t *testing.T) {
 				sdUpdated.SetName("newName").IncChainHeight()
 			})),
 		}
-		err = txb.AddTagAlongInput(tagAlongOut)
+		_, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -816,11 +816,13 @@ func TestWithUTXODB(t *testing.T) {
 
 		tagAlongBacklog := td.tagAlongBacklog()
 		for _, o := range tagAlongBacklog {
-			if err = txb.AddTagAlongInput(o); err != nil {
-				t.Logf("    failed consumed tag-along output. Reason %v\n%s", err, o.LinesHR("      ").String())
+			valid, err := txb.AddTagAlongInput(o)
+			if !valid {
+				t.Logf("   output cannot be used as tag-along (reason = '%v'):\n%s", err, o.LinesHR("      ").String())
+			} else {
+				t.Logf("   output not consumed (reason = '%v')", err)
 			}
 		}
-		const a = 257_007_175_064 + 8_777
 		txBytes, _, txString, err := txb.BytesWithValidation()
 		if err != nil {
 			t.Logf("--------- failing tx --------------\n%s", txString)

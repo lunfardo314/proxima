@@ -28,21 +28,21 @@ type (
 		vrfProof              []byte
 	}
 
-	SeqCommandMessage struct {
+	SeqRequestMessage struct {
 		base.SmallPersistentMap
 		ledger.MessageWithED25519Sender
 		CmdCode byte
 	}
 
 	TxBuilderCommand interface {
-		Apply(txb *SeqTxBuilder) error
+		Apply(txb *SeqTxBuilder) (bool, error) // false means it is permanently invalid, err is a reason why
 	}
 
 	SeqCommandBase struct {
 		o ledger.OutputWithID
 	}
 
-	cmdParser func(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqCommandMessage) (cmd TxBuilderCommand, isValid bool)
+	cmdParser func(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqRequestMessage) (cmd TxBuilderCommand, valid bool, err error)
 
 	SimpleTagAlongOutput struct {
 		SeqCommandBase
@@ -187,11 +187,16 @@ func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	return nil
 }
 
-func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) error {
-	if cmd, ok := txb.TxBuilderCommandFromOutput(o); ok {
-		return cmd.Apply(txb)
+// AddTagAlongInput returns:
+//
+//	-- false, error if output is permanently invalid. If err != nil, it is a reason why
+//	-- true, error it is temporary cannot be applied
+func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (bool, error) {
+	cmd, valid, err := txb.TxBuilderCommandFromOutput(o)
+	if !valid || err != nil {
+		return false, fmt.Errorf("AddTagAlongInput: %w", err)
 	}
-	return fmt.Errorf("SeqTxBuilder: cannot use output as tag-along:\n%s", o.String())
+	return cmd.Apply(txb)
 }
 
 func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, frozenEpochs byte) (uint64, error) {

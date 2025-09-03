@@ -310,19 +310,17 @@ func (o *DelegationOutput) MakeFrozenCoverageAmounts(frozenEpochs byte, tokenBal
 }
 
 type MakeDelegationRevokeOutputParams struct {
-	Timestamp                base.LedgerTime
+	TxTs                     base.LedgerTime
 	PredOutputIndex          byte
 	Inflation                uint64
 	HarvestInflation         uint64
 	DisableConsistencyChecks bool
 }
 
+// MakeDelegationRevokeOutput error means reason why it cannot be constructed in particular situation
 func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOutputParams) (*Output, error) {
-	if !par.DisableConsistencyChecks && par.Timestamp.IsSlotBoundary() {
-		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't be a branch transaction")
-	}
-	if !par.DisableConsistencyChecks && !o.IsUnlockableByTarget(uint32(par.Timestamp.Slot)) {
-		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't be unlocked by target in slot %d", par.Timestamp.Slot)
+	if !par.DisableConsistencyChecks && !o.IsUnlockableByTarget(uint32(par.TxTs.Slot)) {
+		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't be unlocked by target in slot %d", par.TxTs.Slot)
 	}
 	if !par.DisableConsistencyChecks && par.HarvestInflation > par.Inflation {
 		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't harvest more inflation (%s) than generate (%s)",
@@ -333,7 +331,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 	}
 
 	amounts := []int64{int64(o.Output.TokenBalance() + par.Inflation - par.HarvestInflation), int64(par.Inflation)}
-	frozenCoverageVector := o.MakeFrozenCoverageAmountDeltasForRevoking(par.Timestamp)
+	frozenCoverageVector := o.MakeFrozenCoverageAmountDeltasForRevoking(par.TxTs)
 	amounts = append(amounts, frozenCoverageVector...)
 
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
