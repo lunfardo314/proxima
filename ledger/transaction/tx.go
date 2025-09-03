@@ -416,10 +416,6 @@ func ScanOutputs(tx *Transaction) error {
 		if _, err = ledger.LockFromBytes(tx.tree.MustBytesAtPath(pathToLock)); err != nil {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
-
-		if amounts.Amount(2) < 0 {
-			println()
-		}
 		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
 			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}

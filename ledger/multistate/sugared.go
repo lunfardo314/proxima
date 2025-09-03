@@ -237,10 +237,11 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountabl
 	return ret, nil
 }
 
-func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget ledger.Accountable, fun func(o *ledger.DelegationOutput) bool) {
-	err := s.IterateOutputsForAccount(delegationTarget, func(oid base.OutputID, o *ledger.Output) bool {
+func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget base.ChainID, fun func(o *ledger.DelegationOutput) bool) {
+	target := ledger.ChainLockFromChainID(delegationTarget)
+	err := s.IterateOutputsForAccount(target, func(oid base.OutputID, o *ledger.Output) bool {
 		out, ok := ledger.AsDelegationOutput(o, oid)
-		if ok && ledger.EqualAccountables(delegationTarget, out.Target) {
+		if ok && ledger.EqualAccountables(target, out.Target) {
 			return fun(&out)
 		}
 		return true

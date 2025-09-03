@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -601,6 +602,7 @@ type (
 		seqID         base.ChainID
 		delegationIDs []base.ChainID
 		dconst        *ledger.DelegationConstants
+		revoked       set.Set[base.ChainID]
 	}
 )
 
@@ -615,6 +617,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		addr:          addrs[0],
 		delegationIDs: make([]base.ChainID, nDelegations),
 		dconst:        ledger.DelegationConst(),
+		revoked:       set.New[base.ChainID](),
 	}
 	initTs := base.NewLedgerTime(1000, 50)
 
@@ -714,21 +717,24 @@ var _revokeSchedule = map[uint32][]struct{ d, s uint32 }{
 	5:  {{5, 10}, {3, 35}},
 	8:  {{2, 100}},
 	10: {{4, 50}, {6, 60}},
+	//12: {{2, 80}},
 }
 
 // postRevokeRequestsInEpoch creates revocation requests
-func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) {
+func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 	epoch := td.dconst.EpochFromSlotDirect(td.seqID, slot)
 	lst, ok := _revokeSchedule[epoch]
 	if !ok {
-		return
+		return 0
 	}
 	firstSlot, _ := td.dconst.EpochLimits(td.seqID, epoch)
 	nrSlotInEpoch := slot - firstSlot + 1
+	nRequests := 0
 	for i := range lst {
 		if lst[i].s != nrSlotInEpoch {
 			continue
 		}
+		nRequests++
 		did := td.delegationIDs[lst[i].d]
 
 		transferData, err := td.u.MakeTransferInputData(td.privKey, td.addr, base.NewLedgerTime(base.Slot(slot), 50))
@@ -742,9 +748,10 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) {
 			WithConstraint(&ensureConstraint)
 		err = td.u.DoTransfer(transferData)
 		util.AssertNoError(err)
-
-		td.Logf("revoke request for %s epoch %d, slot %d, slot in epoch: %d", did.StringShort(), epoch, slot, nrSlotInEpoch)
+		td.revoked.Insert(did)
+		td.Logf("post revoke request for %s epoch %d, slot %d, slot in epoch: %d", did.StringShort(), epoch, slot, nrSlotInEpoch)
 	}
+	return nRequests
 }
 
 func (td *testWithUTXODBData) tagAlongBacklog() []ledger.OutputWithID {
@@ -755,14 +762,15 @@ func (td *testWithUTXODBData) tagAlongBacklog() []ledger.OutputWithID {
 
 func TestWithUTXODB(t *testing.T) {
 	const (
-		numDelegations = 10
-		howManySteps   = 8000
+		numDelegations = 15
+		howManySteps   = 8030
 	)
 	td, ts := newTestWithUTXODBData(t, numDelegations)
 	//t.Logf("----- seq init:\n%s", td.seqOutput().LinesHR("   ").String())
 
 	//var txSize int
 	var stats *_epochStats
+	revokeRequests := 0
 
 	for i := 0; i < howManySteps; i++ {
 		rdr := td.u.SugaredStateReader()
@@ -808,8 +816,9 @@ func TestWithUTXODB(t *testing.T) {
 
 		tagAlongBacklog := td.tagAlongBacklog()
 		for _, o := range tagAlongBacklog {
-			err = txb.AddTagAlongInput(o)
-			require.NoError(t, err)
+			if err = txb.AddTagAlongInput(o); err != nil {
+				t.Logf("    failed consumed tag-along output. Reason %v\n%s", err, o.LinesHR("      ").String())
+			}
 		}
 		const a = 257_007_175_064 + 8_777
 		txBytes, _, txString, err := txb.BytesWithValidation()
@@ -822,7 +831,35 @@ func TestWithUTXODB(t *testing.T) {
 			stats.maxTxBytes = len(txBytes)
 		}
 
-		td.postRevokeRequestsInEpoch(txSlot)
+		revokeRequests += td.postRevokeRequestsInEpoch(txSlot)
 	}
+	numTotalDelegations := 0
+	numRevoked := 0
+	numSafeRevocation := 0
+	ts = ts.AddSlots(1)
+	t.Logf("-------------%s -----------", ts.String())
+	td.u.SugaredStateReader().IterateDelegatedOutputs(td.seqID, func(o *ledger.DelegationOutput) bool {
+		numTotalDelegations++
+		if o.IsMarkedRevoked() {
+			numRevoked++
+		}
+		if o.IsInSafeRevocationWindow(uint32(ts.Slot)) {
+			numSafeRevocation++
+		}
+		t.Logf("   %s  %s  revoked: %v,  safe: %v,  marked frozen: %v,  feezable: %v",
+			o.ChainID.StringShort(), o.ID.StringShort(), o.IsMarkedRevoked(),
+			o.IsInSafeRevocationWindow(uint32(ts.Slot)), o.IsMarkedFrozen(), o.IsUnlockableByTargetForFreezing(uint32(ts.Slot)))
 
+		if o.IsMarkedRevoked() {
+			require.True(t, td.revoked.Contains(o.ChainID))
+		}
+		return true
+	})
+	t.Logf(`---------------------------
+     total delegations :     %d
+     revoced:                %d
+     safe revocation window: %d`, numTotalDelegations, numRevoked, numSafeRevocation)
+
+	require.EqualValues(t, numRevoked, revokeRequests)
+	require.EqualValues(t, numRevoked, len(td.revoked))
 }
