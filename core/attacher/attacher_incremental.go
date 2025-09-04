@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 )
@@ -263,7 +263,7 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 
 	tagAlongInputs := make([]*ledger.OutputWithID, 0, len(a.inputs))
 	otherOutputs := make([]*ledger.Output, 0)
-	delegationInputs := make([]*ledger.OutputWithChainID, 0)
+	//delegationInputs := make([]*ledger.OutputWithChainID, 0)
 
 	var chainIn *ledger.OutputWithID
 	var stemIn *ledger.OutputWithID
@@ -318,17 +318,16 @@ func (a *IncrementalAttacher) MakeSequencerTransaction(seqName string, privateKe
 		endorsements[i] = vid.ID()
 	}
 	// create sequencer transaction
-	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoaderOld(txbuilder.MakeSequencerTransactionParamsOld{
-		SeqName:           seqName,
-		ChainInput:        chainIn.MustAsChainOutput(),
-		StemInput:         stemIn,
-		Timestamp:         a.targetTs,
-		DelegationOutputs: delegationInputs,
-		AdditionalInputs:  tagAlongInputs,
-		WithdrawOutputs:   otherOutputs,
-		Endorsements:      endorsements,
-		PrivateKey:        privateKey,
-		InflateMainChain:  true,
+	txBytes, inputLoader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+		SeqName:    seqName,
+		ChainInput: chainIn.MustAsChainOutput(),
+		StemInput:  stemIn,
+		Timestamp:  a.targetTs,
+		//DelegationOutputs: delegationInputs,
+		AdditionalInputs: tagAlongInputs,
+		WithdrawOutputs:  otherOutputs,
+		Endorsements:     endorsements,
+		PrivateKey:       privateKey,
 	})
 	if err != nil {
 		return nil, err
@@ -351,12 +350,11 @@ func (a *IncrementalAttacher) makeSequencerTransactionWithExplicitBaseline(seqNa
 	a.Assertf(len(a.inputs) == 1, "a.inputs==1")
 
 	chainIn := a.inputs[0].OutputWithID()
-	txBytes, inputLoader, err := txbuilder.MakeSequencerTransactionWithInputLoaderOld(txbuilder.MakeSequencerTransactionParamsOld{
+	txBytes, inputLoader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		SeqName:          seqName,
 		ChainInput:       chainIn.MustAsChainOutput(),
 		Timestamp:        a.targetTs,
 		PrivateKey:       privateKey,
-		InflateMainChain: true,
 		ExplicitBaseline: a.explicitBaselineID,
 	})
 	if err != nil {

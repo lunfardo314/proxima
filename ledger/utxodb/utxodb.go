@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq/distribute"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -63,7 +63,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 
 	genesisStemOut := rdr.GetStemOutput()
 
-	distributionTxBytes := distribute.MustDistributeInitialSupply(stateStore, genesisPrivateKey, []ledger.LockBalance{
+	distributionTxBytes := txbuilder_seq.MustDistributeInitialSupply(stateStore, genesisPrivateKey, []ledger.LockBalance{
 		{Lock: faucetAddress, Balance: ledger.L().ID.InitialSupply / 2, ChainOrigin: false},
 	})
 

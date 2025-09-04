@@ -23,11 +23,11 @@ import (
 
 // initializes ledger.Library singleton for all tests and creates testing genesis private key
 
-var genesisPrivateKey ed25519.PrivateKey
+//var genesisPrivateKey ed25519.PrivateKey
 
-func init() {
-	genesisPrivateKey = ledger.InitWithTestingLedgerIDData()
-}
+//func init() {
+//	genesisPrivateKey = ledger.InitWithTestingLedgerIDData()
+//}
 
 func TestBase(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()

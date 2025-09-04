@@ -172,7 +172,7 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	const (
 		maxSlots    = 1000
 		nSequencers = 4                // in addition to bootstrap
-		runTime     = 15 * time.Second // 60 * time.Second
+		runTime     = 30 * time.Second // 60 * time.Second
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 	//testData.env.StartTracingTags(task.TraceTagBaseProposerExit) //, sequencer.TraceTagTarget)

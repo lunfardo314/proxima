@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq/distribute"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -72,7 +72,7 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	// distributed genesis balance by sending bootstrapBalance to the same address, which controls bootstrap chain
 	// Remainder stays in genesis
 	// It commits right to the database.
-	txBytesBootstrapBalance, txid, err := distribute.DistributeInitialSupplyExt(stateStore, privKey,
+	txBytesBootstrapBalance, txid, err := txbuilder_seq.DistributeInitialSupplyExt(stateStore, privKey,
 		getAdditionalDistribution([]ledger.LockBalance{
 			{Lock: addr, Balance: bootstrapBalance, ChainOrigin: false},
 		}))

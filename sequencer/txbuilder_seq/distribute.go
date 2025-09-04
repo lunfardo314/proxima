@@ -1,4 +1,4 @@
-package distribute
+package txbuilder_seq
 
 import (
 	"crypto/ed25519"
@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -66,7 +65,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	}
 
 	// create origin branch transaction at the next slot after genesis time slot
-	txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+	txBytes, err := MakeSimpleSequencerTransaction(MakeSimpleSequencerTransactionParams{
 		ChainInput: &ledger.OutputWithChainID{
 			OutputWithID: *initSupplyOutput,
 			ChainConstraintData: ledger.ChainConstraintData{
