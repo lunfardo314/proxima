@@ -386,7 +386,7 @@ func (txb *SeqTxBuilder) Slot() uint32 {
 
 type MakeSimpleSequencerTransactionParams struct {
 	// sequencer name (set only if != ""
-	Name string
+	SeqName string
 	// transaction ts
 	Timestamp base.LedgerTime
 	// predecessor
@@ -424,8 +424,8 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 	if err != nil {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 	}
-	if par.Name != "" {
-		txb.nextSeqData.SetName(par.Name)
+	if par.SeqName != "" {
+		txb.nextSeqData.SetName(par.SeqName)
 	}
 	for _, endorsement := range par.Endorsements {
 		if err = txb.AddEndorsement(endorsement); err != nil {
