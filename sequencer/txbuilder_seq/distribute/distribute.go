@@ -1,4 +1,4 @@
-package txbuilder
+package distribute
 
 import (
 	"crypto/ed25519"
@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -65,7 +66,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	}
 
 	// create origin branch transaction at the next slot after genesis time slot
-	txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParamsOld{
+	txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		ChainInput: &ledger.OutputWithChainID{
 			OutputWithID: *initSupplyOutput,
 			ChainConstraintData: ledger.ChainConstraintData{
@@ -76,14 +77,31 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 				ChainConstraintIndex: 2,
 			},
 		},
-		StemInput:        genesisStem,
-		Timestamp:        ts,
-		AdditionalInputs: nil,
-		WithdrawOutputs:  genesisDistributionOutputs,
-		Endorsements:     nil,
-		PrivateKey:       originPrivateKey,
-		InflateMainChain: false,
+		StemInput:             genesisStem,
+		Timestamp:             ts,
+		WithdrawOutputs:       genesisDistributionOutputs,
+		PrivateKey:            originPrivateKey,
+		DoNotInflateMainChain: true,
 	})
+	//txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParamsOld{
+	//	ChainInput: &ledger.OutputWithChainID{
+	//		OutputWithID: *initSupplyOutput,
+	//		ChainConstraintData: ledger.ChainConstraintData{
+	//			ChainConstraint: ledger.ChainConstraint{
+	//				ChainID:      base.BoostrapSequencerID,
+	//				OriginAmount: initSupplyOutput.Output.TokenBalance(),
+	//			},
+	//			ChainConstraintIndex: 2,
+	//		},
+	//	},
+	//	StemInput:        genesisStem,
+	//	Timestamp:        ts,
+	//	AdditionalInputs: nil,
+	//	WithdrawOutputs:  genesisDistributionOutputs,
+	//	Endorsements:     nil,
+	//	PrivateKey:       originPrivateKey,
+	//	InflateMainChain: false,
+	//})
 	if err != nil {
 		return nil, err
 	}

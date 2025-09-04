@@ -43,11 +43,6 @@ type MakeSequencerTransactionParamsOld struct {
 	InflateMainChain bool
 }
 
-func MakeSequencerTransaction(par MakeSequencerTransactionParamsOld) ([]byte, error) {
-	ret, _, err := MakeSequencerTransactionWithInputLoaderOld(par)
-	return ret, err
-}
-
 func MakeSequencerTransactionWithInputLoaderOld(par MakeSequencerTransactionParamsOld) ([]byte, func(i byte) (*ledger.Output, error), error) {
 	errP := util.MakeErrFuncForPrefix("MakeSequencerTransaction")
 

@@ -19,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq/distribute"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -78,7 +79,7 @@ func TestAttachBasic(t *testing.T) {
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
 
-		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
+		txBytes, err := distribute.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
 
 		distribTxID, err := transaction.IDFromParsedTransactionBytes(txBytes)
@@ -139,7 +140,7 @@ func TestAttachBasic(t *testing.T) {
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
 
-		txBytes, err := txbuilder.MakeDistributionTransaction(stateStore, genesisPrivateKey, distrib)
+		txBytes, err := distribute.MakeDistributionTransaction(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
 
 		distribTxID, err := transaction.IDFromParsedTransactionBytes(txBytes)
@@ -210,7 +211,7 @@ func TestAttachBasic(t *testing.T) {
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
 
-		txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
+		txBytes, err := distribute.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
 
 		waitCh := make(chan struct{})

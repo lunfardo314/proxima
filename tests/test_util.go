@@ -26,6 +26,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/commands_old"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq/distribute"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -192,7 +193,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 	var genesisRoot common.VCommitment
 	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
-	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
+	txBytes, err := distribute.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 	require.NoError(t, err)
 	_, err = ret.txStore.PersistTxBytesWithMetadata(txBytes, nil)
 	require.NoError(t, err)
@@ -905,7 +906,7 @@ func StartTestEnv() (*workflowDummyEnvironment, *base.TransactionID, error) {
 
 	workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
 
-	txBytes, err := txbuilder.DistributeInitialSupply(stateStore, privKey, distrib)
+	txBytes, err := distribute.DistributeInitialSupply(stateStore, privKey, distrib)
 	if err != nil {
 		return nil, nil, err
 	}

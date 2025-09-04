@@ -1,4 +1,4 @@
-package txbuilder_seq
+package tests
 
 import (
 	"crypto/ed25519"
@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -58,8 +59,8 @@ func TestBase(t *testing.T) {
 		return &pred
 	}
 
-	newTxb := func(ts base.LedgerTime, frozen ...int64) *SeqTxBuilder {
-		txb, err := New(ts, newPredChain(frozen...), nil, privKey, multistate.DummyStateReader)
+	newTxb := func(ts base.LedgerTime, frozen ...int64) *txbuilder_seq.SeqTxBuilder {
+		txb, err := txbuilder_seq.New(ts, newPredChain(frozen...), nil, privKey, multistate.DummyStateReader)
 		require.NoError(t, err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -152,7 +153,7 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.OutputID{},
-			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
 		}
 		_, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
@@ -168,7 +169,7 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.OutputID{},
-			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
 		}
 		_, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
@@ -184,7 +185,7 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.OutputID{},
-			Output: NewWithdrawCommandOutput(seqID, privKey, 200, 10_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 10_000_000, addr),
 		}
 		_, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
@@ -201,7 +202,7 @@ func TestBase(t *testing.T) {
 		rndWithdraw := func(amount uint64, slot base.Slot) error {
 			tagAlongOut := ledger.OutputWithID{
 				ID:     base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(slot, 50)), 1),
-				Output: NewWithdrawCommandOutput(seqID, privKey, 200, amount, addr),
+				Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, amount, addr),
 			}
 			_, err := txb.AddTagAlongInput(tagAlongOut)
 			return err
@@ -223,12 +224,12 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 
-		predSeqData, err := ledger.ParseSequencerData(txb.chainInput.Output)
+		predSeqData, err := ledger.ParseSequencerData(txb.ChainInput().Output)
 		require.NoError(t, err)
 
 		tagAlongOut := ledger.OutputWithID{
 			ID: base.OutputID{},
-			Output: NewSeqDataCommandOutput(seqID, privKey, 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
+			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, privKey, 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
 				sdUpdated.SetName("newName").IncChainHeight()
 			})),
 		}
@@ -296,8 +297,8 @@ func TestFreezeOneStep(t *testing.T) {
 		return &pred
 	}
 
-	newTxb := func(ts base.LedgerTime, seqProfitMargin uint16, greedy bool, frozen ...int64) *SeqTxBuilder {
-		txb, err := New(ts, newPredChain(seqProfitMargin, greedy, frozen...), nil, privKey, multistate.DummyStateReader)
+	newTxb := func(ts base.LedgerTime, seqProfitMargin uint16, greedy bool, frozen ...int64) *txbuilder_seq.SeqTxBuilder {
+		txb, err := txbuilder_seq.New(ts, newPredChain(seqProfitMargin, greedy, frozen...), nil, privKey, multistate.DummyStateReader)
 		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -467,8 +468,8 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		return &pred
 	}
 
-	newTxb := func(predChain *ledger.OutputWithChainID, ts base.LedgerTime, seqProfitMargin uint16, greedy bool) *SeqTxBuilder {
-		txb, err := New(ts, predChain, nil, privKey, multistate.DummyStateReader)
+	newTxb := func(predChain *ledger.OutputWithChainID, ts base.LedgerTime, seqProfitMargin uint16, greedy bool) *txbuilder_seq.SeqTxBuilder {
+		txb, err := txbuilder_seq.New(ts, predChain, nil, privKey, multistate.DummyStateReader)
 		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -627,7 +628,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	ret.seqID = seqChainOrig.ChainID
 	t.Logf("seqID: %s", ret.seqID.String())
 	ts := seqChainOrig.ID.Timestamp().AddSlots(1)
-	txbSeq, err := New(ts, seqChainOrig, nil, ret.privKey, nil)
+	txbSeq, err := txbuilder_seq.New(ts, seqChainOrig, nil, ret.privKey, nil)
 	require.NoError(t, err)
 	rndTxid := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
 	err = txbSeq.AddEndorsement(rndTxid)
@@ -740,7 +741,7 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 
 		transferData, err := td.u.MakeTransferInputData(td.privKey, td.addr, base.NewLedgerTime(base.Slot(slot), 50))
 		util.AssertNoError(err)
-		delegationCmdOutput := NewRevokeDelegationReqConstraint(td.privKey, did)
+		delegationCmdOutput := txbuilder_seq.NewRevokeDelegationReqConstraint(td.privKey, did)
 		ensureConstraint := ledger.EnsureRevocationFromDelegationID(did)
 
 		transferData.WithAmount(10_000).
@@ -804,7 +805,7 @@ func TestWithUTXODB(t *testing.T) {
 		//t.Logf("%4d %s seq balance: %s, txSize: %d txTs: %s %s",
 		//	i, seqOut.ID.StringShort(), util.Th(seqOut.Output.TokenBalance()), txSize, ts.String(), freeze)
 
-		txb, err := NewWithSequencerID(ts, td.seqID, td.privKey, rdr)
+		txb, err := txbuilder_seq.NewWithSequencerID(ts, td.seqID, td.privKey, rdr)
 		require.NoError(t, err)
 		err = txb.AddEndorsement(base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0)))
 		require.NoError(t, err)

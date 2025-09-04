@@ -55,14 +55,15 @@ func New(ts base.LedgerTime,
 	predecessor *ledger.OutputWithChainID,
 	stem *ledger.OutputWithID,
 	privateKey ed25519.PrivateKey,
-	rdr multistate.IndexedStateReader) (*SeqTxBuilder, error) {
+	rdr multistate.IndexedStateReader, doNotInflateMainChain ...bool) (*SeqTxBuilder, error) {
 
 	ret := &SeqTxBuilder{
-		privateKey: privateKey,
-		chainInput: predecessor,
-		stemInput:  stem,
-		TxBuilder:  txbuilder.New(),
-		rdr:        rdr,
+		privateKey:            privateKey,
+		chainInput:            predecessor,
+		stemInput:             stem,
+		TxBuilder:             txbuilder.New(),
+		rdr:                   rdr,
+		doNotInflateMainChain: func() bool { return len(doNotInflateMainChain) > 0 && doNotInflateMainChain[0] }(),
 	}
 
 	var err error
@@ -170,6 +171,10 @@ func NewWithSequencerID(ts base.LedgerTime,
 		stemIn = rdr.GetStemOutput()
 	}
 	return New(ts, &seqIn, stemIn, privateKey, rdr)
+}
+
+func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
+	return txb.chainInput
 }
 
 func (txb *SeqTxBuilder) IsSlotBoundary() bool {
@@ -299,6 +304,21 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 	return
 }
 
+func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
+	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero() {
+		return fmt.Errorf("AddWithdrawOutput: only token balance can be non-zero")
+	}
+	amount := o.TokenBalance()
+	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.L().ID.MinimumAmountOnSequencer+amount) {
+		return fmt.Errorf("AddWithdrawOutput: not enough token balance")
+	}
+	if _, err := txb.ProduceOutput(o); err != nil {
+		return fmt.Errorf("AddWithdrawOutput: %w", err)
+	}
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(o.TokenBalance())
+	return nil
+}
+
 func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.L().ID.MinimumAmountOnSequencer) {
 		return fmt.Errorf("SeqTxBuilder: amount %s on the produced chain output is below minimum %s required for the sequencer",
@@ -397,12 +417,16 @@ type MakeSimpleSequencerTransactionParams struct {
 	// additional inputs to consume. Must be unlockable by chain
 	// can contain sender commands to the sequencer
 	AdditionalInputs []*ledger.OutputWithID
+	// withdraw outputs
+	WithdrawOutputs []*ledger.Output
 	// Endorsements
 	Endorsements []base.TransactionID
 	// ExplicitBaseline or nil if none
 	ExplicitBaseline *base.TransactionID
 	// chain controller
 	PrivateKey ed25519.PrivateKey
+	//
+	DoNotInflateMainChain bool
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
@@ -420,7 +444,7 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with additional input")
 		}
 	}
-	txb, err := New(par.Timestamp, par.ChainInput, par.StemInput, par.PrivateKey, nil)
+	txb, err := New(par.Timestamp, par.ChainInput, par.StemInput, par.PrivateKey, nil, par.DoNotInflateMainChain)
 	if err != nil {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 	}
@@ -440,6 +464,11 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 	}
 	for _, o := range par.AdditionalInputs {
 		if err = txb.AddSimpleInput(*o); err != nil {
+			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
+		}
+	}
+	for _, o := range par.WithdrawOutputs {
+		if err = txb.AddWithdrawOutput(o); err != nil {
 			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 		}
 	}
