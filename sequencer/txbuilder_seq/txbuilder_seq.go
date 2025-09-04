@@ -17,7 +17,7 @@ import (
 type (
 	SeqTxBuilder struct {
 		*txbuilder.TxBuilder
-		*seqdata.SequencerData
+		origSeqData           *seqdata.SequencerData
 		rdr                   multistate.IndexedStateReader
 		nextSeqData           *seqdata.SequencerData
 		privateKey            ed25519.PrivateKey
@@ -69,18 +69,18 @@ func New(ts base.LedgerTime,
 	sd, err := ledger.ParseSequencerData(predecessor.Output)
 
 	if err != nil {
-		ret.SequencerData = seqdata.New()
+		ret.origSeqData = seqdata.New()
 	} else {
-		ret.SequencerData = &sd
-		ret.SequencerData.IncChainHeight()
+		ret.origSeqData = &sd
+		ret.origSeqData.IncChainHeight()
 		if stem != nil {
-			ret.SequencerData.IncBranchHeight()
+			ret.origSeqData.IncBranchHeight()
 		}
 	}
-	ret.nextSeqData = ret.SequencerData.Clone()
+	ret.nextSeqData = ret.origSeqData.Clone()
 	diffTicksChain := base.DiffTicks(ts, predecessor.Timestamp())
 	if diffTicksChain < int64(ledger.L().ID.TransactionPaceSequencer) ||
-		diffTicksChain < int64(ret.SequencerData.Pace()) {
+		diffTicksChain < int64(ret.origSeqData.Pace()) {
 		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", ts.String())
 	}
 
@@ -188,6 +188,26 @@ func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	return nil
 }
 
+// AddSimpleInput output must have 2 constraints and lock must be address25519 or chainLock
+func (txb *SeqTxBuilder) AddSimpleInput(o ledger.OutputWithID) error {
+	idx, err := txb.TxBuilder.ConsumeOutput(o.Output, o.ID)
+	if err != nil {
+		return fmt.Errorf("AddSimpleInput: %v", err)
+	}
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(o.Output.TokenBalance())
+	switch o.Output.Lock().Name() {
+	case ledger.AddressED25519Name:
+		if err = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0); err != nil {
+			return fmt.Errorf("AddSimpleInput: %v", err)
+		}
+	case ledger.ChainLockName:
+		txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainUnlockParams(0, 2))
+	default:
+		return fmt.Errorf("AddSimpleInput: wrong ock type")
+	}
+	return nil
+}
+
 // AddTagAlongInput returns:
 //
 //	-- false, error if output is permanently invalid. If err != nil, it is a reason why
@@ -202,7 +222,7 @@ func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (valid bool, er
 
 func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, frozenEpochs byte) (uint64, error) {
 	delegatorRequirement := delegationIn.RequiredInflationShare
-	seqTolerance := 1000 - txb.SequencerData.InflationProfitMarginPromille()
+	seqTolerance := 1000 - txb.origSeqData.InflationProfitMarginPromille()
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
@@ -210,7 +230,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot), frozenEpochs)
 	projectedInflation := ledger.L().ChainInflation(delegationIn.Output.TokenBalance(), uint32(txb.TransactionData.Timestamp.Slot), frozenSlots)
 
-	if txb.SequencerData.IsGreedy() {
+	if txb.origSeqData.IsGreedy() {
 		return (projectedInflation * uint64(delegatorRequirement)) / 1000, nil
 	}
 	return (projectedInflation * uint64(seqTolerance)) / 1000, nil
@@ -338,6 +358,16 @@ func (txb *SeqTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, stri
 	return txb.TxBuilder.BytesWithValidation()
 }
 
+func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) (*ledger.Output, error), error) {
+	if err := txb.buildSequencerAndStemOutputs(); err != nil {
+		return nil, nil, fmt.Errorf("SeqTxBuilder: %w", err)
+	}
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(txb.privateKey)
+
+	return txb.TxBuilder.TransactionData.Bytes(), txb.TxBuilder.LoadInput, nil
+}
+
 func (txb *SeqTxBuilder) reservedInputs() (ret int) {
 	ret = 1
 	if txb.stemInput != nil {
@@ -352,4 +382,71 @@ func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
 
 func (txb *SeqTxBuilder) Slot() uint32 {
 	return uint32(txb.TransactionData.Timestamp.Slot)
+}
+
+type MakeSimpleSequencerTransactionParams struct {
+	// sequencer name (set only if != ""
+	Name string
+	// transaction ts
+	Timestamp base.LedgerTime
+	// predecessor
+	ChainInput *ledger.OutputWithChainID
+	//
+	StemInput *ledger.OutputWithID // it is branch tx if != nil
+	// timestamp of the transaction
+	// additional inputs to consume. Must be unlockable by chain
+	// can contain sender commands to the sequencer
+	AdditionalInputs []*ledger.OutputWithID
+	// Endorsements
+	Endorsements []base.TransactionID
+	// ExplicitBaseline or nil if none
+	ExplicitBaseline *base.TransactionID
+	// chain controller
+	PrivateKey ed25519.PrivateKey
+}
+
+// MakeSimpleSequencerTransactionWithInputLoader usually used in tests
+func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
+	if !ledger.ValidSequencerPace(par.ChainInput.Timestamp(), par.Timestamp) {
+		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with chain input")
+	}
+	if par.StemInput != nil {
+		if !ledger.ValidSequencerPace(par.StemInput.Timestamp(), par.Timestamp) {
+			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with stem input")
+		}
+	}
+	for _, o := range par.AdditionalInputs {
+		if !ledger.ValidSequencerPace(o.Timestamp(), par.Timestamp) {
+			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with additional input")
+		}
+	}
+	txb, err := New(par.Timestamp, par.ChainInput, par.StemInput, par.PrivateKey, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
+	}
+	if par.Name != "" {
+		txb.nextSeqData.SetName(par.Name)
+	}
+	for _, endorsement := range par.Endorsements {
+		if err = txb.AddEndorsement(endorsement); err != nil {
+			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
+		}
+	}
+	if par.ExplicitBaseline != nil {
+		if !par.ExplicitBaseline.IsBranchTransaction() {
+			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: explicit baseline must be a branch transaction ID, got %s", par.ExplicitBaseline.StringShort())
+		}
+		txb.PutExplicitBaseline(par.ExplicitBaseline)
+	}
+	for _, o := range par.AdditionalInputs {
+		if err = txb.AddSimpleInput(*o); err != nil {
+			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
+		}
+	}
+	return txb.BytesWithInputLoader()
+}
+
+func MakeSimpleSequencerTransaction(par MakeSimpleSequencerTransactionParams) ([]byte, error) {
+	txBytes, _, err := MakeSimpleSequencerTransactionWithInputLoader(par)
+	return txBytes, err
 }

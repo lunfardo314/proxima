@@ -455,7 +455,7 @@ func CheckExplicitBaseline(tx *Transaction) error {
 		return fmt.Errorf("checking explicit baseline: %v", err)
 	}
 	if !txid.IsBranchTransaction() {
-		return fmt.Errorf("explicit baseline must be a branch transaction ChainID, got %s", txid.String())
+		return fmt.Errorf("explicit baseline must be a branch transaction ID, got %s", txid.String())
 	}
 	if !ledger.ValidSequencerPace(txid.Timestamp(), tx.timestamp) {
 		return fmt.Errorf("explicit baseline violates sequencer pace constraint: %s", txid.String())

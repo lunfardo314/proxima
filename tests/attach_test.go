@@ -18,6 +18,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
@@ -302,10 +303,10 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		ts := base.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer())
 		ts = ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
-		txBytes, loader, err := txbuilder.MakeSequencerTransactionWithInputLoaderOld(txbuilder.MakeSequencerTransactionParamsOld{
-			SeqName:          "test",
-			ChainInput:       chainOut,
+		txBytes, loader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+			Name:             "testSeq",
 			Timestamp:        ts,
+			ChainInput:       chainOut,
 			AdditionalInputs: testData.conflictingOutputs,
 			PrivateKey:       genesisPrivateKey,
 		})
@@ -373,14 +374,13 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
 		ts := outToConsume.Timestamp().AddTicks(ledger.TransactionPaceSequencer())
 		ts = ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts)
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
-			SeqName:          "test",
-			ChainInput:       chainOut,
+		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+			Name:             "testSeq",
 			Timestamp:        ts,
+			ChainInput:       chainOut,
 			AdditionalInputs: []*ledger.OutputWithID{&outToConsume},
 			PrivateKey:       genesisPrivateKey,
 		})
-
 		require.NoError(t, err)
 
 		var wg sync.WaitGroup
@@ -430,15 +430,15 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		// checking invalid explicit baseline
 		explicitBaseline := util.Ref(base.RandomTransactionID(true, 5, ts))
-		txBytes, loader, err := txbuilder.MakeSequencerTransactionWithInputLoaderOld(txbuilder.MakeSequencerTransactionParamsOld{
-			SeqName:          "test",
-			ChainInput:       chainOut,
+		txBytes, loader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+			Name:             "testSeq",
 			Timestamp:        ts,
+			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
-			PrivateKey:       genesisPrivateKey,
 			ExplicitBaseline: explicitBaseline,
+			PrivateKey:       genesisPrivateKey,
 		})
-		util.RequireErrorWithOld(t, err, "explicit baseline must be a branch transaction ChainID", explicitBaseline.String())
+		require.NoError(t, util.MustErrorWith(err, "explicit baseline must be a branch transaction ID"))
 
 		// now this must pass without error
 		explicitBaseline = util.Ref(base.RandomTransactionID(true, 5, base.NewLedgerTime(ts.Slot, 0)))
@@ -514,10 +514,10 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			t.Logf("inTS : %s", ts.String())
 		}
 
-		txBytes, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
-			SeqName:          "test",
-			ChainInput:       chainOut,
+		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+			Name:             "testSeq",
 			Timestamp:        base.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
+			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       genesisPrivateKey,
 		})
