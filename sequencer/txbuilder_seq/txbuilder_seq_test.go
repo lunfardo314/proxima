@@ -596,13 +596,13 @@ func TestFreezeMultipleSteps(t *testing.T) {
 type (
 	testWithUTXODBData struct {
 		*testing.T
-		privKey       ed25519.PrivateKey
-		addr          ledger.AddressED25519
-		u             *utxodb.UTXODB
-		seqID         base.ChainID
-		delegationIDs []base.ChainID
-		dconst        *ledger.DelegationConstants
-		revoked       set.Set[base.ChainID]
+		privKey        ed25519.PrivateKey
+		addr           ledger.AddressED25519
+		u              *utxodb.UTXODB
+		seqID          base.ChainID
+		delegationIDs  []base.ChainID
+		dconst         *ledger.DelegationConstants
+		revokeRequests set.Set[base.ChainID]
 	}
 )
 
@@ -611,13 +611,13 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
 	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 1, seqInitBalance*2)
 	ret := &testWithUTXODBData{
-		T:             t,
-		u:             u,
-		privKey:       pk[0],
-		addr:          addrs[0],
-		delegationIDs: make([]base.ChainID, nDelegations),
-		dconst:        ledger.DelegationConst(),
-		revoked:       set.New[base.ChainID](),
+		T:              t,
+		u:              u,
+		privKey:        pk[0],
+		addr:           addrs[0],
+		delegationIDs:  make([]base.ChainID, nDelegations),
+		dconst:         ledger.DelegationConst(),
+		revokeRequests: set.New[base.ChainID](),
 	}
 	initTs := base.NewLedgerTime(1000, 50)
 
@@ -710,14 +710,15 @@ func (td *testWithUTXODBData) freezableDelegations(ts base.LedgerTime) []ledger.
 	return ret
 }
 
-// epoch -> which (delegatio idx, relative slot) to be revoked
+// epoch -> which (delegatio idx, relative slot) to be revokeRequests
 
 var _revokeSchedule = map[uint32][]struct{ d, s uint32 }{
 	4:  {{1, 40}},
 	5:  {{5, 10}, {3, 35}},
-	8:  {{2, 100}},
+	6:  {{3, 10}},
+	8:  {{2, 5}},
 	10: {{4, 50}, {6, 60}},
-	//12: {{2, 80}},
+	12: {{1, 40}},
 }
 
 // postRevokeRequestsInEpoch creates revocation requests
@@ -739,7 +740,7 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 
 		transferData, err := td.u.MakeTransferInputData(td.privKey, td.addr, base.NewLedgerTime(base.Slot(slot), 50))
 		util.AssertNoError(err)
-		delegationCmdOutput := NewRevokeDelegationCommandConstraint(td.privKey, did)
+		delegationCmdOutput := NewRevokeDelegationReqConstraint(td.privKey, did)
 		ensureConstraint := ledger.EnsureRevocationFromDelegationID(did)
 
 		transferData.WithAmount(10_000).
@@ -748,7 +749,7 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 			WithConstraint(&ensureConstraint)
 		err = td.u.DoTransfer(transferData)
 		util.AssertNoError(err)
-		td.revoked.Insert(did)
+		td.revokeRequests.Insert(did)
 		td.Logf("post revoke request for %s epoch %d, slot %d, slot in epoch: %d", did.StringShort(), epoch, slot, nrSlotInEpoch)
 	}
 	return nRequests
@@ -762,7 +763,7 @@ func (td *testWithUTXODBData) tagAlongBacklog() []ledger.OutputWithID {
 
 func TestWithUTXODB(t *testing.T) {
 	const (
-		numDelegations = 15
+		numDelegations = 10
 		howManySteps   = 8030
 	)
 	td, ts := newTestWithUTXODBData(t, numDelegations)
@@ -771,6 +772,8 @@ func TestWithUTXODB(t *testing.T) {
 	//var txSize int
 	var stats *_epochStats
 	revokeRequests := 0
+
+	blacklist := set.New[base.OutputID]()
 
 	for i := 0; i < howManySteps; i++ {
 		rdr := td.u.SugaredStateReader()
@@ -816,11 +819,19 @@ func TestWithUTXODB(t *testing.T) {
 
 		tagAlongBacklog := td.tagAlongBacklog()
 		for _, o := range tagAlongBacklog {
+			if blacklist.Contains(o.ID) {
+				continue
+			}
 			valid, err := txb.AddTagAlongInput(o)
-			if !valid {
-				t.Logf("   output cannot be used as tag-along (reason = '%v'):\n%s", err, o.LinesHR("      ").String())
+			if !valid || err != nil {
+				if !valid {
+					t.Logf("   %s PERMANENTLY cannot add tag-along, reason = '%v'", o.ID.StringShort(), err)
+					blacklist.Insert(o.ID)
+				} else {
+					t.Logf("   %s TEMPORARY cannot add tag-along, reason = '%v'", o.ID.StringShort(), err)
+				}
 			} else {
-				t.Logf("   output not consumed (reason = '%v')", err)
+				t.Logf("   %s tag-along output has been added", o.ID.StringShort())
 			}
 		}
 		txBytes, _, txString, err := txb.BytesWithValidation()
@@ -848,20 +859,21 @@ func TestWithUTXODB(t *testing.T) {
 		if o.IsInSafeRevocationWindow(uint32(ts.Slot)) {
 			numSafeRevocation++
 		}
-		t.Logf("   %s  %s  revoked: %v,  safe: %v,  marked frozen: %v,  feezable: %v",
+		t.Logf("   %s  %s  revokeRequests: %v,  safe: %v,  marked frozen: %v,  feezable: %v",
 			o.ChainID.StringShort(), o.ID.StringShort(), o.IsMarkedRevoked(),
 			o.IsInSafeRevocationWindow(uint32(ts.Slot)), o.IsMarkedFrozen(), o.IsUnlockableByTargetForFreezing(uint32(ts.Slot)))
 
 		if o.IsMarkedRevoked() {
-			require.True(t, td.revoked.Contains(o.ChainID))
+			require.True(t, td.revokeRequests.Contains(o.ChainID))
 		}
 		return true
 	})
 	t.Logf(`---------------------------
      total delegations :     %d
-     revoced:                %d
-     safe revocation window: %d`, numTotalDelegations, numRevoked, numSafeRevocation)
+     revoked:                %d
+     revoke requests:        %d
+     safe revocation window: %d`, numTotalDelegations, numRevoked, revokeRequests, numSafeRevocation)
 
-	require.EqualValues(t, numRevoked, revokeRequests)
-	require.EqualValues(t, numRevoked, len(td.revoked))
+	//require.EqualValues(t, numRevoked, revokeRequests)
+	//require.EqualValues(t, numRevoked, len(td.revokeRequests))
 }

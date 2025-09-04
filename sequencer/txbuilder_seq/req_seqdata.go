@@ -34,7 +34,7 @@ func _parseSetSequencerDataOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
 	if msg.SenderHash != blake2b.Sum256(publicKey) {
 		// wrong sender -> may be attack
-		err = fmt.Errorf("sender hash does not match public key of the owner (fail auth)")
+		err = fmt.Errorf("sender hash does not match public key of the owner (failed authorisation)")
 		return
 	}
 	sd, err := seqdata.FromBytes(msg.Get(FieldSetSequencerDataBinary))

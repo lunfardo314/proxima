@@ -35,7 +35,8 @@ type (
 	}
 
 	TxBuilderCommand interface {
-		Apply(txb *SeqTxBuilder) (bool, error) // false means it is permanently invalid, err is a reason why
+		// Apply valid=false means it is permanently invalid, err is a reason why not possibe to apply it
+		Apply(txb *SeqTxBuilder) (valid bool, err error)
 	}
 
 	SeqCommandBase struct {
@@ -191,10 +192,10 @@ func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 //
 //	-- false, error if output is permanently invalid. If err != nil, it is a reason why
 //	-- true, error it is temporary cannot be applied
-func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (bool, error) {
+func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (valid bool, err error) {
 	cmd, valid, err := txb.TxBuilderCommandFromOutput(o)
 	if !valid || err != nil {
-		return false, fmt.Errorf("AddTagAlongInput: %w", err)
+		return valid, fmt.Errorf("AddTagAlongInput: %w", err)
 	}
 	return cmd.Apply(txb)
 }
@@ -343,4 +344,12 @@ func (txb *SeqTxBuilder) reservedInputs() (ret int) {
 		ret = 2
 	}
 	return
+}
+
+func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
+	return txb.TransactionData.Timestamp
+}
+
+func (txb *SeqTxBuilder) Slot() uint32 {
+	return uint32(txb.TransactionData.Timestamp.Slot)
 }

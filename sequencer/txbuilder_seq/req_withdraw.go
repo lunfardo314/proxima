@@ -39,7 +39,7 @@ func _parseWithdrawOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqRequ
 	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
 	if msg.SenderHash != blake2b.Sum256(publicKey) {
 		// wrong sender -> may be attack
-		err = fmt.Errorf("WithdrawRequest: sender can't update sequncer data (fail auth)")
+		err = fmt.Errorf("WithdrawRequest: sender can't update sequncer data (failed authorisation)")
 		return
 	}
 	ret := &WithdrawRequest{o: o}

@@ -129,6 +129,26 @@ func (o *DelegationOutput) IsUnlockableByTarget(txSlot uint32) bool {
 	return !o.IsInSafeRevocationWindow(txSlot)
 }
 
+// IsUnlockableByTargetWithReason returns:
+//   - false, <reason> if permanently unclockable,
+//   - true, <reason> if temporarily unlockable
+func (o *DelegationOutput) IsUnlockableByTargetWithReason(txSlot uint32) (valid bool, err error) {
+	if uint32(o.ID.Timestamp().Slot) >= txSlot {
+		return true, fmt.Errorf("delegation output %s slot must be 1 or more slots before transaction in slot %d", o.ID.StringShort(), txSlot)
+	}
+	if o.IsMarkedRevoked() {
+		return false, fmt.Errorf("delegation output already revoked")
+	}
+	if !o.IsMarkedFrozen() {
+		return false, fmt.Errorf("delegation output must be in frozen state")
+	}
+	// marked frozen, not revoked
+	if o.IsInSafeRevocationWindow(txSlot) {
+		return true, fmt.Errorf("delegation output is in safe revocation window")
+	}
+	return true, nil
+}
+
 func (o *DelegationOutput) IsUnlockableByTargetForFreezing(txSlot uint32) bool {
 	return o.IsUnlockableByTarget(txSlot) && !o.IsInFrozenSlot(txSlot)
 }
