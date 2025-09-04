@@ -203,13 +203,13 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	ret.distributionBranchTxID = ret.distributionBranchTx.ID()
 	t.Logf("distribution txID: %s", ret.distributionBranchTxID.StringShort())
 
-	ret.faucetOutput = ret.distributionBranchTx.MustProducedOutputWithIDAt(4)
+	ret.faucetOutput = ret.distributionBranchTx.MustProducedOutputWithIDAt(2)
 	const printDistributionTx = false
 	if printDistributionTx {
-		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
-		require.NoError(t, err)
+		//tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		//require.NoError(t, err)
 		genesisState := multistate.MustNewReadable(stateStore, genesisRoot)
-		t.Logf("--------------- distribution tx:\n%s\n--------------", tx.ToString(genesisState.GetUTXO))
+		t.Logf("--------------- distribution tx:\n%s\n--------------", ret.distributionBranchTx.ToString(genesisState.GetUTXO))
 		t.Logf("--------------- faucet output\n%s\n--------------", ret.faucetOutput)
 	}
 
