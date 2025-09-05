@@ -114,7 +114,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 }
 
 func TestDelegationLock2Init(t *testing.T) {
-	require.EqualValues(t, 30, ledger.DelegationConst().SafeRevocationSlots)
+	require.EqualValues(t, 36, ledger.DelegationConst().SafeRevocationSlots)
 
 	td := &testData{T: t}
 	var err error
@@ -765,16 +765,16 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 1
-			minInflationAdvancePerEpoch = 10
+			frozenEpochs   = 1
+			inflationShare = 10
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 2, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(700)
 		advance := td.delegatedOutput.ProjectedInflation(ts, frozenEpochs)
-		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
 			ts:                      ts,
 			frozenEpochs:            frozenEpochs,
@@ -789,17 +789,17 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 1
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 1
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 2, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1000)
 		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvanceByFrozenEpochs(ts, frozenEpochs)
 		require.NoError(t, err)
-		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		advance -= 1
 		err = td.transitChainWithDelegationRaw(transitRawParams{
 			ts:                      ts,
@@ -815,18 +815,18 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 1
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 1
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 2, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(700)
 		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvanceByFrozenEpochs(ts, frozenEpochs)
 		require.NoError(t, err)
 		require.True(t, advance > 0)
-		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
 			ts:                      ts,
 			frozenEpochs:            frozenEpochs,
@@ -841,18 +841,18 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 2
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 2
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 2, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1)
 		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		require.NoError(t, err)
 
-		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		fc := int64(td.delegatedOutput.Output.TokenBalance() + advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
 			ts:                      ts,
@@ -868,18 +868,18 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 2
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 2
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 2, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(900)
 		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		require.NoError(t, err)
 		advance -= 1
-		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		fc := int64(td.delegatedOutput.Output.TokenBalance() + advance)
 		err = td.transitChainWithDelegationRaw(transitRawParams{
 			ts:                      ts,
@@ -895,18 +895,18 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 3
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 3
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 4, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1)
 		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		require.NoError(t, err)
 
-		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epcohs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
@@ -926,18 +926,18 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 3
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 3
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 4, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(900)
 		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		require.NoError(t, err)
 		advance -= 1
-		t.Logf("ts: %s, frozen epochs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epochs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
@@ -957,17 +957,17 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 4
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 4
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 4, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(1)
 		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvanceByFrozenEpochs(ts, frozenEpochs)
 		require.NoError(t, err)
-		t.Logf("ts: %s, frozen epochs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epochs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
@@ -988,18 +988,18 @@ func TestFrozenCoverage1(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 4
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 4
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 4, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(900)
 		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
 		require.NoError(t, err)
 		advance -= 1
-		t.Logf("ts: %s, frozen epochs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, minInflationAdvancePerEpoch, advance)
+		t.Logf("ts: %s, frozen epochs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
 		covVect := []int64{
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
 			int64(td.delegatedOutput.Output.TokenBalance() + advance),
@@ -1016,20 +1016,86 @@ func TestFrozenCoverage1(t *testing.T) {
 		})
 		util.RequireErrorWithOld(t, err, "not enough inflation advance")
 	})
-	t.Run("frozen epochs 5 fail", func(t *testing.T) {
+	t.Run("frozen epochs 8", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
 		const (
-			frozenEpochs                = 5
-			minInflationAdvancePerEpoch = 100
+			frozenEpochs   = 8
+			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 4, minInflationAdvancePerEpoch)
+		_, txString, err = td.initDelegationUTXOMake(ts, frozenEpochs, inflationShare)
+		require.NoError(t, err)
+
+		ts = td.timestampSlotsForward(1)
+		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvanceByFrozenEpochs(ts, frozenEpochs)
+		require.NoError(t, err)
+		t.Logf("ts: %s, frozen epochs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
+		covVect := []int64{
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+		}
+		err = td.transitChainWithDelegationRaw(transitRawParams{
+			ts:                      ts,
+			frozenEpochs:            frozenEpochs,
+			successorFrozenCoverage: covVect,
+			sequencerFrozenCoverage: covVect,
+			inflationAdvance:        advance,
+			prntx:                   false,
+		})
+		require.NoError(t, err)
+	})
+	t.Run("frozen epochs 8 fail", func(t *testing.T) {
+		// target consumes initial delegation
+		td.init()
+		const (
+			frozenEpochs   = 8
+			inflationShare = 100
+		)
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		_, txString, err = td.initDelegationUTXOMake(ts, frozenEpochs, inflationShare)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(900)
-		_, err = td.delegatedOutput.RequiredMinimumInflationAdvanceByFrozenEpochs(ts, frozenEpochs)
-		require.NoError(t, util.MustErrorWith(err, "wrong frozen epochs"))
+		advance, err := td.delegatedOutput.RequiredMinimumInflationAdvance(ts, frozenEpochs)
+		require.NoError(t, err)
+		advance -= 1
+		t.Logf("ts: %s, frozen epochs: %d, min advance per epoch: %d, required advance: %v", ts.String(), frozenEpochs, inflationShare, advance)
+		covVect := []int64{
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+			int64(td.delegatedOutput.Output.TokenBalance() + advance),
+		}
+		err = td.transitChainWithDelegationRaw(transitRawParams{
+			ts:                      ts,
+			frozenEpochs:            frozenEpochs,
+			successorFrozenCoverage: covVect,
+			sequencerFrozenCoverage: covVect,
+			inflationAdvance:        advance,
+			prntx:                   false,
+		})
+		util.RequireErrorWithOld(t, err, "not enough inflation advance")
+	})
+	t.Run("frozen epochs 9 fail", func(t *testing.T) {
+		// target consumes initial delegation
+		td.init()
+		const (
+			inflationShare = 100
+		)
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		_, txString, err = td.initDelegationUTXOMake(ts, 9, inflationShare)
+		require.NoError(t, util.MustErrorWith(err, "wrong max frozen epochs value"))
 	})
 }
 

@@ -64,7 +64,6 @@ func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte,
 func (d *DelegateLock) Source() string {
 	dconst := DelegationConst()
 
-	util.Assertf(d.MaxFrozenEpochs <= byte(dconst.MaxFrozenEpochs), "d.MaxFrozenEpochs<=byte(dconst.MaxFrozenEpochs)")
 	m := "0x"
 	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(dconst.MaxFrozenEpochs) {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
@@ -282,9 +281,9 @@ func initTestEnsureRevocation() {
 }
 
 const delegateLock2Source = `
-func constDelegationSafeRevocationSlots  : 30
-func constDelegationEpochSlots : u32/512
-func constDelegationMaxFrozenEpochs : 4
+func constDelegationSafeRevocationSlots  : 36  // 6 min
+func constDelegationEpochSlots : u32/540  // 1.5 hours
+func constDelegationMaxFrozenEpochs : 8   // 12 hours
 
 // $0 target chain ChainID
 // -> chainID[0:3] mod slots-in-epoch 
