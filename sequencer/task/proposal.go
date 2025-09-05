@@ -37,6 +37,8 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	if err != nil {
 		return nil, fmt.Errorf("newProposal: %w", err)
 	}
+	txb.SetName(p.environment.SequencerName() + "." + p.strategy.ShortName)
+
 	return &proposal{
 		proposer: p,
 		attacher: a,
@@ -93,6 +95,54 @@ func (p *proposal) insertTagAlongInputs(maxInputs int) {
 			return
 		}
 	}
+}
+
+func (p *proposal) insertDelegations() {
+	if p.txb.InputsAreFull() {
+		return
+	}
+	outs := make([]*ledger.DelegationOutput, 0)
+	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
+		if o.IsUnlockableByTargetForFreezing(uint32(p.targetTs.Slot)) {
+			outs = append(outs, o)
+		}
+		return true
+	})
+	sort.Slice(outs, func(i, j int) bool {
+		if outs[i].Output.TokenBalance() > outs[j].Output.TokenBalance() {
+			return true
+		}
+		return outs[i].ID.Timestamp().Before(outs[j].ID.Timestamp())
+	})
+	for _, o := range outs {
+		select {
+		case <-p.ctx.Done():
+			return
+		default:
+		}
+		wOut := attacher.AttachOutputWithID(o.OutputWithID, p)
+		if p.IsConsumedInThePastPath(wOut, p.attacher.Extending().VID) {
+			continue
+		}
+		// just skip if freezing failed for any reason
+		_, _ = p.attacher.InsertInput(wOut, func() (bool, error) {
+			_, err1 := p.txb.FreezeDelegation(o)
+			return true, err1
+		})
+		if p.txb.InputsAreFull() {
+			return
+		}
+	}
+}
+
+func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
+	txBytes, _, txString, err := p.txb.BytesWithValidation()
+	if err != nil {
+		return nil, txString, err
+	}
+	tx, err := transaction.FromBytes(txBytes)
+	p.AssertNoError(err)
+	return tx, txString, nil
 }
 
 func (p *proposer) makeTxProposalOld(a *attacher.IncrementalAttacher) (*transaction.Transaction, string, error) {

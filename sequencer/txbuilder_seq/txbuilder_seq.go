@@ -396,6 +396,10 @@ func (txb *SeqTxBuilder) reservedInputs() (ret int) {
 	return
 }
 
+func (txb *SeqTxBuilder) StateReader() multistate.SugaredStateReader {
+	return multistate.MakeSugared(txb.rdr)
+}
+
 func (txb *SeqTxBuilder) InputsAreFull() bool {
 	return txb.NumInputs()+txb.reservedInputs() >= 256
 }
@@ -406,6 +410,10 @@ func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
 
 func (txb *SeqTxBuilder) Slot() uint32 {
 	return uint32(txb.TransactionData.Timestamp.Slot)
+}
+
+func (txb *SeqTxBuilder) SetName(name string) {
+	txb.nextSeqData.SetName(name)
 }
 
 type MakeSimpleSequencerTransactionParams struct {
@@ -453,7 +461,7 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 	}
 	if par.SeqName != "" {
-		txb.nextSeqData.SetName(par.SeqName)
+		txb.SetName(par.SeqName)
 	}
 	for _, endorsement := range par.Endorsements {
 		if err = txb.AddEndorsement(endorsement); err != nil {
