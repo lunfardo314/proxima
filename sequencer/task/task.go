@@ -231,12 +231,9 @@ func (t *taskData) insertInputs(a *attacher.IncrementalAttacher, outs []vertex.W
 			return
 		default:
 		}
-		atomicCheck := func() error { return nil }
-		if success, err := a.InsertInput(wOut, atomicCheck); success {
+		atomicCheck := func() (bool, error) { return true, nil }
+		if _, err := a.InsertInput(wOut, atomicCheck); err == nil {
 			numInserted++
-			t.Tracef(TraceTagInsertInputs, "%s. Inserted %s", a.Name, wOut.IDStringShort)
-		} else {
-			t.Tracef(TraceTagInsertInputs, "%s. Failed to insert %s: '%v'", a.Name, wOut.IDStringShort, err)
 		}
 		if a.NumInputs() >= maxInputs {
 			return

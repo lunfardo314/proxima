@@ -396,6 +396,10 @@ func (txb *SeqTxBuilder) reservedInputs() (ret int) {
 	return
 }
 
+func (txb *SeqTxBuilder) InputsAreFull() bool {
+	return txb.NumInputs()+txb.reservedInputs() >= 256
+}
+
 func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
 	return txb.TransactionData.Timestamp
 }

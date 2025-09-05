@@ -2,8 +2,10 @@ package task
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/commands_old"
@@ -11,6 +13,7 @@ import (
 )
 
 type proposal struct {
+	*proposer
 	attacher *attacher.IncrementalAttacher
 	txb      *txbuilder_seq.SeqTxBuilder
 }
@@ -35,9 +38,61 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 		return nil, fmt.Errorf("newProposal: %w", err)
 	}
 	return &proposal{
+		proposer: p,
 		attacher: a,
 		txb:      txb,
 	}, nil
+}
+
+type _inputCandidate struct {
+	o    *ledger.OutputWithID
+	wOut vertex.WrappedOutput
+}
+
+func (p *proposal) insertTagAlongInputs(maxInputs int) {
+	if p.txb.InputsAreFull() {
+		return
+	}
+	outs := make([]*_inputCandidate, 0)
+
+	p.Backlog().IterateOutputs(func(wOut vertex.WrappedOutput) bool {
+		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.targetTs) {
+			return true
+		}
+		if p.IsConsumedInThePastPath(wOut, p.attacher.Extending().VID) {
+			return true
+		}
+		outs = append(outs, &_inputCandidate{
+			wOut: wOut,
+			o:    wOut.OutputWithID(),
+		})
+		return true
+	})
+
+	sort.Slice(outs, func(i, j int) bool {
+		if outs[i].o.Output.TokenBalance() > outs[j].o.Output.TokenBalance() {
+			return true
+		}
+		return outs[i].o.ID.Timestamp().Before(outs[j].o.ID.Timestamp())
+	})
+
+	for _, o := range outs {
+		select {
+		case <-p.ctx.Done():
+			return
+		default:
+		}
+		valid, err := p.attacher.InsertInput(o.wOut, func() (bool, error) {
+			return p.txb.AddTagAlongInput(*o.o)
+		})
+		if !valid {
+			p.Backlog().AddToBlacklist(o.wOut)
+			p.Log().Warnf("output %s cannot be used as tag-along permanently. Reason = %v", o.o.ID.StringShort(), err)
+		}
+		if p.attacher.NumInputs() >= maxInputs {
+			return
+		}
+	}
 }
 
 func (p *proposer) makeTxProposalOld(a *attacher.IncrementalAttacher) (*transaction.Transaction, string, error) {

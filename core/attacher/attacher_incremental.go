@@ -230,19 +230,20 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 // InsertInput inserts tag along or delegation input.
 // In case of failure return false and attacher state with vertex references remains consistent
 // atomicCheck callback is used to add optional additional check right before commiting delta
-func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck func() error) (bool, error) {
+func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck func() (bool, error)) (valid bool, err error) {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	util.AssertNoError(a.err)
 
 	if !wOut.VID.ValidSequencerPace(a.targetTs) {
-		return false, fmt.Errorf("IncrementalAttacher(%s).InsertInput: invalid sequencer pace in %s", a.name, wOut.IDStringShort())
+		return true, fmt.Errorf("IncrementalAttacher(%s).InsertInput: invalid sequencer pace in %s", a.name, wOut.IDStringShort())
 	}
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	a.pastCone.BeginDelta()
-	err := a.insertVirtuallyConsumedOutput(wOut)
+	err = a.insertVirtuallyConsumedOutput(wOut)
+	valid = true // it may contain conflict but this is not permanent
 	if err == nil {
-		err = atomicCheck()
+		valid, err = atomicCheck()
 	}
 	if err != nil {
 		// it is either conflicting, or not solid yet
@@ -250,7 +251,7 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck
 		a.pastCone.RollbackDelta()
 		err = fmt.Errorf("InsertInput: %w", err)
 		a.setError(nil)
-		return false, err
+		return valid, err
 	}
 	util.AssertNoError(a.err)
 
