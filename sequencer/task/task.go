@@ -46,13 +46,13 @@ type (
 		targetTs     base.LedgerTime
 		ctx          context.Context
 		proposersWG  sync.WaitGroup
-		proposalChan chan *proposal
+		proposalChan chan *finalProposal
 		slotData     *SlotData
 		// proposals    []*proposal
 		Name string
 	}
 
-	proposal struct {
+	finalProposal struct {
 		tx                *transaction.Transaction
 		txMetadata        *txmetadata.TransactionMetadata
 		txSize            int
@@ -126,7 +126,7 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 		environment:  env,
 		targetTs:     targetTs,
 		ctx:          nil,
-		proposalChan: make(chan *proposal),
+		proposalChan: make(chan *finalProposal),
 		slotData:     slotData,
 		Name:         fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
 	}
@@ -147,7 +147,7 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	// chanel is needed to make sure the reading loop has ended
 	readStop := make(chan struct{})
 
-	proposals := make(map[base.TransactionID]*proposal)
+	proposals := make(map[base.TransactionID]*finalProposal)
 
 	go func() {
 		for p := range task.proposalChan {
@@ -169,7 +169,7 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	}
 
 	proposalsSlice := maps.Values(proposals)
-	best := util.Maximum(proposalsSlice, func(p1, p2 *proposal) bool {
+	best := util.Maximum(proposalsSlice, func(p1, p2 *finalProposal) bool {
 		switch {
 		case p1.ledgerCoverage < p2.ledgerCoverage:
 			return true
@@ -191,7 +191,7 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	return best.tx, best.txMetadata, nil
 }
 
-func (p *proposal) String() string {
+func (p *finalProposal) String() string {
 	return p.hrString
 }
 
@@ -244,8 +244,8 @@ func (t *taskData) insertInputs(a *attacher.IncrementalAttacher, outs []vertex.W
 	return
 }
 
-// InsertTagAlongInputs includes filtered outputs from the backlog into attacher
-func (t *taskData) InsertTagAlongInputs(a *attacher.IncrementalAttacher, maxInputs int) (numInserted int) {
+// insertTagAlongInputs includes filtered outputs from the backlog into attacher
+func (t *taskData) insertTagAlongInputs(a *attacher.IncrementalAttacher, maxInputs int) (numInserted int) {
 	preSelected := t.Backlog().FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
 		t.Assertf(wOut.LockName() == ledger.ChainLockName, "wOut.LockName() == ledger.ChainLockName")
 
@@ -261,8 +261,8 @@ func (t *taskData) InsertTagAlongInputs(a *attacher.IncrementalAttacher, maxInpu
 	return t.insertInputs(a, preSelected, maxInputs)
 }
 
-func (t *taskData) InsertDelegationInputs(a *attacher.IncrementalAttacher, maxInputs int) (numInserted int) {
-	t.Tracef(TraceTagInsertInputs, "IN InsertDelegationInputs: %s, maxInputs: %d", a.Name, maxInputs)
+func (t *taskData) insertDelegationInputs(a *attacher.IncrementalAttacher, maxInputs int) (numInserted int) {
+	t.Tracef(TraceTagInsertInputs, "IN insertDelegationInputs: %s, maxInputs: %d", a.Name, maxInputs)
 	// TODO --
 	return
 	//rdr := a.BaselineSugaredStateReader()

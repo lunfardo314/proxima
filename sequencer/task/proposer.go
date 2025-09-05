@@ -9,8 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
-	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/sequencer/commands_old"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -77,7 +75,7 @@ func (p *proposer) propose(a *attacher.IncrementalAttacher) error {
 	slotInflation := a.SlotInflation() // tip inflation is not included
 	baselineSupply := a.BaselineSupply()
 
-	tx, hrString, err := p.makeTxProposal(a) // << after this call attacher is closed
+	tx, hrString, err := p.makeTxProposalOld(a) // << after this call attacher is closed
 	if err != nil {
 		return err
 	}
@@ -89,7 +87,7 @@ func (p *proposer) propose(a *attacher.IncrementalAttacher) error {
 	if frozen > 0 {
 		frozenP = util.Ref(frozen)
 	}
-	_proposal := &proposal{
+	_proposal := &finalProposal{
 		tx:     tx,
 		txSize: len(tx.Bytes()),
 		txMetadata: &txmetadata.TransactionMetadata{
@@ -114,17 +112,6 @@ func (p *proposer) propose(a *attacher.IncrementalAttacher) error {
 	}
 	p.proposalChan <- _proposal
 	return nil
-}
-
-func (p *proposer) makeTxProposal(a *attacher.IncrementalAttacher) (*transaction.Transaction, string, error) {
-	cmdParser := commands_old.NewCommandParser(ledger.AddressED25519FromPrivateKey(p.ControllerPrivateKey()))
-	nm := p.environment.SequencerName() + "." + p.strategy.ShortName
-	tx, err := a.MakeSequencerTransaction(nm, p.ControllerPrivateKey(), cmdParser)
-	// attacher and references are not needed anymore, it should be released
-	extEndorseString := a.ExtendEndorseLines().Join(", ")
-
-	a.Close()
-	return tx, extEndorseString, err
 }
 
 const TraceTagChooseFirstExtendEndorsePair = "chooseFirstPair"
@@ -189,7 +176,7 @@ func (p *proposer) ChooseFirstExtendEndorsePair(shuffleEndorseCandidates bool, p
 	return nil
 }
 
-// ChooseEndorseExtendPairAttacher traverses all known extension options and check each of it with the endorsement target
+// chooseEndorseExtendPairAttacher traverses all known extension options and check each of it with the endorsement target
 // Returns consistent incremental attacher with the biggest ledger coverage
 func (p *proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, extendCandidates []vertex.WrappedOutput, pairFilter func(extend vertex.WrappedOutput, endorse *vertex.WrappedTx) bool) *attacher.IncrementalAttacher {
 	if pairFilter == nil {
@@ -233,6 +220,6 @@ func (p *proposer) insertInputs(a *attacher.IncrementalAttacher) {
 		return
 	}
 	maxInputs, maxTagAlong := p.MaxInputs()
-	_ = p.InsertTagAlongInputs(a, maxTagAlong)
-	_ = p.InsertDelegationInputs(a, maxInputs)
+	_ = p.insertTagAlongInputs(a, maxTagAlong)
+	_ = p.insertDelegationInputs(a, maxInputs)
 }

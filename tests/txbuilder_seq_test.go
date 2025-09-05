@@ -597,38 +597,42 @@ func TestFreezeMultipleSteps(t *testing.T) {
 type (
 	testWithUTXODBData struct {
 		*testing.T
-		privKey        ed25519.PrivateKey
-		addr           ledger.AddressED25519
-		u              *utxodb.UTXODB
-		seqID          base.ChainID
-		delegationIDs  []base.ChainID
-		dconst         *ledger.DelegationConstants
-		revokeRequests set.Set[base.ChainID]
+		masterPrivateKey ed25519.PrivateKey
+		masterAddr       ledger.AddressED25519
+		targetPrivateKey ed25519.PrivateKey
+		targetAddr       ledger.AddressED25519
+		u                *utxodb.UTXODB
+		seqID            base.ChainID
+		delegationIDs    []base.ChainID
+		dconst           *ledger.DelegationConstants
+		revokeRequests   set.Set[base.ChainID]
 	}
 )
 
 func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData, base.LedgerTime) {
 	u := utxodb.NewUTXODB(genesisPrivateKey)
 	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
-	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 1, seqInitBalance*2)
+	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 2, seqInitBalance*2)
 	ret := &testWithUTXODBData{
-		T:              t,
-		u:              u,
-		privKey:        pk[0],
-		addr:           addrs[0],
-		delegationIDs:  make([]base.ChainID, nDelegations),
-		dconst:         ledger.DelegationConst(),
-		revokeRequests: set.New[base.ChainID](),
+		T:                t,
+		u:                u,
+		masterPrivateKey: pk[0],
+		masterAddr:       addrs[0],
+		targetPrivateKey: pk[1],
+		targetAddr:       addrs[1],
+		delegationIDs:    make([]base.ChainID, nDelegations),
+		dconst:           ledger.DelegationConst(),
+		revokeRequests:   set.New[base.ChainID](),
 	}
 	initTs := base.NewLedgerTime(1000, 50)
 
 	// sequencer chain origin
-	seqChainOrig, err := ret.u.CreateChainOrigin(ret.privKey, initTs, seqInitBalance)
+	seqChainOrig, err := ret.u.CreateChainOrigin(ret.targetPrivateKey, initTs, seqInitBalance)
 	require.NoError(t, err)
 	ret.seqID = seqChainOrig.ChainID
 	t.Logf("seqID: %s", ret.seqID.String())
 	ts := seqChainOrig.ID.Timestamp().AddSlots(1)
-	txbSeq, err := txbuilder_seq.New(ts, seqChainOrig, nil, ret.privKey, nil)
+	txbSeq, err := txbuilder_seq.New(ts, seqChainOrig, nil, ret.targetPrivateKey, nil)
 	require.NoError(t, err)
 	rndTxid := base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0))
 	err = txbSeq.AddEndorsement(rndTxid)
@@ -641,7 +645,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	const delegatedAmount = 1_000_000_000
 
 	for i := range ret.delegationIDs {
-		out, err := ret.u.CreateChainOrigin(ret.privKey, initTs.AddSlots(base.Slot(i)), delegatedAmount)
+		out, err := ret.u.CreateChainOrigin(ret.masterPrivateKey, initTs.AddSlots(base.Slot(i)), delegatedAmount)
 		require.NoError(t, err)
 
 		ret.delegationIDs[i] = out.ChainID
@@ -668,7 +672,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 
 		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(out.Output.Amounts()...)
-			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), ret.addr, maxFreezeEpochs, 980)
+			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), ret.masterAddr, maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
 			o.MustPushConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), 2, out.OriginSlot, out.OriginAmount).Bytes())
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
@@ -676,7 +680,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	}
 	txb.TransactionData.Timestamp = ts1.AddSlots(1)
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.SignED25519(ret.privKey)
+	txb.SignED25519(ret.masterPrivateKey)
 
 	var txString string
 	txBytes, _, txString, err = txb.BytesWithValidation()
@@ -739,9 +743,9 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 		nRequests++
 		did := td.delegationIDs[lst[i].d]
 
-		transferData, err := td.u.MakeTransferInputData(td.privKey, td.addr, base.NewLedgerTime(base.Slot(slot), 50))
+		transferData, err := td.u.MakeTransferInputData(td.masterPrivateKey, td.masterAddr, base.NewLedgerTime(base.Slot(slot), 50))
 		util.AssertNoError(err)
-		delegationCmdOutput := txbuilder_seq.NewRevokeDelegationReqConstraint(td.privKey, did)
+		delegationCmdOutput := txbuilder_seq.NewRevokeDelegationReqConstraint(td.masterPrivateKey, did)
 		ensureConstraint := ledger.EnsureRevocationFromDelegationID(did)
 
 		transferData.WithAmount(10_000).
@@ -805,7 +809,7 @@ func TestWithUTXODB(t *testing.T) {
 		//t.Logf("%4d %s seq balance: %s, txSize: %d txTs: %s %s",
 		//	i, seqOut.ID.StringShort(), util.Th(seqOut.Output.TokenBalance()), txSize, ts.String(), freeze)
 
-		txb, err := txbuilder_seq.NewWithSequencerID(ts, td.seqID, td.privKey, rdr)
+		txb, err := txbuilder_seq.NewWithSequencerID(ts, td.seqID, td.targetPrivateKey, rdr)
 		require.NoError(t, err)
 		err = txb.AddEndorsement(base.RandomTransactionID(true, 2, base.NewLedgerTime(ts.Slot, 0)))
 		require.NoError(t, err)

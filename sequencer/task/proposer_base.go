@@ -95,7 +95,7 @@ func baseProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
 	p.slotData.lastExtendedOutputIDB0 = extend.DecodeID()
 	// only need one proposal when extending a branch
 	stopProposing := extend.VID.IsBranchTransaction()
-	p.Tracef(TraceTagBaseProposerExit, "exit with proposal in %s: extend = %s",
+	p.Tracef(TraceTagBaseProposerExit, "exit with finalProposal in %s: extend = %s",
 		p.Name, extend.IDStringShort)
 	return a, stopProposing
 }

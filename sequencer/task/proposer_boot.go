@@ -58,6 +58,6 @@ func bootProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
 		p.Name, a.BaselineBranch().StringShort, func() string { return util.Th(a.FinalLedgerCoverage(p.targetTs)) },
 	)
 
-	p.Tracef(TraceTagBootProposer, "exit with proposal in %s: extend = %s", p.Name, extend.IDStringShort)
+	p.Tracef(TraceTagBootProposer, "exit with finalProposal in %s: extend = %s", p.Name, extend.IDStringShort)
 	return a, true
 }

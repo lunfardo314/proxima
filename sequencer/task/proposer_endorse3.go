@@ -39,7 +39,7 @@ func endorse3ProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool)
 	extending := a.Extending()
 	if !a.Completed() {
 		a.Close()
-		p.Tracef(TraceTagEndorse3Proposer, "proposal [extend=%s, endorsing=%s] not complete 1", extending.IDStringShort, endorsing0.IDShortString)
+		p.Tracef(TraceTagEndorse3Proposer, "finalProposal [extend=%s, endorsing=%s] not complete 1", extending.IDStringShort, endorsing0.IDShortString)
 		return nil, false
 	}
 
@@ -125,7 +125,7 @@ func endorse3ProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool)
 			endorsing1 = a.Endorsing()[1]
 			endorsing2 = a.Endorsing()[2]
 			extending = a.Extending()
-			p.Tracef(TraceTagEndorse3Proposer, "proposal [extend=%s, endorsing=%s, %s, %s] not complete 2",
+			p.Tracef(TraceTagEndorse3Proposer, "finalProposal [extend=%s, endorsing=%s, %s, %s] not complete 2",
 				extending.IDStringShort, endorsing0.IDShortString, endorsing1.IDShortString, endorsing2.IDShortString)
 			a.Close()
 		}
