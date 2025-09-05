@@ -71,9 +71,8 @@ type (
 		Msg      string // how proposer ended. For debugging
 	}
 
-	// ProposalGenerator returns incremental attacher as draft transaction or
-	// otherwise nil and forceExit flag = true
-	ProposalGenerator func(p *proposer) (*attacher.IncrementalAttacher, bool)
+	// ProposalGenerator returns proposal as draft transaction or otherwise nil and forceExit flag = true
+	ProposalGenerator func(p *proposer) (*proposal, bool)
 
 	proposerStrategy struct {
 		Name             string

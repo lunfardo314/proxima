@@ -29,7 +29,7 @@ func init() {
 	})
 }
 
-func bootProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
+func bootProposeGenerator(p *proposer) (*proposal, bool) {
 	extend := p.OwnLatestMilestoneOutput()
 	if extend.VID == nil {
 		p.Log().Warnf("BootProposer-%s: can't find own latest milestone output", p.Name)
@@ -42,7 +42,6 @@ func bootProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
 		return nil, true
 	}
 
-	//lrb := p.Branches().FindLatestReliableBranch(global.FractionHealthyBranch)
 	lrb := multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
 	if lrb == nil {
 		p.Log().Warnf("BootProposer-%s: can't find latest reliable branch", p.Name)
@@ -58,6 +57,11 @@ func bootProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
 		p.Name, a.BaselineBranch().StringShort, func() string { return util.Th(a.FinalLedgerCoverage(p.targetTs)) },
 	)
 
-	p.Tracef(TraceTagBootProposer, "exit with finalProposal in %s: extend = %s", p.Name, extend.IDStringShort)
-	return a, true
+	ret, err := p.newProposal(a)
+	if err != nil {
+		p.Tracef(TraceTagBootProposer, "%s can't create proposal: '%v'", p.Name, err)
+		return nil, true
+	}
+	p.Tracef(TraceTagBootProposer, "exit with proposal in %s: extend = %s", p.Name, extend.IDStringShort)
+	return ret, true
 }

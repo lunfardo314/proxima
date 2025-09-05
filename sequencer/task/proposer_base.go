@@ -23,7 +23,7 @@ func init() {
 	})
 }
 
-func baseProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
+func baseProposeGenerator(p *proposer) (*proposal, bool) {
 	p.Tracef(TraceTagBaseProposerExit, "IN base proposer %s", p.Name)
 
 	extend := p.OwnLatestMilestoneOutput()
@@ -80,6 +80,12 @@ func baseProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
 	p.Tracef(TraceTagBaseProposer, "%s created attacher with baseline %s, cov: %s",
 		p.Name, a.BaselineBranch().StringShort, func() string { return util.Th(a.FinalLedgerCoverage(p.targetTs)) },
 	)
+	ret, err := p.newProposal(a)
+	if err != nil {
+		p.Tracef(TraceTagBaseProposerExit, "%s can't create proposal: '%v'", p.Name, err)
+		return nil, true
+	}
+
 	if p.targetTs.IsSlotBoundary() {
 		p.Tracef(TraceTagBaseProposer, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
 			p.Name,
@@ -89,7 +95,7 @@ func baseProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
 	} else {
 		p.Tracef(TraceTagBaseProposer, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", p.Name, extend.IDStringShort)
 
-		p.insertInputs(a)
+		ret.insertInputs()
 	}
 
 	p.slotData.lastExtendedOutputIDB0 = extend.DecodeID()
@@ -97,5 +103,5 @@ func baseProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
 	stopProposing := extend.VID.IsBranchTransaction()
 	p.Tracef(TraceTagBaseProposerExit, "exit with finalProposal in %s: extend = %s",
 		p.Name, extend.IDStringShort)
-	return a, stopProposing
+	return ret, stopProposing
 }

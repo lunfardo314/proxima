@@ -3,7 +3,6 @@ package task
 import (
 	"time"
 
-	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 )
 
@@ -19,7 +18,7 @@ func init() {
 	})
 }
 
-func endorse3RndProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
+func endorse3RndProposeGenerator(p *proposer) (*proposal, bool) {
 	if p.targetTs.IsSlotBoundary() {
 		// the proposer does not generate branch transactions
 		return nil, true
@@ -114,20 +113,24 @@ func endorse3RndProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bo
 		return nil, false
 	}
 
-	// insert tag along and delegation outputs
-	p.insertInputs(a)
+	ret, err := p.newProposal(a)
+	if err != nil {
+		p.Tracef(TraceTagEndorse1Proposer, "propose: failed to create proposal in %s: %v", p.Name, err)
+		return nil, false
+	}
+	ret.insertInputs()
 
-	if !a.Completed() {
+	if !ret.Completed() {
 		if !a.IsClosed() {
-			endorsing0 = a.Endorsing()[0]
-			endorsing1 = a.Endorsing()[1]
-			endorsing2 = a.Endorsing()[2]
-			extending = a.Extending()
+			endorsing0 = ret.Endorsing()[0]
+			endorsing1 = ret.Endorsing()[1]
+			endorsing2 = ret.Endorsing()[2]
+			extending = ret.Extending()
 			p.Tracef(TraceTagEndorse3RndProposer, "finalProposal [extend=%s, endorsing=%s, %s, %s] not complete 2",
 				extending.IDStringShort, endorsing0.IDShortString, endorsing1.IDShortString, endorsing2.IDShortString)
-			a.Close()
+			ret.Close()
 		}
 		return nil, false
 	}
-	return a, false
+	return ret, false
 }

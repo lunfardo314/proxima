@@ -13,7 +13,7 @@ import (
 )
 
 func (p *proposer) run() {
-	var a *attacher.IncrementalAttacher
+	var a *proposal
 	var forceExit bool
 	var err error
 
@@ -53,7 +53,7 @@ func (p *proposer) run() {
 		}
 
 		// attacher has been created and it is complete. Propose it
-		p.Assertf(!a.IsClosed(), "%s is closed", a.Name())
+		p.Assertf(!a.IsClosed(), "%s is closed", a.IncrementalAttacher.Name)
 		if err = p.propose(a); err != nil {
 			p.Log().Warnf("%v", err)
 			return
@@ -67,15 +67,15 @@ func (p *proposer) run() {
 	}
 }
 
-func (p *proposer) propose(a *attacher.IncrementalAttacher) error {
-	util.Assertf(a.TargetTs() == p.targetTs, "a.targetTs() == p.taskData.targetTs")
+func (p *proposer) propose(a *proposal) error {
+	util.Assertf(a.TargetTs() == p.targetTs, "proposal.attacher.TargetTs() == p.targetTs")
 
 	coverageDelta, frozen := a.CoverageDelta()
 	ledgerCoverage := a.FinalLedgerCoverage(p.targetTs, coverageDelta)
 	slotInflation := a.SlotInflation() // tip inflation is not included
 	baselineSupply := a.BaselineSupply()
 
-	tx, hrString, err := p.makeTxProposalOld(a) // << after this call attacher is closed
+	tx, hrString, err := a.makeTx() // << after this call attacher is closed
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (p *proposer) propose(a *attacher.IncrementalAttacher) error {
 		coverageDelta:     coverageDelta,
 		ledgerCoverage:    ledgerCoverage,
 		inflation:         tx.InflationAmount(),
-		attacherName:      a.Name(),
+		attacherName:      a.IncrementalAttacher.Name(),
 		strategyShortName: p.strategy.ShortName,
 	}
 	//trackProposals.RegisterPointer(_proposal)

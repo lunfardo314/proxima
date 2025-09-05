@@ -8,14 +8,13 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/sequencer/commands_old"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 )
 
 type proposal struct {
 	*proposer
-	attacher *attacher.IncrementalAttacher
-	txb      *txbuilder_seq.SeqTxBuilder
+	*attacher.IncrementalAttacher
+	txb *txbuilder_seq.SeqTxBuilder
 }
 
 // newProposal takes initial incremental attacher only with endorsements
@@ -39,11 +38,25 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	}
 	txb.SetName(p.environment.SequencerName() + "." + p.strategy.ShortName)
 
+	for _, vid := range a.Endorsing() {
+		if err = txb.AddEndorsement(vid.ID()); err != nil {
+			return nil, fmt.Errorf("newProposal: %w", err)
+		}
+	}
+
+	txb.PutExplicitBaseline(a.ExplicitBaselineID())
+
 	return &proposal{
-		proposer: p,
-		attacher: a,
-		txb:      txb,
+		proposer:            p,
+		IncrementalAttacher: a,
+		txb:                 txb,
 	}, nil
+}
+
+func (p *proposal) Close() {
+	if p != nil {
+		p.IncrementalAttacher.Close()
+	}
 }
 
 type _inputCandidate struct {
@@ -58,10 +71,10 @@ func (p *proposal) insertTagAlongInputs(maxInputs int) {
 	outs := make([]*_inputCandidate, 0)
 
 	p.Backlog().IterateOutputs(func(wOut vertex.WrappedOutput) bool {
-		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.targetTs) {
+		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.proposer.targetTs) {
 			return true
 		}
-		if p.IsConsumedInThePastPath(wOut, p.attacher.Extending().VID) {
+		if p.IsConsumedInThePastPath(wOut, p.Extending().VID) {
 			return true
 		}
 		outs = append(outs, &_inputCandidate{
@@ -84,14 +97,14 @@ func (p *proposal) insertTagAlongInputs(maxInputs int) {
 			return
 		default:
 		}
-		valid, err := p.attacher.InsertInput(o.wOut, func() (bool, error) {
+		valid, err := p.InsertInput(o.wOut, func() (bool, error) {
 			return p.txb.AddTagAlongInput(*o.o)
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
-			p.Log().Warnf("output %s cannot be used as tag-along permanently. Reason = %v", o.o.ID.StringShort(), err)
+			p.proposer.Log().Warnf("output %s cannot be used as tag-along permanently. Reason = %v", o.o.ID.StringShort(), err)
 		}
-		if p.attacher.NumInputs() >= maxInputs {
+		if p.NumInputs() >= maxInputs {
 			return
 		}
 	}
@@ -103,7 +116,7 @@ func (p *proposal) insertDelegations() {
 	}
 	outs := make([]*ledger.DelegationOutput, 0)
 	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
-		if o.IsUnlockableByTargetForFreezing(uint32(p.targetTs.Slot)) {
+		if o.IsUnlockableByTargetForFreezing(uint32(p.proposer.targetTs.Slot)) {
 			outs = append(outs, o)
 		}
 		return true
@@ -120,12 +133,12 @@ func (p *proposal) insertDelegations() {
 			return
 		default:
 		}
-		wOut := attacher.AttachOutputWithID(o.OutputWithID, p)
-		if p.IsConsumedInThePastPath(wOut, p.attacher.Extending().VID) {
+		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
+		if p.IsConsumedInThePastPath(wOut, p.Extending().VID) {
 			continue
 		}
 		// just skip if freezing failed for any reason
-		_, _ = p.attacher.InsertInput(wOut, func() (bool, error) {
+		_, _ = p.InsertInput(wOut, func() (bool, error) {
 			_, err1 := p.txb.FreezeDelegation(o)
 			return true, err1
 		})
@@ -135,23 +148,19 @@ func (p *proposal) insertDelegations() {
 	}
 }
 
+func (p *proposal) insertInputs() {
+	p.insertDelegations()
+	p.insertTagAlongInputs(250)
+}
+
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
+	p.Close()
 	txBytes, _, txString, err := p.txb.BytesWithValidation()
 	if err != nil {
 		return nil, txString, err
 	}
-	tx, err := transaction.FromBytes(txBytes)
-	p.AssertNoError(err)
+	// TODO redundant parsing back and forth
+	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	p.proposer.AssertNoError(err)
 	return tx, txString, nil
-}
-
-func (p *proposer) makeTxProposalOld(a *attacher.IncrementalAttacher) (*transaction.Transaction, string, error) {
-	cmdParser := commands_old.NewCommandParser(ledger.AddressED25519FromPrivateKey(p.ControllerPrivateKey()))
-	nm := p.environment.SequencerName() + "." + p.strategy.ShortName
-	tx, err := a.MakeSequencerTransaction(nm, p.ControllerPrivateKey(), cmdParser)
-	// attacher and references are not needed anymore, it should be released
-	extEndorseString := a.ExtendEndorseLines().Join(", ")
-
-	a.Close()
-	return tx, extEndorseString, err
 }

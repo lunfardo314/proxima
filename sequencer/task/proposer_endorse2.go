@@ -3,7 +3,6 @@ package task
 import (
 	"time"
 
-	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 )
 
@@ -19,7 +18,7 @@ func init() {
 	})
 }
 
-func endorse2ProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool) {
+func endorse2ProposeGenerator(p *proposer) (*proposal, bool) {
 	if p.targetTs.IsSlotBoundary() {
 		// the proposer does not generate branch transactions
 		return nil, true
@@ -79,18 +78,22 @@ func endorse2ProposeGenerator(p *proposer) (*attacher.IncrementalAttacher, bool)
 		a.Close()
 		return nil, false
 	}
+	ret, err := p.newProposal(a)
+	if err != nil {
+		p.Tracef(TraceTagEndorse1Proposer, "propose: failed to create proposal in %s: %v", p.Name, err)
+		return nil, false
+	}
+	ret.insertInputs()
 
-	p.insertInputs(a)
-
-	if !a.Completed() {
-		if !a.IsClosed() {
+	if !ret.Completed() {
+		if !ret.IsClosed() {
 			endorsing = a.Endorsing()[0]
 			extending = a.Extending()
 			p.Tracef(TraceTagEndorse2Proposer, "finalProposal [extend=%s, endorsing=%s] not complete 2", extending.IDStringShort, endorsing.IDShortString)
-			a.Close()
+			ret.Close()
 		}
 		return nil, false
 	}
 
-	return a, false
+	return ret, false
 }
