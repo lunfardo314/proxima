@@ -170,6 +170,10 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baselineBranchID base.Tran
 	return nil
 }
 
+func (a *IncrementalAttacher) Stem() vertex.WrappedOutput {
+	return a.stemOutput
+}
+
 func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedOutput) error {
 	a.Assertf(wOut.ValidID(), "wOut.ValidID()")
 
@@ -225,7 +229,8 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 
 // InsertInput inserts tag along or delegation input.
 // In case of failure return false and attacher state with vertex references remains consistent
-func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput) (bool, error) {
+// atomicCheck callback is used to add optional additional check right before commiting delta
+func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck func() error) (bool, error) {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	util.AssertNoError(a.err)
 
@@ -236,6 +241,9 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput) (bool, erro
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	a.pastCone.BeginDelta()
 	err := a.insertVirtuallyConsumedOutput(wOut)
+	if err == nil {
+		err = atomicCheck()
+	}
 	if err != nil {
 		// it is either conflicting, or not solid yet
 		// in either case rollback

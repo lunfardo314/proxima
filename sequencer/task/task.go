@@ -231,7 +231,8 @@ func (t *taskData) insertInputs(a *attacher.IncrementalAttacher, outs []vertex.W
 			return
 		default:
 		}
-		if success, err := a.InsertInput(wOut); success {
+		atomicCheck := func() error { return nil }
+		if success, err := a.InsertInput(wOut, atomicCheck); success {
 			numInserted++
 			t.Tracef(TraceTagInsertInputs, "%s. Inserted %s", a.Name, wOut.IDStringShort)
 		} else {

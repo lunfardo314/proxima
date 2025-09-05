@@ -40,6 +40,7 @@ type (
 		outputCount              int
 		removedOutputsSinceReset int
 		lastOutputArrived        time.Time
+		blacklist                map[base.OutputID]time.Time
 	}
 
 	Stats struct {
@@ -50,6 +51,8 @@ type (
 	}
 )
 
+const blacklistTTL = 5 * time.Minute
+
 const TraceTag = "backlog"
 
 func New(env Environment) (*TagAlongBacklog, error) {
@@ -57,6 +60,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	ret := &TagAlongBacklog{
 		Environment: env,
 		outputs:     make(map[vertex.WrappedOutput]time.Time),
+		blacklist:   make(map[base.OutputID]time.Time),
 	}
 	env.Tracef(TraceTag, "starting input backlog for the sequencer %s..", env.SequencerName)
 
@@ -84,8 +88,9 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	})
 
 	const (
-		backlogCleanupPeriod = time.Second
-		recreateMapPeriod    = time.Minute
+		backlogCleanupPeriod   = time.Second
+		recreateMapPeriod      = time.Minute
+		blacklistCleanupPeriod = 30 * time.Second
 	)
 	// start periodic cleanup in background
 	env.RepeatInBackground(env.SequencerName()+"_backlogCleanup", backlogCleanupPeriod, func() bool {
@@ -99,7 +104,11 @@ func New(env Environment) (*TagAlongBacklog, error) {
 		ret.recreateMap()
 		return true
 	})
-
+	// start periodic blacklist cleanup
+	env.RepeatInBackground(env.SequencerName()+"_backlogBlacklistCleanup", blacklistCleanupPeriod, func() bool {
+		ret.cleanBlacklist()
+		return true
+	})
 	return ret, nil
 }
 
@@ -112,6 +121,10 @@ func (b *TagAlongBacklog) ArrivedOutputsSince(t time.Time) bool {
 
 // checkCandidate if returns false, it is unreferenced, otherwise referenced
 func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput) bool {
+	oid := wOut.DecodeID()
+	if _, inBlacklist := b.blacklist[oid]; inBlacklist {
+		return false
+	}
 	if wOut.VID.IsBranchTransaction() {
 		// outputs of branch transactions are filtered out
 		return false
@@ -175,6 +188,21 @@ func (b *TagAlongBacklog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 	return b.GetLatestMilestone(b.SequencerID())
 }
 
+func (b *TagAlongBacklog) IterateOutputs(fun func(wOut vertex.WrappedOutput) bool) {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
+
+	for wOut := range b.outputs {
+		oid := wOut.DecodeID()
+		if b.isInBlacklist(oid) {
+			continue
+		}
+		if !fun(wOut) {
+			return
+		}
+	}
+}
+
 func (b *TagAlongBacklog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
 	b.mutex.RLock()
 	defer b.mutex.RUnlock()
@@ -184,6 +212,34 @@ func (b *TagAlongBacklog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOu
 		return ret[i].Timestamp().Before(ret[j].Timestamp())
 	})
 	return ret
+}
+
+func (b *TagAlongBacklog) AddToBlacklist(wOut vertex.WrappedOutput) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	oid := wOut.DecodeID()
+	if _, already := b.blacklist[oid]; !already {
+		b.blacklist[oid] = time.Now().Add(blacklistTTL)
+		delete(b.outputs, wOut)
+	}
+}
+
+func (b *TagAlongBacklog) isInBlacklist(oid base.OutputID) bool {
+	_, found := b.blacklist[oid]
+	return found
+}
+
+func (b *TagAlongBacklog) cleanBlacklist() {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	nowis := time.Now()
+	for oid, ttl := range b.blacklist {
+		if ttl.Before(nowis) {
+			delete(b.blacklist, oid)
+		}
+	}
 }
 
 func (b *TagAlongBacklog) NumOutputsInBuffer() int {

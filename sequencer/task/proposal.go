@@ -10,23 +10,27 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 )
 
-type (
-	proposal struct {
-		attacher *attacher.IncrementalAttacher
-		txb      *txbuilder_seq.SeqTxBuilder
-	}
-)
+type proposal struct {
+	attacher *attacher.IncrementalAttacher
+	txb      *txbuilder_seq.SeqTxBuilder
+}
 
 // newProposal takes initial incremental attacher only with endorsements
 // and stem in it, and packages it with the transaction builder
 // It is ready to be filled up with tag-along inputs and delegations
 func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, error) {
+	p.Assertf(!a.IsClosed(), "!a.IsClosed()")
+
 	seqPredVID := a.Extending()
 	seqPred, ok := seqPredVID.OutputWithChainID()
-	p.Assertf(ok, "inconsistency: must be a chain output")
+	p.Assertf(ok, "newProposal: inconsistency: must be a chain output")
 
-	// TODO stem
-	txb, err := txbuilder_seq.New(a.TargetTs(), &seqPred, nil, p.ControllerPrivateKey(), a.BaselineSugaredStateReader())
+	var stem *ledger.OutputWithID
+	if stemWrapped := a.Stem(); stemWrapped.VID != nil {
+		stem = stemWrapped.OutputWithID()
+		p.Assertf(!a.TargetTs().IsSlotBoundary() || stem != nil, "newProposal: !a.TargetTs().IsSlotBoundary() || stem != nil")
+	}
+	txb, err := txbuilder_seq.New(a.TargetTs(), &seqPred, stem, p.ControllerPrivateKey(), a.BaselineSugaredStateReader())
 	if err != nil {
 		return nil, fmt.Errorf("newProposal: %w", err)
 	}
