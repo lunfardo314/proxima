@@ -2,7 +2,6 @@ package backlog
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -201,17 +200,6 @@ func (b *TagAlongBacklog) IterateOutputs(fun func(wOut vertex.WrappedOutput) boo
 			return
 		}
 	}
-}
-
-func (b *TagAlongBacklog) FilterAndSortOutputs(filter func(wOut vertex.WrappedOutput) bool) []vertex.WrappedOutput {
-	b.mutex.RLock()
-	defer b.mutex.RUnlock()
-
-	ret := util.KeysFiltered(b.outputs, filter)
-	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].Timestamp().Before(ret[j].Timestamp())
-	})
-	return ret
 }
 
 func (b *TagAlongBacklog) AddToBlacklist(wOut vertex.WrappedOutput) {

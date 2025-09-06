@@ -11,12 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 )
 
-type proposal struct {
-	*proposer
-	*attacher.IncrementalAttacher
-	txb *txbuilder_seq.SeqTxBuilder
-}
-
 // newProposal takes initial incremental attacher only with endorsements
 // and stem in it, and packages it with the transaction builder
 // It is ready to be filled up with tag-along inputs and delegations
@@ -64,7 +58,7 @@ type _inputCandidate struct {
 	wOut vertex.WrappedOutput
 }
 
-func (p *proposal) insertTagAlongInputs(maxInputs int) {
+func (p *proposal) insertTagAlongInputs() {
 	if p.txb.InputsAreFull() {
 		return
 	}
@@ -104,7 +98,7 @@ func (p *proposal) insertTagAlongInputs(maxInputs int) {
 			p.Backlog().AddToBlacklist(o.wOut)
 			p.proposer.Log().Warnf("output %s cannot be used as tag-along permanently. Reason = %v", o.o.ID.StringShort(), err)
 		}
-		if p.NumInputs() >= maxInputs {
+		if p.txb.InputsAreFull() {
 			return
 		}
 	}
@@ -150,7 +144,7 @@ func (p *proposal) insertDelegations() {
 
 func (p *proposal) insertInputs() {
 	p.insertDelegations()
-	p.insertTagAlongInputs(250)
+	p.insertTagAlongInputs()
 }
 
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {

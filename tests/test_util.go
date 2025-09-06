@@ -871,7 +871,6 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 	for seqNr := range td.sequencers {
 		td.sequencers[seqNr], err = sequencer.New(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
-			sequencer.WithMaxInputs(50, 30),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
 		)

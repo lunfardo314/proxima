@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 	"golang.org/x/exp/maps"
@@ -35,7 +36,6 @@ type (
 		IsConsumedInThePastPath(wOut vertex.WrappedOutput, ms *vertex.WrappedTx) bool
 		AddOwnMilestone(vid *vertex.WrappedTx)
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs base.LedgerTime) []vertex.WrappedOutput
-		MaxInputs() (int, int)
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		EvidenceProposal(strategyShortName string)
 		EvidenceBestProposalForTheTarget(strategyShortName string)
@@ -52,6 +52,19 @@ type (
 		Name string
 	}
 
+	proposer struct {
+		*taskData
+		strategy *proposerStrategy
+		Name     string
+		Msg      string // how proposer ended. For debugging
+	}
+
+	proposal struct {
+		*proposer
+		*attacher.IncrementalAttacher
+		txb *txbuilder_seq.SeqTxBuilder
+	}
+
 	finalProposal struct {
 		tx                *transaction.Transaction
 		txMetadata        *txmetadata.TransactionMetadata
@@ -62,13 +75,6 @@ type (
 		inflation         uint64
 		attacherName      string
 		strategyShortName string
-	}
-
-	proposer struct {
-		*taskData
-		strategy *proposerStrategy
-		Name     string
-		Msg      string // how proposer ended. For debugging
 	}
 
 	// ProposalGenerator returns proposal as draft transaction or otherwise nil and forceExit flag = true
@@ -219,73 +225,4 @@ func (t *taskData) startProposers() {
 			t.DecCounter("prop")
 		}()
 	}
-}
-
-const TraceTagInsertInputs = "insertInputs"
-
-func (t *taskData) insertInputs(a *attacher.IncrementalAttacher, outs []vertex.WrappedOutput, maxInputs int) (numInserted int) {
-	for _, wOut := range outs {
-		select {
-		case <-t.ctx.Done():
-			return
-		default:
-		}
-		atomicCheck := func() (bool, error) { return true, nil }
-		if _, err := a.InsertInput(wOut, atomicCheck); err == nil {
-			numInserted++
-		}
-		if a.NumInputs() >= maxInputs {
-			return
-		}
-	}
-	return
-}
-
-// insertTagAlongInputs includes filtered outputs from the backlog into attacher
-func (t *taskData) insertTagAlongInputs(a *attacher.IncrementalAttacher, maxInputs int) (numInserted int) {
-	preSelected := t.Backlog().FilterAndSortOutputs(func(wOut vertex.WrappedOutput) bool {
-		t.Assertf(wOut.LockName() == ledger.ChainLockName, "wOut.LockName() == ledger.ChainLockName")
-
-		if !ledger.ValidSequencerPace(wOut.Timestamp(), a.TargetTs()) {
-			return false
-		}
-		// fast filtering out already consumed outputs in the predecessor milestone context
-		if t.IsConsumedInThePastPath(wOut, a.Extending().VID) {
-			return false
-		}
-		return true
-	})
-	return t.insertInputs(a, preSelected, maxInputs)
-}
-
-func (t *taskData) insertDelegationInputs(a *attacher.IncrementalAttacher, maxInputs int) (numInserted int) {
-	t.Tracef(TraceTagInsertInputs, "IN insertDelegationInputs: %s, maxInputs: %d", a.Name, maxInputs)
-	// TODO --
-	return
-	//rdr := a.BaselineSugaredStateReader()
-	//seqID := t.SequencerID()
-	//preSelected := make([]vertex.WrappedOutput, 0, maxInputs-a.NumInputs())
-	//
-	//rdr.IterateDelegatedOutputs(ledger.ChainLockFromChainID(seqID), func(oid base.OutputID, o *ledger.Output, dLock *ledger.DelegationLock) bool {
-	//	wOut := attacher.AttachOutputWithID(ledger.OutputWithID{ChainID: oid, Output: o}, a)
-	//	if !ledger.ValidDelegationPace(wOut.Timestamp(), a.TargetTs()) {
-	//		return false
-	//	}
-	//	if t.IsConsumedInThePastPath(wOut, a.Extending().VID) {
-	//		return true
-	//	}
-	//	delegationID, ok := ledger.ExtractChainID(o, oid)
-	//	if !ok {
-	//		return true
-	//	}
-	//	if !ledger.IsOpenDelegationSlot(delegationID, a.TargetTs().Slot) {
-	//		return true
-	//	}
-	//	if ledger.L().CalcChainInflationAmount(oid.Timestamp(), a.TargetTs(), o.TokenBalance()) == 0 {
-	//		return true
-	//	}
-	//	preSelected = append(preSelected, wOut)
-	//	return true
-	//})
-	//return t.insertInputs(a, preSelected, maxInputs)
 }

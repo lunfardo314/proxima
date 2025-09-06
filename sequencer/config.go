@@ -16,11 +16,9 @@ import (
 type (
 	ConfigOptions struct {
 		SequencerName             string
-		Pace                      int // pace in ticks
-		MaxTagAlongInputs         int
-		MaxInputs                 int
-		MaxTargetTs               base.LedgerTime
-		MaxBranches               int
+		Pace                      int             // pace in ticks
+		MaxTargetTs               base.LedgerTime // for testing
+		MaxBranches               int             // for testing
 		EnsureSyncedBeforeStart   bool
 		DelayStart                time.Duration
 		BacklogTagAlongTTLSlots   int
@@ -44,8 +42,6 @@ func defaultConfigOptions() *ConfigOptions {
 	return &ConfigOptions{
 		SequencerName:             "seq",
 		Pace:                      ledger.TransactionPaceSequencer(),
-		MaxTagAlongInputs:         defaultMaxTagAlongInputs,
-		MaxInputs:                 defaultMaxInputs,
 		MaxTargetTs:               base.NilLedgerTime,
 		MaxBranches:               math.MaxInt,
 		DelayStart:                ledger.SlotDuration(),
@@ -102,7 +98,6 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 	cfg := []ConfigOption{
 		WithName(name),
 		WithPace(subViper.GetInt("pace")),
-		WithMaxInputs(subViper.GetInt("max_inputs"), subViper.GetInt("max_tag_along_inputs")),
 		WithMaxBranches(subViper.GetInt("max_branches")),
 		WithBacklogTagAlongTTLSlots(backlogTagAlongTTLSlots),
 		WithBacklogDelegationTTLSlots(backlogDelegationTTLSlots),
@@ -133,18 +128,6 @@ func WithPace(pace int) ConfigOption {
 func WithDelayStart(delay time.Duration) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.DelayStart = delay
-	}
-}
-
-func WithMaxInputs(maxInputs, maxTagAlongInputs int) ConfigOption {
-	return func(o *ConfigOptions) {
-		if maxInputs <= 0 || maxTagAlongInputs <= 0 || maxInputs > 254 || maxTagAlongInputs > maxInputs {
-			o.MaxInputs = defaultMaxInputs
-			o.MaxTagAlongInputs = defaultMaxTagAlongInputs
-		} else {
-			o.MaxInputs = maxInputs
-			o.MaxTagAlongInputs = maxTagAlongInputs
-		}
 	}
 }
 
@@ -188,8 +171,6 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.AddressED2
 		Add("Controller: %s", controller.String()).
 		Add("Name: %s", cfg.SequencerName).
 		Add("Pace: %d ticks", cfg.Pace).
-		Add("MaxTagAlongInputs: %d", cfg.MaxTagAlongInputs).
-		Add("MaxInputs: %d", cfg.MaxInputs).
 		Add("MaxTargetTs: %s", cfg.MaxTargetTs.String()).
 		Add("MaxSlots: %d", cfg.MaxBranches).
 		Add("DelayStart: %v", cfg.DelayStart).
