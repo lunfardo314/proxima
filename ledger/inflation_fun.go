@@ -16,7 +16,7 @@ func (lib *Library) ChainInflationOriginal(amount uint64, inSlot, forSlots uint3
 }
 
 func (lib *Library) ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
-	return uint64(forSlots) * (amount / (lib.ID.SlotInflationFraction + uint64(inSlot)))
+	return uint64(forSlots) * (amount / (lib.ID.MinimumInflatableAmount0 + uint64(inSlot)))
 }
 
 func (lib *Library) ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
@@ -31,4 +31,8 @@ func (lib *Library) BranchInflationBonusBase() uint64 {
 
 func (lib *Library) BranchInflationBonusDirect(proof []byte) uint64 {
 	return RandomFromSeed(proof, lib.BranchInflationBonusBase()) + 1
+}
+
+func (lib *Library) MinimumInflatableAmount(slot uint32) uint64 {
+	return lib.ID.MinimumInflatableAmount0 + lib.ChainInflation(lib.ID.MinimumInflatableAmount0, 0, slot)
 }

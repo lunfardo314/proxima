@@ -81,7 +81,6 @@ func runBranchInflationBonusStats() {
 					minBib = min(minBib, bib)
 				}
 			}
-
 			numBranches++
 			if numBranches >= maxRoots {
 				return false
