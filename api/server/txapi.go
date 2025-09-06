@@ -21,11 +21,11 @@ func (srv *server) registerTxAPIHandlers() {
 	// Decompiles bytecode in the context of the ledger of the node to EasyFL script
 	// '/txapi/v1/decompile_bytecode?bytecode=<hex-encoded bytecode>'
 	srv.addHandler(api.PathDecompileBytecode, srv.decompileBytecode)
-	// By given output id, finds raw output data on LRB state, parses the it as lazyarray
+	// By given output id, finds raw output data on LRB state, parses it as a tuple
 	// and decompiles each of constraint scripts. Returns list of decompiled constraint scripts
 	// '/txapi/v1/parse_output?output_id=<hex-encoded output id>'
 	srv.addHandler(api.PathParseOutput, srv.parseOutput)
-	// By given raw data of the output, parses it as lazyarray
+	// By given raw data of the output, parses it as a tuple
 	// and decompiles each of constraint scripts. Returns list of decompiled constraint scripts
 	// Essential difference with the parse-output is that it does not need to assume particular LRB
 	// '/txapi/v1/parse_output_data?output_data=<hex-encoded output binary>'
@@ -129,7 +129,7 @@ func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 
 	resp := api.ParsedOutput{
 		Data:        hex.EncodeToString(o.Bytes()),
-		Constraints: o.LinesPlain().Slice(),
+		Constraints: o.LinesPlainSource().Slice(),
 		Amount:      o.TokenBalance(),
 		LockName:    o.Lock().Name(),
 	}
@@ -161,6 +161,8 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, humanReadable := r.URL.Query()["human_readable"]
+
 	outBin, err := hex.DecodeString(lst[0])
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("can't decode hex string: '%v'", err))
@@ -173,9 +175,16 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var constr []string
+	if humanReadable {
+		constr = o.LinesPlainHR().Slice()
+	} else {
+		constr = o.LinesPlainSource().Slice()
+	}
+
 	resp := api.ParsedOutput{
 		Data:        hex.EncodeToString(outBin),
-		Constraints: o.LinesPlain().Slice(),
+		Constraints: constr,
 		Amount:      o.TokenBalance(),
 		LockName:    o.Lock().Name(),
 	}

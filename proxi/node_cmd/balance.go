@@ -46,24 +46,6 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, target ledger.Accountable
 
 	for _, o := range outs {
 		_, ccIdx := o.Output.ChainConstraint()
-		if dl := o.Output.DelegationLock(); dl != nil {
-			glb.Assertf(ccIdx != 0xff, "ccIdx!=0xff")
-
-			if !ledger.EqualAccountables(dl.OwnerLock, target) {
-				// for delegation locks only count those which are owned by the target
-				continue
-			}
-			numDelegation++
-			sumDelegation += o.Output.TokenBalance()
-			delegationID, _, ok := o.ExtractChainID()
-			glb.Assertf(ok, "extractChainID")
-			delegations[delegationID] = _delegation{
-				amount:     o.Output.TokenBalance(),
-				inflation:  o.Output.TokenBalance() - dl.StartAmount,
-				sinceSlot:  dl.StartTime.Slot,
-				lastActive: o.ID.Slot(),
-			}
-		}
 		if ccIdx != 0xff {
 			numChains++
 			sumOnChains += o.Output.TokenBalance()
@@ -71,6 +53,21 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, target ledger.Accountable
 		} else {
 			numNonChains++
 			sumOutsideChains += o.Output.TokenBalance()
+		}
+		if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
+			if !ledger.EqualAccountables(dOut.MasterLock, target) {
+				// for delegation locks only count those which are owned by the target
+				continue
+			}
+			numDelegation++
+			sumDelegation += o.Output.TokenBalance()
+			glb.Assertf(ok, "extractChainID")
+			delegations[dOut.ChainID] = _delegation{
+				amount:     o.Output.TokenBalance(),
+				inflation:  o.Output.TokenBalance() - dOut.OriginAmount,
+				sinceSlot:  dOut.OriginSlot,
+				lastActive: o.ID.Slot(),
+			}
 		}
 	}
 	glb.Infof("Total amounts controlled on:")

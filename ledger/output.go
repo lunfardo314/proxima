@@ -519,7 +519,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	return ret
 }
 
-func (o *Output) LinesPlain() *lines.Lines {
+func (o *Output) LinesPlainSource() *lines.Lines {
 	ret := lines.New()
 	o.ForEachConstraint(func(i byte, data []byte) bool {
 		c, err := ConstraintFromBytes(data)
@@ -527,6 +527,20 @@ func (o *Output) LinesPlain() *lines.Lines {
 			ret.Add(err.Error())
 		} else {
 			ret.Add(c.Source())
+		}
+		return true
+	})
+	return ret
+}
+
+func (o *Output) LinesPlainHR() *lines.Lines {
+	ret := lines.New()
+	o.ForEachConstraint(func(i byte, data []byte) bool {
+		c, err := ConstraintFromBytes(data)
+		if err != nil {
+			ret.Add(err.Error())
+		} else {
+			ret.Add(c.String())
 		}
 		return true
 	})
@@ -902,5 +916,8 @@ func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
 		return
 	}
 	data := easyfl.StripDataPrefix(o.MustConstraintAt(SeqMilestoneDataFixedIndex))
+	if len(data) == 0 {
+		return *seqdata.New(), nil
+	}
 	return seqdata.FromBytes(data)
 }

@@ -44,11 +44,11 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		tagAlongSeqID = glb.GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := glb.GetClient().GetMilestoneData(*tagAlongSeqID)
+		sd, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
-		if md != nil && md.MinimumFee > feeAmount {
-			feeAmount = md.MinimumFee
+		if sd.MinimumFee() > feeAmount {
+			feeAmount = sd.MinimumFee()
 		}
 	}
 	walletData := glb.GetWalletData()

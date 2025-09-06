@@ -49,11 +49,11 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(pTagAlongSeqID != nil, "tag-along sequencer not specified")
 	tagAlongSeqID = *pTagAlongSeqID
 
-	md, err := clnt.GetMilestoneData(tagAlongSeqID)
+	md, err := clnt.GetSequencerData(tagAlongSeqID)
 	glb.AssertNoError(err)
 
-	if md != nil && md.MinimumFee > feeAmount {
-		feeAmount = md.MinimumFee
+	if md.MinimumFee() > feeAmount {
+		feeAmount = md.MinimumFee()
 	}
 
 	prompt := fmt.Sprintf("discontinue chain %s?", chainID.String())

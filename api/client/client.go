@@ -21,6 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
@@ -371,15 +372,16 @@ func (c *APIClient) GetChainOutput(chainID base.ChainID) (*ledger.OutputWithChai
 	return o, constrIdx, lrbid, nil
 }
 
-func (c *APIClient) GetMilestoneData(chainID base.ChainID) (*ledger.MilestoneData, error) {
+func (c *APIClient) GetSequencerData(chainID base.ChainID) (ret seqdata.SequencerData, err error) {
 	o, _, _, err := c.GetChainOutput(chainID)
 	if err != nil {
-		return nil, fmt.Errorf("error while retrieving milestone for sequencer %s: %w", chainID.StringShort(), err)
+		err = fmt.Errorf("GetSequencerData: error while retrieving UTXO for %s: %w", chainID.StringShort(), err)
+		return
 	}
 	if !o.ID.IsSequencerTransaction() {
-		return nil, fmt.Errorf("not a sequencer milestone: %s", chainID.StringShort())
+		err = fmt.Errorf("GetSequencerData: not a sequencer output: %s", chainID.StringShort())
 	}
-	return ledger.ParseMilestoneData(o.Output), nil
+	return ledger.ParseSequencerData(o.Output)
 }
 
 // GetOutputData returns output data from the LRB state, if it exists there
@@ -757,7 +759,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	util.AssertNoError(err)
 
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(par.Amount).
+		o.WithTokenBalance(par.Amount).
 			WithLock(par.Target).
 			MustPushConstraint(ledger.NewChainOrigin(ts.Slot, par.Amount).Bytes())
 	})
@@ -766,7 +768,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 
 	if par.TagAlongFee > 0 {
 		tagAlongFeeOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(par.TagAlongFee).
+			o.WithTokenBalance(par.TagAlongFee).
 				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
 		})
 		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
@@ -776,7 +778,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 
 	if totalInputs > par.Amount+par.TagAlongFee {
 		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(totalInputs - par.Amount - par.TagAlongFee).
+			o.WithTokenBalance(totalInputs - par.Amount - par.TagAlongFee).
 				WithLock(walletAccount)
 		})
 		if _, err = txb.ProduceOutput(remainder); err != nil {
@@ -918,7 +920,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	}
 
 	mainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(par.Amount).
+		o.WithTokenBalance(par.Amount).
 			WithLock(par.Target)
 	})
 	if _, err = txb.ProduceOutput(mainOut); err != nil {
@@ -930,7 +932,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 			return nil, fmt.Errorf("tag-along sequencer not specified")
 		}
 		feeOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(par.TagAlongFee).
+			o.WithTokenBalance(par.TagAlongFee).
 				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
 		})
 		if _, err = txb.ProduceOutput(feeOut); err != nil {
@@ -944,7 +946,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 			remainderLock = ledger.AddressED25519FromPrivateKey(par.PrivateKey)
 		}
 		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(inTotal - par.Amount - par.TagAlongFee).
+			o.WithTokenBalance(inTotal - par.Amount - par.TagAlongFee).
 				WithLock(remainderLock)
 		})
 		if _, err = txb.ProduceOutput(remainderOut); err != nil {

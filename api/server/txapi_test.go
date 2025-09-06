@@ -41,7 +41,7 @@ func TestCompileScript(t *testing.T) {
 	var ret api.Bytecode
 	err = json.Unmarshal(data, &ret)
 	assert.NoError(t, err)
-	assert.Equal(t, "1182010281008100", ret.Bytecode) // Hex for "compiledBytecode"
+	assert.Equal(t, "1082010281008100", ret.Bytecode) // Hex for "compiledBytecode"
 
 }
 
@@ -49,7 +49,7 @@ func TestDecompileBytecode(t *testing.T) {
 	srv := &server{}
 
 	// Prepare request
-	req := httptest.NewRequest(http.MethodGet, "/txapi/v1/decompile_bytecode?bytecode=1182010281008100", nil)
+	req := httptest.NewRequest(http.MethodGet, "/txapi/v1/decompile_bytecode?bytecode=1082010281008100", nil)
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -75,15 +75,15 @@ func TestParseOutputData(t *testing.T) {
 
 	const amount = uint64(31415926535)
 	addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(100))
-	chanID := base.RandomChainID()
-	cc := ledger.NewChainConstraint(chanID, 1, 2, 0)
-	o := ledger.NewOutput(func(o *ledger.Output) {
-		o.WithAmount(amount).
+	chainID := base.RandomChainID()
+	cc := ledger.NewChainConstraint(chainID, 1, 2, 0, amount)
+	o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(amount).
 			WithLock(addr)
-		o.PushConstraint(cc.Bytes())
+		o.MustPushConstraint(cc.Bytes())
 	})
 	oDataStr := hex.EncodeToString(o.Bytes())
-	reqStr := fmt.Sprintf("/txapi/v1/parse_output_data?output_data=%s", oDataStr)
+	reqStr := fmt.Sprintf("/txapi/v1/parse_output_data?output_data=%s&human_readable=", oDataStr)
 
 	// Prepare request
 	req := httptest.NewRequest(http.MethodGet, reqStr, nil)
@@ -107,11 +107,11 @@ func TestParseOutputData(t *testing.T) {
 
 	assert.Equal(t, oDataStr, ret.Data)
 	assert.Equal(t, amount, ret.Amount)
-	assert.Equal(t, chanID.StringHex(), ret.ChainID)
+	assert.Equal(t, chainID.StringHex(), ret.ChainID)
 	assert.Equal(t, 3, len(ret.Constraints))
-	assert.Equal(t, "amount(z64/31415926535)", ret.Constraints[0])
-	assert.Equal(t, addr.Source(), ret.Constraints[1])
-	assert.Equal(t, cc.Source(), ret.Constraints[2])
+	assert.Equal(t, "amounts(31_415_926_535)", ret.Constraints[0])
+	assert.Equal(t, addr.String(), ret.Constraints[1])
+	assert.Equal(t, cc.String(), ret.Constraints[2])
 }
 
 func TestParseOutput(t *testing.T) {

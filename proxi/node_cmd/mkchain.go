@@ -40,7 +40,7 @@ func MakeChain(onChainAmount uint64) (*transaction.TxContext, base.ChainID, erro
 		tagAlongSeqID = glb.GetTagAlongSequencerID()
 		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := glb.GetClient().GetMilestoneData(*tagAlongSeqID)
+		md, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
 		if md != nil && md.MinimumFee > feeAmount {

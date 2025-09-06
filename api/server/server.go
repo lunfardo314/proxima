@@ -204,7 +204,7 @@ func _writeParsedOutputs(w http.ResponseWriter, outs []*ledger.OutputWithID, lrb
 	for _, o := range outs {
 		po := api.ParsedOutput{
 			Data:        o.Output.Hex(),
-			Constraints: o.Output.LinesPlain().Slice(),
+			Constraints: o.Output.LinesPlainSource().Slice(),
 			Amount:      o.Output.TokenBalance(),
 			LockName:    o.Output.Lock().Name(),
 			ChainID:     "",
@@ -745,7 +745,7 @@ func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Requ
 		srv.Assertf(ok, "inconsistency")
 		name := ""
 		if sd.SequencerData != nil {
-			name, _, _ = strings.Cut(sd.SequencerData.Name, ".")
+			name, _, _ = strings.Cut(sd.SequencerData.Name(), ".")
 		}
 		resp.Sequencers[chainID.StringHex()] = api.DelegationsOnSequencer{
 			SequencerOutputID: di.SequencerOutput.ID.StringHex(),

@@ -335,7 +335,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 	tx.ForEachProducedOutput(func(i byte, o *ledger.Output, oid base.OutputID) bool {
 		ret.Outputs[i] = ParsedOutput{
 			Data:        hex.EncodeToString(o.Bytes()),
-			Constraints: o.LinesPlain().Slice(),
+			Constraints: o.LinesPlainSource().Slice(),
 			Amount:      o.TokenBalance(),
 			LockName:    o.Lock().Name(),
 		}
