@@ -86,7 +86,7 @@ func getChainIdForAccount(account ledger.Accountable) *base.ChainID {
 	for _, o := range chains {
 		lock := o.Output.Lock()
 
-		if o.Output.Lock().Name() == ledger.DelegationLockName {
+		if o.Output.Lock().Name() == ledger.DelegateLockName {
 			// only sequencer chain
 			continue
 		}

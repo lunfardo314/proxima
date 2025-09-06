@@ -23,14 +23,12 @@ func initInflateChainCmd() *cobra.Command {
 	}
 	inflateChainCmd.InitDefaultHelpCmd()
 
-	inflateChainCmd.PersistentFlags().IntVarP(&periodInSlots, "slots", "s", 10, "period in slots")
 	inflateChainCmd.PersistentFlags().BoolVarP(&jumpToPresent, "jump_first", "j", false, "jump to the presence if chain output is far in the past")
 
 	return inflateChainCmd
 }
 
 var (
-	periodInSlots int
 	jumpToPresent bool
 )
 
@@ -39,10 +37,10 @@ func runInflateChainCmd(_ *cobra.Command, args []string) {
 
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
-	inflateChain(base.Slot(periodInSlots), chainID)
+	inflateChain(chainID)
 }
 
-func inflateChain(chainTransitionPeriodSlots base.Slot, chainId base.ChainID) {
+func inflateChain(chainId base.ChainID) {
 	walletData := glb.GetWalletData()
 	tagAlongSeq := glb.GetTagAlongSequencerID()
 	tagAlongFee := glb.GetTagAlongFee()
@@ -51,11 +49,8 @@ func inflateChain(chainTransitionPeriodSlots base.Slot, chainId base.ChainID) {
 	glb.AssertNoError(err)
 	glb.Assertf(!chainOutput.ID.IsSequencerTransaction(), "must be non-sequencer output")
 
-	estimated := ledger.L().CalcChainInflationAmount(base.NewLedgerTime(0, 1), base.NewLedgerTime(chainTransitionPeriodSlots, 1), chainOutput.Output.TokenBalance())
 	msg := lines.New().
-		Add("will be inflating chain %s every %d slots", chainId.StringShort(), chainTransitionPeriodSlots).
-		Add("Initial chain balance is %s, Tag-along fee to %s is %d", util.Th(chainOutput.Output.TokenBalance()), tagAlongSeq.StringShort(), tagAlongFee).
-		Add("Estimated net earnings per loop will be %s", util.Th(int64(estimated)-int64(tagAlongFee)))
+		Add("Initial chain balance is %s, Tag-along fee to %s is %d", util.Th(chainOutput.Output.TokenBalance()), tagAlongSeq.StringShort(), tagAlongFee)
 	if jumpToPresent {
 		msg.Add("forced jump to presence with 0 inflation, if necessary")
 	}
@@ -64,7 +59,7 @@ func inflateChain(chainTransitionPeriodSlots base.Slot, chainId base.ChainID) {
 	glb.YesNoPrompt(msg.String(), true)
 
 	tsIN := chainOutput.Timestamp()
-	tsOut := tsIN.AddSlots(chainTransitionPeriodSlots)
+	tsOut := tsIN.AddSlots(1)
 
 	ignoreProfitability := false
 	if tsOut.Before(ledger.TimeNow()) && jumpToPresent {
@@ -124,7 +119,7 @@ func inflateChain(chainTransitionPeriodSlots base.Slot, chainId base.ChainID) {
 				break
 			}
 		}
-		tsOut = chainOutput.Timestamp().AddSlots(chainTransitionPeriodSlots)
+		tsOut = chainOutput.Timestamp().AddSlots(1)
 		glb.Infof("amount on chain: %s", util.Th(chainOutput.Output.TokenBalance()))
 	}
 }

@@ -59,23 +59,24 @@ func listChainedOutputs(addr ledger.AddressED25519, outs []*ledger.OutputWithCha
 		len(outs), addr.String())
 	for i, o := range outs {
 		seq := "NO"
-		sd, _ := o.Output.SequencerOutputData()
-		if sd != nil {
+		if o.ID.IsSequencerTransaction() {
 			if showDelegationsOnly {
 				continue
 			}
-			seq = "YES"
-			if md := sd.SequencerData; md != nil {
-				seq = fmt.Sprintf("%s (%d/%d)", md.Name, md.ChainHeight, md.BranchHeight)
+			seqData, err := ledger.ParseSequencerData(o.Output)
+			if err != nil {
+				glb.Infof("error parsing sequencer data %s / %s : '%v'", o.ID.StringShort(), o.ChainID.StringShort(), err)
 			}
+			seq = "YES"
+			seq = fmt.Sprintf("%s (%d/%d)", seqData.Name(), seqData.ChainHeight(), seqData.BranchHeight())
 		}
-
-		lock := o.Output.Lock()
-		if lock.Name() == ledger.DelegationLockName {
+		dOut, isDelegation := ledger.AsDelegationOutput(o.Output, o.ID)
+		if isDelegation {
 			if showSequencersOnly {
 				continue
 			}
 		}
+		lock := o.Output.Lock()
 		glb.Infof("\n%2d: %s -- %s, hex: %s, sequencer: "+seq, i, o.ChainID.String(), o.ID.StringShort(), o.ID.StringHex())
 		glb.Infof("      balance     : %s", util.Th(o.Output.TokenBalance()))
 		glb.Infof("      lock        : %s", lock.String())
@@ -83,16 +84,15 @@ func listChainedOutputs(addr ledger.AddressED25519, outs []*ledger.OutputWithCha
 		if ledger.EqualAccountables(addr, lock.Master()) {
 			thisControls = " <- wallet account controls"
 		}
-		switch l := lock.(type) {
-		case ledger.AddressED25519:
-			glb.Infof("      master      : %s"+thisControls, l.String())
-		case *ledger.DelegationLock:
+		if isDelegation {
 			delegatedToThis := ""
-			if ledger.EqualAccountables(addr, l.TargetLock) {
+			if ledger.EqualAccountables(addr, dOut.Target) {
 				delegatedToThis = " <- is delegated to the wallet account"
 			}
-			glb.Infof("      master      : %s"+thisControls, l.OwnerLock.String())
-			glb.Infof("      delegated to: %s"+delegatedToThis, l.TargetLock.String())
+			glb.Infof("      master      : %s"+thisControls, dOut.Master().String())
+			glb.Infof("      delegated to: %s"+delegatedToThis, dOut.Target.String())
+		} else {
+			glb.Infof("      master      : %s"+thisControls, lock.String())
 		}
 	}
 }
@@ -106,25 +106,25 @@ func listDelegations(addr ledger.AddressED25519, outs []*ledger.OutputWithChainI
 	glb.Infof("\nList of delegations in account %s\n", addr.String())
 	nowis := ledger.TimeNow()
 	for _, o := range outs {
-		dlock := o.Output.DelegationLock()
-		if dlock == nil {
+		dOut, isDelegation := ledger.AsDelegationOutput(o.Output, o.ID)
+		if !isDelegation {
 			continue
 		}
-		if !ledger.EqualAccountables(addr, dlock.Master()) {
+		if !ledger.EqualAccountables(addr, dOut.Master()) {
 			continue
 		}
-		chainID, _, _ := o.ExtractChainID()
-		glb.Infof("%s   %s  \t\t-> %s", chainID.String(), util.Th(o.Output.TokenBalance()), dlock.TargetLock.String())
 
-		earned := o.Output.TokenBalance() - dlock.StartAmount
-		slots := nowis.Slot - dlock.StartTime.Slot
+		glb.Infof("%s   %s  \t\t-> %s", dOut.ChainID.String(), util.Th(o.Output.TokenBalance()), dOut.Target.String())
+
+		earned := o.Output.TokenBalance() - dOut.OriginAmount
+		slots := nowis.Slot - dOut.OriginSlot
 		perSlot := earned / uint64(slots)
 		annualExtrapolationEarnings := uint64(ledger.L().ID.SlotsPerYear()) * perSlot
-		annualRate := 100 * float64(annualExtrapolationEarnings) / float64(dlock.StartAmount)
-		glb.Verbosef("        inflation +%s since %s (%d slots), avg %s per slot, start amount %s,"+
+		annualRate := 100 * float64(annualExtrapolationEarnings) / float64(dOut.OriginAmount)
+		glb.Verbosef("        inflation +%s since slot %d (%d slots), avg %s per slot, start amount %s,"+
 			" annual rate: ~%.02f%%, last active %d slots back\n        output id: %s\n        hex output id: %s",
-			util.Th(earned), dlock.StartTime.String(), slots, util.Th(perSlot),
-			util.Th(dlock.StartAmount), annualRate, nowis.Slot-o.ID.Slot(),
+			util.Th(earned), dOut.OriginSlot, slots, util.Th(perSlot),
+			util.Th(dOut.OriginAmount), annualRate, nowis.Slot-o.ID.Slot(),
 			o.ID.String(), o.ID.StringHex(),
 		)
 

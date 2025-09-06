@@ -43,8 +43,8 @@ func MakeChain(onChainAmount uint64) (*transaction.TxContext, base.ChainID, erro
 		md, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
 		glb.AssertNoError(err)
 
-		if md != nil && md.MinimumFee > feeAmount {
-			feeAmount = md.MinimumFee
+		if md.MinimumFee() > feeAmount {
+			feeAmount = md.MinimumFee()
 		}
 	}
 	glb.Infof("Creating new chain origin:")

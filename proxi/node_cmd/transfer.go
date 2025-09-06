@@ -47,8 +47,8 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 	md, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
 	glb.AssertNoError(err)
 
-	if md != nil && md.MinimumFee > feeAmount {
-		feeAmount = md.MinimumFee
+	if md.MinimumFee() > feeAmount {
+		feeAmount = md.MinimumFee()
 	}
 	prompt := fmt.Sprintf("transfer will cost %d of fees paid to the tag-along sequencer %s. Proceed?", feeAmount, tagAlongSeqID.StringShort())
 

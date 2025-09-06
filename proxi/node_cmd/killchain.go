@@ -42,7 +42,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 
 	var tagAlongSeqID base.ChainID
 	feeAmount := glb.GetTagAlongFee()
-	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
+	glb.Assertf(feeAmount > 0, "tag-along fee must be > 0")
 	clnt := glb.GetClient()
 
 	pTagAlongSeqID := glb.GetTagAlongSequencerID()

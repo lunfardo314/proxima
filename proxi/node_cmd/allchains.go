@@ -83,7 +83,7 @@ func listChains(chains []*ledger.OutputWithChainID) {
 			}
 		}
 
-		if o.Output.Lock().Name() == ledger.DelegationLockName {
+		if o.Output.Lock().Name() == ledger.DelegateLockName {
 			if showSequencersOnly {
 				continue
 			}
@@ -105,12 +105,11 @@ func listGrouped(chains []*ledger.OutputWithChainID) {
 	total := uint64(0)
 	count := 0
 	for _, o := range chains {
-		lock := o.Output.Lock()
-		if lock.Name() != ledger.DelegationLockName {
+		dOut, isDelegation := ledger.AsDelegationOutput(o.Output, o.ID)
+		if !isDelegation {
 			continue
 		}
-		dl := lock.(*ledger.DelegationLock)
-		dls := dl.TargetLock.String()
+		dls := dOut.Target.String()
 		lst := m[dls]
 		if len(lst) == 0 {
 			lst = make([]*ledger.OutputWithChainID, 0)

@@ -83,7 +83,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 		reason = fmt.Errorf("RevokeDelegationRequest: the sequencer cannot revoke delegation %s (failed authorisation)", delegationID.String())
 		return
 	}
-	master, ok := ret.delegation.MasterLock.(ledger.AddressED25519)
+	master, ok := ret.delegation.Master().(ledger.AddressED25519)
 	if !ok {
 		// wrong master (cannot be)
 		reason = fmt.Errorf("RevokeDelegationRequest: inconsistecy while checking master lock")

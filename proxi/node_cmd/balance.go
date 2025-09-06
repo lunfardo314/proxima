@@ -55,7 +55,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, target ledger.Accountable
 			sumOutsideChains += o.Output.TokenBalance()
 		}
 		if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-			if !ledger.EqualAccountables(dOut.MasterLock, target) {
+			if !ledger.EqualAccountables(dOut.Master(), target) {
 				// for delegation locks only count those which are owned by the target
 				continue
 			}
