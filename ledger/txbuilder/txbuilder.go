@@ -213,7 +213,10 @@ func (txb *TxBuilder) ConsumedAmount() uint64 {
 }
 
 func (txb *TxBuilder) Transaction() (*transaction.Transaction, error) {
-	txBytes := txb.TransactionData.Bytes()
+	txBytes, _, txString, err := txb.BytesWithValidation()
+	if err != nil {
+		return nil, fmt.Errorf("%w\n==== failing transaction ====\n%s", err, txString)
+	}
 	return transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 }
 

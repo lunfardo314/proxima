@@ -47,8 +47,8 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 		}
 	}
 
+	txb.PutSignatureUnlock(consumedIndex, ledger.DelegationUnlockedByMaster)
 	txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.FinishChainUnlockParams)
-	txb.PutSignatureUnlock(consumedIndex)
 
 	// finalize the transaction
 	txb.TransactionData.Timestamp = par.Timestamp

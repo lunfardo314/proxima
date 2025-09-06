@@ -83,7 +83,7 @@ func runChainStats() {
 		stemConstraint, ok := br.Stem.Output.StemLock()
 		glb.Assertf(ok, "stem lock not found in %s hex=%s", br.Stem.ID.String(), br.Stem.ID.StringHex())
 
-		bibCalc := ledger.L().BranchInflationBonusFromRandomnessProof(stemConstraint.VRFProof)
+		bibCalc := ledger.L().BranchInflationBonusDirect(stemConstraint.VRFProof)
 		glb.Assertf(bib == bibCalc, "provided vs calculated inflation mismatch %s != %s in %s",
 			util.Th(bib), util.Th(bibCalc), br.Lines("        ").String())
 		bibDirect := ledger.L().BranchInflationBonusDirect(stemConstraint.VRFProof)

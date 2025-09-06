@@ -7,7 +7,6 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -67,30 +66,29 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	}
 	dOut, isDelegation := ledger.AsDelegationOutput(out.Output, out.ID)
 
-	var tx *transaction.Transaction
-	if !isDelegation {
-		tx, err = txbuilder.MakeEndChainTransaction(txbuilder.EndChainParams{
-			Timestamp:     ts,
-			ChainIn:       out,
-			PrivateKey:    walletData.PrivateKey,
-			TagAlongSeqID: *pTagAlongSeqID,
-			TagAlongFee:   feeAmount,
-		})
-	} else {
-		dOut.UnfreezeSlot()
-		IsInSafeRevocationWindow(uint32(ts.Slot))
-
-		dconst := ledger.DelegationConst()
-		dconst.LastSlotInEpochDirect(dOut.Target.ChainID())
-
+	if isDelegation && dOut.IsInFrozenSlot(uint32(ts.Slot)) {
+		unfreeze := dOut.UnfreezeSlot()
+		glb.Infof("in the current slot %d the delegation output cannot be unlocked by the master lock because it is frozen until slot %d",
+			ts.Slot, unfreeze)
+		glb.Infof("safe revocation window is %d slots from now: slots %d - %d",
+			unfreeze-uint32(ts.Slot), ts.Slot, unfreeze)
+		glb.Infof("===============\n%s", dOut.LinesHR("     ").String())
+		return
 	}
-
 	tx, err := txbuilder.MakeEndChainTransaction(txbuilder.EndChainParams{
-		Timestamp:     nowis,
+		Timestamp:     ts,
 		ChainIn:       out,
 		PrivateKey:    walletData.PrivateKey,
 		TagAlongSeqID: *pTagAlongSeqID,
 		TagAlongFee:   feeAmount,
 	})
+	glb.AssertNoError(err)
 
+	glb.Infof("submitting transaction %s", tx.IDString())
+	err = glb.GetClient().SubmitTransaction(tx.Bytes())
+	glb.AssertNoError(err)
+
+	if !glb.NoWait() {
+		glb.TrackTxInclusion(tx.ID(), time.Second)
+	}
 }

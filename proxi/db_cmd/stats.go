@@ -72,12 +72,6 @@ func runBranchInflationBonusStats() {
 			}
 
 			if bib != 0 {
-				bibCalc := ledger.L().BranchInflationBonusFromRandomnessProof(stemConstraint.VRFProof)
-				glb.Assertf(bib == bibCalc, "provided vs calculated inflation mismatch %s != %s in %s",
-					util.Th(bib), util.Th(bibCalc), br.Lines("        ").String())
-				bibDirect := ledger.L().BranchInflationBonusDirect(stemConstraint.VRFProof)
-				glb.Assertf(bib == bibDirect, "provided vs directly calculated inflation mismatch: %s != %s in %s",
-					util.Th(bib), util.Th(bibDirect), br.Lines("        ").String())
 				bucketNo := bib * numBuckets / maxInflation
 				buckets[bucketNo]++
 				maxBib = max(maxBib, bib)

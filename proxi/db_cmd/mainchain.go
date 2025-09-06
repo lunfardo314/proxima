@@ -67,8 +67,8 @@ func runMainChainCmd(_ *cobra.Command, _ []string) {
 			sd.onChainBalance = bd.SequencerOutput.Output.TokenBalance()
 		}
 		if sd.name == "" {
-			if md := ledger.ParseMilestoneData(bd.SequencerOutput.Output); md != nil {
-				sd.name = md.Name
+			if md, err := ledger.ParseSequencerData(bd.SequencerOutput.Output); err == nil {
+				sd.name = md.Name()
 			}
 		}
 		bySeqID[bd.SequencerID] = sd
