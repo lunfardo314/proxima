@@ -34,7 +34,7 @@ func MustInitSingleton(identityData []byte) {
 
 	libraryGlobalMutex.Unlock()
 
-	initConstantsFromLibrary(libraryGlobal.Library)
+	initConstantsSingleton(libraryGlobal.Library)
 
 	libraryGlobal.runInlineTests()
 
@@ -46,7 +46,7 @@ func InitWithTestingLedgerIDData(opts ...func(data *Parameters)) ed25519.Private
 	for _, opt := range opts {
 		opt(id)
 	}
-	lib := LibraryFromIdentityParameters(id)
+	lib := LibraryFromParameters(id)
 	MustInitSingleton(lib.ToYAML(true))
 	return pk
 }
@@ -70,9 +70,9 @@ func WithSequencerPace(ticks byte) func(id *Parameters) {
 }
 
 func TransactionPace() int {
-	return int(L().ID.TransactionPace)
+	return int(Const.TransactionPace)
 }
 
 func TransactionPaceSequencer() int {
-	return int(L().ID.TransactionPaceSequencer)
+	return int(Const.TransactionPaceSequencer)
 }

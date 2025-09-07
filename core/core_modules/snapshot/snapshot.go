@@ -64,7 +64,7 @@ func Start(env environment) {
 	if periodInSlots <= 0 {
 		periodInSlots = defaultSnapshotPeriodInSlots
 	}
-	period := time.Duration(periodInSlots) * ledger.L().ID.SlotDuration()
+	period := time.Duration(periodInSlots) * ledger.Const.SlotDuration()
 
 	ret.keepLatest = viper.GetInt("snapshot.keep_latest")
 	if ret.keepLatest <= 0 {

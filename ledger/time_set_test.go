@@ -13,7 +13,7 @@ func TestTimeConstSet(t *testing.T) {
 	const d = 10 * time.Millisecond
 	idParams, _ := GetTestingIdentityData()
 	idParams.SetTickDuration(d)
-	libraryID := LibraryYAMLFromLedgerParameters(idParams, true)
+	libraryID := LibraryYAMLFromParameters(idParams, true)
 	MustInitSingleton(libraryID)
 	t.Logf("\n%s", L().ID.TimeConstantsToString())
 	require.EqualValues(t, d, TickDuration())

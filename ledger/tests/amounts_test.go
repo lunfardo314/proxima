@@ -94,7 +94,7 @@ func TestAmountsBase(t *testing.T) {
 		}))
 
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-		txb.TransactionData.Timestamp = ts.AddTicks(int(ledger.L().ID.TransactionPace))
+		txb.TransactionData.Timestamp = ts.AddTicks(int(ledger.Const.TransactionPace))
 		txb.SignED25519(privKey0)
 
 		_, _, _, err = txb.BytesWithValidation()

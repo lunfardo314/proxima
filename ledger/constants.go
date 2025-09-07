@@ -57,56 +57,61 @@ type Constants struct {
 
 var Const *Constants
 
-// constantsFromLibrary load all constants from library definition into a runtime structure
-func initConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) {
-	Const = &Constants{}
+// ConstantsFromLibrary load all constants from library definition into a runtime structure
+func initConstantsSingleton(lib *easyfl.Library[*EvalContext]) {
+	Const = ConstantsFromLibrary(lib)
+}
+
+func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
+	ret := &Constants{}
 	var err error
 	var res []byte
-	Const.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
+	ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
 	util.AssertNoError(err)
 	res, err = lib.EvalFromSource(nil, "constGenesisControllerPublicKey")
 	util.AssertNoError(err)
-	Const.GenesisControllerPublicKey = res
+	ret.GenesisControllerPublicKey = res
 	gt, err := _uint64FromConst(lib, "constGenesisTimeUnix")
 	util.AssertNoError(err)
-	Const.GenesisTimeUnix = uint32(gt)
+	ret.GenesisTimeUnix = uint32(gt)
 	td, err := _uint64FromConst(lib, "constTickDuration")
 	util.AssertNoError(err)
-	Const.TickDuration = time.Duration(td)
-	Const.SlotInflationBase, err = _uint64FromConst(lib, "constSlotInflationBase")
+	ret.TickDuration = time.Duration(td)
+	ret.SlotInflationBase, err = _uint64FromConst(lib, "constSlotInflationBase")
 	util.AssertNoError(err)
-	Const.MinimumInflatableAmount0 = Const.InitialSupply / Const.SlotInflationBase
-	Const.BranchInflationBonusBase, err = _uint64FromConst(lib, "constBranchInflationBonusBase")
+	ret.MinimumInflatableAmount0 = ret.InitialSupply / ret.SlotInflationBase
+	ret.BranchInflationBonusBase, err = _uint64FromConst(lib, "constBranchInflationBonusBase")
 	util.AssertNoError(err)
-	Const.MinimumAmountOnSequencer, err = _uint64FromConst(lib, "constMinimumAmountOnSequencer")
+	ret.MinimumAmountOnSequencer, err = _uint64FromConst(lib, "constMinimumAmountOnSequencer")
 	util.AssertNoError(err)
-	Const.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
+	ret.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
 	util.AssertNoError(err)
 	pb, err := _uint64FromConst(lib, "constPreBranchConsolidationTicks")
 	util.AssertNoError(err)
-	Const.PreBranchConsolidationTicks = byte(pb)
+	ret.PreBranchConsolidationTicks = byte(pb)
 	pb, err = _uint64FromConst(lib, "constPostBranchConsolidationTicks")
 	util.AssertNoError(err)
-	Const.PostBranchConsolidationTicks = byte(pb)
+	ret.PostBranchConsolidationTicks = byte(pb)
 	tp, err := _uint64FromConst(lib, "constTransactionPace")
 	util.AssertNoError(err)
-	Const.TransactionPace = byte(tp)
+	ret.TransactionPace = byte(tp)
 	tp, err = _uint64FromConst(lib, "constTransactionPaceSequencer")
 	util.AssertNoError(err)
-	Const.TransactionPaceSequencer = byte(tp)
-	Const.VBCost, err = _uint64FromConst(lib, "constVBCost16")
+	ret.TransactionPaceSequencer = byte(tp)
+	ret.VBCost, err = _uint64FromConst(lib, "constVBCost16")
 	util.AssertNoError(err)
 	res, err = lib.EvalFromSource(nil, "constDescription")
 	util.AssertNoError(err)
-	Const.Description = string(res)
+	ret.Description = string(res)
 
 	// delegation related
-	Const.SafeRevocationSlots, err = _uint32FromConst(lib, "constDelegationSafeRevocationSlots")
+	ret.SafeRevocationSlots, err = _uint32FromConst(lib, "constDelegationSafeRevocationSlots")
 	util.AssertNoError(err)
-	Const.DelegationEpochSlots, err = _uint32FromConst(lib, "constDelegationEpochSlots")
+	ret.DelegationEpochSlots, err = _uint32FromConst(lib, "constDelegationEpochSlots")
 	util.AssertNoError(err)
-	Const.MaxFrozenEpochs, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochs")
+	ret.MaxFrozenEpochs, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochs")
 	util.AssertNoError(err)
+	return ret
 }
 
 func _uint64FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint64, error) {
@@ -151,6 +156,41 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Safe revocation slots: %d", c.SafeRevocationSlots)
 }
 
+func (c *Constants) TimeConstantsToString() string {
+	nowis := time.Now()
+	timestampNowis := c.LedgerTimeFromClockTime(nowis)
+
+	// TODO sometimes fails
+	//util.Assertf(util.Abs(nowis.UnixNano()-timestampNowis.UnixNano()) < int64(TickDuration()),
+	//	"nowis.UnixNano()(%d)-timestampNowis.UnixNano()(%d) = %d < int64(TickDuration())(%d)",
+	//	nowis.UnixNano(), timestampNowis.UnixNano(), nowis.UnixNano()-timestampNowis.UnixNano(), int64(TickDuration()))
+
+	maxYears := base.MaxSlot / (c.SlotsPerDay() * 365)
+	return lines.New().
+		Add("TickDuration = %v", c.TickDuration).
+		Add("SlotDuration = %v", c.SlotDuration()).
+		Add("SlotsPerDay = %d", c.SlotsPerDay()).
+		Add("MaxYears = %d", maxYears).
+		Add("seconds per year = %d", 60*60*24*365).
+		Add("GenesisTime = %v", c.GenesisTime().Format(time.StampNano)).
+		Add("nowis %v", nowis.Format(time.StampNano)).
+		Add("nowis nano %d", nowis.UnixNano()).
+		Add("GenesisTimeUnix = %d", c.GenesisTimeUnix).
+		Add("GenesisTimeUnixNano = %d", c.GenesisTimeUnixNano()).
+		Add("ticks since genesis: %d", c.TimeToTicksSinceGenesis(nowis)).
+		Add("timestampNowis = %s ", timestampNowis.String()).
+		Add("timestampNowis.ClockTime() = %v ", ClockTime(timestampNowis)).
+		Add("timestampNowis.ClockTime().UnixNano() = %v ", ClockTime(timestampNowis).UnixNano()).
+		Add("timestampNowis.UnixNano() = %v ", UnixNanoFromLedgerTime(timestampNowis)).
+		Add("rounding: nowis.UnixNano() - timestampNowis.UnixNano() = %d", nowis.UnixNano()-UnixNanoFromLedgerTime(timestampNowis)).
+		Add("tick duration nano = %d", int64(TickDuration())).
+		String()
+}
+
+func (c *Constants) String() string {
+	return c.Lines("    ").String()
+}
+
 func OriginChainID() base.ChainID {
 	oid := base.GenesisOutputID()
 	return base.MakeOriginChainID(oid)
@@ -190,4 +230,23 @@ func (c *Constants) LedgerTimeFromClockTime(nowis time.Time) base.LedgerTime {
 	ret, err := base.LedgerTimeFromTicksSinceGenesis(c.TimeToTicksSinceGenesis(nowis))
 	util.AssertNoError(err)
 	return ret
+}
+
+func (c *Constants) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
+	return uint8(ts.Tick) > base.MaxTickValue-c.PreBranchConsolidationTicks
+}
+
+func (c *Constants) IsPostBranchConsolidationTimestamp(ts base.LedgerTime) bool {
+	return uint8(ts.Tick) >= c.PostBranchConsolidationTicks
+}
+
+func (c *Constants) EnsurePostBranchConsolidationConstraintTimestamp(ts base.LedgerTime) base.LedgerTime {
+	if c.IsPostBranchConsolidationTimestamp(ts) {
+		return ts
+	}
+	return base.NewLedgerTime(ts.Slot, base.Tick(c.PostBranchConsolidationTicks))
+}
+
+func (c *Constants) GenesisTimeUnixNano() int64 {
+	return time.Unix(int64(c.GenesisTimeUnix), 0).UnixNano()
 }

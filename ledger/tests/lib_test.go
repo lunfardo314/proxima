@@ -12,10 +12,10 @@ import (
 
 func TestLoadOld(t *testing.T) {
 	id, _ := ledger.GetTestingIdentityData()
-	lib := ledger.LibraryFromIdentityParameters(id, true)
-
-	t.Logf("------------------ ORIG \n%s", lib.ID.String())
-	t.Logf("------------------\n%s", lib.ID.TimeConstantsToString())
+	lib := ledger.LibraryFromParameters(id, true)
+	constants := ledger.ConstantsFromLibrary(lib.Library)
+	t.Logf("------------------ ORIG \n%s", constants.String())
+	t.Logf("------------------\n%s", constants.TimeConstantsToString())
 
 	idBack, err := ledger.IDParametersFromLibrary(lib.Library)
 	require.NoError(t, err)
@@ -26,10 +26,11 @@ func TestLoadOld(t *testing.T) {
 
 func TestLoad(t *testing.T) {
 	id, _ := ledger.GetTestingIdentityData()
-	lib := ledger.LibraryFromIdentityParameters(id, true)
+	lib := ledger.LibraryFromParameters(id, true)
+	constants := ledger.ConstantsFromLibrary(lib.Library)
 
-	t.Logf("------------------ ORIG \n%s", lib.ID.String())
-	t.Logf("------------------\n%s", lib.ID.TimeConstantsToString())
+	t.Logf("------------------ ORIG \n%s", constants.String())
+	t.Logf("------------------\n%s", constants.TimeConstantsToString())
 
 	t.Logf("------------------ main ledger constants -------------------- \n%s", ledger.Const.Lines("      ").String())
 }

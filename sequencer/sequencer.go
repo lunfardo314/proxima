@@ -144,7 +144,7 @@ func (seq *Sequencer) Start() {
 
 		seq.log.Infof("sequencer has been STARTED %s", util.Ref(seq.SequencerID()).String())
 
-		ttl := time.Duration(seq.config.MilestonesTTLSlots) * ledger.L().ID.SlotDuration()
+		ttl := time.Duration(seq.config.MilestonesTTLSlots) * ledger.Const.SlotDuration()
 
 		seq.RepeatInBackground(seq.SequencerName()+"_own_milestone_cleanup", ownMilestoneCleanupPeriod, func() bool {
 			if n, remain := seq.purgeOwnMilestones(ttl); n > 0 {
@@ -226,8 +226,8 @@ func (seq *Sequencer) ensurePreConditions() bool {
 		seq.log.Warnf("ensurePreConditions: Can't start sequencer. EXIT..")
 		return false
 	}
-	seq.log.Infof("ensurePreConditions: waiting for %v (1 slot) before starting sequencer", ledger.L().ID.SlotDuration())
-	time.Sleep(ledger.L().ID.SlotDuration())
+	seq.log.Infof("ensurePreConditions: waiting for %v (1 slot) before starting sequencer", ledger.Const.SlotDuration())
+	time.Sleep(ledger.Const.SlotDuration())
 	return true
 }
 
@@ -238,7 +238,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 	var startOutput vertex.WrappedOutput
 
 	deadline := time.Now().Add(ensureStartingMilestoneTimeout)
-	succ := seq.RepeatSync(ledger.L().ID.TickDuration, func() bool {
+	succ := seq.RepeatSync(ledger.Const.TickDuration, func() bool {
 		if time.Now().After(deadline) {
 			return false
 		}
@@ -284,13 +284,13 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 	seq.log.Infof("checkSequencerStartOutput: sequencer controller is %s", lock.String())
 
 	amount := oReal.TokenBalance()
-	if amount < ledger.L().ID.MinimumAmountOnSequencer {
+	if amount < ledger.Const.MinimumAmountOnSequencer {
 		seq.log.Errorf("checkSequencerStartOutput: amount %s on output is less than minimum %s required on sequencer",
-			util.Th(amount), util.Th(ledger.L().ID.MinimumAmountOnSequencer))
+			util.Th(amount), util.Th(ledger.Const.MinimumAmountOnSequencer))
 		return false
 	}
 	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",
-		wOut.IDStringShort(), util.Th(amount), util.PercentString(int(amount), int(ledger.L().ID.InitialSupply)))
+		wOut.IDStringShort(), util.Th(amount), util.PercentString(int(amount), int(ledger.Const.InitialSupply)))
 	return true
 }
 
@@ -446,22 +446,22 @@ func (seq *Sequencer) getNextTargetTime() base.LedgerTime {
 
 	nowis := ledger.TimeNow()
 
-	if base.DiffTicks(nowis.NextSlotBoundary(), nowis) < int64(ledger.L().ID.PreBranchConsolidationTicks) {
+	if base.DiffTicks(nowis.NextSlotBoundary(), nowis) < int64(ledger.Const.PreBranchConsolidationTicks) {
 		return nowis.NextSlotBoundary()
 	}
 
 	var targetAbsoluteMinimum base.LedgerTime
 
 	if seq.lastSubmittedTs.IsSlotBoundary() {
-		targetAbsoluteMinimum = seq.lastSubmittedTs.AddTicks(int(ledger.L().ID.PostBranchConsolidationTicks))
+		targetAbsoluteMinimum = seq.lastSubmittedTs.AddTicks(int(ledger.Const.PostBranchConsolidationTicks))
 	} else {
 		targetAbsoluteMinimum = base.MaximumTime(
 			seq.lastSubmittedTs.AddTicks(seq.config.Pace),
 			nowis.AddTicks(1),
 		)
 	}
-	if uint8(targetAbsoluteMinimum.Tick) < ledger.L().ID.PostBranchConsolidationTicks {
-		targetAbsoluteMinimum = base.NewLedgerTime(targetAbsoluteMinimum.Slot, base.Tick(ledger.L().ID.PostBranchConsolidationTicks))
+	if uint8(targetAbsoluteMinimum.Tick) < ledger.Const.PostBranchConsolidationTicks {
+		targetAbsoluteMinimum = base.NewLedgerTime(targetAbsoluteMinimum.Slot, base.Tick(ledger.Const.PostBranchConsolidationTicks))
 	}
 	nextSlotBoundary := nowis.NextSlotBoundary()
 
@@ -643,7 +643,7 @@ func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*tra
 	seq.Tracef(TraceTag, "generateMilestoneForTarget: target: %s, deadline: %s, nowis: %s",
 		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 
-	if behind := deadline.Sub(nowis); behind < -2*ledger.L().ID.TickDuration {
+	if behind := deadline.Sub(nowis); behind < -2*ledger.Const.TickDuration {
 		return nil, nil, fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
 			targetTs.String(), ledger.ClockTime(targetTs).Format("15:04:05.999"), behind)
 	}

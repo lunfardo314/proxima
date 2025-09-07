@@ -63,7 +63,7 @@ func (d *workflowDummyEnvironment) SelfPeerID() peer.ID {
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	stateStore := common.NewInMemoryKVStore()
-	multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
+	multistate.InitStateStoreFromGlobals(stateStore)
 	return &workflowDummyEnvironment{
 		Global:       global.NewDefault(),
 		stateStore:   stateStore,

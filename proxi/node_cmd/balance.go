@@ -90,7 +90,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, target ledger.Accountable
 
 		slots := ledger.TimeNow().Slot - d.sinceSlot
 		perSlot := d.inflation / uint64(slots)
-		annualExtrapolationEarnings := uint64(ledger.L().ID.SlotsPerYear()) * perSlot
+		annualExtrapolationEarnings := uint64(ledger.Const.SlotsPerYear()) * perSlot
 		annualRate := 100 * float64(annualExtrapolationEarnings) / float64(d.amount-d.inflation)
 
 		glb.Infof("     %s   %20s (+%s, %.1f%% annual) since/last active slot: %d/%d",

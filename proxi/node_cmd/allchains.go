@@ -179,7 +179,7 @@ func listSequencerDelegationInfo(supply uint64) {
 		for delID, delData := range seqData.Delegations {
 			inflation := delData.Amount - delData.StartAmount
 			slotsSince := slotNow - delData.SinceSlot
-			annual := float64(ledger.L().ID.SlotsPerYear()) * (float64(inflation) * 100 / float64(delData.StartAmount)) / float64(slotsSince)
+			annual := float64(ledger.Const.SlotsPerYear()) * (float64(inflation) * 100 / float64(delData.StartAmount)) / float64(slotsSince)
 			glb.Infof("            %s %20s (+%s) annual %.2f%%",
 				delID, util.Th(delData.Amount), util.Th(delData.Amount-delData.StartAmount), annual)
 		}

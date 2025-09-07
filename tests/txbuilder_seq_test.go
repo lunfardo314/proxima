@@ -33,7 +33,7 @@ func TestBase(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.AddressED25519FromPrivateKey(privKey)
 	seqID := base.RandomChainID()
-	bal := ledger.L().ID.MinimumAmountOnSequencer << 8
+	bal := ledger.Const.MinimumAmountOnSequencer << 8
 
 	sd := seqdata.New().
 		SetName("test_seq").
@@ -267,7 +267,7 @@ func TestFreezeOneStep(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.AddressED25519FromPrivateKey(privKey)
 	seqID := base.RandomChainID()
-	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
+	seqInitBalance := ledger.Const.MinimumAmountOnSequencer << 8
 
 	predTs := base.NewLedgerTime(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
@@ -441,7 +441,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.AddressED25519FromPrivateKey(privKey)
 	seqID := base.RandomChainID()
-	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
+	seqInitBalance := ledger.Const.MinimumAmountOnSequencer << 8
 
 	predTs := base.NewLedgerTime(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
@@ -608,7 +608,7 @@ type (
 
 func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData, base.LedgerTime) {
 	u := utxodb.NewUTXODB(genesisPrivateKey)
-	seqInitBalance := ledger.L().ID.MinimumAmountOnSequencer << 8
+	seqInitBalance := ledger.Const.MinimumAmountOnSequencer << 8
 	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 2, seqInitBalance*2)
 	ret := &testWithUTXODBData{
 		T:                t,

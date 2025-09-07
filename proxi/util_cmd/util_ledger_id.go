@@ -40,7 +40,7 @@ func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
 
 	// create ledger identity
 	idParams := ledger.DefaultParameters(privKey, uint32(time.Now().Unix()))
-	yamlData := ledger.LibraryYAMLFromLedgerParameters(idParams, true)
+	yamlData := ledger.LibraryYAMLFromParameters(idParams, true)
 	lib, err := easyfl.NewLibraryFromYAML[*ledger.EvalContext](yamlData)
 	glb.AssertNoError(err)
 

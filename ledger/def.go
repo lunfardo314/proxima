@@ -17,7 +17,7 @@ import (
 // That will make ledger upgrades backwards compatible, because all past transactions and EasyFL constraint bytecodes
 // outputs will be interpreted exactly the same way
 
-func LibraryFromIdentityParameters(idParams *Parameters, verbose ...bool) *Library {
+func LibraryFromParameters(idParams *Parameters, verbose ...bool) *Library {
 	ret := newBaseLibrary(idParams)
 	if len(verbose) > 0 && verbose[0] {
 		fmt.Printf("------ Base EasyFL library:\n")
@@ -30,12 +30,11 @@ func LibraryFromIdentityParameters(idParams *Parameters, verbose ...bool) *Libra
 		fmt.Printf("------ Extended EasyFL library:\n")
 		ret.PrintLibraryStats()
 	}
-	ret.ID = idParams
 	return ret
 }
 
-func LibraryYAMLFromLedgerParameters(id *Parameters, compiled bool) []byte {
-	return LibraryFromIdentityParameters(id).ToYAML(compiled, "# Proxima ledger definitions")
+func LibraryYAMLFromParameters(id *Parameters, compiled bool) []byte {
+	return LibraryFromParameters(id).ToYAML(compiled, "# Proxima ledger definitions")
 }
 
 func ParseLedgerIdYAML(

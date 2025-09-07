@@ -35,7 +35,7 @@ func TestAttachTime(t *testing.T) {
 func TestAttachBasic(t *testing.T) {
 	t.Run("base", func(t *testing.T) {
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, root := multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
+		bootstrapChainID, root := multistate.InitStateStoreFromGlobals(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 
@@ -72,7 +72,7 @@ func TestAttachBasic(t *testing.T) {
 		}
 
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, _ := multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
+		bootstrapChainID, _ := multistate.InitStateStoreFromGlobals(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
@@ -133,7 +133,7 @@ func TestAttachBasic(t *testing.T) {
 		}
 
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, _ := multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
+		bootstrapChainID, _ := multistate.InitStateStoreFromGlobals(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
@@ -204,7 +204,7 @@ func TestAttachBasic(t *testing.T) {
 		}
 
 		stateStore := common.NewInMemoryKVStore()
-		bootstrapChainID, _ := multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
+		bootstrapChainID, _ := multistate.InitStateStoreFromGlobals(stateStore)
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
@@ -301,7 +301,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 		ts := base.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer())
-		ts = ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, loader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
@@ -373,7 +373,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		outToConsume := vidConflicting.MustOutputWithIDAt(0)
 		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
 		ts := outToConsume.Timestamp().AddTicks(ledger.TransactionPaceSequencer())
-		ts = ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
 			Timestamp:        ts,
@@ -853,7 +853,7 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	txBytesConflicting, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		SeqName:      "dummy",
 		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:    ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(ledger.TransactionPaceSequencer())),
+		Timestamp:    ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(ledger.TransactionPaceSequencer())),
 		Endorsements: util.List(tx1.ID()),
 		PrivateKey:   testData.privKeyAux,
 	})

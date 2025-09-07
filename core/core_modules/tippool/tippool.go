@@ -69,7 +69,7 @@ const (
 func New(env environment) *SequencerTips {
 	ret := &SequencerTips{
 		latestMilestones:                make(map[base.ChainID]_activeMilestoneData),
-		expectedSequencerActivityPeriod: time.Duration(expectedSequencerActivityPeriodInSlots) * ledger.L().ID.SlotDuration(),
+		expectedSequencerActivityPeriod: time.Duration(expectedSequencerActivityPeriodInSlots) * ledger.Const.SlotDuration(),
 		latestSequencerData:             make(map[base.ChainID]LatestSequencerTipData),
 	}
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)

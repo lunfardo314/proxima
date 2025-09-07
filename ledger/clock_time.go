@@ -7,19 +7,19 @@ import (
 )
 
 func TickDuration() time.Duration {
-	return L().ID.TickDuration
+	return Const.TickDuration
 }
 
 func SlotDuration() time.Duration {
-	return L().ID.SlotDuration()
+	return Const.SlotDuration()
 }
 
 func TimeFromClockTime(nowis time.Time) base.LedgerTime {
-	return L().ID.LedgerTimeFromClockTime(nowis)
+	return Const.LedgerTimeFromClockTime(nowis)
 }
 
 func UnixNanoFromLedgerTime(t base.LedgerTime) int64 {
-	return L().ID.GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * TickDuration()).UnixNano()
+	return Const.GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * TickDuration()).UnixNano()
 }
 
 func TimeNow() base.LedgerTime {

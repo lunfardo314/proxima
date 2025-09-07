@@ -80,7 +80,7 @@ func New(ts base.LedgerTime,
 	}
 	ret.nextSeqData = ret.origSeqData.Clone()
 	diffTicksChain := base.DiffTicks(ts, predecessor.Timestamp())
-	if diffTicksChain < int64(ledger.L().ID.TransactionPaceSequencer) ||
+	if diffTicksChain < int64(ledger.Const.TransactionPaceSequencer) ||
 		diffTicksChain < int64(ret.origSeqData.Pace()) {
 		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", ts.String())
 	}
@@ -92,7 +92,7 @@ func New(ts base.LedgerTime,
 			return nil, fmt.Errorf("SeqTxBuilder: wrong timestamp or stem for branch transaction: %s", ts.String())
 		}
 	} else {
-		if !ledger.L().ID.IsPostBranchConsolidationTimestamp(ts) {
+		if !ledger.Const.IsPostBranchConsolidationTimestamp(ts) {
 			return nil, fmt.Errorf("SeqTxBuilder: timestamp violates post-branch timestamp constraint: %s", ts.String())
 		}
 	}
@@ -186,7 +186,7 @@ func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
 
 func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid)
-	if len(txb.TransactionData.Endorsements) > int(ledger.L().ID.MaxNumberOfEndorsements) {
+	if len(txb.TransactionData.Endorsements) > int(ledger.Const.MaxNumberOfEndorsements) {
 		return fmt.Errorf("SeqTxBuilder: too many endorsements")
 	}
 	return nil
@@ -306,7 +306,7 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 		return fmt.Errorf("AddWithdrawOutput: only token balance can be non-zero")
 	}
 	amount := o.TokenBalance()
-	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.L().ID.MinimumAmountOnSequencer+amount) {
+	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.Const.MinimumAmountOnSequencer+amount) {
 		return fmt.Errorf("AddWithdrawOutput: not enough token balance")
 	}
 	if _, err := txb.ProduceOutput(o); err != nil {
@@ -317,10 +317,10 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 }
 
 func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
-	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.L().ID.MinimumAmountOnSequencer) {
+	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.Const.MinimumAmountOnSequencer) {
 		return fmt.Errorf("SeqTxBuilder: amount %s on the produced chain output is below minimum %s required for the sequencer",
 			util.Th(txb.chainOutAmounts[ledger.AmountIndexTokenBalance]),
-			util.Th(ledger.L().ID.MinimumAmountOnSequencer))
+			util.Th(ledger.Const.MinimumAmountOnSequencer))
 	}
 	// sequencer input
 	txb.PutSignatureUnlock(0)

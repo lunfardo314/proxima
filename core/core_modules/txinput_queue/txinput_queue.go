@@ -71,7 +71,7 @@ const (
 )
 
 func New(env environment) *TxInputQueue {
-	blackTTL := inGateBlackListTTLSlots * ledger.L().ID.SlotDuration()
+	blackTTL := inGateBlackListTTLSlots * ledger.Const.SlotDuration()
 	ret := &TxInputQueue{
 		environment: env,
 		inGate:      newInGate[base.TransactionID](blackTTL, cleanIfExceeds),

@@ -21,18 +21,18 @@ func CommitEmptyRootWithLedgerIdentity(id []byte, store StateStore) (common.VCom
 	return emptyRoot, nil
 }
 
-// InitStateStoreWithGlobalLedgerIdentity initializes origin ledger state in the empty store
+// InitStateStoreFromGlobals initializes origin ledger state in the empty store
 // Writes initial supply and origin stem outputs. Plus writes root record into the DB
 // Returns root commitment to the genesis ledger state and genesis chainID
 // The function is dependent on the global singleton of ledger definitions, because
 // origin outputs can be created only with the library
-func InitStateStoreWithGlobalLedgerIdentity(store StateStore) (base.ChainID, common.VCommitment) {
+func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitment) {
 	emptyRoot, err := CommitEmptyRootWithLedgerIdentity(ledger.L().IdentityData(), store)
 	util.AssertNoError(err)
 
-	genesisAddr := ledger.AddressED25519FromPublicKey(ledger.L().ID.GenesisControllerPublicKey)
+	genesisAddr := ledger.AddressED25519FromPublicKey(ledger.Const.GenesisControllerPublicKey)
 
-	initialSupply := ledger.L().ID.InitialSupply
+	initialSupply := ledger.Const.InitialSupply
 	gout := ledger.GenesisOutput(initialSupply, genesisAddr)
 	gStemOut := ledger.GenesisStemOutput()
 

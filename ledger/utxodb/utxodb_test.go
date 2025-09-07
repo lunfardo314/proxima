@@ -20,7 +20,7 @@ func init() {
 }
 
 func TestUTXODB(t *testing.T) {
-	initFaucetBalance := ledger.L().ID.InitialSupply / 2
+	initFaucetBalance := ledger.Const.InitialSupply / 2
 	t.Run("origin", func(t *testing.T) {
 		u := NewUTXODB(genesisPrivateKey)
 		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), util.Th(u.Balance(u.GenesisControllerAddress())))
@@ -36,8 +36,8 @@ func TestUTXODB(t *testing.T) {
 
 		t.Logf("\nUTXODB origin distribution transaction:\n%s", u.OriginDistributionTransactionString())
 		require.EqualValues(t, int(initFaucetBalance), int(u.Balance(u.FaucetAddress())))
-		require.EqualValues(t, int(ledger.L().ID.InitialSupply-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
-		require.EqualValues(t, ledger.L().ID.InitialSupply-initFaucetBalance, onChain)
+		require.EqualValues(t, int(ledger.Const.InitialSupply-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, ledger.Const.InitialSupply-initFaucetBalance, onChain)
 		require.EqualValues(t, 0, controlledByChain)
 	})
 	t.Run("from faucet", func(t *testing.T) {

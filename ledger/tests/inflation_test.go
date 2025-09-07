@@ -90,7 +90,7 @@ func TestInflationFun(t *testing.T) {
 }
 
 func TestInflation(t *testing.T) {
-	t.Logf("slotInflationBase: %s", util.Th(ledger.L().ID.SlotInflationBase))
+	t.Logf("slotInflationBase: %s", util.Th(ledger.Const.SlotInflationBase))
 	r, err := ledger.L().EvalFromSource(nil, "div(constInitialSupply, constSlotInflationBase)")
 	require.NoError(t, err)
 	minAmountOnSlot := func(n int) uint64 {
@@ -99,7 +99,7 @@ func TestInflation(t *testing.T) {
 	t.Logf("div(constInitialSupply, constSlotInflationBase): %s", util.Th(minAmountOnSlot(0)))
 
 	t.Run("1", func(t *testing.T) {
-		ledger.L().MustEqual("constGenesisTimeUnix", fmt.Sprintf("u64/%d", ledger.L().ID.GenesisTimeUnix))
+		ledger.L().MustEqual("constGenesisTimeUnix", fmt.Sprintf("u64/%d", ledger.Const.GenesisTimeUnix))
 	})
 }
 
@@ -119,7 +119,7 @@ func TestInflationConst(t *testing.T) {
 				break
 			}
 		}
-		constant := ledger.L().ID.MinimumInflatableAmount0
+		constant := ledger.Const.MinimumInflatableAmount0
 		t.Logf("slot inflation fraction: %s", util.Th(constant))
 		require.EqualValues(t, int(constant), int(calculated))
 	})
@@ -136,7 +136,7 @@ func TestInflationConst(t *testing.T) {
 			amountStart := amount
 			slot := year * slotsPerYear
 			for i := 0; i < slotsPerYear; i++ {
-				infl := ledger.L().ChainInflationOneSlot(amount, uint32(slot)) + ledger.L().ID.BranchInflationBonusBase
+				infl := ledger.L().ChainInflationOneSlot(amount, uint32(slot)) + ledger.Const.BranchInflationBonusBase
 				amount += infl
 				slot += 1
 			}

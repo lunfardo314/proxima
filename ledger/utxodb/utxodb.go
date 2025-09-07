@@ -45,7 +45,7 @@ const (
 )
 
 func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
-	genesisPubKey := ledger.L().ID.GenesisControllerPublicKey
+	genesisPubKey := ledger.Const.GenesisControllerPublicKey
 	genesisAddr := ledger.AddressED25519FromPublicKey(genesisPubKey)
 	util.Assertf(ledger.AddressED25519MatchesPrivateKey(genesisAddr, genesisPrivateKey), "private key does not match controller address")
 
@@ -54,8 +54,8 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
 	faucetAddress := ledger.AddressED25519FromPrivateKey(faucetPrivateKey)
 
-	initLedgerParams := ledger.L().ID
-	originChainID, genesisRoot := multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
+	initLedgerParams := ledger.Const
+	originChainID, genesisRoot := multistate.InitStateStoreFromGlobals(stateStore)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 
 	genesisOut, err := rdr.GetChainOutputWithID(originChainID)
@@ -64,7 +64,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	genesisStemOut := rdr.GetStemOutput()
 
 	distributionTxBytes := txbuilder_seq.MustDistributeInitialSupply(stateStore, genesisPrivateKey, []ledger.LockBalance{
-		{Lock: faucetAddress, Balance: ledger.L().ID.InitialSupply / 2, ChainOrigin: false},
+		{Lock: faucetAddress, Balance: ledger.Const.InitialSupply / 2, ChainOrigin: false},
 	})
 
 	updatable := multistate.MustNewUpdatable(stateStore, genesisRoot)

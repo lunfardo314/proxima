@@ -1012,7 +1012,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
-	if tsIn.AddTicks(int(ledger.L().ID.TransactionPace)).After(par.Timestamp) {
+	if tsIn.AddTicks(int(ledger.Const.TransactionPace)).After(par.Timestamp) {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: transaction pace constraint violated")
 	}
 

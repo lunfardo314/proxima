@@ -52,7 +52,7 @@ func TestOriginBase(t *testing.T) {
 
 func TestInitOrigin(t *testing.T) {
 	store := common.NewInMemoryKVStore()
-	bootstrapSeqID, genesisRoot := multistate.InitStateStoreWithGlobalLedgerIdentity(store)
+	bootstrapSeqID, genesisRoot := multistate.InitStateStoreFromGlobals(store)
 
 	rootData := multistate.FetchAllRootRecords(store)
 	require.EqualValues(t, 1, len(rootData))

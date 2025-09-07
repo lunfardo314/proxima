@@ -168,7 +168,7 @@ const (
 
 func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowTestData {
 	util.Assertf(nChains > 0, "nChains > 0")
-	t.Logf("genesis state id: %s", ledger.L().ID.String())
+	t.Logf("genesis state id: %s", ledger.Const.String())
 
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, uint64(nChains*initBalance+tagAlongFee), initBalance)
 	ret := &workflowTestData{
@@ -191,7 +191,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	ret.txStore = txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 	var genesisRoot common.VCommitment
-	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
+	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreFromGlobals(stateStore)
 	txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 	require.NoError(t, err)
 	_, err = ret.txStore.PersistTxBytesWithMetadata(txBytes, nil)
@@ -395,7 +395,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "1",
 			ChainInput:       chainOrigin,
-			Timestamp:        ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts),
+			Timestamp:        ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts),
 			Endorsements:     []base.TransactionID{td.distributionBranchTxID},
 			PrivateKey:       td.privKeyAux,
 			AdditionalInputs: additionalIn,
@@ -550,7 +550,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 			endorse = nil
 		}
 		ts := branch.Timestamp().AddTicks(ledger.TransactionPaceSequencer())
-		ts = ledger.L().ID.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:      "seq0",
@@ -897,7 +897,7 @@ func StartTestEnv() (*workflowDummyEnvironment, *base.TransactionID, error) {
 	}
 
 	stateStore := common.NewInMemoryKVStore()
-	_, root := multistate.InitStateStoreWithGlobalLedgerIdentity(stateStore)
+	_, root := multistate.InitStateStoreFromGlobals(stateStore)
 	txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 	env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 	env.root = root

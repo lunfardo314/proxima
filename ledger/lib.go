@@ -13,7 +13,6 @@ type (
 	Library struct {
 		*easyfl.Library[*EvalContext]
 		idData             []byte
-		ID                 *Parameters
 		constraintByPrefix map[string]*constraintRecord
 		constraintNames    set.Set[string]
 		locksByName        map[string]LockParser
@@ -25,7 +24,6 @@ func newLibrary(lib *easyfl.Library[*EvalContext], idParams *Parameters, idData 
 	ret := &Library{
 		Library:            lib,
 		idData:             idData,
-		ID:                 idParams,
 		constraintByPrefix: make(map[string]*constraintRecord),
 		constraintNames:    set.New[string](),
 		locksByName:        make(map[string]LockParser),

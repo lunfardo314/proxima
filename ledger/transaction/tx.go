@@ -355,8 +355,8 @@ func ScanEndorsements(tx *Transaction) error {
 		return nil
 	}
 	// check max number of endorsements
-	if numEndorsements > int(ledger.L().ID.MaxNumberOfEndorsements) {
-		return fmt.Errorf("number of endorsements should not exceed %d", ledger.L().ID.MaxNumberOfEndorsements)
+	if numEndorsements > int(ledger.Const.MaxNumberOfEndorsements) {
+		return fmt.Errorf("number of endorsements should not exceed %d", ledger.Const.MaxNumberOfEndorsements)
 	}
 	// enforce only sequencer transaction can endorse
 	if !tx.IsSequencerTransaction() {

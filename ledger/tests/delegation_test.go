@@ -394,13 +394,13 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("master+init+kill", func(t *testing.T) {
 		// create delegation output and destroy it with next tx
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 		unfreezeSlot := td.delegatedOutput.UnfreezeSlot()
 		//ts = base.NewLedgerTime(base.Slot(unfreezeSlot-1), 10)
 
-		ts = td.delegatedOutput.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts = td.delegatedOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		t.Logf("ts: %s, unfreeze: %d", ts.String(), unfreezeSlot)
 
 		err = td.discontinueDelegation(ts, true)
@@ -409,7 +409,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target+init", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 
@@ -425,12 +425,12 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target+init+fail", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
-			ts:                       td.timestampTicksForward(int(ledger.L().ID.TransactionPace)),
+			ts:                       td.timestampTicksForward(int(ledger.Const.TransactionPace)),
 			freezeUntilEpoch:         0,
 			prntx:                    true,
 			disableConsistencyChecks: true,
@@ -440,7 +440,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target_freeze_ok", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 1, 0)
 		require.NoError(t, err)
 
@@ -465,7 +465,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("wrong_last_frozen_epoch", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 1, 0)
 		require.NoError(t, err)
 
@@ -485,7 +485,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target_freeze_ok_inflate", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -503,7 +503,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target_freeze_ok_add_amount", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -524,7 +524,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("master_unlock_frozen", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -556,7 +556,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("revoke", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -596,7 +596,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("revoke-inflate", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -731,7 +731,7 @@ func TestFrozenCoverage1(t *testing.T) {
 	t.Run("init", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 
@@ -747,7 +747,7 @@ func TestFrozenCoverage1(t *testing.T) {
 	t.Run("init fail", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 968)
 		require.NoError(t, err)
 
@@ -768,7 +768,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 1
 			inflationShare = 10
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -792,7 +792,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 1
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -818,7 +818,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 1
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -844,7 +844,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 2
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -871,7 +871,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 2
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -898,7 +898,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 3
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
@@ -929,7 +929,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 3
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
@@ -960,7 +960,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 4
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
@@ -991,7 +991,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 4
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
@@ -1023,7 +1023,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 8
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, frozenEpochs, inflationShare)
 		require.NoError(t, err)
 
@@ -1058,7 +1058,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 8
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, frozenEpochs, inflationShare)
 		require.NoError(t, err)
 
@@ -1093,7 +1093,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		const (
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L().ID.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 9, inflationShare)
 		require.NoError(t, util.MustErrorWith(err, "wrong max frozen epochs value"))
 	})

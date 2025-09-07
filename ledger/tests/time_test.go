@@ -27,12 +27,12 @@ func TestTTT(t *testing.T) {
 }
 
 func TestPrintTimeConstants(t *testing.T) {
-	t.Log(ledger.L().ID.TimeConstantsToString())
+	t.Log(ledger.Const.TimeConstantsToString())
 }
 
 func TestTime(t *testing.T) {
 	t.Run("time constants", func(t *testing.T) {
-		t.Logf("%s", ledger.L().ID.TimeConstantsToString())
+		t.Logf("%s", ledger.Const.TimeConstantsToString())
 	})
 	t.Run("0", func(t *testing.T) {
 		require.True(t, base.ValidTime(ledger.TimeNow()))
@@ -170,7 +170,7 @@ func TestArithmetics(t *testing.T) {
 
 //func TestTmp(t *testing.T) {
 //	//un := int64(1725291829425303053)
-//	un := ledger.L().id.GenesisTimeUnixNano()
+//	un := ledger.Const.GenesisTimeUnixNano()
 //	t1 := time.Unix(0, un)
 //	for i := 0; i < 1000; i++ {
 //		//t.Logf("unix nano: %d", un)

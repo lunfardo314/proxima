@@ -11,7 +11,7 @@ import (
 )
 
 func TestInflation3(t *testing.T) {
-	t.Logf("----- tick duration: %v, slots per year: %s", ledger.L().ID.TickDuration, util.Th(ledger.L().ID.SlotsPerYear()))
+	t.Logf("----- tick duration: %v, slots per year: %s", ledger.Const.TickDuration, util.Th(ledger.Const.SlotsPerYear()))
 
 	ln := lines.New("   ")
 	const (
@@ -25,7 +25,7 @@ func TestInflation3(t *testing.T) {
 	ln.Add("inflationTargetAnnual: %s", util.Th(inflationTargetAnnual))
 	ln.Add("inflationEpochSlots: %s", util.Th(inflationEpochSlots))
 	ln.Add("branchInflationBonus: %s", util.Th(branchInflationBonus))
-	epochsPerYear := float64(ledger.L().ID.SlotsPerYear()) / float64(inflationEpochSlots)
+	epochsPerYear := float64(ledger.Const.SlotsPerYear()) / float64(inflationEpochSlots)
 	ln.Add("epochsPerYear: %.03f", epochsPerYear)
 	inflationTargetForEpoch := inflationTargetAnnual / epochsPerYear
 	ln.Add("inflationTargetForEpoch: %s", util.Th(int(inflationTargetForEpoch)))
@@ -43,7 +43,7 @@ func TestInflation3(t *testing.T) {
 	const years = 100
 
 	supply := uint64(initSupply)
-	slotsPerYear := ledger.L().ID.SlotsPerYear()
+	slotsPerYear := ledger.Const.SlotsPerYear()
 	year := 1
 	supplyYearStart := uint64(initSupply)
 
@@ -68,7 +68,7 @@ func TestInflation3(t *testing.T) {
 
 func TestInflation3Final(t *testing.T) {
 	t.Skip()
-	t.Logf("----- tick duration: %v, slots per year: %s", ledger.L().ID.TickDuration, util.Th(ledger.L().ID.SlotsPerYear()))
+	t.Logf("----- tick duration: %v, slots per year: %s", ledger.Const.TickDuration, util.Th(ledger.Const.SlotsPerYear()))
 
 	ln := lines.New("   ")
 	const (
@@ -85,10 +85,10 @@ func TestInflation3Final(t *testing.T) {
 
 	const years = 3
 
-	supply := ledger.L().ID.InitialSupply
-	slotsPerYear := ledger.L().ID.SlotsPerYear()
+	supply := ledger.Const.InitialSupply
+	slotsPerYear := ledger.Const.SlotsPerYear()
 	year := 1
-	supplyYearStart := ledger.L().ID.InitialSupply
+	supplyYearStart := ledger.Const.InitialSupply
 
 	startTime := time.Now()
 	for s := 0; s < slotsPerYear*years; s++ {
