@@ -24,9 +24,9 @@ func (p *ProximaNode) initMultiStateLedger() {
 	p.multiStateDB = badger_adaptor.New(bdb)
 	p.Log().Infof("opened multi-state DB '%s'", dbname)
 
-	// initialize the ledger library singleton with the ledger ChainID data from DB
+	// initialize the ledger library singleton with the ledger ID data from DB
 	multistate.InitLedgerFromStore(p.multiStateDB)
-	p.Log().Infof("ledger ChainID params:\n%s", ledger.L().ID.Lines("       ").String())
+	p.Log().Infof("ledger ID params:\n%s", ledger.L().ID.Lines("       ").String())
 	h := ledger.L().LibraryHash()
 	p.Log().Infof("ledger constraint library hash: %s", hex.EncodeToString(h[:]))
 

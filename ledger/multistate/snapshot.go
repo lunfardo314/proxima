@@ -26,7 +26,7 @@ type (
 	SnapshotFileStream struct {
 		Header         *SnapshotHeader
 		LedgerIDData   []byte
-		LedgerIDParams *ledger.IdentityParameters
+		LedgerIDParams *ledger.Parameters
 		BranchID       base.TransactionID
 		RootRecord     RootRecord
 		InChan         chan common.KVPairOrError
@@ -151,7 +151,7 @@ func SaveSnapshot(state StateStoreReader, branch *BranchData, ctx context.Contex
 		return makeErr(err.Error())
 	}
 
-	// parse ledger ChainID data to validate and to print params (not needed?)
+	// parse ledger ID data to validate and to print params (not needed?)
 	_, ledgerIDParams, err := ledger.ParseLedgerIdYAML(ledgerIDBytes)
 	if err != nil {
 		return makeErr(err.Error())

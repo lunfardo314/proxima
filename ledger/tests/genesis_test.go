@@ -44,7 +44,7 @@ func TestOriginBase(t *testing.T) {
 	t.Logf("   Stem output constraints:\n%s", sOut.Output.ToString("        "))
 
 	privateKey := testutil.GetTestingPrivateKey(100)
-	id := ledger.DefaultIdentityParameters(privateKey, uint32(time.Now().Unix()))
+	id := ledger.DefaultParameters(privateKey, uint32(time.Now().Unix()))
 	pubKey := privateKey.Public().(ed25519.PublicKey)
 	require.True(t, pubKey.Equal(id.GenesisControllerPublicKey))
 	t.Logf("Identity data:\n%s", id.String())

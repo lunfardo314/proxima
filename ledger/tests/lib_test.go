@@ -48,7 +48,7 @@ func TestLedgerToYAMLFile(t *testing.T) {
 
 func TestLedgerConstantsYAML(t *testing.T) {
 	pk := testutil.GetTestingPrivateKey(1)
-	id := ledger.DefaultIdentityParameters(pk, uint32(time.Now().UnixNano()), "---- testing the description ----")
+	id := ledger.DefaultParameters(pk, uint32(time.Now().UnixNano()), "---- testing the description ----")
 	yamlData := ledger.ConstantsYAMLFromIdentity(id)
 	t.Logf("\n%s", string(yamlData))
 }

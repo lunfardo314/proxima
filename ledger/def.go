@@ -18,7 +18,7 @@ import (
 // That will make ledger upgrades backwards compatible, because all past transactions and EasyFL constraint bytecodes
 // outputs will be interpreted exactly the same way
 
-func LibraryFromIdentityParameters(idParams *IdentityParameters, verbose ...bool) *Library {
+func LibraryFromIdentityParameters(idParams *Parameters, verbose ...bool) *Library {
 	ret := newBaseLibrary(idParams)
 	if len(verbose) > 0 && verbose[0] {
 		fmt.Printf("------ Base EasyFL library:\n")
@@ -35,14 +35,14 @@ func LibraryFromIdentityParameters(idParams *IdentityParameters, verbose ...bool
 	return ret
 }
 
-func LibraryYAMLFromIdentityParameters(id *IdentityParameters, compiled bool) []byte {
+func LibraryYAMLFromLedgerParameters(id *Parameters, compiled bool) []byte {
 	return LibraryFromIdentityParameters(id).ToYAML(compiled, "# Proxima ledger definitions")
 }
 
 func ParseLedgerIdYAML(
 	yamlData []byte,
 	getResolver ...func(lib *easyfl.Library[*EvalContext],
-	) func(sym string) easyfl.EmbeddedFunction[*EvalContext]) (*easyfl.Library[*EvalContext], *IdentityParameters, error) {
+	) func(sym string) easyfl.EmbeddedFunction[*EvalContext]) (*easyfl.Library[*EvalContext], *Parameters, error) {
 	lib, err := easyfl.NewLibraryFromYAML(yamlData, getResolver...)
 	if err != nil {
 		return nil, nil, err
@@ -62,8 +62,8 @@ func _uint64FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint
 	return easyfl_util.Uint64FromBytes(res)
 }
 
-func IDParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*IdentityParameters, error) {
-	ret := &IdentityParameters{}
+func IDParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*Parameters, error) {
+	ret := &Parameters{}
 	var err error
 	var res []byte
 	if ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply"); err != nil {
@@ -139,7 +139,7 @@ func IDParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*IdentityParame
 	return ret, nil
 }
 
-func upgrade0(lib *easyfl.Library[*EvalContext], id *IdentityParameters) {
+func upgrade0(lib *easyfl.Library[*EvalContext], id *Parameters) {
 	err := EmbedHardcoded(lib)
 	util.AssertNoError(err)
 

@@ -39,8 +39,8 @@ func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
 	privKey := glb.MustGetPrivateKey()
 
 	// create ledger identity
-	idParams := ledger.DefaultIdentityParameters(privKey, uint32(time.Now().Unix()))
-	yamlData := ledger.LibraryYAMLFromIdentityParameters(idParams, true)
+	idParams := ledger.DefaultParameters(privKey, uint32(time.Now().Unix()))
+	yamlData := ledger.LibraryYAMLFromLedgerParameters(idParams, true)
 	lib, err := easyfl.NewLibraryFromYAML[*ledger.EvalContext](yamlData)
 	glb.AssertNoError(err)
 
@@ -49,5 +49,5 @@ func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.Infof("new ledger identity data has been stored in the file '%s'", glb.LedgerIDFileName)
 	h := lib.LibraryHash()
 	glb.Infof("library hash: %s", hex.EncodeToString(h[:]))
-	glb.Infof("ledger ChainID parameters:\n--------------\n%s\n", idParams.Lines("    ").String())
+	glb.Infof("ledger ID main constants:\n--------------\n%s\n", idParams.Lines("    ").String())
 }

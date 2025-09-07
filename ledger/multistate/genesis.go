@@ -57,7 +57,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *Mu
 }
 
 // ScanGenesisState TODO more checks
-func ScanGenesisState(stateStore StateStore) (*ledger.IdentityParameters, common.VCommitment, error) {
+func ScanGenesisState(stateStore StateStore) (*ledger.Parameters, common.VCommitment, error) {
 	var genesisRootRecord RootRecord
 
 	// expecting a single branch in the genesis state

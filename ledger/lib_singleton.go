@@ -38,7 +38,7 @@ func MustInitSingleton(identityData []byte) {
 }
 
 // InitWithTestingLedgerIDData for testing
-func InitWithTestingLedgerIDData(opts ...func(data *IdentityParameters)) ed25519.PrivateKey {
+func InitWithTestingLedgerIDData(opts ...func(data *Parameters)) ed25519.PrivateKey {
 	id, pk := GetTestingIdentityData(31415926535)
 	for _, opt := range opts {
 		opt(id)
@@ -48,20 +48,20 @@ func InitWithTestingLedgerIDData(opts ...func(data *IdentityParameters)) ed25519
 	return pk
 }
 
-func WithTickDuration(d time.Duration) func(id *IdentityParameters) {
-	return func(id *IdentityParameters) {
+func WithTickDuration(d time.Duration) func(id *Parameters) {
+	return func(id *Parameters) {
 		id.SetTickDuration(d)
 	}
 }
 
-func WithTransactionPace(ticks byte) func(id *IdentityParameters) {
-	return func(id *IdentityParameters) {
+func WithTransactionPace(ticks byte) func(id *Parameters) {
+	return func(id *Parameters) {
 		id.TransactionPace = ticks
 	}
 }
 
-func WithSequencerPace(ticks byte) func(id *IdentityParameters) {
-	return func(id *IdentityParameters) {
+func WithSequencerPace(ticks byte) func(id *Parameters) {
+	return func(id *Parameters) {
 		id.TransactionPaceSequencer = ticks
 	}
 }

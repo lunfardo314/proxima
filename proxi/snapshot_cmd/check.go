@@ -75,7 +75,7 @@ type _snapshotFileData struct {
 	branchID       base.TransactionID
 	rootRecord     multistate.RootRecord
 	ledgerIDData   []byte
-	ledgerIDParams *ledger.IdentityParameters
+	ledgerIDParams *ledger.Parameters
 }
 
 func readASnapshotFile(fname string) (*_snapshotFileData, error) {

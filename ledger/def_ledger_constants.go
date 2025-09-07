@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-type IdentityParameters struct {
+type Parameters struct {
 	// arbitrary string up 255 bytes
 	Description string
 	// genesis time unix seconds
@@ -80,14 +80,14 @@ func init() {
 	util.Assertf(DefaultInitialSupply/DefaultSlotInflationBase == 30_303_030, "wrong constants: DefaultInitialSupply/DefaultSlotInflationBase == 30_303_030")
 }
 
-func DefaultIdentityParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description ...string) *IdentityParameters {
+func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description ...string) *Parameters {
 	//genesisTimeUnix := uint32(time.Now().Unix())
 
 	dscr := defaultDescription
 	if len(description) > 0 {
 		dscr = description[0]
 	}
-	return &IdentityParameters{
+	return &Parameters{
 		GenesisTimeUnix:              genesisTimeUnix,
 		GenesisControllerPublicKey:   privateKey.Public().(ed25519.PublicKey),
 		InitialSupply:                DefaultInitialSupply,
@@ -106,7 +106,7 @@ func DefaultIdentityParameters(privateKey ed25519.PrivateKey, genesisTimeUnix ui
 	}
 }
 
-func ConstantsYAMLFromIdentity(id *IdentityParameters) []byte {
+func ConstantsYAMLFromIdentity(id *Parameters) []byte {
 	return []byte(fmt.Sprintf(__definitionsLedgerConstantsYAML,
 		id.InitialSupply,
 		hex.EncodeToString(id.GenesisControllerPublicKey),
@@ -126,75 +126,75 @@ func ConstantsYAMLFromIdentity(id *IdentityParameters) []byte {
 	))
 }
 
-func (id *IdentityParameters) GenesisTime() time.Time {
+func (id *Parameters) GenesisTime() time.Time {
 	return time.Unix(int64(id.GenesisTimeUnix), 0)
 }
 
-func (id *IdentityParameters) GenesisTimeUnixNano() int64 {
+func (id *Parameters) GenesisTimeUnixNano() int64 {
 	return time.Unix(int64(id.GenesisTimeUnix), 0).UnixNano()
 }
 
-func (id *IdentityParameters) GenesisControlledAddress() AddressED25519 {
+func (id *Parameters) GenesisControlledAddress() AddressED25519 {
 	return AddressED25519FromPublicKey(id.GenesisControllerPublicKey)
 }
 
 // TimeToTicksSinceGenesis converts time value into ticks since genesis
-func (id *IdentityParameters) TimeToTicksSinceGenesis(nowis time.Time) int64 {
+func (id *Parameters) TimeToTicksSinceGenesis(nowis time.Time) int64 {
 	timeSinceGenesis := nowis.Sub(id.GenesisTime())
 	return int64(timeSinceGenesis / id.TickDuration)
 }
 
-func (id *IdentityParameters) LedgerTimeFromClockTime(nowis time.Time) base.LedgerTime {
+func (id *Parameters) LedgerTimeFromClockTime(nowis time.Time) base.LedgerTime {
 	ret, err := base.LedgerTimeFromTicksSinceGenesis(id.TimeToTicksSinceGenesis(nowis))
 	util.AssertNoError(err)
 	return ret
 }
 
-func (id *IdentityParameters) SlotDuration() time.Duration {
+func (id *Parameters) SlotDuration() time.Duration {
 	return id.TickDuration * time.Duration(base.TicksPerSlot)
 }
 
-func (id *IdentityParameters) SlotsPerDay() int {
+func (id *Parameters) SlotsPerDay() int {
 	return int(24 * time.Hour / id.SlotDuration())
 }
 
-func (id *IdentityParameters) SlotsPerYear() int {
+func (id *Parameters) SlotsPerYear() int {
 	return 365 * id.SlotsPerDay()
 }
 
-func (id *IdentityParameters) TicksPerYear() int {
+func (id *Parameters) TicksPerYear() int {
 	return id.SlotsPerYear() * base.TicksPerSlot
 }
 
-func (id *IdentityParameters) OriginChainID() base.ChainID {
+func (id *Parameters) OriginChainID() base.ChainID {
 	oid := base.GenesisOutputID()
 	return base.MakeOriginChainID(oid)
 }
 
-func (id *IdentityParameters) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
+func (id *Parameters) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
 	return uint8(ts.Tick) > base.MaxTickValue-id.PreBranchConsolidationTicks
 }
 
-func (id *IdentityParameters) IsPostBranchConsolidationTimestamp(ts base.LedgerTime) bool {
+func (id *Parameters) IsPostBranchConsolidationTimestamp(ts base.LedgerTime) bool {
 	return uint8(ts.Tick) >= id.PostBranchConsolidationTicks
 }
 
-func (id *IdentityParameters) EnsurePostBranchConsolidationConstraintTimestamp(ts base.LedgerTime) base.LedgerTime {
+func (id *Parameters) EnsurePostBranchConsolidationConstraintTimestamp(ts base.LedgerTime) base.LedgerTime {
 	if id.IsPostBranchConsolidationTimestamp(ts) {
 		return ts
 	}
 	return base.NewLedgerTime(ts.Slot, base.Tick(id.PostBranchConsolidationTicks))
 }
 
-func (id *IdentityParameters) SetTickDuration(d time.Duration) {
+func (id *Parameters) SetTickDuration(d time.Duration) {
 	id.TickDuration = d
 }
 
-func (id *IdentityParameters) String() string {
+func (id *Parameters) String() string {
 	return id.Lines().String()
 }
 
-func (id *IdentityParameters) Lines(prefix ...string) *lines.Lines {
+func (id *Parameters) Lines(prefix ...string) *lines.Lines {
 	originChainID := id.OriginChainID()
 	return lines.New(prefix...).
 		Add("Description: '%s'", id.Description).
@@ -217,7 +217,7 @@ func (id *IdentityParameters) Lines(prefix ...string) *lines.Lines {
 		Add("Origin chain id (calculated): %s", originChainID.String())
 }
 
-func (id *IdentityParameters) TimeConstantsToString() string {
+func (id *Parameters) TimeConstantsToString() string {
 	nowis := time.Now()
 	timestampNowis := id.LedgerTimeFromClockTime(nowis)
 

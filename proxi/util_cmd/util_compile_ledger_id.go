@@ -16,7 +16,7 @@ func compileIDCmd() *cobra.Command {
 	validateLedgerIDCmd := &cobra.Command{
 		Use:   "compile_ledger_id",
 		Args:  cobra.NoArgs,
-		Short: fmt.Sprintf("(re)compiles ledger ChainID and recalculates hash'%s'", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("(re)compiles ledger ID and recalculates hash'%s'", glb.LedgerIDFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
@@ -38,7 +38,7 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	if len(fromYAML.Hash) > 0 {
-		glb.Infof("ledger ChainID data is already compiled. Will recompile it..")
+		glb.Infof("ledger ID data is already compiled. Will recompile it..")
 	}
 
 	lib := easyfl.NewLibrary[*ledger.EvalContext]()
