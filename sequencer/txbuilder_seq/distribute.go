@@ -58,7 +58,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 		})
 	}
 
-	bootstrapChainID := stateID.OriginChainID()
+	bootstrapChainID := ledger.OriginChainID()
 	initSupplyOutput, err := rdr.GetChainOutputWithID(bootstrapChainID)
 	if err != nil {
 		return nil, err
@@ -144,7 +144,7 @@ func MustDistributeInitialSupplyExt(stateStore multistate.StateStore, originPriv
 	util.AssertNoError(err)
 
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
-	bootstrapChainID := stateID.OriginChainID()
+	bootstrapChainID := ledger.OriginChainID()
 
 	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	util.AssertNoError(err)

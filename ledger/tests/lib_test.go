@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoad(t *testing.T) {
+func TestLoadOld(t *testing.T) {
 	id, _ := ledger.GetTestingIdentityData()
 	lib := ledger.LibraryFromIdentityParameters(id, true)
 
@@ -19,9 +19,20 @@ func TestLoad(t *testing.T) {
 
 	idBack, err := ledger.IDParametersFromLibrary(lib.Library)
 	require.NoError(t, err)
-	t.Logf("------------------ ChainID LOADED FROM LIBRARY \n%s", idBack.String())
+	t.Logf("------------------ ID LOADED FROM LIBRARY \n%s", idBack.String())
 
 	require.EqualValues(t, id, idBack)
+}
+
+func TestLoad(t *testing.T) {
+	id, _ := ledger.GetTestingIdentityData()
+	lib := ledger.LibraryFromIdentityParameters(id, true)
+
+	t.Logf("------------------ ORIG \n%s", lib.ID.String())
+	t.Logf("------------------\n%s", lib.ID.TimeConstantsToString())
+
+	constants := ledger.Const()
+	t.Logf("------------------ main ledger constants -------------------- \n%s", constants.Lines("      ").String())
 }
 
 func TestLedgerToYAML(t *testing.T) {

@@ -225,11 +225,14 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		)
 		privKeys, _, _ := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 
-		nowis := ledger.TimeNow()
-		chainInput, err := u.CreateChainOrigin(privKeys[0], nowis.AddSlots(1))
+		ts := ledger.TimeNow()
+		if ts.IsSlotBoundary() {
+			ts = ts.AddTicks(10)
+		}
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ts.AddSlots(1))
 		require.NoError(t, err)
 
-		target, err := u.CreateChainOrigin(privKeys[1], nowis.AddSlots(1))
+		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
 		require.NoError(t, err)
 		par := txbuilder.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
@@ -260,11 +263,14 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 
-		nowis := ledger.TimeNow()
-		chainInput, err := u.CreateChainOrigin(privKeys[0], nowis.AddSlots(1))
+		ts := ledger.TimeNow()
+		if ts.IsSlotBoundary() {
+			ts = ts.AddTicks(10)
+		}
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ts.AddSlots(1))
 		require.NoError(t, err)
 
-		target, err := u.CreateChainOrigin(privKeys[1], nowis.AddSlots(1))
+		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
 		require.NoError(t, err)
 
 		par := txbuilder.MakeChainSuccTransactionParams{
@@ -295,11 +301,14 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, 2, initAmount)
 
-		nowis := ledger.TimeNow()
-		chainInput, err := u.CreateChainOrigin(privKeys[0], nowis.AddSlots(1))
+		ts := ledger.TimeNow()
+		if ts.IsSlotBoundary() {
+			ts = ts.AddTicks(10)
+		}
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ts.AddSlots(1))
 		require.NoError(t, err)
 
-		target, err := u.CreateChainOrigin(privKeys[1], nowis.AddSlots(1))
+		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
 		require.NoError(t, err)
 		par := txbuilder.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
@@ -355,11 +364,14 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 		_ = addrs
-		nowis := ledger.TimeNow()
-		chainInput, err := u.CreateChainOrigin(privKeys[0], nowis.AddSlots(1))
+		ts := ledger.TimeNow()
+		if ts.IsSlotBoundary() {
+			ts = ts.AddTicks(10)
+		}
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ts.AddSlots(1))
 		require.NoError(t, err)
 
-		target, err := u.CreateChainOrigin(privKeys[1], nowis.AddSlots(1))
+		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
 		require.NoError(t, err)
 
 		par := txbuilder.MakeChainSuccTransactionParams{
@@ -402,10 +414,13 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		txs := make([]txWithInputLoader, numAddr)
 
-		nowis := ledger.TimeNow()
+		ts := ledger.TimeNow()
+		if ts.IsSlotBoundary() {
+			ts = ts.AddTicks(10)
+		}
 		for i := range privKeys {
 			require.EqualValues(t, initAmount, u.Balance(addrs[i]))
-			ts := nowis.AddSlots(1)
+			ts := ts.AddSlots(1)
 			if ts.IsSlotBoundary() {
 				ts = ts.AddTicks(10)
 			}

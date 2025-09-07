@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -52,14 +51,6 @@ func ParseLedgerIdYAML(
 		return nil, nil, err
 	}
 	return lib, idParams, nil
-}
-
-func _uint64FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint64, error) {
-	res, err := lib.EvalFromSource(nil, constName)
-	if err != nil {
-		return 0, err
-	}
-	return easyfl_util.Uint64FromBytes(res)
 }
 
 func IDParametersFromLibrary(lib *easyfl.Library[*EvalContext]) (*Parameters, error) {

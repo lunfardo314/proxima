@@ -16,12 +16,12 @@ type Parameters struct {
 	Description string
 	// genesis time unix seconds
 	GenesisTimeUnix uint32
-	// initial supply of tokens
-	InitialSupply uint64
 	// ED25519 public key of the controller
 	GenesisControllerPublicKey ed25519.PublicKey
 	// time tick duration in nanoseconds
 	TickDuration time.Duration
+	// initial supply of tokens
+	InitialSupply uint64
 	// ----------- begin inflation-related
 	SlotInflationBase        uint64 // constant C
 	MinimumInflatableAmount0 uint64 // calculated -> initial supply / slot inflation base
@@ -166,11 +166,6 @@ func (id *Parameters) TicksPerYear() int {
 	return id.SlotsPerYear() * base.TicksPerSlot
 }
 
-func (id *Parameters) OriginChainID() base.ChainID {
-	oid := base.GenesisOutputID()
-	return base.MakeOriginChainID(oid)
-}
-
 func (id *Parameters) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
 	return uint8(ts.Tick) > base.MaxTickValue-id.PreBranchConsolidationTicks
 }
@@ -195,7 +190,7 @@ func (id *Parameters) String() string {
 }
 
 func (id *Parameters) Lines(prefix ...string) *lines.Lines {
-	originChainID := id.OriginChainID()
+	originChainID := OriginChainID()
 	return lines.New(prefix...).
 		Add("Description: '%s'", id.Description).
 		Add("Initial supply: %s", util.Th(id.InitialSupply)).
