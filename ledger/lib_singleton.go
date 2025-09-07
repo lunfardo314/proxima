@@ -34,10 +34,10 @@ func MustInitSingleton(identityData []byte) {
 
 	libraryGlobalMutex.Unlock()
 
+	initConstantsFromLibrary(libraryGlobal.Library)
+
 	libraryGlobal.runInlineTests()
 
-	// init constants singleton
-	Const()
 }
 
 // InitWithTestingLedgerIDData for testing

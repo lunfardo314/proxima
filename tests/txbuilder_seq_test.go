@@ -244,8 +244,7 @@ func TestBase(t *testing.T) {
 }
 
 func delegationInit(master ledger.Accountable, seqID base.ChainID, startSlot uint32, maxSeqProfitMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
-	dcons := ledger.DelegationConst()
-	maxEpochs := byte(dcons.MaxFrozenEpochs)
+	maxEpochs := byte(ledger.Const.MaxFrozenEpochs)
 	if len(maxFreezeEpochs) > 0 {
 		maxEpochs = maxFreezeEpochs[0]
 	}
@@ -477,7 +476,6 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		return txb
 	}
 
-	dconst := ledger.DelegationConst()
 	var delegations []ledger.DelegationOutput
 
 	runTest := func(par testFreezeMultipleStepsParams) (errTest error) {
@@ -496,7 +494,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		for step := 0; step < par.howManySteps; step++ {
 			ts = ts.AddSlots(1)
 			txSlot = uint32(ts.Slot)
-			epoch := dconst.EpochFromSlotDirect(seqID, txSlot)
+			epoch := ledger.Const.EpochFromSlotDirect(seqID, txSlot)
 			if epochStats == nil || epochStats.epoch != epoch {
 				if epochStats != nil && par.prnEpochStats {
 					a := seqOut.Output.TokenBalance()
@@ -604,7 +602,6 @@ type (
 		u                *utxodb.UTXODB
 		seqID            base.ChainID
 		delegationIDs    []base.ChainID
-		dconst           *ledger.DelegationConstants
 		revokeRequests   set.Set[base.ChainID]
 	}
 )
@@ -621,7 +618,6 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		targetPrivateKey: pk[1],
 		targetAddr:       addrs[1],
 		delegationIDs:    make([]base.ChainID, nDelegations),
-		dconst:           ledger.DelegationConst(),
 		revokeRequests:   set.New[base.ChainID](),
 	}
 	initTs := base.NewLedgerTime(1000, 50)
@@ -668,7 +664,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		}
 		txb.PutUnlockParams(byte(i), 2, ledger.NewChainUnlockParams(byte(i), 2))
 
-		maxFreezeEpochs := byte(uint32(i)%ledger.DelegationConst().MaxFrozenEpochs + 1)
+		maxFreezeEpochs := byte(uint32(i)%ledger.Const.MaxFrozenEpochs + 1)
 
 		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(out.Output.Amounts()...)
@@ -728,12 +724,12 @@ var _revokeSchedule = map[uint32][]struct{ d, s uint32 }{
 
 // postRevokeRequestsInEpoch creates revocation requests
 func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
-	epoch := td.dconst.EpochFromSlotDirect(td.seqID, slot)
+	epoch := ledger.Const.EpochFromSlotDirect(td.seqID, slot)
 	lst, ok := _revokeSchedule[epoch]
 	if !ok {
 		return 0
 	}
-	firstSlot, _ := td.dconst.EpochLimits(td.seqID, epoch)
+	firstSlot, _ := ledger.Const.EpochLimits(td.seqID, epoch)
 	nrSlotInEpoch := slot - firstSlot + 1
 	nRequests := 0
 	for i := range lst {
@@ -788,7 +784,7 @@ func TestWithUTXODB(t *testing.T) {
 		ts = ts.AddSlots(1)
 		txSlot := uint32(ts.Slot)
 
-		epoch := td.dconst.EpochFromSlotDirect(td.seqID, uint32(ts.Slot))
+		epoch := ledger.Const.EpochFromSlotDirect(td.seqID, uint32(ts.Slot))
 		if stats == nil || epoch != stats.epoch {
 			if stats != nil {
 				t.Logf("%4d (%5d + %3d slots), freezes: %3d   maxTx: %5d    %s",

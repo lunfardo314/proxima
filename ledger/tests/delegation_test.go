@@ -114,7 +114,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 }
 
 func TestDelegationLock2Init(t *testing.T) {
-	require.EqualValues(t, 36, ledger.DelegationConst().SafeRevocationSlots)
+	require.EqualValues(t, 36, ledger.Const.SafeRevocationSlots)
 
 	td := &testData{T: t}
 	var err error
@@ -257,7 +257,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	require.NoError(td, err)
 
 	diffSlots := ts.Slot - td.delegatedOutput.Timestamp().Slot
-	diffEpochs := ledger.DelegationConst().DiffEpochs(td.delegatedOutput.Target.ChainID(), ts, td.delegatedOutput.Timestamp())
+	diffEpochs := ledger.Const.DiffEpochs(td.delegatedOutput.Target.ChainID(), ts, td.delegatedOutput.Timestamp())
 	td.Logf(">>>> revoke -----\nts = %s, diffSlots = %d, diffEpochs = %d\n-----\n%s",
 		ts.String(), diffSlots, diffEpochs, td.delegatedOutput.LinesSource("   ").String())
 
@@ -447,11 +447,11 @@ func TestDelegationLockConsume(t *testing.T) {
 		//t.Logf("=========\n%s", td.delegatedOutput.OutputWithID.String())
 
 		ts = td.timestampSlotsForward(1000)
-		txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
+		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
 		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		frozenEpochs := freezeUntilEpoch - txEpoch + 1
-		frozenSlots := ledger.DelegationConst().FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
+		frozenSlots := ledger.Const.FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
 		t.Logf(">>>>>>>>> freezeUntilEpoch: %d, frozenEpochs: %d, frozenSlots: %d", freezeUntilEpoch, frozenEpochs, frozenSlots)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
@@ -470,7 +470,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(500)
-		txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot))
+		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot))
 		_ = txEpoch
 		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 
@@ -508,7 +508,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(700)
-		txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
+		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
 		_ = txEpoch
 		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		frozen := freezeUntilEpoch - txEpoch + 1
@@ -669,7 +669,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 		o.MustPushConstraint(cc.Bytes())
 		freezeUntil := uint32(0)
 		if par.frozenEpochs > 0 {
-			txEpoch := ledger.DelegationConst().EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot.Uint32())
+			txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot.Uint32())
 			freezeUntil = txEpoch + uint32(par.frozenEpochs) - 1
 		}
 		o.MustPushConstraint(ledger.DelegateLockState{
@@ -1100,13 +1100,12 @@ func TestFrozenCoverage1(t *testing.T) {
 }
 
 func TestDelegationUtil(t *testing.T) {
-	dconst := ledger.DelegationConst()
 	t.Run("offset", func(t *testing.T) {
 		const howMany = 100
 		for i := 0; i < howMany; i++ {
 			chainID := base.RandomChainID()
-			direct := dconst.EpochOffsetSlotsDirect(chainID)
-			fromSrc := dconst.EpochOffsetSlotsFromSource(chainID)
+			direct := ledger.Const.EpochOffsetSlotsDirect(chainID)
+			fromSrc := ledger.Const.EpochOffsetSlotsFromSource(chainID)
 			//t.Logf("fromSrc: %d, direct: %d", fromSrc, direct)
 			require.EqualValues(t, fromSrc, direct)
 		}
@@ -1115,10 +1114,10 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 100
 		chainID := base.RandomChainID()
 		for epoch := uint32(0); epoch < howMany; epoch++ {
-			first, last := dconst.EpochLimits(chainID, epoch)
+			first, last := ledger.Const.EpochLimits(chainID, epoch)
 			//t.Logf("epoch: %d,  first: %d, last: %d, diff: %d", epoch, first, last, last-first)
 			if epoch > 0 {
-				require.Equal(t, int(last-first), int(dconst.DelegationEpochSlots)-1)
+				require.Equal(t, int(last-first), int(ledger.Const.DelegationEpochSlots)-1)
 			}
 		}
 	})
@@ -1126,8 +1125,8 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 10000
 		var chainID base.ChainID
 		for epoch := uint32(0); epoch < howMany; epoch++ {
-			direct := dconst.LastSlotInEpochDirect(chainID, epoch)
-			fromSource := dconst.LastSlotInEpochFromSource(chainID, epoch)
+			direct := ledger.Const.LastSlotInEpochDirect(chainID, epoch)
+			fromSource := ledger.Const.LastSlotInEpochFromSource(chainID, epoch)
 			require.EqualValues(t, fromSource, direct)
 			chainID = base.RandomChainID()
 		}
@@ -1136,8 +1135,8 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 10_000
 		chainID := base.RandomChainID()
 		for slot := uint32(0); slot < howMany; slot++ {
-			direct := dconst.EpochFromSlotDirect(chainID, slot)
-			fromSrc := dconst.EpochFromSlotFromSource(chainID, slot)
+			direct := ledger.Const.EpochFromSlotDirect(chainID, slot)
+			fromSrc := ledger.Const.EpochFromSlotFromSource(chainID, slot)
 			//t.Logf("slot: %d -> epoch: %d", slot, direct)
 			require.Equal(t, int(direct), int(fromSrc))
 		}
@@ -1145,12 +1144,12 @@ func TestDelegationUtil(t *testing.T) {
 	t.Run("epoch from slot 2", func(t *testing.T) {
 		const howMany = 5
 		chainID := base.RandomChainID()
-		offs := dconst.EpochOffsetSlotsDirect(chainID)
+		offs := ledger.Const.EpochOffsetSlotsDirect(chainID)
 		t.Logf("offset: %d", offs)
 		for epoch := uint32(0); epoch < howMany; epoch++ {
-			first, last := dconst.EpochLimits(chainID, epoch)
+			first, last := ledger.Const.EpochLimits(chainID, epoch)
 			for slot := first; slot <= last; slot++ {
-				direct := dconst.EpochFromSlotDirect(chainID, slot)
+				direct := ledger.Const.EpochFromSlotDirect(chainID, slot)
 				if direct != epoch {
 					t.Logf("slot: %d, calc direct epoch: %d, expected: %d", slot, direct, epoch)
 				}
@@ -1163,8 +1162,8 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 1_000_000
 		for slot := uint32(0); slot < howMany; slot++ {
 			chainID := base.RandomChainID()
-			directEpoch := dconst.EpochFromSlotDirect(chainID, slot)
-			first, last := dconst.EpochLimits(chainID, directEpoch)
+			directEpoch := ledger.Const.EpochFromSlotDirect(chainID, slot)
+			first, last := ledger.Const.EpochLimits(chainID, directEpoch)
 			require.True(t, first <= slot && slot <= last)
 		}
 	})

@@ -3,8 +3,6 @@ package ledger
 import (
 	"crypto/ed25519"
 	"encoding/hex"
-	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
@@ -57,107 +55,58 @@ type Constants struct {
 	MaxFrozenEpochs uint32
 }
 
-var _constants atomic.Pointer[Constants]
-
-func Const() (ret *Constants) {
-	if ret = _constants.Load(); ret == nil {
-		var err error
-		ret, err = _loadConstantsFromLibrary(L().Library)
-		util.AssertNoError(err)
-		_constants.Store(ret)
-	}
-	return
-}
+var Const *Constants
 
 // constantsFromLibrary load all constants from library definition into a runtime structure
-func _loadConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) (*Constants, error) {
-	ret := &Constants{}
+func initConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) {
+	Const = &Constants{}
 	var err error
 	var res []byte
-	if ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply"); err != nil {
-		return nil, err
-	}
-	if res, err = lib.EvalFromSource(nil, "constGenesisControllerPublicKey"); err != nil {
-		return nil, err
-	}
-	ret.GenesisControllerPublicKey = res
-	if gt, err := _uint64FromConst(lib, "constGenesisTimeUnix"); err != nil {
-		return nil, err
-	} else {
-		ret.GenesisTimeUnix = uint32(gt)
-	}
-	if td, err := _uint64FromConst(lib, "constTickDuration"); err != nil {
-		return nil, err
-	} else {
-		ret.TickDuration = time.Duration(td)
-	}
-	if ret.SlotInflationBase, err = _uint64FromConst(lib, "constSlotInflationBase"); err != nil {
-		return nil, err
-	}
-	ret.MinimumInflatableAmount0 = ret.InitialSupply / ret.SlotInflationBase
-
-	if ret.BranchInflationBonusBase, err = _uint64FromConst(lib, "constBranchInflationBonusBase"); err != nil {
-		return nil, err
-	}
-	if ret.MinimumAmountOnSequencer, err = _uint64FromConst(lib, "constMinimumAmountOnSequencer"); err != nil {
-		return nil, err
-	}
-	if ret.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements"); err != nil {
-		return nil, err
-	}
-	if pb, err := _uint64FromConst(lib, "constPreBranchConsolidationTicks"); err != nil {
-		return nil, err
-	} else {
-		if pb > 255 {
-			return nil, fmt.Errorf("invalid pre branch consolidation ticks")
-		}
-		ret.PreBranchConsolidationTicks = byte(pb)
-	}
-	if pb, err := _uint64FromConst(lib, "constPostBranchConsolidationTicks"); err != nil {
-		return nil, err
-	} else {
-		if pb > 255 {
-			return nil, fmt.Errorf("invalid post branch consolidation ticks")
-		}
-		ret.PostBranchConsolidationTicks = byte(pb)
-	}
-	if tp, err := _uint64FromConst(lib, "constTransactionPace"); err != nil {
-		return nil, err
-	} else {
-		if tp > 255 {
-			return nil, fmt.Errorf("invalid transaction pace")
-		}
-		ret.TransactionPace = byte(tp)
-	}
-	if tp, err := _uint64FromConst(lib, "constTransactionPaceSequencer"); err != nil {
-		return nil, err
-	} else {
-		if tp > 255 {
-			return nil, fmt.Errorf("invalid sequencer transaction pace")
-		}
-		ret.TransactionPaceSequencer = byte(tp)
-	}
-	if ret.VBCost, err = _uint64FromConst(lib, "constVBCost16"); err != nil {
-		return nil, err
-	}
-	if res, err = lib.EvalFromSource(nil, "constDescription"); err != nil {
-		return nil, err
-	}
-	ret.Description = string(res)
+	Const.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
+	util.AssertNoError(err)
+	res, err = lib.EvalFromSource(nil, "constGenesisControllerPublicKey")
+	util.AssertNoError(err)
+	Const.GenesisControllerPublicKey = res
+	gt, err := _uint64FromConst(lib, "constGenesisTimeUnix")
+	util.AssertNoError(err)
+	Const.GenesisTimeUnix = uint32(gt)
+	td, err := _uint64FromConst(lib, "constTickDuration")
+	util.AssertNoError(err)
+	Const.TickDuration = time.Duration(td)
+	Const.SlotInflationBase, err = _uint64FromConst(lib, "constSlotInflationBase")
+	util.AssertNoError(err)
+	Const.MinimumInflatableAmount0 = Const.InitialSupply / Const.SlotInflationBase
+	Const.BranchInflationBonusBase, err = _uint64FromConst(lib, "constBranchInflationBonusBase")
+	util.AssertNoError(err)
+	Const.MinimumAmountOnSequencer, err = _uint64FromConst(lib, "constMinimumAmountOnSequencer")
+	util.AssertNoError(err)
+	Const.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
+	util.AssertNoError(err)
+	pb, err := _uint64FromConst(lib, "constPreBranchConsolidationTicks")
+	util.AssertNoError(err)
+	Const.PreBranchConsolidationTicks = byte(pb)
+	pb, err = _uint64FromConst(lib, "constPostBranchConsolidationTicks")
+	util.AssertNoError(err)
+	Const.PostBranchConsolidationTicks = byte(pb)
+	tp, err := _uint64FromConst(lib, "constTransactionPace")
+	util.AssertNoError(err)
+	Const.TransactionPace = byte(tp)
+	tp, err = _uint64FromConst(lib, "constTransactionPaceSequencer")
+	util.AssertNoError(err)
+	Const.TransactionPaceSequencer = byte(tp)
+	Const.VBCost, err = _uint64FromConst(lib, "constVBCost16")
+	util.AssertNoError(err)
+	res, err = lib.EvalFromSource(nil, "constDescription")
+	util.AssertNoError(err)
+	Const.Description = string(res)
 
 	// delegation related
-	if ret.SafeRevocationSlots, err = _uint32FromConst(lib, "constDelegationSafeRevocationSlots"); err != nil {
-		return nil, err
-	}
-	if ret.DelegationEpochSlots, err = _uint32FromConst(lib, "constDelegationEpochSlots"); err != nil {
-		return nil, err
-	}
-
-	if ret.MaxFrozenEpochs, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochs"); err != nil {
-		return nil, err
-	}
-
-	return ret, nil
+	Const.SafeRevocationSlots, err = _uint32FromConst(lib, "constDelegationSafeRevocationSlots")
+	util.AssertNoError(err)
+	Const.DelegationEpochSlots, err = _uint32FromConst(lib, "constDelegationEpochSlots")
+	util.AssertNoError(err)
+	Const.MaxFrozenEpochs, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochs")
+	util.AssertNoError(err)
 }
 
 func _uint64FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint64, error) {

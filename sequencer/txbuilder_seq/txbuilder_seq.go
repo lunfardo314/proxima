@@ -129,18 +129,17 @@ func New(ts base.LedgerTime,
 	ret.chainOutAmounts[ledger.AmountIndexTokenBalance] = int64(predAmounts.TokenBalance()) + ret.chainOutAmounts[ledger.AmountIndexInflation]
 
 	// frozen coverage at the predecessor adjusted to the epoch of the successor
-	dconst := ledger.DelegationConst()
-	diffEpochsInt := dconst.DiffEpochs(predecessor.ChainID, ts, predecessor.Timestamp())
+	diffEpochsInt := ledger.Const.DiffEpochs(predecessor.ChainID, ts, predecessor.Timestamp())
 	util.Assertf(diffEpochsInt >= 0, "diffEpochsInt>=0")
 	diffEpochs := uint32(diffEpochsInt)
 
 	predecessorFrozenCoverageAdjusted := func(i uint32) (ret int64) {
-		if idx := i + diffEpochs; idx < dconst.MaxFrozenEpochs {
+		if idx := i + diffEpochs; idx < ledger.Const.MaxFrozenEpochs {
 			ret = predAmounts.FrozenCoverageAt(byte(idx))
 		}
 		return
 	}
-	for i := uint32(0); i < dconst.MaxFrozenEpochs; i++ {
+	for i := uint32(0); i < ledger.Const.MaxFrozenEpochs; i++ {
 		ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
 	}
 
@@ -231,8 +230,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
-	dconst := ledger.DelegationConst()
-	frozenSlots := dconst.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot), frozenEpochs)
+	frozenSlots := ledger.Const.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot), frozenEpochs)
 	projectedInflation := ledger.L().ChainInflation(delegationIn.Output.TokenBalance(), uint32(txb.TransactionData.Timestamp.Slot), frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
@@ -259,8 +257,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		return
 	}
 	lastEpochToFreeze := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
-	dconst := ledger.DelegationConst()
-	txEpoch := dconst.EpochFromSlotDirect(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot))
+	txEpoch := ledger.Const.EpochFromSlotDirect(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot))
 	util.Assertf(lastEpochToFreeze >= txEpoch, "lastEpochToFreeze>=txEpoch")
 
 	frozenEpochs := lastEpochToFreeze - txEpoch + 1

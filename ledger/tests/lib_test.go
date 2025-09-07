@@ -31,8 +31,7 @@ func TestLoad(t *testing.T) {
 	t.Logf("------------------ ORIG \n%s", lib.ID.String())
 	t.Logf("------------------\n%s", lib.ID.TimeConstantsToString())
 
-	constants := ledger.Const()
-	t.Logf("------------------ main ledger constants -------------------- \n%s", constants.Lines("      ").String())
+	t.Logf("------------------ main ledger constants -------------------- \n%s", ledger.Const.Lines("      ").String())
 }
 
 func TestLedgerToYAML(t *testing.T) {

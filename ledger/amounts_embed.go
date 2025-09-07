@@ -70,14 +70,13 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 
 // _checkFrozenCoverageOnNonDelegationChain assumes sequencer output and enforces the validity of the frozen coverage values
 func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, seqID base.ChainID, amounts, predAmounts Amounts, txTs, predTs base.LedgerTime) {
-	dcons := DelegationConst()
-	diffEpochsInt := dcons.DiffEpochs(seqID, txTs, predTs)
+	diffEpochsInt := Const.DiffEpochs(seqID, txTs, predTs)
 	par.Require(diffEpochsInt >= 0, "_checkFrozenCoverageOnNonDelegationChain: inconsistency with timestamps")
 	diffEpochs := uint32(diffEpochsInt)
 
 	// frozen coverage at the predecessor adjusted to the epoch of the successor
 	predecessorFrozenCoverageAdjusted := func(i uint32) (ret int64) {
-		if idx := i + diffEpochs; idx < dcons.MaxFrozenEpochs {
+		if idx := i + diffEpochs; idx < Const.MaxFrozenEpochs {
 			ret = predAmounts.FrozenCoverageAt(byte(idx))
 		}
 		return
@@ -95,7 +94,7 @@ func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContex
 	// leads to elimination of delta_i and final enforced validity constraint:
 	//    pred_i + sum_i = 2 x succ_i
 
-	for i := 0; i < int(dcons.MaxFrozenEpochs); i++ {
+	for i := 0; i < int(Const.MaxFrozenEpochs); i++ {
 		successorFrozenCoverage := amounts.FrozenCoverageAt(byte(i))
 		predecessorFrozenCoverageValue := predecessorFrozenCoverageAdjusted(uint32(i))
 		sum := ctx.ProducedTotal(byte(i + 2))

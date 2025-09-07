@@ -316,7 +316,7 @@ func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 			}
 		}
 	}
-	return sum[2 : 2+ledger.DelegationConst().MaxFrozenEpochs], nil
+	return sum[2 : 2+ledger.Const.MaxFrozenEpochs], nil
 }
 
 func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
@@ -331,7 +331,7 @@ func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCovera
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
 	predVector := oPred.Amounts().FrozenCoverageVector()
 	predTs := txb.TransactionData.InputIDs[producedOutputIdx].Timestamp()
-	predVectorAdjusted := ledger.DelegationConst().AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
+	predVectorAdjusted := ledger.Const.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
 	for i := range frozenCoverageDeltaVector {
 		a[i+2] += predVectorAdjusted[i]
 	}

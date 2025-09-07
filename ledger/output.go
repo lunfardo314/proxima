@@ -192,9 +192,8 @@ func (o *Output) InflatableAmount() uint64 {
 func (o *OutputWithChainID) AdjustedFrozenCoverage(txTs base.LedgerTime) int64 {
 	predTs := o.ID.Timestamp()
 	util.Assertf(txTs.AfterOrEqual(predTs), "txTs.AfterOrEqual(predTs)")
-	dconst := DelegationConst()
-	diff := dconst.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp())
-	if diff >= int(dconst.MaxFrozenEpochs) {
+	diff := Const.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp())
+	if diff >= int(Const.MaxFrozenEpochs) {
 		return 0
 	}
 	return o.Output.FrozenCoverage(byte(diff))

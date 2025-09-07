@@ -95,8 +95,7 @@ func (a Amounts) InflationAmount() uint64 {
 }
 
 func (a Amounts) IsFrozenCoverageZero() bool {
-	dconst := DelegationConst()
-	for i := 0; i < int(dconst.MaxFrozenEpochs); i++ {
+	for i := 0; i < int(Const.MaxFrozenEpochs); i++ {
 		if a.Amount(AmountIndexFrozenCoverage+byte(i)) != 0 {
 			return false
 		}
@@ -105,12 +104,12 @@ func (a Amounts) IsFrozenCoverageZero() bool {
 }
 
 func (a Amounts) FrozenCoverageAt(i byte) (ret int64) {
-	util.Assertf(uint32(i) < DelegationConst().MaxFrozenEpochs, "Amounts.FrozenCoverageAt: wrong vector index %d", i)
+	util.Assertf(uint32(i) < Const.MaxFrozenEpochs, "Amounts.FrozenCoverageAt: wrong vector index %d", i)
 	return a.Amount(AmountIndexFrozenCoverage + i)
 }
 
 func (a Amounts) FrozenCoverageVector() []int64 {
-	ret := make([]int64, DelegationConst().MaxFrozenEpochs)
+	ret := make([]int64, Const.MaxFrozenEpochs)
 	for i := range ret {
 		ret[i] = a.FrozenCoverageAt(byte(i))
 	}
