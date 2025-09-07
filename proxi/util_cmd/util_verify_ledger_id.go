@@ -33,18 +33,18 @@ func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
 	yamlData, err := os.ReadFile(glb.LedgerIDFileName)
 	glb.AssertNoError(err)
 
-	lib, idParams, err := ledger.ParseLedgerIdYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
 	glb.AssertNoError(err)
-	h := lib.LibraryHash()
-	glb.Infof("hash of the library: %s", hex.EncodeToString(h[:]))
+	constants := ledger.ConstantsFromLibrary(lib)
+	glb.Infof("hash of the library: %s", hex.EncodeToString(constants.Hash[:]))
 
 	if pk, ok := glb.GetPrivateKey(); ok {
-		if idParams.GenesisControllerPublicKey.Equal(pk.Public()) {
+		if constants.GenesisControllerPublicKey.Equal(pk.Public()) {
 			glb.Infof("Genesis public key MATCHES public key of the wallet")
 		} else {
 			glb.Infof("Genesis public key DOES NOT MATCH public key of the wallet")
 		}
 	}
 	glb.Infof("ledger ID data in '%s' is OK. Size: %d bytes\nMain ledger parameters:\n-------------------\n%s",
-		glb.LedgerIDFileName, len(yamlData), idParams.Lines("      ").String())
+		glb.LedgerIDFileName, len(yamlData), constants.String())
 }

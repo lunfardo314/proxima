@@ -369,7 +369,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 
 	seq.Assertf(ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
-		ledger.TransactionPaceSequencer(), seq.lastSubmittedTs.String, targetTs.String)
+		ledger.Const.TransactionPaceSequencer, seq.lastSubmittedTs.String, targetTs.String)
 
 	seq.Assertf(targetTs.After(seq.lastSubmittedTs), "wrong target ts %s: should be after previous submitted %s",
 		targetTs.String, seq.lastSubmittedTs.String)

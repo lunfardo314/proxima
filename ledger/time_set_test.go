@@ -11,12 +11,12 @@ import (
 
 func TestTimeConstSet(t *testing.T) {
 	const d = 10 * time.Millisecond
-	idParams, _ := GetTestingIdentityData()
-	idParams.SetTickDuration(d)
+	idParams, _ := GetTestingLedgerParams()
+	idParams.TickDuration = d
 	libraryID := LibraryYAMLFromParameters(idParams, true)
 	MustInitSingleton(libraryID)
-	t.Logf("\n%s", L().ID.TimeConstantsToString())
+	t.Logf("\n%s", Const.TimeConstantsToString())
 	require.EqualValues(t, d, TickDuration())
-	t.Logf("------------------\n%s", idParams.String())
-	t.Logf("------------------\n%s", L().ID.TimeConstantsToString())
+	t.Logf("------------------\n%s", Const.String())
+	t.Logf("------------------\n%s", Const.TimeConstantsToString())
 }

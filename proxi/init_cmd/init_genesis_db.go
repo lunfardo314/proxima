@@ -51,11 +51,12 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	}
 
 	// parse and validate
-	lib, idParams, err := ledger.ParseLedgerIdYAML(idDataYAML, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromYAML(idDataYAML, ledger.GetEmbeddedFunctionResolver)
 	glb.AssertNoError(err)
+	constants := ledger.ConstantsFromLibrary(lib)
 
 	glb.Infof("Will be creating genesis with the following ledger identity parameters:")
-	glb.Infof(idParams.Lines("      ").String())
+	glb.Infof(constants.String())
 	h := lib.LibraryHash()
 	glb.Infof("library hash: %s", hex.EncodeToString(h[:]))
 	glb.Infof("Multi-state database name: '%s'", global.MultiStateDBName)

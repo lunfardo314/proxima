@@ -20,7 +20,7 @@ type (
 	}
 )
 
-func newLibrary(lib *easyfl.Library[*EvalContext], idParams *Parameters, idData []byte) *Library {
+func newLibrary(lib *easyfl.Library[*EvalContext], idData []byte) *Library {
 	ret := &Library{
 		Library:            lib,
 		idData:             idData,
@@ -32,8 +32,8 @@ func newLibrary(lib *easyfl.Library[*EvalContext], idParams *Parameters, idData 
 	return ret
 }
 
-func newBaseLibrary(id *Parameters) *Library {
-	return newLibrary(easyfl.NewBaseLibrary[*EvalContext](), id, nil)
+func newBaseLibrary() *Library {
+	return newLibrary(easyfl.NewBaseLibrary[*EvalContext](), nil)
 }
 
 func (lib *Library) IdentityData() []byte {
@@ -43,7 +43,7 @@ func (lib *Library) IdentityData() []byte {
 	return lib.Library.ToYAML(true, "# Proxima library upgraded from EasyFL base")
 }
 
-func GetTestingIdentityData(seed ...int) (*Parameters, ed25519.PrivateKey) {
+func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {
 	s := 10000
 	for _, i := range seed {
 		s += i

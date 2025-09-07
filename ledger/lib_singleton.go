@@ -26,10 +26,10 @@ func MustInitSingleton(identityData []byte) {
 
 	util.Assertf(libraryGlobal == nil, "ledger is already initialized")
 
-	lib, idParams, err := ParseLedgerIdYAML(identityData, GetEmbeddedFunctionResolver)
+	lib, err := ParseLibraryFromYAML(identityData, GetEmbeddedFunctionResolver)
 	util.AssertNoError(err)
 
-	libraryGlobal = newLibrary(lib, idParams, identityData)
+	libraryGlobal = newLibrary(lib, identityData)
 	libraryGlobal.registerConstraints()
 
 	libraryGlobalMutex.Unlock()
@@ -41,38 +41,33 @@ func MustInitSingleton(identityData []byte) {
 }
 
 // InitWithTestingLedgerIDData for testing
-func InitWithTestingLedgerIDData(opts ...func(data *Parameters)) ed25519.PrivateKey {
-	id, pk := GetTestingIdentityData(31415926535)
+
+type ParametersOption func(par *InitParameters)
+
+func InitWithTestingLedgerIDData(opts ...ParametersOption) ed25519.PrivateKey {
+	params, pk := GetTestingLedgerParams(31415926535)
 	for _, opt := range opts {
-		opt(id)
+		opt(&params)
 	}
-	lib := LibraryFromParameters(id)
+	lib := LibraryFromParameters(params)
 	MustInitSingleton(lib.ToYAML(true))
 	return pk
 }
 
-func WithTickDuration(d time.Duration) func(id *Parameters) {
-	return func(id *Parameters) {
-		id.SetTickDuration(d)
+func WithTickDuration(duration time.Duration) ParametersOption {
+	return func(par *InitParameters) {
+		par.TickDuration = duration
 	}
 }
 
-func WithTransactionPace(ticks byte) func(id *Parameters) {
-	return func(id *Parameters) {
-		id.TransactionPace = ticks
+func WithTransactionPace(transactionPace int) ParametersOption {
+	return func(par *InitParameters) {
+		par.TransactionPaceTicks = transactionPace
 	}
 }
 
-func WithSequencerPace(ticks byte) func(id *Parameters) {
-	return func(id *Parameters) {
-		id.TransactionPaceSequencer = ticks
+func WithTransactionPaceSequencer(transactionPace int) ParametersOption {
+	return func(par *InitParameters) {
+		par.TransactionPaceSequencerTicks = transactionPace
 	}
-}
-
-func TransactionPace() int {
-	return int(Const.TransactionPace)
-}
-
-func TransactionPaceSequencer() int {
-	return int(Const.TransactionPaceSequencer)
 }

@@ -4,13 +4,12 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 )
 
 func genDeltas(n int) []uint64 {
 	ret := make([]uint64, n)
-	supply := uint64(ledger.InitialSupplyProxi * ledger.PRXI)
+	supply := uint64(1_000_000_000_000_000)
 	ret[0] = supply
 	for i := 1; i < n; i++ {
 		supply += supply / (10 * 355 * 24 * 360)

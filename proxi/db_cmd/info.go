@@ -45,17 +45,18 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	identityYAML := reader.MustLedgerIdentityBytes()
-	lib, idParams, err := ledger.ParseLedgerIdYAML(identityYAML)
+	lib, err := ledger.ParseLibraryFromYAML(identityYAML)
 	glb.AssertNoError(err)
 
 	earliestSlot := multistate.FetchEarliestSlot(glb.StateStore())
 	glb.Infof("ledger time now is %s, earliest committed slot is %d", ledger.TimeNow().String(), earliestSlot)
 
 	h := lib.LibraryHash()
+	constants := ledger.ConstantsFromLibrary(lib)
 
 	glb.Infof("ledger library hash: %s", hex.EncodeToString(h[:]))
 	glb.Verbosef("\n----------------- Ledger state identity ----------------")
-	glb.Verbosef("%s", idParams.String())
+	glb.Verbosef("%s", constants.String())
 	glb.Infof("----------------- branch data ----------------------")
 	for i, br := range branchData {
 		glb.Infof("%3d %s", i, br.LinesShort().Join(", "))

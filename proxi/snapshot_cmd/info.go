@@ -46,7 +46,7 @@ func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
 	glb.Infof("format version: %s", kvStream.Header.Version)
 	glb.Infof("branch id: %s (hex = %s)", kvStream.BranchID.String(), kvStream.BranchID.StringHex())
 	glb.Infof("root record:\n%s", kvStream.RootRecord.Lines("    ").String())
-	glb.Infof("ledger id:\n%s", kvStream.LedgerIDParams.Lines("    ").String())
+	glb.Infof("ledger id:\n%s", kvStream.LedgerConstants.Lines("    ").String())
 
 	switch glb.VerbosityLevel() {
 	case 1:

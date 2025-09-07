@@ -57,7 +57,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut *ledger.OutputWithID) *Mu
 }
 
 // ScanGenesisState TODO more checks
-func ScanGenesisState(stateStore StateStore) (*ledger.Parameters, common.VCommitment, error) {
+func ScanGenesisState(stateStore StateStore) (*ledger.Constants, common.VCommitment, error) {
 	var genesisRootRecord RootRecord
 
 	// expecting a single branch in the genesis state
@@ -78,7 +78,7 @@ func ScanGenesisState(stateStore StateStore) (*ledger.Parameters, common.VCommit
 	branchData := FetchBranchDataByRoot(stateStore, genesisRootRecord)
 	rdr := MustNewSugaredReadableState(stateStore, branchData.Root)
 	yamlData := rdr.MustLedgerIdentityBytes()
-	_, stateID, err := ledger.ParseLedgerIdYAML(yamlData)
+	lib, err := ledger.ParseLibraryFromYAML(yamlData)
 	util.AssertNoError(err)
 
 	genesisOid := base.GenesisOutputID()
@@ -86,10 +86,11 @@ func ScanGenesisState(stateStore StateStore) (*ledger.Parameters, common.VCommit
 	if err != nil {
 		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)
 	}
-	if out.TokenBalance() != stateID.InitialSupply {
+	constants := ledger.ConstantsFromLibrary(lib)
+	if out.TokenBalance() != constants.InitialSupply {
 		return nil, nil, fmt.Errorf("different amounts in genesis output and state identity")
 	}
-	return stateID, branchData.Root, nil
+	return constants, branchData.Root, nil
 }
 
 func InitLedgerFromStore(stateStore StateStore) {

@@ -24,13 +24,13 @@ type (
 	}
 
 	SnapshotFileStream struct {
-		Header         *SnapshotHeader
-		LedgerIDData   []byte
-		LedgerIDParams *ledger.Parameters
-		BranchID       base.TransactionID
-		RootRecord     RootRecord
-		InChan         chan common.KVPairOrError
-		Close          func()
+		Header          *SnapshotHeader
+		LedgerIDData    []byte
+		LedgerConstants *ledger.Constants
+		BranchID        base.TransactionID
+		RootRecord      RootRecord
+		InChan          chan common.KVPairOrError
+		Close           func()
 	}
 
 	SnapshotStats struct {
@@ -152,11 +152,19 @@ func SaveSnapshot(state StateStoreReader, branch *BranchData, ctx context.Contex
 	}
 
 	// parse ledger ID data to validate and to print params (not needed?)
-	_, ledgerIDParams, err := ledger.ParseLedgerIdYAML(ledgerIDBytes)
+	lib, err := ledger.ParseLibraryFromYAML(ledgerIDBytes)
 	if err != nil {
 		return makeErr(err.Error())
 	}
-	_, _ = fmt.Fprintf(console, "[SaveSnapshot] ledger id:\n%s\n", ledgerIDParams.Lines("     ").String())
+	var constants *ledger.Constants
+	err = util.CatchPanicOrError(func() error {
+		constants = ledger.ConstantsFromLibrary(lib)
+		return nil
+	})
+	if err != nil {
+		return makeErr(err.Error())
+	}
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] ledger constants:\n%s\n", constants.Lines("     ").String())
 
 	// write trie
 	var stats *SnapshotStats
@@ -221,12 +229,22 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 	if pair.IsNil() || pair.Err != nil {
 		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 1")
 	}
-	_, idParams, err := ledger.ParseLedgerIdYAML(pair.Value)
+	lib, err := ledger.ParseLibraryFromYAML(pair.Value)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 2")
 	}
-	ret.LedgerIDParams = idParams
+	var constants *ledger.Constants
+	err = util.CatchPanicOrError(func() error {
+		constants = ledger.ConstantsFromLibrary(lib)
+		return nil
+	})
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: %v", err)
+	}
+
+	ret.LedgerConstants = constants
 	ret.LedgerIDData = pair.Value
 	return ret, nil
 }

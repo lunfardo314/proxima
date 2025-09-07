@@ -14,6 +14,7 @@ import (
 
 // Constants contains constant values of the ledger
 type Constants struct {
+	Hash [32]byte
 	// arbitrary string up 255 bytes
 	Description string
 	// genesis time unix seconds
@@ -63,7 +64,7 @@ func initConstantsSingleton(lib *easyfl.Library[*EvalContext]) {
 }
 
 func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
-	ret := &Constants{}
+	ret := &Constants{Hash: lib.LibraryHash()}
 	var err error
 	var res []byte
 	ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
@@ -133,6 +134,7 @@ func _uint32FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint
 func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	originChainID := OriginChainID()
 	return lines.New(prefix...).
+		Add("Library hash: %s", hex.EncodeToString(c.Hash[:])).
 		Add("Description: '%s'", c.Description).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).
 		Add("Genesis controller public key: %s", hex.EncodeToString(c.GenesisControllerPublicKey)).

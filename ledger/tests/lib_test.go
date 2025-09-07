@@ -10,29 +10,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadOld(t *testing.T) {
-	id, _ := ledger.GetTestingIdentityData()
-	lib := ledger.LibraryFromParameters(id, true)
-	constants := ledger.ConstantsFromLibrary(lib.Library)
-	t.Logf("------------------ ORIG \n%s", constants.String())
-	t.Logf("------------------\n%s", constants.TimeConstantsToString())
-
-	idBack, err := ledger.IDParametersFromLibrary(lib.Library)
-	require.NoError(t, err)
-	t.Logf("------------------ ID LOADED FROM LIBRARY \n%s", idBack.String())
-
-	require.EqualValues(t, id, idBack)
-}
+//func TestLoadOld(t *testing.T) {
+//	id, _ := ledger.GetTestingLedgerParams()
+//	lib := ledger.LibraryFromParameters(id, true)
+//	constants := ledger.ConstantsFromLibrary(lib.Library)
+//	t.Logf("------------------ ORIG \n%s", constants.String())
+//	t.Logf("------------------\n%s", constants.TimeConstantsToString())
+//
+//	idBack, err := ledger.IDParametersFromLibrary(lib.Library)
+//	require.NoError(t, err)
+//	t.Logf("------------------ ID LOADED FROM LIBRARY \n%s", idBack.String())
+//
+//	constants = ledger.ConstantsFromLibrary(lib.Library)
+//	t.Logf("------------------ ID LOADED FROM LIBRARY \n%s", idBack.String())
+//
+//	require.EqualValues(t, id, idBack)
+//}
 
 func TestLoad(t *testing.T) {
-	id, _ := ledger.GetTestingIdentityData()
-	lib := ledger.LibraryFromParameters(id, true)
+	par, _ := ledger.GetTestingLedgerParams()
+	lib := ledger.LibraryFromParameters(par, true)
 	constants := ledger.ConstantsFromLibrary(lib.Library)
 
-	t.Logf("------------------ ORIG \n%s", constants.String())
-	t.Logf("------------------\n%s", constants.TimeConstantsToString())
-
-	t.Logf("------------------ main ledger constants -------------------- \n%s", ledger.Const.Lines("      ").String())
+	t.Logf("------------------ Main constants (default params)\n%s", constants.String())
+	t.Logf("------------------ Time-related constants\n%s", constants.TimeConstantsToString())
+	t.Logf("------------------ Main constants (from global singleton) -------------------- \n%s", ledger.Const.Lines("      ").String())
 }
 
 func TestLedgerToYAML(t *testing.T) {
@@ -60,6 +62,6 @@ func TestLedgerToYAMLFile(t *testing.T) {
 func TestLedgerConstantsYAML(t *testing.T) {
 	pk := testutil.GetTestingPrivateKey(1)
 	id := ledger.DefaultParameters(pk, uint32(time.Now().UnixNano()), "---- testing the description ----")
-	yamlData := ledger.ConstantsYAMLFromIdentity(id)
+	yamlData := ledger.ConstantsYAMLFromParams(id)
 	t.Logf("\n%s", string(yamlData))
 }

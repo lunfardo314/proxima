@@ -41,7 +41,7 @@ const (
 func defaultConfigOptions() *ConfigOptions {
 	return &ConfigOptions{
 		SequencerName:             "seq",
-		Pace:                      ledger.TransactionPaceSequencer(),
+		Pace:                      int(ledger.Const.TransactionPaceSequencer),
 		MaxTargetTs:               base.NilLedgerTime,
 		MaxBranches:               math.MaxInt,
 		DelayStart:                ledger.SlotDuration(),
@@ -118,8 +118,8 @@ func WithName(name string) ConfigOption {
 
 func WithPace(pace int) ConfigOption {
 	return func(o *ConfigOptions) {
-		if pace < ledger.TransactionPaceSequencer() {
-			pace = ledger.TransactionPaceSequencer()
+		if pace < int(ledger.Const.TransactionPaceSequencer) {
+			pace = int(ledger.Const.TransactionPaceSequencer)
 		}
 		o.Pace = pace
 	}

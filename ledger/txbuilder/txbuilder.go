@@ -642,7 +642,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	util.Assertf(availableTokens == checkTotal, "availableTokens == checkTotal")
 
 	adjustedTs := base.MaximumTime(inputTs, par.Timestamp).
-		AddTicks(ledger.TransactionPace())
+		AddTicks(int(ledger.Const.TransactionPace))
 
 	util.Assertf(base.ValidTime(adjustedTs), "ledger.ValidTime(adjustedTs): ts bytes 0x%s", adjustedTs.Hex)
 
@@ -756,7 +756,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	}
 
 	// enforce validity time constraints taking into account transaction pace constraint
-	if tsIn := par.ChainInput.ID.Timestamp(); par.Timestamp.Before(par.ChainInput.ID.Timestamp().AddTicks(ledger.TransactionPace())) {
+	if tsIn := par.ChainInput.ID.Timestamp(); par.Timestamp.Before(par.ChainInput.ID.Timestamp().AddTicks(int(ledger.Const.TransactionPace))) {
 		return nil, 0, nil, errP("timestamp %s is inconsistent with latest chain output timestamp %s", par.Timestamp.String(), tsIn.String())
 	}
 
@@ -878,7 +878,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 	util.Assertf(availableTokens == checkAmount+par.ChainOutput.Output.TokenBalance(), "availableTokens == checkAmount")
 	adjustedTs := base.MaximumTime(inputTs, par.ChainOutput.Timestamp()).
-		AddTicks(ledger.TransactionPace())
+		AddTicks(int(ledger.Const.TransactionPace))
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {

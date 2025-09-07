@@ -14,7 +14,7 @@ func init() {
 	genesisPrivateKey = ledger.InitWithTestingLedgerIDData(
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
-		ledger.WithSequencerPace(3))
+		ledger.WithTransactionPaceSequencer(3))
 
 	fmt.Printf(`
 >>> ledger parameters for the test <<<
@@ -23,6 +23,6 @@ func init() {
      transaction pace : %d ticks
      sequencer pace   : %d ticks
 `,
-		ledger.TickDuration(), ledger.SlotDuration(), ledger.TransactionPace(), ledger.TransactionPaceSequencer(),
+		ledger.TickDuration(), ledger.SlotDuration(), ledger.Const.TransactionPace, ledger.Const.TransactionPaceSequencer,
 	)
 }

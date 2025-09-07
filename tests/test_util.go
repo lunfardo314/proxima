@@ -252,7 +252,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	_, _, err = txb.ConsumeOutputsUnlock(td.auxOutput)
 	require.NoError(td.t, err)
 
-	ts := td.auxOutput.Timestamp().AddTicks(ledger.TransactionPace())
+	ts := td.auxOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 	amount := (td.auxOutput.Output.TokenBalance() - tagAlongFee) / uint64(n)
 	for i := 0; i < n; i++ {
 		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -334,7 +334,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 
 	ret.txBytesConflicting = make([][]byte, nConflicts)
 
-	ts := ret.forkOutput.Timestamp().AddTicks(ledger.TransactionPace())
+	ts := ret.forkOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ts).
 		MustWithInputs(ret.forkOutput)
 
@@ -389,7 +389,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			additionalIn = nil
 			ts = chainOrigin.Timestamp()
 		}
-		ts = ts.AddTicks(ledger.TransactionPaceSequencer())
+		ts = ts.AddTicks(int(ledger.Const.TransactionPaceSequencer))
 
 		td.seqChain[i] = make([]*transaction.Transaction, 0)
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
@@ -415,7 +415,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 			txBytesSeq, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", seqNr),
 				ChainInput:   td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
-				Timestamp:    td.seqChain[seqNr][i].Timestamp().AddTicks(ledger.TransactionPaceSequencer()),
+				Timestamp:    td.seqChain[seqNr][i].Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer)),
 				Endorsements: util.List(endorse),
 				PrivateKey:   td.privKeyAux,
 			})
@@ -445,7 +445,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 				endorseIdx := (seqNr + 1) % len(extendBegin)
 				endorse = ret[endorseIdx][i-1].ID()
 			}
-			ts = base.MaximumTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
+			ts = base.MaximumTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(int(ledger.Const.TransactionPaceSequencer))
 
 			txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 				SeqName:      fmt.Sprintf("seq%d", i),
@@ -496,7 +496,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 				endorseIdx := (seqNr + 1) % len(extendBegin)
 				endorse = ret[endorseIdx][i-1].ID()
 			}
-			ts = base.MaximumTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(ledger.TransactionPaceSequencer())
+			ts = base.MaximumTime(endorse.Timestamp(), extend.Timestamp(), transferOut.Timestamp()).AddTicks(int(ledger.Const.TransactionPaceSequencer))
 
 			txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 				SeqName:          fmt.Sprintf("seq%d", i),
@@ -549,7 +549,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 			extendOut = branch.SequencerOutput().MustAsChainOutput()
 			endorse = nil
 		}
-		ts := branch.Timestamp().AddTicks(ledger.TransactionPaceSequencer())
+		ts := branch.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer))
 		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
@@ -569,7 +569,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 const transferAmount = 100
 
 func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID base.ChainID) *transaction.Transaction {
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(txbuilder.NewTransferData(td.privKey, td.addr, o.Timestamp().AddTicks(ledger.TransactionPace())).
+	txBytes, err := txbuilder.MakeSimpleTransferTransaction(txbuilder.NewTransferData(td.privKey, td.addr, o.Timestamp().AddTicks(int(ledger.Const.TransactionPace))).
 		WithAmount(transferAmount).
 		MustWithInputs(o).
 		WithTargetLock(ledger.ChainLockFromChainID(chainID)))
@@ -607,7 +607,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 			if i == 0 {
 				prev = originOut
 			}
-			ts := originOut.Timestamp().AddTicks(ledger.TransactionPace() * (i + 1))
+			ts := originOut.Timestamp().AddTicks(int(ledger.Const.TransactionPace) * (i + 1))
 
 			trd := txbuilder.NewTransferData(td.privKey, td.addr, ts)
 			trd.WithAmount(originOut.Output.TokenBalance())

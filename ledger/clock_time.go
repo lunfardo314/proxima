@@ -28,12 +28,12 @@ func TimeNow() base.LedgerTime {
 
 // ValidTransactionPace return true if input and target non-sequencer tx timestamps make a valid pace
 func ValidTransactionPace(t1, t2 base.LedgerTime) bool {
-	return base.DiffTicks(t2, t1) >= int64(TransactionPace())
+	return base.DiffTicks(t2, t1) >= int64(Const.TransactionPace)
 }
 
 // ValidSequencerPace return true if input and target sequencer tx timestamps make a valid pace
 func ValidSequencerPace(t1, t2 base.LedgerTime) bool {
-	return base.DiffTicks(t2, t1) >= int64(TransactionPaceSequencer())
+	return base.DiffTicks(t2, t1) >= int64(Const.TransactionPaceSequencer)
 }
 
 func ClockTime(t base.LedgerTime) time.Time {

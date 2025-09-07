@@ -75,7 +75,7 @@ type _snapshotFileData struct {
 	branchID       base.TransactionID
 	rootRecord     multistate.RootRecord
 	ledgerIDData   []byte
-	ledgerIDParams *ledger.Parameters
+	ledgerIDParams *ledger.Constants
 }
 
 func readASnapshotFile(fname string) (*_snapshotFileData, error) {
@@ -90,6 +90,6 @@ func readASnapshotFile(fname string) (*_snapshotFileData, error) {
 		branchID:       kvStream.BranchID,
 		rootRecord:     kvStream.RootRecord,
 		ledgerIDData:   kvStream.LedgerIDData,
-		ledgerIDParams: kvStream.LedgerIDParams,
+		ledgerIDParams: kvStream.LedgerConstants,
 	}, nil
 }

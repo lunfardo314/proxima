@@ -300,7 +300,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		for _, o := range testData.conflictingOutputs {
 			inTS = append(inTS, o.Timestamp())
 		}
-		ts := base.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer())
+		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer))
 		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, loader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
@@ -356,7 +356,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(ledger.TransactionPace()))
+		td := txbuilder.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPace)))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
@@ -372,7 +372,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		outToConsume := vidConflicting.MustOutputWithIDAt(0)
 		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
-		ts := outToConsume.Timestamp().AddTicks(ledger.TransactionPaceSequencer())
+		ts := outToConsume.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer))
 		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
@@ -426,7 +426,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			amount += o.Output.TokenBalance()
 		}
 
-		ts := base.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer())
+		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer))
 
 		// checking invalid explicit baseline
 		explicitBaseline := util.Ref(base.RandomTransactionID(true, 5, ts))
@@ -518,7 +518,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
-			Timestamp:        base.MaximumTime(inTS...).AddTicks(ledger.TransactionPaceSequencer()),
+			Timestamp:        base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer)),
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       genesisPrivateKey,
@@ -672,7 +672,7 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 		chainIn[seqNr] = o.MustAsChainOutput()
 		ts = base.MaximumTime(ts, o.Timestamp())
 	}
-	ts = ts.AddTicks(ledger.TransactionPaceSequencer())
+	ts = ts.AddTicks(int(ledger.Const.TransactionPaceSequencer))
 	txBytesSeq, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		SeqName:      "seq",
 		Timestamp:    ts,
@@ -853,7 +853,7 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	txBytesConflicting, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		SeqName:      "dummy",
 		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:    ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(ledger.TransactionPaceSequencer())),
+		Timestamp:    ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(int(ledger.Const.TransactionPaceSequencer))),
 		Endorsements: util.List(tx1.ID()),
 		PrivateKey:   testData.privKeyAux,
 	})

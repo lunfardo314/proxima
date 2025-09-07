@@ -17,7 +17,7 @@ const (
 
 func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTime, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
 	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
-		ledger.TransactionPaceSequencer(), extend.Timestamp().String, targetTs.String)
+		ledger.Const.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
 
 	for _, endorseVID := range endorse {
 		env.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerTransaction()")
@@ -84,7 +84,7 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 	env.Assertf(int(targetTs.Slot)-int(extend.Slot()) >= 1, "int(targetTs.Slot)(%s)-int(extend.Slot())(%s)>=1",
 		targetTs.String, extend.IDStringShort)
 	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
-		ledger.TransactionPaceSequencer(), extend.Timestamp().String, targetTs.String)
+		ledger.Const.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
 
 	env.Tracef(TraceTagIncrementalAttacherWithExplicitBaseline, "NewIncrementalAttacherWithExpliciteBaseline(%s). extend: %s, explicit baseline: %s",
 		name, extend.IDStringShort, baselineID.StringShort)
