@@ -22,6 +22,7 @@ func CmdVersion() *cobra.Command {
 
 func runVersionCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("    Version:      %s", global.Version)
-	glb.Infof("    Commit time:  %s (%s ago)", global.CommitTime, time.Since(global.CommitTimeParsed).String())
+	sinceCommit := (time.Since(global.CommitTimeParsed) / time.Second) * time.Second
+	glb.Infof("    Commit time:  %s (%s ago)", global.CommitTime, sinceCommit.String())
 	glb.Infof("    Commit hash:  %s", global.CommitHash)
 }
