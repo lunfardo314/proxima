@@ -17,7 +17,7 @@ func genIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
 		Use:   "ledger_id",
 		Args:  cobra.NoArgs,
-		Short: fmt.Sprintf("creates identity data of the ledger with genesis controller taken from proxi wallet. Saves it to the file '%s'", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("creates default ledger definitions with genesis controller taken from proxi wallet. Saves definitions to the file '%s'", glb.LedgerIDFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},

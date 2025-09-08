@@ -20,8 +20,8 @@ var remoteEndpoint string
 func initGenesisDBCmd() *cobra.Command {
 	genesisCmd := &cobra.Command{
 		Use: "genesis_db",
-		Short: fmt.Sprintf("creates multi-state DB and initializes genesis ledger state init according "+
-			"ledger id data taken either from file '%s' (default) or from another API endpoint specified with flag -r", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("creates multi-state DB and initializes genesis ledger state according to the "+
+			"ledger definitions in the file '%s' (default) or from another API endpoint specified with flag -r", glb.LedgerIDFileName),
 		Args: cobra.NoArgs,
 		Run:  runGenesis,
 	}
@@ -73,5 +73,5 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	ledger.MustInitSingleton(idDataYAML)
 
 	bootstrapChainID, _ := multistate.InitStateStoreFromGlobals(stateStore)
-	glb.Infof("Genesis state DB '%s' has been created successfully.\nBootstrap sequencer chainID: %s", global.MultiStateDBName, bootstrapChainID.String())
+	glb.Infof("Genesis state DB '%s' has been created successfully.\nBootstrap sequencer ID: %s", global.MultiStateDBName, bootstrapChainID.String())
 }

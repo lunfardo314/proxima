@@ -17,7 +17,7 @@ func Init() *cobra.Command {
 		Args:    cobra.NoArgs,
 	}
 
-	seqCmd.PersistentFlags().StringVar(&seqIDstr, "sequencer.id", "", "default sequencer chainID in hex-encoded form")
+	seqCmd.PersistentFlags().StringVar(&seqIDstr, "sequencer.id", "", "default sequencer ID in hex-encoded form")
 	err := viper.BindPFlag("sequencer.id", seqCmd.PersistentFlags().Lookup("sequencer.id"))
 	glb.AssertNoError(err)
 

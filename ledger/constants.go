@@ -161,8 +161,8 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	maxFrozenDuration := time.Duration(c.MaxFrozenEpochs) * epochDuration
 	ret.Add("Maximum frozen delegation epochs: %d (%v)", c.MaxFrozenEpochs, maxFrozenDuration)
 	safeDuration := time.Duration(c.SafeRevocationSlots) * c.SlotDuration()
-	ret.Add("Safe revocation slots: %d (duration %v)", c.SafeRevocationSlots, safeDuration).
-		Add("Origin chain ID (calculated): %s", originChainID.String())
+	ret.Add("Safe revocation slots: %d (%v)", c.SafeRevocationSlots, safeDuration).
+		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String())
 	return ret
 }
 
