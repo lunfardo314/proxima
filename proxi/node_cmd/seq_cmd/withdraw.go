@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer/commands_old"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
@@ -66,15 +66,14 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	}
 
 	// create command with withdraw request to the target lock
-	cmdData, err := commands_old.NewWithdrawCommandData(amount, targetLock.AsLock())
-	glb.AssertNoError(err)
+	msg := txbuilder_seq.NewWithdrawRequest(walletData.PrivateKey, amount, targetLock.AsLock())
 
 	// create transaction with withdraw request
 	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.TimeNow()).
 		WithAmount(ownSequencerCmdFee).
 		WithTargetLock(ledger.ChainLockFromChainID(*walletData.Sequencer)).
 		MustWithInputs(walletOutputs...).
-		WithMessage(cmdData) // include message with the withdrawal request
+		WithConstraint(msg) // include message with the withdrawal request
 
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
 	glb.AssertNoError(err)

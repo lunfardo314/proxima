@@ -60,7 +60,7 @@ func _parseWithdrawOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqRequ
 
 }
 
-func NewWithdrawRequestBytecode(privKey ed25519.PrivateKey, amount uint64, target ledger.Lock) *ledger.MessageWithED25519Sender {
+func NewWithdrawRequest(privKey ed25519.PrivateKey, amount uint64, target ledger.Lock) *ledger.MessageWithED25519Sender {
 	body := base.NewSmallPersistentMap()
 	body.Set(FieldCmdCode, []byte{WithdrawCmdCode})
 	body.Set(FieldWithdrawAmount, easyfl_util.TrimmedLeadingZeroUint64(amount))
@@ -72,7 +72,7 @@ func NewWithdrawRequestBytecode(privKey ed25519.PrivateKey, amount uint64, targe
 func NewWithdrawCommandOutput(targetChain base.ChainID, privKey ed25519.PrivateKey, fee, amount uint64, target ledger.Lock) *ledger.Output {
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(fee).WithLock(ledger.ChainLockFromChainID(targetChain))
-		o.MustPushConstraint(NewWithdrawRequestBytecode(privKey, amount, target).Bytes())
+		o.MustPushConstraint(NewWithdrawRequest(privKey, amount, target).Bytes())
 	})
 }
 

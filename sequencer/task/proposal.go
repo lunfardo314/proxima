@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/util"
 )
 
 // newProposal takes initial incremental attacher only with endorsements
@@ -96,7 +97,15 @@ func (p *proposal) insertTagAlongInputs() {
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
-			p.proposer.Log().Warnf("output %s cannot be used as tag-along permanently. Reason = %v", o.o.ID.StringShort(), err)
+			p.proposer.Log().Warnf("output cannot be used as tag-along PERMANENTLY, reason = '%v'\n%s",
+				err, o.o.LinesSource("     ").String())
+		} else {
+			if err != nil {
+				p.proposer.Log().Warnf("output %s cannot be used as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
+			} else {
+				p.proposer.Log().Infof("tag-along output %s has been added, amount: %s", o.o.ID.StringShort(), util.Th(o.o.Output.TokenBalance()))
+
+			}
 		}
 		if p.txb.InputsAreFull() {
 			return
@@ -105,6 +114,7 @@ func (p *proposal) insertTagAlongInputs() {
 }
 
 func (p *proposal) insertDelegations() {
+
 	if p.txb.InputsAreFull() {
 		return
 	}

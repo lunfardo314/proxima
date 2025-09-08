@@ -17,7 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/sequencer/commands_old"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -234,16 +234,13 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.Tr
 	if err != nil {
 		return base.TransactionID{}, err
 	}
-	withdrawCmd, err := commands_old.NewWithdrawCommandData(fct.cfg.amount, targetLock.AsLock())
-	if err != nil {
-		return base.TransactionID{}, err
-	}
 	// sending command to sequencer
+	withdrawCmd := txbuilder_seq.NewWithdrawRequest(fct.walletData.PrivateKey, fct.cfg.amount, targetLock.AsLock())
 	transferData := txbuilder.NewTransferData(fct.walletData.PrivateKey, fct.walletData.Account, ledger.TimeNow()).
 		WithAmount(glb.GetTagAlongFee()).
 		WithTargetLock(ledger.ChainLockFromChainID(*fct.walletData.Sequencer)).
 		MustWithInputs(walletOutputs...).
-		WithMessage(withdrawCmd)
+		WithConstraint(withdrawCmd)
 
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
 	if err != nil {

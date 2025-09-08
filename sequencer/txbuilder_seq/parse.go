@@ -20,9 +20,9 @@ func registerSequencerCommand(cmdCode byte, parser cmdParser) {
 }
 
 func (txb *SeqTxBuilder) TxBuilderCommandFromOutput(o ledger.OutputWithID) (cmd TxBuilderCommand, isValid bool, err error) {
-	msg, ok := preParseSeqRequest(o.Output)
-	if !ok {
-		err = fmt.Errorf("TxBuilderCommandFromOutput: base parsing failed")
+	msg, err := preParseSeqRequest(o.Output)
+	if err != nil {
+		err = fmt.Errorf("TxBuilderCommandFromOutput: %v", err)
 		return
 	}
 	if msg == nil {
@@ -41,27 +41,33 @@ func (txb *SeqTxBuilder) TxBuilderCommandFromOutput(o ledger.OutputWithID) (cmd 
 //   - expects no more than 4 constraints: 2 mandatory + msgED25519 + optional 'result guarantor' constraint.
 //     Validation of the latter is request-specific
 //   - if secure message constraint not found, expects exactly 2 constraints (ordinary tag-along)
-func preParseSeqRequest(o *ledger.Output) (msg *SeqRequestMessage, isValid bool) {
+func preParseSeqRequest(o *ledger.Output) (msg *SeqRequestMessage, err error) {
 	if o.NumConstraints() > 4 {
-		return nil, false
+		err = fmt.Errorf("can't contain more than 4 constraints, got %d", o.NumConstraints())
+		return
 	}
 	_msg, idx := o.MessageWithED25519Sender()
 	if idx == 0xff {
-		return nil, o.NumConstraints() == 2
+		if o.NumConstraints() != 2 {
+			err = fmt.Errorf("tag-along output without command message must contain exactly 2 constraints")
+		}
+		return
 	}
 	m, err := base.SmallPersistentMapFromBytes(_msg.Msg)
 	if err != nil {
-		return nil, false
+		return
 	}
 	cmdCode := m.Get(FieldCmdCode)
 	if cmdCode == nil || len(cmdCode) != 1 {
-		return nil, false
+		err = fmt.Errorf("wrong command code field")
+		return
 	}
-	return &SeqRequestMessage{
+	msg = &SeqRequestMessage{
 		SmallPersistentMap:       m,
 		MessageWithED25519Sender: *_msg,
 		CmdCode:                  cmdCode[0],
-	}, true
+	}
+	return msg, nil
 }
 
 func (cmd *SimpleTagAlongOutput) Apply(txb *SeqTxBuilder) (bool, error) {
