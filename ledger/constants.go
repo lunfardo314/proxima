@@ -23,6 +23,7 @@ type Constants struct {
 	GenesisControllerPublicKey ed25519.PublicKey
 	// time tick duration in nanoseconds
 	TickDuration time.Duration
+	TicksPerSlot uint64
 	// initial supply of tokens
 	InitialSupply uint64
 	// ----------- begin inflation-related
@@ -75,6 +76,8 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	gt, err := _uint64FromConst(lib, "constGenesisTimeUnix")
 	util.AssertNoError(err)
 	ret.GenesisTimeUnix = uint32(gt)
+	ret.TicksPerSlot, err = _uint64FromConst(lib, "ticksPerSlot64")
+	util.AssertNoError(err)
 	td, err := _uint64FromConst(lib, "constTickDuration")
 	util.AssertNoError(err)
 	ret.TickDuration = time.Duration(td)
@@ -133,17 +136,18 @@ func _uint32FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint
 
 func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	originChainID := OriginChainID()
-	return lines.New(prefix...).
+	ret := lines.New(prefix...).
 		Add("Library hash: %s", hex.EncodeToString(c.Hash[:])).
 		Add("Description: '%s'", c.Description).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).
 		Add("Genesis controller public key: %s", hex.EncodeToString(c.GenesisControllerPublicKey)).
 		Add("Genesis controller address (calculated): %s", c.GenesisControlledAddress().String()).
-		Add("Genesis Unix time: %d (%s)", c.GenesisTimeUnix, c.GenesisTime().Format(time.RFC3339)).
+		Add("Genesis Unix time: %d (%s)", c.GenesisTimeUnix, c.GenesisTime().Format(time.DateTime)).
 		Add("Tick duration: %v", c.TickDuration).
-		Add("Slot inflation base (constant C): %s", util.Th(c.SlotInflationBase)).
-		Add("Minimum inflatable amount: %s", util.Th(c.MinimumInflatableAmount0)).
-		Add("Constant initial supply/slot inflation base: %s", util.Th(c.InitialSupply/c.SlotInflationBase)).
+		Add("Ticks per slot: %d", c.TicksPerSlot).
+		Add("Slot duration: %v", c.SlotDuration()).
+		Add("Slot inflation base: %s", util.Th(c.SlotInflationBase)).
+		Add("Minimum inflatable amount in slot 0: %s", util.Th(c.MinimumInflatableAmount0)).
 		Add("Branch inflation bonus base: %s", util.Th(c.BranchInflationBonusBase)).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Post-branch consolidation ticks: %v", c.PostBranchConsolidationTicks).
@@ -151,11 +155,15 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).
 		Add("VB cost: %d", c.VBCost).
-		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements).
-		Add("Origin chain c (calculated): %s", originChainID.String()).
-		Add("Maximum frozen epochs: %d", c.MaxFrozenEpochs).
-		Add("Delegation epoch slots: %d", c.DelegationEpochSlots).
-		Add("Safe revocation slots: %d", c.SafeRevocationSlots)
+		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements)
+	epochDuration := time.Duration(c.DelegationEpochSlots) * c.SlotDuration()
+	ret.Add("Delegation epoch slots: %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)
+	maxFrozenDuration := time.Duration(c.MaxFrozenEpochs) * epochDuration
+	ret.Add("Maximum frozen delegation epochs: %d (%v)", c.MaxFrozenEpochs, maxFrozenDuration)
+	safeDuration := time.Duration(c.SafeRevocationSlots) * c.SlotDuration()
+	ret.Add("Safe revocation slots: %d (duration %v)", c.SafeRevocationSlots, safeDuration).
+		Add("Origin chain ID (calculated): %s", originChainID.String())
+	return ret
 }
 
 func (c *Constants) TimeConstantsToString() string {

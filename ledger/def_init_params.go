@@ -59,6 +59,7 @@ func ConstantsYAMLFromParams(par InitParameters) []byte {
 		par.GenesisTimeUnix,
 		uint64(par.TickDuration),
 		base.MaxTickValue,
+		base.MaxTickValue+1,
 		par.TransactionPaceTicks,
 		par.TransactionPaceSequencerTicks,
 		hex.EncodeToString([]byte(par.Description)),
@@ -91,7 +92,7 @@ functions:
    -
       sym: ticksPerSlot64
       description: number of ticks in the slot. Usually 128
-      source: add(constMaxTickValuePerSlot, u64/1)
+      source: u64/%d
    -
       sym: constSlotInflationBase
       description: maximum inflation of the total supply in slot 0 

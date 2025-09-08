@@ -280,7 +280,7 @@ func initTestEnsureRevocation() {
 
 const delegateLock2Source = `
 func constDelegationSafeRevocationSlots  : 36  // 6 min
-func constDelegationEpochSlots : u32/540  // 1.5 hours
+func constDelegationEpochSlots : u32/530  // 1.5 hours
 func constDelegationMaxFrozenEpochs : 8   // 12 hours
 
 // $0 target chain ChainID

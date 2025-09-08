@@ -1,7 +1,6 @@
 package util_cmd
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 
@@ -13,20 +12,20 @@ import (
 )
 
 func compileIDCmd() *cobra.Command {
-	validateLedgerIDCmd := &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "compile_ledger_id",
 		Args:  cobra.NoArgs,
-		Short: fmt.Sprintf("(re)compiles ledger ID and recalculates hash'%s'", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("(re)compiles ledger definition from %s and recalculates library hash", glb.LedgerIDFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
 		Run: runGenCompileLedgerIDCommand,
 	}
-	validateLedgerIDCmd.PersistentFlags().StringP("config", "c", "", "profile name")
-	err := viper.BindPFlag("config", validateLedgerIDCmd.PersistentFlags().Lookup("config"))
+	cmd.PersistentFlags().StringP("config", "c", "", "profile name")
+	err := viper.BindPFlag("config", cmd.PersistentFlags().Lookup("config"))
 	glb.AssertNoError(err)
 
-	return validateLedgerIDCmd
+	return cmd
 }
 
 func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
@@ -38,18 +37,22 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	if len(fromYAML.Hash) > 0 {
-		glb.Infof("ledger ID data is already compiled. Will recompile it..")
+		glb.Infof("ledger definition in %s are already compiled, library hash %s", glb.LedgerIDFileName, fromYAML.Hash)
+		prompt := fmt.Sprintf("recompile the library to the same file %s?", glb.LedgerIDFileName)
+		if !glb.YesNoPrompt(prompt, true) {
+			return
+		}
 	}
 
 	lib := easyfl.NewLibrary[*ledger.EvalContext]()
 	err = lib.UpgradeFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver(lib))
 	glb.AssertNoError(err)
 
-	h := lib.LibraryHash()
-	glb.Infof("new library hash is: %s", hex.EncodeToString(h[:]))
-
 	yamlData1 := lib.ToYAML(true, "# compiled library of Proxima ledger definitions")
 
 	err = os.WriteFile(glb.LedgerIDFileName, yamlData1, 0755)
 	glb.AssertNoError(err)
+
+	constants := ledger.ConstantsFromLibrary(lib)
+	glb.Infof("---- main library constants:\n%s", constants.String())
 }

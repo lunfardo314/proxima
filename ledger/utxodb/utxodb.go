@@ -54,7 +54,6 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
 	faucetAddress := ledger.AddressED25519FromPrivateKey(faucetPrivateKey)
 
-	initLedgerParams := ledger.Const
 	originChainID, genesisRoot := multistate.InitStateStoreFromGlobals(stateStore)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 
@@ -75,7 +74,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 		store:                     stateStore,
 		state:                     updatable,
 		genesisChainID:            originChainID,
-		supply:                    initLedgerParams.InitialSupply,
+		supply:                    ledger.Const.InitialSupply,
 		genesisPrivateKey:         genesisPrivateKey,
 		genesisPublicKey:          genesisPubKey,
 		genesisAddress:            genesisAddr,

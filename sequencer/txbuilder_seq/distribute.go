@@ -14,13 +14,13 @@ import (
 // MakeDistributionTransaction creates initial distribution transaction according to distribution list.
 // It is a branch transaction. Remainder goes to the genesis chain
 func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
-	stateID, genesisRoot, err := multistate.ScanGenesisState(stateStore)
+	constants, genesisRoot, err := multistate.ScanGenesisState(stateStore)
 	if err != nil {
 		return nil, err
 	}
 
 	originPublicKey := originPrivateKey.Public().(ed25519.PublicKey)
-	err = util.ErrorCondf(originPublicKey.Equal(stateID.GenesisControllerPublicKey), "private and public keys do not match")
+	err = util.ErrorCondf(originPublicKey.Equal(constants.GenesisControllerPublicKey), "private and public keys do not match")
 	if err != nil {
 		return nil, err
 	}
@@ -32,9 +32,9 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	distributeTotal := uint64(0)
 	for i := range genesisDistribution {
 		distributeTotal += genesisDistribution[i].Balance
-		err = util.ErrorCondf(distributeTotal+ledger.Const.MinimumAmountOnSequencer <= stateID.InitialSupply,
+		err = util.ErrorCondf(distributeTotal+ledger.Const.MinimumAmountOnSequencer <= constants.InitialSupply,
 			"condition failed: distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < InitialSupply(%d)",
-			distributeTotal, ledger.Const.MinimumAmountOnSequencer, stateID.InitialSupply)
+			distributeTotal, ledger.Const.MinimumAmountOnSequencer, constants.InitialSupply)
 		if err != nil {
 			return nil, err
 		}
@@ -82,25 +82,6 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 		PrivateKey:            originPrivateKey,
 		DoNotInflateMainChain: true,
 	})
-	//txBytes, err := MakeSequencerTransaction(MakeSequencerTransactionParamsOld{
-	//	ChainInput: &ledger.OutputWithChainID{
-	//		OutputWithID: *initSupplyOutput,
-	//		ChainConstraintData: ledger.ChainConstraintData{
-	//			ChainConstraint: ledger.ChainConstraint{
-	//				ChainID:      base.BoostrapSequencerID,
-	//				OriginAmount: initSupplyOutput.Output.TokenBalance(),
-	//			},
-	//			ChainConstraintIndex: 2,
-	//		},
-	//	},
-	//	StemInput:        genesisStem,
-	//	Timestamp:        ts,
-	//	AdditionalInputs: nil,
-	//	WithdrawOutputs:  genesisDistributionOutputs,
-	//	Endorsements:     nil,
-	//	PrivateKey:       originPrivateKey,
-	//	InflateMainChain: false,
-	//})
 	if err != nil {
 		return nil, err
 	}
