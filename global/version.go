@@ -3,6 +3,7 @@ package global
 import (
 	"fmt"
 	"runtime/debug"
+	"time"
 )
 
 const (
@@ -39,6 +40,7 @@ Proxima node version %s, commit hash: %s, commit time: %s
 var (
 	CommitHash = "N/A"
 	CommitTime = "N/A"
+	CommitAgo  = ""
 )
 
 func init() {
@@ -49,6 +51,10 @@ func init() {
 			}
 			if setting.Key == "vcs.time" {
 				CommitTime = setting.Value
+
+				if ago, err := time.Parse(time.RFC3339, CommitTime); err == nil {
+					CommitAgo = time.Since(ago).String()
+				}
 			}
 		}
 	}
