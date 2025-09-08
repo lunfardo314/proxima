@@ -76,8 +76,8 @@ func New() *ProximaNode {
 
 const waitAllProcessesStopTimeout = 20 * time.Second
 
-// WaitAllWorkProcessesToStop wait everything to stop before closing databases
-func (p *ProximaNode) WaitAllWorkProcessesToStop() {
+// WaitAllWorkProcessesStopped wait everything to stop before closing databases
+func (p *ProximaNode) WaitAllWorkProcessesStopped() {
 	<-p.Ctx().Done()
 	p.workProcessesStopStepChan <- struct{}{} // first step release DB close goroutines
 	p.Log().Infof("waiting all processes to stop for up to %v", waitAllProcessesStopTimeout)

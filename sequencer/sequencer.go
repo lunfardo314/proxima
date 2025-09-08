@@ -367,6 +367,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	if seq.slotData == nil {
 		seq.slotData = task.NewSlotData(targetTs.Slot)
 	}
+	seq.slotData.NewTarget()
 
 	seq.Assertf(ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
 		ledger.Const.TransactionPaceSequencer, seq.lastSubmittedTs.String, targetTs.String)

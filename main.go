@@ -21,9 +21,9 @@ func main() {
 	// initialize and start node
 	n.Start()
 	// wait until all active processes stops
-	n.WaitAllWorkProcessesToStop()
+	n.WaitAllWorkProcessesStopped()
 	// only now close databases
 	n.WaitAllDBClosed()
 
-	n.Log().Infof("Hasta la proxima, baby! I'll be back")
+	n.Log().Infof("Hasta la próxima, baby! I'll be back")
 }
