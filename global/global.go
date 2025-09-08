@@ -24,6 +24,7 @@ import (
 
 type Global struct {
 	*zap.SugaredLogger
+	outputs        []string
 	logVerbosity   int
 	ctx            context.Context
 	stopFun        context.CancelFunc
@@ -69,33 +70,35 @@ func fileExists(name string) bool {
 	return !os.IsNotExist(err)
 }
 
+func MaintainLogs(logFilename string, prevMode string, keepLatest int) (erasedPrev bool, savedPrev string) {
+	if fileExists(logFilename) {
+		switch {
+		case strings.HasPrefix(prevMode, "erase"):
+			err := os.Remove(logFilename)
+			util.AssertNoError(err)
+			erasedPrev = true
+		case strings.HasPrefix(prevMode, "save"):
+			savedPrev = logFilename + fmt.Sprintf(".%d", uint32(time.Now().Unix()))
+			err := os.Rename(logFilename, savedPrev)
+			util.AssertNoError(err)
+			err = util.PurgeFilesInDirectory(".", logFilename+"*", keepLatest)
+			util.AssertNoError(err)
+		}
+	}
+	return
+}
+
 func NewFromConfig() *Global {
 	// always assume INFO level
 	lvl := zapcore.InfoLevel
 
-	output := []string{"stderr"}
+	output := []string{"stdout"}
 	erasedPrev := false
 	savedPrev := ""
 	out := viper.GetString("logger.output")
 	if out != "" {
 		output = append(output, out)
-		if fileExists(out) {
-			prev := viper.GetString("logger.previous")
-			switch {
-			case strings.HasPrefix(prev, "erase"):
-				err := os.Remove(out)
-				util.AssertNoError(err)
-				erasedPrev = true
-			case strings.HasPrefix(prev, "save"):
-				savedPrev = out + fmt.Sprintf(".%d", uint32(time.Now().Unix()))
-				err := os.Rename(out, savedPrev)
-				util.AssertNoError(err)
-
-				keepLatest := viper.GetInt("logger.keep_latest_logs")
-				err = util.PurgeFilesInDirectory(".", out+"*", keepLatest)
-				util.AssertNoError(err)
-			}
-		}
+		erasedPrev, savedPrev = MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 	}
 	ret := _new(lvl, output)
 
@@ -136,6 +139,7 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 	ctx, cancelFun := context.WithCancel(context.Background())
 	ret := &Global{
 		ctx:                ctx,
+		outputs:            outputs,
 		logVerbosity:       1,
 		metrics:            prometheus.NewRegistry(),
 		stopFun:            cancelFun,
@@ -230,6 +234,10 @@ func (l *Global) WaitAllWorkProcessesStop(timeout ...time.Duration) bool {
 			return false
 		}
 	}
+}
+
+func (l *Global) Outputs() []string {
+	return l.outputs
 }
 
 func (l *Global) Assertf(cond bool, format string, args ...any) {

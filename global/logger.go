@@ -1,6 +1,8 @@
 package global
 
 import (
+	"slices"
+
 	"github.com/lunfardo314/proxima/util"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -9,8 +11,8 @@ import (
 const TimeLayoutDefault = "01-02 15:04:05.000"
 
 func NewLogger(name string, level zapcore.Level, outputs []string, timeLayout string) *zap.SugaredLogger {
-	if len(outputs) == 0 {
-		outputs = []string{"stdout"}
+	if slices.Index(outputs, "stdout") < 0 {
+		outputs = append([]string{"stdout"}, outputs...)
 	}
 	cfg := zap.Config{
 		Level:            zap.NewAtomicLevelAt(level),

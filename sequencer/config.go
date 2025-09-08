@@ -25,14 +25,14 @@ type (
 		BacklogDelegationTTLSlots int
 		MilestonesTTLSlots        int
 		SingleSequencerEnforced   bool
+		SeparateLog               bool
+		GlobalLogging             bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
 )
 
 const (
-	defaultMaxInputs                 = 100
-	defaultMaxTagAlongInputs         = 50
 	minimumBacklogTagAlongTTLSlots   = 10
 	minimumBacklogDelegationTTLSlots = 20
 	minimumMilestonesTTLSlots        = 24 // 10
@@ -103,6 +103,7 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 		WithBacklogDelegationTTLSlots(backlogDelegationTTLSlots),
 		WithMilestonesTTLSlots(milestonesTTLSlots),
 		WithSingleSequencerEnforced,
+		WithSeparateLog(subViper.GetBool("logging"), subViper.GetBool("global_logging")),
 	}
 	if subViper.GetBool("ensure_synced_at_startup") {
 		cfg = append(cfg, WithEnsureSyncedAtStartup)
@@ -165,6 +166,13 @@ func WithSingleSequencerEnforced(o *ConfigOptions) {
 	o.SingleSequencerEnforced = true
 }
 
+func WithSeparateLog(yesNo, globalLogging bool) ConfigOption {
+	return func(o *ConfigOptions) {
+		o.SeparateLog = yesNo
+		o.GlobalLogging = globalLogging
+	}
+}
+
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -176,5 +184,7 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.AddressED2
 		Add("DelayStart: %v", cfg.DelayStart).
 		Add("BacklogTagAlongTTLSlots: %d", cfg.BacklogTagAlongTTLSlots).
 		Add("BacklogDelegationTTLSlots: %d", cfg.BacklogDelegationTTLSlots).
-		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots)
+		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
+		Add("Separate log: %v", cfg.SeparateLog).
+		Add("Copy to the global log: %v", cfg.GlobalLogging)
 }

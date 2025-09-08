@@ -34,6 +34,7 @@ type (
 
 	Logging interface {
 		Log() *zap.SugaredLogger
+		Outputs() []string
 		Tracef(tag string, format string, args ...any)
 		StartTracingTags(tags ...string)
 		// Assertf asserts only if global shutdown wasn't issued

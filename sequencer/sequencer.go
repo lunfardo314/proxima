@@ -21,7 +21,9 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
@@ -48,7 +50,6 @@ type (
 		controllerKey      ed25519.PrivateKey
 		backlog            *backlog.TagAlongBacklog
 		config             *ConfigOptions
-		logName            string
 		log                *zap.SugaredLogger
 		ownMilestonesMutex sync.RWMutex
 		ownMilestones      map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
@@ -93,15 +94,29 @@ const TraceTag = "sequencer"
 
 func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...ConfigOption) (*Sequencer, error) {
 	cfg := configOptions(opts...)
-	logName := fmt.Sprintf("[%s-%s]", cfg.SequencerName, seqID.StringVeryShort())
+	out := viper.GetString("logger.output") + ".seq"
+	global.MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
+
+	logName := "[SEQ:" + cfg.SequencerName + "]"
+	var log *zap.SugaredLogger
+	if cfg.SeparateLog {
+		outputs := []string{out}
+		if cfg.GlobalLogging {
+			outputs = append(outputs, env.Outputs()...)
+		}
+		log = global.NewLogger(logName, zapcore.InfoLevel, outputs, global.TimeLayoutDefault)
+	} else {
+		log = env.Log().Named(logName)
+	}
+	log.Infof("starting sequencer '%s', seqID: %s", cfg.SequencerName, seqID.String())
+
 	ret := &Sequencer{
 		Environment:   env,
 		sequencerID:   seqID,
 		controllerKey: controllerKey,
 		ownMilestones: make(map[*vertex.WrappedTx]outputsWithTime),
 		config:        cfg,
-		logName:       logName,
-		log:           env.Log().Named(logName),
+		log:           log,
 	}
 	if cfg.SingleSequencerEnforced {
 		ret.metrics = &sequencerMetrics{}
