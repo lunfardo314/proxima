@@ -1,7 +1,7 @@
 package version
 
 import (
-	"fmt"
+	"time"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -22,10 +22,6 @@ func CmdVersion() *cobra.Command {
 
 func runVersionCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("    Version:      %s", global.Version)
-	ago := ""
-	if global.CommitAgo != "" {
-		ago = fmt.Sprintf(", %s ago zzz", global.CommitAgo)
-	}
-	glb.Infof("    Commit time:  %s%s", global.CommitTime, ago)
+	glb.Infof("    Commit time:  %s (%s ago)", global.CommitTime, time.Since(global.CommitTimeParsed).String())
 	glb.Infof("    Commit hash:  %s", global.CommitHash)
 }

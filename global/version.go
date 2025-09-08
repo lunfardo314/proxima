@@ -38,9 +38,9 @@ Proxima node version %s, commit hash: %s, commit time: %s
 )
 
 var (
-	CommitHash = "N/A"
-	CommitTime = "N/A"
-	CommitAgo  = ""
+	CommitHash       = "N/A"
+	CommitTime       = "N/A"
+	CommitTimeParsed time.Time
 )
 
 func init() {
@@ -51,10 +51,7 @@ func init() {
 			}
 			if setting.Key == "vcs.time" {
 				CommitTime = setting.Value
-
-				if ago, err := time.Parse(time.RFC3339, CommitTime); err == nil {
-					CommitAgo = time.Since(ago).String()
-				}
+				CommitTimeParsed, _ = time.Parse(time.RFC3339, CommitTime)
 			}
 		}
 	}
