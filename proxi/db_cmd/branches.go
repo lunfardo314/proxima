@@ -1,9 +1,10 @@
 package db_cmd
 
 import (
-	"sort"
 	"strconv"
+	"strings"
 
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -11,9 +12,9 @@ import (
 
 func initBranchesCmd() *cobra.Command {
 	branchesCmd := &cobra.Command{
-		Use:   "branches [<n slots back>]",
-		Short: "displays latest branch records",
-		Args:  cobra.MaximumNArgs(1),
+		Use:   "branches [<slot from> [<N slots>]]",
+		Short: "displays branch records in the slot and N non-empty slots back",
+		Args:  cobra.RangeArgs(0, 2),
 		Run:   runBranchesCmd,
 	}
 	branchesCmd.InitDefaultHelpCmd()
@@ -24,35 +25,46 @@ func runBranchesCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
-	const defaultLastNSlots = 5
+	latestSlot := multistate.FetchLatestCommittedSlot(glb.StateStore())
+	glb.Infof("latest committed slot is %d", latestSlot)
 
-	lastNSlots := defaultLastNSlots
+	var slot int
+	nSlots := 1
 	var err error
+	slot = int(latestSlot)
 	if len(args) > 0 {
-		lastNSlots, err = strconv.Atoi(args[0])
-		glb.AssertNoError(err)
-		if lastNSlots < 1 {
-			lastNSlots = defaultLastNSlots
+		if !strings.Contains(args[0], "latest") {
+			slot1, err := strconv.Atoi(args[0])
+			glb.AssertNoError(err)
+			if slot1 > int(latestSlot) {
+				slot = int(latestSlot)
+			} else {
+				slot = slot1
+			}
 		}
 	}
-	glb.Infof("displaying branch info of last %d slots back", lastNSlots)
-	rootRecords := multistate.FetchRootRecordsNSlotsBack(glb.StateStore(), lastNSlots)
-	branchData := multistate.FetchBranchDataMulti(glb.StateStore(), rootRecords...)
-	glb.Assertf(len(branchData) > 0, "no branches have been found")
-
-	sort.Slice(branchData, func(i, j int) bool {
-		return branchData[i].Stem.Timestamp().After(branchData[j].Stem.Timestamp())
-	})
-
-	for i, bd := range branchData {
-		txid := bd.Stem.ID.TransactionID()
-		glb.Infof("%3d: %18s   numTx: %d, seqID: %s, hex: %s, root: %s",
-			i,
-			txid.StringShort(),
-			bd.NumTransactions,
-			bd.SequencerID.String(),
-			txid.StringHex(),
-			bd.Root.String(),
-		)
+	if len(args) > 1 {
+		nSlots, err = strconv.Atoi(args[1])
+		glb.AssertNoError(err)
+		glb.Assertf(nSlots > 0, "wrong second parameter")
+		if nSlots > int(latestSlot)+1 {
+			nSlots = int(latestSlot + 1)
+		}
+	}
+	for i := 0; i < nSlots; i++ {
+		s := base.Slot(slot - i)
+		rootRecords := multistate.FetchRootRecords(glb.StateStore(), s)
+		branches := multistate.FetchBranchDataMulti(glb.StateStore(), rootRecords...)
+		if len(branches) == 0 {
+			continue
+		}
+		glb.Infof("=== slot %d, number of branches %d ===", s, len(branches))
+		for _, branch := range branches {
+			if glb.IsVerbose() {
+				glb.Infof("------\n%s", branch.LinesVerbose("    ").String())
+			} else {
+				glb.Infof("------\n%s", branch.Lines("    ").String())
+			}
+		}
 	}
 }
