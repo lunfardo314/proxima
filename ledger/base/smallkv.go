@@ -2,12 +2,14 @@ package base
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"maps"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 )
 
 type SmallPersistentMap struct {
@@ -74,4 +76,12 @@ func SmallPersistentMapFromBytes(data []byte) (SmallPersistentMap, error) {
 		return SmallPersistentMap{}, err
 	}
 	return ret, nil
+}
+
+func (m *SmallPersistentMap) Lines(prefix ...string) *lines.Lines {
+	ln := lines.New(prefix...)
+	for _, k := range util.KeysSorted(m.m, func(k1, k2 byte) bool { return k1 < k2 }) {
+		ln.Add("%3d: %s", k, hex.EncodeToString(m.Get(k)))
+	}
+	return ln
 }
