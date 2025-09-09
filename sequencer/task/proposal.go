@@ -60,6 +60,9 @@ type _inputCandidate struct {
 }
 
 func (p *proposal) insertTagAlongInputs() {
+	if ledger.Const.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
+		return
+	}
 	if p.txb.InputsAreFull() {
 		return
 	}
@@ -97,13 +100,13 @@ func (p *proposal) insertTagAlongInputs() {
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
-			p.proposer.Log().Warnf("output cannot be used as tag-along PERMANENTLY, reason = '%v'\n%s",
+			p.proposer.Log().Warnf("TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
 				err, o.o.LinesSource("     ").String())
 		} else {
 			if err != nil {
-				p.proposer.Log().Warnf("output %s cannot be used as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
+				p.proposer.Log().Warnf("TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
 			} else {
-				p.proposer.Log().Infof("tag-along output %s has been added, amount: %s", o.o.ID.StringShort(), util.Th(o.o.Output.TokenBalance()))
+				p.proposer.Log().Infof("TAG_ALONG: output %s has been added, amount: %s", o.o.ID.StringShort(), util.Th(o.o.Output.TokenBalance()))
 
 			}
 		}
@@ -114,10 +117,13 @@ func (p *proposal) insertTagAlongInputs() {
 }
 
 func (p *proposal) insertDelegations() {
-
+	if ledger.Const.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
+		return
+	}
 	if p.txb.InputsAreFull() {
 		return
 	}
+
 	outs := make([]*ledger.DelegationOutput, 0)
 	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
 		if o.IsUnlockableByTargetForFreezing(uint32(p.proposer.targetTs.Slot)) {

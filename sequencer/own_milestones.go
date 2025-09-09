@@ -58,7 +58,13 @@ func (seq *Sequencer) IsConsumedInThePastPath(wOut vertex.WrappedOutput, ms *ver
 	seq.ownMilestonesMutex.RLock()
 	defer seq.ownMilestonesMutex.RUnlock()
 
-	return seq.ownMilestones[ms].consumed.Contains(wOut.DecodeID())
+	oid := wOut.DecodeID()
+	consumed := seq.ownMilestones[ms].consumed
+	ret := consumed.Contains(oid)
+	seq.Log().Infof(">>>>> IsConsumedInThePastPath(%s, %s)-> %v cache = %s", oid.StringShort(), ms.IDShortString(), ret, consumed.Lines(func(key base.OutputID) string {
+		return key.StringShort()
+	}).Join(","))
+	return ret
 }
 
 func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
@@ -75,6 +81,37 @@ func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	return seq.bootstrapOwnMilestoneOutput()
 }
 
+// _collectConsumed collects a set of output IDs consumed along the past chain of the milestone contained in the cache
+func (seq *Sequencer) _collectConsumed(ms *vertex.WrappedTx) set.Set[base.OutputID] {
+	ret := set.New[base.OutputID]()
+
+	for ms != nil {
+		var msPred *vertex.WrappedTx
+
+		ms.RUnwrap(vertex.UnwrapOptions{
+			Vertex: func(v *vertex.Vertex) {
+				v.Tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+					ret.Insert(oid)
+					return true
+				})
+				if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+					// continue along own predecessors in the cache
+					msPred = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
+					if _, predIsOwnMilestone := seq.ownMilestones[msPred]; !predIsOwnMilestone {
+						msPred = nil
+					}
+				}
+			},
+			VirtualTx: func(v *vertex.VirtualTransaction) {
+				// TODO missing outputs consumed by branches
+			},
+		})
+		ms = msPred
+	}
+	return ret
+}
+
+// AddOwnMilestone adds new milestone to the cash of own milestones
 func (seq *Sequencer) AddOwnMilestone(vid *vertex.WrappedTx) {
 	seq.ownMilestonesMutex.Lock()
 	defer seq.ownMilestonesMutex.Unlock()
@@ -82,30 +119,13 @@ func (seq *Sequencer) AddOwnMilestone(vid *vertex.WrappedTx) {
 	if _, already := seq.ownMilestones[vid]; already {
 		return
 	}
-
-	withTime := outputsWithTime{
-		consumed: set.New[base.OutputID](),
+	seq.ownMilestones[vid] = outputsWithTime{
+		consumed: seq._collectConsumed(vid),
 		since:    time.Now(),
 	}
-	if vid.IsSequencerMilestone() {
-		// it can be a non-sequencer milestone at the origin
-		prev := vid.SequencerPredecessor(func(txid base.TransactionID) *vertex.WrappedTx {
-			return attacher.AttachTxID(txid, seq, attacher.WithInvokedBy("AddOwnMilestone"))
-		})
-		if prev != nil {
-			if prevConsumed, found := seq.ownMilestones[prev]; found {
-				withTime.consumed.AddAll(prevConsumed.consumed)
-			}
-		}
-		vid.Unwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			v.ForEachInputDependency(func(i byte, vidInput *vertex.WrappedTx) bool {
-				withTime.consumed.Insert(base.MustNewOutputID(vidInput.ID(), v.Tx.MustOutputIndexOfTheInput(i)))
-				return true
-			})
-		}})
-	}
-	//vid.Reference()
-	seq.ownMilestones[vid] = withTime
+	seq.Log().Infof(">>>>> Added own milestone %s with consumed %s", vid.IDShortString(), seq.ownMilestones[vid].consumed.Lines(func(key base.OutputID) string {
+		return key.StringShort()
+	}).Join(","))
 
 	if seq.metrics != nil {
 		seq.metrics.ownMilestones.Set(float64(len(seq.ownMilestones)))
