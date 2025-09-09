@@ -151,6 +151,10 @@ func (s SugaredStateReader) GetDelegatedOutput(delegationID base.ChainID) (ret l
 	return
 }
 
+func (s SugaredStateReader) OutputIsConsumed(oid base.OutputID) bool {
+	return s.KnowsCommittedTransaction(oid.TransactionID()) && !s.HasUTXO(oid)
+}
+
 // GetChainTips return chain output and, if relevant, stem output for the chain id.
 // The stem output is nil if the sequencer output is not in the branch
 func (s SugaredStateReader) GetChainTips(chainID base.ChainID) (*ledger.OutputWithID, *ledger.OutputWithID, error) {

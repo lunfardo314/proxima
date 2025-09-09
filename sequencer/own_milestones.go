@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/exp/maps"
@@ -54,16 +55,17 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 	return ret
 }
 
-func (seq *Sequencer) IsConsumedInThePastPath(wOut vertex.WrappedOutput, ms *vertex.WrappedTx) bool {
-	seq.ownMilestonesMutex.RLock()
-	defer seq.ownMilestonesMutex.RUnlock()
+func (seq *Sequencer) IsConsumedInThePastPath(oid base.OutputID, ms *vertex.WrappedTx, getStateReader func() multistate.SugaredStateReader) bool {
+	seq.ownMilestonesMutex.Lock()
+	defer seq.ownMilestonesMutex.Unlock()
 
-	oid := wOut.DecodeID()
-	consumed := seq.ownMilestones[ms].consumed
-	ret := consumed.Contains(oid)
-	seq.Log().Infof(">>>>> IsConsumedInThePastPath(%s, %s)-> %v cache = %s", oid.StringShort(), ms.IDShortString(), ret, consumed.Lines(func(key base.OutputID) string {
-		return key.StringShort()
-	}).Join(","))
+	if seq.ownMilestones[ms].consumed.Contains(oid) {
+		return true
+	}
+	ret := getStateReader().OutputIsConsumed(oid)
+	if ret {
+		seq.ownMilestones[ms].consumed.Insert(oid)
+	}
 	return ret
 }
 
@@ -82,6 +84,7 @@ func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 }
 
 // _collectConsumed collects a set of output IDs consumed along the past chain of the milestone contained in the cache
+// Cannot collect consumed outputs behind branches
 func (seq *Sequencer) _collectConsumed(ms *vertex.WrappedTx) set.Set[base.OutputID] {
 	ret := set.New[base.OutputID]()
 
@@ -102,9 +105,6 @@ func (seq *Sequencer) _collectConsumed(ms *vertex.WrappedTx) set.Set[base.Output
 					}
 				}
 			},
-			VirtualTx: func(v *vertex.VirtualTransaction) {
-				// TODO missing outputs consumed by branches
-			},
 		})
 		ms = msPred
 	}
@@ -123,10 +123,6 @@ func (seq *Sequencer) AddOwnMilestone(vid *vertex.WrappedTx) {
 		consumed: seq._collectConsumed(vid),
 		since:    time.Now(),
 	}
-	seq.Log().Infof(">>>>> Added own milestone %s with consumed %s", vid.IDShortString(), seq.ownMilestones[vid].consumed.Lines(func(key base.OutputID) string {
-		return key.StringShort()
-	}).Join(","))
-
 	if seq.metrics != nil {
 		seq.metrics.ownMilestones.Set(float64(len(seq.ownMilestones)))
 	}

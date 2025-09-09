@@ -72,12 +72,16 @@ func (p *proposal) insertTagAlongInputs() {
 		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.proposer.targetTs) {
 			return true
 		}
-		if p.IsConsumedInThePastPath(wOut, p.Extending().VID) {
+		oid := wOut.DecodeID()
+		if p.IsConsumedInThePastPath(oid, p.Extending().VID, p.BaselineSugaredStateReader) {
 			return true
 		}
 		outs = append(outs, &_inputCandidate{
 			wOut: wOut,
-			o:    wOut.OutputWithID(),
+			o: &ledger.OutputWithID{
+				ID:     oid,
+				Output: wOut.Output(),
+			},
 		})
 		return true
 	})
@@ -143,10 +147,10 @@ func (p *proposal) insertDelegations() {
 			return
 		default:
 		}
-		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
-		if p.IsConsumedInThePastPath(wOut, p.Extending().VID) {
+		if p.IsConsumedInThePastPath(o.ID, p.Extending().VID, p.BaselineSugaredStateReader) {
 			continue
 		}
+		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
 		// just skip if freezing failed for any reason
 		_, _ = p.InsertInput(wOut, func() (bool, error) {
 			_, err1 := p.txb.FreezeDelegation(o)
