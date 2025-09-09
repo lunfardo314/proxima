@@ -195,3 +195,7 @@ func (r *RevokeDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err erro
 	}
 	return true, nil
 }
+
+func (r *RevokeDelegationRequest) String() string {
+	return "RevokeDelegationRequest: id = " + r.delegationID.StringShort()
+}

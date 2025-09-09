@@ -97,3 +97,7 @@ func (cmd *WithdrawRequest) Apply(txb *SeqTxBuilder) (bool, error) {
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(cmd.amount)
 	return true, nil
 }
+
+func (cmd *WithdrawRequest) String() string {
+	return fmt.Sprintf("WithdrawRequest: amount = %s, target = %s", util.Th(cmd.amount), cmd.target.String())
+}

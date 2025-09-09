@@ -155,7 +155,7 @@ func TestBase(t *testing.T) {
 			ID:     base.OutputID{},
 			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
 		}
-		_, err := txb.AddTagAlongInput(tagAlongOut)
+		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -171,7 +171,7 @@ func TestBase(t *testing.T) {
 			ID:     base.OutputID{},
 			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
 		}
-		_, err := txb.AddTagAlongInput(tagAlongOut)
+		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -187,7 +187,7 @@ func TestBase(t *testing.T) {
 			ID:     base.OutputID{},
 			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 10_000_000, addr),
 		}
-		_, err := txb.AddTagAlongInput(tagAlongOut)
+		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -204,7 +204,7 @@ func TestBase(t *testing.T) {
 				ID:     base.MustNewOutputID(base.RandomTransactionID(false, 2, base.NewLedgerTime(slot, 50)), 1),
 				Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, amount, addr),
 			}
-			_, err := txb.AddTagAlongInput(tagAlongOut)
+			_, _, err := txb.AddTagAlongInput(tagAlongOut)
 			return err
 		}
 
@@ -233,7 +233,7 @@ func TestBase(t *testing.T) {
 				sdUpdated.SetName("newName").IncChainHeight()
 			})),
 		}
-		_, err = txb.AddTagAlongInput(tagAlongOut)
+		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
 		_, _, txString, err := txb.BytesWithValidation()
@@ -798,12 +798,6 @@ func TestWithUTXODB(t *testing.T) {
 		}
 		stats.nSeqSteps++
 		freezable := td.freezableDelegations(ts)
-		//freeze := ""
-		//if len(freezable) > 0 {
-		//	freeze = fmt.Sprintf("   <- freeze %d", len(freezable))
-		//}
-		//t.Logf("%4d %s seq balance: %s, txSize: %d txTs: %s %s",
-		//	i, seqOut.ID.StringShort(), util.Th(seqOut.Output.TokenBalance()), txSize, ts.String(), freeze)
 
 		txb, err := txbuilder_seq.NewWithSequencerID(ts, td.seqID, td.targetPrivateKey, rdr)
 		require.NoError(t, err)
@@ -815,7 +809,6 @@ func TestWithUTXODB(t *testing.T) {
 			_, err = txb.FreezeDelegation(&dIn)
 			require.NoError(t, err)
 			stats.nFreezes++
-			//t.Logf("    freeze %s (%s) -- %s", dIn.ID.StringShort(), util.Th(dIn.Output.TokenBalance()), dIn.ChainID.StringShort())
 		}
 
 		tagAlongBacklog := td.tagAlongBacklog()
@@ -823,7 +816,7 @@ func TestWithUTXODB(t *testing.T) {
 			if blacklist.Contains(o.ID) {
 				continue
 			}
-			valid, err := txb.AddTagAlongInput(o)
+			_, valid, err := txb.AddTagAlongInput(o)
 			if !valid || err != nil {
 				if !valid {
 					t.Logf("   %s PERMANENTLY cannot add tag-along, reason = '%v'", o.ID.StringShort(), err)

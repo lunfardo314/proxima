@@ -70,3 +70,7 @@ func (cmd *SetSequencerDataCommand) Apply(txb *SeqTxBuilder) (bool, error) {
 	txb.nextSeqData = cmd.SequencerData.Clone()
 	return true, nil
 }
+
+func (cmd *SetSequencerDataCommand) String() string {
+	return "SetSequencerDataCommand: seqData = " + cmd.SequencerData.Lines().Join(",")
+}

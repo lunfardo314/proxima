@@ -99,8 +99,11 @@ func (p *proposal) insertTagAlongInputs() {
 			return
 		default:
 		}
-		valid, err := p.InsertInput(o.wOut, func() (bool, error) {
-			return p.txb.AddTagAlongInput(*o.o)
+		var cmd txbuilder_seq.TxBuilderCommand
+
+		valid, err := p.InsertInput(o.wOut, func() (valid1 bool, err1 error) {
+			cmd, valid1, err1 = p.txb.AddTagAlongInput(*o.o)
+			return
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
@@ -110,8 +113,9 @@ func (p *proposal) insertTagAlongInputs() {
 			if err != nil {
 				p.proposer.Log().Warnf("TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
 			} else {
-				p.proposer.Log().Infof("TAG_ALONG: output %s has been added, amount: %s", o.o.ID.StringShort(), util.Th(o.o.Output.TokenBalance()))
-
+				p.proposer.Assertf(cmd != nil, "cmd != nil")
+				p.proposer.Log().Infof("TAG_ALONG: output %s has been added, amount: %s, cmd='%s'",
+					o.o.ID.StringShort(), util.Th(o.o.Output.TokenBalance()), cmd.String())
 			}
 		}
 		if p.txb.InputsAreFull() {

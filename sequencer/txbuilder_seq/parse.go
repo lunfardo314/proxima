@@ -78,3 +78,7 @@ func (cmd *SimpleTagAlongOutput) Apply(txb *SeqTxBuilder) (bool, error) {
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(cmd.o.Output.TokenBalance())
 	return true, nil
 }
+
+func (cmd *SimpleTagAlongOutput) String() string {
+	return "NOOP command"
+}

@@ -37,6 +37,7 @@ type (
 	TxBuilderCommand interface {
 		// Apply valid=false means it is permanently invalid, err is a reason why not possibe to apply it
 		Apply(txb *SeqTxBuilder) (valid bool, err error)
+		String() string
 	}
 
 	SeqCommandBase struct {
@@ -216,12 +217,14 @@ func (txb *SeqTxBuilder) AddSimpleInput(o ledger.OutputWithID) error {
 //
 //	-- false, error if output is permanently invalid. If err != nil, it is a reason why
 //	-- true, error it is temporary cannot be applied
-func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (valid bool, err error) {
-	cmd, valid, err := txb.TxBuilderCommandFromOutput(o)
-	if !valid || err != nil {
-		return valid, fmt.Errorf("AddTagAlongInput: %w", err)
+func (txb *SeqTxBuilder) AddTagAlongInput(o ledger.OutputWithID) (cmd TxBuilderCommand, valid bool, err error) {
+	if cmd, valid, err = txb.TxBuilderCommandFromOutput(o); err == nil {
+		valid, err = cmd.Apply(txb)
 	}
-	return cmd.Apply(txb)
+	if err != nil {
+		err = fmt.Errorf("AddTagAlongInput: %w", err)
+	}
+	return
 }
 
 func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, frozenEpochs byte) (uint64, error) {

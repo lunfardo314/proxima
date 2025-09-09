@@ -24,7 +24,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
-	"github.com/lunfardo314/proxima/sequencer/commands_old"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
@@ -810,52 +809,6 @@ type spammerWithdrawCmdParams struct {
 	target                  ledger.AddressED25519
 	remainder               *ledger.OutputWithID
 	totalWithdrawn          uint64
-}
-
-func (td *workflowTestData) spamWithdrawCommands(par spammerWithdrawCmdParams, ctx context.Context) {
-	srcAddr := ledger.AddressED25519FromPrivateKey(par.seqControllerPrivateKey)
-
-	const withdrawAmount = commands_old.MinimumAmountToRequestFromSequencer
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(time.Duration(par.pace) * ledger.TickDuration()):
-		}
-		txb := txbuilder.New()
-		_, err := txb.ConsumeOutput(par.remainder.Output, par.remainder.ID)
-		require.NoError(td.t, err)
-		reminder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(int64(par.remainder.Output.TokenBalance()) - 500).WithLock(par.remainder.Output.Lock())
-		})
-		_, err = txb.ProduceOutput(reminder)
-		require.NoError(td.t, err)
-		cmdOut, err := commands_old.MakeSequencerWithdrawCmdOutput(commands_old.MakeSequencerWithdrawCmdOutputParams{
-			SeqID:          par.seqID,
-			ControllerAddr: srcAddr,
-			TargetLock:     par.target,
-			TagAlongFee:    500,
-			Amount:         withdrawAmount,
-		})
-		_, err = txb.ProduceOutput(cmdOut)
-		require.NoError(td.t, err)
-
-		txb.TransactionData.Timestamp = ledger.TimeNow()
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-		txb.SignED25519(par.seqControllerPrivateKey)
-		txBytes := txb.TransactionData.Bytes()
-
-		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
-		require.NoError(td.t, err)
-
-		par.remainder = tx.MustProducedOutputWithIDAt(1)
-
-		_, err = td.wrk.TxBytesIn(txBytes)
-		require.NoError(td.t, err)
-
-		par.totalWithdrawn += withdrawAmount
-	}
 }
 
 func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...time.Duration) {
