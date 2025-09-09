@@ -236,7 +236,7 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck
 	util.AssertNoError(a.err)
 
 	if !wOut.VID.ValidSequencerPace(a.targetTs) {
-		return true, fmt.Errorf("IncrementalAttacher(%s).InsertInput: invalid sequencer pace in %s", a.name, wOut.IDStringShort())
+		return true, fmt.Errorf("InsertInput(%s): invalid sequencer pace in %s", a.name, wOut.IDStringShort())
 	}
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
@@ -247,10 +247,9 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck
 		valid, err = atomicCheck()
 	}
 	if err != nil {
-		// it is either conflicting, or not solid yet
-		// in either case rollback
+		// it is either conflicting, or not solid yet. In either case rollback
 		a.pastCone.RollbackDelta()
-		err = fmt.Errorf("InsertInput: %w", err)
+		err = fmt.Errorf("InsertInput(%s): %w", a.name, err)
 		a.setError(nil)
 		return valid, err
 	}

@@ -93,8 +93,8 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	)
 	// start periodic cleanup in background
 	env.RepeatInBackground(env.SequencerName()+"_backlogCleanup", backlogCleanupPeriod, func() bool {
-		if n := ret.purgeBacklog(); n > 0 {
-			ret.Log().Infof("deleted %d outputs from the backlog", n)
+		if n, remain := ret.purgeBacklog(); n > 0 {
+			ret.Log().Infof("deleted %d outputs from the backlog, remain %d", n, remain)
 		}
 		return true
 	})
@@ -193,7 +193,7 @@ func (b *TagAlongBacklog) IterateOutputs(fun func(wOut vertex.WrappedOutput) boo
 
 	for wOut := range b.outputs {
 		oid := wOut.DecodeID()
-		if b.isInBlacklist(oid) {
+		if b._isInBlacklist(oid) {
 			continue
 		}
 		if !fun(wOut) {
@@ -213,9 +213,16 @@ func (b *TagAlongBacklog) AddToBlacklist(wOut vertex.WrappedOutput) {
 	}
 }
 
-func (b *TagAlongBacklog) isInBlacklist(oid base.OutputID) bool {
+func (b *TagAlongBacklog) _isInBlacklist(oid base.OutputID) bool {
 	_, found := b.blacklist[oid]
 	return found
+}
+
+func (b *TagAlongBacklog) IsInBlacklist(oid base.OutputID) bool {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
+
+	return b._isInBlacklist(oid)
 }
 
 func (b *TagAlongBacklog) cleanBlacklist() {
@@ -258,11 +265,10 @@ func (b *TagAlongBacklog) numOutputs() int {
 	return len(b.outputs)
 }
 
-func (b *TagAlongBacklog) purgeBacklog() int {
+func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	ttlTagAlongSlots, ttlDelegationSlots := b.BacklogTTLSlots()
 	_ = ttlDelegationSlots
 	horizonTagAlong := time.Now().Add(-time.Duration(ttlTagAlongSlots) * ledger.Const.SlotDuration())
-	//horizonDelegation := time.Now().Add(-time.Duration(ttlDelegationSlots) * ledger.L().ChainID.SlotDuration())
 
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -286,7 +292,7 @@ func (b *TagAlongBacklog) purgeBacklog() int {
 		}
 	}
 	b.EvidenceBacklogSize(len(b.outputs))
-	return count
+	return count, len(b.outputs)
 }
 
 func (b *TagAlongBacklog) recreateMap() {

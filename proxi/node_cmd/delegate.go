@@ -15,11 +15,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-var targetChainIDStr string
+var (
+	targetChainIDStr string
+	maxFeezeEpochs   uint8
+)
 
 func initDelegateCmd() *cobra.Command {
 	delegateCmd := &cobra.Command{
-		Use:     "delegate <amount> [-q <target sequencer id hex encoded. Defaults to own sequencer>.]",
+		Use:     "delegate <amount> [-q <target sequencer id hex encoded. Defaults to own sequencer>]",
 		Aliases: util.List("send"),
 		Short:   `delegates amount to target sequencer by creating delegation chain output`,
 		Args:    cobra.ExactArgs(1),
@@ -30,6 +33,10 @@ func initDelegateCmd() *cobra.Command {
 
 	delegateCmd.PersistentFlags().StringVarP(&targetChainIDStr, "seq", "q", "", "target sequencer id")
 	err := viper.BindPFlag("seq", delegateCmd.PersistentFlags().Lookup("seq"))
+	glb.AssertNoError(err)
+
+	delegateCmd.PersistentFlags().Uint8VarP(&maxFeezeEpochs, "epochs", "e", 1, "max frozen epochs allowed by the delegator")
+	err = viper.BindPFlag("epochs", delegateCmd.PersistentFlags().Lookup("epochs"))
 	glb.AssertNoError(err)
 
 	delegateCmd.InitDefaultHelpCmd()
@@ -77,6 +84,8 @@ func runDelegateCmd(_ *cobra.Command, args []string) {
 	minimumAmount := ledger.L().MinimumInflatableAmount(uint32(ts.Slot) + 1000)
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
+	glb.Assertf(maxFeezeEpochs > 0 && maxFeezeEpochs <= byte(ledger.Const.MaxFrozenEpochs), "wrong value of max freeze epochs")
+
 	client := glb.GetClient()
 	walletOutputs, lrbid, _, err := client.GetOutputsForAmount(walletData.Account, amount+feeAmount)
 	glb.AssertNoError(err)
@@ -110,6 +119,7 @@ func runDelegateCmd(_ *cobra.Command, args []string) {
 		Amount:             amount,
 		Master:             walletData.Account,
 		Target:             ledger.ChainLockFromChainID(targetSeqID),
+		MaxFreezeEpochs:    maxFeezeEpochs,
 		MaxSeqProfitMargin: 100,
 		StartSlot:          ts.Slot,
 	})

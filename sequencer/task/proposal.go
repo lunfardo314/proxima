@@ -134,6 +134,12 @@ func (p *proposal) insertDelegations() {
 
 	outs := make([]*ledger.DelegationOutput, 0)
 	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
+		if p.Backlog().IsInBlacklist(o.ID) {
+			return true
+		}
+		if p.IsConsumedInThePastPath(o.ID, p.Extending().VID, p.BaselineSugaredStateReader) {
+			return true
+		}
 		if o.IsUnlockableByTargetForFreezing(uint32(p.proposer.targetTs.Slot)) {
 			outs = append(outs, o)
 		}
@@ -151,15 +157,26 @@ func (p *proposal) insertDelegations() {
 			return
 		default:
 		}
-		if p.IsConsumedInThePastPath(o.ID, p.Extending().VID, p.BaselineSugaredStateReader) {
-			continue
-		}
 		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
 		// just skip if freezing failed for any reason
-		_, _ = p.InsertInput(wOut, func() (bool, error) {
+		valid, err := p.InsertInput(wOut, func() (bool, error) {
 			_, err1 := p.txb.FreezeDelegation(o)
 			return true, err1
 		})
+		if err != nil {
+			if valid {
+				p.proposer.Log().Warnf("FREEZE failed, id = %s, oid = %s, reason = '%v'",
+					o.ChainID.String(), o.ID.StringShort(), err)
+			} else {
+				p.Backlog().AddToBlacklist(wOut)
+				p.proposer.Log().Errorf("FREEZE failed PERMANENTLY, id = %s, oid = %s, reason = '%v'",
+					o.ChainID.String(), o.ID.StringShort(), err)
+			}
+		} else {
+			p.proposer.Log().Infof("FREEZE delegation has been frozen, id = %s, oid = %s",
+				o.ChainID.String(), o.ID.StringShort())
+		}
+
 		if p.txb.InputsAreFull() {
 			return
 		}
