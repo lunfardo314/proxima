@@ -66,6 +66,7 @@ func Init() *cobra.Command {
 		initDelegateCmd(),
 		initAllChainsCmd(),
 		initNodeGetLedgerIDCmd(),
+		initRevokeDelegationCmd(),
 	)
 	return nodeCmd
 }

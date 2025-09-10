@@ -346,7 +346,7 @@ func TestFreezeOneStep(t *testing.T) {
 			// TODO something is fishy. Seq profit projections slightly inconsistent (too good) compared to the produced output
 
 			// calculate profitability of freezing
-			inflationOneSlotDelegator := ledger.L().ChainInflationOneSlot(dIn.Output.TokenBalance(), uint32(dIn.ID.Slot()))
+			inflationOneSlotDelegator := ledger.ChainInflationOneSlot(dIn.Output.TokenBalance(), uint32(dIn.ID.Slot()))
 			advance := dOut.Output.TokenBalance() - dIn.Output.TokenBalance() - inflationOneSlotDelegator
 
 			t.Logf("delegation init ID: %s", dIn.ID.String())
@@ -356,11 +356,11 @@ func TestFreezeOneStep(t *testing.T) {
 			frozenAmount := dIn.Output.TokenBalance() + inflationOneSlotDelegator
 			t.Logf("frozen amount: %s", util.Th(frozenAmount))
 
-			inflationOneSlotSeq := ledger.L().ChainInflationOneSlot(seqInitBalance, uint32(predTs.Slot))
+			inflationOneSlotSeq := ledger.ChainInflationOneSlot(seqInitBalance, uint32(predTs.Slot))
 			seqInflatableBalanceDoNothing := seqInitBalance + inflationOneSlotSeq
-			seqInflationDoNothing := ledger.L().ChainInflation(seqInflatableBalanceDoNothing, uint32(ts.Slot), frozenSlots)
+			seqInflationDoNothing := ledger.ChainInflation(seqInflatableBalanceDoNothing, uint32(ts.Slot), frozenSlots)
 			seqInflatableBalanceFreeze := seqInitBalance + inflationOneSlotSeq - advance + frozenAmount
-			seqInflationFreeze := ledger.L().ChainInflation(seqInflatableBalanceFreeze, uint32(ts.Slot), frozenSlots)
+			seqInflationFreeze := ledger.ChainInflation(seqInflatableBalanceFreeze, uint32(ts.Slot), frozenSlots)
 			repaymentSeq := int64(seqInflationFreeze) - int64(seqInflationDoNothing)
 			roiSeq := repaymentSeq - int64(advance)
 			roiSeqPercent := 100 * (float64(roiSeq) / float64(advance))

@@ -45,7 +45,7 @@ func runDBStatsCmd(_ *cobra.Command, _ []string) {
 }
 
 func runBranchInflationBonusStats() {
-	maxInflation := ledger.L().BranchInflationBonusBase()
+	maxInflation := ledger.L().BranchInflationBonusBaseFromSource()
 	buckets := make([]int, numBuckets)
 	numBranches := 0
 	var maxBib, minBib uint64

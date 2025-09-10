@@ -15,24 +15,24 @@ func (lib *Library) ChainInflationOriginal(amount uint64, inSlot, forSlots uint3
 	return binary.BigEndian.Uint64(resBin)
 }
 
-func (lib *Library) ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
+func ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
 	return uint64(forSlots) * (amount / (Const.MinimumInflatableAmount0 + uint64(inSlot)))
 }
 
-func (lib *Library) ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
-	return lib.ChainInflation(amount, inSlot, 1)
+func ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
+	return ChainInflation(amount, inSlot, 1)
 }
 
-func (lib *Library) BranchInflationBonusBase() uint64 {
+func (lib *Library) BranchInflationBonusBaseFromSource() uint64 {
 	res, err := lib.EvalFromSource(nil, "constBranchInflationBonusBase")
 	util.AssertNoError(err)
 	return easyfl_util.MustUint64FromBytes(res)
 }
 
-func (lib *Library) BranchInflationBonusDirect(proof []byte) uint64 {
-	return RandomFromSeed(proof, lib.BranchInflationBonusBase()) + 1
+func BranchInflationBonus(proof []byte) uint64 {
+	return RandomFromSeed(proof, Const.BranchInflationBonusBase) + 1
 }
 
-func (lib *Library) MinimumInflatableAmount(slot uint32) uint64 {
-	return Const.MinimumInflatableAmount0 + lib.ChainInflation(Const.MinimumInflatableAmount0, 0, slot)
+func MinimumInflatableAmount(slot uint32) uint64 {
+	return Const.MinimumInflatableAmount0 + ChainInflation(Const.MinimumInflatableAmount0, 0, slot)
 }

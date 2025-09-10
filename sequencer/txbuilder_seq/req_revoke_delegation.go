@@ -112,7 +112,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 		return
 	}
 	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
-	neededCompensation := ledger.L().ChainInflation(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
+	neededCompensation := ledger.ChainInflation(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
 	if neededCompensation < o.Output.TokenBalance() {
 		// projected inflation advance is bigger than number of tokens in the revocation output
 		// -> sequencer do not want loss -> ignore the revocation request
@@ -155,7 +155,7 @@ func (r *RevokeDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err erro
 	if len(txb.TransactionData.Outputs) > 255 {
 		return true, fmt.Errorf("RevokeDelegationRequest: too many outputs to produce")
 	}
-	inflation := ledger.L().ChainInflationOneSlot(r.delegation.Output.TokenBalance(), uint32(r.delegation.ID.Slot()))
+	inflation := ledger.ChainInflationOneSlot(r.delegation.Output.TokenBalance(), uint32(r.delegation.ID.Slot()))
 
 	oProduce, err := r.delegation.MakeDelegationRevokeOutput(ledger.MakeDelegationRevokeOutputParams{
 		TxTs:             txb.Timestamp(),

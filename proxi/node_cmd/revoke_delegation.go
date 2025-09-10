@@ -1,0 +1,102 @@
+package node_cmd
+
+import (
+	"time"
+
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/util"
+	"github.com/spf13/cobra"
+)
+
+func initRevokeDelegationCmd() *cobra.Command {
+	revokeCmd := &cobra.Command{
+		Use:     "revoke_delegation <delegation ID>",
+		Aliases: util.List("revoke"),
+		Short:   `send revoke delegation request to the target sequencer of the delegated output with the given ID`,
+		Args:    cobra.ExactArgs(1),
+		Run:     runRevokeDelegationCmd,
+	}
+
+	glb.AddFlagTarget(revokeCmd)
+
+	revokeCmd.InitDefaultHelpCmd()
+	return revokeCmd
+}
+
+func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
+	glb.InitLedgerFromNode()
+	walletData := glb.GetWalletData()
+
+	glb.Infof("wallet account is: %s", walletData.Account.String())
+
+	delegationID, err := base.ChainIDFromHexString(args[0])
+	glb.AssertNoError(err)
+
+	clnt := glb.GetClient()
+	out, _, _, err := clnt.GetChainOutput(delegationID)
+	glb.AssertNoError(err)
+	dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID)
+	glb.Assertf(ok, "not a delegation output:\n%s", out.String())
+	if glb.IsVerbose() {
+		glb.Infof("delegation output:\n%s", out.String())
+	}
+
+	glb.Assertf(ledger.EqualAccountables(dOut.MasterLock, walletData.Account), "this wallet is not a master controller of the delegation %s", delegationID.String())
+
+	targetID := dOut.Target.ChainID()
+	glb.Infof("delegation target ID: %s", targetID.String())
+
+	ts := ledger.TimeNow()
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(5)
+	}
+	glb.Assertf(!dOut.IsUnlockableByMaster(uint32(ts.Slot)), "delegation is unlockable by master, no need for revocation")
+	unfreeze := dOut.UnfreezeSlot()
+	glb.Assertf(unfreeze > uint32(ts.Slot)+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
+
+	compensation := dOut.RevocationCompensationEstimate(uint32(ts.Slot))
+	glb.Infof("estimated revocation compensation:\n%s", util.Th(compensation))
+	const minimumFee = 50
+
+	glb.Assertf(compensation >= minimumFee, "estimated revocation compensation is even less than minimum fee %d", minimumFee)
+
+	glb.Infof("querying wallet's outputs..")
+	walletInputs, lrbid, _, err := clnt.GetOutputsForAmount(walletData.Account, compensation)
+	glb.AssertNoError(err)
+	glb.PrintLRB(lrbid)
+
+	// create command with withdraw request to the target lock
+	cmd := txbuilder_seq.NewRevokeDelegationReqConstraint(walletData.PrivateKey, delegationID)
+	ensureConstraint := ledger.EnsureRevocationFromDelegationID(delegationID)
+	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.TimeNow()).
+		WithAmount(compensation).
+		WithTargetLock(ledger.ChainLockFromChainID(targetID)).
+		MustWithInputs(walletInputs...).
+		WithConstraint(cmd).
+		WithConstraint(&ensureConstraint)
+
+	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
+	glb.AssertNoError(err)
+
+	txStr := transaction.ParseBytesToString(txBytes, transaction.PickOutputFromListFunc(walletInputs))
+
+	glb.Verbosef("---- request transaction ------\n%s\n------------------", txStr)
+
+	glb.Infof("submitting the transaction...")
+
+	err = clnt.SubmitTransaction(txBytes)
+	glb.AssertNoError(err)
+
+	if glb.NoWait() {
+		return
+	}
+	txid, err := transaction.IDFromParsedTransactionBytes(txBytes)
+	glb.AssertNoError(err)
+
+	glb.TrackTxInclusion(txid, time.Second)
+}

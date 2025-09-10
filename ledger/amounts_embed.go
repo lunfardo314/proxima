@@ -50,7 +50,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 		par.RequireNoError(err)
 		stemLock, ok := stemOut.Output.StemLock()
 		par.Require(ok, "inconsistency: can't find stemLock")
-		expectedInflation = L().BranchInflationBonusDirect(stemLock.VRFProof)
+		expectedInflation = BranchInflationBonus(stemLock.VRFProof)
 
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong branch inflation bonus. Expected %s, got %s",
 			util.Th(expectedInflation), util.Th(inflation))
@@ -61,7 +61,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 			if o.Lock().Name() != DelegateLockName {
 				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
 			}
-			expectedInflation = L().ChainInflationOneSlot(uint64(inAmount), uint32(predSlot))
+			expectedInflation = ChainInflationOneSlot(uint64(inAmount), uint32(predSlot))
 		}
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong chain inflation value. Expected %s, got %s",
 			util.Th(expectedInflation), util.Th(inflation))
