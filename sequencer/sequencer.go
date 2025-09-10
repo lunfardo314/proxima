@@ -397,7 +397,9 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	seq.Tracef(TraceTagTarget, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
 
-	msTx, meta, err := seq.generateMilestoneForTarget(targetTs)
+	msTx, meta, txString, err := seq.generateMilestoneForTarget(targetTs)
+
+	seq.Log().Infof("========== generated tx:\n%s", txString)
 
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
@@ -653,14 +655,14 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 	return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("tippool 2"))
 }
 
-func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
+func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
 	deadline := ledger.ClockTime(targetTs)
 	nowis := time.Now()
 	seq.Tracef(TraceTag, "generateMilestoneForTarget: target: %s, deadline: %s, nowis: %s",
 		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 
 	if behind := deadline.Sub(nowis); behind < -2*ledger.Const.TickDuration {
-		return nil, nil, fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
+		return nil, nil, "", fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
 			targetTs.String(), ledger.ClockTime(targetTs).Format("15:04:05.999"), behind)
 	}
 	return task.Run(seq, targetTs, seq.slotData)

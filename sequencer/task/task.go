@@ -115,14 +115,7 @@ func allProposingStrategies() []*proposerStrategy {
 // Each proposer generates proposals and writes it to the channel of the taskData.
 // The best proposal is selected and returned. Function only returns transaction which is better
 // than others in the tippool for the current slot. Otherwise, returns nil
-func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
-	//startTask := time.Now()
-	//defer func(start time.Time) {
-	//	runTaskDurationGauge.Set(float64(time.Since(start)) / float64(time.Millisecond))
-	//}(startTask)
-	//
-	//registerGCMetricsOnce(env)
-
+func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
 	deadline := ledger.ClockTime(targetTs)
 	nowis := time.Now()
 	env.Tracef(TraceTagTask, "RunTask: target: %s, deadline: %s, nowis: %s",
@@ -136,8 +129,6 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 		slotData:     slotData,
 		Name:         fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
 	}
-
-	//trackTasks.RegisterPointer(task)
 
 	// start proposers
 	var cancel func()
@@ -168,10 +159,8 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	close(task.proposalChan)
 	<-readStop
 
-	//numProposalsTask.Set(float64(len(proposals)))
-
 	if len(proposals) == 0 {
-		return nil, nil, ErrNoProposals
+		return nil, nil, "", ErrNoProposals
 	}
 
 	proposalsSlice := maps.Values(proposals)
@@ -190,11 +179,11 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	// non-branch transaction on the same slot
 	ownLatest := env.OwnLatestMilestoneOutput().VID
 	if !ownLatest.IsBranchTransaction() && ownLatest.Slot() == targetTs.Slot && best.ledgerCoverage <= ownLatest.GetLedgerCoverage() {
-		return nil, nil, fmt.Errorf("%w (res: %s, best: %s, %s)",
+		return nil, nil, "", fmt.Errorf("%w (res: %s, best: %s, %s)",
 			ErrNotGoodEnough, util.Th(best.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
 	task.EvidenceBestProposalForTheTarget(best.strategyShortName)
-	return best.tx, best.txMetadata, nil
+	return best.tx, best.txMetadata, best.hrString, nil
 }
 
 func (p *finalProposal) String() string {

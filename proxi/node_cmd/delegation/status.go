@@ -14,7 +14,7 @@ func initDelegationStatusCmd() *cobra.Command {
 	statusCmd := &cobra.Command{
 		Use:   "status [<delegation ID>]",
 		Short: `displays status of a specific delegation or all delegation controlled by the wallet`,
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		Run:   runDelegationStatusCmd,
 	}
 	statusCmd.InitDefaultHelpCmd()

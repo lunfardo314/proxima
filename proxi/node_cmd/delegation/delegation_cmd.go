@@ -15,6 +15,7 @@ func Init() *cobra.Command {
 	delegationCmd.AddCommand(
 		initDelegationSubmitCmd(),
 		initRevokeDelegationCmd(),
+		initDelegationStatusCmd(),
 	)
 
 	delegationCmd.InitDefaultHelpCmd()
