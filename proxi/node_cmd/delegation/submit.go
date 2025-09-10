@@ -1,4 +1,4 @@
-package node_cmd
+package delegation
 
 import (
 	"fmt"
@@ -17,16 +17,16 @@ import (
 
 var (
 	targetChainIDStr string
-	maxFeezeEpochs   uint8
+	maxFreezeEpochs  uint8
 )
 
-func initDelegateCmd() *cobra.Command {
+func initDelegationSubmitCmd() *cobra.Command {
 	delegateCmd := &cobra.Command{
-		Use:     "delegate <amount> [-q <target sequencer id hex encoded. Defaults to own sequencer>]",
+		Use:     "submit <amount> [flags]",
 		Aliases: util.List("send"),
 		Short:   `delegates amount to target sequencer by creating delegation chain output`,
 		Args:    cobra.ExactArgs(1),
-		Run:     runDelegateCmd,
+		Run:     runDelegationSubmitCmd,
 	}
 
 	glb.AddFlagTarget(delegateCmd)
@@ -35,7 +35,7 @@ func initDelegateCmd() *cobra.Command {
 	err := viper.BindPFlag("seq", delegateCmd.PersistentFlags().Lookup("seq"))
 	glb.AssertNoError(err)
 
-	delegateCmd.PersistentFlags().Uint8VarP(&maxFeezeEpochs, "epochs", "e", 1, "max frozen epochs allowed by the delegator")
+	delegateCmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 1, "max frozen epochs allowed by the delegator")
 	err = viper.BindPFlag("epochs", delegateCmd.PersistentFlags().Lookup("epochs"))
 	glb.AssertNoError(err)
 
@@ -43,7 +43,7 @@ func initDelegateCmd() *cobra.Command {
 	return delegateCmd
 }
 
-func runDelegateCmd(_ *cobra.Command, args []string) {
+func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 
@@ -84,7 +84,7 @@ func runDelegateCmd(_ *cobra.Command, args []string) {
 	minimumAmount := ledger.MinimumInflatableAmount(uint32(ts.Slot) + 1000)
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
-	glb.Assertf(maxFeezeEpochs > 0 && maxFeezeEpochs <= byte(ledger.Const.MaxFrozenEpochs), "wrong value of max freeze epochs")
+	glb.Assertf(maxFreezeEpochs > 0 && maxFreezeEpochs <= byte(ledger.Const.MaxFrozenEpochs), "wrong value of max freeze epochs")
 
 	client := glb.GetClient()
 	walletOutputs, lrbid, _, err := client.GetOutputsForAmount(walletData.Account, amount+feeAmount)
@@ -119,7 +119,7 @@ func runDelegateCmd(_ *cobra.Command, args []string) {
 		Amount:             amount,
 		Master:             walletData.Account,
 		Target:             ledger.ChainLockFromChainID(targetSeqID),
-		MaxFreezeEpochs:    maxFeezeEpochs,
+		MaxFreezeEpochs:    maxFreezeEpochs,
 		MaxSeqProfitMargin: 100,
 		StartSlot:          ts.Slot,
 	})

@@ -1,4 +1,4 @@
-package node_cmd
+package delegation
 
 import (
 	"time"
@@ -15,8 +15,8 @@ import (
 
 func initRevokeDelegationCmd() *cobra.Command {
 	revokeCmd := &cobra.Command{
-		Use:     "revoke_delegation <delegation ID>",
-		Aliases: util.List("revoke"),
+		Use:     "revoke <delegation ID>",
+		Aliases: util.List("stop"),
 		Short:   `send revoke delegation request to the target sequencer of the delegated output with the given ID`,
 		Args:    cobra.ExactArgs(1),
 		Run:     runRevokeDelegationCmd,

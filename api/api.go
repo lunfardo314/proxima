@@ -25,6 +25,7 @@ const (
 	PathGetOutputsForAmount              = PrefixAPIV1 + "/get_outputs_for_amount"
 	PathGetNonChainBalance               = PrefixAPIV1 + "/get_nonchain_balance"
 	PathGetChainedOutputs                = PrefixAPIV1 + "/get_chain_outputs"
+	PathGetDelegationOutputs             = PrefixAPIV1 + "/get_delegation_outputs"
 	PathGetChainOutput                   = PrefixAPIV1 + "/get_chain_output"
 	PathGetOutput                        = PrefixAPIV1 + "/get_output"
 	PathSubmitTransaction                = PrefixAPIV1 + "/submit_tx"

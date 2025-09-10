@@ -1,0 +1,22 @@
+package delegation
+
+import (
+	"github.com/spf13/cobra"
+)
+
+func Init() *cobra.Command {
+	delegationCmd := &cobra.Command{
+		Use:     "delegation",
+		Aliases: []string{"dlg"},
+		Short:   `defines subcommands for the delegation function`,
+		Args:    cobra.NoArgs,
+	}
+
+	delegationCmd.AddCommand(
+		initDelegationSubmitCmd(),
+		initRevokeDelegationCmd(),
+	)
+
+	delegationCmd.InitDefaultHelpCmd()
+	return delegationCmd
+}

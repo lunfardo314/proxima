@@ -68,6 +68,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetNonChainBalance, srv.getNonChainBalance)
 	// GET request format: '/api/v1/get_chained_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
 	srv.addHandler(api.PathGetChainedOutputs, srv.getChainedOutputs)
+	// GET request format: '/api/v1/get_delegation_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	srv.addHandler(api.PathGetDelegationOutputs, srv.getDelegationOutputs)
 	// GET request format: '/api/v1/get_chain_output?chainid=<hex-encoded chain id>'
 	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)
 	// GET request format: '/api/v1/get_output?id=<hex-encoded output id>'
@@ -446,7 +448,17 @@ func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
+func (srv *server) getDelegationOutputs(w http.ResponseWriter, r *http.Request) {
+	srv._getChainedOutputsFiltered(w, r, func(_ base.OutputID, o *ledger.Output) bool {
+		return o.DelegationLock() != nil
+	})
+}
+
 func (srv *server) getChainedOutputs(w http.ResponseWriter, r *http.Request) {
+	srv._getChainedOutputsFiltered(w, r, func(_ base.OutputID, _ *ledger.Output) bool { return true })
+}
+
+func (srv *server) _getChainedOutputsFiltered(w http.ResponseWriter, r *http.Request, filter func(oid base.OutputID, o *ledger.Output) bool) {
 	api.SetHeader(w)
 
 	lst, ok := r.URL.Query()["accountable"]
@@ -469,7 +481,9 @@ func (srv *server) getChainedOutputs(w http.ResponseWriter, r *http.Request) {
 		resp.LRBID = lrbid.StringHex()
 
 		err1 = rdr.IterateChainsInAccount(accountable, func(oid base.OutputID, o *ledger.Output, _ base.ChainID) bool {
-			resp.Outputs[oid.StringHex()] = hex.EncodeToString(o.Bytes())
+			if filter(oid, o) {
+				resp.Outputs[oid.StringHex()] = hex.EncodeToString(o.Bytes())
+			}
 			return true
 		})
 		if err1 != nil {

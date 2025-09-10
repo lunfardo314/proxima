@@ -275,6 +275,26 @@ func (c *APIClient) GetNonChainBalance(addr ledger.Accountable) (uint64, *base.T
 // GetChainedOutputs fetches all outputs of the account. Optionally sorts them on the server
 func (c *APIClient) GetChainedOutputs(accountable ledger.Accountable) ([]*ledger.OutputWithChainID, *base.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetChainedOutputs+"?accountable=%s", accountable.String())
+	return c._getChainedOutputs(path)
+}
+
+// GetDelegationOutputs fetches all delegation outputs of the account. Optionally sorts them on the server
+func (c *APIClient) GetDelegationOutputs(accountable ledger.Accountable) ([]ledger.DelegationOutput, *base.TransactionID, error) {
+	path := fmt.Sprintf(api.PathGetDelegationOutputs+"?accountable=%s", accountable.String())
+	outs, lrbid, err := c._getChainedOutputs(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	ret := make([]ledger.DelegationOutput, 0, len(outs))
+	for _, out := range outs {
+		if o, ok := ledger.AsDelegationOutput(out.Output, out.ID); ok {
+			ret = append(ret, o)
+		}
+	}
+	return ret, lrbid, nil
+}
+
+func (c *APIClient) _getChainedOutputs(path string) ([]*ledger.OutputWithChainID, *base.TransactionID, error) {
 	body, err := c.getBody(path)
 	if err != nil {
 		return nil, nil, err

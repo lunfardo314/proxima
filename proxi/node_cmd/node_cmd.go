@@ -2,6 +2,7 @@ package node_cmd
 
 import (
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/delegation"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -37,7 +38,7 @@ func Init() *cobra.Command {
 	err = viper.BindPFlag("tag_along.alt", nodeCmd.PersistentFlags().Lookup("tag_along.alt"))
 	glb.AssertNoError(err)
 
-	nodeCmd.PersistentFlags().IntVarP(&glb.TargetInclusionDepth, "depth", "e", 2, "target inclusion depth")
+	nodeCmd.PersistentFlags().IntVarP(&glb.TargetInclusionDepth, "depth", "d", 1, "target inclusion depth")
 	err = viper.BindPFlag("depth", nodeCmd.PersistentFlags().Lookup("depth"))
 	glb.AssertNoError(err)
 
@@ -63,10 +64,9 @@ func Init() *cobra.Command {
 		initFaucetServerCmd(),
 		initGetFundsCmd(),
 		initLastSeqCmd(),
-		initDelegateCmd(),
+		delegation.Init(),
 		initAllChainsCmd(),
 		initNodeGetLedgerIDCmd(),
-		initRevokeDelegationCmd(),
 	)
 	return nodeCmd
 }
