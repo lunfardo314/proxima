@@ -12,6 +12,8 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+const TraceTagProposal = "proposal"
+
 // newProposal takes initial incremental attacher only with endorsements
 // and stem in it, and packages it with the transaction builder
 // It is ready to be filled up with tag-along inputs and delegations
@@ -60,6 +62,7 @@ type _inputCandidate struct {
 }
 
 func (p *proposal) insertTagAlongInputs() {
+	p.Tracef(TraceTagProposal, "insertTagAlongInputs")
 	if ledger.Const.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
 		return
 	}
@@ -72,20 +75,19 @@ func (p *proposal) insertTagAlongInputs() {
 		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.proposer.targetTs) {
 			return true
 		}
-		oid := wOut.DecodeID()
-		if p.IsConsumedInThePastPath(oid, p.Extending().VID, p.BaselineSugaredStateReader) {
-			return true
-		}
 		outs = append(outs, &_inputCandidate{
 			wOut: wOut,
-			o: &ledger.OutputWithID{
-				ID:     oid,
-				Output: wOut.Output(),
-			},
+			o:    wOut.OutputWithID(),
 		})
 		return true
 	})
 
+	tip := p.Extending().VID
+	outs = util.PurgeSlice(outs, func(el *_inputCandidate) bool {
+		// do not put into iteration to avoid deadlock
+		return !p.IsConsumedInThePastPath(el.o.ID, tip, p.BaselineSugaredStateReader)
+	})
+	// sort by fee desc and ts
 	sort.Slice(outs, func(i, j int) bool {
 		if outs[i].o.Output.TokenBalance() > outs[j].o.Output.TokenBalance() {
 			return true
@@ -125,6 +127,9 @@ func (p *proposal) insertTagAlongInputs() {
 }
 
 func (p *proposal) insertDelegations() {
+	p.Tracef(TraceTagProposal, "insertDelegations IN")
+	defer p.Tracef(TraceTagProposal, "insertDelegations OUT")
+
 	if ledger.Const.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
 		return
 	}
@@ -133,11 +138,9 @@ func (p *proposal) insertDelegations() {
 	}
 
 	outs := make([]*ledger.DelegationOutput, 0)
+	p.Tracef(TraceTagProposal, "insertDelegations start IterateDelegatedOutputs")
 	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
 		if p.Backlog().IsInBlacklist(o.ID) {
-			return true
-		}
-		if p.IsConsumedInThePastPath(o.ID, p.Extending().VID, p.BaselineSugaredStateReader) {
 			return true
 		}
 		if o.IsUnlockableByTargetForFreezing(uint32(p.proposer.targetTs.Slot)) {
@@ -145,6 +148,15 @@ func (p *proposal) insertDelegations() {
 		}
 		return true
 	})
+	// filter out those which are consumed in the past. Not very necessary for delegations
+	// warning: do not put IsConsumedInThePastPath into the iteration closure because causes deadlock
+	tip := p.Extending().VID
+	outs = util.PurgeSlice(outs, func(dOut *ledger.DelegationOutput) bool {
+		return !p.IsConsumedInThePastPath(dOut.ID, tip, p.BaselineSugaredStateReader)
+	})
+
+	p.Tracef(TraceTagProposal, "insertDelegations end IterateDelegatedOutputs")
+	// sort by frozen amount descending
 	sort.Slice(outs, func(i, j int) bool {
 		if outs[i].Output.TokenBalance() > outs[j].Output.TokenBalance() {
 			return true

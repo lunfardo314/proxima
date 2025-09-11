@@ -23,7 +23,7 @@ func initChainsCmd() *cobra.Command {
 		Run:   runChainsCmd,
 	}
 	chainsCmd.InitDefaultHelpCmd()
-	chainsCmd.PersistentFlags().BoolVarP(&delegationOnly, "delegation", "d", false, "list delegations only")
+	chainsCmd.PersistentFlags().BoolVarP(&delegationOnly, "delegation", "l", false, "list delegations only")
 	err := viper.BindPFlag("delegation", chainsCmd.PersistentFlags().Lookup("delegation"))
 	glb.AssertNoError(err)
 

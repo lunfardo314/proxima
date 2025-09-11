@@ -2,6 +2,7 @@ package delegation
 
 import (
 	"os"
+	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -36,6 +37,21 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(ok, "unable to retrieve delegation output with ID %s", out.ID.String())
 		glb.PrintLRB(&lrbid)
 		glb.Infof("%s", dOut.LinesHR("    ").String())
+
+		nowslot := uint32(ledger.TimeNow().Slot)
+		glb.Infof("current slot is %d", nowslot)
+		if dOut.IsInFrozenSlot(nowslot) {
+			unfreeze := dOut.UnfreezeSlot()
+			glb.Infof("delegation is FROZEN in the current slot %d until slot %d", nowslot, unfreeze)
+			unfreezeTs := base.NewLedgerTime(base.Slot(unfreeze), 0)
+			unfreezeTime := ledger.ClockTime(unfreezeTs)
+			left := time.Until(unfreezeTime)
+			unfreezeTimeFmt := unfreezeTime.Format("2006-01-02 15:04:05")
+			leftHours := left / time.Hour
+			leftMinutes := (left % (60 * time.Minute)) / time.Minute
+			glb.Infof("safe revocation window starts in slot %d (at %s, %d hours and %d minutes from now)",
+				unfreeze, unfreezeTimeFmt, leftHours, leftMinutes)
+		}
 		return
 	}
 
