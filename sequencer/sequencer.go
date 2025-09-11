@@ -333,8 +333,14 @@ func (seq *Sequencer) SequencerName() string {
 	return seq.config.SequencerName
 }
 
+// override global logger
+
 func (seq *Sequencer) Log() *zap.SugaredLogger {
 	return seq.log
+}
+
+func (seq *Sequencer) Tracef(tag string, format string, args ...any) {
+	seq.TracefLog(seq.log, tag, format, args...)
 }
 
 func (seq *Sequencer) sequencerLoop() {

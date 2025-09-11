@@ -296,6 +296,10 @@ func (l *Global) StopTracingTag(tag string) {
 }
 
 func (l *Global) Tracef(tag string, format string, args ...any) {
+	l.TracefLog(l.SugaredLogger, tag, format, args...)
+}
+
+func (l *Global) TracefLog(log *zap.SugaredLogger, tag string, format string, args ...any) {
 	if !l.enabledTrace.Load() {
 		return
 	}
@@ -305,7 +309,7 @@ func (l *Global) Tracef(tag string, format string, args ...any) {
 
 	for _, t := range strings.Split(tag, ",") {
 		if l.traceTags.Contains(t) {
-			l.SugaredLogger.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, lazyargs.Eval(args...)...))
+			log.Infof("TRACE(%s) %s", t, fmt.Sprintf(format, lazyargs.Eval(args...)...))
 			return
 		}
 	}
