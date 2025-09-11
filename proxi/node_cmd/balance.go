@@ -87,14 +87,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, target ledger.Accountable
 	totalDelegated := uint64(0)
 	for _, id := range ids {
 		d := delegations[id]
-
-		slots := ledger.TimeNow().Slot - d.sinceSlot
-		perSlot := d.inflation / uint64(slots)
-		annualExtrapolationEarnings := uint64(ledger.Const.SlotsPerYear()) * perSlot
-		annualRate := 100 * float64(annualExtrapolationEarnings) / float64(d.amount-d.inflation)
-
-		glb.Infof("     %s   %20s (+%s, %.1f%% annual) since/last active slot: %d/%d",
-			id.String(), util.Th(d.amount), util.Th(d.inflation), annualRate, d.sinceSlot, d.lastActive)
+		glb.Infof("     %s   %20s (+%s)", id.String(), util.Th(d.amount), util.Th(d.inflation))
 		totalDelegated += d.amount
 	}
 	glb.Infof("----------------\nTOTAL DELEGATED AMOUNT: %s", util.Th(totalDelegated))

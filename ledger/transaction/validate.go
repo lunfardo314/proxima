@@ -3,6 +3,7 @@ package transaction
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"sync/atomic"
 
 	"github.com/lunfardo314/easyfl"
@@ -69,9 +70,9 @@ func (ctx *TxContext) _validate() error {
 	if err != nil {
 		return err
 	}
-	if ctx.totalConsumedAmounts[0]+ctx.totalProducedAmounts[1] != ctx.totalProducedAmounts[0] {
-		return fmt.Errorf("unbalanced amount between inputs and outputs: inputs %s, outputs %s, inflation: %s",
-			util.Th(ctx.totalConsumedAmounts[0]), util.Th(ctx.totalProducedAmounts[0]), util.Th(ctx.totalProducedAmounts[1]))
+	if ctx.totalConsumedTokenBalance+ctx.totalProducedAmounts[1] != ctx.totalProducedAmounts[0] {
+		return fmt.Errorf("unbalanced amount between inputs and outputs: cnsumed balance %s, produced balance %s, produced inflation: %s",
+			util.Th(ctx.totalConsumedTokenBalance), util.Th(ctx.totalProducedAmounts[0]), util.Th(ctx.totalProducedAmounts[1]))
 	}
 	return nil
 }
@@ -100,7 +101,7 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 		return fmt.Errorf("validateOutputs: %w", err)
 	}
 	producedSide := ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance]
-	consumedSide := ctx.totalConsumedAmounts[ledger.AmountIndexTokenBalance]
+	consumedSide := int64(ctx.totalConsumedTokenBalance)
 	inflation := ctx.totalProducedAmounts[ledger.AmountIndexInflation]
 	if producedSide != consumedSide+inflation {
 		return fmt.Errorf("mismatch between token amounts: consumed(%s) + inflation(%s) != produced(%s), diff c+i-p = %s",
@@ -157,14 +158,13 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 	return nil
 }
 
-// TODO no need to sum inflation and frozen coverage in the consumed side
-
 func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) error {
-	var overflow bool
 	for i, o := range outs {
-		if overflow = o.Amounts().AddToVector(&ctx.totalConsumedAmounts); overflow {
-			return fmt.Errorf("arithmetic overflow in consumed output #%d", i)
+		bal := o.TokenBalance()
+		if ctx.totalConsumedTokenBalance > int64(math.MaxInt64)-int64(bal) {
+			return fmt.Errorf("arithmetic overflow at consumed output #%d", i)
 		}
+		ctx.totalConsumedTokenBalance += int64(bal)
 	}
 	return nil
 }

@@ -30,7 +30,7 @@ func initAllChainsCmd() *cobra.Command {
 	err := viper.BindPFlag("seq", allChainsCmd.PersistentFlags().Lookup("seq"))
 	glb.AssertNoError(err)
 
-	allChainsCmd.PersistentFlags().BoolVarP(&showDelegationsOnly, "delegations", "d", false, "show delegation chains only")
+	allChainsCmd.PersistentFlags().BoolVarP(&showDelegationsOnly, "delegations", "l", false, "show delegation chains only")
 	err = viper.BindPFlag("delegations", allChainsCmd.PersistentFlags().Lookup("delegations"))
 	glb.AssertNoError(err)
 

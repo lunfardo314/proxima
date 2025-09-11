@@ -178,7 +178,11 @@ func (o *Output) Amounts() Amounts {
 }
 
 func (o *Output) TokenBalance() uint64 {
-	return o.Amounts().TokenBalance()
+	bin, err := o.At(int(ConstraintIndexAmounts))
+	util.AssertNoError(err)
+	ret, err := TokenBalanceFromAmountsBytes(bin)
+	util.AssertNoError(err)
+	return uint64(ret)
 }
 
 func (o *Output) FrozenCoverage(i byte) int64 {

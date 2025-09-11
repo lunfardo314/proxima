@@ -18,10 +18,10 @@ type TxContext struct {
 	ctxTree     *tuples.Tree
 	traceOption int
 	// calculated and cached values
-	sender               ledger.AddressED25519
-	totalProducedAmounts [15]int64
-	totalConsumedAmounts [15]int64
-	dataContext          *ledger.EvalContext // EasyFL constraint validation context
+	sender                    ledger.AddressED25519
+	totalProducedAmounts      [15]int64
+	totalConsumedTokenBalance int64
+	dataContext               *ledger.EvalContext // EasyFL constraint validation context
 }
 
 var Path = tuples.Path
@@ -166,9 +166,17 @@ func (ctx *TxContext) SequencerAndStemOutputIndices() (byte, byte) {
 	return ret[0], ret[1]
 }
 
-func (ctx *TxContext) ConsumedTotal(i byte) int64 {
-	util.Assertf(int(i) < len(ctx.totalConsumedAmounts), "ConsumedTotal: wrong index %d", i)
-	return ctx.totalConsumedAmounts[i]
+func (ctx *TxContext) ConsumedTotal(i byte) (ret int64) {
+	if i == 0 {
+		return ctx.totalConsumedTokenBalance
+	}
+	util.Assertf(int(i) < 15, "ConsumedTotal: wrong index %d", i)
+
+	ctx.ForEachConsumedOutput(func(idx byte, oid *base.OutputID, out *ledger.Output) bool {
+		ret += out.Amounts().Amount(i)
+		return true
+	})
+	return
 }
 
 func (ctx *TxContext) ProducedTotal(i byte) int64 {
@@ -186,17 +194,6 @@ func (ctx *TxContext) TotalAmountStored() uint64 {
 
 func (ctx *TxContext) TotalInflation() uint64 {
 	return uint64(ctx.totalProducedAmounts[ledger.AmountIndexInflation])
-}
-
-// TotalConsumedAmounts returns consumed amount totals up to the last non-zero
-func (ctx *TxContext) TotalConsumedAmounts() []int64 {
-	lastNonZero := -1
-	for i, a := range ctx.totalConsumedAmounts {
-		if a != 0 {
-			lastNonZero = i
-		}
-	}
-	return ctx.totalConsumedAmounts[:lastNonZero+1]
 }
 
 // TotalProducedAmounts returns produced amount totals up to the last non-zero

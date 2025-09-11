@@ -155,6 +155,27 @@ func AmountsFromBytes(data []byte) (Amounts, error) {
 	return ret, nil
 }
 
+func TokenBalanceFromAmountsBytes(data []byte) (int64, error) {
+	sym, _, args, err := L().ParseBytecodeOneLevel(data)
+	if err != nil {
+		return 0, err
+	}
+	if sym != AmountsConstraintName {
+		return 0, fmt.Errorf("TokenBalanceFromAmountsBytes: not 'amounts' constraint")
+	}
+	if len(args) == 0 {
+		return 0, nil
+	}
+	ret, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
+	if err != nil {
+		return 0, fmt.Errorf("TokenBalanceFromAmountsBytes: %w", err)
+	}
+	if int64(ret) < 0 {
+		return 0, fmt.Errorf("TokenBalanceFromAmountsBytes: negative amount")
+	}
+	return int64(ret), nil
+}
+
 func registerAmountsConstraint(lib *Library) {
 	lib.mustRegisterVarargConstraint(AmountsConstraintName, func(data []byte) (Constraint, error) {
 		return AmountsFromBytes(data)
