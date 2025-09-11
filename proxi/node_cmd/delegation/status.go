@@ -32,17 +32,17 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 		delegationID, err := base.ChainIDFromHexString(args[0])
 		glb.AssertNoError(err)
 		out, _, lrbid, err := clnt.GetChainOutput(delegationID)
-		glb.AssertNoError(err)
+		glb.Assertf(err == nil, "cannot to retrieve delegation %s: %v", delegationID.String(), err)
 		dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID)
 		glb.Assertf(ok, "unable to retrieve delegation output with ID %s", out.ID.String())
 		glb.PrintLRB(&lrbid)
-		glb.Infof("%s", dOut.LinesHR("    ").String())
+		glb.Verbosef("%s", dOut.LinesHR("    ").String())
 
 		nowslot := uint32(ledger.TimeNow().Slot)
-		glb.Infof("current slot is %d", nowslot)
 		if dOut.IsInFrozenSlot(nowslot) {
 			unfreeze := dOut.UnfreezeSlot()
-			glb.Infof("delegation is FROZEN in the current slot %d until slot %d", nowslot, unfreeze)
+			glb.Infof("delegation %s is FROZEN in the current slot %d until slot %d", delegationID.StringShort(), nowslot, unfreeze)
+			glb.Infof("frozen balance is %s", util.Th(dOut.Output.TokenBalance()))
 			unfreezeTs := base.NewLedgerTime(base.Slot(unfreeze), 0)
 			unfreezeTime := ledger.ClockTime(unfreezeTs)
 			left := time.Until(unfreezeTime)
@@ -51,6 +51,9 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 			leftMinutes := (left % (60 * time.Minute)) / time.Minute
 			glb.Infof("safe revocation window starts in slot %d (at %s, %d hours and %d minutes from now)",
 				unfreeze, unfreezeTimeFmt, leftHours, leftMinutes)
+		} else if dOut.IsMarkedRevoked() {
+			glb.Infof("delegation %s is REVOKED", delegationID.StringShort())
+			glb.Infof("balance is %s", util.Th(dOut.Output.TokenBalance()))
 		}
 		return
 	}

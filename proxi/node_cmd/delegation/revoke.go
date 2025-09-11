@@ -60,7 +60,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(unfreeze > uint32(ts.Slot)+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
 
 	compensation := dOut.RevocationCompensationEstimate(uint32(ts.Slot))
-	glb.Infof("estimated revocation compensation:\n%s", util.Th(compensation))
+	glb.Infof("estimated revocation compensation (tag-along fee of the 'revoke' request): %s", util.Th(compensation))
 	const minimumFee = 50
 
 	glb.Assertf(compensation >= minimumFee, "estimated revocation compensation is even less than minimum fee %d", minimumFee)

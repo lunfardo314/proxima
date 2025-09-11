@@ -47,7 +47,8 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 		}
 	}
 
-	txb.PutSignatureUnlock(consumedIndex, ledger.DelegationUnlockedByMaster)
+	// two additional bytes 0,x00,0xff are added to the unlock parameters to satisfy 'master unlock' condition of the delegation lock
+	txb.PutSignatureUnlock(consumedIndex, 0, ledger.DelegationUnlockedByMaster)
 	txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.FinishChainUnlockParams)
 
 	// finalize the transaction
