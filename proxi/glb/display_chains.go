@@ -51,7 +51,8 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 				totalSlots := unfreeze - uint32(o.OriginSlot) + 1
 				perYear := inflation * uint64(ledger.Const.SlotsPerYear()) / uint64(totalSlots)
 				rate := (float64(perYear) * 100) / float64(o.OriginAmount)
-				ln.Add("     estimated annualized inflation rate: %.2f%%", rate)
+				lessShareForSafeRevocation := 1 - float64(ledger.Const.SafeRevocationSlots)/float64(uint32(o.MaxFrozenEpochs)*ledger.Const.DelegationEpochSlots+ledger.Const.SafeRevocationSlots)
+				ln.Add("     estimated annualized inflation rate: %.2f%%", rate*lessShareForSafeRevocation)
 			}
 		}
 	}
