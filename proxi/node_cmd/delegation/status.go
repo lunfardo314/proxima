@@ -51,7 +51,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 			leftMinutes := (left % (60 * time.Minute)) / time.Minute
 			glb.Infof("safe revocation window starts in slot %d (at %s, %d hours and %d minutes from now)",
 				unfreeze, unfreezeTimeFmt, leftHours, leftMinutes)
-		} else if dOut.IsMarkedRevoked() {
+		} else if dOut.IsMarkedOnHold() {
 			glb.Infof("delegation %s is REVOKED", delegationID.StringShort())
 			glb.Infof("balance is %s", util.Th(dOut.Output.TokenBalance()))
 		}

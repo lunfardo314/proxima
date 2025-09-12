@@ -21,6 +21,7 @@ func Init() *cobra.Command {
 		initParseTx(),
 		initParseBytecode(),
 		initDecodeMsgCmd(),
+		initInflationCmd(),
 	)
 	genCmd.InitDefaultHelpCmd()
 	return genCmd

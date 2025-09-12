@@ -88,7 +88,7 @@ func (o *DelegationOutput) IsMarkedFrozen() bool {
 	return o.State == DelegateLockStateFrozen
 }
 
-func (o *DelegationOutput) IsMarkedRevoked() bool {
+func (o *DelegationOutput) IsMarkedOnHold() bool {
 	return o.State == DelegateLockStateOnHold
 }
 
@@ -97,19 +97,26 @@ func (o *DelegationOutput) IsInFrozenSlot(slot uint32) bool {
 	if slot < uint32(o.ID.Slot()) {
 		return false
 	}
-	if o.IsMarkedRevoked() || !o.IsMarkedFrozen() {
+	if o.IsMarkedOnHold() || !o.IsMarkedFrozen() {
 		return false
 	}
 	lastSlot := Const.LastSlotInEpochFromSource(o.Target.ChainID(), o.LastFrozenEpoch)
 	return slot <= lastSlot
 }
 
-func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
-	if o.IsMarkedRevoked() || !o.IsMarkedFrozen() {
-		return false
+func (o *DelegationOutput) SafeRevocationWindow() (from, to uint32, applicable bool) {
+	if o.IsMarkedOnHold() || !o.IsMarkedFrozen() {
+		return 0, 0, false
 	}
-	lastSlot := Const.LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch)
-	return lastSlot < txSlot && txSlot <= lastSlot+Const.SafeRevocationSlots
+	fromSlot := Const.LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch)
+	return fromSlot + 1, fromSlot + Const.SafeRevocationSlots - 1, true
+}
+
+func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
+	if from, to, applicable := o.SafeRevocationWindow(); applicable {
+		return from <= txSlot && txSlot <= to
+	}
+	return false
 }
 
 // IsUnlockableByTarget true if it is not revoked and not in the safe revocation window
@@ -117,7 +124,7 @@ func (o *DelegationOutput) IsUnlockableByTarget(txSlot uint32) bool {
 	if uint32(o.ID.Timestamp().Slot) >= txSlot {
 		return false
 	}
-	if o.IsMarkedRevoked() {
+	if o.IsMarkedOnHold() {
 		return false
 	}
 	if !o.IsMarkedFrozen() {
@@ -134,7 +141,7 @@ func (o *DelegationOutput) IsUnlockableByTargetWithReason(txSlot uint32) (valid 
 	if uint32(o.ID.Timestamp().Slot) >= txSlot {
 		return true, fmt.Errorf("delegation output %s slot must be 1 or more slots before transaction in slot %d", o.ID.StringShort(), txSlot)
 	}
-	if o.IsMarkedRevoked() {
+	if o.IsMarkedOnHold() {
 		return false, fmt.Errorf("delegation output already revoked")
 	}
 	if !o.IsMarkedFrozen() {
@@ -383,7 +390,7 @@ func (o *DelegationOutput) _lines(insert func(ln *lines.Lines), prefix ...string
 		ret.Add("   frozen epochs: %d - %d (total: %d)", from, to, total)
 		from, to, total = o.FrozenSlots(o.Timestamp())
 		ret.Add("   frozen slots: %d - %d (total: %d)", from, to, total)
-	} else if o.IsMarkedRevoked() {
+	} else if o.IsMarkedOnHold() {
 		ret.Add("Status: revoked")
 	} else {
 		ret.Add("Status: undef")

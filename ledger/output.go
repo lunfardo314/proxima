@@ -427,7 +427,7 @@ func (o *Output) DelegationLock() *DelegateLock {
 	return lock.(*DelegateLock)
 }
 
-func (o *Output) EnsureRevocationConstraint() (*EnsureStopDelegation, byte) {
+func (o *Output) EnsureStopDelegationConstraint() (*EnsureStopDelegation, byte) {
 	var ret *EnsureStopDelegation
 	var err error
 	found := byte(0xff)

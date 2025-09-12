@@ -13,10 +13,10 @@ import (
 )
 
 type AskStopDelegationRequest struct {
-	o                ledger.OutputWithID
-	delegationID     base.ChainID
-	delegation       ledger.DelegationOutput
-	ensureRevocation *ledger.EnsureStopDelegation
+	o                    ledger.OutputWithID
+	delegationID         base.ChainID
+	delegation           ledger.DelegationOutput
+	ensureStopDelegation *ledger.EnsureStopDelegation
 }
 
 const (
@@ -109,13 +109,13 @@ func _parseAskStopDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg
 		// -> sequencer do not want loss -> ignore the revocation request
 		return
 	}
-	// check if 'ensure revocation' constraint exists, if yes, sequencer will need to unlock it
-	if ens, idx := o.Output.EnsureRevocationConstraint(); idx != 0xff {
+	// check if 'ensureStopDelegation' constraint exists, if yes, sequencer will need to unlock it
+	if ens, idx := o.Output.EnsureStopDelegationConstraint(); idx != 0xff {
 		if idx != 3 || ens.ChainID != delegationID {
 			// wrong structure. Ensure revocation constraint expected at index 3
 			return
 		}
-		ret.ensureRevocation = ens
+		ret.ensureStopDelegation = ens
 	}
 	return ret, true, nil
 }
@@ -163,7 +163,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2), ledger.DelegationUnlockedByTarget)
 	txb.PutUnlockParams(predIdx, 2, ledger.NewChainUnlockParams(revocationOutputIndex, 2))
 
-	if r.ensureRevocation != nil {
+	if r.ensureStopDelegation != nil {
 		// unlock ensure revocation constraint
 		txb.PutUnlockParams(tagAlongOutputIdx, 3, []byte{revocationOutputIndex})
 	}
@@ -179,5 +179,5 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 }
 
 func (r *AskStopDelegationRequest) String() string {
-	return "AskStopDelegationRequest: id = " + r.delegationID.StringShort()
+	return "AskStopDelegationRequest: delegation ID = " + r.delegationID.StringShort()
 }

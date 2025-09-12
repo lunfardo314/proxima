@@ -26,6 +26,10 @@ func TimeNow() base.LedgerTime {
 	return TimeFromClockTime(time.Now())
 }
 
+func SlotNow() uint32 {
+	return uint32(TimeNow().Slot)
+}
+
 // ValidTransactionPace return true if input and target non-sequencer tx timestamps make a valid pace
 func ValidTransactionPace(t1, t2 base.LedgerTime) bool {
 	return base.DiffTicks(t2, t1) >= int64(Const.TransactionPace)

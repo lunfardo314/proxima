@@ -847,17 +847,17 @@ func TestWithUTXODB(t *testing.T) {
 	t.Logf("-------------%s -----------", ts.String())
 	td.u.SugaredStateReader().IterateDelegatedOutputs(td.seqID, func(o *ledger.DelegationOutput) bool {
 		numTotalDelegations++
-		if o.IsMarkedRevoked() {
+		if o.IsMarkedOnHold() {
 			numRevoked++
 		}
 		if o.IsInSafeRevocationWindow(uint32(ts.Slot)) {
 			numSafeRevocation++
 		}
 		t.Logf("   %s  %s  revokeRequests: %v,  safe: %v,  marked frozen: %v,  feezable: %v",
-			o.ChainID.StringShort(), o.ID.StringShort(), o.IsMarkedRevoked(),
+			o.ChainID.StringShort(), o.ID.StringShort(), o.IsMarkedOnHold(),
 			o.IsInSafeRevocationWindow(uint32(ts.Slot)), o.IsMarkedFrozen(), o.IsUnlockableByTargetForFreezing(uint32(ts.Slot)))
 
-		if o.IsMarkedRevoked() {
+		if o.IsMarkedOnHold() {
 			require.True(t, td.revokeRequests.Contains(o.ChainID))
 		}
 		return true
