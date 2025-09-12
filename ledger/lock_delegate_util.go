@@ -89,7 +89,7 @@ func (o *DelegationOutput) IsMarkedFrozen() bool {
 }
 
 func (o *DelegationOutput) IsMarkedRevoked() bool {
-	return o.State == DelegateLockStateRevoked
+	return o.State == DelegateLockStateOnHold
 }
 
 // IsInFrozenSlot true means only target can consume it in the slot
@@ -351,7 +351,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{
 			LastFrozenEpoch: 0,
-			State:           DelegateLockStateRevoked,
+			State:           DelegateLockStateOnHold,
 		}.Bytes())
 	}), nil
 }

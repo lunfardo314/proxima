@@ -41,7 +41,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 		nowslot := uint32(ledger.TimeNow().Slot)
 		if dOut.IsInFrozenSlot(nowslot) {
 			unfreeze := dOut.UnfreezeSlot()
-			glb.Infof("delegation %s is FROZEN in the current slot %d until slot %d", delegationID.StringShort(), nowslot, unfreeze)
+			glb.Infof("delegation %s is FROZEN in the current slot %d until slot %d", delegationID.String(), nowslot, unfreeze)
 			glb.Infof("frozen balance is %s", util.Th(dOut.Output.TokenBalance()))
 			unfreezeTs := base.NewLedgerTime(base.Slot(unfreeze), 0)
 			unfreezeTime := ledger.ClockTime(unfreezeTs)

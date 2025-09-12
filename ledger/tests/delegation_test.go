@@ -84,7 +84,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 	delegationLock := ledger.NewDelegateLock(td.target, td.masterAddr, maxFrozenEpochs, inflationShare)
 	s := ledger.DelegateLockStateUndef
 	if revoked {
-		s = ledger.DelegateLockStateRevoked
+		s = ledger.DelegateLockStateOnHold
 	}
 	txBytes, err = txbuilder.MakeSimpleTransferTransaction(
 		par.WithAmount(delegatedTokens).
@@ -114,7 +114,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 }
 
 func TestDelegationLock2Init(t *testing.T) {
-	require.EqualValues(t, 36, ledger.Const.SafeRevocationSlots)
+	require.EqualValues(t, 60, ledger.Const.SafeRevocationSlots)
 
 	td := &testData{T: t}
 	var err error
@@ -585,7 +585,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		// fail to unlock by target revoked delegation
 		ts = td.timestampSlotsForward(20)
 		err = td.revokeDelegation(ts, false, false)
-		require.NoError(t, util.MustErrorWith(err, "revoked delegation cannot be unlocked by the target"))
+		require.NoError(t, util.MustErrorWith(err, "on hold delegation cannot be unlocked by the target"))
 
 		// succeed to kill the delegation chain by master
 		ts = td.timestampSlotsForward(1000)
@@ -625,7 +625,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		// fail to unlock by target revoked delegation
 		ts = td.timestampSlotsForward(20)
 		err = td.revokeDelegation(ts, true, false)
-		require.NoError(t, util.MustErrorWith(err, "revoked delegation cannot be unlocked by the target"))
+		require.NoError(t, util.MustErrorWith(err, "on hold delegation cannot be unlocked by the target"))
 
 		// succeed to kill the delegation chain by master
 		ts = td.timestampSlotsForward(1000)

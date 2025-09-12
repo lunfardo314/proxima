@@ -185,7 +185,7 @@ func (p *proposal) insertDelegations() {
 					o.ChainID.String(), o.ID.StringShort(), err)
 			}
 		} else {
-			p.proposer.Log().Infof("FREEZE delegation has been frozen, id = %s, oid = %s",
+			p.proposer.Log().Infof("FREEZE delegation %s, oid = %s",
 				o.ChainID.String(), o.ID.StringShort())
 		}
 

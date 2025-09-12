@@ -22,7 +22,7 @@ type (
 		State           byte
 	}
 
-	EnsureRevocation struct {
+	EnsureStopDelegation struct {
 		base.ChainID
 	}
 )
@@ -36,13 +36,13 @@ const (
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"
 	DelegateLockStateTemplateHR = DelegateLockStateName + "(frozenUntilEpoch=%d, state=%s)"
 
-	DelegateLockStateUndef   = byte(0)
-	DelegateLockStateFrozen  = byte(1)
-	DelegateLockStateRevoked = byte(2)
+	DelegateLockStateUndef  = byte(0)
+	DelegateLockStateFrozen = byte(1)
+	DelegateLockStateOnHold = byte(2)
 
-	EnsureRevocationName       = "ensureRevocation"
-	EnsureRevocationTemplate   = EnsureRevocationName + "(0x%s)"
-	EnsureRevocationTemplateHR = EnsureRevocationName + "(%s)"
+	EnsureStopDelegationName       = "ensureStopDelegation"
+	EnsureStopDelegationTemplate   = EnsureStopDelegationName + "(0x%s)"
+	EnsureStopDelegationTemplateHR = EnsureStopDelegationName + "(%s)"
 
 	// 3rd unlock byte in the delegation output unlock parameters
 
@@ -145,9 +145,9 @@ func registerDelegateLock(lib *Library) {
 	lib.mustRegisterConstraint(DelegateLockStateName, 2, func(data []byte) (Constraint, error) {
 		return DelegateLockStateFromBytes(data)
 	}, initTestDelegate2LockState)
-	lib.mustRegisterConstraint(EnsureRevocationName, 1, func(data []byte) (Constraint, error) {
-		return EnsureRevocationFromBytes(data)
-	}, initTestEnsureRevocation)
+	lib.mustRegisterConstraint(EnsureStopDelegationName, 1, func(data []byte) (Constraint, error) {
+		return EnsureStopDelegationFromBytes(data)
+	}, initTestEnsureStopDelegation)
 }
 
 func initTestDelegateConstraint() {
@@ -209,8 +209,8 @@ func (d DelegateLockState) String() string {
 	switch d.State {
 	case DelegateLockStateFrozen:
 		s = "frozen"
-	case DelegateLockStateRevoked:
-		s = "revoked"
+	case DelegateLockStateOnHold:
+		s = "on hold"
 	}
 	return fmt.Sprintf(DelegateLockStateTemplateHR, d.LastFrozenEpoch, s)
 }
@@ -235,51 +235,51 @@ func initTestDelegate2LockState() {
 
 //--------------------------- delegationLockState
 
-func EnsureRevocationFromDelegationID(chainID base.ChainID) EnsureRevocation {
-	return EnsureRevocation{chainID}
+func EnsureStopDelegationFromDelegationID(chainID base.ChainID) EnsureStopDelegation {
+	return EnsureStopDelegation{chainID}
 }
 
-func EnsureRevocationFromBytes(data []byte) (*EnsureRevocation, error) {
+func EnsureStopDelegationFromBytes(data []byte) (*EnsureStopDelegation, error) {
 	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
 	if err != nil {
-		return nil, fmt.Errorf("EnsureRevocationFromBytes: %w", err)
+		return nil, fmt.Errorf("EnsureStopDelegationFromBytes: %w", err)
 	}
-	if sym != EnsureRevocationName {
-		return nil, fmt.Errorf("EnsureRevocationFromBytes: not a EnsureRevocation")
+	if sym != EnsureStopDelegationName {
+		return nil, fmt.Errorf("EnsureStopDelegationFromBytes: not a EnsureStopDelegation")
 	}
 	delegationID, err := base.ChainIDFromBytes(easyfl.StripDataPrefix(args[0]))
 	if err != nil {
 		return nil, err
 	}
-	return &EnsureRevocation{delegationID}, nil
+	return &EnsureStopDelegation{delegationID}, nil
 }
 
-func (d *EnsureRevocation) Source() string {
-	return fmt.Sprintf(EnsureRevocationTemplate, d.ChainID.StringHex())
+func (d *EnsureStopDelegation) Source() string {
+	return fmt.Sprintf(EnsureStopDelegationTemplate, d.ChainID.StringHex())
 }
 
-func (d *EnsureRevocation) String() string {
-	return fmt.Sprintf(EnsureRevocationTemplateHR, d.ChainID.String())
+func (d *EnsureStopDelegation) String() string {
+	return fmt.Sprintf(EnsureStopDelegationTemplateHR, d.ChainID.String())
 }
 
-func (d *EnsureRevocation) Bytes() []byte {
+func (d *EnsureStopDelegation) Bytes() []byte {
 	return mustBinFromSource(d.Source())
 }
 
-func (d *EnsureRevocation) Name() string {
-	return EnsureRevocationName
+func (d *EnsureStopDelegation) Name() string {
+	return EnsureStopDelegationName
 }
 
-func initTestEnsureRevocation() {
-	e := EnsureRevocation{base.RandomChainID()}
+func initTestEnsureStopDelegation() {
+	e := EnsureStopDelegation{base.RandomChainID()}
 
-	eBack, err := EnsureRevocationFromBytes(e.Bytes())
+	eBack, err := EnsureStopDelegationFromBytes(e.Bytes())
 	util.AssertNoError(err)
-	util.Assertf(eBack.ChainID == e.ChainID, "EnsureRevocation: inconsistency")
+	util.Assertf(eBack.ChainID == e.ChainID, "EnsureStopDelegation: inconsistency")
 }
 
 const delegateLock2Source = `
-func constDelegationSafeRevocationSlots  : 36  // 6 min
+func constDelegationSafeRevocationSlots  : 60  // 10 min
 func constDelegationEpochSlots : u32/530  // 1.5 hours
 func constDelegationMaxFrozenEpochs : 8   // 12 hours
 
@@ -313,7 +313,7 @@ func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPred
 // $1 state. 1 byte-long. 
 //  - 0x00 mean 'undef'
 //  - 0x01 means 'frozen'
-//  - 0x02 means 'revoked'. 
+//  - 0x02 means 'on hold (stopped)'. 
 //  - The rest values are invalid 
 // 
 // mutable part of the delegation output
@@ -327,11 +327,11 @@ or(
 
 // $0 delegation chain ID
 // Checks unlock conditions. Conditions are satisfied when unlock data is one byte with the number of
-// produced output that is delegation output with the given delegation chain ID and it is revoked
+// produced output that is delegation output with the given delegation chain ID and it is 'on hold''
 // 
 // This constraint script is attached to the sequencer command. 
 // Its purpose is to enforce real revocation of the delegation by the sequencer  
-func ensureRevocation :
+func ensureStopDelegation :
 or(
    selfIsProducedOutput,
    and(
@@ -341,14 +341,14 @@ or(
 			parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,2)),#chain,0), 
 			$0
          ),
-         !!!ensureRevocation:_revoked_produced_delegationID_is_wrong
+         !!!ensureStopDelegation:_delegationID_is_wrong
       ),
       require(
          equal(
 		    parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)),#delegateLockState,1),
-            2 // 2 means revoked
+            2 // 2 means on hold
         ),
-        !!!ensureRevocation:_delegation_produced_state_is_not_revoked
+        !!!ensureStopDelegation:_delegation_produced_state_is_not_on_hold
       )
    )
 )
@@ -360,8 +360,8 @@ func _selfTargetChainID : parseInlineDataArgumentAnyPrefix(_selfTarget,0)
 func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 0))
 func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 1)
 func _selfIsMarkedFrozen : equal(_selfStateMark, 1)
-func _selfIsMarkedRevoked : equal(_selfStateMark, 2)
-func _selfIsMarkedUndef : and(not(_selfIsMarkedRevoked), not(_selfIsMarkedFrozen))
+func _selfIsMarkedOnHold : equal(_selfStateMark, 2)
+func _selfIsMarkedUndef : and(not(_selfIsMarkedOnHold), not(_selfIsMarkedFrozen))
 
 func _successorEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
 
@@ -463,7 +463,7 @@ and(
 		  _validInflationAdvanceProduced($1, _predecessorTokenBalance)
 	   ),
 	   and( // revoked
-		  _selfIsMarkedRevoked,
+		  _selfIsMarkedOnHold,
 		  require( isZero(_selfLastFrozenEpoch), !!!last_frozen_epoch_must_be_0_on_revoked_output), 
 	   ),
 	   and( // undef
@@ -529,17 +529,17 @@ func _txInsideSafeRevocationWindow : and(
     lessThan(uint8Bytes(txSlot), add($0, constDelegationSafeRevocationSlots))
 )
 
-func _successorIsRevoked : equal(parseInlineDataArgument(successorConstraint(3),#delegateLockState,1), 2)
+func _successorIsOnHold : equal(parseInlineDataArgument(successorConstraint(3),#delegateLockState,1), 2)
 
 func _requireUnlockableByTheTarget :
 and(
-   require(not(_selfIsMarkedRevoked), !!!revoked_delegation_cannot_be_unlocked_by_the_target),
+   require(not(_selfIsMarkedOnHold), !!!on_hold_delegation_cannot_be_unlocked_by_the_target),
    require(lessThan(slotOfInputByIndex(selfOutputIndex), txSlot), !!!delegation_successor_timestamp_must_be_at_least_1_slot_after),
    or(
       not(_selfIsMarkedFrozen),
       if(
          _consumedIsFrozenInTx,
-         require(_successorIsRevoked, !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_revocation),
+         require(_successorIsOnHold, !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_putting_on_hold),
          require(not(_consumedIsInTheSafeRevocationWindowTx), !!!delegation_cannot_be_unlocked_by_the_target_in_safe_revocation_window)
       )
    )

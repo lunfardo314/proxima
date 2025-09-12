@@ -15,9 +15,9 @@ import (
 
 func initRevokeDelegationCmd() *cobra.Command {
 	revokeCmd := &cobra.Command{
-		Use:     "revoke <delegation ID>",
+		Use:     "askstop <delegation ID>",
 		Aliases: util.List("stop"),
-		Short:   `send revoke delegation request to the target sequencer of the delegated output with the given ID`,
+		Short:   "send 'stop delegation' request to the target sequencer with the given delegation ID",
 		Args:    cobra.ExactArgs(1),
 		Run:     runRevokeDelegationCmd,
 	}
@@ -71,8 +71,8 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	glb.PrintLRB(lrbid)
 
 	// create command with withdraw request to the target lock
-	cmd := txbuilder_seq.NewRevokeDelegationReqConstraint(walletData.PrivateKey, delegationID)
-	ensureConstraint := ledger.EnsureRevocationFromDelegationID(delegationID)
+	cmd := txbuilder_seq.NewAskStopDelegationReqConstraint(walletData.PrivateKey, delegationID)
+	ensureConstraint := ledger.EnsureStopDelegationFromDelegationID(delegationID)
 	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.TimeNow()).
 		WithAmount(compensation).
 		WithTargetLock(ledger.ChainLockFromChainID(targetID)).

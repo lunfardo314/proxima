@@ -427,15 +427,15 @@ func (o *Output) DelegationLock() *DelegateLock {
 	return lock.(*DelegateLock)
 }
 
-func (o *Output) EnsureRevocationConstraint() (*EnsureRevocation, byte) {
-	var ret *EnsureRevocation
+func (o *Output) EnsureRevocationConstraint() (*EnsureStopDelegation, byte) {
+	var ret *EnsureStopDelegation
 	var err error
 	found := byte(0xff)
 	o.ForEachConstraint(func(idx byte, constr []byte) bool {
 		if idx < ConstraintIndexFirstOptionalConstraint {
 			return true
 		}
-		ret, err = EnsureRevocationFromBytes(constr)
+		ret, err = EnsureStopDelegationFromBytes(constr)
 		if err == nil {
 			found = idx
 			return false

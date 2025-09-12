@@ -12,35 +12,35 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-type RevokeDelegationRequest struct {
+type AskStopDelegationRequest struct {
 	o                ledger.OutputWithID
 	delegationID     base.ChainID
-	delegation       ledger.DelegationOutput // filled up by CheckPreconditions
-	ensureRevocation *ledger.EnsureRevocation
+	delegation       ledger.DelegationOutput
+	ensureRevocation *ledger.EnsureStopDelegation
 }
 
 const (
-	RevokeDelegationCmdCode = byte(3)
-	FieldRevokeDelegationID = byte(1)
+	AskStopDelegationCmdCode = byte(3)
+	FieldRevokeDelegationID  = byte(1)
 )
 
 func init() {
-	registerSequencerCommand(RevokeDelegationCmdCode, _parseRevokeDelegationOutput)
+	registerSequencerCommand(AskStopDelegationCmdCode, _parseAskStopDelegationOutput)
 }
 
-func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqRequestMessage) (cmd TxBuilderCommand, valid bool, reason error) {
+func _parseAskStopDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqRequestMessage) (cmd TxBuilderCommand, valid bool, reason error) {
 	if o.Output.NumConstraints() > 4 {
 		// unexpected structure -> may be attack
-		reason = fmt.Errorf("RevokeDelegationRequest: wrong output structure")
+		reason = fmt.Errorf("AskStopDelegationRequest: wrong output structure")
 		return
 	}
 	// ---------- fetch delegation output from the baseline state
 	delegationID, reason := base.ChainIDFromBytes(msg.Get(FieldRevokeDelegationID))
 	if reason != nil {
-		reason = fmt.Errorf("RevokeDelegationRequest: parse failed: %w", reason)
+		reason = fmt.Errorf("AskStopDelegationRequest: parse failed: %w", reason)
 		return
 	}
-	ret := &RevokeDelegationRequest{
+	ret := &AskStopDelegationRequest{
 		o:            o,
 		delegationID: delegationID,
 	}
@@ -48,7 +48,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	_dOut, reason := rdr.GetChainOutputWithChainID(delegationID)
 	if reason != nil {
 		// wrong chain ID
-		reason = fmt.Errorf("RevokeDelegationRequest: failed to retrieve delegation output for %s: '%w'", delegationID.StringShort(), reason)
+		reason = fmt.Errorf("AskStopDelegationRequest: failed to retrieve delegation output for %s: '%w'", delegationID.StringShort(), reason)
 		return
 	}
 
@@ -56,7 +56,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	ret.delegation, ok = ledger.DelegationOutputFromOutputWithChainID(&_dOut)
 	if !ok {
 		// is not a valid delegation chain output
-		reason = fmt.Errorf("RevokeDelegationRequest: failed to parse delegation output %s: %w", delegationID.StringShort(), reason)
+		reason = fmt.Errorf("AskStopDelegationRequest: failed to parse delegation output %s: %w", delegationID.StringShort(), reason)
 		return
 	}
 	// ----------
@@ -64,34 +64,25 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	// ---------- check if revocation even makes sense
 	if !ret.delegation.IsInFrozenSlot(txb.Slot()) {
 		// permanently invalid because later this particular revoke request won't make sense anyway
-		reason = fmt.Errorf("RevokeDelegationRequest: delegation is not frozen in the slot %d", txb.Slot())
+		reason = fmt.Errorf("AskStopDelegationRequest: delegation is not frozen in the slot %d", txb.Slot())
 		return
 	}
-	// frozen -> unlockable by the target
-
-	//if valid1, err := ret.delegation.IsUnlockableByTargetWithReason(txb.Slot()); err != nil {
-	//	// cannot be unlocked by target in the slot
-	//	valid = valid1
-	//	reason = fmt.Errorf("RevokeDelegationRequest: delegation output cannot be unlocked by the target in %s. Reason = '%v'",
-	//		txb.Timestamp().String(), err)
-	//	return
-	//}
 
 	// ---------- authenticate: check if the sender of the request and the sequencer must be entitled to revoke particular delegation ID
 	if ret.delegation.Target.ChainID() != txb.chainInput.ChainID {
 		// this sequencer cannot revoke specific delegation
-		reason = fmt.Errorf("RevokeDelegationRequest: the sequencer cannot revoke delegation %s (failed authorisation)", delegationID.String())
+		reason = fmt.Errorf("AskStopDelegationRequest: the sequencer cannot revoke delegation %s (failed authorisation)", delegationID.String())
 		return
 	}
 	master, ok := ret.delegation.Master().(ledger.AddressED25519)
 	if !ok {
 		// wrong master (cannot be)
-		reason = fmt.Errorf("RevokeDelegationRequest: inconsistecy while checking master lock")
+		reason = fmt.Errorf("AskStopDelegationRequest: inconsistecy while checking master lock")
 		return
 	}
 	if !bytes.Equal(msg.SenderHash[:], master) {
 		// this sender cannot revoke delegation -> may be an attack
-		reason = fmt.Errorf("RevokeDelegationRequest: sender with hash %s cannot revoke delegation %s (failed authorisation)",
+		reason = fmt.Errorf("AskStopDelegationRequest: sender with hash %s cannot revoke delegation %s (failed authorisation)",
 			hex.EncodeToString(msg.SenderHash[:]), delegationID.String())
 		return
 	}
@@ -108,7 +99,7 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	if lostSlots <= patienceMargin {
 		// less than 1 min slots until the end of the freeze, refuse to revoke.
 		// Just 1 min of patience, and it will be released to the safe revocation window without revocation command
-		reason = fmt.Errorf("RevokeDelegationRequest: less than %d slots remain until safe revocation window. Wait a bit", patienceMargin)
+		reason = fmt.Errorf("AskStopDelegationRequest: less than %d slots remain until safe revocation window. Wait a bit", patienceMargin)
 		return
 	}
 	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
@@ -129,31 +120,22 @@ func _parseRevokeDelegationOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg 
 	return ret, true, nil
 }
 
-func NewRevokeDelegationReqConstraint(privKey ed25519.PrivateKey, delegationID base.ChainID) ledger.Constraint {
+func NewAskStopDelegationReqConstraint(privKey ed25519.PrivateKey, delegationID base.ChainID) ledger.Constraint {
 	body := base.NewSmallPersistentMap()
-	body.Set(FieldCmdCode, []byte{RevokeDelegationCmdCode})
+	body.Set(FieldCmdCode, []byte{AskStopDelegationCmdCode})
 	body.Set(FieldRevokeDelegationID, delegationID[:])
 
 	msg := ledger.NewMessageWithED25519SenderFromPrivateKey(privKey, body.Bytes())
 	return msg
 }
 
-func NewRevokeDelegationSeqOutput(targetChain base.ChainID, privKey ed25519.PrivateKey, fee uint64, delegationID base.ChainID) *ledger.Output {
-	ensureDelegation := ledger.EnsureRevocation{ChainID: delegationID}
-	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(fee).WithLock(ledger.ChainLockFromChainID(targetChain))
-		o.MustPushConstraint(NewRevokeDelegationReqConstraint(privKey, delegationID).Bytes())
-		o.MustPushConstraint(ensureDelegation.Bytes())
-	})
-}
-
-func (r *RevokeDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error) {
+func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err error) {
 	// need to reserve at least 2 outputs
 	if len(txb.ConsumedOutputs) > 254 {
-		return true, fmt.Errorf("RevokeDelegationRequest: too many outputs to consume")
+		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to consume")
 	}
 	if len(txb.TransactionData.Outputs) > 255 {
-		return true, fmt.Errorf("RevokeDelegationRequest: too many outputs to produce")
+		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to produce")
 	}
 	inflation := ledger.ChainInflationOneSlot(r.delegation.Output.TokenBalance(), uint32(r.delegation.ID.Slot()))
 
@@ -164,7 +146,7 @@ func (r *RevokeDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err erro
 		HarvestInflation: inflation, // take last inflation bit from delegation
 	})
 	if err != nil {
-		return true, fmt.Errorf("RevokeDelegationRequest: %w", err)
+		return true, fmt.Errorf("AskStopDelegationRequest: %w", err)
 	}
 
 	// consume tag-along with the revoke command message
@@ -196,6 +178,6 @@ func (r *RevokeDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err erro
 	return true, nil
 }
 
-func (r *RevokeDelegationRequest) String() string {
-	return "RevokeDelegationRequest: id = " + r.delegationID.StringShort()
+func (r *AskStopDelegationRequest) String() string {
+	return "AskStopDelegationRequest: id = " + r.delegationID.StringShort()
 }

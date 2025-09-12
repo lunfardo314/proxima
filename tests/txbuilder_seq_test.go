@@ -741,8 +741,8 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 
 		transferData, err := td.u.MakeTransferInputData(td.masterPrivateKey, td.masterAddr, base.NewLedgerTime(base.Slot(slot), 50))
 		util.AssertNoError(err)
-		delegationCmdOutput := txbuilder_seq.NewRevokeDelegationReqConstraint(td.masterPrivateKey, did)
-		ensureConstraint := ledger.EnsureRevocationFromDelegationID(did)
+		delegationCmdOutput := txbuilder_seq.NewAskStopDelegationReqConstraint(td.masterPrivateKey, did)
+		ensureConstraint := ledger.EnsureStopDelegationFromDelegationID(did)
 
 		transferData.WithAmount(10_000).
 			WithTargetLock(ledger.ChainLockFromChainID(td.seqID)).
