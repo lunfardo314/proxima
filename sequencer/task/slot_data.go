@@ -19,7 +19,7 @@ import (
 type (
 	SlotData struct {
 		mutex               sync.RWMutex
-		slot                base.Slot
+		slot                uint32
 		numTargets          int
 		seqTxSubmitted      []base.TransactionID
 		branchSubmitted     *base.TransactionID
@@ -42,7 +42,7 @@ type (
 	combinationHash [8]byte
 )
 
-func NewSlotData(slot base.Slot) *SlotData {
+func NewSlotData(slot uint32) *SlotData {
 	ret := &SlotData{
 		slot:                      slot,
 		seqTxSubmitted:            make([]base.TransactionID, 0),

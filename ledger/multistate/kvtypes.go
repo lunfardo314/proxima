@@ -20,7 +20,7 @@ type (
 	StateIndexReader interface {
 		IterateUTXOIDsInAccount(addr ledger.AccountID, fun func(oid base.OutputID) bool) (err error)
 		IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid base.OutputID, odata []byte) bool) (err error)
-		IterateUTXOsInSlot(slot base.Slot, fun func(oid base.OutputID, oData []byte) bool) (err error)
+		IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error)
 		IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error
 
 		GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error)

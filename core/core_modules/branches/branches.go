@@ -84,7 +84,7 @@ func (b *Branches) SnapshotBranchID() base.TransactionID {
 	return b.snapshotBranchID
 }
 
-func (b *Branches) SnapshotSlot() base.Slot {
+func (b *Branches) SnapshotSlot() uint32 {
 	return b.snapshotBranchID.Slot()
 }
 
@@ -135,7 +135,7 @@ func (b *Branches) _ledgerCoverage(br branchDataWithLedgerCoverage) (ret uint64)
 		if br, ok = b._getAndCacheNoLock(branchID); !ok {
 			break
 		}
-		slotsBack = uint32(origSlot - branchID.Slot())
+		slotsBack = origSlot - branchID.Slot()
 		ret += br.CoverageDelta >> slotsBack
 		branchID = br.StemPredecessorBranchID()
 	}
@@ -297,7 +297,7 @@ func (b *Branches) ChainLines(tipOrig base.TransactionID, prefix ...string) *lin
 			ret.Add("%2d:  %s  <- chain ends here", i, tip.StringShort())
 			break
 		}
-		slotsSinceTip := uint32(tipOrig.Slot() - tip.Slot())
+		slotsSinceTip := tipOrig.Slot() - tip.Slot()
 		b.Assertf(tip.Slot() == bd.Slot(), "tip.Slot() == bd.Slot()")
 		ret.Add("%2d:  %s (-%d), delta: %s, delta>>slots: %s, coverage: %s",
 			i, tip.StringShort(), slotsSinceTip, util.Th(bd.CoverageDelta),

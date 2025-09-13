@@ -62,7 +62,7 @@ type (
 		mutexDescendants sync.RWMutex
 		consumed         map[byte]set.Set[*WrappedTx]
 		attachmentDepth  int
-		SlotWhenAdded    base.Slot // immutable
+		SlotWhenAdded    uint32 // immutable
 		pastCone         *PastConeBase
 	}
 

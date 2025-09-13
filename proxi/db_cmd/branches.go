@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -52,7 +51,7 @@ func runBranchesCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	for i := 0; i < nSlots; i++ {
-		s := base.Slot(slot - i)
+		s := uint32(slot - i)
 		rootRecords := multistate.FetchRootRecords(glb.StateStore(), s)
 		branches := multistate.FetchBranchDataMulti(glb.StateStore(), rootRecords...)
 		if len(branches) == 0 {

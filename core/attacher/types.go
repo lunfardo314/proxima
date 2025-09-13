@@ -24,7 +24,7 @@ type (
 		StateStore() multistate.StateStore
 		GetStemWrappedOutput(branch base.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)
-		EvidenceBranchSlot(s base.Slot, healthy bool)
+		EvidenceBranchSlot(s uint32, healthy bool)
 		TxBytesStore() global.TxBytesStore
 		TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.TransactionID, error)
 		AddWantedTransaction(txid base.TransactionID)

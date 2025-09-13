@@ -21,7 +21,7 @@ type ChainConstraint struct {
 	// Predecessor constraint index. Must be 0xff for the origin
 	PredecessorConstraintIndex byte
 	// slot of the origin chain output
-	OriginSlot base.Slot
+	OriginSlot uint32
 	// amount on the chain at the origin
 	OriginAmount uint64
 }
@@ -31,7 +31,7 @@ const (
 	chainConstraintTemplate = ChainConstraintName + "(0x%s, 0x%s, z32/%d, z64/%d)"
 )
 
-func NewChainConstraint(id base.ChainID, predOutputIndex, predConstraintIndex byte, originSlot base.Slot, originAmount uint64) *ChainConstraint {
+func NewChainConstraint(id base.ChainID, predOutputIndex, predConstraintIndex byte, originSlot uint32, originAmount uint64) *ChainConstraint {
 	return &ChainConstraint{
 		ChainID:                    id,
 		PredecessorInputIndex:      predOutputIndex,
@@ -41,7 +41,7 @@ func NewChainConstraint(id base.ChainID, predOutputIndex, predConstraintIndex by
 	}
 }
 
-func NewChainOrigin(startSlot base.Slot, startAmount uint64) *ChainConstraint {
+func NewChainOrigin(startSlot uint32, startAmount uint64) *ChainConstraint {
 	return NewChainConstraint(base.NilChainID, 0xff, 0xff, startSlot, startAmount)
 }
 
@@ -105,7 +105,7 @@ func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret.OriginSlot = base.Slot(sl)
+	ret.OriginSlot = sl
 	if ret.OriginAmount, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3])); err != nil {
 		return nil, err
 	}

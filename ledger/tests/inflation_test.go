@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/blake2b"
@@ -46,27 +45,27 @@ func TestInflationFun(t *testing.T) {
 	//			t.Logf("tsIn=%s, tsOut=%s, inAmount=%d -> %d", tsIn.String(), tsOut.String(), inAmount, c)
 	//		}
 	//	}
-	//	tsIn := base.NewLedgerTime(100, 5)
+	//	tsIn := base.T(100, 5)
 	//
-	//	tsOut := base.NewLedgerTime(101, 5)
+	//	tsOut := base.T(101, 5)
 	//	runTest(tsIn, tsOut, 1_000_000_000)
 	//
-	//	tsOut = base.NewLedgerTime(102, 5)
+	//	tsOut = base.T(102, 5)
 	//	runTest(tsIn, tsOut, 1_000_000_000)
 	//
-	//	tsOut = base.NewLedgerTime(103, 5)
+	//	tsOut = base.T(103, 5)
 	//	runTest(tsIn, tsOut, 1_000_000_000)
 	//
-	//	tsOut = base.NewLedgerTime(104, 5)
+	//	tsOut = base.T(104, 5)
 	//	runTest(tsIn, tsOut, 1_000_000_000)
 	//
-	//	tsOut = base.NewLedgerTime(200, 5)
+	//	tsOut = base.T(200, 5)
 	//	runTest(tsIn, tsOut, 1_000_000_000)
 	//
-	//	tsOut = base.NewLedgerTime(200, 0)
+	//	tsOut = base.T(200, 0)
 	//	runTest(tsIn, tsOut, 1_000_000_000)
 	//
-	//	tsOut = base.NewLedgerTime(100, 100)
+	//	tsOut = base.T(100, 100)
 	//	runTest(tsIn, tsOut, 1_000_000_000)
 	//})
 	//t.Run("branch inflation", func(t *testing.T) {
@@ -109,7 +108,7 @@ func TestInflationConst(t *testing.T) {
 	slotsPerYear := slotsPerDay * 365
 
 	t.Run("minimum inflatable", func(t *testing.T) {
-		const slot = base.Slot(0)
+		const slot = uint32(0)
 		var calculated uint64
 		for inAmount := uint64(1_000_000); inAmount < 500_000_000; inAmount += 1 {
 			i := ledger.ChainInflationOneSlot(inAmount, uint32(slot))

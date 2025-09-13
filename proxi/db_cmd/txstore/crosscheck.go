@@ -44,9 +44,9 @@ func runReconcileCmd(_ *cobra.Command, args []string) {
 
 	slot := multistate.FetchLatestCommittedSlot(glb.StateStore())
 	glb.Infof("latest committed slot is %d", slot)
-	var downToSlot base.Slot
+	var downToSlot uint32
 	if int(slot) > slotsBack {
-		downToSlot = slot - base.Slot(slotsBack)
+		downToSlot = slot - uint32(slotsBack)
 	}
 
 	branches := multistate.FetchLatestBranches(glb.StateStore())
@@ -56,7 +56,7 @@ func runReconcileCmd(_ *cobra.Command, args []string) {
 	nSlots := 0
 	start := time.Now()
 	for ; slot >= downToSlot; slot-- {
-		rdr.IterateKnownCommittedTransactions(func(txid base.TransactionID, slot base.Slot) bool {
+		rdr.IterateKnownCommittedTransactions(func(txid base.TransactionID, slot uint32) bool {
 			if !glb.TxBytesStore().HasTxBytes(&txid) {
 				glb.Infof("transaction %s not in the txStore: hex id = %s", txid.String(), txid.StringHex())
 			}

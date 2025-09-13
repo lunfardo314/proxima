@@ -524,7 +524,7 @@ func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint6
 
 	if bl := a.pastCone.GetBaseline(); bl != nil {
 		util.Assertf(currentTs.After(bl.Timestamp()), "inconsistent timestamps: expected %s after %s", currentTs.String, bl.Timestamp().String())
-		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint32(currentTs.Slot-bl.Slot())
+		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint64(currentTs.Slot-bl.Slot())
 		if !currentTs.IsSlotBoundary() {
 			baselineLC >>= 1
 		}

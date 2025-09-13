@@ -34,7 +34,7 @@ func (d *MemDAG) InfoLines(verbose ...bool) *lines.Lines {
 	return ln
 }
 
-func (d *MemDAG) VerticesInSlotAndAfter(slot base.Slot) []*vertex.WrappedTx {
+func (d *MemDAG) VerticesInSlotAndAfter(slot uint32) []*vertex.WrappedTx {
 	ret := d.VerticesFiltered(func(txid base.TransactionID) bool {
 		return txid.Slot() >= slot
 	})
@@ -44,7 +44,7 @@ func (d *MemDAG) VerticesInSlotAndAfter(slot base.Slot) []*vertex.WrappedTx {
 	return ret
 }
 
-func (d *MemDAG) LinesVerticesInSlotAndAfter(slot base.Slot) *lines.Lines {
+func (d *MemDAG) LinesVerticesInSlotAndAfter(slot uint32) *lines.Lines {
 	return vertex.VerticesLines(d.VerticesInSlotAndAfter(slot))
 }
 

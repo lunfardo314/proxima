@@ -336,7 +336,7 @@ func (td *testData) timestampTicksForward(ticks int) base.LedgerTime {
 	return ts.AddTicks(ticks)
 }
 
-func (td *testData) timestampSlotsForward(slots base.Slot) base.LedgerTime {
+func (td *testData) timestampSlotsForward(slots uint32) base.LedgerTime {
 	ts := base.MaximumTime(td.seqChainOrigin.Timestamp(), td.delegatedOutput.Timestamp())
 	return ts.AddSlots(slots)
 }
@@ -398,7 +398,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 		unfreezeSlot := td.delegatedOutput.UnfreezeSlot()
-		//ts = base.NewLedgerTime(base.Slot(unfreezeSlot-1), 10)
+		//ts = base.T(uint32(unfreezeSlot-1), 10)
 
 		ts = td.delegatedOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
 		t.Logf("ts: %s, unfreeze: %d", ts.String(), unfreezeSlot)
@@ -447,11 +447,11 @@ func TestDelegationLockConsume(t *testing.T) {
 		//t.Logf("=========\n%s", td.delegatedOutput.OutputWithID.String())
 
 		ts = td.timestampSlotsForward(1000)
-		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
+		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Slot)
 		_ = txEpoch
 		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		frozenEpochs := freezeUntilEpoch - txEpoch + 1
-		frozenSlots := ledger.Const.FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot), byte(frozenEpochs))
+		frozenSlots := ledger.Const.FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), ts.Slot, byte(frozenEpochs))
 		t.Logf(">>>>>>>>> freezeUntilEpoch: %d, frozenEpochs: %d, frozenSlots: %d", freezeUntilEpoch, frozenEpochs, frozenSlots)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
@@ -508,7 +508,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(700)
-		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Uint32())
+		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Slot)
 		_ = txEpoch
 		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		frozen := freezeUntilEpoch - txEpoch + 1
@@ -541,15 +541,15 @@ func TestDelegationLockConsume(t *testing.T) {
 
 		unfreeze := td.delegatedOutput.UnfreezeSlot()
 
-		ts = base.NewLedgerTime(base.Slot(unfreeze)-100, 5)
+		ts = base.T(unfreeze-100, 5)
 		err = td.discontinueDelegation(ts, false)
 		require.NoError(t, util.MustErrorWith(err, "frozen output cannot be unlocked by master"))
 
-		ts = base.NewLedgerTime(base.Slot(unfreeze-1), 5)
+		ts = base.T(unfreeze-1, 5)
 		err = td.discontinueDelegation(ts, false)
 		require.NoError(t, util.MustErrorWith(err, "frozen output cannot be unlocked by master"))
 
-		ts = base.NewLedgerTime(base.Slot(unfreeze), 5)
+		ts = base.T(unfreeze, 5)
 		err = td.discontinueDelegation(ts, false)
 		require.NoError(t, err)
 	})
@@ -574,7 +574,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		unfreeze := td.delegatedOutput.UnfreezeSlot()
 
 		// fail to unlock by master
-		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
+		ts = base.T(unfreeze-10, 5)
 		err = td.discontinueDelegation(ts, false)
 		require.NoError(t, util.MustErrorWith(err, "frozen output cannot be unlocked by master"))
 
@@ -614,7 +614,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		unfreeze := td.delegatedOutput.UnfreezeSlot()
 
 		// fail to unlock by master
-		ts = base.NewLedgerTime(base.Slot(unfreeze)-10, 5)
+		ts = base.T(unfreeze-10, 5)
 		err = td.discontinueDelegation(ts, false)
 		require.NoError(t, util.MustErrorWith(err, "'frozen output cannot be unlocked by master"))
 
@@ -669,7 +669,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 		o.MustPushConstraint(cc.Bytes())
 		freezeUntil := uint32(0)
 		if par.frozenEpochs > 0 {
-			txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot.Uint32())
+			txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot)
 			freezeUntil = txEpoch + uint32(par.frozenEpochs) - 1
 		}
 		o.MustPushConstraint(ledger.DelegateLockState{

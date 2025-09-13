@@ -516,7 +516,7 @@ type MutationStats struct {
 	NumCreated      int
 }
 
-func (pc *PastCone) Mutations(slot base.Slot) (muts *multistate.Mutations, stats MutationStats) {
+func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats MutationStats) {
 	muts = multistate.NewMutations()
 
 	// need to handle discontinued chains

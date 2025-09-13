@@ -97,7 +97,7 @@ func (a *milestoneAttacher) checkConsistencyWithMetadata() {
 		return
 	}
 	msg := ""
-	slotsFromSnapshot := uint32(a.vid.Slot() - a.Branches().SnapshotSlot())
+	slotsFromSnapshot := a.vid.Slot() - a.Branches().SnapshotSlot()
 	if !consistentCoveragesFromMetadata(a.finals.TransactionMetadata.LedgerCoverage, a.providedMetadata.LedgerCoverage, slotsFromSnapshot) {
 		msg = fmt.Sprintf("inconsistent ledger coverage in tx metadata (slots from snapshot %d)", slotsFromSnapshot)
 	} else if !a.providedMetadata.IsConsistentWithExceptCoverage(&a.finals.TransactionMetadata) {

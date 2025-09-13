@@ -45,8 +45,8 @@ func TestTime(t *testing.T) {
 		t.Logf("%s", ts1)
 	})
 	t.Run("2", func(t *testing.T) {
-		ts0 := base.NewLedgerTime(100, 33)
-		ts1 := base.NewLedgerTime(120, 55)
+		ts0 := base.T(100, 33)
+		ts1 := base.T(120, 55)
 		t.Logf("%s", ts0)
 		t.Logf("%s", ts1)
 		require.EqualValues(t, 100, ts0.Slot)
@@ -62,12 +62,12 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, 0, diff)
 	})
 	t.Run("3", func(t *testing.T) {
-		ts := base.NewLedgerTime(100, 120)
+		ts := base.T(100, 120)
 		require.EqualValues(t, 100, int(ts.Slot))
 		require.EqualValues(t, 120, int(ts.Tick))
 	})
 	t.Run("4", func(t *testing.T) {
-		ts0 := base.NewLedgerTime(100, 33)
+		ts0 := base.T(100, 33)
 		t.Logf("%s", ts0)
 		b := ts0.Bytes()
 		tsBack, err := base.LedgerTimeFromBytes(b)
@@ -102,10 +102,10 @@ func TestTime(t *testing.T) {
 		require.EqualValues(t, nowisTs.AddTicks(rnd), nowisRndTickLaterTs)
 	})
 	t.Run("7", func(t *testing.T) {
-		ts := base.NewLedgerTime(100, 99)
+		ts := base.T(100, 99)
 		ts1 := ts.AddTicks(200)
 		t.Logf("%s + 200 = %s", ts, ts1)
-		tsExpect := base.NewLedgerTime(102, 43)
+		tsExpect := base.T(102, 43)
 		t.Logf("tsExpect = %s", tsExpect)
 		require.EqualValues(t, tsExpect, ts1)
 	})

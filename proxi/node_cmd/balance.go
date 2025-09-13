@@ -2,7 +2,6 @@ package node_cmd
 
 import (
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -34,8 +33,8 @@ func runBalanceCmd(_ *cobra.Command, _ []string) {
 type _delegation struct {
 	amount     uint64
 	inflation  uint64
-	sinceSlot  base.Slot
-	lastActive base.Slot
+	sinceSlot  uint32
+	lastActive uint32
 }
 
 func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Accountable) {

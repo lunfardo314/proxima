@@ -22,7 +22,7 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 		status := ""
 		if o.IsInFrozenSlot(currentSlot) {
 			unfreeze := o.UnfreezeSlot()
-			untilUnfreeze := time.Until(ledger.ClockTime(base.NewLedgerTime(base.Slot(unfreeze), 0)))
+			untilUnfreeze := time.Until(ledger.ClockTime(base.T(uint32(unfreeze), 0)))
 			h := untilUnfreeze / time.Hour
 			hs := ""
 			if h > 0 {
@@ -33,7 +33,7 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 		} else if o.IsInSafeRevocationWindow(currentSlot) {
 			_, to, applicable := o.SafeRevocationWindow()
 			Assertf(applicable, "inconsistency: SafeRevocationWindow")
-			untilEnd := time.Until(ledger.ClockTime(base.NewLedgerTime(base.Slot(to+1), 0)))
+			untilEnd := time.Until(ledger.ClockTime(base.T(uint32(to+1), 0)))
 			m := untilEnd / time.Minute
 			status = fmt.Sprintf("safe revocation until slot %d (for %d min)", to, m)
 		} else if o.IsMarkedOnHold() {

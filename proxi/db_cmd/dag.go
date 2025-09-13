@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -59,7 +58,7 @@ func runDbDAGCmd(_ *cobra.Command, args []string) {
 		if numSlotsBack < int(latestSlot) {
 			oldestSlot = int(latestSlot) - numSlotsBack
 		}
-		tmpDag := memdag.MakeDAGFromTxStore(glb.TxBytesStore(), base.Slot(oldestSlot), branchTxIDS...)
+		tmpDag := memdag.MakeDAGFromTxStore(glb.TxBytesStore(), uint32(oldestSlot), branchTxIDS...)
 		tmpDag.SaveGraph(outputFileDAG)
 	}
 	glb.Infof("MemDAG has been store in .DOT format in the file '%s', %d slots back", outFile, numSlotsBack)

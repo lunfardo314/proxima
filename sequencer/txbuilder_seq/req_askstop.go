@@ -137,7 +137,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	if len(txb.TransactionData.Outputs) > 255 {
 		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to produce")
 	}
-	inflation := ledger.ChainInflationOneSlot(r.delegation.Output.TokenBalance(), uint32(r.delegation.ID.Slot()))
+	inflation := ledger.ChainInflationOneSlot(r.delegation.Output.TokenBalance(), r.delegation.ID.Slot())
 
 	oProduce, err := r.delegation.MakeDelegationRevokeOutput(ledger.MakeDelegationRevokeOutputParams{
 		TxTs:             txb.Timestamp(),

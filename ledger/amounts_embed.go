@@ -35,7 +35,7 @@ func _enforceMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *Ev
 
 // TODO in the future it makes sense to rewrite it all in EasyFL, for formal verifiability with TLA model
 
-func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, predAmounts Amounts, predSlot base.Slot) {
+func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, predAmounts Amounts, predSlot uint32) {
 	var expectedInflation uint64
 	inflation := o.Inflation()
 
@@ -61,7 +61,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 			if o.Lock().Name() != DelegateLockName {
 				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
 			}
-			expectedInflation = ChainInflationOneSlot(uint64(inAmount), uint32(predSlot))
+			expectedInflation = ChainInflationOneSlot(uint64(inAmount), predSlot)
 		}
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong chain inflation value. Expected %s, got %s",
 			util.Th(expectedInflation), util.Th(inflation))

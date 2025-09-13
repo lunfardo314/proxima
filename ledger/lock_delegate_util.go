@@ -23,7 +23,7 @@ type (
 		Target             ChainLock
 		MaxFreezeEpochs    byte
 		MaxSeqProfitMargin uint16
-		StartSlot          base.Slot
+		StartSlot          uint32
 	}
 )
 
@@ -71,7 +71,7 @@ func Coverage(o *Output, oid base.OutputID, txTs base.LedgerTime) (coverage, fro
 	}
 
 	if dOut, isDelegate := DelegationOutputFromOutputWithChainID(&outChain); isDelegate {
-		if dOut.IsInFrozenSlot(uint32(txTs.Slot)) {
+		if dOut.IsInFrozenSlot(txTs.Slot) {
 			// delegated frozen outputs have zero coverage
 			return 0, 0
 		}
@@ -94,7 +94,7 @@ func (o *DelegationOutput) IsMarkedOnHold() bool {
 
 // IsInFrozenSlot true means only target can consume it in the slot
 func (o *DelegationOutput) IsInFrozenSlot(slot uint32) bool {
-	if slot < uint32(o.ID.Slot()) {
+	if slot < o.ID.Slot() {
 		return false
 	}
 	if o.IsMarkedOnHold() || !o.IsMarkedFrozen() {
@@ -109,7 +109,7 @@ func (o *DelegationOutput) SafeRevocationWindow() (from, to uint32, applicable b
 		return 0, 0, false
 	}
 	fromSlot := Const.LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch)
-	return fromSlot + 1, fromSlot + Const.SafeRevocationSlots - 1, true
+	return fromSlot + 1, fromSlot + Const.SafeRevocationSlots, true
 }
 
 func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
@@ -121,7 +121,7 @@ func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
 
 // IsUnlockableByTarget true if it is not revoked and not in the safe revocation window
 func (o *DelegationOutput) IsUnlockableByTarget(txSlot uint32) bool {
-	if uint32(o.ID.Timestamp().Slot) >= txSlot {
+	if o.ID.Timestamp().Slot >= txSlot {
 		return false
 	}
 	if o.IsMarkedOnHold() {
@@ -138,7 +138,7 @@ func (o *DelegationOutput) IsUnlockableByTarget(txSlot uint32) bool {
 //   - false, <reason> if permanently unclockable,
 //   - true, <reason> if temporarily unlockable
 func (o *DelegationOutput) IsUnlockableByTargetWithReason(txSlot uint32) (valid bool, err error) {
-	if uint32(o.ID.Timestamp().Slot) >= txSlot {
+	if o.ID.Timestamp().Slot >= txSlot {
 		return true, fmt.Errorf("delegation output %s slot must be 1 or more slots before transaction in slot %d", o.ID.StringShort(), txSlot)
 	}
 	if o.IsMarkedOnHold() {
@@ -170,13 +170,13 @@ func (o *DelegationOutput) UnfreezeSlot() uint32 {
 }
 
 func (o *DelegationOutput) InflationOneSlot() uint64 {
-	return ChainInflationOneSlot(o.Output.TokenBalance(), uint32(o.ID.Slot()))
+	return ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
 }
 
 // MakeDelegationFreezeOutput constructs successor of the delegation output using maximum possible frozen epochs
 func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, freezeUntilEpoch uint32, predOutputIndex byte, advance uint64, disableConsistencyCheck ...bool) (ret *Output, err error) {
 	checkConsistency := len(disableConsistencyCheck) == 0 || !disableConsistencyCheck[0]
-	if checkConsistency && !o.IsUnlockableByTargetForFreezing(uint32(txTs.Slot)) {
+	if checkConsistency && !o.IsUnlockableByTargetForFreezing(txTs.Slot) {
 		err = fmt.Errorf("MakeDelegationFreezeOutput: delegation output cannot be unlocked by the target for freezing")
 		return
 	}
@@ -192,7 +192,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 
 	var frozenEpochs uint32
 
-	txEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), uint32(txTs.Slot))
+	txEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
 	if freezeUntilEpoch < txEpoch {
 		err = fmt.Errorf("MakeDelegationFreezeOutput: wrong freezeUntilEpoch parameter")
 		return
@@ -224,15 +224,15 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 	if o.ID.Slot() >= txTs.Slot {
 		return 0
 	}
-	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), uint32(txTs.Slot), frozenEpochs)
-	amount := o.Output.TokenBalance() + ChainInflationOneSlot(o.Output.TokenBalance(), uint32(o.ID.Slot()))
-	return ChainInflation(amount, uint32(txTs.Slot), frozenSlots)
+	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, frozenEpochs)
+	amount := o.Output.TokenBalance() + ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
+	return ChainInflation(amount, txTs.Slot, frozenSlots)
 }
 
 // RequiredMinimumInflationAdvanceOriginal calculates how big advance requires the delegation output for freezing it,
 // as calculated from immutable MinInflationAdvancePerFullEpoch value on it
 func (o *DelegationOutput) RequiredMinimumInflationAdvanceOriginal(txTs base.LedgerTime, frozenEpochs byte) uint64 {
-	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot.Uint32(), frozenEpochs)
+	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, frozenEpochs)
 	src := fmt.Sprintf("requiredInflationAdvance(u64/%d, u64/%d, u64/%d, u64/%d)",
 		frozenSlots,
 		txTs.Slot,
@@ -250,14 +250,14 @@ func (o *DelegationOutput) RequiredMinimumInflationAdvanceByFrozenEpochs(txTs ba
 	if frozenEpochs > Const.MaxFrozenEpochs {
 		return 0, fmt.Errorf("wrong frozen epochs")
 	}
-	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot.Uint32(), byte(frozenEpochs))
-	inflation := ChainInflation(o.Output.TokenBalance(), uint32(txTs.Slot), frozenSlots)
+	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, byte(frozenEpochs))
+	inflation := ChainInflation(o.Output.TokenBalance(), txTs.Slot, frozenSlots)
 	return (inflation * uint64(o.RequiredInflationShare)) / 1000, nil
 
 }
 
 func (o *DelegationOutput) RequiredMinimumInflationAdvance(txTs base.LedgerTime, freezeUntilEpoch uint32) (uint64, error) {
-	epoch := Const.EpochFromSlotDirect(o.Target.ChainID(), uint32(txTs.Slot))
+	epoch := Const.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
 	if epoch > freezeUntilEpoch {
 		return 0, fmt.Errorf("RequiredMinimumInflationAdvance: wrong freezeUntilEpoch parameter")
 	}
@@ -267,19 +267,19 @@ func (o *DelegationOutput) RequiredMinimumInflationAdvance(txTs base.LedgerTime,
 }
 
 func (o *DelegationOutput) FreezeUntilMax(ts base.LedgerTime) (freezeUntilEpoch uint32) {
-	if o.IsInFrozenSlot(uint32(ts.Slot)) {
+	if o.IsInFrozenSlot(ts.Slot) {
 		return
 	}
-	startEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), ts.Slot.Uint32())
+	startEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), ts.Slot)
 	freezeUntilEpoch = startEpoch + uint32(o.MaxFrozenEpochs) - 1
 	return
 }
 
 func (o *DelegationOutput) FrozenEpochs(txTs base.LedgerTime) (from, to, total uint32) {
-	if !o.IsInFrozenSlot(uint32(txTs.Slot)) {
+	if !o.IsInFrozenSlot(txTs.Slot) {
 		return
 	}
-	txEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot.Uint32())
+	txEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
 	if txEpoch > o.LastFrozenEpoch {
 		return 0, 0, 0
 	}
@@ -293,7 +293,7 @@ func (o *DelegationOutput) FrozenSlots(txTs ...base.LedgerTime) (from, to, total
 		ts = txTs[0]
 	}
 	to = o.UnfreezeSlot() - 1
-	from = ts.Uint32()
+	from = ts.Slot
 	if to < from {
 		return 0, 0, 0
 	}
@@ -475,8 +475,8 @@ func (c *Constants) LastSlotInEpochFromSource(targetID base.ChainID, epoch uint3
 
 // DiffEpochs return ts1 - ts2 in delegation epochs
 func (c *Constants) DiffEpochs(targetID base.ChainID, ts1, ts2 base.LedgerTime) int {
-	epoch1 := c.EpochFromSlotDirect(targetID, ts1.Slot.Uint32())
-	epoch2 := c.EpochFromSlotDirect(targetID, ts2.Slot.Uint32())
+	epoch1 := c.EpochFromSlotDirect(targetID, ts1.Slot)
+	epoch2 := c.EpochFromSlotDirect(targetID, ts2.Slot)
 	return int(epoch1) - int(epoch2)
 }
 

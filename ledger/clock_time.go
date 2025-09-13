@@ -27,7 +27,7 @@ func TimeNow() base.LedgerTime {
 }
 
 func SlotNow() uint32 {
-	return uint32(TimeNow().Slot)
+	return TimeNow().Slot
 }
 
 // ValidTransactionPace return true if input and target non-sequencer tx timestamps make a valid pace

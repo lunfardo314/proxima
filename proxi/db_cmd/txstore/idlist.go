@@ -32,7 +32,7 @@ func runIdListCmd(_ *cobra.Command, args []string) {
 
 	var prefix []byte
 	var sint int
-	var slot base.Slot
+	var slot uint32
 	var err error
 
 	if !listAll {
@@ -40,8 +40,8 @@ func runIdListCmd(_ *cobra.Command, args []string) {
 		sint, err = strconv.Atoi(args[0])
 		glb.AssertNoError(err)
 		glb.Assertf(sint <= base.MaxSlot, "wrong slot number")
-		slot = base.Slot(sint)
-		prefix = slot.Bytes()
+		slot = uint32(sint)
+		prefix = base.Slot2Bytes(slot)
 		glb.Infof("slot = %d, hex: %s", slot, hex.EncodeToString(prefix))
 	}
 

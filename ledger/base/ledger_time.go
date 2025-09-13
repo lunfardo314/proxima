@@ -26,16 +26,10 @@ const (
 // - bytes 0-3 is big-endian slot
 // - byte 4 is ticks << 1, i.e. last bit of timestamp is always 0
 
-type (
-	// Slot represents a particular time slot.
-	// Starting slot 0 at genesis
-	Slot       uint32
-	Tick       uint8
-	LedgerTime struct {
-		Slot
-		Tick
-	}
-)
+type LedgerTime struct {
+	Slot uint32
+	Tick byte
+}
 
 var (
 	NilLedgerTime      LedgerTime
@@ -44,22 +38,19 @@ var (
 )
 
 // SlotFromBytes enforces 2 most significant bits of the first byte are 0
-func SlotFromBytes(data []byte) (ret Slot, err error) {
+func SlotFromBytes(data []byte) (ret uint32, err error) {
 	if len(data) != 4 {
 		err = errWrongDataLength
 		return
 	}
-	return Slot(binary.BigEndian.Uint32(data)), nil
+	return binary.BigEndian.Uint32(data), nil
 }
 
-func NewLedgerTime(slot Slot, t Tick) (ret LedgerTime) {
+// T creates new ledger time object
+func T(slot uint32, t byte) (ret LedgerTime) {
 	util.Assertf(t <= MaxTickValue, "NewLedgerTime: invalid tick value %d", t)
 	ret = LedgerTime{Slot: slot, Tick: t}
 	return
-}
-
-func T(slot Slot, t Tick) LedgerTime {
-	return NewLedgerTime(slot, t)
 }
 
 func ValidTime(ts LedgerTime) bool {
@@ -75,10 +66,7 @@ func LedgerTimeFromBytes(data []byte) (ret LedgerTime, err error) {
 		err = errWrongTickValue
 		return
 	}
-	ret = LedgerTime{
-		Slot: Slot(binary.BigEndian.Uint32(data[:SlotByteLength])),
-		Tick: Tick(data[TickByteIndex] >> 1),
-	}
+	ret = T(binary.BigEndian.Uint32(data[:SlotByteLength]), data[TickByteIndex]>>1)
 	return
 }
 
@@ -88,26 +76,8 @@ func LedgerTimeFromTicksSinceGenesis(ticks int64) (ret LedgerTime, err error) {
 		err = fmt.Errorf("TimeFromTicksSinceGenesis: wrong int64")
 		return
 	}
-	ret = NewLedgerTime(Slot(ticks/TicksPerSlot), Tick(ticks%TicksPerSlot))
+	ret = T(uint32(ticks/TicksPerSlot), byte(ticks%TicksPerSlot))
 	return
-}
-
-func (s Slot) PutBytes(b []byte) {
-	binary.BigEndian.PutUint32(b, uint32(s))
-}
-
-func (s Slot) Bytes() []byte {
-	ret := make([]byte, SlotByteLength)
-	s.PutBytes(ret)
-	return ret
-}
-
-func (s Slot) Hex() string {
-	return fmt.Sprintf("0x%s", hex.EncodeToString(s.Bytes()))
-}
-
-func (s Slot) Uint32() uint32 {
-	return uint32(s)
 }
 
 func (t LedgerTime) IsSlotBoundary() bool {
@@ -119,7 +89,7 @@ func (t LedgerTime) NextSlotBoundary() LedgerTime {
 		return t
 	}
 	util.Assertf(t.Slot < MaxSlot, "t.Slot < MaxSlot")
-	return NewLedgerTime(t.Slot+1, 0)
+	return T(t.Slot+1, 0)
 }
 
 func (t LedgerTime) TicksToNextSlotBoundary() int {
@@ -131,8 +101,8 @@ func (t LedgerTime) TicksToNextSlotBoundary() int {
 
 func (t LedgerTime) Bytes() []byte {
 	ret := make([]byte, LedgerTimeByteLength)
-	binary.BigEndian.PutUint32(ret[:SlotByteLength], uint32(t.Slot))
-	ret[TickByteIndex] = uint8(t.Tick) << 1
+	binary.BigEndian.PutUint32(ret[:SlotByteLength], t.Slot)
+	ret[TickByteIndex] = t.Tick << 1
 	return ret[:]
 }
 
@@ -193,7 +163,7 @@ func (t LedgerTime) AddTicks(ticks int) LedgerTime {
 }
 
 // AddSlots adds slots to timestamp
-func (t LedgerTime) AddSlots(slot Slot) LedgerTime {
+func (t LedgerTime) AddSlots(slot uint32) LedgerTime {
 	return t.AddTicks(int(slot << 7))
 }
 
@@ -203,14 +173,20 @@ func MaximumTime(ts ...LedgerTime) LedgerTime {
 	})
 }
 
-func RandomSlot() Slot {
-	return Slot(rand.Uint32())
+func RandomSlot() uint32 {
+	return rand.Uint32()
 }
 
-func RandomLedgerTime(ticks ...Tick) (ret LedgerTime) {
+func RandomLedgerTime(ticks ...byte) (ret LedgerTime) {
 	ret.Slot = RandomSlot()
 	if len(ticks) > 0 {
 		ret.Tick = ticks[0]
 	}
 	return
+}
+
+func Slot2Bytes(slot uint32) []byte {
+	ret := make([]byte, SlotByteLength)
+	binary.BigEndian.PutUint32(ret, slot)
+	return ret
 }

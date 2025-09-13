@@ -300,7 +300,7 @@ func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, strin
 
 // MakeDAGFromTxStore creates dummy MemDAG from past cones of tips. Only uses txBytes from txStore
 // It is used in testing to visualize real transaction MemDAG, not the pruned cache kept in the node
-func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot base.Slot, tips ...base.TransactionID) *MemDAG {
+func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot uint32, tips ...base.TransactionID) *MemDAG {
 	d := New(nil)
 	for i := range tips {
 		d.loadPastConeFromTxStore(tips[i], txStore, oldestSlot)
@@ -309,7 +309,7 @@ func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot base.Slot, tips ..
 }
 
 // loadPastConeFromTxStore for generating graph only. Not thread safe
-func (d *MemDAG) loadPastConeFromTxStore(txid base.TransactionID, txStore global.TxBytesGet, oldestSlot base.Slot) *vertex.WrappedTx {
+func (d *MemDAG) loadPastConeFromTxStore(txid base.TransactionID, txStore global.TxBytesGet, oldestSlot uint32) *vertex.WrappedTx {
 	if txid.Slot() < oldestSlot {
 		return nil
 	}
@@ -343,7 +343,7 @@ func (d *MemDAG) loadPastConeFromTxStore(txid base.TransactionID, txStore global
 	return vid
 }
 
-func SavePastConeFromTxStore(tip base.TransactionID, txStore global.TxBytesGet, oldestSlot base.Slot, fname string) {
+func SavePastConeFromTxStore(tip base.TransactionID, txStore global.TxBytesGet, oldestSlot uint32, fname string) {
 	tmpDag := MakeDAGFromTxStore(txStore, oldestSlot, tip)
 	tmpDag.SaveGraph(fname)
 }

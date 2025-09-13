@@ -104,7 +104,7 @@ func New(ts base.LedgerTime,
 		util.Assertf(ok, "SequencerTxBuilderinconsistency: cannot find previous stem")
 
 		// sign concatenation of predecessor VRFProof with slot number and next VRF proof
-		msg := common.Concat(prevStem.VRFProof, ret.TransactionData.Timestamp.Slot.Bytes())
+		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TransactionData.Timestamp.Slot))
 		ret.vrfProof = ed25519.Sign(ret.privateKey, msg)
 	}
 
@@ -121,7 +121,7 @@ func New(ts base.LedgerTime,
 			if ret.chainInput.Timestamp().Slot != ret.TransactionData.Timestamp.Slot {
 				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.ChainInflationOneSlot(
 					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0)),
-					uint32(ret.chainInput.Timestamp().Slot),
+					ret.chainInput.Timestamp().Slot,
 				))
 			}
 		}
@@ -233,8 +233,8 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
-	frozenSlots := ledger.Const.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot), frozenEpochs)
-	projectedInflation := ledger.ChainInflation(delegationIn.Output.TokenBalance(), uint32(txb.TransactionData.Timestamp.Slot), frozenSlots)
+	frozenSlots := ledger.Const.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot, frozenEpochs)
+	projectedInflation := ledger.ChainInflation(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
 		return (projectedInflation * uint64(delegatorRequirement)) / 1000, nil
@@ -243,7 +243,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 }
 
 func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput) (successorIdx byte, err error) {
-	if !delegationIn.IsUnlockableByTargetForFreezing(uint32(txb.TransactionData.Timestamp.Slot)) {
+	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TransactionData.Timestamp.Slot) {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: output cannot be unlocked by the target for freezing:\n%s", delegationIn.LinesHR("   ").String())
 		return
 	}
@@ -260,7 +260,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		return
 	}
 	lastEpochToFreeze := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
-	txEpoch := ledger.Const.EpochFromSlotDirect(delegationIn.Target.ChainID(), uint32(txb.TransactionData.Timestamp.Slot))
+	txEpoch := ledger.Const.EpochFromSlotDirect(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot)
 	util.Assertf(lastEpochToFreeze >= txEpoch, "lastEpochToFreeze>=txEpoch")
 
 	frozenEpochs := lastEpochToFreeze - txEpoch + 1
@@ -409,7 +409,7 @@ func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
 }
 
 func (txb *SeqTxBuilder) Slot() uint32 {
-	return uint32(txb.TransactionData.Timestamp.Slot)
+	return txb.TransactionData.Timestamp.Slot
 }
 
 func (txb *SeqTxBuilder) SetName(name string) {

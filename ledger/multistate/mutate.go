@@ -37,7 +37,7 @@ type (
 
 	mutationAddTx struct {
 		ID              base.TransactionID
-		TimeSlot        base.Slot
+		TimeSlot        uint32
 		LastOutputIndex byte
 	}
 
@@ -111,7 +111,7 @@ func (m *mutationDelChain) sortOrder() byte {
 }
 
 func (m *mutationDelChain) timestamp() base.LedgerTime {
-	return base.NewLedgerTime(0xffffffff, 0xff)
+	return base.T(0xffffffff, 0xff)
 }
 
 func NewMutations() *Mutations {
@@ -142,7 +142,7 @@ func (mut *Mutations) InsertDelOutputMutation(id base.OutputID) {
 	mut.mut = append(mut.mut, &mutationDelOutput{ID: id})
 }
 
-func (mut *Mutations) InsertAddTxMutation(id base.TransactionID, slot base.Slot, lastOutputIndex byte) {
+func (mut *Mutations) InsertAddTxMutation(id base.TransactionID, slot uint32, lastOutputIndex byte) {
 	mut.mut = append(mut.mut, &mutationAddTx{
 		ID:              id,
 		TimeSlot:        slot,
@@ -258,8 +258,8 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 	return
 }
 
-func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, slot base.Slot, lastOutputIndex byte) (delta supplyDelta, err error) {
-	if trie.Update(txid[:], slot.Bytes()) {
+func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, slot uint32, lastOutputIndex byte) (delta supplyDelta, err error) {
+	if trie.Update(txid[:], base.Slot2Bytes(slot)) {
 		// key should not exist
 		err = fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.StringShort())
 	}

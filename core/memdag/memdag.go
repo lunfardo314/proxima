@@ -45,8 +45,8 @@ type (
 		mutex    sync.RWMutex
 		vertices map[base.TransactionID]_vertexRecord
 
-		latestBranchSlot        base.Slot
-		latestHealthyBranchSlot base.Slot
+		latestBranchSlot        uint32
+		latestHealthyBranchSlot uint32
 
 		metrics
 	}
@@ -243,7 +243,7 @@ func (d *MemDAG) WaitUntilTransactionInHeaviestState(txid base.TransactionID, ti
 }
 
 // EvidenceBranchSlot maintains cached values
-func (d *MemDAG) EvidenceBranchSlot(s base.Slot, isHealthy bool) {
+func (d *MemDAG) EvidenceBranchSlot(s uint32, isHealthy bool) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
@@ -262,7 +262,7 @@ func (d *MemDAG) EvidenceBranchSlot(s base.Slot, isHealthy bool) {
 // If network is unreachable or nobody else is active it will return false
 // Node is out of sync if current slots are behind from now
 // Being synced or not is subjective
-func (d *MemDAG) LatestBranchSlots() (slot, healthySlot base.Slot, synced bool) {
+func (d *MemDAG) LatestBranchSlots() (slot, healthySlot uint32, synced bool) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
@@ -288,7 +288,7 @@ func (d *MemDAG) LatestBranchSlots() (slot, healthySlot base.Slot, synced bool) 
 	return
 }
 
-func (d *MemDAG) LatestHealthySlot() base.Slot {
+func (d *MemDAG) LatestHealthySlot() uint32 {
 	_, ret, _ := d.LatestBranchSlots()
 	return ret
 }

@@ -118,12 +118,12 @@ func (txid *TransactionID) Timestamp() (ret LedgerTime) {
 	return
 }
 
-func (txid *TransactionID) Slot() Slot {
-	return Slot(binary.BigEndian.Uint32(txid[:SlotByteLength]))
+func (txid *TransactionID) Slot() uint32 {
+	return binary.BigEndian.Uint32(txid[:SlotByteLength])
 }
 
-func (txid *TransactionID) Tick() Tick {
-	return Tick(txid[TickByteIndex] >> 1)
+func (txid *TransactionID) Tick() byte {
+	return txid[TickByteIndex] >> 1
 }
 
 func (txid *TransactionID) IsSequencerMilestone() bool {
@@ -324,7 +324,7 @@ func (oid *OutputID) Timestamp() LedgerTime {
 	return ret.Timestamp()
 }
 
-func (oid *OutputID) Slot() Slot {
+func (oid *OutputID) Slot() uint32 {
 	ret := oid.TransactionID()
 	return ret.Slot()
 }

@@ -31,7 +31,7 @@ func runUlist(_ *cobra.Command, args []string) {
 	slotInt, err := strconv.Atoi(args[0])
 	glb.AssertNoError(err)
 	glb.Assertf(slotInt < math.MaxUint32, "wrong slot number")
-	slot := base.Slot(slotInt)
+	slot := uint32(slotInt)
 
 	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()

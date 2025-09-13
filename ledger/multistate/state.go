@@ -276,14 +276,14 @@ func (r *Readable) _getUTXOForChainID(id base.ChainID) (*ledger.OutputDataWithID
 	}, nil
 }
 
-func (r *Readable) GetStem() (base.Slot, []byte) {
+func (r *Readable) GetStem() (uint32, []byte) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
 
 	var found bool
-	var retSlot base.Slot
+	var retSlot uint32
 	var retBytes []byte
 
 	partition := common.MakeReaderPartition(r.trie, TriePartitionState)
@@ -317,13 +317,13 @@ func (r *Readable) Iterator(prefix []byte) common.KVIterator {
 
 // IterateKnownCommittedTransactions iterates transaction IDs in the state. Optionally, iteration is restricted
 // for a slot. In that case first iterates non-sequencer transactions, the sequencer transactions
-func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.TransactionID, slot base.Slot) bool, txidSlot ...base.Slot) {
+func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.TransactionID, slot uint32) bool, txidSlot ...uint32) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	var iter common.KVIterator
 	if len(txidSlot) > 0 {
-		iter = r.trie.Iterator(txidSlot[0].Bytes())
+		iter = r.trie.Iterator(base.Slot2Bytes(txidSlot[0]))
 	} else {
 		iter = r.trie.Iterator(nil)
 	}
@@ -379,11 +379,11 @@ func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) {
 	})
 }
 
-func (r *Readable) IterateUTXOsInSlot(slot base.Slot, fun func(oid base.OutputID, oData []byte) bool) (err error) {
+func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	prefix := common.Concat(TriePartitionState, slot.Bytes())
+	prefix := common.Concat(TriePartitionState, base.Slot2Bytes(slot))
 
 	var oid base.OutputID
 	r.trie.Iterator(prefix).Iterate(func(k, v []byte) bool {

@@ -20,7 +20,7 @@ func NewVertex(tx *transaction.Transaction) *Vertex {
 	}
 }
 
-func (v *Vertex) TimeSlot() base.Slot {
+func (v *Vertex) TimeSlot() uint32 {
 	return v.Tx.Slot()
 }
 

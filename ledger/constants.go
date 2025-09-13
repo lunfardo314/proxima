@@ -243,18 +243,18 @@ func (c *Constants) LedgerTimeFromClockTime(nowis time.Time) base.LedgerTime {
 }
 
 func (c *Constants) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
-	return uint8(ts.Tick) > base.MaxTickValue-c.PreBranchConsolidationTicks
+	return ts.Tick > base.MaxTickValue-c.PreBranchConsolidationTicks
 }
 
 func (c *Constants) IsPostBranchConsolidationTimestamp(ts base.LedgerTime) bool {
-	return uint8(ts.Tick) >= c.PostBranchConsolidationTicks
+	return ts.Tick >= c.PostBranchConsolidationTicks
 }
 
 func (c *Constants) EnsurePostBranchConsolidationConstraintTimestamp(ts base.LedgerTime) base.LedgerTime {
 	if c.IsPostBranchConsolidationTimestamp(ts) {
 		return ts
 	}
-	return base.NewLedgerTime(ts.Slot, base.Tick(c.PostBranchConsolidationTicks))
+	return base.T(ts.Slot, c.PostBranchConsolidationTicks)
 }
 
 func (c *Constants) GenesisTimeUnixNano() int64 {

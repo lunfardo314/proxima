@@ -500,7 +500,7 @@ func (tx *Transaction) IDStringHex() string {
 	return id.StringHex()
 }
 
-func (tx *Transaction) Slot() base.Slot {
+func (tx *Transaction) Slot() uint32 {
 	return tx.timestamp.Slot
 }
 

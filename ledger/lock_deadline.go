@@ -9,7 +9,7 @@ import (
 )
 
 type DeadlineLock struct {
-	Deadline         base.Slot
+	Deadline         uint32
 	ConstraintMain   Accountable
 	ConstraintExpiry Accountable
 }
@@ -19,7 +19,7 @@ const (
 	deadlineLockTemplate = DeadlineLockName + "(u32/%d, %s, %s)"
 )
 
-func NewDeadlineLock(deadline base.Slot, main, expiry Accountable) *DeadlineLock {
+func NewDeadlineLock(deadline uint32, main, expiry Accountable) *DeadlineLock {
 	return &DeadlineLock{
 		Deadline:         deadline,
 		ConstraintMain:   main,

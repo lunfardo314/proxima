@@ -46,7 +46,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	}
 
 	genesisStem := rdr.GetStemOutput()
-	ts := base.NewLedgerTime(genesisStem.Timestamp().Slot+1, 0)
+	ts := base.T(genesisStem.Timestamp().Slot+1, 0)
 	genesisDistributionOutputs := make([]*ledger.Output, len(genesisDistribution))
 	for i := range genesisDistribution {
 		genesisDistributionOutputs[i] = ledger.NewOutput(func(o *ledger.OutputBuilder) {

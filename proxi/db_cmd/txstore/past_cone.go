@@ -31,7 +31,7 @@ func runPastConeCmd(_ *cobra.Command, args []string) {
 	slotsBack, err := strconv.Atoi(args[1])
 	glb.AssertNoError(err)
 	glb.Assertf(slotsBack >= 1 && int(txid.Slot()) >= slotsBack, "wrong second parameter '%s'", args[1])
-	oldestSlot := txid.Slot() - base.Slot(slotsBack)
+	oldestSlot := txid.Slot() - uint32(slotsBack)
 
 	fname := txid.AsFileNameShort()
 	glb.Infof("writing past cone of %s to '%s'", txid.StringShort(), fname)

@@ -289,7 +289,7 @@ func (vid *WrappedTx) Before(vid1 *WrappedTx) bool {
 	return vid.Timestamp().Before(vid1.Timestamp())
 }
 
-func (vid *WrappedTx) Slot() base.Slot {
+func (vid *WrappedTx) Slot() uint32 {
 	return vid.id.Slot()
 }
 

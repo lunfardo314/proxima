@@ -45,7 +45,7 @@ type (
 		*memdag.MemDAG
 		cfg          *ConfigParams
 		peers        *peering.Peers
-		earliestSlot base.Slot // cached, immutable
+		earliestSlot uint32 // cached, immutable
 		// queues and daemons
 		pullTxServer *pull_tx_server.PullTxServer
 		poker        *poker.Poker

@@ -30,7 +30,7 @@ func (d _dummyStateReader) IterateUTXOsInAccount(addr ledger.AccountID, fun func
 	return nil
 }
 
-func (d _dummyStateReader) IterateUTXOsInSlot(slot base.Slot, fun func(oid base.OutputID, oData []byte) bool) (err error) {
+func (d _dummyStateReader) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error) {
 	return nil
 }
 

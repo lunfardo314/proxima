@@ -245,7 +245,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 
-		par.Timestamp = base.NewLedgerTime(100000, 0)
+		par.Timestamp = base.T(100000, 0)
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, util.MustErrorWith(err, "timestamp is on slot boundary"))
 

@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -59,7 +58,7 @@ func runBranchInflationBonusStats() {
 		defer fout.Close()
 	}
 
-	multistate.IterateSlotsBack(glb.StateStore(), func(slot base.Slot, roots []multistate.RootRecord) bool {
+	multistate.IterateSlotsBack(glb.StateStore(), func(slot uint32, roots []multistate.RootRecord) bool {
 		for _, br := range multistate.FetchBranchDataMulti(glb.StateStore(), roots...) {
 			bib := br.SequencerOutput.Output.Inflation()
 

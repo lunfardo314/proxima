@@ -104,10 +104,10 @@ func (lib *Library) registerConstraints() {
 
 	lib.appendInlineTests(func() {
 		// inline tests
-		libraryGlobal.MustEqual("timestampBytes(u32/255, 21)", base.NewLedgerTime(255, 21).Hex())
+		libraryGlobal.MustEqual("timestampBytes(u32/255, 21)", base.T(255, 21).Hex())
 		libraryGlobal.MustEqual("ticksBefore(timestampBytes(u32/100, 5), timestampBytes(u32/101, 10))", "u64/133")
 		libraryGlobal.MustError("mustValidTimeSlot(255)", "wrong slot data")
-		libraryGlobal.MustEqual("mustValidTimeSlot(u32/255)", base.Slot(255).Hex())
+		libraryGlobal.MustTrue("mustValidTimeSlot(u32/255)")
 		libraryGlobal.MustEqual("mustValidTimeTick(88)", "88")
 		libraryGlobal.MustError("mustValidTimeTick(200)", "'wrong ticks value'")
 		libraryGlobal.MustEqual("div(constInitialSupply, constSlotInflationBase)", "u64/30303030")

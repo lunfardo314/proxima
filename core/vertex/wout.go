@@ -37,7 +37,7 @@ func (o *WrappedOutput) Timestamp() base.LedgerTime {
 	return o.VID.Timestamp()
 }
 
-func (o *WrappedOutput) Slot() base.Slot {
+func (o *WrappedOutput) Slot() uint32 {
 	return o.VID.Slot()
 }
 

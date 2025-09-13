@@ -104,7 +104,7 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 		defer mu.Unlock()
 
 		txID := tx.IDShortString()
-		slot := uint32(tx.Timestamp().Slot)
+		slot := tx.Timestamp().Slot
 
 		srv.Tracef(TraceTag, "Processing TX id: %s (Slot: %d)", txID, slot)
 
@@ -143,7 +143,7 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 				continue // Skip this input
 			}
 
-			depSlot := uint32(txid.Timestamp().Slot)
+			depSlot := txid.Timestamp().Slot
 
 			// Ensure slot set exists
 			if _, exists := txSlots[depSlot]; !exists {

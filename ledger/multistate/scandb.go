@@ -30,8 +30,8 @@ type (
 
 	SummarySupplyAndInflation struct {
 		NumberOfBranches int
-		OldestSlot       base.Slot
-		LatestSlot       base.Slot
+		OldestSlot       uint32
+		LatestSlot       uint32
 		BeginSupply      uint64
 		EndSupply        uint64
 		TotalInflation   uint64

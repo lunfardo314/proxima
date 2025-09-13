@@ -156,7 +156,7 @@ func runChainStats() {
 
 	numBranches = 0
 	maxBranchesInSlot := 0
-	multistate.IterateSlotsBack(glb.StateStore(), func(slot base.Slot, roots []multistate.RootRecord) bool {
+	multistate.IterateSlotsBack(glb.StateStore(), func(slot uint32, roots []multistate.RootRecord) bool {
 		branches := multistate.FetchBranchDataMulti(glb.StateStore(), roots...)
 		// sort by inflation descending
 		if len(branches) == 0 {

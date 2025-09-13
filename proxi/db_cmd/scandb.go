@@ -1,7 +1,6 @@
 package db_cmd
 
 import (
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -25,7 +24,7 @@ func runScanDBCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
-	multistate.IterateSlotsBack(glb.StateStore(), func(slot base.Slot, roots []multistate.RootRecord) bool {
+	multistate.IterateSlotsBack(glb.StateStore(), func(slot uint32, roots []multistate.RootRecord) bool {
 		branches := multistate.FetchBranchDataMulti(glb.StateStore(), roots...)
 		if len(branches) == 0 {
 			return true

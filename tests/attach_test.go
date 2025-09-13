@@ -441,7 +441,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		require.NoError(t, util.MustErrorWith(err, "explicit baseline must be a branch transaction ID"))
 
 		// now this must pass without error
-		explicitBaseline = util.Ref(base.RandomTransactionID(true, 5, base.NewLedgerTime(ts.Slot, 0)))
+		explicitBaseline = util.Ref(base.RandomTransactionID(true, 5, base.T(ts.Slot, 0)))
 
 		txBytes, loader, err = txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
