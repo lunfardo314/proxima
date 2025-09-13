@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, verbosityLevel int, prefix ...string) *lines.Lines {
+func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
 	lst := slices.Clone(outs)
 	sort.Slice(lst, func(i, j int) bool {
@@ -41,7 +41,7 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 		} else if o.IsUnlockableByMaster(currentSlot) {
 			status = "can be unlocked by master"
 		}
-		ln.Add("%34s  %s  %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status)
+		ln.Add("%34s  %20s  %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status)
 		if VerbosityLevel() > 0 {
 			ln.Add("     delegation target %s", util.Ref(o.Target.ChainID()).String())
 			if o.IsMarkedFrozen() {
@@ -54,6 +54,25 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 				lessShareForSafeRevocation := 1 - float64(ledger.Const.SafeRevocationSlots)/float64(uint32(o.MaxFrozenEpochs)*ledger.Const.DelegationEpochSlots+ledger.Const.SafeRevocationSlots)
 				ln.Add("     estimated annualized inflation rate: %.2f%%", rate*lessShareForSafeRevocation)
 			}
+		}
+	}
+	return ln
+}
+
+func LinesChainOutputs(outs []ledger.OutputWithChainID, currentSlot uint32, prefix ...string) *lines.Lines {
+	ln := lines.New(prefix...)
+
+	for _, o := range outs {
+		slots := currentSlot - uint32(o.OriginSlot)
+		inflation := o.Output.TokenBalance() - o.OriginAmount
+		yearly := uint64(ledger.Const.SlotsPerYear()) * inflation / uint64(slots)
+		yearlyRate := 100 * float64(yearly) / float64(o.OriginAmount)
+		ln.Add("%34s  %20s   since slot: %d, last active %d slots ago",
+			o.ChainID.String(), util.Th(o.Output.TokenBalance()), o.OriginSlot, currentSlot-uint32(o.ID.Slot()))
+		if IsVerbose() {
+			ln.Add("      origin amount:        %s", util.Th(o.OriginAmount))
+			ln.Add("      inflation:            %s", util.Th(o.Output.TokenBalance()-o.OriginAmount))
+			ln.Add("      annualized inflation: %.2f%%", yearlyRate)
 		}
 	}
 	return ln

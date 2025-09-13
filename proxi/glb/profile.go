@@ -62,7 +62,7 @@ func MustGetTarget() ledger.Accountable {
 		Infof("target account is: %s", ret.String())
 	} else {
 		ret = GetWalletData().Account
-		Infof("wallet account will be used as target: %s", ret.String())
+		Infof("wallet account (default as a target): %s ", ret.String())
 	}
 	return ret
 }
