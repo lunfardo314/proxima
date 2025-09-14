@@ -69,7 +69,8 @@ func listChains(chains []*ledger.OutputWithChainID) {
 	glb.Infof("------------------------------")
 
 	count := 0
-	for i, o := range chains {
+	counter := 0
+	for _, o := range chains {
 		lock := o.Output.Lock()
 		seq := "NO"
 		sd, _ := o.Output.SequencerOutputData()
@@ -88,8 +89,8 @@ func listChains(chains []*ledger.OutputWithChainID) {
 				continue
 			}
 		}
-
-		glb.Infof("\n%2d: %s, sequencer: "+seq, i, o.ChainID.String())
+		counter++
+		glb.Infof("\n%2d: %s, sequencer: "+seq, counter, o.ChainID.String())
 		glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
 		glb.Infof("      controller lock : %s", lock.String())
 		glb.Infof("      output          : %s", o.ID.String())

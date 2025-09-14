@@ -3,6 +3,7 @@ package ledger
 import (
 	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -363,35 +364,55 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 	}), nil
 }
 
-func (o *DelegationOutput) LinesHR(prefix ...string) *lines.Lines {
-	return o._lines(func(ln *lines.Lines) {
+func (o *DelegationOutput) LinesDelegationData(prefix ...string) *lines.Lines {
+	return o._linesDelegationData(func(ln *lines.Lines) {}, prefix...)
+}
+
+func (o *DelegationOutput) LinesHRFull(prefix ...string) *lines.Lines {
+	return o._linesDelegationData(func(ln *lines.Lines) {
 		ln.Append(o.OutputWithChainID.LinesHR(prefix...))
 	}, prefix...)
 }
 
-func (o *DelegationOutput) LinesSource(prefix ...string) *lines.Lines {
-	return o._lines(func(ln *lines.Lines) {
+func (o *DelegationOutput) LinesSourceFull(prefix ...string) *lines.Lines {
+	return o._linesDelegationData(func(ln *lines.Lines) {
+		ln.Add("---- delegation output ----")
 		ln.Append(o.OutputWithChainID.LinesSource(prefix...))
 	}, prefix...)
 }
 
-func (o *DelegationOutput) _lines(insert func(ln *lines.Lines), prefix ...string) *lines.Lines {
+func (o *DelegationOutput) _linesDelegationData(insertPrefixLines func(ln *lines.Lines), prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("---- delegation output ----")
-	insert(ret)
+	insertPrefixLines(ret)
+	currentSlot := SlotNow()
 	ret.Add("Master: %s", o.MasterLock.Source())
 	ret.Add("Target: %s", o.Target.Source())
 	ret.Add("MaxFrozenEpochs: %d", o.MaxFrozenEpochs)
-	ret.Add("RequiredInflationShare: %d%%%%", o.RequiredInflationShare)
+	ret.Add("RequiredInflationShare: %d promille (%.1f%%)", o.RequiredInflationShare, float64(o.RequiredInflationShare)/10)
 	if o.IsMarkedFrozen() {
-		ret.Add("Status: frozen")
-		ret.Add("   frozen until epoch: %d", o.LastFrozenEpoch)
+		_, lastSlot := Const.EpochLimits(o.Target.ChainID(), o.LastFrozenEpoch)
+		frozenSlots := int(lastSlot) - int(currentSlot) + 1
+		ret.Add("Status: marked frozen")
+		ret.Add("   frozen until epoch: %d, %d slots from now", o.LastFrozenEpoch, frozenSlots)
 		from, to, total := o.FrozenEpochs(o.Timestamp())
 		ret.Add("   frozen epochs: %d - %d (total: %d)", from, to, total)
 		from, to, total = o.FrozenSlots(o.Timestamp())
 		ret.Add("   frozen slots: %d - %d (total: %d)", from, to, total)
+		if o.IsInFrozenSlot(currentSlot) {
+			ret.Add("Output is FROZEN in the current slot %d", currentSlot)
+			untilUnfreeze := time.Until(ClockTime(base.T(uint32(lastSlot)+1, 0)))
+			hr := untilUnfreeze / time.Hour
+			minutes := (untilUnfreeze - hr*time.Hour) / time.Minute
+			ret.Add("End of freeze is in %d slots, %d hours, %d minutes from now", frozenSlots, hr, minutes)
+		} else if o.IsInSafeRevocationWindow(currentSlot) {
+			fromSRW, toSRW, applicable := o.SafeRevocationWindow()
+			util.Assertf(applicable, "inconsistency")
+			endOfSRW := time.Until(ClockTime(base.T(uint32(toSRW)+1, 0)))
+			minutes := endOfSRW / time.Minute
+			ret.Add("Delegation is the SAFE REVOCATION WINDOW from slot %d to %d, for %d minutes more", fromSRW, toSRW, minutes)
+		}
 	} else if o.IsMarkedOnHold() {
-		ret.Add("Status: revoked")
+		ret.Add("Status: on hold")
 	} else {
 		ret.Add("Status: undef")
 	}

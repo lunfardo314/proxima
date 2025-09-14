@@ -419,6 +419,10 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	}, true
 }
 
+func (s *SequencerOutputData) Lines(prefix ...string) *lines.Lines {
+	return s.SequencerData.Lines(prefix...)
+}
+
 func (o *Output) DelegationLock() *DelegateLock {
 	lock := o.Lock()
 	if lock.Name() != DelegateLockName {

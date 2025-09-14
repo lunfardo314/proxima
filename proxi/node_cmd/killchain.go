@@ -72,7 +72,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 			ts.Slot, unfreeze)
 		glb.Infof("safe revocation window is %d slots from now: slots %d - %d",
 			unfreeze-uint32(ts.Slot), ts.Slot, unfreeze)
-		glb.Infof("===============\n%s", dOut.LinesHR("     ").String())
+		glb.Infof("===============\n%s", dOut.LinesHRFull("     ").String())
 		return
 	}
 	tx, err := txbuilder.MakeEndChainTransaction(txbuilder.EndChainParams{

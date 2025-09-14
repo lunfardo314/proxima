@@ -243,7 +243,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	td.delegatedOutput, err = td.u.SugaredStateReader().GetDelegatedOutput(td.delegatedOutput.ChainID)
 	require.NoError(td, err)
 	if par.prntx {
-		td.Logf("%s", td.delegatedOutput.LinesSource("     ").String())
+		td.Logf("%s", td.delegatedOutput.LinesSourceFull("     ").String())
 	}
 
 	// get chain tip
@@ -259,7 +259,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	diffSlots := ts.Slot - td.delegatedOutput.Timestamp().Slot
 	diffEpochs := ledger.Const.DiffEpochs(td.delegatedOutput.Target.ChainID(), ts, td.delegatedOutput.Timestamp())
 	td.Logf(">>>> revoke -----\nts = %s, diffSlots = %d, diffEpochs = %d\n-----\n%s",
-		ts.String(), diffSlots, diffEpochs, td.delegatedOutput.LinesSource("   ").String())
+		ts.String(), diffSlots, diffEpochs, td.delegatedOutput.LinesSourceFull("   ").String())
 
 	txb := txbuilder.New()
 
@@ -321,7 +321,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	td.delegatedOutput, err = td.u.SugaredStateReader().GetDelegatedOutput(td.delegatedOutput.ChainID)
 	require.NoError(td, err)
 	if prntx {
-		td.Logf("%s", td.delegatedOutput.LinesSource("     ").String())
+		td.Logf("%s", td.delegatedOutput.LinesSourceFull("     ").String())
 	}
 
 	// get chain tip
@@ -712,7 +712,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	td.delegatedOutput, err = td.u.SugaredStateReader().GetDelegatedOutput(td.delegatedOutput.ChainID)
 	require.NoError(td, err)
 	if par.prntx {
-		td.Logf("%s", td.delegatedOutput.LinesSource("     ").String())
+		td.Logf("%s", td.delegatedOutput.LinesSourceFull("     ").String())
 	}
 
 	// get chain tip

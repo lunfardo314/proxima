@@ -10,23 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//func TestLoadOld(t *testing.T) {
-//	id, _ := ledger.GetTestingLedgerParams()
-//	lib := ledger.LibraryFromParameters(id, true)
-//	constants := ledger.ConstantsFromLibrary(lib.Library)
-//	t.Logf("------------------ ORIG \n%s", constants.String())
-//	t.Logf("------------------\n%s", constants.TimeConstantsToString())
-//
-//	idBack, err := ledger.IDParametersFromLibrary(lib.Library)
-//	require.NoError(t, err)
-//	t.Logf("------------------ ID LOADED FROM LIBRARY \n%s", idBack.String())
-//
-//	constants = ledger.ConstantsFromLibrary(lib.Library)
-//	t.Logf("------------------ ID LOADED FROM LIBRARY \n%s", idBack.String())
-//
-//	require.EqualValues(t, id, idBack)
-//}
-
 func TestLoad(t *testing.T) {
 	par, _ := ledger.GetTestingLedgerParams()
 	lib := ledger.LibraryFromParameters(par, true)

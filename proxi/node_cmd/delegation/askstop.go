@@ -60,7 +60,6 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(unfreeze > uint32(ts.Slot)+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
 
 	compensation := dOut.RevocationCompensationEstimate(uint32(ts.Slot))
-	glb.Infof("estimated compensation (tag-along fee of the 'revoke' request): %s", util.Th(compensation))
 	const minimumFee = 50
 
 	glb.Assertf(compensation >= minimumFee, "estimated compensation is even less than minimum fee %d", minimumFee)
@@ -85,8 +84,11 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 
 	txStr := transaction.ParseBytesToString(txBytes, transaction.PickOutputFromListFunc(walletInputs))
 
+	glb.Infof("estimated compensation (tag-along fee of the 'ask stop' request): %s", util.Th(compensation))
+	if !glb.YesNoPrompt("submit 'ask stop delegation' request to the target sequencer?", true) {
+		return
+	}
 	glb.Verbosef("---- request transaction ------\n%s\n------------------", txStr)
-
 	glb.Infof("submitting the transaction...")
 
 	err = clnt.SubmitTransaction(txBytes)

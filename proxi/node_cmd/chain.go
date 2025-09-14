@@ -1,6 +1,7 @@
 package node_cmd
 
 import (
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -29,14 +30,29 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.PrintLRB(&lrbid)
 
-	glb.Infof("\nOUTPUT (UTXO) DATA:\n")
-	glb.Infof("chain ID:      %s", chainID.String())
-	glb.Infof("output ID:     %s", out.ID.String())
-	glb.Infof("token balance: %s", util.Th(out.Output.TokenBalance()))
+	dOut, isDelegation := ledger.AsDelegationOutput(out.Output, out.ID)
+	seqData, isSequencer := out.Output.SequencerOutputData()
+
+	glb.Infof("\nCHAIN OUTPUT DATA:\n-----------------")
+	glb.Infof("chain ID:             %s", chainID.String())
+	glb.Infof("output ID:            %s", out.ID.String())
+	glb.Infof("token balance:        %s", util.Th(out.Output.TokenBalance()))
+	glb.Infof("is delegation output: %v", isDelegation)
+	glb.Infof("is sequencer output:  %v", isSequencer)
+	glb.Infof("is branch output:     %v", out.ID.IsBranchTransaction())
 	if glb.IsVerbose() {
 		glb.Infof("constraints:\n%s", out.Output.LinesHR("      "))
 	}
 	glb.Infof("\n")
+	if isSequencer {
+		glb.Infof("SEQUENCER DATA:\n-----------------")
+		glb.Infof("%s", seqData.SequencerData.Lines("    ").String())
+		glb.Infof("\n")
+	}
 
-	// TODO more info
+	if isDelegation {
+		glb.Infof("delegation output: true")
+		glb.Infof("DELEGATION OUTPUT DATA (slot now is %d):\n-----------------", ledger.SlotNow())
+		glb.Infof("%s", dOut.LinesDelegationData().String())
+	}
 }

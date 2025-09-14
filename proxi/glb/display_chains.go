@@ -35,7 +35,7 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 			Assertf(applicable, "inconsistency: SafeRevocationWindow")
 			untilEnd := time.Until(ledger.ClockTime(base.T(uint32(to+1), 0)))
 			m := untilEnd / time.Minute
-			status = fmt.Sprintf("safe revocation until slot %d (for %d min)", to, m)
+			status = fmt.Sprintf("safe revocation until slot %d (for %d min more)", to, m)
 		} else if o.IsMarkedOnHold() {
 			status = "on hold"
 		} else if o.IsUnlockableByMaster(currentSlot) {

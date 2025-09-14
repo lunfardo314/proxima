@@ -22,11 +22,10 @@ var (
 
 func initDelegationSubmitCmd() *cobra.Command {
 	delegateCmd := &cobra.Command{
-		Use:     "submit <amount> [flags]",
-		Aliases: util.List("send"),
-		Short:   `delegates amount to target sequencer by creating delegation chain output`,
-		Args:    cobra.ExactArgs(1),
-		Run:     runDelegationSubmitCmd,
+		Use:   "send <amount> [flags]",
+		Short: `delegates amount to the target sequencer by creating delegation chain output`,
+		Args:  cobra.ExactArgs(1),
+		Run:   runDelegationSubmitCmd,
 	}
 
 	glb.AddFlagTarget(delegateCmd)
@@ -164,8 +163,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	delegationID := base.MakeOriginChainID(delegationOid)
-	glb.Infof("\ndelegation id: %s\n", delegationID.String())
-
+	glb.Infof("\ndelegation ID is %s", delegationID.String())
 	err = client.SubmitTransaction(txBytes)
 	glb.AssertNoError(err)
 

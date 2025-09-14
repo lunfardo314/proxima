@@ -36,7 +36,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 		dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID)
 		glb.Assertf(ok, "unable to retrieve delegation output with ID %s", out.ID.String())
 		glb.PrintLRB(&lrbid)
-		glb.Verbosef("%s", dOut.LinesHR("    ").String())
+		glb.Verbosef("%s", dOut.LinesHRFull("    ").String())
 
 		nowslot := uint32(ledger.TimeNow().Slot)
 		if dOut.IsInFrozenSlot(nowslot) {
