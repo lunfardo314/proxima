@@ -79,8 +79,9 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	dOut, isDelegation := ledger.AsDelegationOutput(oIn.Output, oIn.ID)
 	glb.Assertf(!isDelegation || dOut.IsUnlockableByMaster(ts.Slot), "chain is delegation output NOT unlockable by master")
 
+	inflation := ledger.ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
 	oOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(oIn.Output.TokenBalance())
+		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-glb.GetTagAlongFee()), int64(inflation))
 		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, maxFreezeEpochs, 100)
 		o.WithLock(lock)
 		cc := ledger.NewChainConstraint(oIn.ChainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
@@ -98,15 +99,22 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Assertf(succIdx == 0, "succIdx==0")
 
+	tagAlongIdx, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(glb.GetTagAlongFee())
+		o.WithLock(ledger.ChainLockFromChainID(*glb.GetTagAlongSequencerID()))
+	}))
+	glb.AssertNoError(err)
+	glb.Assertf(tagAlongIdx == 1, "tagAlongIdx==1")
+
 	txb.TransactionData.Timestamp = ts
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(oIn.Output)
 	txb.SignED25519(walletData.PrivateKey)
 
 	txBytes, txid, txString, err := txb.BytesWithValidation()
 	if err != nil {
-		glb.Infof("failed to produce transaction: '%v'\n-------------------\n%s", err, txString)
+		glb.Infof("\nFAILED to produce transaction: '%v'\n-------------------\n%s", err, txString)
 	} else {
-		glb.Infof("\n-------- tx OK -----------\n%s", txString)
+		glb.Infof("\n-------- tx OK (len = %d) -----------\n%s", len(txBytes), txString)
 	}
 
 	prompt := fmt.Sprintf("delegate %s to sequencer %s", chainID.StringShort(), targetSeqID.String())
