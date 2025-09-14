@@ -550,13 +550,16 @@ and(
 func _targetUnlockedConsumed :
 and(
    not(equal(byte(selfUnlockParameters,2), 0xff)), // not marked as unlocked by master
+	  // output must be unlockable in principle
    _requireUnlockableByTheTarget,
 	  // target lock must be unlocked
    require($0, !!!delegation_target_chain_must_be_unlocked),  
+      // target cannot discontinue the chain
+   require(not(equal(selfSiblingUnlockParams(2),0xffff)), !!!target_cannot_discontinue_the_delegation_chain),
 	  // amount should not decrease
    require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease),
-	  // delegation lock must be immutable
-   require(equal(successorConstraint(1), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_must_be_immutable)
+	  // delegation lock must be exactly equal
+   require(equal(successorConstraint(1), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_on_successor_must_be_exactly_the_same)
 )
 
 // $0 target chain lock
