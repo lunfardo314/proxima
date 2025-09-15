@@ -113,7 +113,7 @@ func (w *Workflow) EvidenceNonSequencerTx() {
 
 func (w *Workflow) SaveFullDAG(fname string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(w.StateStore())
-	tmpDag := memdag.MakeDAGFromTxStore(w.TxBytesStore(), 0, branchTxIDS...)
+	tmpDag := memdag.MakeDAGFromTxStoreUntilSlot(w.TxBytesStore(), 0, branchTxIDS...)
 	tmpDag.SaveGraph(fname)
 }
 

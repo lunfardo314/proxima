@@ -229,7 +229,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 func (td *workflowTestData) saveFullDAG(fname string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(td.wrk.StateStore())
-	tmpDag := memdag.MakeDAGFromTxStore(td.txStore, 0, branchTxIDS...)
+	tmpDag := memdag.MakeDAGFromTxStoreUntilSlot(td.txStore, 0, branchTxIDS...)
 	tmpDag.SaveGraph(fname)
 }
 

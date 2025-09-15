@@ -298,18 +298,28 @@ func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, strin
 	}})
 }
 
-// MakeDAGFromTxStore creates dummy MemDAG from past cones of tips. Only uses txBytes from txStore
+// MakeDAGFromTxStoreUntilSlot creates dummy MemDAG from past cones of tips. Only uses txBytes from txStore
 // It is used in testing to visualize real transaction MemDAG, not the pruned cache kept in the node
-func MakeDAGFromTxStore(txStore global.TxBytesGet, oldestSlot uint32, tips ...base.TransactionID) *MemDAG {
+func MakeDAGFromTxStoreUntilSlot(txStore global.TxBytesGet, oldestSlot uint32, tips ...base.TransactionID) *MemDAG {
 	d := New(nil)
 	for i := range tips {
-		d.loadPastConeFromTxStore(tips[i], txStore, oldestSlot)
+		d.loadPastConeFromTxStoreUntilSlot(tips[i], txStore, oldestSlot)
 	}
 	return d
 }
 
-// loadPastConeFromTxStore for generating graph only. Not thread safe
-func (d *MemDAG) loadPastConeFromTxStore(txid base.TransactionID, txStore global.TxBytesGet, oldestSlot uint32) *vertex.WrappedTx {
+// MakeDAGFromTxStoreForDepth creates dummy MemDAG from past cones of tips. Only uses txBytes from txStore
+// It is used in testing to visualize real transaction MemDAG, not the pruned cache kept in the node
+func MakeDAGFromTxStoreForDepth(txStore global.TxBytesGet, depth int, tips ...base.TransactionID) *MemDAG {
+	d := New(nil)
+	for i := range tips {
+		d.loadPastConeFromTxStoreForDepth(tips[i], txStore, depth)
+	}
+	return d
+}
+
+// loadPastConeFromTxStoreUntilSlot for generating graph only. Not thread safe
+func (d *MemDAG) loadPastConeFromTxStoreUntilSlot(txid base.TransactionID, txStore global.TxBytesGet, oldestSlot uint32) *vertex.WrappedTx {
 	if txid.Slot() < oldestSlot {
 		return nil
 	}
@@ -328,14 +338,14 @@ func (d *MemDAG) loadPastConeFromTxStore(txid base.TransactionID, txStore global
 	v := vertex.NewVertex(tx)
 	for i := range v.Inputs {
 		oid := tx.MustInputAt(byte(i))
-		v.Inputs[i] = d.loadPastConeFromTxStore(oid.TransactionID(), txStore, oldestSlot)
+		v.Inputs[i] = d.loadPastConeFromTxStoreUntilSlot(oid.TransactionID(), txStore, oldestSlot)
 	}
 	for i := range v.Endorsements {
 		endID := tx.MustEndorsementAt(byte(i))
-		v.Endorsements[i] = d.loadPastConeFromTxStore(endID, txStore, oldestSlot)
+		v.Endorsements[i] = d.loadPastConeFromTxStoreUntilSlot(endID, txStore, oldestSlot)
 	}
 	if explicitBaselineID, ok := tx.ExplicitBaseline(); ok {
-		d.loadPastConeFromTxStore(explicitBaselineID, txStore, oldestSlot)
+		d.loadPastConeFromTxStoreUntilSlot(explicitBaselineID, txStore, oldestSlot)
 	}
 	vid := v.Wrap()
 	vid.SetTxStatusGood(nil, 0)
@@ -343,7 +353,47 @@ func (d *MemDAG) loadPastConeFromTxStore(txid base.TransactionID, txStore global
 	return vid
 }
 
-func SavePastConeFromTxStore(tip base.TransactionID, txStore global.TxBytesGet, oldestSlot uint32, fname string) {
-	tmpDag := MakeDAGFromTxStore(txStore, oldestSlot, tip)
+// loadPastConeFromTxStoreUntilSlot for generating graph only. Not thread safe
+func (d *MemDAG) loadPastConeFromTxStoreForDepth(txid base.TransactionID, txStore global.TxBytesGet, depth int) *vertex.WrappedTx {
+	if depth < 0 {
+		return nil
+	}
+	if vid := d.GetVertexNoLock(txid); vid != nil {
+		return vid
+	}
+	txBytesWithMetadata := txStore.GetTxBytesWithMetadata(&txid)
+	if len(txBytesWithMetadata) == 0 {
+		return nil
+	}
+	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
+	util.AssertNoError(err)
+	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	util.AssertNoError(err)
+
+	v := vertex.NewVertex(tx)
+	for i := range v.Inputs {
+		oid := tx.MustInputAt(byte(i))
+		v.Inputs[i] = d.loadPastConeFromTxStoreForDepth(oid.TransactionID(), txStore, depth-1)
+	}
+	for i := range v.Endorsements {
+		endID := tx.MustEndorsementAt(byte(i))
+		v.Endorsements[i] = d.loadPastConeFromTxStoreForDepth(endID, txStore, depth-1)
+	}
+	if explicitBaselineID, ok := tx.ExplicitBaseline(); ok {
+		d.loadPastConeFromTxStoreForDepth(explicitBaselineID, txStore, depth-1)
+	}
+	vid := v.Wrap()
+	vid.SetTxStatusGood(nil, 0)
+	d.AddVertexNoLock(vid)
+	return vid
+}
+
+func SavePastConeFromTxStoreUntilSlot(tip base.TransactionID, txStore global.TxBytesGet, oldestSlot uint32, fname string) {
+	tmpDag := MakeDAGFromTxStoreUntilSlot(txStore, oldestSlot, tip)
+	tmpDag.SaveGraph(fname)
+}
+
+func SavePastConeFromTxStoreForDepth(tip base.TransactionID, txStore global.TxBytesGet, depth int, fname string) {
+	tmpDag := MakeDAGFromTxStoreForDepth(txStore, depth, tip)
 	tmpDag.SaveGraph(fname)
 }

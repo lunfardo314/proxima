@@ -47,7 +47,7 @@ func runDbDAGCmd(_ *cobra.Command, args []string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(glb.StateStore())
 	numSlotsBack := defaultMaxSlotsBackDAG
 	if len(args) == 0 {
-		tmpDag := memdag.MakeDAGFromTxStore(glb.TxBytesStore(), 0, branchTxIDS...)
+		tmpDag := memdag.MakeDAGFromTxStoreUntilSlot(glb.TxBytesStore(), 0, branchTxIDS...)
 		tmpDag.SaveGraph(outputFileDAG)
 	} else {
 		latestSlot := multistate.FetchLatestCommittedSlot(glb.StateStore())
@@ -58,7 +58,7 @@ func runDbDAGCmd(_ *cobra.Command, args []string) {
 		if numSlotsBack < int(latestSlot) {
 			oldestSlot = int(latestSlot) - numSlotsBack
 		}
-		tmpDag := memdag.MakeDAGFromTxStore(glb.TxBytesStore(), uint32(oldestSlot), branchTxIDS...)
+		tmpDag := memdag.MakeDAGFromTxStoreUntilSlot(glb.TxBytesStore(), uint32(oldestSlot), branchTxIDS...)
 		tmpDag.SaveGraph(outputFileDAG)
 	}
 	glb.Infof("MemDAG has been store in .DOT format in the file '%s', %d slots back", outFile, numSlotsBack)

@@ -697,7 +697,7 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 		txid1, err := testData.txStore.PersistTxBytesWithMetadata(txBytesSeq, nil)
 		require.NoError(t, err)
 		require.EqualValues(t, txid, txid1)
-		memdag.SavePastConeFromTxStore(txid, testData.txStore, 0, "pastCone_TestAttachConflictsNAttachersOneFork")
+		memdag.SavePastConeFromTxStoreUntilSlot(txid, testData.txStore, 0, "pastCone_TestAttachConflictsNAttachersOneFork")
 	}
 
 	waitCh := make(chan struct{})

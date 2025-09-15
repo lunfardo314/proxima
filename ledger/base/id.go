@@ -179,7 +179,8 @@ func TransactionIDStringShort(ts LedgerTime, txHash TransactionIDShort, sequence
 }
 
 func TransactionIDStringVeryShort(ts LedgerTime, txHash TransactionIDShort, sequencerFlag bool) string {
-	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, true), hex.EncodeToString(txHash[:4]))
+	//return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, true), hex.EncodeToString(txHash[:4]))
+	return fmt.Sprintf("[%s]%s..", timestampPrefixString(ts, sequencerFlag, false), hex.EncodeToString(txHash[:4]))
 }
 
 func TransactionIDAsFileName(ts LedgerTime, txHash []byte, sequencerFlag, branchFlag bool) string {
