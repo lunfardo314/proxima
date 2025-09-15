@@ -51,7 +51,6 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	}
 
 	if isDelegation {
-		glb.Infof("delegation output: true")
 		glb.Infof("DELEGATION OUTPUT DATA (slot now is %d):\n-----------------", ledger.SlotNow())
 		glb.Infof("%s", dOut.LinesDelegationData().String())
 	}
