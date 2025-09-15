@@ -14,7 +14,7 @@ import (
 
 func initDelegationSubmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "submit <chain ID> [flags]",
+		Use:   "chain <chain ID> [flags]",
 		Short: `delegates existing chain to the target sequencer`,
 		Args:  cobra.ExactArgs(1),
 		Run:   runDelegationSubmitCmd,
@@ -84,7 +84,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-glb.GetTagAlongFee()), int64(inflation))
 		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, maxFreezeEpochs, 100)
 		o.WithLock(lock)
-		cc := ledger.NewChainConstraint(oIn.ChainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
+		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
 		o.MustPushConstraint(cc.Bytes())
 		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 	})
@@ -113,9 +113,9 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	txBytes, txid, txString, err := txb.BytesWithValidation()
 	if err != nil {
 		glb.Infof("\nFAILED to produce transaction: '%v'\n-------------------\n%s", err, txString)
-	} else {
-		glb.Infof("\n-------- tx OK (len = %d) -----------\n%s", len(txBytes), txString)
+		return
 	}
+	glb.Infof("\n-------- tx OK (len = %d) -----------\n%s", len(txBytes), txString)
 
 	prompt := fmt.Sprintf("delegate %s to sequencer %s", chainID.StringShort(), targetSeqID.String())
 	if !glb.YesNoPrompt(prompt, true) {

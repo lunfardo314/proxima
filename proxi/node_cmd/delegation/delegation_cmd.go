@@ -6,7 +6,7 @@ import (
 
 func Init() *cobra.Command {
 	delegationCmd := &cobra.Command{
-		Use:     "delegation",
+		Use:     "delegate",
 		Aliases: []string{"dlg"},
 		Short:   `defines subcommands for the delegation function`,
 		Args:    cobra.NoArgs,

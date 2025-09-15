@@ -229,7 +229,6 @@ func chain : and(
       and(
          selfIsProducedOutput,
          _validChainProduced($0,$1,$2,$3),
-         // _validInflationAmount($0,$1)
       ),
       and(
          selfIsConsumedOutput,
