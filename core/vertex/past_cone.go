@@ -810,7 +810,7 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.IndexedS
 func (pc *PastCone) SlotInflation() (ret uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	for vid := range pc.vertices {
-		if pc.isNotInTheState(vid) && vid.IsSequencerMilestone() {
+		if pc.isNotInTheState(vid) {
 			ret += vid.InflationAmount()
 		}
 	}

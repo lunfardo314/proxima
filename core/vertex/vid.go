@@ -891,8 +891,8 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 	return ret
 }
 
+// InflationAmount is sum of inflation values on the produced outputs
 func (vid *WrappedTx) InflationAmount() (ret uint64) {
-	util.Assertf(vid.IsSequencerMilestone(), "InflationAmountOfSequencerTx: not a sequencer milestone: %s", vid.IDShortString)
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			ret = v.Tx.InflationAmount()

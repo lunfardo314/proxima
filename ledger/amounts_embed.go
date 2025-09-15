@@ -172,7 +172,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	cc, _ := o.ChainConstraint()
 	// produced output
 	if cc == nil || cc.IsOrigin() {
-		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(), "evalAmounts: inflation and frozen coverage must be 0 on a non-chain output")
+		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(), "evalAmounts: inflation and frozen coverage must be 0 on a non-chain output and on chain origin")
 		return []byte{0xff}
 	}
 	// it is a non-origin chain output
@@ -185,7 +185,6 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	succID := ctx.OutputID(path[len(path)-2])
 
 	// check inflation:
-	// TODO on frozen delegation
 	_checkInflation(par, ctx, o, predAmounts, predID.Slot())
 
 	if o.Lock().Name() == DelegateLockName {
