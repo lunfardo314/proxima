@@ -388,7 +388,7 @@ func _consumedIsInTheSafeRevocationWindowTx :
       _selfLastSlotInLastFrozenEpoch
    )
 
-func _equalTo1Of2 : or(equal($0,$1), equal($0,$2))
+func equalTo1Of2 : or(equal($0,$1), equal($0,$2))
 
 // $0 amount
 // $1 share in promille
@@ -484,7 +484,7 @@ and(
 	   !!!delegation_must_have_exactly_4_constraints
     ), // to prevent injection attacks
     require( 
-        _equalTo1Of2(parsePrefixBytecode(_selfTarget), #c, #chainLock),
+        equalTo1Of2(parsePrefixBytecode(_selfTarget), #c, #chainLock),
         !!!delegation_target_must_by_chainLock
     ),
     require(

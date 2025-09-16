@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -15,8 +14,8 @@ type TagAlongLock struct {
 }
 
 const (
-	TagAlongLockName           = "tag_along"
-	tagAlongLockTemplateSource = TagAlongLockName + "(0x%s, 0x%s)"
+	TagAlongLockName           = "tagAlong"
+	tagAlongLockTemplateSource = TagAlongLockName + "(0x%s, %s)"
 	tagAlongLockTemplateHR     = TagAlongLockName + "(%s, %s)"
 )
 
@@ -35,8 +34,8 @@ func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
 		return nil, err
 	}
 
-	senderBin := easyfl.StripDataPrefix(args[1])
-	sender, err := AccountableFromBytes(senderBin)
+	//senderBin := easyfl.StripDataPrefix(args[1])
+	sender, err := AccountableFromBytes(args[1])
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +47,7 @@ func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
 }
 
 func (t *TagAlongLock) Source() string {
-	return fmt.Sprintf(tagAlongLockTemplateSource, t.TargetSequencerID.StringHex(), hex.EncodeToString(t.SenderLock.Bytes()))
+	return fmt.Sprintf(tagAlongLockTemplateSource, t.TargetSequencerID.StringHex(), t.SenderLock.Source())
 }
 
 func (t *TagAlongLock) String() string {
@@ -108,5 +107,19 @@ func initTestTagAlongLockConstraint() {
 }
 
 const tagAlongLockConstraintSource = `
-func tag_along : concat($0,$1)
+// $0 - target sequencer ID, like in the chainLock
+// $1 - sender account source, usually addressED25519 
+func tagAlong : 
+or(
+  and(
+     selfIsProducedOutput,
+     require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
+	 require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
+	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
+     require(equalTo1Of2(parsePrefixBytecode($1), #a, #addressED25519), !!!address25519_is_expected_as_2nd_argument)
+  ),
+  and(
+     selfIsConsumedOutput,
+  ),
+)
 `

@@ -135,19 +135,18 @@ func _validChainUnlock :
 
 // $0 - chainID
 // Unlock parameters first 2 bytes: [unlocked chain output index, chain constraint index]
-func chainLock : and(
-	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
-	or(
-		and(
-			selfIsProducedOutput, 
-			require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
-            require(not(isZero($0)), !!!non_zero_argument_expected)   // to prevent common error
-		),
-		and(
-			selfIsConsumedOutput,
-			not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing 
-			_validChainUnlock($0)
-		)
+func chainLock : 
+or(
+	and(
+		selfIsProducedOutput, 
+		require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
+		require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
+		require(not(isZero($0)), !!!non_zero_argument_expected)   // to prevent common error
+	),
+	and(
+		selfIsConsumedOutput,
+		not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing 
+		_validChainUnlock($0)
 	)
 )
 
