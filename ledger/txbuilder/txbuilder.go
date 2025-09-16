@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -375,7 +374,7 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	elems[ledger.TxSignature] = tx.Signature
 	elems[ledger.TxSequencerAndStemOutputIndices] = []byte{tx.SequencerOutputIndex, tx.StemOutputIndex}
 	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
-	elems[ledger.TxTotalProducedAmount] = easyfl_util.TrimmedLeadingZeroUint64(total)
+	//elems[ledger.TxTotalProducedAmount] = easyfl_util.TrimmedLeadingZeroUint64(total)
 	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]
 	elems[ledger.TxEndorsements] = endorsements
 	elems[ledger.TxExplicitBaseline] = explicitBaseline

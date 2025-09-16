@@ -81,7 +81,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	lib.MustExtendMany(chainLockConstraintSource)
 	//lib.MustExtendMany(immutableDataConstraintSource)
 	lib.MustExtendMany(commitToSiblingSource)
-	lib.MustExtendMany(totalAmountSource)
+	//lib.MustExtendMany(totalAmountSource)
 	lib.MustExtendMany(delegateLock2Source)
 }
 
@@ -89,8 +89,8 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 func (lib *Library) registerConstraints() {
 	registerAmountsConstraint(lib)
 	registerAddressED25519Constraint(lib)
-	registerConditionalLock(lib)
-	registerDeadlineLockConstraint(lib)
+	//registerConditionalLock(lib)
+	//registerDeadlineLockConstraint(lib)
 	registerTimeLockConstraint(lib)
 	registerStemLockConstraint(lib)
 	registerChainConstraint(lib)
@@ -98,8 +98,8 @@ func (lib *Library) registerConstraints() {
 	registerMessageWithSenderED25519Constraint(lib)
 	registerChainLockConstraint(lib)
 	//registerImmutableConstraint(lib)
-	registerCommitToSiblingConstraint(lib)
-	registerTotalAmountConstraint(lib)
+	//registerCommitToSiblingConstraint(lib)
+	//registerTotalAmountConstraint(lib)
 	registerDelegateLock(lib)
 
 	lib.appendInlineTests(func() {

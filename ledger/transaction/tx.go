@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -22,11 +21,11 @@ import (
 // Transaction provides access to the tree of transferable transaction
 type (
 	Transaction struct {
-		tree                     *tuples.Tree
-		txid                     base.TransactionID
-		sender                   ledger.AddressED25519
-		timestamp                base.LedgerTime
-		totalAmountPersisted     uint64                           // persisted in tx, always positive
+		tree      *tuples.Tree
+		txid      base.TransactionID
+		sender    ledger.AddressED25519
+		timestamp base.LedgerTime
+		//totalAmountPersisted     uint64                           // persisted in tx, always positive
 		producedAmountTotals     [15]int64                        // calculated by summing up amount vectors
 		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
@@ -36,7 +35,7 @@ type (
 
 // MainTxValidationOptions is all except Base, the time bounds and input context validation. Fastest first
 var MainTxValidationOptions = []TxValidationOption{
-	ParseTotalProducedAmount,
+	//ParseTotalProducedAmount,
 	ParseSequencerData,
 	CheckExplicitBaseline,
 	CheckSizeOfInputCommitment,
@@ -53,7 +52,7 @@ var essenceIndices = []byte{
 	// skip signature
 	ledger.TxSequencerAndStemOutputIndices,
 	ledger.TxTimestamp,
-	ledger.TxTotalProducedAmount,
+	//ledger.TxTotalProducedAmount,
 	ledger.TxInputCommitment,
 	ledger.TxEndorsements,
 	ledger.TxExplicitBaseline,
@@ -209,18 +208,18 @@ func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
 	}
 }
 
-func ParseTotalProducedAmount(tx *Transaction) error {
-	// parse the total amount as trimmed-prefix uint68. Validity of the sum is not checked here
-	totalAmountBin, err := tx.tree.BytesAtPath(Path(ledger.TxTotalProducedAmount))
-	if err != nil {
-		return err
-	}
-	tx.totalAmountPersisted, err = easyfl_util.Uint64FromBytes(totalAmountBin)
-	if err != nil {
-		return fmt.Errorf("wrong total amount in transaction: %v", err)
-	}
-	return nil
-}
+//func ParseTotalProducedAmount(tx *Transaction) error {
+//	// parse the total amount as trimmed-prefix uint68. Validity of the sum is not checked here
+//	totalAmountBin, err := tx.tree.BytesAtPath(Path(ledger.TxTotalProducedAmount))
+//	if err != nil {
+//		return err
+//	}
+//	tx.totalAmountPersisted, err = easyfl_util.Uint64FromBytes(totalAmountBin)
+//	if err != nil {
+//		return fmt.Errorf("wrong total amount in transaction: %v", err)
+//	}
+//	return nil
+//}
 
 // ParseSequencerData validates and parses sequencer data if relevant. Data is cached for frequent extraction
 func ParseSequencerData(tx *Transaction) error {
@@ -421,10 +420,10 @@ func ScanOutputs(tx *Transaction) error {
 		}
 	}
 
-	// check the total amounts constraint
-	if tx.totalAmountPersisted != uint64(tx.producedAmountTotals[0]) {
-		return fmt.Errorf("wrong total produced amount")
-	}
+	//// check the total amounts constraint
+	//if tx.totalAmountPersisted != uint64(tx.producedAmountTotals[0]) {
+	//	return fmt.Errorf("wrong total produced amount")
+	//}
 	return nil
 }
 
@@ -561,7 +560,7 @@ func (tx *Transaction) TimestampTime() time.Time {
 }
 
 func (tx *Transaction) TotalAmount() uint64 {
-	return tx.totalAmountPersisted
+	return uint64(tx.producedAmountTotals[0])
 }
 
 func (tx *Transaction) Bytes() []byte {

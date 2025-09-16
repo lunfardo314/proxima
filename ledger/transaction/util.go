@@ -65,8 +65,8 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 
 	ret.Add("Total consumed token balance: %s", util.Th(ctx.totalConsumedTokenBalance))
 	ret.Add("Total produced amounts: [%s]", util.ThSlice(ctx.TotalProducedAmounts()...))
-	ret.Add("Total amount produced (given): %s (0x%s)",
-		util.Th(ctx.TotalAmountStored()), hex.EncodeToString(ctx.TotalAmountStoredBin()))
+	//ret.Add("Total amount produced (given): %s (0x%s)",
+	//	util.Th(ctx.TotalAmountStored()), hex.EncodeToString(ctx.TotalAmountStoredBin()))
 
 	inpCom := ctx.InputCommitment()
 	ret.Add("Input commitment: %s", easyfl_util.Fmt(inpCom))

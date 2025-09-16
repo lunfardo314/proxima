@@ -52,7 +52,7 @@ const (
 	TxSignature
 	TxSequencerAndStemOutputIndices
 	TxTimestamp
-	TxTotalProducedAmount
+	//TxTotalProducedAmount
 	TxInputCommitment
 	TxEndorsements
 	TxExplicitBaseline
@@ -74,7 +74,7 @@ var (
 	PathToExplicitBaseline              = tuples.Path(TransactionBranch, TxExplicitBaseline)
 	PathToLocalLibraries                = tuples.Path(TransactionBranch, TxLocalLibraries)
 	PathToTimestamp                     = tuples.Path(TransactionBranch, TxTimestamp)
-	PathToTotalProducedAmount           = tuples.Path(TransactionBranch, TxTotalProducedAmount)
+	//PathToTotalProducedAmount           = tuples.Path(TransactionBranch, TxTotalProducedAmount)
 )
 
 // Mandatory output block indices
@@ -97,7 +97,7 @@ func pathConstants() string {
 		PathToEndorsements.Hex(),
 		PathToExplicitBaseline.Hex(),
 		PathToTimestamp.Hex(),
-		PathToTotalProducedAmount.Hex(),
+		//PathToTotalProducedAmount.Hex(),
 		PathToLocalLibraries.Hex(),
 		ConstraintIndexAmounts,
 		ConstraintIndexLock,
@@ -150,10 +150,10 @@ functions:
       sym: pathToTimestamp
       numArgs: 0
       source: 0x%s
-   -
-      sym: pathToTotalProducedAmount
-      numArgs: 0
-      source: 0x%s
+#   -
+#      sym: pathToTotalProducedAmount
+#      numArgs: 0
+#      source: 0x
    -
       sym: pathToLocalLibraries
       numArgs: 0

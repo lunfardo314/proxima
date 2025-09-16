@@ -84,10 +84,10 @@ functions:
       sym: txExplicitBaseline
       numArgs: 0
       source: "atPath(pathToExplicitBaseline)"
-   -
-      sym: txTotalProducedAmount
-      numArgs: 0
-      source: "uint8Bytes(atPath(pathToTotalProducedAmount))"
+#   -
+#      sym: txTotalProducedAmount
+#      numArgs: 0
+#      source: "uint8Bytes(atPath(pathToTotalProducedAmount))"
    -
       sym: txSlot
       numArgs: 0
@@ -138,7 +138,6 @@ functions:
             atPath(pathToProducedOutputs), 
             atPath(pathToSeqAndStemOutputIndices),
             atPath(pathToTimestamp),
-            atPath(pathToTotalProducedAmount),
             atPath(pathToInputCommitment), 
             atPath(pathToEndorsements),
 			atPath(pathToExplicitBaseline),

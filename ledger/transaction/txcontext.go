@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -70,7 +69,8 @@ func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (
 
 // TxContextFromTransferableBytes constructs tuples.Tree from transaction bytes and consumed outputs
 func TxContextFromTransferableBytes(txBytes []byte, fetchInput func(oid base.OutputID) ([]byte, bool), traceOption ...int) (*TxContext, error) {
-	tx, err := FromBytes(txBytes, ParseTotalProducedAmount, ParseSequencerData, ScanOutputs)
+	//tx, err := FromBytes(txBytes, ParseTotalProducedAmount, ParseSequencerData, ScanOutputs)
+	tx, err := FromBytes(txBytes, ParseSequencerData, ScanOutputs)
 	if err != nil {
 		return nil, err
 	}
@@ -184,13 +184,13 @@ func (ctx *TxContext) ProducedTotal(i byte) int64 {
 	return ctx.totalProducedAmounts[i]
 }
 
-func (ctx *TxContext) TotalAmountStoredBin() []byte {
-	return ctx.ctxTree.MustBytesAtPath(ledger.PathToTotalProducedAmount)
-}
-
-func (ctx *TxContext) TotalAmountStored() uint64 {
-	return easyfl_util.MustUint64FromBytes(ctx.TotalAmountStoredBin())
-}
+//func (ctx *TxContext) TotalAmountStoredBin() []byte {
+//	return ctx.ctxTree.MustBytesAtPath(ledger.PathToTotalProducedAmount)
+//}
+//
+//func (ctx *TxContext) TotalAmountStored() uint64 {
+//	return easyfl_util.MustUint64FromBytes(ctx.TotalAmountStoredBin())
+//}
 
 func (ctx *TxContext) TotalInflation() uint64 {
 	return uint64(ctx.totalProducedAmounts[ledger.AmountIndexInflation])

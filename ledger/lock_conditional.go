@@ -7,7 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// TODO not tested !!!!!
+// TODO experimental not tested !!!!!
 
 // ConditionalLock enforces condition by selecting first of up to 4 satisfied conditions and evaluating
 // corresponding accountable lock
