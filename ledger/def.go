@@ -83,6 +83,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	lib.MustExtendMany(commitToSiblingSource)
 	//lib.MustExtendMany(totalAmountSource)
 	lib.MustExtendMany(delegateLock2Source)
+	lib.MustExtendMany(tagAlongLockConstraintSource)
 }
 
 // registerConstraints mass-registers all wrappers of constraints
@@ -101,6 +102,7 @@ func (lib *Library) registerConstraints() {
 	//registerCommitToSiblingConstraint(lib)
 	//registerTotalAmountConstraint(lib)
 	registerDelegateLock(lib)
+	registerTagAlongLockConstraint(lib)
 
 	lib.appendInlineTests(func() {
 		// inline tests

@@ -30,7 +30,7 @@ type (
 		// Accounts all accounts of the lock
 		Accounts() []Accountable
 		// Master is account which is always unlockable. For conditional locks it is usually nil (no master)
-		Master() Accountable
+		Master() Accountable // TODO is it really needed
 	}
 
 	ConstraintParser func([]byte) (Constraint, error)
