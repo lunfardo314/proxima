@@ -113,8 +113,8 @@ const chainLockConstraintSource = `
 func _selfReferencedChainID : 
 	parseInlineDataArgument(
 		consumedConstraintByIndex(byte($0, 0), byte($0, 1)),
-		#chain,
-		0
+        0,
+		#chain
 	)
 
 // $0 - unlock params

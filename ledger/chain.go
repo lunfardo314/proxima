@@ -177,8 +177,8 @@ if(
 func _chainSuccessorParam :
 	parseInlineDataArgument(
         atPath(concat(pathToProducedOutputs, selfUnlockParameters)),
-		selfBytecodePrefix,
-		$0
+        $0,
+		selfBytecodePrefix
 	)
 
 // $0 - chain ChainID
@@ -238,10 +238,10 @@ func chain : and(
 )
 
 // $0 - chain constraint index
-func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), #chain, 0)
-func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), #chain, 1), 0)
+func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), 0, #chain)
+func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain), 0)
 
 // $0 chain constraint index
-func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0),#chain,1),0) )
+func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain),0) )
 
 `

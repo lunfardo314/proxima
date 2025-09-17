@@ -174,7 +174,7 @@ functions:
    -
       sym: selfBytecodePrefix
       numArgs: 0
-      source: parsePrefixBytecode(self)
+      source: parseBytecode(self, 0x)
    -
       sym: selfIsConsumedOutput
       numArgs: 0

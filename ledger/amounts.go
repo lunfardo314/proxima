@@ -203,7 +203,7 @@ const amountsAuxSource = `
 func amountAt:
 if(
    lessThan($1, parseNumArgs($0)),
-   uint8Bytes(parseInlineDataArgument($0, #amounts,$1)),
+   uint8Bytes(parseInlineDataArgument($0, $1, #amounts)),
    u64/0
 )
 

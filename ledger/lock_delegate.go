@@ -302,7 +302,7 @@ if( lessOrEqualThan($0, $1), u64/0, add(div(sub(sub($0,$1), u64/1), constDelegat
 // $1 slot
 func delegationEpochFromSlot : _delegationEpochFromSlot(uint8Bytes($1), delegationEpochOffset($0))
 
-func _selfIsDelegationOrigin : isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(2), #chain, 0))
+func _selfIsDelegationOrigin : isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(2), 0, #chain))
 
 // $0 index of the constraint on the successor output
 func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2),0), $0))
@@ -338,14 +338,14 @@ or(
       selfIsConsumedOutput,
       require(
          equal(
-			parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,2)),#chain,0), 
+			parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,2)), 0, #chain), 
 			$0
          ),
          !!!ensureStopDelegation:_delegationID_is_wrong
       ),
       require(
          equal(
-		    parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)),#delegateLockState,1),
+		    parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)), 1, #delegateLockState),
             2 // 2 means on hold
         ),
         !!!ensureStopDelegation:_delegation_produced_state_is_not_on_hold
@@ -355,10 +355,10 @@ or(
 
 // self id delegation output - does not depend on consumed/produced context
 
-func _selfTarget : parseArgumentBytecode(self,selfBytecodePrefix,0)
-func _selfTargetChainID : parseInlineDataArgumentAnyPrefix(_selfTarget,0)
-func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 0))
-func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(3),#delegateLockState, 1)
+func _selfTarget : parseBytecode(self, 0, selfBytecodePrefix)
+func _selfTargetChainID : parseInlineDataArgument(_selfTarget,0)
+func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),0, #delegateLockState))
+func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(3), 1, #delegateLockState)
 func _selfIsMarkedFrozen : equal(_selfStateMark, 1)
 func _selfIsMarkedOnHold : equal(_selfStateMark, 2)
 func _selfIsMarkedUndef : and(not(_selfIsMarkedOnHold), not(_selfIsMarkedFrozen))
@@ -387,8 +387,6 @@ func _consumedIsInTheSafeRevocationWindowTx :
       uint8Bytes(txSlot), 
       _selfLastSlotInLastFrozenEpoch
    )
-
-func equalTo1Of2 : or(equal($0,$1), equal($0,$2))
 
 // $0 amount
 // $1 share in promille
@@ -422,7 +420,7 @@ require(
        // not checked if predecessor is not a delegation
    or(
      _selfIsDelegationOrigin,
-      not(equal(parsePrefixBytecode(consumedConstraintByIndex(selfChainPredInputIndex(2), 1)), selfBytecodePrefix)),
+      not(equal(parseBytecode(consumedConstraintByIndex(selfChainPredInputIndex(2), 1), 0x), selfBytecodePrefix)),
       lessOrEqualThan( _requiredInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1))
    ),
    !!!not_enough_inflation_advance
@@ -483,18 +481,9 @@ and(
 	   equal(selfNumConstraints, u64/4), 
 	   !!!delegation_must_have_exactly_4_constraints
     ), // to prevent injection attacks
-    require( 
-        equalTo1Of2(parsePrefixBytecode(_selfTarget), #c, #chainLock),
-        !!!delegation_target_must_by_chainLock
-    ),
-    require(
-	   equal(parsePrefixBytecode(selfSiblingConstraint(2)), #chain), 
-	   !!!#chain_is_expected_at_index_2
-    ),
-    require(
-	   equal(parsePrefixBytecode(selfSiblingConstraint(3)), #delegateLockState), 
-	   !!!#delegateLockState_is_expected_at_index_3
-    ),
+    parseBytecode(_selfTarget, 0x, #c, #chainLock),
+    parseBytecode(selfSiblingConstraint(2), 0x, #chain),
+    parseBytecode(selfSiblingConstraint(3), 0x, #delegateLockState),
     require(
        and(not(isZero($0)), lessOrEqualThan($0, uint8Bytes(constDelegationMaxFrozenEpochs))),
        !!!wrong_max_frozen_epochs_value
@@ -529,7 +518,7 @@ func _txInsideSafeRevocationWindow : and(
     lessThan(uint8Bytes(txSlot), add($0, constDelegationSafeRevocationSlots))
 )
 
-func _successorIsOnHold : equal(parseInlineDataArgument(successorConstraint(3),#delegateLockState,1), 2)
+func _successorIsOnHold : equal(parseInlineDataArgument(successorConstraint(3), 1, #delegateLockState), 2)
 
 func _requireUnlockableByTheTarget :
 and(

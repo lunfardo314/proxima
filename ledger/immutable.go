@@ -89,7 +89,7 @@ func immutable : or(
 		selfIsProducedOutput,  // produced side
 		equal(
 			// 1st byte must point to the sibling-chain constraint
-			parsePrefixBytecode(selfSiblingConstraint(byte($0,0))), 
+			parseBytecode(selfSiblingConstraint(byte($0,0)), 0x), 
 			#chain
 		), 
 		selfSiblingConstraint(byte($0,1)) // 2nd byte must point to existing non-empty block
@@ -118,8 +118,8 @@ func immutable : or(
 						byte(selfUnlockParameters, 1)               // successor 'immutable' constraint index
 					)
 				),
-				selfBytecodePrefix,
-				0
+                0,
+				selfBytecodePrefix
 			),
 			concat(
 				byte(selfSiblingUnlockParams(byte($0,0)),1),  // chain successor block index

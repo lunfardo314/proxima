@@ -125,7 +125,7 @@ func constTagAlongReclaimSlots : u64/390 // 5 min + 1 hour
 
 func selfInputPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
 
-func _selfSenderBytecode : parseArgumentBytecode(self,selfBytecodePrefix,1)
+func _selfSenderBytecode : parseBytecode(self, 1, selfBytecodePrefix)
 
 // $0 - target sequencer ID, like in the chainLock
 // $1 - sender account source, usually addressED25519 
@@ -136,8 +136,13 @@ or(
      require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
 	 require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
 	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
-     require(equalTo1Of2(parsePrefixBytecode(_selfSenderBytecode), #a, #addressED25519), !!!address25519_is_expected_as_2nd_argument),
-     // TODO
+     require(
+        equal(
+           parseBytecode(_selfSenderBytecode, 1, #a, #addressED25519), 
+           blake2b(publicKeyED25519(txSignature))
+        ),
+        !!!sender_hash_check_failed
+     ),
   ),
   and(
      selfIsConsumedOutput,
@@ -159,7 +164,7 @@ or(
 
 // aux functions
 
-func selfIsTagAlongOutput : equal(parsePrefixBytecode(selfSiblingConstraint(1)), #tagAlong) 
+func selfIsTagAlongOutput : parseBytecode(selfSiblingConstraint(1), 0x, #tagAlong) 
 
 func selfInputIsInTagAlongSlots : 
 and(

@@ -109,14 +109,14 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 const stemLockSource = `
 func producedStemLockOfSelfTx : lockConstraint(producedOutputByIndex(txStemOutputIndex))
 
-func _predOutputIDOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, selfBytecodePrefix, 0)
-func _vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, selfBytecodePrefix, 1)
+func _predOutputIDOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 0)
+func _vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 1)
 
 // $0 - stem predecessor index
 func _predVRFProof : parseInlineDataArgument(
     consumedConstraintByIndex($0,1), 
-    selfBytecodePrefix, 
-    1
+    1, 
+    selfBytecodePrefix
 )
 
 // $0 - predecessor output id
