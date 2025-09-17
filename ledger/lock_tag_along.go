@@ -17,7 +17,7 @@ type TagAlongLock struct {
 const (
 	TagAlongLockName           = "tagAlong"
 	tagAlongLockTemplateSource = TagAlongLockName + "(0x%s, %s)"
-	tagAlongLockTemplateHR     = TagAlongLockName + "(%s, %s)"
+	tagAlongLockTemplateHR     = TagAlongLockName + "(target=%s, sender=%s)"
 )
 
 func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
@@ -138,7 +138,7 @@ or(
 	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
      require(
         equal(
-           parseBytecode(_selfSenderBytecode, 1, #a, #addressED25519), 
+           parseInlineDataArgument(_selfSenderBytecode, 0, #a, #addressED25519), 
            blake2b(publicKeyED25519(txSignature))
         ),
         !!!sender_hash_check_failed

@@ -80,7 +80,7 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 	ret.Add("Signature: %s", easyfl_util.Fmt(sign))
 	if len(sign) == 96 {
 		sender := blake2b.Sum256(sign[64:])
-		ret.Add("     ED25519 sender address: %s", easyfl_util.Fmt(sender[:]))
+		ret.Add("     ED25519 sender public key hash: %s", easyfl_util.Fmt(sender[:]))
 	}
 
 	if explicitBaseline, ok := ctx.ExplicitBaseline(); ok {
