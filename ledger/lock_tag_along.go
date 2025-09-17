@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"crypto/ed25519"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -74,6 +75,16 @@ func (t *TagAlongLock) AsLock() Lock {
 	return t
 }
 
+func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderPrivateKey ed25519.PrivateKey) *Output {
+	return NewOutput(func(o *OutputBuilder) {
+		o.WithTokenBalance(fee)
+		o.WithLock(&TagAlongLock{
+			TargetSequencerID: targetChainID,
+			SenderLock:        AddressED25519FromPrivateKey(senderPrivateKey),
+		})
+	})
+}
+
 func NewTagAlongLockUnlockParams(predChainOutputIndex, predChainConstraintIndex, unlockMode byte) []byte {
 	return []byte{predChainOutputIndex, predChainConstraintIndex, unlockMode}
 }
@@ -106,7 +117,16 @@ func initTestTagAlongLockConstraint() {
 	util.AssertNoError(err)
 }
 
+// TODO randomize access to purgeable tag-along outputs and incentivize ledger cleanup
+
 const tagAlongLockConstraintSource = `
+func constTagAlongSlots : u64/30  // 5 min
+func constTagAlongReclaimSlots : u64/390 // 5 min + 1 hour
+
+func selfInputPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
+
+func _selfSenderBytecode : parseArgumentBytecode(self,selfBytecodePrefix,1)
+
 // $0 - target sequencer ID, like in the chainLock
 // $1 - sender account source, usually addressED25519 
 func tagAlong : 
@@ -116,10 +136,47 @@ or(
      require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
 	 require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
 	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
-     require(equalTo1Of2(parsePrefixBytecode($1), #a, #addressED25519), !!!address25519_is_expected_as_2nd_argument)
+     require(equalTo1Of2(parsePrefixBytecode(_selfSenderBytecode), #a, #addressED25519), !!!address25519_is_expected_as_2nd_argument),
+     // TODO
   ),
   and(
      selfIsConsumedOutput,
+	 or(
+		greaterOrEqualThan(selfInputPace, constTagAlongReclaimSlots),  // unlockable by anybody  
+		and( 
+			 // unlockable by the target
+		   lessThan(selfInputPace, constTagAlongSlots),
+		   require(chainLock($0), !!!must_be_unlocked_by_the_target)
+		),
+			 // unlockable by the sender
+        require(
+           $1,
+           !!!must_be_unlocked_by_the_sender
+        )
+	 )
   ),
+)
+
+// aux functions
+
+func selfIsTagAlongOutput : equal(parsePrefixBytecode(selfSiblingConstraint(1)), #tagAlong) 
+
+func selfInputIsInTagAlongSlots : 
+and(
+   selfIsTagAlongOutput,
+   lessThan(selfInputPace, constTagAlongSlots)
+)
+
+func selfInputIsInTagAlongReclaimSlots : 
+and(
+   selfIsTagAlongOutput,
+   greaterOrEqualThan(selfInputPace, constTagAlongSlots),
+   lessThan(selfInputPace, constTagAlongReclaimSlots)
+)
+
+func selfInputIsInTagAlongPurgeSlots : 
+and(
+   selfIsTagAlongOutput,
+   greaterOrEqualThan(selfInputPace, constTagAlongReclaimSlots)
 )
 `
