@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO two different controllers
+// TODO must be two different controllers, target and delegator should be different
 
 func TestTagAlongSimple(t *testing.T) {
 	const (
