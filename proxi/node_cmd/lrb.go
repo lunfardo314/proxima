@@ -21,7 +21,11 @@ func initReliableBranchCmd() *cobra.Command {
 
 func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromNode()
-	//
+
+	snapshotID, err := glb.GetClient().GetSnapshotBranchID()
+	glb.AssertNoError(err)
+	glb.Infof("snapshot ID: %s (hex = %s)", snapshotID.String(), snapshotID.StringHex())
+
 	rootRecord, branchID, err := glb.GetClient().GetLatestReliableBranch()
 	glb.AssertNoError(err)
 

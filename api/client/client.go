@@ -828,7 +828,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	return txCtx, chainID, err
 }
 
-// GetLatestReliableBranch retrieves lates reliable branch info from the node
+// GetLatestReliableBranch retrieves latest reliable branch info from the node
 func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.TransactionID, error) {
 	body, err := c.getBody(api.PathGetLatestReliableBranch)
 	if err != nil {
@@ -849,6 +849,24 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.Tran
 		return nil, base.TransactionID{}, fmt.Errorf("parse failed: %v", err)
 	}
 	return rr, res.BranchID, nil
+}
+
+func (c *APIClient) GetSnapshotBranchID() (ret base.TransactionID, err error) {
+	body, err := c.getBody(api.PathGetSnapshotBranchID)
+	if err != nil {
+		return
+	}
+	var res api.SnapshotID
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		err = fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+		return
+	}
+	if res.Error.Error != "" {
+		err = fmt.Errorf("from server: %s", res.Error.Error)
+		return
+	}
+	return base.TransactionIDFromHexString(res.ID)
 }
 
 func (c *APIClient) GetLastKnownSequencerData() (map[string]tippool.LatestSequencerTipDataJSONAble, error) {

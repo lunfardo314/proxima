@@ -33,6 +33,7 @@ const (
 	PathGetNodeInfo                      = PrefixAPIV1 + "/node_info"
 	PathGetPeersInfo                     = PrefixAPIV1 + "/peers_info"
 	PathGetLatestReliableBranch          = PrefixAPIV1 + "/get_latest_reliable_branch"
+	PathGetSnapshotBranchID              = PrefixAPIV1 + "/get_snapshot_branch_id"
 	PathCheckTxIDInLRB                   = PrefixAPIV1 + "/check_txid_in_lrb"
 	PathGetLastKnownSequencerMilestones  = PrefixAPIV1 + "/last_known_milestones"
 	PathGetMainChain                     = PrefixAPIV1 + "/get_mainchain"
@@ -259,6 +260,10 @@ type (
 		Data multistate.BranchDataJSONAble `json:"data"`
 	}
 
+	SnapshotID struct {
+		Error
+		ID string `json:"id"`
+	}
 	MainChain struct {
 		Error
 		Branches []BranchData `json:"branches"`

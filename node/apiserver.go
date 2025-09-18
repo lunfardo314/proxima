@@ -135,6 +135,10 @@ func (p *ProximaNode) GetLatestReliableBranch() (ret *multistate.BranchData) {
 	return
 }
 
+func (p *ProximaNode) GetSnapshotBranchID() base.TransactionID {
+	return multistate.FetchSnapshotBranchID(p.StateStore())
+}
+
 func (p *ProximaNode) SelfPeerID() peer.ID {
 	return p.peers.SelfPeerID()
 }
