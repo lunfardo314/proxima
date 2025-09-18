@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TODO two different controllers
+
 func TestTagAlongSimple(t *testing.T) {
 	const (
 		initAmount  = 1_000_000_000_000
@@ -75,7 +77,7 @@ func TestTagAlongSimple(t *testing.T) {
 		initOutputID = base.MustNewOutputID(txid, 0)
 	}
 
-	t.Run("1", func(t *testing.T) {
+	t.Run("init", func(t *testing.T) {
 		initTest(false)
 		outsMaster, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
 		require.NoError(t, err)
@@ -94,7 +96,7 @@ func TestTagAlongSimple(t *testing.T) {
 		})
 		require.True(t, idxTarget >= 0)
 	})
-	t.Run("2", func(t *testing.T) {
+	t.Run("iterate", func(t *testing.T) {
 		initTest(false)
 		t.Logf("iterate tag along account for %s", targetChainID.String())
 		count := 0
@@ -120,7 +122,7 @@ func TestTagAlongSimple(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
-	t.Run("3", func(t *testing.T) {
+	t.Run("consume target ok", func(t *testing.T) {
 		initTest(false)
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
@@ -151,6 +153,41 @@ func TestTagAlongSimple(t *testing.T) {
 		t.Logf("\n%s", txString)
 		require.NoError(t, err)
 
-		u.AddTransaction(txBytes)
+		err = u.AddTransaction(txBytes)
+		require.NoError(t, err)
+	})
+	t.Run("consume target fail", func(t *testing.T) {
+		initTest(false)
+		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
+		require.EqualValues(t, 1, len(taOuts))
+
+		txb := txbuilder.New()
+		_, err = txb.ConsumeOutput(seqOut.Output, seqOut.ID)
+		require.NoError(t, err)
+		txb.PutSignatureUnlock(0)
+		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+
+		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
+		require.NoError(t, err)
+		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+
+		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithTokenBalance(seqOut.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
+			o.WithLock(seqOut.Output.Lock())
+			cc := ledger.NewChainConstraint(targetChainID, 0, 2, seqOut.OriginSlot, seqOut.OriginAmount)
+			o.MustPushConstraint(cc.Bytes())
+		})
+		_, err = txb.ProduceOutput(next)
+		require.NoError(t, err)
+
+		ts := base.MaximumTime(taOuts[0].ID.Timestamp(), seqOut.ID.Timestamp()).AddSlots(1)
+		ts = ts.AddSlots(ledger.Const.TagAlongSlots + 1)
+
+		txb.TransactionData.Timestamp = ts
+		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SignED25519(privKey)
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n%s", txString)
+		require.Error(t, err)
 	})
 }
