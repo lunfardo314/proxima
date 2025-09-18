@@ -117,13 +117,47 @@ func initTestTagAlongLockConstraint() {
 	util.AssertNoError(err)
 }
 
+// --- helper structure
+
+type TagAlongOutput struct {
+	OutputWithID
+	*TagAlongLock
+}
+
+func (o *TagAlongOutput) IsTagAlongSlot(slot uint32) bool {
+	s := o.ID.Slot()
+	return slot >= s && slot-s < Const.TagAlongSlots
+}
+
+func (o *TagAlongOutput) IsTagAlongReclaimSlot(slot uint32) bool {
+	s := o.ID.Slot()
+	return slot >= s && slot-s >= Const.TagAlongSlots && slot-s < Const.TagAlongReclaimSlots
+}
+
+func (o *TagAlongOutput) IsTagAlongPurgeSlot(slot uint32) bool {
+	s := o.ID.Slot()
+	return slot >= s && slot-s >= Const.TagAlongReclaimSlots
+}
+
+func (o *TagAlongOutput) StatusInSlot(slot uint32) string {
+	switch {
+	case o.IsTagAlongSlot(slot):
+		return "tag-along"
+	case o.IsTagAlongReclaimSlot(slot):
+		return "tag-along-reclaim"
+	case o.IsTagAlongPurgeSlot(slot):
+		return "tag-along-purge"
+	}
+	return "undefined"
+}
+
 // TODO randomize access to purgeable tag-along outputs and incentivize ledger cleanup
 
 const tagAlongLockConstraintSource = `
 func constTagAlongSlots : u64/30  // 5 min
 func constTagAlongReclaimSlots : u64/390 // 5 min + 1 hour
 
-func selfInputPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
+func selfInputSlotPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
 
 func _selfSenderBytecode : parseBytecode(self, 1, selfBytecodePrefix)
 
@@ -147,10 +181,10 @@ or(
   and(
      selfIsConsumedOutput,
 	 or(
-		greaterOrEqualThan(selfInputPace, constTagAlongReclaimSlots),  // unlockable by anybody  
+		greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots),  // unlockable by anybody  
 		and( 
 			 // unlockable by the target
-		   lessThan(selfInputPace, constTagAlongSlots),
+		   lessThan(selfInputSlotPace, constTagAlongSlots),
 		   require(chainLock($0), !!!must_be_unlocked_by_the_target)
 		),
 			 // unlockable by the sender
@@ -169,19 +203,19 @@ func selfIsTagAlongOutput : parseBytecode(selfSiblingConstraint(1), 0x, #tagAlon
 func selfInputIsInTagAlongSlots : 
 and(
    selfIsTagAlongOutput,
-   lessThan(selfInputPace, constTagAlongSlots)
+   lessThan(selfInputSlotPace, constTagAlongSlots)
 )
 
 func selfInputIsInTagAlongReclaimSlots : 
 and(
    selfIsTagAlongOutput,
-   greaterOrEqualThan(selfInputPace, constTagAlongSlots),
-   lessThan(selfInputPace, constTagAlongReclaimSlots)
+   greaterOrEqualThan(selfInputSlotPace, constTagAlongSlots),
+   lessThan(selfInputSlotPace, constTagAlongReclaimSlots)
 )
 
 func selfInputIsInTagAlongPurgeSlots : 
 and(
    selfIsTagAlongOutput,
-   greaterOrEqualThan(selfInputPace, constTagAlongReclaimSlots)
+   greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots)
 )
 `

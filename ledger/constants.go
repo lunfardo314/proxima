@@ -3,6 +3,7 @@ package ledger
 import (
 	"crypto/ed25519"
 	"encoding/hex"
+	"math"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
@@ -55,6 +56,9 @@ type Constants struct {
 	DelegationEpochSlots uint32
 	// maximum number of frozen epochs
 	MaxFrozenEpochs uint32
+	// ---------- tag-along related
+	TagAlongSlots        uint32
+	TagAlongReclaimSlots uint32
 }
 
 var Const *Constants
@@ -115,6 +119,19 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.AssertNoError(err)
 	ret.MaxFrozenEpochs, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochs")
 	util.AssertNoError(err)
+
+	// tag-along related
+	var t64 uint64
+	t64, err = _uint64FromConst(lib, "constTagAlongSlots")
+	util.AssertNoError(err)
+	util.Assertf(t64 < math.MaxUint32, "constTagAlongSlots: %d", t64)
+	ret.TagAlongSlots = uint32(t64)
+
+	t64, err = _uint64FromConst(lib, "constTagAlongReclaimSlots")
+	util.AssertNoError(err)
+	util.Assertf(t64 < math.MaxUint32, "constTagAlongReclaimSlots: %d", t64)
+	ret.TagAlongReclaimSlots = uint32(t64)
+
 	return ret
 }
 

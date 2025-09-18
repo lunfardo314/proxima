@@ -928,3 +928,12 @@ func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
 	}
 	return seqdata.FromBytes(data)
 }
+
+// TagAlongLock return tag-along lock if present, otherwise nil
+func (o *Output) TagAlongLock() *TagAlongLock {
+	ret, err := TagAlongLockFromBytes(o.MustAt(int(ConstraintIndexLock)))
+	if err != nil {
+		return nil
+	}
+	return ret
+}
