@@ -96,8 +96,7 @@ or(
 // 
 // This constraint script is attached to the sequencer command. 
 // Its purpose is to enforce real revocation of the delegation by the sequencer
-// The formula takes into account if the lock is tagAlong or not. In the former case it does not
-// enforce condition if output is outside tag-along slots
+// For tagAlong outputs condition is only enforced for tag-along slot range
 func ensureStopDelegation :
 if(
    selfHasLockType(#tagAlong),
