@@ -185,12 +185,12 @@ or(
 		and( 
 			 // unlockable by the target
 		   lessThan(selfInputSlotPace, constTagAlongSlots),
-		   require(chainLock($0), !!!must_be_unlocked_by_the_target)
+		   require(chainLock($0), !!!unlock_window_error:_inside_tag_along_slots_must_be_unlocked_by_the_target)
 		),
 			 // unlockable by the sender
         require(
            $1,
-           !!!must_be_unlocked_by_the_sender
+           !!!unlock_window_error:_inside_reclaim_slots_must_be_unlocked_by_the_sender
         )
 	 )
   ),

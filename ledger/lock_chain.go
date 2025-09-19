@@ -145,6 +145,7 @@ or(
 	),
 	and(
 		selfIsConsumedOutput,
+        greaterOrEqualThan(len(selfUnlockParameters), u64/2),
 		not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing 
 		_validChainUnlock($0)
 	)

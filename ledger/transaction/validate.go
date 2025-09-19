@@ -255,7 +255,7 @@ func PathToString(path []byte) string {
 				ret += fmt.Sprintf("[%d]", path[2])
 			}
 			if len(path) >= 4 {
-				ret += fmt.Sprintf(".block[%d]", path[3])
+				ret += fmt.Sprintf(".constraint[%d]", path[3])
 			}
 			if len(path) >= 5 {
 				ret += fmt.Sprintf("..%v", path[4:])
@@ -273,7 +273,7 @@ func PathToString(path []byte) string {
 				ret += fmt.Sprintf(".out[%d]", path[2])
 			}
 			if len(path) >= 4 {
-				ret += fmt.Sprintf(".block[%d]", path[3])
+				ret += fmt.Sprintf(".constraint[%d]", path[3])
 			}
 			if len(path) >= 5 {
 				ret += fmt.Sprintf("..%v", path[4:])
