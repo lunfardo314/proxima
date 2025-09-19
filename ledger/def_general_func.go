@@ -215,4 +215,8 @@ functions:
       sym: publicKeyED25519
       numArgs: 1
       source: slice($0, 64, 95)
+   -
+      sym: selfHasLockType
+      description: $0 is call prefix label. Returns true if current output has specific lock type
+      source: equal(parseBytecode(selfSiblingConstraint(1), 0x), $0)
 `

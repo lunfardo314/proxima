@@ -67,8 +67,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	err = lib.UpgradeFromYAML([]byte(_generalFunctionsYAML))
 	util.AssertNoError(err)
 
-	//lib.MustExtendMany(_inflationFunctionsSource)
-
 	lib.MustExtendMany(amountsAuxSource)
 	lib.MustExtendMany(addressED25519ConstraintSource)
 	lib.MustExtendMany(conditionalLockSource)
@@ -79,30 +77,25 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	lib.MustExtendMany(sequencerConstraintSource)
 	lib.MustExtendMany(messageWithED25519SenderSource)
 	lib.MustExtendMany(chainLockConstraintSource)
-	//lib.MustExtendMany(immutableDataConstraintSource)
 	lib.MustExtendMany(commitToSiblingSource)
-	//lib.MustExtendMany(totalAmountSource)
 	lib.MustExtendMany(delegateLock2Source)
 	lib.MustExtendMany(tagAlongLockConstraintSource)
+	lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
 }
 
 // registerConstraints mass-registers all wrappers of constraints
 func (lib *Library) registerConstraints() {
 	registerAmountsConstraint(lib)
 	registerAddressED25519Constraint(lib)
-	//registerConditionalLock(lib)
-	//registerDeadlineLockConstraint(lib)
 	registerTimeLockConstraint(lib)
 	registerStemLockConstraint(lib)
 	registerChainConstraint(lib)
 	registerSequencerConstraint(lib)
 	registerMessageWithSenderED25519Constraint(lib)
 	registerChainLockConstraint(lib)
-	//registerImmutableConstraint(lib)
-	//registerCommitToSiblingConstraint(lib)
-	//registerTotalAmountConstraint(lib)
 	registerDelegateLock(lib)
 	registerTagAlongLockConstraint(lib)
+	registerEnsureConstraints(lib)
 
 	lib.appendInlineTests(func() {
 		// inline tests

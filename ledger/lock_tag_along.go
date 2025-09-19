@@ -195,27 +195,4 @@ or(
 	 )
   ),
 )
-
-// aux functions
-
-func selfIsTagAlongOutput : parseBytecode(selfSiblingConstraint(1), 0x, #tagAlong) 
-
-func selfInputIsInTagAlongSlots : 
-and(
-   selfIsTagAlongOutput,
-   lessThan(selfInputSlotPace, constTagAlongSlots)
-)
-
-func selfInputIsInTagAlongReclaimSlots : 
-and(
-   selfIsTagAlongOutput,
-   greaterOrEqualThan(selfInputSlotPace, constTagAlongSlots),
-   lessThan(selfInputSlotPace, constTagAlongReclaimSlots)
-)
-
-func selfInputIsInTagAlongPurgeSlots : 
-and(
-   selfIsTagAlongOutput,
-   greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots)
-)
 `
