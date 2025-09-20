@@ -29,12 +29,6 @@ type (
 		vrfProof              []byte
 	}
 
-	SeqRequestMessage struct {
-		base.SmallPersistentMap
-		ledger.MessageWithED25519Sender
-		CmdCode byte
-	}
-
 	TxBuilderCommand interface {
 		// Apply valid=false means it is permanently invalid, err is a reason why not possible to apply it
 		Apply(txb *SeqTxBuilder) (valid bool, err error)

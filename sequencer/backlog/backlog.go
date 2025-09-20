@@ -138,24 +138,15 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput) bool {
 	if o == nil {
 		return true
 	}
-	lock := wOut.Lock()
 	if _, idx := o.ChainConstraint(); idx != 0xff {
 		// filter out all chain constrained outputs
 		return false
 	}
-	if lock.Name() != ledger.ChainLockName {
+	lockName := wOut.Lock().Name()
+	if lockName != ledger.TagAlongLockName && lockName != ledger.ChainLockName {
 		// filter out all which cannot be consumed by the sequencer
 		return false
 	}
-
-	// TODO --
-	//if dl, ok := lock.(*ledger.DelegationLock); ok {
-	//	seqID := b.SequencerID()
-	//	if !ledger.EqualAccountables(ledger.ChainLockFromChainID(seqID), dl.TargetLock) {
-	//		// filter out delegation locks is delegation target cannot be consumed
-	//		return false
-	//	}
-	//}
 	return true
 }
 

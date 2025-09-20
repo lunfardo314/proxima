@@ -408,8 +408,6 @@ type (
 		Lock              ledger.Lock
 		Amount            uint64
 		AdjustToMinimum   bool
-		AddMessage        bool
-		MessageData       []byte
 		AddConstraints    [][]byte
 		MarkAsSequencerTx bool
 		UnlockData        []*UnlockData
@@ -509,12 +507,6 @@ func (t *TransferData) MustWithInputs(outs ...*ledger.OutputWithID) *TransferDat
 
 func (t *TransferData) WithChainOutput(out *ledger.OutputWithChainID) *TransferData {
 	t.ChainOutput = out
-	return t
-}
-
-func (t *TransferData) WithMessage(data []byte) *TransferData {
-	t.AddMessage = true
-	t.MessageData = data
 	return t
 }
 
@@ -659,10 +651,6 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 
 	mainOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(par.Lock)
-		if par.AddMessage {
-			msg := ledger.NewMessageWithED25519SenderFromPublicKey(par.SenderPublicKey, par.MessageData)
-			o.MustPushConstraint(msg.Bytes())
-		}
 		if o.NumConstraints()+len(par.AddConstraints) >= 256 {
 			err = fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: too many constraints")
 			return
@@ -908,10 +896,6 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 
 	mainOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(par.Lock)
-		if par.AddMessage {
-			msg := ledger.NewMessageWithED25519SenderFromPublicKey(par.SenderPublicKey, par.MessageData)
-			o.MustPushConstraint(msg.Bytes())
-		}
 		if o.NumConstraints()+len(par.AddConstraints) >= 256 {
 			err = fmt.Errorf("too many constraints")
 			return

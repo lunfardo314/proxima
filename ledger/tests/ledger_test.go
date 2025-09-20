@@ -291,40 +291,6 @@ func TestTimelock(t *testing.T) {
 	})
 }
 
-func TestMsgWithSenderED25519(t *testing.T) {
-	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-	privKey0, _, addr0 := u.GenerateAddress(0)
-	err := u.TokensFromFaucet(addr0, 10000)
-	require.NoError(t, err)
-
-	_, _, addr1 := u.GenerateAddress(1)
-	require.EqualValues(t, 0, u.Balance(addr1))
-	require.EqualValues(t, 0, u.NumUTXOs(addr1))
-
-	par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
-	require.NoError(t, err)
-	err = u.DoTransfer(par.
-		WithAmount(2000).
-		WithTargetLock(addr1).
-		WithMessage([]byte("12")),
-	)
-	require.NoError(t, err)
-
-	require.EqualValues(t, 1, u.NumUTXOs(addr1))
-	require.EqualValues(t, 2000, u.Balance(addr1))
-
-	outDatas, err := u.StateReader().GetUTXOsInAccount(addr1.AccountID())
-	require.NoError(t, err)
-	outs, err := ledger.ParseAndSortOutputData(outDatas, nil)
-	require.NoError(t, err)
-
-	require.EqualValues(t, 1, len(outs))
-	msg, idx := outs[0].Output.MessageWithED25519Sender()
-	require.True(t, idx != 0xff)
-	require.True(t, bytes.Equal(addr0, msg.SenderHash[:]))
-	require.EqualValues(t, "12", string(msg.Msg))
-}
-
 func TestChain1(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
