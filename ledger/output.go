@@ -510,8 +510,8 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 				ret.Add("%s%d: bytecode=%s (%v)", hex.EncodeToString(data), err)
 			} else {
 				ret.Add("%s%d: bytecode=%s (len=%d)", prefix, i, src, len(data))
-				if sd, err := seqdata.FromBytes(easyfl.StripDataPrefix(data)); err == nil {
-					ret.Add("      parsed seq data -> " + sd.Lines().Join(", "))
+				if sm, err := base.SmallPersistentMapFromBytes(easyfl.StripDataPrefix(data)); err == nil {
+					ret.Add("        parsed small map data -> " + sm.Lines().Join(", "))
 				}
 			}
 		} else {

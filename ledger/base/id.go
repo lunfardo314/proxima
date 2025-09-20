@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	rand2 "math/rand"
 
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
@@ -86,6 +87,12 @@ func RandomTransactionID(sequencerFlag bool, maxOutIdx byte, timestamp ...Ledger
 		ts = timestamp[0]
 	}
 	return NewTransactionID(ts, hash, sequencerFlag)
+}
+
+func RandomOutputID(ts LedgerTime) OutputID {
+	rndOutCount := byte(rand2.Intn(256))
+	idx := byte(rand2.Intn(int(rndOutCount) + 1))
+	return MustNewOutputID(RandomTransactionID(false, rndOutCount, ts), idx)
 }
 
 func (txid *TransactionID) NumProducedOutputs() int {

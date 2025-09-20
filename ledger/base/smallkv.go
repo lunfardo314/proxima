@@ -81,7 +81,7 @@ func SmallPersistentMapFromBytes(data []byte) (SmallPersistentMap, error) {
 func (m *SmallPersistentMap) Lines(prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
 	for _, k := range util.KeysSorted(m.m, func(k1, k2 byte) bool { return k1 < k2 }) {
-		ln.Add("%3d: %s", k, hex.EncodeToString(m.Get(k)))
+		ln.Add("'%d': %s", k, hex.EncodeToString(m.Get(k)))
 	}
 	return ln
 }

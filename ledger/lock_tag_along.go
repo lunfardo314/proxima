@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"crypto/ed25519"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -75,12 +74,12 @@ func (t *TagAlongLock) AsLock() Lock {
 	return t
 }
 
-func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderPrivateKey ed25519.PrivateKey) *Output {
+func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, sender AddressED25519) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithTokenBalance(fee)
 		o.WithLock(&TagAlongLock{
 			TargetSequencerID: targetChainID,
-			Sender:            AddressED25519FromPrivateKey(senderPrivateKey),
+			Sender:            sender,
 		})
 	})
 }

@@ -61,7 +61,7 @@ func TestTagAlongSimple(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		o := ledger.NewTagAlongOutput(fee, targetChainID, privKeySender)
+		o := ledger.NewTagAlongOutput(fee, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(o)
 		require.NoError(t, err)
 

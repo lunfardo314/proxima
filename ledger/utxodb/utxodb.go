@@ -467,6 +467,9 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 	var err1 error
 
 	err := u.SugaredStateReader().IterateOutputsForAccount(fromAccount, func(oid base.OutputID, o *ledger.Output) bool {
+		if o.NumConstraints() > 2 || o.Lock().Name() != ledger.AddressED25519Name {
+			return true
+		}
 		ins = append(ins, &ledger.OutputWithID{
 			Output: o,
 			ID:     oid,
@@ -490,12 +493,17 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 	if sum < sendAmount {
 		return fmt.Errorf("not enough funds")
 	}
-	_, _ = txb.ProduceOutput(o)
+	if _, err = txb.ProduceOutput(o); err != nil {
+		return err
+	}
 	if sum >= sendAmount {
-		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(sum - sendAmount)
 			o.WithLock(fromAccount)
 		}))
+		if err != nil {
+			return err
+		}
 	}
 	txb.TransactionData.Timestamp = ts
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)

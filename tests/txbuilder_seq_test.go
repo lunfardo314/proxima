@@ -3,7 +3,6 @@ package tests
 import (
 	"crypto/ed25519"
 	"fmt"
-	"math/rand"
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
@@ -147,14 +146,15 @@ func TestBase(t *testing.T) {
 
 		require.NoError(t, err)
 	})
-	t.Run("+100 slot tag_along", func(t *testing.T) {
-		ts := predTs.AddSlots(100)
+	t.Run("+100 slot simple tag-along", func(t *testing.T) {
+		ts := predTs.AddSlots(99)
+		tagAlongOut := ledger.OutputWithID{
+			ID:     base.RandomOutputID(ts),
+			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+			//txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 1_000_000, addr),
+		}
+		ts = ts.AddSlots(1)
 		txb := newTxb(ts)
-
-		tagAlongOut := ledger.OutputWithID{
-			ID:     base.OutputID{},
-			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 1_000_000, addr),
-		}
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
@@ -163,14 +163,16 @@ func TestBase(t *testing.T) {
 
 		require.NoError(t, err)
 	})
-	t.Run("+1000 slot tag_along", func(t *testing.T) {
-		ts := predTs.AddSlots(1000)
+	t.Run("+1000 slot simple tag_along", func(t *testing.T) {
+		ts := predTs.AddSlots(999)
+		tagAlongOut := ledger.OutputWithID{
+			ID:     base.RandomOutputID(ts),
+			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+		}
+
+		ts = ts.AddSlots(1)
 		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 
-		tagAlongOut := ledger.OutputWithID{
-			ID:     base.OutputID{},
-			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 1_000_000, addr),
-		}
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
@@ -179,14 +181,33 @@ func TestBase(t *testing.T) {
 
 		require.NoError(t, err)
 	})
+	t.Run("simple tag_along fail window", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		tagAlongOut := ledger.OutputWithID{
+			ID:     base.RandomOutputID(ts),
+			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+		}
+		txb := newTxb(ts.AddSlots(ledger.Const.TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		_, _, err := txb.AddTagAlongInput(tagAlongOut)
+		require.NoError(t, util.MustErrorWith(err, "missed tag-along window"))
+
+		txb = newTxb(ts.AddSlots(ledger.Const.TagAlongSlots-1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		_, _, err = txb.AddTagAlongInput(tagAlongOut)
+		require.NoError(t, err)
+
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+
 	t.Run("+1000 slot withdraw", func(t *testing.T) {
-		ts := predTs.AddSlots(1000)
-		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
-
+		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
-			ID:     base.OutputID{},
+			ID:     base.RandomOutputID(ts),
 			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 10_000_000, addr),
 		}
+		txb := newTxb(ts.AddSlots(1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
@@ -195,23 +216,42 @@ func TestBase(t *testing.T) {
 
 		require.NoError(t, err)
 	})
-	t.Run("many rnd withdraw", func(t *testing.T) {
-		ts := predTs.AddSlots(1000)
-		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+	t.Run("+1000 slot withdraw fail", func(t *testing.T) {
+		ts := predTs.AddSlots(999)
+		tagAlongOut := ledger.OutputWithID{
+			ID:     base.RandomOutputID(ts),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 10_000_000, addr),
+		}
+		txb := newTxb(ts.AddSlots(ledger.Const.TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		_, _, err := txb.AddTagAlongInput(tagAlongOut)
+		require.NoError(t, util.MustErrorWith(err, "missed tag-along window"))
 
+		txb = newTxb(ts.AddSlots(ledger.Const.TagAlongSlots-5), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		_, _, err = txb.AddTagAlongInput(tagAlongOut)
+		require.NoError(t, err)
+
+		_, _, txString, err := txb.BytesWithValidation()
+		t.Logf("\n--------- tx --------\n%s", txString)
+
+		require.NoError(t, err)
+	})
+	t.Run("many withdraw", func(t *testing.T) {
+		ts := predTs.AddSlots(1000)
+		txb := newTxb(ts.AddSlots(ledger.Const.TagAlongSlots-1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+
+		sender := ledger.AddressED25519FromPrivateKey(privKey)
 		rndWithdraw := func(amount uint64, slot uint32) error {
 			tagAlongOut := ledger.OutputWithID{
-				ID:     base.MustNewOutputID(base.RandomTransactionID(false, 2, base.T(slot, 50)), 1),
-				Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, amount, addr),
+				ID:     base.RandomOutputID(base.T(slot, 50)),
+				Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, sender, 200, 10_000_000, addr),
 			}
 			_, _, err := txb.AddTagAlongInput(tagAlongOut)
 			return err
 		}
 
-		const howMany = 2 // 254
+		const howMany = 29 // 254
 		for i := 0; i < howMany; i++ {
-			rnd := rand.Intn(500)
-			err := rndWithdraw(10_000_000-uint64(rnd), predTs.Slot-uint32(rnd))
+			err := rndWithdraw(10_000_000, ts.Slot+uint32(i))
 			require.NoError(t, err)
 		}
 
@@ -222,17 +262,17 @@ func TestBase(t *testing.T) {
 	})
 	t.Run("change seq name", func(t *testing.T) {
 		ts := predTs.AddSlots(1000)
-		txb := newTxb(ts, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
-
+		txb := newTxb(ts.AddSlots(3), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		predSeqData, err := ledger.ParseSequencerData(txb.ChainInput().Output)
 		require.NoError(t, err)
 
 		tagAlongOut := ledger.OutputWithID{
-			ID: base.OutputID{},
+			ID: base.RandomOutputID(base.T(ts.Slot, 50)),
 			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
 				sdUpdated.SetName("newName").IncChainHeight()
 			})),
 		}
+
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
@@ -739,8 +779,11 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 		nRequests++
 		did := td.delegationIDs[lst[i].d]
 
-		askStopRequestOutput := txbuilder_seq.NewAskStopDelegationReqOutput(td.seqID, td.masterAddr, did, 50)
+		askStopRequestOutput := txbuilder_seq.NewAskStopDelegationReqOutput(td.seqID, td.masterAddr, did, 500)
 		err := td.u.SendOutput(td.masterPrivateKey, askStopRequestOutput, base.T(slot, 50))
+		if err != nil {
+			println()
+		}
 		util.AssertNoError(err)
 		td.revokeRequests.Insert(did)
 		td.Logf("post revoke request for %s epoch %d, slot %d, slot in epoch: %d", did.StringShort(), epoch, slot, nrSlotInEpoch)

@@ -52,6 +52,7 @@ func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutpu
 		ret.TagAlongLock = lock
 		copy(ret.SenderHash[:], lock.Sender.(ledger.AddressED25519))
 		if o.Output.NumConstraints() == 2 {
+			valid = true
 			return
 		}
 		requestData := o.Output.MustConstraintAt(2)
@@ -75,10 +76,10 @@ func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutpu
 			return
 		}
 		ret.RequestCode = reqCode[0]
-	default:
-		reason = fmt.Errorf("can't be interpreted as a tag-along output")
+		valid = true
 		return
 	}
+	reason = fmt.Errorf("can't be interpreted as a tag-along output")
 	return
 }
 
