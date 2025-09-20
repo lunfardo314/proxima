@@ -170,6 +170,7 @@ or(
      require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
 	 require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
 	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
+     require(lessThan(selfNumConstraints, u64/5), !!!tag-along_lock_allows_no_more_than_4_constraints),
      require(
         equal(
            parseInlineDataArgument(_selfSenderBytecode, 0, #a, #addressED25519), 
