@@ -117,7 +117,7 @@ func (p *proposal) insertTagAlongInputs() {
 			} else {
 				p.proposer.Assertf(cmd != nil, "cmd != nil")
 				p.proposer.Log().Infof("TAG_ALONG: output %s has been added, amount: %s, cmd='%s'",
-					o.o.ID.StringShort(), util.Th(o.o.Output.TokenBalance()), cmd.String())
+					o.o.ID.StringShort(), util.Th(o.o.Output.TokenBalance()), cmd.Lines().String())
 			}
 		}
 		if p.txb.InputsAreFull() {

@@ -153,7 +153,7 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.OutputID{},
-			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 1_000_000, addr),
 		}
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
@@ -169,7 +169,7 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.OutputID{},
-			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 1_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 1_000_000, addr),
 		}
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.OutputID{},
-			Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, 10_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 10_000_000, addr),
 		}
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
@@ -202,7 +202,7 @@ func TestBase(t *testing.T) {
 		rndWithdraw := func(amount uint64, slot uint32) error {
 			tagAlongOut := ledger.OutputWithID{
 				ID:     base.MustNewOutputID(base.RandomTransactionID(false, 2, base.T(slot, 50)), 1),
-				Output: txbuilder_seq.NewWithdrawCommandOutput(seqID, privKey, 200, amount, addr),
+				Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, amount, addr),
 			}
 			_, _, err := txb.AddTagAlongInput(tagAlongOut)
 			return err
@@ -229,7 +229,7 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID: base.OutputID{},
-			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, privKey, 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
+			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
 				sdUpdated.SetName("newName").IncChainHeight()
 			})),
 		}
@@ -741,7 +741,9 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 
 		transferData, err := td.u.MakeTransferInputData(td.masterPrivateKey, td.masterAddr, base.T(slot, 50))
 		util.AssertNoError(err)
-		delegationCmdOutput := txbuilder_seq.NewAskStopDelegationReqConstraint(td.masterPrivateKey, did)
+		askStopRequestOutput := txbuilder_seq.NewAskStopDelegationReqOutput(td.seqID, td.masterAddr, did, 50)
+
+		NewAskStopDelegationReqConstraint(td.masterPrivateKey, did)
 		ensureConstraint := ledger.EnsureStopDelegationFromDelegationID(did)
 
 		transferData.WithAmount(10_000).

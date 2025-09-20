@@ -11,7 +11,7 @@ import (
 
 type TagAlongLock struct {
 	TargetSequencerID base.ChainID
-	SenderLock        Accountable
+	Sender            Accountable
 }
 
 const (
@@ -43,16 +43,16 @@ func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
 
 	return &TagAlongLock{
 		TargetSequencerID: chainID,
-		SenderLock:        sender,
+		Sender:            sender,
 	}, nil
 }
 
 func (t *TagAlongLock) Source() string {
-	return fmt.Sprintf(tagAlongLockTemplateSource, t.TargetSequencerID.StringHex(), t.SenderLock.Source())
+	return fmt.Sprintf(tagAlongLockTemplateSource, t.TargetSequencerID.StringHex(), t.Sender.Source())
 }
 
 func (t *TagAlongLock) String() string {
-	return fmt.Sprintf(tagAlongLockTemplateHR, t.TargetSequencerID.String(), t.SenderLock.String())
+	return fmt.Sprintf(tagAlongLockTemplateHR, t.TargetSequencerID.String(), t.Sender.String())
 }
 
 func (t *TagAlongLock) Bytes() []byte {
@@ -60,7 +60,7 @@ func (t *TagAlongLock) Bytes() []byte {
 }
 
 func (t *TagAlongLock) Accounts() []Accountable {
-	return []Accountable{ChainLockFromChainID(t.TargetSequencerID), t.SenderLock}
+	return []Accountable{ChainLockFromChainID(t.TargetSequencerID), t.Sender}
 }
 
 func (t *TagAlongLock) Master() Accountable {
@@ -80,7 +80,7 @@ func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderPrivateKey 
 		o.WithTokenBalance(fee)
 		o.WithLock(&TagAlongLock{
 			TargetSequencerID: targetChainID,
-			SenderLock:        AddressED25519FromPrivateKey(senderPrivateKey),
+			Sender:            AddressED25519FromPrivateKey(senderPrivateKey),
 		})
 	})
 }
@@ -107,7 +107,7 @@ func initTestTagAlongLockConstraint() {
 	sender := AddressED25519Random()
 	example := &TagAlongLock{
 		TargetSequencerID: chainID,
-		SenderLock:        sender,
+		Sender:            sender,
 	}
 	tagAlongLockBack, err := TagAlongLockFromBytes(example.Bytes())
 	util.AssertNoError(err)

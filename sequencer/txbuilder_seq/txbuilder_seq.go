@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -35,19 +36,9 @@ type (
 	}
 
 	TxBuilderCommand interface {
-		// Apply valid=false means it is permanently invalid, err is a reason why not possibe to apply it
+		// Apply valid=false means it is permanently invalid, err is a reason why not possible to apply it
 		Apply(txb *SeqTxBuilder) (valid bool, err error)
-		String() string
-	}
-
-	SeqCommandBase struct {
-		o ledger.OutputWithID
-	}
-
-	cmdParser func(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqRequestMessage) (cmd TxBuilderCommand, valid bool, err error)
-
-	SimpleTagAlongOutput struct {
-		SeqCommandBase
+		Lines(prefix ...string) *lines.Lines
 	}
 )
 

@@ -10,22 +10,34 @@ import (
 
 type (
 	preParsedTagAlongOutput struct {
-		ledger.OutputWithID
-		*ledger.TagAlongLock
+		ledger.TagAlongOutput
 		SenderHash    [32]byte
 		RequestCode   byte
 		RequestParams *base.SmallPersistentMap
 	}
+
+	outputParser func(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (cmd TxBuilderCommand, valid bool, err error)
 )
 
-func preParseTagAlongOutput(o ledger.OutputWithID) (ret *preParsedTagAlongOutput, valid bool, reason error) {
+const FieldCmdCode = byte(0)
+
+var _cmdParsers = map[byte]outputParser{
+	RequestCodeNoop:              noRequestCmdParser,
+	RequestCodeSetSequencerData:  setSequencerDataOutputParser,
+	RequestCodeWithdrawFromSeq:   withdrawFromSeqRequestParser,
+	RequestCodeAskStopDelegation: parseAskStopDelegationOutput,
+}
+
+func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutput, valid bool, reason error) {
+	ret.OutputWithID = o
+	ret.RequestCode = RequestCodeNoop
+
 	switch lock := o.Output.Lock().(type) {
 	case ledger.ChainLock:
 		if o.Output.NumConstraints() > 2 {
 			reason = fmt.Errorf("chain-locked output can't contain more than 2 constraints, got %d", o.Output.NumConstraints())
 			return
 		}
-		ret = &preParsedTagAlongOutput{OutputWithID: o}
 		valid = true
 		return
 	case *ledger.TagAlongLock:
@@ -33,15 +45,12 @@ func preParseTagAlongOutput(o ledger.OutputWithID) (ret *preParsedTagAlongOutput
 			reason = fmt.Errorf("tag-along lock does not allow output can't contain more than 4 constraints, got %d", o.Output.NumConstraints())
 			return
 		}
-		if lock.SenderLock.Name() != ledger.AddressED25519Name {
+		if lock.Sender.Name() != ledger.AddressED25519Name {
 			reason = fmt.Errorf("tag-along lock allows only ED25519 address as sender")
 			return
 		}
-		ret = &preParsedTagAlongOutput{
-			OutputWithID: o,
-			TagAlongLock: lock,
-		}
-		copy(ret.SenderHash[:], lock.SenderLock.(ledger.AddressED25519))
+		ret.TagAlongLock = lock
+		copy(ret.SenderHash[:], lock.Sender.(ledger.AddressED25519))
 		if o.Output.NumConstraints() == 2 {
 			return
 		}
@@ -60,15 +69,35 @@ func preParseTagAlongOutput(o ledger.OutputWithID) (ret *preParsedTagAlongOutput
 			return
 		}
 		ret.RequestParams = &p
-		cmdCode := p.Get(FieldCmdCode)
-		if cmdCode == nil || len(cmdCode) != 1 {
+		reqCode := p.Get(FieldCmdCode)
+		if reqCode == nil || len(reqCode) != 1 || reqCode[0] == RequestCodeNoop {
 			reason = fmt.Errorf("wrong command code field")
 			return
 		}
-		ret.RequestCode = cmdCode[0]
+		ret.RequestCode = reqCode[0]
 	default:
 		reason = fmt.Errorf("can't be interpreted as a tag-along output")
 		return
 	}
+	return
+}
+
+func (txb *SeqTxBuilder) TxBuilderCommandFromOutput(o ledger.OutputWithID) (cmd TxBuilderCommand, isValid bool, reason error) {
+	var preParsed preParsedTagAlongOutput
+
+	if preParsed, isValid, reason = preParseOutputAsTagAlong(o); reason != nil || !isValid {
+		reason = fmt.Errorf("TxBuilderCommandFromOutput: %v", reason)
+		return
+	}
+	if preParsed.TagAlongLock != nil && !preParsed.TagAlongOutput.IsTagAlongSlot(txb.Slot()) {
+		// missed tag-along slots -> won't be able to consume it in the future either
+		reason = fmt.Errorf("TxBuilderCommandFromOutput: missed tag-along window")
+		return
+	}
+
+	if parser, found := _cmdParsers[preParsed.RequestCode]; found {
+		return parser(txb, &preParsed)
+	}
+	reason = fmt.Errorf("TxBuilderCommandFromOutput: unknown requst code %d", preParsed.RequestCode)
 	return
 }

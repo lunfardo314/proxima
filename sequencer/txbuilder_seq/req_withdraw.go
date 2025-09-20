@@ -4,15 +4,17 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 	"golang.org/x/crypto/blake2b"
 )
 
-type WithdrawRequest struct {
-	o      ledger.OutputWithID
+type WithdrawFromChainTxBuilderCommand struct {
+	ledger.TagAlongOutput
 	amount uint64
 	target ledger.Lock
 }
@@ -20,84 +22,80 @@ type WithdrawRequest struct {
 const (
 	MinimumAmountToRequestFromSequencer = 1_000_000
 
-	WithdrawCmdCode     = byte(1)
-	FieldWithdrawAmount = byte(1)
-	FieldWithdrawTarget = byte(2)
+	RequestCodeWithdrawFromSeq = byte(1)
+	FieldWithdrawAmount        = 'a'
+	FieldWithdrawTarget        = 't'
 )
 
-func init() {
-	registerSequencerCommand(WithdrawCmdCode, _parseWithdrawOutput)
-}
-
-func _parseWithdrawOutput(txb *SeqTxBuilder, o ledger.OutputWithID, msg *SeqRequestMessage) (cmd TxBuilderCommand, isValid bool, err error) {
+func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (cmd TxBuilderCommand, isValid bool, err error) {
 	if o.Output.NumConstraints() != 3 {
 		// unexpected structure -> may be attack
-		err = fmt.Errorf("WithdrawRequest: parse failed, unexpected structure of the output")
+		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: parse failed, unexpected structure of the output")
 		return
 	}
-	// authenticate
+	// check authorisation
 	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
-	if msg.SenderHash != blake2b.Sum256(publicKey) {
+	if o.SenderHash != blake2b.Sum256(publicKey) {
 		// wrong sender -> may be attack
-		err = fmt.Errorf("WithdrawRequest: sender can't update sequncer data (failed authorisation)")
+		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: sender can't update sequencer data (authorisation failure)")
 		return
 	}
-	ret := &WithdrawRequest{o: o}
-	if ret.amount, err = easyfl_util.Uint64FromBytes(msg.Get(FieldWithdrawAmount)); err != nil {
-		err = fmt.Errorf("WithdrawRequest: amount not specified")
+	ret := &WithdrawFromChainTxBuilderCommand{TagAlongOutput: o.TagAlongOutput}
+	if ret.amount, err = easyfl_util.Uint64FromBytes(o.RequestParams.Get(FieldWithdrawAmount)); err != nil {
+		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: amount not specified")
 		return
 	}
 	if ret.amount < MinimumAmountToRequestFromSequencer {
 		// too small amount to withdraw
-		err = fmt.Errorf("WithdrawRequest: requested amount %d is less than minimum alowed", ret.amount)
+		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: requested amount %d is less than minimum alowed", ret.amount)
 		return
 	}
-	if ret.target, err = ledger.LockFromBytes(msg.Get(FieldWithdrawTarget)); err != nil {
-		err = fmt.Errorf("WithdrawRequest: failed to parse lock: %w", err)
+	if ret.target, err = ledger.LockFromBytes(o.RequestParams.Get(FieldWithdrawTarget)); err != nil {
+		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: failed to parse lock: %w", err)
 		return
 	}
 	return ret, true, nil
-
 }
 
-func NewWithdrawRequest(privKey ed25519.PrivateKey, amount uint64, target ledger.Lock) *ledger.MessageWithED25519Sender {
-	body := base.NewSmallPersistentMap()
-	body.Set(FieldCmdCode, []byte{WithdrawCmdCode})
-	body.Set(FieldWithdrawAmount, easyfl_util.TrimmedLeadingZeroUint64(amount))
-	body.Set(FieldWithdrawTarget, target.Bytes())
-
-	return ledger.NewMessageWithED25519SenderFromPrivateKey(privKey, body.Bytes())
-}
-
-func NewWithdrawCommandOutput(targetChain base.ChainID, privKey ed25519.PrivateKey, fee, amount uint64, target ledger.Lock) *ledger.Output {
+func NewWithdrawRequestOutput(withdrawFromChain base.ChainID, sender ledger.Accountable, fee, amount uint64, target ledger.Lock) *ledger.Output {
+	par := base.NewSmallPersistentMap()
+	par.Set(FieldCmdCode, []byte{RequestCodeWithdrawFromSeq})
+	par.Set(FieldWithdrawAmount, easyfl_util.TrimmedLeadingZeroUint64(amount))
+	par.Set(FieldWithdrawTarget, target.Bytes())
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(fee).WithLock(ledger.ChainLockFromChainID(targetChain))
-		o.MustPushConstraint(NewWithdrawRequest(privKey, amount, target).Bytes())
+		o.WithTokenBalance(fee)
+		o.WithLock(&ledger.TagAlongLock{
+			TargetSequencerID: withdrawFromChain,
+			Sender:            sender,
+		})
+		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
 	})
 }
 
-func (cmd *WithdrawRequest) Apply(txb *SeqTxBuilder) (bool, error) {
+func (c *WithdrawFromChainTxBuilderCommand) Apply(txb *SeqTxBuilder) (bool, error) {
 	if len(txb.ConsumedOutputs)+txb.reservedInputs() > 256 {
-		return true, fmt.Errorf("WithdrawRequest: too many inputs")
+		return true, fmt.Errorf("WithdrawFromChainTxBuilderCommand: too many inputs")
 	}
 	onChainAmount := txb.chainOutAmounts[ledger.AmountIndexTokenBalance]
-	if onChainAmount <= int64(cmd.amount) || onChainAmount-int64(cmd.amount) < int64(ledger.Const.MinimumAmountOnSequencer) {
-		return false, fmt.Errorf("WithdrawRequest: insufficient balance on chain")
+	if onChainAmount <= int64(c.amount) || onChainAmount-int64(c.amount) < int64(ledger.Const.MinimumAmountOnSequencer) {
+		return false, fmt.Errorf("WithdrawFromChainTxBuilderCommand: insufficient balance on chain")
 	}
-	_, err := txb.ConsumeTagAlongOutputUnlock(cmd.o.Output, cmd.o.ID, 0, txb.chainInput.ChainConstraintIndex)
+	idx, err := txb.ConsumeOutput(c.Output, c.ID)
 	util.AssertNoError(err)
-	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(cmd.o.Output.TokenBalance())
+
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2))
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(c.Output.TokenBalance())
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(cmd.amount).WithLock(cmd.target)
+		o.WithTokenBalance(c.amount).WithLock(c.target)
 	}))
 	if err != nil {
-		return true, fmt.Errorf("WithdrawRequest: %w", err)
+		return true, fmt.Errorf("WithdrawFromChainTxBuilderCommand: %w", err)
 	}
-	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(cmd.amount)
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(c.amount)
 	return true, nil
 }
 
-func (cmd *WithdrawRequest) String() string {
-	return fmt.Sprintf("WithdrawRequest: amount = %s, target = %s", util.Th(cmd.amount), cmd.target.String())
+func (c *WithdrawFromChainTxBuilderCommand) Lines(prefix ...string) *lines.Lines {
+	return lines.New(prefix...).Add("WithdrawFromChainTxBuilderCommand: amount = %s, target = %s", util.Th(c.amount), c.target.String())
 }
