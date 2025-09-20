@@ -739,18 +739,8 @@ func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
 		nRequests++
 		did := td.delegationIDs[lst[i].d]
 
-		transferData, err := td.u.MakeTransferInputData(td.masterPrivateKey, td.masterAddr, base.T(slot, 50))
-		util.AssertNoError(err)
 		askStopRequestOutput := txbuilder_seq.NewAskStopDelegationReqOutput(td.seqID, td.masterAddr, did, 50)
-
-		NewAskStopDelegationReqConstraint(td.masterPrivateKey, did)
-		ensureConstraint := ledger.EnsureStopDelegationFromDelegationID(did)
-
-		transferData.WithAmount(10_000).
-			WithTargetLock(ledger.ChainLockFromChainID(td.seqID)).
-			WithConstraint(delegationCmdOutput).
-			WithConstraint(&ensureConstraint)
-		err = td.u.DoTransfer(transferData)
+		err := td.u.SendOutput(td.masterPrivateKey, askStopRequestOutput, base.T(slot, 50))
 		util.AssertNoError(err)
 		td.revokeRequests.Insert(did)
 		td.Logf("post revoke request for %s epoch %d, slot %d, slot in epoch: %d", did.StringShort(), epoch, slot, nrSlotInEpoch)

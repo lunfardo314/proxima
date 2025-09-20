@@ -458,6 +458,57 @@ func (u *UTXODB) DoTransfer(par *txbuilder.TransferData) error {
 	return err
 }
 
+func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts base.LedgerTime) error {
+	fromAccount := ledger.AddressED25519FromPrivateKey(privKey)
+	ins := make([]*ledger.OutputWithID, 0)
+	sum := uint64(0)
+	sendAmount := o.TokenBalance()
+	txb := txbuilder.New()
+	var err1 error
+
+	err := u.SugaredStateReader().IterateOutputsForAccount(fromAccount, func(oid base.OutputID, o *ledger.Output) bool {
+		ins = append(ins, &ledger.OutputWithID{
+			Output: o,
+			ID:     oid,
+		})
+		sum += o.TokenBalance()
+		var idx byte
+		idx, err1 = txb.ConsumeOutput(o, oid)
+		if err1 != nil {
+			return false
+		}
+		if idx == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			_ = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0)
+		}
+		return sum < sendAmount
+	})
+	if err != nil || err1 != nil {
+		return err1
+	}
+	if sum < sendAmount {
+		return fmt.Errorf("not enough funds")
+	}
+	_, _ = txb.ProduceOutput(o)
+	if sum >= sendAmount {
+		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithTokenBalance(sum - sendAmount)
+			o.WithLock(fromAccount)
+		}))
+	}
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(privKey)
+	txBytes, _, txString, err := txb.BytesWithValidation()
+	if err != nil {
+		return fmt.Errorf("error: %v\n%s", err, txString)
+	}
+	err = u.AddTransaction(txBytes)
+	util.AssertNoError(err)
+	return nil
+}
+
 func (u *UTXODB) MakeNewChain(amount uint64, privateKey ed25519.PrivateKey, chainController ledger.Lock, timestamp ...base.LedgerTime) (*ledger.OutputWithChainID, error) {
 	ts := ledger.TimeNow()
 	if len(timestamp) > 0 {
