@@ -472,6 +472,13 @@ func (t *TransferData) WithAmount(amount uint64, adjustToMinimum ...bool) *Trans
 	return t
 }
 
+func (t *TransferData) WithTagAlong(target base.ChainID, fee uint64) {
+	t.TagAlong = &TagAlongData{
+		SeqID:  target,
+		Amount: fee,
+	}
+}
+
 func (t *TransferData) WithConstraintBinary(constr []byte, idx ...byte) *TransferData {
 	if len(idx) == 0 {
 		t.AddConstraints = append(t.AddConstraints, constr)
@@ -658,10 +665,11 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	tagAlongFee := uint64(0)
 	var tagAlongOut *ledger.Output
 	if par.TagAlong != nil {
-		tagAlongOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(int64(par.TagAlong.Amount)).
-				WithLock(ledger.ChainLockFromChainID(par.TagAlong.SeqID))
-		})
+		tagAlongOut = ledger.NewTagAlongOutput(par.TagAlong.Amount, par.TagAlong.SeqID, ledger.AddressED25519FromPrivateKey(par.SenderPrivateKey))
+		//tagAlongOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		//	o.WithAmounts(int64(par.TagAlong.Amount)).
+		//		WithLock(ledger.ChainLockFromChainID(par.TagAlong.SeqID))
+		//})
 		tagAlongFee = par.TagAlong.Amount
 	}
 

@@ -716,7 +716,6 @@ type spammerParams struct {
 	tagAlongSeqID     []base.ChainID
 	target            ledger.Lock
 	batchSize         int
-	tagAlongLastOnly  bool
 	pace              int
 	maxBatches        int
 	sendAmount        uint64
@@ -775,7 +774,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 			WithTargetLock(par.target).
 			WithAmount(par.sendAmount)
 
-		if !par.tagAlongLastOnly || i == par.batchSize-1 {
+		if i == par.batchSize-1 {
 			tData.WithTagAlong(seqID, par.tagAlongFee)
 		}
 
@@ -786,7 +785,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 		require.NoError(par.t, err)
 		tagAlongOuts := tx.ProducedOutputsWithTargetLock(ledger.ChainLockFromChainID(seqID))
 
-		if !par.tagAlongLastOnly || i == par.batchSize-1 {
+		if i == par.batchSize-1 {
 			require.EqualValues(par.t, 1, len(tagAlongOuts))
 			lck := tagAlongOuts[0].Output.Lock()
 			require.True(par.t, lck.Name() == ledger.ChainLockName)

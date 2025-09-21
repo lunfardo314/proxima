@@ -301,18 +301,17 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 
 	ctx, cancelSpam := context.WithTimeout(context.Background(), spammingTimeout)
 	par := &spammerParams{
-		t:                t,
-		privateKey:       testData.privKeyFaucet,
-		remainder:        testData.faucetOutput,
-		tagAlongSeqID:    tagAlongSeqIDs,
-		target:           targetAddr,
-		pace:             30,
-		batchSize:        batchSize,
-		tagAlongLastOnly: true,
-		sendAmount:       sendAmount,
-		tagAlongFee:      tagAlongFee,
-		spammedTxIDs:     make([]base.TransactionID, 0),
-		traceTx:          traceTx,
+		t:             t,
+		privateKey:    testData.privKeyFaucet,
+		remainder:     testData.faucetOutput,
+		tagAlongSeqID: tagAlongSeqIDs,
+		target:        targetAddr,
+		pace:          30,
+		batchSize:     batchSize,
+		sendAmount:    sendAmount,
+		tagAlongFee:   tagAlongFee,
+		spammedTxIDs:  make([]base.TransactionID, 0),
+		traceTx:       traceTx,
 	}
 	go testData.spamTransfers(par, ctx)
 	go func() {

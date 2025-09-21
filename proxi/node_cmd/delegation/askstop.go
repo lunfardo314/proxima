@@ -66,7 +66,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 
 	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(requestOutput, walletData.PrivateKey, ts)
 	if err != nil {
-		glb.Infof("error: %v")
+		glb.Infof("error: %v", err)
 		if txString != "" {
 			glb.Infof("------------ failing tx --------------\n" + txString)
 		}

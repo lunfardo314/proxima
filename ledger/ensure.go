@@ -69,25 +69,21 @@ func initTestEnsureStopDelegation() {
 
 const ensureStopFreezeDelegationConstraintSource = `
 func _ensureStopDelegation :
-or(
-   selfIsProducedOutput,
-   and(
-      selfIsConsumedOutput,
-      require(
-         equal(
-			parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,2)), 0, #chain), 
-			$0
-         ),
-         !!!ensureStopDelegation:_delegationID_is_wrong
-      ),
-      require(
-         equal(
-		    parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)), 1, #delegateLockState),
-            2 // 2 means on hold
-        ),
-        !!!ensureStopDelegation:_delegation_produced_state_is_not_on_hold
-      )
-   )
+and(
+  require(
+	 equal(
+		parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,2)), 0, #chain), 
+		$0
+	 ),
+	 !!!ensureStopDelegation:_delegationID_is_wrong
+  ),
+  require(
+	 equal(
+		parseInlineDataArgument(producedConstraintByIndex(concat(selfUnlockParameters,3)), 1, #delegateLockState),
+		2 // 2 means on hold
+	),
+	!!!ensureStopDelegation:_delegation_produced_state_is_not_on_hold
+  )
 )
 
 // $0 delegation chain ID
@@ -98,12 +94,24 @@ or(
 // Its purpose is to enforce real revocation of the delegation by the sequencer
 // For tagAlong outputs condition is only enforced for tag-along slot range
 func ensureStopDelegation :
-if(
-   selfHasLockType(#tagAlong),
-   or(
-      greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots), 
-      _ensureStopDelegation($0)
+or(
+   and(
+      selfIsProducedOutput,
+      require(
+        equal(len($0), u64/32),
+        !!!wrong_chain_id
+      )
    ),
-   _ensureStopDelegation($0)
+   and(
+      selfIsConsumedOutput,
+      if(
+         selfHasLockType(#tagAlong),
+         or(
+            greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots), 
+            _ensureStopDelegation($0)
+         ),
+         _ensureStopDelegation($0)
+      )
+   )
 )
 `
