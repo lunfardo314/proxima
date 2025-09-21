@@ -267,19 +267,15 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	count := 0
 	for wOut, whenAdded := range b.outputs {
 		del := true
-		switch wOut.LockName() {
-		case ledger.ChainLockName:
+		n := wOut.LockName()
+		if n == ledger.TagAlongLockName || n == ledger.ChainLockName {
 			del = whenAdded.Before(horizonTagAlong)
-		// TODO --
-		//case ledger.DelegationLockName:
-		//	del = whenAdded.Before(horizonDelegation)
-		default:
-			b.Log().Fatalf("unexpected type of the lock in backlog: '%s'", wOut.LockName())
+		} else {
+			b.Log().Fatalf("unexpected type of the lock in backlog: '%s'", n)
 		}
 		if del {
 			delete(b.outputs, wOut)
 			count++
-			//wOut.VID.UnReference()
 		}
 	}
 	b.EvidenceBacklogSize(len(b.outputs))

@@ -122,13 +122,12 @@ func runDelegationSendCmd(_ *cobra.Command, args []string) {
 		MaxSeqProfitMargin: 100,
 		StartSlot:          ts.Slot,
 	})
-	delegationOutputIdx, _ := txb.ProduceOutput(outDelegation)
+	delegationOutputIdx, err := txb.ProduceOutput(outDelegation)
+	glb.AssertNoError(err)
 
-	outTagAlong := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(feeAmount)
-		o.WithLock(ledger.ChainLockFromChainID(*tagAlongSeqID))
-	})
-	_, _ = txb.ProduceOutput(outTagAlong)
+	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, walletData.Account)
+	_, err = txb.ProduceOutput(outTagAlong)
+	glb.AssertNoError(err)
 
 	totalAmountConsumed := txb.ConsumedAmount()
 	totalAmountProduced, _ := txb.ProducedAmount()
@@ -149,7 +148,7 @@ func runDelegationSendCmd(_ *cobra.Command, args []string) {
 	txb.SignED25519(walletData.PrivateKey)
 
 	txBytes, txid, failedTx, err := txb.BytesWithValidation()
-	glb.Assertf(err == nil, "transaction invalid: %v\n------------------\n%s", err, failedTx)
+	glb.Assertf(err == nil, "error: %v\n---------- failing tx --------\n%s", err, failedTx)
 
 	prompt := fmt.Sprintf("delegate amount %s to sequencer %s (plus tag-along fee %s)?",
 		util.Th(amount), targetSeqID.String(), util.Th(feeAmount))

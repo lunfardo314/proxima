@@ -38,12 +38,12 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 		glb.PrintLRB(&lrbid)
 		glb.Verbosef("%s", dOut.LinesHRFull("    ").String())
 
-		nowslot := uint32(ledger.TimeNow().Slot)
+		nowslot := ledger.TimeNow().Slot
 		if dOut.IsInFrozenSlot(nowslot) {
 			unfreeze := dOut.UnfreezeSlot()
 			glb.Infof("delegation %s is FROZEN in the current slot %d until slot %d", delegationID.String(), nowslot, unfreeze)
 			glb.Infof("frozen balance is %s", util.Th(dOut.Output.TokenBalance()))
-			unfreezeTs := base.T(uint32(unfreeze), 0)
+			unfreezeTs := base.T(unfreeze, 0)
 			unfreezeTime := ledger.ClockTime(unfreezeTs)
 			left := time.Until(unfreezeTime)
 			unfreezeTimeFmt := unfreezeTime.Format("2006-01-02 15:04:05")
@@ -68,6 +68,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("found %d delegation outputs controlled by %s:", len(dOuts), wallet.Account.String())
 	for _, dOut := range dOuts {
-		glb.Infof("   %s %s -> %s", dOut.ChainID.String(), util.Th(dOut.Output.TokenBalance()), dOut.Target.ChainID())
+		targetID := dOut.Target.ChainID()
+		glb.Infof("   %s %s -> %s", dOut.ChainID.String(), util.Th(dOut.Output.TokenBalance()), targetID.String())
 	}
 }

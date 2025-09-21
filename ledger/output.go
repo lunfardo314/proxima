@@ -724,21 +724,6 @@ func (o *Output) MustValidOutput() {
 	util.AssertNoError(err)
 }
 
-func (o *Output) EnoughAmountForStorageDeposit() error {
-	if o.TokenBalance() >= o.MinimumStorageDeposit(0) {
-		return nil
-	}
-	return fmt.Errorf("not enough tokens (%s) for the minimum storage deposit (%s)",
-		util.Th(o.TokenBalance()), util.Th(o.MinimumStorageDeposit(0)))
-}
-
-func (o *Output) MinimumStorageDeposit(extraWeight uint32) uint64 {
-	if _, isStem := o.StemLock(); isStem {
-		return 0
-	}
-	return StorageDepositByOutputBytes(o.Bytes())
-}
-
 // HashOutputs calculates input commitment from outputs: the hash of lazyarray composed of output data
 func HashOutputs(outs ...*Output) [32]byte {
 	arr := tuples.EmptyTupleEditable(256)
@@ -914,4 +899,13 @@ func (o *Output) TagAlongLock() *TagAlongLock {
 		return nil
 	}
 	return ret
+}
+
+func (o *Output) EnoughAmountForStorageDeposit() error {
+	m := MinimumStorageDeposit(o)
+	if o.TokenBalance() >= m {
+		return nil
+	}
+	return fmt.Errorf("not enough token balance (%s) for the minimum storage deposit (%s) in the output\n%s",
+		util.Th(o.TokenBalance()), util.Th(m), o.LinesSource("     ").String())
 }

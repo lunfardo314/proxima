@@ -67,7 +67,7 @@ func (t *TagAlongLock) Master() Accountable {
 }
 
 func (t *TagAlongLock) Name() string {
-	return ChainLockName
+	return TagAlongLockName
 }
 
 func (t *TagAlongLock) AsLock() Lock {

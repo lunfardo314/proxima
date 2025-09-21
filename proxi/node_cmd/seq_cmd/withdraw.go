@@ -1,6 +1,7 @@
 package seq_cmd
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -57,6 +58,10 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	}
 
 	glb.Verbosef("---- request transaction ------\n%s\n------------------", txString)
+	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", util.Th(amount), walletData.Sequencer.String())
+	if !glb.YesNoPrompt(prompt, true) {
+		return
+	}
 	glb.Infof("submitting the transaction...")
 
 	err = glb.GetClient().SubmitTransaction(txBytes)

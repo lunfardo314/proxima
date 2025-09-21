@@ -1,6 +1,7 @@
 package delegation
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -70,6 +71,10 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 		if txString != "" {
 			glb.Infof("------------ failing tx --------------\n" + txString)
 		}
+		return
+	}
+	prompt := fmt.Sprintf("send request to stop delegation %s to the sequencer %s?", delegationID.StringShort(), targetID.String())
+	if !glb.YesNoPrompt(prompt, true) {
 		return
 	}
 	err = clnt.SubmitTransaction(txBytes)

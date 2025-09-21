@@ -115,9 +115,9 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		glb.Infof("\nFAILED to produce transaction: '%v'\n-------------------\n%s", err, txString)
 		return
 	}
-	glb.Infof("\n-------- tx OK (len = %d) -----------\n%s", len(txBytes), txString)
+	glb.Verbosef("\n-------- tx OK (len = %d) -----------\n%s", len(txBytes), txString)
 
-	prompt := fmt.Sprintf("delegate %s to sequencer %s", chainID.StringShort(), targetSeqID.String())
+	prompt := fmt.Sprintf("delegate %s to sequencer %s?", chainID.StringShort(), targetSeqID.String())
 	if !glb.YesNoPrompt(prompt, true) {
 		return
 	}

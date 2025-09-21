@@ -7,31 +7,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 )
-
-// TODO proper implementation of the storage deposit
-
-const vByteCost = 1
-
-func StorageDepositByOutputBytes(data []byte) uint64 {
-	return vByteCost * uint64(len(data))
-}
-
-var _locksExemptOfStorageDeposit = set.New(StemLockName)
-
-func _enforceMinimumStorageDeposit(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output) {
-	if !ctx.SelfIsProducedOutput() {
-		// only check on produced outputs
-		return
-	}
-	if _locksExemptOfStorageDeposit.Contains(o.Lock().Name()) {
-		return
-	}
-	bal := o.Amounts().TokenBalance()
-	deposit := StorageDepositByOutputBytes(ctx.SelfOutputBytes())
-	par.Require(bal >= deposit, "token balance (%d) is less than required storage deposit (%d)", bal, deposit)
-}
 
 // TODO in the future it makes sense to rewrite it all in EasyFL, for formal verifiability with TLA model
 
@@ -163,11 +139,13 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	par.Require(path[len(path)-1] == ConstraintIndexAmounts, "'amounts' must be at index %d", ConstraintIndexAmounts)
 	ctx := par.DataContext()
 	o := ctx.SelfOutput()
-	_enforceMinimumStorageDeposit(par, ctx, o)
 	if !ctx.SelfIsProducedOutput() {
 		// only enforce the validity of amounts on produced outputs
 		return []byte{0xff}
 	}
+	// enforce minimum storage deposit
+	par.RequireNoError(o.EnoughAmountForStorageDeposit())
+
 	amounts := o.Amounts()
 	cc, _ := o.ChainConstraint()
 	// produced output

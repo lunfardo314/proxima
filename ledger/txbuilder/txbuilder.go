@@ -545,7 +545,7 @@ func (t *TransferData) TotalAdjustedAmount() uint64 {
 		}
 	})
 
-	minimumDeposit := outTentative.MinimumStorageDeposit(0)
+	minimumDeposit := ledger.MinimumStorageDeposit(outTentative)
 	if t.Amount < minimumDeposit {
 		return minimumDeposit
 	}
