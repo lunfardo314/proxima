@@ -998,3 +998,54 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 
 	return txb.TransactionData.Bytes(), nil
 }
+
+func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed25519.PrivateKey, ts base.LedgerTime) ([]byte, base.TransactionID, string, error) {
+	account := ledger.AddressED25519FromPrivateKey(privateKey)
+	walletOutputs, _, amountInWallet, err := c.GetTransferableOutputs(account, 255)
+	if err != nil {
+		return nil, base.TransactionID{}, "", err
+	}
+	bal := o.TokenBalance()
+	if amountInWallet < bal {
+		return nil, base.TransactionID{}, "", fmt.Errorf("not enough balance")
+	}
+	txb := txbuilder.New()
+	for _, out := range walletOutputs {
+		idx, err := txb.ConsumeOutput(out.Output, out.ID)
+		if err != nil {
+			return nil, base.TransactionID{}, "", err
+		}
+		if idx == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			err = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0)
+			if err != nil {
+				return nil, base.TransactionID{}, "", err
+			}
+		}
+	}
+	if amountInWallet > bal {
+		// remainder
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithTokenBalance(amountInWallet - bal)
+			o.WithLock(account)
+		}))
+		if err != nil {
+			return nil, base.TransactionID{}, "", err
+		}
+	}
+	_, err = txb.ProduceOutput(o)
+	if err != nil {
+		return nil, base.TransactionID{}, "", err
+	}
+
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(privateKey)
+
+	txBytes, txid, txString, err := txb.BytesWithValidation()
+	if err != nil {
+		return nil, base.TransactionID{}, txString, err
+	}
+	return txBytes, txid, txString, nil
+}

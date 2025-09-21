@@ -14,8 +14,6 @@ import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
@@ -230,31 +228,24 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.Tr
 	if o.Output.TokenBalance() < ledger.Const.MinimumAmountOnSequencer+fct.cfg.amount {
 		return base.TransactionID{}, fmt.Errorf("not enough tokens on the sequencer %s", glb.GetOwnSequencerID().String())
 	}
-	walletOutputs, _, _, err := clnt.GetOutputsForAmount(fct.walletData.Account, glb.GetTagAlongFee())
-	if err != nil {
-		return base.TransactionID{}, err
-	}
-	// sending command to sequencer
-	withdrawCmd := txbuilder_seq.NewWithdrawRequest(fct.walletData.PrivateKey, fct.cfg.amount, targetLock.AsLock())
-	transferData := txbuilder.NewTransferData(fct.walletData.PrivateKey, fct.walletData.Account, ledger.TimeNow()).
-		WithAmount(glb.GetTagAlongFee()).
-		WithTargetLock(ledger.ChainLockFromChainID(*fct.walletData.Sequencer)).
-		MustWithInputs(walletOutputs...).
-		WithConstraint(withdrawCmd)
 
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
-	if err != nil {
-		return base.TransactionID{}, err
+	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*fct.walletData.Sequencer, fct.walletData.Account, glb.GetTagAlongFee(), fct.cfg.amount, targetLock.AsLock())
+	ts := ledger.TimeNow()
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(12)
 	}
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(tagAlongOut, fct.walletData.PrivateKey, ts)
 	if err != nil {
+		if txString != "" {
+			err = fmt.Errorf("error %v\n----------- failing tx ------------\n%s", err, txString)
+		}
 		return base.TransactionID{}, err
 	}
 	err = clnt.SubmitTransaction(txBytes)
 	if err != nil {
 		return base.TransactionID{}, err
 	}
-	return tx.ID(), nil
+	return txid, nil
 }
 
 func (fct *faucetServer) redrawFromAccount(targetLock ledger.Accountable) (base.TransactionID, error) {

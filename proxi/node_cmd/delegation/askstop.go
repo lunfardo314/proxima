@@ -5,8 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
@@ -55,49 +53,26 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(5)
 	}
-	glb.Assertf(!dOut.IsUnlockableByMaster(uint32(ts.Slot)), "delegation is unlockable by master, no need for revocation")
+	glb.Assertf(!dOut.IsUnlockableByMaster(ts.Slot), "delegation is unlockable by master, no need for revocation")
 	unfreeze := dOut.UnfreezeSlot()
 	glb.Assertf(unfreeze > uint32(ts.Slot)+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
 
-	compensation := dOut.RevocationCompensationEstimate(uint32(ts.Slot))
+	compensation := dOut.RevocationCompensationEstimate(ts.Slot)
 	const minimumFee = 50
 
 	glb.Assertf(compensation >= minimumFee, "estimated compensation is even less than minimum fee %d", minimumFee)
 
-	glb.Infof("querying wallet's outputs..")
-	walletInputs, lrbid, _, err := clnt.GetOutputsForAmount(walletData.Account, compensation)
-	glb.AssertNoError(err)
-	glb.PrintLRB(lrbid)
+	requestOutput := txbuilder_seq.NewAskStopDelegationReqOutput(targetID, walletData.Account, delegationID, compensation)
 
-	// create command with withdraw request to the target lock
-	cmd := txbuilder_seq.NewAskStopDelegationReqConstraint(walletData.PrivateKey, delegationID)
-	ensureConstraint := ledger.EnsureStopDelegationFromDelegationID(delegationID)
-	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.TimeNow()).
-		WithAmount(compensation).
-		WithTargetLock(ledger.ChainLockFromChainID(targetID)).
-		MustWithInputs(walletInputs...).
-		WithConstraint(cmd).
-		WithConstraint(&ensureConstraint)
-
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
-	glb.AssertNoError(err)
-
-	txStr := transaction.ParseBytesToString(txBytes, transaction.PickOutputFromListFunc(walletInputs))
-
-	glb.Infof("estimated compensation (tag-along fee of the 'ask stop' request): %s", util.Th(compensation))
-	if !glb.YesNoPrompt("submit 'ask stop delegation' request to the target sequencer?", true) {
+	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(requestOutput, walletData.PrivateKey, ts)
+	if err != nil {
+		glb.Infof("error: %v")
+		if txString != "" {
+			glb.Infof("------------ failing tx --------------\n" + txString)
+		}
 		return
 	}
-	glb.Verbosef("---- request transaction ------\n%s\n------------------", txStr)
-	glb.Infof("submitting the transaction...")
-
 	err = clnt.SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
-
-	if glb.NoWait() {
-		return
-	}
-	txid, err := transaction.IDFromParsedTransactionBytes(txBytes)
 	glb.AssertNoError(err)
 
 	glb.TrackTxInclusion(txid, time.Second)

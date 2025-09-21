@@ -1,14 +1,10 @@
 package seq_cmd
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
@@ -46,52 +42,28 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("amount: %s", util.Th(amount))
 
-	glb.Infof("querying wallet's outputs..")
-	walletOutputs, lrbid, err := getClient().GetAccountOutputs(walletData.Account, func(_ *base.OutputID, o *ledger.Output) bool {
-		return o.NumConstraints() == 2
-	})
-	glb.AssertNoError(err)
-
-	glb.PrintLRB(lrbid)
-	glb.Infof("will be using %d tokens as tag-along fee. Outputs in the wallet:", ownSequencerCmdFee)
-	for i, o := range walletOutputs {
-		glb.Infof("%d : %s : %s", i, o.ID.StringShort(), util.Th(o.Output.TokenBalance()))
+	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*walletData.Sequencer, walletData.Account, ownSequencerCmdFee, amount, targetLock.AsLock())
+	ts := ledger.TimeNow()
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(12)
 	}
-
-	prompt := fmt.Sprintf("withdraw %s from %s to the target %s?",
-		util.Th(amount), walletData.Sequencer.StringShort(), targetLock.String())
-	if !glb.YesNoPrompt(prompt, false) {
-		glb.Infof("exit")
+	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(tagAlongOut, walletData.PrivateKey, ts)
+	if err != nil {
+		glb.Infof("error: %s", err)
+		if txString != "" {
+			glb.Infof("------------ failing tx ---------------\n" + txString)
+		}
 		return
 	}
 
-	// create command with withdraw request to the target lock
-	msg := txbuilder_seq.NewWithdrawRequest(walletData.PrivateKey, amount, targetLock.AsLock())
-
-	// create transaction with withdraw request
-	transferData := txbuilder.NewTransferData(walletData.PrivateKey, walletData.Account, ledger.TimeNow()).
-		WithAmount(ownSequencerCmdFee).
-		WithTargetLock(ledger.ChainLockFromChainID(*walletData.Sequencer)).
-		MustWithInputs(walletOutputs...).
-		WithConstraint(msg) // include message with the withdrawal request
-
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(transferData)
-	glb.AssertNoError(err)
-
-	txStr := transaction.ParseBytesToString(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
-
-	glb.Verbosef("---- request transaction ------\n%s\n------------------", txStr)
-
+	glb.Verbosef("---- request transaction ------\n%s\n------------------", txString)
 	glb.Infof("submitting the transaction...")
 
-	err = getClient().SubmitTransaction(txBytes)
+	err = glb.GetClient().SubmitTransaction(txBytes)
 	glb.AssertNoError(err)
 
 	if glb.NoWait() {
 		return
 	}
-	txid, err := transaction.IDFromParsedTransactionBytes(txBytes)
-	glb.AssertNoError(err)
-
 	glb.TrackTxInclusion(txid, time.Second)
 }

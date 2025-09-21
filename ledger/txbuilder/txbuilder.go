@@ -524,14 +524,6 @@ func (t *TransferData) WithEndorsements(ids ...base.TransactionID) *TransferData
 	return t
 }
 
-func (t *TransferData) WithTagAlong(seqID base.ChainID, amount uint64) *TransferData {
-	t.TagAlong = &TagAlongData{
-		SeqID:  seqID,
-		Amount: amount,
-	}
-	return t
-}
-
 // TotalAdjustedAmount adjust amount to minimum storage deposit requirements
 func (t *TransferData) TotalAdjustedAmount() uint64 {
 	if !t.AdjustToMinimum {
