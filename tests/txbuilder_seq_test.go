@@ -706,13 +706,14 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 
 		maxFreezeEpochs := byte(uint32(i)%ledger.Const.MaxFrozenEpochs + 1)
 
-		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(out.Output.Amounts()...)
 			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), ret.masterAddr, maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
 			o.MustPushConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), 2, out.OriginSlot, out.OriginAmount).Bytes())
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
+		require.NoError(t, err)
 	}
 	txb.TransactionData.Timestamp = ts1.AddSlots(1)
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)

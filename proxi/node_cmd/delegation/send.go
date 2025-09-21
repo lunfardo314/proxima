@@ -137,7 +137,8 @@ func runDelegationSendCmd(_ *cobra.Command, args []string) {
 			o.WithTokenBalance(totalAmountConsumed - totalAmountProduced)
 			o.WithLock(walletData.Account)
 		})
-		_, _ = txb.ProduceOutput(remainderOut)
+		_, err = txb.ProduceOutput(remainderOut)
+		glb.AssertNoError(err)
 	}
 
 	totalAmountProduced, _ = txb.ProducedAmount()

@@ -99,10 +99,8 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Assertf(succIdx == 0, "succIdx==0")
 
-	tagAlongIdx, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(glb.GetTagAlongFee())
-		o.WithLock(ledger.ChainLockFromChainID(*glb.GetTagAlongSequencerID()))
-	}))
+	taOut := ledger.NewTagAlongOutput(glb.GetTagAlongFee(), *glb.GetTagAlongSequencerID(), walletData.Account)
+	tagAlongIdx, err := txb.ProduceOutput(taOut)
 	glb.AssertNoError(err)
 	glb.Assertf(tagAlongIdx == 1, "tagAlongIdx==1")
 

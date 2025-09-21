@@ -20,14 +20,16 @@ Constants which define validation context data tree branches. Structure of the d
 
 (root)
   -- TransactionBranch = 0x00
-       -- TxUnlockData = 0x00 (path 0x0000)  -- contains unlock params for each input
-       -- TxInputIDs = 0x01     (path 0x0001)  -- contains up to 256 inputs, the IDs of consumed outputs
-       -- TxOutputBranch = 0x02       (path 0x0002)  -- contains up to 256 produced outputs
+       -- TxInputIDs = 0x00     (path 0x0000)  -- contains up to 256 inputs, the IDs of consumed outputs
+       -- TxUnlockData = 0x01 (path 0x0001)  -- contains unlock params for each input
+       -- TxOutputs     = 0x02       (path 0x0002)  -- contains up to 256 produced outputs
        -- TxSignature = 0x03          (path 0x0003)  -- contains the only signature of the essence. It is mandatory
-       -- TxTimestamp = 0x04          (path 0x0004)  -- mandatory timestamp of the transaction
-       -- TxInputCommitment = 0x05    (path 0x0005)  -- blake2b hash of the all consumed outputs (which are under path 0x1000)
-       -- TxEndorsements = 0x06       (path 0x0006)  -- list of transaction IDs of endorsed transaction
-       -- TxLocalLibraries = 0x07     (path 0x0007)  -- list of local libraries in its binary form
+       -- TxSequencerAndStemOutputIndices = 04  (path 0x0004)
+       -- TxTimestamp = 0x05          (path 0x0005)  -- mandatory timestamp of the transaction
+       -- TxInputCommitment = 0x06    (path 0x0006)  -- blake2b hash of the all consumed outputs (which are under path 0x1000)
+       -- TxEndorsements = 0x07       (path 0x0007)  -- list of transaction IDs of endorsed transaction
+       -- TxExplicitBaseline = 0x08       (path 0x0008)  -- list of transaction IDs of endorsed transaction
+       -- TxLocalLibraries = 0x09     (path 0x0009)  -- list of local libraries in its binary form
   -- ConsumedBranch = 0x01
        -- ConsumedOutputsBranch = 0x00 (path 0x0100) -- all consumed outputs, up to 256
 
@@ -52,7 +54,6 @@ const (
 	TxSignature
 	TxSequencerAndStemOutputIndices
 	TxTimestamp
-	//TxTotalProducedAmount
 	TxInputCommitment
 	TxEndorsements
 	TxExplicitBaseline
@@ -74,7 +75,6 @@ var (
 	PathToExplicitBaseline              = tuples.Path(TransactionBranch, TxExplicitBaseline)
 	PathToLocalLibraries                = tuples.Path(TransactionBranch, TxLocalLibraries)
 	PathToTimestamp                     = tuples.Path(TransactionBranch, TxTimestamp)
-	//PathToTotalProducedAmount           = tuples.Path(TransactionBranch, TxTotalProducedAmount)
 )
 
 // Mandatory output block indices
@@ -97,7 +97,6 @@ func pathConstants() string {
 		PathToEndorsements.Hex(),
 		PathToExplicitBaseline.Hex(),
 		PathToTimestamp.Hex(),
-		//PathToTotalProducedAmount.Hex(),
 		PathToLocalLibraries.Hex(),
 		ConstraintIndexAmounts,
 		ConstraintIndexLock,
@@ -150,10 +149,6 @@ functions:
       sym: pathToTimestamp
       numArgs: 0
       source: 0x%s
-#   -
-#      sym: pathToTotalProducedAmount
-#      numArgs: 0
-#      source: 0x
    -
       sym: pathToLocalLibraries
       numArgs: 0

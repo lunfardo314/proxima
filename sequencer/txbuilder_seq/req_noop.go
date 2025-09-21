@@ -2,7 +2,6 @@ package txbuilder_seq
 
 import (
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
@@ -32,18 +31,5 @@ func (c *NoRequestTxBuilderCommand) Apply(txb *SeqTxBuilder) (valid bool, err er
 
 func (c *NoRequestTxBuilderCommand) Lines(prefix ...string) *lines.Lines {
 	ln := c.Output.LinesHR(prefix...)
-	if c.TagAlongLock != nil {
-		ln.Add(c.TagAlongLock.String())
-	}
 	return ln
-}
-
-func NewNoRequestTagAlongOutput(targetSeqID base.ChainID, sender ledger.Accountable, fee uint64) *ledger.Output {
-	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(fee)
-		o.WithLock(&ledger.TagAlongLock{
-			TargetSequencerID: targetSeqID,
-			Sender:            sender,
-		})
-	})
 }
