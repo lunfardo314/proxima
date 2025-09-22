@@ -66,43 +66,43 @@ func TestMainConstraints(t *testing.T) {
 	t.Run("faucet", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		_, _, addr := u.GenerateAddress(1)
-		err := u.TokensFromFaucet(addr, 10_000)
+		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-10_000), int(u.Balance(u.GenesisControllerAddress())))
-		require.EqualValues(t, 10_000, u.Balance(addr))
+		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, 1_000_000_000, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 	})
 	t.Run("simple transfer", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey1, _, addr1 := u.GenerateAddress(1)
-		err := u.TokensFromFaucet(addr1, 10000)
+		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr1))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 		_, _, addrNext := u.GenerateAddress(2)
 		in, err := u.MakeTransferInputData(privKey1, nil, base.NilLedgerTime)
 		require.NoError(t, err)
-		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1000))
+		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(100_000_000))
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000-1000, u.Balance(addr1))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000-100_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
-		require.EqualValues(t, 1000, u.Balance(addrNext))
+		require.EqualValues(t, 100_000_000, u.Balance(addrNext))
 		require.EqualValues(t, 1, u.NumUTXOs(addrNext))
 	})
 	t.Run("transfer wrong key", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey1, _, addr1 := u.GenerateAddress(1)
-		err := u.TokensFromFaucet(addr1, 10000)
+		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr1))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 		_, _, addrNext := u.GenerateAddress(2)
@@ -110,17 +110,17 @@ func TestMainConstraints(t *testing.T) {
 		in, err := u.MakeTransferInputData(privKey1, nil, base.NilLedgerTime)
 		in.SenderPrivateKey = privKeyWrong
 		require.NoError(t, err)
-		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(1000))
+		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(100_000_000))
 		util.RequireErrorWithOld(t, err, "failed")
 	})
 	t.Run("not enough deposit", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey1, _, addr1 := u.GenerateAddress(1)
-		err := u.TokensFromFaucet(addr1, 10000)
+		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr1))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
 
 		_, _, addrNext := u.GenerateAddress(2)
@@ -168,7 +168,7 @@ func TestTimelock(t *testing.T) {
 	t.Run("time lock 1", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 := u.GenerateAddress(0)
-		err := u.TokensFromFaucet(addr0, 10000)
+		err := u.TokensFromFaucet(addr0, 20_000_000_000)
 		require.NoError(t, err)
 
 		priv1, _, addr1 := u.GenerateAddress(1)
@@ -180,7 +180,7 @@ func TestTimelock(t *testing.T) {
 
 		timelockSlot := ts.Slot + 1
 
-		par.WithAmount(200).
+		par.WithAmount(200_000_000).
 			WithTargetLock(addr1).
 			WithConstraint(ledger.NewTimelock(timelockSlot))
 		txBytes, err := txbuilder.MakeTransferTransaction(par)
@@ -190,20 +190,20 @@ func TestTimelock(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("200 timelocked until slot %d in addr1", timelockSlot)
 
-		require.EqualValues(t, 200, u.Balance(addr1))
+		require.EqualValues(t, 200_000_000, u.Balance(addr1))
 
 		timelockSlot = ts.Slot + (1 + 10)
 		par, err = u.MakeTransferInputData(privKey0, nil, ts.AddSlots(1))
 		require.NoError(t, err)
-		par.WithAmount(2000).
+		par.WithAmount(200_000_000).
 			WithTargetLock(addr1).
 			WithConstraint(ledger.NewTimelock(timelockSlot))
 		err = u.DoTransfer(par)
 		require.NoError(t, err)
 		t.Logf("2000 timelocked until slot %d in addr1", timelockSlot)
 
-		// total 2200, but with different timelocks
-		require.EqualValues(t, 2200, u.Balance(addr1))
+		// total 400_000_000, but with different time locks
+		require.EqualValues(t, 400_000_000, int(u.Balance(addr1)))
 
 		txTs := ts.AddSlots(2)
 		par, err = u.MakeTransferInputData(priv1, nil, txTs)
@@ -211,12 +211,12 @@ func TestTimelock(t *testing.T) {
 		t.Logf("AdditionalInputs: \n%s\n", ledger.OutputsWithIDToString(par.Inputs...))
 
 		err = u.DoTransfer(par.
-			WithAmount(2000).
+			WithAmount(400_000_000).
 			WithTargetLock(addr0),
 		)
 
-		util.RequireErrorWithOld(t, err, "timelock(", "failed")
-		require.EqualValues(t, 2200, u.Balance(addr1)) // funds weren't moved
+		require.NoError(t, util.MustErrorWith(err, "timelock(", "failed"))
+		require.EqualValues(t, 400000000, int(u.Balance(addr1))) // funds weren't moved
 		t.Logf("failed tx with ts %s", par.Timestamp)
 
 		txTs = ts.AddSlots(14)
@@ -225,7 +225,7 @@ func TestTimelock(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("tx time: %s", par.Timestamp)
 		txBytes, err = u.DoTransferTx(par.
-			WithAmount(2000).
+			WithAmount(350_000_000).
 			WithTargetLock(addr0),
 		)
 		if err != nil {
@@ -235,13 +235,13 @@ func TestTimelock(t *testing.T) {
 			require.True(t, tx.Timestamp().Slot > timelockSlot)
 		}
 		require.NoError(t, err)
-		require.EqualValues(t, 200, u.Balance(addr1))
+		require.EqualValues(t, 50_000_000, int(u.Balance(addr1)))
 	})
 	t.Run("time lock 2", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 
 		privKey0, _, addr0 := u.GenerateAddress(0)
-		err := u.TokensFromFaucet(addr0, 10000)
+		err := u.TokensFromFaucet(addr0, 800_000_000)
 		require.NoError(t, err)
 
 		priv1, _, addr1 := u.GenerateAddress(1)
@@ -250,7 +250,7 @@ func TestTimelock(t *testing.T) {
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
 		txBytes, err := txbuilder.MakeTransferTransaction(par.
-			WithAmount(200).
+			WithAmount(30_000_000).
 			WithTargetLock(addr1).
 			WithConstraint(ledger.NewTimelock(ts.Slot + 1)),
 		)
@@ -259,36 +259,36 @@ func TestTimelock(t *testing.T) {
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
 
-		require.EqualValues(t, 200, u.Balance(addr1))
+		require.EqualValues(t, 30_000_000, int(u.Balance(addr1)))
 
 		par, err = u.MakeTransferInputData(privKey0, nil, ts.AddSlots(1))
 		require.NoError(t, err)
 		err = u.DoTransfer(par.
-			WithAmount(2000).
+			WithAmount(30_000_000).
 			WithTargetLock(addr1).
 			WithConstraint(ledger.NewTimelock(ts.Slot + 11)),
 		)
 		require.NoError(t, err)
 
-		require.EqualValues(t, 2200, u.Balance(addr1))
+		require.EqualValues(t, 60_000_000, int(u.Balance(addr1)))
 
 		par, err = u.MakeTransferInputData(priv1, nil, ts.AddSlots(2))
 		require.NoError(t, err)
 		err = u.DoTransfer(par.
-			WithAmount(2000).
+			WithAmount(40_000_000).
 			WithTargetLock(addr0),
 		)
-		util.RequireErrorWithOld(t, err, "failed")
-		require.EqualValues(t, 2200, u.Balance(addr1))
+		require.NoError(t, util.MustErrorWith(err, "failed"))
+		require.EqualValues(t, 60_000_000, int(u.Balance(addr1)))
 
 		par, err = u.MakeTransferInputData(priv1, nil, ts.AddSlots(12))
 		require.NoError(t, err)
 		err = u.DoTransfer(par.
-			WithAmount(2000).
+			WithAmount(14_000_000).
 			WithTargetLock(addr0),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 200, u.Balance(addr1))
+		require.EqualValues(t, 46_000_000, int(u.Balance(addr1)))
 	})
 }
 
@@ -299,21 +299,21 @@ func TestChain1(t *testing.T) {
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
-		err := u.TokensFromFaucet(addr0, 10000)
+		err := u.TokensFromFaucet(addr0, 1_000_000_000)
 		require.NoError(t, err)
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		outs, err := u.DoTransferOutputs(par.
-			WithAmount(2000).
+			WithAmount(30_000_000).
 			WithTargetLock(addr0).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 2000)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 30_000_000)),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr0))
+		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		require.EqualValues(t, 2, len(outs))
 		chains, err := ledger.FilterChainOutputs(outs)
@@ -335,14 +335,14 @@ func TestChain1(t *testing.T) {
 
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		err = u.DoTransfer(par.
-			WithAmount(2000).
+			WithAmount(100_000_000).
 			WithTargetLock(addr0).
-			WithConstraintBinary(ledger.NewChainOrigin(par.Timestamp.Slot, 2000).Bytes()),
+			WithConstraintBinary(ledger.NewChainOrigin(par.Timestamp.Slot, 100_000_000).Bytes()),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr0))
+		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 	})
 	t.Run("create origin twice in the same output", func(t *testing.T) {
@@ -352,9 +352,9 @@ func TestChain1(t *testing.T) {
 		// the only way is to destroy output with two chain origins
 
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
-		code := ledger.NewChainOrigin(par.Timestamp.Slot, 2000).Bytes()
+		code := ledger.NewChainOrigin(par.Timestamp.Slot, 60_000_000).Bytes()
 		outs, err := u.DoTransferOutputs(par.
-			WithAmount(2000).
+			WithAmount(60_000_000).
 			WithTargetLock(addr0).
 			WithConstraintBinary(code).
 			WithConstraintBinary(code),
@@ -493,8 +493,8 @@ func TestChain1(t *testing.T) {
 		require.True(t, errors.Is(err, multistate.ErrNotFound))
 
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr0))
+		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 
 		// it does not matter that chainID in the consumed output is all 0.
@@ -511,25 +511,25 @@ func TestChain2(t *testing.T) {
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
-		err := u.TokensFromFaucet(addr0, 10000)
+		err := u.TokensFromFaucet(addr0, 1_000_000_000)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr0))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 1, u.NumUTXOs(addr0))
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		outs, err := u.DoTransferOutputs(par.
-			WithAmount(2000).
+			WithAmount(200_000_000).
 			WithTargetLock(addr0).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 2000)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 200_000_000)),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr0))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		require.EqualValues(t, 2, len(outs))
 		chains, err := ledger.FilterChainOutputs(outs)
@@ -615,8 +615,8 @@ func TestChain2(t *testing.T) {
 		require.NoError(t, err)
 
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr0))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		return txString, nil
 	}
@@ -681,21 +681,21 @@ func TestChain3(t *testing.T) {
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
-		err := u.TokensFromFaucet(addr0, 10000)
+		err := u.TokensFromFaucet(addr0, 1_000_0000_000)
 		require.NoError(t, err)
 	}
 	initTest2 := func() []*ledger.OutputWithChainID {
 		initTest()
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		outs, err := u.DoTransferOutputs(par.
-			WithAmount(2000).
+			WithAmount(200_000_000).
 			WithTargetLock(addr0).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 2000)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 200_000_000)),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr0))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		require.EqualValues(t, 2, len(outs))
 		chains, err := ledger.FilterChainOutputs(outs)
@@ -749,8 +749,8 @@ func TestChain3(t *testing.T) {
 	require.NoError(t, err)
 
 	require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-	require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-	require.EqualValues(t, 10000, u.Balance(addr0))
+	require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
+	require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 	require.EqualValues(t, 2, u.NumUTXOs(addr0))
 
 }
@@ -765,21 +765,21 @@ func TestChainLock(t *testing.T) {
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
-		err := u.TokensFromFaucet(addr0, 10000)
+		err := u.TokensFromFaucet(addr0, 1_000_0000_000)
 		require.NoError(t, err)
 	}
 	initTest2 := func() *ledger.OutputWithChainID {
 		initTest()
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
 		outs, err := u.DoTransferOutputs(par.
-			WithAmount(2000).
+			WithAmount(200_000_000).
 			WithTargetLock(addr0).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 2000)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 200_000_000)),
 		)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 10000, u.Balance(addr0))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
 		require.EqualValues(t, 2, len(outs))
 		chains, err := ledger.FilterChainOutputs(outs)
@@ -794,15 +794,15 @@ func TestChainLock(t *testing.T) {
 		onLocked, onChainOut, err := u.BalanceOnChain(chainID)
 		require.NoError(t, err)
 		require.EqualValues(t, 0, onLocked)
-		require.EqualValues(t, 2000, onChainOut)
+		require.EqualValues(t, 200_000_000, onChainOut)
 
 		_, err = u.StateReader().GetUTXOForChainID(chainID)
 		require.NoError(t, err)
 
 		privKey1, _, addr1 = u.GenerateAddress(1)
-		err = u.TokensFromFaucet(addr1, 20000)
+		err = u.TokensFromFaucet(addr1, 200_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 20000, u.Balance(addr1))
+		require.EqualValues(t, 200_000_000, u.Balance(addr1))
 		return chains[0]
 	}
 	sendFun := func(amount uint64, ts base.LedgerTime) {
@@ -816,28 +816,28 @@ func TestChainLock(t *testing.T) {
 	}
 	t.Run("send", func(t *testing.T) {
 		initTest2()
-		require.EqualValues(t, 20000, u.Balance(addr1))
+		require.EqualValues(t, 200_000_000, u.Balance(addr1))
 
 		ts := ledger.TimeNow().AddTicks(5)
 
-		sendFun(1000, ts)
-		sendFun(2000, ts.AddTicks(1))
-		require.EqualValues(t, 20000-3000, int(u.Balance(addr1)))
-		require.EqualValues(t, 3000, u.Balance(chainAddr))
+		sendFun(50_000_000, ts)
+		sendFun(60_000_000, ts.AddTicks(1))
+		require.EqualValues(t, 90_000_000, int(u.Balance(addr1)))
+		require.EqualValues(t, 110_000_000, int(u.Balance(chainAddr)))
 		require.EqualValues(t, 2, u.NumUTXOs(chainAddr))
 
 		onLocked, onChainOut, err := u.BalanceOnChain(chainID)
 		require.NoError(t, err)
-		require.EqualValues(t, 3000, onLocked)
-		require.EqualValues(t, 2000, onChainOut)
+		require.EqualValues(t, 110_000_000, int(onLocked))
+		require.EqualValues(t, 200_000_000, int(onChainOut))
 
 		outs, err := u.StateReader().GetUTXOsInAccount(chainAddr.AccountID())
 		require.NoError(t, err)
 		require.EqualValues(t, 2, len(outs))
 
-		require.EqualValues(t, 10_000, int(u.Balance(addr0)))
+		require.EqualValues(t, 10_000_000_000, int(u.Balance(addr0)))
 		par, err := u.MakeTransferInputData(privKey0, chainAddr, ts)
-		par.WithAmount(500).WithTargetLock(addr0)
+		par.WithAmount(40_000_000).WithTargetLock(addr0)
 		require.NoError(t, err)
 		txBytes, err := txbuilder.MakeTransferTransaction(par)
 		require.NoError(t, err)
@@ -846,15 +846,15 @@ func TestChainLock(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("\n%s", v.String())
 
-		require.EqualValues(t, 10_000, int(u.Balance(addr0)))
+		require.EqualValues(t, 10_000_000_000, int(u.Balance(addr0)))
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
 
 		onLocked, onChainOut, err = u.BalanceOnChain(chainID)
 		require.NoError(t, err)
-		require.EqualValues(t, 2_000, int(onLocked))
-		require.EqualValues(t, 2_500, int(onChainOut))
-		require.EqualValues(t, 11_000, int(u.Balance(addr0))) // also includes 500 on chain
+		require.EqualValues(t, 60_000_000, int(onLocked))
+		require.EqualValues(t, 210_000_000, int(onChainOut))
+		require.EqualValues(t, 10_050_000_000, int(u.Balance(addr0))) // also includes 500 on chain
 	})
 }
 
@@ -898,7 +898,7 @@ func TestHashUnlock(t *testing.T) {
 
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey0, _, addr0 := u.GenerateAddress(0)
-	err = u.TokensFromFaucet(addr0, 10000)
+	err = u.TokensFromFaucet(addr0, 1_000_000_000)
 	require.NoError(t, err)
 
 	constraintSource := fmt.Sprintf("or(isPathToProducedOutput(at),callLocalLibrary(selfHashUnlock(0x%s), 0))", hex.EncodeToString(libHash[:]))
@@ -911,7 +911,7 @@ func TestHashUnlock(t *testing.T) {
 	require.NoError(t, err)
 	constr := ledger.NewGeneralScript(constraintBin)
 	t.Logf("constraint: %s", constr)
-	par.WithAmount(1000).
+	par.WithAmount(100_000_000).
 		WithTargetLock(addr0).
 		WithConstraint(constr)
 	txbytes, err := txbuilder.MakeTransferTransaction(par)
@@ -925,13 +925,13 @@ func TestHashUnlock(t *testing.T) {
 	require.NoError(t, err)
 
 	outs = ledger.FilterOutputsSortByAmount(outs, func(o *ledger.Output) bool {
-		return o.TokenBalance() == 1000
+		return o.TokenBalance() == 100_000_000
 	})
 
 	// produce transaction without providing hash unlocking library for the output with script
 	par = txbuilder.NewTransferData(privKey0, addr0, base.NilLedgerTime)
 	par.MustWithInputs(outs...).
-		WithAmount(1000).
+		WithAmount(50_000_000).
 		WithTargetLock(addr0)
 
 	txbytes, err = txbuilder.MakeTransferTransaction(par)
