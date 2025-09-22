@@ -86,11 +86,9 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	ret.SlotInflationBase, err = _uint64FromConst(lib, "constSlotInflationBase")
 	util.AssertNoError(err)
 
-	// FIXME something wrong when called from ScanState and UTXODB
-	//ret.MinimumInflatableAmount0, err = _uint64FromConst(lib, "minimumInflatableAmount0")
-	//util.AssertNoError(err)
-	//util.Assertf(ret.MinimumInflatableAmount0 == ret.InitialSupply/ret.SlotInflationBase, "ret.MinimumInflatableAmount0 == ret.InitialSupply / ret.SlotInflationBase")
-	ret.MinimumInflatableAmount0 = ret.InitialSupply / ret.SlotInflationBase
+	ret.MinimumInflatableAmount0, err = _uint64FromConst(lib, "minimumInflatableAmount0")
+	util.AssertNoError(err)
+	util.Assertf(ret.MinimumInflatableAmount0 == ret.InitialSupply/ret.SlotInflationBase, "ret.MinimumInflatableAmount0 == ret.InitialSupply / ret.SlotInflationBase")
 
 	ret.BranchInflationBonusBase, err = _uint64FromConst(lib, "constBranchInflationBonusBase")
 	util.AssertNoError(err)

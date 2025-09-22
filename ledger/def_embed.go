@@ -3,6 +3,7 @@ package ledger
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 
 	"github.com/lunfardo314/easyfl"
@@ -107,7 +108,12 @@ func GetEmbeddedFunctionResolver(lib *easyfl.Library[*EvalContext]) func(sym str
 		if ret, found := _unboundedEmbedded[sym]; found {
 			return ret
 		}
-		return baseResolver(sym)
+		if ret := baseResolver(sym); ret != nil {
+			return ret
+		}
+		return func(glb *easyfl.CallParams[*EvalContext]) []byte {
+			panic(fmt.Sprintf("inconsistency: embeded function symbol '%s' wasn't resolved properly", sym))
+		}
 	}
 }
 
