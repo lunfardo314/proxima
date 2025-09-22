@@ -27,11 +27,11 @@ func TestBasics(t *testing.T) {
 
 		t.Logf("current timestamp: %s", ledger.TimeNow().String())
 		_, _, addr := u.GenerateAddress(0)
-		err := u.TokensFromFaucet(addr, 100)
+		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-100, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 100, u.Balance(addr))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 
 		_, stemOutData := u.StateReader().GetStem()
@@ -51,20 +51,20 @@ func TestBasics(t *testing.T) {
 		t.Logf("origin address: %s", easyfl_util.Fmt(u.GenesisControllerAddress()))
 
 		privKey, _, addr := u.GenerateAddress(0)
-		err := u.TokensFromFaucet(addr, 100)
+		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 		err = u.TokensFromFaucet(addr)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-100-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 100+ledger.DefaultStorageDeposit(), u.Balance(addr))
+		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000+ledger.DefaultStorageDeposit(), u.Balance(addr))
 		require.EqualValues(t, 2, u.NumUTXOs(addr))
 
 		err = u.TransferTokens(privKey, addr, u.Balance(addr))
 		require.NoError(t, err)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-100-u.FaucetBalance()-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, 100+ledger.DefaultStorageDeposit(), u.Balance(addr))
+		require.EqualValues(t, u.Supply()-1_000_000_000-u.FaucetBalance()-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
+		require.EqualValues(t, 1_000_000_000+ledger.DefaultStorageDeposit(), u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
 	})
 	t.Run("utxodb 3 compress outputs", func(t *testing.T) {
@@ -79,10 +79,11 @@ func TestBasics(t *testing.T) {
 
 		total := uint64(0)
 		numOuts := 0
-		for i := uint64(100); i <= howMany; i++ {
-			err := u.TokensFromFaucet(addr, i)
+		for i := 1; i <= howMany; i++ {
+			s := uint64(100_000_000 + i)
+			err := u.TokensFromFaucet(addr, s)
 			require.NoError(t, err)
-			total += i
+			total += s
 			numOuts++
 
 			require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
@@ -121,12 +122,11 @@ func TestBasics(t *testing.T) {
 
 		total := uint64(0)
 		numOuts := 0
-		for i := uint64(100); i <= howMany; i++ {
-			//st := time.Now()
-			err := u.TokensFromFaucet(addr, i)
+		for i := 0; i <= howMany; i++ {
+			s := uint64(100_000_000 + i)
+			err := u.TokensFromFaucet(addr, s)
 			require.NoError(t, err)
-			//t.Logf("%d elapsed: %v", i, time.Since(st))
-			total += i
+			total += s
 			numOuts++
 
 			require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
@@ -145,20 +145,23 @@ func TestBasics(t *testing.T) {
 		t.Logf("origin address: %s", easyfl_util.Fmt(u.GenesisControllerAddress()))
 
 		privKey0, _, addr0 := u.GenerateAddress(0)
-		const howMany = 100
-		err := u.TokensFromFaucet(addr0, howMany*100)
+		const (
+			howMany = 100
+			amount  = 100_000_000
+		)
+		err := u.TokensFromFaucet(addr0, howMany*amount)
 		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-		require.EqualValues(t, u.Supply()-u.FaucetBalance()-howMany*100, u.Balance(u.GenesisControllerAddress()))
-		require.EqualValues(t, howMany*100, int(u.Balance(addr0)))
+		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-howMany*amount), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, howMany*amount, int(u.Balance(addr0)))
 		require.EqualValues(t, 1, u.NumUTXOs(addr0))
 
 		privKey1, _, addr1 := u.GenerateAddress(1)
 
 		for i := 0; i < howMany; i++ {
-			err = u.TransferTokens(privKey0, addr1, 100)
+			err = u.TransferTokens(privKey0, addr1, amount)
 			require.NoError(t, err)
 		}
-		require.EqualValues(t, howMany*100, int(u.Balance(addr1)))
+		require.EqualValues(t, howMany*amount, int(u.Balance(addr1)))
 		require.EqualValues(t, howMany, u.NumUTXOs(addr1))
 		require.EqualValues(t, 0, u.Balance(addr0))
 		require.EqualValues(t, 0, u.NumUTXOs(addr0))
@@ -167,8 +170,8 @@ func TestBasics(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, howMany, len(outs))
 
-		err = u.TransferTokens(privKey1, addr0, howMany*100)
-		require.EqualValues(t, howMany*100, u.Balance(addr0))
+		err = u.TransferTokens(privKey1, addr0, howMany*amount)
+		require.EqualValues(t, howMany*amount, u.Balance(addr0))
 		require.EqualValues(t, 1, u.NumUTXOs(addr0))
 		require.EqualValues(t, 0, u.Balance(addr1))
 		require.EqualValues(t, 0, u.NumUTXOs(addr1))
@@ -176,16 +179,12 @@ func TestBasics(t *testing.T) {
 		outs, err = u.StateReader().GetUTXOsInAccount(addr0.AccountID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(outs))
-
-		//snd, ok := outs[0].Output.Sender()
-		//require.True(t, ok)
-		//require.EqualValues(t, addr1, snd)
 	})
 	t.Run("multi faucet", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
-		_, _, addrs := u.GenerateAddressesWithFaucetAmount(1, 255, 10_000)
+		_, _, addrs := u.GenerateAddressesWithFaucetAmount(1, 255, 100_000_000)
 		for i := range addrs {
-			require.EqualValues(t, 10000, u.Balance(addrs[i]))
+			require.EqualValues(t, 100_000_000, u.Balance(addrs[i]))
 		}
 	})
 }
@@ -194,7 +193,7 @@ func TestManyInputs(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	const (
 		numAddr    = 256
-		initAmount = 10_000
+		initAmount = 1_000_000_000
 	)
 	privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 	privKey0, _, addr0 := u.GenerateAddress(0)
@@ -238,7 +237,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			ChainInput:           chainInput,
 			Timestamp:            chainInput.Timestamp().AddSlots(1),
 			EnforceProfitability: true,
-			WithdrawAmount:       100,
+			WithdrawAmount:       100_000_000,
 			WithdrawTarget:       ledger.ChainLockFromChainID(target.ChainID),
 			PrivateKey:           privKeys[0],
 		}

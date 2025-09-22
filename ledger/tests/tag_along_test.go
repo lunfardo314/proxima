@@ -137,12 +137,41 @@ func TestTagAlongSimple(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
+		// Important: must consolidate small amount into the bigger one, otherwise cannot consume
+
 		reclaimerAddr := ledger.AddressED25519FromPrivateKey(reclaimerPrivateKey)
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
+		if err != nil {
+			return err
+		}
+		outs = util.PurgeSlice(outs, func(o *ledger.OutputWithID) bool {
+			return o.Output.Lock().Name() == ledger.AddressED25519Name
+		})
+		require.True(t, len(outs) > 0)
+		maxOut := slices.MaxFunc(outs, func(a, b *ledger.OutputWithID) int {
+			b1 := a.Output.TokenBalance()
+			b2 := b.Output.TokenBalance()
+			if b1 == b2 {
+				return 0
+			}
+			if b1 < b2 {
+				return -1
+			}
+			return 1
+		})
+		idx, err := txb.ConsumeOutput(maxOut.Output, maxOut.ID)
+		require.NoError(t, err)
+
+		err = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0)
+		require.NoError(t, err)
+
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(taOuts[0].Output.TokenBalance())
+			o.WithTokenBalance(taOuts[0].Output.TokenBalance() + maxOut.Output.TokenBalance())
 			o.WithLock(reclaimerAddr)
 		}))
-
+		if err != nil {
+			return err
+		}
 		txb.TransactionData.Timestamp = ts
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 		txb.SignED25519(reclaimerPrivateKey)
