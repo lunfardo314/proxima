@@ -906,6 +906,6 @@ func (o *Output) EnoughAmountForStorageDeposit() error {
 	if o.TokenBalance() >= m {
 		return nil
 	}
-	return fmt.Errorf("not enough token balance (%s) for the minimum storage deposit (%s) in the output\n%s",
-		util.Th(o.TokenBalance()), util.Th(m), o.LinesSource("     ").String())
+	return fmt.Errorf("not enough token balance (%s) for the minimum storage deposit (%s) in the output (size %d bytes):\n%s",
+		util.Th(o.TokenBalance()), util.Th(m), len(o.Bytes()), o.LinesHR("     ").String())
 }

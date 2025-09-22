@@ -179,9 +179,10 @@ func (txb *TxBuilder) PutExplicitBaseline(txid *base.TransactionID) {
 	txb.TransactionData.ExplicitBaseline = txid
 }
 
+// ProduceOutput adds produced output to the tx builder. Chacks storage deposit
 func (txb *TxBuilder) ProduceOutput(o *ledger.Output) (byte, error) {
 	if err := o.EnoughAmountForStorageDeposit(); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("TxBuilder:ProduceOutput: %v", err)
 	}
 	o.MustValidOutput()
 	if txb.NumOutputs() >= 256 {
@@ -519,7 +520,7 @@ func (t *TransferData) TotalAdjustedAmount() uint64 {
 	}
 
 	outTentative := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(t.Amount)).WithLock(t.Lock)
+		o.WithAmounts(int64(math.MaxUint64 / 2)).WithLock(t.Lock)
 		for _, c := range t.AddConstraints {
 			o.MustPushConstraint(c)
 		}
@@ -646,10 +647,6 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	var tagAlongOut *ledger.Output
 	if par.TagAlong != nil {
 		tagAlongOut = ledger.NewTagAlongOutput(par.TagAlong.Amount, par.TagAlong.SeqID, ledger.AddressED25519FromPrivateKey(par.SenderPrivateKey))
-		//tagAlongOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		//	o.WithAmounts(int64(par.TagAlong.Amount)).
-		//		WithLock(ledger.ChainLockFromChainID(par.TagAlong.SeqID))
-		//})
 		tagAlongFee = par.TagAlong.Amount
 	}
 

@@ -134,7 +134,7 @@ func TestMainConstraints(t *testing.T) {
 func TestTxID(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey0, _, addr0 := u.GenerateAddress(0)
-	err := u.TokensFromFaucet(addr0, 10000)
+	err := u.TokensFromFaucet(addr0, 1_000_000_000)
 	require.NoError(t, err)
 
 	_, _, addr1 := u.GenerateAddress(1)
@@ -149,6 +149,7 @@ func TestTxID(t *testing.T) {
 	par.WithAmount(200).
 		WithTargetLock(addr1).
 		WithConstraint(ledger.NewTimelock(timelockSlot))
+	par.AdjustToMinimum = true
 	txBytes, err := txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 

@@ -40,8 +40,7 @@ type UTXODB struct {
 
 const (
 	// for determinism
-	deterministicSeed       = "1234567890987654321"
-	TokensFromFaucetDefault = uint64(1_000_000)
+	deterministicSeed = "1234567890987654321"
 )
 
 func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
@@ -139,7 +138,7 @@ func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *t
 }
 
 func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.AddressED25519, amountPar ...uint64) ([]byte, error) {
-	amount := TokensFromFaucetDefault
+	amount := ledger.DefaultStorageDeposit()
 	if len(amountPar) > 0 && amountPar[0] > 0 {
 		amount = amountPar[0]
 	}
@@ -168,7 +167,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25
 	if len(addrs) == 0 {
 		return nil, fmt.Errorf("no addresses")
 	}
-	amount := TokensFromFaucetDefault
+	amount := ledger.DefaultStorageDeposit()
 	if len(amounts) > 0 && amounts[0] > 0 {
 		amount = amounts[0]
 	}

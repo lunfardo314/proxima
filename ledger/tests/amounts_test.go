@@ -63,7 +63,7 @@ func TestAmountsBase(t *testing.T) {
 	var u *utxodb.UTXODB
 	var privKey0 ed25519.PrivateKey
 
-	const amountFromFaucet = 10_000_000
+	const amountFromFaucet = 1_000_000_000_000
 	_ = privKey0
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -74,24 +74,27 @@ func TestAmountsBase(t *testing.T) {
 	t.Run("fail not at index 0", func(t *testing.T) {
 		initTest()
 
-		const transferAmount = 1_000_000
+		const transferAmount = 100_000_000
 		outs, amount := u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(addr0, transferAmount)
-		util.Assertf(len(outs) == 1, "expected 1 output")
-		util.Assertf(amount >= transferAmount, "expected 1 output")
+		require.True(t, len(outs) == 1)
+		require.True(t, amount >= transferAmount)
 
 		txb := txbuilder.New()
 		_, ts, err := txb.ConsumeOutputsUnlock(outs...)
 		require.NoError(t, err)
 
-		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(transferAmount).
 				WithLock(addr0).
 				MustPushConstraint(ledger.NewAmounts(1, 2).Bytes())
 		}))
-		_, _ = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		require.NoError(t, err)
+
+		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amountFromFaucet - transferAmount).
 				WithLock(addr0)
 		}))
+		require.NoError(t, err)
 
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 		txb.TransactionData.Timestamp = ts.AddTicks(int(ledger.Const.TransactionPace))
