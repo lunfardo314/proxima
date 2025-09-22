@@ -161,7 +161,7 @@ type longConflictTestData struct {
 }
 
 const (
-	initBalance = 10_000_000_000
+	initBalance = 1_000_000_000_000
 	tagAlongFee = 500
 )
 
@@ -262,10 +262,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 		_, err = txb.ProduceOutput(o)
 		require.NoError(td.t, err)
 	}
-	tagAlongOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(tagAlongFee)
-		o.WithLock(ledger.ChainLockFromChainID(td.bootstrapChainID))
-	})
+	tagAlongOut := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID, ledger.AddressED25519FromPrivateKey(td.privKeyAux))
 	_, err = txb.ProduceOutput(tagAlongOut)
 	require.NoError(td.t, err)
 
@@ -342,7 +339,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 	require.True(t, base.ValidTime(td.Timestamp))
 
 	for i := 0; i < nConflicts; i++ {
-		td.WithAmount(uint64(100_000 + i))
+		td.WithAmount(uint64(10_000_000_000 + i))
 		if targetLockChain {
 			td.WithTargetLock(ledger.ChainLockFromChainID(ret.bootstrapChainID))
 		} else {
@@ -359,7 +356,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 		require.NoError(t, err)
 		t.Logf("conflicting tx ts: %s", tx.Timestamp().String())
 		ret.conflictingOutputs[i] = tx.MustProducedOutputWithIDAt(1)
-		require.EqualValues(t, 100_000+i, int(ret.conflictingOutputs[i].Output.TokenBalance()))
+		require.EqualValues(t, 10_000_000_000+i, int(ret.conflictingOutputs[i].Output.TokenBalance()))
 	}
 	return ret
 }
@@ -481,8 +478,8 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 	for i := 0; i < howLongChain; i++ {
 		for seqNr := range ret {
 			txSpend = td.spendToChain(td.remainderOutput, td.chainOrigins[seqNr].ChainID)
-			td.transferChain = append(td.transferChain, txSpend)
 			util.Assertf(txSpend.NumProducedOutputs() == 2, "txSpend.NumProducedOutputs() == 2")
+			td.transferChain = append(td.transferChain, txSpend)
 
 			td.remainderOutput = txSpend.MustProducedOutputWithIDAt(0)
 			transferOut := txSpend.MustProducedOutputWithIDAt(1)
@@ -567,7 +564,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 	return ret
 }
 
-const transferAmount = 100
+const transferAmount = 50_000_000
 
 func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID base.ChainID) *transaction.Transaction {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(txbuilder.NewTransferData(td.privKey, td.addr, o.Timestamp().AddTicks(int(ledger.Const.TransactionPace))).

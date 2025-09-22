@@ -32,7 +32,7 @@ func TestBase(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.AddressED25519FromPrivateKey(privKey)
 	seqID := base.RandomChainID()
-	bal := ledger.Const.MinimumAmountOnSequencer << 8
+	bal := uint64(1_000_000_000_000)
 
 	sd := seqdata.New().
 		SetName("test_seq").
@@ -205,7 +205,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 10_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 40_000_000, addr),
 		}
 		txb := newTxb(ts.AddSlots(1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
@@ -220,7 +220,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 10_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 40_000_000, addr),
 		}
 		txb := newTxb(ts.AddSlots(ledger.Const.TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
@@ -243,7 +243,7 @@ func TestBase(t *testing.T) {
 		rndWithdraw := func(amount uint64, slot uint32) error {
 			tagAlongOut := ledger.OutputWithID{
 				ID:     base.RandomOutputID(base.T(slot, 50)),
-				Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, sender, 200, 10_000_000, addr),
+				Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, sender, 200, 40_000_000, addr),
 			}
 			_, _, err := txb.AddTagAlongInput(tagAlongOut)
 			return err

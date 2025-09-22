@@ -66,9 +66,9 @@ func TestAttachBasic(t *testing.T) {
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
-			{Lock: addr1, Balance: 1_000_000, ChainOrigin: false},
-			{Lock: addr2, Balance: 1_000_000, ChainOrigin: false},
-			{Lock: addr2, Balance: 1_000_000, ChainOrigin: true},
+			{Lock: addr1, Balance: 1_000_000_000, ChainOrigin: false},
+			{Lock: addr2, Balance: 1_000_000_000, ChainOrigin: false},
+			{Lock: addr2, Balance: 1_000_000_000, ChainOrigin: true},
 		}
 
 		stateStore := common.NewInMemoryKVStore()
@@ -109,11 +109,11 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
-		require.EqualValues(t, 1_000_000, int(bal1))
+		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
 		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
-		require.EqualValues(t, 2_000_000, int(bal2))
+		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 2, n2)
 
 		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
@@ -121,15 +121,15 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
-			{Lock: addr1, Balance: 1_000_000},
-			{Lock: addr2, Balance: 2_000_000},
+			{Lock: addr1, Balance: 1_000_000_000},
+			{Lock: addr2, Balance: 2_000_000_000},
 		}
 
 		stateStore := common.NewInMemoryKVStore()
@@ -179,11 +179,11 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
-		require.EqualValues(t, 1_000_000, int(bal1))
+		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
 		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
-		require.EqualValues(t, 2_000_000, int(bal2))
+		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 1, n2)
 
 		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
@@ -191,7 +191,7 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
@@ -199,8 +199,8 @@ func TestAttachBasic(t *testing.T) {
 		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
-			{Lock: addr1, Balance: 1_000_000},
-			{Lock: addr2, Balance: 2_000_000},
+			{Lock: addr1, Balance: 1_000_000_000},
+			{Lock: addr2, Balance: 2_000_000_000},
 		}
 
 		stateStore := common.NewInMemoryKVStore()
@@ -249,11 +249,11 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, int(rr.SlotInflation))
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
-		require.EqualValues(t, 1_000_000, int(bal1))
+		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
 		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
-		require.EqualValues(t, 2_000_000, int(bal2))
+		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 1, n2)
 
 		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
@@ -261,7 +261,7 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000-2_000_000, int(balChain))
+		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
 	})
 }
 
