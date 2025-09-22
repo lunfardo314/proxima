@@ -404,8 +404,8 @@ type (
 		// timestamp of the target transaction
 		Timestamp base.LedgerTime
 		// some amount sent to the target lock. It can be a tag-along output. The remainder goes to the chain
-		WithdrawTarget ledger.Lock
-		WithdrawAmount uint64
+		TagAlongSequencer base.ChainID
+		TagAlongFee       uint64
 		// chain controller
 		PrivateKey ed25519.PrivateKey
 		// enforce transaction is profitable
@@ -732,15 +732,15 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	// calculate inflation amount and create inflation constraint
 	inflationAmount := ledger.ChainInflationOneSlot(
 		par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)),
-		uint32(par.ChainInput.Timestamp().Slot),
+		par.ChainInput.Timestamp().Slot,
 	)
 	chainInAmount := par.ChainInput.Output.TokenBalance()
-	if chainInAmount+inflationAmount <= par.WithdrawAmount {
+	if chainInAmount+inflationAmount <= par.TagAlongFee {
 		// we do not handle complete withdrawal of funds from the chain
-		return nil, 0, nil, errP("not enough tokens to withdraw specified amount %d", par.WithdrawAmount)
+		return nil, 0, nil, errP("not enough tokens for tag-along fee %d", par.TagAlongFee)
 	}
 
-	chainOutAmount := chainInAmount + inflationAmount - par.WithdrawAmount
+	chainOutAmount := chainInAmount + inflationAmount - par.TagAlongFee
 	util.Assertf(chainOutAmount > 0, "chainOutAmount > 0")
 
 	if par.EnforceProfitability {
@@ -783,12 +783,9 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	// unlock chain input (chain constraint unlock + inflation (optionally)
 	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
 
-	if par.WithdrawAmount > 0 {
-		withdrawOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(int64(par.WithdrawAmount)).
-				WithLock(par.WithdrawTarget)
-		})
-		if _, err = txb.ProduceOutput(withdrawOut); err != nil {
+	if par.TagAlongFee > 0 {
+		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, ledger.AddressED25519FromPrivateKey(par.PrivateKey))
+		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
 			return nil, 0, nil, errP(err)
 		}
 	}
