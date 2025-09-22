@@ -4,6 +4,8 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 )
 
+// Storage deposit and vByteCost related code
+
 const vByteCost = 1
 
 var _locksExemptOfStorageDeposit = set.New(

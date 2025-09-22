@@ -88,7 +88,7 @@ func ScanGenesisState(stateStore StateStore) (*ledger.Constants, common.VCommitm
 	}
 	constants := ledger.ConstantsFromLibrary(lib)
 	if out.TokenBalance() != constants.InitialSupply {
-		return nil, nil, fmt.Errorf("different amounts in genesis output and state identity")
+		return nil, nil, fmt.Errorf("different amounts in genesis output and state definitions")
 	}
 	return constants, branchData.Root, nil
 }
