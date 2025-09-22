@@ -453,11 +453,12 @@ func (t *TransferData) WithAmount(amount uint64, adjustToMinimum ...bool) *Trans
 	return t
 }
 
-func (t *TransferData) WithTagAlong(target base.ChainID, fee uint64) {
+func (t *TransferData) WithTagAlong(target base.ChainID, fee uint64) *TransferData {
 	t.TagAlong = &TagAlongData{
 		SeqID:  target,
 		Amount: fee,
 	}
+	return t
 }
 
 func (t *TransferData) WithConstraintBinary(constr []byte, idx ...byte) *TransferData {
@@ -660,7 +661,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 	if remainderOut != nil {
 		if remainderIndex, err = txb.ProduceOutput(remainderOut); err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("making remainder output: %v", err)
 		}
 	}
 	if _, err = txb.ProduceOutput(mainOutput); err != nil {
@@ -984,10 +985,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
-	tagAlong := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(par.TagAlongFee))
-		o.WithLock(ledger.ChainLockFromChainID(par.TagAlongSequencer))
-	})
+	tagAlong := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, par.Master)
 	if _, err = txb.ProduceOutput(tagAlong); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}

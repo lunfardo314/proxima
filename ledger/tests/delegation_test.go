@@ -17,7 +17,7 @@ import (
 const (
 	tokensFromFaucetMaster        = 200_000_000_000
 	tokensFromFaucetSeqController = 200_000_000_000
-	seqOnChainBalance             = 199_999_000_000
+	seqOnChainBalance             = 3_000_000_000
 	delegatedTokens               = 1_000_000_000
 )
 
@@ -358,6 +358,7 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(tagAlongFee).WithLock(ledger.ChainLockFromChainID(base.RandomChainID()))
 	}))
+	_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(tagAlongFee, base.RandomChainID(), td.masterAddr))
 	require.NoError(td, err)
 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)

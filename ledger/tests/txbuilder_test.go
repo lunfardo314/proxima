@@ -250,7 +250,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		par.Timestamp = par.ChainInput.Timestamp()
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
-		util.RequireErrorWithOld(t, err, "is inconsistent with latest chain output timestamp")
+		require.NoError(t, util.MustErrorWith(err, "is inconsistent with latest chain output timestamp"))
 
 	})
 	t.Run("normal run", func(t *testing.T) {
