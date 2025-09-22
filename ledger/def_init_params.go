@@ -126,10 +126,6 @@ functions:
       description: minimum number of ticks between sequencer transaction and its inputs and endorsed transactions  
       source: u64/%d
    -
-      sym: constVBCost16
-      description: constant for the storage deposit constraint  
-      source: u16/1
-   -
       sym: constDescription
       description: arbitrary binary data  
       source: 0x%s

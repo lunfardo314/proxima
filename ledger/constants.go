@@ -33,8 +33,6 @@ type Constants struct {
 	// BranchInflationBonusBase inflation bonus
 	BranchInflationBonusBase uint64
 	// ----------- end inflation-related
-	// VBCost
-	VBCost uint64
 	// number of ticks between non-sequencer transactions
 	TransactionPace byte
 	// number of ticks between sequencer transactions
@@ -106,8 +104,6 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	tp, err = _uint64FromConst(lib, "constTransactionPaceSequencer")
 	util.AssertNoError(err)
 	ret.TransactionPaceSequencer = byte(tp)
-	ret.VBCost, err = _uint64FromConst(lib, "constVBCost16")
-	util.AssertNoError(err)
 	res, err = lib.EvalFromSource(nil, "constDescription")
 	util.AssertNoError(err)
 	ret.Description = string(res)
@@ -171,7 +167,6 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Minimum amount on sequencer: %s", util.Th(c.MinimumAmountOnSequencer)).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).
-		Add("VB cost: %d", c.VBCost).
 		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements)
 	epochDuration := time.Duration(c.DelegationEpochSlots) * c.SlotDuration()
 	ret.Add("Delegation epoch slots: %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)

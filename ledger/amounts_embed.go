@@ -143,7 +143,9 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 		// only enforce the validity of amounts on produced outputs
 		return []byte{0xff}
 	}
-	// enforce minimum storage deposit
+
+	// enforce minimum storage deposit - only on produced utxos.
+	// Changing the constant in te network does not change the ledger definitions and does not introduce non-determinism
 	par.RequireNoError(o.EnoughAmountForStorageDeposit())
 
 	amounts := o.Amounts()

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/easyfl/tuples"
@@ -276,25 +275,6 @@ func (txb *TxBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputData
 	txb.PutSignatureUnlock(successorOutputIndex)
 
 	return nil
-}
-
-func (txb *TxBuilder) String() string {
-	ret := []string{"TxBuilder:"}
-	ret = append(ret, fmt.Sprintf("Consumed outputs (%d):", len(txb.ConsumedOutputs)))
-	util.Assertf(len(txb.ConsumedOutputs) == len(txb.TransactionData.InputIDs), "len(txb.ConsumedOutputs) == len(txb.Transaction.InputIDs)")
-	for i := range txb.ConsumedOutputs {
-		ret = append(ret, fmt.Sprintf("%d : %s\n", i, txb.TransactionData.InputIDs[i].StringShort()))
-		ret = append(ret, txb.ConsumedOutputs[i].ToString("     "))
-	}
-	ret = append(ret, fmt.Sprintf("Produced outputs (%d):", len(txb.TransactionData.Outputs)))
-	for i, o := range txb.TransactionData.Outputs {
-		ret = append(ret, fmt.Sprintf("%d :%s", i, o.ToString("    ")))
-	}
-	ret = append(ret, fmt.Sprintf("Endorsements (%d):", len(txb.TransactionData.Endorsements)))
-	for i, txid := range txb.TransactionData.Endorsements {
-		ret = append(ret, fmt.Sprintf("%d : %s", i, txid.StringShort()))
-	}
-	return strings.Join(ret, "\n")
 }
 
 // LoadInput returns clone of the consumed output
