@@ -59,7 +59,7 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 		maxSlots   = 30
 		batchSize  = 10
 		maxBatches = 5
-		sendAmount = 2000
+		sendAmount = 100_000_000
 	)
 	testData := initWorkflowTest(t, 1, true)
 	//t.Logf("%s", testData.wrk.Info())
@@ -86,8 +86,6 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 
 	rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
 	require.EqualValues(t, initBalance+tagAlongFee, int(rdr.BalanceOf(testData.addrAux.AccountID())))
-
-	//initialBalanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 
 	auxOuts, err := rdr.GetOutputsForAccount(testData.addrAux.AccountID())
 	require.EqualValues(t, 1, len(auxOuts))
@@ -132,10 +130,7 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 	require.EqualValues(t, maxBatches*batchSize*sendAmount, int(targetBalance))
 
 	balanceLeft := rdr.BalanceOf(testData.addrFaucet.AccountID())
-	require.EqualValues(t, initBalance-len(par.spammedTxIDs)*(sendAmount+tagAlongFee), int(balanceLeft))
-
-	//balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
-	//require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
+	require.EqualValues(t, initBalance-len(par.spammedTxIDs)*sendAmount-par.numSpammedBatches*tagAlongFee, int(balanceLeft))
 }
 
 func TestFinalizeChainOrigins(t *testing.T) {
@@ -203,14 +198,12 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	multistate.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 }
 
-// FIXME sometimes fails final amounts (timeout?)
-
 func Test3Seq1TagAlong(t *testing.T) {
 	const (
 		maxSlots        = 100
 		nSequencers     = 2 // in addition to bootstrap
 		batchSize       = 10
-		sendAmount      = 2000
+		sendAmount      = 100_000_000
 		spammingTimeout = 20 * time.Second
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
@@ -264,7 +257,7 @@ func Test3Seq1TagAlong(t *testing.T) {
 	require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
 
 	balanceLeft := rdr.BalanceOf(testData.addrFaucet.AccountID())
-	require.EqualValues(t, initBalance-len(par.spammedTxIDs)*(sendAmount+tagAlongFee), int(balanceLeft))
+	require.EqualValues(t, initBalance-len(par.spammedTxIDs)*sendAmount-par.numSpammedBatches*tagAlongFee, int(balanceLeft))
 
 	//balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 	//require.EqualValues(t, int(initialBalanceOnChain)+len(par.spammedTxIDs)*tagAlongFee, int(balanceOnChain))
@@ -275,7 +268,7 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 		maxSlots        = 100 // 100
 		nSequencers     = 2   // in addition to bootstrap
 		batchSize       = 10  // 10
-		sendAmount      = 2000
+		sendAmount      = 100_000_000
 		spammingTimeout = 30 * time.Second // 10
 		startPruner     = true
 		traceTx         = false

@@ -971,15 +971,18 @@ func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, er
 	return ctx.Lines(prefix...)
 }
 
-func (tx *Transaction) ProducedOutputsWithTargetLock(lock ledger.Lock) []*ledger.OutputWithID {
-	ret := make([]*ledger.OutputWithID, 0)
+func (tx *Transaction) ProducedTagAlongOutputs(targetID ...base.ChainID) []ledger.TagAlongOutput {
+	ret := make([]ledger.TagAlongOutput, 0)
 	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, oid base.OutputID) bool {
-		if ledger.EqualConstraints(lock, o.Lock()) {
-			ret = append(ret, &ledger.OutputWithID{
-				ID:     oid,
-				Output: o,
-			})
+		out := ledger.OutputWithID{ID: oid, Output: o}
+		ta := out.AsTagAlong()
+		if ta.TagAlongLock == nil {
+			return true
 		}
+		if len(targetID) > 0 && ta.TagAlongLock.TargetSequencerID != targetID[0] {
+			return true
+		}
+		ret = append(ret, ta)
 		return true
 	})
 	return ret

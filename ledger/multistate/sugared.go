@@ -464,14 +464,12 @@ func (s SugaredStateReader) GetTagAlongBacklogForSequencer(seqID base.ChainID, f
 
 func (s SugaredStateReader) IterateTagAlongBacklog(seqID base.ChainID, fun func(o *ledger.TagAlongOutput) bool) error {
 	return s.IterateOutputsForAccount(ledger.ChainLockFromChainID(seqID), func(oid base.OutputID, o *ledger.Output) bool {
-		if tgLock := o.TagAlongLock(); tgLock != nil {
-			return fun(&ledger.TagAlongOutput{
-				OutputWithID: ledger.OutputWithID{
-					ID:     oid,
-					Output: o,
-				},
-				TagAlongLock: tgLock,
-			})
+		out := ledger.OutputWithID{
+			ID:     oid,
+			Output: o,
+		}
+		if ta := out.AsTagAlong(); ta.TagAlongLock != nil {
+			return fun(&ta)
 		}
 		return true
 	})

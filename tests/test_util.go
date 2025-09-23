@@ -161,7 +161,7 @@ type longConflictTestData struct {
 }
 
 const (
-	initBalance = 1_000_000_000_000
+	initBalance = 10_000_000_000_000
 	tagAlongFee = 500
 )
 
@@ -782,14 +782,11 @@ func makeTransfers(par *spammerParams) [][]byte {
 
 		tx, err := transaction.FromBytes(ret[i], transaction.MainTxValidationOptions...)
 		require.NoError(par.t, err)
-		tagAlongOuts := tx.ProducedOutputsWithTargetLock(ledger.ChainLockFromChainID(seqID))
+		tagAlongOuts := tx.ProducedTagAlongOutputs()
 
 		if i == par.batchSize-1 {
 			require.EqualValues(par.t, 1, len(tagAlongOuts))
-			lck := tagAlongOuts[0].Output.Lock()
-			require.True(par.t, lck.Name() == ledger.ChainLockName)
-			lckChain := lck.(ledger.ChainLock)
-			require.EqualValues(par.t, lckChain.ChainID(), seqID)
+			require.EqualValues(par.t, tagAlongOuts[0].TargetSequencerID, seqID)
 			par.t.Logf("spamTransfers -> %s, tag along: %s", tx.IDShortString(), seqID.StringShort())
 		} else {
 			par.t.Logf("spamTransfers -> %s", tx.IDShortString())

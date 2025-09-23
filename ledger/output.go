@@ -621,6 +621,13 @@ func (o *OutputWithID) AsChainOutput() (*OutputWithChainID, error) {
 	}, nil
 }
 
+func (o *OutputWithID) AsTagAlong() TagAlongOutput {
+	return TagAlongOutput{
+		OutputWithID: *o,
+		TagAlongLock: o.Output.TagAlongLock(),
+	}
+}
+
 func (o *OutputWithID) MustAsChainOutput() *OutputWithChainID {
 	ret, err := o.AsChainOutput()
 	util.AssertNoError(err)
