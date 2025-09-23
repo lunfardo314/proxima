@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// TODO deprecate?
+
 func initInflateChainCmd() *cobra.Command {
 	inflateChainCmd := &cobra.Command{
 		Use:     "inflate_chain <chainID>",
