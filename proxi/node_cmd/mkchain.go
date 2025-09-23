@@ -35,21 +35,18 @@ func MakeChain(onChainAmount uint64) (*transaction.TxContext, base.ChainID, erro
 
 	var tagAlongSeqID *base.ChainID
 	feeAmount := glb.GetTagAlongFee()
-	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
-	if feeAmount > 0 {
-		tagAlongSeqID = glb.GetTagAlongSequencerID()
-		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+	tagAlongSeqID = glb.GetTagAlongSequencerID()
+	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-		md, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
-		glb.AssertNoError(err)
+	md, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
+	glb.AssertNoError(err)
 
-		if md.MinimumFee() > feeAmount {
-			feeAmount = md.MinimumFee()
-		}
+	if md.MinimumFee() > feeAmount {
+		feeAmount = md.MinimumFee()
 	}
 	glb.Infof("Creating new chain origin:")
 	glb.Infof("   on-chain balance: %s", util.Th(onChainAmount))
-	glb.Infof("   tag-along fee %s to the sequencer %s", util.Th(feeAmount), tagAlongSeqID)
+	glb.Infof("   tag-along fee %s to the sequencer %s", util.Th(feeAmount), tagAlongSeqID.String())
 	glb.Infof("   source account: %s", walletData.Account.String())
 	glb.Infof("   total cost: %s", util.Th(onChainAmount+feeAmount))
 	glb.Infof("   chain controller: %s", target)

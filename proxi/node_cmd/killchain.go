@@ -66,7 +66,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	}
 	dOut, isDelegation := ledger.AsDelegationOutput(out.Output, out.ID)
 
-	if isDelegation && dOut.IsInFrozenSlot(uint32(ts.Slot)) {
+	if isDelegation && dOut.IsInFrozenSlot(ts.Slot) {
 		unfreeze := dOut.UnfreezeSlot()
 		glb.Infof("in the current slot %d the delegation output cannot be unlocked by the master lock because it is frozen until slot %d",
 			ts.Slot, unfreeze)

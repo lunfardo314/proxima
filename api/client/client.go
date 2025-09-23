@@ -744,9 +744,6 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	if par.Amount < minimumTransferAmount {
 		return nil, base.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
-	if par.Amount > 0 && par.TagAlongSeqID == nil {
-		return nil, [32]byte{}, fmt.Errorf("tag-along sequencer not specified")
-	}
 
 	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
 
@@ -787,10 +784,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	util.AssertNoError(err)
 
 	if par.TagAlongFee > 0 {
-		tagAlongFeeOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(par.TagAlongFee).
-				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
-		})
+		tagAlongFeeOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey))
 		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
 			return nil, [32]byte{}, err
 		}
@@ -969,11 +963,8 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 		if par.TagAlongSeqID == nil {
 			return nil, fmt.Errorf("tag-along sequencer not specified")
 		}
-		feeOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(par.TagAlongFee).
-				WithLock(ledger.ChainLockFromChainID(*par.TagAlongSeqID))
-		})
-		if _, err = txb.ProduceOutput(feeOut); err != nil {
+		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, ledger.AddressED25519FromPrivateKey(par.PrivateKey))
+		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
 			return nil, err
 		}
 	}

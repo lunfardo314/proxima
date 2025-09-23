@@ -31,10 +31,7 @@ func initBootstrapAccountCmd() *cobra.Command {
 	return bootstrapAccountCmd
 }
 
-const (
-	defaultBootstrapBalance = uint64(1_000_000)
-	minimumBootstrapBalance = uint64(10_000)
-)
+const defaultBootstrapBalance = uint64(40_000_000)
 
 func runBootstrapAccount(_ *cobra.Command, args []string) {
 	// initialize ledger
@@ -54,10 +51,8 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	if len(args) > 0 {
 		b, err := strconv.Atoi(args[0])
 		glb.AssertNoError(err)
+		glb.Assertf(uint64(b) >= ledger.Const.MinimumInflatableAmount0, "bootstrap account balance must be at least %s", util.Th(bootstrapBalance))
 		bootstrapBalance = uint64(b)
-	}
-	if bootstrapBalance < minimumBootstrapBalance {
-		glb.Fatalf("bootstrap account balance must be at least %s", util.Th(minimumBootstrapBalance))
 	}
 	addr := glb.GetWalletData().Account
 	glb.Infof("Transaction store DB will be created. %s tokens from the bootstrap chain will be sent to bootstrap address %s", util.Th(bootstrapBalance), addr.String())

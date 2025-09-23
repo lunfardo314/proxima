@@ -28,7 +28,7 @@ func runLastMilestonesCmd(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("    Sequencer id                                                          " +
-		"TxID                                                                   Count" +
+		"TxID                                                                 Count" +
 		"  Seen sec ago" + "   Last branchID")
 
 	for _, seqID := range util.KeysSorted(lastSeq, util.StringsLess) {
