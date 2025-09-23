@@ -77,8 +77,8 @@ func inflateChain(chainId base.ChainID) {
 		txBytes, inflation, _, err := txb.MakeChainSuccessorTransaction(&txb.MakeChainSuccTransactionParams{
 			ChainInput:           chainOutput,
 			Timestamp:            tsOut,
-			WithdrawAmount:       tagAlongFee,
-			WithdrawTarget:       ledger.ChainLockFromChainID(*tagAlongSeq),
+			TagAlongFee:          tagAlongFee,
+			TagAlongSequencer:    *tagAlongSeq,
 			PrivateKey:           walletData.PrivateKey,
 			EnforceProfitability: !ignoreProfitability,
 		})
