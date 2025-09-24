@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -174,7 +175,7 @@ func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
 
 func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (delta supplyDelta, err error) {
 	var stateKey [1 + base.OutputIDLength]byte
-	stateKey[0] = TriePartitionState
+	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], oid[:])
 
 	oData := trie.Get(stateKey[:])
@@ -205,7 +206,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 	delta.amount = out.TokenBalance()
 
 	var stateKey [1 + base.OutputIDLength]byte
-	stateKey[0] = TriePartitionState
+	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], oid[:])
 	if trie.Update(stateKey[:], out.Bytes()) {
 		// key should not exist
@@ -259,7 +260,13 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 }
 
 func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, slot uint32, lastOutputIndex byte) (delta supplyDelta, err error) {
-	if trie.Update(txid[:], base.Slot2Bytes(slot)) {
+	if strings.Contains(txid.String(), "ff40fe") {
+		println()
+	}
+	var stateKey [1 + base.TransactionIDLength]byte
+	stateKey[0] = TriePartitionLedgerState
+	copy(stateKey[1:], txid[:])
+	if trie.Update(stateKey[:], base.Slot2Bytes(slot)) {
 		// key should not exist
 		err = fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.StringShort())
 	}

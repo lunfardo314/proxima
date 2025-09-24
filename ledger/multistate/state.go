@@ -60,14 +60,14 @@ type (
 // Ledger state contains records of UTXOs (keys 33 bytes long output IDs ) and all past transaction IDs (32 byte long keys)
 // reason why we put index entries (accounts, chain ChainID) inti the trie is because index is ledger state-specific
 const (
-	TriePartitionState = byte(iota)
+	TriePartitionLedgerState = byte(iota)
 	TriePartitionAccounts
 	TriePartitionChainID
 )
 
 func PartitionToString(p byte) string {
 	switch p {
-	case TriePartitionState:
+	case TriePartitionLedgerState:
 		return "UTXO"
 	case TriePartitionAccounts:
 		return "ACCN"
@@ -138,7 +138,7 @@ func (r *Readable) _getUTXO(oid base.OutputID, partition ...*common.ReaderPartit
 	if len(partition) > 0 {
 		part = partition[0]
 	} else {
-		part = common.MakeReaderPartition(r.trie, TriePartitionState)
+		part = common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 		defer part.Dispose()
 	}
 
@@ -154,7 +154,7 @@ func (r *Readable) HasUTXO(oid base.OutputID) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	partition := common.MakeReaderPartition(r.trie, TriePartitionState)
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
 	return partition.Has(oid[:])
@@ -162,7 +162,14 @@ func (r *Readable) HasUTXO(oid base.OutputID) bool {
 
 // KnowsCommittedTransaction transaction IDs are purged after some time, so the result may be
 func (r *Readable) KnowsCommittedTransaction(txid base.TransactionID) bool {
-	return r.trie.Has(txid[:])
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	defer partition.Dispose()
+
+	return partition.Has(txid[:])
+	//	return r.trie.Has(txid[:])
 }
 
 func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error) {
@@ -193,7 +200,7 @@ func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, 
 }
 
 func (r *Readable) GetUTXOsInAccount(addr ledger.AccountID) ([]*ledger.OutputDataWithID, error) {
-	partition := common.MakeReaderPartition(r.trie, TriePartitionState)
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
 	ret := make([]*ledger.OutputDataWithID, 0)
@@ -211,7 +218,7 @@ func (r *Readable) GetUTXOsInAccount(addr ledger.AccountID) ([]*ledger.OutputDat
 }
 
 func (r *Readable) IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid base.OutputID, odata []byte) bool) (err error) {
-	partition := common.MakeReaderPartition(r.trie, TriePartitionState)
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
 	return r.IterateUTXOIDsInAccount(addr, func(oid base.OutputID) bool {
@@ -233,7 +240,7 @@ func (r *Readable) IterateUTXOIDsInAccount(addr ledger.AccountID, fun func(oid b
 
 	var oid base.OutputID
 
-	partition := common.MakeReaderPartition(r.trie, TriePartitionState)
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
@@ -286,7 +293,7 @@ func (r *Readable) GetStem() (uint32, []byte) {
 	var retSlot uint32
 	var retBytes []byte
 
-	partition := common.MakeReaderPartition(r.trie, TriePartitionState)
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
 	// we iterate one element. Stem output ust always be present in the state
@@ -367,7 +374,7 @@ func (r *Readable) Root() common.VCommitment {
 }
 
 func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) {
-	r.Iterator([]byte{TriePartitionState}).Iterate(func(key, oData []byte) bool {
+	r.trie.Iterator([]byte{TriePartitionLedgerState}).Iterate(func(key, oData []byte) bool {
 		if len(key) != base.OutputIDLength {
 			return true
 		}
@@ -386,7 +393,7 @@ func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, o
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	prefix := common.Concat(TriePartitionState, base.Slot2Bytes(slot))
+	prefix := common.Concat(TriePartitionLedgerState, base.Slot2Bytes(slot))
 
 	var oid base.OutputID
 	r.trie.Iterator(prefix).Iterate(func(k, v []byte) bool {
