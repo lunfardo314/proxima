@@ -31,6 +31,7 @@ func Init() *cobra.Command {
 		//initDbStatsCmd(),
 		initDbChainStatsCmd(),
 		initAnalyzeBranchesCmd(),
+		initCountTxCmd(),
 	)
 	return dbCmd
 }

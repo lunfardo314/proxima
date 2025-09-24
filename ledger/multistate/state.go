@@ -329,7 +329,7 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.Transact
 	}
 
 	iter.Iterate(func(k, v []byte) bool {
-		if len(k) == base.TransactionIDLength {
+		if len(k) != base.TransactionIDLength {
 			return true
 		}
 		txid := base.MustTransactionIDFromBytes(k)
