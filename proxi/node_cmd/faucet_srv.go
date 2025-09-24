@@ -60,7 +60,7 @@ func initFaucetServerCmd() *cobra.Command {
 
 func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromNode()
-	glb.Infof("\nstarting Proxima faucet server..\n")
+	glb.Infof("\nstarting Proxima faucet server on the wallet..\n")
 	walletData := glb.GetWalletData()
 	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer id")
 	glb.Assertf(glb.GetTagAlongFee() > 0, "tag-along amount not specified")
@@ -241,6 +241,8 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.Tr
 		}
 		return base.TransactionID{}, err
 	}
+	glb.Verbosef("---------------- withdraw tx -----------------\n%s", txString)
+
 	err = clnt.SubmitTransaction(txBytes)
 	if err != nil {
 		return base.TransactionID{}, err

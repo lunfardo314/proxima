@@ -36,8 +36,8 @@ func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	// check authorisation
 	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
 	if o.SenderHash != blake2b.Sum256(publicKey) {
-		// wrong sender -> may be attack
-		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: sender can't update sequencer data (authorisation failure)")
+		// wrong sender -> may be an attack
+		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: sender can't withdraw funds from the sequencer (authorisation failure)")
 		return
 	}
 	ret := &WithdrawFromChainTxBuilderCommand{TagAlongOutput: o.TagAlongOutput}
