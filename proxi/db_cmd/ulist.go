@@ -2,7 +2,6 @@ package db_cmd
 
 import (
 	"math"
-	"os"
 	"strconv"
 
 	"github.com/lunfardo314/proxima/global"
@@ -10,20 +9,19 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/unitrie/common"
 	"github.com/spf13/cobra"
 )
 
 func initUlistCmd() *cobra.Command {
 	ulistCmd := &cobra.Command{
-		Use:   "ulist",
-		Short: "display outputs (UTXOs) in the slot on LRB or a chosen branch",
+		Use:   "ulist <slot>",
+		Short: "display outputs (UTXOs) in the main branch of the slot",
 		Args:  cobra.ExactArgs(1),
 		Run:   runUlist,
 	}
 
-	ulistCmd.PersistentFlags().StringVarP(&branchIDStr, "branch", "b", "", "tip branch id hex")
 	ulistCmd.InitDefaultHelpCmd()
-
 	return ulistCmd
 }
 
@@ -36,31 +34,28 @@ func runUlist(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
-	var branchID base.TransactionID
-	var branchData *multistate.BranchData
+	lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	glb.Assertf(lrb != nil, "can't find latest reliable branch")
 
-	if branchIDStr != "" {
-		branchID, err = base.TransactionIDFromHexString(branchIDStr)
-		glb.AssertNoError(err)
-		bd, ok := multistate.FetchBranchData(glb.StateStore(), branchID)
-		if !ok {
-			glb.Infof("can't find branch %s", branchIDStr)
-			os.Exit(1)
-		}
-		branchData = &bd
-		branchID = branchData.Stem.ID.TransactionID()
-	} else {
-		branchData = multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
-		if branchData == nil {
-			glb.Infof("latest reliable branch has not been found")
-			os.Exit(1)
-		}
-		branchID = branchData.Stem.ID.TransactionID()
-		glb.Infof("latest reliable branch (LRB) is %s", branchID.String())
+	slotFound := false
+	var root common.VCommitment
+	var brID base.TransactionID
+
+	if slot <= lrb.Slot() {
+		multistate.IterateBranchChainBack(glb.StateStore(), lrb, func(branchID *base.TransactionID, branch *multistate.BranchData) bool {
+			if slotFound = branchID.Slot() == slot; slotFound {
+				root = branch.Root
+				brID = *branchID
+			}
+			return !slotFound
+		})
 	}
-	glb.Infof("baseline branch is %s (hex = %s)", branchID.String(), branchID.StringHex())
+	glb.Assertf(slotFound, "cannot find branch with slot %d in the main sequence of branches", slot)
 
-	rdr, err := multistate.NewReadable(glb.StateStore(), branchData.Root)
+	glb.Infof("baseline branch is %s (hex = %s)", brID.String(), brID.StringHex())
+	glb.Infof("\nUTXOs with slot %d:\n", slot)
+
+	rdr, err := multistate.NewReadable(glb.StateStore(), root)
 	glb.AssertNoError(err)
 
 	var o *ledger.Output
@@ -80,5 +75,4 @@ func runUlist(_ *cobra.Command, args []string) {
 	})
 	glb.AssertNoError(err)
 	glb.Infof("-------------------\nTOTAL %d UTXOs", count)
-
 }

@@ -311,10 +311,14 @@ func FetchHeaviestBranchChainNSlotsBack(store StateStoreReader, nBack int) []*Br
 			return true
 		})
 	} else {
+		from := uint32(0)
+		if latestSlot > uint32(nBack) {
+			from = latestSlot - uint32(nBack)
+		}
 		IterateRootRecords(store, func(branchTxID base.TransactionID, rd RootRecord) bool {
 			rootData[branchTxID] = rd
 			return true
-		}, util.MakeRange(latestSlot-uint32(nBack), latestSlot)...)
+		}, util.MakeRange(from, latestSlot)...)
 	}
 
 	sortedTxIDs := util.KeysSorted(rootData, func(k1, k2 base.TransactionID) bool {

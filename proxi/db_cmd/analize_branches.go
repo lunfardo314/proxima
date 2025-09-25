@@ -64,8 +64,8 @@ func runAnalyzeBranchesCmd(_ *cobra.Command, _ []string) {
 		ln := missingSeqIDs.Lines(func(seqID base.ChainID) string {
 			return seqID.StringShort()
 		})
-		glb.Infof("%6d: main: %s (%s), missing: [%s]", br.Slot(), br.SequencerID.StringShort(), util.Th(br.CoverageDelta), ln.Join(", "))
+		glb.Infof("%6d: main: %s (%s), seqs that didn't produce a branch in the slot: [%s]", br.Slot(), br.SequencerID.StringShort(), util.Th(br.CoverageDelta), ln.Join(", "))
 	}
 	glb.Infof("total slots analyzed: %d", len(mainChain))
-	glb.Infof("total slots with missing branches: %d", countWithMissing)
+	glb.Infof("total slots with some sequencers missing branches: %d", countWithMissing)
 }

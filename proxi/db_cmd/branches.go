@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -12,7 +14,7 @@ import (
 func initBranchesCmd() *cobra.Command {
 	branchesCmd := &cobra.Command{
 		Use:   "branches [<slot from> [<N slots>]]",
-		Short: "displays branch records in the slot and N non-empty slots back",
+		Short: "displays branch records in the slot and N non-empty slots back from now",
 		Args:  cobra.RangeArgs(0, 2),
 		Run:   runBranchesCmd,
 	}
@@ -26,6 +28,11 @@ func runBranchesCmd(_ *cobra.Command, args []string) {
 
 	latestSlot := multistate.FetchLatestCommittedSlot(glb.StateStore())
 	glb.Infof("latest committed slot is %d", latestSlot)
+
+	if len(args) == 1 && args[0] == "mainchain" {
+		displayMainchain()
+		return
+	}
 
 	var slot int
 	nSlots := 1
@@ -66,4 +73,17 @@ func runBranchesCmd(_ *cobra.Command, args []string) {
 			}
 		}
 	}
+}
+
+func displayMainchain() {
+	branchData := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	glb.Assertf(branchData != nil, "failed to find latest reliable branch")
+
+	count := 0
+	multistate.IterateBranchChainBack(glb.StateStore(), branchData, func(branchID *base.TransactionID, branch *multistate.BranchData) bool {
+		txid := branch.Stem.ID.TransactionID()
+		glb.Infof("%4d   %68s       %s", count, txid.String(), branch.SequencerID.String())
+		count++
+		return true
+	})
 }

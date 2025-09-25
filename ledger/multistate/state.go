@@ -334,18 +334,16 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.Transact
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	var iter common.KVIterator
+	keyPrefix := []byte{TriePartitionLedgerState}
 	if len(txidSlot) > 0 {
-		iter = r.trie.Iterator(base.Slot2Bytes(txidSlot[0]))
-	} else {
-		iter = r.trie.Iterator(nil)
+		keyPrefix = append(keyPrefix, base.Slot2Bytes(txidSlot[0])...)
 	}
-
-	iter.Iterate(func(k, v []byte) bool {
-		if len(k) != base.TransactionIDLength {
+	r.trie.Iterator(keyPrefix).Iterate(func(k, v []byte) bool {
+		d := k[1:]
+		if len(d) != base.TransactionIDLength {
 			return true
 		}
-		txid := base.MustTransactionIDFromBytes(k)
+		txid := base.MustTransactionIDFromBytes(d)
 		slot, err := base.SlotFromBytes(v)
 		util.AssertNoError(err)
 
@@ -381,10 +379,11 @@ func (r *Readable) Root() common.VCommitment {
 
 func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) {
 	r.trie.Iterator([]byte{TriePartitionLedgerState}).Iterate(func(key, oData []byte) bool {
-		if len(key) != base.OutputIDLength {
+		d := key[1:]
+		if len(d) != base.OutputIDLength {
 			return true
 		}
-		oid, err := base.OutputIDFromBytes(key)
+		oid, err := base.OutputIDFromBytes(d)
 		util.AssertNoError(err)
 		o, err := ledger.OutputFromBytes(oData)
 		util.AssertNoError(err)
@@ -403,8 +402,11 @@ func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, o
 
 	var oid base.OutputID
 	r.trie.Iterator(prefix).Iterate(func(k, v []byte) bool {
-		oid, err = base.OutputIDFromBytes(k[1:])
-		if err != nil {
+		d := k[1:]
+		if len(d) != base.OutputIDLength {
+			return true
+		}
+		if oid, err = base.OutputIDFromBytes(d); err != nil {
 			return false
 		}
 		return fun(oid, v)

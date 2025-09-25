@@ -19,8 +19,8 @@ var (
 
 func initMainChainCmd() *cobra.Command {
 	dbMainChainCmd := &cobra.Command{
-		Use:   "mainchain",
-		Short: "outputs main chain of branches from the DB",
+		Use:   "mainchain_stats",
+		Short: "calculates frquencies of sequencers along the main chain of branches from the DB",
 		Args:  cobra.NoArgs,
 		Run:   runMainChainCmd,
 	}
@@ -79,7 +79,7 @@ func runMainChainCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("stats by sequencer id:")
 	for _, k := range sorted {
 		sd := bySeqID[k]
-		glb.Infof("%10s %s  %8d (%2d%%)       %s", sd.name, k.StringShort(),
+		glb.Infof("%10s %s  %8d (%2d%%)       %s", sd.name, k.String(),
 			sd.numOccurrences, (100*sd.numOccurrences)/len(mainBranches), util.Th(sd.onChainBalance))
 	}
 }
