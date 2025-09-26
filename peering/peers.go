@@ -53,7 +53,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	connManager, err := connmgr.NewConnManager(
 		cfg.MaxDynamicPeers,   // lo,
 		cfg.MaxDynamicPeers+5, // hi,
-		connmgr.WithEmergencyTrim(true),
+		//connmgr.WithEmergencyTrim(true), // depracated??
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create ConnManager: %w", err)
