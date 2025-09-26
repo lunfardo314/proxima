@@ -152,7 +152,7 @@ func SaveSnapshot(state StateStoreReader, branch *BranchData, ctx context.Contex
 	}
 
 	// parse ledger ID data to validate and to print params (not needed?)
-	lib, err := ledger.ParseLibraryFromYAML(ledgerIDBytes)
+	lib, err := ledger.ParseLibraryFromYAML(ledgerIDBytes, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return makeErr(err.Error())
 	}
@@ -229,7 +229,7 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 	if pair.IsNil() || pair.Err != nil {
 		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 1")
 	}
-	lib, err := ledger.ParseLibraryFromYAML(pair.Value)
+	lib, err := ledger.ParseLibraryFromYAML(pair.Value, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 2")
