@@ -1,6 +1,6 @@
 module github.com/lunfardo314/proxima
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/dgraph-io/badger/v4 v4.5.1
