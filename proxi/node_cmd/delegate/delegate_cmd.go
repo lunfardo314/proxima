@@ -1,4 +1,4 @@
-package delegation
+package delegate
 
 import (
 	"github.com/spf13/cobra"
@@ -13,7 +13,7 @@ func Init() *cobra.Command {
 	}
 
 	delegationCmd.AddCommand(
-		initDelegationSendCmd(),
+		initDelegateAmountCmd(),
 		initRevokeDelegationCmd(),
 		initDelegationStatusCmd(),
 		initDelegationSubmitCmd(),

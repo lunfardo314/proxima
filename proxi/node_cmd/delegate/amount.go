@@ -1,4 +1,4 @@
-package delegation
+package delegate
 
 import (
 	"fmt"
@@ -20,12 +20,12 @@ var (
 	maxFreezeEpochs  uint8
 )
 
-func initDelegationSendCmd() *cobra.Command {
+func initDelegateAmountCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "send <amount> [flags]",
+		Use:   "amount <amount> [flags]",
 		Short: `delegates amount to the target sequencer by creating delegation chain output`,
 		Args:  cobra.ExactArgs(1),
-		Run:   runDelegationSendCmd,
+		Run:   runDelegateAmountCmd,
 	}
 
 	glb.AddFlagTarget(cmd)
@@ -42,7 +42,7 @@ func initDelegationSendCmd() *cobra.Command {
 	return cmd
 }
 
-func runDelegationSendCmd(_ *cobra.Command, args []string) {
+func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 
