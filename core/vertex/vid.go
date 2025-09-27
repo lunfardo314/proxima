@@ -386,7 +386,7 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 		},
 	})
 	_, ok := ret.OutputWithChainID()
-	util.Assertf(ok, ">>> not chained:\n%s", ret.OutputWithID().LinesHR("    ").String())
+	util.Assertf(ok, ">>> not chained:\n%s\n----------\n%s", ret.OutputWithID().LinesHR("    ").String(), vid.String())
 	return
 }
 
