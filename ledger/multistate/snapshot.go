@@ -34,7 +34,7 @@ type (
 	}
 
 	SnapshotStats struct {
-		ByPartition      map[byte]int
+		ByPartition      map[byte]int // TODO
 		DurationTraverse time.Duration
 	}
 )
