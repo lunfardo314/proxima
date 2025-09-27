@@ -20,6 +20,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 		ledger.Const.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
 
 	{
+		// debug
 		o := extend.Output()
 		_, ok := ledger.ExtractChainData(o, extend.DecodeID())
 		env.Assertf(ok, "NewIncrementalAttacher: extend output is not a chain output:\n%s", o.LinesHR("    "))
