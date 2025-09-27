@@ -21,11 +21,10 @@ import (
 // Transaction provides access to the tree of transferable transaction
 type (
 	Transaction struct {
-		tree      *tuples.Tree
-		txid      base.TransactionID
-		sender    ledger.AddressED25519
-		timestamp base.LedgerTime
-		//totalAmountPersisted     uint64                           // persisted in tx, always positive
+		tree                     *tuples.Tree
+		txid                     base.TransactionID
+		sender                   ledger.AddressED25519
+		timestamp                base.LedgerTime
 		producedAmountTotals     [15]int64                        // calculated by summing up amount vectors
 		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
@@ -252,10 +251,11 @@ func ParseSequencerData(tx *Transaction) error {
 
 	// it is a sequencer milestone transaction
 	tx.sequencerTransactionData = &ledger.SequencerTransactionData{
-		SequencerOutputData: seqOutputData,
-		SequencerID:         sequencerID,
-		StemOutputIndex:     stemOutputIndex,
-		StemOutputData:      nil,
+		SequencerOutputData:  seqOutputData,
+		SequencerID:          sequencerID,
+		SequencerOutputIndex: sequencerOutputIndex,
+		StemOutputIndex:      stemOutputIndex,
+		StemOutputData:       nil,
 	}
 
 	// ---  check stem output data

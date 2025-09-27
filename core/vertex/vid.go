@@ -359,10 +359,8 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerTransaction()")
 
 	var seqData *ledger.SequencerTransactionData
-	var tx *transaction.Transaction
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			tx = v.Tx
 			seqData = v.Tx.SequencerTransactionData()
 			util.Assertf(seqData != nil, "seqData is nil")
 			ret = WrappedOutput{
@@ -371,7 +369,6 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			tx = v.Tx
 			seqData = v.Tx.SequencerTransactionData()
 			util.Assertf(seqData != nil, "seqData is nil")
 			ret = WrappedOutput{
@@ -388,8 +385,6 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 			}
 		},
 	})
-	_, ok := ret.OutputWithChainID()
-	util.Assertf(ok, ">>> not chained:\n%s\n----------\n%s\n-------------\n%s", ret.OutputWithID().LinesHR("    ").String(), vid.String(), tx.String())
 	return
 }
 
