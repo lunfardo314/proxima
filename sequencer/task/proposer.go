@@ -103,7 +103,6 @@ func (p *proposer) propose(a *proposal) error {
 		attacherName:      a.IncrementalAttacher.Name(),
 		strategyShortName: p.strategy.ShortName,
 	}
-	//trackProposals.RegisterPointer(_proposal)
 
 	if tx.IsBranchTransaction() {
 		_proposal.txMetadata.LedgerCoverage = util.Ref(ledgerCoverage) // not persistent

@@ -197,8 +197,6 @@ func (t *taskData) newProposer(s *proposerStrategy) *proposer {
 		Name:     t.Name + "-" + s.Name,
 	}
 
-	//trackProposers.RegisterPointer(ret)
-
 	return ret
 }
 

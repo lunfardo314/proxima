@@ -22,9 +22,6 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 	seq.ownMilestonesMutex.RLock()
 	defer seq.ownMilestonesMutex.RUnlock()
 
-	//seq.Tracef(TraceTag, "FutureConeOwnMilestonesOrdered for root output %s. Total %d own milestones",
-	//	rootOutput.IDStringShort, len(seq.ownMilestones))
-
 	_, ok := seq.ownMilestones[rootOutput.VID]
 	seq.Assertf(ok, "FutureConeOwnMilestonesOrdered: milestone output %s of chain %s is expected to be among set of own milestones (%d)",
 		rootOutput.IDStringShort, seq.sequencerID.StringShort, len(seq.ownMilestones))
@@ -138,9 +135,7 @@ func (seq *Sequencer) purgeOwnMilestones(ttl time.Duration) (int, int) {
 	for vid, withTime := range seq.ownMilestones {
 		if withTime.since.Before(horizon) {
 			delete(seq.ownMilestones, vid)
-			//vid.UnReference()
 			count++
-			//seq.Log().Infof("--------- deleted own milestone %s, outputs from past cone %d ------------", vid.IDShortString(), len(withTime.consumed))
 		}
 	}
 
