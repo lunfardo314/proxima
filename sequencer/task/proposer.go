@@ -184,14 +184,16 @@ func (p *proposer) chooseEndorseExtendPairAttacher(endorse *vertex.WrappedTx, ex
 	var ret, a *attacher.IncrementalAttacher
 	var err error
 	for _, extend := range extendCandidates {
-		p.Tracef(TraceTagChooseFirstExtendEndorsePair, "%s filtered out: extend %s and endorse %s: %v", p.targetTs.String, extend.IDStringShort, endorse.IDShortString, err)
 		if !pairFilter(extend, endorse) {
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair, "%s filtered out: extend %s, endorse %s: err=%v", p.targetTs.String, extend.IDStringShort, endorse.IDShortString, err)
 			continue
 		}
+		p.Tracef(TraceTagChooseFirstExtendEndorsePair, "%s create incremental attacher: extend %s, endorse %s: err=%v",
+			p.targetTs.String, extend.IDStringShort, endorse.IDShortString, err)
 		a, err = attacher.NewIncrementalAttacher(p.Name, p, p.targetTs, extend, endorse)
 		if err != nil {
 			p.taskData.slotData.markCombinationChecked(false, extend, endorse)
-			p.Tracef(TraceTagChooseFirstExtendEndorsePair, "%s can't extend %s and endorse %s: %v", p.targetTs.String, extend.IDStringShort, endorse.IDShortString, err)
+			p.Tracef(TraceTagChooseFirstExtendEndorsePair, "%s can't extend %s and endorse %s: err=%v", p.targetTs.String, extend.IDStringShort, endorse.IDShortString, err)
 			continue
 		}
 		// we must carefully dispose unused references, otherwise pruning does not work

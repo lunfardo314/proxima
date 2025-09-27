@@ -358,21 +358,22 @@ func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID base.ChainID, stemID bas
 func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerTransaction()")
 
+	var seqData *ledger.SequencerTransactionData
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
-				ret = WrappedOutput{
-					VID:   vid,
-					Index: v.Tx.SequencerTransactionData().SequencerOutputIndex,
-				}
+			seqData = v.Tx.SequencerTransactionData()
+			util.Assertf(seqData != nil, "seqData is nil")
+			ret = WrappedOutput{
+				VID:   vid,
+				Index: seqData.SequencerOutputIndex,
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
-				ret = WrappedOutput{
-					VID:   vid,
-					Index: v.Tx.SequencerTransactionData().SequencerOutputIndex,
-				}
+			seqData = v.Tx.SequencerTransactionData()
+			util.Assertf(seqData != nil, "seqData is nil")
+			ret = WrappedOutput{
+				VID:   vid,
+				Index: seqData.SequencerOutputIndex,
 			}
 		},
 		VirtualTx: func(v *VirtualTransaction) {
