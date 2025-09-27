@@ -34,20 +34,20 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 	visited := set.New[*vertex.WrappedTx](rootOutput.VID)
 	ret := []vertex.WrappedOutput{rootOutput}
 	for _, vid := range ordered {
-		switch {
-		case vid.IsBad():
+		if vid.IsBad() || !vid.IsSequencerMilestone() || !ledger.ValidTransactionPace(vid.Timestamp(), targetTs) {
 			continue
-		case !vid.IsSequencerMilestone():
-			continue
-		case !visited.Contains(vid.SequencerPredecessor(func(txid base.TransactionID) *vertex.WrappedTx {
+		}
+		pred := vid.SequencerPredecessor(func(txid base.TransactionID) *vertex.WrappedTx {
 			return attacher.AttachTxID(txid, seq, attacher.WithInvokedBy("FutureConeOwnMilestonesOrdered"))
-		})):
-			continue
-		case !ledger.ValidTransactionPace(vid.Timestamp(), targetTs):
+		})
+		if !visited.Contains(pred) {
 			continue
 		}
 		visited.Insert(vid)
-		ret = append(ret, vid.SequencerWrappedOutput())
+		seqOut := vid.SequencerWrappedOutput()
+		_, ok = seqOut.OutputWithChainID()
+		util.Assertf(ok, "not a chain output:\nid=%s\n%s", seqOut.OutputWithID().LinesHR("    ").String())
+		ret = append(ret, seqOut)
 	}
 	return ret
 }
