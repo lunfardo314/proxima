@@ -46,7 +46,7 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 		visited.Insert(vid)
 		seqOut := vid.SequencerWrappedOutput()
 		_, ok = seqOut.OutputWithChainID()
-		util.Assertf(ok, "not a chain output:\nid=%s\n%s", seqOut.OutputWithID().LinesHR("    ").String())
+		util.Assertf(ok, "not a chain output:\nid=%s\n%s", seqOut.IDStringShort(), seqOut.OutputWithID().LinesHR("    ").String())
 		ret = append(ret, seqOut)
 	}
 	return ret
