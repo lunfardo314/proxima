@@ -265,6 +265,10 @@ func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) boo
 	return b.GetStateReaderForTheBranch(branchID).KnowsCommittedTransaction(txid)
 }
 
+func (b *Branches) SnapshotKnowsTransaction(txid base.TransactionID) bool {
+	return b.BranchKnowsTransaction(b.snapshotBranchID, txid)
+}
+
 // IsDescendantBranch returns:
 //
 //	compatible = true -> then isDescendentOf=true if branch1 known branch2 and false otherwise

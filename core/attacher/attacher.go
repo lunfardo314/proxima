@@ -65,6 +65,11 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 	baselineDirectionID := v.Tx.BaselineDirection()
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
 
+	if a.Branches().SnapshotKnowsTransaction(baselineDirectionID) {
+		v.BaselineBranchID = util.Ref(a.Branches().SnapshotBranchID())
+		return true
+	}
+
 	baselineDirection := AttachTxID(baselineDirectionID, a,
 		WithInvokedBy(a.name),
 		WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
