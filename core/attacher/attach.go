@@ -20,13 +20,6 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 		opt(options)
 	}
 
-	//{
-	//	snapID := env.Branches().SnapshotBranchID()
-	//	if txid.Slot() <= snapID.Slot()+3 {
-	//		env.Tracef("nearSnapshot", ">>>> AttachTxID(snapSlot = %d): %s   %s", snapID.Slot(), txid.String(), txid.StringHex())
-	//	}
-	//}
-
 	env.WithGlobalWriteLock(func() {
 		vid = env.GetVertexNoLock(txid)
 		if vid != nil {

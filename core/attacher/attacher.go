@@ -527,8 +527,8 @@ func (a *attacher) BaselineSupply() uint64 {
 func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint64) uint64 {
 	var baselineLC uint64
 
+	// note that timestamp of the transaction can be before the baseline when baseline is snapshot
 	if bl := a.pastCone.GetBaseline(); bl != nil && currentTs.After(bl.Timestamp()) {
-		//util.Assertf(currentTs.After(bl.Timestamp()), "inconsistent timestamps: expected current %s after baseline %s", currentTs.String, bl.Timestamp().String())
 		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint64(currentTs.Slot-bl.Slot())
 		if !currentTs.IsSlotBoundary() {
 			baselineLC >>= 1

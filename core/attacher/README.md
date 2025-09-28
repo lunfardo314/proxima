@@ -2,20 +2,20 @@ TODO needs review
 
 The package `attacher` contains core functions dedicated to the construction of the _UTXO tangle_.
 
-Each transaction if first parsed and then is **attached** to the UTXO tangle. 
-The _attachment_ process means _solidification_ of the past cone of the transactions and checking validity of it:
+Each transaction first is parsed and then is **attached** to the UTXO tangle. 
+The _attachment_ process means _solidification_ of the past cone of the transactions and checking validity of it (as per transaction validity rules):
 
-* _Solidification_: making sure all transactions in the past cone are valid
+* _Solidification_: making sure all transactions in the past cone exists and are valid.
 * _Determining the baseline of the sequencer transaction_: solidification of the whole transaction path which leads 
 to the baseline branch 
 * Transaction is _solid_ when it is _rooted_ (with terminal outputs belonging to the ledger state):
-  * in the baseline branch for sequencer transactions
+  * in the baseline branch for the sequencer transactions
   * in any branch for non-sequencer transactions
 * Each transaction is _validated_ by running all validation scripts for all outputs (consumed/inputs and produced ones) upon solidification
 * Each sequencer transaction is checked for absence of conflicts (double_spends) in the past cone in the context of the baseline state.
-* Each non-sequencer transaction is checked for absence of conflict in the past cone when tagged-along a particular sequencer transaction
+* Each non-sequencer transaction is checked for absence of conflicts in the past cone
 * Sequencer transaction is _GOOD_ when it is _solid_, _validated_ and does not contain conflicts in the past cone, otherwise it is marked _BAD_
-* Solid and validated non-sequencer transaction is always _UNDEFINED_, otherwise it is _BAD_
+* Solid and validated non-sequencer transaction is always _UNDEFINED_, otherwise it is _BAD_ (never _GOOD_).
 
 The construction of the UTXO tangle is highly parallel. Each sequencer transaction is attached by separate goroutine: the **attacher**.
 
