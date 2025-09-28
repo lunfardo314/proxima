@@ -116,10 +116,10 @@ func runRestoreCmd(_ *cobra.Command, _ []string) {
 
 		switch pair.Key[0] {
 		case multistate.TriePartitionLedgerState:
-			if len(pair.Value) == base.TransactionIDLength {
+			if len(pair.Value[1:]) == base.TransactionIDLength {
 				txCount++
 			}
-			if len(pair.Value) == base.OutputIDLength {
+			if len(pair.Value[1:]) == base.OutputIDLength {
 				utxoCount++
 			}
 		case multistate.TriePartitionAccounts:
