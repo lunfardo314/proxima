@@ -10,6 +10,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -92,9 +93,13 @@ func runRestoreCmd(_ *cobra.Command, _ []string) {
 	}
 	total := 0
 	verbosityLevel := glb.VerbosityLevel()
-	counters := make(map[byte]int)
 
 	begin := time.Now()
+
+	txCount := 0
+	utxoCount := 0
+	chainCount := 0
+	accountsCount := 0
 
 	for pair := range kvStream.InChan {
 		if util.IsNil(batch) {
@@ -108,7 +113,20 @@ func runRestoreCmd(_ *cobra.Command, _ []string) {
 			_outKVPair(pair.Key, pair.Value, total, console)
 		}
 		total++
-		counters[pair.Key[0]] = counters[pair.Key[0]] + 1
+
+		switch pair.Key[0] {
+		case multistate.TriePartitionLedgerState:
+			if len(pair.Value) == base.TransactionIDLength {
+				txCount++
+			}
+			if len(pair.Value) == base.OutputIDLength {
+				utxoCount++
+			}
+		case multistate.TriePartitionAccounts:
+			accountsCount++
+		case multistate.TriePartitionChainID:
+			chainCount++
+		}
 
 		if inBatch == batchSize {
 			lastRoot = trieUpdatable.Commit(batch)
@@ -142,8 +160,9 @@ func runRestoreCmd(_ *cobra.Command, _ []string) {
 		lastRoot.String(), kvStream.RootRecord.Root.String())
 
 	glb.Infof("Success\nTotal %d records. By type:", total)
-	for _, k := range util.KeysSorted(counters, func(k1, k2 byte) bool { return k1 < k2 }) {
-		glb.Infof("    %s: %d", multistate.PartitionToString(k), counters[k])
-	}
+	glb.Infof("   Tx:       %d", txCount)
+	glb.Infof("   UTXO:     %d", utxoCount)
+	glb.Infof("   Chains:   %d", chainCount)
+	glb.Infof("   Accounts: %d", accountsCount)
 	glb.Infof("it took %v, %d records/sec", time.Since(start), time.Duration(total)*time.Second/time.Since(start))
 }
