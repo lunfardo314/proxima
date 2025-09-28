@@ -19,13 +19,6 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
 		ledger.Const.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
 
-	{
-		// debug
-		o := extend.Output()
-		_, ok := ledger.ExtractChainData(o, extend.DecodeID())
-		env.Assertf(ok, "NewIncrementalAttacher: extend output is not a chain output:\n%s", o.LinesHR("    "))
-	}
-
 	for _, endorseVID := range endorse {
 		env.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerTransaction()")
 		env.Assertf(targetTs.Slot == endorseVID.Slot(), "NewIncrementalAttacher: targetTs.Slot() == endorseVid.Slot()")
