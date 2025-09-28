@@ -2,6 +2,7 @@ package node_cmd
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -64,28 +65,63 @@ func runAllChainsCmd(_ *cobra.Command, _ []string) {
 }
 
 func listChainsShort(chains []*ledger.OutputWithChainID) {
+	sort.Slice(chains, func(i, j int) bool {
+		ci := chains[i]
+		cj := chains[j]
+		if ci.ID.IsSequencerTransaction() == cj.ID.IsSequencerTransaction() {
+			return ci.Output.TokenBalance() > cj.Output.TokenBalance()
+		}
+		if ci.ID.IsSequencerTransaction() && !cj.ID.IsSequencerTransaction() {
+			return true
+		}
+		return false
+	})
+	seqNames := make(map[base.ChainID]string)
+	seqHeight := make(map[base.ChainID]string)
 	for _, o := range chains {
-		bal := o.Output.TokenBalance()
 		sd, _ := o.Output.SequencerOutputData()
 		if sd != nil {
-			frozen := uint64(o.Output.FrozenCoverage(0))
-			sdStr := "n/a"
+			sdName := "n/a"
+			sdHeight := ""
 			if md := sd.SequencerData; md != nil {
-				sdStr = fmt.Sprintf("%s (%d/%d)", md.Name(), md.ChainHeight(), md.BranchHeight())
+				sdName = md.Name()
+				sdHeight = fmt.Sprintf("(%d/%d)", md.ChainHeight(), md.BranchHeight())
 			}
-			glb.Infof("%s sequencer %s, balance: %s, frozen: %s, total: %s",
-				o.ChainID.String(), sdStr, util.Th(bal), util.Th(frozen), util.Th(bal+frozen))
+			seqNames[o.ChainID] = sdName
+			seqHeight[o.ChainID] = sdHeight
+		}
+	}
+
+	totalOnSeqBalance := uint64(0)
+	totalFrozen := uint64(0)
+	count := 0
+	for _, o := range chains {
+		bal := o.Output.TokenBalance()
+		if name, isSeq := seqNames[o.ChainID]; isSeq {
+			frozen := uint64(o.Output.FrozenCoverage(0))
+			glb.Infof("%4d   %s sequencer %s %s, balance: %s, frozen: %s, total: %s",
+				count, o.ChainID.String(), name, seqHeight[o.ChainID], util.Th(bal), util.Th(frozen), util.Th(bal+frozen))
+			totalOnSeqBalance += bal
+			totalFrozen += frozen
 		} else {
 			lock := o.Output.Lock()
 			if dlg, isDelegation := lock.(*ledger.DelegateLock); isDelegation {
 				targetID := dlg.Target.ChainID()
-				glb.Infof("%s --> %s, balance: %s", o.ChainID.String(), targetID.StringShort(), util.Th(bal))
+				targetName := targetID.String()
+				if _, ok := seqNames[targetID]; ok {
+					targetName = seqNames[targetID]
+				}
+				glb.Infof("%4d   %s --> %s, balance: %s", count, o.ChainID.String(), targetName, util.Th(bal))
 			} else {
-				glb.Infof("%s, balance: %s", o.ChainID.String(), util.Th(bal))
+				glb.Infof("%4d   %s, balance: %s", count, o.ChainID.String(), util.Th(bal))
 			}
 		}
+		count++
 	}
-
+	glb.Infof("------------\n")
+	glb.Infof("total on sequencer balance: %s", util.Th(totalOnSeqBalance))
+	glb.Infof("total frozen:               %s", util.Th(totalFrozen))
+	glb.Infof("total active coverage:      %s", util.Th(totalOnSeqBalance+totalFrozen))
 }
 
 func listChainsVerbose(chains []*ledger.OutputWithChainID) {
