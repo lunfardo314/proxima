@@ -6,6 +6,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -59,12 +60,16 @@ func runAllChainsCmd(_ *cobra.Command, _ []string) {
 		if groupByDelegationTarget {
 			listGrouped(chains)
 		} else {
-			listChains(chains)
+			listChains(chains, rr)
 		}
 	}
 }
 
-func listChainsShort(chains []*ledger.OutputWithChainID) {
+func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.RootRecord) {
+	perc := func(denom, num uint64) string {
+		return fmt.Sprintf("%.2f%%", 100*float64(denom)/float64(num))
+	}
+
 	sort.Slice(chains, func(i, j int) bool {
 		ci := chains[i]
 		cj := chains[j]
@@ -111,17 +116,19 @@ func listChainsShort(chains []*ledger.OutputWithChainID) {
 				if _, ok := seqNames[targetID]; ok {
 					targetName = seqNames[targetID]
 				}
-				glb.Infof("%4d   %s --> %s, balance: %s", count, o.ChainID.String(), targetName, util.Th(bal))
+				glb.Infof("%4d   %s --> %s, balance: %s (%s)", count, o.ChainID.String(), targetName, util.Th(bal), perc(bal, lrbRootRecord.Supply))
 			} else {
 				glb.Infof("%4d   %s, balance: %s", count, o.ChainID.String(), util.Th(bal))
 			}
 		}
 		count++
 	}
+
 	glb.Infof("-----------------------")
-	glb.Infof("total on sequencer balance: %s", util.Th(totalOnSeqBalance))
-	glb.Infof("total frozen:               %s", util.Th(totalFrozen))
-	glb.Infof("total active coverage:      %s", util.Th(totalOnSeqBalance+totalFrozen))
+	glb.Infof("total on sequencer balance: %s (%s)", util.Th(totalOnSeqBalance), perc(totalOnSeqBalance, lrbRootRecord.Supply))
+	glb.Infof("total frozen:               %s (%s)", util.Th(totalFrozen), perc(totalFrozen, lrbRootRecord.Supply))
+	glb.Infof("total active coverage:      %s (%s)", util.Th(totalOnSeqBalance+totalFrozen), perc(totalOnSeqBalance+totalFrozen, lrbRootRecord.Supply))
+	glb.Infof("total supply:               %s", util.Th(lrbRootRecord.Supply))
 }
 
 func listChainsVerbose(chains []*ledger.OutputWithChainID) {
@@ -157,7 +164,7 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID) {
 
 }
 
-func listChains(chains []*ledger.OutputWithChainID) {
+func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.RootRecord) {
 	glb.Infof("\nshow sequencers only = %v", showSequencersOnly)
 	glb.Infof("show delegations only = %v", showDelegationsOnly)
 	glb.Infof("------------------------------")
@@ -165,7 +172,7 @@ func listChains(chains []*ledger.OutputWithChainID) {
 	if glb.IsVerbose() {
 		listChainsVerbose(chains)
 	} else {
-		listChainsShort(chains)
+		listChainsShort(chains, lrbRootRecord)
 	}
 }
 
