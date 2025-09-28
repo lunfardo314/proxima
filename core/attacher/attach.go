@@ -22,8 +22,12 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 
 	{
 		snapID := env.Branches().SnapshotBranchID()
-		if txid.Slot() == snapID.Slot() || txid.Slot() == snapID.Slot()+1 {
-			env.Tracef("nearSapshot", ">>>> AttachTxID(snapSlot = %d): %s   %s", snapID.Slot(), txid.String(), txid.StringHex())
+		if txid.IsBranchTransaction() {
+			env.Tracef("nearSnapshot", ">>>> AttachTxID branch: %s, hex = %s", txid.String(), txid.StringHex())
+		} else {
+			if txid.Slot() <= snapID.Slot()+1 {
+				env.Tracef("nearSnapshot", ">>>> AttachTxID(snapSlot = %d): %s   %s", snapID.Slot(), txid.String(), txid.StringHex())
+			}
 		}
 	}
 
