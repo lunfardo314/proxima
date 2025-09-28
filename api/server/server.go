@@ -764,11 +764,21 @@ func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Requ
 		if sd.SequencerData != nil {
 			name, _, _ = strings.Cut(sd.SequencerData.Name(), ".")
 		}
-		resp.Sequencers[chainID.StringHex()] = api.DelegationsOnSequencer{
-			SequencerOutputID: di.SequencerOutput.ID.StringHex(),
-			Balance:           di.SequencerOutput.Output.TokenBalance(),
-			SequencerName:     name,
-			Delegations:       dlg,
+		exists := false
+		for _, sequ := range resp.Sequencers {
+			if sequ.SequencerName == name {
+				exists = true
+				dlg = sequ.Delegations
+				break
+			}
+		}
+		if !exists {
+			resp.Sequencers[chainID.StringHex()] = api.DelegationsOnSequencer{
+				SequencerOutputID: di.SequencerOutput.ID.StringHex(),
+				Balance:           di.SequencerOutput.Output.TokenBalance(),
+				SequencerName:     name,
+				Delegations:       dlg,
+			}
 		}
 		for delegationID, delegationOut := range di.Delegations {
 
