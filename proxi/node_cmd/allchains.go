@@ -118,7 +118,7 @@ func listChainsShort(chains []*ledger.OutputWithChainID) {
 		}
 		count++
 	}
-	glb.Infof("------------\n")
+	glb.Infof("-----------------------")
 	glb.Infof("total on sequencer balance: %s", util.Th(totalOnSeqBalance))
 	glb.Infof("total frozen:               %s", util.Th(totalFrozen))
 	glb.Infof("total active coverage:      %s", util.Th(totalOnSeqBalance+totalFrozen))
