@@ -602,8 +602,11 @@ func (br *BranchData) LinesVerbose(prefix ...string) *lines.Lines {
 
 func (br *BranchData) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
-	ret.Add("Sequencer output: %s", br.SequencerOutput.ID.String()).
-		Add("Stem output:      %s", br.Stem.ID.String())
+	ret.Add("Sequencer output ID: %s (hex = %s)", br.SequencerOutput.ID.String(), br.SequencerOutput.ID.StringHex()).
+		Add("Stem output ID:      %s", br.Stem.ID.String())
+	if lck, ok := br.Stem.Output.StemLock(); ok {
+		ret.Add("Stem predecessor ID: %s (hex=%s)", lck.PredecessorOutputID.String(), lck.PredecessorOutputID.StringHex())
+	}
 	return ret.Append(br.RootRecord.Lines(prefix...))
 }
 
