@@ -34,7 +34,11 @@ type (
 	}
 
 	SnapshotStats struct {
-		ByPartition      map[byte]int // TODO
+		NumUTXO          int
+		NumTx            int
+		NumOtherState    int
+		NumChainID       int
+		NumAccounts      int
 		DurationTraverse time.Duration
 	}
 )
@@ -52,9 +56,7 @@ func writeState(state StateStoreReader, target common.KVStreamWriter, root commo
 		return nil, fmt.Errorf("writeState: %w", err)
 	}
 	counter := 0
-	stats := &SnapshotStats{
-		ByPartition: make(map[byte]int),
-	}
+	stats := &SnapshotStats{}
 	start := time.Now()
 	rdr.Iterator(nil).Iterate(func(k, v []byte) bool {
 		select {
@@ -67,7 +69,20 @@ func writeState(state StateStoreReader, target common.KVStreamWriter, root commo
 				_outKVPair(k, v, counter, out)
 				counter++
 
-				stats.ByPartition[k[0]] = stats.ByPartition[k[0]] + 1
+				switch k[0] {
+				case TriePartitionLedgerState:
+					if len(k[1:]) == base.TransactionIDLength {
+						stats.NumTx++
+					} else if len(k[1:]) == base.OutputIDLength {
+						stats.NumUTXO++
+					} else {
+						stats.NumOtherState++
+					}
+				case TriePartitionAccounts:
+					stats.NumAccounts++
+				case TriePartitionChainID:
+					stats.NumChainID++
+				}
 			}
 		}
 		return err == nil
@@ -252,16 +267,11 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 func (s *SnapshotStats) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("Traversed state in %v", s.DurationTraverse)
-	partitions := util.KeysSorted(s.ByPartition, func(k1, k2 byte) bool {
-		return k1 < k2
-	})
-
-	total := 0
-	for _, p := range partitions {
-		ret.Add("%s: %d", PartitionToString(p), s.ByPartition[p])
-		total += s.ByPartition[p]
-	}
-
-	ret.Add("Total records: %d", total)
+	ret.Add("UTXOs:         %d", s.NumUTXO)
+	ret.Add("Transactions:  %d", s.NumTx)
+	ret.Add("Other state:   %d", s.NumOtherState)
+	ret.Add("Chains:        %d", s.NumChainID)
+	ret.Add("Accounts:      %d", s.NumAccounts)
+	ret.Add("Total records: %d", s.NumUTXO+s.NumTx+s.NumOtherState+s.NumChainID+s.NumAccounts)
 	return ret
 }

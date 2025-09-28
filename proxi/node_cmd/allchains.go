@@ -63,11 +63,32 @@ func runAllChainsCmd(_ *cobra.Command, _ []string) {
 	}
 }
 
-func listChains(chains []*ledger.OutputWithChainID) {
-	glb.Infof("\nshow sequencers only = %v", showSequencersOnly)
-	glb.Infof("show delegations only = %v", showDelegationsOnly)
-	glb.Infof("------------------------------")
+func listChainsShort(chains []*ledger.OutputWithChainID) {
+	for _, o := range chains {
+		bal := o.Output.TokenBalance()
+		sd, _ := o.Output.SequencerOutputData()
+		if sd != nil {
+			frozen := uint64(o.Output.FrozenCoverage(0))
+			sdStr := "n/a"
+			if md := sd.SequencerData; md != nil {
+				sdStr = fmt.Sprintf("%s (%d/%d)", md.Name(), md.ChainHeight(), md.BranchHeight())
+			}
+			glb.Infof("%s sequencer %s, balance: %s, frozen: %s, total: %s",
+				o.ChainID.String(), sdStr, util.Th(bal), util.Th(frozen), util.Th(bal+frozen))
+		} else {
+			lock := o.Output.Lock()
+			if dlg, isDelegation := lock.(*ledger.DelegateLock); isDelegation {
+				targetID := dlg.Target.ChainID()
+				glb.Infof("%s --> %s, balance: %s", o.ChainID.String(), targetID.StringShort(), util.Th(bal))
+			} else {
+				glb.Infof("%s, balance: %s", o.ChainID.String(), util.Th(bal))
+			}
+		}
+	}
 
+}
+
+func listChainsVerbose(chains []*ledger.OutputWithChainID) {
 	count := 0
 	counter := 0
 	for _, o := range chains {
@@ -97,6 +118,19 @@ func listChains(chains []*ledger.OutputWithChainID) {
 		count++
 	}
 	glb.Infof("\ntotal %d chains", count)
+
+}
+
+func listChains(chains []*ledger.OutputWithChainID) {
+	glb.Infof("\nshow sequencers only = %v", showSequencersOnly)
+	glb.Infof("show delegations only = %v", showDelegationsOnly)
+	glb.Infof("------------------------------")
+
+	if glb.IsVerbose() {
+		listChainsVerbose(chains)
+	} else {
+		listChainsShort(chains)
+	}
 }
 
 func listGrouped(chains []*ledger.OutputWithChainID) {
