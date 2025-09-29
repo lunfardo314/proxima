@@ -103,12 +103,18 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	for _, o := range chains {
 		bal := o.Output.TokenBalance()
 		if name, isSeq := seqNames[o.ChainID]; isSeq {
+			if showDelegationsOnly {
+				continue
+			}
 			frozen := uint64(o.Output.FrozenCoverage(0))
 			glb.Infof("%4d   %s sequencer %s %s, balance: %s, frozen: %s, total: %s",
 				count, o.ChainID.String(), name, seqHeight[o.ChainID], util.Th(bal), util.Th(frozen), util.Th(bal+frozen))
 			totalOnSeqBalance += bal
 			totalFrozen += frozen
 		} else {
+			if showSequencersOnly {
+				continue
+			}
 			lock := o.Output.Lock()
 			if dlg, isDelegation := lock.(*ledger.DelegateLock); isDelegation {
 				targetID := dlg.Target.ChainID()

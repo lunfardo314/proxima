@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/snapshot_cmd"
 	"github.com/lunfardo314/proxima/proxi/util_cmd"
 	"github.com/lunfardo314/proxima/proxi/version"
+	"github.com/lunfardo314/proxima/proxi/wallet_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -51,6 +52,7 @@ and withdraw funds from the sequencer chain
 		util_cmd.Init(),
 		snapshot_cmd.Init(),
 		version.CmdVersion(),
+		wallet_cmd.InitWalletCmd(),
 	)
 	rootCmd.InitDefaultHelpCmd()
 	if err = rootCmd.Execute(); err != nil {

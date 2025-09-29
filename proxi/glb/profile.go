@@ -77,7 +77,7 @@ func GetDefaultSequencerID() *base.ChainID {
 		Infof("invalid default sequencer ID: %v", err)
 		return nil
 	}
-	Infof("default sequencer ID is: %s", seqIDStr)
+	// Infof("default sequencer ID is: %s", seqIDStr)
 	return &ret
 
 }
@@ -158,7 +158,7 @@ func GetTagAlongFee() uint64 {
 
 var tagAlongSequencerID atomic.Pointer[base.ChainID]
 
-func GetTagAlongSequencerID() *base.ChainID {
+func GetTagAlongSequencerID(doNotCallNode ...bool) *base.ChainID {
 	ret := tagAlongSequencerID.Load()
 	if ret != nil {
 		return ret
@@ -168,7 +168,7 @@ func GetTagAlongSequencerID() *base.ChainID {
 	var seqID base.ChainID
 	var err error
 	if seqIDStr == "" {
-		Infof("tag-along sequencer is not configured. Trying default..")
+		// Infof("tag-along sequencer is not configured. Trying default..")
 		pseqID := GetDefaultSequencerID()
 		Assertf(pseqID != nil, "default sequencer not specified")
 		seqID = *pseqID
@@ -177,10 +177,12 @@ func GetTagAlongSequencerID() *base.ChainID {
 		AssertNoError(err)
 	}
 
-	o, _, err := GetClient().GetChainOutputData(seqID)
-	Assertf(err == nil, "can't find chain %s: %v", seqID.String(), err)
-	Assertf(o.ID.IsSequencerTransaction(), "can't get tag-along sequencer %s: chain output %s is not a sequencer output",
-		seqID.StringShort(), o.ID.StringShort())
+	if len(doNotCallNode) > 0 && !doNotCallNode[0] {
+		o, _, err := GetClient().GetChainOutputData(seqID)
+		Assertf(err == nil, "can't find chain %s: %v", seqID.String(), err)
+		Assertf(o.ID.IsSequencerTransaction(), "can't get tag-along sequencer %s: chain output %s is not a sequencer output",
+			seqID.StringShort(), o.ID.StringShort())
+	}
 
 	tagAlongSequencerID.Store(&seqID)
 	return &seqID
