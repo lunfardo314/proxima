@@ -184,94 +184,99 @@ func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.Ro
 
 func listGrouped(chains []*ledger.OutputWithChainID) {
 	glb.Infof("\ndelegations grouped by target lock")
-	m := make(map[string][]*ledger.OutputWithChainID)
-
-	total := uint64(0)
-	count := 0
-	for _, o := range chains {
-		dOut, isDelegation := ledger.AsDelegationOutput(o.Output, o.ID)
-		if !isDelegation {
-			continue
-		}
-		dls := dOut.Target.String()
-		lst := m[dls]
-		if len(lst) == 0 {
-			lst = make([]*ledger.OutputWithChainID, 0)
-		}
-		lst = append(lst, o)
-		m[dls] = lst
-	}
-
-	for tl := range m {
-		glb.Infof("\ntarget lock: %s, total delegations: %d", tl, len(m[tl]))
-		totalForTarget := uint64(0)
-		for _, o := range m[tl] {
-			glb.Infof("\n      id              : %s", o.ChainID.String())
-			glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
-			glb.Infof("      controller lock : %s", o.Output.Lock().String())
-			glb.Infof("      output          : %s", o.ID.String())
-			totalForTarget += o.Output.TokenBalance()
-			count++
-		}
-		glb.Infof("\n------ TokenBalance delegated to the target lock: %s", util.Th(totalForTarget))
-		total += totalForTarget
-	}
-	glb.Infof("\nTOTAL delegations: %d, delegated amount: %s", count, util.Th(total))
+	glb.Infof("\nFUNCTION DISABLED")
+	return
+	//m := make(map[string][]*ledger.OutputWithChainID)
+	//
+	//total := uint64(0)
+	//count := 0
+	//for _, o := range chains {
+	//	dOut, isDelegation := ledger.AsDelegationOutput(o.Output, o.ID)
+	//	if !isDelegation {
+	//		continue
+	//	}
+	//	dls := dOut.Target.String()
+	//	lst := m[dls]
+	//	if len(lst) == 0 {
+	//		lst = make([]*ledger.OutputWithChainID, 0)
+	//	}
+	//	lst = append(lst, o)
+	//	m[dls] = lst
+	//}
+	//
+	//for tl := range m {
+	//	glb.Infof("\ntarget lock: %s, total delegations: %d", tl, len(m[tl]))
+	//	totalForTarget := uint64(0)
+	//	for _, o := range m[tl] {
+	//		glb.Infof("\n      id              : %s", o.ChainID.String())
+	//		glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
+	//		glb.Infof("      controller lock : %s", o.Output.Lock().String())
+	//		glb.Infof("      output          : %s", o.ID.String())
+	//		totalForTarget += o.Output.TokenBalance()
+	//		count++
+	//	}
+	//	glb.Infof("\n------ TokenBalance delegated to the target lock: %s", util.Th(totalForTarget))
+	//	total += totalForTarget
+	//}
+	//glb.Infof("\nTOTAL delegations: %d, delegated amount: %s", count, util.Th(total))
 }
 
 func listSequencerDelegationInfo(supply uint64) {
-	bySeq, _, err := glb.GetClient().GetDelegationsBySequencer()
-	glb.AssertNoError(err)
-
-	keys := util.KeysSorted(bySeq, func(k1, k2 string) bool {
-		return bySeq[k1].Balance > bySeq[k2].Balance
-		//switch {
-		//case len(bySeq[k1].Delegations) > len(bySeq[k2].Delegations):
-		//	return true
-		//case len(bySeq[k1].Delegations) == len(bySeq[k2].Delegations):
-		//	return bySeq[k1].SequencerName < bySeq[k2].SequencerName
-		//}
-		//return false
-	})
-
-	if glb.IsVerbose() {
-		glb.Infof("\nSequencers with delegations:\n")
-	} else {
-		glb.Infof("\nSequencers with delegation totals:\n")
-	}
-	totalDelegated := uint64(0)
-	totalDelegations := 0
-
-	slotNow := uint32(ledger.TimeNow().Slot)
-	for i, seqIDHex := range keys {
-		seqData := bySeq[seqIDHex]
-
-		delegatedAmount := uint64(0)
-		for _, dd := range seqData.Delegations {
-			delegatedAmount += dd.Amount
-		}
-		doid, err := base.OutputIDFromHexString(seqData.SequencerOutputID)
-		glb.AssertNoError(err)
-		glb.Infof("%2d. %s (%s)\t   chain balance: %20s    total delegated: %20s (%d)    last active: %d slots ago",
-			i, seqIDHex, seqData.SequencerName, util.Th(seqData.Balance), util.Th(delegatedAmount), len(seqData.Delegations), ledger.TimeNow().Slot-doid.Slot())
-		totalDelegated += delegatedAmount
-		totalDelegations += len(seqData.Delegations)
-
-		if !glb.IsVerbose() {
-			continue
-		}
-		for delID, delData := range seqData.Delegations {
-			inflation := delData.Amount - delData.StartAmount
-			slotsSince := slotNow - delData.SinceSlot
-			annual := float64(ledger.Const.SlotsPerYear()) * (float64(inflation) * 100 / float64(delData.StartAmount)) / float64(slotsSince)
-			glb.Infof("            %s %20s (+%s) annual %.2f%%",
-				delID, util.Th(delData.Amount), util.Th(delData.Amount-delData.StartAmount), annual)
-		}
-		glb.Infof("")
-	}
-
-	glb.Infof("---------------")
-	glb.Infof("TOTAL SUPPLY          :  %s", util.Th(supply))
-	glb.Infof("TOTAL DELEGATIONS     :  %d", totalDelegations)
-	glb.Infof("TOTAL DELEGATED AMOUNT:  %s (%.2f%% of supply)", util.Th(totalDelegated), 100*float64(totalDelegated)/float64(supply))
+	glb.Infof("\nFUNCTION DISABLED")
+	return
+	//
+	//bySeq, _, err := glb.GetClient().GetDelegationsBySequencer()
+	//glb.AssertNoError(err)
+	//
+	//keys := util.KeysSorted(bySeq, func(k1, k2 string) bool {
+	//	return bySeq[k1].Balance > bySeq[k2].Balance
+	//	//switch {
+	//	//case len(bySeq[k1].Delegations) > len(bySeq[k2].Delegations):
+	//	//	return true
+	//	//case len(bySeq[k1].Delegations) == len(bySeq[k2].Delegations):
+	//	//	return bySeq[k1].SequencerName < bySeq[k2].SequencerName
+	//	//}
+	//	//return false
+	//})
+	//
+	//if glb.IsVerbose() {
+	//	glb.Infof("\nSequencers with delegations:\n")
+	//} else {
+	//	glb.Infof("\nSequencers with delegation totals:\n")
+	//}
+	//totalDelegated := uint64(0)
+	//totalDelegations := 0
+	//
+	//slotNow := uint32(ledger.TimeNow().Slot)
+	//for i, seqIDHex := range keys {
+	//	seqData := bySeq[seqIDHex]
+	//
+	//	delegatedAmount := uint64(0)
+	//	for _, dd := range seqData.Delegations {
+	//		delegatedAmount += dd.Amount
+	//	}
+	//	doid, err := base.OutputIDFromHexString(seqData.SequencerOutputID)
+	//	glb.AssertNoError(err)
+	//	glb.Infof("%2d. %s (%s)\t   chain balance: %20s    total delegated: %20s (%d)    last active: %d slots ago",
+	//		i, seqIDHex, seqData.SequencerName, util.Th(seqData.Balance), util.Th(delegatedAmount), len(seqData.Delegations), ledger.TimeNow().Slot-doid.Slot())
+	//	totalDelegated += delegatedAmount
+	//	totalDelegations += len(seqData.Delegations)
+	//
+	//	if !glb.IsVerbose() {
+	//		continue
+	//	}
+	//	for delID, delData := range seqData.Delegations {
+	//		inflation := delData.Amount - delData.StartAmount
+	//		slotsSince := slotNow - delData.SinceSlot
+	//		annual := float64(ledger.Const.SlotsPerYear()) * (float64(inflation) * 100 / float64(delData.StartAmount)) / float64(slotsSince)
+	//		glb.Infof("            %s %20s (+%s) annual %.2f%%",
+	//			delID, util.Th(delData.Amount), util.Th(delData.Amount-delData.StartAmount), annual)
+	//	}
+	//	glb.Infof("")
+	//}
+	//
+	//glb.Infof("---------------")
+	//glb.Infof("TOTAL SUPPLY          :  %s", util.Th(supply))
+	//glb.Infof("TOTAL DELEGATIONS     :  %d", totalDelegations)
+	//glb.Infof("TOTAL DELEGATED AMOUNT:  %s (%.2f%% of supply)", util.Th(totalDelegated), 100*float64(totalDelegated)/float64(supply))
 }
