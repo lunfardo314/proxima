@@ -84,10 +84,6 @@ functions:
       sym: txExplicitBaseline
       numArgs: 0
       source: "atPath(pathToExplicitBaseline)"
-#   -
-#      sym: txTotalProducedAmount
-#      numArgs: 0
-#      source: "uint8Bytes(atPath(pathToTotalProducedAmount))"
    -
       sym: txSlot
       numArgs: 0
