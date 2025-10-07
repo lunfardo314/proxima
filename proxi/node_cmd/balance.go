@@ -24,7 +24,8 @@ func runBalanceCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromNode()
 	accountable := glb.MustGetTarget()
 
-	outs, lrbid, err := glb.GetClient().GetAccountOutputs(accountable)
+	clnt := glb.GetClient()
+	outs, lrbid, err := clnt.GetAccountOutputs(accountable)
 	glb.AssertNoError(err)
 	glb.PrintLRB(lrbid)
 	displayBalanceTotals(outs, accountable)

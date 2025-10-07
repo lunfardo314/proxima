@@ -52,12 +52,14 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	var targetSeqID base.ChainID
 
 	if targetChainIDStr == "" {
-		if id := glb.GetOwnSequencerID(); id == nil {
-			glb.Assertf(id != nil, "own sequencer not configured -> can't use as a default target sequencer")
-		} else {
-			targetSeqID = *id
+		var id *base.ChainID
+		if id = glb.GetOwnSequencerID(); id != nil {
 			glb.Infof("using own sequencer as a default target sequencer: %s", targetSeqID.String())
+		} else {
+			id = glb.GetDefaultSequencerID()
+			glb.Assertf(id != nil, "target sequencer not configured")
 		}
+		targetSeqID = *id
 	} else {
 		targetSeqID, err = base.ChainIDFromHexString(targetChainIDStr)
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)

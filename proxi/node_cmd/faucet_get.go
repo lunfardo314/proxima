@@ -14,7 +14,7 @@ const defaultFaucetHostIPAddr = "113.30.191.219"
 func initGetFundsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "getfunds",
-		Short: `requests funds from a faucet`,
+		Short: `request funds from the faucet`,
 		Args:  cobra.NoArgs,
 		Run:   getFundsCmd,
 	}

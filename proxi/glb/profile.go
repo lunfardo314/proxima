@@ -112,7 +112,10 @@ func ReadInConfig() {
 	viper.AutomaticEnv() // read-in environment variables that match
 
 	_ = viper.ReadInConfig()
-	Infof("using profile: %s", viper.ConfigFileUsed())
+	cfg := viper.ConfigFileUsed()
+	Assertf(FileExists(cfg), "config profile '%s' not found", cfg)
+	Infof("config profile: %s", cfg)
+
 }
 
 func NoWait() bool {

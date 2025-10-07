@@ -55,25 +55,30 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 
 const walletProfileTemplate = `# Proxi wallet profile
 
-// the default sequencer id when not specified own sequencer, tag-along or tag-along for spamming
+# default sequencer ID is used when own or tag-along sequencer is not specified
 default_sequencer_id: {{.BootstrapSeqID}}
 
 wallet:
     private_key: {{.PrivateKey}}
     account: {{.Account}}
-    # <own sequencer id> must be own sequencer id, i.e. controlled by the private key of the wallet.
+    # <own sequencer ID> must be the sequencer ID controlled by the private key of the wallet.
     # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
-    sequencer_id: <own sequencer id>
+    # Default is used when not specified
+    sequencer_id: <own sequencer ID>
 api:
-    # API endpoint of the node 
-    endpoint: http://127.0.0.1:8000
+    endpoint: http://63.250.56.190:8001
+
+# alternative testnet access points:
+#    endpoint: http://113.30.191.219:8001
+#    endpoint: http://83.229.84.197:8001
+#    endpoint: http://5.180.181.103:8001
 
 tag_along:
-    # id of the tag-along sequencer. Currently only one tag-along sequencer is supported
+    # tag-along fee amount and ID of the tag-along sequencer. Currently only one tag-along sequencer is supported
     # If not specified, the default sequencer ID will be used
-    # uncomment the line and specify your preferred sequencer
-#    sequencer_id: <your sequencer ID>
-    fee: 200
+    fee: 1
+# uncomment the line and specify your preferred sequencer
+#    sequencer_id: <tag-along sequencer ID>
 
 # provides parameters for 'proxi node getfunds' command
 faucet:
@@ -88,9 +93,9 @@ spammer:
     output_amount: 1000
     pace: 25
     tag_along:
-        fee: 50
+        fee: 1
         # <sequencer ID hex encoded> is tag-along sequencer id for the tip transaction in the bundle
-        # If not specified, the default sequencer id will be used
+        # If not specified, the default sequencer ID will be used
         # sequencer_id: <sequencer id hex encoded>
     # target address
     target: <target lock in EasyFL format>

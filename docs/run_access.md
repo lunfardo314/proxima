@@ -17,7 +17,7 @@ Clone the repository to `<your_dir>/proxima`.
 Run `go install -v` in working directories `<your_dir>/proxima` and `<your_dir>/proxima/proxi`.
 This will create executables: `proxima` for the node, and `proxi` for the CLI program with simple wallet functionality and tools.
 
-Run `proxi -h`, `proxi init -h`, `proxi db -h` etc, to check if it works.
+Run `proxi -h`, `proxi init -h`, `proxi db -h` etc., to check if it works.
 
 Below we assume we use the same working directory for all configuration profiles and databases.
 
@@ -25,7 +25,7 @@ Below we assume we use the same working directory for all configuration profiles
 At least one of the testnet nodes is constantly producing multi-state database snapshots. 
 
 The temporary place for download is http://83-229-84-197.cloud-xip.com/downloads/ . 
-Go there and download the latest-out-of-two snapshot files to the directory on your computer where the node's database will reside. 
+Go there and download the latest snapshot file to the directory on your computer where the node's database will reside. 
 
 The snapshot file name is made out of the transaction ID of the branch which represents the snapshot state. 
 
@@ -53,24 +53,13 @@ In the directory with the snapshot file run command `proxi snapshot restore -v`.
 Depending on the computer, it may take several minutes to build the database. Interrupting the process makes DB inconsistent,
 the `proximadb` directory must be deleted and the command run again.
 
-Upon finish, the command will report statistics like this:
-```text
-Success
-Total 513278 records. By type:
-    UTXO: 2575
-    ACCN: 2575
-    CHID: 11
-    TXID: 508117
-```
+Upon finish, the command will report statistics of snapshot file.
 
-It is, respectively, the number of UTXOs, account index records, number of chains and number of all committed transaction IDs. 
-Currently, the ledger state DB keeps IDs of all transactions (not transactions itself) committed since genesis. In the future state pruning will be needed. 
-
-The result of the command will be `proximadb` directory in the working directory. 
+The result of the command will be a newly created `proximadb` directory in the working directory. 
 
 ### 5. Prepare node configuration profile
 Run the command `proxi init node`. It will ask to enter some entropy needed for generation of the private key and the
-ID of the libp2p host of the node. The private key is used only to secure communications between peers, so 
+ID of the libp2p host of the node. The private key is used only to secure communications between peers, 
 it is not a private key that protects tokens.
 
 The command will create node configuration profile `proxima.yaml` in the working directory. 
@@ -109,7 +98,7 @@ Look for something like this in the log:
 [sync] latest reliable branch is 1 slots behind from now, current slot: 75613, coverage: 1_702_419_177_591_708 (1.636152ms)
 ```
 
-Node is synced if `latest reliable branch` (LRB) is just few, normally 1 to 3, slots behind from now and
+Node is synced if `latest reliable branch` (LRB) is just few, normally 1 to 3, slots behind the current slot and
 coverage is at least `1_300_000_000_000_000`.
 
 You also can check current parameters of the network by running `proxi node lrb` command. 

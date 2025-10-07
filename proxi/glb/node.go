@@ -32,9 +32,9 @@ func GetClient(endpoint ...string) *client.APIClient {
 	}
 	displayEndpointOnce.Do(func() {
 		if len(timeout) == 0 {
-			Infof("using API endpoint: %s, default timeout", endpoint)
+			Infof("API endpoint: %s, default timeout", endp)
 		} else {
-			Infof("using API endpoint: %s, timeout: %v", endpoint, timeout[0])
+			Infof("API endpoint: %s, timeout: %v", endp, timeout[0])
 		}
 	})
 	return client.NewWithGoogleDNS(endp, timeout...)

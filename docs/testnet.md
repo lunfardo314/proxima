@@ -2,22 +2,19 @@
 
 Proxima testnet is an experimental network, intended for testing node software and various aspects of the Proxima concept.
 
-We have been running several of them, each with at least 9 nodes and 5 sequencers among them. Normally we aim to control testnets
+We have been running several of them, each with at least 9 nodes and 5 sequencers among them. Normally we aim to control the testnet
 by owning a majority of token supply. This is due to the experimental nature of the networks and frequent breaking changes. 
 After each breaking change, we have to reset the ledger state from genesis.
 
-Starting from version `v0.1.2` the testnet is open. It means everybody can join the network with the access node,
-everybody with enough tokens can run a sequencer and earn inflation.
+Testnet versions has form `v0.x.y-testnet`, where `x` is breaking change (incompatible with previous) and `y` is non-breaking upgrade. 
 
-Starting from version `v0.1.3-testnet` network has faucet. You can receive tokens to your address by calling node API. 
+Starting from version `v0.4.0-testnet` Proxima node implements all main functions of the core protocol. 
+Subsequent versions are upgrades and improvements.
 
-Starting from version `v0.1.4-testnet`, the node has _delegation_ function implemented. It allows any token holder to participate
-in the consensus and earn inflation by delegating their holdings to a sequencer **without the need to run a sequencer**. 
-(note that minimum token amount limits are applied).
+Version `v0.6.0-testnet` implements scalable delegation function and state bloat prevention measures (storage deposit).
 
 ### Other docs
 Please read at least basic docs on [proxi](proxi.md), [delegation](delegate.md) and other available materials. 
-At this stage Proxima lacks proper documentation.
 
 ### Public access points
 These are public API endpoints to access from `proxi` or for other purposes:
@@ -37,11 +34,9 @@ faucet:
 
 ### How to get tokens?
 Use command `proxi node getfunds` to get tokens to your wallet as defined by the `proxi.yaml` in you current directory.
-You can do it once per day. Faucet will send generous `1.000.000.000.000` tokens to your account. 
+You can do it once per day. Faucet will send `1.000.000.000.000` tokens to your account. 
 
 Check you balance with command `proxi node balance`. If everything is ok, the requested tokens will come after 20-30 seconds. 
-
-This amount is ~0.1% of the total supply. It is enough to run sequencer and for delegation.
 
 ### What can you do with your tokens?
 
@@ -52,23 +47,22 @@ Note, that for this `proxi.yaml` must be configured properly. In particular, _ta
 configured properly. You can list all sequencers with command `proxi node allchains -q` and choose one of them as tag-along. 
 
 #### Earn inflation by delegation
-Please read [delegation](delegate.md). It is **strongly encouraged** to delegate all but some minimum amount (say `1.000.000`) of your tokens, 
+Please read [delegation](delegate.md). It is **strongly encouraged** to delegate all but some minimum amount (say `100.000.000`) of your tokens, 
 immediately you receive them with `proxi node getfunds`. 
 
-All sequencers with delegation information can be listed with `proxi node allchains -d -q`. It is easy to choose one of them for delegation
+All sequencers with delegation information can be listed with `proxi node allchains -q`. It is easy to choose one of them for delegation
 and tag-along.
 
-Your delegated tokens will contribute to the security of the network and, in exchange, will earn you inflation around **10% annually**. 
+Your delegated tokens will contribute to the security of the network and, in exchange, will earn you inflation around **9-10% annually**. 
 If your tokens remain passive in your normal account (which has address in the form `a(0x<hex>)`), you will not receive any inflation. 
 
 #### Earn inflation by running sequencer
 To run a sequencer, you need two things:
-* to run an _access node_. See [Running access node](run_access.md) for detailed instructions. Note that it is pretty easy to run access node
-and this does not require owning any tokens, but does not contribute to the security of the network.
-* configure and run a **sequencer** on that access node (then we call it _sequencer node_). See [Running node with the sequencer](run_sequencer.md). To run a sequencer you will need tokens.  
+1. run an _access node_. The *access node* is a "normal" node which permanently keeps valid ledger on it. Access node do not run a sequencer. See [Running access node](run_access.md) for detailed instructions. Note that it is pretty easy to run access node. It does not require owning any tokens. It does not contribute to the security of the network, just provides secure access to it. However, it contributes to the decentralization of the network by providing replicas of the valid ledger. It is possible to recover the whole network from one node (you will need private keys controlling token accounts of course)   
+2. configure and run a **sequencer** on that access node (then we call it _sequencer node_). See [Running node with the sequencer](run_sequencer.md). To run a sequencer you will need tokens.  
+
 Sequencers are programs that generate inflation and therefore contribute to the security of the network on behalf of the token holder. 
-Sequencers more than delegated tokens because they participate in the lottery for the *branch inflation bonus*. In addition to that, 
-sequencers collect tag-along fees and delegation margin.
+In addition to the usual inflation, sequencers may win the lottery for the *branch inflation bonus*.
 
 ### Disclaimer
 
@@ -77,6 +71,6 @@ We count on growing community which can help each other.
 
 Please also note that:
 
-* tokens are fake. They have 0 value and are only for testing.
+* tokens are not real, they have 0 value. Only for testing. T
 * the Proxima software at this stage is experimental and definitely contains bugs. Do not use it in production! 
 

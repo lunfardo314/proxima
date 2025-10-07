@@ -122,10 +122,10 @@ func RootRecordFromBytes(data []byte) (RootRecord, error) {
 func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	proc := (float32(r.FrozenCoverage) * 100) / float32(r.CoverageDelta)
-	ret.Add("sequencer id:     %s", r.SequencerID.String()).
-		Add("supply:           %s", util.Th(r.Supply)).
-		Add("coverage delta:   %s (%s, %.02f%%)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc).
-		Add("frozen coverage:  %s", util.Th(r.FrozenCoverage)).
+	ret.Add("sequencer id:    %s", r.SequencerID.String()).
+		Add("supply:          %s", util.Th(r.Supply)).
+		Add("coverage delta:  %s (%s, %.2f%s)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc, "%%").
+		Add("frozen coverage: %s", util.Th(r.FrozenCoverage)).
 		Add("healthy(%s):     %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverageDelta(r.CoverageDelta, r.Supply, global.FractionHealthyBranch))
 	return ret
 }

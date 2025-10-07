@@ -1,6 +1,6 @@
 ## CLI wallet program `proxi`
 
-`proxi` is a small CLI program with basic tools for Proxima. Please, do not expect perfect UX :) 
+`proxi` is a small CLI program with basic tools for Proxima. 
 
 The program can be compiled by typing `go install` in the `<root>/proxi` directory of the Proxima source.
 
@@ -13,40 +13,57 @@ Some commands, for example `proxi util ed25519` are completely stand alone and m
 say `proxi2.yaml`, we have to specify it explicitly in the command line with flag `-c` 
 and profile file name without extension, for example `proxi node balance -c proxi2`.
 
-`proxi` commands has a form `proxi <cmd group> <subcommand> <args and flags>`, where `<cmd group>` is one of the following:
+Command `proxi wallet` displays main parameters of the profile.
+Command `proxi version` displays build data.
 
-* `proxi util` all kind of helper subcommands
-* `proxi init` is for admin subcommands, for initialization of the database. config profiles and similar 
-* `proxi db`  for admin subcommands which access multi-state and txStore database directly. They will all fail if the node is running. 
-Note that direct access to the Badger database may change permissions of some files and the node can fail to open it 
-* if run on different user
-* `proxi snapshot` for subcommands related to snapshots
-* `proxi node` many subcommands which accesses node via API. They all require a configuration profile and an endpoint in the running node
+Most of `proxi` commands have a form `proxi <cmd group> <subcommand> <args and flags>`, where `<cmd group>` is one of the following:
+
+* `proxi util` helper subcommands
+* `proxi init` admin subcommands, for initialization of the database. config profiles and similar 
+* `proxi db`  admin subcommands which access multi-state and txStore database directly (bypassing the node). They will fail if the node is running. 
+Note that direct access to the Badger database may change permissions of some files and the node can fail to open it when run on different user
+* `proxi snapshot` subcommands related to snapshots
+* `proxi node` many subcommands which accesses node via API. They all require a configuration profile and endpoint of the running node
 
 ### 1. Create a configuration profile and the wallet
 
-The command `proxi init wallet` asks for entropy and generates private key from the provided seed and system randomness.
-It also creates configuration profile `proxi.yaml`.
-
-The file will contain something like this (with comments):
+The command `proxi init wallet` asks for entropy and generates private key from the provided seed and the system randomness.
+Creates configuration profile `proxi.yaml`.
+The file will contain something like this (with explanatory comments):
 
 ```yaml
-private_key: af274b0363f484f8d113a9e17831ff3acd285fd152c5179db42ab0ff976e23153a51eabb1c19f1b5e784d086a6bf176c8ada3c248f25da93f7362c35eb1fc660
-account: a(0x7450c426206c4164bc84ff30a14bdf72603b563e26a1d43973bc67cdb59033d8)
-sequencer_id: <own sequencer ID>
+default_sequencer_id: 8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5
+
+wallet:
+  private_key: 7e04abec3f41f7770345e86e85baee3be8bd65eb92f9c667f6c2aa19df25161b04eb57e55cba9cc735b0241db170e8000baa2680f43315e80b015fb918a1a0ee
+  account: a(0xdcc2f3be5c019d15108d6169d3f826ac20c73a31db8ad5c5d58e9ab01d3a903a)
+  sequencer_id: <own sequencer ID>
 api:
-  endpoint: http://127.0.0.1:8000
+  endpoint: http://63.250.56.190:8001
+# alternative testnet access points:
+#    endpoint: http://113.30.191.219:8001
+#    endpoint: http://83.229.84.197:8001
+#    endpoint: http://5.180.181.103:8001
+
 tag_along:
-  sequencer_id: 6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc
-  fee: 500
+  fee: 1
+#    sequencer_id: <tag-along sequencer ID>
+
+# provides parameters for 'proxi node getfunds' command
+faucet:
+  port:  9500
+  host:  113.30.191.219
+
+# provides parameters for 'proxi node spam' command
 spammer:
   bundle_size: 5
   output_amount: 1000
   pace: 25
   tag_along:
-    fee: 50
-    sequencer_id: <sequencer ID hex encoded>
-  target: <target address in EasyFL format>
+    fee: 1
+    # sequencer_id: <sequencer id hex encoded>
+  # target address
+  target: <target lock in EasyFL format>
 ```
 
 **Usually adjustments are needed to complete the profile**. 
@@ -54,21 +71,22 @@ spammer:
 `wallet.private_key` contains hex encoded raw data of the ED25519 private key. The file must be kept secret 
 because of this private key. 
 
-`wallet.account` contains address constraint in the _EasyFL_ format which matches the private key. It usually has the form of `a(0x...)`, which is the
-_EasyFL_ script of the ED25519 lock.
+`wallet.account` contains address of the wallet, a lock in the _EasyFL_ format which matches the private key. It usually has the form of `a(0x...)`, which is the
+_EasyFL_ script of the ED25519 lock. The address can be calculated from the private key therefore the provided address is used for the consistency check. 
 
-`sequencer_id` is an optional field. It is irrelevant if you do not run sequencer. It contains `sequencer ID` of the sequencer controlled by this wallet. 
-It is necessary so that to access sequencer controlled by this private key with the `proxi node seq withdraw ..` command. 
+`default_sequencer_id` is a default value used in case when tag along, own or spammer sequencer IDs are omitted. The `proxi init wallet` command 
+initializes the default sequencer ID to `8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5` which is the ID of the bootstrap sequencer (a constant).
+
+`wallet.sequencer_id` is an optional field. It is irrelevant if you do not run sequencer. It contains `sequencer ID` of the sequencer controlled by this wallet. 
+It is necessary so that to access sequencer controlled by this private key with the `proxi node seq withdraw ..` command. Defaults to the  
 
 `api.endpoint` must contain URL for the node's API in the form of `http://<ip>:<port>`. **It must be set to the address of some public access point**
 
-`tag_along.sequencer_id` is a mandatory field for any commands which create transactions, such as `proxi node transfer`.
-It must contain a sequencer ID which is used as a tag-along sequencer. 
+`tag_along.sequencer_id` specifies tag-along sequencer ID which is mandatory for any commands which create transactions, such as `proxi node transfer`.
+Defaults to `default_sequencer_id` if absent. 
 Each issued transaction will contain so-called _tag-along output_.
 The *tag-along output* simply sends the amount of tokens specified in `tag_along.fee` to the sequencer in `tag_along.sequencer_id`. 
 The sequencer will consume the *tag-along output* in its transaction. This will pull the transaction into the next ledger state. 
-By default, `proxi.yaml` is initialized with the static constant of 
-bootstrap sequencer ID `6393b6781206a652070e78d1391bc467e9d9704e9aa59ec7f7131f329d662dcc`. 
 
 ### How to understand transaction and other IDs
 Transaction ID in Proxima is a 32-byte array. First 5 bytes are the timestamp of the transaction, the byte at index 6 contains number of outputs produced 
@@ -127,11 +145,11 @@ The command also displays _delegations_ to sequencers.
   paid to the **tag-along sequencer** configured in the `proxi.yaml`.
   Flag  `-v` (or `--verbose`) will make command to display the whole transfer transaction. It is a good chance to get acquainted with the Proxima's UTXO transaction model.
 
-* `proxi node compact` transfers tokens to itself by compacting outputs in the account. It is useful when account contains too much outputs. 
-   This often happens as a result of the spamming. 
-   Note that than `compact` command still requires tag-along fee. 
+* `proxi node compact [<max inputs>]` transfers tokens to itself by compacting up to `<max inputs>` UTXOs in the account into one. 
+It is useful when account contains too much outputs, and you want to save on storage deposits. 
+   This often happens as a result of the spamming. Note that than `compact` command still requires tag-along fee. 
 
-* `proxi node utxo` displays outputs (UTXOs) in the account
+* `proxi node utxo` displays outputs (UTXOs) in the account. `proxi node utxo -v` displays parsed UTXOs
 
 * `proxi node info` displays info of the node
 
@@ -163,3 +181,7 @@ This way it pulls the whole bundle of transactions into the ledger state with on
 As per current ledger constraints, one spammer can achieve maximum 1 TPS of the transfer transactions. 
 In Proxima the rate is limited per address (per user). It is 1 TPS for non-sequencers (assuming no conflicting transactions are issued).
 Higher total TPS can be reached only by multiple users. 
+
+### Delegation
+
+See [delegation](delegate.md).
