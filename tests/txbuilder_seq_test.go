@@ -354,7 +354,7 @@ func TestFreezeOneStep(t *testing.T) {
 			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddSlots(1))
 			txb := newTxb(ts, seqProfitMargin, greedy)
 
-			succIdx, err := txb.FreezeDelegation(&dIn)
+			succIdx, _, err := txb.FreezeDelegation(&dIn)
 			if err != nil {
 				errTest = err
 				return
@@ -568,7 +568,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 			}
 
 			for _, j := range unlockableIndices {
-				_, err := txb.FreezeDelegation(&delegations[j])
+				_, _, err := txb.FreezeDelegation(&delegations[j])
 				if err != nil {
 					errTest = err
 					return
@@ -842,7 +842,7 @@ func TestWithUTXODB(t *testing.T) {
 
 		// non-deterministic
 		for _, dIn := range freezable {
-			_, err = txb.FreezeDelegation(&dIn)
+			_, _, err = txb.FreezeDelegation(&dIn)
 			require.NoError(t, err)
 			stats.nFreezes++
 		}

@@ -116,7 +116,18 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 			glb.AssertNoError(err)
 		}
 	}
+	// tentative with maximum epochs, to check storage deposit
 	outDelegation := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
+		Amount:             amount,
+		Master:             walletData.Account,
+		Target:             ledger.ChainLockFromChainID(targetSeqID),
+		MaxFreezeEpochs:    byte(ledger.Const.MaxFrozenEpochs),
+		MaxSeqProfitMargin: 100,
+		StartSlot:          ts.Slot,
+	})
+	glb.AssertNoError(outDelegation.EnoughAmountForStorageDeposit())
+
+	outDelegation = ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:             amount,
 		Master:             walletData.Account,
 		Target:             ledger.ChainLockFromChainID(targetSeqID),
@@ -124,6 +135,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 		MaxSeqProfitMargin: 100,
 		StartSlot:          ts.Slot,
 	})
+
 	delegationOutputIdx, err := txb.ProduceOutput(outDelegation)
 	glb.AssertNoError(err)
 

@@ -167,8 +167,8 @@ func (p *proposal) insertDelegations() {
 		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
 		// just skip if freezing failed for any reason
 		valid, err := p.InsertInput(wOut, func() (bool, error) {
-			_, err1 := p.txb.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
-			return true, err1
+			_, valid, err1 := p.txb.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
+			return valid, err1
 		})
 		if err != nil {
 			if valid {

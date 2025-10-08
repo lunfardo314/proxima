@@ -80,7 +80,19 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(!isDelegation || dOut.IsUnlockableByMaster(ts.Slot), "chain is delegation output NOT unlockable by master")
 
 	inflation := ledger.ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
+
+	// tentatively checking maximum storage deposit
 	oOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-glb.GetTagAlongFee()), int64(inflation))
+		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, byte(ledger.Const.MaxFrozenEpochs), 100)
+		o.WithLock(lock)
+		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
+		o.MustPushConstraint(cc.Bytes())
+		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
+	})
+	glb.AssertNoError(oOut.EnoughAmountForStorageDeposit())
+
+	oOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-glb.GetTagAlongFee()), int64(inflation))
 		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, maxFreezeEpochs, 100)
 		o.WithLock(lock)
@@ -88,6 +100,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		o.MustPushConstraint(cc.Bytes())
 		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 	})
+
 	txb := txbuilder.New()
 	predIdx, err := txb.ConsumeOutput(oIn.Output, oIn.ID)
 	glb.AssertNoError(err)

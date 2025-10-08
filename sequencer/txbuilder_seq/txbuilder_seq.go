@@ -227,21 +227,24 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	return (projectedInflation * uint64(seqTolerance)) / 1000, nil
 }
 
-func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput, freezeUntilEpoch ...uint32) (successorIdx byte, err error) {
+func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput, freezeUntilEpoch ...uint32) (successorIdx byte, valid bool, err error) {
 	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TransactionData.Timestamp.Slot) {
+		valid = true
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: output cannot be unlocked by the target for freezing:\n%s", delegationIn.LinesHRFull("   ").String())
 		return
 	}
 	if len(txb.ConsumedOutputs) > 255 {
+		valid = true
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many inputs")
 		return
 	}
 	if len(txb.TransactionData.Outputs) > 254 {
+		valid = true
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
 		return
 	}
 	if delegationIn.Target.ChainID() != txb.chainInput.ChainID {
-		err = fmt.Errorf("SeqTxBuilder: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
 		return
 	}
 	txEpoch := ledger.Const.EpochFromSlotDirect(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot)
@@ -275,13 +278,12 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	}
 	util.Assertf(idx == predIdx, "idx == predIdx")
 
-	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(advance)
-
 	successorIdx, err = txb.ProduceOutput(delegationOut)
 	if err != nil {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 		return
 	}
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(advance)
 	// unlock delegation lock as target. First 2 bytes is chain unlock parameters, 3rd byte indicates it is target unlock
 	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0, 2), ledger.DelegationUnlockedByTarget)
 	// unlock chain
@@ -292,7 +294,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	for i, c := range a {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] += c
 	}
-
+	valid = true
 	return
 }
 
