@@ -227,7 +227,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	return (projectedInflation * uint64(seqTolerance)) / 1000, nil
 }
 
-func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput) (successorIdx byte, err error) {
+func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput, freezeUntilEpoch ...uint32) (successorIdx byte, err error) {
 	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TransactionData.Timestamp.Slot) {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: output cannot be unlocked by the target for freezing:\n%s", delegationIn.LinesHRFull("   ").String())
 		return
@@ -244,8 +244,15 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput)
 		err = fmt.Errorf("SeqTxBuilder: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
 		return
 	}
-	lastEpochToFreeze := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
 	txEpoch := ledger.Const.EpochFromSlotDirect(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot)
+
+	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
+	var lastEpochToFreeze uint32
+	if len(freezeUntilEpoch) > 0 && freezeUntilEpoch[0] <= freezeMaxEpoch && freezeUntilEpoch[0] >= txEpoch {
+		lastEpochToFreeze = freezeUntilEpoch[0]
+	} else {
+		lastEpochToFreeze = freezeMaxEpoch
+	}
 	util.Assertf(lastEpochToFreeze >= txEpoch, "lastEpochToFreeze>=txEpoch")
 
 	frozenEpochs := lastEpochToFreeze - txEpoch + 1

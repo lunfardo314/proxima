@@ -69,6 +69,7 @@ func (p *proposal) insertTagAlongInputs() {
 	if p.txb.InputsAreFull() {
 		return
 	}
+
 	outs := make([]*_inputCandidate, 0)
 
 	p.Backlog().IterateOutputs(func(wOut vertex.WrappedOutput) bool {
@@ -137,23 +138,16 @@ func (p *proposal) insertDelegations() {
 		return
 	}
 
-	outs := make([]*ledger.DelegationOutput, 0)
-	p.Tracef(TraceTagProposal, "insertDelegations start IterateDelegatedOutputs")
-	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
-		if p.Backlog().IsInBlacklist(o.ID) {
-			return true
-		}
-		if o.IsUnlockableByTargetForFreezing(uint32(p.proposer.targetTs.Slot)) {
-			outs = append(outs, o)
-		}
-		return true
-	})
+	outs := p.selectDelegationsToFreeze()
 	// filter out those which are consumed in the past. Not very necessary for delegations
 	// warning: do not put IsConsumedInThePastPath into the iteration closure because causes deadlock
 	tip := p.Extending().VID
-	outs = util.PurgeSlice(outs, func(dOut *ledger.DelegationOutput) bool {
+	outs = util.PurgeSlice(outs, func(dOut _delegationToFreeze) bool {
 		return !p.IsConsumedInThePastPath(dOut.ID, tip, p.BaselineSugaredStateReader)
 	})
+	if len(outs) == 0 {
+		return
+	}
 
 	p.Tracef(TraceTagProposal, "insertDelegations end IterateDelegatedOutputs")
 	// sort by frozen amount descending
@@ -172,7 +166,7 @@ func (p *proposal) insertDelegations() {
 		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
 		// just skip if freezing failed for any reason
 		valid, err := p.InsertInput(wOut, func() (bool, error) {
-			_, err1 := p.txb.FreezeDelegation(o)
+			_, err1 := p.txb.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
 			return true, err1
 		})
 		if err != nil {
@@ -210,4 +204,71 @@ func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	p.proposer.AssertNoError(err)
 	return tx, txString, nil
+}
+
+type _delegationToFreeze struct {
+	*ledger.DelegationOutput
+	freezeUntilEpoch uint32
+}
+
+// selectDelegationsToFreeze selects all delegation outputs with can be frozen.
+// Optimizes epoch to freeze so that achieve as even as possible distribution over delegation epochs
+func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
+	ret := make([]_delegationToFreeze, 0)
+
+	nDelegationsByUnfreezeEpochMap := make(map[uint32]int)
+	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
+		if p.Backlog().IsInBlacklist(o.ID) {
+			return true
+		}
+		if o.IsUnlockableByTargetForFreezing(p.proposer.targetTs.Slot) {
+			ret = append(ret, _delegationToFreeze{o, 0})
+		}
+		if o.IsInFrozenSlot(p.proposer.targetTs.Slot) {
+			nDelegationsByUnfreezeEpochMap[o.LastFrozenEpoch]++
+		}
+		return true
+	})
+
+	nDelegationsByUnfreezeEpoch := make([]struct {
+		epoch uint32
+		n     int
+	}, 0)
+	for e, n := range nDelegationsByUnfreezeEpochMap {
+		nDelegationsByUnfreezeEpoch = append(nDelegationsByUnfreezeEpoch, struct {
+			epoch uint32
+			n     int
+		}{epoch: e, n: n})
+	}
+	sort.Slice(nDelegationsByUnfreezeEpoch, func(i, j int) bool {
+		return nDelegationsByUnfreezeEpoch[i].epoch > nDelegationsByUnfreezeEpoch[j].epoch
+	})
+
+	minMaxFrozenOutputsUntilEpoch := func(stats []struct {
+		epoch uint32
+		n     int
+	}) (lower, upper, lowerMaxEpoch int) {
+		for _, e := range stats {
+			if upper == 0 || e.n > upper {
+				upper = e.n
+			}
+			if lower == 0 || e.n < lower {
+				lower = e.n
+			}
+		}
+		return
+	}
+
+	for i := range ret {
+		lower, upper := minMaxFrozenOutputsUntilEpoch(nDelegationsByUnfreezeEpochMap)
+		freezeMax := ret[i].FreezeUntilMax(p.txb.TransactionData.Timestamp)
+		if lower == upper {
+			ret[i].freezeUntilEpoch = freezeMax
+			nDelegationsByUnfreezeEpochMap[freezeMax]++
+			continue
+		}
+		// find max of min
+
+	}
+	return ret
 }
