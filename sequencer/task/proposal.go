@@ -138,6 +138,7 @@ func (p *proposal) insertDelegations() {
 		return
 	}
 
+	// make a list of potential delegations with optimal freeze periods
 	outs := p.selectDelegationsToFreeze()
 	// filter out those which are consumed in the past. Not very necessary for delegations
 	// warning: do not put IsConsumedInThePastPath into the iteration closure because causes deadlock
@@ -213,10 +214,17 @@ type _delegationToFreeze struct {
 
 // selectDelegationsToFreeze selects all delegation outputs with can be frozen.
 // Optimizes epoch to freeze so that achieve as even as possible distribution over delegation epochs
+// This is needed for scalability and for minimization of coverage fluctuations in the consensus
 func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	ret := make([]_delegationToFreeze, 0)
-
 	nDelegationsByUnfreezeEpochMap := make(map[uint32]int)
+
+	txEpoch := ledger.Const.EpochFromSlotDirect(p.SequencerID(), p.txb.TransactionData.Timestamp.Slot)
+
+	for e := txEpoch; e < txEpoch+ledger.Const.MaxFrozenEpochs; e++ {
+		nDelegationsByUnfreezeEpochMap[e] = 0
+	}
+
 	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
 		if p.Backlog().IsInBlacklist(o.ID) {
 			return true
@@ -230,45 +238,25 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 		return true
 	})
 
-	nDelegationsByUnfreezeEpoch := make([]struct {
-		epoch uint32
-		n     int
-	}, 0)
-	for e, n := range nDelegationsByUnfreezeEpochMap {
-		nDelegationsByUnfreezeEpoch = append(nDelegationsByUnfreezeEpoch, struct {
-			epoch uint32
-			n     int
-		}{epoch: e, n: n})
-	}
-	sort.Slice(nDelegationsByUnfreezeEpoch, func(i, j int) bool {
-		return nDelegationsByUnfreezeEpoch[i].epoch > nDelegationsByUnfreezeEpoch[j].epoch
-	})
-
-	minMaxFrozenOutputsUntilEpoch := func(stats []struct {
-		epoch uint32
-		n     int
-	}) (lower, upper, lowerMaxEpoch int) {
-		for _, e := range stats {
-			if upper == 0 || e.n > upper {
-				upper = e.n
-			}
-			if lower == 0 || e.n < lower {
-				lower = e.n
-			}
-		}
-		return
-	}
-
 	for i := range ret {
-		lower, upper := minMaxFrozenOutputsUntilEpoch(nDelegationsByUnfreezeEpochMap)
-		freezeMax := ret[i].FreezeUntilMax(p.txb.TransactionData.Timestamp)
-		if lower == upper {
-			ret[i].freezeUntilEpoch = freezeMax
-			nDelegationsByUnfreezeEpochMap[freezeMax]++
-			continue
-		}
-		// find max of min
-
+		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.txb.TransactionData.Timestamp), nDelegationsByUnfreezeEpochMap)
+		nDelegationsByUnfreezeEpochMap[ret[i].freezeUntilEpoch]++
 	}
 	return ret
+}
+
+// optimalFreezeEpoch finds epoch with minimum delegation unfreezing in it.
+// Returns minimum of it and maximum possible by the delegation constraint
+func optimalFreezeEpoch(maxPossible uint32, distribution map[uint32]int) uint32 {
+	util.Assertf(len(distribution) > 0, "len(distribution)>0")
+
+	var lower uint32
+	lo := 0
+	for e, n := range distribution {
+		if n < lo || (n == lo && e > lower) {
+			lo = n
+			lower = e
+		}
+	}
+	return min(lower, maxPossible)
 }
