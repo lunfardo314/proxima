@@ -12,6 +12,31 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
+func DelegationStatusString(o ledger.DelegationOutput, currentSlot uint32) (ret string) {
+	if o.IsInFrozenSlot(currentSlot) {
+		unfreeze := o.UnfreezeSlot()
+		untilUnfreeze := time.Until(ledger.ClockTime(base.T(unfreeze, 0)))
+		h := untilUnfreeze / time.Hour
+		hs := ""
+		if h > 0 {
+			hs = fmt.Sprintf("%d hours, ", h)
+		}
+		m := (untilUnfreeze - h*time.Hour) / time.Minute
+		ret = fmt.Sprintf("frozen until slot %d (%s%d min from now)", unfreeze, hs, m)
+	} else if o.IsInSafeRevocationWindow(currentSlot) {
+		_, to, applicable := o.SafeRevocationWindow()
+		Assertf(applicable, "inconsistency: SafeRevocationWindow")
+		untilEnd := time.Until(ledger.ClockTime(base.T(uint32(to+1), 0)))
+		m := untilEnd / time.Minute
+		ret = fmt.Sprintf("safe revocation until slot %d (for %d min more)", to, m)
+	} else if o.IsMarkedOnHold() {
+		ret = "on hold"
+	} else if o.IsUnlockableByMaster(currentSlot) {
+		ret = "can be unlocked by master"
+	}
+	return
+}
+
 func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
 	lst := slices.Clone(outs)
@@ -19,28 +44,7 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 		return lst[i].Output.TokenBalance() > lst[j].Output.TokenBalance()
 	})
 	for _, o := range lst {
-		status := ""
-		if o.IsInFrozenSlot(currentSlot) {
-			unfreeze := o.UnfreezeSlot()
-			untilUnfreeze := time.Until(ledger.ClockTime(base.T(uint32(unfreeze), 0)))
-			h := untilUnfreeze / time.Hour
-			hs := ""
-			if h > 0 {
-				hs = fmt.Sprintf("%d hours, ", h)
-			}
-			m := (untilUnfreeze - h*time.Hour) / time.Minute
-			status = fmt.Sprintf("frozen until slot %d (%s%d min from now)", unfreeze, hs, m)
-		} else if o.IsInSafeRevocationWindow(currentSlot) {
-			_, to, applicable := o.SafeRevocationWindow()
-			Assertf(applicable, "inconsistency: SafeRevocationWindow")
-			untilEnd := time.Until(ledger.ClockTime(base.T(uint32(to+1), 0)))
-			m := untilEnd / time.Minute
-			status = fmt.Sprintf("safe revocation until slot %d (for %d min more)", to, m)
-		} else if o.IsMarkedOnHold() {
-			status = "on hold"
-		} else if o.IsUnlockableByMaster(currentSlot) {
-			status = "can be unlocked by master"
-		}
+		status := DelegationStatusString(o, currentSlot)
 		ln.Add("%34s  %20s  %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status)
 		if VerbosityLevel() > 0 {
 			ln.Add("     delegation target %s", util.Ref(o.Target.ChainID()).String())

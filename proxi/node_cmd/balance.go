@@ -31,13 +31,6 @@ func runBalanceCmd(_ *cobra.Command, _ []string) {
 	displayBalanceTotals(outs, accountable)
 }
 
-type _delegation struct {
-	amount     uint64
-	inflation  uint64
-	sinceSlot  uint32
-	lastActive uint32
-}
-
 func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Accountable) {
 	var sumOnNonDelegationChains, sumOutsideChains, sumDelegation uint64
 	var numNonChains int
@@ -63,7 +56,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Acco
 			sumOutsideChains += o.Output.TokenBalance()
 		}
 	}
-	currentSlot := uint32(ledger.TimeNow().Slot)
+	currentSlot := ledger.TimeNow().Slot
 	glb.Infof("Current slot is %d", currentSlot)
 	glb.Infof("\nSUMMARY of controlled by %s:", walletAccount.String())
 	glb.Infof("    on %2d non-chain outputs:            %s", numNonChains, util.Th(sumOutsideChains))
