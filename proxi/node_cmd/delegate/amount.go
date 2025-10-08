@@ -34,7 +34,7 @@ func initDelegateAmountCmd() *cobra.Command {
 	err := viper.BindPFlag("seq", cmd.PersistentFlags().Lookup("seq"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 1, "max frozen epochs allowed by the delegator")
+	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 8, "max frozen epochs allowed by the delegator")
 	err = viper.BindPFlag("epochs", cmd.PersistentFlags().Lookup("epochs"))
 	glb.AssertNoError(err)
 

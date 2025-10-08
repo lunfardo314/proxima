@@ -78,7 +78,8 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 	unfreezeBySlot := make(map[uint32]int)
 	revocable := 0
 	for _, dOut := range delegations {
-		glb.Infof("   %s  %20s  %s", dOut.ChainID.String(), util.Th(dOut.Output.TokenBalance()), glb.DelegationStatusString(dOut, currentSlot))
+		glb.Infof("   %s  %20s  %s  maxFreeze: %d",
+			dOut.ChainID.String(), util.Th(dOut.Output.TokenBalance()), glb.DelegationStatusString(dOut, currentSlot), dOut.MaxFrozenEpochs)
 		if dOut.IsInFrozenSlot(currentSlot) {
 			unfreeze := dOut.UnfreezeSlot()
 			unfreezeBySlot[unfreeze]++

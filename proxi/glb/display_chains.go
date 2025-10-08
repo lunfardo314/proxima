@@ -45,7 +45,7 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 	})
 	for _, o := range lst {
 		status := DelegationStatusString(o, currentSlot)
-		ln.Add("%34s  %20s  %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status)
+		ln.Add("%34s  %20s  %s maxFrozen: %d", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status, o.MaxFrozenEpochs)
 		if VerbosityLevel() > 0 {
 			ln.Add("     delegation target %s", util.Ref(o.Target.ChainID()).String())
 			if o.IsMarkedFrozen() {
