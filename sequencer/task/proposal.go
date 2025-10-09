@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -250,13 +251,20 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 func optimalFreezeEpoch(maxPossible uint32, distribution map[uint32]int) uint32 {
 	util.Assertf(len(distribution) > 0, "len(distribution)>0")
 
-	var lower uint32
-	lo := 0
-	for e, n := range distribution {
-		if n < lo || (n == lo && e > lower) {
-			lo = n
-			lower = e
+	// find what the lowest number of delegations
+	loN := math.MaxInt
+	for _, n := range distribution {
+		if n < loN {
+			loN = n
 		}
 	}
-	return min(lower, maxPossible)
+	var epoch uint32
+	// choose latest epoch among those that has the lowest number of delegations
+	for e, n := range distribution {
+		if n == loN && e > epoch {
+			epoch = e
+		}
+	}
+	util.Assertf(epoch != 0, "epoch!=0")
+	return min(epoch, maxPossible)
 }

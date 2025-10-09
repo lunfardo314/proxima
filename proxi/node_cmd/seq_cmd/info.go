@@ -78,8 +78,9 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 	unfreezeBySlot := make(map[uint32]int)
 	revocable := 0
 	for _, dOut := range delegations {
-		glb.Infof("   %s  %20s  %s  maxFreeze: %d",
-			dOut.ChainID.String(), util.Th(dOut.Output.TokenBalance()), glb.DelegationStatusString(dOut, currentSlot), dOut.MaxFrozenEpochs)
+		glb.Infof("   %s  %20s  %s  maxFreeze: %d  master: %s",
+			dOut.ChainID.String(), util.Th(dOut.Output.TokenBalance()),
+			glb.DelegationStatusString(dOut, currentSlot), dOut.MaxFrozenEpochs, dOut.Master().String())
 		if dOut.IsInFrozenSlot(currentSlot) {
 			unfreeze := dOut.UnfreezeSlot()
 			unfreezeBySlot[unfreeze]++
@@ -95,7 +96,8 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 	})
 	glb.Infof("\n---- unfreezes by slot ----")
 	for _, s := range slots {
-		glb.Infof("   %d: %d", s, unfreezeBySlot[s])
+		epoch := ledger.Const.EpochFromSlotDirect(seqID, s)
+		glb.Infof("   %d: %d (epoch %d)", s, unfreezeBySlot[s], epoch)
 	}
 	glb.Infof("number of unlockable by master: %d", revocable)
 }
