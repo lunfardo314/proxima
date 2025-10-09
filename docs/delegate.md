@@ -6,9 +6,7 @@ If you are not running a sequencer, you better delegate your funds to a _sequenc
 You will be able to revoke delegated funds in most cases immediately. 
 You will be able to revoke your delegated funds unconditionally at least for 10 minutes after the end of the **freeze period** (more below).
 
-The following command will list all sequencers running in the system and available as a delegation target:
-
-`proxi node allchains -q`
+The command `proxi node allchains -q` will list all sequencers running in the system and available as a delegation target:
 
 The command `proxi node allchains -l` lists all active delegations in the network and command `proxi node allchains` lists both sequencers and delegations.
 
@@ -23,7 +21,7 @@ To delegate your tokens to the sequencer `<target sequencer ID>` use command:
 `proxi node delegate amount <amount> [-q <target sequencer ID>] [-e <max number of freeze epochs>] `
 
 Optional parameter `<max number of freeze epochs>` sets maximum number of consecutive epochs the sequencer can freeze the delegated amount output (the _freeze period_).
-Default is 1 epoch, maximum possible is 8 epochs. 1 delegation epoch is 530 slots (~1.5 hours).
+1 delegation epoch is 530 slots (~1.5 hours). Default is maximum possible - 8 epochs (~12 hours).
 
 The command will create a delegation output with the tokens and the _delegation lock_. Few slots later sequencer will consume and freeze the delegation output.
 Before freezing, sequencer will add future calculated inflation amount to the delegation output as a so-called **delegation advance**. 
