@@ -145,6 +145,9 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 
 	// produce revokeRequests delegation output
 	revocationOutputIndex, err := txb.ProduceOutput(oProduce)
+	if err != nil {
+		return false, fmt.Errorf("AskStopDelegationRequest: %w", err)
+	}
 
 	// unlock consumed delegation
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2), ledger.DelegationUnlockedByTarget)
