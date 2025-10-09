@@ -1,11 +1,16 @@
 package node_cmd
 
 import (
+	"sort"
+
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
+
+var sortBySafeRevocation bool
 
 func initBalanceCmd() *cobra.Command {
 	getBalanceCmd := &cobra.Command{
@@ -17,6 +22,11 @@ func initBalanceCmd() *cobra.Command {
 	}
 	glb.AddFlagTarget(getBalanceCmd)
 	getBalanceCmd.InitDefaultHelpCmd()
+
+	getBalanceCmd.PersistentFlags().BoolVarP(&sortBySafeRevocation, "rw", "w", false, "sort by safe revocation window")
+	err := viper.BindPFlag("rw", getBalanceCmd.PersistentFlags().Lookup("rw"))
+	glb.AssertNoError(err)
+
 	return getBalanceCmd
 }
 
@@ -67,6 +77,15 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Acco
 	if len(delegations) == 0 {
 		glb.Infof("\nNO DELEGATIONS")
 	} else {
+		if sortBySafeRevocation {
+			sort.Slice(delegations, func(i, j int) bool {
+				return delegations[i].UnfreezeSlot() < delegations[j].UnfreezeSlot()
+			})
+		} else {
+			sort.Slice(delegations, func(i, j int) bool {
+				return delegations[i].Output.TokenBalance() > delegations[j].Output.TokenBalance()
+			})
+		}
 		glb.Infof("\nDELEGATIONS (%d):\n\n%s\n", len(delegations), glb.LinesDelegationOutputs(delegations, currentSlot, "  ").String())
 	}
 	if len(otherChains) > 0 {

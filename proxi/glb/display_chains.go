@@ -2,8 +2,6 @@ package glb
 
 import (
 	"fmt"
-	"slices"
-	"sort"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -39,11 +37,7 @@ func DelegationStatusString(o ledger.DelegationOutput, currentSlot uint32) (ret 
 
 func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
-	lst := slices.Clone(outs)
-	sort.Slice(lst, func(i, j int) bool {
-		return lst[i].Output.TokenBalance() > lst[j].Output.TokenBalance()
-	})
-	for _, o := range lst {
+	for _, o := range outs {
 		status := DelegationStatusString(o, currentSlot)
 		ln.Add("%34s  %20s  %s maxFrozen: %d", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status, o.MaxFrozenEpochs)
 		if VerbosityLevel() > 0 {
@@ -52,7 +46,7 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 				ln.Add("     origin slot: %d, max frozen epochs: %d", o.OriginSlot, o.MaxFrozenEpochs)
 				inflation := o.Output.TokenBalance() - o.OriginAmount
 				unfreeze := o.UnfreezeSlot()
-				totalSlots := unfreeze - uint32(o.OriginSlot) + 1
+				totalSlots := unfreeze - o.OriginSlot + 1
 				perYear := inflation * uint64(ledger.Const.SlotsPerYear()) / uint64(totalSlots)
 				rate := (float64(perYear) * 100) / float64(o.OriginAmount)
 				lessShareForSafeRevocation := 1 - float64(ledger.Const.SafeRevocationSlots)/float64(uint32(o.MaxFrozenEpochs)*ledger.Const.DelegationEpochSlots+ledger.Const.SafeRevocationSlots)
