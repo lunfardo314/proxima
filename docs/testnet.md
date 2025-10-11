@@ -36,7 +36,7 @@ faucet:
 Use command `proxi node getfunds` to get tokens to your wallet as defined by the `proxi.yaml` in you current directory.
 You can do it once per day. Faucet will send `1.000.000.000.000` tokens to your account. 
 
-Check you balance with command `proxi node balance`. If everything is ok, the requested tokens will come after 20-30 seconds. 
+Check you balance with command `proxi node balance`. If everything is ok, the requested tokens will come after 15-30 seconds. 
 
 ### What can you do with your tokens?
 

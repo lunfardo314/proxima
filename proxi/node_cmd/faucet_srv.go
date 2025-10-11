@@ -21,6 +21,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+// TODO implement receiving funds as delegated output
+
 const getFundsPath = "/"
 
 type (

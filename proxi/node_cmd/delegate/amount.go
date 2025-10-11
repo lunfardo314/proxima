@@ -15,6 +15,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+// TODO implement random delegation target option
+
 var (
 	targetChainIDStr string
 	maxFreezeEpochs  uint8

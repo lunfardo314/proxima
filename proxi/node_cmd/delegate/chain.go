@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+// TODO implement random delegation target option
+
 func initDelegationSubmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "chain <chain ID> [flags]",
