@@ -69,7 +69,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 
 	seqOut, _, _, err := glb.GetClient().GetChainOutput(targetSeqID)
 	glb.Assertf(err == nil, "can't find sequencer id %s: %v", targetSeqID.StringShort(), err)
-	glb.Assertf(seqOut.ID.IsSequencerTransaction(), "chainID %s does not represent a sequencer", targetSeqID.StringShort())
+	glb.Assertf(seqOut.Output.IsSequencerOutput(), "chainID %s does not represent a sequencer", targetSeqID.StringShort())
 
 	var tagAlongSeqID *base.ChainID
 	feeAmount := glb.GetTagAlongFee()
