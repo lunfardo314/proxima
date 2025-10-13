@@ -106,12 +106,11 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	for _, o := range chains {
 		bal := o.Output.TokenBalance()
 		if name, isSeq := seqNames[o.ChainID]; isSeq {
-			if showDelegationsOnly {
-				continue
-			}
 			frozen := uint64(o.Output.FrozenCoverage(0))
-			glb.Infof("   %s sequencer %s %s, balance: %s, frozen: %s, total: %s, last active in LRB %d slots ago",
-				o.ChainID.String(), name, seqHeight[o.ChainID], util.Th(bal), util.Th(frozen), util.Th(bal+frozen), currentSlot-seqSlot[o.ChainID])
+			if !showDelegationsOnly {
+				glb.Infof("%4d   %s sequencer %s %s, balance: %s, frozen: %s, total: %s, last active in LRB %d slots ago",
+					count, o.ChainID.String(), name, seqHeight[o.ChainID], util.Th(bal), util.Th(frozen), util.Th(bal+frozen), currentSlot-seqSlot[o.ChainID])
+			}
 			totalOnSeqBalance += bal
 			totalFrozen += frozen
 		} else {
@@ -134,7 +133,7 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	}
 
 	glb.Infof("-----------------------")
-	glb.Infof("number of sequencers:           %d", count)
+	glb.Infof("total number of chains:        %d", count)
 	glb.Infof("total on sequencer balance:    %s (%s of supply)", util.Th(totalOnSeqBalance), perc(totalOnSeqBalance, lrbRootRecord.Supply))
 	glb.Infof("total frozen (delegated):      %s (%s of supply)", util.Th(totalFrozen), perc(totalFrozen, lrbRootRecord.Supply))
 	glb.Infof("total active coverage delta:   %s (%s of supply)", util.Th(totalOnSeqBalance+totalFrozen), perc(totalOnSeqBalance+totalFrozen, lrbRootRecord.Supply))
