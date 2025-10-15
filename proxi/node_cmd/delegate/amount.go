@@ -190,11 +190,15 @@ func chooseRandomSequencerForDelegation() (base.ChainID, error) {
 	outs, _, err := glb.GetClient().GetAllSequencerOutputs()
 	glb.AssertNoError(err)
 
-	if len(outs) == 0 {
-		return base.ChainID{}, fmt.Errorf("no sequencer outputs")
-	}
-	// select randomly inverse proportionally coverage
+	glb.Assertf(len(outs) > 0, "no sequencer outputs")
 
+	if len(outs) == 1 {
+		// return the single
+		for ret := range outs {
+			return ret, nil
+		}
+	}
+	// select random proportionally to inverse coverage
 	maxCov := uint64(0)
 	for _, out := range outs {
 		cov := out.Output.TokenBalance() + uint64(out.Output.FrozenCoverage(0))
