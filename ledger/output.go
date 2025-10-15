@@ -57,6 +57,11 @@ type (
 		SequencerConstraintIndex byte
 		SequencerData            *seqdata.SequencerData
 	}
+
+	OutputWithSequencerData struct {
+		OutputWithID
+		SequencerOutputData
+	}
 )
 
 func NewOutput(buildFun func(o *OutputBuilder)) *Output {

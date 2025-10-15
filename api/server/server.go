@@ -97,6 +97,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetAllChains, srv.getAllChains)
 	// GET all chains in the LRB /get_delegations_by_sequencer
 	srv.addHandler(api.PathGetDelegationsBySequencer, srv.getDelegationsBySequencer)
+	// GET all sequencer chains in the LRB /get_sequencers
+	srv.addHandler(api.PathGetSequencers, srv.getSequencers)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
 
@@ -789,6 +791,49 @@ func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Requ
 			}
 		}
 	}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
+}
+
+func (srv *server) getSequencers(w http.ResponseWriter, _ *http.Request) {
+	api.SetHeader(w)
+
+	resp := api.Sequencers{
+		OutputData: make(map[string]api.SequencerData),
+	}
+
+	var err error
+	var bySeq map[base.ChainID]multistate.DelegationsOnSequencer
+
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		var err1 error
+		bySeq, err1 = rdr.GetAllDelegationsBySequencer()
+		if err1 != nil {
+			return err1
+		}
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		for seqID, seqData := range bySeq {
+			resp.OutputData[seqID.StringHex()] = api.SequencerData{
+				OutputDataWithID: api.OutputDataWithID{
+					ID:   seqData.SequencerOutput.ID.StringHex(),
+					Data: seqData.SequencerOutput.Output.Hex(),
+				},
+				NumDelegations: len(seqData.Delegations),
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		api.WriteErr(w, err.Error())

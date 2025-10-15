@@ -1040,3 +1040,58 @@ func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed255
 	}
 	return txBytes, txid, txString, nil
 }
+
+type SequencerData struct {
+	ledger.OutputWithChainID
+	NumDelegations int
+}
+
+func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWithSequencerData, *base.TransactionID, error) {
+	body, err := c.getBody(api.PathGetSequencers)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var res api.Sequencers
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return nil, nil, err
+	}
+	if res.Error.Error != "" {
+		return nil, nil, fmt.Errorf("%s", res.Error.Error)
+	}
+	lrbid, err := base.TransactionIDFromHexString(res.LRBID)
+	if err != nil {
+		return nil, nil, err
+	}
+	ret := make(map[base.ChainID]ledger.OutputWithSequencerData)
+	for chainIDStr, data := range res.OutputData {
+		seqID, err := base.ChainIDFromHexString(chainIDStr)
+		if err != nil {
+			return nil, nil, err
+		}
+		seqOutID, err := base.OutputIDFromHexString(data.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		o, err := ledger.OutputFromHexString(data.Data)
+		if err != nil {
+			return nil, nil, err
+		}
+		seqOutData, isSeqOut := o.SequencerOutputData()
+		if !isSeqOut {
+			return nil, nil, fmt.Errorf("not a sequencer output: %s", data.ID)
+		}
+		if seqID != seqOutData.ChainConstraint.ChainID {
+			return nil, nil, fmt.Errorf("inconsistency: chain IDs does not match")
+		}
+		ret[seqID] = ledger.OutputWithSequencerData{
+			OutputWithID: ledger.OutputWithID{
+				Output: o,
+				ID:     seqOutID,
+			},
+			SequencerOutputData: *seqOutData,
+		}
+	}
+	return ret, &lrbid, nil
+}

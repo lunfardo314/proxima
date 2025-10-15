@@ -2,6 +2,7 @@ package delegate
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"strconv"
 	"time"
@@ -54,14 +55,8 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	var targetSeqID base.ChainID
 
 	if targetChainIDStr == "" {
-		var id *base.ChainID
-		if id = glb.GetOwnSequencerID(); id != nil {
-			glb.Infof("using own sequencer as a default target sequencer: %s", targetSeqID.String())
-		} else {
-			id = glb.GetDefaultSequencerID()
-			glb.Assertf(id != nil, "target sequencer not configured")
-		}
-		targetSeqID = *id
+		targetSeqID, err = chooseRandomSequencerForDelegation()
+		glb.AssertNoError(fmt.Errorf("chooseRandomSequencerForDelegation: %v", err))
 	} else {
 		targetSeqID, err = base.ChainIDFromHexString(targetChainIDStr)
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
@@ -186,4 +181,37 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	glb.TrackTxInclusion(txid, 2*time.Second)
+}
+
+// select randomly inverse proportionally coverage
+// using random roulette wheel selection
+func chooseRandomSequencerForDelegation() (base.ChainID, error) {
+	outs, _, err := glb.GetClient().GetAllSequencerOutputs()
+	glb.AssertNoError(err)
+
+	if len(outs) == 0 {
+		return base.ChainID{}, fmt.Errorf("no sequencer outputs")
+	}
+	// select randomly inverse proportionally coverage
+
+	maxCov := uint64(0)
+	for _, out := range outs {
+		cov := out.Output.TokenBalance() + uint64(out.Output.FrozenCoverage(0))
+		if maxCov < cov {
+			maxCov = cov
+		}
+	}
+	m := make(map[base.ChainID]uint64)
+	for seqID, out := range outs {
+		m[seqID] = maxCov - (out.Output.TokenBalance() + uint64(out.Output.FrozenCoverage(0)))
+	}
+	rnd := uint64(rand.Intn(int(maxCov)))
+	sum := uint64(0)
+	for seqID, x := range m {
+		if rnd < sum {
+			return seqID, nil
+		}
+		sum += x
+	}
+	panic("inconsistency in chooseRandomSequencerForDelegation")
 }

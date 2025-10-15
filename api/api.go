@@ -40,6 +40,7 @@ const (
 	PathGetAllChains                     = PrefixAPIV1 + "/get_all_chains"
 	// PathGetDelegationsBySequencer returns summarized delegation data in the form of DelegationsBySequencer
 	PathGetDelegationsBySequencer = PrefixAPIV1 + "/get_delegations_by_sequencer"
+	PathGetSequencers             = PrefixAPIV1 + "/get_sequencers"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
 
@@ -291,6 +292,17 @@ type (
 		Error
 		LRBID      string                            `json:"lrbid"`
 		Sequencers map[string]DelegationsOnSequencer `json:"sequencers"`
+	}
+
+	SequencerData struct {
+		OutputDataWithID
+		NumDelegations int `json:"num_delegations"`
+	}
+
+	Sequencers struct {
+		Error
+		LRBID      string                   `json:"lrbid"`
+		OutputData map[string]SequencerData `json:"sequencers"`
 	}
 )
 
