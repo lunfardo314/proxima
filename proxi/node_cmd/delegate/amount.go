@@ -55,6 +55,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	var targetSeqID base.ChainID
 
 	if targetChainIDStr == "" {
+		glb.Infof("selecing optimal/random target sequencer..")
 		targetSeqID, err = chooseRandomSequencerForDelegation()
 		glb.AssertNoError(fmt.Errorf("chooseRandomSequencerForDelegation: %v", err))
 	} else {
@@ -202,8 +203,12 @@ func chooseRandomSequencerForDelegation() (base.ChainID, error) {
 		}
 	}
 	m := make(map[base.ChainID]uint64)
+	currentSlot := ledger.SlotNow()
 	for seqID, out := range outs {
-		m[seqID] = maxCov - (out.Output.TokenBalance() + uint64(out.Output.FrozenCoverage(0)))
+		if out.ID.Slot()+6 >= currentSlot {
+			// skip inactive sequencers
+			m[seqID] = maxCov - (out.Output.TokenBalance() + uint64(out.Output.FrozenCoverage(0)))
+		}
 	}
 	rnd := uint64(rand.Intn(int(maxCov)))
 	sum := uint64(0)
