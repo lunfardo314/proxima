@@ -397,7 +397,7 @@ func (s SugaredStateReader) GetSequencersWithDelegations() (map[base.ChainID]Del
 					}
 				}
 				seqEntry.Delegations[o.ChainID] = dOut
-				ret[o.ChainID] = seqEntry
+				ret[dOut.Target.ChainID()] = seqEntry
 			}
 		}
 	}
