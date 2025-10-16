@@ -38,9 +38,7 @@ const (
 	PathGetLastKnownSequencerMilestones  = PrefixAPIV1 + "/last_known_milestones"
 	PathGetMainChain                     = PrefixAPIV1 + "/get_mainchain"
 	PathGetAllChains                     = PrefixAPIV1 + "/get_all_chains"
-	// PathGetDelegationsBySequencer returns summarized delegation data in the form of DelegationsBySequencer
-	PathGetDelegationsBySequencer = PrefixAPIV1 + "/get_delegations_by_sequencer"
-	PathGetSequencers             = PrefixAPIV1 + "/get_sequencers"
+	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
 
@@ -76,9 +74,9 @@ type (
 
 	OutputDataWithID struct {
 		// hex-encoded outputID
-		ID string `json:"id"`
+		ID string `json:"id,omitempty"`
 		// hex-encoded output data
-		Data string `json:"data"`
+		Data string `json:"data,omitempty"`
 	}
 	// ChainOutput is returned by 'get_chain_output'
 	ChainOutput struct {

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
@@ -95,8 +94,6 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetMainChain, srv.getMainChain)
 	// GET all chains in the LRB /get_all_chains
 	srv.addHandler(api.PathGetAllChains, srv.getAllChains)
-	// GET all chains in the LRB /get_delegations_by_sequencer
-	srv.addHandler(api.PathGetDelegationsBySequencer, srv.getDelegationsBySequencer)
 	// GET all sequencer chains in the LRB /get_sequencers
 	srv.addHandler(api.PathGetSequencers, srv.getSequencers)
 	// GET dashboard for node
@@ -733,73 +730,6 @@ func (srv *server) getAllChains(w http.ResponseWriter, _ *http.Request) {
 	util.AssertNoError(err)
 }
 
-func (srv *server) getDelegationsBySequencer(w http.ResponseWriter, _ *http.Request) {
-	api.SetHeader(w)
-
-	resp := api.DelegationsBySequencer{
-		Sequencers: make(map[string]api.DelegationsOnSequencer),
-	}
-
-	var err error
-	var bySeq map[base.ChainID]multistate.DelegationsOnSequencer
-
-	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
-		var err1 error
-		bySeq, err1 = rdr.GetAllDelegationsBySequencer()
-		if err1 != nil {
-			return err1
-		}
-		lrbid := rdr.GetStemOutput().ID.TransactionID()
-		resp.LRBID = lrbid.StringHex()
-		return nil
-	})
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-
-	for chainID, di := range bySeq {
-		dlg := make(map[string]api.DelegationData)
-		sd, ok := di.SequencerOutput.Output.SequencerOutputData()
-		srv.Assertf(ok, "inconsistency")
-		name := ""
-		if sd.SequencerData != nil {
-			name, _, _ = strings.Cut(sd.SequencerData.Name(), ".")
-		}
-		exists := false
-		for _, sequ := range resp.Sequencers {
-			if sequ.SequencerName == name {
-				exists = true
-				dlg = sequ.Delegations
-				break
-			}
-		}
-		if !exists {
-			resp.Sequencers[chainID.StringHex()] = api.DelegationsOnSequencer{
-				SequencerOutputID: di.SequencerOutput.ID.StringHex(),
-				Balance:           di.SequencerOutput.Output.TokenBalance(),
-				SequencerName:     name,
-				Delegations:       dlg,
-			}
-		}
-		for delegationID, delegationOut := range di.Delegations {
-
-			dlg[delegationID.StringHex()] = api.DelegationData{
-				Amount:      delegationOut.Output.TokenBalance(),
-				SinceSlot:   delegationOut.OriginSlot,
-				StartAmount: delegationOut.OriginAmount,
-			}
-		}
-	}
-	respBin, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
-}
-
 func (srv *server) getSequencers(w http.ResponseWriter, _ *http.Request) {
 	api.SetHeader(w)
 
@@ -808,24 +738,26 @@ func (srv *server) getSequencers(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	var err error
-	var bySeq map[base.ChainID]multistate.DelegationsOnSequencer
 
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
 		var err1 error
-		bySeq, err1 = rdr.GetAllDelegationsBySequencer()
+		bySeq, err1 := rdr.GetSequencersWithDelegations()
 		if err1 != nil {
 			return err1
 		}
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
 		for seqID, seqData := range bySeq {
-			resp.OutputData[seqID.StringHex()] = api.SequencerData{
-				OutputDataWithID: api.OutputDataWithID{
-					ID:   seqData.SequencerOutput.ID.StringHex(),
-					Data: seqData.SequencerOutput.Output.Hex(),
-				},
+			sd := api.SequencerData{
 				NumDelegations: len(seqData.Delegations),
 			}
+			if seqData.SequencerOutput != nil {
+				sd.OutputDataWithID = api.OutputDataWithID{
+					ID:   seqData.SequencerOutput.ID.StringHex(),
+					Data: seqData.SequencerOutput.Output.Hex(),
+				}
+			}
+			resp.OutputData[seqID.StringHex()] = sd
 		}
 		return nil
 	})

@@ -597,28 +597,6 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 	return ret, &lrbid, nil
 }
 
-func (c *APIClient) GetDelegationsBySequencer() (map[string]api.DelegationsOnSequencer, *base.TransactionID, error) {
-	body, err := c.getBody(api.PathGetDelegationsBySequencer)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var res api.DelegationsBySequencer
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return nil, nil, err
-	}
-	if res.Error.Error != "" {
-		return nil, nil, fmt.Errorf("%s", res.Error.Error)
-	}
-
-	lrbid, err := base.TransactionIDFromHexString(res.LRBID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return res.Sequencers, &lrbid, nil
-}
-
 // GetTransferableOutputs returns a reasonable maximum number of outputs owned by accountable with only 2 constraints and returns total
 func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
 	maxO := 256
@@ -1066,6 +1044,10 @@ func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWith
 	}
 	ret := make(map[base.ChainID]ledger.OutputWithSequencerData)
 	for chainIDStr, data := range res.OutputData {
+		if data.Data == "" || data.ID == "" {
+			// skip sequencer ID that do not have outputs. This may happen when delegation target sequencer does not exit
+			continue
+		}
 		seqID, err := base.ChainIDFromHexString(chainIDStr)
 		if err != nil {
 			return nil, nil, err
