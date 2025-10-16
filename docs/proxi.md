@@ -133,11 +133,9 @@ by all the current healthy ledger states, i.e., it is the **consensus ledger sta
 
    The _ledger coverage_ must be > of the supply for the branch to be _healthy_. The maximum possible value of the ledger coverage is _2 x supply_.
 
-* `proxi node balance` displays token balance on the usual (ED25519) address and on chains, controlled by the wallet's account in the LRB branch.  
-   Token balance is the sum of tokens contained in non-chain outputs plus the sum of balances contained in chain outputs. 
-The command also displays _delegations_ to sequencers.
-
-* `proxi node mychains` displays all chain outputs controlled by the account on the LRB state
+  * `proxi node balance` and  `proxi node balance -v` displays token balance on the usual (ED25519) address and on chains, controlled by the wallet's account in the LRB branch.  
+     Token balance is the sum of tokens contained in non-chain outputs plus the sum of balances contained in chain outputs. 
+  The command also displays _delegations_ to sequencers.
 
 * `proxi node transfer <amount> -t "<target address>"` sends tokens from the wallet's account to the target address.
   For example, command `proxi node transfer 1000 -t "a(0x370563b1f08fcc06fa250c59034acfd4ab5a29b60640f751d644e9c3b84004d0)"`

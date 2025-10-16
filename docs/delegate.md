@@ -7,8 +7,8 @@ You will be able to revoke delegated funds in most cases immediately.
 You will be able to revoke your delegated funds unconditionally at least for 10 minutes after the end of the **freeze period** (more below).
 
 The command `proxi node allchains -q` will list all sequencers running in the system and available as a delegation target:
-
-The command `proxi node allchains -l` lists all active delegations in the network and command `proxi node allchains` lists both sequencers and delegations.
+The command `proxi node allchains -l` lists all active delegations in the network
+The command `proxi node allchains -o [-v]` lists all controllers of delegations and their delegations
 
 The tokens are delegated in the form of the chained output (UTXO) which is controlled by the **delegation lock**. 
 
@@ -18,9 +18,10 @@ The following command will display holdings of the wallet with additional info a
 
 To delegate your tokens to the sequencer `<target sequencer ID>` use command:
 
-`proxi node delegate amount <amount> [-q <target sequencer ID>] [-e <max number of freeze epochs>] `
+`proxi node delegate amount <amount>` delegates specified amount to optimal, randomly selected sequencer. This is preferred default
 
-Optional parameter `<max number of freeze epochs>` sets maximum number of consecutive epochs the sequencer can freeze the delegated amount output (the _freeze period_).
+Command `proxi node delegate amount <amount> [-q <target sequencer ID>] [-e <max number of freeze epochs>]` with optional flags allows to specify particular target sequencer and/or maximum frozen epochs `<max number of freeze epochs>` sets maximum number of consecutive epochs the sequencer can freeze the delegated amount output (the _freeze period_).
+
 1 delegation epoch is 530 slots (~1.5 hours). Default is maximum possible - 8 epochs (~12 hours).
 
 The command will create a delegation output with the tokens and the _delegation lock_. Few slots later sequencer will consume and freeze the delegation output.
