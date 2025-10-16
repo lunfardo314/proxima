@@ -382,7 +382,7 @@ func (s SugaredStateReader) GetSequencersWithDelegations() (map[base.ChainID]Del
 		if o.Output.IsSequencerOutput() {
 			seqEntry, seqEntryExists := ret[o.ChainID]
 			if !seqEntryExists {
-				ret[o.ChainID] = DelegationsOnSequencer{
+				seqEntry = DelegationsOnSequencer{
 					Delegations: make(map[base.ChainID]ledger.DelegationOutput),
 				}
 			}
@@ -392,7 +392,7 @@ func (s SugaredStateReader) GetSequencersWithDelegations() (map[base.ChainID]Del
 			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
 				seqEntry, seqEntryExists := ret[dOut.Target.ChainID()]
 				if !seqEntryExists {
-					ret[o.ChainID] = DelegationsOnSequencer{
+					seqEntry = DelegationsOnSequencer{
 						Delegations: make(map[base.ChainID]ledger.DelegationOutput),
 					}
 				}
