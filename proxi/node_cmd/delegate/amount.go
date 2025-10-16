@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/exp/maps"
 )
 
 // TODO implement random delegation target option
@@ -214,13 +216,22 @@ func chooseRandomSequencerForDelegation() (base.ChainID, error) {
 			m[seqID] = maxCov - (out.Output.TokenBalance() + uint64(out.Output.FrozenCoverage(0)))
 		}
 	}
-	rnd := uint64(rand.Intn(int(maxCov)))
+
+	ordered := maps.Keys(m)
+	sort.Slice(ordered, func(i, j int) bool {
+		return m[ordered[i]] < m[ordered[j]]
+	})
+
 	sum := uint64(0)
-	for seqID, x := range m {
-		if rnd < sum {
+	rnd := uint64(rand.Intn(int(maxCov)))
+
+	for i, seqID := range ordered {
+		if i < len(ordered)-1 {
+			sum += m[ordered[i+1]]
+		}
+		if i == len(ordered)-1 || rnd < sum {
 			return seqID, nil
 		}
-		sum += x
 	}
 	panic("inconsistency in chooseRandomSequencerForDelegation")
 }
