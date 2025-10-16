@@ -49,12 +49,9 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	if targetChainIDStr == "" {
-		if id := glb.GetOwnSequencerID(); id == nil {
-			glb.Assertf(id != nil, "own sequencer not configured -> can't use as a default target sequencer")
-		} else {
-			targetSeqID = *id
-			glb.Infof("using own sequencer as a default target sequencer: %s", targetSeqID.String())
-		}
+		glb.Infof("selecing optimal/random target sequencer..")
+		targetSeqID, err = chooseRandomSequencerForDelegation()
+		glb.AssertNoError(err)
 	} else {
 		targetSeqID, err = base.ChainIDFromHexString(targetChainIDStr)
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)

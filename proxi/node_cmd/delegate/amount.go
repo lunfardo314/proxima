@@ -57,7 +57,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	if targetChainIDStr == "" {
 		glb.Infof("selecing optimal/random target sequencer..")
 		targetSeqID, err = chooseRandomSequencerForDelegation()
-		glb.AssertNoError(fmt.Errorf("chooseRandomSequencerForDelegation: %v", err))
+		glb.AssertNoError(err)
 	} else {
 		targetSeqID, err = base.ChainIDFromHexString(targetChainIDStr)
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
