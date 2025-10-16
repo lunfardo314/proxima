@@ -381,7 +381,7 @@ func (s SugaredStateReader) GetSequencersWithDelegations() (map[base.ChainID]Del
 	for _, o := range allOuts {
 		if o.Output.IsSequencerOutput() {
 			seqEntry, seqEntryExists := ret[o.ChainID]
-			if seqEntryExists {
+			if !seqEntryExists {
 				ret[o.ChainID] = DelegationsOnSequencer{
 					Delegations: make(map[base.ChainID]ledger.DelegationOutput),
 				}
