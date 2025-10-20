@@ -8,27 +8,34 @@ import (
 )
 
 // the purpose of inGate is to let the transaction in no more than once and also prevent
-// gossiping iof pulled transactions
+// gossiping of pulled transactions
 
 type (
 	inGateEntry struct {
 		purgeDeadline time.Time
-		isWanted      bool
+		wasPulled     bool
 	}
 
 	inGate[T comparable] struct {
-		mutex          sync.Mutex
-		m              map[T]inGateEntry
-		ttlBlack       time.Duration
-		cleanIfExceeds int
+		mutex                sync.Mutex
+		m                    map[T]inGateEntry
+		ttl                  time.Duration
+		cleanWhenExceedsSize int
 	}
 )
 
-func newInGate[T comparable](ttlBlack time.Duration, cleanIfExceeds int) *inGate[T] {
+func newInGate[T comparable](ttl time.Duration, cleanWhenExceedsSize int) *inGate[T] {
 	return &inGate[T]{
-		m:              make(map[T]inGateEntry),
-		ttlBlack:       ttlBlack,
-		cleanIfExceeds: cleanIfExceeds,
+		m:                    make(map[T]inGateEntry),
+		ttl:                  ttl,
+		cleanWhenExceedsSize: cleanWhenExceedsSize,
+	}
+}
+
+func (g *inGate[T]) updateEntry(key T, pulled bool) {
+	g.m[key] = inGateEntry{
+		wasPulled:     pulled,
+		purgeDeadline: time.Now().Add(g.ttl),
 	}
 }
 
@@ -37,30 +44,29 @@ func (g *inGate[T]) checkPass(key T) (pass, wanted bool) {
 	defer g.mutex.Unlock()
 
 	entry, found := g.m[key]
-	g.m[key] = inGateEntry{purgeDeadline: time.Now().Add(g.ttlBlack)}
+	g.updateEntry(key, false)
 
-	return !found || entry.isWanted, entry.isWanted
+	return !found || entry.wasPulled, entry.wasPulled
 }
 
-func (g *inGate[T]) addWanted(key T) {
+func (g *inGate[T]) addPulled(key T) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
-	g.m[key] = inGateEntry{isWanted: true}
+	g.updateEntry(key, true)
 }
 
 func (g *inGate[T]) purgeInGate() {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 
-	if len(g.m) <= g.cleanIfExceeds {
+	if len(g.m) <= g.cleanWhenExceedsSize {
 		return
 	}
 
 	nowis := time.Now()
-
 	for key, entry := range g.m {
-		if !entry.isWanted && nowis.After(entry.purgeDeadline) {
+		if nowis.After(entry.purgeDeadline) {
 			delete(g.m, key)
 		}
 	}

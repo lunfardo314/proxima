@@ -19,7 +19,7 @@ func TestInputGate(t *testing.T) {
 		pass, _ = g.checkPass(1)
 		require.False(t, pass)
 
-		g.addWanted(5)
+		g.addPulled(5)
 		pass, wanted = g.checkPass(5)
 		require.True(t, pass)
 		require.True(t, wanted)
@@ -27,7 +27,7 @@ func TestInputGate(t *testing.T) {
 		pass, _ = g.checkPass(5)
 		require.False(t, pass)
 
-		g.addWanted(5)
+		g.addPulled(5)
 		pass, wanted = g.checkPass(5)
 		require.True(t, pass)
 		require.True(t, wanted)

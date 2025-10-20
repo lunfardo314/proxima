@@ -27,7 +27,7 @@ type (
 		EvidenceBranchSlot(s uint32, healthy bool)
 		TxBytesStore() global.TxBytesStore
 		TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.TransactionID, error)
-		AddWantedTransaction(txid base.TransactionID)
+		AddPulledTransaction(txid base.TransactionID)
 	}
 
 	pullEnvironment interface {

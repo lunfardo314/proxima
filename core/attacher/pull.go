@@ -77,7 +77,7 @@ func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.Wr
 	// notify poker to poke add this attacher to notification list of the dependency
 	a.pokeMe(deptVID)
 	// add transaction to the wanted/expected list in the input queue
-	a.AddWantedTransaction(deptVID.ID())
+	a.AddPulledTransaction(deptVID.ID())
 	// do not pull is node is not connected to any peer longer than 2 pull repeat periods
 	if a.DurationSinceLastMessageFromPeer() <= 2*repeatPullAfter {
 		a.PullFromNPeers(nPeers, deptVID.ID())

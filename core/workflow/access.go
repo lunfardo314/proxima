@@ -103,8 +103,8 @@ func (w *Workflow) WaitTxIDDefined(txid base.TransactionID, pollPeriod, timeout 
 	}
 }
 
-func (w *Workflow) AddWantedTransaction(txid base.TransactionID) {
-	w.txInputQueue.AddWantedTransaction(txid)
+func (w *Workflow) AddPulledTransaction(txid base.TransactionID) {
+	w.txInputQueue.AddPulledTransaction(txid)
 }
 
 func (w *Workflow) EvidenceNonSequencerTx() {

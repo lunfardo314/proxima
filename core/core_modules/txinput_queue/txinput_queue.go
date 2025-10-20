@@ -71,10 +71,9 @@ const (
 )
 
 func New(env environment) *TxInputQueue {
-	blackTTL := inGateBlackListTTLSlots * ledger.Const.SlotDuration()
 	ret := &TxInputQueue{
 		environment: env,
-		inGate:      newInGate[base.TransactionID](blackTTL, cleanIfExceeds),
+		inGate:      newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.Const.SlotDuration(), cleanIfExceeds),
 	}
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
 	ret.CoreModule.Start()
@@ -229,10 +228,10 @@ func (q *TxInputQueue) registerMetrics() {
 	)
 }
 
-// AddWantedTransaction adds transaction short id to the wanted filter.
+// AddPulledTransaction adds transaction short id to the wanted filter.
 // It makes the transaction go directly for attachment without checking other filters and without gossiping
-func (q *TxInputQueue) AddWantedTransaction(txid base.TransactionID) {
-	q.inGate.addWanted(txid)
+func (q *TxInputQueue) AddPulledTransaction(txid base.TransactionID) {
+	q.inGate.addPulled(txid)
 }
 
 func (q *TxInputQueue) EvidenceNonSequencerTx() {
