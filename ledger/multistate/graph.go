@@ -39,11 +39,6 @@ func MakeTreeOptionWithSlotsBack(slotsBack int) MakeTreeOption {
 		opts.slotsBack = slotsBack
 	}
 }
-func MakeTreeOptionWithBranchAttributes(branchNodeAttributesFun func(br *BranchData, seqNr int) []func(*graph.VertexProperties)) MakeTreeOption {
-	return func(opts *MakeTreeOptions) {
-		opts.branchNodeAttributes = branchNodeAttributesFun
-	}
-}
 
 func MakeTreeOptionWithFileName(fname string) MakeTreeOption {
 	return func(opts *MakeTreeOptions) {

@@ -11,6 +11,7 @@ const (
 	GenesisOutputIndex     = byte(0)
 	GenesisStemOutputIndex = byte(1)
 
+	// BoostrapSequencerIDHex is constant on all ledgers
 	BoostrapSequencerIDHex = "8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5"
 )
 

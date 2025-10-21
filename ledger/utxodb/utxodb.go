@@ -20,7 +20,7 @@ import (
 
 // UTXODB is a centralized ledger.Updatable with indexer and genesis faucet
 // It is always final, does not have finality gadget nor the milestone chain
-// It is mainly used for testing of constraints
+// It's primary purpose is testing the ledger
 type UTXODB struct {
 	store             multistate.StateStore
 	state             *multistate.Updatable

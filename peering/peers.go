@@ -28,6 +28,10 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+// TODO
+//  1. get rid of heartbeat protocol- makes little sense
+//  2. simplify sending of pull requests. Send to all peers, no ranking, no random selection
+
 const (
 	TraceTagPeeringPeers = "peering_peers"
 )

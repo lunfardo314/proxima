@@ -166,15 +166,3 @@ func PickOutputFromListFunc(lst []*ledger.OutputWithID) func(oid base.OutputID) 
 		return lst[idx].Output.Bytes(), true
 	}
 }
-
-func ValidateTxBytes(txBytes []byte, loadInput func(i byte) (*ledger.Output, error)) error {
-	tx, err := FromBytes(txBytes, MainTxValidationOptions...)
-	if err != nil {
-		return err
-	}
-	ctx, err := TxContextFromTransaction(tx, loadInput)
-	if err != nil {
-		return err
-	}
-	return ctx.Validate()
-}

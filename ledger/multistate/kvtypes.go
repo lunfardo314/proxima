@@ -8,8 +8,6 @@ import (
 
 // access to the state
 
-// TODO also GetUTXONoLock or GetUTXOMulti are needed. See iteration use cases
-
 type (
 	StateReader interface {
 		GetUTXO(id base.OutputID) ([]byte, bool)

@@ -61,6 +61,18 @@ func (d *workflowDummyEnvironment) SelfPeerID() peer.ID {
 	return "self"
 }
 
+func (d *workflowDummyEnvironment) EvidenceTxValidationStats(took time.Duration, numIn, numOut int) {
+	panic("implement me")
+}
+
+func (d *workflowDummyEnvironment) LatestReliableState() (multistate.SugaredStateReader, error) {
+	panic("implement me")
+}
+
+func (d *workflowDummyEnvironment) EvidenceBranchInflationBonus(ib uint64) {
+	panic("implement me")
+}
+
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	stateStore := common.NewInMemoryKVStore()
 	multistate.InitStateStoreFromGlobals(stateStore)
