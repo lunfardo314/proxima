@@ -19,6 +19,16 @@ func ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
 	return uint64(forSlots) * (amount / (Const.MinimumInflatableAmount0 + uint64(inSlot)))
 }
 
+// AdjustedAmount calculates amount adjusted to the maximum inflation.
+// I.e. adjusted amount A as a result to maximal inflation in 'slot' slots reaches 'amount'
+// If amount == totalSupply, then  adjusted amount == initialSupply
+// TODO experimental
+//   - consider name 'real supply/amount/balance'
+//   - consider adjustment of the branch inflation bonus
+func AdjustedAmount(amount uint64, slot uint32) uint64 {
+	return Const.MinimumInflatableAmount0 * (amount / (Const.MinimumInflatableAmount0 + uint64(slot)))
+}
+
 func ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
 	return ChainInflation(amount, inSlot, 1)
 }

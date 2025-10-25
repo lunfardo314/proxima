@@ -26,8 +26,8 @@ type (
 	}
 
 	OutputWithID struct {
-		ID     base.OutputID
-		Output *Output
+		*Output
+		ID base.OutputID
 	}
 
 	OutputDataWithID struct {
@@ -696,6 +696,11 @@ func (o *OutputWithID) Short() string {
 
 func (o *OutputWithID) IDShort() string {
 	return o.ID.StringShort()
+}
+
+// AdjustedTokenBalance adjusted to inflation
+func (o *OutputWithID) AdjustedTokenBalance() uint64 {
+	return AdjustedAmount(o.TokenBalance(), o.ID.Slot())
 }
 
 func OutputsWithIDToString(outs ...*OutputWithID) string {

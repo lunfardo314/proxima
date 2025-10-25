@@ -140,6 +140,7 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	inactive := lrbRootRecord.Supply - totalOnSeqBalance - totalFrozen
 	glb.Infof("total inactive coverage delta: %s (%s of supply)", util.Th(inactive), perc(inactive, lrbRootRecord.Supply))
 	glb.Infof("total supply:                  %s", util.Th(lrbRootRecord.Supply))
+	glb.Infof("total ADJUSTED supply:         %s", util.Th(ledger.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
 }
 
 func listChainsVerbose(chains []*ledger.OutputWithChainID) {
