@@ -180,8 +180,8 @@ func (t *SequencerTips) filterLatestActiveMilestones(filter ...func(seqID base.C
 		flt = filter[0]
 	}
 
-	t.mutex.RLock()
-	defer t.mutex.RUnlock()
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
 
 	ret := make([]*vertex.WrappedTx, 0, len(t.latestMilestones))
 	for seqID, ms := range t.latestMilestones {
@@ -190,7 +190,7 @@ func (t *SequencerTips) filterLatestActiveMilestones(filter ...func(seqID base.C
 			if ms.loggedCoverageNotSet == nil || *ms.loggedCoverageNotSet != ms.WrappedTx.ID() {
 				t.Log().Warnf("[tippool] %s: ledger coverage is not set", ms.WrappedTx.IDShortString())
 				ms.loggedCoverageNotSet = util.Ref(ms.WrappedTx.ID())
-				t.latestMilestones[seqID] = ms
+				t.latestMilestones[seqID] = ms // <- write access, needs mutex lock for writing
 			}
 			continue
 		}
