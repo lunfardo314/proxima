@@ -118,8 +118,8 @@ func (p *proposal) insertTagAlongInputs() {
 				p.proposer.Log().Warnf("TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
 			} else {
 				p.proposer.Assertf(cmd != nil, "cmd != nil")
-				p.proposer.Log().Infof("TAG_ALONG: output %s has been added, amount: %s, cmd='%s'",
-					o.o.ID.StringShort(), util.Th(o.o.Output.TokenBalance()), cmd.Lines().String())
+				p.proposer.Log().Infof("TAG_ALONG: output %s has been added to '%s', cmd='%s'",
+					o.o.ID.StringShort(), p.Name, cmd.Lines().Join(", "))
 			}
 		}
 		if p.txb.InputsAreFull() {
