@@ -88,7 +88,7 @@ type (
 	}
 )
 
-const TraceTagTask = "taskData"
+const TraceRunTagTask = "runTask"
 
 var (
 	AllProposingStrategies = make(map[string]*proposerStrategy)
@@ -118,10 +118,10 @@ func allProposingStrategies() []*proposerStrategy {
 func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
 	deadline := ledger.ClockTime(targetTs)
 	nowis := time.Now()
-	env.Tracef(TraceTagTask, "RunTask START: target: %s, deadline: %s, nowis: %s",
-		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 
-	defer env.Tracef(TraceTagTask, "RunTask END: target: %s", targetTs.String)
+	env.Tracef(TraceRunTagTask, "START: target: %s, deadline: %s, nowis: %s",
+		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
+	defer env.Tracef(TraceRunTagTask, "END: target: %s", targetTs.String)
 
 	task := &taskData{
 		environment:  env,

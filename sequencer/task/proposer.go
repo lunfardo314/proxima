@@ -12,7 +12,12 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+const TraceTagRunProposer = "runProposer"
+
 func (p *proposer) run() {
+	p.Tracef(TraceTagRunProposer, "START proposer %s, targetTs: %s", p.strategy.Name, p.targetTs.String())
+	defer p.Tracef(TraceTagRunProposer, "END proposer %s, targetTs: %s", p.strategy.Name, p.targetTs.String())
+
 	var a *proposal
 	var forceExit bool
 	var err error
