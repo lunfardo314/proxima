@@ -54,9 +54,6 @@ type (
 		ownMilestonesMutex sync.RWMutex
 		ownMilestones      map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
 
-		// keeping counters for each referenced vid. When the counter reaches 0, the vid is deleted from the map
-		mutexReferenceCounters sync.Mutex
-
 		milestoneCount  int
 		branchCount     int
 		lastSubmittedTs base.LedgerTime
