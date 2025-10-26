@@ -44,30 +44,26 @@ type (
 
 	Sequencer struct {
 		Environment
-		ctx                context.Context    // local context
-		stopFun            context.CancelFunc // local stop function
-		sequencerID        base.ChainID
-		controllerKey      ed25519.PrivateKey
-		backlog            *backlog.TagAlongBacklog
-		config             *ConfigOptions
-		log                *zap.SugaredLogger
-		ownMilestonesMutex sync.RWMutex
-		ownMilestones      map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
-
-		milestoneCount  int
-		branchCount     int
-		lastSubmittedTs base.LedgerTime
-		infoMutex       sync.RWMutex
-		info            Info
-		//
+		ctx                  context.Context    // local context
+		stopFun              context.CancelFunc // local stop function
+		sequencerID          base.ChainID
+		controllerKey        ed25519.PrivateKey
+		backlog              *backlog.TagAlongBacklog
+		config               *ConfigOptions
+		log                  *zap.SugaredLogger
+		ownMilestonesMutex   sync.RWMutex
+		ownMilestones        map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
+		milestoneCount       int
+		branchCount          int
+		lastSubmittedTs      base.LedgerTime
+		infoMutex            sync.RWMutex
+		info                 Info
 		onCallbackMutex      sync.RWMutex
 		onMilestoneSubmitted func(seq *Sequencer, vid *vertex.WrappedTx)
 		onExit               func()
-
-		slotData           *task.SlotData
-		wontSubmitBranchID base.TransactionID
-
-		metrics *sequencerMetrics
+		slotData             *task.SlotData
+		wontSubmitBranchID   base.TransactionID
+		metrics              *sequencerMetrics
 	}
 
 	outputsWithTime struct {
