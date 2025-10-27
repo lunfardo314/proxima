@@ -5,6 +5,8 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"math"
+	"runtime"
 	"sync"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/checkpoints"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -348,6 +351,15 @@ func (seq *Sequencer) sequencerLoop() {
 		seq.Log().Infof("sequencer loop STOPPING..")
 	}()
 
+	const deadlockTolerance = 10 * time.Second
+
+	checkpoint := checkpoints.New(func(name string) {
+		buf := make([]byte, 2*math.MaxUint16)
+		runtime.Stack(buf, true)
+		seq.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf))
+	})
+	defer checkpoint.Close()
+
 	for {
 		select {
 		case <-seq.Ctx().Done():
@@ -362,6 +374,8 @@ func (seq *Sequencer) sequencerLoop() {
 				seq.Log().Warnf(">>>>>>>>>>>>> sequencer step took %v", duration)
 			}
 		}
+
+		checkpoint.Check("SEQ_LOOP", deadlockTolerance)
 	}
 }
 
