@@ -69,6 +69,4 @@ It also contains some tools, which includes basic wallet functionality.
   * [Delegation in `proxi`](docs/delegate.md)
   * [How to join testnet?](docs/testnet.md)
 * 
-* Introductory videos:
-  * [1. UTXO tangle. Ledger coverage](https://youtu.be/CT0_FlW-ObM)
-  * [2. Cooperative consensus](https://youtu.be/7N_L6CMyRdo)
+* Introduction to the cooperative consensus ([videos](https://youtu.be/XT6GBSLCbZo))
