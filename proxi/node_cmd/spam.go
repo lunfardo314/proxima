@@ -81,12 +81,10 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 		ret.tagAlongSequencer, err = base.ChainIDFromHexString(seqStr)
 		glb.AssertNoError(err)
 	} else {
-		glb.Infof("tag-along for spamming is not specified. Using default")
 		defaultTgaSeq := glb.GetTagAlongSequencerID()
 		glb.Assertf(defaultTgaSeq != nil, "tag-along sequencer not specified")
-		if defaultTgaSeq != nil {
-			ret.tagAlongSequencer = *defaultTgaSeq
-		}
+		ret.tagAlongSequencer = *defaultTgaSeq
+		glb.Infof("tag-along for spamming is not specified. Using default: %s", ret.tagAlongSequencer.String())
 	}
 
 	ret.target, err = ledger.AddressED25519FromSource(sub.GetString("target"))

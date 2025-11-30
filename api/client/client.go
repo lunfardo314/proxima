@@ -97,14 +97,8 @@ func (c *APIClient) GetLedgerIdentityData() ([]byte, error) {
 }
 
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server
-func (c *APIClient) getAccountOutputs(accountable ledger.Accountable, maxOutputs int, sort ...string) ([]*ledger.OutputDataWithID, *base.TransactionID, error) {
-	if maxOutputs < 0 {
-		maxOutputs = 0
-	}
+func (c *APIClient) getAccountOutputs(accountable ledger.Accountable, sort ...string) ([]*ledger.OutputDataWithID, *base.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetAccountOutputs+"?accountable=%s", accountable.String())
-	if maxOutputs > 0 {
-		path += fmt.Sprintf("&max_outputs=%d", maxOutputs)
-	}
 	if len(sort) > 0 {
 		switch {
 		case strings.HasPrefix(sort[0], "desc"):
@@ -463,15 +457,15 @@ func (c *APIClient) SubmitTransaction(txBytes []byte) error {
 
 // GetAccountOutputs returns all UTXOs in the account
 func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
-	return c.GetAccountOutputsExt(account, 0, "", filter...)
+	return c.GetAccountOutputsExt(account, "", filter...)
 }
 
-func (c *APIClient) GetAccountOutputsExt(account ledger.Accountable, maxOutputs int, sortOption string, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
+func (c *APIClient) GetAccountOutputsExt(account ledger.Accountable, sortOption string, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
 	filterFun := func(oid *base.OutputID, o *ledger.Output) bool { return true }
 	if len(filter) > 0 {
 		filterFun = filter[0]
 	}
-	oData, lrbid, err := c.getAccountOutputs(account, maxOutputs, sortOption)
+	oData, lrbid, err := c.getAccountOutputs(account, sortOption)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -605,7 +599,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutput
 	}
 
 	// ask a bit more descending outputs from server and the filter them out
-	ret, lrbid, err := c.GetAccountOutputsExt(account, maxO*2, "desc", func(_ *base.OutputID, o *ledger.Output) bool {
+	ret, lrbid, err := c.GetAccountOutputsExt(account, "desc", func(_ *base.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	if err != nil {

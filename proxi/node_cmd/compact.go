@@ -3,6 +3,8 @@ package node_cmd
 import (
 	"fmt"
 	"os"
+	"slices"
+	"sort"
 	"strconv"
 	"time"
 
@@ -35,7 +37,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	if len(args) > 0 {
 		maxNumberOfInputs, err = strconv.Atoi(args[0])
 		glb.AssertNoError(err)
-		glb.Assertf(0 < maxNumberOfInputs && maxNumberOfInputs <= 256, "parameter must be > 0 and <= 256")
+		glb.Assertf(2 <= maxNumberOfInputs && maxNumberOfInputs <= 256, "parameter must be >= 2 and <= 256")
 	}
 
 	var tagAlongSeqID *base.ChainID
@@ -52,14 +54,23 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	walletData := glb.GetWalletData()
-	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputsExt(walletData.Account, maxNumberOfInputs, "asc", func(_ *base.OutputID, o *ledger.Output) bool {
+	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputsExt(walletData.Account, "asc", func(_ *base.OutputID, o *ledger.Output) bool {
 		return o.NumConstraints() == 2
 	})
 	glb.AssertNoError(err)
 
+	glb.Infof("total %d UTXO(s) in %s\n", len(walletOutputs), walletData.Account.String())
+
+	sort.Slice(walletOutputs, func(i, j int) bool {
+		return walletOutputs[i].Output.TokenBalance() > walletOutputs[j].Output.TokenBalance()
+	})
+	if len(walletOutputs) > maxNumberOfInputs {
+		walletOutputs = slices.Clone(walletOutputs[:maxNumberOfInputs])
+	}
+
 	glb.PrintLRB(lrbid)
 	if len(walletOutputs) <= 1 {
-		glb.Infof("only one output -> no need for compacting")
+		glb.Infof("no need for compacting")
 		os.Exit(0)
 	}
 	glb.Infof("%d ED25519 output(s) from account %s will be compacted into one", len(walletOutputs), walletData.Account.String())
