@@ -122,7 +122,7 @@ func NoWait() bool {
 	return viper.GetBool("nowait")
 }
 
-func TrackTxInclusion(txid base.TransactionID, poll time.Duration) {
+func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...time.Duration) bool {
 	inclusionDepth := GetTargetInclusionDepth()
 	Infof("tracking inclusion of the transaction %s.\ntarget inclusion depth: %d", txid.String(), inclusionDepth)
 	lrbids := set.New[base.TransactionID]()
@@ -145,13 +145,16 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration) {
 				Infof("%2d sec. Transaction is INCLUDED in the latest reliable branch (LRB) at depth %d: %s", since, foundAtDepth, lrbidStr)
 				if foundAtDepth == inclusionDepth {
 					Infof("target inclusion depth %d has been reached", inclusionDepth)
-					return
+					return true
 				}
 			}
 			last = time.Now()
 			lrbids.Insert(lrbid)
 		}
 		time.Sleep(poll)
+		if len(timeout) > 0 && time.Since(start) > timeout[0] {
+			return false
+		}
 	}
 }
 

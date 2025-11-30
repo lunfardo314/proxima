@@ -171,11 +171,16 @@ func doSpamming(cfg spammerConfig) {
 			}
 		}
 
-		glb.TrackTxInclusion(oid.TransactionID(), time.Second)
+		const inclusionTimeout = time.Minute
+		included := glb.TrackTxInclusion(oid.TransactionID(), time.Second, inclusionTimeout)
 
-		txCounter += len(bundle)
-		timeSinceBeginning := time.Since(beginTime)
-		glb.Infof("tx counter: %d, TPS avg: %2f", txCounter, float32(txCounter)/float32(timeSinceBeginning/time.Second))
+		if included {
+			txCounter += len(bundle)
+			timeSinceBeginning := time.Since(beginTime)
+			glb.Infof("tx counter: %d, TPS avg: %2f", txCounter, float32(txCounter)/float32(timeSinceBeginning/time.Second))
+		} else {
+			glb.Infof("inclusion timeout exceeded -> cancel")
+		}
 	}
 }
 
