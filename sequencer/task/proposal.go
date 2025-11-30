@@ -141,8 +141,8 @@ func (p *proposal) insertDelegations() {
 
 	// make a list of potential delegations with optimal freeze periods
 	outs := p.selectDelegationsToFreeze()
-	// filter out those which are consumed in the past. Not very necessary for delegations
-	// warning: do not put IsConsumedInThePastPath into the iteration closure because causes deadlock
+	// filter out those which are consumed in the past.
+	// warning: do not put IsConsumedInThePastPath into the iteration closure because it causes deadlock
 	tip := p.Extending().VID
 	outs = util.PurgeSlice(outs, func(dOut _delegationToFreeze) bool {
 		return !p.IsConsumedInThePastPath(dOut.ID, tip, p.BaselineSugaredStateReader)
