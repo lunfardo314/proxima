@@ -14,6 +14,9 @@ import (
 	"github.com/spf13/viper"
 )
 
+const minimumBalance = 1000
+const inclusionTimeout = 90 * time.Second
+
 type spammerConfig struct {
 	outputAmount      uint64
 	bundleSize        int
@@ -24,6 +27,7 @@ type spammerConfig struct {
 	tagAlongFee       uint64
 	target            ledger.Accountable
 	finalitySlots     int
+	inclusionTimeout  time.Duration
 }
 
 func initSpamCmd() *cobra.Command {
@@ -73,6 +77,12 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 	ret.maxTransactions = sub.GetInt("max_transactions")
 	ret.maxDuration = time.Duration(sub.GetInt("max_duration_minutes")) * time.Minute
 	ret.tagAlongFee = sub.GetUint64("tag_along.fee")
+	incl := sub.GetUint64("inclusion_timeout_sec")
+	if incl != 0 {
+		ret.inclusionTimeout = time.Duration(incl) * time.Second
+	} else {
+		ret.inclusionTimeout = inclusionTimeout
+	}
 
 	var err error
 
@@ -123,8 +133,6 @@ func runSpamCmd(_ *cobra.Command, _ []string) {
 	doSpamming(cfg)
 }
 
-const minimumBalance = 1000
-
 func doSpamming(cfg spammerConfig) {
 	walletData := glb.GetWalletData()
 
@@ -171,8 +179,7 @@ func doSpamming(cfg spammerConfig) {
 			}
 		}
 
-		const inclusionTimeout = time.Minute
-		included := glb.TrackTxInclusion(oid.TransactionID(), time.Second, inclusionTimeout)
+		included := glb.TrackTxInclusion(oid.TransactionID(), time.Second, cfg.inclusionTimeout)
 
 		if included {
 			txCounter += len(bundle)
