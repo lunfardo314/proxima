@@ -180,6 +180,8 @@ func evalAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
 	return par.AllocData(res...)
 }
 
+// deterministic pseudo-random uint64 value from seed scaled to $0 bytes.
+// Used for extraction of value from VRF
 func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 	data := par.Arg(0)
 	scale := easyfl_util.MustUint64FromBytes(par.Arg(1))

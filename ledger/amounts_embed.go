@@ -138,11 +138,11 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	path := par.DataContext().EvalPath()
 	par.Require(path[len(path)-1] == ConstraintIndexAmounts, "'amounts' must be at index %d", ConstraintIndexAmounts)
 	ctx := par.DataContext()
-	o := ctx.SelfOutput()
 	if !ctx.SelfIsProducedOutput() {
-		// only enforce the validity of amounts on produced outputs
+		// only enforce validity of amounts on produced outputs
 		return []byte{0xff}
 	}
+	o := ctx.SelfOutput()
 
 	// enforce minimum storage deposit - only on produced utxos.
 	// Changing the constant in te network does not change the ledger definitions and does not introduce non-determinism
