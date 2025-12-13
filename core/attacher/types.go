@@ -33,7 +33,7 @@ type (
 	pullEnvironment interface {
 		PokeMe(me, with *vertex.WrappedTx)
 		PokeAllWith(wanted *vertex.WrappedTx)
-		PullFromNPeers(nPeers int, txid base.TransactionID) int
+		PullFromPeers(txid base.TransactionID) int
 	}
 
 	postEventEnvironment interface {

@@ -2,7 +2,6 @@ package peering
 
 import (
 	"math/rand"
-	"sort"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/discovery"
@@ -71,23 +70,15 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	sortedDynamicPeers := ps._sortedDynamicPeersByRankAsc()
-	if len(sortedDynamicPeers) <= ps.cfg.MaxDynamicPeers {
+	dynamicPeers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
+		return !p.isStatic
+	})
+	if len(dynamicPeers) <= ps.cfg.MaxDynamicPeers {
 		return
 	}
-	for _, p := range sortedDynamicPeers[:len(sortedDynamicPeers)-ps.cfg.MaxDynamicPeers] {
+	for _, p := range dynamicPeers[:len(dynamicPeers)-ps.cfg.MaxDynamicPeers] {
 		if time.Since(p.whenAdded) > gracePeriodAfterAdded {
 			ps._dropPeer(p, "excess peer (by rank)", true)
 		}
 	}
-}
-
-func (ps *Peers) _sortedDynamicPeersByRankAsc() []*Peer {
-	dynamicPeers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
-		return !p.isStatic
-	})
-	sort.Slice(dynamicPeers, func(i, j int) bool {
-		return dynamicPeers[i].rank() < dynamicPeers[j].rank()
-	})
-	return dynamicPeers
 }

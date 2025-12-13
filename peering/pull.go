@@ -7,7 +7,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/util"
 )
 
 // pull request message 1st byte is the type of the message. The rest is message body
@@ -102,12 +101,9 @@ func (ps *Peers) sendPullTransactionToPeers(ids []peer.ID, txid base.Transaction
 	ps.sendMsgBytesOutMulti(ids, ps.lppProtocolPull, msg.Bytes())
 }
 
-// PullTransactionsFromNPeers sends pull request to the random peers which has txStore
-// Return number of peer pull request was sent to
-func (ps *Peers) PullTransactionsFromNPeers(nPeers int, txid base.TransactionID) int {
-	util.Assertf(nPeers >= 1, "nPeers")
-
-	targets := ps.chooseNPullTargets(nPeers)
+// PullTransactionsFromPeers sends pull request to all peers that respond to pull requests
+func (ps *Peers) PullTransactionsFromPeers(txid base.TransactionID) int {
+	targets := ps.allPullTargetIDs()
 	ps.sendPullTransactionToPeers(targets, txid)
 	return len(targets)
 }
@@ -137,3 +133,17 @@ type _pullTransaction struct {
 }
 
 func (pt *_pullTransaction) Bytes() []byte { return encodePullTransactionMsg(pt.txid) }
+
+func (ps *Peers) allPullTargetIDs() []peer.ID {
+	ret := make([]peer.ID, 0)
+
+	ps.mutex.RLock()
+	defer ps.mutex.RUnlock()
+
+	for _, p := range ps.peers {
+		if ps._isPullTarget(p) {
+			ret = append(ret, p.id)
+		}
+	}
+	return ret
+}
