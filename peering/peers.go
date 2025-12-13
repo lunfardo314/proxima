@@ -28,9 +28,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// TODO
-//  1. get rid of heartbeat protocol- makes little sense
-//  2. simplify sending of pull requests. Send to all peers, no ranking, no random selection
+// TODO minimize synchronicity assumptions -> get rid of clock in hb, probably remove heartbeat protocol altogether
 
 const (
 	TraceTagPeeringPeers = "peering_peers"
@@ -57,7 +55,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	connManager, err := connmgr.NewConnManager(
 		cfg.MaxDynamicPeers,   // lo,
 		cfg.MaxDynamicPeers+5, // hi,
-		//connmgr.WithEmergencyTrim(true), // depracated??
+		//connmgr.WithEmergencyTrim(true), // deprecated??
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create ConnManager: %w", err)

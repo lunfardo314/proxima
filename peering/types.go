@@ -128,9 +128,6 @@ type (
 		hbMsgDifferences         [10]time.Duration
 		hbMsgDifferencesIdx      int
 		hbMsgDifferenceQuartiles [3]time.Duration
-		// ranks
-		rankByLastHBReceived  int
-		rankByClockDifference int
 		// msg counters
 		numIncomingHB   int
 		numIncomingPull int
