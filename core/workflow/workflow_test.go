@@ -37,7 +37,7 @@ func (d *workflowDummyEnvironment) SyncServerDisabled() bool {
 	return true
 }
 
-func (d *workflowDummyEnvironment) PullFromNPeers(_ int, _ base.TransactionID) int {
+func (d *workflowDummyEnvironment) PullFromPeers(_ base.TransactionID) int {
 	panic("not implemented")
 }
 

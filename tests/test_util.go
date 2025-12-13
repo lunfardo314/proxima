@@ -48,8 +48,8 @@ func (w *workflowDummyEnvironment) TxBytesStore() global.TxBytesStore {
 	return w.txBytesStore
 }
 
-func (w *workflowDummyEnvironment) PullFromNPeers(_ int, txid base.TransactionID) int {
-	w.Log().Warnf(">>>>>> PullFromNPeers not implemented: %s", txid.StringShort())
+func (w *workflowDummyEnvironment) PullFromPeers(txid base.TransactionID) int {
+	w.Log().Warnf(">>>>>> PullFromPeers not implemented: %s", txid.StringShort())
 	return 0
 }
 

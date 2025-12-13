@@ -49,7 +49,6 @@ type Global struct {
 	// repeat pull after. Default 2 sec
 	txPullRepeatPeriod time.Duration
 	txPullMaxAttempts  int
-	txPullFromPeers    int
 	//
 	disableDeadlockCatching bool
 }
@@ -60,7 +59,6 @@ var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", 
 const (
 	PullRepeatPeriodDefault = 2 * time.Second
 	PullMaxAttemptsDefault  = 30
-	PullFromNumPeersDefault = 3
 )
 
 const TraceTag = "global"
@@ -117,12 +115,9 @@ func NewFromConfig() *Global {
 	if v := viper.GetInt("transaction_pull.max_attempts"); v > 0 {
 		ret.txPullMaxAttempts = v
 	}
-	if v := viper.GetInt("transaction_pull.from_random_peers"); v > 0 {
-		ret.txPullFromPeers = v
-	}
 
-	ret.SugaredLogger.Infof("transaction pull parameters:: repeat period: %v, max attempts: %d, num peers: %d",
-		ret.txPullRepeatPeriod, ret.txPullMaxAttempts, ret.txPullFromPeers)
+	ret.SugaredLogger.Infof("transaction pull parameters:: repeat period: %v, max attempts: %d",
+		ret.txPullRepeatPeriod, ret.txPullMaxAttempts)
 
 	ret.disableDeadlockCatching = viper.GetBool("disable_deadlock_catcher")
 	if ret.disableDeadlockCatching {
@@ -151,7 +146,6 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		counters:           make(map[string]int),
 		txPullRepeatPeriod: PullRepeatPeriodDefault,
 		txPullMaxAttempts:  PullMaxAttemptsDefault,
-		txPullFromPeers:    PullFromNumPeersDefault,
 	}
 	ret.registerMetrics()
 	return ret
@@ -414,8 +408,8 @@ func (l *Global) AttachmentFinished(started ...time.Time) {
 	}
 }
 
-func (l *Global) TxPullParameters() (repeatPeriod time.Duration, maxAttempts int, numPeers int) {
-	return l.txPullRepeatPeriod, l.txPullMaxAttempts, l.txPullFromPeers
+func (l *Global) TxPullParameters() (repeatPeriod time.Duration, maxAttempts int) {
+	return l.txPullRepeatPeriod, l.txPullMaxAttempts
 }
 
 func (l *Global) DeadlockCatchingDisabled() bool {

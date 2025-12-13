@@ -204,9 +204,6 @@ func (ps *Peers) Run() {
 				aliveDynamic, ps.cfg.MaxDynamicPeers, pullTargets, time.Since(nowis))
 
 			logNumPeersDeadline = nowis.Add(logPeersEvery)
-			{
-				ps.Tracef(TraceTagPullTargets, "pull targets: {%s}", func() string { return ps.pullTargetsByRankDescLines().Join(", ") })
-			}
 		}
 
 		return true
@@ -228,11 +225,6 @@ func (ps *Peers) Run() {
 
 	ps.RepeatInBackground(Name+"_update_peer_metrics", 2*time.Second, func() bool {
 		ps.updatePeerMetrics(ps.peerStats())
-		return true
-	})
-
-	ps.RepeatInBackground(Name+"_adjust_ranks", 500*time.Millisecond, func() bool {
-		ps.adjustRanks()
 		return true
 	})
 
@@ -642,18 +634,16 @@ func (p *Peer) _isAlive() bool {
 
 //const TraceTagSendMsg = "sendMsg"
 
-const sendDefaultTimeout = 4 * time.Second
-
-func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) bool {
+func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
 	var err error
 	var stream network.Stream
 
 	ps.withPeer(peerID, func(p *Peer) {
 		if p != nil {
-			if peerStream, ok := p.streams[protocolID]; ok {
-				peerStream.mutex.RLock()
-				defer peerStream.mutex.RUnlock()
-				stream = peerStream.stream
+			if _stream, ok := p.streams[protocolID]; ok {
+				_stream.mutex.RLock()
+				stream = _stream.stream
+				_stream.mutex.RUnlock()
 			}
 		}
 	})
@@ -666,11 +656,9 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	// Set up timeout context
 	var ctx context.Context
 	var cancel context.CancelFunc
-	if len(timeout) > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), timeout[0])
-	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), sendDefaultTimeout) // Default timeout
-	}
+	const sendTimeout = 4 * time.Second
+
+	ctx, cancel = context.WithTimeout(context.Background(), sendTimeout) // Default timeout
 	defer cancel()
 
 	done := make(chan error, 1)
@@ -694,10 +682,10 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 }
 
 // sendMsgBytesOutMulti send to multiple peers in parallel
-func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte, timeout ...time.Duration) {
+func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID, data []byte) {
 	for _, id := range peerIDs {
 		idCopy := id
-		go ps.sendMsgBytesOut(idCopy, protocolID, data, timeout...)
+		go ps.sendMsgBytesOut(idCopy, protocolID, data)
 	}
 }
 

@@ -98,8 +98,8 @@ func (p *ProximaNode) TxBytesStore() global.TxBytesStore {
 	return p.txBytesStore
 }
 
-func (p *ProximaNode) PullFromNPeers(nPeers int, txid base.TransactionID) int {
-	return p.peers.PullTransactionsFromNPeers(nPeers, txid)
+func (p *ProximaNode) PullFromPeers(txid base.TransactionID) int {
+	return p.peers.PullTransactionsFromPeers(txid)
 }
 
 func (p *ProximaNode) GetOwnSequencerID() *base.ChainID {
