@@ -58,7 +58,7 @@ type (
 
 // partitions of the state store on the trie
 // Ledger state contains records of UTXOs (keys 33 bytes long output IDs ) and all past transaction IDs (32 byte long keys)
-// reason why we put index entries (accounts, chain ChainID) int the trie is because index is ledger state-specific
+// reason why we put index entries (accounts, chain ChainID) into the trie is because index is ledger state-specific
 //
 // NOTE: transaction IDs (32 byte long) and UTXO IDs (33 byte long) are on the same partition (1-byte prefix) TriePartitionLedgerState,
 // i.e. txs and utxos are distinguished by size of their keys. This is significant optimization of the trie, because txid and tx outputs
@@ -167,7 +167,6 @@ func (r *Readable) HasUTXO(oid base.OutputID) bool {
 	return partition.Has(oid[:])
 }
 
-// KnowsCommittedTransaction transaction IDs are purged after some time, so the result may be
 func (r *Readable) KnowsCommittedTransaction(txid base.TransactionID) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
