@@ -28,7 +28,7 @@ type (
 		global.NodeGlobal
 		StateStore() multistate.StateStore
 		TxBytesStore() global.TxBytesStore
-		PullFromNPeers(nPeers int, txid base.TransactionID) int
+		PullFromPeers(txid base.TransactionID) int
 		GetOwnSequencerID() *base.ChainID
 		EvidencePastConeSize(sz int)
 		EvidenceNumberOfTxDependencies(n int)

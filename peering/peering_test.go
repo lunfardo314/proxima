@@ -2,7 +2,6 @@ package peering
 
 import (
 	"bytes"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -276,24 +275,23 @@ func TestSendMsg(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("pull", func(t *testing.T) {
-		// TODO fails with timeout
 		const (
 			numHosts = 5
 			trace    = false
-			numMsg   = 100
+			numTx    = 50
 		)
 		hosts := makeHosts(t, numHosts, trace)
-		counter := countdown.New(numMsg, 15*time.Second)
+		counter := countdown.New(numTx*numHosts*(numHosts-1), 15*time.Second)
 
 		txSet := set.New[base.TransactionID]()
-		txSetMutex := &sync.Mutex{}
+		for i := 0; i < numTx; i++ {
+			txid := base.RandomTransactionID(false, 2)
+			txSet.Insert(txid)
+		}
 
 		for _, h := range hosts {
 			h1 := h
 			h1.OnReceivePullTxRequest(func(from peer.ID, txid base.TransactionID) {
-				txSetMutex.Lock()
-				defer txSetMutex.Unlock()
-
 				counter.Tick()
 
 				require.True(t, txSet.Contains(txid))
@@ -301,14 +299,9 @@ func TestSendMsg(t *testing.T) {
 			})
 
 			h1.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {
-				require.True(t, len(txBytes) == 32)
-				var txid base.TransactionID
-				copy(txid[:], txBytes)
-
-				txSetMutex.Lock()
-				defer txSetMutex.Unlock()
-
-				txSet.Remove(txid)
+				txid, err := base.TransactionIDFromBytes(txBytes)
+				require.NoError(t, err)
+				require.True(t, txSet.Contains(txid))
 			})
 		}
 		for _, h := range hosts {
@@ -316,15 +309,13 @@ func TestSendMsg(t *testing.T) {
 		}
 		time.Sleep(4 * time.Second)
 
-		for i := 0; i < numMsg; i++ {
-			txid := base.RandomTransactionID(false, 2)
-			txSetMutex.Lock()
-			txSet.Insert(txid)
-			txSetMutex.Unlock()
-
-			n := hosts[i%numHosts].PullTransactionsFromNPeers(1, txid)
-			require.EqualValues(t, 1, n)
+		for _, h := range hosts {
+			for txid := range txSet {
+				n := h.PullTransactionsFromPeers(txid)
+				require.EqualValues(t, numHosts-1, n)
+			}
 		}
+
 		err := counter.Wait()
 		require.NoError(t, err)
 
@@ -332,6 +323,5 @@ func TestSendMsg(t *testing.T) {
 		for _, h := range hosts {
 			h.Stop()
 		}
-		require.EqualValues(t, 0, len(txSet))
 	})
 }

@@ -55,7 +55,7 @@ type (
 		AttachmentFinished(started ...time.Time)
 
 		// TxPullParameters repeat after period, max attempts, num peers
-		TxPullParameters() (repeatPeriod time.Duration, maxAttempts int, numPeers int)
+		TxPullParameters() (repeatPeriod time.Duration, maxAttempts int)
 		// DeadlockCatchingDisabled config parameter to disdable deadlock catching
 		DeadlockCatchingDisabled() bool
 	}

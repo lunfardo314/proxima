@@ -29,7 +29,7 @@ func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
 
-	repeatPullAfter, maxPullAttempts, numPeers := a.TxPullParameters()
+	repeatPullAfter, maxPullAttempts := a.TxPullParameters()
 	if virtualTx.PullRulesDefined() {
 		if virtualTx.PullPatienceExpired(maxPullAttempts) {
 			// solidification deadline
@@ -40,7 +40,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			return false
 		}
 		if virtualTx.PullNeeded() {
-			a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
+			a.pull(virtualTx, deptVID, repeatPullAfter)
 		}
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 1: %s", deptVID.IDShortString)
 		return true
@@ -68,19 +68,19 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 	virtualTx.SetPullNeeded()
-	a.pull(virtualTx, deptVID, repeatPullAfter, numPeers)
+	a.pull(virtualTx, deptVID, repeatPullAfter)
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 4: %s", deptVID.IDShortString)
 	return true
 }
 
-func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration, nPeers int) {
+func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration) {
 	// notify poker to poke add this attacher to notification list of the dependency
 	a.pokeMe(deptVID)
 	// add transaction to the wanted/expected list in the input queue
 	a.AddPulledTransaction(deptVID.ID())
 	// do not pull is node is not connected to any peer longer than 2 pull repeat periods
 	if a.DurationSinceLastMessageFromPeer() <= 2*repeatPullAfter {
-		a.PullFromNPeers(nPeers, deptVID.ID())
+		a.PullFromPeers(deptVID.ID())
 		virtualTx.SetPullHappened(repeatPullAfter)
 
 		a.Tracef(TraceTagPull, "pull: %s", deptVID.IDShortString)
