@@ -171,10 +171,10 @@ func (r *Readable) KnowsCommittedTransaction(txid base.TransactionID) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	partition := common.MakeTraversableReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	return partition.Has(txid[:])
+	return common.HasWithPrefix(partition, txid[:])
 }
 
 func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error) {
