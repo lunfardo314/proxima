@@ -50,7 +50,8 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 		gcSlot := a.vid.Slot() - gcTxIDsFromStateSlotsBack
 		gcTxIDs := upd.Readable().KnownCommittedTxIDs(gcSlot)
 		muts.DeleteTxIDs(gcTxIDs...)
-		a.Log().Infof("Transactions GC: %d transaction IDs deleted from state at slot %d", len(gcTxIDs), gcSlot)
+		// TODO remove debug trace
+		a.Log().Infof("(TMP TRACE) Transactions GC: %d transaction IDs deleted from state at slot %d from the branch %s", len(gcTxIDs), gcSlot, a.vid.IDShortString())
 	}
 
 	err := upd.Update(muts, &multistate.RootRecordParams{
