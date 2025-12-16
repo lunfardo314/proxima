@@ -350,6 +350,15 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.Transact
 	})
 }
 
+func (r *Readable) KnownCommittedTxIDs(slot uint32) []base.TransactionID {
+	ret := make([]base.TransactionID, 0)
+	r.IterateKnownCommittedTransactions(func(txid base.TransactionID, _ uint32) bool {
+		ret = append(ret, txid)
+		return true
+	}, slot)
+	return ret
+}
+
 func (r *Readable) IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
