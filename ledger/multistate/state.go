@@ -58,7 +58,7 @@ type (
 
 // partitions of the state store on the trie
 // Ledger state contains records of UTXOs (keys 33 bytes long output IDs ) and all past transaction IDs (32 byte long keys)
-// reason why we put index entries (accounts, chain ChainID) int the trie is because index is ledger state-specific
+// reason why we put index entries (accounts, chain ChainID) into the trie is because index is ledger state-specific
 //
 // NOTE: transaction IDs (32 byte long) and UTXO IDs (33 byte long) are on the same partition (1-byte prefix) TriePartitionLedgerState,
 // i.e. txs and utxos are distinguished by size of their keys. This is significant optimization of the trie, because txid and tx outputs
@@ -167,15 +167,14 @@ func (r *Readable) HasUTXO(oid base.OutputID) bool {
 	return partition.Has(oid[:])
 }
 
-// KnowsCommittedTransaction transaction IDs are purged after some time, so the result may be
 func (r *Readable) KnowsCommittedTransaction(txid base.TransactionID) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	partition := common.MakeTraversableReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	return partition.Has(txid[:])
+	return common.HasWithPrefix(partition, txid[:])
 }
 
 func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error) {
@@ -349,6 +348,15 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.Transact
 
 		return fun(txid, slot)
 	})
+}
+
+func (r *Readable) KnownCommittedTxIDs(slot uint32) []base.TransactionID {
+	ret := make([]base.TransactionID, 0)
+	r.IterateKnownCommittedTransactions(func(txid base.TransactionID, _ uint32) bool {
+		ret = append(ret, txid)
+		return true
+	}, slot)
+	return ret
 }
 
 func (r *Readable) IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error {

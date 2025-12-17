@@ -38,8 +38,21 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	muts, stats := a.pastCone.Mutations(a.vid.Slot())
+
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.BaselineSugaredStateReader().Root())
+
+	// GC-ing txids old enough. This is a deterministic operation on the state
+	// TODO move constant gcTxIDsFromStateSlotsBack to ledger constants
+
+	const gcTxIDsFromStateSlotsBack = 8640
+	if a.vid.Slot() > gcTxIDsFromStateSlotsBack {
+		gcSlot := a.vid.Slot() - gcTxIDsFromStateSlotsBack
+		gcTxIDs := upd.Readable().KnownCommittedTxIDs(gcSlot)
+		muts.DeleteTxIDs(gcTxIDs...)
+		// TODO remove debug trace
+		a.Log().Infof("(TMP TRACE) Transactions GC: %d transaction IDs deleted from state at slot %d from the branch %s", len(gcTxIDs), gcSlot, a.vid.IDShortString())
+	}
 
 	err := upd.Update(muts, &multistate.RootRecordParams{
 		StemOutputID:    stemOID,

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"strings"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -40,6 +39,10 @@ type (
 		ID              base.TransactionID
 		TimeSlot        uint32
 		LastOutputIndex byte
+	}
+
+	mutationDelTx struct {
+		ID base.TransactionID
 	}
 
 	mutationDelChain struct {
@@ -96,6 +99,23 @@ func (m *mutationAddTx) sortOrder() byte {
 }
 
 func (m *mutationAddTx) timestamp() base.LedgerTime {
+	return m.ID.Timestamp()
+}
+
+func (m *mutationDelTx) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
+	err = delTxFromTrie(trie, &m.ID)
+	return
+}
+
+func (m *mutationDelTx) text() string {
+	return fmt.Sprintf("DELTX %s", m.ID.StringShort())
+}
+
+func (m *mutationDelTx) sortOrder() byte {
+	return 3
+}
+
+func (m *mutationDelTx) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
@@ -171,6 +191,14 @@ func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
 		ret.Add(m.text())
 	}
 	return ret
+}
+
+func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
+	for i := range txid {
+		mut.mut = append(mut.mut, &mutationDelTx{
+			ID: txid[i],
+		})
+	}
 }
 
 func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (delta supplyDelta, err error) {
@@ -260,15 +288,24 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 }
 
 func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, slot uint32, lastOutputIndex byte) (delta supplyDelta, err error) {
-	if strings.Contains(txid.String(), "ff40fe") {
-		println()
-	}
 	var stateKey [1 + base.TransactionIDLength]byte
 	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], txid[:])
 	if trie.Update(stateKey[:], base.Slot2Bytes(slot)) {
 		// key should not exist
 		err = fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.StringShort())
+	}
+	return
+}
+
+func delTxFromTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID) (err error) {
+	var stateKey [1 + base.TransactionIDLength]byte
+	stateKey[0] = TriePartitionLedgerState
+	copy(stateKey[1:], txid[:])
+
+	if !trie.Delete(stateKey[:]) {
+		// key should not exist
+		err = fmt.Errorf("delTxFromTrie: transaction ID key should exist: %s", txid.StringShort())
 	}
 	return
 }
