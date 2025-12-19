@@ -278,7 +278,7 @@ func ParseSequencerData(tx *Transaction) error {
 	return nil
 }
 
-// CheckSender parses and checks signature, sets the sender field
+// CheckSender parses and checks ED25519 signature, sets the sender field
 func CheckSender(tx *Transaction) error {
 	// mandatory sender signature
 	sigData := tx.SignatureBytes()
@@ -291,8 +291,11 @@ func CheckSender(tx *Transaction) error {
 	return nil
 }
 
-// ScanInputs validation option scans all inputs, enforces the existence of mandatory constrains,
-// computes total of outputs and total inflation
+// ScanInputs validation option scans all inputs:
+// - checks number of them
+// - check if number of inputs is equal to the number of unlock datas
+// - checks for repeating inputs
+// - enforces pace constraints
 func ScanInputs(tx *Transaction) error {
 	numInputs, err := tx.tree.NumElementsAtPath(Path(ledger.TxInputIDs))
 	if err != nil {
@@ -344,7 +347,10 @@ func ScanInputs(tx *Transaction) error {
 	return nil
 }
 
-// ScanEndorsements parses and checks validity of each endorsement
+// ScanEndorsements
+// - parses and checks validity of each endorsement
+// - checks repeating endorsements (no very necessary)
+// - enforces sequencer pace constraint
 func ScanEndorsements(tx *Transaction) error {
 	numEndorsements, err := tx.tree.NumElementsAtPath(Path(ledger.TxEndorsements))
 	if err != nil {
@@ -392,8 +398,10 @@ func ScanEndorsements(tx *Transaction) error {
 	return nil
 }
 
-// ScanOutputs validation option, scans all outputs, enforces the existence of the mandatory constrains,
-// computes total of outputs and total inflation
+// ScanOutputs
+// - scans all outputs
+// - enforces the existence of the mandatory constrains,
+// - computes total of outputs and total inflation
 func ScanOutputs(tx *Transaction) error {
 	numOutputs, err := tx.tree.NumElementsAtPath(Path(ledger.TxOutputs))
 	if err != nil {
@@ -419,14 +427,10 @@ func ScanOutputs(tx *Transaction) error {
 			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
 	}
-
-	//// check the total amounts constraint
-	//if tx.totalAmountPersisted != uint64(tx.producedAmountTotals[0]) {
-	//	return fmt.Errorf("wrong total produced amount")
-	//}
 	return nil
 }
 
+// CheckSizeOfInputCommitment check if inout commitment is 32-bytes long. Not very necessary
 func CheckSizeOfInputCommitment(tx *Transaction) error {
 	data, err := tx.tree.BytesAtPath(Path(ledger.TxInputCommitment))
 	if err != nil {
@@ -438,6 +442,7 @@ func CheckSizeOfInputCommitment(tx *Transaction) error {
 	return nil
 }
 
+// CheckExplicitBaseline validates explicit baseline data
 func CheckExplicitBaseline(tx *Transaction) error {
 	data, err := tx.tree.BytesAtPath(Path(ledger.TxExplicitBaseline))
 	if err != nil {
