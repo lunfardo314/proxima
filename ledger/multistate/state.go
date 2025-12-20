@@ -234,6 +234,15 @@ func (r *Readable) IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid bas
 	})
 }
 
+func (r *Readable) IsKnownAccount(addr ledger.AccountID) (ret bool) {
+	err := r.IterateUTXOsInAccount(addr, func(oid base.OutputID, odata []byte) bool {
+		ret = true
+		return false
+	})
+	util.AssertNoError(err)
+	return
+}
+
 func (r *Readable) IterateUTXOIDsInAccount(addr ledger.AccountID, fun func(oid base.OutputID) bool) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
