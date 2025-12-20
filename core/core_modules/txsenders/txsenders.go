@@ -29,47 +29,55 @@ type (
 		Tx         *transaction.Transaction
 		TxMetaData *txmetadata.TransactionMetadata
 		FromPeer   peer.ID
+		Wanted     bool
+		cmd        byte
 	}
 
 	TxSenders struct {
 		environment
 		*core_modules.CoreModule[Input]
-		txSenders map[txSenderID]*txSenderData
+		txSenders         map[txSenderID]time.Time
+		requiredGapSeq    time.Duration
+		requiredGapNonSeq time.Duration
 		// metrics
 		metrics
 	}
 
-	txSenderID   string
-	txSenderData struct {
-		lastActivity time.Time
-	}
+	txSenderID string
 
 	metrics struct {
 	}
 )
 
 const (
+	cmdTx = byte(0)
+	cmdCleanup
+	cmdRebuildMap
+
 	Name = "txSenders"
 
-	cleanupPeriod = 10 * time.Second
-	recreateMapPeriod
+	cleanupPeriod    = 10 * time.Second
+	cleanupHorizon   = time.Hour
+	rebuildMapPeriod = 5 * time.Minute
 )
 
 func New(env environment) *TxSenders {
 	ret := &TxSenders{
-		environment: env,
-		txSenders:   make(map[txSenderID]*txSenderData),
+		environment:       env,
+		txSenders:         make(map[txSenderID]time.Time),
+		requiredGapSeq:    time.Duration(ledger.Const.TransactionPaceSequencer) * ledger.Const.TickDuration,
+		requiredGapNonSeq: time.Duration(ledger.Const.TransactionPace) * ledger.Const.TickDuration,
 	}
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
 	ret.CoreModule.Start()
 
 	ret.RepeatInBackground(Name+"_txSendersCleanup", cleanupPeriod, func() bool {
-		ret.cleanup()
+		ret.Push(Input{cmd: cmdCleanup}, true)
 		return true
 	})
 
-	ret.RepeatInBackground(Name+"_recreateMap", recreateMapPeriod, func() bool {
-		ret.recreateMap()
+	ret.RepeatInBackground(Name+"_recreateMap", rebuildMapPeriod, func() bool {
+		ret.Push(Input{cmd: cmdRebuildMap}, true)
 		return true
 	})
 
@@ -78,22 +86,44 @@ func New(env environment) *TxSenders {
 }
 
 func (q *TxSenders) consume(inp Input) {
+	if inp.cmd == cmdCleanup {
+		q.cleanup()
+		return
+	}
+	if inp.cmd == cmdRebuildMap {
+		q.rebuildMap()
+		return
+	}
+	// new tx
 	if err := transaction.ParseSender(inp.Tx); err != nil {
 		// ignore transaction with invalid signature
 		return
 	}
+	if inp.Wanted {
+		// send for attachment without caching
+		return
+	}
 	acc := inp.Tx.SenderAddress().AccountID()
-	senderData := q.txSenders[txSenderID(acc)]
-	if senderData == nil {
-		if !q.isAccountKnownInLRB(acc) {
-			// account is not known in LRB. Ignore both tx and the sender
+
+	if lastSeen, inCache := q.txSenders[txSenderID(acc)]; inCache {
+		var timeGapAtLeast time.Duration
+		if inp.Tx.IsSequencerTransaction() {
+			timeGapAtLeast = q.requiredGapSeq
+		} else {
+			timeGapAtLeast = q.requiredGapNonSeq
+		}
+		if time.Since(lastSeen) < timeGapAtLeast {
+			// ignore tx -> too close in time
 			return
 		}
-		q.txSenders[txSenderID(acc)] = &txSenderData{
-			lastActivity: time.Now(),
+	} else {
+		if !q.isAccountKnownInLRB(acc) {
+			// ignore tx -> unknown account
+			return
 		}
 	}
-
+	q.txSenders[txSenderID(acc)] = time.Now()
+	// send transaction for attachment
 }
 
 func (q *TxSenders) isAccountKnownInLRB(acc ledger.AccountID) bool {
@@ -103,7 +133,7 @@ func (q *TxSenders) isAccountKnownInLRB(acc ledger.AccountID) bool {
 func (q *TxSenders) cleanup() {
 }
 
-func (q *TxSenders) recreateMap() {
+func (q *TxSenders) rebuildMap() {
 }
 
 func (q *TxSenders) registerMetrics() {
