@@ -1,14 +1,19 @@
 package txsenders
 
 import (
+	"maps"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/core_modules"
+	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/util"
 )
 
 // txsenders core module is designed to prevent spamming/DoS attacks.
@@ -23,6 +28,8 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
+		GetLatestReliableBranch() (ret *multistate.BranchData)
+		Branches() *branches.Branches
 	}
 
 	Input struct {
@@ -33,12 +40,20 @@ type (
 		cmd        byte
 	}
 
+	seenTimestamps struct {
+		sequencer    tsRingBuffer
+		nonSequencer tsRingBuffer
+	}
+
+	tsRingBuffer struct {
+		timestamps [5]base.LedgerTime
+		counter    byte
+	}
+
 	TxSenders struct {
 		environment
 		*core_modules.CoreModule[Input]
-		txSenders         map[txSenderID]time.Time
-		requiredGapSeq    time.Duration
-		requiredGapNonSeq time.Duration
+		txSenders map[txSenderID]*seenTimestamps
 		// metrics
 		metrics
 	}
@@ -50,23 +65,20 @@ type (
 )
 
 const (
-	cmdTx = byte(0)
-	cmdCleanup
-	cmdRebuildMap
+	cmdCleanup    = byte(1)
+	cmdRebuildMap = byte(2)
 
 	Name = "txSenders"
 
 	cleanupPeriod    = 10 * time.Second
-	cleanupHorizon   = time.Hour
+	cleanupHorizon   = 360
 	rebuildMapPeriod = 5 * time.Minute
 )
 
 func New(env environment) *TxSenders {
 	ret := &TxSenders{
-		environment:       env,
-		txSenders:         make(map[txSenderID]time.Time),
-		requiredGapSeq:    time.Duration(ledger.Const.TransactionPaceSequencer) * ledger.Const.TickDuration,
-		requiredGapNonSeq: time.Duration(ledger.Const.TransactionPace) * ledger.Const.TickDuration,
+		environment: env,
+		txSenders:   make(map[txSenderID]*seenTimestamps),
 	}
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
 	ret.CoreModule.Start()
@@ -86,12 +98,12 @@ func New(env environment) *TxSenders {
 }
 
 func (q *TxSenders) consume(inp Input) {
-	if inp.cmd == cmdCleanup {
+	switch inp.cmd {
+	case cmdCleanup:
 		q.cleanup()
 		return
-	}
-	if inp.cmd == cmdRebuildMap {
-		q.rebuildMap()
+	case cmdRebuildMap:
+		q.txSenders = maps.Clone(q.txSenders)
 		return
 	}
 	// new tx
@@ -105,36 +117,67 @@ func (q *TxSenders) consume(inp Input) {
 	}
 	acc := inp.Tx.SenderAddress().AccountID()
 
-	if lastSeen, inCache := q.txSenders[txSenderID(acc)]; inCache {
-		var timeGapAtLeast time.Duration
-		if inp.Tx.IsSequencerTransaction() {
-			timeGapAtLeast = q.requiredGapSeq
-		} else {
-			timeGapAtLeast = q.requiredGapNonSeq
-		}
-		if time.Since(lastSeen) < timeGapAtLeast {
-			// ignore tx -> too close in time
-			return
-		}
-	} else {
+	seen := q.txSenders[txSenderID(acc)]
+	if seen == nil {
 		if !q.isAccountKnownInLRB(acc) {
-			// ignore tx -> unknown account
+			// sender account not known -> ignore tx
 			return
 		}
+		seen = &seenTimestamps{}
+		q.txSenders[txSenderID(acc)] = seen
 	}
-	q.txSenders[txSenderID(acc)] = time.Now()
-	// send transaction for attachment
+
+	var pass bool
+	if inp.Tx.IsSequencerTransaction() {
+		pass = seen.sequencer.addTs(inp.Tx.Timestamp(), int64(ledger.Const.TransactionPaceSequencer))
+	} else {
+		pass = seen.nonSequencer.addTs(inp.Tx.Timestamp(), int64(ledger.Const.TransactionPace))
+	}
+	if pass {
+		q.txSenders[txSenderID(acc)] = seen
+		// send transaction for attachment
+	}
 }
 
-func (q *TxSenders) isAccountKnownInLRB(acc ledger.AccountID) bool {
-	return false
+func (q *TxSenders) isAccountKnownInLRB(acc ledger.AccountID) (ret bool) {
+	if lrb := q.GetLatestReliableBranch(); lrb != nil {
+		rdr := q.Branches().GetStateReaderForTheBranch(lrb.TxID())
+		ret = rdr.IsKnownAccount(acc)
+	}
+	return
 }
 
 func (q *TxSenders) cleanup() {
-}
-
-func (q *TxSenders) rebuildMap() {
+	nowSlot := ledger.SlotNow()
+	if nowSlot < cleanupHorizon {
+		return
+	}
+	maps.DeleteFunc(q.txSenders, func(_ txSenderID, timestamps *seenTimestamps) bool {
+		return timestamps.sequencer.lastestTs().Slot < nowSlot-cleanupHorizon && timestamps.nonSequencer.lastestTs().Slot < nowSlot
+	})
 }
 
 func (q *TxSenders) registerMetrics() {
+}
+
+// addTs if ts is closer than allowed to any of already recorded, the tx will be ignored.
+// Otherwise, ts is added to the ring buffer
+func (t *tsRingBuffer) addTs(ts base.LedgerTime, minAllowedDiff int64) bool {
+	for _, ts1 := range t.timestamps {
+		if util.Abs(base.DiffTicks(ts1, ts)) < minAllowedDiff {
+			return false
+		}
+	}
+	t.timestamps[t.counter] = ts
+	t.counter = (t.counter + 1) % byte(len(t.timestamps))
+	return true
+}
+
+func (t *tsRingBuffer) lastestTs() (ret base.LedgerTime) {
+	for _, ts := range t.timestamps {
+		if ts.After(ret) {
+			ret = ts
+		}
+	}
+	return
 }

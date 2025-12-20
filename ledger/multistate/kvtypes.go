@@ -27,6 +27,8 @@ type (
 		GetUTXOForChainID(id base.ChainID) (*ledger.OutputDataWithID, error)
 		Root() common.VCommitment
 		MustLedgerIdentityBytes() []byte // either state identity consistent or panic
+
+		IsKnownAccount(addr ledger.AccountID) (ret bool)
 	}
 
 	// IndexedStateReader state and indexer readers packing together
