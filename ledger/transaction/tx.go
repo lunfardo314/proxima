@@ -38,7 +38,7 @@ var MainTxValidationOptions = []TxValidationOption{
 	ParseSequencerData,
 	CheckExplicitBaseline,
 	CheckSizeOfInputCommitment,
-	CheckSender,
+	ParseSender,
 	ScanInputs,
 	ScanEndorsements,
 	ScanOutputs,
@@ -278,8 +278,8 @@ func ParseSequencerData(tx *Transaction) error {
 	return nil
 }
 
-// CheckSender parses and checks ED25519 signature, sets the sender field
-func CheckSender(tx *Transaction) error {
+// ParseSender parses and checks ED25519 signature, sets the sender field
+func ParseSender(tx *Transaction) error {
 	// mandatory sender signature
 	sigData := tx.SignatureBytes()
 	senderPubKey := ed25519.PublicKey(sigData[64:])
