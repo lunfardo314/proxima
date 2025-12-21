@@ -25,6 +25,8 @@ import (
 // - delays of filters out transactions which indicate spam, coming from individual token holders
 // - maintains in-memory sender cache with clock times, reputation scores etc
 // - only senders known in LRB are eligible, otherwise their txs are deleted
+// - gossips transactions that were not pulled by the not itself
+// - passes transactions for attachment
 
 type (
 	environment interface {
@@ -148,7 +150,7 @@ func (q *TxSenders) consume(inp input) {
 	if seen == nil {
 		if !q.isAccountKnownInLRB(acc) {
 			// sender account not known -> ignore tx
-			q.Log().Warnf("tx %s has a sender %s unknown in the LRB -> IGNORED", inp.Tx.IDShortString(), txSenderID(acc))
+			q.Log().Warnf("tx %s has a sender %s unknown in the LRB -> IGNORED", inp.Tx.IDShortString(), inp.Tx.SenderAddress().String())
 			return
 		}
 		seen = &seenTimestamps{}
@@ -163,7 +165,7 @@ func (q *TxSenders) consume(inp input) {
 	}
 	q.txSenders[txSenderID(acc)] = seen
 	if !pass {
-		q.Log().Warnf("timestamp of tx %s from sender %s is too close to another tx from the same sender-> IGNORED", inp.Tx.IDShortString(), txSenderID(acc))
+		q.Log().Warnf("timestamp of tx %s from sender %s is too close to another tx from the same sender-> IGNORED", inp.Tx.IDShortString(), inp.Tx.SenderAddress().String())
 	}
 	// send transaction for attachment
 	q.attachAndGossip(&inp)
