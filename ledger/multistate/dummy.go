@@ -57,3 +57,7 @@ func (d _dummyStateReader) Root() common.VCommitment {
 func (d _dummyStateReader) MustLedgerIdentityBytes() []byte {
 	return nil
 }
+
+func (d _dummyStateReader) IsKnownAccount(accountID ledger.AccountID) bool {
+	return true
+}
