@@ -166,6 +166,7 @@ func (q *TxSenders) consume(inp input) {
 	q.txSenders[txSenderID(acc)] = seen
 	if !pass {
 		q.Log().Warnf("timestamp of tx %s from sender %s is too close to another tx from the same sender-> IGNORED", inp.Tx.IDShortString(), inp.Tx.SenderAddress().String())
+		return
 	}
 	// send transaction for attachment
 	q.attachAndGossip(&inp)
@@ -196,6 +197,8 @@ func (q *TxSenders) isAccountKnownInLRB(acc ledger.AccountID) (ret bool) {
 	if lrb := q.GetLatestReliableBranch(); lrb != nil {
 		rdr := q.Branches().GetStateReaderForTheBranch(lrb.TxID())
 		ret = rdr.IsKnownAccount(acc)
+	} else {
+		ret = true
 	}
 	return
 }
@@ -218,11 +221,11 @@ func (q *TxSenders) registerMetrics() {
 	q.MetricsRegistry().MustRegister(
 		q.gossipedCounter,
 	)
-
 }
 
 // addTs if ts is closer than allowed to any of already recorded, the tx will be ignored.
 // Otherwise, ts is added to the ring buffer
+// Returns true if tx passes the check, otherwise it should be ignored
 func (t *tsRingBuffer) addTs(ts base.LedgerTime, minAllowedDiff int64) bool {
 	n := 0
 	for _, ts1 := range t.timestamps {
@@ -235,7 +238,7 @@ func (t *tsRingBuffer) addTs(ts base.LedgerTime, minAllowedDiff int64) bool {
 	}
 	t.timestamps[t.counter] = ts
 	t.counter = (t.counter + 1) % byte(keepTimestamps)
-	return n >= concentrationTolerance
+	return n < concentrationTolerance
 }
 
 func (t *tsRingBuffer) lastestTs() (ret base.LedgerTime) {
