@@ -50,7 +50,6 @@ type (
 		inputTxCounter        prometheus.Counter
 		pulledTxCounter       prometheus.Counter
 		filterHitCounter      prometheus.Counter
-		queueSize             prometheus.Gauge
 		nonSequencerTxCounter prometheus.Counter
 		txBytesSizeReceived   prometheus.Gauge
 	}
@@ -143,17 +142,6 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 
 	// new or pulled transaction -> pass to next step
 	q.CheckTxSender(tx, inp.TxIDPrefix, metaData, inp.FromPeer, wanted)
-
-	//if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
-	//	q.badTxCounter.Inc()
-	//	q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
-	//	return
-	//}
-	//if !wanted {
-	//	// gossiping all new pre-validated and not pulled transactions from peers
-	//	q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData, inp.TxIDPrefix)
-	//	q.gossipedCounter.Inc()
-	//}
 }
 
 func (q *TxInputQueue) fromAPI(inp *Input) {
@@ -173,15 +161,6 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		return
 	}
 	q.CheckTxSender(tx, inp.TxIDPrefix, nil, "", false)
-
-	//if err = q.TxInFromAPI(tx); err != nil {
-	//	q.badTxCounter.Inc()
-	//	q.Log().Warn("TxInputQueue from '%s': %v", from.String(), err)
-	//	return
-	//}
-	//// gossiping all pre-validated transactions from API
-	//q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData, tx.ID())
-	//q.gossipedCounter.Inc()
 }
 
 func (q *TxInputQueue) registerMetrics() {
@@ -197,10 +176,6 @@ func (q *TxInputQueue) registerMetrics() {
 		Name: "proxima_txInputQueue_repeating",
 		Help: "number of bloom filter hit",
 	})
-	q.queueSize = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_txInputQueue_queueSize",
-		Help: "size of the input queue",
-	})
 	q.nonSequencerTxCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_txInputQueue_nonSequencer",
 		Help: "number of non-sequencer transactions",
@@ -214,7 +189,6 @@ func (q *TxInputQueue) registerMetrics() {
 		q.inputTxCounter,
 		q.pulledTxCounter,
 		q.filterHitCounter,
-		q.queueSize,
 		q.nonSequencerTxCounter,
 		q.txBytesSizeReceived,
 	)
