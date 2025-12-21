@@ -32,13 +32,12 @@ type (
 	TxValidationOption func(tx *Transaction) error
 )
 
-// MainTxValidationOptions is all except Base, the time bounds and input context validation. Fastest first
+// MainTxValidationOptions is all except Base, ParseSender, the time bounds and input context validation. Fastest first
 var MainTxValidationOptions = []TxValidationOption{
 	//ParseTotalProducedAmount,
 	ParseSequencerData,
 	CheckExplicitBaseline,
 	CheckSizeOfInputCommitment,
-	ParseSender,
 	ScanInputs,
 	ScanEndorsements,
 	ScanOutputs,

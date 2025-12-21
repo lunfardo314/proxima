@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // txsenders core module is designed to prevent spamming/DoS attacks.
@@ -30,10 +31,14 @@ type (
 		global.NodeGlobal
 		GetLatestReliableBranch() (ret *multistate.BranchData)
 		Branches() *branches.Branches
+		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
+		TxInFromAPI(tx *transaction.Transaction) error
+		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID)
 	}
 
-	Input struct {
+	input struct {
 		Tx         *transaction.Transaction
+		TxIDPrefix base.TransactionID
 		TxMetaData *txmetadata.TransactionMetadata
 		FromPeer   peer.ID
 		Wanted     bool
@@ -46,13 +51,13 @@ type (
 	}
 
 	tsRingBuffer struct {
-		timestamps [5]base.LedgerTime
+		timestamps [keepTimestamps]base.LedgerTime
 		counter    byte
 	}
 
 	TxSenders struct {
 		environment
-		*core_modules.CoreModule[Input]
+		*core_modules.CoreModule[input]
 		txSenders map[txSenderID]*seenTimestamps
 		// metrics
 		metrics
@@ -61,6 +66,7 @@ type (
 	txSenderID string
 
 	metrics struct {
+		gossipedCounter prometheus.Counter
 	}
 )
 
@@ -73,23 +79,32 @@ const (
 	cleanupPeriod    = 10 * time.Second
 	cleanupHorizon   = 360
 	rebuildMapPeriod = 5 * time.Minute
+
+	keepTimestamps = 5
+	// concentrationTolerance is how many transactions is a pace window are tolerated
+	// E.g. 1 means any transaction in the same pace window is ignored
+	concentrationTolerance = 1
 )
+
+func init() {
+	util.Assertf(concentrationTolerance <= keepTimestamps, "wrong constants: expected concentrationTolerance <= keepTimestamps")
+}
 
 func New(env environment) *TxSenders {
 	ret := &TxSenders{
 		environment: env,
 		txSenders:   make(map[txSenderID]*seenTimestamps),
 	}
-	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
+	ret.CoreModule = core_modules.New[input](env, Name, ret.consume)
 	ret.CoreModule.Start()
 
-	ret.RepeatInBackground(Name+"_txSendersCleanup", cleanupPeriod, func() bool {
-		ret.Push(Input{cmd: cmdCleanup}, true)
+	ret.RepeatInBackground(Name+"_Cleanup", cleanupPeriod, func() bool {
+		ret.Push(input{cmd: cmdCleanup}, true)
 		return true
 	})
 
 	ret.RepeatInBackground(Name+"_recreateMap", rebuildMapPeriod, func() bool {
-		ret.Push(Input{cmd: cmdRebuildMap}, true)
+		ret.Push(input{cmd: cmdRebuildMap}, true)
 		return true
 	})
 
@@ -97,7 +112,17 @@ func New(env environment) *TxSenders {
 	return ret
 }
 
-func (q *TxSenders) consume(inp Input) {
+func (q *TxSenders) CheckTxSender(tx *transaction.Transaction, txIDPrefix base.TransactionID, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
+	q.Push(input{
+		Tx:         tx,
+		TxIDPrefix: txIDPrefix,
+		TxMetaData: meta,
+		FromPeer:   fromPeer,
+		Wanted:     wanted,
+	})
+}
+
+func (q *TxSenders) consume(inp input) {
 	switch inp.cmd {
 	case cmdCleanup:
 		q.cleanup()
@@ -109,10 +134,12 @@ func (q *TxSenders) consume(inp Input) {
 	// new tx
 	if err := transaction.ParseSender(inp.Tx); err != nil {
 		// ignore transaction with invalid signature
+		q.Log().Warnf("tx %s has invalid signture -> IGNORED", inp.Tx.IDShortString())
 		return
 	}
 	if inp.Wanted {
 		// send for attachment without caching
+		q.attachAndGossip(&inp)
 		return
 	}
 	acc := inp.Tx.SenderAddress().AccountID()
@@ -121,6 +148,7 @@ func (q *TxSenders) consume(inp Input) {
 	if seen == nil {
 		if !q.isAccountKnownInLRB(acc) {
 			// sender account not known -> ignore tx
+			q.Log().Warnf("tx %s has a sender %s unknown in the LRB -> IGNORED", inp.Tx.IDShortString(), txSenderID(acc))
 			return
 		}
 		seen = &seenTimestamps{}
@@ -133,10 +161,33 @@ func (q *TxSenders) consume(inp Input) {
 	} else {
 		pass = seen.nonSequencer.addTs(inp.Tx.Timestamp(), int64(ledger.Const.TransactionPace))
 	}
-	if pass {
-		q.txSenders[txSenderID(acc)] = seen
-		// send transaction for attachment
+	q.txSenders[txSenderID(acc)] = seen
+	if !pass {
+		q.Log().Warnf("timestamp of tx %s from sender %s is too close to another tx from the same sender-> IGNORED", inp.Tx.IDShortString(), txSenderID(acc))
 	}
+	// send transaction for attachment
+	q.attachAndGossip(&inp)
+}
+
+func (q *TxSenders) attachAndGossip(inp *input) {
+	if inp.FromPeer == "" {
+		if err := q.TxInFromAPI(inp.Tx); err != nil {
+			q.Log().Warn("attachAndGossip from API: %v", err)
+			return
+		}
+	} else {
+		if err := q.TxInFromPeer(inp.Tx, inp.TxMetaData, inp.FromPeer); err != nil {
+			q.Log().Warn("attachAndGossip from peer '%s': %v", inp.FromPeer, err)
+			return
+		}
+	}
+	if inp.Wanted {
+		// no need to gossip
+		return
+	}
+	// gossiping all new pre-validated and not pulled transactions from peers
+	q.GossipTxBytesToPeers(inp.Tx.Bytes(), inp.TxMetaData, inp.TxIDPrefix)
+	q.gossipedCounter.Inc()
 }
 
 func (q *TxSenders) isAccountKnownInLRB(acc ledger.AccountID) (ret bool) {
@@ -158,19 +209,31 @@ func (q *TxSenders) cleanup() {
 }
 
 func (q *TxSenders) registerMetrics() {
+	q.gossipedCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_txInputQueue_gossiped",
+		Help: "number of gossiped",
+	})
+	q.MetricsRegistry().MustRegister(
+		q.gossipedCounter,
+	)
+
 }
 
 // addTs if ts is closer than allowed to any of already recorded, the tx will be ignored.
 // Otherwise, ts is added to the ring buffer
 func (t *tsRingBuffer) addTs(ts base.LedgerTime, minAllowedDiff int64) bool {
+	n := 0
 	for _, ts1 := range t.timestamps {
 		if util.Abs(base.DiffTicks(ts1, ts)) < minAllowedDiff {
-			return false
+			n++
+		}
+		if n >= concentrationTolerance {
+			break
 		}
 	}
 	t.timestamps[t.counter] = ts
-	t.counter = (t.counter + 1) % byte(len(t.timestamps))
-	return true
+	t.counter = (t.counter + 1) % byte(keepTimestamps)
+	return n >= concentrationTolerance
 }
 
 func (t *tsRingBuffer) lastestTs() (ret base.LedgerTime) {
