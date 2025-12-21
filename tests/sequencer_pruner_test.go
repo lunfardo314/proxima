@@ -169,6 +169,8 @@ func Test5SequencersIdlePruner(t *testing.T) {
 		nSequencers = 4                // in addition to bootstrap
 		runTime     = 30 * time.Second // 60 * time.Second
 	)
+	// TODO make individual private keys for each sequencer
+
 	testData := initMultiSequencerTest(t, nSequencers, true)
 	//testData.env.StartTracingTags(task.TraceTagBaseProposerExit) //, sequencer.TraceTagTarget)
 
