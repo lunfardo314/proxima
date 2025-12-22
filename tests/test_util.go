@@ -114,6 +114,10 @@ func (p *workflowDummyEnvironment) EvidenceTxValidationStats(_ time.Duration, _,
 func (p *workflowDummyEnvironment) EvidenceBranchInflationBonus(_ uint64) {
 }
 
+func (p *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
+	return false, true
+}
+
 func newWorkflowDummyEnvironment(stateStore multistate.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	ret := &workflowDummyEnvironment{
 		Global:       global.NewDefault(),
