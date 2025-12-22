@@ -36,6 +36,7 @@ type (
 		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
 		TxInFromAPI(tx *transaction.Transaction) error
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID)
+		CheckTxSenderConfig() (checkSeq, checkNonSeq bool)
 	}
 
 	input struct {
@@ -53,14 +54,16 @@ type (
 	}
 
 	tsRingBuffer struct {
-		timestamps [keepTimestamps]base.LedgerTime
+		timestamps [keepTimestamps]int64
 		counter    byte
 	}
 
 	TxSenders struct {
 		environment
 		*core_modules.CoreModule[input]
-		txSenders map[txSenderID]*seenTimestamps
+		txSenders   map[txSenderID]*seenTimestamps
+		checkSeq    bool
+		checkNonSeq bool
 		// metrics
 		metrics
 	}
@@ -78,11 +81,11 @@ const (
 
 	Name = "txSenders"
 
-	cleanupPeriod    = 10 * time.Second
-	cleanupHorizon   = 360
-	rebuildMapPeriod = 5 * time.Minute
+	cleanupPeriod       = 10 * time.Second
+	cleanupHorizonTicks = 360 * 127
+	rebuildMapPeriod    = 5 * time.Minute
 
-	keepTimestamps = 5
+	keepTimestamps = 4
 	// concentrationTolerance is how many transactions is a pace window are tolerated
 	// E.g. 1 means any transaction in the same pace window is ignored
 	concentrationTolerance = 1
@@ -99,7 +102,7 @@ func New(env environment) *TxSenders {
 	}
 	ret.CoreModule = core_modules.New[input](env, Name, ret.consume)
 	ret.CoreModule.Start()
-
+	ret.checkSeq, ret.checkNonSeq = env.CheckTxSenderConfig()
 	ret.RepeatInBackground(Name+"_Cleanup", cleanupPeriod, func() bool {
 		ret.Push(input{cmd: cmdCleanup}, true)
 		return true
@@ -159,9 +162,9 @@ func (q *TxSenders) consume(inp input) {
 
 	var pass bool
 	if inp.Tx.IsSequencerTransaction() {
-		pass = seen.sequencer.addTs(inp.Tx.Timestamp(), int64(ledger.Const.TransactionPaceSequencer))
+		pass = !q.checkSeq || seen.sequencer.addTs(inp.Tx.Timestamp().TicksSinceGenesis(), int64(ledger.Const.TransactionPaceSequencer))
 	} else {
-		pass = seen.nonSequencer.addTs(inp.Tx.Timestamp(), int64(ledger.Const.TransactionPace))
+		pass = !q.checkNonSeq || seen.nonSequencer.addTs(inp.Tx.Timestamp().TicksSinceGenesis(), int64(ledger.Const.TransactionPace))
 	}
 	q.txSenders[txSenderID(acc)] = seen
 	if !pass {
@@ -204,12 +207,13 @@ func (q *TxSenders) isAccountKnownInLRB(acc ledger.AccountID) (ret bool) {
 }
 
 func (q *TxSenders) cleanup() {
-	nowSlot := ledger.SlotNow()
-	if nowSlot < cleanupHorizon {
+	nowTicks := ledger.TimeNow().TicksSinceGenesis()
+	if nowTicks < cleanupHorizonTicks {
 		return
 	}
 	maps.DeleteFunc(q.txSenders, func(_ txSenderID, timestamps *seenTimestamps) bool {
-		return timestamps.sequencer.lastestTs().Slot < nowSlot-cleanupHorizon && timestamps.nonSequencer.lastestTs().Slot < nowSlot
+		return timestamps.sequencer.lastestTicksSinceGenesis() < nowTicks-cleanupHorizonTicks &&
+			timestamps.nonSequencer.lastestTicksSinceGenesis() < nowTicks-cleanupHorizonTicks
 	})
 }
 
@@ -226,25 +230,25 @@ func (q *TxSenders) registerMetrics() {
 // addTs if ts is closer than allowed to any of already recorded, the tx will be ignored.
 // Otherwise, ts is added to the ring buffer
 // Returns true if tx passes the check, otherwise it should be ignored
-func (t *tsRingBuffer) addTs(ts base.LedgerTime, minAllowedDiff int64) bool {
+func (t *tsRingBuffer) addTs(ticksSinceGenesis, minAllowedDiff int64) bool {
 	n := 0
-	for _, ts1 := range t.timestamps {
-		if util.Abs(base.DiffTicks(ts1, ts)) < minAllowedDiff {
+	for _, ticks := range t.timestamps {
+		if util.Abs(ticksSinceGenesis-ticks) < minAllowedDiff {
 			n++
 		}
 		if n >= concentrationTolerance {
 			break
 		}
 	}
-	t.timestamps[t.counter] = ts
+	t.timestamps[t.counter] = ticksSinceGenesis
 	t.counter = (t.counter + 1) % byte(keepTimestamps)
 	return n < concentrationTolerance
 }
 
-func (t *tsRingBuffer) lastestTs() (ret base.LedgerTime) {
-	for _, ts := range t.timestamps {
-		if ts.After(ret) {
-			ret = ts
+func (t *tsRingBuffer) lastestTicksSinceGenesis() (ret int64) {
+	for _, ticks := range t.timestamps {
+		if ticks > ret {
+			ret = ticks
 		}
 	}
 	return
