@@ -19,9 +19,11 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
-		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
-		TxInFromAPI(tx *transaction.Transaction) error
-		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID)
+		CheckTxSender(tx *transaction.Transaction, txIDPrefix base.TransactionID, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool)
+
+		//TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
+		//TxInFromAPI(tx *transaction.Transaction) error
+		//GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID)
 	}
 
 	Input struct {
@@ -47,10 +49,7 @@ type (
 	metrics struct {
 		inputTxCounter        prometheus.Counter
 		pulledTxCounter       prometheus.Counter
-		badTxCounter          prometheus.Counter
 		filterHitCounter      prometheus.Counter
-		gossipedCounter       prometheus.Counter
-		queueSize             prometheus.Gauge
 		nonSequencerTxCounter prometheus.Counter
 		txBytesSizeReceived   prometheus.Gauge
 	}
@@ -123,13 +122,11 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	// now preparse it, calculate txid
 	tx, err := transaction.FromBytes(inp.TxBytes)
 	if err != nil {
-		q.badTxCounter.Inc()
 		q.Log().Warn("TxInputQueue: %v", err)
 		return
 	}
 	// check if message prefix is equal to txid
 	if tx.ID() != inp.TxIDPrefix {
-		q.badTxCounter.Inc()
 		q.Log().Warn("TxInputQueue: tx message prefix != real txid", err)
 		return
 	}
@@ -142,17 +139,9 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		// requested transaction
 		metaData.SourceTypeNonPersistent = txmetadata.SourceTypePulled
 	}
-	// new or pulled transaction
-	if err = q.TxInFromPeer(tx, metaData, inp.FromPeer); err != nil {
-		q.badTxCounter.Inc()
-		q.Log().Warn("TxInputQueue from peer %s: %v", inp.FromPeer.String(), err)
-		return
-	}
-	if !wanted {
-		// gossiping all new pre-validated and not pulled transactions from peers
-		q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData, inp.TxIDPrefix)
-		q.gossipedCounter.Inc()
-	}
+
+	// new or pulled transaction -> pass to next step
+	q.CheckTxSender(tx, inp.TxIDPrefix, metaData, inp.FromPeer, wanted)
 }
 
 func (q *TxInputQueue) fromAPI(inp *Input) {
@@ -162,7 +151,6 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 	}
 	tx, err := transaction.FromBytes(inp.TxBytes)
 	if err != nil {
-		q.badTxCounter.Inc()
 		q.Log().Warn("TxInputQueue from '%s': %v", from.String(), err)
 		return
 	}
@@ -172,14 +160,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		q.filterHitCounter.Inc()
 		return
 	}
-	if err = q.TxInFromAPI(tx); err != nil {
-		q.badTxCounter.Inc()
-		q.Log().Warn("TxInputQueue from '%s': %v", from.String(), err)
-		return
-	}
-	// gossiping all pre-validated transactions from API
-	q.GossipTxBytesToPeers(inp.TxBytes, inp.TxMetaData, tx.ID())
-	q.gossipedCounter.Inc()
+	q.CheckTxSender(tx, inp.TxIDPrefix, nil, "", false)
 }
 
 func (q *TxInputQueue) registerMetrics() {
@@ -191,21 +172,9 @@ func (q *TxInputQueue) registerMetrics() {
 		Name: "proxima_txInputQueue_pulled",
 		Help: "number of pulled transactions",
 	})
-	q.badTxCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "proxima_txInputQueue_bad",
-		Help: "number of non-parseable transaction messages",
-	})
 	q.filterHitCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_txInputQueue_repeating",
 		Help: "number of bloom filter hit",
-	})
-	q.gossipedCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "proxima_txInputQueue_gossiped",
-		Help: "number of gossiped",
-	})
-	q.queueSize = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_txInputQueue_queueSize",
-		Help: "size of the input queue",
 	})
 	q.nonSequencerTxCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_txInputQueue_nonSequencer",
@@ -219,10 +188,7 @@ func (q *TxInputQueue) registerMetrics() {
 	q.MetricsRegistry().MustRegister(
 		q.inputTxCounter,
 		q.pulledTxCounter,
-		q.badTxCounter,
 		q.filterHitCounter,
-		q.gossipedCounter,
-		q.queueSize,
 		q.nonSequencerTxCounter,
 		q.txBytesSizeReceived,
 	)

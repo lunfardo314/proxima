@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/core_modules/txinput_queue"
+	"github.com/lunfardo314/proxima/core/core_modules/txsenders"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
@@ -38,6 +39,8 @@ type (
 		EvidenceTxValidationStats(took time.Duration, numIn, numOut int)
 		LatestReliableState() (multistate.SugaredStateReader, error)
 		EvidenceBranchInflationBonus(ib uint64)
+		GetLatestReliableBranch() (ret *multistate.BranchData)
+		CheckTxSenderConfig() (checkSeq, checkNonSeq bool)
 	}
 
 	Workflow struct {
@@ -51,6 +54,7 @@ type (
 		poker        *poker.Poker
 		events       *events.Events
 		txInputQueue *txinput_queue.TxInputQueue
+		txSenders    *txsenders.TxSenders
 		tippool      *tippool.SequencerTips
 		branches     *branches.Branches
 		// particular event handlers
@@ -84,6 +88,7 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.pullTxServer = pull_tx_server.New(ret)
 	ret.tippool = tippool.New(ret)
 	ret.branches = branches.New(ret)
+	ret.txSenders = txsenders.New(ret)
 	ret.txInputQueue = txinput_queue.New(ret)
 	snapshot.Start(ret)
 	ret.startListeningTransactions()

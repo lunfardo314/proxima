@@ -73,6 +73,10 @@ func (d *workflowDummyEnvironment) EvidenceBranchInflationBonus(ib uint64) {
 	panic("implement me")
 }
 
+func (d *workflowDummyEnvironment) GetLatestReliableBranch() (ret *multistate.BranchData) {
+	panic("implement me")
+}
+
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	stateStore := common.NewInMemoryKVStore()
 	multistate.InitStateStoreFromGlobals(stateStore)

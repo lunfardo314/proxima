@@ -379,3 +379,8 @@ func (p *ProximaNode) EvidenceTxValidationStats(took time.Duration, numIn, numOu
 func (p *ProximaNode) EvidenceBranchInflationBonus(ib uint64) {
 	p.branchInflationBonus.Set(float64(ib))
 }
+
+func (p *ProximaNode) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
+	// in tests it may be differently to avoid problems with reusing private keys
+	return true, true
+}

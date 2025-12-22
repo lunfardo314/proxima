@@ -127,7 +127,7 @@ func NewFromConfig() *Global {
 }
 
 func NewDefault() *Global {
-	return _new(zapcore.DebugLevel, []string{"stderr"})
+	return _new(zapcore.DebugLevel, nil) // , []string{"stderr"})
 }
 
 func _new(logLevel zapcore.Level, outputs []string) *Global {
