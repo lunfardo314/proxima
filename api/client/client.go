@@ -959,7 +959,13 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 	txb.SignED25519(par.PrivateKey)
 
-	return txb.TransactionData.Bytes(), nil
+	txBytes, _, txString, err := txb.BytesWithValidation()
+
+	if err != nil {
+		err = fmt.Errorf("%v\n------ failing transaction -------\n%s", err, txString)
+	}
+
+	return txBytes, err
 }
 
 func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed25519.PrivateKey, ts base.LedgerTime) ([]byte, base.TransactionID, string, error) {

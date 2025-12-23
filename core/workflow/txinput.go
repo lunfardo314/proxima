@@ -24,7 +24,8 @@ type (
 )
 
 const (
-	TraceTagTxInput = "txinput"
+	TraceTagTxInput       = "txinput"
+	TraceTagTxInputNonSeq = "txinput-non-seq"
 )
 
 func (w *Workflow) TxFromStoreIn(txid base.TransactionID) (err error) {
@@ -101,6 +102,7 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 
 	if !txid.IsSequencerMilestone() {
 		w.EvidenceNonSequencerTx()
+		w.Tracef(TraceTagTxInputNonSeq, "-> non-seq-tx %s, meta: %s", txid.StringShort, options.txMetadata.String())
 	}
 
 	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
