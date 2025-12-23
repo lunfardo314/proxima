@@ -41,7 +41,6 @@ type (
 
 	input struct {
 		Tx         *transaction.Transaction
-		TxIDPrefix base.TransactionID
 		TxMetaData *txmetadata.TransactionMetadata
 		FromPeer   peer.ID
 		Wanted     bool
@@ -117,10 +116,9 @@ func New(env environment) *TxSenders {
 	return ret
 }
 
-func (q *TxSenders) CheckTxSender(tx *transaction.Transaction, txIDPrefix base.TransactionID, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
+func (q *TxSenders) CheckTxSender(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
 	q.Push(input{
 		Tx:         tx,
-		TxIDPrefix: txIDPrefix,
 		TxMetaData: meta,
 		FromPeer:   fromPeer,
 		Wanted:     wanted,
@@ -192,7 +190,7 @@ func (q *TxSenders) attachAndGossip(inp *input) {
 		return
 	}
 	// gossiping all new pre-validated and not pulled transactions from peers
-	q.GossipTxBytesToPeers(inp.Tx.Bytes(), inp.TxMetaData, inp.TxIDPrefix)
+	q.GossipTxBytesToPeers(inp.Tx.Bytes(), inp.TxMetaData, inp.Tx.ID())
 	q.gossipedCounter.Inc()
 }
 

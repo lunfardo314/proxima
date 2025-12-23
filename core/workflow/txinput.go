@@ -187,8 +187,8 @@ func (w *Workflow) OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.Tran
 	w.TxBytesInFromPeerQueued(txBytes, meta, w.SelfPeerID(), txid)
 }
 
-func (w *Workflow) CheckTxSender(tx *transaction.Transaction, txIDPrefix base.TransactionID, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
-	w.txSenders.CheckTxSender(tx, txIDPrefix, meta, fromPeer, wanted)
+func (w *Workflow) CheckTxSender(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
+	w.txSenders.CheckTxSender(tx, meta, fromPeer, wanted)
 }
 
 func WithMetadata(metadata *txmetadata.TransactionMetadata) TxInOption {
