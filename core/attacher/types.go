@@ -52,6 +52,7 @@ type (
 		Branches() *branches.Branches
 		EvidenceTxValidationStats(took time.Duration, numIn, numOut int)
 		EvidenceBranchInflationBonus(ib uint64)
+		MaxAttachmentRecursionDepth() int
 	}
 
 	attacher struct {

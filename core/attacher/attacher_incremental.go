@@ -177,7 +177,7 @@ func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedO
 	if !a.refreshDependencyStatus(wOut.VID) {
 		return a.err
 	}
-	if !a.attachOutput(wOut) {
+	if !a.attachOutput(wOut, 0) {
 		return a.err
 	}
 	if !a.pastCone.IsKnownDefined(wOut.VID) {
@@ -217,7 +217,7 @@ func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) e
 
 // insertEndorsement in case of error, attacher remains inconsistent
 func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) error {
-	if !a.attachEndorsementDependency(endorsement) {
+	if !a.attachEndorsementDependency(endorsement, 0) {
 		return a.err
 	}
 
