@@ -77,6 +77,14 @@ func (d *workflowDummyEnvironment) GetLatestReliableBranch() (ret *multistate.Br
 	panic("implement me")
 }
 
+func (d *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
+	return true, false
+}
+
+func (d *workflowDummyEnvironment) MaxAttachmentRecursionDepth() int {
+	return 20
+}
+
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
 	stateStore := common.NewInMemoryKVStore()
 	multistate.InitStateStoreFromGlobals(stateStore)
