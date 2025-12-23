@@ -180,6 +180,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 //   - Parameter 'depth' is incremented with every call to 'attachVertexUnwrapped'
 //   - Upon reaching constant limit, function returns failed transaction duo to recursions depth.
 //     This trick prevents unbounded chains of non-sequencer transactions in the past cone: an attack vector
+//   - this is deterministic, i.e. same on all nodes
 func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, depth int) (ok bool) {
 	a.Assertf(!v.Tx.IsSequencerTransaction() || a.pastCone.GetBaseline() != nil, "!v.Tx.IsSequencerTransaction() || a.baseline != nil in %s", v.Tx.IDShortString)
 
