@@ -12,6 +12,10 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
+// Collection of functions to query the state and collect all kind of stats
+
+// TODO revisit and optimize the whole set of APIs
+
 type (
 	LockedAccountInfo struct {
 		Balance    uint64

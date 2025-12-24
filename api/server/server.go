@@ -98,6 +98,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetSequencers, srv.getSequencers)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
+	// GET inactive UTXOs in LRB /get_inactive?[since=<slot>]
+	srv.addHandler(api.PathGetInactive, srv.getInactive)
 
 	// register handlers of tx API
 	srv.registerTxAPIHandlers()
@@ -811,6 +813,57 @@ func (srv *server) getSnapshotBranchID(w http.ResponseWriter, _ *http.Request) {
 	}
 	_, err = w.Write(respBin)
 	util.AssertNoError(err)
+}
+
+func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	var since uint32
+	if lst, ok := r.URL.Query()["since"]; ok {
+		n, err := strconv.Atoi(lst[0])
+		if err != nil {
+			api.WriteErr(w, err.Error())
+			return
+		}
+		since = uint32(n)
+	} else {
+		since = 360 // one hour by default
+	}
+
+	resp := api.InactiveUTXOs{
+		UTXOs: make([]api.UTXOWithLock, 0),
+	}
+
+	var err error
+
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		resp.SinceSlot = since
+		outs, err1 := rdr.ScanInactive(lrbid.Slot(), since)
+		if err1 != nil {
+			return err1
+		}
+		for _, o := range outs {
+			resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
+				ID:   o.ID.StringHex(),
+				Lock: o.Lock().String(),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
 }
 
 func (srv *server) checkTxIDIncludedInLRB(w http.ResponseWriter, r *http.Request) {
