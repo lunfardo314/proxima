@@ -58,7 +58,6 @@ func Init() *cobra.Command {
 		initSyncInfoCmd(),
 		initPeersInfoCmd(),
 		initReliableBranchCmd(),
-		//initInflateChainCmd(),
 		initFaucetServerCmd(),
 		initGetFundsCmd(),
 		initLastSeqCmd(),
