@@ -98,7 +98,7 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetSequencers, srv.getSequencers)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
-	// GET inactive UTXOs in LRB /get_inactive?[since=<slot>]
+	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
 
 	// register handlers of tx API
@@ -818,16 +818,16 @@ func (srv *server) getSnapshotBranchID(w http.ResponseWriter, _ *http.Request) {
 func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
-	var since uint32
-	if lst, ok := r.URL.Query()["since"]; ok {
+	var slotsBack uint32
+	if lst, ok := r.URL.Query()["slots_back"]; ok {
 		n, err := strconv.Atoi(lst[0])
 		if err != nil {
 			api.WriteErr(w, err.Error())
 			return
 		}
-		since = uint32(n)
+		slotsBack = uint32(n)
 	} else {
-		since = 360 // one hour by default
+		slotsBack = 360 // one hour by default
 	}
 
 	resp := api.InactiveUTXOs{
@@ -835,10 +835,13 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var err error
-
+	var since uint32
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
+		if lrbid.Slot() > slotsBack {
+			since = lrbid.Slot() - slotsBack
+		}
 		resp.SinceSlot = since
 		outs, err1 := rdr.ScanInactive(lrbid.Slot(), since)
 		if err1 != nil {
