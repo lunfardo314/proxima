@@ -394,21 +394,27 @@ func (r *Readable) Root() common.VCommitment {
 	return r.trie.Root()
 }
 
-func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) {
+func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error) {
+	var oid base.OutputID
+	var o *ledger.Output
+
 	r.trie.Iterator([]byte{TriePartitionLedgerState}).Iterate(func(key, oData []byte) bool {
 		d := key[1:]
 		if len(d) != base.OutputIDLength {
 			return true
 		}
-		oid, err := base.OutputIDFromBytes(d)
-		util.AssertNoError(err)
-		o, err := ledger.OutputFromBytes(oData)
-		util.AssertNoError(err)
+		if oid, err = base.OutputIDFromBytes(d); err != nil {
+			return false
+		}
+		if o, err = ledger.OutputFromBytes(oData); err != nil {
+			return false
+		}
 		return fun(ledger.OutputWithID{
 			ID:     oid,
 			Output: o,
 		})
 	})
+	return
 }
 
 func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error) {
