@@ -888,6 +888,27 @@ func (c *APIClient) CheckTransactionIDInLRB(txid base.TransactionID, maxDepth ..
 	return
 }
 
+func (c *APIClient) GetInactiveUTXOs(slotsBack ...int) (ret api.InactiveUTXOs, err error) {
+	path := api.PathGetInactive
+	if len(slotsBack) > 0 {
+		path += fmt.Sprintf("?slots_back=%d", slotsBack[0])
+	}
+	body, err := c.getBody(path)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(body, &ret)
+	if err != nil {
+		err = fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+		return
+	}
+	if ret.Error.Error != "" {
+		err = fmt.Errorf("from server: %s", ret.Error.Error)
+		return
+	}
+	return
+}
+
 type MakeTransferTransactionParams struct {
 	Inputs        []*ledger.OutputWithID
 	Target        ledger.Lock
