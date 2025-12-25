@@ -848,7 +848,9 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.SinceSlot = since
 		// TODO incorrect if more than max. Reimplement
+		srv.Log().Infof("getInactive 1")
 		outs, err1 = rdr.ScanInactive(lrbid.Slot(), since, maxReturnInactive)
+		srv.Log().Infof("getInactive 2")
 		if err1 != nil {
 			return err1
 		}
@@ -858,6 +860,7 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
+	srv.Log().Infof("getInactive 3")
 	for _, o := range outs {
 		resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
 			ID:   o.ID.StringHex(),
