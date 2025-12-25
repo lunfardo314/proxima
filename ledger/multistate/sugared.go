@@ -121,6 +121,7 @@ func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxR
 	}
 	ret := make([]ledger.OutputWithID, 0)
 	i := 0
+	// FIXME deadlock here
 	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
 		{ // debug
 			s.Trace(">>>>>> TRACE ScanInactive %d\n", i)
