@@ -815,6 +815,8 @@ func (srv *server) getSnapshotBranchID(w http.ResponseWriter, _ *http.Request) {
 	util.AssertNoError(err)
 }
 
+const maxReturnInactive = 1000
+
 func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
@@ -834,8 +836,10 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		UTXOs: make([]api.UTXOWithLock, 0),
 	}
 
-	var err error
+	var err, err1 error
 	var since uint32
+	var outs []ledger.OutputWithID
+
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
@@ -843,21 +847,22 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 			since = lrbid.Slot() - slotsBack
 		}
 		resp.SinceSlot = since
-		outs, err1 := rdr.ScanInactive(lrbid.Slot(), since)
+		// TODO incorrect if more than max. Reimplement
+		outs, err1 = rdr.ScanInactive(lrbid.Slot(), since, maxReturnInactive)
 		if err1 != nil {
 			return err1
-		}
-		for _, o := range outs {
-			resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
-				ID:   o.ID.StringHex(),
-				Lock: o.Lock().String(),
-			})
 		}
 		return nil
 	})
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
+	}
+	for _, o := range outs {
+		resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
+			ID:   o.ID.StringHex(),
+			Lock: o.Lock().String(),
+		})
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
