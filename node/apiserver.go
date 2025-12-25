@@ -105,11 +105,10 @@ func (p *ProximaNode) GetPeersInfo() *api.PeersInfo {
 
 func (p *ProximaNode) LatestReliableState() (multistate.SugaredStateReader, error) {
 	lrb := multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
-	//lrb := p.workflow.Branches().FindLatestReliableBranch(global.FractionHealthyBranch)
 	if lrb == nil {
 		return multistate.SugaredStateReader{}, fmt.Errorf("LatestReliableState: can't find latest reliable branch")
 	}
-	return multistate.MakeSugared(multistate.MustNewReadable(p.StateStore(), lrb.Root, 0)), nil
+	return multistate.MakeSugared(multistate.MustNewReadable(p.StateStore(), lrb.Root, 0), p.Log()), nil
 }
 
 func (p *ProximaNode) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
