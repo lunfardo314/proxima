@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -394,37 +395,45 @@ func (r *Readable) Root() common.VCommitment {
 	return r.trie.Root()
 }
 
-// IterateUTXOs FIXME wrong: scans all txids
-func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error) {
+// IterateUTXOIDs scans UTXO IDs in the index. Ensures one call per UTXO
+func (r *Readable) IterateUTXOIDs(fun func(oid base.OutputID) bool) (err error) {
 	r.mutex.Lock()
-	fmt.Printf(">>>>>>>>>>>>>>>> after lock\n")
 	defer r.mutex.Unlock()
 
+	oidSet := set.New[base.OutputID]()
+
 	var oid base.OutputID
-	var o *ledger.Output
 
-	i := 0
-	r.trie.Iterator([]byte{TriePartitionLedgerState}).Iterate(func(key, oData []byte) bool {
-		fmt.Printf(">>>>>>>>>>>>>>>> iterate %d\n", i)
-		i++
-
-		d := key[1:]
-		if len(d) != base.OutputIDLength {
+	r.trie.Iterator([]byte{TriePartitionAccounts}).IterateKeys(func(k []byte) bool {
+		if oid, err = base.OutputIDFromBytes(k[2+k[1]:]); err != nil {
+			return false
+		}
+		if oidSet.Contains(oid) {
 			return true
 		}
-		if oid, err = base.OutputIDFromBytes(d); err != nil {
-			return false
-		}
-		if o, err = ledger.OutputFromBytes(oData); err != nil {
-			return false
-		}
+		oidSet.Insert(oid)
+		return fun(oid)
+	})
+	return
+}
+
+func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error) {
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	defer partition.Dispose()
+
+	var o *ledger.Output
+
+	return r.IterateUTXOIDs(func(oid base.OutputID) bool {
+		oData, ok := r._getUTXO(oid, partition)
+		util.Assertf(!ok, "IterateUTXOs: can't find UTXO %s", oid.String())
+		o, err = ledger.OutputFromBytes(oData)
+		util.AssertNoError(err, "IterateUTXOs")
+
 		return fun(ledger.OutputWithID{
-			ID:     oid,
 			Output: o,
+			ID:     oid,
 		})
 	})
-	fmt.Printf(">>>>>>>>>>>>>>>> iterate OUT %d\n", i)
-	return
 }
 
 func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error) {

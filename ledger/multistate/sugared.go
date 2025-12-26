@@ -114,28 +114,26 @@ func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Accountable, fu
 }
 
 // ScanInactive scans the UTXO set to find outputs that weren't moved since specified slot
-// FIXME wrong: scans all txids
-//func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxReturn ...int) ([]ledger.OutputWithID, error) {
-//
-//	if slotNow <= inactiveSinceSlot {
-//		return nil, nil
-//	}
-//	ret := make([]ledger.OutputWithID, 0)
-//	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
-//		if o.ID.Slot() > inactiveSinceSlot {
-//			return true
-//		}
-//		if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok && dOut.IsInFrozenSlot(slotNow) {
-//			return true
-//		}
-//		ret = append(ret, o)
-//		if len(maxReturn) > 0 && len(ret) >= maxReturn[0] {
-//			return false
-//		}
-//		return true
-//	})
-//	return ret, err
-//}
+func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxReturn ...int) ([]ledger.OutputWithID, error) {
+	if slotNow <= inactiveSinceSlot {
+		return nil, nil
+	}
+	ret := make([]ledger.OutputWithID, 0)
+	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
+		if o.ID.Slot() > inactiveSinceSlot {
+			return true
+		}
+		if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok && dOut.IsInFrozenSlot(slotNow) {
+			return true
+		}
+		ret = append(ret, o)
+		if len(maxReturn) > 0 && len(ret) >= maxReturn[0] {
+			return false
+		}
+		return true
+	})
+	return ret, err
+}
 
 func (s SugaredStateReader) GetStemOutput() *ledger.OutputWithID {
 	oData, err := s.IndexedStateReader.GetUTXOsInAccount(ledger.StemAccountID)
