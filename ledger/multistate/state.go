@@ -402,7 +402,11 @@ func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error
 	var oid base.OutputID
 	var o *ledger.Output
 
+	i := 0
 	r.trie.Iterator([]byte{TriePartitionLedgerState}).Iterate(func(key, oData []byte) bool {
+		fmt.Printf(">>>>>>>>>>>>>>>> iterate %d\n", i)
+		i++
+
 		d := key[1:]
 		if len(d) != base.OutputIDLength {
 			return true
