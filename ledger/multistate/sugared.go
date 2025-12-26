@@ -4,33 +4,33 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
-	"go.uber.org/zap"
 )
 
 var ErrNotFound = errors.New("object not found")
 
+const TraceTag = "sugaredStateReader"
+
 type SugaredStateReader struct {
 	IndexedStateReader
-	log *zap.SugaredLogger
+	global.Logging
 }
 
-func MakeSugared(s IndexedStateReader, logger ...*zap.SugaredLogger) SugaredStateReader {
+func MakeSugared(s IndexedStateReader, logger ...global.Logging) SugaredStateReader {
 	ret := SugaredStateReader{IndexedStateReader: s}
 	if len(logger) > 0 {
-		ret.log = logger[0]
+		ret.Logging = logger[0]
 	}
 	return ret
 }
 
 func (s SugaredStateReader) Trace(format string, args ...interface{}) {
-	if s.log == nil {
-		fmt.Printf(format+"\n", args...)
-	} else {
-		s.log.Info(fmt.Sprintf("TRACE[sugared logger] "+format, args...))
+	if s.Logging != nil {
+		s.Tracef(TraceTag, format, args...)
 	}
 }
 
@@ -115,16 +115,15 @@ func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Accountable, fu
 
 // ScanInactive scans the UTXO set to find outputs that weren't moved since specified slot
 func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxReturn ...int) ([]ledger.OutputWithID, error) {
-	s.Trace(">>>>>> TRACE ScanInactive IN\n")
+	s.Trace(">>>>>> ScanInactive IN")
 	if slotNow <= inactiveSinceSlot {
 		return nil, nil
 	}
 	ret := make([]ledger.OutputWithID, 0)
 	i := 0
-	// FIXME deadlock here
 	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
 		{ // debug
-			s.Trace(">>>>>> TRACE ScanInactive %d\n", i)
+			s.Trace(">>>>>> ScanInactive: %d", i)
 			i++
 		}
 		if o.ID.Slot() > inactiveSinceSlot {

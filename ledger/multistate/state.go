@@ -395,6 +395,9 @@ func (r *Readable) Root() common.VCommitment {
 }
 
 func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	var oid base.OutputID
 	var o *ledger.Output
 
