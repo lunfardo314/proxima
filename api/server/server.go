@@ -848,9 +848,9 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.SinceSlot = since
 		// TODO incorrect if more than max. Reimplement
-		rdr.Tracef(multistate.TraceTag, "getInactive 1 since %d", lrbid.Slot())
+		rdr.Trace("getInactive 1 since %d", lrbid.Slot())
 		outs, err1 = rdr.ScanInactive(lrbid.Slot(), since, maxReturnInactive)
-		rdr.Tracef(multistate.TraceTag, "getInactive 2")
+		rdr.Trace("getInactive 2")
 		if err1 != nil {
 			return err1
 		}
@@ -860,13 +860,14 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	srv.Log().Infof("getInactive 3")
+	srv.Log().Infof("getInactive 3, len = %d", len(outs))
 	for _, o := range outs {
 		resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
 			ID:   o.ID.StringHex(),
 			Lock: o.Lock().String(),
 		})
 	}
+	srv.Log().Infof("getInactive 4")
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
