@@ -394,6 +394,7 @@ func (r *Readable) Root() common.VCommitment {
 	return r.trie.Root()
 }
 
+// IterateUTXOs FIXME wrong: scans all txids
 func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error) {
 	r.mutex.Lock()
 	fmt.Printf(">>>>>>>>>>>>>>>> after lock\n")

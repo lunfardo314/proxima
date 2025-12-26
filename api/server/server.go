@@ -820,62 +820,65 @@ const maxReturnInactive = 1000
 func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
-	var slotsBack uint32
-	if lst, ok := r.URL.Query()["slots_back"]; ok {
-		n, err := strconv.Atoi(lst[0])
-		if err != nil {
-			api.WriteErr(w, err.Error())
-			return
-		}
-		slotsBack = uint32(n)
-	} else {
-		slotsBack = 360 // one hour by default
-	}
+	api.WriteErr(w, "get_inactive: not implemented")
+	return
 
-	resp := api.InactiveUTXOs{
-		UTXOs: make([]api.UTXOWithLock, 0),
-	}
-
-	var err, err1 error
-	var since uint32
-	var outs []ledger.OutputWithID
-
-	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
-		lrbid := rdr.GetStemOutput().ID.TransactionID()
-		resp.LRBID = lrbid.StringHex()
-		if lrbid.Slot() > slotsBack {
-			since = lrbid.Slot() - slotsBack
-		}
-		resp.SinceSlot = since
-		// TODO incorrect if more than max. Reimplement
-		rdr.Trace("getInactive 1 since %d", since)
-		outs, err1 = rdr.ScanInactive(lrbid.Slot(), since, maxReturnInactive)
-		rdr.Trace("getInactive 2")
-		if err1 != nil {
-			return err1
-		}
-		return nil
-	})
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	srv.Log().Infof("getInactive 3, len = %d", len(outs))
-	for _, o := range outs {
-		resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
-			ID:   o.ID.StringHex(),
-			Lock: o.Lock().String(),
-		})
-	}
-	srv.Log().Infof("getInactive 4")
-
-	respBin, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		api.WriteErr(w, err.Error())
-		return
-	}
-	_, err = w.Write(respBin)
-	srv.AssertNoError(err)
+	//var slotsBack uint32
+	//if lst, ok := r.URL.Query()["slots_back"]; ok {
+	//	n, err := strconv.Atoi(lst[0])
+	//	if err != nil {
+	//		api.WriteErr(w, err.Error())
+	//		return
+	//	}
+	//	slotsBack = uint32(n)
+	//} else {
+	//	slotsBack = 360 // one hour by default
+	//}
+	//
+	//resp := api.InactiveUTXOs{
+	//	UTXOs: make([]api.UTXOWithLock, 0),
+	//}
+	//
+	//var err, err1 error
+	//var since uint32
+	//var outs []ledger.OutputWithID
+	//
+	//err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+	//	lrbid := rdr.GetStemOutput().ID.TransactionID()
+	//	resp.LRBID = lrbid.StringHex()
+	//	if lrbid.Slot() > slotsBack {
+	//		since = lrbid.Slot() - slotsBack
+	//	}
+	//	resp.SinceSlot = since
+	//	// TODO incorrect if more than max. Reimplement
+	//	rdr.Trace("getInactive 1 since %d", since)
+	//	outs, err1 = rdr.ScanInactive(lrbid.Slot(), since, maxReturnInactive)
+	//	rdr.Trace("getInactive 2")
+	//	if err1 != nil {
+	//		return err1
+	//	}
+	//	return nil
+	//})
+	//if err != nil {
+	//	api.WriteErr(w, err.Error())
+	//	return
+	//}
+	//srv.Log().Infof("getInactive 3, len = %d", len(outs))
+	//for _, o := range outs {
+	//	resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
+	//		ID:   o.ID.StringHex(),
+	//		Lock: o.Lock().String(),
+	//	})
+	//}
+	//srv.Log().Infof("getInactive 4")
+	//
+	//respBin, err := json.MarshalIndent(resp, "", "  ")
+	//if err != nil {
+	//	api.WriteErr(w, err.Error())
+	//	return
+	//}
+	//_, err = w.Write(respBin)
+	//srv.AssertNoError(err)
 }
 
 func (srv *server) checkTxIDIncludedInLRB(w http.ResponseWriter, r *http.Request) {

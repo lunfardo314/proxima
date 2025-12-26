@@ -234,6 +234,7 @@ func (s *ScannedState) Lines(prefix ...string) *lines.Lines {
 }
 
 // ScanState scans state, collects info and checks its consistency
+// FIXME
 func (r *Readable) ScanState() *ScannedState {
 	ret := &ScannedState{
 		Chains:          make(map[base.ChainID]*ledger.OutputWithID),
