@@ -422,6 +422,7 @@ func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error
 			Output: o,
 		})
 	})
+	fmt.Printf(">>>>>>>>>>>>>>>> iterate OUT %d\n", i)
 	return
 }
 
