@@ -848,7 +848,7 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.SinceSlot = since
 		// TODO incorrect if more than max. Reimplement
-		rdr.Trace("getInactive 1 since %d", lrbid.Slot())
+		rdr.Trace("getInactive 1 since %d", since)
 		outs, err1 = rdr.ScanInactive(lrbid.Slot(), since, maxReturnInactive)
 		rdr.Trace("getInactive 2")
 		if err1 != nil {
