@@ -122,12 +122,7 @@ func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxR
 	}
 	s.Trace(">>>>>> ScanInactive 1")
 	ret := make([]ledger.OutputWithID, 0)
-	i := 0
 	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
-		{ // debug
-			s.Trace(">>>>>> ScanInactive: %d", i)
-			i++
-		}
 		if o.ID.Slot() > inactiveSinceSlot {
 			return true
 		}
