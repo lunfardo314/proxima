@@ -425,7 +425,7 @@ func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error
 
 	return r.IterateUTXOIDs(func(oid base.OutputID) bool {
 		oData, ok := r._getUTXO(oid, partition)
-		util.Assertf(!ok, "IterateUTXOs: can't find UTXO %s", oid.String())
+		util.Assertf(ok, "IterateUTXOs: can't find UTXO %s", oid.String())
 		o, err = ledger.OutputFromBytes(oData)
 		util.AssertNoError(err, "IterateUTXOs")
 
