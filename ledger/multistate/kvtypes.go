@@ -20,7 +20,6 @@ type (
 		IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid base.OutputID, odata []byte) bool) (err error)
 		IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error)
 		IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error
-		IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error)
 
 		GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error)
 		GetUTXOsInAccount(accountID ledger.AccountID) ([]*ledger.OutputDataWithID, error) // TODO leave Iterate.. only?
