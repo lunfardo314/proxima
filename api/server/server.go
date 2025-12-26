@@ -858,14 +858,14 @@ func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	srv.Log().Infof("getInactive 3, len = %d", len(outs))
 	for _, o := range outs {
 		resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
-			ID:   o.ID.StringHex(),
-			Lock: o.Lock().String(),
+			ID:           o.ID.StringHex(),
+			Lock:         o.Output.Lock().String(),
+			Amount:       o.Output.TokenBalance(),
+			OutputString: o.String(),
 		})
 	}
-	srv.Log().Infof("getInactive 4")
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

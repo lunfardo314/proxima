@@ -1,8 +1,12 @@
 package node_cmd
 
 import (
+	"bytes"
+	"sort"
 	"strconv"
 
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +35,25 @@ func runGetInactiveCmd(_ *cobra.Command, args []string) {
 	outs, err := glb.GetClient().GetInactiveUTXOs(slotsBack)
 	glb.AssertNoError(err)
 
-	for _, o := range outs.UTXOs {
-		glb.Infof("\n%s     %s", o.ID, o.Lock)
+	glb.Infof("\ncurrent slot: %d", ledger.SlotNow())
+	glb.Infof("inactive UTXOs since slot %d:\n", outs.SinceSlot)
+
+	type oBin struct {
+		oid     base.OutputID
+		lockStr string
 	}
+
+	outs1 := make([]*oBin, 0)
+	for _, o := range outs.UTXOs {
+		id, err := base.OutputIDFromHexString(o.ID)
+		glb.AssertNoError(err)
+		outs1 = append(outs1, &oBin{oid: id, lockStr: o.Lock})
+	}
+	sort.Slice(outs1, func(i, j int) bool {
+		return bytes.Compare(outs1[i].oid[:], outs1[j].oid[:]) < 0
+	})
+	for _, o := range outs1 {
+		glb.Infof("%75s: %s", o.oid.String(), o.lockStr)
+	}
+
 }

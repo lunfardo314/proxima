@@ -312,8 +312,10 @@ type (
 	}
 
 	UTXOWithLock struct {
-		ID   string `json:"id"`
-		Lock string `json:"lock"`
+		ID           string `json:"id"`
+		Lock         string `json:"lock"`
+		Amount       uint64 `json:"amount"`
+		OutputString string `json:"output_string"`
 	}
 )
 
