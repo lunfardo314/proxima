@@ -115,10 +115,12 @@ func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Accountable, fu
 
 // ScanInactive scans the UTXO set to find outputs that weren't moved since specified slot
 func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxReturn ...int) ([]ledger.OutputWithID, error) {
-	s.Trace(">>>>>> ScanInactive IN")
+	s.Trace(">>>>>> ScanInactive IN now: %d, since: %d", slotNow, inactiveSinceSlot)
+
 	if slotNow <= inactiveSinceSlot {
 		return nil, nil
 	}
+	s.Trace(">>>>>> ScanInactive 1")
 	ret := make([]ledger.OutputWithID, 0)
 	i := 0
 	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
