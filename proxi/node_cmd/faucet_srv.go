@@ -193,6 +193,7 @@ func (fct *faucetServer) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	nReq := fct.addressRequestCount[targetStr[0]]
 	if nReq >= fct.cfg.maxRequestsPerAddr {
+		glb.Infof("funds refused to send to %s (remote = %s)", targetStr[0], r.RemoteAddr)
 		writeResponse(w, "maximum number of requests exceeded")
 		return
 	}
