@@ -32,16 +32,18 @@ type (
 		port               uint64
 		maxRequestsPerHour uint
 		maxRequestsPerDay  uint
+		maxRequestsPerAddr uint
 		bottom             uint64
 	}
 
 	faucetServer struct {
-		cfg                faucetServerConfig
-		walletData         glb.WalletData
-		mutex              sync.Mutex
-		accountRequestList map[string][]time.Time
-		addressRequestList map[string][]time.Time
-		client             *client.APIClient
+		cfg                 faucetServerConfig
+		walletData          glb.WalletData
+		mutex               sync.Mutex
+		accountRequestList  map[string][]time.Time
+		addressRequestList  map[string][]time.Time
+		addressRequestCount map[string]uint
+		client              *client.APIClient
 	}
 )
 
@@ -69,10 +71,11 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 	glb.Assertf(glb.GetTagAlongSequencerID() != nil, "tag-along sequencer not specified")
 
 	fct := &faucetServer{
-		walletData:         walletData,
-		accountRequestList: make(map[string][]time.Time),
-		addressRequestList: make(map[string][]time.Time),
-		client:             glb.GetClient(),
+		walletData:          walletData,
+		accountRequestList:  make(map[string][]time.Time),
+		addressRequestList:  make(map[string][]time.Time),
+		addressRequestCount: make(map[string]uint),
+		client:              glb.GetClient(),
 	}
 	fct.readFaucetServerConfigIn()
 
@@ -105,6 +108,9 @@ func (fct *faucetServer) readFaucetServerConfigIn() {
 	}
 	if fct.cfg.maxRequestsPerDay = sub.GetUint("max_requests_per_day"); fct.cfg.maxRequestsPerDay == 0 {
 		fct.cfg.maxRequestsPerDay = 1
+	}
+	if fct.cfg.maxRequestsPerAddr = sub.GetUint("max_requests_per_addr"); fct.cfg.maxRequestsPerAddr == 0 {
+		fct.cfg.maxRequestsPerAddr = 2
 	}
 	fct.cfg.bottom = sub.GetUint64("bottom")
 	if fct.cfg.bottom < fct.absoluteBottom() {
@@ -168,7 +174,8 @@ func (fct *faucetServer) displayFaucetConfig() {
 	} else {
 		glb.Infof("     funds will be drawn from: %s (balance %s)", fct.walletData.Account.String(), util.Th(walletBalance))
 	}
-	glb.Infof("     maximum number of requests per hour: %d, per day: %d", fct.cfg.maxRequestsPerHour, fct.cfg.maxRequestsPerDay)
+	glb.Infof("     maximum number of requests per hour: %d, per day: %d, per address: %d",
+		fct.cfg.maxRequestsPerHour, fct.cfg.maxRequestsPerDay, fct.cfg.maxRequestsPerAddr)
 }
 
 func (fct *faucetServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -184,6 +191,12 @@ func (fct *faucetServer) handler(w http.ResponseWriter, r *http.Request) {
 		writeResponse(w, "wrong parameter 'addr' in request 'get_funds'")
 		return
 	}
+	nReq := fct.addressRequestCount[targetStr[0]]
+	if nReq >= fct.cfg.maxRequestsPerAddr {
+		writeResponse(w, "maximum number of requests exceeded")
+		return
+	}
+	fct.addressRequestCount[targetStr[0]] = nReq + 1
 
 	if !fct.checkAndUpdateRequestTime(targetStr[0], r.RemoteAddr) {
 		glb.Infof("funds refused to send to %s (remote = %s)", targetStr[0], r.RemoteAddr)
