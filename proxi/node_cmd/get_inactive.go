@@ -26,7 +26,8 @@ func initGetInactiveCmd() *cobra.Command {
 func runGetInactiveCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
 
-	var err error
+	lrbRootRecord, _, err := glb.GetClient().GetLatestReliableBranch()
+	glb.AssertNoError(err)
 
 	slotsBack := 360
 	if len(args) > 0 {
@@ -66,7 +67,8 @@ func runGetInactiveCmd(_ *cobra.Command, args []string) {
 		glb.Verbosef("%s\n", o.utxoStr)
 		total += o.amount
 	}
-	glb.Infof("----------\ntotal inactive: %s", util.Th(total))
+
+	glb.Infof("----------\ntotal inactive: %s (%.2f%% of total supply)", util.Th(total), 100*float32(total)/float32(lrbRootRecord.Supply))
 
 	type addrTotal struct {
 		utxos int
