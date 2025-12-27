@@ -37,8 +37,8 @@ func runGetInactiveCmd(_ *cobra.Command, args []string) {
 	outs, err := glb.GetClient().GetInactiveUTXOs(slotsBack)
 	glb.AssertNoError(err)
 
-	glb.Infof("\ncurrent slot: %d", ledger.SlotNow())
-	glb.Infof("inactive UTXOs since slot %d:\n", outs.SinceSlot)
+	glb.Infof("\n-- current slot: %d", ledger.SlotNow())
+	glb.Infof("-- inactive UTXOs since slot %d:\n", outs.SinceSlot)
 
 	type oBin struct {
 		oid     base.OutputID
