@@ -32,12 +32,14 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	}
 	txb, err := txbuilder_seq.New(a.TargetTs(), &seqPred, stem, p.ControllerPrivateKey(), a.BaselineSugaredStateReader())
 	if err != nil {
+		a.Close() // FIX: close attacher on error
 		return nil, fmt.Errorf("newProposal: %w", err)
 	}
 	txb.SetName(p.environment.SequencerName() + "." + p.strategy.ShortName)
 
 	for _, vid := range a.Endorsing() {
 		if err = txb.AddEndorsement(vid.ID()); err != nil {
+			a.Close() // FIX: close attacher on error
 			return nil, fmt.Errorf("newProposal: %w", err)
 		}
 	}
