@@ -104,15 +104,11 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 			PeerID: from,
 		})
 	})
-
 	// hopefully protects against memory leak
 	ret.RepeatInBackground("workflow_recreate_map_loop", recreateMapPeriod, func() bool {
 		ret.RecreateVertexMap()
 		return true
 	})
-
-	txinput_queue.StartTrackingTxBytes(ret)
-
 	return ret
 }
 

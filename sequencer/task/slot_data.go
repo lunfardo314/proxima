@@ -50,8 +50,6 @@ func NewSlotData(slot uint32) *SlotData {
 		alreadyCheckedCombination: make(map[combinationHash]bool),
 	}
 
-	//trackSlotData.RegisterPointer(ret)
-
 	return ret
 }
 
