@@ -100,72 +100,59 @@ go test -v ./...
 
 ---
 
-## ONGOING: Sequencer Memory Leak Investigation
+## RESOLVED: Sequencer Memory Leak (Dec 2025)
 
-**Status**: Analysis in progress, awaiting pprof heap profile
+**Status**: ROOT CAUSE IDENTIFIED AND FIXED
 
 ### Symptoms
-- Memory leak rate: ~50MB/hour
-- Only occurs when sequencer is enabled
-- **Memdag vertices are stable** (not leaking)
-- **Goroutines are stable** (not leaking)
+- Memory leak rate: ~50-60MB/hour
+- Only occurred when sequencer was enabled
+- Memdag vertices were stable (not leaking)
+- Goroutines were stable (not leaking)
 
-### Areas Cleared (NOT the cause)
+### Root Cause
 
-| Component | Location | Why Cleared |
-|-----------|----------|-------------|
-| ownMilestones map | `sequencer/sequencer.go:58` | Purged every 1s with 24-slot TTL, map recreated every 1min |
-| Backlog outputs | `sequencer/backlog/backlog.go:38` | Purged with 10-slot TTL, map recreated every 1min |
-| consumed map in WrappedTx | `core/vertex/types.go:63` | Memdag vertices stable, so this isn't growing |
-| milestoneAttacher | `core/attacher/attacher_milestone.go` | Properly closed via defer with pastCone.Dispose() |
-| Event handlers | `core/core_modules/events/events.go` | Only added once per sequencer start |
-| Goroutines | - | Confirmed stable |
+**BadgerDB's block cache (Ristretto) was growing unboundedly.**
 
-### Potential Leak Sources (TO INVESTIGATE with pprof)
-
-1. **IncrementalAttacher not closed on `newProposal()` failure**
-   - Files: `sequencer/task/proposer_base.go:83-86`, `proposer_endorse1.go:53-56`, all other proposer_*.go
-   - Pattern: When `newProposal(a)` returns error, attacher `a` is not closed
-   - Even if GC'd eventually, PastCone references persist longer than necessary
-   - **Potential fix**: Add `a.Close()` in error paths
-
-2. **`_collectConsumed` creates growing sets**
-   - File: `sequencer/own_milestones.go:82-106`
-   - Each milestone stores `set.Set[base.OutputID]` of consumed outputs in past chain
-   - Set grows as chain lengthens within TTL window
-
-3. **tippool's `latestSequencerData` never purged**
-   - File: `core/core_modules/tippool/tippool.go:35`
-   - Entries added but never deleted (unlike `latestMilestones`)
-   - Small per-entry but unbounded growth
-
-### Next Steps (pprof session)
-
-```bash
-# Heap profile
-go tool pprof http://localhost:<port>/debug/pprof/heap
-# Then: top 20, list newProposal, list _collectConsumed, list AddOwnMilestone
-
-# Check specific allocations
-curl http://localhost:<port>/debug/pprof/heap?debug=1 > heap.txt
+pprof diff analysis revealed:
+```
+80.31MB 43.50%  github.com/dgraph-io/ristretto/v2/z.Calloc
+82.31MB 44.58%  github.com/dgraph-io/badger/v4/table.(*Table).block
 ```
 
-### Quick Fix to Test
+The sequencer performs many DB reads (`commitBranch`, `FetchBranchDataByRoot`, `KnownCommittedTxIDs`), and BadgerDB was caching decompressed table blocks without any size limit.
 
-In `sequencer/task/proposal.go`, close attacher on error:
+### Fix Applied
+
+**File**: `node/db.go`
+
+Added cache limits to BadgerDB options for both databases:
+
 ```go
-func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, error) {
-    txb, err := txbuilder_seq.New(...)
-    if err != nil {
-        a.Close()  // ADD THIS
-        return nil, fmt.Errorf("newProposal: %w", err)
-    }
-    for _, vid := range a.Endorsing() {
-        if err = txb.AddEndorsement(vid.ID()); err != nil {
-            a.Close()  // ADD THIS
-            return nil, fmt.Errorf("newProposal: %w", err)
-        }
-    }
-    // ... rest unchanged
-}
+opts := badger.DefaultOptions(dbname)
+opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
+opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
+```
+
+Applied to:
+- `initMultiStateLedger()` - multistate DB
+- `initTxStore()` - transaction store DB
+
+Total cache limit: ~192MB (vs unbounded before)
+
+### How to Diagnose Similar Issues
+
+```bash
+# Enable pprof in proxima.yaml
+pprof:
+  enable: true
+  port: 8080
+
+# Capture heap profiles
+curl -o heap1.pprof http://localhost:8080/debug/pprof/heap
+# wait 30-60 minutes
+curl -o heap2.pprof http://localhost:8080/debug/pprof/heap
+
+# Compare allocations
+go tool pprof -top -diff_base=heap1.pprof heap2.pprof
 ```
