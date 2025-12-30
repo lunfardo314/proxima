@@ -231,10 +231,10 @@ func (p *ProximaNode) goLoggingMemStats() {
 	p.RepeatInBackground("logging_memStats", memStatsPeriod, func() bool {
 		runtime.ReadMemStats(&memStats)
 		_, availableHDD, _ := diskusage.GetDiskUsage("/")
-		availableMB := float64(availableHDD) / (1024 * 1024)
+		availableMB := float64(availableHDD) / (1 << 20)
 		p.diskSpace.Set(availableMB)
 
-		availableGB := float64(availableHDD) / (1024 * 1024 * 1024)
+		availableGB := float64(availableHDD) / (1 << 30)
 		diskSpace := ""
 		if availableGB > 0 {
 			diskSpace = fmt.Sprintf(", available disk space: %.2f GB", availableGB)
@@ -243,7 +243,7 @@ func (p *ProximaNode) goLoggingMemStats() {
 			ledger.TimeNow().Slot,
 			p.CounterLines().Join(","),
 			time.Since(p.started).Round(time.Second),
-			float32(memStats.Alloc*10/(1024*1024))/10,
+			float32(memStats.Alloc*10/(1<<20))/10,
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 			diskSpace,

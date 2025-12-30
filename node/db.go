@@ -18,7 +18,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 	var err error
 	dbname := global.MultiStateDBName
 
-	// Set cache limits to prevent unbounded memory growth
+	// Set cache limits to prevent unbounded memory growth. Otherwise, it leaks memory. Claude Code fix
 	opts := badger.DefaultOptions(dbname)
 	opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
 	opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
@@ -74,7 +74,7 @@ func (p *ProximaNode) initTxStore() {
 		dbname := global.TxStoreDBName
 		p.Log().Infof("transaction store database dbname is '%s'", dbname)
 
-		// Set cache limits to prevent unbounded memory growth
+		// Set cache limits to prevent unbounded memory growth. Otherwise, it leaks memory. Claude Code fix
 		opts := badger.DefaultOptions(dbname)
 		opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
 		opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
