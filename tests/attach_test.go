@@ -1149,7 +1149,7 @@ func TestAttachSeqChains(t *testing.T) {
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
 		t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
-			float32(memStats.Alloc*10/(1024*1024))/10,
+			float32(memStats.Alloc*10/(1<<20))/10,
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)
@@ -1215,7 +1215,7 @@ func TestAttachSeqChains(t *testing.T) {
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
 		t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
-			float32(memStats.Alloc*10/(1024*1024))/10,
+			float32(memStats.Alloc*10/(1<<20))/10,
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)
@@ -1284,7 +1284,7 @@ func TestAttachSeqChains(t *testing.T) {
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
 		t.Logf("Memory stats: allocated %.1f MB, Num GC: %d, Goroutines: %d, ",
-			float32(memStats.Alloc*10/(1024*1024))/10,
+			float32(memStats.Alloc*10/(1<<20))/10,
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)

@@ -98,6 +98,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetSequencers, srv.getSequencers)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
+	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
+	srv.addHandler(api.PathGetInactive, srv.getInactive)
 
 	// register handlers of tx API
 	srv.registerTxAPIHandlers()
@@ -811,6 +813,67 @@ func (srv *server) getSnapshotBranchID(w http.ResponseWriter, _ *http.Request) {
 	}
 	_, err = w.Write(respBin)
 	util.AssertNoError(err)
+}
+
+const maxReturnInactive = 1000
+
+func (srv *server) getInactive(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	var slotsBack uint32
+	if lst, ok := r.URL.Query()["slots_back"]; ok {
+		n, err := strconv.Atoi(lst[0])
+		if err != nil {
+			api.WriteErr(w, err.Error())
+			return
+		}
+		slotsBack = uint32(n)
+	} else {
+		slotsBack = 360 // one hour by default
+	}
+
+	resp := api.InactiveUTXOs{
+		UTXOs: make([]api.UTXOWithLock, 0),
+	}
+
+	var err, err1 error
+	var since uint32
+	var outs []ledger.OutputWithID
+
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		if lrbid.Slot() > slotsBack {
+			since = lrbid.Slot() - slotsBack
+		}
+		resp.SinceSlot = since
+		// TODO incorrect if more than max. Reimplement
+		outs, err1 = rdr.ScanInactive(lrbid.Slot(), since, maxReturnInactive)
+		if err1 != nil {
+			return err1
+		}
+		return nil
+	})
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	for _, o := range outs {
+		resp.UTXOs = append(resp.UTXOs, api.UTXOWithLock{
+			ID:           o.ID.StringHex(),
+			Lock:         o.Output.Lock().String(),
+			Amount:       o.Output.TokenBalance(),
+			OutputString: o.String(),
+		})
+	}
+
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	srv.AssertNoError(err)
 }
 
 func (srv *server) checkTxIDIncludedInLRB(w http.ResponseWriter, r *http.Request) {

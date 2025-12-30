@@ -888,6 +888,27 @@ func (c *APIClient) CheckTransactionIDInLRB(txid base.TransactionID, maxDepth ..
 	return
 }
 
+func (c *APIClient) GetInactiveUTXOs(slotsBack ...int) (ret api.InactiveUTXOs, err error) {
+	path := api.PathGetInactive
+	if len(slotsBack) > 0 {
+		path += fmt.Sprintf("?slots_back=%d", slotsBack[0])
+	}
+	body, err := c.getBody(path)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(body, &ret)
+	if err != nil {
+		err = fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+		return
+	}
+	if ret.Error.Error != "" {
+		err = fmt.Errorf("from server: %s", ret.Error.Error)
+		return
+	}
+	return
+}
+
 type MakeTransferTransactionParams struct {
 	Inputs        []*ledger.OutputWithID
 	Target        ledger.Lock
@@ -959,7 +980,13 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 	txb.SignED25519(par.PrivateKey)
 
-	return txb.TransactionData.Bytes(), nil
+	txBytes, _, txString, err := txb.BytesWithValidation()
+
+	if err != nil {
+		err = fmt.Errorf("%v\n------ failing transaction -------\n%s", err, txString)
+	}
+
+	return txBytes, err
 }
 
 func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed25519.PrivateKey, ts base.LedgerTime) ([]byte, base.TransactionID, string, error) {

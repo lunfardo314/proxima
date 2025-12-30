@@ -286,7 +286,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined")
 
-				if ok = a.attachVertexUnwrapped(v, a.vid); !ok {
+				if ok = a.attachVertexUnwrapped(v, a.vid, 0); !ok {
 					a.Assertf(a.err != nil, "a.err != nil")
 					return
 				}

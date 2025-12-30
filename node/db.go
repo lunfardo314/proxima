@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"time"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -16,7 +17,13 @@ import (
 func (p *ProximaNode) initMultiStateLedger() {
 	var err error
 	dbname := global.MultiStateDBName
-	bdb, err := badger_adaptor.OpenBadgerDB(dbname)
+
+	// Set cache limits to prevent unbounded memory growth. Otherwise, it leaks memory. Claude Code fix
+	opts := badger.DefaultOptions(dbname)
+	opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
+	opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
+
+	bdb, err := badger_adaptor.OpenBadgerDB(dbname, opts)
 	if err != nil {
 		p.Log().Fatalf("can't open '%s': %v", dbname, err)
 	}
@@ -66,7 +73,13 @@ func (p *ProximaNode) initTxStore() {
 		// default option is predefined database name
 		dbname := global.TxStoreDBName
 		p.Log().Infof("transaction store database dbname is '%s'", dbname)
-		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname))
+
+		// Set cache limits to prevent unbounded memory growth. Otherwise, it leaks memory. Claude Code fix
+		opts := badger.DefaultOptions(dbname)
+		opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
+		opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
+
+		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname, opts))
 		p.dbClosedWG.Add(1)
 		p.txBytesStore = txstore.NewSimpleTxBytesStore(p.txStoreDB, p)
 		p.Log().Infof("opened DB '%s' as transaction store", dbname)

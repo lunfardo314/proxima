@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -12,12 +13,25 @@ import (
 
 var ErrNotFound = errors.New("object not found")
 
+const TraceTag = "sugaredStateReader"
+
 type SugaredStateReader struct {
 	IndexedStateReader
+	global.Logging
 }
 
-func MakeSugared(s IndexedStateReader) SugaredStateReader {
-	return SugaredStateReader{s}
+func MakeSugared(s IndexedStateReader, logger ...global.Logging) SugaredStateReader {
+	ret := SugaredStateReader{IndexedStateReader: s}
+	if len(logger) > 0 {
+		ret.Logging = logger[0]
+	}
+	return ret
+}
+
+func (s SugaredStateReader) Trace(format string, args ...interface{}) {
+	if s.Logging != nil {
+		s.Tracef(TraceTag, format, args...)
+	}
 }
 
 func NewSugaredReadableState(store common.KVReader, root common.VCommitment, clearCacheAsSize ...int) (SugaredStateReader, error) {
@@ -97,6 +111,28 @@ func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Accountable, fu
 		}
 		return fun(oid, o)
 	})
+}
+
+// ScanInactive scans the UTXO set to find outputs that weren't moved since specified slot
+func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxReturn ...int) ([]ledger.OutputWithID, error) {
+	if slotNow <= inactiveSinceSlot {
+		return nil, nil
+	}
+	ret := make([]ledger.OutputWithID, 0)
+	err := s.IterateUTXOs(func(o ledger.OutputWithID) bool {
+		if o.ID.Slot() > inactiveSinceSlot {
+			return true
+		}
+		if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok && dOut.IsInFrozenSlot(slotNow) {
+			return true
+		}
+		ret = append(ret, o)
+		if len(maxReturn) > 0 && len(ret) >= maxReturn[0] {
+			return false
+		}
+		return true
+	})
+	return ret, err
 }
 
 func (s SugaredStateReader) GetStemOutput() *ledger.OutputWithID {

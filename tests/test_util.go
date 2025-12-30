@@ -118,6 +118,10 @@ func (p *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq 
 	return false, true
 }
 
+func (p *workflowDummyEnvironment) MaxAttachmentRecursionDepth() int {
+	return 50
+}
+
 func newWorkflowDummyEnvironment(stateStore multistate.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	ret := &workflowDummyEnvironment{
 		Global:       global.NewDefault(),

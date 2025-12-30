@@ -39,6 +39,7 @@ const (
 	PathGetMainChain                     = PrefixAPIV1 + "/get_mainchain"
 	PathGetAllChains                     = PrefixAPIV1 + "/get_all_chains"
 	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
+	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
 
@@ -301,6 +302,20 @@ type (
 		Error
 		LRBID      string                   `json:"lrbid"`
 		OutputData map[string]SequencerData `json:"sequencers"`
+	}
+
+	InactiveUTXOs struct {
+		Error
+		LRBID     string         `json:"lrbid"`
+		SinceSlot uint32         `json:"since_slot"`
+		UTXOs     []UTXOWithLock `json:"utxos"`
+	}
+
+	UTXOWithLock struct {
+		ID           string `json:"id"`
+		Lock         string `json:"lock"`
+		Amount       uint64 `json:"amount"`
+		OutputString string `json:"output_string"`
 	}
 )
 

@@ -12,6 +12,10 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
+// Collection of functions to query the state and collect all kind of stats
+
+// TODO revisit and optimize the whole set of APIs
+
 type (
 	LockedAccountInfo struct {
 		Balance    uint64
@@ -230,6 +234,7 @@ func (s *ScannedState) Lines(prefix ...string) *lines.Lines {
 }
 
 // ScanState scans state, collects info and checks its consistency
+// FIXME
 func (r *Readable) ScanState() *ScannedState {
 	ret := &ScannedState{
 		Chains:          make(map[base.ChainID]*ledger.OutputWithID),

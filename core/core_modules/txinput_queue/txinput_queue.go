@@ -19,7 +19,7 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
-		CheckTxSender(tx *transaction.Transaction, txIDPrefix base.TransactionID, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool)
+		CheckTxSender(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool)
 
 		//TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
 		//TxInFromAPI(tx *transaction.Transaction) error
@@ -127,7 +127,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	}
 	// check if message prefix is equal to txid
 	if tx.ID() != inp.TxIDPrefix {
-		q.Log().Warn("TxInputQueue: tx message prefix != real txid", err)
+		q.Log().Warn("TxInputQueue: tx message prefix (%s) != real txid (%s). Transaction IGNORED", inp.TxIDPrefix.String(), tx.IDString())
 		return
 	}
 
@@ -141,7 +141,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	}
 
 	// new or pulled transaction -> pass to next step
-	q.CheckTxSender(tx, inp.TxIDPrefix, metaData, inp.FromPeer, wanted)
+	q.CheckTxSender(tx, metaData, inp.FromPeer, wanted)
 }
 
 func (q *TxInputQueue) fromAPI(inp *Input) {
@@ -160,7 +160,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		q.filterHitCounter.Inc()
 		return
 	}
-	q.CheckTxSender(tx, inp.TxIDPrefix, nil, "", false)
+	q.CheckTxSender(tx, nil, "", false)
 }
 
 func (q *TxInputQueue) registerMetrics() {

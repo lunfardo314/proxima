@@ -24,7 +24,8 @@ type (
 )
 
 const (
-	TraceTagTxInput = "txinput"
+	TraceTagTxInput       = "txinput"
+	TraceTagTxInputNonSeq = "txinput-non-seq"
 )
 
 func (w *Workflow) TxFromStoreIn(txid base.TransactionID) (err error) {
@@ -101,6 +102,7 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 
 	if !txid.IsSequencerMilestone() {
 		w.EvidenceNonSequencerTx()
+		w.Tracef(TraceTagTxInputNonSeq, "-> non-seq-tx %s, meta: %s", txid.StringShort, options.txMetadata.String())
 	}
 
 	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
@@ -185,8 +187,8 @@ func (w *Workflow) OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.Tran
 	w.TxBytesInFromPeerQueued(txBytes, meta, w.SelfPeerID(), txid)
 }
 
-func (w *Workflow) CheckTxSender(tx *transaction.Transaction, txIDPrefix base.TransactionID, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
-	w.txSenders.CheckTxSender(tx, txIDPrefix, meta, fromPeer, wanted)
+func (w *Workflow) CheckTxSender(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool) {
+	w.txSenders.CheckTxSender(tx, meta, fromPeer, wanted)
 }
 
 func WithMetadata(metadata *txmetadata.TransactionMetadata) TxInOption {

@@ -34,6 +34,14 @@ func (d _dummyStateReader) IterateUTXOsInSlot(slot uint32, fun func(oid base.Out
 	return nil
 }
 
+func (d _dummyStateReader) IterateUTXOsIterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error) {
+	return nil
+}
+
+func (d _dummyStateReader) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error) {
+	return nil
+}
+
 func (d _dummyStateReader) IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error {
 	return nil
 }

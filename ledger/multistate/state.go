@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -394,19 +395,43 @@ func (r *Readable) Root() common.VCommitment {
 	return r.trie.Root()
 }
 
-func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) {
-	r.trie.Iterator([]byte{TriePartitionLedgerState}).Iterate(func(key, oData []byte) bool {
-		d := key[1:]
-		if len(d) != base.OutputIDLength {
+// IterateUTXOIDs scans UTXO IDs in the index. Ensures one call per UTXO
+func (r *Readable) IterateUTXOIDs(fun func(oid base.OutputID) bool) (err error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	oidSet := set.New[base.OutputID]()
+
+	var oid base.OutputID
+
+	r.trie.Iterator([]byte{TriePartitionAccounts}).IterateKeys(func(k []byte) bool {
+		if oid, err = base.OutputIDFromBytes(k[2+k[1]:]); err != nil {
+			return false
+		}
+		if oidSet.Contains(oid) {
 			return true
 		}
-		oid, err := base.OutputIDFromBytes(d)
-		util.AssertNoError(err)
-		o, err := ledger.OutputFromBytes(oData)
-		util.AssertNoError(err)
+		oidSet.Insert(oid)
+		return fun(oid)
+	})
+	return
+}
+
+func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error) {
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	defer partition.Dispose()
+
+	var o *ledger.Output
+
+	return r.IterateUTXOIDs(func(oid base.OutputID) bool {
+		oData, ok := r._getUTXO(oid, partition)
+		util.Assertf(ok, "IterateUTXOs: can't find UTXO %s", oid.String())
+		o, err = ledger.OutputFromBytes(oData)
+		util.AssertNoError(err, "IterateUTXOs")
+
 		return fun(ledger.OutputWithID{
-			ID:     oid,
 			Output: o,
+			ID:     oid,
 		})
 	})
 }
