@@ -74,5 +74,5 @@ func TestByteSetWithMap(t *testing.T) {
 	s.Insert(5, 214)
 	m[1] = s
 	s1 := m[1]
-	t.Logf(s1.String())
+	t.Logf("%s", s1.String())
 }

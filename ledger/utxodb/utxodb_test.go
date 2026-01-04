@@ -43,17 +43,21 @@ func TestUTXODB(t *testing.T) {
 	t.Run("from faucet", func(t *testing.T) {
 		u := NewUTXODB(genesisPrivateKey)
 		addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(100))
-		err := u.TokensFromFaucet(addr, 1337)
+		// Use amount above minimum storage deposit
+		const testAmount = 100_000_000
+		err := u.TokensFromFaucet(addr, testAmount)
 		require.NoError(t, err)
-		require.EqualValues(t, 1337, int(u.Balance(addr)))
-		require.EqualValues(t, initFaucetBalance-1337, u.Balance(u.FaucetAddress()))
+		require.EqualValues(t, testAmount, int(u.Balance(addr)))
+		require.EqualValues(t, initFaucetBalance-testAmount, u.Balance(u.FaucetAddress()))
 	})
 	t.Run("from faucet multi", func(t *testing.T) {
 		u := NewUTXODB(genesisPrivateKey)
-		_, _, addrs := u.GenerateAddressesWithFaucetAmount(100, 10, 1337)
+		// Use amount above minimum storage deposit
+		const testAmount = 100_000_000
+		_, _, addrs := u.GenerateAddressesWithFaucetAmount(100, 10, testAmount)
 		require.EqualValues(t, 10, len(addrs))
 		for _, a := range addrs {
-			require.EqualValues(t, 1337, u.Balance(a))
+			require.EqualValues(t, testAmount, u.Balance(a))
 		}
 	})
 }
