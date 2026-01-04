@@ -65,6 +65,10 @@ func (w *workflowDummyEnvironment) SnapshotBranchID() base.TransactionID {
 	return base.GenesisTransactionID()
 }
 
+func (w *workflowDummyEnvironment) GetSnapshotBranchID() base.TransactionID {
+	return base.GenesisTransactionID()
+}
+
 func (w *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Duration {
 	return 0
 }
@@ -846,10 +850,11 @@ func StartTestEnv() (*workflowDummyEnvironment, *base.TransactionID, error) {
 	privKey := genesisPrivateKey
 	addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
 	addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+	// Use amounts above minimum storage deposit
 	distrib := []ledger.LockBalance{
-		{Lock: addr1, Balance: 1_000_000, ChainOrigin: false},
-		{Lock: addr2, Balance: 1_000_000, ChainOrigin: false},
-		{Lock: addr2, Balance: 1_000_000, ChainOrigin: true},
+		{Lock: addr1, Balance: 100_000_000, ChainOrigin: false},
+		{Lock: addr2, Balance: 100_000_000, ChainOrigin: false},
+		{Lock: addr2, Balance: 100_000_000, ChainOrigin: true},
 	}
 
 	stateStore := common.NewInMemoryKVStore()
