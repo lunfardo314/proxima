@@ -11,6 +11,11 @@ import (
 var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
+	initTestLedger()
+}
+
+// initTestLedger initializes the ledger for testing. Called once in init().
+func initTestLedger() {
 	genesisPrivateKey = ledger.InitWithTestingLedgerIDData(
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
@@ -25,4 +30,11 @@ func init() {
 `,
 		ledger.TickDuration(), ledger.SlotDuration(), ledger.Const.TransactionPace, ledger.Const.TransactionPaceSequencer,
 	)
+}
+
+// reinitTestLedger resets and re-initializes the ledger with a fresh genesis timestamp.
+// Use this at the start of tests that depend on fresh genesis timing.
+func reinitTestLedger() {
+	ledger.ResetForTesting()
+	initTestLedger()
 }
