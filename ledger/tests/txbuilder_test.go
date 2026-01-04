@@ -222,16 +222,20 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			numAddr    = 2
 			initAmount = 100_000_000_000
 		)
-		privKeys, _, _ := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
+		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 
-		ts := ledger.TimeNow()
+		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		require.NoError(t, err)
+		require.True(t, len(outs) > 0)
+		ts := outs[0].ID.Timestamp().AddSlots(1)
 		if ts.IsSlotBoundary() {
 			ts = ts.AddTicks(10)
 		}
-		chainInput, err := u.CreateChainOrigin(privKeys[0], ts.AddSlots(1))
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ts)
 		require.NoError(t, err)
 
-		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
+		target, err := u.CreateChainOrigin(privKeys[1], ts)
 		require.NoError(t, err)
 		par := txbuilder.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
@@ -262,11 +266,15 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 
-		ts := ledger.TimeNow()
+		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		require.NoError(t, err)
+		require.True(t, len(outs) > 0)
+		ts := outs[0].ID.Timestamp().AddSlots(1)
 		if ts.IsSlotBoundary() {
 			ts = ts.AddTicks(10)
 		}
-		chainInput, err := u.CreateChainOrigin(privKeys[0], ts.AddSlots(1))
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ts)
 		require.NoError(t, err)
 
 		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
@@ -300,11 +308,15 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, 2, initAmount)
 
-		ts := ledger.TimeNow()
+		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		require.NoError(t, err)
+		require.True(t, len(outs) > 0)
+		ts := outs[0].ID.Timestamp().AddSlots(1)
 		if ts.IsSlotBoundary() {
 			ts = ts.AddTicks(10)
 		}
-		chainInput, err := u.CreateChainOrigin(privKeys[0], ts.AddSlots(1))
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ts)
 		require.NoError(t, err)
 
 		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
@@ -362,12 +374,16 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			slots      = 10
 		)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
-		_ = addrs
-		ts := ledger.TimeNow()
+
+		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		require.NoError(t, err)
+		require.True(t, len(outs) > 0)
+		ts := outs[0].ID.Timestamp().AddSlots(1)
 		if ts.IsSlotBoundary() {
 			ts = ts.AddTicks(10)
 		}
-		chainInput, err := u.CreateChainOrigin(privKeys[0], ts.AddSlots(1))
+		chainInput, err := u.CreateChainOrigin(privKeys[0], ts)
 		require.NoError(t, err)
 
 		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
@@ -399,7 +415,11 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		txs := make([]txWithInputLoader, numAddr)
 
-		ts := ledger.TimeNow()
+		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		require.NoError(t, err)
+		require.True(t, len(outs) > 0)
+		ts := outs[0].ID.Timestamp().AddSlots(1)
 		if ts.IsSlotBoundary() {
 			ts = ts.AddTicks(10)
 		}
