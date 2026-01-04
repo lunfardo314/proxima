@@ -23,4 +23,4 @@ go.work
 /proximadb.txstore/
 .vscode/launch.json
 tests/node-docker-setup/data
-CLAUDE.md
+CLAUDE.local.md
