@@ -24,3 +24,5 @@ go.work
 .vscode/launch.json
 tests/node-docker-setup/data
 CLAUDE.local.md
+# Test output files
+*.gv
