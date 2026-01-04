@@ -40,6 +40,16 @@ func MustInitSingleton(identityData []byte) {
 
 }
 
+// ResetForTesting clears the ledger singleton to allow re-initialization.
+// This is only for testing purposes to get fresh genesis timestamps per test.
+// DO NOT use in production code.
+func ResetForTesting() {
+	libraryGlobalMutex.Lock()
+	defer libraryGlobalMutex.Unlock()
+	libraryGlobal = nil
+	Const = nil
+}
+
 // InitWithTestingLedgerIDData for testing
 
 type ParametersOption func(par *InitParameters)
