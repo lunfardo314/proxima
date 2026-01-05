@@ -34,8 +34,8 @@ type (
 const (
 	Name = "state_cleanup"
 
-	defaultPeriodSlots = 8438  // ~24 hours at 10.24 sec/slot
-	defaultWindowSlots = 1406  // ~4 hours at 10.24 sec/slot
+	defaultPeriodSlots = 8438 // ~24 hours at 10.24 sec/slot
+	defaultWindowSlots = 1406 // ~4 hours at 10.24 sec/slot
 	defaultTTLMinutes  = 10
 
 	checkPeriod = 60 * time.Second
@@ -109,7 +109,7 @@ func Start(env environment) {
 
 // scheduleNextCleanup calculates and saves the next cleanup slot
 func (s *StateCleanup) scheduleNextCleanup() {
-	currentSlot := ledger.TimeNow().Slot
+	currentSlot := ledger.SlotNow()
 	// Add period plus random offset within window
 	randomOffset := uint32(rand.Intn(int(s.windowSlots)))
 	nextSlot := currentSlot + s.periodSlots + randomOffset
@@ -123,7 +123,7 @@ func (s *StateCleanup) scheduleNextCleanup() {
 		Name, nextSlot, time.Duration(nextSlot-currentSlot)*ledger.Const.SlotDuration())
 }
 
-// checkAndTriggerCleanup checks if it's time to cleanup and triggers if so
+// checkAndTriggerCleanup checks if it's time to clean up and triggers if so
 func (s *StateCleanup) checkAndTriggerCleanup() {
 	if s.cleanupRequested.Load() {
 		return // already triggered
@@ -163,14 +163,14 @@ func (s *StateCleanup) triggerCleanup() {
 	}
 
 	// Validate snapshot
-	if err := ValidateSnapshot(snapshotFile); err != nil {
+	if err = ValidateSnapshot(snapshotFile); err != nil {
 		s.Log().Errorf("[%s] snapshot validation failed: %v - rescheduling", Name, err)
 		s.scheduleNextCleanup()
 		return
 	}
 
 	// Check permissions
-	if err := CheckPermissions(global.MultiStateDBName, snapshotFile); err != nil {
+	if err = CheckPermissions(global.MultiStateDBName, snapshotFile); err != nil {
 		s.Log().Errorf("[%s] permission check failed: %v - rescheduling", Name, err)
 		s.scheduleNextCleanup()
 		return
