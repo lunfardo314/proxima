@@ -146,6 +146,9 @@ state_cleanup:
   window_slots: 1406
   # TTL in minutes - if cleanup takes longer, assume failure and reset
   ttl_minutes: 10
+  # Optional: override snapshot directory (default: uses snapshot.directory)
+  # Can point to another node's snapshot directory for shared snapshots
+  # snapshot_directory: /path/to/other/node/snapshot
   # Optional: separate log file for cleanup activity (stats, duration, etc.)
   # log_file: .state_cleanup.log
 

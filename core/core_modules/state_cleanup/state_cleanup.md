@@ -70,6 +70,7 @@ state_cleanup:
   period_slots: 8438             # ~24 hours at 10.24 sec/slot
   window_slots: 1406             # ~4 hour randomization window
   ttl_minutes: 10                # Max time for cleanup, else assume failure
+  snapshot_directory: /path/to/snapshots  # Optional: override snapshot directory
   log_file: .state_cleanup.log   # Optional: separate log file for cleanup activity
 ```
 
@@ -81,6 +82,7 @@ state_cleanup:
 | `period_slots` | `8438` | Slots between cleanups (~24h) |
 | `window_slots` | `1406` | Random offset window (~4h) to avoid mass restarts |
 | `ttl_minutes` | `10` | If cleanup takes longer, assume failure and reset |
+| `snapshot_directory` | `snapshot.directory` | Directory to find snapshots (can point to another node's snapshots) |
 | `log_file` | (none) | Optional separate log file for cleanup events |
 
 ### Cleanup Logging
