@@ -52,8 +52,7 @@ type (
 	}
 
 	metrics struct {
-		numVerticesGauge  prometheus.Gauge
-		stateReadersGauge prometheus.Gauge
+		numVerticesGauge prometheus.Gauge
 	}
 )
 
@@ -371,9 +370,5 @@ func (d *MemDAG) registerMetrics() {
 		Name: "proxima_memDAG_numVerticesGauge",
 		Help: "number of vertices in the memDAG",
 	})
-	d.stateReadersGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_memDAG_numStateReaders",
-		Help: "number of cached state readers in the memDAG",
-	})
-	d.MetricsRegistry().MustRegister(d.numVerticesGauge, d.stateReadersGauge)
+	d.MetricsRegistry().MustRegister(d.numVerticesGauge)
 }

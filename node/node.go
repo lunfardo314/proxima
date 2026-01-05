@@ -34,7 +34,6 @@ type (
 		peers                     *peering.Peers
 		sequencer                 *sequencer.Sequencer
 		workflow                  *workflow.Workflow
-		stopOnce                  sync.Once
 		workProcessesStopStepChan chan struct{}
 		dbClosedWG                sync.WaitGroup
 		started                   time.Time
