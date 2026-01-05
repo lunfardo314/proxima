@@ -600,10 +600,8 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 
 	if availableTokens < amount {
-		if availableTokens < amount {
-			return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: not enough tokens in account %s: needed %d, got %d",
-				par.SourceAccount.String(), par.Amount, availableTokens)
-		}
+		return nil, nil, fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: not enough tokens in account %s: needed %d, got %d",
+			par.SourceAccount.String(), par.Amount, availableTokens)
 	}
 
 	txb := New()

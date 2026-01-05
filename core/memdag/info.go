@@ -22,7 +22,7 @@ func (d *MemDAG) InfoLines(verbose ...bool) *lines.Lines {
 	d.mutex.RUnlock()
 
 	if len(verbose) > 0 && verbose[0] {
-		verticesWithFlags := d.VerticesWitExpirationFlag()
+		verticesWithFlags := d.VerticesWithExpirationFlag()
 		ln.Add("---- all vertices (verbose)")
 		vertices := util.KeysSorted(verticesWithFlags, func(vid1, vid2 *vertex.WrappedTx) bool {
 			return vid1.SlotWhenAdded < vid2.SlotWhenAdded

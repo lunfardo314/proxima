@@ -552,7 +552,7 @@ func FindLatestReliableBranchAndNSlotsBack(store StateStoreReader, n int, fracti
 func GetMainChain(store StateStoreReader, fraction global.Fraction, max ...int) ([]*BranchData, error) {
 	lrb := FindLatestReliableBranch(store, fraction)
 	if lrb == nil {
-		return nil, fmt.Errorf("can't find latest reliable brancg")
+		return nil, fmt.Errorf("can't find latest reliable branch")
 	}
 	ret := make([]*BranchData, 0)
 	IterateBranchChainBack(store, lrb, func(branchID *base.TransactionID, branch *BranchData) bool {
