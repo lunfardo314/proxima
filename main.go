@@ -5,7 +5,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
 	"github.com/lunfardo314/proxima/node"
+	"github.com/lunfardo314/proxima/util/restart"
 )
 
 func main() {
@@ -24,6 +26,29 @@ func main() {
 	n.WaitAllWorkProcessesStopped()
 	// only now close databases
 	n.WaitAllDBClosed()
+
+	// Check if state cleanup requested a restart
+	if state_cleanup.CleanupRequestedFlag.Load() {
+		snapshotFile, _ := state_cleanup.SnapshotFileForRestore.Load().(string)
+		n.Log().Infof("state cleanup requested, restarting node to restore from: %s", snapshotFile)
+
+		binary, err := os.Executable()
+		if err != nil {
+			n.Log().Errorf("failed to get executable path: %v - exiting with code 1", err)
+			os.Exit(1)
+		}
+
+		if restart.SelfRestart == nil {
+			n.Log().Errorf("self-restart not supported on this platform - exiting with code 1")
+			os.Exit(1)
+		}
+
+		err = restart.SelfRestart(binary, os.Args, os.Environ())
+		if err != nil {
+			n.Log().Errorf("self-restart failed: %v - exiting with code 1", err)
+			os.Exit(1)
+		}
+	}
 
 	n.Log().Infof("Hasta la próxima, baby! I'll be back")
 }
