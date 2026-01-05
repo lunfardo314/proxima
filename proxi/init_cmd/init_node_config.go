@@ -146,6 +146,8 @@ state_cleanup:
   window_slots: 1406
   # TTL in minutes - if cleanup takes longer, assume failure and reset
   ttl_minutes: 10
+  # Optional: separate log file for cleanup activity (stats, duration, etc.)
+  # log_file: .state_cleanup.log
 
 # logger config
 # logger.previous can be 'erase' or 'save'

@@ -67,8 +67,8 @@ func CheckPermissions(dbPath string, snapshotPath string) error {
 	if err != nil {
 		return fmt.Errorf("cannot write to directory %s: %w", parentDir, err)
 	}
-	f.Close()
-	os.Remove(testFile)
+	_ = f.Close()
+	_ = os.Remove(testFile)
 
 	return nil
 }
