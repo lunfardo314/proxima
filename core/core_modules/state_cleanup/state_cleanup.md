@@ -101,12 +101,15 @@ When `log_file` is configured, cleanup activity is logged to a separate file wit
 ...
 01-06 10:35:05 state_cleanup	INFO	=== RESTORE STARTED ===
 01-06 10:35:05 state_cleanup	INFO	restoring from snapshot: snapshot/branch_12345000.snapshot
+01-06 10:35:05 state_cleanup	INFO	database size before: 2.45 GB
 01-06 10:35:05 state_cleanup	INFO	deleted old database in 150ms
 01-06 10:35:30 state_cleanup	INFO	restore completed: 1500000 records in 25s
 01-06 10:35:30 state_cleanup	INFO	  - transactions: 50000
 01-06 10:35:30 state_cleanup	INFO	  - UTXOs: 1200000
 01-06 10:35:30 state_cleanup	INFO	  - chains: 150
 01-06 10:35:30 state_cleanup	INFO	  - accounts: 249850
+01-06 10:35:30 state_cleanup	INFO	database size after: 1.82 GB
+01-06 10:35:30 state_cleanup	INFO	database size reduced by: 645.12 MB (25.7%)
 01-06 10:35:30 state_cleanup	INFO	=== CLEANUP COMPLETED in 25.5s ===
 01-06 10:35:30 state_cleanup	INFO	next cleanup scheduled for slot 12354116
 ```
