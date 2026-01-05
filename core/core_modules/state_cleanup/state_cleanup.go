@@ -120,7 +120,11 @@ func Start(env environment) {
 		s.ttlMinutes = defaultTTLMinutes
 	}
 
-	s.snapshotDir = viper.GetString("snapshot.directory")
+	// Use state_cleanup.snapshot_directory if set, otherwise fall back to snapshot.directory
+	s.snapshotDir = viper.GetString("state_cleanup.snapshot_directory")
+	if s.snapshotDir == "" {
+		s.snapshotDir = viper.GetString("snapshot.directory")
+	}
 	if s.snapshotDir == "" {
 		s.snapshotDir = "snapshot"
 	}
