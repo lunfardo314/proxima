@@ -49,7 +49,7 @@ type (
 		// counting
 
 		IncCounter(name string)
-		DecCounter(nane string)
+		DecCounter(name string)
 		Counter(name string) int
 		CounterLines(prefix ...string) *lines.Lines
 		AttachmentFinished(started ...time.Time)
