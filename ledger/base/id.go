@@ -292,7 +292,7 @@ func OutputIDIndexFromBytes(data []byte) (ret byte, err error) {
 	if ret > data[MaxOutputIndexPositionInTxID] {
 		err = errors.New("OutputIDIndexFromBytes: wrong output index")
 	}
-	return ret, nil
+	return
 }
 
 func (oid *OutputID) IsSequencerTransaction() bool {

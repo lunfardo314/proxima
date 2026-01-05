@@ -880,7 +880,9 @@ func (pc *PastCone) Dispose() {
 	pc.tip = nil
 	pc.PastConeBase.Dispose()
 	pc.PastConeBase = nil
-	pc.delta.Dispose()
+	if pc.delta != nil {
+		pc.delta.Dispose()
+	}
 	pc.delta = nil
 }
 
