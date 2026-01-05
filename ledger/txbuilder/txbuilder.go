@@ -310,7 +310,7 @@ func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCovera
 	util.Assertf(idx != 0xff, "MustPutFrozenCoverage: inconsistency 1")
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
 	predVector := oPred.Amounts().FrozenCoverageVector()
-	predTs := txb.TransactionData.InputIDs[producedOutputIdx].Timestamp()
+	predTs := txb.TransactionData.InputIDs[cc.PredecessorInputIndex].Timestamp()
 	predVectorAdjusted := ledger.Const.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
 	for i := range frozenCoverageDeltaVector {
 		a[i+2] += predVectorAdjusted[i]

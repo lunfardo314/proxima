@@ -263,8 +263,8 @@ func (d *MemDAG) EvidenceBranchSlot(s uint32, isHealthy bool) {
 // Node is out of sync if current slots are behind from now
 // Being synced or not is subjective
 func (d *MemDAG) LatestBranchSlots() (slot, healthySlot uint32, synced bool) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
 
 	if d.latestBranchSlot == 0 {
 		d.latestBranchSlot = multistate.FetchLatestCommittedSlot(d.StateStore())

@@ -13,7 +13,7 @@ func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx) bool {
 		return false
 	}
 	lc1 := vid1.GetLedgerCoverageP()
-	lc2 := vid1.GetLedgerCoverageP()
+	lc2 := vid2.GetLedgerCoverageP()
 	if lc1 == nil {
 		return false
 	}

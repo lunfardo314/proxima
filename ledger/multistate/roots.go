@@ -174,6 +174,7 @@ func iterateRootRecordsOfParticularSlots(store common.Traversable, fun func(bran
 func IterateRootRecords(store common.Traversable, fun func(branchTxID base.TransactionID, rootData RootRecord) bool, optSlot ...uint32) {
 	if len(optSlot) == 0 {
 		iterateAllRootRecords(store, fun)
+		return
 	}
 	iterateRootRecordsOfParticularSlots(store, fun, optSlot)
 }
