@@ -151,6 +151,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 
 func (d *MemDAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[string, string] {
 	ret := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
+	nilCount = 0 // reset global counter for this graph generation
 
 	vertices := d.Vertices()
 	seqDict := make(map[base.ChainID]int)
@@ -171,10 +172,12 @@ func (d *MemDAG) MakeGraph(additionalVertices ...*vertex.WrappedTx) graph.Graph[
 
 func (d *MemDAG) SaveGraph(fname string) {
 	gr := d.MakeGraph()
-	dotFile, _ := os.Create(fname + ".gv")
-	err := draw.DOT(gr, dotFile)
-	util.AssertNoError(err)
-	_ = dotFile.Close()
+	dotFile, err := os.Create(fname + ".gv")
+	if err != nil {
+		return
+	}
+	defer dotFile.Close()
+	util.AssertNoError(draw.DOT(gr, dotFile))
 }
 
 func MakeGraphPastCone(vid *vertex.WrappedTx, maxVertices ...int) graph.Graph[string, string] {
@@ -216,10 +219,12 @@ func MakeGraphPastCone(vid *vertex.WrappedTx, maxVertices ...int) graph.Graph[st
 
 func SaveGraphPastCone(vid *vertex.WrappedTx, fname string) {
 	gr := MakeGraphPastCone(vid, 500)
-	dotFile, _ := os.Create(fname + ".gv")
-	err := draw.DOT(gr, dotFile)
-	util.AssertNoError(err)
-	_ = dotFile.Close()
+	dotFile, err := os.Create(fname + ".gv")
+	if err != nil {
+		return
+	}
+	defer dotFile.Close()
+	util.AssertNoError(draw.DOT(gr, dotFile))
 }
 
 func (d *MemDAG) SaveTree(fname string) {
@@ -228,10 +233,12 @@ func (d *MemDAG) SaveTree(fname string) {
 
 func (d *MemDAG) SaveSequencerGraph(fname string) {
 	gr := d.MakeSequencerGraph()
-	dotFile, _ := os.Create(fname + ".gv")
-	err := draw.DOT(gr, dotFile)
-	util.AssertNoError(err)
-	_ = dotFile.Close()
+	dotFile, err := os.Create(fname + ".gv")
+	if err != nil {
+		return
+	}
+	defer dotFile.Close()
+	util.AssertNoError(draw.DOT(gr, dotFile))
 }
 
 func (d *MemDAG) MakeSequencerGraph() graph.Graph[string, string] {

@@ -143,7 +143,7 @@ func (v *Vertex) MissingInputTxIDString() string {
 	if len(s) == 0 {
 		return "(none)"
 	}
-	ret := make([]string, 0)
+	ret := make([]string, 0, len(s))
 	for txid := range s {
 		ret = append(ret, txid.StringShort())
 	}
