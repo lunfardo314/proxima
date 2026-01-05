@@ -13,7 +13,7 @@ type SyncCounters struct {
 	m map[string]int
 }
 
-func NewSynCounters() *SyncCounters {
+func NewSyncCounters() *SyncCounters {
 	return &SyncCounters{
 		m: make(map[string]int),
 	}

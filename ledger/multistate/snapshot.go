@@ -229,7 +229,7 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 	// read root record
 	pair = <-ret.InChan
 	if pair.IsNil() || pair.Err != nil {
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong ssecond key/value pair 1")
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong second key/value pair 1")
 	}
 	if ret.BranchID, err = base.TransactionIDFromBytes(pair.Key); err != nil {
 		cancel()

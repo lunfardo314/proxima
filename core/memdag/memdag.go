@@ -329,7 +329,7 @@ func (d *MemDAG) Vertices() []*vertex.WrappedTx {
 	return ret
 }
 
-func (d *MemDAG) VerticesWitExpirationFlag() map[*vertex.WrappedTx]bool {
+func (d *MemDAG) VerticesWithExpirationFlag() map[*vertex.WrappedTx]bool {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
