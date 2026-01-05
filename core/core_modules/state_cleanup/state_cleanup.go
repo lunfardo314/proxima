@@ -336,6 +336,10 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	logRestoreMsg(log, "=== RESTORE STARTED ===")
 	logRestoreMsg(log, "restoring from snapshot: %s", snapshotFile)
 
+	// Get database size before cleanup
+	dbSizeBefore, _ := GetDirectorySize(global.MultiStateDBName)
+	logRestoreMsg(log, "database size before: %s", FormatBytes(dbSizeBefore))
+
 	// Delete existing database
 	deleteStart := time.Now()
 	if err := DeleteDatabase(global.MultiStateDBName); err != nil {
@@ -352,11 +356,19 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		return false, fmt.Errorf("restore failed: %w", err)
 	}
 
+	// Get database size after restore
+	dbSizeAfter, _ := GetDirectorySize(global.MultiStateDBName)
+	dbSizeDelta := dbSizeBefore - dbSizeAfter
+
 	logRestoreMsg(log, "restore completed: %d records in %v", stats.TotalRecords, stats.Duration)
 	logRestoreMsg(log, "  - transactions: %d", stats.TxCount)
 	logRestoreMsg(log, "  - UTXOs: %d", stats.UTXOCount)
 	logRestoreMsg(log, "  - chains: %d", stats.ChainCount)
 	logRestoreMsg(log, "  - accounts: %d", stats.AccountsCount)
+	logRestoreMsg(log, "database size after: %s", FormatBytes(dbSizeAfter))
+	if dbSizeBefore > 0 {
+		logRestoreMsg(log, "database size reduced by: %s (%.1f%%)", FormatBytes(dbSizeDelta), float64(dbSizeDelta)*100/float64(dbSizeBefore))
+	}
 
 	// Calculate next cleanup slot using constants from the restored snapshot
 	periodSlots := uint32(viper.GetInt("state_cleanup.period_slots"))
