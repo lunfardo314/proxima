@@ -54,12 +54,21 @@ Key methods:
 
 Restore utilities extracted from proxi snapshot command:
 
-- `RestoreFromSnapshot(path, opts)` - Core restore logic, returns stats
+- `RestoreFromSnapshot(path, opts)` - Core restore logic, returns stats. Automatically handles corrupted DB from interrupted restores.
+- `CheckAndDeleteCorruptedDB(dbPath, console)` - Check if DB has restore-in-progress marker and delete if corrupted
 - `FindLatestSnapshot(directory)` - Find most recent .snapshot file (excludes `__tmp__*` files that are still being written)
 - `ValidateSnapshot(path)` - Verify snapshot compatible with current ledger
 - `DeleteDatabase(path)` - Remove multistate database directory
 - `CheckPermissions(dbPath, snapshotPath)` - Verify read/write access
 - `CopyFile(src, dst)` - Copy a file (used to copy snapshot to working directory)
+
+### Database integrity (multistate/roots.go)
+
+The restore process uses a `restoreInProgressDBPartition` marker in the database:
+
+- `WriteRestoreInProgressRecord(w)` - Set marker at start of restore
+- `DeleteRestoreInProgressRecord(w)` - Clear marker after successful completion
+- `IsRestoreInProgress(store)` - Check if marker exists (indicates corrupted DB)
 
 ## Configuration
 
@@ -245,9 +254,11 @@ See `util/restart/` for platform-specific implementations.
 2. **Snapshot incompatible**: Validates ledger hash before restore
 3. **TTL exceeded**: If cleanup takes too long, resets state and continues normal startup
 4. **Permission denied**: Logs error, reschedules cleanup
-5. **Node crash during restore**: On next start, TTL check handles recovery
+5. **Node crash during restore**: Database has `restoreInProgress` marker; on next restore attempt, corrupted DB is automatically deleted and restore proceeds fresh
 6. **Multiple nodes on same machine**: Each uses own `.state_cleanup.json` in working directory
 7. **Temporary snapshot files**: Files with `__tmp__` prefix are skipped (still being written by snapshot module)
+8. **Database absent**: Fresh database is created automatically during restore
+9. **Database corrupted/unopenable**: Automatically deleted and recreated during restore
 
 ## Post-Restore Behavior
 

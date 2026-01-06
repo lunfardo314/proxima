@@ -128,6 +128,45 @@ func FormatBytes(bytes int64) string {
 	}
 }
 
+// CheckAndDeleteCorruptedDB checks if the database exists and has a restore-in-progress marker.
+// If so, it deletes the corrupted database. Returns true if DB was deleted or doesn't exist.
+func CheckAndDeleteCorruptedDB(dbPath string, console io.Writer) (bool, error) {
+	if console == nil {
+		console = io.Discard
+	}
+
+	// Check if database directory exists
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		fmt.Fprintf(console, "Database does not exist, will create fresh\n")
+		return true, nil
+	}
+
+	// Try to open the database to check restore-in-progress flag
+	stateDb, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
+	if err != nil {
+		// Cannot open DB - likely corrupted, delete it
+		fmt.Fprintf(console, "Cannot open database (possibly corrupted): %v, deleting...\n", err)
+		if err := os.RemoveAll(dbPath); err != nil {
+			return false, fmt.Errorf("failed to delete corrupted database: %w", err)
+		}
+		return true, nil
+	}
+
+	stateStore := badger_adaptor.New(stateDb)
+	restoreInProgress := multistate.IsRestoreInProgress(stateStore)
+	_ = stateStore.Close()
+
+	if restoreInProgress {
+		fmt.Fprintf(console, "Previous restore was interrupted, deleting corrupted database...\n")
+		if err := os.RemoveAll(dbPath); err != nil {
+			return false, fmt.Errorf("failed to delete corrupted database: %w", err)
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // RestoreFromSnapshot restores the multistate database from a snapshot file
 // This is the core restore logic extracted from proxi/snapshot_cmd/restore.go
 func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStats, error) {
@@ -136,6 +175,11 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 	}
 	if opts.Console == nil {
 		opts.Console = io.Discard
+	}
+
+	// Check for and delete corrupted database from previous interrupted restore
+	if _, err := CheckAndDeleteCorruptedDB(global.MultiStateDBName, opts.Console); err != nil {
+		return nil, fmt.Errorf("failed to check/cleanup corrupted database: %w", err)
 	}
 
 	// Open snapshot file stream
@@ -158,6 +202,13 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 	)
 	stateStore := badger_adaptor.New(stateDb)
 	defer func() { _ = stateStore.Close() }()
+
+	// Mark restore as in progress (will be cleared on successful completion)
+	initBatch := stateStore.BatchedWriter()
+	multistate.WriteRestoreInProgressRecord(initBatch)
+	if err = initBatch.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to write restore-in-progress marker: %w", err)
+	}
 
 	// Initialize empty root with ledger identity
 	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(kvStream.LedgerIDData, stateStore)
@@ -229,11 +280,12 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 		}
 	}
 
-	// Write metadata records
+	// Write metadata records and clear restore-in-progress marker
 	batch = stateStore.BatchedWriter()
 	multistate.WriteLatestSlotRecord(batch, kvStream.BranchID.Slot())
 	multistate.WriteEarliestSlotRecord(batch, kvStream.BranchID.Slot())
 	multistate.WriteRootRecord(batch, kvStream.BranchID, kvStream.RootRecord)
+	multistate.DeleteRestoreInProgressRecord(batch) // Clear marker - restore is complete
 
 	if err = batch.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit metadata: %w", err)
