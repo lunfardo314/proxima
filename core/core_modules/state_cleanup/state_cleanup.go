@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -332,9 +334,12 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		return false, nil
 	}
 
+	// Get absolute path for clear logging
+	snapshotFileAbs, _ := filepath.Abs(snapshotFile)
+
 	restoreStart := time.Now()
 	logRestoreMsg(log, "=== RESTORE STARTED ===")
-	logRestoreMsg(log, "restoring from snapshot: %s", snapshotFile)
+	logRestoreMsg(log, "snapshot file: %s", snapshotFileAbs)
 
 	// Get database size before cleanup
 	dbSizeBefore, _ := GetDirectorySize(global.MultiStateDBName)
@@ -368,6 +373,21 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	logRestoreMsg(log, "database size after: %s", FormatBytes(dbSizeAfter))
 	if dbSizeBefore > 0 {
 		logRestoreMsg(log, "database size reduced by: %s (%.1f%%)", FormatBytes(dbSizeDelta), float64(dbSizeDelta)*100/float64(dbSizeBefore))
+	}
+
+	// Copy snapshot to working directory and cleanup old snapshots
+	destPath := filepath.Base(snapshotFile)
+	if err := CopyFile(snapshotFile, destPath); err != nil {
+		logRestoreMsg(log, "warning: failed to copy snapshot to working dir: %v", err)
+	} else {
+		logRestoreMsg(log, "snapshot copied to: %s", destPath)
+
+		// Cleanup old snapshots in working directory, keeping only the one just copied
+		if err := util.PurgeFilesInDirectory(".", "*.snapshot", 1); err != nil {
+			logRestoreMsg(log, "warning: failed to cleanup old snapshots: %v", err)
+		} else {
+			logRestoreMsg(log, "old snapshots cleaned up in working directory")
+		}
 	}
 
 	// Calculate next cleanup slot using constants from the restored snapshot

@@ -55,10 +55,11 @@ Key methods:
 Restore utilities extracted from proxi snapshot command:
 
 - `RestoreFromSnapshot(path, opts)` - Core restore logic, returns stats
-- `FindLatestSnapshot(directory)` - Find most recent .snapshot file
+- `FindLatestSnapshot(directory)` - Find most recent .snapshot file (excludes `__tmp__*` files that are still being written)
 - `ValidateSnapshot(path)` - Verify snapshot compatible with current ledger
 - `DeleteDatabase(path)` - Remove multistate database directory
 - `CheckPermissions(dbPath, snapshotPath)` - Verify read/write access
+- `CopyFile(src, dst)` - Copy a file (used to copy snapshot to working directory)
 
 ## Configuration
 
@@ -100,7 +101,7 @@ When `log_file` is configured, cleanup activity is logged to a separate file wit
 01-06 10:35:01 state_cleanup	INFO	cleanup prepared in 1.2s, initiating restart...
 ...
 01-06 10:35:05 state_cleanup	INFO	=== RESTORE STARTED ===
-01-06 10:35:05 state_cleanup	INFO	restoring from snapshot: snapshot/branch_12345000.snapshot
+01-06 10:35:05 state_cleanup	INFO	snapshot file: /home/node/snapshot/branch_12345000.snapshot
 01-06 10:35:05 state_cleanup	INFO	database size before: 2.45 GB
 01-06 10:35:05 state_cleanup	INFO	deleted old database in 150ms
 01-06 10:35:30 state_cleanup	INFO	restore completed: 1500000 records in 25s
@@ -110,6 +111,8 @@ When `log_file` is configured, cleanup activity is logged to a separate file wit
 01-06 10:35:30 state_cleanup	INFO	  - accounts: 249850
 01-06 10:35:30 state_cleanup	INFO	database size after: 1.82 GB
 01-06 10:35:30 state_cleanup	INFO	database size reduced by: 645.12 MB (25.7%)
+01-06 10:35:30 state_cleanup	INFO	snapshot copied to: branch_12345000.snapshot
+01-06 10:35:30 state_cleanup	INFO	old snapshots cleaned up in working directory
 01-06 10:35:30 state_cleanup	INFO	=== CLEANUP COMPLETED in 25.5s ===
 01-06 10:35:30 state_cleanup	INFO	next cleanup scheduled for slot 12354116
 ```
@@ -202,6 +205,18 @@ When `log_file` is configured, cleanup activity is logged to a separate file wit
 │                                       │                         │
 │                                       ▼                         │
 │                               ┌───────────────┐                 │
+│                               │ Copy snapshot │                 │
+│                               │ to working dir│                 │
+│                               └───────┬───────┘                 │
+│                                       │                         │
+│                                       ▼                         │
+│                               ┌───────────────┐                 │
+│                               │ Cleanup old   │                 │
+│                               │ snapshots     │                 │
+│                               └───────┬───────┘                 │
+│                                       │                         │
+│                                       ▼                         │
+│                               ┌───────────────┐                 │
 │                               │ Complete      │                 │
 │                               │ cleanup state │                 │
 │                               └───────┬───────┘                 │
@@ -232,6 +247,15 @@ See `util/restart/` for platform-specific implementations.
 4. **Permission denied**: Logs error, reschedules cleanup
 5. **Node crash during restore**: On next start, TTL check handles recovery
 6. **Multiple nodes on same machine**: Each uses own `.state_cleanup.json` in working directory
+7. **Temporary snapshot files**: Files with `__tmp__` prefix are skipped (still being written by snapshot module)
+
+## Post-Restore Behavior
+
+After a successful restore:
+
+1. **Snapshot copy**: The used snapshot file is copied to the node's working directory
+2. **Cleanup**: All other `.snapshot` files in the working directory are deleted, keeping only the most recent one
+3. This ensures the working directory always has exactly one snapshot file - the one used for the last restore
 
 ## Files
 
@@ -239,7 +263,8 @@ See `util/restart/` for platform-specific implementations.
 |------|---------|
 | `.state_cleanup.json` | Persistent cleanup state |
 | `.state_cleanup.log` | Optional cleanup activity log |
-| `snapshot/*.snapshot` | Snapshot files to restore from |
+| `snapshot/*.snapshot` | Snapshot files to restore from (source directory) |
+| `*.snapshot` (working dir) | Copy of last used snapshot file |
 
 ## Dependencies
 
