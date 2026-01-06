@@ -169,17 +169,13 @@ func CheckAndDeleteCorruptedDB(dbPath string, console io.Writer) (bool, error) {
 
 // RestoreFromSnapshot restores the multistate database from a snapshot file
 // This is the core restore logic extracted from proxi/snapshot_cmd/restore.go
+// Note: Caller should ensure DB is deleted/absent before calling (use CheckAndDeleteCorruptedDB)
 func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStats, error) {
 	if opts.BatchSize <= 0 {
 		opts.BatchSize = defaultBatchSize
 	}
 	if opts.Console == nil {
 		opts.Console = io.Discard
-	}
-
-	// Check for and delete corrupted database from previous interrupted restore
-	if _, err := CheckAndDeleteCorruptedDB(global.MultiStateDBName, opts.Console); err != nil {
-		return nil, fmt.Errorf("failed to check/cleanup corrupted database: %w", err)
 	}
 
 	// Open snapshot file stream
