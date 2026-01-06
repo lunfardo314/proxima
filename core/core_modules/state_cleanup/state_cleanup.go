@@ -303,7 +303,16 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		return false, fmt.Errorf("failed to load state file: %w", err)
 	}
 
-	if !stateFile.IsCleanupInProgress() {
+	// Check if DB is missing or corrupted (needs restore regardless of state file)
+	dbNeedsRestore, err := CheckAndDeleteCorruptedDB(global.MultiStateDBName, os.Stdout)
+	if err != nil {
+		return false, fmt.Errorf("failed to check database state: %w", err)
+	}
+
+	cleanupInProgress := stateFile.IsCleanupInProgress()
+
+	// If DB is fine and no cleanup in progress, nothing to do
+	if !dbNeedsRestore && !cleanupInProgress {
 		return false, nil
 	}
 
@@ -312,8 +321,8 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		ttlMinutes = defaultTTLMinutes
 	}
 
-	// Check TTL
-	if stateFile.IsCleanupTTLExceeded(time.Duration(ttlMinutes) * time.Minute) {
+	// Check TTL only if cleanup was in progress (not for missing DB case)
+	if cleanupInProgress && stateFile.IsCleanupTTLExceeded(time.Duration(ttlMinutes)*time.Minute) {
 		log.Log().Warnf("[%s] cleanup TTL exceeded, resetting state", Name)
 		if cleanupLogger != nil {
 			cleanupLogger.Warn("cleanup TTL exceeded, resetting state")
@@ -321,17 +330,34 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		if err := stateFile.ResetCleanupState(); err != nil {
 			return false, fmt.Errorf("failed to reset cleanup state: %w", err)
 		}
-		return false, nil
+		// Still need to restore if DB is missing
+		if !dbNeedsRestore {
+			return false, nil
+		}
 	}
 
-	// Perform restore
+	// Get snapshot file - first try state file, then find latest
 	snapshotFile := stateFile.GetSnapshotFile()
 	if snapshotFile == "" {
-		logRestoreError(log, "cleanup in progress but no snapshot file specified")
-		if err := stateFile.ResetCleanupState(); err != nil {
-			return false, fmt.Errorf("failed to reset cleanup state: %w", err)
+		// No snapshot in state file - find the latest one
+		snapshotDir := viper.GetString("state_cleanup.snapshot_directory")
+		if snapshotDir == "" {
+			snapshotDir = viper.GetString("snapshot.directory")
 		}
-		return false, nil
+		if snapshotDir == "" {
+			snapshotDir = "snapshot"
+		}
+		snapshotFile, err = FindLatestSnapshot(snapshotDir)
+		if err != nil {
+			logRestoreError(log, "no snapshot available for restore: %v", err)
+			if cleanupInProgress {
+				if err := stateFile.ResetCleanupState(); err != nil {
+					return false, fmt.Errorf("failed to reset cleanup state: %w", err)
+				}
+			}
+			return false, fmt.Errorf("database missing/corrupted and no snapshot available: %w", err)
+		}
+		logRestoreMsg(log, "database missing/corrupted, found snapshot: %s", snapshotFile)
 	}
 
 	// Get absolute path for clear logging
