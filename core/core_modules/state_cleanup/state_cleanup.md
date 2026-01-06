@@ -80,7 +80,7 @@ state_cleanup:
   period_slots: 8438             # ~24 hours at 10.24 sec/slot
   window_slots: 1406             # ~4 hour randomization window
   ttl_minutes: 10                # Max time for cleanup, else assume failure
-  snapshot_directory: /path/to/snapshots  # Optional: override snapshot directory
+  snapshot_directory: /path/to/snapshots  # Optional: override snapshot directory. Where to search for the latest state snapshot
   log_file: .state_cleanup.log   # Optional: separate log file for cleanup activity
 ```
 
@@ -279,7 +279,7 @@ After a successful restore:
 
 ## Dependencies
 
-- Requires snapshot module to be enabled and producing snapshots
+- Unless `snaphot_directory` points to another node's snapshots, requires snapshot module to be enabled and producing snapshots
 - Uses `util/restart` for platform-specific self-restart
 - Integrates with workflow via `Start()` call
 - Integrates with node via `CheckAndRestoreOnStartup()` call
