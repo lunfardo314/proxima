@@ -274,6 +274,10 @@ func FindLatestSnapshot(directory string) (string, error) {
 		if len(name) < 9 || name[len(name)-9:] != ".snapshot" {
 			continue
 		}
+		// Skip temporary snapshot files that are still being written
+		if len(name) >= 7 && name[:7] == "__tmp__" {
+			continue
+		}
 
 		info, err := entry.Info()
 		if err != nil {
@@ -304,6 +308,34 @@ func ValidateSnapshot(snapshotPath string) error {
 	// Check ledger hash matches (both are [32]byte)
 	if ledger.Const.Hash != kvStream.LedgerConstants.Hash {
 		return fmt.Errorf("snapshot ledger hash mismatch: snapshot is from a different network")
+	}
+
+	return nil
+}
+
+// CopyFile copies a file from src to dst
+func CopyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("cannot open source file %s: %w", src, err)
+	}
+	defer srcFile.Close()
+
+	// Skip if source and destination are the same
+	srcAbs, _ := filepath.Abs(src)
+	dstAbs, _ := filepath.Abs(dst)
+	if srcAbs == dstAbs {
+		return nil
+	}
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("cannot create destination file %s: %w", dst, err)
+	}
+	defer dstFile.Close()
+
+	if _, err = io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("cannot copy file: %w", err)
 	}
 
 	return nil
