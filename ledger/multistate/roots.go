@@ -18,9 +18,10 @@ import (
 // two additional partitions of the k/v store
 const (
 	// rootRecordDBPartition
-	rootRecordDBPartition   = immutable.PartitionOther
-	latestSlotDBPartition   = rootRecordDBPartition + 1
-	earliestSlotDBPartition = latestSlotDBPartition + 1
+	rootRecordDBPartition        = immutable.PartitionOther
+	latestSlotDBPartition        = rootRecordDBPartition + 1
+	earliestSlotDBPartition      = latestSlotDBPartition + 1
+	restoreInProgressDBPartition = earliestSlotDBPartition + 1
 )
 
 func WriteRootRecord(w common.KVWriter, branchTxID base.TransactionID, rootData RootRecord) {
@@ -35,6 +36,22 @@ func WriteLatestSlotRecord(w common.KVWriter, slot uint32) {
 
 func WriteEarliestSlotRecord(w common.KVWriter, slot uint32) {
 	w.Set([]byte{earliestSlotDBPartition}, base.Slot2Bytes(slot))
+}
+
+// WriteRestoreInProgressRecord marks the database as having a restore in progress
+func WriteRestoreInProgressRecord(w common.KVWriter) {
+	w.Set([]byte{restoreInProgressDBPartition}, []byte{1})
+}
+
+// DeleteRestoreInProgressRecord removes the restore-in-progress marker
+func DeleteRestoreInProgressRecord(w common.KVWriter) {
+	w.Set([]byte{restoreInProgressDBPartition}, nil)
+}
+
+// IsRestoreInProgress checks if a restore was interrupted (database is corrupted)
+func IsRestoreInProgress(store common.KVReader) bool {
+	bin := store.Get([]byte{restoreInProgressDBPartition})
+	return len(bin) > 0
 }
 
 // FetchLatestCommittedSlot fetches the latest recorded slot
