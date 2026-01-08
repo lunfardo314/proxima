@@ -129,40 +129,40 @@ functions:
       sym: "at"
       description: "returns path in the transaction of the validity constraint being evaluated"
       numArgs: 0
-      embedded: true
+      embedded_as: at
       short: true
    -
       sym: "atPath"
       description: "returns element of the transaction at path $0"
       numArgs: 1
-      embedded: true
+      embedded_as: atPath
       short: true
 # long
    -
       sym: "amounts"
       description: "UTXO constraint for the vector of amounts"
       numArgs: -1
-      embedded: true
+      embedded_as: amounts
    -
       sym: "totalConsumed"
       description: "sum of consumed amounts by the transaction at index $0 (1 byte, max 15)"
       numArgs: -1
-      embedded: true
+      embedded_as: totalConsumed
    -
       sym: "totalProduced"
       description: "sum of produced amounts by the transaction at index $0 (1 byte, max 15)"
       numArgs: -1
-      embedded: true
+      embedded_as: totalProduced
    -
       sym: ticksBefore
       description: "number of ticks between timestamps $0 and $1 as big-endian uint64 if $0 is before $1, or 0x otherwise"
       numArgs: 2
-      embedded: true
+      embedded_as: ticksBefore
    -
       sym: randomFromSeed
       description: "uses $0 as seed to deterministically calculate a pseudo-random value. Returns 8-byte big-endian integer bytes in the interval [0,$1)"
       numArgs: 2
-      embedded: true
+      embedded_as: randomFromSeed
 `
 
 // embedded functions

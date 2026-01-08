@@ -3,6 +3,7 @@ package ledger
 import (
 	"crypto/ed25519"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/util"
@@ -11,6 +12,9 @@ import (
 var (
 	libraryGlobal      *Library
 	libraryGlobalMutex sync.RWMutex
+	// ledgerReset is set to true when ResetForTesting is called.
+	// Background goroutines can check this to avoid accessing nil Const.
+	ledgerReset atomic.Bool
 )
 
 func L() *Library {
@@ -36,6 +40,8 @@ func MustInitSingleton(identityData []byte) {
 
 	initConstantsSingleton(libraryGlobal.Library)
 
+	ledgerReset.Store(false)
+
 	libraryGlobal.runInlineTests()
 
 }
@@ -44,10 +50,17 @@ func MustInitSingleton(identityData []byte) {
 // This is only for testing purposes to get fresh genesis timestamps per test.
 // DO NOT use in production code.
 func ResetForTesting() {
+	ledgerReset.Store(true)
 	libraryGlobalMutex.Lock()
 	defer libraryGlobalMutex.Unlock()
 	libraryGlobal = nil
 	Const = nil
+}
+
+// IsReset returns true if the ledger has been reset via ResetForTesting.
+// Background goroutines can check this to avoid accessing nil Const during shutdown.
+func IsReset() bool {
+	return ledgerReset.Load()
 }
 
 // InitWithTestingLedgerIDData for testing

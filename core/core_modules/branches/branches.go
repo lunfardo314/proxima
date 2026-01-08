@@ -180,6 +180,10 @@ func (b *Branches) Supply(branchID base.TransactionID) uint64 {
 }
 
 func (b *Branches) _cleanupCachedStateReaders() (int, int) {
+	// Check if ledger has been reset (during test cleanup) to avoid nil pointer dereference
+	if ledger.IsReset() {
+		return 0, len(b.stateReaders)
+	}
 	ttl := stateReaderTTLSlots * ledger.SlotDuration()
 	count := 0
 
@@ -193,6 +197,10 @@ func (b *Branches) _cleanupCachedStateReaders() (int, int) {
 }
 
 func (b *Branches) _cleanupBranches() (int, int) {
+	// Check if ledger has been reset (during test cleanup) to avoid nil pointer dereference
+	if ledger.IsReset() {
+		return 0, len(b.m)
+	}
 	ttl := branchDataCacheTTLSlots * ledger.SlotDuration()
 	count := 0
 
