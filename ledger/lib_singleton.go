@@ -30,7 +30,7 @@ func MustInitSingleton(identityData []byte) {
 
 	util.Assertf(libraryGlobal == nil, "ledger is already initialized")
 
-	lib, err := ParseLibraryFromYAML(identityData, GetEmbeddedFunctionResolver)
+	lib, err := ParseLibraryFromYAML(identityData, GetEmbeddedFunctionResolverUpgrade0)
 	util.AssertNoError(err)
 
 	libraryGlobal = newLibrary(lib, identityData)

@@ -53,8 +53,8 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 	}
 }
 
-func ConstantsYAMLFromParams(par InitParameters) []byte {
-	return []byte(fmt.Sprintf(__definitionsLedgerConstantsYAML,
+func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
+	return []byte(fmt.Sprintf(__definitionsLedgerConstantsYAMLUpgrade0,
 		hex.EncodeToString(par.GenesisControllerPublicKey),
 		par.GenesisTimeUnix,
 		uint64(par.TickDuration),
@@ -66,7 +66,7 @@ func ConstantsYAMLFromParams(par InitParameters) []byte {
 	))
 }
 
-const __definitionsLedgerConstantsYAML = `
+const __definitionsLedgerConstantsYAMLUpgrade0 = `
 # definitions of main ledger constants
 functions:
    -

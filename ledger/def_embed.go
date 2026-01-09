@@ -93,16 +93,16 @@ func (c *EvalContext) SetEvalPath(path []byte) {
 }
 
 var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
-	"at":             evalPath,
-	"atPath":         evalAtPath,
-	"amounts":        evalAmounts,
-	"totalConsumed":  evalTotalConsumed,
-	"totalProduced":  evalTotalProduced,
-	"ticksBefore":    evalTicksBefore64, // TODO make it in pure EasyFL
-	"randomFromSeed": evalRandomFromSeed,
+	"evalPath":           evalPath,
+	"evalAtPath":         evalAtPath,
+	"evalAmounts":        evalAmounts,
+	"evalTotalConsumed":  evalTotalConsumed,
+	"evalTotalProduced":  evalTotalProduced,
+	"evalTicksBefore64":  evalTicksBefore64, // TODO make it in pure EasyFL
+	"evalRandomFromSeed": evalRandomFromSeed,
 }
 
-func GetEmbeddedFunctionResolver(lib *easyfl.Library[*EvalContext]) func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
+func GetEmbeddedFunctionResolverUpgrade0(lib *easyfl.Library[*EvalContext]) func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
 	baseResolver := easyfl.EmbeddedFunctions(lib)
 	return func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
 		if ret, found := _unboundedEmbedded[sym]; found {
@@ -117,52 +117,47 @@ func GetEmbeddedFunctionResolver(lib *easyfl.Library[*EvalContext]) func(sym str
 	}
 }
 
-// EmbedHardcoded upgrades library with hardcoded (embedded) functions of the proxima ledger
-func EmbedHardcoded(lib *easyfl.Library[*EvalContext]) error {
-	return lib.UpgradeFromYAML([]byte(_definitionsEmbeddedYAML), GetEmbeddedFunctionResolver(lib))
-}
-
-const _definitionsEmbeddedYAML string = `
+const _definitionsEmbeddedYAMLUpgrade0 string = `
 functions:
 # short
    -
       sym: "at"
       description: "returns path in the transaction of the validity constraint being evaluated"
       numArgs: 0
-      embedded_as: at
+      embedded_as: evalPath
       short: true
    -
       sym: "atPath"
       description: "returns element of the transaction at path $0"
       numArgs: 1
-      embedded_as: atPath
+      embedded_as: evalAtPath
       short: true
 # long
    -
       sym: "amounts"
       description: "UTXO constraint for the vector of amounts"
       numArgs: -1
-      embedded_as: amounts
+      embedded_as: evalAmounts
    -
       sym: "totalConsumed"
       description: "sum of consumed amounts by the transaction at index $0 (1 byte, max 15)"
       numArgs: -1
-      embedded_as: totalConsumed
+      embedded_as: evalTotalConsumed
    -
       sym: "totalProduced"
       description: "sum of produced amounts by the transaction at index $0 (1 byte, max 15)"
       numArgs: -1
-      embedded_as: totalProduced
+      embedded_as: evalTotalProduced
    -
       sym: ticksBefore
       description: "number of ticks between timestamps $0 and $1 as big-endian uint64 if $0 is before $1, or 0x otherwise"
       numArgs: 2
-      embedded_as: ticksBefore
+      embedded_as: evalTicksBefore64
    -
       sym: randomFromSeed
       description: "uses $0 as seed to deterministically calculate a pseudo-random value. Returns 8-byte big-endian integer bytes in the interval [0,$1)"
       numArgs: 2
-      embedded_as: randomFromSeed
+      embedded_as: evalRandomFromSeed
 `
 
 // embedded functions

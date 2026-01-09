@@ -51,7 +51,7 @@ func runGenesis(_ *cobra.Command, _ []string) {
 	}
 
 	// parse and validate
-	lib, err := ledger.ParseLibraryFromYAML(idDataYAML, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromYAML(idDataYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
 	glb.AssertNoError(err)
 	constants := ledger.ConstantsFromLibrary(lib)
 

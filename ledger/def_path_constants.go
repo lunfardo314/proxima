@@ -84,7 +84,7 @@ const (
 	ConstraintIndexFirstOptionalConstraint
 )
 
-func pathConstants() string {
+func pathConstantsUpgrade0() string {
 	return fmt.Sprintf(_pathConstantsYAML,
 		TransactionBranch,
 		PathToConsumedOutputs.Hex(),

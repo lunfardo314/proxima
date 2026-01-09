@@ -45,7 +45,7 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 	}
 
 	lib := easyfl.NewLibrary[*ledger.EvalContext]()
-	err = lib.UpgradeFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver(lib))
+	err = lib.UpgradeFromYAML(yamlData, ledger.GetEmbeddedFunctionResolverUpgrade0(lib))
 	glb.AssertNoError(err)
 
 	yamlData1 := lib.ToYAML(true, "# compiled library of Proxima ledger definitions")

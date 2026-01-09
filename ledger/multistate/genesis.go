@@ -78,7 +78,7 @@ func ScanGenesisState(stateStore StateStore) (*ledger.Constants, common.VCommitm
 	branchData := FetchBranchDataByRoot(stateStore, genesisRootRecord)
 	rdr := MustNewSugaredReadableState(stateStore, branchData.Root)
 	yamlData := rdr.MustLedgerIdentityBytes()
-	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolverUpgrade0)
 	util.AssertNoError(err)
 
 	genesisOid := base.GenesisOutputID()

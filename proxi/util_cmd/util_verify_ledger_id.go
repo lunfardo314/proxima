@@ -33,7 +33,7 @@ func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
 	yamlData, err := os.ReadFile(glb.LedgerIDFileName)
 	glb.AssertNoError(err)
 
-	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolverUpgrade0)
 	glb.AssertNoError(err)
 	constants := ledger.ConstantsFromLibrary(lib)
 	glb.Infof("hash of the library: %s", hex.EncodeToString(constants.Hash[:]))

@@ -2,7 +2,7 @@ package ledger
 
 // TODO minimize use of atTuple8
 
-const _generalFunctionsYAML = `
+const _generalFunctionsYAMLUpgrade0 = `
 functions:
    -
       sym: amountConstraint

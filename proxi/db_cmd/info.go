@@ -45,7 +45,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	identityYAML := reader.MustLedgerIdentityBytes()
-	lib, err := ledger.ParseLibraryFromYAML(identityYAML, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromYAML(identityYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
 	glb.AssertNoError(err)
 
 	earliestSlot := multistate.FetchEarliestSlot(glb.StateStore())
