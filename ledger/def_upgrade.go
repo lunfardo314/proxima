@@ -6,36 +6,46 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+type upgradeData struct {
+	upgradeYAML              []byte
+	embeddedFunctionResolver func(sym string) easyfl.EmbeddedFunction[*EvalContext]
+}
+
+func upgradeLibrary(lib *easyfl.Library[*EvalContext], upgradeData []upgradeData) error {
+	var err error
+	for _, upg := range upgradeData {
+		if upg.embeddedFunctionResolver != nil {
+			err = lib.UpgradeFromYAML(upg.upgradeYAML, upg.embeddedFunctionResolver)
+		} else {
+			err = lib.UpgradeFromYAML(upg.upgradeYAML)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
-	err := lib.UpgradeFromYAML([]byte(_definitionsEmbeddedYAMLUpgrade0), GetEmbeddedFunctionResolverUpgrade0(lib))
-	util.AssertNoError(err)
-
-	// add main ledger constants
-	err = lib.UpgradeFromYAML(ConstantsYAMLFromParamsUpgrade0(par))
-	util.AssertNoError(err)
-
-	// add path constants
-	err = lib.UpgradeFromYAML([]byte(pathConstantsUpgrade0()))
-	util.AssertNoError(err)
-
-	// add base helpers
-	err = lib.UpgradeFromYAML([]byte(_helperFunctionsYAMLUpgrade0))
-	util.AssertNoError(err)
-
-	// add general functions
-	err = lib.UpgradeFromYAML([]byte(_generalFunctionsYAMLUpgrade0))
+	err := upgradeLibrary(lib, []upgradeData{
+		{[]byte(_definitionsEmbeddedYAMLUpgrade0), GetEmbeddedFunctionResolverUpgrade0(lib)},
+		{ConstantsYAMLFromParamsUpgrade0(par), nil},
+		{[]byte(pathConstantsUpgrade0()), nil},
+		{[]byte(_helperFunctionsYAMLUpgrade0), nil},
+		{[]byte(_generalFunctionsYAMLUpgrade0), nil},
+	})
 	util.AssertNoError(err)
 
 	lib.MustExtendMany(amountsAuxSource)
 	lib.MustExtendMany(addressED25519ConstraintSource)
-	lib.MustExtendMany(conditionalLockSource)
-	lib.MustExtendMany(deadlineLockSource)
+	lib.MustExtendMany(conditionalLockSource) // TODO not very necessary
+	lib.MustExtendMany(deadlineLockSource)    // TODO not very necessary
 	lib.MustExtendMany(timelockSource)
 	lib.MustExtendMany(stemLockSource)
 	lib.MustExtendMany(chainConstraintSource)
 	lib.MustExtendMany(sequencerConstraintSource)
 	lib.MustExtendMany(chainLockConstraintSource)
-	lib.MustExtendMany(commitToSiblingSource)
+	lib.MustExtendMany(commitToSiblingSource) // TODO not very necessary
 	lib.MustExtendMany(delegateLock2Source)
 	lib.MustExtendMany(tagAlongLockConstraintSource)
 	lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
