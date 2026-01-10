@@ -97,8 +97,24 @@ func (s *StateCleanup) logCleanupError(format string, args ...any) {
 
 // Start initializes and starts the state cleanup scheduler
 func Start(env environment) {
-	if !viper.GetBool("state_cleanup.enable") {
-		env.Log().Infof("[%s] is disabled", Name)
+	enableValue := viper.GetBool("state_cleanup.enable")
+	if !enableValue {
+		// Log detailed diagnostics about why state_cleanup is not starting
+		env.Log().Infof("[%s] NOT STARTED: state_cleanup.enable = %v", Name, enableValue)
+		// Check if the key exists at all in config
+		if !viper.IsSet("state_cleanup.enable") {
+			env.Log().Infof("[%s] (config key 'state_cleanup.enable' is not set in config file)", Name)
+		}
+		// Log what state_cleanup config values were found (if any)
+		if viper.IsSet("state_cleanup") {
+			env.Log().Infof("[%s] Found state_cleanup section with: period_slots=%d, window_slots=%d, snapshot_directory=%q",
+				Name,
+				viper.GetInt("state_cleanup.period_slots"),
+				viper.GetInt("state_cleanup.window_slots"),
+				viper.GetString("state_cleanup.snapshot_directory"))
+		} else {
+			env.Log().Infof("[%s] (no 'state_cleanup' section found in config file)", Name)
+		}
 		return
 	}
 
@@ -289,8 +305,10 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 // Returns true if restore was performed, false otherwise
 func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	if !viper.GetBool("state_cleanup.enable") {
+		log.Log().Infof("[%s] CheckAndRestoreOnStartup: state_cleanup is disabled in config (state_cleanup.enable = false)", Name)
 		return false, nil
 	}
+	log.Log().Infof("[%s] CheckAndRestoreOnStartup: state_cleanup is enabled, checking for pending restore...", Name)
 
 	// Initialize cleanup logger if configured (for restore logging)
 	logFile := viper.GetString("state_cleanup.log_file")
