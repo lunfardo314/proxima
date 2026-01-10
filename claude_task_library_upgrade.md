@@ -1,0 +1,334 @@
+# Refactor Ledger Library Upgrades
+
+## Instructions for Claude Code
+
+1. Critically analyze the task description, the code; ask clarifying questions; provide suggestions
+2. Edit and refine this file until a clear understanding of the task is reached
+3. Create an implementation plan
+4. Implement changes in small commits in separate branch `develop-breaking-upgrades`
+5. Implement test cases
+6. Propose testing strategy for the node and testnet
+
+---
+
+## Current Architecture
+
+The ledger library definitions in EasyFL (YAML format) and embedded functions are inherited from the EasyFL base library. At genesis, this library is extended with new embedded and EasyFL functions in the `upgrade0` function.
+
+The upgraded library is saved in the ledger state at the root of the trie in YAML format. This commits the ledger definitions to the ledger state, making them immutable.
+
+---
+
+## Problem
+
+Sometimes we need to add new EasyFL functions to the ledger, or even replace existing definitions. We may need to upgrade ledger rules with new UTXO constraints, embed new opcodes (such as cryptographic primitives), or fix bugs.
+
+The current architecture makes it difficult to update ledger states saved in multi-state databases across a distributed network of nodes in a convenient, deterministic, and backward-compatible manner.
+
+---
+
+## Goal
+
+Refactor the architecture to support incremental updates of the node's code while preserving the history of upgrades. Each historical transaction must be validated using the ledger rules that were applicable at its slot.
+
+The goal is to ensure deterministic upgrades of ledger definitions across the distributed network of nodes, allowing breaking changes to ledger logic while maintaining backward compatibility.
+
+---
+
+## Design Principles
+
+1. **All ledger logic in EasyFL**: Constants, inflation rules, constraints—everything deterministic is defined in EasyFL, not Go code
+2. **Platform independence**: The ledger rules are the EasyFL program; Go is just the runtime/interpreter
+3. **Embedded functions are minimal**: Only simple, foundational operations are embedded in Go
+4. **No deletion, only addition/replacement**: Functions can be added or replaced but never deleted
+5. **Immutable legacy code**: Old embedded function implementations remain in codebase forever for historical validation
+
+---
+
+## Library Upgrades: Deltas, Versions, History
+
+### Upgrade Slots and Deltas
+
+- Each upgrade is applied at a specific slot called the _upgrade slot_
+- The upgrade slot is the **first slot where new rules apply**
+- Maximum **one upgrade per slot**; however, an upgrade delta may internally consist of multiple steps (like current `upgrade0`)
+- After applying the delta at the upgrade slot, the updated library applies to all subsequent slots
+- The delta YAML comes from static node code, alongside embedded function code
+
+### Upgrade Content
+
+- Upgrades can only **add or replace** EasyFL functions (never delete)
+- All deterministic constants (inflation rates, timing parameters, etc.) are defined in EasyFL
+- There is no deprecation mechanism—old functions remain valid for historical validation
+
+### Embedded Function Versioning
+
+- Legacy embedded function code is **never modified or deleted**
+- To fix bugs in embedded functions: create a new Go function and use the `embedded-as` field in YAML to map the EasyFL function name to the new implementation
+- Each upgrade version has its own function resolver that returns the appropriate Go implementations
+- This mapping must be thoroughly documented in code comments
+
+Example pattern:
+```go
+// Original implementation (upgrade0)
+func embeddedTicksBefore_v0(...) { /* original */ }
+
+// Fixed implementation (upgrade1)
+func embeddedTicksBefore_v1(...) { /* fixed */ }
+
+// In upgrade1 YAML:
+// ticksBefore:
+//   embedded-as: ticksBefore_v1
+```
+
+### Storage and Persistence
+
+- All known upgrades are stored in a dedicated DB partition as pairs: `<upgradeSlot>: <compiled library YAML>`
+- Libraries are stored as **full compiled YAMLs**, not deltas (deltas may have sub-steps, adding unnecessary complexity)
+- Upon startup, the node checks if upcoming upgrades are already in the DB partition; if not, it adds them
+- Hashes can be calculated from the stored YAML for verification
+
+### Library Access: `L(slot)`
+
+- The current `L()` function becomes `L(slot)`, returning the library version applicable to that slot
+- Libraries are **lazily loaded from DB and parsed** on first access
+- **Recently used versions are cached** to avoid repeated parsing
+- The slot→version lookup is optimized for efficiency
+- No cache eviction needed—upgrades are rare; node restart naturally resets the cache
+
+### Peering Rendezvous
+
+- The hash of the latest upgrade library known to the node is used as a rendezvous code for peering
+- This isolates upgraded nodes from non-upgraded nodes
+- Forces node operators to upgrade their versions well before the upgrade slot
+
+---
+
+## Commitment to Upgrade History
+
+### Upgrade UTXO
+
+When an upgrade slot arrives, the node commits to the new library version by creating a special unspendable UTXO:
+
+**UTXO Format:**
+- Amount: `0`
+- Lock: `false` (unspendable)
+- Third constraint: hash of the new library version
+
+**Synthetic OutputID Format (33 bytes):**
+- 5-byte timestamp: `<upgrade slot>` with `ticks = 0`
+- 1-byte output count: encoded as usual (`numOutputs - 1`)
+- 26-byte hash portion: big-endian representation of the upgrade slot number (zero-padded)
+- 1-byte output index: `0`
+
+**No-collision guarantee:** Finding a real transaction whose blake2b hash ends with a specific 26-byte slot number is computationally infeasible (hash preimage resistance).
+
+### Commitment Process
+
+- When a branch transaction is produced at or after an upgrade slot, the node checks if the upgrade UTXO exists in the baseline state
+- If not present, the branch **must** include the upgrade UTXO in its mutations
+- This makes inclusion mandatory, preserving determinism across all nodes
+- The upgrade UTXO is committed together with the branch using the new library rules
+
+### Edge Case: No Branch at Upgrade Slot
+
+If no branch is produced exactly at the upgrade slot (e.g., network issues):
+- The first branch at slot ≥ upgrade slot commits the upgrade UTXO
+- Determinism is preserved because:
+  - The OutputID is derived from the upgrade slot (not the commit slot)
+  - The library hash is deterministic (same delta applied to same base)
+  - All nodes apply the same logic
+
+### Verification
+
+Each upgrade UTXO can be verified by:
+1. Checking the synthetic OutputID matches the expected format for the upgrade slot
+2. Checking the hash in the UTXO matches the expected library hash for that upgrade version
+
+---
+
+## Code Changes Required
+
+### 1. Library Access Function
+
+- Modify `L()` to `L(slot)` returning the library for a specific slot
+- In most cases this will be the latest version
+- Implement lazy loading and caching
+
+### 2. Trie Root Storage
+
+- Remove ledger definitions from trie root
+- Trie root contains only: _genesis time_ and _description_
+- This makes the true root value immutable
+
+### 3. Upgrade Definition in Code
+
+- Startup code contains upcoming upgrade definitions (like current `upgrade0`)
+- Each upgrade has its own function: `upgrade0`, `upgrade1`, etc.
+- Each upgrade has its own embedded function resolver
+
+### 4. Genesis State
+
+- Genesis creates **3 UTXOs** instead of 2:
+  1. Initial supply output (existing)
+  2. Stem output (existing)
+  3. Upgrade commitment UTXO for version 0 at slot 0
+
+### 5. DB Partition for Upgrades
+
+- New DB partition stores all known library versions
+- Key: upgrade slot
+- Value: full compiled library YAML
+
+### 6. Snapshot Format
+
+- Snapshots contain all past upgrade library YAMLs (full compiled versions)
+- Upgrade UTXOs are part of the state and included automatically
+- On restore, libraries are loaded into the DB partition
+
+### 7. Branch Transaction Production
+
+- When producing a branch at slot ≥ any pending upgrade slot:
+  - Check if upgrade UTXO exists in baseline state
+  - If not, include it in branch mutations
+  - Use the new library for validation
+
+### 8. Transaction Validation
+
+- Attacher uses `L(txSlot)` for validation
+- Historical transactions validated with their era's library
+- New transactions validated with current library
+
+### 9. API Changes
+
+- TBD (analysis required)
+- Likely: endpoint to query upgrade history, current library version, pending upgrades
+
+### 10. Proxi CLI Tool
+
+- Commands that interact directly with the DB need updates:
+  - `proxi db` subcommands (inspect, repair, etc.)
+  - `proxi snapshot` subcommands (create, restore)
+  - Any commands that read/write ledger state or library definitions
+- May need new commands for:
+  - Querying upgrade history
+  - Inspecting library versions at specific slots
+  - Verifying upgrade UTXOs
+
+---
+
+## Open Questions
+
+1. **Determinism verification for Q6**: Need to double-check that committing upgrade UTXO in later slots preserves determinism in all edge cases (competing branches, reorganizations)
+
+2. **API design**: What endpoints are needed for upgrade information?
+
+3. **Migration path**: How to migrate existing nodes/states to the new architecture?
+
+---
+
+## Current Implementation Reference
+
+This section maps the design to existing code locations, enabling a cold restart of this refactoring task.
+
+### Core Library Files
+
+| File | Purpose | Changes Needed |
+|------|---------|----------------|
+| `ledger/def.go` | `LibraryFromParameters()`, `LibraryYAMLFromParameters()`, `ParseLibraryFromYAML()` | Add slot-based versioning |
+| `ledger/lib_singleton.go` | Global `L()` function, `MustInitSingleton()`, `libraryGlobal` variable | Modify `L()` → `L(slot)`, add version caching |
+| `ledger/def_upgrade.go` | `upgradeData` struct, `upgradeLibrary()`, `upgrade0()`, `registerConstraints()` | Add `upgrade1`, `upgrade2`, etc.; versioned resolvers |
+| `ledger/def_embed.go` | Embedded function definitions and resolvers | Version embedded functions, keep legacy implementations |
+| `ledger/def_init_params.go` | `InitParameters` struct | May need upgrade slot parameters |
+| `ledger/def_helper_func.go` | Helper function YAML definitions | Part of upgrade deltas |
+| `ledger/def_general_func.go` | General function YAML definitions | Part of upgrade deltas |
+| `ledger/def_path_constants.go` | Path constant definitions | Part of upgrade deltas |
+
+### Multistate / Storage Files
+
+| File | Purpose | Changes Needed |
+|------|---------|----------------|
+| `ledger/multistate/genesis.go` | `InitStateStoreFromGlobals()`, `ScanGenesisState()`, `InitLedgerFromStore()` | Add upgrade UTXO at genesis (3rd UTXO); modify library loading |
+| `ledger/multistate/state.go` | `LedgerIdentityBytesFromStore()`, `LedgerIdentityBytesFromRoot()`, `MustLedgerIdentityBytes()` | Remove library from trie root; add upgrade DB partition access |
+| `ledger/multistate/roots.go` | Root record management, DB partitions | Add upgrade library partition |
+| `ledger/multistate/snapshot.go` | Snapshot create/restore | Include all upgrade YAMLs in snapshot; restore to DB partition |
+| `ledger/multistate/mutate.go` | State mutations | Handle upgrade UTXO mutations |
+| `ledger/multistate/kvtypes.go` | `StateIndexReader` interface with `MustLedgerIdentityBytes()` | Update interface for slot-based library access |
+
+### Transaction Validation
+
+| File | Purpose | Changes Needed |
+|------|---------|----------------|
+| `ledger/transaction/validate.go` | Transaction validation using `L()` | Use `L(txSlot)` for validation |
+| `core/attacher/*.go` | Attacher uses library for validation | Pass slot to library access |
+| `core/workflow/*.go` | Transaction workflow | Ensure correct library version used per slot |
+
+### Proxi CLI Commands (DB-related)
+
+| File | Purpose | Changes Needed |
+|------|---------|----------------|
+| `proxi/db_cmd/db.go` | DB command group | Add upgrade-related subcommands |
+| `proxi/db_cmd/get_ledger_id.go` | Get ledger identity from DB | Update for new storage location |
+| `proxi/db_cmd/info.go` | DB info display | Show upgrade history |
+| `proxi/db_cmd/scandb.go` | DB scanning utilities | Scan upgrade partition |
+| `proxi/snapshot_cmd/snapshot.go` | Snapshot commands | Handle upgrade YAMLs |
+| `proxi/snapshot_cmd/restore.go` | Restore from snapshot | Restore upgrade libraries to DB |
+| `proxi/snapshot_cmd/info.go` | Snapshot info | Display upgrade info |
+| `proxi/init_cmd/init_genesis_db.go` | Genesis DB initialization | Create upgrade UTXO |
+| `proxi/util_cmd/util_ledger_id.go` | Ledger ID utilities | Update for slot-based libraries |
+| `proxi/util_cmd/util_compile_ledger_id.go` | Compile ledger ID | May need version awareness |
+| `proxi/util_cmd/util_verify_ledger_id.go` | Verify ledger ID | Verify against upgrade history |
+| `proxi/glb/db.go` | DB utilities | Add upgrade partition helpers |
+
+### Key Data Flow (Current)
+
+1. **Genesis**: `LibraryFromParameters()` → `upgrade0()` → library YAML stored at trie root (`nil` key)
+2. **Node startup**: `InitLedgerFromStore()` → `LedgerIdentityBytesFromStore()` → `MustInitSingleton()`
+3. **Validation**: All code uses global `L()` → single library version
+4. **Snapshots**: Library YAML included via trie root value
+
+### Key Data Flow (Target)
+
+1. **Genesis**: `LibraryFromParameters()` → `upgrade0()` → library stored in upgrade DB partition; upgrade UTXO created
+2. **Node startup**: Load known upgrades to DB partition; `L(slot)` with lazy loading
+3. **Validation**: Use `L(txSlot)` → slot-appropriate library version
+4. **Branch production**: Check for pending upgrades, create upgrade UTXOs as needed
+5. **Snapshots**: All upgrade YAMLs stored separately in snapshot file
+
+---
+
+## Documentation Requirements
+
+### New Documentation to Write
+
+1. **Upgrade System Architecture** (`docs/upgrades.md` or in main docs site)
+   - How upgrades work (slots, deltas, UTXOs)
+   - Node operator guide for handling upgrades
+   - Timeline expectations before upgrade slots
+
+2. **Embedded Function Versioning Guide** (developer docs)
+   - How to add new embedded functions
+   - How to fix bugs in existing embedded functions using `embedded-as`
+   - Version naming conventions
+
+3. **Upgrade UTXO Specification** (technical spec)
+   - Synthetic OutputID format
+   - UTXO structure and constraints
+   - Verification procedures
+
+4. **Proxi CLI Upgrade Commands** (user guide)
+   - New commands for querying upgrade history
+   - Commands for verifying upgrade state
+
+### Existing Documentation to Update
+
+1. **CLAUDE.md** - Add upgrade-related architecture notes
+2. **Main documentation site** (`lunfardo314.github.io`) - Ledger model section
+3. **API documentation** - New endpoints for upgrade info
+4. **Snapshot format documentation** - New fields for upgrade YAMLs
+
+---
+
+## Implementation Phases
+
+_To be defined after task document is finalized._
