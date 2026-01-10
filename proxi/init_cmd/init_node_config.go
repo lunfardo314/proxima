@@ -135,6 +135,23 @@ snapshot:
     # keep latest up to 3 snapshots, older ones will be purged
   keep_latest: 2
 
+# Automatic state cleanup (GC) via snapshot restore
+# When enabled, periodically restarts the node and restores from latest snapshot
+# This cleans up old historical state, keeping only the latest
+state_cleanup:
+  enable: false
+  # Period between cleanups in slots (~24h = 8438 slots at 10.24 sec/slot)
+  period_slots: 8438
+  # Randomization window in slots (~4h = 1406 slots) to avoid mass restarts
+  window_slots: 1406
+  # TTL in minutes - if cleanup takes longer, assume failure and reset
+  ttl_minutes: 10
+  # Optional: override snapshot directory (default: uses snapshot.directory)
+  # Can point to another node's snapshot directory for shared snapshots
+  # snapshot_directory: /path/to/other/node/snapshot
+  # Optional: separate log file for cleanup activity (stats, duration, etc.)
+  # log_file: .state_cleanup.log
+
 # logger config
 # logger.previous can be 'erase' or 'save'
 logger:

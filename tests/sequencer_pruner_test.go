@@ -67,7 +67,6 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 	//testData.wrk.StartTracingTags(task.TraceTagBaseProposer)
 	//testData.wrk.StartTracingTags(task.TraceTagInsertTagAlongInputs)
 
-	ctx, _ := context.WithCancel(context.Background())
 	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithMaxBranches(maxSlots))
 	require.NoError(t, err)
@@ -346,6 +345,10 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 }
 
 func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) *workflowTestData {
+	// Reinitialize ledger with fresh genesis timestamp to avoid timing issues
+	// when tests run sequentially and the original genesis time becomes stale
+	reinitTestLedger()
+
 	testData := initWorkflowTest(t, nSequencers, startPruner...)
 	//testData.wrk.StartTracingTags(tippool.TraceTag)
 	//testData.wrk.StartTracingTags(factory.TraceTag)

@@ -33,9 +33,11 @@ func (s *Sema) Lock() {
 }
 
 func (s *Sema) _lock() {
+	timer := time.NewTimer(s.timeout)
+	defer timer.Stop()
 	select {
 	case s.ch <- struct{}{}:
-	case <-time.After(s.timeout):
+	case <-timer.C:
 		panic(fmt.Sprintf("sema.Lock: can't get lock in %v", s.timeout))
 	}
 }

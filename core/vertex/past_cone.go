@@ -720,7 +720,7 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 	default:
 		switch {
 		case !flags.FlagsUp(FlagPastConeVertexInputsSolid):
-			wrongFlag = "FlagPastConeVertexEndorsementsSolid"
+			wrongFlag = "FlagPastConeVertexInputsSolid"
 		case !flags.FlagsUp(FlagPastConeVertexEndorsementsSolid):
 			wrongFlag = "FlagPastConeVertexEndorsementsSolid"
 		}
@@ -880,7 +880,9 @@ func (pc *PastCone) Dispose() {
 	pc.tip = nil
 	pc.PastConeBase.Dispose()
 	pc.PastConeBase = nil
-	pc.delta.Dispose()
+	if pc.delta != nil {
+		pc.delta.Dispose()
+	}
 	pc.delta = nil
 }
 

@@ -29,6 +29,20 @@ type (
 
 const TraceTag = "streaming"
 
+// checkWebSocketOrigin validates the WebSocket connection origin.
+// Returns true if no Origin header (same-origin request) or if Origin matches the Host.
+// This prevents cross-site WebSocket hijacking attacks.
+func checkWebSocketOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// No Origin header means same-origin request
+		return true
+	}
+	// Allow if origin matches the host (handles both http and https)
+	host := r.Host
+	return origin == "http://"+host || origin == "https://"+host
+}
+
 func Run(env environment) {
 	srv := &wsServer{
 		environment: env,
@@ -70,7 +84,7 @@ func vertexDepsForTx(srv *wsServer, txidstr string) []byte {
 const keepMaxSlots = 10 // Keep only last 10 slots
 
 func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Request) {
-	u := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	u := websocket.Upgrader{CheckOrigin: checkWebSocketOrigin}
 	conn, err := u.Upgrade(w, r, nil)
 	if err != nil {
 		srv.Log().Warnf("[%s] WebSocket upgrade failed, remote: %s", TraceTag, r.RemoteAddr)

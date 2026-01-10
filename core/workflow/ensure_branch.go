@@ -13,7 +13,7 @@ import (
 const maxTimeout = time.Minute
 
 func (w *Workflow) EnsureBranch(txid base.TransactionID, timeout ...time.Duration) (*vertex.WrappedTx, error) {
-	w.Assertf(txid.IsBranchTransaction(), "txid.IsSequencerTransaction()")
+	w.Assertf(txid.IsBranchTransaction(), "txid.IsBranchTransaction()")
 	to := maxTimeout
 	if len(timeout) > 0 {
 		to = timeout[0]

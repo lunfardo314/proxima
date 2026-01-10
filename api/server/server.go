@@ -909,11 +909,11 @@ func (srv *server) checkTxIDIncludedInLRB(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	lrbid, foundAyDepth := srv.CheckTransactionInLRB(txid, maxDepth)
+	lrbid, foundAtDepth := srv.CheckTransactionInLRB(txid, maxDepth)
 	resp := api.CheckTxIDInLRB{
 		TxID:         txid.StringHex(),
 		LRBID:        lrbid.StringHex(),
-		FoundAtDepth: foundAyDepth,
+		FoundAtDepth: foundAtDepth,
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")

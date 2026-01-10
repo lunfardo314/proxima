@@ -3,8 +3,11 @@ The code should not be used in production!*
 
 # Proxima: a DAG-based cooperative distributed ledger
 Proxima is as decentralized and permissionless as Bitcoin (*proof-of-work*, PoW). 
-<br>It is similar to *proof-of stake* (PoS), especially because it uses Sybil protection by token holdings.
-<br>Yet it is neither PoW, nor a usual BFT-based PoS system. It is based on **cooperative consensus**. See 
+It runs under common Nakamoto-assumptions (permissionless decentralization). 
+<br>It a sort of *proof-of stake* (PoS) protocol, because because it uses Sybil protection by token holdings.
+<br>It is not a BFT-PoS because it is Nakamoto-permissionless and does not run on a committee, neither static, nor dynamic. 
+<br>Proxima is based on **cooperative consensus**. See: 
+
 - [Proxima whitepaper](https://arxiv.org/abs/2411.16456) 
 - other [Proxima documents](https://lunfardo314.github.io/), which include:
    - [Overview of Proxima concepts](https://lunfardo314.github.io/#/overview/intro)

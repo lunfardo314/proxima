@@ -198,7 +198,7 @@ func (a *IncrementalAttacher) ExplicitBaselineID() *base.TransactionID {
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
 	a.Assertf(!a.IsClosed(), "a.IsClosed()")
 	if !endorsement.ValidSequencerPace(a.targetTs) {
-		return fmt.Errorf("IncrementalAttacher(%s).InsertEndorsement: invalid sequencer pace in %s", a.name, endorsement.IDShortString)
+		return fmt.Errorf("IncrementalAttacher(%s).InsertEndorsement: invalid sequencer pace in %s", a.name, endorsement.IDShortString())
 	}
 
 	if a.pastCone.IsKnown(endorsement) {

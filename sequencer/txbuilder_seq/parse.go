@@ -99,6 +99,6 @@ func (txb *SeqTxBuilder) TxBuilderCommandFromOutput(o ledger.OutputWithID) (cmd 
 	if parser, found := _cmdParsers[preParsed.RequestCode]; found {
 		return parser(txb, &preParsed)
 	}
-	reason = fmt.Errorf("TxBuilderCommandFromOutput: unknown requst code %d", preParsed.RequestCode)
+	reason = fmt.Errorf("TxBuilderCommandFromOutput: unknown request code %d", preParsed.RequestCode)
 	return
 }

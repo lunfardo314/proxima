@@ -3,6 +3,7 @@ package set
 import (
 	"encoding/binary"
 	"fmt"
+	"math/bits"
 
 	"github.com/lunfardo314/proxima/util/lines"
 )
@@ -66,13 +67,8 @@ func (s *ByteSet) Clone() (ret ByteSet) {
 	return
 }
 
-func (s *ByteSet) Size() (ret int) {
-	for i := 0; i < 256; i++ {
-		if s.Contains(byte(i)) {
-			ret++
-		}
-	}
-	return
+func (s *ByteSet) Size() int {
+	return bits.OnesCount64(s[0]) + bits.OnesCount64(s[1]) + bits.OnesCount64(s[2]) + bits.OnesCount64(s[3])
 }
 
 func _forEachOneInUint64(n uint64, fun func(i byte) bool) bool {

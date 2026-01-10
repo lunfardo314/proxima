@@ -24,7 +24,6 @@ func (v *Vertex) TimeSlot() uint32 {
 	return v.Tx.Slot()
 }
 
-// ReferenceInput puts a new input and references it. If referencing fails, no change happens and returns false
 func (v *Vertex) ReferenceInput(i byte, vid *WrappedTx) {
 	util.Assertf(int(i) < len(v.Inputs), "ReferenceInput: wrong input index")
 	util.Assertf(v.Inputs[i] == nil, "ReferenceInput: repetitive")
@@ -144,7 +143,7 @@ func (v *Vertex) MissingInputTxIDString() string {
 	if len(s) == 0 {
 		return "(none)"
 	}
-	ret := make([]string, 0)
+	ret := make([]string, 0, len(s))
 	for txid := range s {
 		ret = append(ret, txid.StringShort())
 	}

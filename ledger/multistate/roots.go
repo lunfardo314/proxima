@@ -18,9 +18,10 @@ import (
 // two additional partitions of the k/v store
 const (
 	// rootRecordDBPartition
-	rootRecordDBPartition   = immutable.PartitionOther
-	latestSlotDBPartition   = rootRecordDBPartition + 1
-	earliestSlotDBPartition = latestSlotDBPartition + 1
+	rootRecordDBPartition        = immutable.PartitionOther
+	latestSlotDBPartition        = rootRecordDBPartition + 1
+	earliestSlotDBPartition      = latestSlotDBPartition + 1
+	restoreInProgressDBPartition = earliestSlotDBPartition + 1
 )
 
 func WriteRootRecord(w common.KVWriter, branchTxID base.TransactionID, rootData RootRecord) {
@@ -35,6 +36,22 @@ func WriteLatestSlotRecord(w common.KVWriter, slot uint32) {
 
 func WriteEarliestSlotRecord(w common.KVWriter, slot uint32) {
 	w.Set([]byte{earliestSlotDBPartition}, base.Slot2Bytes(slot))
+}
+
+// WriteRestoreInProgressRecord marks the database as having a restore in progress
+func WriteRestoreInProgressRecord(w common.KVWriter) {
+	w.Set([]byte{restoreInProgressDBPartition}, []byte{1})
+}
+
+// DeleteRestoreInProgressRecord removes the restore-in-progress marker
+func DeleteRestoreInProgressRecord(w common.KVWriter) {
+	w.Set([]byte{restoreInProgressDBPartition}, nil)
+}
+
+// IsRestoreInProgress checks if a restore was interrupted (database is corrupted)
+func IsRestoreInProgress(store common.KVReader) bool {
+	bin := store.Get([]byte{restoreInProgressDBPartition})
+	return len(bin) > 0
 }
 
 // FetchLatestCommittedSlot fetches the latest recorded slot
@@ -174,6 +191,7 @@ func iterateRootRecordsOfParticularSlots(store common.Traversable, fun func(bran
 func IterateRootRecords(store common.Traversable, fun func(branchTxID base.TransactionID, rootData RootRecord) bool, optSlot ...uint32) {
 	if len(optSlot) == 0 {
 		iterateAllRootRecords(store, fun)
+		return
 	}
 	iterateRootRecordsOfParticularSlots(store, fun, optSlot)
 }
@@ -551,7 +569,7 @@ func FindLatestReliableBranchAndNSlotsBack(store StateStoreReader, n int, fracti
 func GetMainChain(store StateStoreReader, fraction global.Fraction, max ...int) ([]*BranchData, error) {
 	lrb := FindLatestReliableBranch(store, fraction)
 	if lrb == nil {
-		return nil, fmt.Errorf("can't find latest reliable brancg")
+		return nil, fmt.Errorf("can't find latest reliable branch")
 	}
 	ret := make([]*BranchData, 0)
 	IterateBranchChainBack(store, lrb, func(branchID *base.TransactionID, branch *BranchData) bool {

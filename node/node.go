@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl/slicepool"
+	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -34,7 +35,6 @@ type (
 		peers                     *peering.Peers
 		sequencer                 *sequencer.Sequencer
 		workflow                  *workflow.Workflow
-		stopOnce                  sync.Once
 		workProcessesStopStepChan chan struct{}
 		dbClosedWG                sync.WaitGroup
 		started                   time.Time
@@ -130,6 +130,12 @@ func (p *ProximaNode) Start() {
 	err := util.CatchPanicOrError(func() error {
 		initStep = "startMetrics"
 		p.startMetrics()
+		initStep = "checkAndRestoreOnStartup"
+		if restored, err := state_cleanup.CheckAndRestoreOnStartup(p.Global); err != nil {
+			return fmt.Errorf("state cleanup restore failed: %w", err)
+		} else if restored {
+			p.Log().Infof("state restored from snapshot, continuing with normal startup")
+		}
 		initStep = "initMultiStateLedger"
 		p.initMultiStateLedger()
 		initStep = "initTxStore"

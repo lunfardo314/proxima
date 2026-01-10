@@ -7,7 +7,7 @@ import (
 )
 
 func TestSyncCounters(t *testing.T) {
-	sc := NewSynCounters()
+	sc := NewSyncCounters()
 
 	sc.Add("n25", 5)
 	sc.Inc("n1")

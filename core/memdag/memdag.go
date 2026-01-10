@@ -52,8 +52,7 @@ type (
 	}
 
 	metrics struct {
-		numVerticesGauge  prometheus.Gauge
-		stateReadersGauge prometheus.Gauge
+		numVerticesGauge prometheus.Gauge
 	}
 )
 
@@ -263,8 +262,8 @@ func (d *MemDAG) EvidenceBranchSlot(s uint32, isHealthy bool) {
 // Node is out of sync if current slots are behind from now
 // Being synced or not is subjective
 func (d *MemDAG) LatestBranchSlots() (slot, healthySlot uint32, synced bool) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
 
 	if d.latestBranchSlot == 0 {
 		d.latestBranchSlot = multistate.FetchLatestCommittedSlot(d.StateStore())
@@ -329,7 +328,7 @@ func (d *MemDAG) Vertices() []*vertex.WrappedTx {
 	return ret
 }
 
-func (d *MemDAG) VerticesWitExpirationFlag() map[*vertex.WrappedTx]bool {
+func (d *MemDAG) VerticesWithExpirationFlag() map[*vertex.WrappedTx]bool {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
@@ -371,9 +370,5 @@ func (d *MemDAG) registerMetrics() {
 		Name: "proxima_memDAG_numVerticesGauge",
 		Help: "number of vertices in the memDAG",
 	})
-	d.stateReadersGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_memDAG_numStateReaders",
-		Help: "number of cached state readers in the memDAG",
-	})
-	d.MetricsRegistry().MustRegister(d.numVerticesGauge, d.stateReadersGauge)
+	d.MetricsRegistry().MustRegister(d.numVerticesGauge)
 }
