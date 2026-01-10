@@ -331,4 +331,167 @@ This section maps the design to existing code locations, enabling a cold restart
 
 ## Implementation Phases
 
-_To be defined after task document is finalized._
+**Decisions made:**
+- Storage layer first, then L(slot)
+- No migration path - clean testnet reset
+- Unit tests with increasing coverage/complexity
+- Small commits
+
+---
+
+### Phase 1: Storage Layer (DB Partition for Upgrades)
+
+**Status:** ✅ Complete (fe98f945)
+
+**Goal:** Create DB partition to store compiled library YAMLs keyed by upgrade slot.
+
+**Tasks:**
+- [x] 1.1 Add new DB partition constant in `multistate/roots.go`
+- [x] 1.2 Create read/write functions for upgrade library records
+- [x] 1.3 Create accessor functions: `GetLibraryForSlot()`, `WriteLibrary()`, `IterateLibraries()`
+- [x] 1.4 Unit tests for storage layer
+
+**Files to modify:**
+- `ledger/multistate/roots.go` - Add partition, read/write functions
+- `ledger/multistate/upgrades.go` - New file for upgrade storage logic
+- `ledger/multistate/upgrades_test.go` - Unit tests
+
+---
+
+### Phase 2: L(slot) with Caching
+
+**Status:** ⏳ Pending
+
+**Goal:** Modify library access to be slot-aware with lazy loading and caching.
+
+**Tasks:**
+- [ ] 2.1 Add `LibraryCache` structure with slot→library mapping
+- [ ] 2.2 Modify `L()` → `L(slot)` signature
+- [ ] 2.3 Implement lazy loading from DB partition
+- [ ] 2.4 Add cache for recently used library versions
+- [ ] 2.5 Update all `L()` call sites to pass slot parameter
+- [ ] 2.6 Unit tests for caching behavior
+
+**Files to modify:**
+- `ledger/lib_singleton.go` - Main changes
+- All files calling `L()` - Update to `L(slot)`
+
+---
+
+### Phase 3: Genesis Changes
+
+**Status:** ⏳ Pending
+
+**Goal:** Remove library from trie root; add upgrade UTXO at genesis.
+
+**Tasks:**
+- [ ] 3.1 Modify `CommitEmptyRootWithLedgerIdentity()` to store only genesis time + description
+- [ ] 3.2 Store library in upgrade DB partition at genesis (slot 0)
+- [ ] 3.3 Create upgrade commitment UTXO (3rd genesis UTXO)
+- [ ] 3.4 Define synthetic OutputID format for upgrade UTXOs
+- [ ] 3.5 Update `ScanGenesisState()` to load library from DB partition
+- [ ] 3.6 Unit tests for genesis with upgrade UTXO
+
+**Files to modify:**
+- `ledger/multistate/genesis.go`
+- `ledger/multistate/state.go`
+
+---
+
+### Phase 4: Upgrade UTXO Mechanics
+
+**Status:** ⏳ Pending
+
+**Goal:** Implement upgrade UTXO creation and verification.
+
+**Tasks:**
+- [ ] 4.1 Define upgrade UTXO constraint format
+- [ ] 4.2 Implement synthetic OutputID generation for upgrade slots
+- [ ] 4.3 Implement upgrade UTXO verification
+- [ ] 4.4 Unit tests for upgrade UTXO mechanics
+
+**Files to modify:**
+- `ledger/upgrade_utxo.go` - New file
+- `ledger/constraints.go` or similar
+
+---
+
+### Phase 5: Branch Production Integration
+
+**Status:** ⏳ Pending
+
+**Goal:** Inject upgrade UTXOs during branch production when crossing upgrade slots.
+
+**Tasks:**
+- [ ] 5.1 Check for pending upgrades during branch production
+- [ ] 5.2 Inject upgrade UTXO into branch mutations if needed
+- [ ] 5.3 Use correct library version for validation
+- [ ] 5.4 Integration tests
+
+**Files to modify:**
+- `core/attacher/` - Branch production
+- `ledger/multistate/mutate.go`
+
+---
+
+### Phase 6: Snapshot Format
+
+**Status:** ⏳ Pending
+
+**Goal:** Include upgrade library YAMLs in snapshots.
+
+**Tasks:**
+- [ ] 6.1 Add upgrade libraries section to snapshot format
+- [ ] 6.2 Update snapshot creation to include all upgrade YAMLs
+- [ ] 6.3 Update snapshot restore to populate DB partition
+- [ ] 6.4 Unit tests for snapshot round-trip
+
+**Files to modify:**
+- `ledger/multistate/snapshot.go`
+
+---
+
+### Phase 7: Transaction Validation
+
+**Status:** ⏳ Pending
+
+**Goal:** Use slot-appropriate library version for transaction validation.
+
+**Tasks:**
+- [ ] 7.1 Pass slot to library access in validation code
+- [ ] 7.2 Ensure historical transactions use correct library version
+- [ ] 7.3 Integration tests with multiple library versions
+
+**Files to modify:**
+- `ledger/transaction/validate.go`
+- `core/attacher/*.go`
+
+---
+
+### Phase 8: API and CLI
+
+**Status:** ⏳ Pending
+
+**Goal:** Expose upgrade information through API and CLI.
+
+**Tasks:**
+- [ ] 8.1 API endpoint for upgrade history
+- [ ] 8.2 API endpoint for current library version
+- [ ] 8.3 Proxi CLI commands for upgrade info
+- [ ] 8.4 Update existing CLI commands for new storage
+
+**Files to modify:**
+- `api/server/server.go`
+- `proxi/db_cmd/`
+- `proxi/util_cmd/`
+
+---
+
+## Session State
+
+_Track current progress here between sessions._
+
+**Current Phase:** 2 (L(slot) with Caching)
+**Current Task:** Ready to start 2.1
+**Last Commit:** fe98f945 - Add upgrade library storage layer (Phase 1)
+**Notes:** Phase 1 complete. Storage layer includes constraint enforcement (strictly increasing slots, min 360 slots between upgrades). Ready to implement L(slot) with caching.
