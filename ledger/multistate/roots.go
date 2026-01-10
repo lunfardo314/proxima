@@ -15,13 +15,17 @@ import (
 	"github.com/lunfardo314/unitrie/immutable"
 )
 
-// two additional partitions of the k/v store
+// additional partitions of the k/v store
 const (
 	// rootRecordDBPartition
 	rootRecordDBPartition        = immutable.PartitionOther
 	latestSlotDBPartition        = rootRecordDBPartition + 1
 	earliestSlotDBPartition      = latestSlotDBPartition + 1
 	restoreInProgressDBPartition = earliestSlotDBPartition + 1
+	// upgradeLibraryDBPartition stores compiled library YAMLs keyed by upgrade slot.
+	// Key: partition byte + 4-byte slot (big-endian)
+	// Value: compiled library YAML bytes
+	upgradeLibraryDBPartition = restoreInProgressDBPartition + 1
 )
 
 func WriteRootRecord(w common.KVWriter, branchTxID base.TransactionID, rootData RootRecord) {
