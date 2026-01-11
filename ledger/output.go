@@ -244,6 +244,14 @@ func (o *Output) Clone(buildFun ...func(o *OutputBuilder)) *Output {
 	return &Output{builder.Tuple()}
 }
 
+// CloneRaw creates a copy of the output without validation.
+// Use this for special outputs (like upgrade UTXOs) that don't have standard locks.
+func (o *Output) CloneRaw() *Output {
+	arr, err := tuples.TupleFromBytes(bytes.Clone(o.Bytes()), 256)
+	util.AssertNoError(err)
+	return &Output{arr}
+}
+
 // MustPushConstraint can only be used inside the edit closure
 func (o *OutputBuilder) MustPushConstraint(c []byte) byte {
 	util.Assertf(o.NumConstraints() < 256, "too many constraints")

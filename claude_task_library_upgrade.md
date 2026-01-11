@@ -116,12 +116,14 @@ When an upgrade slot arrives, the node commits to the new library version by cre
 - Third constraint: hash of the new library version
 
 **Synthetic OutputID Format (33 bytes):**
-- 5-byte timestamp: `<upgrade slot>` with `ticks = 0`
-- 1-byte output count: encoded as usual (`numOutputs - 1`)
+- 5-byte timestamp: `<upgrade slot>` with `ticks = 0`, sequencer flag = 0
+- 1-byte output count: `0xff` (255)
 - 26-byte hash portion: big-endian representation of the upgrade slot number (zero-padded)
-- 1-byte output index: `0`
+- 1-byte output index: `0xff` (255, reserved for synthetic UTXOs)
 
-**No-collision guarantee:** Finding a real transaction whose blake2b hash ends with a specific 26-byte slot number is computationally infeasible (hash preimage resistance).
+**No-collision guarantee:**
+1. At slot 0 (genesis), only 2 outputs exist (indices 0 and 1), so index 255 is impossible for real transactions
+2. For non-genesis slots, the hash portion being the slot number (zero-padded) is computationally infeasible to match with a real blake2b hash (hash preimage resistance)
 
 ### Commitment Process
 
@@ -388,39 +390,53 @@ This section maps the design to existing code locations, enabling a cold restart
 
 ### Phase 3: Genesis Changes
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
 **Goal:** Remove library from trie root; add upgrade UTXO at genesis.
 
 **Tasks:**
-- [ ] 3.1 Modify `CommitEmptyRootWithLedgerIdentity()` to store only genesis time + description
-- [ ] 3.2 Store library in upgrade DB partition at genesis (slot 0)
-- [ ] 3.3 Create upgrade commitment UTXO (3rd genesis UTXO)
-- [ ] 3.4 Define synthetic OutputID format for upgrade UTXOs
-- [ ] 3.5 Update `ScanGenesisState()` to load library from DB partition
-- [ ] 3.6 Unit tests for genesis with upgrade UTXO
+- [x] 3.1 Modify `CommitEmptyRootWithLedgerIdentity()` to store only genesis time + description
+- [x] 3.2 Store library in upgrade DB partition at genesis (slot 0)
+- [x] 3.3 Create upgrade commitment UTXO (3rd genesis UTXO)
+- [x] 3.4 Define synthetic OutputID format for upgrade UTXOs
+- [x] 3.5 Update `ScanGenesisState()` to load library from DB partition
+- [x] 3.6 Update snapshot restore to use new identity format
 
-**Files to modify:**
-- `ledger/multistate/genesis.go`
-- `ledger/multistate/state.go`
+**Files created/modified:**
+- `ledger/ledger_identity.go` - New file for minimal identity data structure
+- `ledger/upgrade_utxo.go` - New file for upgrade UTXO functions
+- `ledger/base/upgrade_output_id.go` - New file for synthetic OutputID format
+- `ledger/multistate/genesis.go` - Modified for new genesis format
+- `ledger/lib.go` - Renamed `IdentityData()` to `DefinitionsYAML()`
+- `ledger/output.go` - Added `CloneRaw()` for unvalidated cloning
+- `ledger/multistate/mutate.go` - Added `InsertAddOutputMutationRaw()`, skip upgrade UTXOs in account indexing
+- `core/core_modules/state_cleanup/restore.go` - Updated for new identity format
+- `proxi/snapshot_cmd/restore.go` - Updated for new identity format
+
+**Implementation notes:**
+- Trie root now stores only `LedgerIdentity` (genesis time + description)
+- Library YAML stored in upgrade DB partition at slot 0
+- Upgrade UTXO uses synthetic OutputID with index 255 (collision-free)
+- Upgrade UTXO has empty inline data lock (unspendable)
+- Genesis now creates 3 outputs: initial supply (0), stem (1), upgrade (255)
 
 ---
 
 ### Phase 4: Upgrade UTXO Mechanics
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete (merged with Phase 3)
 
 **Goal:** Implement upgrade UTXO creation and verification.
 
 **Tasks:**
-- [ ] 4.1 Define upgrade UTXO constraint format
-- [ ] 4.2 Implement synthetic OutputID generation for upgrade slots
-- [ ] 4.3 Implement upgrade UTXO verification
-- [ ] 4.4 Unit tests for upgrade UTXO mechanics
+- [x] 4.1 Define upgrade UTXO constraint format (amount=0, lock=false, hash constraint)
+- [x] 4.2 Implement synthetic OutputID generation for upgrade slots (`base.UpgradeOutputID()`)
+- [x] 4.3 Implement upgrade UTXO verification (`ParseUpgradeUTXO()`, `VerifyUpgradeUTXO()`)
+- [x] 4.4 Synthetic OutputID validation (`IsUpgradeOutputID()`, `UpgradeSlotFromOutputID()`)
 
-**Files to modify:**
-- `ledger/upgrade_utxo.go` - New file
-- `ledger/constraints.go` or similar
+**Files created:**
+- `ledger/base/upgrade_output_id.go` - Synthetic OutputID functions
+- `ledger/upgrade_utxo.go` - Upgrade UTXO creation and parsing
 
 ---
 

@@ -77,7 +77,15 @@ func runRestoreCmd(_ *cobra.Command, _ []string) {
 	stateStore := badger_adaptor.New(stateDb)
 	defer func() { _ = stateStore.Close() }()
 
-	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(kvStream.LedgerIDData, stateStore)
+	// Store library YAML in upgrade DB partition at slot 0
+	err = multistate.WriteUpgradeLibrary(stateStore, 0, kvStream.LedgerIDData)
+	glb.AssertNoError(err)
+
+	// Create minimal identity from constants
+	identity := ledger.NewLedgerIdentity(kvStream.LedgerConstants.GenesisTimeUnix, kvStream.LedgerConstants.Description)
+
+	// Initialize empty root with minimal ledger identity
+	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(identity, stateStore)
 	glb.AssertNoError(err)
 
 	trieUpdatable, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, emptyRoot, trieCacheSize)

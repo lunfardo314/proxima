@@ -12,7 +12,7 @@ import (
 type (
 	Library struct {
 		*easyfl.Library[*EvalContext]
-		idData             []byte
+		definitionsYAML    []byte
 		constraintByPrefix map[string]*constraintRecord
 		constraintNames    set.Set[string]
 		locksByName        map[string]LockParser
@@ -20,10 +20,10 @@ type (
 	}
 )
 
-func newLibrary(lib *easyfl.Library[*EvalContext], idData []byte) *Library {
+func newLibrary(lib *easyfl.Library[*EvalContext], definitionsYAML []byte) *Library {
 	ret := &Library{
 		Library:            lib,
-		idData:             idData,
+		definitionsYAML:    definitionsYAML,
 		constraintByPrefix: make(map[string]*constraintRecord),
 		constraintNames:    set.New[string](),
 		locksByName:        make(map[string]LockParser),
@@ -36,9 +36,10 @@ func newBaseLibrary() *Library {
 	return newLibrary(easyfl.NewBaseLibrary[*EvalContext](), nil)
 }
 
-func (lib *Library) IdentityData() []byte {
-	if len(lib.idData) > 0 {
-		return lib.idData
+// DefinitionsYAML returns the compiled library YAML definitions.
+func (lib *Library) DefinitionsYAML() []byte {
+	if len(lib.definitionsYAML) > 0 {
+		return lib.definitionsYAML
 	}
 	return lib.Library.ToYAML(true, "# Proxima library upgraded from EasyFL base")
 }

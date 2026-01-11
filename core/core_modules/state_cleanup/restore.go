@@ -206,8 +206,17 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 		return nil, fmt.Errorf("failed to write restore-in-progress marker: %w", err)
 	}
 
-	// Initialize empty root with ledger identity
-	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(kvStream.LedgerIDData, stateStore)
+	// Store library YAML in upgrade DB partition at slot 0
+	err = multistate.WriteUpgradeLibrary(stateStore, 0, kvStream.LedgerIDData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write library to upgrade partition: %w", err)
+	}
+
+	// Create minimal identity from constants
+	identity := ledger.NewLedgerIdentity(kvStream.LedgerConstants.GenesisTimeUnix, kvStream.LedgerConstants.Description)
+
+	// Initialize empty root with minimal ledger identity
+	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(identity, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to commit empty root: %w", err)
 	}

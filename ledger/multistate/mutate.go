@@ -159,6 +159,15 @@ func (mut *Mutations) InsertAddOutputMutation(id base.OutputID, o *ledger.Output
 	})
 }
 
+// InsertAddOutputMutationRaw inserts an output without validating its lock.
+// Use this for special outputs like upgrade UTXOs that don't have standard locks.
+func (mut *Mutations) InsertAddOutputMutationRaw(id base.OutputID, o *ledger.Output) {
+	mut.mut = append(mut.mut, &mutationAddOutput{
+		ID:     id,
+		Output: o.CloneRaw(),
+	})
+}
+
 func (mut *Mutations) InsertDelOutputMutation(id base.OutputID) {
 	mut.mut = append(mut.mut, &mutationDelOutput{ID: id})
 }
@@ -241,11 +250,14 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 		err = fmt.Errorf("addOutputToTrie: UTXO key should not exist: %s", oid.StringShort())
 		return
 	}
-	for _, accountable := range out.Lock().Accounts() {
-		if trie.Update(makeAccountKey(accountable.AccountID(), oid), []byte{0xff}) {
-			// key should not exist
-			err = fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.StringShort())
-			return
+	// Skip account indexing for upgrade UTXOs (they don't have parseable locks)
+	if !base.IsUpgradeOutputID(oid) {
+		for _, accountable := range out.Lock().Accounts() {
+			if trie.Update(makeAccountKey(accountable.AccountID(), oid), []byte{0xff}) {
+				// key should not exist
+				err = fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.StringShort())
+				return
+			}
 		}
 	}
 	chainConstraint, _ := out.ChainConstraint()
