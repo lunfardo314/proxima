@@ -272,7 +272,10 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 
 	if sleepDuration := time.Until(ledger.ClockTime(startOutput.Timestamp())); sleepDuration > 0 {
 		seq.log.Warnf("will delay start for %v to sync ledger time with the clock", sleepDuration)
-		seq.ClockCatchUpWithLedgerTime(startOutput.Timestamp())
+		if !seq.ClockCatchUpWithLedgerTime(startOutput.Timestamp()) {
+			// interrupted by shutdown
+			return false
+		}
 	}
 	return true
 }
@@ -389,7 +392,11 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 
 	timerStart := time.Now()
-	targetTs := seq.getNextTargetTime()
+	targetTs, ok := seq.getNextTargetTime()
+	if !ok {
+		// interrupted by shutdown
+		return false
+	}
 	seq.newTargetSet()
 
 	if seq.slotData == nil {
@@ -469,14 +476,19 @@ func (seq *Sequencer) doSequencerStep() bool {
 	return true
 }
 
-func (seq *Sequencer) getNextTargetTime() base.LedgerTime {
+// getNextTargetTime returns the next target ledger time for milestone generation.
+// Returns (targetTime, true) on success, or (NilLedgerTime, false) if interrupted by shutdown.
+func (seq *Sequencer) getNextTargetTime() (base.LedgerTime, bool) {
 	// wait to catch up with ledger time
-	seq.ClockCatchUpWithLedgerTime(seq.lastSubmittedTs)
+	if !seq.ClockCatchUpWithLedgerTime(seq.lastSubmittedTs) {
+		// interrupted by shutdown
+		return base.NilLedgerTime, false
+	}
 
 	nowis := ledger.TimeNow()
 
 	if base.DiffTicks(nowis.NextSlotBoundary(), nowis) < int64(ledger.Const.PreBranchConsolidationTicks) {
-		return nowis.NextSlotBoundary()
+		return nowis.NextSlotBoundary(), true
 	}
 
 	var targetAbsoluteMinimum base.LedgerTime
@@ -495,20 +507,20 @@ func (seq *Sequencer) getNextTargetTime() base.LedgerTime {
 	nextSlotBoundary := nowis.NextSlotBoundary()
 
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
-		return targetAbsoluteMinimum
+		return targetAbsoluteMinimum, true
 	}
 	// absolute minimum is before the next slot boundary, take the time now as a baseline
 	minimumTicksAheadFromNow := (seq.config.Pace * 2) / 3 // seq.config.Pace
 	targetAbsoluteMinimum = base.MaximumTime(targetAbsoluteMinimum, nowis.AddTicks(minimumTicksAheadFromNow))
 	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
-		return targetAbsoluteMinimum
+		return targetAbsoluteMinimum, true
 	}
 
 	if targetAbsoluteMinimum.TicksToNextSlotBoundary() <= seq.config.Pace {
-		return base.MaximumTime(nextSlotBoundary, targetAbsoluteMinimum)
+		return base.MaximumTime(nextSlotBoundary, targetAbsoluteMinimum), true
 	}
 
-	return targetAbsoluteMinimum
+	return targetAbsoluteMinimum, true
 }
 
 const disconnectTolerance = 4 * time.Second

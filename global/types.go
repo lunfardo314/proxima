@@ -65,7 +65,7 @@ type (
 		Ctx() context.Context // global context of the node. Canceling means stopping the node
 		Stop()
 		IsShuttingDown() bool
-		ClockCatchUpWithLedgerTime(ts base.LedgerTime)
+		ClockCatchUpWithLedgerTime(ts base.LedgerTime) bool
 		MarkWorkProcessStarted(name string)
 		MarkWorkProcessStopped(name string)
 		RepeatInBackground(name string, period time.Duration, fun func() bool, skipFirst ...bool) // runs background goroutine

@@ -163,7 +163,10 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 			w.IncCounter("wait")
 			defer w.DecCounter("wait")
 
-			w.ClockCatchUpWithLedgerTime(txid.Timestamp())
+			if !w.ClockCatchUpWithLedgerTime(txid.Timestamp()) {
+				// interrupted by shutdown
+				return
+			}
 
 			w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
 
