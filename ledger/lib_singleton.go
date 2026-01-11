@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"crypto/ed25519"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -231,6 +232,38 @@ func (it *singleLibraryIterator) IterateKeys(fun func(k []byte) bool) {
 	it.done = true
 	key := []byte{upgradeLibraryDBPartition, 0, 0, 0, 0}
 	fun(key)
+}
+
+// GetAllUpgradeSlots returns all upgrade slots up to and including maxSlot.
+// The slots are returned in ascending order.
+func GetAllUpgradeSlots(maxSlot uint32) []uint32 {
+	libraryCacheMutex.RLock()
+	defer libraryCacheMutex.RUnlock()
+
+	if libraryCache == nil || libraryCache.store == nil {
+		return nil
+	}
+
+	var slots []uint32
+	prefix := []byte{upgradeLibraryDBPartition}
+	libraryCache.store.Iterator(prefix).Iterate(func(k, v []byte) bool {
+		if len(k) != 5 {
+			return true // skip malformed entries
+		}
+		slot, err := base.SlotFromBytes(k[1:])
+		util.AssertNoError(err)
+
+		if slot <= maxSlot {
+			slots = append(slots, slot)
+		}
+		return true
+	})
+
+	sort.Slice(slots, func(i, j int) bool {
+		return slots[i] < slots[j]
+	})
+
+	return slots
 }
 
 // ResetForTesting clears the ledger singleton to allow re-initialization.

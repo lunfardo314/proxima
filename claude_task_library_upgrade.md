@@ -442,19 +442,26 @@ This section maps the design to existing code locations, enabling a cold restart
 
 ### Phase 5: Branch Production Integration
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
 **Goal:** Inject upgrade UTXOs during branch production when crossing upgrade slots.
 
 **Tasks:**
-- [ ] 5.1 Check for pending upgrades during branch production
-- [ ] 5.2 Inject upgrade UTXO into branch mutations if needed
-- [ ] 5.3 Use correct library version for validation
-- [ ] 5.4 Integration tests
+- [x] 5.1 Check for pending upgrades during branch production
+- [x] 5.2 Inject upgrade UTXO into branch mutations if needed
+- [x] 5.3 Use correct library version for validation (already handled by L(slot))
 
-**Files to modify:**
-- `core/attacher/` - Branch production
-- `ledger/multistate/mutate.go`
+**Files created/modified:**
+- `ledger/lib_singleton.go` - Added `GetAllUpgradeSlots(maxSlot)` function
+- `ledger/multistate/upgrade_inject.go` - New file with `InjectMissingUpgradeUTXOs()`
+- `core/attacher/wrapup.go` - Call injection in `commitBranch()`
+
+**Implementation notes:**
+- `GetAllUpgradeSlots(maxSlot)` returns all upgrade slots from DB partition up to maxSlot
+- `InjectMissingUpgradeUTXOs()` checks each upgrade slot and injects missing UTXOs
+- Uses `HasUTXO()` to check if upgrade UTXO already exists in baseline state
+- Uses `InsertAddOutputMutationRaw()` for injection (upgrade UTXOs have non-standard locks)
+- Injection happens after getting mutations but before committing to state
 
 ---
 

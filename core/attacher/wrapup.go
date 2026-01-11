@@ -42,6 +42,9 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.BaselineSugaredStateReader().Root())
 
+	// Inject any missing upgrade UTXOs for upgrade slots up to this branch
+	multistate.InjectMissingUpgradeUTXOs(muts, a.BaselineSugaredStateReader(), a.vid.Slot())
+
 	// GC-ing txids old enough. This is a deterministic operation on the state
 	// TODO move constant gcTxIDsFromStateSlotsBack to ledger constants
 
