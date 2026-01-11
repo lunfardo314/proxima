@@ -331,12 +331,33 @@ func (l *Global) Infof2(template string, args ...any) {
 	l.InfofAtLevel(2, template, args...)
 }
 
-func (l *Global) ClockCatchUpWithLedgerTime(ts base.LedgerTime) {
-	time.Sleep(time.Until(ledger.ClockTime(ts)))
+// ClockCatchUpWithLedgerTime waits until the wall clock catches up with the given ledger time.
+// It is context-aware and will return early if the global context is cancelled (shutdown).
+// Returns true if completed normally (clock caught up), false if interrupted by shutdown.
+func (l *Global) ClockCatchUpWithLedgerTime(ts base.LedgerTime) bool {
+	targetTime := ledger.ClockTime(ts)
+	sleepDuration := time.Until(targetTime)
 
-	for ledger.TimeNow().BeforeOrEqual(ts) {
-		time.Sleep(5 * time.Millisecond)
+	if sleepDuration > 0 {
+		timer := time.NewTimer(sleepDuration)
+		select {
+		case <-l.ctx.Done():
+			timer.Stop()
+			return false
+		case <-timer.C:
+		}
 	}
+
+	// Fine-grained polling loop with context check
+	for ledger.TimeNow().BeforeOrEqual(ts) {
+		select {
+		case <-l.ctx.Done():
+			return false
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	return true
 }
 
 func (l *Global) IncCounter(name string) {
