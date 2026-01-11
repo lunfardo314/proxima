@@ -85,8 +85,9 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 	return &OutputBuilder{ret}, nil
 }
 
-func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
-	ret, _, _, err := OutputFromBytesMain(data)
+// OutputFromBytesAtSlot parses an output using the library for the given slot.
+func OutputFromBytesAtSlot(data []byte, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
+	ret, _, _, err := OutputFromBytesMainAtSlot(data, slot)
 	if err != nil {
 		return nil, err
 	}
@@ -98,24 +99,30 @@ func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, 
 	return ret, nil
 }
 
-func OutputFromHexString(hexStr string, validateOpt ...func(*Output) error) (*Output, error) {
+// OutputFromBytes parses an output using the latest library version.
+// Deprecated: Use OutputFromBytesAtSlot for parsing historical outputs.
+func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
+	return OutputFromBytesAtSlot(data, base.MaxSlot, validateOpt...)
+}
+
+// OutputFromHexStringAtSlot parses an output from hex string using the library for the given slot.
+func OutputFromHexStringAtSlot(hexStr string, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
 	data, err := hex.DecodeString(hexStr)
 	if err != nil {
 		return nil, err
 	}
-	ret, _, _, err := OutputFromBytesMain(data)
-	if err != nil {
-		return nil, err
-	}
-	for _, validate := range validateOpt {
-		if err := validate(ret); err != nil {
-			return nil, err
-		}
-	}
-	return ret, nil
+	return OutputFromBytesAtSlot(data, slot, validateOpt...)
 }
 
-func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
+// OutputFromHexString parses an output from hex string using the latest library version.
+// Deprecated: Use OutputFromHexStringAtSlot for parsing historical outputs.
+func OutputFromHexString(hexStr string, validateOpt ...func(*Output) error) (*Output, error) {
+	return OutputFromHexStringAtSlot(hexStr, base.MaxSlot, validateOpt...)
+}
+
+// OutputFromBytesMainAtSlot parses an output using the library for the given slot.
+// Use this when parsing output bytecode that was created at a specific slot.
+func OutputFromBytesMainAtSlot(data []byte, slot uint32) (*Output, Amounts, Lock, error) {
 	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
 	if err != nil {
 		return nil, nil, nil, err
@@ -131,17 +138,23 @@ func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if amount, err = AmountsFromBytes(amountBin); err != nil {
+	if amount, err = AmountsFromBytesAtSlot(amountBin, slot); err != nil {
 		return nil, nil, nil, err
 	}
 	lockBin, err := ret.At(int(ConstraintIndexLock))
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if lock, err = LockFromBytes(lockBin); err != nil {
+	if lock, err = LockFromBytesAtSlot(lockBin, slot); err != nil {
 		return nil, nil, nil, err
 	}
 	return ret, amount, lock, nil
+}
+
+// OutputFromBytesMain parses an output using the latest library version.
+// Deprecated: Use OutputFromBytesMainAtSlot for parsing historical outputs.
+func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
+	return OutputFromBytesMainAtSlot(data, base.MaxSlot)
 }
 
 func (o *Output) ConstraintsRawBytes() [][]byte {
@@ -489,7 +502,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 		c, err := ConstraintFromBytes(data)
 
 		if err != nil {
-			if src, err := L().DecompileBytecode(data); err != nil {
+			if src, err := L(base.MaxSlot).DecompileBytecode(data); err != nil {
 				ret.Add("%s%d: bytecode=%s (%v)", hex.EncodeToString(data), err)
 			} else {
 				ret.Add("%s%d: bytecode=%s (len=%d)", prefix, i, src, len(data))

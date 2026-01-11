@@ -27,7 +27,7 @@ func CommitEmptyRootWithLedgerIdentity(id []byte, store StateStore) (common.VCom
 // The function is dependent on the global singleton of ledger definitions, because
 // origin outputs can be created only with the library
 func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitment) {
-	emptyRoot, err := CommitEmptyRootWithLedgerIdentity(ledger.L().IdentityData(), store)
+	emptyRoot, err := CommitEmptyRootWithLedgerIdentity(ledger.L(base.MaxSlot).IdentityData(), store)
 	util.AssertNoError(err)
 
 	genesisAddr := ledger.AddressED25519FromPublicKey(ledger.Const.GenesisControllerPublicKey)

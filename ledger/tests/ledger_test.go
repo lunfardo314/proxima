@@ -156,9 +156,10 @@ func TestTxID(t *testing.T) {
 	ctx, err := u.TxContextFromBytes(txBytes)
 	require.NoError(t, err)
 
+	lib := ledger.L(base.MaxSlot)
 	txID := ctx.ID()
-	dctx := ledger.L().NewGlobalDataTracePrint(ledger.NewEvalContext(ctx))
-	res, err := ledger.L().EvalFromSource(dctx, "txID")
+	dctx := lib.NewGlobalDataTracePrint(ledger.NewEvalContext(ctx))
+	res, err := lib.EvalFromSource(dctx, "txID")
 
 	require.NoError(t, err)
 	require.EqualValues(t, txID[:], res)
@@ -322,7 +323,7 @@ func TestChain1(t *testing.T) {
 	}
 	t.Run("compile", func(t *testing.T) {
 		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0xffff, z32/1000, z64/2000)"
-		_, _, code, err := ledger.L().CompileExpression(source)
+		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 		origBytecode := ledger.NewChainOrigin(1000, 2000).Bytes()
 		require.EqualValues(t, origBytecode, code)
@@ -401,7 +402,7 @@ func TestChain1(t *testing.T) {
 		initTest()
 
 		const source = "chain(0x0001, 0x0102, 1, 5)"
-		_, _, code, err := ledger.L().CompileExpression(source)
+		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
@@ -859,38 +860,40 @@ func TestChainLock(t *testing.T) {
 }
 
 func TestLocalLibrary(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
 	const source = `
  func fun1 : concat($0,$1)
  func fun2 : fun1(fun1($0,$1), fun1($0,$1))
  func fun3 : fun2($0, $0)
 `
-	libBin, err := ledger.L().Library.CompileLocalLibraryToTuple(source)
+	libBin, err := lib.Library.CompileLocalLibraryToTuple(source)
 	require.NoError(t, err)
 	t.Run("1", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 2, 5)", hex.EncodeToString(libBin))
 		t.Logf("src = '%s', len = %d", src, len(libBin))
-		ledger.L().MustEqual(src, "0x05050505")
+		lib.MustEqual(src, "0x05050505")
 	})
 	t.Run("2", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 0, 5, 6)", hex.EncodeToString(libBin))
 		t.Logf("src = '%s', len = %d", src, len(libBin))
-		ledger.L().MustEqual(src, "0x0506")
+		lib.MustEqual(src, "0x0506")
 	})
 	t.Run("3", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 1, 5, 6)", hex.EncodeToString(libBin))
 		t.Logf("src = '%s', len = %d", src, len(libBin))
-		ledger.L().MustEqual(src, "0x05060506")
+		lib.MustEqual(src, "0x05060506")
 	})
 	t.Run("4", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 3)", hex.EncodeToString(libBin))
 		t.Logf("src = '%s', len = %d", src, len(libBin))
-		ledger.L().MustError(src)
+		lib.MustError(src)
 	})
 }
 
 func TestHashUnlock(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
 	const secretUnlockScript = "func fun1: and" // fun1 always returns true
-	libBin, err := ledger.L().Library.CompileLocalLibraryToTuple(secretUnlockScript)
+	libBin, err := lib.Library.CompileLocalLibraryToTuple(secretUnlockScript)
 	require.NoError(t, err)
 	t.Logf("library size: %d", len(libBin))
 	libHash := blake2b.Sum256(libBin)
@@ -902,7 +905,7 @@ func TestHashUnlock(t *testing.T) {
 	require.NoError(t, err)
 
 	constraintSource := fmt.Sprintf("or(isPathToProducedOutput(at),callLocalLibrary(selfHashUnlock(0x%s), 0))", hex.EncodeToString(libHash[:]))
-	_, _, constraintBin, err := ledger.L().CompileExpression(constraintSource)
+	_, _, constraintBin, err := lib.CompileExpression(constraintSource)
 	require.NoError(t, err)
 	t.Logf("constraint source: %s", constraintSource)
 	t.Logf("constraint size: %d", len(constraintBin))
@@ -1163,15 +1166,16 @@ func TestHashUnlock(t *testing.T) {
 //}
 
 func TestGGG(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
 	t.Logf("now = %d", uint32(time.Now().Unix()))
 	loc, err := time.LoadLocation("UTC")
 	require.NoError(t, err)
 	jan1 := time.Date(2023, 1, 1, 0, 0, 0, 0, loc)
 	t.Logf("Jan 1, 2023 UTC = %d", uint32(jan1.Unix()))
 
-	_, _, bin, err := ledger.L().CompileExpression("amounts(u64/1337)")
+	_, _, bin, err := lib.CompileExpression("amounts(u64/1337)")
 	require.NoError(t, err)
-	prefix, err := ledger.L().ParsePrefixBytecode(bin)
+	prefix, err := lib.ParsePrefixBytecode(bin)
 	require.NoError(t, err)
 	t.Logf("bin = %s, prefix = %s", hex.EncodeToString(bin), hex.EncodeToString(prefix))
 }

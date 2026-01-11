@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
@@ -16,21 +17,22 @@ import (
 
 func TestAmountsBase(t *testing.T) {
 	t.Run("compile", func(t *testing.T) {
+		lib := ledger.L(base.MaxSlot)
 		compFun := func(src string) []byte {
-			_, _, code, err := ledger.L().CompileExpression(src)
+			_, _, code, err := lib.CompileExpression(src)
 			require.NoError(t, err)
-			srcBack, err := ledger.L().DecompileBytecode(code)
+			srcBack, err := lib.DecompileBytecode(code)
 			require.NoError(t, err)
 			t.Logf("\n    src: '%s'\n    bytecode: %s\n    decompiled: '%s'", src, easyfl_util.Fmt(code), srcBack)
 			return code
 		}
 		checkNargs := func(code []byte, nargs string) {
 			src := fmt.Sprintf("parseNumArgs(0x%s)", hex.EncodeToString(code))
-			ledger.L().MustEqual(src, nargs)
+			lib.MustEqual(src, nargs)
 		}
 		checkArg := func(code []byte, idx, val string) {
 			src := fmt.Sprintf("amountAt(0x%s,%s)", hex.EncodeToString(code), idx)
-			ledger.L().MustEqual(src, val)
+			lib.MustEqual(src, val)
 
 		}
 		code := compFun("amounts")

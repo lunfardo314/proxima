@@ -11,6 +11,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -135,8 +136,10 @@ func (a Amounts) AddToVector(vect *[15]int64) (overflow bool) {
 	return
 }
 
-func AmountsFromBytes(data []byte) (Amounts, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data)
+// AmountsFromBytesAtSlot parses an Amounts constraint using the library for the given slot.
+func AmountsFromBytesAtSlot(data []byte, slot uint32) (Amounts, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data)
 	if err != nil {
 		return nil, err
 	}
@@ -155,8 +158,16 @@ func AmountsFromBytes(data []byte) (Amounts, error) {
 	return ret, nil
 }
 
-func TokenBalanceFromAmountsBytes(data []byte) (int64, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data)
+// AmountsFromBytes parses an Amounts constraint using the latest library version.
+// Deprecated: Use AmountsFromBytesAtSlot for parsing historical bytecode.
+func AmountsFromBytes(data []byte) (Amounts, error) {
+	return AmountsFromBytesAtSlot(data, base.MaxSlot)
+}
+
+// TokenBalanceFromAmountsBytesAtSlot parses the token balance using the library for the given slot.
+func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data)
 	if err != nil {
 		return 0, err
 	}
@@ -174,6 +185,12 @@ func TokenBalanceFromAmountsBytes(data []byte) (int64, error) {
 		return 0, fmt.Errorf("TokenBalanceFromAmountsBytes: negative amount")
 	}
 	return int64(ret), nil
+}
+
+// TokenBalanceFromAmountsBytes parses the token balance using the latest library version.
+// Deprecated: Use TokenBalanceFromAmountsBytesAtSlot for parsing historical bytecode.
+func TokenBalanceFromAmountsBytes(data []byte) (int64, error) {
+	return TokenBalanceFromAmountsBytesAtSlot(data, base.MaxSlot)
 }
 
 func registerAmountsConstraint(lib *Library) {

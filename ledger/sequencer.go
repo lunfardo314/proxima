@@ -156,8 +156,9 @@ func (s *SequencerConstraint) Source() string {
 	return fmt.Sprintf(sequencerConstraintTemplate, s.ChainConstraintIndex)
 }
 
-func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+// SequencerConstraintFromBytesAtSlot parses a SequencerConstraint using the library for the given slot.
+func SequencerConstraintFromBytesAtSlot(data []byte, slot uint32) (*SequencerConstraint, error) {
+	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +176,12 @@ func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
 	}, nil
 }
 
+// SequencerConstraintFromBytes parses a SequencerConstraint using the latest library version.
+// Deprecated: Use SequencerConstraintFromBytesAtSlot for parsing historical bytecode.
+func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
+	return SequencerConstraintFromBytesAtSlot(data, base.MaxSlot)
+}
+
 func registerSequencerConstraint(lib *Library) {
 	lib.mustRegisterConstraint(SequencerConstraintName, 1, func(data []byte) (Constraint, error) {
 		return SequencerConstraintFromBytes(data)
@@ -183,7 +190,7 @@ func registerSequencerConstraint(lib *Library) {
 
 func initTestSequencerConstraint() {
 	example := NewSequencerConstraint(4)
-	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, _, args, err := L(base.MaxSlot).ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	util.Assertf(sym == SequencerConstraintName, "sym == SequencerConstraintName")
 

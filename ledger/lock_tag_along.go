@@ -19,8 +19,9 @@ const (
 	tagAlongLockTemplateHR     = TagAlongLockName + "(target=%s, sender=%s)"
 )
 
-func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
+// TagAlongLockFromBytesAtSlot parses a TagAlongLock using the library for the given slot.
+func TagAlongLockFromBytesAtSlot(data []byte, slot uint32) (*TagAlongLock, error) {
+	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -34,8 +35,7 @@ func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
 		return nil, err
 	}
 
-	//senderBin := easyfl.StripDataPrefix(args[1])
-	sender, err := AccountableFromBytes(args[1])
+	sender, err := AccountableFromBytesAtSlot(args[1], slot)
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +44,12 @@ func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
 		TargetSequencerID: chainID,
 		Sender:            sender,
 	}, nil
+}
+
+// TagAlongLockFromBytes parses a TagAlongLock using the latest library version.
+// Deprecated: Use TagAlongLockFromBytesAtSlot for parsing historical bytecode.
+func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
+	return TagAlongLockFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (t *TagAlongLock) Source() string {
@@ -112,7 +118,7 @@ func initTestTagAlongLockConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(tagAlongLockBack, example), "inconsistency "+TagAlongLockName)
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
+	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

@@ -22,8 +22,9 @@ func EnsureStopDelegationFromDelegationID(chainID base.ChainID) EnsureStopDelega
 	return EnsureStopDelegation{chainID}
 }
 
-func EnsureStopDelegationFromBytes(data []byte) (*EnsureStopDelegation, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+// EnsureStopDelegationFromBytesAtSlot parses an EnsureStopDelegation constraint using the library for the given slot.
+func EnsureStopDelegationFromBytesAtSlot(data []byte, slot uint32) (*EnsureStopDelegation, error) {
+	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, fmt.Errorf("EnsureStopDelegationFromBytes: %w", err)
 	}
@@ -35,6 +36,12 @@ func EnsureStopDelegationFromBytes(data []byte) (*EnsureStopDelegation, error) {
 		return nil, err
 	}
 	return &EnsureStopDelegation{delegationID}, nil
+}
+
+// EnsureStopDelegationFromBytes parses an EnsureStopDelegation constraint using the latest library version.
+// Deprecated: Use EnsureStopDelegationFromBytesAtSlot for parsing historical bytecode.
+func EnsureStopDelegationFromBytes(data []byte) (*EnsureStopDelegation, error) {
+	return EnsureStopDelegationFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (d *EnsureStopDelegation) Source() string {

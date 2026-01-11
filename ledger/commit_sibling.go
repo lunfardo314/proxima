@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
@@ -35,8 +36,10 @@ func NewCommitToSibling(siblingIndex byte, siblingHash []byte) *CommitToSibling 
 	}
 }
 
-func CommitToSiblingFromBytes(data []byte) (*CommitToSibling, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
+// CommitToSiblingFromBytesAtSlot parses a CommitToSibling constraint using the library for the given slot.
+func CommitToSiblingFromBytesAtSlot(data []byte, slot uint32) (*CommitToSibling, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +55,12 @@ func CommitToSiblingFromBytes(data []byte) (*CommitToSibling, error) {
 		return nil, fmt.Errorf("wrong sibling hash")
 	}
 	return NewCommitToSibling(idxBin[0], hash), nil
+}
+
+// CommitToSiblingFromBytes parses a CommitToSibling constraint using the latest library version.
+// Deprecated: Use CommitToSiblingFromBytesAtSlot for parsing historical bytecode.
+func CommitToSiblingFromBytes(data []byte) (*CommitToSibling, error) {
+	return CommitToSiblingFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (cs *CommitToSibling) Source() string {
@@ -84,7 +93,7 @@ func initTestCommitToSiblingConstraint() {
 	util.Assertf(csBack.SiblingIndex == 2, "inconsistency "+CommitToSiblingName)
 	util.Assertf(bytes.Equal(csBack.SiblingHash, h[:]), "inconsistency "+CommitToSiblingName)
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
+	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

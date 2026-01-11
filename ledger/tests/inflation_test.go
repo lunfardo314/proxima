@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/blake2b"
@@ -89,8 +90,9 @@ func TestInflationFun(t *testing.T) {
 }
 
 func TestInflation(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
 	t.Logf("slotInflationBase: %s", util.Th(ledger.Const.SlotInflationBase))
-	r, err := ledger.L().EvalFromSource(nil, "div(constInitialSupply, constSlotInflationBase)")
+	r, err := lib.EvalFromSource(nil, "div(constInitialSupply, constSlotInflationBase)")
 	require.NoError(t, err)
 	minAmountOnSlot := func(n int) uint64 {
 		return binary.BigEndian.Uint64(r) + uint64(n)
@@ -98,7 +100,7 @@ func TestInflation(t *testing.T) {
 	t.Logf("div(constInitialSupply, constSlotInflationBase): %s", util.Th(minAmountOnSlot(0)))
 
 	t.Run("1", func(t *testing.T) {
-		ledger.L().MustEqual("constGenesisTimeUnix", fmt.Sprintf("u64/%d", ledger.Const.GenesisTimeUnix))
+		lib.MustEqual("constGenesisTimeUnix", fmt.Sprintf("u64/%d", ledger.Const.GenesisTimeUnix))
 	})
 }
 

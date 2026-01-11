@@ -52,8 +52,9 @@ func (t Timelock) Source() string {
 	return fmt.Sprintf(timelockTemplate, t)
 }
 
-func TimelockFromBytes(data []byte) (Timelock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+// TimelockFromBytesAtSlot parses a Timelock constraint using the library for the given slot.
+func TimelockFromBytesAtSlot(data []byte, slot uint32) (Timelock, error) {
+	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return NilTimelock, err
 	}
@@ -68,6 +69,12 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 	return Timelock(ret), nil
 }
 
+// TimelockFromBytes parses a Timelock constraint using the latest library version.
+// Deprecated: Use TimelockFromBytesAtSlot for parsing historical bytecode.
+func TimelockFromBytes(data []byte) (Timelock, error) {
+	return TimelockFromBytesAtSlot(data, base.MaxSlot)
+}
+
 func registerTimeLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(TimelockName, 1, func(data []byte) (Constraint, error) {
 		return TimelockFromBytes(data)
@@ -75,8 +82,9 @@ func registerTimeLockConstraint(lib *Library) {
 }
 
 func initTestTimelockConstraint() {
+	lib := L(base.MaxSlot)
 	example := NewTimelock(1337)
-	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	tlBin := easyfl.StripDataPrefix(args[0])
 	e, err := base.SlotFromBytes(tlBin)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -55,15 +56,17 @@ func registerTotalAmountConstraint(lib *Library) {
 
 func initTestTotalAmountConstraint() {
 	// sanity check
+	lib := L(base.MaxSlot)
 	example := NewTotalAmount(1337)
-	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(example.Bytes(), 1)
 	util.AssertNoError(err)
 	totalAmountBin := easyfl.StripDataPrefix(args[0])
 	util.Assertf(sym == TotalAmountConstraintName && len(totalAmountBin) == 8 && binary.BigEndian.Uint64(totalAmountBin) == 1337, "'total' constraint consistency check failed")
 }
 
-func TotalAmountFromBytes(data []byte) (TotalAmount, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data)
+// TotalAmountFromBytesAtSlot parses a TotalAmount constraint using the library for the given slot.
+func TotalAmountFromBytesAtSlot(data []byte, slot uint32) (TotalAmount, error) {
+	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data)
 	if err != nil {
 		return 0, err
 	}
@@ -75,6 +78,12 @@ func TotalAmountFromBytes(data []byte) (TotalAmount, error) {
 		return 0, fmt.Errorf("wrong data length")
 	}
 	return TotalAmount(binary.BigEndian.Uint64(amountBin)), nil
+}
+
+// TotalAmountFromBytes parses a TotalAmount constraint using the latest library version.
+// Deprecated: Use TotalAmountFromBytesAtSlot for parsing historical bytecode.
+func TotalAmountFromBytes(data []byte) (TotalAmount, error) {
+	return TotalAmountFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (a TotalAmount) Amount() uint64 {

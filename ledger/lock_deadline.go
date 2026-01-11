@@ -79,12 +79,14 @@ func initTestDeadlineLockConstraint() {
 	util.Assertf(EqualConstraints(lockBack.ConstraintMain, addr0), "inconsistency "+DeadlineLockName)
 	util.Assertf(EqualConstraints(lockBack.ConstraintExpiry, addr1), "inconsistency "+DeadlineLockName)
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
+	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 
-func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 3)
+// DeadlineLockFromBytesAtSlot parses a DeadlineLock using the library for the given slot.
+func DeadlineLockFromBytesAtSlot(data []byte, slot uint32) (*DeadlineLock, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 3)
 	if err != nil {
 		return nil, err
 	}
@@ -93,18 +95,24 @@ func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
 	if sym != DeadlineLockName || len(slotBin) != base.SlotByteLength {
 		return nil, fmt.Errorf("can't parse deadline lock")
 	}
-	slot, err := base.SlotFromBytes(slotBin)
+	parsedSlot, err := base.SlotFromBytes(slotBin)
 	if err != nil {
 		return nil, err
 	}
-	ret.Deadline = slot
-	if ret.ConstraintMain, err = AccountableFromBytes(args[1]); err != nil {
+	ret.Deadline = parsedSlot
+	if ret.ConstraintMain, err = AccountableFromBytesAtSlot(args[1], slot); err != nil {
 		return nil, err
 	}
-	if ret.ConstraintExpiry, err = AccountableFromBytes(args[2]); err != nil {
+	if ret.ConstraintExpiry, err = AccountableFromBytesAtSlot(args[2], slot); err != nil {
 		return nil, err
 	}
 	return ret, nil
+}
+
+// DeadlineLockFromBytes parses a DeadlineLock using the latest library version.
+// Deprecated: Use DeadlineLockFromBytesAtSlot for parsing historical bytecode.
+func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
+	return DeadlineLockFromBytesAtSlot(data, base.MaxSlot)
 }
 
 const deadlineLockSource = `

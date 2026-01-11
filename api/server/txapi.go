@@ -52,7 +52,7 @@ func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _, bytecode, err := ledger.L().CompileExpression(lst[0])
+	_, _, bytecode, err := ledger.L(base.MaxSlot).CompileExpression(lst[0])
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("EasyFL compile error: '%v'", err))
 		return
@@ -83,7 +83,7 @@ func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	src, err := ledger.L().DecompileBytecode(bytecode)
+	src, err := ledger.L(base.MaxSlot).DecompileBytecode(bytecode)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("can't decompile bytecode: '%v'", err))
 		return

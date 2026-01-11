@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -111,18 +112,32 @@ func (lib *Library) runInlineTests() {
 	}
 }
 
-func NameByPrefix(prefix []byte) (string, bool) {
-	if ret, found := L().constraintByPrefix[string(prefix)]; found {
+// NameByPrefixAtSlot looks up constraint name from bytecode prefix using the library for the given slot.
+// Use this when parsing bytecode that was created at a specific slot.
+func NameByPrefixAtSlot(prefix []byte, slot uint32) (string, bool) {
+	lib := L(slot)
+	if ret, found := lib.constraintByPrefix[string(prefix)]; found {
 		return ret.name, true
 	}
 	return "", false
 }
 
-func constraintParserByPrefix(prefix []byte) (ConstraintParser, bool) {
-	if ret, found := L().constraintByPrefix[string(prefix)]; found {
+// NameByPrefix looks up constraint name using the latest library version.
+// Deprecated: Use NameByPrefixAtSlot for parsing historical bytecode.
+func NameByPrefix(prefix []byte) (string, bool) {
+	return NameByPrefixAtSlot(prefix, base.MaxSlot)
+}
+
+func constraintParserByPrefixAtSlot(prefix []byte, slot uint32) (ConstraintParser, bool) {
+	lib := L(slot)
+	if ret, found := lib.constraintByPrefix[string(prefix)]; found {
 		return ret.parser, true
 	}
 	return nil, false
+}
+
+func constraintParserByPrefix(prefix []byte) (ConstraintParser, bool) {
+	return constraintParserByPrefixAtSlot(prefix, base.MaxSlot)
 }
 
 func mustBinFromSource(src string) []byte {
@@ -132,7 +147,7 @@ func mustBinFromSource(src string) []byte {
 }
 
 func binFromSource(src string) ([]byte, error) {
-	_, _, binCode, err := L().CompileExpression(src)
+	_, _, binCode, err := L(base.MaxSlot).CompileExpression(src)
 	return binCode, err
 }
 
@@ -146,57 +161,84 @@ func EqualConstraints(l1, l2 Constraint) bool {
 	return bytes.Equal(l1.Bytes(), l2.Bytes())
 }
 
-func ConstraintFromBytes(data []byte) (Constraint, error) {
-	prefix, err := L().ParsePrefixBytecode(data)
+// ConstraintFromBytesAtSlot parses a constraint from bytecode using the library for the given slot.
+// Use this when parsing bytecode that was created at a specific slot.
+func ConstraintFromBytesAtSlot(data []byte, slot uint32) (Constraint, error) {
+	lib := L(slot)
+	prefix, err := lib.ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}
 
-	if parser, ok := constraintParserByPrefix(prefix); ok {
+	if parser, ok := constraintParserByPrefixAtSlot(prefix, slot); ok {
 		return parser(data)
 	}
 	return NewGeneralScript(data), nil
+}
+
+// ConstraintFromBytes parses a constraint using the latest library version.
+// Deprecated: Use ConstraintFromBytesAtSlot for parsing historical bytecode.
+func ConstraintFromBytes(data []byte) (Constraint, error) {
+	return ConstraintFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (acc AccountID) Bytes() []byte {
 	return acc
 }
 
-func LockFromBytes(data []byte) (Lock, error) {
-	prefix, err := L().ParsePrefixBytecode(data)
+// LockFromBytesAtSlot parses a lock from bytecode using the library for the given slot.
+// Use this when parsing bytecode that was created at a specific slot.
+func LockFromBytesAtSlot(data []byte, slot uint32) (Lock, error) {
+	lib := L(slot)
+	prefix, err := lib.ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}
-	name, ok := NameByPrefix(prefix)
+	name, ok := NameByPrefixAtSlot(prefix, slot)
 	if !ok {
-		return nil, fmt.Errorf("LockFromBytes: unknown constraint with prefix '%s'", easyfl_util.Fmt(prefix))
+		return nil, fmt.Errorf("LockFromBytesAtSlot: unknown constraint with prefix '%s'", easyfl_util.Fmt(prefix))
 	}
 
-	parser, ok := L().locksByName[name]
+	parser, ok := lib.locksByName[name]
 	if !ok {
-		return nil, fmt.Errorf("LockFromBytes: unknown lock '%s'", name)
+		return nil, fmt.Errorf("LockFromBytesAtSlot: unknown lock '%s'", name)
 	}
 	return parser(data)
 }
 
-func AccountableFromBytes(data []byte) (Accountable, error) {
-	prefix, err := L().ParsePrefixBytecode(data)
+// LockFromBytes parses a lock using the latest library version.
+// Deprecated: Use LockFromBytesAtSlot for parsing historical bytecode.
+func LockFromBytes(data []byte) (Lock, error) {
+	return LockFromBytesAtSlot(data, base.MaxSlot)
+}
+
+// AccountableFromBytesAtSlot parses an Accountable from bytecode using the library for the given slot.
+// Use this when parsing bytecode that was created at a specific slot.
+func AccountableFromBytesAtSlot(data []byte, slot uint32) (Accountable, error) {
+	lib := L(slot)
+	prefix, err := lib.ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
 	}
-	name, ok := NameByPrefix(prefix)
+	name, ok := NameByPrefixAtSlot(prefix, slot)
 	if !ok {
 		return nil, fmt.Errorf("unknown constraint with prefix '%s'", easyfl_util.Fmt(prefix))
 	}
 	switch name {
 	case AddressED25519Name:
-		return AddressED25519FromBytes(data)
+		return AddressED25519FromBytesAtSlot(data, slot)
 	case ChainLockName:
-		return ChainLockFromBytes(data)
+		return ChainLockFromBytesAtSlot(data, slot)
 	case StemLockName:
-		return StemLockFromBytes(data)
+		return StemLockFromBytesAtSlot(data, slot)
 	}
 	return nil, fmt.Errorf("not a indexable constraint '%s'", name)
+}
+
+// AccountableFromBytes parses an Accountable using the latest library version.
+// Deprecated: Use AccountableFromBytesAtSlot for parsing historical bytecode.
+func AccountableFromBytes(data []byte) (Accountable, error) {
+	return AccountableFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func AccountableFromSource(src string) (Accountable, error) {

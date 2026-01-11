@@ -55,7 +55,7 @@ type (
 )
 
 func runChainStats() {
-	maxInflation := ledger.L().BranchInflationBonusBaseFromSource()
+	maxInflation := ledger.L(base.MaxSlot).BranchInflationBonusBaseFromSource()
 	buckets := make([]int, _numBuckets)
 	sequencers := make(map[base.ChainID]*seqStats)
 	allBibs := make([]uint64, 0, 100000)

@@ -241,7 +241,7 @@ func (o *DelegationOutput) RequiredMinimumInflationAdvanceOriginal(txTs base.Led
 		o.RequiredInflationShare,
 	)
 
-	resBin, err := L().EvalFromSource(nil, src)
+	resBin, err := L(base.MaxSlot).EvalFromSource(nil, src)
 	util.AssertNoError(err)
 
 	return binary.BigEndian.Uint64(resBin)
@@ -438,7 +438,7 @@ func (c *Constants) EpochOffsetSlotsDirect(targetID base.ChainID) uint32 {
 
 func (c *Constants) EpochOffsetSlotsFromSource(targetID base.ChainID) uint32 {
 	src := fmt.Sprintf("delegationEpochOffset(0x%s)", targetID.StringHex())
-	resBin, err := L().EvalFromSource(nil, src)
+	resBin, err := L(base.MaxSlot).EvalFromSource(nil, src)
 	util.AssertNoError(err)
 	return uint32(easyfl_util.MustUint64FromBytes(resBin))
 }
@@ -468,7 +468,7 @@ func (c *Constants) EpochFromSlotDirect(targetID base.ChainID, slot uint32) (epo
 // EpochFromSlotFromSource which delegation epoch slot belongs to
 func (c *Constants) EpochFromSlotFromSource(targetID base.ChainID, slot uint32) (epoch uint32) {
 	src := fmt.Sprintf("delegationEpochFromSlot(0x%s, u32/%d)", targetID.StringHex(), slot)
-	resBin, err := L().EvalFromSource(nil, src)
+	resBin, err := L(base.MaxSlot).EvalFromSource(nil, src)
 	util.AssertNoError(err)
 	return uint32(easyfl_util.MustUint64FromBytes(resBin))
 }
@@ -489,7 +489,7 @@ func (c *Constants) LastSlotInEpochDirect(targetID base.ChainID, epoch uint32) (
 
 func (c *Constants) LastSlotInEpochFromSource(targetID base.ChainID, epoch uint32) (lastSlot uint32) {
 	src := fmt.Sprintf("lastSlotInDelegationEpoch(0x%s, u32/%d)", targetID.StringHex(), epoch)
-	resBin, err := L().EvalFromSource(nil, src)
+	resBin, err := L(base.MaxSlot).EvalFromSource(nil, src)
 	util.AssertNoError(err)
 	return uint32(easyfl_util.MustUint64FromBytes(resBin))
 }

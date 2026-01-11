@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/ledger/base"
 )
 
 type GeneralScript []byte
@@ -13,7 +14,7 @@ func NewGeneralScript(data []byte) GeneralScript {
 }
 
 func NewGeneralScriptFromSource(src string) (GeneralScript, error) {
-	_, _, bytecode, err := L().CompileExpression(src)
+	_, _, bytecode, err := L(base.MaxSlot).CompileExpression(src)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +30,8 @@ func (u GeneralScript) Bytes() []byte {
 }
 
 func (u GeneralScript) String() string {
-	src, err := L().DecompileBytecode(u)
+	lib := L(base.MaxSlot)
+	src, err := lib.DecompileBytecode(u)
 	if err != nil {
 		src = fmt.Sprintf("failed decompile")
 	}
@@ -37,7 +39,7 @@ func (u GeneralScript) String() string {
 }
 
 func (u GeneralScript) Source() string {
-	src, err := L().DecompileBytecode(u)
+	src, err := L(base.MaxSlot).DecompileBytecode(u)
 	if err != nil {
 		src = fmt.Sprintf("failed decompile")
 	}

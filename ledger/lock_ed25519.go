@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
@@ -19,8 +20,10 @@ const (
 	addressED25519Template = AddressED25519Name + "(0x%s)"
 )
 
-func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+// AddressED25519FromBytesAtSlot parses an AddressED25519 using the library for the given slot.
+func AddressED25519FromBytesAtSlot(data []byte, slot uint32) (AddressED25519, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -32,6 +35,12 @@ func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
 		return nil, fmt.Errorf("wrong data length")
 	}
 	return addrBin, nil
+}
+
+// AddressED25519FromBytes parses an AddressED25519 using the latest library version.
+// Deprecated: Use AddressED25519FromBytesAtSlot for parsing historical bytecode.
+func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
+	return AddressED25519FromBytesAtSlot(data, base.MaxSlot)
 }
 
 func AddressED25519FromSource(src string) (AddressED25519, error) {
@@ -132,7 +141,7 @@ func initTestAddressED25519Constraint() {
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(addrBack, AddressED25519Null()), "inconsistency "+AddressED25519Name)
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
+	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

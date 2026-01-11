@@ -82,8 +82,9 @@ func (cc *ChainConstraint) Source() string {
 		hex.EncodeToString(cc.ChainID[:]), hex.EncodeToString(predRef), cc.OriginSlot, cc.OriginAmount)
 }
 
-func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 4)
+// ChainConstraintFromBytesAtSlot parses a ChainConstraint using the library for the given slot.
+func ChainConstraintFromBytesAtSlot(data []byte, slot uint32) (*ChainConstraint, error) {
+	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +111,12 @@ func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
 		return nil, err
 	}
 	return ret, nil
+}
+
+// ChainConstraintFromBytes parses a ChainConstraint using the latest library version.
+// Deprecated: Use ChainConstraintFromBytesAtSlot for parsing historical bytecode.
+func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
+	return ChainConstraintFromBytesAtSlot(data, base.MaxSlot)
 }
 
 // NewChainUnlockParams unlock parameters for the chain constraint. 3 bytes:

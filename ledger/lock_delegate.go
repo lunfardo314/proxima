@@ -73,8 +73,10 @@ func (d *DelegateLock) Accounts() []Accountable {
 	return NoDuplicatesAccountables([]Accountable{d.Target, d.MasterLock})
 }
 
-func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 4)
+// Delegate2LockFromBytesAtSlot parses a DelegateLock using the library for the given slot.
+func Delegate2LockFromBytesAtSlot(data []byte, slot uint32) (*DelegateLock, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
 	}
@@ -85,12 +87,12 @@ func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
 	ret := &DelegateLock{}
 
 	// target lock
-	ret.Target, err = ChainLockFromBytes(args[0])
+	ret.Target, err = ChainLockFromBytesAtSlot(args[0], slot)
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
 	}
 	// master lock
-	ret.MasterLock, err = AccountableFromBytes(args[1])
+	ret.MasterLock, err = AccountableFromBytesAtSlot(args[1], slot)
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
 	}
@@ -113,6 +115,12 @@ func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
 	}
 
 	return ret, nil
+}
+
+// Delegate2LockFromBytes parses a DelegateLock using the latest library version.
+// Deprecated: Use Delegate2LockFromBytesAtSlot for parsing historical bytecode.
+func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
+	return Delegate2LockFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (d *DelegateLock) Name() string {
@@ -156,10 +164,11 @@ func initTestDelegateConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegateLockName)
 
-	pref1, err := L().ParsePrefixBytecode(example.Bytes())
+	lib := L(base.MaxSlot)
+	pref1, err := lib.ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 
-	pref2, err := L().EvalFromSource(nil, "#"+DelegateLockName)
+	pref2, err := lib.EvalFromSource(nil, "#"+DelegateLockName)
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(pref1, pref2), "bytes.Equal(pref1, pref2)")
 	util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
@@ -167,8 +176,10 @@ func initTestDelegateConstraint() {
 
 //--------------------------- delegationLockState
 
-func DelegateLockStateFromBytes(data []byte) (DelegateLockState, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
+// DelegateLockStateFromBytesAtSlot parses a DelegateLockState using the library for the given slot.
+func DelegateLockStateFromBytesAtSlot(data []byte, slot uint32) (DelegateLockState, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: %w", err)
 	}
@@ -187,6 +198,12 @@ func DelegateLockStateFromBytes(data []byte) (DelegateLockState, error) {
 		LastFrozenEpoch: fr,
 		State:           state[0],
 	}, nil
+}
+
+// DelegateLockStateFromBytes parses a DelegateLockState using the latest library version.
+// Deprecated: Use DelegateLockStateFromBytesAtSlot for parsing historical bytecode.
+func DelegateLockStateFromBytes(data []byte) (DelegateLockState, error) {
+	return DelegateLockStateFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (d DelegateLockState) Source() string {

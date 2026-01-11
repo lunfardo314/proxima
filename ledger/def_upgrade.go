@@ -65,14 +65,15 @@ func (lib *Library) registerConstraints() {
 	registerEnsureConstraints(lib)
 
 	lib.appendInlineTests(func() {
-		// inline tests
-		libraryGlobal.MustEqual("timestampBytes(u32/255, 21)", base.T(255, 21).Hex())
-		libraryGlobal.MustEqual("ticksBefore(timestampBytes(u32/100, 5), timestampBytes(u32/101, 10))", "u64/133")
-		libraryGlobal.MustError("mustValidTimeSlot(255)", "wrong slot data")
-		libraryGlobal.MustTrue("mustValidTimeSlot(u32/255)")
-		libraryGlobal.MustEqual("mustValidTimeTick(88)", "88")
-		libraryGlobal.MustError("mustValidTimeTick(200)", "'wrong ticks value'")
-		libraryGlobal.MustEqual("div(constInitialSupply, constSlotInflationBase)", "u64/30303030")
+		// inline tests - use L(base.MaxSlot) to get the current library
+		currentLib := L(base.MaxSlot)
+		currentLib.MustEqual("timestampBytes(u32/255, 21)", base.T(255, 21).Hex())
+		currentLib.MustEqual("ticksBefore(timestampBytes(u32/100, 5), timestampBytes(u32/101, 10))", "u64/133")
+		currentLib.MustError("mustValidTimeSlot(255)", "wrong slot data")
+		currentLib.MustTrue("mustValidTimeSlot(u32/255)")
+		currentLib.MustEqual("mustValidTimeTick(88)", "88")
+		currentLib.MustError("mustValidTimeTick(200)", "'wrong ticks value'")
+		currentLib.MustEqual("div(constInitialSupply, constSlotInflationBase)", "u64/30303030")
 	})
 
 }

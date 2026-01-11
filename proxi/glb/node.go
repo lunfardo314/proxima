@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/spf13/viper"
 )
 
@@ -58,6 +59,6 @@ func InitLedgerFromNode() {
 	ledger.MustInitSingleton(ledgerIDData)
 	Infof("successfully connected to the node at %s", viper.GetString("api.endpoint"))
 	Infof("verbose = %v", IsVerbose())
-	h := ledger.L().LibraryHash()
+	h := ledger.L(base.MaxSlot).LibraryHash()
 	Infof("ledger library hash: %s", hex.EncodeToString(h[:]))
 }

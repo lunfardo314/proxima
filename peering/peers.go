@@ -81,7 +81,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
 
-	ledgerLibraryHash := ledger.L().Library.LibraryHash()
+	ledgerLibraryHash := ledger.L(base.MaxSlot).Library.LibraryHash()
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
 	ret := &Peers{

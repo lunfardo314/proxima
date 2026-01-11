@@ -360,21 +360,29 @@ This section maps the design to existing code locations, enabling a cold restart
 
 ### Phase 2: L(slot) with Caching
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
 **Goal:** Modify library access to be slot-aware with lazy loading and caching.
 
 **Tasks:**
-- [ ] 2.1 Add `LibraryCache` structure with slot→library mapping
-- [ ] 2.2 Modify `L()` → `L(slot)` signature
-- [ ] 2.3 Implement lazy loading from DB partition
-- [ ] 2.4 Add cache for recently used library versions
-- [ ] 2.5 Update all `L()` call sites to pass slot parameter
-- [ ] 2.6 Unit tests for caching behavior
+- [x] 2.1 Add `LibraryCache` structure with slot→library mapping
+- [x] 2.2 Modify `L()` → `L(slot)` signature
+- [x] 2.3 Implement lazy loading from DB partition
+- [x] 2.4 Add cache for recently used library versions
+- [x] 2.5 Update all `L()` call sites to pass slot parameter
+- [x] 2.6 Unit tests for caching behavior
 
-**Files to modify:**
-- `ledger/lib_singleton.go` - Main changes
-- All files calling `L()` - Update to `L(slot)`
+**Files modified:**
+- `ledger/lib_singleton.go` - Added `LibraryCache`, `L(slot)`, `ResolverFactory`, `RegisterResolverForUpgrade()`
+- `ledger/multistate/upgrades_cache_test.go` - New file with cache unit tests
+- 36+ files across ledger, api, node, proxi packages - Updated `L()` to `L(base.MaxSlot)` with optimized local caching
+
+**Implementation notes:**
+- `L(slot)` finds the latest upgrade slot <= requested slot
+- Libraries are cached by upgrade slot (not query slot) for efficiency
+- `base.MaxSlot` (0xFFFFFFFF) is used as sentinel for "latest library"
+- Each upgrade slot must have a registered `ResolverFactory` for its embedded functions
+- Backward compatibility maintained via `MustInitSingleton()` for existing tests
 
 ---
 
@@ -491,7 +499,27 @@ This section maps the design to existing code locations, enabling a cold restart
 
 _Track current progress here between sessions._
 
-**Current Phase:** 2 (L(slot) with Caching)
-**Current Task:** Ready to start 2.1
-**Last Commit:** fe98f945 - Add upgrade library storage layer (Phase 1)
-**Notes:** Phase 1 complete. Storage layer includes constraint enforcement (strictly increasing slots, min 360 slots between upgrades). Ready to implement L(slot) with caching.
+**Current Phase:** 2 Complete, Ready for Phase 3
+**Current Task:** Phase 2 fully implemented and tested
+**Last Commit:** Phase 2 transaction validation changes
+**Notes:**
+- Phase 2 fully complete:
+  - `LibraryCache` structure with slot→library mapping in `lib_singleton.go`
+  - `L(slot)` function with lazy loading and caching
+  - All call sites updated to pass `base.MaxSlot` for latest library
+  - Added slot-aware versions of all parsing functions:
+    - Core: `ConstraintFromBytesAtSlot`, `LockFromBytesAtSlot`, `AccountableFromBytesAtSlot`
+    - Output: `OutputFromBytesAtSlot`, `OutputFromBytesMainAtSlot`, `OutputFromHexStringAtSlot`
+    - Constraints: All `*FromBytesAtSlot` variants for every constraint type
+  - Original functions remain as wrappers calling slot-aware versions with `base.MaxSlot`
+  - Transaction validation context fully slot-aware:
+    - `makeEvalContext()` uses `ledger.L(ctx.Slot())`
+    - `_evalBytecode()` uses `ledger.L(ctx.Slot())`
+    - `constraintName()` converted to method on TxContext using slot
+    - `runOutput()` uses slot-aware decompilation
+  - All ledger and multistate tests passing
+- Display/decompilation functions:
+  - Using `base.MaxSlot` is acceptable for display purposes (human-readable output)
+  - The latest library should be backward compatible for decompiling older bytecode
+  - Critical validation path uses correct slot; display is informational only
+- Ready for Phase 3: Genesis Changes

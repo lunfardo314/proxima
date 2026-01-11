@@ -25,8 +25,10 @@ func ChainLockFromChainID(chainID base.ChainID) ChainLock {
 	return ret
 }
 
-func ChainLockFromBytes(data []byte) (ChainLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+// ChainLockFromBytesAtSlot parses a ChainLock using the library for the given slot.
+func ChainLockFromBytesAtSlot(data []byte, slot uint32) (ChainLock, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -40,6 +42,12 @@ func ChainLockFromBytes(data []byte) (ChainLock, error) {
 		return nil, err
 	}
 	return ChainLockFromChainID(chainID), nil
+}
+
+// ChainLockFromBytes parses a ChainLock using the latest library version.
+// Deprecated: Use ChainLockFromBytesAtSlot for parsing historical bytecode.
+func ChainLockFromBytes(data []byte) (ChainLock, error) {
+	return ChainLockFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (cl ChainLock) Source() string {
@@ -103,7 +111,7 @@ func initTestChainLockConstraint() {
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
+	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

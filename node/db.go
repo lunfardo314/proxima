@@ -7,6 +7,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -34,7 +35,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 	// initialize the ledger library singleton with the ledger ID data from DB
 	multistate.InitLedgerFromStore(p.multiStateDB)
 	p.Log().Infof("ledger ID params:\n%s", ledger.Const.Lines("       ").String())
-	h := ledger.L().LibraryHash()
+	h := ledger.L(base.MaxSlot).LibraryHash()
 	p.Log().Infof("ledger constraint library hash: %s", hex.EncodeToString(h[:]))
 
 	p.snapshotBranchID = multistate.FetchSnapshotBranchID(p.multiStateDB)

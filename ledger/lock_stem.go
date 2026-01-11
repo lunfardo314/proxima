@@ -74,6 +74,7 @@ func registerStemLockConstraint(lib *Library) {
 }
 
 func initTestStemLockConstraint() {
+	lib := L(base.MaxSlot)
 	txid := base.RandomTransactionID(true, 1)
 	predID := base.MustNewOutputID(txid, byte(txid.NumProducedOutputs()-1))
 	example := StemLock{
@@ -83,12 +84,13 @@ func initTestStemLockConstraint() {
 	exampleBack, err := StemLockFromBytes(example.Bytes())
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(example.Bytes(), exampleBack.Bytes()), "bytes.Equal(example.Bytes(), exampleBack.Bytes())")
-	_, err = L().ParsePrefixBytecode(example.Bytes())
+	_, err = lib.ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 
-func StemLockFromBytes(data []byte) (*StemLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
+// StemLockFromBytesAtSlot parses a StemLock using the library for the given slot.
+func StemLockFromBytesAtSlot(data []byte, slot uint32) (*StemLock, error) {
+	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +106,12 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 		PredecessorOutputID: oid,
 		VRFProof:            easyfl.StripDataPrefix(args[1]),
 	}, nil
+}
+
+// StemLockFromBytes parses a StemLock using the latest library version.
+// Deprecated: Use StemLockFromBytesAtSlot for parsing historical bytecode.
+func StemLockFromBytes(data []byte) (*StemLock, error) {
+	return StemLockFromBytesAtSlot(data, base.MaxSlot)
 }
 
 const stemLockSource = `

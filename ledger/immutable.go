@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -27,8 +28,10 @@ func NewImmutable(chainBlockIndex, dataBlockIndex byte) *Immutable {
 	}
 }
 
-func ImmutableFromBytes(data []byte) (*Immutable, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+// ImmutableFromBytesAtSlot parses an Immutable constraint using the library for the given slot.
+func ImmutableFromBytesAtSlot(data []byte, slot uint32) (*Immutable, error) {
+	lib := L(slot)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -40,6 +43,12 @@ func ImmutableFromBytes(data []byte) (*Immutable, error) {
 		return nil, fmt.Errorf("can't parse Immutable")
 	}
 	return NewImmutable(d[0], d[1]), nil
+}
+
+// ImmutableFromBytes parses an Immutable constraint using the latest library version.
+// Deprecated: Use ImmutableFromBytesAtSlot for parsing historical bytecode.
+func ImmutableFromBytes(data []byte) (*Immutable, error) {
+	return ImmutableFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (d *Immutable) Source() string {
@@ -71,7 +80,7 @@ func initTestImmutableConstraint() {
 	util.Assertf(immutableDataBack.DataBlockIndex == 5, "inconsistency "+ImmutableName)
 	util.Assertf(immutableDataBack.ChainBlockIndex == 1, "inconsistency "+ImmutableName)
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
+	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
 	util.AssertNoError(err)
 }
 

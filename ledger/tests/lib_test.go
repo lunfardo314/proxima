@@ -6,6 +6,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -21,20 +22,22 @@ func TestLoad(t *testing.T) {
 }
 
 func TestLedgerToYAML(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
 	t.Run("compiled", func(t *testing.T) {
-		yamlData := ledger.L().ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
+		yamlData := lib.ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
 		t.Logf("\n%s", string(yamlData))
 	})
 	t.Run("not compiled", func(t *testing.T) {
-		yamlData := ledger.L().ToYAML(false, "# ------------------- Proxima ledger definitions NOT COMPILED -------------------------")
+		yamlData := lib.ToYAML(false, "# ------------------- Proxima ledger definitions NOT COMPILED -------------------------")
 		t.Logf("\n%s", string(yamlData))
 	})
 }
 
 func TestLedgerToYAMLFile(t *testing.T) {
-	ledger.L().PrintLibraryStats()
-	h := ledger.L().LibraryHash()
-	yamlData := ledger.L().ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
+	lib := ledger.L(base.MaxSlot)
+	lib.PrintLibraryStats()
+	h := lib.LibraryHash()
+	yamlData := lib.ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
 	t.Logf("Full library YAML size: %d bytes", len(yamlData))
 	//_ = os.WriteFile("ledger.yaml", yamlData, 0644)
 	libBack, err := easyfl.NewLibraryFromYAML[*ledger.EvalContext](yamlData)

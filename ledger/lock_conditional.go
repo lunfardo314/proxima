@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -43,8 +44,9 @@ func NewConditionalLock(conds []Constraint, locks []Accountable) (*ConditionalLo
 	return ret, nil
 }
 
-func ConditionalLockFromBytes(data []byte) (*ConditionalLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 8)
+// ConditionalLockFromBytesAtSlot parses a ConditionalLock using the library for the given slot.
+func ConditionalLockFromBytesAtSlot(data []byte, slot uint32) (*ConditionalLock, error) {
+	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 8)
 	if err != nil {
 		return nil, err
 	}
@@ -54,12 +56,12 @@ func ConditionalLockFromBytes(data []byte) (*ConditionalLock, error) {
 	ret := &ConditionalLock{}
 	for i := range [4]byte{} {
 		if len(args[i]) > 0 {
-			if ret.Conditions[i], err = ConstraintFromBytes(args[i]); err != nil {
+			if ret.Conditions[i], err = ConstraintFromBytesAtSlot(args[i], slot); err != nil {
 				return nil, err
 			}
 		}
 		if len(args[i+1]) > 0 {
-			if ret.Locks[i], err = AccountableFromBytes(args[i+1]); err != nil {
+			if ret.Locks[i], err = AccountableFromBytesAtSlot(args[i+1], slot); err != nil {
 				return nil, err
 			}
 			if ret.Locks[i].Name() == StemLockName {
@@ -68,6 +70,12 @@ func ConditionalLockFromBytes(data []byte) (*ConditionalLock, error) {
 		}
 	}
 	return ret, nil
+}
+
+// ConditionalLockFromBytes parses a ConditionalLock using the latest library version.
+// Deprecated: Use ConditionalLockFromBytesAtSlot for parsing historical bytecode.
+func ConditionalLockFromBytes(data []byte) (*ConditionalLock, error) {
+	return ConditionalLockFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func (c *ConditionalLock) Source() string {

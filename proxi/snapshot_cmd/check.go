@@ -51,7 +51,7 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 	fromYAML, err := easyfl.ReadLibraryFromYAML(ssData.ledgerIDData)
 	glb.AssertNoError(err)
 
-	h := ledger.L().LibraryHash()
+	h := ledger.L(base.MaxSlot).LibraryHash()
 	if fromYAML.Hash != hex.EncodeToString(h[:]) {
 		glb.Infof("ledger id hash in snapshot file %s is not equal to the ledger id hash on the node on '%s'.\nThe snapshot file CANNOT BE USED to start a node",
 			fname, viper.GetString("api.endpoint"))

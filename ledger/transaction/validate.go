@@ -18,14 +18,16 @@ import (
 )
 
 func (ctx *TxContext) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.EvalContext] {
+	// Use the transaction's slot to get the library version that was active when this transaction was created
+	lib := ledger.L(ctx.Slot())
 	ctx.dataContext.SetEvalPath(path)
 	switch ctx.traceOption {
 	case TraceOptionNone:
-		return ledger.L().NewGlobalDataNoTrace(ctx.dataContext)
+		return lib.NewGlobalDataNoTrace(ctx.dataContext)
 	case TraceOptionAll:
-		return ledger.L().NewGlobalDataTracePrint(ctx.dataContext)
+		return lib.NewGlobalDataTracePrint(ctx.dataContext)
 	case TraceOptionFailedConstraints:
-		return ledger.L().NewGlobalDataLog(ctx.dataContext)
+		return lib.NewGlobalDataLog(ctx.dataContext)
 	default:
 		panic("wrong trace option")
 	}
@@ -177,6 +179,7 @@ func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte
 func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spool *slicepool.SlicePool) error {
 	evalPath := common.Concat(path, byte(0))
 	var err error
+	slot := ctx.Slot()
 
 	// checking of script duplicates has been removed. Makes no sense
 
@@ -186,12 +189,12 @@ func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spo
 
 		res, err = ctx.EvalBytecode(bytecode, evalPath, spool)
 		if err != nil {
-			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", constraintName(bytecode), err, PathToString(evalPath))
+			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", ctx.constraintName(bytecode), err, PathToString(evalPath))
 			return false
 		}
 		if len(res) == 0 {
 			var decomp string
-			decomp, err = ledger.L().DecompileBytecode(bytecode)
+			decomp, err = ledger.L(slot).DecompileBytecode(bytecode)
 			if err != nil {
 				decomp = fmt.Sprintf("(error while decompiling constraint: '%v')", err)
 			}
@@ -285,15 +288,17 @@ func PathToString(path []byte) string {
 	return ret
 }
 
-func constraintName(binCode []byte) string {
+// constraintName returns the name of the constraint from its bytecode using the transaction's slot
+func (ctx *TxContext) constraintName(binCode []byte) string {
 	if binCode[0] == 0 {
 		return "array_constraint"
 	}
-	prefix, err := ledger.L().ParsePrefixBytecode(binCode)
+	slot := ctx.Slot()
+	prefix, err := ledger.L(slot).ParsePrefixBytecode(binCode)
 	if err != nil {
 		return fmt.Sprintf("unknown_constraint(%s)", easyfl_util.Fmt(binCode))
 	}
-	name, found := ledger.NameByPrefix(prefix)
+	name, found := ledger.NameByPrefixAtSlot(prefix, slot)
 	if found {
 		return name
 	}
@@ -307,25 +312,25 @@ func (ctx *TxContext) _evalBytecode(bytecode []byte, path []byte, spool *slicepo
 	var err error
 	evalCtx := ctx.makeEvalContext(path)
 	if evalCtx.Trace() {
-		evalCtx.PutTrace(fmt.Sprintf("--- check constraint '%s' at path %s", constraintName(bytecode), PathToString(path)))
+		evalCtx.PutTrace(fmt.Sprintf("--- check constraint '%s' at path %s", ctx.constraintName(bytecode), PathToString(path)))
 	}
 
 	var ret []byte
 	if bytecode[0] == 0 {
 		return nil, fmt.Errorf("binary code cannot begin with 0-byte")
 	}
-	ret, err = ledger.L().EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
+	ret, err = ledger.L(ctx.Slot()).EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
 
 	if evalCtx.Trace() {
 		if err != nil {
-			evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED with '%v'", constraintName(bytecode), PathToString(path), err))
+			evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED with '%v'", ctx.constraintName(bytecode), PathToString(path), err))
 			printTraceIfEnabled(evalCtx)
 		} else {
 			if len(ret) == 0 {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED", constraintName(bytecode), PathToString(path)))
+				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED", ctx.constraintName(bytecode), PathToString(path)))
 				printTraceIfEnabled(evalCtx)
 			} else {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: OK", constraintName(bytecode), PathToString(path)))
+				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: OK", ctx.constraintName(bytecode), PathToString(path)))
 			}
 		}
 	}
