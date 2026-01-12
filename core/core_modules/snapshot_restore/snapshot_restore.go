@@ -301,14 +301,25 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 	}
 }
 
-// CheckAndRestoreOnStartup should be called at node startup to check if restore is needed
+// CheckAndRestoreOnStartup should be called at node startup to check if restore is needed.
+// This function handles two scenarios:
+// 1. Genesis bootstrap: DB is missing, find and restore from any available snapshot (including genesis.snapshot)
+// 2. Periodic cleanup: snapshot_restore is enabled and cleanup was in progress
 // Returns true if restore was performed, false otherwise
 func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
-	if !viper.GetBool("snapshot_restore.enable") {
-		log.Log().Infof("[%s] CheckAndRestoreOnStartup: snapshot_restore is disabled in config (snapshot_restore.enable = false)", Name)
+	// First, check if DB exists/is valid - this is independent of snapshot_restore.enable
+	dbNeedsRestore, err := CheckAndDeleteCorruptedDB(global.MultiStateDBName, os.Stdout)
+	if err != nil {
+		return false, fmt.Errorf("failed to check database state: %w", err)
+	}
+
+	snapshotRestoreEnabled := viper.GetBool("snapshot_restore.enable")
+
+	// If DB is fine and snapshot_restore is disabled, nothing to do
+	if !dbNeedsRestore && !snapshotRestoreEnabled {
+		log.Log().Infof("[%s] CheckAndRestoreOnStartup: DB exists and snapshot_restore is disabled, skipping", Name)
 		return false, nil
 	}
-	log.Log().Infof("[%s] CheckAndRestoreOnStartup: snapshot_restore is enabled, checking for pending restore...", Name)
 
 	// Initialize restore logger if configured (for restore logging)
 	logFile := viper.GetString("snapshot_restore.log_file")
@@ -316,22 +327,25 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		restoreLogger = newRestoreLogger(logFile)
 	}
 
+	// Load state file (may contain in-progress cleanup info)
 	stateFile, err := NewStateFileManager(DefaultStateFileName)
 	if err != nil {
 		return false, fmt.Errorf("failed to load state file: %w", err)
-	}
-
-	// Check if DB is missing or corrupted (needs restore regardless of state file)
-	dbNeedsRestore, err := CheckAndDeleteCorruptedDB(global.MultiStateDBName, os.Stdout)
-	if err != nil {
-		return false, fmt.Errorf("failed to check database state: %w", err)
 	}
 
 	cleanupInProgress := stateFile.IsCleanupInProgress()
 
 	// If DB is fine and no cleanup in progress, nothing to do
 	if !dbNeedsRestore && !cleanupInProgress {
+		log.Log().Infof("[%s] CheckAndRestoreOnStartup: DB exists and no pending cleanup, skipping", Name)
 		return false, nil
+	}
+
+	// Log what we're doing
+	if dbNeedsRestore {
+		log.Log().Infof("[%s] CheckAndRestoreOnStartup: DB missing/corrupted, will restore from snapshot", Name)
+	} else {
+		log.Log().Infof("[%s] CheckAndRestoreOnStartup: continuing pending cleanup restore", Name)
 	}
 
 	ttlMinutes := viper.GetInt("snapshot_restore.ttl_minutes")
@@ -357,7 +371,8 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	// Get snapshot file - first try state file, then find latest
 	snapshotFile := stateFile.GetSnapshotFile()
 	if snapshotFile == "" {
-		// No snapshot in state file - find the latest one
+		// No snapshot in state file - search multiple directories for the latest one
+		// Priority: working directory (for genesis.snapshot), then configured snapshot directory
 		snapshotDir := viper.GetString("snapshot_restore.snapshot_directory")
 		if snapshotDir == "" {
 			snapshotDir = viper.GetString("snapshot.directory")
@@ -365,7 +380,8 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		if snapshotDir == "" {
 			snapshotDir = "snapshot"
 		}
-		snapshotFile, err = FindLatestSnapshot(snapshotDir)
+		// Search working dir first, then configured snapshot dir
+		snapshotFile, err = FindLatestSnapshotInDirs(".", snapshotDir)
 		if err != nil {
 			logRestoreError(log, "no snapshot available for restore: %v", err)
 			if cleanupInProgress {
@@ -375,7 +391,7 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 			}
 			return false, fmt.Errorf("database missing/corrupted and no snapshot available: %w", err)
 		}
-		logRestoreMsg(log, "database missing/corrupted, found snapshot: %s", snapshotFile)
+		logRestoreMsg(log, "found snapshot for restore: %s", snapshotFile)
 	}
 
 	// Get absolute path for clear logging

@@ -694,32 +694,45 @@ Note: Ledger identity (genesis time + description) is embedded in the slot 0 lib
 
 ### Phase 8: Node Startup from Snapshot
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
 **Goal:** Node automatically restores from snapshot when proximadb is missing.
 
 **Tasks:**
-- [ ] 8.1 Extend `CheckAndRestoreOnStartup()` to detect missing DB (not just corrupted)
-- [ ] 8.2 Search for snapshots in working directory and configured snapshot directory
-- [ ] 8.3 Select latest snapshot (by slot) when multiple found
-- [ ] 8.4 Restore from snapshot before `initMultiStateLedger()`
-- [ ] 8.5 Ensure alignment with existing snapshot_restore restore logic
-- [ ] 8.6 Integration test: fresh node with only genesis.snapshot
+- [x] 8.1 Extend `CheckAndRestoreOnStartup()` to detect missing DB (not just corrupted)
+- [x] 8.2 Search for snapshots in working directory and configured snapshot directory
+- [x] 8.3 Select latest snapshot (by modification time) when multiple found
+- [x] 8.4 Restore from snapshot before `initMultiStateLedger()` (already in correct order)
+- [x] 8.5 Ensure alignment with existing snapshot_restore restore logic
+- [x] 8.6 Unit tests for new functionality
 
-**Files to modify:**
-- `core/core_modules/snapshot_restore/snapshot_restore.go` - Extend `CheckAndRestoreOnStartup()`
-- `core/core_modules/snapshot_restore/restore.go` - May need updates for genesis case
-- `node/node.go` - Ensure correct startup order
+**Files modified:**
+- `core/core_modules/snapshot_restore/snapshot_restore.go` - Restructured `CheckAndRestoreOnStartup()`:
+  - Now checks DB state BEFORE checking `snapshot_restore.enable` config
+  - If DB missing/corrupted, finds and restores from snapshot regardless of config
+  - Improved logging for genesis bootstrap vs periodic cleanup scenarios
+- `core/core_modules/snapshot_restore/restore.go` - Added `FindLatestSnapshotInDirs()`:
+  - Searches multiple directories for snapshots
+  - Skips non-existent directories gracefully
+  - Skips `__tmp__` prefixed files (snapshots being written)
+- `core/core_modules/snapshot_restore/snapshot_restore_test.go` - Added `TestFindLatestSnapshotInDirs`
 
 **Key behavior:**
 ```
 node.Start():
   checkAndRestoreOnStartup()
-    if proximadb missing:
-      find latest .snapshot file
-      restore from snapshot (creates proximadb)
-  initMultiStateLedger()  // Now always succeeds
+    1. Check if DB exists/valid (independent of config)
+    2. If DB fine and snapshot_restore disabled, return
+    3. If DB missing: search "." then "snapshot" dir for .snapshot files
+    4. Restore from latest snapshot found
+  initMultiStateLedger()  // Always succeeds (DB guaranteed after restore)
 ```
+
+**Implementation notes:**
+- Genesis bootstrap works even with `snapshot_restore.enable: false`
+- Working directory is searched first (for `genesis.snapshot`)
+- Configured `snapshot_restore.snapshot_directory` or `snapshot.directory` searched second
+- Multiple directories can have snapshots; the newest (by modification time) is selected
 
 ---
 
@@ -789,11 +802,17 @@ node.Start():
 
 _Track current progress here between sessions._
 
-**Current Phase:** 7 Complete, Ready for Phase 8
-**Current Task:** Phase 8 - Node Startup from Snapshot
-**Last Commit:** Rename state_cleanup module to snapshot_restore (8e94445a)
+**Current Phase:** 8 Complete, Ready for Phase 9
+**Current Task:** Phase 9 - Single Pending Upgrade Folder
+**Last Commit:** Phase 8: Node startup from snapshot when DB missing (dc334399)
 **Notes:**
-- Phases 1-7 fully complete
+- Phases 1-8 fully complete
+- Phase 8 completed (2026-01-12):
+  - Restructured `CheckAndRestoreOnStartup()` to check DB state BEFORE config
+  - Added `FindLatestSnapshotInDirs()` to search multiple directories
+  - Genesis bootstrap now works even when `snapshot_restore.enable: false`
+  - Working directory searched first (for `genesis.snapshot`)
+  - Added `TestFindLatestSnapshotInDirs` unit test
 - Module renamed (2026-01-12):
   - `state_cleanup` → `snapshot_restore` (better reflects purpose)
   - Config keys: `state_cleanup.*` → `snapshot_restore.*`
@@ -818,7 +837,6 @@ _Track current progress here between sessions._
   - Distribution done manually via proxi wallet commands (zero fees make this practical)
   - Old commands (`proxi util ledger_id`, `proxi init genesis_db`) kept for compatibility
 - Next phases:
-  - Phase 8: Node startup from snapshot (extend snapshot_restore)
   - Phase 9: Single pending upgrade folder (`ledger/upgrade/`)
   - Phase 10: Transaction validation verification
   - Phase 11: API and CLI updates

@@ -367,6 +367,56 @@ func FindLatestSnapshot(directory string) (string, error) {
 	return latestFile, nil
 }
 
+// FindLatestSnapshotInDirs searches for the latest snapshot across multiple directories.
+// Directories are searched in order. Returns the most recent snapshot file found.
+// This is useful for genesis bootstrap where snapshot may be in working dir or snapshot dir.
+func FindLatestSnapshotInDirs(directories ...string) (string, error) {
+	var latestFile string
+	var latestTime time.Time
+
+	for _, directory := range directories {
+		if directory == "" {
+			continue
+		}
+
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			// Directory doesn't exist or can't be read - skip it
+			continue
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			if len(name) < 9 || name[len(name)-9:] != ".snapshot" {
+				continue
+			}
+			// Skip temporary snapshot files that are still being written
+			if len(name) >= 7 && name[:7] == "__tmp__" {
+				continue
+			}
+
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+
+			if info.ModTime().After(latestTime) {
+				latestTime = info.ModTime()
+				latestFile = filepath.Join(directory, name)
+			}
+		}
+	}
+
+	if latestFile == "" {
+		return "", fmt.Errorf("no snapshot files found in directories: %v", directories)
+	}
+
+	return latestFile, nil
+}
+
 // ValidateSnapshot checks if a snapshot is compatible with the current ledger
 func ValidateSnapshot(snapshotPath string) error {
 	kvStream, err := multistate.OpenSnapshotFileStream(snapshotPath)

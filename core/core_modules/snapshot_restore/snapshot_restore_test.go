@@ -211,3 +211,68 @@ func TestStateFileManager_Persistence(t *testing.T) {
 	require.True(t, mgr2.IsCleanupInProgress())
 	require.Equal(t, "/path/to/snapshot.snapshot", mgr2.GetSnapshotFile())
 }
+
+func TestFindLatestSnapshotInDirs(t *testing.T) {
+	// Create two temporary directories
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+
+	// Test 1: No snapshots in any directory - should fail
+	_, err := FindLatestSnapshotInDirs(dir1, dir2)
+	require.Error(t, err)
+
+	// Test 2: Snapshot only in first directory
+	snapshot1 := filepath.Join(dir1, "genesis.snapshot")
+	err = os.WriteFile(snapshot1, []byte("snapshot1"), 0644)
+	require.NoError(t, err)
+
+	latest, err := FindLatestSnapshotInDirs(dir1, dir2)
+	require.NoError(t, err)
+	require.Equal(t, snapshot1, latest)
+
+	// Test 3: Snapshot only in second directory
+	err = os.Remove(snapshot1)
+	require.NoError(t, err)
+
+	snapshot2 := filepath.Join(dir2, "backup.snapshot")
+	err = os.WriteFile(snapshot2, []byte("snapshot2"), 0644)
+	require.NoError(t, err)
+
+	latest, err = FindLatestSnapshotInDirs(dir1, dir2)
+	require.NoError(t, err)
+	require.Equal(t, snapshot2, latest)
+
+	// Test 4: Snapshots in both directories - should return the newest
+	time.Sleep(10 * time.Millisecond) // Ensure different mod times
+	snapshot1 = filepath.Join(dir1, "newer.snapshot")
+	err = os.WriteFile(snapshot1, []byte("newer snapshot"), 0644)
+	require.NoError(t, err)
+
+	latest, err = FindLatestSnapshotInDirs(dir1, dir2)
+	require.NoError(t, err)
+	require.Equal(t, snapshot1, latest) // dir1's snapshot is newer
+
+	// Test 5: Non-existent directory is skipped
+	latest, err = FindLatestSnapshotInDirs("/nonexistent/dir", dir1)
+	require.NoError(t, err)
+	require.Equal(t, snapshot1, latest)
+
+	// Test 6: Empty string directory is skipped
+	latest, err = FindLatestSnapshotInDirs("", dir1, "")
+	require.NoError(t, err)
+	require.Equal(t, snapshot1, latest)
+
+	// Test 7: Temporary files are skipped
+	tmpSnapshot := filepath.Join(dir1, "__tmp__writing.snapshot")
+	err = os.WriteFile(tmpSnapshot, []byte("temp"), 0644)
+	require.NoError(t, err)
+	// Touch to make it newest
+	time.Sleep(10 * time.Millisecond)
+	now := time.Now()
+	err = os.Chtimes(tmpSnapshot, now, now)
+	require.NoError(t, err)
+
+	latest, err = FindLatestSnapshotInDirs(dir1, dir2)
+	require.NoError(t, err)
+	require.Equal(t, snapshot1, latest) // Should still be snapshot1, not the temp file
+}
