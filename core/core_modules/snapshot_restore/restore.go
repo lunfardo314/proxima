@@ -1,4 +1,4 @@
-package state_cleanup
+package snapshot_restore
 
 import (
 	"encoding/hex"

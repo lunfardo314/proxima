@@ -1,4 +1,4 @@
-package state_cleanup
+package snapshot_restore
 
 import (
 	"fmt"
@@ -23,21 +23,21 @@ type (
 		IsSynced() bool
 	}
 
-	// StateCleanup manages periodic state cleanup via snapshot restore
-	StateCleanup struct {
+	// SnapshotRestore manages periodic state restore from snapshots
+	SnapshotRestore struct {
 		environment
-		stateFile        *StateFileManager
-		periodSlots      uint32
-		windowSlots      uint32
-		ttlMinutes       int
-		snapshotDir      string
-		cleanupRequested atomic.Bool
-		cleanupLog       *zap.SugaredLogger // optional separate log for cleanup activity
+		stateFile         *StateFileManager
+		periodSlots       uint32
+		windowSlots       uint32
+		ttlMinutes        int
+		snapshotDir       string
+		restoreRequested  atomic.Bool
+		restoreLog        *zap.SugaredLogger // optional separate log for restore activity
 	}
 )
 
 const (
-	Name = "state_cleanup"
+	Name = "snapshot_restore"
 
 	defaultPeriodSlots = 8438 // ~24 hours at 10.24 sec/slot
 	defaultWindowSlots = 1406 // ~4 hours at 10.24 sec/slot
@@ -45,7 +45,7 @@ const (
 
 	checkPeriod = 60 * time.Second
 
-	defaultLogFile = ".state_cleanup.log"
+	defaultLogFile = ".snapshot_restore.log"
 )
 
 // CleanupRequestedFlag is set when cleanup has been triggered and node should restart
@@ -54,11 +54,11 @@ var CleanupRequestedFlag atomic.Bool
 // SnapshotFileForRestore is set to the snapshot file path when cleanup is triggered
 var SnapshotFileForRestore atomic.Value
 
-// cleanupLogger is a package-level logger for cleanup activity (used during restore before StateCleanup exists)
-var cleanupLogger *zap.SugaredLogger
+// restoreLogger is a package-level logger for cleanup activity (used during restore before StateCleanup exists)
+var restoreLogger *zap.SugaredLogger
 
-// newCleanupLogger creates a logger that writes to the specified file
-func newCleanupLogger(logFile string) *zap.SugaredLogger {
+// newRestoreLogger creates a logger that writes to the specified file
+func newRestoreLogger(logFile string) *zap.SugaredLogger {
 	cfg := zap.Config{
 		Level:            zap.NewAtomicLevelAt(zapcore.InfoLevel),
 		Development:      false,
@@ -78,68 +78,68 @@ func newCleanupLogger(logFile string) *zap.SugaredLogger {
 }
 
 // logCleanup logs to both main log and cleanup log (if configured)
-func (s *StateCleanup) logCleanup(format string, args ...any) {
+func (s *SnapshotRestore) logCleanup(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	s.Log().Infof("[%s] %s", Name, msg)
-	if s.cleanupLog != nil {
-		s.cleanupLog.Info(msg)
+	if s.restoreLog != nil {
+		s.restoreLog.Info(msg)
 	}
 }
 
 // logCleanupError logs error to both main log and cleanup log (if configured)
-func (s *StateCleanup) logCleanupError(format string, args ...any) {
+func (s *SnapshotRestore) logCleanupError(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	s.Log().Errorf("[%s] %s", Name, msg)
-	if s.cleanupLog != nil {
-		s.cleanupLog.Error(msg)
+	if s.restoreLog != nil {
+		s.restoreLog.Error(msg)
 	}
 }
 
-// Start initializes and starts the state cleanup scheduler
+// Start initializes and starts the snapshot restore scheduler
 func Start(env environment) {
-	enableValue := viper.GetBool("state_cleanup.enable")
+	enableValue := viper.GetBool("snapshot_restore.enable")
 	if !enableValue {
-		// Log detailed diagnostics about why state_cleanup is not starting
-		env.Log().Infof("[%s] NOT STARTED: state_cleanup.enable = %v", Name, enableValue)
+		// Log detailed diagnostics about why snapshot_restore is not starting
+		env.Log().Infof("[%s] NOT STARTED: snapshot_restore.enable = %v", Name, enableValue)
 		// Check if the key exists at all in config
-		if !viper.IsSet("state_cleanup.enable") {
-			env.Log().Infof("[%s] (config key 'state_cleanup.enable' is not set in config file)", Name)
+		if !viper.IsSet("snapshot_restore.enable") {
+			env.Log().Infof("[%s] (config key 'snapshot_restore.enable' is not set in config file)", Name)
 		}
-		// Log what state_cleanup config values were found (if any)
-		if viper.IsSet("state_cleanup") {
-			env.Log().Infof("[%s] Found state_cleanup section with: period_slots=%d, window_slots=%d, snapshot_directory=%q",
+		// Log what snapshot_restore config values were found (if any)
+		if viper.IsSet("snapshot_restore") {
+			env.Log().Infof("[%s] Found snapshot_restore section with: period_slots=%d, window_slots=%d, snapshot_directory=%q",
 				Name,
-				viper.GetInt("state_cleanup.period_slots"),
-				viper.GetInt("state_cleanup.window_slots"),
-				viper.GetString("state_cleanup.snapshot_directory"))
+				viper.GetInt("snapshot_restore.period_slots"),
+				viper.GetInt("snapshot_restore.window_slots"),
+				viper.GetString("snapshot_restore.snapshot_directory"))
 		} else {
-			env.Log().Infof("[%s] (no 'state_cleanup' section found in config file)", Name)
+			env.Log().Infof("[%s] (no 'snapshot_restore' section found in config file)", Name)
 		}
 		return
 	}
 
-	s := &StateCleanup{
+	s := &SnapshotRestore{
 		environment: env,
 	}
 
 	// Load configuration
-	s.periodSlots = uint32(viper.GetInt("state_cleanup.period_slots"))
+	s.periodSlots = uint32(viper.GetInt("snapshot_restore.period_slots"))
 	if s.periodSlots == 0 {
 		s.periodSlots = defaultPeriodSlots
 	}
 
-	s.windowSlots = uint32(viper.GetInt("state_cleanup.window_slots"))
+	s.windowSlots = uint32(viper.GetInt("snapshot_restore.window_slots"))
 	if s.windowSlots == 0 {
 		s.windowSlots = defaultWindowSlots
 	}
 
-	s.ttlMinutes = viper.GetInt("state_cleanup.ttl_minutes")
+	s.ttlMinutes = viper.GetInt("snapshot_restore.ttl_minutes")
 	if s.ttlMinutes == 0 {
 		s.ttlMinutes = defaultTTLMinutes
 	}
 
-	// Use state_cleanup.snapshot_directory if set, otherwise fall back to snapshot.directory
-	s.snapshotDir = viper.GetString("state_cleanup.snapshot_directory")
+	// Use snapshot_restore.snapshot_directory if set, otherwise fall back to snapshot.directory
+	s.snapshotDir = viper.GetString("snapshot_restore.snapshot_directory")
 	if s.snapshotDir == "" {
 		s.snapshotDir = viper.GetString("snapshot.directory")
 	}
@@ -148,11 +148,11 @@ func Start(env environment) {
 	}
 
 	// Initialize cleanup log if configured
-	logFile := viper.GetString("state_cleanup.log_file")
+	logFile := viper.GetString("snapshot_restore.log_file")
 	if logFile != "" {
-		s.cleanupLog = newCleanupLogger(logFile)
-		if s.cleanupLog != nil {
-			cleanupLogger = s.cleanupLog // set package-level for use during restore
+		s.restoreLog = newRestoreLogger(logFile)
+		if s.restoreLog != nil {
+			restoreLogger = s.restoreLog // set package-level for use during restore
 			env.Log().Infof("[%s] cleanup activity logging to: %s", Name, logFile)
 		}
 	}
@@ -188,15 +188,15 @@ func Start(env environment) {
 	env.Log().Infof("[%s] STARTED\n%s", Name, ln.String())
 
 	// Log startup to cleanup log
-	if s.cleanupLog != nil {
-		s.cleanupLog.Infof("=== State cleanup scheduler started ===")
-		s.cleanupLog.Infof("Period: %d slots (~%v)", s.periodSlots, time.Duration(s.periodSlots)*ledger.Const.SlotDuration())
-		s.cleanupLog.Infof("Next cleanup scheduled for slot: %d", s.stateFile.GetNextCleanupSlot())
+	if s.restoreLog != nil {
+		s.restoreLog.Infof("=== State cleanup scheduler started ===")
+		s.restoreLog.Infof("Period: %d slots (~%v)", s.periodSlots, time.Duration(s.periodSlots)*ledger.Const.SlotDuration())
+		s.restoreLog.Infof("Next cleanup scheduled for slot: %d", s.stateFile.GetNextCleanupSlot())
 	}
 }
 
 // scheduleNextCleanup calculates and saves the next cleanup slot
-func (s *StateCleanup) scheduleNextCleanup() {
+func (s *SnapshotRestore) scheduleNextCleanup() {
 	currentSlot := ledger.SlotNow()
 	// Add period plus random offset within window
 	randomOffset := uint32(rand.Intn(int(s.windowSlots)))
@@ -212,8 +212,8 @@ func (s *StateCleanup) scheduleNextCleanup() {
 }
 
 // checkAndTriggerCleanup checks if it's time to clean up and triggers if so
-func (s *StateCleanup) checkAndTriggerCleanup() {
-	if s.cleanupRequested.Load() {
+func (s *SnapshotRestore) checkAndTriggerCleanup() {
+	if s.restoreRequested.Load() {
 		return // already triggered
 	}
 
@@ -238,7 +238,7 @@ func (s *StateCleanup) checkAndTriggerCleanup() {
 }
 
 // triggerCleanup initiates the cleanup process
-func (s *StateCleanup) triggerCleanup() {
+func (s *SnapshotRestore) triggerCleanup() {
 	triggerStart := time.Now()
 	s.logCleanup("=== CLEANUP TRIGGERED at slot %d ===", ledger.SlotNow())
 
@@ -277,7 +277,7 @@ func (s *StateCleanup) triggerCleanup() {
 	// Set global flags for main.go to handle restart
 	SnapshotFileForRestore.Store(snapshotFile)
 	CleanupRequestedFlag.Store(true)
-	s.cleanupRequested.Store(true)
+	s.restoreRequested.Store(true)
 
 	// Request graceful shutdown
 	s.Stop()
@@ -287,8 +287,8 @@ func (s *StateCleanup) triggerCleanup() {
 func logRestoreMsg(mainLog global.Logging, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	mainLog.Log().Infof("[%s] %s", Name, msg)
-	if cleanupLogger != nil {
-		cleanupLogger.Info(msg)
+	if restoreLogger != nil {
+		restoreLogger.Info(msg)
 	}
 }
 
@@ -296,24 +296,24 @@ func logRestoreMsg(mainLog global.Logging, format string, args ...any) {
 func logRestoreError(mainLog global.Logging, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	mainLog.Log().Errorf("[%s] %s", Name, msg)
-	if cleanupLogger != nil {
-		cleanupLogger.Error(msg)
+	if restoreLogger != nil {
+		restoreLogger.Error(msg)
 	}
 }
 
 // CheckAndRestoreOnStartup should be called at node startup to check if restore is needed
 // Returns true if restore was performed, false otherwise
 func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
-	if !viper.GetBool("state_cleanup.enable") {
-		log.Log().Infof("[%s] CheckAndRestoreOnStartup: state_cleanup is disabled in config (state_cleanup.enable = false)", Name)
+	if !viper.GetBool("snapshot_restore.enable") {
+		log.Log().Infof("[%s] CheckAndRestoreOnStartup: snapshot_restore is disabled in config (snapshot_restore.enable = false)", Name)
 		return false, nil
 	}
-	log.Log().Infof("[%s] CheckAndRestoreOnStartup: state_cleanup is enabled, checking for pending restore...", Name)
+	log.Log().Infof("[%s] CheckAndRestoreOnStartup: snapshot_restore is enabled, checking for pending restore...", Name)
 
-	// Initialize cleanup logger if configured (for restore logging)
-	logFile := viper.GetString("state_cleanup.log_file")
-	if logFile != "" && cleanupLogger == nil {
-		cleanupLogger = newCleanupLogger(logFile)
+	// Initialize restore logger if configured (for restore logging)
+	logFile := viper.GetString("snapshot_restore.log_file")
+	if logFile != "" && restoreLogger == nil {
+		restoreLogger = newRestoreLogger(logFile)
 	}
 
 	stateFile, err := NewStateFileManager(DefaultStateFileName)
@@ -334,7 +334,7 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		return false, nil
 	}
 
-	ttlMinutes := viper.GetInt("state_cleanup.ttl_minutes")
+	ttlMinutes := viper.GetInt("snapshot_restore.ttl_minutes")
 	if ttlMinutes == 0 {
 		ttlMinutes = defaultTTLMinutes
 	}
@@ -342,8 +342,8 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	// Check TTL only if cleanup was in progress (not for missing DB case)
 	if cleanupInProgress && stateFile.IsCleanupTTLExceeded(time.Duration(ttlMinutes)*time.Minute) {
 		log.Log().Warnf("[%s] cleanup TTL exceeded, resetting state", Name)
-		if cleanupLogger != nil {
-			cleanupLogger.Warn("cleanup TTL exceeded, resetting state")
+		if restoreLogger != nil {
+			restoreLogger.Warn("cleanup TTL exceeded, resetting state")
 		}
 		if err := stateFile.ResetCleanupState(); err != nil {
 			return false, fmt.Errorf("failed to reset cleanup state: %w", err)
@@ -358,7 +358,7 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	snapshotFile := stateFile.GetSnapshotFile()
 	if snapshotFile == "" {
 		// No snapshot in state file - find the latest one
-		snapshotDir := viper.GetString("state_cleanup.snapshot_directory")
+		snapshotDir := viper.GetString("snapshot_restore.snapshot_directory")
 		if snapshotDir == "" {
 			snapshotDir = viper.GetString("snapshot.directory")
 		}
@@ -435,11 +435,11 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	}
 
 	// Calculate next cleanup slot using constants from the restored snapshot
-	periodSlots := uint32(viper.GetInt("state_cleanup.period_slots"))
+	periodSlots := uint32(viper.GetInt("snapshot_restore.period_slots"))
 	if periodSlots == 0 {
 		periodSlots = defaultPeriodSlots
 	}
-	windowSlots := uint32(viper.GetInt("state_cleanup.window_slots"))
+	windowSlots := uint32(viper.GetInt("snapshot_restore.window_slots"))
 	if windowSlots == 0 {
 		windowSlots = defaultWindowSlots
 	}

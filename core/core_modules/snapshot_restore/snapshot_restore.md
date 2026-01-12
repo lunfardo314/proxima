@@ -1,6 +1,6 @@
-# State Cleanup Module
+# Snapshot Restore Module
 
-The state cleanup module provides automatic ledger state garbage collection via periodic snapshot restore. Over time, the multistate database accumulates historical state that is no longer needed. This module automates the cleanup process by periodically restoring from the latest snapshot.
+The snapshot restore module provides automatic ledger state management via periodic snapshot restore. Over time, the multistate database accumulates historical state that is no longer needed. This module automates the cleanup process by periodically restoring from the latest snapshot, and also handles bootstrap from genesis snapshot when the database is missing.
 
 ## Overview
 
@@ -14,7 +14,7 @@ The cleanup process works as follows:
 
 ## Components
 
-### state_cleanup.go
+### snapshot_restore.go
 
 Main scheduler module with the following key functions:
 
@@ -30,7 +30,7 @@ Main scheduler module with the following key functions:
 
 ### state_file.go
 
-Manages persistent state in `.state_cleanup.json`:
+Manages persistent state in `.snapshot_restore.json`:
 
 ```json
 {
@@ -75,13 +75,13 @@ The restore process uses a `restoreInProgressDBPartition` marker in the database
 Add to `proxima.yaml`:
 
 ```yaml
-state_cleanup:
+snapshot_restore:
   enable: false                  # Master switch
   period_slots: 8438             # ~24 hours at 10.24 sec/slot
   window_slots: 1406             # ~4 hour randomization window
   ttl_minutes: 10                # Max time for cleanup, else assume failure
   snapshot_directory: /path/to/snapshots  # Optional: override snapshot directory. Where to search for the latest state snapshot
-  log_file: .state_cleanup.log   # Optional: separate log file for cleanup activity
+  log_file: .snapshot_restore.log   # Optional: separate log file for cleanup activity
 ```
 
 ### Parameters
@@ -100,30 +100,30 @@ state_cleanup:
 When `log_file` is configured, cleanup activity is logged to a separate file with detailed stats:
 
 ```
-01-05 10:30:00 state_cleanup	INFO	=== State cleanup scheduler started ===
-01-05 10:30:00 state_cleanup	INFO	Period: 8438 slots (~24h0m0s)
-01-05 10:30:00 state_cleanup	INFO	Next cleanup scheduled for slot: 12345678
+01-05 10:30:00 snapshot_restore	INFO	=== State cleanup scheduler started ===
+01-05 10:30:00 snapshot_restore	INFO	Period: 8438 slots (~24h0m0s)
+01-05 10:30:00 snapshot_restore	INFO	Next cleanup scheduled for slot: 12345678
 ...
-01-06 10:35:00 state_cleanup	INFO	=== CLEANUP TRIGGERED at slot 12345678 ===
-01-06 10:35:00 state_cleanup	INFO	found snapshot: snapshot/branch_12345000.snapshot
-01-06 10:35:00 state_cleanup	INFO	snapshot validated successfully
-01-06 10:35:01 state_cleanup	INFO	cleanup prepared in 1.2s, initiating restart...
+01-06 10:35:00 snapshot_restore	INFO	=== CLEANUP TRIGGERED at slot 12345678 ===
+01-06 10:35:00 snapshot_restore	INFO	found snapshot: snapshot/branch_12345000.snapshot
+01-06 10:35:00 snapshot_restore	INFO	snapshot validated successfully
+01-06 10:35:01 snapshot_restore	INFO	cleanup prepared in 1.2s, initiating restart...
 ...
-01-06 10:35:05 state_cleanup	INFO	=== RESTORE STARTED ===
-01-06 10:35:05 state_cleanup	INFO	snapshot file: /home/node/snapshot/branch_12345000.snapshot
-01-06 10:35:05 state_cleanup	INFO	database size before: 2.45 GB
-01-06 10:35:05 state_cleanup	INFO	deleted old database in 150ms
-01-06 10:35:30 state_cleanup	INFO	restore completed: 1500000 records in 25s
-01-06 10:35:30 state_cleanup	INFO	  - transactions: 50000
-01-06 10:35:30 state_cleanup	INFO	  - UTXOs: 1200000
-01-06 10:35:30 state_cleanup	INFO	  - chains: 150
-01-06 10:35:30 state_cleanup	INFO	  - accounts: 249850
-01-06 10:35:30 state_cleanup	INFO	database size after: 1.82 GB
-01-06 10:35:30 state_cleanup	INFO	database size reduced by: 645.12 MB (25.7%)
-01-06 10:35:30 state_cleanup	INFO	snapshot copied to: branch_12345000.snapshot
-01-06 10:35:30 state_cleanup	INFO	old snapshots cleaned up in working directory
-01-06 10:35:30 state_cleanup	INFO	=== CLEANUP COMPLETED in 25.5s ===
-01-06 10:35:30 state_cleanup	INFO	next cleanup scheduled for slot 12354116
+01-06 10:35:05 snapshot_restore	INFO	=== RESTORE STARTED ===
+01-06 10:35:05 snapshot_restore	INFO	snapshot file: /home/node/snapshot/branch_12345000.snapshot
+01-06 10:35:05 snapshot_restore	INFO	database size before: 2.45 GB
+01-06 10:35:05 snapshot_restore	INFO	deleted old database in 150ms
+01-06 10:35:30 snapshot_restore	INFO	restore completed: 1500000 records in 25s
+01-06 10:35:30 snapshot_restore	INFO	  - transactions: 50000
+01-06 10:35:30 snapshot_restore	INFO	  - UTXOs: 1200000
+01-06 10:35:30 snapshot_restore	INFO	  - chains: 150
+01-06 10:35:30 snapshot_restore	INFO	  - accounts: 249850
+01-06 10:35:30 snapshot_restore	INFO	database size after: 1.82 GB
+01-06 10:35:30 snapshot_restore	INFO	database size reduced by: 645.12 MB (25.7%)
+01-06 10:35:30 snapshot_restore	INFO	snapshot copied to: branch_12345000.snapshot
+01-06 10:35:30 snapshot_restore	INFO	old snapshots cleaned up in working directory
+01-06 10:35:30 snapshot_restore	INFO	=== CLEANUP COMPLETED in 25.5s ===
+01-06 10:35:30 snapshot_restore	INFO	next cleanup scheduled for slot 12354116
 ```
 
 ## Workflow
@@ -185,7 +185,7 @@ When `log_file` is configured, cleanup activity is logged to a separate file wit
 │               │                                                  │
 │               ▼                                                  │
 │  ┌──────────────────────────┐                                   │
-│  │ Load .state_cleanup.json │                                   │
+│  │ Load .snapshot_restore.json │                                   │
 │  └────────────┬─────────────┘                                   │
 │               │                                                  │
 │       ┌───────┴───────┐                                         │
@@ -255,7 +255,7 @@ See `util/restart/` for platform-specific implementations.
 3. **TTL exceeded**: If cleanup takes too long, resets state and continues normal startup
 4. **Permission denied**: Logs error, reschedules cleanup
 5. **Node crash during restore**: Database has `restoreInProgress` marker; on next restore attempt, corrupted DB is automatically deleted and restore proceeds fresh
-6. **Multiple nodes on same machine**: Each uses own `.state_cleanup.json` in working directory
+6. **Multiple nodes on same machine**: Each uses own `.snapshot_restore.json` in working directory
 7. **Temporary snapshot files**: Files with `__tmp__` prefix are skipped (still being written by snapshot module)
 8. **Database absent**: Fresh database is created automatically during restore
 9. **Database corrupted/unopenable**: Automatically deleted and recreated during restore
@@ -272,8 +272,8 @@ After a successful restore:
 
 | File | Purpose |
 |------|---------|
-| `.state_cleanup.json` | Persistent cleanup state |
-| `.state_cleanup.log` | Optional cleanup activity log |
+| `.snapshot_restore.json` | Persistent cleanup state |
+| `.snapshot_restore.log` | Optional cleanup activity log |
 | `snapshot/*.snapshot` | Snapshot files to restore from (source directory) |
 | `*.snapshot` (working dir) | Copy of last used snapshot file |
 

@@ -3,7 +3,7 @@ package snapshot_cmd
 import (
 	"os"
 
-	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -53,19 +53,19 @@ func runRestoreCmd(_ *cobra.Command, _ []string) {
 	}
 
 	// Delete existing database if present
-	if err := state_cleanup.DeleteDatabase(global.MultiStateDBName); err != nil {
+	if err := snapshot_restore.DeleteDatabase(global.MultiStateDBName); err != nil {
 		glb.Assertf(false, "failed to delete existing database: %v", err)
 	}
 
 	// Set up restore options
-	opts := state_cleanup.DefaultRestoreOptions()
+	opts := snapshot_restore.DefaultRestoreOptions()
 	opts.BatchSize = batchSize
 	if glb.IsVerbose() {
 		opts.Console = os.Stdout
 	}
 
 	// Use shared restore function
-	stats, err := state_cleanup.RestoreFromSnapshot(fname, opts)
+	stats, err := snapshot_restore.RestoreFromSnapshot(fname, opts)
 	glb.AssertNoError(err)
 
 	glb.Infof("Success\nTotal %d records. By type:", stats.TotalRecords)

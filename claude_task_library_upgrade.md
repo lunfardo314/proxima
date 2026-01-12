@@ -171,7 +171,7 @@ node startup           → If no proximadb, find/restore from latest snapshot
 
 1. **Genesis snapshot is a regular snapshot**: Genesis is just a special case of snapshot containing initial state
 2. **Unified restore mechanism**: Node startup always uses snapshot restore when DB is missing
-3. **Aligns with state_cleanup**: `CheckAndRestoreOnStartup()` already handles missing DB by finding latest snapshot
+3. **Aligns with snapshot_restore**: `CheckAndRestoreOnStartup()` already handles missing DB by finding latest snapshot
 4. **Simpler mental model**: Snapshot is the universal state transfer format for both genesis and recovery
 
 ### Genesis Snapshot Contents
@@ -203,7 +203,7 @@ node startup           → If no proximadb, find/restore from latest snapshot
 
 **Current behavior in `node.Start()`:**
 ```
-checkAndRestoreOnStartup()  → Only restores if state_cleanup marked in-progress
+checkAndRestoreOnStartup()  → Only restores if snapshot_restore marked in-progress
 initMultiStateLedger()      → Fails if DB missing
 ```
 
@@ -213,7 +213,7 @@ checkAndRestoreOnStartup()  → Also restores if proximadb missing (finds latest
 initMultiStateLedger()      → Always succeeds (DB guaranteed to exist after restore)
 ```
 
-The existing `CheckAndRestoreOnStartup()` logic in state_cleanup module already handles:
+The existing `CheckAndRestoreOnStartup()` logic in snapshot_restore module already handles:
 - Detecting missing/corrupted DB
 - Finding latest snapshot in configured directory
 - Restoring from snapshot
@@ -563,7 +563,7 @@ This section maps the design to existing code locations, enabling a cold restart
 - `ledger/lib.go` - Renamed `IdentityData()` to `DefinitionsYAML()`
 - `ledger/output.go` - Added `CloneRaw()` for unvalidated cloning
 - `ledger/multistate/mutate.go` - Added `InsertAddOutputMutationRaw()`, skip upgrade UTXOs in account indexing
-- `core/core_modules/state_cleanup/restore.go` - Updated for new identity format
+- `core/core_modules/snapshot_restore/restore.go` - Updated for new identity format
 - `proxi/snapshot_cmd/restore.go` - Updated for new identity format
 
 **Implementation notes:**
@@ -632,7 +632,7 @@ This section maps the design to existing code locations, enabling a cold restart
 
 **Files modified:**
 - `ledger/multistate/snapshot.go` - Updated format, SaveSnapshot, OpenSnapshotFileStream
-- `core/core_modules/state_cleanup/restore.go` - Updated RestoreFromSnapshot to write all libraries
+- `core/core_modules/snapshot_restore/restore.go` - Updated RestoreFromSnapshot to write all libraries
 - `proxi/snapshot_cmd/restore.go` - Simplified to use shared RestoreFromSnapshot
 - `proxi/snapshot_cmd/check.go` - Updated for new SnapshotFileStream format
 - `proxi/snapshot_cmd/info.go` - Updated for new SnapshotFileStream format
@@ -642,16 +642,16 @@ This section maps the design to existing code locations, enabling a cold restart
 ```
 [header JSON: version="ver 1"]
 [root record: branchID + RootRecord bytes]
-[ledger identity: minimal identity bytes]
-[upgrade count: key={0x07}, value=4-byte little-endian count]
+[upgrade count: key={0x06}, value=4-byte big-endian count]
 [for each upgrade:]
   [key=4-byte big-endian slot, value=yaml bytes]
 [trie data records]
 ```
 
+Note: Ledger identity (genesis time + description) is embedded in the slot 0 library YAML, not as a separate record.
+
 **Key changes:**
-- Version bumped from "ver 0" to "ver 1"
-- `SnapshotFileStream.LedgerIdentity` replaces `LedgerConstants` and `LedgerIDData`
+- Version string "ver 1" (unchanged - format was never used in production)
 - `SnapshotFileStream.UpgradeLibraries` contains all upgrade entries
 - `GetLedgerConstants()` method parses constants from slot 0 library
 - Upgrade libraries written BEFORE trie data (for early access during restore)
@@ -663,25 +663,32 @@ This section maps the design to existing code locations, enabling a cold restart
 
 ### Phase 7: Genesis as Snapshot
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
 **Goal:** Replace `proxi util ledger_id` + `proxi init genesis_db` with single `proxi init genesis` that creates snapshot.
 
 **Tasks:**
-- [ ] 7.1 Create `proxi init genesis` command that outputs genesis.snapshot
-- [ ] 7.2 Build genesis state in memory (identity, upgrade library, 3 outputs, root record)
-- [ ] 7.3 Serialize genesis state to snapshot format
-- [ ] 7.4 Remove/deprecate `proxi util ledger_id` command
-- [ ] 7.5 Remove/deprecate `proxi init genesis_db` command
-- [ ] 7.6 Remove/deprecate `proxi init bootstrap_account` command (distribution done via proxi wallet commands)
-- [ ] 7.7 Update documentation and help text
+- [x] 7.1 Create `proxi init genesis` command that outputs genesis.snapshot
+- [x] 7.2 Build genesis state in memory (identity, upgrade library, 3 outputs, root record)
+- [x] 7.3 Serialize genesis state to snapshot format
+- [ ] 7.4 Remove/deprecate `proxi util ledger_id` command (deferred - keep for compatibility)
+- [ ] 7.5 Remove/deprecate `proxi init genesis_db` command (deferred - keep for compatibility)
+- [ ] 7.6 Remove/deprecate `proxi init bootstrap_account` command (deferred - keep for compatibility)
+- [x] 7.7 Update documentation and help text
 
-**Files to create/modify:**
+**Files created/modified:**
 - `proxi/init_cmd/init_genesis.go` - New command
-- `proxi/init_cmd/init_genesis_db.go` - Deprecate/remove
-- `proxi/init_cmd/init_bootstrap.go` - Deprecate/remove
-- `proxi/util_cmd/util_ledger_id.go` - Deprecate/remove
 - `ledger/multistate/genesis_snapshot.go` - New file for in-memory genesis builder
+- `ledger/multistate/genesis_snapshot_test.go` - Unit tests (10 tests)
+
+**Additional improvements in this phase:**
+- Removed ledger identity record from snapshot format (now embedded in slot 0 library YAML)
+- Changed upgrade count serialization to big-endian (`binary.BigEndian`)
+- Added `validateGenesisIdentityImmutability()` - enforces genesis time/description immutability on upgrades
+- Added `WriteUpgradeLibraryUnchecked()` for tests using placeholder data
+- Renamed `CommitEmptyRootWithLedgerIdentity()` → `WriteEmptyRootWithLedgerIdentity()`
+- Updated `docs/snapshot_format.md` with new format
+- Added BigEndian serialization rule to `CLAUDE.md`
 
 ---
 
@@ -696,12 +703,12 @@ This section maps the design to existing code locations, enabling a cold restart
 - [ ] 8.2 Search for snapshots in working directory and configured snapshot directory
 - [ ] 8.3 Select latest snapshot (by slot) when multiple found
 - [ ] 8.4 Restore from snapshot before `initMultiStateLedger()`
-- [ ] 8.5 Ensure alignment with existing state_cleanup restore logic
+- [ ] 8.5 Ensure alignment with existing snapshot_restore restore logic
 - [ ] 8.6 Integration test: fresh node with only genesis.snapshot
 
 **Files to modify:**
-- `core/core_modules/state_cleanup/state_cleanup.go` - Extend `CheckAndRestoreOnStartup()`
-- `core/core_modules/state_cleanup/restore.go` - May need updates for genesis case
+- `core/core_modules/snapshot_restore/snapshot_restore.go` - Extend `CheckAndRestoreOnStartup()`
+- `core/core_modules/snapshot_restore/restore.go` - May need updates for genesis case
 - `node/node.go` - Ensure correct startup order
 
 **Key behavior:**
@@ -782,38 +789,31 @@ node.Start():
 
 _Track current progress here between sessions._
 
-**Current Phase:** 6 Complete, Ready for Phase 7
-**Current Task:** Phase 7 - Genesis as Snapshot
-**Last Commit:** Phase 6 snapshot format with upgrade libraries
+**Current Phase:** 7 Complete, Ready for Phase 8
+**Current Task:** Phase 8 - Node Startup from Snapshot
+**Last Commit:** Phase 7: Genesis snapshot and format improvements (61793d52)
 **Notes:**
-- Phases 1-6 fully complete
-- Phase 6 completed (2026-01-12):
-  - Snapshot format bumped to "ver 1"
-  - Upgrade libraries now stored in snapshots (before trie data)
-  - `SnapshotFileStream` updated: `LedgerIdentity` + `UpgradeLibraries` fields
-  - `GetLedgerConstants()` method parses from slot 0 library
-  - `RestoreFromSnapshot()` writes all upgrade libraries to DB partition
-  - `proxi snapshot restore` now uses shared restore function (no code duplication)
-  - Documentation: `docs/snapshot_format.md`
-  - Unit tests: `ledger/multistate/snapshot_test.go`
-- New design decisions (2026-01-12):
+- Phases 1-7 fully complete
+- Phase 7 completed (2026-01-12):
+  - Created `proxi init genesis` command
+  - Created `genesis_snapshot.go` - in-memory genesis builder without BadgerDB
+  - Created `genesis_snapshot_test.go` - 10 unit tests
+  - Removed ledger identity record from snapshot format (now in slot 0 library YAML)
+  - Changed upgrade count to big-endian serialization
+  - Added `validateGenesisIdentityImmutability()` - enforces immutability on upgrades
+  - Added `WriteUpgradeLibraryUnchecked()` for testing with placeholder data
+  - Renamed `CommitEmptyRootWithLedgerIdentity()` → `WriteEmptyRootWithLedgerIdentity()`
+  - Updated `docs/snapshot_format.md`
+  - Added BigEndian serialization rule to `CLAUDE.md`
+  - Fixed pion/webrtc dependency version conflict (v4.2.1 → v4.2.3)
+- Design decisions:
   - Genesis as Snapshot: `proxi init genesis` creates snapshot file instead of DB
   - Node startup: automatically restore from snapshot when proximadb missing
   - Single Pending Upgrade: `ledger/upgrade/` folder contains at most one pending upgrade
   - Distribution done manually via proxi wallet commands (zero fees make this practical)
+  - Old commands (`proxi util ledger_id`, `proxi init genesis_db`) kept for compatibility
 - Next phases:
-  - Phase 7: Genesis as snapshot (`proxi init genesis`)
-  - Phase 8: Node startup from snapshot (extend state_cleanup)
+  - Phase 8: Node startup from snapshot (extend snapshot_restore)
   - Phase 9: Single pending upgrade folder (`ledger/upgrade/`)
   - Phase 10: Transaction validation verification
   - Phase 11: API and CLI updates
-
-**Session 2026-01-12 (continued):**
-- Started Phase 7 analysis
-- Reviewed existing genesis code:
-  - `proxi/util_cmd/util_ledger_id.go` - creates ledger definitions YAML from private key
-  - `proxi/init_cmd/init_genesis_db.go` - reads YAML, creates proximadb with genesis state
-  - `proxi/init_cmd/init_bootstrap.go` - distributes initial supply (to be deprecated)
-  - `ledger/multistate/genesis.go` - core genesis logic (`InitStateStoreFromGlobals`)
-- Reviewed `ledger/multistate/snapshot.go` - `SaveSnapshot` and snapshot format
-- Next step: Create `proxi init genesis` command that builds genesis state in memory and writes to snapshot format (without using BadgerDB)

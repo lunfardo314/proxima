@@ -1,4 +1,4 @@
-package state_cleanup
+package snapshot_restore
 
 import (
 	"os"
@@ -11,7 +11,7 @@ import (
 
 func TestStateFileManager_CreateNew(t *testing.T) {
 	tmpDir := t.TempDir()
-	stateFilePath := filepath.Join(tmpDir, ".state_cleanup_test.json")
+	stateFilePath := filepath.Join(tmpDir, ".snapshot_restore_test.json")
 
 	mgr, err := NewStateFileManager(stateFilePath)
 	require.NoError(t, err)
@@ -30,7 +30,7 @@ func TestStateFileManager_CreateNew(t *testing.T) {
 
 func TestStateFileManager_SetNextCleanupSlot(t *testing.T) {
 	tmpDir := t.TempDir()
-	stateFilePath := filepath.Join(tmpDir, ".state_cleanup_test.json")
+	stateFilePath := filepath.Join(tmpDir, ".snapshot_restore_test.json")
 
 	mgr, err := NewStateFileManager(stateFilePath)
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func TestStateFileManager_SetNextCleanupSlot(t *testing.T) {
 
 func TestStateFileManager_StartAndCompleteCleanup(t *testing.T) {
 	tmpDir := t.TempDir()
-	stateFilePath := filepath.Join(tmpDir, ".state_cleanup_test.json")
+	stateFilePath := filepath.Join(tmpDir, ".snapshot_restore_test.json")
 
 	mgr, err := NewStateFileManager(stateFilePath)
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestStateFileManager_StartAndCompleteCleanup(t *testing.T) {
 
 func TestStateFileManager_IsCleanupTTLExceeded(t *testing.T) {
 	tmpDir := t.TempDir()
-	stateFilePath := filepath.Join(tmpDir, ".state_cleanup_test.json")
+	stateFilePath := filepath.Join(tmpDir, ".snapshot_restore_test.json")
 
 	mgr, err := NewStateFileManager(stateFilePath)
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestStateFileManager_IsCleanupTTLExceeded(t *testing.T) {
 
 func TestStateFileManager_ResetCleanupState(t *testing.T) {
 	tmpDir := t.TempDir()
-	stateFilePath := filepath.Join(tmpDir, ".state_cleanup_test.json")
+	stateFilePath := filepath.Join(tmpDir, ".snapshot_restore_test.json")
 
 	mgr, err := NewStateFileManager(stateFilePath)
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestDeleteDatabase(t *testing.T) {
 
 func TestStateFileManager_Persistence(t *testing.T) {
 	tmpDir := t.TempDir()
-	stateFilePath := filepath.Join(tmpDir, ".state_cleanup_test.json")
+	stateFilePath := filepath.Join(tmpDir, ".snapshot_restore_test.json")
 
 	// Create and set up initial state
 	mgr1, err := NewStateFileManager(stateFilePath)

@@ -11,7 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/poker"
 	"github.com/lunfardo314/proxima/core/core_modules/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
-	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/core_modules/txinput_queue"
 	"github.com/lunfardo314/proxima/core/core_modules/txsenders"
@@ -93,7 +93,7 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.txSenders = txsenders.New(ret)
 	ret.txInputQueue = txinput_queue.New(ret)
 	snapshot.Start(ret)
-	state_cleanup.Start(ret)
+	snapshot_restore.Start(ret)
 	ret.startListeningTransactions()
 
 	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID) {

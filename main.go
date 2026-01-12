@@ -5,7 +5,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
 	"github.com/lunfardo314/proxima/node"
 	"github.com/lunfardo314/proxima/util/restart"
 )
@@ -28,8 +28,8 @@ func main() {
 	n.WaitAllDBClosed()
 
 	// Check if state cleanup requested a restart
-	if state_cleanup.CleanupRequestedFlag.Load() {
-		snapshotFile, _ := state_cleanup.SnapshotFileForRestore.Load().(string)
+	if snapshot_restore.CleanupRequestedFlag.Load() {
+		snapshotFile, _ := snapshot_restore.SnapshotFileForRestore.Load().(string)
 		n.Log().Infof("state cleanup requested, restarting node to restore from: %s", snapshotFile)
 
 		binary, err := os.Executable()

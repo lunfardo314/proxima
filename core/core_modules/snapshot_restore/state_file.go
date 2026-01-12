@@ -1,4 +1,4 @@
-package state_cleanup
+package snapshot_restore
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	DefaultStateFileName = ".state_cleanup.json"
+	DefaultStateFileName = ".snapshot_restore.json"
 )
 
 // StateFile holds the cleanup state persisted to disk

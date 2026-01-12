@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl/slicepool"
-	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -131,7 +131,7 @@ func (p *ProximaNode) Start() {
 		initStep = "startMetrics"
 		p.startMetrics()
 		initStep = "checkAndRestoreOnStartup"
-		if restored, err := state_cleanup.CheckAndRestoreOnStartup(p.Global); err != nil {
+		if restored, err := snapshot_restore.CheckAndRestoreOnStartup(p.Global); err != nil {
 			return fmt.Errorf("state cleanup restore failed: %w", err)
 		} else if restored {
 			p.Log().Infof("state restored from snapshot, continuing with normal startup")

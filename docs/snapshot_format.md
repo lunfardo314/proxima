@@ -61,7 +61,7 @@ The `SaveSnapshot` function in `ledger/multistate/snapshot.go`:
 
 ## Restore Workflow
 
-The `RestoreFromSnapshot` function in `core/core_modules/state_cleanup/restore.go`:
+The `RestoreFromSnapshot` function in `core/core_modules/snapshot_restore/restore.go`:
 
 ```
 1. Open snapshot file stream
@@ -147,7 +147,7 @@ ledger constants (from slot 0 library):
 
 ## Automatic Restore on Startup
 
-When `state_cleanup` is enabled in `proxima.yaml`, the node automatically restores from snapshot if:
+When `snapshot_restore` is enabled in `proxima.yaml`, the node automatically restores from snapshot if:
 
 1. **DB is missing**: Fresh node with only a snapshot file
 2. **DB is corrupted**: Restore-in-progress marker present from interrupted restore
@@ -156,7 +156,7 @@ When `state_cleanup` is enabled in `proxima.yaml`, the node automatically restor
 ### Configuration
 
 ```yaml
-state_cleanup:
+snapshot_restore:
   enable: true
   period_slots: 8438      # ~24 hours between cleanups
   window_slots: 1406      # ~4 hour random window
