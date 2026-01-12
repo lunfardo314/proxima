@@ -47,8 +47,19 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 	glb.Infof("snapshot format version: %s", ssData.fmtVersion)
 	glb.Infof("snapshot branch id (hex = %s): %s", ssData.branchID.String(), ssData.branchID.StringHex())
 	glb.Infof("snapshot root record:\n%s", ssData.rootRecord.Lines("    ").String())
+	glb.Infof("upgrade libraries: %d", len(ssData.upgradeLibraries))
 
-	fromYAML, err := easyfl.ReadLibraryFromYAML(ssData.ledgerIDData)
+	// Find slot 0 library for comparison
+	var slot0Library []byte
+	for _, entry := range ssData.upgradeLibraries {
+		if entry.Slot == 0 {
+			slot0Library = entry.LibraryYAML
+			break
+		}
+	}
+	glb.Assertf(slot0Library != nil, "no slot 0 library in snapshot")
+
+	fromYAML, err := easyfl.ReadLibraryFromYAML(slot0Library)
 	glb.AssertNoError(err)
 
 	h := ledger.L(base.MaxSlot).LibraryHash()
@@ -71,11 +82,11 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 }
 
 type _snapshotFileData struct {
-	fmtVersion     string
-	branchID       base.TransactionID
-	rootRecord     multistate.RootRecord
-	ledgerIDData   []byte
-	ledgerIDParams *ledger.Constants
+	fmtVersion       string
+	branchID         base.TransactionID
+	rootRecord       multistate.RootRecord
+	upgradeLibraries []multistate.UpgradeLibraryEntry
+	ledgerIDParams   *ledger.Constants
 }
 
 func readASnapshotFile(fname string) (*_snapshotFileData, error) {
@@ -85,11 +96,16 @@ func readASnapshotFile(fname string) (*_snapshotFileData, error) {
 	}
 	defer kvStream.Close()
 
+	constants, err := kvStream.GetLedgerConstants()
+	if err != nil {
+		return nil, err
+	}
+
 	return &_snapshotFileData{
-		fmtVersion:     kvStream.Header.Version,
-		branchID:       kvStream.BranchID,
-		rootRecord:     kvStream.RootRecord,
-		ledgerIDData:   kvStream.LedgerIDData,
-		ledgerIDParams: kvStream.LedgerConstants,
+		fmtVersion:       kvStream.Header.Version,
+		branchID:         kvStream.BranchID,
+		rootRecord:       kvStream.RootRecord,
+		upgradeLibraries: kvStream.UpgradeLibraries,
+		ledgerIDParams:   constants,
 	}, nil
 }

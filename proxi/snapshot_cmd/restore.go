@@ -1,22 +1,11 @@
 package snapshot_cmd
 
 import (
-	"encoding/hex"
-	"fmt"
-	"io"
 	"os"
-	"time"
 
-	"github.com/dgraph-io/badger/v4"
+	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
-	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
-	"github.com/lunfardo314/unitrie/common"
-	"github.com/lunfardo314/unitrie/immutable"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -46,12 +35,10 @@ func initRestoreCmd() *cobra.Command {
 	return restoreCmd
 }
 
-const (
-	trieCacheSize    = 10_000
-	defaultBatchSize = 4_000
-)
+const defaultBatchSize = 4_000
 
 func runRestoreCmd(_ *cobra.Command, _ []string) {
+	// Find snapshot file if not specified
 	if fname == "" {
 		var ok bool
 		fname, ok = findLatestSnapshotFile()
@@ -60,117 +47,31 @@ func runRestoreCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("snapshot file: %s", fname)
 	glb.Infof("batch size is %d", batchSize)
 
-	kvStream, err := multistate.OpenSnapshotFileStream(fname)
-	glb.AssertNoError(err)
-	defer kvStream.Close()
+	// Check if DB already exists
+	if _, err := os.Stat(global.MultiStateDBName); err == nil {
+		glb.Infof("WARNING: database %s already exists, it will be overwritten", global.MultiStateDBName)
+	}
 
-	glb.Infof("Verbosity level: %d", glb.VerbosityLevel())
-	glb.Infof("snapshot file: %s", fname)
-	glb.Infof("format version: %s", kvStream.Header.Version)
-	glb.Infof("branch id: %s (hex = %s)", kvStream.BranchID.String(), kvStream.BranchID.StringHex())
-	glb.Infof("root record:\n%s", kvStream.RootRecord.Lines("    ").String())
-	glb.Infof("ledger id:\n%s", kvStream.LedgerConstants.Lines("    ").String())
+	// Delete existing database if present
+	if err := state_cleanup.DeleteDatabase(global.MultiStateDBName); err != nil {
+		glb.Assertf(false, "failed to delete existing database: %v", err)
+	}
 
-	start := time.Now()
-
-	stateDb := badger_adaptor.MustCreateOrOpenBadgerDB(global.MultiStateDBName, badger.DefaultOptions(global.MultiStateDBName))
-	stateStore := badger_adaptor.New(stateDb)
-	defer func() { _ = stateStore.Close() }()
-
-	// Store library YAML in upgrade DB partition at slot 0
-	err = multistate.WriteUpgradeLibrary(stateStore, 0, kvStream.LedgerIDData)
-	glb.AssertNoError(err)
-
-	// Create minimal identity from constants
-	identity := ledger.NewLedgerIdentity(kvStream.LedgerConstants.GenesisTimeUnix, kvStream.LedgerConstants.Description)
-
-	// Initialize empty root with minimal ledger identity
-	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(identity, stateStore)
-	glb.AssertNoError(err)
-
-	trieUpdatable, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, emptyRoot, trieCacheSize)
-	glb.AssertNoError(err)
-
-	var batch common.KVBatchedWriter
-	var inBatch int
-	var lastRoot common.VCommitment
-
-	console := io.Discard
+	// Set up restore options
+	opts := state_cleanup.DefaultRestoreOptions()
+	opts.BatchSize = batchSize
 	if glb.IsVerbose() {
-		console = os.Stdout
+		opts.Console = os.Stdout
 	}
-	total := 0
-	verbosityLevel := glb.VerbosityLevel()
 
-	begin := time.Now()
-
-	txCount := 0
-	utxoCount := 0
-	chainCount := 0
-	accountsCount := 0
-
-	for pair := range kvStream.InChan {
-		if util.IsNil(batch) {
-			batch = stateStore.BatchedWriter()
-		}
-		already := trieUpdatable.Update(pair.Key, pair.Value)
-		glb.Assertf(!already, "repeating key %s", hex.EncodeToString(pair.Key))
-		inBatch++
-
-		if verbosityLevel > 1 {
-			_outKVPair(pair.Key, pair.Value, total, console)
-		}
-		total++
-
-		switch pair.Key[0] {
-		case multistate.TriePartitionLedgerState:
-			if len(pair.Key[1:]) == base.TransactionIDLength {
-				txCount++
-			}
-			if len(pair.Key[1:]) == base.OutputIDLength {
-				utxoCount++
-			}
-		case multistate.TriePartitionAccounts:
-			accountsCount++
-		case multistate.TriePartitionChainID:
-			chainCount++
-		}
-
-		if inBatch == batchSize {
-			lastRoot = trieUpdatable.Commit(batch)
-			err = batch.Commit()
-			util.AssertNoError(err)
-			inBatch = 0
-			batch = nil
-			trieUpdatable, err = immutable.NewTrieUpdatable(ledger.CommitmentModel, stateStore, lastRoot, trieCacheSize)
-			util.AssertNoError(err)
-			_, _ = fmt.Fprintf(console, "--- committed %d (+%d) records in %v, %.0f records/sec\n",
-				total, batchSize, time.Since(begin), float64(total)/(float64(time.Since(begin))/float64(time.Second)))
-		}
-	}
-	if !util.IsNil(batch) {
-		lastRoot = trieUpdatable.Commit(batch)
-		err = batch.Commit()
-		util.AssertNoError(err)
-		_, _ = fmt.Fprintf(console, "--- commit remaining ---\n")
-	}
-	// write meta-records
-	batch = stateStore.BatchedWriter()
-	multistate.WriteLatestSlotRecord(batch, kvStream.BranchID.Slot())
-	multistate.WriteEarliestSlotRecord(batch, kvStream.BranchID.Slot())
-	multistate.WriteRootRecord(batch, kvStream.BranchID, kvStream.RootRecord)
-
-	err = batch.Commit()
+	// Use shared restore function
+	stats, err := state_cleanup.RestoreFromSnapshot(fname, opts)
 	glb.AssertNoError(err)
 
-	glb.Assertf(ledger.CommitmentModel.EqualCommitments(lastRoot, kvStream.RootRecord.Root),
-		"inconsistency: final root %s is not equal to the root in the root record %s",
-		lastRoot.String(), kvStream.RootRecord.Root.String())
-
-	glb.Infof("Success\nTotal %d records. By type:", total)
-	glb.Infof("   Tx:       %d", txCount)
-	glb.Infof("   UTXO:     %d", utxoCount)
-	glb.Infof("   Chains:   %d", chainCount)
-	glb.Infof("   Accounts: %d", accountsCount)
-	glb.Infof("it took %v, %d records/sec", time.Since(start), time.Duration(total)*time.Second/time.Since(start))
+	glb.Infof("Success\nTotal %d records. By type:", stats.TotalRecords)
+	glb.Infof("   Tx:       %d", stats.TxCount)
+	glb.Infof("   UTXO:     %d", stats.UTXOCount)
+	glb.Infof("   Chains:   %d", stats.ChainCount)
+	glb.Infof("   Accounts: %d", stats.AccountsCount)
+	glb.Infof("it took %v", stats.Duration)
 }

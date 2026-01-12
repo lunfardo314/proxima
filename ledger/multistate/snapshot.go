@@ -24,13 +24,13 @@ type (
 	}
 
 	SnapshotFileStream struct {
-		Header          *SnapshotHeader
-		LedgerIDData    []byte
-		LedgerConstants *ledger.Constants
-		BranchID        base.TransactionID
-		RootRecord      RootRecord
-		InChan          chan common.KVPairOrError
-		Close           func()
+		Header           *SnapshotHeader
+		LedgerIdentity   *ledger.LedgerIdentity
+		UpgradeLibraries []UpgradeLibraryEntry
+		BranchID         base.TransactionID
+		RootRecord       RootRecord
+		InChan           chan common.KVPairOrError
+		Close            func()
 	}
 
 	SnapshotStats struct {
@@ -44,9 +44,15 @@ type (
 )
 
 const (
-	snapshotFormatVersionString = "ver 0"
+	snapshotFormatVersionString = "ver 1"
 	TmpSnapshotFileNamePrefix   = "__tmp__"
 )
+
+// UpgradeLibraryEntry represents a single upgrade library in a snapshot
+type UpgradeLibraryEntry struct {
+	Slot        uint32
+	LibraryYAML []byte
+}
 
 // writeState writes state with the root as a sequence of key/value pairs.
 // Does not write ledger identity record
@@ -159,29 +165,49 @@ func SaveSnapshot(state StateStoreReader, branch *BranchData, ctx context.Contex
 	}
 	_, _ = fmt.Fprintf(console, "[SaveSnapshot] root record:\n%s\n", branch.RootRecord.Lines("     ").String())
 
-	// write ledger identity data as separate record
-	ledgerIDBytes := LedgerIdentityBytesFromRoot(state, branch.Root)
-	err = outFileStream.Write(nil, ledgerIDBytes)
+	// write minimal ledger identity (genesis time + description)
+	identityBytes := LedgerIdentityBytesFromRoot(state, branch.Root)
+	identity, err := ledger.LedgerIdentityFromBytes(identityBytes)
+	if err != nil {
+		return makeErr(fmt.Sprintf("failed to parse ledger identity: %v", err))
+	}
+	err = outFileStream.Write(nil, identityBytes)
 	if err != nil {
 		return makeErr(err.Error())
 	}
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] ledger identity: genesis=%d, description=%q\n",
+		identity.GenesisTimeUnix, identity.Description)
 
-	// parse ledger ID data to validate and to print params (not needed?)
-	lib, err := ledger.ParseLibraryFromYAML(ledgerIDBytes, ledger.GetEmbeddedFunctionResolverUpgrade0)
-	if err != nil {
-		return makeErr(err.Error())
-	}
-	var constants *ledger.Constants
-	err = util.CatchPanicOrError(func() error {
-		constants = ledger.ConstantsFromLibrary(lib)
-		return nil
+	// write upgrade libraries from DB partition (before trie data for early access during restore)
+	var upgradeLibraries []UpgradeLibraryEntry
+	IterateUpgradeLibraries(state, func(slot uint32, yaml []byte) bool {
+		upgradeLibraries = append(upgradeLibraries, UpgradeLibraryEntry{Slot: slot, LibraryYAML: yaml})
+		return true
 	})
+
+	// write upgrade count
+	countBytes := make([]byte, 4)
+	countBytes[0] = byte(len(upgradeLibraries))
+	countBytes[1] = byte(len(upgradeLibraries) >> 8)
+	countBytes[2] = byte(len(upgradeLibraries) >> 16)
+	countBytes[3] = byte(len(upgradeLibraries) >> 24)
+	err = outFileStream.Write([]byte{upgradeLibraryDBPartition}, countBytes)
 	if err != nil {
 		return makeErr(err.Error())
 	}
-	_, _ = fmt.Fprintf(console, "[SaveSnapshot] ledger constants:\n%s\n", constants.Lines("     ").String())
+	_, _ = fmt.Fprintf(console, "[SaveSnapshot] upgrade libraries: %d\n", len(upgradeLibraries))
 
-	// write trie
+	// write each upgrade library
+	for _, entry := range upgradeLibraries {
+		slotBytes := base.Slot2Bytes(entry.Slot)
+		err = outFileStream.Write(slotBytes, entry.LibraryYAML)
+		if err != nil {
+			return makeErr(err.Error())
+		}
+		_, _ = fmt.Fprintf(console, "[SaveSnapshot]   - slot %d: %d bytes\n", entry.Slot, len(entry.LibraryYAML))
+	}
+
+	// write trie data (after upgrade libraries)
 	var stats *SnapshotStats
 	stats, err = writeState(state, outFileStream, branch.Root, ctx, console)
 	if err != nil {
@@ -200,8 +226,9 @@ func SaveSnapshot(state StateStoreReader, branch *BranchData, ctx context.Contex
 	return fpath, stats, nil
 }
 
-// OpenSnapshotFileStream reads first 3 records in the snapshot file and returns
-// channel for remaining key/value pairs
+// OpenSnapshotFileStream reads snapshot file header, identity, and upgrade libraries.
+// Returns a stream for trie data key/value pairs.
+// Format (ver 1): header, root record, identity, upgrade count, upgrade libraries, trie data
 func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 	file, err := os.Open(fname)
 	if err != nil {
@@ -211,57 +238,115 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 	ret := &SnapshotFileStream{}
 	ctx, cancel := context.WithCancel(context.Background())
 	ret.Close = cancel
-	ret.InChan = common.KVStreamIteratorToChan(iter, ctx)
+
+	rawChan := common.KVStreamIteratorToChan(iter, ctx)
 
 	// read header
-	pair := <-ret.InChan
+	pair := <-rawChan
 	if pair.IsNil() || pair.Err != nil {
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong first key/value pair 1")
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong header record")
 	}
 	if len(pair.Key) > 0 {
 		cancel()
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong first key/value pair 2")
+		return nil, fmt.Errorf("OpenSnapshotFileStream: header key must be empty")
 	}
 	if err = json.Unmarshal(pair.Value, &ret.Header); err != nil {
 		cancel()
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong first key/value pair 3")
+		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid header JSON: %v", err)
 	}
+
 	// read root record
-	pair = <-ret.InChan
+	pair = <-rawChan
 	if pair.IsNil() || pair.Err != nil {
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong second key/value pair 1")
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong root record")
 	}
 	if ret.BranchID, err = base.TransactionIDFromBytes(pair.Key); err != nil {
 		cancel()
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong second key/value pair 2")
+		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid branch ID: %v", err)
 	}
 	if ret.RootRecord, err = RootRecordFromBytes(pair.Value); err != nil {
 		cancel()
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong second key/value pair 3")
-	}
-	// read ledger identity data
-	pair = <-ret.InChan
-	if pair.IsNil() || pair.Err != nil {
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 1")
-	}
-	lib, err := ledger.ParseLibraryFromYAML(pair.Value, ledger.GetEmbeddedFunctionResolverUpgrade0)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong third key/value pair 2")
-	}
-	var constants *ledger.Constants
-	err = util.CatchPanicOrError(func() error {
-		constants = ledger.ConstantsFromLibrary(lib)
-		return nil
-	})
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("OpenSnapshotFileStream: %v", err)
+		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid root record: %v", err)
 	}
 
-	ret.LedgerConstants = constants
-	ret.LedgerIDData = pair.Value
+	// read ledger identity (minimal: genesis time + description)
+	pair = <-rawChan
+	if pair.IsNil() || pair.Err != nil {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong identity record")
+	}
+	ret.LedgerIdentity, err = ledger.LedgerIdentityFromBytes(pair.Value)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid ledger identity: %v", err)
+	}
+
+	// read upgrade count marker
+	pair = <-rawChan
+	if pair.IsNil() || pair.Err != nil {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong upgrade count record")
+	}
+	if len(pair.Key) != 1 || pair.Key[0] != upgradeLibraryDBPartition {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: expected upgrade count marker, got key len %d", len(pair.Key))
+	}
+	if len(pair.Value) < 4 {
+		cancel()
+		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid upgrade count value")
+	}
+	upgradeCount := int(pair.Value[0]) | int(pair.Value[1])<<8 | int(pair.Value[2])<<16 | int(pair.Value[3])<<24
+
+	// read upgrade libraries
+	for i := 0; i < upgradeCount; i++ {
+		pair = <-rawChan
+		if pair.IsNil() || pair.Err != nil {
+			cancel()
+			return nil, fmt.Errorf("OpenSnapshotFileStream: failed to read upgrade library %d", i)
+		}
+		slot, slotErr := base.SlotFromBytes(pair.Key)
+		if slotErr != nil {
+			cancel()
+			return nil, fmt.Errorf("OpenSnapshotFileStream: invalid upgrade slot: %v", slotErr)
+		}
+		ret.UpgradeLibraries = append(ret.UpgradeLibraries, UpgradeLibraryEntry{
+			Slot:        slot,
+			LibraryYAML: pair.Value,
+		})
+	}
+
+	// remaining records are trie data - pass through channel
+	ret.InChan = rawChan
 	return ret, nil
+}
+
+// GetLedgerConstants parses constants from the first upgrade library (slot 0).
+// This is a convenience method for code that needs constants during restore.
+func (s *SnapshotFileStream) GetLedgerConstants() (*ledger.Constants, error) {
+	if len(s.UpgradeLibraries) == 0 {
+		return nil, fmt.Errorf("no upgrade libraries in snapshot")
+	}
+	// Find slot 0 library
+	for _, entry := range s.UpgradeLibraries {
+		if entry.Slot == 0 {
+			lib, err := ledger.ParseLibraryFromYAML(entry.LibraryYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse library: %v", err)
+			}
+			var constants *ledger.Constants
+			err = util.CatchPanicOrError(func() error {
+				constants = ledger.ConstantsFromLibrary(lib)
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+			return constants, nil
+		}
+	}
+	return nil, fmt.Errorf("no slot 0 library in snapshot")
 }
 
 func (s *SnapshotStats) Lines(prefix ...string) *lines.Lines {

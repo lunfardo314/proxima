@@ -149,6 +149,159 @@ Each upgrade UTXO can be verified by:
 
 ---
 
+## Genesis as Snapshot (New Design)
+
+### Current Bootstrap Flow (Being Replaced)
+
+```
+proxi util ledger_id   → Creates proxi.genesis.id.yaml (ledger definitions)
+proxi init genesis_db  → Creates proximadb with genesis state
+proxi init bootstrap   → Distributes initial supply to accounts
+node startup           → Opens existing DB or fails
+```
+
+### New Bootstrap Flow
+
+```
+proxi init genesis     → Creates genesis.snapshot file
+node startup           → If no proximadb, find/restore from latest snapshot
+```
+
+### Key Design Changes
+
+1. **Genesis snapshot is a regular snapshot**: Genesis is just a special case of snapshot containing initial state
+2. **Unified restore mechanism**: Node startup always uses snapshot restore when DB is missing
+3. **Aligns with state_cleanup**: `CheckAndRestoreOnStartup()` already handles missing DB by finding latest snapshot
+4. **Simpler mental model**: Snapshot is the universal state transfer format for both genesis and recovery
+
+### Genesis Snapshot Contents
+
+- Ledger identity (genesis time + description)
+- Upgrade library at slot 0 (full compiled YAML)
+- Three genesis outputs:
+  - Output #0: Initial supply (locked to genesis controller)
+  - Output #1: Genesis stem
+  - Output #255: Upgrade commitment UTXO
+- Root record with initial state
+
+### `proxi init genesis` Command
+
+**Input:**
+- Private key (from wallet or generated)
+
+**Output:**
+- `genesis.snapshot` file ready for node bootstrap
+
+**Process:**
+1. Generate ledger parameters from private key
+2. Create library from parameters (upgrade0)
+3. Build genesis state in memory (3 outputs + root record)
+4. Serialize to snapshot format (includes upgrade library)
+5. Write snapshot file
+
+### Node Startup Changes
+
+**Current behavior in `node.Start()`:**
+```
+checkAndRestoreOnStartup()  → Only restores if state_cleanup marked in-progress
+initMultiStateLedger()      → Fails if DB missing
+```
+
+**New behavior:**
+```
+checkAndRestoreOnStartup()  → Also restores if proximadb missing (finds latest snapshot)
+initMultiStateLedger()      → Always succeeds (DB guaranteed to exist after restore)
+```
+
+The existing `CheckAndRestoreOnStartup()` logic in state_cleanup module already handles:
+- Detecting missing/corrupted DB
+- Finding latest snapshot in configured directory
+- Restoring from snapshot
+
+We need to extend it to:
+- Also check for snapshots when DB is completely absent (not just corrupted)
+- Look in multiple directories (working dir, configured snapshot dir)
+
+---
+
+## Single Pending Upgrade Model
+
+### Design Principle
+
+At most **one pending upgrade** can exist in the codebase at any time. This simplifies:
+- Code organization (no need to manage multiple pending upgrades)
+- Testing (only test current → next transition)
+- Node operator experience (clear single upgrade path)
+
+### `ledger/upgrade/` Folder Structure
+
+```
+ledger/upgrade/
+├── pending.go           # Pending upgrade registration (or nil)
+├── pending_defs.yaml    # EasyFL definitions for pending upgrade (if any)
+└── pending_resolver.go  # Embedded function resolver for pending upgrade (if any)
+```
+
+**When no pending upgrade:**
+- `pending.go` exports `var PendingUpgrade *UpgradeDefinition = nil`
+- Or folder contains only placeholder/documentation
+
+**When pending upgrade exists:**
+- `pending.go` exports upgrade definition with target slot
+- `pending_defs.yaml` contains YAML deltas
+- `pending_resolver.go` contains new/modified embedded functions
+
+### Upgrade Lifecycle
+
+```
+1. DEVELOPMENT: Developer adds upgrade to ledger/upgrade/
+   - Define target slot (well in the future)
+   - Add YAML definitions
+   - Add embedded resolver if needed
+
+2. DEPLOYMENT: Node operators update their nodes
+   - New code includes pending upgrade
+   - Upgrade registered at startup (before target slot)
+
+3. ACTIVATION: Target slot reached
+   - Upgrade UTXO injected into first branch at/after slot
+   - Library stored in DB partition
+   - Ledger rules change
+
+4. CLEANUP: After activation (optional)
+   - ledger/upgrade/ folder can be cleared
+   - Upgrade data now lives in DB partition
+   - Code remains for embedded function implementations
+```
+
+### Integration with Existing Code
+
+**At node startup (`InitLedgerFromStore`):**
+```go
+// Always register upgrade0
+RegisterResolverForUpgrade(0, GetEmbeddedFunctionResolverUpgrade0)
+
+// Register pending upgrade if exists and not yet in DB
+if upgrade.PendingUpgrade != nil {
+    slot := upgrade.PendingUpgrade.Slot
+    if !upgradeExistsInDB(store, slot) {
+        RegisterResolverForUpgrade(slot, upgrade.PendingUpgrade.Resolver)
+        WriteUpgradeLibrary(store, slot, upgrade.PendingUpgrade.CompiledYAML)
+    }
+}
+
+MustInitLibraryCache(store)
+```
+
+### Benefits
+
+1. **Simplicity**: Only one upgrade to think about at a time
+2. **Clear ownership**: Pending upgrade is explicit in code
+3. **Easy cleanup**: After activation, pending folder can be emptied
+4. **No accumulation**: Code doesn't grow with upgrade history (DB handles history)
+
+---
+
 ## Code Changes Required
 
 ### 1. Library Access Function
@@ -465,56 +618,163 @@ This section maps the design to existing code locations, enabling a cold restart
 
 ---
 
-### Phase 6: Snapshot Format
+### Phase 6: Snapshot Format with Upgrade Libraries
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Goal:** Include upgrade library YAMLs in snapshots.
+**Goal:** Include upgrade library YAMLs in snapshots (prerequisite for genesis as snapshot).
 
 **Tasks:**
-- [ ] 6.1 Add upgrade libraries section to snapshot format
-- [ ] 6.2 Update snapshot creation to include all upgrade YAMLs
-- [ ] 6.3 Update snapshot restore to populate DB partition
-- [ ] 6.4 Unit tests for snapshot round-trip
+- [x] 6.1 Add upgrade libraries section to snapshot format (header with count + library entries)
+- [x] 6.2 Update snapshot creation to include all upgrade YAMLs from DB partition
+- [x] 6.3 Update snapshot restore to populate upgrade DB partition
+- [x] 6.4 Unit tests for snapshot round-trip with upgrade libraries
 
-**Files to modify:**
-- `ledger/multistate/snapshot.go`
+**Files modified:**
+- `ledger/multistate/snapshot.go` - Updated format, SaveSnapshot, OpenSnapshotFileStream
+- `core/core_modules/state_cleanup/restore.go` - Updated RestoreFromSnapshot to write all libraries
+- `proxi/snapshot_cmd/restore.go` - Simplified to use shared RestoreFromSnapshot
+- `proxi/snapshot_cmd/check.go` - Updated for new SnapshotFileStream format
+- `proxi/snapshot_cmd/info.go` - Updated for new SnapshotFileStream format
+- `ledger/multistate/snapshot_test.go` - New test file
+
+**Snapshot format (ver 1):**
+```
+[header JSON: version="ver 1"]
+[root record: branchID + RootRecord bytes]
+[ledger identity: minimal identity bytes]
+[upgrade count: key={0x07}, value=4-byte little-endian count]
+[for each upgrade:]
+  [key=4-byte big-endian slot, value=yaml bytes]
+[trie data records]
+```
+
+**Key changes:**
+- Version bumped from "ver 0" to "ver 1"
+- `SnapshotFileStream.LedgerIdentity` replaces `LedgerConstants` and `LedgerIDData`
+- `SnapshotFileStream.UpgradeLibraries` contains all upgrade entries
+- `GetLedgerConstants()` method parses constants from slot 0 library
+- Upgrade libraries written BEFORE trie data (for early access during restore)
+- Code duplication removed: `proxi snapshot restore` now uses shared `RestoreFromSnapshot()`
+
+**Documentation:** See `docs/snapshot_format.md` for detailed snapshot format specification.
 
 ---
 
-### Phase 7: Transaction Validation
+### Phase 7: Genesis as Snapshot
 
 **Status:** ⏳ Pending
 
-**Goal:** Use slot-appropriate library version for transaction validation.
+**Goal:** Replace `proxi util ledger_id` + `proxi init genesis_db` with single `proxi init genesis` that creates snapshot.
 
 **Tasks:**
-- [ ] 7.1 Pass slot to library access in validation code
-- [ ] 7.2 Ensure historical transactions use correct library version
-- [ ] 7.3 Integration tests with multiple library versions
+- [ ] 7.1 Create `proxi init genesis` command that outputs genesis.snapshot
+- [ ] 7.2 Build genesis state in memory (identity, upgrade library, 3 outputs, root record)
+- [ ] 7.3 Serialize genesis state to snapshot format
+- [ ] 7.4 Remove/deprecate `proxi util ledger_id` command
+- [ ] 7.5 Remove/deprecate `proxi init genesis_db` command
+- [ ] 7.6 Remove/deprecate `proxi init bootstrap_account` command (distribution done via proxi wallet commands)
+- [ ] 7.7 Update documentation and help text
+
+**Files to create/modify:**
+- `proxi/init_cmd/init_genesis.go` - New command
+- `proxi/init_cmd/init_genesis_db.go` - Deprecate/remove
+- `proxi/init_cmd/init_bootstrap.go` - Deprecate/remove
+- `proxi/util_cmd/util_ledger_id.go` - Deprecate/remove
+- `ledger/multistate/genesis_snapshot.go` - New file for in-memory genesis builder
+
+---
+
+### Phase 8: Node Startup from Snapshot
+
+**Status:** ⏳ Pending
+
+**Goal:** Node automatically restores from snapshot when proximadb is missing.
+
+**Tasks:**
+- [ ] 8.1 Extend `CheckAndRestoreOnStartup()` to detect missing DB (not just corrupted)
+- [ ] 8.2 Search for snapshots in working directory and configured snapshot directory
+- [ ] 8.3 Select latest snapshot (by slot) when multiple found
+- [ ] 8.4 Restore from snapshot before `initMultiStateLedger()`
+- [ ] 8.5 Ensure alignment with existing state_cleanup restore logic
+- [ ] 8.6 Integration test: fresh node with only genesis.snapshot
 
 **Files to modify:**
+- `core/core_modules/state_cleanup/state_cleanup.go` - Extend `CheckAndRestoreOnStartup()`
+- `core/core_modules/state_cleanup/restore.go` - May need updates for genesis case
+- `node/node.go` - Ensure correct startup order
+
+**Key behavior:**
+```
+node.Start():
+  checkAndRestoreOnStartup()
+    if proximadb missing:
+      find latest .snapshot file
+      restore from snapshot (creates proximadb)
+  initMultiStateLedger()  // Now always succeeds
+```
+
+---
+
+### Phase 9: Single Pending Upgrade Folder
+
+**Status:** ⏳ Pending
+
+**Goal:** Create `ledger/upgrade/` folder for single pending upgrade model.
+
+**Tasks:**
+- [ ] 9.1 Create `ledger/upgrade/` folder structure
+- [ ] 9.2 Create `UpgradeDefinition` type and `PendingUpgrade` variable
+- [ ] 9.3 Modify `InitLedgerFromStore()` to register pending upgrade if exists
+- [ ] 9.4 Add pending upgrade to DB partition at startup (if not already present)
+- [ ] 9.5 Document upgrade authoring process
+- [ ] 9.6 Unit test: pending upgrade registration and activation
+
+**Files to create:**
+- `ledger/upgrade/upgrade.go` - Core types and PendingUpgrade variable
+- `ledger/upgrade/doc.go` - Package documentation
+
+**Files to modify:**
+- `ledger/multistate/genesis.go` - Register pending upgrade at startup
+
+---
+
+### Phase 10: Transaction Validation (Slot-Aware)
+
+**Status:** ⏳ Pending (mostly complete from Phase 2)
+
+**Goal:** Ensure all transaction validation uses slot-appropriate library version.
+
+**Tasks:**
+- [ ] 10.1 Verify validation code uses `L(txSlot)` consistently
+- [ ] 10.2 Integration tests with transactions spanning upgrade boundary
+- [ ] 10.3 Test historical transaction re-validation with old library
+
+**Files to verify:**
 - `ledger/transaction/validate.go`
 - `core/attacher/*.go`
 
+**Note:** Most of this was already done in Phase 2. This phase is for verification and edge case testing.
+
 ---
 
-### Phase 8: API and CLI
+### Phase 11: API and CLI Updates
 
 **Status:** ⏳ Pending
 
 **Goal:** Expose upgrade information through API and CLI.
 
 **Tasks:**
-- [ ] 8.1 API endpoint for upgrade history
-- [ ] 8.2 API endpoint for current library version
-- [ ] 8.3 Proxi CLI commands for upgrade info
-- [ ] 8.4 Update existing CLI commands for new storage
+- [ ] 11.1 API endpoint for upgrade history (`/upgrades`)
+- [ ] 11.2 API endpoint for library version at slot (`/library?slot=N`)
+- [ ] 11.3 Update `proxi db info` to show upgrade history
+- [ ] 11.4 Add `proxi db upgrades` command to list upgrades
+- [ ] 11.5 Clean up deprecated commands from Phase 7
 
 **Files to modify:**
 - `api/server/server.go`
-- `proxi/db_cmd/`
-- `proxi/util_cmd/`
+- `proxi/db_cmd/info.go`
+- `proxi/db_cmd/` - New commands
 
 ---
 
@@ -522,28 +782,28 @@ This section maps the design to existing code locations, enabling a cold restart
 
 _Track current progress here between sessions._
 
-**Current Phase:** 5 Complete, Ready for Phase 6
-**Current Task:** Phase 6 - Snapshot Format
-**Last Commit:** Phase 5 branch production integration
+**Current Phase:** 6 Complete, Ready for Phase 7
+**Current Task:** Phase 7 - Genesis as Snapshot
+**Last Commit:** Phase 6 snapshot format with upgrade libraries
 **Notes:**
-- Phases 1-5 fully complete
-- Phase 2 fully complete:
-  - `LibraryCache` structure with slot→library mapping in `lib_singleton.go`
-  - `L(slot)` function with lazy loading and caching
-  - All call sites updated to pass `base.MaxSlot` for latest library
-  - Added slot-aware versions of all parsing functions:
-    - Core: `ConstraintFromBytesAtSlot`, `LockFromBytesAtSlot`, `AccountableFromBytesAtSlot`
-    - Output: `OutputFromBytesAtSlot`, `OutputFromBytesMainAtSlot`, `OutputFromHexStringAtSlot`
-    - Constraints: All `*FromBytesAtSlot` variants for every constraint type
-  - Original functions remain as wrappers calling slot-aware versions with `base.MaxSlot`
-  - Transaction validation context fully slot-aware:
-    - `makeEvalContext()` uses `ledger.L(ctx.Slot())`
-    - `_evalBytecode()` uses `ledger.L(ctx.Slot())`
-    - `constraintName()` converted to method on TxContext using slot
-    - `runOutput()` uses slot-aware decompilation
-  - All ledger and multistate tests passing
-- Display/decompilation functions:
-  - Using `base.MaxSlot` is acceptable for display purposes (human-readable output)
-  - The latest library should be backward compatible for decompiling older bytecode
-  - Critical validation path uses correct slot; display is informational only
-- Ready for Phase 3: Genesis Changes
+- Phases 1-6 fully complete
+- Phase 6 completed (2026-01-12):
+  - Snapshot format bumped to "ver 1"
+  - Upgrade libraries now stored in snapshots (before trie data)
+  - `SnapshotFileStream` updated: `LedgerIdentity` + `UpgradeLibraries` fields
+  - `GetLedgerConstants()` method parses from slot 0 library
+  - `RestoreFromSnapshot()` writes all upgrade libraries to DB partition
+  - `proxi snapshot restore` now uses shared restore function (no code duplication)
+  - Documentation: `docs/snapshot_format.md`
+  - Unit tests: `ledger/multistate/snapshot_test.go`
+- New design decisions (2026-01-12):
+  - Genesis as Snapshot: `proxi init genesis` creates snapshot file instead of DB
+  - Node startup: automatically restore from snapshot when proximadb missing
+  - Single Pending Upgrade: `ledger/upgrade/` folder contains at most one pending upgrade
+  - Distribution done manually via proxi wallet commands (zero fees make this practical)
+- Next phases:
+  - Phase 7: Genesis as snapshot (`proxi init genesis`)
+  - Phase 8: Node startup from snapshot (extend state_cleanup)
+  - Phase 9: Single pending upgrade folder (`ledger/upgrade/`)
+  - Phase 10: Transaction validation verification
+  - Phase 11: API and CLI updates

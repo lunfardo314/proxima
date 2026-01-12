@@ -188,6 +188,9 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 	fmt.Fprintf(opts.Console, "Restoring from snapshot: %s\n", snapshotPath)
 	fmt.Fprintf(opts.Console, "Format version: %s\n", kvStream.Header.Version)
 	fmt.Fprintf(opts.Console, "Branch ID: %s\n", kvStream.BranchID.String())
+	fmt.Fprintf(opts.Console, "Ledger identity: genesis=%d, description=%q\n",
+		kvStream.LedgerIdentity.GenesisTimeUnix, kvStream.LedgerIdentity.Description)
+	fmt.Fprintf(opts.Console, "Upgrade libraries: %d\n", len(kvStream.UpgradeLibraries))
 
 	start := time.Now()
 
@@ -206,17 +209,17 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 		return nil, fmt.Errorf("failed to write restore-in-progress marker: %w", err)
 	}
 
-	// Store library YAML in upgrade DB partition at slot 0
-	err = multistate.WriteUpgradeLibrary(stateStore, 0, kvStream.LedgerIDData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write library to upgrade partition: %w", err)
+	// Store all upgrade libraries in DB partition
+	for _, entry := range kvStream.UpgradeLibraries {
+		err = multistate.WriteUpgradeLibrary(stateStore, entry.Slot, entry.LibraryYAML)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write library for slot %d: %w", entry.Slot, err)
+		}
+		fmt.Fprintf(opts.Console, "  - wrote upgrade library slot %d: %d bytes\n", entry.Slot, len(entry.LibraryYAML))
 	}
 
-	// Create minimal identity from constants
-	identity := ledger.NewLedgerIdentity(kvStream.LedgerConstants.GenesisTimeUnix, kvStream.LedgerConstants.Description)
-
 	// Initialize empty root with minimal ledger identity
-	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(identity, stateStore)
+	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(kvStream.LedgerIdentity, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to commit empty root: %w", err)
 	}
@@ -303,7 +306,10 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 	}
 
 	stats.Duration = time.Since(start)
-	stats.LedgerConstants = kvStream.LedgerConstants
+	stats.LedgerConstants, err = kvStream.GetLedgerConstants()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ledger constants: %w", err)
+	}
 	fmt.Fprintf(opts.Console, "Restore complete: %d records in %v\n", stats.TotalRecords, stats.Duration)
 
 	return stats, nil
@@ -362,8 +368,14 @@ func ValidateSnapshot(snapshotPath string) error {
 	}
 	defer kvStream.Close()
 
+	// Get constants from snapshot's slot 0 library
+	constants, err := kvStream.GetLedgerConstants()
+	if err != nil {
+		return fmt.Errorf("cannot get ledger constants from snapshot: %w", err)
+	}
+
 	// Check ledger hash matches (both are [32]byte)
-	if ledger.Const.Hash != kvStream.LedgerConstants.Hash {
+	if ledger.Const.Hash != constants.Hash {
 		return fmt.Errorf("snapshot ledger hash mismatch: snapshot is from a different network")
 	}
 
