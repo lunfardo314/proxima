@@ -738,24 +738,44 @@ node.Start():
 
 ### Phase 9: Single Pending Upgrade Folder
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
 **Goal:** Create `ledger/upgrade/` folder for single pending upgrade model.
 
 **Tasks:**
-- [ ] 9.1 Create `ledger/upgrade/` folder structure
-- [ ] 9.2 Create `UpgradeDefinition` type and `PendingUpgrade` variable
-- [ ] 9.3 Modify `InitLedgerFromStore()` to register pending upgrade if exists
-- [ ] 9.4 Add pending upgrade to DB partition at startup (if not already present)
-- [ ] 9.5 Document upgrade authoring process
-- [ ] 9.6 Unit test: pending upgrade registration and activation
+- [x] 9.1 Create `ledger/upgrade/` folder structure
+- [x] 9.2 Create `UpgradeDefinition` type and `PendingUpgrade` variable
+- [x] 9.3 Modify `InitLedgerFromStore()` to register pending upgrade if exists
+- [x] 9.4 Add pending upgrade to DB partition at startup (if not already present)
+- [x] 9.5 Document upgrade authoring process (in doc.go)
+- [x] 9.6 Unit tests: `TestFindPreviousLibrary_*`, `TestRegisterAndStorePendingUpgrade_*`
 
-**Files to create:**
-- `ledger/upgrade/upgrade.go` - Core types and PendingUpgrade variable
-- `ledger/upgrade/doc.go` - Package documentation
+**Files created:**
+- `ledger/upgrade/upgrade.go` - Core types: `UpgradeDefinition`, `PendingUpgrade` variable
+- `ledger/upgrade/doc.go` - Comprehensive documentation on upgrade lifecycle and authoring
 
-**Files to modify:**
-- `ledger/multistate/genesis.go` - Register pending upgrade at startup
+**Files modified:**
+- `ledger/multistate/genesis.go` - Added `registerAndStorePendingUpgrade()`, `findPreviousLibrary()`
+- `ledger/multistate/upgrades_test.go` - Added 5 new tests for pending upgrade registration
+
+**Implementation notes:**
+- `UpgradeDefinition` contains: `Slot`, `Build` function, `RegisterResolver` callback
+- Circular import avoided by having `RegisterResolver` call back into `ledger.RegisterResolverForUpgrade()`
+- `InitLedgerFromStore()` checks for `upgrade.PendingUpgrade` and stores if not already in DB
+- Uses `WriteUpgradeLibraryUnchecked()` since Build function is trusted code
+- Idempotent: if upgrade already exists in DB, registration is skipped but resolver is still registered
+
+**Usage (to create an upgrade):**
+```go
+// In ledger/upgrade/pending.go
+var PendingUpgrade = &UpgradeDefinition{
+    Slot:             100000,  // First slot where new rules apply
+    Build:            buildUpgradeLibrary,
+    RegisterResolver: func() {
+        ledger.RegisterResolverForUpgrade(100000, getResolverUpgrade1)
+    },
+}
+```
 
 ---
 
@@ -802,11 +822,18 @@ node.Start():
 
 _Track current progress here between sessions._
 
-**Current Phase:** 8 Complete, Ready for Phase 9
-**Current Task:** Phase 9 - Single Pending Upgrade Folder
-**Last Commit:** Phase 8: Node startup from snapshot when DB missing (dc334399)
+**Current Phase:** 9 Complete, Ready for Phase 10
+**Current Task:** Phase 10 - Transaction Validation (Slot-Aware)
+**Last Commit:** Phase 9: Single pending upgrade folder (a9b38d4e)
 **Notes:**
-- Phases 1-8 fully complete
+- Phases 1-9 fully complete
+- Phase 9 completed (2026-01-12):
+  - Created `ledger/upgrade/` package with `UpgradeDefinition` type
+  - Added `upgrade.go` with `PendingUpgrade` variable (nil when no upgrade pending)
+  - Added `doc.go` with comprehensive documentation on upgrade lifecycle
+  - Modified `InitLedgerFromStore()` to register and store pending upgrades
+  - Added `registerAndStorePendingUpgrade()` and `findPreviousLibrary()` functions
+  - Added 5 unit tests for pending upgrade registration
 - Phase 8 completed (2026-01-12):
   - Restructured `CheckAndRestoreOnStartup()` to check DB state BEFORE config
   - Added `FindLatestSnapshotInDirs()` to search multiple directories
@@ -837,6 +864,5 @@ _Track current progress here between sessions._
   - Distribution done manually via proxi wallet commands (zero fees make this practical)
   - Old commands (`proxi util ledger_id`, `proxi init genesis_db`) kept for compatibility
 - Next phases:
-  - Phase 9: Single pending upgrade folder (`ledger/upgrade/`)
-  - Phase 10: Transaction validation verification
+  - Phase 10: Transaction validation verification (mostly done in Phase 2)
   - Phase 11: API and CLI updates

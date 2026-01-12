@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/upgrade"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -118,11 +119,72 @@ func ScanGenesisState(stateStore StateStore) (*ledger.Constants, common.VCommitm
 }
 
 // InitLedgerFromStore initializes the ledger library cache from the state store.
-// It loads libraries from the upgrade DB partition.
+// It loads libraries from the upgrade DB partition and handles pending upgrades.
 func InitLedgerFromStore(stateStore StateStore) {
-	// Register the resolver for upgrade 0
+	// Register the resolver for upgrade 0 (always required)
 	ledger.RegisterResolverForUpgrade(0, ledger.GetEmbeddedFunctionResolverUpgrade0)
+
+	// Handle pending upgrade if one exists
+	if upgrade.PendingUpgrade != nil {
+		registerAndStorePendingUpgrade(stateStore, upgrade.PendingUpgrade)
+	}
 
 	// Initialize the library cache with the state store
 	ledger.MustInitLibraryCache(stateStore)
+}
+
+// registerAndStorePendingUpgrade registers the resolver and stores the library for a pending upgrade.
+// If the upgrade already exists in the DB partition, this is a no-op (idempotent).
+func registerAndStorePendingUpgrade(stateStore StateStore, pending *upgrade.UpgradeDefinition) {
+	// Register the resolver if provided
+	if pending.RegisterResolver != nil {
+		pending.RegisterResolver()
+	}
+
+	// Check if upgrade already exists in DB partition
+	if _, found := GetUpgradeLibraryDirect(stateStore, pending.Slot); found {
+		// Upgrade already stored, nothing more to do
+		return
+	}
+
+	// Find the previous library to build upon
+	prevSlot, prevYAML := findPreviousLibrary(stateStore, pending.Slot)
+	util.Assertf(prevYAML != nil, "no previous library found for pending upgrade at slot %d", pending.Slot)
+
+	// Build the upgraded library
+	newYAML, err := pending.Build(prevYAML)
+	util.Assertf(err == nil, "failed to build pending upgrade library at slot %d (based on slot %d): %v",
+		pending.Slot, prevSlot, err)
+
+	// Store the upgraded library in the DB partition
+	// Using WriteUpgradeLibraryUnchecked because:
+	// 1. The Build function is trusted code from the upgrade definition
+	// 2. It builds on top of the previous library, preserving identity
+	// 3. Identity validation is still enforced for external inputs via WriteUpgradeLibrary
+	err = WriteUpgradeLibraryUnchecked(stateStore, pending.Slot, newYAML)
+	util.AssertNoError(err)
+}
+
+// findPreviousLibrary finds the most recent library before the given slot.
+// Returns the slot and YAML data of the previous library.
+func findPreviousLibrary(stateStore StateStore, beforeSlot uint32) (uint32, []byte) {
+	var foundSlot uint32
+	var foundYAML []byte
+	found := false
+
+	IterateUpgradeLibraries(stateStore, func(slot uint32, yamlData []byte) bool {
+		if slot < beforeSlot {
+			if !found || slot > foundSlot {
+				foundSlot = slot
+				foundYAML = yamlData
+				found = true
+			}
+		}
+		return true
+	})
+
+	if !found {
+		return 0, nil
+	}
+	return foundSlot, foundYAML
 }
