@@ -14,6 +14,7 @@ func CmdInit() *cobra.Command {
 	}
 	initCmd.AddCommand(
 		initWalletCmd(),
+		initGenesisCmd(),
 		initGenesisDBCmd(),
 		initBootstrapAccountCmd(),
 		initNodeConfigCmd(),

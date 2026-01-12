@@ -38,15 +38,16 @@ func TestSnapshotUpgradeLibraries_Format(t *testing.T) {
 
 func TestSnapshotUpgradeLibraries_StorageRoundTrip(t *testing.T) {
 	// Test that upgrade libraries written to DB can be iterated
+	// Uses WriteUpgradeLibraryUnchecked to bypass identity validation (test uses placeholder data)
 	store := common.NewInMemoryKVStore()
 
 	lib0 := []byte("genesis library YAML")
 	lib1000 := []byte("upgrade 1 library YAML")
 	lib5000 := []byte("upgrade 2 library YAML")
 
-	require.NoError(t, WriteUpgradeLibrary(store, 0, lib0))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, lib1000))
-	require.NoError(t, WriteUpgradeLibrary(store, 5000, lib5000))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, lib0))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, lib1000))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, lib5000))
 
 	// Iterate and collect (simulates what SaveSnapshot does)
 	var collected []UpgradeLibraryEntry

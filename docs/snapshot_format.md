@@ -22,15 +22,11 @@ Snapshots are binary files using the `unitrie` KV stream format. Each record is 
 │   Key:   branchID (32 bytes)                                │
 │   Value: RootRecord bytes (sequencer, root, coverage, etc.) │
 ├─────────────────────────────────────────────────────────────┤
-│ Record 3: Ledger Identity                                   │
-│   Key:   empty (nil)                                        │
-│   Value: LedgerIdentity bytes (genesis time + description)  │
+│ Record 3: Upgrade Count                                     │
+│   Key:   {0x06} (upgrade partition marker)                  │
+│   Value: 4-byte big-endian count of upgrade libraries       │
 ├─────────────────────────────────────────────────────────────┤
-│ Record 4: Upgrade Count                                     │
-│   Key:   {0x07} (upgrade partition marker)                  │
-│   Value: 4-byte little-endian count of upgrade libraries    │
-├─────────────────────────────────────────────────────────────┤
-│ Records 5..N: Upgrade Libraries                             │
+│ Records 4..N: Upgrade Libraries                             │
 │   Key:   4-byte big-endian slot number                      │
 │   Value: Full compiled library YAML bytes                   │
 ├─────────────────────────────────────────────────────────────┤
@@ -39,6 +35,8 @@ Snapshots are binary files using the `unitrie` KV stream format. Each record is 
 │   Value: Corresponding state data                           │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+Note: Ledger identity (genesis time and description) is stored within the slot 0 library YAML, not as a separate record.
 
 ## File Naming
 
@@ -56,10 +54,9 @@ The `SaveSnapshot` function in `ledger/multistate/snapshot.go`:
 1. Create temporary file: __tmp__<branchID>.snapshot
 2. Write header (JSON with version)
 3. Write root record (branch ID + RootRecord)
-4. Write ledger identity (genesis time + description)
-5. Iterate upgrade DB partition → write count + libraries
-6. Iterate trie state → write all KV pairs
-7. Close and rename: __tmp__... → <branchID>.snapshot
+4. Iterate upgrade DB partition → write count + libraries
+5. Iterate trie state → write all KV pairs
+6. Close and rename: __tmp__... → <branchID>.snapshot
 ```
 
 ## Restore Workflow
@@ -68,12 +65,12 @@ The `RestoreFromSnapshot` function in `core/core_modules/state_cleanup/restore.g
 
 ```
 1. Open snapshot file stream
-2. Read header, root record, identity, upgrade libraries (synchronous)
+2. Read header, root record, upgrade libraries (synchronous)
 3. Validate snapshot (check ledger hash matches)
 4. Delete existing DB (if present)
 5. Create fresh DB with restore-in-progress marker
 6. Write all upgrade libraries to upgrade DB partition
-7. Create empty trie root with ledger identity
+7. Create empty trie root with ledger identity (from library YAML)
 8. Stream trie data → batch insert into trie
 9. Write metadata (latest/earliest slot, root record)
 10. Clear restore-in-progress marker
@@ -89,8 +86,7 @@ Returned by `OpenSnapshotFileStream`:
 ```go
 type SnapshotFileStream struct {
     Header           *SnapshotHeader        // Version info
-    LedgerIdentity   *ledger.LedgerIdentity // Genesis time + description
-    UpgradeLibraries []UpgradeLibraryEntry  // All upgrade libraries
+    UpgradeLibraries []UpgradeLibraryEntry  // All upgrade libraries (includes identity in slot 0)
     BranchID         base.TransactionID     // Branch this snapshot represents
     RootRecord       RootRecord             // State metadata
     InChan           chan KVPairOrError     // Trie data stream
@@ -141,11 +137,11 @@ root record:
     Root: ...
     LedgerCoverage: 1000000000
     Supply: 1000000000
-ledger identity: genesis=1234567890, description="proxima testnet"
 upgrade libraries: 1
   - slot 0: 45678 bytes
-ledger constants:
+ledger constants (from slot 0 library):
     GenesisTimeUnix: 1234567890
+    Description: "proxima testnet"
     ...
 ```
 
@@ -190,9 +186,9 @@ Data in the trie (and snapshot) is organized by partition:
 | 0x00 | LedgerState | Transactions and UTXOs | TxID (32 bytes) or OutputID (33 bytes) |
 | 0x04 | Accounts | Account balances index | Account address bytes |
 | 0x05 | ChainID | Chain output index | Chain ID bytes |
-| 0x07 | UpgradeLibrary | Library versions (DB only) | Slot number (4 bytes) |
+| 0x06 | UpgradeLibrary | Library versions (DB only) | Slot number (4 bytes) |
 
-Note: Partition 0x07 (upgrade libraries) is stored in the DB partition, not in the trie. In snapshots, upgrade libraries are stored as separate records before the trie data.
+Note: Partition 0x06 (upgrade libraries) is stored in the DB partition, not in the trie. In snapshots, upgrade libraries are stored as separate records before the trie data.
 
 ## Error Handling
 
@@ -225,4 +221,4 @@ Libraries are stored in slot order, with slot 0 always present (genesis library)
 | Version | Changes |
 |---------|---------|
 | ver 0 | Initial format with full library YAML as "ledger identity" |
-| ver 1 | Minimal identity + separate upgrade libraries section |
+| ver 1 | Separate upgrade libraries section; ledger identity embedded in slot 0 library; big-endian serialization for upgrade count |

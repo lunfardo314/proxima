@@ -138,6 +138,7 @@ func TestUpgradeLibraryStorage_IntegrationWithCache(t *testing.T) {
 
 func TestUpgradeLibraryStorage_MultiVersionCacheLookup(t *testing.T) {
 	// Test lookup behavior with multiple versions in storage
+	// Uses WriteUpgradeLibraryUnchecked to bypass identity validation (test uses placeholder data)
 	store := common.NewInMemoryKVStore()
 
 	// Set up multiple library versions with proper spacing
@@ -145,9 +146,9 @@ func TestUpgradeLibraryStorage_MultiVersionCacheLookup(t *testing.T) {
 	lib1000 := []byte("library version 1 - first upgrade")
 	lib5000 := []byte("library version 2 - second upgrade")
 
-	require.NoError(t, WriteUpgradeLibrary(store, 0, lib0))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, lib1000))
-	require.NoError(t, WriteUpgradeLibrary(store, 5000, lib5000))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, lib0))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, lib1000))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, lib5000))
 
 	// Verify slot lookup returns correct version
 	testCases := []struct {

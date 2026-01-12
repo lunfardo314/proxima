@@ -159,7 +159,7 @@ func AmountsFromBytesAtSlot(data []byte, slot uint32) (Amounts, error) {
 }
 
 // AmountsFromBytes parses an Amounts constraint using the latest library version.
-// Deprecated: Use AmountsFromBytesAtSlot for parsing historical bytecode.
+// TODO check usage (see AmountsFromBytesAtSlot for parsing historical bytecode).
 func AmountsFromBytes(data []byte) (Amounts, error) {
 	return AmountsFromBytesAtSlot(data, base.MaxSlot)
 }
@@ -188,7 +188,7 @@ func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error)
 }
 
 // TokenBalanceFromAmountsBytes parses the token balance using the latest library version.
-// Deprecated: Use TokenBalanceFromAmountsBytesAtSlot for parsing historical bytecode.
+// TODO check usage (see TokenBalanceFromAmountsBytesAtSlot for parsing historical bytecode).
 func TokenBalanceFromAmountsBytes(data []byte) (int64, error) {
 	return TokenBalanceFromAmountsBytesAtSlot(data, base.MaxSlot)
 }

@@ -32,6 +32,7 @@ func TestUpgradeLibraryStorage_WriteAndReadDirect(t *testing.T) {
 
 func TestUpgradeLibraryStorage_MultipleUpgrades(t *testing.T) {
 	// Test storing multiple upgrade versions with proper spacing
+	// Uses WriteUpgradeLibraryUnchecked to bypass identity validation (test uses placeholder data)
 	store := common.NewInMemoryKVStore()
 
 	// Write libraries at different upgrade slots (respecting MinSlotsBetweenUpgrades)
@@ -39,9 +40,9 @@ func TestUpgradeLibraryStorage_MultipleUpgrades(t *testing.T) {
 	lib1000 := []byte("library version at slot 1000")
 	lib5000 := []byte("library version at slot 5000")
 
-	require.NoError(t, WriteUpgradeLibrary(store, 0, lib0))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, lib1000))   // 1000 > MinSlotsBetweenUpgrades from 0
-	require.NoError(t, WriteUpgradeLibrary(store, 5000, lib5000))   // 4000 > MinSlotsBetweenUpgrades from 1000
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, lib0))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, lib1000))   // 1000 > MinSlotsBetweenUpgrades from 0
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, lib5000))   // 4000 > MinSlotsBetweenUpgrades from 1000
 
 	// Verify count
 	count := CountUpgradeLibraries(store)
@@ -63,6 +64,7 @@ func TestUpgradeLibraryStorage_MultipleUpgrades(t *testing.T) {
 
 func TestUpgradeLibraryStorage_GetForSlot(t *testing.T) {
 	// Test finding the applicable library for any given slot
+	// Uses WriteUpgradeLibraryUnchecked to bypass identity validation (test uses placeholder data)
 	store := common.NewInMemoryKVStore()
 
 	// Set up upgrade schedule (with proper spacing):
@@ -73,9 +75,9 @@ func TestUpgradeLibraryStorage_GetForSlot(t *testing.T) {
 	lib1000 := []byte("library version 1")
 	lib5000 := []byte("library version 2")
 
-	require.NoError(t, WriteUpgradeLibrary(store, 0, lib0))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, lib1000))
-	require.NoError(t, WriteUpgradeLibrary(store, 5000, lib5000))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, lib0))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, lib1000))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, lib5000))
 
 	testCases := []struct {
 		querySlot        uint32
@@ -128,12 +130,13 @@ func TestUpgradeLibraryStorage_EmptyStore(t *testing.T) {
 
 func TestUpgradeLibraryStorage_GetLatestUpgradeSlot(t *testing.T) {
 	// Test getting the latest upgrade slot
+	// Uses WriteUpgradeLibraryUnchecked to bypass identity validation (test uses placeholder data)
 	store := common.NewInMemoryKVStore()
 
 	// Add upgrades in sequential order (required by constraints)
-	require.NoError(t, WriteUpgradeLibrary(store, 0, []byte("v0")))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, []byte("v1")))
-	require.NoError(t, WriteUpgradeLibrary(store, 5000, []byte("v2")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("v0")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, []byte("v1")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, []byte("v2")))
 
 	latestSlot, found := GetLatestUpgradeSlot(store)
 	require.True(t, found)
@@ -142,13 +145,14 @@ func TestUpgradeLibraryStorage_GetLatestUpgradeSlot(t *testing.T) {
 
 func TestUpgradeLibraryStorage_Iterate(t *testing.T) {
 	// Test that iteration visits all libraries (order depends on underlying store)
+	// Uses WriteUpgradeLibraryUnchecked to bypass identity validation (test uses placeholder data)
 	store := common.NewInMemoryKVStore()
 
 	// Add upgrades in sequential order with proper spacing
-	require.NoError(t, WriteUpgradeLibrary(store, 0, []byte("v0")))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, []byte("v1")))
-	require.NoError(t, WriteUpgradeLibrary(store, 3000, []byte("v1.5")))
-	require.NoError(t, WriteUpgradeLibrary(store, 5000, []byte("v2")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("v0")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, []byte("v1")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 3000, []byte("v1.5")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 5000, []byte("v2")))
 
 	// Collect slots during iteration
 	slotsFound := make(map[uint32]bool)
@@ -166,10 +170,11 @@ func TestUpgradeLibraryStorage_Iterate(t *testing.T) {
 
 func TestUpgradeLibraryStorage_Delete(t *testing.T) {
 	// Test deletion of a library (test-only function)
+	// Uses WriteUpgradeLibraryUnchecked to bypass identity validation (test uses placeholder data)
 	store := common.NewInMemoryKVStore()
 
-	require.NoError(t, WriteUpgradeLibrary(store, 0, []byte("v0")))
-	require.NoError(t, WriteUpgradeLibrary(store, 1000, []byte("v1")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("v0")))
+	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, []byte("v1")))
 
 	require.Equal(t, 2, CountUpgradeLibraries(store))
 	require.True(t, HasUpgradeLibrary(store, 1000))
@@ -184,35 +189,36 @@ func TestUpgradeLibraryStorage_Delete(t *testing.T) {
 
 func TestUpgradeLibraryStorage_ConstraintViolations(t *testing.T) {
 	// Test that constraint violations are properly rejected
+	// Uses WriteUpgradeLibraryUnchecked to bypass identity validation (test uses placeholder data)
 
 	t.Run("cannot write same slot twice", func(t *testing.T) {
 		store := common.NewInMemoryKVStore()
-		require.NoError(t, WriteUpgradeLibrary(store, 0, []byte("v0")))
+		require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("v0")))
 
 		// Attempting to write to same slot should fail
-		err := WriteUpgradeLibrary(store, 0, []byte("v0 updated"))
+		err := WriteUpgradeLibraryUnchecked(store, 0, []byte("v0 updated"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "must be greater than")
 	})
 
 	t.Run("cannot write earlier slot", func(t *testing.T) {
 		store := common.NewInMemoryKVStore()
-		require.NoError(t, WriteUpgradeLibrary(store, 0, []byte("v0")))
-		require.NoError(t, WriteUpgradeLibrary(store, 1000, []byte("v1")))
+		require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("v0")))
+		require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, []byte("v1")))
 
 		// Attempting to write an earlier slot should fail
-		err := WriteUpgradeLibrary(store, 500, []byte("v0.5"))
+		err := WriteUpgradeLibraryUnchecked(store, 500, []byte("v0.5"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "must be greater than")
 	})
 
 	t.Run("cannot write slot too close", func(t *testing.T) {
 		store := common.NewInMemoryKVStore()
-		require.NoError(t, WriteUpgradeLibrary(store, 0, []byte("v0")))
-		require.NoError(t, WriteUpgradeLibrary(store, 1000, []byte("v1")))
+		require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("v0")))
+		require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, []byte("v1")))
 
 		// Attempting to write too close to previous upgrade should fail
-		err := WriteUpgradeLibrary(store, 1100, []byte("v2"))  // Only 100 slots after 1000
+		err := WriteUpgradeLibraryUnchecked(store, 1100, []byte("v2"))  // Only 100 slots after 1000
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "too close")
 		require.Contains(t, err.Error(), "minimum distance")
@@ -222,10 +228,10 @@ func TestUpgradeLibraryStorage_ConstraintViolations(t *testing.T) {
 		// The first upgrade after slot 0 only needs to be > 0
 		// (minimum distance check is skipped when previous slot is 0)
 		store := common.NewInMemoryKVStore()
-		require.NoError(t, WriteUpgradeLibrary(store, 0, []byte("v0")))
+		require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("v0")))
 
 		// Can write at slot 100 even though < MinSlotsBetweenUpgrades from 0
-		err := WriteUpgradeLibrary(store, 100, []byte("v1"))
+		err := WriteUpgradeLibraryUnchecked(store, 100, []byte("v1"))
 		require.NoError(t, err)
 	})
 }

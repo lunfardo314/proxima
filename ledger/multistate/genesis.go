@@ -10,10 +10,10 @@ import (
 	"github.com/lunfardo314/unitrie/immutable"
 )
 
-// CommitEmptyRootWithLedgerIdentity writes minimal ledger identity data as value of the empty key nil.
+// WriteEmptyRootWithLedgerIdentity writes minimal ledger identity data as value of the empty key nil.
 // The identity contains only genesis time and description (truly immutable data).
 // Returns root of the empty trie.
-func CommitEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store StateStore) (common.VCommitment, error) {
+func WriteEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store StateStore) (common.VCommitment, error) {
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, ledger.CommitmentModel, identity.Bytes())
 	if err := batch.Commit(); err != nil {
@@ -32,7 +32,7 @@ func CommitEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store St
 func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitment) {
 	// Create minimal identity from constants
 	identity := ledger.NewLedgerIdentity(ledger.Const.GenesisTimeUnix, ledger.Const.Description)
-	emptyRoot, err := CommitEmptyRootWithLedgerIdentity(identity, store)
+	emptyRoot, err := WriteEmptyRootWithLedgerIdentity(identity, store)
 	util.AssertNoError(err)
 
 	// Store library YAML in upgrade DB partition at slot 0

@@ -114,6 +114,7 @@ go test -v ./...
 - Always add explanatory comments to newly generated tests
 - Do not invent new KV store access interfaces. Use existing interfaces from `multistate/kvtypes.go` (e.g., `StateStore`, `StateStoreReader`). For read+write operations, use `StateStore` which includes `BatchedUpdatable`
 - Never use iota.org in commits or other contexts
+- Always use `encoding/binary.BigEndian` for serialization/deserialization of multi-byte integers unless there's a documented special case
 
 ### How to diagnose memory leak issues
 

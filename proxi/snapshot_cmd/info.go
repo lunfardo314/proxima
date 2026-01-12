@@ -46,14 +46,14 @@ func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
 	glb.Infof("format version: %s", kvStream.Header.Version)
 	glb.Infof("branch id: %s (hex = %s)", kvStream.BranchID.String(), kvStream.BranchID.StringHex())
 	glb.Infof("root record:\n%s", kvStream.RootRecord.Lines("    ").String())
-	glb.Infof("ledger identity: genesis=%d, description=%q",
-		kvStream.LedgerIdentity.GenesisTimeUnix, kvStream.LedgerIdentity.Description)
 	glb.Infof("upgrade libraries: %d", len(kvStream.UpgradeLibraries))
 	for _, entry := range kvStream.UpgradeLibraries {
 		glb.Infof("  - slot %d: %d bytes", entry.Slot, len(entry.LibraryYAML))
 	}
 	constants, err := kvStream.GetLedgerConstants()
 	glb.AssertNoError(err)
+	glb.Infof("ledger identity (from slot 0 library): genesis=%d, description=%q",
+		constants.GenesisTimeUnix, constants.Description)
 	glb.Infof("ledger constants:\n%s", constants.Lines("    ").String())
 
 	switch glb.VerbosityLevel() {

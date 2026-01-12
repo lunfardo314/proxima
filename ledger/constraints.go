@@ -177,7 +177,7 @@ func ConstraintFromBytesAtSlot(data []byte, slot uint32) (Constraint, error) {
 }
 
 // ConstraintFromBytes parses a constraint using the latest library version.
-// Deprecated: Use ConstraintFromBytesAtSlot for parsing historical bytecode.
+// TODO check usage ConstraintFromBytesAtSlot for parsing historical bytecode.
 func ConstraintFromBytes(data []byte) (Constraint, error) {
 	return ConstraintFromBytesAtSlot(data, base.MaxSlot)
 }
@@ -207,7 +207,7 @@ func LockFromBytesAtSlot(data []byte, slot uint32) (Lock, error) {
 }
 
 // LockFromBytes parses a lock using the latest library version.
-// Deprecated: Use LockFromBytesAtSlot for parsing historical bytecode.
+// TODO check usage (see LockFromBytesAtSlot for parsing historical bytecode).
 func LockFromBytes(data []byte) (Lock, error) {
 	return LockFromBytesAtSlot(data, base.MaxSlot)
 }

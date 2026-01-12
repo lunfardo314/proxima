@@ -12,6 +12,7 @@ package multistate
 import (
 	"fmt"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -29,6 +30,7 @@ const MinSlotsBetweenUpgrades = 360
 // - Upgrade slots must be strictly increasing
 // - Minimum MinSlotsBetweenUpgrades slots between consecutive upgrades
 // - Exception: slot 0 (genesis) can always be written if no upgrades exist
+// - Genesis time and description must match slot 0 library (immutable)
 //
 // Returns an error if constraints are violated.
 func WriteUpgradeLibrary(store StateStore, upgradeSlot uint32, libraryYAML []byte) error {
@@ -44,6 +46,11 @@ func WriteUpgradeLibrary(store StateStore, upgradeSlot uint32, libraryYAML []byt
 			return fmt.Errorf("upgrade slot %d is too close to previous upgrade at slot %d (minimum distance: %d slots)",
 				upgradeSlot, latestSlot, MinSlotsBetweenUpgrades)
 		}
+
+		// Enforce immutability of genesis time and description
+		if err := validateGenesisIdentityImmutability(store, libraryYAML); err != nil {
+			return err
+		}
 	}
 
 	key := makeUpgradeLibraryKey(upgradeSlot)
@@ -56,6 +63,31 @@ func WriteUpgradeLibrary(store StateStore, upgradeSlot uint32, libraryYAML []byt
 func MustWriteUpgradeLibrary(store StateStore, upgradeSlot uint32, libraryYAML []byte) {
 	err := WriteUpgradeLibrary(store, upgradeSlot, libraryYAML)
 	util.AssertNoError(err)
+}
+
+// WriteUpgradeLibraryUnchecked stores a library without identity validation.
+// WARNING: This function is for TESTING ONLY. In production, use WriteUpgradeLibrary
+// which enforces immutability of genesis time and description.
+func WriteUpgradeLibraryUnchecked(store StateStore, upgradeSlot uint32, libraryYAML []byte) error {
+	latestSlot, hasExisting := GetLatestUpgradeSlot(store)
+
+	if hasExisting {
+		// Slot must be strictly greater than the latest
+		if upgradeSlot <= latestSlot {
+			return fmt.Errorf("upgrade slot %d must be greater than latest upgrade slot %d", upgradeSlot, latestSlot)
+		}
+		// Enforce minimum distance between upgrades (except for genesis at slot 0)
+		if latestSlot > 0 && upgradeSlot-latestSlot < MinSlotsBetweenUpgrades {
+			return fmt.Errorf("upgrade slot %d is too close to previous upgrade at slot %d (minimum distance: %d slots)",
+				upgradeSlot, latestSlot, MinSlotsBetweenUpgrades)
+		}
+		// Note: Identity immutability validation is skipped in this function
+	}
+
+	key := makeUpgradeLibraryKey(upgradeSlot)
+	batch := store.BatchedWriter()
+	batch.Set(key, libraryYAML)
+	return batch.Commit()
 }
 
 // GetUpgradeLibraryDirect retrieves the library YAML stored at a specific upgrade slot.
@@ -156,4 +188,43 @@ func makeUpgradeLibraryKey(slot uint32) []byte {
 	key[0] = upgradeLibraryDBPartition
 	copy(key[1:], base.Slot2Bytes(slot))
 	return key
+}
+
+// validateGenesisIdentityImmutability checks that genesis time and description
+// in the new library match the genesis (slot 0) library.
+// These values are immutable across all upgrades.
+func validateGenesisIdentityImmutability(store common.KVReader, newLibraryYAML []byte) error {
+	// Get genesis library (slot 0)
+	genesisYAML, found := GetUpgradeLibraryDirect(store, 0)
+	if !found {
+		return fmt.Errorf("genesis library (slot 0) not found, cannot validate upgrade")
+	}
+
+	// Parse genesis library
+	genesisLib, err := ledger.ParseLibraryFromYAML(genesisYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
+	if err != nil {
+		return fmt.Errorf("failed to parse genesis library: %w", err)
+	}
+	genesisConstants := ledger.ConstantsFromLibrary(genesisLib)
+
+	// Parse new library (use same resolver for now - upgrades may need their own resolver)
+	newLib, err := ledger.ParseLibraryFromYAML(newLibraryYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
+	if err != nil {
+		return fmt.Errorf("failed to parse new library: %w", err)
+	}
+	newConstants := ledger.ConstantsFromLibrary(newLib)
+
+	// Validate genesis time immutability
+	if newConstants.GenesisTimeUnix != genesisConstants.GenesisTimeUnix {
+		return fmt.Errorf("genesis time mismatch: expected %d (from genesis), got %d (immutable)",
+			genesisConstants.GenesisTimeUnix, newConstants.GenesisTimeUnix)
+	}
+
+	// Validate description immutability
+	if newConstants.Description != genesisConstants.Description {
+		return fmt.Errorf("description mismatch: expected %q (from genesis), got %q (immutable)",
+			genesisConstants.Description, newConstants.Description)
+	}
+
+	return nil
 }

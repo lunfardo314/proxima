@@ -548,7 +548,7 @@ This section maps the design to existing code locations, enabling a cold restart
 **Goal:** Remove library from trie root; add upgrade UTXO at genesis.
 
 **Tasks:**
-- [x] 3.1 Modify `CommitEmptyRootWithLedgerIdentity()` to store only genesis time + description
+- [x] 3.1 Modify `WriteEmptyRootWithLedgerIdentity()` to store only genesis time + description
 - [x] 3.2 Store library in upgrade DB partition at genesis (slot 0)
 - [x] 3.3 Create upgrade commitment UTXO (3rd genesis UTXO)
 - [x] 3.4 Define synthetic OutputID format for upgrade UTXOs
@@ -807,3 +807,13 @@ _Track current progress here between sessions._
   - Phase 9: Single pending upgrade folder (`ledger/upgrade/`)
   - Phase 10: Transaction validation verification
   - Phase 11: API and CLI updates
+
+**Session 2026-01-12 (continued):**
+- Started Phase 7 analysis
+- Reviewed existing genesis code:
+  - `proxi/util_cmd/util_ledger_id.go` - creates ledger definitions YAML from private key
+  - `proxi/init_cmd/init_genesis_db.go` - reads YAML, creates proximadb with genesis state
+  - `proxi/init_cmd/init_bootstrap.go` - distributes initial supply (to be deprecated)
+  - `ledger/multistate/genesis.go` - core genesis logic (`InitStateStoreFromGlobals`)
+- Reviewed `ledger/multistate/snapshot.go` - `SaveSnapshot` and snapshot format
+- Next step: Create `proxi init genesis` command that builds genesis state in memory and writes to snapshot format (without using BadgerDB)

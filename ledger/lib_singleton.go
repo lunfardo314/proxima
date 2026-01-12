@@ -129,7 +129,8 @@ func (lc *LibraryCache) findLibraryForSlot(slot uint32) (uint32, []byte) {
 
 // upgradeLibraryDBPartition is the DB partition byte for upgrade libraries.
 // This must match the constant in multistate/roots.go.
-const upgradeLibraryDBPartition = 0x07
+// Value: PartitionOther(2) + 1 + 1 + 1 + 1 = 6
+const upgradeLibraryDBPartition = 0x06
 
 // parseLibrary parses a library YAML using the resolver for the given upgrade slot.
 func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Library {
@@ -148,21 +149,28 @@ func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Libra
 // The store is used for lazy loading of library YAMLs from the upgrade DB partition.
 // This must be called after RegisterResolverForUpgrade for all known upgrades.
 func MustInitLibraryCache(store common.Traversable) {
-	libraryCacheMutex.Lock()
-	defer libraryCacheMutex.Unlock()
+	var lib *Library
 
-	util.Assertf(libraryCache != nil, "must register resolvers before initializing cache")
-	util.Assertf(libraryCache.store == nil, "library cache already initialized")
+	// Scope for the lock - release before running inline tests to avoid deadlock
+	// (inline tests call L() which needs to acquire the read lock)
+	func() {
+		libraryCacheMutex.Lock()
+		defer libraryCacheMutex.Unlock()
 
-	libraryCache.store = store
-	libraryCache.cache = make(map[uint32]*Library)
+		util.Assertf(libraryCache != nil, "must register resolvers before initializing cache")
+		util.Assertf(libraryCache.store == nil, "library cache already initialized")
 
-	ledgerReset.Store(false)
+		libraryCache.store = store
+		libraryCache.cache = make(map[uint32]*Library)
 
-	// Pre-load the genesis library (slot 0) to initialize constants
-	lib := libraryCache.getOrLoad(0)
-	initConstantsSingleton(lib.Library)
+		ledgerReset.Store(false)
 
+		// Pre-load the genesis library (slot 0) to initialize constants
+		lib = libraryCache.getOrLoad(0)
+		initConstantsSingleton(lib.Library)
+	}()
+
+	// Run inline tests after releasing the lock to avoid deadlock
 	lib.runInlineTests()
 }
 

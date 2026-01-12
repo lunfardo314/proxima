@@ -2,6 +2,7 @@ package multistate
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,7 +26,6 @@ type (
 
 	SnapshotFileStream struct {
 		Header           *SnapshotHeader
-		LedgerIdentity   *ledger.LedgerIdentity
 		UpgradeLibraries []UpgradeLibraryEntry
 		BranchID         base.TransactionID
 		RootRecord       RootRecord
@@ -165,19 +165,6 @@ func SaveSnapshot(state StateStoreReader, branch *BranchData, ctx context.Contex
 	}
 	_, _ = fmt.Fprintf(console, "[SaveSnapshot] root record:\n%s\n", branch.RootRecord.Lines("     ").String())
 
-	// write minimal ledger identity (genesis time + description)
-	identityBytes := LedgerIdentityBytesFromRoot(state, branch.Root)
-	identity, err := ledger.LedgerIdentityFromBytes(identityBytes)
-	if err != nil {
-		return makeErr(fmt.Sprintf("failed to parse ledger identity: %v", err))
-	}
-	err = outFileStream.Write(nil, identityBytes)
-	if err != nil {
-		return makeErr(err.Error())
-	}
-	_, _ = fmt.Fprintf(console, "[SaveSnapshot] ledger identity: genesis=%d, description=%q\n",
-		identity.GenesisTimeUnix, identity.Description)
-
 	// write upgrade libraries from DB partition (before trie data for early access during restore)
 	var upgradeLibraries []UpgradeLibraryEntry
 	IterateUpgradeLibraries(state, func(slot uint32, yaml []byte) bool {
@@ -185,12 +172,9 @@ func SaveSnapshot(state StateStoreReader, branch *BranchData, ctx context.Contex
 		return true
 	})
 
-	// write upgrade count
+	// write upgrade count (big-endian 4 bytes)
 	countBytes := make([]byte, 4)
-	countBytes[0] = byte(len(upgradeLibraries))
-	countBytes[1] = byte(len(upgradeLibraries) >> 8)
-	countBytes[2] = byte(len(upgradeLibraries) >> 16)
-	countBytes[3] = byte(len(upgradeLibraries) >> 24)
+	binary.BigEndian.PutUint32(countBytes, uint32(len(upgradeLibraries)))
 	err = outFileStream.Write([]byte{upgradeLibraryDBPartition}, countBytes)
 	if err != nil {
 		return makeErr(err.Error())
@@ -271,18 +255,6 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid root record: %v", err)
 	}
 
-	// read ledger identity (minimal: genesis time + description)
-	pair = <-rawChan
-	if pair.IsNil() || pair.Err != nil {
-		cancel()
-		return nil, fmt.Errorf("OpenSnapshotFileStream: wrong identity record")
-	}
-	ret.LedgerIdentity, err = ledger.LedgerIdentityFromBytes(pair.Value)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid ledger identity: %v", err)
-	}
-
 	// read upgrade count marker
 	pair = <-rawChan
 	if pair.IsNil() || pair.Err != nil {
@@ -297,7 +269,7 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 		cancel()
 		return nil, fmt.Errorf("OpenSnapshotFileStream: invalid upgrade count value")
 	}
-	upgradeCount := int(pair.Value[0]) | int(pair.Value[1])<<8 | int(pair.Value[2])<<16 | int(pair.Value[3])<<24
+	upgradeCount := int(binary.BigEndian.Uint32(pair.Value))
 
 	// read upgrade libraries
 	for i := 0; i < upgradeCount; i++ {

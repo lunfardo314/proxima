@@ -188,9 +188,16 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 	fmt.Fprintf(opts.Console, "Restoring from snapshot: %s\n", snapshotPath)
 	fmt.Fprintf(opts.Console, "Format version: %s\n", kvStream.Header.Version)
 	fmt.Fprintf(opts.Console, "Branch ID: %s\n", kvStream.BranchID.String())
-	fmt.Fprintf(opts.Console, "Ledger identity: genesis=%d, description=%q\n",
-		kvStream.LedgerIdentity.GenesisTimeUnix, kvStream.LedgerIdentity.Description)
 	fmt.Fprintf(opts.Console, "Upgrade libraries: %d\n", len(kvStream.UpgradeLibraries))
+
+	// Get ledger identity from slot 0 library
+	constants, err := kvStream.GetLedgerConstants()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ledger constants from snapshot: %w", err)
+	}
+	ledgerIdentity := ledger.NewLedgerIdentity(constants.GenesisTimeUnix, constants.Description)
+	fmt.Fprintf(opts.Console, "Ledger identity: genesis=%d, description=%q\n",
+		ledgerIdentity.GenesisTimeUnix, ledgerIdentity.Description)
 
 	start := time.Now()
 
@@ -219,7 +226,7 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 	}
 
 	// Initialize empty root with minimal ledger identity
-	emptyRoot, err := multistate.CommitEmptyRootWithLedgerIdentity(kvStream.LedgerIdentity, stateStore)
+	emptyRoot, err := multistate.WriteEmptyRootWithLedgerIdentity(ledgerIdentity, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to commit empty root: %w", err)
 	}
