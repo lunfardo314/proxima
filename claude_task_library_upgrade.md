@@ -791,9 +791,14 @@ _Track current progress here between sessions._
 
 **Current Phase:** 7 Complete, Ready for Phase 8
 **Current Task:** Phase 8 - Node Startup from Snapshot
-**Last Commit:** Phase 7: Genesis snapshot and format improvements (61793d52)
+**Last Commit:** Rename state_cleanup module to snapshot_restore (8e94445a)
 **Notes:**
 - Phases 1-7 fully complete
+- Module renamed (2026-01-12):
+  - `state_cleanup` → `snapshot_restore` (better reflects purpose)
+  - Config keys: `state_cleanup.*` → `snapshot_restore.*`
+  - State file: `.state_cleanup.json` → `.snapshot_restore.json`
+  - All imports, documentation, and references updated
 - Phase 7 completed (2026-01-12):
   - Created `proxi init genesis` command
   - Created `genesis_snapshot.go` - in-memory genesis builder without BadgerDB
