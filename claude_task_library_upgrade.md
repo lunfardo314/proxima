@@ -837,21 +837,83 @@ var PendingUpgrade = &UpgradeDefinition{
 
 ### Phase 11: API and CLI Updates
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
 **Goal:** Expose upgrade information through API and CLI.
 
 **Tasks:**
-- [ ] 11.1 API endpoint for upgrade history (`/upgrades`)
-- [ ] 11.2 API endpoint for library version at slot (`/library?slot=N`)
-- [ ] 11.3 Update `proxi db info` to show upgrade history
-- [ ] 11.4 Add `proxi db upgrades` command to list upgrades
-- [ ] 11.5 Clean up deprecated commands from Phase 7
+- [x] 11.1 Replace `PathGetLedgerIDData` with `PathGetLedgerDefinition` endpoint
+- [x] 11.2 Return library YAML and upgrade chain data (slot, hashes, prev links)
+- [x] 11.3 Add optional `slot` query parameter for historical queries
+- [x] 11.4 Update client functions: `GetLedgerDefinition(slot)`, `GetLedgerDefinitionYAML()`
+- [x] 11.5 Update `proxi db info` to show upgrade history summary
+- [x] 11.6 Add `proxi db upgrades` command to list full upgrade history
+- [ ] 11.7 Clean up deprecated commands from Phase 7 (deferred - keep for compatibility)
 
-**Files to modify:**
-- `api/server/server.go`
-- `proxi/db_cmd/info.go`
-- `proxi/db_cmd/` - New commands
+**Files created:**
+- `proxi/db_cmd/upgrades.go` - New command for full upgrade history display
+
+**Files modified:**
+- `api/api.go` - Replaced `PathGetLedgerIDData` with `PathGetLedgerDefinition`, added `LedgerDefinition` struct
+- `api/server/server.go` - New handler `getLedgerDefinition()` with optional slot parameter
+- `api/client/client.go` - Added `GetLedgerDefinition(slot)` and `GetLedgerDefinitionYAML()` methods
+- `ledger/lib.go` - Added `UpgradeChainData` struct and methods
+- `ledger/lib_singleton.go` - Updated `findLibraryForSlot()` to return prev upgrade data, cache chain data
+- `proxi/db_cmd/db.go` - Registered `initUpgradesCmd()`
+- `proxi/db_cmd/info.go` - Added upgrade history summary section
+- `proxi/glb/node.go` - Updated to use `GetLedgerDefinitionYAML()`
+- `proxi/init_cmd/init_genesis_db.go` - Updated to use `GetLedgerDefinitionYAML()`
+- `proxi/node_cmd/get_ledger_id.go` - Updated to use `GetLedgerDefinitionYAML()`
+
+**API response format (`/api/v1/get_ledger_definition?slot=N`):**
+```json
+{
+  "upgrade_slot": 0,
+  "library_yaml": "...",
+  "library_hash": "hex...",
+  "prev_library_hash": "hex...",
+  "prev_upgrade_slot": 4294967295
+}
+```
+
+**Implementation notes:**
+- `slot` parameter is optional; defaults to `MaxSlot` (latest library)
+- Library YAML returned as UTF-8 string (not hex-encoded)
+- `UpgradeChainData` cached on library load to avoid repeated computation
+- `proxi db info` shows summary: total upgrades, current library slot/hash
+- `proxi db upgrades` shows full history including base library hash
+
+---
+
+### Phase 13: Code Review and Cleanup
+
+**Status:** ⏳ Pending
+
+**Goal:** Review all changes from Phases 1-11, identify issues, redundancies, and optimization opportunities. Clean up code and improve comments.
+
+**Tasks:**
+- [ ] 13.1 Review all new/modified files for potential issues
+- [ ] 13.2 Identify redundant code and unnecessary duplication
+- [ ] 13.3 Check for performance optimization opportunities
+- [ ] 13.4 Verify error handling consistency
+- [ ] 13.5 Add/improve code comments where needed
+- [ ] 13.6 Remove dead code and unused imports
+- [ ] 13.7 Ensure consistent naming conventions
+- [ ] 13.8 Review test coverage and add missing tests
+- [ ] 13.9 Update documentation if needed
+
+**Files to review:**
+- `ledger/lib.go`, `ledger/lib_singleton.go` - Library caching and upgrade chain data
+- `ledger/upgrade_utxo.go` - Upgrade UTXO creation and parsing
+- `ledger/base/upgrade_output_id.go` - Synthetic OutputID format
+- `ledger/multistate/upgrades.go` - Upgrade storage layer
+- `ledger/multistate/upgrade_inject.go` - Upgrade UTXO injection
+- `ledger/multistate/genesis.go`, `genesis_snapshot.go` - Genesis creation
+- `ledger/multistate/snapshot.go` - Snapshot format with upgrades
+- `ledger/upgrade/upgrade.go`, `doc.go` - Pending upgrade registration
+- `api/api.go`, `api/server/server.go`, `api/client/client.go` - API changes
+- `proxi/db_cmd/upgrades.go`, `info.go` - CLI commands
+- `core/core_modules/snapshot_restore/*.go` - Snapshot restore logic
 
 ---
 
@@ -859,11 +921,20 @@ var PendingUpgrade = &UpgradeDefinition{
 
 _Track current progress here between sessions._
 
-**Current Phase:** 10 Complete, Ready for Phase 11
-**Current Task:** Phase 11 - API and CLI Updates
-**Last Commit:** Phase 10: Remove implicit MaxSlot wrapper functions (2fd307d4)
+**Current Phase:** 11 Complete, Ready for Phase 13
+**Current Task:** Phase 13 - Code Review and Cleanup
+**Last Commit:** Phase 11: API and CLI updates for ledger definitions (ca353ba0)
 **Notes:**
-- Phases 1-10 fully complete
+- Phases 1-11 fully complete
+- Phase 11 completed (2026-01-13):
+  - Replaced `PathGetLedgerIDData` with `PathGetLedgerDefinition` endpoint
+  - Added `LedgerDefinition` response struct with upgrade chain data
+  - Server handler accepts optional `slot` query parameter
+  - Client: `GetLedgerDefinition(slot)` and `GetLedgerDefinitionYAML()` methods
+  - Library: Added `UpgradeChainData` struct cached on library load
+  - `proxi db info`: Shows upgrade history summary
+  - `proxi db upgrades`: New command for full upgrade history
+  - Updated 11 files across api, ledger, proxi packages
 - Upgrade UTXO improvements (2026-01-13):
   - **Chained upgrade UTXOs**: Each upgrade UTXO now commits to the entire upgrade history
     - Constraint 2: library hash (32 bytes)
@@ -929,8 +1000,9 @@ _Track current progress here between sessions._
   - Distribution done manually via proxi wallet commands (zero fees make this practical)
   - Old commands (`proxi util ledger_id`, `proxi init genesis_db`) kept for compatibility
 - Next phases:
-  - Phase 11: API and CLI updates
+  - ~~Phase 11: API and CLI updates~~ ✅ Complete (ca353ba0)
   - ~~Phase 12: EasyFL serde immutability enforcement~~ ✅ Addressed by EasyFL dependency
+  - Phase 13: Code review and cleanup
 
 **Phase 12 - RESOLVED:**
 EasyFL's `Upgrade()` function now enforces that `numArgs` cannot be changed when replacing functions.
