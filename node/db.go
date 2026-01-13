@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/txstore"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/viper"
 )
@@ -44,7 +45,8 @@ func (p *ProximaNode) initMultiStateLedger() {
 
 	// Initialize pending upgrade tracking for optimization
 	// This checks which upgrade UTXOs already exist in the latest state
-	branchData := multistate.FetchBranchDataByBranchID(p.multiStateDB, p.snapshotBranchID)
+	branchData, ok := multistate.FetchBranchData(p.multiStateDB, p.snapshotBranchID)
+	util.Assertf(ok, "FetchBranchData: branch data not found for %s", p.snapshotBranchID.String())
 	stateReader := multistate.MustNewSugaredReadableState(p.multiStateDB, branchData.Root)
 	ledger.InitNextPendingUpgradeSlot(func(oid base.OutputID) bool {
 		return stateReader.HasUTXO(oid)
