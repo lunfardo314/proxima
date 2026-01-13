@@ -911,5 +911,12 @@ _Track current progress here between sessions._
   - Distribution done manually via proxi wallet commands (zero fees make this practical)
   - Old commands (`proxi util ledger_id`, `proxi init genesis_db`) kept for compatibility
 - Next phases:
-  - Phase 10: Transaction validation verification (mostly done in Phase 2)
   - Phase 11: API and CLI updates
+  - Phase 12: EasyFL serde immutability enforcement (NEW)
+
+**Next session task (Phase 12):**
+- Add functionality in EasyFL to prevent library upgrades from changing serde-related behavior
+- Problem: If an upgrade changes how bytecode is serialized/deserialized, it could cause non-determinism
+- Solution needed: Mark certain EasyFL functions as "serde-critical" and enforce that upgrades cannot modify them
+- This affects functions used for constraint parsing, output serialization, etc.
+- Requires changes in `github.com/lunfardo314/easyfl` library
