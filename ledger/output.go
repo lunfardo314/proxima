@@ -99,12 +99,6 @@ func OutputFromBytesAtSlot(data []byte, slot uint32, validateOpt ...func(*Output
 	return ret, nil
 }
 
-// OutputFromBytes parses an output using the latest library version.
-// Deprecated: Use OutputFromBytesAtSlot for parsing historical outputs.
-func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
-	return OutputFromBytesAtSlot(data, base.MaxSlot, validateOpt...)
-}
-
 // OutputFromHexStringAtSlot parses an output from hex string using the library for the given slot.
 func OutputFromHexStringAtSlot(hexStr string, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
 	data, err := hex.DecodeString(hexStr)
@@ -112,12 +106,6 @@ func OutputFromHexStringAtSlot(hexStr string, slot uint32, validateOpt ...func(*
 		return nil, err
 	}
 	return OutputFromBytesAtSlot(data, slot, validateOpt...)
-}
-
-// OutputFromHexString parses an output from hex string using the latest library version.
-// Deprecated: Use OutputFromHexStringAtSlot for parsing historical outputs.
-func OutputFromHexString(hexStr string, validateOpt ...func(*Output) error) (*Output, error) {
-	return OutputFromHexStringAtSlot(hexStr, base.MaxSlot, validateOpt...)
 }
 
 // OutputFromBytesMainAtSlot parses an output using the library for the given slot.
@@ -149,12 +137,6 @@ func OutputFromBytesMainAtSlot(data []byte, slot uint32) (*Output, Amounts, Lock
 		return nil, nil, nil, err
 	}
 	return ret, amount, lock, nil
-}
-
-// OutputFromBytesMain parses an output using the latest library version.
-// Deprecated: Use OutputFromBytesMainAtSlot for parsing historical outputs.
-func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
-	return OutputFromBytesMainAtSlot(data, base.MaxSlot)
 }
 
 func (o *Output) ConstraintsRawBytes() [][]byte {
@@ -190,7 +172,8 @@ func (o *OutputBuilder) WithTokenBalance(bal uint64) *OutputBuilder {
 func (o *Output) Amounts() Amounts {
 	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)
-	ret, err := AmountsFromBytes(bin)
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	ret, err := AmountsFromBytesAtSlot(bin, base.MaxSlot)
 	util.AssertNoError(err)
 	return ret
 }
@@ -198,7 +181,8 @@ func (o *Output) Amounts() Amounts {
 func (o *Output) TokenBalance() uint64 {
 	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)
-	ret, err := TokenBalanceFromAmountsBytes(bin)
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	ret, err := TokenBalanceFromAmountsBytesAtSlot(bin, base.MaxSlot)
 	util.AssertNoError(err)
 	return uint64(ret)
 }
@@ -234,7 +218,8 @@ func (o *Output) Hex() string {
 // Clone clones output and gives a chance to modify it
 func (o *Output) Clone(buildFun ...func(o *OutputBuilder)) *Output {
 	if len(buildFun) == 0 {
-		ret, err := OutputFromBytes(o.Bytes())
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		ret, err := OutputFromBytesAtSlot(o.Bytes(), base.MaxSlot)
 		util.AssertNoError(err)
 		return ret
 	}
@@ -295,7 +280,8 @@ func (o *Output) ForEachConstraint(fun func(idx byte, constr []byte) bool) {
 }
 
 func (o *Output) Lock() Lock {
-	ret, err := LockFromBytes(o.MustAt(int(ConstraintIndexLock)))
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	ret, err := LockFromBytesAtSlot(o.MustAt(int(ConstraintIndexLock)), base.MaxSlot)
 	util.AssertNoError(err)
 	return ret
 }
@@ -337,7 +323,8 @@ func (o *Output) ChainConstraint() (*ChainConstraint, byte) {
 		if idx < ConstraintIndexFirstOptionalConstraint {
 			return true
 		}
-		ret, err = ChainConstraintFromBytes(constr)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		ret, err = ChainConstraintFromBytesAtSlot(constr, base.MaxSlot)
 		if err == nil {
 			found = idx
 			return false
@@ -359,7 +346,8 @@ func (o *Output) SequencerConstraint() (*SequencerConstraint, byte) {
 		if idx < ConstraintIndexFirstOptionalConstraint {
 			return true
 		}
-		ret, err = SequencerConstraintFromBytes(constr)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		ret, err = SequencerConstraintFromBytesAtSlot(constr, base.MaxSlot)
 		if err == nil {
 			found = idx
 			return false
@@ -395,7 +383,8 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 		if idx < ConstraintIndexFirstOptionalConstraint || idx == chainConstraintIndex {
 			return true
 		}
-		seqConstraint, err = SequencerConstraintFromBytes(constr)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		seqConstraint, err = SequencerConstraintFromBytesAtSlot(constr, base.MaxSlot)
 		if err == nil {
 			seqConstraintIndex = idx
 			return false
@@ -507,7 +496,8 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 		if verbose {
 			bc = fmt.Sprintf(prefix+"   bytecode: %s", easyfl_util.Fmt(data))
 		}
-		c, err := ConstraintFromBytes(data)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
 
 		if err != nil {
 			if src, err := L(base.MaxSlot).DecompileBytecode(data); err != nil {
@@ -533,7 +523,8 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 func (o *Output) LinesPlainSource() *lines.Lines {
 	ret := lines.New()
 	o.ForEachConstraint(func(i byte, data []byte) bool {
-		c, err := ConstraintFromBytes(data)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
 		if err != nil {
 			ret.Add(err.Error())
 		} else {
@@ -547,7 +538,8 @@ func (o *Output) LinesPlainSource() *lines.Lines {
 func (o *Output) LinesPlainHR() *lines.Lines {
 	ret := lines.New()
 	o.ForEachConstraint(func(i byte, data []byte) bool {
-		c, err := ConstraintFromBytes(data)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
 		if err != nil {
 			ret.Add(err.Error())
 		} else {
@@ -559,7 +551,8 @@ func (o *Output) LinesPlainHR() *lines.Lines {
 }
 
 func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWithID, error) {
-	ret, err := OutputFromBytes(o.Data, validOpt...)
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	ret, err := OutputFromBytesAtSlot(o.Data, base.MaxSlot, validOpt...)
 	if err != nil {
 		return nil, err
 	}
@@ -735,7 +728,8 @@ func OutputsWithIDToString(outs ...*OutputWithID) string {
 }
 
 func (o *Output) hasConstraintAt(pos byte, constraintName string) bool {
-	constr, err := ConstraintFromBytes(o.MustConstraintAt(pos))
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	constr, err := ConstraintFromBytesAtSlot(o.MustConstraintAt(pos), base.MaxSlot)
 	util.AssertNoError(err)
 
 	return constr.Name() == constraintName
@@ -744,7 +738,8 @@ func (o *Output) hasConstraintAt(pos byte, constraintName string) bool {
 func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
 	util.Assertf(o.NumConstraints() >= int(pos), "no constraint at position %d", pos)
 
-	constr, err := ConstraintFromBytes(o.MustConstraintAt(pos))
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	constr, err := ConstraintFromBytesAtSlot(o.MustConstraintAt(pos), base.MaxSlot)
 	util.AssertNoError(err)
 
 	for _, n := range names {
@@ -758,7 +753,8 @@ func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
 // MustValidOutput checks if amount and lock constraints are as expected
 func (o *Output) MustValidOutput() {
 	o.MustHaveConstraintAnyOfAt(0, AmountsConstraintName)
-	_, err := LockFromBytes(o.MustConstraintAt(1))
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	_, err := LockFromBytesAtSlot(o.MustConstraintAt(1), base.MaxSlot)
 	util.AssertNoError(err)
 }
 
@@ -791,7 +787,8 @@ func ParseAndSortOutputData(outs []*OutputDataWithID, filter func(oid *base.Outp
 func ParseOutputDataAndFilter(outs []*OutputDataWithID, filter func(oid *base.OutputID, o *Output) bool) ([]*OutputWithID, error) {
 	ret := make([]*OutputWithID, 0, len(outs))
 	for _, od := range outs {
-		out, err := OutputFromBytes(od.Data)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		out, err := OutputFromBytesAtSlot(od.Data, base.MaxSlot)
 		if err != nil {
 			return nil, err
 		}
@@ -875,7 +872,8 @@ func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 
 func forEachOutputReadOnly(outs []*OutputDataWithID, fun func(o *Output, odata *OutputDataWithID) bool) error {
 	for _, odata := range outs {
-		o, err := OutputFromBytes(odata.Data)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		o, err := OutputFromBytesAtSlot(odata.Data, base.MaxSlot)
 		if err != nil {
 			return err
 		}
@@ -932,7 +930,8 @@ func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
 
 // TagAlongLock return tag-along lock if present, otherwise nil
 func (o *Output) TagAlongLock() *TagAlongLock {
-	ret, err := TagAlongLockFromBytes(o.MustAt(int(ConstraintIndexLock)))
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	ret, err := TagAlongLockFromBytesAtSlot(o.MustAt(int(ConstraintIndexLock)), base.MaxSlot)
 	if err != nil {
 		return nil
 	}

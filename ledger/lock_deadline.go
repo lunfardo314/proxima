@@ -57,10 +57,12 @@ func (dl *DeadlineLock) Master() Accountable {
 
 func registerDeadlineLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(DeadlineLockName, 3, func(data []byte) (Constraint, error) {
-		return DeadlineLockFromBytes(data)
+		// Use latest library version for library registration parsing
+		return DeadlineLockFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestDeadlineLockConstraint)
 	lib.mustRegisterLock(DeadlineLockName, func(bytes []byte) (Lock, error) {
-		ret, err := DeadlineLockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		ret, err := DeadlineLockFromBytesAtSlot(bytes, base.MaxSlot)
 		if err != nil {
 			return nil, err
 		}
@@ -73,7 +75,7 @@ func initTestDeadlineLockConstraint() {
 	addr1 := AddressED25519Random()
 
 	example := NewDeadlineLock(1337, addr0, addr1)
-	lockBack, err := DeadlineLockFromBytes(example.Bytes())
+	lockBack, err := DeadlineLockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 
 	util.Assertf(EqualConstraints(lockBack.ConstraintMain, addr0), "inconsistency "+DeadlineLockName)
@@ -107,12 +109,6 @@ func DeadlineLockFromBytesAtSlot(data []byte, slot uint32) (*DeadlineLock, error
 		return nil, err
 	}
 	return ret, nil
-}
-
-// DeadlineLockFromBytes parses a DeadlineLock using the latest library version.
-// Deprecated: Use DeadlineLockFromBytesAtSlot for parsing historical bytecode.
-func DeadlineLockFromBytes(data []byte) (*DeadlineLock, error) {
-	return DeadlineLockFromBytesAtSlot(data, base.MaxSlot)
 }
 
 const deadlineLockSource = `

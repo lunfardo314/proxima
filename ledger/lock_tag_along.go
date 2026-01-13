@@ -46,12 +46,6 @@ func TagAlongLockFromBytesAtSlot(data []byte, slot uint32) (*TagAlongLock, error
 	}, nil
 }
 
-// TagAlongLockFromBytes parses a TagAlongLock using the latest library version.
-// Deprecated: Use TagAlongLockFromBytesAtSlot for parsing historical bytecode.
-func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
-	return TagAlongLockFromBytesAtSlot(data, base.MaxSlot)
-}
-
 func (t *TagAlongLock) Source() string {
 	return fmt.Sprintf(tagAlongLockTemplateSource, t.TargetSequencerID.StringHex(), t.Sender.Source())
 }
@@ -96,10 +90,12 @@ func NewTagAlongLockUnlockParams(predChainOutputIndex, predChainConstraintIndex,
 
 func registerTagAlongLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(TagAlongLockName, 2, func(data []byte) (Constraint, error) {
-		return TagAlongLockFromBytes(data)
+		// Use latest library version for library registration parsing
+		return TagAlongLockFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestTagAlongLockConstraint)
 	lib.mustRegisterLock(TagAlongLockName, func(bytes []byte) (Lock, error) {
-		ret, err := TagAlongLockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		ret, err := TagAlongLockFromBytesAtSlot(bytes, base.MaxSlot)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +110,7 @@ func initTestTagAlongLockConstraint() {
 		TargetSequencerID: chainID,
 		Sender:            sender,
 	}
-	tagAlongLockBack, err := TagAlongLockFromBytes(example.Bytes())
+	tagAlongLockBack, err := TagAlongLockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(tagAlongLockBack, example), "inconsistency "+TagAlongLockName)
 

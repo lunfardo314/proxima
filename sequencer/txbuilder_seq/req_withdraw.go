@@ -50,7 +50,8 @@ func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: requested amount %d is less than minimum alowed", ret.amount)
 		return
 	}
-	if ret.target, err = ledger.LockFromBytes(o.RequestParams.Get(FieldWithdrawTarget)); err != nil {
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	if ret.target, err = ledger.LockFromBytesAtSlot(o.RequestParams.Get(FieldWithdrawTarget), base.MaxSlot); err != nil {
 		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: failed to parse lock: %w", err)
 		return
 	}

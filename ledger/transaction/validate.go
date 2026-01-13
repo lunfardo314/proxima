@@ -126,14 +126,17 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 	return nil
 }
 
+// _scanOutputs parses outputs using the transaction's slot for deterministic validation.
+// All outputs (consumed and produced) are parsed with the same library version.
+// IMPORTANT: Upgrade code is responsible for maintaining backward-compatible bytecode
+// parsing to avoid non-determinism when consuming outputs created with older library versions.
 func (ctx *TxContext) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, error) {
 	var err error
+	slot := ctx.Slot()
 	ret := make([]*ledger.Output, ctx.ctxTree.MustNumElementsAtPath(pathToOutputs))
-	path := common.Concat(pathToOutputs, 0)
 
 	_ = ctx.ctxTree.ForEach(func(i byte, data []byte) bool {
-		path[len(path)-1] = i
-		ret[i], err = ledger.OutputFromBytes(data)
+		ret[i], err = ledger.OutputFromBytesAtSlot(data, slot)
 		return err == nil
 	}, pathToOutputs)
 	if err != nil {

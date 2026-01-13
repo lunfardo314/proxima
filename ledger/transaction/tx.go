@@ -411,15 +411,16 @@ func ScanOutputs(tx *Transaction) error {
 	pathToAmounts := []byte{ledger.TxOutputs, 0, 0}
 	pathToLock := []byte{ledger.TxOutputs, 0, 1}
 
+	slot := tx.Slot()
 	for i := 0; i < numOutputs; i++ {
 		pathToAmounts[1] = byte(i)
-		amounts, err = ledger.AmountsFromBytes(tx.tree.MustBytesAtPath(pathToAmounts))
+		amounts, err = ledger.AmountsFromBytesAtSlot(tx.tree.MustBytesAtPath(pathToAmounts), slot)
 		if err != nil {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
 
 		// just enforcing known lock at index 1
-		if _, err = ledger.LockFromBytes(tx.tree.MustBytesAtPath(pathToLock)); err != nil {
+		if _, err = ledger.LockFromBytesAtSlot(tx.tree.MustBytesAtPath(pathToLock), slot); err != nil {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
 		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
@@ -588,7 +589,7 @@ func (tx *Transaction) MustOutputDataAt(idx byte) []byte {
 }
 
 func (tx *Transaction) MustProducedOutputAt(idx byte) *ledger.Output {
-	ret, err := ledger.OutputFromBytes(tx.MustOutputDataAt(idx))
+	ret, err := ledger.OutputFromBytesAtSlot(tx.MustOutputDataAt(idx), tx.Slot())
 	util.AssertNoError(err)
 	return ret
 }
@@ -597,7 +598,7 @@ func (tx *Transaction) ProducedOutputAt(idx byte) (*ledger.Output, error) {
 	if int(idx) >= tx.NumProducedOutputs() {
 		return nil, fmt.Errorf("wrong output index")
 	}
-	out, err := ledger.OutputFromBytes(tx.MustOutputDataAt(idx))
+	out, err := ledger.OutputFromBytesAtSlot(tx.MustOutputDataAt(idx), tx.Slot())
 	if err != nil {
 		return nil, err
 	}
@@ -744,8 +745,9 @@ func (tx *Transaction) ForEachOutputData(fun func(idx byte, oData []byte) bool) 
 // Inside callback function the correct outputID must be obtained with OutputID(idx byte) ledger.OutputID
 // because stem output ID has a special form
 func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output, oid base.OutputID) bool) {
+	slot := tx.Slot()
 	tx.ForEachOutputData(func(idx byte, oData []byte) bool {
-		o, _ := ledger.OutputFromBytes(oData)
+		o, _ := ledger.OutputFromBytesAtSlot(oData, slot)
 		oid := tx.OutputID(idx)
 		if !fun(idx, o, oid) {
 			return false
@@ -810,6 +812,7 @@ func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, 
 }
 
 func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, bool)) string {
+	slot := tx.Slot()
 	ctx, err := TxContextFromTransaction(tx, func(i byte) (*ledger.Output, error) {
 		oid, err1 := tx.InputAt(i)
 		if err1 != nil {
@@ -819,7 +822,7 @@ func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, boo
 		if !ok {
 			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
 		}
-		o, err1 := ledger.OutputFromBytes(oData)
+		o, err1 := ledger.OutputFromBytesAtSlot(oData, slot)
 		if err1 != nil {
 			return nil, err1
 		}
@@ -840,13 +843,18 @@ func (tx *Transaction) ToStringWithInputLoaderByIndex(fetchOutput func(i byte) (
 }
 
 func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([]byte, bool)) func(byte) (*ledger.Output, error) {
+	slot := tx.Slot()
 	return func(idx byte) (*ledger.Output, error) {
 		inp := tx.MustInputAt(idx)
 		odata, ok := fetchOutput(inp)
 		if !ok {
 			return nil, fmt.Errorf("can't load input #%d: %s", idx, inp.String())
 		}
-		o, err := ledger.OutputFromBytes(odata)
+		// Use transaction's slot for deterministic parsing.
+		// IMPORTANT: Upgrade code is responsible for maintaining backward-compatible
+		// bytecode parsing to avoid non-determinism when consuming outputs created
+		// with older library versions.
+		o, err := ledger.OutputFromBytesAtSlot(odata, slot)
 		if err != nil {
 			return nil, fmt.Errorf("can't load input #%d: %s, '%v'", idx, inp.String(), err)
 		}

@@ -184,7 +184,7 @@ func (c *APIClient) GetSimpleSigLockedOutputs(addr ledger.AddressED25519, maxOut
 		if err != nil {
 			return nil, nil, fmt.Errorf("wrong output id data from server: %s: '%w'", idStr, err)
 		}
-		o, err := ledger.OutputFromHexString(dataStr)
+		o, err := ledger.OutputFromHexStringAtSlot(dataStr, base.MaxSlot)
 		if err != nil {
 			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%w'", dataStr, err)
 		}
@@ -226,7 +226,7 @@ func (c *APIClient) GetOutputsForAmount(addr ledger.AddressED25519, amount uint6
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("wrong output id data from server: %s: '%w'", idStr, err)
 		}
-		o, err := ledger.OutputFromHexString(dataStr)
+		o, err := ledger.OutputFromHexStringAtSlot(dataStr, base.MaxSlot)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("wrong output data from server: %s: '%w'", dataStr, err)
 		}
@@ -319,7 +319,8 @@ func (c *APIClient) _getChainedOutputs(path string) ([]*ledger.OutputWithChainID
 		if err != nil {
 			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
 		}
-		o, err := ledger.OutputFromBytes(oData)
+		// API client uses latest library version for parsing outputs received from server
+		o, err := ledger.OutputFromBytesAtSlot(oData, base.MaxSlot)
 		if err != nil {
 			return nil, nil, fmt.Errorf("wrong output data from server: %s: '%v'", dataStr, err)
 		}
@@ -573,7 +574,7 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 
 	ret := make([]*ledger.OutputWithChainID, 0, len(res.Chains))
 	for _, ci := range res.Chains {
-		o, err := ledger.OutputFromHexString(ci.Data)
+		o, err := ledger.OutputFromHexStringAtSlot(ci.Data, base.MaxSlot)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1077,7 +1078,7 @@ func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWith
 		if err != nil {
 			return nil, nil, err
 		}
-		o, err := ledger.OutputFromHexString(data.Data)
+		o, err := ledger.OutputFromHexStringAtSlot(data.Data, base.MaxSlot)
 		if err != nil {
 			return nil, nil, err
 		}

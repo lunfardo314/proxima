@@ -158,12 +158,6 @@ func AmountsFromBytesAtSlot(data []byte, slot uint32) (Amounts, error) {
 	return ret, nil
 }
 
-// AmountsFromBytes parses an Amounts constraint using the latest library version.
-// TODO check usage (see AmountsFromBytesAtSlot for parsing historical bytecode).
-func AmountsFromBytes(data []byte) (Amounts, error) {
-	return AmountsFromBytesAtSlot(data, base.MaxSlot)
-}
-
 // TokenBalanceFromAmountsBytesAtSlot parses the token balance using the library for the given slot.
 func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error) {
 	lib := L(slot)
@@ -187,22 +181,17 @@ func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error)
 	return int64(ret), nil
 }
 
-// TokenBalanceFromAmountsBytes parses the token balance using the latest library version.
-// TODO check usage (see TokenBalanceFromAmountsBytesAtSlot for parsing historical bytecode).
-func TokenBalanceFromAmountsBytes(data []byte) (int64, error) {
-	return TokenBalanceFromAmountsBytesAtSlot(data, base.MaxSlot)
-}
-
 func registerAmountsConstraint(lib *Library) {
 	lib.mustRegisterVarargConstraint(AmountsConstraintName, func(data []byte) (Constraint, error) {
-		return AmountsFromBytes(data)
+		// Use latest library version for library registration parsing
+		return AmountsFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestAmountsConstraint)
 }
 
 func initTestAmountsConstraint() {
 	example := NewAmounts(1, 2, 1337, 0x01020304050607)
 
-	exampleBack, err := ConstraintFromBytes(example.Bytes())
+	exampleBack, err := ConstraintFromBytesAtSlot(example.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 	util.Assertf(example.Name() == AmountsConstraintName, "inconsistency 1")
 	exampleBack1 := exampleBack.(Amounts)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +16,7 @@ func TestRawOutputBytes(t *testing.T) {
 
 	rawBytes := o.Bytes()
 
-	o, err := ledger.OutputFromBytes(rawBytes)
+	o, err := ledger.OutputFromBytesAtSlot(rawBytes, base.MaxSlot)
 	require.NoError(t, err)
 
 	t.Logf("Decompiled:\n%s", o.ToString())

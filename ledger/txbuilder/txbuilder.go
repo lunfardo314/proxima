@@ -252,7 +252,8 @@ func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {
 // InsertSimpleChainTransition inserts a simple chain transition. Takes output with chain constraint from parameters,
 // Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
 func (txb *TxBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, _ base.LedgerTime) error {
-	chainIN, err := ledger.OutputFromBytes(inChainData.Data)
+	// Use input's slot for parsing (output was created at that slot)
+	chainIN, err := ledger.OutputFromBytesAtSlot(inChainData.Data, inChainData.ID.Slot())
 	if err != nil {
 		return err
 	}

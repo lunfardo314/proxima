@@ -113,12 +113,6 @@ func ChainConstraintFromBytesAtSlot(data []byte, slot uint32) (*ChainConstraint,
 	return ret, nil
 }
 
-// ChainConstraintFromBytes parses a ChainConstraint using the latest library version.
-// Deprecated: Use ChainConstraintFromBytesAtSlot for parsing historical bytecode.
-func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
-	return ChainConstraintFromBytesAtSlot(data, base.MaxSlot)
-}
-
 // NewChainUnlockParams unlock parameters for the chain constraint. 3 bytes:
 // 0 - successor output index
 // 1 - successor block index
@@ -131,13 +125,15 @@ var FinishChainUnlockParams = []byte{0xff, 0xff}
 
 func registerChainConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainConstraintName, 4, func(data []byte) (Constraint, error) {
-		return ChainConstraintFromBytes(data)
+		// Use latest library version for library registration parsing
+		return ChainConstraintFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestChainConstraintInlineTest)
 }
 
 func initTestChainConstraintInlineTest() {
 	example := NewChainOrigin(1000, 10_000_000)
-	back, err := ChainConstraintFromBytes(example.Bytes())
+	// Use latest library version for test
+	back, err := ChainConstraintFromBytesAtSlot(example.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
 	util.Assertf(back.OriginSlot == 1000, "back.OriginSlot == 1000")
@@ -152,7 +148,7 @@ func initTestChainConstraintInlineTest() {
 	}
 	{
 		chainConstr := NewChainConstraint(chainID, 0, 0, 1000, 10_000_000)
-		chainConstrBack, err := ChainConstraintFromBytes(chainConstr.Bytes())
+		chainConstrBack, err := ChainConstraintFromBytesAtSlot(chainConstr.Bytes(), base.MaxSlot)
 		util.AssertNoError(err)
 		util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
 	}

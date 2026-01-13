@@ -44,11 +44,6 @@ func ChainLockFromBytesAtSlot(data []byte, slot uint32) (ChainLock, error) {
 	return ChainLockFromChainID(chainID), nil
 }
 
-// ChainLockFromBytes parses a ChainLock using the latest library version.
-// Deprecated: Use ChainLockFromBytesAtSlot for parsing historical bytecode.
-func ChainLockFromBytes(data []byte) (ChainLock, error) {
-	return ChainLockFromBytesAtSlot(data, base.MaxSlot)
-}
 
 func (cl ChainLock) Source() string {
 	return fmt.Sprintf(chainLockTemplate, hex.EncodeToString(cl))
@@ -94,10 +89,12 @@ func NewChainLockUnlockParams(predChainOutputIndex, predChainConstraintIndex byt
 
 func registerChainLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainLockName, 1, func(data []byte) (Constraint, error) {
-		return ChainLockFromBytes(data)
+		// Use latest library version for library registration parsing
+		return ChainLockFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestChainLockConstraint)
 	lib.mustRegisterLock(ChainLockName, func(bytes []byte) (Lock, error) {
-		ret, err := ChainLockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		ret, err := ChainLockFromBytesAtSlot(bytes, base.MaxSlot)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +104,7 @@ func registerChainLockConstraint(lib *Library) {
 
 func initTestChainLockConstraint() {
 	example := NilChainLock
-	chainLockBack, err := ChainLockFromBytes(example.Bytes())
+	chainLockBack, err := ChainLockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
 

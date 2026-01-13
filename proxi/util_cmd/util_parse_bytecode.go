@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
@@ -35,7 +36,8 @@ func runParseBytecode(_ *cobra.Command, args []string) {
 	bytecode, err := hex.DecodeString(args[0])
 	glb.AssertNoError(err)
 
-	c, err := ledger.ConstraintFromBytes(bytecode)
+	// CLI uses latest library version for parsing bytecode
+	c, err := ledger.ConstraintFromBytesAtSlot(bytecode, base.MaxSlot)
 	glb.AssertNoError(err)
 
 	glb.Infof("Parsed bytecode:\n    string: %s\n    source: %s", c.String(), c.Source())

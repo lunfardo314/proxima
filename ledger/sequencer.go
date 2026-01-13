@@ -176,15 +176,10 @@ func SequencerConstraintFromBytesAtSlot(data []byte, slot uint32) (*SequencerCon
 	}, nil
 }
 
-// SequencerConstraintFromBytes parses a SequencerConstraint using the latest library version.
-// Deprecated: Use SequencerConstraintFromBytesAtSlot for parsing historical bytecode.
-func SequencerConstraintFromBytes(data []byte) (*SequencerConstraint, error) {
-	return SequencerConstraintFromBytesAtSlot(data, base.MaxSlot)
-}
-
 func registerSequencerConstraint(lib *Library) {
 	lib.mustRegisterConstraint(SequencerConstraintName, 1, func(data []byte) (Constraint, error) {
-		return SequencerConstraintFromBytes(data)
+		// Use latest library version for library registration parsing
+		return SequencerConstraintFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestSequencerConstraint)
 }
 

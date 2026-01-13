@@ -189,7 +189,8 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 		oData, found := r._getUTXO(oid, partition)
 		util.Assertf(found, "can't get output")
 
-		_, amounts, lock, err := ledger.OutputFromBytesMain(oData)
+		// Use output's slot for parsing
+		_, amounts, lock, err := ledger.OutputFromBytesMainAtSlot(oData, oid.Slot())
 		util.AssertNoError(err)
 
 		lockStr := lock.String()

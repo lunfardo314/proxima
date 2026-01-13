@@ -53,7 +53,8 @@ func runChainsCmd(_ *cobra.Command, _ []string) {
 		glb.Infof("   %s :: %s :: %s   seq=%v branch=%v",
 			chainID.String(), ci.Output.ID.String(), util.Th(ci.Balance), ci.Output.ID.IsSequencerTransaction(), ci.Output.ID.IsBranchTransaction())
 		if glb.IsVerbose() {
-			o, _ := ledger.OutputFromBytes(ci.Output.Data)
+			// CLI uses latest library version for parsing outputs
+			o, _ := ledger.OutputFromBytesAtSlot(ci.Output.Data, base.MaxSlot)
 			lines := o.Lines("            ::")
 			glb.Infof("     Output details:")
 			glb.Infof(lines.String())

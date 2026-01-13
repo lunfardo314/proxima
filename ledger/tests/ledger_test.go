@@ -30,7 +30,7 @@ func TestOutput(t *testing.T) {
 
 	t.Run("basic", func(t *testing.T) {
 		out := ledger.OutputBasic(0, ledger.AddressED25519Null())
-		outBack, err := ledger.OutputFromBytes(out.Bytes())
+		outBack, err := ledger.OutputFromBytesAtSlot(out.Bytes(), base.MaxSlot)
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("empty output: %d bytes", len(out.Bytes()))
@@ -40,7 +40,7 @@ func TestOutput(t *testing.T) {
 		t.Logf("address: %s", addr.String())
 		t.Logf("address hex: 0x%s", hex.EncodeToString(addr.Bytes()))
 		out := ledger.OutputBasic(0, ledger.AddressED25519FromPublicKey(pubKey))
-		outBack, err := ledger.OutputFromBytes(out.Bytes())
+		outBack, err := ledger.OutputFromBytesAtSlot(out.Bytes(), base.MaxSlot)
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("output: %d bytes", len(out.Bytes()))
@@ -52,7 +52,7 @@ func TestOutput(t *testing.T) {
 	})
 	t.Run("tokens", func(t *testing.T) {
 		out := ledger.OutputBasic(1337, ledger.AddressED25519Null())
-		outBack, err := ledger.OutputFromBytes(out.Bytes())
+		outBack, err := ledger.OutputFromBytesAtSlot(out.Bytes(), base.MaxSlot)
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("output: %d bytes", len(out.Bytes()))
@@ -368,9 +368,9 @@ func TestChain1(t *testing.T) {
 		_, idx := outs[1].Output.ChainConstraint()
 		require.EqualValues(t, 2, idx)
 
-		_, err = ledger.ChainConstraintFromBytes(outs[1].Output.MustAt(2))
+		_, err = ledger.ChainConstraintFromBytesAtSlot(outs[1].Output.MustAt(2), base.MaxSlot)
 		require.NoError(t, err)
-		_, err = ledger.ChainConstraintFromBytes(outs[1].Output.MustAt(3))
+		_, err = ledger.ChainConstraintFromBytesAtSlot(outs[1].Output.MustAt(3), base.MaxSlot)
 		require.NoError(t, err)
 
 		// create destroying transaction
@@ -422,7 +422,7 @@ func TestChain1(t *testing.T) {
 		require.EqualValues(t, 1, len(chains))
 		chs, err := u.StateReader().GetUTXOForChainID(chains[0].ChainID)
 		require.NoError(t, err)
-		o, err := ledger.OutputFromBytes(chs.Data)
+		o, err := ledger.OutputFromBytesAtSlot(chs.Data, base.MaxSlot)
 		require.NoError(t, err)
 		ch, idx := o.ChainConstraint()
 		require.True(t, idx != 0xff)

@@ -176,11 +176,6 @@ func ConstraintFromBytesAtSlot(data []byte, slot uint32) (Constraint, error) {
 	return NewGeneralScript(data), nil
 }
 
-// ConstraintFromBytes parses a constraint using the latest library version.
-// TODO check usage ConstraintFromBytesAtSlot for parsing historical bytecode.
-func ConstraintFromBytes(data []byte) (Constraint, error) {
-	return ConstraintFromBytesAtSlot(data, base.MaxSlot)
-}
 
 func (acc AccountID) Bytes() []byte {
 	return acc
@@ -206,11 +201,6 @@ func LockFromBytesAtSlot(data []byte, slot uint32) (Lock, error) {
 	return parser(data)
 }
 
-// LockFromBytes parses a lock using the latest library version.
-// TODO check usage (see LockFromBytesAtSlot for parsing historical bytecode).
-func LockFromBytes(data []byte) (Lock, error) {
-	return LockFromBytesAtSlot(data, base.MaxSlot)
-}
 
 // AccountableFromBytesAtSlot parses an Accountable from bytecode using the library for the given slot.
 // Use this when parsing bytecode that was created at a specific slot.
@@ -235,18 +225,13 @@ func AccountableFromBytesAtSlot(data []byte, slot uint32) (Accountable, error) {
 	return nil, fmt.Errorf("not a indexable constraint '%s'", name)
 }
 
-// AccountableFromBytes parses an Accountable using the latest library version.
-// Deprecated: Use AccountableFromBytesAtSlot for parsing historical bytecode.
-func AccountableFromBytes(data []byte) (Accountable, error) {
-	return AccountableFromBytesAtSlot(data, base.MaxSlot)
-}
-
 func AccountableFromSource(src string) (Accountable, error) {
 	data, err := binFromSource(src)
 	if err != nil {
 		return nil, fmt.Errorf("EasyFL compile error: %v", err)
 	}
-	return AccountableFromBytes(data)
+	// Use latest library version for newly compiled bytecode
+	return AccountableFromBytesAtSlot(data, base.MaxSlot)
 }
 
 func BelongsToAccount(lock Lock, acc Accountable) bool {

@@ -72,12 +72,6 @@ func ConditionalLockFromBytesAtSlot(data []byte, slot uint32) (*ConditionalLock,
 	return ret, nil
 }
 
-// ConditionalLockFromBytes parses a ConditionalLock using the latest library version.
-// Deprecated: Use ConditionalLockFromBytesAtSlot for parsing historical bytecode.
-func ConditionalLockFromBytes(data []byte) (*ConditionalLock, error) {
-	return ConditionalLockFromBytesAtSlot(data, base.MaxSlot)
-}
-
 func (c *ConditionalLock) Source() string {
 	args := make([]string, 8)
 	for i := range c.Conditions {
@@ -118,10 +112,12 @@ func (c *ConditionalLock) Master() Accountable {
 
 func registerConditionalLock(lib *Library) {
 	lib.mustRegisterConstraint(ConditionalLockName, 8, func(data []byte) (Constraint, error) {
-		return ConditionalLockFromBytes(data)
+		// Use latest library version for library registration parsing
+		return ConditionalLockFromBytesAtSlot(data, base.MaxSlot)
 	})
 	lib.mustRegisterLock(ConditionalLockName, func(bytes []byte) (Lock, error) {
-		ret, err := ConditionalLockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		ret, err := ConditionalLockFromBytesAtSlot(bytes, base.MaxSlot)
 		if err != nil {
 			return nil, err
 		}

@@ -117,12 +117,6 @@ func Delegate2LockFromBytesAtSlot(data []byte, slot uint32) (*DelegateLock, erro
 	return ret, nil
 }
 
-// Delegate2LockFromBytes parses a DelegateLock using the latest library version.
-// Deprecated: Use Delegate2LockFromBytesAtSlot for parsing historical bytecode.
-func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
-	return Delegate2LockFromBytesAtSlot(data, base.MaxSlot)
-}
-
 func (d *DelegateLock) Name() string {
 	return DelegateLockName
 }
@@ -133,10 +127,12 @@ func (d *DelegateLock) Master() Accountable {
 
 func registerDelegateLock(lib *Library) {
 	lib.mustRegisterConstraint(DelegateLockName, 4, func(data []byte) (Constraint, error) {
-		return Delegate2LockFromBytes(data)
+		// Use latest library version for library registration parsing
+		return Delegate2LockFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestDelegateConstraint)
 	lib.mustRegisterLock(DelegateLockName, func(bytes []byte) (Lock, error) {
-		ret, err := Delegate2LockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		ret, err := Delegate2LockFromBytesAtSlot(bytes, base.MaxSlot)
 		if err != nil {
 			return nil, err
 		}
@@ -152,7 +148,7 @@ func initTestDelegateConstraint() {
 	master := AddressED25519Random()
 	example := NewDelegateLock(target, master, 3, 10)
 
-	exampleBack, err := Delegate2LockFromBytes(example.Bytes())
+	exampleBack, err := Delegate2LockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 	util.Assertf(example.MaxFrozenEpochs == 3, "Delegate2LockFromBytes: wrong back 1")
 	util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "Delegate2LockFromBytes: wrong back 2")
@@ -160,7 +156,7 @@ func initTestDelegateConstraint() {
 	util.Assertf(example.RequiredInflationShare == 10, "Delegate2LockFromBytes: wrong back 4")
 
 	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
-	exampleBack2, err := LockFromBytes(example.Bytes())
+	exampleBack2, err := LockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 	util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegateLockName)
 
