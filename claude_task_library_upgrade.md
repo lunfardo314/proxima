@@ -783,12 +783,15 @@ var PendingUpgrade = &UpgradeDefinition{
 
 **Status:** ✅ Complete
 
-**Goal:** Ensure all transaction validation uses slot-appropriate library version.
+**Goal:** Ensure all transaction validation uses slot-appropriate library version; remove implicit MaxSlot wrapper functions.
 
 **Tasks:**
 - [x] 10.1 Verify validation code uses `L(txSlot)` consistently
 - [x] 10.2 Integration tests with transactions spanning upgrade boundary
 - [x] 10.3 Test historical transaction re-validation with old library
+- [x] 10.4 Remove wrapper functions that implicitly use `base.MaxSlot`
+- [x] 10.5 Replace all calls with explicit `*AtSlot(..., base.MaxSlot)` pattern
+- [x] 10.6 Add comments explaining upgrade code responsibility for backward compatibility
 
 **Files verified:**
 - `ledger/transaction/validate.go` - Uses `L(ctx.Slot())` for all library access
@@ -797,6 +800,30 @@ var PendingUpgrade = &UpgradeDefinition{
 
 **Test file created:**
 - `ledger/tests/slot_aware_validation_test.go` - 7 test functions verifying slot-aware behavior
+
+**Wrapper functions removed:**
+- `ledger/constraints.go`: `ConstraintFromBytes`, `LockFromBytes`, `AccountableFromBytes`
+- `ledger/output.go`: `OutputFromBytes`, `OutputFromHexString`, `OutputFromBytesMain`
+- `ledger/amounts.go`: `AmountsFromBytes`, `TokenBalanceFromAmountsBytes`
+- `ledger/chain.go`: `ChainConstraintFromBytes`
+- `ledger/sequencer.go`: `SequencerConstraintFromBytes`
+- `ledger/lock_*.go`: `ChainLockFromBytes`, `StemLockFromBytes`, `TagAlongLockFromBytes`, `DeadlineLockFromBytes`, `Delegate2LockFromBytes`, `ConditionalLockFromBytes`
+
+**Files updated to use explicit `*AtSlot(..., base.MaxSlot)`:**
+- `ledger/output.go` - Internal methods like `Lock()`, `Amounts()`, `Clone()`, `ChainConstraint()`, etc.
+- `ledger/def_embed.go` - `SelfOutput()` function
+- `api/client/client.go` - All `OutputFromHexString` calls
+- `api/server/txapi.go` - `OutputFromBytes` call
+- `proxi/util_cmd/util_parse_bytecode.go` - Bytecode parsing
+- `proxi/db_cmd/chains.go`, `proxi/db_cmd/ulist.go` - Database operations
+- `sequencer/txbuilder_seq/req_withdraw.go` - Lock parsing
+- Test files: `ledger/tests/ledger_test.go`, `ledger/tests/output_test.go`, `ledger/tests/txbuilder_test.go`
+
+**Design decision:**
+- Front-end and CLI code uses `base.MaxSlot` for parsing (always wants latest library)
+- Internal ledger code uses explicit slot from transaction context
+- Comment added: "Uses latest library version - upgrade code must maintain backward-compatible parsing"
+- Upgrade code is responsible for not causing non-determinism when parsing legacy bytecode
 
 **Verification summary:**
 1. `validate.go` uses `L(ctx.Slot())` at lines 22, 197, 297, 302, 322
@@ -832,11 +859,21 @@ var PendingUpgrade = &UpgradeDefinition{
 
 _Track current progress here between sessions._
 
-**Current Phase:** 9 Complete, Ready for Phase 10
-**Current Task:** Phase 10 - Transaction Validation (Slot-Aware)
-**Last Commit:** Phase 9: Single pending upgrade folder (a9b38d4e)
+**Current Phase:** 10 Complete, Ready for Phase 11
+**Current Task:** Phase 11 - API and CLI Updates
+**Last Commit:** Phase 10: Remove implicit MaxSlot wrapper functions (2fd307d4)
 **Notes:**
-- Phases 1-9 fully complete
+- Phases 1-10 fully complete
+- Phase 10 completed (2026-01-13):
+  - Removed all wrapper functions that implicitly use `base.MaxSlot` for bytecode parsing
+  - Replaced all calls with explicit `*AtSlot(..., base.MaxSlot)` pattern
+  - Added comments: "Uses latest library version - upgrade code must maintain backward-compatible parsing"
+  - Removed wrappers: `ConstraintFromBytes`, `LockFromBytes`, `AccountableFromBytes`, `OutputFromBytes`,
+    `OutputFromHexString`, `OutputFromBytesMain`, `AmountsFromBytes`, `TokenBalanceFromAmountsBytes`,
+    `ChainConstraintFromBytes`, `SequencerConstraintFromBytes`, `ChainLockFromBytes`, `StemLockFromBytes`,
+    `TagAlongLockFromBytes`, `DeadlineLockFromBytes`, `Delegate2LockFromBytes`, `ConditionalLockFromBytes`
+  - Updated 31 files across ledger, api, proxi, and sequencer packages
+  - All tests pass
 - Phase 9 completed (2026-01-12):
   - Created `ledger/upgrade/` package with `UpgradeDefinition` type
   - Added `upgrade.go` with `PendingUpgrade` variable (nil when no upgrade pending)
