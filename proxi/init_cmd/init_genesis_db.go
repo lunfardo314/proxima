@@ -40,8 +40,8 @@ func runGenesis(_ *cobra.Command, _ []string) {
 
 	if remoteEndpoint != "" {
 		glb.ReadInConfig()
-		glb.Infof("retrieving ledger identity data from '%s'", remoteEndpoint)
-		idDataYAML, err = glb.GetClient(remoteEndpoint).GetLedgerIdentityData()
+		glb.Infof("retrieving ledger definition data from '%s'", remoteEndpoint)
+		idDataYAML, err = glb.GetClient(remoteEndpoint).GetLedgerDefinitionYAML()
 		glb.AssertNoError(err)
 	} else {
 		glb.Infof("reading ledger identity data from file '%s'", glb.LedgerIDFileName)

@@ -78,7 +78,7 @@ func L(slot uint32) *Library {
 // Caller must hold at least a read lock on libraryCacheMutex.
 func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 	// Find the applicable upgrade slot for this slot
-	upgradeSlot, yamlData := lc.findLibraryForSlot(slot)
+	upgradeSlot, prevUpgradeSlot, yamlData := lc.findLibraryForSlot(slot)
 
 	lc.mu.RLock()
 	if lib, ok := lc.cache[upgradeSlot]; ok {
@@ -98,20 +98,38 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 
 	// Parse the library with the appropriate resolver
 	lib := lc.parseLibrary(upgradeSlot, yamlData)
+
+	// Set the upgrade chain data
+	chainData := &UpgradeChainData{
+		UpgradeSlot:     upgradeSlot,
+		LibraryHash:     lib.LibraryHash(),
+		PrevUpgradeSlot: prevUpgradeSlot,
+	}
+
+	if upgradeSlot == 0 {
+		// For slot 0, previous is the base library
+		chainData.PrevLibraryHash = BaseLibraryHash()
+	} else {
+		// Get the previous library's hash (it should already be cached or will be loaded)
+		// Note: we need to release and re-acquire locks to avoid deadlock
+		lc.mu.Unlock()
+		prevLib := lc.getOrLoad(prevUpgradeSlot)
+		lc.mu.Lock()
+		chainData.PrevLibraryHash = prevLib.LibraryHash()
+	}
+
+	lib.SetUpgradeChainData(chainData)
 	lc.cache[upgradeSlot] = lib
 	return lib
 }
 
 // findLibraryForSlot finds the library YAML applicable to the given slot.
-// Returns the upgrade slot and YAML data.
-func (lc *LibraryCache) findLibraryForSlot(slot uint32) (uint32, []byte) {
-	// Import the multistate package functions via interface to avoid circular imports
-	// We use the store directly which implements common.Traversable
-
-	// Iterate all upgrades to find the latest one <= slot
-	var foundSlot uint32
-	var foundYAML []byte
-	found := false
+// Returns the upgrade slot, previous upgrade slot, and YAML data.
+// For slot 0, prevUpgradeSlot is base.MaxSlot (sentinel for base library).
+func (lc *LibraryCache) findLibraryForSlot(slot uint32) (upgradeSlot uint32, prevUpgradeSlot uint32, yamlData []byte) {
+	// Iterate all upgrades to find the latest one <= slot and track the previous
+	var allSlots []uint32
+	var allYAMLs [][]byte
 
 	prefix := []byte{upgradeLibraryDBPartition}
 	lc.store.Iterator(prefix).Iterate(func(k, v []byte) bool {
@@ -122,17 +140,43 @@ func (lc *LibraryCache) findLibraryForSlot(slot uint32) (uint32, []byte) {
 		util.AssertNoError(err)
 
 		if upgSlot <= slot {
-			if !found || upgSlot > foundSlot {
-				foundSlot = upgSlot
-				foundYAML = v
-				found = true
-			}
+			allSlots = append(allSlots, upgSlot)
+			allYAMLs = append(allYAMLs, v)
 		}
 		return true
 	})
 
-	util.Assertf(found, "no library found for slot %d", slot)
-	return foundSlot, foundYAML
+	util.Assertf(len(allSlots) > 0, "no library found for slot %d", slot)
+
+	// Sort slots to find the latest and its predecessor
+	sort.Slice(allSlots, func(i, j int) bool {
+		return allSlots[i] < allSlots[j]
+	})
+
+	// Find the index of the latest slot
+	latestIdx := len(allSlots) - 1
+	upgradeSlot = allSlots[latestIdx]
+
+	// Find the YAML for the latest slot
+	for i, s := range allSlots {
+		if s == upgradeSlot {
+			yamlData = allYAMLs[i]
+			break
+		}
+	}
+
+	// Determine previous upgrade slot
+	if upgradeSlot == 0 {
+		prevUpgradeSlot = base.MaxSlot // Sentinel for base library
+	} else if latestIdx > 0 {
+		prevUpgradeSlot = allSlots[latestIdx-1]
+	} else {
+		// Only one slot in list and it's > 0, this shouldn't happen
+		// as slot 0 should always exist
+		util.Assertf(false, "slot 0 library missing, found only slot %d", upgradeSlot)
+	}
+
+	return
 }
 
 // upgradeLibraryDBPartition is the DB partition byte for upgrade libraries.

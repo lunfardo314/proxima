@@ -54,8 +54,8 @@ type (
 const TraceTag = "apiServer"
 
 func (srv *server) registerHandlers() {
-	// GET request format: '/api/v1/get_ledger_id'
-	srv.addHandler(api.PathGetLedgerIDData, srv.getLedgerIDData)
+	// GET request format: '/api/v1/get_ledger_definition?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
+	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
 	// GET request format: '/api/v1/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
 	srv.addHandler(api.PathGetAccountOutputs, srv.getAccountOutputs)
 	// GET request format: '/api/v1/get_account_parsed_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
@@ -105,12 +105,41 @@ func (srv *server) registerHandlers() {
 	srv.registerTxAPIHandlers()
 }
 
-func (srv *server) getLedgerIDData(w http.ResponseWriter, _ *http.Request) {
+func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
+	srv.Tracef(TraceTag, "getLedgerDefinition invoked")
 
-	srv.Tracef(TraceTag, "getLedgerIDData invoked")
-	_, err := w.Write(multistate.LedgerIdentityBytesFromStore(srv.StateStore()))
-	util.AssertNoError(err)
+	// Parse optional slot parameter (default to MaxSlot for latest)
+	var slot uint32 = base.MaxSlot
+	if slotParam := r.URL.Query().Get("slot"); slotParam != "" {
+		slotVal, err := strconv.ParseUint(slotParam, 10, 32)
+		if err != nil {
+			api.WriteErr(w, "invalid slot parameter: must be non-negative 32-bit integer")
+			return
+		}
+		slot = uint32(slotVal)
+	}
+
+	// Get the library for the requested slot - always succeeds
+	lib := ledger.L(slot)
+	chainData := lib.UpgradeChainData()
+
+	resp := api.LedgerDefinition{
+		UpgradeSlot:     chainData.UpgradeSlot,
+		LibraryYAML:     string(lib.DefinitionsYAML()),
+		LibraryHash:     hex.EncodeToString(chainData.LibraryHash[:]),
+		PrevLibraryHash: hex.EncodeToString(chainData.PrevLibraryHash[:]),
+		PrevUpgradeSlot: chainData.PrevUpgradeSlot,
+	}
+
+	respBytes, err := json.Marshal(&resp)
+	if err != nil {
+		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
+		return
+	}
+	if _, err = w.Write(respBytes); err != nil {
+		srv.Log().Warnf("getLedgerDefinition: failed to write response: %v", err)
+	}
 }
 
 func (srv *server) _getAccountOutputsWithFilter(r *http.Request, addr ledger.Accountable, filter func(oid base.OutputID, o *ledger.Output) bool) (

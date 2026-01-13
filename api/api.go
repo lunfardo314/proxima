@@ -18,7 +18,7 @@ const (
 	PrefixTxAPIV1     = "/txapi/v1"
 	PrefixWebSocketV1 = "/wsapi/v1"
 
-	PathGetLedgerIDData                  = PrefixAPIV1 + "/get_ledger_id_data"
+	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
 	PathGetAccountOutputs                = PrefixAPIV1 + "/get_account_outputs"
 	PathGetAccountParsedOutputs          = PrefixAPIV1 + "/get_account_parsed_outputs"
 	PathGetAccountSimpleSiglockedOutputs = PrefixAPIV1 + "/get_account_simple_siglocked"
@@ -316,6 +316,24 @@ type (
 		Lock         string `json:"lock"`
 		Amount       uint64 `json:"amount"`
 		OutputString string `json:"output_string"`
+	}
+
+	// LedgerDefinition is returned by 'get_ledger_definition'
+	// Contains the library YAML and upgrade UTXO chain data for a specific slot
+	LedgerDefinition struct {
+		Error
+		// UpgradeSlot is the upgrade slot this definition applies to
+		UpgradeSlot uint32 `json:"upgrade_slot"`
+		// LibraryYAML is the compiled library YAML (UTF-8 text)
+		LibraryYAML string `json:"library_yaml"`
+		// LibraryHash is the hex-encoded hash of the library
+		LibraryHash string `json:"library_hash"`
+		// PrevLibraryHash is the hex-encoded hash of the previous library
+		// For slot 0, this is the EasyFL base library hash
+		PrevLibraryHash string `json:"prev_library_hash"`
+		// PrevUpgradeSlot is the slot of the previous upgrade
+		// For slot 0, this is MaxSlot (sentinel for base library)
+		PrevUpgradeSlot uint32 `json:"prev_upgrade_slot"`
 	}
 )
 

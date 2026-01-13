@@ -20,7 +20,7 @@ func initNodeGetLedgerIDCmd() *cobra.Command {
 }
 
 func dbNodeLedgerIDCmd(_ *cobra.Command, _ []string) {
-	yamlData, err := glb.GetClient().GetLedgerIdentityData()
+	yamlData, err := glb.GetClient().GetLedgerDefinitionYAML()
 	glb.AssertNoError(err)
 	err = os.WriteFile(glb.LedgerIDFileName, yamlData, 0644)
 	glb.AssertNoError(err)

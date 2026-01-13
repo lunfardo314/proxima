@@ -10,6 +10,15 @@ import (
 )
 
 type (
+	// UpgradeChainData contains the upgrade UTXO chain data for a library.
+	// This links each upgrade to its predecessor, forming a chain commitment.
+	UpgradeChainData struct {
+		UpgradeSlot     uint32   // The slot this library was upgraded at
+		LibraryHash     [32]byte // Hash of this library
+		PrevLibraryHash [32]byte // Hash of the previous library (BaseLibraryHash for slot 0)
+		PrevUpgradeSlot uint32   // Slot of the previous upgrade (MaxSlot for slot 0)
+	}
+
 	Library struct {
 		*easyfl.Library[*EvalContext]
 		definitionsYAML    []byte
@@ -17,6 +26,7 @@ type (
 		constraintNames    set.Set[string]
 		locksByName        map[string]LockParser
 		inlineTests        []func()
+		upgradeChainData   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
 	}
 )
 
@@ -42,6 +52,18 @@ func (lib *Library) DefinitionsYAML() []byte {
 		return lib.definitionsYAML
 	}
 	return lib.Library.ToYAML(true, "# Proxima library upgraded from EasyFL base")
+}
+
+// UpgradeChainData returns the upgrade chain data for this library.
+// Returns nil if the library was not loaded from the DB (e.g., created in-memory for testing).
+func (lib *Library) UpgradeChainData() *UpgradeChainData {
+	return lib.upgradeChainData
+}
+
+// SetUpgradeChainData sets the upgrade chain data for this library.
+// Called when the library is loaded from the DB.
+func (lib *Library) SetUpgradeChainData(data *UpgradeChainData) {
+	lib.upgradeChainData = data
 }
 
 func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {

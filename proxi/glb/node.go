@@ -42,10 +42,10 @@ func GetClient(endpoint ...string) *client.APIClient {
 }
 
 func InitLedgerFromNode() {
-	ledgerIDData, err := GetClient().GetLedgerIdentityData()
+	ledgerDefinitionData, err := GetClient().GetLedgerDefinitionYAML()
 	AssertNoError(err)
 	// pre-parse
-	fromYAML, err := easyfl.ReadLibraryFromYAML(ledgerIDData)
+	fromYAML, err := easyfl.ReadLibraryFromYAML(ledgerDefinitionData)
 	if err != nil {
 		Infof("failed to parse ledger definition")
 		if IsVerbose() {
@@ -56,7 +56,7 @@ func InitLedgerFromNode() {
 	}
 	Infof("successfully parsed ledger definitions. Library hash = %s", fromYAML.Hash)
 
-	ledger.MustInitSingleton(ledgerIDData)
+	ledger.MustInitSingleton(ledgerDefinitionData)
 	Infof("successfully connected to the node at %s", viper.GetString("api.endpoint"))
 	Infof("verbose = %v", IsVerbose())
 	h := ledger.L(base.MaxSlot).LibraryHash()

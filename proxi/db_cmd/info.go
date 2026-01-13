@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -57,6 +58,25 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("ledger library hash: %s", hex.EncodeToString(h[:]))
 	glb.Verbosef("\n----------------- Ledger state identity ----------------")
 	glb.Verbosef("%s", constants.String())
+
+	// Display upgrade history summary
+	glb.Infof("\n--------------- Ledger upgrades summary ----------------")
+	upgradeCount := multistate.CountUpgradeLibraries(glb.StateStore())
+	latestSlot, hasUpgrades := multistate.GetLatestUpgradeSlot(glb.StateStore())
+	if hasUpgrades {
+		glb.Infof("   Total upgrades: %d (latest at slot %d)", upgradeCount, latestSlot)
+		// Get current library for current slot
+		currentLib := ledger.L(base.MaxSlot)
+		chainData := currentLib.UpgradeChainData()
+		if chainData != nil {
+			glb.Infof("   Current library upgraded at slot: %d", chainData.UpgradeSlot)
+			glb.Infof("   Current library hash: %s", hex.EncodeToString(chainData.LibraryHash[:]))
+		}
+		glb.Infof("   (use 'proxi db upgrades' for full upgrade history)")
+	} else {
+		glb.Infof("   No upgrades found")
+	}
+
 	glb.Infof("----------------- branch data ----------------------")
 	for i, br := range branchData {
 		glb.Infof("%3d %s", i, br.LinesShort().Join(", "))

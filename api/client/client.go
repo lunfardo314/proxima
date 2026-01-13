@@ -87,13 +87,35 @@ func NewWithGoogleDNS(serverURL string, timeout ...time.Duration) *APIClient {
 	}
 }
 
-// GetLedgerIdentityData retrieves raw ledger identity YAML from server
-func (c *APIClient) GetLedgerIdentityData() ([]byte, error) {
-	body, err := c.getBody(api.PathGetLedgerIDData)
+// GetLedgerDefinition retrieves ledger definition for a specific slot from server.
+// If slot is nil, returns the latest definition (MaxSlot).
+func (c *APIClient) GetLedgerDefinition(slot *uint32) (*api.LedgerDefinition, error) {
+	path := api.PathGetLedgerDefinition
+	if slot != nil {
+		path = fmt.Sprintf("%s?slot=%d", api.PathGetLedgerDefinition, *slot)
+	}
+	body, err := c.getBody(path)
 	if err != nil {
 		return nil, err
 	}
-	return body, nil
+	var resp api.LedgerDefinition
+	if err = json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	if resp.Error.Error != "" {
+		return nil, fmt.Errorf("server error: %s", resp.Error.Error)
+	}
+	return &resp, nil
+}
+
+// GetLedgerDefinitionYAML retrieves raw ledger definition YAML from server for the latest slot.
+// This is a convenience method for backward compatibility.
+func (c *APIClient) GetLedgerDefinitionYAML() ([]byte, error) {
+	resp, err := c.GetLedgerDefinition(nil)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(resp.LibraryYAML), nil
 }
 
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server
