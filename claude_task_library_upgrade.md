@@ -864,6 +864,24 @@ _Track current progress here between sessions._
 **Last Commit:** Phase 10: Remove implicit MaxSlot wrapper functions (2fd307d4)
 **Notes:**
 - Phases 1-10 fully complete
+- Upgrade UTXO improvements (2026-01-13):
+  - **Chained upgrade UTXOs**: Each upgrade UTXO now commits to the entire upgrade history
+    - Constraint 2: library hash (32 bytes)
+    - Constraint 3: previous library hash (32 bytes) - for slot 0, this is the EasyFL base library hash
+    - Constraint 4: previous upgrade slot (4 bytes BigEndian) - for slot 0, this is MaxSlot (sentinel)
+  - **Optimized injection check**: `InjectMissingUpgradeUTXOs()` no longer scans state on every branch commit
+    - Added atomic `nextPendingUpgradeSlot` tracking
+    - `HasPendingUpgradeForSlot(branchSlot)` provides fast path (O(1) check)
+    - `InitNextPendingUpgradeSlot()` called at node startup to initialize tracking
+    - `UpdateNextPendingUpgradeSlot()` updates after injection
+  - Files modified:
+    - `ledger/upgrade_utxo.go` - Added `BaseLibraryHash()`, `UpgradeUTXOData`, updated `UpgradeUTXO()` signature
+    - `ledger/lib_singleton.go` - Added `nextPendingUpgradeSlot` atomic, `HasPendingUpgradeForSlot()`, `UpdateNextPendingUpgradeSlot()`, `InitNextPendingUpgradeSlot()`
+    - `ledger/multistate/genesis.go` - Updated to pass base library hash for slot 0
+    - `ledger/multistate/genesis_snapshot.go` - Updated to pass base library hash for slot 0
+    - `ledger/multistate/upgrade_inject.go` - Updated to compute previous library hash/slot, added fast path
+    - `node/db.go` - Added `InitNextPendingUpgradeSlot()` call at startup
+  - All tests pass
 - Phase 10 completed (2026-01-13):
   - Removed all wrapper functions that implicitly use `base.MaxSlot` for bytecode parsing
   - Replaced all calls with explicit `*AtSlot(..., base.MaxSlot)` pattern

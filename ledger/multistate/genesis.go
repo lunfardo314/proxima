@@ -48,8 +48,10 @@ func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitme
 	gStemOut := ledger.GenesisStemOutput()
 
 	// Create upgrade commitment UTXO for slot 0
+	// For slot 0, prevHash is the base library hash, prevSlot is MaxSlot
 	libraryHash := ledger.L(base.MaxSlot).LibraryHash()
-	upgradeOut := ledger.UpgradeUTXO(0, libraryHash)
+	prevLibraryHash := ledger.BaseLibraryHash()
+	upgradeOut := ledger.UpgradeUTXO(0, libraryHash, prevLibraryHash, base.MaxSlot)
 
 	updatable := MustNewUpdatable(store, emptyRoot)
 	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut, upgradeOut), &RootRecordParams{

@@ -15,6 +15,11 @@ import (
 // don't have their upgrade UTXO in the baseline state, and injects them into mutations.
 // This ensures upgrade UTXOs are committed when crossing upgrade boundaries.
 //
+// Each upgrade UTXO contains:
+// - The library hash for its upgrade slot
+// - The previous library hash (base library hash for slot 0)
+// - The previous upgrade slot (MaxSlot for slot 0)
+//
 // Parameters:
 // - muts: the mutations to inject into
 // - stateReader: reader for the baseline state to check existing UTXOs
@@ -22,13 +27,18 @@ import (
 //
 // Returns the number of upgrade UTXOs injected.
 func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, branchSlot uint32) int {
+	// Fast path: check if there's any pending upgrade that might need injection
+	if !ledger.HasPendingUpgradeForSlot(branchSlot) {
+		return 0
+	}
+
 	upgradeSlots := ledger.GetAllUpgradeSlots(branchSlot)
 	if len(upgradeSlots) == 0 {
 		return 0
 	}
 
 	injected := 0
-	for _, upgradeSlot := range upgradeSlots {
+	for i, upgradeSlot := range upgradeSlots {
 		// Generate the synthetic OutputID for this upgrade
 		oid := base.UpgradeOutputID(upgradeSlot)
 
@@ -41,12 +51,39 @@ func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, 
 		lib := ledger.L(upgradeSlot)
 		libraryHash := lib.LibraryHash()
 
-		// Create the upgrade UTXO
-		upgradeUTXO := ledger.UpgradeUTXO(upgradeSlot, libraryHash)
+		// Determine previous library hash and slot
+		var prevLibraryHash [32]byte
+		var prevUpgradeSlot uint32
+
+		if upgradeSlot == 0 {
+			// Slot 0: previous is the base EasyFL library
+			prevLibraryHash = ledger.BaseLibraryHash()
+			prevUpgradeSlot = base.MaxSlot
+		} else {
+			// Find the previous upgrade slot (must exist in the sorted list)
+			// Since upgradeSlots is sorted in ascending order, the previous is at index i-1
+			if i > 0 {
+				prevUpgradeSlot = upgradeSlots[i-1]
+			} else {
+				// This upgrade slot is > 0 but it's the first in our list
+				// This means slot 0 already exists in state, get its hash
+				prevUpgradeSlot = 0
+			}
+			prevLib := ledger.L(prevUpgradeSlot)
+			prevLibraryHash = prevLib.LibraryHash()
+		}
+
+		// Create the upgrade UTXO with chain link
+		upgradeUTXO := ledger.UpgradeUTXO(upgradeSlot, libraryHash, prevLibraryHash, prevUpgradeSlot)
 
 		// Inject into mutations using raw clone (upgrade UTXOs don't have standard locks)
 		muts.InsertAddOutputMutationRaw(upgradeUTXO.ID, upgradeUTXO.Output)
 		injected++
+	}
+
+	// If we injected any UTXOs, update the pending upgrade tracking
+	if injected > 0 {
+		ledger.UpdateNextPendingUpgradeSlot(branchSlot)
 	}
 
 	return injected

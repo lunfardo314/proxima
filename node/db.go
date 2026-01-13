@@ -42,6 +42,14 @@ func (p *ProximaNode) initMultiStateLedger() {
 	p.Log().Infof("current slot: %d", ledger.TimeNow().Slot)
 	p.Log().Infof("snapshot branch id: %s", p.snapshotBranchID.String())
 
+	// Initialize pending upgrade tracking for optimization
+	// This checks which upgrade UTXOs already exist in the latest state
+	branchData := multistate.FetchBranchDataByBranchID(p.multiStateDB, p.snapshotBranchID)
+	stateReader := multistate.MustNewSugaredReadableState(p.multiStateDB, branchData.Root)
+	ledger.InitNextPendingUpgradeSlot(func(oid base.OutputID) bool {
+		return stateReader.HasUTXO(oid)
+	})
+
 	p.RepeatInBackground("Badger_DB_GC_loop", 5*time.Minute, func() bool {
 		p.databaseGC()
 		return true

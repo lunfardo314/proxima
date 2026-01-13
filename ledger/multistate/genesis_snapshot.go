@@ -100,8 +100,10 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 	gStemOut := ledger.GenesisStemOutput()
 
 	// Create upgrade commitment UTXO for slot 0
+	// For slot 0, prevHash is the base library hash, prevSlot is MaxSlot
 	libraryHash := lib.LibraryHash()
-	upgradeOut := ledger.UpgradeUTXO(0, libraryHash)
+	prevLibraryHash := ledger.BaseLibraryHash()
+	upgradeOut := ledger.UpgradeUTXO(0, libraryHash, prevLibraryHash, base.MaxSlot)
 
 	// Create updatable state and apply mutations
 	updatable := MustNewUpdatable(store, emptyRoot)

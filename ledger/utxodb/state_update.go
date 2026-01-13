@@ -56,8 +56,8 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 	return tx, nil
 }
 
+// ConsistencyCheckBeforeAddTransaction redundant?
 // TODO check account consistency
-
 func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multistate.Readable) (err error) {
 	if r.KnowsCommittedTransaction(tx.ID()) {
 		return fmt.Errorf("BeforeAddTransaction: transaction %s already in the state: cannot be added", tx.IDShortString())
