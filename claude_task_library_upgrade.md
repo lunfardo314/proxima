@@ -930,11 +930,11 @@ _Track current progress here between sessions._
   - Old commands (`proxi util ledger_id`, `proxi init genesis_db`) kept for compatibility
 - Next phases:
   - Phase 11: API and CLI updates
-  - Phase 12: EasyFL serde immutability enforcement (NEW)
+  - ~~Phase 12: EasyFL serde immutability enforcement~~ ✅ Addressed by EasyFL dependency
 
-**Next session task (Phase 12):**
-- Add functionality in EasyFL to prevent library upgrades from changing serde-related behavior
-- Problem: If an upgrade changes how bytecode is serialized/deserialized, it could cause non-determinism
-- Solution needed: Mark certain EasyFL functions as "serde-critical" and enforce that upgrades cannot modify them
-- This affects functions used for constraint parsing, output serialization, etc.
-- Requires changes in `github.com/lunfardo314/easyfl` library
+**Phase 12 - RESOLVED:**
+EasyFL's `Upgrade()` function now enforces that `numArgs` cannot be changed when replacing functions.
+This guarantees serde determinism across upgrades:
+- Bytecode format depends on `numArgs` (number of arguments determines how many sub-expressions to parse)
+- If `numArgs` is immutable for replaced functions, the same bytecode will always parse identically
+- No additional enforcement needed in Proxima - EasyFL handles this at the library level
