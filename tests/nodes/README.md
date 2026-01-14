@@ -60,7 +60,7 @@ Total 1 branches in the latest slot 0
 Repeat the same procedure for other nodes in directories `myHome/1`, `myHome/2` ... etc. now or later.
 
 ## Run network with one node on directory `myHome/0`
-The genesis state contains the whole initial supply of tokens `1.000.000.000.000.000` in a single boostrap sequencer output,
+The genesis state contains the initial supply of tokens `1.000.000.000.000.000` in the bootstrap sequencer output (minus 1 token which goes to the controller's dust output),
 controlled by the private key with the address `addressED25519(0x3faf090d38f18ea211936b8bcf19b7b30cdcb8e224394a5c30f9ba644f8bb2fb)`.
 
 We will take some part of tokens from the sequencer chain output and put it 

@@ -316,7 +316,7 @@ When an upgrade slot arrives, the node commits to the new library version by cre
 - 1-byte output index: `0xff` (255, reserved for synthetic UTXOs)
 
 **No-collision guarantee:**
-1. At slot 0 (genesis), only 2 outputs exist (indices 0 and 1), so index 255 is impossible for real transactions
+1. At slot 0 (genesis), only 3 outputs exist (indices 0, 1, and 2), so index 255 is impossible for real transactions
 2. For non-genesis slots, the hash portion being the slot number (zero-padded) is computationally infeasible to match with a real blake2b hash (hash preimage resistance)
 
 ### Commitment Process
@@ -356,9 +356,10 @@ node startup           → If no proximadb, find/restore from latest snapshot
 
 - Ledger identity (genesis time + description) - embedded in slot 0 library YAML
 - Upgrade library at slot 0 (full compiled YAML)
-- Three genesis outputs:
-  - Output #0: Initial supply (locked to genesis controller)
+- Four genesis outputs:
+  - Output #0: Initial supply minus 1 token (locked to genesis controller, chain+sequencer constraints)
   - Output #1: Genesis stem
+  - Output #2: Controller dust output (1 token, ED25519 lock to genesis controller)
   - Output #255: Upgrade commitment UTXO
 - Root record with initial state
 
@@ -373,7 +374,7 @@ node startup           → If no proximadb, find/restore from latest snapshot
 **Process:**
 1. Generate ledger parameters from private key
 2. Create library from parameters (upgrade0)
-3. Build genesis state in memory (3 outputs + root record)
+3. Build genesis state in memory (4 outputs + root record)
 4. Serialize to snapshot format (includes upgrade library)
 5. Write snapshot file
 
