@@ -9,6 +9,13 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
+// InjectedUpgrade contains information about an injected upgrade UTXO.
+type InjectedUpgrade struct {
+	Slot        uint32
+	LibraryHash [32]byte
+	LibraryYAML []byte
+}
+
 // InjectMissingUpgradeUTXOs checks for any upgrade slots up to branchSlot that
 // don't have their upgrade UTXO in the baseline state, and injects them into mutations.
 // This ensures upgrade UTXOs are committed when crossing upgrade boundaries.
@@ -23,19 +30,19 @@ import (
 // - stateReader: reader for the baseline state to check existing UTXOs
 // - branchSlot: the slot of the branch being committed
 //
-// Returns the number of upgrade UTXOs injected.
-func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, branchSlot uint32) int {
+// Returns information about the upgrade UTXOs injected.
+func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, branchSlot uint32) []InjectedUpgrade {
 	// Fast path: check if there's any pending upgrade that might need injection
 	if !ledger.HasPendingUpgradeForSlot(branchSlot) {
-		return 0
+		return nil
 	}
 
 	upgradeSlots := ledger.GetAllUpgradeSlots(branchSlot)
 	if len(upgradeSlots) == 0 {
-		return 0
+		return nil
 	}
 
-	injected := 0
+	var injected []InjectedUpgrade
 	for i, upgradeSlot := range upgradeSlots {
 		// Generate the synthetic OutputID for this upgrade
 		oid := base.UpgradeOutputID(upgradeSlot)
@@ -76,11 +83,17 @@ func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, 
 
 		// Inject into mutations using raw clone (upgrade UTXOs don't have standard locks)
 		muts.InsertAddOutputMutationRaw(upgradeUTXO.ID, upgradeUTXO.Output)
-		injected++
+
+		// Record the injected upgrade info
+		injected = append(injected, InjectedUpgrade{
+			Slot:        upgradeSlot,
+			LibraryHash: libraryHash,
+			LibraryYAML: lib.ToYAML(false),
+		})
 	}
 
 	// If we injected any UTXOs, update the pending upgrade tracking
-	if injected > 0 {
+	if len(injected) > 0 {
 		ledger.UpdateNextPendingUpgradeSlot(branchSlot)
 	}
 

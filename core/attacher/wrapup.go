@@ -43,7 +43,20 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.BaselineSugaredStateReader().Root())
 
 	// Inject any missing upgrade UTXOs for upgrade slots up to this branch
-	multistate.InjectMissingUpgradeUTXOs(muts, a.BaselineSugaredStateReader(), a.vid.Slot())
+	injectedUpgrades := multistate.InjectMissingUpgradeUTXOs(muts, a.BaselineSugaredStateReader(), a.vid.Slot())
+
+	// Log highlighted message when upgrades are activated
+	for _, upg := range injectedUpgrades {
+		hashHex := fmt.Sprintf("%x", upg.LibraryHash[:])
+		a.Log().Infof("\n" +
+			"***************************************************************\n" +
+			"***         LEDGER UPGRADE ACTIVATED AT SLOT %-6d         ***\n" +
+			"***************************************************************\n" +
+			"Library Hash: %s\n" +
+			"Upgrade YAML:\n%s\n" +
+			"***************************************************************",
+			upg.Slot, hashHex, string(upg.LibraryYAML))
+	}
 
 	// GC-ing txids old enough. This is a deterministic operation on the state
 	// TODO move constant gcTxIDsFromStateSlotsBack to ledger constants
