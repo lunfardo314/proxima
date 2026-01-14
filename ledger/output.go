@@ -85,32 +85,9 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 	return &OutputBuilder{ret}, nil
 }
 
-// OutputFromBytesAtSlot parses an output using the library for the given slot.
-func OutputFromBytesAtSlot(data []byte, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
-	ret, _, _, err := OutputFromBytesMainAtSlot(data, slot)
-	if err != nil {
-		return nil, err
-	}
-	for _, validate := range validateOpt {
-		if err := validate(ret); err != nil {
-			return nil, err
-		}
-	}
-	return ret, nil
-}
-
-// OutputFromHexStringAtSlot parses an output from hex string using the library for the given slot.
-func OutputFromHexStringAtSlot(hexStr string, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
-	data, err := hex.DecodeString(hexStr)
-	if err != nil {
-		return nil, err
-	}
-	return OutputFromBytesAtSlot(data, slot, validateOpt...)
-}
-
-// OutputFromBytesMainAtSlot parses an output using the library for the given slot.
-// Use this when parsing output bytecode that was created at a specific slot.
-func OutputFromBytesMainAtSlot(data []byte, slot uint32) (*Output, Amounts, Lock, error) {
+// OutputFromBytesMainWithLib parses an output using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lock, error) {
 	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
 	if err != nil {
 		return nil, nil, nil, err
@@ -126,17 +103,57 @@ func OutputFromBytesMainAtSlot(data []byte, slot uint32) (*Output, Amounts, Lock
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if amount, err = AmountsFromBytesAtSlot(amountBin, slot); err != nil {
+	if amount, err = AmountsFromBytesWithLib(amountBin, lib); err != nil {
 		return nil, nil, nil, err
 	}
 	lockBin, err := ret.At(int(ConstraintIndexLock))
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if lock, err = LockFromBytesAtSlot(lockBin, slot); err != nil {
+	if lock, err = LockFromBytesWithLib(lockBin, lib); err != nil {
 		return nil, nil, nil, err
 	}
 	return ret, amount, lock, nil
+}
+
+// OutputFromBytesWithLib parses an output using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
+	ret, _, _, err := OutputFromBytesMainWithLib(data, lib)
+	if err != nil {
+		return nil, err
+	}
+	for _, validate := range validateOpt {
+		if err := validate(ret); err != nil {
+			return nil, err
+		}
+	}
+	return ret, nil
+}
+
+// OutputFromBytesAtSlot parses an output using the library for the given slot.
+func OutputFromBytesAtSlot(data []byte, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
+	return OutputFromBytesWithLib(data, L(slot), validateOpt...)
+}
+
+// OutputFromHexStringWithLib parses an output from hex string using the provided library.
+func OutputFromHexStringWithLib(hexStr string, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
+	data, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return nil, err
+	}
+	return OutputFromBytesWithLib(data, lib, validateOpt...)
+}
+
+// OutputFromHexStringAtSlot parses an output from hex string using the library for the given slot.
+func OutputFromHexStringAtSlot(hexStr string, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
+	return OutputFromHexStringWithLib(hexStr, L(slot), validateOpt...)
+}
+
+// OutputFromBytesMainAtSlot parses an output using the library for the given slot.
+// Use this when parsing output bytecode that was created at a specific slot.
+func OutputFromBytesMainAtSlot(data []byte, slot uint32) (*Output, Amounts, Lock, error) {
+	return OutputFromBytesMainWithLib(data, L(slot))
 }
 
 func (o *Output) ConstraintsRawBytes() [][]byte {

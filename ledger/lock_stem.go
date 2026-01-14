@@ -90,9 +90,10 @@ func initTestStemLockConstraint() {
 	util.AssertNoError(err)
 }
 
-// StemLockFromBytesAtSlot parses a StemLock using the library for the given slot.
-func StemLockFromBytesAtSlot(data []byte, slot uint32) (*StemLock, error) {
-	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 2)
+// StemLockFromBytesWithLib parses a StemLock using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -108,6 +109,11 @@ func StemLockFromBytesAtSlot(data []byte, slot uint32) (*StemLock, error) {
 		PredecessorOutputID: oid,
 		VRFProof:            easyfl.StripDataPrefix(args[1]),
 	}, nil
+}
+
+// StemLockFromBytesAtSlot parses a StemLock using the library for the given slot.
+func StemLockFromBytesAtSlot(data []byte, slot uint32) (*StemLock, error) {
+	return StemLockFromBytesWithLib(data, L(slot))
 }
 
 const stemLockSource = `

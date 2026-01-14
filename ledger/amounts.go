@@ -136,9 +136,9 @@ func (a Amounts) AddToVector(vect *[15]int64) (overflow bool) {
 	return
 }
 
-// AmountsFromBytesAtSlot parses an Amounts constraint using the library for the given slot.
-func AmountsFromBytesAtSlot(data []byte, slot uint32) (Amounts, error) {
-	lib := L(slot)
+// AmountsFromBytesWithLib parses an Amounts constraint using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func AmountsFromBytesWithLib(data []byte, lib *Library) (Amounts, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data)
 	if err != nil {
 		return nil, err
@@ -158,9 +158,14 @@ func AmountsFromBytesAtSlot(data []byte, slot uint32) (Amounts, error) {
 	return ret, nil
 }
 
-// TokenBalanceFromAmountsBytesAtSlot parses the token balance using the library for the given slot.
-func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error) {
-	lib := L(slot)
+// AmountsFromBytesAtSlot parses an Amounts constraint using the library for the given slot.
+func AmountsFromBytesAtSlot(data []byte, slot uint32) (Amounts, error) {
+	return AmountsFromBytesWithLib(data, L(slot))
+}
+
+// TokenBalanceFromAmountsBytesWithLib parses the token balance using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func TokenBalanceFromAmountsBytesWithLib(data []byte, lib *Library) (int64, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data)
 	if err != nil {
 		return 0, err
@@ -179,6 +184,11 @@ func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error)
 		return 0, fmt.Errorf("TokenBalanceFromAmountsBytes: negative amount")
 	}
 	return int64(ret), nil
+}
+
+// TokenBalanceFromAmountsBytesAtSlot parses the token balance using the library for the given slot.
+func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error) {
+	return TokenBalanceFromAmountsBytesWithLib(data, L(slot))
 }
 
 func registerAmountsConstraint(lib *Library) {

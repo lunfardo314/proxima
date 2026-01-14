@@ -136,11 +136,11 @@ func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Use transaction's slot for deterministic parsing.
+	// Use transaction's cached library for deterministic parsing.
 	// IMPORTANT: Upgrade code is responsible for maintaining backward-compatible
 	// bytecode parsing to avoid non-determinism when consuming outputs created
 	// with older library versions.
-	return ledger.OutputFromBytesAtSlot(data, ctx.Slot())
+	return ledger.OutputFromBytesWithLib(data, ctx.Transaction.Library())
 }
 
 func (ctx *TxContext) ProducedOutputData(idx byte) []byte {

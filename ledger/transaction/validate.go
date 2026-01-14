@@ -18,8 +18,8 @@ import (
 )
 
 func (ctx *TxContext) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.EvalContext] {
-	// Use the transaction's slot to get the library version that was active when this transaction was created
-	lib := ledger.L(ctx.Slot())
+	// Use the transaction's cached library for validation
+	lib := ctx.Transaction.Library()
 	ctx.dataContext.SetEvalPath(path)
 	switch ctx.traceOption {
 	case TraceOptionNone:
@@ -126,17 +126,17 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 	return nil
 }
 
-// _scanOutputs parses outputs using the transaction's slot for deterministic validation.
+// _scanOutputs parses outputs using the transaction's cached library for deterministic validation.
 // All outputs (consumed and produced) are parsed with the same library version.
 // IMPORTANT: Upgrade code is responsible for maintaining backward-compatible bytecode
 // parsing to avoid non-determinism when consuming outputs created with older library versions.
 func (ctx *TxContext) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, error) {
 	var err error
-	slot := ctx.Slot()
+	lib := ctx.Transaction.Library()
 	ret := make([]*ledger.Output, ctx.ctxTree.MustNumElementsAtPath(pathToOutputs))
 
 	_ = ctx.ctxTree.ForEach(func(i byte, data []byte) bool {
-		ret[i], err = ledger.OutputFromBytesAtSlot(data, slot)
+		ret[i], err = ledger.OutputFromBytesWithLib(data, lib)
 		return err == nil
 	}, pathToOutputs)
 	if err != nil {
@@ -182,7 +182,7 @@ func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte
 func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spool *slicepool.SlicePool) error {
 	evalPath := common.Concat(path, byte(0))
 	var err error
-	slot := ctx.Slot()
+	lib := ctx.Transaction.Library()
 
 	// checking of script duplicates has been removed. Makes no sense
 
@@ -197,7 +197,7 @@ func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spo
 		}
 		if len(res) == 0 {
 			var decomp string
-			decomp, err = ledger.L(slot).DecompileBytecode(bytecode)
+			decomp, err = lib.DecompileBytecode(bytecode)
 			if err != nil {
 				decomp = fmt.Sprintf("(error while decompiling constraint: '%v')", err)
 			}
@@ -291,17 +291,17 @@ func PathToString(path []byte) string {
 	return ret
 }
 
-// constraintName returns the name of the constraint from its bytecode using the transaction's slot
+// constraintName returns the name of the constraint from its bytecode using the transaction's cached library
 func (ctx *TxContext) constraintName(binCode []byte) string {
 	if binCode[0] == 0 {
 		return "array_constraint"
 	}
-	slot := ctx.Slot()
-	prefix, err := ledger.L(slot).ParsePrefixBytecode(binCode)
+	lib := ctx.Transaction.Library()
+	prefix, err := lib.ParsePrefixBytecode(binCode)
 	if err != nil {
 		return fmt.Sprintf("unknown_constraint(%s)", easyfl_util.Fmt(binCode))
 	}
-	name, found := ledger.NameByPrefixAtSlot(prefix, slot)
+	name, found := ledger.NameByPrefixWithLib(prefix, lib)
 	if found {
 		return name
 	}
@@ -322,7 +322,7 @@ func (ctx *TxContext) _evalBytecode(bytecode []byte, path []byte, spool *slicepo
 	if bytecode[0] == 0 {
 		return nil, fmt.Errorf("binary code cannot begin with 0-byte")
 	}
-	ret, err = ledger.L(ctx.Slot()).EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
+	ret, err = ctx.Transaction.Library().EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
 
 	if evalCtx.Trace() {
 		if err != nil {

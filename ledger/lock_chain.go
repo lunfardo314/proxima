@@ -25,9 +25,9 @@ func ChainLockFromChainID(chainID base.ChainID) ChainLock {
 	return ret
 }
 
-// ChainLockFromBytesAtSlot parses a ChainLock using the library for the given slot.
-func ChainLockFromBytesAtSlot(data []byte, slot uint32) (ChainLock, error) {
-	lib := L(slot)
+// ChainLockFromBytesWithLib parses a ChainLock using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func ChainLockFromBytesWithLib(data []byte, lib *Library) (ChainLock, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
@@ -42,6 +42,11 @@ func ChainLockFromBytesAtSlot(data []byte, slot uint32) (ChainLock, error) {
 		return nil, err
 	}
 	return ChainLockFromChainID(chainID), nil
+}
+
+// ChainLockFromBytesAtSlot parses a ChainLock using the library for the given slot.
+func ChainLockFromBytesAtSlot(data []byte, slot uint32) (ChainLock, error) {
+	return ChainLockFromBytesWithLib(data, L(slot))
 }
 
 

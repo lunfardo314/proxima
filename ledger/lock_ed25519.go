@@ -20,9 +20,9 @@ const (
 	addressED25519Template = AddressED25519Name + "(0x%s)"
 )
 
-// AddressED25519FromBytesAtSlot parses an AddressED25519 using the library for the given slot.
-func AddressED25519FromBytesAtSlot(data []byte, slot uint32) (AddressED25519, error) {
-	lib := L(slot)
+// AddressED25519FromBytesWithLib parses an AddressED25519 using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func AddressED25519FromBytesWithLib(data []byte, lib *Library) (AddressED25519, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
@@ -35,6 +35,11 @@ func AddressED25519FromBytesAtSlot(data []byte, slot uint32) (AddressED25519, er
 		return nil, fmt.Errorf("wrong data length")
 	}
 	return addrBin, nil
+}
+
+// AddressED25519FromBytesAtSlot parses an AddressED25519 using the library for the given slot.
+func AddressED25519FromBytesAtSlot(data []byte, slot uint32) (AddressED25519, error) {
+	return AddressED25519FromBytesWithLib(data, L(slot))
 }
 
 // AddressED25519FromBytes parses an AddressED25519 using the latest library version.

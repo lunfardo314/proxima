@@ -917,12 +917,88 @@ var PendingUpgrade = &UpgradeDefinition{
 
 ---
 
+### Phase 14: Library Pointer Caching in Transaction
+
+**Status:** ✅ Complete
+
+**Goal:** Optimize library access during transaction parsing and validation by caching the library pointer in the `Transaction` struct, eliminating repeated `L(slot)` calls from parallel attacher goroutines.
+
+**Problem:**
+Currently, during transaction parsing and validation:
+1. Multiple attacher goroutines parse and validate transactions concurrently
+2. Each call to `L(slot)` involves mutex locks and map lookups in the library cache
+3. Functions like `OutputFromBytesAtSlot`, `LockFromBytesAtSlot`, `AmountsFromBytesAtSlot` each call `L(slot)` internally
+4. In `tx.go`, many methods repeatedly call these functions with the same slot
+5. In `validate.go`, `L(ctx.Slot())` is called multiple times during validation
+
+**Solution:**
+1. Add `lib *Library` field to the `Transaction` struct
+2. Extract the library once via `L(tx.Slot())` in `FromBytes()` after `_baseValidation` (which sets the timestamp/slot)
+3. Create library-based variants of parsing functions that take `*Library` directly
+4. All `Transaction` methods and validation code use the cached library pointer
+5. `TxContext` inherits the library via embedded `*Transaction`
+
+**Benefits:**
+- Eliminates lock contention on the library cache during parallel validation
+- Reduces repeated map lookups (O(log n) per lookup avoided)
+- Cleaner code: library is bound to transaction at parse time
+- Slot-based functions (`*AtSlot`) remain available for CLI/API contexts without transaction
+
+**Tasks:**
+- [x] 14.1 Add `lib *Library` field to `Transaction` struct in `tx.go`
+- [x] 14.2 Initialize `lib` in `_baseValidation()` via `L(tx.Slot())`
+- [x] 14.3 Add `Library() *Library` method to `Transaction`
+- [x] 14.4 Create library-based parsing functions (alongside slot-based ones):
+  - `OutputFromBytesWithLib(data []byte, lib *Library) (*Output, error)`
+  - `OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lock, error)`
+  - `LockFromBytesWithLib(data []byte, lib *Library) (Lock, error)`
+  - `AmountsFromBytesWithLib(data []byte, lib *Library) (Amounts, error)`
+  - `ConstraintFromBytesWithLib(data []byte, lib *Library) (Constraint, error)`
+  - `NameByPrefixWithLib(prefix []byte, lib *Library) (string, bool)`
+  - `AccountableFromBytesWithLib(data []byte, lib *Library) (Accountable, error)`
+  - `AddressED25519FromBytesWithLib`, `ChainLockFromBytesWithLib`, `StemLockFromBytesWithLib`
+- [x] 14.5 Refactor slot-based functions to delegate to library-based functions
+- [x] 14.6 Update `Transaction` methods to use cached library:
+  - `ScanOutputs`: uses `AmountsFromBytesWithLib`, `LockFromBytesWithLib`
+  - `MustProducedOutputAt`, `ProducedOutputAt`: use `OutputFromBytesWithLib`
+  - `ForEachProducedOutput`: uses `OutputFromBytesWithLib`
+  - `InputLoaderByIndex`: uses `OutputFromBytesWithLib`
+  - `ToString`: uses `OutputFromBytesWithLib`
+- [x] 14.7 Update `validate.go` to use `ctx.Transaction.Library()`:
+  - `makeEvalContext`: uses cached library
+  - `_scanOutputs`: uses `OutputFromBytesWithLib`
+  - `runOutput`: uses `lib.DecompileBytecode()`
+  - `constraintName`: uses `lib.ParsePrefixBytecode()` and `NameByPrefixWithLib()`
+  - `_evalBytecode`: uses `ctx.Transaction.Library().EvalFromBytecodeWithSlicePool()`
+- [x] 14.8 Update `txcontext.go` methods:
+  - `ConsumedOutput`: uses `OutputFromBytesWithLib`
+- [ ] 14.9 Add benchmark tests comparing old vs new approach (deferred)
+- [x] 14.10 Verify all tests pass
+
+**Files to modify:**
+- `ledger/transaction/tx.go` - Add `lib` field, initialize in `_baseValidation`, add `Library()` method, update all methods
+- `ledger/transaction/validate.go` - Use `ctx.Transaction.Library()` in all validation methods
+- `ledger/transaction/txcontext.go` - Update `ConsumedOutput` and similar methods
+- `ledger/output.go` - Add `OutputFromBytesWithLib`, `OutputFromBytesMainWithLib`
+- `ledger/constraints.go` - Add `ConstraintFromBytesWithLib`, `LockFromBytesWithLib`
+- `ledger/amounts.go` - Add `AmountsFromBytesWithLib`
+- `ledger/chain.go`, `ledger/sequencer.go`, `ledger/lock_*.go` - Add library-based variants as needed
+
+**Design notes:**
+- Slot-based functions (`*AtSlot`) are kept for external use (CLI, API, tests without transaction context)
+- Library-based functions (`*WithLib`) are the core implementation
+- `Transaction.Library()` provides access for code that needs the library
+- No changes to public API for external consumers
+- The library pointer is immutable once set during transaction parsing
+
+---
+
 ## Session State
 
 _Track current progress here between sessions._
 
-**Current Phase:** 11 Complete, Ready for Phase 13
-**Current Task:** Phase 13 - Code Review and Cleanup
+**Current Phase:** 14 Complete
+**Current Task:** Phase 14 - Library Pointer Caching in Transaction (optimization) - COMPLETED
 **Last Commit:** Phase 11: API and CLI updates for ledger definitions (ca353ba0)
 **Notes:**
 - Phases 1-11 fully complete
@@ -1003,6 +1079,15 @@ _Track current progress here between sessions._
   - ~~Phase 11: API and CLI updates~~ ✅ Complete (ca353ba0)
   - ~~Phase 12: EasyFL serde immutability enforcement~~ ✅ Addressed by EasyFL dependency
   - Phase 13: Code review and cleanup
+  - ~~Phase 14: Library pointer caching in Transaction (optimization)~~ ✅ Complete
+- Phase 14 completed (2026-01-14):
+  - Added `lib *Library` field to `Transaction` struct
+  - Library cached in `_baseValidation()` after slot/timestamp is set
+  - Created `*WithLib` variants of all parsing functions
+  - Slot-based functions (`*AtSlot`) now delegate to `*WithLib` functions
+  - Updated all Transaction methods to use cached library
+  - Updated validate.go and txcontext.go to use `ctx.Transaction.Library()`
+  - All tests pass
 
 **Phase 12 - RESOLVED:**
 EasyFL's `Upgrade()` function now enforces that `numArgs` cannot be changed when replacing functions.
