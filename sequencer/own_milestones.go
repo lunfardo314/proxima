@@ -66,12 +66,12 @@ func (seq *Sequencer) IsConsumedInThePastPath(oid base.OutputID, ms *vertex.Wrap
 func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	ret := seq.GetLatestMilestone(seq.sequencerID)
 	if ret != nil {
-		seq.AddOwnMilestone(ret)
 		chainOut := ret.FindChainOutput(&seq.sequencerID)
-		if chainOut.Output == nil {
-			return vertex.WrappedOutput{}
+		if chainOut != nil && chainOut.Output != nil {
+			seq.AddOwnMilestone(ret)
+			return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("OwnLatestMilestoneOutput"))
 		}
-		return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("OwnLatestMilestoneOutput"))
+		// chain output not found in tippool milestone, fall through to bootstrap
 	}
 	// there's no own milestone in the tippool, find in one of the baseline states of other sequencers or in LRB
 	return seq.bootstrapOwnMilestoneOutput()

@@ -246,6 +246,11 @@ const ensureStartingMilestoneTimeout = 5 * time.Second
 
 // ensureFirstMilestone waiting for the first sequencer milestone arrive
 func (seq *Sequencer) ensureFirstMilestone() bool {
+	// First, verify the sequencer ID exists in the ledger state
+	if !seq.validateSequencerIDExists() {
+		return false
+	}
+
 	var startOutput vertex.WrappedOutput
 
 	deadline := time.Now().Add(ensureStartingMilestoneTimeout)
@@ -676,6 +681,25 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		return vertex.WrappedOutput{}
 	}
 	return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("tippool 2"))
+}
+
+// validateSequencerIDExists checks if the sequencer ID exists in the latest reliable branch.
+// Returns false with error log if the chain doesn't exist (likely misconfigured sequencer_id in config).
+func (seq *Sequencer) validateSequencerIDExists() bool {
+	branchData := multistate.FindLatestReliableBranch(seq.StateStore(), global.FractionHealthyBranch)
+	if branchData == nil {
+		seq.log.Errorf("validateSequencerIDExists: can't find latest reliable branch")
+		return false
+	}
+	rdr := multistate.MakeSugared(seq.Branches().GetStateReaderForTheBranch(branchData.TxID()))
+	_, err := rdr.GetChainOutputWithID(seq.sequencerID)
+	if err != nil {
+		seq.log.Errorf("validateSequencerIDExists: sequencer chain %s not found in ledger state. "+
+			"Check 'sequencer_id' in proxima.yaml configuration", seq.sequencerID.String())
+		return false
+	}
+	seq.log.Infof("validateSequencerIDExists: sequencer chain %s found in ledger state", seq.sequencerID.StringShort())
+	return true
 }
 
 func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
