@@ -95,8 +95,10 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 	genesisAddr := ledger.AddressED25519FromPublicKey(constants.GenesisControllerPublicKey)
 	initialSupply := constants.InitialSupply
 
-	gout := ledger.GenesisOutput(initialSupply, genesisAddr)
+	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)
 	gStemOut := ledger.GenesisStemOutput()
+	// Controller dust output ensures the controller can always create transactions
+	dustOut := ledger.GenesisControllerDustOutput(genesisAddr)
 
 	// Create upgrade commitment UTXO for slot 0
 	// For slot 0, prevHash is the base library hash, prevSlot is MaxSlot
@@ -106,7 +108,7 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 
 	// Create updatable state and apply mutations
 	updatable := MustNewUpdatable(store, emptyRoot)
-	mutations := genesisUpdateMutations(&gout.OutputWithID, gStemOut, upgradeOut)
+	mutations := genesisUpdateMutations(&gout.OutputWithID, gStemOut, dustOut, upgradeOut)
 
 	rootParams := &RootRecordParams{
 		StemOutputID:      gStemOut.ID,

@@ -122,7 +122,8 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1 (1 token goes to dust output)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -192,7 +193,8 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1 (1 token goes to dust output)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000, int(balChain))
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
@@ -262,7 +264,8 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1 (1 token goes to dust output)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000, int(balChain))
 	})
 }
 

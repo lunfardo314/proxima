@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -61,11 +62,14 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(err == nil, "can't find sequencer id %s: %v", targetSeqID.StringShort(), err)
 	glb.Assertf(seqOut.ID.IsSequencerTransaction(), "chainID %s does not represent a sequencer", targetSeqID.StringShort())
 
-	var tagAlongSeqID *base.ChainID
-	feeAmount := glb.GetTagAlongFee()
-	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
-	tagAlongSeqID = glb.GetTagAlongSequencerID()
+	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
+	if err != nil {
+		glb.Infof("error getting tag-along fee: %s", err)
+		return
+	}
+	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
 
 	ts := ledger.TimeNow()
 	if ts.IsSlotBoundary() {
@@ -82,7 +86,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 
 	// tentatively checking maximum storage deposit
 	oOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-glb.GetTagAlongFee()), int64(inflation))
+		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
 		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, byte(ledger.Const.MaxFrozenEpochs), 100)
 		o.WithLock(lock)
 		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
@@ -92,7 +96,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(oOut.EnoughAmountForStorageDeposit())
 
 	oOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-glb.GetTagAlongFee()), int64(inflation))
+		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
 		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, maxFreezeEpochs, 100)
 		o.WithLock(lock)
 		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
@@ -111,7 +115,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Assertf(succIdx == 0, "succIdx==0")
 
-	taOut := ledger.NewTagAlongOutput(glb.GetTagAlongFee(), *glb.GetTagAlongSequencerID(), walletData.Account)
+	taOut := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, walletData.Account)
 	tagAlongIdx, err := txb.ProduceOutput(taOut)
 	glb.AssertNoError(err)
 	glb.Assertf(tagAlongIdx == 1, "tagAlongIdx==1")

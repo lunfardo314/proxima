@@ -44,8 +44,10 @@ func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitme
 	genesisAddr := ledger.AddressED25519FromPublicKey(ledger.Const.GenesisControllerPublicKey)
 
 	initialSupply := ledger.Const.InitialSupply
-	gout := ledger.GenesisOutput(initialSupply, genesisAddr)
+	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)
 	gStemOut := ledger.GenesisStemOutput()
+	// Controller dust output ensures the controller can always create transactions
+	dustOut := ledger.GenesisControllerDustOutput(genesisAddr)
 
 	// Create upgrade commitment UTXO for slot 0
 	// For slot 0, prevHash is the base library hash, prevSlot is MaxSlot
@@ -54,7 +56,7 @@ func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitme
 	upgradeOut := ledger.UpgradeUTXO(0, libraryHash, prevLibraryHash, base.MaxSlot)
 
 	updatable := MustNewUpdatable(store, emptyRoot)
-	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut, upgradeOut), &RootRecordParams{
+	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut, dustOut, upgradeOut), &RootRecordParams{
 		StemOutputID:      gStemOut.ID,
 		SeqID:             gout.ChainID,
 		CoverageDelta:     initialSupply,
@@ -65,10 +67,11 @@ func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitme
 	return gout.ChainID, updatable.Root()
 }
 
-func genesisUpdateMutations(genesisOut, genesisStemOut, upgradeOut *ledger.OutputWithID) *Mutations {
+func genesisUpdateMutations(genesisOut, genesisStemOut, dustOut, upgradeOut *ledger.OutputWithID) *Mutations {
 	ret := NewMutations()
 	ret.InsertAddOutputMutation(genesisOut.ID, genesisOut.Output)
 	ret.InsertAddOutputMutation(genesisStemOut.ID, genesisStemOut.Output)
+	ret.InsertAddOutputMutation(dustOut.ID, dustOut.Output)
 	// Use raw clone for upgrade UTXO since it doesn't have a standard lock
 	ret.InsertAddOutputMutationRaw(upgradeOut.ID, upgradeOut.Output)
 	ret.InsertAddTxMutation(base.GenesisTransactionID(), genesisOut.ID.Slot(), 1)
@@ -114,8 +117,10 @@ func ScanGenesisState(stateStore StateStore) (*ledger.Constants, common.VCommitm
 		return nil, nil, fmt.Errorf("GetOutputErr(%s): %w", genesisOid.StringShort(), err)
 	}
 	constants := ledger.ConstantsFromLibrary(lib)
-	if out.TokenBalance() != constants.InitialSupply {
-		return nil, nil, fmt.Errorf("different amounts in genesis output and state definitions")
+	// Genesis output has initialSupply - 1 tokens; the remaining 1 token is in the controller dust output
+	if out.TokenBalance() != constants.InitialSupply-1 {
+		return nil, nil, fmt.Errorf("different amounts in genesis output and state definitions: got %d, expected %d",
+			out.TokenBalance(), constants.InitialSupply-1)
 	}
 	return constants, branchData.Root, nil
 }

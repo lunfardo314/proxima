@@ -69,11 +69,14 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(err == nil, "can't find sequencer id %s: %v", targetSeqID.StringShort(), err)
 	glb.Assertf(seqOut.Output.IsSequencerOutput(), "chainID %s does not represent a sequencer", targetSeqID.StringShort())
 
-	var tagAlongSeqID *base.ChainID
-	feeAmount := glb.GetTagAlongFee()
-	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
-	tagAlongSeqID = glb.GetTagAlongSequencerID()
+	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
+	if err != nil {
+		glb.Infof("error getting tag-along fee: %s", err)
+		return
+	}
+	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
 
 	ts := ledger.TimeNow()
 	if ts.IsSlotBoundary() {

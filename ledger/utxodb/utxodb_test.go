@@ -36,8 +36,11 @@ func TestUTXODB(t *testing.T) {
 
 		t.Logf("\nUTXODB origin distribution transaction:\n%s", u.OriginDistributionTransactionString())
 		require.EqualValues(t, int(initFaucetBalance), int(u.Balance(u.FaucetAddress())))
+		// Genesis output has initialSupply-1 tokens (1 token is in the controller dust output)
+		// After distribution, on-chain balance is initialSupply-1-initFaucetBalance
+		// Controller's wallet balance includes the dust output (1 token)
 		require.EqualValues(t, int(ledger.Const.InitialSupply-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
-		require.EqualValues(t, ledger.Const.InitialSupply-initFaucetBalance, onChain)
+		require.EqualValues(t, ledger.Const.InitialSupply-1-initFaucetBalance, onChain)
 		require.EqualValues(t, 0, controlledByChain)
 	})
 	t.Run("from faucet", func(t *testing.T) {

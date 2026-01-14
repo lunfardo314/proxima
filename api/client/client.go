@@ -1018,9 +1018,12 @@ func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed255
 	if err != nil {
 		return nil, base.TransactionID{}, "", err
 	}
+	if len(walletOutputs) == 0 {
+		return nil, base.TransactionID{}, "", fmt.Errorf("wallet has no outputs to create transaction")
+	}
 	bal := o.TokenBalance()
 	if amountInWallet < bal {
-		return nil, base.TransactionID{}, "", fmt.Errorf("not enough balance")
+		return nil, base.TransactionID{}, "", fmt.Errorf("not enough balance: have %d, need %d", amountInWallet, bal)
 	}
 	txb := txbuilder.New()
 	for _, out := range walletOutputs {

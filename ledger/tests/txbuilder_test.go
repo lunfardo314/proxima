@@ -29,7 +29,7 @@ func TestBasics(t *testing.T) {
 		_, _, addr := u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
@@ -55,14 +55,14 @@ func TestBasics(t *testing.T) {
 		require.NoError(t, err)
 		err = u.TokensFromFaucet(addr)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000+ledger.DefaultStorageDeposit(), u.Balance(addr))
 		require.EqualValues(t, 2, u.NumUTXOs(addr))
 
 		err = u.TransferTokens(privKey, addr, u.Balance(addr))
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-1_000_000_000-u.FaucetBalance()-ledger.DefaultStorageDeposit(), u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000+ledger.DefaultStorageDeposit(), u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
@@ -86,7 +86,7 @@ func TestBasics(t *testing.T) {
 			total += s
 			numOuts++
 
-			require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+			require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 			require.EqualValues(t, u.Supply()-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
 			require.EqualValues(t, total, u.Balance(addr))
 			require.EqualValues(t, numOuts, u.NumUTXOs(addr))
@@ -105,7 +105,7 @@ func TestBasics(t *testing.T) {
 
 		err = u.TransferTokens(privKey, addr, u.Balance(addr))
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, total, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
@@ -129,7 +129,7 @@ func TestBasics(t *testing.T) {
 			total += s
 			numOuts++
 
-			require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+			require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 			require.EqualValues(t, u.Supply()-u.FaucetBalance()-total, u.Balance(u.GenesisControllerAddress()))
 			require.EqualValues(t, total, u.Balance(addr))
 			require.EqualValues(t, numOuts, u.NumUTXOs(addr))
@@ -150,7 +150,7 @@ func TestBasics(t *testing.T) {
 			amount  = 100_000_000
 		)
 		err := u.TokensFromFaucet(addr0, howMany*amount)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-howMany*amount), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, howMany*amount, int(u.Balance(addr0)))
 		require.EqualValues(t, 1, u.NumUTXOs(addr0))
