@@ -13,8 +13,8 @@ The goals:
 
 ### 1. Genesis and Initialization
 
-- [ ] **1.1** `proxi init wallet` - Create new wallet configuration
-- [ ] **1.2** `proxi init genesis` - Generate genesis ledger ID and constraints library
+- [x] **1.1** `proxi init wallet` - Create new wallet configuration
+- [x] **1.2** `proxi init genesis` - Generate genesis ledger ID and constraints library
 - [ ] **1.3** `proxi init genesis_db` - Initialize database with genesis state
 - [ ] **1.4** `proxi init bootstrap` - Setup bootstrap sequencer account
 - [ ] **1.5** `proxi init node_config` - Generate node configuration template
