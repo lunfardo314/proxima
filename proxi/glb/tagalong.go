@@ -10,23 +10,50 @@ import (
 // MaxAutoTagAlongFee is the maximum fee that will be accepted without user confirmation
 const MaxAutoTagAlongFee = uint64(100)
 
-// GetRequiredTagAlongFee retrieves the minimum tag-along fee from a sequencer.
-// Returns (fee, nil) on success. If fee > MaxAutoTagAlongFee, prompts user for confirmation.
-// If sequencer not found or no minimum set, returns 0.
+// GetRequiredTagAlongFee determines the tag-along fee to use based on profile and sequencer settings.
+// Logic:
+// - If profile fee > 0 and profile fee >= sequencer minimum: use profile fee
+// - If sequencer minimum > profile fee (and profile fee > 0): ask user if OK to use higher fee
+// - If profile fee is 0: use sequencer minimum (with MaxAutoTagAlongFee safety check)
+// - If sequencer not found or error: use profile fee (or 0 if not set)
 func GetRequiredTagAlongFee(seqID base.ChainID) (uint64, error) {
+	profileFee := GetTagAlongFee()
+
 	md, err := GetClient().GetSequencerData(seqID)
 	if err != nil {
-		// Sequencer not found or error - return 0 (let sequencer decide)
+		// Sequencer not found or error - use profile fee
 		Verbosef("GetRequiredTagAlongFee: could not retrieve sequencer data for %s: %v", seqID.StringShort(), err)
-		return 0, nil
+		return profileFee, nil
 	}
-	fee := md.MinimumFee()
-	if fee > MaxAutoTagAlongFee {
-		prompt := fmt.Sprintf("Sequencer %s requires tag-along fee of %s tokens (> %s). Accept?",
-			seqID.StringShort(), util.Th(fee), util.Th(MaxAutoTagAlongFee))
-		if !YesNoPrompt(prompt, false) {
-			return 0, fmt.Errorf("user declined high tag-along fee of %s", util.Th(fee))
+
+	seqMinFee := md.MinimumFee()
+
+	// If profile has a fee set and it's sufficient for the sequencer, use it
+	if profileFee > 0 && profileFee >= seqMinFee {
+		Verbosef("using profile tag-along fee: %s (sequencer minimum: %s)", util.Th(profileFee), util.Th(seqMinFee))
+		return profileFee, nil
+	}
+
+	// If sequencer requires more than profile fee
+	if seqMinFee > profileFee {
+		if profileFee > 0 {
+			// Profile has a fee set but sequencer wants more - ask user
+			prompt := fmt.Sprintf("Sequencer %s requires tag-along fee of %s tokens (profile has %s). Accept higher fee?",
+				seqID.StringShort(), util.Th(seqMinFee), util.Th(profileFee))
+			if !YesNoPrompt(prompt, false) {
+				return 0, fmt.Errorf("user declined higher tag-along fee of %s (profile: %s)", util.Th(seqMinFee), util.Th(profileFee))
+			}
+		} else if seqMinFee > MaxAutoTagAlongFee {
+			// No profile fee set and sequencer wants more than safety limit - ask user
+			prompt := fmt.Sprintf("Sequencer %s requires tag-along fee of %s tokens (> %s). Accept?",
+				seqID.StringShort(), util.Th(seqMinFee), util.Th(MaxAutoTagAlongFee))
+			if !YesNoPrompt(prompt, false) {
+				return 0, fmt.Errorf("user declined high tag-along fee of %s", util.Th(seqMinFee))
+			}
 		}
+		return seqMinFee, nil
 	}
-	return fee, nil
+
+	// Profile fee is 0 and sequencer minimum is 0
+	return 0, nil
 }
