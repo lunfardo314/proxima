@@ -439,6 +439,48 @@ func ValidateSnapshot(snapshotPath string) error {
 	return nil
 }
 
+// GetLatestUpgradeSlotFromSnapshot returns the highest upgrade slot in the snapshot.
+// Returns the slot and true if upgrades exist, 0 and false otherwise.
+func GetLatestUpgradeSlotFromSnapshot(snapshotPath string) (uint32, bool, error) {
+	kvStream, err := multistate.OpenSnapshotFileStream(snapshotPath)
+	if err != nil {
+		return 0, false, fmt.Errorf("cannot open snapshot: %w", err)
+	}
+	defer kvStream.Close()
+
+	if len(kvStream.UpgradeLibraries) == 0 {
+		return 0, false, nil
+	}
+
+	var maxSlot uint32
+	for _, entry := range kvStream.UpgradeLibraries {
+		if entry.Slot > maxSlot {
+			maxSlot = entry.Slot
+		}
+	}
+	return maxSlot, true, nil
+}
+
+// GetLatestUpgradeSlotFromDB returns the highest upgrade slot in the database.
+// Returns the slot and true if DB exists and has upgrades, 0 and false otherwise.
+func GetLatestUpgradeSlotFromDB(dbPath string) (uint32, bool, error) {
+	// Check if database exists
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		return 0, false, nil
+	}
+
+	// Try to open read-only
+	stateDb, err := badger_adaptor.OpenBadgerDB(dbPath, badger.DefaultOptions(dbPath).WithReadOnly(true))
+	if err != nil {
+		return 0, false, fmt.Errorf("cannot open database: %w", err)
+	}
+	defer stateDb.Close()
+
+	stateStore := badger_adaptor.New(stateDb)
+	latestSlot, found := multistate.GetLatestUpgradeSlot(stateStore)
+	return latestSlot, found, nil
+}
+
 // CopyFile copies a file from src to dst
 func CopyFile(src, dst string) error {
 	srcFile, err := os.Open(src)

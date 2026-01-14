@@ -397,6 +397,49 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	// Get absolute path for clear logging
 	snapshotFileAbs, _ := filepath.Abs(snapshotFile)
 
+	// Check upgrade slot compatibility: snapshot must have same latest upgrade slot as DB
+	// This invalidates stale snapshots when a ledger upgrade has been activated
+	if !dbNeedsRestore {
+		// DB exists - compare upgrade slots
+		snapshotUpgradeSlot, snapshotHasUpgrade, err := GetLatestUpgradeSlotFromSnapshot(snapshotFile)
+		if err != nil {
+			logRestoreError(log, "failed to read upgrade slot from snapshot: %v", err)
+			// Continue anyway - the restore may still work
+		} else {
+			dbUpgradeSlot, dbHasUpgrade, err := GetLatestUpgradeSlotFromDB(global.MultiStateDBName)
+			if err != nil {
+				logRestoreError(log, "failed to read upgrade slot from DB: %v", err)
+				// Continue anyway
+			} else if snapshotHasUpgrade && dbHasUpgrade && snapshotUpgradeSlot != dbUpgradeSlot {
+				// Upgrade slot mismatch - snapshot is from before/after an upgrade
+				logRestoreMsg(log, "=== SNAPSHOT INVALIDATED ===")
+				logRestoreMsg(log, "Snapshot upgrade slot (%d) != DB upgrade slot (%d)", snapshotUpgradeSlot, dbUpgradeSlot)
+				logRestoreMsg(log, "Ledger upgrade has occurred - deleting stale snapshot")
+
+				// Delete the stale snapshot file
+				if err := os.Remove(snapshotFile); err != nil {
+					logRestoreMsg(log, "warning: failed to delete snapshot: %v", err)
+				} else {
+					logRestoreMsg(log, "deleted stale snapshot: %s", snapshotFileAbs)
+				}
+
+				// Also clean up any snapshots in working directory
+				if err := util.PurgeFilesInDirectory(".", "*.snapshot", 0); err != nil {
+					logRestoreMsg(log, "warning: failed to cleanup snapshots in working dir: %v", err)
+				}
+
+				// Reset state file so cleanup cycle starts fresh
+				if err := stateFile.ResetCleanupState(); err != nil {
+					return false, fmt.Errorf("failed to reset cleanup state: %w", err)
+				}
+				logRestoreMsg(log, "state cleanup reset - will start fresh after upgrade")
+
+				// Return without restoring - node will continue with existing DB
+				return false, nil
+			}
+		}
+	}
+
 	restoreStart := time.Now()
 	logRestoreMsg(log, "=== RESTORE STARTED ===")
 	logRestoreMsg(log, "snapshot file: %s", snapshotFileAbs)
