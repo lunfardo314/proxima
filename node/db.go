@@ -125,26 +125,16 @@ func (p *ProximaNode) logUpgradesList() {
 		return
 	}
 
-	// Check if pending upgrade is already activated
-	pendingActivated := false
-	if ledger.PendingUpgrade != nil {
-		for _, slot := range slots {
-			if slot == ledger.PendingUpgrade.Slot {
-				pendingActivated = true
-				break
-			}
-		}
-	}
+	currentSlot := ledger.TimeNow().Slot
 
-	p.Log().Infof("ledger upgrades:")
+	p.Log().Infof("ledger upgrades stored in the database:")
 	for _, slot := range slots {
 		lib := ledger.L(slot)
 		hash := lib.LibraryHash()
-		p.Log().Infof("       slot %8d: %s  IN EFFECT", slot, hex.EncodeToString(hash[:]))
-	}
-
-	// Log pending upgrade only if not yet activated
-	if ledger.PendingUpgrade != nil && !pendingActivated {
-		p.Log().Infof("       slot %8d: PENDING", ledger.PendingUpgrade.Slot)
+		status := "IN EFFECT"
+		if slot > currentSlot {
+			status = "PENDING"
+		}
+		p.Log().Infof("       slot %8d: %s  %s", slot, hex.EncodeToString(hash[:]), status)
 	}
 }
