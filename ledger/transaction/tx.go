@@ -21,11 +21,11 @@ import (
 // Transaction provides access to the tree of transferable transaction
 type (
 	Transaction struct {
+		*ledger.Library          // cached library for this transaction's slot
 		tree                     *tuples.Tree
 		txid                     base.TransactionID
 		sender                   ledger.AddressED25519
 		timestamp                base.LedgerTime
-		lib                      *ledger.Library                  // cached library for this transaction's slot
 		producedAmountTotals     [15]int64                        // calculated by summing up amount vectors
 		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 	}
@@ -196,15 +196,8 @@ func _baseValidation(tx *Transaction) (err error) {
 	}
 	tx.timestamp = tx.txid.Timestamp()
 	// Cache the library for this transaction's slot once, to avoid repeated L(slot) calls
-	tx.lib = ledger.L(tx.timestamp.Slot)
+	tx.Library = ledger.L(tx.timestamp.Slot)
 	return nil
-}
-
-// Library returns the cached library for this transaction's slot.
-// The library is cached during transaction parsing to avoid repeated L(slot) calls
-// from parallel goroutines during validation.
-func (tx *Transaction) Library() *ledger.Library {
-	return tx.lib
 }
 
 func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
@@ -422,16 +415,15 @@ func ScanOutputs(tx *Transaction) error {
 	pathToAmounts := []byte{ledger.TxOutputs, 0, 0}
 	pathToLock := []byte{ledger.TxOutputs, 0, 1}
 
-	lib := tx.lib
 	for i := 0; i < numOutputs; i++ {
 		pathToAmounts[1] = byte(i)
-		amounts, err = ledger.AmountsFromBytesWithLib(tx.tree.MustBytesAtPath(pathToAmounts), lib)
+		amounts, err = ledger.AmountsFromBytesWithLib(tx.tree.MustBytesAtPath(pathToAmounts), tx.Library)
 		if err != nil {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
 
 		// just enforcing known lock at index 1
-		if _, err = ledger.LockFromBytesWithLib(tx.tree.MustBytesAtPath(pathToLock), lib); err != nil {
+		if _, err = ledger.LockFromBytesWithLib(tx.tree.MustBytesAtPath(pathToLock), tx.Library); err != nil {
 			return fmt.Errorf("scanning output #%d: '%v'", i, err)
 		}
 		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
@@ -600,7 +592,7 @@ func (tx *Transaction) MustOutputDataAt(idx byte) []byte {
 }
 
 func (tx *Transaction) MustProducedOutputAt(idx byte) *ledger.Output {
-	ret, err := ledger.OutputFromBytesWithLib(tx.MustOutputDataAt(idx), tx.lib)
+	ret, err := ledger.OutputFromBytesWithLib(tx.MustOutputDataAt(idx), tx.Library)
 	util.AssertNoError(err)
 	return ret
 }
@@ -609,7 +601,7 @@ func (tx *Transaction) ProducedOutputAt(idx byte) (*ledger.Output, error) {
 	if int(idx) >= tx.NumProducedOutputs() {
 		return nil, fmt.Errorf("wrong output index")
 	}
-	out, err := ledger.OutputFromBytesWithLib(tx.MustOutputDataAt(idx), tx.lib)
+	out, err := ledger.OutputFromBytesWithLib(tx.MustOutputDataAt(idx), tx.Library)
 	if err != nil {
 		return nil, err
 	}
@@ -756,9 +748,8 @@ func (tx *Transaction) ForEachOutputData(fun func(idx byte, oData []byte) bool) 
 // Inside callback function the correct outputID must be obtained with OutputID(idx byte) ledger.OutputID
 // because stem output ID has a special form
 func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output, oid base.OutputID) bool) {
-	lib := tx.lib
 	tx.ForEachOutputData(func(idx byte, oData []byte) bool {
-		o, _ := ledger.OutputFromBytesWithLib(oData, lib)
+		o, _ := ledger.OutputFromBytesWithLib(oData, tx.Library)
 		oid := tx.OutputID(idx)
 		if !fun(idx, o, oid) {
 			return false
@@ -823,7 +814,6 @@ func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, 
 }
 
 func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, bool)) string {
-	lib := tx.lib
 	ctx, err := TxContextFromTransaction(tx, func(i byte) (*ledger.Output, error) {
 		oid, err1 := tx.InputAt(i)
 		if err1 != nil {
@@ -833,7 +823,7 @@ func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, boo
 		if !ok {
 			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
 		}
-		o, err1 := ledger.OutputFromBytesWithLib(oData, lib)
+		o, err1 := ledger.OutputFromBytesWithLib(oData, tx.Library)
 		if err1 != nil {
 			return nil, err1
 		}
@@ -854,7 +844,6 @@ func (tx *Transaction) ToStringWithInputLoaderByIndex(fetchOutput func(i byte) (
 }
 
 func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([]byte, bool)) func(byte) (*ledger.Output, error) {
-	lib := tx.lib
 	return func(idx byte) (*ledger.Output, error) {
 		inp := tx.MustInputAt(idx)
 		odata, ok := fetchOutput(inp)
@@ -865,7 +854,7 @@ func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([
 		// IMPORTANT: Upgrade code is responsible for maintaining backward-compatible
 		// bytecode parsing to avoid non-determinism when consuming outputs created
 		// with older library versions.
-		o, err := ledger.OutputFromBytesWithLib(odata, lib)
+		o, err := ledger.OutputFromBytesWithLib(odata, tx.Library)
 		if err != nil {
 			return nil, fmt.Errorf("can't load input #%d: %s, '%v'", idx, inp.String(), err)
 		}

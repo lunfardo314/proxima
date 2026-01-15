@@ -140,7 +140,7 @@ func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
 	// IMPORTANT: Upgrade code is responsible for maintaining backward-compatible
 	// bytecode parsing to avoid non-determinism when consuming outputs created
 	// with older library versions.
-	return ledger.OutputFromBytesWithLib(data, ctx.Transaction.Library())
+	return ledger.OutputFromBytesWithLib(data, ctx.Library)
 }
 
 func (ctx *TxContext) ProducedOutputData(idx byte) []byte {
