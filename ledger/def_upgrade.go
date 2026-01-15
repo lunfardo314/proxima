@@ -23,6 +23,8 @@ func init() {
 	}
 }
 
+// TODO add registerConstraints and register locks to the upgrade workflow.
+
 // UpgradeDefinition defines a pending library upgrade.
 type UpgradeDefinition struct {
 	// Slot is the first slot where the new library rules apply.

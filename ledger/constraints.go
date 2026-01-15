@@ -140,14 +140,6 @@ func constraintParserByPrefixWithLib(prefix []byte, lib *Library) (ConstraintPar
 	return nil, false
 }
 
-func constraintParserByPrefixAtSlot(prefix []byte, slot uint32) (ConstraintParser, bool) {
-	return constraintParserByPrefixWithLib(prefix, L(slot))
-}
-
-func constraintParserByPrefix(prefix []byte) (ConstraintParser, bool) {
-	return constraintParserByPrefixAtSlot(prefix, base.MaxSlot)
-}
-
 func mustBinFromSource(src string) []byte {
 	ret, err := binFromSource(src)
 	util.AssertNoError(err)
@@ -189,7 +181,6 @@ func ConstraintFromBytesAtSlot(data []byte, slot uint32) (Constraint, error) {
 	return ConstraintFromBytesWithLib(data, L(slot))
 }
 
-
 func (acc AccountID) Bytes() []byte {
 	return acc
 }
@@ -218,7 +209,6 @@ func LockFromBytesWithLib(data []byte, lib *Library) (Lock, error) {
 func LockFromBytesAtSlot(data []byte, slot uint32) (Lock, error) {
 	return LockFromBytesWithLib(data, L(slot))
 }
-
 
 // AccountableFromBytesWithLib parses an Accountable from bytecode using the provided library.
 // This is the core implementation that avoids repeated L(slot) calls.
