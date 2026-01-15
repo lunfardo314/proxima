@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/upgrade"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
@@ -128,26 +127,18 @@ func ScanGenesisState(stateStore StateStore) (*ledger.Constants, common.VCommitm
 // InitLedgerFromStore initializes the ledger library cache from the state store.
 // It loads libraries from the upgrade DB partition and handles pending upgrades.
 func InitLedgerFromStore(stateStore StateStore) {
-	// Register the resolver for upgrade 0 (always required)
-	ledger.RegisterResolverForUpgrade(0, ledger.GetEmbeddedFunctionResolverUpgrade0)
-
 	// Handle pending upgrade if one exists
-	if upgrade.PendingUpgrade != nil {
-		registerAndStorePendingUpgrade(stateStore, upgrade.PendingUpgrade)
+	if ledger.PendingUpgrade != nil {
+		storePendingUpgrade(stateStore, ledger.PendingUpgrade)
 	}
 
 	// Initialize the library cache with the state store
 	ledger.MustInitLibraryCache(stateStore)
 }
 
-// registerAndStorePendingUpgrade registers the resolver and stores the library for a pending upgrade.
+// storePendingUpgrade stores the library for a pending upgrade in the DB partition.
 // If the upgrade already exists in the DB partition, this is a no-op (idempotent).
-func registerAndStorePendingUpgrade(stateStore StateStore, pending *upgrade.UpgradeDefinition) {
-	// Register the resolver if provided
-	if pending.RegisterResolver != nil {
-		pending.RegisterResolver()
-	}
-
+func storePendingUpgrade(stateStore StateStore, pending *ledger.UpgradeDefinition) {
 	// Check if upgrade already exists in DB partition
 	if _, found := GetUpgradeLibraryDirect(stateStore, pending.Slot); found {
 		// Upgrade already stored, nothing more to do

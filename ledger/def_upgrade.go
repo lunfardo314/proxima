@@ -6,20 +6,43 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-type upgradeData struct {
-	upgradeYAML              []byte
-	embeddedFunctionResolver func(sym string) easyfl.EmbeddedFunction[*EvalContext]
+// UpgradeResolvers is the static list of all embedded function resolver factories
+// for each upgrade slot. This map grows with each upgrade and entries are never removed.
+//
+// When an upgrade is added, its resolver factory is added here statically.
+// At genesis, only upgrade0 is present. New entries are added with new upgrades.
+//
+// Note: Minimum slot distance between upgrades is enforced in multistate/upgrades.go
+// (see multistate.MinSlotsBetweenUpgrades constant there).
+var UpgradeResolvers map[uint32]ResolverFactory
+
+func init() {
+	UpgradeResolvers = map[uint32]ResolverFactory{
+		0: GetEmbeddedFunctionResolverUpgrade0,
+		// Future upgrades will be added here
+	}
 }
 
-func upgradeLibrary(lib *easyfl.Library[*EvalContext], upgradeData []upgradeData) error {
-	var err error
-	for _, upg := range upgradeData {
-		if upg.embeddedFunctionResolver != nil {
-			err = lib.UpgradeFromYAML(upg.upgradeYAML, upg.embeddedFunctionResolver)
-		} else {
-			err = lib.UpgradeFromYAML(upg.upgradeYAML)
-		}
-		if err != nil {
+// UpgradeDefinition defines a pending library upgrade.
+type UpgradeDefinition struct {
+	// Slot is the first slot where the new library rules apply.
+	Slot uint32
+
+	// Build takes the previous library YAML and returns the upgraded library YAML.
+	Build func(prevYAML []byte) ([]byte, error)
+}
+
+// PendingUpgrade is the current pending upgrade, or nil if no upgrade is pending.
+// At most one pending upgrade can exist at a time.
+var PendingUpgrade *UpgradeDefinition = nil
+
+func upgradeLibrary(lib *easyfl.Library[*EvalContext], slot uint32, yamlList ...[]byte) error {
+	resolverFactory := UpgradeResolvers[slot]
+	util.Assertf(resolverFactory != nil, "no resolver in UpgradeResolvers for slot %d", slot)
+	resolver := resolverFactory(lib)
+
+	for _, yaml := range yamlList {
+		if err := lib.UpgradeFromYAML(yaml, resolver); err != nil {
 			return err
 		}
 	}
@@ -27,13 +50,13 @@ func upgradeLibrary(lib *easyfl.Library[*EvalContext], upgradeData []upgradeData
 }
 
 func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
-	err := upgradeLibrary(lib, []upgradeData{
-		{[]byte(_definitionsEmbeddedYAMLUpgrade0), GetEmbeddedFunctionResolverUpgrade0(lib)},
-		{ConstantsYAMLFromParamsUpgrade0(par), nil},
-		{[]byte(pathConstantsUpgrade0()), nil},
-		{[]byte(_helperFunctionsYAMLUpgrade0), nil},
-		{[]byte(_generalFunctionsYAMLUpgrade0), nil},
-	})
+	err := upgradeLibrary(lib, 0,
+		[]byte(_definitionsEmbeddedYAMLUpgrade0),
+		ConstantsYAMLFromParamsUpgrade0(par),
+		[]byte(pathConstantsUpgrade0()),
+		[]byte(_helperFunctionsYAMLUpgrade0),
+		[]byte(_generalFunctionsYAMLUpgrade0),
+	)
 	util.AssertNoError(err)
 
 	lib.MustExtendMany(amountsAuxSource)

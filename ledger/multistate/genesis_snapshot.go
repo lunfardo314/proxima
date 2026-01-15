@@ -79,7 +79,7 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 
 	// Initialize the library cache with the in-memory store.
 	// This is required because GenesisOutput internally uses L() for constraint compilation.
-	ledger.RegisterResolverForUpgrade(0, ledger.GetEmbeddedFunctionResolverUpgrade0)
+	// Resolvers are in the static UpgradeResolvers map in def_upgrade.go.
 	ledger.MustInitLibraryCache(store)
 
 	// Create minimal identity

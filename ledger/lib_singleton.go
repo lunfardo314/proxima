@@ -17,10 +17,9 @@ import (
 // Libraries are lazily loaded from the DB partition on first access.
 // Since upgrades are rare, no cache eviction is needed - node restart resets the cache.
 type LibraryCache struct {
-	mu       sync.RWMutex
-	store    common.Traversable    // DB store for loading library YAMLs
-	cache    map[uint32]*Library   // upgrade slot -> parsed library
-	resolvers map[uint32]ResolverFactory // upgrade slot -> resolver factory
+	mu    sync.RWMutex
+	store common.Traversable  // DB store for loading library YAMLs
+	cache map[uint32]*Library // upgrade slot -> parsed library
 }
 
 // ResolverFactory creates an embedded function resolver for a library.
@@ -43,21 +42,6 @@ var (
 	nextPendingUpgradeSlot atomic.Uint32
 )
 
-// RegisterResolverForUpgrade registers an embedded function resolver factory for a specific upgrade slot.
-// This must be called during initialization, before any library access.
-// Each upgrade (0, 1, 2, ...) should register its resolver here.
-func RegisterResolverForUpgrade(upgradeSlot uint32, factory ResolverFactory) {
-	libraryCacheMutex.Lock()
-	defer libraryCacheMutex.Unlock()
-
-	if libraryCache == nil {
-		libraryCache = &LibraryCache{
-			cache:     make(map[uint32]*Library),
-			resolvers: make(map[uint32]ResolverFactory),
-		}
-	}
-	libraryCache.resolvers[upgradeSlot] = factory
-}
 
 // L returns the library version applicable to the given slot.
 // For the latest library version, use L(base.MaxSlot).
@@ -177,8 +161,8 @@ const upgradeLibraryDBPartition = 0x06
 
 // parseLibrary parses a library YAML using the resolver for the given upgrade slot.
 func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Library {
-	resolver, ok := lc.resolvers[upgradeSlot]
-	util.Assertf(ok, "no resolver registered for upgrade slot %d", upgradeSlot)
+	resolver := UpgradeResolvers[upgradeSlot]
+	util.Assertf(resolver != nil, "no resolver in UpgradeResolvers for upgrade slot %d", upgradeSlot)
 
 	lib, err := ParseLibraryFromYAML(yamlData, resolver)
 	util.AssertNoError(err)
@@ -190,7 +174,7 @@ func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Libra
 
 // MustInitLibraryCache initializes the library cache with a state store.
 // The store is used for lazy loading of library YAMLs from the upgrade DB partition.
-// This must be called after RegisterResolverForUpgrade for all known upgrades.
+// Resolvers are looked up from the static UpgradeResolvers map in def_resolvers.go.
 func MustInitLibraryCache(store common.Traversable) {
 	var lib *Library
 
@@ -200,11 +184,14 @@ func MustInitLibraryCache(store common.Traversable) {
 		libraryCacheMutex.Lock()
 		defer libraryCacheMutex.Unlock()
 
-		util.Assertf(libraryCache != nil, "must register resolvers before initializing cache")
+		if libraryCache == nil {
+			libraryCache = &LibraryCache{
+				cache: make(map[uint32]*Library),
+			}
+		}
 		util.Assertf(libraryCache.store == nil, "library cache already initialized")
 
 		libraryCache.store = store
-		libraryCache.cache = make(map[uint32]*Library)
 
 		ledgerReset.Store(false)
 
@@ -226,11 +213,9 @@ func MustInitSingleton(identityData []byte) {
 	// Create a minimal cache with the provided data
 	if libraryCache == nil {
 		libraryCache = &LibraryCache{
-			cache:     make(map[uint32]*Library),
-			resolvers: make(map[uint32]ResolverFactory),
+			cache: make(map[uint32]*Library),
 		}
 	}
-	libraryCache.resolvers[0] = GetEmbeddedFunctionResolverUpgrade0
 
 	lib, err := ParseLibraryFromYAML(identityData, GetEmbeddedFunctionResolverUpgrade0)
 	util.AssertNoError(err)

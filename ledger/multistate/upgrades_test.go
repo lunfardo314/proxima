@@ -3,7 +3,7 @@ package multistate
 import (
 	"testing"
 
-	"github.com/lunfardo314/proxima/ledger/upgrade"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
 )
@@ -329,32 +329,23 @@ func TestFindPreviousLibrary_MultipleUpgrades(t *testing.T) {
 	}
 }
 
-func TestRegisterAndStorePendingUpgrade_NewUpgrade(t *testing.T) {
+func TestStorePendingUpgrade_NewUpgrade(t *testing.T) {
 	store := common.NewInMemoryKVStore()
 
 	// Set up genesis library
 	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("genesis library")))
 
-	// Track if RegisterResolver was called
-	resolverCalled := false
-
 	// Create a pending upgrade definition
-	pending := &upgrade.UpgradeDefinition{
+	pending := &ledger.UpgradeDefinition{
 		Slot: 1000,
 		Build: func(prevYAML []byte) ([]byte, error) {
 			// Simple build that appends to previous
 			return append(prevYAML, []byte(" + upgrade 1")...), nil
 		},
-		RegisterResolver: func() {
-			resolverCalled = true
-		},
 	}
 
-	// Register and store the pending upgrade
-	registerAndStorePendingUpgrade(store, pending)
-
-	// Verify resolver was called
-	require.True(t, resolverCalled, "RegisterResolver should have been called")
+	// Store the pending upgrade
+	storePendingUpgrade(store, pending)
 
 	// Verify upgrade was stored
 	yaml, found := GetUpgradeLibraryDirect(store, 1000)
@@ -362,7 +353,7 @@ func TestRegisterAndStorePendingUpgrade_NewUpgrade(t *testing.T) {
 	require.Equal(t, []byte("genesis library + upgrade 1"), yaml)
 }
 
-func TestRegisterAndStorePendingUpgrade_AlreadyExists(t *testing.T) {
+func TestStorePendingUpgrade_AlreadyExists(t *testing.T) {
 	store := common.NewInMemoryKVStore()
 
 	// Set up genesis and existing upgrade
@@ -371,25 +362,18 @@ func TestRegisterAndStorePendingUpgrade_AlreadyExists(t *testing.T) {
 
 	// Track calls
 	buildCalled := false
-	resolverCalled := false
 
 	// Create pending upgrade for same slot
-	pending := &upgrade.UpgradeDefinition{
+	pending := &ledger.UpgradeDefinition{
 		Slot: 1000,
 		Build: func(prevYAML []byte) ([]byte, error) {
 			buildCalled = true
 			return []byte("new upgrade"), nil
 		},
-		RegisterResolver: func() {
-			resolverCalled = true
-		},
 	}
 
-	// Register and store - should be a no-op since upgrade exists
-	registerAndStorePendingUpgrade(store, pending)
-
-	// Resolver should still be called (for node restart case)
-	require.True(t, resolverCalled, "RegisterResolver should be called even if upgrade exists")
+	// Store - should be a no-op since upgrade exists
+	storePendingUpgrade(store, pending)
 
 	// Build should NOT be called since upgrade already exists
 	require.False(t, buildCalled, "Build should not be called when upgrade exists")
@@ -400,25 +384,24 @@ func TestRegisterAndStorePendingUpgrade_AlreadyExists(t *testing.T) {
 	require.Equal(t, []byte("existing upgrade"), yaml)
 }
 
-func TestRegisterAndStorePendingUpgrade_NilResolver(t *testing.T) {
+func TestStorePendingUpgrade_Simple(t *testing.T) {
 	store := common.NewInMemoryKVStore()
 
 	// Set up genesis library
 	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("genesis")))
 
-	// Create pending upgrade without resolver
-	pending := &upgrade.UpgradeDefinition{
+	// Create pending upgrade
+	pending := &ledger.UpgradeDefinition{
 		Slot: 1000,
 		Build: func(prevYAML []byte) ([]byte, error) {
 			return []byte("new library"), nil
 		},
-		RegisterResolver: nil, // No resolver
 	}
 
-	// Should not panic with nil resolver
-	registerAndStorePendingUpgrade(store, pending)
+	// Store the upgrade
+	storePendingUpgrade(store, pending)
 
-	// Upgrade should still be stored
+	// Upgrade should be stored
 	yaml, found := GetUpgradeLibraryDirect(store, 1000)
 	require.True(t, found)
 	require.Equal(t, []byte("new library"), yaml)
