@@ -19,7 +19,7 @@ import (
 // MinSlotsBetweenUpgrades is the minimum number of slots required between two
 // consecutive upgrades. This ensures node operators have sufficient time to
 // upgrade their nodes before a new library version takes effect.
-const MinSlotsBetweenUpgrades = 360
+const MinSlotsBetweenUpgrades = 100 // Reduced for testing
 
 // WriteUpgradeLibrary stores a compiled library YAML for a specific upgrade slot.
 // The upgrade slot is the first slot where this library version applies.
