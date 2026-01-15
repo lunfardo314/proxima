@@ -159,12 +159,10 @@ func (lc *LibraryCache) findLibraryForSlot(slot uint32) (upgradeSlot uint32, pre
 // Value: PartitionOther(2) + 1 + 1 + 1 + 1 = 6
 const upgradeLibraryDBPartition = 0x06
 
-// parseLibrary parses a library YAML using the resolver for the given upgrade slot.
+// parseLibrary parses a library YAML using the unified embedded function resolver.
+// The upgradeSlot parameter is used for caching purposes.
 func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Library {
-	resolver := UpgradeResolvers[upgradeSlot]
-	util.Assertf(resolver != nil, "no resolver in UpgradeResolvers for upgrade slot %d", upgradeSlot)
-
-	lib, err := ParseLibraryFromYAML(yamlData, resolver)
+	lib, err := ParseLibraryFromYAML(yamlData, GetEmbeddedFunctionResolver)
 	util.AssertNoError(err)
 
 	result := newLibrary(lib, yamlData)
@@ -174,7 +172,6 @@ func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Libra
 
 // MustInitLibraryCache initializes the library cache with a state store.
 // The store is used for lazy loading of library YAMLs from the upgrade DB partition.
-// Resolvers are looked up from the static UpgradeResolvers map in def_resolvers.go.
 func MustInitLibraryCache(store common.Traversable) {
 	var lib *Library
 

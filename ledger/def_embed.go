@@ -93,6 +93,38 @@ func (c *EvalContext) SetEvalPath(path []byte) {
 	c.path = bytes.Clone(path)
 }
 
+// EmbeddedResolver resolves a symbol to an embedded function.
+// Returns nil if the symbol is not in this resolver's scope.
+type EmbeddedResolver func(string) easyfl.EmbeddedFunction[*EvalContext]
+
+// upgradeEmbeddedResolvers is the static list of embedded function resolvers.
+// Each entry represents an upgrade that adds new embedded functions.
+// Entries are in ascending slot order. Upgrades with only pure EasyFL formulas
+// don't need an entry here.
+var upgradeEmbeddedResolvers []struct {
+	Slot     uint32
+	Resolver EmbeddedResolver
+}
+
+func init() {
+	upgradeEmbeddedResolvers = []struct {
+		Slot     uint32
+		Resolver EmbeddedResolver
+	}{
+		{0, resolveEmbeddedUpgrade0},
+		// Future upgrades that add embedded functions are added here.
+		// Example: {100, resolveEmbeddedUpgrade1} for sum3
+	}
+}
+
+// resolveEmbeddedUpgrade0 resolves embedded functions from upgrade 0.
+func resolveEmbeddedUpgrade0(sym string) easyfl.EmbeddedFunction[*EvalContext] {
+	if ret, found := _unboundedEmbedded[sym]; found {
+		return ret
+	}
+	return nil
+}
+
 var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalPath":           evalPath,
 	"evalAtPath":         evalAtPath,
@@ -103,19 +135,36 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalRandomFromSeed": evalRandomFromSeed,
 }
 
-func GetEmbeddedFunctionResolverUpgrade0(lib *easyfl.Library[*EvalContext]) func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
+// GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.
+// It searches through upgrade resolvers in descending order (newest first),
+// then falls back to the base easyfl resolver.
+func GetEmbeddedFunctionResolver(lib *easyfl.Library[*EvalContext]) func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
 	baseResolver := easyfl.EmbeddedFunctions(lib)
 	return func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
-		if ret, found := _unboundedEmbedded[sym]; found {
-			return ret
+		// Try each upgrade resolver in descending order (newest first)
+		for i := len(upgradeEmbeddedResolvers) - 1; i >= 0; i-- {
+			entry := upgradeEmbeddedResolvers[i]
+			if entry.Resolver != nil {
+				if ret := entry.Resolver(sym); ret != nil {
+					return ret
+				}
+			}
 		}
+		// Fall back to base easyfl resolver
 		if ret := baseResolver(sym); ret != nil {
 			return ret
 		}
 		return func(glb *easyfl.CallParams[*EvalContext]) []byte {
-			panic(fmt.Sprintf("inconsistency: embeded function symbol '%s' wasn't resolved properly", sym))
+			panic(fmt.Sprintf("inconsistency: embedded function symbol '%s' wasn't resolved properly", sym))
 		}
 	}
+}
+
+// GetEmbeddedFunctionResolverUpgrade0 is kept for backward compatibility.
+// It simply calls GetEmbeddedFunctionResolver.
+// Deprecated: Use GetEmbeddedFunctionResolver instead.
+func GetEmbeddedFunctionResolverUpgrade0(lib *easyfl.Library[*EvalContext]) func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
+	return GetEmbeddedFunctionResolver(lib)
 }
 
 const _definitionsEmbeddedYAMLUpgrade0 string = `

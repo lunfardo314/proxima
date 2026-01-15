@@ -6,25 +6,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// UpgradeResolvers is the static list of all embedded function resolver factories
-// for each upgrade slot. This map grows with each upgrade and entries are never removed.
-//
-// When an upgrade is added, its resolver factory is added here statically.
-// At genesis, only upgrade0 is present. New entries are added with new upgrades.
-//
-// Note: Minimum slot distance between upgrades is enforced in multistate/upgrades.go
-// (see multistate.MinSlotsBetweenUpgrades constant there).
-var UpgradeResolvers map[uint32]ResolverFactory
-
-func init() {
-	UpgradeResolvers = map[uint32]ResolverFactory{
-		0: GetEmbeddedFunctionResolverUpgrade0,
-		// Future upgrades will be added here
-	}
-}
-
-// TODO add registerConstraints and register locks to the upgrade workflow.
-
 // UpgradeDefinition defines a pending library upgrade.
 type UpgradeDefinition struct {
 	// Slot is the first slot where the new library rules apply.
@@ -38,10 +19,9 @@ type UpgradeDefinition struct {
 // At most one pending upgrade can exist at a time.
 var PendingUpgrade *UpgradeDefinition = nil
 
-func upgradeLibrary(lib *easyfl.Library[*EvalContext], slot uint32, yamlList ...[]byte) error {
-	resolverFactory := UpgradeResolvers[slot]
-	util.Assertf(resolverFactory != nil, "no resolver in UpgradeResolvers for slot %d", slot)
-	resolver := resolverFactory(lib)
+// upgradeLibrary applies YAML definitions to a library using the unified resolver.
+func upgradeLibrary(lib *easyfl.Library[*EvalContext], yamlList ...[]byte) error {
+	resolver := GetEmbeddedFunctionResolver(lib)
 
 	for _, yaml := range yamlList {
 		if err := lib.UpgradeFromYAML(yaml, resolver); err != nil {
@@ -52,7 +32,7 @@ func upgradeLibrary(lib *easyfl.Library[*EvalContext], slot uint32, yamlList ...
 }
 
 func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
-	err := upgradeLibrary(lib, 0,
+	err := upgradeLibrary(lib,
 		[]byte(_definitionsEmbeddedYAMLUpgrade0),
 		ConstantsYAMLFromParamsUpgrade0(par),
 		[]byte(pathConstantsUpgrade0()),
