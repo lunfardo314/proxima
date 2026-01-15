@@ -128,11 +128,11 @@ func (p *ProximaNode) logUpgradesList() {
 	for _, slot := range slots {
 		lib := ledger.L(slot)
 		hash := lib.LibraryHash()
-		p.Log().Infof("       slot %d: library hash %s", slot, hex.EncodeToString(hash[:]))
+		p.Log().Infof("       slot %8d: library hash %s", slot, hex.EncodeToString(hash[:]))
 	}
 
 	// Log pending upgrade if available
 	if ledger.PendingUpgrade != nil {
-		p.Log().Infof("       slot %d: PENDING", ledger.PendingUpgrade.Slot)
+		p.Log().Infof("       slot %8d: PENDING", ledger.PendingUpgrade.Slot)
 	}
 }
