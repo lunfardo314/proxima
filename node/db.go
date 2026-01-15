@@ -116,7 +116,8 @@ func (p *ProximaNode) databaseGC() {
 	p.Log().Infof("----- Badger DB GC (%v): %v", time.Since(start), err)
 }
 
-// logUpgradesList logs all upgrades in effect with their slots and library hashes.
+// logUpgradesList logs all upgrades with their slots and library hashes.
+// Activated upgrades are marked as "IN EFFECT", pending ones as "PENDING".
 func (p *ProximaNode) logUpgradesList() {
 	slots := ledger.GetAllUpgradeSlots(base.MaxSlot)
 	if len(slots) == 0 {
@@ -124,15 +125,26 @@ func (p *ProximaNode) logUpgradesList() {
 		return
 	}
 
-	p.Log().Infof("ledger upgrades in effect:")
+	// Check if pending upgrade is already activated
+	pendingActivated := false
+	if ledger.PendingUpgrade != nil {
+		for _, slot := range slots {
+			if slot == ledger.PendingUpgrade.Slot {
+				pendingActivated = true
+				break
+			}
+		}
+	}
+
+	p.Log().Infof("ledger upgrades:")
 	for _, slot := range slots {
 		lib := ledger.L(slot)
 		hash := lib.LibraryHash()
-		p.Log().Infof("       slot %8d: library hash %s", slot, hex.EncodeToString(hash[:]))
+		p.Log().Infof("       slot %8d: %s  IN EFFECT", slot, hex.EncodeToString(hash[:]))
 	}
 
-	// Log pending upgrade if available
-	if ledger.PendingUpgrade != nil {
+	// Log pending upgrade only if not yet activated
+	if ledger.PendingUpgrade != nil && !pendingActivated {
 		p.Log().Infof("       slot %8d: PENDING", ledger.PendingUpgrade.Slot)
 	}
 }
