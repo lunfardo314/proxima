@@ -218,7 +218,7 @@ func TestUpgradeLibraryStorage_ConstraintViolations(t *testing.T) {
 		require.NoError(t, WriteUpgradeLibraryUnchecked(store, 1000, []byte("v1")))
 
 		// Attempting to write too close to previous upgrade should fail
-		err := WriteUpgradeLibraryUnchecked(store, 1100, []byte("v2"))  // Only 100 slots after 1000
+		err := WriteUpgradeLibraryUnchecked(store, 1050, []byte("v2")) // Only 50 slots after 1000
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "too close")
 		require.Contains(t, err.Error(), "minimum distance")
