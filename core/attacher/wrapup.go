@@ -1,6 +1,7 @@
 package attacher
 
 import (
+	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
@@ -47,15 +48,13 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 
 	// Log highlighted message when upgrades are activated
 	for _, upg := range injectedUpgrades {
-		hashHex := fmt.Sprintf("%x", upg.LibraryHash[:])
-		a.Log().Infof("\n" +
-			"***************************************************************\n" +
-			"***         LEDGER UPGRADE ACTIVATED AT SLOT %-6d         ***\n" +
-			"***************************************************************\n" +
-			"Library Hash: %s\n" +
-			"Upgrade YAML:\n%s\n" +
+		a.Log().Infof("\n"+
+			"***************************************************************\n"+
+			"***         LEDGER UPGRADE ACTIVATED AT SLOT %-6d         ***\n"+
+			"***************************************************************\n"+
+			" Library Hash: %s\n"+
 			"***************************************************************",
-			upg.Slot, hashHex, string(upg.LibraryYAML))
+			upg.Slot, hex.EncodeToString(upg.LibraryHash[:]))
 	}
 
 	// GC-ing txids old enough. This is a deterministic operation on the state
