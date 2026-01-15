@@ -36,8 +36,9 @@ func (p *ProximaNode) initMultiStateLedger() {
 	// initialize the ledger library singleton with the ledger ID data from DB
 	multistate.InitLedgerFromStore(p.multiStateDB)
 	p.Log().Infof("ledger ID params:\n%s", ledger.Const.Lines("       ").String())
-	h := ledger.L(base.MaxSlot).LibraryHash()
-	p.Log().Infof("ledger constraint library hash: %s", hex.EncodeToString(h[:]))
+
+	// Log all upgrades in effect
+	p.logUpgradesList()
 
 	p.snapshotBranchID = multistate.FetchSnapshotBranchID(p.multiStateDB)
 	p.Log().Infof("current slot: %d", ledger.TimeNow().Slot)
@@ -113,4 +114,25 @@ func (p *ProximaNode) databaseGC() {
 	start := time.Now()
 	err := p.multiStateDB.RunValueLogGC(0.5)
 	p.Log().Infof("----- Badger DB GC (%v): %v", time.Since(start), err)
+}
+
+// logUpgradesList logs all upgrades in effect with their slots and library hashes.
+func (p *ProximaNode) logUpgradesList() {
+	slots := ledger.GetAllUpgradeSlots(base.MaxSlot)
+	if len(slots) == 0 {
+		p.Log().Warnf("no upgrades found in ledger")
+		return
+	}
+
+	p.Log().Infof("ledger upgrades in effect:")
+	for _, slot := range slots {
+		lib := ledger.L(slot)
+		hash := lib.LibraryHash()
+		p.Log().Infof("       slot %d: library hash %s", slot, hex.EncodeToString(hash[:]))
+	}
+
+	// Log pending upgrade if available
+	if ledger.PendingUpgrade != nil {
+		p.Log().Infof("       slot %d: PENDING", ledger.PendingUpgrade.Slot)
+	}
 }
