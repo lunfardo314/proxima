@@ -81,7 +81,14 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
 
-	ledgerLibraryHash := ledger.L(base.MaxSlot).Library.LibraryHash()
+	// Rendezvous isolates upgraded nodes from non-upgraded nodes.
+	// Use pending upgrade's hash if defined, otherwise latest in-effect library.
+	var ledgerLibraryHash [32]byte
+	if ledger.PendingUpgrade != nil {
+		ledgerLibraryHash = ledger.L(ledger.PendingUpgrade.Slot).LibraryHash()
+	} else {
+		ledgerLibraryHash = ledger.L(base.MaxSlot).LibraryHash()
+	}
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
 	ret := &Peers{
