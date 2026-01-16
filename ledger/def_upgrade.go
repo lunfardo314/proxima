@@ -43,14 +43,14 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 
 	lib.MustExtendMany(amountsAuxSource)
 	lib.MustExtendMany(addressED25519ConstraintSource)
-	lib.MustExtendMany(conditionalLockSource) // TODO not very necessary
-	lib.MustExtendMany(deadlineLockSource)    // TODO not very necessary
+	//lib.MustExtendMany(conditionalLockSource) // not very necessary
+	//lib.MustExtendMany(deadlineLockSource)    // not very necessary
 	lib.MustExtendMany(timelockSource)
 	lib.MustExtendMany(stemLockSource)
 	lib.MustExtendMany(chainConstraintSource)
 	lib.MustExtendMany(sequencerConstraintSource)
 	lib.MustExtendMany(chainLockConstraintSource)
-	lib.MustExtendMany(commitToSiblingSource) // TODO not very necessary
+	//lib.MustExtendMany(commitToSiblingSource) // not very necessary
 	lib.MustExtendMany(delegateLock2Source)
 	lib.MustExtendMany(tagAlongLockConstraintSource)
 	lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
