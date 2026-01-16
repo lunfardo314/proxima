@@ -126,8 +126,12 @@ functions:
       source: u64/%d
    -
       sym: constTransactionPaceSequencer
-      description: minimum number of ticks between sequencer transaction and its inputs and endorsed transactions  
+      description: minimum number of ticks between sequencer transaction and its inputs and endorsed transactions
       source: u64/%d
+   -
+      sym: constAttachmentRecursionDepthBaseline
+      description: maximum depth of attachment recursion for non-sequencer transactions
+      source: u64/10
    -
       sym: constDescription
       description: arbitrary binary data  

@@ -1680,8 +1680,8 @@ func TestAttachTimingRecursionDepth(t *testing.T) {
 		err := testData.wrk.EnsureLatestBranches()
 		require.NoError(t, err)
 
-		maxDepth := testData.env.MaxAttachmentRecursionDepth()
-		t.Logf("MaxAttachmentRecursionDepth = %d", maxDepth)
+		maxDepth := ledger.L(base.MaxSlot).AttachmentRecursionDepthBaseline
+		t.Logf("AttachmentRecursionDepthBaseline = %d", maxDepth)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
 		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())

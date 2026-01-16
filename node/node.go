@@ -390,7 +390,3 @@ func (p *ProximaNode) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
 	// in tests it may be differently to avoid problems with reusing private keys
 	return true, true
 }
-
-func (p *ProximaNode) MaxAttachmentRecursionDepth() int {
-	return 10
-}

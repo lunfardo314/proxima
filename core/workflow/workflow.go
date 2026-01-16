@@ -42,7 +42,6 @@ type (
 		EvidenceBranchInflationBonus(ib uint64)
 		GetLatestReliableBranch() (ret *multistate.BranchData)
 		CheckTxSenderConfig() (checkSeq, checkNonSeq bool)
-		MaxAttachmentRecursionDepth() int
 	}
 
 	Workflow struct {

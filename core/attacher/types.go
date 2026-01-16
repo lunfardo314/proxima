@@ -52,7 +52,6 @@ type (
 		Branches() *branches.Branches
 		EvidenceTxValidationStats(took time.Duration, numIn, numOut int)
 		EvidenceBranchInflationBonus(ib uint64)
-		MaxAttachmentRecursionDepth() int
 	}
 
 	attacher struct {
@@ -64,6 +63,8 @@ type (
 		pokeMe   func(vid *vertex.WrappedTx)
 		// trace this local attacher with all tags
 		forceTrace string
+		// cached attachment recursion depth limit from ledger constants
+		attachmentRecursionDepthLimit int
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone
