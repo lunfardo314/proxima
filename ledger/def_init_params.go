@@ -73,14 +73,17 @@ functions:
       sym: constInitialSupply
       description: Initial number of tokens in the ledger
       source: u64/1000000000000000
+      immutable: true
    -
       sym: constGenesisControllerPublicKey
       description: Public key ED25519 of the genesis controller in hexadecimal format
       source: 0x%s
+      immutable: true
    -
       sym: constGenesisTimeUnix
       description: Unix time in seconds when ledger was initiated. Timestamp 0|0 corresponds to the genesis time 
       source: u64/%d
+      immutable: true
    -
       sym: constTickDuration
       description: tick duration in nanoseconds. Default is 80ms

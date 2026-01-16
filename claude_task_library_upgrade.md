@@ -2,7 +2,7 @@
 
 ## Status: ✅ COMPLETED
 
-All implementation phases (1-14) are complete. Ready for hands-on testing and documentation.
+All implementation phases (1-15) are complete.
 
 ---
 
@@ -169,6 +169,89 @@ See sections below for complete phase documentation (preserved for reference).
 | 12 | EasyFL numArgs Immutability | (EasyFL dependency) |
 | 13 | Code Review and Cleanup | 7c8b5f8e |
 | 14 | Library Pointer Caching | a8526c4e |
+| 15 | Constants in Library Structure | ✅ DONE |
+
+---
+
+## Phase 15: Constants in Library Structure
+
+### Problem
+
+The global singleton `Const *Constants` in `ledger/constants.go` prevents upgrade-aware constant access. Since ledger constants can be modified upon upgrade, each library version needs its own `Constants` instance.
+
+### Current State
+
+- `Const` is a global singleton initialized once at startup via `initConstantsSingleton()`
+- `ConstantsFromLibrary()` extracts constants from EasyFL library
+- ~237 usages of `ledger.Const.X` or `Const.X` across 42+ files
+
+### Solution
+
+Embed `Constants` directly in the `Library` structure (not as pointer). Access becomes `L(slot).Constants.X`.
+
+### Implementation Steps
+
+#### Step 1: Embed Constants in Library Structure
+
+**File: `ledger/lib.go`**
+```go
+type Library struct {
+    *easyfl.Library[*EvalContext]
+    definitionsYAML    []byte
+    constraintByPrefix map[string]*constraintRecord
+    constraintNames    set.Set[string]
+    locksByName        map[string]LockParser
+    inlineTests        []func()
+    upgradeChainData   *UpgradeChainData
+    Constants          Constants  // Embedded constants for this library version
+}
+```
+
+#### Step 2: Initialize Constants During Library Loading
+
+**File: `ledger/lib_singleton.go`**
+
+In `parseLibrary()`:
+```go
+func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Library {
+    lib, err := ParseLibraryFromYAML(yamlData, GetEmbeddedFunctionResolver)
+    util.AssertNoError(err)
+
+    result := newLibrary(lib, yamlData)
+    result.Constants = *ConstantsFromLibrary(lib)  // Initialize constants
+    result.registerConstraints()
+    return result
+}
+```
+
+Remove `initConstantsSingleton()` call from `MustInitLibraryCache()`.
+
+#### Step 3: Keep Backward-Compatible Global Const
+
+Keep `var Const *Constants` pointing to `&L(0).Constants` for backward compatibility during migration.
+
+#### Step 4: Update All Usages (~237 locations)
+
+| Context | Old Pattern | New Pattern |
+|---------|-------------|-------------|
+| Slot-aware code | `ledger.Const.X` | `L(slot).Constants.X` |
+| Transaction context | `ledger.Const.X` | `tx.Library().Constants.X` |
+| Genesis-only / tests | `ledger.Const.X` | `ledger.Const.X` (keep) |
+
+**Key files:**
+- `ledger/transaction/validate.go` → `ctx.Transaction.Library().Constants.X`
+- `core/attacher/*.go` → `L(slot).Constants.X`
+- `sequencer/**/*.go` → slot-appropriate access
+- `ledger/*.go`, `api/**/*.go`, `proxi/**/*.go`
+
+### Files to Modify
+
+**Core:**
+- `ledger/lib.go` - Add `Constants` embedded field
+- `ledger/constants.go` - Remove singleton init, keep `Const` as alias
+- `ledger/lib_singleton.go` - Initialize constants in `parseLibrary()`
+
+**Usages (~42 files)** - Update to slot-aware access where appropriate
 
 ---
 

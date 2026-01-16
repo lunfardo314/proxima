@@ -51,7 +51,7 @@ func runBootstrapAccount(_ *cobra.Command, args []string) {
 	if len(args) > 0 {
 		b, err := strconv.Atoi(args[0])
 		glb.AssertNoError(err)
-		glb.Assertf(uint64(b) >= ledger.Const.MinimumInflatableAmount0, "bootstrap account balance must be at least %s", util.Th(bootstrapBalance))
+		glb.Assertf(uint64(b) >= ledger.L(0).MinimumInflatableAmount0, "bootstrap account balance must be at least %s", util.Th(bootstrapBalance))
 		bootstrapBalance = uint64(b)
 	}
 	addr := glb.GetWalletData().Account

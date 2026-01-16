@@ -55,7 +55,7 @@ func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte,
 
 func (d *DelegateLock) Source() string {
 	m := "0x"
-	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(Const.MaxFrozenEpochs) {
+	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(L(base.MaxSlot).MaxFrozenEpochs) {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
 	}
 	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), m, d.RequiredInflationShare)
@@ -104,8 +104,8 @@ func Delegate2LockFromBytesAtSlot(data []byte, slot uint32) (*DelegateLock, erro
 	}
 	ret.MaxFrozenEpochs = byte(a2)
 	if ret.MaxFrozenEpochs == 0 {
-		// set default
-		ret.MaxFrozenEpochs = byte(Const.MaxFrozenEpochs)
+		// set default from the library for this slot
+		ret.MaxFrozenEpochs = byte(lib.MaxFrozenEpochs)
 	}
 
 	// minimum inflation advance

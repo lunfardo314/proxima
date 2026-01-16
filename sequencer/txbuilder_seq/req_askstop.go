@@ -159,7 +159,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	}
 
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(r.Output.TokenBalance() + inflation)
-	maxFrozenEpochs := byte(ledger.Const.MaxFrozenEpochs)
+	maxFrozenEpochs := byte(txb.MaxFrozenEpochs)
 	a := oProduce.Amounts()
 	// add negative deltas to the sequencer totals
 	for i := byte(0); i < maxFrozenEpochs; i++ {

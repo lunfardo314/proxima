@@ -155,7 +155,7 @@ func (seq *Sequencer) Start() {
 
 		seq.log.Infof("sequencer has been STARTED %s", util.Ref(seq.SequencerID()).String())
 
-		ttl := time.Duration(seq.config.MilestonesTTLSlots) * ledger.Const.SlotDuration()
+		ttl := time.Duration(seq.config.MilestonesTTLSlots) * ledger.L(0).SlotDuration()
 
 		seq.RepeatInBackground(seq.SequencerName()+"_own_milestone_cleanup", ownMilestoneCleanupPeriod, func() bool {
 			if n, remain := seq.purgeOwnMilestones(ttl); n > 0 {
@@ -237,8 +237,8 @@ func (seq *Sequencer) ensurePreConditions() bool {
 		seq.log.Warnf("ensurePreConditions: Can't start sequencer. EXIT..")
 		return false
 	}
-	seq.log.Infof("ensurePreConditions: waiting for %v (1 slot) before starting sequencer", ledger.Const.SlotDuration())
-	time.Sleep(ledger.Const.SlotDuration())
+	seq.log.Infof("ensurePreConditions: waiting for %v (1 slot) before starting sequencer", ledger.L(0).SlotDuration())
+	time.Sleep(ledger.L(0).SlotDuration())
 	return true
 }
 
@@ -254,7 +254,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 	var startOutput vertex.WrappedOutput
 
 	deadline := time.Now().Add(ensureStartingMilestoneTimeout)
-	succ := seq.RepeatSync(ledger.Const.TickDuration, func() bool {
+	succ := seq.RepeatSync(ledger.L(0).TickDuration, func() bool {
 		if time.Now().After(deadline) {
 			return false
 		}
@@ -303,13 +303,14 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 	seq.log.Infof("checkSequencerStartOutput: sequencer controller is %s", lock.String())
 
 	amount := oReal.TokenBalance()
-	if amount < ledger.Const.MinimumAmountOnSequencer {
+	lib := ledger.L(base.MaxSlot)
+	if amount < lib.MinimumAmountOnSequencer {
 		seq.log.Errorf("checkSequencerStartOutput: amount %s on output is less than minimum %s required on sequencer",
-			util.Th(amount), util.Th(ledger.Const.MinimumAmountOnSequencer))
+			util.Th(amount), util.Th(lib.MinimumAmountOnSequencer))
 		return false
 	}
 	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",
-		wOut.IDStringShort(), util.Th(amount), util.PercentString(int(amount), int(ledger.Const.InitialSupply)))
+		wOut.IDStringShort(), util.Th(amount), util.PercentString(int(amount), int(ledger.L(0).InitialSupply)))
 	return true
 }
 
@@ -410,7 +411,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	seq.slotData.NewTarget()
 
 	seq.Assertf(ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
-		ledger.Const.TransactionPaceSequencer, seq.lastSubmittedTs.String, targetTs.String)
+		ledger.L(targetTs.Slot).TransactionPaceSequencer, seq.lastSubmittedTs.String, targetTs.String)
 
 	seq.Assertf(targetTs.After(seq.lastSubmittedTs), "wrong target ts %s: should be after previous submitted %s",
 		targetTs.String, seq.lastSubmittedTs.String)
@@ -492,22 +493,24 @@ func (seq *Sequencer) getNextTargetTime() (base.LedgerTime, bool) {
 
 	nowis := ledger.TimeNow()
 
-	if base.DiffTicks(nowis.NextSlotBoundary(), nowis) < int64(ledger.Const.PreBranchConsolidationTicks) {
+	nextBoundarySlot := nowis.NextSlotBoundary().Slot
+	libNextSlot := ledger.L(nextBoundarySlot)
+	if base.DiffTicks(nowis.NextSlotBoundary(), nowis) < int64(libNextSlot.PreBranchConsolidationTicks) {
 		return nowis.NextSlotBoundary(), true
 	}
 
 	var targetAbsoluteMinimum base.LedgerTime
 
 	if seq.lastSubmittedTs.IsSlotBoundary() {
-		targetAbsoluteMinimum = seq.lastSubmittedTs.AddTicks(int(ledger.Const.PostBranchConsolidationTicks))
+		targetAbsoluteMinimum = seq.lastSubmittedTs.AddTicks(int(libNextSlot.PostBranchConsolidationTicks))
 	} else {
 		targetAbsoluteMinimum = base.MaximumTime(
 			seq.lastSubmittedTs.AddTicks(seq.config.Pace),
 			nowis.AddTicks(1),
 		)
 	}
-	if uint8(targetAbsoluteMinimum.Tick) < ledger.Const.PostBranchConsolidationTicks {
-		targetAbsoluteMinimum = base.T(targetAbsoluteMinimum.Slot, ledger.Const.PostBranchConsolidationTicks)
+	if uint8(targetAbsoluteMinimum.Tick) < libNextSlot.PostBranchConsolidationTicks {
+		targetAbsoluteMinimum = base.T(targetAbsoluteMinimum.Slot, libNextSlot.PostBranchConsolidationTicks)
 	}
 	nextSlotBoundary := nowis.NextSlotBoundary()
 
@@ -708,7 +711,7 @@ func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*tra
 	seq.Tracef(TraceTag, "generateMilestoneForTarget: target: %s, deadline: %s, nowis: %s",
 		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 
-	if behind := deadline.Sub(nowis); behind < -2*ledger.Const.TickDuration {
+	if behind := deadline.Sub(nowis); behind < -2*ledger.L(0).TickDuration {
 		return nil, nil, "", fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
 			targetTs.String(), ledger.ClockTime(targetTs).Format("15:04:05.999"), behind)
 	}

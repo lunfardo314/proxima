@@ -209,13 +209,13 @@ func TestTagAlongSimple(t *testing.T) {
 			ln := lines.New("         ")
 			for _, slot := range []uint32{
 				ts.Slot,
-				ts.Slot + ledger.Const.TagAlongSlots - 1,
-				ts.Slot + ledger.Const.TagAlongSlots,
-				ts.Slot + ledger.Const.TagAlongSlots + 1,
-				ts.Slot + ledger.Const.TagAlongReclaimSlots - 1,
-				ts.Slot + ledger.Const.TagAlongReclaimSlots,
-				ts.Slot + ledger.Const.TagAlongReclaimSlots + 1,
-				ts.Slot + ledger.Const.TagAlongReclaimSlots + 1000,
+				ts.Slot + ledger.L(0).TagAlongSlots - 1,
+				ts.Slot + ledger.L(0).TagAlongSlots,
+				ts.Slot + ledger.L(0).TagAlongSlots + 1,
+				ts.Slot + ledger.L(0).TagAlongReclaimSlots - 1,
+				ts.Slot + ledger.L(0).TagAlongReclaimSlots,
+				ts.Slot + ledger.L(0).TagAlongReclaimSlots + 1,
+				ts.Slot + ledger.L(0).TagAlongReclaimSlots + 1000,
 			} {
 				ln.Add("      status in slot %d: %s", slot, o.StatusInSlot(slot))
 			}
@@ -273,7 +273,7 @@ func TestTagAlongSimple(t *testing.T) {
 				t.Logf("%d   taTs: %s, txTs %s reclaim OK", i, taTs.String(), ts.String())
 				break
 			}
-			require.True(t, ts.Slot < taTs.Slot+ledger.Const.TagAlongReclaimSlots)
+			require.True(t, ts.Slot < taTs.Slot+ledger.L(0).TagAlongReclaimSlots)
 			//t.Logf("%d   taTs: %s, txTs %s FAILED with error '%v'", i, taTs.String(), ts.String(), err)
 			require.NoError(t, util.MustErrorWith(err, "unlock window error"))
 		}
@@ -365,11 +365,11 @@ func TestTagAlongBoundaries(t *testing.T) {
 		}
 
 		// slot TagAlongSlots-1 should succeed (still in tag-along window)
-		err = tryTargetUnlock(ledger.Const.TagAlongSlots - 1)
+		err = tryTargetUnlock(ledger.L(0).TagAlongSlots - 1)
 		require.NoError(t, err, "target should unlock at slot TagAlongSlots-1")
 
 		// slot TagAlongSlots should fail (entered reclaim window)
-		err = tryTargetUnlock(ledger.Const.TagAlongSlots)
+		err = tryTargetUnlock(ledger.L(0).TagAlongSlots)
 		require.Error(t, err, "target should NOT unlock at slot TagAlongSlots")
 		require.True(t, strings.Contains(err.Error(), "inside reclaim slots must be unlocked by the sender"))
 	})
@@ -461,11 +461,11 @@ func TestTagAlongBoundaries(t *testing.T) {
 		}
 
 		// slot TagAlongReclaimSlots-1 should fail (still in reclaim window, only sender can unlock)
-		err = tryRandomUnlock(ledger.Const.TagAlongReclaimSlots - 1)
+		err = tryRandomUnlock(ledger.L(0).TagAlongReclaimSlots - 1)
 		require.Error(t, err, "random should NOT unlock at slot TagAlongReclaimSlots-1")
 
 		// slot TagAlongReclaimSlots should succeed (entered purge window)
-		err = tryRandomUnlock(ledger.Const.TagAlongReclaimSlots)
+		err = tryRandomUnlock(ledger.L(0).TagAlongReclaimSlots)
 		require.NoError(t, err, "random should unlock at slot TagAlongReclaimSlots")
 	})
 }
@@ -809,7 +809,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in reclaim window (middle of the window)
-		txb.TransactionData.Timestamp = taTs.AddSlots(ledger.Const.TagAlongSlots + 10)
+		txb.TransactionData.Timestamp = taTs.AddSlots(ledger.L(0).TagAlongSlots + 10)
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 		txb.SignED25519(privKeyRandom)
 		_, _, _, err = txb.BytesWithValidation()
@@ -843,7 +843,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in reclaim window (middle of the window)
-		txb.TransactionData.Timestamp = taTs.AddSlots(ledger.Const.TagAlongSlots + 10)
+		txb.TransactionData.Timestamp = taTs.AddSlots(ledger.L(0).TagAlongSlots + 10)
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 		txb.SignED25519(privKeyTarget)
 		_, _, _, err = txb.BytesWithValidation()
@@ -1196,7 +1196,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 
 		// reclaim in reclaim window
-		reclaimTs := taTs.AddSlots(ledger.Const.TagAlongSlots + 1)
+		reclaimTs := taTs.AddSlots(ledger.L(0).TagAlongSlots + 1)
 		txb2.TransactionData.Timestamp = reclaimTs
 		txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
 		txb2.SignED25519(privKeySender)

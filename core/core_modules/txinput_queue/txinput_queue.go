@@ -72,7 +72,7 @@ const (
 func New(env environment) *TxInputQueue {
 	ret := &TxInputQueue{
 		environment: env,
-		inGate:      newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.Const.SlotDuration(), cleanIfExceeds),
+		inGate:      newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds),
 	}
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
 	ret.CoreModule.Start()

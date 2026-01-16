@@ -127,17 +127,20 @@ type TagAlongOutput struct {
 
 func (o *TagAlongOutput) IsTagAlongSlot(slot uint32) bool {
 	s := o.ID.Slot()
-	return slot >= s && slot-s < Const.TagAlongSlots
+	lib := L(s) // use library from output creation slot
+	return slot >= s && slot-s < lib.TagAlongSlots
 }
 
 func (o *TagAlongOutput) IsTagAlongReclaimSlot(slot uint32) bool {
 	s := o.ID.Slot()
-	return slot >= s && slot-s >= Const.TagAlongSlots && slot-s < Const.TagAlongReclaimSlots
+	lib := L(s) // use library from output creation slot
+	return slot >= s && slot-s >= lib.TagAlongSlots && slot-s < lib.TagAlongReclaimSlots
 }
 
 func (o *TagAlongOutput) IsTagAlongPurgeSlot(slot uint32) bool {
 	s := o.ID.Slot()
-	return slot >= s && slot-s >= Const.TagAlongReclaimSlots
+	lib := L(s) // use library from output creation slot
+	return slot >= s && slot-s >= lib.TagAlongReclaimSlots
 }
 
 func (o *TagAlongOutput) StatusInSlot(slot uint32) string {

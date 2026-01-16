@@ -304,8 +304,8 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		for _, o := range testData.conflictingOutputs {
 			inTS = append(inTS, o.Timestamp())
 		}
-		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer))
-		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, loader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
@@ -360,7 +360,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPace)))
+		td := txbuilder.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPace)))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
@@ -376,8 +376,8 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		outToConsume := vidConflicting.MustOutputWithIDAt(0)
 		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
-		ts := outToConsume.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer))
-		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+		ts := outToConsume.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
 			Timestamp:        ts,
@@ -430,7 +430,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			amount += o.Output.TokenBalance()
 		}
 
-		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer))
+		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPaceSequencer))
 
 		// checking invalid explicit baseline
 		explicitBaseline := util.Ref(base.RandomTransactionID(true, 5, ts))
@@ -522,7 +522,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
-			Timestamp:        base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer)),
+			Timestamp:        base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPaceSequencer)),
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
 			PrivateKey:       genesisPrivateKey,
@@ -676,7 +676,7 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 		chainIn[seqNr] = o.MustAsChainOutput()
 		ts = base.MaximumTime(ts, o.Timestamp())
 	}
-	ts = ts.AddTicks(int(ledger.Const.TransactionPaceSequencer))
+	ts = ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))
 	txBytesSeq, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		SeqName:      "seq",
 		Timestamp:    ts,
@@ -857,7 +857,7 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	txBytesConflicting, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 		SeqName:      "dummy",
 		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:    ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(int(ledger.Const.TransactionPaceSequencer))),
+		Timestamp:    ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))),
 		Endorsements: util.List(tx1.ID()),
 		PrivateKey:   testData.privKeyAux,
 	})
@@ -1324,7 +1324,7 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create transaction exactly at TransactionPace ticks
-		exactPaceTs := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		exactPaceTs := sourceOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		if exactPaceTs.IsSlotBoundary() {
 			exactPaceTs = exactPaceTs.AddTicks(1)
 		}
@@ -1343,7 +1343,7 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 
 		// Non-sequencer tx shouldn't have "Bad" status if it was built correctly
 		require.NotEqual(t, vertex.Bad.String(), vid.GetTxStatus().String(), "transaction at exact pace should not be rejected")
-		t.Logf("TransactionPace = %d ticks, transaction at exact pace: PASSED (status: %s)", ledger.Const.TransactionPace, vid.GetTxStatus().String())
+		t.Logf("TransactionPace = %d ticks, transaction at exact pace: PASSED (status: %s)", ledger.L(0).TransactionPace, vid.GetTxStatus().String())
 	})
 
 	t.Run("non-sequencer pace minus one", func(t *testing.T) {
@@ -1363,20 +1363,20 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		// Calculate timestamps at pace-1 and at exact pace
-		tooFastTs := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace) - 1)
-		exactPaceTs := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		tooFastTs := sourceOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace) - 1)
+		exactPaceTs := sourceOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 
 		// Verify the difference calculation
 		tooFastDiff := base.DiffTicks(tooFastTs, sourceOutput.Timestamp())
 		exactDiff := base.DiffTicks(exactPaceTs, sourceOutput.Timestamp())
 
-		require.EqualValues(t, ledger.Const.TransactionPace-1, tooFastDiff,
+		require.EqualValues(t, ledger.L(0).TransactionPace-1, tooFastDiff,
 			"pace-1 should be exactly TransactionPace-1 ticks")
-		require.EqualValues(t, ledger.Const.TransactionPace, exactDiff,
+		require.EqualValues(t, ledger.L(0).TransactionPace, exactDiff,
 			"exact pace should be exactly TransactionPace ticks")
 
 		t.Logf("TransactionPace = %d, pace-1 = %d, verified constraint boundary calculation",
-			ledger.Const.TransactionPace, ledger.Const.TransactionPace-1)
+			ledger.L(0).TransactionPace, ledger.L(0).TransactionPace-1)
 	})
 
 	t.Run("sequencer exact pace", func(t *testing.T) {
@@ -1392,8 +1392,8 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 
 		chainOrigin := testData.chainOrigins[0]
 		// Exact sequencer pace
-		exactSeqPaceTs := chainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer))
-		exactSeqPaceTs = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(exactSeqPaceTs)
+		exactSeqPaceTs := chainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		exactSeqPaceTs = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(exactSeqPaceTs)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:      "test",
@@ -1413,7 +1413,7 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 		wg.Wait()
 
 		require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String(), "sequencer at exact pace should be valid")
-		t.Logf("TransactionPaceSequencer = %d ticks, sequencer at exact pace: PASSED", ledger.Const.TransactionPaceSequencer)
+		t.Logf("TransactionPaceSequencer = %d ticks, sequencer at exact pace: PASSED", ledger.L(0).TransactionPaceSequencer)
 	})
 }
 
@@ -1486,7 +1486,7 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 			lastTickTs = lastTickTs.AddTicks(1)
 		}
 		// Ensure it's at valid pace from source
-		if base.DiffTicks(lastTickTs, sourceOutput.Timestamp()) < int64(ledger.Const.TransactionPace) {
+		if base.DiffTicks(lastTickTs, sourceOutput.Timestamp()) < int64(ledger.L(0).TransactionPace) {
 			lastTickTs = base.T(lastTickTs.Slot+1, base.MaxTickValue)
 		}
 
@@ -1526,7 +1526,7 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		// First transaction in current slot
-		ts1 := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts1 := sourceOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		if ts1.IsSlotBoundary() {
 			ts1 = ts1.AddTicks(1)
 		}
@@ -1546,7 +1546,7 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 
 		// Second transaction in next slot (cross-slot)
 		output1 := vid1.MustOutputWithIDAt(0)
-		ts2 := base.T(ts1.Slot+1, ledger.Const.TransactionPace+1) // Next slot
+		ts2 := base.T(ts1.Slot+1, ledger.L(0).TransactionPace+1) // Next slot
 
 		td2 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts2).
 			MustWithInputs(&output1).
@@ -1571,29 +1571,29 @@ func TestAttachTimingPreBranchConsolidation(t *testing.T) {
 		// Test that we can correctly identify timestamps in the pre-consolidation window.
 		// The actual enforcement of pre-consolidation restrictions is tested implicitly
 		// through the ledger validation scripts.
-		if ledger.Const.PreBranchConsolidationTicks == 0 {
+		if ledger.L(0).PreBranchConsolidationTicks == 0 {
 			t.Skip("PreBranchConsolidationTicks is 0, no constraint to test")
 		}
 
 		// Calculate pre-consolidation timestamp (within window before slot boundary)
-		preConsolidationTick := base.MaxTickValue - ledger.Const.PreBranchConsolidationTicks + 1
+		preConsolidationTick := base.MaxTickValue - ledger.L(0).PreBranchConsolidationTicks + 1
 		preConsolidationTs := base.T(1, preConsolidationTick)
 
-		require.True(t, ledger.Const.IsPreBranchConsolidationTimestamp(preConsolidationTs),
+		require.True(t, ledger.L(0).IsPreBranchConsolidationTimestamp(preConsolidationTs),
 			"timestamp should be in pre-consolidation window")
 
 		// One tick before should NOT be in pre-consolidation
 		beforePreConsolidation := base.T(1, preConsolidationTick-1)
-		require.False(t, ledger.Const.IsPreBranchConsolidationTimestamp(beforePreConsolidation),
+		require.False(t, ledger.L(0).IsPreBranchConsolidationTimestamp(beforePreConsolidation),
 			"timestamp before window should not be in pre-consolidation")
 
 		t.Logf("Pre-consolidation window: ticks > %d, test tick: %d (in window: true), tick %d (in window: false)",
-			base.MaxTickValue-ledger.Const.PreBranchConsolidationTicks, preConsolidationTick, preConsolidationTick-1)
+			base.MaxTickValue-ledger.L(0).PreBranchConsolidationTicks, preConsolidationTick, preConsolidationTick-1)
 	})
 
 	t.Run("at exact consolidation boundary", func(t *testing.T) {
 		// Test at exact boundary of pre-consolidation window
-		if ledger.Const.PreBranchConsolidationTicks == 0 {
+		if ledger.L(0).PreBranchConsolidationTicks == 0 {
 			t.Skip("PreBranchConsolidationTicks is 0, no constraint to test")
 		}
 
@@ -1601,20 +1601,20 @@ func TestAttachTimingPreBranchConsolidation(t *testing.T) {
 		defer testData.stopAndWait()
 
 		// Test the boundary tick value
-		boundaryTick := base.MaxTickValue - ledger.Const.PreBranchConsolidationTicks
+		boundaryTick := base.MaxTickValue - ledger.L(0).PreBranchConsolidationTicks
 		boundaryTs := base.T(1, boundaryTick)
 
 		// Boundary tick should NOT be in pre-consolidation
-		require.False(t, ledger.Const.IsPreBranchConsolidationTimestamp(boundaryTs),
+		require.False(t, ledger.L(0).IsPreBranchConsolidationTimestamp(boundaryTs),
 			"tick at exact boundary should NOT be in pre-consolidation")
 
 		// One tick after should BE in pre-consolidation
 		afterBoundaryTs := base.T(1, boundaryTick+1)
-		require.True(t, ledger.Const.IsPreBranchConsolidationTimestamp(afterBoundaryTs),
+		require.True(t, ledger.L(0).IsPreBranchConsolidationTimestamp(afterBoundaryTs),
 			"tick after boundary should be in pre-consolidation")
 
 		t.Logf("PreBranchConsolidationTicks=%d, boundary tick=%d: PASSED",
-			ledger.Const.PreBranchConsolidationTicks, boundaryTick)
+			ledger.L(0).PreBranchConsolidationTicks, boundaryTick)
 	})
 }
 
@@ -1627,22 +1627,22 @@ func TestAttachTimingPostBranchConsolidation(t *testing.T) {
 		// through the ledger validation scripts.
 
 		// Exact post-consolidation timestamp
-		postConsolidationTs := base.T(1, ledger.Const.PostBranchConsolidationTicks)
-		require.True(t, ledger.Const.IsPostBranchConsolidationTimestamp(postConsolidationTs),
+		postConsolidationTs := base.T(1, ledger.L(0).PostBranchConsolidationTicks)
+		require.True(t, ledger.L(0).IsPostBranchConsolidationTimestamp(postConsolidationTs),
 			"timestamp at exact post-consolidation ticks should be in post-consolidation window")
 
 		// One tick before should NOT be in post-consolidation
-		beforePostConsolidation := base.T(1, ledger.Const.PostBranchConsolidationTicks-1)
-		require.False(t, ledger.Const.IsPostBranchConsolidationTimestamp(beforePostConsolidation),
+		beforePostConsolidation := base.T(1, ledger.L(0).PostBranchConsolidationTicks-1)
+		require.False(t, ledger.L(0).IsPostBranchConsolidationTimestamp(beforePostConsolidation),
 			"timestamp before post-consolidation ticks should not be in post-consolidation window")
 
 		// Tick 0 (branch) should NOT be in post-consolidation
 		branchTs := base.T(1, 0)
-		require.False(t, ledger.Const.IsPostBranchConsolidationTimestamp(branchTs),
+		require.False(t, ledger.L(0).IsPostBranchConsolidationTimestamp(branchTs),
 			"branch tick (0) should not be in post-consolidation window")
 
 		t.Logf("PostBranchConsolidationTicks=%d, tick %d (in window: true), tick %d (in window: false): PASSED",
-			ledger.Const.PostBranchConsolidationTicks, ledger.Const.PostBranchConsolidationTicks, ledger.Const.PostBranchConsolidationTicks-1)
+			ledger.L(0).PostBranchConsolidationTicks, ledger.L(0).PostBranchConsolidationTicks, ledger.L(0).PostBranchConsolidationTicks-1)
 	})
 
 	t.Run("ensure post-consolidation helper", func(t *testing.T) {
@@ -1652,16 +1652,16 @@ func TestAttachTimingPostBranchConsolidation(t *testing.T) {
 
 		// Timestamp before post-consolidation
 		earlyTs := base.T(1, 1)
-		require.False(t, ledger.Const.IsPostBranchConsolidationTimestamp(earlyTs))
+		require.False(t, ledger.L(0).IsPostBranchConsolidationTimestamp(earlyTs))
 
 		// Use helper to adjust
-		adjustedTs := ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(earlyTs)
-		require.True(t, ledger.Const.IsPostBranchConsolidationTimestamp(adjustedTs))
-		require.EqualValues(t, ledger.Const.PostBranchConsolidationTicks, adjustedTs.Tick)
+		adjustedTs := ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(earlyTs)
+		require.True(t, ledger.L(0).IsPostBranchConsolidationTimestamp(adjustedTs))
+		require.EqualValues(t, ledger.L(0).PostBranchConsolidationTicks, adjustedTs.Tick)
 
 		// Timestamp already at post-consolidation should not change
-		okTs := base.T(1, ledger.Const.PostBranchConsolidationTicks+10)
-		unchanged := ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(okTs)
+		okTs := base.T(1, ledger.L(0).PostBranchConsolidationTicks+10)
+		unchanged := ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(okTs)
 		require.EqualValues(t, okTs, unchanged)
 
 		t.Logf("EnsurePostBranchConsolidationConstraintTimestamp helper: PASSED")
@@ -1700,7 +1700,7 @@ func TestAttachTimingRecursionDepth(t *testing.T) {
 
 		txBytesChain := make([][]byte, chainLength)
 		for i := 0; i < chainLength; i++ {
-			ts := prevOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+			ts := prevOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 			if ts.IsSlotBoundary() {
 				ts = ts.AddTicks(1)
 			}
@@ -1759,8 +1759,8 @@ func TestAttachDeadlockContextCancellation(t *testing.T) {
 
 		chainOrigin := testData.chainOrigins[0]
 
-		ts := chainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer))
-		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+		ts := chainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:      "test",
@@ -1820,7 +1820,7 @@ func TestAttachDeadlockConcurrentAttachers(t *testing.T) {
 		sourceOutput, err := oDatas[0].Parse()
 		require.NoError(t, err)
 
-		ts := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := sourceOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		if ts.IsSlotBoundary() {
 			ts = ts.AddTicks(1)
 		}
@@ -1907,7 +1907,7 @@ func TestAttachDeadlockSolidificationDeadline(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create first transaction (don't store it - will be missing)
-		ts1 := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts1 := sourceOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		if ts1.IsSlotBoundary() {
 			ts1 = ts1.AddTicks(1)
 		}
@@ -1925,7 +1925,7 @@ func TestAttachDeadlockSolidificationDeadline(t *testing.T) {
 
 		// Create second transaction that depends on first (missing)
 		output1 := tx1.MustProducedOutputWithIDAt(0)
-		ts2 := ts1.AddTicks(int(ledger.Const.TransactionPace))
+		ts2 := ts1.AddTicks(int(ledger.L(0).TransactionPace))
 		if ts2.IsSlotBoundary() {
 			ts2 = ts2.AddTicks(1)
 		}
@@ -1975,8 +1975,8 @@ func TestAttachDeadlockShutdownDuringAttachment(t *testing.T) {
 		const numAttachments = 5
 		for i := 0; i < numAttachments; i++ {
 			chainOrigin := testData.chainOrigins[i%len(testData.chainOrigins)]
-			ts := chainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer) * (i + 1))
-			ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+			ts := chainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer) * (i + 1))
+			ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 			txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 				SeqName:      "test",

@@ -114,7 +114,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 }
 
 func TestDelegationLock2Init(t *testing.T) {
-	require.EqualValues(t, 60, ledger.Const.SafeRevocationSlots)
+	require.EqualValues(t, 60, ledger.L(0).SafeRevocationSlots)
 
 	td := &testData{T: t}
 	var err error
@@ -257,7 +257,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	require.NoError(td, err)
 
 	diffSlots := ts.Slot - td.delegatedOutput.Timestamp().Slot
-	diffEpochs := ledger.Const.DiffEpochs(td.delegatedOutput.Target.ChainID(), ts, td.delegatedOutput.Timestamp())
+	diffEpochs := ledger.L(0).DiffEpochs(td.delegatedOutput.Target.ChainID(), ts, td.delegatedOutput.Timestamp())
 	td.Logf(">>>> revoke -----\nts = %s, diffSlots = %d, diffEpochs = %d\n-----\n%s",
 		ts.String(), diffSlots, diffEpochs, td.delegatedOutput.LinesSourceFull("   ").String())
 
@@ -395,13 +395,13 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("master+init+kill", func(t *testing.T) {
 		// create delegation output and destroy it with next tx
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 		unfreezeSlot := td.delegatedOutput.UnfreezeSlot()
 		//ts = base.T(uint32(unfreezeSlot-1), 10)
 
-		ts = td.delegatedOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts = td.delegatedOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		t.Logf("ts: %s, unfreeze: %d", ts.String(), unfreezeSlot)
 
 		err = td.discontinueDelegation(ts, true)
@@ -410,7 +410,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target+init", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 
@@ -426,12 +426,12 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target+init+fail", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
-			ts:                       td.timestampTicksForward(int(ledger.Const.TransactionPace)),
+			ts:                       td.timestampTicksForward(int(ledger.L(0).TransactionPace)),
 			freezeUntilEpoch:         0,
 			prntx:                    true,
 			disableConsistencyChecks: true,
@@ -441,18 +441,18 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target_freeze_ok", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 1, 0)
 		require.NoError(t, err)
 
 		//t.Logf("=========\n%s", td.delegatedOutput.OutputWithID.String())
 
 		ts = td.timestampSlotsForward(1000)
-		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Slot)
+		txEpoch := ledger.L(0).EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Slot)
 		_ = txEpoch
 		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		frozenEpochs := freezeUntilEpoch - txEpoch + 1
-		frozenSlots := ledger.Const.FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), ts.Slot, byte(frozenEpochs))
+		frozenSlots := ledger.L(0).FrozenSlotsFromFrozenEpochs(td.delegatedOutput.Target.ChainID(), ts.Slot, byte(frozenEpochs))
 		t.Logf(">>>>>>>>> freezeUntilEpoch: %d, frozenEpochs: %d, frozenSlots: %d", freezeUntilEpoch, frozenEpochs, frozenSlots)
 
 		err = td.transitChainWithDelegationWithMake(1, transitWithMakeParams{
@@ -466,12 +466,12 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("wrong_last_frozen_epoch", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 1, 0)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(500)
-		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot))
+		txEpoch := ledger.L(0).EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), uint32(ts.Slot))
 		_ = txEpoch
 		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 
@@ -486,7 +486,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target_freeze_ok_inflate", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -504,12 +504,12 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("target_freeze_ok_add_amount", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
 		ts = td.timestampSlotsForward(700)
-		txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Slot)
+		txEpoch := ledger.L(0).EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), ts.Slot)
 		_ = txEpoch
 		freezeUntilEpoch := td.delegatedOutput.FreezeUntilMax(ts)
 		frozen := freezeUntilEpoch - txEpoch + 1
@@ -525,7 +525,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("master_unlock_frozen", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -557,7 +557,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("revoke", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -597,7 +597,7 @@ func TestDelegationLockConsume(t *testing.T) {
 	t.Run("revoke-inflate", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
 
@@ -670,7 +670,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 		o.MustPushConstraint(cc.Bytes())
 		freezeUntil := uint32(0)
 		if par.frozenEpochs > 0 {
-			txEpoch := ledger.Const.EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot)
+			txEpoch := ledger.L(0).EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot)
 			freezeUntil = txEpoch + uint32(par.frozenEpochs) - 1
 		}
 		o.MustPushConstraint(ledger.DelegateLockState{
@@ -732,7 +732,7 @@ func TestFrozenCoverage1(t *testing.T) {
 	t.Run("init", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 0)
 		require.NoError(t, err)
 
@@ -748,7 +748,7 @@ func TestFrozenCoverage1(t *testing.T) {
 	t.Run("init fail", func(t *testing.T) {
 		// target consumes initial delegation
 		td.init()
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, 968)
 		require.NoError(t, err)
 
@@ -769,7 +769,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 1
 			inflationShare = 10
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -793,7 +793,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 1
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -819,7 +819,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 1
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -845,7 +845,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 2
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -872,7 +872,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 2
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 2, inflationShare)
 		require.NoError(t, err)
 
@@ -899,7 +899,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 3
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
@@ -930,7 +930,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 3
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
@@ -961,7 +961,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 4
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
@@ -992,7 +992,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 4
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, inflationShare)
 		require.NoError(t, err)
 
@@ -1024,7 +1024,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 8
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, frozenEpochs, inflationShare)
 		require.NoError(t, err)
 
@@ -1059,7 +1059,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			frozenEpochs   = 8
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, frozenEpochs, inflationShare)
 		require.NoError(t, err)
 
@@ -1094,7 +1094,7 @@ func TestFrozenCoverage1(t *testing.T) {
 		const (
 			inflationShare = 100
 		)
-		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		_, txString, err = td.initDelegationUTXOMake(ts, 9, inflationShare)
 		require.NoError(t, util.MustErrorWith(err, "wrong max frozen epochs value"))
 	})
@@ -1105,8 +1105,8 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 100
 		for i := 0; i < howMany; i++ {
 			chainID := base.RandomChainID()
-			direct := ledger.Const.EpochOffsetSlotsDirect(chainID)
-			fromSrc := ledger.Const.EpochOffsetSlotsFromSource(chainID)
+			direct := ledger.L(0).EpochOffsetSlotsDirect(chainID)
+			fromSrc := ledger.L(0).EpochOffsetSlotsFromSource(chainID)
 			//t.Logf("fromSrc: %d, direct: %d", fromSrc, direct)
 			require.EqualValues(t, fromSrc, direct)
 		}
@@ -1115,10 +1115,10 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 100
 		chainID := base.RandomChainID()
 		for epoch := uint32(0); epoch < howMany; epoch++ {
-			first, last := ledger.Const.EpochLimits(chainID, epoch)
+			first, last := ledger.L(0).EpochLimits(chainID, epoch)
 			//t.Logf("epoch: %d,  first: %d, last: %d, diff: %d", epoch, first, last, last-first)
 			if epoch > 0 {
-				require.Equal(t, int(last-first), int(ledger.Const.DelegationEpochSlots)-1)
+				require.Equal(t, int(last-first), int(ledger.L(0).DelegationEpochSlots)-1)
 			}
 		}
 	})
@@ -1126,8 +1126,8 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 10000
 		var chainID base.ChainID
 		for epoch := uint32(0); epoch < howMany; epoch++ {
-			direct := ledger.Const.LastSlotInEpochDirect(chainID, epoch)
-			fromSource := ledger.Const.LastSlotInEpochFromSource(chainID, epoch)
+			direct := ledger.L(0).LastSlotInEpochDirect(chainID, epoch)
+			fromSource := ledger.L(0).LastSlotInEpochFromSource(chainID, epoch)
 			require.EqualValues(t, fromSource, direct)
 			chainID = base.RandomChainID()
 		}
@@ -1136,8 +1136,8 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 10_000
 		chainID := base.RandomChainID()
 		for slot := uint32(0); slot < howMany; slot++ {
-			direct := ledger.Const.EpochFromSlotDirect(chainID, slot)
-			fromSrc := ledger.Const.EpochFromSlotFromSource(chainID, slot)
+			direct := ledger.L(0).EpochFromSlotDirect(chainID, slot)
+			fromSrc := ledger.L(0).EpochFromSlotFromSource(chainID, slot)
 			//t.Logf("slot: %d -> epoch: %d", slot, direct)
 			require.Equal(t, int(direct), int(fromSrc))
 		}
@@ -1145,12 +1145,12 @@ func TestDelegationUtil(t *testing.T) {
 	t.Run("epoch from slot 2", func(t *testing.T) {
 		const howMany = 5
 		chainID := base.RandomChainID()
-		offs := ledger.Const.EpochOffsetSlotsDirect(chainID)
+		offs := ledger.L(0).EpochOffsetSlotsDirect(chainID)
 		t.Logf("offset: %d", offs)
 		for epoch := uint32(0); epoch < howMany; epoch++ {
-			first, last := ledger.Const.EpochLimits(chainID, epoch)
+			first, last := ledger.L(0).EpochLimits(chainID, epoch)
 			for slot := first; slot <= last; slot++ {
-				direct := ledger.Const.EpochFromSlotDirect(chainID, slot)
+				direct := ledger.L(0).EpochFromSlotDirect(chainID, slot)
 				if direct != epoch {
 					t.Logf("slot: %d, calc direct epoch: %d, expected: %d", slot, direct, epoch)
 				}
@@ -1163,8 +1163,8 @@ func TestDelegationUtil(t *testing.T) {
 		const howMany = 1_000_000
 		for slot := uint32(0); slot < howMany; slot++ {
 			chainID := base.RandomChainID()
-			directEpoch := ledger.Const.EpochFromSlotDirect(chainID, slot)
-			first, last := ledger.Const.EpochLimits(chainID, directEpoch)
+			directEpoch := ledger.L(0).EpochFromSlotDirect(chainID, slot)
+			first, last := ledger.L(0).EpochLimits(chainID, directEpoch)
 			require.True(t, first <= slot && slot <= last)
 		}
 	})

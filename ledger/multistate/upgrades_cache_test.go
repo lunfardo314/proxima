@@ -21,8 +21,8 @@ func TestLibraryCache_BasicAccess(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	require.NotNil(t, lib, "should get non-nil library")
 
-	// Library should have constants initialized
-	require.NotNil(t, ledger.Const, "constants should be initialized")
+	// Library should have constants initialized via embedded Constants field
+	require.NotZero(t, lib.TicksPerSlot, "constants should be initialized (TicksPerSlot should be non-zero)")
 
 	// L(0) should also work (genesis library)
 	lib0 := ledger.L(0)

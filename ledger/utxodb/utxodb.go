@@ -44,7 +44,7 @@ const (
 )
 
 func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
-	genesisPubKey := ledger.Const.GenesisControllerPublicKey
+	genesisPubKey := ledger.L(0).GenesisControllerPublicKey
 	genesisAddr := ledger.AddressED25519FromPublicKey(genesisPubKey)
 	util.Assertf(ledger.AddressED25519MatchesPrivateKey(genesisAddr, genesisPrivateKey), "private key does not match controller address")
 
@@ -62,7 +62,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	genesisStemOut := rdr.GetStemOutput()
 
 	distributionTxBytes := txbuilder_seq.MustDistributeInitialSupply(stateStore, genesisPrivateKey, []ledger.LockBalance{
-		{Lock: faucetAddress, Balance: ledger.Const.InitialSupply / 2, ChainOrigin: false},
+		{Lock: faucetAddress, Balance: ledger.L(0).InitialSupply / 2, ChainOrigin: false},
 	})
 
 	updatable := multistate.MustNewUpdatable(stateStore, genesisRoot)
@@ -73,7 +73,7 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 		store:                     stateStore,
 		state:                     updatable,
 		genesisChainID:            originChainID,
-		supply:                    ledger.Const.InitialSupply,
+		supply:                    ledger.L(0).InitialSupply,
 		genesisPrivateKey:         genesisPrivateKey,
 		genesisPublicKey:          genesisPubKey,
 		genesisAddress:            genesisAddr,
@@ -182,7 +182,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25
 	}
 	util.Assertf(inpAmount >= totalAmount, "inpAmount >= totalAmount")
 	remainderAmount := inpAmount - totalAmount
-	ts = ts.AddTicks(int(ledger.Const.TransactionPace))
+	ts = ts.AddTicks(int(ledger.L(0).TransactionPace))
 	txb := txbuilder.New()
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(faucetInputs...)

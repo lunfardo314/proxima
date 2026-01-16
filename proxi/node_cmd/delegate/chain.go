@@ -85,9 +85,10 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	inflation := ledger.ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
 
 	// tentatively checking maximum storage deposit
+	lib := ledger.L(ts.Slot)
 	oOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
-		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, byte(ledger.Const.MaxFrozenEpochs), 100)
+		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, byte(lib.MaxFrozenEpochs), 100)
 		o.WithLock(lock)
 		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
 		o.MustPushConstraint(cc.Bytes())

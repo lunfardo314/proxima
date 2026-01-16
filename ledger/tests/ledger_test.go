@@ -450,7 +450,7 @@ func TestChain1(t *testing.T) {
 		t.Logf("chain created: %s", easyfl_util.Fmt(chains[0].ChainID[:]))
 
 		// add ticks to output timestamp to have valid timestamp of the next transaction
-		ts := chainIN.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 
 		// create transaction builder
 		txb := txbuilder.New()
@@ -551,7 +551,7 @@ func TestChain2(t *testing.T) {
 		cc, constraintIdx := chainIN.Output.ChainConstraint()
 		require.True(t, constraintIdx != 0xff)
 
-		ts := chainIN.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		txb := txbuilder.New()
 		predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
@@ -716,7 +716,7 @@ func TestChain3(t *testing.T) {
 	cc, constraintIdx := chainIN.Output.ChainConstraint()
 	require.True(t, constraintIdx != 0xff)
 
-	ts := chainIN.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+	ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 	txb := txbuilder.New()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)

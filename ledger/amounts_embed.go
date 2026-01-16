@@ -26,7 +26,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 		par.RequireNoError(err)
 		stemLock, ok := stemOut.Output.StemLock()
 		par.Require(ok, "inconsistency: can't find stemLock")
-		expectedInflation = BranchInflationBonus(stemLock.VRFProof)
+		expectedInflation = BranchInflationBonus(stemLock.VRFProof, ctx.Timestamp().Slot)
 
 		par.Require(expectedInflation == inflation, "evalAmounts: wrong branch inflation bonus. Expected %s, got %s",
 			util.Th(expectedInflation), util.Th(inflation))
@@ -46,13 +46,14 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 
 // _checkFrozenCoverageOnNonDelegationChain assumes sequencer output and enforces the validity of the frozen coverage values
 func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, seqID base.ChainID, amounts, predAmounts Amounts, txTs, predTs base.LedgerTime) {
-	diffEpochsInt := Const.DiffEpochs(seqID, txTs, predTs)
+	lib := L(txTs.Slot)
+	diffEpochsInt := lib.DiffEpochs(seqID, txTs, predTs)
 	par.Require(diffEpochsInt >= 0, "_checkFrozenCoverageOnNonDelegationChain: inconsistency with timestamps")
 	diffEpochs := uint32(diffEpochsInt)
 
 	// frozen coverage at the predecessor adjusted to the epoch of the successor
 	predecessorFrozenCoverageAdjusted := func(i uint32) (ret int64) {
-		if idx := i + diffEpochs; idx < Const.MaxFrozenEpochs {
+		if idx := i + diffEpochs; idx < lib.MaxFrozenEpochs {
 			ret = predAmounts.FrozenCoverageAt(byte(idx))
 		}
 		return
@@ -70,7 +71,7 @@ func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContex
 	// leads to elimination of delta_i and final enforced validity constraint:
 	//    pred_i + sum_i = 2 x succ_i
 
-	for i := 0; i < int(Const.MaxFrozenEpochs); i++ {
+	for i := 0; i < int(lib.MaxFrozenEpochs); i++ {
 		successorFrozenCoverage := amounts.FrozenCoverageAt(byte(i))
 		predecessorFrozenCoverageValue := predecessorFrozenCoverageAdjusted(uint32(i))
 		sum := ctx.ProducedTotal(byte(i + 2))
@@ -123,7 +124,7 @@ func _checkFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext], 
 		_, _, frozenEpochs := dOut.FrozenEpochs(ctx.Timestamp())
 		par.Require(frozenEpochs <= 256, "inconsistency: frozenEpochs <= 256")
 		// the expected vector contains frozen coverages for the span of the frozen epochs
-		expectedVector, err = dOut.MakeFrozenCoverageAmounts(byte(frozenEpochs), dOut.Output.TokenBalance())
+		expectedVector, err = dOut.MakeFrozenCoverageAmounts(ctx.Timestamp(), byte(frozenEpochs), dOut.Output.TokenBalance())
 		par.RequireNoError(err)
 	}
 

@@ -30,7 +30,7 @@ var (
 	libraryCache       *LibraryCache
 	libraryCacheMutex  sync.RWMutex
 	// ledgerReset is set to true when ResetForTesting is called.
-	// Background goroutines can check this to avoid accessing nil Const.
+	// Background goroutines can check this to avoid accessing nil library cache.
 	ledgerReset atomic.Bool
 
 	// nextPendingUpgradeSlot tracks the next upgrade slot that might need UTXO injection.
@@ -166,6 +166,7 @@ func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Libra
 	util.AssertNoError(err)
 
 	result := newLibrary(lib, yamlData)
+	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
 	result.registerConstraints()
 	return result
 }
@@ -192,9 +193,8 @@ func MustInitLibraryCache(store common.Traversable) {
 
 		ledgerReset.Store(false)
 
-		// Pre-load the genesis library (slot 0) to initialize constants
+		// Pre-load the genesis library (slot 0)
 		lib = libraryCache.getOrLoad(0)
-		initConstantsSingleton(lib.Library)
 	}()
 
 	// Run inline tests after releasing the lock to avoid deadlock
@@ -218,6 +218,7 @@ func MustInitSingleton(identityData []byte) {
 	util.AssertNoError(err)
 
 	result := newLibrary(lib, identityData)
+	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
 	result.registerConstraints()
 	libraryCache.cache[0] = result
 
@@ -225,8 +226,6 @@ func MustInitSingleton(identityData []byte) {
 	libraryCache.store = &singleLibraryStore{data: identityData}
 
 	libraryCacheMutex.Unlock()
-
-	initConstantsSingleton(result.Library)
 
 	ledgerReset.Store(false)
 
@@ -358,12 +357,11 @@ func ResetForTesting() {
 	libraryCacheMutex.Lock()
 	defer libraryCacheMutex.Unlock()
 	libraryCache = nil
-	Const = nil
 	nextPendingUpgradeSlot.Store(0)
 }
 
 // IsReset returns true if the ledger has been reset via ResetForTesting.
-// Background goroutines can check this to avoid accessing nil Const during shutdown.
+// Background goroutines can check this to avoid accessing nil library cache during shutdown.
 func IsReset() bool {
 	return ledgerReset.Load()
 }

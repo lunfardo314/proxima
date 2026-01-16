@@ -99,7 +99,7 @@ func TestAmountsBase(t *testing.T) {
 		require.NoError(t, err)
 
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-		txb.TransactionData.Timestamp = ts.AddTicks(int(ledger.Const.TransactionPace))
+		txb.TransactionData.Timestamp = ts.AddTicks(int(ledger.L(0).TransactionPace))
 		txb.SignED25519(privKey0)
 
 		_, _, _, err = txb.BytesWithValidation()

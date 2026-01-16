@@ -16,7 +16,7 @@ var _locksExemptOfStorageDeposit = set.New(
 )
 
 func vByteCostBase() uint64 {
-	return Const.MinimumInflatableAmount0 / 100
+	return L(0).MinimumInflatableAmount0 / 100
 }
 
 // DefaultStorageDeposit not always enough

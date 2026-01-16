@@ -47,9 +47,11 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 				inflation := o.Output.TokenBalance() - o.OriginAmount
 				unfreeze := o.UnfreezeSlot()
 				totalSlots := unfreeze - o.OriginSlot + 1
-				perYear := inflation * uint64(ledger.Const.SlotsPerYear()) / uint64(totalSlots)
+				// Use currentSlot for timing constants
+				lib := ledger.L(currentSlot)
+				perYear := inflation * uint64(lib.SlotsPerYear()) / uint64(totalSlots)
 				rate := (float64(perYear) * 100) / float64(o.OriginAmount)
-				lessShareForSafeRevocation := 1 - float64(ledger.Const.SafeRevocationSlots)/float64(uint32(o.MaxFrozenEpochs)*ledger.Const.DelegationEpochSlots+ledger.Const.SafeRevocationSlots)
+				lessShareForSafeRevocation := 1 - float64(lib.SafeRevocationSlots)/float64(uint32(o.MaxFrozenEpochs)*lib.DelegationEpochSlots+lib.SafeRevocationSlots)
 				ln.Add("     estimated annualized inflation rate: %.2f%%", rate*lessShareForSafeRevocation)
 			}
 		}
@@ -60,10 +62,11 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 func LinesChainOutputs(outs []ledger.OutputWithChainID, currentSlot uint32, prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
 
+	lib := ledger.L(currentSlot)
 	for _, o := range outs {
 		slots := currentSlot - uint32(o.OriginSlot)
 		inflation := o.Output.TokenBalance() - o.OriginAmount
-		yearly := uint64(ledger.Const.SlotsPerYear()) * inflation / uint64(slots)
+		yearly := uint64(lib.SlotsPerYear()) * inflation / uint64(slots)
 		yearlyRate := 100 * float64(yearly) / float64(o.OriginAmount)
 		ln.Add("%34s  %20s   since slot: %d, last active %d slots ago",
 			o.ChainID.String(), util.Th(o.Output.TokenBalance()), o.OriginSlot, currentSlot-uint32(o.ID.Slot()))

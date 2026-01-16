@@ -289,6 +289,7 @@ func (txb *TxBuilder) LoadInput(i byte) (*ledger.Output, error) {
 
 // CalcFrozenCoverageDelta sums up frozen coverage vectors of all delegation outputs
 func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
+	lib := ledger.L(txb.TransactionData.Timestamp.Slot)
 	sum := new([15]int64)
 	for _, o := range txb.TransactionData.Outputs {
 		if o.Lock().Name() == ledger.DelegateLockName {
@@ -297,7 +298,7 @@ func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 			}
 		}
 	}
-	return sum[2 : 2+ledger.Const.MaxFrozenEpochs], nil
+	return sum[2 : 2+lib.MaxFrozenEpochs], nil
 }
 
 func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
@@ -312,7 +313,8 @@ func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCovera
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
 	predVector := oPred.Amounts().FrozenCoverageVector()
 	predTs := txb.TransactionData.InputIDs[cc.PredecessorInputIndex].Timestamp()
-	predVectorAdjusted := ledger.Const.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
+	lib := ledger.L(targetTs.Slot)
+	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
 	for i := range frozenCoverageDeltaVector {
 		a[i+2] += predVectorAdjusted[i]
 	}
@@ -612,8 +614,9 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 	util.Assertf(availableTokens == checkTotal, "availableTokens == checkTotal")
 
+	targetSlot := base.MaximumTime(inputTs, par.Timestamp).Slot
 	adjustedTs := base.MaximumTime(inputTs, par.Timestamp).
-		AddTicks(int(ledger.Const.TransactionPace))
+		AddTicks(int(ledger.L(targetSlot).TransactionPace))
 
 	util.Assertf(base.ValidTime(adjustedTs), "ledger.ValidTime(adjustedTs): ts bytes 0x%s", adjustedTs.Hex)
 
@@ -720,7 +723,8 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	}
 
 	// enforce validity time constraints taking into account transaction pace constraint
-	if tsIn := par.ChainInput.ID.Timestamp(); par.Timestamp.Before(par.ChainInput.ID.Timestamp().AddTicks(int(ledger.Const.TransactionPace))) {
+	lib := ledger.L(par.Timestamp.Slot)
+	if tsIn := par.ChainInput.ID.Timestamp(); par.Timestamp.Before(par.ChainInput.ID.Timestamp().AddTicks(int(lib.TransactionPace))) {
 		return nil, 0, nil, errP("timestamp %s is inconsistent with latest chain output timestamp %s", par.Timestamp.String(), tsIn.String())
 	}
 
@@ -838,8 +842,9 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		return nil, err
 	}
 	util.Assertf(availableTokens == checkAmount+par.ChainOutput.Output.TokenBalance(), "availableTokens == checkAmount")
+	targetSlot := base.MaximumTime(inputTs, par.ChainOutput.Timestamp()).Slot
 	adjustedTs := base.MaximumTime(inputTs, par.ChainOutput.Timestamp()).
-		AddTicks(int(ledger.Const.TransactionPace))
+		AddTicks(int(ledger.L(targetSlot).TransactionPace))
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {
@@ -969,7 +974,8 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
-	if tsIn.AddTicks(int(ledger.Const.TransactionPace)).After(par.Timestamp) {
+	lib := ledger.L(par.Timestamp.Slot)
+	if tsIn.AddTicks(int(lib.TransactionPace)).After(par.Timestamp) {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: transaction pace constraint violated")
 	}
 

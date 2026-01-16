@@ -432,7 +432,7 @@ func ValidateSnapshot(snapshotPath string) error {
 	}
 
 	// Check ledger hash matches (both are [32]byte)
-	if ledger.Const.Hash != constants.Hash {
+	if ledger.L(0).Hash != constants.Hash {
 		return fmt.Errorf("snapshot ledger hash mismatch: snapshot is from a different network")
 	}
 

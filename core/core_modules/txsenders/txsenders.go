@@ -159,10 +159,12 @@ func (q *TxSenders) consume(inp input) {
 	}
 
 	var pass bool
+	txTs := inp.Tx.Timestamp()
+	lib := ledger.L(txTs.Slot)
 	if inp.Tx.IsSequencerTransaction() {
-		pass = !q.checkSeq || seen.sequencer.addTs(inp.Tx.Timestamp().TicksSinceGenesis(), int64(ledger.Const.TransactionPaceSequencer))
+		pass = !q.checkSeq || seen.sequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPaceSequencer))
 	} else {
-		pass = !q.checkNonSeq || seen.nonSequencer.addTs(inp.Tx.Timestamp().TicksSinceGenesis(), int64(ledger.Const.TransactionPace))
+		pass = !q.checkNonSeq || seen.nonSequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPace))
 	}
 	q.txSenders[txSenderID(acc)] = seen
 	if !pass {

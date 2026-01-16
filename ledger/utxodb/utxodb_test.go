@@ -20,7 +20,7 @@ func init() {
 }
 
 func TestUTXODB(t *testing.T) {
-	initFaucetBalance := ledger.Const.InitialSupply / 2
+	initFaucetBalance := ledger.L(0).InitialSupply / 2
 	t.Run("origin", func(t *testing.T) {
 		u := NewUTXODB(genesisPrivateKey)
 		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), util.Th(u.Balance(u.GenesisControllerAddress())))
@@ -39,8 +39,8 @@ func TestUTXODB(t *testing.T) {
 		// Genesis output has initialSupply-1 tokens (1 token is in the controller dust output)
 		// After distribution, on-chain balance is initialSupply-1-initFaucetBalance
 		// Controller's wallet balance includes the dust output (1 token)
-		require.EqualValues(t, int(ledger.Const.InitialSupply-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
-		require.EqualValues(t, ledger.Const.InitialSupply-1-initFaucetBalance, onChain)
+		require.EqualValues(t, int(ledger.L(0).InitialSupply-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, ledger.L(0).InitialSupply-1-initFaucetBalance, onChain)
 		require.EqualValues(t, 0, controlledByChain)
 	})
 	t.Run("from faucet", func(t *testing.T) {

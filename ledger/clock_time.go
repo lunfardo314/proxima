@@ -6,20 +6,28 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
+// TickDuration returns the tick duration from the genesis library.
+// This is assumed constant across upgrades for time conversion consistency.
 func TickDuration() time.Duration {
-	return Const.TickDuration
+	return L(0).TickDuration
 }
 
+// SlotDuration returns the slot duration from the genesis library.
+// This is assumed constant across upgrades for time conversion consistency.
 func SlotDuration() time.Duration {
-	return Const.SlotDuration()
+	return L(0).SlotDuration()
 }
 
+// TimeFromClockTime converts clock time to ledger time using genesis time parameters.
+// Genesis time is immutable, so L(0) is correct here.
 func TimeFromClockTime(nowis time.Time) base.LedgerTime {
-	return Const.LedgerTimeFromClockTime(nowis)
+	return L(0).LedgerTimeFromClockTime(nowis)
 }
 
+// UnixNanoFromLedgerTime converts ledger time to unix nano.
+// Uses genesis time (immutable) and tick duration (assumed constant).
 func UnixNanoFromLedgerTime(t base.LedgerTime) int64 {
-	return Const.GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * TickDuration()).UnixNano()
+	return L(0).GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * TickDuration()).UnixNano()
 }
 
 func TimeNow() base.LedgerTime {
@@ -30,14 +38,16 @@ func SlotNow() uint32 {
 	return TimeNow().Slot
 }
 
-// ValidTransactionPace return true if input and target non-sequencer tx timestamps make a valid pace
+// ValidTransactionPace return true if input and target non-sequencer tx timestamps make a valid pace.
+// Uses the target timestamp's slot to get the applicable TransactionPace constant.
 func ValidTransactionPace(t1, t2 base.LedgerTime) bool {
-	return base.DiffTicks(t2, t1) >= int64(Const.TransactionPace)
+	return base.DiffTicks(t2, t1) >= int64(L(t2.Slot).TransactionPace)
 }
 
-// ValidSequencerPace return true if input and target sequencer tx timestamps make a valid pace
+// ValidSequencerPace return true if input and target sequencer tx timestamps make a valid pace.
+// Uses the target timestamp's slot to get the applicable TransactionPaceSequencer constant.
 func ValidSequencerPace(t1, t2 base.LedgerTime) bool {
-	return base.DiffTicks(t2, t1) >= int64(Const.TransactionPaceSequencer)
+	return base.DiffTicks(t2, t1) >= int64(L(t2.Slot).TransactionPaceSequencer)
 }
 
 func ClockTime(t base.LedgerTime) time.Time {

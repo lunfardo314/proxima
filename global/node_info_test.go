@@ -22,7 +22,7 @@ func init() {
      transaction pace : %d ticks
      sequencer pace   : %d ticks
 `,
-		ledger.TickDuration(), ledger.Const.TransactionPace, ledger.Const.TransactionPaceSequencer,
+		ledger.TickDuration(), ledger.L(0).TransactionPace, ledger.L(0).TransactionPaceSequencer,
 	)
 }
 

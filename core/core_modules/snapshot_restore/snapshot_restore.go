@@ -177,8 +177,8 @@ func Start(env environment) {
 	}, true)
 
 	ln := lines.New("          ").
-		Add("period: %d slots (~%v)", s.periodSlots, time.Duration(s.periodSlots)*ledger.Const.SlotDuration()).
-		Add("window: %d slots (~%v)", s.windowSlots, time.Duration(s.windowSlots)*ledger.Const.SlotDuration()).
+		Add("period: %d slots (~%v)", s.periodSlots, time.Duration(s.periodSlots)*ledger.L(0).SlotDuration()).
+		Add("window: %d slots (~%v)", s.windowSlots, time.Duration(s.windowSlots)*ledger.L(0).SlotDuration()).
 		Add("TTL: %d minutes", s.ttlMinutes).
 		Add("snapshot directory: %s", s.snapshotDir).
 		Add("next cleanup slot: %d", s.stateFile.GetNextCleanupSlot())
@@ -190,7 +190,7 @@ func Start(env environment) {
 	// Log startup to cleanup log
 	if s.restoreLog != nil {
 		s.restoreLog.Infof("=== State cleanup scheduler started ===")
-		s.restoreLog.Infof("Period: %d slots (~%v)", s.periodSlots, time.Duration(s.periodSlots)*ledger.Const.SlotDuration())
+		s.restoreLog.Infof("Period: %d slots (~%v)", s.periodSlots, time.Duration(s.periodSlots)*ledger.L(0).SlotDuration())
 		s.restoreLog.Infof("Next cleanup scheduled for slot: %d", s.stateFile.GetNextCleanupSlot())
 	}
 }
@@ -207,7 +207,7 @@ func (s *SnapshotRestore) scheduleNextCleanup() {
 		return
 	}
 
-	duration := time.Duration(nextSlot-currentSlot) * ledger.Const.SlotDuration()
+	duration := time.Duration(nextSlot-currentSlot) * ledger.L(0).SlotDuration()
 	s.logCleanup("next cleanup scheduled for slot %d (in ~%v)", nextSlot, duration)
 }
 

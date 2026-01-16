@@ -38,5 +38,5 @@ func runNodeInfoCmd(_ *cobra.Command, _ []string) {
 	glb.Infof(ln.String())
 
 	glb.Infof("\nLedger id (ledger constants):")
-	glb.Infof(ledger.Const.Lines("    ").String())
+	glb.Infof(ledger.L(0).Lines("    ").String())
 }

@@ -27,6 +27,7 @@ type (
 		locksByName        map[string]LockParser
 		inlineTests        []func()
 		upgradeChainData   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		Constants                            // Embedded ledger constants for this library version
 	}
 )
 

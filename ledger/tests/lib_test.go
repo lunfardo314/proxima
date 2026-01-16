@@ -18,7 +18,7 @@ func TestLoad(t *testing.T) {
 
 	t.Logf("------------------ Main constants (default params)\n%s", constants.String())
 	t.Logf("------------------ Time-related constants\n%s", constants.TimeConstantsToString())
-	t.Logf("------------------ Main constants (from global singleton) -------------------- \n%s", ledger.Const.Lines("      ").String())
+	t.Logf("------------------ Main constants (from global singleton) -------------------- \n%s", ledger.L(0).Lines("      ").String())
 }
 
 func TestLedgerToYAML(t *testing.T) {

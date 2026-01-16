@@ -71,6 +71,7 @@ type (
 	// It is used to generate the transaction and after that it is discarded
 	IncrementalAttacher struct {
 		attacher
+		*ledger.Library // cached library for targetTs slot
 		endorse            []*vertex.WrappedTx
 		inputs             []vertex.WrappedOutput
 		targetTs           base.LedgerTime

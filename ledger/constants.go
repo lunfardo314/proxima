@@ -59,13 +59,7 @@ type Constants struct {
 	TagAlongReclaimSlots uint32
 }
 
-var Const *Constants
-
-// ConstantsFromLibrary load all constants from library definition into a runtime structure
-func initConstantsSingleton(lib *easyfl.Library[*EvalContext]) {
-	Const = ConstantsFromLibrary(lib)
-}
-
+// ConstantsFromLibrary loads all constants from library definition into a runtime structure
 func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	ret := &Constants{Hash: lib.LibraryHash()}
 	var err error

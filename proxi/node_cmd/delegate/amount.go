@@ -88,7 +88,8 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	minimumAmount := ledger.MinimumInflatableAmount(uint32(ts.Slot) + 1000)
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
-	glb.Assertf(maxFreezeEpochs > 0 && maxFreezeEpochs <= byte(ledger.Const.MaxFrozenEpochs), "wrong value of max freeze epochs")
+	lib := ledger.L(ts.Slot)
+	glb.Assertf(maxFreezeEpochs > 0 && maxFreezeEpochs <= byte(lib.MaxFrozenEpochs), "wrong value of max freeze epochs")
 
 	client := glb.GetClient()
 	walletOutputs, lrbid, _, err := client.GetOutputsForAmount(walletData.Account, amount+feeAmount)
@@ -124,7 +125,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 		Amount:             amount,
 		Master:             walletData.Account,
 		Target:             ledger.ChainLockFromChainID(targetSeqID),
-		MaxFreezeEpochs:    byte(ledger.Const.MaxFrozenEpochs),
+		MaxFreezeEpochs:    byte(lib.MaxFrozenEpochs),
 		MaxSeqProfitMargin: 100,
 		StartSlot:          ts.Slot,
 	})

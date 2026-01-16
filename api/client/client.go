@@ -765,7 +765,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
-	ts = base.MaximumTime(ts1.AddTicks(int(ledger.Const.TransactionPace)), ts)
+	ts = base.MaximumTime(ts1.AddTicks(int(ledger.L(base.MaxSlot).TransactionPace)), ts)
 
 	err = txb.PutStandardInputUnlocks(len(inps))
 	util.AssertNoError(err)

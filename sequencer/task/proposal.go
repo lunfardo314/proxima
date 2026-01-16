@@ -66,7 +66,7 @@ type _inputCandidate struct {
 
 func (p *proposal) insertTagAlongInputs() {
 	p.Tracef(TraceTagProposal, "insertTagAlongInputs")
-	if ledger.Const.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
+	if p.Library.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
 		return
 	}
 	if p.txb.InputsAreFull() {
@@ -134,7 +134,7 @@ func (p *proposal) insertDelegations() {
 	p.Tracef(TraceTagProposal, "insertDelegations IN")
 	defer p.Tracef(TraceTagProposal, "insertDelegations OUT")
 
-	if ledger.Const.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
+	if p.Library.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
 		return
 	}
 	if p.txb.InputsAreFull() {
@@ -222,9 +222,9 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	ret := make([]_delegationToFreeze, 0)
 	nDelegationsByUnfreezeEpochMap := make(map[uint32]int)
 
-	txEpoch := ledger.Const.EpochFromSlotDirect(p.SequencerID(), p.txb.TransactionData.Timestamp.Slot)
+	txEpoch := p.txb.EpochFromSlotDirect(p.SequencerID(), p.txb.TransactionData.Timestamp.Slot)
 
-	for e := txEpoch; e < txEpoch+ledger.Const.MaxFrozenEpochs; e++ {
+	for e := txEpoch; e < txEpoch+p.txb.MaxFrozenEpochs; e++ {
 		nDelegationsByUnfreezeEpochMap[e] = 0
 	}
 

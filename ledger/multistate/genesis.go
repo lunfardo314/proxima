@@ -31,7 +31,7 @@ func WriteEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store Sta
 // Returns root commitment to the genesis ledger state and genesis chainID.
 func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitment) {
 	// Create minimal identity from constants
-	identity := ledger.NewLedgerIdentity(ledger.Const.GenesisTimeUnix, ledger.Const.Description)
+	identity := ledger.NewLedgerIdentity(ledger.L(0).GenesisTimeUnix, ledger.L(0).Description)
 	emptyRoot, err := WriteEmptyRootWithLedgerIdentity(identity, store)
 	util.AssertNoError(err)
 
@@ -40,9 +40,9 @@ func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitme
 	err = WriteUpgradeLibrary(store, 0, libraryYAML)
 	util.AssertNoError(err)
 
-	genesisAddr := ledger.AddressED25519FromPublicKey(ledger.Const.GenesisControllerPublicKey)
+	genesisAddr := ledger.AddressED25519FromPublicKey(ledger.L(0).GenesisControllerPublicKey)
 
-	initialSupply := ledger.Const.InitialSupply
+	initialSupply := ledger.L(0).InitialSupply
 	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)
 	gStemOut := ledger.GenesisStemOutput()
 	// Controller dust output ensures the controller can always create transactions

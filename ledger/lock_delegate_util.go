@@ -101,7 +101,8 @@ func (o *DelegationOutput) IsInFrozenSlot(slot uint32) bool {
 	if o.IsMarkedOnHold() || !o.IsMarkedFrozen() {
 		return false
 	}
-	lastSlot := Const.LastSlotInEpochFromSource(o.Target.ChainID(), o.LastFrozenEpoch)
+	lib := L(o.ID.Slot()) // use library from output creation slot
+	lastSlot := lib.LastSlotInEpochFromSource(o.Target.ChainID(), o.LastFrozenEpoch)
 	return slot <= lastSlot
 }
 
@@ -109,8 +110,9 @@ func (o *DelegationOutput) SafeRevocationWindow() (from, to uint32, applicable b
 	if o.IsMarkedOnHold() || !o.IsMarkedFrozen() {
 		return 0, 0, false
 	}
-	fromSlot := Const.LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch)
-	return fromSlot + 1, fromSlot + Const.SafeRevocationSlots, true
+	lib := L(o.ID.Slot()) // use library from output creation slot
+	fromSlot := lib.LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch)
+	return fromSlot + 1, fromSlot + lib.SafeRevocationSlots, true
 }
 
 func (o *DelegationOutput) IsInSafeRevocationWindow(txSlot uint32) bool {
@@ -167,7 +169,8 @@ func (o *DelegationOutput) UnfreezeSlot() uint32 {
 	if !o.IsMarkedFrozen() {
 		return 0
 	}
-	return Const.LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch) + 1
+	lib := L(o.ID.Slot()) // use library from output creation slot
+	return lib.LastSlotInEpochDirect(o.Target.ChainID(), o.LastFrozenEpoch) + 1
 }
 
 func (o *DelegationOutput) InflationOneSlot() uint64 {
@@ -193,7 +196,8 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 
 	var frozenEpochs uint32
 
-	txEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
+	lib := L(txTs.Slot)
+	txEpoch := lib.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
 	if freezeUntilEpoch < txEpoch {
 		err = fmt.Errorf("MakeDelegationFreezeOutput: wrong freezeUntilEpoch parameter")
 		return
@@ -225,7 +229,8 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 	if o.ID.Slot() >= txTs.Slot {
 		return 0
 	}
-	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, frozenEpochs)
+	lib := L(txTs.Slot)
+	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, frozenEpochs)
 	amount := o.Output.TokenBalance() + ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
 	return ChainInflation(amount, txTs.Slot, frozenSlots)
 }
@@ -233,7 +238,8 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 // RequiredMinimumInflationAdvanceOriginal calculates how big advance requires the delegation output for freezing it,
 // as calculated from immutable MinInflationAdvancePerFullEpoch value on it
 func (o *DelegationOutput) RequiredMinimumInflationAdvanceOriginal(txTs base.LedgerTime, frozenEpochs byte) uint64 {
-	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, frozenEpochs)
+	lib := L(txTs.Slot)
+	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, frozenEpochs)
 	src := fmt.Sprintf("requiredInflationAdvance(u64/%d, u64/%d, u64/%d, u64/%d)",
 		frozenSlots,
 		txTs.Slot,
@@ -248,22 +254,24 @@ func (o *DelegationOutput) RequiredMinimumInflationAdvanceOriginal(txTs base.Led
 }
 
 func (o *DelegationOutput) RequiredMinimumInflationAdvanceByFrozenEpochs(txTs base.LedgerTime, frozenEpochs uint32) (uint64, error) {
-	if frozenEpochs > Const.MaxFrozenEpochs {
+	lib := L(txTs.Slot)
+	if frozenEpochs > lib.MaxFrozenEpochs {
 		return 0, fmt.Errorf("wrong frozen epochs")
 	}
-	frozenSlots := Const.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, byte(frozenEpochs))
+	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, byte(frozenEpochs))
 	inflation := ChainInflation(o.Output.TokenBalance(), txTs.Slot, frozenSlots)
 	return (inflation * uint64(o.RequiredInflationShare)) / 1000, nil
 
 }
 
 func (o *DelegationOutput) RequiredMinimumInflationAdvance(txTs base.LedgerTime, freezeUntilEpoch uint32) (uint64, error) {
-	epoch := Const.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
+	lib := L(txTs.Slot)
+	epoch := lib.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
 	if epoch > freezeUntilEpoch {
 		return 0, fmt.Errorf("RequiredMinimumInflationAdvance: wrong freezeUntilEpoch parameter")
 	}
 	frozenEpochs := freezeUntilEpoch - epoch + 1
-	util.Assertf(frozenEpochs <= Const.MaxFrozenEpochs, "frozenEpochs<=dconst.MaxFrozenEpochs")
+	util.Assertf(frozenEpochs <= lib.MaxFrozenEpochs, "frozenEpochs<=dconst.MaxFrozenEpochs")
 	return o.RequiredMinimumInflationAdvanceByFrozenEpochs(txTs, frozenEpochs)
 }
 
@@ -271,7 +279,8 @@ func (o *DelegationOutput) FreezeUntilMax(ts base.LedgerTime) (freezeUntilEpoch 
 	if o.IsInFrozenSlot(ts.Slot) {
 		return
 	}
-	startEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), ts.Slot)
+	lib := L(ts.Slot)
+	startEpoch := lib.EpochFromSlotDirect(o.Target.ChainID(), ts.Slot)
 	freezeUntilEpoch = startEpoch + uint32(o.MaxFrozenEpochs) - 1
 	return
 }
@@ -280,7 +289,8 @@ func (o *DelegationOutput) FrozenEpochs(txTs base.LedgerTime) (from, to, total u
 	if !o.IsInFrozenSlot(txTs.Slot) {
 		return
 	}
-	txEpoch := Const.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
+	lib := L(txTs.Slot)
+	txEpoch := lib.EpochFromSlotDirect(o.Target.ChainID(), txTs.Slot)
 	if txEpoch > o.LastFrozenEpoch {
 		return 0, 0, 0
 	}
@@ -302,11 +312,12 @@ func (o *DelegationOutput) FrozenSlots(txTs ...base.LedgerTime) (from, to, total
 }
 
 func (o *DelegationOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.LedgerTime) []int64 {
-	diffEpochs := Const.DiffEpochs(o.Target.ChainID(), txTs, o.Timestamp())
+	lib := L(txTs.Slot)
+	diffEpochs := lib.DiffEpochs(o.Target.ChainID(), txTs, o.Timestamp())
 	util.Assertf(diffEpochs >= 0, "MakeFrozenCoverageAmountDeltasForRevoking: wrong timestamp %s", txTs.String)
 
 	fc := o.Output.Amounts().FrozenCoverageVector()
-	ret := make([]int64, Const.MaxFrozenEpochs)
+	ret := make([]int64, lib.MaxFrozenEpochs)
 	idx := 0
 	for i := diffEpochs; i < len(fc); i++ {
 		ret[idx] = -fc[i]
@@ -315,8 +326,9 @@ func (o *DelegationOutput) MakeFrozenCoverageAmountDeltasForRevoking(txTs base.L
 	return ret
 }
 
-func (o *DelegationOutput) MakeFrozenCoverageAmounts(frozenEpochs byte, tokenBalance uint64) ([]int64, error) {
-	mx := byte(Const.MaxFrozenEpochs)
+func (o *DelegationOutput) MakeFrozenCoverageAmounts(txTs base.LedgerTime, frozenEpochs byte, tokenBalance uint64) ([]int64, error) {
+	lib := L(txTs.Slot)
+	mx := byte(lib.MaxFrozenEpochs)
 	if frozenEpochs > mx {
 		return nil, fmt.Errorf("MakeFrozenCoverageAmounts: frozen epochs value (%d) exceed maximum %d", frozenEpochs, mx)
 	}
@@ -390,7 +402,8 @@ func (o *DelegationOutput) _linesDelegationData(insertPrefixLines func(ln *lines
 	ret.Add("MaxFrozenEpochs: %d", o.MaxFrozenEpochs)
 	ret.Add("RequiredInflationShare: %d promille (%.1f%%)", o.RequiredInflationShare, float64(o.RequiredInflationShare)/10)
 	if o.IsMarkedFrozen() {
-		_, lastSlot := Const.EpochLimits(o.Target.ChainID(), o.LastFrozenEpoch)
+		lib := L(currentSlot) // use library for current slot for display
+		_, lastSlot := lib.EpochLimits(o.Target.ChainID(), o.LastFrozenEpoch)
 		frozenSlots := int(lastSlot) - int(currentSlot) + 1
 		ret.Add("Status: marked frozen")
 		ret.Add("   frozen until epoch: %d, %d slots from now", o.LastFrozenEpoch, frozenSlots)

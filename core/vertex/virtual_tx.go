@@ -136,7 +136,7 @@ func (v *VirtualTransaction) SetPullNeeded() {
 	v.pullRulesDefined = true
 	v.needsPull = true
 	v.timesPulled = 0
-	v.nextPull = time.Now()
+	v.nextPull = time.Now().Add(-time.Nanosecond) // slightly in the past to ensure PullNeeded() returns true immediately
 }
 
 // SetPullHappened increases pull counter and sets nex pull deadline

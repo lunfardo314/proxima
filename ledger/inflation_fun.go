@@ -16,7 +16,8 @@ func (lib *Library) ChainInflationOriginal(amount uint64, inSlot, forSlots uint3
 }
 
 func ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
-	return uint64(forSlots) * (amount / (Const.MinimumInflatableAmount0 + uint64(inSlot)))
+	lib := L(inSlot)
+	return uint64(forSlots) * (amount / (lib.MinimumInflatableAmount0 + uint64(inSlot)))
 }
 
 // AdjustedAmount calculates amount adjusted to the maximum inflation.
@@ -26,7 +27,8 @@ func ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
 //   - consider name 'real supply/amount/balance'
 //   - consider adjustment of the branch inflation bonus
 func AdjustedAmount(amount uint64, slot uint32) uint64 {
-	return Const.MinimumInflatableAmount0 * (amount / (Const.MinimumInflatableAmount0 + uint64(slot)))
+	lib := L(slot)
+	return lib.MinimumInflatableAmount0 * (amount / (lib.MinimumInflatableAmount0 + uint64(slot)))
 }
 
 func ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
@@ -39,10 +41,14 @@ func (lib *Library) BranchInflationBonusBaseFromSource() uint64 {
 	return easyfl_util.MustUint64FromBytes(res)
 }
 
-func BranchInflationBonus(proof []byte) uint64 {
-	return RandomFromSeed(proof, Const.BranchInflationBonusBase) + 1
+// BranchInflationBonus calculates the inflation bonus for a branch using the given proof.
+// Uses the library for the specified slot.
+func BranchInflationBonus(proof []byte, slot uint32) uint64 {
+	lib := L(slot)
+	return RandomFromSeed(proof, lib.BranchInflationBonusBase) + 1
 }
 
 func MinimumInflatableAmount(slot uint32) uint64 {
-	return Const.MinimumInflatableAmount0 + ChainInflation(Const.MinimumInflatableAmount0, 0, slot)
+	lib := L(slot)
+	return lib.MinimumInflatableAmount0 + ChainInflation(lib.MinimumInflatableAmount0, 0, slot)
 }
