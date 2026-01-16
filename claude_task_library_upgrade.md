@@ -6,6 +6,70 @@ All implementation phases (1-15) are complete.
 
 ---
 
+## Upgrade Activation Slot Behavior
+
+### Question
+When a ledger upgrade is activated at slot S, is the branch transaction at slot S validated with the upgraded (new) library?
+
+### Answer
+**YES.** The branch transaction at upgrade activation slot S is validated with the **new (upgraded) library**. This branch transaction is the first transaction validated with the new library.
+
+### Implementation Details
+
+The `L(slot)` function in `ledger/lib_singleton.go` returns the library applicable to a given slot. The core logic is in `findLibraryForSlot()`:
+
+```go
+// ledger/lib_singleton.go:124
+if upgSlot <= slot {
+    allSlots = append(allSlots, upgSlot)
+    slotToYAML[upgSlot] = v
+}
+```
+
+**Key insight:** The comparison is `upgSlot <= slot` (less than **or equal**), which means:
+- When `slot == upgradeSlot`, the condition is TRUE
+- The **new** library at that upgrade slot is returned
+
+### Attacher Library Initialization
+
+The attacher caches the library in `newPastConeAttacher()`:
+
+```go
+// core/attacher/attacher.go:20-22
+ret := attacher{
+    Environment: env,
+    Library:     ledger.L(txTs.Slot),  // Gets library for transaction's slot
+    ...
+}
+```
+
+For a branch transaction at upgrade slot S:
+1. `txTs.Slot` = S (branch timestamp is on slot boundary, tick == 0)
+2. `ledger.L(S)` is called
+3. `findLibraryForSlot(S)` finds upgrades where `upgSlot <= S`
+4. Since S is the upgrade slot, `upgSlot <= S` is true for the new library
+5. The **new library is returned** and cached in the attacher
+
+### Verification
+
+The behavior is confirmed by test cases in `ledger/multistate/upgrades_test.go`:
+
+```go
+{1000, lib1000, 1000, true, "exactly at first upgrade"},     // ← uses NEW library
+{1001, lib1000, 1000, true, "just after first upgrade"},     // ← uses new library
+{999, lib0, 0, true, "just before first upgrade"},           // ← uses OLD library
+```
+
+### Design Implications
+
+1. **Immediate Activation:** Upgrades take effect immediately at the activation slot
+2. **Deterministic:** All nodes agree on which library to use for each slot
+3. **Branch Transaction:** The first branch at upgrade slot S is validated with new rules
+4. **Upgrade UTXO:** An upgrade UTXO is injected at the branch, committing to the new library hash
+5. **Backward Compatibility:** When consuming outputs from older library versions, `OutputFromBytesWithLib()` handles deterministic parsing
+
+---
+
 ## Quick Reference for Testing and Documentation
 
 ### Key Files by Function
