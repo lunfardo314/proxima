@@ -352,7 +352,15 @@ func TestChain1(t *testing.T) {
 		// chain constrained output with two origins will be valid, however there will be no way to create a predecessor of it
 		// the only way is to destroy output with two chain origins
 
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
+		// First get inputs with a placeholder timestamp
+		par, err := u.MakeTransferInputData(privKey0, nil, base.NilLedgerTime)
+		require.NoError(t, err)
+		// Derive timestamp from actual inputs to avoid timing race (see CLAUDE.local.md)
+		inputTs := par.Inputs[0].Timestamp()
+		par.Timestamp = inputTs.AddTicks(int(ledger.L(inputTs.Slot).TransactionPace))
+		if par.Timestamp.IsSlotBoundary() {
+			par.Timestamp = par.Timestamp.AddTicks(1)
+		}
 		code := ledger.NewChainOrigin(par.Timestamp.Slot, 60_000_000).Bytes()
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(60_000_000).
