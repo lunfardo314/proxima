@@ -62,7 +62,6 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 
 	ret := &IncrementalAttacher{
 		attacher: newPastConeAttacher(env, nil, targetTs, name),
-		Library:  lib, // cached library for targetTs slot
 		endorse:  make([]*vertex.WrappedTx, 0),
 		inputs:   make([]vertex.WrappedOutput, 0),
 		targetTs: targetTs,
@@ -81,13 +80,10 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 }
 
 func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, targetTs base.LedgerTime, extend vertex.WrappedOutput, baselineID base.TransactionID) (*IncrementalAttacher, error) {
-	lib := ledger.L(targetTs.Slot) // cache library for targetTs slot
 	env.Assertf(baselineID.IsBranchTransaction(), "baselineID.IsBranchTransaction()")
 	env.Assertf(!targetTs.IsSlotBoundary(), "!targetTs.IsSlotBoundary()")
 	env.Assertf(int(targetTs.Slot)-int(extend.Slot()) >= 1, "int(targetTs.Slot)(%s)-int(extend.Slot())(%s)>=1",
 		targetTs.String, extend.IDStringShort)
-	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
-		lib.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
 
 	env.Tracef(TraceTagIncrementalAttacherWithExplicitBaseline, "NewIncrementalAttacherWithExpliciteBaseline(%s). extend: %s, explicit baseline: %s",
 		name, extend.IDStringShort, baselineID.StringShort)
@@ -101,12 +97,14 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 
 	ret := &IncrementalAttacher{
 		attacher:           newPastConeAttacher(env, nil, targetTs, name),
-		Library:            lib, // cached library for targetTs slot
 		endorse:            make([]*vertex.WrappedTx, 0),
 		inputs:             make([]vertex.WrappedOutput, 0),
 		targetTs:           targetTs,
 		explicitBaselineID: util.Ref(baselineID),
 	}
+
+	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
+		ret.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
 
 	if err := ret.initIncrementalAttacher(baselineID, targetTs, extend); err != nil {
 		ret.Close()

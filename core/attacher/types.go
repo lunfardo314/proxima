@@ -56,15 +56,14 @@ type (
 
 	attacher struct {
 		Environment
-		pastCone *vertex.PastCone
-		name     string
-		err      error
-		closed   bool
-		pokeMe   func(vid *vertex.WrappedTx)
+		*ledger.Library // cached library for transaction slot
+		pastCone        *vertex.PastCone
+		name            string
+		err             error
+		closed          bool
+		pokeMe          func(vid *vertex.WrappedTx)
 		// trace this local attacher with all tags
 		forceTrace string
-		// cached attachment recursion depth limit from ledger constants
-		attachmentRecursionDepthLimit int
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone
@@ -72,7 +71,6 @@ type (
 	// It is used to generate the transaction and after that it is discarded
 	IncrementalAttacher struct {
 		attacher
-		*ledger.Library // cached library for targetTs slot
 		endorse            []*vertex.WrappedTx
 		inputs             []vertex.WrappedOutput
 		targetTs           base.LedgerTime

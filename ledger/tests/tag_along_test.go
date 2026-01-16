@@ -44,8 +44,13 @@ func TestTagAlongSimple(t *testing.T) {
 		t.Logf("target address: %s\n", addrTarget.String())
 		t.Logf("random address: %s\n", addrRandom.String())
 
-		// create chain
-		seqOrigin, err = u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, ledger.TimeNow().AddSlots(1))
+		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(targetOuts) > 0)
+
+		// create chain with timestamp derived from actual output
+		seqOrigin, err = u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID = seqOrigin.ChainID
 
@@ -301,8 +306,13 @@ func TestTagAlongBoundaries(t *testing.T) {
 		privKeyTarget := privKeys[1]
 		addrTarget := addrs[1]
 
-		// create chain
-		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, ledger.TimeNow().AddSlots(1))
+		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(targetOuts) > 0)
+
+		// create chain with timestamp derived from actual output
+		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
@@ -383,8 +393,13 @@ func TestTagAlongBoundaries(t *testing.T) {
 		addrTarget := addrs[1]
 		privKeyRandom := privKeys[2]
 
-		// create chain
-		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, ledger.TimeNow().AddSlots(1))
+		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(targetOuts) > 0)
+
+		// create chain with timestamp derived from actual output
+		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
@@ -524,8 +539,13 @@ func TestTagAlongProduction(t *testing.T) {
 		privKeyTarget := privKeys[1]
 		addrTarget := addrs[1]
 
-		// create chain
-		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, ledger.TimeNow().AddSlots(1))
+		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(targetOuts) > 0)
+
+		// create chain with timestamp derived from actual output
+		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
@@ -574,8 +594,13 @@ func TestTagAlongProduction(t *testing.T) {
 		privKeyController := privKeys[0]
 		addrController := addrs[0]
 
-		// create chain controlled by addrController
-		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyController, addrController, ledger.TimeNow().AddSlots(1))
+		// get controller outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		controllerOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrController.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(controllerOuts) > 0)
+
+		// create chain controlled by addrController with timestamp derived from actual output
+		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyController, addrController, controllerOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
@@ -645,8 +670,13 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		addrTarget := addrs[1]
 		privKeyRandom := privKeys[2]
 
-		// create chain
-		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, ledger.TimeNow().AddSlots(1))
+		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(targetOuts) > 0)
+
+		// create chain with timestamp derived from actual output
+		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
@@ -872,8 +902,13 @@ func TestTagAlongMultiple(t *testing.T) {
 		privKeyTarget := privKeys[1]
 		addrTarget := addrs[1]
 
-		// create chain
-		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, ledger.TimeNow().AddSlots(1))
+		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(targetOuts) > 0)
+
+		// create chain with timestamp derived from actual output
+		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
@@ -957,13 +992,23 @@ func TestTagAlongMultiple(t *testing.T) {
 		privKeyTarget2 := privKeys[2]
 		addrTarget2 := addrs[2]
 
-		// create first chain
-		seqOrigin1, err := u.MakeNewChain(chainAmount, privKeyTarget1, addrTarget1, ledger.TimeNow().AddSlots(1))
+		// get target1 outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		target1Outs, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget1.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(target1Outs) > 0)
+
+		// create first chain with timestamp derived from actual output
+		seqOrigin1, err := u.MakeNewChain(chainAmount, privKeyTarget1, addrTarget1, target1Outs[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID1 := seqOrigin1.ChainID
 
-		// create second chain
-		seqOrigin2, err := u.MakeNewChain(chainAmount, privKeyTarget2, addrTarget2, ledger.TimeNow().AddSlots(1))
+		// get target2 outputs to derive timestamp
+		target2Outs, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget2.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(target2Outs) > 0)
+
+		// create second chain with timestamp derived from actual output
+		seqOrigin2, err := u.MakeNewChain(chainAmount, privKeyTarget2, addrTarget2, target2Outs[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID2 := seqOrigin2.ChainID
 
@@ -1031,8 +1076,13 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		privKeyTarget := privKeys[1]
 		addrTarget := addrs[1]
 
-		// create chain
-		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, ledger.TimeNow().AddSlots(1))
+		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(targetOuts) > 0)
+
+		// create chain with timestamp derived from actual output
+		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
@@ -1112,8 +1162,13 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		privKeyTarget := privKeys[1]
 		addrTarget := addrs[1]
 
-		// create chain
-		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, ledger.TimeNow().AddSlots(1))
+		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		require.NoError(t, err)
+		require.True(t, len(targetOuts) > 0)
+
+		// create chain with timestamp derived from actual output
+		seqOrigin, err := u.MakeNewChain(chainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 

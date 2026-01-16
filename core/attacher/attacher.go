@@ -18,11 +18,11 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 	util.Assertf(txTs != base.LedgerTime{}, "newPastConeAttacher: txTs must be a non-zero value")
 
 	ret := attacher{
-		Environment:                   env,
-		name:                          name,
-		pokeMe:                        func(_ *vertex.WrappedTx) {},
-		pastCone:                      vertex.NewPastCone(env, tip, txTs, name),
-		attachmentRecursionDepthLimit: ledger.L(txTs.Slot).AttachmentRecursionDepthBaseline,
+		Environment: env,
+		Library:     ledger.L(txTs.Slot),
+		name:        name,
+		pokeMe:      func(_ *vertex.WrappedTx) {},
+		pastCone:    vertex.NewPastCone(env, tip, txTs, name),
 	}
 	return ret
 }
@@ -192,9 +192,9 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		return false
 	}
 
-	if depth > a.attachmentRecursionDepthLimit {
+	if depth > a.AttachmentRecursionDepthBaseline {
 		// possible hanging chain attack
-		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.attachmentRecursionDepthLimit, v.Tx.IDShortString()))
+		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.AttachmentRecursionDepthBaseline, v.Tx.IDShortString()))
 		return false
 	}
 
