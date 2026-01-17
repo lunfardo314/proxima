@@ -85,9 +85,9 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 	return &OutputBuilder{ret}, nil
 }
 
-// OutputFromBytesMainWithLib parses an output using the provided library.
+// OutputFromBytesMain parses an output using the provided library.
 // This is the core implementation that avoids repeated L(slot) calls.
-func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lock, error) {
+func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
 	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
 	if err != nil {
 		return nil, nil, nil, err
@@ -103,14 +103,14 @@ func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lo
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if amount, err = AmountsFromBytesWithLib(amountBin, lib); err != nil {
+	if amount, err = AmountsFromBytes(amountBin); err != nil {
 		return nil, nil, nil, err
 	}
 	lockBin, err := ret.At(int(ConstraintIndexLock))
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if lock, err = LockFromBytesWithLib(lockBin, lib); err != nil {
+	if lock, err = LockFromBytes(lockBin); err != nil {
 		return nil, nil, nil, err
 	}
 	return ret, amount, lock, nil
@@ -119,12 +119,12 @@ func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lo
 // OutputFromBytesWithLib parses an output using the provided library.
 // This is the core implementation that avoids repeated L(slot) calls.
 func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
-	ret, _, _, err := OutputFromBytesMainWithLib(data, lib)
+	ret, _, _, err := OutputFromBytesMain(data)
 	if err != nil {
 		return nil, err
 	}
 	for _, validate := range validateOpt {
-		if err := validate(ret); err != nil {
+		if err = validate(ret); err != nil {
 			return nil, err
 		}
 	}
@@ -148,12 +148,6 @@ func OutputFromHexStringWithLib(hexStr string, lib *Library, validateOpt ...func
 // OutputFromHexStringAtSlot parses an output from hex string using the library for the given slot.
 func OutputFromHexStringAtSlot(hexStr string, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
 	return OutputFromHexStringWithLib(hexStr, L(slot), validateOpt...)
-}
-
-// OutputFromBytesMainAtSlot parses an output using the library for the given slot.
-// Use this when parsing output bytecode that was created at a specific slot.
-func OutputFromBytesMainAtSlot(data []byte, slot uint32) (*Output, Amounts, Lock, error) {
-	return OutputFromBytesMainWithLib(data, L(slot))
 }
 
 func (o *Output) ConstraintsRawBytes() [][]byte {
@@ -190,7 +184,7 @@ func (o *Output) Amounts() Amounts {
 	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	ret, err := AmountsFromBytesAtSlot(bin, base.MaxSlot)
+	ret, err := AmountsFromBytes(bin)
 	util.AssertNoError(err)
 	return ret
 }
@@ -299,7 +293,7 @@ func (o *Output) ForEachConstraint(fun func(idx byte, constr []byte) bool) {
 
 func (o *Output) Lock() Lock {
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	ret, err := LockFromBytesAtSlot(o.MustAt(int(ConstraintIndexLock)), base.MaxSlot)
+	ret, err := LockFromBytes(o.MustAt(int(ConstraintIndexLock)))
 	util.AssertNoError(err)
 	return ret
 }
@@ -337,12 +331,13 @@ func (o *Output) ChainConstraint() (*ChainConstraint, byte) {
 	var ret *ChainConstraint
 	var err error
 	found := byte(0xff)
+	lib := L(base.MaxSlot)
 	o.ForEachConstraint(func(idx byte, constr []byte) bool {
 		if idx < ConstraintIndexFirstOptionalConstraint {
 			return true
 		}
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		ret, err = ChainConstraintFromBytesAtSlot(constr, base.MaxSlot)
+		ret, err = ChainConstraintFromBytesWithLib(constr, lib)
 		if err == nil {
 			found = idx
 			return false
@@ -446,11 +441,12 @@ func (o *Output) EnsureStopDelegationConstraint() (*EnsureStopDelegation, byte) 
 	var ret *EnsureStopDelegation
 	var err error
 	found := byte(0xff)
+	lib := L(base.MaxSlot)
 	o.ForEachConstraint(func(idx byte, constr []byte) bool {
 		if idx < ConstraintIndexFirstOptionalConstraint {
 			return true
 		}
-		ret, err = EnsureStopDelegationFromBytesWithLib(constr, L(base.MaxSlot))
+		ret, err = EnsureStopDelegationFromBytesWithLib(constr, lib)
 		if err == nil {
 			found = idx
 			return false
@@ -772,7 +768,7 @@ func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
 func (o *Output) MustValidOutput() {
 	o.MustHaveConstraintAnyOfAt(0, AmountsConstraintName)
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	_, err := LockFromBytesAtSlot(o.MustConstraintAt(1), base.MaxSlot)
+	_, err := LockFromBytes(o.MustConstraintAt(1))
 	util.AssertNoError(err)
 }
 

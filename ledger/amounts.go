@@ -137,8 +137,14 @@ func (a Amounts) AddToVector(vect *[15]int64) (overflow bool) {
 	return
 }
 
-// AmountsFromBytesWithLib parses an Amounts constraint using the provided library.
-// This is the core implementation that avoids repeated L(slot) calls.
+// AmountsFromBytes parses an Amounts constraint using the provided library.
+// Serde is Library upgrade-invariant
+func AmountsFromBytes(data []byte) (Amounts, error) {
+	return AmountsFromBytesWithLib(data, L(base.MaxSlot))
+}
+
+// AmountsFromBytesWithLib core implementation for optimization.
+// Serde is Library upgrade-invariant
 func AmountsFromBytesWithLib(data []byte, lib *Library) (Amounts, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data)
 	if err != nil {
@@ -157,11 +163,6 @@ func AmountsFromBytesWithLib(data []byte, lib *Library) (Amounts, error) {
 		ret[i] = int64(v)
 	}
 	return ret, nil
-}
-
-// AmountsFromBytesAtSlot parses an Amounts constraint using the library for the given slot.
-func AmountsFromBytesAtSlot(data []byte, slot uint32) (Amounts, error) {
-	return AmountsFromBytesWithLib(data, L(slot))
 }
 
 // TokenBalanceFromAmountsBytesWithLib parses the token balance using the provided library.
@@ -195,7 +196,7 @@ func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error)
 func registerAmountsConstraint(lib *Library) {
 	lib.mustRegisterVarargConstraint(AmountsConstraintName, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return AmountsFromBytesWithLib(data, lib)
+		return AmountsFromBytes(data)
 	})
 }
 
@@ -203,7 +204,7 @@ func init() {
 	registerInlineTest(func(lib *Library) {
 		example := NewAmounts(1, 2, 1337, 0x01020304050607)
 
-		exampleBack, err := AmountsFromBytesWithLib(example.Bytes(), lib)
+		exampleBack, err := AmountsFromBytes(example.Bytes())
 		util.AssertNoError(err)
 		util.Assertf(example.Name() == AmountsConstraintName, "inconsistency 1")
 		util.Assertf(len(exampleBack) == 4, "inconsistency 2")

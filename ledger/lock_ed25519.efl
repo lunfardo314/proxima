@@ -1,0 +1,59 @@
+
+// DEPRECATED: signature verification is correct but not necessary, because validity of the signature is
+// checked for the transaction anyway.
+// We are leaving it just as an example
+// $0 = address data 32 bytes
+// $1 = signature
+// $2 = public key
+// return true if transaction essence signature is valid for the address
+//func unlockedWithSigED25519: and(
+//	equal($0, blake2b($2)), 		       // address in the address data must be equal to the hash of the public key
+//	validSignatureED25519(txID, $1, $2)
+//)
+
+// ED25519 address constraint wraps 32 bytes address, the blake2b hash of the public key
+// For example expression 'addressED25519(0x010203040506..)' used as constraint in the output makes
+// the output unlockable only with the presence of signature corresponding
+// to the address '0x010203040506..'
+
+// 'unlockedByReference'' specifies validation of the input unlock with the reference.
+// The referenced constraint must be exactly the same  but with strictly lesser index.
+// This prevents from cycles and forces some other unlock mechanism up in the list of outputs
+// $0 self unlock parameters
+func unlockedByReference: and(
+    equal(len($0), u64/1),                     // prevent panic in compound locks
+	lessThan($0, selfOutputIndex),             // unlock parameter must point to another input with
+                                               // strictly smaller index. This prevents reference cycles
+	equal(self, consumedConstraintByIndex($0, lockConstraintIndex))  // the referenced constraint bytes must be equal to the self constraint bytes
+)
+
+// $0 selfUnlockParameters
+func _referencedIndex : if( isZero(len($0)), 0xff, byte($0,0))
+
+// if it is 'produced' invocation context (constraint invoked in the input), only size of the address is checked
+// Otherwise the first will check first condition if it is unlocked by reference, otherwise checks unlocking signature
+// $0 - ED25519 address, 32 byte blake2b hash of the public key
+// Unlock data is 1 byte with reference index to the previous input or signature unlock with 0xff
+func addressED25519: and(
+	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
+	or(
+		and(
+			selfIsProducedOutput,
+			equal(len($0), u64/32)
+		),
+		and(
+			selfIsConsumedOutput,
+			or(
+					// if it is unlocked with reference, the signature is not checked
+				unlockedByReference(_referencedIndex(selfUnlockParameters)),
+					// checks if tx signature corresponds to the address
+                equal($0, blake2b(publicKeyED25519(txSignature)))
+				// deprecated: unlockedWithSigED25519($0, signatureED25519(txSignature), publicKeyED25519(txSignature))
+			)
+		)
+	)
+)
+
+// short form of lock a(<hex bytes>)
+// $0 - ED25519 address, 32 byte blake2b hash of the public key
+func a : addressED25519($0)

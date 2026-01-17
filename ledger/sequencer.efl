@@ -1,0 +1,100 @@
+
+func mustMinimumAmountOnSequencer :
+	require(
+ 	 	 not(lessThan(selfTokenBalanceValue, constMinimumAmountOnSequencer)),
+		 !!!minimum_sequencer_amount_constraint_failed
+	)
+
+// $0 chain predecessor input index
+func _inputSameSlot :
+equal(
+	txSlot,
+	slotOfInputByIndex($0)
+)
+
+// no param
+// the tx is origin of both chain and sequencer
+func _noChainPredecessorCase :
+and(
+	require(not(isBranchTransaction),     !!!sequencer_chain_origin_can't_be_on_branch_transaction),
+	require(not(isZero(numEndorsements)), !!!sequencer_chain_origin_must_endorse_another_sequencer_transaction)
+)
+
+// $0 chain predecessor input index
+// chain predecessor is on the same slot
+func _sameSlotPredecessorCase :
+require(
+	or(sequencerFlagON(inputIDByIndex($0)), not(isZero(numEndorsements))),
+	!!!sequencer_chain_predecessor_on_the_same_slot_must_be_either_a_sequencer_tx_too_or_endorse_another_sequencer_tx
+)
+
+// $0 chain predecessor input index
+// chain predecessor is on past time slot
+func _crossSlotPredecessorCase :
+require(
+	or(
+		isBranchTransaction,
+		not(isZero(numEndorsements)),
+		not(isZero(txExplicitBaseline))
+	),
+	!!!sequencer_tx_has_incorrect_cross_slot_chain_predecessor_or_does_not_have_any_endorsements
+)
+
+// $0 chain predecessor input index
+func _sequencer :
+or(
+	and( equal($0, 0xff), _noChainPredecessorCase ),
+	and( _inputSameSlot($0), _sameSlotPredecessorCase($0)),
+	and( not(_inputSameSlot($0)), _crossSlotPredecessorCase)
+)
+
+func zeroTickOnBranchOnly : or(
+	not(isZero(txTick)),
+	isBranchTransaction
+)
+
+// enforces the sequencer transaction with more than 1 input not is in the pre branch consolidation ticks zone
+// Checks: txTick <= constMaxTickValuePerSlot - constPreBranchConsolidationTicks
+func checkPreBranchConsolidationTicks :
+or(
+   equal(numInputs, u64/1),
+   require(
+		lessOrEqualThan(
+			uint8Bytes(txTick),
+			sub(
+				constMaxTickValuePerSlot,
+				constPreBranchConsolidationTicks
+			)
+        ),
+        !!!sequencer_transaction_violates_pre-branch_consolidation_ticks_constraint
+   )
+)
+
+func checkPostBranchConsolidationTicks :
+   require(
+       or(
+          isBranchTransaction,
+          lessOrEqualThan(constPostBranchConsolidationTicks, uint8Bytes(txTick))
+	   ),
+       !!!sequencer_transaction_violates_post_branch_consolidation_ticks_constraint
+   )
+
+// $0 is chain constraint sibling index
+func sequencer: and(
+	mustSize($0,1),
+    mustMinimumAmountOnSequencer, // enforcing minimum amount on sequencer
+    or(
+        selfIsConsumedOutput,
+		and(
+			// produced
+			require(not(equal(selfOutputIndex, 0xff)), !!!sequencer_output_can't_be_at_index_0xff),
+			require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction),
+			require(not(equal($0, 0xff)), !!!chain_constraint_index_0xff_is_not_allowed),
+            require(zeroTickOnBranchOnly, !!!non-branch_sequencer_transaction_cant_be_on_slot_boundary),
+			checkPreBranchConsolidationTicks,
+			checkPostBranchConsolidationTicks,
+            // check chain's past
+			_sequencer( selfChainPredInputIndex($0) )
+		)
+    )
+)

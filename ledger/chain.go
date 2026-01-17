@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/hex"
 	"fmt"
 
@@ -11,6 +12,9 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
+
+//go:embed chain.efl
+var chainConstraintSource string
 
 // ChainConstraint is a chain constraint
 type ChainConstraint struct {
@@ -82,9 +86,8 @@ func (cc *ChainConstraint) Source() string {
 		hex.EncodeToString(cc.ChainID[:]), hex.EncodeToString(predRef), cc.OriginSlot, cc.OriginAmount)
 }
 
-// ChainConstraintFromBytesAtSlot parses a ChainConstraint using the library for the given slot.
-func ChainConstraintFromBytesAtSlot(data []byte, slot uint32) (*ChainConstraint, error) {
-	return ChainConstraintFromBytesWithLib(data, L(slot))
+func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
+	return ChainConstraintFromBytesWithLib(data, L(base.MaxSlot))
 }
 
 func ChainConstraintFromBytesWithLib(data []byte, lib *Library) (*ChainConstraint, error) {
@@ -159,98 +162,3 @@ func init() {
 		}
 	})
 }
-
-const chainConstraintSource = `
-func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000000000000000000000)
-
-// $0 - chain ChainID
-// $1 - predecessor output index || predecessor constraint index (2 bytes)
-// $2 - origin slot
-// $3 - origin amount
-func _validChainProduced : 
-if(
-   isChainOriginID($0),
-        // chain origin
-   require(
-     and(equal($1, 0xffff), equalUint($2, txSlot), equalUint($3, selfTokenBalanceValue)),
-     !!!invalid_chain_origin_data
-   ),
-        // NOT chain origin. Crosscheck reference
-   require(
-     equal(unlockParamsByConstraintIndex($1), selfConstraintIndex),
-     !!!predecessor_reference_crosscheck_failed
-   )
-)
-
-// $0 - param number
-func _chainSuccessorParam :
-	parseInlineDataArgument(
-        atPath(concat(pathToProducedOutputs, selfUnlockParameters)),
-        $0,
-		selfBytecodePrefix
-	)
-
-// $0 - chain ChainID
-// $1 - origin slot
-// $2 - origin amount
-func _validChainConsumed : 
-or(
-      // discontinue chain. Check nothing
-   equal(selfUnlockParameters, 0xffff),
-      // chain continues
-   and (
-      require(equal(len(selfUnlockParameters), u64/2), !!!unlock_parameters_must_be_2_bytes),
-        // check chainID match
-      require(
-         if(
-           isChainOriginID($0),
-           equal(blake2b(inputIDByIndex(selfOutputIndex)), _chainSuccessorParam(0)),
-           equal($0, _chainSuccessorParam(0))
-         ),
-         !!!chain_ID_mismatch_with_successor
-      ),
-        // crosscheck successor reference
-      require(
-         equal(selfConstraintIndex, _chainSuccessorParam(1)),
-         !!!successor_reference_crosscheck_failed
-      ),
-      require(
-         equal($1, _chainSuccessorParam(2)),
-         !!!origin_slot_is_immutable
-      ),
-      require(
-         equal($2, _chainSuccessorParam(3)),
-         !!!origin_amount_is_immutable
-      ),
-   )
-)
-
-// $0 - chain ChainID
-// $1 - predecessor (input index || chain constraint index) - 2 bytes 
-// $2 - origin slot
-// $3 - origin amount
-// --- unlock data: 2 bytes: (successor output index || successor chain constraint), 0xffff means discontinue chain
-func chain : and(
-      // chain constraint cannot be on output with index 0xff = 255
-   not(equal(selfOutputIndex, 0xff)),
-   require(equal(len($0),u64/32), !!!chainID_must_be_32_bytes_long),
-   or(
-      and(
-         selfIsProducedOutput,
-         _validChainProduced($0,$1,$2,$3),
-      ),
-      and(
-         selfIsConsumedOutput,
-         _validChainConsumed($0,$2,$3)
-      )
-   )
-)
-
-// $0 - chain constraint index
-func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), 0, #chain)
-func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain), 0)
-
-// $0 chain constraint index
-func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain),0) )
-
-`

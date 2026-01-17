@@ -92,10 +92,10 @@ func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintP
 	lib.constraintNames.Insert(name)
 }
 
-func (lib *Library) mustRegisterLock(name string, parser LockParser) {
-	util.Assertf(lib.constraintNames.Contains(name), "mustRegisterLock: unknown constraint '%s'", name)
+func (lib *Library) mustRegisterLockSerde(name string, parser LockParser) {
+	util.Assertf(lib.constraintNames.Contains(name), "mustRegisterLockSerde: unknown constraint '%s'", name)
 	_, already := lib.locksByName[name]
-	util.Assertf(!already, "mustRegisterLock: repeating lock '%s'", name)
+	util.Assertf(!already, "mustRegisterLockSerde: repeating lock '%s'", name)
 
 	lib.locksByName[name] = parser
 }
@@ -173,8 +173,12 @@ func (acc AccountID) Bytes() []byte {
 	return acc
 }
 
-// LockFromBytesWithLib parses a lock from bytecode using the provided library.
+// LockFromBytes parses a lock from bytecode using the provided library.
 // This is the core implementation that avoids repeated L(slot) calls.
+func LockFromBytes(data []byte) (Lock, error) {
+	return LockFromBytesWithLib(data, L(base.MaxSlot))
+}
+
 func LockFromBytesWithLib(data []byte, lib *Library) (Lock, error) {
 	prefix, err := lib.ParsePrefixBytecode(data)
 	if err != nil {
@@ -192,12 +196,6 @@ func LockFromBytesWithLib(data []byte, lib *Library) (Lock, error) {
 	return parser(data)
 }
 
-// LockFromBytesAtSlot parses a lock from bytecode using the library for the given slot.
-// Use this when parsing bytecode that was created at a specific slot.
-func LockFromBytesAtSlot(data []byte, slot uint32) (Lock, error) {
-	return LockFromBytesWithLib(data, L(slot))
-}
-
 // AccountableFromBytesWithLib parses an Accountable from bytecode using the provided library.
 // This is the core implementation that avoids repeated L(slot) calls.
 func AccountableFromBytesWithLib(data []byte, lib *Library) (Accountable, error) {
@@ -211,7 +209,7 @@ func AccountableFromBytesWithLib(data []byte, lib *Library) (Accountable, error)
 	}
 	switch name {
 	case AddressED25519Name:
-		return AddressED25519FromBytesWithLib(data, lib)
+		return AddressED25519FromBytes(data)
 	case ChainLockName:
 		return ChainLockFromBytesWithLib(data, lib)
 	case StemLockName:

@@ -51,7 +51,7 @@ func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		return
 	}
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	if ret.target, err = ledger.LockFromBytesAtSlot(o.RequestParams.Get(FieldWithdrawTarget), base.MaxSlot); err != nil {
+	if ret.target, err = ledger.LockFromBytesWithLib(o.RequestParams.Get(FieldWithdrawTarget), ledger.L(base.MaxSlot)); err != nil {
 		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: failed to parse lock: %w", err)
 		return
 	}

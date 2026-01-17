@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	_ "embed"
+
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -16,6 +18,9 @@ const (
 	ChainLockName     = "c"
 	chainLockTemplate = ChainLockName + "(0x%s)"
 )
+
+//go:embed lock_chain.efl
+var chainLockConstraintSource string
 
 var NilChainLock = ChainLockFromChainID(base.NilChainID)
 
@@ -96,7 +101,7 @@ func registerChainLockConstraint(lib *Library) {
 		// Use latest library version for library registration parsing
 		return ChainLockFromBytesWithLib(data, lib)
 	})
-	lib.mustRegisterLock(ChainLockName, func(bytes []byte) (Lock, error) {
+	lib.mustRegisterLockSerde(ChainLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
 		ret, err := ChainLockFromBytesWithLib(bytes, lib)
 		if err != nil {
@@ -117,53 +122,3 @@ func init() {
 		util.AssertNoError(err)
 	})
 }
-
-const chainLockConstraintSource = `
-
-// $0 selfUnlockParameters
-func _selfReferencedChainID : 
-	parseInlineDataArgument(
-		consumedConstraintByIndex(byte($0, 0), byte($0, 1)),
-        0,
-		#chain
-	)
-
-// $0 - unlock params
-func _selfReferencedChainIDAdjusted : if(
-	isZero(_selfReferencedChainID($0)),
-	blake2b(inputIDByIndex(byte($0, 0))),
-	_selfReferencedChainID($0)
-)
-
-// $0 selfUnlockParameters
-func _chainLockUnlock : if( lessThan(len($0), u64/2), 0xffff, slice($0,0,1) )
-
-// $0 - chainID
-func _validChainUnlock : 
-       // chain id must be equal to the referenced chain id 
-   equal($0, _selfReferencedChainIDAdjusted(_chainLockUnlock(selfUnlockParameters))) 
-
-
-// $0 - chainID
-// Unlock parameters first 2 bytes: [unlocked chain output index, chain constraint index]
-func chainLock : 
-or(
-	and(
-		selfIsProducedOutput, 
-		require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
-		require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
-		require(not(isZero($0)), !!!non_zero_argument_expected)   // to prevent common error
-	),
-	and(
-		selfIsConsumedOutput,
-        greaterOrEqualThan(len(selfUnlockParameters), u64/2),
-		not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing 
-		_validChainUnlock($0)
-	)
-)
-
-// short version of chainLock
-// $0 - chainID
-// Unlock parameters 2 bytes: [unlocked chain output index, chain constraint index]
-func c : chainLock($0)
-`

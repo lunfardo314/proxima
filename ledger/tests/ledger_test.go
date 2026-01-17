@@ -46,7 +46,7 @@ func TestOutput(t *testing.T) {
 		t.Logf("output: %d bytes", len(out.Bytes()))
 		t.Logf("output:\n%s", out.Lines().String())
 
-		_, err = ledger.AddressED25519FromBytesWithLib(outBack.Lock().Bytes(), ledger.L(base.MaxSlot))
+		_, err = ledger.AddressED25519FromBytes(outBack.Lock().Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, out.Lock(), outBack.Lock())
 	})
@@ -376,9 +376,10 @@ func TestChain1(t *testing.T) {
 		_, idx := outs[1].Output.ChainConstraint()
 		require.EqualValues(t, 2, idx)
 
-		_, err = ledger.ChainConstraintFromBytesAtSlot(outs[1].Output.MustAt(2), base.MaxSlot)
+		lib := ledger.L(base.MaxSlot)
+		_, err = ledger.ChainConstraintFromBytesWithLib(outs[1].Output.MustAt(2), lib)
 		require.NoError(t, err)
-		_, err = ledger.ChainConstraintFromBytesAtSlot(outs[1].Output.MustAt(3), base.MaxSlot)
+		_, err = ledger.ChainConstraintFromBytesWithLib(outs[1].Output.MustAt(3), lib)
 		require.NoError(t, err)
 
 		// create destroying transaction

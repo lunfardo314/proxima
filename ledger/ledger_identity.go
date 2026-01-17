@@ -38,11 +38,6 @@ func NewLedgerIdentity(genesisTimeUnix uint32, description string) *LedgerIdenti
 	}
 }
 
-// LedgerIdentityFromInitParams creates ledger identity from init parameters.
-func LedgerIdentityFromInitParams(params InitParameters) *LedgerIdentity {
-	return NewLedgerIdentity(params.GenesisTimeUnix, params.Description)
-}
-
 // Bytes serializes the ledger identity to bytes.
 // Format:
 //   - 1 byte: version

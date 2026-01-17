@@ -59,7 +59,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 // registerConstraints mass-registers all wrappers of constraints
 func (lib *Library) registerConstraints() {
 	registerAmountsConstraint(lib)
-	registerAddressED25519Constraint(lib)
+	registerAddressED25519Serde(lib)
 	registerTimeLockConstraint(lib)
 	registerStemLockConstraint(lib)
 	registerChainConstraint(lib)

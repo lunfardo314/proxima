@@ -3,6 +3,8 @@ package ledger
 import (
 	"fmt"
 
+	_ "embed"
+
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -18,6 +20,11 @@ const (
 	tagAlongLockTemplateSource = TagAlongLockName + "(0x%s, %s)"
 	tagAlongLockTemplateHR     = TagAlongLockName + "(target=%s, sender=%s)"
 )
+
+// TODO randomize access to purgeable tag-along outputs and incentivize ledger cleanup
+
+//go:embed lock_tag_along.efl
+var tagAlongLockConstraintSource string
 
 func TagAlongLockFromBytesWithLib(data []byte, lib *Library) (*TagAlongLock, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
@@ -92,7 +99,7 @@ func registerTagAlongLockConstraint(lib *Library) {
 		// Use latest library version for library registration parsing
 		return TagAlongLockFromBytesWithLib(data, lib)
 	})
-	lib.mustRegisterLock(TagAlongLockName, func(bytes []byte) (Lock, error) {
+	lib.mustRegisterLockSerde(TagAlongLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
 		ret, err := TagAlongLockFromBytesWithLib(bytes, lib)
 		if err != nil {
@@ -155,50 +162,3 @@ func (o *TagAlongOutput) StatusInSlot(slot uint32) string {
 	}
 	return "undefined"
 }
-
-// TODO randomize access to purgeable tag-along outputs and incentivize ledger cleanup
-
-const tagAlongLockConstraintSource = `
-func constTagAlongSlots : u64/30  // 5 min
-func constTagAlongReclaimSlots : u64/390 // 5 min + 1 hour
-
-func selfInputSlotPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
-
-func _selfSenderBytecode : parseBytecode(self, 1, selfBytecodePrefix)
-
-// $0 - target sequencer ID, like in the chainLock
-// $1 - sender account source, usually addressED25519 
-func tagAlong : 
-or(
-  and(
-     selfIsProducedOutput,
-     require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
-	 require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
-	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
-     require(lessThan(selfNumConstraints, u64/5), !!!tag-along_lock_allows_no_more_than_4_constraints),
-     require(
-        equal(
-           parseInlineDataArgument(_selfSenderBytecode, 0, #a, #addressED25519), 
-           blake2b(publicKeyED25519(txSignature))
-        ),
-        !!!sender_hash_check_failed
-     ),
-  ),
-  and(
-     selfIsConsumedOutput,
-	 or(
-		greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots),  // unlockable by anybody  
-		and( 
-			 // unlockable by the target
-		   lessThan(selfInputSlotPace, constTagAlongSlots),
-		   require(chainLock($0), !!!unlock_window_error:_inside_tag_along_slots_must_be_unlocked_by_the_target)
-		),
-			 // unlockable by the sender
-        require(
-           $1,
-           !!!unlock_window_error:_inside_reclaim_slots_must_be_unlocked_by_the_sender
-        )
-	 )
-  ),
-)
-`

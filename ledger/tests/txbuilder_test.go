@@ -36,7 +36,7 @@ func TestBasics(t *testing.T) {
 
 		_, stemOutData := u.StateReader().GetStem()
 
-		stemOut, _, _, err := ledger.OutputFromBytesMainAtSlot(stemOutData, base.MaxSlot)
+		stemOut, _, _, err := ledger.OutputFromBytesMain(stemOutData)
 		require.NoError(t, err)
 		require.EqualValues(t, 0, stemOut.TokenBalance())
 		_, ok := stemOut.StemLock()

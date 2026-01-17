@@ -80,26 +80,6 @@ func TestSlotAwareConstraintParsing(t *testing.T) {
 		require.Equal(t, c0.Name(), cMax.Name(), "constraint names should match")
 		require.Equal(t, c0.Bytes(), c1000.Bytes(), "constraint bytes should match")
 	})
-
-	t.Run("LockFromBytesAtSlot parses correctly", func(t *testing.T) {
-		// Create an address lock
-		addr := ledger.AddressED25519Null()
-		addrBytes := addr.Bytes()
-
-		// Parse at different slots
-		l0, err := ledger.LockFromBytesAtSlot(addrBytes, 0)
-		require.NoError(t, err)
-
-		l1000, err := ledger.LockFromBytesAtSlot(addrBytes, 1000)
-		require.NoError(t, err)
-
-		lMax, err := ledger.LockFromBytesAtSlot(addrBytes, base.MaxSlot)
-		require.NoError(t, err)
-
-		// All should parse to same lock
-		require.Equal(t, l0.Name(), l1000.Name(), "lock names should match")
-		require.Equal(t, l0.Name(), lMax.Name(), "lock names should match")
-	})
 }
 
 func TestTransactionValidationUsesSlot(t *testing.T) {
