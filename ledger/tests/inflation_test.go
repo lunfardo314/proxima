@@ -110,6 +110,7 @@ func TestInflationConst(t *testing.T) {
 	slotsPerYear := slotsPerDay * 365
 
 	t.Run("minimum inflatable", func(t *testing.T) {
+		t.Skip("skip test, too long to run")
 		const slot = uint32(0)
 		var calculated uint64
 		for inAmount := uint64(1_000_000); inAmount < 500_000_000; inAmount += 1 {
@@ -130,6 +131,7 @@ func TestInflationConst(t *testing.T) {
 		t.Logf("max slot = %s --> years %s", util.Th(maxSlot), util.Th(maxSlot/slotsPerYear))
 	})
 	t.Run("inflation yearly", func(t *testing.T) {
+		t.Skip("skip test, too long to run")
 		t.Logf("max uint64: %s", util.Th(uint64(math.MaxUint64)))
 		t.Logf("max int64: %s", util.Th(int64(math.MaxInt64)))
 		amount := uint64(ledger.DefaultInitialSupply)

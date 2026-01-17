@@ -73,8 +73,8 @@ func (d *DelegateLock) Accounts() []Accountable {
 	return NoDuplicatesAccountables([]Accountable{d.Target, d.MasterLock})
 }
 
-// Delegate2LockFromBytesAtSlot parses a DelegateLock using the library for the given slot.
-func Delegate2LockFromBytesAtSlot(data []byte, slot uint32) (*DelegateLock, error) {
+// DelegateLockFromBytesAtSlot parses a DelegateLock using the library for the given slot.
+func DelegateLockFromBytesAtSlot(data []byte, slot uint32) (*DelegateLock, error) {
 	lib := L(slot)
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
@@ -128,18 +128,18 @@ func (d *DelegateLock) Master() Accountable {
 func registerDelegateLock(lib *Library) {
 	lib.mustRegisterConstraint(DelegateLockName, 4, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return Delegate2LockFromBytesAtSlot(data, base.MaxSlot)
+		return DelegateLockFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestDelegateConstraint)
 	lib.mustRegisterLock(DelegateLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
-		ret, err := Delegate2LockFromBytesAtSlot(bytes, base.MaxSlot)
+		ret, err := DelegateLockFromBytesAtSlot(bytes, base.MaxSlot)
 		if err != nil {
 			return nil, err
 		}
 		return ret, nil
 	})
 	lib.mustRegisterConstraint(DelegateLockStateName, 2, func(data []byte) (Constraint, error) {
-		return DelegateLockStateFromBytes(data)
+		return DelegateLockStateFromBytesAtSlot(data, base.MaxSlot)
 	}, initTestDelegate2LockState)
 }
 
@@ -148,7 +148,7 @@ func initTestDelegateConstraint() {
 	master := AddressED25519Random()
 	example := NewDelegateLock(target, master, 3, 10)
 
-	exampleBack, err := Delegate2LockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
+	exampleBack, err := DelegateLockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 	util.Assertf(example.MaxFrozenEpochs == 3, "Delegate2LockFromBytes: wrong back 1")
 	util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "Delegate2LockFromBytes: wrong back 2")
@@ -196,12 +196,6 @@ func DelegateLockStateFromBytesAtSlot(data []byte, slot uint32) (DelegateLockSta
 	}, nil
 }
 
-// DelegateLockStateFromBytes parses a DelegateLockState using the latest library version.
-// Deprecated: Use DelegateLockStateFromBytesAtSlot for parsing historical bytecode.
-func DelegateLockStateFromBytes(data []byte) (DelegateLockState, error) {
-	return DelegateLockStateFromBytesAtSlot(data, base.MaxSlot)
-}
-
 func (d DelegateLockState) Source() string {
 	return fmt.Sprintf(DelegateLockStateTemplate, d.LastFrozenEpoch, d.State)
 }
@@ -228,7 +222,7 @@ func (d DelegateLockState) Name() string {
 func initTestDelegate2LockState() {
 	dlz := DelegateLockState{3001, DelegateLockStateFrozen}
 
-	dlzBack, err := DelegateLockStateFromBytes(dlz.Bytes())
+	dlzBack, err := DelegateLockStateFromBytesAtSlot(dlz.Bytes(), base.MaxSlot)
 	util.AssertNoError(err)
 	util.Assertf(dlzBack.LastFrozenEpoch == 3001, "DelegateLockState: inconsistency 1")
 	util.Assertf(dlzBack.State == DelegateLockStateFrozen, "DelegateLockState: inconsistency 2")

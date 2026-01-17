@@ -56,7 +56,7 @@ func DelegationOutputFromOutputWithChainID(o *OutputWithChainID) (ret Delegation
 	ret.DelegateLock = *dLock
 
 	if data, err := o.Output.ConstraintAt(3); err == nil {
-		ret.DelegateLockState, err = DelegateLockStateFromBytes(data)
+		ret.DelegateLockState, err = DelegateLockStateFromBytesAtSlot(data, base.MaxSlot)
 	}
 	return
 }
