@@ -320,7 +320,7 @@ func (o *Output) TimeLock() (uint32, bool) {
 		if idx < ConstraintIndexFirstOptionalConstraint {
 			return true
 		}
-		if ret, err = TimelockFromBytes(constr); err == nil {
+		if ret, err = TimelockFromBytesWithLib(constr, L(base.MaxSlot)); err == nil {
 			found = true
 			return false
 		}
@@ -365,7 +365,7 @@ func (o *Output) SequencerConstraint() (*SequencerConstraint, byte) {
 			return true
 		}
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		ret, err = SequencerConstraintFromBytesAtSlot(constr, base.MaxSlot)
+		ret, err = SequencerConstraintFromBytesWithLib(constr, L(base.MaxSlot))
 		if err == nil {
 			found = idx
 			return false
@@ -402,7 +402,7 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 			return true
 		}
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		seqConstraint, err = SequencerConstraintFromBytesAtSlot(constr, base.MaxSlot)
+		seqConstraint, err = SequencerConstraintFromBytesWithLib(constr, L(base.MaxSlot))
 		if err == nil {
 			seqConstraintIndex = idx
 			return false
@@ -450,7 +450,7 @@ func (o *Output) EnsureStopDelegationConstraint() (*EnsureStopDelegation, byte) 
 		if idx < ConstraintIndexFirstOptionalConstraint {
 			return true
 		}
-		ret, err = EnsureStopDelegationFromBytes(constr)
+		ret, err = EnsureStopDelegationFromBytesWithLib(constr, L(base.MaxSlot))
 		if err == nil {
 			found = idx
 			return false
@@ -949,7 +949,7 @@ func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
 // TagAlongLock return tag-along lock if present, otherwise nil
 func (o *Output) TagAlongLock() *TagAlongLock {
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	ret, err := TagAlongLockFromBytesAtSlot(o.MustAt(int(ConstraintIndexLock)), base.MaxSlot)
+	ret, err := TagAlongLockFromBytesWithLib(o.MustAt(int(ConstraintIndexLock)), L(base.MaxSlot))
 	if err != nil {
 		return nil
 	}

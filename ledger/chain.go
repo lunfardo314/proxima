@@ -130,7 +130,7 @@ var FinishChainUnlockParams = []byte{0xff, 0xff}
 func registerChainConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainConstraintName, 4, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return ChainConstraintFromBytesAtSlot(data, base.MaxSlot)
+		return ChainConstraintFromBytesWithLib(data, lib)
 	})
 }
 

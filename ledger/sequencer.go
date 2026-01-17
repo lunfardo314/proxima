@@ -156,9 +156,9 @@ func (s *SequencerConstraint) Source() string {
 	return fmt.Sprintf(sequencerConstraintTemplate, s.ChainConstraintIndex)
 }
 
-// SequencerConstraintFromBytesAtSlot parses a SequencerConstraint using the library for the given slot.
-func SequencerConstraintFromBytesAtSlot(data []byte, slot uint32) (*SequencerConstraint, error) {
-	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 1)
+// SequencerConstraintFromBytesWithLib parses a SequencerConstraint using the library
+func SequencerConstraintFromBytesWithLib(data []byte, lib *Library) (*SequencerConstraint, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +179,7 @@ func SequencerConstraintFromBytesAtSlot(data []byte, slot uint32) (*SequencerCon
 func registerSequencerConstraint(lib *Library) {
 	lib.mustRegisterConstraint(SequencerConstraintName, 1, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return SequencerConstraintFromBytesAtSlot(data, base.MaxSlot)
+		return SequencerConstraintFromBytesWithLib(data, lib)
 	})
 }
 

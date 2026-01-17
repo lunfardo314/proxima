@@ -15,7 +15,6 @@ import (
 type AddressED25519 []byte
 
 const (
-	//AddressED25519Name     = "addressED25519"
 	AddressED25519Name     = "a"
 	addressED25519Template = AddressED25519Name + "(0x%s)"
 )
@@ -38,22 +37,22 @@ func AddressED25519FromBytesWithLib(data []byte, lib *Library) (AddressED25519, 
 }
 
 // AddressED25519FromBytesAtSlot parses an AddressED25519 using the library for the given slot.
-func AddressED25519FromBytesAtSlot(data []byte, slot uint32) (AddressED25519, error) {
-	return AddressED25519FromBytesWithLib(data, L(slot))
-}
+//func AddressED25519FromBytesAtSlot(data []byte, slot uint32) (AddressED25519, error) {
+//	return AddressED25519FromBytesWithLib(data, L(slot))
+//}
 
 // AddressED25519FromBytes parses an AddressED25519 using the latest library version.
 // Deprecated: Use AddressED25519FromBytesAtSlot for parsing historical bytecode.
-func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
-	return AddressED25519FromBytesAtSlot(data, base.MaxSlot)
-}
+//func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
+//	return AddressED25519FromBytesAtSlot(data, base.MaxSlot)
+//}
 
-func AddressED25519FromSource(src string) (AddressED25519, error) {
+func AddressED25519FromSourceWithLib(src string, lib *Library) (AddressED25519, error) {
 	bin, err := binFromSource(src)
 	if err != nil {
 		return nil, fmt.Errorf("EasyFL compile error: %v", err)
 	}
-	return AddressED25519FromBytes(bin)
+	return AddressED25519FromBytesWithLib(bin, lib)
 }
 
 func AddressED25519FromPublicKey(pubKey ed25519.PublicKey) AddressED25519 {
@@ -129,10 +128,10 @@ func (a AddressED25519) Master() Accountable {
 
 func registerAddressED25519Constraint(lib *Library) {
 	lib.mustRegisterConstraint(AddressED25519Name, 1, func(data []byte) (Constraint, error) {
-		return AddressED25519FromBytes(data)
+		return AddressED25519FromBytesWithLib(data, L(base.MaxSlot))
 	})
 	lib.mustRegisterLock(AddressED25519Name, func(bytes []byte) (Lock, error) {
-		ret, err := AddressED25519FromBytes(bytes)
+		ret, err := AddressED25519FromBytesWithLib(bytes, L(base.MaxSlot))
 		if err != nil {
 			return nil, err
 		}

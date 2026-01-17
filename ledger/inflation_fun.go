@@ -15,9 +15,8 @@ func (lib *Library) ChainInflationOriginal(amount uint64, inSlot, forSlots uint3
 	return binary.BigEndian.Uint64(resBin)
 }
 
-func ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
-	lib := L(inSlot)
-	return uint64(forSlots) * (amount / (lib.MinimumInflatableAmount0 + uint64(inSlot)))
+func ChainInflation(amount uint64, inSlot, forAmountOfSlots uint32) uint64 {
+	return uint64(forAmountOfSlots) * (amount / (L(inSlot).MinimumInflatableAmount0 + uint64(inSlot)))
 }
 
 // AdjustedAmount calculates amount adjusted to the maximum inflation.
@@ -44,8 +43,7 @@ func (lib *Library) BranchInflationBonusBaseFromSource() uint64 {
 // BranchInflationBonus calculates the inflation bonus for a branch using the given proof.
 // Uses the library for the specified slot.
 func BranchInflationBonus(proof []byte, slot uint32) uint64 {
-	lib := L(slot)
-	return RandomFromSeed(proof, lib.BranchInflationBonusBase) + 1
+	return RandomFromSeed(proof, L(slot).BranchInflationBonusBase) + 1
 }
 
 func MinimumInflatableAmount(slot uint32) uint64 {

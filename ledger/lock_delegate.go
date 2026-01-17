@@ -73,11 +73,6 @@ func (d *DelegateLock) Accounts() []Accountable {
 	return NoDuplicatesAccountables([]Accountable{d.Target, d.MasterLock})
 }
 
-// DelegateLockFromBytesAtSlot parses a DelegateLock using the library for the given slot.
-func DelegateLockFromBytesAtSlot(data []byte, slot uint32) (*DelegateLock, error) {
-	return DelegateLockFromBytesWithLib(data, L(slot))
-}
-
 func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
@@ -131,27 +126,22 @@ func (d *DelegateLock) Master() Accountable {
 func registerDelegateLock(lib *Library) {
 	lib.mustRegisterConstraint(DelegateLockName, 4, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return DelegateLockFromBytesAtSlot(data, base.MaxSlot)
+		return DelegateLockFromBytesWithLib(data, lib)
 	})
 	lib.mustRegisterLock(DelegateLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
-		ret, err := DelegateLockFromBytesAtSlot(bytes, base.MaxSlot)
+		ret, err := DelegateLockFromBytesWithLib(bytes, lib)
 		if err != nil {
 			return nil, err
 		}
 		return ret, nil
 	})
 	lib.mustRegisterConstraint(DelegateLockStateName, 2, func(data []byte) (Constraint, error) {
-		return DelegateLockStateFromBytesAtSlot(data, base.MaxSlot)
+		return DelegateLockStateFromBytesWithLib(data, lib)
 	})
 }
 
 //--------------------------- delegationLockState
-
-// DelegateLockStateFromBytesAtSlot parses a DelegateLockState using the library for the given slot.
-func DelegateLockStateFromBytesAtSlot(data []byte, slot uint32) (DelegateLockState, error) {
-	return DelegateLockStateFromBytesWithLib(data, L(slot))
-}
 
 func DelegateLockStateFromBytesWithLib(data []byte, lib *Library) (DelegateLockState, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)

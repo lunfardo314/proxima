@@ -195,7 +195,7 @@ func TokenBalanceFromAmountsBytesAtSlot(data []byte, slot uint32) (int64, error)
 func registerAmountsConstraint(lib *Library) {
 	lib.mustRegisterVarargConstraint(AmountsConstraintName, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return AmountsFromBytesAtSlot(data, base.MaxSlot)
+		return AmountsFromBytesWithLib(data, lib)
 	})
 }
 

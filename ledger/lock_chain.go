@@ -94,11 +94,11 @@ func NewChainLockUnlockParams(predChainOutputIndex, predChainConstraintIndex byt
 func registerChainLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainLockName, 1, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return ChainLockFromBytesAtSlot(data, base.MaxSlot)
+		return ChainLockFromBytesWithLib(data, lib)
 	})
 	lib.mustRegisterLock(ChainLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
-		ret, err := ChainLockFromBytesAtSlot(bytes, base.MaxSlot)
+		ret, err := ChainLockFromBytesWithLib(bytes, lib)
 		if err != nil {
 			return nil, err
 		}

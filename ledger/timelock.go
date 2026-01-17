@@ -52,9 +52,9 @@ func (t Timelock) Source() string {
 	return fmt.Sprintf(timelockTemplate, t)
 }
 
-// TimelockFromBytesAtSlot parses a Timelock constraint using the library for the given slot.
-func TimelockFromBytesAtSlot(data []byte, slot uint32) (Timelock, error) {
-	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 1)
+// TimelockFromBytesWithLib parses a Timelock constraint using the library for the given slot.
+func TimelockFromBytesWithLib(data []byte, lib *Library) (Timelock, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return NilTimelock, err
 	}
@@ -69,15 +69,9 @@ func TimelockFromBytesAtSlot(data []byte, slot uint32) (Timelock, error) {
 	return Timelock(ret), nil
 }
 
-// TimelockFromBytes parses a Timelock constraint using the latest library version.
-// Deprecated: Use TimelockFromBytesAtSlot for parsing historical bytecode.
-func TimelockFromBytes(data []byte) (Timelock, error) {
-	return TimelockFromBytesAtSlot(data, base.MaxSlot)
-}
-
 func registerTimeLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(TimelockName, 1, func(data []byte) (Constraint, error) {
-		return TimelockFromBytes(data)
+		return TimelockFromBytesWithLib(data, lib)
 	})
 }
 

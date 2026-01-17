@@ -59,6 +59,7 @@ func L(slot uint32) *Library {
 // Caller must hold at least a read lock on libraryCacheMutex.
 func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 	// Find the applicable upgrade slot for this slot
+	// TODO optimize: no need traverse DB every time
 	upgradeSlot, prevUpgradeSlot, yamlData := lc.findLibraryForSlot(slot)
 
 	lc.mu.RLock()

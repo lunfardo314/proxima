@@ -4,7 +4,7 @@ package ledger
 
 type inlineTest func(lib *Library)
 
-var _inlineTests = []inlineTest{}
+var _inlineTests = make([]inlineTest, 0)
 
 // registerInlineTest must be called from init -> no need for mutex
 func registerInlineTest(t inlineTest) {

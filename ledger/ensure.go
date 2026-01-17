@@ -42,12 +42,6 @@ func EnsureStopDelegationFromBytesWithLib(data []byte, lib *Library) (*EnsureSto
 	return &EnsureStopDelegation{delegationID}, nil
 }
 
-// EnsureStopDelegationFromBytes parses an EnsureStopDelegation constraint using the latest library version.
-// Deprecated: Use EnsureStopDelegationFromBytesAtSlot for parsing historical bytecode.
-func EnsureStopDelegationFromBytes(data []byte) (*EnsureStopDelegation, error) {
-	return EnsureStopDelegationFromBytesAtSlot(data, base.MaxSlot)
-}
-
 func (d *EnsureStopDelegation) Source() string {
 	return fmt.Sprintf(EnsureStopDelegationTemplate, d.ChainID.StringHex())
 }

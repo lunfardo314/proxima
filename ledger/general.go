@@ -13,14 +13,6 @@ func NewGeneralScript(data []byte) GeneralScript {
 	return data
 }
 
-func NewGeneralScriptFromSource(src string) (GeneralScript, error) {
-	_, _, bytecode, err := L(base.MaxSlot).CompileExpression(src)
-	if err != nil {
-		return nil, err
-	}
-	return bytecode, nil
-}
-
 func (u GeneralScript) Name() string {
 	return "GeneralScript"
 }

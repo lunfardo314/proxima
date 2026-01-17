@@ -19,11 +19,6 @@ const (
 	tagAlongLockTemplateHR     = TagAlongLockName + "(target=%s, sender=%s)"
 )
 
-// TagAlongLockFromBytesAtSlot parses a TagAlongLock using the library for the given slot.
-func TagAlongLockFromBytesAtSlot(data []byte, slot uint32) (*TagAlongLock, error) {
-	return TagAlongLockFromBytesWithLib(data, L(slot))
-}
-
 func TagAlongLockFromBytesWithLib(data []byte, lib *Library) (*TagAlongLock, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
@@ -95,11 +90,11 @@ func NewTagAlongLockUnlockParams(predChainOutputIndex, predChainConstraintIndex,
 func registerTagAlongLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(TagAlongLockName, 2, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return TagAlongLockFromBytesAtSlot(data, base.MaxSlot)
+		return TagAlongLockFromBytesWithLib(data, lib)
 	})
 	lib.mustRegisterLock(TagAlongLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
-		ret, err := TagAlongLockFromBytesAtSlot(bytes, base.MaxSlot)
+		ret, err := TagAlongLockFromBytesWithLib(bytes, lib)
 		if err != nil {
 			return nil, err
 		}

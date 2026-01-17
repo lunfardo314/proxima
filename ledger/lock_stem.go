@@ -63,11 +63,11 @@ func (st *StemLock) Master() Accountable {
 func registerStemLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(StemLockName, 2, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
-		return StemLockFromBytesAtSlot(data, base.MaxSlot)
+		return StemLockFromBytesWithLib(data, lib)
 	})
 	lib.mustRegisterLock(StemLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
-		ret, err := StemLockFromBytesAtSlot(bytes, base.MaxSlot)
+		ret, err := StemLockFromBytesWithLib(bytes, lib)
 		if err != nil {
 			return nil, err
 		}
@@ -110,11 +110,6 @@ func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
 		PredecessorOutputID: oid,
 		VRFProof:            easyfl.StripDataPrefix(args[1]),
 	}, nil
-}
-
-// StemLockFromBytesAtSlot parses a StemLock using the library for the given slot.
-func StemLockFromBytesAtSlot(data []byte, slot uint32) (*StemLock, error) {
-	return StemLockFromBytesWithLib(data, L(slot))
 }
 
 const stemLockSource = `

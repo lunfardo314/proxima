@@ -46,6 +46,10 @@ func AsDelegationOutput(o *Output, oid base.OutputID) (ret DelegationOutput, ok 
 }
 
 func DelegationOutputFromOutputWithChainID(o *OutputWithChainID) (ret DelegationOutput, ok bool) {
+	return DelegationOutputFromOutputWithChainIDWithLib(o, L(base.MaxSlot))
+}
+
+func DelegationOutputFromOutputWithChainIDWithLib(o *OutputWithChainID, lib *Library) (ret DelegationOutput, ok bool) {
 	lock := o.Output.Lock()
 	if lock.Name() != DelegateLockName {
 		return
@@ -56,7 +60,7 @@ func DelegationOutputFromOutputWithChainID(o *OutputWithChainID) (ret Delegation
 	ret.DelegateLock = *dLock
 
 	if data, err := o.Output.ConstraintAt(3); err == nil {
-		ret.DelegateLockState, err = DelegateLockStateFromBytesAtSlot(data, base.MaxSlot)
+		ret.DelegateLockState, err = DelegateLockStateFromBytesWithLib(data, lib)
 	}
 	return
 }
