@@ -314,7 +314,7 @@ func (srv *server) getAccountSimpleSigLockedOutputs(w http.ResponseWriter, r *ht
 		api.WriteErr(w, "wrong parameter 'addr' in request 'get_account_simple_siglocked_outputs'")
 		return
 	}
-	addr, err := ledger.AddressED25519FromSourceWithLib(lst[0], ledger.L(base.MaxSlot))
+	addr, err := ledger.AddressED25519FromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
@@ -341,7 +341,7 @@ func (srv *server) getNonChainBalance(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, "wrong parameter 'addr' in request 'get_balance_addr25519'")
 		return
 	}
-	targetAddr, err := ledger.AddressED25519FromSourceWithLib(lst[0], ledger.L(base.MaxSlot))
+	targetAddr, err := ledger.AddressED25519FromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
@@ -382,7 +382,7 @@ func (srv *server) getOutputsForAmount(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, "wrong parameter 'addr' in request 'get_outputs_for_amount'")
 		return
 	}
-	targetAddr, err := ledger.AddressED25519FromSourceWithLib(lst[0], ledger.L(base.MaxSlot))
+	targetAddr, err := ledger.AddressED25519FromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return

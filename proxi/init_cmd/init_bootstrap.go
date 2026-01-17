@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
@@ -129,7 +128,7 @@ func getAdditionalDistribution(genesisDistribution []ledger.LockBalance) []ledge
 	glb.AssertNoError(err)
 
 	for _, item := range parsedData.Distribution {
-		account, err := ledger.AddressED25519FromSourceWithLib(item.Account, ledger.L(base.MaxSlot))
+		account, err := ledger.AddressED25519FromSource(item.Account)
 		glb.AssertNoError(err)
 		genesisDistribution = append(genesisDistribution, ledger.LockBalance{Lock: account, Balance: item.Amount, ChainOrigin: item.Chain})
 	}

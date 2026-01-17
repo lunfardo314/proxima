@@ -81,7 +81,6 @@ func SequencerConstraintFromBytesWithLib(data []byte, lib *Library) (*SequencerC
 
 func registerSequencerConstraint(lib *Library) {
 	lib.mustRegisterConstraint(SequencerConstraintName, 1, func(data []byte) (Constraint, error) {
-		// Use latest library version for library registration parsing
 		return SequencerConstraintFromBytesWithLib(data, lib)
 	})
 }
