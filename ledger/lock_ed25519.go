@@ -36,17 +36,6 @@ func AddressED25519FromBytesWithLib(data []byte, lib *Library) (AddressED25519, 
 	return addrBin, nil
 }
 
-// AddressED25519FromBytesAtSlot parses an AddressED25519 using the library for the given slot.
-//func AddressED25519FromBytesAtSlot(data []byte, slot uint32) (AddressED25519, error) {
-//	return AddressED25519FromBytesWithLib(data, L(slot))
-//}
-
-// AddressED25519FromBytes parses an AddressED25519 using the latest library version.
-// Deprecated: Use AddressED25519FromBytesAtSlot for parsing historical bytecode.
-//func AddressED25519FromBytes(data []byte) (AddressED25519, error) {
-//	return AddressED25519FromBytesAtSlot(data, base.MaxSlot)
-//}
-
 func AddressED25519FromSourceWithLib(src string, lib *Library) (AddressED25519, error) {
 	bin, err := binFromSource(src)
 	if err != nil {
