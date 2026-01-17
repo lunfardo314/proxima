@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
@@ -23,7 +22,6 @@ type (
 		*easyfl.Library[*EvalContext]
 		definitionsYAML    []byte
 		constraintByPrefix map[string]*constraintRecord
-		constraintNames    set.Set[string]
 		locksByName        map[string]LockParser
 		upgradeChainData   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
 		Constants                            // Embedded ledger constants for this library version
@@ -35,7 +33,6 @@ func newLibrary(lib *easyfl.Library[*EvalContext], definitionsYAML []byte) *Libr
 		Library:            lib,
 		definitionsYAML:    definitionsYAML,
 		constraintByPrefix: make(map[string]*constraintRecord),
-		constraintNames:    set.New[string](),
 		locksByName:        make(map[string]LockParser),
 	}
 	return ret

@@ -31,7 +31,7 @@ type (
 		// Accounts all accounts of the lock
 		Accounts() []Accountable
 		// Master is account which is always unlockable. For conditional locks it is usually nil (no master)
-		Master() Accountable // TODO is it really needed
+		Master() Accountable // TODO is it really needed?
 	}
 
 	ConstraintParser func([]byte) (Constraint, error)
@@ -59,22 +59,18 @@ type (
 func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser ConstraintParser) {
 	prefix, err := lib.FunctionCallPrefixByName(name, nArgs)
 	util.AssertNoError(err)
-	util.Assertf(!lib.constraintNames.Contains(name), "repeating constraint name '%s'", name)
-	_, already := lib.constraintByPrefix[string(prefix)]
-	util.Assertf(!already, "repeating constraint prefix %s with name '%s'", easyfl_util.Fmt(prefix), name)
+	rec, already := lib.constraintByPrefix[string(prefix)]
+	util.Assertf(!already || rec.name == name, "rec.name == name")
 	util.Assertf(0 < len(prefix) && len(prefix) <= 2, "wrong constraint prefix %s, name: %s", easyfl_util.Fmt(prefix), name)
 	lib.constraintByPrefix[string(prefix)] = &constraintRecord{
 		name:   name,
 		prefix: bytes.Clone(prefix),
 		parser: parser,
 	}
-	lib.constraintNames.Insert(name)
 }
 
 // mustRegisterVarargConstraint registers one parser for each possible number of args (0 to 15)
 func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintParser) {
-	util.Assertf(!lib.constraintNames.Contains(name), "repeating constraint name '%s'", name)
-
 	for i := 0; i <= 15; i++ {
 		prefix, err := lib.FunctionCallPrefixByName(name, byte(i))
 		util.AssertNoError(err)
@@ -88,12 +84,9 @@ func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintP
 			parser: parser,
 		}
 	}
-
-	lib.constraintNames.Insert(name)
 }
 
 func (lib *Library) mustRegisterLockSerde(name string, parser LockParser) {
-	util.Assertf(lib.constraintNames.Contains(name), "mustRegisterLockSerde: unknown constraint '%s'", name)
 	_, already := lib.locksByName[name]
 	util.Assertf(!already, "mustRegisterLockSerde: repeating lock '%s'", name)
 

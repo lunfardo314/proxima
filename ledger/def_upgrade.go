@@ -43,20 +43,18 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 
 	lib.MustExtendMany(amountsAuxSource)
 	lib.MustExtendMany(addressED25519ConstraintSource)
-	//lib.MustExtendMany(conditionalLockSource) // not very necessary
-	//lib.MustExtendMany(deadlineLockSource)    // not very necessary
 	lib.MustExtendMany(timelockSource)
 	lib.MustExtendMany(stemLockSource)
 	lib.MustExtendMany(chainConstraintSource)
 	lib.MustExtendMany(sequencerConstraintSource)
 	lib.MustExtendMany(chainLockConstraintSource)
-	//lib.MustExtendMany(commitToSiblingSource) // not very necessary
 	lib.MustExtendMany(delegateLock2Source)
 	lib.MustExtendMany(tagAlongLockConstraintSource)
 	lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
 }
 
-// registerConstraints mass-registers all wrappers of constraints
+// registerConstraints mass-registers all serde wrappers of constraints
+// This function must be extended when new constraints come
 func (lib *Library) registerConstraints() {
 	registerAmountsConstraint(lib)
 	registerAddressED25519Serde(lib)

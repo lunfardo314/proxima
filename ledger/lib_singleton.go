@@ -79,7 +79,7 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 	}
 
 	// Parse the library with the appropriate resolver
-	lib := lc.parseLibrary(upgradeSlot, yamlData)
+	lib := lc.parseLibrary(yamlData)
 
 	// Set the upgrade chain data
 	chainData := &UpgradeChainData{
@@ -161,7 +161,7 @@ const upgradeLibraryDBPartition = 0x06
 
 // parseLibrary parses a library YAML using the unified embedded function resolver.
 // The upgradeSlot parameter is used for caching purposes.
-func (lc *LibraryCache) parseLibrary(upgradeSlot uint32, yamlData []byte) *Library {
+func (lc *LibraryCache) parseLibrary(yamlData []byte) *Library {
 	lib, err := ParseLibraryFromYAML(yamlData, GetEmbeddedFunctionResolver)
 	util.AssertNoError(err)
 
