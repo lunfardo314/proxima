@@ -21,7 +21,11 @@ const (
 
 // TagAlongLockFromBytesAtSlot parses a TagAlongLock using the library for the given slot.
 func TagAlongLockFromBytesAtSlot(data []byte, slot uint32) (*TagAlongLock, error) {
-	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 2)
+	return TagAlongLockFromBytesWithLib(data, L(slot))
+}
+
+func TagAlongLockFromBytesWithLib(data []byte, lib *Library) (*TagAlongLock, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +39,7 @@ func TagAlongLockFromBytesAtSlot(data []byte, slot uint32) (*TagAlongLock, error
 		return nil, err
 	}
 
-	sender, err := AccountableFromBytesAtSlot(args[1], slot)
+	sender, err := AccountableFromBytesWithLib(args[1], lib)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +96,7 @@ func registerTagAlongLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(TagAlongLockName, 2, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return TagAlongLockFromBytesAtSlot(data, base.MaxSlot)
-	}, initTestTagAlongLockConstraint)
+	})
 	lib.mustRegisterLock(TagAlongLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
 		ret, err := TagAlongLockFromBytesAtSlot(bytes, base.MaxSlot)
@@ -103,19 +107,21 @@ func registerTagAlongLockConstraint(lib *Library) {
 	})
 }
 
-func initTestTagAlongLockConstraint() {
-	chainID := base.RandomChainID()
-	sender := AddressED25519Random()
-	example := &TagAlongLock{
-		TargetSequencerID: chainID,
-		Sender:            sender,
-	}
-	tagAlongLockBack, err := TagAlongLockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
-	util.AssertNoError(err)
-	util.Assertf(EqualConstraints(tagAlongLockBack, example), "inconsistency "+TagAlongLockName)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		chainID := base.RandomChainID()
+		sender := AddressED25519Random()
+		example := &TagAlongLock{
+			TargetSequencerID: chainID,
+			Sender:            sender,
+		}
+		tagAlongLockBack, err := TagAlongLockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(EqualConstraints(tagAlongLockBack, example), "inconsistency "+TagAlongLockName)
 
-	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
+		_, err = lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+	})
 }
 
 // --- helper structure

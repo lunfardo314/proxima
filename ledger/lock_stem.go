@@ -64,7 +64,7 @@ func registerStemLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(StemLockName, 2, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return StemLockFromBytesAtSlot(data, base.MaxSlot)
-	}, initTestStemLockConstraint)
+	})
 	lib.mustRegisterLock(StemLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
 		ret, err := StemLockFromBytesAtSlot(bytes, base.MaxSlot)
@@ -75,19 +75,20 @@ func registerStemLockConstraint(lib *Library) {
 	})
 }
 
-func initTestStemLockConstraint() {
-	lib := L(base.MaxSlot)
-	txid := base.RandomTransactionID(true, 1)
-	predID := base.MustNewOutputID(txid, byte(txid.NumProducedOutputs()-1))
-	example := StemLock{
-		PredecessorOutputID: predID,
-		VRFProof:            []byte{0x01, 0x02, 0x03},
-	}
-	exampleBack, err := StemLockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
-	util.AssertNoError(err)
-	util.Assertf(bytes.Equal(example.Bytes(), exampleBack.Bytes()), "bytes.Equal(example.Bytes(), exampleBack.Bytes())")
-	_, err = lib.ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		txid := base.RandomTransactionID(true, 1)
+		predID := base.MustNewOutputID(txid, byte(txid.NumProducedOutputs()-1))
+		example := StemLock{
+			PredecessorOutputID: predID,
+			VRFProof:            []byte{0x01, 0x02, 0x03},
+		}
+		exampleBack, err := StemLockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(bytes.Equal(example.Bytes(), exampleBack.Bytes()), "bytes.Equal(example.Bytes(), exampleBack.Bytes())")
+		_, err = lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+	})
 }
 
 // StemLockFromBytesWithLib parses a StemLock using the provided library.

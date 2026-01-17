@@ -196,22 +196,24 @@ func registerAmountsConstraint(lib *Library) {
 	lib.mustRegisterVarargConstraint(AmountsConstraintName, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return AmountsFromBytesAtSlot(data, base.MaxSlot)
-	}, initTestAmountsConstraint)
+	})
 }
 
-func initTestAmountsConstraint() {
-	example := NewAmounts(1, 2, 1337, 0x01020304050607)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		example := NewAmounts(1, 2, 1337, 0x01020304050607)
 
-	exampleBack, err := ConstraintFromBytesAtSlot(example.Bytes(), base.MaxSlot)
-	util.AssertNoError(err)
-	util.Assertf(example.Name() == AmountsConstraintName, "inconsistency 1")
-	exampleBack1 := exampleBack.(Amounts)
-	util.Assertf(len(exampleBack1) == 4, "inconsistency 2")
+		exampleBack, err := AmountsFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(example.Name() == AmountsConstraintName, "inconsistency 1")
+		util.Assertf(len(exampleBack) == 4, "inconsistency 2")
 
-	util.Assertf(exampleBack1[0] == 1, "exampleBack1[0]==1")
-	util.Assertf(exampleBack1[1] == 2, "exampleBack1[1]==2")
-	util.Assertf(exampleBack1[2] == 1337, "exampleBack1[2]==1337")
-	util.Assertf(exampleBack1[3] == 0x01020304050607, "exampleBack1[3]==0x01020304050607")
+		util.Assertf(exampleBack[0] == 1, "exampleBack1[0]==1")
+		util.Assertf(exampleBack[1] == 2, "exampleBack1[1]==2")
+		util.Assertf(exampleBack[2] == 1337, "exampleBack1[2]==1337")
+		util.Assertf(exampleBack[3] == 0x01020304050607, "exampleBack1[3]==0x01020304050607")
+
+	})
 }
 
 const amountsAuxSource = `

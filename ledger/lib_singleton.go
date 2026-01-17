@@ -27,8 +27,8 @@ type LibraryCache struct {
 type ResolverFactory func(lib *easyfl.Library[*EvalContext]) func(string) easyfl.EmbeddedFunction[*EvalContext]
 
 var (
-	libraryCache       *LibraryCache
-	libraryCacheMutex  sync.RWMutex
+	libraryCache      *LibraryCache
+	libraryCacheMutex sync.RWMutex
 	// ledgerReset is set to true when ResetForTesting is called.
 	// Background goroutines can check this to avoid accessing nil library cache.
 	ledgerReset atomic.Bool
@@ -41,7 +41,6 @@ var (
 	// - other: the next upgrade slot that might need injection
 	nextPendingUpgradeSlot atomic.Uint32
 )
-
 
 // L returns the library version applicable to the given slot.
 // For the latest library version, use L(base.MaxSlot).
@@ -198,7 +197,7 @@ func MustInitLibraryCache(store common.Traversable) {
 	}()
 
 	// Run inline tests after releasing the lock to avoid deadlock
-	lib.runInlineTests()
+	runInlineTests(lib)
 }
 
 // MustInitSingleton initializes the ledger with identity data bytes.
@@ -229,7 +228,7 @@ func MustInitSingleton(identityData []byte) {
 
 	ledgerReset.Store(false)
 
-	result.runInlineTests()
+	runInlineTests(result)
 }
 
 // singleLibraryStore is a minimal store implementation for backward compatibility.

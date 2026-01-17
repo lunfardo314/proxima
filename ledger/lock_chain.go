@@ -49,7 +49,6 @@ func ChainLockFromBytesAtSlot(data []byte, slot uint32) (ChainLock, error) {
 	return ChainLockFromBytesWithLib(data, L(slot))
 }
 
-
 func (cl ChainLock) Source() string {
 	return fmt.Sprintf(chainLockTemplate, hex.EncodeToString(cl))
 }
@@ -96,7 +95,7 @@ func registerChainLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainLockName, 1, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return ChainLockFromBytesAtSlot(data, base.MaxSlot)
-	}, initTestChainLockConstraint)
+	})
 	lib.mustRegisterLock(ChainLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
 		ret, err := ChainLockFromBytesAtSlot(bytes, base.MaxSlot)
@@ -107,14 +106,16 @@ func registerChainLockConstraint(lib *Library) {
 	})
 }
 
-func initTestChainLockConstraint() {
-	example := NilChainLock
-	chainLockBack, err := ChainLockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
-	util.AssertNoError(err)
-	util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		example := NilChainLock
+		chainLockBack, err := ChainLockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
 
-	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
+		_, err = lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+	})
 }
 
 const chainLockConstraintSource = `

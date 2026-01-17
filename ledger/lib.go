@@ -25,7 +25,6 @@ type (
 		constraintByPrefix map[string]*constraintRecord
 		constraintNames    set.Set[string]
 		locksByName        map[string]LockParser
-		inlineTests        []func()
 		upgradeChainData   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
 		Constants                            // Embedded ledger constants for this library version
 	}
@@ -38,7 +37,6 @@ func newLibrary(lib *easyfl.Library[*EvalContext], definitionsYAML []byte) *Libr
 		constraintByPrefix: make(map[string]*constraintRecord),
 		constraintNames:    set.New[string](),
 		locksByName:        make(map[string]LockParser),
-		inlineTests:        make([]func(), 0),
 	}
 	return ret
 }

@@ -130,7 +130,7 @@ func (a AddressED25519) Master() Accountable {
 func registerAddressED25519Constraint(lib *Library) {
 	lib.mustRegisterConstraint(AddressED25519Name, 1, func(data []byte) (Constraint, error) {
 		return AddressED25519FromBytes(data)
-	}, initTestAddressED25519Constraint)
+	})
 	lib.mustRegisterLock(AddressED25519Name, func(bytes []byte) (Lock, error) {
 		ret, err := AddressED25519FromBytes(bytes)
 		if err != nil {
@@ -140,14 +140,16 @@ func registerAddressED25519Constraint(lib *Library) {
 	})
 }
 
-func initTestAddressED25519Constraint() {
-	example := AddressED25519Null()
-	addrBack, err := AddressED25519FromBytes(example.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(EqualConstraints(addrBack, AddressED25519Null()), "inconsistency "+AddressED25519Name)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		example := AddressED25519Null()
+		addrBack, err := AddressED25519FromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(EqualConstraints(addrBack, AddressED25519Null()), "inconsistency "+AddressED25519Name)
 
-	_, err = L(base.MaxSlot).ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
+		_, err = lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+	})
 }
 
 const addressED25519ConstraintSource = `

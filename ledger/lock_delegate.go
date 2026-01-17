@@ -75,7 +75,10 @@ func (d *DelegateLock) Accounts() []Accountable {
 
 // DelegateLockFromBytesAtSlot parses a DelegateLock using the library for the given slot.
 func DelegateLockFromBytesAtSlot(data []byte, slot uint32) (*DelegateLock, error) {
-	lib := L(slot)
+	return DelegateLockFromBytesWithLib(data, L(slot))
+}
+
+func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
@@ -87,12 +90,12 @@ func DelegateLockFromBytesAtSlot(data []byte, slot uint32) (*DelegateLock, error
 	ret := &DelegateLock{}
 
 	// target lock
-	ret.Target, err = ChainLockFromBytesAtSlot(args[0], slot)
+	ret.Target, err = ChainLockFromBytesWithLib(args[0], lib)
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
 	}
 	// master lock
-	ret.MasterLock, err = AccountableFromBytesAtSlot(args[1], slot)
+	ret.MasterLock, err = AccountableFromBytesWithLib(args[1], lib)
 	if err != nil {
 		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
 	}
@@ -129,7 +132,7 @@ func registerDelegateLock(lib *Library) {
 	lib.mustRegisterConstraint(DelegateLockName, 4, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return DelegateLockFromBytesAtSlot(data, base.MaxSlot)
-	}, initTestDelegateConstraint)
+	})
 	lib.mustRegisterLock(DelegateLockName, func(bytes []byte) (Lock, error) {
 		// Use latest library version for library registration parsing
 		ret, err := DelegateLockFromBytesAtSlot(bytes, base.MaxSlot)
@@ -140,41 +143,17 @@ func registerDelegateLock(lib *Library) {
 	})
 	lib.mustRegisterConstraint(DelegateLockStateName, 2, func(data []byte) (Constraint, error) {
 		return DelegateLockStateFromBytesAtSlot(data, base.MaxSlot)
-	}, initTestDelegate2LockState)
-}
-
-func initTestDelegateConstraint() {
-	target := ChainLockFromChainID(base.RandomChainID())
-	master := AddressED25519Random()
-	example := NewDelegateLock(target, master, 3, 10)
-
-	exampleBack, err := DelegateLockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
-	util.AssertNoError(err)
-	util.Assertf(example.MaxFrozenEpochs == 3, "Delegate2LockFromBytes: wrong back 1")
-	util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "Delegate2LockFromBytes: wrong back 2")
-	util.Assertf(exampleBack.RequiredInflationShare == example.RequiredInflationShare, "Delegate2LockFromBytes: wrong back 3")
-	util.Assertf(example.RequiredInflationShare == 10, "Delegate2LockFromBytes: wrong back 4")
-
-	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
-	exampleBack2, err := LockFromBytesAtSlot(example.Bytes(), base.MaxSlot)
-	util.AssertNoError(err)
-	util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegateLockName)
-
-	lib := L(base.MaxSlot)
-	pref1, err := lib.ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
-
-	pref2, err := lib.EvalFromSource(nil, "#"+DelegateLockName)
-	util.AssertNoError(err)
-	util.Assertf(bytes.Equal(pref1, pref2), "bytes.Equal(pref1, pref2)")
-	util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
+	})
 }
 
 //--------------------------- delegationLockState
 
 // DelegateLockStateFromBytesAtSlot parses a DelegateLockState using the library for the given slot.
 func DelegateLockStateFromBytesAtSlot(data []byte, slot uint32) (DelegateLockState, error) {
-	lib := L(slot)
+	return DelegateLockStateFromBytesWithLib(data, L(slot))
+}
+
+func DelegateLockStateFromBytesWithLib(data []byte, lib *Library) (DelegateLockState, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: %w", err)
@@ -219,14 +198,42 @@ func (d DelegateLockState) Name() string {
 	return DelegateLockStateName
 }
 
-func initTestDelegate2LockState() {
-	dlz := DelegateLockState{3001, DelegateLockStateFrozen}
+func init() {
+	registerInlineTest(func(lib *Library) {
+		target := ChainLockFromChainID(base.RandomChainID())
+		master := AddressED25519Random()
+		example := NewDelegateLock(target, master, 3, 10)
 
-	dlzBack, err := DelegateLockStateFromBytesAtSlot(dlz.Bytes(), base.MaxSlot)
-	util.AssertNoError(err)
-	util.Assertf(dlzBack.LastFrozenEpoch == 3001, "DelegateLockState: inconsistency 1")
-	util.Assertf(dlzBack.State == DelegateLockStateFrozen, "DelegateLockState: inconsistency 2")
-	util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
+		exampleBack, err := DelegateLockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(example.MaxFrozenEpochs == 3, "Delegate2LockFromBytes: wrong back 1")
+		util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "Delegate2LockFromBytes: wrong back 2")
+		util.Assertf(exampleBack.RequiredInflationShare == example.RequiredInflationShare, "Delegate2LockFromBytes: wrong back 3")
+		util.Assertf(example.RequiredInflationShare == 10, "Delegate2LockFromBytes: wrong back 4")
+
+		util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
+		exampleBack2, err := LockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegateLockName)
+
+		pref1, err := lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+
+		pref2, err := lib.EvalFromSource(nil, "#"+DelegateLockName)
+		util.AssertNoError(err)
+		util.Assertf(bytes.Equal(pref1, pref2), "bytes.Equal(pref1, pref2)")
+		util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
+	})
+
+	registerInlineTest(func(lib *Library) {
+		dlz := DelegateLockState{3001, DelegateLockStateFrozen}
+
+		dlzBack, err := DelegateLockStateFromBytesWithLib(dlz.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(dlzBack.LastFrozenEpoch == 3001, "DelegateLockState: inconsistency 1")
+		util.Assertf(dlzBack.State == DelegateLockStateFrozen, "DelegateLockState: inconsistency 2")
+		util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
+	})
 }
 
 const delegateLock2Source = `

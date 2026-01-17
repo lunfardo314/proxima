@@ -180,16 +180,18 @@ func registerSequencerConstraint(lib *Library) {
 	lib.mustRegisterConstraint(SequencerConstraintName, 1, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return SequencerConstraintFromBytesAtSlot(data, base.MaxSlot)
-	}, initTestSequencerConstraint)
+	})
 }
 
-func initTestSequencerConstraint() {
-	example := NewSequencerConstraint(4)
-	sym, _, args, err := L(base.MaxSlot).ParseBytecodeOneLevel(example.Bytes(), 1)
-	util.AssertNoError(err)
-	util.Assertf(sym == SequencerConstraintName, "sym == SequencerConstraintName")
+func init() {
+	registerInlineTest(func(lib *Library) {
+		example := NewSequencerConstraint(4)
+		sym, _, args, err := lib.ParseBytecodeOneLevel(example.Bytes(), 1)
+		util.AssertNoError(err)
+		util.Assertf(sym == SequencerConstraintName, "sym == SequencerConstraintName")
 
-	cciBin := easyfl.StripDataPrefix(args[0])
-	util.Assertf(len(cciBin) == 1, "len(cciBin) == 1")
-	util.Assertf(cciBin[0] == 4, "cciBin[0] == 4")
+		cciBin := easyfl.StripDataPrefix(args[0])
+		util.Assertf(len(cciBin) == 1, "len(cciBin) == 1")
+		util.Assertf(cciBin[0] == 4, "cciBin[0] == 4")
+	})
 }

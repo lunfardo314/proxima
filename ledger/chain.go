@@ -84,7 +84,11 @@ func (cc *ChainConstraint) Source() string {
 
 // ChainConstraintFromBytesAtSlot parses a ChainConstraint using the library for the given slot.
 func ChainConstraintFromBytesAtSlot(data []byte, slot uint32) (*ChainConstraint, error) {
-	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 4)
+	return ChainConstraintFromBytesWithLib(data, L(slot))
+}
+
+func ChainConstraintFromBytesWithLib(data []byte, lib *Library) (*ChainConstraint, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, err
 	}
@@ -127,31 +131,33 @@ func registerChainConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainConstraintName, 4, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return ChainConstraintFromBytesAtSlot(data, base.MaxSlot)
-	}, initTestChainConstraintInlineTest)
+	})
 }
 
-func initTestChainConstraintInlineTest() {
-	example := NewChainOrigin(1000, 10_000_000)
-	// Use latest library version for test
-	back, err := ChainConstraintFromBytesAtSlot(example.Bytes(), base.MaxSlot)
-	util.AssertNoError(err)
-	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
-	util.Assertf(back.OriginSlot == 1000, "back.OriginSlot == 1000")
-	util.Assertf(back.OriginAmount == 10_000_000, "back.OriginAmount == 10_000_000")
+func init() {
+	registerInlineTest(func(lib *Library) {
+		example := NewChainOrigin(1000, 10_000_000)
+		// Use latest library version for test
+		back, err := ChainConstraintFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
+		util.Assertf(back.OriginSlot == 1000, "back.OriginSlot == 1000")
+		util.Assertf(back.OriginAmount == 10_000_000, "back.OriginAmount == 10_000_000")
 
-	var chainID base.ChainID
-	chainID = blake2b.Sum256([]byte("dummy"))
-	{
-		chainIDBack, err := base.ChainIDFromBytes(chainID.Bytes())
-		util.AssertNoError(err)
-		util.Assertf(chainIDBack == chainID, "chainIDBack == chainID")
-	}
-	{
-		chainConstr := NewChainConstraint(chainID, 0, 0, 1000, 10_000_000)
-		chainConstrBack, err := ChainConstraintFromBytesAtSlot(chainConstr.Bytes(), base.MaxSlot)
-		util.AssertNoError(err)
-		util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
-	}
+		var chainID base.ChainID
+		chainID = blake2b.Sum256([]byte("dummy"))
+		{
+			chainIDBack, err := base.ChainIDFromBytes(chainID.Bytes())
+			util.AssertNoError(err)
+			util.Assertf(chainIDBack == chainID, "chainIDBack == chainID")
+		}
+		{
+			chainConstr := NewChainConstraint(chainID, 0, 0, 1000, 10_000_000)
+			chainConstrBack, err := ChainConstraintFromBytesWithLib(chainConstr.Bytes(), lib)
+			util.AssertNoError(err)
+			util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
+		}
+	})
 }
 
 const chainConstraintSource = `

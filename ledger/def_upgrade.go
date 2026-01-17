@@ -69,7 +69,7 @@ func (lib *Library) registerConstraints() {
 	registerTagAlongLockConstraint(lib)
 	registerEnsureConstraints(lib)
 
-	lib.appendInlineTests(func() {
+	registerInlineTest(func(lib *Library) {
 		// inline tests - use L(base.MaxSlot) to get the current library
 		currentLib := L(base.MaxSlot)
 		currentLib.MustEqual("timestampBytes(u32/255, 21)", base.T(255, 21).Hex())

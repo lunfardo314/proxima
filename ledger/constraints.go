@@ -56,7 +56,7 @@ type (
 	}
 )
 
-func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser ConstraintParser, inlineTests ...func()) {
+func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser ConstraintParser) {
 	prefix, err := lib.FunctionCallPrefixByName(name, nArgs)
 	util.AssertNoError(err)
 	util.Assertf(!lib.constraintNames.Contains(name), "repeating constraint name '%s'", name)
@@ -69,11 +69,10 @@ func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser Const
 		parser: parser,
 	}
 	lib.constraintNames.Insert(name)
-	lib.appendInlineTests(inlineTests...)
 }
 
 // mustRegisterVarargConstraint registers one parser for each possible number of args (0 to 15)
-func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintParser, inlineTests ...func()) {
+func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintParser) {
 	util.Assertf(!lib.constraintNames.Contains(name), "repeating constraint name '%s'", name)
 
 	for i := 0; i <= 15; i++ {
@@ -91,7 +90,6 @@ func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintP
 	}
 
 	lib.constraintNames.Insert(name)
-	lib.appendInlineTests(inlineTests...)
 }
 
 func (lib *Library) mustRegisterLock(name string, parser LockParser) {
@@ -100,16 +98,6 @@ func (lib *Library) mustRegisterLock(name string, parser LockParser) {
 	util.Assertf(!already, "mustRegisterLock: repeating lock '%s'", name)
 
 	lib.locksByName[name] = parser
-}
-
-func (lib *Library) appendInlineTests(fun ...func()) {
-	lib.inlineTests = append(lib.inlineTests, fun...)
-}
-
-func (lib *Library) runInlineTests() {
-	for _, fun := range lib.inlineTests {
-		fun()
-	}
 }
 
 // NameByPrefixWithLib looks up constraint name from bytecode prefix using the provided library.

@@ -24,7 +24,11 @@ func EnsureStopDelegationFromDelegationID(chainID base.ChainID) EnsureStopDelega
 
 // EnsureStopDelegationFromBytesAtSlot parses an EnsureStopDelegation constraint using the library for the given slot.
 func EnsureStopDelegationFromBytesAtSlot(data []byte, slot uint32) (*EnsureStopDelegation, error) {
-	sym, _, args, err := L(slot).ParseBytecodeOneLevel(data, 1)
+	return EnsureStopDelegationFromBytesWithLib(data, L(slot))
+}
+
+func EnsureStopDelegationFromBytesWithLib(data []byte, lib *Library) (*EnsureStopDelegation, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, fmt.Errorf("EnsureStopDelegationFromBytes: %w", err)
 	}
@@ -62,16 +66,18 @@ func (d *EnsureStopDelegation) Name() string {
 
 func registerEnsureConstraints(lib *Library) {
 	lib.mustRegisterConstraint(EnsureStopDelegationName, 1, func(data []byte) (Constraint, error) {
-		return EnsureStopDelegationFromBytes(data)
-	}, initTestEnsureStopDelegation)
+		return EnsureStopDelegationFromBytesWithLib(data, lib)
+	})
 }
 
-func initTestEnsureStopDelegation() {
-	e := EnsureStopDelegation{base.RandomChainID()}
+func init() {
+	registerInlineTest(func(lib *Library) {
+		e := EnsureStopDelegation{base.RandomChainID()}
 
-	eBack, err := EnsureStopDelegationFromBytes(e.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(eBack.ChainID == e.ChainID, "EnsureStopDelegation: inconsistency")
+		eBack, err := EnsureStopDelegationFromBytesWithLib(e.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(eBack.ChainID == e.ChainID, "EnsureStopDelegation: inconsistency")
+	})
 }
 
 const ensureStopFreezeDelegationConstraintSource = `

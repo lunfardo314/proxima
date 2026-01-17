@@ -78,17 +78,18 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 func registerTimeLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(TimelockName, 1, func(data []byte) (Constraint, error) {
 		return TimelockFromBytes(data)
-	}, initTestTimelockConstraint)
+	})
 }
 
-func initTestTimelockConstraint() {
-	lib := L(base.MaxSlot)
-	example := NewTimelock(1337)
-	sym, _, args, err := lib.ParseBytecodeOneLevel(example.Bytes(), 1)
-	util.AssertNoError(err)
-	tlBin := easyfl.StripDataPrefix(args[0])
-	e, err := base.SlotFromBytes(tlBin)
-	util.AssertNoError(err)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		example := NewTimelock(1337)
+		sym, _, args, err := lib.ParseBytecodeOneLevel(example.Bytes(), 1)
+		util.AssertNoError(err)
+		tlBin := easyfl.StripDataPrefix(args[0])
+		e, err := base.SlotFromBytes(tlBin)
+		util.AssertNoError(err)
 
-	util.Assertf(sym == TimelockName && e == 1337, "inconsistency in 'timelock'")
+		util.Assertf(sym == TimelockName && e == 1337, "inconsistency in 'timelock'")
+	})
 }
