@@ -365,11 +365,11 @@ func IsReset() bool {
 	return ledgerReset.Load()
 }
 
-// InitWithTestingLedgerIDData for testing
+// InitWithTestingLedgerData for testing
 
 type ParametersOption func(par *InitParameters)
 
-func InitWithTestingLedgerIDData(opts ...ParametersOption) ed25519.PrivateKey {
+func InitWithTestingLedgerData(opts ...ParametersOption) ed25519.PrivateKey {
 	params, pk := GetTestingLedgerParams(31415926535)
 	for _, opt := range opts {
 		opt(&params)
@@ -394,5 +394,11 @@ func WithTransactionPace(transactionPace int) ParametersOption {
 func WithTransactionPaceSequencer(transactionPace int) ParametersOption {
 	return func(par *InitParameters) {
 		par.TransactionPaceSequencerTicks = transactionPace
+	}
+}
+
+func WithAttachmentRecursionDepthBase(depth int) ParametersOption {
+	return func(par *InitParameters) {
+		par.AttachmentRecursionDepthBase = depth
 	}
 }

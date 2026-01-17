@@ -58,7 +58,7 @@ type Constants struct {
 	TagAlongSlots        uint32
 	TagAlongReclaimSlots uint32
 	// ---------- attachment related
-	AttachmentRecursionDepthBaseline int
+	AttachmentRecursionDepthBase int
 }
 
 // ConstantsFromLibrary loads all constants from library definition into a runtime structure
@@ -129,9 +129,9 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	ret.TagAlongReclaimSlots = uint32(t64)
 
 	// attachment related
-	t64, err = _uint64FromConst(lib, "constAttachmentRecursionDepthBaseline")
+	t64, err = _uint64FromConst(lib, "constAttachmentRecursionDepthBase")
 	util.AssertNoError(err)
-	ret.AttachmentRecursionDepthBaseline = int(t64)
+	ret.AttachmentRecursionDepthBase = int(t64)
 
 	return ret
 }
@@ -180,7 +180,7 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	safeDuration := time.Duration(c.SafeRevocationSlots) * c.SlotDuration()
 	ret.Add("Safe revocation slots: %d (%v)", c.SafeRevocationSlots, safeDuration).
 		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).
-		Add("Attachment recursion depth baseline: %d", c.AttachmentRecursionDepthBaseline)
+		Add("Attachment recursion depth baseline: %d", c.AttachmentRecursionDepthBase)
 	return ret
 }
 

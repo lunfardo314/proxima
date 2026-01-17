@@ -15,7 +15,7 @@ import (
 func TestLibraryCache_BasicAccess(t *testing.T) {
 	// Initialize ledger with test data which sets up the singleton
 	ledger.ResetForTesting()
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 
 	// L(base.MaxSlot) should return the latest library
 	lib := ledger.L(base.MaxSlot)
@@ -35,7 +35,7 @@ func TestLibraryCache_BasicAccess(t *testing.T) {
 func TestLibraryCache_SlotConsistency(t *testing.T) {
 	// Initialize ledger with test data
 	ledger.ResetForTesting()
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 
 	// Multiple calls to L() with same slot should return the same library instance
 	lib1 := ledger.L(100)
@@ -48,7 +48,7 @@ func TestLibraryCache_SlotConsistency(t *testing.T) {
 func TestLibraryCache_MaxSlotConsistency(t *testing.T) {
 	// Initialize ledger with test data
 	ledger.ResetForTesting()
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 
 	// L(base.MaxSlot) should consistently return the latest library
 	lib1 := ledger.L(base.MaxSlot)
@@ -60,7 +60,7 @@ func TestLibraryCache_MaxSlotConsistency(t *testing.T) {
 func TestLibraryCache_LibraryFunctionality(t *testing.T) {
 	// Test that the cached library is fully functional
 	ledger.ResetForTesting()
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 
 	lib := ledger.L(base.MaxSlot)
 
@@ -83,7 +83,7 @@ func TestLibraryCache_LibraryFunctionality(t *testing.T) {
 func TestLibraryCache_ConstraintNames(t *testing.T) {
 	// Test that constraint names are properly accessible via cached library
 	ledger.ResetForTesting()
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 
 	// Test some known constraint names
 	name, found := ledger.NameByPrefix([]byte{0x03, 0x01}) // Example prefix
@@ -95,7 +95,7 @@ func TestLibraryCache_ConstraintNames(t *testing.T) {
 func TestLibraryCache_DifferentSlotsSameVersion(t *testing.T) {
 	// When there's only one library version, all slots should return the same library
 	ledger.ResetForTesting()
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 
 	// Test various slots
 	slots := []uint32{0, 1, 100, 1000, 10000, base.MaxSlot}

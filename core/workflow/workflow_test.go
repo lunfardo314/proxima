@@ -16,7 +16,7 @@ import (
 )
 
 func init() {
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 }
 
 type workflowDummyEnvironment struct {

@@ -25,7 +25,7 @@ import (
 // initializes ledger.Library singleton for all tests and creates testing genesis private key
 
 func init() {
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 }
 
 func TestGenData(t *testing.T) {

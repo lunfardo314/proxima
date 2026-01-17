@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 }
 
 func TestBasic(t *testing.T) {

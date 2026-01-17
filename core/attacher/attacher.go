@@ -192,9 +192,9 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		return false
 	}
 
-	if depth > a.AttachmentRecursionDepthBaseline {
+	if depth > a.AttachmentRecursionDepthBase {
 		// possible hanging chain attack
-		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.AttachmentRecursionDepthBaseline, v.Tx.IDShortString()))
+		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.AttachmentRecursionDepthBase, v.Tx.IDShortString()))
 		return false
 	}
 

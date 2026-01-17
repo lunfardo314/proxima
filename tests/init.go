@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 )
 
 var genesisPrivateKey ed25519.PrivateKey
@@ -16,19 +17,26 @@ func init() {
 
 // initTestLedger initializes the ledger for testing. Called once in init().
 func initTestLedger() {
-	genesisPrivateKey = ledger.InitWithTestingLedgerIDData(
+	genesisPrivateKey = ledger.InitWithTestingLedgerData(
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
-		ledger.WithTransactionPaceSequencer(3))
-
+		ledger.WithTransactionPaceSequencer(3),
+		ledger.WithAttachmentRecursionDepthBase(100),
+	)
+	lib := ledger.L(base.MaxSlot)
 	fmt.Printf(`
 >>> ledger parameters for the test <<<
      tick duration    : %v
      slot duration    : %v
      transaction pace : %d ticks
      sequencer pace   : %d ticks
+     attachment depth : %d
 `,
-		ledger.TickDuration(), ledger.SlotDuration(), ledger.L(0).TransactionPace, ledger.L(0).TransactionPaceSequencer,
+		lib.TickDuration,
+		lib.SlotDuration(),
+		lib.TransactionPace,
+		lib.TransactionPaceSequencer,
+		lib.AttachmentRecursionDepthBase,
 	)
 }
 

@@ -11,5 +11,5 @@ import (
 var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
-	genesisPrivateKey = ledger.InitWithTestingLedgerIDData()
+	genesisPrivateKey = ledger.InitWithTestingLedgerData()
 }

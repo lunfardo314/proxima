@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var genesisPrivateKey = ledger.InitWithTestingLedgerIDData()
+var genesisPrivateKey = ledger.InitWithTestingLedgerData()
 
 // TestStatusAndFlags verifies the Status and Flags types that track transaction state.
 // Status can be Undefined (not yet processed), Good (valid), or Bad (validation failed).
