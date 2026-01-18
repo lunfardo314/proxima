@@ -10,6 +10,40 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+/*
+The file constraints_serde.go contains definitions related to serialization/deserialization of the UTXO constraints.
+This is helper, wrapper code of the underlying ledger definitions that are immutable in the ledger.
+
+Serialization means compiling EasyFL source code to bytecode.
+Deserialization means decompiling EasyFL source code from the bytecode
+
+The 'constraint' is a EasyFL bytecode, a part of the UTXO.
+The Constraint interface wraps Go structure that is parsed from the bytecode.
+
+Usually constraints are known to the node's code via registering it. Registering of constraint places it in the Library structure.
+That allows pretty printing of UTXO constraints.
+
+Constraint interface provides functions for the EasyFL name of the constraint, decompiled EasyFL source, human-readable source and serialization to the bytecode.
+
+IMPORTANT: serialization/deserialization of constraints often takes Library as an argument. Libraries can be upgraded by adding and modifying function definitions.
+However, serialization/deserialization of a specific formula never changes because it depends on the name <-> op-code relation and
+'numArgs' parameter. Both are immutable upon upgrades.
+
+This means, SERIALIZATION/DESERIALIZATION OF CONSTRAINTS IS UPGRADE AGNOSTIC, I.E. IT IS THE SAME AND BACKWARD COMPATIBLE FOR ANY FUTURE LIBRARY UPGRADES.
+Being registered as 'constraint' does not impose additional validity rules to the transaction.
+
+Special type of the constraint is 'lock'. Certain constraints are registered as 'locks'. They implement Lock interface.
+
+It is enforced that locks (and only locks) can be at the index 1 of the UTXO constraints. Locks provides a list of 'account ID', identifiers (indexable tags) for the UTXO indexer.
+Typically, lock has one indexable tag, sometimes 2 or more.
+UTXO index is part of the state: every UTXO has a corresponding index entry in the trie of the ledger state.
+BEING REGISTERED AS 'LOCK' IMPOSES ADDITIONAL RULES TO THE LEDGER VALIDITY AND THE CONSISTENCY OF THE STATE.
+
+For example AddressED25519 is lock with one account ID. We can find all UTXOs belonging to certain address in the ledger state.
+Another example is DelegateLock. It has two account ID: address of the master and address of the target.
+
+*/
+
 type (
 	Constraint interface {
 		Name() string   // EasyFL function name in the ledger library
@@ -31,7 +65,7 @@ type (
 		// Accounts all accounts of the lock
 		Accounts() []Accountable
 		// Master is account which is always unlockable. For conditional locks it is usually nil (no master)
-		Master() Accountable // TODO is it really needed?
+		Master() Accountable
 	}
 
 	ConstraintParser func([]byte) (Constraint, error)
@@ -109,7 +143,6 @@ func NameByPrefixAtSlot(prefix []byte, slot uint32) (string, bool) {
 }
 
 // NameByPrefix looks up constraint name using the latest library version.
-// Deprecated: Use NameByPrefixAtSlot for parsing historical bytecode.
 func NameByPrefix(prefix []byte) (string, bool) {
 	return NameByPrefixAtSlot(prefix, base.MaxSlot)
 }
