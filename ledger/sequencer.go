@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-//go:embed sequencer.efl
+//go:embed def/sequencer.efl
 var sequencerConstraintSource string
 
 const (

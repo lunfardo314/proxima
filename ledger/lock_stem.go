@@ -24,7 +24,7 @@ type (
 	}
 )
 
-//go:embed lock_stem.efl
+//go:embed def/lock_stem.efl
 var stemLockSource string
 
 var StemAccountID = AccountID([]byte{0})

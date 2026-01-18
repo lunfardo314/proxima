@@ -1,0 +1,12 @@
+// enforces output can be unlocked only after specified time slot is reached
+// $0 is time slot
+func timelock: and(
+    mustValidTimeSlot($0),
+	or(
+		selfIsProducedOutput,
+		and(
+			selfIsConsumedOutput,
+			lessOrEqualThan($0, txSlot)
+		)
+	)
+)

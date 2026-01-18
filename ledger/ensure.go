@@ -20,7 +20,7 @@ const (
 	EnsureStopDelegationTemplateHR = EnsureStopDelegationName + "(%s)"
 )
 
-//go:embed ensure.efl
+//go:embed def/ensure.efl
 var ensureStopFreezeDelegationConstraintSource string
 
 func EnsureStopDelegationFromBytesWithLib(data []byte, lib *Library) (*EnsureStopDelegation, error) {

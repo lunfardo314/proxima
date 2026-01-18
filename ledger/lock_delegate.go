@@ -44,7 +44,7 @@ const (
 	DelegationUnlockedByMaster = byte(0xff)
 )
 
-//go:embed lock_delegate.efl
+//go:embed def/lock_delegate.efl
 var delegateLock2Source string
 
 //------------ DelegateLock

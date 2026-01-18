@@ -13,7 +13,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-//go:embed chain.efl
+//go:embed def/chain.efl
 var chainConstraintSource string
 
 // ChainConstraint is a chain constraint

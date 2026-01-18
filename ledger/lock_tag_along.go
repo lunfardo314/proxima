@@ -23,7 +23,7 @@ const (
 
 // TODO randomize access to purgeable tag-along outputs and incentivize ledger cleanup
 
-//go:embed lock_tag_along.efl
+//go:embed def/lock_tag_along.efl
 var tagAlongLockConstraintSource string
 
 func TagAlongLockFromBytesWithLib(data []byte, lib *Library) (*TagAlongLock, error) {

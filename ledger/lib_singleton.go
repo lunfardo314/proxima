@@ -167,7 +167,7 @@ func (lc *LibraryCache) parseLibrary(yamlData []byte) *Library {
 
 	result := newLibrary(lib, yamlData)
 	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
-	result.registerConstraints()
+	registerConstraints0(result)
 	return result
 }
 
@@ -219,7 +219,7 @@ func MustInitSingleton(identityData []byte) {
 
 	result := newLibrary(lib, identityData)
 	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
-	result.registerConstraints()
+	registerConstraints0(result)
 	libraryCache.cache[0] = result
 
 	// Set a dummy store that always returns the genesis library

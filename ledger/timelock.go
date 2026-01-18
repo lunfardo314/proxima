@@ -3,25 +3,15 @@ package ledger
 import (
 	"fmt"
 
+	_ "embed"
+
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
-const timelockSource = `
-// enforces output can be unlocked only after specified time slot is reached
-// $0 is time slot
-func timelock: and(
-    mustValidTimeSlot($0),
-	or(
-		selfIsProducedOutput, 
-		and( 
-			selfIsConsumedOutput,
-			lessOrEqualThan($0, txSlot)
-		) 
-	)
-)
-`
+//go:embed def/timelock.efl
+var timelockSource string
 
 const (
 	TimelockName     = "timelock"

@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
-// InitParameters contains parameters which can modified ledger definitions before making them immutable
+// InitParameters contains parameters which can be set as ledger constant values when creating genesis
 type InitParameters struct {
 	Description                   string
 	GenesisTimeUnix               uint32
@@ -36,10 +36,6 @@ const (
 
 	defaultAttachmentRecursionDepthBase = 10
 )
-
-//func init() {
-//	util.Assertf(DefaultInitialSupply/DefaultSlotInflationBase == 30_303_030, "wrong constants: DefaultInitialSupply/DefaultSlotInflationBase == 30_303_030")
-//}
 
 func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description ...string) InitParameters {
 	dscr := defaultDescription
