@@ -2,7 +2,7 @@
 
 ## Status: ✅ COMPLETED
 
-All implementation phases (1-15) are complete.
+All implementation phases (1-16) are complete.
 
 ---
 
@@ -94,8 +94,9 @@ The behavior is confirmed by test cases in `ledger/multistate/upgrades_test.go`:
 - `ledger/ledger_identity.go` - `LedgerIdentity` - minimal trie root data
 
 **Pending Upgrades:**
-- `ledger/upgrade/upgrade.go` - `UpgradeDefinition`, `PendingUpgrade` variable
-- `ledger/upgrade/doc.go` - Upgrade lifecycle documentation
+- `ledger/def_upgrade.go` - `UpgradeDefinition`, `PendingUpgrade` variable
+- `ledger/def_embed.go` - `upgradeEmbeddedResolvers`, `GetEmbeddedFunctionResolver`
+- `docs/upgrade.md` - Upgrade authoring guide
 
 **Snapshot:**
 - `ledger/multistate/snapshot.go` - Format with upgrade libraries
@@ -152,7 +153,7 @@ The behavior is confirmed by test cases in `ledger/multistate/upgrades_test.go`:
    ```
 
 2. **Upgrade UTXO injection:**
-   - Set `PendingUpgrade` in `ledger/upgrade/pending.go`
+   - Set `PendingUpgrade` in `ledger/def_upgrade.go`
    - Start node, create branch at/after upgrade slot
    - Verify upgrade UTXO in state
 
@@ -176,26 +177,33 @@ The behavior is confirmed by test cases in `ledger/multistate/upgrades_test.go`:
 
 ### Creating an Upgrade
 
-1. Create `ledger/upgrade/pending.go`:
+1. Set `PendingUpgrade` in `ledger/def_upgrade.go`:
 ```go
 var PendingUpgrade = &UpgradeDefinition{
-    Slot:             100000,
-    Build:            buildUpgrade1Library,
-    RegisterResolver: func() {
-        ledger.RegisterResolverForUpgrade(100000, getResolverUpgrade1)
-    },
+    Slot:  100000,
+    Build: buildUpgradeNLibrary,
+}
+```
+
+2. Create `ledger/def_upgradeN.go` with YAML definitions and resolver:
+```go
+//go:embed upgradeN_defs.yaml
+var _upgradeNDefsYAML []byte
+
+func resolveEmbeddedUpgradeN(sym string) easyfl.EmbeddedFunction[*EvalContext] {
+    // Return embedded functions for this upgrade
 }
 
-func buildUpgrade1Library(prevYAML []byte) ([]byte, error) {
-    lib, err := ledger.ParseLibraryFromYAML(prevYAML, getResolverUpgrade1)
-    // ... add new functions via lib.Upgrade() ...
+func buildUpgradeNLibrary(prevYAML []byte) ([]byte, error) {
+    lib, err := ParseLibraryFromYAML(prevYAML, GetEmbeddedFunctionResolver)
+    // ... apply upgrade definitions ...
     return lib.ToYAML(true), nil
 }
 ```
 
-2. Create `ledger/upgrade/pending_resolver.go` with embedded function resolver
+3. Add resolver to `upgradeEmbeddedResolvers` in `ledger/def_embed.go`
 
-3. Optionally create `ledger/upgrade/pending_defs.yaml` for EasyFL definitions
+**See `docs/upgrade.md` for complete step-by-step guide.**
 
 ### Backward Compatibility Notes
 
@@ -381,8 +389,9 @@ Keep `var Const *Constants` pointing to `&L(0).Constants` for backward compatibi
 
 ```
 Library Access:
-  L(slot) → finds latest upgrade slot <= requested slot
-         → lazy loads from DB partition
+  L(slot) → fast path: if slot >= latestUpgradeSlot, return cached latestLib (O(1))
+         → slow path: linear search in cached upgradeSlots list
+         → lazy loads from DB partition on first access
          → caches by upgrade slot
 
 Genesis Flow:
@@ -584,32 +593,34 @@ At most **one pending upgrade** can exist in the codebase at any time. This simp
 - Testing (only test current → next transition)
 - Node operator experience (clear single upgrade path)
 
-### `ledger/upgrade/` Folder Structure
+### File Structure
+
+Upgrade-related code lives directly in the `ledger/` package:
 
 ```
-ledger/upgrade/
-├── upgrade.go           # Core types: UpgradeDefinition, PendingUpgrade variable
-├── doc.go               # Documentation
-├── pending.go           # Pending upgrade registration (or nil)
-├── pending_defs.yaml    # EasyFL definitions for pending upgrade (if any)
-└── pending_resolver.go  # Embedded function resolver for pending upgrade (if any)
+ledger/
+├── def_upgrade.go              # UpgradeDefinition type, PendingUpgrade variable
+├── def_embed.go                # EmbeddedResolver type, GetEmbeddedFunctionResolver, upgradeEmbeddedResolvers list
+├── def_upgrade0.go             # Upgrade 0 (genesis) - definitions and resolver
+├── def_upgradeN.go             # Future upgrade N - definitions and resolver (when needed)
+└── upgrade_utxo.go             # Upgrade UTXO creation and parsing
 ```
 
 **When no pending upgrade:**
-- `pending.go` exports `var PendingUpgrade *UpgradeDefinition = nil`
+- `PendingUpgrade` in `def_upgrade.go` is `nil`
 
 **When pending upgrade exists:**
-- `pending.go` exports upgrade definition with target slot
-- `pending_defs.yaml` contains YAML deltas
-- `pending_resolver.go` contains new/modified embedded functions
+- `PendingUpgrade` is set with upgrade slot and build function
+- New resolver added to `upgradeEmbeddedResolvers` in `def_embed.go`
+- New `def_upgradeN.go` file contains definitions and resolver
 
 ### Upgrade Lifecycle
 
 ```
-1. DEVELOPMENT: Developer adds upgrade to ledger/upgrade/
-   - Define target slot (well in the future)
-   - Add YAML definitions
-   - Add embedded resolver if needed
+1. DEVELOPMENT: Developer adds upgrade code to ledger/
+   - Set PendingUpgrade in def_upgrade.go with target slot
+   - Create def_upgradeN.go with YAML definitions and resolver
+   - Add resolver to upgradeEmbeddedResolvers in def_embed.go
 
 2. DEPLOYMENT: Node operators update their nodes
    - New code includes pending upgrade
@@ -620,11 +631,13 @@ ledger/upgrade/
    - Library stored in DB partition
    - Ledger rules change
 
-4. CLEANUP: After activation (optional)
-   - ledger/upgrade/ folder can be cleared
-   - Upgrade data now lives in DB partition
-   - Code remains for embedded function implementations
+4. POST-ACTIVATION:
+   - PendingUpgrade can be set to nil
+   - Upgrade data lives in DB partition
+   - Resolver code remains forever (for historical validation)
 ```
+
+**See `docs/upgrade.md` for detailed upgrade authoring guide.**
 
 ---
 
@@ -697,9 +710,9 @@ func (ctx *TxContext) _scanOutputs(path []byte) ([]*Output, error) {
 ## Documentation Files
 
 - `docs/snapshot_format.md` - Detailed snapshot format specification
-- `ledger/upgrade/doc.go` - Upgrade lifecycle and authoring guide
+- `docs/upgrade.md` - Upgrade lifecycle and authoring guide
 - `CLAUDE.md` - Updated with upgrade architecture notes
 
 ---
 
-_Task completed 2026-01-14_
+_Task completed 2026-01-14, updated 2026-01-18_
