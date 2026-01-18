@@ -20,6 +20,14 @@ type LibraryCache struct {
 	mu    sync.RWMutex
 	store common.Traversable  // DB store for loading library YAMLs
 	cache map[uint32]*Library // upgrade slot -> parsed library
+
+	// Fast-path: cache latest library directly (most common case)
+	latestLib         *Library
+	latestUpgradeSlot uint32
+
+	// Slot index loaded once from DB to avoid repeated traversal
+	upgradeSlots []uint32          // sorted ascending
+	slotToYAML   map[uint32][]byte // for lazy parsing
 }
 
 // ResolverFactory creates an embedded function resolver for a library.
@@ -58,18 +66,24 @@ func L(slot uint32) *Library {
 // getOrLoad retrieves a library from cache or loads it from DB.
 // Caller must hold at least a read lock on libraryCacheMutex.
 func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
-	// Find the applicable upgrade slot for this slot
-	// TODO optimize: no need traverse DB every time
-	upgradeSlot, prevUpgradeSlot, yamlData := lc.findLibraryForSlot(slot)
-
 	lc.mu.RLock()
+
+	// Fast path: most common case is requesting current/latest library
+	if lc.latestLib != nil && slot >= lc.latestUpgradeSlot {
+		lib := lc.latestLib
+		lc.mu.RUnlock()
+		return lib
+	}
+
+	// Check if already cached
+	upgradeSlot, prevUpgradeSlot := lc.findUpgradeSlotForSlot(slot)
 	if lib, ok := lc.cache[upgradeSlot]; ok {
 		lc.mu.RUnlock()
 		return lib
 	}
 	lc.mu.RUnlock()
 
-	// Not in cache, need to load and parse
+	// Not in cache, need to parse
 	lc.mu.Lock()
 	defer lc.mu.Unlock()
 
@@ -78,7 +92,8 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 		return lib
 	}
 
-	// Parse the library with the appropriate resolver
+	// Parse the library
+	yamlData := lc.slotToYAML[upgradeSlot]
 	lib := lc.parseLibrary(yamlData)
 
 	// Set the upgrade chain data
@@ -89,11 +104,9 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 	}
 
 	if upgradeSlot == 0 {
-		// For slot 0, previous is the base library
 		chainData.PrevLibraryHash = BaseLibraryHash()
 	} else {
-		// Get the previous library's hash (it should already be cached or will be loaded)
-		// Note: we need to release and re-acquire locks to avoid deadlock
+		// Get previous library's hash (release lock to avoid deadlock)
 		lc.mu.Unlock()
 		prevLib := lc.getOrLoad(prevUpgradeSlot)
 		lc.mu.Lock()
@@ -102,55 +115,63 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 
 	lib.SetUpgradeChainData(chainData)
 	lc.cache[upgradeSlot] = lib
+
+	// Update latest library cache if this is the highest slot
+	if upgradeSlot >= lc.latestUpgradeSlot {
+		lc.latestUpgradeSlot = upgradeSlot
+		lc.latestLib = lib
+	}
+
 	return lib
 }
 
-// findLibraryForSlot finds the library YAML applicable to the given slot.
-// Returns the upgrade slot, previous upgrade slot, and YAML data.
-// For slot 0, prevUpgradeSlot is base.MaxSlot (sentinel for base library).
-func (lc *LibraryCache) findLibraryForSlot(slot uint32) (upgradeSlot uint32, prevUpgradeSlot uint32, yamlData []byte) {
-	// Iterate all upgrades to find the latest one <= slot and track the previous
-	var allSlots []uint32
-	slotToYAML := make(map[uint32][]byte)
+// loadUpgradeSlots loads all upgrade slots from DB once.
+// Must be called with write lock held.
+func (lc *LibraryCache) loadUpgradeSlots() {
+	if lc.slotToYAML != nil {
+		return // already loaded
+	}
+
+	lc.slotToYAML = make(map[uint32][]byte)
+	lc.upgradeSlots = nil
 
 	prefix := []byte{upgradeLibraryDBPartition}
 	lc.store.Iterator(prefix).Iterate(func(k, v []byte) bool {
 		if len(k) != 5 {
-			return true // skip malformed entries
+			return true
 		}
-		upgSlot, err := base.SlotFromBytes(k[1:])
+		slot, err := base.SlotFromBytes(k[1:])
 		util.AssertNoError(err)
-
-		if upgSlot <= slot {
-			allSlots = append(allSlots, upgSlot)
-			slotToYAML[upgSlot] = v
-		}
+		lc.upgradeSlots = append(lc.upgradeSlots, slot)
+		lc.slotToYAML[slot] = v
 		return true
 	})
 
-	util.Assertf(len(allSlots) > 0, "no library found for slot %d", slot)
-
-	// Sort slots to find the latest and its predecessor
-	sort.Slice(allSlots, func(i, j int) bool {
-		return allSlots[i] < allSlots[j]
+	sort.Slice(lc.upgradeSlots, func(i, j int) bool {
+		return lc.upgradeSlots[i] < lc.upgradeSlots[j]
 	})
 
-	// Find the index of the latest slot
-	latestIdx := len(allSlots) - 1
-	upgradeSlot = allSlots[latestIdx]
-	yamlData = slotToYAML[upgradeSlot]
-
-	// Determine previous upgrade slot
-	if upgradeSlot == 0 {
-		prevUpgradeSlot = base.MaxSlot // Sentinel for base library
-	} else if latestIdx > 0 {
-		prevUpgradeSlot = allSlots[latestIdx-1]
-	} else {
-		// Only one slot in list and it's > 0, this shouldn't happen
-		// as slot 0 should always exist
-		util.Assertf(false, "slot 0 library missing, found only slot %d", upgradeSlot)
+	if len(lc.upgradeSlots) > 0 {
+		lc.latestUpgradeSlot = lc.upgradeSlots[len(lc.upgradeSlots)-1]
 	}
+}
 
+// findUpgradeSlotForSlot finds the applicable upgrade slot for a given slot.
+// Returns upgradeSlot and prevUpgradeSlot. Must be called with at least read lock.
+func (lc *LibraryCache) findUpgradeSlotForSlot(slot uint32) (upgradeSlot uint32, prevUpgradeSlot uint32) {
+	// Linear search (upgrades are rare, list is tiny)
+	upgradeSlot = lc.upgradeSlots[0]
+	prevUpgradeSlot = base.MaxSlot // sentinel for base library
+
+	for i, s := range lc.upgradeSlots {
+		if s > slot {
+			break
+		}
+		if i > 0 {
+			prevUpgradeSlot = lc.upgradeSlots[i-1]
+		}
+		upgradeSlot = s
+	}
 	return
 }
 
@@ -190,6 +211,7 @@ func MustInitLibraryCache(store common.Traversable) {
 		util.Assertf(libraryCache.store == nil, "library cache already initialized")
 
 		libraryCache.store = store
+		libraryCache.loadUpgradeSlots()
 
 		ledgerReset.Store(false)
 
@@ -224,6 +246,12 @@ func MustInitSingleton(identityData []byte) {
 
 	// Set a dummy store that always returns the genesis library
 	libraryCache.store = &singleLibraryStore{data: identityData}
+
+	// Initialize slot index for single library case
+	libraryCache.upgradeSlots = []uint32{0}
+	libraryCache.slotToYAML = map[uint32][]byte{0: identityData}
+	libraryCache.latestUpgradeSlot = 0
+	libraryCache.latestLib = result
 
 	libraryCacheMutex.Unlock()
 

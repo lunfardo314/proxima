@@ -16,19 +16,22 @@ When a ledger upgrade is activated at slot S, is the branch transaction at slot 
 
 ### Implementation Details
 
-The `L(slot)` function in `ledger/lib_singleton.go` returns the library applicable to a given slot. The core logic is in `findLibraryForSlot()`:
+The `L(slot)` function in `ledger/lib_singleton.go` returns the library applicable to a given slot. The core logic is in `findUpgradeSlotForSlot()`:
 
 ```go
-// ledger/lib_singleton.go:124
-if upgSlot <= slot {
-    allSlots = append(allSlots, upgSlot)
-    slotToYAML[upgSlot] = v
+// ledger/lib_singleton.go - findUpgradeSlotForSlot
+for i, s := range lc.upgradeSlots {
+    if s > slot {
+        break
+    }
+    // ...
+    upgradeSlot = s
 }
 ```
 
-**Key insight:** The comparison is `upgSlot <= slot` (less than **or equal**), which means:
-- When `slot == upgradeSlot`, the condition is TRUE
-- The **new** library at that upgrade slot is returned
+**Key insight:** The loop finds the largest upgrade slot `<= slot`, which means:
+- When `slot == upgradeSlot`, the **new** library at that upgrade slot is returned
+- The library is effective starting from its upgrade slot
 
 ### Attacher Library Initialization
 
@@ -46,8 +49,8 @@ ret := attacher{
 For a branch transaction at upgrade slot S:
 1. `txTs.Slot` = S (branch timestamp is on slot boundary, tick == 0)
 2. `ledger.L(S)` is called
-3. `findLibraryForSlot(S)` finds upgrades where `upgSlot <= S`
-4. Since S is the upgrade slot, `upgSlot <= S` is true for the new library
+3. `findUpgradeSlotForSlot(S)` finds the largest upgrade slot `<= S`
+4. Since S is the upgrade slot, the new library at slot S is selected
 5. The **new library is returned** and cached in the attacher
 
 ### Verification
@@ -234,6 +237,51 @@ See sections below for complete phase documentation (preserved for reference).
 | 13 | Code Review and Cleanup | 7c8b5f8e |
 | 14 | Library Pointer Caching | a8526c4e |
 | 15 | Constants in Library Structure | ✅ DONE |
+| 16 | L(slot) Fast Path Optimization | ✅ DONE |
+
+---
+
+## Phase 16: L(slot) Fast Path Optimization
+
+### Problem
+
+The `getOrLoad()` and `findLibraryForSlot()` functions traversed the DB on every call to find the applicable library for a slot. This was inefficient since:
+1. Upgrades are rare (typically just one library at slot 0)
+2. Most calls request the latest library
+3. DB traversal is expensive compared to a simple pointer return
+
+### Solution
+
+Cache upgrade slots once at initialization and add a fast path for the common case:
+
+```go
+type LibraryCache struct {
+    // ... existing fields ...
+
+    // Fast-path: cache latest library directly (most common case)
+    latestLib         *Library
+    latestUpgradeSlot uint32
+
+    // Slot index loaded once from DB to avoid repeated traversal
+    upgradeSlots []uint32          // sorted ascending
+    slotToYAML   map[uint32][]byte // for lazy parsing
+}
+```
+
+**Fast path in `getOrLoad()`:**
+```go
+// Most common case: requesting current/latest library
+if lc.latestLib != nil && slot >= lc.latestUpgradeSlot {
+    return lc.latestLib  // O(1), no map lookup, no DB access
+}
+```
+
+**Changes:**
+1. `loadUpgradeSlots()` - loads all slots from DB once during init
+2. `findUpgradeSlotForSlot()` - linear search in cached `upgradeSlots` (replaces old `findLibraryForSlot`)
+3. `getOrLoad()` - fast path returns `latestLib` directly when `slot >= latestUpgradeSlot`
+
+**Result:** The common case (`L(slot)` where slot >= latest upgrade) is now O(1) with no map lookup or DB access.
 
 ---
 
