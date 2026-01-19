@@ -164,12 +164,6 @@ func (ctx *TxContext) MustTimestampData() ([]byte, base.LedgerTime) {
 	return ret, retTs
 }
 
-func (ctx *TxContext) SequencerAndStemOutputIndices() (byte, byte) {
-	ret := ctx.ctxTree.MustBytesAtPath(ledger.PathToSequencerAndStemOutputIndices)
-	util.Assertf(len(ret) == 2, "len(ret)==2")
-	return ret[0], ret[1]
-}
-
 func (ctx *TxContext) ConsumedTotal(i byte) (ret int64) {
 	if i == 0 {
 		return ctx.totalConsumedTokenBalance
@@ -187,14 +181,6 @@ func (ctx *TxContext) ProducedTotal(i byte) int64 {
 	util.Assertf(int(i) < len(ctx.totalProducedAmounts), "ProducedTotal: wrong index %d", i)
 	return ctx.totalProducedAmounts[i]
 }
-
-//func (ctx *TxContext) TotalAmountStoredBin() []byte {
-//	return ctx.ctxTree.MustBytesAtPath(ledger.PathToTotalProducedAmount)
-//}
-//
-//func (ctx *TxContext) TotalAmountStored() uint64 {
-//	return easyfl_util.MustUint64FromBytes(ctx.TotalAmountStoredBin())
-//}
 
 func (ctx *TxContext) TotalInflation() uint64 {
 	return uint64(ctx.totalProducedAmounts[ledger.AmountIndexInflation])

@@ -21,8 +21,9 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 	}
 
 	if ctx.IsBranchTransaction() {
-		_, stemIdx := ctx.MustSequencerAndStemOutputIndices()
-		stemOut, err := ctx.ProducedOutputWithIDAt(stemIdx)
+		seqData := ctx.SequencerTransactionData()
+		par.Require(seqData != nil, "inconsistency: sequencer tx data not available")
+		stemOut, err := ctx.ProducedOutputWithIDAt(seqData.StemOutputIndex)
 		par.RequireNoError(err)
 		stemLock, ok := stemOut.Output.StemLock()
 		par.Require(ok, "inconsistency: can't find stemLock")

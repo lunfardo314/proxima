@@ -33,6 +33,8 @@ type (
 	TxValidationOption func(tx *Transaction) error
 )
 
+const sequencerDataBytesLength = 3
+
 // MainTxValidationOptions is all except Base, ParseSender, the time bounds and input context validation. Fastest first
 var MainTxValidationOptions = []TxValidationOption{
 	//ParseTotalProducedAmount,
@@ -49,9 +51,8 @@ var essenceIndices = []byte{
 	ledger.TxUnlockData,
 	ledger.TxOutputs,
 	// skip signature
-	ledger.TxSequencerAndStemOutputIndices,
+	ledger.TxSequencerDataBytes,
 	ledger.TxTimestamp,
-	//ledger.TxTotalProducedAmount,
 	ledger.TxInputCommitment,
 	ledger.TxEndorsements,
 	ledger.TxExplicitBaseline,
@@ -89,16 +90,17 @@ func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, e
 		return
 	}
 	var seqBin []byte
-	seqBin, err = txTree.BytesAtPath([]byte{ledger.TxSequencerAndStemOutputIndices})
+	seqBin, err = txTree.BytesAtPath([]byte{ledger.TxSequencerDataBytes})
 	if err != nil {
-		err = fmt.Errorf("can't parse sequencer UTXO indices: %w", err)
+		err = fmt.Errorf("can't parse sequencer data bytes: %w", err)
 		return
 	}
-	if len(seqBin) != 2 {
-		err = fmt.Errorf("wrong sequencer UTXO indices")
+	if len(seqBin) != 0 && (len(seqBin) != sequencerDataBytesLength || seqBin[0] == 0xff) {
+		err = fmt.Errorf("wrong sequencer data bytes length")
 		return
 	}
-	isSeqTx := seqBin[0] != 0xff
+
+	isSeqTx := len(seqBin) > 0 // is it a sequencer transaction
 	if isSeqTx && ts.Tick == 0 && seqBin[1] == 0xff {
 		err = fmt.Errorf("wrong stem index value")
 		return
@@ -226,11 +228,13 @@ func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
 // ParseSequencerData validates and parses sequencer data if relevant. Data is cached for frequent extraction
 func ParseSequencerData(tx *Transaction) error {
 	if !tx.txid.IsSequencerMilestone() {
+		// it is known from parsing the txID
 		return nil
 	}
-	outputIndexData := tx.tree.MustBytesAtPath(Path(ledger.TxSequencerAndStemOutputIndices))
-	util.Assertf(len(outputIndexData) == 2, "len(outputIndexData) == 2")
-	sequencerOutputIndex, stemOutputIndex := outputIndexData[0], outputIndexData[1]
+	sequencerDataBytes := tx.tree.MustBytesAtPath(Path(ledger.TxSequencerDataBytes))
+	util.Assertf(len(sequencerDataBytes) == sequencerDataBytesLength, "len(sequencerDataBytes) == sequencerDataBytesLength")
+
+	sequencerOutputIndex, stemOutputIndex, depthBudget := sequencerDataBytes[0], sequencerDataBytes[1], sequencerDataBytes[2]
 
 	// check sequencer output
 	if int(sequencerOutputIndex) >= tx.NumProducedOutputs() {
@@ -259,6 +263,7 @@ func ParseSequencerData(tx *Transaction) error {
 		SequencerOutputIndex: sequencerOutputIndex,
 		StemOutputIndex:      stemOutputIndex,
 		StemOutputData:       nil,
+		DepthBudget:          depthBudget,
 	}
 
 	// ---  check stem output data
@@ -769,13 +774,6 @@ func (tx *Transaction) PredecessorTransactionIDs() set.Set[base.TransactionID] {
 		return true
 	})
 	return ret
-}
-
-// MustSequencerAndStemOutputIndices return seq output index and stem output index
-func (tx *Transaction) MustSequencerAndStemOutputIndices() (byte, byte) {
-	ret := tx.tree.MustBytesAtPath([]byte{ledger.TxSequencerAndStemOutputIndices})
-	util.Assertf(len(ret) == 2, "len(ret)==2")
-	return ret[0], ret[1]
 }
 
 func (tx *Transaction) OutputID(idx byte) base.OutputID {

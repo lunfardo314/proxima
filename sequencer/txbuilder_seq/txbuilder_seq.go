@@ -18,7 +18,7 @@ import (
 type (
 	SeqTxBuilder struct {
 		*txbuilder.TxBuilder
-		*ledger.Library // cached library for this transaction's slot
+		*ledger.Library       // cached library for this transaction's slot
 		origSeqData           *seqdata.SequencerData
 		rdr                   multistate.IndexedStateReader
 		nextSeqData           *seqdata.SequencerData
@@ -171,6 +171,10 @@ func (txb *SeqTxBuilder) IsSlotBoundary() bool {
 
 func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
 	txb.doNotInflateMainChain = !inflate
+}
+
+func (txb *SeqTxBuilder) SetDepthBudget(maxDepth byte) {
+	txb.TransactionData.DepthBudget = maxDepth
 }
 
 func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
@@ -413,6 +417,8 @@ func (txb *SeqTxBuilder) SetName(name string) {
 	txb.nextSeqData.SetName(name)
 }
 
+const minimumDepthBudget = 10
+
 type MakeSimpleSequencerTransactionParams struct {
 	// sequencer name (set only if != ""
 	SeqName string
@@ -436,6 +442,8 @@ type MakeSimpleSequencerTransactionParams struct {
 	PrivateKey ed25519.PrivateKey
 	//
 	DoNotInflateMainChain bool
+	//
+	DepthBudget byte
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
@@ -480,6 +488,11 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		if err = txb.AddWithdrawOutput(o); err != nil {
 			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 		}
+	}
+	if par.DepthBudget > minimumDepthBudget {
+		txb.SetDepthBudget(par.DepthBudget)
+	} else {
+		txb.SetDepthBudget(minimumDepthBudget)
 	}
 	return txb.BytesWithInputLoader()
 }

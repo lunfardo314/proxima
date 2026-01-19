@@ -55,13 +55,16 @@ func (ctx *TxContext) LinesHR(prefix ...string) *lines.Lines {
 func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string) *lines.Lines, prefix ...string) *lines.Lines {
 	txid := ctx.ID()
 	ret := lines.New(prefix...)
-	ret.Add("Transaction id: %s, size: %d", txid.String(), len(ctx.TransactionBytes()))
+	ret.Add("Transaction ID: %s, size: %d", txid.String(), len(ctx.TransactionBytes()))
 	tsBin, ts := ctx.MustTimestampData()
 	ret.Add("Timestamp: %s %s", easyfl_util.Fmt(tsBin), ts)
 
-	seqIdx, stemIdx := ctx.SequencerAndStemOutputIndices()
-	ret.Add("Sequencer output index: %d, sequencer milestone: %v", seqIdx, seqIdx != 0xff)
-	ret.Add("Stem output index: %d, stem output: %v", stemIdx, seqIdx != 0xff && stemIdx != 0xff)
+	if seqData := ctx.SequencerTransactionData(); seqData != nil {
+		ret.Add("SEQUENCER TRANSACTION DATA", seqData)
+		ret.Append(seqData.Lines("    "))
+	} else {
+		ret.Add("NOT A SEQUENCER TRANSACTION")
+	}
 
 	ret.Add("Total consumed token balance: %s", util.Th(ctx.totalConsumedTokenBalance))
 	ret.Add("Total produced amounts: [%s]", util.ThSlice(ctx.TotalProducedAmounts()...))

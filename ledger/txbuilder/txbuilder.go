@@ -30,6 +30,7 @@ type (
 		Signature            []byte
 		SequencerOutputIndex byte
 		StemOutputIndex      byte
+		DepthBudget          byte
 		Timestamp            base.LedgerTime
 		InputCommitment      [32]byte
 		Endorsements         []base.TransactionID
@@ -51,6 +52,7 @@ func New() *TxBuilder {
 			UnlockBlocks:         make([]*UnlockParams, 0),
 			SequencerOutputIndex: 0xff,
 			StemOutputIndex:      0xff,
+			DepthBudget:          0xff,
 			Timestamp:            base.NilLedgerTime,
 			InputCommitment:      [32]byte{},
 			Endorsements:         make([]base.TransactionID, 0),
@@ -356,9 +358,10 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	elems[ledger.TxInputIDs] = inputIDs
 	elems[ledger.TxOutputs] = outputs
 	elems[ledger.TxSignature] = tx.Signature
-	elems[ledger.TxSequencerAndStemOutputIndices] = []byte{tx.SequencerOutputIndex, tx.StemOutputIndex}
+	if tx.SequencerOutputIndex != 0xff {
+		elems[ledger.TxSequencerDataBytes] = []byte{tx.SequencerOutputIndex, tx.StemOutputIndex, tx.DepthBudget}
+	}
 	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
-	//elems[ledger.TxTotalProducedAmount] = easyfl_util.TrimmedLeadingZeroUint64(total)
 	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]
 	elems[ledger.TxEndorsements] = endorsements
 	elems[ledger.TxExplicitBaseline] = explicitBaseline
@@ -383,21 +386,20 @@ func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey) {
 
 type (
 	TransferData struct {
-		SenderPrivateKey  ed25519.PrivateKey
-		SenderPublicKey   ed25519.PublicKey
-		SourceAccount     ledger.Accountable
-		Inputs            []*ledger.OutputWithID
-		ChainOutput       *ledger.OutputWithChainID
-		Timestamp         base.LedgerTime // takes ledger.TimeFromClockTime(time.Now()) if ledger.NilLedgerTime
-		Lock              ledger.Lock
-		Amount            uint64
-		AdjustToMinimum   bool
-		AddConstraints    [][]byte
-		MarkAsSequencerTx bool
-		UnlockData        []*UnlockData
-		Endorsements      []base.TransactionID
-		ExplicitBaseline  *base.TransactionID
-		TagAlong          *TagAlongData
+		SenderPrivateKey ed25519.PrivateKey
+		SenderPublicKey  ed25519.PublicKey
+		SourceAccount    ledger.Accountable
+		Inputs           []*ledger.OutputWithID
+		ChainOutput      *ledger.OutputWithChainID
+		Timestamp        base.LedgerTime // takes ledger.TimeFromClockTime(time.Now()) if ledger.NilLedgerTime
+		Lock             ledger.Lock
+		Amount           uint64
+		AdjustToMinimum  bool
+		AddConstraints   [][]byte
+		UnlockData       []*UnlockData
+		Endorsements     []base.TransactionID
+		ExplicitBaseline *base.TransactionID
+		TagAlong         *TagAlongData
 	}
 
 	// MakeChainSuccTransactionParams contains parameters for building a chain transaction
@@ -833,9 +835,6 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	util.Assertf(chainInputIndex == 0, "chainInputIndex == 0")
 	if err != nil {
 		return nil, err
-	}
-	if par.MarkAsSequencerTx {
-		txb.TransactionData.SequencerOutputIndex = 0
 	}
 	checkAmount, inputTs, err := txb.ConsumeOutputsNoUnlock(consumedOuts...)
 	if err != nil {

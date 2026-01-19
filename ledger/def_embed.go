@@ -26,7 +26,6 @@ type (
 		ProducedTotal(i byte) int64
 		IsBranchTransaction() bool
 		IsSequencerTransaction() bool
-		MustSequencerAndStemOutputIndices() (byte, byte)
 		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
 		Timestamp() base.LedgerTime
 		MustInputAt(idx byte) base.OutputID

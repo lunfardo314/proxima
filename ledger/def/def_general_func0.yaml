@@ -59,11 +59,11 @@ functions:
   -
     sym: timestampOfInputByIndex
     numArgs: 1
-    source: timestampBytesFromPrefix(inputIDByIndex($0))
+    source: "timestampBytesFromPrefix(inputIDByIndex($0))"
   -
     sym: slotOfInputByIndex
     numArgs: 1
-    source: first4Bytes(inputIDByIndex($0))
+    source: "first4Bytes(inputIDByIndex($0))"
   -
     sym: txBytes
     numArgs: 0
@@ -83,31 +83,35 @@ functions:
   -
     sym: txSlot
     numArgs: 0
-    source: first4Bytes(txTimestampBytes)
+    source: "first4Bytes(txTimestampBytes)"
   -
     sym: txTick
     numArgs: 0
-    source: tickFromTimestampBytes(txTimestampBytes)
+    source: "tickFromTimestampBytes(txTimestampBytes)"
   -
     sym: txSequencerOutputIndex
     numArgs: 0
-    source: "byte(atPath(pathToSeqAndStemOutputIndices), 0)"
+    source: "byte(atPath(pathToSequencerDataBytes), 0)"
   -
     sym: txStemOutputIndex
     numArgs: 0
-    source: "byte(atPath(pathToSeqAndStemOutputIndices), 1)"
+    source: "byte(atPath(pathToSequencerDataBytes), 1)"
+  -
+    sym: txStemDepthBudget
+    numArgs: 0
+    source: "byte(atPath(pathToSequencerDataBytes), 2)"
   -
     sym: sequencerFlagON
     numArgs: 1
-    source: not(isZero(bitwiseAND(byte($0,4),0x01)))
+    source: "not(isZero(bitwiseAND(byte($0,4),0x01)))"
   -
     sym: isSequencerTransaction
     numArgs: 0
-    source: not(equal(txSequencerOutputIndex, 0xff))
+    source: "not(equal(0x, atPath(pathToSequencerDataBytes)))"
   -
     sym: isBranchTransaction
     numArgs: 0
-    source: and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))
+    source: "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))"
   -
     sym: numEndorsements
     numArgs: 0
@@ -128,7 +132,7 @@ functions:
             atPath(pathToInputIDs), 
             atPath(pathToUnlockParams),
             atPath(pathToProducedOutputs), 
-            atPath(pathToSeqAndStemOutputIndices),
+            atPath(pathToSequencerDataBytes),
             atPath(pathToTimestamp),
             atPath(pathToInputCommitment), 
             atPath(pathToEndorsements),

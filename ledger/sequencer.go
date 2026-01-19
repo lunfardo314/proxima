@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 )
 
 //go:embed def/sequencer.efl
@@ -30,11 +31,19 @@ type (
 		SequencerID          base.ChainID // adjusted for chain origin
 		SequencerOutputIndex byte
 		StemOutputIndex      byte // 0xff if not a branch transaction
+		DepthBudget          byte
 	}
 )
 
 func (m *SequencerTransactionData) Short() string {
 	return fmt.Sprintf("SEQ(%s)", m.SequencerID.StringVeryShort())
+}
+
+func (m *SequencerTransactionData) Lines(prefix ...string) *lines.Lines {
+	ret := lines.New(prefix...)
+	ret.Add("seq output index: %d, branch output index: %d, depth budget: %d", m.SequencerOutputIndex, m.SequencerOutputIndex, m.DepthBudget)
+	ret.Add("seq ID: %s", m.SequencerID.String())
+	return ret
 }
 
 func NewSequencerConstraint(chainConstraintIndex byte) *SequencerConstraint {
