@@ -42,7 +42,7 @@ var (
 )
 
 func sequencerNodeAttributes(v *vertex.Vertex, coverage uint64, dict map[base.ChainID]int) []func(*graph.VertexProperties) {
-	seqID := v.Tx.SequencerTransactionData().SequencerID
+	seqID := v.SequencerTransactionData().SequencerID
 	if _, found := dict[seqID]; !found {
 		dict[seqID] = (len(dict) % 9) + 1
 	}
@@ -68,7 +68,7 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 	}
 	vid.RUnwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			if v.Tx.IsSequencerTransaction() {
+			if v.IsSequencerTransaction() {
 				attr = sequencerNodeAttributes(v, lc, seqDict)
 			}
 			switch status {
@@ -77,7 +77,7 @@ func makeGraphNode(vid *vertex.WrappedTx, gr graph.Graph[string, string], seqDic
 			case vertex.Undefined:
 				attr = append(attr, graph.VertexAttribute("shape", "diamond"))
 			case vertex.Good:
-				if v.Tx.IsBranchTransaction() {
+				if v.IsBranchTransaction() {
 					attr = append(attr, graph.VertexAttribute("shape", "box"))
 				}
 			}
@@ -104,7 +104,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 		v.ForEachInputDependency(func(i byte, inp *vertex.WrappedTx) bool {
 			if inp == nil {
 				idNil := fmt.Sprintf("%d", nilCount)
-				oid := v.Tx.MustInputAt(i)
+				oid := v.MustInputAt(i)
 				err := gr.AddVertex(idNil,
 					graph.VertexAttribute("shape", "point"),
 					graph.VertexAttribute("xlabel", oid.StringVeryShort()),
@@ -117,7 +117,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 				return true
 			}
 			o := v.GetConsumedOutput(i)
-			outIndex := v.Tx.MustOutputIndexOfTheInput(i)
+			outIndex := v.MustOutputIndexOfTheInput(i)
 			amountStr := "???"
 			if o != nil {
 				amountStr = util.Th(o.TokenBalance())
@@ -143,7 +143,7 @@ func makeGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, string]) {
 			//util.Assertf(err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists), "%v", err)
 			return true
 		})
-		if eid, ok := v.Tx.ExplicitBaseline(); ok {
+		if eid, ok := v.ExplicitBaseline(); ok {
 			_ = gr.AddEdge(id, eid.StringVeryShort(), graph.EdgeAttribute("color", "blue"))
 		}
 	}})
@@ -275,7 +275,7 @@ func makeSequencerGraphEdges(vid *vertex.WrappedTx, gr graph.Graph[string, strin
 			}
 			if i == seqInputIdx || (vid.IsBranchTransaction() && i == stemInputIdx) {
 				o := v.GetConsumedOutput(i)
-				outIndex := v.Tx.MustOutputIndexOfTheInput(i)
+				outIndex := v.MustOutputIndexOfTheInput(i)
 				amountStr := "???"
 				if o != nil {
 					amountStr = util.Th(o.TokenBalance())

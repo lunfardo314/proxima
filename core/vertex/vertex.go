@@ -14,14 +14,14 @@ import (
 
 func NewVertex(tx *transaction.Transaction) *Vertex {
 	return &Vertex{
-		Tx:           tx,
+		Transaction:  tx,
 		Inputs:       make([]*WrappedTx, tx.NumInputs()),
 		Endorsements: make([]*WrappedTx, tx.NumEndorsements()),
 	}
 }
 
 func (v *Vertex) TimeSlot() uint32 {
-	return v.Tx.Slot()
+	return v.Slot()
 }
 
 func (v *Vertex) ReferenceInput(i byte, vid *WrappedTx) {
@@ -50,7 +50,7 @@ func (v *Vertex) UnReferenceDependencies() {
 func (v *Vertex) InputLoaderByIndex(i byte) (*ledger.Output, error) {
 	o := v.GetConsumedOutput(i)
 	if o == nil {
-		oid := v.Tx.MustInputAt(i)
+		oid := v.MustInputAt(i)
 		return nil, fmt.Errorf("InputLoaderByIndex: consumed output %s at index %d is not available", oid.StringShort(), i)
 	}
 	return o, nil
@@ -61,13 +61,13 @@ func (v *Vertex) GetConsumedOutput(i byte) (ret *ledger.Output) {
 	if int(i) >= len(v.Inputs) || v.Inputs[i] == nil {
 		return
 	}
-	idx := v.Tx.MustOutputIndexOfTheInput(i)
+	idx := v.MustOutputIndexOfTheInput(i)
 	v.Inputs[i].RUnwrap(UnwrapOptions{
 		Vertex: func(vCons *Vertex) {
-			ret = vCons.Tx.MustProducedOutputAt(idx)
+			ret = vCons.MustProducedOutputAt(idx)
 		},
 		DetachedVertex: func(vCons *DetachedVertex) {
-			ret = vCons.Tx.MustProducedOutputAt(idx)
+			ret = vCons.MustProducedOutputAt(idx)
 		},
 		VirtualTx: func(vCons *VirtualTransaction) {
 			ret, _ = vCons.OutputAt(idx)
@@ -83,9 +83,9 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 	if len(traceOption) > 0 {
 		traceOpt = traceOption[0]
 	}
-	ctx, err := transaction.TxContextFromTransaction(v.Tx, v.InputLoaderByIndex, traceOpt)
+	ctx, err := transaction.TxContextFromTransaction(v.Transaction, v.InputLoaderByIndex, traceOpt)
 	if err != nil {
-		return fmt.Errorf("ValidateConstraints of %s: %w", v.Tx.IDShortString(), err)
+		return fmt.Errorf("ValidateConstraints of %s: %w", v.IDShortString(), err)
 	}
 	err = ctx.Validate()
 
@@ -95,7 +95,7 @@ func (v *Vertex) ValidateConstraints(traceOption ...int) error {
 		if validateConstraintsVerbose {
 			err = fmt.Errorf("ValidateConstraints: %w \n>>>>>>>>>>>>>>>>>>>>>\n%s", err, ctx.String())
 		} else {
-			err = fmt.Errorf("ValidateConstraints: %s: %w", v.Tx.IDShortString(), err)
+			err = fmt.Errorf("ValidateConstraints: %s: %w", v.IDShortString(), err)
 		}
 		return err
 	}
@@ -124,14 +124,14 @@ func (v *Vertex) MissingInputTxIDSet() set.Set[base.TransactionID] {
 	var oid base.OutputID
 	v.ForEachInputDependency(func(i byte, vidInput *WrappedTx) bool {
 		if vidInput == nil {
-			oid = v.Tx.MustInputAt(i)
+			oid = v.MustInputAt(i)
 			ret.Insert(oid.TransactionID())
 		}
 		return true
 	})
 	v.ForEachEndorsement(func(i byte, vidEndorsed *WrappedTx) bool {
 		if vidEndorsed == nil {
-			ret.Insert(v.Tx.MustEndorsementAt(i))
+			ret.Insert(v.MustEndorsementAt(i))
 		}
 		return true
 	})
@@ -151,13 +151,13 @@ func (v *Vertex) MissingInputTxIDString() string {
 }
 
 func (v *Vertex) StemInputIndex() byte {
-	util.Assertf(v.Tx.IsBranchTransaction(), "branch vertex expected")
+	util.Assertf(v.IsBranchTransaction(), "branch vertex expected")
 
-	predOID := v.Tx.StemOutputData().PredecessorOutputID
+	predOID := v.StemOutputData().PredecessorOutputID
 	var stemInputIdx byte
 	var stemInputFound bool
 
-	v.Tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	v.ForEachInput(func(i byte, oid base.OutputID) bool {
 		if oid == predOID {
 			stemInputIdx = i
 			stemInputFound = true
@@ -169,8 +169,8 @@ func (v *Vertex) StemInputIndex() byte {
 }
 
 func (v *Vertex) SequencerInputIndex() byte {
-	util.Assertf(v.Tx.IsSequencerTransaction(), "sequencer milestone expected")
-	return v.Tx.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
+	util.Assertf(v.IsSequencerTransaction(), "sequencer milestone expected")
+	return v.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
 }
 
 func (v *Vertex) ForEachInputDependency(fun func(i byte, vidInput *WrappedTx) bool) {
@@ -199,11 +199,11 @@ func (v *Vertex) SetOfInputTransactions() set.Set[*WrappedTx] {
 }
 
 func (v *Vertex) Lines(prefix ...string) *lines.Lines {
-	return v.Tx.Lines(func(i byte) (*ledger.Output, error) {
+	return v.Transaction.Lines(func(i byte) (*ledger.Output, error) {
 		if v.Inputs[i] == nil {
 			return nil, fmt.Errorf("input #%d not solid", i)
 		}
-		inpOid, err := v.Tx.InputAt(i)
+		inpOid, err := v.InputAt(i)
 		if err != nil {
 			return nil, fmt.Errorf("input #%d: %v", i, err)
 		}
@@ -212,13 +212,13 @@ func (v *Vertex) Lines(prefix ...string) *lines.Lines {
 }
 
 func (v *DetachedVertex) Lines(prefix ...string) *lines.Lines {
-	return v.Tx.LinesShort(prefix...)
+	return v.LinesShort(prefix...)
 }
 
 func (v *Vertex) Wrap() *WrappedTx {
 	var seqID *base.ChainID
-	if v.Tx.IsSequencerTransaction() {
-		seqID = util.Ref(v.Tx.SequencerTransactionData().SequencerID)
+	if v.IsSequencerTransaction() {
+		seqID = util.Ref(v.SequencerTransactionData().SequencerID)
 	}
-	return _newVID(_vertex{Vertex: v}, v.Tx.ID(), seqID)
+	return _newVID(_vertex{Vertex: v}, v.ID(), seqID)
 }

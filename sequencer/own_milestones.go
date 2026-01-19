@@ -87,11 +87,11 @@ func (seq *Sequencer) _collectConsumed(ms *vertex.WrappedTx) set.Set[base.Output
 
 		ms.RUnwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				v.Tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+				v.ForEachInput(func(i byte, oid base.OutputID) bool {
 					ret.Insert(oid)
 					return true
 				})
-				if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+				if seqData := v.SequencerTransactionData(); seqData != nil {
 					// continue along own predecessors in the cache
 					msPred = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
 					if _, predIsOwnMilestone := seq.ownMilestones[msPred]; !predIsOwnMilestone {

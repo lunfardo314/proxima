@@ -92,8 +92,8 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	})
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			ret.finals.numInputs = v.Tx.NumInputs()
-			ret.finals.numOutputs = v.Tx.NumProducedOutputs()
+			ret.finals.numInputs = v.NumInputs()
+			ret.finals.numOutputs = v.NumProducedOutputs()
 		},
 		DetachedVertex: func(_ *vertex.DetachedVertex) {
 			env.Log().Fatalf("unexpected detached Tx: %s", vid.IDShortString())
@@ -286,6 +286,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined")
 
+				// TODO take into account depth budget
 				if ok = a.attachVertexUnwrapped(v, a.vid, 0); !ok {
 					a.Assertf(a.err != nil, "a.err != nil")
 					return
@@ -353,7 +354,7 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		return false, false
 	}
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
-	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.Tx.IDShortString)
+	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.IDShortString)
 
 	if conflict := a.pastCone.CheckAndClean(a.Branches().GetStateReaderForTheBranch); conflict != nil {
 		a.setError(fmt.Errorf("conflict %s in the past cone:\n%s", conflict.IDStringShort(), a.pastCone.Lines("    ").String()))

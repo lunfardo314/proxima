@@ -60,11 +60,11 @@ const TraceTagSolidifySequencerBaseline = "seqBase"
 // Special edge case: when the baseline branch is before the snapshot state, it has to be taken into account if
 // it can be used as a baseline or not
 func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
-	a.Tracef(TraceTagSolidifySequencerBaseline, "IN for %s", v.Tx.IDShortString)
-	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT for %s", v.Tx.IDShortString)
+	a.Tracef(TraceTagSolidifySequencerBaseline, "IN for %s", v.IDShortString)
+	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT for %s", v.IDShortString)
 
 	// determine the baseline
-	baselineDirectionID := v.Tx.BaselineDirection()
+	baselineDirectionID := v.BaselineDirection()
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
 
 	if a.Branches().SnapshotKnowsTransaction(baselineDirectionID) {
@@ -86,16 +86,16 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 			a.name, func() string { return baselineDirection.Lines("    ").String() })
 
 		v.BaselineBranchID = util.Ref(baseline)
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 1 %s. BaselineBranchID: %s", v.Tx.IDShortString, v.BaselineBranchID.StringShort)
+		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 1 %s. BaselineBranchID: %s", v.IDShortString, v.BaselineBranchID.StringShort)
 		return true
 
 	case vertex.Bad:
 		a.setError(baselineDirection.GetError())
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 2 %s %v", v.Tx.IDShortString, baselineDirection.GetError)
+		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 2 %s %v", v.IDShortString, baselineDirection.GetError)
 		return false
 
 	case vertex.Undefined:
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 3 %s", v.Tx.IDShortString)
+		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 3 %s", v.IDShortString)
 		return a.pullIfNeeded(baselineDirection, "solidifyBaselineUnwrapped")
 	}
 	panic("wrong vertex state")
@@ -147,7 +147,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 			}
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			AttachTransaction(v.Tx, a,
+			AttachTransaction(v.Transaction, a,
 				WithInvokedBy(a.name),
 				WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
 			)
@@ -184,7 +184,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 //     This trick prevents unbounded chains of non-sequencer transactions in the past cone: an attack vector
 //   - this is deterministic, i.e. same on all nodes
 func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, depth int) (ok bool) {
-	a.Assertf(!v.Tx.IsSequencerTransaction() || a.pastCone.GetBaseline() != nil, "!v.Tx.IsSequencerTransaction() || a.baseline != nil in %s", v.Tx.IDShortString)
+	a.Assertf(!v.IsSequencerTransaction() || a.pastCone.GetBaseline() != nil, "!v.Tx.IsSequencerTransaction() || a.baseline != nil in %s", v.IDShortString)
 
 	if vidUnwrapped.GetTxStatusNoLock() == vertex.Bad {
 		a.setError(vidUnwrapped.GetErrorNoLock())
@@ -194,7 +194,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 
 	if depth > a.AttachmentRecursionDepthBase {
 		// possible hanging chain attack
-		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.AttachmentRecursionDepthBase, v.Tx.IDShortString()))
+		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.AttachmentRecursionDepthBase, v.IDShortString()))
 		return false
 	}
 
@@ -204,7 +204,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	// --  attach endorsements if needed (results in recursion)
 
 	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
-		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.IDShortString)
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vidUnwrapped, depth) { // <<< recursive
 			// not ok -> leave attacher
@@ -216,15 +216,15 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
 		a.Assertf(a.allEndorsementsDefined(v), "not all endorsements defined:\n%s", func() string { return a.pastCone.Lines("       ").String() })
 
-		a.Tracef(TraceTagAttachVertex, "endorsements are all solid in %s", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "endorsements are all solid in %s", v.IDShortString)
 	} else {
-		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.IDShortString)
 	}
 
 	// --  attach inputs if needed (results in recursion)
 
 	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
-		a.Tracef(TraceTagAttachVertex, "BEFORE attachInputs(%s)", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "BEFORE attachInputs(%s)", v.IDShortString)
 		if !a.attachInputs(v, vidUnwrapped, depth) {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
@@ -232,20 +232,20 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	}
 
 	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
-		a.Tracef(TraceTagAttachVertex, "inputs solid (%s)", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "inputs solid (%s)", v.IDShortString)
 		a.Assertf(a.allInputsDefined(v), "a.allInputsDefined(v)")
 
-		if !v.Tx.IsSequencerTransaction() {
+		if !v.IsSequencerTransaction() {
 			if !a.finalTouchNonSequencer(v, vidUnwrapped) {
 				a.Assertf(a.err != nil, "a.err!=nil")
 				return false
 			}
 		}
 	} else {
-		a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) not all inputs solid", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) not all inputs solid", v.IDShortString)
 	}
 
-	a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) return OK", v.Tx.IDShortString)
+	a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) return OK", v.IDShortString)
 	return true
 }
 
@@ -273,7 +273,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 		// mark transaction validated
 		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 
-		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.IDShortString)
 		a.PokeAllWith(vid)
 	}
 	glbFlags = vid.FlagsNoLock()
@@ -287,7 +287,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 func (a *attacher) validateVertex(v *vertex.Vertex) (err error) {
 	start := time.Now()
 	if err = v.ValidateConstraints(); err == nil {
-		a.EvidenceTxValidationStats(time.Since(start), v.Tx.NumInputs(), v.Tx.NumProducedOutputs())
+		a.EvidenceTxValidationStats(time.Since(start), v.NumInputs(), v.NumProducedOutputs())
 	}
 	return
 }
@@ -343,7 +343,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, d
 func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte, depth int) bool {
 	vidEndorsed := v.Endorsements[index]
 	if vidEndorsed == nil {
-		vidEndorsed = AttachTxID(v.Tx.MustEndorsementAt(index), a,
+		vidEndorsed = AttachTxID(v.MustEndorsementAt(index), a,
 			WithInvokedBy(a.name),
 			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
 		)
@@ -370,9 +370,9 @@ func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx, de
 }
 
 func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte, depth int) bool {
-	oid := v.Tx.MustInputAt(inputIdx)
+	oid := v.MustInputAt(inputIdx)
 
-	a.Tracef(TraceTagAttachVertex, "attachInput(%s): %s", v.Tx.IDShortString, oid.StringShort)
+	a.Tracef(TraceTagAttachVertex, "attachInput(%s): %s", v.IDShortString, oid.StringShort)
 
 	vidDep := v.Inputs[inputIdx]
 

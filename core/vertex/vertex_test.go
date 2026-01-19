@@ -677,7 +677,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		vid.RUnwrap(UnwrapOptions{
 			Vertex: func(vv *Vertex) {
 				vertexCalled = true
-				require.Equal(t, tx, vv.Tx)
+				require.Equal(t, tx, vv.Transaction)
 			},
 		})
 		require.True(t, vertexCalled)
@@ -872,7 +872,7 @@ func TestConvertVirtualToVertex(t *testing.T) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(vv *Vertex) {
 			vertexCalled = true
-			require.Equal(t, tx, vv.Tx)
+			require.Equal(t, tx, vv.Transaction)
 		},
 	})
 	require.True(t, vertexCalled)
@@ -919,7 +919,7 @@ func TestConvertToDetached(t *testing.T) {
 		},
 		DetachedVertex: func(dv *DetachedVertex) {
 			detachedCalled = true
-			require.Equal(t, tx, dv.Tx)
+			require.Equal(t, tx, dv.Transaction)
 		},
 		VirtualTx: func(vt *VirtualTransaction) {
 			t.Fatal("should not be virtual")

@@ -295,12 +295,12 @@ func (d *MemDAG) LatestHealthySlot() uint32 {
 func (d *MemDAG) ParseMilestoneData(msVID *vertex.WrappedTx) (ret *seqdata.SequencerData) {
 	msVID.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			if r, err := ledger.ParseSequencerData(v.Tx.SequencerOutput().Output); err == nil {
+			if r, err := ledger.ParseSequencerData(v.SequencerOutput().Output); err == nil {
 				ret = &r
 			}
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			if r, err := ledger.ParseSequencerData(v.Tx.SequencerOutput().Output); err == nil {
+			if r, err := ledger.ParseSequencerData(v.SequencerOutput().Output); err == nil {
 				ret = &r
 			}
 		},

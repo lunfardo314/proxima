@@ -16,14 +16,14 @@ import (
 type (
 	// Vertex is a transaction with past cone dependencies
 	Vertex struct {
-		Tx               *transaction.Transaction
+		*transaction.Transaction
 		Inputs           []*WrappedTx
 		Endorsements     []*WrappedTx
 		BaselineBranchID *base.TransactionID
 	}
 
 	DetachedVertex struct {
-		Tx       *transaction.Transaction
+		*transaction.Transaction
 		BranchID *base.TransactionID
 	}
 

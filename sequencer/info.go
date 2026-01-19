@@ -45,7 +45,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 	var sequencerOutput *ledger.OutputWithID
 	ms.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			sequencerOutput = v.Tx.SequencerOutput()
+			sequencerOutput = v.SequencerOutput()
 		},
 	})
 	if sequencerOutput == nil {

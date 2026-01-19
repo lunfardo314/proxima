@@ -15,7 +15,7 @@ func (w *Workflow) ListenToAccount(account ledger.Accountable, fun func(wOut ver
 		var _indices [256]byte
 		indices := _indices[:0]
 		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
+			v.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
 				if ledger.BelongsToAccount(o.Lock(), account) && o.Lock().Name() != ledger.StemLockName {
 					indices = append(indices, idx)
 				}
@@ -48,7 +48,7 @@ func (w *Workflow) startListeningTransactions() {
 		var tx *transaction.Transaction
 
 		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			tx = v.Tx
+			tx = v.Transaction
 		}})
 		if tx != nil {
 			// no need for goroutine because events are on queue

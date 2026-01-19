@@ -17,11 +17,11 @@ import (
 )
 
 func (v _vertex) _outputAt(idx byte) (*ledger.Output, error) {
-	return v.Tx.ProducedOutputAt(idx)
+	return v.ProducedOutputAt(idx)
 }
 
 func (v _detachedVertex) _outputAt(idx byte) (*ledger.Output, error) {
-	return v.Tx.ProducedOutputAt(idx)
+	return v.ProducedOutputAt(idx)
 }
 
 func (v _virtualTx) _outputAt(idx byte) (*ledger.Output, error) {
@@ -73,12 +73,12 @@ func (vid *WrappedTx) FlagsUpNoLock(f Flags) bool {
 }
 
 func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
-	util.Assertf(vid.id == v.Tx.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.id.StringShort)
+	util.Assertf(vid.id == v.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.id.StringShort)
 	_, isVirtualTx := vid._genericVertex.(_virtualTx)
 	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertexNoLock: virtual tx target expected %s", vid.id.StringShort)
 	vid._put(_vertex{Vertex: v})
-	if v.Tx.IsSequencerTransaction() {
-		vid.SequencerID.Store(util.Ref(v.Tx.SequencerTransactionData().SequencerID))
+	if v.IsSequencerTransaction() {
+		vid.SequencerID.Store(util.Ref(v.SequencerTransactionData().SequencerID))
 	}
 }
 
@@ -342,10 +342,10 @@ func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID base.ChainID, stemID bas
 	seqID = *p
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
+			stemID = vid.OutputID(v.SequencerTransactionData().StemOutputIndex)
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
+			stemID = vid.OutputID(v.SequencerTransactionData().StemOutputIndex)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			util.Assertf(v.sequencerOutputIndices != nil, "v.sequencerOutputs != nil")
@@ -361,7 +361,7 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 	var seqData *ledger.SequencerTransactionData
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			seqData = v.Tx.SequencerTransactionData()
+			seqData = v.SequencerTransactionData()
 			util.Assertf(seqData != nil, "seqData is nil")
 			ret = WrappedOutput{
 				VID:   vid,
@@ -369,7 +369,7 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			seqData = v.Tx.SequencerTransactionData()
+			seqData = v.SequencerTransactionData()
 			util.Assertf(seqData != nil, "seqData is nil")
 			ret = WrappedOutput{
 				VID:   vid,
@@ -391,10 +391,10 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 func (vid *WrappedTx) FindChainOutput(chainID *base.ChainID) (ret *ledger.OutputWithID) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret = v.Tx.FindChainOutput(*chainID)
+			ret = v.FindChainOutput(*chainID)
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.Tx.FindChainOutput(*chainID)
+			ret = v.FindChainOutput(*chainID)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			ret = v.findChainOutput(vid.id, chainID)
@@ -408,18 +408,18 @@ func (vid *WrappedTx) StemWrappedOutput() (ret WrappedOutput) {
 
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			if seqData := v.SequencerTransactionData(); seqData != nil {
 				ret = WrappedOutput{
 					VID:   vid,
-					Index: v.Tx.SequencerTransactionData().StemOutputIndex,
+					Index: v.SequencerTransactionData().StemOutputIndex,
 				}
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			if seqData := v.SequencerTransactionData(); seqData != nil {
 				ret = WrappedOutput{
 					VID:   vid,
-					Index: v.Tx.SequencerTransactionData().StemOutputIndex,
+					Index: v.SequencerTransactionData().StemOutputIndex,
 				}
 			}
 		},
@@ -489,10 +489,10 @@ func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
 func (vid *WrappedTx) TxLines(prefix ...string) (ret *lines.Lines) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret = v.Tx.Lines(v.InputLoaderByIndex, prefix...)
+			ret = v.Transaction.Lines(v.InputLoaderByIndex, prefix...)
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.Tx.LinesShort(prefix...)
+			ret = v.LinesShort(prefix...)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			ret = lines.New(prefix...).Add("== virtual tx %s", vid.IDShortString())
@@ -545,7 +545,7 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 	}
 	switch v := vid._genericVertex.(type) {
 	case _vertex:
-		ret.Add("---- transaction ----\n" + v.Tx.LinesShort(prefix...).String())
+		ret.Add("---- transaction ----\n" + v.LinesShort(prefix...).String())
 	case _virtualTx:
 		if v.needsPull {
 			ret.Add("Pull: number of pulls: %d, next pull in %v", v.timesPulled, time.Until(v.nextPull))
@@ -564,10 +564,10 @@ func (vid *WrappedTx) NumInputs() int {
 	ret := 0
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret = v.Tx.NumInputs()
+			ret = v.NumInputs()
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.Tx.NumInputs()
+			ret = v.NumInputs()
 		},
 	})
 	return ret
@@ -607,14 +607,14 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranchID base.TransactionID, ok 
 func (vid *WrappedTx) MustEnsureOutput(o *ledger.Output, idx byte) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			util.Assertf(bytes.Equal(o.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()),
+			util.Assertf(bytes.Equal(o.Bytes(), v.MustProducedOutputAt(idx).Bytes()),
 				"MustEnsureOutput: inconsistent output data in %s",
-				func() string { return util.Ref(v.Tx.OutputID(idx)).StringShort() })
+				func() string { return util.Ref(v.OutputID(idx)).StringShort() })
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			util.Assertf(bytes.Equal(o.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()),
+			util.Assertf(bytes.Equal(o.Bytes(), v.MustProducedOutputAt(idx).Bytes()),
 				"MustEnsureOutput: inconsistent output data in %s",
-				func() string { return util.Ref(v.Tx.OutputID(idx)).StringShort() })
+				func() string { return util.Ref(v.OutputID(idx)).StringShort() })
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			v.mustAddOutput(idx, o)
@@ -655,10 +655,10 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	nOutputs := 0
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			nOutputs = v.Tx.NumProducedOutputs()
+			nOutputs = v.NumProducedOutputs()
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			nOutputs = v.Tx.NumProducedOutputs()
+			nOutputs = v.NumProducedOutputs()
 		},
 	})
 
@@ -733,8 +733,8 @@ func (vid *WrappedTx) String() (ret string) {
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, err: '%v', cov: %s",
 				t,
 				vid.id.StringShort(),
-				v.Tx.NumInputs(),
-				v.Tx.NumProducedOutputs(),
+				v.NumInputs(),
+				v.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
 				vid.flags,
@@ -751,8 +751,8 @@ func (vid *WrappedTx) String() (ret string) {
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, err: '%v', cov: %s",
 				t,
 				vid.id.StringShort(),
-				v.Tx.NumInputs(),
-				v.Tx.NumProducedOutputs(),
+				v.NumInputs(),
+				v.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
 				vid.flags,
@@ -783,7 +783,7 @@ func (vid *WrappedTx) String() (ret string) {
 func (vid *WrappedTx) SequencerPredecessor(reattachBranch func(txid base.TransactionID) *WrappedTx) (ret *WrappedTx) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			if seqData := v.SequencerTransactionData(); seqData != nil {
 				ret = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
 			}
 		},
@@ -800,10 +800,10 @@ func (vid *WrappedTx) LinesTx(prefix ...string) *lines.Lines {
 	ret := lines.New()
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret.Append(v.Tx.LinesShort(prefix...))
+			ret.Append(v.LinesShort(prefix...))
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			ret.Append(v.Tx.LinesShort(prefix...))
+			ret.Append(v.LinesShort(prefix...))
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			ret.Add("a virtual tx %s", vid.IDShortString())
@@ -896,10 +896,10 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 func (vid *WrappedTx) InflationAmount() (ret uint64) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret = v.Tx.InflationAmount()
+			ret = v.InflationAmount()
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.Tx.InflationAmount()
+			ret = v.InflationAmount()
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			ret = v.inflation
@@ -958,13 +958,20 @@ func (vid *WrappedTx) SequencerName() (ret string) {
 	return
 }
 
+func (vid *WrappedTx) SequencerTransactionData() (ret *ledger.SequencerTransactionData) {
+	if tx := vid.GetTransaction(); tx != nil {
+		ret = tx.SequencerTransactionData()
+	}
+	return
+}
+
 func (vid *WrappedTx) GetTransaction() (tx *transaction.Transaction) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			tx = v.Tx
+			tx = v.Transaction
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			tx = v.Tx
+			tx = v.Transaction
 		},
 	})
 	return
