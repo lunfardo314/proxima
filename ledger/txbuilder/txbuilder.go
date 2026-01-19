@@ -24,18 +24,16 @@ type (
 	}
 
 	transactionData struct {
-		InputIDs             []*base.OutputID
-		Outputs              []*ledger.Output
-		UnlockBlocks         []*UnlockParams
-		Signature            []byte
-		SequencerOutputIndex byte
-		StemOutputIndex      byte
-		DepthBudget          byte
-		Timestamp            base.LedgerTime
-		InputCommitment      [32]byte
-		Endorsements         []base.TransactionID
-		ExplicitBaseline     *base.TransactionID
-		OtherData            [][]byte
+		InputIDs         []*base.OutputID
+		Outputs          []*ledger.Output
+		UnlockBlocks     []*UnlockParams
+		Signature        []byte
+		Timestamp        base.LedgerTime
+		InputCommitment  [32]byte
+		Endorsements     []base.TransactionID
+		ExplicitBaseline *base.TransactionID
+		OtherData        [][]byte
+		ledger.SequencerDataBytes
 	}
 
 	UnlockParams struct {
@@ -47,16 +45,14 @@ func New() *TxBuilder {
 	return &TxBuilder{
 		ConsumedOutputs: make([]*ledger.Output, 0),
 		TransactionData: &transactionData{
-			InputIDs:             make([]*base.OutputID, 0),
-			Outputs:              make([]*ledger.Output, 0),
-			UnlockBlocks:         make([]*UnlockParams, 0),
-			SequencerOutputIndex: 0xff,
-			StemOutputIndex:      0xff,
-			DepthBudget:          0xff,
-			Timestamp:            base.NilLedgerTime,
-			InputCommitment:      [32]byte{},
-			Endorsements:         make([]base.TransactionID, 0),
-			OtherData:            make([][]byte, 0),
+			InputIDs:           make([]*base.OutputID, 0),
+			Outputs:            make([]*ledger.Output, 0),
+			UnlockBlocks:       make([]*UnlockParams, 0),
+			SequencerDataBytes: ledger.MustSequencerDataBytesFromBytes([]byte{0xff, 0xff, 0xff, 0xff}),
+			Timestamp:          base.NilLedgerTime,
+			InputCommitment:    [32]byte{},
+			Endorsements:       make([]base.TransactionID, 0),
+			OtherData:          make([][]byte, 0),
 		},
 	}
 }
@@ -359,7 +355,7 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	elems[ledger.TxOutputs] = outputs
 	elems[ledger.TxSignature] = tx.Signature
 	if tx.SequencerOutputIndex != 0xff {
-		elems[ledger.TxSequencerDataBytes] = []byte{tx.SequencerOutputIndex, tx.StemOutputIndex, tx.DepthBudget}
+		elems[ledger.TxSequencerDataBytes] = tx.SequencerDataBytes.Bytes()
 	}
 	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
 	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]

@@ -64,7 +64,7 @@ type (
 		*proposer
 		*attacher.IncrementalAttacher
 		*txbuilder_seq.SeqTxBuilder
-		depthBudget byte
+		attachmentCost uint16
 	}
 
 	finalProposal struct {

@@ -33,8 +33,6 @@ type (
 	TxValidationOption func(tx *Transaction) error
 )
 
-const sequencerDataBytesLength = 3
-
 // MainTxValidationOptions is all except Base, ParseSender, the time bounds and input context validation. Fastest first
 var MainTxValidationOptions = []TxValidationOption{
 	//ParseTotalProducedAmount,
@@ -84,27 +82,22 @@ func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, e
 		err = fmt.Errorf("can't parse timestamp: %w", err)
 		return
 	}
-	var ts base.LedgerTime
-	if ts, err = base.LedgerTimeFromBytes(tsBin); err != nil {
+	if _, err = base.LedgerTimeFromBytes(tsBin); err != nil {
 		err = fmt.Errorf("wrong timestamp: %w", err)
 		return
 	}
 	var seqBin []byte
 	seqBin, err = txTree.BytesAtPath([]byte{ledger.TxSequencerDataBytes})
 	if err != nil {
-		err = fmt.Errorf("can't parse sequencer data bytes: %w", err)
+		err = fmt.Errorf("can't get sequencer data bytes: %w", err)
 		return
 	}
-	if len(seqBin) != 0 && (len(seqBin) != sequencerDataBytesLength || seqBin[0] == 0xff) {
-		err = fmt.Errorf("wrong sequencer data bytes length")
-		return
+	seqDataBytes, err := ledger.SequencerDataBytesFromBytes(seqBin)
+	if err != nil {
+		err = fmt.Errorf("can't parse sequencer data bytes: %w", err)
 	}
 
-	isSeqTx := len(seqBin) > 0 // is it a sequencer transaction
-	if isSeqTx && ts.Tick == 0 && seqBin[1] == 0xff {
-		err = fmt.Errorf("wrong stem index value")
-		return
-	}
+	isSeqTx := seqDataBytes != nil // is it a sequencer transaction
 	if ret, err = hashEssenceBytesFromTransactionDataTree(txTree); err != nil {
 		return
 	}
@@ -212,37 +205,21 @@ func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
 	}
 }
 
-//func ParseTotalProducedAmount(tx *Transaction) error {
-//	// parse the total amount as trimmed-prefix uint68. Validity of the sum is not checked here
-//	totalAmountBin, err := tx.tree.BytesAtPath(Path(ledger.TxTotalProducedAmount))
-//	if err != nil {
-//		return err
-//	}
-//	tx.totalAmountPersisted, err = easyfl_util.Uint64FromBytes(totalAmountBin)
-//	if err != nil {
-//		return fmt.Errorf("wrong total amount in transaction: %v", err)
-//	}
-//	return nil
-//}
-
 // ParseSequencerData validates and parses sequencer data if relevant. Data is cached for frequent extraction
 func ParseSequencerData(tx *Transaction) error {
 	if !tx.txid.IsSequencerMilestone() {
 		// it is known from parsing the txID
 		return nil
 	}
-	sequencerDataBytes := tx.tree.MustBytesAtPath(Path(ledger.TxSequencerDataBytes))
-	util.Assertf(len(sequencerDataBytes) == sequencerDataBytesLength, "len(sequencerDataBytes) == sequencerDataBytesLength")
-
-	sequencerOutputIndex, stemOutputIndex, depthBudget := sequencerDataBytes[0], sequencerDataBytes[1], sequencerDataBytes[2]
+	seqDataBytes := ledger.MustSequencerDataBytesFromBytes(tx.tree.MustBytesAtPath(Path(ledger.TxSequencerDataBytes)))
 
 	// check sequencer output
-	if int(sequencerOutputIndex) >= tx.NumProducedOutputs() {
+	if int(seqDataBytes.SequencerOutputIndex) >= tx.NumProducedOutputs() {
 		return fmt.Errorf("wrong sequencer output index")
 	}
-	out, err := tx.ProducedOutputWithIDAt(sequencerOutputIndex)
+	out, err := tx.ProducedOutputWithIDAt(seqDataBytes.SequencerOutputIndex)
 	if err != nil {
-		return fmt.Errorf("ParseSequencerData: '%v' at produced output %d", err, sequencerOutputIndex)
+		return fmt.Errorf("ParseSequencerData: '%v' at produced output %d", err, seqDataBytes.SequencerOutputIndex)
 	}
 	seqOutputData, valid := out.Output.SequencerOutputData()
 	if !valid {
@@ -258,12 +235,10 @@ func ParseSequencerData(tx *Transaction) error {
 
 	// it is a sequencer milestone transaction
 	tx.sequencerTransactionData = &ledger.SequencerTransactionData{
-		SequencerOutputData:  seqOutputData,
-		SequencerID:          sequencerID,
-		SequencerOutputIndex: sequencerOutputIndex,
-		StemOutputIndex:      stemOutputIndex,
-		StemOutputData:       nil,
-		DepthBudget:          depthBudget,
+		SequencerOutputData: seqOutputData,
+		SequencerID:         sequencerID,
+		SequencerDataBytes:  seqDataBytes,
+		StemOutputData:      nil,
 	}
 
 	// ---  check stem output data
@@ -271,18 +246,15 @@ func ParseSequencerData(tx *Transaction) error {
 		// not a branch transaction
 		return nil
 	}
-	if stemOutputIndex == sequencerOutputIndex || int(stemOutputIndex) >= tx.NumProducedOutputs() {
-		return fmt.Errorf("ParseSequencerData: wrong stem output index")
-	}
-	outStem, err := tx.ProducedOutputWithIDAt(stemOutputIndex)
+	outStem, err := tx.ProducedOutputWithIDAt(seqDataBytes.StemOutputIndex)
 	if err != nil {
 		return fmt.Errorf("ParseSequencerData stem: %v", err)
 	}
 	lock := outStem.Output.Lock()
-	if lock.Name() != ledger.StemLockName {
+	var ok bool
+	if tx.sequencerTransactionData.StemOutputData, ok = lock.(*ledger.StemLock); !ok {
 		return fmt.Errorf("ParseSequencerData: not a stem lock")
 	}
-	tx.sequencerTransactionData.StemOutputData = lock.(*ledger.StemLock)
 	return nil
 }
 

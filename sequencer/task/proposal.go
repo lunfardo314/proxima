@@ -201,7 +201,7 @@ func (p *proposal) insertInputs() {
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 	p.Close()
 
-	p.SetDepthBudget(p.depthBudget)
+	p.SetAttachmentBudget(p.attachmentCost)
 	txBytes, _, txString, err := p.BytesWithValidation()
 	if err != nil {
 		return nil, txString, err

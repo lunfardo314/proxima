@@ -173,8 +173,8 @@ func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
 	txb.doNotInflateMainChain = !inflate
 }
 
-func (txb *SeqTxBuilder) SetDepthBudget(maxDepth byte) {
-	txb.TransactionData.DepthBudget = maxDepth
+func (txb *SeqTxBuilder) SetAttachmentBudget(budget uint16) {
+	txb.TransactionData.AttachmentBudget = budget
 }
 
 func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
@@ -417,7 +417,7 @@ func (txb *SeqTxBuilder) SetName(name string) {
 	txb.nextSeqData.SetName(name)
 }
 
-const minimumDepthBudget = 10
+const minimumAttachmentBudget = 20
 
 type MakeSimpleSequencerTransactionParams struct {
 	// sequencer name (set only if != ""
@@ -443,7 +443,7 @@ type MakeSimpleSequencerTransactionParams struct {
 	//
 	DoNotInflateMainChain bool
 	//
-	DepthBudget byte
+	AttachmentBudget uint16
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
@@ -489,10 +489,10 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 		}
 	}
-	if par.DepthBudget > minimumDepthBudget {
-		txb.SetDepthBudget(par.DepthBudget)
+	if par.AttachmentBudget > minimumAttachmentBudget {
+		txb.SetAttachmentBudget(par.AttachmentBudget)
 	} else {
-		txb.SetDepthBudget(minimumDepthBudget)
+		txb.SetAttachmentBudget(minimumAttachmentBudget)
 	}
 	return txb.BytesWithInputLoader()
 }
