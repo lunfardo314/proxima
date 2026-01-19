@@ -60,7 +60,7 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 	ret.Add("Timestamp: %s %s", easyfl_util.Fmt(tsBin), ts)
 
 	if seqData := ctx.SequencerTransactionData(); seqData != nil {
-		ret.Add("SEQUENCER TRANSACTION DATA", seqData)
+		ret.Add("SEQUENCER TRANSACTION DATA:")
 		ret.Append(seqData.Lines("    "))
 	} else {
 		ret.Add("NOT A SEQUENCER TRANSACTION")
