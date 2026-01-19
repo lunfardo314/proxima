@@ -63,7 +63,8 @@ type (
 	proposal struct {
 		*proposer
 		*attacher.IncrementalAttacher
-		txb *txbuilder_seq.SeqTxBuilder
+		*txbuilder_seq.SeqTxBuilder
+		depthBudget byte
 	}
 
 	finalProposal struct {

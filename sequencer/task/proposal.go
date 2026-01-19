@@ -49,7 +49,7 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	return &proposal{
 		proposer:            p,
 		IncrementalAttacher: a,
-		txb:                 txb,
+		SeqTxBuilder:        txb,
 	}, nil
 }
 
@@ -69,7 +69,7 @@ func (p *proposal) insertTagAlongInputs() {
 	if p.Library.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
 		return
 	}
-	if p.txb.InputsAreFull() {
+	if p.InputsAreFull() {
 		return
 	}
 
@@ -108,7 +108,7 @@ func (p *proposal) insertTagAlongInputs() {
 		var cmd txbuilder_seq.TxBuilderCommand
 
 		valid, err := p.InsertInput(o.wOut, func() (valid1 bool, err1 error) {
-			cmd, valid1, err1 = p.txb.AddTagAlongInput(*o.o)
+			cmd, valid1, err1 = p.AddTagAlongInput(*o.o)
 			return
 		})
 		if !valid {
@@ -124,7 +124,7 @@ func (p *proposal) insertTagAlongInputs() {
 					o.o.ID.StringShort(), p.Name, cmd.Lines().Join(", "))
 			}
 		}
-		if p.txb.InputsAreFull() {
+		if p.InputsAreFull() {
 			return
 		}
 	}
@@ -137,7 +137,7 @@ func (p *proposal) insertDelegations() {
 	if p.Library.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
 		return
 	}
-	if p.txb.InputsAreFull() {
+	if p.InputsAreFull() {
 		return
 	}
 
@@ -170,7 +170,7 @@ func (p *proposal) insertDelegations() {
 		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
 		// just skip if freezing failed for any reason
 		valid, err := p.InsertInput(wOut, func() (bool, error) {
-			_, valid, err1 := p.txb.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
+			_, valid, err1 := p.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
 			return valid, err1
 		})
 		if err != nil {
@@ -187,7 +187,7 @@ func (p *proposal) insertDelegations() {
 				o.ChainID.String(), o.ID.StringShort())
 		}
 
-		if p.txb.InputsAreFull() {
+		if p.InputsAreFull() {
 			return
 		}
 	}
@@ -200,7 +200,9 @@ func (p *proposal) insertInputs() {
 
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 	p.Close()
-	txBytes, _, txString, err := p.txb.BytesWithValidation()
+
+	p.SetDepthBudget(p.depthBudget)
+	txBytes, _, txString, err := p.BytesWithValidation()
 	if err != nil {
 		return nil, txString, err
 	}
@@ -222,13 +224,13 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	ret := make([]_delegationToFreeze, 0)
 	nDelegationsByUnfreezeEpochMap := make(map[uint32]int)
 
-	txEpoch := p.txb.EpochFromSlotDirect(p.SequencerID(), p.txb.TransactionData.Timestamp.Slot)
+	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TransactionData.Timestamp.Slot)
 
-	for e := txEpoch; e < txEpoch+p.txb.MaxFrozenEpochs; e++ {
+	for e := txEpoch; e < txEpoch+p.MaxFrozenEpochs; e++ {
 		nDelegationsByUnfreezeEpochMap[e] = 0
 	}
 
-	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
+	p.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
 		if p.Backlog().IsInBlacklist(o.ID) {
 			return true
 		}
@@ -242,7 +244,7 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	})
 
 	for i := range ret {
-		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.txb.TransactionData.Timestamp), nDelegationsByUnfreezeEpochMap)
+		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.TransactionData.Timestamp), nDelegationsByUnfreezeEpochMap)
 		nDelegationsByUnfreezeEpochMap[ret[i].freezeUntilEpoch]++
 	}
 	return ret
