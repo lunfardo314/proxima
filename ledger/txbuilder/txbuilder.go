@@ -34,7 +34,7 @@ type (
 		InputCommitment      [32]byte
 		Endorsements         []base.TransactionID
 		ExplicitBaseline     *base.TransactionID
-		LocalLibraries       [][]byte
+		OtherData            [][]byte
 	}
 
 	UnlockParams struct {
@@ -54,7 +54,7 @@ func New() *TxBuilder {
 			Timestamp:            base.NilLedgerTime,
 			InputCommitment:      [32]byte{},
 			Endorsements:         make([]base.TransactionID, 0),
-			LocalLibraries:       make([][]byte, 0),
+			OtherData:            make([][]byte, 0),
 		},
 	}
 }
@@ -362,7 +362,7 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]
 	elems[ledger.TxEndorsements] = endorsements
 	elems[ledger.TxExplicitBaseline] = explicitBaseline
-	elems[ledger.TxLocalLibraries] = tuples.MakeTupleFromDataElements(tx.LocalLibraries...)
+	elems[ledger.TxOtherData] = tuples.MakeTupleFromDataElements(tx.OtherData...)
 	return tuples.MakeTupleFromSerializableElements(elems...)
 }
 

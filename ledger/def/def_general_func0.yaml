@@ -133,7 +133,7 @@ functions:
             atPath(pathToInputCommitment), 
             atPath(pathToEndorsements),
 			atPath(pathToExplicitBaseline),
-            atPath(pathToLocalLibraries)
+            atPath(pathToOtherData)
          )"
   -
     sym: txIDPrefix

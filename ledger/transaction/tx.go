@@ -55,7 +55,7 @@ var essenceIndices = []byte{
 	ledger.TxInputCommitment,
 	ledger.TxEndorsements,
 	ledger.TxExplicitBaseline,
-	ledger.TxLocalLibraries,
+	ledger.TxOtherData,
 }
 
 func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {

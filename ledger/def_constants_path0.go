@@ -29,7 +29,7 @@ Constants which define validation context data tree branches. Structure of the d
        -- TxInputCommitment = 0x06    (path 0x0006)  -- blake2b hash of the all consumed outputs (which are under path 0x1000)
        -- TxEndorsements = 0x07       (path 0x0007)  -- list of transaction IDs of endorsed transaction
        -- TxExplicitBaseline = 0x08       (path 0x0008)  -- list of transaction IDs of endorsed transaction
-       -- TxLocalLibraries = 0x09     (path 0x0009)  -- list of local libraries in its binary form
+       -- TxOtherData = 0x09     (path 0x0009)  -- list of local libraries in its binary form
   -- ConsumedBranch = 0x01
        -- ConsumedOutputsBranch = 0x00 (path 0x0100) -- all consumed outputs, up to 256
 
@@ -51,13 +51,13 @@ const (
 	TxInputIDs = byte(iota)
 	TxUnlockData
 	TxOutputs
-	TxSignature
+	TxEndorsements
 	TxSequencerAndStemOutputIndices
 	TxTimestamp
+	TxSignature
 	TxInputCommitment
-	TxEndorsements
 	TxExplicitBaseline
-	TxLocalLibraries
+	TxOtherData
 	TxTreeIndexMax
 )
 
@@ -68,13 +68,13 @@ var (
 	PathToProducedOutputs               = tuples.Path(TransactionBranch, TxOutputs)
 	PathToUnlockParams                  = tuples.Path(TransactionBranch, TxUnlockData)
 	PathToInputIDs                      = tuples.Path(TransactionBranch, TxInputIDs)
-	PathToSignature                     = tuples.Path(TransactionBranch, TxSignature)
-	PathToSequencerAndStemOutputIndices = tuples.Path(TransactionBranch, TxSequencerAndStemOutputIndices)
-	PathToInputCommitment               = tuples.Path(TransactionBranch, TxInputCommitment)
 	PathToEndorsements                  = tuples.Path(TransactionBranch, TxEndorsements)
-	PathToExplicitBaseline              = tuples.Path(TransactionBranch, TxExplicitBaseline)
-	PathToLocalLibraries                = tuples.Path(TransactionBranch, TxLocalLibraries)
+	PathToSequencerAndStemOutputIndices = tuples.Path(TransactionBranch, TxSequencerAndStemOutputIndices)
 	PathToTimestamp                     = tuples.Path(TransactionBranch, TxTimestamp)
+	PathToSignature                     = tuples.Path(TransactionBranch, TxSignature)
+	PathToInputCommitment               = tuples.Path(TransactionBranch, TxInputCommitment)
+	PathToExplicitBaseline              = tuples.Path(TransactionBranch, TxExplicitBaseline)
+	PathToOtherData                     = tuples.Path(TransactionBranch, TxOtherData)
 )
 
 // Mandatory output block indices
@@ -97,7 +97,7 @@ func pathConstantsUpgrade0() string {
 		PathToEndorsements.Hex(),
 		PathToExplicitBaseline.Hex(),
 		PathToTimestamp.Hex(),
-		PathToLocalLibraries.Hex(),
+		PathToOtherData.Hex(),
 		ConstraintIndexAmounts,
 		ConstraintIndexLock,
 	)
@@ -150,7 +150,7 @@ functions:
       numArgs: 0
       source: 0x%s
    -
-      sym: pathToLocalLibraries
+      sym: pathToOtherData
       numArgs: 0
       source: 0x%s
    -
