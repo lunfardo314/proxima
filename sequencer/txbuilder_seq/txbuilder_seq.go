@@ -173,10 +173,6 @@ func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
 	txb.doNotInflateMainChain = !inflate
 }
 
-func (txb *SeqTxBuilder) SetAttachmentBudget(budget uint16) {
-	txb.TransactionData.AttachmentBudget = budget
-}
-
 func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid)
 	if len(txb.TransactionData.Endorsements) > int(txb.MaxNumberOfEndorsements) {
@@ -417,8 +413,6 @@ func (txb *SeqTxBuilder) SetName(name string) {
 	txb.nextSeqData.SetName(name)
 }
 
-const minimumAttachmentBudget = 20
-
 type MakeSimpleSequencerTransactionParams struct {
 	// sequencer name (set only if != ""
 	SeqName string
@@ -488,11 +482,6 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		if err = txb.AddWithdrawOutput(o); err != nil {
 			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 		}
-	}
-	if par.AttachmentBudget > minimumAttachmentBudget {
-		txb.SetAttachmentBudget(par.AttachmentBudget)
-	} else {
-		txb.SetAttachmentBudget(minimumAttachmentBudget)
 	}
 	return txb.BytesWithInputLoader()
 }
