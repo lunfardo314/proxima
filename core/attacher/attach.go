@@ -130,7 +130,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		env.Tracef(TraceTagAttach, ">>>>>>>>>>>>>>>>>>>>>>> ConvertVirtualTxToVertexNoLock: %s", tx.IDShortString())
 		vid.ConvertVirtualTxToVertexNoLock(vertex.NewVertex(tx))
 
-		if vid.IsSequencerMilestone() {
+		if vid.IsSequencerTransaction() {
 			// for sequencer milestones start attacher
 			metadata := options.metadata
 			// start attacher routine
@@ -150,7 +150,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			}()
 		}
 		// significantly speeds up non-sequencer transactions
-		if !vid.IsSequencerMilestone() || vid.IsBranchTransaction() {
+		if !vid.IsSequencerTransaction() || vid.IsBranchTransaction() {
 			env.PokeAllWith(vid)
 		}
 

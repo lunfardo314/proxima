@@ -70,7 +70,7 @@ func runMilestoneAttacher(
 }
 
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, providedCtx context.Context) *milestoneAttacher {
-	env.Assertf(vid.IsSequencerMilestone(), "newMilestoneAttacher: %s is not a sequencer milestone", vid.IDShortString)
+	env.Assertf(vid.IsSequencerTransaction(), "newMilestoneAttacher: %s is not a sequencer milestone", vid.IDShortString)
 
 	ret := &milestoneAttacher{
 		attacher:         newPastConeAttacher(env, vid, vid.Timestamp(), vid.IDShortString()),

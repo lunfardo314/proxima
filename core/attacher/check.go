@@ -57,7 +57,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 	util.Assertf(len(setOfInputTransactions) > 0, "len(setOfInputTransactions)>0")
 
 	setOfInputTransactions.ForEach(func(vidInp *vertex.WrappedTx) bool {
-		if !vidInp.IsSequencerMilestone() || vidInp.IsBranchTransaction() || v.Slot() != vidInp.Slot() {
+		if !vidInp.IsSequencerTransaction() || vidInp.IsBranchTransaction() || v.Slot() != vidInp.Slot() {
 			// checking sequencer, non-branch inputs on the same slot
 			return true
 		}

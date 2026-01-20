@@ -34,7 +34,7 @@ func runCountTx(_ *cobra.Command, _ []string) {
 	countBranch := 0
 	rdr.IterateKnownCommittedTransactions(func(txid base.TransactionID, _ uint32) bool {
 		count++
-		if txid.IsSequencerMilestone() {
+		if txid.IsSequencerTransaction() {
 			countSeq++
 			if txid.IsBranchTransaction() {
 				countBranch++

@@ -162,7 +162,7 @@ func (vid *WrappedTx) SetTxStatusGoodNoLock(pastCone *PastConeBase, coverage uin
 }
 
 func (vid *WrappedTx) SetSequencerAttachmentFinished() {
-	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerTransaction()")
+	util.Assertf(vid.IsSequencerTransaction(), "vid.IsSequencerTransaction()")
 
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
@@ -277,8 +277,8 @@ func (vid *WrappedTx) IsBranchTransaction() bool {
 	return vid.id.IsBranchTransaction()
 }
 
-func (vid *WrappedTx) IsSequencerMilestone() bool {
-	return vid.id.IsSequencerMilestone()
+func (vid *WrappedTx) IsSequencerTransaction() bool {
+	return vid.id.IsSequencerTransaction()
 }
 
 func (vid *WrappedTx) Timestamp() base.LedgerTime {
@@ -356,7 +356,7 @@ func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID base.ChainID, stemID bas
 }
 
 func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
-	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerTransaction()")
+	util.Assertf(vid.IsSequencerTransaction(), "vid.IsSequencerTransaction()")
 
 	var seqData *ledger.SequencerTransactionData
 	vid.RUnwrap(UnwrapOptions{
@@ -979,4 +979,18 @@ func (vid *WrappedTx) GetTransaction() (tx *transaction.Transaction) {
 
 func (vid *WrappedTx) ValidSequencerPace(targetTs base.LedgerTime) bool {
 	return ledger.ValidSequencerPace(vid.Timestamp(), targetTs)
+}
+
+func (vid *WrappedTx) AttachmentCost() (ret int) {
+	vid.RUnwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret = v.AttachmentCost()
+			return
+		},
+		DetachedVertex: func(v *DetachedVertex) {
+			ret = v.AttachmentCost()
+			return
+		},
+	})
+	return
 }

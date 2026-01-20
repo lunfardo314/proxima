@@ -133,12 +133,12 @@ func (txid *TransactionID) Tick() byte {
 	return txid[TickByteIndex] >> 1
 }
 
-func (txid *TransactionID) IsSequencerMilestone() bool {
+func (txid *TransactionID) IsSequencerTransaction() bool {
 	return txid[TickByteIndex]&SequencerBitMaskInTick != 0
 }
 
 func (txid *TransactionID) IsBranchTransaction() bool {
-	return txid.IsSequencerMilestone() && txid.Tick() == 0
+	return txid.IsSequencerTransaction() && txid.Tick() == 0
 }
 
 func (txid *TransactionID) Bytes() []byte {
@@ -198,7 +198,7 @@ func (txid *TransactionID) String() string {
 	if txid == nil {
 		return "<nil>"
 	}
-	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
+	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
 }
 
 func (txid *TransactionID) StringHex() string {
@@ -212,25 +212,25 @@ func (txid *TransactionID) StringShort() string {
 	if txid == nil {
 		return "<nil>"
 	}
-	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
+	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
 }
 
 func (txid *TransactionID) StringVeryShort() string {
 	if txid == nil {
 		return "<nil>"
 	}
-	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
+	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
 }
 
 func (txid *TransactionID) AsFileName() string {
 	id := txid.ShortID()
-	return TransactionIDAsFileName(txid.Timestamp(), id[:], txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	return TransactionIDAsFileName(txid.Timestamp(), id[:], txid.IsSequencerTransaction(), txid.IsBranchTransaction())
 }
 
 func (txid *TransactionID) AsFileNameShort() string {
 	id := txid.ShortID()
 	prefix4 := id[:4]
-	return TransactionIDAsFileName(txid.Timestamp(), prefix4[:], txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	return TransactionIDAsFileName(txid.Timestamp(), prefix4[:], txid.IsSequencerTransaction(), txid.IsBranchTransaction())
 }
 
 // LessTxID comparison is lexicographical. It coincides with the order of timestamps.

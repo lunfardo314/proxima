@@ -93,7 +93,7 @@ func TestWrapTxID(t *testing.T) {
 		require.Equal(t, txid.Timestamp(), vid.Timestamp())
 		require.Equal(t, txid.Slot(), vid.Slot())
 		require.False(t, vid.IsBranchTransaction())
-		require.False(t, vid.IsSequencerMilestone())
+		require.False(t, vid.IsSequencerTransaction())
 		require.True(t, vid.IsVirtualTx())
 	})
 
@@ -103,7 +103,7 @@ func TestWrapTxID(t *testing.T) {
 
 		require.NotNil(t, vid)
 		require.Equal(t, txid, vid.ID())
-		require.True(t, vid.IsSequencerMilestone())
+		require.True(t, vid.IsSequencerTransaction())
 		require.False(t, vid.IsBranchTransaction())
 	})
 
@@ -113,7 +113,7 @@ func TestWrapTxID(t *testing.T) {
 
 		require.NotNil(t, vid)
 		require.True(t, vid.IsBranchTransaction())
-		require.True(t, vid.IsSequencerMilestone())
+		require.True(t, vid.IsSequencerTransaction())
 	})
 
 	t.Run("initial status is undefined", func(t *testing.T) {

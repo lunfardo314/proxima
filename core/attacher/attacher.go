@@ -115,7 +115,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 		Vertex: func(v *vertex.Vertex) {
 			switch vid.GetTxStatusNoLock() {
 			case vertex.Undefined:
-				if vid.IsSequencerMilestone() {
+				if vid.IsSequencerTransaction() {
 					// don't go deeper for undefined sequencers
 					ok = true
 					return
@@ -128,7 +128,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 				}
 
 			case vertex.Good:
-				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerTransaction()")
+				a.Assertf(vid.IsSequencerTransaction(), "vid.IsSequencerTransaction()")
 				// dependency is GOOD, so merge its (deterministic) past cone into the current attacher.
 				// Note that MergePastCone checks the compatibility of baselines and swaps them if necessary,
 				// however, does not check for double-spends here
@@ -251,7 +251,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 
 // finalTouchNonSequencer finishes validation of non-sequencer transactions
 func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
-	a.Assertf(!vid.IsSequencerMilestone(), "non-sequencer tx expected, got %s", vid.IDShortString)
+	a.Assertf(!vid.IsSequencerTransaction(), "non-sequencer tx expected, got %s", vid.IDShortString)
 
 	glbFlags := vid.FlagsNoLock()
 	if !glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid) {

@@ -630,7 +630,7 @@ func TestAttachConflictsNAttachersSeqStartTxFee(t *testing.T) {
 		} else {
 			require.True(t, vid.FlagsUp(vertex.FlagVertexConstraintsValid))
 		}
-		if vid.IsSequencerMilestone() {
+		if vid.IsSequencerTransaction() {
 			require.True(t, vid.GetTxStatus() == vertex.Good)
 		} else {
 			require.True(t, vid.GetTxStatus() == vertex.Undefined)

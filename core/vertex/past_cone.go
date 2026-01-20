@@ -41,7 +41,6 @@ type (
 		baselineBranchID  *base.TransactionID
 		vertices          map[*WrappedTx]FlagsPastCone // byte is used by attacher for flags
 		virtuallyConsumed map[*WrappedTx]set.Set[byte]
-		//num               int // tmp
 	}
 )
 
@@ -136,6 +135,39 @@ func (pb *PastConeBase) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+func (pb *PastConeBase) Dispose() {
+	if pb == nil {
+		return
+	}
+	pb.baselineBranchID = nil
+	clear(pb.vertices)
+	pb.vertices = nil
+	clear(pb.virtuallyConsumed)
+	pb.virtuallyConsumed = nil
+}
+
+func (pb *PastConeBase) _isVirtuallyConsumed(wOut WrappedOutput) bool {
+	if len(pb.virtuallyConsumed) == 0 {
+		return false
+	}
+	if consumedIndices := pb.virtuallyConsumed[wOut.VID]; len(consumedIndices) > 0 {
+		return consumedIndices.Contains(wOut.Index)
+	}
+	return false
+}
+
+// AttachmentCost is sum of attachment costs of all non-sequencer vertices that ar definitely not in the state
+func (pb *PastConeBase) AttachmentCost() (ret int) {
+	for vid, flags := range pb.vertices {
+		if !vid.IsSequencerTransaction() &&
+			flags.FlagsUp(FlagPastConeVertexCheckedInTheState) &&
+			!flags.FlagsUp(FlagPastConeVertexInTheState) {
+			ret += vid.AttachmentCost()
+		}
+	}
+	return
+}
+
 func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) *WrappedOutput {
 	if pc.delta == nil {
 		pc.addVirtuallyConsumedOutput(wOut)
@@ -154,16 +186,6 @@ func (pc *PastCone) isVirtuallyConsumed(wOut WrappedOutput) bool {
 	}
 	if pc.delta != nil {
 		return pc.delta._isVirtuallyConsumed(wOut)
-	}
-	return false
-}
-
-func (pb *PastConeBase) _isVirtuallyConsumed(wOut WrappedOutput) bool {
-	if len(pb.virtuallyConsumed) == 0 {
-		return false
-	}
-	if consumedIndices := pb.virtuallyConsumed[wOut.VID]; len(consumedIndices) > 0 {
-		return consumedIndices.Contains(wOut.Index)
 	}
 	return false
 }
@@ -884,15 +906,4 @@ func (pc *PastCone) Dispose() {
 		pc.delta.Dispose()
 	}
 	pc.delta = nil
-}
-
-func (pb *PastConeBase) Dispose() {
-	if pb == nil {
-		return
-	}
-	pb.baselineBranchID = nil
-	clear(pb.vertices)
-	pb.vertices = nil
-	clear(pb.virtuallyConsumed)
-	pb.virtuallyConsumed = nil
 }

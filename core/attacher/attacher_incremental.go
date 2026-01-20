@@ -21,7 +21,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 		lib.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
 
 	for _, endorseVID := range endorse {
-		env.Assertf(endorseVID.IsSequencerMilestone(), "NewIncrementalAttacher: endorseVID.IsSequencerTransaction()")
+		env.Assertf(endorseVID.IsSequencerTransaction(), "NewIncrementalAttacher: endorseVID.IsSequencerTransaction()")
 		env.Assertf(targetTs.Slot == endorseVID.Slot(), "NewIncrementalAttacher: targetTs.Slot() == endorseVid.Slot()")
 		env.Assertf(ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs), "NewIncrementalAttacher: ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs)")
 	}
@@ -32,7 +32,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 	if targetTs.Tick == 0 {
 		// target is branch
 		env.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
-		if !extend.VID.IsSequencerMilestone() {
+		if !extend.VID.IsSequencerTransaction() {
 			return nil, fmt.Errorf("NewIncrementalAttacher %s: cannot extend non-sequencer transaction %s into a branch",
 				name, extend.VID)
 		}

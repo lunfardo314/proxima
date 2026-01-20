@@ -54,7 +54,7 @@ func baseProposeGenerator(p *proposer) (*proposal, bool) {
 			return nil, true
 		}
 		p.Tracef(TraceTagBaseProposer, "%s target is not a branch and it is on the same slot", p.Name)
-		if !extend.VID.IsSequencerMilestone() {
+		if !extend.VID.IsSequencerTransaction() {
 			p.Tracef(TraceTagBaseProposerExit, "%s force exit: not-sequencer %s", p.Name, extend.IDStringShort)
 			return nil, true
 		}

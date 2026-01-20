@@ -106,7 +106,7 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 		s.txCounter.Inc()
 		s.txBytesCounter.Add(size)
 		s.txBytesSizeHistogram.Observe(size)
-		if txid.IsSequencerMilestone() && !txid.IsBranchTransaction() {
+		if txid.IsSequencerTransaction() && !txid.IsBranchTransaction() {
 			s.txBytesSeqNonBranchSizeHistogram.Observe(size)
 		}
 	}

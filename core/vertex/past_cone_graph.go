@@ -111,7 +111,7 @@ func (pc *PastCone) nodeAttributes(vid *WrappedTx, seqMap map[base.ChainID]int) 
 	case vid.IsBranchTransaction():
 		ret = slices.Clone(branchNodeAttributes)
 
-	case vid.IsSequencerMilestone():
+	case vid.IsSequencerTransaction():
 		ret = slices.Clone(seqNodeAttributes)
 
 	default:

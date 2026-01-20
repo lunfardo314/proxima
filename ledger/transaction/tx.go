@@ -116,7 +116,7 @@ func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, e
 		return
 	}
 	ret[base.LedgerTimeByteLength] = byte(nUTXO - 1)
-	util.Assertf(len(seqBin) > 0 || !ret.IsSequencerMilestone(), "len(seqBin)>0||!ret.IsSequencerMilestone()")
+	util.Assertf(len(seqBin) > 0 || !ret.IsSequencerTransaction(), "len(seqBin)>0||!ret.IsSequencerTransaction()")
 	return
 }
 
@@ -207,7 +207,7 @@ func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
 
 // ParseSequencerData validates and parses sequencer data if relevant. Data is cached for frequent extraction
 func ParseSequencerData(tx *Transaction) error {
-	if !tx.txid.IsSequencerMilestone() {
+	if !tx.txid.IsSequencerTransaction() {
 		// it is known from parsing the txID
 		return nil
 	}
@@ -468,15 +468,15 @@ func (tx *Transaction) ID() base.TransactionID {
 }
 
 func (tx *Transaction) IDString() string {
-	return base.TransactionIDString(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerMilestone())
+	return base.TransactionIDString(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
 }
 
 func (tx *Transaction) IDShortString() string {
-	return base.TransactionIDStringShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerMilestone())
+	return base.TransactionIDStringShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
 }
 
 func (tx *Transaction) IDVeryShortString() string {
-	return base.TransactionIDStringVeryShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerMilestone())
+	return base.TransactionIDStringVeryShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
 }
 
 func (tx *Transaction) IDStringHex() string {
@@ -508,11 +508,11 @@ func (tx *Transaction) ExplicitBaseline() (base.TransactionID, bool) {
 }
 
 func (tx *Transaction) IsSequencerTransaction() bool {
-	return tx.txid.IsSequencerMilestone()
+	return tx.txid.IsSequencerTransaction()
 }
 
 func (tx *Transaction) IsBranchTransaction() bool {
-	return tx.txid.IsSequencerMilestone() && tx.timestamp.Tick == 0
+	return tx.txid.IsSequencerTransaction() && tx.timestamp.Tick == 0
 }
 
 func (tx *Transaction) StemOutputData() *ledger.StemLock {
@@ -1056,4 +1056,8 @@ func (tx *Transaction) TotalProducedAmounts() [15]int64 {
 
 func (tx *Transaction) InputCommitment() []byte {
 	return tx.tree.MustBytesAtPath(Path(ledger.TxInputCommitment))
+}
+
+func (tx *Transaction) AttachmentCost() int {
+	return tx.NumInputs() + tx.NumProducedOutputs()
 }

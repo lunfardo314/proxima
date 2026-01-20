@@ -34,7 +34,7 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 	visited := set.New[*vertex.WrappedTx](rootOutput.VID)
 	ret := []vertex.WrappedOutput{rootOutput}
 	for _, vid := range ordered {
-		if vid.IsBad() || !vid.IsSequencerMilestone() || !ledger.ValidTransactionPace(vid.Timestamp(), targetTs) {
+		if vid.IsBad() || !vid.IsSequencerTransaction() || !ledger.ValidTransactionPace(vid.Timestamp(), targetTs) {
 			continue
 		}
 		pred := vid.SequencerPredecessor(func(txid base.TransactionID) *vertex.WrappedTx {

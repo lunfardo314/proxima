@@ -287,7 +287,7 @@ func (seq *Sequencer) ensureFirstMilestone() bool {
 
 func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool {
 	util.Assertf(wOut.VID != nil, "wOut.VID != nil")
-	if !wOut.VID.IsSequencerMilestone() {
+	if !wOut.VID.IsSequencerTransaction() {
 		seq.log.Warnf("checkSequencerStartOutput: start output %s is not a sequencer output", wOut.IDStringShort())
 	}
 	oReal, err := wOut.VID.OutputAt(wOut.Index)

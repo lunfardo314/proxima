@@ -133,7 +133,7 @@ func (t *SequencerTips) consume(inp Input) {
 func (t *SequencerTips) updateLatestSequencerData(vid *vertex.WrappedTx, seqID base.ChainID) {
 	seqData := t.latestSequencerData[seqID]
 	seqData.LatestMilestoneTxID = vid.ID()
-	if vid.IsSequencerMilestone() {
+	if vid.IsSequencerTransaction() {
 		seqData.LastBranchTxID = util.Ref(vid.ID())
 	}
 	seqData.MilestoneCount++

@@ -247,7 +247,7 @@ func (d *MemDAG) MakeSequencerGraph() graph.Graph[string, string] {
 	seqDict := make(map[base.ChainID]int)
 	seqVertices := make([]*vertex.WrappedTx, 0)
 	for _, vid := range d.Vertices() {
-		if !vid.IsSequencerMilestone() {
+		if !vid.IsSequencerTransaction() {
 			continue
 		}
 		makeGraphNode(vid, ret, seqDict, false)

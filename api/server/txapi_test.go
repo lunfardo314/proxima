@@ -255,7 +255,7 @@ func TestGetVertexDep(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, ret.SequencerID, ledger.BoostrapSequencerIDHex)
 	assert.EqualValues(t, *txid, txidBack)
-	assert.True(t, txid.IsSequencerMilestone())
+	assert.True(t, txid.IsSequencerTransaction())
 	assert.True(t, txid.IsBranchTransaction())
 	// TotalAmount is initialSupply - 1 because 1 token goes to the controller dust output
 	assert.EqualValues(t, 999_999_999_999_999, ret.TotalAmount)
