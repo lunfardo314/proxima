@@ -12,11 +12,24 @@
 package vertex
 
 import (
+	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
 )
+
+// Initialize ledger for tests that need real transactions.
+// This is a package-level variable that ensures ledger is initialized once.
+var pastConeTestGenesisKey ed25519.PrivateKey
+
+func init() {
+	pastConeTestGenesisKey = ledger.InitWithTestingLedgerData()
+}
 
 // TestFlagsPastCone tests the FlagsPastCone type used to track vertex state.
 // Each flag represents a different aspect of vertex processing:
@@ -898,4 +911,637 @@ func TestMutationStats(t *testing.T) {
 	require.Equal(t, 10, stats.NumTransactions)
 	require.Equal(t, 3, stats.NumDeleted)
 	require.Equal(t, 7, stats.NumCreated)
+}
+
+// =============================================================================
+// Attachment Cost Tests
+// =============================================================================
+//
+// These tests verify that incremental attachment cost calculation (maintained via
+// MustMarkVertexNotInTheState) always equals the direct calculation (AttachmentCostDirect).
+// AttachmentCost is the sum of (NumInputs + NumProducedOutputs) for all non-sequencer
+// transactions that are definitely NOT in the baseline state.
+//
+// Key scenarios tested:
+// - Basic attachment cost with virtual transactions (cost = 0 since VirtualTx has no AttachmentCost)
+// - Delta commit preserves equality between incremental and direct
+// - Delta rollback preserves equality
+// - Sequencer transactions are excluded from cost
+// - Multiple vertices accumulate correctly
+
+// TestAttachmentCostBasic tests basic attachment cost invariant with virtual transactions.
+// VirtualTx has AttachmentCost() = 0, so cost should be 0.
+func TestAttachmentCostBasic(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	t.Run("empty past cone", func(t *testing.T) {
+		require.Equal(t, 0, pc.AttachmentCost())
+		require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	})
+
+	t.Run("vertex not marked not-in-state", func(t *testing.T) {
+		vid := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+		pc.MarkVertexKnown(vid)
+
+		// Just known, not marked not-in-state, so no contribution to cost
+		require.Equal(t, 0, pc.AttachmentCost())
+		require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	})
+
+	t.Run("virtual tx marked not-in-state has zero cost", func(t *testing.T) {
+		vid := WrapTxID(base.RandomTransactionID(false, 3, base.T(1002, 50)))
+		pc.MarkVertexKnown(vid)
+		pc.MustMarkVertexNotInTheState(vid)
+
+		// VirtualTx has AttachmentCost() = 0
+		require.Equal(t, 0, pc.AttachmentCost())
+		require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	})
+}
+
+// TestAttachmentCostSequencerExcluded tests that sequencer transactions are excluded from cost.
+func TestAttachmentCostSequencerExcluded(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Create a sequencer transaction (isSequencer=true in the txid)
+	seqTxID := base.RandomTransactionID(true, 3, base.T(1001, 50))
+	seqVid := WrapTxID(seqTxID)
+
+	require.True(t, seqVid.IsSequencerTransaction())
+
+	pc.MarkVertexKnown(seqVid)
+	pc.MustMarkVertexNotInTheState(seqVid)
+
+	// Sequencer transactions don't contribute to attachment cost
+	require.Equal(t, 0, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+}
+
+// TestAttachmentCostDeltaCommit tests that delta commit preserves the invariant.
+func TestAttachmentCostDeltaCommit(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add some vertices to base
+	vid1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+	pc.MarkVertexKnown(vid1)
+	pc.MustMarkVertexNotInTheState(vid1)
+
+	initialCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), initialCost)
+
+	// Begin delta
+	pc.BeginDelta()
+
+	// Add vertex in delta
+	vid2 := WrapTxID(base.RandomTransactionID(false, 4, base.T(1002, 50)))
+	pc.MarkVertexKnown(vid2)
+	pc.MustMarkVertexNotInTheState(vid2)
+
+	// During delta, cost should include both base and delta contributions
+	deltaCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), deltaCost)
+
+	// Commit delta
+	pc.CommitDelta()
+
+	// After commit, invariant should still hold
+	commitedCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), commitedCost)
+	require.Equal(t, deltaCost, commitedCost)
+}
+
+// TestAttachmentCostDeltaRollback tests that delta rollback preserves the invariant.
+func TestAttachmentCostDeltaRollback(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add some vertices to base
+	vid1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+	pc.MarkVertexKnown(vid1)
+	pc.MustMarkVertexNotInTheState(vid1)
+
+	initialCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), initialCost)
+
+	// Begin delta
+	pc.BeginDelta()
+
+	// Add vertex in delta
+	vid2 := WrapTxID(base.RandomTransactionID(false, 4, base.T(1002, 50)))
+	pc.MarkVertexKnown(vid2)
+	pc.MustMarkVertexNotInTheState(vid2)
+
+	// During delta, cost may differ
+	deltaCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), deltaCost)
+
+	// Rollback delta
+	pc.RollbackDelta()
+
+	// After rollback, cost should return to initial value
+	rollbackCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), rollbackCost)
+	require.Equal(t, initialCost, rollbackCost)
+}
+
+// TestAttachmentCostMultipleDeltaCycles tests multiple begin/commit/rollback cycles.
+func TestAttachmentCostMultipleDeltaCycles(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Cycle 1: commit
+	pc.BeginDelta()
+	vid1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+	pc.MarkVertexKnown(vid1)
+	pc.MustMarkVertexNotInTheState(vid1)
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	pc.CommitDelta()
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Cycle 2: rollback
+	pc.BeginDelta()
+	vid2 := WrapTxID(base.RandomTransactionID(false, 4, base.T(1002, 50)))
+	pc.MarkVertexKnown(vid2)
+	pc.MustMarkVertexNotInTheState(vid2)
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	pc.RollbackDelta()
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Cycle 3: commit
+	pc.BeginDelta()
+	vid3 := WrapTxID(base.RandomTransactionID(false, 5, base.T(1003, 50)))
+	pc.MarkVertexKnown(vid3)
+	pc.MustMarkVertexNotInTheState(vid3)
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	pc.CommitDelta()
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+}
+
+// TestAttachmentCostMixedVertexTypes tests mixed sequencer and non-sequencer vertices.
+func TestAttachmentCostMixedVertexTypes(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add non-sequencer vertex
+	nonSeqVid := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+	pc.MarkVertexKnown(nonSeqVid)
+	pc.MustMarkVertexNotInTheState(nonSeqVid)
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Add sequencer vertex - should not change cost (sequencers excluded)
+	seqVid := WrapTxID(base.RandomTransactionID(true, 4, base.T(1002, 50)))
+	pc.MarkVertexKnown(seqVid)
+	pc.MustMarkVertexNotInTheState(seqVid)
+
+	// Cost should still match direct calculation
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Begin delta and add more
+	pc.BeginDelta()
+
+	nonSeqVid2 := WrapTxID(base.RandomTransactionID(false, 2, base.T(1003, 50)))
+	pc.MarkVertexKnown(nonSeqVid2)
+	pc.MustMarkVertexNotInTheState(nonSeqVid2)
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	seqVid2 := WrapTxID(base.RandomTransactionID(true, 5, base.T(1004, 50)))
+	pc.MarkVertexKnown(seqVid2)
+	pc.MustMarkVertexNotInTheState(seqVid2)
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	pc.CommitDelta()
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+}
+
+// TestAttachmentCostVertexInState tests that vertices marked "in state" don't contribute.
+func TestAttachmentCostVertexInState(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add vertex and mark as in-state (rooted)
+	vid := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState)
+
+	// Vertex in state doesn't contribute to attachment cost
+	require.Equal(t, 0, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+}
+
+// TestAttachmentCostNestedDeltaNotAllowed verifies BeginDelta panics if delta already active.
+func TestAttachmentCostNestedDeltaNotAllowed(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	pc.BeginDelta()
+
+	// Nested BeginDelta should panic
+	require.Panics(t, func() {
+		pc.BeginDelta()
+	})
+
+	pc.RollbackDelta()
+}
+
+// TestAttachmentCostCommitWithoutDeltaPanics verifies CommitDelta panics if no delta active.
+func TestAttachmentCostCommitWithoutDeltaPanics(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// CommitDelta without BeginDelta should panic
+	require.Panics(t, func() {
+		pc.CommitDelta()
+	})
+}
+
+// TestAttachmentCostRollbackWithoutDeltaSafe verifies RollbackDelta is safe without delta.
+func TestAttachmentCostRollbackWithoutDeltaSafe(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// RollbackDelta without BeginDelta should be safe (no-op)
+	require.NotPanics(t, func() {
+		pc.RollbackDelta()
+	})
+
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+}
+
+// =============================================================================
+// Attachment Cost Tests with Real Transactions
+// =============================================================================
+//
+// These tests use real transactions created via utxodb to verify attachment cost
+// calculations with non-zero costs. AttachmentCost = NumInputs + NumProducedOutputs
+// for each non-sequencer transaction that is definitely NOT in the baseline state.
+
+// createTestTransaction creates a real transaction using utxodb for testing.
+// Returns a WrappedTx containing a real Vertex with non-zero AttachmentCost.
+func createTestTransaction(t *testing.T, u *utxodb.UTXODB, addrIdx int) *WrappedTx {
+	privKey, _, addr := u.GenerateAddress(addrIdx)
+	err := u.TokensFromFaucet(addr, 1_000_000_000)
+	require.NoError(t, err)
+
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	require.NoError(t, err)
+	require.Equal(t, 1, len(outs))
+
+	ts := outs[0].ID.Timestamp().AddSlots(1)
+	par, err := u.MakeTransferInputData(privKey, nil, ts)
+	require.NoError(t, err)
+
+	_, _, addr2 := u.GenerateAddress(addrIdx + 1000)
+	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	require.NoError(t, err)
+
+	tx, err := transaction.FromBytes(txBytes)
+	require.NoError(t, err)
+
+	v := NewVertex(tx)
+	vid := v.Wrap()
+
+	return vid
+}
+
+// TestAttachmentCostWithRealTransaction tests attachment cost with a real transaction.
+// Real transactions have AttachmentCost = NumInputs + NumProducedOutputs > 0.
+func TestAttachmentCostWithRealTransaction(t *testing.T) {
+	u := utxodb.NewUTXODB(pastConeTestGenesisKey, true)
+
+	vid := createTestTransaction(t, u, 200)
+
+	// Verify that the real transaction has non-zero attachment cost
+	cost := vid.AttachmentCost()
+	require.Greater(t, cost, 0, "Real transaction should have non-zero attachment cost")
+
+	// AttachmentCost = NumInputs + NumProducedOutputs
+	var numInputs, numOutputs int
+	vid.RUnwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			numInputs = v.NumInputs()
+			numOutputs = v.NumProducedOutputs()
+		},
+	})
+	require.Equal(t, numInputs+numOutputs, cost)
+
+	// Now test in a PastCone
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	pc.MarkVertexKnown(vid)
+	pc.MustMarkVertexNotInTheState(vid)
+
+	// Incremental and direct calculations should match
+	require.Equal(t, cost, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+}
+
+// TestAttachmentCostWithRealTransactionDeltaCommit tests delta commit with real transactions.
+func TestAttachmentCostWithRealTransactionDeltaCommit(t *testing.T) {
+	u := utxodb.NewUTXODB(pastConeTestGenesisKey, true)
+
+	vid1 := createTestTransaction(t, u, 300)
+	vid2 := createTestTransaction(t, u, 302)
+
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add first transaction to base
+	pc.MarkVertexKnown(vid1)
+	pc.MustMarkVertexNotInTheState(vid1)
+
+	baseCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), baseCost)
+	require.Greater(t, baseCost, 0)
+
+	// Begin delta and add second transaction
+	pc.BeginDelta()
+
+	pc.MarkVertexKnown(vid2)
+	pc.MustMarkVertexNotInTheState(vid2)
+
+	deltaCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), deltaCost)
+	require.Greater(t, deltaCost, baseCost)
+
+	// Commit delta
+	pc.CommitDelta()
+
+	commitCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), commitCost)
+	require.Equal(t, deltaCost, commitCost)
+}
+
+// TestAttachmentCostWithRealTransactionDeltaRollback tests delta rollback with real transactions.
+func TestAttachmentCostWithRealTransactionDeltaRollback(t *testing.T) {
+	u := utxodb.NewUTXODB(pastConeTestGenesisKey, true)
+
+	vid1 := createTestTransaction(t, u, 400)
+	vid2 := createTestTransaction(t, u, 402)
+
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add first transaction to base
+	pc.MarkVertexKnown(vid1)
+	pc.MustMarkVertexNotInTheState(vid1)
+
+	baseCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), baseCost)
+	require.Greater(t, baseCost, 0)
+
+	// Begin delta and add second transaction
+	pc.BeginDelta()
+
+	pc.MarkVertexKnown(vid2)
+	pc.MustMarkVertexNotInTheState(vid2)
+
+	deltaCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), deltaCost)
+	require.Greater(t, deltaCost, baseCost)
+
+	// Rollback delta
+	pc.RollbackDelta()
+
+	rollbackCost := pc.AttachmentCost()
+	require.Equal(t, pc.AttachmentCostDirect(), rollbackCost)
+	require.Equal(t, baseCost, rollbackCost)
+}
+
+// TestAttachmentCostMultipleRealTransactions tests attachment cost with multiple real transactions.
+func TestAttachmentCostMultipleRealTransactions(t *testing.T) {
+	u := utxodb.NewUTXODB(pastConeTestGenesisKey, true)
+
+	// Create multiple transactions
+	vids := make([]*WrappedTx, 5)
+	for i := 0; i < 5; i++ {
+		vids[i] = createTestTransaction(t, u, 500+i*2)
+	}
+
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add transactions one by one, checking invariant each time
+	expectedCost := 0
+	for i, vid := range vids {
+		pc.MarkVertexKnown(vid)
+		pc.MustMarkVertexNotInTheState(vid)
+
+		expectedCost += vid.AttachmentCost()
+
+		require.Equal(t, expectedCost, pc.AttachmentCost(), "After adding transaction %d", i)
+		require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost(), "After adding transaction %d", i)
+	}
+}
+
+// TestAttachmentCostMixedRealAndVirtual tests attachment cost with mixed real and virtual transactions.
+func TestAttachmentCostMixedRealAndVirtual(t *testing.T) {
+	u := utxodb.NewUTXODB(pastConeTestGenesisKey, true)
+
+	realVid := createTestTransaction(t, u, 600)
+	virtualVid := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add real transaction
+	pc.MarkVertexKnown(realVid)
+	pc.MustMarkVertexNotInTheState(realVid)
+
+	realCost := realVid.AttachmentCost()
+	require.Equal(t, realCost, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Add virtual transaction (cost = 0)
+	pc.MarkVertexKnown(virtualVid)
+	pc.MustMarkVertexNotInTheState(virtualVid)
+
+	// Cost should remain the same (virtual has 0 cost)
+	require.Equal(t, realCost, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+}
+
+// TestAttachmentCostAccumulationInDelta tests that attachment cost accumulates correctly in delta.
+func TestAttachmentCostAccumulationInDelta(t *testing.T) {
+	u := utxodb.NewUTXODB(pastConeTestGenesisKey, true)
+
+	// Create transactions: 2 for base, 3 for delta
+	baseVids := make([]*WrappedTx, 2)
+	for i := 0; i < 2; i++ {
+		baseVids[i] = createTestTransaction(t, u, 700+i*2)
+	}
+
+	deltaVids := make([]*WrappedTx, 3)
+	for i := 0; i < 3; i++ {
+		deltaVids[i] = createTestTransaction(t, u, 710+i*2)
+	}
+
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	// Add base transactions
+	baseCost := 0
+	for _, vid := range baseVids {
+		pc.MarkVertexKnown(vid)
+		pc.MustMarkVertexNotInTheState(vid)
+		baseCost += vid.AttachmentCost()
+	}
+	require.Equal(t, baseCost, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Begin delta
+	pc.BeginDelta()
+
+	// Add delta transactions
+	deltaCost := baseCost
+	for _, vid := range deltaVids {
+		pc.MarkVertexKnown(vid)
+		pc.MustMarkVertexNotInTheState(vid)
+		deltaCost += vid.AttachmentCost()
+
+		require.Equal(t, deltaCost, pc.AttachmentCost())
+		require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	}
+
+	// Commit delta
+	pc.CommitDelta()
+
+	require.Equal(t, deltaCost, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+}
+
+// TestAttachmentCostComplexScenario tests a complex scenario with multiple deltas.
+func TestAttachmentCostComplexScenario(t *testing.T) {
+	u := utxodb.NewUTXODB(pastConeTestGenesisKey, true)
+
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+
+	addrIdx := 800
+
+	// Step 1: Add transaction to base
+	vid1 := createTestTransaction(t, u, addrIdx)
+	addrIdx += 2
+	pc.MarkVertexKnown(vid1)
+	pc.MustMarkVertexNotInTheState(vid1)
+	cost1 := vid1.AttachmentCost()
+	require.Equal(t, cost1, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Step 2: Delta with transaction, then commit
+	pc.BeginDelta()
+	vid2 := createTestTransaction(t, u, addrIdx)
+	addrIdx += 2
+	pc.MarkVertexKnown(vid2)
+	pc.MustMarkVertexNotInTheState(vid2)
+	cost2 := cost1 + vid2.AttachmentCost()
+	require.Equal(t, cost2, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	pc.CommitDelta()
+	require.Equal(t, cost2, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Step 3: Delta with transaction, then rollback
+	pc.BeginDelta()
+	vid3 := createTestTransaction(t, u, addrIdx)
+	addrIdx += 2
+	pc.MarkVertexKnown(vid3)
+	pc.MustMarkVertexNotInTheState(vid3)
+	cost3 := cost2 + vid3.AttachmentCost()
+	require.Equal(t, cost3, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+	pc.RollbackDelta()
+	require.Equal(t, cost2, pc.AttachmentCost()) // Back to cost2
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	// Step 4: Another delta with multiple transactions, then commit
+	pc.BeginDelta()
+	vid4 := createTestTransaction(t, u, addrIdx)
+	addrIdx += 2
+	pc.MarkVertexKnown(vid4)
+	pc.MustMarkVertexNotInTheState(vid4)
+	cost4a := cost2 + vid4.AttachmentCost()
+	require.Equal(t, cost4a, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	vid5 := createTestTransaction(t, u, addrIdx)
+	pc.MarkVertexKnown(vid5)
+	pc.MustMarkVertexNotInTheState(vid5)
+	cost4b := cost4a + vid5.AttachmentCost()
+	require.Equal(t, cost4b, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
+
+	pc.CommitDelta()
+	require.Equal(t, cost4b, pc.AttachmentCost())
+	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 }

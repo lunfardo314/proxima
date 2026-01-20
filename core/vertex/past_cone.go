@@ -41,6 +41,7 @@ type (
 		baselineBranchID  *base.TransactionID
 		vertices          map[*WrappedTx]FlagsPastCone // byte is used by attacher for flags
 		virtuallyConsumed map[*WrappedTx]set.Set[byte]
+		attachmentCost    int
 	}
 )
 
@@ -156,15 +157,36 @@ func (pb *PastConeBase) _isVirtuallyConsumed(wOut WrappedOutput) bool {
 	return false
 }
 
+func (pb *PastConeBase) Len() int {
+	return len(pb.vertices)
+}
+
 // AttachmentCost is sum of attachment costs of all non-sequencer vertices that ar definitely not in the state
-func (pb *PastConeBase) AttachmentCost() (ret int) {
-	for vid, flags := range pb.vertices {
-		if !vid.IsSequencerTransaction() &&
-			flags.FlagsUp(FlagPastConeVertexCheckedInTheState) &&
-			!flags.FlagsUp(FlagPastConeVertexInTheState) {
+func (pc *PastCone) AttachmentCost() (ret int) {
+	if pc.delta == nil {
+		return pc.attachmentCost
+	}
+	return pc.attachmentCost + pc.delta.attachmentCost
+}
+
+func (pc *PastCone) addToAttachmentCost(delta int) {
+	if pc.delta != nil {
+		pc.delta.attachmentCost += delta
+	} else {
+		pc.attachmentCost += delta
+	}
+}
+
+func (pc *PastCone) AttachmentCostDirect() (ret int) {
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		if vid.IsSequencerTransaction() {
+			return true
+		}
+		if pc.isNotInTheState(vid) {
 			ret += vid.AttachmentCost()
 		}
-	}
+		return true
+	})
 	return
 }
 
@@ -236,6 +258,7 @@ func (pc *PastCone) CommitDelta() {
 			pc.addVirtuallyConsumedOutput(WrappedOutput{VID: vid, Index: idx})
 		}
 	}
+	pc.attachmentCost += pc.delta.attachmentCost
 	pc.delta = nil
 }
 
@@ -308,10 +331,14 @@ func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
 }
 
 // MustMarkVertexNotInTheState is marked definitely not rooted
+// attachmentCost increased for non-sequencer transactions
 func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
 	pc.Assertf(!pc.IsInTheState(vid), "!pc.IsInTheState(vid)")
 	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState)
 	pc.Assertf(pc.isNotInTheState(vid), "pc.isNotInTheState(vid)")
+	if !vid.IsSequencerTransaction() {
+		pc.addToAttachmentCost(vid.AttachmentCost())
+	}
 }
 
 func (pc *PastCone) ContainsUndefined() bool {
@@ -763,10 +790,6 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 		ret.virtuallyConsumed[vid] = consumedIndices.Clone()
 	}
 	return ret
-}
-
-func (pb *PastConeBase) Len() int {
-	return len(pb.vertices)
 }
 
 // CheckConflicts returns double-spent output (conflict) or nil if the past cone is consistent

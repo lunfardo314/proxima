@@ -231,7 +231,7 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 }
 
 // InsertInput inserts tag along or delegation input.
-// In case of failure return false and attacher state with vertex references remains consistent
+// In case of failure returns false and attacher state with vertex references remains consistent
 // atomicCheck callback is used to add optional additional check right before commiting delta
 func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck func() (bool, error)) (valid bool, err error) {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
@@ -256,7 +256,6 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck
 		return valid, err
 	}
 	util.AssertNoError(a.err)
-
 	a.pastCone.CommitDelta()
 	return true, nil
 }
