@@ -288,8 +288,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			Vertex: func(v *vertex.Vertex) {
 				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined")
 
-				// TODO take into account depth budget
-				if ok = a.attachVertexUnwrapped(v, a.vid, 0); !ok {
+				if ok = a.attachVertexUnwrapped(v, a.vid); !ok {
 					a.Assertf(a.err != nil, "a.err != nil")
 					return
 				}

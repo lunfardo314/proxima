@@ -103,7 +103,7 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 
 // attachVertexNonBranch if vertex undefined, recursively attaches past cone
 // Does not check for past cone consistency -> resulting past cone may contain double spends util attacher solidifies all of it
-func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok bool) {
+func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
 	if a.pastCone.IsKnownDefined(vid) {
@@ -121,7 +121,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 					return
 				}
 				// non-sequencer transaction
-				ok = a.attachVertexUnwrapped(v, vid, depth+1)
+				ok = a.attachVertexUnwrapped(v, vid)
 				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
 					a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
 					defined = true
@@ -183,18 +183,12 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 //   - Upon reaching constant limit, function returns failed transaction duo to recursions depth.
 //     This trick prevents unbounded chains of non-sequencer transactions in the past cone: an attack vector
 //   - this is deterministic, i.e. same on all nodes
-func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, depth int) (ok bool) {
+func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!v.IsSequencerTransaction() || a.pastCone.GetBaseline() != nil, "!v.Tx.IsSequencerTransaction() || a.baseline != nil in %s", v.IDShortString)
 
 	if vidUnwrapped.GetTxStatusNoLock() == vertex.Bad {
 		a.setError(vidUnwrapped.GetErrorNoLock())
 		a.Assertf(a.err != nil, "a.err != nil")
-		return false
-	}
-
-	if depth > a.AttachmentCostBudget {
-		// possible hanging chain attack
-		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.AttachmentCostBudget, v.IDShortString()))
 		return false
 	}
 
@@ -206,7 +200,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
 		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.IDShortString)
 		// depth-first along endorsements
-		if !a.attachEndorsements(v, vidUnwrapped, depth) { // <<< recursive
+		if !a.attachEndorsements(v, vidUnwrapped) { // <<< recursive
 			// not ok -> leave attacher
 			a.Assertf(a.err != nil, "a.err != nil")
 			return false
@@ -225,7 +219,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 
 	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
 		a.Tracef(TraceTagAttachVertex, "BEFORE attachInputs(%s)", v.IDShortString)
-		if !a.attachInputs(v, vidUnwrapped, depth) {
+		if !a.attachInputs(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
 		}
@@ -352,12 +346,12 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	}
 }
 
-func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, depth int) (ok bool) {
+func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
 	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
 		return true
 	}
 	for i := range v.Endorsements {
-		if !a.attachEndorsement(v, vid, byte(i), depth) {
+		if !a.attachEndorsement(v, vid, byte(i)) {
 			return false
 		}
 	}
@@ -368,7 +362,7 @@ func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, d
 	return true
 }
 
-func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte, depth int) bool {
+func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) bool {
 	vidEndorsed := v.Endorsements[index]
 	if vidEndorsed == nil {
 		vidEndorsed = AttachTxID(v.MustEndorsementAt(index), a,
@@ -379,10 +373,10 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	}
 	a.Assertf(vidEndorsed != nil, "vidEndorsed!=nil")
 
-	return a.attachEndorsementDependency(vidEndorsed, depth)
+	return a.attachEndorsementDependency(vidEndorsed)
 }
 
-func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx, depth int) bool {
+func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx) bool {
 	if !a.refreshDependencyStatus(vidEndorsed) {
 		return false
 	}
@@ -394,10 +388,10 @@ func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx, de
 		a.Assertf(a.pastCone.IsKnownDefined(vidEndorsed), "expected to be 'defined': %s", vidEndorsed.IDShortString)
 		return true
 	}
-	return a.attachVertexNonBranch(vidEndorsed, depth)
+	return a.attachVertexNonBranch(vidEndorsed)
 }
 
-func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte, depth int) bool {
+func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte) bool {
 	oid := v.MustInputAt(inputIdx)
 
 	a.Tracef(TraceTagAttachVertex, "attachInput(%s): %s", v.IDShortString, oid.StringShort)
@@ -424,7 +418,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 		Index: oid.Index(),
 	}
 	a.Tracef(TraceTagAttachVertex, "before attachOutput(%s): %s", wOut.IDStringShort, a.pastCone.Flags(vidDep).String())
-	ok = a.attachOutput(wOut, depth)
+	ok = a.attachOutput(wOut)
 	if !ok {
 		return false
 	}
@@ -432,9 +426,9 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 	return true
 }
 
-func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, depth int) (ok bool) {
+func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
 	for i := range v.Inputs {
-		if !a.attachInput(v, vidUnwrapped, byte(i), depth) {
+		if !a.attachInput(v, vidUnwrapped, byte(i)) {
 			a.Assertf(a.err != nil, "a.err!=nil in %s, idx %d", a.name, i)
 			return false
 		}
@@ -471,7 +465,7 @@ func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.Out
 	return true
 }
 
-func (a *attacher) attachOutput(wOut vertex.WrappedOutput, depth int) bool {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput) bool {
 	if !wOut.ValidID() {
 		return false
 	}
@@ -495,7 +489,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, depth int) bool {
 		return true
 	}
 	// not defined, not branch, not in the state or unknown
-	return a.attachVertexNonBranch(wOut.VID, depth)
+	return a.attachVertexNonBranch(wOut.VID)
 }
 
 func (a *attacher) branchesCompatible(branchID1, branchID2 *base.TransactionID) bool {
