@@ -221,6 +221,7 @@ transaction (256 inputs + 256 outputs = 512) in the past cone of a sequencer tra
 Implementation completed in commits:
 - `cd6b7903` - implement attachment cost budget with direct cost tracking
 - `1dcea5f5` - split attach_test.go and add attachment cost budget tests
+- `5d840293` - add test for budget-exceeded edge case in milestone attacher
 
 ---
 
@@ -253,6 +254,7 @@ Tests split into logical files in `tests/`:
 - `TestAttachCostBudgetFanOutCostTracking` - high-cost fan-out (1→100 outputs, cost 101)
 - `TestAttachCostBudgetExceededNote` - documents budget design rationale
 - `TestAttachCostBudgetVerifyCalculation` - verifies cost formula (numInputs + numOutputs)
+- `TestAttachCostBudgetExceededMilestoneAttacher` - **fail-fast budget exceeded test** using lowered budget (5); creates chain of non-sequencer transactions with chain-locked output, forcing sequencer to pull entire chain into past cone and exceed budget
 
 ### `attach_timing_test.go` - Timing Edge Cases
 - Pace boundary tests
@@ -282,15 +284,19 @@ The budget of 600 is intentionally designed to be hard to exceed within a single
 | Max simple transfer cost per slot | ~84 |
 | Budget/simple cost ratio | 7.14x |
 
-### Why budget-exceeded is hard to test
+### Why budget-exceeded is hard to test (with default budget)
 - Simple transfers (cost 2): Need 300+ txs, but only ~42 fit in one slot
 - Fan-out transactions: Tokens get diluted below storage deposit minimum after ~3 iterations
 - The budget protects against attack chains while allowing legitimate usage
 
-### To exceed budget would require
+### How budget-exceeded is tested
+The `TestAttachCostBudgetExceededMilestoneAttacher` test uses option 2 below:
 1. Multiple slots with proper endorsement handling (complex)
-2. A test-specific lower budget configuration
+2. **A test-specific lower budget configuration** ← implemented via `reinitTestLedgerWithBudget(5)`
 3. Many pre-existing UTXOs for parallel high-cost chains
+
+The test helper `reinitTestLedgerWithBudget()` in `tests/init.go` reinitializes the ledger with a custom
+budget, allowing fail-fast behavior to be verified with a small chain of transactions.
 
 ---
 
@@ -305,3 +311,5 @@ The budget of 600 is intentionally designed to be hard to exceed within a single
 | `core/attacher/attacher.go:311` | `checkAttachmentCostBudget()` - fail-fast check |
 | `core/attacher/attacher_incremental.go:236` | `InsertInput()` with budget callback |
 | `ledger/def_constants0.go` | `AttachmentCostBudget` constant definition |
+| `tests/init.go` | `reinitTestLedgerWithBudget()` - test helper for custom budget |
+| `tests/attach_cost_test.go` | `TestAttachCostBudgetExceededMilestoneAttacher` - fail-fast test |
