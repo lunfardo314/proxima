@@ -2,6 +2,7 @@ package tests
 
 import (
 	"testing"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -9,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -350,6 +352,182 @@ func TestAttachCostBudgetExceededNote(t *testing.T) {
 
 		t.Logf("Budget exceeds single-slot simple transfer capacity by %.1fx - this is by design",
 			float64(costBudget)/float64(maxSimpleCostPerSlot))
+	})
+}
+
+// TestAttachCostBudgetExceededMilestoneAttacher tests that the milestone attacher
+// correctly rejects a sequencer transaction when the attachment cost budget is exceeded.
+// This test uses a low budget to make the budget-exceeded case achievable.
+//
+// The test creates a chain of non-sequencer transactions where the last one produces
+// a tag-along output locked to the sequencer chain. When the sequencer consumes this
+// tag-along output, it must pull the entire chain into its past cone, exceeding the budget.
+func TestAttachCostBudgetExceededMilestoneAttacher(t *testing.T) {
+	t.Run("budget exceeded in milestone attacher", func(t *testing.T) {
+		// Reinitialize ledger with a very low budget (5) so we can exceed it easily
+		// A simple transfer has cost 2 (1 input + 1 output), even 2 transfers exceed budget 5
+		cleanup := reinitTestLedgerWithBudget(5)
+		defer cleanup()
+
+		costBudget := ledger.L(base.MaxSlot).AttachmentCostBudget
+		require.EqualValues(t, 5, costBudget, "budget should be set to 5 for this test")
+		t.Logf("AttachmentCostBudget = %d (lowered for test)", costBudget)
+
+		testData := initWorkflowTest(t, 2)
+		defer testData.stopAndWait()
+
+		err := testData.wrk.EnsureLatestBranches()
+		require.NoError(t, err)
+
+		testData.makeChainOrigins(1)
+		_, err = attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
+		require.NoError(t, err)
+
+		chainOrigin := testData.chainOrigins[0]
+		seqChainID := chainOrigin.ChainID
+
+		// Get a source output for creating non-sequencer transactions
+		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
+		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(oDatas), 1)
+
+		sourceOutput, err := oDatas[0].Parse()
+		require.NoError(t, err)
+
+		// Create a chain of non-sequencer transactions to exceed budget
+		// Budget is 5, each simple transfer has cost 2
+		// Chain of 5 transactions = 10 past cone cost, plus seq tx cost (~3) = 13 > 5
+		chainLength := 5
+		chainLockAmount := uint64(100_000_000) // Amount for chain-locked output (must exceed min storage deposit)
+		t.Logf("Creating chain of %d non-sequencer transactions (cost ~%d)", chainLength, chainLength*2)
+		t.Logf("Target sequencer chain ID: %s", seqChainID.StringShort())
+
+		prevOutput := sourceOutput
+		txBytesChain := make([][]byte, chainLength)
+		var lastChainLockedOutput *ledger.OutputWithID
+
+		for i := 0; i < chainLength; i++ {
+			ts := prevOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
+			if ts.IsSlotBoundary() {
+				ts = ts.AddTicks(1)
+			}
+
+			balance := prevOutput.Output.TokenBalance()
+
+			if i == chainLength-1 {
+				// Last transaction: produce an output locked to the sequencer chain
+				// This uses ChainLockFromChainID which makes the output consumable by the chain
+				td := txbuilder.NewTransferData(testData.privKey, testData.addr, ts).
+					MustWithInputs(prevOutput).
+					WithAmount(chainLockAmount).
+					WithTargetLock(ledger.ChainLockFromChainID(seqChainID))
+
+				txBytesChain[i], err = txbuilder.MakeSimpleTransferTransaction(td)
+				require.NoError(t, err)
+
+				tx, err := transaction.FromBytes(txBytesChain[i], transaction.MainTxValidationOptions...)
+				require.NoError(t, err)
+
+				// The chain-locked output is the one with the target lock (usually index 0 for simple transfers)
+				// Find the output locked to the chain
+				tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
+					if o.Lock().String() == ledger.ChainLockFromChainID(seqChainID).String() {
+						lastChainLockedOutput = &ledger.OutputWithID{
+							ID:     oid,
+							Output: o,
+						}
+						t.Logf("Created chain-locked output at index %d: %s", idx, oid.StringShort())
+						return false
+					}
+					return true
+				})
+				require.NotNil(t, lastChainLockedOutput, "should have created chain-locked output")
+
+				// Get remainder output for next iteration (if any)
+				tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
+					if o.Lock().String() == testData.addr.String() {
+						prevOutput = &ledger.OutputWithID{ID: oid, Output: o}
+						return false
+					}
+					return true
+				})
+			} else {
+				// Regular transfer to self
+				td := txbuilder.NewTransferData(testData.privKey, testData.addr, ts).
+					MustWithInputs(prevOutput).
+					WithAmount(balance).
+					WithTargetLock(testData.addr)
+
+				txBytesChain[i], err = txbuilder.MakeSimpleTransferTransaction(td)
+				require.NoError(t, err)
+
+				tx, err := transaction.FromBytes(txBytesChain[i], transaction.MainTxValidationOptions...)
+				require.NoError(t, err)
+				prevOutput = tx.MustProducedOutputWithIDAt(0)
+			}
+
+			// Store all transactions in txstore for pull
+			_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesChain[i], nil)
+			require.NoError(t, err)
+		}
+
+		// Now create a sequencer transaction that consumes the chain-locked output
+		// This forces the sequencer to pull the entire chain into its past cone
+
+		// Timestamp must be after the last chain transaction
+		ts := chainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
+
+		// Make sure timestamp is after the last transaction in the chain
+		lastTx, err := transaction.FromBytes(txBytesChain[chainLength-1], transaction.MainTxValidationOptions...)
+		require.NoError(t, err)
+		if !ts.After(lastTx.Timestamp()) {
+			ts = lastTx.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		}
+
+		t.Logf("Creating sequencer transaction at %s with chain-locked input", ts.String())
+		t.Logf("Chain-locked output to consume: %s", lastChainLockedOutput.ID.StringShort())
+
+		// Create sequencer transaction with the chain-locked input
+		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
+			SeqName:          "test",
+			ChainInput:       chainOrigin,
+			Timestamp:        ts,
+			Endorsements:     []base.TransactionID{testData.distributionBranchTxID},
+			PrivateKey:       testData.privKeyAux,
+			AdditionalInputs: []*ledger.OutputWithID{lastChainLockedOutput},
+		})
+		require.NoError(t, err)
+
+		// Attach the sequencer transaction - this should fail due to budget exceeded
+		// when it tries to solidify the past cone (the chain of 12 transactions)
+		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
+		require.NoError(t, err) // Attachment starts without error
+
+		// Wait for the transaction to be processed
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			status := vid.GetTxStatus()
+			if status != vertex.Undefined {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		status := vid.GetTxStatus()
+		t.Logf("Sequencer transaction status: %s", status.String())
+
+		// The transaction should be marked Bad due to budget exceeded
+		require.Equal(t, vertex.Bad, status,
+			"sequencer transaction should be rejected due to budget exceeded")
+
+		vidErr := vid.GetError()
+		require.NotNil(t, vidErr, "error should be set")
+		t.Logf("Transaction error: %v", vidErr)
+		require.Contains(t, vidErr.Error(), "budget",
+			"error should mention budget exceeded")
+		t.Logf("Budget exceeded test PASSED: sequencer tx rejected with budget error")
 	})
 }
 

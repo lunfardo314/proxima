@@ -46,3 +46,21 @@ func reinitTestLedger() {
 	ledger.ResetForTesting()
 	initTestLedger()
 }
+
+// reinitTestLedgerWithBudget resets and re-initializes the ledger with a custom attachment cost budget.
+// Use this to test budget-exceeded scenarios with a lower budget.
+// Returns a cleanup function that restores the original budget.
+func reinitTestLedgerWithBudget(budget int) func() {
+	ledger.ResetForTesting()
+	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+		ledger.WithTickDuration(8*time.Millisecond),
+		ledger.WithTransactionPace(3),
+		ledger.WithTransactionPaceSequencer(3),
+		ledger.WithAttachmentCostBudget(budget),
+	)
+	return func() {
+		// Restore default budget
+		ledger.ResetForTesting()
+		initTestLedger()
+	}
+}
