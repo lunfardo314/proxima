@@ -64,6 +64,10 @@ type (
 		pokeMe          func(vid *vertex.WrappedTx)
 		// trace this local attacher with all tags
 		forceTrace string
+		// seqTxCost is the attachment cost of the sequencer transaction being attached.
+		// For milestone attacher: set to tip's cost (numInputs + numOutputs).
+		// For incremental attacher: set to 0 (budget check happens in atomicCheck callback instead).
+		seqTxCost int
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone

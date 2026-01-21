@@ -17,7 +17,7 @@ type InitParameters struct {
 	TickDuration                  time.Duration
 	TransactionPaceTicks          int
 	TransactionPaceSequencerTicks int
-	AttachmentRecursionDepthBase  int
+	AttachmentCostBudget  int
 }
 
 // default ledger init parameters
@@ -34,7 +34,7 @@ const (
 	DefaultTransactionPaceSequencer = 2
 	defaultDescription              = "Proxima ledger definitions"
 
-	defaultAttachmentRecursionDepthBase = 10
+	defaultAttachmentCostBudget = 550
 )
 
 func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description ...string) InitParameters {
@@ -48,7 +48,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 		TickDuration:                  DefaultTickDuration,
 		TransactionPaceTicks:          DefaultTransactionPace,
 		TransactionPaceSequencerTicks: DefaultTransactionPaceSequencer,
-		AttachmentRecursionDepthBase:  defaultAttachmentRecursionDepthBase,
+		AttachmentCostBudget:  defaultAttachmentCostBudget,
 		Description:                   dscr,
 	}
 }
@@ -62,7 +62,7 @@ func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
 		base.MaxTickValue+1,
 		par.TransactionPaceTicks,
 		par.TransactionPaceSequencerTicks,
-		par.AttachmentRecursionDepthBase,
+		par.AttachmentCostBudget,
 		hex.EncodeToString([]byte(par.Description)),
 	))
 }
@@ -130,8 +130,8 @@ functions:
       description: minimum number of ticks between sequencer transaction and its inputs and endorsed transactions
       source: u64/%d
    -
-      sym: constAttachmentRecursionDepthBase
-      description: maximum depth of attachment recursion for non-sequencer transactions
+      sym: constAttachmentCostBudget
+      description: maximum total attachment cost (pastCone + seqTx) for sequencer transaction validation
       source: u64/%d
    -
       sym: constDescription

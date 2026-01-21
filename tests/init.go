@@ -21,22 +21,22 @@ func initTestLedger() {
 		ledger.WithTickDuration(8*time.Millisecond),
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
-		ledger.WithAttachmentRecursionDepthBase(100),
+		ledger.WithAttachmentCostBudget(600),
 	)
 	lib := ledger.L(base.MaxSlot)
 	fmt.Printf(`
 >>> ledger parameters for the test <<<
-     tick duration    : %v
-     slot duration    : %v
-     transaction pace : %d ticks
-     sequencer pace   : %d ticks
-     attachment depth : %d
+     tick duration        : %v
+     slot duration        : %v
+     transaction pace     : %d ticks
+     sequencer pace       : %d ticks
+     attachment cost budget: %d
 `,
 		lib.TickDuration,
 		lib.SlotDuration(),
 		lib.TransactionPace,
 		lib.TransactionPaceSequencer,
-		lib.AttachmentRecursionDepthBase,
+		lib.AttachmentCostBudget,
 	)
 }
 

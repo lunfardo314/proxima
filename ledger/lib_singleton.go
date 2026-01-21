@@ -426,8 +426,8 @@ func WithTransactionPaceSequencer(transactionPace int) ParametersOption {
 	}
 }
 
-func WithAttachmentRecursionDepthBase(depth int) ParametersOption {
+func WithAttachmentCostBudget(depth int) ParametersOption {
 	return func(par *InitParameters) {
-		par.AttachmentRecursionDepthBase = depth
+		par.AttachmentCostBudget = depth
 	}
 }

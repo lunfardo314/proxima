@@ -401,6 +401,19 @@ func (txb *SeqTxBuilder) InputsAreFull() bool {
 	return txb.NumInputs()+txb.reservedInputs() >= 256
 }
 
+// AttachmentCost returns the predicted final attachment cost of the sequencer transaction.
+// This is the sum of inputs and outputs, including chain output and stem output (if branch)
+// that will be added at finalization.
+func (txb *SeqTxBuilder) AttachmentCost() int {
+	// Current inputs + current outputs + chain output (always 1)
+	cost := txb.NumInputs() + txb.NumOutputs() + 1
+	if txb.stemInput != nil {
+		// Stem output will be added for branch transactions
+		cost++
+	}
+	return cost
+}
+
 func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
 	return txb.TransactionData.Timestamp
 }

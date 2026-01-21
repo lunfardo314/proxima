@@ -231,9 +231,10 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 }
 
 // InsertInput inserts tag along or delegation input.
-// In case of failure returns false and attacher state with vertex references remains consistent
-// atomicCheck callback is used to add optional additional check right before commiting delta
-func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck func() (bool, error)) (valid bool, err error) {
+// In case of failure returns false and attacher state with vertex references remains consistent.
+// seqTxCost is the current cost of the sequencer transaction being built.
+// atomicCheck callback receives pastConeCost and seqTxCost to verify budget before committing delta.
+func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, seqTxCost int, atomicCheck func(pastConeCost, seqTxCost int) (bool, error)) (valid bool, err error) {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	util.AssertNoError(a.err)
 
@@ -246,7 +247,7 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck
 	err = a.insertVirtuallyConsumedOutput(wOut)
 	valid = true // it may contain conflict but this is not permanent
 	if err == nil {
-		valid, err = atomicCheck()
+		valid, err = atomicCheck(a.pastCone.AttachmentCost(), seqTxCost)
 	}
 	if err != nil {
 		// it is either conflicting, or not solid yet. In either case rollback

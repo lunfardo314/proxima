@@ -102,6 +102,8 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 			env.Log().Fatalf("unexpected virtual Tx: %s", vid.IDShortString())
 		},
 	})
+	// Set the sequencer transaction cost for budget checking during traversal
+	ret.attacher.seqTxCost = ret.finals.numInputs + ret.finals.numOutputs
 	ret.pastCone.MustMarkVertexNotInTheState(vid)
 
 	return ret

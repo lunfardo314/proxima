@@ -107,7 +107,8 @@ func (p *proposal) insertTagAlongInputs() {
 		}
 		var cmd txbuilder_seq.TxBuilderCommand
 
-		valid, err := p.InsertInput(o.wOut, func() (valid1 bool, err1 error) {
+		valid, err := p.InsertInput(o.wOut, p.SeqTxBuilder.AttachmentCost(), func(pastConeCost, seqTxCost int) (valid1 bool, err1 error) {
+			// TODO: check attachment cost budget: pastConeCost + seqTxCost > budget
 			cmd, valid1, err1 = p.AddTagAlongInput(*o.o)
 			return
 		})
@@ -169,7 +170,8 @@ func (p *proposal) insertDelegations() {
 		}
 		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
 		// just skip if freezing failed for any reason
-		valid, err := p.InsertInput(wOut, func() (bool, error) {
+		valid, err := p.InsertInput(wOut, p.SeqTxBuilder.AttachmentCost(), func(pastConeCost, seqTxCost int) (bool, error) {
+			// TODO: check attachment cost budget: pastConeCost + seqTxCost > budget
 			_, valid, err1 := p.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
 			return valid, err1
 		})

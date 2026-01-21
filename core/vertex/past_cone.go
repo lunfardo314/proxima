@@ -53,6 +53,7 @@ const (
 	FlagPastConeVertexEndorsementsSolid = FlagsPastCone(0b00010000) // means all endorsements were validated
 	FlagPastConeVertexInputsSolid       = FlagsPastCone(0b00100000) // means all consumed inputs are checked and valid
 	FlagPastConeVertexAskedForPoke      = FlagsPastCone(0b01000000) //
+	FlagPastConeDirectCost              = FlagsPastCone(0b10000000) // vertex contributes to direct attachment cost (not merged from other past cones)
 )
 
 func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
@@ -60,7 +61,7 @@ func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
 }
 
 func (f FlagsPastCone) String() string {
-	return fmt.Sprintf("%08b known: %v, defined: %v, inTheState: (%v,%v), endorsementsOk: %v, inputsOk: %v, poke: %v",
+	return fmt.Sprintf("%08b known: %v, defined: %v, inTheState: (%v,%v), endorsementsOk: %v, inputsOk: %v, poke: %v, directCost: %v",
 		f,
 		f.FlagsUp(FlagPastConeVertexKnown),
 		f.FlagsUp(FlagPastConeVertexDefined),
@@ -69,6 +70,7 @@ func (f FlagsPastCone) String() string {
 		f.FlagsUp(FlagPastConeVertexEndorsementsSolid),
 		f.FlagsUp(FlagPastConeVertexInputsSolid),
 		f.FlagsUp(FlagPastConeVertexAskedForPoke),
+		f.FlagsUp(FlagPastConeDirectCost),
 	)
 }
 
@@ -177,12 +179,11 @@ func (pc *PastCone) addToAttachmentCost(delta int) {
 	}
 }
 
+// AttachmentCostDirect calculates attachment cost by iterating vertices with FlagPastConeDirectCost.
+// Only vertices that were directly added (not merged from other past cones) contribute to the cost.
 func (pc *PastCone) AttachmentCostDirect() (ret int) {
 	pc.forAllVertices(func(vid *WrappedTx) bool {
-		if vid.IsSequencerTransaction() {
-			return true
-		}
-		if pc.isNotInTheState(vid) {
+		if pc.Flags(vid).FlagsUp(FlagPastConeDirectCost) {
 			ret += vid.AttachmentCost()
 		}
 		return true
@@ -332,12 +333,14 @@ func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
 
 // MustMarkVertexNotInTheState is marked definitely not rooted
 // attachmentCost increased for non-sequencer transactions
+// FlagPastConeDirectCost is set for non-sequencer transactions to mark them as directly contributing to cost
 func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
 	pc.Assertf(!pc.IsInTheState(vid), "!pc.IsInTheState(vid)")
 	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState)
 	pc.Assertf(pc.isNotInTheState(vid), "pc.isNotInTheState(vid)")
 	if !vid.IsSequencerTransaction() {
 		pc.addToAttachmentCost(vid.AttachmentCost())
+		pc.SetFlagsUp(vid, FlagPastConeDirectCost)
 	}
 }
 
@@ -685,7 +688,9 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 			}
 		}
 		// it will also create a new entry in the target past cone if necessary
-		pc.markVertexWithFlags(vid, flags & ^FlagPastConeVertexAskedForPoke)
+		// FlagPastConeDirectCost is masked out: merged transactions don't contribute to direct attachment cost
+		// (they were already accounted for in the source attacher's cost)
+		pc.markVertexWithFlags(vid, flags & ^FlagPastConeVertexAskedForPoke & ^FlagPastConeDirectCost)
 	}
 	return true
 }

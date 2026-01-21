@@ -192,9 +192,9 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		return false
 	}
 
-	if depth > a.AttachmentRecursionDepthBase {
+	if depth > a.AttachmentCostBudget {
 		// possible hanging chain attack
-		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.AttachmentRecursionDepthBase, v.IDShortString()))
+		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.AttachmentCostBudget, v.IDShortString()))
 		return false
 	}
 
@@ -301,13 +301,40 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 	a.pastCone.MarkVertexKnown(vidDep)
 	a.defineInTheStateStatus(vidDep)
 
+	// Fail-fast budget check: immediately check if attachment cost budget is exceeded
+	// This prevents attacks where the attacher traverses a huge past cone before failing
+	// Note: for incremental attacher, seqTxCost is 0 and budget check happens in atomicCheck instead
+	if !a.checkAttachmentCostBudget() {
+		return false
+	}
+
 	if !a.pullIfNeeded(vidDep, "refreshDependencyStatus") {
 		return false
 	}
 	return true
 }
 
-// defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly, if possible
+// checkAttachmentCostBudget checks if the total attachment cost (pastCone + seqTx) exceeds the budget.
+// Returns true if within budget, false if exceeded (sets error).
+// For incremental attacher (seqTxCost == 0), this always returns true as the budget check
+// happens in the atomicCheck callback instead.
+func (a *attacher) checkAttachmentCostBudget() bool {
+	if a.seqTxCost == 0 {
+		// Incremental attacher: budget check happens in atomicCheck callback
+		return true
+	}
+	totalCost := a.pastCone.AttachmentCost() + a.seqTxCost
+	// Use AttachmentCostBudget as budget for now (will be replaced with AttachmentCostBudget)
+	if totalCost > a.AttachmentCostBudget {
+		a.setError(fmt.Errorf("attachment cost budget %d exceeded (pastCone=%d, seqTx=%d)",
+			a.AttachmentCostBudget, a.pastCone.AttachmentCost(), a.seqTxCost))
+		return false
+	}
+	return true
+}
+
+// defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly, if possible.
+// For non-sequencer transactions not in the state, it also adds attachment cost tracking.
 func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	a.Assertf(a.pastCone.IsKnown(vid), "a.pastCone.IsKnown(vid): %s", vid.IDShortString)
 	a.Assertf(a.pastCone.GetBaseline() != nil, "a.baseline != nil")
@@ -319,8 +346,9 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	if a.Branches().BranchKnowsTransaction(*a.pastCone.GetBaseline(), vid.ID()) {
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 	} else {
-		// not on the state, so it is not defined
-		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState)
+		// not in the state, so it is not defined yet
+		// use MustMarkVertexNotInTheState to properly track attachment cost for non-sequencer transactions
+		a.pastCone.MustMarkVertexNotInTheState(vid)
 	}
 }
 

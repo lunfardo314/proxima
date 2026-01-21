@@ -1680,16 +1680,17 @@ func TestAttachTimingRecursionDepth(t *testing.T) {
 		err := testData.wrk.EnsureLatestBranches()
 		require.NoError(t, err)
 
-		maxDepth := ledger.L(base.MaxSlot).AttachmentRecursionDepthBase
-		t.Logf("AttachmentRecursionDepthBase = %d", maxDepth)
+		costBudget := ledger.L(base.MaxSlot).AttachmentCostBudget
+		t.Logf("AttachmentCostBudget = %d", costBudget)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
 		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
-		// Create a chain of transactions (maxDepth - some margin for safety)
-		chainLength := maxDepth - 5
+		// Create a chain of transactions within cost budget
+		// Each simple transfer has cost ~2 (1 input + 1 output), so divide budget by 2
+		chainLength := costBudget/2 - 5
 		if chainLength <= 0 {
 			chainLength = 5
 		}
@@ -1732,8 +1733,8 @@ func TestAttachTimingRecursionDepth(t *testing.T) {
 
 		// Chain within limits should not be rejected
 		require.NotEqual(t, vertex.Bad.String(), vid.GetTxStatus().String(),
-			"chain within max depth should not be rejected")
-		t.Logf("Chain of %d transactions within max depth %d: PASSED (status: %s)", chainLength, maxDepth, vid.GetTxStatus().String())
+			"chain within cost budget should not be rejected")
+		t.Logf("Chain of %d transactions within cost budget %d: PASSED (status: %s)", chainLength, costBudget, vid.GetTxStatus().String())
 	})
 }
 
