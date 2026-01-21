@@ -225,6 +225,16 @@ Implementation completed in commits:
 
 ---
 
+## Pending
+
+- **Incremental attacher callback has TODO** - The budget check in `InsertInput()` callback in
+  `sequencer/task/proposal.go` is not yet implemented. Currently, the sequencer adds all available
+  tag-along inputs without checking the budget. If the resulting transaction exceeds the budget,
+  the milestone attacher rejects it. The TODO should implement `pastConeCost + seqTxCost > budget`
+  check in the `atomicCheck` callback to prevent building transactions that will be rejected.
+
+---
+
 ## What Was Implemented
 
 ### Core Changes
