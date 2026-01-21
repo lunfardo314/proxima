@@ -216,77 +216,81 @@ transaction (256 inputs + 256 outputs = 512) in the past cone of a sequencer tra
 
 ---
 
-## Current Progress
+## Status: COMPLETED
 
-### Already implemented (commit 1e011cbc)
-- `AttachmentCost()` method on `PastCone` - returns incremental attachment cost
-- `AttachmentCostDirect()` method on `PastCone` - calculates by iterating all vertices (needs update for flag)
-- `addToAttachmentCost()` - adds to delta or base attachment cost
-- Incremental tracking in `MustMarkVertexNotInTheState()` - adds cost for non-sequencer transactions
-- Delta commit/rollback correctly handles attachment cost
-- Comprehensive tests verifying incremental == direct calculation
-
-### Tests added
-- `TestAttachmentCostBasic` - empty past cone, vertex states
-- `TestAttachmentCostSequencerExcluded` - sequencer transactions don't contribute
-- `TestAttachmentCostDeltaCommit` / `TestAttachmentCostDeltaRollback` - delta operations
-- `TestAttachmentCostMultipleDeltaCycles` - multiple begin/commit/rollback cycles
-- `TestAttachmentCostWithRealTransaction` - tests with real transactions (non-zero cost)
-- `TestAttachmentCostComplexScenario` - complex multi-delta scenario
-- And more (17 tests total)
-
-**Note**: Existing tests will need updates for `FlagPastConeDirectCost` behavior.
+Implementation completed in commits:
+- `cd6b7903` - implement attachment cost budget with direct cost tracking
+- `1dcea5f5` - split attach_test.go and add attachment cost budget tests
 
 ---
 
-## Implementation Plan
+## What Was Implemented
 
-### 1. Add FlagPastConeDirectCost and update PastCone
-Files: `core/vertex/past_cone.go`
+### Core Changes
+- `FlagPastConeDirectCost` flag added to mark vertices contributing to direct cost
+- `MustMarkVertexNotInTheState()` sets the flag for non-sequencer transactions
+- `MergePastCone()` masks out the flag (merged past cones don't contribute)
+- Fail-fast budget check in `checkAttachmentCostBudget()` after attachment
+- `AttachmentCostBudget` ledger constant (default: 600)
+- Removed obsolete `depth` parameter and recursion depth limit
 
-- Add `FlagPastConeDirectCost` constant
-- Update `MustMarkVertexNotInTheState()` to set the flag
-- Update `MergePastCone()` to mask out the flag
-- Update `AttachmentCostDirect()` to only count flagged vertices
-- Update `String()` method for flag display
+### Key Files Modified
+- `core/vertex/past_cone.go` - flag and cost tracking
+- `core/attacher/attacher.go` - budget check implementation
+- `core/attacher/attacher_incremental.go` - `InsertInput()` with budget callback
+- `ledger/def_constants0.go` - `AttachmentCostBudget` constant
 
-### 2. Update InsertInput signature
-Files: `core/attacher/attacher_incremental.go`
+---
 
-- Add `seqTxCost int` parameter
-- Update `atomicCheck` callback signature to `func(pastConeCost, seqTxCost int) (bool, error)`
-- Pass both costs to the callback
+## Test Coverage
 
-### 3. Replace ledger constant
-Files: `ledger/def_constants0.go`, `ledger/lib_singleton.go`, `ledger/constants.go`
+Tests split into logical files in `tests/`:
 
-- Replace `AttachmentRecursionDepthBase` with `AttachmentCostBudget`
-- Change default value from 10 to ~550-600
-- Replace `WithAttachmentRecursionDepthBase()` with `WithAttachmentCostBudget()`
-- Update YAML template
+### `attach_cost_test.go` - Attachment Cost Budget Tests
+- `TestAttachCostBudgetChainWithinLimit` - chain of 50 transactions (cost ~100)
+- `TestAttachCostBudgetShortChain` - short chain of 10 transactions (cost ~20)
+- `TestAttachCostBudgetMultipleTransactions` - sequential transaction attachment
+- `TestAttachCostBudgetFanOutCostTracking` - high-cost fan-out (1→100 outputs, cost 101)
+- `TestAttachCostBudgetExceededNote` - documents budget design rationale
+- `TestAttachCostBudgetVerifyCalculation` - verifies cost formula (numInputs + numOutputs)
 
-### 4. Update attacher functions
-Files: `core/attacher/attacher.go`, `core/attacher/types.go`, `core/attacher/attach.go`
+### `attach_timing_test.go` - Timing Edge Cases
+- Pace boundary tests
+- Slot boundary tests
+- Consolidation window tests
 
-- Remove `depth int` parameter from recursive functions
-- Remove `WithAttachmentDepth` option
-- Add fail-fast budget check after each `MustMarkVertexNotInTheState()` call
-- Use total cost formula: `pastConeCost + seqTxCost`
+### `attach_deadlock_test.go` - Deadlock Scenarios
+- Context cancellation tests
+- Concurrent attacher tests
+- Solidification deadline tests
 
-### 5. Update sequencer to pass seqTxCost
-Files: `sequencer/` (find callers of InsertInput)
+### `attach_test.go` - Basic/Conflicts/SeqChains Tests
+- Kept existing tests for basic attachment, conflicts, and sequencer chains
 
-- Compute seqTxCost from SeqTxBuilder state
-- Pass to InsertInput calls
+---
 
-### 6. Update tests
-Files: `core/vertex/past_cone_test.go`, `tests/init.go`, `tests/attach_test.go`
+## Budget Design Analysis
 
-- Add tests for FlagPastConeDirectCost behavior
-- Add tests for merge not setting the flag
-- Add tests for fail-fast behavior
-- Update existing tests for new InsertInput signature
-- Replace `WithAttachmentRecursionDepthBase` with `WithAttachmentCostBudget`
+The budget of 600 is intentionally designed to be hard to exceed within a single slot:
+
+| Parameter | Value |
+|-----------|-------|
+| AttachmentCostBudget | 600 |
+| TicksPerSlot | 128 |
+| TransactionPace | 3 ticks |
+| Max transactions per slot | ~42 |
+| Max simple transfer cost per slot | ~84 |
+| Budget/simple cost ratio | 7.14x |
+
+### Why budget-exceeded is hard to test
+- Simple transfers (cost 2): Need 300+ txs, but only ~42 fit in one slot
+- Fan-out transactions: Tokens get diluted below storage deposit minimum after ~3 iterations
+- The budget protects against attack chains while allowing legitimate usage
+
+### To exceed budget would require
+1. Multiple slots with proper endorsement handling (complex)
+2. A test-specific lower budget configuration
+3. Many pre-existing UTXOs for parallel high-cost chains
 
 ---
 
@@ -294,13 +298,10 @@ Files: `core/vertex/past_cone_test.go`, `tests/init.go`, `tests/attach_test.go`
 
 | Location | Purpose |
 |----------|---------|
-| `core/vertex/past_cone.go:48-56` | Flag constants (add FlagPastConeDirectCost) |
+| `core/vertex/past_cone.go:48-56` | `FlagPastConeDirectCost` constant |
 | `core/vertex/past_cone.go:165` | `AttachmentCost()` method |
-| `core/vertex/past_cone.go:180` | `AttachmentCostDirect()` method (update for flag) |
-| `core/vertex/past_cone.go:335` | `MustMarkVertexNotInTheState()` (add flag setting) |
-| `core/vertex/past_cone.go:650` | `MergePastCone()` (mask out flag) |
-| `core/attacher/attacher_incremental.go:236` | `InsertInput()` (update signature) |
-| `core/attacher/attacher.go:195` | Depth check (replace with fail-fast cost check) |
-| `ledger/def_constants0.go:20` | `InitParameters` struct |
-| `ledger/lib_singleton.go:429` | `WithAttachmentRecursionDepthBase()` option |
-| `sequencer/txbuilder_seq/txbuilder_seq.go` | SeqTxBuilder for computing seqTxCost |
+| `core/vertex/past_cone.go:335` | `MustMarkVertexNotInTheState()` - sets flag |
+| `core/vertex/past_cone.go:650` | `MergePastCone()` - masks out flag |
+| `core/attacher/attacher.go:311` | `checkAttachmentCostBudget()` - fail-fast check |
+| `core/attacher/attacher_incremental.go:236` | `InsertInput()` with budget callback |
+| `ledger/def_constants0.go` | `AttachmentCostBudget` constant definition |
