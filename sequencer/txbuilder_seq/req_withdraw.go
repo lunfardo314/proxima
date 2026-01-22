@@ -100,3 +100,8 @@ func (c *WithdrawFromChainTxBuilderCommand) Apply(txb *SeqTxBuilder) (bool, erro
 func (c *WithdrawFromChainTxBuilderCommand) Lines(prefix ...string) *lines.Lines {
 	return lines.New(prefix...).Add("WithdrawFromChainTxBuilderCommand: amount = %s, target = %s", util.Th(c.amount), c.target.String())
 }
+
+func (c *WithdrawFromChainTxBuilderCommand) AttachmentCostDelta() int {
+	// +1 for the consumed tag-along input, +1 for the withdrawal output
+	return 2
+}

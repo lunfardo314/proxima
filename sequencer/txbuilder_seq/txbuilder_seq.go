@@ -34,6 +34,10 @@ type (
 		// Apply valid=false means it is permanently invalid, err is a reason why not possible to apply it
 		Apply(txb *SeqTxBuilder) (valid bool, err error)
 		Lines(prefix ...string) *lines.Lines
+		// AttachmentCostDelta returns the total attachment cost contribution of this command,
+		// including the base tag-along input (+1) plus any additional inputs/outputs the command creates.
+		// This value is added to seqTxCost to predict the final sequencer transaction cost.
+		AttachmentCostDelta() int
 	}
 )
 

@@ -172,6 +172,11 @@ func (r *AskStopDelegationRequest) Lines(prefix ...string) *lines.Lines {
 	return lines.New(prefix...).Add("AskStopDelegationRequest: delegation ID = " + r.delegationID.StringShort())
 }
 
+func (r *AskStopDelegationRequest) AttachmentCostDelta() int {
+	// +1 for the consumed tag-along input, +1 for the delegation input, +1 for the unfrozen delegation output
+	return 3
+}
+
 func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.Accountable, delegationID base.ChainID, fee uint64) *ledger.Output {
 	par := base.NewSmallPersistentMap()
 	par.Set(FieldCmdCode, []byte{RequestCodeAskStopDelegation})

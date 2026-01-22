@@ -80,3 +80,8 @@ func NewSeqDataCommandOutput(seqID base.ChainID, sender ledger.Accountable, fee 
 		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
 	})
 }
+
+func (c *SetSequencerDataTxBuilderCommand) AttachmentCostDelta() int {
+	// +1 for the consumed tag-along input, no additional outputs
+	return 1
+}

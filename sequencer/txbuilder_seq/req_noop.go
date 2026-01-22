@@ -33,3 +33,8 @@ func (c *NoRequestTxBuilderCommand) Lines(prefix ...string) *lines.Lines {
 	ln := c.Output.LinesHR(prefix...)
 	return ln
 }
+
+func (c *NoRequestTxBuilderCommand) AttachmentCostDelta() int {
+	// +1 for the consumed tag-along input
+	return 1
+}
