@@ -107,11 +107,13 @@ func (p *proposal) insertTagAlongInputs() {
 		}
 		var cmd txbuilder_seq.TxBuilderCommand
 
-		valid, err := p.InsertInput(o.wOut, p.SeqTxBuilder.AttachmentCost(), func(pastConeCost, seqTxCost int) (valid1 bool, err1 error) {
+		valid, err := p.InsertInput(o.wOut, func() (valid1 bool, err1 error) {
 			if cmd, valid1, err1 = p.TxBuilderCommandFromOutput(*o.o); err1 != nil {
 				return
 			}
-			if pastConeCost+seqTxCost+cmd.AttachmentCostDelta() > p.Library.AttachmentCostBudget {
+			// check if the attachment cost after the command will fit the budget
+			attachmentCost := p.PastConeAttachmentCost() + p.SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()
+			if attachmentCost > p.Library.AttachmentCostBudget {
 				return true, fmt.Errorf("attachment cost budget exceeded")
 			}
 			valid1, err1 = cmd.Apply(p.SeqTxBuilder)
@@ -175,11 +177,11 @@ func (p *proposal) insertDelegations() {
 		}
 		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
 		// just skip if freezing failed for any reason
-		valid, err := p.InsertInput(wOut, p.SeqTxBuilder.AttachmentCost(), func(pastConeCost, seqTxCost int) (bool, error) {
+		valid, err := p.InsertInput(wOut, func() (bool, error) {
 			// adding one more delegation means +1 input and +1 output, 2 cost units of the transaction attachment cost more.
-			// The past cone cost with the new output is already accounted for in the pastConeCost
 			// Checking if the updated proposal will still fit the attachment budget
-			if pastConeCost+seqTxCost+2 > p.Library.AttachmentCostBudget {
+			attachmentCost := p.PastConeAttachmentCost() + p.PastConeAttachmentCost() + p.SeqTxBuilder.AttachmentCost() + 2
+			if attachmentCost > p.Library.AttachmentCostBudget {
 				return true, fmt.Errorf("attachment budget exceeded")
 			}
 			_, valid, err1 := p.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
