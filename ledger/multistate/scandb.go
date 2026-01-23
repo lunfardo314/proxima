@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -50,7 +51,7 @@ type (
 	}
 )
 
-func MustCollectAccountInfo(store StateStore, root common.VCommitment) *AccountInfo {
+func MustCollectAccountInfo(store global.Store, root common.VCommitment) *AccountInfo {
 	rdr := MustNewReadable(store, root)
 	chainRecs, err := MakeSugared(rdr).GetAllChainsOld() // TODO a bit ugly
 	util.AssertNoError(err)
@@ -97,7 +98,7 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func FetchSummarySupply(stateStore StateStore, nBack int) *SummarySupplyAndInflation {
+func FetchSummarySupply(stateStore global.Store, nBack int) *SummarySupplyAndInflation {
 	branchData := FetchHeaviestBranchChainNSlotsBack(stateStore, nBack) // descending
 	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
 

@@ -13,7 +13,7 @@ import (
 
 var (
 	stateDB      *badger.DB
-	stateStore   multistate.StateStore
+	stateStore   global.Store
 	txBytesDB    *badger.DB
 	txBytesStore global.TxBytesStore
 )
@@ -35,7 +35,7 @@ func InitLedgerFromProvidedID() {
 	Infof("ledger was initialized from definitions provided in file '%s'", LedgerIDFileName)
 }
 
-func StateStore() multistate.StateStore {
+func StateStore() global.Store {
 	return stateStore
 }
 

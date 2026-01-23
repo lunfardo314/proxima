@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	TransactionIDShortLength     = 27
+	TransactionHashLength        = 26
+	TransactionIDShortLength     = TransactionHashLength + 1
 	TransactionIDLength          = LedgerTimeByteLength + TransactionIDShortLength
 	OutputIDLength               = TransactionIDLength + 1
 	ChainIDLength                = 32
@@ -22,9 +23,11 @@ const (
 )
 
 type (
+	// TransactionHash is last 26 bytes of the blake2b hash of the transaction essence bytes
+	TransactionHash [TransactionHashLength]byte
 	// TransactionIDShort
 	// byte 0 is maximum index of produced outputs
-	// the rest 26 bytes is bytes [1:28] (26 bytes) of the blake2b 32-byte hash of transaction bytes
+	// the rest 26 bytes is bytes of the TransactionHash
 	TransactionIDShort [TransactionIDShortLength]byte
 	// TransactionIDVeryShort4 is first 4 bytes of TransactionIDShort.
 	// Warning. Collisions cannot be ruled out
@@ -97,6 +100,11 @@ func RandomOutputID(ts LedgerTime) OutputID {
 
 func (txid *TransactionID) NumProducedOutputs() int {
 	return int(txid[MaxOutputIndexPositionInTxID]) + 1
+}
+
+func (txid *TransactionID) TransactionHash() (ret TransactionHash) {
+	copy(ret[:], txid[TransactionIDLength-TransactionHashLength:TransactionHashLength])
+	return
 }
 
 // ShortID return hash part of id

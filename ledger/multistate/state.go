@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -19,7 +20,7 @@ type (
 	// DB (store) is updated atomically with all mutations in one DB transaction
 	Updatable struct {
 		trie  *immutable.TrieUpdatable
-		store StateStore
+		store global.Store
 	}
 
 	// Readable is a read-only ledger state, with the particular root
@@ -86,12 +87,12 @@ func PartitionToString(p byte) string {
 	}
 }
 
-func LedgerIdentityBytesFromStore(store StateStore) []byte {
+func LedgerIdentityBytesFromStore(store global.Store) []byte {
 	rr := FetchAnyLatestRootRecord(store)
 	return LedgerIdentityBytesFromRoot(store, rr.Root)
 }
 
-func LedgerIdentityBytesFromRoot(store StateStoreReader, root common.VCommitment) []byte {
+func LedgerIdentityBytesFromRoot(store global.StoreReader, root common.VCommitment) []byte {
 	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, root, 0)
 	util.AssertNoError(err)
 	return trie.Get(nil)
@@ -117,7 +118,7 @@ func MustNewReadable(store common.KVReader, root common.VCommitment, clearCacheA
 
 // NewUpdatable creates updatable state with the given root. After updated, the root changes.
 // Suitable for chained updates of the ledger state
-func NewUpdatable(store StateStore, root common.VCommitment) (*Updatable, error) {
+func NewUpdatable(store global.Store, root common.VCommitment) (*Updatable, error) {
 	trie, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, store, root)
 	if err != nil {
 		return nil, err
@@ -128,7 +129,7 @@ func NewUpdatable(store StateStore, root common.VCommitment) (*Updatable, error)
 	}, nil
 }
 
-func MustNewUpdatable(store StateStore, root common.VCommitment) *Updatable {
+func MustNewUpdatable(store global.Store, root common.VCommitment) *Updatable {
 	ret, err := NewUpdatable(store, root)
 	util.AssertNoError(err)
 	return ret

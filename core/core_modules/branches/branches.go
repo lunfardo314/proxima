@@ -16,7 +16,7 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
-		StateStore() multistate.StateStore
+		StateStore() global.Store
 	}
 
 	branchDataWithLedgerCoverage struct {

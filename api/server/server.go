@@ -35,7 +35,7 @@ type (
 		SubmitTxBytesFromAPI(txBytes []byte)
 		GetLatestReliableBranch() *multistate.BranchData
 		GetSnapshotBranchID() base.TransactionID
-		StateStore() multistate.StateStore
+		StateStore() global.Store
 		TxBytesStore() global.TxBytesStore
 		GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble
 	}

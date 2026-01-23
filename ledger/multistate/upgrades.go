@@ -10,6 +10,7 @@ package multistate
 import (
 	"fmt"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -31,7 +32,7 @@ const MinSlotsBetweenUpgrades = 100 // Reduced for testing
 // - Genesis time and description must match slot 0 library (immutable)
 //
 // Returns an error if constraints are violated.
-func WriteUpgradeLibrary(store StateStore, upgradeSlot uint32, libraryYAML []byte) error {
+func WriteUpgradeLibrary(store global.Store, upgradeSlot uint32, libraryYAML []byte) error {
 	latestSlot, hasExisting := GetLatestUpgradeSlot(store)
 
 	if hasExisting {
@@ -58,7 +59,7 @@ func WriteUpgradeLibrary(store StateStore, upgradeSlot uint32, libraryYAML []byt
 }
 
 // MustWriteUpgradeLibrary is like WriteUpgradeLibrary but panics on error.
-func MustWriteUpgradeLibrary(store StateStore, upgradeSlot uint32, libraryYAML []byte) {
+func MustWriteUpgradeLibrary(store global.Store, upgradeSlot uint32, libraryYAML []byte) {
 	err := WriteUpgradeLibrary(store, upgradeSlot, libraryYAML)
 	util.AssertNoError(err)
 }
@@ -66,7 +67,7 @@ func MustWriteUpgradeLibrary(store StateStore, upgradeSlot uint32, libraryYAML [
 // WriteUpgradeLibraryUnchecked stores a library without identity validation.
 // WARNING: This function is for TESTING ONLY. In production, use WriteUpgradeLibrary
 // which enforces immutability of genesis time and description.
-func WriteUpgradeLibraryUnchecked(store StateStore, upgradeSlot uint32, libraryYAML []byte) error {
+func WriteUpgradeLibraryUnchecked(store global.Store, upgradeSlot uint32, libraryYAML []byte) error {
 	latestSlot, hasExisting := GetLatestUpgradeSlot(store)
 
 	if hasExisting {
@@ -166,7 +167,7 @@ func CountUpgradeLibraries(store common.Traversable) int {
 // WARNING: This function is for TESTING ONLY. Upgrade libraries must never be
 // deleted from the DB in production - they are required for validating historical
 // transactions that were created under older library versions.
-func DeleteUpgradeLibraryForTesting(store StateStore, upgradeSlot uint32) {
+func DeleteUpgradeLibraryForTesting(store global.Store, upgradeSlot uint32) {
 	key := makeUpgradeLibraryKey(upgradeSlot)
 	batch := store.BatchedWriter()
 	batch.Set(key, nil)

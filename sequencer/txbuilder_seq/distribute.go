@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -13,7 +14,7 @@ import (
 
 // MakeDistributionTransaction creates initial distribution transaction according to distribution list.
 // It is a branch transaction. Remainder goes to the genesis chain
-func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
+func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
 	constants, genesisRoot, err := multistate.ScanGenesisState(stateStore)
 	if err != nil {
 		return nil, err
@@ -93,12 +94,12 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 // adding initial distribution transaction.
 // Distribution transaction is a branch transaction in the slot next after the genesis.
 // Distribution parameter is added to the transaction store
-func DistributeInitialSupply(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
+func DistributeInitialSupply(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
 	txBytes, _, err := DistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
 	return txBytes, err
 }
 
-func DistributeInitialSupplyExt(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID, error) {
+func DistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID, error) {
 	var ret []byte
 	var txid base.TransactionID
 	err := util.CatchPanicOrError(func() error {
@@ -112,13 +113,13 @@ func DistributeInitialSupplyExt(stateStore multistate.StateStore, originPrivateK
 }
 
 // MustDistributeInitialSupply makes distribution transaction and commits it into the multi-ledger state with branch record
-func MustDistributeInitialSupply(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) []byte {
+func MustDistributeInitialSupply(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) []byte {
 	ret, _ := MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
 	return ret
 }
 
 // MustDistributeInitialSupplyExt makes a distribution transaction and commits it into the multi-ledger state with branch record
-func MustDistributeInitialSupplyExt(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID) {
+func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID) {
 	txBytes, err := MakeDistributionTransaction(stateStore, originPrivateKey, genesisDistribution)
 	util.AssertNoError(err)
 

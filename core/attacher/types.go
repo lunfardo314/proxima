@@ -12,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 )
 
@@ -21,7 +20,7 @@ type (
 		WithGlobalWriteLock(fun func())
 		GetVertexNoLock(txid base.TransactionID) *vertex.WrappedTx
 		AddVertexNoLock(vid *vertex.WrappedTx)
-		StateStore() multistate.StateStore
+		StateStore() global.Store
 		GetStemWrappedOutput(branch base.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)
 		EvidenceBranchSlot(s uint32, healthy bool)

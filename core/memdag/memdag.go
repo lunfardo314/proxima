@@ -21,7 +21,7 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
-		StateStore() multistate.StateStore
+		StateStore() global.Store
 		DisableMemDAGGC() bool
 		PostEventTxDeleted(txid base.TransactionID)
 		IsSynced() bool

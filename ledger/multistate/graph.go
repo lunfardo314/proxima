@@ -6,6 +6,7 @@ import (
 
 	"github.com/dominikbraun/graph"
 	"github.com/dominikbraun/graph/draw"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -64,7 +65,7 @@ func defaultMakeTreeOptions() *MakeTreeOptions {
 	}
 }
 
-func MakeTreeOpt(stateStore StateStore, options ...MakeTreeOption) graph.Graph[string, string] {
+func MakeTreeOpt(stateStore global.Store, options ...MakeTreeOption) graph.Graph[string, string] {
 	opts := defaultMakeTreeOptions()
 	for _, option := range options {
 		option(opts)
@@ -104,7 +105,7 @@ func MakeTreeOpt(stateStore StateStore, options ...MakeTreeOption) graph.Graph[s
 	return ret
 }
 
-func SaveBranchTreeOpt(stateStore StateStore, options ...MakeTreeOption) {
+func SaveBranchTreeOpt(stateStore global.Store, options ...MakeTreeOption) {
 	opts := defaultMakeTreeOptions()
 	for _, option := range options {
 		option(opts)
@@ -118,7 +119,7 @@ func SaveBranchTreeOpt(stateStore StateStore, options ...MakeTreeOption) {
 	_ = dotFile.Close()
 }
 
-func SaveBranchTree(stateStore StateStore, fname string, slotsBack ...int) {
+func SaveBranchTree(stateStore global.Store, fname string, slotsBack ...int) {
 	if len(slotsBack) == 0 {
 		SaveBranchTreeOpt(stateStore, MakeTreeOptionWithFileName(fname))
 	} else {

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -22,7 +23,7 @@ import (
 // It is always final, does not have finality gadget nor the milestone chain
 // It's primary purpose is testing the ledger
 type UTXODB struct {
-	store             multistate.StateStore
+	store             global.Store
 	state             *multistate.Updatable
 	genesisChainID    base.ChainID
 	supply            uint64

@@ -17,7 +17,7 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
-		StateStore() multistate.StateStore
+		StateStore() global.Store
 		GetOwnSequencerID() *base.ChainID
 		IsSynced() bool
 	}

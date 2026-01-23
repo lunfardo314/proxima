@@ -3,6 +3,7 @@ package multistate
 import (
 	"fmt"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -13,7 +14,7 @@ import (
 // WriteEmptyRootWithLedgerIdentity writes minimal ledger identity data as value of the empty key nil.
 // The identity contains only genesis time and description (truly immutable data).
 // Returns root of the empty trie.
-func WriteEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store StateStore) (common.VCommitment, error) {
+func WriteEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store global.Store) (common.VCommitment, error) {
 	batch := store.BatchedWriter()
 	emptyRoot := immutable.MustInitRoot(batch, ledger.CommitmentModel, identity.Bytes())
 	if err := batch.Commit(); err != nil {
@@ -29,7 +30,7 @@ func WriteEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store Sta
 // - Upgrade commitment UTXO (synthetic, index 255)
 // Also stores the library YAML in the upgrade DB partition at slot 0.
 // Returns root commitment to the genesis ledger state and genesis chainID.
-func InitStateStoreFromGlobals(store StateStore) (base.ChainID, common.VCommitment) {
+func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommitment) {
 	// Create minimal identity from constants
 	identity := ledger.NewLedgerIdentity(ledger.L(0).GenesisTimeUnix, ledger.L(0).Description)
 	emptyRoot, err := WriteEmptyRootWithLedgerIdentity(identity, store)
@@ -79,7 +80,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut, dustOut, upgradeOut *led
 
 // ScanGenesisState scans the genesis state and returns constants and root commitment.
 // It loads the library from the upgrade DB partition (slot 0).
-func ScanGenesisState(stateStore StateStore) (*ledger.Constants, common.VCommitment, error) {
+func ScanGenesisState(stateStore global.Store) (*ledger.Constants, common.VCommitment, error) {
 	var genesisRootRecord RootRecord
 
 	// expecting a single branch in the genesis state
@@ -126,7 +127,7 @@ func ScanGenesisState(stateStore StateStore) (*ledger.Constants, common.VCommitm
 
 // InitLedgerFromStore initializes the ledger library cache from the state store.
 // It loads libraries from the upgrade DB partition and handles pending upgrades.
-func InitLedgerFromStore(stateStore StateStore) {
+func InitLedgerFromStore(stateStore global.Store) {
 	// Handle pending upgrade if one exists
 	if ledger.PendingUpgrade != nil {
 		storePendingUpgrade(stateStore, ledger.PendingUpgrade)
@@ -138,7 +139,7 @@ func InitLedgerFromStore(stateStore StateStore) {
 
 // storePendingUpgrade stores the library for a pending upgrade in the DB partition.
 // If the upgrade already exists in the DB partition, this is a no-op (idempotent).
-func storePendingUpgrade(stateStore StateStore, pending *ledger.UpgradeDefinition) {
+func storePendingUpgrade(stateStore global.Store, pending *ledger.UpgradeDefinition) {
 	// Check if upgrade already exists in DB partition
 	if _, found := GetUpgradeLibraryDirect(stateStore, pending.Slot); found {
 		// Upgrade already stored, nothing more to do
@@ -165,7 +166,7 @@ func storePendingUpgrade(stateStore StateStore, pending *ledger.UpgradeDefinitio
 
 // findPreviousLibrary finds the most recent library before the given slot.
 // Returns the slot and YAML data of the previous library.
-func findPreviousLibrary(stateStore StateStore, beforeSlot uint32) (uint32, []byte) {
+func findPreviousLibrary(stateStore global.Store, beforeSlot uint32) (uint32, []byte) {
 	var foundSlot uint32
 	var foundYAML []byte
 	found := false

@@ -37,15 +37,4 @@ type (
 		StateReader
 		StateIndexReader
 	}
-
-	StateStoreReader interface {
-		common.KVReader
-		common.Traversable
-		IsClosed() bool
-	}
-
-	StateStore interface {
-		StateStoreReader
-		common.BatchedUpdatable
-	}
 )
