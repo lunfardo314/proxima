@@ -52,7 +52,6 @@ type (
 	TxLogLevel int
 
 	TxLogWriter interface {
-		TxLogEnable(lvl TxLogLevel)
 		TxLog(msg string, txid ...base.TransactionID)
 	}
 
@@ -66,6 +65,7 @@ type (
 	}
 
 	TxLogger interface {
+		TxLogEnable(lvl TxLogLevel)
 		TxLogWriter
 		TxLogReader
 	}
