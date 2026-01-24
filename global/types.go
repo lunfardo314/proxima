@@ -52,7 +52,7 @@ type (
 	TxLogLevel int
 
 	TxLogWriter interface {
-		TxLog(msg string, txid ...base.TransactionID)
+		TxLog(timestamp time.Time, msg string, txid ...base.TransactionID)
 	}
 
 	TxLogRecord struct {
@@ -66,8 +66,6 @@ type (
 
 	TxLogger interface {
 		TxLogEnable(lvl TxLogLevel)
-		TxLogWriter
-		TxLogReader
 	}
 )
 
