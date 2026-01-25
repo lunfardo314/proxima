@@ -56,11 +56,12 @@ type (
 	}
 
 	TxLogRecord struct {
-		Timestamp time.Time
-		Message   string
+		ID             base.TransactionID
+		ClockTimestamp time.Time
+		Message        string
 	}
 	TxLogReader interface {
-		TxLogGet(txHash base.TransactionHash) ([]TxLogRecord, error)
+		TxLogGet(txShortIDPrefix []byte, max ...int) ([]TxLogRecord, error)
 		TxLogIterate(begin time.Time, fun func(rec TxLogRecord)) error
 	}
 

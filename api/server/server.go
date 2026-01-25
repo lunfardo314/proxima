@@ -38,6 +38,12 @@ type (
 		StateStore() global.Store
 		TxBytesStore() global.TxBytesStore
 		GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble
+		// TxLogger methods
+		TxLogEnable(level global.TxLogLevel)
+		TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error)
+		TxLogIterate(begin time.Time, fun func(rec global.TxLogRecord)) error
+		TxLogIsEnabled() bool
+		TxLogLevel() global.TxLogLevel
 	}
 
 	server struct {
@@ -100,6 +106,14 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
+
+	// Transaction logger API
+	// POST /api/v1/txlog/enable?level=<level>
+	srv.addHandler(api.PathTxLogEnable, srv.txLogEnable)
+	// GET /api/v1/txlog/get?prefix=<hex_prefix>&max=<max>
+	srv.addHandler(api.PathTxLogGet, srv.txLogGet)
+	// GET /api/v1/txlog/range?from=<unix_ns>&to=<unix_ns>&max=<max>
+	srv.addHandler(api.PathTxLogRange, srv.txLogRange)
 
 	// register handlers of tx API
 	srv.registerTxAPIHandlers()

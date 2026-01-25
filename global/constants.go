@@ -9,6 +9,7 @@ import (
 const (
 	MultiStateDBName     = "proximadb"
 	TxStoreDBName        = "proximadb.txstore"
+	TxLogDBName          = "proximadb.txlog"
 	ConfigKeyTxStoreType = "txstore.type"
 
 	// MaxSyncPortionSlots max number of slots in the sync portion

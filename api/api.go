@@ -55,6 +55,11 @@ const (
 
 	// WebSocket API
 	PathDAGVertexStream = PrefixWebSocketV1 + "/dag_vertex_stream"
+
+	// Transaction Logger API
+	PathTxLogEnable = PrefixAPIV1 + "/txlog/enable"
+	PathTxLogGet    = PrefixAPIV1 + "/txlog/get"
+	PathTxLogRange  = PrefixAPIV1 + "/txlog/range"
 )
 
 type (
@@ -334,6 +339,26 @@ type (
 		// PrevUpgradeSlot is the slot of the previous upgrade
 		// For slot 0, this is MaxSlot (sentinel for base library)
 		PrevUpgradeSlot uint32 `json:"prev_upgrade_slot"`
+	}
+
+	// TxLogRecord is a single transaction log record for API responses
+	TxLogRecord struct {
+		TxIDShort      string `json:"txid_short"`       // hex-encoded TransactionIDShort (27 bytes)
+		ClockTimestamp int64  `json:"clock_timestamp"`  // Unix nanoseconds
+		Message        string `json:"message"`
+	}
+
+	// TxLogResponse is returned by txlog/get and txlog/range endpoints
+	TxLogResponse struct {
+		Error
+		Records []TxLogRecord `json:"records,omitempty"`
+	}
+
+	// TxLogEnableResponse is returned by txlog/enable endpoint
+	TxLogEnableResponse struct {
+		Error
+		Enabled bool   `json:"enabled"`
+		Level   string `json:"level"`
 	}
 )
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/lunfardo314/easyfl/slicepool"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
+	"github.com/lunfardo314/proxima/core/core_modules/txlogger"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -31,6 +32,7 @@ type (
 		snapshotBranchID          base.TransactionID
 		txStoreDB                 *badger_adaptor.DB
 		txBytesStore              global.TxBytesStore
+		txLogger                  *txlogger.TxLoggerModule
 		peers                     *peering.Peers
 		sequencer                 *sequencer.Sequencer
 		workflow                  *workflow.Workflow
@@ -139,6 +141,8 @@ func (p *ProximaNode) Start() {
 		p.initMultiStateLedger()
 		initStep = "initTxStore"
 		p.initTxStore()
+		initStep = "initTxLogger"
+		p.initTxLogger()
 		initStep = "initPeering"
 		p.initPeering()
 
@@ -388,4 +392,17 @@ func (p *ProximaNode) EvidenceBranchInflationBonus(ib uint64) {
 func (p *ProximaNode) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
 	// in tests it may be differently to avoid problems with reusing private keys
 	return true, true
+}
+
+// TxLogger returns the transaction logger module.
+func (p *ProximaNode) TxLogger() *txlogger.TxLoggerModule {
+	return p.txLogger
+}
+
+// LogTx logs a message for the given transaction(s) with the specified clock timestamp.
+// No-op if txLogger is nil or disabled.
+func (p *ProximaNode) LogTx(clockTs time.Time, msg string, txid ...base.TransactionID) {
+	if p.txLogger != nil {
+		p.txLogger.TxLog(clockTs, msg, txid...)
+	}
 }

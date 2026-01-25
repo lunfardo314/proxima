@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/api"
@@ -152,4 +153,40 @@ func (p *ProximaNode) OnTransaction(fun func(tx *transaction.Transaction) bool) 
 
 func (p *ProximaNode) OnTxDeleted(fun func(txid base.TransactionID) bool) {
 	p.workflow.OnTxDeleted(fun)
+}
+
+// TxLogEnable enables or disables the transaction logger with the specified level.
+func (p *ProximaNode) TxLogEnable(level global.TxLogLevel) {
+	if p.txLogger != nil {
+		p.txLogger.TxLogEnable(level)
+	}
+}
+
+// TxLogGet retrieves log records by transaction ID prefix.
+func (p *ProximaNode) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error) {
+	if p.txLogger == nil {
+		return nil, fmt.Errorf("transaction logger not initialized")
+	}
+	return p.txLogger.TxLogGet(txShortIDPrefix, max...)
+}
+
+// TxLogIterate iterates over log records starting from the given time.
+func (p *ProximaNode) TxLogIterate(begin time.Time, fun func(rec global.TxLogRecord)) error {
+	if p.txLogger == nil {
+		return fmt.Errorf("transaction logger not initialized")
+	}
+	return p.txLogger.TxLogIterate(begin, fun)
+}
+
+// TxLogIsEnabled returns true if the transaction logger is enabled.
+func (p *ProximaNode) TxLogIsEnabled() bool {
+	return p.txLogger != nil && p.txLogger.IsEnabled()
+}
+
+// TxLogLevel returns the current transaction log level.
+func (p *ProximaNode) TxLogLevel() global.TxLogLevel {
+	if p.txLogger == nil {
+		return global.TxLogLevelOff
+	}
+	return p.txLogger.Level()
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/lunfardo314/proxima/core/core_modules/txlogger"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -136,5 +137,51 @@ func (p *ProximaNode) logUpgradesList() {
 			status = "PENDING"
 		}
 		p.Log().Infof("       slot %8d: %s  %s", slot, hex.EncodeToString(hash[:]), status)
+	}
+}
+
+// initTxLogger initializes the transaction logger module.
+// The logger starts disabled and can be enabled via API or config.
+func (p *ProximaNode) initTxLogger() {
+	p.txLogger = txlogger.New(p)
+	p.Log().Infof("transaction logger initialized (disabled by default)")
+
+	// Auto-enable if configured
+	if viper.GetBool("txlogger.enable_on_start") {
+		levelStr := viper.GetString("txlogger.level")
+		level := parseTxLogLevel(levelStr)
+		if level != global.TxLogLevelOff {
+			p.txLogger.TxLogEnable(level)
+			p.Log().Infof("transaction logger auto-enabled with level: %s", levelStr)
+		}
+	}
+
+	// Handle graceful shutdown
+	go func() {
+		<-p.Ctx().Done()
+		if p.txLogger.IsEnabled() {
+			if err := p.txLogger.Close(); err != nil {
+				p.Log().Warnf("error closing transaction logger: %v", err)
+			}
+			p.Log().Infof("transaction logger closed")
+		}
+	}()
+}
+
+// parseTxLogLevel converts a string level name to TxLogLevel.
+func parseTxLogLevel(s string) global.TxLogLevel {
+	switch s {
+	case "off", "":
+		return global.TxLogLevelOff
+	case "branch":
+		return global.TxLogLevelBranchTransactionsOnly
+	case "sequencer":
+		return global.TxLogLevelSequencerTransactionsOnly
+	case "non_sequencer":
+		return global.TxLogLevelNonSequencerTransactionsOnly
+	case "all":
+		return global.TxLogLevelAllTransactionsOnly
+	default:
+		return global.TxLogLevelOff
 	}
 }

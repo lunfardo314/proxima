@@ -3,8 +3,8 @@
 ## Purpose
 Transaction logger is a core service in the Proxima node that allows tracking events related to individual transactions.
 It allows other components of the node:
-- to record log messages about specific transactions with transaction ID and timestamp
-- to retrieve records attributed to a specific transaction based on its ID or a prefix of it (prefix matching)
+- to record log messages about specific transactions with transaction ID and clock timestamp
+- to retrieve records attributed to a specific transaction based on its ID or a prefix of its hash part (TransactionIDShort) (prefix matching)
 - to retrieve events in a specified period of time
 
 The log records are stored in a key-value store. The store is cleaned automatically according to a specified TTL.
@@ -14,6 +14,8 @@ When logger is disabled, any write to it is a no-op and any read from it returns
 
 When enabling logger, user can specify which types of transactions should be logged, while others are ignored.
 
+The `TransactionIDShort` is 27-byte long suffix of the full transaction ID. It is based on the 26 bytes of the transaction hash (except byte 0 that contains number of produced outputs). `TransactionIDShort` uniquely identifies transaction because collisions are practically impossible. 
+
 ## Requirements
 
 ### Core Requirements
@@ -22,6 +24,8 @@ When enabling logger, user can specify which types of transactions should be log
 * The implementation must be based on Badger just like other key-value stores in the node
 * Disabled `txlogging` means closing the database
 * Enabled `txlogging` means opening database or creating a new one if it does not exist
+* Each message of the same transaction has unique clock timestamp in nanoseconds. Collisions of timestamps (very rare) just means earlier message with the same clock timestamp lost
+* we should be able to search transaction by prefix of its `TransactionIDShort`. That naturally includes ability to search by full transaction ID.
 
 ### Configuration (in `proxima.yaml`)
 ```yaml
@@ -32,18 +36,22 @@ txlogger:
 ```
 
 ### Key Structure
-The key-value store uses two types of keys for dual indexing (`||` denotes concatenation):
-* **By transaction**: `prefix_byte_txid` || `TransactionIDShort` (27 bytes) || `timestamp_nanosec` (8 bytes big-endian)
-* **By timestamp**: `prefix_byte_time` || `timestamp_nanosec` (8 bytes big-endian) || `TransactionIDShort` (27 bytes)
+The key-value store uses two partition prefixes and two types of keys for dual indexing (`||` denotes concatenation):
+* **By transaction** (partition prefix `0x01`):
+   * key = `0x01` || `TransactionIDShort` (27 bytes) || `timestamp_nanosec` (8 bytes) = 36 bytes total
+   * value = log message
+* **By timestamp** (partition prefix `0x02`):
+   * key = `0x02` || `timestamp_nanosec` (8 bytes big-endian) || `TransactionIDShort` (27 bytes) = 36 bytes total
+   * value = any value, for example `[]byte{0xff}`
 
 Where:
 - `TransactionIDShort` is 27 bytes: 1 byte max output index + 26 bytes TransactionHash
 - `timestamp_nanosec` is 8 bytes: Unix nanoseconds in big-endian format
-- Different prefix bytes distinguish the two key types
 
-This dual-key structure enables:
-- Efficient prefix-based lookup by transaction ID (or partial prefix)
-- Efficient time-range iteration for retrieving records within a time period
+This dual-key structure enables efficient:
+- prefix-based lookup by `TransactionIDShort` (or partial prefix)
+- lookup by full transaction ID
+- time-range iteration for retrieving records within a time period
 
 ### TTL Strategy
 Implement manual cleanup using `RepeatInBackground()` (do NOT use Badger's native TTL):
@@ -66,9 +74,9 @@ When using Badger, run periodic garbage collection via `RepeatInBackground()` (s
 - Task returns `false` when txlogger is disabled to stop the loop
 
 ### Unit Tests
+Minimal set of unit test tha cover key functionality
 Comprehensive unit tests covering:
 - Write and read operations
-- Prefix-based lookups with various prefix lengths
 - Time-range queries
 - TTL expiration
 - Enable/disable lifecycle
@@ -79,184 +87,236 @@ Comprehensive unit tests covering:
 * Logging must be queued using patterns from `core_modules` (queue-based async processing)
 * The txlogger service is initialized in the node package (similar to txstore)
 
+### Package Structure
+* `txlogger/` - store implementation (Badger DB wrapper) and reader functionality
+* `core/core_modules/txlogger/` - queued async writer module
+
 ### API Endpoints
+Define path constants in `api.go`
 * `POST /api/v1/txlog/enable?level=<level>` - enable txlogger with specified level
-* `POST /api/v1/txlog/disable` - disable txlogger
-* `GET /api/v1/txlog/get?txid_prefix=<hex_prefix>&max=<max>` - get records by transaction ID prefix
+   * `off` - disable txlogger
+   * `branch` - log branch transactions only
+   * `sequencer` - log all sequencer transactions
+   * `non_sequencer` - log non-sequencer transactions only
+   * `all` - log all transactions
+* `GET /api/v1/txlog/get?prefix=<hex_prefix>&max=<max>` - get records by transaction ID short prefix
 * `GET /api/v1/txlog/range?from=<unix_ns>&to=<unix_ns>&max=<max>` - get records in time range
-
----
-
-## Interface Changes Required
-
-Update `global/types.go` to use `TransactionIDShort` instead of `TransactionHash`:
-
-```go
-type TxLogReader interface {
-    // TxLogGetByPrefix returns log records for transactions matching the given prefix
-    // prefix can be 1-27 bytes of TransactionIDShort
-    TxLogGetByPrefix(prefix []byte, maxRecords int) ([]TxLogRecordWithID, error)
-    // TxLogIterate iterates over records in the time range [begin, end)
-    TxLogIterate(begin, end time.Time, maxRecords int, fun func(rec TxLogRecordWithID) bool) error
-}
-
-type TxLogRecordWithID struct {
-    TxIDShort base.TransactionIDShort
-    Timestamp time.Time
-    Message   string
-}
-```
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Core Infrastructure
+### Phase 1: Foundation - Constants and Store Package
 
-#### 1.1 Update Interfaces in `global/types.go`
-- Change `TxLogReader.TxLogGet(txHash TransactionHash)` to `TxLogGetByPrefix(prefix []byte, maxRecords int)`
-- Add `TxLogRecordWithID` struct with `TxIDShort`, `Timestamp`, `Message`
-- Update `TxLogIterate` signature to include `end time.Time` and `maxRecords`
-- Keep `TxLogWriter.TxLog(timestamp time.Time, msg string, txid ...base.TransactionID)` as is
+**1.1 Add constants to `global/constants.go`:**
+- Add `TxLogDBName = "proximadb.txlog"`
+- Add partition prefix constants (can be in txlogger package)
 
-#### 1.2 Create `txlogger` Package
-Location: `/home/lunfardo/go/src/github.com/lunfardo314/proxima/txlogger/`
+**1.2 Create `txlogger/` package with core store:**
 
 Files to create:
-- `txlogger.go` - main TxLogger struct, implements Store interface wrapping badger
-- `keys.go` - key construction helpers for dual-key indexing
-- `txlogger_test.go` - unit tests
+- `txlogger/store.go` - main store implementation
+- `txlogger/keys.go` - key encoding/decoding helpers
+- `txlogger/store_test.go` - unit tests
 
-#### 1.3 TxLogger Core Implementation
+`store.go` should implement:
 ```go
-type TxLogger struct {
-    global.NodeGlobal         // embedded for RepeatInBackground, Ctx, logging, etc.
-    db          global.Store  // abstracted store interface, not badger-specific
-    rawDB       *badger_adaptor.DB  // for GC only, nil after migration to RocksDB
-    ttl         time.Duration
-    level       atomic.Int32  // TxLogLevel
-    enabled     atomic.Bool
-    mu          sync.RWMutex  // protects db open/close
-    dbPath      string
+type TxLogStore struct {
+    db       *badger_adaptor.DB
+    mu       sync.RWMutex
+    level    global.TxLogLevel
+    enabled  bool
 }
+
+func New(dbPath string) (*TxLogStore, error)
+func (s *TxLogStore) Close() error
+func (s *TxLogStore) IsEnabled() bool
+func (s *TxLogStore) Level() global.TxLogLevel
+func (s *TxLogStore) SetLevel(lvl global.TxLogLevel)
+
+// Writer methods (called by queue consumer)
+func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txid base.TransactionID) error
+func (s *TxLogStore) WriteRecordBatch(clockTs time.Time, msg string, txids []base.TransactionID) error
+
+// Reader methods (implements global.TxLogReader)
+func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error)
+func (s *TxLogStore) TxLogIterate(begin time.Time, fun func(rec global.TxLogRecord)) error
+
+// Cleanup methods
+func (s *TxLogStore) DeleteExpired(ttl time.Duration) (int, error)
+func (s *TxLogStore) RunGC() error
 ```
 
-Key methods:
-- `New(glb global.NodeGlobal, cfg Config) *TxLogger`
-- `Enable(level TxLogLevel) error` - opens DB if closed, starts background tasks
-- `Disable() error` - closes DB (background tasks stop via return false)
-- `Write(timestamp time.Time, msg string, txid base.TransactionID) error`
-- `GetByPrefix(prefix []byte, maxRecords int) ([]TxLogRecordWithID, error)`
-- `Iterate(begin, end time.Time, maxRecords int, fn func(TxLogRecordWithID) bool) error`
-
-Background tasks using `RepeatInBackground()`:
-- `txlogger_cleanup` - runs every 10 minutes, deletes records older than TTL using time-indexed keys; returns `false` when disabled to stop
-- `txlogger_gc` - runs every 5 minutes, calls `rawDB.RunValueLogGC(0.5)` for Badger GC; returns `false` when disabled to stop
-
-This uses node's `RepeatInBackground()` infrastructure which provides:
-- Global context integration for graceful shutdown
-- Work process tracking (`MarkWorkProcessStarted/Stopped`)
-- Proper lifecycle management
-
-### Phase 2: Queue-Based Writer
-
-#### 2.1 Create `txlog_writer` Core Module
-Location: `/home/lunfardo/go/src/github.com/lunfardo314/proxima/core/core_modules/txlog_writer/`
-
-This module provides async queued writing following core_modules patterns:
+`keys.go` should implement:
 ```go
-type TxLogWriterModule struct {
-    *core_modules.CoreModule[input]
-    logger TxLoggerBackend  // interface to the actual txlogger
+const (
+    partitionByTx   = 0x01
+    partitionByTime = 0x02
+)
+
+func makeKeyByTx(txShortID base.TransactionIDShort, clockNs int64) []byte
+func makeKeyByTime(clockNs int64, txShortID base.TransactionIDShort) []byte
+func parseKeyByTx(key []byte) (base.TransactionIDShort, int64, error)
+func parseKeyByTime(key []byte) (int64, base.TransactionIDShort, error)
+```
+
+### Phase 2: Queued Writer Module
+
+**2.1 Create `core/core_modules/txlogger/` package:**
+
+Files to create:
+- `core/core_modules/txlogger/txlogger.go` - queue-based writer module
+
+The module should:
+- Embed `CoreModule[input]` pattern from other core_modules
+- Define input struct for queue messages
+- Implement `global.TxLogWriter` interface
+- Filter by transaction type based on current level
+- Handle enable/disable lifecycle
+
+```go
+type TxLoggerModule struct {
+    *core_module.CoreModule[input]
+    store *txlogger.TxLogStore
+    env   environment
 }
 
 type input struct {
-    timestamp time.Time
-    msg       string
-    txid      base.TransactionID
+    clockTs time.Time
+    msg     string
+    txids   []base.TransactionID
 }
+
+// Implements global.TxLogWriter
+func (m *TxLoggerModule) TxLog(timestamp time.Time, msg string, txid ...base.TransactionID)
+
+// Implements global.TxLogger
+func (m *TxLoggerModule) TxLogEnable(lvl global.TxLogLevel)
 ```
 
 ### Phase 3: Node Integration
 
-#### 3.1 Add to ProximaNode (`node/node.go`)
-- Add `txLogger *txlogger.TxLogger` field
-- Add `txLogWriter *txlog_writer.TxLogWriterModule` field
-- Add initialization in `Start()` sequence
-- Add graceful shutdown handling
+**3.1 Add txlogger initialization to `node/` package:**
 
-#### 3.2 Configuration Reading
-Read config from `proxima.yaml`:
+- Add field to `ProximaNode` struct
+- Create `initTxLogger()` method (similar to `initTxStore()`)
+- Start background loops for TTL cleanup and Badger GC
+- Handle graceful shutdown
+
+**3.2 Wire up to workflow:**
+
+- Pass `TxLogWriter` interface to workflow/core_modules that need logging
+- Ensure proper startup/shutdown ordering
+
+### Phase 4: API Endpoints
+
+**4.1 Add path constants to `api/api.go`:**
 ```go
-viper.GetBool("txlogger.enable")
-viper.GetBool("txlogger.enable_on_start")
-viper.GetInt("txlogger.ttl_hours")
+PathTxLogEnable = PrefixAPIV1 + "/txlog/enable"
+PathTxLogGet    = PrefixAPIV1 + "/txlog/get"
+PathTxLogRange  = PrefixAPIV1 + "/txlog/range"
 ```
 
-#### 3.3 Workflow Integration
-- Pass `TxLogWriter` interface to workflow environment
-- Components can call `TxLog()` method for transaction events
-
-### Phase 4: API Implementation
-
-#### 4.1 Add API Handlers (`api/server/txlogger_api.go`)
-- `enableTxLogger` - POST handler to enable with level
-- `disableTxLogger` - POST handler to disable
-- `getTxLogByPrefix` - GET handler for prefix-based lookup
-- `getTxLogRange` - GET handler for time-range query
-
-#### 4.2 Add API Path Constants (`api/api.go`)
+**4.2 Add response types to `api/api.go`:**
 ```go
-PathTxLogEnable  = PrefixAPIV1 + "/txlog/enable"
-PathTxLogDisable = PrefixAPIV1 + "/txlog/disable"
-PathTxLogGet     = PrefixAPIV1 + "/txlog/get"
-PathTxLogRange   = PrefixAPIV1 + "/txlog/range"
+type TxLogRecordJSON struct {
+    TxID           string `json:"txid"`
+    ClockTimestamp int64  `json:"clock_ns"`
+    Message        string `json:"message"`
+}
+
+type TxLogResponse struct {
+    Error
+    Records []TxLogRecordJSON `json:"records,omitempty"`
+}
 ```
+
+**4.3 Add handlers to `api/server/`:**
+- `handleTxLogEnable` - parse level string, call `TxLogEnable()`
+- `handleTxLogGet` - decode hex prefix, call `TxLogGet()`, return JSON
+- `handleTxLogRange` - parse time range, call `TxLogIterate()`, return JSON
 
 ### Phase 5: Testing
 
-#### 5.1 Unit Tests (`txlogger/txlogger_test.go`)
-- Test dual-key write and read
-- Test prefix matching with various prefix lengths (1, 4, 8, 27 bytes)
+**5.1 Unit tests in `txlogger/store_test.go`:**
+- Test write and read single record
+- Test write batch records
+- Test prefix search with various prefix lengths
 - Test time-range iteration
-- Test TTL expiration (may need shorter TTL for testing)
+- Test TTL cleanup deletes old records
 - Test enable/disable lifecycle
-- Test log level filtering (branch, sequencer, non-sequencer, all)
 
-#### 5.2 Integration Tests
+**5.2 Integration test (optional):**
+- Test full flow through queued writer
 - Test API endpoints
-- Test queued writing under load
-- Test concurrent enable/disable
+
+### Implementation Order
+
+1. Phase 1.1 - Constants (quick)
+2. Phase 1.2 - Store package with keys.go first, then store.go
+3. Phase 5.1 - Unit tests (develop alongside store)
+4. Phase 2 - Queued writer module
+5. Phase 3 - Node integration
+6. Phase 4 - API endpoints
+7. Final testing and refinement
 
 ---
 
-## File Structure Summary
+## Implementation Status: COMPLETE
 
+All phases implemented. Files created/modified:
+
+### Phase 1: Foundation
+- `global/constants.go` - Added `TxLogDBName = "proximadb.txlog"`
+- `txlogger/keys.go` - Key encoding/decoding with partition prefixes
+- `txlogger/store.go` - TxLogStore with dual-index storage
+- `txlogger/store_test.go` - 8 unit tests
+
+### Phase 2: Queued Writer
+- `core/core_modules/txlogger/txlogger.go` - Queue-based async writer module
+- `core/core_modules/txlogger/txlogger_test.go` - 3 unit tests
+
+### Phase 3: Node Integration
+- `node/node.go` - Added `txLogger` field, import, `LogTx()` method
+- `node/db.go` - Added `initTxLogger()`, `parseTxLogLevel()`
+
+### Phase 4: API Endpoints
+- `api/api.go` - Path constants and response types
+- `api/server/server.go` - Environment interface updates, handler registration
+- `api/server/txlog_handlers.go` - API handlers for enable/get/range
+- `node/apiserver.go` - TxLogger method implementations
+
+### Tests
+All 11 tests pass:
+- 8 store tests (keys, CRUD, prefix search, batch, time iteration, TTL, level filtering)
+- 3 module tests (basic ops, level filtering, batch logging)
+
+### Usage
+
+**Configuration (`proxima.yaml`):**
+```yaml
+txlogger:
+  enable_on_start: true  # auto-enable on node start
+  level: "all"           # off, branch, sequencer, non_sequencer, all
 ```
-global/types.go                           # Updated interfaces
-txlogger/
-    txlogger.go                           # Core TxLogger implementation
-    keys.go                               # Key construction helpers
-    txlogger_test.go                      # Unit tests
-core/core_modules/txlog_writer/
-    txlog_writer.go                       # Queue-based writer module
-node/
-    node.go                               # Add txLogger fields
-    txlogger.go                           # Init and lifecycle (new file)
-api/
-    api.go                                # Add path constants
-    server/
-        txlogger_api.go                   # API handlers (new file)
+
+**API:**
+```bash
+# Enable with level
+curl -X POST "http://localhost:8080/api/v1/txlog/enable?level=all"
+
+# Get records by txid prefix (hex)
+curl "http://localhost:8080/api/v1/txlog/get?prefix=aabbcc&max=50"
+
+# Get records in time range
+curl "http://localhost:8080/api/v1/txlog/range?from=1706000000000000000&max=100"
 ```
 
----
+**Programmatic (from node components):**
+```go
+// Log a transaction event
+node.LogTx(time.Now(), "transaction received", txid)
 
-## Open Questions (Resolved)
-
-1. **Key type**: Using `TransactionIDShort` (27 bytes) instead of `TransactionHash` (26 bytes) - includes max output index
-2. **Lookup**: Prefix matching supported - callers can provide 1-27 byte prefix
-3. **TTL**: Manual cleanup via background task using `RepeatInBackground()` - no Badger-specific TTL features for RocksDB portability
-4. **DB lifecycle**: Initialize at node startup, open/close based on enable state
-5. **Module location**: TxLogger as node service, TxLogWriter as core_module for queued writes
-6. **Background tasks**: Use node's `RepeatInBackground()` for cleanup and Badger GC - provides graceful shutdown and work process tracking
-7. **Abstraction**: Use `global.Store` interface for KV operations, isolate Badger-specific code (GC) for future RocksDB migration
+// Log batch event
+node.LogTx(time.Now(), "committed to ledger", txid1, txid2, txid3)
+```
