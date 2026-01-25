@@ -132,7 +132,7 @@ func (p *ProximaNode) Start() {
 		initStep = "startMetrics"
 		p.startMetrics()
 		initStep = "checkAndRestoreOnStartup"
-		if restored, err := snapshot_restore.CheckAndRestoreOnStartup(p.Global); err != nil {
+		if restored, err := snapshot_restore.CheckAndRestoreOnStartup(p); err != nil {
 			return fmt.Errorf("state cleanup restore failed: %w", err)
 		} else if restored {
 			p.Log().Infof("state restored from snapshot, continuing with normal startup")

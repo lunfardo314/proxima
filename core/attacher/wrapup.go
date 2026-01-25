@@ -3,6 +3,7 @@ package attacher
 import (
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -38,7 +39,7 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationStats) {
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
-	muts, stats := a.pastCone.Mutations(a.vid.Slot())
+	muts, stats, committedTxs := a.pastCone.Mutations(a.vid.Slot())
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 	upd := multistate.MustNewUpdatable(a.StateStore(), a.BaselineSugaredStateReader().Root())
@@ -82,5 +83,8 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 	}
 	a.AssertNoError(err)
 	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(*a.finals.CoverageDelta, *a.finals.Supply, global.FractionHealthyBranch))
+
+	branchID := a.vid.ID()
+	a.LogTx(time.Now(), fmt.Sprintf("committed in branch %s", branchID.String()), committedTxs...)
 	return upd.Root(), stats
 }

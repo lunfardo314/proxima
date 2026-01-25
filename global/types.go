@@ -105,6 +105,8 @@ type (
 		TxPullParameters() (repeatPeriod time.Duration, maxAttempts int)
 		// DeadlockCatchingDisabled config parameter to disdable deadlock catching
 		DeadlockCatchingDisabled() bool
+		// LogTx log transaction
+		LogTx(clockTs time.Time, msg string, txid ...base.TransactionID)
 	}
 
 	// StartStop interface of the global objects which coordinates graceful shutdown

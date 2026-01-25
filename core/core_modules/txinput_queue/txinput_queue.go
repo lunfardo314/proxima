@@ -20,10 +20,6 @@ type (
 	environment interface {
 		global.NodeGlobal
 		CheckTxSender(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool)
-
-		//TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
-		//TxInFromAPI(tx *transaction.Transaction) error
-		//GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID)
 	}
 
 	Input struct {
@@ -95,11 +91,6 @@ func (q *TxInputQueue) consume(inp Input) {
 	q.inputTxCounter.Inc()
 	q.txBytesSizeReceived.Set(float64(len(inp.TxBytes)))
 
-	//{ // debug
-	//	trackTxBytes.RegisterPointer(&inp.TxBytes[0], len(inp.TxBytes))
-	//	trackTxMetadata.RegisterPointer(inp.TxMetaData)
-	//}
-
 	switch inp.Cmd {
 	case CmdFromPeer:
 		q.fromPeer(&inp)
@@ -140,6 +131,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		metaData.SourceTypeNonPersistent = txmetadata.SourceTypePulled
 	}
 
+	q.LogTx(time.Now(), "IN from peer")
 	// new or pulled transaction -> pass to next step
 	q.CheckTxSender(tx, metaData, inp.FromPeer, wanted)
 }
@@ -160,6 +152,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		q.filterHitCounter.Inc()
 		return
 	}
+	q.LogTx(time.Now(), "IN from API")
 	q.CheckTxSender(tx, nil, "", false)
 }
 

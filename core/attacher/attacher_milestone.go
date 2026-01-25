@@ -54,6 +54,7 @@ func runMilestoneAttacher(
 			// solidification errors with big attachment depth are too verbose
 			env.Log().Warnf(a.logErrorStatusString(err))
 		}
+		a.LogTx(time.Now(), err.Error(), a.vid.ID())
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
@@ -349,11 +350,15 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	a.Assertf(!glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid), "%s: !glbFlags.FlagsUp(vertex.FlagConstraintsValid) in %s", a.name, a.vid.IDShortString)
 
 	if err := a.validateVertex(v); err != nil {
+		a.LogTx(time.Now(), fmt.Sprintf("validation failed: %v", err), a.vid.ID())
+
 		a.setError(err)
 		v.UnReferenceDependencies()
 		a.Tracef(TraceTagValidateSequencer, "constraint validation failed in %s: '%v'", a.vid.IDShortString, err)
 		return false, false
 	}
+	a.LogTx(time.Now(), "validation OK", a.vid.ID())
+
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.IDShortString)
 

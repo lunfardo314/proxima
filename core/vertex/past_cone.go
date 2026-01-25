@@ -568,8 +568,9 @@ type MutationStats struct {
 	NumCreated      int
 }
 
-func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats MutationStats) {
+func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats MutationStats, txs []base.TransactionID) {
 	muts = multistate.NewMutations()
+	txs = make([]base.TransactionID, 0)
 
 	// need to handle discontinued chains
 	deletedChainIDs := set.New[base.ChainID]()
@@ -601,6 +602,7 @@ func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats Mu
 			// xTODO no need to store number of outputs: now all is contained in the id
 			muts.InsertAddTxMutation(vid.id, slot, byte(vid.id.NumProducedOutputs()-1))
 			stats.NumTransactions++
+			txs = append(txs, vid.id)
 
 			// ADD OUTPUT mutations only for not consumed outputs
 			for _, idx := range pc.producedIndices(vid) {

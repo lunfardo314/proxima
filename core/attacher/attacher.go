@@ -259,11 +259,14 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 
 		// constraints are not validated yet
 		if err := a.validateVertex(v); err != nil {
+			a.LogTx(time.Now(), fmt.Sprintf("validation failed: '%v'", err), v.ID())
+
 			v.UnReferenceDependencies()
 			a.setError(err)
 			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
 		}
+		a.LogTx(time.Now(), "validation OK", v.ID())
 		// mark transaction validated
 		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 
