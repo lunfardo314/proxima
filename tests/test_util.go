@@ -122,6 +122,25 @@ func (p *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq 
 	return false, true
 }
 
+// TxLog methods for api/server environment interface
+func (p *workflowDummyEnvironment) TxLogEnable(_ global.TxLogLevel) {}
+
+func (p *workflowDummyEnvironment) TxLogGet(_ []byte, _ ...int) ([]global.TxLogRecord, error) {
+	return nil, nil
+}
+
+func (p *workflowDummyEnvironment) TxLogIterate(_ time.Time, _ func(rec global.TxLogRecord)) error {
+	return nil
+}
+
+func (p *workflowDummyEnvironment) TxLogIsEnabled() bool {
+	return false
+}
+
+func (p *workflowDummyEnvironment) TxLogLevel() global.TxLogLevel {
+	return global.TxLogLevelOff
+}
+
 func newWorkflowDummyEnvironment(stateStore global.Store, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	ret := &workflowDummyEnvironment{
 		Global:       global.NewDefault(),
