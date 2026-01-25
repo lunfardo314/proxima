@@ -21,11 +21,11 @@ func init() {
 
 type workflowDummyEnvironment struct {
 	*global.Global
-	stateStore   multistate.StateStore
+	stateStore   global.Store
 	txBytesStore global.TxBytesStore
 }
 
-func (d *workflowDummyEnvironment) StateStore() multistate.StateStore {
+func (d *workflowDummyEnvironment) StateStore() global.Store {
 	return d.stateStore
 }
 

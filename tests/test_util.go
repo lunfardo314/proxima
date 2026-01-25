@@ -35,12 +35,12 @@ import (
 
 type workflowDummyEnvironment struct {
 	*global.Global
-	stateStore   multistate.StateStore
+	stateStore   global.Store
 	txBytesStore global.TxBytesStore
 	root         common.VCommitment
 }
 
-func (w *workflowDummyEnvironment) StateStore() multistate.StateStore {
+func (w *workflowDummyEnvironment) StateStore() global.Store {
 	return w.stateStore
 }
 
@@ -122,7 +122,7 @@ func (p *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq 
 	return false, true
 }
 
-func newWorkflowDummyEnvironment(stateStore multistate.StateStore, txStore global.TxBytesStore) *workflowDummyEnvironment {
+func newWorkflowDummyEnvironment(stateStore global.Store, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	ret := &workflowDummyEnvironment{
 		Global:       global.NewDefault(),
 		stateStore:   stateStore,
