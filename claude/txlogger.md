@@ -331,3 +331,29 @@ node.LogTx(time.Now(), "transaction received", txid)
 // Log batch event
 node.LogTx(time.Now(), "committed to ledger", txid1, txid2, txid3)
 ```
+
+### Phase 5: CLI Commands
+- `proxi/node_cmd/txlog.go` - CLI commands for txlog management
+- `proxi/node_cmd/node_cmd.go` - Registered txlog command
+- `api/client/client.go` - Added TxLogEnable, TxLogGet, TxLogRange methods
+
+**CLI Usage:**
+```bash
+# Enable transaction logging (default level: non_sequencer)
+proxi node txlog enable
+
+# Enable with specific level
+proxi node txlog enable --level all
+
+# Disable transaction logging
+proxi node txlog disable
+
+# Get logs by transaction ID prefix (hex)
+proxi node txlog get aabbcc
+
+# View recent logs (last 1 minute by default)
+proxi node txlog tail
+
+# View logs from last 5 minutes
+proxi node txlog tail --back 5
+```

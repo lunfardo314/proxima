@@ -436,3 +436,9 @@ func (l *Global) TxPullParameters() (repeatPeriod time.Duration, maxAttempts int
 func (l *Global) DeadlockCatchingDisabled() bool {
 	return l.disableDeadlockCatching
 }
+
+// LogTx is a no-op implementation of the Logging interface.
+// The actual transaction logging is handled at the node level via TxLoggerModule.
+func (l *Global) LogTx(_ time.Time, _ string, _ ...base.TransactionID) {
+	// no-op: actual logging happens at node level
+}

@@ -62,6 +62,7 @@ func (m *mockEnvironment) CounterLines(prefix ...string) *lines.Lines           
 func (m *mockEnvironment) AttachmentFinished(started ...time.Time)                {}
 func (m *mockEnvironment) TxPullParameters() (time.Duration, int)                 { return time.Second, 3 }
 func (m *mockEnvironment) DeadlockCatchingDisabled() bool                         { return true }
+func (m *mockEnvironment) LogTx(_ time.Time, _ string, _ ...base.TransactionID)   {}
 func (m *mockEnvironment) MetricsRegistry() *prometheus.Registry                  { return m.registry }
 
 func (m *mockEnvironment) MarkWorkProcessStarted(name string) {

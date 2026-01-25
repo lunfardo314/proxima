@@ -1012,6 +1012,80 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	return txBytes, err
 }
 
+// TxLogEnable enables or disables the transaction logger with the specified level.
+// Level values: "off", "branch", "sequencer", "non_sequencer", "all"
+func (c *APIClient) TxLogEnable(level string) (*api.TxLogEnableResponse, error) {
+	url := fmt.Sprintf("%s%s?level=%s", c.prefix, api.PathTxLogEnable, level)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.TxLogEnableResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("server error: %s", res.Error.Error)
+	}
+	return &res, nil
+}
+
+// TxLogGet retrieves log records by transaction ID prefix (hex-encoded).
+func (c *APIClient) TxLogGet(prefixHex string, max int) (*api.TxLogResponse, error) {
+	path := fmt.Sprintf("%s?prefix=%s", api.PathTxLogGet, prefixHex)
+	if max > 0 {
+		path += fmt.Sprintf("&max=%d", max)
+	}
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.TxLogResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("server error: %s", res.Error.Error)
+	}
+	return &res, nil
+}
+
+// TxLogRange retrieves log records within a time range (Unix nanoseconds).
+func (c *APIClient) TxLogRange(fromNs, toNs int64, max int) (*api.TxLogResponse, error) {
+	path := fmt.Sprintf("%s?from=%d", api.PathTxLogRange, fromNs)
+	if toNs > 0 {
+		path += fmt.Sprintf("&to=%d", toNs)
+	}
+	if max > 0 {
+		path += fmt.Sprintf("&max=%d", max)
+	}
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.TxLogResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("server error: %s", res.Error.Error)
+	}
+	return &res, nil
+}
+
 func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed25519.PrivateKey, ts base.LedgerTime) ([]byte, base.TransactionID, string, error) {
 	account := ledger.AddressED25519FromPrivateKey(privateKey)
 	walletOutputs, _, amountInWallet, err := c.GetTransferableOutputs(account, 255)
