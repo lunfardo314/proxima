@@ -102,6 +102,17 @@ Define path constants in `api.go`
 * `GET /api/v1/txlog/get?prefix=<hex_prefix>&max=<max>` - get records by transaction ID short prefix
 * `GET /api/v1/txlog/range?from=<unix_ns>&to=<unix_ns>&max=<max>` - get records in time range
 
+### CLI Commands (proxi)
+Implement in `proxi/node_cmd/`:
+
+* `proxi node txlog get <prefix>` - list log messages for transactions matching the short ID prefix, sorted ascending by log timestamp
+* `proxi node txlog disable` - disable transaction logging (calls enable with level=off)
+* `proxi node txlog enable [--level <level>]` - enable transaction logging
+   * `--level`: off, branch, sequencer, non_sequencer, all
+   * Default level: `non_sequencer`
+* `proxi node txlog tail [--back <minutes>]` - list log of all transactions from recent time
+   * `--back`: number of minutes to look back (default: 1)
+
 ---
 
 ## Implementation Plan
