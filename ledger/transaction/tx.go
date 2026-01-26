@@ -35,7 +35,6 @@ type (
 
 // MainTxValidationOptions is all except Base, ParseSender, the time bounds and input context validation. Fastest first
 var MainTxValidationOptions = []TxValidationOption{
-	//ParseTotalProducedAmount,
 	ParseSequencerData,
 	CheckExplicitBaseline,
 	CheckSizeOfInputCommitment,
@@ -939,7 +938,7 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 	ret.InsertAddTxMutation(tx.ID(), tx.Slot(), byte(tx.NumProducedOutputs()-1))
 
 	// TODO not correct. ChainIDs of discontinued chains must be deleted. We leave it as is because tx.StateMutations is not used
-	//  in the UTXO tangle but mostly in tests or at the DB inception
+	//  in the UTXO tangle but mostly in tests
 	return ret
 }
 
