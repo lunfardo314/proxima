@@ -2,9 +2,12 @@ package glb
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
+	"sort"
 	"sync/atomic"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -123,6 +126,8 @@ func NoWait() bool {
 }
 
 func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...time.Duration) bool {
+	defer PrintTxLogForTxID(txid)
+
 	inclusionDepth := GetTargetInclusionDepth()
 	Infof("tracking inclusion of the transaction %s.\ntarget inclusion depth: %d", txid.String(), inclusionDepth)
 	lrbids := set.New[base.TransactionID]()
@@ -155,6 +160,32 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...ti
 		if len(timeout) > 0 && time.Since(start) > timeout[0] {
 			return false
 		}
+	}
+}
+
+const maxLogLines = 200
+
+func PrintTxLogForTxID(txid base.TransactionID) {
+	prefix := txid.ShortID()
+	resp, err := GetClient().TxLogGet(hex.EncodeToString(prefix[:]), maxLogLines)
+	AssertNoError(err)
+	Infof("\n---- txlog of %s (%d records) ----\n ", txid.String(), len(resp.Records))
+	SortAndPrintTxLog(resp.Records)
+}
+
+func SortAndPrintTxLog(recs []api.TxLogRecord) {
+	sort.Slice(recs, func(i, j int) bool {
+		return recs[i].ClockTimestamp < recs[j].ClockTimestamp
+	})
+
+	const txidFieldWidth = 30
+
+	for _, rec := range recs {
+		ts := time.Unix(0, rec.ClockTimestamp).UTC()
+		txid, err := base.TransactionIDFromHexString(rec.TxID)
+		AssertNoError(err)
+
+		Infof("  %s %-*s %s", ts.Format("15:04:05.000"), txidFieldWidth, txid.StringShort(), rec.Message)
 	}
 }
 

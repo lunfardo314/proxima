@@ -1,6 +1,7 @@
 package txsenders
 
 import (
+	"fmt"
 	"maps"
 	"time"
 
@@ -137,6 +138,9 @@ func (q *TxSenders) consume(inp input) {
 	// new tx
 	if err := transaction.ParseSender(inp.Tx); err != nil {
 		// ignore transaction with invalid signature
+		txLogMsg := fmt.Sprintf("IGNORED: signature is invalid")
+		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
+
 		q.Log().Warnf("tx %s has invalid signture -> IGNORED", inp.Tx.IDShortString())
 		return
 	}
@@ -151,6 +155,9 @@ func (q *TxSenders) consume(inp input) {
 	if seen == nil {
 		if !q.isAccountKnownInLRB(acc) {
 			// sender account not known -> ignore tx
+			txLogMsg := fmt.Sprintf("IGNORED: tx sender %s is not known in LRB", inp.Tx.SenderAddress().String())
+			q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
+
 			q.Log().Warnf("tx %s has a sender %s unknown in the LRB -> IGNORED", inp.Tx.IDShortString(), inp.Tx.SenderAddress().String())
 			return
 		}
@@ -168,6 +175,9 @@ func (q *TxSenders) consume(inp input) {
 	}
 	q.txSenders[txSenderID(acc)] = seen
 	if !pass {
+		txLogMsg := fmt.Sprintf("IGNORED: timestamp is too close to another tx from the same sender %s", inp.Tx.SenderAddress().String())
+		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
+
 		q.Log().Warnf("timestamp of tx %s from sender %s is too close to another tx from the same sender-> IGNORED", inp.Tx.IDShortString(), inp.Tx.SenderAddress().String())
 		return
 	}

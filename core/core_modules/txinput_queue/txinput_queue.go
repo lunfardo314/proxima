@@ -133,9 +133,9 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		metaData.SourceTypeNonPersistent = txmetadata.SourceTypePulled
 	}
 	if inp.FromPeer == q.SelfPeerID() {
-		q.LogTx(time.Now(), "IN from sequencer", inp.PrefixTxID)
+		q.LogTx(time.Now(), "received from sequencer", inp.PrefixTxID)
 	} else {
-		q.LogTx(time.Now(), fmt.Sprintf("IN from peer %s", inp.FromPeer), inp.PrefixTxID)
+		q.LogTx(time.Now(), fmt.Sprintf("received from peer %s", inp.FromPeer), inp.PrefixTxID)
 	}
 	// new or pulled transaction -> pass to next step
 	q.CheckTxSender(tx, metaData, inp.FromPeer, wanted)
@@ -151,13 +151,14 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 		q.Log().Warn("TxInputQueue from '%s': %v", from.String(), err)
 		return
 	}
-	pass, _ := q.inGate.checkPass(tx.ID())
+	txid := tx.ID()
+	pass, _ := q.inGate.checkPass(txid)
 	if !pass {
 		// repeating transaction
 		q.filterHitCounter.Inc()
 		return
 	}
-	q.LogTx(time.Now(), "IN from API")
+	q.LogTx(time.Now(), "received from API", txid)
 	q.CheckTxSender(tx, nil, "", false)
 }
 

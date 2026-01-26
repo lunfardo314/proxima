@@ -66,7 +66,10 @@ func runTxLogGetCmd(cmd *cobra.Command, args []string) {
 	for _, rec := range resp.Records {
 		// Timestamps are displayed in UTC
 		ts := time.Unix(0, rec.ClockTimestamp).UTC()
-		glb.Infof("  %s %-*s %s", ts.Format("2006-01-02 15:04:05.000"), txidFieldWidth, txidShortStr(rec.TxID), rec.Message)
+		txid, err := base.TransactionIDFromHexString(rec.TxID)
+		glb.AssertNoError(err)
+
+		glb.Infof("  %s %-*s %s", ts.Format("2006-01-02 15:04:05.000"), txidFieldWidth, txid.StringShort(), rec.Message)
 	}
 }
 
@@ -159,16 +162,7 @@ func runTxLogTailCmd(cmd *cobra.Command, _ []string) {
 		glb.Infof("no records found in the last %d minute(s)", backMinutes)
 		return
 	}
-
-	// Sort records by timestamp ascending
-	sortRecordsAscending(resp.Records)
-
-	glb.Infof("found %d record(s) in the last %d minute(s):", len(resp.Records), backMinutes)
-	for _, rec := range resp.Records {
-		// Timestamps are displayed in UTC
-		ts := time.Unix(0, rec.ClockTimestamp).UTC()
-		glb.Infof("  %s %-*s %s", ts.Format("15:04:05.000"), txidFieldWidth, txidShortStr(rec.TxID), rec.Message)
-	}
+	glb.SortAndPrintTxLog(resp.Records)
 }
 
 func initTxLogStatusCmd() *cobra.Command {
@@ -189,15 +183,6 @@ func runTxLogStatusCmd(_ *cobra.Command, _ []string) {
 	} else {
 		glb.Infof("transaction logger: disabled")
 	}
-}
-
-// txidShortStr parses a hex-encoded full TransactionID and returns its StringShort representation.
-func txidShortStr(txidHex string) string {
-	txid, err := base.TransactionIDFromHexString(txidHex)
-	if err != nil {
-		return txidHex
-	}
-	return txid.StringShort()
 }
 
 // sortRecordsAscending sorts records by ClockTimestamp in ascending order
