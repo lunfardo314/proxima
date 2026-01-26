@@ -61,6 +61,7 @@ type (
 		Message        string
 	}
 	TxLogReader interface {
+		// TxLogGet returns records sorted by timestamp in ascending order.
 		TxLogGet(txShortIDPrefix []byte, max ...int) ([]TxLogRecord, error)
 		TxLogIterate(begin time.Time, fun func(rec TxLogRecord)) error
 	}

@@ -3,7 +3,7 @@
 package txlogger
 
 import (
-	"bytes"
+	"sort"
 	"sync"
 	"time"
 
@@ -136,6 +136,7 @@ func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txids ...base.Tr
 }
 
 // TxLogGet retrieves log records for transactions matching the given prefix.
+// Returns records sorted by timestamp in ascending order.
 // Implements global.TxLogReader interface.
 func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error) {
 	s.mu.RLock()
@@ -156,10 +157,6 @@ func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLo
 	var records []global.TxLogRecord
 
 	db.Iterator(prefix).Iterate(func(k, v []byte) bool {
-		if len(records) >= maxRecords {
-			return false
-		}
-
 		txShortID, clockNs, err := parseKeyByTx(k)
 		if err != nil {
 			return true // skip invalid keys
@@ -178,6 +175,16 @@ func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLo
 		})
 		return true
 	})
+
+	// Sort by timestamp ascending
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].ClockTimestamp.Before(records[j].ClockTimestamp)
+	})
+
+	// Apply max limit after sorting
+	if len(records) > maxRecords {
+		records = records[:maxRecords]
+	}
 
 	return records, nil
 }
@@ -306,11 +313,7 @@ func copyBytes(b []byte) []byte {
 }
 
 // ErrLoggerDisabled is returned when trying to read from a disabled logger.
-var ErrLoggerDisabled = bytes.ErrTooLarge // placeholder, should define proper error
-
-func init() {
-	ErrLoggerDisabled = newError("txlogger is disabled")
-}
+var ErrLoggerDisabled = newError("txlogger is disabled") // placeholder, should define proper error
 
 type txLogError struct {
 	msg string

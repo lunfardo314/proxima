@@ -168,6 +168,7 @@ func (m *TxLoggerModule) TxLogEnable(lvl global.TxLogLevel) {
 
 // TxLogGet implements global.TxLogReader interface.
 // Retrieves log records by transaction ID prefix.
+// Returns records sorted by timestamp in ascending order.
 func (m *TxLoggerModule) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error) {
 	return m.store.TxLogGet(txShortIDPrefix, max...)
 }

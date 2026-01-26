@@ -163,6 +163,7 @@ func (p *ProximaNode) TxLogEnable(level global.TxLogLevel) {
 }
 
 // TxLogGet retrieves log records by transaction ID prefix.
+// Returns records sorted by timestamp in ascending order.
 func (p *ProximaNode) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error) {
 	if p.txLogger == nil {
 		return nil, fmt.Errorf("transaction logger not initialized")
