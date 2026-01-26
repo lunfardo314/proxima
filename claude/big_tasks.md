@@ -2,6 +2,7 @@
 
 - ~~refactor ledger commitment to covenants/constraints library. Revisit topic of gradual ledger upgrades with backward compatibility~~
 - ~~revisit snapshots and implement periodic state auto-purge~~ ✅ DONE (snapshot_restore module)
+- ~~transaction level logging (TxLog)~~
 - revisit upper level of transaction structure
 - revisit delegation constants, optimized serialization of `amounts`
 - compulsory delegation
@@ -14,7 +15,6 @@
 - docs, docs, consistency etc ...
 
 ## Less priority
-- attachment depth specified in the sequencer transaction. The sequencer may have motives to extend depth beyond default, for example when paid higher tag-along fee
 - implement txstore cleanup
 - implement IPFS as long-term transaction store
 - `amounts` covenant re-implement in EasyFL

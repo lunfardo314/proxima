@@ -17,24 +17,26 @@ type InitParameters struct {
 	TickDuration                  time.Duration
 	TransactionPaceTicks          int
 	TransactionPaceSequencerTicks int
-	AttachmentCostBudget  int
+	AttachmentCostBudget          int
+	TxIDStateTTLSlots             int
 }
 
 // default ledger init parameters
 
 const (
-	DefaultTickDuration = 80 * time.Millisecond
+	defaultTickDuration = 80 * time.Millisecond
 
 	DustPerProxi         = 1_000_000
 	PRXI                 = DustPerProxi
-	InitialSupplyProxi   = 1_000_000_000
-	DefaultInitialSupply = InitialSupplyProxi * PRXI
+	initialSupplyProxi   = 1_000_000_000
+	DefaultInitialSupply = initialSupplyProxi * PRXI
 
-	DefaultTransactionPace          = 12
-	DefaultTransactionPaceSequencer = 2
+	defaultTransactionPace          = 12
+	defaultTransactionPaceSequencer = 2
 	defaultDescription              = "Proxima ledger definitions"
 
-	defaultAttachmentCostBudget = 550
+	defaultAttachmentCostBudget = 550  // > than max transaction with 256 inputs and 256 outputs
+	defaultTxIDStateTTLSlots    = 8640 // 24 hours with 10 sec slots
 )
 
 func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description ...string) InitParameters {
@@ -45,10 +47,11 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 	return InitParameters{
 		GenesisTimeUnix:               genesisTimeUnix,
 		GenesisControllerPublicKey:    privateKey.Public().(ed25519.PublicKey),
-		TickDuration:                  DefaultTickDuration,
-		TransactionPaceTicks:          DefaultTransactionPace,
-		TransactionPaceSequencerTicks: DefaultTransactionPaceSequencer,
-		AttachmentCostBudget:  defaultAttachmentCostBudget,
+		TickDuration:                  defaultTickDuration,
+		TransactionPaceTicks:          defaultTransactionPace,
+		TransactionPaceSequencerTicks: defaultTransactionPaceSequencer,
+		AttachmentCostBudget:          defaultAttachmentCostBudget,
+		TxIDStateTTLSlots:             defaultTxIDStateTTLSlots,
 		Description:                   dscr,
 	}
 }
@@ -63,9 +66,12 @@ func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
 		par.TransactionPaceTicks,
 		par.TransactionPaceSequencerTicks,
 		par.AttachmentCostBudget,
+		par.TxIDStateTTLSlots,
 		hex.EncodeToString([]byte(par.Description)),
 	))
 }
+
+// TODO better use template?
 
 const __definitionsLedgerConstantsYAMLUpgrade0 = `
 # definitions of main ledger constants
@@ -136,7 +142,7 @@ functions:
    -
       sym: constTxIDStateTTLSlots
       description: number of slots to keep committed transaction IDs in the state before GC
-      source: u64/8640
+      source: u64/%d
    -
       sym: constDescription
       description: arbitrary binary data

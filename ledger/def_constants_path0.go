@@ -19,7 +19,7 @@ The tree-like data structure is a tuples.Array, treated as a tree.
 Constants which define validation context data tree branches. Structure of the data tree:
 
 (root)
-  -- TransactionBranch = 0x00
+  -- TransactionTuple = 0x00
        -- TxInputIDs = 0x00     (path 0x0000)  -- contains up to 256 inputs, the IDs of consumed outputs
        -- TxUnlockData = 0x01 (path 0x0001)  -- contains unlock params for each input
        -- TxOutputs     = 0x02       (path 0x0002)  -- contains up to 256 produced outputs
@@ -30,7 +30,7 @@ Constants which define validation context data tree branches. Structure of the d
        -- TxEndorsements = 0x07       (path 0x0007)  -- list of transaction IDs of endorsed transaction
        -- TxExplicitBaseline = 0x08       (path 0x0008)  -- list of transaction IDs of endorsed transaction
        -- TxOtherData = 0x09     (path 0x0009)  -- list of local libraries in its binary form
-  -- ConsumedBranch = 0x01
+  -- ConsumedTuple = 0x01
        -- ConsumedOutputsBranch = 0x00 (path 0x0100) -- all consumed outputs, up to 256
 
 All consumed outputs ar contained in the tree element under path 0x0100
@@ -40,13 +40,15 @@ This way:
 	- the corresponding unlock-parameters is located at path 0x0000ii (replacing 2 byte path prefix with 0x0000)
 */
 
-// Top level branches
+// Top level tuple indices
 const (
-	TransactionBranch = byte(iota)
-	ConsumedBranch
+	// TransactionTuple is nested tuples representing the transaction
+	TransactionTuple = byte(iota)
+	// ConsumedTuple is sub-tuple of consumed UTXOs
+	ConsumedTuple
 )
 
-// Transaction tree
+// Transaction subtree
 const (
 	TxInputIDs = byte(iota)
 	TxUnlockData
@@ -64,17 +66,17 @@ const (
 const ConsumedOutputsBranch = byte(0)
 
 var (
-	PathToConsumedOutputs               = tuples.Path(ConsumedBranch, ConsumedOutputsBranch)
-	PathToProducedOutputs               = tuples.Path(TransactionBranch, TxOutputs)
-	PathToUnlockParams                  = tuples.Path(TransactionBranch, TxUnlockData)
-	PathToInputIDs                      = tuples.Path(TransactionBranch, TxInputIDs)
-	PathToEndorsements                  = tuples.Path(TransactionBranch, TxEndorsements)
-	PathToSequencerAndStemOutputIndices = tuples.Path(TransactionBranch, TxSequencerDataBytes)
-	PathToTimestamp                     = tuples.Path(TransactionBranch, TxTimestamp)
-	PathToSignature                     = tuples.Path(TransactionBranch, TxSignature)
-	PathToInputCommitment               = tuples.Path(TransactionBranch, TxInputCommitment)
-	PathToExplicitBaseline              = tuples.Path(TransactionBranch, TxExplicitBaseline)
-	PathToOtherData                     = tuples.Path(TransactionBranch, TxOtherData)
+	PathToConsumedOutputs               = tuples.Path(ConsumedTuple, ConsumedOutputsBranch)
+	PathToProducedOutputs               = tuples.Path(TransactionTuple, TxOutputs)
+	PathToUnlockParams                  = tuples.Path(TransactionTuple, TxUnlockData)
+	PathToInputIDs                      = tuples.Path(TransactionTuple, TxInputIDs)
+	PathToEndorsements                  = tuples.Path(TransactionTuple, TxEndorsements)
+	PathToSequencerAndStemOutputIndices = tuples.Path(TransactionTuple, TxSequencerDataBytes)
+	PathToTimestamp                     = tuples.Path(TransactionTuple, TxTimestamp)
+	PathToSignature                     = tuples.Path(TransactionTuple, TxSignature)
+	PathToInputCommitment               = tuples.Path(TransactionTuple, TxInputCommitment)
+	PathToExplicitBaseline              = tuples.Path(TransactionTuple, TxExplicitBaseline)
+	PathToOtherData                     = tuples.Path(TransactionTuple, TxOtherData)
 )
 
 // Mandatory output block indices
@@ -86,7 +88,7 @@ const (
 
 func pathConstantsUpgrade0() string {
 	return fmt.Sprintf(_pathConstantsYAML,
-		TransactionBranch,
+		TransactionTuple,
 		PathToConsumedOutputs.Hex(),
 		PathToProducedOutputs.Hex(),
 		PathToUnlockParams.Hex(),

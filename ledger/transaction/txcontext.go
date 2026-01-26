@@ -132,7 +132,7 @@ func (ctx *TxContext) ForEachConsumedOutput(fun func(idx byte, oid *base.OutputI
 }
 
 func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
-	data, err := ctx.ctxTree.BytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch, idx))
+	data, err := ctx.ctxTree.BytesAtPath(Path(ledger.ConsumedTuple, ledger.ConsumedOutputsBranch, idx))
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
 }
 
 func (ctx *TxContext) ProducedOutputData(idx byte) []byte {
-	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxOutputs, idx))
+	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionTuple, ledger.TxOutputs, idx))
 }
 
 func (ctx *TxContext) InputID(idx byte) (base.OutputID, error) {
@@ -158,7 +158,7 @@ func (ctx *TxContext) MustInputID(idx byte) base.OutputID {
 }
 
 func (ctx *TxContext) MustTimestampData() ([]byte, base.LedgerTime) {
-	ret := ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxTimestamp))
+	ret := ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionTuple, ledger.TxTimestamp))
 	retTs, err := base.LedgerTimeFromBytes(ret)
 	util.AssertNoError(err)
 	return ret, retTs

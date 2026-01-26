@@ -173,7 +173,7 @@ func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) error {
 }
 
 func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
-	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionBranch, ledger.TxUnlockData, consumedOutputIdx, constraintIdx))
+	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionTuple, ledger.TxUnlockData, consumedOutputIdx, constraintIdx))
 }
 
 // runOutput checks constraints of the output one-by-one
@@ -223,7 +223,7 @@ func (ctx *TxContext) validateInputCommitmentSafe() error {
 
 // ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
 func (ctx *TxContext) ConsumedOutputHash() [32]byte {
-	consumedOutputBytes := ctx.ctxTree.MustBytesAtPath(Path(ledger.ConsumedBranch, ledger.ConsumedOutputsBranch))
+	consumedOutputBytes := ctx.ctxTree.MustBytesAtPath(Path(ledger.ConsumedTuple, ledger.ConsumedOutputsBranch))
 	return blake2b.Sum256(consumedOutputBytes)
 }
 
@@ -234,7 +234,7 @@ func PathToString(path []byte) string {
 	}
 	if len(path) >= 1 {
 		switch path[0] {
-		case ledger.TransactionBranch:
+		case ledger.TransactionTuple:
 			ret += ".tx"
 			if len(path) >= 2 {
 				switch path[1] {
@@ -263,7 +263,7 @@ func PathToString(path []byte) string {
 			if len(path) >= 5 {
 				ret += fmt.Sprintf("..%v", path[4:])
 			}
-		case ledger.ConsumedBranch:
+		case ledger.ConsumedTuple:
 			ret += ".consumed"
 			if len(path) >= 2 {
 				if path[1] != 0 {
