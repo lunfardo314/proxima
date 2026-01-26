@@ -39,6 +39,7 @@ type (
 		TxBytesStore() global.TxBytesStore
 		GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble
 		// TxLogger methods
+		TxLogOnOffAPIEnabled() bool
 		TxLogEnable(level global.TxLogLevel)
 		TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error)
 		TxLogIterate(begin time.Time, fun func(rec global.TxLogRecord)) error

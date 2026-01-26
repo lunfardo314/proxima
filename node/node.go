@@ -33,6 +33,7 @@ type (
 		txStoreDB                 *badger_adaptor.DB
 		txBytesStore              global.TxBytesStore
 		txLogger                  *txlogger.TxLoggerModule
+		txLogOnOffAPI             bool
 		peers                     *peering.Peers
 		sequencer                 *sequencer.Sequencer
 		workflow                  *workflow.Workflow

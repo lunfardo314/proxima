@@ -182,6 +182,13 @@ trace_tags:
 #  - txinput
 #  - txStore
 
+# Transaction logger
+#txlogger:
+#  enable_on_start: false
+#  level: "all"
+#  ttl_hours: 1
+#  enable_on_off_api: false
+
 {{.SequencerConfig}}
 `
 

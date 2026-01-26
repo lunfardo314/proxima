@@ -146,6 +146,15 @@ func (p *ProximaNode) initTxLogger() {
 	p.txLogger = txlogger.New(p)
 	p.Log().Infof("transaction logger initialized (disabled by default)")
 
+	// Configure TTL if specified
+	ttlHours := viper.GetInt("txlogger.ttl_hours")
+	if ttlHours > 0 {
+		p.txLogger.SetTTL(time.Duration(ttlHours) * time.Hour)
+	}
+
+	// Configure on/off API gate
+	p.txLogOnOffAPI = viper.GetBool("txlogger.enable_on_off_api")
+
 	// Auto-enable if configured
 	if viper.GetBool("txlogger.enable_on_start") {
 		levelStr := viper.GetString("txlogger.level")

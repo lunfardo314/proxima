@@ -30,9 +30,10 @@ The `TransactionIDShort` is 27-byte long suffix of the full transaction ID. It i
 ### Configuration (in `proxima.yaml`)
 ```yaml
 txlogger:
-  enable: false          # master switch, default is false
-  enable_on_start: false # auto-enable on node start, default is false
-  ttl_hours: 1           # record TTL in hours, default is 1
+  enable_on_start: false       # auto-enable on node start, default is false
+  level: "all"                 # off, branch, sequencer, non_sequencer, all
+  ttl_hours: 1                 # record TTL in hours, default is 1
+  enable_on_off_api: false     # allow enabling/disabling via API, default is false
 ```
 
 ### Key Structure
@@ -306,8 +307,10 @@ All 11 tests pass:
 **Configuration (`proxima.yaml`):**
 ```yaml
 txlogger:
-  enable_on_start: true  # auto-enable on node start
-  level: "all"           # off, branch, sequencer, non_sequencer, all
+  enable_on_start: true        # auto-enable on node start
+  level: "all"                 # off, branch, sequencer, non_sequencer, all
+  ttl_hours: 1                 # record TTL in hours (default: 1)
+  enable_on_off_api: false     # allow enabling/disabling via API (default: false)
 ```
 
 **API:**

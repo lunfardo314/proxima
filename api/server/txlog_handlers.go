@@ -26,6 +26,11 @@ func (srv *server) txLogEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !srv.TxLogOnOffAPIEnabled() {
+		api.WriteErr(w, "txlog on/off API is disabled by node configuration")
+		return
+	}
+
 	levelStr := r.URL.Query().Get("level")
 	level := parseTxLogLevelString(levelStr)
 

@@ -141,6 +141,10 @@ func (p *workflowDummyEnvironment) TxLogLevel() global.TxLogLevel {
 	return global.TxLogLevelOff
 }
 
+func (p *workflowDummyEnvironment) TxLogOnOffAPIEnabled() bool {
+	return false
+}
+
 func newWorkflowDummyEnvironment(stateStore global.Store, txStore global.TxBytesStore) *workflowDummyEnvironment {
 	ret := &workflowDummyEnvironment{
 		Global:       global.NewDefault(),

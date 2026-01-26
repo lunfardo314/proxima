@@ -155,6 +155,11 @@ func (p *ProximaNode) OnTxDeleted(fun func(txid base.TransactionID) bool) {
 	p.workflow.OnTxDeleted(fun)
 }
 
+// TxLogOnOffAPIEnabled returns true if the txlog on/off API is enabled by node configuration.
+func (p *ProximaNode) TxLogOnOffAPIEnabled() bool {
+	return p.txLogOnOffAPI
+}
+
 // TxLogEnable enables or disables the transaction logger with the specified level.
 func (p *ProximaNode) TxLogEnable(level global.TxLogLevel) {
 	if p.txLogger != nil {

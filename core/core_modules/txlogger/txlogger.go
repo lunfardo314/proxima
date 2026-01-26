@@ -29,6 +29,7 @@ type (
 		environment
 		*core_modules.CoreModule[input]
 		store *txlogger.TxLogStore
+		ttl   time.Duration
 	}
 )
 
@@ -49,6 +50,7 @@ func New(env environment) *TxLoggerModule {
 	ret := &TxLoggerModule{
 		environment: env,
 		store:       txlogger.New(),
+		ttl:         defaultTTL,
 	}
 	ret.CoreModule = core_modules.New[input](env, Name, ret.consume)
 	ret.CoreModule.Start()
@@ -83,10 +85,14 @@ func New(env environment) *TxLoggerModule {
 	return ret
 }
 
+// SetTTL sets the TTL for log records.
+func (m *TxLoggerModule) SetTTL(d time.Duration) {
+	m.ttl = d
+}
+
 // getTTL returns the configured TTL for log records.
-// TODO: make this configurable via proxima.yaml
 func (m *TxLoggerModule) getTTL() time.Duration {
-	return defaultTTL
+	return m.ttl
 }
 
 // consume processes queued log entries.
