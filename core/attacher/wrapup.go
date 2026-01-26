@@ -59,11 +59,8 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 	}
 
 	// GC-ing txids old enough. This is a deterministic operation on the state
-	// TODO move constant gcTxIDsFromStateSlotsBack to ledger constants
-
-	const gcTxIDsFromStateSlotsBack = 8640
-	if a.vid.Slot() > gcTxIDsFromStateSlotsBack {
-		gcSlot := a.vid.Slot() - gcTxIDsFromStateSlotsBack
+	if a.vid.Slot() > a.TxIDStateTTLSlots {
+		gcSlot := a.vid.Slot() - a.TxIDStateTTLSlots
 		gcTxIDs := upd.Readable().KnownCommittedTxIDs(gcSlot)
 		muts.DeleteTxIDs(gcTxIDs...)
 	}

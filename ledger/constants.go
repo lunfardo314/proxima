@@ -59,6 +59,9 @@ type Constants struct {
 	TagAlongReclaimSlots uint32
 	// ---------- attachment related
 	AttachmentCostBudget int
+	// ---------- GC related
+	// number of slots to keep committed transaction IDs in state before GC
+	TxIDStateTTLSlots uint32
 }
 
 // ConstantsFromLibrary loads all constants from library definition into a runtime structure
@@ -133,6 +136,12 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.AssertNoError(err)
 	ret.AttachmentCostBudget = int(t64)
 
+	// GC related
+	t64, err = _uint64FromConst(lib, "constTxIDStateTTLSlots")
+	util.AssertNoError(err)
+	util.Assertf(t64 < math.MaxUint32, "constTxIDStateTTLSlots: %d", t64)
+	ret.TxIDStateTTLSlots = uint32(t64)
+
 	return ret
 }
 
@@ -180,7 +189,8 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	safeDuration := time.Duration(c.SafeRevocationSlots) * c.SlotDuration()
 	ret.Add("Safe revocation slots: %d (%v)", c.SafeRevocationSlots, safeDuration).
 		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).
-		Add("Attachment cost budget: %d", c.AttachmentCostBudget)
+		Add("Attachment cost budget: %d", c.AttachmentCostBudget).
+		Add("TxID state TTL slots: %d (%v)", c.TxIDStateTTLSlots, time.Duration(c.TxIDStateTTLSlots)*c.SlotDuration())
 	return ret
 }
 

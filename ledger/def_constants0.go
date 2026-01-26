@@ -134,8 +134,12 @@ functions:
       description: maximum total attachment cost (pastCone + seqTx) for sequencer transaction validation
       source: u64/%d
    -
+      sym: constTxIDStateTTLSlots
+      description: number of slots to keep committed transaction IDs in the state before GC
+      source: u64/8640
+   -
       sym: constDescription
-      description: arbitrary binary data  
+      description: arbitrary binary data
       source: 0x%s
    -
       sym: timeSlotSizeBytes
