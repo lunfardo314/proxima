@@ -75,7 +75,7 @@ const (
 	TxLogLevelBranchTransactionsOnly
 	TxLogLevelSequencerTransactionsOnly
 	TxLogLevelNonSequencerTransactionsOnly
-	TxLogLevelAllTransactionsOnly
+	TxLogLevelAllTransactions
 )
 
 type (

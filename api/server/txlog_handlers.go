@@ -200,7 +200,7 @@ func parseTxLogLevelString(s string) global.TxLogLevel {
 	case "non_sequencer":
 		return global.TxLogLevelNonSequencerTransactionsOnly
 	case "all":
-		return global.TxLogLevelAllTransactionsOnly
+		return global.TxLogLevelAllTransactions
 	default:
 		return global.TxLogLevelOff
 	}
@@ -217,7 +217,7 @@ func txLogLevelToString(level global.TxLogLevel) string {
 		return "sequencer"
 	case global.TxLogLevelNonSequencerTransactionsOnly:
 		return "non_sequencer"
-	case global.TxLogLevelAllTransactionsOnly:
+	case global.TxLogLevelAllTransactions:
 		return "all"
 	default:
 		return "unknown"

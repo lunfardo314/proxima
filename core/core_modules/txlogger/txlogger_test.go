@@ -19,13 +19,13 @@ import (
 
 // mockEnvironment implements the environment interface for testing
 type mockEnvironment struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	log        *zap.SugaredLogger
-	registry   *prometheus.Registry
-	wg         sync.WaitGroup
-	processes  map[string]bool
-	processMu  sync.Mutex
+	ctx       context.Context
+	cancel    context.CancelFunc
+	log       *zap.SugaredLogger
+	registry  *prometheus.Registry
+	wg        sync.WaitGroup
+	processes map[string]bool
+	processMu sync.Mutex
 }
 
 func newMockEnvironment() *mockEnvironment {
@@ -40,30 +40,30 @@ func newMockEnvironment() *mockEnvironment {
 	}
 }
 
-func (m *mockEnvironment) Ctx() context.Context                                   { return m.ctx }
-func (m *mockEnvironment) Stop()                                                  { m.cancel() }
-func (m *mockEnvironment) IsShuttingDown() bool                                   { return m.ctx.Err() != nil }
-func (m *mockEnvironment) ClockCatchUpWithLedgerTime(ts base.LedgerTime) bool     { return true }
-func (m *mockEnvironment) Log() *zap.SugaredLogger                                { return m.log }
-func (m *mockEnvironment) Outputs() []string                                      { return nil }
-func (m *mockEnvironment) Tracef(tag string, format string, args ...any)          {}
+func (m *mockEnvironment) Ctx() context.Context                                                     { return m.ctx }
+func (m *mockEnvironment) Stop()                                                                    { m.cancel() }
+func (m *mockEnvironment) IsShuttingDown() bool                                                     { return m.ctx.Err() != nil }
+func (m *mockEnvironment) ClockCatchUpWithLedgerTime(ts base.LedgerTime) bool                       { return true }
+func (m *mockEnvironment) Log() *zap.SugaredLogger                                                  { return m.log }
+func (m *mockEnvironment) Outputs() []string                                                        { return nil }
+func (m *mockEnvironment) Tracef(tag string, format string, args ...any)                            {}
 func (m *mockEnvironment) TracefLog(log *zap.SugaredLogger, tag string, format string, args ...any) {}
-func (m *mockEnvironment) StartTracingTags(tags ...string)                        {}
-func (m *mockEnvironment) Assertf(cond bool, format string, args ...any)          {}
-func (m *mockEnvironment) AssertNoError(err error, prefix ...string)              {}
-func (m *mockEnvironment) VerbosityLevel() int                                    { return 0 }
-func (m *mockEnvironment) Infof0(template string, args ...any)                    {}
-func (m *mockEnvironment) Infof1(template string, args ...any)                    {}
-func (m *mockEnvironment) Infof2(template string, args ...any)                    {}
-func (m *mockEnvironment) IncCounter(name string)                                 {}
-func (m *mockEnvironment) DecCounter(name string)                                 {}
-func (m *mockEnvironment) Counter(name string) int                                { return 0 }
-func (m *mockEnvironment) CounterLines(prefix ...string) *lines.Lines             { return nil }
-func (m *mockEnvironment) AttachmentFinished(started ...time.Time)                {}
-func (m *mockEnvironment) TxPullParameters() (time.Duration, int)                 { return time.Second, 3 }
-func (m *mockEnvironment) DeadlockCatchingDisabled() bool                         { return true }
-func (m *mockEnvironment) LogTx(_ time.Time, _ string, _ ...base.TransactionID)   {}
-func (m *mockEnvironment) MetricsRegistry() *prometheus.Registry                  { return m.registry }
+func (m *mockEnvironment) StartTracingTags(tags ...string)                                          {}
+func (m *mockEnvironment) Assertf(cond bool, format string, args ...any)                            {}
+func (m *mockEnvironment) AssertNoError(err error, prefix ...string)                                {}
+func (m *mockEnvironment) VerbosityLevel() int                                                      { return 0 }
+func (m *mockEnvironment) Infof0(template string, args ...any)                                      {}
+func (m *mockEnvironment) Infof1(template string, args ...any)                                      {}
+func (m *mockEnvironment) Infof2(template string, args ...any)                                      {}
+func (m *mockEnvironment) IncCounter(name string)                                                   {}
+func (m *mockEnvironment) DecCounter(name string)                                                   {}
+func (m *mockEnvironment) Counter(name string) int                                                  { return 0 }
+func (m *mockEnvironment) CounterLines(prefix ...string) *lines.Lines                               { return nil }
+func (m *mockEnvironment) AttachmentFinished(started ...time.Time)                                  {}
+func (m *mockEnvironment) TxPullParameters() (time.Duration, int)                                   { return time.Second, 3 }
+func (m *mockEnvironment) DeadlockCatchingDisabled() bool                                           { return true }
+func (m *mockEnvironment) LogTx(_ time.Time, _ string, _ ...base.TransactionID)                     {}
+func (m *mockEnvironment) MetricsRegistry() *prometheus.Registry                                    { return m.registry }
 
 func (m *mockEnvironment) MarkWorkProcessStarted(name string) {
 	m.processMu.Lock()
@@ -130,9 +130,9 @@ func TestTxLoggerModuleBasic(t *testing.T) {
 	require.False(t, module.IsEnabled())
 
 	// Enable the logger
-	module.TxLogEnable(global.TxLogLevelAllTransactionsOnly)
+	module.TxLogEnable(global.TxLogLevelAllTransactions)
 	require.True(t, module.IsEnabled())
-	require.Equal(t, global.TxLogLevelAllTransactionsOnly, module.Level())
+	require.Equal(t, global.TxLogLevelAllTransactions, module.Level())
 
 	// Log a transaction
 	txid := base.RandomTransactionID(true, 5)
@@ -176,7 +176,7 @@ func TestTxLoggerModuleLevelFiltering(t *testing.T) {
 	// Create branch and non-branch transactions
 	branchTxid := base.RandomTransactionID(true, 5, base.LedgerTime{Slot: 100, Tick: 0}) // branch
 	seqTxid := base.RandomTransactionID(true, 5, base.LedgerTime{Slot: 100, Tick: 10})   // seq non-branch
-	nonSeqTxid := base.RandomTransactionID(false, 5)                                      // non-sequencer
+	nonSeqTxid := base.RandomTransactionID(false, 5)                                     // non-sequencer
 
 	// Log all three
 	module.TxLog(time.Now(), "branch msg", branchTxid)
@@ -217,7 +217,7 @@ func TestTxLoggerModuleBatchLog(t *testing.T) {
 	defer os.Chdir(oldWd)
 
 	module := New(env)
-	module.TxLogEnable(global.TxLogLevelAllTransactionsOnly)
+	module.TxLogEnable(global.TxLogLevelAllTransactions)
 
 	// Log multiple transactions with single call
 	txids := make([]base.TransactionID, 5)
