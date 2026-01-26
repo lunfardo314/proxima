@@ -1095,7 +1095,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationShare = 100
 		)
 		ts := td.seqChainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-		_, txString, err = td.initDelegationUTXOMake(ts, 9, inflationShare)
+		_, txString, err = td.initDelegationUTXOMake(ts, byte(ledger.L(0).MaxFrozenEpochs+1), inflationShare)
 		require.NoError(t, util.MustErrorWith(err, "wrong max frozen epochs value"))
 	})
 }
