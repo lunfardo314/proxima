@@ -90,8 +90,8 @@ func TestStoreBasicOperations(t *testing.T) {
 	require.True(t, store.IsEnabled())
 
 	// Set level to log all transactions
-	store.SetLevel(global.TxLogLevelAllTransactionsOnly)
-	require.Equal(t, global.TxLogLevelAllTransactionsOnly, store.Level())
+	store.SetLevel(global.TxLogLevelAllTransactions)
+	require.Equal(t, global.TxLogLevelAllTransactions, store.Level())
 
 	// Create a test transaction ID
 	txid := base.RandomTransactionID(true, 5)
@@ -127,7 +127,7 @@ func TestStorePrefixSearch(t *testing.T) {
 	require.NoError(t, err)
 	defer store.Close()
 
-	store.SetLevel(global.TxLogLevelAllTransactionsOnly)
+	store.SetLevel(global.TxLogLevelAllTransactions)
 
 	// Create multiple transaction IDs with similar prefixes
 	// by manually setting the first few bytes
@@ -178,7 +178,7 @@ func TestStoreBatchWrite(t *testing.T) {
 	require.NoError(t, err)
 	defer store.Close()
 
-	store.SetLevel(global.TxLogLevelAllTransactionsOnly)
+	store.SetLevel(global.TxLogLevelAllTransactions)
 
 	// Create multiple transaction IDs
 	var txids []base.TransactionID
@@ -189,7 +189,7 @@ func TestStoreBatchWrite(t *testing.T) {
 	// Write batch
 	clockTs := time.Now()
 	msg := "batch message"
-	err = store.WriteRecordBatch(clockTs, msg, txids)
+	err = store.WriteRecord(clockTs, msg, txids...)
 	require.NoError(t, err)
 
 	// Verify each transaction has a record
@@ -214,7 +214,7 @@ func TestStoreTimeIteration(t *testing.T) {
 	require.NoError(t, err)
 	defer store.Close()
 
-	store.SetLevel(global.TxLogLevelAllTransactionsOnly)
+	store.SetLevel(global.TxLogLevelAllTransactions)
 
 	// Write records with different timestamps
 	baseTime := time.Now()
@@ -247,7 +247,7 @@ func TestStoreTTLCleanup(t *testing.T) {
 	require.NoError(t, err)
 	defer store.Close()
 
-	store.SetLevel(global.TxLogLevelAllTransactionsOnly)
+	store.SetLevel(global.TxLogLevelAllTransactions)
 
 	// Write an "old" record by using a past timestamp
 	oldTime := time.Now().Add(-2 * time.Hour)
@@ -300,7 +300,7 @@ func TestShouldLog(t *testing.T) {
 	// Test different levels
 	branchTxid := base.RandomTransactionID(true, 1, base.LedgerTime{Slot: 100, Tick: 0}) // branch: seq + tick=0
 	seqTxid := base.RandomTransactionID(true, 1, base.LedgerTime{Slot: 100, Tick: 10})   // sequencer: seq + tick>0
-	nonSeqTxid := base.RandomTransactionID(false, 1)                                      // non-sequencer
+	nonSeqTxid := base.RandomTransactionID(false, 1)                                     // non-sequencer
 
 	store.SetLevel(global.TxLogLevelOff)
 	require.False(t, store.ShouldLog(branchTxid))
@@ -322,7 +322,7 @@ func TestShouldLog(t *testing.T) {
 	require.False(t, store.ShouldLog(seqTxid))
 	require.True(t, store.ShouldLog(nonSeqTxid))
 
-	store.SetLevel(global.TxLogLevelAllTransactionsOnly)
+	store.SetLevel(global.TxLogLevelAllTransactions)
 	require.True(t, store.ShouldLog(branchTxid))
 	require.True(t, store.ShouldLog(seqTxid))
 	require.True(t, store.ShouldLog(nonSeqTxid))

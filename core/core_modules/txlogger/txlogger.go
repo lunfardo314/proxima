@@ -107,12 +107,7 @@ func (m *TxLoggerModule) consume(inp input) {
 		return
 	}
 
-	var err error
-	if len(filteredTxids) == 1 {
-		err = m.store.WriteRecord(inp.clockTs, inp.msg, filteredTxids[0])
-	} else {
-		err = m.store.WriteRecordBatch(inp.clockTs, inp.msg, filteredTxids)
-	}
+	err := m.store.WriteRecord(inp.clockTs, inp.msg, filteredTxids...)
 
 	if err != nil {
 		m.Log().Warnf("[%s] write error: %v", Name, err)

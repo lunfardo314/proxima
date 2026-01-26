@@ -145,9 +145,8 @@ func (s *TxLogStore) IsEnabled() bool
 func (s *TxLogStore) Level() global.TxLogLevel
 func (s *TxLogStore) SetLevel(lvl global.TxLogLevel)
 
-// Writer methods (called by queue consumer)
-func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txid base.TransactionID) error
-func (s *TxLogStore) WriteRecordBatch(clockTs time.Time, msg string, txids []base.TransactionID) error
+// Writer method (called by queue consumer)
+func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txids ...base.TransactionID) error
 
 // Reader methods (implements global.TxLogReader)
 func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error)

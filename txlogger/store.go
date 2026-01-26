@@ -101,42 +101,17 @@ func (s *TxLogStore) ShouldLog(txid base.TransactionID) bool {
 		return txid.IsSequencerTransaction()
 	case global.TxLogLevelNonSequencerTransactionsOnly:
 		return !txid.IsSequencerTransaction()
-	case global.TxLogLevelAllTransactionsOnly:
+	case global.TxLogLevelAllTransactions:
 		return true
 	default:
 		return false
 	}
 }
 
-// WriteRecord writes a single log record to the store.
-// Creates entries in both the "by transaction" and "by timestamp" indexes.
-func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txid base.TransactionID) error {
-	s.mu.RLock()
-	db := s.db
-	enabled := s.enabled
-	s.mu.RUnlock()
-
-	if !enabled || db == nil {
-		return nil
-	}
-
-	clockNs := clockTs.UnixNano()
-	txShortID := txid.ShortID()
-
-	// Create keys for both indexes
-	keyByTx := makeKeyByTx(txShortID, clockNs)
-	keyByTime := makeKeyByTime(clockNs, txShortID)
-
-	// Write both entries in a batch
-	batch := db.BatchedWriter()
-	batch.Set(keyByTx, []byte(msg))
-	batch.Set(keyByTime, []byte{0xff}) // placeholder value for time index
-	return batch.Commit()
-}
-
-// WriteRecordBatch writes the same log message for multiple transactions.
+// WriteRecord writes log records to the store for one or more transactions.
 // All records share the same clock timestamp and message.
-func (s *TxLogStore) WriteRecordBatch(clockTs time.Time, msg string, txids []base.TransactionID) error {
+// Creates entries in both the "by transaction" and "by timestamp" indexes.
+func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txids ...base.TransactionID) error {
 	s.mu.RLock()
 	db := s.db
 	enabled := s.enabled
@@ -155,7 +130,7 @@ func (s *TxLogStore) WriteRecordBatch(clockTs time.Time, msg string, txids []bas
 		keyByTx := makeKeyByTx(txShortID, clockNs)
 		keyByTime := makeKeyByTime(clockNs, txShortID)
 		batch.Set(keyByTx, msgBytes)
-		batch.Set(keyByTime, []byte{0xff})
+		batch.Set(keyByTime, []byte{0xff}) // placeholder value for time index
 	}
 	return batch.Commit()
 }
