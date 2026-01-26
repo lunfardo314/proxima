@@ -98,7 +98,7 @@ func (srv *server) txLogGet(w http.ResponseWriter, r *http.Request) {
 	}
 	for i, rec := range records {
 		resp.Records[i] = api.TxLogRecord{
-			TxIDShort:      hex.EncodeToString(rec.ID[5:]), // Skip 5-byte timestamp prefix
+			TxID:           hex.EncodeToString(rec.ID[:]),
 			ClockTimestamp: rec.ClockTimestamp.UnixNano(),
 			Message:        rec.Message,
 		}
@@ -169,7 +169,7 @@ func (srv *server) txLogRange(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		records = append(records, api.TxLogRecord{
-			TxIDShort:      hex.EncodeToString(rec.ID[5:]), // Skip 5-byte timestamp prefix
+			TxID:           hex.EncodeToString(rec.ID[:]),
 			ClockTimestamp: rec.ClockTimestamp.UnixNano(),
 			Message:        rec.Message,
 		})
@@ -190,6 +190,27 @@ func (srv *server) txLogRange(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err = w.Write(respBytes); err != nil {
 		srv.Log().Warnf("txLogRange: failed to write response: %v", err)
+	}
+}
+
+// txLogStatus handles GET /api/v1/txlog/status
+// Returns the current transaction logger status without modifying it.
+func (srv *server) txLogStatus(w http.ResponseWriter, _ *http.Request) {
+	api.SetHeader(w)
+	srv.Tracef(TraceTag, "txLogStatus invoked")
+
+	resp := api.TxLogEnableResponse{
+		Enabled: srv.TxLogIsEnabled(),
+		Level:   txLogLevelToString(srv.TxLogLevel()),
+	}
+
+	respBytes, err := json.Marshal(&resp)
+	if err != nil {
+		api.WriteErr(w, "failed to marshal response")
+		return
+	}
+	if _, err = w.Write(respBytes); err != nil {
+		srv.Log().Warnf("txLogStatus: failed to write response: %v", err)
 	}
 }
 

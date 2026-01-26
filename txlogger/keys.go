@@ -83,6 +83,37 @@ func parseKeyByTx(key []byte) (base.TransactionIDShort, int64, error) {
 	return txShortID, clockNs, nil
 }
 
+// Value encoding/decoding for the "by transaction" index.
+// New format prepends the 5-byte ledger timestamp to enable full TransactionID reconstruction.
+// Format: valueFormatV1 (1 byte) || ledger_timestamp (5 bytes) || message
+// Old format (backward compat): raw message bytes (no version prefix)
+
+const valueFormatV1 byte = 0x01
+
+// encodeValue encodes a log value with ledger timestamp prefix.
+func encodeValue(txid base.TransactionID, msg string) []byte {
+	val := make([]byte, 1+base.LedgerTimeByteLength+len(msg))
+	val[0] = valueFormatV1
+	copy(val[1:1+base.LedgerTimeByteLength], txid[:base.LedgerTimeByteLength])
+	copy(val[1+base.LedgerTimeByteLength:], msg)
+	return val
+}
+
+// decodeValue decodes a log value, returning the full TransactionID and message.
+// Handles backward compatibility with old format (message only, no timestamp prefix).
+func decodeValue(val []byte, txShortID base.TransactionIDShort) (base.TransactionID, string) {
+	var txid base.TransactionID
+	copy(txid[base.LedgerTimeByteLength:], txShortID[:])
+
+	if len(val) >= 1+base.LedgerTimeByteLength && val[0] == valueFormatV1 {
+		// New format: version byte + ledger timestamp + message
+		copy(txid[:base.LedgerTimeByteLength], val[1:1+base.LedgerTimeByteLength])
+		return txid, string(val[1+base.LedgerTimeByteLength:])
+	}
+	// Old format: entire value is the message (txid has zero timestamp prefix)
+	return txid, string(val)
+}
+
 // parseKeyByTime extracts timestamp and TransactionIDShort from a "by timestamp" key.
 func parseKeyByTime(key []byte) (int64, base.TransactionIDShort, error) {
 	var txShortID base.TransactionIDShort

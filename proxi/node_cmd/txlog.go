@@ -7,9 +7,13 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 )
+
+// txidFieldWidth is the fixed column width for the transaction ID short string in log output
+const txidFieldWidth = 30
 
 func initTxLogCmd() *cobra.Command {
 	txlogCmd := &cobra.Command{
@@ -23,6 +27,7 @@ func initTxLogCmd() *cobra.Command {
 		initTxLogEnableCmd(),
 		initTxLogDisableCmd(),
 		initTxLogTailCmd(),
+		initTxLogStatusCmd(),
 	)
 
 	return txlogCmd
@@ -37,7 +42,7 @@ func initTxLogGetCmd() *cobra.Command {
 		Run:   runTxLogGetCmd,
 	}
 
-	cmd.Flags().Int("max", 100, "maximum number of records to return")
+	cmd.Flags().IntP("max", "m", 100, "maximum number of records to return")
 
 	return cmd
 }
@@ -59,8 +64,9 @@ func runTxLogGetCmd(cmd *cobra.Command, args []string) {
 
 	glb.Infof("found %d record(s) for prefix %s:", len(resp.Records), prefixHex)
 	for _, rec := range resp.Records {
-		ts := time.Unix(0, rec.ClockTimestamp)
-		glb.Infof("  [%s] %s: %s", ts.Format("2006-01-02 15:04:05.000"), rec.TxIDShort[:16]+"...", rec.Message)
+		// Timestamps are displayed in UTC
+		ts := time.Unix(0, rec.ClockTimestamp).UTC()
+		glb.Infof("  %s %-*s %s", ts.Format("2006-01-02 15:04:05.000"), txidFieldWidth, txidShortStr(rec.TxID), rec.Message)
 	}
 }
 
@@ -80,7 +86,7 @@ Levels:
 		Run:  runTxLogEnableCmd,
 	}
 
-	cmd.Flags().String("level", "non_sequencer", "log level: off, branch, sequencer, non_sequencer, all")
+	cmd.Flags().StringP("level", "l", "non_sequencer", "log level: off, branch, sequencer, non_sequencer, all")
 
 	return cmd
 }
@@ -129,8 +135,8 @@ func initTxLogTailCmd() *cobra.Command {
 		Run:   runTxLogTailCmd,
 	}
 
-	cmd.Flags().Int("back", 1, "number of minutes to look back")
-	cmd.Flags().Int("max", 100, "maximum number of records to return")
+	cmd.Flags().IntP("back", "b", 1, "number of minutes to look back")
+	cmd.Flags().IntP("max", "m", 100, "maximum number of records to return")
 
 	return cmd
 }
@@ -159,9 +165,39 @@ func runTxLogTailCmd(cmd *cobra.Command, _ []string) {
 
 	glb.Infof("found %d record(s) in the last %d minute(s):", len(resp.Records), backMinutes)
 	for _, rec := range resp.Records {
-		ts := time.Unix(0, rec.ClockTimestamp)
-		glb.Infof("  [%s] %s: %s", ts.Format("15:04:05.000"), rec.TxIDShort[:16]+"...", rec.Message)
+		// Timestamps are displayed in UTC
+		ts := time.Unix(0, rec.ClockTimestamp).UTC()
+		glb.Infof("  %s %-*s %s", ts.Format("15:04:05.000"), txidFieldWidth, txidShortStr(rec.TxID), rec.Message)
 	}
+}
+
+func initTxLogStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "show transaction logger status",
+		Args:  cobra.NoArgs,
+		Run:   runTxLogStatusCmd,
+	}
+}
+
+func runTxLogStatusCmd(_ *cobra.Command, _ []string) {
+	resp, err := glb.GetClient().TxLogStatus()
+	glb.AssertNoError(err)
+
+	if resp.Enabled {
+		glb.Infof("transaction logger: enabled, level: %s", resp.Level)
+	} else {
+		glb.Infof("transaction logger: disabled")
+	}
+}
+
+// txidShortStr parses a hex-encoded full TransactionID and returns its StringShort representation.
+func txidShortStr(txidHex string) string {
+	txid, err := base.TransactionIDFromHexString(txidHex)
+	if err != nil {
+		return txidHex
+	}
+	return txid.StringShort()
 }
 
 // sortRecordsAscending sorts records by ClockTimestamp in ascending order

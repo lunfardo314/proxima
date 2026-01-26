@@ -60,6 +60,7 @@ const (
 	PathTxLogEnable = PrefixAPIV1 + "/txlog/enable"
 	PathTxLogGet    = PrefixAPIV1 + "/txlog/get"
 	PathTxLogRange  = PrefixAPIV1 + "/txlog/range"
+	PathTxLogStatus = PrefixAPIV1 + "/txlog/status"
 )
 
 type (
@@ -343,7 +344,7 @@ type (
 
 	// TxLogRecord is a single transaction log record for API responses
 	TxLogRecord struct {
-		TxIDShort      string `json:"txid_short"`       // hex-encoded TransactionIDShort (27 bytes)
+		TxID           string `json:"txid"`             // hex-encoded full TransactionID (32 bytes)
 		ClockTimestamp int64  `json:"clock_timestamp"`  // Unix nanoseconds
 		Message        string `json:"message"`
 	}

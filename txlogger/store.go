@@ -122,14 +122,13 @@ func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txids ...base.Tr
 	}
 
 	clockNs := clockTs.UnixNano()
-	msgBytes := []byte(msg)
 
 	batch := db.BatchedWriter()
 	for _, txid := range txids {
 		txShortID := txid.ShortID()
 		keyByTx := makeKeyByTx(txShortID, clockNs)
 		keyByTime := makeKeyByTime(clockNs, txShortID)
-		batch.Set(keyByTx, msgBytes)
+		batch.Set(keyByTx, encodeValue(txid, msg))
 		batch.Set(keyByTime, []byte{0xff}) // placeholder value for time index
 	}
 	return batch.Commit()
@@ -162,16 +161,12 @@ func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLo
 			return true // skip invalid keys
 		}
 
-		// Reconstruct TransactionID (partial - only ShortID portion is available)
-		// Note: The full TransactionID cannot be reconstructed without the 5-byte timestamp prefix
-		// For display purposes, we create a TransactionID with zero timestamp
-		var txid base.TransactionID
-		copy(txid[base.LedgerTimeByteLength:], txShortID[:])
+		txid, msg := decodeValue(v, txShortID)
 
 		records = append(records, global.TxLogRecord{
 			ID:             txid,
 			ClockTimestamp: time.Unix(0, clockNs),
-			Message:        string(v),
+			Message:        msg,
 		})
 		return true
 	})
@@ -217,18 +212,16 @@ func (s *TxLogStore) TxLogIterate(begin time.Time, fun func(rec global.TxLogReco
 			return true
 		}
 
-		// Reconstruct partial TransactionID
-		var txid base.TransactionID
-		copy(txid[base.LedgerTimeByteLength:], txShortID[:])
-
-		// Look up the message from the "by transaction" index
+		// Look up the value from the "by transaction" index (contains ledger timestamp + message)
 		keyByTx := makeKeyByTx(txShortID, clockNs)
-		msg := db.Get(keyByTx)
+		val := db.Get(keyByTx)
+
+		txid, msg := decodeValue(val, txShortID)
 
 		fun(global.TxLogRecord{
 			ID:             txid,
 			ClockTimestamp: time.Unix(0, clockNs),
-			Message:        string(msg),
+			Message:        msg,
 		})
 		return true
 	})

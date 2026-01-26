@@ -115,6 +115,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathTxLogGet, srv.txLogGet)
 	// GET /api/v1/txlog/range?from=<unix_ns>&to=<unix_ns>&max=<max>
 	srv.addHandler(api.PathTxLogRange, srv.txLogRange)
+	// GET /api/v1/txlog/status
+	srv.addHandler(api.PathTxLogStatus, srv.txLogStatus)
 
 	// register handlers of tx API
 	srv.registerTxAPIHandlers()

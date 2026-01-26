@@ -1062,6 +1062,23 @@ func (c *APIClient) TxLogGet(prefixHex string, max int) (*api.TxLogResponse, err
 	return &res, nil
 }
 
+// TxLogStatus retrieves the current transaction logger status.
+func (c *APIClient) TxLogStatus() (*api.TxLogEnableResponse, error) {
+	body, err := c.getBody(api.PathTxLogStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.TxLogEnableResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("server error: %s", res.Error.Error)
+	}
+	return &res, nil
+}
+
 // TxLogRange retrieves log records within a time range (Unix nanoseconds).
 func (c *APIClient) TxLogRange(fromNs, toNs int64, max int) (*api.TxLogResponse, error) {
 	path := fmt.Sprintf("%s?from=%d", api.PathTxLogRange, fromNs)
