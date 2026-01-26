@@ -77,7 +77,7 @@ func (w *Workflow) TxBytesInFromPeerQueued(txBytesReceived []byte, metaData *txm
 	metaData.TxBytesReceived = util.Ref(time.Now())
 	w.txInputQueue.Push(txinput_queue.Input{
 		Cmd:        txinput_queue.CmdFromPeer,
-		TxIDPrefix: txidPrefix,
+		PrefixTxID: txidPrefix,
 		TxBytes:    txBytesReceived,
 		TxMetaData: metaData,
 		FromPeer:   from,

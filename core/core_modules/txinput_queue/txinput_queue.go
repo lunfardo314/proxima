@@ -1,6 +1,7 @@
 package txinput_queue
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -19,6 +20,7 @@ import (
 type (
 	environment interface {
 		global.NodeGlobal
+		SelfPeerID() peer.ID
 		CheckTxSender(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, fromPeer peer.ID, wanted bool)
 	}
 
@@ -27,7 +29,7 @@ type (
 		// TxID a prefix of transaction bytes received with CmdFromPeer, otherwise uninterpreted.
 		// Should not be trusted. used only for gossip optimization and consistency checking
 		// Real txid is calculated during base validation
-		TxIDPrefix base.TransactionID
+		PrefixTxID base.TransactionID
 		TxBytes    []byte
 		TxMetaData *txmetadata.TransactionMetadata
 		FromPeer   peer.ID
@@ -103,7 +105,7 @@ func (q *TxInputQueue) consume(inp Input) {
 
 func (q *TxInputQueue) fromPeer(inp *Input) {
 	// check based on the message prefix, without parsing and computing txid
-	pass, wanted := q.inGate.checkPass(inp.TxIDPrefix)
+	pass, wanted := q.inGate.checkPass(inp.PrefixTxID)
 	if !pass {
 		// repeating transaction
 		// reject based on txid prefix, without tx base parsing
@@ -117,8 +119,8 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		return
 	}
 	// check if message prefix is equal to txid
-	if tx.ID() != inp.TxIDPrefix {
-		q.Log().Warn("TxInputQueue: tx message prefix (%s) != real txid (%s). Transaction IGNORED", inp.TxIDPrefix.String(), tx.IDString())
+	if tx.ID() != inp.PrefixTxID {
+		q.Log().Warn("TxInputQueue: tx message prefix (%s) != real txid (%s). Transaction IGNORED", inp.PrefixTxID.String(), tx.IDString())
 		return
 	}
 
@@ -130,8 +132,11 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		// requested transaction
 		metaData.SourceTypeNonPersistent = txmetadata.SourceTypePulled
 	}
-
-	q.LogTx(time.Now(), "IN from peer")
+	if inp.FromPeer == q.SelfPeerID() {
+		q.LogTx(time.Now(), "IN from sequencer", inp.PrefixTxID)
+	} else {
+		q.LogTx(time.Now(), fmt.Sprintf("IN from peer %s", inp.FromPeer), inp.PrefixTxID)
+	}
 	// new or pulled transaction -> pass to next step
 	q.CheckTxSender(tx, metaData, inp.FromPeer, wanted)
 }
