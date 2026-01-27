@@ -89,7 +89,8 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	util.Assertf(unfreezeSlot > txb.Slot(), "unfreezeSlot > txb.Slot()")
 
 	const patienceMargin = 6
-	lostSlots := txb.Slot() - unfreezeSlot
+	// fix: was txb.Slot() - unfreezeSlot, uint32 underflow because unfreezeSlot > txb.Slot() (asserted above)
+	lostSlots := unfreezeSlot - txb.Slot()
 	if lostSlots <= patienceMargin {
 		// less than 1 min slots until the end of the freeze, refuse to revoke.
 		// Just 1 min of patience, and it will be released to the safe revocation window without revocation command
@@ -101,12 +102,16 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	if neededCompensation < o.Output.TokenBalance() {
 		// projected inflation advance is bigger than number of tokens in the revocation output
 		// -> sequencer do not want loss -> ignore the revocation request
+		// fix: bare return left cmd=nil, reason=nil -> nil pointer dereference in AddTagAlongInput
+		reason = fmt.Errorf("AskStopDelegationRequest: compensation not sufficient (needed %d, provided %d)", neededCompensation, o.Output.TokenBalance())
 		return
 	}
 	// check if 'ensureStopDelegation' constraint exists, if yes, sequencer will need to unlock it
 	if ens, idx := o.Output.EnsureStopDelegationConstraint(); idx != 0xff {
 		if idx != 3 || ens.ChainID != delegationID {
 			// wrong structure. Ensure revocation constraint expected at index 3
+			// fix: bare return left cmd=nil, reason=nil -> nil pointer dereference in AddTagAlongInput
+			reason = fmt.Errorf("AskStopDelegationRequest: wrong ensureStopDelegation constraint (idx=%d)", idx)
 			return
 		}
 		ret.ensureStopDelegation = ens
