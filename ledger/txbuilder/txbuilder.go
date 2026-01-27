@@ -349,18 +349,19 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	for _, o := range tx.Outputs {
 		total += o.TokenBalance()
 	}
-	elems := make([]any, ledger.TxTreeIndexMax)
-	elems[ledger.TxUnlockData] = unlockParams
-	elems[ledger.TxInputIDs] = inputIDs
-	elems[ledger.TxOutputs] = outputs
-	elems[ledger.TxSignature] = tx.Signature
+	elems := make([]any, ledger.TxTreeTupleNumElements)
+	elems[ledger.TxConstraints] = nil
+	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
 	if tx.SequencerOutputIndex != 0xff {
 		elems[ledger.TxSequencerDataBytes] = tx.SequencerDataBytes.Bytes()
 	}
-	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
+	elems[ledger.TxSignature] = tx.Signature
 	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]
-	elems[ledger.TxEndorsements] = endorsements
 	elems[ledger.TxExplicitBaseline] = explicitBaseline
+	elems[ledger.TxInputIDs] = inputIDs
+	elems[ledger.TxUnlockData] = unlockParams
+	elems[ledger.TxOutputs] = outputs
+	elems[ledger.TxEndorsements] = endorsements
 	elems[ledger.TxOtherData] = tuples.MakeTupleFromDataElements(tx.OtherData...)
 	return tuples.MakeTupleFromSerializableElements(elems...)
 }

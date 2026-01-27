@@ -50,23 +50,25 @@ const (
 
 // Transaction subtree
 const (
-	TxInputIDs = byte(iota)
-	TxUnlockData
-	TxOutputs
-	TxEndorsements
-	TxSequencerDataBytes
+	TxConstraints = byte(iota)
 	TxTimestamp
+	TxSequencerDataBytes
 	TxSignature
 	TxInputCommitment
 	TxExplicitBaseline
+	TxInputIDs
+	TxUnlockData
+	TxOutputs
+	TxEndorsements
 	TxOtherData
-	TxTreeIndexMax
+	TxTreeTupleNumElements
 )
 
 const ConsumedOutputsBranch = byte(0)
 
 var (
 	PathToConsumedOutputs               = tuples.Path(ConsumedTuple, ConsumedOutputsBranch)
+	PathToTxConstraints                 = tuples.Path(TransactionTuple, TxConstraints)
 	PathToProducedOutputs               = tuples.Path(TransactionTuple, TxOutputs)
 	PathToUnlockParams                  = tuples.Path(TransactionTuple, TxUnlockData)
 	PathToInputIDs                      = tuples.Path(TransactionTuple, TxInputIDs)
@@ -89,6 +91,7 @@ const (
 func pathConstantsUpgrade0() string {
 	return fmt.Sprintf(_pathConstantsYAML,
 		TransactionTuple,
+		PathToTxConstraints.Hex(),
 		PathToConsumedOutputs.Hex(),
 		PathToProducedOutputs.Hex(),
 		PathToUnlockParams.Hex(),
@@ -111,6 +114,10 @@ functions:
       sym: pathToTransaction
       numArgs: 0
       source: %d
+   -
+      sym: pathToTxConstraints
+      numArgs: 0
+      source: 0x%s
    -
       sym: pathToConsumedOutputs
       numArgs: 0

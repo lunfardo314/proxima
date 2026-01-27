@@ -43,17 +43,16 @@ var MainTxValidationOptions = []TxValidationOption{
 	ScanOutputs,
 }
 
-var essenceIndices = []byte{
-	ledger.TxInputIDs,
-	ledger.TxUnlockData,
-	ledger.TxOutputs,
-	// skip signature
-	ledger.TxSequencerDataBytes,
-	ledger.TxTimestamp,
-	ledger.TxInputCommitment,
-	ledger.TxEndorsements,
-	ledger.TxExplicitBaseline,
-	ledger.TxOtherData,
+// tx essence is concatenation of all top level elements except signature
+var _essenceIndices []byte
+
+func init() {
+	_essenceIndices = make([]byte, 20)
+	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
+		if i != ledger.TxSignature {
+			_essenceIndices = append(_essenceIndices, i)
+		}
+	}
 }
 
 func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
@@ -61,7 +60,7 @@ func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte,
 	util.AssertNoError(err)
 
 	var d []byte
-	for _, i := range essenceIndices {
+	for _, i := range _essenceIndices {
 		d, err = txTree.BytesAtPath([]byte{i})
 		if err != nil {
 			return [32]byte{}, err

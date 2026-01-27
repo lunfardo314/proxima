@@ -250,6 +250,14 @@ func PathToString(path []byte) string {
 					ret += ".ts"
 				case ledger.TxInputCommitment:
 					ret += ".inhash"
+				case ledger.TxConstraints:
+					ret += ".txConstraints"
+				case ledger.TxExplicitBaseline:
+					ret += ".explicitBaseline"
+				case ledger.TxEndorsements:
+					ret += ".endorsements"
+				case ledger.TxOtherData:
+					ret += ".otherData"
 				default:
 					ret += "WRONG[1]"
 				}

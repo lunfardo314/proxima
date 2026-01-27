@@ -125,14 +125,15 @@ functions:
     numArgs: 0
     source: "
          concat(
+            atPath(pathToTxConstraints), 
+            atPath(pathToTimestamp),
+            atPath(pathToSequencerDataBytes),
+            atPath(pathToInputCommitment), 
+			atPath(pathToExplicitBaseline),
             atPath(pathToInputIDs), 
             atPath(pathToUnlockParams),
             atPath(pathToProducedOutputs), 
-            atPath(pathToSequencerDataBytes),
-            atPath(pathToTimestamp),
-            atPath(pathToInputCommitment), 
             atPath(pathToEndorsements),
-			atPath(pathToExplicitBaseline),
             atPath(pathToOtherData)
          )"
   -
