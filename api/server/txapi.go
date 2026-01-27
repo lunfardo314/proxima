@@ -170,7 +170,7 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// API server uses latest library version for parsing outputs
-	o, err := ledger.OutputFromBytesAtSlot(outBin, base.MaxSlot)
+	o, err := ledger.OutputFromBytes(outBin)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("can't parse output: '%v'", err))
 		return

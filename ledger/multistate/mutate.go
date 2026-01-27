@@ -222,7 +222,7 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 	}
 
 	// Use output's slot for parsing
-	o, err := ledger.OutputFromBytesAtSlot(oData, oid.Slot())
+	o, err := ledger.OutputFromBytes(oData)
 	util.AssertNoError(err)
 
 	delta.decrease = true

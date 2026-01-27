@@ -68,7 +68,7 @@ func (c *EvalContext) SelfOutputBytes() (ret []byte) {
 
 func (c *EvalContext) SelfOutput() *Output {
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	ret, err := OutputFromBytesAtSlot(c.SelfOutputBytes(), base.MaxSlot)
+	ret, err := OutputFromBytes(c.SelfOutputBytes())
 	util.AssertNoError(err)
 	return ret
 }

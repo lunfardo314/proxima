@@ -88,6 +88,10 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 // OutputFromBytesMain parses an output using the provided library.
 // This is the core implementation that avoids repeated L(slot) calls.
 func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
+	return OutputFromBytesMainWithLib(data, L(base.MaxSlot))
+}
+
+func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lock, error) {
 	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
 	if err != nil {
 		return nil, nil, nil, err
@@ -103,14 +107,14 @@ func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if amount, err = AmountsFromBytes(amountBin); err != nil {
+	if amount, err = AmountsFromBytesWithLib(amountBin, lib); err != nil {
 		return nil, nil, nil, err
 	}
 	lockBin, err := ret.At(int(ConstraintIndexLock))
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if lock, err = LockFromBytes(lockBin); err != nil {
+	if lock, err = LockFromBytesWithLib(lockBin, lib); err != nil {
 		return nil, nil, nil, err
 	}
 	return ret, amount, lock, nil
@@ -118,8 +122,12 @@ func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
 
 // OutputFromBytesWithLib parses an output using the provided library.
 // This is the core implementation that avoids repeated L(slot) calls.
+func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
+	return OutputFromBytesWithLib(data, L(base.MaxSlot), validateOpt...)
+}
+
 func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
-	ret, _, _, err := OutputFromBytesMain(data)
+	ret, _, _, err := OutputFromBytesMainWithLib(data, lib)
 	if err != nil {
 		return nil, err
 	}
@@ -131,23 +139,19 @@ func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Outp
 	return ret, nil
 }
 
-// OutputFromBytesAtSlot parses an output using the library for the given slot.
-func OutputFromBytesAtSlot(data []byte, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
-	return OutputFromBytesWithLib(data, L(slot), validateOpt...)
-}
+//
+//// OutputFromBytesAtSlot parses an output using the library for the given slot.
+//func OutputFromBytesAtSlot(data []byte, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
+//	return OutputFromBytesWithLib(data, L(slot), validateOpt...)
+//}
 
-// OutputFromHexStringWithLib parses an output from hex string using the provided library.
-func OutputFromHexStringWithLib(hexStr string, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
+// OutputFromHexString parses an output from hex string using the provided library.
+func OutputFromHexString(hexStr string, validateOpt ...func(*Output) error) (*Output, error) {
 	data, err := hex.DecodeString(hexStr)
 	if err != nil {
 		return nil, err
 	}
-	return OutputFromBytesWithLib(data, lib, validateOpt...)
-}
-
-// OutputFromHexStringAtSlot parses an output from hex string using the library for the given slot.
-func OutputFromHexStringAtSlot(hexStr string, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
-	return OutputFromHexStringWithLib(hexStr, L(slot), validateOpt...)
+	return OutputFromBytes(data, validateOpt...)
 }
 
 func (o *Output) ConstraintsRawBytes() [][]byte {
@@ -231,7 +235,7 @@ func (o *Output) Hex() string {
 func (o *Output) Clone(buildFun ...func(o *OutputBuilder)) *Output {
 	if len(buildFun) == 0 {
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		ret, err := OutputFromBytesAtSlot(o.Bytes(), base.MaxSlot)
+		ret, err := OutputFromBytes(o.Bytes())
 		util.AssertNoError(err)
 		return ret
 	}
@@ -285,11 +289,11 @@ func (o *Output) NumConstraints() int {
 	return o.NumElements()
 }
 
-func (o *Output) ForEachConstraint(fun func(idx byte, constr []byte) bool) {
-	o.ForEach(func(i int, data []byte) bool {
-		return fun(byte(i), data)
-	})
-}
+//func (o *Output) ForEachConstraint(fun func(idx byte, constr []byte) bool) {
+//	o.ForEach(func(i int, data []byte) bool {
+//		return fun(byte(i), data)
+//	})
+//}
 
 func (o *Output) Lock() Lock {
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
@@ -309,68 +313,91 @@ func (o *Output) AccountIDs() []AccountID {
 func (o *Output) TimeLock() (uint32, bool) {
 	var ret Timelock
 	var err error
-	found := false
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
-		}
-		if ret, err = TimelockFromBytesWithLib(constr, L(base.MaxSlot)); err == nil {
-			found = true
+	lib := L(base.MaxSlot)
+	idx := o.IndexFunc(func(i int, data []byte) bool {
+		if byte(i) < ConstraintIndexFirstOptionalConstraint {
 			return false
 		}
-		return true
+		ret, err = TimelockFromBytesWithLib(data, lib)
+		return err == nil
 	})
-	if found {
-		return uint32(ret), true
+	//o.ForEach(func(idx int, constr []byte) bool {
+	//	if byte(idx) < ConstraintIndexFirstOptionalConstraint {
+	//		return true
+	//	}
+	//	if ret, err = TimelockFromBytesWithLib(constr, L(base.MaxSlot)); err == nil {
+	//		found = true
+	//		return false
+	//	}
+	//	return true
+	//})
+	if idx < 0 {
+		return 0, false
 	}
-	return 0, false
+	return uint32(ret), true
 }
 
 // ChainConstraint finds and parses chain constraint. Returns its constraintIndex or 0xff if not found
 func (o *Output) ChainConstraint() (*ChainConstraint, byte) {
 	var ret *ChainConstraint
 	var err error
-	found := byte(0xff)
 	lib := L(base.MaxSlot)
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
-		}
-		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		ret, err = ChainConstraintFromBytesWithLib(constr, lib)
-		if err == nil {
-			found = idx
+	idx := o.IndexFunc(func(i int, data []byte) bool {
+		if byte(i) < ConstraintIndexFirstOptionalConstraint {
 			return false
 		}
-		return true
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		ret, err = ChainConstraintFromBytesWithLib(data, lib)
+		return err == nil
 	})
-	if found != 0xff {
-		return ret, found
+	//o.ForEach(func(idx int, constr []byte) bool {
+	//	if byte(idx) < ConstraintIndexFirstOptionalConstraint {
+	//		return true
+	//	}
+	//	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	//	ret, err = ChainConstraintFromBytesWithLib(constr, lib)
+	//	if err == nil {
+	//		found = byte(idx)
+	//		return false
+	//	}
+	//	return true
+	//})
+	if idx < 0 {
+		return nil, 0xff
 	}
-	return nil, 0xff
+	return ret, byte(idx)
 }
 
 // SequencerConstraint finds and parses chain constraint. Returns its constraintIndex or 0xff if not found
 func (o *Output) SequencerConstraint() (*SequencerConstraint, byte) {
 	var ret *SequencerConstraint
 	var err error
-	found := byte(0xff)
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
-		}
-		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		ret, err = SequencerConstraintFromBytesWithLib(constr, L(base.MaxSlot))
-		if err == nil {
-			found = idx
+	lib := L(base.MaxSlot)
+	idx := o.IndexFunc(func(idx int, data []byte) bool {
+		if byte(idx) < ConstraintIndexFirstOptionalConstraint {
 			return false
 		}
-		return true
+		ret, err = SequencerConstraintFromBytesWithLib(data, lib)
+		return err == nil
 	})
-	if found != 0xff {
-		return ret, found
+
+	//found := byte(0xff)
+	//o.ForEach(func(idx int, constr []byte) bool {
+	//	if byte(idx) < ConstraintIndexFirstOptionalConstraint {
+	//		return true
+	//	}
+	//	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	//	ret, err = SequencerConstraintFromBytesWithLib(constr, L(base.MaxSlot))
+	//	if err == nil {
+	//		found = byte(idx)
+	//		return false
+	//	}
+	//	return true
+	//})
+	if idx < 0 {
+		return nil, 0xff
 	}
-	return nil, 0xff
+	return ret, byte(idx)
 }
 
 // IsSequencerOutput output contains sequencer constraint
@@ -391,20 +418,27 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	var err error
 	seqConstraintIndex := byte(0xff)
 	var seqConstraint *SequencerConstraint
-
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint || idx == chainConstraintIndex {
-			return true
-		}
-		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		seqConstraint, err = SequencerConstraintFromBytesWithLib(constr, L(base.MaxSlot))
-		if err == nil {
-			seqConstraintIndex = idx
+	lib := L(base.MaxSlot)
+	idx := o.IndexFunc(func(i int, data []byte) bool {
+		if byte(i) < ConstraintIndexFirstOptionalConstraint || byte(i) == chainConstraintIndex {
 			return false
 		}
-		return true
+		seqConstraint, err = SequencerConstraintFromBytesWithLib(data, lib)
+		return err == nil
 	})
-	if seqConstraintIndex == 0xff {
+	//o.ForEachConstraint(func(idx byte, constr []byte) bool {
+	//	if idx < ConstraintIndexFirstOptionalConstraint || idx == chainConstraintIndex {
+	//		return true
+	//	}
+	//	// Uses latest library version - upgrade code must maintain backward-compatible parsing
+	//	seqConstraint, err = SequencerConstraintFromBytesWithLib(constr, L(base.MaxSlot))
+	//	if err == nil {
+	//		seqConstraintIndex = idx
+	//		return false
+	//	}
+	//	return true
+	//})
+	if idx < 0 {
 		return nil, false
 	}
 	if seqConstraint.ChainConstraintIndex != chainConstraintIndex {
@@ -440,23 +474,30 @@ func (o *Output) DelegationLock() *DelegateLock {
 func (o *Output) EnsureStopDelegationConstraint() (*EnsureStopDelegation, byte) {
 	var ret *EnsureStopDelegation
 	var err error
-	found := byte(0xff)
 	lib := L(base.MaxSlot)
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
+	idx := o.IndexFunc(func(i int, data []byte) bool {
+		if byte(i) < ConstraintIndexFirstOptionalConstraint {
+			return false // continue iteration
 		}
-		ret, err = EnsureStopDelegationFromBytesWithLib(constr, lib)
-		if err == nil {
-			found = idx
-			return false
-		}
-		return true
+		ret, err = EnsureStopDelegationFromBytesWithLib(data, lib)
+		return err == nil // stop when found
 	})
-	if found != 0xff {
-		return ret, found
+
+	//o.ForEach(func(idx int, constr []byte) bool {
+	//	if idx < ConstraintIndexFirstOptionalConstraint {
+	//		return true
+	//	}
+	//	ret, err = EnsureStopDelegationFromBytesWithLib(constr, lib)
+	//	if err == nil {
+	//		found = idx
+	//		return false
+	//	}
+	//	return true
+	//})
+	if idx < 0 {
+		return nil, 0xff
 	}
-	return nil, 0xff
+	return ret, byte(idx)
 }
 
 func (o *Output) ToString(prefix ...string) string {
@@ -505,7 +546,7 @@ func (o *Output) String() string {
 
 func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	ret := lines.New()
-	o.ForEachConstraint(func(i byte, data []byte) bool {
+	o.ForEach(func(i int, data []byte) bool {
 		bc := ""
 		if verbose {
 			bc = fmt.Sprintf(prefix+"   bytecode: %s", easyfl_util.Fmt(data))
@@ -536,7 +577,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 
 func (o *Output) LinesPlainSource() *lines.Lines {
 	ret := lines.New()
-	o.ForEachConstraint(func(i byte, data []byte) bool {
+	o.ForEach(func(i int, data []byte) bool {
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
 		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
 		if err != nil {
@@ -551,7 +592,7 @@ func (o *Output) LinesPlainSource() *lines.Lines {
 
 func (o *Output) LinesPlainHR() *lines.Lines {
 	ret := lines.New()
-	o.ForEachConstraint(func(i byte, data []byte) bool {
+	o.ForEach(func(i int, data []byte) bool {
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
 		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
 		if err != nil {
@@ -566,7 +607,7 @@ func (o *Output) LinesPlainHR() *lines.Lines {
 
 func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWithID, error) {
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	ret, err := OutputFromBytesAtSlot(o.Data, base.MaxSlot, validOpt...)
+	ret, err := OutputFromBytes(o.Data, validOpt...)
 	if err != nil {
 		return nil, err
 	}
@@ -800,9 +841,10 @@ func ParseAndSortOutputData(outs []*OutputDataWithID, filter func(oid *base.Outp
 
 func ParseOutputDataAndFilter(outs []*OutputDataWithID, filter func(oid *base.OutputID, o *Output) bool) ([]*OutputWithID, error) {
 	ret := make([]*OutputWithID, 0, len(outs))
+	lib := L(base.MaxSlot)
 	for _, od := range outs {
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		out, err := OutputFromBytesAtSlot(od.Data, base.MaxSlot)
+		out, err := OutputFromBytesWithLib(od.Data, lib)
 		if err != nil {
 			return nil, err
 		}
@@ -884,10 +926,10 @@ func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 	return ret, nil
 }
 
-func forEachOutputReadOnly(outs []*OutputDataWithID, fun func(o *Output, odata *OutputDataWithID) bool) error {
+func forEachOutputReadOnly(outs []*OutputDataWithID, lib *Library, fun func(o *Output, odata *OutputDataWithID) bool) error {
 	for _, odata := range outs {
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		o, err := OutputFromBytesAtSlot(odata.Data, base.MaxSlot)
+		o, err := OutputFromBytesWithLib(odata.Data, lib)
 		if err != nil {
 			return err
 		}
@@ -900,7 +942,7 @@ func forEachOutputReadOnly(outs []*OutputDataWithID, fun func(o *Output, odata *
 
 func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChainID, error) {
 	ret := make([]*OutputWithChainID, 0)
-	err := forEachOutputReadOnly(outs, func(o *Output, odata *OutputDataWithID) bool {
+	err := forEachOutputReadOnly(outs, L(base.MaxSlot), func(o *Output, odata *OutputDataWithID) bool {
 		ch, constraintIndex := o.ChainConstraint()
 		if constraintIndex == 0xff {
 			return true

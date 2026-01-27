@@ -58,7 +58,7 @@ func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (
 		consumedOutputsArray.MustPush(o.Bytes())
 	}
 	e := tuples.MakeTupleFromSerializableElements(consumedOutputsArray) // one level deeper
-	ret.ctxTree = tuples.TreeFromTreesReadOnly(tx.tree, e.AsTree())
+	ret.ctxTree = tuples.TreeFromTreesReadOnly(tx.Tree, e.AsTree())
 	// always check the consistency of the transaction with the input context
 	if err := ret.validateInputCommitmentSafe(); err != nil {
 		return nil, fmt.Errorf("TxContextFromTransaction: %w\n>>>>>>>>>>>>>>>>>>\n%s", err, ret.String())

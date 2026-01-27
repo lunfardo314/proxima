@@ -172,6 +172,7 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 }
 
 func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
+	lib := ledger.L(base.MaxSlot)
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -191,7 +192,7 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 		util.Assertf(found, "can't get output")
 
 		// Use output's slot for parsing
-		_, amounts, lock, err := ledger.OutputFromBytesMain(oData)
+		_, amounts, lock, err := ledger.OutputFromBytesMainWithLib(oData, lib)
 		util.AssertNoError(err)
 
 		lockStr := lock.String()

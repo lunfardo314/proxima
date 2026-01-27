@@ -154,7 +154,7 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 		o := outs[i]
 		var err error
 		path[len(path)-1] = byte(i)
-		if err = ctx.runOutput(o, path, spool); err != nil {
+		if err = ctx.runTuple(o.Tuple, path, spool); err != nil {
 			return fmt.Errorf("%w :\n%s", err, o.LinesHR("   ").String())
 		}
 	}
@@ -176,15 +176,14 @@ func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte
 	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionTuple, ledger.TxUnlockData, consumedOutputIdx, constraintIdx))
 }
 
-// runOutput checks constraints of the output one-by-one
-func (ctx *TxContext) runOutput(output *ledger.Output, path tuples.TreePath, spool *slicepool.SlicePool) error {
-	evalPath := common.Concat(path, byte(0))
+func (ctx *TxContext) runTuple(tu *tuples.Tuple, path tuples.TreePath, spool *slicepool.SlicePool) error {
+	evalPath := easyfl_util.Concat(path, byte(0))
 	var err error
 
-	// checking of script duplicates has been removed. Makes no sense
+	// checking of script duplicates has been removed makes no sense?
 
-	output.ForEachConstraint(func(idx byte, bytecode []byte) bool {
-		evalPath[len(evalPath)-1] = idx
+	tu.ForEach(func(idx int, bytecode []byte) bool {
+		evalPath[len(evalPath)-1] = byte(idx)
 		var res []byte
 
 		res, err = ctx.EvalBytecode(bytecode, evalPath, spool)

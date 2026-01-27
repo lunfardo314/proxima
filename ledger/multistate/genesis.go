@@ -31,19 +31,20 @@ func WriteEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store glo
 // Also stores the library YAML in the upgrade DB partition at slot 0.
 // Returns root commitment to the genesis ledger state and genesis chainID.
 func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommitment) {
+	lib := ledger.L(0)
 	// Create minimal identity from constants
-	identity := ledger.NewLedgerIdentity(ledger.L(0).GenesisTimeUnix, ledger.L(0).Description)
+	identity := ledger.NewLedgerIdentity(lib.GenesisTimeUnix, lib.Description)
 	emptyRoot, err := WriteEmptyRootWithLedgerIdentity(identity, store)
 	util.AssertNoError(err)
 
 	// Store library YAML in upgrade DB partition at slot 0
-	libraryYAML := ledger.L(base.MaxSlot).DefinitionsYAML()
+	libraryYAML := lib.DefinitionsYAML()
 	err = WriteUpgradeLibrary(store, 0, libraryYAML)
 	util.AssertNoError(err)
 
-	genesisAddr := ledger.AddressED25519FromPublicKey(ledger.L(0).GenesisControllerPublicKey)
+	genesisAddr := ledger.AddressED25519FromPublicKey(lib.GenesisControllerPublicKey)
 
-	initialSupply := ledger.L(0).InitialSupply
+	initialSupply := lib.InitialSupply
 	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)
 	gStemOut := ledger.GenesisStemOutput()
 	// Controller dust output ensures the controller can always create transactions
@@ -51,7 +52,7 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 
 	// Create upgrade commitment UTXO for slot 0
 	// For slot 0, prevHash is the base library hash, prevSlot is MaxSlot
-	libraryHash := ledger.L(base.MaxSlot).LibraryHash()
+	libraryHash := lib.LibraryHash()
 	prevLibraryHash := ledger.BaseLibraryHash()
 	upgradeOut := ledger.UpgradeUTXO(0, libraryHash, prevLibraryHash, base.MaxSlot)
 

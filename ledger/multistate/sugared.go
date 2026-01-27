@@ -54,7 +54,7 @@ func (s SugaredStateReader) GetOutputWithID(oid base.OutputID) (*ledger.OutputWi
 		return nil, ErrNotFound
 	}
 	// Use output's slot for parsing
-	ret, err := ledger.OutputFromBytesAtSlot(oData, oid.Slot())
+	ret, err := ledger.OutputFromBytes(oData)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (s SugaredStateReader) GetOutputErr(oid base.OutputID) (*ledger.Output, err
 		return nil, ErrNotFound
 	}
 	// Use output's slot for parsing
-	ret, err := ledger.OutputFromBytesAtSlot(oData, oid.Slot())
+	ret, err := ledger.OutputFromBytes(oData)
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +106,10 @@ func (s SugaredStateReader) GetOutputsForAccount(addr ledger.AccountID) ([]*ledg
 func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Accountable, fun func(oid base.OutputID, o *ledger.Output) bool) (err error) {
 	var o *ledger.Output
 	var err1 error
+	lib := ledger.L(base.MaxSlot)
 	return s.IterateUTXOsInAccount(addr.AccountID(), func(oid base.OutputID, odata []byte) bool {
 		// Use output's slot for parsing
-		o, err1 = ledger.OutputFromBytesAtSlot(odata, oid.Slot())
+		o, err1 = ledger.OutputFromBytesWithLib(odata, lib)
 		if err1 != nil {
 			return true
 		}
@@ -158,7 +159,7 @@ func (s SugaredStateReader) GetChainOutputWithID(chainID base.ChainID) (*ledger.
 		return nil, err
 	}
 	// Use output's slot for parsing
-	ret, err := ledger.OutputFromBytesAtSlot(oData.Data, oData.ID.Slot())
+	ret, err := ledger.OutputFromBytes(oData.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +204,7 @@ func (s SugaredStateReader) GetChainTips(chainID base.ChainID) (*ledger.OutputWi
 		return nil, nil, err
 	}
 	// Use output's slot for parsing
-	outSeq, err := ledger.OutputFromBytesAtSlot(oData.Data, oData.ID.Slot())
+	outSeq, err := ledger.OutputFromBytes(oData.Data)
 	if err != nil {
 		return nil, nil, err
 	}
