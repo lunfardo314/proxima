@@ -2,12 +2,15 @@ package ledger
 
 import (
 	"crypto/ed25519"
+	"fmt"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/easyfl/slicepool"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -189,6 +192,22 @@ func (lc *LibraryCache) parseLibrary(yamlData []byte) *Library {
 	result := newLibrary(lib, yamlData)
 	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
 	registerConstraints0(result)
+
+	// pre-compile transaction validator
+	expr, nargs, _, err := result.CompileExpression(result.TxLayoutValidator)
+	util.AssertNoError(err)
+	util.Assertf(nargs == 0, "transaction validator must be closed EasyFL expression")
+
+	result.TxValidator = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
+		err1 := easyfl_util.CatchPanicOrError(func() error {
+			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, expr)
+			if len(res) == 0 {
+				return fmt.Errorf("transaction layout validation failed")
+			}
+			return nil
+		})
+		return err1
+	}
 	return result
 }
 

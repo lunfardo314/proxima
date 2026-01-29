@@ -76,7 +76,7 @@ func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
 const __definitionsLedgerConstantsYAMLUpgrade0 = `# 
 # version data is JSON data. The key 'txValidation' contains name of the constraint that should be evaluated first.
 # It validates main parts of the transaction layout
-version_data: '{"txValidation":"txLayoutValidator"}'
+version_data: '{"txLayoutValidator":"txLayoutValidator0"}'
 
 # definitions of main ledger constants
 functions:

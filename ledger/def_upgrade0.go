@@ -15,6 +15,8 @@ var (
 	_generalFunctionsYAMLUpgrade0 string
 	//go:embed def/def_helper_func0.yaml
 	_helperFunctionsYAMLUpgrade0 string
+	//go:embed def/tx_layout_validator.efl
+	_txLayoutValidator0 string
 )
 
 // upgrade0 makes library at genesis by applying upgrade to the base EasyFL library
@@ -38,6 +40,8 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	lib.MustExtendMany(delegateLock2Source)
 	lib.MustExtendMany(tagAlongLockConstraintSource)
 	lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
+	lib.MustExtendMany(_txLayoutValidator0)
+
 }
 
 // registerConstraints0 mass-registers all serde wrappers of constraints at genesis

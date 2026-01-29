@@ -63,6 +63,10 @@ func (ctx *TxContext) _validate() error {
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
+		// FIXME txValidator crashes in some cases
+		//if err1 = ctx.TxValidator(ctx.makeEvalContext(nil), spool); err1 != nil {
+		//	return err1
+		//}
 		if err1 = ctx.validateTxLevelConstraints(spool); err1 != nil {
 			return err1
 		}

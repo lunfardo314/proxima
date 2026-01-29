@@ -77,7 +77,8 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 		var marshalled map[string]string
 		err = json.Unmarshal(lib.VersionData, &marshalled)
 		util.AssertNoError(err, "unmarshalling version data JSON")
-		ret.TxLayoutValidator = marshalled["txValidation"]
+		ret.TxLayoutValidator = marshalled["txLayoutValidator"]
+		util.Assertf(ret.TxLayoutValidator != "", "TxLayoutValidator not specified")
 	}
 
 	ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")

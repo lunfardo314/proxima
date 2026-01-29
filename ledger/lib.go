@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/slicepool"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
@@ -25,6 +26,8 @@ type (
 		locksByName        map[string]LockParser
 		upgradeChainData   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
 		Constants                            // Embedded ledger constants for this library version
+		txValidatorExpr    *easyfl.Expression[*EvalContext]
+		TxValidator        func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
 	}
 )
 
