@@ -63,6 +63,9 @@ func (ctx *TxContext) _validate() error {
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
+		if err1 = ctx.validateTxLevelConstraints(spool); err1 != nil {
+			return err1
+		}
 		if err1 = ctx.validateOutputs(spool); err1 != nil {
 			return err1
 		}
@@ -93,6 +96,26 @@ func (ctx *TxContext) writeStateMutationsTo(mut common.KVWriter) {
 	})
 }
 
+// validateTxLevelConstraints evaluates all transaction level constraints, if any.
+func (ctx *TxContext) validateTxLevelConstraints(spool *slicepool.SlicePool) error {
+	txConstraintsBytes := ctx.ctxTree.MustBytesAtPath(ledger.PathToTxConstraints)
+	if len(txConstraintsBytes) == 0 {
+		// nil value of the txConstraints element is no-op
+		return nil
+	}
+	tu, err := tuples.TupleFromBytes(txConstraintsBytes, 256)
+	if err != nil {
+		return fmt.Errorf("parsing tx constraints: %v", err)
+	}
+	// assume there a tuple of tx level constraints
+	return ctx.runTuple(tu, ledger.PathToTxConstraints, spool)
+}
+
+// TODO optimize and improve:
+//   - no need to pre-parse all outputs, we can run tuples directly
+//   - we can check mandatory constraints separately
+
+// validateTxLevelConstraints evaluates all consumed and produced outputs
 func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 	outs, err := ctx._scanOutputs(ledger.PathToConsumedOutputs)
 	if err != nil {
@@ -102,7 +125,7 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 		return fmt.Errorf("validateOutputs: %w", err)
 	}
 	producedSide := ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance]
-	consumedSide := int64(ctx.totalConsumedTokenBalance)
+	consumedSide := ctx.totalConsumedTokenBalance
 	inflation := ctx.totalProducedAmounts[ledger.AmountIndexInflation]
 	if producedSide != consumedSide+inflation {
 		return fmt.Errorf("mismatch between token amounts: consumed(%s) + inflation(%s) != produced(%s), diff c+i-p = %s",
