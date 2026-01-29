@@ -3,6 +3,7 @@ package ledger
 import (
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"math"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 // Constants contains constant values of the ledger
 type Constants struct {
 	Hash [32]byte
+	//
+	TxLayoutValidator string
 	// arbitrary string up 255 bytes
 	Description string
 	// genesis time unix seconds
@@ -69,6 +72,14 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	ret := &Constants{Hash: lib.LibraryHash()}
 	var err error
 	var res []byte
+
+	if len(lib.VersionData) > 0 {
+		var marshalled map[string]string
+		err = json.Unmarshal(lib.VersionData, &marshalled)
+		util.AssertNoError(err, "unmarshalling version data JSON")
+		ret.TxLayoutValidator = marshalled["txValidation"]
+	}
+
 	ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
 	util.AssertNoError(err)
 	res, err = lib.EvalFromSource(nil, "constGenesisControllerPublicKey")
@@ -165,6 +176,7 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	originChainID := OriginChainID()
 	ret := lines.New(prefix...).
 		Add("Library hash: %s", hex.EncodeToString(c.Hash[:])).
+		Add("Tx layout valdator: '%s'", string(c.TxLayoutValidator)).
 		Add("Description: '%s'", c.Description).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).
 		Add("Genesis controller public key: %s", hex.EncodeToString(c.GenesisControllerPublicKey)).

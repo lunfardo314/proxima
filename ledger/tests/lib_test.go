@@ -16,7 +16,8 @@ func TestLoad(t *testing.T) {
 	lib := ledger.LibraryFromParameters(par, true)
 	constants := ledger.ConstantsFromLibrary(lib.Library)
 
-	t.Logf("------------------ Main constants (default params)\n%s", constants.String())
+	t.Logf("------------------ Version data: '\n%s'", string(lib.VersionData))
+	t.Logf("------------------ Main constants (defaults)\n%s", constants.String())
 	t.Logf("------------------ Time-related constants\n%s", constants.TimeConstantsToString())
 	t.Logf("------------------ Main constants (from global singleton) -------------------- \n%s", ledger.L(0).Lines("      ").String())
 }
