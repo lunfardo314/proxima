@@ -2,15 +2,12 @@ package ledger
 
 import (
 	"crypto/ed25519"
-	"fmt"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/easyfl/easyfl_util"
-	"github.com/lunfardo314/easyfl/slicepool"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
@@ -192,22 +189,7 @@ func (lc *LibraryCache) parseLibrary(yamlData []byte) *Library {
 	result := newLibrary(lib, yamlData)
 	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
 	registerConstraints0(result)
-
-	// pre-compile transaction validator
-	expr, nargs, _, err := result.CompileExpression(result.TxLayoutValidator)
-	util.AssertNoError(err)
-	util.Assertf(nargs == 0, "transaction validator must be closed EasyFL expression")
-
-	result.TxValidator = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
-		err1 := easyfl_util.CatchPanicOrError(func() error {
-			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, expr)
-			if len(res) == 0 {
-				return fmt.Errorf("transaction layout validation failed")
-			}
-			return nil
-		})
-		return err1
-	}
+	result.MustPreCompileTxLayoutValidator()
 	return result
 }
 
@@ -245,7 +227,7 @@ func MustInitLibraryCache(store common.Traversable) {
 // MustInitSingleton initializes the ledger with identity data bytes.
 // DEPRECATED: Use MustInitLibraryCache with a state store instead.
 // This function is kept for backward compatibility during migration.
-func MustInitSingleton(identityData []byte) {
+func MustInitSingleton(defYaml []byte) {
 	libraryCacheMutex.Lock()
 
 	// Create a minimal cache with the provided data
@@ -255,20 +237,21 @@ func MustInitSingleton(identityData []byte) {
 		}
 	}
 
-	lib, err := ParseLibraryFromYAML(identityData, GetEmbeddedFunctionResolverUpgrade0)
+	lib, err := ParseLibraryFromYAML(defYaml, GetEmbeddedFunctionResolverUpgrade0)
 	util.AssertNoError(err)
 
-	result := newLibrary(lib, identityData)
+	result := newLibrary(lib, defYaml)
 	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
 	registerConstraints0(result)
+	result.MustPreCompileTxLayoutValidator()
 	libraryCache.cache[0] = result
 
 	// Set a dummy store that always returns the genesis library
-	libraryCache.store = &singleLibraryStore{data: identityData}
+	libraryCache.store = &singleLibraryStore{data: defYaml}
 
 	// Initialize slot index for single library case
 	libraryCache.upgradeSlots = []uint32{0}
-	libraryCache.slotToYAML = map[uint32][]byte{0: identityData}
+	libraryCache.slotToYAML = map[uint32][]byte{0: defYaml}
 	libraryCache.latestUpgradeSlot = 0
 	libraryCache.latestLib = result
 
@@ -285,7 +268,7 @@ type singleLibraryStore struct {
 	data []byte
 }
 
-func (s *singleLibraryStore) Iterator(prefix []byte) common.KVIterator {
+func (s *singleLibraryStore) Iterator(_ []byte) common.KVIterator {
 	return &singleLibraryIterator{data: s.data, done: false}
 }
 
@@ -423,6 +406,7 @@ func InitWithTestingLedgerData(opts ...ParametersOption) ed25519.PrivateKey {
 		opt(&params)
 	}
 	lib := LibraryFromParameters(params)
+	lib.MustPreCompileTxLayoutValidator()
 	MustInitSingleton(lib.ToYAML(true))
 	return pk
 }

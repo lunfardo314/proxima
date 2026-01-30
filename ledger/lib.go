@@ -2,10 +2,13 @@ package ledger
 
 import (
 	"crypto/ed25519"
+	"fmt"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/slicepool"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
 
@@ -63,6 +66,30 @@ func (lib *Library) UpgradeChainData() *UpgradeChainData {
 // Called when the library is loaded from the DB.
 func (lib *Library) SetUpgradeChainData(data *UpgradeChainData) {
 	lib.upgradeChainData = data
+}
+
+// MustPreCompileTxLayoutValidator sets tx layout validator for the initialized library
+func (lib *Library) MustPreCompileTxLayoutValidator() {
+	if lib.TxLayoutValidator == "" {
+		lib.TxValidator = func(_ easyfl.GlobalData[*EvalContext], _ *slicepool.SlicePool) error {
+			panic("tx layout validator has not beed initialized")
+		}
+		return
+	}
+	expr, nargs, _, err := lib.CompileExpression(lib.TxLayoutValidator)
+	util.AssertNoError(err)
+	util.Assertf(nargs == 0, "transaction validator must be a closed EasyFL expression")
+
+	lib.TxValidator = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
+		err1 := easyfl_util.CatchPanicOrError(func() error {
+			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, expr)
+			if len(res) == 0 {
+				return fmt.Errorf("transaction layout validation failed")
+			}
+			return nil
+		})
+		return err1
+	}
 }
 
 func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {

@@ -46,6 +46,7 @@ func (ctx *TxContext) EvalBytecode(bytecode []byte, evalPath []byte, spool *slic
 	return ret, nil
 }
 
+// Validate runs all validation scripts (constraints) found on the transaction
 func (ctx *TxContext) Validate() error {
 	if err := ctx._validate(); err != nil {
 		return fmt.Errorf("%w\ntxid = %s (%s)", err, ctx.txid.StringShort(), ctx.txid.StringHex())
@@ -63,13 +64,15 @@ func (ctx *TxContext) _validate() error {
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		// FIXME txValidator crashes in some cases
-		//if err1 = ctx.TxValidator(ctx.makeEvalContext(nil), spool); err1 != nil {
-		//	return err1
-		//}
+		// validate transaction layout by calling predefined and pre-compiled script
+		if err1 = ctx.TxValidator(ctx.makeEvalContext(nil), spool); err1 != nil {
+			return err1
+		}
+		// run tx level constrains, if any. All must succeed
 		if err1 = ctx.validateTxLevelConstraints(spool); err1 != nil {
 			return err1
 		}
+		// run all scripts on consumed and produced UTXOs
 		if err1 = ctx.validateOutputs(spool); err1 != nil {
 			return err1
 		}
@@ -78,6 +81,7 @@ func (ctx *TxContext) _validate() error {
 	if err != nil {
 		return err
 	}
+	// check ledger invariant for the base token: consumed balances + inflation must be equal to produced balances
 	if ctx.totalConsumedTokenBalance+ctx.totalProducedAmounts[1] != ctx.totalProducedAmounts[0] {
 		return fmt.Errorf("unbalanced amount between inputs and outputs: cnsumed balance %s, produced balance %s, produced inflation: %s",
 			util.Th(ctx.totalConsumedTokenBalance), util.Th(ctx.totalProducedAmounts[0]), util.Th(ctx.totalProducedAmounts[1]))
