@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-//go:embed def/timelock.efl
+//go:embed def/timelock.easyfl
 var timelockSource string
 
 const (

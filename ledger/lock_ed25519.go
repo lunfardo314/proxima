@@ -20,7 +20,7 @@ const (
 	addressED25519Template = AddressED25519Name + "(0x%s)"
 )
 
-//go:embed def/lock_ed25519.efl
+//go:embed def/lock_ed25519.easyfl
 var addressED25519ConstraintSource string
 
 // AddressED25519FromBytes parses an AddressED25519 using the provided library.

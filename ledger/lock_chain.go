@@ -19,7 +19,7 @@ const (
 	chainLockTemplate = ChainLockName + "(0x%s)"
 )
 
-//go:embed def/lock_chain.efl
+//go:embed def/lock_chain.easyfl
 var chainLockConstraintSource string
 
 var NilChainLock = ChainLockFromChainID(base.NilChainID)
