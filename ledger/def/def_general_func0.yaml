@@ -121,30 +121,6 @@ functions:
     numArgs: 0
     source: "tupleLen(atPath(pathToProducedOutputs))"
   -
-    sym: txEssenceBytes
-    numArgs: 0
-    source: "
-         concat(
-            atPath(pathToTxConstraints), 
-            atPath(pathToTimestamp),
-            atPath(pathToSequencerDataBytes),
-            atPath(pathToInputCommitment), 
-			atPath(pathToExplicitBaseline),
-            atPath(pathToInputIDs), 
-            atPath(pathToUnlockParams),
-            atPath(pathToProducedOutputs), 
-            atPath(pathToEndorsements),
-            atPath(pathToOtherData)
-         )"
-  -
-    sym: txIDPrefix
-    numArgs: 0
-    source: "if(isSequencerTransaction, bitwiseOR(txTimestampBytes, 0x0000000001), txTimestampBytes)"
-  -
-    sym: txID
-    numArgs: 0
-    source: "concat(txIDPrefix, byte(sub(numProducedOutputs,1), 7), slice(blake2b(txEssenceBytes),6,31))"
-  -
     sym: selfOutputPath
     numArgs: 0
     source: "slice(at,0,2)"

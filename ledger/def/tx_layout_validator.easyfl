@@ -1,5 +1,6 @@
 // txLayoutValidator0 is a closed function that is evaluated in the beginning
 // of the transaction validation. It checks correctness of main elements of the transactions
 func txLayoutValidator0 : and(
+   // inputs should not contain duplicates
    not(tupleHasDuplicates(atPath(pathToInputIDs)))
 )

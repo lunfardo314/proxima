@@ -156,14 +156,44 @@ func TestTxID(t *testing.T) {
 	ctx, err := u.TxContextFromBytes(txBytes)
 	require.NoError(t, err)
 
-	lib := ledger.L(base.MaxSlot)
+	lib := ledger.L(0)
 	txID := ctx.ID()
 	dctx := lib.NewGlobalDataTracePrint(ledger.NewEvalContext(ctx))
 	res, err := lib.EvalFromSource(dctx, "atPath(pathToSequencerDataBytes)")
 	require.NoError(t, err)
 	require.EqualValues(t, 0, len(res))
 
+	// taking txid from the embedded function
 	res, err = lib.EvalFromSource(dctx, "txID")
+	require.NoError(t, err)
+
+	require.EqualValues(t, txID[:], res)
+
+	// direct computation of the txid in EasyFL
+	const directTxID = `
+      concat(
+         if(
+            isSequencerTransaction, 
+            bitwiseOR(txTimestampBytes, 0x0000000001), 
+            txTimestampBytes
+         ), 
+         byte(sub(numProducedOutputs,1), 7), 
+         slice(blake2b(
+            concat(
+              atPath(pathToTxConstraints), 
+              atPath(pathToTimestamp),
+              atPath(pathToSequencerDataBytes),
+              atPath(pathToInputCommitment), 
+		  	  atPath(pathToExplicitBaseline),
+              atPath(pathToInputIDs), 
+              atPath(pathToUnlockParams),
+              atPath(pathToProducedOutputs), 
+              atPath(pathToEndorsements),
+              atPath(pathToOtherData)
+            )
+         ),6,31))
+`
+	res, err = lib.EvalFromSource(dctx, directTxID)
 	require.NoError(t, err)
 
 	require.EqualValues(t, txID[:], res)

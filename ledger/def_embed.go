@@ -26,6 +26,7 @@ type (
 		ProducedTotal(i byte) int64
 		IsBranchTransaction() bool
 		IsSequencerTransaction() bool
+		ID() base.TransactionID
 		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
 		Timestamp() base.LedgerTime
 		MustInputAt(idx byte) base.OutputID
@@ -134,6 +135,7 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalTotalProduced":  evalTotalProduced,
 	"evalTicksBefore64":  evalTicksBefore64, // TODO make it in pure EasyFL
 	"evalRandomFromSeed": evalRandomFromSeed,
+	"evalTxID":           evalTxID,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.
@@ -201,6 +203,11 @@ func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 	ret := par.Alloc(8)
 	binary.BigEndian.PutUint64(ret, rnd)
 	return ret
+}
+
+func evalTxID(par *easyfl.CallParams[*EvalContext]) []byte {
+	ret := par.DataContext().ID()
+	return par.AllocData(ret[:]...)
 }
 
 // arg 0 and arg 1 are timestamps (5 bytes each)
