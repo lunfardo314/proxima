@@ -1,16 +1,3 @@
-
-// DEPRECATED: signature verification is correct but not necessary, because validity of the signature is
-// checked for the transaction anyway.
-// We are leaving it just as an example
-// $0 = address data 32 bytes
-// $1 = signature
-// $2 = public key
-// return true if transaction essence signature is valid for the address
-//func unlockedWithSigED25519: and(
-//	equal($0, blake2b($2)), 		       // address in the address data must be equal to the hash of the public key
-//	validSignatureED25519(txID, $1, $2)
-//)
-
 // ED25519 address constraint wraps 32 bytes address, the blake2b hash of the public key
 // For example expression 'addressED25519(0x010203040506..)' used as constraint in the output makes
 // the output unlockable only with the presence of signature corresponding
@@ -48,7 +35,6 @@ func addressED25519: and(
 				unlockedByReference(_referencedIndex(selfUnlockParameters)),
 					// checks if tx signature corresponds to the address
                 equal($0, blake2b(publicKeyED25519(txSignature)))
-				// deprecated: unlockedWithSigED25519($0, signatureED25519(txSignature), publicKeyED25519(txSignature))
 			)
 		)
 	)

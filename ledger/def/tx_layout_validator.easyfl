@@ -10,5 +10,10 @@ func txLayoutValidator0 : and(
    require(
       equal(atPath(pathToInputCommitment),blake2b(atPath(pathToConsumedOutputs)) ),
       !!!hash_of_consumed_UTXOs_not_equal_to_the_input_commitment!!!
+   ),
+   // check signature of the transaction
+   require(
+      validSignatureED25519(txID, signatureED25519(txSignature), publicKeyED25519(txSignature)),
+      !!!invalid_signature_of_the_transaction
    )
 )

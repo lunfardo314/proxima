@@ -175,6 +175,8 @@ func (tx *Transaction) Validate(opt ...TxValidationOption) error {
 	})
 }
 
+// SignatureBytes return signature bytes of the the
+// TODO refactor to the format <signature type byte>+<signature bytes>
 func (tx *Transaction) SignatureBytes() []byte {
 	return tx.MustBytesAtPath(Path(ledger.TxSignature))
 }
@@ -262,6 +264,7 @@ func ParseSender(tx *Transaction) error {
 	senderPubKey := ed25519.PublicKey(sigData[64:])
 	tx.sender = ledger.AddressED25519FromPublicKey(senderPubKey)
 	// verify if txid is signed
+	// TODO remove signature checking here. It must be checked in the txLayoutValidator
 	if !ed25519.Verify(senderPubKey, tx.txid[:], sigData[0:64]) {
 		return fmt.Errorf("invalid signature")
 	}
