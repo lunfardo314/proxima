@@ -59,10 +59,12 @@ func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (
 	}
 	e := tuples.MakeTupleFromSerializableElements(consumedOutputsArray) // one level deeper
 	ret.ctxTree = tuples.TreeFromTreesReadOnly(tx.Tree, e.AsTree())
+
 	// always check the consistency of the transaction with the input context
-	if err := ret.validateInputCommitmentSafe(); err != nil {
-		return nil, fmt.Errorf("TxContextFromTransaction: %w\n>>>>>>>>>>>>>>>>>>\n%s", err, ret.String())
-	}
+	//if err := ret.validateInputCommitmentSafe(); err != nil {
+	//	return nil, fmt.Errorf("TxContextFromTransaction: %w\n>>>>>>>>>>>>>>>>>>\n%s", err, ret.String())
+	//}
+
 	ret.dataContext = ledger.NewEvalContext(ret)
 	return ret, nil
 }

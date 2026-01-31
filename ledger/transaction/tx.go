@@ -37,7 +37,6 @@ type (
 var MainTxValidationOptions = []TxValidationOption{
 	ParseSequencerData,
 	CheckExplicitBaseline,
-	CheckSizeOfInputCommitment,
 	ScanInputs,
 	ScanEndorsements,
 	ScanOutputs,
@@ -404,18 +403,6 @@ func ScanOutputs(tx *Transaction) error {
 		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
 			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
-	}
-	return nil
-}
-
-// CheckSizeOfInputCommitment check if inout commitment is 32-bytes long. Not very necessary
-func CheckSizeOfInputCommitment(tx *Transaction) error {
-	data, err := tx.BytesAtPath(Path(ledger.TxInputCommitment))
-	if err != nil {
-		return fmt.Errorf("checking input commitment: '%v'", err)
-	}
-	if len(data) != 32 {
-		return fmt.Errorf("input commitment must be 32-bytes long")
 	}
 	return nil
 }

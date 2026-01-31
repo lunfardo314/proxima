@@ -1,7 +1,6 @@
 package transaction
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 	"sync/atomic"
@@ -239,17 +238,17 @@ func (ctx *TxContext) runTuple(tu *tuples.Tuple, path tuples.TreePath, spool *sl
 	return nil
 }
 
-func (ctx *TxContext) validateInputCommitmentSafe() error {
-	return util.CatchPanicOrError(func() error {
-		consumeOutputHash := ctx.ConsumedOutputHash()
-		inputCommitment := ctx.InputCommitment()
-		if !bytes.Equal(consumeOutputHash[:], inputCommitment) {
-			return fmt.Errorf("hash of consumed outputs %v not equal to input commitment %v",
-				easyfl_util.Fmt(consumeOutputHash[:]), easyfl_util.Fmt(inputCommitment))
-		}
-		return nil
-	})
-}
+//func (ctx *TxContext) validateInputCommitmentSafe() error {
+//	return util.CatchPanicOrError(func() error {
+//		consumeOutputHash := ctx.ConsumedOutputHash()
+//		inputCommitment := ctx.InputCommitment()
+//		if !bytes.Equal(consumeOutputHash[:], inputCommitment) {
+//			return fmt.Errorf("hash of consumed outputs %v not equal to input commitment %v",
+//				easyfl_util.Fmt(consumeOutputHash[:]), easyfl_util.Fmt(inputCommitment))
+//		}
+//		return nil
+//	})
+//}
 
 // ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
 func (ctx *TxContext) ConsumedOutputHash() [32]byte {
