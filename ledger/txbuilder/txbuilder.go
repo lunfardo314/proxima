@@ -27,7 +27,7 @@ type (
 		InputIDs         []*base.OutputID
 		Outputs          []*ledger.Output
 		UnlockBlocks     []*UnlockParams
-		Signature        []byte
+		SignatureData    []byte
 		Timestamp        base.LedgerTime
 		InputCommitment  [32]byte
 		Endorsements     []base.TransactionID
@@ -355,7 +355,7 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	if tx.SequencerOutputIndex != 0xff {
 		elems[ledger.TxSequencerDataBytes] = tx.SequencerDataBytes.Bytes()
 	}
-	elems[ledger.TxSignature] = tx.Signature
+	elems[ledger.TxSignatureData] = tx.SignatureData
 	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]
 	elems[ledger.TxExplicitBaseline] = explicitBaseline
 	elems[ledger.TxInputIDs] = inputIDs
@@ -378,7 +378,8 @@ func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey) {
 	sig, err := privKey.Sign(rnd, txid[:], crypto.Hash(0))
 	util.AssertNoError(err)
 	pubKey := privKey.Public().(ed25519.PublicKey)
-	txb.TransactionData.Signature = common.Concat(sig, []byte(pubKey))
+	// signature data in the transaction is <sig type byte> + <signature proper> + <public key>
+	txb.TransactionData.SignatureData = common.Concat(base.SignatureTypeED25519, sig, []byte(pubKey))
 }
 
 type (

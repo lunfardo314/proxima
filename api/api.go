@@ -344,8 +344,8 @@ type (
 
 	// TxLogRecord is a single transaction log record for API responses
 	TxLogRecord struct {
-		TxID           string `json:"txid"`             // hex-encoded full TransactionID (32 bytes)
-		ClockTimestamp int64  `json:"clock_timestamp"`  // Unix nanoseconds
+		TxID           string `json:"txid"`            // hex-encoded full TransactionID (32 bytes)
+		ClockTimestamp int64  `json:"clock_timestamp"` // Unix nanoseconds
 		Message        string `json:"message"`
 	}
 
@@ -426,7 +426,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		return true
 	})
 	ret.Sender = tx.SenderAddress().String()
-	ret.Signature = hex.EncodeToString(tx.SignatureBytes())
+	ret.Signature = hex.EncodeToString(tx.SignatureData())
 	return ret
 }
 

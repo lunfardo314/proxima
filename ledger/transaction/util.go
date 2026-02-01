@@ -77,11 +77,13 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 		eqCom = "   !!! NOT EQUAL WITH INPUT COMMITMENT !!!!"
 	}
 	ret.Add("Consumed output hash: %s%s", easyfl_util.Fmt(h[:]), eqCom)
-	sign := ctx.SignatureBytes()
-	ret.Add("Signature: %s", easyfl_util.Fmt(sign))
-	if len(sign) == 96 {
-		sender := blake2b.Sum256(sign[64:])
-		ret.Add("     ED25519 sender public key hash: %s", easyfl_util.Fmt(sender[:]))
+	sign := ctx.SignatureData()
+	ret.Add("SignatureData: %s", easyfl_util.Fmt(sign))
+	if len(sign) > 0 {
+		if sign[0] == 0 {
+			sender := blake2b.Sum256(sign[64:])
+			ret.Add("     ED25519 sender public key hash: %s", easyfl_util.Fmt(sender[:]))
+		}
 	}
 
 	if explicitBaseline, ok := ctx.ExplicitBaseline(); ok {

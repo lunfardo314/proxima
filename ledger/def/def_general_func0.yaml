@@ -69,9 +69,9 @@ functions:
     numArgs: 0
     source: "atPath(pathToTransaction)"
   -
-    sym: txSignature
+    sym: txSignatureData
     numArgs: 0
-    source: "atPath(pathToSignature)"
+    source: "atPath(pathToSignatureData)"
   -
     sym: txTimestampBytes
     numArgs: 0
@@ -172,19 +172,24 @@ functions:
     sym: selfSiblingUnlockParams
     numArgs: 1
     source: "atTuple8(atPath(concat(pathToUnlockParams, selfOutputIndex)), $0)"
-  -
-    sym: selfHashUnlock
-    numArgs: 1
-    source: if(equal($0, blake2b(selfUnlockParameters)),selfUnlockParameters,nil)
-  -
-    sym: signatureED25519
-    numArgs: 1
-    source: slice($0, 0, 63)
-  -
-    sym: publicKeyED25519
-    numArgs: 1
-    source: slice($0, 64, 95)
-  -
-    sym: selfHasLockType
+#  -
+#    sym: selfHashUnlock
+#    numArgs: 1
+#    source: if(equal($0, blake2b(selfUnlockParameters)),selfUnlockParameters,nil)
+  - sym: selfHasLockType
     description: $0 is call prefix label. Returns true if current output has specific lock type
     source: equal(parseBytecode(selfSiblingConstraint(1), 0x), $0)
+  -
+    sym: signatureProper
+    description: "$0 must be signatureData (type byte+signature proper+public key). Returns proper signature part, depending on the signature type"
+    numArgs: 1
+    source: "if(equal(byte($0,0), 0), slice($0, 1, 64), !!!invalid_signature_type)"
+  -
+    sym: signaturePublicKey
+    description: "$0 must be signatureData (type byte+signature proper+public key). Returns public key part, depending on the signature type"
+    numArgs: 1
+    source: "if(equal(byte($0,0), 0), slice($0, 65, 96), !!!invalid_signature_type)"
+  -
+    sym: validSignature
+    description: "$0 must be txID (the message), $1 must be signatureData (type byte+signature proper+public key). Checks validity of the signature depending on the type"
+    source: "validSignatureED25519($0, signatureProper($1), signaturePublicKey($1))"

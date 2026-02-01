@@ -23,7 +23,8 @@ Constants which define validation context data tree branches. Structure of the d
        -- TxInputIDs = 0x00     (path 0x0000)  -- contains up to 256 inputs, the IDs of consumed outputs
        -- TxUnlockData = 0x01 (path 0x0001)  -- contains unlock params for each input
        -- TxOutputs     = 0x02       (path 0x0002)  -- contains up to 256 produced outputs
-       -- TxSignature = 0x03          (path 0x0003)  -- contains the only signature of the essence. It is mandatory
+       -- TxSignatureData = 0x03    (path 0x0003)  -- contains mandatory signature data. 0 byte signature type,
+                                    the rest is proper signature of the transaction essence and the public key, depending on the type
        -- TxSequencerDataBytes = 04  (path 0x0004)
        -- TxTimestamp = 0x05          (path 0x0005)  -- mandatory timestamp of the transaction
        -- TxInputCommitment = 0x06    (path 0x0006)  -- blake2b hash of the all consumed outputs (which are under path 0x1000)
@@ -53,7 +54,7 @@ const (
 	TxConstraints = byte(iota)
 	TxTimestamp
 	TxSequencerDataBytes
-	TxSignature
+	TxSignatureData
 	TxInputCommitment
 	TxExplicitBaseline
 	TxInputIDs
@@ -75,7 +76,7 @@ var (
 	PathToEndorsements                  = tuples.Path(TransactionTuple, TxEndorsements)
 	PathToSequencerAndStemOutputIndices = tuples.Path(TransactionTuple, TxSequencerDataBytes)
 	PathToTimestamp                     = tuples.Path(TransactionTuple, TxTimestamp)
-	PathToSignature                     = tuples.Path(TransactionTuple, TxSignature)
+	PathToSignature                     = tuples.Path(TransactionTuple, TxSignatureData)
 	PathToInputCommitment               = tuples.Path(TransactionTuple, TxInputCommitment)
 	PathToExplicitBaseline              = tuples.Path(TransactionTuple, TxExplicitBaseline)
 	PathToOtherData                     = tuples.Path(TransactionTuple, TxOtherData)
@@ -135,7 +136,7 @@ functions:
       numArgs: 0
       source: 0x%s
    -
-      sym: pathToSignature
+      sym: pathToSignatureData
       numArgs: 0
       source: 0x%s
    -

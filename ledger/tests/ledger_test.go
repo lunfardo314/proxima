@@ -19,7 +19,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/blake2b"
 )
 
 func TestOutput(t *testing.T) {
@@ -931,78 +930,6 @@ func TestLocalLibrary(t *testing.T) {
 		t.Logf("src = '%s', len = %d", src, len(libBin))
 		lib.MustError(src)
 	})
-}
-
-func TestHashUnlock(t *testing.T) {
-	lib := ledger.L(base.MaxSlot)
-	const secretUnlockScript = "func fun1: and" // fun1 always returns true
-	libBin, err := lib.Library.CompileLocalLibraryToTuple(secretUnlockScript)
-	require.NoError(t, err)
-	t.Logf("library size: %d", len(libBin))
-	libHash := blake2b.Sum256(libBin)
-	t.Logf("library hash: %s", easyfl_util.Fmt(libHash[:]))
-
-	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-	privKey0, _, addr0 := u.GenerateAddress(0)
-	err = u.TokensFromFaucet(addr0, 1_000_000_000)
-	require.NoError(t, err)
-
-	constraintSource := fmt.Sprintf("or(isPathToProducedOutput(at),callLocalLibrary(selfHashUnlock(0x%s), 0))", hex.EncodeToString(libHash[:]))
-	_, _, constraintBin, err := lib.CompileExpression(constraintSource)
-	require.NoError(t, err)
-	t.Logf("constraint source: %s", constraintSource)
-	t.Logf("constraint size: %d", len(constraintBin))
-
-	par, err := u.MakeTransferInputData(privKey0, nil, base.NilLedgerTime)
-	require.NoError(t, err)
-	constr := ledger.NewGeneralScript(constraintBin)
-	t.Logf("constraint: %s", constr)
-	par.WithAmount(100_000_000).
-		WithTargetLock(addr0).
-		WithConstraint(constr)
-	txbytes, err := txbuilder.MakeTransferTransaction(par)
-	require.NoError(t, err)
-
-	ctx, err := transaction.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
-	require.NoError(t, err)
-
-	t.Logf("%s", ctx.String())
-	outs, err := u.DoTransferOutputs(par)
-	require.NoError(t, err)
-
-	outs = ledger.FilterOutputsSortByAmount(outs, func(o *ledger.Output) bool {
-		return o.TokenBalance() == 100_000_000
-	})
-
-	// produce transaction without providing hash unlocking library for the output with script
-	par = txbuilder.NewTransferData(privKey0, addr0, base.NilLedgerTime)
-	par.MustWithInputs(outs...).
-		WithAmount(50_000_000).
-		WithTargetLock(addr0)
-
-	txbytes, err = txbuilder.MakeTransferTransaction(par)
-	require.NoError(t, err)
-
-	ctx, err = transaction.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
-	require.NoError(t, err)
-
-	t.Logf("---- transaction without hash unlock: FAILING\n %s", ctx.String())
-	err = u.DoTransfer(par)
-	require.Error(t, err)
-
-	// now adding unlock data the unlocking library/script
-	par.WithUnlockData(0, ledger.ConstraintIndexFirstOptionalConstraint, libBin)
-
-	txbytes, err = txbuilder.MakeTransferTransaction(par)
-	require.NoError(t, err)
-
-	ctx, err = transaction.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
-	require.NoError(t, err)
-
-	t.Logf("---- transaction with hash unlock, the library/script: SUCCESS\n %s", ctx.String())
-	t.Logf("%s", ctx.String())
-	err = u.DoTransfer(par)
-	require.NoError(t, err)
 }
 
 func TestGGG(t *testing.T) {

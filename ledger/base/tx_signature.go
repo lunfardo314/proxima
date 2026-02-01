@@ -16,6 +16,9 @@ const (
 	SignatureTypeED25519 = byte(0)
 )
 
+// SignatureFromBytes parses signature data
+// - first byte is signature type. 0 - is of ED25519 signature
+// - bytes 1:... are the full signature bytes, that includes proper signature and the public key, depending on the type
 func SignatureFromBytes(data []byte) (*Signature, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("SignatureFromBytes: empty data")
@@ -35,12 +38,14 @@ func SignatureFromBytes(data []byte) (*Signature, error) {
 	}, nil
 }
 
+// ED25519
+
 func (s *Signature) MustPubicKeyED25519() ed25519.PublicKey {
-	util.Assertf(s.SignatureType != SignatureTypeED25519, "SignatureType ED25519 is expected")
+	util.Assertf(s.SignatureType == SignatureTypeED25519, "SignatureType ED25519 is expected")
 	return s.SignatureBytes[ed25519.SignatureSize : ed25519.SignatureSize+ed25519.PublicKeySize]
 }
 
 func (s *Signature) MustSignatureDataED25519() []byte {
-	util.Assertf(s.SignatureType != SignatureTypeED25519, "SignatureType ED25519 is expected")
+	util.Assertf(s.SignatureType == SignatureTypeED25519, "SignatureType ED25519 is expected")
 	return s.SignatureBytes[:ed25519.SignatureSize]
 }

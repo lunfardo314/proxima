@@ -96,7 +96,7 @@ func New(ts base.LedgerTime,
 
 		// sign concatenation of predecessor VRFProof with slot number and next VRF proof
 		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TransactionData.Timestamp.Slot))
-		ret.vrfProof = ed25519.Sign(ret.privateKey, msg)
+		ret.vrfProof = common.Concat(base.SignatureTypeED25519, ed25519.Sign(ret.privateKey, msg))
 	}
 
 	// form initial amounts vector

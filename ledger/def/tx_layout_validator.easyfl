@@ -13,7 +13,7 @@ func txLayoutValidator0 : and(
    ),
    // check signature of the transaction
    require(
-      validSignatureED25519(txID, signatureED25519(txSignature), publicKeyED25519(txSignature)),
+      validSignature(txID, txSignatureData),
       !!!invalid_signature_of_the_transaction
    )
 )

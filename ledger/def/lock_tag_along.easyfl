@@ -19,7 +19,7 @@ or(
      require(
         equal(
            parseInlineDataArgument(_selfSenderBytecode, 0, #a, #addressED25519),
-           blake2b(publicKeyED25519(txSignature))
+           blake2b(signaturePublicKey(txSignatureData))
         ),
         !!!sender_hash_check_failed
      ),

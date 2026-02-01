@@ -34,7 +34,7 @@ func addressED25519: and(
 					// if it is unlocked with reference, the signature is not checked
 				unlockedByReference(_referencedIndex(selfUnlockParameters)),
 					// checks if tx signature corresponds to the address
-                equal($0, blake2b(publicKeyED25519(txSignature)))
+                equal($0, blake2b(signaturePublicKey(txSignatureData)))
 			)
 		)
 	)

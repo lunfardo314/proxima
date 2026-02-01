@@ -273,7 +273,7 @@ func PathToString(path []byte) string {
 					ret += ".inID"
 				case ledger.TxOutputs:
 					ret += ".out"
-				case ledger.TxSignature:
+				case ledger.TxSignatureData:
 					ret += ".sig"
 				case ledger.TxTimestamp:
 					ret += ".ts"

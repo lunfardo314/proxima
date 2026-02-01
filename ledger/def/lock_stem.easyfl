@@ -2,6 +2,8 @@
 func producedStemLockOfSelfTx : lockConstraint(producedOutputByIndex(txStemOutputIndex))
 
 func _predOutputIDOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 0)
+
+// _vrfProofOnSuccessor is sig type byte + signature proper
 func _vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 1)
 
 // $0 - stem predecessor index
@@ -12,7 +14,7 @@ func _predVRFProof : parseInlineDataArgument(
 )
 
 // $0 - predecessor output id
-// $1 - VRF proof (ED25519 signature of concatenation of VRF proof from the stem predecessor and slot of the transaction)
+// $1 - VRF proof (signature data (sig type byte + signature proper) of message = <VRF proof from the stem predecessor> || <slot of the transaction>)
 // does not require unlock parameters
 func stemLock: and(
 	require(isBranchTransaction, !!!must_be_a_branch_transaction),
@@ -30,7 +32,7 @@ func stemLock: and(
           ),
              // enforce correct VRF proof on successor
 		  require(
-             validSignatureED25519(concat($1, txSlot), _vrfProofOnSuccessor, publicKeyED25519(txSignature)),
+             validSignature(concat($1, txSlot), concat(_vrfProofOnSuccessor, signaturePublicKey(txSignatureData))),
              !!!VRF_proof_check_failed
           )
        ),

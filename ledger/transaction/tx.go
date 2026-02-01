@@ -15,7 +15,6 @@ import (
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
-	"golang.org/x/crypto/ed25519"
 )
 
 // Transaction provides access to the tree of transferable transaction
@@ -48,7 +47,7 @@ var _essenceIndices []byte
 func init() {
 	_essenceIndices = make([]byte, 20)
 	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
-		if i != ledger.TxSignature {
+		if i != ledger.TxSignatureData {
 			_essenceIndices = append(_essenceIndices, i)
 		}
 	}
@@ -175,10 +174,10 @@ func (tx *Transaction) Validate(opt ...TxValidationOption) error {
 	})
 }
 
-// SignatureBytes return signature bytes of the the
+// SignatureData return signature bytes of the the
 // TODO refactor to the format <signature type byte>+<signature bytes>
-func (tx *Transaction) SignatureBytes() []byte {
-	return tx.MustBytesAtPath(Path(ledger.TxSignature))
+func (tx *Transaction) SignatureData() []byte {
+	return tx.MustBytesAtPath(Path(ledger.TxSignatureData))
 }
 
 // _baseValidation is a checking of being able to extract id. If not, bytes are not identifiable as a transaction.
@@ -260,14 +259,16 @@ func ParseSequencerData(tx *Transaction) error {
 // ParseSender parses and checks ED25519 signature, sets the sender field
 func ParseSender(tx *Transaction) error {
 	// mandatory sender signature
-	sigData := tx.SignatureBytes()
-	senderPubKey := ed25519.PublicKey(sigData[64:])
-	tx.sender = ledger.AddressED25519FromPublicKey(senderPubKey)
-	// verify if txid is signed
-	// TODO remove signature checking here. It must be checked in the txLayoutValidator
-	if !ed25519.Verify(senderPubKey, tx.txid[:], sigData[0:64]) {
-		return fmt.Errorf("invalid signature")
+	s, err := base.SignatureFromBytes(tx.SignatureData())
+	if err != nil {
+		return fmt.Errorf("ParseSender: %v", err)
 	}
+	util.Assertf(s.SignatureType == base.SignatureTypeED25519, "other that SignatureType(0) = ED25519 is not supported")
+	tx.sender = ledger.AddressED25519FromPublicKey(s.MustPubicKeyED25519())
+	// verify if txid is signed
+	//if !ed25519.Verify(senderPubKey, tx.txid[:], sigData[0:64]) {
+	//	return fmt.Errorf("invalid signature")
+	//}
 	return nil
 }
 
