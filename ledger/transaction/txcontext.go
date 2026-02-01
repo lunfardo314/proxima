@@ -83,6 +83,10 @@ func (ctx *TxContext) BytesAtPath(path []byte) ([]byte, error) {
 	return ctx.ctxTree.BytesAtPath(path)
 }
 
+func (ctx *TxContext) SubtreeAtPath(path []byte) (*tuples.Tree, error) {
+	return ctx.ctxTree.Subtree(path)
+}
+
 // unlockScriptBinary finds the script from the data of unlock block
 func (ctx *TxContext) unlockScriptBinary(invocationFullPath tuples.TreePath) []byte {
 	unlockBlockPath := common.Concat(invocationFullPath)

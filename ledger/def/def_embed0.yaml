@@ -43,4 +43,14 @@ functions:
     description: "returns ID of the transaction"
     numArgs: 0
     embedded_as: evalTxID
+  -
+    sym: tupleLenAtPath
+    description: "$0 is path where a tuple is expected. Function returns number of elements of that tuple as big-endian 8 bytes"
+    numArgs: 1
+    embedded_as: evalTupleLenAtPath
+  -
+    sym: tupleHasDuplicatesAtPath
+    description: "$0 is path where a tuple is expected. Function returns non-empty byte slice if the tuple has duplicated"
+    numArgs: 1
+    embedded_as: evalTupleHasDuplicatesAtPath
 

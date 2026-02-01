@@ -10,6 +10,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
@@ -21,6 +22,7 @@ import (
 type (
 	TxContextAccess interface {
 		BytesAtPath([]byte) ([]byte, error)
+		SubtreeAtPath([]byte) (*tuples.Tree, error)
 		ConsumedOutput(idx byte) (*Output, error)
 		ConsumedTotal(i byte) int64
 		ProducedTotal(i byte) int64
@@ -128,14 +130,16 @@ func resolveEmbeddedUpgrade0(sym string) easyfl.EmbeddedFunction[*EvalContext] {
 }
 
 var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
-	"evalPath":           evalPath,
-	"evalAtPath":         evalAtPath,
-	"evalAmounts":        evalAmounts,
-	"evalTotalConsumed":  evalTotalConsumed,
-	"evalTotalProduced":  evalTotalProduced,
-	"evalTicksBefore64":  evalTicksBefore64, // TODO make it in pure EasyFL
-	"evalRandomFromSeed": evalRandomFromSeed,
-	"evalTxID":           evalTxID,
+	"evalPath":                     evalPath,
+	"evalAtPath":                   evalAtPath,
+	"evalAmounts":                  evalAmounts,
+	"evalTotalConsumed":            evalTotalConsumed,
+	"evalTotalProduced":            evalTotalProduced,
+	"evalTicksBefore64":            evalTicksBefore64, // TODO make it in pure EasyFL
+	"evalRandomFromSeed":           evalRandomFromSeed,
+	"evalTxID":                     evalTxID,
+	"evalTupleHasDuplicatesAtPath": evalTupleHasDuplicatesAtPath,
+	"evalTupleLenAtPath":           evalTupleLenAtPath,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.
@@ -208,6 +212,31 @@ func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 func evalTxID(par *easyfl.CallParams[*EvalContext]) []byte {
 	ret := par.DataContext().ID()
 	return par.AllocData(ret[:]...)
+}
+
+func evalTupleLenAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
+	path := par.Arg(0)
+	subtree, err := par.DataContext().SubtreeAtPath(path)
+	if err != nil {
+		par.TracePanic("evalTupleLenAtPath: path=%+v -> %v", path, err)
+		return nil
+	}
+	ret := par.Alloc(8)
+	binary.BigEndian.PutUint64(ret, uint64(subtree.Tuple.NumElements()))
+	return ret
+}
+
+func evalTupleHasDuplicatesAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
+	path := par.Arg(0)
+	subtree, err := par.DataContext().SubtreeAtPath(path)
+	if err != nil {
+		par.TracePanic("evalTupleHasDuplicatesAtPath: path=%+v -> %v", path, err)
+		return nil
+	}
+	if subtree.Tuple.HasDuplicates() {
+		return []byte{0xff}
+	}
+	return nil
 }
 
 // arg 0 and arg 1 are timestamps (5 bytes each)

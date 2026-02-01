@@ -111,15 +111,15 @@ functions:
   -
     sym: numEndorsements
     numArgs: 0
-    source: "tupleLen(atPath(pathToEndorsements))"
+    source: "tupleLenAtPath(pathToEndorsements)"
   -
     sym: numInputs
     numArgs: 0
-    source: "tupleLen(atPath(pathToInputIDs))"
+    source: "tupleLenAtPath(pathToInputIDs)"
   -
     sym: numProducedOutputs
     numArgs: 0
-    source: "tupleLen(atPath(pathToProducedOutputs))"
+    source: "tupleLenAtPath(pathToProducedOutputs)"
   -
     sym: selfOutputPath
     numArgs: 0
@@ -135,7 +135,7 @@ functions:
   -
     sym: selfNumConstraints
     numArgs: 0
-    source: "tupleLen(selfOutputBytes)"
+    source: "tupleLenAtPath(selfOutputPath)"
   -
     sym: self
     numArgs: 0
