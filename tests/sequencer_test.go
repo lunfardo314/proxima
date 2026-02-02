@@ -89,7 +89,7 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 	auxOuts, err := rdr.GetOutputsForAccount(testData.addrAux.AccountID())
 	require.EqualValues(t, 1, len(auxOuts))
 	targetPrivKey := testutil.GetTestingPrivateKey(10000)
-	targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+	targetAddr := ledger.SigLockFromED25519PrivateKey(targetPrivKey)
 
 	ctx, cancel := context.WithTimeout(context.Background(), (maxSlots+1)*ledger.SlotDuration())
 	//ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -215,7 +215,7 @@ func Test3Seq1TagAlong(t *testing.T) {
 	//initialBalanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 
 	targetPrivKey := testutil.GetTestingPrivateKey(10000)
-	targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+	targetAddr := ledger.SigLockFromED25519PrivateKey(targetPrivKey)
 
 	ctx, cancelSpam := context.WithTimeout(context.Background(), spammingTimeout)
 	par := &spammerParams{
@@ -282,7 +282,7 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 	require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))
 
 	targetPrivKey := testutil.GetTestingPrivateKey(10000)
-	targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+	targetAddr := ledger.SigLockFromED25519PrivateKey(targetPrivKey)
 
 	tagAlongSeqIDs := []base.ChainID{testData.bootstrapChainID}
 	for _, o := range testData.chainOrigins {

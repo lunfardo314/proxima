@@ -68,7 +68,7 @@ func TestSequencerAttachCostTagAlongChainExceedsBudget(t *testing.T) {
 	require.GreaterOrEqual(t, len(faucetOuts), 1)
 
 	targetPrivKey := testutil.GetTestingPrivateKey(10000)
-	targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+	targetAddr := ledger.SigLockFromED25519PrivateKey(targetPrivKey)
 
 	// Create a chain of non-sequencer transactions that will exceed the budget
 	// Chain: source -> tx1 -> tx2 -> ... -> txN (with tag-along output)
@@ -220,7 +220,7 @@ func TestSequencerAttachCostManyTagAlongsExceedBudget(t *testing.T) {
 	require.NoError(t, err)
 
 	targetPrivKey := testutil.GetTestingPrivateKey(10000)
-	targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+	targetAddr := ledger.SigLockFromED25519PrivateKey(targetPrivKey)
 
 	// Create multiple independent tag-along transactions
 	// Each one has minimal past cone cost but adds to the seq tx cost
@@ -351,7 +351,7 @@ func TestSequencerAttachCostBudgetBaseline(t *testing.T) {
 	require.NoError(t, err)
 
 	targetPrivKey := testutil.GetTestingPrivateKey(10000)
-	targetAddr := ledger.AddressED25519FromPrivateKey(targetPrivKey)
+	targetAddr := ledger.SigLockFromED25519PrivateKey(targetPrivKey)
 
 	// Create a few tag-along transactions
 	t.Logf("Creating %d tag-along transactions", numTagAlongs)

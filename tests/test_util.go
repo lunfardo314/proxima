@@ -210,12 +210,12 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 		privKeyFaucet: privKeys[2],
 		addrFaucet:    addrs[2],
 	}
-	t.Logf("genesis addr: %s", ledger.AddressED25519FromPrivateKey(genesisPrivateKey).String())
+	t.Logf("genesis addr: %s", ledger.SigLockFromED25519PrivateKey(genesisPrivateKey).String())
 	t.Logf("priv key addr: %s", ret.addr.String())
 	t.Logf("aux key addr: %s", ret.addrAux.String())
 	t.Logf("faucet addr: %s", ret.addrFaucet.String())
 
-	require.True(t, ledger.AddressED25519MatchesPrivateKey(ret.addr, ret.privKey))
+	require.True(t, ledger.SigLockMatchesED25519PrivateKey(ret.addr, ret.privKey))
 
 	stateStore := common.NewInMemoryKVStore()
 	ret.txStore = txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
@@ -293,7 +293,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 		_, err = txb.ProduceOutput(o)
 		require.NoError(td.t, err)
 	}
-	tagAlongOut := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID, ledger.AddressED25519FromPrivateKey(td.privKeyAux))
+	tagAlongOut := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID, ledger.SigLockFromED25519PrivateKey(td.privKeyAux))
 	_, err = txb.ProduceOutput(tagAlongOut)
 	require.NoError(td.t, err)
 
@@ -648,7 +648,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 					trd.WithTargetLock(ledger.ChainLockFromChainID(ret.bootstrapChainID))
 				} else {
 					if i == howLong-1 && len(chainTipToGenesisPrivKey) > 0 && chainTipToGenesisPrivKey[0] {
-						trd.WithTargetLock(ledger.AddressED25519FromPrivateKey(genesisPrivateKey))
+						trd.WithTargetLock(ledger.SigLockFromED25519PrivateKey(genesisPrivateKey))
 					} else {
 						trd.WithTargetLock(ledger.ChainLockFromChainID(ret.chainOrigins[seqNr%nChains].ChainID))
 					}
@@ -787,7 +787,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 		par.perChainID = make(map[base.ChainID]int)
 	}
 	require.True(par.t, len(par.tagAlongSeqID) > 0)
-	sourceAddr := ledger.AddressED25519FromPrivateKey(par.privateKey)
+	sourceAddr := ledger.SigLockFromED25519PrivateKey(par.privateKey)
 	var err error
 	ret := make([][]byte, par.batchSize)
 
@@ -867,8 +867,8 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 
 func StartTestEnv() (*workflowDummyEnvironment, *base.TransactionID, error) {
 	privKey := genesisPrivateKey
-	addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-	addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+	addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
+	addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 	// Use amounts above minimum storage deposit
 	distrib := []ledger.LockBalance{
 		{Lock: addr1, Balance: 100_000_000, ChainOrigin: false},

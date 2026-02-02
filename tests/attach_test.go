@@ -63,8 +63,8 @@ func TestAttachBasic(t *testing.T) {
 	})
 	t.Run("with distribution", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
 			{Lock: addr1, Balance: 1_000_000_000, ChainOrigin: false},
 			{Lock: addr2, Balance: 1_000_000_000, ChainOrigin: false},
@@ -126,8 +126,8 @@ func TestAttachBasic(t *testing.T) {
 	})
 	t.Run("sync scenario", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
 			{Lock: addr1, Balance: 1_000_000_000},
 			{Lock: addr2, Balance: 2_000_000_000},
@@ -198,8 +198,8 @@ func TestAttachBasic(t *testing.T) {
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
 			{Lock: addr1, Balance: 1_000_000_000},
 			{Lock: addr2, Balance: 2_000_000_000},

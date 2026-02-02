@@ -30,7 +30,7 @@ import (
 
 func TestBase(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
-	addr := ledger.AddressED25519FromPrivateKey(privKey)
+	addr := ledger.SigLockFromED25519PrivateKey(privKey)
 	seqID := base.RandomChainID()
 	bal := uint64(1_000_000_000_000)
 
@@ -150,7 +150,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(99)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, ledger.SigLockFromED25519PrivateKey(privKey)),
 			//txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 1_000_000, addr),
 		}
 		ts = ts.AddSlots(1)
@@ -167,7 +167,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, ledger.SigLockFromED25519PrivateKey(privKey)),
 		}
 
 		ts = ts.AddSlots(1)
@@ -185,7 +185,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, ledger.SigLockFromED25519PrivateKey(privKey)),
 		}
 		txb := newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
@@ -205,7 +205,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 40_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.SigLockFromED25519PrivateKey(privKey), 200, 40_000_000, addr),
 		}
 		txb := newTxb(ts.AddSlots(1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
@@ -220,7 +220,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 40_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.SigLockFromED25519PrivateKey(privKey), 200, 40_000_000, addr),
 		}
 		txb := newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
@@ -239,7 +239,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots-1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 
-		sender := ledger.AddressED25519FromPrivateKey(privKey)
+		sender := ledger.SigLockFromED25519PrivateKey(privKey)
 		rndWithdraw := func(amount uint64, slot uint32) error {
 			tagAlongOut := ledger.OutputWithID{
 				ID:     base.RandomOutputID(base.T(slot, 50)),
@@ -268,7 +268,7 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID: base.RandomOutputID(base.T(ts.Slot, 50)),
-			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
+			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, ledger.SigLockFromED25519PrivateKey(privKey), 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
 				sdUpdated.SetName("newName").IncChainHeight()
 			})),
 		}
@@ -305,7 +305,7 @@ func delegationInit(master ledger.Accountable, seqID base.ChainID, startSlot uin
 
 func TestFreezeOneStep(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
-	addr := ledger.AddressED25519FromPrivateKey(privKey)
+	addr := ledger.SigLockFromED25519PrivateKey(privKey)
 	seqID := base.RandomChainID()
 	seqInitBalance := ledger.L(0).MinimumAmountOnSequencer << 8
 
@@ -479,7 +479,7 @@ type _epochStats struct {
 
 func TestFreezeMultipleSteps(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
-	addr := ledger.AddressED25519FromPrivateKey(privKey)
+	addr := ledger.SigLockFromED25519PrivateKey(privKey)
 	seqID := base.RandomChainID()
 	seqInitBalance := ledger.L(0).MinimumAmountOnSequencer << 8
 
