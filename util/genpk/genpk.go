@@ -34,7 +34,7 @@ func main() {
 	addresses := make([]ledger.SigLock, len(privateKeys))
 
 	for i := range privateKeys {
-		addresses[i] = ledger.AddressED25519FromPrivateKey(privateKeys[i])
+		addresses[i] = ledger.SigLockFromED25519PrivateKey(privateKeys[i])
 	}
 
 	ln := lines.New().
@@ -90,7 +90,7 @@ func ReadTestKeys(fname string) ([]TestKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("wrong private key at pos %d: %v", i, err)
 		}
-		addr := ledger.AddressED25519FromPrivateKey(pk)
+		addr := ledger.SigLockFromED25519PrivateKey(pk)
 		if addr.String() != keyData.Addr {
 			return nil, fmt.Errorf("private key and address does not match at pos %d", i)
 		}

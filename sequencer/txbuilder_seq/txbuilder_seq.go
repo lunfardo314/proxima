@@ -495,12 +495,13 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		}
 	}
 	txb, err := New(Params{
-		Timestamp:     par.Timestamp,
-		Predecessor:   par.ChainInput,
-		Stem:          par.StemInput,
-		SignatureType: par.SignatureType,
-		PrivateKey:    par.PrivateKey,
-		PublicKey:     par.PublicKey,
+		Timestamp:             par.Timestamp,
+		Predecessor:           par.ChainInput,
+		Stem:                  par.StemInput,
+		SignatureType:         par.SignatureType,
+		PrivateKey:            par.PrivateKey,
+		PublicKey:             par.PublicKey,
+		DoNotInflateMainChain: par.DoNotInflateMainChain,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)

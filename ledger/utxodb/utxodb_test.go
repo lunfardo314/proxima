@@ -45,7 +45,7 @@ func TestUTXODB(t *testing.T) {
 	})
 	t.Run("from faucet", func(t *testing.T) {
 		u := NewUTXODB(genesisPrivateKey)
-		addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(100))
+		addr := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(100))
 		// Use amount above minimum storage deposit
 		const testAmount = 100_000_000
 		err := u.TokensFromFaucet(addr, testAmount)
