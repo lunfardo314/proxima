@@ -59,7 +59,15 @@ func TestBase(t *testing.T) {
 	}
 
 	newTxb := func(ts base.LedgerTime, frozen ...int64) *txbuilder_seq.SeqTxBuilder {
-		txb, err := txbuilder_seq.New(ts, newPredChain(frozen...), nil, privKey, multistate.DummyStateReader)
+		txb, err := txbuilder_seq.New(txbuilder_seq.Params{
+			Timestamp:     ts,
+			Predecessor:   newPredChain(frozen...),
+			Stem:          nil,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    privKey,
+			PublicKey:     privKey.Public().(ed25519.PublicKey),
+			StateReader:   multistate.DummyStateReader,
+		})
 		require.NoError(t, err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -337,7 +345,15 @@ func TestFreezeOneStep(t *testing.T) {
 	}
 
 	newTxb := func(ts base.LedgerTime, seqProfitMargin uint16, greedy bool, frozen ...int64) *txbuilder_seq.SeqTxBuilder {
-		txb, err := txbuilder_seq.New(ts, newPredChain(seqProfitMargin, greedy, frozen...), nil, privKey, multistate.DummyStateReader)
+		txb, err := txbuilder_seq.New(txbuilder_seq.Params{
+			Timestamp:     ts,
+			Predecessor:   newPredChain(seqProfitMargin, greedy, frozen...),
+			Stem:          nil,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    privKey,
+			PublicKey:     privKey.Public().(ed25519.PublicKey),
+			StateReader:   multistate.DummyStateReader,
+		})
 		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -508,7 +524,15 @@ func TestFreezeMultipleSteps(t *testing.T) {
 	}
 
 	newTxb := func(predChain *ledger.OutputWithChainID, ts base.LedgerTime, seqProfitMargin uint16, greedy bool) *txbuilder_seq.SeqTxBuilder {
-		txb, err := txbuilder_seq.New(ts, predChain, nil, privKey, multistate.DummyStateReader)
+		txb, err := txbuilder_seq.New(txbuilder_seq.Params{
+			Timestamp:     ts,
+			Predecessor:   predChain,
+			Stem:          nil,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    privKey,
+			PublicKey:     privKey.Public().(ed25519.PublicKey),
+			StateReader:   multistate.DummyStateReader,
+		})
 		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -668,7 +692,15 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	ret.seqID = seqChainOrig.ChainID
 	t.Logf("seqID: %s", ret.seqID.String())
 	ts := seqChainOrig.ID.Timestamp().AddSlots(1)
-	txbSeq, err := txbuilder_seq.New(ts, seqChainOrig, nil, ret.targetPrivateKey, nil)
+	txbSeq, err := txbuilder_seq.New(txbuilder_seq.Params{
+		Timestamp:     ts,
+		Predecessor:   seqChainOrig,
+		Stem:          nil,
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    ret.targetPrivateKey,
+		PublicKey:     ret.targetPrivateKey.Public().(ed25519.PublicKey),
+		StateReader:   nil,
+	})
 	require.NoError(t, err)
 	rndTxid := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 	err = txbSeq.AddEndorsement(rndTxid)

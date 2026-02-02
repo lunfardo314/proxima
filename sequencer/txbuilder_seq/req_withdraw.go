@@ -1,7 +1,6 @@
 package txbuilder_seq
 
 import (
-	"crypto/ed25519"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -10,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
-	"golang.org/x/crypto/blake2b"
 )
 
 type WithdrawFromChainTxBuilderCommand struct {
@@ -34,8 +32,8 @@ func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		return
 	}
 	// check authorisation
-	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
-	if o.SenderID != blake2b.Sum256(publicKey) {
+	ownSenderID := base.SpenderIDFromPublicKey(txb.signatureType, txb.publicKey)
+	if o.SenderID != ownSenderID {
 		// wrong sender -> may be an attack
 		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: sender can't withdraw funds from the sequencer (authorisation failure)")
 		return

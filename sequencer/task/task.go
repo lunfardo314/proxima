@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"sync"
@@ -31,7 +30,7 @@ type (
 		attacher.Environment
 		SequencerName() string
 		SequencerID() base.ChainID
-		ControllerPrivateKey() ed25519.PrivateKey
+		ControllerKeys() (byte, []byte, []byte) // sig type, private key, public key
 		OwnLatestMilestoneOutput() vertex.WrappedOutput
 		Backlog() *backlog.TagAlongBacklog
 		IsConsumedInThePastPath(oid base.OutputID, ms *vertex.WrappedTx, getStateReader func() multistate.SugaredStateReader) bool

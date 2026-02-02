@@ -46,7 +46,7 @@ func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutpu
 			return
 		}
 		if lock.Sender.Name() != ledger.SigLockName {
-			reason = fmt.Errorf("tag-along lock allows only ED25519 address as sender")
+			reason = fmt.Errorf("tag-along lock allows only sigLock as sender")
 			return
 		}
 		ret.TagAlongLock = lock

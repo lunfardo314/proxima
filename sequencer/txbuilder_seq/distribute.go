@@ -81,7 +81,9 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 		StemInput:             genesisStem,
 		Timestamp:             ts,
 		WithdrawOutputs:       genesisDistributionOutputs,
+		SignatureType:         base.SignatureTypeED25519,
 		PrivateKey:            originPrivateKey,
+		PublicKey:             originPrivateKey.Public().(ed25519.PublicKey),
 		DoNotInflateMainChain: true,
 	})
 	if err != nil {

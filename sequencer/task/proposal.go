@@ -30,7 +30,16 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 		stem = stemWrapped.OutputWithID()
 		p.Assertf(!a.TargetTs().IsSlotBoundary() || stem != nil, "newProposal: !a.TargetTs().IsSlotBoundary() || stem != nil")
 	}
-	txb, err := txbuilder_seq.New(a.TargetTs(), &seqPred, stem, p.ControllerPrivateKey(), a.BaselineSugaredStateReader())
+	signatureType, privKey, pubKey := p.ControllerKeys()
+	txb, err := txbuilder_seq.New(txbuilder_seq.Params{
+		Timestamp:     a.TargetTs(),
+		Predecessor:   &seqPred,
+		Stem:          stem,
+		SignatureType: signatureType,
+		PrivateKey:    privKey,
+		PublicKey:     pubKey,
+		StateReader:   a.BaselineSugaredStateReader(),
+	})
 	if err != nil {
 		a.Close() // FIX: close attacher on error
 		return nil, fmt.Errorf("newProposal: %w", err)

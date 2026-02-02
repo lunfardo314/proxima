@@ -331,8 +331,8 @@ func (seq *Sequencer) SequencerID() base.ChainID {
 	return seq.sequencerID
 }
 
-func (seq *Sequencer) ControllerPrivateKey() ed25519.PrivateKey {
-	return seq.controllerKey
+func (seq *Sequencer) ControllerKeys() (byte, []byte, []byte) {
+	return base.SignatureTypeED25519, seq.controllerKey, seq.controllerKey.Public().(ed25519.PublicKey)
 }
 
 func (seq *Sequencer) SequencerName() string {

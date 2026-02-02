@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"crypto/ed25519"
 	"testing"
 	"time"
 
@@ -495,7 +496,9 @@ func TestAttachCostBudgetExceededMilestoneAttacher(t *testing.T) {
 			ChainInput:       chainOrigin,
 			Timestamp:        ts,
 			Endorsements:     []base.TransactionID{testData.distributionBranchTxID},
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       testData.privKeyAux,
+			PublicKey:        testData.privKeyAux.Public().(ed25519.PublicKey),
 			AdditionalInputs: []*ledger.OutputWithID{lastChainLockedOutput},
 		})
 		require.NoError(t, err)

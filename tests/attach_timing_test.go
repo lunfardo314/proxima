@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"crypto/ed25519"
 	"sync"
 	"testing"
 
@@ -114,11 +115,13 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 		exactSeqPaceTs = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(exactSeqPaceTs)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:      "test",
-			ChainInput:   chainOrigin,
-			Timestamp:    exactSeqPaceTs,
-			Endorsements: []base.TransactionID{testData.distributionBranchTxID},
-			PrivateKey:   testData.privKeyAux,
+			SeqName:       "test",
+			ChainInput:    chainOrigin,
+			Timestamp:     exactSeqPaceTs,
+			Endorsements:  []base.TransactionID{testData.distributionBranchTxID},
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -165,11 +168,13 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 
 		// Verify we can build the branch transaction
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:    "test",
-			ChainInput: chainOrigin,
-			StemInput:  distribBD.Stem,
-			Timestamp:  branchTs,
-			PrivateKey: testData.privKeyAux,
+			SeqName:       "test",
+			ChainInput:    chainOrigin,
+			StemInput:     distribBD.Stem,
+			Timestamp:     branchTs,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err, "should be able to build branch transaction with stem input")
 

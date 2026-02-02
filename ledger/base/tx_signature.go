@@ -57,7 +57,7 @@ func (s *Signature) String() string {
 }
 
 func SpenderIDFromPublicKey(sigType byte, pubKey ed25519.PublicKey) SpenderID {
-	return blake2b.Sum256(common.Concat(sigType, pubKey))
+	return blake2b.Sum256(common.Concat(sigType, []byte(pubKey)))
 }
 
 func (s *Signature) SpenderID() SpenderID {

@@ -18,8 +18,8 @@ or(
      require(lessThan(selfNumConstraints, u64/5), !!!tag-along_lock_allows_no_more_than_4_constraints),
      require(
         equal(
-           parseInlineDataArgument(_selfSenderBytecode, 0, #a, #addressED25519),
-           blake2b(signaturePublicKey(txSignatureData))
+           parseInlineDataArgument(_selfSenderBytecode, 0, #a, #sigLock),
+           txSpenderID(txSignatureData)
         ),
         !!!sender_hash_check_failed
      ),

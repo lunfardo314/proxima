@@ -1,7 +1,7 @@
-// ED25519 address constraint wraps 32 bytes address, the blake2b hash of the public key
-// For example expression 'addressED25519(0x010203040506..)' used as constraint in the output makes
+// sigLock constraint wraps 32 bytes of the spender ID, the blake2b hash of the (<sig type byte> + <public key>)
+// For example expression 'sigLock(0x010203040506..)' used as constraint in the output makes
 // the output unlockable only with the presence of signature corresponding
-// to the address '0x010203040506..'
+// to the spenderID '0x010203040506..'
 
 // 'unlockedByReference'' specifies validation of the input unlock with the reference.
 // The referenced constraint must be exactly the same  but with strictly lesser index.
@@ -17,11 +17,14 @@ func unlockedByReference: and(
 // $0 selfUnlockParameters
 func _referencedIndex : if( isZero(len($0)), 0xff, byte($0,0))
 
-// if it is 'produced' invocation context (constraint invoked in the input), only size of the address is checked
-// Otherwise the first will check first condition if it is unlocked by reference, otherwise checks unlocking signature
-// $0 - ED25519 address, 32 byte blake2b hash of the public key
+// if it is 'produced' invocation context (constraint invoked in the input), only size of the spenderID is checked
+// In the 'consumed' context it will check unlock data.
+// Unlock data must be 1 byte. Two cases:
+// - either tt is an index of the previous sigLock-ed consumed output. i.e. with strictly smaller index
+// - or unlock data is 0xff, then is checks if spenderID in the sigLock is equal to the txSpenderID, i.e. corresponds to the tx signature
+// $0 - spender ID: blake2b hash of the (<sig type byte> + <public key>)
 // Unlock data is 1 byte with reference index to the previous input or signature unlock with 0xff
-func addressED25519: and(
+func sigLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
 	or(
 		and(
@@ -34,7 +37,7 @@ func addressED25519: and(
 					// if it is unlocked with reference, the signature is not checked
 				unlockedByReference(_referencedIndex(selfUnlockParameters)),
 					// checks if tx signature corresponds to the address
-                equal($0, blake2b(signaturePublicKey(txSignatureData)))
+                equal($0, txSpenderID(txSignatureData))
 			)
 		)
 	)
@@ -42,4 +45,4 @@ func addressED25519: and(
 
 // short form of lock a(<hex bytes>)
 // $0 - ED25519 address, 32 byte blake2b hash of the public key
-func a : addressED25519($0)
+func a : sigLock($0)

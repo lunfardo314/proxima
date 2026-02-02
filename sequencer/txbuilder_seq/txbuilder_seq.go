@@ -22,7 +22,9 @@ type (
 		origSeqData           *seqdata.SequencerData
 		rdr                   multistate.IndexedStateReader
 		nextSeqData           *seqdata.SequencerData
-		privateKey            ed25519.PrivateKey
+		signatureType         byte
+		privateKey            []byte
+		publicKey             []byte
 		chainInput            *ledger.OutputWithChainID
 		stemInput             *ledger.OutputWithID // it is branch tx if != nil
 		doNotInflateMainChain bool                 // default is inflate
@@ -39,53 +41,61 @@ type (
 		// This value is added to seqTxCost to predict the final sequencer transaction cost.
 		AttachmentCostDelta() int
 	}
+	Params struct {
+		Timestamp             base.LedgerTime
+		Predecessor           *ledger.OutputWithChainID
+		Stem                  *ledger.OutputWithID
+		SignatureType         byte
+		PrivateKey            []byte
+		PublicKey             []byte
+		StateReader           multistate.IndexedStateReader
+		DoNotInflateMainChain bool
+	}
 )
 
 // New initializes sequencer tx builder and performs necessary validity check
-func New(ts base.LedgerTime,
-	predecessor *ledger.OutputWithChainID,
-	stem *ledger.OutputWithID,
-	privateKey ed25519.PrivateKey,
-	rdr multistate.IndexedStateReader, doNotInflateMainChain ...bool) (*SeqTxBuilder, error) {
+func New(par Params) (*SeqTxBuilder, error) {
 
 	ret := &SeqTxBuilder{
-		Library:               ledger.L(ts.Slot), // cached library for this transaction's slot
-		privateKey:            privateKey,
-		chainInput:            predecessor,
-		stemInput:             stem,
+		Library:               ledger.L(par.Timestamp.Slot), // cached library for this transaction's slot
+		signatureType:         par.SignatureType,
+		privateKey:            par.PrivateKey,
+		publicKey:             par.PublicKey,
+		chainInput:            par.Predecessor,
+		stemInput:             par.Stem,
 		TxBuilder:             txbuilder.New(),
-		rdr:                   rdr,
-		doNotInflateMainChain: func() bool { return len(doNotInflateMainChain) > 0 && doNotInflateMainChain[0] }(),
+		rdr:                   par.StateReader,
+		doNotInflateMainChain: par.DoNotInflateMainChain,
 	}
 
 	var err error
-	sd, err := ledger.ParseSequencerData(predecessor.Output)
+	sd, err := ledger.ParseSequencerData(par.Predecessor.Output)
 
 	if err != nil {
 		ret.origSeqData = seqdata.New()
 	} else {
 		ret.origSeqData = &sd
 		ret.origSeqData.IncChainHeight()
-		if stem != nil {
+		if par.Stem != nil {
 			ret.origSeqData.IncBranchHeight()
 		}
 	}
 	ret.nextSeqData = ret.origSeqData.Clone()
-	diffTicksChain := base.DiffTicks(ts, predecessor.Timestamp())
+	diffTicksChain := base.DiffTicks(par.Timestamp, par.Predecessor.Timestamp())
 	if diffTicksChain < int64(ret.TransactionPaceSequencer) ||
 		diffTicksChain < int64(ret.origSeqData.Pace()) {
-		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", ts.String())
+		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", par.Timestamp.String())
 	}
 
-	ret.TransactionData.Timestamp = ts
+	ret.TransactionData.Timestamp = par.Timestamp
 
 	if ret.IsSlotBoundary() {
-		if stem == nil {
-			return nil, fmt.Errorf("SeqTxBuilder: wrong timestamp or stem for branch transaction: %s", ts.String())
+		if par.Stem == nil {
+			return nil, fmt.Errorf("SeqTxBuilder: wrong timestamp or stem for branch transaction: %s", par.Timestamp.String())
 		}
 	} else {
-		if !ret.IsPostBranchConsolidationTimestamp(ts) {
-			return nil, fmt.Errorf("SeqTxBuilder: timestamp violates post-branch timestamp constraint: %s", ts.String())
+		if !ret.IsPostBranchConsolidationTimestamp(par.Timestamp) {
+			return nil, fmt.Errorf("SeqTxBuilder: timestamp violates post-branch timestamp constraint: %s", par.Timestamp.String())
 		}
 	}
 
@@ -117,11 +127,11 @@ func New(ts base.LedgerTime,
 			}
 		}
 	}
-	predAmounts := predecessor.Output.Amounts()
+	predAmounts := par.Predecessor.Output.Amounts()
 	ret.chainOutAmounts[ledger.AmountIndexTokenBalance] = int64(predAmounts.TokenBalance()) + ret.chainOutAmounts[ledger.AmountIndexInflation]
 
 	// frozen coverage at the predecessor adjusted to the epoch of the successor
-	diffEpochsInt := ret.DiffEpochs(predecessor.ChainID, ts, predecessor.Timestamp())
+	diffEpochsInt := ret.DiffEpochs(par.Predecessor.ChainID, par.Timestamp, par.Predecessor.Timestamp())
 	util.Assertf(diffEpochsInt >= 0, "diffEpochsInt>=0")
 	diffEpochs := uint32(diffEpochsInt)
 
@@ -141,7 +151,7 @@ func New(ts base.LedgerTime,
 	util.AssertNoError(err)
 	util.Assertf(idx == 0, "idx==0")
 
-	if stem != nil {
+	if par.Stem != nil {
 		idx, err = ret.ConsumeOutput(ret.stemInput.Output, ret.stemInput.ID)
 		util.AssertNoError(err)
 		util.Assertf(idx == 1, "idx==1")
@@ -162,7 +172,15 @@ func NewWithSequencerID(ts base.LedgerTime,
 	if ts.IsSlotBoundary() {
 		stemIn = rdr.GetStemOutput()
 	}
-	return New(ts, &seqIn, stemIn, privateKey, rdr)
+	return New(Params{
+		Timestamp:     ts,
+		Predecessor:   &seqIn,
+		Stem:          stemIn,
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    privateKey,
+		PublicKey:     privateKey.Public().(ed25519.PublicKey),
+		StateReader:   rdr,
+	})
 }
 
 func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
@@ -449,8 +467,12 @@ type MakeSimpleSequencerTransactionParams struct {
 	Endorsements []base.TransactionID
 	// ExplicitBaseline or nil if none
 	ExplicitBaseline *base.TransactionID
+	// private key type
+	SignatureType byte
 	// chain controller
-	PrivateKey ed25519.PrivateKey
+	PrivateKey []byte
+	//
+	PublicKey []byte
 	//
 	DoNotInflateMainChain bool
 	//
@@ -472,7 +494,14 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with additional input")
 		}
 	}
-	txb, err := New(par.Timestamp, par.ChainInput, par.StemInput, par.PrivateKey, nil, par.DoNotInflateMainChain)
+	txb, err := New(Params{
+		Timestamp:     par.Timestamp,
+		Predecessor:   par.ChainInput,
+		Stem:          par.StemInput,
+		SignatureType: par.SignatureType,
+		PrivateKey:    par.PrivateKey,
+		PublicKey:     par.PublicKey,
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 	}

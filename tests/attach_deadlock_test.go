@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"crypto/ed25519"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -43,11 +44,13 @@ func TestAttachDeadlockContextCancellation(t *testing.T) {
 		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:      "test",
-			ChainInput:   chainOrigin,
-			Timestamp:    ts,
-			Endorsements: []base.TransactionID{testData.distributionBranchTxID},
-			PrivateKey:   testData.privKeyAux,
+			SeqName:       "test",
+			ChainInput:    chainOrigin,
+			Timestamp:     ts,
+			Endorsements:  []base.TransactionID{testData.distributionBranchTxID},
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -259,11 +262,13 @@ func TestAttachDeadlockShutdownDuringAttachment(t *testing.T) {
 			ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 			txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-				SeqName:      "test",
-				ChainInput:   chainOrigin,
-				Timestamp:    ts,
-				Endorsements: []base.TransactionID{testData.distributionBranchTxID},
-				PrivateKey:   testData.privKeyAux,
+				SeqName:       "test",
+				ChainInput:    chainOrigin,
+				Timestamp:     ts,
+				Endorsements:  []base.TransactionID{testData.distributionBranchTxID},
+				SignatureType: base.SignatureTypeED25519,
+				PrivateKey:    testData.privKeyAux,
+				PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(t, err)
 

@@ -1,7 +1,6 @@
 package txbuilder_seq
 
 import (
-	"crypto/ed25519"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -10,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
-	"golang.org/x/crypto/blake2b"
 )
 
 type SetSequencerDataTxBuilderCommand struct {
@@ -33,8 +31,7 @@ func setSequencerDataOutputParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	util.Assertf(o.RequestParams != nil, "o.RequestParams != nil")
 
 	// check authorisation
-	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
-	if o.SenderID != blake2b.Sum256(publicKey) {
+	if o.SenderID != base.SpenderIDFromPublicKey(txb.signatureType, txb.publicKey) {
 		// wrong sender -> may be attack
 		err = fmt.Errorf("sender hash does not match public key of the owner (authorisation failure)")
 		return

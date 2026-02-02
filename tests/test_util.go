@@ -426,7 +426,9 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			ChainInput:       chainOrigin,
 			Timestamp:        ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts),
 			Endorsements:     []base.TransactionID{td.distributionBranchTxID},
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       td.privKeyAux,
+			PublicKey:        td.privKeyAux.Public().(ed25519.PublicKey),
 			AdditionalInputs: additionalIn,
 		})
 		require.NoError(td.t, err)
@@ -442,11 +444,13 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 			endorsedSeqNr := (seqNr + 1) % len(td.seqChain)
 			endorse := td.seqChain[endorsedSeqNr][i].ID()
 			txBytesSeq, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-				SeqName:      fmt.Sprintf("seq%d", seqNr),
-				ChainInput:   td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
-				Timestamp:    td.seqChain[seqNr][i].Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer)),
-				Endorsements: util.List(endorse),
-				PrivateKey:   td.privKeyAux,
+				SeqName:       fmt.Sprintf("seq%d", seqNr),
+				ChainInput:    td.seqChain[seqNr][i].SequencerOutput().MustAsChainOutput(),
+				Timestamp:     td.seqChain[seqNr][i].Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer)),
+				Endorsements:  util.List(endorse),
+				SignatureType: base.SignatureTypeED25519,
+				PrivateKey:    td.privKeyAux,
+				PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
 			tx, err := transaction.FromBytes(txBytesSeq, transaction.MainTxValidationOptions...)
@@ -477,11 +481,13 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 			ts = base.MaximumTime(endorse.Timestamp(), extend.Timestamp()).AddTicks(int(ledger.L(0).TransactionPaceSequencer))
 
 			txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-				SeqName:      fmt.Sprintf("seq%d", i),
-				ChainInput:   extend,
-				Timestamp:    ts,
-				Endorsements: util.List(endorse),
-				PrivateKey:   td.privKeyAux,
+				SeqName:       fmt.Sprintf("seq%d", i),
+				ChainInput:    extend,
+				Timestamp:     ts,
+				Endorsements:  util.List(endorse),
+				SignatureType: base.SignatureTypeED25519,
+				PrivateKey:    td.privKeyAux,
+				PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
 			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
@@ -533,7 +539,9 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 				AdditionalInputs: []*ledger.OutputWithID{transferOut},
 				Timestamp:        ts,
 				Endorsements:     util.List(endorse),
+				SignatureType:    base.SignatureTypeED25519,
 				PrivateKey:       td.privKeyAux,
+				PublicKey:        td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
 			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
@@ -550,11 +558,13 @@ func (td *longConflictTestData) makeBranch(extend *ledger.OutputWithChainID, pre
 	require.True(td.t, extend.Timestamp().After(prevBranch.Timestamp()))
 
 	txBytesBranch, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-		SeqName:    "seq0",
-		ChainInput: extend,
-		StemInput:  prevBranch.StemOutput(),
-		Timestamp:  extend.Timestamp().NextSlotBoundary(),
-		PrivateKey: td.privKeyAux,
+		SeqName:       "seq0",
+		ChainInput:    extend,
+		StemInput:     prevBranch.StemOutput(),
+		Timestamp:     extend.Timestamp().NextSlotBoundary(),
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    td.privKeyAux,
+		PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 	})
 	require.NoError(td.t, err)
 	tx, err := transaction.FromBytes(txBytesBranch, transaction.MainTxValidationOptions...)
@@ -582,11 +592,13 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:      "seq0",
-			ChainInput:   extendOut,
-			Timestamp:    ts,
-			Endorsements: endorse,
-			PrivateKey:   td.privKeyAux,
+			SeqName:       "seq0",
+			ChainInput:    extendOut,
+			Timestamp:     ts,
+			Endorsements:  endorse,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    td.privKeyAux,
+			PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(td.t, err)
 		ret[i], err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)

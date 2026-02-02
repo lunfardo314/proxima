@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"crypto/ed25519"
 	"runtime"
 	"sync"
 	"testing"
@@ -311,7 +312,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			Timestamp:        ts,
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.conflictingOutputs,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -382,7 +385,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			Timestamp:        ts,
 			ChainInput:       chainOut,
 			AdditionalInputs: []*ledger.OutputWithID{&outToConsume},
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -439,7 +444,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
 			ExplicitBaseline: explicitBaseline,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, util.MustErrorWith(err, "explicit baseline must be a branch transaction ID"))
 
@@ -453,7 +460,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			AdditionalInputs: testData.terminalOutputs,
 			Endorsements:     nil,
 			ExplicitBaseline: explicitBaseline,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -463,7 +472,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			Timestamp:        ts,
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -524,7 +535,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			Timestamp:        base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPaceSequencer)),
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -677,11 +690,13 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	}
 	ts = ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))
 	txBytesSeq, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-		SeqName:      "seq",
-		Timestamp:    ts,
-		ChainInput:   chainIn[0],
-		Endorsements: util.List(chainIn[1].ID.TransactionID()),
-		PrivateKey:   testData.privKeyAux,
+		SeqName:       "seq",
+		Timestamp:     ts,
+		ChainInput:    chainIn[0],
+		Endorsements:  util.List(chainIn[1].ID.TransactionID()),
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    testData.privKeyAux,
+		PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 	})
 	require.NoError(t, err)
 	txid, _, _ := transaction.IDAndTimestampFromParsedTransactionBytes(txBytesSeq)
@@ -764,11 +779,13 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 	for i := range chainIn {
 		txBytes, err = txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:    "seq",
-			Timestamp:  ts,
-			ChainInput: chainIn[i],
-			StemInput:  stem,
-			PrivateKey: testData.privKeyAux,
+			SeqName:       "seq",
+			Timestamp:     ts,
+			ChainInput:    chainIn[i],
+			StemInput:     stem,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 		wg.Add(1)
@@ -829,11 +846,13 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 	for i := range chainIn {
 		txBytesBranch[i], err = txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:    "seq",
-			StemInput:  stem,
-			ChainInput: chainIn[i],
-			Timestamp:  ts,
-			PrivateKey: testData.privKeyAux,
+			SeqName:       "seq",
+			StemInput:     stem,
+			ChainInput:    chainIn[i],
+			Timestamp:     ts,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -854,11 +873,13 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	t.Logf("will be endorsing %s", tx1.IDShortString())
 
 	txBytesConflicting, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-		SeqName:      "dummy",
-		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:    ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))),
-		Endorsements: util.List(tx1.ID()),
-		PrivateKey:   testData.privKeyAux,
+		SeqName:       "dummy",
+		ChainInput:    tx0.SequencerOutput().MustAsChainOutput(),
+		Timestamp:     ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))),
+		Endorsements:  util.List(tx1.ID()),
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    testData.privKeyAux,
+		PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 	})
 	require.NoError(t, err)
 
@@ -1059,11 +1080,13 @@ func TestAttachSeqChains(t *testing.T) {
 
 		chainIn := testData.seqChain[0][len(testData.seqChain[0])-1].SequencerOutput().MustAsChainOutput()
 		txBytesBranch, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:    "seq0",
-			ChainInput: chainIn,
-			StemInput:  distribBD.Stem,
-			Timestamp:  chainIn.Timestamp().NextSlotBoundary(),
-			PrivateKey: testData.privKeyAux,
+			SeqName:       "seq0",
+			ChainInput:    chainIn,
+			StemInput:     distribBD.Stem,
+			Timestamp:     chainIn.Timestamp().NextSlotBoundary(),
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		//txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 		//	SeqName:    "seq0",

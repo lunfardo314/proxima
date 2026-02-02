@@ -19,7 +19,7 @@ const (
 	sigLockTemplate = SigLockName + "(0x%s)"
 )
 
-//go:embed def/lock_ed25519.easyfl
+//go:embed def/lock_signature.easyfl
 var addressED25519ConstraintSource string
 
 // SigLockFromBytes parses an SigLock using the provided library.
