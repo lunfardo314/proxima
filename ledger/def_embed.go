@@ -34,7 +34,7 @@ type (
 		MustInputAt(idx byte) base.OutputID
 		OutputID(idx byte) base.OutputID
 		SequencerTransactionData() *SequencerTransactionData
-		SenderAddress() AddressED25519
+		SpenderID() (base.SpenderID, error)
 		UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
 	}
 

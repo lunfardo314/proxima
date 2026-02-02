@@ -29,9 +29,9 @@ type UTXODB struct {
 	supply            uint64
 	genesisPrivateKey ed25519.PrivateKey
 	genesisPublicKey  ed25519.PublicKey
-	genesisAddress    ledger.AddressED25519
+	genesisAddress    ledger.SigLock
 	faucetPrivateKey  ed25519.PrivateKey
-	faucetAddress     ledger.AddressED25519
+	faucetAddress     ledger.SigLock
 	trace             bool
 	// for testing
 	genesisOutput             *ledger.Output
@@ -46,13 +46,13 @@ const (
 
 func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	genesisPubKey := ledger.L(0).GenesisControllerPublicKey
-	genesisAddr := ledger.AddressED25519FromPublicKey(genesisPubKey)
-	util.Assertf(ledger.AddressED25519MatchesPrivateKey(genesisAddr, genesisPrivateKey), "private key does not match controller address")
+	genesisAddr := ledger.SigLockFromED25519PublicKey(genesisPubKey)
+	util.Assertf(ledger.SigLockMatchesED25519PrivateKey(genesisAddr, genesisPrivateKey), "private key does not match controller address")
 
 	stateStore := common.NewInMemoryKVStore()
 
 	faucetPrivateKey := testutil.GetTestingPrivateKey(31415926535)
-	faucetAddress := ledger.AddressED25519FromPrivateKey(faucetPrivateKey)
+	faucetAddress := ledger.SigLockFromED25519PrivateKey(faucetPrivateKey)
 
 	originChainID, genesisRoot := multistate.InitStateStoreFromGlobals(stateStore)
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
@@ -111,11 +111,11 @@ func (u *UTXODB) GenesisKeys() (ed25519.PrivateKey, ed25519.PublicKey) {
 	return u.genesisPrivateKey, u.genesisPublicKey
 }
 
-func (u *UTXODB) GenesisControllerAddress() ledger.AddressED25519 {
+func (u *UTXODB) GenesisControllerAddress() ledger.SigLock {
 	return u.genesisAddress
 }
 
-func (u *UTXODB) FaucetAddress() ledger.AddressED25519 {
+func (u *UTXODB) FaucetAddress() ledger.SigLock {
 	return u.faucetAddress
 }
 
@@ -138,7 +138,7 @@ func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *t
 	return nil
 }
 
-func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.AddressED25519, amountPar ...uint64) ([]byte, error) {
+func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.SigLock, amountPar ...uint64) ([]byte, error) {
 	amount := ledger.DefaultStorageDeposit()
 	if len(amountPar) > 0 && amountPar[0] > 0 {
 		amount = amountPar[0]
@@ -164,7 +164,7 @@ func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.AddressED25519, amountPar
 	return txBytes, nil
 }
 
-func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25519, amounts ...uint64) ([]byte, error) {
+func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.SigLock, amounts ...uint64) ([]byte, error) {
 	if len(addrs) == 0 {
 		return nil, fmt.Errorf("no addresses")
 	}
@@ -221,7 +221,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.AddressED25
 	return txb.TransactionData.Bytes(), nil
 }
 
-func (u *UTXODB) TokensFromFaucet(addr ledger.AddressED25519, amount ...uint64) error {
+func (u *UTXODB) TokensFromFaucet(addr ledger.SigLock, amount ...uint64) error {
 	txBytes, err := u.MakeTransactionFromFaucet(addr, amount...)
 	if err != nil {
 		return err
@@ -235,7 +235,7 @@ func (u *UTXODB) TokensFromFaucet(addr ledger.AddressED25519, amount ...uint64) 
 	})
 }
 
-func (u *UTXODB) TokensFromFaucetMulti(addrs []ledger.AddressED25519, amount ...uint64) error {
+func (u *UTXODB) TokensFromFaucetMulti(addrs []ledger.SigLock, amount ...uint64) error {
 	if len(addrs) == 0 {
 		return nil
 	}
@@ -257,20 +257,20 @@ func (u *UTXODB) TokensFromFaucetMulti(addrs []ledger.AddressED25519, amount ...
 	return u.TokensFromFaucetMulti(addrs[255:], amount...)
 }
 
-func (u *UTXODB) GenerateAddress(n int) (ed25519.PrivateKey, ed25519.PublicKey, ledger.AddressED25519) {
+func (u *UTXODB) GenerateAddress(n int) (ed25519.PrivateKey, ed25519.PublicKey, ledger.SigLock) {
 	var u32 [4]byte
 	binary.BigEndian.PutUint32(u32[:], uint32(n))
 	seed := blake2b.Sum256(common.Concat([]byte(deterministicSeed), u32[:]))
 	priv := ed25519.NewKeyFromSeed(seed[:])
 	pub := priv.Public().(ed25519.PublicKey)
-	addr := ledger.AddressED25519FromPublicKey(pub)
+	addr := ledger.SigLockFromED25519PublicKey(pub)
 	return priv, pub, addr
 }
 
-func (u *UTXODB) GenerateAddresses(startIndex int, n int) ([]ed25519.PrivateKey, []ed25519.PublicKey, []ledger.AddressED25519) {
+func (u *UTXODB) GenerateAddresses(startIndex int, n int) ([]ed25519.PrivateKey, []ed25519.PublicKey, []ledger.SigLock) {
 	retPriv := make([]ed25519.PrivateKey, n)
 	retPub := make([]ed25519.PublicKey, n)
-	retAddr := make([]ledger.AddressED25519, n)
+	retAddr := make([]ledger.SigLock, n)
 	util.Assertf(n > 0, "number of addresses must be positive")
 	for i := 0; i < n; i++ {
 		retPriv[i], retPub[i], retAddr[i] = u.GenerateAddress(startIndex + i)
@@ -278,14 +278,14 @@ func (u *UTXODB) GenerateAddresses(startIndex int, n int) ([]ed25519.PrivateKey,
 	return retPriv, retPub, retAddr
 }
 
-func (u *UTXODB) GenerateAddressesWithFaucetAmount(startIndex int, n int, amount uint64) ([]ed25519.PrivateKey, []ed25519.PublicKey, []ledger.AddressED25519) {
+func (u *UTXODB) GenerateAddressesWithFaucetAmount(startIndex int, n int, amount uint64) ([]ed25519.PrivateKey, []ed25519.PublicKey, []ledger.SigLock) {
 	retPriv, retPub, retAddr := u.GenerateAddresses(startIndex, n)
 	err := u.TokensFromFaucetMulti(retAddr, amount)
 	util.AssertNoError(err)
 	return retPriv, retPub, retAddr
 }
 
-func (u *UTXODB) GenerateUTXOsWithFaucetAmount(addr ledger.AddressED25519, n int, amount uint64) []*ledger.OutputWithID {
+func (u *UTXODB) GenerateUTXOsWithFaucetAmount(addr ledger.SigLock, n int, amount uint64) []*ledger.OutputWithID {
 	util.Assertf(n > 0, "number of addresses must be positive")
 	for i := 0; i < n; i++ {
 		err := u.TokensFromFaucet(addr, amount)
@@ -308,7 +308,7 @@ func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount
 	ret := txbuilder.NewTransferData(privKey, sourceAccount, ts)
 
 	switch addr := ret.SourceAccount.(type) {
-	case ledger.AddressED25519:
+	case ledger.SigLock:
 		if err := u.makeTransferInputsED25519(ret, desc...); err != nil {
 			return nil, err
 		}
@@ -330,7 +330,7 @@ func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...
 	}
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
-		return idx == 0xff && o.Lock().Name() == ledger.AddressED25519Name
+		return idx == 0xff && o.Lock().Name() == ledger.SigLockName
 	}, desc...)
 	if err != nil {
 		return err
@@ -459,7 +459,7 @@ func (u *UTXODB) DoTransfer(par *txbuilder.TransferData) error {
 }
 
 func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts base.LedgerTime) error {
-	fromAccount := ledger.AddressED25519FromPrivateKey(privKey)
+	fromAccount := ledger.SigLockFromED25519PrivateKey(privKey)
 	ins := make([]*ledger.OutputWithID, 0)
 	sum := uint64(0)
 	sendAmount := o.TokenBalance()
@@ -467,7 +467,7 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 	var err1 error
 
 	err := u.SugaredStateReader().IterateOutputsForAccount(fromAccount, func(oid base.OutputID, o *ledger.Output) bool {
-		if o.NumConstraints() > 2 || o.Lock().Name() != ledger.AddressED25519Name {
+		if o.NumConstraints() > 2 || o.Lock().Name() != ledger.SigLockName {
 			return true
 		}
 		ins = append(ins, &ledger.OutputWithID{
@@ -582,7 +582,7 @@ func (u *UTXODB) TxToSource(txBytes []byte) string {
 
 // CreateChainOrigin takes all tokens from controller address and puts them on the chain output
 func (u *UTXODB) CreateChainOrigin(controllerPrivateKey ed25519.PrivateKey, ts base.LedgerTime, initAmount ...uint64) (*ledger.OutputWithChainID, error) {
-	controllerAddress := ledger.AddressED25519FromPrivateKey(controllerPrivateKey)
+	controllerAddress := ledger.SigLockFromED25519PrivateKey(controllerPrivateKey)
 	var amount uint64
 	if len(initAmount) > 0 {
 		amount = initAmount[0]

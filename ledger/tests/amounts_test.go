@@ -61,7 +61,7 @@ func TestAmountsBase(t *testing.T) {
 		compFun("amounts(z64/1000, z64/0,z64/11111111111111111111)")
 	})
 
-	var addr0 ledger.AddressED25519
+	var addr0 ledger.SigLock
 	var u *utxodb.UTXODB
 	var privKey0 ed25519.PrivateKey
 

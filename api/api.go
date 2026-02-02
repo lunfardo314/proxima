@@ -231,7 +231,6 @@ type (
 		TotalInflation   uint64 `json:"total_inflation"`
 		IsBranch         bool   `json:"is_branch"`
 		*SequencerTxData `json:"sequencer_tx_data,omitempty"`
-		Sender           string                                  `json:"sender"`
 		Signature        string                                  `json:"signature"`
 		Inputs           []Input                                 `json:"inputs"`
 		Outputs          []ParsedOutput                          `json:"outputs"`
@@ -425,8 +424,12 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		}
 		return true
 	})
-	ret.Sender = tx.SenderAddress().String()
-	ret.Signature = hex.EncodeToString(tx.SignatureData())
+	sig, err := tx.Signature()
+	if err == nil {
+		ret.Signature = sig.String()
+	} else {
+		ret.Signature = err.Error()
+	}
 	return ret
 }
 

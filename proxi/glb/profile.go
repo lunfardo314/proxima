@@ -20,13 +20,13 @@ const LedgerIDFileName = "proxima.genesis.id.yaml"
 
 type WalletData struct {
 	PrivateKey ed25519.PrivateKey
-	Account    ledger.AddressED25519
+	Account    ledger.SigLock
 	Sequencer  *base.ChainID
 }
 
 func GetWalletData() (ret WalletData) {
 	ret.PrivateKey = MustGetPrivateKey()
-	ret.Account = ledger.AddressED25519FromPrivateKey(ret.PrivateKey)
+	ret.Account = ledger.SigLockFromED25519PrivateKey(ret.PrivateKey)
 	ret.Sequencer = GetOwnSequencerID()
 	return
 }

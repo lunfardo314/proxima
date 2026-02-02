@@ -296,7 +296,7 @@ func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget base.ChainI
 }
 
 // GetOutputsLockedInAddressED25519ForAmount returns outputs locked in simple address. Skip delegated and other
-func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledger.AddressED25519, targetAmount uint64) ([]*ledger.OutputWithID, uint64) {
+func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledger.SigLock, targetAmount uint64) ([]*ledger.OutputWithID, uint64) {
 	ret := make([]*ledger.OutputWithID, 0)
 	retAmount := uint64(0)
 	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {

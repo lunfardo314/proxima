@@ -41,7 +41,7 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 		BootstrapSeqID string
 	}{
 		PrivateKey:     hex.EncodeToString(privateKey),
-		Account:        ledger.AddressED25519FromPrivateKey(privateKey).String(),
+		Account:        ledger.SigLockFromED25519PrivateKey(privateKey).String(),
 		BootstrapSeqID: ledger.BoostrapSequencerIDHex,
 	}
 	var buf bytes.Buffer

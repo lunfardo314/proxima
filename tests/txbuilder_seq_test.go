@@ -636,9 +636,9 @@ type (
 	testWithUTXODBData struct {
 		*testing.T
 		masterPrivateKey ed25519.PrivateKey
-		masterAddr       ledger.AddressED25519
+		masterAddr       ledger.SigLock
 		targetPrivateKey ed25519.PrivateKey
-		targetAddr       ledger.AddressED25519
+		targetAddr       ledger.SigLock
 		u                *utxodb.UTXODB
 		seqID            base.ChainID
 		delegationIDs    []base.ChainID

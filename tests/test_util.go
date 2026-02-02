@@ -164,11 +164,11 @@ type workflowTestData struct {
 	distributionBranchTxID base.TransactionID
 	distributionBranchTx   *transaction.Transaction
 	privKey                ed25519.PrivateKey
-	addr                   ledger.AddressED25519
+	addr                   ledger.SigLock
 	privKeyAux             ed25519.PrivateKey
-	addrAux                ledger.AddressED25519
+	addrAux                ledger.SigLock
 	privKeyFaucet          ed25519.PrivateKey
-	addrFaucet             ledger.AddressED25519
+	addrFaucet             ledger.SigLock
 	forkOutput             *ledger.OutputWithID
 	auxOutput              *ledger.OutputWithID
 	faucetOutput           *ledger.OutputWithID
@@ -832,7 +832,7 @@ type spammerWithdrawCmdParams struct {
 	seqControllerPrivateKey ed25519.PrivateKey
 	withdrawAmount          uint64
 	pace                    int
-	target                  ledger.AddressED25519
+	target                  ledger.SigLock
 	remainder               *ledger.OutputWithID
 	totalWithdrawn          uint64
 }

@@ -27,7 +27,7 @@ func runGenEd25519Cmd(_ *cobra.Command, _ []string) {
 	glb.Infof("DISCLAIMER: USE AT YOUR OWN RISK!!. This program generates private key based on system randomness and on the entropy entered by the user")
 	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter 10 or more random seed symbols: ")
 	publicKey := privateKey.Public().(ed25519.PublicKey)
-	addr := ledger.AddressED25519FromPrivateKey(privateKey)
+	addr := ledger.SigLockFromED25519PrivateKey(privateKey)
 
 	glb.Infof("------>")
 	glb.Infof("Priv: %s", hex.EncodeToString(privateKey))

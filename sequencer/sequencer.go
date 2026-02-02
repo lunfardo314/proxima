@@ -128,7 +128,8 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	if err = ret.backlog.LoadSequencerStartTips(seqID); err != nil {
 		return nil, err
 	}
-	ret.Log().Infof("sequencer is starting with config:\n%s", cfg.lines(seqID, ledger.AddressED25519FromPrivateKey(controllerKey), "     ").String())
+	ret.Log().Infof("sequencer is starting with config:\n%s", cfg.lines(seqID,
+		ledger.SigLockFromED25519PrivateKey(controllerKey), "     ").String())
 
 	return ret, nil
 }
@@ -296,7 +297,7 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 		return false
 	}
 	lock := oReal.Lock()
-	if !ledger.BelongsToAccount(lock, ledger.AddressED25519FromPrivateKey(seq.controllerKey)) {
+	if !ledger.BelongsToAccount(lock, ledger.SigLockFromED25519PrivateKey(seq.controllerKey)) {
 		seq.log.Errorf("checkSequencerStartOutput: provided private key does match sequencer lock %s", lock.String())
 		return false
 	}

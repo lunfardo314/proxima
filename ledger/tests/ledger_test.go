@@ -28,29 +28,29 @@ func TestOutput(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("basic", func(t *testing.T) {
-		out := ledger.OutputBasic(0, ledger.AddressED25519Null())
+		out := ledger.OutputBasic(0, ledger.SigLock{})
 		outBack, err := ledger.OutputFromBytes(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("empty output: %d bytes", len(out.Bytes()))
 	})
 	t.Run("address", func(t *testing.T) {
-		addr := ledger.AddressED25519FromPublicKey(pubKey)
+		addr := ledger.SigLockFromED25519PublicKey(pubKey)
 		t.Logf("address: %s", addr.String())
 		t.Logf("address hex: 0x%s", hex.EncodeToString(addr.Bytes()))
-		out := ledger.OutputBasic(0, ledger.AddressED25519FromPublicKey(pubKey))
+		out := ledger.OutputBasic(0, ledger.SigLockFromED25519PublicKey(pubKey))
 		outBack, err := ledger.OutputFromBytes(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("output: %d bytes", len(out.Bytes()))
 		t.Logf("output:\n%s", out.Lines().String())
 
-		_, err = ledger.AddressED25519FromBytes(outBack.Lock().Bytes())
+		_, err = ledger.SigLockFromBytes(outBack.Lock().Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, out.Lock(), outBack.Lock())
 	})
 	t.Run("tokens", func(t *testing.T) {
-		out := ledger.OutputBasic(1337, ledger.AddressED25519Null())
+		out := ledger.OutputBasic(1337, ledger.SigLock{})
 		outBack, err := ledger.OutputFromBytes(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
@@ -329,7 +329,7 @@ func TestTimelock(t *testing.T) {
 func TestChain1(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 ledger.AddressED25519
+	var addr0 ledger.SigLock
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
@@ -550,7 +550,7 @@ func TestChain1(t *testing.T) {
 func TestChain2(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 ledger.AddressED25519
+	var addr0 ledger.SigLock
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
@@ -720,7 +720,7 @@ func TestChain2(t *testing.T) {
 func TestChain3(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 ledger.AddressED25519
+	var addr0 ledger.SigLock
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
@@ -800,7 +800,7 @@ func TestChain3(t *testing.T) {
 
 func TestChainLock(t *testing.T) {
 	var privKey0, privKey1 ed25519.PrivateKey
-	var addr0, addr1 ledger.AddressED25519
+	var addr0, addr1 ledger.SigLock
 	var u *utxodb.UTXODB
 	var chainID base.ChainID
 	var chainAddr ledger.ChainLock

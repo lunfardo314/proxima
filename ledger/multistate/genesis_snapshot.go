@@ -92,7 +92,7 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 	}
 
 	// Create genesis outputs using constants from the parsed library
-	genesisAddr := ledger.AddressED25519FromPublicKey(constants.GenesisControllerPublicKey)
+	genesisAddr := ledger.SigLockFromED25519PublicKey(constants.GenesisControllerPublicKey)
 	initialSupply := constants.InitialSupply
 
 	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)

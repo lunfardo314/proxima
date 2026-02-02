@@ -17,7 +17,6 @@ type TxContext struct {
 	ctxTree     *tuples.Tree
 	traceOption int
 	// calculated and cached values
-	sender                    ledger.AddressED25519
 	totalProducedAmounts      [15]int64
 	totalConsumedTokenBalance int64
 	dataContext               *ledger.EvalContext // EasyFL constraint validation context
@@ -37,7 +36,6 @@ func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (
 		ctxTree:              nil,
 		traceOption:          TraceOptionNone,
 		dataContext:          nil,
-		sender:               tx.SenderAddress(),
 		totalProducedAmounts: tx.TotalProducedAmounts(),
 	}
 	if len(traceOption) > 0 {
@@ -205,4 +203,12 @@ func (ctx *TxContext) TotalProducedAmounts() []int64 {
 
 func (ctx *TxContext) Tx() *Transaction {
 	return ctx.Transaction
+}
+
+func (ctx *TxContext) SpenderID() (base.SpenderID, error) {
+	sig, err := ctx.Transaction.Signature()
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sig.SpenderID(), nil
 }

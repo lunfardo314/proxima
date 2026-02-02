@@ -193,7 +193,7 @@ func (txb *SeqTxBuilder) AddSimpleInput(o ledger.OutputWithID) error {
 	}
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(o.Output.TokenBalance())
 	switch o.Output.Lock().Name() {
-	case ledger.AddressED25519Name:
+	case ledger.SigLockName:
 		if err = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0); err != nil {
 			return fmt.Errorf("AddSimpleInput: %v", err)
 		}

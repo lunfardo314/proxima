@@ -322,7 +322,7 @@ func (srv *server) getAccountParsedOutputs(w http.ResponseWriter, r *http.Reques
 	_writeParsedOutputs(w, outs, lrbid)
 }
 
-// getAccountSimpleSigLockedOutputs returns outputs locked with simple AddressED25519 lock
+// getAccountSimpleSigLockedOutputs returns outputs locked with simple SigLock lock
 func (srv *server) getAccountSimpleSigLockedOutputs(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
@@ -331,13 +331,13 @@ func (srv *server) getAccountSimpleSigLockedOutputs(w http.ResponseWriter, r *ht
 		api.WriteErr(w, "wrong parameter 'addr' in request 'get_account_simple_siglocked_outputs'")
 		return
 	}
-	addr, err := ledger.AddressED25519FromSource(lst[0])
+	addr, err := ledger.SigLockFromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
 	}
 	outs, lrbid, err := srv._getAccountOutputsWithFilter(r, addr, func(_ base.OutputID, o *ledger.Output) bool {
-		if o.Lock().Name() != ledger.AddressED25519Name {
+		if o.Lock().Name() != ledger.SigLockName {
 			return false
 		}
 		if _, idx := o.ChainConstraint(); idx != 0xff {
@@ -358,7 +358,7 @@ func (srv *server) getNonChainBalance(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, "wrong parameter 'addr' in request 'get_balance_addr25519'")
 		return
 	}
-	targetAddr, err := ledger.AddressED25519FromSource(lst[0])
+	targetAddr, err := ledger.SigLockFromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
@@ -369,7 +369,7 @@ func (srv *server) getNonChainBalance(w http.ResponseWriter, r *http.Request) {
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
 		err1 := rdr.IterateOutputsForAccount(targetAddr, func(_ base.OutputID, o *ledger.Output) bool {
-			if o.Lock().Name() != ledger.AddressED25519Name {
+			if o.Lock().Name() != ledger.SigLockName {
 				return true
 			}
 			if _, idx := o.ChainConstraint(); idx != 0xff {
@@ -399,7 +399,7 @@ func (srv *server) getOutputsForAmount(w http.ResponseWriter, r *http.Request) {
 		api.WriteErr(w, "wrong parameter 'addr' in request 'get_outputs_for_amount'")
 		return
 	}
-	targetAddr, err := ledger.AddressED25519FromSource(lst[0])
+	targetAddr, err := ledger.SigLockFromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
@@ -424,14 +424,14 @@ func (srv *server) getOutputsForAmount(w http.ResponseWriter, r *http.Request) {
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
 		err1 := rdr.IterateOutputsForAccount(targetAddr, func(oid base.OutputID, o *ledger.Output) bool {
-			if o.Lock().Name() != ledger.AddressED25519Name {
+			if o.Lock().Name() != ledger.SigLockName {
 				return true
 			}
 			if _, idx := o.ChainConstraint(); idx != 0xff {
 				// filter out chained outputs
 				return true
 			}
-			if !ledger.EqualAccountables(targetAddr, o.Lock().(ledger.AddressED25519)) {
+			if !ledger.EqualAccountables(targetAddr, o.Lock().(ledger.SigLock)) {
 				return true
 			}
 			resp.Outputs[oid.StringHex()] = o.Hex()

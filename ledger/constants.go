@@ -247,8 +247,8 @@ func OriginChainID() base.ChainID {
 	return base.MakeOriginChainID(oid)
 }
 
-func (c *Constants) GenesisControlledAddress() AddressED25519 {
-	return AddressED25519FromPublicKey(c.GenesisControllerPublicKey)
+func (c *Constants) GenesisControlledAddress() SigLock {
+	return SigLockFromED25519PublicKey(c.GenesisControllerPublicKey)
 }
 
 func (c *Constants) GenesisTime() time.Time {

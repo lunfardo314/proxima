@@ -39,7 +39,7 @@ Typically, lock has one indexable tag, sometimes 2 or more.
 UTXO index is part of the state: every UTXO has a corresponding index entry in the trie of the ledger state.
 BEING REGISTERED AS 'LOCK' IMPOSES ADDITIONAL RULES TO THE LEDGER VALIDITY AND THE CONSISTENCY OF THE STATE.
 
-For example AddressED25519 is lock with one account ID. We can find all UTXOs belonging to certain address in the ledger state.
+For example SigLock is lock with one account ID. We can find all UTXOs belonging to certain address in the ledger state.
 Another example is DelegateLock. It has two account ID: address of the master and address of the target.
 
 */
@@ -234,8 +234,8 @@ func AccountableFromBytesWithLib(data []byte, lib *Library) (Accountable, error)
 		return nil, fmt.Errorf("unknown constraint with prefix '%s'", easyfl_util.Fmt(prefix))
 	}
 	switch name {
-	case AddressED25519Name:
-		return AddressED25519FromBytes(data)
+	case SigLockName:
+		return SigLockFromBytes(data)
 	case ChainLockName:
 		return ChainLockFromBytesWithLib(data, lib)
 	case StemLockName:

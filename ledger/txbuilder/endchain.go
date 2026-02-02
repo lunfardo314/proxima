@@ -32,13 +32,13 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 
 	outNonChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(par.ChainIn.Output.TokenBalance() - feeAmount)).
-			WithLock(ledger.AddressED25519FromPrivateKey(par.PrivateKey))
+			WithLock(ledger.SigLockFromED25519PrivateKey(par.PrivateKey))
 	})
 	_, err = txb.ProduceOutput(outNonChain)
 	util.AssertNoError(err)
 
 	if feeAmount > 0 {
-		tagAlongFeeOut := ledger.NewTagAlongOutput(feeAmount, par.TagAlongSeqID, ledger.AddressED25519FromPrivateKey(par.PrivateKey))
+		tagAlongFeeOut := ledger.NewTagAlongOutput(feeAmount, par.TagAlongSeqID, ledger.SigLockFromED25519PrivateKey(par.PrivateKey))
 		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
 			return nil, err
 		}

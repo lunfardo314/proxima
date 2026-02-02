@@ -62,7 +62,7 @@ func TestSlotAwareConstraintParsing(t *testing.T) {
 
 	t.Run("ConstraintFromBytesAtSlot parses correctly", func(t *testing.T) {
 		// Create an address constraint
-		addr := ledger.AddressED25519Null()
+		addr := ledger.SigLock{}
 		addrBytes := addr.Bytes()
 
 		// Parse at different slots

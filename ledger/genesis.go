@@ -13,7 +13,7 @@ const (
 	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d"
 )
 
-func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *OutputWithChainID {
+func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithChainID {
 	oid := base.GenesisOutputID()
 	return &OutputWithChainID{
 		OutputWithID: OutputWithID{
@@ -54,7 +54,7 @@ func GenesisStemOutput() *OutputWithID {
 // GenesisControllerDustOutput creates a minimal output for the controller's wallet.
 // This ensures the controller always has at least one output to create transactions
 // (e.g., withdraw requests from their sequencer when wallet is otherwise empty).
-func GenesisControllerDustOutput(controllerAddress AddressED25519) *OutputWithID {
+func GenesisControllerDustOutput(controllerAddress SigLock) *OutputWithID {
 	return &OutputWithID{
 		ID: base.GenesisControllerDustOutputID(),
 		Output: NewOutput(func(o *OutputBuilder) {

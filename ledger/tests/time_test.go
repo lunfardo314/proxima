@@ -20,7 +20,7 @@ func TestTTT(t *testing.T) {
 
 	utxo := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(1337)
-		o.WithLock(ledger.AddressED25519Random())
+		o.WithLock(ledger.SigLockRandom())
 		o.MustPushConstraint(tl.Bytes())
 	})
 	println(utxo.String())

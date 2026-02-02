@@ -1,7 +1,6 @@
 package txbuilder_seq
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 
@@ -67,17 +66,17 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		reason = fmt.Errorf("AskStopDelegationRequest: the sequencer cannot revoke delegation %s (failed authorisation)", delegationID.String())
 		return
 	}
-	master, ok := ret.delegation.Master().(ledger.AddressED25519)
+	master, ok := ret.delegation.Master().(ledger.SigLock)
 	if !ok {
 		// wrong master (cannot be)
 		reason = fmt.Errorf("AskStopDelegationRequest: inconsistecy while checking master lock")
 		return
 	}
 	// check authorisation
-	if !bytes.Equal(o.SenderHash[:], master) {
+	if o.SenderID != base.SpenderID(master) {
 		// this sender cannot revoke delegation -> may be an attack
 		reason = fmt.Errorf("AskStopDelegationRequest: sender with hash %s cannot revoke delegation %s (authorisation failure)",
-			hex.EncodeToString(o.SenderHash[:]), delegationID.String())
+			hex.EncodeToString(o.SenderID[:]), delegationID.String())
 		return
 	}
 
@@ -182,7 +181,7 @@ func (r *AskStopDelegationRequest) AttachmentCostDelta() int {
 	return 3
 }
 
-func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.Accountable, delegationID base.ChainID, fee uint64) *ledger.Output {
+func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.SigLock, delegationID base.ChainID, fee uint64) *ledger.Output {
 	par := base.NewSmallPersistentMap()
 	par.Set(FieldCmdCode, []byte{RequestCodeAskStopDelegation})
 	par.Set(FieldRevokeDelegationID, delegationID[:])

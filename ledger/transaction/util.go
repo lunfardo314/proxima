@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
-	"golang.org/x/crypto/blake2b"
 )
 
 func SaveTransactionAsFile(txBytes []byte, fname ...string) error {
@@ -77,13 +76,11 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 		eqCom = "   !!! NOT EQUAL WITH INPUT COMMITMENT !!!!"
 	}
 	ret.Add("Consumed output hash: %s%s", easyfl_util.Fmt(h[:]), eqCom)
-	sign := ctx.SignatureData()
-	ret.Add("SignatureData: %s", easyfl_util.Fmt(sign))
-	if len(sign) > 0 {
-		if sign[0] == 0 {
-			sender := blake2b.Sum256(sign[64:])
-			ret.Add("     ED25519 sender public key hash: %s", easyfl_util.Fmt(sender[:]))
-		}
+	sign, err := ctx.Signature()
+	if err == nil {
+		ret.Add("Signature: %s", sign.String())
+	} else {
+		ret.Add("Signature: err='%v'", err)
 	}
 
 	if explicitBaseline, ok := ctx.ExplicitBaseline(); ok {

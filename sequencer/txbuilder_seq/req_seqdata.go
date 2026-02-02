@@ -34,7 +34,7 @@ func setSequencerDataOutputParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 
 	// check authorisation
 	publicKey := txb.privateKey.Public().(ed25519.PublicKey)
-	if o.SenderHash != blake2b.Sum256(publicKey) {
+	if o.SenderID != blake2b.Sum256(publicKey) {
 		// wrong sender -> may be attack
 		err = fmt.Errorf("sender hash does not match public key of the owner (authorisation failure)")
 		return
@@ -67,7 +67,7 @@ func (c *SetSequencerDataTxBuilderCommand) Lines(prefix ...string) *lines.Lines 
 	return lines.New(prefix...).Add("SetSequencerDataTxBuilderCommand: seqData = " + c.SequencerData.Lines().Join(","))
 }
 
-func NewSeqDataCommandOutput(seqID base.ChainID, sender ledger.Accountable, fee uint64, newParams *seqdata.SequencerData) *ledger.Output {
+func NewSeqDataCommandOutput(seqID base.ChainID, sender ledger.SigLock, fee uint64, newParams *seqdata.SequencerData) *ledger.Output {
 	par := base.NewSmallPersistentMap()
 	par.Set(FieldCmdCode, []byte{RequestCodeSetSequencerData})
 	par.Set(FieldSetSequencerDataBinary, newParams.Bytes())

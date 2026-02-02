@@ -25,7 +25,7 @@ type testData struct {
 	*testing.T
 	u          *utxodb.UTXODB
 	target     ledger.ChainLock
-	masterAddr ledger.AddressED25519
+	masterAddr ledger.SigLock
 
 	seqPrivateKey, masterPrivateKey ed25519.PrivateKey
 	seqChainOrigin                  ledger.OutputWithChainID

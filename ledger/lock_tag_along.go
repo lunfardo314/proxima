@@ -12,7 +12,7 @@ import (
 
 type TagAlongLock struct {
 	TargetSequencerID base.ChainID
-	Sender            Accountable
+	Sender            SigLock
 }
 
 const (
@@ -41,7 +41,7 @@ func TagAlongLockFromBytesWithLib(data []byte, lib *Library) (*TagAlongLock, err
 		return nil, err
 	}
 
-	sender, err := AccountableFromBytesWithLib(args[1], lib)
+	sender, err := SigLockFromBytesWithLib(args[1], lib)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func (t *TagAlongLock) AsLock() Lock {
 	return t
 }
 
-func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, sender AddressED25519) *Output {
+func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, sender SigLock) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithTokenBalance(fee)
 		o.WithLock(&TagAlongLock{
@@ -112,7 +112,7 @@ func registerTagAlongLockConstraint(lib *Library) {
 func init() {
 	registerInlineTest(func(lib *Library) {
 		chainID := base.RandomChainID()
-		sender := AddressED25519Random()
+		sender := SigLockRandom()
 		example := &TagAlongLock{
 			TargetSequencerID: chainID,
 			Sender:            sender,

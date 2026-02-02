@@ -167,7 +167,7 @@ func (c *APIClient) getAccountOutputs(accountable ledger.Accountable, sort ...st
 	return ret, &retLRBID, nil
 }
 
-func (c *APIClient) GetSimpleSigLockedOutputs(addr ledger.AddressED25519, maxOutputs int, sort ...string) ([]*ledger.OutputWithID, *base.TransactionID, error) {
+func (c *APIClient) GetSimpleSigLockedOutputs(addr ledger.SigLock, maxOutputs int, sort ...string) ([]*ledger.OutputWithID, *base.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetAccountSimpleSiglockedOutputs+"?addr=%s", addr.Source())
 	if maxOutputs > 0 {
 		path += fmt.Sprintf("&max_outputs=%d", maxOutputs)
@@ -219,7 +219,7 @@ func (c *APIClient) GetSimpleSigLockedOutputs(addr ledger.AddressED25519, maxOut
 }
 
 // GetOutputsForAmount returns all UTXOs locked in the specified ED25519 address, which ar not chain outputs
-func (c *APIClient) GetOutputsForAmount(addr ledger.AddressED25519, amount uint64) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
+func (c *APIClient) GetOutputsForAmount(addr ledger.SigLock, amount uint64) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
 	path := fmt.Sprintf(api.PathGetOutputsForAmount+"?addr=%s&amount=%d", addr.Source(), amount)
 	body, err := c.getBody(path)
 	if err != nil {
@@ -644,7 +644,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutput
 
 // MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
 func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *base.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction.TxContext, error) {
-	walletAccount := ledger.AddressED25519FromPrivateKey(walletPrivateKey)
+	walletAccount := ledger.SigLockFromED25519PrivateKey(walletPrivateKey)
 
 	nowisTs := ledger.TimeNow()
 	inTotal := uint64(0)
@@ -691,7 +691,7 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	if par.Amount < minimumTransferAmount {
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
-	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
+	walletAccount := ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)
 	walletOutputs, _, _, err := c.GetOutputsForAmount(walletAccount, par.Amount+par.TagAlongFee)
 	if err != nil {
 		return nil, err
@@ -740,7 +740,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 		return nil, base.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
 
-	walletAccount := ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey)
+	walletAccount := ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)
 
 	ts := ledger.TimeNow()
 	inps, _, totalInputs, err := c.GetTransferableOutputs(walletAccount)
@@ -779,7 +779,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	util.AssertNoError(err)
 
 	if par.TagAlongFee > 0 {
-		tagAlongFeeOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, ledger.AddressED25519FromPrivateKey(par.WalletPrivateKey))
+		tagAlongFeeOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey))
 		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
 			return nil, [32]byte{}, err
 		}
@@ -979,7 +979,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 		if par.TagAlongSeqID == nil {
 			return nil, fmt.Errorf("tag-along sequencer not specified")
 		}
-		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, ledger.AddressED25519FromPrivateKey(par.PrivateKey))
+		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, ledger.SigLockFromED25519PrivateKey(par.PrivateKey))
 		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
 			return nil, err
 		}
@@ -988,7 +988,7 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 	if inTotal > par.Amount+par.TagAlongFee {
 		remainderLock := par.Remainder
 		if remainderLock == nil {
-			remainderLock = ledger.AddressED25519FromPrivateKey(par.PrivateKey)
+			remainderLock = ledger.SigLockFromED25519PrivateKey(par.PrivateKey)
 		}
 		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(inTotal - par.Amount - par.TagAlongFee).
@@ -1104,7 +1104,7 @@ func (c *APIClient) TxLogRange(fromNs, toNs int64, max int) (*api.TxLogResponse,
 }
 
 func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed25519.PrivateKey, ts base.LedgerTime) ([]byte, base.TransactionID, string, error) {
-	account := ledger.AddressED25519FromPrivateKey(privateKey)
+	account := ledger.SigLockFromED25519PrivateKey(privateKey)
 	walletOutputs, _, amountInWallet, err := c.GetTransferableOutputs(account, 255)
 	if err != nil {
 		return nil, base.TransactionID{}, "", err

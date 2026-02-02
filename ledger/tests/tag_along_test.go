@@ -23,7 +23,7 @@ func TestTagAlongSimple(t *testing.T) {
 	)
 	var u *utxodb.UTXODB
 	var privKeySender, privKeyTarget, privKeyRandom ed25519.PrivateKey
-	var addrSender, addrTarget, addrRandom ledger.AddressED25519
+	var addrSender, addrTarget, addrRandom ledger.SigLock
 	var initOutputID base.OutputID
 	var seqOrigin *ledger.OutputWithChainID
 	var err error
@@ -65,7 +65,7 @@ func TestTagAlongSimple(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		o := ledger.NewTagAlongOutput(fee, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		o := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(o)
 		require.NoError(t, err)
 
@@ -143,13 +143,13 @@ func TestTagAlongSimple(t *testing.T) {
 
 		// Important: must consolidate small amount into the bigger one, otherwise cannot consume
 
-		reclaimerAddr := ledger.AddressED25519FromPrivateKey(reclaimerPrivateKey)
+		reclaimerAddr := ledger.SigLockFromED25519PrivateKey(reclaimerPrivateKey)
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
 		if err != nil {
 			return err
 		}
 		outs = util.PurgeSlice(outs, func(o *ledger.OutputWithID) bool {
-			return o.Output.Lock().Name() == ledger.AddressED25519Name
+			return o.Output.Lock().Name() == ledger.SigLockName
 		})
 		require.True(t, len(outs) > 0)
 		maxOut := slices.MaxFunc(outs, func(a, b *ledger.OutputWithID) int {
@@ -324,7 +324,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -411,7 +411,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -435,11 +435,11 @@ func TestTagAlongBoundaries(t *testing.T) {
 				return nil
 			}
 
-			reclaimerAddr := ledger.AddressED25519FromPrivateKey(privKeyRandom)
+			reclaimerAddr := ledger.SigLockFromED25519PrivateKey(privKeyRandom)
 			reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
 			require.NoError(t, err)
 			reclaimerOuts = util.PurgeSlice(reclaimerOuts, func(o *ledger.OutputWithID) bool {
-				return o.Output.Lock().Name() == ledger.AddressED25519Name
+				return o.Output.Lock().Name() == ledger.SigLockName
 			})
 			require.True(t, len(reclaimerOuts) > 0)
 
@@ -489,7 +489,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 // It verifies that:
 // - Zero chain ID is rejected with appropriate error
 // - Outputs with more than 4 constraints are rejected (tag-along lock limit)
-// - Sender and target chain controller can be the same address (allowed)
+// - SpenderID and target chain controller can be the same address (allowed)
 // Note: Other tests use different addresses for sender and target chain controller.
 func TestTagAlongProduction(t *testing.T) {
 	const (
@@ -513,7 +513,7 @@ func TestTagAlongProduction(t *testing.T) {
 
 		// use zero chain ID
 		zeroChainID := base.ChainID{}
-		taOutput := ledger.NewTagAlongOutput(fee, zeroChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, zeroChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -561,7 +561,7 @@ func TestTagAlongProduction(t *testing.T) {
 			ob.WithTokenBalance(fee)
 			ob.WithLock(&ledger.TagAlongLock{
 				TargetSequencerID: targetChainID,
-				Sender:            ledger.AddressED25519FromPrivateKey(privKeySender),
+				Sender:            ledger.SigLockFromED25519PrivateKey(privKeySender),
 			})
 			// add extra constraints to exceed the limit of 4
 			// constraint at index 0 is amount, index 1 is lock
@@ -610,7 +610,7 @@ func TestTagAlongProduction(t *testing.T) {
 		// find a non-chain output to consume
 		var inputOut *ledger.OutputWithID
 		for _, o := range outs {
-			if o.Output.Lock().Name() == ledger.AddressED25519Name {
+			if o.Output.Lock().Name() == ledger.SigLockName {
 				inputOut = o
 				break
 			}
@@ -647,7 +647,7 @@ func TestTagAlongProduction(t *testing.T) {
 
 // TestTagAlongNegativeUnlock tests that wrong parties cannot unlock tag-along outputs
 // in the wrong time windows. It verifies:
-// - Sender cannot unlock during tag-along window (only target can)
+// - SpenderID cannot unlock during tag-along window (only target can)
 // - Random party cannot unlock during tag-along window
 // - Random party cannot unlock during reclaim window (only sender can)
 // - Target cannot unlock during reclaim window
@@ -660,7 +660,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 
 	// helper to setup test environment
 	setup := func(t *testing.T) (*utxodb.UTXODB, ed25519.PrivateKey, ed25519.PrivateKey, ed25519.PrivateKey,
-		ledger.AddressED25519, *ledger.OutputWithChainID, base.ChainID, base.LedgerTime) {
+		ledger.SigLock, *ledger.OutputWithChainID, base.ChainID, base.LedgerTime) {
 
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 3, initAmount)
@@ -688,7 +688,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -722,7 +722,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		senderOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
 		require.NoError(t, err)
 		senderOuts = util.PurgeSlice(senderOuts, func(o *ledger.OutputWithID) bool {
-			return o.Output.Lock().Name() == ledger.AddressED25519Name
+			return o.Output.Lock().Name() == ledger.SigLockName
 		})
 		maxOut := slices.MaxFunc(senderOuts, func(a, b *ledger.OutputWithID) int {
 			if a.Output.TokenBalance() < b.Output.TokenBalance() {
@@ -759,11 +759,11 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		reclaimerAddr := ledger.AddressED25519FromPrivateKey(privKeyRandom)
+		reclaimerAddr := ledger.SigLockFromED25519PrivateKey(privKeyRandom)
 		reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
 		require.NoError(t, err)
 		reclaimerOuts = util.PurgeSlice(reclaimerOuts, func(o *ledger.OutputWithID) bool {
-			return o.Output.Lock().Name() == ledger.AddressED25519Name
+			return o.Output.Lock().Name() == ledger.SigLockName
 		})
 
 		txb := txbuilder.New()
@@ -806,11 +806,11 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		reclaimerAddr := ledger.AddressED25519FromPrivateKey(privKeyRandom)
+		reclaimerAddr := ledger.SigLockFromED25519PrivateKey(privKeyRandom)
 		reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
 		require.NoError(t, err)
 		reclaimerOuts = util.PurgeSlice(reclaimerOuts, func(o *ledger.OutputWithID) bool {
-			return o.Output.Lock().Name() == ledger.AddressED25519Name
+			return o.Output.Lock().Name() == ledger.SigLockName
 		})
 
 		txb := txbuilder.New()
@@ -920,7 +920,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput1 := ledger.NewTagAlongOutput(fee, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput1 := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput1)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -943,7 +943,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		// find the non-tag-along output
 		var senderOut *ledger.OutputWithID
 		for _, o := range outs2 {
-			if o.Output.Lock().Name() == ledger.AddressED25519Name {
+			if o.Output.Lock().Name() == ledger.SigLockName {
 				senderOut = o
 				break
 			}
@@ -954,7 +954,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		require.NoError(t, err)
 		txb2.PutSignatureUnlock(0)
 
-		taOutput2 := ledger.NewTagAlongOutput(fee*2, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput2 := ledger.NewTagAlongOutput(fee*2, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb2.ProduceOutput(taOutput2)
 		require.NoError(t, err)
 		_, err = txb2.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -1020,11 +1020,11 @@ func TestTagAlongMultiple(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput1 := ledger.NewTagAlongOutput(fee, targetChainID1, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput1 := ledger.NewTagAlongOutput(fee, targetChainID1, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput1)
 		require.NoError(t, err)
 
-		taOutput2 := ledger.NewTagAlongOutput(fee*2, targetChainID2, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput2 := ledger.NewTagAlongOutput(fee*2, targetChainID2, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput2)
 		require.NoError(t, err)
 
@@ -1059,7 +1059,7 @@ func TestTagAlongMultiple(t *testing.T) {
 // TestTagAlongBalanceVerification tests that balances are correctly handled
 // after tag-along consumption or reclaim. It verifies:
 // - Chain balance increases by fee amount after consuming tag-along (validated by chain constraint)
-// - Sender recovers full balance after reclaiming tag-along in reclaim window
+// - SpenderID recovers full balance after reclaiming tag-along in reclaim window
 // - Tag-along backlog is cleared after consumption or reclaim
 func TestTagAlongBalanceVerification(t *testing.T) {
 	const (
@@ -1096,7 +1096,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -1177,7 +1177,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 		initialSenderBalance := uint64(0)
 		for _, o := range senderOutsInitial {
-			if o.Output.Lock().Name() == ledger.AddressED25519Name {
+			if o.Output.Lock().Name() == ledger.SigLockName {
 				initialSenderBalance += o.Output.TokenBalance()
 			}
 		}
@@ -1188,7 +1188,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 		var senderOut *ledger.OutputWithID
 		for _, o := range outs {
-			if o.Output.Lock().Name() == ledger.AddressED25519Name {
+			if o.Output.Lock().Name() == ledger.SigLockName {
 				senderOut = o
 				break
 			}
@@ -1199,7 +1199,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.AddressED25519FromPrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -1228,7 +1228,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		senderOuts2, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
 		require.NoError(t, err)
 		senderOuts2 = util.PurgeSlice(senderOuts2, func(o *ledger.OutputWithID) bool {
-			return o.Output.Lock().Name() == ledger.AddressED25519Name
+			return o.Output.Lock().Name() == ledger.SigLockName
 		})
 		maxOut := slices.MaxFunc(senderOuts2, func(a, b *ledger.OutputWithID) int {
 			if a.Output.TokenBalance() < b.Output.TokenBalance() {
@@ -1265,7 +1265,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 		finalSenderBalance := uint64(0)
 		for _, o := range senderOutsFinal {
-			if o.Output.Lock().Name() == ledger.AddressED25519Name {
+			if o.Output.Lock().Name() == ledger.SigLockName {
 				finalSenderBalance += o.Output.TokenBalance()
 			}
 		}

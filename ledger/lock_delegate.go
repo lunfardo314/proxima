@@ -196,7 +196,7 @@ func (d DelegateLockState) Name() string {
 func init() {
 	registerInlineTest(func(lib *Library) {
 		target := ChainLockFromChainID(base.RandomChainID())
-		master := AddressED25519Random()
+		master := SigLockRandom()
 		example := NewDelegateLock(target, master, 3, 10)
 
 		exampleBack, err := DelegateLockFromBytesWithLib(example.Bytes(), lib)

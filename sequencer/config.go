@@ -174,7 +174,7 @@ func WithSeparateLog(yesNo, globalLogging bool) ConfigOption {
 	}
 }
 
-func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {
+func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
 		Add("Controller: %s", controller.String()).

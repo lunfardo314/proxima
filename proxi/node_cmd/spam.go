@@ -97,7 +97,7 @@ func readSpammerConfigIn(sub *viper.Viper) (ret spammerConfig) {
 		glb.Infof("tag-along for spamming is not specified. Using default: %s", ret.tagAlongSequencer.String())
 	}
 
-	ret.target, err = ledger.AddressED25519FromSource(sub.GetString("target"))
+	ret.target, err = ledger.SigLockFromSource(sub.GetString("target"))
 	glb.AssertNoError(err)
 	ret.finalitySlots = sub.GetInt("finality_slots")
 	if ret.finalitySlots <= 1 {

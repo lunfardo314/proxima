@@ -31,7 +31,7 @@ func main() {
 	fmt.Printf("FOR TESTING PURPOSES ONLY! DO NOT USE IN PRODUCTION!\nGenerate %d private keys and ED25519 addresses to the file %s.yaml\n", n, os.Args[1])
 
 	privateKeys := testutil.GetTestingPrivateKeys(n, rand.Int())
-	addresses := make([]ledger.AddressED25519, len(privateKeys))
+	addresses := make([]ledger.SigLock, len(privateKeys))
 
 	for i := range privateKeys {
 		addresses[i] = ledger.AddressED25519FromPrivateKey(privateKeys[i])
@@ -64,7 +64,7 @@ type (
 		PrivateKey ed25519.PrivateKey
 		PublicKey  ed25519.PublicKey
 		HostID     peer.ID
-		Address    ledger.AddressED25519
+		Address    ledger.SigLock
 	}
 
 	testKeyYaml struct {

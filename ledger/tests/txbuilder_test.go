@@ -23,7 +23,7 @@ func TestBasics(t *testing.T) {
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl_util.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl_util.Fmt(pub))
-		t.Logf("origin address: %s", easyfl_util.Fmt(u.GenesisControllerAddress()))
+		t.Logf("origin address: %s", u.GenesisControllerAddress().String())
 
 		t.Logf("current timestamp: %s", ledger.TimeNow().String())
 		_, _, addr := u.GenerateAddress(0)
@@ -48,7 +48,7 @@ func TestBasics(t *testing.T) {
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl_util.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl_util.Fmt(pub))
-		t.Logf("origin address: %s", easyfl_util.Fmt(u.GenesisControllerAddress()))
+		t.Logf("origin address: %s", u.GenesisControllerAddress().String())
 
 		privKey, _, addr := u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
@@ -72,7 +72,7 @@ func TestBasics(t *testing.T) {
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl_util.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl_util.Fmt(pub))
-		t.Logf("origin address: %s", easyfl_util.Fmt(u.GenesisControllerAddress()))
+		t.Logf("origin address: %s", u.GenesisControllerAddress().String())
 
 		privKey, _, addr := u.GenerateAddress(0)
 		const howMany = 256
@@ -115,7 +115,7 @@ func TestBasics(t *testing.T) {
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl_util.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl_util.Fmt(pub))
-		t.Logf("origin address: %s", easyfl_util.Fmt(u.GenesisControllerAddress()))
+		t.Logf("origin address: %s", u.GenesisControllerAddress().String())
 
 		privKey, _, addr := u.GenerateAddress(0)
 		const howMany = 400
@@ -142,7 +142,7 @@ func TestBasics(t *testing.T) {
 		priv, pub := u.GenesisKeys()
 		t.Logf("orig priv key: %s", easyfl_util.Fmt(priv))
 		t.Logf("orig pub key: %s", easyfl_util.Fmt(pub))
-		t.Logf("origin address: %s", easyfl_util.Fmt(u.GenesisControllerAddress()))
+		t.Logf("origin address: %s", u.GenesisControllerAddress().String())
 
 		privKey0, _, addr0 := u.GenerateAddress(0)
 		const (

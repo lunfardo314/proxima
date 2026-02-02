@@ -42,7 +42,7 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 	err = WriteUpgradeLibrary(store, 0, libraryYAML)
 	util.AssertNoError(err)
 
-	genesisAddr := ledger.AddressED25519FromPublicKey(lib.GenesisControllerPublicKey)
+	genesisAddr := ledger.SigLockFromED25519PublicKey(lib.GenesisControllerPublicKey)
 
 	initialSupply := lib.InitialSupply
 	gout := ledger.GenesisOutput(initialSupply-1, genesisAddr)

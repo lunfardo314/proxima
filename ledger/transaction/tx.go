@@ -23,7 +23,6 @@ type (
 		*ledger.Library // cached library for this transaction's slot
 		*tuples.Tree
 		txid                     base.TransactionID
-		sender                   ledger.AddressED25519
 		timestamp                base.LedgerTime
 		producedAmountTotals     [15]int64                        // calculated by summing up amount vectors
 		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
@@ -174,10 +173,22 @@ func (tx *Transaction) Validate(opt ...TxValidationOption) error {
 	})
 }
 
-// SignatureData return signature bytes of the the
+// MustSignatureData return signature bytes of the the
 // TODO refactor to the format <signature type byte>+<signature bytes>
-func (tx *Transaction) SignatureData() []byte {
-	return tx.MustBytesAtPath(Path(ledger.TxSignatureData))
+func (tx *Transaction) SignatureData() ([]byte, error) {
+	return tx.BytesAtPath(Path(ledger.TxSignatureData))
+}
+
+func (tx *Transaction) Signature() (*base.Signature, error) {
+	sigBytes, err := tx.BytesAtPath(Path(ledger.TxSignatureData))
+	if err != nil {
+		return nil, fmt.Errorf("tx.Signature: %v", err)
+	}
+	ret, err := base.SignatureFromBytes(sigBytes)
+	if err != nil {
+		return nil, fmt.Errorf("tx.Signature: %v", err)
+	}
+	return ret, nil
 }
 
 // _baseValidation is a checking of being able to extract id. If not, bytes are not identifiable as a transaction.
@@ -253,22 +264,6 @@ func ParseSequencerData(tx *Transaction) error {
 	if tx.sequencerTransactionData.StemOutputData, ok = lock.(*ledger.StemLock); !ok {
 		return fmt.Errorf("ParseSequencerData: not a stem lock")
 	}
-	return nil
-}
-
-// ParseSender parses and checks ED25519 signature, sets the sender field
-func ParseSender(tx *Transaction) error {
-	// mandatory sender signature
-	s, err := base.SignatureFromBytes(tx.SignatureData())
-	if err != nil {
-		return fmt.Errorf("ParseSender: %v", err)
-	}
-	util.Assertf(s.SignatureType == base.SignatureTypeED25519, "other that SignatureType(0) = ED25519 is not supported")
-	tx.sender = ledger.AddressED25519FromPublicKey(s.MustPubicKeyED25519())
-	// verify if txid is signed
-	//if !ed25519.Verify(senderPubKey, tx.txid[:], sigData[0:64]) {
-	//	return fmt.Errorf("invalid signature")
-	//}
 	return nil
 }
 
@@ -519,10 +514,6 @@ func (tx *Transaction) SequencerOutput() *ledger.OutputWithID {
 func (tx *Transaction) StemOutput() *ledger.OutputWithID {
 	util.Assertf(tx.IsBranchTransaction(), "tx.IsBranchTransaction()")
 	return tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().StemOutputIndex)
-}
-
-func (tx *Transaction) SenderAddress() ledger.AddressED25519 {
-	return tx.sender
 }
 
 func (tx *Transaction) Timestamp() base.LedgerTime {
@@ -958,7 +949,9 @@ func (tx *Transaction) ProducedTagAlongOutputs(targetID ...base.ChainID) []ledge
 func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("id: %s", tx.IDString())
-	ret.Add("Sender address: %s", tx.SenderAddress().String())
+	sig, err := tx.Signature()
+	util.AssertNoError(err)
+	ret.Add("Spender ID: %s", sig.SpenderIDHex())
 	ret.Add("Total: %s", util.Th(tx.TotalAmount()))
 	ret.Add("Inflation: %s", util.Th(tx.InflationAmount()))
 	if tx.IsSequencerTransaction() {

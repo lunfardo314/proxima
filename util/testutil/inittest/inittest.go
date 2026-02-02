@@ -10,7 +10,7 @@ import (
 
 const minimumAmountToDistribute = 1_000_000
 
-func GenesisParamsWithPreDistribution(initBalance ...uint64) ([]ledger.LockBalance, []ed25519.PrivateKey, []ledger.AddressED25519) {
+func GenesisParamsWithPreDistribution(initBalance ...uint64) ([]ledger.LockBalance, []ed25519.PrivateKey, []ledger.SigLock) {
 	util.Assertf(len(initBalance) > 0, "len(initBalance)>0")
 	privateKeys := testutil.GetTestingPrivateKeys(len(initBalance))
 	addresses := ledger.AddressesED25519FromPrivateKeys(privateKeys)

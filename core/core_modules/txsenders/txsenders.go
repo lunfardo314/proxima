@@ -61,14 +61,12 @@ type (
 	TxSenders struct {
 		environment
 		*core_modules.CoreModule[input]
-		txSenders   map[txSenderID]*seenTimestamps
+		txSenders   map[base.SpenderID]*seenTimestamps
 		checkSeq    bool
 		checkNonSeq bool
 		// metrics
 		metrics
 	}
-
-	txSenderID string
 
 	metrics struct {
 		gossipedCounter prometheus.Counter
@@ -98,7 +96,7 @@ func init() {
 func New(env environment) *TxSenders {
 	ret := &TxSenders{
 		environment: env,
-		txSenders:   make(map[txSenderID]*seenTimestamps),
+		txSenders:   make(map[base.SpenderID]*seenTimestamps),
 	}
 	ret.CoreModule = core_modules.New[input](env, Name, ret.consume)
 	ret.CoreModule.Start()
@@ -136,12 +134,12 @@ func (q *TxSenders) consume(inp input) {
 		return
 	}
 	// new tx
-	if err := transaction.ParseSender(inp.Tx); err != nil {
-		// ignore transaction with invalid signature
-		txLogMsg := fmt.Sprintf("IGNORED: signature is invalid")
+	sig, err := inp.Tx.Signature()
+	if err != nil {
+		txLogMsg := fmt.Sprintf("IGNORED: signature parsing error: %v", err)
 		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
-		q.Log().Warnf("tx %s has invalid signture -> IGNORED", inp.Tx.IDShortString())
+		q.Log().Warnf("tx %s: %s -> IGNORED", inp.Tx.IDShortString(), txLogMsg)
 		return
 	}
 	if inp.Wanted {
@@ -149,20 +147,19 @@ func (q *TxSenders) consume(inp input) {
 		q.attachAndGossip(&inp)
 		return
 	}
-	acc := inp.Tx.SenderAddress().AccountID()
-
-	seen := q.txSenders[txSenderID(acc)]
+	spenderID := sig.SpenderID()
+	seen := q.txSenders[spenderID]
 	if seen == nil {
-		if !q.isAccountKnownInLRB(acc) {
+		if !q.isSenderKnownInLRB(spenderID) {
 			// sender account not known -> ignore tx
-			txLogMsg := fmt.Sprintf("IGNORED: tx sender %s is not known in LRB", inp.Tx.SenderAddress().String())
+			txLogMsg := fmt.Sprintf("IGNORED: tx sender %s is not known in LRB", ledger.SigLock(spenderID).String())
 			q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
-			q.Log().Warnf("tx %s has a sender %s unknown in the LRB -> IGNORED", inp.Tx.IDShortString(), inp.Tx.SenderAddress().String())
+			q.Log().Warnf("tx %s: %s -> IGNORED", inp.Tx.IDShortString(), txLogMsg)
 			return
 		}
 		seen = &seenTimestamps{}
-		q.txSenders[txSenderID(acc)] = seen
+		q.txSenders[spenderID] = seen
 	}
 
 	var pass bool
@@ -173,12 +170,12 @@ func (q *TxSenders) consume(inp input) {
 	} else {
 		pass = !q.checkNonSeq || seen.nonSequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPace))
 	}
-	q.txSenders[txSenderID(acc)] = seen
+	q.txSenders[spenderID] = seen
 	if !pass {
-		txLogMsg := fmt.Sprintf("IGNORED: timestamp is too close to another tx from the same sender %s", inp.Tx.SenderAddress().String())
+		txLogMsg := fmt.Sprintf("IGNORED: timestamp is too close to another tx from the same sender %s", ledger.SigLock(spenderID).String())
 		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
-		q.Log().Warnf("timestamp of tx %s from sender %s is too close to another tx from the same sender-> IGNORED", inp.Tx.IDShortString(), inp.Tx.SenderAddress().String())
+		q.Log().Warnf("tx %s: %s-> IGNORED", inp.Tx.IDShortString(), txLogMsg)
 		return
 	}
 	// send transaction for attachment
@@ -206,10 +203,10 @@ func (q *TxSenders) attachAndGossip(inp *input) {
 	q.gossipedCounter.Inc()
 }
 
-func (q *TxSenders) isAccountKnownInLRB(acc ledger.AccountID) (ret bool) {
+func (q *TxSenders) isSenderKnownInLRB(acc base.SpenderID) (ret bool) {
 	if lrb := q.GetLatestReliableBranch(); lrb != nil {
 		rdr := q.Branches().GetStateReaderForTheBranch(lrb.TxID())
-		ret = rdr.IsKnownAccount(acc)
+		ret = rdr.IsKnownAccount(ledger.SigLock(acc).AccountID())
 	} else {
 		ret = true
 	}
@@ -221,7 +218,7 @@ func (q *TxSenders) cleanup() {
 	if nowTicks < cleanupHorizonTicks {
 		return
 	}
-	maps.DeleteFunc(q.txSenders, func(_ txSenderID, timestamps *seenTimestamps) bool {
+	maps.DeleteFunc(q.txSenders, func(_ base.SpenderID, timestamps *seenTimestamps) bool {
 		return timestamps.sequencer.lastestTicksSinceGenesis() < nowTicks-cleanupHorizonTicks &&
 			timestamps.nonSequencer.lastestTicksSinceGenesis() < nowTicks-cleanupHorizonTicks
 	})
