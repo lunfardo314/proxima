@@ -374,19 +374,3 @@ func ScanOutputs(tx *Transaction) error {
 	}
 	return nil
 }
-
-func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) TxOption {
-	return func(tx *Transaction) error {
-		var ctx *TxContext
-		var err error
-		if __printLogOnFail.Load() {
-			ctx, err = tx.ContextFull(inputLoaderByIndex, TraceOptionAll)
-		} else {
-			ctx, err = tx.ContextFull(inputLoaderByIndex)
-		}
-		if err != nil {
-			return err
-		}
-		return ctx.Validate()
-	}
-}

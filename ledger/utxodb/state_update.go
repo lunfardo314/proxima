@@ -14,8 +14,8 @@ func updateValidateNoDebug(u *multistate.Updatable, txBytes []byte) (*transactio
 	return updateValidateOptions(u, txBytes, transaction.TraceOptionNone, nil)
 }
 
-func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation ...func(ctx *transaction.TxContext, err error) error) (*transaction.Transaction, error) {
-	var fun func(ctx *transaction.TxContext, err error) error
+func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation ...func(ctx *transaction.Transaction, err error) error) (*transaction.Transaction, error) {
+	var fun func(ctx *transaction.Transaction, err error) error
 	if len(onValidation) > 0 {
 		fun = onValidation[0]
 	}
@@ -23,25 +23,26 @@ func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation .
 }
 
 // updateValidateNoDebug updates/mutates the ledger state by transaction. For testing mostly
-func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(ctx *transaction.TxContext, err error) error) (*transaction.Transaction, error) {
-	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(tx *transaction.Transaction, err error) error) (*transaction.Transaction, error) {
+	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
 		return nil, err
 	}
-	ctx, err := tx.ContextFull(tx.InputLoaderByIndex(u.Readable().GetUTXO), traceOption)
-	if err != nil {
+	tx.SetTraceOption(traceOption)
+
+	if err = tx.SetFullContext(tx.InputLoaderByIndex(u.Readable().GetUTXO)); err != nil {
 		return nil, err
 	}
-	err = ctx.Validate()
+	err = tx.Validate()
 	if onValidation != nil {
-		err = onValidation(ctx, err)
+		err = onValidation(tx, err)
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	muts := tx.StateMutations()
-	if err := ConsistencyCheckBeforeAddTransaction(tx, u.Readable()); err != nil {
+	if err = ConsistencyCheckBeforeAddTransaction(tx, u.Readable()); err != nil {
 		return nil, err
 	}
 
@@ -50,7 +51,7 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 		return nil, err
 	}
 
-	if err := ConsistencyCheckAfterAddTransaction(tx, u.Readable()); err != nil {
+	if err = ConsistencyCheckAfterAddTransaction(tx, u.Readable()); err != nil {
 		return nil, err
 	}
 	return tx, nil

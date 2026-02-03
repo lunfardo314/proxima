@@ -48,9 +48,7 @@ func (tx *Transaction) contextSkeleton() *TxContext {
 }
 
 func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
-	if !tx.ctx.IsSkeleton() {
-		return nil
-	}
+	util.Assertf(tx.ctx.IsSkeleton(), "tx.ctx.IsSkeleton()")
 	var err error
 	tx.ctx, err = tx.ctx.fullContextFromSkeleton(inputLoaderByIndex)
 	return err
@@ -83,19 +81,22 @@ func (ctx *TxContext) fullContextFromSkeleton(inputLoaderByIndex func(i byte) (*
 }
 
 // ContextFull creates full context from transaction
-func (tx *Transaction) ContextFull(inputLoaderByIndex func(i byte) (*ledger.Output, error), traceOption ...int) (*TxContext, error) {
-	return tx.contextSkeleton().fullContextFromSkeleton(inputLoaderByIndex)
-}
+//func (tx *Transaction) ContextFull(inputLoaderByIndex func(i byte) (*ledger.Output, error), traceOption ...int) (*TxContext, error) {
+//	return tx.contextSkeleton().fullContextFromSkeleton(inputLoaderByIndex)
+//}
 
 // TxContextFromTransferableBytes constructs tuples.Tree from transaction bytes and consumed outputs
-func TxContextFromTransferableBytes(txBytes []byte, fetchInput func(oid base.OutputID) ([]byte, bool), traceOption ...int) (*TxContext, error) {
-	//tx, err := FromBytes(txBytes, ParseTotalProducedAmount, ParseSequencerData, ScanOutputs)
-	tx, err := FromBytes(txBytes, ParseSequencerData, ScanOutputs)
-	if err != nil {
-		return nil, err
-	}
-	return tx.ContextFull(tx.InputLoaderByIndex(fetchInput), traceOption...)
-}
+//func TxContextFromTransferableBytes(txBytes []byte, fetchInput func(oid base.OutputID) ([]byte, bool), traceOption ...int) (*TxContext, error) {
+//	//tx, err := FromBytes(txBytes, ParseTotalProducedAmount, ParseSequencerData, ScanOutputs)
+//	tx, err := FromBytes(txBytes, ParseSequencerData, ScanOutputs)
+//	if err != nil {
+//		return nil, err
+//	}
+//	if len(traceOption) > 0 {
+//		tx.SetTraceOption(traceOption[0])
+//	}
+//	return tx.SetFullContext(tx.InputLoaderByIndex(fetchInput))
+//}
 
 func (ctx *TxContext) IsSkeleton() bool {
 	return ctx.ctxTree.MustNumElementsAtPath(ledger.PathToConsumedOutputs) == 0

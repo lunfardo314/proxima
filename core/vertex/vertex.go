@@ -78,22 +78,18 @@ func (v *Vertex) GetConsumedOutput(i byte) (ret *ledger.Output) {
 
 // ValidateConstraints creates full transaction context from the (solid) vertex data
 // and runs validation of all constraints in the context
-func (v *Vertex) ValidateConstraints(traceOption ...int) error {
-	traceOpt := transaction.TraceOptionFailedConstraints
-	if len(traceOption) > 0 {
-		traceOpt = traceOption[0]
-	}
-	ctx, err := v.Transaction.ContextFull(v.InputLoaderByIndex, traceOpt)
+func (v *Vertex) ValidateConstraints() error {
+	err := v.Transaction.SetFullContext(v.InputLoaderByIndex)
 	if err != nil {
 		return fmt.Errorf("ValidateConstraints of %s: %w", v.IDShortString(), err)
 	}
-	err = ctx.Validate()
+	err = v.Validate()
 
 	const validateConstraintsVerbose = true
 
 	if err != nil {
 		if validateConstraintsVerbose {
-			err = fmt.Errorf("ValidateConstraints: %w \n>>>>>>>>>>>>>>>>>>>>>\n%s", err, ctx.String())
+			err = fmt.Errorf("ValidateConstraints: %w \n>>>>>>>>>>>>>>>>>>>>>\n%s", err, v.String())
 		} else {
 			err = fmt.Errorf("ValidateConstraints: %s: %w", v.IDShortString(), err)
 		}

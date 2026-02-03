@@ -152,7 +152,7 @@ func TestTxID(t *testing.T) {
 	txBytes, err := txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err := u.TxContextFromBytes(txBytes)
+	ctx, err := u.TxFullContextFromBytes(txBytes)
 	require.NoError(t, err)
 
 	lib := ledger.L(0)
@@ -885,7 +885,7 @@ func TestChainLock(t *testing.T) {
 		txBytes, err := txbuilder.MakeTransferTransaction(par)
 		require.NoError(t, err)
 
-		v, err := u.TxContextFromBytes(txBytes)
+		v, err := u.TxFullContextFromBytes(txBytes)
 		require.NoError(t, err)
 		t.Logf("\n%s", v.String())
 

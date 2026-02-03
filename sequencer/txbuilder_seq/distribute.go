@@ -134,7 +134,10 @@ func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed
 	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
 	util.AssertNoError(err)
 
-	err = tx.Validate(transaction.ValidateOptionWithFullContext(tx.InputLoaderFromState(rdr)))
+	err = tx.SetFullContext(tx.InputLoaderFromState(rdr))
+	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", err, tx.String)
+
+	err = tx.Validate()
 	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", err, tx.String)
 
 	nextStem := tx.FindStemProducedOutput()

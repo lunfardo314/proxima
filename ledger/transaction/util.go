@@ -152,11 +152,14 @@ func UnlockDataToString(data []byte) string {
 }
 
 func ParseBytesToString(txBytes []byte, fetchOutput func(oid base.OutputID) ([]byte, bool)) string {
-	ctx, err := TxContextFromTransferableBytes(txBytes, fetchOutput)
+	tx, err := FromBytes(txBytes)
 	if err != nil {
 		return err.Error()
 	}
-	return ctx.String()
+	if err = tx.SetFullContext(tx.InputLoaderByIndex(fetchOutput)); err != nil {
+		return err.Error()
+	}
+	return tx.String()
 }
 
 func PickOutputFromListFunc(lst []*ledger.OutputWithID) func(oid base.OutputID) ([]byte, bool) {

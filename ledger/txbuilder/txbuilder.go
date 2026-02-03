@@ -227,14 +227,13 @@ func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string,
 		}
 		return nil, base.TransactionID{}, txString, err
 	}
-	ctx, err := tx.ContextFull(txb.LoadInput)
-	if err != nil {
+	if err = tx.SetFullContext(txb.LoadInput); err != nil {
 		return nil, base.TransactionID{}, "", err
 	}
-	if err = ctx.Validate(); err != nil {
-		return nil, base.TransactionID{}, ctx.LinesHR().String(), err
+	if err = tx.Validate(); err != nil {
+		return nil, base.TransactionID{}, tx.String(), err
 	}
-	return txBytes, tx.ID(), ctx.LinesHR().String(), nil
+	return txBytes, tx.ID(), tx.String(), nil
 }
 
 func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {

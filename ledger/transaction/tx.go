@@ -341,33 +341,25 @@ func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, 
 }
 
 func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, bool)) string {
-	ctx, err := tx.ContextFull(func(i byte) (*ledger.Output, error) {
-		oid, err1 := tx.InputAt(i)
-		if err1 != nil {
-			return nil, err1
-		}
-		oData, ok := fetchOutput(oid)
-		if !ok {
-			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
-		}
-		o, err1 := ledger.OutputFromBytesWithLib(oData, tx.Library)
-		if err1 != nil {
-			return nil, err1
-		}
-		return o, nil
-	})
-	if err != nil {
-		return err.Error()
-	}
-	return ctx.String()
-}
-
-func (tx *Transaction) ToStringWithInputLoaderByIndex(fetchOutput func(i byte) (*ledger.Output, error)) string {
-	ctx, err := tx.ContextFull(fetchOutput)
-	if err != nil {
-		return err.Error()
-	}
-	return ctx.String()
+	//ctx, err := tx.ContextFull(func(i byte) (*ledger.Output, error) {
+	//	oid, err1 := tx.InputAt(i)
+	//	if err1 != nil {
+	//		return nil, err1
+	//	}
+	//	oData, ok := fetchOutput(oid)
+	//	if !ok {
+	//		return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
+	//	}
+	//	o, err1 := ledger.OutputFromBytesWithLib(oData, tx.Library)
+	//	if err1 != nil {
+	//		return nil, err1
+	//	}
+	//	return o, nil
+	//})
+	//if err != nil {
+	//	return err.Error()
+	//}
+	return tx.ctx.String()
 }
 
 func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([]byte, bool)) func(byte) (*ledger.Output, error) {
@@ -501,13 +493,14 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 }
 
 func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
-	ctx, err := tx.ContextFull(inputLoaderByIndex)
-	if err != nil {
-		ret := lines.New(prefix...)
-		ret.Add("can't create context of transaction %s: '%v'", tx.IDShortString(), err)
-		return ret
+	if inputLoaderByIndex != nil {
+		if err := tx.SetFullContext(inputLoaderByIndex); err != nil {
+			ret := lines.New(prefix...)
+			ret.Add("can't create context of transaction %s: '%v'", tx.IDShortString(), err)
+			return ret
+		}
 	}
-	return ctx.Lines(prefix...)
+	return tx.ctx.Lines(prefix...)
 }
 
 func (tx *Transaction) ProducedTagAlongOutputs(targetID ...base.ChainID) []ledger.TagAlongOutput {
@@ -563,7 +556,7 @@ func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 }
 
 func (tx *Transaction) String() string {
-	return tx.LinesShort().String()
+	return tx.ctx.String()
 }
 
 func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
@@ -571,11 +564,11 @@ func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger
 	if err != nil {
 		return lines.New(prefix...).Add("FromBytes returned: %v", err)
 	}
-	txCtx, err := tx.ContextFull(inputLoader)
-	if err != nil {
+
+	if err = tx.SetFullContext(inputLoader); err != nil {
 		return lines.New(prefix...).Add("ContextFull returned: %v", err)
 	}
-	return txCtx.Lines(prefix...)
+	return tx.ctx.Lines(prefix...)
 }
 
 // BaselineDirection is the input, endorsement or explicit baseline of the sequencer transaction where to look for a baseline branch

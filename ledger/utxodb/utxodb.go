@@ -122,7 +122,7 @@ func (u *UTXODB) FaucetAddress() ledger.SigLock {
 // AddTransaction validates transaction and updates ledger state and indexer
 // Ledger state and indexer are on different DB transactions, so ledger state can
 // succeed while indexer fails. In that case indexer can be updated from ledger state
-func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *transaction.TxContext, err error) error) error {
+func (u *UTXODB) AddTransaction(txBytes []byte, onValidationError ...func(ctx *transaction.Transaction, err error) error) error {
 	var err error
 	var tx *transaction.Transaction
 	if u.trace {
@@ -227,9 +227,9 @@ func (u *UTXODB) TokensFromFaucet(addr ledger.SigLock, amount ...uint64) error {
 		return err
 	}
 
-	return u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+	return u.AddTransaction(txBytes, func(tx *transaction.Transaction, err error) error {
 		if err != nil {
-			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+			return fmt.Errorf("Error: %v\n%s", err, tx.String())
 		}
 		return nil
 	})
@@ -244,9 +244,9 @@ func (u *UTXODB) TokensFromFaucetMulti(addrs []ledger.SigLock, amount ...uint64)
 		if err != nil {
 			return err
 		}
-		return u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+		return u.AddTransaction(txBytes, func(tx *transaction.Transaction, err error) error {
 			if err != nil {
-				return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+				return fmt.Errorf("Error: %v\n%s", err, tx.String())
 			}
 			return nil
 		})
@@ -368,9 +368,9 @@ func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lo
 	if err != nil {
 		return nil, err
 	}
-	return txBytes, u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+	return txBytes, u.AddTransaction(txBytes, func(tx *transaction.Transaction, err error) error {
 		if err != nil {
-			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+			return fmt.Errorf("Error: %v\n%s", err, tx.String())
 		}
 		return nil
 	})
@@ -425,9 +425,9 @@ func (u *UTXODB) DoTransferTx(par *txbuilder.TransferData) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return txBytes, u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+	return txBytes, u.AddTransaction(txBytes, func(tx *transaction.Transaction, err error) error {
 		if err != nil {
-			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+			return fmt.Errorf("Error: %v\n%s", err, tx.String())
 		}
 		return nil
 	})
@@ -438,9 +438,9 @@ func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*ledger.Outpu
 	if err != nil {
 		return nil, err
 	}
-	if err = u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+	if err = u.AddTransaction(txBytes, func(tx *transaction.Transaction, err error) error {
 		if err != nil {
-			return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+			return fmt.Errorf("Error: %v\n%s", err, tx.String())
 		}
 		return nil
 	}); err != nil {
@@ -552,28 +552,32 @@ func (u *UTXODB) MakeNewChain(amount uint64, privateKey ed25519.PrivateKey, chai
 	}, nil
 }
 
-func (u *UTXODB) TxContextFromBytes(txBytes []byte) (*transaction.TxContext, error) {
-	return transaction.TxContextFromTransferableBytes(txBytes, u.state.Readable().GetUTXO)
+func (u *UTXODB) TxFullContextFromBytes(txBytes []byte) (*transaction.Transaction, error) {
+	tx, err := transaction.FromBytes(txBytes)
+	if err != nil {
+		return nil, err
+	}
+	err = tx.SetFullContext(tx.InputLoaderByIndex(u.state.Readable().GetUTXO))
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
 }
 
-func (u *UTXODB) TxToLines(txBytes []byte, prefix ...string) *lines.Lines {
-	ctx, err := u.TxContextFromBytes(txBytes)
-	if err != nil {
-		return lines.New(prefix...).Add("error: %v", err)
-	}
-	return ctx.Lines(prefix...)
-}
+//func (u *UTXODB) TxToLines(txBytes []byte, prefix ...string) *lines.Lines {
+//	ctx, err := u.TxFullContextFromBytes(txBytes)
+//	if err != nil {
+//		return lines.New(prefix...).Add("error: %v", err)
+//	}
+//	return ctx.Lines(prefix...)
+//}
 
 func (u *UTXODB) TxToLinesSource(txBytes []byte, prefix ...string) *lines.Lines {
-	ctx, err := u.TxContextFromBytes(txBytes)
+	tx, err := u.TxFullContextFromBytes(txBytes)
 	if err != nil {
 		return lines.New(prefix...).Add("error: %v", err)
 	}
-	return ctx.LinesSource(prefix...)
-}
-
-func (u *UTXODB) TxToString(txBytes []byte) string {
-	return u.TxToLines(txBytes).String()
+	return tx.Lines(nil, prefix...)
 }
 
 func (u *UTXODB) TxToSource(txBytes []byte) string {
@@ -629,9 +633,9 @@ func (u *UTXODB) FaucetBalance() uint64 {
 }
 
 func (u *UTXODB) TxStringFromBytes(txBytes []byte) string {
-	ctx, err := u.TxContextFromBytes(txBytes)
+	tx, err := transaction.FromBytes(txBytes)
 	if err != nil {
 		return err.Error()
 	}
-	return ctx.String()
+	return tx.String()
 }
