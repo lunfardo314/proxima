@@ -94,18 +94,22 @@ func (ctx *TxContext) _lines(utxoToLines func(o *ledger.Output, prefix ...string
 	})
 
 	ret.Add("Inputs (%d consumed outputs): ", ctx.NumInputs())
-	ctx.ForEachConsumedOutput(func(idx byte, oid *base.OutputID, o *ledger.Output) bool {
-		if o == nil {
-			ret.Add("  #%d: %s (parse error)", idx, oid.String())
+	if ctx.IsSkeleton() {
+		ret.Add("   NOT AVAILABLE: ")
+	} else {
+		ctx.ForEachConsumedOutput(func(idx byte, oid *base.OutputID, o *ledger.Output) bool {
+			if o == nil {
+				ret.Add("  #%d: %s (parse error)", idx, oid.String())
+				return true
+			}
+			unlockBin := ctx.MustUnlockDataAt(idx)
+			ret.Add("  #%d: %s", idx, oid.String()).
+				Add("       bytes (%d): %s", len(o.Bytes()), hex.EncodeToString(o.Bytes())).
+				Append(utxoToLines(o, "     ")).
+				Add("     Unlock data: %s", UnlockDataToString(unlockBin))
 			return true
-		}
-		unlockBin := ctx.MustUnlockDataAt(idx)
-		ret.Add("  #%d: %s", idx, oid.String()).
-			Add("       bytes (%d): %s", len(o.Bytes()), hex.EncodeToString(o.Bytes())).
-			Append(utxoToLines(o, "     ")).
-			Add("     Unlock data: %s", UnlockDataToString(unlockBin))
-		return true
-	})
+		})
+	}
 
 	ret.Add("Outputs (%d produced): ", ctx.NumProducedOutputs())
 	totalSum := uint64(0)

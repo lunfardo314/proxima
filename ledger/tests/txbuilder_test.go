@@ -457,7 +457,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			tx, err := transaction.FromBytes(txs[i].txBytes, transaction.MainTxValidationOptions...)
 			require.NoError(t, err)
 
-			txCtx, err := transaction.TxContextFromTransaction(tx, txs[i].inputLoader)
+			txCtx, err := tx.ContextFromTransaction(txs[i].inputLoader)
 			require.NoError(t, err)
 
 			err = txCtx.Validate()

@@ -28,7 +28,7 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 	if err != nil {
 		return nil, err
 	}
-	ctx, err := transaction.TxContextFromTransaction(tx, tx.InputLoaderByIndex(u.Readable().GetUTXO), traceOption)
+	ctx, err := tx.ContextFromTransaction(tx.InputLoaderByIndex(u.Readable().GetUTXO), traceOption)
 	if err != nil {
 		return nil, err
 	}

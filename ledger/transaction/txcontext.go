@@ -30,7 +30,12 @@ const (
 	TraceOptionFailedConstraints
 )
 
-func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (*ledger.Output, error), traceOption ...int) (*TxContext, error) {
+// ContextSkeleton creates transaction context that is missing consumed UTXOs part.
+// The branch of consumed UTXOs in the context tree is replaced with the dummy empty tuple.
+// This allows to run tx integrity validation scripts.
+// Later, when inputs of the transaction becomes available (solidified), skeleton context can be upgraded to
+// the full context with FullContextFromSkeleton
+func (tx *Transaction) ContextSkeleton(traceOption ...int) (*TxContext, error) {
 	ret := &TxContext{
 		Transaction:          tx,
 		ctxTree:              nil,
@@ -41,30 +46,45 @@ func TxContextFromTransaction(tx *Transaction, inputLoaderByIndex func(i byte) (
 	if len(traceOption) > 0 {
 		ret.traceOption = traceOption[0]
 	}
-	consumedOutputsArray := tuples.EmptyTupleEditable(256)
-	for i := 0; i < tx.NumInputs(); i++ {
-		o, err := inputLoaderByIndex(byte(i))
-		if err != nil {
-			return nil, fmt.Errorf("TxContextFromTransaction: '%v'", err)
-		}
-		if o == nil {
-			inpOid := tx.MustInputAt(byte(i))
-			err = fmt.Errorf("TxContextFromTransaction: cannot get consumed output %s at input index %d of %s",
-				inpOid.StringShort(), i, tx.IDShortString())
-			return nil, err
-		}
-		consumedOutputsArray.MustPush(o.Bytes())
-	}
-	e := tuples.MakeTupleFromSerializableElements(consumedOutputsArray) // one level deeper
-	ret.ctxTree = tuples.TreeFromTreesReadOnly(tx.Tree, e.AsTree())
-
-	// always check the consistency of the transaction with the input context
-	//if err := ret.validateInputCommitmentSafe(); err != nil {
-	//	return nil, fmt.Errorf("TxContextFromTransaction: %w\n>>>>>>>>>>>>>>>>>>\n%s", err, ret.String())
-	//}
-
+	e := tuples.MakeTupleFromSerializableElements(tuples.EmptyTupleEditable())
+	ret.ctxTree = tuples.TreeFromTreesReadOnly(tx.Tree, e.AsTree()) // index 0 for transaction, index 1 for consumed outputs
 	ret.dataContext = ledger.NewEvalContext(ret)
 	return ret, nil
+}
+
+// FullContextFromSkeleton full context is obtained from the skeleton
+// by replacing dummy consumed UTXOs with the real ones
+func (ctx *TxContext) FullContextFromSkeleton(inputLoaderByIndex func(i byte) (*ledger.Output, error)) (*TxContext, error) {
+	consumedUTXOs := tuples.EmptyTupleEditable(256)
+	n := ctx.NumInputs()
+	for i := 0; i < n; i++ {
+		o, err := inputLoaderByIndex(byte(i))
+		if err != nil {
+			return nil, fmt.Errorf("FullContextFromSkeleton: '%v'", err)
+		}
+		if o == nil {
+			err = fmt.Errorf("FullContextFromSkeleton: cannot get consumed output at input index %d", i)
+			return nil, err
+		}
+		consumedUTXOs.MustPush(o.Bytes())
+	}
+	ret := *ctx // shallow clone
+	e := tuples.MakeTupleFromSerializableElements(consumedUTXOs)
+	txTree, err := ctx.ctxTree.Subtree([]byte{ledger.TransactionTuple})
+	util.AssertNoError(err, "ctx.Tree.Subtree([]byte{ledger.TransactionTuple})")
+
+	ret.ctxTree = tuples.TreeFromTreesReadOnly(txTree, e.AsTree()) // index 0 for transaction, index 1 for consumed outputs
+	ret.dataContext = ledger.NewEvalContext(&ret)
+	return &ret, nil
+}
+
+// ContextFromTransaction creates full context from transaction
+func (tx *Transaction) ContextFromTransaction(inputLoaderByIndex func(i byte) (*ledger.Output, error), traceOption ...int) (*TxContext, error) {
+	ctx, err := tx.ContextSkeleton(traceOption...)
+	if err != nil {
+		return nil, err
+	}
+	return ctx.FullContextFromSkeleton(inputLoaderByIndex)
 }
 
 // TxContextFromTransferableBytes constructs tuples.Tree from transaction bytes and consumed outputs
@@ -74,7 +94,11 @@ func TxContextFromTransferableBytes(txBytes []byte, fetchInput func(oid base.Out
 	if err != nil {
 		return nil, err
 	}
-	return TxContextFromTransaction(tx, tx.InputLoaderByIndex(fetchInput), traceOption...)
+	return tx.ContextFromTransaction(tx.InputLoaderByIndex(fetchInput), traceOption...)
+}
+
+func (ctx *TxContext) IsSkeleton() bool {
+	return ctx.ctxTree.MustNumElementsAtPath(ledger.PathToConsumedOutputs) == 0
 }
 
 func (ctx *TxContext) BytesAtPath(path []byte) ([]byte, error) {

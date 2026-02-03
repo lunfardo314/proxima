@@ -370,9 +370,9 @@ func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Outp
 		var ctx *TxContext
 		var err error
 		if __printLogOnFail.Load() {
-			ctx, err = TxContextFromTransaction(tx, inputLoaderByIndex, TraceOptionAll)
+			ctx, err = tx.ContextFromTransaction(inputLoaderByIndex, TraceOptionAll)
 		} else {
-			ctx, err = TxContextFromTransaction(tx, inputLoaderByIndex)
+			ctx, err = tx.ContextFromTransaction(inputLoaderByIndex)
 		}
 		if err != nil {
 			return err
