@@ -98,8 +98,14 @@ functions:
     source: "byte(atPath(pathToSequencerDataBytes), 1)"
   -
     sym: sequencerFlagON
+    description: "$0 must be at least 5 bytes long, like in txid or timestamp prefix. Returns true if sequencer tx flag is ON"
     numArgs: 1
     source: "not(isZero(bitwiseAND(byte($0,4),0x01)))"
+  -
+    sym: branchFlagON
+    description: "$0 must be at least 5 bytes long, like in txid or timestamp prefix. Returns true if sequencer tx flag is ON AND ticks is 0"
+    numArgs: 1
+    source: "equal(byte($0,4), 0x01)"
   -
     sym: isSequencerTransaction
     numArgs: 0

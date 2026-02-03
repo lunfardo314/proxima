@@ -1,6 +1,26 @@
+// $0 explicit baseline bytes
+func _mustValidExplicitBaseline :
+or(
+   isZero(len($0)), // not set
+   and(
+      require(isSequencerTransaction, !!!explicit_baseline:_can_only_be_set_on_a_sequencer_transaction),
+      require(equal(len($0),u64/32), !!!explicit_baseline:_must_be_32_bytes_long_txid),
+      require(branchFlagON($0), !!!"explicit_baseline:_must_be_a_branch_transaction_ID),
+      require(greaterOrEqualThan(sub(txSlot, slice($0,0,3)), constTransactionPaceSequencer), !!!explicit_baseline:_sequencer_pace_constraint_violated)
+   )
+)
+
 // txLayoutValidator0 is a closed function that is evaluated in the beginning
 // of the transaction validation. It checks correctness of main elements of the transactions
 func txLayoutValidator0 : and(
+   // enforce number of inputs is not 0 and equal to the number of unlock params
+   require(
+      and(
+         not(isZero(tupleLenAtPath(pathToInputIDs))),
+         equal(tupleLenAtPath(pathToInputIDs), tupleLenAtPath(pathToUnlockParams)),
+      ),
+      !!!number_of_unlock_params_must_be_equal_to_the_number_of_inputs
+   ),
    // inputs should not contain duplicates
    require(
       not(tupleHasDuplicatesAtPath(pathToInputIDs)),
@@ -16,8 +36,6 @@ func txLayoutValidator0 : and(
       validSignature(txID, txSignatureData),
       !!!invalid_signature_of_the_transaction
    ),
-   require(
-      equal(tupleLenAtPath(pathToInputIDs), tupleLenAtPath(pathToUnlockParams)),
-      !!!number_of_unlock_params_must_be_equal_to_the_number_of_inputs
-   )
+   // check explicit baseline
+   _mustValidExplicitBaseline(txExplicitBaseline)
 )
