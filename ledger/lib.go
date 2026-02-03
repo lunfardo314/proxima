@@ -77,13 +77,13 @@ func (lib *Library) MustPreCompileTxIntegrityValidators() {
 		}
 		return
 	}
-	expr, nargs, _, err := lib.CompileExpression(lib.TxIntegrityValidatorSkeletonContextName)
+	exprSkeleton, nargs, _, err := lib.CompileExpression(lib.TxIntegrityValidatorSkeletonContextName)
 	util.AssertNoError(err)
 	util.Assertf(nargs == 0, "transaction integrity validator (skeleton context) must be a closed EasyFL expression")
 
 	lib.TxIntegrityValidatorSkeletonContext = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
 		err1 := easyfl_util.CatchPanicOrError(func() error {
-			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, expr)
+			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, exprSkeleton)
 			if len(res) == 0 {
 				return fmt.Errorf("transaction integrity validation (skeleton context) failed")
 			}
@@ -98,13 +98,13 @@ func (lib *Library) MustPreCompileTxIntegrityValidators() {
 		}
 		return
 	}
-	expr, nargs, _, err = lib.CompileExpression(lib.TxIntegrityValidatorFullContextName)
+	exprFull, nargs, _, err := lib.CompileExpression(lib.TxIntegrityValidatorFullContextName)
 	util.AssertNoError(err)
 	util.Assertf(nargs == 0, "transaction integrity validator (full context) must be a closed EasyFL expression")
 
 	lib.TxIntegrityValidatorFullContext = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
 		err1 := easyfl_util.CatchPanicOrError(func() error {
-			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, expr)
+			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, exprFull)
 			if len(res) == 0 {
 				return fmt.Errorf("transaction integrity validation (full context) failed")
 			}

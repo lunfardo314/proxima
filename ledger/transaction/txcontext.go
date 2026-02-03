@@ -14,8 +14,7 @@ import (
 // TxContext is a data structure, which contains transferable transaction, consumed outputs and constraint library
 type TxContext struct {
 	*Transaction
-	ctxTree     *tuples.Tree
-	traceOption int
+	ctxTree *tuples.Tree
 	// calculated and cached values
 	totalProducedAmounts      [15]int64
 	totalConsumedTokenBalance int64
@@ -30,40 +29,45 @@ const (
 	TraceOptionFailedConstraints
 )
 
-// ContextSkeleton creates transaction context that is missing consumed UTXOs part.
+// contextSkeleton creates transaction context that is missing consumed UTXOs part.
 // The branch of consumed UTXOs in the context tree is replaced with the dummy empty tuple.
 // This allows to run tx integrity validation scripts.
 // Later, when inputs of the transaction becomes available (solidified), skeleton context can be upgraded to
-// the full context with FullContextFromSkeleton
-func (tx *Transaction) ContextSkeleton(traceOption ...int) (*TxContext, error) {
+// the full context with fullContextFromSkeleton
+func (tx *Transaction) contextSkeleton() *TxContext {
 	ret := &TxContext{
 		Transaction:          tx,
 		ctxTree:              nil,
-		traceOption:          TraceOptionNone,
 		dataContext:          nil,
 		totalProducedAmounts: tx.TotalProducedAmounts(),
-	}
-	if len(traceOption) > 0 {
-		ret.traceOption = traceOption[0]
 	}
 	e := tuples.MakeTupleFromSerializableElements(tuples.EmptyTupleEditable())
 	ret.ctxTree = tuples.TreeFromTreesReadOnly(tx.Tree, e.AsTree()) // index 0 for transaction, index 1 for consumed outputs
 	ret.dataContext = ledger.NewEvalContext(ret)
-	return ret, nil
+	return ret
 }
 
-// FullContextFromSkeleton full context is obtained from the skeleton
+func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
+	if !tx.ctx.IsSkeleton() {
+		return nil
+	}
+	var err error
+	tx.ctx, err = tx.ctx.fullContextFromSkeleton(inputLoaderByIndex)
+	return err
+}
+
+// fullContextFromSkeleton full context is obtained from the skeleton
 // by replacing dummy consumed UTXOs with the real ones
-func (ctx *TxContext) FullContextFromSkeleton(inputLoaderByIndex func(i byte) (*ledger.Output, error)) (*TxContext, error) {
+func (ctx *TxContext) fullContextFromSkeleton(inputLoaderByIndex func(i byte) (*ledger.Output, error)) (*TxContext, error) {
 	consumedUTXOs := tuples.EmptyTupleEditable(256)
 	n := ctx.NumInputs()
 	for i := 0; i < n; i++ {
 		o, err := inputLoaderByIndex(byte(i))
 		if err != nil {
-			return nil, fmt.Errorf("FullContextFromSkeleton: '%v'", err)
+			return nil, fmt.Errorf("fullContextFromSkeleton: '%v'", err)
 		}
 		if o == nil {
-			err = fmt.Errorf("FullContextFromSkeleton: cannot get consumed output at input index %d", i)
+			err = fmt.Errorf("fullContextFromSkeleton: cannot get consumed output at input index %d", i)
 			return nil, err
 		}
 		consumedUTXOs.MustPush(o.Bytes())
@@ -78,13 +82,9 @@ func (ctx *TxContext) FullContextFromSkeleton(inputLoaderByIndex func(i byte) (*
 	return &ret, nil
 }
 
-// ContextFromTransaction creates full context from transaction
-func (tx *Transaction) ContextFromTransaction(inputLoaderByIndex func(i byte) (*ledger.Output, error), traceOption ...int) (*TxContext, error) {
-	ctx, err := tx.ContextSkeleton(traceOption...)
-	if err != nil {
-		return nil, err
-	}
-	return ctx.FullContextFromSkeleton(inputLoaderByIndex)
+// ContextFull creates full context from transaction
+func (tx *Transaction) ContextFull(inputLoaderByIndex func(i byte) (*ledger.Output, error), traceOption ...int) (*TxContext, error) {
+	return tx.contextSkeleton().fullContextFromSkeleton(inputLoaderByIndex)
 }
 
 // TxContextFromTransferableBytes constructs tuples.Tree from transaction bytes and consumed outputs
@@ -94,7 +94,7 @@ func TxContextFromTransferableBytes(txBytes []byte, fetchInput func(oid base.Out
 	if err != nil {
 		return nil, err
 	}
-	return tx.ContextFromTransaction(tx.InputLoaderByIndex(fetchInput), traceOption...)
+	return tx.ContextFull(tx.InputLoaderByIndex(fetchInput), traceOption...)
 }
 
 func (ctx *TxContext) IsSkeleton() bool {

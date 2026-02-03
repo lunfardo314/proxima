@@ -341,7 +341,7 @@ func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, 
 }
 
 func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, bool)) string {
-	ctx, err := tx.ContextFromTransaction(func(i byte) (*ledger.Output, error) {
+	ctx, err := tx.ContextFull(func(i byte) (*ledger.Output, error) {
 		oid, err1 := tx.InputAt(i)
 		if err1 != nil {
 			return nil, err1
@@ -363,7 +363,7 @@ func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, boo
 }
 
 func (tx *Transaction) ToStringWithInputLoaderByIndex(fetchOutput func(i byte) (*ledger.Output, error)) string {
-	ctx, err := tx.ContextFromTransaction(fetchOutput)
+	ctx, err := tx.ContextFull(fetchOutput)
 	if err != nil {
 		return err.Error()
 	}
@@ -501,7 +501,7 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 }
 
 func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
-	ctx, err := tx.ContextFromTransaction(inputLoaderByIndex)
+	ctx, err := tx.ContextFull(inputLoaderByIndex)
 	if err != nil {
 		ret := lines.New(prefix...)
 		ret.Add("can't create context of transaction %s: '%v'", tx.IDShortString(), err)
@@ -571,9 +571,9 @@ func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger
 	if err != nil {
 		return lines.New(prefix...).Add("FromBytes returned: %v", err)
 	}
-	txCtx, err := tx.ContextFromTransaction(inputLoader)
+	txCtx, err := tx.ContextFull(inputLoader)
 	if err != nil {
-		return lines.New(prefix...).Add("ContextFromTransaction returned: %v", err)
+		return lines.New(prefix...).Add("ContextFull returned: %v", err)
 	}
 	return txCtx.Lines(prefix...)
 }

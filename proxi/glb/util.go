@@ -94,7 +94,7 @@ func ParseAndDisplayTxFromSore(txid base.TransactionID) {
 	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
 	AssertNoError(err)
 
-	ctx, err := tx.ContextFromTransaction(func(i byte) (*ledger.Output, error) {
+	ctx, err := tx.ContextFull(func(i byte) (*ledger.Output, error) {
 		return txstore.LoadOutput(TxBytesStore(), tx.MustInputAt(i))
 	})
 	if err != nil {

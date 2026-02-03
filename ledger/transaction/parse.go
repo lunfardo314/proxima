@@ -17,17 +17,19 @@ type (
 	Transaction struct {
 		*ledger.Library // cached library for this transaction's slot
 		*tuples.Tree
+		ctx                      *TxContext
 		txid                     base.TransactionID
 		timestamp                base.LedgerTime
 		producedAmountTotals     [15]int64                        // calculated by summing up amount vectors
 		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
+		traceOption              int
 	}
 
-	TxValidationOption func(tx *Transaction) error
+	TxOption func(tx *Transaction) error
 )
 
 // MainTxValidationOptions is all except Base, ParseSender, the time bounds and input context validation. Fastest first
-var MainTxValidationOptions = []TxValidationOption{
+var MainTxValidationOptions = []TxOption{
 	ParseSequencerData,
 	ScanInputs,
 	ScanEndorsements,
@@ -62,12 +64,12 @@ func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte,
 	return
 }
 
-func FromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) {
+func FromBytes(txBytes []byte, opt ...TxOption) (*Transaction, error) {
 	tree, err := tuples.TreeFromBytesReadOnly(txBytes)
 	if err != nil {
 		return nil, err
 	}
-	ret := &Transaction{Tree: tree}
+	ret := &Transaction{Tree: tree, traceOption: TraceOptionNone}
 	ret.txid, err = TxIDFromTransactionDataTree(ret.Tree)
 	if err != nil {
 		return nil, err
@@ -75,6 +77,7 @@ func FromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) 
 	ret.timestamp = ret.txid.Timestamp()
 	// Cache the library for this transaction's slot once, to avoid repeated L(slot) calls
 	ret.Library = ledger.L(ret.timestamp.Slot)
+	ret.ctx = ret.contextSkeleton()
 	if err = ret.Validate(opt...); err != nil {
 		return nil, err
 	}
@@ -152,8 +155,15 @@ func IDFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, error) {
 	return tx.ID(), nil
 }
 
-func (tx *Transaction) Validate(opt ...TxValidationOption) error {
+func (tx *Transaction) SetTraceOption(opt int) {
+	tx.traceOption = opt
+}
+
+func (tx *Transaction) Validate(opt ...TxOption) error {
 	return util.CatchPanicOrError(func() error {
+		if err := tx.ctx.Validate(); err != nil {
+			return err
+		}
 		for _, fun := range opt {
 			if err := fun(tx); err != nil {
 				return err
@@ -163,7 +173,7 @@ func (tx *Transaction) Validate(opt ...TxValidationOption) error {
 	})
 }
 
-func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
+func CheckTimestampUpperBound(upperBound time.Time) TxOption {
 	return func(tx *Transaction) error {
 		ts := ledger.ClockTime(tx.timestamp)
 		if ts.After(upperBound) {
@@ -365,14 +375,14 @@ func ScanOutputs(tx *Transaction) error {
 	return nil
 }
 
-func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) TxValidationOption {
+func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) TxOption {
 	return func(tx *Transaction) error {
 		var ctx *TxContext
 		var err error
 		if __printLogOnFail.Load() {
-			ctx, err = tx.ContextFromTransaction(inputLoaderByIndex, TraceOptionAll)
+			ctx, err = tx.ContextFull(inputLoaderByIndex, TraceOptionAll)
 		} else {
-			ctx, err = tx.ContextFromTransaction(inputLoaderByIndex)
+			ctx, err = tx.ContextFull(inputLoaderByIndex)
 		}
 		if err != nil {
 			return err

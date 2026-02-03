@@ -227,7 +227,7 @@ func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string,
 		}
 		return nil, base.TransactionID{}, txString, err
 	}
-	ctx, err := tx.ContextFromTransaction(txb.LoadInput)
+	ctx, err := tx.ContextFull(txb.LoadInput)
 	if err != nil {
 		return nil, base.TransactionID{}, "", err
 	}
