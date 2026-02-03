@@ -22,15 +22,16 @@ type (
 		PrevUpgradeSlot uint32   // Slot of the previous upgrade (MaxSlot for slot 0)
 	}
 
-	Library struct {
+	IntegrityValidator func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
+	Library            struct {
 		*easyfl.Library[*EvalContext]
-		definitionsYAML    []byte
-		constraintByPrefix map[string]*constraintRecord
-		locksByName        map[string]LockParser
-		upgradeChainData   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
-		Constants                            // Embedded ledger constants for this library version
-		txValidatorExpr    *easyfl.Expression[*EvalContext]
-		TxValidator        func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
+		Constants                           // Embedded ledger constants for this library version
+		definitionsYAML                     []byte
+		constraintByPrefix                  map[string]*constraintRecord
+		locksByName                         map[string]LockParser
+		upgradeChainData                    *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		TxIntegrityValidatorSkeletonContext IntegrityValidator
+		TxIntegrityValidatorFullContext     IntegrityValidator
 	}
 )
 
@@ -68,23 +69,44 @@ func (lib *Library) SetUpgradeChainData(data *UpgradeChainData) {
 	lib.upgradeChainData = data
 }
 
-// MustPreCompileTxLayoutValidator sets tx layout validator for the initialized library
-func (lib *Library) MustPreCompileTxLayoutValidator() {
-	if lib.TxLayoutValidator == "" {
-		lib.TxValidator = func(_ easyfl.GlobalData[*EvalContext], _ *slicepool.SlicePool) error {
-			panic("tx layout validator has not beed initialized")
+// MustPreCompileTxIntegrityValidators sets tx layout validator for the initialized library
+func (lib *Library) MustPreCompileTxIntegrityValidators() {
+	if lib.Constants.TxIntegrityValidatorSkeletonContextName == "" {
+		lib.TxIntegrityValidatorSkeletonContext = func(_ easyfl.GlobalData[*EvalContext], _ *slicepool.SlicePool) error {
+			panic("tx integrity validator (skeleton context) has not beed initialized")
 		}
 		return
 	}
-	expr, nargs, _, err := lib.CompileExpression(lib.TxLayoutValidator)
+	expr, nargs, _, err := lib.CompileExpression(lib.TxIntegrityValidatorSkeletonContextName)
 	util.AssertNoError(err)
-	util.Assertf(nargs == 0, "transaction validator must be a closed EasyFL expression")
+	util.Assertf(nargs == 0, "transaction integrity validator (skeleton context) must be a closed EasyFL expression")
 
-	lib.TxValidator = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
+	lib.TxIntegrityValidatorSkeletonContext = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
 		err1 := easyfl_util.CatchPanicOrError(func() error {
 			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, expr)
 			if len(res) == 0 {
-				return fmt.Errorf("transaction layout validation failed")
+				return fmt.Errorf("transaction integrity validation (skeleton context) failed")
+			}
+			return nil
+		})
+		return err1
+	}
+
+	if lib.TxIntegrityValidatorFullContextName == "" {
+		lib.TxIntegrityValidatorFullContext = func(_ easyfl.GlobalData[*EvalContext], _ *slicepool.SlicePool) error {
+			panic("tx integrity validator (full context) has not beed initialized")
+		}
+		return
+	}
+	expr, nargs, _, err = lib.CompileExpression(lib.TxIntegrityValidatorFullContextName)
+	util.AssertNoError(err)
+	util.Assertf(nargs == 0, "transaction integrity validator (full context) must be a closed EasyFL expression")
+
+	lib.TxIntegrityValidatorFullContext = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
+		err1 := easyfl_util.CatchPanicOrError(func() error {
+			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, expr)
+			if len(res) == 0 {
+				return fmt.Errorf("transaction integrity validation (full context) failed")
 			}
 			return nil
 		})

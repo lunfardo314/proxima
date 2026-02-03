@@ -15,7 +15,7 @@ var (
 	_generalFunctionsYAMLUpgrade0 string
 	//go:embed def/def_helper_func0.yaml
 	_helperFunctionsYAMLUpgrade0 string
-	//go:embed def/tx_layout_validator.easyfl
+	//go:embed def/tx_integrity_validator.easyfl
 	_txLayoutValidator0 string
 )
 

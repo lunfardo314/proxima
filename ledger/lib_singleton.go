@@ -189,7 +189,7 @@ func (lc *LibraryCache) parseLibrary(yamlData []byte) *Library {
 	result := newLibrary(lib, yamlData)
 	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
 	registerConstraints0(result)
-	result.MustPreCompileTxLayoutValidator()
+	result.MustPreCompileTxIntegrityValidators()
 	return result
 }
 
@@ -243,7 +243,7 @@ func MustInitSingleton(defYaml []byte) {
 	result := newLibrary(lib, defYaml)
 	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
 	registerConstraints0(result)
-	result.MustPreCompileTxLayoutValidator()
+	result.MustPreCompileTxIntegrityValidators()
 	libraryCache.cache[0] = result
 
 	// Set a dummy store that always returns the genesis library
@@ -406,7 +406,7 @@ func InitWithTestingLedgerData(opts ...ParametersOption) ed25519.PrivateKey {
 		opt(&params)
 	}
 	lib := LibraryFromParameters(params)
-	lib.MustPreCompileTxLayoutValidator()
+	lib.MustPreCompileTxIntegrityValidators()
 	MustInitSingleton(lib.ToYAML(true))
 	return pk
 }

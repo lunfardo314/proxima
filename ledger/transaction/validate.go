@@ -61,10 +61,17 @@ func (ctx *TxContext) _validate() error {
 	spool := slicepool.New()
 	defer spool.Dispose()
 
+	if ctx.IsSkeleton() {
+		// in the skeleton context only checking integrity of the base transaction
+		return util.CatchPanicOrError(func() error {
+			return ctx.TxIntegrityValidatorSkeletonContext(ctx.makeEvalContext(nil), spool)
+		})
+	}
+	// full context. Running full validation
+
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		// validate transaction layout by calling predefined and pre-compiled script
-		if err1 = ctx.TxValidator(ctx.makeEvalContext(nil), spool); err1 != nil {
+		if err1 = ctx.TxIntegrityValidatorFullContext(ctx.makeEvalContext(nil), spool); err1 != nil {
 			return err1
 		}
 		// run tx level constrains, if any. All must succeed
