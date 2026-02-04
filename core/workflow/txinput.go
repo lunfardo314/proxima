@@ -129,7 +129,7 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 	}
 
 	// run remaining pre-validations on the transaction
-	if err = tx.Validate(transaction.MainTxValidationOptions...); err != nil {
+	if err = tx.ValidatePartialContext(); err != nil {
 		err = fmt.Errorf("error while pre-validating transaction %s: '%w'", txid.StringShort(), err)
 		w.Tracef(TraceTagTxInput, "%v", err)
 		attacher.InvalidateTxID(txid, w, err)

@@ -10,6 +10,22 @@ or(
    )
 )
 
+func _validEndorsements :
+and(
+   require(
+      or(isZero(tupleLenAtPath(pathToEndorsements)), isSequencerTransaction),
+      !!!only_sequencer_transactions_can_endorse
+   ),
+   require(
+      lessOrEqualThan(tupleLenAtPath(pathToEndorsements), constMaxNumberOfEndorsements),
+      !!!number_of_endorsements_too_big
+   ),
+   require(
+      not(tupleHasDuplicatesAtPath(pathToEndorsements)),
+      !!!duplicated_endorsements_not_allowed
+   )
+)
+
 // skeleton context: does not require consumed UTXOs
 func txIntegrityValidatorSkeletonContext0 : and(
    // enforce number of inputs is not 0 and equal to the number of unlock params
@@ -30,6 +46,8 @@ func txIntegrityValidatorSkeletonContext0 : and(
       validSignature(txID, txSignatureData),
       !!!invalid_signature_of_the_transaction
    ),
+   // check endorsements
+   _validEndorsements,
    // check explicit baseline
    _mustValidExplicitBaseline(txExplicitBaseline)
 )

@@ -161,7 +161,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 // AttachTransactionFromBytes used for testing
 func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...AttachTxOption) (*vertex.WrappedTx, error) {
-	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		return nil, err
 	}

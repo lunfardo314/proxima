@@ -83,7 +83,7 @@ func (v *Vertex) ValidateConstraints() error {
 	if err != nil {
 		return fmt.Errorf("ValidateConstraints of %s: %w", v.IDShortString(), err)
 	}
-	err = v.Validate()
+	err = v.ValidateFullContext()
 
 	const validateConstraintsVerbose = true
 

@@ -274,7 +274,7 @@ func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return
@@ -321,7 +321,7 @@ func (srv *server) getVertexWithDependencies(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return

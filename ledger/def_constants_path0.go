@@ -68,19 +68,19 @@ const (
 const ConsumedOutputsBranch = byte(0)
 
 var (
-	PathToRawTransaction                = tuples.Path(TransactionTuple)
-	PathToConsumedOutputs               = tuples.Path(ConsumedTuple, ConsumedOutputsBranch)
-	PathToTxConstraints                 = tuples.Path(TransactionTuple, TxConstraints)
-	PathToProducedOutputs               = tuples.Path(TransactionTuple, TxOutputs)
-	PathToUnlockParams                  = tuples.Path(TransactionTuple, TxUnlockData)
-	PathToInputIDs                      = tuples.Path(TransactionTuple, TxInputIDs)
-	PathToEndorsements                  = tuples.Path(TransactionTuple, TxEndorsements)
-	PathToSequencerAndStemOutputIndices = tuples.Path(TransactionTuple, TxSequencerDataBytes)
-	PathToTimestamp                     = tuples.Path(TransactionTuple, TxTimestamp)
-	PathToSignature                     = tuples.Path(TransactionTuple, TxSignatureData)
-	PathToInputCommitment               = tuples.Path(TransactionTuple, TxInputCommitment)
-	PathToExplicitBaseline              = tuples.Path(TransactionTuple, TxExplicitBaseline)
-	PathToOtherData                     = tuples.Path(TransactionTuple, TxOtherData)
+	PathToRawTransaction     = tuples.Path(TransactionTuple)
+	PathToConsumedOutputs    = tuples.Path(ConsumedTuple, ConsumedOutputsBranch)
+	PathToTxConstraints      = tuples.Path(TransactionTuple, TxConstraints)
+	PathToProducedOutputs    = tuples.Path(TransactionTuple, TxOutputs)
+	PathToUnlockParams       = tuples.Path(TransactionTuple, TxUnlockData)
+	PathToInputIDs           = tuples.Path(TransactionTuple, TxInputIDs)
+	PathToEndorsements       = tuples.Path(TransactionTuple, TxEndorsements)
+	PathToSequencerDataBytes = tuples.Path(TransactionTuple, TxSequencerDataBytes)
+	PathToTimestamp          = tuples.Path(TransactionTuple, TxTimestamp)
+	PathToSignature          = tuples.Path(TransactionTuple, TxSignatureData)
+	PathToInputCommitment    = tuples.Path(TransactionTuple, TxInputCommitment)
+	PathToExplicitBaseline   = tuples.Path(TransactionTuple, TxExplicitBaseline)
+	PathToOtherData          = tuples.Path(TransactionTuple, TxOtherData)
 )
 
 // Mandatory output block indices
@@ -99,7 +99,7 @@ func pathConstantsUpgrade0() string {
 		PathToUnlockParams.Hex(),
 		PathToInputIDs.Hex(),
 		PathToSignature.Hex(),
-		PathToSequencerAndStemOutputIndices.Hex(),
+		PathToSequencerDataBytes.Hex(),
 		PathToInputCommitment.Hex(),
 		PathToEndorsements.Hex(),
 		PathToExplicitBaseline.Hex(),

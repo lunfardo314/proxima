@@ -37,29 +37,27 @@ func (tx *Transaction) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.Ev
 	}
 }
 
-// Validate runs all validation scripts (constraints) found on the transaction
-func (tx *Transaction) Validate() error {
-	if err := tx._validate(); err != nil {
-		return fmt.Errorf("%w\ntxid = %s (%s)", err, tx.txid.StringShort(), tx.txid.StringHex())
-	}
-	return nil
-}
-
-// _validate runs scripts on consumed and produced parts. Does not check the consistency of input commitment, because
-// it already checked upon creation of the transaction context
-func (tx *Transaction) _validate() error {
-	var err error
-
+// ValidatePartialContext runs all validation scripts (constraints) that only needs partial context
+func (tx *Transaction) ValidatePartialContext() error {
+	util.Assertf(tx.IsPartialContext(), "skeleton context expected")
 	spool := slicepool.New()
 	defer spool.Dispose()
 
-	if tx.IsSkeletonContext() {
-		// in the skeleton context only checking integrity of the base transaction
-		return util.CatchPanicOrError(func() error {
-			return tx.TxIntegrityValidatorSkeletonContext(tx.makeEvalContext(nil), spool)
-		})
-	}
-	// full context. Running full validation
+	return util.CatchPanicOrError(func() error {
+		if err := tx.scanSkeletonContext(); err != nil {
+			return err
+		}
+		return tx.TxIntegrityValidatorSkeletonContext(tx.makeEvalContext(nil), spool)
+	})
+}
+
+// ValidateFullContext runs all validation scripts (constraints) that require full context
+func (tx *Transaction) ValidateFullContext() error {
+	util.Assertf(!tx.IsPartialContext(), "full context expected")
+
+	var err error
+	spool := slicepool.New()
+	defer spool.Dispose()
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error

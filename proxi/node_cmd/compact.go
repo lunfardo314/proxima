@@ -84,18 +84,18 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	txCtx, err := glb.GetClient().MakeCompactTransaction(walletData.PrivateKey, tagAlongSeqID, feeAmount, maxNumberOfInputs)
-	if txCtx != nil {
-		glb.Verbosef("------- the compacting transaction -------- \n%s\n--------------------------", txCtx.String())
+	tx, err := glb.GetClient().MakeCompactTransaction(walletData.PrivateKey, tagAlongSeqID, feeAmount, maxNumberOfInputs)
+	if tx != nil {
+		glb.Verbosef("------- the compacting transaction -------- \n%s\n--------------------------", tx.String())
 	}
 	glb.AssertNoError(err)
-	glb.Assertf(txCtx != nil, "something wrong: transaction context is nil")
-	txBytes := txCtx.TransactionBytes()
-	glb.Infof("Submitting compacting transaction with %d inputs (%d bytes)..", txCtx.NumInputs(), len(txBytes))
+	glb.Assertf(tx != nil, "something wrong: transaction context is nil")
+	txBytes := tx.Bytes()
+	glb.Infof("Submitting compacting transaction with %d inputs (%d bytes)..", tx.NumInputs(), len(txBytes))
 	err = glb.GetClient().SubmitTransaction(txBytes)
 	glb.AssertNoError(err)
 
 	if !glb.NoWait() {
-		glb.TrackTxInclusion(txCtx.ID(), time.Second)
+		glb.TrackTxInclusion(tx.ID(), time.Second)
 	}
 }

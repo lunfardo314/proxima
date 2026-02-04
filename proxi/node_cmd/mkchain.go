@@ -26,7 +26,7 @@ func initMakeChainCmd() *cobra.Command {
 	return makeChainCmd
 }
 
-func MakeChain(onChainAmount uint64) (*transaction.TxContext, base.ChainID, error) {
+func MakeChain(onChainAmount uint64) (*transaction.Transaction, base.ChainID, error) {
 	//cmd.DebugFlags()
 
 	walletData := glb.GetWalletData()
@@ -90,13 +90,13 @@ func runMakeChainCmd(_ *cobra.Command, args []string) {
 	onChainAmount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)
 
-	txCtx, chainID, err := MakeChain(onChainAmount)
+	tx, chainID, err := MakeChain(onChainAmount)
 	glb.AssertNoError(err)
-	err = txCtx.Validate()
+	err = tx.ValidateFullContext()
 	glb.AssertNoError(err)
 
 	glb.Infof("new chain id will be %s", chainID.String())
 	if !glb.NoWait() {
-		glb.TrackTxInclusion(txCtx.ID(), time.Second)
+		glb.TrackTxInclusion(tx.ID(), time.Second)
 	}
 }

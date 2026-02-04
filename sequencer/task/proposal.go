@@ -229,7 +229,7 @@ func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 		return nil, txString, err
 	}
 	// TODO redundant parsing back and forth
-	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	p.proposer.AssertNoError(err)
 	return tx, txString, nil
 }

@@ -643,7 +643,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutput
 }
 
 // MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
-func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *base.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction.TxContext, error) {
+func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *base.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction.Transaction, error) {
 	walletAccount := ledger.SigLockFromED25519PrivateKey(walletPrivateKey)
 
 	nowisTs := ledger.TimeNow()
@@ -669,11 +669,15 @@ func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, 
 		return nil, err
 	}
 
-	txCtx, err := transaction.TxContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
-		return nil, err
+		return tx, err
 	}
-	return txCtx, err
+	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(walletOutputs)))
+	if err != nil {
+		return tx, err
+	}
+	return tx, nil
 }
 
 type TransferFromED25519WalletParams struct {
@@ -687,7 +691,7 @@ type TransferFromED25519WalletParams struct {
 
 const minimumTransferAmount = uint64(1000)
 
-func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction.TxContext, error) {
+func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction.Transaction, error) {
 	if par.Amount < minimumTransferAmount {
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
@@ -708,12 +712,16 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 	if err != nil {
 		return nil, err
 	}
-	txCtx, err := transaction.TxContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(walletOutputs))
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
-		return nil, err
+		return tx, err
+	}
+	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(walletOutputs)))
+	if err != nil {
+		return tx, err
 	}
 	err = c.SubmitTransaction(txBytes)
-	return txCtx, err
+	return tx, err
 }
 
 func (c *APIClient) Get(path string) ([]byte, error) {
@@ -735,7 +743,7 @@ func (c *APIClient) getBody(path string) ([]byte, error) {
 	return body, nil
 }
 
-func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.TxContext, base.ChainID, error) {
+func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.Transaction, base.ChainID, error) {
 	if par.Amount < minimumTransferAmount {
 		return nil, base.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
@@ -800,21 +808,21 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 
 	txBytes := txb.TransactionData.Bytes()
 
-	txCtx, err := transaction.TxContextFromTransferableBytes(txBytes, transaction.PickOutputFromListFunc(inps))
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
-		return nil, [32]byte{}, err
+		return tx, [32]byte{}, err
 	}
-	if err = c.SubmitTransaction(txBytes); err != nil {
-		return nil, [32]byte{}, err
+	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(inps)))
+	if err != nil {
+		return tx, [32]byte{}, err
 	}
-
 	oChain, err := transaction.OutputWithIDFromTransactionBytes(txBytes, 0)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
 
 	chainID := blake2b.Sum256(oChain.ID[:])
-	return txCtx, chainID, err
+	return tx, chainID, err
 }
 
 // GetLatestReliableBranch retrieves latest reliable branch info from the node

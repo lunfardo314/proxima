@@ -200,14 +200,14 @@ func maxTimestamp(outs []*ledger.OutputWithID) (ret base.LedgerTime) {
 
 func prepareBundle(walletData glb.WalletData, cfg spammerConfig) ([][]byte, base.OutputID) {
 	ret := make([][]byte, 0)
-	txCtx, err := glb.GetClient().MakeCompactTransaction(walletData.PrivateKey, nil, 0, cfg.bundleSize*3)
+	tx, err := glb.GetClient().MakeCompactTransaction(walletData.PrivateKey, nil, 0, cfg.bundleSize*3)
 	glb.AssertNoError(err)
 
 	numTx := cfg.bundleSize
 	var lastOuts []*ledger.OutputWithID
-	if txCtx != nil {
-		ret = append(ret, txCtx.TransactionBytes())
-		lastOut, _ := txCtx.ProducedOutputWithIDAt(0)
+	if tx != nil {
+		ret = append(ret, tx.Bytes())
+		lastOut, _ := tx.ProducedOutputWithIDAt(0)
 		lastOuts = []*ledger.OutputWithID{lastOut}
 		numTx--
 	} else {

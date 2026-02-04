@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/set"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -28,16 +28,8 @@ type (
 	TxOption func(tx *Transaction) error
 )
 
-// MainTxValidationOptions is all except Base, ParseSender, the time bounds and input context validation. Fastest first
-var MainTxValidationOptions = []TxOption{
-	ParseSequencerData,
-	ScanInputs,
-	ScanEndorsements,
-	ScanOutputs,
-}
-
 // Parse parses main elements of the transaction and creates Transaction structure
-func Parse(txBytes []byte, opt ...TxOption) (*Transaction, error) {
+func Parse(txBytes []byte) (*Transaction, error) {
 	txTree, err := tuples.TreeFromBytesReadOnly(txBytes)
 	if err != nil {
 		return nil, fmt.Errorf("tx.Parse: %v", err)
@@ -55,15 +47,19 @@ func Parse(txBytes []byte, opt ...TxOption) (*Transaction, error) {
 	ret.timestamp = ret.txid.Timestamp()
 	// Cache the library for this transaction's slot once, to avoid repeated L(slot) calls
 	ret.Library = ledger.L(ret.timestamp.Slot)
-	// run integrity validation of the skeleton context TODO remove. not here
-	if err = ret.Validate(opt...); err != nil {
-		return nil, fmt.Errorf("tx.Parse: %v", err)
-	}
 	return ret, nil
 }
 
+func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
+	tx, err := Parse(txBytes)
+	if err != nil {
+		return nil, err
+	}
+	return tx, tx.ValidatePartialContext()
+}
+
 func FromBytesMainChecksWithOpt(txBytes []byte) (*Transaction, error) {
-	tx, err := Parse(txBytes, MainTxValidationOptions...)
+	tx, err := Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -161,25 +157,70 @@ func CheckTimestampUpperBound(upperBound time.Time) TxOption {
 	}
 }
 
-// ParseSequencerData validates and parses sequencer data if relevant. Data is cached for frequent extraction
-func ParseSequencerData(tx *Transaction) error {
+// tx essence is concatenation of all top level elements except signature
+var _essenceIndices []byte
+
+func init() {
+	_essenceIndices = make([]byte, 20)
+	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
+		if i != ledger.TxSignatureData {
+			_essenceIndices = append(_essenceIndices, i)
+		}
+	}
+}
+
+func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
+	hasher, err := blake2b.New256(nil)
+	util.AssertNoError(err)
+
+	var d []byte
+	for _, i := range _essenceIndices {
+		d, err = txTree.BytesAtPath([]byte{i})
+		if err != nil {
+			return [32]byte{}, err
+		}
+		hasher.Write(d)
+	}
+	copy(ret[:], hasher.Sum(nil))
+	return
+}
+
+func (tx *Transaction) scanSkeletonContext() (err error) {
+	if err = tx.parseSequencerData(); err != nil {
+		return err
+	}
+	if err = tx.scanInputs(); err != nil {
+		return err
+	}
+	if err = tx.scanEndorsements(); err != nil {
+		return err
+	}
+	if err = tx.scanProducedOutputs(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// parseSequencerData parses and caches sequencer data if relevant
+func (tx *Transaction) parseSequencerData() error {
 	if !tx.txid.IsSequencerTransaction() {
 		// it is known from parsing the txID
 		return nil
 	}
-	seqDataBytes := ledger.MustSequencerDataBytesFromBytes(tx.MustBytesAtPath(Path(ledger.TxSequencerDataBytes)))
+	// already checked in tx.Parse()
+	seqDataBytes := ledger.MustSequencerDataBytesFromBytes(tx.MustBytesAtPath(ledger.PathToSequencerDataBytes))
 
 	// check sequencer output
 	if int(seqDataBytes.SequencerOutputIndex) >= tx.NumProducedOutputs() {
-		return fmt.Errorf("wrong sequencer output index")
+		return fmt.Errorf("parseSequencerData: wrong sequencer output index")
 	}
 	out, err := tx.ProducedOutputWithIDAt(seqDataBytes.SequencerOutputIndex)
 	if err != nil {
-		return fmt.Errorf("ParseSequencerData: '%v' at produced output %d", err, seqDataBytes.SequencerOutputIndex)
+		return fmt.Errorf("parseSequencerData: '%v' at produced output #%d", err, seqDataBytes.SequencerOutputIndex)
 	}
 	seqOutputData, valid := out.Output.SequencerOutputData()
 	if !valid {
-		return fmt.Errorf("ParseSequencerData: invalid sequencer output data")
+		return fmt.Errorf("parseSequencerData: invalid sequencer output data in %s", out.String())
 	}
 
 	var sequencerID base.ChainID
@@ -209,53 +250,34 @@ func ParseSequencerData(tx *Transaction) error {
 	lock := outStem.Output.Lock()
 	var ok bool
 	if tx.sequencerTransactionData.StemOutputData, ok = lock.(*ledger.StemLock); !ok {
-		return fmt.Errorf("ParseSequencerData: not a stem lock")
+		return fmt.Errorf("parseSequencerData: not a stem lock in %s", outStem.String())
 	}
 	return nil
 }
 
-// ScanInputs validation option scans all inputs:
-// - checks number of them
-// - check if number of inputs is equal to the number of unlock datas
-// - checks for repeating inputs
+// scanInputs validation option scans all inputs:
+// - validates UTXO IDs
 // - enforces pace constraints
-func ScanInputs(tx *Transaction) error {
-	numInputs, err := tx.NumElementsAtPath(Path(ledger.TxInputIDs))
+func (tx *Transaction) scanInputs() error {
+	numInputs, err := tx.NumElementsAtPath(ledger.PathToInputIDs)
 	if err != nil {
-		return fmt.Errorf("scanning inputs: '%v'", err)
+		return fmt.Errorf("scanInputs: '%v'", err)
 	}
 	var oid base.OutputID
 
-	// enforce non-empty input set
-	if numInputs <= 0 {
-		return fmt.Errorf("number of inputs can't be 0")
-	}
-	// enforce exactly one unlock data for one input
-	numUnlock, err := tx.NumElementsAtPath(Path(ledger.TxUnlockData))
-	if err != nil {
-		return fmt.Errorf("scanning inputs: '%v'", err)
-	}
-	if numInputs != numUnlock {
-		return fmt.Errorf("number of unlock datas must be equal to the number of inputs")
-	}
-
 	ts := tx.Timestamp()
 	isSequencer := tx.IsSequencerTransaction()
-	path := []byte{ledger.TxInputIDs, 0}
-	inps := set.New[base.OutputID]()
+	path := easyfl_util.Concat(ledger.PathToInputIDs, 0)
+
+	// we do not use ForEachInputID because it assumes all inputs valid
 
 	for i := 0; i < numInputs; i++ {
-		path[1] = byte(i)
+		path[len(ledger.PathToInputIDs)] = byte(i)
 		// parse output ChainID
 		oid, err = base.OutputIDFromBytes(tx.MustBytesAtPath(path))
 		if err != nil {
 			return fmt.Errorf("parsing input #%d: '%v'", i, err)
 		}
-		// check uniqueness
-		if inps.Contains(oid) {
-			return fmt.Errorf("repeating input #%d: %s", i, oid.StringShort())
-		}
-		inps.Insert(oid)
 		// check time pace constraint
 		if isSequencer {
 			if !ledger.ValidSequencerPace(oid.Timestamp(), ts) {
@@ -270,52 +292,38 @@ func ScanInputs(tx *Transaction) error {
 	return nil
 }
 
-// ScanEndorsements
+// scanEndorsements
 // - parses and checks validity of each endorsement
-// - checks repeating endorsements (no very necessary)
+// - enforces no cross-slot endorsements
 // - enforces sequencer pace constraint
-func ScanEndorsements(tx *Transaction) error {
-	numEndorsements, err := tx.NumElementsAtPath(Path(ledger.TxEndorsements))
+func (tx *Transaction) scanEndorsements() error {
+	numEndorsements, err := tx.NumElementsAtPath(ledger.PathToEndorsements)
 	if err != nil {
-		return fmt.Errorf("scanning endorsements: '%v'", err)
+		return fmt.Errorf("scanEndorsements: '%v'", err)
 	}
 	if numEndorsements == 0 {
 		return nil
 	}
-	// check max number of endorsements
 	txTs := tx.Timestamp()
-	if numEndorsements > int(tx.MaxNumberOfEndorsements) {
-		return fmt.Errorf("number of endorsements should not exceed %d", tx.MaxNumberOfEndorsements)
-	}
-	// enforce only sequencer transaction can endorse
-	if !tx.IsSequencerTransaction() {
-		return fmt.Errorf("non-sequencer transaction cannot contain endorsements")
-	}
 
 	var endorsementID base.TransactionID
-
-	unique := set.New[base.TransactionID]()
-
-	path := []byte{ledger.TxEndorsements, 0}
+	path := easyfl_util.Concat(ledger.PathToEndorsements, 0)
 	for i := 0; i < numEndorsements; i++ {
 		path[1] = byte(i)
 		// parse transaction ChainID
 		endorsementID, err = base.TransactionIDFromBytes(tx.MustBytesAtPath(path))
 		if err != nil {
-			return fmt.Errorf("parsing endorsement #%d: '%v'", i, err)
+			return fmt.Errorf("scanEndorsements: parsing endorsement #%d: '%v'", i, err)
 		}
-		// check uniqueness
-		if unique.Contains(endorsementID) {
-			return fmt.Errorf("repeating endorsement #%d: %s", i, endorsementID.StringShort())
-		}
-		unique.Insert(endorsementID)
 		// check cross-slot endorsements
 		if txTs.Slot != endorsementID.Slot() {
-			return fmt.Errorf("cross-slot endorsements are not allowed:  %s ->  %s", tx.IDShortString(), endorsementID.StringShort())
+			return fmt.Errorf("scanEndorsements: cross-slot endorsements are not allowed:  %s ->  %s",
+				tx.IDShortString(), endorsementID.StringShort())
 		}
 		// check time pace
 		if !ledger.ValidSequencerPace(endorsementID.Timestamp(), txTs) {
-			return fmt.Errorf("endorsement #%d violates sequencer time pace constraint: %s -> %s", i, txTs.String(), endorsementID.StringShort())
+			return fmt.Errorf("scanEndorsements: endorsement #%d violates sequencer time pace constraint: %s -> %s",
+				i, txTs.String(), endorsementID.StringShort())
 		}
 	}
 	return nil
@@ -324,59 +332,33 @@ func ScanEndorsements(tx *Transaction) error {
 // ScanOutputs
 // - scans all outputs
 // - enforces the existence of the mandatory constrains,
-// - computes total of outputs and total inflation
-func ScanOutputs(tx *Transaction) error {
-	numOutputs, err := tx.NumElementsAtPath(Path(ledger.TxOutputs))
+// - sums up total of outputs and total inflation
+func (tx *Transaction) scanProducedOutputs() error {
+	numOutputs, err := tx.NumElementsAtPath(ledger.PathToProducedOutputs)
 	if err != nil {
-		return fmt.Errorf("scanning outputs: '%v'", err)
+		return fmt.Errorf("scanProducedOutputs: '%v'", err)
 	}
 	var amounts ledger.Amounts
 
-	pathToAmounts := []byte{ledger.TxOutputs, 0, 0}
-	pathToLock := []byte{ledger.TxOutputs, 0, 1}
+	pathToAmounts := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, 0)
+	pathToLock := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, 1)
 
 	for i := 0; i < numOutputs; i++ {
-		pathToAmounts[1] = byte(i)
+		pathToAmounts[len(ledger.PathToProducedOutputs)] = byte(i)
+		pathToLock[len(ledger.PathToProducedOutputs)] = byte(i)
+
 		amounts, err = ledger.AmountsFromBytesWithLib(tx.MustBytesAtPath(pathToAmounts), tx.Library)
 		if err != nil {
-			return fmt.Errorf("scanning output #%d: '%v'", i, err)
+			return fmt.Errorf("scanProducedOutputs: UTXO #%d: '%v'", i, err)
 		}
 
 		// just enforcing known lock at index 1
 		if _, err = ledger.LockFromBytesWithLib(tx.MustBytesAtPath(pathToLock), tx.Library); err != nil {
-			return fmt.Errorf("scanning output #%d: '%v'", i, err)
+			return fmt.Errorf("scanProducedOutputs: UTXO #%d: '%v'", i, err)
 		}
 		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
-			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
+			return fmt.Errorf("scanProducedOutputs: UTXO #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
 	}
 	return nil
-}
-
-// tx essence is concatenation of all top level elements except signature
-var _essenceIndices []byte
-
-func init() {
-	_essenceIndices = make([]byte, 20)
-	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
-		if i != ledger.TxSignatureData {
-			_essenceIndices = append(_essenceIndices, i)
-		}
-	}
-}
-
-func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
-	hasher, err := blake2b.New256(nil)
-	util.AssertNoError(err)
-
-	var d []byte
-	for _, i := range _essenceIndices {
-		d, err = txTree.BytesAtPath([]byte{i})
-		if err != nil {
-			return [32]byte{}, err
-		}
-		hasher.Write(d)
-	}
-	copy(ret[:], hasher.Sum(nil))
-	return
 }

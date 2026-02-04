@@ -18,13 +18,13 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-// IsSkeletonContext if true, means consumed UTXOs are not available (yet)
-func (tx *Transaction) IsSkeletonContext() bool {
+// IsPartialContext if true, means consumed UTXOs are not available (yet)
+func (tx *Transaction) IsPartialContext() bool {
 	return tx.MustNumElementsAtPath(ledger.PathToConsumedOutputs) == 0
 }
 
 func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
-	util.Assertf(tx.IsSkeletonContext(), "tx.SetFullContext: full context can be set only once")
+	util.Assertf(tx.IsPartialContext(), "tx.SetFullContext: full context can be set only once")
 	var err error
 	var o *ledger.Output
 
@@ -46,7 +46,7 @@ func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.O
 	util.AssertNoError(err, "tx.Subtree([]byte{ledger.TransactionTuple})")
 
 	tx.Tree = tuples.TreeFromTreesReadOnly(txTree, e.AsTree()) // index 0 for transaction, index 1 for consumed outputs
-	util.Assertf(!tx.IsSkeletonContext(), "tx.SetFullContext: full context expected")
+	util.Assertf(!tx.IsPartialContext(), "tx.SetFullContext: full context expected")
 
 	return nil
 }
@@ -338,7 +338,7 @@ func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output
 }
 
 func (tx *Transaction) ForEachConsumedOutput(fun func(idx byte, o ledger.OutputWithID) bool) {
-	util.Assertf(!tx.IsSkeletonContext(), "ForEachConsumedOutput: full context expected")
+	util.Assertf(!tx.IsPartialContext(), "ForEachConsumedOutput: full context expected")
 	n := tx.NumInputs()
 	for i := 0; i < n; i++ {
 		o, err := tx.ConsumedOutputAt(byte(i))
@@ -618,7 +618,7 @@ func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...strin
 
 	inpCom := tx.InputCommitment()
 	ret.Add("Input commitment: %s", easyfl_util.Fmt(inpCom))
-	if tx.IsSkeletonContext() {
+	if tx.IsPartialContext() {
 		ret.Add("Consumed output hash: N/A")
 	} else {
 		h := tx.ConsumedOutputHash()
@@ -646,7 +646,7 @@ func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...strin
 	})
 
 	ret.Add("Inputs (%d consumed outputs): ", tx.NumInputs())
-	if tx.IsSkeletonContext() {
+	if tx.IsPartialContext() {
 		ret.Add("Inputs (%d). Consumed UTXOs N/A", tx.NumInputs())
 	} else {
 		ret.Add("Inputs (%d)", tx.NumInputs())
@@ -745,7 +745,7 @@ func (tx *Transaction) AttachmentCost() int {
 
 // ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
 func (tx *Transaction) ConsumedOutputHash() [32]byte {
-	util.Assertf(!tx.IsSkeletonContext(), "ConsumedOutputHash: can't be ekeleton context")
+	util.Assertf(!tx.IsPartialContext(), "ConsumedOutputHash: can't be ekeleton context")
 	return blake2b.Sum256(tx.MustBytesAtPath(ledger.PathToConsumedOutputs))
 }
 

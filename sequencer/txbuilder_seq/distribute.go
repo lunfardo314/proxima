@@ -137,7 +137,7 @@ func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed
 	err = tx.SetFullContext(tx.InputLoaderFromState(rdr))
 	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", err, tx.String)
 
-	err = tx.Validate()
+	err = tx.ValidateFullContext()
 	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", err, tx.String)
 
 	nextStem := tx.FindStemProducedOutput()

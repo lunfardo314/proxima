@@ -214,12 +214,12 @@ func (txb *TxBuilder) Transaction() (*transaction.Transaction, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w\n==== failing transaction ====\n%s", err, txString)
 	}
-	return transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	return transaction.ParseWithPartialValidation(txBytes)
 }
 
 func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
 	txBytes := txb.TransactionData.Bytes()
-	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		txString := ""
 		if tx != nil {
@@ -230,7 +230,7 @@ func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string,
 	if err = tx.SetFullContext(txb.LoadInput); err != nil {
 		return nil, base.TransactionID{}, "", err
 	}
-	if err = tx.Validate(); err != nil {
+	if err = tx.ValidateFullContext(); err != nil {
 		return nil, base.TransactionID{}, tx.String(), err
 	}
 	return txBytes, tx.ID(), tx.String(), nil
