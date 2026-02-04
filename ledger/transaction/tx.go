@@ -318,19 +318,17 @@ func (tx *Transaction) ForEachEndorsement(fun func(idx byte, txid base.Transacti
 	util.AssertNoError(err)
 }
 
-func (tx *Transaction) ForEachOutputData(fun func(idx byte, oData []byte) bool) {
+func (tx *Transaction) ForEachProducedOutputData(fun func(idx byte, oData []byte) bool) {
 	err := tx.ForEach(func(i byte, data []byte) bool {
 		return fun(i, data)
 	}, ledger.PathToProducedOutputs)
 	util.AssertNoError(err)
 }
 
-// ForEachProducedOutput traverses all produced outputs
-// Inside callback function the correct outputID must be obtained with OutputID(idx byte) ledger.OutputID
-// because stem output ID has a special form
 func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output, oid base.OutputID) bool) {
-	tx.ForEachOutputData(func(idx byte, oData []byte) bool {
-		o, _ := ledger.OutputFromBytesWithLib(oData, tx.Library)
+	tx.ForEachProducedOutputData(func(idx byte, oData []byte) bool {
+		o, err := ledger.OutputFromBytesWithLib(oData, tx.Library)
+		util.AssertNoError(err)
 		oid := tx.OutputID(idx)
 		if !fun(idx, o, oid) {
 			return false
@@ -699,11 +697,7 @@ func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger
 	if err != nil {
 		return lines.New(prefix...).Add("Parse returned: %v", err)
 	}
-
-	if err = tx.SetFullContext(inputLoader); err != nil {
-		return lines.New(prefix...).Add("SetFullContext returned: %v", err)
-	}
-	return tx.Lines(prefix...)
+	return tx.Lines(inputLoader, prefix...)
 }
 
 // BaselineDirection is the input, endorsement or explicit baseline of the sequencer transaction where to look for a baseline branch
@@ -753,4 +747,41 @@ func (tx *Transaction) AttachmentCost() int {
 func (tx *Transaction) ConsumedOutputHash() [32]byte {
 	util.Assertf(!tx.IsSkeletonContext(), "ConsumedOutputHash: can't be ekeleton context")
 	return blake2b.Sum256(tx.MustBytesAtPath(ledger.PathToConsumedOutputs))
+}
+
+func (tx *Transaction) BytesAtPath(path []byte) ([]byte, error) {
+	return tx.Tree.BytesAtPath(path)
+}
+
+func (tx *Transaction) ConsumedOutput(idx byte) (*ledger.Output, error) {
+	ret, err := tx.ConsumedOutputAt(idx)
+	if err != nil {
+		return nil, err
+	}
+	return ret.Output, nil
+}
+
+func (tx *Transaction) ConsumedTotal(i byte) (ret int64) {
+	if i == 0 {
+		return tx.totalConsumedTokenBalance
+	}
+	util.Assertf(int(i) < 15, "ConsumedTotal: wrong index %d", i)
+	tx.ForEachConsumedOutput(func(idx byte, o ledger.OutputWithID) bool {
+		ret += o.Amounts().Amount(i)
+		return true
+	})
+	return
+}
+
+func (tx *Transaction) ProducedTotal(i byte) int64 {
+	util.Assertf(int(i) < len(tx.producedAmountTotals), "ProducedTotal: wrong index %d", i)
+	return tx.producedAmountTotals[i]
+}
+
+func (tx *Transaction) SpenderID() (base.SpenderID, error) {
+	sig, err := tx.Signature()
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sig.SpenderID(), nil
 }

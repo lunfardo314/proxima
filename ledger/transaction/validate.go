@@ -13,7 +13,12 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
-	"golang.org/x/crypto/blake2b"
+)
+
+const (
+	TraceOptionNone = iota
+	TraceOptionAll
+	TraceOptionFailedConstraints
 )
 
 func (tx *Transaction) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.EvalContext] {
@@ -108,19 +113,18 @@ func (tx *Transaction) validateTxLevelConstraints(spool *slicepool.SlicePool) er
 		return fmt.Errorf("parsing tx constraints: %v", err)
 	}
 	// assume there a tuple of tx level constraints
-	return ctx.runTuple(tu, ledger.PathToTxConstraints, spool)
+	return tx.runTuple(tu, ledger.PathToTxConstraints, spool)
 }
 
 func (tx *Transaction) writeStateMutationsTo(mut common.KVWriter) {
 	// delete consumed outputs from the ledger
-	ctx.ForEachInputID(func(idx byte, oid *base.OutputID) bool {
+	tx.ForEachInputID(func(idx byte, oid base.OutputID) bool {
 		mut.Set(oid[:], nil)
 		return true
 	})
 	// add produced outputs to the ledger
-
-	ctx.ForEachProducedOutputData(func(i byte, outputData []byte) bool {
-		oid := base.MustNewOutputID(ctx.txid, i)
+	tx.ForEachProducedOutputData(func(i byte, outputData []byte) bool {
+		oid := base.MustNewOutputID(tx.txid, i)
 		mut.Set(oid[:], outputData)
 		return true
 	})
@@ -131,17 +135,17 @@ func (tx *Transaction) writeStateMutationsTo(mut common.KVWriter) {
 //   - we can check mandatory constraints separately
 
 // validateTxLevelConstraints evaluates all consumed and produced outputs
-func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
-	outs, err := ctx._scanOutputs(ledger.PathToConsumedOutputs)
+func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
+	outs, err := tx._scanOutputs(ledger.PathToConsumedOutputs)
 	if err != nil {
 		return err
 	}
-	if err = ctx._sumConsumedTotals(outs); err != nil {
+	if err = tx._sumConsumedTotals(outs); err != nil {
 		return fmt.Errorf("validateOutputs: %w", err)
 	}
-	producedSide := ctx.totalProducedAmounts[ledger.AmountIndexTokenBalance]
-	consumedSide := ctx.totalConsumedTokenBalance
-	inflation := ctx.totalProducedAmounts[ledger.AmountIndexInflation]
+	producedSide := tx.producedAmountTotals[ledger.AmountIndexTokenBalance]
+	consumedSide := tx.totalConsumedTokenBalance
+	inflation := tx.producedAmountTotals[ledger.AmountIndexInflation]
 	if producedSide != consumedSide+inflation {
 		return fmt.Errorf("mismatch between token amounts: consumed(%s) + inflation(%s) != produced(%s), diff c+i-p = %s",
 			util.Th(consumedSide),
@@ -150,14 +154,14 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 			util.Th(consumedSide+inflation-producedSide),
 		)
 	}
-	if err = ctx._runOutputs(ledger.PathToConsumedOutputs, outs, spool); err != nil {
+	if err = tx._runOutputs(ledger.PathToConsumedOutputs, outs, spool); err != nil {
 		return err
 	}
-	outs, err = ctx._scanOutputs(ledger.PathToProducedOutputs)
+	outs, err = tx._scanOutputs(ledger.PathToProducedOutputs)
 	if err != nil {
 		return err
 	}
-	if err = ctx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
+	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
 		return err
 	}
 	return nil
@@ -167,12 +171,12 @@ func (ctx *TxContext) validateOutputs(spool *slicepool.SlicePool) error {
 // All outputs (consumed and produced) are parsed with the same library version.
 // IMPORTANT: Upgrade code is responsible for maintaining backward-compatible bytecode
 // parsing to avoid non-determinism when consuming outputs created with older library versions.
-func (ctx *TxContext) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, error) {
+func (tx *Transaction) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, error) {
 	var err error
-	ret := make([]*ledger.Output, ctx.ctxTree.MustNumElementsAtPath(pathToOutputs))
+	ret := make([]*ledger.Output, tx.MustNumElementsAtPath(pathToOutputs))
 
-	_ = ctx.ctxTree.ForEach(func(i byte, data []byte) bool {
-		ret[i], err = ledger.OutputFromBytesWithLib(data, ctx.Transaction.Library)
+	_ = tx.ForEach(func(i byte, data []byte) bool {
+		ret[i], err = ledger.OutputFromBytesWithLib(data, tx.Library)
 		return err == nil
 	}, pathToOutputs)
 	if err != nil {
@@ -181,7 +185,7 @@ func (ctx *TxContext) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, erro
 	return ret, nil
 }
 
-func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, spool *slicepool.SlicePool) error {
+func (tx *Transaction) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, spool *slicepool.SlicePool) error {
 	util.Assertf(len(outs) <= 256, "len(outs)<=256")
 
 	path := common.Concat(pathToOutputs, 0)
@@ -192,20 +196,20 @@ func (ctx *TxContext) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, s
 		o := outs[i]
 		var err error
 		path[len(path)-1] = byte(i)
-		if err = ctx.runTuple(o.Tuple, path, spool); err != nil {
+		if err = tx.runTuple(o.Tuple, path, spool); err != nil {
 			return fmt.Errorf("%w :\n%s", err, o.LinesHR("   ").String())
 		}
 	}
 	return nil
 }
 
-func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) error {
+func (tx *Transaction) _sumConsumedTotals(outs []*ledger.Output) error {
 	for i, o := range outs {
 		bal := o.TokenBalance()
-		if ctx.totalConsumedTokenBalance > int64(math.MaxInt64)-int64(bal) {
+		if tx.totalConsumedTokenBalance > int64(math.MaxInt64)-int64(bal) {
 			return fmt.Errorf("arithmetic overflow at consumed output #%d", i)
 		}
-		ctx.totalConsumedTokenBalance += int64(bal)
+		tx.totalConsumedTokenBalance += int64(bal)
 	}
 	return nil
 }
@@ -244,6 +248,10 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 		return err
 	}
 	return nil
+}
+
+func (tx *Transaction) SubtreeAtPath(path []byte) (*tuples.Tree, error) {
+	return tx.Subtree(path)
 }
 
 func PathToString(path []byte) string {
