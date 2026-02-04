@@ -339,7 +339,7 @@ func (d *MemDAG) loadPastConeFromTxStoreUntilSlot(txid base.TransactionID, txSto
 	}
 	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	util.AssertNoError(err)
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 	util.AssertNoError(err)
 
 	v := vertex.NewVertex(tx)
@@ -374,7 +374,7 @@ func (d *MemDAG) loadPastConeFromTxStoreForDepth(txid base.TransactionID, txStor
 	}
 	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
 	util.AssertNoError(err)
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 	util.AssertNoError(err)
 
 	v := vertex.NewVertex(tx)

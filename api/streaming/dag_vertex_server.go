@@ -68,7 +68,7 @@ func vertexDepsForTx(srv *wsServer, txidstr string) []byte {
 		return nil
 	}
 
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 	if err != nil {
 		return nil
 	}

@@ -73,7 +73,7 @@ func ParseAndDisplayTxBytes(txBytesWithMetadata []byte) {
 	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
 	AssertNoError(err)
 
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 	AssertNoError(err)
 
 	Infof("--- transaction ---\n%s", tx.String())
@@ -91,7 +91,7 @@ func ParseAndDisplayTxFromSore(txid base.TransactionID) {
 	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
 	AssertNoError(err)
 
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 	AssertNoError(err)
 
 	ctx, err := tx.ContextFull(func(i byte) (*ledger.Output, error) {

@@ -446,7 +446,7 @@ func (u *UTXODB) DoTransferOutputs(par *txbuilder.TransferData) ([]*ledger.Outpu
 	}); err != nil {
 		return nil, err
 	}
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -553,7 +553,7 @@ func (u *UTXODB) MakeNewChain(amount uint64, privateKey ed25519.PrivateKey, chai
 }
 
 func (u *UTXODB) TxFullContextFromBytes(txBytes []byte) (*transaction.Transaction, error) {
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -633,7 +633,7 @@ func (u *UTXODB) FaucetBalance() uint64 {
 }
 
 func (u *UTXODB) TxStringFromBytes(txBytes []byte) string {
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return err.Error()
 	}

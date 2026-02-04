@@ -24,7 +24,7 @@ func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation .
 
 // updateValidateNoDebug updates/mutates the ledger state by transaction. For testing mostly
 func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(tx *transaction.Transaction, err error) error) (*transaction.Transaction, error) {
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}

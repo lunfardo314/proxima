@@ -15,14 +15,14 @@ import (
 // Transaction provides access to the tree of transferable transaction
 type (
 	Transaction struct {
-		*ledger.Library // cached library for this transaction's slot
-		*tuples.Tree
-		ctx                      *TxContext
-		txid                     base.TransactionID
-		timestamp                base.LedgerTime
-		producedAmountTotals     [15]int64                        // calculated by summing up amount vectors
-		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
-		traceOption              int
+		*ledger.Library           // cached library for this transaction's slot
+		*tuples.Tree              // the tuple tree with full or skeleton context. i.e. augmented with one level more for consumed UTXOs
+		txid                      base.TransactionID
+		timestamp                 base.LedgerTime
+		producedAmountTotals      [15]int64 // calculated by summing up amount vectors
+		totalConsumedTokenBalance int64
+		sequencerTransactionData  *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
+		traceOption               int
 	}
 
 	TxOption func(tx *Transaction) error
@@ -36,63 +36,41 @@ var MainTxValidationOptions = []TxOption{
 	ScanOutputs,
 }
 
-// tx essence is concatenation of all top level elements except signature
-var _essenceIndices []byte
-
-func init() {
-	_essenceIndices = make([]byte, 20)
-	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
-		if i != ledger.TxSignatureData {
-			_essenceIndices = append(_essenceIndices, i)
-		}
-	}
-}
-
-func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
-	hasher, err := blake2b.New256(nil)
-	util.AssertNoError(err)
-
-	var d []byte
-	for _, i := range _essenceIndices {
-		d, err = txTree.BytesAtPath([]byte{i})
-		if err != nil {
-			return [32]byte{}, err
-		}
-		hasher.Write(d)
-	}
-	copy(ret[:], hasher.Sum(nil))
-	return
-}
-
-func FromBytes(txBytes []byte, opt ...TxOption) (*Transaction, error) {
-	tree, err := tuples.TreeFromBytesReadOnly(txBytes)
+// Parse parses main elements of the transaction and creates Transaction structure
+func Parse(txBytes []byte, opt ...TxOption) (*Transaction, error) {
+	txTree, err := tuples.TreeFromBytesReadOnly(txBytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tx.Parse: %v", err)
 	}
-	ret := &Transaction{Tree: tree, traceOption: TraceOptionNone}
-	ret.txid, err = TxIDFromTransactionDataTree(ret.Tree)
+	// dummy empty tuple of consumed UTXOs for the skeleton context
+	ret := &Transaction{traceOption: TraceOptionNone}
+	e := tuples.MakeTupleFromSerializableElements(tuples.EmptyTupleEditable())
+	// create skeleton context with dummy consumed UTXOs
+	ret.Tree = tuples.TreeFromTreesReadOnly(txTree, e.AsTree()) // index 0 for transaction, index 1 for consumed outputs
+	// precalculate txid
+	ret.txid, err = TxIDFromTransactionDataTree(txTree)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tx.Parse: %v", err)
 	}
 	ret.timestamp = ret.txid.Timestamp()
 	// Cache the library for this transaction's slot once, to avoid repeated L(slot) calls
 	ret.Library = ledger.L(ret.timestamp.Slot)
-	ret.ctx = ret.contextSkeleton()
+	// run integrity validation of the skeleton context TODO remove. not here
 	if err = ret.Validate(opt...); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tx.Parse: %v", err)
 	}
 	return ret, nil
 }
 
 func FromBytesMainChecksWithOpt(txBytes []byte) (*Transaction, error) {
-	tx, err := FromBytes(txBytes, MainTxValidationOptions...)
+	tx, err := Parse(txBytes, MainTxValidationOptions...)
 	if err != nil {
 		return nil, err
 	}
 	return tx, nil
 }
 
-// TxIDFromTransactionDataTree validates timestamp, sequencer and stem indices and makes transaction ChainID
+// TxIDFromTransactionDataTree takes raw tx bytes and validates timestamp, sequencer data bytes and makes transaction ID
 // This is minimal check to pass for the blob to be a raw transaction.
 // If it is impossible to extract txid from the blob, it is not a transaction
 func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, err error) {
@@ -120,7 +98,7 @@ func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, e
 	if ret, err = hashEssenceBytesFromTransactionDataTree(txTree); err != nil {
 		return
 	}
-	// replace first 5 bytes with transaction ChainID prefix
+	// replace first 5 bytes with transaction ID prefix and set the sequencer tx flag
 	copy(ret[:], tsBin)
 	if isSeqTx {
 		ret[base.TickByteIndex] |= base.SequencerBitMaskInTick
@@ -140,7 +118,7 @@ func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, e
 }
 
 func IDAndTimestampFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, base.LedgerTime, error) {
-	tx, err := FromBytes(txBytes)
+	tx, err := Parse(txBytes)
 	if err != nil {
 		return base.TransactionID{}, base.LedgerTime{}, err
 	}
@@ -148,7 +126,7 @@ func IDAndTimestampFromParsedTransactionBytes(txBytes []byte) (base.TransactionI
 }
 
 func IDFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, error) {
-	tx, err := FromBytes(txBytes)
+	tx, err := Parse(txBytes)
 	if err != nil {
 		return base.TransactionID{}, err
 	}
@@ -159,19 +137,19 @@ func (tx *Transaction) SetTraceOption(opt int) {
 	tx.traceOption = opt
 }
 
-func (tx *Transaction) Validate(opt ...TxOption) error {
-	return util.CatchPanicOrError(func() error {
-		if err := tx.ctx.Validate(); err != nil {
-			return err
-		}
-		for _, fun := range opt {
-			if err := fun(tx); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
+//func (tx *Transaction) Validate(opt ...TxOption) error {
+//	return util.CatchPanicOrError(func() error {
+//		if err := tx.Validate(); err != nil {
+//			return err
+//		}
+//		for _, fun := range opt {
+//			if err := fun(tx); err != nil {
+//				return err
+//			}
+//		}
+//		return nil
+//	})
+//}
 
 func CheckTimestampUpperBound(upperBound time.Time) TxOption {
 	return func(tx *Transaction) error {
@@ -373,4 +351,32 @@ func ScanOutputs(tx *Transaction) error {
 		}
 	}
 	return nil
+}
+
+// tx essence is concatenation of all top level elements except signature
+var _essenceIndices []byte
+
+func init() {
+	_essenceIndices = make([]byte, 20)
+	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
+		if i != ledger.TxSignatureData {
+			_essenceIndices = append(_essenceIndices, i)
+		}
+	}
+}
+
+func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
+	hasher, err := blake2b.New256(nil)
+	util.AssertNoError(err)
+
+	var d []byte
+	for _, i := range _essenceIndices {
+		d, err = txTree.BytesAtPath([]byte{i})
+		if err != nil {
+			return [32]byte{}, err
+		}
+		hasher.Write(d)
+	}
+	copy(ret[:], hasher.Sum(nil))
+	return
 }

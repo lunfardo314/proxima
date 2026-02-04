@@ -1,20 +1,56 @@
 package transaction
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
-	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/unitrie/common"
-	"golang.org/x/crypto/blake2b"
 )
+
+// IsSkeletonContext if true, means consumed UTXOs are not available (yet)
+func (tx *Transaction) IsSkeletonContext() bool {
+	return tx.MustNumElementsAtPath(ledger.PathToConsumedOutputs) == 0
+}
+
+func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
+	util.Assertf(tx.IsSkeletonContext(), "tx.SetFullContext: full context can be set only once")
+	var err error
+	var o *ledger.Output
+
+	// make tuple of consumed UTXOs
+	consumedUTXOs := tuples.EmptyTupleEditable(256)
+	n := tx.NumInputs()
+	for i := 0; i < n; i++ {
+		o, err = inputLoaderByIndex(byte(i))
+		if err != nil {
+			return fmt.Errorf("tx.SetFullContext: '%v'", err)
+		}
+		if o == nil {
+			return fmt.Errorf("tx.SetFullContext: cannot get consumed output at input index %d", i)
+		}
+		consumedUTXOs.MustPush(o.Bytes())
+	}
+	e := tuples.MakeTupleFromSerializableElements(consumedUTXOs)
+	txTree, err := tx.Subtree(ledger.PathToRawTransaction)
+	util.AssertNoError(err, "tx.Subtree([]byte{ledger.TransactionTuple})")
+
+	tx.Tree = tuples.TreeFromTreesReadOnly(txTree, e.AsTree()) // index 0 for transaction, index 1 for consumed outputs
+	util.Assertf(!tx.IsSkeletonContext(), "tx.SetFullContext: full context expected")
+
+	return nil
+}
+
+func (tx *Transaction) Bytes() []byte {
+	return tx.MustBytesAtPath(ledger.PathToRawTransaction)
+}
 
 func (tx *Transaction) ID() base.TransactionID {
 	return tx.txid
@@ -41,12 +77,8 @@ func (tx *Transaction) Slot() uint32 {
 	return tx.timestamp.Slot
 }
 
-func (tx *Transaction) Hash() base.TransactionIDShort {
-	return tx.txid.ShortID()
-}
-
 func (tx *Transaction) Signature() (*base.Signature, error) {
-	sigBytes, err := tx.BytesAtPath(Path(ledger.TxSignatureData))
+	sigBytes, err := tx.BytesAtPath(ledger.PathToSignature)
 	if err != nil {
 		return nil, fmt.Errorf("tx.Signature: %v", err)
 	}
@@ -114,15 +146,15 @@ func (tx *Transaction) NumProducedOutputs() int {
 }
 
 func (tx *Transaction) NumInputs() int {
-	return tx.MustNumElementsAtPath(Path(ledger.TxInputIDs))
+	return tx.MustNumElementsAtPath(ledger.PathToInputIDs)
 }
 
 func (tx *Transaction) NumEndorsements() int {
-	return tx.MustNumElementsAtPath(Path(ledger.TxEndorsements))
+	return tx.MustNumElementsAtPath(ledger.PathToEndorsements)
 }
 
 func (tx *Transaction) MustOutputDataAt(idx byte) []byte {
-	return tx.MustBytesAtPath(common.Concat(ledger.TxOutputs, idx))
+	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToProducedOutputs, idx))
 }
 
 func (tx *Transaction) MustProducedOutputAt(idx byte) *ledger.Output {
@@ -171,7 +203,7 @@ func (tx *Transaction) InputAt(idx byte) (ret base.OutputID, err error) {
 	if int(idx) >= tx.NumInputs() {
 		return [33]byte{}, fmt.Errorf("InputAt: wrong input index")
 	}
-	ret, err = base.OutputIDFromBytes(tx.MustBytesAtPath(common.Concat(ledger.TxInputIDs, idx)))
+	ret, err = base.OutputIDFromBytes(tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToInputIDs, idx)))
 	return
 }
 
@@ -182,23 +214,7 @@ func (tx *Transaction) MustInputAt(idx byte) base.OutputID {
 }
 
 func (tx *Transaction) MustOutputIndexOfTheInput(inputIdx byte) byte {
-	return base.MustOutputIndexFromIDBytes(tx.MustBytesAtPath(common.Concat(ledger.TxInputIDs, inputIdx)))
-}
-
-func (tx *Transaction) InputAtString(idx byte) string {
-	ret, err := tx.InputAt(idx)
-	if err != nil {
-		return err.Error()
-	}
-	return ret.String()
-}
-
-func (tx *Transaction) InputAtShort(idx byte) string {
-	ret, err := tx.InputAt(idx)
-	if err != nil {
-		return err.Error()
-	}
-	return ret.StringShort()
+	return base.MustOutputIndexFromIDBytes(tx.MustBytesAtPath(common.Concat(ledger.PathToInputIDs, inputIdx)))
 }
 
 func (tx *Transaction) Inputs() []base.OutputID {
@@ -210,7 +226,7 @@ func (tx *Transaction) Inputs() []base.OutputID {
 }
 
 func (tx *Transaction) MustUnlockDataAt(idx byte) []byte {
-	return tx.MustBytesAtPath(common.Concat(ledger.TxUnlockData, idx))
+	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, idx))
 }
 
 func (tx *Transaction) ConsumedOutputAt(idx byte, fetchOutput func(id *base.OutputID) ([]byte, bool)) (*ledger.OutputDataWithID, error) {
@@ -229,29 +245,18 @@ func (tx *Transaction) ConsumedOutputAt(idx byte, fetchOutput func(id *base.Outp
 }
 
 func (tx *Transaction) MustEndorsementAt(idx byte) base.TransactionID {
-	data := tx.MustBytesAtPath(common.Concat(ledger.TxEndorsements, idx))
+	data := tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToEndorsements, idx))
 	ret, err := base.TransactionIDFromBytes(data)
 	util.AssertNoError(err)
 	return ret
 }
 
 func (tx *Transaction) UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error) {
-	ret, err := tx.BytesAtPath(common.Concat(ledger.TxUnlockData, inputIdx, constraintIdx))
+	ret, err := tx.BytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, inputIdx, constraintIdx))
 	if err != nil {
 		return nil, err
 	}
 	return ret, nil
-}
-
-// HashInputsAndEndorsements blake2b of concatenated input IDs and endorsements
-// independent of any other tx data but inputs
-func (tx *Transaction) HashInputsAndEndorsements() [32]byte {
-	var buf bytes.Buffer
-
-	buf.Write(tx.MustBytesAtPath(Path(ledger.TxInputIDs)))
-	buf.Write(tx.MustBytesAtPath(Path(ledger.TxEndorsements)))
-
-	return blake2b.Sum256(buf.Bytes())
 }
 
 func (tx *Transaction) ForEachInput(fun func(i byte, oid base.OutputID) bool) {
@@ -259,7 +264,7 @@ func (tx *Transaction) ForEachInput(fun func(i byte, oid base.OutputID) bool) {
 		oid, err := base.OutputIDFromBytes(data)
 		util.Assertf(err == nil, "ForEachInput @ %d: %v", i, err)
 		return fun(i, oid)
-	}, Path(ledger.TxInputIDs))
+	}, ledger.PathToInputIDs)
 	util.AssertNoError(err)
 }
 
@@ -268,14 +273,15 @@ func (tx *Transaction) ForEachEndorsement(fun func(idx byte, txid base.Transacti
 		txid, err := base.TransactionIDFromBytes(data)
 		util.Assertf(err == nil, "ForEachEndorsement @ %d: %v", i, err)
 		return fun(i, txid)
-	}, Path(ledger.TxEndorsements))
+	}, ledger.PathToEndorsements)
 	util.AssertNoError(err)
 }
 
 func (tx *Transaction) ForEachOutputData(fun func(idx byte, oData []byte) bool) {
-	_ = tx.ForEach(func(i byte, data []byte) bool {
+	err := tx.ForEach(func(i byte, data []byte) bool {
 		return fun(i, data)
-	}, Path(ledger.TxOutputs))
+	}, ledger.PathToProducedOutputs)
+	util.AssertNoError(err)
 }
 
 // ForEachProducedOutput traverses all produced outputs
@@ -292,18 +298,18 @@ func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output
 	})
 }
 
-func (tx *Transaction) PredecessorTransactionIDs() set.Set[base.TransactionID] {
-	ret := set.New[base.TransactionID]()
-	tx.ForEachInput(func(_ byte, oid base.OutputID) bool {
-		ret.Insert(oid.TransactionID())
-		return true
-	})
-	tx.ForEachEndorsement(func(_ byte, txid base.TransactionID) bool {
-		ret.Insert(txid)
-		return true
-	})
-	return ret
-}
+//func (tx *Transaction) PredecessorTransactionIDs() set.Set[base.TransactionID] {
+//	ret := set.New[base.TransactionID]()
+//	tx.ForEachInput(func(_ byte, oid base.OutputID) bool {
+//		ret.Insert(oid.TransactionID())
+//		return true
+//	})
+//	tx.ForEachEndorsement(func(_ byte, txid base.TransactionID) bool {
+//		ret.Insert(txid)
+//		return true
+//	})
+//	return ret
+//}
 
 func (tx *Transaction) OutputID(idx byte) base.OutputID {
 	return base.MustNewOutputID(tx.ID(), idx)
@@ -314,7 +320,7 @@ func (tx *Transaction) InflationAmount() uint64 {
 }
 
 func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*ledger.OutputWithID, error) {
-	tx, err := FromBytes(txBytes)
+	tx, err := Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +331,7 @@ func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*ledger.OutputW
 }
 
 func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, error) {
-	tx, err := FromBytes(txBytes)
+	tx, err := Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -560,9 +566,9 @@ func (tx *Transaction) String() string {
 }
 
 func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
-	tx, err := FromBytes(txBytes)
+	tx, err := Parse(txBytes)
 	if err != nil {
-		return lines.New(prefix...).Add("FromBytes returned: %v", err)
+		return lines.New(prefix...).Add("Parse returned: %v", err)
 	}
 
 	if err = tx.SetFullContext(inputLoader); err != nil {

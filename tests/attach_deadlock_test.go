@@ -203,7 +203,7 @@ func TestAttachDeadlockSolidificationDeadline(t *testing.T) {
 		txBytes1, err := txbuilder.MakeSimpleTransferTransaction(td1)
 		require.NoError(t, err)
 
-		tx1, err := transaction.FromBytes(txBytes1, transaction.MainTxValidationOptions...)
+		tx1, err := transaction.Parse(txBytes1, transaction.MainTxValidationOptions...)
 		require.NoError(t, err)
 
 		// Create second transaction that depends on first (missing)

@@ -1236,7 +1236,7 @@ func createTestTransaction(t *testing.T, u *utxodb.UTXODB, addrIdx int) *Wrapped
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	v := NewVertex(tx)

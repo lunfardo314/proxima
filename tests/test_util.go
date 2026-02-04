@@ -227,7 +227,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	_, err = ret.txStore.PersistTxBytesWithMetadata(txBytes, nil)
 	require.NoError(t, err)
 
-	ret.distributionBranchTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	ret.distributionBranchTx, err = transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 	require.NoError(t, err)
 	ret.distributionBranchTxID = ret.distributionBranchTx.ID()
 	t.Logf("distribution txID: %s", ret.distributionBranchTxID.StringShort())
@@ -235,7 +235,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	ret.faucetOutput = ret.distributionBranchTx.MustProducedOutputWithIDAt(2)
 	const printDistributionTx = false
 	if printDistributionTx {
-		//tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		//tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 		//require.NoError(t, err)
 		genesisState := multistate.MustNewReadable(stateStore, genesisRoot)
 		t.Logf("--------------- distribution tx:\n%s\n--------------", ret.distributionBranchTx.ToString(genesisState.GetUTXO))
@@ -302,7 +302,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	txb.SignED25519(td.privKeyAux)
 
 	txBytes := txb.TransactionData.Bytes()
-	td.chainOriginsTx, err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	td.chainOriginsTx, err = transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 	require.NoError(td.t, err)
 
 	const printChainOriginsTx = false
@@ -432,7 +432,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			AdditionalInputs: additionalIn,
 		})
 		require.NoError(td.t, err)
-		tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 		require.NoError(td.t, err)
 		td.seqChain[i] = append(td.seqChain[i], tx)
 	}
@@ -453,7 +453,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 				PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
-			tx, err := transaction.FromBytes(txBytesSeq, transaction.MainTxValidationOptions...)
+			tx, err := transaction.Parse(txBytesSeq, transaction.MainTxValidationOptions...)
 			require.NoError(td.t, err)
 			td.seqChain[seqNr] = append(td.seqChain[seqNr], tx)
 		}
@@ -490,7 +490,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 				PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
-			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 			require.NoError(td.t, err)
 			ret[seqNr] = append(ret[seqNr], tx)
 			td.t.Logf("%3d  %s", seqNr, tx.IDShortString())
@@ -544,7 +544,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 				PublicKey:        td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
-			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 			require.NoError(td.t, err)
 			ret[seqNr] = append(ret[seqNr], tx)
 		}
@@ -567,7 +567,7 @@ func (td *longConflictTestData) makeBranch(extend *ledger.OutputWithChainID, pre
 		PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 	})
 	require.NoError(td.t, err)
-	tx, err := transaction.FromBytes(txBytesBranch, transaction.MainTxValidationOptions...)
+	tx, err := transaction.Parse(txBytesBranch, transaction.MainTxValidationOptions...)
 	require.NoError(td.t, err)
 	return tx
 }
@@ -601,7 +601,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 			PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(td.t, err)
-		ret[i], err = transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+		ret[i], err = transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 		require.NoError(td.t, err)
 	}
 	return ret
@@ -615,7 +615,7 @@ func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID bas
 		MustWithInputs(o).
 		WithTargetLock(ledger.ChainLockFromChainID(chainID)))
 	util.AssertNoError(err)
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 	util.AssertNoError(err)
 
 	return tx
@@ -823,7 +823,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 		ret[i], par.remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 		util.AssertNoError(err)
 
-		tx, err := transaction.FromBytes(ret[i], transaction.MainTxValidationOptions...)
+		tx, err := transaction.Parse(ret[i], transaction.MainTxValidationOptions...)
 		require.NoError(par.t, err)
 		tagAlongOuts := tx.ProducedTagAlongOutputs()
 

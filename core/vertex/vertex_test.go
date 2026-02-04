@@ -627,7 +627,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
-		tx, err := transaction.FromBytes(txBytes)
+		tx, err := transaction.Parse(txBytes)
 		require.NoError(t, err)
 
 		// Create vertex
@@ -662,7 +662,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
-		tx, err := transaction.FromBytes(txBytes)
+		tx, err := transaction.Parse(txBytes)
 		require.NoError(t, err)
 
 		v := NewVertex(tx)
@@ -700,7 +700,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
-		tx, err := transaction.FromBytes(txBytes)
+		tx, err := transaction.Parse(txBytes)
 		require.NoError(t, err)
 
 		v := NewVertex(tx)
@@ -731,7 +731,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
-		tx, err := transaction.FromBytes(txBytes)
+		tx, err := transaction.Parse(txBytes)
 		require.NoError(t, err)
 
 		v := NewVertex(tx)
@@ -764,7 +764,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 		require.NoError(t, err)
 
-		tx, err := transaction.FromBytes(txBytes)
+		tx, err := transaction.Parse(txBytes)
 		require.NoError(t, err)
 
 		v := NewVertex(tx)
@@ -801,7 +801,7 @@ func TestVertexUnReferenceDependencies(t *testing.T) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	v := NewVertex(tx)
@@ -847,7 +847,7 @@ func TestConvertVirtualToVertex(t *testing.T) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	// Create virtual tx first
@@ -900,7 +900,7 @@ func TestConvertToDetached(t *testing.T) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	v := NewVertex(tx)
@@ -949,7 +949,7 @@ func TestGetTransaction(t *testing.T) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	t.Run("from vertex", func(t *testing.T) {
@@ -1153,7 +1153,7 @@ func TestVertexLines(t *testing.T) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	v := NewVertex(tx)
@@ -1211,7 +1211,7 @@ func TestNumInputs(t *testing.T) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	v := NewVertex(tx)
@@ -1254,7 +1254,7 @@ func TestSetOfInputTransactions(t *testing.T) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	v := NewVertex(tx)
@@ -1293,7 +1293,7 @@ func TestNotConsumedOutputIndices(t *testing.T) {
 	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
 	v := NewVertex(tx)

@@ -161,7 +161,7 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFrozenEpochs b
 	if err != nil {
 		return nil, txString, err
 	}
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	require.NoError(td, err)
 	do := tx.MustProducedOutputWithIDAt(0)
 	dc, err := do.AsChainOutput()

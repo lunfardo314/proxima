@@ -152,7 +152,7 @@ func UnlockDataToString(data []byte) string {
 }
 
 func ParseBytesToString(txBytes []byte, fetchOutput func(oid base.OutputID) ([]byte, bool)) string {
-	tx, err := FromBytes(txBytes)
+	tx, err := Parse(txBytes)
 	if err != nil {
 		return err.Error()
 	}

@@ -113,7 +113,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 		return
 	}
 	// now preparse it, calculate txid
-	tx, err := transaction.FromBytes(inp.TxBytes)
+	tx, err := transaction.Parse(inp.TxBytes)
 	if err != nil {
 		q.Log().Warn("TxInputQueue: %v", err)
 		return
@@ -146,7 +146,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 	if inp.TxMetaData != nil {
 		from = inp.TxMetaData.SourceTypeNonPersistent
 	}
-	tx, err := transaction.FromBytes(inp.TxBytes)
+	tx, err := transaction.Parse(inp.TxBytes)
 	if err != nil {
 		q.Log().Warn("TxInputQueue from '%s': %v", from.String(), err)
 		return

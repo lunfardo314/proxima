@@ -51,7 +51,7 @@ func (w *Workflow) TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.Transact
 
 func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxInOption) (base.TransactionID, error) {
 	// base validation
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		// any malformed data chunk will be rejected immediately before all the advanced validations
 		return base.TransactionID{}, err

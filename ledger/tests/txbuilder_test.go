@@ -454,7 +454,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		start := time.Now()
 		for i := range txs {
-			tx, err := transaction.FromBytes(txs[i].txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.Parse(txs[i].txBytes, transaction.MainTxValidationOptions...)
 			require.NoError(t, err)
 
 			txCtx, err := tx.ContextFull(txs[i].inputLoader)

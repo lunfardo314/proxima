@@ -16,70 +16,57 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-func (ctx *TxContext) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.EvalContext] {
+func (tx *Transaction) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.EvalContext] {
 	// Use the transaction's cached library for validation
-	ctx.dataContext.SetEvalPath(path)
-	switch ctx.traceOption {
+	dataCtx := ledger.NewEvalContext(tx)
+	dataCtx.SetEvalPath(path)
+	switch tx.traceOption {
 	case TraceOptionNone:
-		return ctx.Library.NewGlobalDataNoTrace(ctx.dataContext)
+		return tx.NewGlobalDataNoTrace(dataCtx)
 	case TraceOptionAll:
-		return ctx.Library.NewGlobalDataTracePrint(ctx.dataContext)
+		return tx.NewGlobalDataTracePrint(dataCtx)
 	case TraceOptionFailedConstraints:
-		return ctx.Library.NewGlobalDataLog(ctx.dataContext)
+		return tx.Library.NewGlobalDataLog(dataCtx)
 	default:
 		panic("wrong trace option")
 	}
 }
 
-// EvalBytecode safely runs the bytecode in the context of the path
-func (ctx *TxContext) EvalBytecode(bytecode []byte, evalPath []byte, spool *slicepool.SlicePool) ([]byte, error) {
-	var ret []byte
-	err := util.CatchPanicOrError(func() error {
-		var err1 error
-		ret, err1 = ctx._evalBytecode(bytecode, evalPath, spool)
-		return err1
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
 // Validate runs all validation scripts (constraints) found on the transaction
-func (ctx *TxContext) Validate() error {
-	if err := ctx._validate(); err != nil {
-		return fmt.Errorf("%w\ntxid = %s (%s)", err, ctx.txid.StringShort(), ctx.txid.StringHex())
+func (tx *Transaction) Validate() error {
+	if err := tx._validate(); err != nil {
+		return fmt.Errorf("%w\ntxid = %s (%s)", err, tx.txid.StringShort(), tx.txid.StringHex())
 	}
 	return nil
 }
 
 // _validate runs scripts on consumed and produced parts. Does not check the consistency of input commitment, because
 // it already checked upon creation of the transaction context
-func (ctx *TxContext) _validate() error {
+func (tx *Transaction) _validate() error {
 	var err error
 
 	spool := slicepool.New()
 	defer spool.Dispose()
 
-	if ctx.IsSkeleton() {
+	if tx.IsSkeletonContext() {
 		// in the skeleton context only checking integrity of the base transaction
 		return util.CatchPanicOrError(func() error {
-			return ctx.TxIntegrityValidatorSkeletonContext(ctx.makeEvalContext(nil), spool)
+			return tx.TxIntegrityValidatorSkeletonContext(tx.makeEvalContext(nil), spool)
 		})
 	}
 	// full context. Running full validation
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
-		if err1 = ctx.TxIntegrityValidatorFullContext(ctx.makeEvalContext(nil), spool); err1 != nil {
+		if err1 = tx.TxIntegrityValidatorFullContext(tx.makeEvalContext(nil), spool); err1 != nil {
 			return err1
 		}
 		// run tx level constrains, if any. All must succeed
-		if err1 = ctx.validateTxLevelConstraints(spool); err1 != nil {
+		if err1 = tx.validateTxLevelConstraints(spool); err1 != nil {
 			return err1
 		}
 		// run all scripts on consumed and produced UTXOs
-		if err1 = ctx.validateOutputs(spool); err1 != nil {
+		if err1 = tx.validateOutputs(spool); err1 != nil {
 			return err1
 		}
 		return nil
@@ -88,14 +75,43 @@ func (ctx *TxContext) _validate() error {
 		return err
 	}
 	// check ledger invariant for the base token: consumed balances + inflation must be equal to produced balances
-	if ctx.totalConsumedTokenBalance+ctx.totalProducedAmounts[1] != ctx.totalProducedAmounts[0] {
+	if tx.totalConsumedTokenBalance+tx.producedAmountTotals[1] != tx.producedAmountTotals[0] {
 		return fmt.Errorf("unbalanced amount between inputs and outputs: cnsumed balance %s, produced balance %s, produced inflation: %s",
-			util.Th(ctx.totalConsumedTokenBalance), util.Th(ctx.totalProducedAmounts[0]), util.Th(ctx.totalProducedAmounts[1]))
+			util.Th(tx.totalConsumedTokenBalance), util.Th(tx.producedAmountTotals[0]), util.Th(tx.producedAmountTotals[1]))
 	}
 	return nil
 }
 
-func (ctx *TxContext) writeStateMutationsTo(mut common.KVWriter) {
+// evalBytecode safely runs the bytecode in the context of the path
+func (tx *Transaction) evalBytecode(bytecode []byte, evalPath []byte, spool *slicepool.SlicePool) ([]byte, error) {
+	var ret []byte
+	err := util.CatchPanicOrError(func() error {
+		var err1 error
+		ret, err1 = tx._evalBytecode(bytecode, evalPath, spool)
+		return err1
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+// validateTxLevelConstraints evaluates all transaction level constraints, if any.
+func (tx *Transaction) validateTxLevelConstraints(spool *slicepool.SlicePool) error {
+	txConstraintsBytes := tx.MustBytesAtPath(ledger.PathToTxConstraints)
+	if len(txConstraintsBytes) == 0 {
+		// nil value of the txConstraints element is no-op
+		return nil
+	}
+	tu, err := tuples.TupleFromBytes(txConstraintsBytes, 256)
+	if err != nil {
+		return fmt.Errorf("parsing tx constraints: %v", err)
+	}
+	// assume there a tuple of tx level constraints
+	return ctx.runTuple(tu, ledger.PathToTxConstraints, spool)
+}
+
+func (tx *Transaction) writeStateMutationsTo(mut common.KVWriter) {
 	// delete consumed outputs from the ledger
 	ctx.ForEachInputID(func(idx byte, oid *base.OutputID) bool {
 		mut.Set(oid[:], nil)
@@ -108,21 +124,6 @@ func (ctx *TxContext) writeStateMutationsTo(mut common.KVWriter) {
 		mut.Set(oid[:], outputData)
 		return true
 	})
-}
-
-// validateTxLevelConstraints evaluates all transaction level constraints, if any.
-func (ctx *TxContext) validateTxLevelConstraints(spool *slicepool.SlicePool) error {
-	txConstraintsBytes := ctx.ctxTree.MustBytesAtPath(ledger.PathToTxConstraints)
-	if len(txConstraintsBytes) == 0 {
-		// nil value of the txConstraints element is no-op
-		return nil
-	}
-	tu, err := tuples.TupleFromBytes(txConstraintsBytes, 256)
-	if err != nil {
-		return fmt.Errorf("parsing tx constraints: %v", err)
-	}
-	// assume there a tuple of tx level constraints
-	return ctx.runTuple(tu, ledger.PathToTxConstraints, spool)
 }
 
 // TODO optimize and improve:
@@ -209,12 +210,12 @@ func (ctx *TxContext) _sumConsumedTotals(outs []*ledger.Output) error {
 	return nil
 }
 
-func (ctx *TxContext) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
-	return ctx.ctxTree.MustBytesAtPath(Path(ledger.TransactionTuple, ledger.TxUnlockData, consumedOutputIdx, constraintIdx))
+func (tx *Transaction) UnlockParams(consumedOutputIdx, constraintIdx byte) []byte {
+	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, consumedOutputIdx, constraintIdx))
 }
 
-func (ctx *TxContext) runTuple(tu *tuples.Tuple, path tuples.TreePath, spool *slicepool.SlicePool) error {
-	evalPath := easyfl_util.Concat(path, byte(0))
+func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool *slicepool.SlicePool) error {
+	evalPath := easyfl_util.Concat(ctxPath, byte(0))
 	var err error
 
 	// checking of script duplicates has been removed makes no sense?
@@ -223,14 +224,14 @@ func (ctx *TxContext) runTuple(tu *tuples.Tuple, path tuples.TreePath, spool *sl
 		evalPath[len(evalPath)-1] = byte(idx)
 		var res []byte
 
-		res, err = ctx.EvalBytecode(bytecode, evalPath, spool)
+		res, err = tx.evalBytecode(bytecode, evalPath, spool)
 		if err != nil {
-			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", ctx.constraintName(bytecode), err, PathToString(evalPath))
+			err = fmt.Errorf("constraint '%s' failed with error '%v'. Path: %s", tx._constraintName(bytecode), err, PathToString(evalPath))
 			return false
 		}
 		if len(res) == 0 {
 			var decomp string
-			decomp, err = ctx.Library.DecompileBytecode(bytecode)
+			decomp, err = tx.DecompileBytecode(bytecode)
 			if err != nil {
 				decomp = fmt.Sprintf("(error while decompiling constraint: '%v')", err)
 			}
@@ -244,18 +245,6 @@ func (ctx *TxContext) runTuple(tu *tuples.Tuple, path tuples.TreePath, spool *sl
 	}
 	return nil
 }
-
-//func (ctx *TxContext) validateInputCommitmentSafe() error {
-//	return util.CatchPanicOrError(func() error {
-//		consumeOutputHash := ctx.ConsumedOutputHash()
-//		inputCommitment := ctx.InputCommitment()
-//		if !bytes.Equal(consumeOutputHash[:], inputCommitment) {
-//			return fmt.Errorf("hash of consumed outputs %v not equal to input commitment %v",
-//				easyfl_util.Fmt(consumeOutputHash[:]), easyfl_util.Fmt(inputCommitment))
-//		}
-//		return nil
-//	})
-//}
 
 // ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
 func (ctx *TxContext) ConsumedOutputHash() [32]byte {
@@ -332,48 +321,48 @@ func PathToString(path []byte) string {
 	return ret
 }
 
-// constraintName returns the name of the constraint from its bytecode using the transaction's cached library
-func (ctx *TxContext) constraintName(binCode []byte) string {
+// _constraintName returns the name of the constraint from its bytecode using the transaction's cached library
+func (tx *Transaction) _constraintName(binCode []byte) string {
 	if binCode[0] == 0 {
 		return "array_constraint"
 	}
-	prefix, err := ctx.Library.ParsePrefixBytecode(binCode)
+	prefix, err := tx.ParsePrefixBytecode(binCode)
 	if err != nil {
 		return fmt.Sprintf("unknown_constraint(%s)", easyfl_util.Fmt(binCode))
 	}
-	name, found := ledger.NameByPrefixWithLib(prefix, ctx.Library)
+	name, found := ledger.NameByPrefixWithLib(prefix, tx.Library)
 	if found {
 		return name
 	}
 	return fmt.Sprintf("constraint_call_prefix(%s)", easyfl_util.Fmt(prefix))
 }
 
-func (ctx *TxContext) _evalBytecode(bytecode []byte, path []byte, spool *slicepool.SlicePool) ([]byte, error) {
+func (tx *Transaction) _evalBytecode(bytecode []byte, path []byte, spool *slicepool.SlicePool) ([]byte, error) {
 	if len(bytecode) == 0 {
-		return nil, fmt.Errorf("constraint can't be empty")
+		return nil, fmt.Errorf("bytecode can't be empty")
 	}
 	var err error
-	evalCtx := ctx.makeEvalContext(path)
+	evalCtx := tx.makeEvalContext(path)
 	if evalCtx.Trace() {
-		evalCtx.PutTrace(fmt.Sprintf("--- check constraint '%s' at path %s", ctx.constraintName(bytecode), PathToString(path)))
+		evalCtx.PutTrace(fmt.Sprintf("--- check constraint '%s' at path %s", tx._constraintName(bytecode), PathToString(path)))
 	}
 
 	var ret []byte
 	if bytecode[0] == 0 {
 		return nil, fmt.Errorf("binary code cannot begin with 0-byte")
 	}
-	ret, err = ctx.Library.EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
+	ret, err = tx.EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
 
 	if evalCtx.Trace() {
 		if err != nil {
-			evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED with '%v'", ctx.constraintName(bytecode), PathToString(path), err))
+			evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED with '%v'", tx._constraintName(bytecode), PathToString(path), err))
 			printTraceIfEnabled(evalCtx)
 		} else {
 			if len(ret) == 0 {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED", ctx.constraintName(bytecode), PathToString(path)))
+				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED", tx._constraintName(bytecode), PathToString(path)))
 				printTraceIfEnabled(evalCtx)
 			} else {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: OK", ctx.constraintName(bytecode), PathToString(path)))
+				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: OK", tx._constraintName(bytecode), PathToString(path)))
 			}
 		}
 	}

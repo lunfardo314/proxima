@@ -12,7 +12,7 @@ import (
 )
 
 // TxContext is a data structure, which contains transferable transaction, consumed outputs and constraint library
-type TxContext struct {
+type _TxContext struct {
 	*Transaction
 	ctxTree *tuples.Tree
 	// calculated and cached values
@@ -47,38 +47,8 @@ func (tx *Transaction) contextSkeleton() *TxContext {
 	return ret
 }
 
-func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
-	util.Assertf(tx.ctx.IsSkeleton(), "tx.ctx.IsSkeleton()")
-	var err error
-	tx.ctx, err = tx.ctx.fullContextFromSkeleton(inputLoaderByIndex)
-	return err
-}
-
 // fullContextFromSkeleton full context is obtained from the skeleton
 // by replacing dummy consumed UTXOs with the real ones
-func (ctx *TxContext) fullContextFromSkeleton(inputLoaderByIndex func(i byte) (*ledger.Output, error)) (*TxContext, error) {
-	consumedUTXOs := tuples.EmptyTupleEditable(256)
-	n := ctx.NumInputs()
-	for i := 0; i < n; i++ {
-		o, err := inputLoaderByIndex(byte(i))
-		if err != nil {
-			return nil, fmt.Errorf("fullContextFromSkeleton: '%v'", err)
-		}
-		if o == nil {
-			err = fmt.Errorf("fullContextFromSkeleton: cannot get consumed output at input index %d", i)
-			return nil, err
-		}
-		consumedUTXOs.MustPush(o.Bytes())
-	}
-	ret := *ctx // shallow clone
-	e := tuples.MakeTupleFromSerializableElements(consumedUTXOs)
-	txTree, err := ctx.ctxTree.Subtree([]byte{ledger.TransactionTuple})
-	util.AssertNoError(err, "ctx.Tree.Subtree([]byte{ledger.TransactionTuple})")
-
-	ret.ctxTree = tuples.TreeFromTreesReadOnly(txTree, e.AsTree()) // index 0 for transaction, index 1 for consumed outputs
-	ret.dataContext = ledger.NewEvalContext(&ret)
-	return &ret, nil
-}
 
 // ContextFull creates full context from transaction
 //func (tx *Transaction) ContextFull(inputLoaderByIndex func(i byte) (*ledger.Output, error), traceOption ...int) (*TxContext, error) {
@@ -87,8 +57,8 @@ func (ctx *TxContext) fullContextFromSkeleton(inputLoaderByIndex func(i byte) (*
 
 // TxContextFromTransferableBytes constructs tuples.Tree from transaction bytes and consumed outputs
 //func TxContextFromTransferableBytes(txBytes []byte, fetchInput func(oid base.OutputID) ([]byte, bool), traceOption ...int) (*TxContext, error) {
-//	//tx, err := FromBytes(txBytes, ParseTotalProducedAmount, ParseSequencerData, ScanOutputs)
-//	tx, err := FromBytes(txBytes, ParseSequencerData, ScanOutputs)
+//	//tx, err := Parse(txBytes, ParseTotalProducedAmount, ParseSequencerData, ScanOutputs)
+//	tx, err := Parse(txBytes, ParseSequencerData, ScanOutputs)
 //	if err != nil {
 //		return nil, err
 //	}
@@ -97,10 +67,6 @@ func (ctx *TxContext) fullContextFromSkeleton(inputLoaderByIndex func(i byte) (*
 //	}
 //	return tx.SetFullContext(tx.InputLoaderByIndex(fetchInput))
 //}
-
-func (ctx *TxContext) IsSkeleton() bool {
-	return ctx.ctxTree.MustNumElementsAtPath(ledger.PathToConsumedOutputs) == 0
-}
 
 func (ctx *TxContext) BytesAtPath(path []byte) ([]byte, error) {
 	return ctx.ctxTree.BytesAtPath(path)

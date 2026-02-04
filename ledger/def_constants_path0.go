@@ -68,6 +68,7 @@ const (
 const ConsumedOutputsBranch = byte(0)
 
 var (
+	PathToRawTransaction                = tuples.Path(TransactionTuple)
 	PathToConsumedOutputs               = tuples.Path(ConsumedTuple, ConsumedOutputsBranch)
 	PathToTxConstraints                 = tuples.Path(TransactionTuple, TxConstraints)
 	PathToProducedOutputs               = tuples.Path(TransactionTuple, TxOutputs)
