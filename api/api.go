@@ -398,7 +398,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		return true
 	})
 
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		ret.Inputs[i] = Input{
 			OutputID:   oid.StringHex(),
 			UnlockData: hex.EncodeToString(tx.MustUnlockDataAt(i)),
@@ -450,7 +450,7 @@ func VertexWithDependenciesFromTransaction(tx *transaction.Transaction) *VertexW
 	var stemTxID, seqTxID base.TransactionID
 
 	inputTxIDs := set.New[base.TransactionID]()
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		inputTxIDs.Insert(oid.TransactionID())
 		if tx.IsSequencerTransaction() {
 			if *seqInputIdx == i {

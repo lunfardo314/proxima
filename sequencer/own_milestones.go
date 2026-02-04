@@ -87,7 +87,7 @@ func (seq *Sequencer) _collectConsumed(ms *vertex.WrappedTx) set.Set[base.Output
 
 		ms.RUnwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				v.ForEachInput(func(i byte, oid base.OutputID) bool {
+				v.ForEachInputID(func(i byte, oid base.OutputID) bool {
 					ret.Insert(oid)
 					return true
 				})

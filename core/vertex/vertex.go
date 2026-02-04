@@ -153,7 +153,7 @@ func (v *Vertex) StemInputIndex() byte {
 	var stemInputIdx byte
 	var stemInputFound bool
 
-	v.ForEachInput(func(i byte, oid base.OutputID) bool {
+	v.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		if oid == predOID {
 			stemInputIdx = i
 			stemInputFound = true

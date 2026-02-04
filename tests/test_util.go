@@ -238,7 +238,9 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 		//tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
 		//require.NoError(t, err)
 		genesisState := multistate.MustNewReadable(stateStore, genesisRoot)
-		t.Logf("--------------- distribution tx:\n%s\n--------------", ret.distributionBranchTx.ToString(genesisState.GetUTXO))
+		err = ret.distributionBranchTx.SetFullContextWithFetch(genesisState.GetUTXO)
+		require.NoError(t, err)
+		t.Logf("--------------- distribution tx:\n%s\n--------------", ret.distributionBranchTx.String())
 		t.Logf("--------------- faucet output\n%s\n--------------", ret.faucetOutput)
 	}
 

@@ -116,16 +116,6 @@ func (ctx *TxContext) ForEachProducedOutput(fun func(idx byte, out *ledger.Outpu
 	})
 }
 
-func (ctx *TxContext) ForEachConsumedOutput(fun func(idx byte, oid *base.OutputID, out *ledger.Output) bool) {
-	ctx.ForEachInputID(func(idx byte, oid *base.OutputID) bool {
-		out, _ := ctx.ConsumedOutput(idx)
-		if !fun(idx, oid, out) {
-			return false
-		}
-		return true
-	})
-}
-
 func (ctx *TxContext) ConsumedOutput(idx byte) (*ledger.Output, error) {
 	data, err := ctx.ctxTree.BytesAtPath(Path(ledger.ConsumedTuple, ledger.ConsumedOutputsBranch, idx))
 	if err != nil {

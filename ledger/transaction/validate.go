@@ -246,12 +246,6 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 	return nil
 }
 
-// ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
-func (ctx *TxContext) ConsumedOutputHash() [32]byte {
-	consumedOutputBytes := ctx.ctxTree.MustBytesAtPath(Path(ledger.ConsumedTuple, ledger.ConsumedOutputsBranch))
-	return blake2b.Sum256(consumedOutputBytes)
-}
-
 func PathToString(path []byte) string {
 	ret := "@"
 	if len(path) == 0 {

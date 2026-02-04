@@ -1,6 +1,8 @@
 package transaction
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
+	"golang.org/x/crypto/blake2b"
 )
 
 // IsSkeletonContext if true, means consumed UTXOs are not available (yet)
@@ -46,6 +49,24 @@ func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.O
 	util.Assertf(!tx.IsSkeletonContext(), "tx.SetFullContext: full context expected")
 
 	return nil
+}
+
+func (tx *Transaction) SetFullContextWithFetch(fetchOutput func(oid base.OutputID) ([]byte, bool)) error {
+	return tx.SetFullContext(func(i byte) (*ledger.Output, error) {
+		oid, err1 := tx.InputAt(i)
+		if err1 != nil {
+			return nil, err1
+		}
+		oData, ok := fetchOutput(oid)
+		if !ok {
+			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
+		}
+		o, err1 := ledger.OutputFromBytesWithLib(oData, tx.Library)
+		if err1 != nil {
+			return nil, err1
+		}
+		return o, nil
+	})
 }
 
 func (tx *Transaction) Bytes() []byte {
@@ -95,7 +116,7 @@ func (tx *Transaction) SequencerTransactionData() *ledger.SequencerTransactionDa
 }
 
 func (tx *Transaction) ExplicitBaseline() (base.TransactionID, bool) {
-	data := tx.MustBytesAtPath(Path(ledger.TxExplicitBaseline))
+	data := tx.MustBytesAtPath(ledger.PathToExplicitBaseline)
 	if len(data) == 0 {
 		return base.TransactionID{}, false
 	}
@@ -142,7 +163,7 @@ func (tx *Transaction) TotalAmount() uint64 {
 }
 
 func (tx *Transaction) NumProducedOutputs() int {
-	return tx.MustNumElementsAtPath(Path(ledger.TxOutputs))
+	return tx.MustNumElementsAtPath(ledger.PathToProducedOutputs)
 }
 
 func (tx *Transaction) NumInputs() int {
@@ -165,7 +186,7 @@ func (tx *Transaction) MustProducedOutputAt(idx byte) *ledger.Output {
 
 func (tx *Transaction) ProducedOutputAt(idx byte) (*ledger.Output, error) {
 	if int(idx) >= tx.NumProducedOutputs() {
-		return nil, fmt.Errorf("wrong output index")
+		return nil, fmt.Errorf("ProducedOutputAt: wrong output index %d", idx)
 	}
 	out, err := ledger.OutputFromBytesWithLib(tx.MustOutputDataAt(idx), tx.Library)
 	if err != nil {
@@ -229,19 +250,39 @@ func (tx *Transaction) MustUnlockDataAt(idx byte) []byte {
 	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, idx))
 }
 
-func (tx *Transaction) ConsumedOutputAt(idx byte, fetchOutput func(id *base.OutputID) ([]byte, bool)) (*ledger.OutputDataWithID, error) {
-	oid, err := tx.InputAt(idx)
-	if err != nil {
-		return nil, err
+//func (tx *Transaction) ConsumedOutputAt(idx byte, fetchOutput func(id *base.OutputID) ([]byte, bool)) (*ledger.OutputDataWithID, error) {
+//	oid, err := tx.InputAt(idx)
+//	if err != nil {
+//		return nil, err
+//	}
+//	ret, ok := fetchOutput(&oid)
+//	if !ok {
+//		return nil, fmt.Errorf("can't fetch output %s", oid.StringShort())
+//	}
+//	return &ledger.OutputDataWithID{
+//		ID:   oid,
+//		Data: ret,
+//	}, nil
+//}
+
+func (tx *Transaction) ConsumedOutputAt(idx byte) (ret ledger.OutputWithID, err error) {
+	var oid base.OutputID
+	if oid, err = tx.InputAt(idx); err != nil {
+		return
 	}
-	ret, ok := fetchOutput(&oid)
-	if !ok {
-		return nil, fmt.Errorf("can't fetch output %s", oid.StringShort())
+	var oData []byte
+	if oData, err = tx.BytesAtPath(easyfl_util.Concat(ledger.PathToConsumedOutputs, idx)); err != nil {
+		return
 	}
-	return &ledger.OutputDataWithID{
-		ID:   oid,
-		Data: ret,
-	}, nil
+	var o *ledger.Output
+	if o, err = ledger.OutputFromBytes(oData); err != nil {
+		return
+	}
+	ret = ledger.OutputWithID{
+		Output: o,
+		ID:     oid,
+	}
+	return
 }
 
 func (tx *Transaction) MustEndorsementAt(idx byte) base.TransactionID {
@@ -259,10 +300,10 @@ func (tx *Transaction) UnlockParameters(inputIdx, constraintIdx byte) ([]byte, e
 	return ret, nil
 }
 
-func (tx *Transaction) ForEachInput(fun func(i byte, oid base.OutputID) bool) {
+func (tx *Transaction) ForEachInputID(fun func(i byte, oid base.OutputID) bool) {
 	err := tx.ForEach(func(i byte, data []byte) bool {
 		oid, err := base.OutputIDFromBytes(data)
-		util.Assertf(err == nil, "ForEachInput @ %d: %v", i, err)
+		util.Assertf(err == nil, "ForEachInputID @ %d: %v", i, err)
 		return fun(i, oid)
 	}, ledger.PathToInputIDs)
 	util.AssertNoError(err)
@@ -298,9 +339,21 @@ func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output
 	})
 }
 
+func (tx *Transaction) ForEachConsumedOutput(fun func(idx byte, o ledger.OutputWithID) bool) {
+	util.Assertf(!tx.IsSkeletonContext(), "ForEachConsumedOutput: full context expected")
+	n := tx.NumInputs()
+	for i := 0; i < n; i++ {
+		o, err := tx.ConsumedOutputAt(byte(i))
+		util.AssertNoError(err)
+		if !fun(byte(i), o) {
+			return
+		}
+	}
+}
+
 //func (tx *Transaction) PredecessorTransactionIDs() set.Set[base.TransactionID] {
 //	ret := set.New[base.TransactionID]()
-//	tx.ForEachInput(func(_ byte, oid base.OutputID) bool {
+//	tx.ForEachInputID(func(_ byte, oid base.OutputID) bool {
 //		ret.Insert(oid.TransactionID())
 //		return true
 //	})
@@ -337,35 +390,14 @@ func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, 
 	}
 
 	ret := make([]*ledger.OutputWithID, tx.NumProducedOutputs())
-	for idx := 0; idx < tx.NumProducedOutputs(); idx++ {
+	n := tx.NumProducedOutputs()
+	for idx := 0; idx < n; idx++ {
 		ret[idx], err = tx.ProducedOutputWithIDAt(byte(idx))
 		if err != nil {
 			return nil, err
 		}
 	}
 	return ret, nil
-}
-
-func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, bool)) string {
-	//ctx, err := tx.ContextFull(func(i byte) (*ledger.Output, error) {
-	//	oid, err1 := tx.InputAt(i)
-	//	if err1 != nil {
-	//		return nil, err1
-	//	}
-	//	oData, ok := fetchOutput(oid)
-	//	if !ok {
-	//		return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
-	//	}
-	//	o, err1 := ledger.OutputFromBytesWithLib(oData, tx.Library)
-	//	if err1 != nil {
-	//		return nil, err1
-	//	}
-	//	return o, nil
-	//})
-	//if err != nil {
-	//	return err.Error()
-	//}
-	return tx.ctx.String()
 }
 
 func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([]byte, bool)) func(byte) (*ledger.Output, error) {
@@ -375,10 +407,6 @@ func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([
 		if !ok {
 			return nil, fmt.Errorf("can't load input #%d: %s", idx, inp.String())
 		}
-		// Use transaction's cached library for deterministic parsing.
-		// IMPORTANT: Upgrade code is responsible for maintaining backward-compatible
-		// bytecode parsing to avoid non-determinism when consuming outputs created
-		// with older library versions.
 		o, err := ledger.OutputFromBytesWithLib(odata, tx.Library)
 		if err != nil {
 			return nil, fmt.Errorf("can't load input #%d: %s, '%v'", idx, inp.String(), err)
@@ -404,7 +432,7 @@ func (tx *Transaction) SequencerAndStemInputData() (seqInputIdx *byte, stemInput
 	seqID = util.Ref(seqMeta.SequencerID)
 
 	if tx.IsBranchTransaction() {
-		tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+		tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 			if oid == seqMeta.StemOutputData.PredecessorOutputID {
 				stemInputIdx = util.Ref(i)
 			}
@@ -483,7 +511,7 @@ func (tx *Transaction) ProducedOutputsToString() string {
 
 func (tx *Transaction) StateMutations() *multistate.Mutations {
 	ret := multistate.NewMutations()
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		ret.InsertDelOutputMutation(oid)
 		return true
 	})
@@ -506,7 +534,7 @@ func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, er
 			return ret
 		}
 	}
-	return tx.ctx.Lines(prefix...)
+	return tx.LinesHR(prefix...)
 }
 
 func (tx *Transaction) ProducedTagAlongOutputs(targetID ...base.ChainID) []ledger.TagAlongOutput {
@@ -543,7 +571,7 @@ func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 		return true
 	})
 	ret.Add("Inputs (%d):", tx.NumInputs())
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		ret.Add("    %3d: %s", i, oid.String())
 		ret.Add("       Unlock data: %s", UnlockDataToString(tx.MustUnlockDataAt(i)))
 		return true
@@ -561,8 +589,109 @@ func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 	return ret
 }
 
+func (tx *Transaction) LinesSource(prefix ...string) *lines.Lines {
+	return tx._lines(func(o *ledger.Output, prefix ...string) *lines.Lines {
+		return o.LinesSource(prefix...)
+	}, prefix...)
+}
+
+func (tx *Transaction) LinesHR(prefix ...string) *lines.Lines {
+	return tx._lines(func(o *ledger.Output, prefix ...string) *lines.Lines {
+		return o.LinesHR(prefix...)
+	}, prefix...)
+}
+
+func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...string) *lines.Lines, prefix ...string) *lines.Lines {
+	txid := tx.ID()
+	ret := lines.New(prefix...)
+	ret.Add("Transaction ID: %s, size: %d", txid.String(), len(tx.Bytes()))
+	ts := tx.Timestamp()
+	ret.Add("Timestamp: %s", ts.String())
+
+	if seqData := tx.SequencerTransactionData(); seqData != nil {
+		ret.Add("SEQUENCER TRANSACTION DATA:")
+		ret.Append(seqData.Lines("    "))
+	} else {
+		ret.Add("NOT A SEQUENCER TRANSACTION")
+	}
+
+	ret.Add("Total consumed token balance: %s", util.Th(tx.totalConsumedTokenBalance))
+	ret.Add("Total produced amounts: [%s]", util.ThSlice(tx.producedAmountTotals[:]...))
+
+	inpCom := tx.InputCommitment()
+	ret.Add("Input commitment: %s", easyfl_util.Fmt(inpCom))
+	if tx.IsSkeletonContext() {
+		ret.Add("Consumed output hash: N/A")
+	} else {
+		h := tx.ConsumedOutputHash()
+		eqCom := ""
+		if !bytes.Equal(inpCom, h[:]) {
+			eqCom = "   !!! NOT EQUAL WITH INPUT COMMITMENT !!!!"
+		}
+		ret.Add("Consumed output hash: %s%s", easyfl_util.Fmt(h[:]), eqCom)
+	}
+	sign, err := tx.Signature()
+	if err == nil {
+		ret.Add("Signature: %s", sign.String())
+	} else {
+		ret.Add("Signature: err='%v'", err)
+	}
+
+	if explicitBaseline, ok := tx.ExplicitBaseline(); ok {
+		ret.Add("Explicit baseline: %s", explicitBaseline.String())
+	}
+
+	ret.Add("Endorsements (%d):", tx.NumEndorsements())
+	tx.ForEachEndorsement(func(idx byte, txid base.TransactionID) bool {
+		ret.Add("  %d: %s", idx, txid.String())
+		return true
+	})
+
+	ret.Add("Inputs (%d consumed outputs): ", tx.NumInputs())
+	if tx.IsSkeletonContext() {
+		ret.Add("Inputs (%d). Consumed UTXOs N/A", tx.NumInputs())
+	} else {
+		ret.Add("Inputs (%d)", tx.NumInputs())
+		tx.ForEachConsumedOutput(func(idx byte, o ledger.OutputWithID) bool {
+			unlockBin := tx.MustUnlockDataAt(idx)
+			ret.Add("  #%d: %s", idx, o.ID.String()).
+				Add("       bytes (%d): %s", len(o.Bytes()), hex.EncodeToString(o.Bytes())).
+				Append(utxoToLines(o.Output, "     ")).
+				Add("     Unlock data: %s", UnlockDataToString(unlockBin))
+			return true
+		})
+	}
+
+	ret.Add("Outputs (%d produced): ", tx.NumProducedOutputs())
+	totalSum := uint64(0)
+	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
+		totalSum += o.TokenBalance()
+		chainIdStr := ""
+		if cc, i := o.ChainConstraint(); i != 0xff {
+			var cid base.ChainID
+			if cc.IsOrigin() {
+				oid1 := base.MustNewOutputID(txid, idx)
+				cid = base.MakeOriginChainID(oid1)
+			} else {
+				cid = cc.ChainID
+			}
+			chainIdStr = "                      chainID: " + cid.StringShort()
+		}
+		ret.Add("  #%d %s", idx, oid.String()).
+			Add("       bytes (%d): %s", len(o.Bytes()), hex.EncodeToString(o.Bytes()))
+		if msd, err := ledger.ParseSequencerData(o); err == nil {
+			ret.Add("       seq: %s", msd.Name())
+		}
+		ret.Append(utxoToLines(o, "     ")).
+			Add(chainIdStr)
+		return true
+	})
+	ret.Add("TOTAL: %s", util.Th(totalSum))
+	return ret
+}
+
 func (tx *Transaction) String() string {
-	return tx.ctx.String()
+	return tx.LinesHR().String()
 }
 
 func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
@@ -572,9 +701,9 @@ func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger
 	}
 
 	if err = tx.SetFullContext(inputLoader); err != nil {
-		return lines.New(prefix...).Add("ContextFull returned: %v", err)
+		return lines.New(prefix...).Add("SetFullContext returned: %v", err)
 	}
-	return tx.ctx.Lines(prefix...)
+	return tx.Lines(prefix...)
 }
 
 // BaselineDirection is the input, endorsement or explicit baseline of the sequencer transaction where to look for a baseline branch
@@ -613,9 +742,15 @@ func (tx *Transaction) TotalProducedAmounts() [15]int64 {
 }
 
 func (tx *Transaction) InputCommitment() []byte {
-	return tx.MustBytesAtPath(Path(ledger.TxInputCommitment))
+	return tx.MustBytesAtPath(ledger.PathToInputCommitment)
 }
 
 func (tx *Transaction) AttachmentCost() int {
 	return tx.NumInputs() + tx.NumProducedOutputs()
+}
+
+// ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
+func (tx *Transaction) ConsumedOutputHash() [32]byte {
+	util.Assertf(!tx.IsSkeletonContext(), "ConsumedOutputHash: can't be ekeleton context")
+	return blake2b.Sum256(tx.MustBytesAtPath(ledger.PathToConsumedOutputs))
 }
