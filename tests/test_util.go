@@ -227,7 +227,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	_, err = ret.txStore.PersistTxBytesWithMetadata(txBytes, nil)
 	require.NoError(t, err)
 
-	ret.distributionBranchTx, err = transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	ret.distributionBranchTx, err = transaction.ParseWithPartialValidation(txBytes)
 	require.NoError(t, err)
 	ret.distributionBranchTxID = ret.distributionBranchTx.ID()
 	t.Logf("distribution txID: %s", ret.distributionBranchTxID.StringShort())
@@ -304,7 +304,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	txb.SignED25519(td.privKeyAux)
 
 	txBytes := txb.TransactionData.Bytes()
-	td.chainOriginsTx, err = transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	td.chainOriginsTx, err = transaction.ParseWithPartialValidation(txBytes)
 	require.NoError(td.t, err)
 
 	const printChainOriginsTx = false
@@ -385,7 +385,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 
 	ret.conflictingOutputs = make([]*ledger.OutputWithID, nConflicts)
 	for i := range ret.conflictingOutputs {
-		tx, err := transaction.FromBytesMainChecksWithOpt(ret.txBytesConflicting[i])
+		tx, err := transaction.ParseWithPartialValidation(ret.txBytesConflicting[i])
 		require.NoError(t, err)
 		t.Logf("conflicting tx ts: %s", tx.Timestamp().String())
 		ret.conflictingOutputs[i] = tx.MustProducedOutputWithIDAt(1)
@@ -434,7 +434,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 			AdditionalInputs: additionalIn,
 		})
 		require.NoError(td.t, err)
-		tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+		tx, err := transaction.ParseWithPartialValidation(txBytes)
 		require.NoError(td.t, err)
 		td.seqChain[i] = append(td.seqChain[i], tx)
 	}
@@ -455,7 +455,7 @@ func (td *longConflictTestData) makeSeqChains(howLong int) {
 				PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
-			tx, err := transaction.Parse(txBytesSeq, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytesSeq)
 			require.NoError(td.t, err)
 			td.seqChain[seqNr] = append(td.seqChain[seqNr], tx)
 		}
@@ -492,7 +492,7 @@ func (td *longConflictTestData) makeSlotTransactions(howLongChain int, extendBeg
 				PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
-			tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytes)
 			require.NoError(td.t, err)
 			ret[seqNr] = append(ret[seqNr], tx)
 			td.t.Logf("%3d  %s", seqNr, tx.IDShortString())
@@ -546,7 +546,7 @@ func (td *longConflictTestData) makeSlotTransactionsWithTagAlong(howLongChain in
 				PublicKey:        td.privKeyAux.Public().(ed25519.PublicKey),
 			})
 			require.NoError(td.t, err)
-			tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytes)
 			require.NoError(td.t, err)
 			ret[seqNr] = append(ret[seqNr], tx)
 		}
@@ -569,7 +569,7 @@ func (td *longConflictTestData) makeBranch(extend *ledger.OutputWithChainID, pre
 		PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 	})
 	require.NoError(td.t, err)
-	tx, err := transaction.Parse(txBytesBranch, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytesBranch)
 	require.NoError(td.t, err)
 	return tx
 }
@@ -603,7 +603,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 			PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(td.t, err)
-		ret[i], err = transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+		ret[i], err = transaction.ParseWithPartialValidation(txBytes)
 		require.NoError(td.t, err)
 	}
 	return ret
@@ -617,7 +617,7 @@ func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID bas
 		MustWithInputs(o).
 		WithTargetLock(ledger.ChainLockFromChainID(chainID)))
 	util.AssertNoError(err)
-	tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	util.AssertNoError(err)
 
 	return tx
@@ -671,7 +671,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 			ret.txSequences[seqNr][i], err = txbuilder.MakeSimpleTransferTransaction(trd)
 			require.NoError(t, err)
 
-			tx, err := transaction.FromBytesMainChecksWithOpt(ret.txSequences[seqNr][i])
+			tx, err := transaction.ParseWithPartialValidation(ret.txSequences[seqNr][i])
 			require.NoError(t, err)
 			ret.txs[seqNr][i] = tx
 			prev = tx.MustProducedOutputWithIDAt(0)
@@ -825,7 +825,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 		ret[i], par.remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 		util.AssertNoError(err)
 
-		tx, err := transaction.Parse(ret[i], transaction.MainTxValidationOptions...)
+		tx, err := transaction.ParseWithPartialValidation(ret[i])
 		require.NoError(par.t, err)
 		tagAlongOuts := tx.ProducedTagAlongOutputs()
 

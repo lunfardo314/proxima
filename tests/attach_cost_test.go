@@ -73,7 +73,7 @@ func TestAttachCostBudgetChainWithinLimit(t *testing.T) {
 			txBytesChain[i], err = txbuilder.MakeSimpleTransferTransaction(td)
 			require.NoError(t, err)
 
-			tx, err := transaction.Parse(txBytesChain[i], transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytesChain[i])
 			require.NoError(t, err)
 			prevOutput = tx.MustProducedOutputWithIDAt(0)
 
@@ -137,7 +137,7 @@ func TestAttachCostBudgetShortChain(t *testing.T) {
 			txBytesChain[i], err = txbuilder.MakeSimpleTransferTransaction(td)
 			require.NoError(t, err)
 
-			tx, err := transaction.Parse(txBytesChain[i], transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytesChain[i])
 			require.NoError(t, err)
 			prevOutput = tx.MustProducedOutputWithIDAt(0)
 
@@ -201,7 +201,7 @@ func TestAttachCostBudgetMultipleTransactions(t *testing.T) {
 			txBytes, err := txbuilder.MakeSimpleTransferTransaction(td)
 			require.NoError(t, err)
 
-			tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytes)
 			require.NoError(t, err)
 
 			// Attach each transaction
@@ -294,7 +294,7 @@ func TestAttachCostBudgetFanOutCostTracking(t *testing.T) {
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err)
 
-		tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+		tx, err := transaction.ParseWithPartialValidation(txBytes)
 		require.NoError(t, err)
 
 		expectedCost := tx.NumInputs() + tx.NumProducedOutputs()
@@ -427,7 +427,7 @@ func TestAttachCostBudgetExceededMilestoneAttacher(t *testing.T) {
 				txBytesChain[i], err = txbuilder.MakeSimpleTransferTransaction(td)
 				require.NoError(t, err)
 
-				tx, err := transaction.Parse(txBytesChain[i], transaction.MainTxValidationOptions...)
+				tx, err := transaction.ParseWithPartialValidation(txBytesChain[i])
 				require.NoError(t, err)
 
 				// The chain-locked output is the one with the target lock (usually index 0 for simple transfers)
@@ -463,7 +463,7 @@ func TestAttachCostBudgetExceededMilestoneAttacher(t *testing.T) {
 				txBytesChain[i], err = txbuilder.MakeSimpleTransferTransaction(td)
 				require.NoError(t, err)
 
-				tx, err := transaction.Parse(txBytesChain[i], transaction.MainTxValidationOptions...)
+				tx, err := transaction.ParseWithPartialValidation(txBytesChain[i])
 				require.NoError(t, err)
 				prevOutput = tx.MustProducedOutputWithIDAt(0)
 			}
@@ -481,7 +481,7 @@ func TestAttachCostBudgetExceededMilestoneAttacher(t *testing.T) {
 		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		// Make sure timestamp is after the last transaction in the chain
-		lastTx, err := transaction.Parse(txBytesChain[chainLength-1], transaction.MainTxValidationOptions...)
+		lastTx, err := transaction.ParseWithPartialValidation(txBytesChain[chainLength-1])
 		require.NoError(t, err)
 		if !ts.After(lastTx.Timestamp()) {
 			ts = lastTx.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
@@ -566,7 +566,7 @@ func TestAttachCostBudgetVerifyCalculation(t *testing.T) {
 		txBytes, err := txbuilder.MakeSimpleTransferTransaction(td)
 		require.NoError(t, err)
 
-		tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+		tx, err := transaction.ParseWithPartialValidation(txBytes)
 		require.NoError(t, err)
 
 		// Verify cost calculation

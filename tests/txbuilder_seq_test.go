@@ -389,7 +389,7 @@ func TestFreezeOneStep(t *testing.T) {
 				return
 			}
 
-			tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytes)
 			if err != nil {
 				errTest = err
 				return
@@ -612,7 +612,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 				return
 			}
 
-			tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytes)
 			if err != nil {
 				errTest = err
 				return

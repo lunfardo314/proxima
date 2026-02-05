@@ -859,16 +859,16 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 		_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesBranch[i], nil)
 		require.NoError(t, err)
 
-		tx, err := transaction.Parse(txBytesBranch[i], transaction.MainTxValidationOptions...)
+		tx, err := transaction.ParseWithPartialValidation(txBytesBranch[i])
 		require.NoError(t, err)
 		t.Logf("branch #%d : %s", i, tx.IDShortString())
 	}
 
-	tx0, err := transaction.Parse(txBytesBranch[0], transaction.MainTxValidationOptions...)
+	tx0, err := transaction.ParseWithPartialValidation(txBytesBranch[0])
 	require.NoError(t, err)
 	t.Logf("will be extending %s", tx0.IDShortString())
 
-	tx1, err := transaction.Parse(txBytesBranch[1], transaction.MainTxValidationOptions...)
+	tx1, err := transaction.ParseWithPartialValidation(txBytesBranch[1])
 	require.NoError(t, err)
 	t.Logf("will be endorsing %s", tx1.IDShortString())
 

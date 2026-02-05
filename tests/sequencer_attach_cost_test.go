@@ -99,7 +99,7 @@ func TestSequencerAttachCostTagAlongChainExceedsBudget(t *testing.T) {
 			txBytes, remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 			require.NoError(t, err)
 
-			tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytes)
 			require.NoError(t, err)
 			tagAlongOuts := tx.ProducedTagAlongOutputs()
 			require.EqualValues(t, 1, len(tagAlongOuts), "should have 1 tag-along output")
@@ -244,7 +244,7 @@ func TestSequencerAttachCostManyTagAlongsExceedBudget(t *testing.T) {
 		txBytes, newRemainder, err := txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 		require.NoError(t, err)
 
-		tx, err := transaction.Parse(txBytes, transaction.MainTxValidationOptions...)
+		tx, err := transaction.ParseWithPartialValidation(txBytes)
 		require.NoError(t, err)
 
 		tagAlongOuts := tx.ProducedTagAlongOutputs()
