@@ -92,6 +92,17 @@ func (w *Workflow) TxInFromPeer(tx *transaction.Transaction, metaData *txmetadat
 	return w.TxIn(tx, WithPeerMetadata(from, metaData))
 }
 
+const maxSlotsInTheFuture = 6
+
+func (w *Workflow) checkTimestampUpperBound(tx *transaction.Transaction) error {
+	ts := ledger.ClockTime(tx.Timestamp())
+	upperBound := time.Now().Add(maxSlotsInTheFuture * ledger.SlotDuration())
+	if ts.After(upperBound) {
+		return fmt.Errorf("transaction is %d msec too far in the future", int64(ts.Sub(upperBound))/int64(time.Millisecond))
+	}
+	return nil
+}
+
 func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 	options := &txInOptions{}
 	for _, opt := range opts {
@@ -106,32 +117,28 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 	}
 
 	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
-	// bytes are identifiable as transaction
 
-	// check time bounds
-	// TODO revisit checking lower time bounds
-
-	enforceTimeBounds := options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI || options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer
+	// check time bounds for external transactions
 	// transaction is rejected if it is too far in the future wrt the local clock
-	nowis := time.Now()
+	enforceTimeBounds := options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeAPI ||
+		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePeer
 
-	timeUpperBound := nowis.Add(w.MaxDurationInTheFuture())
-	err := tx.Validate(transaction.CheckTimestampUpperBound(timeUpperBound))
-	if err != nil {
+	if err := w.checkTimestampUpperBound(tx); err != nil {
 		if enforceTimeBounds {
-			w.Tracef(TraceTagTxInput, "invalidate %s: time bounds validation failed", txid.StringShort)
-			err = fmt.Errorf("%w (MaxDurationInTheFuture = %v)", err, w.MaxDurationInTheFuture())
+			msg := fmt.Sprintf("enforcing time bounds: %v", err)
+			w.LogTx(time.Now(), msg, txid)
+			w.Log().Warnf("%s -- %s", msg, txid.StringShort())
 			attacher.InvalidateTxID(txid, w, err)
-
 			return err
 		}
-		w.Log().Warnf("checking time bounds of %s: '%v'", txid.StringShort(), err)
+		w.LogTx(time.Now(), err.Error(), txid)
+		w.Log().Warnf("%v -- %s", err, txid.StringShort())
 	}
 
-	// run remaining pre-validations on the transaction
-	if err = tx.ValidatePartialContext(); err != nil {
+	// run remaining pre-validations on the transaction (including signature checks)
+	if err := tx.ValidatePartialContext(); err != nil {
 		err = fmt.Errorf("error while pre-validating transaction %s: '%w'", txid.StringShort(), err)
-		w.Tracef(TraceTagTxInput, "%v", err)
+		w.LogTx(time.Now(), err.Error(), txid)
 		attacher.InvalidateTxID(txid, w, err)
 		return err
 	}

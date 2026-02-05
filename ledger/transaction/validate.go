@@ -44,7 +44,7 @@ func (tx *Transaction) ValidatePartialContext() error {
 	defer spool.Dispose()
 
 	return util.CatchPanicOrError(func() error {
-		if err := tx.scanSkeletonContext(); err != nil {
+		if err := tx.scanPartialContext(); err != nil {
 			return err
 		}
 		return tx.TxIntegrityValidatorSkeletonContext(tx.makeEvalContext(nil), spool)

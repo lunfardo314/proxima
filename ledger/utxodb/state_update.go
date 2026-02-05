@@ -33,7 +33,7 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 	if err = tx.SetFullContext(tx.InputLoaderByIndex(u.Readable().GetUTXO)); err != nil {
 		return nil, err
 	}
-	err = tx.Validate()
+	err = tx.ValidateFullContext()
 	if onValidation != nil {
 		err = onValidation(tx, err)
 	}

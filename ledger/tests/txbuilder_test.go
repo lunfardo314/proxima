@@ -290,9 +290,9 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		}
 		txBytes, inflation, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
-		err = u.AddTransaction(txBytes, func(ctx *transaction.TxContext, err error) error {
+		err = u.AddTransaction(txBytes, func(tx *transaction.Transaction, err error) error {
 			if err != nil {
-				return fmt.Errorf("Error: %v\n%s", err, ctx.String())
+				return fmt.Errorf("Error: %v\n%s", err, tx.String())
 			}
 			return nil
 		})
@@ -454,13 +454,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		start := time.Now()
 		for i := range txs {
-			tx, err := transaction.Parse(txs[i].txBytes, transaction.MainTxValidationOptions...)
-			require.NoError(t, err)
-
-			txCtx, err := tx.ContextFull(txs[i].inputLoader)
-			require.NoError(t, err)
-
-			err = txCtx.Validate()
+			_, err = transaction.ParseWithPartialValidation(txs[i].txBytes)
 			require.NoError(t, err)
 		}
 		elapsed := time.Since(start)

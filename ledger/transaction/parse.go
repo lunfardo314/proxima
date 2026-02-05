@@ -185,7 +185,7 @@ func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte,
 	return
 }
 
-func (tx *Transaction) scanSkeletonContext() (err error) {
+func (tx *Transaction) scanPartialContext() (err error) {
 	if err = tx.parseSequencerData(); err != nil {
 		return err
 	}
@@ -359,6 +359,9 @@ func (tx *Transaction) scanProducedOutputs() error {
 		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
 			return fmt.Errorf("scanProducedOutputs: UTXO #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
+	}
+	if tx.producedAmountTotals[0] <= 0 {
+		return fmt.Errorf("scanProducedOutputs:total produced amount must be positive, got %s", util.Th(tx.producedAmountTotals[0]))
 	}
 	return nil
 }

@@ -134,6 +134,7 @@ func (q *TxSenders) consume(inp input) {
 		return
 	}
 	// new tx
+	// parse signature (no validation, it is done by tx.ValidatePartialContext())
 	sig, err := inp.Tx.Signature()
 	if err != nil {
 		txLogMsg := fmt.Sprintf("IGNORED: signature parsing error: %v", err)
