@@ -2,7 +2,6 @@ package transaction
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
@@ -12,36 +11,38 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-// Transaction provides access to the tree of transferable transaction
-type (
-	Transaction struct {
-		*ledger.Library           // cached library for this transaction's slot
-		*tuples.Tree              // the tuple tree with full or skeleton context. i.e. augmented with one level more for consumed UTXOs
-		txid                      base.TransactionID
-		timestamp                 base.LedgerTime
-		producedAmountTotals      [15]int64 // calculated by summing up amount vectors
-		totalConsumedTokenBalance int64
-		sequencerTransactionData  *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
-		traceOption               int
-		partialContextValidated   bool
-		fullContextValidated      bool
-	}
+// Transaction provides access to the tuple tree of transferable transaction data
+type Transaction struct {
+	*ledger.Library           // cached library for this transaction's slot
+	*tuples.Tree              // the tuple tree with full or partial context. i.e. augmented with one level more for consumed UTXOs
+	txid                      base.TransactionID
+	timestamp                 base.LedgerTime
+	producedAmountTotals      [15]int64 // calculated by summing up amount vectors
+	totalConsumedTokenBalance int64
+	sequencerTransactionData  *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
+	traceOption               int
+	partialContextValidated   bool
+	fullContextValidated      bool
+}
 
-	TxOption func(tx *Transaction) error
-)
-
-// Parse parses main elements of the transaction and creates Transaction structure
+// Parse parses main elements of the transaction and creates Transaction ID and transaction structure:
+// This is STAGE 1 of transaction validation. This is minimal check to pass for the blob to be a raw transaction.
+// If it is impossible to extract txid from the blob, it is not a transaction
 func Parse(txBytes []byte) (*Transaction, error) {
 	txTree, err := tuples.TreeFromBytesReadOnly(txBytes)
 	if err != nil {
 		return nil, fmt.Errorf("tx.Parse: %v", err)
 	}
-	// dummy empty tuple of consumed UTXOs for the skeleton context
-	ret := &Transaction{traceOption: TraceOptionNone}
-	e := tuples.MakeTupleFromSerializableElements(tuples.EmptyTupleEditable())
+	if txTree.NumElements() != int(ledger.TxTreeTupleNumElements) {
+		return nil, fmt.Errorf("tx.Parse: expected %d elements in the top tuple, got %d", ledger.TxTreeTupleNumElements, txTree.NumElements())
+	}
+	ret := &Transaction{
+		// index 0 for transaction, index 1 for consumed outputs
+		Tree:        tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromDataElements(nil).AsTree()),
+		traceOption: TraceOptionNone,
+	}
+	// partial context: dummy nil data instead of the tuple of consumed UTXOs
 	// create skeleton context with dummy consumed UTXOs
-	ret.Tree = tuples.TreeFromTreesReadOnly(txTree, e.AsTree()) // index 0 for transaction, index 1 for consumed outputs
-	// precalculate txid
 	ret.txid, err = TxIDFromTransactionDataTree(txTree)
 	if err != nil {
 		return nil, fmt.Errorf("tx.Parse: %v", err)
@@ -52,6 +53,8 @@ func Parse(txBytes []byte) (*Transaction, error) {
 	return ret, nil
 }
 
+// ParseWithPartialValidation parses transaction and runs validation with the partial context
+// This is STAGE 1 and 2 of the transaction validation. It does not require availability of the past cone
 func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
 	tx, err := Parse(txBytes)
 	if err != nil {
@@ -61,8 +64,6 @@ func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
 }
 
 // TxIDFromTransactionDataTree takes raw tx bytes and validates timestamp, sequencer data bytes and makes transaction ID
-// This is minimal check to pass for the blob to be a raw transaction.
-// If it is impossible to extract txid from the blob, it is not a transaction
 func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, err error) {
 	var tsBin []byte
 	if tsBin, err = txTree.BytesAtPath([]byte{ledger.TxTimestamp}); err != nil {
@@ -127,41 +128,16 @@ func (tx *Transaction) SetTraceOption(opt int) {
 	tx.traceOption = opt
 }
 
-//func (tx *Transaction) Validate(opt ...TxOption) error {
-//	return util.CatchPanicOrError(func() error {
-//		if err := tx.Validate(); err != nil {
-//			return err
-//		}
-//		for _, fun := range opt {
-//			if err := fun(tx); err != nil {
-//				return err
-//			}
-//		}
-//		return nil
-//	})
-//}
-
-func CheckTimestampUpperBound(upperBound time.Time) TxOption {
-	return func(tx *Transaction) error {
-		ts := ledger.ClockTime(tx.timestamp)
-		if ts.After(upperBound) {
-			return fmt.Errorf("transaction is %d msec too far in the future", int64(ts.Sub(upperBound))/int64(time.Millisecond))
-		}
-		return nil
-	}
-}
-
 // tx essence is concatenation of all top level elements except signature
-var _essenceIndices []byte
-
-func init() {
-	_essenceIndices = make([]byte, 20)
+var _essenceIndices = func() []byte {
+	ret := make([]byte, 20)
 	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
 		if i != ledger.TxSignatureData {
-			_essenceIndices = append(_essenceIndices, i)
+			ret = append(ret, i)
 		}
 	}
-}
+	return ret
+}()
 
 func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
 	hasher, err := blake2b.New256(nil)

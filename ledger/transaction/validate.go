@@ -37,7 +37,9 @@ func (tx *Transaction) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.Ev
 	}
 }
 
-// ValidatePartialContext runs all validation scripts (constraints) that only needs partial context
+// ValidatePartialContext runs all validation scripts (constraints) that only needs partial context,
+// i.e. no need for the past cone.
+// This is STAGE 2 of the transaction validation
 func (tx *Transaction) ValidatePartialContext() error {
 	util.Assertf(!tx.partialContextValidated, "repeating run on partial context")
 
@@ -53,7 +55,9 @@ func (tx *Transaction) ValidatePartialContext() error {
 	})
 }
 
-// ValidateFullContext runs all validation scripts (constraints) that require full context
+// ValidateFullContext runs all validation scripts (constraints) that require full context,
+// i.e. all consumed UTXOs must be available
+// This is STAGE 3 of the transaction validation. It requires STAGE 1 and STAGE 2 successfully passed
 func (tx *Transaction) ValidateFullContext() error {
 	util.Assertf(!tx.fullContextValidated, "repeating run on full context")
 
@@ -70,10 +74,11 @@ func (tx *Transaction) ValidateFullContext() error {
 
 	err = util.CatchPanicOrError(func() error {
 		var err1 error
+		// run tx integrity validation script that requires full context
 		if err1 = tx.TxIntegrityValidatorFullContext(tx.makeEvalContext(nil), spool); err1 != nil {
 			return err1
 		}
-		// run tx level constrains, if any. All must succeed
+		// run tx level constrains, if any
 		if err1 = tx.validateTxLevelConstraints(spool); err1 != nil {
 			return err1
 		}
@@ -174,15 +179,13 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 }
 
 // _scanOutputs parses outputs using the transaction's cached library for deterministic validation.
-// All outputs (consumed and produced) are parsed with the same library version.
-// IMPORTANT: Upgrade code is responsible for maintaining backward-compatible bytecode
-// parsing to avoid non-determinism when consuming outputs created with older library versions.
+// IMPORTANT: parsing does not depend on the library version
 func (tx *Transaction) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, error) {
 	var err error
 	ret := make([]*ledger.Output, tx.MustNumElementsAtPath(pathToOutputs))
 
 	_ = tx.ForEach(func(i byte, data []byte) bool {
-		ret[i], err = ledger.OutputFromBytesWithLib(data, tx.Library)
+		ret[i], err = ledger.OutputFromBytesWithLib(data, tx.Library) // TODO a bit redundant
 		return err == nil
 	}, pathToOutputs)
 	if err != nil {

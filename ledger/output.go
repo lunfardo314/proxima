@@ -120,12 +120,12 @@ func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lo
 	return ret, amount, lock, nil
 }
 
-// OutputFromBytesWithLib parses an output using the provided library.
-// This is the core implementation that avoids repeated L(slot) calls.
 func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
 	return OutputFromBytesWithLib(data, L(base.MaxSlot), validateOpt...)
 }
 
+// OutputFromBytesWithLib parses an output using the particular library.
+// This is the core implementation that avoids repeated L(slot) calls, however parsing is library version-independent.
 func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
 	ret, _, _, err := OutputFromBytesMainWithLib(data, lib)
 	if err != nil {
@@ -138,12 +138,6 @@ func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Outp
 	}
 	return ret, nil
 }
-
-//
-//// OutputFromBytesAtSlot parses an output using the library for the given slot.
-//func OutputFromBytesAtSlot(data []byte, slot uint32, validateOpt ...func(*Output) error) (*Output, error) {
-//	return OutputFromBytesWithLib(data, L(slot), validateOpt...)
-//}
 
 // OutputFromHexString parses an output from hex string using the provided library.
 func OutputFromHexString(hexStr string, validateOpt ...func(*Output) error) (*Output, error) {

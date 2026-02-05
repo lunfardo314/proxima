@@ -135,23 +135,22 @@ func (q *TxSenders) consume(inp input) {
 	}
 	// new tx
 	// parse signature (no validation, it is done by tx.ValidatePartialContext())
-	sig, err := inp.Tx.Signature()
+	spenderID, err := inp.Tx.SpenderID()
 	if err != nil {
-		txLogMsg := fmt.Sprintf("IGNORED: signature parsing error: %v", err)
+		txLogMsg := fmt.Sprintf("IGNORED: cannot parse spender ID: %v", err)
 		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
 		q.Log().Warnf("tx %s: %s -> IGNORED", inp.Tx.IDShortString(), txLogMsg)
 		return
 	}
 	if inp.Wanted {
-		// send for attachment without caching
+		// if transaction is requested, send for attachment without caching
 		q.attachAndGossip(&inp)
 		return
 	}
-	spenderID := sig.SpenderID()
 	seen := q.txSenders[spenderID]
 	if seen == nil {
-		if !q.isSenderKnownInLRB(spenderID) {
+		if !q.isSpenderKnownInLRB(spenderID) {
 			// sender account not known -> ignore tx
 			txLogMsg := fmt.Sprintf("IGNORED: tx sender %s is not known in LRB", ledger.SigLock(spenderID).String())
 			q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
@@ -204,7 +203,7 @@ func (q *TxSenders) attachAndGossip(inp *input) {
 	q.gossipedCounter.Inc()
 }
 
-func (q *TxSenders) isSenderKnownInLRB(acc base.SpenderID) (ret bool) {
+func (q *TxSenders) isSpenderKnownInLRB(acc base.SpenderID) (ret bool) {
 	if lrb := q.GetLatestReliableBranch(); lrb != nil {
 		rdr := q.Branches().GetStateReaderForTheBranch(lrb.TxID())
 		ret = rdr.IsKnownAccount(ledger.SigLock(acc).AccountID())
