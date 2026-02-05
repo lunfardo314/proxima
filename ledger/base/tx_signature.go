@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
@@ -49,8 +50,8 @@ func SignatureFromBytes(data []byte) (*Signature, error) {
 func (s *Signature) String() string {
 	switch s.SignatureType {
 	case SignatureTypeED25519:
-		return fmt.Sprintf("ED25519, signature=%x, public key=%s, spender ID: %s",
-			s.MustSignatureDataED25519(), s.MustSignatureDataED25519(), s.SpenderIDHex())
+		return fmt.Sprintf("ED25519, spender ID: %s, sig=%s",
+			s.SpenderIDHex(), easyfl_util.Fmt(s.MustSignatureDataED25519()))
 	default:
 		return fmt.Sprintf("unsupported signature type=%d, data=%x", s.SignatureType, s.SignatureBytes)
 	}

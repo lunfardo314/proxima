@@ -39,10 +39,12 @@ func (tx *Transaction) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.Ev
 
 // ValidatePartialContext runs all validation scripts (constraints) that only needs partial context
 func (tx *Transaction) ValidatePartialContext() error {
-	util.Assertf(tx.IsPartialContext(), "skeleton context expected")
+	util.Assertf(!tx.partialContextValidated, "repeating run on partial context")
+
 	spool := slicepool.New()
 	defer spool.Dispose()
 
+	tx.partialContextValidated = true
 	return util.CatchPanicOrError(func() error {
 		if err := tx.scanPartialContext(); err != nil {
 			return err
@@ -53,9 +55,16 @@ func (tx *Transaction) ValidatePartialContext() error {
 
 // ValidateFullContext runs all validation scripts (constraints) that require full context
 func (tx *Transaction) ValidateFullContext() error {
-	util.Assertf(!tx.IsPartialContext(), "full context expected")
+	util.Assertf(!tx.fullContextValidated, "repeating run on full context")
 
 	var err error
+	if !tx.partialContextValidated {
+		if err = tx.ValidatePartialContext(); err != nil {
+			return err
+		}
+	}
+	util.Assertf(tx.partialContextValidated, "repeating run on partial context")
+
 	spool := slicepool.New()
 	defer spool.Dispose()
 
@@ -132,7 +141,6 @@ func (tx *Transaction) writeStateMutationsTo(mut common.KVWriter) {
 //   - no need to pre-parse all outputs, we can run tuples directly
 //   - we can check mandatory constraints separately
 
-// validateTxLevelConstraints evaluates all consumed and produced outputs
 func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	outs, err := tx._scanOutputs(ledger.PathToConsumedOutputs)
 	if err != nil {

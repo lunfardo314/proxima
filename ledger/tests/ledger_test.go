@@ -263,7 +263,7 @@ func TestTimelock(t *testing.T) {
 			WithTargetLock(addr0),
 		)
 		if err != nil {
-			tx, err1 := transaction.FromBytesMainChecksWithOpt(txBytes)
+			tx, err1 := transaction.ParseWithPartialValidation(txBytes)
 			require.NoError(t, err1)
 			t.Logf("resulting tx ts: %s", tx.Timestamp())
 			require.True(t, tx.Timestamp().Slot > timelockSlot)

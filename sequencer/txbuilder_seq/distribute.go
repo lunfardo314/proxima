@@ -131,7 +131,7 @@ func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 	bootstrapChainID := ledger.OriginChainID()
 
-	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	util.AssertNoError(err)
 
 	err = tx.SetFullContext(tx.InputLoaderFromState(rdr))

@@ -23,6 +23,8 @@ type (
 		totalConsumedTokenBalance int64
 		sequencerTransactionData  *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 		traceOption               int
+		partialContextValidated   bool
+		fullContextValidated      bool
 	}
 
 	TxOption func(tx *Transaction) error
@@ -56,14 +58,6 @@ func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
 		return nil, err
 	}
 	return tx, tx.ValidatePartialContext()
-}
-
-func FromBytesMainChecksWithOpt(txBytes []byte) (*Transaction, error) {
-	tx, err := Parse(txBytes)
-	if err != nil {
-		return nil, err
-	}
-	return tx, nil
 }
 
 // TxIDFromTransactionDataTree takes raw tx bytes and validates timestamp, sequencer data bytes and makes transaction ID
@@ -308,8 +302,9 @@ func (tx *Transaction) scanEndorsements() error {
 
 	var endorsementID base.TransactionID
 	path := easyfl_util.Concat(ledger.PathToEndorsements, 0)
+	mutateIdx := len(ledger.PathToEndorsements)
 	for i := 0; i < numEndorsements; i++ {
-		path[1] = byte(i)
+		path[mutateIdx] = byte(i)
 		// parse transaction ChainID
 		endorsementID, err = base.TransactionIDFromBytes(tx.MustBytesAtPath(path))
 		if err != nil {

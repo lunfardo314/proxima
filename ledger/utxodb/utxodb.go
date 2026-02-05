@@ -354,7 +354,7 @@ func (u *UTXODB) TransferTokensReturnTx(privKey ed25519.PrivateKey, targetLock l
 	if err != nil {
 		return nil, err
 	}
-	return transaction.FromBytesMainChecksWithOpt(txBytes)
+	return transaction.ParseWithPartialValidation(txBytes)
 }
 
 func (u *UTXODB) transferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lock, amount uint64) ([]byte, error) {
