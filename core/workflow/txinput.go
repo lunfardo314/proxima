@@ -56,7 +56,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte, opts ...TxInOption) (base.Transacti
 		// any malformed data chunk will be rejected immediately before all the advanced validations
 		return base.TransactionID{}, err
 	}
-	return tx.ID(), w.TxIn(tx, opts...)
+	return tx.ID(), w.attachTx(tx, opts...)
 }
 
 func (w *Workflow) TxBytesInFromAPIQueued(txBytes []byte) {
@@ -84,12 +84,12 @@ func (w *Workflow) TxBytesInFromPeerQueued(txBytesReceived []byte, metaData *txm
 	})
 }
 
-func (w *Workflow) TxInFromAPI(tx *transaction.Transaction) error {
-	return w.TxIn(tx, WithSourceType(txmetadata.SourceTypeAPI))
+func (w *Workflow) AttachTxFromAPI(tx *transaction.Transaction) error {
+	return w.attachTx(tx, WithSourceType(txmetadata.SourceTypeAPI))
 }
 
-func (w *Workflow) TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error {
-	return w.TxIn(tx, WithPeerMetadata(from, metaData))
+func (w *Workflow) AttachTxFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error {
+	return w.attachTx(tx, WithPeerMetadata(from, metaData))
 }
 
 const maxSlotsInTheFuture = 6
@@ -103,7 +103,7 @@ func (w *Workflow) checkTimestampUpperBound(tx *transaction.Transaction) error {
 	return nil
 }
 
-func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
+func (w *Workflow) attachTx(tx *transaction.Transaction, opts ...TxInOption) error {
 	options := &txInOptions{}
 	for _, opt := range opts {
 		opt(options)
@@ -162,7 +162,7 @@ func (w *Workflow) TxIn(tx *transaction.Transaction, opts ...TxInOption) error {
 	}
 
 	if time.Until(txTime) <= 0 {
-		// timestamp is in the past -> attach immediately
+		// timestamp is in the past -> attachTx immediately
 		w._attach(tx, attachOpts...)
 	} else {
 		// timestamp is in the future: let clock catch up before attaching
@@ -189,7 +189,7 @@ func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachT
 	tsTime := tx.TimestampTime()
 	util.Assertf(nowis.After(tsTime), "nowis(%d).After(tsTime(%d))", nowis.UnixNano(), tsTime.UnixNano())
 
-	w.Tracef(TraceTagTxInput, "-> attach tx %s", tx.IDShortString)
+	w.Tracef(TraceTagTxInput, "-> attachTx tx %s", tx.IDShortString)
 	attacher.AttachTransaction(tx, w, opts...)
 }
 

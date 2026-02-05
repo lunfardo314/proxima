@@ -34,8 +34,8 @@ type (
 		global.NodeGlobal
 		GetLatestReliableBranch() (ret *multistate.BranchData)
 		Branches() *branches.Branches
-		TxInFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
-		TxInFromAPI(tx *transaction.Transaction) error
+		AttachTxFromPeer(tx *transaction.Transaction, metaData *txmetadata.TransactionMetadata, from peer.ID) error
+		AttachTxFromAPI(tx *transaction.Transaction) error
 		GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID)
 		CheckTxSenderConfig() (checkSeq, checkNonSeq bool)
 	}
@@ -185,12 +185,12 @@ func (q *TxSenders) consume(inp input) {
 
 func (q *TxSenders) attachAndGossip(inp *input) {
 	if inp.FromPeer == "" {
-		if err := q.TxInFromAPI(inp.Tx); err != nil {
+		if err := q.AttachTxFromAPI(inp.Tx); err != nil {
 			q.Log().Warn("attachAndGossip from API: %v", err)
 			return
 		}
 	} else {
-		if err := q.TxInFromPeer(inp.Tx, inp.TxMetaData, inp.FromPeer); err != nil {
+		if err := q.AttachTxFromPeer(inp.Tx, inp.TxMetaData, inp.FromPeer); err != nil {
 			q.Log().Warn("attachAndGossip from peer '%s': %v", inp.FromPeer, err)
 			return
 		}
