@@ -64,6 +64,37 @@ The task is incremental, the list to be expanded in the future.
 
 **No vulnerabilities detected** in the covered areas. All attack vectors tested are properly rejected.
 
+### Session 2: Amount conservation and token theft prevention
+
+**Tests added (all passing):**
+
+| # | Test | Validation Stage | Topic |
+|---|------|-----------------|-------|
+| 14 | `TestTxAmountProduceMoreThanConsumed` | Full context | Creating tokens from nothing (1.5B from 1B) rejected |
+| 15 | `TestTxAmountProduceLessThanConsumed` | Full context | Destroying tokens (500M from 1B) rejected |
+| 16 | `TestTxAmountOffByOne/one_extra_token` | Full context | +1 token difference detected |
+| 17 | `TestTxAmountOffByOne/one_missing_token` | Full context | -1 token difference detected |
+| 18 | `TestTxAmountConservationMultipleOutputs` | Full context + UTXODB | Correct 3-way split (300M+300M+400M=1B) settles |
+| 19 | `TestTxAmountMultipleOutputsExcess` | Full context | 3x400M=1.2B from 1B rejected |
+| 20 | `TestTxTheftSpendWithWrongKey` | Full context | Bob signs to spend Alice's UTXO — sigLock fails |
+| 21 | `TestTxTheftUnlockReferenceDifferentLock` | Full context | Reference bypass: Alice's lock ≠ Bob's lock |
+| 22 | `TestTxTheftReplayTransaction` | Full context (UTXODB) | Replay of settled tx — consumed outputs gone |
+| 23 | `TestTxTheftRecipientOwnership` | Full context (UTXODB) | After transfer: Bob can spend, Alice cannot |
+
+**Key findings:**
+
+1. **Amount conservation invariant** (`consumed + inflation = produced`) is checked in TWO places as defense-in-depth:
+   - `validate.go:validateOutputs()` line 160 — "mismatch between token amounts" (fires first)
+   - `validate.go:ValidateFullContext()` line 95 — "unbalanced amount" (backup check)
+2. **Single token precision**: Even a ±1 token difference triggers rejection
+3. **sigLock constraint** (`lock_signature.easyfl`): `equal($0, txSpenderID(txSignatureData))` ensures only the private key holder can spend
+4. **Unlock reference security**: `unlockedByReference` requires `equal(self, consumedConstraintByIndex($0, lockConstraintIndex))` — byte-for-byte identical lock. Cross-address references are impossible.
+5. **Replay protection**: Consumed UTXOs are removed from state immediately. Replaying a settled transaction fails at `SetFullContext` because inputs no longer exist.
+
+**No vulnerabilities detected** in covered areas. Token conservation and access control are robust.
+
+**Total tests: 22 (13 from Session 1 + 9 from Session 2), all passing.**
+
 ### Proposed additional topics for future sessions
 
 - Endorsement validation (cross-slot rejection, pace constraints, duplicate endorsements)

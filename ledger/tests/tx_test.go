@@ -606,3 +606,451 @@ func TestTxConsumedOutputHashMechanism(t *testing.T) {
 	_ = blake2b.Sum256(nil)
 	_ = u
 }
+
+// --------------------------------------------------------------------------
+// Additional helpers
+// --------------------------------------------------------------------------
+
+// getSourceOutputs returns the non-chain sigLock UTXOs for the given address.
+func getSourceOutputs(t *testing.T, u *utxodb.UTXODB, addr ledger.SigLock) []*ledger.OutputWithID {
+	t.Helper()
+	outsData, err := u.StateReader().GetUTXOsInAccount(addr.AccountID())
+	require.NoError(t, err)
+	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
+		_, idx := o.ChainConstraint()
+		return idx == 0xff && o.Lock().Name() == ledger.SigLockName
+	})
+	require.NoError(t, err)
+	require.True(t, len(outs) > 0, "address must have UTXOs")
+	return outs
+}
+
+// validateFull parses transaction bytes, sets full context using the builder's
+// consumed outputs, and runs full validation. Returns nil on success.
+func validateFull(txBytes []byte, txb *txbuilder.TxBuilder) error {
+	tx, err := transaction.Parse(txBytes)
+	if err != nil {
+		return err
+	}
+	if err = tx.SetFullContext(txb.LoadInput); err != nil {
+		return err
+	}
+	return tx.ValidateFullContext()
+}
+
+// buildAndSignTx sets timestamp, input commitment, and signs the transaction.
+// Returns serialized transaction bytes.
+func buildAndSignTx(txb *txbuilder.TxBuilder, maxTs base.LedgerTime, privKey ed25519.PrivateKey) []byte {
+	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
+	txb.TransactionData.Timestamp = ts
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(privKey)
+	return txb.TransactionData.Bytes()
+}
+
+// --------------------------------------------------------------------------
+// TOPIC: Amount conservation — tokens always positive and preserved
+// --------------------------------------------------------------------------
+//
+// The ledger enforces the invariant for non-chain outputs (sigLock only):
+//   consumed_token_balance = produced_token_balance
+// (inflation is always 0 for non-chain outputs)
+//
+// Enforcement points:
+//   1. validate.go:validateOutputs() line 160 — "mismatch between token amounts"
+//   2. validate.go:ValidateFullContext() line 95 — defense-in-depth check
+//   3. amounts.go:AddToVector() — overflow detection during output scanning
+//   4. amounts.go:TokenBalance() — assertion that amounts are non-negative
+//   5. amounts_embed.go:evalAmounts() — minimum storage deposit on produced outputs
+
+// TestTxAmountProduceMoreThanConsumed proves that creating tokens from nothing
+// is impossible. A transaction that produces more tokens than it consumes
+// is rejected by the ledger invariant check.
+//
+// Attack scenario: attacker consumes 1B tokens and produces 1.5B tokens,
+// attempting to create 500M tokens from thin air.
+func TestTxAmountProduceMoreThanConsumed(t *testing.T) {
+	const initAmount = 1_000_000_000
+	u, privKey, srcAddr := newTestEnv(t, initAmount)
+	_, _, dstAddr := u.GenerateAddress(2)
+
+	outs := getSourceOutputs(t, u, srcAddr)
+
+	txb := txbuilder.New()
+	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	// Produce 1.5B from 1B consumed — attempt to create 500M from nothing
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(1_500_000_000)).WithLock(dstAddr)
+	})
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err) // builder doesn't check total balance
+
+	txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+	err = validateFull(txBytes, txb)
+	require.Error(t, err, "producing more tokens than consumed must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "mismatch between token amounts"))
+	t.Logf("excess production correctly rejected: %v", err)
+}
+
+// TestTxAmountProduceLessThanConsumed proves that destroying tokens is
+// impossible. A transaction that produces fewer tokens than it consumes
+// is rejected by the ledger invariant check.
+//
+// Attack scenario: attacker consumes 1B tokens but only produces 500M,
+// attempting to destroy 500M tokens (which would reduce supply).
+func TestTxAmountProduceLessThanConsumed(t *testing.T) {
+	const initAmount = 1_000_000_000
+	u, privKey, srcAddr := newTestEnv(t, initAmount)
+	_, _, dstAddr := u.GenerateAddress(2)
+
+	outs := getSourceOutputs(t, u, srcAddr)
+
+	txb := txbuilder.New()
+	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	// Produce only 500M from 1B consumed — attempt to destroy 500M
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(500_000_000)).WithLock(dstAddr)
+	})
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err)
+
+	txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+	err = validateFull(txBytes, txb)
+	require.Error(t, err, "producing fewer tokens than consumed must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "mismatch between token amounts"))
+	t.Logf("token destruction correctly rejected: %v", err)
+}
+
+// TestTxAmountOffByOne proves that even a single token difference between
+// consumed and produced amounts is detected and rejected. This tests the
+// precision of the ledger invariant enforcement.
+func TestTxAmountOffByOne(t *testing.T) {
+	const initAmount = 1_000_000_000
+
+	t.Run("one extra token", func(t *testing.T) {
+		u, privKey, srcAddr := newTestEnv(t, initAmount)
+		_, _, dstAddr := u.GenerateAddress(2)
+
+		outs := getSourceOutputs(t, u, srcAddr)
+		txb := txbuilder.New()
+		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+		require.NoError(t, err)
+		txb.PutSignatureUnlock(0)
+
+		// Produce exactly 1 token more than consumed
+		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(initAmount + 1)).WithLock(dstAddr)
+		})
+		_, err = txb.ProduceOutput(out)
+		require.NoError(t, err)
+
+		txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+		err = validateFull(txBytes, txb)
+		require.Error(t, err, "+1 token must be rejected")
+		require.NoError(t, util.MustErrorWith(err, "mismatch between token amounts"))
+	})
+
+	t.Run("one missing token", func(t *testing.T) {
+		u, privKey, srcAddr := newTestEnv(t, initAmount)
+		_, _, dstAddr := u.GenerateAddress(2)
+
+		outs := getSourceOutputs(t, u, srcAddr)
+		txb := txbuilder.New()
+		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+		require.NoError(t, err)
+		txb.PutSignatureUnlock(0)
+
+		// Produce exactly 1 token less than consumed
+		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(initAmount - 1)).WithLock(dstAddr)
+		})
+		_, err = txb.ProduceOutput(out)
+		require.NoError(t, err)
+
+		txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+		err = validateFull(txBytes, txb)
+		require.Error(t, err, "-1 token must be rejected")
+		require.NoError(t, util.MustErrorWith(err, "mismatch between token amounts"))
+	})
+}
+
+// TestTxAmountConservationMultipleOutputs proves that the total token amount
+// is correctly conserved when a transaction splits tokens across multiple
+// outputs. Each individual output amount is reasonable, and the total matches
+// exactly. This is a positive test confirming the happy path.
+func TestTxAmountConservationMultipleOutputs(t *testing.T) {
+	const initAmount = 1_000_000_000
+	u, privKey, srcAddr := newTestEnv(t, initAmount)
+	_, _, dstAddr1 := u.GenerateAddress(2)
+	_, _, dstAddr2 := u.GenerateAddress(3)
+	_, _, dstAddr3 := u.GenerateAddress(4)
+
+	outs := getSourceOutputs(t, u, srcAddr)
+
+	txb := txbuilder.New()
+	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	// Split 1B into 3 outputs: 300M + 300M + 400M = 1B (exact)
+	for _, pair := range []struct {
+		amount uint64
+		lock   ledger.SigLock
+	}{
+		{300_000_000, dstAddr1},
+		{300_000_000, dstAddr2},
+		{400_000_000, dstAddr3},
+	} {
+		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(pair.amount)).WithLock(pair.lock)
+		})
+		_, err = txb.ProduceOutput(out)
+		require.NoError(t, err)
+	}
+
+	txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+	// Should pass full validation and settle in the UTXODB
+	err = u.AddTransaction(txBytes, func(tx *transaction.Transaction, err error) error {
+		if err != nil {
+			t.Logf("unexpected validation error: %v\n%s", err, tx.String())
+		}
+		return err
+	})
+	require.NoError(t, err, "correctly split transaction must validate and settle")
+
+	// Verify balances: tokens are perfectly conserved across outputs
+	require.EqualValues(t, 300_000_000, u.Balance(dstAddr1))
+	require.EqualValues(t, 300_000_000, u.Balance(dstAddr2))
+	require.EqualValues(t, 400_000_000, u.Balance(dstAddr3))
+	require.EqualValues(t, 0, u.Balance(srcAddr))
+}
+
+// TestTxAmountMultipleOutputsExcess proves that excess total across multiple
+// outputs is detected even when individual amounts look reasonable.
+//
+// Attack scenario: attacker consumes 1B tokens and produces 3 outputs of
+// 400M each (total 1.2B), hoping the validator only checks individual
+// outputs rather than the total.
+func TestTxAmountMultipleOutputsExcess(t *testing.T) {
+	const initAmount = 1_000_000_000
+	u, privKey, srcAddr := newTestEnv(t, initAmount)
+	_, _, dstAddr := u.GenerateAddress(2)
+
+	outs := getSourceOutputs(t, u, srcAddr)
+
+	txb := txbuilder.New()
+	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	// Produce 3 outputs of 400M each = 1.2B from 1B consumed
+	for i := 0; i < 3; i++ {
+		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(400_000_000)).WithLock(dstAddr)
+		})
+		_, err = txb.ProduceOutput(out)
+		require.NoError(t, err)
+	}
+
+	txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+	err = validateFull(txBytes, txb)
+	require.Error(t, err, "multiple outputs exceeding consumed total must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "mismatch between token amounts"))
+	t.Logf("excess across multiple outputs correctly rejected: %v", err)
+}
+
+// --------------------------------------------------------------------------
+// TOPIC: Token theft prevention — unauthorized spending impossible
+// --------------------------------------------------------------------------
+//
+// The sigLock constraint (lock_signature.easyfl) enforces on consumed outputs:
+//   equal($0, txSpenderID(txSignatureData))
+// where $0 is the spender ID stored in the lock (blake2b of sigType+pubKey),
+// and txSpenderID is derived from the transaction signature's public key.
+//
+// Only the holder of the matching private key can produce a valid signature
+// whose spender ID matches the lock. The unlock-by-reference mechanism
+// requires byte-for-byte identical lock constraints with strictly smaller index.
+
+// TestTxTheftSpendWithWrongKey proves that an attacker cannot spend someone
+// else's tokens by signing with their own key.
+//
+// Attack scenario: Alice has tokens locked to her address. Bob creates a
+// transaction consuming Alice's UTXO and signs with Bob's private key.
+// The sigLock constraint on Alice's consumed output checks that the
+// transaction's spender ID matches Alice's address — Bob's ID won't match.
+func TestTxTheftSpendWithWrongKey(t *testing.T) {
+	const initAmount = 1_000_000_000
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+
+	// Alice has tokens
+	_, _, aliceAddr := u.GenerateAddress(1)
+	err := u.TokensFromFaucet(aliceAddr, initAmount)
+	require.NoError(t, err)
+
+	// Bob is the attacker
+	bobPrivKey, _, bobAddr := u.GenerateAddress(2)
+	require.NotEqual(t, aliceAddr, bobAddr)
+
+	aliceOuts := getSourceOutputs(t, u, aliceAddr)
+
+	// Bob builds a transaction consuming Alice's output
+	txb := txbuilder.New()
+	_, maxTs, err := txb.ConsumeOutputsNoUnlock(aliceOuts...)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	// Send all of Alice's tokens to Bob's address
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(initAmount)).WithLock(bobAddr)
+	})
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err)
+
+	// Bob signs with HIS key (not Alice's)
+	txBytes := buildAndSignTx(txb, maxTs, bobPrivKey)
+
+	// Validation must reject: sigLock on Alice's consumed output checks
+	// equal($0=Alice_spender_ID, txSpenderID=Bob_spender_ID) → false
+	err = validateFull(txBytes, txb)
+	require.Error(t, err, "spending with wrong private key must be rejected")
+	// The sigLock constraint (named 'a') on the consumed output fails
+	util.RequireErrorWithOld(t, err, "failed")
+	t.Logf("wrong key theft correctly rejected: %v", err)
+}
+
+// TestTxTheftUnlockReferenceDifferentLock proves that unlock references
+// cannot be used to bypass lock constraints across different addresses.
+//
+// Attack scenario: Bob legitimately owns some tokens. Alice also owns tokens
+// at a different address. Bob creates a transaction consuming both outputs:
+// his own (input 0, properly signed) and Alice's (input 1, using unlock
+// reference to input 0). The unlockedByReference check in lock_signature.easyfl
+// requires: equal(self, consumedConstraintByIndex($0, lockConstraintIndex))
+// Since Alice's sigLock bytes differ from Bob's sigLock bytes, this fails.
+func TestTxTheftUnlockReferenceDifferentLock(t *testing.T) {
+	const initAmount = 1_000_000_000
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+
+	bobPrivKey, _, bobAddr := u.GenerateAddress(1)
+	_, _, aliceAddr := u.GenerateAddress(2)
+	err := u.TokensFromFaucet(bobAddr, initAmount)
+	require.NoError(t, err)
+	err = u.TokensFromFaucet(aliceAddr, initAmount)
+	require.NoError(t, err)
+
+	bobOuts := getSourceOutputs(t, u, bobAddr)
+	aliceOuts := getSourceOutputs(t, u, aliceAddr)
+
+	// Build transaction consuming both: Bob's (input 0) and Alice's (input 1)
+	txb := txbuilder.New()
+	_, err = txb.ConsumeOutput(bobOuts[0].Output, bobOuts[0].ID)
+	require.NoError(t, err)
+	_, err = txb.ConsumeOutput(aliceOuts[0].Output, aliceOuts[0].ID)
+	require.NoError(t, err)
+
+	// Input 0 (Bob): signature unlock — Bob's sig matches Bob's lock
+	txb.PutSignatureUnlock(0)
+	// Input 1 (Alice): unlock reference to input 0 — trying to bypass Alice's lock
+	err = txb.PutUnlockReference(1, ledger.ConstraintIndexLock, 0)
+	require.NoError(t, err)
+
+	// Produce single output with combined balance (amounts are correct)
+	totalAmount := bobOuts[0].Output.TokenBalance() + aliceOuts[0].Output.TokenBalance()
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(totalAmount)).WithLock(bobAddr)
+	})
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err)
+
+	maxTs := base.MaximumTime(bobOuts[0].Timestamp(), aliceOuts[0].Timestamp())
+	txBytes := buildAndSignTx(txb, maxTs, bobPrivKey)
+
+	// Validation must reject: on input 1 (Alice's output), the unlock reference
+	// checks equal(self=AliceLock, consumedConstraintByIndex(0, lockIdx)=BobLock)
+	// Alice's sigLock bytes ≠ Bob's sigLock bytes → reference fails.
+	// Direct signature check also fails: Alice's spender ID ≠ Bob's spender ID.
+	err = validateFull(txBytes, txb)
+	require.Error(t, err, "unlock reference with different lock must be rejected")
+	util.RequireErrorWithOld(t, err, "failed")
+	t.Logf("reference bypass theft correctly rejected: %v", err)
+}
+
+// TestTxTheftReplayTransaction proves that a settled transaction cannot be
+// replayed to double-spend the same outputs. Once consumed, the UTXOs are
+// removed from the ledger state and cannot be consumed again.
+func TestTxTheftReplayTransaction(t *testing.T) {
+	const initAmount = 1_000_000_000
+	u, privKey, srcAddr := newTestEnv(t, initAmount)
+	_, _, dstAddr := u.GenerateAddress(2)
+
+	// Build and settle a valid transfer
+	txBytes, _ := buildValidTransferTxBytes(t, u, privKey, srcAddr, dstAddr, 100_000_000)
+	err := u.AddTransaction(txBytes)
+	require.NoError(t, err, "first settlement must succeed")
+
+	// Verify the transfer worked
+	require.EqualValues(t, 100_000_000, u.Balance(dstAddr))
+	require.EqualValues(t, initAmount-100_000_000, u.Balance(srcAddr))
+
+	// Attempt to replay the exact same transaction bytes.
+	// The consumed outputs no longer exist in the state (they were spent).
+	// SetFullContext will fail to load the consumed inputs.
+	err = u.AddTransaction(txBytes)
+	require.Error(t, err, "replaying a settled transaction must be rejected")
+	t.Logf("transaction replay correctly rejected: %v", err)
+}
+
+// TestTxTheftRecipientOwnership proves that after a transfer, the tokens
+// are exclusively controlled by the recipient. The original sender cannot
+// spend the recipient's tokens — only the recipient's private key works.
+func TestTxTheftRecipientOwnership(t *testing.T) {
+	const initAmount = 1_000_000_000
+	const transferAmount = 500_000_000
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	alicePrivKey, _, aliceAddr := u.GenerateAddress(1)
+	bobPrivKey, _, bobAddr := u.GenerateAddress(2)
+
+	// Fund Alice
+	err := u.TokensFromFaucet(aliceAddr, initAmount)
+	require.NoError(t, err)
+
+	// Alice sends 500M to Bob via normal transfer
+	err = u.TransferTokens(alicePrivKey, bobAddr, transferAmount)
+	require.NoError(t, err)
+	require.EqualValues(t, transferAmount, u.Balance(bobAddr))
+
+	// Part 1: Bob CAN spend his tokens (proves recipient has exclusive control)
+	_, _, charlieAddr := u.GenerateAddress(3)
+	err = u.TransferTokens(bobPrivKey, charlieAddr, transferAmount)
+	require.NoError(t, err, "recipient must be able to spend received tokens")
+	require.EqualValues(t, transferAmount, u.Balance(charlieAddr))
+	require.EqualValues(t, 0, u.Balance(bobAddr))
+
+	// Part 2: Alice CANNOT spend Bob's tokens
+	// Fund Bob again for this test
+	err = u.TokensFromFaucet(bobAddr, transferAmount)
+	require.NoError(t, err)
+
+	// Alice attempts to spend Bob's tokens using the high-level API
+	// MakeTransferInputData loads Bob's outputs but signs with Alice's key
+	par, err := u.MakeTransferInputData(alicePrivKey, bobAddr, base.NilLedgerTime)
+	require.NoError(t, err)
+
+	err = u.DoTransfer(par.WithTargetLock(aliceAddr).WithAmount(transferAmount))
+	require.Error(t, err, "sender must not be able to spend recipient's tokens")
+	util.RequireErrorWithOld(t, err, "failed")
+	t.Logf("sender correctly cannot spend recipient's tokens: %v", err)
+}
