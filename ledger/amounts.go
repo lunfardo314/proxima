@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	_ "embed"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -14,6 +15,9 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
+
+//go:embed def/amounts.easyfl
+var amountsSource string
 
 type Amounts []int64
 
@@ -216,19 +220,3 @@ func init() {
 
 	})
 }
-
-const amountsAuxSource = `
-// $0 - 'amounts'' bytecode
-// $1 - index of 'amounts' vector element, 1 byte
-func amountAt:
-if(
-   lessThan($1, parseNumArgs($0)),
-   uint8Bytes(parseInlineDataArgument($0, $1, #amounts)),
-   u64/0
-)
-
-// $0 path to output
-func tokenBalanceByOutputPath : amountAt(atPath(concat($0, amountsConstraintIndex)), 0)
-
-func selfTokenBalanceValue: amountAt(selfSiblingConstraint(amountsConstraintIndex),0)
-`

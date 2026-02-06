@@ -30,9 +30,9 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	)
 	util.AssertNoError(err)
 
-	lib.MustExtendMany(amountsAuxSource)
 	lib.MustExtendMany(addressED25519ConstraintSource)
 	lib.MustExtendMany(timelockSource)
+	lib.MustExtendMany(amountsSource)
 	lib.MustExtendMany(stemLockSource)
 	lib.MustExtendMany(chainConstraintSource)
 	lib.MustExtendMany(sequencerConstraintSource)

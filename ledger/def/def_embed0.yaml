@@ -14,7 +14,7 @@ functions:
     short: true
   # long
   -
-    sym: "amounts"
+    sym: "amountsEmbedded"
     description: "UTXO constraint for the vector of amounts"
     numArgs: -1
     embedded_as: evalAmounts

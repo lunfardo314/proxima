@@ -1,5 +1,5 @@
 
-func producedStemLockOfSelfTx : lockConstraint(producedOutputByIndex(txStemOutputIndex))
+func producedStemLockOfSelfTx : atPath(concat(pathToProducedOutputs, txStemOutputIndex, lockConstraintIndex))
 
 func _predOutputIDOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 0)
 
