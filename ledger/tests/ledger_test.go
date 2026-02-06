@@ -179,7 +179,6 @@ func TestTxID(t *testing.T) {
          byte(sub(numProducedOutputs,1), 7), 
          slice(blake2b(
             concat(
-              atPath(pathToTxConstraints), 
               atPath(pathToTimestamp),
               atPath(pathToSequencerDataBytes),
               atPath(pathToInputCommitment), 
@@ -188,6 +187,7 @@ func TestTxID(t *testing.T) {
               atPath(pathToUnlockParams),
               atPath(pathToProducedOutputs), 
               atPath(pathToEndorsements),
+              atPath(pathToTxConstraints), 
               atPath(pathToOtherData)
             )
          ),6,31))

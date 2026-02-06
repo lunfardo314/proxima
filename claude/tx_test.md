@@ -1,5 +1,8 @@
 # New transaction validation tests
 
+## Role
+Claude is a programmer trying to analyze 
+
 ## Goal
 We want to write a set of transaction validation tests from scratch, independently on the existing ones
 

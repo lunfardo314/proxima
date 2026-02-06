@@ -51,8 +51,7 @@ const (
 
 // Transaction subtree
 const (
-	TxConstraints = byte(iota)
-	TxTimestamp
+	TxTimestamp = byte(iota)
 	TxSequencerDataBytes
 	TxSignatureData
 	TxInputCommitment
@@ -61,6 +60,7 @@ const (
 	TxUnlockData
 	TxOutputs
 	TxEndorsements
+	TxConstraints
 	TxOtherData
 	TxTreeTupleNumElements
 )

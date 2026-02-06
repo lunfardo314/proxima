@@ -128,28 +128,21 @@ func (tx *Transaction) SetTraceOption(opt int) {
 	tx.traceOption = opt
 }
 
-// tx essence is concatenation of all top level elements except signature
-var _essenceIndices = func() []byte {
-	ret := make([]byte, 20)
-	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
-		if i != ledger.TxSignatureData {
-			ret = append(ret, i)
-		}
-	}
-	return ret
-}()
-
+// hashEssenceBytesFromTransactionDataTree hashes top tuple elements
+// of the transaction except signature
 func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
 	hasher, err := blake2b.New256(nil)
 	util.AssertNoError(err)
 
 	var d []byte
-	for _, i := range _essenceIndices {
-		d, err = txTree.BytesAtPath([]byte{i})
-		if err != nil {
-			return [32]byte{}, err
+	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
+		if i != ledger.TxSignatureData {
+			d, err = txTree.BytesAtPath([]byte{i})
+			if err != nil {
+				return [32]byte{}, err
+			}
+			hasher.Write(d)
 		}
-		hasher.Write(d)
 	}
 	copy(ret[:], hasher.Sum(nil))
 	return
