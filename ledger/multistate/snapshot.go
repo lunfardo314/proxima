@@ -304,7 +304,7 @@ func (s *SnapshotFileStream) GetLedgerConstants() (*ledger.Constants, error) {
 	// Find slot 0 library
 	for _, entry := range s.UpgradeLibraries {
 		if entry.Slot == 0 {
-			lib, err := ledger.ParseLibraryFromYAML(entry.LibraryYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
+			lib, err := ledger.ParseLibraryFromYAML(entry.LibraryYAML, ledger.GetEmbeddedFunctionResolver)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse library: %v", err)
 			}

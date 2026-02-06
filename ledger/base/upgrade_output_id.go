@@ -11,7 +11,7 @@ package base
 // - Byte 32: output index = 0xff (255)
 //
 // No-collision guarantee:
-// 1. At slot 0 (genesis), only 2 outputs exist (indices 0 and 1), so index 255 is impossible
+// 1. At slot 0 (genesis), only 3 real outputs exist (indices 0, 1, 2), so index 255 is impossible
 // 2. For non-genesis slots, the hash portion being the slot number (zero-padded) is
 //    computationally infeasible to match with a real blake2b hash
 

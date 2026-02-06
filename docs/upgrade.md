@@ -9,7 +9,7 @@ Proxima supports incremental upgrades to its ledger library (EasyFL definitions 
 - Activates at a specific **upgrade slot** (the first slot where new rules apply)
 - Is deterministic across all nodes
 - Maintains backward compatibility for historical transaction validation
-- Creates an **upgrade UTXO** committed to the ledger state
+- Creates an **upgrade UTXO** committed to the ledger state, forming a hash chain of all upgrades
 
 ## Upgrade Lifecycle
 
@@ -20,6 +20,41 @@ Proxima supports incremental upgrades to its ledger library (EasyFL definitions 
 4. VERIFICATION  → All nodes use new rules from upgrade slot onwards
 ```
 
+## Key Data Structures
+
+### UpgradeChainData
+
+Each library version carries chain data that links it to its predecessor, forming a hash chain commitment across the entire upgrade history:
+
+```go
+// ledger/lib.go
+type UpgradeChainData struct {
+    UpgradeSlot     uint32   // The slot this library was upgraded at
+    LibraryHash     [32]byte // Hash of this library
+    PrevLibraryHash [32]byte // Hash of the previous library (BaseLibraryHash for slot 0)
+    PrevUpgradeSlot uint32   // Slot of the previous upgrade (MaxSlot for slot 0)
+}
+```
+
+This structure is cached in each `Library` instance and used for:
+- Verifying upgrade UTXO correctness
+- Traversing the upgrade history
+- Displaying upgrade chain in CLI (`proxi db upgrades`)
+
+### Upgrade UTXO
+
+Each upgrade is committed to the ledger state via an unspendable UTXO with 5 constraints:
+
+| Index | Content | Description |
+|-------|---------|-------------|
+| 0 | Amount: `0` | No tokens (unspendable) |
+| 1 | Lock: empty inline data | Evaluates to `false` (unspendable) |
+| 2 | Library hash (32 bytes) | Hash of the new compiled library |
+| 3 | Previous library hash (32 bytes) | Hash of the predecessor library |
+| 4 | Previous upgrade slot (4 bytes BigEndian) | Slot of the predecessor upgrade (`MaxSlot` for slot 0) |
+
+The synthetic OutputID format is defined in `ledger/base/upgrade_output_id.go`.
+
 ## Creating an Upgrade
 
 ### Step 1: Define the Upgrade Slot
@@ -27,21 +62,20 @@ Proxima supports incremental upgrades to its ledger library (EasyFL definitions 
 Edit `ledger/def_upgrade.go` and set the `PendingUpgrade` variable:
 
 ```go
-func init() {
-    PendingUpgrade = &UpgradeDefinition{
-        Slot:  100000,  // First slot where new rules apply
-        Build: buildUpgradeNLibrary,
-    }
+var PendingUpgrade = &UpgradeDefinition{
+    Slot:  100000,  // First slot where new rules apply
+    Build: buildUpgradeNLibrary,
 }
 ```
 
-**Important:** Choose a slot far enough in the future to allow all node operators to update.
+**Important:** Choose a slot far enough in the future to allow all node operators to update. There is a minimum spacing of `MinSlotsBetweenUpgrades` (100) slots between consecutive upgrades, enforced by `WriteUpgradeLibrary` in `multistate/upgrades.go`.
 
 ### Step 2: Create YAML Definitions
 
-Create a file `ledger/upgradeN_defs.yaml` with your EasyFL function definitions:
+Create YAML definition files in `ledger/def/` (following the existing pattern `def/def_*.yaml`):
 
 ```yaml
+# ledger/def/def_upgradeN.yaml
 # Upgrade N definitions
 # Activates at slot XXXXX
 
@@ -64,9 +98,9 @@ functions:
     embedded_as: evalMyEmbeddedFunc  # Maps to Go function name
 ```
 
-### Step 3: Create Resolver (if using embedded functions)
+### Step 3: Create Upgrade Go File (if using embedded functions)
 
-Create `ledger/def_resolvers_upgradeN.go`:
+Create `ledger/def_upgradeN.go` (following the existing pattern of `def_upgrade0.go`):
 
 ```go
 package ledger
@@ -76,7 +110,7 @@ import (
     "github.com/lunfardo314/easyfl"
 )
 
-//go:embed upgradeN_defs.yaml
+//go:embed def/def_upgradeN.yaml
 var _upgradeNDefsYAML []byte
 
 // resolveEmbeddedUpgradeN resolves embedded functions from this upgrade.
@@ -107,14 +141,18 @@ func init() {
         Resolver EmbeddedResolver
     }{
         {0, resolveEmbeddedUpgrade0},
-        {100, resolveEmbeddedUpgradeN},  // Add your resolver
+        {100000, resolveEmbeddedUpgradeN},  // Add your resolver
     }
 }
 ```
 
+**Resolver resolution order:** `GetEmbeddedFunctionResolver` searches resolvers in descending slot order (newest first), then falls back to the base EasyFL resolver. This means a newer upgrade's resolver can override symbols from older upgrades, which is how `embedded_as` function replacement works.
+
+Upgrades that only add pure EasyFL formulas (no new embedded functions) don't need an entry in `upgradeEmbeddedResolvers`.
+
 ### Step 5: Create the Build Function
 
-Add the build function (in your resolver file or `def_upgrade.go`):
+Add the build function in your upgrade file (`def_upgradeN.go`):
 
 ```go
 func buildUpgradeNLibrary(prevYAML []byte) ([]byte, error) {
@@ -124,16 +162,18 @@ func buildUpgradeNLibrary(prevYAML []byte) ([]byte, error) {
         return nil, err
     }
 
-    // Apply the upgrade definitions
-    err = lib.UpgradeFromYAML(_upgradeNDefsYAML, GetEmbeddedFunctionResolver(lib))
+    // Apply the upgrade definitions using upgradeLibrary helper
+    err = upgradeLibrary(lib, _upgradeNDefsYAML)
     if err != nil {
         return nil, err
     }
 
-    // Return compiled YAML
+    // Return compiled YAML (true = include bytecode)
     return lib.ToYAML(true), nil
 }
 ```
+
+The `Build` function signature is `func(prevYAML []byte) ([]byte, error)` — it receives the previous library's compiled YAML and must return the upgraded library's compiled YAML.
 
 ## Rules and Constraints
 
@@ -149,6 +189,8 @@ func buildUpgradeNLibrary(prevYAML []byte) ([]byte, error) {
 - **Delete** functions (old code must remain for historical validation)
 - **Change** `numArgs` of existing functions (EasyFL enforces this)
 - **Remove** embedded function implementations
+- **Change** genesis time or description (immutable across all upgrades, enforced by `validateGenesisIdentityImmutability`)
+- **Place** upgrades closer than `MinSlotsBetweenUpgrades` (100) slots apart
 
 ### Backward Compatibility
 
@@ -167,7 +209,7 @@ func embeddedTicksBefore_v1(...) { /* fixed code */ }
 ```
 
 ```yaml
-# In upgradeN_defs.yaml
+# In def/def_upgradeN.yaml
 functions:
   -
     sym: "ticksBefore"
@@ -218,22 +260,21 @@ The upgrade takes effect **immediately at the activation slot**. The branch tran
 
 When a branch transaction is produced at or after an upgrade slot:
 
-1. Node checks if upgrade UTXO exists in baseline state
-2. If not present, the branch **must** include the upgrade UTXO
-3. The UTXO commits to the new library hash
+1. `InjectMissingUpgradeUTXOs` checks if upgrade UTXO exists in baseline state
+2. If not present, the branch **must** include the upgrade UTXO in its mutations
+3. The UTXO commits to the new library hash and links to the previous upgrade (hash chain)
 
-**Upgrade UTXO Format:**
-- Amount: `0` (unspendable)
-- Lock: `false`
-- Constraint 2: hash of new library
-- Constraint 3: hash of previous library
-- Constraint 4: previous upgrade slot (4 bytes BigEndian)
+The injection uses an optimization (`HasPendingUpgradeForSlot`) that tracks the next pending upgrade slot to avoid scanning all upgrades on every branch commit.
 
 ### Edge Case: No Branch at Exact Upgrade Slot
 
 If no branch is produced exactly at the upgrade slot:
-- The first branch at slot ≥ upgrade slot commits the upgrade UTXO
+- The first branch at slot >= upgrade slot commits the upgrade UTXO
 - Determinism is preserved (OutputID derived from upgrade slot, not commit slot)
+
+### Snapshot Format
+
+Snapshots include all upgrade libraries as `UpgradeLibraryEntry` records (slot + compiled YAML). When restoring from a snapshot, all upgrade libraries are written to the DB partition before initializing the library cache. This ensures the full upgrade history is preserved across snapshot round-trips.
 
 ## Testing Upgrades
 
@@ -264,22 +305,29 @@ go test ./ledger/multistate/... -run Snapshot
 
 | File | Purpose |
 |------|---------|
-| `ledger/def_upgrade.go` | `PendingUpgrade` definition, `UpgradeDefinition` type |
-| `ledger/upgradeN_defs.yaml` | EasyFL definitions for upgrade N |
-| `ledger/def_resolvers_upgradeN.go` | Embedded function resolver for upgrade N |
-| `ledger/def_embed.go` | Resolver list, `GetEmbeddedFunctionResolver` |
-| `ledger/upgrade_utxo.go` | Upgrade UTXO creation and parsing |
-| `ledger/multistate/upgrades.go` | DB storage for upgrade libraries |
-| `ledger/multistate/upgrade_inject.go` | Injection during branch commits |
-| `proxi/db_cmd/upgrades.go` | CLI command for viewing upgrades |
+| `ledger/def_upgrade.go` | `PendingUpgrade` variable, `UpgradeDefinition` type, `upgradeLibrary` helper |
+| `ledger/def_upgradeN.go` | Upgrade N: YAML embed, resolver function, build function |
+| `ledger/def/def_*.yaml` | EasyFL YAML definitions (embedded, helpers, general functions) |
+| `ledger/def_embed.go` | `upgradeEmbeddedResolvers` list, `GetEmbeddedFunctionResolver`, `EmbeddedResolver` type |
+| `ledger/lib.go` | `Library` struct, `UpgradeChainData` |
+| `ledger/lib_singleton.go` | `L(slot)`, `LibraryCache`, `MustInitLibraryCache`, `MustInitLibraryCacheFromYAML` |
+| `ledger/upgrade_utxo.go` | `UpgradeUTXO()`, `ParseUpgradeUTXO()`, `VerifyUpgradeUTXO()`, `BaseLibraryHash()` |
+| `ledger/base/upgrade_output_id.go` | Synthetic OutputID: `UpgradeOutputID()`, `IsUpgradeOutputID()` |
+| `ledger/multistate/upgrades.go` | DB storage: `WriteUpgradeLibrary()`, `GetUpgradeLibraryDirect()`, `MinSlotsBetweenUpgrades` |
+| `ledger/multistate/upgrade_inject.go` | `InjectMissingUpgradeUTXOs()` — injection during branch commits |
+| `ledger/multistate/snapshot.go` | Snapshot format with `UpgradeLibraryEntry` records |
+| `ledger/multistate/genesis_snapshot.go` | `BuildGenesisSnapshotData()`, `CreateGenesisSnapshot()` |
+| `proxi/db_cmd/upgrades.go` | `proxi db upgrades` CLI command |
 
 ## Checklist for New Upgrades
 
-- [ ] Choose upgrade slot (well in the future)
-- [ ] Create `ledger/upgradeN_defs.yaml` with function definitions
-- [ ] Create `ledger/def_resolvers_upgradeN.go` (if using embedded functions)
-- [ ] Add resolver to `upgradeEmbeddedResolvers` in `def_embed.go`
-- [ ] Set `PendingUpgrade` in `def_upgrade.go`
+- [ ] Choose upgrade slot (well in the future, >= 100 slots from previous upgrade)
+- [ ] Create `ledger/def/def_upgradeN.yaml` with function definitions
+- [ ] Create `ledger/def_upgradeN.go` with build function and resolver (if using embedded functions)
+- [ ] Add resolver to `upgradeEmbeddedResolvers` in `ledger/def_embed.go`
+- [ ] Set `PendingUpgrade` in `ledger/def_upgrade.go`
+- [ ] Ensure genesis time and description are unchanged
 - [ ] Write tests for new functions
 - [ ] Test upgrade activation on testnet
+- [ ] Test snapshot round-trip with upgrade
 - [ ] Document changes in release notes

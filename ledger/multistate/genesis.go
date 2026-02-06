@@ -107,7 +107,7 @@ func ScanGenesisState(stateStore global.Store) (*ledger.Constants, common.VCommi
 	if !found {
 		return nil, nil, fmt.Errorf("ScanGenesisState: library not found in upgrade partition at slot 0")
 	}
-	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolverUpgrade0)
+	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ScanGenesisState: failed to parse library: %w", err)
 	}

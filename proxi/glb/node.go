@@ -56,7 +56,7 @@ func InitLedgerFromNode() {
 	}
 	Infof("successfully parsed ledger definitions. Library hash = %s", fromYAML.Hash)
 
-	ledger.MustInitSingleton(ledgerDefinitionData)
+	ledger.MustInitLibraryCacheFromYAML(ledgerDefinitionData)
 	Infof("successfully connected to the node at %s", viper.GetString("api.endpoint"))
 	Infof("verbose = %v", IsVerbose())
 	h := ledger.L(base.MaxSlot).LibraryHash()

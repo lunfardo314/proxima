@@ -167,13 +167,6 @@ func GetEmbeddedFunctionResolver(lib *easyfl.Library[*EvalContext]) func(sym str
 	}
 }
 
-// GetEmbeddedFunctionResolverUpgrade0 is kept for backward compatibility.
-// It simply calls GetEmbeddedFunctionResolver.
-// Deprecated: Use GetEmbeddedFunctionResolver instead.
-func GetEmbeddedFunctionResolverUpgrade0(lib *easyfl.Library[*EvalContext]) func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
-	return GetEmbeddedFunctionResolver(lib)
-}
-
 // embedded functions
 
 func evalPath(par *easyfl.CallParams[*EvalContext]) []byte {

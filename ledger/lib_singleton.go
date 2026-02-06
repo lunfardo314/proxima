@@ -224,46 +224,28 @@ func MustInitLibraryCache(store common.Traversable) {
 	runInlineTests(lib)
 }
 
-// MustInitSingleton initializes the ledger with identity data bytes.
-// DEPRECATED: Use MustInitLibraryCache with a state store instead.
-// This function is kept for backward compatibility during migration.
-func MustInitSingleton(defYaml []byte) {
-	libraryCacheMutex.Lock()
+// MustInitLibraryCacheFromYAML initializes the library cache from raw YAML bytes.
+// It creates a minimal in-memory store with a single library at slot 0.
+// Use this when no persistent state store is available (CLI tools, testing).
+// Unlike MustInitLibraryCache, this function allows re-initialization by resetting
+// any existing cache first (safe for testing where multiple init calls may occur).
+func MustInitLibraryCacheFromYAML(defYaml []byte) {
+	// Reset if already initialized — this is safe because callers of this function
+	// don't rely on a persistent DB store (they provide fresh YAML each time).
+	libraryCacheMutex.RLock()
+	alreadyInit := libraryCache != nil && libraryCache.store != nil
+	libraryCacheMutex.RUnlock()
 
-	// Create a minimal cache with the provided data
-	if libraryCache == nil {
-		libraryCache = &LibraryCache{
-			cache: make(map[uint32]*Library),
-		}
+	if alreadyInit {
+		ResetForTesting()
 	}
 
-	lib, err := ParseLibraryFromYAML(defYaml, GetEmbeddedFunctionResolverUpgrade0)
-	util.AssertNoError(err)
-
-	result := newLibrary(lib, defYaml)
-	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
-	registerConstraints0(result)
-	result.MustPreCompileTxIntegrityValidators()
-	libraryCache.cache[0] = result
-
-	// Set a dummy store that always returns the genesis library
-	libraryCache.store = &singleLibraryStore{data: defYaml}
-
-	// Initialize slot index for single library case
-	libraryCache.upgradeSlots = []uint32{0}
-	libraryCache.slotToYAML = map[uint32][]byte{0: defYaml}
-	libraryCache.latestUpgradeSlot = 0
-	libraryCache.latestLib = result
-
-	libraryCacheMutex.Unlock()
-
-	ledgerReset.Store(false)
-
-	runInlineTests(result)
+	store := &singleLibraryStore{data: defYaml}
+	MustInitLibraryCache(store)
 }
 
-// singleLibraryStore is a minimal store implementation for backward compatibility.
-// It only supports a single library at slot 0.
+// singleLibraryStore is a minimal Traversable store for a single library at slot 0.
+// Used by MustInitLibraryCacheFromYAML when no persistent DB is available.
 type singleLibraryStore struct {
 	data []byte
 }
@@ -407,7 +389,7 @@ func InitWithTestingLedgerData(opts ...ParametersOption) ed25519.PrivateKey {
 	}
 	lib := LibraryFromParameters(params)
 	lib.MustPreCompileTxIntegrityValidators()
-	MustInitSingleton(lib.ToYAML(true))
+	MustInitLibraryCacheFromYAML(lib.ToYAML(true))
 	return pk
 }
 

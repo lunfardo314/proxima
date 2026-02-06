@@ -31,7 +31,7 @@ func InitLedgerFromDB() {
 func InitLedgerFromProvidedID() {
 	idBytes, err := os.ReadFile(LedgerIDFileName)
 	AssertNoError(err)
-	ledger.MustInitSingleton(idBytes)
+	ledger.MustInitLibraryCacheFromYAML(idBytes)
 	Infof("ledger was initialized from definitions provided in file '%s'", LedgerIDFileName)
 }
 

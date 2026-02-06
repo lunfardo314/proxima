@@ -63,7 +63,7 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 	libraryYAML := ledger.LibraryYAMLFromParameters(params, true)
 
 	// Parse library to get constants and validate
-	lib, err := ledger.ParseLibraryFromYAML(libraryYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
+	lib, err := ledger.ParseLibraryFromYAML(libraryYAML, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse library: %w", err)
 	}
@@ -292,7 +292,7 @@ func (d *GenesisSnapshotData) GetConstants() *ledger.Constants {
 
 // GetLibraryHash returns the hash of the genesis library.
 func (d *GenesisSnapshotData) GetLibraryHash() ([32]byte, error) {
-	lib, err := ledger.ParseLibraryFromYAML(d.LibraryYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
+	lib, err := ledger.ParseLibraryFromYAML(d.LibraryYAML, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return [32]byte{}, err
 	}

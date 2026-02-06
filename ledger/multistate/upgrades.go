@@ -200,14 +200,14 @@ func validateGenesisIdentityImmutability(store common.KVReader, newLibraryYAML [
 	}
 
 	// Parse genesis library
-	genesisLib, err := ledger.ParseLibraryFromYAML(genesisYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
+	genesisLib, err := ledger.ParseLibraryFromYAML(genesisYAML, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return fmt.Errorf("failed to parse genesis library: %w", err)
 	}
 	genesisConstants := ledger.ConstantsFromLibrary(genesisLib)
 
 	// Parse new library (use same resolver for now - upgrades may need their own resolver)
-	newLib, err := ledger.ParseLibraryFromYAML(newLibraryYAML, ledger.GetEmbeddedFunctionResolverUpgrade0)
+	newLib, err := ledger.ParseLibraryFromYAML(newLibraryYAML, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return fmt.Errorf("failed to parse new library: %w", err)
 	}
