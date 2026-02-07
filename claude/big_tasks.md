@@ -6,6 +6,7 @@
 - ~~revisit upper level of transaction structure~~
 - ~~revisit delegation constants, optimized serialization of `amounts`~~
 - ~~revisit EasyFL: the perspective of reserved opcodes of extended functions.~~ (another solution)
+- secure vault for sequencer's private key
 - revisit chain inflation constants. 
 - Revisit branch inflation bonus, from the perspective of sequencer incentives 
 - compulsory delegation
