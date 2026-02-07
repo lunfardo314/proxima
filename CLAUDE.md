@@ -62,6 +62,14 @@ go test -v ./...
 | `global`             | Shared infrastructure, logging, metrics, context                                                                                        |
 | `claude`             | Claude Code .md files with tasks, contexts, task status                                                                                 |
 
+### Single-signature transaction model
+
+Each transaction carries exactly one signature (`TxSignatureData`). This is an intentional design choice:
+- The single signature uniquely identifies the spender. All consumed inputs must be unlockable by that spender
+- Secure spender identification is crucial for spam prevention in the `txsenders` module (rate-limiting by public key)
+- Tag-along commands to the sequencer rely on unambiguous sender identification
+- Multi-signature schemes (m-of-n) are intentionally not supported at the protocol level
+
 ### Some facts
 
 * read [Proxima documentation](https://lunfardo314.github.io) for general proxima narrative

@@ -181,17 +181,6 @@ The task is incremental, the list to be expanded in the future.
 - Use EasyFL constants for per-output and per-constraint limits (checked during scanning)
 - Critical limit always enforced, fine-grained limits upgradeable
 
-### Key design finding: single-signature model
-
-Proxima intentionally supports only a single transaction signature. This is a deliberate design
-choice, not a limitation:
-- The mandatory single signature uniquely identifies the spender
-- All consumed inputs must be unlockable by that single spender (via signature or reference)
-- Secure spender identification is also crucial for:
-  - **Spam prevention**: the `txsenders` module rate-limits by public key
-  - **Tag-along commands**: sequencer identifies the sender for tag-along output handling
-- Multi-signature schemes (m-of-n) are intentionally not supported at the protocol level
-
 ### Next topics for future sessions
 
 Priority order:
