@@ -136,11 +136,13 @@ The task is incremental, the list to be expanded in the future.
 
 Data size limit analysis and implementation moved to [claude/limits.md](limits.md).
 
+Chain constraint analysis and test plan: [claude/chain_constraint.md](chain_constraint.md).
+
 ### Next topics for future sessions
 
 Priority order:
 
-1. Chain constraint validation (origin vs successor)
+1. Chain constraint validation (origin vs successor) — in progress
 2. Endorsement validation (cross-slot rejection, pace constraints, duplicate endorsements)
 3. Sequencer transaction specific rules
 4. Sender address lock constraints
