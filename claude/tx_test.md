@@ -163,12 +163,47 @@ Chain constraint analysis and test plan: [claude/chain_constraint.md](chain_cons
    requires at least one endorsement (EasyFL rule `_noChainPredecessorCase`). Non-origin
    successors with cross-slot predecessors also need endorsements, branch status, or explicit baseline.
 3. **TransactionPaceSequencer** (default 2 ticks) governs endorsement pace — separate from
-   TransactionPace (default 4 ticks) for input pace.
+   TransactionPace (default 12 ticks) for non-sequencer input pace.
 4. **PostBranchConsolidationTicks** (12) requires non-branch sequencer txs to have tick >= 12.
 
 **No vulnerabilities detected** in endorsement validation.
 
 Endorsement analysis: [claude/endorsement.md](endorsement.md).
+
+### Session 6: Sequencer transaction specific rules
+
+**File created:** `ledger/tests/sequencer_test.go`
+
+**Tests implemented (all passing):**
+
+| # | Test | Validation Stage | Topic |
+|---|------|-----------------|-------|
+| 1 | `TestSequencerMinimumAmountViolation` | Full context (EasyFL) | 500M tokens < 1B minimum rejected |
+| 2 | `TestSequencerMinimumAmountExact` | Full context (pass) | Exactly 1B tokens accepted |
+| 3 | `TestSequencerPostBranchConsolidation` | Full context (EasyFL) | Tick 5 < PostBranchConsolidationTicks (12) |
+| 4 | `TestSequencerPreBranchConsolidation/multi_input_rejected` | Full context (EasyFL) | 2 inputs at tick 110 > 102 |
+| 5 | `TestSequencerPreBranchConsolidation/single_input_accepted` | Full context (pass) | 1 input at tick 110 (skips check) |
+| 6 | `TestSequencerSlotBoundaryNonBranch` | Parse (Go) | Tick 0 without stem output |
+| 7 | `TestSequencerInputPace/one_tick_gap_rejected` | Parse (Go scan) | Gap 1 < TransactionPaceSequencer (2) |
+| 8 | `TestSequencerInputPace/two_tick_gap_accepted` | Full context (pass) | Gap 2 = minimum accepted |
+| 9 | `TestSequencerSameSlotNonSeqPredecessor` | Full context (EasyFL) | Non-sequencer same-slot predecessor |
+| 10 | `TestSequencerCrossSlotNoEndorsements` | Full context (EasyFL) | Cross-slot without endorsements/branch/baseline |
+
+**Key findings:**
+
+1. **Slot boundary defense-in-depth**: At tick 0, Go parser assumes branch status and tries
+   to find stem output before EasyFL `zeroTickOnBranchOnly` is reached. Missing stem output
+   causes parse failure ("ParseSequencerData stem: wrong output index 255").
+2. **Pre-branch consolidation window**: Ticks 103-127 (last 25 ticks of slot). Multi-input
+   sequencer txs blocked; single-input exempted. Forces UTXO consolidation near slot boundary.
+3. **Sequencer input pace** (2 ticks) is separate from non-sequencer input pace (12 ticks).
+4. **Three predecessor cases**: Each with distinct requirements (endorsements, sequencer flag, etc.)
+
+**Not tested (require complex infrastructure):**
+- Branch transactions with stem output and VRF proof
+- Explicit baseline validation
+
+**No vulnerabilities detected** in sequencer-specific validation.
 
 ### Next topics for future sessions
 
@@ -176,7 +211,7 @@ Priority order:
 
 1. ~~Chain constraint validation~~ — done (Session 4)
 2. ~~Endorsement validation~~ — done (Session 5)
-3. Sequencer transaction specific rules
+3. ~~Sequencer transaction specific rules~~ — done (Session 6)
 4. Sender address lock constraints
 5. Deadlock lock constraints
 6. Tag-along output handling
