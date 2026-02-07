@@ -110,7 +110,7 @@ func TestMainConstraints(t *testing.T) {
 		in.SenderPrivateKey = privKeyWrong
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(100_000_000))
-		util.RequireErrorWithOld(t, err, "failed")
+		require.NoError(t, util.MustErrorWith(err, "failed"))
 	})
 	t.Run("not enough deposit", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -678,42 +678,42 @@ func TestChain2(t *testing.T) {
 	t.Run("transit 1,0", func(t *testing.T) {
 		txString, err := runOption(1, 0)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
+		require.NoError(t, util.MustErrorWith(err, "successor reference crosscheck failed"))
 	})
 	t.Run("transit 2,0", func(t *testing.T) {
 		txString, err := runOption(2, 0)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
+		require.NoError(t, util.MustErrorWith(err, "successor reference crosscheck failed"))
 	})
 	t.Run("transit 3,0", func(t *testing.T) {
 		txString, err := runOption(3, 0)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
+		require.NoError(t, util.MustErrorWith(err, "successor reference crosscheck failed"))
 	})
 	t.Run("transit 4,0", func(t *testing.T) {
 		txString, err := runOption(4, 0)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "origin slot is immutable")
+		require.NoError(t, util.MustErrorWith(err, "origin slot is immutable"))
 	})
 	t.Run("transit 5,0", func(t *testing.T) {
 		txString, err := runOption(5, 0)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "origin amount is immutable")
+		require.NoError(t, util.MustErrorWith(err, "origin amount is immutable"))
 	})
 	t.Run("transit 0,1", func(t *testing.T) {
 		txString, err := runOption(0, 1)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "index is out of range")
+		require.NoError(t, util.MustErrorWith(err, "index is out of range"))
 	})
 	t.Run("transit 0,2", func(t *testing.T) {
 		txString, err := runOption(0, 2)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "index is out of range")
+		require.NoError(t, util.MustErrorWith(err, "index is out of range"))
 	})
 	t.Run("transit 0,3", func(t *testing.T) {
 		txString, err := runOption(0, 3)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "predecessor reference crosscheck failed")
+		require.NoError(t, util.MustErrorWith(err, "predecessor reference crosscheck failed"))
 	})
 }
 

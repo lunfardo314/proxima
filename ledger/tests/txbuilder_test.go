@@ -135,7 +135,7 @@ func TestBasics(t *testing.T) {
 			require.EqualValues(t, numOuts, u.NumUTXOs(addr))
 		}
 		err := u.TransferTokens(privKey, addr, u.Balance(addr))
-		util.RequireErrorWithOld(t, err, "exceeded max number of consumed outputs")
+		require.NoError(t, util.MustErrorWith(err, "exceeded max number of consumed outputs"))
 	})
 	t.Run("utxodb fan out outputs", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -339,7 +339,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		par.TagAlongFee = inflationAmount + initAmount + fee
 		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
-		util.RequireErrorWithOld(t, err, "not enough tokens")
+		require.NoError(t, util.MustErrorWith(err, "not enough tokens"))
 
 		par.TagAlongFee = inflationAmount + initAmount - 200
 		_, inflationAmount1, _, err = txbuilder.MakeChainSuccessorTransaction(&par)

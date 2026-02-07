@@ -205,7 +205,7 @@ func TestTxDuplicateInputsRejected(t *testing.T) {
 	// Note: EasyFL error messages use spaces, not underscores
 	_, err = transaction.ParseWithPartialValidation(txBytes)
 	require.Error(t, err, "duplicate inputs must be rejected")
-	util.RequireErrorWithOld(t, err, "inputs cannot contain duplicates")
+	require.NoError(t, util.MustErrorWith(err, "inputs cannot contain duplicates"))
 }
 
 // --------------------------------------------------------------------------
@@ -365,7 +365,7 @@ func TestTxSignatureMatchesButLockMismatch(t *testing.T) {
 	err = u.DoTransfer(par.WithTargetLock(dstAddr).WithAmount(100_000_000))
 	require.Error(t, err, "signing with a key that doesn't match the input lock must fail")
 	// The error comes from the lock (address) constraint failing on the consumed output
-	util.RequireErrorWithOld(t, err, "failed")
+	require.NoError(t, util.MustErrorWith(err, "failed"))
 	t.Logf("lock mismatch correctly rejected: %v", err)
 }
 
@@ -501,7 +501,7 @@ func TestTxEdgeCaseTimePaceConstraint(t *testing.T) {
 
 	_, err = transaction.ParseWithPartialValidation(txBytes)
 	require.Error(t, err, "transaction violating pace constraint must be rejected")
-	util.RequireErrorWithOld(t, err, "time pace constraint")
+	require.NoError(t, util.MustErrorWith(err, "time pace constraint"))
 	t.Logf("pace constraint violation correctly rejected: %v", err)
 }
 
@@ -929,7 +929,7 @@ func TestTxTheftSpendWithWrongKey(t *testing.T) {
 	err = validateFull(txBytes, txb)
 	require.Error(t, err, "spending with wrong private key must be rejected")
 	// The sigLock constraint (named 'a') on the consumed output fails
-	util.RequireErrorWithOld(t, err, "failed")
+	require.NoError(t, util.MustErrorWith(err, "failed"))
 	t.Logf("wrong key theft correctly rejected: %v", err)
 }
 
@@ -986,7 +986,7 @@ func TestTxTheftUnlockReferenceDifferentLock(t *testing.T) {
 	// Direct signature check also fails: Alice's spender ID ≠ Bob's spender ID.
 	err = validateFull(txBytes, txb)
 	require.Error(t, err, "unlock reference with different lock must be rejected")
-	util.RequireErrorWithOld(t, err, "failed")
+	require.NoError(t, util.MustErrorWith(err, "failed"))
 	t.Logf("reference bypass theft correctly rejected: %v", err)
 }
 
@@ -1053,7 +1053,7 @@ func TestTxTheftRecipientOwnership(t *testing.T) {
 
 	err = u.DoTransfer(par.WithTargetLock(aliceAddr).WithAmount(transferAmount))
 	require.Error(t, err, "sender must not be able to spend recipient's tokens")
-	util.RequireErrorWithOld(t, err, "failed")
+	require.NoError(t, util.MustErrorWith(err, "failed"))
 	t.Logf("sender correctly cannot spend recipient's tokens: %v", err)
 }
 

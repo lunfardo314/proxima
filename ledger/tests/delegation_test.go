@@ -436,7 +436,7 @@ func TestDelegationLockConsume(t *testing.T) {
 			prntx:                    true,
 			disableConsistencyChecks: true,
 		})
-		util.RequireErrorWithOld(t, err, "delegation successor timestamp must be at least 1 slot after")
+		require.NoError(t, util.MustErrorWith(err, "delegation successor timestamp must be at least 1 slot after"))
 	})
 	t.Run("target_freeze_ok", func(t *testing.T) {
 		// target consumes initial delegation
@@ -810,7 +810,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   false,
 		})
-		util.RequireErrorWithOld(t, err, "not enough inflation advance")
+		require.NoError(t, util.MustErrorWith(err, "not enough inflation advance"))
 	})
 	t.Run("frozen epochs 1 fail 2", func(t *testing.T) {
 		// target consumes initial delegation
@@ -836,7 +836,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   false,
 		})
-		util.RequireErrorWithOld(t, err, "wrong frozen coverage value")
+		require.NoError(t, util.MustErrorWith(err, "wrong frozen coverage value"))
 	})
 	t.Run("frozen epochs 2", func(t *testing.T) {
 		// target consumes initial delegation
@@ -890,7 +890,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   false,
 		})
-		util.RequireErrorWithOld(t, err, "not enough inflation advance")
+		require.NoError(t, util.MustErrorWith(err, "not enough inflation advance"))
 	})
 	t.Run("frozen epochs 3", func(t *testing.T) {
 		// target consumes initial delegation
@@ -952,7 +952,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   false,
 		})
-		util.RequireErrorWithOld(t, err, "not enough inflation advance")
+		require.NoError(t, util.MustErrorWith(err, "not enough inflation advance"))
 	})
 	t.Run("frozen epochs 4", func(t *testing.T) {
 		// target consumes initial delegation
@@ -1015,7 +1015,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   false,
 		})
-		util.RequireErrorWithOld(t, err, "not enough inflation advance")
+		require.NoError(t, util.MustErrorWith(err, "not enough inflation advance"))
 	})
 	t.Run("frozen epochs 8", func(t *testing.T) {
 		// target consumes initial delegation
@@ -1086,7 +1086,7 @@ func TestFrozenCoverage1(t *testing.T) {
 			inflationAdvance:        advance,
 			prntx:                   false,
 		})
-		util.RequireErrorWithOld(t, err, "not enough inflation advance")
+		require.NoError(t, util.MustErrorWith(err, "not enough inflation advance"))
 	})
 	t.Run("frozen epochs 9 fail", func(t *testing.T) {
 		// target consumes initial delegation

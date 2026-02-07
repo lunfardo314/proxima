@@ -337,7 +337,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		if nConflicts > 1 {
 			require.True(t, vertex.Bad == vid.GetTxStatus())
 			t.Logf("reason: %v", vid.GetError())
-			util.RequireErrorWithOld(t, vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort())
+			require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 		} else {
 			require.True(t, vertex.Good == vid.GetTxStatus())
 		}
@@ -402,7 +402,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("reason: %v", vid.GetError())
-		util.RequireErrorWithOld(t, vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort())
+		require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 	})
 	t.Run("long", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -496,7 +496,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("expected reason: %v", vid.GetError())
-		util.RequireErrorWithOld(t, vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort())
+		require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 	})
 	t.Run("long with sync", func(t *testing.T) {
 		const (
@@ -558,7 +558,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("expected reason: %v", vid.GetError())
-		util.RequireErrorWithOld(t, vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort())
+		require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 	})
 }
 
@@ -731,7 +731,7 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	t.Logf("expected BAD transaction %s", vidSeq.IDShortString())
 	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
 	conflict := testData.forkOutput.ID.TransactionID()
-	util.RequireErrorWithOld(t, vidSeq.GetError(), conflict.StringShort(), "conflict")
+	require.NoError(t, util.MustErrorWith(vidSeq.GetError(), conflict.StringShort(), "conflict"))
 	//testData.wrk.SaveGraph("utangle")
 }
 
@@ -896,7 +896,7 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 
 	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
 	t.Logf("expected error: %v", vid.GetError())
-	util.RequireErrorWithOld(t, vid.GetError(), "conflicting branch endorsement")
+	require.NoError(t, util.MustErrorWith(vid.GetError(), "conflicting branch endorsement"))
 }
 
 func TestAttachSeqChains(t *testing.T) {
