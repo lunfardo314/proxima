@@ -50,6 +50,7 @@ func IsNil(p interface{}) bool {
 	return p == nil || (reflect.ValueOf(p).Kind() == reflect.Ptr && reflect.ValueOf(p).IsNil())
 }
 
+// Deprecated: use require.NoError(t, MustErrorWith(err, fragments...)) instead.
 func RequireErrorWithOld(t *testing.T, err error, fragments ...string) {
 	t.Logf("error: %v, fragments: %+v", err, fragments)
 	require.Error(t, err)

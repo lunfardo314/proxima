@@ -205,6 +205,44 @@ Endorsement analysis: [claude/endorsement.md](endorsement.md).
 
 **No vulnerabilities detected** in sequencer-specific validation.
 
+### Session 7: Tag-along output handling
+
+**File created:** `ledger/tests/claude_tag_along_test.go`
+
+**Tests implemented (all passing):**
+
+| # | Test | Validation Stage | Topic |
+|---|------|-----------------|-------|
+| 1 | `TestClaudeTagAlongSpoofedSenderID` | Full context (EasyFL) | Third party creates tag-along with victim's SpenderID |
+| 2 | `TestClaudeTagAlongWrongSequencerConsumes` | Full context (EasyFL) | Chain B tries to consume tag-along targeted at chain A |
+| 3 | `TestClaudeTagAlongManipulatedUnlockParams/wrong_chain_constraint_index` | Full context (EasyFL) | Wrong constraint index in chain lock unlock params |
+| 4 | `TestClaudeTagAlongManipulatedUnlockParams/self-referencing_unlock_params` | Full context (EasyFL) | Tag-along unlock params reference self output |
+| 5 | `TestClaudeTagAlongPurgeWindowSettle` | Full context + UTXODB | Random party consumes old tag-along (purge window) |
+| 6 | `TestClaudeTagAlongTargetBalanceTampering` | Full context (EasyFL) | Target produces inflated balance on consumption |
+| 7 | `TestClaudeTagAlongSenderHashForgeryOnReclaim` | Full context (EasyFL) | Random party tries reclaim in reclaim window |
+| 8 | `TestClaudeTagAlongValidTargetConsumptionSettles` | Full context + UTXODB | Valid target consumption (positive E2E) |
+| 9 | `TestClaudeTagAlongSenderReclaimSettles` | Full context + UTXODB | Valid sender reclaim (positive E2E) |
+
+**Key findings:**
+
+1. **Sender ID is cryptographically bound at production**: EasyFL `equal($1, txSpenderID(txSignatureData))`
+   prevents anyone from creating a tag-along claiming another party's sender ID. This is critical
+   because the sender ID controls who can reclaim in the reclaim window.
+2. **Cross-chain theft impossible**: `chainLock($0)` on consumption validates that the referenced
+   chain constraint matches the target sequencer ID. A different sequencer's chain constraint
+   has a different chain ID, so `_validChainUnlock` fails.
+3. **Self-referencing prevented**: Chain lock EasyFL explicitly checks
+   `not(equal(selfOutputIndex, byte(selfUnlockParameters,0)))`.
+4. **Amount conservation prevents balance inflation**: Even with valid chain lock unlock,
+   the target cannot produce more tokens than consumed (chain_amount + fee).
+5. **Three-window unlock logic is sound**: Tag-along window → chain lock only;
+   reclaim window → sigLock only; purge window → anyone. No overlap, no bypass.
+
+**Other changes:**
+- Marked `util.RequireErrorWithOld` as deprecated; tests use `require.NoError(t, util.MustErrorWith(...))`.
+
+**No vulnerabilities detected** in tag-along output handling.
+
 ### Next topics for future sessions
 
 Priority order:
@@ -212,8 +250,8 @@ Priority order:
 1. ~~Chain constraint validation~~ — done (Session 4)
 2. ~~Endorsement validation~~ — done (Session 5)
 3. ~~Sequencer transaction specific rules~~ — done (Session 6)
-4. Sender address lock constraints
-5. Deadlock lock constraints
-6. Tag-along output handling
+4. ~~Sender address lock constraints~~ — obsolete
+5. ~~Deadlock lock constraints~~ — obsolete
+6. ~~Tag-along output handling~~ — done (Session 7)
 7. Delegation related covenants
 8. Output index bounds checking
