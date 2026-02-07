@@ -283,7 +283,44 @@ Endorsement analysis: [claude/endorsement.md](endorsement.md).
 
 **No vulnerabilities detected** in delegation constraint validation.
 
-### Next topics for future sessions
+### Session 9: Output index bounds checking
+
+**File created:** `ledger/tests/claude_index_bounds_test.go`
+
+**Tests implemented (all passing):**
+
+| # | Test | Validation Stage | Topic |
+|---|------|-----------------|-------|
+| 1 | `TestIndexSigLockCrossLockReference/attacker_references_own_input` | Full context (EasyFL) | Bob references his input to unlock Alice's UTXO — lock bytes differ |
+| 2 | `TestIndexSigLockCrossLockReference/valid_same_lock_reference` | Full context + UTXODB | Valid backward reference between two same-lock inputs |
+| 3 | `TestIndexSigLockReferenceToChainLocked` | Full context (EasyFL) | sigLock input references chainLock-ed input — type mismatch |
+| 4 | `TestIndexChainLockWrongConstraintType` | Full context (EasyFL) | chainLock unlock params point to amount constraint (not chain) |
+| 5 | `TestIndexTagAlongOutOfRangeUnlockParams` | Full context (EasyFL) | Tag-along unlock params reference input index 5 (only 2 exist) |
+| 6 | `TestIndexDelegationOutOfRangeUnlockParams` | Full context (EasyFL) | Delegation unlock params reference input index 10 (only 2 exist) |
+| 7 | `TestIndexChainPredecessorNonExistentInput` | Full context (EasyFL) | Chain successor claims predecessor at input 5 (only 1 exists) |
+| 8 | `TestIndexChainLockSelfReference` | Full context (EasyFL) | chainLock output references itself in unlock params |
+
+**Key findings:**
+
+1. **sigLock defense-in-depth**: sigLock has an `or` clause — either `unlockedByReference` OR
+   `equal($0, txSpenderID)`. When signed by the correct key, signature always succeeds as fallback.
+   The `lessThan` ordering check in `unlockedByReference` is defense-in-depth; the byte-exact
+   `equal(self, consumedConstraintByIndex($0, lockConstraintIndex))` is the primary protection
+   against cross-lock reference attacks.
+2. **EasyFL runtime bounds checking**: Out-of-range index in `atPath()` consistently produces
+   "Tuple.At(N): index is out of range" panic-errors. This applies uniformly to tag-along,
+   delegation, chain, and all lock types that use `consumedConstraintByIndex`.
+3. **chainLock self-reference prevention**: `not(equal(selfOutputIndex, byte(selfUnlockParameters,0)))`
+   prevents a chainLock-ed output from referencing itself as the unlock source.
+4. **Cross-type lock reference**: sigLock ≠ chainLock at byte level, so referencing across
+   lock types always fails the `equal(self, ...)` check.
+5. **Chain predecessor crosscheck**: Produced chain validates that the consumed chain's unlock
+   params reference back correctly. A fake predecessor index causes "crosscheck failed" even
+   if the consumed chain has valid unlock params pointing to the correct successor.
+
+**No vulnerabilities detected** in output index bounds checking.
+
+### All topics completed
 
 Priority order:
 
@@ -294,4 +331,4 @@ Priority order:
 5. ~~Deadlock lock constraints~~ — obsolete
 6. ~~Tag-along output handling~~ — done (Session 7)
 7. ~~Delegation related covenants~~ — done (Session 8)
-8. Output index bounds checking
+8. ~~Output index bounds checking~~ — done (Session 9)
