@@ -65,7 +65,7 @@ func TestTagAlongSimple(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		o := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		o := ledger.NewTagAlongOutput(fee, targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(o)
 		require.NoError(t, err)
 
@@ -324,7 +324,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -411,7 +411,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -513,7 +513,7 @@ func TestTagAlongProduction(t *testing.T) {
 
 		// use zero chain ID
 		zeroChainID := base.ChainID{}
-		taOutput := ledger.NewTagAlongOutput(fee, zeroChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, zeroChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -561,7 +561,7 @@ func TestTagAlongProduction(t *testing.T) {
 			ob.WithTokenBalance(fee)
 			ob.WithLock(&ledger.TagAlongLock{
 				TargetSequencerID: targetChainID,
-				Sender:            ledger.SigLockFromED25519PrivateKey(privKeySender),
+				SenderID:          base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)),
 			})
 			// add extra constraints to exceed the limit of 4
 			// constraint at index 0 is amount, index 1 is lock
@@ -622,7 +622,7 @@ func TestTagAlongProduction(t *testing.T) {
 		txb.PutSignatureUnlock(0)
 
 		// create tag-along where sender == target chain controller (same address)
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, addrController)
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, base.SpenderID(addrController))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -688,7 +688,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -920,7 +920,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput1 := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput1 := ledger.NewTagAlongOutput(fee, targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput1)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -954,7 +954,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		require.NoError(t, err)
 		txb2.PutSignatureUnlock(0)
 
-		taOutput2 := ledger.NewTagAlongOutput(fee*2, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput2 := ledger.NewTagAlongOutput(fee*2, targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb2.ProduceOutput(taOutput2)
 		require.NoError(t, err)
 		_, err = txb2.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -1020,11 +1020,11 @@ func TestTagAlongMultiple(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput1 := ledger.NewTagAlongOutput(fee, targetChainID1, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput1 := ledger.NewTagAlongOutput(fee, targetChainID1, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput1)
 		require.NoError(t, err)
 
-		taOutput2 := ledger.NewTagAlongOutput(fee*2, targetChainID2, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput2 := ledger.NewTagAlongOutput(fee*2, targetChainID2, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput2)
 		require.NoError(t, err)
 
@@ -1096,7 +1096,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -1199,7 +1199,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, ledger.SigLockFromED25519PrivateKey(privKeySender))
+		taOutput := ledger.NewTagAlongOutput(fee, targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 		_, err = txb.ProduceOutput(taOutput)
 		require.NoError(t, err)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {

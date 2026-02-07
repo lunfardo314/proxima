@@ -45,12 +45,8 @@ func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutpu
 			reason = fmt.Errorf("tag-along lock does not allow output can't contain more than 4 constraints, got %d", o.Output.NumConstraints())
 			return
 		}
-		if lock.Sender.Name() != ledger.SigLockName {
-			reason = fmt.Errorf("tag-along lock allows only sigLock as sender")
-			return
-		}
 		ret.TagAlongLock = lock
-		ret.SenderID = base.SpenderID(lock.Sender)
+		ret.SenderID = lock.SenderID
 		if o.Output.NumConstraints() == 2 {
 			valid = true
 			return

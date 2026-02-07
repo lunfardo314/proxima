@@ -190,7 +190,7 @@ func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.SigLock, de
 		o.WithTokenBalance(fee)
 		o.WithLock(&ledger.TagAlongLock{
 			TargetSequencerID: seqID,
-			Sender:            sender,
+			SenderID:          base.SpenderID(sender),
 		})
 		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
 		o.MustPushConstraint((&ledger.EnsureStopDelegation{ChainID: delegationID}).Bytes())

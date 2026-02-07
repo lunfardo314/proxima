@@ -72,7 +72,7 @@ func NewSeqDataCommandOutput(seqID base.ChainID, sender ledger.SigLock, fee uint
 		o.WithTokenBalance(fee)
 		o.WithLock(&ledger.TagAlongLock{
 			TargetSequencerID: seqID,
-			Sender:            sender,
+			SenderID:          base.SpenderID(sender),
 		})
 		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
 	})

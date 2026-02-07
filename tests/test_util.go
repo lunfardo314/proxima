@@ -295,7 +295,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 		_, err = txb.ProduceOutput(o)
 		require.NoError(td.t, err)
 	}
-	tagAlongOut := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID, ledger.SigLockFromED25519PrivateKey(td.privKeyAux))
+	tagAlongOut := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(td.privKeyAux)))
 	_, err = txb.ProduceOutput(tagAlongOut)
 	require.NoError(td.t, err)
 

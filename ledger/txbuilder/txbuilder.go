@@ -648,7 +648,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	tagAlongFee := uint64(0)
 	var tagAlongOut *ledger.Output
 	if par.TagAlong != nil {
-		tagAlongOut = ledger.NewTagAlongOutput(par.TagAlong.Amount, par.TagAlong.SeqID, ledger.SigLockFromED25519PrivateKey(par.SenderPrivateKey))
+		tagAlongOut = ledger.NewTagAlongOutput(par.TagAlong.Amount, par.TagAlong.SeqID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(par.SenderPrivateKey)))
 		tagAlongFee = par.TagAlong.Amount
 	}
 
@@ -787,7 +787,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
 
 	if par.TagAlongFee > 0 {
-		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, ledger.SigLockFromED25519PrivateKey(par.PrivateKey))
+		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, base.SpenderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
 		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
 			return nil, 0, nil, errP(err)
 		}
@@ -986,7 +986,7 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
-	tagAlong := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, par.Master)
+	tagAlong := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, base.SpenderID(par.Master))
 	if _, err = txb.ProduceOutput(tagAlong); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}

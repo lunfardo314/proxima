@@ -158,7 +158,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(99)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.SigLockFromED25519PrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKey))),
 			//txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 1_000_000, addr),
 		}
 		ts = ts.AddSlots(1)
@@ -175,7 +175,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.SigLockFromED25519PrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKey))),
 		}
 
 		ts = ts.AddSlots(1)
@@ -193,7 +193,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.SigLockFromED25519PrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKey))),
 		}
 		txb := newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)

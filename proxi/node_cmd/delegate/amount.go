@@ -143,7 +143,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	delegationOutputIdx, err := txb.ProduceOutput(outDelegation)
 	glb.AssertNoError(err)
 
-	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, walletData.Account)
+	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.SpenderID(walletData.Account))
 	_, err = txb.ProduceOutput(outTagAlong)
 	glb.AssertNoError(err)
 

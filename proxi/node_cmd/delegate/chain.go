@@ -116,7 +116,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Assertf(succIdx == 0, "succIdx==0")
 
-	taOut := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, walletData.Account)
+	taOut := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.SpenderID(walletData.Account))
 	tagAlongIdx, err := txb.ProduceOutput(taOut)
 	glb.AssertNoError(err)
 	glb.Assertf(tagAlongIdx == 1, "tagAlongIdx==1")

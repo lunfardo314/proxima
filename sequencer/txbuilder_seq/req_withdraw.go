@@ -65,7 +65,7 @@ func NewWithdrawRequestOutput(withdrawFromChain base.ChainID, sender ledger.SigL
 		o.WithTokenBalance(fee)
 		o.WithLock(&ledger.TagAlongLock{
 			TargetSequencerID: withdrawFromChain,
-			Sender:            sender,
+			SenderID:          base.SpenderID(sender),
 		})
 		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
 	})
