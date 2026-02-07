@@ -91,11 +91,7 @@ func (tx *Transaction) ValidateFullContext() error {
 	if err != nil {
 		return err
 	}
-	// check ledger invariant for the base token: consumed balances + inflation must be equal to produced balances
-	if tx.totalConsumedTokenBalance+tx.producedAmountTotals[1] != tx.producedAmountTotals[0] {
-		return fmt.Errorf("unbalanced amount between inputs and outputs: cnsumed balance %s, produced balance %s, produced inflation: %s",
-			util.Th(tx.totalConsumedTokenBalance), util.Th(tx.producedAmountTotals[0]), util.Th(tx.producedAmountTotals[1]))
-	}
+	// ledger invariant (consumed + inflation = produced) is enforced in validateOutputs()
 	return nil
 }
 

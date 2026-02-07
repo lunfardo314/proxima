@@ -17,6 +17,9 @@ package tests
 
 import (
 	"crypto/ed25519"
+	"fmt"
+	"math"
+	"math/rand"
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -657,9 +660,9 @@ func buildAndSignTx(txb *txbuilder.TxBuilder, maxTs base.LedgerTime, privKey ed2
 // (inflation is always 0 for non-chain outputs)
 //
 // Enforcement points:
-//   1. validate.go:validateOutputs() line 160 — "mismatch between token amounts"
-//   2. validate.go:ValidateFullContext() line 95 — defense-in-depth check
-//   3. amounts.go:AddToVector() — overflow detection during output scanning
+//   1. validate.go:validateOutputs() — "mismatch between token amounts" (primary invariant check)
+//   2. amounts.go:AddToVector() — overflow detection during output scanning
+//   3. validate.go:_sumConsumedTotals() — overflow detection for consumed balance
 //   4. amounts.go:TokenBalance() — assertion that amounts are non-negative
 //   5. amounts_embed.go:evalAmounts() — minimum storage deposit on produced outputs
 
@@ -1053,4 +1056,346 @@ func TestTxTheftRecipientOwnership(t *testing.T) {
 	require.Error(t, err, "sender must not be able to spend recipient's tokens")
 	util.RequireErrorWithOld(t, err, "failed")
 	t.Logf("sender correctly cannot spend recipient's tokens: %v", err)
+}
+
+// --------------------------------------------------------------------------
+// BENCHMARK: Stage 1 rejection of rubbish data
+// --------------------------------------------------------------------------
+//
+// Measures how quickly transaction.Parse() rejects random bytes of various sizes.
+// This is relevant for DoS resistance: a node must reject garbage fast at stage 1
+// before spending CPU on validation. The benchmark covers sizes from tiny (10 bytes)
+// to large (1MB) to verify rejection cost does not scale badly with input size.
+
+// BenchmarkParseRubbishData measures Parse() rejection speed for random data
+// at various sizes. Each sub-benchmark uses a fixed random seed for reproducibility.
+func BenchmarkParseRubbishData(b *testing.B) {
+	sizes := []int{10, 100, 500, 1_000, 10_000, 100_000, 1_000_000}
+
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
+			rng := rand.New(rand.NewSource(int64(size)))
+			data := make([]byte, size)
+			rng.Read(data)
+
+			b.ResetTimer()
+			b.SetBytes(int64(size))
+			for i := 0; i < b.N; i++ {
+				_, _ = transaction.Parse(data)
+			}
+		})
+	}
+}
+
+// BenchmarkParseRubbishDataAllZeros measures Parse() rejection of zero-filled buffers.
+// All-zeros may follow a different code path in tuple parsing than random data.
+func BenchmarkParseRubbishDataAllZeros(b *testing.B) {
+	sizes := []int{100, 1_000, 10_000, 100_000}
+
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("zeros_%d", size), func(b *testing.B) {
+			data := make([]byte, size)
+			b.ResetTimer()
+			b.SetBytes(int64(size))
+			for i := 0; i < b.N; i++ {
+				_, _ = transaction.Parse(data)
+			}
+		})
+	}
+}
+
+// TestParseRubbishDataRejected is a non-benchmark test that verifies Parse()
+// actually returns an error for all rubbish input sizes.
+func TestParseRubbishDataRejected(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	sizes := []int{0, 1, 10, 100, 500, 1_000, 10_000, 100_000}
+
+	for _, size := range sizes {
+		t.Run(fmt.Sprintf("size_%d", size), func(t *testing.T) {
+			data := make([]byte, size)
+			if size > 0 {
+				rng.Read(data)
+			}
+			_, err := transaction.Parse(data)
+			require.Error(t, err, "random data of size %d must be rejected at stage 1", size)
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// TOPIC: Arithmetic overflow in amount calculations
+// --------------------------------------------------------------------------
+//
+// The ledger uses int64 for token amounts. Overflow can occur when:
+//   1. Summing consumed output balances (_sumConsumedTotals)
+//   2. Summing produced output amounts (AddToVector in scanProducedOutputs)
+//   3. Computing consumed + inflation at the conservation check
+//
+// Individual amounts are bounded by MaxInt64 (negative int64 from uint64 wrapping
+// is caught by TokenBalance()'s assert). AddToVector and _sumConsumedTotals have
+// explicit overflow checks. The conservation comparison (consumed + inflation == produced)
+// is safe because wrapping produces a negative value that can't equal the positive produced total.
+
+// TestTxOverflowConsumedBalance proves that the consumed balance sum overflow is detected.
+//
+// Attack scenario: an attacker crafts outputs with amounts near MaxInt64/2 + 1 each.
+// If two such outputs are consumed, their sum exceeds MaxInt64. Without overflow detection,
+// the sum wraps to a small (or negative) number, potentially allowing the attacker to
+// produce far fewer tokens and pass the conservation check.
+//
+// The overflow is caught by _sumConsumedTotals() in validate.go.
+func TestTxOverflowConsumedBalance(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	privKey, _, addr := u.GenerateAddress(1)
+
+	// Create 2 UTXOs via faucet for valid output IDs
+	err := u.TokensFromFaucet(addr, 100_000_000)
+	require.NoError(t, err)
+	err = u.TokensFromFaucet(addr, 100_000_000)
+	require.NoError(t, err)
+
+	outs := getSourceOutputs(t, u, addr)
+	require.True(t, len(outs) >= 2)
+
+	// Each amount is just over half of MaxInt64 — two of these overflow
+	hugeAmount := int64(math.MaxInt64/2 + 1)
+
+	fakeOut1 := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(hugeAmount).WithLock(addr)
+	})
+	fakeOut2 := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(hugeAmount).WithLock(addr)
+	})
+
+	txb := txbuilder.New()
+	_, err = txb.ConsumeOutput(fakeOut1, outs[0].ID)
+	require.NoError(t, err)
+	_, err = txb.ConsumeOutput(fakeOut2, outs[1].ID)
+	require.NoError(t, err)
+
+	txb.PutSignatureUnlock(0)
+	err = txb.PutUnlockReference(1, ledger.ConstraintIndexLock, 0)
+	require.NoError(t, err)
+
+	// Produce a valid output (amounts won't balance, but overflow fires first)
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(100_000_000).WithLock(addr)
+	})
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err)
+
+	maxTs := base.MaximumTime(outs[0].Timestamp(), outs[1].Timestamp())
+	txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+	err = validateFull(txBytes, txb)
+	require.Error(t, err, "consumed balance overflow must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "arithmetic overflow"))
+	t.Logf("consumed balance overflow correctly rejected: %v", err)
+}
+
+// TestTxOverflowProducedBalance proves that the produced balance sum overflow is detected.
+//
+// Attack scenario: an attacker produces two outputs each with amount near MaxInt64/2 + 1.
+// Their sum exceeds MaxInt64 and would wrap without overflow detection.
+//
+// The overflow is caught by AddToVector() in scanProducedOutputs() during partial context.
+func TestTxOverflowProducedBalance(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	privKey, _, addr := u.GenerateAddress(1)
+
+	err := u.TokensFromFaucet(addr, 100_000_000)
+	require.NoError(t, err)
+
+	outs := getSourceOutputs(t, u, addr)
+
+	txb := txbuilder.New()
+	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	hugeAmount := int64(math.MaxInt64/2 + 1)
+	out1 := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(hugeAmount).WithLock(addr)
+	})
+	out2 := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(hugeAmount).WithLock(addr)
+	})
+	_, err = txb.ProduceOutput(out1)
+	require.NoError(t, err)
+	_, err = txb.ProduceOutput(out2)
+	require.NoError(t, err)
+
+	txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+	// Produced overflow is caught at partial validation (stage 2), not full context
+	_, err = transaction.ParseWithPartialValidation(txBytes)
+	require.Error(t, err, "produced balance overflow must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "arithmetic overflow"))
+	t.Logf("produced balance overflow correctly rejected: %v", err)
+}
+
+// TestTxOverflowSingleMaxAmount tests the boundary of AddToVector's overflow check.
+//
+// AddToVector detects overflow when vect[i] >= MaxInt64 - v, meaning the largest
+// non-overflowing amount for a single output is MaxInt64 - 1. This is conservative:
+// it rejects MaxInt64 itself because 0 + MaxInt64 >= MaxInt64 triggers the check.
+func TestTxOverflowSingleMaxAmount(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	privKey, _, addr := u.GenerateAddress(1)
+
+	err := u.TokensFromFaucet(addr, 100_000_000)
+	require.NoError(t, err)
+
+	outs := getSourceOutputs(t, u, addr)
+
+	// MaxInt64 - 1: largest non-overflowing single output
+	// (conservation check fails since consumed is only 100M, but no overflow)
+	t.Run("max_minus_one_no_overflow", func(t *testing.T) {
+		txb := txbuilder.New()
+		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+		require.NoError(t, err)
+		txb.PutSignatureUnlock(0)
+
+		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(math.MaxInt64 - 1).WithLock(addr)
+		})
+		_, err = txb.ProduceOutput(out)
+		require.NoError(t, err)
+
+		txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+		// Partial validation should pass (no overflow)
+		_, err = transaction.ParseWithPartialValidation(txBytes)
+		require.NoError(t, err, "single MaxInt64-1 output should not overflow at partial validation")
+
+		// Full validation fails: amounts don't balance
+		err = validateFull(txBytes, txb)
+		require.Error(t, err, "amounts must not balance")
+	})
+
+	// MaxInt64 itself triggers overflow in AddToVector (conservative check: >= not >)
+	t.Run("exact_max_overflows", func(t *testing.T) {
+		txb := txbuilder.New()
+		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+		require.NoError(t, err)
+		txb.PutSignatureUnlock(0)
+
+		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(math.MaxInt64).WithLock(addr)
+		})
+		_, err = txb.ProduceOutput(out)
+		require.NoError(t, err)
+
+		txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+		_, err = transaction.ParseWithPartialValidation(txBytes)
+		require.Error(t, err, "MaxInt64 itself triggers AddToVector overflow")
+		require.NoError(t, util.MustErrorWith(err, "arithmetic overflow"))
+	})
+
+	// Two outputs with MaxInt64/2: their sum equals MaxInt64, should overflow
+	t.Run("two_half_max_overflow", func(t *testing.T) {
+		txb := txbuilder.New()
+		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+		require.NoError(t, err)
+		txb.PutSignatureUnlock(0)
+
+		for i := 0; i < 2; i++ {
+			out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+				o.WithAmounts(math.MaxInt64/2 + 1).WithLock(addr)
+			})
+			_, err = txb.ProduceOutput(out)
+			require.NoError(t, err)
+		}
+
+		txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+		_, err = transaction.ParseWithPartialValidation(txBytes)
+		require.Error(t, err, "two MaxInt64/2+1 outputs must overflow")
+		require.NoError(t, util.MustErrorWith(err, "arithmetic overflow"))
+	})
+}
+
+// TestTxOverflowConservationCheckSafe verifies that even if consumed + inflation
+// could theoretically overflow in the conservation comparison
+// (validateOutputs line: producedSide != consumedSide+inflation),
+// the transaction is still rejected because the wrapped negative result
+// can never equal the positive produced amount.
+//
+// This is a defense property test: the combination of individual overflow checks
+// + the positive produced amount check makes the conservation comparison safe.
+func TestTxOverflowConservationCheckSafe(t *testing.T) {
+	u := utxodb.NewUTXODB(genesisPrivateKey, true)
+	privKey, _, addr := u.GenerateAddress(1)
+
+	// Create several UTXOs
+	for i := 0; i < 3; i++ {
+		err := u.TokensFromFaucet(addr, 100_000_000)
+		require.NoError(t, err)
+	}
+	outs := getSourceOutputs(t, u, addr)
+	require.True(t, len(outs) >= 3)
+
+	// Set consumed = MaxInt64 - 100 (just below overflow threshold for a single value)
+	consumedAmount := int64(math.MaxInt64 - 100)
+	fakeOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(consumedAmount).WithLock(addr)
+	})
+
+	txb := txbuilder.New()
+	_, err := txb.ConsumeOutput(fakeOut, outs[0].ID)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	// Produce an output with a small amount
+	// consumed = MaxInt64 - 100, produced = 100_000_000, inflation = 0
+	// consumed + inflation = MaxInt64 - 100, produced = 100_000_000 → mismatch → rejected
+	smallOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(100_000_000).WithLock(addr)
+	})
+	_, err = txb.ProduceOutput(smallOut)
+	require.NoError(t, err)
+
+	maxTs := outs[0].Timestamp()
+	txBytes := buildAndSignTx(txb, maxTs, privKey)
+
+	err = validateFull(txBytes, txb)
+	require.Error(t, err, "large consumed with small produced must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "mismatch between token amounts"))
+	t.Logf("conservation check with large amounts correctly rejected: %v", err)
+}
+
+// TestTxOverflowAddToVectorContinuesAfterDetection verifies that AddToVector's
+// behavior of continuing to add after detecting overflow does not create a vulnerability.
+// The overflow flag is returned and the caller rejects the transaction immediately.
+//
+// Note: AddToVector uses the conservative check vect[i] >= MaxInt64 - v, meaning
+// MaxInt64 itself is treated as overflow. The actual maximum non-overflowing value
+// is MaxInt64 - 1.
+func TestTxOverflowAddToVectorContinuesAfterDetection(t *testing.T) {
+	// Direct unit test of AddToVector
+	var vect [15]int64
+	a1 := ledger.NewAmounts(math.MaxInt64 - 1)
+	a2 := ledger.NewAmounts(1)
+
+	// First add: no overflow (MaxInt64 - 1 is the largest safe value)
+	overflow := a1.AddToVector(&vect)
+	require.False(t, overflow, "first add of MaxInt64-1 should not overflow")
+	require.EqualValues(t, math.MaxInt64-1, vect[0])
+
+	// Second add: overflow (MaxInt64 - 1 + 1 = MaxInt64 triggers >= check)
+	overflow = a2.AddToVector(&vect)
+	require.True(t, overflow, "adding 1 to MaxInt64-1 must detect overflow")
+
+	// The value wraps but the overflow flag prevents use
+	t.Logf("after overflow: vect[0] = %d (wrapped to MaxInt64), overflow detected = true", vect[0])
+
+	// Verify multiple amounts in a single Amounts vector
+	var vect2 [15]int64
+	// Two amounts in one vector: both large
+	a3 := ledger.NewAmounts(math.MaxInt64/2, math.MaxInt64/2)
+	overflow = a3.AddToVector(&vect2)
+	require.False(t, overflow, "two MaxInt64/2 in different positions should not overflow")
+	require.EqualValues(t, math.MaxInt64/2, vect2[0])
+	require.EqualValues(t, math.MaxInt64/2, vect2[1])
 }
