@@ -11,6 +11,17 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
+// Size limits for transaction elements.
+// These are enforced during parsing and scanning to prevent oversized transactions
+// from consuming resources. They complement the network-level limits (P2P: 65,531 bytes,
+// API: 65,536 bytes) by providing validation-level enforcement.
+const (
+	MaxTransactionSize  = 65536 // 64KB, matches network/API limits
+	MaxOutputSize       = 8192  // 8KB per individual produced output
+	MaxOtherDataSize    = 4096  // 4KB total for TxOtherData field
+	MaxUnlockParamsSize = 1024  // 1KB per input's unlock params block
+)
+
 // Transaction provides access to the tuple tree of transferable transaction data
 type Transaction struct {
 	*ledger.Library           // cached library for this transaction's slot
@@ -29,6 +40,9 @@ type Transaction struct {
 // This is STAGE 1 of transaction validation. This is minimal check to pass for the blob to be a raw transaction.
 // If it is impossible to extract txid from the blob, it is not a transaction
 func Parse(txBytes []byte) (*Transaction, error) {
+	if len(txBytes) > MaxTransactionSize {
+		return nil, fmt.Errorf("tx.Parse: transaction size %d exceeds maximum %d bytes", len(txBytes), MaxTransactionSize)
+	}
 	txTree, err := tuples.TreeFromBytesReadOnly(txBytes)
 	if err != nil {
 		return nil, fmt.Errorf("tx.Parse: %v", err)
@@ -161,6 +175,11 @@ func (tx *Transaction) scanPartialContext() (err error) {
 	if err = tx.scanProducedOutputs(); err != nil {
 		return err
 	}
+	// check other data total size
+	otherDataBytes := tx.MustBytesAtPath(ledger.PathToOtherData)
+	if len(otherDataBytes) > MaxOtherDataSize {
+		return fmt.Errorf("scanPartialContext: other data size %d exceeds maximum %d bytes", len(otherDataBytes), MaxOtherDataSize)
+	}
 	return nil
 }
 
@@ -221,6 +240,7 @@ func (tx *Transaction) parseSequencerData() error {
 // scanInputs validation option scans all inputs:
 // - validates UTXO IDs
 // - enforces pace constraints
+// - enforces unlock params size limit
 func (tx *Transaction) scanInputs() error {
 	numInputs, err := tx.NumElementsAtPath(ledger.PathToInputIDs)
 	if err != nil {
@@ -230,14 +250,15 @@ func (tx *Transaction) scanInputs() error {
 
 	ts := tx.Timestamp()
 	isSequencer := tx.IsSequencerTransaction()
-	path := easyfl_util.Concat(ledger.PathToInputIDs, 0)
+	pathInput := easyfl_util.Concat(ledger.PathToInputIDs, 0)
+	pathUnlock := easyfl_util.Concat(ledger.PathToUnlockParams, 0)
 
 	// we do not use ForEachInputID because it assumes all inputs valid
 
 	for i := 0; i < numInputs; i++ {
-		path[len(ledger.PathToInputIDs)] = byte(i)
+		pathInput[len(ledger.PathToInputIDs)] = byte(i)
 		// parse output ChainID
-		oid, err = base.OutputIDFromBytes(tx.MustBytesAtPath(path))
+		oid, err = base.OutputIDFromBytes(tx.MustBytesAtPath(pathInput))
 		if err != nil {
 			return fmt.Errorf("parsing input #%d: '%v'", i, err)
 		}
@@ -250,6 +271,12 @@ func (tx *Transaction) scanInputs() error {
 			if !ledger.ValidTransactionPace(oid.Timestamp(), ts) {
 				return fmt.Errorf("input #%d violates transaction time pace constraint: %s", i, oid.StringShort())
 			}
+		}
+		// check unlock params size limit
+		pathUnlock[len(ledger.PathToUnlockParams)] = byte(i)
+		unlockBytes := tx.MustBytesAtPath(pathUnlock)
+		if len(unlockBytes) > MaxUnlockParamsSize {
+			return fmt.Errorf("scanInputs: unlock params #%d size %d exceeds maximum %d bytes", i, len(unlockBytes), MaxUnlockParamsSize)
 		}
 	}
 	return nil
@@ -304,12 +331,20 @@ func (tx *Transaction) scanProducedOutputs() error {
 	}
 	var amounts ledger.Amounts
 
+	pathToOutput := easyfl_util.Concat(ledger.PathToProducedOutputs, 0)
 	pathToAmounts := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, 0)
 	pathToLock := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, 1)
 
 	for i := 0; i < numOutputs; i++ {
+		pathToOutput[len(ledger.PathToProducedOutputs)] = byte(i)
 		pathToAmounts[len(ledger.PathToProducedOutputs)] = byte(i)
 		pathToLock[len(ledger.PathToProducedOutputs)] = byte(i)
+
+		// check per-output size limit
+		outBytes := tx.MustBytesAtPath(pathToOutput)
+		if len(outBytes) > MaxOutputSize {
+			return fmt.Errorf("scanProducedOutputs: output #%d size %d exceeds maximum %d bytes", i, len(outBytes), MaxOutputSize)
+		}
 
 		amounts, err = ledger.AmountsFromBytesWithLib(tx.MustBytesAtPath(pathToAmounts), tx.Library)
 		if err != nil {
@@ -329,3 +364,4 @@ func (tx *Transaction) scanProducedOutputs() error {
 	}
 	return nil
 }
+

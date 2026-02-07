@@ -134,52 +134,7 @@ The task is incremental, the list to be expanded in the future.
 
 **Total tests: 28 (22 previous + 1 rubbish + 5 overflow), all passing.**
 
-### Plan: Data size limits for transaction elements
-
-#### Current state of size enforcement
-
-| Layer | Limit | Value | Location |
-|-------|-------|-------|----------|
-| P2P network | Max message | 65,531 bytes | `peering/misc.go:15` |
-| API | Max upload | 65,536 bytes | `api/server/server.go:598` |
-| Parse (stage 1) | Top-level elements | exactly 11 | `parse.go:36` |
-| Parse (stage 1) | Produced outputs | 1-256 | `parse.go:102` |
-| Partial (stage 2) | Endorsements | max 8 | `constMaxNumberOfEndorsements` |
-| Partial (stage 2) | Duplicate inputs | rejected | EasyFL `tupleHasDuplicatesAtPath` |
-| Tuple package | Elements per tuple | max 16,383 | `tuples.go:49` |
-| Tuple package | Element data | max 4,294,967,295 bytes | `tuples.go:318` |
-| Attacher | I/O cost | max 550 | `constAttachmentCostBudget` |
-
-#### Gap analysis: missing limits
-
-1. **No max transaction byte size at validation level.** The network caps at ~65KB,
-   but no validation-level check in `Parse()`. Locally-constructed oversized transactions
-   could waste CPU on tuple parsing.
-
-2. **No per-output size limit.** An individual UTXO can theoretically be up to 4.3GB.
-   No explicit bound on constraint data size within an output.
-
-3. **No "other data" field size limit.** `TxOtherData` (element 10) has no size validation.
-
-4. **No max unlock params size.** Each unlock block has no size limit.
-
-5. **No max constraint bytecode size.** Individual constraint scripts have no size limit.
-
-#### Proposed limits
-
-| Element | Proposed limit | Rationale |
-|---------|---------------|-----------|
-| **Total transaction bytes** | 65,536 (64KB) | Match API/network limits. Check first in `Parse()`. |
-| **Individual output (UTXO) bytes** | 8,192 (8KB) | Generous for any realistic constraints. |
-| **Individual constraint data** | 4,096 (4KB) | EasyFL scripts are typically 10-100 bytes. |
-| **"Other data" total** | 4,096 (4KB) | Arbitrary data field; limit prevents abuse. |
-| **Unlock params per input** | 1,024 (1KB) | Unlock data is typically <100 bytes. |
-
-#### Implementation: hybrid approach (recommended)
-
-- Hard-code total transaction size limit in `Parse()` (must happen before any processing)
-- Use EasyFL constants for per-output and per-constraint limits (checked during scanning)
-- Critical limit always enforced, fine-grained limits upgradeable
+Data size limit analysis and implementation moved to [claude/limits.md](limits.md).
 
 ### Next topics for future sessions
 
