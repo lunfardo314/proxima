@@ -243,6 +243,46 @@ Endorsement analysis: [claude/endorsement.md](endorsement.md).
 
 **No vulnerabilities detected** in tag-along output handling.
 
+### Session 8: Delegation related covenants
+
+**File created:** `ledger/tests/claude_delegation_test.go`
+
+**Tests implemented (all passing):**
+
+| # | Test | Validation Stage | Topic |
+|---|------|-----------------|-------|
+| 1 | `TestClaudeDelegationWrongMasterUnlock` | Full context (EasyFL) | Third party uses master unlock mode (0xff) — sigLock(masterID) rejects |
+| 2 | `TestClaudeDelegationTargetReducesAmount` | Full context (EasyFL) | Target steals tokens by reducing delegation successor amount |
+| 3 | `TestClaudeDelegationTargetChangesLock` | Full context (EasyFL) | Target replaces masterID on successor — lock immutability check |
+| 4 | `TestClaudeDelegationTargetDiscontinuesChain` | Full context (EasyFL) | Target terminates delegation chain — only master can discontinue |
+| 5 | `TestClaudeDelegationOriginCannotBeFrozen` | Full context (EasyFL) | Delegation origin created in frozen state rejected |
+| 6 | `TestClaudeDelegationWrongConstraintCount` | Full context (EasyFL) | 5 constraints on delegation output — must be exactly 4 |
+| 7 | `TestClaudeDelegationSafeRevocationWindow/target_blocked` | Full context (EasyFL) | Target unlock during safe revocation window rejected |
+| 8 | `TestClaudeDelegationSafeRevocationWindow/master_can_unlock` | Full context (pass) | Master reclaims after safe revocation window |
+| 9 | `TestClaudeDelegationInflationShareAbove1000` | Full context (EasyFL) | requiredInflationShare=1001 promille rejected (max 1000) |
+| 10 | `TestClaudeDelegationOnHoldTargetRelock` | Full context (EasyFL) | On-hold delegation cannot be re-frozen by target |
+
+**Key findings:**
+
+1. **Master unlock requires sigLock(masterID)**: The EasyFL `_masterUnlockedConsumed` wraps the raw
+   SpenderID with `sigLock($0)` and verifies against the transaction signer. A third party cannot
+   impersonate the master even with master unlock byte (0xff).
+2. **Target cannot reduce amount**: `lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor)`
+   prevents any decrease in delegated token balance.
+3. **Lock immutability on target unlock**: `equal(successorConstraint(1), selfSiblingConstraint(lockConstraintIndex))`
+   ensures the delegation lock (including masterID, target, maxFrozenEpochs, inflationShare) is
+   byte-identical on the successor. Target cannot swap in their own masterID.
+4. **Chain discontinuation protection**: `not(equal(selfSiblingUnlockParams(2),0xffff))` blocks
+   target from terminating the delegation chain. Only master with 0xff unlock mode can discontinue.
+5. **Safe revocation window**: After freeze expires, 60-slot window where target is blocked and
+   master can reclaim. Prevents target from immediately re-freezing after unfreeze.
+6. **Constraint count enforcement**: `equal(selfNumConstraints, u64/4)` prevents injection of
+   extra constraints into delegation outputs.
+7. **On-hold is terminal for target**: `not(_selfIsMarkedOnHold)` in `_requireUnlockableByTheTarget`
+   ensures once a delegation is on-hold, only the master can unlock it.
+
+**No vulnerabilities detected** in delegation constraint validation.
+
 ### Next topics for future sessions
 
 Priority order:
@@ -253,5 +293,5 @@ Priority order:
 4. ~~Sender address lock constraints~~ — obsolete
 5. ~~Deadlock lock constraints~~ — obsolete
 6. ~~Tag-along output handling~~ — done (Session 7)
-7. Delegation related covenants
+7. ~~Delegation related covenants~~ — done (Session 8)
 8. Output index bounds checking
