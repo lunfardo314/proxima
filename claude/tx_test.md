@@ -138,12 +138,44 @@ Data size limit analysis and implementation moved to [claude/limits.md](limits.m
 
 Chain constraint analysis and test plan: [claude/chain_constraint.md](chain_constraint.md).
 
+### Session 5: Endorsement validation tests
+
+**File created:** `ledger/tests/endorsement_test.go`
+
+**Tests implemented (all passing):**
+
+| # | Test | Validation Stage | Topic |
+|---|------|-----------------|-------|
+| 1 | `TestEndorsementNonSequencerRejected` | Partial context (EasyFL) | Non-sequencer tx with endorsement rejected |
+| 2 | `TestEndorsementCrossSlotRejected` | Parse (Go scan) | Endorsement in different slot rejected |
+| 3 | `TestEndorsementPaceViolation` | Parse (Go scan) | Endorsement too close in time (< TransactionPaceSequencer) |
+| 4 | `TestEndorsementTooMany` | Partial context (EasyFL) | 9 endorsements exceeds max (8) |
+| 5 | `TestEndorsementDuplicateRejected` | Partial context (EasyFL) | Same endorsement twice rejected |
+| 6 | `TestEndorsementValidSingle` | Partial context (pass) | Valid single endorsement accepted |
+| 7 | `TestEndorsementMaxAccepted` | Partial context (pass) | Exactly 8 endorsements accepted |
+
+**Key findings:**
+
+1. **Two-stage endorsement validation**: Go-side `scanEndorsements()` checks cross-slot and pace
+   at parse stage. EasyFL `_validEndorsements` checks sequencer-only, max count, and duplicates
+   at partial context stage.
+2. **Sequencer chain origin must endorse**: Creating a sequencer transaction as a chain origin
+   requires at least one endorsement (EasyFL rule `_noChainPredecessorCase`). Non-origin
+   successors with cross-slot predecessors also need endorsements, branch status, or explicit baseline.
+3. **TransactionPaceSequencer** (default 2 ticks) governs endorsement pace — separate from
+   TransactionPace (default 4 ticks) for input pace.
+4. **PostBranchConsolidationTicks** (12) requires non-branch sequencer txs to have tick >= 12.
+
+**No vulnerabilities detected** in endorsement validation.
+
+Endorsement analysis: [claude/endorsement.md](endorsement.md).
+
 ### Next topics for future sessions
 
 Priority order:
 
-1. Chain constraint validation (origin vs successor) — in progress
-2. Endorsement validation (cross-slot rejection, pace constraints, duplicate endorsements)
+1. ~~Chain constraint validation~~ — done (Session 4)
+2. ~~Endorsement validation~~ — done (Session 5)
 3. Sequencer transaction specific rules
 4. Sender address lock constraints
 5. Deadlock lock constraints
