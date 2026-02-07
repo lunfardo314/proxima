@@ -291,18 +291,18 @@ func TestBase(t *testing.T) {
 	})
 }
 
-func delegationInit(master ledger.Accountable, seqID base.ChainID, startSlot uint32, maxSeqProfitMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
+func delegationInit(masterID base.SpenderID, seqID base.ChainID, startSlot uint32, maxSeqProfitMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
 	maxEpochs := byte(ledger.L(0).MaxFrozenEpochs)
 	if len(maxFreezeEpochs) > 0 {
 		maxEpochs = maxFreezeEpochs[0]
 	}
 	ret := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:             1_000_000_000,
-		Master:             master,
-		Target:             ledger.ChainLockFromChainID(seqID),
-		MaxFreezeEpochs:    maxEpochs,
-		MaxSeqProfitMargin: maxSeqProfitMargin,
-		StartSlot:          startSlot,
+		Amount:                 1_000_000_000,
+		MasterID:               masterID,
+		Target:                 ledger.ChainLockFromChainID(seqID),
+		MaxFrozenEpochs:        maxEpochs,
+		RequiredInflationShare: maxSeqProfitMargin,
+		StartSlot:              startSlot,
 	})
 	delegationInitOid := base.MustNewOutputID(base.RandomTransactionID(false, 2, base.T(startSlot, 50)), 1)
 
@@ -364,7 +364,7 @@ func TestFreezeOneStep(t *testing.T) {
 	runTest := func(startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
 		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, greedy, maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			dIn := delegationInit(addr, seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
+			dIn := delegationInit(base.SpenderID(addr), seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
 			//t.Logf("------------\n%s", dIn.LinesHR("    ").String())
 
 			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddSlots(1))
@@ -546,7 +546,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		delegations = make([]ledger.DelegationOutput, par.numDelegations)
 		for i := range delegations {
 			maxFreeze := byte(i) % par.maxFreezeEpochs
-			delegations[i] = delegationInit(addr, seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
+			delegations[i] = delegationInit(base.SpenderID(addr), seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
 		}
 		seqOut := newPredChain(par.seqProfitMargin, par.greedy)
 		var ok bool
@@ -740,7 +740,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(out.Output.Amounts()...)
-			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), ret.masterAddr, maxFreezeEpochs, 980)
+			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), base.SpenderID(ret.masterAddr), maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
 			o.MustPushConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), 2, out.OriginSlot, out.OriginAmount).Bytes())
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())

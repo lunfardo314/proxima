@@ -941,20 +941,20 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 }
 
 type MakeDelegationInitTransactionParams struct {
-	Timestamp                       base.LedgerTime
-	Amount                          uint64
-	Master                          ledger.SigLock
-	Target                          ledger.ChainLock
-	MaxFrozenEpochs                 byte
-	MaxToleratedInflationCostMargin uint16
-	MasterPrivateKey                ed25519.PrivateKey
-	Inputs                          []*ledger.OutputWithID
-	TagAlongSequencer               base.ChainID
-	TagAlongFee                     uint64
+	Timestamp             base.LedgerTime
+	Amount                uint64
+	MasterID              base.SpenderID
+	Target                ledger.ChainLock
+	MaxFrozenEpochs       byte
+	RequiredInflationShare uint16
+	MasterPrivateKey      ed25519.PrivateKey
+	Inputs                []*ledger.OutputWithID
+	TagAlongSequencer     base.ChainID
+	TagAlongFee           uint64
 }
 
 func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]byte, error) {
-	if !ledger.SigLockMatchesED25519PrivateKey(par.Master, par.MasterPrivateKey) {
+	if par.MasterID != base.SpenderID(ledger.SigLockFromED25519PrivateKey(par.MasterPrivateKey)) {
 		return nil, fmt.Errorf("MakeDelegationInitTransaction: private key does not match master address")
 	}
 	inputTotal, inps, err := filterInputs(par.Inputs, par.Amount+par.TagAlongFee, true)
@@ -976,24 +976,24 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	}
 
 	delegateOutput := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:             par.Amount,
-		Master:             par.Master,
-		Target:             par.Target,
-		MaxFreezeEpochs:    par.MaxFrozenEpochs,
-		MaxSeqProfitMargin: par.MaxToleratedInflationCostMargin,
-		StartSlot:          par.Timestamp.Slot,
+		Amount:                 par.Amount,
+		MasterID:               par.MasterID,
+		Target:                 par.Target,
+		MaxFrozenEpochs:        par.MaxFrozenEpochs,
+		RequiredInflationShare: par.RequiredInflationShare,
+		StartSlot:              par.Timestamp.Slot,
 	})
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
-	tagAlong := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, base.SpenderID(par.Master))
+	tagAlong := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, par.MasterID)
 	if _, err = txb.ProduceOutput(tagAlong); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
 	if inputTotal > par.Amount+par.TagAlongFee {
 		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(inputTotal - par.Amount - par.TagAlongFee))
-			o.WithLock(par.Master.AsLock())
+			o.WithLock(ledger.SigLock(par.MasterID))
 		})
 		if _, err = txb.ProduceOutput(remainder); err != nil {
 			return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)

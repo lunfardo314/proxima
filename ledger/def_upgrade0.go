@@ -37,7 +37,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	lib.MustExtendMany(chainConstraintSource)
 	lib.MustExtendMany(sequencerConstraintSource)
 	lib.MustExtendMany(chainLockConstraintSource)
-	lib.MustExtendMany(delegateLock2Source)
+	lib.MustExtendMany(delegateLockSource)
 	lib.MustExtendMany(tagAlongLockConstraintSource)
 	lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
 	lib.MustExtendMany(_txLayoutValidator0)

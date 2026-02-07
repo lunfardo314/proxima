@@ -66,14 +66,8 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		reason = fmt.Errorf("AskStopDelegationRequest: the sequencer cannot revoke delegation %s (failed authorisation)", delegationID.String())
 		return
 	}
-	master, ok := ret.delegation.Master().(ledger.SigLock)
-	if !ok {
-		// wrong master (cannot be)
-		reason = fmt.Errorf("AskStopDelegationRequest: inconsistecy while checking master lock")
-		return
-	}
 	// check authorisation
-	if o.SenderID != base.SpenderID(master) {
+	if o.SenderID != ret.delegation.MasterID {
 		// this sender cannot revoke delegation -> may be an attack
 		reason = fmt.Errorf("AskStopDelegationRequest: sender with hash %s cannot revoke delegation %s (authorisation failure)",
 			hex.EncodeToString(o.SenderID[:]), delegationID.String())

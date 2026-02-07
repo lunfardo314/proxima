@@ -81,7 +81,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 		return nil, err
 	}
 
-	delegationLock := ledger.NewDelegateLock(td.target, td.masterAddr, maxFrozenEpochs, inflationShare)
+	delegationLock := ledger.NewDelegateLock(td.target, base.SpenderID(td.masterAddr), maxFrozenEpochs, inflationShare)
 	s := ledger.DelegateLockStateUndef
 	if revoked {
 		s = ledger.DelegateLockStateOnHold
@@ -146,16 +146,16 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFrozenEpochs b
 	require.True(td, availableTokens >= delegatedTokens+tagAlongFee)
 
 	txBytes, err := txbuilder.MakeDelegationInitTransaction(txbuilder.MakeDelegationInitTransactionParams{
-		Timestamp:                       ts,
-		Amount:                          delegatedTokens,
-		Master:                          td.masterAddr,
-		Target:                          td.target,
-		MaxFrozenEpochs:                 maxFrozenEpochs,
-		MaxToleratedInflationCostMargin: inflationShare,
-		MasterPrivateKey:                td.masterPrivateKey,
-		Inputs:                          outs,
-		TagAlongSequencer:               base.RandomChainID(),
-		TagAlongFee:                     tagAlongFee,
+		Timestamp:              ts,
+		Amount:                 delegatedTokens,
+		MasterID:               base.SpenderID(td.masterAddr),
+		Target:                 td.target,
+		MaxFrozenEpochs:        maxFrozenEpochs,
+		RequiredInflationShare: inflationShare,
+		MasterPrivateKey:       td.masterPrivateKey,
+		Inputs:                 outs,
+		TagAlongSequencer:      base.RandomChainID(),
+		TagAlongFee:            tagAlongFee,
 	})
 	txString := td.u.TxToSource(txBytes)
 	if err != nil {

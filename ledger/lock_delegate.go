@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 
 	_ "embed"
@@ -15,7 +16,7 @@ import (
 type (
 	DelegateLock struct {
 		Target                 ChainLock
-		MasterLock             Accountable
+		MasterID               base.SpenderID
 		MaxFrozenEpochs        byte
 		RequiredInflationShare uint16 // in promille, <= 1000
 	}
@@ -27,7 +28,7 @@ type (
 
 const (
 	DelegateLockName       = "delegateLock"
-	DelegateLockTemplate   = DelegateLockName + "(%s, %s, %s, z16/%d)"
+	DelegateLockTemplate   = DelegateLockName + "(%s, 0x%s, %s, z16/%d)"
 	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%%%)"
 
 	DelegateLockStateName       = "delegateLockState"
@@ -45,15 +46,15 @@ const (
 )
 
 //go:embed def/lock_delegate.easyfl
-var delegateLock2Source string
+var delegateLockSource string
 
 //------------ DelegateLock
 
-func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte, requiredInflationShare uint16) *DelegateLock {
+func NewDelegateLock(target ChainLock, masterID base.SpenderID, maxFrozenEpochs byte, requiredInflationShare uint16) *DelegateLock {
 	return &DelegateLock{
 		Target:                 target,
-		MasterLock:             master,
-		MaxFrozenEpochs:        maxFreezeEpochs,
+		MasterID:               masterID,
+		MaxFrozenEpochs:        maxFrozenEpochs,
 		RequiredInflationShare: requiredInflationShare,
 	}
 }
@@ -63,11 +64,11 @@ func (d *DelegateLock) Source() string {
 	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(L(base.MaxSlot).MaxFrozenEpochs) {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
 	}
-	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), m, d.RequiredInflationShare)
+	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), hex.EncodeToString(d.MasterID[:]), m, d.RequiredInflationShare)
 }
 
 func (d *DelegateLock) String() string {
-	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenEpochs, d.RequiredInflationShare)
+	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), hex.EncodeToString(d.MasterID[:]), d.MaxFrozenEpochs, d.RequiredInflationShare)
 }
 
 func (d *DelegateLock) Bytes() []byte {
@@ -75,35 +76,35 @@ func (d *DelegateLock) Bytes() []byte {
 }
 
 func (d *DelegateLock) Accounts() []Accountable {
-	return NoDuplicatesAccountables([]Accountable{d.Target, d.MasterLock})
+	return NoDuplicatesAccountables([]Accountable{d.Target, SigLock(d.MasterID)})
 }
 
 func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: %w", err)
 	}
 	if sym != DelegateLockName {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: not a DelegateLock")
+		return nil, fmt.Errorf("DelegateLockFromBytes: not a DelegateLock")
 	}
-	// chain constraint index
 	ret := &DelegateLock{}
 
 	// target lock
 	ret.Target, err = ChainLockFromBytesWithLib(args[0], lib)
 	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: %w", err)
 	}
-	// master lock
-	ret.MasterLock, err = AccountableFromBytesWithLib(args[1], lib)
-	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
+	// master spender ID (raw 32 bytes)
+	masterIDbin := easyfl.StripDataPrefix(args[1])
+	if len(masterIDbin) != len(base.SpenderID{}) {
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong master ID size")
 	}
+	copy(ret.MasterID[:], masterIDbin)
 
-	// max coverage lock slots
+	// max frozen epochs
 	a2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
 	if err != nil || a2 >= 256 {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong max frozen epochs: %v", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong max frozen epochs: %v", err)
 	}
 	ret.MaxFrozenEpochs = byte(a2)
 	if ret.MaxFrozenEpochs == 0 {
@@ -111,10 +112,10 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 		ret.MaxFrozenEpochs = byte(lib.MaxFrozenEpochs)
 	}
 
-	// minimum inflation advance
+	// required inflation share
 	ret.RequiredInflationShare, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
 	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong max inflation margin: %v", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong required inflation share: %v", err)
 	}
 
 	return ret, nil
@@ -125,7 +126,7 @@ func (d *DelegateLock) Name() string {
 }
 
 func (d *DelegateLock) Master() Accountable {
-	return d.MasterLock
+	return SigLock(d.MasterID)
 }
 
 func registerDelegateLock(lib *Library) {
@@ -196,15 +197,15 @@ func (d DelegateLockState) Name() string {
 func init() {
 	registerInlineTest(func(lib *Library) {
 		target := ChainLockFromChainID(base.RandomChainID())
-		master := SigLockRandom()
-		example := NewDelegateLock(target, master, 3, 10)
+		masterID := base.SpenderID(SigLockRandom())
+		example := NewDelegateLock(target, masterID, 3, 10)
 
 		exampleBack, err := DelegateLockFromBytesWithLib(example.Bytes(), lib)
 		util.AssertNoError(err)
-		util.Assertf(example.MaxFrozenEpochs == 3, "Delegate2LockFromBytes: wrong back 1")
-		util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "Delegate2LockFromBytes: wrong back 2")
-		util.Assertf(exampleBack.RequiredInflationShare == example.RequiredInflationShare, "Delegate2LockFromBytes: wrong back 3")
-		util.Assertf(example.RequiredInflationShare == 10, "Delegate2LockFromBytes: wrong back 4")
+		util.Assertf(example.MaxFrozenEpochs == 3, "DelegateLockFromBytes: wrong back 1")
+		util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "DelegateLockFromBytes: wrong back 2")
+		util.Assertf(exampleBack.RequiredInflationShare == example.RequiredInflationShare, "DelegateLockFromBytes: wrong back 3")
+		util.Assertf(example.RequiredInflationShare == 10, "DelegateLockFromBytes: wrong back 4")
 
 		util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
 		exampleBack2, err := LockFromBytes(example.Bytes())

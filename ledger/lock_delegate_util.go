@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -19,19 +20,19 @@ type (
 	}
 
 	MakeDelegateInitOutputParams struct {
-		Amount             uint64
-		Master             Accountable
-		Target             ChainLock
-		MaxFreezeEpochs    byte
-		MaxSeqProfitMargin uint16
-		StartSlot          uint32
+		Amount                 uint64
+		MasterID               base.SpenderID
+		Target                 ChainLock
+		MaxFrozenEpochs        byte
+		RequiredInflationShare uint16
+		StartSlot              uint32
 	}
 )
 
 func MakeDelegationInitOutput(par MakeDelegateInitOutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmounts(int64(par.Amount))
-		o.WithLock(NewDelegateLock(par.Target, par.Master, par.MaxFreezeEpochs, par.MaxSeqProfitMargin))
+		o.WithLock(NewDelegateLock(par.Target, par.MasterID, par.MaxFrozenEpochs, par.RequiredInflationShare))
 		o.MustPushConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes())
 		o.MustPushConstraint(DelegateLockState{}.Bytes())
 	})
@@ -221,7 +222,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 
 	ret = NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amountsVector[:]...)
-		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenEpochs, o.RequiredInflationShare))
+		o1.WithLock(NewDelegateLock(o.Target, o.MasterID, o.MaxFrozenEpochs, o.RequiredInflationShare))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: freezeUntilEpoch, State: DelegateLockStateFrozen}.Bytes())
 	})
@@ -371,7 +372,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amounts...)
-		o1.WithLock(NewDelegateLock(o.Target, o.MasterLock, o.MaxFrozenEpochs, o.RequiredInflationShare))
+		o1.WithLock(NewDelegateLock(o.Target, o.MasterID, o.MaxFrozenEpochs, o.RequiredInflationShare))
 		o1.MustPushConstraint(chainConstraint.Bytes())
 		o1.MustPushConstraint(DelegateLockState{
 			LastFrozenEpoch: 0,
@@ -401,7 +402,7 @@ func (o *DelegationOutput) _linesDelegationData(insertPrefixLines func(ln *lines
 	ret := lines.New(prefix...)
 	insertPrefixLines(ret)
 	currentSlot := SlotNow()
-	ret.Add("Master: %s", o.MasterLock.Source())
+	ret.Add("Master: %s", hex.EncodeToString(o.MasterID[:]))
 	ret.Add("Target: %s", o.Target.Source())
 	ret.Add("MaxFrozenEpochs: %d", o.MaxFrozenEpochs)
 	ret.Add("RequiredInflationShare: %d promille (%.1f%%)", o.RequiredInflationShare, float64(o.RequiredInflationShare)/10)
