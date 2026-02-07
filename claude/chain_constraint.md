@@ -121,6 +121,15 @@ Created `ledger/tests/chain_test.go` with 11 tests — all passing:
 - When unlock params point to out-of-range indices, EasyFL fails with "index is out of range"
 - Both cases demonstrate that the validation is robust, just with different error paths
 
+ChainLock tests added:
+
+| # | Test | Topic |
+|---|------|-------|
+| 13 | `TestChainLockValidUnlock` | Spend chain-locked output via chain transition |
+| 14 | `TestChainLockWrongChainID` | Unlock via wrong chain rejected |
+| 15 | `TestChainLockSelfReference` | Self-referencing in unlock params rejected |
+
+**No vulnerabilities detected** in chain constraint or ChainLock validation.
+
 **Remaining from test plan:**
-- Chain constraint at output index 0xFF (item 9)
-- ChainLock tests (items 10-12)
+- Chain constraint at output index 0xFF (item 9 — may not be practically testable)

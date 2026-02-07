@@ -670,3 +670,296 @@ func TestChainTransitionFromNonOrigin(t *testing.T) {
 
 	t.Logf("non-origin transition succeeded: origin -> succ1 -> succ2")
 }
+
+// ==========================================================================
+// ChainLock tests
+// ==========================================================================
+//
+// ChainLock (short name "c") is a lock type that restricts output unlocking
+// to whoever controls a specific chain. To spend a chain-locked output,
+// the spender must consume the chain output in the same transaction and
+// reference it in the unlock params.
+//
+// All tests assume inflation = 0.
+
+// --------------------------------------------------------------------------
+// TEST: Valid ChainLock unlock
+// --------------------------------------------------------------------------
+
+// TestChainLockValidUnlock verifies that a chain-locked output can be spent
+// by the chain controller in the same transaction that transitions the chain.
+// Flow: create chain → send tokens to ChainLock(chainID) → spend them via chain transition.
+func TestChainLockValidUnlock(t *testing.T) {
+	e := newChainTestEnv(t, 1_000_000_000)
+
+	// Create chain origin
+	chainOut := e.createChainOrigin(t, 200_000_000)
+	chainID := chainOut.ChainID
+	chainAddr := ledger.ChainLockFromChainID(chainID)
+
+	// Create a second address to send tokens to the chain lock
+	privKey2, _, addr2 := e.u.GenerateAddress(2)
+	err := e.u.TokensFromFaucet(addr2, 200_000_000)
+	require.NoError(t, err)
+
+	// Send tokens from addr2 to chainAddr (chain-locked output)
+	outs2 := getSourceOutputs(t, e.u, addr2)
+	ts := outs2[0].ID.Timestamp().AddTicks(int(ledger.L(outs2[0].ID.Slot()).TransactionPace))
+	par, err := e.u.MakeTransferInputData(privKey2, nil, ts)
+	require.NoError(t, err)
+	err = e.u.DoTransfer(par.WithAmount(50_000_000).WithTargetLock(chainAddr))
+	require.NoError(t, err)
+
+	require.EqualValues(t, 50_000_000, e.u.Balance(chainAddr))
+
+	// Now spend the chain-locked output by transitioning the chain.
+	// Get the chain output and the chain-locked output.
+	chainIn := e.getChainOutput(t, chainID)
+	cc, chainConstraintIdx := chainIn.Output.ChainConstraint()
+	require.True(t, chainConstraintIdx != 0xff)
+
+	// Get the chain-locked outputs
+	lockedOutsData, err := e.u.StateReader().GetUTXOsInAccount(chainAddr.AccountID())
+	require.NoError(t, err)
+	lockedOuts, err := ledger.ParseAndSortOutputData(lockedOutsData, nil)
+	require.NoError(t, err)
+	require.True(t, len(lockedOuts) > 0, "must have chain-locked outputs")
+
+	// Build transaction: consume chain output + chain-locked output,
+	// produce chain successor + target output
+	txb := txbuilder.New()
+
+	// Input 0: chain output
+	chainIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
+	require.NoError(t, err)
+
+	// Input 1: chain-locked output
+	lockedIdx, err := txb.ConsumeOutput(lockedOuts[0].Output, lockedOuts[0].ID)
+	require.NoError(t, err)
+
+	// Output 0: chain successor
+	nextCC := ledger.NewChainConstraint(chainID, chainIdx, chainConstraintIdx,
+		cc.OriginSlot, cc.OriginAmount)
+	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
+		out.PutConstraint(nextCC.Bytes(), chainConstraintIdx)
+	})
+	succIdx, err := txb.ProduceOutput(chainSucc)
+	require.NoError(t, err)
+
+	// Output 1: spend the chain-locked tokens to addr (chain controller)
+	spentOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(lockedOuts[0].Output.TokenBalance())).WithLock(e.addr)
+	})
+	_, err = txb.ProduceOutput(spentOut)
+	require.NoError(t, err)
+
+	// Unlock chain output: signature + chain transition params
+	txb.PutSignatureUnlock(chainIdx)
+	txb.PutUnlockParams(chainIdx, chainConstraintIdx,
+		ledger.NewChainUnlockParams(succIdx, chainConstraintIdx))
+
+	// Unlock chain-locked output: reference the chain input
+	txb.PutUnlockParams(lockedIdx, ledger.ConstraintIndexLock,
+		ledger.NewChainLockUnlockParams(chainIdx, chainConstraintIdx))
+
+	maxTs := chainIn.ID.Timestamp()
+	if lockedOuts[0].ID.Timestamp().After(maxTs) {
+		maxTs = lockedOuts[0].ID.Timestamp()
+	}
+	txb.TransactionData.Timestamp = maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(e.privKey)
+
+	txBytes := txb.TransactionData.Bytes()
+	err = e.u.AddTransaction(txBytes)
+	require.NoError(t, err, "valid chain-lock unlock must succeed")
+
+	// Chain-locked balance should be zero now
+	require.EqualValues(t, 0, e.u.Balance(chainAddr))
+
+	t.Logf("chain-locked output successfully unlocked via chain transition")
+}
+
+// --------------------------------------------------------------------------
+// TEST: ChainLock wrong chain ID
+// --------------------------------------------------------------------------
+
+// TestChainLockWrongChainID verifies that a chain-locked output cannot be unlocked
+// by referencing a different chain than the one specified in the lock.
+// Creates two chains (A, B), locks output to chain A, tries to unlock via chain B.
+func TestChainLockWrongChainID(t *testing.T) {
+	e := newChainTestEnv(t, 2_000_000_000)
+
+	// Create chain A
+	chainOutA := e.createChainOrigin(t, 200_000_000)
+	chainIDA := chainOutA.ChainID
+
+	// Create chain B (need more tokens from faucet first)
+	chainOutB := e.createChainOrigin(t, 200_000_000)
+	chainIDB := chainOutB.ChainID
+	require.NotEqual(t, chainIDA, chainIDB, "chains must have different IDs")
+
+	chainAddrA := ledger.ChainLockFromChainID(chainIDA)
+
+	// Create a second address and send tokens to ChainLock(chainA)
+	privKey2, _, addr2 := e.u.GenerateAddress(2)
+	err := e.u.TokensFromFaucet(addr2, 200_000_000)
+	require.NoError(t, err)
+
+	outs2 := getSourceOutputs(t, e.u, addr2)
+	ts := outs2[0].ID.Timestamp().AddTicks(int(ledger.L(outs2[0].ID.Slot()).TransactionPace))
+	par, err := e.u.MakeTransferInputData(privKey2, nil, ts)
+	require.NoError(t, err)
+	err = e.u.DoTransfer(par.WithAmount(50_000_000).WithTargetLock(chainAddrA))
+	require.NoError(t, err)
+
+	// Get chain B output and chain-locked output
+	chainInB := e.getChainOutput(t, chainIDB)
+	ccB, chainConstraintIdxB := chainInB.Output.ChainConstraint()
+	require.True(t, chainConstraintIdxB != 0xff)
+
+	lockedOutsData, err := e.u.StateReader().GetUTXOsInAccount(chainAddrA.AccountID())
+	require.NoError(t, err)
+	lockedOuts, err := ledger.ParseAndSortOutputData(lockedOutsData, nil)
+	require.NoError(t, err)
+	require.True(t, len(lockedOuts) > 0)
+
+	// Build transaction: try to unlock chain-locked-to-A output via chain B
+	txb := txbuilder.New()
+
+	// Input 0: chain B output (wrong chain)
+	chainIdx, err := txb.ConsumeOutput(chainInB.Output, chainInB.ID)
+	require.NoError(t, err)
+
+	// Input 1: chain-locked output (locked to chain A)
+	lockedIdx, err := txb.ConsumeOutput(lockedOuts[0].Output, lockedOuts[0].ID)
+	require.NoError(t, err)
+
+	// Output 0: chain B successor
+	nextCCB := ledger.NewChainConstraint(chainIDB, chainIdx, chainConstraintIdxB,
+		ccB.OriginSlot, ccB.OriginAmount)
+	chainSuccB := chainInB.Output.Clone(func(out *ledger.OutputBuilder) {
+		out.PutConstraint(nextCCB.Bytes(), chainConstraintIdxB)
+	})
+	succIdx, err := txb.ProduceOutput(chainSuccB)
+	require.NoError(t, err)
+
+	// Output 1: try to spend chain-locked tokens
+	spentOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(lockedOuts[0].Output.TokenBalance())).WithLock(e.addr)
+	})
+	_, err = txb.ProduceOutput(spentOut)
+	require.NoError(t, err)
+
+	// Unlock chain B: signature + chain transition
+	txb.PutSignatureUnlock(chainIdx)
+	txb.PutUnlockParams(chainIdx, chainConstraintIdxB,
+		ledger.NewChainUnlockParams(succIdx, chainConstraintIdxB))
+
+	// Unlock chain-locked output: reference chain B (WRONG — should be chain A)
+	txb.PutUnlockParams(lockedIdx, ledger.ConstraintIndexLock,
+		ledger.NewChainLockUnlockParams(chainIdx, chainConstraintIdxB))
+
+	maxTs := chainInB.ID.Timestamp()
+	if lockedOuts[0].ID.Timestamp().After(maxTs) {
+		maxTs = lockedOuts[0].ID.Timestamp()
+	}
+	txb.TransactionData.Timestamp = maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(e.privKey)
+
+	_, _, _, err = txb.BytesWithValidation()
+	require.Error(t, err, "unlocking with wrong chain must be rejected")
+	// The chainLock constraint on the consumed chain-locked output fails because
+	// chain B's chain ID doesn't match the lock's chain ID (chain A)
+	t.Logf("wrong chain ID correctly rejected: %v", err)
+}
+
+// --------------------------------------------------------------------------
+// TEST: ChainLock self-referencing prevention
+// --------------------------------------------------------------------------
+
+// TestChainLockSelfReference verifies that a chain-locked output cannot reference
+// itself in the unlock params. The EasyFL rule is:
+//   not(equal(selfOutputIndex, byte(selfUnlockParameters, 0)))
+// This prevents an output from claiming it unlocks itself.
+func TestChainLockSelfReference(t *testing.T) {
+	e := newChainTestEnv(t, 1_000_000_000)
+
+	// Create chain origin
+	chainOut := e.createChainOrigin(t, 200_000_000)
+	chainID := chainOut.ChainID
+	chainAddr := ledger.ChainLockFromChainID(chainID)
+
+	// Send tokens to the chain lock
+	privKey2, _, addr2 := e.u.GenerateAddress(2)
+	err := e.u.TokensFromFaucet(addr2, 200_000_000)
+	require.NoError(t, err)
+
+	outs2 := getSourceOutputs(t, e.u, addr2)
+	ts := outs2[0].ID.Timestamp().AddTicks(int(ledger.L(outs2[0].ID.Slot()).TransactionPace))
+	par, err := e.u.MakeTransferInputData(privKey2, nil, ts)
+	require.NoError(t, err)
+	err = e.u.DoTransfer(par.WithAmount(50_000_000).WithTargetLock(chainAddr))
+	require.NoError(t, err)
+
+	// Get chain output and chain-locked output
+	chainIn := e.getChainOutput(t, chainID)
+	cc, chainConstraintIdx := chainIn.Output.ChainConstraint()
+	require.True(t, chainConstraintIdx != 0xff)
+
+	lockedOutsData, err := e.u.StateReader().GetUTXOsInAccount(chainAddr.AccountID())
+	require.NoError(t, err)
+	lockedOuts, err := ledger.ParseAndSortOutputData(lockedOutsData, nil)
+	require.NoError(t, err)
+	require.True(t, len(lockedOuts) > 0)
+
+	// Build transaction where the chain-locked output tries to reference itself
+	txb := txbuilder.New()
+
+	// Input 0: chain output
+	chainIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
+	require.NoError(t, err)
+
+	// Input 1: chain-locked output
+	lockedIdx, err := txb.ConsumeOutput(lockedOuts[0].Output, lockedOuts[0].ID)
+	require.NoError(t, err)
+
+	// Output 0: chain successor
+	nextCC := ledger.NewChainConstraint(chainID, chainIdx, chainConstraintIdx,
+		cc.OriginSlot, cc.OriginAmount)
+	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
+		out.PutConstraint(nextCC.Bytes(), chainConstraintIdx)
+	})
+	succIdx, err := txb.ProduceOutput(chainSucc)
+	require.NoError(t, err)
+
+	// Output 1: spend the chain-locked tokens
+	spentOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(lockedOuts[0].Output.TokenBalance())).WithLock(e.addr)
+	})
+	_, err = txb.ProduceOutput(spentOut)
+	require.NoError(t, err)
+
+	// Unlock chain output normally
+	txb.PutSignatureUnlock(chainIdx)
+	txb.PutUnlockParams(chainIdx, chainConstraintIdx,
+		ledger.NewChainUnlockParams(succIdx, chainConstraintIdx))
+
+	// ATTACK: chain-locked output references itself (lockedIdx, not chainIdx)
+	// This means byte 0 of unlock params equals selfOutputIndex of the chain-locked input
+	txb.PutUnlockParams(lockedIdx, ledger.ConstraintIndexLock,
+		ledger.NewChainLockUnlockParams(lockedIdx, chainConstraintIdx))
+
+	maxTs := chainIn.ID.Timestamp()
+	if lockedOuts[0].ID.Timestamp().After(maxTs) {
+		maxTs = lockedOuts[0].ID.Timestamp()
+	}
+	txb.TransactionData.Timestamp = maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(e.privKey)
+
+	_, _, _, err = txb.BytesWithValidation()
+	require.Error(t, err, "self-referencing chain-lock must be rejected")
+	t.Logf("self-referencing correctly rejected: %v", err)
+}
