@@ -46,7 +46,11 @@ It is recommended to have it no longer than 4-6 characters.
 The file should have restricted permissions (`chmod 0600`). The `proxi node setup_seq` command creates this file automatically as `proxima_sequencer.key`.
 
 Alternatively, `sequencer.controller_key` can be used to specify the private key inline in the YAML (less secure, supported for backward compatibility).
-If both are specified, `controller_key_file` takes priority.
+
+The controller key can also be provided via the `PROXIMA_SEQUENCER_KEY` environment variable (hex-encoded).
+This is useful for containerized deployments and CI/CD pipelines where secrets are injected as environment variables.
+
+Priority: `PROXIMA_SEQUENCER_KEY` env var > `controller_key_file` > `controller_key` (inline).
 
 ### Encrypting the key file with a passphrase
 

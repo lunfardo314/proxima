@@ -295,3 +295,9 @@ ERROR: wrong passphrase or corrupted keystore
 - Updated `docs/run_sequencer.md` with keystore section
 - Added `golang.org/x/term` dependency
 - Build passes, all tests pass
+
+### Session 3: Option 3 (Environment Variable)
+
+- Added `PROXIMA_SEQUENCER_KEY` env var support in `loadControllerKey()`
+- Priority chain: env var > controller_key_file > controller_key (inline)
+- Updated docs/run_sequencer.md with env var documentation

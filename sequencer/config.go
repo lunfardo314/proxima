@@ -116,10 +116,19 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 }
 
 // loadControllerKey reads the sequencer controller private key.
-// Priority: controller_key_file (keystore or plain hex) > controller_key (inline hex in config).
+// Priority: PROXIMA_SEQUENCER_KEY env var > controller_key_file (keystore or plain hex) > controller_key (inline).
 // Keystore files (JSON with passphrase encryption) are detected automatically.
 func loadControllerKey(subViper *viper.Viper) (ed25519.PrivateKey, error) {
-	// Try controller_key_file first (preferred, more secure)
+	// Highest priority: PROXIMA_SEQUENCER_KEY environment variable (hex-encoded)
+	if envKey := os.Getenv("PROXIMA_SEQUENCER_KEY"); envKey != "" {
+		key, err := util.ED25519PrivateKeyFromHexString(envKey)
+		if err != nil {
+			return nil, fmt.Errorf("can't parse PROXIMA_SEQUENCER_KEY env var: %v", err)
+		}
+		return key, nil
+	}
+
+	// Try controller_key_file (preferred file-based option)
 	keyFile := subViper.GetString("controller_key_file")
 	if keyFile != "" {
 		// Detect keystore JSON format vs plain hex
@@ -141,7 +150,7 @@ func loadControllerKey(subViper *viper.Viper) (ed25519.PrivateKey, error) {
 	// Fall back to inline controller_key
 	keyHex := subViper.GetString("controller_key")
 	if keyHex == "" {
-		return nil, fmt.Errorf("neither 'controller_key_file' nor 'controller_key' is specified")
+		return nil, fmt.Errorf("no controller key: set PROXIMA_SEQUENCER_KEY env var, or 'controller_key_file', or 'controller_key' in config")
 	}
 	key, err := util.ED25519PrivateKeyFromHexString(keyHex)
 	if err != nil {
