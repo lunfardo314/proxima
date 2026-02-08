@@ -80,7 +80,7 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 	err = templ.Execute(&buf, data)
 	glb.AssertNoError(err)
 
-	err = os.WriteFile(proximaNodeProfile, buf.Bytes(), 0666)
+	err = os.WriteFile(proximaNodeProfile, buf.Bytes(), 0600)
 	glb.AssertNoError(err)
 
 	glb.Infof("initial Proxima node configuration file has been saved as '%s'", proximaNodeProfile)
@@ -203,8 +203,11 @@ sequencer:
     # Sequencer chain is created by 'proxi node mkchain' command
     # All chains controlled by the wallet can be displayed by 'proxi node mychains'
   chain_id: <sequencer id hex encoded>
-  # sequencer chain controller's private key (hex-encoded)
-  controller_key: <ED25519 private key of the controller>
+  # sequencer chain controller's private key
+  # Option 1 (recommended): path to a separate key file (hex-encoded key, 0600 permissions)
+  controller_key_file: proxima_sequencer.key
+  # Option 2: inline hex-encoded key (less secure, used as fallback if controller_key_file is not set)
+  # controller_key: <ED25519 private key of the controller>
   # sequencer pace. Distance in ticks between two subsequent sequencer transactions
   # cannot be less than the sequencer pace value set by the ledger
   pace: 12

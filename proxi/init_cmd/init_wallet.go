@@ -48,7 +48,7 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 	err = templ.Execute(&buf, data)
 	glb.AssertNoError(err)
 
-	err = os.WriteFile(profileFname, buf.Bytes(), 0666)
+	err = os.WriteFile(profileFname, buf.Bytes(), 0600)
 	glb.AssertNoError(err)
 	glb.Infof("proxi profile '%s' has been created successfully.\nAccount address: %s", profileFname, data.Account)
 }

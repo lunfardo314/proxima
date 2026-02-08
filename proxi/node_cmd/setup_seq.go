@@ -139,11 +139,18 @@ func updateWalletConfig(chainId base.ChainID) {
 	glb.AssertNoError(err)
 
 	// Write the modified YAML back to the file
-	err = os.WriteFile("proxi.yaml", modifiedData, 0666)
+	err = os.WriteFile("proxi.yaml", modifiedData, 0600)
 	glb.AssertNoError(err)
 }
 
+const sequencerKeyFile = "proxima_sequencer.key"
+
 func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID) {
+	// Write the private key to a separate file with restricted permissions
+	err := os.WriteFile(sequencerKeyFile, []byte(hex.EncodeToString(key)+"\n"), 0600)
+	glb.AssertNoError(err)
+	glb.Infof("sequencer controller key saved to '%s'", sequencerKeyFile)
+
 	// Read the YAML file
 	data, err := os.ReadFile("proxima.yaml")
 	glb.AssertNoError(err)
@@ -158,7 +165,10 @@ func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID)
 		sequencer["name"] = name
 		sequencer["enable"] = true // Enable the sequencer
 		sequencer["chain_id"] = chainId.StringHex()
-		sequencer["controller_key"] = hex.EncodeToString(key)
+		// Reference key file instead of embedding inline
+		sequencer["controller_key_file"] = sequencerKeyFile
+		// Remove inline key if previously set
+		delete(sequencer, "controller_key")
 	} else {
 		glb.Infof("!!! Error sequencer key not found")
 	}
@@ -168,6 +178,6 @@ func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID)
 	glb.AssertNoError(err)
 
 	// Write the modified YAML back to the file
-	err = os.WriteFile("proxima.yaml", modifiedData, 0666)
+	err = os.WriteFile("proxima.yaml", modifiedData, 0600)
 	glb.AssertNoError(err)
 }

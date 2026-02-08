@@ -4,6 +4,8 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"math"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
@@ -77,9 +79,9 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 	if err != nil {
 		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse sequencer chain id: %v", err)
 	}
-	controllerKey, err := util.ED25519PrivateKeyFromHexString(subViper.GetString("controller_key"))
+	controllerKey, err := loadControllerKey(subViper)
 	if err != nil {
-		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse private key: %v", err)
+		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't load controller key: %v", err)
 	}
 
 	backlogTagAlongTTLSlots := subViper.GetInt("backlog_tag_along_ttl_slots")
@@ -109,6 +111,35 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 		cfg = append(cfg, WithEnsureSyncedAtStartup)
 	}
 	return cfg, seqID, controllerKey, nil
+}
+
+// loadControllerKey reads the sequencer controller private key.
+// Priority: controller_key_file (separate key file) > controller_key (inline hex in config).
+func loadControllerKey(subViper *viper.Viper) (ed25519.PrivateKey, error) {
+	// Try controller_key_file first (preferred, more secure)
+	keyFile := subViper.GetString("controller_key_file")
+	if keyFile != "" {
+		data, err := os.ReadFile(keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("can't read controller key file '%s': %v", keyFile, err)
+		}
+		keyHex := strings.TrimSpace(string(data))
+		key, err := util.ED25519PrivateKeyFromHexString(keyHex)
+		if err != nil {
+			return nil, fmt.Errorf("can't parse private key from file '%s': %v", keyFile, err)
+		}
+		return key, nil
+	}
+	// Fall back to inline controller_key
+	keyHex := subViper.GetString("controller_key")
+	if keyHex == "" {
+		return nil, fmt.Errorf("neither 'controller_key_file' nor 'controller_key' is specified")
+	}
+	key, err := util.ED25519PrivateKeyFromHexString(keyHex)
+	if err != nil {
+		return nil, fmt.Errorf("can't parse inline controller_key: %v", err)
+	}
+	return key, nil
 }
 
 func WithName(name string) ConfigOption {
