@@ -11,7 +11,7 @@ import (
 func initNodeGetLedgerIDCmd() *cobra.Command {
 	dbInfoCmd := &cobra.Command{
 		Use:   "get_ledger_definitions",
-		Short: fmt.Sprintf("retrieves ledger definitions from node and saves in file '%s'", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("retrieves ledger definitions from node and saves in file '%s'", glb.LedgerDefinitionsFileName),
 		Args:  cobra.NoArgs,
 		Run:   dbNodeLedgerIDCmd,
 	}
@@ -22,7 +22,7 @@ func initNodeGetLedgerIDCmd() *cobra.Command {
 func dbNodeLedgerIDCmd(_ *cobra.Command, _ []string) {
 	yamlData, err := glb.GetClient().GetLedgerDefinitionYAML()
 	glb.AssertNoError(err)
-	err = os.WriteFile(glb.LedgerIDFileName, yamlData, 0644)
+	err = os.WriteFile(glb.LedgerDefinitionsFileName, yamlData, 0644)
 	glb.AssertNoError(err)
-	glb.Infof("ledger definitions has been saved to '%s'", glb.LedgerIDFileName)
+	glb.Infof("ledger definitions has been saved to '%s'", glb.LedgerDefinitionsFileName)
 }

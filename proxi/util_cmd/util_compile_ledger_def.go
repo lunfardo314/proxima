@@ -13,9 +13,9 @@ import (
 
 func compileIDCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "compile_ledger_id",
+		Use:   "compile_ledger_definitions",
 		Args:  cobra.NoArgs,
-		Short: fmt.Sprintf("(re)compiles ledger definition from %s and recalculates library hash", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("(re)compiles ledger definition from %s and recalculates library hash", glb.LedgerDefinitionsFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
@@ -29,16 +29,16 @@ func compileIDCmd() *cobra.Command {
 }
 
 func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
-	glb.Assertf(glb.FileExists(glb.LedgerIDFileName), "file %s does not exist", glb.LedgerIDFileName)
-	yamlData, err := os.ReadFile(glb.LedgerIDFileName)
+	glb.Assertf(glb.FileExists(glb.LedgerDefinitionsFileName), "file %s does not exist", glb.LedgerDefinitionsFileName)
+	yamlData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
 	glb.AssertNoError(err)
 
 	fromYAML, err := easyfl.ReadLibraryFromYAML(yamlData)
 	glb.AssertNoError(err)
 
 	if len(fromYAML.Hash) > 0 {
-		glb.Infof("ledger definition in %s are already compiled, library hash %s", glb.LedgerIDFileName, fromYAML.Hash)
-		prompt := fmt.Sprintf("recompile the library to the same file %s?", glb.LedgerIDFileName)
+		glb.Infof("ledger definition in %s are already compiled, library hash %s", glb.LedgerDefinitionsFileName, fromYAML.Hash)
+		prompt := fmt.Sprintf("recompile the library to the same file %s?", glb.LedgerDefinitionsFileName)
 		if !glb.YesNoPrompt(prompt, true) {
 			return
 		}
@@ -50,7 +50,7 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 
 	yamlData1 := lib.ToYAML(true, "# compiled library of Proxima ledger definitions")
 
-	err = os.WriteFile(glb.LedgerIDFileName, yamlData1, 0755)
+	err = os.WriteFile(glb.LedgerDefinitionsFileName, yamlData1, 0755)
 	glb.AssertNoError(err)
 
 	constants := ledger.ConstantsFromLibrary(lib)

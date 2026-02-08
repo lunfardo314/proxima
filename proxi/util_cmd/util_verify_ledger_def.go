@@ -13,9 +13,9 @@ import (
 
 func verifyIDCmd() *cobra.Command {
 	verifyLedgerIDCmd := &cobra.Command{
-		Use:   "verify_ledger_id",
+		Use:   "verify_ledger_def",
 		Args:  cobra.NoArgs,
-		Short: fmt.Sprintf("checks consistency of the ledger definition in file '%s'", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("checks consistency of the ledger definition in file '%s'", glb.LedgerDefinitionsFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
@@ -29,8 +29,8 @@ func verifyIDCmd() *cobra.Command {
 }
 
 func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
-	glb.Assertf(glb.FileExists(glb.LedgerIDFileName), "file %s does not exist", glb.LedgerIDFileName)
-	yamlData, err := os.ReadFile(glb.LedgerIDFileName)
+	glb.Assertf(glb.FileExists(glb.LedgerDefinitionsFileName), "file %s does not exist", glb.LedgerDefinitionsFileName)
+	yamlData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
 	glb.AssertNoError(err)
 
 	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
@@ -46,5 +46,5 @@ func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
 		}
 	}
 	glb.Infof("ledger ID data in '%s' is OK. Size: %d bytes\nMain ledger parameters:\n-------------------\n%s",
-		glb.LedgerIDFileName, len(yamlData), constants.String())
+		glb.LedgerDefinitionsFileName, len(yamlData), constants.String())
 }

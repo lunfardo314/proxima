@@ -15,9 +15,9 @@ import (
 
 func genIDCmd() *cobra.Command {
 	initLedgerIDCmd := &cobra.Command{
-		Use:   "ledger_id",
+		Use:   "ledger_definitions",
 		Args:  cobra.NoArgs,
-		Short: fmt.Sprintf("creates default ledger definitions with genesis controller taken from proxi wallet. Saves definitions to the file '%s'", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("creates default ledger definitions with genesis controller taken from proxi wallet. Saves definitions to the file '%s'", glb.LedgerDefinitionsFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
@@ -31,8 +31,8 @@ func genIDCmd() *cobra.Command {
 }
 
 func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
-	if glb.FileExists(glb.LedgerIDFileName) {
-		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", glb.LedgerIDFileName), false) {
+	if glb.FileExists(glb.LedgerDefinitionsFileName) {
+		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Overwrite?", glb.LedgerDefinitionsFileName), false) {
 			os.Exit(0)
 		}
 	}
@@ -44,9 +44,9 @@ func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
 	lib, err := easyfl.NewLibraryFromYAML[*ledger.EvalContext](yamlData, ledger.GetEmbeddedFunctionResolver)
 	glb.AssertNoError(err)
 
-	err = os.WriteFile(glb.LedgerIDFileName, yamlData, 0666)
+	err = os.WriteFile(glb.LedgerDefinitionsFileName, yamlData, 0666)
 	glb.AssertNoError(err)
-	glb.Infof("new ledger identity data has been stored in the file '%s'", glb.LedgerIDFileName)
+	glb.Infof("new ledger identity data has been stored in the file '%s'", glb.LedgerDefinitionsFileName)
 	h := lib.LibraryHash()
 	glb.Infof("calculated library hash: %s", hex.EncodeToString(h[:]))
 	constants := ledger.ConstantsFromLibrary(lib)

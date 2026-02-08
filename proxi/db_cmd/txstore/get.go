@@ -24,7 +24,7 @@ func initGetCmd() *cobra.Command {
 	}
 	getCmd.PersistentFlags().BoolVarP(&txStoreParse, "parse", "p", false, "parse and display transaction with metadata")
 	getCmd.PersistentFlags().BoolVarP(&txStoreSave, "save", "s", false, "save transaction with metadata as file")
-	getCmd.PersistentFlags().BoolVarP(&useProvidedLedgerID, "ledger_id", "l", false, fmt.Sprintf("use ledger definitions from '%s'", glb.LedgerIDFileName))
+	getCmd.PersistentFlags().BoolVarP(&useProvidedLedgerID, "ledger_id", "l", false, fmt.Sprintf("use ledger definitions from '%s'", glb.LedgerDefinitionsFileName))
 	getCmd.InitDefaultHelpCmd()
 	return getCmd
 }

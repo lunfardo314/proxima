@@ -79,7 +79,7 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 	}
 	seqID, err := base.ChainIDFromHexString(subViper.GetString("chain_id"))
 	if err != nil {
-		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse sequencer chain id: %v", err)
+		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse sequencer chain ID: %v", err)
 	}
 	controllerKey, err := loadControllerKey(subViper)
 	if err != nil {

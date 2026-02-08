@@ -15,7 +15,7 @@ func initParseBytecode() *cobra.Command {
 	validateLedgerIDCmd := &cobra.Command{
 		Use:   "parse_bytecode <bytecode hex>",
 		Args:  cobra.ExactArgs(1),
-		Short: fmt.Sprintf("parses EasyFL bytecode with ledger definitions provided in '%s'", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("parses EasyFL bytecode with ledger definitions provided in '%s'", glb.LedgerDefinitionsFileName),
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			glb.ReadInConfig()
 		},
@@ -29,7 +29,7 @@ func initParseBytecode() *cobra.Command {
 }
 
 func runParseBytecode(_ *cobra.Command, args []string) {
-	ledgerIDData, err := os.ReadFile(glb.LedgerIDFileName)
+	ledgerIDData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
 	glb.AssertNoError(err)
 	ledger.MustInitLibraryCacheFromYAML(ledgerIDData)
 

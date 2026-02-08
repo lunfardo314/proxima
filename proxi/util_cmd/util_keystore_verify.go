@@ -16,7 +16,7 @@ import (
 
 func checkKeystoreCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "check_keystore",
+		Use:   "keystore_verify",
 		Args:  cobra.NoArgs,
 		Short: "verifies integrity of a passphrase-protected keystore file",
 		Run:   runCheckKeystoreCmd,

@@ -132,7 +132,7 @@ func (ks *Keystore) Decrypt(passphrase string) ([]byte, error) {
 
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return nil, fmt.Errorf("wrong passphrase or corrupted keystore")
+		return nil, fmt.Errorf("wrong passphrase or corrupted keystore: %v", err)
 	}
 	return plaintext, nil
 }
