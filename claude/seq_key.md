@@ -274,3 +274,24 @@ ERROR: wrong passphrase or corrupted keystore
 - Verified build passes
 - Planned option 4 (passphrase-encrypted keystore) with `encrypt_key` and `check_keystore` commands
 - Added `key_type` field (0=ED25519, future values for BLS partial keys in threshold multisig)
+
+### Session 2: Option 4 Implementation
+
+- Created `util/keystore/keystore.go`: Encrypt/Decrypt/Verify/SaveToFile/LoadFromFile/IsKeystoreFile (~210 lines)
+  - Argon2id KDF (time=3, memory=64MiB, threads=4) + AES-256-GCM
+  - `key_type` field: 0=ED25519, extensible for future BLS
+  - Pubkey stored in plaintext for identification + post-decryption verification
+- Created `util/keystore/keystore_test.go`: 9 tests, all passing (~220 lines)
+  - Round-trip, wrong passphrase, pubkey mismatch, file I/O, IsKeystoreFile, empty passphrase, unknown key type
+- Created `proxi/util_cmd/util_encrypt_key.go`: `proxi util encrypt_key` command
+  - Reads plaintext key, prompts passphrase (no-echo via x/term), encrypts, saves .keystore
+  - Updates proxima.yaml, offers to delete plaintext key file
+- Created `proxi/util_cmd/util_check_keystore.go`: `proxi util check_keystore` command
+  - Displays key type + account from stored pubkey, prompts passphrase, verifies integrity
+- Extended `sequencer/config.go` `loadControllerKey()`:
+  - Auto-detects keystore JSON vs plain hex via `IsKeystoreFile()`
+  - New `loadFromKeystore()`: checks `PROXIMA_KEY_PASSPHRASE` env var, falls back to stdin prompt
+- Registered both commands in `proxi/util_cmd/util.go`
+- Updated `docs/run_sequencer.md` with keystore section
+- Added `golang.org/x/term` dependency
+- Build passes, all tests pass

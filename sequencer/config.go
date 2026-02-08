@@ -11,8 +11,10 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 type (
@@ -114,11 +116,17 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 }
 
 // loadControllerKey reads the sequencer controller private key.
-// Priority: controller_key_file (separate key file) > controller_key (inline hex in config).
+// Priority: controller_key_file (keystore or plain hex) > controller_key (inline hex in config).
+// Keystore files (JSON with passphrase encryption) are detected automatically.
 func loadControllerKey(subViper *viper.Viper) (ed25519.PrivateKey, error) {
 	// Try controller_key_file first (preferred, more secure)
 	keyFile := subViper.GetString("controller_key_file")
 	if keyFile != "" {
+		// Detect keystore JSON format vs plain hex
+		if keystore.IsKeystoreFile(keyFile) {
+			return loadFromKeystore(keyFile)
+		}
+		// Plain hex key file
 		data, err := os.ReadFile(keyFile)
 		if err != nil {
 			return nil, fmt.Errorf("can't read controller key file '%s': %v", keyFile, err)
@@ -140,6 +148,39 @@ func loadControllerKey(subViper *viper.Viper) (ed25519.PrivateKey, error) {
 		return nil, fmt.Errorf("can't parse inline controller_key: %v", err)
 	}
 	return key, nil
+}
+
+// loadFromKeystore decrypts a passphrase-protected keystore file.
+// Checks PROXIMA_KEY_PASSPHRASE env var first, then prompts on stdin.
+func loadFromKeystore(path string) (ed25519.PrivateKey, error) {
+	ks, err := keystore.LoadFromFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if ks.KeyType != keystore.KeyTypeED25519 {
+		return nil, fmt.Errorf("unsupported key type %d in keystore '%s'", ks.KeyType, path)
+	}
+
+	// Get passphrase: env var first, then interactive prompt
+	passphrase := os.Getenv("PROXIMA_KEY_PASSPHRASE")
+	if passphrase == "" {
+		fmt.Print("Enter keystore passphrase: ")
+		passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read passphrase: %v", err)
+		}
+		fmt.Println()
+		passphrase = string(passBytes)
+	}
+
+	keyBytes, err := ks.Decrypt(passphrase)
+	if err != nil {
+		return nil, err
+	}
+	if len(keyBytes) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("decrypted key has wrong size: %d (expected %d)", len(keyBytes), ed25519.PrivateKeySize)
+	}
+	return ed25519.PrivateKey(keyBytes), nil
 }
 
 func WithName(name string) ConfigOption {

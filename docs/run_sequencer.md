@@ -48,6 +48,28 @@ The file should have restricted permissions (`chmod 0600`). The `proxi node setu
 Alternatively, `sequencer.controller_key` can be used to specify the private key inline in the YAML (less secure, supported for backward compatibility).
 If both are specified, `controller_key_file` takes priority.
 
+### Encrypting the key file with a passphrase
+
+For additional security, the plaintext key file can be encrypted with a passphrase:
+
+```bash
+proxi util encrypt_key
+```
+
+This reads `proxima_sequencer.key`, prompts for a passphrase, and creates `proxima_sequencer.keystore` — a JSON file
+with the key encrypted using AES-256-GCM (Argon2id key derivation). It also updates `proxima.yaml` to point to the keystore.
+
+The keystore format is detected automatically. When starting the node, the passphrase is read from the `PROXIMA_KEY_PASSPHRASE`
+environment variable. If not set, the node prompts on stdin.
+
+To verify a keystore file:
+
+```bash
+proxi util check_keystore
+```
+
+This decrypts the keystore and verifies the key matches the stored public key.
+
 `sequencer.pace` parameter is minimum number of ticks between two subsequent sequencers transactions. In the testnet version 
 it should not be less than `3` and not exceed `20` or so. 1 tick is 80 milliseconds on the clock-time scale.
 
