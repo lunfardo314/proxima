@@ -18,7 +18,7 @@ func keyDecryptCmd() *cobra.Command {
 		Short: "decrypt an encrypted .key file to unencrypted",
 		Run:   runKeyDecryptCmd,
 	}
-	cmd.Flags().StringP("file", "f", keystore.DefaultKeyFile, "encrypted key file to decrypt")
+	cmd.Flags().String("file", keystore.DefaultKeyFile, "encrypted key file to decrypt")
 	return cmd
 }
 
@@ -33,7 +33,7 @@ func runKeyDecryptCmd(cmd *cobra.Command, _ []string) {
 	glb.Assertf(ks.IsEncrypted(), "key file '%s' is not encrypted", file)
 
 	glb.Infof("Key type: %s", keystore.KeyTypeName(ks.KeyType))
-	glb.Infof("Account: %s", ks.SpenderID)
+	glb.Infof("Spender ID (hash of the public key): %s", ks.SpenderID)
 
 	hint := ""
 	if ks.Hint != "" {

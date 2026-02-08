@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"os"
-	"time"
 
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
@@ -23,13 +22,7 @@ func AskEntropyGenEd25519PrivateKey(msg string, minSeedLength ...int) ed25519.Pr
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Scan()
 	seedSymbols := scanner.Bytes()
-	if len(seedSymbols) < seedLen {
-		Infof("error: must be at least %d seed symbols. Using timestamp instead", seedLen)
-		// for docker setup fallback to timestamp
-		timestamp := time.Now()
-		formattedTimestamp := timestamp.Format(time.RFC3339)
-		seedSymbols = []byte(formattedTimestamp)
-	}
+	Assertf(len(seedSymbols) >= seedLen, "error: must be at least %d seed symbols", seedLen)
 
 	var rndBytes [32]byte
 	n, err := rand.Read(rndBytes[:])

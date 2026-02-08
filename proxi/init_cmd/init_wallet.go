@@ -3,10 +3,12 @@ package init_cmd
 import (
 	"bytes"
 	"crypto/ed25519"
+	"encoding/hex"
 	"os"
 	"text/template"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
@@ -53,7 +55,8 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 		privateKey := glb.AskEntropyGenEd25519PrivateKey(
 			"We need some entropy for the private key of the account.\nPlease enter at least 10 seed symbols as randomly as possible and press ENTER:", 10)
 		publicKey := privateKey.Public().(ed25519.PublicKey)
-		account = ledger.SigLockFromED25519PrivateKey(privateKey).String()
+		sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
+		account = hex.EncodeToString(sid[:])
 
 		ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, account)
 		glb.AssertNoError(err)
@@ -91,7 +94,7 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 
 	err = os.WriteFile(profileFname, buf.Bytes(), 0600)
 	glb.AssertNoError(err)
-	glb.Infof("proxi profile '%s' has been created successfully.\nAccount address: %s", profileFname, account)
+	glb.Infof("proxi profile '%s' has been created successfully.\nSpender ID (hash of the public key): %s", profileFname, account)
 }
 
 // deriveSpenderIDFromKeystore derives the spender ID from the public key stored in the keystore.
@@ -104,7 +107,8 @@ func deriveSpenderIDFromKeystore(ks *keystore.Keystore) string {
 	if err != nil {
 		return ""
 	}
-	return ledger.SigLockFromED25519PublicKey(pubBytes).String()
+	sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, pubBytes)
+	return hex.EncodeToString(sid[:])
 }
 
 const walletProfileTemplate = `# Proxi wallet profile

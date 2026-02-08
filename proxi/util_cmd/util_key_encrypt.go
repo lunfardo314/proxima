@@ -13,7 +13,7 @@ func keyEncryptCmd() *cobra.Command {
 		Short: "encrypt an unencrypted .key file with a passphrase",
 		Run:   runKeyEncryptCmd,
 	}
-	cmd.Flags().StringP("file", "f", keystore.DefaultKeyFile, "key file to encrypt")
+	cmd.Flags().String("file", keystore.DefaultKeyFile, "key file to encrypt")
 	cmd.Flags().String("hint", "", "optional passphrase hint stored in the key file")
 	return cmd
 }
@@ -30,7 +30,7 @@ func runKeyEncryptCmd(cmd *cobra.Command, _ []string) {
 	glb.Assertf(!ks.IsEncrypted(), "key file '%s' is already encrypted", file)
 
 	glb.Infof("Key type: %s", keystore.KeyTypeName(ks.KeyType))
-	glb.Infof("Account: %s", ks.SpenderID)
+	glb.Infof("Spender ID (hash of the public key): %s", ks.SpenderID)
 
 	passphrase := glb.ReadPassphraseConfirm()
 

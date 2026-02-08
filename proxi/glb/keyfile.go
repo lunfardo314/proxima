@@ -49,6 +49,8 @@ func LoadPrivateKeyFromFile(path string) (ed25519.PrivateKey, error) {
 	return ed25519.PrivateKey(keyBytes), nil
 }
 
+const minPassphraseLength = 10
+
 // ReadPassphraseConfirm prompts for passphrase twice (no-echo) and returns it.
 func ReadPassphraseConfirm() string {
 	fmt.Print("Enter passphrase: ")
@@ -56,12 +58,13 @@ func ReadPassphraseConfirm() string {
 	AssertNoError(err)
 	fmt.Println()
 
+	Assertf(len(pass1) >= minPassphraseLength, "passphrase must be at least %d characters", minPassphraseLength)
+
 	fmt.Print("Confirm passphrase: ")
 	pass2, err := term.ReadPassword(syscall.Stdin)
 	AssertNoError(err)
 	fmt.Println()
 
 	Assertf(string(pass1) == string(pass2), "passphrases do not match")
-	Assertf(len(pass1) > 0, "passphrase must not be empty")
 	return string(pass1)
 }

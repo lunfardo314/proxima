@@ -2,6 +2,7 @@ package node_cmd
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"os"
 	"strconv"
 	"time"
@@ -146,7 +147,8 @@ func updateWalletConfig(chainId base.ChainID) {
 func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID) {
 	// Create a JSON keystore file for the sequencer controller key
 	publicKey := key.Public().(ed25519.PublicKey)
-	spenderID := ledger.SigLockFromED25519PrivateKey(key).String()
+	sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
+	spenderID := hex.EncodeToString(sid[:])
 	seqKeyFile := keystore.DefaultKeyFile
 
 	ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, key, publicKey, spenderID)

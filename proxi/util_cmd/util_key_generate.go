@@ -2,8 +2,9 @@ package util_cmd
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 
-	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
@@ -14,10 +15,7 @@ func keyGenerateCmd() *cobra.Command {
 		Use:   "generate",
 		Args:  cobra.NoArgs,
 		Short: "generate a new ED25519 key pair and save as .key file",
-		PersistentPreRun: func(_ *cobra.Command, _ []string) {
-			glb.ReadInConfig()
-		},
-		Run: runKeyGenerateCmd,
+		Run:   runKeyGenerateCmd,
 	}
 	cmd.Flags().StringP("output", "o", keystore.DefaultKeyFile, "output key file path")
 	cmd.Flags().Bool("encrypt", false, "encrypt the key with a passphrase")
@@ -36,7 +34,8 @@ func runKeyGenerateCmd(cmd *cobra.Command, _ []string) {
 	privateKey := glb.AskEntropyGenEd25519PrivateKey(
 		"Please enter at least 10 random seed symbols and press ENTER:", 10)
 	publicKey := privateKey.Public().(ed25519.PublicKey)
-	spenderID := ledger.SigLockFromED25519PrivateKey(privateKey).String()
+	sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
+	spenderID := hex.EncodeToString(sid[:])
 
 	ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, spenderID)
 	glb.AssertNoError(err)
@@ -52,5 +51,5 @@ func runKeyGenerateCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("Key saved to '%s'", outputFile)
-	glb.Infof("Account: %s", spenderID)
+	glb.Infof("Spender ID (hash of the public key): %s", spenderID)
 }

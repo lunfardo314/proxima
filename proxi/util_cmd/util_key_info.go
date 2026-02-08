@@ -1,9 +1,14 @@
 package util_cmd
 
 import (
+	"fmt"
+	"os"
+	"syscall"
+
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 func keyInfoCmd() *cobra.Command {
@@ -13,12 +18,14 @@ func keyInfoCmd() *cobra.Command {
 		Short: "display key file information",
 		Run:   runKeyInfoCmd,
 	}
-	cmd.Flags().StringP("file", "f", keystore.DefaultKeyFile, "key file to inspect")
+	cmd.Flags().String("file", keystore.DefaultKeyFile, "key file to inspect")
+	cmd.Flags().Bool("verify", false, "verify that the private key matches the public key (requires passphrase for encrypted keys)")
 	return cmd
 }
 
 func runKeyInfoCmd(cmd *cobra.Command, _ []string) {
 	file, _ := cmd.Flags().GetString("file")
+	verify, _ := cmd.Flags().GetBool("verify")
 
 	glb.Assertf(glb.FileExists(file), "key file '%s' not found", file)
 
@@ -34,6 +41,27 @@ func runKeyInfoCmd(cmd *cobra.Command, _ []string) {
 	}
 	glb.Infof("Public key: %s", ks.PublicKey)
 	if ks.SpenderID != "" {
-		glb.Infof("Account: %s", ks.SpenderID)
+		glb.Infof("Spender ID (hash of the public key): %s", ks.SpenderID)
+	}
+
+	if verify {
+		passphrase := ""
+		if ks.IsEncrypted() {
+			hint := ""
+			if ks.Hint != "" {
+				hint = fmt.Sprintf(" (hint: %s)", ks.Hint)
+			}
+			fmt.Printf("Enter passphrase%s: ", hint)
+			passBytes, err := term.ReadPassword(syscall.Stdin)
+			glb.AssertNoError(err)
+			fmt.Println()
+			passphrase = string(passBytes)
+		}
+		err := ks.Verify(passphrase)
+		if err != nil {
+			glb.Infof("Verification FAILED: %v", err)
+			os.Exit(1)
+		}
+		glb.Infof("Verification OK: private key matches public key")
 	}
 }
