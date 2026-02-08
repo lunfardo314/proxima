@@ -2,12 +2,13 @@ package init_cmd
 
 import (
 	"bytes"
-	"encoding/hex"
+	"crypto/ed25519"
 	"os"
 	"text/template"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
 )
 
@@ -15,16 +16,12 @@ func initWalletCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "wallet [<profile name. Default: 'proxi'>]",
 		Args:  cobra.MaximumNArgs(1),
-		Short: "initializes new proxi wallet profile proxi.yaml with generated private key",
+		Short: "initializes new proxi wallet profile proxi.yaml with a .key file",
 		Run:   runInitWalletCommand,
 	}
 }
 
 func runInitWalletCommand(_ *cobra.Command, args []string) {
-	templ := template.New("wallet")
-	_, err := templ.Parse(walletProfileTemplate)
-	glb.AssertNoError(err)
-
 	profileName := "proxi"
 	if len(args) > 0 {
 		profileName = args[0]
@@ -32,16 +29,60 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 	profileFname := profileName + ".yaml"
 	glb.Assertf(!glb.FileExists(profileFname), "file %s already exists", profileFname)
 
-	privateKey := glb.AskEntropyGenEd25519PrivateKey(
-		"we need some entropy from you for the private key of the account\nPlease enter at least 10 seed symbols as randomly as possible and press ENTER:", 10)
+	keyFile := keystore.DefaultKeyFile
+	var account string
+
+	// Check if a .key file already exists
+	if glb.FileExists(keyFile) {
+		if glb.YesNoPrompt("Found existing key file '"+keyFile+"'. Use it?", true) {
+			ks, err := keystore.LoadFromFile(keyFile)
+			glb.AssertNoError(err)
+			account = ks.SpenderID
+			if account == "" {
+				glb.Infof("Key file has no spender_id. Deriving from public key.")
+				// For v1 keystores, derive from public key if possible
+				account = deriveSpenderIDFromKeystore(ks)
+			}
+			glb.Infof("Using existing key file '%s'", keyFile)
+		} else {
+			// User wants a new key but default filename is taken
+			glb.Fatalf("key file '%s' already exists. Remove it or use a different profile.", keyFile)
+		}
+	} else {
+		// Generate a new key
+		privateKey := glb.AskEntropyGenEd25519PrivateKey(
+			"We need some entropy for the private key of the account.\nPlease enter at least 10 seed symbols as randomly as possible and press ENTER:", 10)
+		publicKey := privateKey.Public().(ed25519.PublicKey)
+		account = ledger.SigLockFromED25519PrivateKey(privateKey).String()
+
+		ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, account)
+		glb.AssertNoError(err)
+
+		// Offer encryption
+		if glb.YesNoPrompt("Encrypt the key file with a passphrase?", false) {
+			passphrase := glb.ReadPassphraseConfirm()
+			ks, err = keystore.EncryptKeystore(ks, passphrase, "")
+			glb.AssertNoError(err)
+			glb.Infof("Key encrypted.")
+		}
+
+		err = ks.SaveToFile(keyFile)
+		glb.AssertNoError(err)
+		glb.Infof("Key file saved to '%s'", keyFile)
+	}
+
+	// Generate the wallet profile
+	templ := template.New("wallet")
+	_, err := templ.Parse(walletProfileTemplate)
+	glb.AssertNoError(err)
 
 	data := struct {
-		PrivateKey     string
+		KeyFile        string
 		Account        string
 		BootstrapSeqID string
 	}{
-		PrivateKey:     hex.EncodeToString(privateKey),
-		Account:        ledger.SigLockFromED25519PrivateKey(privateKey).String(),
+		KeyFile:        keyFile,
+		Account:        account,
 		BootstrapSeqID: ledger.BoostrapSequencerIDHex,
 	}
 	var buf bytes.Buffer
@@ -50,7 +91,20 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 
 	err = os.WriteFile(profileFname, buf.Bytes(), 0600)
 	glb.AssertNoError(err)
-	glb.Infof("proxi profile '%s' has been created successfully.\nAccount address: %s", profileFname, data.Account)
+	glb.Infof("proxi profile '%s' has been created successfully.\nAccount address: %s", profileFname, account)
+}
+
+// deriveSpenderIDFromKeystore derives the spender ID from the public key stored in the keystore.
+// Works for ED25519 key types when the keystore has a valid public key field.
+func deriveSpenderIDFromKeystore(ks *keystore.Keystore) string {
+	if ks.KeyType != keystore.KeyTypeED25519 {
+		return ""
+	}
+	pubBytes, err := keystore.PublicKeyBytes(ks)
+	if err != nil {
+		return ""
+	}
+	return ledger.SigLockFromED25519PublicKey(pubBytes).String()
 }
 
 const walletProfileTemplate = `# Proxi wallet profile
@@ -59,7 +113,7 @@ const walletProfileTemplate = `# Proxi wallet profile
 default_sequencer_id: {{.BootstrapSeqID}}
 
 wallet:
-    private_key: {{.PrivateKey}}
+    key_file: {{.KeyFile}}
     account: {{.Account}}
     # <own sequencer ID> must be the sequencer ID controlled by the private key of the wallet.
     # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'

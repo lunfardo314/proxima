@@ -129,6 +129,7 @@ Each transaction carries exactly one signature (`TxSignatureData`). This is an i
 - When building binaries, always use names `proxima` for the node and `proxi` for the CLI-tool. Never rename
 - Prefer anonymous (embedded) fields over unexported fields with getters when extending structs or sharing behavior 
 - **Mind `ledger.TimeNow()` for timing issues**: In tests, avoid using `ledger.TimeNow()` to derive timestamps for chain origins or transactions. Instead, derive timestamps from actual output timestamps (e.g., `outs[0].ID.Timestamp().AddSlots(1)`) to avoid race conditions between wall-clock time and ledger state time.
+- **Ask about backward compatibility**: When refactoring code or changing data formats, always ask whether backward compatibility with legacy code or formats is required before assuming it is needed. Do not add legacy support unless explicitly confirmed.
 
 ### How to diagnose memory leak issues
 

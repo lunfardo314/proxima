@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -38,11 +37,11 @@ func MustGetPrivateKey() ed25519.PrivateKey {
 }
 
 func GetPrivateKey() (ed25519.PrivateKey, bool) {
-	privateKeyStr := viper.GetString("wallet.private_key")
-	if privateKeyStr == "" {
+	keyFile := viper.GetString("wallet.key_file")
+	if keyFile == "" {
 		return nil, false
 	}
-	ret, err := util.ED25519PrivateKeyFromHexString(privateKeyStr)
+	ret, err := LoadPrivateKeyFromFile(keyFile)
 	return ret, err == nil
 }
 

@@ -193,9 +193,9 @@ trace_tags:
 `
 
 const sequencerConfigTemplate = `
-# Sequencer configuration (optional) 
+# Sequencer configuration (optional)
 sequencer:
-    # sequencer name usually is 4 or so symbols. It is put into every sequencer transaction for tracking purposes  
+    # sequencer name usually is 4 or so symbols. It is put into every sequencer transaction for tracking purposes
   name: <mandatory name>
     # start sequencer yes/no
   enable: false
@@ -203,11 +203,8 @@ sequencer:
     # Sequencer chain is created by 'proxi node mkchain' command
     # All chains controlled by the wallet can be displayed by 'proxi node mychains'
   chain_id: <sequencer id hex encoded>
-  # sequencer chain controller's private key
-  # Option 1 (recommended): path to a separate key file (hex-encoded key, 0600 permissions)
-  controller_key_file: proxima_sequencer.key
-  # Option 2: inline hex-encoded key (less secure, used as fallback if controller_key_file is not set)
-  # controller_key: <ED25519 private key of the controller>
+  # path to the controller key file (JSON keystore format, created by 'proxi util key generate')
+  controller_key_file: proxima.key
   # sequencer pace. Distance in ticks between two subsequent sequencer transactions
   # cannot be less than the sequencer pace value set by the ledger
   pace: 12

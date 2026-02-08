@@ -13,7 +13,6 @@ func Init() *cobra.Command {
 		},
 	}
 	genCmd.AddCommand(
-		genEd25519Cmd(),
 		genHostIDCmd(),
 		genIDCmd(),
 		verifyIDCmd(),
@@ -22,8 +21,7 @@ func Init() *cobra.Command {
 		initParseBytecode(),
 		initDecodeMsgCmd(),
 		initInflationCmd(),
-		encryptKeyCmd(),
-		checkKeystoreCmd(),
+		keyCmd(),
 	)
 	genCmd.InitDefaultHelpCmd()
 	return genCmd

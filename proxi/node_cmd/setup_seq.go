@@ -2,7 +2,6 @@ package node_cmd
 
 import (
 	"crypto/ed25519"
-	"encoding/hex"
 	"os"
 	"strconv"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 )
@@ -143,13 +143,26 @@ func updateWalletConfig(chainId base.ChainID) {
 	glb.AssertNoError(err)
 }
 
-const sequencerKeyFile = "proxima_sequencer.key"
-
 func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID) {
-	// Write the private key to a separate file with restricted permissions
-	err := os.WriteFile(sequencerKeyFile, []byte(hex.EncodeToString(key)+"\n"), 0600)
+	// Create a JSON keystore file for the sequencer controller key
+	publicKey := key.Public().(ed25519.PublicKey)
+	spenderID := ledger.SigLockFromED25519PrivateKey(key).String()
+	seqKeyFile := keystore.DefaultKeyFile
+
+	ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, key, publicKey, spenderID)
 	glb.AssertNoError(err)
-	glb.Infof("sequencer controller key saved to '%s'", sequencerKeyFile)
+
+	// Offer encryption
+	if glb.YesNoPrompt("Encrypt the sequencer key file with a passphrase?", false) {
+		passphrase := glb.ReadPassphraseConfirm()
+		ks, err = keystore.EncryptKeystore(ks, passphrase, "")
+		glb.AssertNoError(err)
+		glb.Infof("Key encrypted.")
+	}
+
+	err = ks.SaveToFile(seqKeyFile)
+	glb.AssertNoError(err)
+	glb.Infof("sequencer controller key saved to '%s'", seqKeyFile)
 
 	// Read the YAML file
 	data, err := os.ReadFile("proxima.yaml")
@@ -163,11 +176,10 @@ func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID)
 	// Access the "sequencer" section and update its fields
 	if sequencer, ok := config["sequencer"].(map[interface{}]interface{}); ok {
 		sequencer["name"] = name
-		sequencer["enable"] = true // Enable the sequencer
+		sequencer["enable"] = true
 		sequencer["chain_id"] = chainId.StringHex()
-		// Reference key file instead of embedding inline
-		sequencer["controller_key_file"] = sequencerKeyFile
-		// Remove inline key if previously set
+		sequencer["controller_key_file"] = seqKeyFile
+		// Remove inline key if previously set (from old configs)
 		delete(sequencer, "controller_key")
 	} else {
 		glb.Infof("!!! Error sequencer key not found")
