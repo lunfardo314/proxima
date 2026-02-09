@@ -86,13 +86,13 @@ Each transaction carries exactly one signature (`TxSignatureData`). This is an i
 
 ### Transaction Flow
 
-1. **Reception**: receive raw transaction bytes from peer of from API in the `txinput_queue`, filter out repeating transactions, parse transaction ID
-2. **Parse sender**: in `txsenders`: parse signature, check signature, apply limits of number of transactions per public key
-3. **Parse transaction**: Create `VirtualTx` placeholder in the MemDAG
-4. **Attachment**: ensure all inputs of the transaction are available in the memDAG. Sequencer transactions are attached by `attacher` goroutine. Baseline branch is determined for each sequencer transaction during attachment
+1. **Reception**: receive raw transaction bytes from peer of from API in the `txinput_queue`, filter out repeating transactions, parse transaction ID. This is _stage 1_ transaction validation.
+2. **Parse sender**: in `txsenders`: parse signature, *spender ID*, check signature. This is _Stage 2_ transaction validation. 
+3. **rate limits**: apply limits of number of transactions per _spender ID_ in the ledger time window.
+4. **Attach transaction**: put transaction to the memDAG and ensure all it inputs, endorsements - the past cone - are defined in the DAG. Sequencer transactions are attached by `attacher` goroutine. Baseline branch defines _baseline ledger state_ (UTXO set), it is determined for each sequencer transaction during attachment
 5. **Conflict Detection**: `attacher` checks if a UTXO is not spend twice in the past cone of any transaction in the DAG.
-6. **Transaction validation**: execute all UTXO constraints of the attached transaction
-7. **Persist updated UTXO sets**: each branch transaction represents a UTXO set that is persisted in the trie, handled by `multistate`.
+6. **Transaction validation**: execute all UTXO constraints of the attached transaction. It is _Stage 3_ of transaction validation
+7. **Persist updated UTXO sets**: each branch transaction represents a UTXO set that is persisted in the trie, handled by `multistate` package.
 
 ### Key Data Structures
 
