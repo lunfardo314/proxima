@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -183,6 +184,20 @@ func (ks *Keystore) GetPrivateKey(passphrase string) ([]byte, error) {
 // IsEncrypted returns true if the keystore is encrypted.
 func (ks *Keystore) IsEncrypted() bool {
 	return ks.Crypto != nil
+}
+
+// ReadPassphraseFile looks for a passphrase file in the current directory.
+// The passphrase file is named after the spender ID (hex, no extension).
+// Returns the passphrase and true if found, or empty string and false if not.
+func (ks *Keystore) ReadPassphraseFile() (string, bool) {
+	if ks.SpenderID == "" {
+		return "", false
+	}
+	data, err := os.ReadFile(ks.SpenderID)
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(data)), true
 }
 
 // Decrypt decrypts an encrypted keystore and returns the raw private key bytes.

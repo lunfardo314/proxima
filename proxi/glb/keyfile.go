@@ -23,8 +23,11 @@ func LoadPrivateKeyFromFile(path string) (ed25519.PrivateKey, error) {
 
 	passphrase := ""
 	if ks.IsEncrypted() {
-		passphrase = os.Getenv("PROXIMA_KEY_PASSPHRASE")
-		if passphrase == "" {
+		if p, ok := ks.ReadPassphraseFile(); ok {
+			passphrase = p
+		} else if p := os.Getenv("PROXIMA_KEY_PASSPHRASE"); p != "" {
+			passphrase = p
+		} else {
 			hint := ""
 			if ks.Hint != "" {
 				hint = fmt.Sprintf(" (hint: %s)", ks.Hint)

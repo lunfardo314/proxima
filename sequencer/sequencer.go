@@ -280,9 +280,13 @@ func (seq *Sequencer) ensureControllerKey() bool {
 	passphrase := ""
 	encrypted := ks.IsEncrypted()
 	if encrypted {
-		passphrase = os.Getenv("SEQUENCER_KEY_PASSPHRASE")
+		if p, ok := ks.ReadPassphraseFile(); ok {
+			passphrase = p
+		} else {
+			passphrase = os.Getenv("SEQUENCER_KEY_PASSPHRASE")
+		}
 		if passphrase == "" {
-			seq.log.Errorf("ensureControllerKey: keystore '%s' is encrypted: set SEQUENCER_KEY_PASSPHRASE environment variable. Sequencer will not start", keyFile)
+			seq.log.Errorf("ensureControllerKey: keystore '%s' is encrypted: set SEQUENCER_KEY_PASSPHRASE environment variable or provide passphrase file. Sequencer will not start", keyFile)
 			return false
 		}
 	}
