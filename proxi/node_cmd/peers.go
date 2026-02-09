@@ -22,6 +22,10 @@ func runPeersInfoCmd(_ *cobra.Command, _ []string) {
 	//
 	peersInfo, err := glb.GetClient().GetPeersInfo()
 	glb.AssertNoError(err)
+	if len(peersInfo.Peers) == 0 {
+		glb.Infof("no peers connected")
+		return
+	}
 	for p := range peersInfo.Peers {
 		glb.Infof("        %s : %s", peersInfo.Peers[p].ID, peersInfo.Peers[p].MultiAddresses[0])
 	}

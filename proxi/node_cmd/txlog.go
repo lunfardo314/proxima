@@ -89,7 +89,7 @@ Levels:
 		Run:  runTxLogEnableCmd,
 	}
 
-	cmd.Flags().StringP("level", "l", "non_sequencer", "log level: off, branch, sequencer, non_sequencer, all")
+	cmd.Flags().StringP("level", "l", "all", "log level: off, branch, sequencer, non_sequencer, all")
 
 	return cmd
 }

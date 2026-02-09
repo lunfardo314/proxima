@@ -477,15 +477,15 @@ Record any unexpected behavior, errors, or deviations from expected results belo
 
 | Step | Command | Expected | Actual | Notes |
 |------|---------|----------|--------|-------|
-| 1.3 | `proxi util key generate` | Clear prompt | Blocks waiting for stdin with no output visible when run non-interactively | UX: silent block, exit code 1 with no error when stdin closes |
+| 1.3 | `proxi util key generate` | Clear prompt | Blocks waiting for stdin with no output visible when run non-interactively | **UX FIXED**: detect non-terminal stdin, fail with clear error |
 | 1.7 | `proxi init wallet` | Confirmation message | Silent success, no output | Code does print success msg; may have been testing artifact |
 | 1.7 | `proxi init wallet` | API endpoint for local node | Defaults to testnet `63.250.56.190:8001` | **UX FIXED**: default to `127.0.0.1:8000`, testnet as comments |
 | 1.7 | `proxi init wallet` | `sequencer_id` auto-filled | Placeholder `<own sequencer ID>` | **UX FIXED**: auto-fill with bootstrap sequencer ID |
 | 1.10 | `proxima.yaml` template | txlogger enabled | txlogger section commented out by default | Minor: test doc says to enable manually |
 | 3.2 | `proxi node lrb` | `0.00%` | `0.00%%` (double percent) | Bug: format string has `%%` |
-| 3.4 | `proxi node peers` | "no peers connected" | Blank output after header | UX: no explicit message for zero peers |
+| 3.4 | `proxi node peers` | "no peers connected" | Blank output after header | **UX FIXED**: show "no peers connected" when list empty |
 | 5.1 | `proxi node seq withdraw` | Works | "can't get own sequencer id" | **FIXED** by wallet template now auto-filling sequencer_id |
-| 6.4 | `proxi node txlog enable` | Restores configured level (`all`) | Re-enables with `non_sequencer` | Bug/UX: doesn't restore original config level |
+| 6.4 | `proxi node txlog enable` | Restores configured level (`all`) | Re-enables with `non_sequencer` | **UX FIXED**: default enable level changed to `all` |
 | 7.1 | `proxi node mkchain` | Transaction included | Never included, tag-along outputs purged from backlog | **BUG FIXED**: MakeChainOrigin() was missing SubmitTransaction() call |
 | 8.1 | `proxi node delegate amount` | Works | "selecing" in output | **UX FIXED**: typo "selecing" → "selecting" |
 | 8.3 | `proxi node delegate askstop` | Transaction included | Rejected: "compensation not sufficient (needed X, provided Y)" where Y > X | **BUG FIXED**: comparison was backwards (`<` instead of `>`) in req_askstop.go:95 |

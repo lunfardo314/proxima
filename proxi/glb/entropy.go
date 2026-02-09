@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
+	"golang.org/x/term"
 )
 
 func AskEntropyGenEd25519PrivateKey(msg string, minSeedLength ...int) ed25519.PrivateKey {
@@ -16,6 +17,10 @@ func AskEntropyGenEd25519PrivateKey(msg string, minSeedLength ...int) ed25519.Pr
 	seedLen := minimumSeedLength
 	if len(minSeedLength) > 0 && minSeedLength[0] > minimumSeedLength {
 		seedLen = minSeedLength[0]
+	}
+
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		Fatalf("stdin is not a terminal. This command requires interactive input for entropy.")
 	}
 
 	Infof(msg)
