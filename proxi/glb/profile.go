@@ -45,13 +45,22 @@ func MustGetPrivateKey() ed25519.PrivateKey {
 	return ret
 }
 
+var cachedPrivateKey ed25519.PrivateKey
+
 func GetPrivateKey() (ed25519.PrivateKey, bool) {
+	if cachedPrivateKey != nil {
+		return cachedPrivateKey, true
+	}
 	keyFile := viper.GetString("wallet.key_file")
 	if keyFile == "" {
 		return nil, false
 	}
 	ret, err := LoadPrivateKeyFromFile(keyFile)
-	return ret, err == nil
+	if err != nil {
+		return nil, false
+	}
+	cachedPrivateKey = ret
+	return ret, true
 }
 
 // without Var does not work
