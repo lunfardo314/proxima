@@ -6,14 +6,15 @@ default_sequencer_id: {{.BootstrapSeqID}}
 wallet:
     key_file: {{.KeyFile}}
     spender_id: {{.SpenderID}}
-    # <own sequencer ID> must be the sequencer ID controlled by the private key of the wallet.
+    # sequencer_id is the sequencer ID controlled by the private key of the wallet.
     # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
-    # Default is used when not specified
-    sequencer_id: <own sequencer ID>
+    # Default is the bootstrap sequencer ID; change if you control a different sequencer
+    sequencer_id: {{.BootstrapSeqID}}
 api:
-    endpoint: http://63.250.56.190:8001
+    endpoint: http://127.0.0.1:8000
 
-# alternative testnet access points:
+# alternative access points (testnet):
+#    endpoint: http://63.250.56.190:8001
 #    endpoint: http://113.30.191.219:8001
 #    endpoint: http://83.229.84.197:8001
 #    endpoint: http://5.180.181.103:8001
