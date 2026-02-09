@@ -57,7 +57,7 @@ func runChainsCmd(_ *cobra.Command, _ []string) {
 			o, _ := ledger.OutputFromBytes(ci.Output.Data)
 			lines := o.Lines("            ::")
 			glb.Infof("     Output details:")
-			glb.Infof(lines.String())
+			glb.Infof("%s", lines.String())
 		}
 		sum += ci.Balance
 	}
@@ -67,6 +67,6 @@ func runChainsCmd(_ *cobra.Command, _ []string) {
 	rdr := multistate.MustNewSugaredReadableState(glb.StateStore(), branchData.Root, 0)
 	stem := rdr.GetStemOutput()
 	lines := stem.LinesSource("  ")
-	glb.Infof(lines.String())
+	glb.Infof("%s", lines.String())
 
 }

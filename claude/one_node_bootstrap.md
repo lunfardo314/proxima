@@ -556,4 +556,5 @@ Record any unexpected behavior, errors, or deviations from expected results belo
 | 12.4 | `proxi db lrb` | Formatted output | All info on single line, unreadable | **UX FIXED**: use newlines with indentation instead of Join(" ") |
 | 12.4 | `proxi db lrb` | `0.00%` | `0.00%%` | **FIXED** by earlier double-percent fix in roots.go |
 | 12.6 | `proxi db accounts` | `100%` | `100%%` | **FIXED** by earlier double-percent fix in lock_delegate.go |
+| 3.1 | `proxi node info` | `0.00%` | `0.00%!)(MISSING)` | **BUG FIXED**: `glb.Infof(lines.String())` treats `%` in output as format verb; changed to `glb.Infof("%s", ...)` |
 

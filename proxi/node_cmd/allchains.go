@@ -234,7 +234,7 @@ func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 		glb.Infof("  %s (%2d = %d sequencers + %2d delegations + %2d other), total balance: %s",
 			owner, len(lst), seqs, delegations, others, util.Th(sum))
 		if glb.IsVerbose() {
-			glb.Infof(ln.String())
+			glb.Infof("%s", ln.String())
 		}
 	}
 	glb.Infof("----------------------")

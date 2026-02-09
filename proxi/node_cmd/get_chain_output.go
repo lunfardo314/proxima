@@ -26,5 +26,5 @@ func runGetChainOutputCmd(_ *cobra.Command, args []string) {
 	o, _, _, err := glb.GetClient().GetChainOutput(chainID)
 	glb.AssertNoError(err)
 
-	glb.Infof(o.String())
+	glb.Infof("%s", o.String())
 }

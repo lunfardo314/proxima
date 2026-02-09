@@ -24,19 +24,16 @@ func runNodeInfoCmd(_ *cobra.Command, _ []string) {
 
 	nodeInfo, err := glb.GetClient().GetNodeInfo()
 	glb.AssertNoError(err)
-	glb.Infof("\nNode:")
-	glb.Infof(nodeInfo.Lines("    ").String())
+	glb.Infof("\nNode:\n%s", nodeInfo.Lines("    ").String())
 
 	rootRecord, branchID, err := glb.GetClient().GetLatestReliableBranch()
 	glb.AssertNoError(err)
-	glb.Infof("\nLatest reliable branch (LRB):")
 
 	ln := lines.New("    ")
 	ln.Add("branch id: %s", branchID.String()).
 		Add("root record:").
 		Append(rootRecord.Lines("    "))
-	glb.Infof(ln.String())
+	glb.Infof("\nLatest reliable branch (LRB):\n%s", ln.String())
 
-	glb.Infof("\nLedger id (ledger constants):")
-	glb.Infof(ledger.L(0).Lines("    ").String())
+	glb.Infof("\nLedger id (ledger constants):\n%s", ledger.L(0).Lines("    ").String())
 }

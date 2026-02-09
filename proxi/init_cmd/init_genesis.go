@@ -67,8 +67,7 @@ func runGenesisCmd(_ *cobra.Command, _ []string) {
 	libraryHash, err := data.GetLibraryHash()
 	glb.AssertNoError(err)
 
-	glb.Infof("\nGenesis parameters:")
-	glb.Infof(constants.String())
+	glb.Infof("\nGenesis parameters:\n%s", constants.String())
 	glb.Infof("Library hash: %s", hex.EncodeToString(libraryHash[:]))
 	glb.Infof("Bootstrap sequencer ID: %s", data.BootstrapChainID.String())
 
