@@ -816,6 +816,10 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	if err != nil {
 		return tx, [32]byte{}, err
 	}
+	err = c.SubmitTransaction(txBytes)
+	if err != nil {
+		return tx, [32]byte{}, err
+	}
 	oChain, err := transaction.OutputWithIDFromTransactionBytes(txBytes, 0)
 	if err != nil {
 		return nil, [32]byte{}, err
