@@ -42,22 +42,16 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 		return bytes.Compare(branchData[i].SequencerID[:], branchData[j].SequencerID[:]) < 0
 	})
 
-	reader, err := multistate.NewSugaredReadableState(glb.StateStore(), branchData[0].Root)
-	glb.AssertNoError(err)
-
-	identityYAML := reader.MustLedgerIdentityBytes()
-	lib, err := ledger.ParseLibraryFromYAML(identityYAML, ledger.GetEmbeddedFunctionResolver)
-	glb.AssertNoError(err)
+	lib := ledger.L(branchData[0].Stem.Timestamp().Slot)
 
 	earliestSlot := multistate.FetchEarliestSlot(glb.StateStore())
 	glb.Infof("ledger time now is %s, earliest committed slot is %d", ledger.TimeNow().String(), earliestSlot)
 
 	h := lib.LibraryHash()
-	constants := ledger.ConstantsFromLibrary(lib)
 
 	glb.Infof("ledger library hash: %s", hex.EncodeToString(h[:]))
 	glb.Verbosef("\n----------------- Ledger state identity ----------------")
-	glb.Verbosef("%s", constants.String())
+	glb.Verbosef("%s", lib.Constants.String())
 
 	// Display upgrade history summary
 	glb.Infof("\n--------------- Ledger upgrades summary ----------------")
