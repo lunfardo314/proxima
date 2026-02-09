@@ -51,7 +51,7 @@ func (tx *Transaction) ValidatePartialContext() error {
 		if err := tx.scanPartialContext(); err != nil {
 			return err
 		}
-		return tx.TxIntegrityValidatorSkeletonContext(tx.makeEvalContext(nil), spool)
+		return tx.TxIntegrityValidatorPartialContext(tx.makeEvalContext(nil), spool)
 	})
 }
 

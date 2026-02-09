@@ -26,8 +26,8 @@ and(
    )
 )
 
-// skeleton context: does not require consumed UTXOs
-func txIntegrityValidatorSkeletonContext0 : and(
+// partial context: does not require consumed UTXOs
+func txIntegrityValidatorPartialContext0 : and(
    // enforce number of inputs is not 0 and equal to the number of unlock params
    require(
       and(

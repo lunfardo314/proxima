@@ -31,7 +31,8 @@ faucet:
     host:  113.30.191.219
 
 # provides parameters for 'proxi node spam' command
-# The spammer in a loop sends bundles of transactions to the target address by using specified tag-along sequencer
+# 'Spammer' is a testing tool, rarely used in every day activity
+# The spammer sends in a loop bundles of transactions to the target sigLock address via specified tag-along sequencer
 # Before sending next bundle, the spammer waits for the finality of the previous according to the provided criterion
 spammer:
     bundle_size: 5
@@ -44,3 +45,5 @@ spammer:
         # sequencer_id: <sequencer id hex encoded>
     # target address
     target: <target lock in EasyFL format>
+    inclusion_timeout_sec: 20
+    finality_slots: 1

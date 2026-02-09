@@ -25,13 +25,13 @@ type (
 	IntegrityValidator func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
 	Library            struct {
 		*easyfl.Library[*EvalContext]
-		Constants                           // Embedded ledger constants for this library version
-		definitionsYAML                     []byte
-		constraintByPrefix                  map[string]*constraintRecord
-		locksByName                         map[string]LockParser
-		upgradeChainData                    *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
-		TxIntegrityValidatorSkeletonContext IntegrityValidator
-		TxIntegrityValidatorFullContext     IntegrityValidator
+		Constants                          // Embedded ledger constants for this library version
+		definitionsYAML                    []byte
+		constraintByPrefix                 map[string]*constraintRecord
+		locksByName                        map[string]LockParser
+		upgradeChainData                   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		TxIntegrityValidatorPartialContext IntegrityValidator
+		TxIntegrityValidatorFullContext    IntegrityValidator
 	}
 )
 
@@ -71,21 +71,21 @@ func (lib *Library) SetUpgradeChainData(data *UpgradeChainData) {
 
 // MustPreCompileTxIntegrityValidators sets tx layout validator for the initialized library
 func (lib *Library) MustPreCompileTxIntegrityValidators() {
-	if lib.Constants.TxIntegrityValidatorSkeletonContextName == "" {
-		lib.TxIntegrityValidatorSkeletonContext = func(_ easyfl.GlobalData[*EvalContext], _ *slicepool.SlicePool) error {
-			panic("tx integrity validator (skeleton context) has not beed initialized")
+	if lib.Constants.TxIntegrityValidatorPartialContextName == "" {
+		lib.TxIntegrityValidatorPartialContext = func(_ easyfl.GlobalData[*EvalContext], _ *slicepool.SlicePool) error {
+			panic("tx integrity validator (partial context) has not beed initialized")
 		}
 		return
 	}
-	exprSkeleton, nargs, _, err := lib.CompileExpression(lib.TxIntegrityValidatorSkeletonContextName)
+	exprPartial, nargs, _, err := lib.CompileExpression(lib.TxIntegrityValidatorPartialContextName)
 	util.AssertNoError(err)
-	util.Assertf(nargs == 0, "transaction integrity validator (skeleton context) must be a closed EasyFL expression")
+	util.Assertf(nargs == 0, "transaction integrity validator (partial context) must be a closed EasyFL expression")
 
-	lib.TxIntegrityValidatorSkeletonContext = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
+	lib.TxIntegrityValidatorPartialContext = func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error {
 		err1 := easyfl_util.CatchPanicOrError(func() error {
-			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, exprSkeleton)
+			res := easyfl.EvalExpressionWithSlicePool(ctx, spool, exprPartial)
 			if len(res) == 0 {
-				return fmt.Errorf("transaction integrity validation (skeleton context) failed")
+				return fmt.Errorf("transaction integrity validation (partial context) failed")
 			}
 			return nil
 		})

@@ -18,8 +18,8 @@ import (
 type Constants struct {
 	Hash [32]byte
 	//
-	TxIntegrityValidatorSkeletonContextName string
-	TxIntegrityValidatorFullContextName     string
+	TxIntegrityValidatorPartialContextName string
+	TxIntegrityValidatorFullContextName    string
 	// arbitrary string up 255 bytes
 	Description string
 	// genesis time unix seconds
@@ -78,8 +78,8 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 		var marshalled map[string]string
 		err = json.Unmarshal(lib.VersionData, &marshalled)
 		util.AssertNoError(err, "unmarshalling version data JSON")
-		ret.TxIntegrityValidatorSkeletonContextName = marshalled["txIntegrityValidatorSkeletonContext"]
-		util.Assertf(ret.TxIntegrityValidatorSkeletonContextName != "", "txIntegrityValidatorSkeletonContext not specified")
+		ret.TxIntegrityValidatorPartialContextName = marshalled["txIntegrityValidatorPartialContext"]
+		util.Assertf(ret.TxIntegrityValidatorPartialContextName != "", "txIntegrityValidatorPartialContext not specified")
 		ret.TxIntegrityValidatorFullContextName = marshalled["txIntegrityValidatorFullContext"]
 		util.Assertf(ret.TxIntegrityValidatorFullContextName != "", "txIntegrityValidatorFullContext not specified")
 	}
@@ -180,7 +180,7 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	originChainID := OriginChainID()
 	ret := lines.New(prefix...).
 		Add("Library hash: %s", hex.EncodeToString(c.Hash[:])).
-		Add("Tx integrity validator (skeleton context): '%s'", c.TxIntegrityValidatorSkeletonContextName).
+		Add("Tx integrity validator (partial context): '%s'", c.TxIntegrityValidatorPartialContextName).
 		Add("Tx integrity validator (full context): '%s'", c.TxIntegrityValidatorFullContextName).
 		Add("Description: '%s'", c.Description).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).

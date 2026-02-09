@@ -56,7 +56,7 @@ func Parse(txBytes []byte) (*Transaction, error) {
 		traceOption: TraceOptionNone,
 	}
 	// partial context: dummy nil data instead of the tuple of consumed UTXOs
-	// create skeleton context with dummy consumed UTXOs
+	// create partial context with dummy consumed UTXOs
 	ret.txid, err = TxIDFromTransactionDataTree(txTree)
 	if err != nil {
 		return nil, fmt.Errorf("tx.Parse: %v", err)
@@ -364,4 +364,3 @@ func (tx *Transaction) scanProducedOutputs() error {
 	}
 	return nil
 }
-

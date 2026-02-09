@@ -200,7 +200,7 @@ func TestTxDuplicateInputsRejected(t *testing.T) {
 	txBytes := txb.TransactionData.Bytes()
 
 	// The transaction should fail partial validation because the EasyFL
-	// txIntegrityValidatorSkeletonContext0 checks:
+	// txIntegrityValidatorPartialContext0 checks:
 	//   require(not(tupleHasDuplicatesAtPath(pathToInputIDs)), !!!inputs_cannot_contain_duplicates)
 	// Note: EasyFL error messages use spaces, not underscores
 	_, err = transaction.ParseWithPartialValidation(txBytes)
@@ -314,7 +314,8 @@ func TestTxInputCommitmentWithWrongHash(t *testing.T) {
 // signature is rejected during partial context validation.
 //
 // The EasyFL partial context validator checks:
-//   require(validSignature(txID, txSignatureData), !!!invalid_signature_of_the_transaction)
+//
+//	require(validSignature(txID, txSignatureData), !!!invalid_signature_of_the_transaction)
 //
 // Note: signing with a different valid key produces a valid ed25519 signature
 // (valid for that key). To test the signature check, we must corrupt the
@@ -375,7 +376,8 @@ func TestTxSignatureMatchesButLockMismatch(t *testing.T) {
 
 // TestTxEdgeCaseNoInputs verifies that a transaction with no inputs is rejected.
 // The EasyFL integrity validator checks:
-//   not(isZero(tupleLenAtPath(pathToInputIDs)))
+//
+//	not(isZero(tupleLenAtPath(pathToInputIDs)))
 func TestTxEdgeCaseNoInputs(t *testing.T) {
 	_, _, dstAddr := utxodb.NewUTXODB(genesisPrivateKey, true).GenerateAddress(1)
 
