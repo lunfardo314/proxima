@@ -145,7 +145,7 @@ func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 	proc := (float32(r.FrozenCoverage) * 100) / float32(r.CoverageDelta)
 	ret.Add("sequencer id:    %s", r.SequencerID.String()).
 		Add("supply:          %s", util.Th(r.Supply)).
-		Add("coverage delta:  %s (%s, %.2f%s)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc, "%%").
+		Add("coverage delta:  %s (%s, %.2f%s)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc, "%").
 		Add("frozen coverage: %s", util.Th(r.FrozenCoverage)).
 		Add("healthy(%s):     %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverageDelta(r.CoverageDelta, r.Supply, global.FractionHealthyBranch))
 	return ret

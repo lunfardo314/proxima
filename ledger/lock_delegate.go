@@ -29,7 +29,7 @@ type (
 const (
 	DelegateLockName       = "delegateLock"
 	DelegateLockTemplate   = DelegateLockName + "(%s, 0x%s, %s, z16/%d)"
-	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%%%)"
+	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%)"
 
 	DelegateLockStateName       = "delegateLockState"
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"

@@ -13,6 +13,9 @@ Use tracing and txlogging facilities, if needed.
 All strange behavior and deviations from expected results should be logged in the
 **Issues Log** section at the bottom. Also log unclear, inconsistent or too verbose output.
 
+**Rule**: Document all UX-related findings as issues, even if they are not bugs (e.g. confusing
+output, missing feedback, inconsistent formatting, unclear error messages).
+
 ## Prerequisites
 
 - `proxima` and `proxi` binaries are on the PATH
@@ -105,12 +108,9 @@ proxi init genesis
 Expected: prompts for confirmation, creates a `.snapshot` file in the current directory.
 Note the bootstrap sequencer ID displayed.
 
-### 1.12 Create snapshot directory
+### 1.12 Snapshot placement
 
-```bash
-mkdir snapshot
-mv *.snapshot snapshot/
-```
+The genesis `.snapshot` file can stay in the node's working directory (no need to move it to a `snapshot/` subdirectory).
 
 ---
 
@@ -477,5 +477,20 @@ Record any unexpected behavior, errors, or deviations from expected results belo
 
 | Step | Command | Expected | Actual | Notes |
 |------|---------|----------|--------|-------|
-|      |         |          |        |       |
+| 1.3 | `proxi util key generate` | Clear prompt | Blocks waiting for stdin with no output visible when run non-interactively | UX: silent block, exit code 1 with no error when stdin closes |
+| 1.7 | `proxi init wallet` | Confirmation message | Silent success, no output | UX: should print what was created |
+| 1.7 | `proxi init wallet` | API endpoint for local node | Defaults to testnet `63.250.56.190:8001` | UX: port mismatch with node template (8000 vs 8001) |
+| 1.7 | `proxi init wallet` | `sequencer_id` auto-filled | Placeholder `<own sequencer ID>` | UX: should auto-detect from `proxima.yaml` if `-b` was used |
+| 1.10 | `proxima.yaml` template | txlogger enabled | txlogger section commented out by default | Minor: test doc says to enable manually |
+| 3.2 | `proxi node lrb` | `0.00%` | `0.00%%` (double percent) | Bug: format string has `%%` |
+| 3.4 | `proxi node peers` | "no peers connected" | Blank output after header | UX: no explicit message for zero peers |
+| 5.1 | `proxi node seq withdraw` | Works | "can't get own sequencer id" | Config issue: wallet `sequencer_id` placeholder not set |
+| 6.4 | `proxi node txlog enable` | Restores configured level (`all`) | Re-enables with `non_sequencer` | Bug/UX: doesn't restore original config level |
+| 7.1 | `proxi node mkchain` | Transaction included | Never included, tag-along outputs purged from backlog | **BUG**: chain origin creation via tag-along never committed |
+| 8.1 | `proxi node delegate amount` | Works | "selecing" in output | UX: typo "selecing" → "selecting" |
+| 8.3 | `proxi node delegate askstop` | Transaction included | Never included (same pattern as mkchain) | **BUG**: askstop transaction never committed |
+| 12.3 | `proxi db info` | DB info displayed | "yaml: control characters are not allowed" | **BUG**: crash/error |
+| 12.4 | `proxi db lrb` | Formatted output | All info on single line, unreadable | UX: poor formatting |
+| 12.4 | `proxi db lrb` | `0.00%` | `0.00%%` | Bug: same double-percent as node lrb |
+| 12.6 | `proxi db accounts` | `100%` | `100%%` | Bug: same double-percent issue |
 
