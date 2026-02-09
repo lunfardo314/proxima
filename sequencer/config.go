@@ -1,7 +1,6 @@
 package sequencer
 
 import (
-	"crypto/ed25519"
 	"fmt"
 	"math"
 	"os"
@@ -9,10 +8,8 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
-	"golang.org/x/term"
 )
 
 type (
@@ -29,6 +26,7 @@ type (
 		SingleSequencerEnforced   bool
 		SeparateLog               bool
 		GlobalLogging             bool
+		ControllerKeyFile         string // path to keystore file for deferred key loading
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -61,27 +59,31 @@ func configOptions(opts ...ConfigOption) *ConfigOptions {
 	return cfg
 }
 
-func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error) {
+func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	subViper := viper.Sub("sequencer")
 	if subViper == nil {
-		return nil, base.ChainID{}, nil, nil
+		return nil, base.ChainID{}, nil
 	}
 	name := subViper.GetString("name")
 	if name == "" {
-		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: sequencer must have a name")
+		return nil, base.ChainID{}, fmt.Errorf("StartFromConfig: sequencer must have a name")
 	}
 
 	if !subViper.GetBool("enable") {
 		// will skip
-		return nil, base.ChainID{}, nil, nil
+		return nil, base.ChainID{}, nil
 	}
 	seqID, err := base.ChainIDFromHexString(subViper.GetString("chain_id"))
 	if err != nil {
-		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse sequencer chain ID: %v", err)
+		return nil, base.ChainID{}, fmt.Errorf("StartFromConfig: can't parse sequencer chain ID: %v", err)
 	}
-	controllerKey, err := loadControllerKey(subViper)
-	if err != nil {
-		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't load controller key: %v", err)
+
+	keyFile := subViper.GetString("controller_key_file")
+	if keyFile == "" {
+		return nil, base.ChainID{}, fmt.Errorf("StartFromConfig: 'controller_key_file' is required in sequencer config")
+	}
+	if _, err := os.Stat(keyFile); err != nil {
+		return nil, base.ChainID{}, fmt.Errorf("StartFromConfig: controller key file '%s': %v", keyFile, err)
 	}
 
 	backlogTagAlongTTLSlots := subViper.GetInt("backlog_tag_along_ttl_slots")
@@ -106,62 +108,12 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 		WithMilestonesTTLSlots(milestonesTTLSlots),
 		WithSingleSequencerEnforced,
 		WithSeparateLog(subViper.GetBool("logging"), subViper.GetBool("global_logging")),
+		WithControllerKeyFile(keyFile),
 	}
 	if subViper.GetBool("ensure_synced_at_startup") {
 		cfg = append(cfg, WithEnsureSyncedAtStartup)
 	}
-	return cfg, seqID, controllerKey, nil
-}
-
-// loadControllerKey reads the sequencer controller private key from a .key file (JSON keystore).
-// The file is specified by the 'controller_key_file' config field.
-// Both encrypted and unencrypted keystore formats are supported.
-func loadControllerKey(subViper *viper.Viper) (ed25519.PrivateKey, error) {
-	keyFile := subViper.GetString("controller_key_file")
-	if keyFile == "" {
-		return nil, fmt.Errorf("no controller key: set 'controller_key_file' in sequencer config")
-	}
-	return loadFromKeystore(keyFile)
-}
-
-// loadFromKeystore loads a private key from a JSON keystore file.
-// Supports both encrypted and unencrypted keystores.
-// For encrypted keystores, checks PROXIMA_KEY_PASSPHRASE env var first, then prompts on stdin.
-func loadFromKeystore(path string) (ed25519.PrivateKey, error) {
-	ks, err := keystore.LoadFromFile(path)
-	if err != nil {
-		return nil, err
-	}
-	if ks.KeyType != keystore.KeyTypeED25519 {
-		return nil, fmt.Errorf("unsupported key type %d in keystore '%s'", ks.KeyType, path)
-	}
-
-	passphrase := ""
-	if ks.IsEncrypted() {
-		passphrase = os.Getenv("PROXIMA_KEY_PASSPHRASE")
-		if passphrase == "" {
-			hint := ""
-			if ks.Hint != "" {
-				hint = fmt.Sprintf(" (hint: %s)", ks.Hint)
-			}
-			fmt.Printf("Enter passphrase for '%s'%s: ", path, hint)
-			passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-			if err != nil {
-				return nil, fmt.Errorf("failed to read passphrase: %v", err)
-			}
-			fmt.Println()
-			passphrase = string(passBytes)
-		}
-	}
-
-	keyBytes, err := ks.GetPrivateKey(passphrase)
-	if err != nil {
-		return nil, err
-	}
-	if len(keyBytes) != ed25519.PrivateKeySize {
-		return nil, fmt.Errorf("key has wrong size: %d (expected %d)", len(keyBytes), ed25519.PrivateKeySize)
-	}
-	return ed25519.PrivateKey(keyBytes), nil
+	return cfg, seqID, nil
 }
 
 func WithName(name string) ConfigOption {
@@ -224,6 +176,12 @@ func WithSeparateLog(yesNo, globalLogging bool) ConfigOption {
 	return func(o *ConfigOptions) {
 		o.SeparateLog = yesNo
 		o.GlobalLogging = globalLogging
+	}
+}
+
+func WithControllerKeyFile(path string) ConfigOption {
+	return func(o *ConfigOptions) {
+		o.ControllerKeyFile = path
 	}
 }
 

@@ -4,9 +4,9 @@
 peering:
   # libp2p host data:
   host:
-    # host ID private key. Should not be used to protect tokens
+    # host private key. Should not be used to protect tokens
     id_private_key: {{.HostPrivateKey}}
-    # host id is derived from the host id public key.
+    # host ID is derived from the host ID public key.
     id: {{.HostID}}
     # port to connect from other peers
     port: {{.HostPort}}
@@ -67,16 +67,13 @@ snapshot_restore:
 # logger config
 # logger.previous can be 'erase' or 'save'
 logger:
-  # verbosity:
-  #   0 - logging branches
-  #   1 - logging branches, sequencer transaction
-  #   2 - not implemented
-  # for tracing configure trace_tags
+  # verbosity: 0 - logging branches, 1 - logging branches, sequencer transaction, - not implemented
   verbosity: 0
   output: proxima.log
   # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
   # Otherwise or when absent: log will be appended to the same existing file
-  previous: erase
+  previous: save
+  keep_latest_logs: 2
 
 # Other parameters used for tracing and debugging
 # Prometheus metrics exposure

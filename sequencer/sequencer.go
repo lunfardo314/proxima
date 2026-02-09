@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/checkpoints"
+	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -128,21 +130,25 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	if err = ret.backlog.LoadSequencerStartTips(seqID); err != nil {
 		return nil, err
 	}
-	ret.Log().Infof("sequencer is starting with config:\n%s", cfg.lines(seqID,
-		ledger.SigLockFromED25519PrivateKey(controllerKey), "     ").String())
+	if controllerKey != nil {
+		ret.Log().Infof("sequencer is starting with config:\n%s", cfg.lines(seqID,
+			ledger.SigLockFromED25519PrivateKey(controllerKey), "     ").String())
+	} else {
+		ret.Log().Infof("sequencer created, controller key will be loaded during startup")
+	}
 
 	return ret, nil
 }
 
 func NewFromConfig(glb *workflow.Workflow) (*Sequencer, error) {
-	cfg, seqID, controllerKey, err := paramsFromConfig()
+	cfg, seqID, err := paramsFromConfig()
 	if err != nil {
 		return nil, err
 	}
 	if cfg == nil {
 		return nil, nil
 	}
-	return New(glb, seqID, controllerKey, cfg...)
+	return New(glb, seqID, nil, cfg...)
 }
 
 func (seq *Sequencer) Start() {
@@ -223,6 +229,10 @@ func (seq *Sequencer) ensureNotTooCloseToSnapshot() {
 }
 
 func (seq *Sequencer) ensurePreConditions() bool {
+	if !seq.ensureControllerKey() {
+		return false
+	}
+
 	if !seq.ensureSyncedIfNecessary() {
 		seq.log.Warnf("ensurePreConditions: node is not synced. Can't start sequencer. EXIT..")
 		return false
@@ -240,6 +250,63 @@ func (seq *Sequencer) ensurePreConditions() bool {
 	}
 	seq.log.Infof("ensurePreConditions: waiting for %v (1 slot) before starting sequencer", ledger.L(0).SlotDuration())
 	time.Sleep(ledger.L(0).SlotDuration())
+	return true
+}
+
+// ensureControllerKey loads the controller private key from the keystore file if not already set.
+// Supports unencrypted keystores and encrypted keystores with passphrase from SEQUENCER_KEY_PASSPHRASE env var.
+// Returns false if the key cannot be loaded; sequencer must not start without a valid controller key.
+func (seq *Sequencer) ensureControllerKey() bool {
+	if seq.controllerKey != nil {
+		// key was provided directly (e.g. in tests)
+		return true
+	}
+	keyFile := seq.config.ControllerKeyFile
+	if keyFile == "" {
+		seq.log.Errorf("ensureControllerKey: controller key not available: set 'controller_key_file' in sequencer config. Sequencer will not start")
+		return false
+	}
+
+	ks, err := keystore.LoadFromFile(keyFile)
+	if err != nil {
+		seq.log.Errorf("ensureControllerKey: failed to load keystore '%s': %v. Sequencer will not start", keyFile, err)
+		return false
+	}
+	if ks.KeyType != keystore.KeyTypeED25519 {
+		seq.log.Errorf("ensureControllerKey: unsupported key type %d in keystore '%s'. Sequencer will not start", ks.KeyType, keyFile)
+		return false
+	}
+
+	passphrase := ""
+	encrypted := ks.IsEncrypted()
+	if encrypted {
+		passphrase = os.Getenv("SEQUENCER_KEY_PASSPHRASE")
+		if passphrase == "" {
+			seq.log.Errorf("ensureControllerKey: keystore '%s' is encrypted: set SEQUENCER_KEY_PASSPHRASE environment variable. Sequencer will not start", keyFile)
+			return false
+		}
+	}
+
+	keyBytes, err := ks.GetPrivateKey(passphrase)
+	passphrase = ""
+	if err != nil {
+		seq.log.Errorf("ensureControllerKey: failed to decrypt keystore '%s': %v. Sequencer will not start", keyFile, err)
+		return false
+	}
+	if len(keyBytes) != ed25519.PrivateKeySize {
+		seq.log.Errorf("ensureControllerKey: key in '%s' has wrong size %d (expected %d). Sequencer will not start", keyFile, len(keyBytes), ed25519.PrivateKeySize)
+		return false
+	}
+
+	seq.controllerKey = keyBytes
+
+	if encrypted {
+		seq.log.Infof("ensureControllerKey: controller key loaded from encrypted keystore '%s' (passphrase from SEQUENCER_KEY_PASSPHRASE)", keyFile)
+	} else {
+		seq.log.Infof("ensureControllerKey: controller key loaded from unencrypted keystore '%s'", keyFile)
+	}
+	seq.log.Infof("sequencer config:\n%s", seq.config.lines(seq.sequencerID,
+		ledger.SigLockFromED25519PrivateKey(seq.controllerKey), "     ").String())
 	return true
 }
 

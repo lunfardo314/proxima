@@ -9,6 +9,7 @@ import (
 
 	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -21,7 +22,10 @@ var configFileTemplate string
 //go:embed sequencer_config.template
 var sequencerConfigTemplate string
 
-var includeSeq bool
+var (
+	includeSeq  bool
+	includeBoot bool
+)
 
 func initNodeConfigCmd() *cobra.Command {
 	initNodeConfig := &cobra.Command{
@@ -33,6 +37,10 @@ func initNodeConfigCmd() *cobra.Command {
 
 	initNodeConfig.PersistentFlags().BoolVarP(&includeSeq, "sequencer", "s", false, "include sequencer config template")
 	err := viper.BindPFlag("sequencer", initNodeConfig.PersistentFlags().Lookup("sequencer"))
+	glb.AssertNoError(err)
+
+	initNodeConfig.PersistentFlags().BoolVarP(&includeBoot, "boot", "b", false, "include enabled bootstrap sequencer config")
+	err = viper.BindPFlag("boot", initNodeConfig.PersistentFlags().Lookup("boot"))
 	glb.AssertNoError(err)
 
 	return initNodeConfig
@@ -81,8 +89,27 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 		StaticPeers:     nil,
 		MaxDynamicPeers: defaultMaxDynamicPeers,
 	}
-	if includeSeq {
-		data.SequencerConfig = sequencerConfigTemplate
+	if includeSeq || includeBoot {
+		seqData := struct {
+			SeqName    string
+			SeqEnable  string
+			SeqChainID string
+		}{
+			SeqName:    "<mandatory name>",
+			SeqEnable:  "false",
+			SeqChainID: "<sequencer id hex encoded>",
+		}
+		if includeBoot {
+			seqData.SeqName = "boot"
+			seqData.SeqEnable = "true"
+			seqData.SeqChainID = ledger.BoostrapSequencerIDHex
+		}
+		seqTempl, errSeq := template.New("seq").Parse(sequencerConfigTemplate)
+		glb.AssertNoError(errSeq)
+		var seqBuf bytes.Buffer
+		errSeq = seqTempl.Execute(&seqBuf, seqData)
+		glb.AssertNoError(errSeq)
+		data.SequencerConfig = seqBuf.String()
 	}
 	err = templ.Execute(&buf, data)
 	glb.AssertNoError(err)

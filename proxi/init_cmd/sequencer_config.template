@@ -2,13 +2,13 @@
 # Sequencer configuration (optional)
 sequencer:
     # sequencer name usually is 4 or so symbols. It is put into every sequencer transaction for tracking purposes
-  name: <mandatory name>
+  name: {{.SeqName}}
     # start sequencer yes/no
-  enable: false
+  enable: {{.SeqEnable}}
     # chain ChainID of the sequencer
     # Sequencer chain is created by 'proxi node mkchain' command
     # All chains controlled by the wallet can be displayed by 'proxi node mychains'
-  chain_id: <sequencer id hex encoded>
+  chain_id: {{.SeqChainID}}
   # path to the controller key file (JSON keystore format, created by 'proxi util key generate')
   controller_key_file: proxima.key
   # sequencer pace. Distance in ticks between two subsequent sequencer transactions
