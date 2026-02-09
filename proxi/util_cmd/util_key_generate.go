@@ -51,5 +51,5 @@ func runKeyGenerateCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("Key saved to '%s'", outputFile)
-	glb.Infof("Spender ID (hash of the public key): %s", spenderID)
+	glb.Infof("Spender ID (hash of <type>+<public key>): %s", spenderID)
 }

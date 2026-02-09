@@ -16,16 +16,16 @@ func genHostIDCmd() *cobra.Command {
 		Use:   "hostid",
 		Args:  cobra.NoArgs,
 		Short: fmt.Sprintf("generates private key and host id for libp2p host"),
-		PersistentPreRun: func(_ *cobra.Command, _ []string) {
-			glb.ReadInConfig()
-		},
+		PersistentPreRun: func(_ *cobra.Command, _ []string) {},
 		Run: runGenHostIdCmd,
 	}
 	return genHostIdCommand
 }
 
 func runGenHostIdCmd(_ *cobra.Command, _ []string) {
-	glb.Infof("DISCLAIMER: USE AT YOUR OWN RISK!!. This program generates private key based on system randomness and on the entropy entered by the user")
+	glb.Infof("This program generates private key based on system randomness and on the entropy entered by the user.")
+	glb.Infof("The private key will be displayed on the screen. It is inteded for the libp2p host identification only")
+	glb.Infof("IT SHOULD NEVER BE USED TO PROTECT TOKENS IN CRYPTO ACCOUNTS\n")
 	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter 10 or more random seed symbols: ")
 
 	pklpp, err := p2pcrypto.UnmarshalEd25519PrivateKey(privateKey)

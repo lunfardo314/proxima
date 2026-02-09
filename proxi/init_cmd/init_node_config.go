@@ -2,6 +2,7 @@ package init_cmd
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/hex"
 	"os"
 	"text/template"
@@ -13,6 +14,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+//go:embed node_config.template
+var configFileTemplate string
+
+//go:embed sequencer_config.template
+var sequencerConfigTemplate string
 
 var includeSeq bool
 
@@ -60,7 +67,7 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 	glb.Assertf(!glb.FileExists(proximaNodeProfile), "file %s already exists", proximaNodeProfile)
 	var buf bytes.Buffer
 
-	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter at least 10 random seed symbols for the private key and id of the peering host and press ENTER:", 10)
+	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter at least 10 random seed symbols for the private key and ID of the peering host and press ENTER:", 10)
 	pklpp, err := p2pcrypto.UnmarshalEd25519PrivateKey(privateKey)
 	util.AssertNoError(err)
 	hid, err := peer.IDFromPrivateKey(pklpp)
@@ -85,129 +92,3 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 
 	glb.Infof("initial Proxima node configuration file has been saved as '%s'", proximaNodeProfile)
 }
-
-const configFileTemplate = `# Configuration file for the Proxima node
-
-# Peering configuration
-peering:
-  # libp2p host data:
-  host:
-    # host id private key
-    id_private_key: {{.HostPrivateKey}}
-    # host id is derived from the host id public key.
-    id: {{.HostID}}
-    # port to connect from other peers
-    port: {{.HostPort}}
-
-  # YAML dictionary (map) of statically pre-configured peers. Also used in the peering boostrap phase by Kademlia DHT
-  # It will be empty for the first bootstrap node in the network. In that case must be peering.host.bootstrap = true
-  # Must be at least 1 static for non-bootstrap node
-  # Each static peer is specified as a pair <name>: <multiaddr>, where:
-  # -- <name> is unique mnemonic name used for convenience locally
-  # -- <multiaddr> is the libp2p multi-address in the form '/ip4/<IPaddr ir URL>/<port>/tcp/p2p/<hostID>'
-  # for more info see https://docs.libp2p.io/concepts/fundamentals/addressing/
-  peers:
-    # Example -> boot: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
-    # nodes for testnet:
-    boot-acc: /ip4/113.30.191.219/udp/4001/quic-v1/p2p/12D3KooWGSnqWgYcMTKyQfqCnXCjvKMBLpN57jUN8WhbgnSnSRRx
-    loc0-acc: /ip4/63.250.56.190/udp/4001/quic-v1/p2p/12D3KooWN35e2ikeiJAUpotsmD6YTmHrmypHk9QgKo3QAotF4G2a
-    seq1-acc: /ip4/83.229.84.197/udp/4001/quic-v1/p2p/12D3KooWB4JtN4266XqLhKLo3c8SS4aTdD32dnsrqfWyrLfbwFw3
-    loc1-acc: /ip4/5.180.181.103/udp/4001/quic-v1/p2p/12D3KooWQEJybYc7pnpuM2vTn4QbU26GK1LUMML6if6JjHSVjjMS
-
-  # Maximum number of peers which may be connected to via the automatic peer discovery
-  # max_dynamic_peers > 0 means automatic peer discovery (autopeering) is enabled, otherwise disabled
-  max_dynamic_peers: {{.MaxDynamicPeers}}
-
-  # defines if local IPs are allowed to be used for autopeering.
-  allow_local_ips: false
-
-# Node's API config
-api:
-    # server port
-  port: {{.APIPort}}
-
-snapshot:
-  enable: false
-    # where to put snapshot files. Directory must exist at startup
-  directory: snapshot
-    # 30 slots means snapshot is every ~5 min
-  period_in_slots: 64
-    # keep latest up to 3 snapshots, older ones will be purged
-  keep_latest: 2
-
-# Automatic snapshot restore for state management
-# When enabled, periodically restarts the node and restores from latest snapshot
-# This cleans up old historical state, keeping only the latest
-snapshot_restore:
-  enable: false
-  # Period between restores in slots (~24h = 8438 slots at 10.24 sec/slot)
-  period_slots: 8438
-  # Randomization window in slots (~4h = 1406 slots) to avoid mass restarts
-  window_slots: 1406
-  # TTL in minutes - if restore takes longer, assume failure and reset
-  ttl_minutes: 10
-  # Optional: override snapshot directory (default: uses snapshot.directory)
-  # Can point to another node's snapshot directory for shared snapshots
-  # snapshot_directory: /path/to/other/node/snapshot
-  # Optional: separate log file for restore activity (stats, duration, etc.)
-  # log_file: .snapshot_restore.log
-
-# logger config
-# logger.previous can be 'erase' or 'save'
-logger:
-  # verbosity:
-  #   0 - logging branches
-  #   1 - logging branches, sequencer transaction
-  #   2 - not implemented
-  # for tracing configure trace_tags
-  verbosity: 0
-  output: proxima.log
-  # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
-  # Otherwise or when absent: log will be appended in the same existing file
-  previous: erase
-
-# Other parameters used for tracing and debugging
-# Prometheus metrics exposure
-metrics:
-  # expose Prometheus metrics yes/no
-  enable: false
-  port: 14000
-
-# list of enabled trace tags. When enabled, it forces tracing of the specified module.
-# It may be very verbose, so it is only used For debugging. 
-# For more available trace tags search the code for "TraceTag"
-trace_tags:
-#  - autopeering
-#  - pull_server
-#  - txinput
-#  - txStore
-
-# Transaction logger
-#txlogger:
-#  enable_on_start: false
-#  level: "all"
-#  ttl_hours: 1
-#  enable_on_off_api: false
-
-{{.SequencerConfig}}
-`
-
-const sequencerConfigTemplate = `
-# Sequencer configuration (optional)
-sequencer:
-    # sequencer name usually is 4 or so symbols. It is put into every sequencer transaction for tracking purposes
-  name: <mandatory name>
-    # start sequencer yes/no
-  enable: false
-    # chain ChainID of the sequencer
-    # Sequencer chain is created by 'proxi node mkchain' command
-    # All chains controlled by the wallet can be displayed by 'proxi node mychains'
-  chain_id: <sequencer id hex encoded>
-  # path to the controller key file (JSON keystore format, created by 'proxi util key generate')
-  controller_key_file: proxima.key
-  # sequencer pace. Distance in ticks between two subsequent sequencer transactions
-  # cannot be less than the sequencer pace value set by the ledger
-  pace: 12
-  # maximum tag-along inputs allowed in the sequencer transaction (absolute maximum value is 254)
-  max_tag_along_inputs: 100
-`

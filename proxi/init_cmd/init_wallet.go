@@ -3,6 +3,7 @@ package init_cmd
 import (
 	"bytes"
 	"crypto/ed25519"
+	_ "embed"
 	"encoding/hex"
 	"os"
 	"text/template"
@@ -13,6 +14,9 @@ import (
 	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
 )
+
+//go:embed wallet_profile.template
+var walletProfileTemplate string
 
 func initWalletCmd() *cobra.Command {
 	return &cobra.Command{
@@ -32,18 +36,18 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 	glb.Assertf(!glb.FileExists(profileFname), "file %s already exists", profileFname)
 
 	keyFile := keystore.DefaultKeyFile
-	var account string
+	var spenderID string
 
 	// Check if a .key file already exists
 	if glb.FileExists(keyFile) {
 		if glb.YesNoPrompt("Found existing key file '"+keyFile+"'. Use it?", true) {
 			ks, err := keystore.LoadFromFile(keyFile)
 			glb.AssertNoError(err)
-			account = ks.SpenderID
-			if account == "" {
+			spenderID = ks.SpenderID
+			if spenderID == "" {
 				glb.Infof("Key file has no spender_id. Deriving from public key.")
 				// For v1 keystores, derive from public key if possible
-				account = deriveSpenderIDFromKeystore(ks)
+				spenderID = deriveSpenderIDFromKeystore(ks)
 			}
 			glb.Infof("Using existing key file '%s'", keyFile)
 		} else {
@@ -56,9 +60,9 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 			"We need some entropy for the private key of the account.\nPlease enter at least 10 seed symbols as randomly as possible and press ENTER:", 10)
 		publicKey := privateKey.Public().(ed25519.PublicKey)
 		sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
-		account = hex.EncodeToString(sid[:])
+		spenderID = hex.EncodeToString(sid[:])
 
-		ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, account)
+		ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, spenderID)
 		glb.AssertNoError(err)
 
 		// Offer encryption
@@ -81,11 +85,11 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 
 	data := struct {
 		KeyFile        string
-		Account        string
+		SpenderID      string
 		BootstrapSeqID string
 	}{
 		KeyFile:        keyFile,
-		Account:        account,
+		SpenderID:      spenderID,
 		BootstrapSeqID: ledger.BoostrapSequencerIDHex,
 	}
 	var buf bytes.Buffer
@@ -94,7 +98,7 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 
 	err = os.WriteFile(profileFname, buf.Bytes(), 0600)
 	glb.AssertNoError(err)
-	glb.Infof("proxi profile '%s' has been created successfully.\nSpender ID (hash of the public key): %s", profileFname, account)
+	glb.Infof("proxi profile '%s' has been created successfully.\nSpender ID (hash of <type>+<public key>): %s", profileFname, spenderID)
 }
 
 // deriveSpenderIDFromKeystore derives the spender ID from the public key stored in the keystore.
@@ -110,51 +114,3 @@ func deriveSpenderIDFromKeystore(ks *keystore.Keystore) string {
 	sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, pubBytes)
 	return hex.EncodeToString(sid[:])
 }
-
-const walletProfileTemplate = `# Proxi wallet profile
-
-# default sequencer ID is used when own or tag-along sequencer is not specified
-default_sequencer_id: {{.BootstrapSeqID}}
-
-wallet:
-    key_file: {{.KeyFile}}
-    account: {{.Account}}
-    # <own sequencer ID> must be the sequencer ID controlled by the private key of the wallet.
-    # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
-    # Default is used when not specified
-    sequencer_id: <own sequencer ID>
-api:
-    endpoint: http://63.250.56.190:8001
-
-# alternative testnet access points:
-#    endpoint: http://113.30.191.219:8001
-#    endpoint: http://83.229.84.197:8001
-#    endpoint: http://5.180.181.103:8001
-
-tag_along:
-    # tag-along fee amount and ID of the tag-along sequencer. Currently only one tag-along sequencer is supported
-    # If not specified, the default sequencer ID will be used
-    fee: 1
-# uncomment the line and specify your preferred sequencer
-#    sequencer_id: <tag-along sequencer ID>
-
-# provides parameters for 'proxi node getfunds' command
-faucet:
-    port:  9500
-    host:  113.30.191.219
-
-# provides parameters for 'proxi node spam' command
-# The spammer in a loop sends bundles of transactions to the target address by using specified tag-along sequencer
-# Before sending next bundle, the spammer waits for the finality of the previous according to the provided criterion
-spammer:
-    bundle_size: 5
-    output_amount: 1000
-    pace: 25
-    tag_along:
-        fee: 1
-        # <sequencer ID hex encoded> is tag-along sequencer id for the tip transaction in the bundle
-        # If not specified, the default sequencer ID will be used
-        # sequencer_id: <sequencer id hex encoded>
-    # target address
-    target: <target lock in EasyFL format>
-`
