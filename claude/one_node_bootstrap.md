@@ -471,6 +471,69 @@ rm -rf <dirname>
 
 ---
 
+## Practical Notes for Test Runs
+
+### Building binaries
+
+Build both binaries from the repo root before starting:
+```bash
+go build -o proxima .        # node binary (main.go at repo root)
+go install ./proxi           # CLI tool (installs to $GOPATH/bin)
+```
+If rebuilding while the node is running, stop the node first (`pkill proxima`) — overwriting a running binary fails with "Text file busy".
+
+### Working directory
+
+- The `proxima` node must run from the directory containing `proxima.yaml` and the `.snapshot` file.
+- The genesis `.snapshot` file stays in the working directory; no `snapshot/` subdirectory needed.
+- `proxi` CLI commands also run from the same directory (reads `proxi.yaml` from cwd).
+
+### Key management
+
+- Key generation (`proxi util key generate`) requires an interactive terminal for entropy input. It will fail with a clear error if stdin is not a TTY.
+- Key encryption (`proxi util key encrypt`) also requires a TTY for passphrase prompts.
+- For CLI commands against a running node with encrypted keys, set `PROXIMA_KEY_PASSPHRASE=<passphrase>` in the environment, or create a passphrase file named after the spender ID (hex, no extension) in the working directory.
+- For the node process itself, `run_proxima.sh` handles passphrase prompting and sets `SEQUENCER_KEY_PASSPHRASE` env var.
+
+### Timing
+
+- After node startup, wait ~30 seconds for the sequencer to produce initial branches before running CLI commands.
+- Transaction inclusion typically takes a few seconds. The `-f` flag skips confirmation prompts.
+
+### Token amounts
+
+- Minimum storage deposit for a basic sigLock output is ~13.6M tokens (45 bytes output).
+- Use amounts >= 50,000,000 (50M) for transfers and withdrawals to stay safely above the minimum.
+- The bootstrap sequencer starts with the entire genesis supply (~1B tokens by default).
+- Withdraw from the sequencer first (`proxi node seq withdraw`) before testing transfers.
+
+### Database commands
+
+- `proxi db *` commands require the node to be **stopped**. They access BadgerDB directly and cannot share the lock with a running node.
+- `proxi node *` commands require the node to be **running** (they use the REST API).
+
+### Delegation testing
+
+- `delegate askstop` requires the delegation to have been active long enough for the sequencer to accept the stop request.
+- The compensation amount is calculated from `ChainInflation()` and must not exceed the delegation balance.
+
+### Multi-node testing
+
+When extending to multi-node setups:
+- Each node needs its own working directory with separate `proxima.yaml`, `proxima.key`, and snapshot.
+- Peering section in `proxima.yaml` must list peer multiaddresses.
+- All nodes must use the same genesis snapshot to share the same ledger identity.
+- Only one node should run the bootstrap sequencer; other nodes run their own sequencer chains.
+
+### Common pitfalls
+
+- Forgetting `-f` flag: without it, commands prompt for confirmation and may appear to hang.
+- Wrong `sequencer_id` in `proxi.yaml`: withdraw and other sequencer commands fail with "can't get own sequencer id". The wallet template now auto-fills the bootstrap sequencer ID.
+- WSL file copying: copying shell scripts via Windows Explorer introduces CRLF line endings. Use `cp` within WSL terminal instead.
+- `proxi node txlog enable` without `--level` defaults to `all`. Use `--level` flag to specify a different level.
+
+---
+
 ## Issues Log
 
 Record any unexpected behavior, errors, or deviations from expected results below.
