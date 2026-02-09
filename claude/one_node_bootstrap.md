@@ -487,10 +487,10 @@ Record any unexpected behavior, errors, or deviations from expected results belo
 | 5.1 | `proxi node seq withdraw` | Works | "can't get own sequencer id" | Config issue: wallet `sequencer_id` placeholder not set |
 | 6.4 | `proxi node txlog enable` | Restores configured level (`all`) | Re-enables with `non_sequencer` | Bug/UX: doesn't restore original config level |
 | 7.1 | `proxi node mkchain` | Transaction included | Never included, tag-along outputs purged from backlog | **BUG FIXED**: MakeChainOrigin() was missing SubmitTransaction() call |
-| 8.1 | `proxi node delegate amount` | Works | "selecing" in output | UX: typo "selecing" → "selecting" |
+| 8.1 | `proxi node delegate amount` | Works | "selecing" in output | **UX FIXED**: typo "selecing" → "selecting" |
 | 8.3 | `proxi node delegate askstop` | Transaction included | Rejected: "compensation not sufficient (needed X, provided Y)" where Y > X | **BUG FIXED**: comparison was backwards (`<` instead of `>`) in req_askstop.go:95 |
 | 12.3 | `proxi db info` | DB info displayed | "yaml: control characters are not allowed" | **BUG FIXED**: trie root stores binary LedgerIdentity, not YAML; use library cache instead |
-| 12.4 | `proxi db lrb` | Formatted output | All info on single line, unreadable | UX: poor formatting |
-| 12.4 | `proxi db lrb` | `0.00%` | `0.00%%` | Bug: same double-percent as node lrb |
-| 12.6 | `proxi db accounts` | `100%` | `100%%` | Bug: same double-percent issue |
+| 12.4 | `proxi db lrb` | Formatted output | All info on single line, unreadable | **UX FIXED**: use newlines with indentation instead of Join(" ") |
+| 12.4 | `proxi db lrb` | `0.00%` | `0.00%%` | **FIXED** by earlier double-percent fix in roots.go |
+| 12.6 | `proxi db accounts` | `100%` | `100%%` | **FIXED** by earlier double-percent fix in lock_delegate.go |
 

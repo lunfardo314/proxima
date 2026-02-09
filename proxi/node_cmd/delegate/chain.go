@@ -50,7 +50,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	if targetChainIDStr == "" {
-		glb.Infof("selecing optimal/random target sequencer..")
+		glb.Infof("selecting optimal/random target sequencer..")
 		targetSeqID, err = chooseRandomSequencerForDelegation()
 		glb.AssertNoError(err)
 	} else {

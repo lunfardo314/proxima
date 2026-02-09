@@ -57,7 +57,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	var targetSeqID base.ChainID
 
 	if targetChainIDStr == "" {
-		glb.Infof("selecing optimal/random target sequencer..")
+		glb.Infof("selecting optimal/random target sequencer..")
 		targetSeqID, err = chooseRandomSequencerForDelegation()
 		glb.AssertNoError(err)
 	} else {
