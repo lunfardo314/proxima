@@ -27,8 +27,6 @@ func _selfIsDelegationOrigin : isChainOriginID(parseInlineDataArgument(selfSibli
 // $0 index of the constraint on the successor output
 func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2),0), $0))
 
-func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPredInputIndex(2), 0), 0)
-
 // $0 last frozen epoch
 // $1 state. 1 byte-long.
 //  - 0x00 mean 'undef'
@@ -97,7 +95,7 @@ func requiredInflationAdvance : _takeShare( chainInflation( $2, $1, $0), $3 )
 func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 
 // $0 required inflation share in promille (0-1000, uint64)
-// $1 _predecessorTokenBalance
+// $1 predecessorTokenBalanceByChainConstraintIndex
 //
 // It uses an approximation (linear extrapolation) of the future projected inflation (non-linear)
 // At the sequencer side, it must be taken into account that margins are not the same for
@@ -106,7 +104,7 @@ func _requiredInflationAdvance :
      requiredInflationAdvance(_txFrozenSlots, txSlot, $1, $0)
 
 // $0 required inflation share in promille (0-1000, uint64)
-// $1 _predecessorTokenBalance
+// $1 predecessorTokenBalanceByChainConstraintIndex
 func _validInflationAdvanceProduced :
 require(
        // not checked if predecessor is not a delegation
@@ -150,7 +148,7 @@ and(
 	   and( // frozen
 		  _selfIsMarkedFrozen,
 		  _validLimitsProducedFrozen($0),
-		  _validInflationAdvanceProduced($1, _predecessorTokenBalance)
+		  _validInflationAdvanceProduced($1, predecessorTokenBalanceByChainConstraintIndex(2))
 	   ),
 	   and( // revoked
 		  _selfIsMarkedOnHold,

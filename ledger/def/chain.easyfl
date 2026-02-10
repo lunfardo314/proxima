@@ -76,6 +76,7 @@ func chain : and(
       and(
          selfIsProducedOutput,
          _validChainProduced($0,$1,$2,$3),
+         _validInflationAmount($0,$1)
       ),
       and(
          selfIsConsumedOutput,
@@ -84,9 +85,40 @@ func chain : and(
    )
 )
 
-// $0 - chain constraint index
-func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), 0, #chain)
-func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain), 0)
 
 // $0 chain constraint index
-func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain),0) )
+//old - func predecessorTokenBalanceByChainConstraintIndex : amountAt(consumedConstraintByIndex(selfChainPredInputIndex($0), 0), 0)
+func predecessorTokenBalanceByChainConstraintIndex : predecessorTokenBalance(selfChainPredInputIndex($0))
+
+// $0 input index (1 byte)
+func predecessorTokenBalance : tokenBalanceByOutputPath(concat(pathToConsumedOutputs, $0))
+
+// $0 - chain constraint index
+func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain), 0)
+
+// func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), 0, #chain)
+
+
+// $0 chain constraint index
+// func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain),0) )
+
+// $0 - chain ChainID
+// $1 - predecessor output index || predecessor constraint index (2 bytes)
+func _validInflationAmount :
+or(
+  and(isChainOriginID($0), isZero(amountAt(selfSiblingConstraint(amountsConstraintIndex), 1))),
+  _checkInflationAmount(byte($1,0))
+)
+
+// $0 - predecessor output index (1 byte)
+func predecessorAmounts : atPath(concat(pathToConsumedOutputs,$0, amountsConstraintIndex))
+
+// $0 - predecessor output (input) index TODO branch inflation
+func _checkInflationAmount: $0
+//require(
+//    equal(
+//       chainInflation(predecessorTokenBalance($0), slotOfInputByIndex($0), sub(txSlot, slotOfInputByIndex($0))),
+//       amountAt(selfSiblingConstraint(amountsConstraintIndex), 1)
+//    ),
+//    !!!wrong_inflation_amount_22222
+//)
