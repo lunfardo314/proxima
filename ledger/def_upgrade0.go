@@ -21,7 +21,8 @@ var (
 
 // upgrade0 makes library at genesis by applying upgrade to the base EasyFL library
 func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
-	err := upgradeLibrary(lib,
+	resolver := GetEmbeddedFunctionResolver(lib)
+	err := lib.IntroduceUpdateYAMLMulti(resolver,
 		[]byte(_definitionsEmbeddedYAMLUpgrade0),
 		ConstantsYAMLFromParamsUpgrade0(par),
 		[]byte(pathConstantsUpgrade0()),
@@ -30,17 +31,46 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	)
 	util.AssertNoError(err)
 
-	lib.MustExtendMany(addressED25519ConstraintSource)
-	lib.MustExtendMany(timelockSource)
-	lib.MustExtendMany(amountsSource)
-	lib.MustExtendMany(stemLockSource)
-	lib.MustExtendMany(chainConstraintSource)
-	lib.MustExtendMany(sequencerConstraintSource)
-	lib.MustExtendMany(chainLockConstraintSource)
-	lib.MustExtendMany(delegateLockSource)
-	lib.MustExtendMany(tagAlongLockConstraintSource)
-	lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
-	lib.MustExtendMany(_txLayoutValidator0)
+	//err := upgradeLibrary(lib,
+	//	[]byte(_definitionsEmbeddedYAMLUpgrade0),
+	//	ConstantsYAMLFromParamsUpgrade0(par),
+	//	[]byte(pathConstantsUpgrade0()),
+	//	[]byte(_helperFunctionsYAMLUpgrade0),
+	//	[]byte(_generalFunctionsYAMLUpgrade0),
+	//)
+	//util.AssertNoError(err)
+
+	err = lib.IntroduceUpdateManyMulti(
+		addressED25519ConstraintSource,
+		timelockSource,
+		amountsSource,
+		stemLockSource,
+		chainConstraintSource,
+		sequencerConstraintSource,
+		chainLockConstraintSource,
+		delegateLockSource,
+		tagAlongLockConstraintSource,
+		ensureStopFreezeDelegationConstraintSource,
+		_txLayoutValidator0,
+		_miscCalculationsSource,
+	)
+	util.AssertNoError(err)
+
+	err = lib.CommitUpdate()
+	util.AssertNoError(err)
+
+	//lib.MustExtendMany(addressED25519ConstraintSource)
+	//lib.MustExtendMany(timelockSource)
+	//lib.MustExtendMany(amountsSource)
+	//lib.MustExtendMany(stemLockSource)
+	//lib.MustExtendMany(chainConstraintSource)
+	//lib.MustExtendMany(sequencerConstraintSource)
+	//lib.MustExtendMany(chainLockConstraintSource)
+	//lib.MustExtendMany(delegateLockSource)
+	//lib.MustExtendMany(tagAlongLockConstraintSource)
+	//lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
+	//lib.MustExtendMany(_txLayoutValidator0)
+	//lib.MustExtendMany(_miscCalculationsSource)
 
 }
 

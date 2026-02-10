@@ -1,0 +1,15 @@
+//$0 output(UTXO) bytes
+func selfRequireEnoughStorageDeposit :
+require(
+   greaterOrEqualThan(selfTokenBalanceValue, storageDeposit(len($0))),
+   !!!not_enough_tokens_for_storage_deposit
+)
+
+// $0 output (UTXO) bytecode size in bytes
+// returns storage deposit
+func storageDeposit :
+if(
+   lessThan($0, u64/303030),
+   mul($0, 100),
+   add(mul($0, 100), lshift64(sub($0,100), 2))
+)

@@ -1,7 +1,5 @@
 package ledger
 
-import "github.com/lunfardo314/easyfl"
-
 // UpgradeDefinition defines a pending library upgrade.
 type UpgradeDefinition struct {
 	// Slot is the first slot where the new library rules apply.
@@ -16,13 +14,13 @@ type UpgradeDefinition struct {
 var PendingUpgrade *UpgradeDefinition = nil
 
 // upgradeLibrary applies YAML definitions to a library using the unified resolver.
-func upgradeLibrary(lib *easyfl.Library[*EvalContext], yamlList ...[]byte) error {
-	resolver := GetEmbeddedFunctionResolver(lib)
-
-	for _, yaml := range yamlList {
-		if err := lib.UpgradeFromYAML(yaml, resolver); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+//func upgradeLibrary(lib *easyfl.Library[*EvalContext], yamlList ...[]byte) error {
+//	resolver := GetEmbeddedFunctionResolver(lib)
+//
+//	for _, yaml := range yamlList {
+//		if err := lib.UpgradeFromYAML(yaml, resolver); err != nil {
+//			return err
+//		}
+//	}
+//	return nil
+//}

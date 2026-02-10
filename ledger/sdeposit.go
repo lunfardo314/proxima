@@ -1,8 +1,13 @@
 package ledger
 
 import (
+	_ "embed"
+
 	"github.com/lunfardo314/proxima/util/set"
 )
+
+//go:embed def/misc_calc.easyfl
+var _miscCalculationsSource string
 
 // Storage deposit and vByteCostBase related code
 

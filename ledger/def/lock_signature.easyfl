@@ -29,7 +29,8 @@ func sigLock: and(
 	or(
 		and(
 			selfIsProducedOutput,
-			equal(len($0), u64/32)
+			equal(len($0), u64/32),
+  	        selfRequireEnoughStorageDeposit(selfOutputBytes)
 		),
 		and(
 			selfIsConsumedOutput,
