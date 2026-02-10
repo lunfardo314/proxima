@@ -941,16 +941,16 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 }
 
 type MakeDelegationInitTransactionParams struct {
-	Timestamp             base.LedgerTime
-	Amount                uint64
-	MasterID              base.SpenderID
-	Target                ledger.ChainLock
-	MaxFrozenEpochs       byte
+	Timestamp              base.LedgerTime
+	Amount                 uint64
+	MasterID               base.SpenderID
+	Target                 ledger.ChainLock
+	MaxFrozenEpochs        byte
 	RequiredInflationShare uint16
-	MasterPrivateKey      ed25519.PrivateKey
-	Inputs                []*ledger.OutputWithID
-	TagAlongSequencer     base.ChainID
-	TagAlongFee           uint64
+	MasterPrivateKey       ed25519.PrivateKey
+	Inputs                 []*ledger.OutputWithID
+	TagAlongSequencer      base.ChainID
+	TagAlongFee            uint64
 }
 
 func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]byte, error) {

@@ -188,6 +188,7 @@ and(
 func _validDelegationProduced :
 and(
     selfIsProducedOutput,
+     selfRequireEnoughStorageDeposit(selfOutputBytes),
     _validStructureProduced($0),
     _validLimitsProduced($0, $1)
 )
