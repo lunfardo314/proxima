@@ -76,7 +76,7 @@ func chain : and(
       and(
          selfIsProducedOutput,
          _validChainProduced($0,$1,$2,$3),
-         _validInflationAmount($0,$1)
+         _validInflationAmount($0, byte($1,0), amountAt(selfSiblingConstraint(amountsConstraintIndex), 1))
       ),
       and(
          selfIsConsumedOutput,
@@ -85,9 +85,7 @@ func chain : and(
    )
 )
 
-
 // $0 chain constraint index
-//old - func predecessorTokenBalanceByChainConstraintIndex : amountAt(consumedConstraintByIndex(selfChainPredInputIndex($0), 0), 0)
 func predecessorTokenBalanceByChainConstraintIndex : predecessorTokenBalance(selfChainPredInputIndex($0))
 
 // $0 input index (1 byte)
@@ -96,29 +94,32 @@ func predecessorTokenBalance : tokenBalanceByOutputPath(concat(pathToConsumedOut
 // $0 - chain constraint index
 func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain), 0)
 
-// func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), 0, #chain)
-
-
 // $0 chain constraint index
 // func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain),0) )
 
 // $0 - chain ChainID
 // $1 - predecessor output index || predecessor constraint index (2 bytes)
+// $2 inflation amount value
 func _validInflationAmount :
 or(
-  and(isChainOriginID($0), isZero(amountAt(selfSiblingConstraint(amountsConstraintIndex), 1))),
-  _checkInflationAmount(byte($1,0))
+  and(isChainOriginID($0), isZero($2)),
+  and(not(isBranchTransaction), isZero($2)),
+  require(
+     equalUint( _expectedInflationAmount($1), $2),
+     !!!chain_constraint:_wrong_inflation_amount
+  )
 )
 
-// $0 - predecessor output index (1 byte)
-func predecessorAmounts : atPath(concat(pathToConsumedOutputs,$0, amountsConstraintIndex))
+// $0 - predecessor output (input) index
+func _expectedInflationAmount:
+if(
+  isZero(sub(txSlot, slotOfInputByIndex($0))),
+  u64/0,
+  if(
+     isBranchTransaction,
+     _expectedBranchInflationBonus,
+     chainInflationOneSlot(predecessorTokenBalance($0), slotOfInputByIndex($0))
+  )
+)
 
-// $0 - predecessor output (input) index TODO branch inflation
-func _checkInflationAmount: $0
-//require(
-//    equal(
-//       chainInflation(predecessorTokenBalance($0), slotOfInputByIndex($0), sub(txSlot, slotOfInputByIndex($0))),
-//       amountAt(selfSiblingConstraint(amountsConstraintIndex), 1)
-//    ),
-//    !!!wrong_inflation_amount_22222
-//)
+func _expectedBranchInflationBonus : add(randomFromSeed(vrfProofOnSuccessor, constBranchInflationBonusBase), u64/1)

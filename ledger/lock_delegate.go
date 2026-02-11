@@ -50,6 +50,8 @@ var delegateLockSource string
 
 //------------ DelegateLock
 
+// TODO take target ChainID as parameter, not ChainLock
+
 func NewDelegateLock(target ChainLock, masterID base.SpenderID, maxFrozenEpochs byte, requiredInflationShare uint16) *DelegateLock {
 	return &DelegateLock{
 		Target:                 target,

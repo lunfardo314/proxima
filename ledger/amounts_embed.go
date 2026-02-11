@@ -17,6 +17,7 @@ func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *
 
 	// inflation must be either 0 or exactly expected non-zero value
 	if inflation == 0 {
+		// TODO wrong for branch transactions. On branches must be VRF-based random value
 		return
 	}
 

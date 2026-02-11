@@ -90,7 +90,7 @@ func _takeShare : div( mul($0, $1), u64/1000 )
 // Linear extrapolation rather than precise calculation.
 // Result will be slightly bigger than the precise inflation projection
 // due to the degrading inflation rate each slot
-func requiredInflationAdvance : _takeShare( chainInflation( $2, $1, $0), $3 )
+func requiredInflationAdvance : _takeShare( chainInflationMultiStep( $2, $1, $0), $3 )
 
 func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
 

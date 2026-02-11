@@ -3,8 +3,8 @@ func producedStemLockOfSelfTx : atPath(concat(pathToProducedOutputs, txStemOutpu
 
 func _predOutputIDOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 0)
 
-// _vrfProofOnSuccessor is sig type byte + signature proper
-func _vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 1)
+// vrfProofOnSuccessor is sig type byte + signature proper
+func vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 1)
 
 // $0 - stem predecessor index
 func _predVRFProof : parseInlineDataArgument(
@@ -32,7 +32,7 @@ func stemLock: and(
           ),
              // enforce correct VRF proof on successor
 		  require(
-             validSignature(concat($1, txSlot), concat(_vrfProofOnSuccessor, signaturePublicKey(txSignatureData))),
+             validSignature(concat($1, txSlot), concat(vrfProofOnSuccessor, signaturePublicKey(txSignatureData))),
              !!!VRF_proof_check_failed
           )
        ),
