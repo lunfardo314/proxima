@@ -91,7 +91,7 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		return
 	}
 	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
-	neededCompensation := ledger.ChainInflation(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
+	neededCompensation := ledger.ChainInflationMultiStep(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
 	if neededCompensation > o.Output.TokenBalance() {
 		// projected inflation advance is bigger than number of tokens in the revocation output
 		// -> sequencer do not want loss -> ignore the revocation request

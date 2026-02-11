@@ -8,15 +8,15 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (lib *Library) ChainInflationOriginal(amount uint64, inSlot, forSlots uint32) uint64 {
-	src := fmt.Sprintf("chainInflation(u64/%d, u64/%d, u64/%d)", amount, inSlot, forSlots)
+func (lib *Library) ChainInflationMultiStepOriginal(amount uint64, inSlot, forSlots uint32) uint64 {
+	src := fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)", amount, inSlot, forSlots)
 	resBin, err := lib.EvalFromSource(nil, src)
 	util.AssertNoError(err)
 	return binary.BigEndian.Uint64(resBin)
 }
 
-func ChainInflation(amount uint64, inSlot, forAmountOfSlots uint32) uint64 {
-	return uint64(forAmountOfSlots) * (amount / (L(inSlot).MinimumInflatableAmount0 + uint64(inSlot)))
+func ChainInflationMultiStep(amount uint64, inSlot, forSteps uint32) uint64 {
+	return uint64(forSteps) * (amount / (L(inSlot).MinimumInflatableAmount0 + uint64(inSlot)))
 }
 
 // AdjustedAmount calculates amount adjusted to the maximum inflation.
@@ -31,7 +31,7 @@ func AdjustedAmount(amount uint64, slot uint32) uint64 {
 }
 
 func ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
-	return ChainInflation(amount, inSlot, 1)
+	return ChainInflationMultiStep(amount, inSlot, 1)
 }
 
 func (lib *Library) BranchInflationBonusBaseFromSource() uint64 {
@@ -48,5 +48,5 @@ func BranchInflationBonus(proof []byte, slot uint32) uint64 {
 
 func MinimumInflatableAmount(slot uint32) uint64 {
 	lib := L(slot)
-	return lib.MinimumInflatableAmount0 + ChainInflation(lib.MinimumInflatableAmount0, 0, slot)
+	return lib.MinimumInflatableAmount0 + ChainInflationMultiStep(lib.MinimumInflatableAmount0, 0, slot)
 }

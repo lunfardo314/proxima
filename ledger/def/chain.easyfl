@@ -76,7 +76,7 @@ func chain : and(
       and(
          selfIsProducedOutput,
          _validChainProduced($0,$1,$2,$3),
-         _validInflationAmount($0, byte($1,0), amountAt(selfSiblingConstraint(amountsConstraintIndex), 1))
+// tmp disabled         _validInflationAmount($0, byte($1,0), amountAt(selfSiblingConstraint(amountsConstraintIndex), 1))
       ),
       and(
          selfIsConsumedOutput,

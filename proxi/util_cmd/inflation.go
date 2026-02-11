@@ -50,7 +50,7 @@ func runInflationCmd(_ *cobra.Command, args []string) {
 		startSlot = uint32(startInt)
 	}
 
-	inflation := ledger.ChainInflation(amount, startSlot, slots)
+	inflation := ledger.ChainInflationMultiStep(amount, startSlot, slots)
 	glb.Infof("--------------------")
 	glb.Infof("current slot:    %d", currentSlot)
 	glb.Infof("start slot:      %d", startSlot)

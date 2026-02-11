@@ -414,9 +414,9 @@ func TestFreezeOneStep(t *testing.T) {
 
 			inflationOneSlotSeq := ledger.ChainInflationOneSlot(seqInitBalance, predTs.Slot)
 			seqInflatableBalanceDoNothing := seqInitBalance + inflationOneSlotSeq
-			seqInflationDoNothing := ledger.ChainInflation(seqInflatableBalanceDoNothing, ts.Slot, frozenSlots)
+			seqInflationDoNothing := ledger.ChainInflationMultiStep(seqInflatableBalanceDoNothing, ts.Slot, frozenSlots)
 			seqInflatableBalanceFreeze := seqInitBalance + inflationOneSlotSeq - advance + frozenAmount
-			seqInflationFreeze := ledger.ChainInflation(seqInflatableBalanceFreeze, ts.Slot, frozenSlots)
+			seqInflationFreeze := ledger.ChainInflationMultiStep(seqInflatableBalanceFreeze, ts.Slot, frozenSlots)
 			repaymentSeq := int64(seqInflationFreeze) - int64(seqInflationDoNothing)
 			roiSeq := repaymentSeq - int64(advance)
 			roiSeqPercent := 100 * (float64(roiSeq) / float64(advance))
