@@ -214,8 +214,8 @@ func TestGetParsedTransaction(t *testing.T) {
 	var ret api.TransactionJSONAble
 	err = json.Unmarshal(data, &ret)
 	assert.NoError(t, err)
-	// TotalAmount is initialSupply - 1 because 1 token goes to the controller dust output
-	assert.Equal(t, ret.TotalAmount, uint64(999_999_999_999_999))
+	// TotalAmount includes branch inflation (VRF-based, non-zero on branch transactions)
+	assert.True(t, ret.TotalAmount > ledger.DefaultInitialSupply-1)
 	assert.Equal(t, ret.IsBranch, true)
 	assert.Equal(t, len(ret.Inputs), 2)
 	assert.Equal(t, len(ret.Outputs), 5)
@@ -257,9 +257,9 @@ func TestGetVertexDep(t *testing.T) {
 	assert.EqualValues(t, *txid, txidBack)
 	assert.True(t, txid.IsSequencerTransaction())
 	assert.True(t, txid.IsBranchTransaction())
-	// TotalAmount is initialSupply - 1 because 1 token goes to the controller dust output
-	assert.EqualValues(t, 999_999_999_999_999, ret.TotalAmount)
-	assert.EqualValues(t, 0, ret.TotalInflation)
+	// TotalAmount includes branch inflation (VRF-based, non-zero on branch transactions)
+	assert.True(t, ret.TotalInflation > 0)
+	assert.EqualValues(t, ledger.DefaultInitialSupply-1+ret.TotalInflation, ret.TotalAmount)
 	assert.True(t, ret.SequencerInputTxIndex != nil && *ret.SequencerInputTxIndex == 0)
 	assert.True(t, ret.StemInputTxIndex != nil && *ret.StemInputTxIndex == 0)
 	assert.EqualValues(t, 1, len(ret.Inputs))

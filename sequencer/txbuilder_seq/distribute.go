@@ -84,7 +84,7 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 		SignatureType:         base.SignatureTypeED25519,
 		PrivateKey:            originPrivateKey,
 		PublicKey:             originPrivateKey.Public().(ed25519.PublicKey),
-		DoNotInflateMainChain: true,
+		DoNotInflateMainChain: false,
 	})
 	if err != nil {
 		return nil, err
@@ -140,6 +140,12 @@ func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed
 	err = tx.ValidateFullContext()
 	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", err, tx.String)
 
+	// extract branch inflation from the sequencer output
+	seqData := tx.SequencerTransactionData()
+	util.Assertf(seqData != nil, "expected sequencer transaction")
+	seqOut := tx.MustProducedOutputWithIDAt(seqData.SequencerOutputIndex)
+	branchInflation := seqOut.Output.Inflation()
+
 	nextStem := tx.FindStemProducedOutput()
 	util.Assertf(nextStem != nil, "nextStem != nil")
 	muts := tx.StateMutations()
@@ -149,8 +155,8 @@ func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed
 		StemOutputID:    nextStem.ID,
 		SeqID:           bootstrapChainID,
 		CoverageDelta:   stateID.InitialSupply,
-		SlotInflation:   0,
-		Supply:          stateID.InitialSupply,
+		SlotInflation:   branchInflation,
+		Supply:          stateID.InitialSupply + branchInflation,
 		NumTransactions: 1,
 	})
 	return txBytes, tx.ID()

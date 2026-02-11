@@ -67,14 +67,20 @@ func NewUTXODB(genesisPrivateKey ed25519.PrivateKey, trace ...bool) *UTXODB {
 	})
 
 	updatable := multistate.MustNewUpdatable(stateStore, genesisRoot)
-	_, err = updateValidateDebug(updatable, distributionTxBytes)
+	distribTx, err := updateValidateDebug(updatable, distributionTxBytes)
 	util.AssertNoError(err)
+
+	// extract branch inflation from the distribution transaction to track actual supply
+	seqData := distribTx.SequencerTransactionData()
+	util.Assertf(seqData != nil, "expected sequencer transaction")
+	seqOut := distribTx.MustProducedOutputWithIDAt(seqData.SequencerOutputIndex)
+	distribInflation := seqOut.Output.Inflation()
 
 	ret := &UTXODB{
 		store:                     stateStore,
 		state:                     updatable,
 		genesisChainID:            originChainID,
-		supply:                    ledger.L(0).InitialSupply,
+		supply:                    ledger.L(0).InitialSupply + distribInflation,
 		genesisPrivateKey:         genesisPrivateKey,
 		genesisPublicKey:          genesisPubKey,
 		genesisAddress:            genesisAddr,

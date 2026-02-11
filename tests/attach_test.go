@@ -106,8 +106,9 @@ func TestAttachBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribVID.ID())
 		require.True(t, ok)
-		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
-		require.EqualValues(t, 0, int(rr.SlotInflation))
+		// Distribution branch transaction has VRF-based inflation
+		require.True(t, rr.SlotInflation > 0)
+		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000_000, int(bal1))
@@ -122,8 +123,8 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		// Genesis output now has initialSupply-1 (1 token goes to dust output)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1+inflation (1 token goes to dust output, inflation goes to chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -177,8 +178,9 @@ func TestAttachBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribTxID)
 		require.True(t, ok)
-		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
-		require.EqualValues(t, 0, int(rr.SlotInflation))
+		// Distribution branch transaction has VRF-based inflation
+		require.True(t, rr.SlotInflation > 0)
+		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000_000, int(bal1))
@@ -193,8 +195,8 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		// Genesis output now has initialSupply-1 (1 token goes to dust output)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1+inflation (1 token goes to dust output, inflation goes to chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
@@ -248,8 +250,9 @@ func TestAttachBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())
 		require.True(t, ok)
-		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
-		require.EqualValues(t, 0, int(rr.SlotInflation))
+		// Distribution branch transaction has VRF-based inflation
+		require.True(t, rr.SlotInflation > 0)
+		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000_000, int(bal1))
@@ -264,8 +267,8 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		// Genesis output now has initialSupply-1 (1 token goes to dust output)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1+inflation (1 token goes to dust output, inflation goes to chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 	})
 }
 
