@@ -6,46 +6,11 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/util"
 )
 
-// TODO in the future it makes sense to rewrite it all in EasyFL, for formal verifiability with TLA model
+// TODO in the future it makes sense to rewrite it all in EasyFL, for formal verifiability with TLA+ model
 
-func _checkInflation(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, o *Output, predAmounts Amounts, predSlot uint32) {
-	var expectedInflation uint64
-	inflation := o.Inflation()
-
-	// inflation must be either 0 or exactly expected non-zero value
-	if inflation == 0 {
-		// FIXED but test now fail. Zero inflation is allowed only on non-branch transactions.
-		par.Require(!ctx.IsBranchTransaction(), "inflation cannot be zero on branch transaction")
-		return
-	}
-
-	if ctx.IsBranchTransaction() {
-		seqData := ctx.SequencerTransactionData()
-		par.Require(seqData != nil, "inconsistency: sequencer tx data not available")
-		stemOut, err := ctx.ProducedOutputWithIDAt(seqData.StemOutputIndex)
-		par.RequireNoError(err)
-		stemLock, ok := stemOut.Output.StemLock()
-		par.Require(ok, "inconsistency: can't find stemLock")
-		expectedInflation = ctx.GetLibrary().BranchInflationBonus(stemLock.VRFProof)
-
-		par.Require(expectedInflation == inflation, "evalAmounts: wrong branch inflation bonus. Expected %s, got %s",
-			util.Th(expectedInflation), util.Th(inflation))
-	} else {
-		if predSlot != ctx.Timestamp().Slot {
-			inAmount := predAmounts.Amount(AmountIndexTokenBalance)
-			// do not inflate frozen coverage on delegation output, otherwise standard one-slot inflation
-			if o.Lock().Name() != DelegateLockName {
-				inAmount += predAmounts.Amount(AmountIndexFrozenCoverage)
-			}
-			expectedInflation = ctx.GetLibrary().ChainInflationOneSlot(uint64(inAmount), predSlot)
-		}
-		par.Require(expectedInflation == inflation, "evalAmounts: wrong chain inflation value. Expected %s, got %s",
-			util.Th(expectedInflation), util.Th(inflation))
-	}
-}
+// Inflation is validated by _validInflationAmount in chain.easyfl (EasyFL chain constraint).
 
 // _checkFrozenCoverageOnNonDelegationChain assumes sequencer output and enforces the validity of the frozen coverage values
 func _checkFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContext], ctx *EvalContext, seqID base.ChainID, amounts, predAmounts Amounts, txTs, predTs base.LedgerTime) {
@@ -163,9 +128,6 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 
 	predID := ctx.MustInputAt(cc.PredecessorInputIndex)
 	succID := ctx.OutputID(path[len(path)-2])
-
-	// check inflation:
-	_checkInflation(par, ctx, o, predAmounts, predID.Slot())
 
 	if o.Lock().Name() == DelegateLockName {
 		_checkFrozenCoverageOnDelegateOutput(par, ctx, o, succID)
