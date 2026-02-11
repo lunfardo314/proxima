@@ -55,7 +55,8 @@ type (
 )
 
 func runChainStats() {
-	maxInflation := ledger.L(base.MaxSlot).BranchInflationBonusBaseFromSource()
+	lib := ledger.L(base.MaxSlot)
+	maxInflation := lib.Constants.BranchInflationBonusBase
 	buckets := make([]int, _numBuckets)
 	sequencers := make(map[base.ChainID]*seqStats)
 	allBibs := make([]uint64, 0, 100000)
@@ -83,10 +84,10 @@ func runChainStats() {
 		stemConstraint, ok := br.Stem.Output.StemLock()
 		glb.Assertf(ok, "stem lock not found in %s hex=%s", br.Stem.ID.String(), br.Stem.ID.StringHex())
 
-		bibCalc := ledger.BranchInflationBonus(stemConstraint.VRFProof, br.Slot())
+		bibCalc := lib.BranchInflationBonus(stemConstraint.VRFProof)
 		glb.Assertf(bib == bibCalc, "provided vs calculated inflation mismatch %s != %s in %s",
 			util.Th(bib), util.Th(bibCalc), br.Lines("        ").String())
-		bibDirect := ledger.BranchInflationBonus(stemConstraint.VRFProof, br.Slot())
+		bibDirect := lib.BranchInflationBonus(stemConstraint.VRFProof)
 		glb.Assertf(bib == bibDirect, "provided vs directly calculated inflation mismatch: %s != %s in %s",
 			util.Th(bib), util.Th(bibDirect), br.Lines("        ").String())
 		bucketNo := bib * _numBuckets / maxInflation

@@ -82,7 +82,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	dOut, isDelegation := ledger.AsDelegationOutput(oIn.Output, oIn.ID)
 	glb.Assertf(!isDelegation || dOut.IsUnlockableByMaster(ts.Slot), "chain is delegation output NOT unlockable by master")
 
-	inflation := ledger.ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
+	inflation := ledger.L(base.MaxSlot).ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
 
 	// tentatively checking maximum storage deposit
 	lib := ledger.L(ts.Slot)

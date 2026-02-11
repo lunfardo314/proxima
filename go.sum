@@ -129,8 +129,8 @@ github.com/libp2p/go-reuseport v0.4.0 h1:nR5KU7hD0WxXCJbmw7r2rhRYruNRl2koHw8fQsc
 github.com/libp2p/go-reuseport v0.4.0/go.mod h1:ZtI03j/wO5hZVDFo2jKywN6bYKWLOy8Se6DrI2E1cLU=
 github.com/libp2p/go-yamux/v5 v5.1.0 h1:8Qlxj4E9JGJAQVW6+uj2o7mqkqsIVlSUGmTWhlXzoHE=
 github.com/libp2p/go-yamux/v5 v5.1.0/go.mod h1:tgIQ07ObtRR/I0IWsFOyQIL9/dR5UXgc2s8xKmNZv1o=
-github.com/lunfardo314/easyfl v0.0.0-20260210122448-28ca828d37e2 h1:U2Eo1AsWmGLP4SpcNHhLfW4WKCTnvW9Py8pUVSHu/cI=
-github.com/lunfardo314/easyfl v0.0.0-20260210122448-28ca828d37e2/go.mod h1:nA7EmFm4z4/y31Cs/VgF7dJkkMDmIdS4UxZ3hpnqBxQ=
+github.com/lunfardo314/easyfl v0.0.0-20260211143256-fa02c73a1156 h1:z9dK3RrdQWRmCuL/J/7AitKtjmWzHtu54lzYrUNDmNw=
+github.com/lunfardo314/easyfl v0.0.0-20260211143256-fa02c73a1156/go.mod h1:nA7EmFm4z4/y31Cs/VgF7dJkkMDmIdS4UxZ3hpnqBxQ=
 github.com/lunfardo314/unitrie v0.0.0-20251216150455-04594b4b3164 h1:jRsH3we7IZ0YeYWjCcSNtU1LB03Iq3uB7OUAL0sgBoU=
 github.com/lunfardo314/unitrie v0.0.0-20251216150455-04594b4b3164/go.mod h1:Nz3iB2ONbFCx0CTKg3PNhRoNCtW0OEe/y87izJ7K6+U=
 github.com/marcopolo/simnet v0.0.1 h1:rSMslhPz6q9IvJeFWDoMGxMIrlsbXau3NkuIXHGJxfg=

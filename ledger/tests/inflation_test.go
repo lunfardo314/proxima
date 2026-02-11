@@ -109,19 +109,20 @@ func TestInflationConst(t *testing.T) {
 	slotsPerDay := 6 * 60 * 24
 	slotsPerYear := slotsPerDay * 365
 
+	lib := ledger.L(0)
 	t.Run("minimum inflatable", func(t *testing.T) {
 		t.Skip("skip test, too long to run")
 		const slot = uint32(0)
 		var calculated uint64
 		for inAmount := uint64(1_000_000); inAmount < 500_000_000; inAmount += 1 {
-			i := ledger.ChainInflationOneSlot(inAmount, uint32(slot))
+			i := lib.ChainInflationOneSlot(inAmount, uint32(slot))
 			if i > 0 {
 				t.Logf("slot: %d, minimum inflatable amount: %s  --> inflation = %d", slot, util.Th(inAmount), i)
 				calculated = inAmount
 				break
 			}
 		}
-		constant := ledger.L(0).MinimumInflatableAmount0
+		constant := lib.MinimumInflatableAmount0
 		t.Logf("slot inflation fraction: %s", util.Th(constant))
 		require.EqualValues(t, int(constant), int(calculated))
 	})
@@ -139,7 +140,7 @@ func TestInflationConst(t *testing.T) {
 			amountStart := amount
 			slot := year * slotsPerYear
 			for i := 0; i < slotsPerYear; i++ {
-				infl := ledger.ChainInflationOneSlot(amount, uint32(slot)) + ledger.L(0).BranchInflationBonusBase
+				infl := ledger.L(0).ChainInflationOneSlot(amount, uint32(slot)) + ledger.L(0).BranchInflationBonusBase
 				amount += infl
 				slot += 1
 			}

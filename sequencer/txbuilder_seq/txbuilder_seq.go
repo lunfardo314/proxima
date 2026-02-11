@@ -116,11 +116,11 @@ func New(par Params) (*SeqTxBuilder, error) {
 		if ret.IsSlotBoundary() {
 			// from VRF proof for branch
 			util.Assertf(len(ret.vrfProof) > 0, "len(vrfProof)>0")
-			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.BranchInflationBonus(ret.vrfProof, ret.TransactionData.Timestamp.Slot))
+			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof))
 		} else {
 			// for non-branch
 			if ret.chainInput.Timestamp().Slot != ret.TransactionData.Timestamp.Slot {
-				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.ChainInflationOneSlot(
+				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.ChainInflationOneSlot(
 					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0)),
 					ret.chainInput.Timestamp().Slot,
 				))
@@ -244,7 +244,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
 	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot, frozenEpochs)
-	projectedInflation := ledger.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
+	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
 		return (projectedInflation * uint64(delegatorRequirement)) / 1000, nil

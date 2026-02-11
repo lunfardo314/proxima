@@ -179,7 +179,7 @@ func (o *DelegationOutput) UnfreezeSlot() uint32 {
 }
 
 func (o *DelegationOutput) InflationOneSlot() uint64 {
-	return ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
+	return L(base.MaxSlot).ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
 }
 
 // MakeDelegationFreezeOutput constructs successor of the delegation output using maximum possible frozen epochs
@@ -236,8 +236,8 @@ func (o *DelegationOutput) ProjectedInflation(txTs base.LedgerTime, frozenEpochs
 	}
 	lib := L(txTs.Slot)
 	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, frozenEpochs)
-	amount := o.Output.TokenBalance() + ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
-	return ChainInflationMultiStep(amount, txTs.Slot, frozenSlots)
+	amount := o.Output.TokenBalance() + lib.ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot())
+	return lib.ChainInflationMultiStep(amount, txTs.Slot, frozenSlots)
 }
 
 // RequiredMinimumInflationAdvanceOriginal calculates how big advance requires the delegation output for freezing it,
@@ -264,7 +264,7 @@ func (o *DelegationOutput) RequiredMinimumInflationAdvanceByFrozenEpochs(txTs ba
 		return 0, fmt.Errorf("wrong frozen epochs")
 	}
 	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(o.Target.ChainID(), txTs.Slot, byte(frozenEpochs))
-	inflation := ChainInflationMultiStep(o.Output.TokenBalance(), txTs.Slot, frozenSlots)
+	inflation := lib.ChainInflationMultiStep(o.Output.TokenBalance(), txTs.Slot, frozenSlots)
 	return (inflation * uint64(o.RequiredInflationShare)) / 1000, nil
 
 }
@@ -354,14 +354,14 @@ type MakeDelegationRevokeOutputParams struct {
 
 // MakeDelegationRevokeOutput error means reason why it cannot be constructed in particular situation
 func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOutputParams) (*Output, error) {
-	if !par.DisableConsistencyChecks && !o.IsUnlockableByTarget(uint32(par.TxTs.Slot)) {
+	if !par.DisableConsistencyChecks && !o.IsUnlockableByTarget(par.TxTs.Slot) {
 		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't be unlocked by target in slot %d", par.TxTs.Slot)
 	}
 	if !par.DisableConsistencyChecks && par.HarvestInflation > par.Inflation {
 		return nil, fmt.Errorf("MakeDelegationRevokeOutput: can't harvest more inflation (%s) than generate (%s)",
 			util.Th(par.HarvestInflation), util.Th(par.Inflation))
 	}
-	if !par.DisableConsistencyChecks && par.Inflation > ChainInflationOneSlot(o.Output.TokenBalance(), uint32(o.ID.Slot())) {
+	if !par.DisableConsistencyChecks && par.Inflation > L(par.TxTs.Slot).ChainInflationOneSlot(o.Output.TokenBalance(), o.ID.Slot()) {
 		return nil, fmt.Errorf("MakeDelegationRevokeOutput: wrong inflation amount: %s", util.Th(par.Inflation))
 	}
 
@@ -445,7 +445,7 @@ func (o *DelegationOutput) RevocationCompensationEstimate(txSlot uint32) uint64 
 	unfreeze := o.UnfreezeSlot()
 	util.Assertf(txSlot < unfreeze, "txSlot(%d) < unfreeze(%d)", txSlot, unfreeze)
 
-	return ChainInflationMultiStep(o.Output.TokenBalance(), txSlot, unfreeze-txSlot+1)
+	return L(txSlot).ChainInflationMultiStep(o.Output.TokenBalance(), txSlot, unfreeze-txSlot+1)
 }
 
 // EpochOffsetSlotsDirect returns slot offset unique for the delegation target chain ChainID.

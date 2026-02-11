@@ -256,8 +256,9 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (err error) {
 	require.NoError(td, err)
 
+	lib := ledger.L(0)
 	diffSlots := ts.Slot - td.delegatedOutput.Timestamp().Slot
-	diffEpochs := ledger.L(0).DiffEpochs(td.delegatedOutput.Target.ChainID(), ts, td.delegatedOutput.Timestamp())
+	diffEpochs := lib.DiffEpochs(td.delegatedOutput.Target.ChainID(), ts, td.delegatedOutput.Timestamp())
 	td.Logf(">>>> revoke -----\nts = %s, diffSlots = %d, diffEpochs = %d\n-----\n%s",
 		ts.String(), diffSlots, diffEpochs, td.delegatedOutput.LinesSourceFull("   ").String())
 
@@ -277,7 +278,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 
 	inflation := uint64(0)
 	if inflate {
-		inflation = ledger.ChainInflationOneSlot(td.delegatedOutput.Output.TokenBalance(), uint32(td.delegatedOutput.Timestamp().Slot))
+		inflation = lib.ChainInflationOneSlot(td.delegatedOutput.Output.TokenBalance(), uint32(td.delegatedOutput.Timestamp().Slot))
 	}
 	delegatedOutPar := ledger.MakeDelegationRevokeOutputParams{
 		TxTs:                     ts,

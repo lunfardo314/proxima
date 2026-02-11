@@ -76,7 +76,7 @@ func chain : and(
       and(
          selfIsProducedOutput,
          _validChainProduced($0,$1,$2,$3),
-// tmp disabled         _validInflationAmount($0, byte($1,0), amountAt(selfSiblingConstraint(amountsConstraintIndex), 1))
+         _validInflationAmount($0, byte($1,0), amountAt(selfSiblingConstraint(amountsConstraintIndex), 1))
       ),
       and(
          selfIsConsumedOutput,
@@ -96,6 +96,18 @@ func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstrain
 
 // $0 chain constraint index
 // func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain),0) )
+
+// $0 - input index (1 byte). Returns frozen coverage at epoch 0 of the predecessor
+func _predecessorFrozenCoverage0 : amountAt(atPath(concat(pathToConsumedOutputs, $0, amountsConstraintIndex)), 2)
+
+// $0 - input index (1 byte). Returns amount used for chain inflation calculation.
+// For delegation outputs, only token balance is inflated. Otherwise token balance + frozen coverage at epoch 0.
+func _predecessorInflatableAmount :
+if(
+  selfHasLockType(#delegateLock),
+  predecessorTokenBalance($0),
+  add(predecessorTokenBalance($0), _predecessorFrozenCoverage0($0))
+)
 
 // $0 - chain ChainID
 // $1 - predecessor output index || predecessor constraint index (2 bytes)
@@ -117,9 +129,7 @@ if(
   u64/0,
   if(
      isBranchTransaction,
-     _expectedBranchInflationBonus,
-     chainInflationOneSlot(predecessorTokenBalance($0), slotOfInputByIndex($0))
+     branchInflationBonus(vrfProofOnSuccessor),
+     chainInflationOneSlot(_predecessorInflatableAmount($0), slotOfInputByIndex($0))
   )
 )
-
-func _expectedBranchInflationBonus : add(randomFromSeed(vrfProofOnSuccessor, constBranchInflationBonusBase), u64/1)

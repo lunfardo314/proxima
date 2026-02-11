@@ -171,6 +171,10 @@ functions:
       sym: chainInflationOneSlot
       description: calculates one-slot inflation in slot $0 of amount $1
       source: div($0,add(minimumInflatableAmount0,$1))
+   - 
+      sym: branchInflationBonus
+      description: calculates pseudo-random yet deterministic value of branch inflation bonus based on VRF suppled as $0
+      source: add(randomFromSeed($0, constBranchInflationBonusBase), u64/1)
    -  
       sym: storageDeposit
       description: returns storage deposit for the UTXO with byte size of $0

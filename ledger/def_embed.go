@@ -36,6 +36,7 @@ type (
 		SequencerTransactionData() *SequencerTransactionData
 		SpenderID() (base.SpenderID, error)
 		UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
+		GetLibrary() *Library
 	}
 
 	EvalContext struct {

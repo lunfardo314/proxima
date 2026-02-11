@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -50,7 +51,7 @@ func runInflationCmd(_ *cobra.Command, args []string) {
 		startSlot = uint32(startInt)
 	}
 
-	inflation := ledger.ChainInflationMultiStep(amount, startSlot, slots)
+	inflation := ledger.L(base.MaxSlot).ChainInflationMultiStep(amount, startSlot, slots)
 	glb.Infof("--------------------")
 	glb.Infof("current slot:    %d", currentSlot)
 	glb.Infof("start slot:      %d", startSlot)

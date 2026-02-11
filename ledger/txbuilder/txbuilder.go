@@ -733,7 +733,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		return nil, 0, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
 	// calculate inflation amount and create inflation constraint
-	inflationAmount := ledger.ChainInflationOneSlot(
+	inflationAmount := lib.ChainInflationOneSlot(
 		par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)),
 		par.ChainInput.Timestamp().Slot,
 	)

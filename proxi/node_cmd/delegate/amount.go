@@ -85,10 +85,11 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	amountInt, err := strconv.Atoi(args[0])
 	glb.AssertNoError(err)
 	amount := uint64(amountInt)
-	minimumAmount := ledger.MinimumInflatableAmount(uint32(ts.Slot) + 1000)
-	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
 	lib := ledger.L(ts.Slot)
+	minimumAmount := lib.MinimumInflatableAmount0 + lib.ChainInflationMultiStep(lib.MinimumInflatableAmount0, 0, ts.Slot+10000)
+	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
+
 	glb.Assertf(maxFreezeEpochs > 0 && maxFreezeEpochs <= byte(lib.MaxFrozenEpochs), "wrong value of max freeze epochs")
 
 	client := glb.GetClient()

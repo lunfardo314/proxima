@@ -289,6 +289,10 @@ func (tx *Transaction) UnlockParameters(inputIdx, constraintIdx byte) ([]byte, e
 	return ret, nil
 }
 
+func (tx *Transaction) GetLibrary() *ledger.Library {
+	return tx.Library
+}
+
 func (tx *Transaction) ForEachInputID(fun func(i byte, oid base.OutputID) bool) {
 	err := tx.ForEach(func(i byte, data []byte) bool {
 		oid, err := base.OutputIDFromBytes(data)
