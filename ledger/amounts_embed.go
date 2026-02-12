@@ -9,6 +9,7 @@ import (
 )
 
 // TODO in the future it makes sense to rewrite it all in EasyFL, for formal verifiability with TLA+ model
+// TODO comment the logic of delegation in detail
 
 // Inflation is validated by _validInflationAmount in chain.easyfl (EasyFL chain constraint).
 
@@ -117,10 +118,11 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	cc, _ := o.ChainConstraint()
 	// produced output
 	if cc == nil || cc.IsOrigin() {
+		// TODO redundant check here. Should be enforced on 'chain' constraint (it is partially enforced already)
 		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(), "evalAmounts: inflation and frozen coverage must be 0 on a non-chain output and on chain origin")
 		return []byte{0xff}
 	}
-	// it is a non-origin chain output
+	// it is a non-origin chained output
 
 	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)
 	par.RequireNoError(err)
@@ -129,6 +131,7 @@ func evalAmounts(par *easyfl.CallParams[*EvalContext]) []byte {
 	predID := ctx.MustInputAt(cc.PredecessorInputIndex)
 	succID := ctx.OutputID(path[len(path)-2])
 
+	// TODO move to respectively 'delegationLock' and 'chain' constraints
 	if o.Lock().Name() == DelegateLockName {
 		_checkFrozenCoverageOnDelegateOutput(par, ctx, o, succID)
 	} else {
