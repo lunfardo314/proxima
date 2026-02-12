@@ -14,11 +14,6 @@ functions:
     short: true
   # long
   -
-    sym: "amountsEmbedded"
-    description: "UTXO constraint for the vector of amounts"
-    numArgs: -1
-    embedded_as: evalAmounts
-  -
     sym: "totalConsumed"
     description: "sum of consumed amounts by the transaction at index $0 (1 byte, max 15)"
     numArgs: -1
@@ -53,4 +48,13 @@ functions:
     description: "$0 is path where a tuple is expected. Function returns non-empty byte slice if the tuple has duplicated"
     numArgs: 1
     embedded_as: evalTupleHasDuplicatesAtPath
-
+  -
+    sym: embeddedEnforceFrozenCoverageOnDelegateOutput
+    description: "enforces amounts on delegate output"
+    numArgs: 0
+    embedded_as: embeddedEnforceFrozenCoverageOnDelegateOutput
+  -
+    sym: embeddedEnforceFrozenCoverageOnNonDelegationChain
+    description: "enforces amounts on delegate output"
+    numArgs: 0
+    embedded_as: embeddedEnforceFrozenCoverageOnNonDelegationChain

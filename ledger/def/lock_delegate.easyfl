@@ -188,7 +188,8 @@ and(
     selfIsProducedOutput,
      selfRequireEnoughStorageDeposit(selfOutputBytes),
     _validStructureProduced($0),
-    _validLimitsProduced($0, $1)
+    _validLimitsProduced($0, $1),
+    embeddedEnforceFrozenCoverageOnDelegateOutput
 )
 
 // $0 master spender ID (32 bytes)

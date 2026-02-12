@@ -162,3 +162,65 @@ func init() {
 		}
 	})
 }
+
+// evalEnforceFrozenCoverageOnNonDelegationChain assumes sequencer output and enforces the validity of the frozen coverage values
+func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContext]) []byte {
+	path := par.DataContext().EvalPath()
+	ctx := par.DataContext()
+	par.Require(ctx.SelfIsProducedOutput(), "evalEnforceFrozenCoverageOnNonDelegationChain: produced output expected")
+
+	o := ctx.SelfOutput()
+
+	amounts := o.Amounts()
+	cc, idx := o.ChainConstraint()
+	par.Require(idx != 0xff, "evalEnforceFrozenCoverageOnNonDelegationChain: chained output is expected")
+	// produced output
+	if cc.IsOrigin() {
+		par.Require(amounts.IsFrozenCoverageZero(), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on a non-chain output and on chain origin")
+		return []byte{0xff}
+	}
+	// it is a non-origin chained output
+
+	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)
+	par.RequireNoError(err)
+	predAmounts := predOut.Amounts()
+
+	predID := ctx.MustInputAt(cc.PredecessorInputIndex)
+	succID := ctx.OutputID(path[len(path)-2])
+
+	lib := L(succID.Slot())
+	diffEpochsInt := lib.DiffEpochs(cc.ChainID, succID.Timestamp(), predID.Timestamp())
+	par.Require(diffEpochsInt >= 0, "evalEnforceFrozenCoverageOnNonDelegationChain: inconsistency with timestamps")
+	diffEpochs := uint32(diffEpochsInt)
+
+	// frozen coverage at the predecessor adjusted to the epoch of the successor
+	predecessorFrozenCoverageAdjusted := func(i uint32) (ret int64) {
+		if idx := i + diffEpochs; idx < lib.MaxFrozenEpochs {
+			ret = predAmounts.FrozenCoverageAt(byte(idx))
+		}
+		return
+	}
+
+	// Enforce correct frozen coverage on sequencer output.
+	// the validity constraint of frozen coverage on the chain at index i:
+	// pred_i - value of the predecessor's frozen coverage at index i adjusted for the epoch difference between input and transaction
+	// succ_i - value of the successor's (current output) frozen coverage at index i
+	// delta_i (aux variable) - sum of frozen coverages (deltas, effectively) of produced delegation outputs at index i (not the target chain)
+	// sum_i  - sum of ALL frozen coverages of produced outputs at index i
+	// The equations:
+	//    pred_i + delta_i = succ_i
+	//    succ_i + delta_i = sum_i
+	// leads to elimination of delta_i and final enforced validity constraint:
+	//    pred_i + sum_i = 2 x succ_i
+
+	for i := 0; i < int(lib.MaxFrozenEpochs); i++ {
+		successorFrozenCoverage := amounts.FrozenCoverageAt(byte(i))
+		predecessorFrozenCoverageValue := predecessorFrozenCoverageAdjusted(uint32(i))
+		sum := ctx.ProducedTotal(byte(i + 2))
+
+		par.Require(2*successorFrozenCoverage == sum+predecessorFrozenCoverageValue,
+			"evalEnforceFrozenCoverageOnNonDelegationChain: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",
+			i, predecessorFrozenCoverageValue, successorFrozenCoverage, successorFrozenCoverage-predecessorFrozenCoverageValue, sum)
+	}
+	return []byte{0xff}
+}

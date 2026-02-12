@@ -133,7 +133,6 @@ func resolveEmbeddedUpgrade0(sym string) easyfl.EmbeddedFunction[*EvalContext] {
 var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalPath":                     evalPath,
 	"evalAtPath":                   evalAtPath,
-	"evalAmounts":                  evalAmounts,
 	"evalTotalConsumed":            evalTotalConsumed,
 	"evalTotalProduced":            evalTotalProduced,
 	"evalTicksBefore64":            evalTicksBefore64, // TODO make it in pure EasyFL
@@ -141,6 +140,8 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalTxID":                     evalTxID,
 	"evalTupleHasDuplicatesAtPath": evalTupleHasDuplicatesAtPath,
 	"evalTupleLenAtPath":           evalTupleLenAtPath,
+	"embeddedEnforceFrozenCoverageOnDelegateOutput":     evalEnforceFrozenCoverageOnDelegateOutput,
+	"embeddedEnforceFrozenCoverageOnNonDelegationChain": evalEnforceFrozenCoverageOnNonDelegationChain,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.

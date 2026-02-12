@@ -1,33 +1,8 @@
-// reserved op-codes.
-func_vararg amounts_reserved0 : !!!reserved_amounts_0
-func_vararg amounts_reserved1 : !!!reserved_amounts_0
-func_vararg amounts_reserved2 : !!!reserved_amounts_0
-func_vararg amounts_reserved3 : !!!reserved_amounts_0
-
 // redirecting to the embedded version
 func_vararg amounts :
-if(
-    lessThan($$,14),
-	selectCaseByIndex($$,
-		amountsEmbedded,
-		amountsEmbedded($0),
-		amountsEmbedded($0,$1),
-		amountsEmbedded($0,$1,$2),
-		amountsEmbedded($0,$1,$2,$3),
-		amountsEmbedded($0,$1,$2,$3,$4),
-		amountsEmbedded($0,$1,$2,$3,$4,$5),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6,$7),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6,$7,$8),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6,$7,$8,$9),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12),
-	),
-	selectCaseByIndex( sub($$,14),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13),
-		amountsEmbedded($0,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-    ),
+require(
+   isZero(selfBlockIndex),
+   !!!'amounts'_must_be_at_index_0
 )
 
 // $0 - 'amounts'' bytecode

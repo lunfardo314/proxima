@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"slices"
 
 	_ "embed"
 
@@ -232,4 +233,75 @@ func init() {
 		util.Assertf(dlzBack.State == DelegateLockStateFrozen, "DelegateLockState: inconsistency 2")
 		util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
 	})
+}
+
+// evalEnforceFrozenCoverageOnDelegateOutput is embedded EasyFL function that enforces correct frozen coverage values
+func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext]) []byte {
+	path := par.DataContext().EvalPath()
+	ctx := par.DataContext()
+	par.Require(ctx.SelfIsProducedOutput(), "evalEnforceFrozenCoverageOnDelegateOutput: produced output expected")
+	o := ctx.SelfOutput()
+
+	amounts := o.Amounts()
+	cc, idx := o.ChainConstraint()
+	par.Require(idx == 2, "evalEnforceFrozenCoverageOnDelegateOutput: chain constraint is expected at index 2")
+
+	// produced output
+	if cc.IsOrigin() {
+		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(),
+			"evalEnforceFrozenCoverageOnDelegateOutput: inflation and frozen coverage must be 0 on a non-chain output and on chain origin")
+		return []byte{0xff}
+	}
+	// it is a non-origin chained output
+
+	succID := ctx.OutputID(path[len(path)-2])
+
+	dOut, ok := AsDelegationOutput(o, succID)
+	par.Require(ok, "evalEnforceFrozenCoverageOnDelegateOutput: inconsistency, delegation output expectedVector 1")
+
+	pred, err := ctx.ConsumedOutput(dOut.PredecessorInputIndex)
+	par.RequireNoError(err)
+
+	if pred.Lock().Name() != DelegateLockName {
+		// predecessor is not delegation -> must be all-0
+		par.Require(amounts.IsFrozenCoverageZero(),
+			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: chain predecessor is not a delegation")
+		return []byte{0xff}
+	}
+	// predecessor is delegation
+	// unlock parameters of predecessor delegation lock must be 3 bytes
+	unlock, err := ctx.UnlockParameters(dOut.PredecessorInputIndex, ConstraintIndexLock)
+	par.RequireNoError(err)
+	par.Require(len(unlock) >= 3, "evalEnforceFrozenCoverageOnDelegateOutput: unlock parameters of predecessor delegation lock at (%d, %d) must be 3 bytes",
+		dOut.PredecessorInputIndex, ConstraintIndexLock)
+
+	if unlock[2] == DelegationUnlockedByMaster {
+		// predecessor is delegation unlocked by master  -> must be all-0
+		par.Require(amounts.IsFrozenCoverageZero(),
+			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: predecessor is unlocked by the master")
+		return []byte{0xff}
+	}
+
+	// unlocked by the target as enforced by the delegation lock
+	var expectedVector []int64
+	// the expected vector is different for frozen and revoked delegation outputs
+	if dOut.State == DelegateLockStateOnHold {
+		dOutPred, ok := AsDelegationOutput(pred, ctx.MustInputAt(dOut.PredecessorInputIndex))
+		par.Require(ok, "evalEnforceFrozenCoverageOnDelegateOutput: delegation output expectedVector at predecessor")
+
+		// the expected vector contains negative deltas of revoked frozen coverage in the current transaction (adjusted to the epoch difference)
+		expectedVector = dOutPred.MakeFrozenCoverageAmountDeltasForRevoking(ctx.Timestamp())
+	} else {
+		_, _, frozenEpochs := dOut.FrozenEpochs(ctx.Timestamp())
+		par.Require(frozenEpochs <= 256, "inconsistency: frozenEpochs <= 256")
+		// the expected vector contains frozen coverages for the span of the frozen epochs
+		expectedVector, err = dOut.MakeFrozenCoverageAmounts(ctx.Timestamp(), byte(frozenEpochs), dOut.Output.TokenBalance())
+		par.RequireNoError(err)
+	}
+
+	vectorToCheck := o.Amounts().FrozenCoverageVector()
+	par.Require(len(expectedVector) == len(vectorToCheck), "len(expectedVector) == len(vectorToCheck)")
+	par.Require(slices.Equal(expectedVector, vectorToCheck), "evalEnforceFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation output: %s", dOut.ChainID.String)
+
+	return []byte{0xff}
 }
