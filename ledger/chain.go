@@ -176,7 +176,7 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	par.Require(idx != 0xff, "evalEnforceFrozenCoverageOnNonDelegationChain: chained output is expected")
 	// produced output
 	if cc.IsOrigin() {
-		par.Require(amounts.IsFrozenCoverageZero(), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on a non-chain output and on chain origin")
+		par.Require(amounts.IsFrozenCoverageZero(), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")
 		return []byte{0xff}
 	}
 	// it is a non-origin chained output

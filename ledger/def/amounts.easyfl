@@ -1,4 +1,9 @@
-// redirecting to the embedded version
+// a vector of amounts. Serialized as variable size argument list from 0 to 15 arguments
+// - amount on absent arg is considered u64/0
+// - index 0 is token balance
+// - index 1 is inflation
+// - indices 2 to 12 (inclusive) is frozen coverage
+// - indices 12, 14 are uninterpreted. Can be enforced by transaction level constraints for implementation of native tokens and similar
 func_vararg amounts :
 require(
    isZero(selfBlockIndex),
