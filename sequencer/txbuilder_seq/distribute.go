@@ -30,13 +30,12 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 		return nil, err
 	}
 
-	lib := ledger.L(base.MaxSlot)
 	distributeTotal := uint64(0)
 	for i := range genesisDistribution {
 		distributeTotal += genesisDistribution[i].Balance
-		err = util.ErrorCondf(distributeTotal+lib.MinimumAmountOnSequencer <= constants.InitialSupply,
-			"condition failed: distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < InitialSupply(%d)",
-			distributeTotal, lib.MinimumAmountOnSequencer, constants.InitialSupply)
+		err = util.ErrorCondf(distributeTotal <= constants.InitialSupply,
+			"condition failed: distributeTotal(%d) > InitialSupply(%d)",
+			distributeTotal, constants.InitialSupply)
 		if err != nil {
 			return nil, err
 		}

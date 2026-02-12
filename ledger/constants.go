@@ -41,8 +41,6 @@ type Constants struct {
 	TransactionPace byte
 	// number of ticks between sequencer transactions
 	TransactionPaceSequencer byte
-	// this limits number of sequencers in the network. Reasonable amount would be few hundreds of sequencers
-	MinimumAmountOnSequencer uint64
 	// limit maximum number of endorsements. For determinism
 	MaxNumberOfEndorsements uint64
 	// PreBranchConsolidationTicks enforces endorsement-only constraint for specified amount of ticks
@@ -105,8 +103,6 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.Assertf(ret.MinimumInflatableAmount0 == ret.InitialSupply/ret.SlotInflationBase, "ret.MinimumInflatableAmount0 == ret.InitialSupply / ret.SlotInflationBase")
 
 	ret.BranchInflationBonusBase, err = _uint64FromConst(lib, "constBranchInflationBonusBase")
-	util.AssertNoError(err)
-	ret.MinimumAmountOnSequencer, err = _uint64FromConst(lib, "constMinimumAmountOnSequencer")
 	util.AssertNoError(err)
 	ret.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
 	util.AssertNoError(err)
@@ -195,7 +191,6 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Branch inflation bonus base: %s", util.Th(c.BranchInflationBonusBase)).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Post-branch consolidation ticks: %v", c.PostBranchConsolidationTicks).
-		Add("Minimum amount on sequencer: %s", util.Th(c.MinimumAmountOnSequencer)).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).
 		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements)

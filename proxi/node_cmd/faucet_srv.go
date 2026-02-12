@@ -98,8 +98,7 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 	if fct.cfg.fromChain {
 		o, _, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
 		glb.AssertNoError(err)
-		lib := ledger.L(ledger.SlotNow())
-		glb.Assertf(o.Output.TokenBalance() > lib.MinimumAmountOnSequencer+fct.cfg.amount,
+		glb.Assertf(o.Output.TokenBalance() > fct.cfg.amount,
 			"not enough balance on own sequencer %s", fct.walletData.Sequencer.String())
 	} else {
 		_, _, _, err := fct.client.GetOutputsForAmount(walletData.Account, fct.cfg.amount+fct.transferTagAlongFee)
@@ -139,8 +138,7 @@ func (fct *faucetServer) readFaucetServerConfigIn() {
 
 func (fct *faucetServer) absoluteBottom() uint64 {
 	if fct.cfg.fromChain {
-		lib := ledger.L(ledger.SlotNow())
-		return lib.MinimumAmountOnSequencer + fct.cfg.amount
+		return fct.cfg.amount
 	}
 	return fct.cfg.amount + fct.transferTagAlongFee
 }
@@ -261,8 +259,7 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.Tr
 	if err != nil {
 		return base.TransactionID{}, err
 	}
-	lib := ledger.L(ledger.SlotNow())
-	if o.Output.TokenBalance() < lib.MinimumAmountOnSequencer+fct.cfg.amount {
+	if o.Output.TokenBalance() < fct.cfg.amount {
 		return base.TransactionID{}, fmt.Errorf("not enough tokens on the sequencer %s", glb.GetOwnSequencerID().String())
 	}
 

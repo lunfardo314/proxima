@@ -1,10 +1,3 @@
-
-func mustMinimumAmountOnSequencer :
-	require(
- 	 	 not(lessThan(selfTokenBalanceValue, constMinimumAmountOnSequencer)),
-		 !!!minimum_sequencer_amount_constraint_failed
-	)
-
 // $0 chain predecessor input index
 func _inputSameSlot :
 equal(
@@ -82,7 +75,6 @@ func checkPostBranchConsolidationTicks :
 // $0 is chain constraint sibling index
 func sequencer: and(
 	mustSize($0,1),
-    mustMinimumAmountOnSequencer, // enforcing minimum amount on sequencer
     or(
         selfIsConsumedOutput,
 		and(

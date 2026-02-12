@@ -76,7 +76,7 @@ func (c *WithdrawFromChainTxBuilderCommand) Apply(txb *SeqTxBuilder) (bool, erro
 		return true, fmt.Errorf("WithdrawFromChainTxBuilderCommand: too many inputs")
 	}
 	onChainAmount := txb.chainOutAmounts[ledger.AmountIndexTokenBalance]
-	if onChainAmount <= int64(c.amount) || onChainAmount-int64(c.amount) < int64(txb.MinimumAmountOnSequencer) {
+	if onChainAmount <= int64(c.amount) {
 		return false, fmt.Errorf("WithdrawFromChainTxBuilderCommand: insufficient balance on chain")
 	}
 	idx, err := txb.ConsumeOutput(c.Output, c.ID)

@@ -15,7 +15,7 @@ import (
 // Minimal reproducer: single delegation chain freeze to isolate EasyFL chain inflation validation
 func TestDelegationInflationMinimal(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey)
-	seqInitBalance := ledger.L(0).MinimumAmountOnSequencer << 8
+	seqInitBalance := uint64(1_000_000_000) << 8
 	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 2, seqInitBalance*2)
 	masterPrivateKey := pk[0]
 	masterAddr := addrs[0]

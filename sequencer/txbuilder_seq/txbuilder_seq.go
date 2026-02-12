@@ -328,7 +328,7 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 		return fmt.Errorf("AddWithdrawOutput: only token balance can be non-zero")
 	}
 	amount := o.TokenBalance()
-	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(txb.MinimumAmountOnSequencer+amount) {
+	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(amount) {
 		return fmt.Errorf("AddWithdrawOutput: not enough token balance")
 	}
 	if _, err := txb.ProduceOutput(o); err != nil {
@@ -339,11 +339,6 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 }
 
 func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
-	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(txb.MinimumAmountOnSequencer) {
-		return fmt.Errorf("SeqTxBuilder: amount %s on the produced chain output is below minimum %s required for the sequencer",
-			util.Th(txb.chainOutAmounts[ledger.AmountIndexTokenBalance]),
-			util.Th(txb.MinimumAmountOnSequencer))
-	}
 	// sequencer input
 	txb.PutSignatureUnlock(0)
 

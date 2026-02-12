@@ -116,10 +116,6 @@ functions:
       description: maximum value of the branch inflation bonus
       source: u64/5000000
    -
-      sym: constMinimumAmountOnSequencer
-      description: minimum amount of tokens on the sequencer output. For testnet it is 1000 * PRXI = 1000000000
-      source: u64/1000000000
-   -
       sym: constMaxNumberOfEndorsements
       description: up to 8 endorsements
       source: u64/8

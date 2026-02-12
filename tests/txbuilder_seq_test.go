@@ -315,7 +315,7 @@ func TestFreezeOneStep(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.SigLockFromED25519PrivateKey(privKey)
 	seqID := base.RandomChainID()
-	seqInitBalance := ledger.L(0).MinimumAmountOnSequencer << 8
+	seqInitBalance := uint64(1_000_000_000) << 8
 
 	predTs := base.T(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
@@ -497,7 +497,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
 	addr := ledger.SigLockFromED25519PrivateKey(privKey)
 	seqID := base.RandomChainID()
-	seqInitBalance := ledger.L(0).MinimumAmountOnSequencer << 8
+	seqInitBalance := uint64(1_000_000_000) << 8
 
 	predTs := base.T(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
@@ -672,7 +672,7 @@ type (
 
 func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData, base.LedgerTime) {
 	u := utxodb.NewUTXODB(genesisPrivateKey)
-	seqInitBalance := ledger.L(0).MinimumAmountOnSequencer << 8
+	seqInitBalance := uint64(1_000_000_000) << 8
 	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 2, seqInitBalance*2)
 	ret := &testWithUTXODBData{
 		T:                t,

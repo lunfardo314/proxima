@@ -156,40 +156,6 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 }
 
 // --------------------------------------------------------------------------
-// TEST: Minimum amount on sequencer output
-// --------------------------------------------------------------------------
-
-// TestSequencerMinimumAmountViolation verifies that a sequencer output with less
-// than constMinimumAmountOnSequencer (1B tokens) is rejected.
-// The EasyFL mustMinimumAmountOnSequencer check fires at full context validation.
-func TestSequencerMinimumAmountViolation(t *testing.T) {
-	// Fund with 500M — below the 1B minimum for sequencer outputs
-	e := newSequencerTestEnv(t, 500_000_000)
-
-	originTs := base.T(getSourceOutputs(t, e.u, e.addr)[0].ID.Slot()+1, 20)
-	originBytes := e.buildSequencerOrigin(t, originTs)
-
-	err := e.u.AddTransaction(originBytes)
-	require.Error(t, err, "sequencer output with 500M tokens (< 1B minimum) must be rejected")
-	require.NoError(t, util.MustErrorWith(err, "minimum sequencer amount constraint failed"))
-	t.Logf("correctly rejected: %v", err)
-}
-
-// TestSequencerMinimumAmountExact verifies that a sequencer output with exactly
-// constMinimumAmountOnSequencer (1B tokens) is accepted.
-func TestSequencerMinimumAmountExact(t *testing.T) {
-	// Fund with exactly the minimum
-	e := newSequencerTestEnv(t, 1_000_000_000)
-
-	originTs := base.T(getSourceOutputs(t, e.u, e.addr)[0].ID.Slot()+1, 20)
-	originBytes := e.buildSequencerOrigin(t, originTs)
-
-	err := e.u.AddTransaction(originBytes)
-	require.NoError(t, err, "sequencer output with exactly 1B tokens must be accepted")
-	t.Logf("exact minimum amount (1B) accepted")
-}
-
-// --------------------------------------------------------------------------
 // TEST: Post-branch consolidation ticks
 // --------------------------------------------------------------------------
 

@@ -375,12 +375,6 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 	seq.log.Infof("checkSequencerStartOutput: sequencer controller is %s", lock.String())
 
 	amount := oReal.TokenBalance()
-	lib := ledger.L(base.MaxSlot)
-	if amount < lib.MinimumAmountOnSequencer {
-		seq.log.Errorf("checkSequencerStartOutput: amount %s on output is less than minimum %s required on sequencer",
-			util.Th(amount), util.Th(lib.MinimumAmountOnSequencer))
-		return false
-	}
 	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",
 		wOut.IDStringShort(), util.Th(amount), util.PercentString(int(amount), int(ledger.L(0).InitialSupply)))
 	return true
