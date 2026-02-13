@@ -2,11 +2,11 @@ package ledger
 
 import (
 	_ "embed"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"strings"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/util"
@@ -28,10 +28,16 @@ const (
 func NewAmounts(args ...int64) (ret Amounts) {
 	t := tuples.EmptyTupleEditable(256)
 	util.Assertf(len(args) <= 256, "NewAmounts: too many elements")
-	for _, arg := range args {
-		if arg != 0 {
-			t.MustPush(easyfl_util.TrimmedLeadingZeroUint64(uint64(arg)))
+	// find last non-zero to skip trailing zeros only
+	lastNonZero := -1
+	for i := len(args) - 1; i >= 0; i-- {
+		if args[i] != 0 {
+			lastNonZero = i
+			break
 		}
+	}
+	for i := 0; i <= lastNonZero; i++ {
+		t.MustPush(easyfl_util.TrimmedLeadingZeroUint64(uint64(args[i])))
 	}
 	ret.Tuple = t.Tuple()
 	return
@@ -41,7 +47,7 @@ func (a Amounts) String() string {
 	argsStr := make([]string, a.NumElements())
 	err := util.CatchPanicOrError(func() error {
 		a.ForEach(func(i int, data []byte) bool {
-			v := int64(binary.BigEndian.Uint64(data))
+			v := int64(easyfl_util.MustUint64FromBytes(data))
 			argsStr[i] = util.Th(v)
 			return true
 		})
@@ -89,10 +95,9 @@ func (a Amounts) FrozenCoverageAt(i byte) (ret int64) {
 
 func (a Amounts) FrozenCoverageVector(maxFrozenEpochs byte) []int64 {
 	ret := make([]int64, maxFrozenEpochs)
-	a.ForEach(func(i int, data []byte) bool {
-		ret[i] = int64(easyfl_util.MustUint64FromBytes(data))
-		return true
-	})
+	for i := byte(0); i < maxFrozenEpochs; i++ {
+		ret[i] = a.Amount(AmountIndexFrozenCoverage + i)
+	}
 	return ret
 }
 
@@ -148,4 +153,16 @@ func TokenBalanceFromAmountsBytes(data []byte) (uint64, error) {
 		return 0, err
 	}
 	return a.TokenBalance(), nil
+}
+
+func evalTotalConsumed(par *easyfl.CallParams[*EvalContext]) []byte {
+	idxBin := par.Arg(0)
+	ret := easyfl_util.Uint64To8Bytes(uint64(par.DataContext().ConsumedTotal(idxBin[0])))
+	return par.AllocData(ret[:]...)
+}
+
+func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
+	idxBin := par.Arg(0)
+	ret := easyfl_util.Uint64To8Bytes(uint64(par.DataContext().ProducedTotal(idxBin[0])))
+	return par.AllocData(ret[:]...)
 }

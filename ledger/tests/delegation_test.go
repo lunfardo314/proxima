@@ -391,7 +391,7 @@ func TestDelegationLockConsume(t *testing.T) {
 		ts := td.seqChainOrigin.Timestamp().AddTicks(1)
 		_, txString, err = td.initDelegationUTXOMake(ts, 4, 0)
 		require.NoError(t, err)
-		//td.Logf("---------------- transaction -----------------\n%s", txString)
+		td.Logf("---------------- transaction -----------------\n%s", txString)
 	})
 	t.Run("master+init+kill", func(t *testing.T) {
 		// create delegation output and destroy it with next tx

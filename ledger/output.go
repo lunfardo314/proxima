@@ -572,6 +572,15 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 func (o *Output) LinesPlainSource() *lines.Lines {
 	ret := lines.New()
 	o.ForEach(func(i int, data []byte) bool {
+		if byte(i) == ConstraintIndexAmounts {
+			a, err := AmountsFromBytes(data)
+			if err != nil {
+				ret.Add(err.Error())
+			} else {
+				ret.Add("amounts" + a.String())
+			}
+			return true
+		}
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
 		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
 		if err != nil {
@@ -587,6 +596,15 @@ func (o *Output) LinesPlainSource() *lines.Lines {
 func (o *Output) LinesPlainHR() *lines.Lines {
 	ret := lines.New()
 	o.ForEach(func(i int, data []byte) bool {
+		if byte(i) == ConstraintIndexAmounts {
+			a, err := AmountsFromBytes(data)
+			if err != nil {
+				ret.Add(err.Error())
+			} else {
+				ret.Add("amounts" + a.String())
+			}
+			return true
+		}
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
 		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
 		if err != nil {
