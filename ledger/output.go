@@ -94,30 +94,30 @@ func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
 func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lock, error) {
 	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, Amounts{}, nil, err
 	}
 	ret := &Output{arr}
 
-	var amount Amounts
+	var amounts Amounts
 	var lock Lock
 	if ret.NumElements() < 2 {
-		return nil, nil, nil, fmt.Errorf("at least 2 constraints expected")
+		return nil, Amounts{}, nil, fmt.Errorf("at least 2 constraints expected")
 	}
 	amountBin, err := ret.At(int(ConstraintIndexAmounts))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, Amounts{}, nil, err
 	}
-	if amount, err = AmountsFromBytesWithLib(amountBin, lib); err != nil {
-		return nil, nil, nil, err
+	if amounts, err = AmountsFromBytes(amountBin); err != nil {
+		return nil, Amounts{}, nil, err
 	}
 	lockBin, err := ret.At(int(ConstraintIndexLock))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, Amounts{}, nil, err
 	}
 	if lock, err = LockFromBytesWithLib(lockBin, lib); err != nil {
-		return nil, nil, nil, err
+		return nil, Amounts{}, nil, err
 	}
-	return ret, amount, lock, nil
+	return ret, amounts, lock, nil
 }
 
 func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
@@ -191,7 +191,7 @@ func (o *Output) TokenBalance() uint64 {
 	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	ret, err := TokenBalanceFromAmountsBytesAtSlot(bin, base.MaxSlot)
+	ret, err := TokenBalanceFromAmountsBytes(bin)
 	util.AssertNoError(err)
 	return uint64(ret)
 }
@@ -801,7 +801,6 @@ func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
 
 // MustValidOutput checks if amount and lock constraints are as expected
 func (o *Output) MustValidOutput() {
-	o.MustHaveConstraintAnyOfAt(0, AmountsConstraintName)
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
 	_, err := LockFromBytes(o.MustConstraintAt(1))
 	util.AssertNoError(err)

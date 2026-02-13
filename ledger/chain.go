@@ -168,7 +168,7 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	path := par.DataContext().EvalPath()
 	ctx := par.DataContext()
 	par.Require(ctx.SelfIsProducedOutput(), "evalEnforceFrozenCoverageOnNonDelegationChain: produced output expected")
-
+	lib := ctx.GetLibrary()
 	o := ctx.SelfOutput()
 
 	amounts := o.Amounts()
@@ -176,7 +176,7 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	par.Require(idx != 0xff, "evalEnforceFrozenCoverageOnNonDelegationChain: chained output is expected")
 	// produced output
 	if cc.IsOrigin() {
-		par.Require(amounts.IsFrozenCoverageZero(), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")
+		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")
 		return []byte{0xff}
 	}
 	// it is a non-origin chained output
@@ -188,7 +188,6 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	predID := ctx.MustInputAt(cc.PredecessorInputIndex)
 	succID := ctx.OutputID(path[len(path)-2])
 
-	lib := L(succID.Slot())
 	diffEpochsInt := lib.DiffEpochs(cc.ChainID, succID.Timestamp(), predID.Timestamp())
 	par.Require(diffEpochsInt >= 0, "evalEnforceFrozenCoverageOnNonDelegationChain: inconsistency with timestamps")
 	diffEpochs := uint32(diffEpochsInt)

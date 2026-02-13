@@ -246,9 +246,10 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 	cc, idx := o.ChainConstraint()
 	par.Require(idx == 2, "evalEnforceFrozenCoverageOnDelegateOutput: chain constraint is expected at index 2")
 
+	lib := ctx.GetLibrary()
 	// produced output
 	if cc.IsOrigin() {
-		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(),
+		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
 			"evalEnforceFrozenCoverageOnDelegateOutput: inflation and frozen coverage must be 0 on a non-chain output and on chain origin")
 		return []byte{0xff}
 	}
@@ -264,7 +265,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 
 	if pred.Lock().Name() != DelegateLockName {
 		// predecessor is not delegation -> must be all-0
-		par.Require(amounts.IsFrozenCoverageZero(),
+		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
 			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: chain predecessor is not a delegation")
 		return []byte{0xff}
 	}
@@ -277,7 +278,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 
 	if unlock[2] == DelegationUnlockedByMaster {
 		// predecessor is delegation unlocked by master  -> must be all-0
-		par.Require(amounts.IsFrozenCoverageZero(),
+		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
 			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: predecessor is unlocked by the master")
 		return []byte{0xff}
 	}
@@ -299,7 +300,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 		par.RequireNoError(err)
 	}
 
-	vectorToCheck := o.Amounts().FrozenCoverageVector()
+	vectorToCheck := o.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
 	par.Require(len(expectedVector) == len(vectorToCheck), "len(expectedVector) == len(vectorToCheck)")
 	par.Require(slices.Equal(expectedVector, vectorToCheck), "evalEnforceFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation output: %s", dOut.ChainID.String)
 

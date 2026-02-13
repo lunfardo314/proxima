@@ -346,7 +346,7 @@ func (tx *Transaction) scanProducedOutputs() error {
 			return fmt.Errorf("scanProducedOutputs: output #%d size %d exceeds maximum %d bytes", i, len(outBytes), MaxOutputSize)
 		}
 
-		amounts, err = ledger.AmountsFromBytesWithLib(tx.MustBytesAtPath(pathToAmounts), tx.Library)
+		amounts, err = ledger.AmountsFromBytes(tx.MustBytesAtPath(pathToAmounts))
 		if err != nil {
 			return fmt.Errorf("scanProducedOutputs: UTXO #%d: '%v'", i, err)
 		}

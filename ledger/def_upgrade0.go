@@ -77,7 +77,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 // registerConstraints0 mass-registers all serde wrappers of constraints at genesis
 // This function must be used in upgrades along new constraint registration
 func registerConstraints0(lib *Library) {
-	registerAmountsConstraint(lib)
 	registerAddressED25519Serde(lib)
 	registerTimeLockConstraint(lib)
 	registerStemLockConstraint(lib)
