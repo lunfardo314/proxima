@@ -165,7 +165,6 @@ func init() {
 
 // evalEnforceFrozenCoverageOnNonDelegationChain assumes sequencer output and enforces the validity of the frozen coverage values
 func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContext]) []byte {
-	path := par.DataContext().EvalPath()
 	ctx := par.DataContext()
 	par.Require(ctx.SelfIsProducedOutput(), "evalEnforceFrozenCoverageOnNonDelegationChain: produced output expected")
 	lib := ctx.GetLibrary()
@@ -184,6 +183,8 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)
 	par.RequireNoError(err)
 	predAmounts := predOut.Amounts()
+
+	path := ctx.EvalPath()
 
 	predID := ctx.MustInputAt(cc.PredecessorInputIndex)
 	succID := ctx.OutputID(path[len(path)-2])
