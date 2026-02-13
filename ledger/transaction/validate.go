@@ -190,14 +190,12 @@ func (tx *Transaction) _scanOutputs(pathToOutputs []byte) ([]*ledger.Output, err
 	return ret, nil
 }
 
+// _runOutputs iterates over UTXOs in the list and runs all scripts on every output
 func (tx *Transaction) _runOutputs(pathToOutputs []byte, outs []*ledger.Output, spool *slicepool.SlicePool) error {
 	util.Assertf(len(outs) <= 256, "len(outs)<=256")
 
 	path := common.Concat(pathToOutputs, 0)
-	// reverse order of constraint validations -> to evaluate 'amounts' last
-	// For valid UTXOs order how we run scripts does not matter.
-	// For invalid UTXOs, order affects what error is detected first
-	for i := len(outs) - 1; i >= 0; i-- {
+	for i := 0; i < len(outs); i++ {
 		o := outs[i]
 		var err error
 		path[len(path)-1] = byte(i)
@@ -223,13 +221,24 @@ func (tx *Transaction) UnlockParams(consumedOutputIdx, constraintIdx byte) []byt
 	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, consumedOutputIdx, constraintIdx))
 }
 
+// runTuple treats the tuple as a collection of bytecodes, except at index 0.
+// Index 0 contains vector of amounts, so it just checks if it is a correct tuple
 func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool *slicepool.SlicePool) error {
+	// no check for duplicates: makes no sense
+
 	evalPath := easyfl_util.Concat(ctxPath, byte(0))
 	var err error
 
-	// checking of script duplicates has been removed makes no sense?
-
 	tu.ForEach(func(idx int, bytecode []byte) bool {
+		if idx == 0 {
+			// tuple of amounts is expected
+			if _, err = ledger.AmountsFromBytes(bytecode); err != nil {
+				err = fmt.Errorf("amounts vector does not parse: '%v'. Path: %s", err, PathToString(evalPath))
+				return false
+			}
+			return true
+		}
+		// not amount
 		evalPath[len(evalPath)-1] = byte(idx)
 		var res []byte
 

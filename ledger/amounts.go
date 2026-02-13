@@ -128,7 +128,7 @@ func AmountsFromBytes(data []byte) (ret Amounts, err error) {
 	if r, err = tuples.TupleFromBytes(data, 256); err != nil {
 		return Amounts{}, fmt.Errorf("AmountsFromBytes: %v", err)
 	}
-	ret.ForEach(func(i int, d []byte) bool {
+	r.ForEach(func(i int, d []byte) bool {
 		if _, err = easyfl_util.Uint64FromBytes(d); err != nil {
 			err = fmt.Errorf("AmountsFromBytes: wrong data at index %d: %v", i, err)
 			return false

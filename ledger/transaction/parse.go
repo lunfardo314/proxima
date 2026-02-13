@@ -28,7 +28,7 @@ type Transaction struct {
 	*tuples.Tree              // the tuple tree with full or partial context. i.e. augmented with one level more for consumed UTXOs
 	txid                      base.TransactionID
 	timestamp                 base.LedgerTime
-	producedAmountTotals      [15]int64 // calculated by summing up amount vectors
+	producedAmountTotals      []int64 // calculated by summing up amount vectors
 	totalConsumedTokenBalance int64
 	sequencerTransactionData  *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
 	traceOption               int
@@ -64,6 +64,7 @@ func Parse(txBytes []byte) (*Transaction, error) {
 	ret.timestamp = ret.txid.Timestamp()
 	// Cache the library for this transaction's slot once, to avoid repeated L(slot) calls
 	ret.Library = ledger.L(ret.timestamp.Slot)
+	ret.producedAmountTotals = make([]int64, ret.Library.MaxFrozenEpochs+2)
 	return ret, nil
 }
 
@@ -355,7 +356,7 @@ func (tx *Transaction) scanProducedOutputs() error {
 		if _, err = ledger.LockFromBytesWithLib(tx.MustBytesAtPath(pathToLock), tx.Library); err != nil {
 			return fmt.Errorf("scanProducedOutputs: UTXO #%d: '%v'", i, err)
 		}
-		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
+		if overflow := amounts.AddToVector(tx.producedAmountTotals); overflow {
 			return fmt.Errorf("scanProducedOutputs: UTXO #%d: 'arithmetic overflow while calculating total of outputs'", i)
 		}
 	}

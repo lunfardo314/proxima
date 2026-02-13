@@ -42,7 +42,7 @@ func TestSlotAwareConstraintParsing(t *testing.T) {
 	t.Run("NameByPrefixAtSlot returns same name for same prefix", func(t *testing.T) {
 		// Get a known constraint prefix
 		lib := ledger.L(base.MaxSlot)
-		prefix, err := lib.FunctionCallPrefixByName(ledger.AmountsConstraintName, 1)
+		prefix, err := lib.FunctionCallPrefixByName(ledger.SigLockName, 1)
 		require.NoError(t, err)
 
 		// Should return same name at different slots
@@ -57,7 +57,7 @@ func TestSlotAwareConstraintParsing(t *testing.T) {
 
 		require.Equal(t, name0, name1000, "constraint name should be consistent")
 		require.Equal(t, name0, nameMax, "constraint name should be consistent")
-		require.Equal(t, ledger.AmountsConstraintName, name0, "should be amounts constraint")
+		require.Equal(t, ledger.SigLockName, name0, "should be sigLock constraint")
 	})
 
 	t.Run("ConstraintFromBytesAtSlot parses correctly", func(t *testing.T) {

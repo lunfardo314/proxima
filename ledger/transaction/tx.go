@@ -517,7 +517,7 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	return
 }
 
-func (tx *Transaction) TotalProducedAmounts() [15]int64 {
+func (tx *Transaction) TotalProducedAmounts() []int64 {
 	return tx.producedAmountTotals
 }
 

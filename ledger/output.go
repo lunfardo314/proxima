@@ -101,7 +101,7 @@ func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lo
 	var amounts Amounts
 	var lock Lock
 	if ret.NumElements() < 2 {
-		return nil, Amounts{}, nil, fmt.Errorf("at least 2 constraints expected")
+		return nil, Amounts{}, nil, fmt.Errorf("at least 2 elements in the UTXO tuple are expected")
 	}
 	amountBin, err := ret.At(int(ConstraintIndexAmounts))
 	if err != nil {
@@ -550,7 +550,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 
 		if err != nil {
 			if src, err := L(base.MaxSlot).DecompileBytecode(data); err != nil {
-				ret.Add("%s%d: bytecode=%s (%v)", hex.EncodeToString(data), err)
+				ret.Add("%s%d: bytecode=%s (%v)", prefix, i, hex.EncodeToString(data), err)
 			} else {
 				ret.Add("%s%d: bytecode=%s (len=%d)", prefix, i, src, len(data))
 				if sm, err := base.SmallPersistentMapFromBytes(easyfl.StripDataPrefix(data)); err == nil {

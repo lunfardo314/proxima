@@ -1375,27 +1375,27 @@ func TestTxOverflowConservationCheckSafe(t *testing.T) {
 // is MaxInt64 - 1.
 func TestTxOverflowAddToVectorContinuesAfterDetection(t *testing.T) {
 	// Direct unit test of AddToVector
-	var vect [15]int64
+	vect := make([]int64, ledger.L(base.MaxSlot).MaxFrozenEpochs)
 	a1 := ledger.NewAmounts(math.MaxInt64 - 1)
 	a2 := ledger.NewAmounts(1)
 
 	// First add: no overflow (MaxInt64 - 1 is the largest safe value)
-	overflow := a1.AddToVector(&vect)
+	overflow := a1.AddToVector(vect)
 	require.False(t, overflow, "first add of MaxInt64-1 should not overflow")
 	require.EqualValues(t, math.MaxInt64-1, vect[0])
 
 	// Second add: overflow (MaxInt64 - 1 + 1 = MaxInt64 triggers >= check)
-	overflow = a2.AddToVector(&vect)
+	overflow = a2.AddToVector(vect)
 	require.True(t, overflow, "adding 1 to MaxInt64-1 must detect overflow")
 
 	// The value wraps but the overflow flag prevents use
 	t.Logf("after overflow: vect[0] = %d (wrapped to MaxInt64), overflow detected = true", vect[0])
 
 	// Verify multiple amounts in a single Amounts vector
-	var vect2 [15]int64
+	vect2 := make([]int64, ledger.L(base.MaxSlot).MaxFrozenEpochs)
 	// Two amounts in one vector: both large
 	a3 := ledger.NewAmounts(math.MaxInt64/2, math.MaxInt64/2)
-	overflow = a3.AddToVector(&vect2)
+	overflow = a3.AddToVector(vect2)
 	require.False(t, overflow, "two MaxInt64/2 in different positions should not overflow")
 	require.EqualValues(t, math.MaxInt64/2, vect2[0])
 	require.EqualValues(t, math.MaxInt64/2, vect2[1])

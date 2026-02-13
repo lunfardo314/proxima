@@ -287,7 +287,7 @@ func (txb *TxBuilder) LoadInput(i byte) (*ledger.Output, error) {
 // CalcFrozenCoverageDelta sums up frozen coverage vectors of all delegation outputs
 func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 	lib := ledger.L(txb.TransactionData.Timestamp.Slot)
-	sum := new([15]int64)
+	sum := make([]int64, lib.MaxFrozenEpochs+2)
 	for _, o := range txb.TransactionData.Outputs {
 		if o.Lock().Name() == ledger.DelegateLockName {
 			if overflow := o.Amounts().AddToVector(sum); overflow {
@@ -300,17 +300,19 @@ func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 
 func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
 	o := txb.TransactionData.Outputs[producedOutputIdx]
-	a := new([15]int64) // TODO strange code
-	copy(a[:], o.Amounts())
+
+	lib := ledger.L(targetTs.Slot)
+	a := make([]int64, lib.MaxFrozenEpochs+2)
+	a[0] = int64(o.TokenBalance())
+	a[1] = int64(o.Inflation())
 	copy(a[2:], frozenCoverageDeltaVector)
 
 	// find the predecessor and adjust its vector
 	cc, idx := o.ChainConstraint()
 	util.Assertf(idx != 0xff, "MustPutFrozenCoverage: inconsistency 1")
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
-	predVector := oPred.Amounts().FrozenCoverageVector()
+	predVector := oPred.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
 	predTs := txb.TransactionData.InputIDs[cc.PredecessorInputIndex].Timestamp()
-	lib := ledger.L(targetTs.Slot)
 	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
 	for i := range frozenCoverageDeltaVector {
 		a[i+2] += predVectorAdjusted[i]

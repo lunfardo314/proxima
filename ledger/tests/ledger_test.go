@@ -940,7 +940,7 @@ func TestGGG(t *testing.T) {
 	jan1 := time.Date(2023, 1, 1, 0, 0, 0, 0, loc)
 	t.Logf("Jan 1, 2023 UTC = %d", uint32(jan1.Unix()))
 
-	_, _, bin, err := lib.CompileExpression("amounts(u64/1337)")
+	_, _, bin, err := lib.CompileExpression("sigLock(0x)")
 	require.NoError(t, err)
 	prefix, err := lib.ParsePrefixBytecode(bin)
 	require.NoError(t, err)

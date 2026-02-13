@@ -315,7 +315,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	txb.PutUnlockParams(idx, 2, ledger.NewChainUnlockParams(successorIdx, 2))
 
 	// add frozen coverage to the sequencer output
-	a := delegationOut.Amounts().FrozenCoverageVector()
+	a := delegationOut.Amounts().FrozenCoverageVector(byte(txb.Library.MaxFrozenEpochs))
 	for i, c := range a {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] += c
 	}
@@ -324,7 +324,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 }
 
 func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
-	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero() {
+	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero(byte(txb.Library.MaxFrozenEpochs)) {
 		return fmt.Errorf("AddWithdrawOutput: only token balance can be non-zero")
 	}
 	amount := o.TokenBalance()
