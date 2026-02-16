@@ -252,7 +252,7 @@ func writeGenesisTrieData(store *common.InMemoryKVStore, root common.VCommitment
 					} else {
 						stats.NumOtherState++
 					}
-				case TriePartitionAccounts:
+				case TriePartitionControllers:
 					stats.NumAccounts++
 				case TriePartitionChainID:
 					stats.NumChainID++

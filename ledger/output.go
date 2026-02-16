@@ -296,10 +296,10 @@ func (o *Output) Lock() Lock {
 	return ret
 }
 
-func (o *Output) AccountIDs() []AccountID {
-	ret := make([]AccountID, 0)
-	for _, a := range o.Lock().Accounts() {
-		ret = append(ret, a.AccountID())
+func (o *Output) AccountIDs() []ControllerID {
+	ret := make([]ControllerID, 0)
+	for _, a := range o.Lock().Controllers() {
+		ret = append(ret, a.ControllerID())
 	}
 	return ret
 }

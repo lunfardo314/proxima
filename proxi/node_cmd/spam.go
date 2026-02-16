@@ -25,7 +25,7 @@ type spammerConfig struct {
 	maxDuration       time.Duration
 	tagAlongSequencer base.ChainID
 	tagAlongFee       uint64
-	target            ledger.Accountable
+	target            ledger.Controller
 	finalitySlots     int
 	inclusionTimeout  time.Duration
 }

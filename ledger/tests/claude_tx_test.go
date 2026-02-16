@@ -61,7 +61,7 @@ func buildValidTransferTxBytes(
 	t.Helper()
 
 	// Collect inputs from state
-	outsData, err := u.StateReader().GetUTXOsInAccount(srcAddr.AccountID())
+	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
@@ -160,7 +160,7 @@ func TestTxDuplicateInputsRejected(t *testing.T) {
 	_, _, dstAddr := u.GenerateAddress(2)
 
 	// Get the source's UTXOs
-	outsData, err := u.StateReader().GetUTXOsInAccount(srcAddr.AccountID())
+	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
@@ -262,7 +262,7 @@ func TestTxInputCommitmentWithWrongHash(t *testing.T) {
 	_, _, dstAddr := u.GenerateAddress(2)
 
 	// Get inputs
-	outsData, err := u.StateReader().GetUTXOsInAccount(srcAddr.AccountID())
+	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
@@ -474,7 +474,7 @@ func TestTxEdgeCaseTimePaceConstraint(t *testing.T) {
 	_, _, dstAddr := u.GenerateAddress(2)
 
 	// Get inputs
-	outsData, err := u.StateReader().GetUTXOsInAccount(srcAddr.AccountID())
+	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()
@@ -618,7 +618,7 @@ func TestTxConsumedOutputHashMechanism(t *testing.T) {
 // getSourceOutputs returns the non-chain sigLock UTXOs for the given address.
 func getSourceOutputs(t *testing.T, u *utxodb.UTXODB, addr ledger.SigLock) []*ledger.OutputWithID {
 	t.Helper()
-	outsData, err := u.StateReader().GetUTXOsInAccount(addr.AccountID())
+	outsData, err := u.StateReader().GetUTXOsForController(addr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
 		_, idx := o.ChainConstraint()

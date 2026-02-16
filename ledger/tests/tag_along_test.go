@@ -45,7 +45,7 @@ func TestTagAlongSimple(t *testing.T) {
 		t.Logf("random address: %s\n", addrRandom.String())
 
 		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(targetOuts) > 0)
 
@@ -57,7 +57,7 @@ func TestTagAlongSimple(t *testing.T) {
 		// sender creates tx with tag-along to the target chain
 		txb := txbuilder.New()
 
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(outs) > 0)
 
@@ -144,7 +144,7 @@ func TestTagAlongSimple(t *testing.T) {
 		// Important: must consolidate small amount into the bigger one, otherwise cannot consume
 
 		reclaimerAddr := ledger.SigLockFromED25519PrivateKey(reclaimerPrivateKey)
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.ControllerID())
 		if err != nil {
 			return err
 		}
@@ -188,11 +188,11 @@ func TestTagAlongSimple(t *testing.T) {
 
 	t.Run("init", func(t *testing.T) {
 		initTest(false)
-		outsMaster, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outsMaster, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(outsMaster) == 2)
 
-		outsTarget, err := u.SugaredStateReader().GetOutputsForAccount(ledger.ChainLockFromChainID(targetChainID).AccountID())
+		outsTarget, err := u.SugaredStateReader().GetOutputsForAccount(ledger.ChainLockFromChainID(targetChainID).ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(outsTarget) == 1)
 
@@ -307,7 +307,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		addrTarget := addrs[1]
 
 		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(targetOuts) > 0)
 
@@ -318,7 +318,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 
 		// create tag-along output
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 		require.NoError(t, err)
@@ -394,7 +394,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		privKeyRandom := privKeys[2]
 
 		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(targetOuts) > 0)
 
@@ -405,7 +405,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 
 		// create tag-along output
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 		require.NoError(t, err)
@@ -436,7 +436,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 			}
 
 			reclaimerAddr := ledger.SigLockFromED25519PrivateKey(privKeyRandom)
-			reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
+			reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.ControllerID())
 			require.NoError(t, err)
 			reclaimerOuts = util.PurgeSlice(reclaimerOuts, func(o *ledger.OutputWithID) bool {
 				return o.Output.Lock().Name() == ledger.SigLockName
@@ -505,7 +505,7 @@ func TestTagAlongProduction(t *testing.T) {
 		addrSender := addrs[0]
 
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 		require.NoError(t, err)
@@ -540,7 +540,7 @@ func TestTagAlongProduction(t *testing.T) {
 		addrTarget := addrs[1]
 
 		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(targetOuts) > 0)
 
@@ -550,7 +550,7 @@ func TestTagAlongProduction(t *testing.T) {
 		targetChainID := seqOrigin.ChainID
 
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 		require.NoError(t, err)
@@ -595,7 +595,7 @@ func TestTagAlongProduction(t *testing.T) {
 		addrController := addrs[0]
 
 		// get controller outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		controllerOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrController.AccountID())
+		controllerOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrController.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(controllerOuts) > 0)
 
@@ -605,7 +605,7 @@ func TestTagAlongProduction(t *testing.T) {
 		targetChainID := seqOrigin.ChainID
 
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrController.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrController.ControllerID())
 		require.NoError(t, err)
 		// find a non-chain output to consume
 		var inputOut *ledger.OutputWithID
@@ -671,7 +671,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		privKeyRandom := privKeys[2]
 
 		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(targetOuts) > 0)
 
@@ -682,7 +682,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 
 		// create tag-along output
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 		require.NoError(t, err)
@@ -719,7 +719,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
 
-		senderOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		senderOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		senderOuts = util.PurgeSlice(senderOuts, func(o *ledger.OutputWithID) bool {
 			return o.Output.Lock().Name() == ledger.SigLockName
@@ -760,7 +760,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.EqualValues(t, 1, len(taOuts))
 
 		reclaimerAddr := ledger.SigLockFromED25519PrivateKey(privKeyRandom)
-		reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
+		reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.ControllerID())
 		require.NoError(t, err)
 		reclaimerOuts = util.PurgeSlice(reclaimerOuts, func(o *ledger.OutputWithID) bool {
 			return o.Output.Lock().Name() == ledger.SigLockName
@@ -807,7 +807,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.EqualValues(t, 1, len(taOuts))
 
 		reclaimerAddr := ledger.SigLockFromED25519PrivateKey(privKeyRandom)
-		reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.AccountID())
+		reclaimerOuts, err := u.SugaredStateReader().GetOutputsForAccount(reclaimerAddr.ControllerID())
 		require.NoError(t, err)
 		reclaimerOuts = util.PurgeSlice(reclaimerOuts, func(o *ledger.OutputWithID) bool {
 			return o.Output.Lock().Name() == ledger.SigLockName
@@ -903,7 +903,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		addrTarget := addrs[1]
 
 		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(targetOuts) > 0)
 
@@ -914,7 +914,7 @@ func TestTagAlongMultiple(t *testing.T) {
 
 		// create first tag-along output
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 		require.NoError(t, err)
@@ -938,7 +938,7 @@ func TestTagAlongMultiple(t *testing.T) {
 
 		// create second tag-along output
 		txb2 := txbuilder.New()
-		outs2, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs2, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		// find the non-tag-along output
 		var senderOut *ledger.OutputWithID
@@ -993,7 +993,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		addrTarget2 := addrs[2]
 
 		// get target1 outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		target1Outs, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget1.AccountID())
+		target1Outs, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget1.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(target1Outs) > 0)
 
@@ -1003,7 +1003,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		targetChainID1 := seqOrigin1.ChainID
 
 		// get target2 outputs to derive timestamp
-		target2Outs, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget2.AccountID())
+		target2Outs, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget2.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(target2Outs) > 0)
 
@@ -1014,7 +1014,7 @@ func TestTagAlongMultiple(t *testing.T) {
 
 		// create tag-along outputs to both chains in single tx
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 		require.NoError(t, err)
@@ -1077,7 +1077,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		addrTarget := addrs[1]
 
 		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(targetOuts) > 0)
 
@@ -1090,7 +1090,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 
 		// create tag-along output
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 		require.NoError(t, err)
@@ -1163,7 +1163,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		addrTarget := addrs[1]
 
 		// get target outputs to derive timestamp (avoids timing race with ledger.TimeNow())
-		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+		targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(targetOuts) > 0)
 
@@ -1173,7 +1173,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		targetChainID := seqOrigin.ChainID
 
 		// get initial sender balance
-		senderOutsInitial, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		senderOutsInitial, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		initialSenderBalance := uint64(0)
 		for _, o := range senderOutsInitial {
@@ -1184,7 +1184,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 
 		// create tag-along output
 		txb := txbuilder.New()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		var senderOut *ledger.OutputWithID
 		for _, o := range outs {
@@ -1225,7 +1225,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 		txb2.PutSignatureUnlock(0)
 
-		senderOuts2, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		senderOuts2, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		senderOuts2 = util.PurgeSlice(senderOuts2, func(o *ledger.OutputWithID) bool {
 			return o.Output.Lock().Name() == ledger.SigLockName
@@ -1261,7 +1261,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 
 		// verify sender got funds back (total should equal initial)
-		senderOutsFinal, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+		senderOutsFinal, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		finalSenderBalance := uint64(0)
 		for _, o := range senderOutsFinal {

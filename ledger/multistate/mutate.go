@@ -232,8 +232,8 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 	existed = trie.Delete(stateKey[:])
 	util.Assertf(existed, "deleteOutputFromTrie: inconsistency while deleting output %s", oid.StringShort())
 
-	for _, accountable := range o.Lock().Accounts() {
-		existed = trie.Delete(makeAccountKey(accountable.AccountID(), oid))
+	for _, accountable := range o.Lock().Controllers() {
+		existed = trie.Delete(makeAccountKey(accountable.ControllerID(), oid))
 		// must exist
 		util.Assertf(existed, "deleteOutputFromTrie: account record for %s wasn't found as expected: output %s", accountable.String(), oid.StringShort())
 	}
@@ -253,8 +253,8 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 	}
 	// Skip account indexing for upgrade UTXOs (they don't have parseable locks)
 	if !base.IsUpgradeOutputID(oid) {
-		for _, accountable := range out.Lock().Accounts() {
-			if trie.Update(makeAccountKey(accountable.AccountID(), oid), []byte{0xff}) {
+		for _, accountable := range out.Lock().Controllers() {
+			if trie.Update(makeAccountKey(accountable.ControllerID(), oid), []byte{0xff}) {
 				// key should not exist
 				err = fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.StringShort())
 				return
@@ -335,8 +335,8 @@ func deleteChainFromTrie(trie *immutable.TrieUpdatable, chainID base.ChainID) (d
 	return
 }
 
-func makeAccountKey(id ledger.AccountID, oid base.OutputID) []byte {
-	return common.Concat([]byte{TriePartitionAccounts, byte(len(id))}, id[:], oid[:])
+func makeAccountKey(id ledger.ControllerID, oid base.OutputID) []byte {
+	return common.Concat([]byte{TriePartitionControllers, byte(len(id))}, id[:], oid[:])
 }
 
 func makeChainIDKey(chainID *base.ChainID) []byte {

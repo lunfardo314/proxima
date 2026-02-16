@@ -16,20 +16,20 @@ type (
 	}
 
 	StateIndexReader interface {
-		IterateUTXOIDsInAccount(addr ledger.AccountID, fun func(oid base.OutputID) bool) (err error)
-		IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid base.OutputID, odata []byte) bool) (err error)
+		IterateUTXOIDsForController(controllerID ledger.ControllerID, fun func(oid base.OutputID) bool) (err error)
+		IterateUTXOsForController(controllerID ledger.ControllerID, fun func(oid base.OutputID, odata []byte) bool) (err error)
 		IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, oData []byte) bool) (err error)
 		IterateUTXOs(func(o ledger.OutputWithID) bool) (err error)
 		IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error
 
-		GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error)
-		GetUTXOsInAccount(accountID ledger.AccountID) ([]*ledger.OutputDataWithID, error) // TODO leave Iterate.. only?
+		GetUTXOIDsForController(controllerID ledger.ControllerID) ([]base.OutputID, error)
+		GetUTXOsForController(controllerID ledger.ControllerID) ([]*ledger.OutputDataWithID, error) // TODO leave Iterate.. only?
 
 		GetUTXOForChainID(id base.ChainID) (*ledger.OutputDataWithID, error)
 		Root() common.VCommitment
 		MustLedgerIdentityBytes() []byte // either state identity consistent or panic
 
-		IsKnownAccount(addr ledger.AccountID) (ret bool)
+		IsKnownController(controllerID ledger.ControllerID) (ret bool)
 	}
 
 	// IndexedStateReader state and indexer readers packing together

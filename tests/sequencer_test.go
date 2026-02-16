@@ -84,9 +84,9 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 	seq.Start()
 
 	rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
-	require.EqualValues(t, initBalance+tagAlongFee, int(rdr.BalanceOf(testData.addrAux.AccountID())))
+	require.EqualValues(t, initBalance+tagAlongFee, int(rdr.BalanceOf(testData.addrAux.ControllerID())))
 
-	auxOuts, err := rdr.GetOutputsForAccount(testData.addrAux.AccountID())
+	auxOuts, err := rdr.GetOutputsForAccount(testData.addrAux.ControllerID())
 	require.EqualValues(t, 1, len(auxOuts))
 	targetPrivKey := testutil.GetTestingPrivateKey(10000)
 	targetAddr := ledger.SigLockFromED25519PrivateKey(targetPrivKey)
@@ -125,10 +125,10 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 		//require.True(t, rdr.KnowsCommittedTransaction(&txid))
 		t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(txid))
 	}
-	targetBalance := rdr.BalanceOf(targetAddr.AccountID())
+	targetBalance := rdr.BalanceOf(targetAddr.ControllerID())
 	require.EqualValues(t, maxBatches*batchSize*sendAmount, int(targetBalance))
 
-	balanceLeft := rdr.BalanceOf(testData.addrFaucet.AccountID())
+	balanceLeft := rdr.BalanceOf(testData.addrFaucet.ControllerID())
 	require.EqualValues(t, initBalance-len(par.spammedTxIDs)*sendAmount-par.numSpammedBatches*tagAlongFee, int(balanceLeft))
 }
 
@@ -210,7 +210,7 @@ func Test3Seq1TagAlong(t *testing.T) {
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
 	rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
-	require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))
+	require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.ControllerID())))
 
 	//initialBalanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
 
@@ -254,10 +254,10 @@ func Test3Seq1TagAlong(t *testing.T) {
 	}
 	//require.EqualValues(t, (maxBatches+1)*batchSize, len(par.spammedTxIDs))
 
-	targetBalance := rdr.BalanceOf(targetAddr.AccountID())
+	targetBalance := rdr.BalanceOf(targetAddr.ControllerID())
 	require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
 
-	balanceLeft := rdr.BalanceOf(testData.addrFaucet.AccountID())
+	balanceLeft := rdr.BalanceOf(testData.addrFaucet.ControllerID())
 	require.EqualValues(t, initBalance-len(par.spammedTxIDs)*sendAmount-par.numSpammedBatches*tagAlongFee, int(balanceLeft))
 
 	//balanceOnChain := rdr.BalanceOnChain(&testData.bootstrapChainID)
@@ -279,7 +279,7 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 	//testData.env.StartTracingTags(attacher.TraceTagCoverageAdjustment)
 
 	rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
-	require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.AccountID())))
+	require.EqualValues(t, initBalance*nSequencers, int(rdr.BalanceOf(testData.addrAux.ControllerID())))
 
 	targetPrivKey := testutil.GetTestingPrivateKey(10000)
 	targetAddr := ledger.SigLockFromED25519PrivateKey(targetPrivKey)
@@ -330,10 +330,10 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 	//testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_2", nSequencers+1))
 	multistate.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_2", nSequencers+1))
 
-	targetBalance := rdr.BalanceOf(targetAddr.AccountID())
+	targetBalance := rdr.BalanceOf(targetAddr.ControllerID())
 	require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
 
-	balanceLeft := rdr.BalanceOf(testData.addrFaucet.AccountID())
+	balanceLeft := rdr.BalanceOf(testData.addrFaucet.ControllerID())
 	require.EqualValues(t, initBalance-len(par.spammedTxIDs)*sendAmount-par.numSpammedBatches*tagAlongFee, int(balanceLeft))
 
 	for seqID, initBal := range tagAlongInitBalances {

@@ -62,11 +62,11 @@ func (cl ChainLock) Bytes() []byte {
 	return mustBinFromSource(cl.Source())
 }
 
-func (cl ChainLock) Accounts() []Accountable {
-	return []Accountable{cl}
+func (cl ChainLock) Controllers() []Controller {
+	return []Controller{cl}
 }
 
-func (cl ChainLock) AccountID() AccountID {
+func (cl ChainLock) ControllerID() ControllerID {
 	return cl.Bytes()
 }
 
@@ -88,7 +88,7 @@ func (cl ChainLock) ChainID() base.ChainID {
 	return ret
 }
 
-func (cl ChainLock) Master() Accountable {
+func (cl ChainLock) Master() Controller {
 	return cl
 }
 

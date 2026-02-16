@@ -20,7 +20,7 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		attacher.Environment
-		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
+		ListenToControllerAccount(account ledger.Controller, fun func(wOut vertex.WrappedOutput))
 		SequencerID() base.ChainID
 		SequencerName() string
 		GetLatestMilestone(seqID base.ChainID) *vertex.WrappedTx
@@ -64,7 +64,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	env.Tracef(TraceTag, "starting input backlog for the sequencer %s..", env.SequencerName)
 
 	// start listening to chain-locked account. Tag-along outputs
-	env.ListenToAccount(ledger.ChainLockFromChainID(seqID), func(wOut vertex.WrappedOutput) {
+	env.ListenToControllerAccount(ledger.ChainLockFromChainID(seqID), func(wOut vertex.WrappedOutput) {
 		env.Tracef(TraceTag, "[%s] output IN: %s", ret.SequencerName, wOut.IDStringShort)
 
 		ret.mutex.Lock()
@@ -318,7 +318,7 @@ func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 		vidBranch.IDShortString(), chainOut.LinesSource("         ").String())
 
 	// load pending tag-along outputs
-	oids, err := rdr.GetUTXOIDsInAccount(ledger.ChainLockFromChainID(seqID).AccountID())
+	oids, err := rdr.GetUTXOIDsForController(ledger.ChainLockFromChainID(seqID).ControllerID())
 	util.AssertNoError(err)
 	for _, oid := range oids {
 		o := rdr.MustGetOutputWithID(oid)

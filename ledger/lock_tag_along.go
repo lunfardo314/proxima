@@ -67,11 +67,11 @@ func (t *TagAlongLock) Bytes() []byte {
 	return mustBinFromSource(t.Source())
 }
 
-func (t *TagAlongLock) Accounts() []Accountable {
-	return []Accountable{ChainLockFromChainID(t.TargetSequencerID), SigLock(t.SenderID)}
+func (t *TagAlongLock) Controllers() []Controller {
+	return []Controller{ChainLockFromChainID(t.TargetSequencerID), SigLock(t.SenderID)}
 }
 
-func (t *TagAlongLock) Master() Accountable {
+func (t *TagAlongLock) Master() Controller {
 	return nil
 }
 

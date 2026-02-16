@@ -206,7 +206,7 @@ func (q *TxSenders) attachAndGossip(inp *input) {
 func (q *TxSenders) isSpenderKnownInLRB(acc base.SpenderID) (ret bool) {
 	if lrb := q.GetLatestReliableBranch(); lrb != nil {
 		rdr := q.Branches().GetStateReaderForTheBranch(lrb.TxID())
-		ret = rdr.IsKnownAccount(ledger.SigLock(acc).AccountID())
+		ret = rdr.IsKnownController(ledger.SigLock(acc).ControllerID())
 	} else {
 		ret = true
 	}

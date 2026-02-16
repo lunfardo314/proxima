@@ -166,7 +166,7 @@ func TestBasics(t *testing.T) {
 		require.EqualValues(t, 0, u.Balance(addr0))
 		require.EqualValues(t, 0, u.NumUTXOs(addr0))
 
-		outs, err := u.StateReader().GetUTXOsInAccount(addr1.AccountID())
+		outs, err := u.StateReader().GetUTXOsForController(addr1.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, howMany, len(outs))
 
@@ -176,7 +176,7 @@ func TestBasics(t *testing.T) {
 		require.EqualValues(t, 0, u.Balance(addr1))
 		require.EqualValues(t, 0, u.NumUTXOs(addr1))
 
-		outs, err = u.StateReader().GetUTXOsInAccount(addr0.AccountID())
+		outs, err = u.StateReader().GetUTXOsForController(addr0.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(outs))
 	})
@@ -225,7 +225,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 
 		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(outs) > 0)
 		ts := outs[0].ID.Timestamp().AddSlots(1)
@@ -267,7 +267,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 
 		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(outs) > 0)
 		ts := outs[0].ID.Timestamp().AddSlots(1)
@@ -309,7 +309,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, 2, initAmount)
 
 		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(outs) > 0)
 		ts := outs[0].ID.Timestamp().AddSlots(1)
@@ -376,7 +376,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		privKeys, _, addrs := u.GenerateAddressesWithFaucetAmount(1, numAddr, initAmount)
 
 		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(outs) > 0)
 		ts := outs[0].ID.Timestamp().AddSlots(1)
@@ -416,7 +416,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		txs := make([]txWithInputLoader, numAddr)
 
 		// Get timestamp from actual outputs to avoid timing issues with ledger.TimeNow()
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrs[0].ControllerID())
 		require.NoError(t, err)
 		require.True(t, len(outs) > 0)
 		ts := outs[0].ID.Timestamp().AddSlots(1)

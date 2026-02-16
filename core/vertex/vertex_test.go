@@ -614,7 +614,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 		require.NoError(t, err)
 		require.Equal(t, 1, len(outs))
 
@@ -650,7 +650,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 		require.NoError(t, err)
 		require.Equal(t, 1, len(outs))
 
@@ -688,7 +688,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 		require.NoError(t, err)
 		require.Equal(t, 1, len(outs))
 
@@ -719,7 +719,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 		require.NoError(t, err)
 		require.Equal(t, 1, len(outs))
 
@@ -752,7 +752,7 @@ func TestVertexWithRealTransaction(t *testing.T) {
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
 
-		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+		outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 		require.NoError(t, err)
 		require.Equal(t, 1, len(outs))
 
@@ -789,7 +789,7 @@ func TestVertexUnReferenceDependencies(t *testing.T) {
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	require.Equal(t, 1, len(outs))
 
@@ -835,7 +835,7 @@ func TestConvertVirtualToVertex(t *testing.T) {
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	require.Equal(t, 1, len(outs))
 
@@ -888,7 +888,7 @@ func TestConvertToDetached(t *testing.T) {
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	require.Equal(t, 1, len(outs))
 
@@ -937,7 +937,7 @@ func TestGetTransaction(t *testing.T) {
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	require.Equal(t, 1, len(outs))
 
@@ -1143,7 +1143,7 @@ func TestVertexLines(t *testing.T) {
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	ts := outs[0].ID.Timestamp().AddSlots(1)
 	par, err := u.MakeTransferInputData(privKey, nil, ts)
@@ -1201,7 +1201,7 @@ func TestNumInputs(t *testing.T) {
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	ts := outs[0].ID.Timestamp().AddSlots(1)
 	par, err := u.MakeTransferInputData(privKey, nil, ts)
@@ -1244,7 +1244,7 @@ func TestSetOfInputTransactions(t *testing.T) {
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	ts := outs[0].ID.Timestamp().AddSlots(1)
 	par, err := u.MakeTransferInputData(privKey, nil, ts)
@@ -1283,7 +1283,7 @@ func TestNotConsumedOutputIndices(t *testing.T) {
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	ts := outs[0].ID.Timestamp().AddSlots(1)
 	par, err := u.MakeTransferInputData(privKey, nil, ts)

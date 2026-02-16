@@ -149,7 +149,7 @@ func (u *UTXODB) MakeTransactionFromFaucet(addr ledger.SigLock, amountPar ...uin
 	if len(amountPar) > 0 && amountPar[0] > 0 {
 		amount = amountPar[0]
 	}
-	faucetOutputs, err := u.StateReader().GetUTXOsInAccount(u.faucetAddress.AccountID())
+	faucetOutputs, err := u.StateReader().GetUTXOsForController(u.faucetAddress.ControllerID())
 	if err != nil {
 		return nil, fmt.Errorf("UTXODB faucet: %v", err)
 	}
@@ -182,7 +182,7 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.SigLock, am
 		return nil, fmt.Errorf("UTXODB faucet: wrong amount")
 	}
 	totalAmount := amount * uint64(len(addrs))
-	faucetOutputs, err := u.StateReader().GetUTXOsInAccount(u.faucetAddress.AccountID())
+	faucetOutputs, err := u.StateReader().GetUTXOsForController(u.faucetAddress.ControllerID())
 	faucetInputs, inpAmount, ts, err := ledger.ParseAndSortOutputDataUpToAmount(faucetOutputs, totalAmount, nil)
 	if err != nil {
 		return nil, err
@@ -301,13 +301,13 @@ func (u *UTXODB) GenerateUTXOsWithFaucetAmount(addr ledger.SigLock, n int, amoun
 	util.Assertf(u.Balance(addr) == amount*uint64(n), "u.Balance(addr)==amount*uint64(n)")
 
 	rdr := multistate.MakeSugared(u.StateReader())
-	ret, err := rdr.GetOutputsForAccount(addr.AccountID())
+	ret, err := rdr.GetOutputsForAccount(addr.ControllerID())
 	util.AssertNoError(err)
 	util.Assertf(len(ret) == n, "len(ret)!=n")
 	return ret
 }
 
-func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts base.LedgerTime, desc ...bool) (*txbuilder.TransferData, error) {
+func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount ledger.Controller, ts base.LedgerTime, desc ...bool) (*txbuilder.TransferData, error) {
 	if ts == base.NilLedgerTime {
 		ts = ledger.TimeNow()
 	}
@@ -330,7 +330,7 @@ func (u *UTXODB) MakeTransferInputData(privKey ed25519.PrivateKey, sourceAccount
 }
 
 func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...bool) error {
-	outsData, err := u.StateReader().GetUTXOsInAccount(par.SourceAccount.AccountID())
+	outsData, err := u.StateReader().GetUTXOsForController(par.SourceAccount.ControllerID())
 	if err != nil {
 		return err
 	}
@@ -387,8 +387,8 @@ func (u *UTXODB) TransferTokens(privKey ed25519.PrivateKey, targetLock ledger.Lo
 	return err
 }
 
-func (u *UTXODB) account(addr ledger.Accountable) (uint64, int) {
-	outs, err := u.StateReader().GetUTXOsInAccount(addr.AccountID())
+func (u *UTXODB) account(addr ledger.Controller) (uint64, int) {
+	outs, err := u.StateReader().GetUTXOsForController(addr.ControllerID())
 	util.AssertNoError(err)
 	balance := uint64(0)
 	outs1, err := ledger.ParseAndSortOutputData(outs, nil)
@@ -402,7 +402,7 @@ func (u *UTXODB) account(addr ledger.Accountable) (uint64, int) {
 
 // Balance returns balance of address unlockable at timestamp ts, if provided. Otherwise, all outputs taken
 // For chains, this does not include te chain-output itself
-func (u *UTXODB) Balance(addr ledger.Accountable) uint64 {
+func (u *UTXODB) Balance(addr ledger.Controller) uint64 {
 	ret, _ := u.account(addr)
 	return ret
 }
@@ -421,7 +421,7 @@ func (u *UTXODB) BalanceOnChain(chainID base.ChainID) (uint64, uint64, error) {
 }
 
 // NumUTXOs returns number of outputs in the address
-func (u *UTXODB) NumUTXOs(addr ledger.Accountable) int {
+func (u *UTXODB) NumUTXOs(addr ledger.Controller) int {
 	_, ret := u.account(addr)
 	return ret
 }

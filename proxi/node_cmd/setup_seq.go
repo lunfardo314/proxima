@@ -76,7 +76,7 @@ func runSeqSetupCmd(_ *cobra.Command, args []string) {
 	}
 }
 
-func getChainIdForAccount(account ledger.Accountable) *base.ChainID {
+func getChainIdForAccount(account ledger.Controller) *base.ChainID {
 	clnt := glb.GetClient()
 	chains, _, err := clnt.GetAllChains()
 	glb.AssertNoError(err)
@@ -96,7 +96,7 @@ func getChainIdForAccount(account ledger.Accountable) *base.ChainID {
 	return nil
 }
 
-func waitForFunds(accountable ledger.Accountable, amount uint64) {
+func waitForFunds(accountable ledger.Controller, amount uint64) {
 	for {
 		sumOutsideChains := uint64(0)
 		outs, _, err := glb.GetClient().GetAccountOutputs(accountable)

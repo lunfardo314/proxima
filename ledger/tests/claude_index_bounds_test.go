@@ -89,7 +89,7 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		_, err = txb.ConsumeOutput(aliceOuts[0].Output, aliceOuts[0].ID)
 		require.NoError(t, err)
 
-		txb.PutSignatureUnlock(0) // Bob's input: signature
+		txb.PutSignatureUnlock(0)                                     // Bob's input: signature
 		txb.PutUnlockParams(1, ledger.ConstraintIndexLock, []byte{0}) // Alice's input: reference Bob
 
 		totalBalance := bobOuts[0].Output.TokenBalance() + aliceOuts[0].Output.TokenBalance()
@@ -182,7 +182,7 @@ func TestIndexSigLockReferenceToChainLocked(t *testing.T) {
 
 	// get a sigLock output and the chainLock output
 	sigOuts := getSourceOutputs(t, e.u, e.addr)
-	clOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(chainLock.AccountID())
+	clOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(chainLock.ControllerID())
 	require.NoError(t, err)
 	require.True(t, len(clOuts) > 0)
 
@@ -248,7 +248,7 @@ func TestIndexChainLockWrongConstraintType(t *testing.T) {
 	require.NoError(t, err)
 
 	// get the chain-locked UTXO
-	chainLockedOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(chainLock.AccountID())
+	chainLockedOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(chainLock.ControllerID())
 	require.NoError(t, err)
 	require.True(t, len(chainLockedOuts) > 0, "need chain-locked UTXO")
 	chainLockedOut := chainLockedOuts[0]
@@ -479,7 +479,7 @@ func TestIndexChainLockSelfReference(t *testing.T) {
 		WithTargetLock(chainLock))
 	require.NoError(t, err)
 
-	chainLockedOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(chainLock.AccountID())
+	chainLockedOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(chainLock.ControllerID())
 	require.NoError(t, err)
 	require.True(t, len(chainLockedOuts) > 0)
 	clOut := chainLockedOuts[0]

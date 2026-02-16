@@ -3,7 +3,6 @@ package ledger
 import (
 	"bytes"
 	"fmt"
-	"slices"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -12,36 +11,32 @@ import (
 
 /*
 The file constraints_serde.go contains definitions related to serialization/deserialization of the UTXO constraints.
-This is helper, wrapper code of the underlying ledger definitions that are immutable in the ledger.
+This is a helper wrapper code of the underlying ledger definitions that are immutable in the ledger.
 
 Serialization means compiling EasyFL source code to bytecode.
 Deserialization means decompiling EasyFL source code from the bytecode
 
-The 'constraint' is a EasyFL bytecode, a part of the UTXO.
+The 'constraint' is an EasyFL bytecode, a part of the UTXO.
 The Constraint interface wraps Go structure that is parsed from the bytecode.
 
-Usually constraints are known to the node's code via registering it. Registering of constraint places it in the Library structure.
-That allows pretty printing of UTXO constraints.
-
-Constraint interface provides functions for the EasyFL name of the constraint, decompiled EasyFL source, human-readable source and serialization to the bytecode.
+Usually constraints are known to the Library via registering it. That allows decompiling and pretty printing of UTXO constraints.
 
 IMPORTANT: serialization/deserialization of constraints often takes Library as an argument. Libraries can be upgraded by adding and modifying function definitions.
-However, serialization/deserialization of a specific formula never changes because it depends on the name <-> op-code relation and
-'numArgs' parameter. Both are immutable upon upgrades.
+However, serialization/deserialization of a specific formula never changes because it depends on the name <-> op-code relation and the 'numArgs' parameter. Both are immutable upon upgrades.
 
 This means, SERIALIZATION/DESERIALIZATION OF CONSTRAINTS IS UPGRADE AGNOSTIC, I.E. IT IS THE SAME AND BACKWARD COMPATIBLE FOR ANY FUTURE LIBRARY UPGRADES.
-Being registered as 'constraint' does not impose additional validity rules to the transaction.
+Being registered as 'constraint' in the Library does not impose additional validity rules to the transaction.
 
 Special type of the constraint is 'lock'. Certain constraints are registered as 'locks'. They implement Lock interface.
 
-It is enforced that locks (and only locks) can be at the index 1 of the UTXO constraints. Locks provides a list of 'account ID', identifiers (indexable tags) for the UTXO indexer.
+It is enforced that locks (and only locks) can be at the index 1 of the UTXO constraints. Locks provides a list of 'ControllerIDs', identifiers (indexable tags) for the UTXO indexer.
 Typically, lock has one indexable tag, sometimes 2 or more.
-UTXO index is part of the state: every UTXO has a corresponding index entry in the trie of the ledger state.
+UTXO index is part of the ledger state: every UTXO has at least one corresponding index entry in the trie of the ledger state.
 BEING REGISTERED AS 'LOCK' IMPOSES ADDITIONAL RULES TO THE LEDGER VALIDITY AND THE CONSISTENCY OF THE STATE.
 
-For example SigLock is lock with one account ID. We can find all UTXOs belonging to certain address in the ledger state.
-Another example is DelegateLock. It has two account ID: address of the master and address of the target.
+For example SigLock is lock with one index value. We can find all UTXOs belonging to certain address in the ledger state.
 
+Another example is DelegateLock. It has two controller IDs: address of the master and address of the target.
 */
 
 type (
@@ -52,20 +47,27 @@ type (
 		String() string // human-readable
 	}
 
-	AccountID []byte
+	// ControllerID is used as a value in the index of UTXOs in the state.
+	// UTXOs with the same ControllerID can be unlocked the same way.
+	// Each lock constraint of UTXO provides 1 or more controller IDs for the index.
+	// There are 3 single-controller locks:
+	// - sigLock's controllerID is bytecode of the sigLock Constraint
+	// - chainLock's controllerID is bytecode of the chainLock Constraint
+	// - stemLock controllerID is 1 byte with 0 value (a placeholder)
+	ControllerID []byte // assumed <= 255
 
-	Accountable interface {
+	Controller interface {
 		Constraint
-		AccountID() AccountID
+		ControllerID() ControllerID
 		AsLock() Lock
 	}
 
 	Lock interface {
 		Constraint
-		// Accounts all accounts of the lock
-		Accounts() []Accountable
+		// Controllers all controllers of the lock
+		Controllers() []Controller
 		// Master is account which is always unlockable. For conditional locks it is usually nil (no master)
-		Master() Accountable
+		Master() Controller
 	}
 
 	ConstraintParser func([]byte) (Constraint, error)
@@ -195,7 +197,7 @@ func ConstraintFromBytesAtSlot(data []byte, slot uint32) (Constraint, error) {
 	return ConstraintFromBytesWithLib(data, L(slot))
 }
 
-func (acc AccountID) Bytes() []byte {
+func (acc ControllerID) Bytes() []byte {
 	return acc
 }
 
@@ -222,9 +224,9 @@ func LockFromBytesWithLib(data []byte, lib *Library) (Lock, error) {
 	return parser(data)
 }
 
-// AccountableFromBytesWithLib parses an Accountable from bytecode using the provided library.
+// ControllerFromBytesWithLib parses a Controller lock from bytecode using the provided library.
 // This is the core implementation that avoids repeated L(slot) calls.
-func AccountableFromBytesWithLib(data []byte, lib *Library) (Accountable, error) {
+func ControllerFromBytesWithLib(data []byte, lib *Library) (Controller, error) {
 	prefix, err := lib.ParsePrefixBytecode(data)
 	if err != nil {
 		return nil, err
@@ -241,49 +243,27 @@ func AccountableFromBytesWithLib(data []byte, lib *Library) (Accountable, error)
 	case StemLockName:
 		return StemLockFromBytesWithLib(data, lib)
 	}
-	return nil, fmt.Errorf("not a indexable constraint '%s'", name)
+	return nil, fmt.Errorf("not a controller lock '%s'", name)
 }
 
-// AccountableFromBytesAtSlot parses an Accountable from bytecode using the library for the given slot.
-// Use this when parsing bytecode that was created at a specific slot.
-func AccountableFromBytesAtSlot(data []byte, slot uint32) (Accountable, error) {
-	return AccountableFromBytesWithLib(data, L(slot))
-}
-
-func AccountableFromSource(src string) (Accountable, error) {
+func ControllerFromSource(src string) (Controller, error) {
 	data, err := binFromSource(src)
 	if err != nil {
 		return nil, fmt.Errorf("EasyFL compile error: %v", err)
 	}
 	// Use latest library version for newly compiled bytecode
-	return AccountableFromBytesAtSlot(data, base.MaxSlot)
+	return ControllerFromBytesWithLib(data, L(base.MaxSlot))
 }
 
-func BelongsToAccount(lock Lock, acc Accountable) bool {
-	for _, a := range lock.Accounts() {
-		if EqualAccountables(acc, a) {
+func LockIsControlledBy(lock Lock, acc Controller) bool {
+	for _, a := range lock.Controllers() {
+		if EqualControllers(acc, a) {
 			return true
 		}
 	}
 	return false
 }
 
-func EqualAccountables(a1, a2 Accountable) bool {
-	return bytes.Equal(a1.AccountID(), a2.AccountID())
-}
-
-func NoDuplicatesAccountables(acc []Accountable) []Accountable {
-	ret := make([]Accountable, 0, len(acc))
-	for _, a := range acc {
-		if util.IsNil(a) {
-			continue
-		}
-		if slices.IndexFunc(ret, func(a1 Accountable) bool {
-			return EqualAccountables(a, a1)
-		}) >= 0 {
-			continue
-		}
-		ret = append(ret, a)
-	}
-	return ret
+func EqualControllers(a1, a2 Controller) bool {
+	return bytes.Equal(a1.ControllerID(), a2.ControllerID())
 }

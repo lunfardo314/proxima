@@ -7,8 +7,8 @@ import (
 )
 
 // BalanceOnLock returns balance and number of outputs
-func BalanceOnLock(rdr StateIndexReader, account ledger.Accountable) (uint64, int) {
-	oDatas, err := rdr.GetUTXOsInAccount(account.AccountID())
+func BalanceOnLock(rdr StateIndexReader, account ledger.Controller) (uint64, int) {
+	oDatas, err := rdr.GetUTXOsForController(account.ControllerID())
 	util.AssertNoError(err)
 
 	balance := uint64(0)

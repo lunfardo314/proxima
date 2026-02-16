@@ -718,7 +718,7 @@ func TestChainLockValidUnlock(t *testing.T) {
 	require.True(t, chainConstraintIdx != 0xff)
 
 	// Get the chain-locked outputs
-	lockedOutsData, err := e.u.StateReader().GetUTXOsInAccount(chainAddr.AccountID())
+	lockedOutsData, err := e.u.StateReader().GetUTXOsForController(chainAddr.ControllerID())
 	require.NoError(t, err)
 	lockedOuts, err := ledger.ParseAndSortOutputData(lockedOutsData, nil)
 	require.NoError(t, err)
@@ -817,7 +817,7 @@ func TestChainLockWrongChainID(t *testing.T) {
 	ccB, chainConstraintIdxB := chainInB.Output.ChainConstraint()
 	require.True(t, chainConstraintIdxB != 0xff)
 
-	lockedOutsData, err := e.u.StateReader().GetUTXOsInAccount(chainAddrA.AccountID())
+	lockedOutsData, err := e.u.StateReader().GetUTXOsForController(chainAddrA.ControllerID())
 	require.NoError(t, err)
 	lockedOuts, err := ledger.ParseAndSortOutputData(lockedOutsData, nil)
 	require.NoError(t, err)
@@ -880,7 +880,9 @@ func TestChainLockWrongChainID(t *testing.T) {
 
 // TestChainLockSelfReference verifies that a chain-locked output cannot reference
 // itself in the unlock params. The EasyFL rule is:
-//   not(equal(selfOutputIndex, byte(selfUnlockParameters, 0)))
+//
+//	not(equal(selfOutputIndex, byte(selfUnlockParameters, 0)))
+//
 // This prevents an output from claiming it unlocks itself.
 func TestChainLockSelfReference(t *testing.T) {
 	e := newChainTestEnv(t, 1_000_000_000)
@@ -907,7 +909,7 @@ func TestChainLockSelfReference(t *testing.T) {
 	cc, chainConstraintIdx := chainIn.Output.ChainConstraint()
 	require.True(t, chainConstraintIdx != 0xff)
 
-	lockedOutsData, err := e.u.StateReader().GetUTXOsInAccount(chainAddr.AccountID())
+	lockedOutsData, err := e.u.StateReader().GetUTXOsForController(chainAddr.ControllerID())
 	require.NoError(t, err)
 	lockedOuts, err := ledger.ParseAndSortOutputData(lockedOutsData, nil)
 	require.NoError(t, err)

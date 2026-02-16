@@ -96,7 +96,7 @@ func TestAttachDeadlockConcurrentAttachers(t *testing.T) {
 		require.NoError(t, err)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
@@ -182,7 +182,7 @@ func TestAttachDeadlockSolidificationDeadline(t *testing.T) {
 		require.NoError(t, err)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 

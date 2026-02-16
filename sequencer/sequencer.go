@@ -41,7 +41,7 @@ type (
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		LatestMilestonesShuffled(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		NumSequencerTips() int
-		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
+		ListenToControllerAccount(account ledger.Controller, fun func(wOut vertex.WrappedOutput))
 		MustEnsureBranch(txid base.TransactionID) *vertex.WrappedTx
 		OwnSequencerMilestoneIn(txBytes []byte, meta *txmetadata.TransactionMetadata, txid base.TransactionID)
 		LatestReliableState() (multistate.SugaredStateReader, error)
@@ -368,7 +368,7 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 		return false
 	}
 	lock := oReal.Lock()
-	if !ledger.BelongsToAccount(lock, ledger.SigLockFromED25519PrivateKey(seq.controllerKey)) {
+	if !ledger.LockIsControlledBy(lock, ledger.SigLockFromED25519PrivateKey(seq.controllerKey)) {
 		seq.log.Errorf("checkSequencerStartOutput: provided private key does match sequencer lock %s", lock.String())
 		return false
 	}

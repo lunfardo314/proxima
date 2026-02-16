@@ -90,11 +90,11 @@ func (a SigLock) Bytes() []byte {
 	return mustBinFromSource(a.Source())
 }
 
-func (a SigLock) Accounts() []Accountable {
-	return []Accountable{a}
+func (a SigLock) Controllers() []Controller {
+	return []Controller{a}
 }
 
-func (a SigLock) AccountID() AccountID {
+func (a SigLock) ControllerID() ControllerID {
 	return a.Bytes()
 }
 
@@ -114,7 +114,7 @@ func (a SigLock) AsLock() Lock {
 	return a
 }
 
-func (a SigLock) Master() Accountable {
+func (a SigLock) Master() Controller {
 	return a
 }
 

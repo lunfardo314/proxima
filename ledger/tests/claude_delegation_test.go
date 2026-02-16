@@ -61,7 +61,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	require.NoError(t, err)
 
 	// create chain for sequencer
-	seqOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.seqAddr.AccountID())
+	seqOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.seqAddr.ControllerID())
 	require.NoError(t, err)
 	seqOriginTs := seqOuts[0].ID.Timestamp().AddSlots(1)
 
@@ -80,7 +80,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	env.target = ledger.ChainLockFromChainID(env.seqChainOrigin.ChainID)
 
 	// create delegation output
-	masterOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.masterAddr.AccountID())
+	masterOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.masterAddr.ControllerID())
 	require.NoError(t, err)
 	delegTs := env.seqChainOrigin.Timestamp().AddSlots(1)
 
@@ -349,7 +349,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	require.NoError(t, err)
 
 	// create chain
-	seqOuts, err := u.SugaredStateReader().GetOutputsForAccount(seqAddr.AccountID())
+	seqOuts, err := u.SugaredStateReader().GetOutputsForAccount(seqAddr.ControllerID())
 	require.NoError(t, err)
 	seqOriginTs := seqOuts[0].ID.Timestamp().AddSlots(1)
 	par, err := u.MakeTransferInputData(seqPrivateKey, nil, seqOriginTs)
@@ -365,7 +365,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	target := ledger.ChainLockFromChainID(chOuts[0].ChainID)
 
 	// try to create delegation origin in FROZEN state
-	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.AccountID())
+	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.ControllerID())
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 
@@ -420,7 +420,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	require.NoError(t, err)
 
 	// create chain
-	seqOuts, err := u.SugaredStateReader().GetOutputsForAccount(seqAddr.AccountID())
+	seqOuts, err := u.SugaredStateReader().GetOutputsForAccount(seqAddr.ControllerID())
 	require.NoError(t, err)
 	seqOriginTs := seqOuts[0].ID.Timestamp().AddSlots(1)
 	par, err := u.MakeTransferInputData(seqPrivateKey, nil, seqOriginTs)
@@ -436,7 +436,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	target := ledger.ChainLockFromChainID(chOuts[0].ChainID)
 
 	// try to create delegation output with 5 constraints (extra injected constraint)
-	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.AccountID())
+	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.ControllerID())
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 
@@ -568,7 +568,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	require.NoError(t, err)
 
 	// create chain
-	seqOuts, err := u.SugaredStateReader().GetOutputsForAccount(seqAddr.AccountID())
+	seqOuts, err := u.SugaredStateReader().GetOutputsForAccount(seqAddr.ControllerID())
 	require.NoError(t, err)
 	seqOriginTs := seqOuts[0].ID.Timestamp().AddSlots(1)
 	par, err := u.MakeTransferInputData(seqPrivateKey, nil, seqOriginTs)
@@ -584,7 +584,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	target := ledger.ChainLockFromChainID(chOuts[0].ChainID)
 
 	// create delegation with inflation share = 1001 (above max 1000)
-	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.AccountID())
+	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.ControllerID())
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 

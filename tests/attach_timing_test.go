@@ -35,7 +35,7 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
@@ -74,7 +74,7 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 		defer testData.stopAndWait()
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
@@ -196,7 +196,7 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
@@ -241,7 +241,7 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 

@@ -27,9 +27,9 @@ type (
 //go:embed def/lock_stem.easyfl
 var stemLockSource string
 
-var StemAccountID = AccountID([]byte{0})
+var StemAccountID = ControllerID([]byte{0})
 
-func (st *StemLock) AccountID() AccountID {
+func (st *StemLock) ControllerID() ControllerID {
 	return StemAccountID
 }
 
@@ -57,11 +57,11 @@ func (st *StemLock) String() string {
 	//return fmt.Sprintf("stem(%s)", st.PredecessorOutputID.StringShort())
 }
 
-func (st *StemLock) Accounts() []Accountable {
-	return []Accountable{st}
+func (st *StemLock) Controllers() []Controller {
+	return []Controller{st}
 }
 
-func (st *StemLock) Master() Accountable {
+func (st *StemLock) Master() Controller {
 	return nil
 }
 

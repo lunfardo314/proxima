@@ -93,7 +93,7 @@ func TestTransactionValidationUsesSlot(t *testing.T) {
 		require.NoError(t, err)
 
 		// Get an output to use as input
-		outs, err := u.StateReader().GetUTXOsInAccount(addr.AccountID())
+		outs, err := u.StateReader().GetUTXOsForController(addr.ControllerID())
 		require.NoError(t, err)
 		require.Len(t, outs, 1)
 

@@ -184,7 +184,7 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	r.trie.Iterator([]byte{TriePartitionAccounts}).IterateKeys(func(k []byte) bool {
+	r.trie.Iterator([]byte{TriePartitionControllers}).IterateKeys(func(k []byte) bool {
 		oid, err = base.OutputIDFromBytes(k[2+k[1]:])
 		util.AssertNoError(err)
 
@@ -258,8 +258,8 @@ func (r *Readable) ScanState() *ScannedState {
 			}
 			ret.Stem = util.Ref(o)
 		}
-		for _, accountable := range o.Output.Lock().Accounts() {
-			accountKey := makeAccountKey(accountable.AccountID(), o.ID)
+		for _, accountable := range o.Output.Lock().Controllers() {
+			accountKey := makeAccountKey(accountable.ControllerID(), o.ID)
 			if oData := r.trie.Get(accountKey); len(oData) == 0 {
 				ret.AddInconsistency("output %s is not in the accounts index", o.ID.String())
 			}

@@ -63,7 +63,7 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 	env.addrRandom = addrs[2]
 
 	// derive timestamp from actual outputs to avoid timing races
-	targetOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrTarget.AccountID())
+	targetOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrTarget.ControllerID())
 	require.NoError(t, err)
 	require.True(t, len(targetOuts) > 0)
 
@@ -74,7 +74,7 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 
 	// create tag-along output from sender to target chain
 	txb := txbuilder.New()
-	outs, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrSender.AccountID())
+	outs, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrSender.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 	require.NoError(t, err)
@@ -115,14 +115,14 @@ func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
 	addrTarget := addrs[2]
 
 	// create chain
-	targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.AccountID())
+	targetOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrTarget.ControllerID())
 	require.NoError(t, err)
 	seqOrigin, err := u.MakeNewChain(taChainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 	require.NoError(t, err)
 
 	// Alice signs a tx but puts Bob's SpenderID as the sender
 	txb := txbuilder.New()
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addrAlice.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addrAlice.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 	require.NoError(t, err)
@@ -162,21 +162,21 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	addrTargetB := addrs[2]
 
 	// create chain A (the intended target)
-	outsA, err := u.SugaredStateReader().GetOutputsForAccount(addrTargetA.AccountID())
+	outsA, err := u.SugaredStateReader().GetOutputsForAccount(addrTargetA.ControllerID())
 	require.NoError(t, err)
 	seqOriginA, err := u.MakeNewChain(taChainAmount, privKeyTargetA, addrTargetA, outsA[0].ID.Timestamp().AddSlots(1))
 	require.NoError(t, err)
 	chainIDA := seqOriginA.ChainID
 
 	// create chain B (the attacker)
-	outsB, err := u.SugaredStateReader().GetOutputsForAccount(addrTargetB.AccountID())
+	outsB, err := u.SugaredStateReader().GetOutputsForAccount(addrTargetB.ControllerID())
 	require.NoError(t, err)
 	seqOriginB, err := u.MakeNewChain(taChainAmount, privKeyTargetB, addrTargetB, outsB[0].ID.Timestamp().AddSlots(1))
 	require.NoError(t, err)
 
 	// create tag-along targeting chain A
 	txb := txbuilder.New()
-	senderOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.AccountID())
+	senderOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(senderOuts[0].Output, senderOuts[0].ID)
 	require.NoError(t, err)
@@ -323,7 +323,7 @@ func TestClaudeTagAlongPurgeWindowSettle(t *testing.T) {
 	require.EqualValues(t, 1, len(taOuts))
 
 	// get random party's outputs
-	randomOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrRandom.AccountID())
+	randomOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrRandom.ControllerID())
 	require.NoError(t, err)
 	randomOuts = util.PurgeSlice(randomOuts, func(o *ledger.OutputWithID) bool {
 		return o.Output.Lock().Name() == ledger.SigLockName
@@ -374,7 +374,7 @@ func TestClaudeTagAlongPurgeWindowSettle(t *testing.T) {
 	require.EqualValues(t, 0, len(taOutsAfter), "backlog should be empty after purge")
 
 	// verify random party received the funds
-	randomOutsFinal, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrRandom.AccountID())
+	randomOutsFinal, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrRandom.ControllerID())
 	require.NoError(t, err)
 	finalBalance := uint64(0)
 	for _, o := range randomOutsFinal {
@@ -437,7 +437,7 @@ func TestClaudeTagAlongSenderHashForgeryOnReclaim(t *testing.T) {
 	require.EqualValues(t, 1, len(taOuts))
 
 	// random party tries to reclaim in the reclaim window
-	randomOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrRandom.AccountID())
+	randomOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrRandom.ControllerID())
 	require.NoError(t, err)
 	randomOuts = util.PurgeSlice(randomOuts, func(o *ledger.OutputWithID) bool {
 		return o.Output.Lock().Name() == ledger.SigLockName
@@ -534,7 +534,7 @@ func TestClaudeTagAlongSenderReclaimSettles(t *testing.T) {
 	require.EqualValues(t, 1, len(taOuts))
 
 	// get sender's current sigLock outputs
-	senderOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrSender.AccountID())
+	senderOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrSender.ControllerID())
 	require.NoError(t, err)
 	senderOuts = util.PurgeSlice(senderOuts, func(o *ledger.OutputWithID) bool {
 		return o.Output.Lock().Name() == ledger.SigLockName
@@ -583,7 +583,7 @@ func TestClaudeTagAlongSenderReclaimSettles(t *testing.T) {
 	require.EqualValues(t, 0, len(taOutsAfter), "backlog should be empty after reclaim")
 
 	// verify sender recovered funds: consolidated output = preReclaimBalance + fee
-	senderOutsFinal, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrSender.AccountID())
+	senderOutsFinal, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrSender.ControllerID())
 	require.NoError(t, err)
 	finalBalance := uint64(0)
 	for _, o := range senderOutsFinal {

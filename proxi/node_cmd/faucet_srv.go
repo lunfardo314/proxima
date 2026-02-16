@@ -44,9 +44,9 @@ type (
 		addressRequestList    map[string][]time.Time
 		addressRequestCount   map[string]uint
 		client                *client.APIClient
-		withdrawTagAlongFee   uint64         // fee for withdrawing from own chain (fromChain mode)
-		transferTagAlongFee   uint64         // fee for transfer from wallet
-		transferTagAlongSeqID *base.ChainID  // sequencer ID for wallet transfer tag-along
+		withdrawTagAlongFee   uint64        // fee for withdrawing from own chain (fromChain mode)
+		transferTagAlongFee   uint64        // fee for transfer from wallet
+		transferTagAlongSeqID *base.ChainID // sequencer ID for wallet transfer tag-along
 	}
 )
 
@@ -223,9 +223,9 @@ func (fct *faucetServer) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetLock, err := ledger.AccountableFromSource(targetStr[0])
+	targetLock, err := ledger.ControllerFromSource(targetStr[0])
 	if err != nil {
-		glb.Infof("error from AccountableFromSource: %s", err.Error())
+		glb.Infof("error from ControllerFromSource: %s", err.Error())
 		writeResponse(w, err.Error())
 		return
 	}
@@ -253,7 +253,7 @@ func (fct *faucetServer) handler(w http.ResponseWriter, r *http.Request) {
 	logRequest(targetStr[0], r.RemoteAddr, fct.cfg.amount, err)
 }
 
-func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.TransactionID, error) {
+func (fct *faucetServer) redrawFromChain(targetLock ledger.Controller) (base.TransactionID, error) {
 	clnt := glb.GetClient()
 	o, _, _, err := clnt.GetChainOutput(*glb.GetOwnSequencerID())
 	if err != nil {
@@ -284,7 +284,7 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.Tr
 	return txid, nil
 }
 
-func (fct *faucetServer) redrawFromAccount(targetLock ledger.Accountable) (base.TransactionID, error) {
+func (fct *faucetServer) redrawFromAccount(targetLock ledger.Controller) (base.TransactionID, error) {
 	txCtx, err := glb.GetClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: fct.walletData.PrivateKey,
 		TagAlongSeqID:    fct.transferTagAlongSeqID,

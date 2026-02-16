@@ -265,7 +265,7 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 			if len(pair.Key[1:]) == base.OutputIDLength {
 				stats.UTXOCount++
 			}
-		case multistate.TriePartitionAccounts:
+		case multistate.TriePartitionControllers:
 			stats.AccountsCount++
 		case multistate.TriePartitionChainID:
 			stats.ChainCount++

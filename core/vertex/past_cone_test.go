@@ -1224,7 +1224,7 @@ func createTestTransaction(t *testing.T, u *utxodb.UTXODB, addrIdx int) *Wrapped
 	err := u.TokensFromFaucet(addr, 1_000_000_000)
 	require.NoError(t, err)
 
-	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.AccountID())
+	outs, err := u.SugaredStateReader().GetOutputsForAccount(addr.ControllerID())
 	require.NoError(t, err)
 	require.Equal(t, 1, len(outs))
 

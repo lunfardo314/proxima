@@ -9,14 +9,21 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 )
 
-// ListenToAccount listens to all outputs that belong to the account (except stem-locked outputs)
-func (w *Workflow) ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput)) {
+// ListenToControllerAccount listens to all outputs that are
+// unlockable by the controller, except stem-locked outputs
+// - ordinary sigLock-ed UTXOs
+// - ordinary chainLocked-ed UTXOs
+// - delegation output has 2 controller, so delegation output will be seen either by
+// target, or master listener. It is up to the callback to filter UTXO that are exactly needed
+func (w *Workflow) ListenToControllerAccount(controller ledger.Controller, fun func(wOut vertex.WrappedOutput)) {
 	w.events.OnEvent(EventNewTx, func(vid *vertex.WrappedTx) {
 		var _indices [256]byte
 		indices := _indices[:0]
+		stemOutputIdx := vid.SequencerTransactionData().StemOutputIndex
 		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			v.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-				if ledger.BelongsToAccount(o.Lock(), account) && o.Lock().Name() != ledger.StemLockName {
+				// skip stem outputs
+				if idx != stemOutputIdx && ledger.LockIsControlledBy(o.Lock(), controller) {
 					indices = append(indices, idx)
 				}
 				return true

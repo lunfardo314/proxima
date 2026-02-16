@@ -85,7 +85,7 @@ func writeState(state global.StoreReader, target common.KVStreamWriter, root com
 					} else {
 						stats.NumOtherState++
 					}
-				case TriePartitionAccounts:
+				case TriePartitionControllers:
 					stats.NumAccounts++
 				case TriePartitionChainID:
 					stats.NumChainID++

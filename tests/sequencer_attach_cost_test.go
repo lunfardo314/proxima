@@ -63,7 +63,7 @@ func TestSequencerAttachCostTagAlongChainExceedsBudget(t *testing.T) {
 
 	// Get faucet output for creating the chain
 	rdr := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot())
-	faucetOuts, err := rdr.GetOutputsForAccount(testData.addrFaucet.AccountID())
+	faucetOuts, err := rdr.GetOutputsForAccount(testData.addrFaucet.ControllerID())
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(faucetOuts), 1)
 
@@ -165,7 +165,7 @@ func TestSequencerAttachCostTagAlongChainExceedsBudget(t *testing.T) {
 	// Due to the budget limitation, the sequencer should NOT have consumed the tag-along
 	// because its past cone cost exceeds the budget
 	rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
-	targetBalance := rdr.BalanceOf(targetAddr.AccountID())
+	targetBalance := rdr.BalanceOf(targetAddr.ControllerID())
 
 	// The target should have received tokens from the chain transactions
 	// but the tag-along fee should NOT have been collected if budget check works
@@ -419,7 +419,7 @@ func TestSequencerAttachCostBudgetBaseline(t *testing.T) {
 		"all tag-along transactions should be finalized with normal budget")
 
 	// Verify target received the tokens
-	targetBalance := rdr.BalanceOf(targetAddr.AccountID())
+	targetBalance := rdr.BalanceOf(targetAddr.ControllerID())
 	expectedBalance := uint64(numTagAlongs * sendAmount)
 	require.EqualValues(t, expectedBalance, targetBalance,
 		"target should receive tokens from all tag-along transactions")

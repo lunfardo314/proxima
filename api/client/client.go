@@ -119,8 +119,8 @@ func (c *APIClient) GetLedgerDefinitionYAML() ([]byte, error) {
 }
 
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server
-func (c *APIClient) getAccountOutputs(accountable ledger.Accountable, sort ...string) ([]*ledger.OutputDataWithID, *base.TransactionID, error) {
-	path := fmt.Sprintf(api.PathGetAccountOutputs+"?accountable=%s", accountable.String())
+func (c *APIClient) getAccountOutputs(accountable ledger.Controller, sort ...string) ([]*ledger.OutputDataWithID, *base.TransactionID, error) {
+	path := fmt.Sprintf(api.PathGetUTXOsControlledBy+"?controller=%s", accountable.String())
 	if len(sort) > 0 {
 		switch {
 		case strings.HasPrefix(sort[0], "desc"):
@@ -266,7 +266,7 @@ func (c *APIClient) GetOutputsForAmount(addr ledger.SigLock, amount uint64) ([]*
 }
 
 // GetNonChainBalance total of outputs locked in the account but without chain constraint
-func (c *APIClient) GetNonChainBalance(addr ledger.Accountable) (uint64, *base.TransactionID, error) {
+func (c *APIClient) GetNonChainBalance(addr ledger.Controller) (uint64, *base.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetNonChainBalance+"?addr=%s", addr.Source())
 	body, err := c.getBody(path)
 	if err != nil {
@@ -289,13 +289,13 @@ func (c *APIClient) GetNonChainBalance(addr ledger.Accountable) (uint64, *base.T
 }
 
 // GetChainedOutputs fetches all outputs of the account. Optionally sorts them on the server
-func (c *APIClient) GetChainedOutputs(accountable ledger.Accountable) ([]*ledger.OutputWithChainID, *base.TransactionID, error) {
+func (c *APIClient) GetChainedOutputs(accountable ledger.Controller) ([]*ledger.OutputWithChainID, *base.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetChainedOutputs+"?accountable=%s", accountable.String())
 	return c._getChainedOutputs(path)
 }
 
 // GetDelegationOutputs fetches all delegation outputs of the account. Optionally sorts them on the server
-func (c *APIClient) GetDelegationOutputs(accountable ledger.Accountable) ([]ledger.DelegationOutput, *base.TransactionID, error) {
+func (c *APIClient) GetDelegationOutputs(accountable ledger.Controller) ([]ledger.DelegationOutput, *base.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetDelegationOutputs+"?accountable=%s", accountable.String())
 	outs, lrbid, err := c._getChainedOutputs(path)
 	if err != nil {
@@ -479,11 +479,11 @@ func (c *APIClient) SubmitTransaction(txBytes []byte) error {
 }
 
 // GetAccountOutputs returns all UTXOs in the account
-func (c *APIClient) GetAccountOutputs(account ledger.Accountable, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
+func (c *APIClient) GetAccountOutputs(account ledger.Controller, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
 	return c.GetAccountOutputsExt(account, "", filter...)
 }
 
-func (c *APIClient) GetAccountOutputsExt(account ledger.Accountable, sortOption string, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
+func (c *APIClient) GetAccountOutputsExt(account ledger.Controller, sortOption string, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
 	filterFun := func(oid *base.OutputID, o *ledger.Output) bool { return true }
 	if len(filter) > 0 {
 		filterFun = filter[0]
@@ -500,7 +500,7 @@ func (c *APIClient) GetAccountOutputsExt(account ledger.Accountable, sortOption 
 	return outs, lrbid, nil
 }
 
-func (c *APIClient) GetAccountParsedOutputs(account ledger.Accountable, maxOutputs int, sortOption ...string) (*api.ParsedOutputList, error) {
+func (c *APIClient) GetAccountParsedOutputs(account ledger.Controller, maxOutputs int, sortOption ...string) (*api.ParsedOutputList, error) {
 	if maxOutputs < 0 {
 		maxOutputs = 0
 	}
@@ -615,7 +615,7 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 }
 
 // GetTransferableOutputs returns a reasonable maximum number of outputs owned by accountable with only 2 constraints and returns total
-func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutputs ...int) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
+func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs ...int) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
 	maxO := 256
 	if len(maxOutputs) > 0 && maxOutputs[0] < 256 && maxOutputs[0] > 0 {
 		maxO = maxOutputs[0]
@@ -632,7 +632,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Accountable, maxOutput
 		return nil, nil, 0, nil
 	}
 	ret = util.PurgeSlice(ret, func(o *ledger.OutputWithID) bool {
-		return ledger.EqualAccountables(account, o.Output.Lock().Master())
+		return ledger.EqualControllers(account, o.Output.Lock().Master())
 	})
 	ret = util.TrimSlice(ret, maxO)
 	sum := uint64(0)

@@ -70,7 +70,7 @@ type (
 
 const (
 	TriePartitionLedgerState = byte(iota)
-	TriePartitionAccounts
+	TriePartitionControllers
 	TriePartitionChainID
 )
 
@@ -78,7 +78,7 @@ func PartitionToString(p byte) string {
 	switch p {
 	case TriePartitionLedgerState:
 		return "UTXO"
-	case TriePartitionAccounts:
+	case TriePartitionControllers:
 		return "ACCN"
 	case TriePartitionChainID:
 		return "CHID"
@@ -179,7 +179,7 @@ func (r *Readable) KnowsCommittedTransaction(txid base.TransactionID) bool {
 	return common.HasWithPrefix(partition, txid[:])
 }
 
-func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error) {
+func (r *Readable) GetUTXOIDsForController(addr ledger.ControllerID) ([]base.OutputID, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -190,7 +190,7 @@ func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, 
 	var oid base.OutputID
 	var err error
 
-	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(addr)), addr)
+	accountPrefix := common.Concat(TriePartitionControllers, byte(len(addr)), addr)
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
 		oid, err = base.OutputIDFromBytes(k[len(accountPrefix):])
 		if err != nil {
@@ -206,12 +206,12 @@ func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, 
 	return ret, nil
 }
 
-func (r *Readable) GetUTXOsInAccount(addr ledger.AccountID) ([]*ledger.OutputDataWithID, error) {
+func (r *Readable) GetUTXOsForController(addr ledger.ControllerID) ([]*ledger.OutputDataWithID, error) {
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
 	ret := make([]*ledger.OutputDataWithID, 0)
-	err := r.IterateUTXOsInAccount(addr, func(oid base.OutputID, odata []byte) bool {
+	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
 		ret = append(ret, &ledger.OutputDataWithID{
 			ID:   oid,
 			Data: odata,
@@ -224,11 +224,11 @@ func (r *Readable) GetUTXOsInAccount(addr ledger.AccountID) ([]*ledger.OutputDat
 	return ret, nil
 }
 
-func (r *Readable) IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid base.OutputID, odata []byte) bool) (err error) {
+func (r *Readable) IterateUTXOsForController(controllerID ledger.ControllerID, fun func(oid base.OutputID, odata []byte) bool) (err error) {
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	return r.IterateUTXOIDsInAccount(addr, func(oid base.OutputID) bool {
+	return r.IterateUTXOIDsForController(controllerID, func(oid base.OutputID) bool {
 		if odata, found := r._getUTXO(oid, partition); found {
 			return fun(oid, odata)
 		}
@@ -236,8 +236,8 @@ func (r *Readable) IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid bas
 	})
 }
 
-func (r *Readable) IsKnownAccount(addr ledger.AccountID) (ret bool) {
-	err := r.IterateUTXOsInAccount(addr, func(oid base.OutputID, odata []byte) bool {
+func (r *Readable) IsKnownController(addr ledger.ControllerID) (ret bool) {
+	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
 		ret = true
 		return false
 	})
@@ -245,14 +245,14 @@ func (r *Readable) IsKnownAccount(addr ledger.AccountID) (ret bool) {
 	return
 }
 
-func (r *Readable) IterateUTXOIDsInAccount(addr ledger.AccountID, fun func(oid base.OutputID) bool) (err error) {
+func (r *Readable) IterateUTXOIDsForController(controller ledger.ControllerID, fun func(oid base.OutputID) bool) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if len(addr) > 255 {
-		return fmt.Errorf("accountID length should be <= 255")
+	if len(controller) > 255 {
+		return fmt.Errorf("controllerID length should be <= 255")
 	}
-	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(addr)), addr)
+	accountPrefix := common.Concat(TriePartitionControllers, byte(len(controller)), controller)
 
 	var oid base.OutputID
 
@@ -303,7 +303,7 @@ func (r *Readable) GetStem() (uint32, []byte) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
+	accountPrefix := common.Concat(TriePartitionControllers, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
 
 	var found bool
 	var retSlot uint32
@@ -405,7 +405,7 @@ func (r *Readable) IterateUTXOIDs(fun func(oid base.OutputID) bool) (err error) 
 
 	var oid base.OutputID
 
-	r.trie.Iterator([]byte{TriePartitionAccounts}).IterateKeys(func(k []byte) bool {
+	r.trie.Iterator([]byte{TriePartitionControllers}).IterateKeys(func(k []byte) bool {
 		if oid, err = base.OutputIDFromBytes(k[2+k[1]:]); err != nil {
 			return false
 		}

@@ -387,7 +387,7 @@ type (
 	TransferData struct {
 		SenderPrivateKey ed25519.PrivateKey
 		SenderPublicKey  ed25519.PublicKey
-		SourceAccount    ledger.Accountable
+		SourceAccount    ledger.Controller
 		Inputs           []*ledger.OutputWithID
 		ChainOutput      *ledger.OutputWithChainID
 		Timestamp        base.LedgerTime // takes ledger.TimeFromClockTime(time.Now()) if ledger.NilLedgerTime
@@ -430,7 +430,7 @@ type (
 	}
 )
 
-func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts base.LedgerTime) *TransferData {
+func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount ledger.Controller, ts base.LedgerTime) *TransferData {
 	sourcePubKey := senderKey.Public().(ed25519.PublicKey)
 	if util.IsNil(sourceAccount) {
 		sourceAccount = ledger.SigLockFromED25519PublicKey(sourcePubKey)
@@ -931,7 +931,7 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 	if len(chainData) != 1 {
 		return nil, nil, fmt.Errorf("error while parsing chain output")
 	}
-	retData, err := srdr.GetUTXOsInAccount(ledger.ChainLockFromChainID(chainID).AccountID())
+	retData, err := srdr.GetUTXOsForController(ledger.ChainLockFromChainID(chainID).ControllerID())
 	if err != nil {
 		return nil, nil, err
 	}

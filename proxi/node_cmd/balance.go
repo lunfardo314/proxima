@@ -41,7 +41,7 @@ func runBalanceCmd(_ *cobra.Command, _ []string) {
 	displayBalanceTotals(outs, accountable)
 }
 
-func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Accountable) {
+func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Controller) {
 	var sumOnNonDelegationChains, sumOutsideChains, sumDelegation uint64
 	var numNonChains int
 
@@ -51,7 +51,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Acco
 	for _, o := range outs {
 		if oChain, err := o.AsChainOutput(); err == nil {
 			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-				if !ledger.EqualAccountables(dOut.Master(), walletAccount) {
+				if !ledger.EqualControllers(dOut.Master(), walletAccount) {
 					// for delegation locks only count those which are owned by the wallet
 					continue
 				}

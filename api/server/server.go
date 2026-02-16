@@ -63,8 +63,8 @@ const TraceTag = "apiServer"
 func (srv *server) registerHandlers() {
 	// GET request format: '/api/v1/get_ledger_definition?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
-	// GET request format: '/api/v1/get_account_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
-	srv.addHandler(api.PathGetAccountOutputs, srv.getAccountOutputs)
+	// GET request format: '/api/v1/get_utxo_controlled_by?controller=<EasyFL source form of the controller lock constraint>'
+	srv.addHandler(api.PathGetUTXOsControlledBy, srv.getUTXOsControlledBy)
 	// GET request format: '/api/v1/get_account_parsed_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
 	srv.addHandler(api.PathGetAccountParsedOutputs, srv.getAccountParsedOutputs)
 	// GET request format: '/api/v1/get_account_simple_siglocked?addr=<a(0x....)>'
@@ -159,7 +159,7 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (srv *server) _getAccountOutputsWithFilter(r *http.Request, addr ledger.Accountable, filter func(oid base.OutputID, o *ledger.Output) bool) (
+func (srv *server) _getControlledOutputsWithFilter(r *http.Request, controller ledger.Controller, filter func(oid base.OutputID, o *ledger.Output) bool) (
 	outs []*ledger.OutputWithID, lrbid base.TransactionID, err error) {
 	if filter == nil {
 		filter = func(_ base.OutputID, _ *ledger.Output) bool { return true }
@@ -196,7 +196,7 @@ func (srv *server) _getAccountOutputsWithFilter(r *http.Request, addr ledger.Acc
 
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) (errRet error) {
 		lrbid = rdr.GetStemOutput().ID.TransactionID()
-		err1 := rdr.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
+		err1 := rdr.IterateOutputsForAccount(controller, func(oid base.OutputID, o *ledger.Output) bool {
 			if filter(oid, o) {
 				outs = append(outs, &ledger.OutputWithID{
 					ID:     oid,
@@ -276,22 +276,21 @@ func _writeParsedOutputs(w http.ResponseWriter, outs []*ledger.OutputWithID, lrb
 	util.AssertNoError(err)
 }
 
-// getAccountOutputs returns all outputs from the account
-// Lock can be of any type
-func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
+// getUTXOsControlledBy returns all outputs indexed as controlled by the controller
+func (srv *server) getUTXOsControlledBy(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
 
-	lst, ok := r.URL.Query()["accountable"]
+	lst, ok := r.URL.Query()["controller"]
 	if !ok || len(lst) != 1 {
-		api.WriteErr(w, "wrong parameter 'accountable' in request 'get_account_outputs'")
+		api.WriteErr(w, "wrong parameter 'controller' in request 'get_utxos_controlled_by'")
 		return
 	}
-	accountable, err := ledger.AccountableFromSource(lst[0])
+	accountable, err := ledger.ControllerFromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	outs, lrbid, err := srv._getAccountOutputsWithFilter(r, accountable, nil)
+	outs, lrbid, err := srv._getControlledOutputsWithFilter(r, accountable, nil)
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
@@ -299,7 +298,7 @@ func (srv *server) getAccountOutputs(w http.ResponseWriter, r *http.Request) {
 	_writeOutputs(w, outs, lrbid)
 }
 
-// getAccountOutputs returns all outputs from the account
+// getUTXOsControlledBy returns all outputs from the account
 // Lock can be of any type
 func (srv *server) getAccountParsedOutputs(w http.ResponseWriter, r *http.Request) {
 	api.SetHeader(w)
@@ -309,12 +308,12 @@ func (srv *server) getAccountParsedOutputs(w http.ResponseWriter, r *http.Reques
 		api.WriteErr(w, "wrong parameter 'accountable' in request 'get_account_outputs'")
 		return
 	}
-	accountable, err := ledger.AccountableFromSource(lst[0])
+	accountable, err := ledger.ControllerFromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
 	}
-	outs, lrbid, err := srv._getAccountOutputsWithFilter(r, accountable, nil)
+	outs, lrbid, err := srv._getControlledOutputsWithFilter(r, accountable, nil)
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
@@ -336,7 +335,7 @@ func (srv *server) getAccountSimpleSigLockedOutputs(w http.ResponseWriter, r *ht
 		api.WriteErr(w, err.Error())
 		return
 	}
-	outs, lrbid, err := srv._getAccountOutputsWithFilter(r, addr, func(_ base.OutputID, o *ledger.Output) bool {
+	outs, lrbid, err := srv._getControlledOutputsWithFilter(r, addr, func(_ base.OutputID, o *ledger.Output) bool {
 		if o.Lock().Name() != ledger.SigLockName {
 			return false
 		}
@@ -431,7 +430,7 @@ func (srv *server) getOutputsForAmount(w http.ResponseWriter, r *http.Request) {
 				// filter out chained outputs
 				return true
 			}
-			if !ledger.EqualAccountables(targetAddr, o.Lock().(ledger.SigLock)) {
+			if !ledger.EqualControllers(targetAddr, o.Lock().(ledger.SigLock)) {
 				return true
 			}
 			resp.Outputs[oid.StringHex()] = o.Hex()
@@ -516,7 +515,7 @@ func (srv *server) _getChainedOutputsFiltered(w http.ResponseWriter, r *http.Req
 		api.WriteErr(w, "wrong parameter 'accountable' in request 'get_chained_outputs'")
 		return
 	}
-	accountable, err := ledger.AccountableFromSource(lst[0])
+	accountable, err := ledger.ControllerFromSource(lst[0])
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return

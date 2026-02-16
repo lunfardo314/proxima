@@ -153,7 +153,7 @@ func TestSnapshotUpgradeLibraries_EmptyStore(t *testing.T) {
 func TestSnapshotUpgradeLibraries_PartitionByte(t *testing.T) {
 	// Verify the upgrade library partition byte is distinct from trie partitions
 	require.NotEqual(t, TriePartitionLedgerState, upgradeLibraryDBPartition)
-	require.NotEqual(t, TriePartitionAccounts, upgradeLibraryDBPartition)
+	require.NotEqual(t, TriePartitionControllers, upgradeLibraryDBPartition)
 	require.NotEqual(t, TriePartitionChainID, upgradeLibraryDBPartition)
 }
 

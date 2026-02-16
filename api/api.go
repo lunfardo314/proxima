@@ -19,7 +19,7 @@ const (
 	PrefixWebSocketV1 = "/wsapi/v1"
 
 	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
-	PathGetAccountOutputs                = PrefixAPIV1 + "/get_account_outputs"
+	PathGetUTXOsControlledBy             = PrefixAPIV1 + "/get_utxos_controlled_by"
 	PathGetAccountParsedOutputs          = PrefixAPIV1 + "/get_account_parsed_outputs"
 	PathGetAccountSimpleSiglockedOutputs = PrefixAPIV1 + "/get_account_simple_siglocked"
 	PathGetOutputsForAmount              = PrefixAPIV1 + "/get_outputs_for_amount"

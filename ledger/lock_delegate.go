@@ -78,8 +78,11 @@ func (d *DelegateLock) Bytes() []byte {
 	return mustBinFromSource(d.Source())
 }
 
-func (d *DelegateLock) Accounts() []Accountable {
-	return NoDuplicatesAccountables([]Accountable{d.Target, SigLock(d.MasterID)})
+func (d *DelegateLock) Controllers() []Controller {
+	if EqualControllers(d.Target, SigLock(d.MasterID)) {
+		return []Controller{d.Target}
+	}
+	return []Controller{d.Target, SigLock(d.MasterID)}
 }
 
 func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
@@ -128,7 +131,7 @@ func (d *DelegateLock) Name() string {
 	return DelegateLockName
 }
 
-func (d *DelegateLock) Master() Accountable {
+func (d *DelegateLock) Master() Controller {
 	return SigLock(d.MasterID)
 }
 

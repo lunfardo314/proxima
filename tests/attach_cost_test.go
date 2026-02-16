@@ -44,7 +44,7 @@ func TestAttachCostBudgetChainWithinLimit(t *testing.T) {
 		t.Logf("AttachmentCostBudget = %d", costBudget)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
@@ -110,7 +110,7 @@ func TestAttachCostBudgetShortChain(t *testing.T) {
 		t.Logf("AttachmentCostBudget = %d", costBudget)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
@@ -176,7 +176,7 @@ func TestAttachCostBudgetMultipleTransactions(t *testing.T) {
 		t.Logf("AttachmentCostBudget = %d", costBudget)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
@@ -235,7 +235,7 @@ func TestAttachCostBudgetFanOutCostTracking(t *testing.T) {
 		t.Logf("AttachmentCostBudget = %d", costBudget)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 
@@ -389,7 +389,7 @@ func TestAttachCostBudgetExceededMilestoneAttacher(t *testing.T) {
 
 		// Get a source output for creating non-sequencer transactions
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(oDatas), 1)
 
@@ -545,7 +545,7 @@ func TestAttachCostBudgetVerifyCalculation(t *testing.T) {
 		require.NoError(t, err)
 
 		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
+		oDatas, err := rdr.GetUTXOsForController(testData.addr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 1, len(oDatas))
 

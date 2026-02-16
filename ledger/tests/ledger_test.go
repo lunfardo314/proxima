@@ -874,7 +874,7 @@ func TestChainLock(t *testing.T) {
 		require.EqualValues(t, 110_000_000, int(onLocked))
 		require.EqualValues(t, 200_000_000, int(onChainOut))
 
-		outs, err := u.StateReader().GetUTXOsInAccount(chainAddr.AccountID())
+		outs, err := u.StateReader().GetUTXOsForController(chainAddr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 2, len(outs))
 

@@ -72,12 +72,12 @@ func AddFlagTarget(cmd *cobra.Command) {
 	AssertNoError(err)
 }
 
-func MustGetTarget() ledger.Accountable {
-	var ret ledger.Accountable
+func MustGetTarget() ledger.Controller {
+	var ret ledger.Controller
 	var err error
 
 	if targetStr != "" {
-		ret, err = ledger.AccountableFromSource(targetStr)
+		ret, err = ledger.ControllerFromSource(targetStr)
 		AssertNoError(err)
 		Infof("target account is: %s", ret.String())
 	} else {
