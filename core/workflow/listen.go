@@ -19,11 +19,11 @@ func (w *Workflow) ListenToControllerAccount(controller ledger.Controller, fun f
 	w.events.OnEvent(EventNewTx, func(vid *vertex.WrappedTx) {
 		var _indices [256]byte
 		indices := _indices[:0]
-		stemOutputIdx := vid.SequencerTransactionData().StemOutputIndex
+		seqData := vid.SequencerTransactionData()
 		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			v.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
 				// skip stem outputs
-				if idx != stemOutputIdx && ledger.LockIsControlledBy(o.Lock(), controller) {
+				if (seqData == nil || idx != seqData.StemOutputIndex) && ledger.LockIsControlledBy(o.Lock(), controller) {
 					indices = append(indices, idx)
 				}
 				return true
