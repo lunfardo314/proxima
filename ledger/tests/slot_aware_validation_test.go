@@ -39,40 +39,40 @@ func TestSlotAwareLibraryAccess(t *testing.T) {
 
 func TestSlotAwareConstraintParsing(t *testing.T) {
 	// Test that constraint parsing uses slot-aware functions
-	t.Run("NameByPrefixAtSlot returns same name for same prefix", func(t *testing.T) {
+	t.Run("NameByPrefixWithLib returns same name for same prefix across libraries", func(t *testing.T) {
 		// Get a known constraint prefix
 		lib := ledger.L(base.MaxSlot)
 		prefix, err := lib.FunctionCallPrefixByName(ledger.SigLockName, 1)
 		require.NoError(t, err)
 
-		// Should return same name at different slots
-		name0, found0 := ledger.NameByPrefixAtSlot(prefix, 0)
-		require.True(t, found0, "should find constraint at slot 0")
+		// Should return same name with libraries at different slots
+		name0, found0 := ledger.NameByPrefixWithLib(prefix, ledger.L(0))
+		require.True(t, found0, "should find constraint with lib at slot 0")
 
-		name1000, found1000 := ledger.NameByPrefixAtSlot(prefix, 1000)
-		require.True(t, found1000, "should find constraint at slot 1000")
+		name1000, found1000 := ledger.NameByPrefixWithLib(prefix, ledger.L(1000))
+		require.True(t, found1000, "should find constraint with lib at slot 1000")
 
-		nameMax, foundMax := ledger.NameByPrefixAtSlot(prefix, base.MaxSlot)
-		require.True(t, foundMax, "should find constraint at MaxSlot")
+		nameMax, foundMax := ledger.NameByPrefixWithLib(prefix, ledger.L(base.MaxSlot))
+		require.True(t, foundMax, "should find constraint with lib at MaxSlot")
 
 		require.Equal(t, name0, name1000, "constraint name should be consistent")
 		require.Equal(t, name0, nameMax, "constraint name should be consistent")
 		require.Equal(t, ledger.SigLockName, name0, "should be sigLock constraint")
 	})
 
-	t.Run("ConstraintFromBytesAtSlot parses correctly", func(t *testing.T) {
+	t.Run("ConstraintFromBytesWithLib parses correctly across libraries", func(t *testing.T) {
 		// Create an address constraint
 		addr := ledger.SigLock{}
 		addrBytes := addr.Bytes()
 
-		// Parse at different slots
-		c0, err := ledger.ConstraintFromBytesAtSlot(addrBytes, 0)
+		// Parse with libraries at different slots
+		c0, err := ledger.ConstraintFromBytesWithLib(addrBytes, ledger.L(0))
 		require.NoError(t, err)
 
-		c1000, err := ledger.ConstraintFromBytesAtSlot(addrBytes, 1000)
+		c1000, err := ledger.ConstraintFromBytesWithLib(addrBytes, ledger.L(1000))
 		require.NoError(t, err)
 
-		cMax, err := ledger.ConstraintFromBytesAtSlot(addrBytes, base.MaxSlot)
+		cMax, err := ledger.ConstraintFromBytesWithLib(addrBytes, ledger.L(base.MaxSlot))
 		require.NoError(t, err)
 
 		// All should parse to same constraint
@@ -182,14 +182,14 @@ func TestValidationCodeReviewSummary(t *testing.T) {
 	//    - Line 22: lib := ledger.L(ctx.Slot()) - uses transaction's slot
 	//    - Line 197: ledger.L(slot).DecompileBytecode(bytecode)
 	//    - Line 297: ledger.L(slot).ParsePrefixBytecode(binCode)
-	//    - Line 302: ledger.NameByPrefixAtSlot(prefix, slot)
+	//    - Line 302: ledger.NameByPrefixWithLib(prefix, tx.Library)
 	//    - Line 322: ledger.L(ctx.Slot()).EvalFromBytecodeWithSlicePool(...)
 	//
-	// 2. ledger/constraints.go - slot-aware functions:
-	//    - NameByPrefixAtSlot(prefix, slot)
-	//    - ConstraintFromBytesAtSlot(data, slot)
-	//    - LockFromBytesAtSlot(data, slot)
-	//    - AccountableFromBytesAtSlot(data, slot)
+	// 2. ledger/constraints_serde.go - library-based functions:
+	//    - NameByPrefixWithLib(prefix, lib)
+	//    - ConstraintFromBytesWithLib(data, lib)
+	//    - LockFromBytesWithLib(data, lib)
+	//    - ControllerFromBytesWithLib(data, lib)
 	//
 	// 3. core/attacher/attacher.go:
 	//    - Calls ValidateConstraints which uses transaction's slot

@@ -546,7 +546,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 			bc = fmt.Sprintf(prefix+"   bytecode: %s", easyfl_util.Fmt(data))
 		}
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
+		c, err := ConstraintFromBytesWithLib(data, L(base.MaxSlot))
 
 		if err != nil {
 			if src, err := L(base.MaxSlot).DecompileBytecode(data); err != nil {
@@ -582,7 +582,7 @@ func (o *Output) LinesPlainSource() *lines.Lines {
 			return true
 		}
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
+		c, err := ConstraintFromBytesWithLib(data, L(base.MaxSlot))
 		if err != nil {
 			ret.Add(err.Error())
 		} else {
@@ -606,7 +606,7 @@ func (o *Output) LinesPlainHR() *lines.Lines {
 			return true
 		}
 		// Uses latest library version - upgrade code must maintain backward-compatible parsing
-		c, err := ConstraintFromBytesAtSlot(data, base.MaxSlot)
+		c, err := ConstraintFromBytesWithLib(data, L(base.MaxSlot))
 		if err != nil {
 			ret.Add(err.Error())
 		} else {
@@ -796,7 +796,7 @@ func OutputsWithIDToString(outs ...*OutputWithID) string {
 
 func (o *Output) hasConstraintAt(pos byte, constraintName string) bool {
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	constr, err := ConstraintFromBytesAtSlot(o.MustConstraintAt(pos), base.MaxSlot)
+	constr, err := ConstraintFromBytesWithLib(o.MustConstraintAt(pos), L(base.MaxSlot))
 	util.AssertNoError(err)
 
 	return constr.Name() == constraintName
@@ -806,7 +806,7 @@ func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
 	util.Assertf(o.NumConstraints() >= int(pos), "no constraint at position %d", pos)
 
 	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	constr, err := ConstraintFromBytesAtSlot(o.MustConstraintAt(pos), base.MaxSlot)
+	constr, err := ConstraintFromBytesWithLib(o.MustConstraintAt(pos), L(base.MaxSlot))
 	util.AssertNoError(err)
 
 	for _, n := range names {

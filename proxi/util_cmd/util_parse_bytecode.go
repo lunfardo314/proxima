@@ -36,8 +36,7 @@ func runParseBytecode(_ *cobra.Command, args []string) {
 	bytecode, err := hex.DecodeString(args[0])
 	glb.AssertNoError(err)
 
-	// CLI uses latest library version for parsing bytecode
-	c, err := ledger.ConstraintFromBytesAtSlot(bytecode, base.MaxSlot)
+	c, err := ledger.ConstraintFromBytesWithLib(bytecode, ledger.L(base.MaxSlot))
 	glb.AssertNoError(err)
 
 	glb.Infof("Parsed bytecode:\n    string: %s\n    source: %s", c.String(), c.Source())

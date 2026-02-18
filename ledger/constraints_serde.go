@@ -10,33 +10,24 @@ import (
 )
 
 /*
-The file constraints_serde.go contains definitions related to serialization/deserialization of the UTXO constraints.
-This is a helper wrapper code of the underlying ledger definitions that are immutable in the ledger.
+Serialization/deserialization of UTXO constraints: compiling EasyFL source to bytecode and back.
 
-Serialization means compiling EasyFL source code to bytecode.
-Deserialization means decompiling EasyFL source code from the bytecode
+A constraint is EasyFL bytecode stored as part of a UTXO tuple. The Constraint interface wraps
+a parsed Go structure over that bytecode. Registering a constraint in the Library enables
+decompilation and pretty-printing.
 
-The 'constraint' is an EasyFL bytecode, a part of the UTXO.
-The Constraint interface wraps Go structure that is parsed from the bytecode.
+Serde depends only on the name<->opcode mapping and numArgs, both immutable across upgrades.
+Therefore constraint serde is fully backward-compatible with any future Library upgrade.
+Registering a constraint alone does not impose additional transaction validity rules.
 
-Usually constraints are known to the Library via registering it. That allows decompiling and pretty printing of UTXO constraints.
+A lock is a special constraint registered via mustRegisterLockSerde. Locks must occupy index 1
+of the UTXO tuple. Each lock provides one or more ControllerIDs used as indexable tags in the
+UTXO index (part of the ledger state trie). Registering a lock imposes additional rules on
+ledger validity and state consistency.
 
-IMPORTANT: serialization/deserialization of constraints often takes Library as an argument. Libraries can be upgraded by adding and modifying function definitions.
-However, serialization/deserialization of a specific formula never changes because it depends on the name <-> op-code relation and the 'numArgs' parameter. Both are immutable upon upgrades.
-
-This means, SERIALIZATION/DESERIALIZATION OF CONSTRAINTS IS UPGRADE AGNOSTIC, I.E. IT IS THE SAME AND BACKWARD COMPATIBLE FOR ANY FUTURE LIBRARY UPGRADES.
-Being registered as 'constraint' in the Library does not impose additional validity rules to the transaction.
-
-Special type of the constraint is 'lock'. Certain constraints are registered as 'locks'. They implement Lock interface.
-
-It is enforced that locks (and only locks) can be at the index 1 of the UTXO constraints. Locks provides a list of 'ControllerIDs', identifiers (indexable tags) for the UTXO indexer.
-Typically, lock has one indexable tag, sometimes 2 or more.
-UTXO index is part of the ledger state: every UTXO has at least one corresponding index entry in the trie of the ledger state.
-BEING REGISTERED AS 'LOCK' IMPOSES ADDITIONAL RULES TO THE LEDGER VALIDITY AND THE CONSISTENCY OF THE STATE.
-
-For example SigLock is lock with one index value. We can find all UTXOs belonging to certain address in the ledger state.
-
-Another example is DelegateLock. It has two controller IDs: address of the master and address of the target.
+Examples:
+  - SigLock: one ControllerID (the address). Enables lookup of all UTXOs for an address.
+  - DelegateLock: two ControllerIDs (master address and target address).
 */
 
 type (
@@ -47,13 +38,9 @@ type (
 		String() string // human-readable
 	}
 
-	// ControllerID is used as a value in the index of UTXOs in the state.
-	// UTXOs with the same ControllerID can be unlocked the same way.
-	// Each lock constraint of UTXO provides 1 or more controller IDs for the index.
-	// There are 3 single-controller locks:
-	// - sigLock's controllerID is bytecode of the sigLock Constraint
-	// - chainLock's controllerID is bytecode of the chainLock Constraint
-	// - stemLock controllerID is 1 byte with 0 value (a placeholder)
+	// ControllerID is an indexable tag for the UTXO state index.
+	// Each lock provides one or more ControllerIDs. UTXOs sharing a ControllerID are unlockable the same way.
+	// Values: sigLock and chainLock use their own bytecode; stemLock uses a single zero byte (placeholder).
 	ControllerID []byte // assumed <= 255
 
 	Controller interface {
@@ -64,9 +51,9 @@ type (
 
 	Lock interface {
 		Constraint
-		// Controllers all controllers of the lock
+		// Controllers returns all controllers of the lock.
 		Controllers() []Controller
-		// Master is account which is always unlockable. For conditional locks it is usually nil (no master)
+		// Master returns the unconditionally unlockable controller, or nil for conditional locks.
 		Master() Controller
 	}
 
@@ -79,19 +66,15 @@ type (
 		parser ConstraintParser
 	}
 
-	// LockBalance is an amount/target pair used in distribution list
-	// One LockBalance results in one produced output on the transaction
+	// LockBalance is a lock/amount pair in a distribution list. Each entry produces one output.
 	LockBalance struct {
-		// Lock of the output
-		Lock Lock
-		// Balance amount of tokens on the output
-		Balance uint64
-		// ChainOrigin true if start a chain on this output by adding chain constrain (origin)
-		//	 false for simple ED25519 account balance (no chain origin added)
-		ChainOrigin bool
+		Lock        Lock
+		Balance     uint64
+		ChainOrigin bool // if true, a chain constraint (origin) is added to this output
 	}
 )
 
+// mustRegisterConstraint registers a constraint parser keyed by its bytecode prefix.
 func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser ConstraintParser) {
 	prefix, err := lib.FunctionCallPrefixByName(name, nArgs)
 	util.AssertNoError(err)
@@ -105,7 +88,7 @@ func (lib *Library) mustRegisterConstraint(name string, nArgs byte, parser Const
 	}
 }
 
-// mustRegisterVarargConstraint registers one parser for each possible number of args (0 to 15)
+// mustRegisterVarargConstraint registers a parser for all arities 0..15 of the named constraint.
 func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintParser) {
 	for i := 0; i <= 15; i++ {
 		prefix, err := lib.FunctionCallPrefixByName(name, byte(i))
@@ -122,6 +105,7 @@ func (lib *Library) mustRegisterVarargConstraint(name string, parser ConstraintP
 	}
 }
 
+// mustRegisterLockSerde registers a lock parser by constraint name.
 func (lib *Library) mustRegisterLockSerde(name string, parser LockParser) {
 	_, already := lib.locksByName[name]
 	util.Assertf(!already, "mustRegisterLockSerde: repeating lock '%s'", name)
@@ -129,8 +113,7 @@ func (lib *Library) mustRegisterLockSerde(name string, parser LockParser) {
 	lib.locksByName[name] = parser
 }
 
-// NameByPrefixWithLib looks up constraint name from bytecode prefix using the provided library.
-// This is the core implementation that avoids repeated L(slot) calls.
+// NameByPrefixWithLib looks up constraint name from bytecode prefix.
 func NameByPrefixWithLib(prefix []byte, lib *Library) (string, bool) {
 	if ret, found := lib.constraintByPrefix[string(prefix)]; found {
 		return ret.name, true
@@ -138,17 +121,12 @@ func NameByPrefixWithLib(prefix []byte, lib *Library) (string, bool) {
 	return "", false
 }
 
-// NameByPrefixAtSlot looks up constraint name from bytecode prefix using the library for the given slot.
-// Use this when parsing bytecode that was created at a specific slot.
-func NameByPrefixAtSlot(prefix []byte, slot uint32) (string, bool) {
-	return NameByPrefixWithLib(prefix, L(slot))
-}
-
-// NameByPrefix looks up constraint name using the latest library version.
+// NameByPrefix looks up constraint name using the latest library.
 func NameByPrefix(prefix []byte) (string, bool) {
-	return NameByPrefixAtSlot(prefix, base.MaxSlot)
+	return NameByPrefixWithLib(prefix, L(base.MaxSlot))
 }
 
+// constraintParserByPrefixWithLib returns the registered parser for the given bytecode prefix.
 func constraintParserByPrefixWithLib(prefix []byte, lib *Library) (ConstraintParser, bool) {
 	if ret, found := lib.constraintByPrefix[string(prefix)]; found {
 		return ret.parser, true
@@ -156,17 +134,20 @@ func constraintParserByPrefixWithLib(prefix []byte, lib *Library) (ConstraintPar
 	return nil, false
 }
 
+// mustBinFromSource compiles EasyFL source to bytecode using the latest library. Panics on error.
 func mustBinFromSource(src string) []byte {
 	ret, err := binFromSource(src)
 	util.AssertNoError(err)
 	return ret
 }
 
+// binFromSource compiles EasyFL source to bytecode using the latest library.
 func binFromSource(src string) ([]byte, error) {
 	_, _, binCode, err := L(base.MaxSlot).CompileExpression(src)
 	return binCode, err
 }
 
+// EqualConstraints returns true if both constraints have identical bytecode.
 func EqualConstraints(l1, l2 Constraint) bool {
 	if util.IsNil(l1) != util.IsNil(l2) {
 		return false
@@ -177,8 +158,7 @@ func EqualConstraints(l1, l2 Constraint) bool {
 	return bytes.Equal(l1.Bytes(), l2.Bytes())
 }
 
-// ConstraintFromBytesWithLib parses a constraint from bytecode using the provided library.
-// This is the core implementation that avoids repeated L(slot) calls.
+// ConstraintFromBytesWithLib parses a constraint from bytecode. Falls back to GeneralScript for unknown prefixes.
 func ConstraintFromBytesWithLib(data []byte, lib *Library) (Constraint, error) {
 	prefix, err := lib.ParsePrefixBytecode(data)
 	if err != nil {
@@ -191,22 +171,16 @@ func ConstraintFromBytesWithLib(data []byte, lib *Library) (Constraint, error) {
 	return NewGeneralScript(data), nil
 }
 
-// ConstraintFromBytesAtSlot parses a constraint from bytecode using the library for the given slot.
-// Use this when parsing bytecode that was created at a specific slot.
-func ConstraintFromBytesAtSlot(data []byte, slot uint32) (Constraint, error) {
-	return ConstraintFromBytesWithLib(data, L(slot))
-}
-
 func (acc ControllerID) Bytes() []byte {
 	return acc
 }
 
-// LockFromBytes parses a lock from bytecode using the provided library.
-// This is the core implementation that avoids repeated L(slot) calls.
+// LockFromBytes parses a lock from bytecode using the latest library.
 func LockFromBytes(data []byte) (Lock, error) {
 	return LockFromBytesWithLib(data, L(base.MaxSlot))
 }
 
+// LockFromBytesWithLib parses a lock from bytecode. Returns error for unknown or non-lock constraints.
 func LockFromBytesWithLib(data []byte, lib *Library) (Lock, error) {
 	prefix, err := lib.ParsePrefixBytecode(data)
 	if err != nil {
@@ -224,8 +198,7 @@ func LockFromBytesWithLib(data []byte, lib *Library) (Lock, error) {
 	return parser(data)
 }
 
-// ControllerFromBytesWithLib parses a Controller lock from bytecode using the provided library.
-// This is the core implementation that avoids repeated L(slot) calls.
+// ControllerFromBytesWithLib parses a controller lock (sigLock, chainLock, or stemLock) from bytecode.
 func ControllerFromBytesWithLib(data []byte, lib *Library) (Controller, error) {
 	prefix, err := lib.ParsePrefixBytecode(data)
 	if err != nil {
@@ -246,15 +219,16 @@ func ControllerFromBytesWithLib(data []byte, lib *Library) (Controller, error) {
 	return nil, fmt.Errorf("not a controller lock '%s'", name)
 }
 
+// ControllerFromSource compiles EasyFL source and parses it as a controller lock.
 func ControllerFromSource(src string) (Controller, error) {
 	data, err := binFromSource(src)
 	if err != nil {
 		return nil, fmt.Errorf("EasyFL compile error: %v", err)
 	}
-	// Use latest library version for newly compiled bytecode
 	return ControllerFromBytesWithLib(data, L(base.MaxSlot))
 }
 
+// LockIsControlledBy returns true if acc is among the lock's controllers.
 func LockIsControlledBy(lock Lock, acc Controller) bool {
 	for _, a := range lock.Controllers() {
 		if EqualControllers(acc, a) {
@@ -264,6 +238,7 @@ func LockIsControlledBy(lock Lock, acc Controller) bool {
 	return false
 }
 
+// EqualControllers returns true if both controllers have the same ControllerID.
 func EqualControllers(a1, a2 Controller) bool {
 	return bytes.Equal(a1.ControllerID(), a2.ControllerID())
 }

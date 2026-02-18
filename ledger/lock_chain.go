@@ -49,11 +49,6 @@ func ChainLockFromBytesWithLib(data []byte, lib *Library) (ChainLock, error) {
 	return ChainLockFromChainID(chainID), nil
 }
 
-// ChainLockFromBytesAtSlot parses a ChainLock using the library for the given slot.
-func ChainLockFromBytesAtSlot(data []byte, slot uint32) (ChainLock, error) {
-	return ChainLockFromBytesWithLib(data, L(slot))
-}
-
 func (cl ChainLock) Source() string {
 	return fmt.Sprintf(chainLockTemplate, hex.EncodeToString(cl))
 }
