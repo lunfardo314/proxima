@@ -224,14 +224,14 @@ func (p *proposal) insertInputs() {
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 	p.Close()
 
-	txBytes, _, txString, err := p.BytesWithValidation()
+	tx, err := p.BuildTransactionWithValidation()
 	if err != nil {
-		return nil, txString, err
+		if tx != nil {
+			return tx, tx.String(), err
+		}
+		return nil, "", err
 	}
-	// TODO redundant parsing back and forth
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
-	p.proposer.AssertNoError(err)
-	return tx, txString, nil
+	return tx, tx.String(), nil
 }
 
 type _delegationToFreeze struct {

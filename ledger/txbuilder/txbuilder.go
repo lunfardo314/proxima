@@ -217,23 +217,32 @@ func (txb *TxBuilder) Transaction() (*transaction.Transaction, error) {
 	return transaction.ParseWithPartialValidation(txBytes)
 }
 
-func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
+// BuildTransactionWithValidation builds transaction, parses it and validates with full context.
+// In case validation fails with full cotext, it may return err != nil and tx != nil
+func (txb *TxBuilder) BuildTransactionWithValidation() (*transaction.Transaction, error) {
 	txBytes := txb.TransactionData.Bytes()
 	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
-		txString := ""
-		if tx != nil {
-			txString = tx.Lines(txb.LoadInput).String()
-		}
-		return nil, base.TransactionID{}, txString, err
+		return nil, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
 	}
 	if err = tx.SetFullContext(txb.LoadInput); err != nil {
-		return nil, base.TransactionID{}, "", err
+		return tx, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
 	}
 	if err = tx.ValidateFullContext(); err != nil {
-		return nil, base.TransactionID{}, tx.String(), err
+		return tx, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
 	}
-	return txBytes, tx.ID(), tx.String(), nil
+	return tx, nil
+}
+
+func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
+	tx, err := txb.BuildTransactionWithValidation()
+	if err != nil {
+		if tx == nil {
+			return nil, base.TransactionID{}, "", err
+		}
+		return tx.Bytes(), tx.ID(), tx.String(), err
+	}
+	return tx.Bytes(), tx.ID(), tx.String(), nil
 }
 
 func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {

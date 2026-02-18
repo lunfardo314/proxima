@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
@@ -381,6 +382,15 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		return fmt.Errorf("SeqTxBuilder: %w", err)
 	}
 	return nil
+}
+
+func (txb *SeqTxBuilder) BuildTransactionWithValidation() (*transaction.Transaction, error) {
+	if err := txb.buildSequencerAndStemOutputs(); err != nil {
+		return nil, fmt.Errorf("SeqTxBuilder: %w", err)
+	}
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(txb.privateKey)
+	return txb.TxBuilder.BuildTransactionWithValidation()
 }
 
 func (txb *SeqTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
