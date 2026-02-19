@@ -58,7 +58,7 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 	}
 }
 
-//go:embed def/def_constants0.yaml.template
+//go:embed def/def_constants0.yaml
 var _definitionsLedgerConstantsTemplateUpgrade0 string
 
 // constantsTemplateData holds the values injected into the YAML template
