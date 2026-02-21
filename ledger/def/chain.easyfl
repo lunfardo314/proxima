@@ -25,7 +25,7 @@ func _chainSuccessorParam :
 	parseInlineDataArgument(
         atPath(concat(pathToProducedOutputs, selfUnlockParameters, chainConstraintIndex)),
         $0,
-		selfBytecodePrefix
+		#chain
 	)
 
 // $0 - chain ChainID

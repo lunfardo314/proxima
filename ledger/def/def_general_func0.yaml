@@ -138,10 +138,6 @@ functions:
     numArgs: 0
     source: "atPath(at)"
   -
-    sym: selfBytecodePrefix
-    numArgs: 0
-    source: "parseBytecode(self, 0x)"
-  -
     sym: selfIsConsumedOutput
     numArgs: 0
     source: "isPathToConsumedOutput(at)"
