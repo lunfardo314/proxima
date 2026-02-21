@@ -119,7 +119,7 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 			}
 			lock := o.Output.Lock()
 			if dlg, isDelegation := lock.(*ledger.DelegateLock); isDelegation {
-				targetID := dlg.Target.ChainID()
+				targetID := dlg.Target
 				targetName := targetID.String()
 				if _, ok := seqNames[targetID]; ok {
 					targetName = seqNames[targetID]
@@ -223,7 +223,7 @@ func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 				seqs++
 			} else {
 				if dOut, isDelegation := ledger.AsDelegationOutput(o.Output, o.ID); isDelegation {
-					ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), util.Ref(dOut.Target.ChainID()).String(), util.Th(o.Output.TokenBalance()))
+					ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), dOut.Target.String(), util.Th(o.Output.TokenBalance()))
 					delegations++
 				} else {
 					ln.Add("           %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))

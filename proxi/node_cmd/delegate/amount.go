@@ -125,7 +125,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	outDelegation := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 amount,
 		MasterID:               base.SpenderID(walletData.Account),
-		Target:                 ledger.ChainLockFromChainID(targetSeqID),
+		Target:                 targetSeqID,
 		MaxFrozenEpochs:        byte(lib.MaxFrozenEpochs),
 		RequiredInflationShare: 100,
 		StartSlot:              ts.Slot,
@@ -135,7 +135,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	outDelegation = ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 amount,
 		MasterID:               base.SpenderID(walletData.Account),
-		Target:                 ledger.ChainLockFromChainID(targetSeqID),
+		Target:                 targetSeqID,
 		MaxFrozenEpochs:        maxFreezeEpochs,
 		RequiredInflationShare: 100,
 		StartSlot:              ts.Slot,

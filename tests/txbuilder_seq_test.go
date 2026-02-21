@@ -299,7 +299,7 @@ func delegationInit(masterID base.SpenderID, seqID base.ChainID, startSlot uint3
 	ret := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 1_000_000_000,
 		MasterID:               masterID,
-		Target:                 ledger.ChainLockFromChainID(seqID),
+		Target:                 seqID,
 		MaxFrozenEpochs:        maxEpochs,
 		RequiredInflationShare: maxSeqProfitMargin,
 		StartSlot:              startSlot,
@@ -740,7 +740,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.PutConstraint(out.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
-			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), base.SpenderID(ret.masterAddr), maxFreezeEpochs, 980)
+			delegateLock := ledger.NewDelegateLock(ret.seqID, base.SpenderID(ret.masterAddr), maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
 			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, out.OriginAmount).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())

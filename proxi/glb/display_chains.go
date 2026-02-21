@@ -41,7 +41,7 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 		status := DelegationStatusString(o, currentSlot)
 		ln.Add("%34s  %20s  %s maxFrozen: %d", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status, o.MaxFrozenEpochs)
 		if VerbosityLevel() > 0 {
-			ln.Add("     delegation target %s", util.Ref(o.Target.ChainID()).String())
+			ln.Add("     delegation target %s", o.Target.String())
 			if o.IsMarkedFrozen() {
 				ln.Add("     origin slot: %d, max frozen epochs: %d", o.OriginSlot, o.MaxFrozenEpochs)
 				inflation := o.Output.TokenBalance() - o.OriginAmount

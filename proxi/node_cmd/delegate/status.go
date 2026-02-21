@@ -68,7 +68,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("found %d delegation outputs controlled by %s:", len(dOuts), wallet.Account.String())
 	for _, dOut := range dOuts {
-		targetID := dOut.Target.ChainID()
+		targetID := dOut.Target
 		glb.Infof("   %s %s -> %s", dOut.ChainID.String(), util.Th(dOut.Output.TokenBalance()), targetID.String())
 	}
 }

@@ -244,7 +244,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
-	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot, frozenEpochs)
+	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TransactionData.Timestamp.Slot, frozenEpochs)
 	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
@@ -269,11 +269,11 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
 		return
 	}
-	if delegationIn.Target.ChainID() != txb.chainInput.ChainID {
+	if delegationIn.Target != txb.chainInput.ChainID {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
 		return
 	}
-	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot)
+	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TransactionData.Timestamp.Slot)
 
 	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
 	var lastEpochToFreeze uint32

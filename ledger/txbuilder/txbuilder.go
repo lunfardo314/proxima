@@ -953,7 +953,7 @@ type MakeDelegationInitTransactionParams struct {
 	Timestamp              base.LedgerTime
 	Amount                 uint64
 	MasterID               base.SpenderID
-	Target                 ledger.ChainLock
+	Target                 base.ChainID
 	MaxFrozenEpochs        byte
 	RequiredInflationShare uint16
 	MasterPrivateKey       ed25519.PrivateKey

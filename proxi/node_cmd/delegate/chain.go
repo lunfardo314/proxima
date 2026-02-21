@@ -88,7 +88,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	lib := ledger.L(ts.Slot)
 	oOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
-		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), base.SpenderID(walletData.Account), byte(lib.MaxFrozenEpochs), 100)
+		lock := ledger.NewDelegateLock(targetSeqID, base.SpenderID(walletData.Account), byte(lib.MaxFrozenEpochs), 100)
 		o.WithLock(lock)
 		cc := ledger.NewChainConstraint(chainID, 0, oIn.OriginSlot, oIn.OriginAmount)
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
@@ -98,7 +98,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 
 	oOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
-		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), base.SpenderID(walletData.Account), maxFreezeEpochs, 100)
+		lock := ledger.NewDelegateLock(targetSeqID, base.SpenderID(walletData.Account), maxFreezeEpochs, 100)
 		o.WithLock(lock)
 		cc := ledger.NewChainConstraint(chainID, 0, oIn.OriginSlot, oIn.OriginAmount)
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)

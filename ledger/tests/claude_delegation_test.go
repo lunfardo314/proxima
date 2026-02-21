@@ -32,7 +32,7 @@ type delegTestEnv struct {
 	masterAddr       ledger.SigLock
 	seqPrivateKey    ed25519.PrivateKey
 	seqAddr          ledger.SigLock
-	target           ledger.ChainLock
+	target           base.ChainID
 	seqChainOrigin   ledger.OutputWithChainID
 	delegatedOutput  ledger.DelegationOutput
 }
@@ -77,7 +77,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	require.NoError(t, err)
 	require.EqualValues(t, 1, len(chOuts))
 	env.seqChainOrigin = *chOuts[0]
-	env.target = ledger.ChainLockFromChainID(env.seqChainOrigin.ChainID)
+	env.target = env.seqChainOrigin.ChainID
 
 	// create delegation output
 	masterOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.masterAddr.ControllerID())
@@ -114,7 +114,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	require.NoError(t, err)
 
 	// retrieve delegation output
-	delegOuts, err := env.u.SugaredStateReader().GetOutputsDelegatedToAccount2(env.target)
+	delegOuts, err := env.u.SugaredStateReader().GetOutputsDelegatedToAccount2(ledger.ChainLockFromChainID(env.target))
 	require.NoError(t, err)
 	require.EqualValues(t, 1, len(delegOuts))
 	env.delegatedOutput, _ = ledger.DelegationOutputFromOutputWithChainID(delegOuts[0])
@@ -362,7 +362,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	require.NoError(t, err)
 	chOuts, err := ledger.FilterChainOutputs(outs)
 	require.NoError(t, err)
-	target := ledger.ChainLockFromChainID(chOuts[0].ChainID)
+	target := chOuts[0].ChainID
 
 	// try to create delegation origin in FROZEN state
 	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.ControllerID())
@@ -433,7 +433,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	require.NoError(t, err)
 	chOuts, err := ledger.FilterChainOutputs(outs)
 	require.NoError(t, err)
-	target := ledger.ChainLockFromChainID(chOuts[0].ChainID)
+	target := chOuts[0].ChainID
 
 	// try to create delegation output with 5 constraints (extra injected constraint)
 	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.ControllerID())
@@ -581,7 +581,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	require.NoError(t, err)
 	chOuts, err := ledger.FilterChainOutputs(outs)
 	require.NoError(t, err)
-	target := ledger.ChainLockFromChainID(chOuts[0].ChainID)
+	target := chOuts[0].ChainID
 
 	// create delegation with inflation share = 1001 (above max 1000)
 	masterOuts, err := u.SugaredStateReader().GetOutputsForAccount(masterAddr.ControllerID())

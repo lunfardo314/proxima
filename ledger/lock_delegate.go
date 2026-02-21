@@ -16,7 +16,7 @@ import (
 
 type (
 	DelegateLock struct {
-		Target                 ChainLock
+		Target                 base.ChainID
 		MasterID               base.SpenderID
 		MaxFrozenEpochs        byte
 		RequiredInflationShare uint16 // in promille, <= 1000
@@ -29,8 +29,8 @@ type (
 
 const (
 	DelegateLockName       = "delegateLock"
-	DelegateLockTemplate   = DelegateLockName + "(%s, 0x%s, %s, z16/%d)"
-	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%)"
+	DelegateLockTemplate   = DelegateLockName + "(0x%s, 0x%s, %s, z16/%d)"
+	DelegateLockTemplateHR = DelegateLockName + "(targetChainID=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%)"
 
 	DelegateLockStateName       = "delegateLockState"
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"
@@ -51,11 +51,9 @@ var delegateLockSource string
 
 //------------ DelegateLock
 
-// TODO take target ChainID as parameter, not ChainLock
-
-func NewDelegateLock(target ChainLock, masterID base.SpenderID, maxFrozenEpochs byte, requiredInflationShare uint16) *DelegateLock {
+func NewDelegateLock(targetChainID base.ChainID, masterID base.SpenderID, maxFrozenEpochs byte, requiredInflationShare uint16) *DelegateLock {
 	return &DelegateLock{
-		Target:                 target,
+		Target:                 targetChainID,
 		MasterID:               masterID,
 		MaxFrozenEpochs:        maxFrozenEpochs,
 		RequiredInflationShare: requiredInflationShare,
@@ -67,7 +65,7 @@ func (d *DelegateLock) Source() string {
 	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(L(base.MaxSlot).MaxFrozenEpochs) {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
 	}
-	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), hex.EncodeToString(d.MasterID[:]), m, d.RequiredInflationShare)
+	return fmt.Sprintf(DelegateLockTemplate, hex.EncodeToString(d.Target[:]), hex.EncodeToString(d.MasterID[:]), m, d.RequiredInflationShare)
 }
 
 func (d *DelegateLock) String() string {
@@ -79,10 +77,11 @@ func (d *DelegateLock) Bytes() []byte {
 }
 
 func (d *DelegateLock) Controllers() []Controller {
-	if EqualControllers(d.Target, SigLock(d.MasterID)) {
-		return []Controller{d.Target}
+	targetLock := ChainLockFromChainID(d.Target)
+	if EqualControllers(targetLock, SigLock(d.MasterID)) {
+		return []Controller{targetLock}
 	}
-	return []Controller{d.Target, SigLock(d.MasterID)}
+	return []Controller{targetLock, SigLock(d.MasterID)}
 }
 
 func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
@@ -95,10 +94,11 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 	}
 	ret := &DelegateLock{}
 
-	// target lock
-	ret.Target, err = ChainLockFromBytesWithLib(args[0], lib)
+	// target chain ID (raw 32 bytes)
+	targetBin := easyfl.StripDataPrefix(args[0])
+	ret.Target, err = base.ChainIDFromBytes(targetBin)
 	if err != nil {
-		return nil, fmt.Errorf("DelegateLockFromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong target chain ID: %w", err)
 	}
 	// master spender ID (raw 32 bytes)
 	masterIDbin := easyfl.StripDataPrefix(args[1])
@@ -202,9 +202,9 @@ func (d DelegateLockState) Name() string {
 
 func init() {
 	registerInlineTest(func(lib *Library) {
-		target := ChainLockFromChainID(base.RandomChainID())
+		targetChainID := base.RandomChainID()
 		masterID := base.SpenderID(SigLockRandom())
-		example := NewDelegateLock(target, masterID, 3, 10)
+		example := NewDelegateLock(targetChainID, masterID, 3, 10)
 
 		exampleBack, err := DelegateLockFromBytesWithLib(example.Bytes(), lib)
 		util.AssertNoError(err)

@@ -45,8 +45,7 @@ or(
 
 // self is delegation output - does not depend on consumed/produced context
 
-func _selfTarget : parseBytecode(self, 0, #delegateLock)
-func _selfTargetChainID : parseInlineDataArgument(_selfTarget,0)
+func _selfTargetChainID : parseInlineDataArgument(self, 0, #delegateLock)
 func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),0, #delegateLockState))
 func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(3), 1, #delegateLockState)
 func _selfIsMarkedFrozen : equal(_selfStateMark, 1)
@@ -171,7 +170,7 @@ and(
 	   equal(selfNumConstraints, u64/4),
 	   !!!delegation_must_have_exactly_4_constraints
     ), // to prevent injection attacks
-    parseBytecode(_selfTarget, 0x, #c, #chainLock),
+    require(and(equal(len(_selfTargetChainID), u64/32), not(isZero(_selfTargetChainID))), !!!invalid_target_chain_id),
     parseBytecode(selfSiblingConstraint(2), 0x, #chain),
     parseBytecode(selfSiblingConstraint(3), 0x, #delegateLockState),
     require(
@@ -226,15 +225,15 @@ and(
    )
 )
 
-// $0 target lock
+// $0 target chain ID (32 bytes)
 // 'consumed' context
 func _targetUnlockedConsumed :
 and(
    not(equal(byte(selfUnlockParameters,1), 0xff)), // not marked as unlocked by master
 	  // output must be unlockable in principle
    _requireUnlockableByTheTarget,
-	  // target lock must be unlocked
-   require($0, !!!delegation_target_chain_must_be_unlocked),
+	  // target chain must be unlocked
+   require(chainLock($0), !!!delegation_target_chain_must_be_unlocked),
       // target cannot discontinue the chain
    require(not(equal(len(selfSiblingUnlockParams(2)), u64/0)), !!!target_cannot_discontinue_the_delegation_chain),
 	  // amount should not decrease
@@ -243,7 +242,7 @@ and(
    require(equal(successorConstraint(1), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_on_successor_must_be_exactly_the_same)
 )
 
-// $0 target chain lock
+// $0 target chain ID (32 bytes)
 // $1 master spender ID (32 bytes)
 func _validDelegationConsumed : and(
    selfIsConsumedOutput,
@@ -262,7 +261,7 @@ func _validDelegationConsumed : and(
 func _adjustedMaxFrozenEpochs: if( isZero($0), uint8Bytes(constDelegationMaxFrozenEpochs), uint8Bytes($0))
 
 // Delegation lock output. Immutable
-// $0 target chain lock
+// $0 target chain ID (32 bytes)
 // $1 master spender ID (32 bytes, blake2b hash of <sig type>+<public key>)
 // $2 max frozen epochs limit set by the delegator. If isZero, then default constDelegationMaxFrozenEpochs, otherwise must be <= constDelegationMaxFrozenEpochs
 // $3 required inflation share in promille (0-1000, z64).

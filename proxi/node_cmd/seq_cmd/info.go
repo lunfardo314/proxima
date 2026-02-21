@@ -45,7 +45,7 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 		}
 
 		if dOut, ok := ledger.AsDelegationOutput(ch.Output, ch.ID); ok {
-			if dOut.Target.ChainID() == seqID {
+			if dOut.Target == seqID {
 				delegations = append(delegations, dOut)
 			}
 		}

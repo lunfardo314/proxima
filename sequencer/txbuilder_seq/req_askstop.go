@@ -61,7 +61,7 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	}
 
 	// ---------- authenticate: check if the sender of the request and the sequencer must be entitled to revoke particular delegation ID
-	if ret.delegation.Target.ChainID() != txb.chainInput.ChainID {
+	if ret.delegation.Target != txb.chainInput.ChainID {
 		// this sequencer cannot revoke specific delegation
 		reason = fmt.Errorf("AskStopDelegationRequest: the sequencer cannot revoke delegation %s (failed authorisation)", delegationID.String())
 		return

@@ -255,7 +255,7 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Controller
 	ret := make([]*ledger.OutputWithChainID, 0)
 	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
 		lock := o.DelegationLock()
-		if lock != nil && ledger.EqualControllers(lock.Target, addr) {
+		if lock != nil && ledger.EqualControllers(ledger.ChainLockFromChainID(lock.Target), addr) {
 			cc := o.ChainConstraint()
 			util.Assertf(cc != nil, "inconsistency: chain constraint expected")
 			chainID := cc.ChainID
@@ -286,7 +286,7 @@ func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget base.ChainI
 	target := ledger.ChainLockFromChainID(delegationTarget)
 	err := s.IterateOutputsForAccount(target, func(oid base.OutputID, o *ledger.Output) bool {
 		out, ok := ledger.AsDelegationOutput(o, oid)
-		if ok && ledger.EqualControllers(target, out.Target) {
+		if ok && ledger.EqualControllers(target, ledger.ChainLockFromChainID(out.Target)) {
 			return fun(&out)
 		}
 		return true
@@ -430,14 +430,14 @@ func (s SugaredStateReader) GetSequencersWithDelegations() (map[base.ChainID]Del
 			ret[o.ChainID] = seqEntry
 		} else {
 			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-				seqEntry, seqEntryExists := ret[dOut.Target.ChainID()]
+				seqEntry, seqEntryExists := ret[dOut.Target]
 				if !seqEntryExists {
 					seqEntry = DelegationsOnSequencer{
 						Delegations: make(map[base.ChainID]ledger.DelegationOutput),
 					}
 				}
 				seqEntry.Delegations[o.ChainID] = dOut
-				ret[dOut.Target.ChainID()] = seqEntry
+				ret[dOut.Target] = seqEntry
 			}
 		}
 	}
@@ -457,7 +457,7 @@ func (s SugaredStateReader) GetDelegationsForSequencer(seqID base.ChainID, filte
 			return true
 		}
 		delegateLock := lock.(*ledger.DelegateLock)
-		if !ledger.EqualControllers(delegateLock.Target, seqChainLock) {
+		if !ledger.EqualControllers(ledger.ChainLockFromChainID(delegateLock.Target), seqChainLock) {
 			return true
 		}
 		if dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID); ok && flt(&dOut) {
