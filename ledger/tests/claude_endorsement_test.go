@@ -87,7 +87,7 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	chainOriginOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(total)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot, total).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint(2).Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 	})
 	originIdx, err := txb.ProduceOutput(chainOriginOut)
 	require.NoError(t, err)
@@ -141,24 +141,24 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 ) ([]byte, *txbuilder.TxBuilder) {
 	t.Helper()
 
-	cc, constraintIdx := chainIn.Output.ChainConstraint()
-	require.True(t, constraintIdx != 0xff, "output must have chain constraint")
+	cc := chainIn.Output.ChainConstraint()
+	require.NotNil(t, cc, "output must have chain constraint")
 
 	txb := txbuilder.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
 	// Build successor with updated chain constraint; sequencer constraint is inherited via Clone
-	nextCC := ledger.NewChainConstraint(chainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, cc.OriginAmount)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(nextCC.Bytes(), constraintIdx)
+		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})
 	succIdx, err := txb.ProduceOutput(chainSucc)
 	require.NoError(t, err)
 
 	txb.PutSignatureUnlock(predIdx)
-	txb.PutUnlockParams(predIdx, constraintIdx,
-		ledger.NewChainUnlockParams(succIdx, constraintIdx))
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
+		ledger.NewChainUnlockParams(succIdx))
 	txb.TransactionData.SequencerOutputIndex = succIdx
 
 	txb.PushEndorsements(endorsements...)

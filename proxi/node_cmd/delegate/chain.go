@@ -58,7 +58,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
 	}
 
-	seqOut, _, _, err := glb.GetClient().GetChainOutput(targetSeqID)
+	seqOut, _, err := glb.GetClient().GetChainOutput(targetSeqID)
 	glb.Assertf(err == nil, "can't find sequencer id %s: %v", targetSeqID.StringShort(), err)
 	glb.Assertf(seqOut.ID.IsSequencerTransaction(), "chainID %s does not represent a sequencer", targetSeqID.StringShort())
 
@@ -76,7 +76,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		ts = ts.AddTicks(10)
 	}
 	client := glb.GetClient()
-	oIn, _, _, err := client.GetChainOutput(chainID)
+	oIn, _, err := client.GetChainOutput(chainID)
 	glb.AssertNoError(err)
 
 	dOut, isDelegation := ledger.AsDelegationOutput(oIn.Output, oIn.ID)
@@ -90,8 +90,8 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
 		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), base.SpenderID(walletData.Account), byte(lib.MaxFrozenEpochs), 100)
 		o.WithLock(lock)
-		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
-		o.MustPushConstraint(cc.Bytes())
+		cc := ledger.NewChainConstraint(chainID, 0, oIn.OriginSlot, oIn.OriginAmount)
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 	})
 	glb.AssertNoError(oOut.EnoughAmountForStorageDeposit())
@@ -100,8 +100,8 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
 		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), base.SpenderID(walletData.Account), maxFreezeEpochs, 100)
 		o.WithLock(lock)
-		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
-		o.MustPushConstraint(cc.Bytes())
+		cc := ledger.NewChainConstraint(chainID, 0, oIn.OriginSlot, oIn.OriginAmount)
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 	})
 
@@ -109,8 +109,8 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	predIdx, err := txb.ConsumeOutput(oIn.Output, oIn.ID)
 	glb.AssertNoError(err)
 	glb.Assertf(predIdx == 0, "predIdx==0")
-	txb.PutSignatureUnlock(0, 0, ledger.DelegationUnlockedByMaster)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutSignatureUnlock(0, ledger.DelegationUnlockedByMaster)
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	succIdx, err := txb.ProduceOutput(oOut)
 	glb.AssertNoError(err)

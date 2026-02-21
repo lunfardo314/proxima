@@ -27,7 +27,7 @@ func BalanceOnChainOutput(rdr StateIndexReader, chainID base.ChainID) uint64 {
 	if err != nil {
 		return 0
 	}
-	o, _, err := oData.ParseAsChainOutput()
+	o, err := oData.ParseAsChainOutput()
 	util.AssertNoError(err)
 	return o.Output.TokenBalance()
 }

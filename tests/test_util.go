@@ -579,7 +579,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 	var extendOut *ledger.OutputWithChainID
 	var endorse []base.TransactionID
 
-	branchChainID, _, ok := branch.SequencerOutput().ExtractChainID()
+	branchChainID, ok := branch.SequencerOutput().ExtractChainID()
 	require.True(td.t, ok)
 
 	for i := range prevSlot {

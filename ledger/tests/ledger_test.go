@@ -355,7 +355,7 @@ func TestChain1(t *testing.T) {
 		return chains
 	}
 	t.Run("compile", func(t *testing.T) {
-		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0xffff, z32/1000, z64/2000)"
+		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0x, z32/1000, z64/2000)"
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 		origBytecode := ledger.NewChainOrigin(1000, 2000).Bytes()
@@ -382,8 +382,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin twice in the same output", func(t *testing.T) {
 		initTest()
 
-		// chain constrained output with two origins will be valid, however there will be no way to create a predecessor of it
-		// the only way is to destroy output with two chain origins
+		// With chain constraint enforcing index 2, a second chain at index 3 is now rejected
 
 		// First get inputs with a placeholder timestamp
 		par, err := u.MakeTransferInputData(privKey0, nil, base.NilLedgerTime)
@@ -395,50 +394,14 @@ func TestChain1(t *testing.T) {
 			par.Timestamp = par.Timestamp.AddTicks(1)
 		}
 		code := ledger.NewChainOrigin(par.Timestamp.Slot, 60_000_000).Bytes()
-		outs, err := u.DoTransferOutputs(par.
+		err = u.DoTransfer(par.
 			WithAmount(60_000_000).
 			WithTargetLock(addr0).
 			WithConstraintBinary(code).
 			WithConstraintBinary(code),
 		)
-		require.NoError(t, err)
-		for _, o := range outs {
-			t.Logf("---------------\n%s", o)
-		}
-
-		_, idx := outs[1].Output.ChainConstraint()
-		require.EqualValues(t, 2, idx)
-
-		lib := ledger.L(base.MaxSlot)
-		_, err = ledger.ChainConstraintFromBytesWithLib(outs[1].Output.MustAt(2), lib)
-		require.NoError(t, err)
-		_, err = ledger.ChainConstraintFromBytesWithLib(outs[1].Output.MustAt(3), lib)
-		require.NoError(t, err)
-
-		// create destroying transaction
-		txb := txbuilder.New()
-		total, ts, err := txb.ConsumeOutputsNoUnlock(outs...)
-		require.NoError(t, err)
-		txb.PutSignatureUnlock(0)
-		// unlock data must be for both
-		txb.PutUnlockParams(1, 2, ledger.FinishChainUnlockParams)
-		txb.PutUnlockParams(1, 3, ledger.FinishChainUnlockParams)
-
-		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(int64(total)).WithLock(outs[0].Output.Lock())
-		}))
-		require.NoError(t, err)
-
-		txb.TransactionData.Timestamp = ts.AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-		txb.SignED25519(privKey0)
-
-		txBytes := txb.TransactionData.Bytes()
-		t.Logf("------------ chain destroying transaction:\n%s", u.TxStringFromBytes(txBytes))
-
-		err = u.AddTransaction(txBytes)
-		require.NoError(t, err)
-
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "chain constraint must be at index 2")
 	})
 	t.Run("create origin wrong 1", func(t *testing.T) {
 		initTest()
@@ -466,8 +429,8 @@ func TestChain1(t *testing.T) {
 		require.NoError(t, err)
 		o, err := ledger.OutputFromBytes(chs.Data)
 		require.NoError(t, err)
-		ch, idx := o.ChainConstraint()
-		require.True(t, idx != 0xff)
+		ch := o.ChainConstraint()
+		require.NotNil(t, ch)
 		require.True(t, ch.IsOrigin())
 		t.Logf("chain created: %s", easyfl_util.Fmt(chains[0].ChainID[:]))
 	})
@@ -486,8 +449,8 @@ func TestChain1(t *testing.T) {
 		require.NoError(t, err)
 		// get chain constraint from the output
 		// It is expected to be origin
-		ch, predecessorConstraintIndex := chainIN.Output.ChainConstraint()
-		require.True(t, predecessorConstraintIndex != 0xff)
+		ch := chainIN.Output.ChainConstraint()
+		require.NotNil(t, ch)
 		require.True(t, ch.IsOrigin())
 		t.Logf("chain created: %s", easyfl_util.Fmt(chains[0].ChainID[:]))
 
@@ -509,13 +472,10 @@ func TestChain1(t *testing.T) {
 		_, err = txb.ProduceOutput(outNonChain)
 		require.NoError(t, err)
 
-		// we put 'destroy' unlock parameters 3xffffff for the chain constraint in the predecessor output
+		// we put empty unlock parameters for the chain constraint in the predecessor output
 		// It makes the chain constraint script of the consumed output not to enforce produced successor,
 		// as in the usual chain transition from predecessor to successor. With this chain is discontinued.
-		// We explicitly specify input index and the index of the chain constraint in the output.
-		// This is because we assume chain constraint do not have pre-defined index in the output,
-		// it can be any except 0xff, therefore must always be explicit.
-		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.FinishChainUnlockParams)
+		txb.PutUnlockParams(consumedIndex, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 		// put unlock parameters for the chain controller lock. It is locked with usual sig lock
 		// The signature unlock of the address25519 constraint just refers to the signature at the
@@ -590,8 +550,8 @@ func TestChain2(t *testing.T) {
 		chainIN, err := chs.Parse()
 		require.NoError(t, err)
 
-		cc, constraintIdx := chainIN.Output.ChainConstraint()
-		require.True(t, constraintIdx != 0xff)
+		cc := chainIN.Output.ChainConstraint()
+		require.NotNil(t, cc)
 
 		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		txb := txbuilder.New()
@@ -603,23 +563,22 @@ func TestChain2(t *testing.T) {
 		switch optionConstraint {
 		case 0:
 			// good
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, cc.OriginAmount)
 		case 1:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, constraintIdx, cc.OriginSlot, cc.OriginAmount)
-		case 2:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, 0xff, cc.OriginSlot, cc.OriginAmount)
-		case 3:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, cc.OriginSlot, cc.OriginAmount)
+			// wrong predecessor input index
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, cc.OriginSlot, cc.OriginAmount)
 		case 4:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot+1, cc.OriginAmount)
+			// wrong origin slot
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot+1, cc.OriginAmount)
 		case 5:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount+1)
+			// wrong origin amount
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, cc.OriginAmount+1)
 		default:
 			panic("wrong test option 1")
 		}
 
 		chainOut := chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
-			out.PutConstraint(nextChainConstraint.Bytes(), constraintIdx)
+			out.PutConstraint(nextChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 		})
 
 		succIdx, err := txb.ProduceOutput(chainOut)
@@ -629,13 +588,10 @@ func TestChain2(t *testing.T) {
 		switch optionUnlock {
 		case 0:
 			// good
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx})
+			txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 		case 1:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{0xff, constraintIdx})
-		case 2:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, 0xff})
-		case 3:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{0xff, 0xff})
+			// wrong successor output index
+			txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, []byte{0xff})
 		default:
 			panic("wrong test option 2")
 		}
@@ -680,16 +636,8 @@ func TestChain2(t *testing.T) {
 		prn(txString)
 		require.NoError(t, util.MustErrorWith(err, "successor reference crosscheck failed"))
 	})
-	t.Run("transit 2,0", func(t *testing.T) {
-		txString, err := runOption(2, 0)
-		prn(txString)
-		require.NoError(t, util.MustErrorWith(err, "successor reference crosscheck failed"))
-	})
-	t.Run("transit 3,0", func(t *testing.T) {
-		txString, err := runOption(3, 0)
-		prn(txString)
-		require.NoError(t, util.MustErrorWith(err, "successor reference crosscheck failed"))
-	})
+	// Cases 2,0 and 3,0 removed: they tested wrong constraint index in chain constraint,
+	// which is now always implicit (ConstraintIndexChain=2).
 	t.Run("transit 4,0", func(t *testing.T) {
 		txString, err := runOption(4, 0)
 		prn(txString)
@@ -705,16 +653,8 @@ func TestChain2(t *testing.T) {
 		prn(txString)
 		require.NoError(t, util.MustErrorWith(err, "index is out of range"))
 	})
-	t.Run("transit 0,2", func(t *testing.T) {
-		txString, err := runOption(0, 2)
-		prn(txString)
-		require.NoError(t, util.MustErrorWith(err, "index is out of range"))
-	})
-	t.Run("transit 0,3", func(t *testing.T) {
-		txString, err := runOption(0, 3)
-		prn(txString)
-		require.NoError(t, util.MustErrorWith(err, "predecessor reference crosscheck failed"))
-	})
+	// Cases 0,2 and 0,3 removed: they tested wrong constraint index in unlock params,
+	// which is now always implicit (ConstraintIndexChain=2).
 }
 
 func TestChain3(t *testing.T) {
@@ -755,24 +695,23 @@ func TestChain3(t *testing.T) {
 	chainIN, err := chs.Parse()
 	require.NoError(t, err)
 
-	cc, constraintIdx := chainIN.Output.ChainConstraint()
-	require.True(t, constraintIdx != 0xff)
+	cc := chainIN.Output.ChainConstraint()
+	require.NotNil(t, cc)
 
 	ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 	txb := txbuilder.New()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
-	var nextChainConstraint *ledger.ChainConstraint
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+	nextChainConstraint := ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, cc.OriginAmount)
 
 	chainOut := chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(nextChainConstraint.Bytes(), constraintIdx)
+		out.PutConstraint(nextChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	})
 	succIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx})
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 	txb.PutSignatureUnlock(0)
 
 	txb.TransactionData.Timestamp = ts

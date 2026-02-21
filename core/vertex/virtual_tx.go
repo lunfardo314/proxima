@@ -159,7 +159,7 @@ func (v *VirtualTransaction) findChainOutput(txid base.TransactionID, chainID *b
 	defer v.mutex.RUnlock()
 
 	for outIdx, o := range v.outputs {
-		if c, cIdx := o.ChainConstraint(); cIdx != 0xff && c.ChainID == *chainID {
+		if c := o.ChainConstraint(); c != nil && c.ChainID == *chainID {
 			return &ledger.OutputWithID{
 				ID:     base.MustNewOutputID(txid, outIdx),
 				Output: o,

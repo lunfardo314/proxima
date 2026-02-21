@@ -104,18 +104,18 @@ func TestTagAlongSimple(t *testing.T) {
 		_, err = txb.ConsumeOutput(seqOrigin.Output, seqOrigin.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
-		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+		txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
-		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
 
 		// transit chain
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 			o.WithLock(seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(targetChainID, 0, 2, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
-			o.MustPushConstraint(cc.Bytes())
+			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
+			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		})
 		_, err = txb.ProduceOutput(next)
 		require.NoError(t, err)
@@ -352,17 +352,17 @@ func TestTagAlongBoundaries(t *testing.T) {
 			_, err = txb.ConsumeOutput(seqOrigin.Output, seqOrigin.ID)
 			require.NoError(t, err)
 			txb.PutSignatureUnlock(0)
-			txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+			txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 			_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 			require.NoError(t, err)
-			txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+			txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
 
 			next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 				o.WithTokenBalance(seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 				o.WithLock(seqOrigin.Output.Lock())
-				cc := ledger.NewChainConstraint(targetChainID, 0, 2, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
-				o.MustPushConstraint(cc.Bytes())
+				cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
+				o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 			})
 			_, err = txb.ProduceOutput(next)
 			require.NoError(t, err)
@@ -857,17 +857,17 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		_, err := txb.ConsumeOutput(seqOrigin.Output, seqOrigin.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
-		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+		txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
-		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
 
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 			o.WithLock(seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(targetChainID, 0, 2, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
-			o.MustPushConstraint(cc.Bytes())
+			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
+			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		})
 		_, err = txb.ProduceOutput(next)
 		require.NoError(t, err)
@@ -1121,18 +1121,18 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		_, err = txb2.ConsumeOutput(seqOrigin.Output, seqOrigin.ID)
 		require.NoError(t, err)
 		txb2.PutSignatureUnlock(0)
-		txb2.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+		txb2.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 		_, err = txb2.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
-		txb2.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+		txb2.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
 
 		expectedBalance := initialChainBalance + fee
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(expectedBalance)
 			o.WithLock(seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(targetChainID, 0, 2, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
-			o.MustPushConstraint(cc.Bytes())
+			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
+			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		})
 		_, err = txb2.ProduceOutput(next)
 		require.NoError(t, err)

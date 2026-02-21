@@ -76,11 +76,11 @@ func TestParseOutputData(t *testing.T) {
 	const amount = uint64(31415926535)
 	addr := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(100))
 	chainID := base.RandomChainID()
-	cc := ledger.NewChainConstraint(chainID, 1, 2, 0, amount)
+	cc := ledger.NewChainConstraint(chainID, 1, 0, amount)
 	o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(amount).
 			WithLock(addr)
-		o.MustPushConstraint(cc.Bytes())
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 	})
 	oDataStr := hex.EncodeToString(o.Bytes())
 	reqStr := fmt.Sprintf("/txapi/v1/parse_output_data?output_data=%s&human_readable=", oDataStr)

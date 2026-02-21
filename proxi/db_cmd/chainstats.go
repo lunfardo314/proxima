@@ -99,7 +99,7 @@ func runChainStats() {
 			minBib = min(minBib, bib)
 		}
 
-		seqID, _, ok := br.SequencerOutput.ExtractChainID()
+		seqID, ok := br.SequencerOutput.ExtractChainID()
 		glb.Assertf(ok, "failed to extract chain id from %s", br.Lines("        ").String())
 
 		seqStatsRec, ok := sequencers[seqID]

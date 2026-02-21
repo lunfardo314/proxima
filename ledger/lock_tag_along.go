@@ -93,8 +93,11 @@ func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderID base.Spe
 	})
 }
 
-func NewTagAlongLockUnlockParams(predChainOutputIndex, predChainConstraintIndex, unlockMode byte) []byte {
-	return []byte{predChainOutputIndex, predChainConstraintIndex, unlockMode}
+// NewTagAlongLockUnlockParams creates unlock params for tag-along lock. 2 bytes:
+// the input index of the consumed chain output, and the unlock mode.
+// The chain constraint is always at index 2.
+func NewTagAlongLockUnlockParams(predChainOutputIndex, unlockMode byte) []byte {
+	return []byte{predChainOutputIndex, unlockMode}
 }
 
 func registerTagAlongLockConstraint(lib *Library) {

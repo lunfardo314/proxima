@@ -87,8 +87,10 @@ func (cl ChainLock) Master() Controller {
 	return cl
 }
 
-func NewChainLockUnlockParams(predChainOutputIndex, predChainConstraintIndex byte) []byte {
-	return []byte{predChainOutputIndex, predChainConstraintIndex}
+// NewChainLockUnlockParams creates unlock params for chain lock. 1 byte: the input index
+// of the consumed chain output. The chain constraint is always at index 2.
+func NewChainLockUnlockParams(predChainOutputIndex byte) []byte {
+	return []byte{predChainOutputIndex}
 }
 
 func registerChainLockConstraint(lib *Library) {

@@ -22,7 +22,6 @@ type EndChainParams struct {
 }
 
 func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, error) {
-	_, predecessorConstraintIndex := par.ChainIn.Output.ChainConstraint()
 	txb := New()
 
 	consumedIndex, err := txb.ConsumeOutput(par.ChainIn.Output, par.ChainIn.ID)
@@ -44,9 +43,9 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 		}
 	}
 
-	// two additional bytes 0,x00,0xff are added to the unlock parameters to satisfy 'master unlock' condition of the delegation lock
-	txb.PutSignatureUnlock(consumedIndex, 0, ledger.DelegationUnlockedByMaster)
-	txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.FinishChainUnlockParams)
+	// additional byte 0xff is added to unlock parameters to satisfy 'master unlock' condition of the delegation lock
+	txb.PutSignatureUnlock(consumedIndex, ledger.DelegationUnlockedByMaster)
+	txb.PutUnlockParams(consumedIndex, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	// finalize the transaction
 	txb.TransactionData.Timestamp = par.Timestamp

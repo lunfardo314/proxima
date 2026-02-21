@@ -78,7 +78,7 @@ func (txb *TxBuilder) ConsumeOutput(out *ledger.Output, oid base.OutputID) (byte
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
 
-func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.OutputID, chainInIdx, chainConstraintIndex byte) (byte, error) {
+func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.OutputID, chainInIdx byte) (byte, error) {
 	lock := o.Lock()
 	if lock.Name() != ledger.ChainLockName {
 		return 0, fmt.Errorf("not a chain lock")
@@ -87,7 +87,7 @@ func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.Out
 	if err != nil {
 		return 0, err
 	}
-	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(chainInIdx, chainConstraintIndex))
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(chainInIdx))
 	return idx, nil
 }
 
@@ -263,23 +263,23 @@ func (txb *TxBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputData
 	if err != nil {
 		return err
 	}
-	cc, predecessorConstraintIndex := chainIN.ChainConstraint()
-	if predecessorConstraintIndex == 0xff {
+	cc := chainIN.ChainConstraint()
+	if cc == nil {
 		return fmt.Errorf("can't find chain constrain in the output")
 	}
 	predecessorOutputIndex, err := txb.ConsumeOutput(chainIN, inChainData.ID)
 	if err != nil {
 		return err
 	}
-	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, cc.OriginSlot, cc.OriginAmount)
+	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, cc.OriginSlot, cc.OriginAmount)
 	chainOut := chainIN.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(successor.Bytes(), predecessorConstraintIndex)
+		out.PutConstraint(successor.Bytes(), ledger.ConstraintIndexChain)
 	})
 	successorOutputIndex, err := txb.ProduceOutput(chainOut)
 	if err != nil {
 		return err
 	}
-	txb.PutUnlockParams(predecessorOutputIndex, predecessorConstraintIndex, []byte{successorOutputIndex, predecessorConstraintIndex, 0})
+	txb.PutUnlockParams(predecessorOutputIndex, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(successorOutputIndex))
 	txb.PutSignatureUnlock(successorOutputIndex)
 
 	return nil
@@ -317,8 +317,8 @@ func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCovera
 	copy(a[2:], frozenCoverageDeltaVector)
 
 	// find the predecessor and adjust its vector
-	cc, idx := o.ChainConstraint()
-	util.Assertf(idx != 0xff, "MustPutFrozenCoverage: inconsistency 1")
+	cc := o.ChainConstraint()
+	util.Assertf(cc != nil, "MustPutFrozenCoverage: inconsistency 1")
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
 	predVector := oPred.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
 	predTs := txb.TransactionData.InputIDs[cc.PredecessorInputIndex].Timestamp()
@@ -478,7 +478,7 @@ func (t *TransferData) WithConstraintBinary(constr []byte, idx ...byte) *Transfe
 	if len(idx) == 0 {
 		t.AddConstraints = append(t.AddConstraints, constr)
 	} else {
-		util.Assertf(idx[0] == 0xff || idx[0] < ledger.ConstraintIndexFirstOptionalConstraint, "WithConstraintBinary: wrong constraint index")
+		util.Assertf(idx[0] == 0xff || idx[0] < ledger.ConstraintIndexChain, "WithConstraintBinary: wrong constraint index")
 		t.AddConstraints[idx[0]] = constr
 	}
 	return t
@@ -739,8 +739,8 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	}
 
 	// find chain constraint in the predecessor
-	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
-	if chainInConstraintIdx == 0xff {
+	chainInConstraint := par.ChainInput.Output.ChainConstraint()
+	if chainInConstraint == nil {
 		return nil, 0, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
 	// calculate inflation amount and create inflation constraint
@@ -781,13 +781,12 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	}
 
 	// make chain output
-	var chainOutConstraintIdx byte
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.PutAmounts(int64(chainOutAmount), int64(inflationAmount))
 		o.PutLock(par.ChainInput.Output.Lock())
-		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, chainInConstraint.OriginSlot, chainInConstraint.OriginAmount)
-		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
+		// put chain constraint at fixed index 2
+		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraint.OriginSlot, chainInConstraint.OriginAmount)
+		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
@@ -795,7 +794,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		return nil, 0, nil, errP(err)
 	}
 	// unlock chain input (chain constraint unlock + inflation (optionally)
-	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
+	txb.PutUnlockParams(chainPredIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(chainOutIndex))
 
 	if par.TagAlongFee > 0 {
 		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, base.SpenderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
@@ -865,15 +864,14 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		}
 	}
 
-	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.ChainConstraintIndex,
+	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0,
 		par.ChainOutput.OriginSlot, par.ChainOutput.OriginAmount)
 	util.Assertf(availableTokens > amount, "availableTokens > amount")
 
-	var outChainConstraintIdx byte
 	chainSuccessorOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(availableTokens - amount))
 		o.WithLock(par.ChainOutput.Output.Lock())
-		outChainConstraintIdx = o.MustPushConstraint(chainConstr.Bytes())
+		o.PutConstraint(chainConstr.Bytes(), ledger.ConstraintIndexChain)
 	})
 	outChainOutputIdx, err := txb.ProduceOutput(chainSuccessorOutput)
 	if err != nil {
@@ -899,11 +897,11 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 	// unlock chain input
 	txb.PutSignatureUnlock(outChainOutputIdx)
-	txb.PutUnlockParams(0, par.ChainOutput.ChainConstraintIndex, []byte{outChainOutputIdx, outChainConstraintIdx})
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(outChainOutputIdx))
 
 	// always reference chain input
 	for i := range consumedOuts {
-		chainUnlockRef := ledger.NewChainLockUnlockParams(0, outChainConstraintIdx)
+		chainUnlockRef := ledger.NewChainLockUnlockParams(0)
 		txb.PutUnlockParams(byte(i+1), ledger.ConstraintIndexLock, chainUnlockRef)
 		util.AssertNoError(err)
 	}

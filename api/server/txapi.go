@@ -133,7 +133,7 @@ func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 		Amount:      o.TokenBalance(),
 		LockName:    o.Lock().Name(),
 	}
-	if cc, pos := o.ChainConstraint(); pos != 0xff {
+	if cc := o.ChainConstraint(); cc != nil {
 		var chainID base.ChainID
 		if cc.IsOrigin() {
 			chainID = base.MakeOriginChainID(oid)
@@ -189,7 +189,7 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 		Amount:      o.TokenBalance(),
 		LockName:    o.Lock().Name(),
 	}
-	if cc, pos := o.ChainConstraint(); pos != 0xff {
+	if cc := o.ChainConstraint(); cc != nil {
 		resp.ChainID = hex.EncodeToString(cc.ChainID[:])
 	}
 

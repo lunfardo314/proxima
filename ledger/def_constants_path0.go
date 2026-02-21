@@ -87,7 +87,7 @@ var (
 const (
 	ConstraintIndexAmounts = byte(iota)
 	ConstraintIndexLock
-	ConstraintIndexFirstOptionalConstraint
+	ConstraintIndexChain // chain constraint is always at index 2
 )
 
 func pathConstantsUpgrade0() string {
@@ -107,6 +107,7 @@ func pathConstantsUpgrade0() string {
 		PathToOtherData.Hex(),
 		ConstraintIndexAmounts,
 		ConstraintIndexLock,
+		ConstraintIndexChain,
 	)
 }
 
@@ -170,6 +171,10 @@ functions:
       source: %d
    -
       sym: lockConstraintIndex
+      numArgs: 0
+      source: %d
+   -
+      sym: chainConstraintIndex
       numArgs: 0
       source: %d
 `

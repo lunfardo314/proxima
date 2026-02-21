@@ -256,20 +256,19 @@ func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Controller
 	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
 		lock := o.DelegationLock()
 		if lock != nil && ledger.EqualControllers(lock.Target, addr) {
-			cc, idx := o.ChainConstraint()
+			cc := o.ChainConstraint()
+			util.Assertf(cc != nil, "inconsistency: chain constraint expected")
 			chainID := cc.ChainID
 			if cc.IsOrigin() {
 				chainID = base.MakeOriginChainID(oid)
 			}
-			util.Assertf(idx != 0xff, "inconsistency: chain constraint expected")
 			out := &ledger.OutputWithChainID{
 				OutputWithID: ledger.OutputWithID{
 					ID:     oid,
 					Output: o,
 				},
 				ChainConstraintData: ledger.ChainConstraintData{
-					ChainConstraint:      *cc,
-					ChainConstraintIndex: idx,
+					ChainConstraint: *cc,
 				},
 			}
 			out.ChainID = chainID
@@ -315,7 +314,7 @@ func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledge
 
 func (s SugaredStateReader) IterateChainsInAccount(addr ledger.Controller, fun func(oid base.OutputID, o *ledger.Output, chainID base.ChainID) bool) error {
 	return s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
-		if cc, idx := o.ChainConstraint(); idx != 0xff {
+		if cc := o.ChainConstraint(); cc != nil {
 			if cc.IsOrigin() {
 				return fun(oid, o, base.MakeOriginChainID(oid))
 			}
@@ -381,16 +380,15 @@ func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWith
 			return fmt.Errorf("IterateChainedOutputs: inconsistency: cannot get chain output: %s, oid: %s",
 				tip.chainID.String(), tip.oid.String())
 		}
-		cc, idx := o.ChainConstraint()
-		util.Assertf(idx != 0xff, "inconsistency: chain constraint expected")
+		cc := o.ChainConstraint()
+		util.Assertf(cc != nil, "inconsistency: chain constraint expected")
 		out := ledger.OutputWithChainID{
 			OutputWithID: ledger.OutputWithID{
 				ID:     tip.oid,
 				Output: o,
 			},
 			ChainConstraintData: ledger.ChainConstraintData{
-				ChainConstraint:      *cc,
-				ChainConstraintIndex: idx,
+				ChainConstraint: *cc,
 			},
 		}
 		out.ChainID = tip.chainID
@@ -482,7 +480,7 @@ func (s SugaredStateReader) GetTagAlongBacklogForSequencer(seqID base.ChainID, f
 	ret := make([]ledger.OutputWithID, 0)
 
 	err := s.IterateOutputsForAccount(seqChainLock, func(oid base.OutputID, o *ledger.Output) bool {
-		if _, idx := o.ChainConstraint(); idx != 0xff {
+		if o.ChainConstraint() != nil {
 			// skip chained outputs
 			return true
 		}

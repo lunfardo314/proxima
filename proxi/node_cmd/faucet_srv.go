@@ -96,7 +96,7 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 	fct.displayFaucetConfig()
 
 	if fct.cfg.fromChain {
-		o, _, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
+		o, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
 		glb.AssertNoError(err)
 		glb.Assertf(o.Output.TokenBalance() > fct.cfg.amount,
 			"not enough balance on own sequencer %s", fct.walletData.Sequencer.String())
@@ -146,7 +146,7 @@ func (fct *faucetServer) absoluteBottom() uint64 {
 func (fct *faucetServer) checkBottom() error {
 	abs := fct.absoluteBottom()
 	if fct.cfg.fromChain {
-		o, _, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
+		o, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
 		if err != nil {
 			return err
 		}
@@ -185,7 +185,7 @@ func (fct *faucetServer) displayFaucetConfig() {
 	}
 	glb.Infof("     bottom:                   %s", util.Th(fct.cfg.bottom))
 	if fct.cfg.fromChain {
-		chainOut, _, _, err := fct.client.GetChainOutput(*fct.walletData.Sequencer)
+		chainOut, _, err := fct.client.GetChainOutput(*fct.walletData.Sequencer)
 		glb.AssertNoError(err)
 		glb.Infof("     funds will be drawn from: %s (balance %s)", fct.walletData.Sequencer.String(), util.Th(chainOut.Output.TokenBalance()))
 
@@ -255,7 +255,7 @@ func (fct *faucetServer) handler(w http.ResponseWriter, r *http.Request) {
 
 func (fct *faucetServer) redrawFromChain(targetLock ledger.Controller) (base.TransactionID, error) {
 	clnt := glb.GetClient()
-	o, _, _, err := clnt.GetChainOutput(*glb.GetOwnSequencerID())
+	o, _, err := clnt.GetChainOutput(*glb.GetOwnSequencerID())
 	if err != nil {
 		return base.TransactionID{}, err
 	}

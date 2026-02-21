@@ -48,8 +48,8 @@ func TestBase(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, bal).Bytes())
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, bal).Bytes(), ledger.ConstraintIndexChain)
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -333,8 +333,8 @@ func TestFreezeOneStep(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, seqInitBalance).Bytes())
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, seqInitBalance).Bytes(), ledger.ConstraintIndexChain)
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -513,8 +513,8 @@ func TestFreezeMultipleSteps(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
-			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, seqInitBalance).Bytes())
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, seqInitBalance).Bytes(), ledger.ConstraintIndexChain)
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -734,7 +734,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 			err = txb.PutUnlockReference(byte(i), 1, 0)
 			require.NoError(t, err)
 		}
-		txb.PutUnlockParams(byte(i), 2, ledger.NewChainUnlockParams(byte(i), 2))
+		txb.PutUnlockParams(byte(i), ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(byte(i)))
 
 		maxFreezeEpochs := byte(uint32(i)%ledger.L(0).MaxFrozenEpochs + 1)
 
@@ -742,7 +742,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 			o.PutConstraint(out.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
 			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), base.SpenderID(ret.masterAddr), maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
-			o.MustPushConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), 2, out.OriginSlot, out.OriginAmount).Bytes())
+			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, out.OriginAmount).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)

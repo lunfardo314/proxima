@@ -335,8 +335,7 @@ func (u *UTXODB) makeTransferInputsED25519(par *txbuilder.TransferData, desc ...
 		return err
 	}
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
-		_, idx := o.ChainConstraint()
-		return idx == 0xff && o.Lock().Name() == ledger.SigLockName
+		return o.ChainConstraint() == nil && o.Lock().Name() == ledger.SigLockName
 	}, desc...)
 	if err != nil {
 		return err
@@ -542,8 +541,7 @@ func (u *UTXODB) MakeNewChain(amount uint64, privateKey ed25519.PrivateKey, chai
 		return nil, err
 	}
 	outs = util.PurgeSlice(outs, func(o *ledger.OutputWithID) bool {
-		_, idx := o.Output.ChainConstraint()
-		return idx != 0xff
+		return o.Output.ChainConstraint() != nil
 	})
 	util.Assertf(len(outs) == 1, "len(outs)>0")
 

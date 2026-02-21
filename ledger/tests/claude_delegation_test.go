@@ -139,19 +139,19 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	_, _, err = txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
-	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, 2, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
 	seqChainIdx, err := txb.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance() - requiredAdvance))
-		o.PutConstraint(successorChainConstraint.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(predIdx, 2, ledger.NewChainUnlockParams(1, 2))
+	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	_, err = txb.ProduceOutput(delegSuccessor)
 	require.NoError(t, err)
@@ -188,7 +188,7 @@ func TestClaudeDelegationWrongMasterUnlock(t *testing.T) {
 
 	// mark as master unlock (byte 2 = 0xff)
 	txb.PutUnlockParams(0, 1, []byte{0xff, 0xff, 0xff})
-	txb.PutUnlockParams(0, 2, ledger.FinishChainUnlockParams)
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(env.seqAddr)
@@ -216,29 +216,29 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
-	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, 2, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
 	// sequencer takes stolen tokens
 	stolenAmount := uint64(100_000_000)
 	_, err = txb.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance() + stolenAmount))
-		o.PutConstraint(successorChainConstraint.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(predIdx, 2, ledger.NewChainUnlockParams(1, 2))
+	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce delegation successor with reduced amount
 	reducedAmount := env.delegatedOutput.Output.TokenBalance() - stolenAmount
-	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, 2, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
+	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(reducedAmount))
 		o.WithLock(env.delegatedOutput.Output.Lock())
-		o.MustPushConstraint(cc.Bytes())
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 	}))
 	require.NoError(t, err)
@@ -263,28 +263,28 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
-	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, 2, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance()))
-		o.PutConstraint(successorChainConstraint.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(predIdx, 2, ledger.NewChainUnlockParams(1, 2))
+	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce delegation successor with MODIFIED lock (different master)
 	attackerMasterID := base.SpenderID(ledger.SigLockFromED25519PrivateKey(env.seqPrivateKey))
 	tamperedLock := ledger.NewDelegateLock(env.target, attackerMasterID, 4, 0)
-	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, 2, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
+	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.delegatedOutput.Output.TokenBalance()))
 		o.WithLock(tamperedLock)
-		o.MustPushConstraint(cc.Bytes())
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 	}))
 	require.NoError(t, err)
@@ -309,20 +309,20 @@ func TestClaudeDelegationTargetDiscontinuesChain(t *testing.T) {
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
-	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, 2, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance() + env.delegatedOutput.Output.TokenBalance()))
-		o.PutConstraint(successorChainConstraint.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
 	// target unlock (byte 2 = 0) but with chain termination unlock params
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(predIdx, 2, ledger.FinishChainUnlockParams)
+	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 	txb.TransactionData.Timestamp = ts
@@ -494,26 +494,26 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 		require.NoError(t, err)
 
-		successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, 2, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
+		successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
 		_, err = txb.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance()))
-			o.PutConstraint(successorChainConstraint.Bytes(), 2)
+			o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 		}))
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
-		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+		txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 		predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 		require.NoError(t, err)
-		txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-		txb.PutUnlockParams(predIdx, 2, ledger.NewChainUnlockParams(1, 2))
+		txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 		// produce valid delegation successor
-		cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, 2, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
+		cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(env.delegatedOutput.Output.TokenBalance()))
 			o.WithLock(env.delegatedOutput.Output.Lock())
-			o.MustPushConstraint(cc.Bytes())
+			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{State: ledger.DelegateLockStateOnHold}.Bytes())
 		}))
 		require.NoError(t, err)
@@ -535,8 +535,8 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		amount, _, err := txb.ConsumeOutputsNoUnlock(&env.delegatedOutput.OutputWithID)
 		require.NoError(t, err)
 
-		txb.PutUnlockParams(0, 1, []byte{0xff, 0xff, 0xff})
-		txb.PutUnlockParams(0, 2, ledger.FinishChainUnlockParams)
+		txb.PutUnlockParams(0, 1, []byte{0xff, 0xff})
+		txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(amount)).WithLock(env.masterAddr)
@@ -635,14 +635,14 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
-	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, 2, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
 	seqChainIdx, err := txb.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance()))
-		o.PutConstraint(successorChainConstraint.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	delegatedOutPar := ledger.MakeDelegationRevokeOutputParams{
 		TxTs:                     revokeTs,
@@ -655,8 +655,8 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	delegatedOut, err := env.delegatedOutput.MakeDelegationRevokeOutput(delegatedOutPar)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(1, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	_, err = txb.ProduceOutput(delegatedOut)
 	require.NoError(t, err)
@@ -688,26 +688,26 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	_, _, err = txb2.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
-	successorChainConstraint2 := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, 2, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
+	successorChainConstraint2 := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
 	_, err = txb2.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance()))
 		o.PutConstraint(successorChainConstraint2.Bytes(), 2)
 	}))
 	require.NoError(t, err)
 	txb2.PutSignatureUnlock(0)
-	txb2.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb2.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	predIdx2, err := txb2.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb2.PutUnlockParams(predIdx2, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb2.PutUnlockParams(predIdx2, 2, ledger.NewChainUnlockParams(1, 2))
+	txb2.PutUnlockParams(predIdx2, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb2.PutUnlockParams(predIdx2, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// try to produce frozen successor from on-hold
-	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx2, 2, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
+	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx2, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
 	_, err = txb2.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.delegatedOutput.Output.TokenBalance()))
 		o.WithLock(env.delegatedOutput.Output.Lock())
-		o.MustPushConstraint(cc.Bytes())
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{LastFrozenEpoch: 5, State: ledger.DelegateLockStateFrozen}.Bytes())
 	}))
 	require.NoError(t, err)

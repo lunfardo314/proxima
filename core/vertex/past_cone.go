@@ -586,7 +586,7 @@ func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats Mu
 				if pc.isNotInTheState(consumersOfRooted[0]) {
 					oid := vid.OutputID(idx)
 					o := vid.MustOutputAt(idx)
-					if cc, ccIdx := o.ChainConstraint(); ccIdx != 0xff {
+					if cc := o.ChainConstraint(); cc != nil {
 						chainID := cc.ChainID
 						if cc.IsOrigin() {
 							chainID = base.MakeOriginChainID(oid)
@@ -611,7 +611,7 @@ func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats Mu
 				muts.InsertAddOutputMutation(oid, o)
 				stats.NumCreated++
 
-				if cc, ccIdx := o.ChainConstraint(); ccIdx != 0xff {
+				if cc := o.ChainConstraint(); cc != nil {
 					chainID := cc.ChainID
 					if cc.IsOrigin() {
 						chainID = base.MakeOriginChainID(oid)

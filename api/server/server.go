@@ -261,7 +261,7 @@ func _writeParsedOutputs(w http.ResponseWriter, outs []*ledger.OutputWithID, lrb
 			LockName:    o.Output.Lock().Name(),
 			ChainID:     "",
 		}
-		if chainID, _, ok := o.ExtractChainID(); ok {
+		if chainID, ok := o.ExtractChainID(); ok {
 			po.ChainID = chainID.StringHex()
 		}
 		resp.Outputs[o.ID.StringHex()] = po
@@ -339,7 +339,7 @@ func (srv *server) getAccountSimpleSigLockedOutputs(w http.ResponseWriter, r *ht
 		if o.Lock().Name() != ledger.SigLockName {
 			return false
 		}
-		if _, idx := o.ChainConstraint(); idx != 0xff {
+		if o.ChainConstraint() != nil {
 			return false
 		}
 		return true
@@ -371,7 +371,7 @@ func (srv *server) getNonChainBalance(w http.ResponseWriter, r *http.Request) {
 			if o.Lock().Name() != ledger.SigLockName {
 				return true
 			}
-			if _, idx := o.ChainConstraint(); idx != 0xff {
+			if o.ChainConstraint() != nil {
 				return true
 			}
 			resp.Amount += o.TokenBalance()
@@ -426,7 +426,7 @@ func (srv *server) getOutputsForAmount(w http.ResponseWriter, r *http.Request) {
 			if o.Lock().Name() != ledger.SigLockName {
 				return true
 			}
-			if _, idx := o.ChainConstraint(); idx != 0xff {
+			if o.ChainConstraint() != nil {
 				// filter out chained outputs
 				return true
 			}

@@ -102,8 +102,7 @@ func waitForFunds(accountable ledger.Controller, amount uint64) {
 		outs, _, err := glb.GetClient().GetAccountOutputs(accountable)
 		glb.AssertNoError(err)
 		for _, o := range outs {
-			if _, idx := o.Output.ChainConstraint(); idx != 0xff {
-			} else {
+			if o.Output.ChainConstraint() == nil {
 				sumOutsideChains += o.Output.TokenBalance()
 			}
 		}

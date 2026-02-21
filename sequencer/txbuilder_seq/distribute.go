@@ -74,7 +74,6 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 					ChainID:      base.BoostrapSequencerID,
 					OriginAmount: initSupplyOutput.Output.TokenBalance(),
 				},
-				ChainConstraintIndex: 2,
 			},
 		},
 		StemInput:             genesisStem,

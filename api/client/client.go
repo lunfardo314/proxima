@@ -396,21 +396,21 @@ func (c *APIClient) GetChainOutputData(chainID base.ChainID) (*ledger.OutputData
 	}, lrb, nil
 }
 
-// GetChainOutput returns parsed output for the chain id and index of the chain constraint in it
-func (c *APIClient) GetChainOutput(chainID base.ChainID) (*ledger.OutputWithChainID, byte, base.TransactionID, error) {
+// GetChainOutput returns parsed output for the chain id
+func (c *APIClient) GetChainOutput(chainID base.ChainID) (*ledger.OutputWithChainID, base.TransactionID, error) {
 	oData, lrbid, err := c.GetChainOutputData(chainID)
 	if err != nil {
-		return nil, 0, base.TransactionID{}, err
+		return nil, base.TransactionID{}, err
 	}
-	o, constrIdx, err := oData.ParseAsChainOutput()
+	o, err := oData.ParseAsChainOutput()
 	if err != nil {
-		return nil, 0, base.TransactionID{}, err
+		return nil, base.TransactionID{}, err
 	}
-	return o, constrIdx, lrbid, nil
+	return o, lrbid, nil
 }
 
 func (c *APIClient) GetSequencerData(chainID base.ChainID) (ret seqdata.SequencerData, err error) {
-	o, _, _, err := c.GetChainOutput(chainID)
+	o, _, err := c.GetChainOutput(chainID)
 	if err != nil {
 		err = fmt.Errorf("GetSequencerData: error while retrieving UTXO for %s: %w", chainID.StringShort(), err)
 		return

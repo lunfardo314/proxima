@@ -72,7 +72,7 @@ func (e *sequencerTestEnv) buildSequencerOrigin(
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(total)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot, total).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint(2).Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 	})
 	originIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
@@ -127,23 +127,23 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 ) ([]byte, *txbuilder.TxBuilder) {
 	t.Helper()
 
-	cc, constraintIdx := chainIn.Output.ChainConstraint()
-	require.True(t, constraintIdx != 0xff)
+	cc := chainIn.Output.ChainConstraint()
+	require.NotNil(t, cc)
 
 	txb := txbuilder.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
-	nextCC := ledger.NewChainConstraint(chainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, cc.OriginAmount)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(nextCC.Bytes(), constraintIdx)
+		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})
 	succIdx, err := txb.ProduceOutput(chainSucc)
 	require.NoError(t, err)
 
 	txb.PutSignatureUnlock(predIdx)
-	txb.PutUnlockParams(predIdx, constraintIdx,
-		ledger.NewChainUnlockParams(succIdx, constraintIdx))
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
+		ledger.NewChainUnlockParams(succIdx))
 	txb.TransactionData.SequencerOutputIndex = succIdx
 
 	txb.PushEndorsements(endorsements...)
@@ -200,7 +200,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(chainAmount)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot, chainAmount).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint(2).Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 	})
 	chainIdx, err := txb1.ProduceOutput(chainOut)
 	require.NoError(t, err)
@@ -252,7 +252,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		// 110 > 127 - 25 = 102 → FAIL
 		succTs := base.T(chainIn.ID.Slot(), 110)
 
-		cc, constraintIdx := chainIn.Output.ChainConstraint()
+		cc := chainIn.Output.ChainConstraint()
 		txb := txbuilder.New()
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
@@ -260,17 +260,17 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Chain successor with both amounts consolidated
-		nextCC := ledger.NewChainConstraint(chainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+		nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, cc.OriginAmount)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
-			out.PutConstraint(nextCC.Bytes(), constraintIdx)
+			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 			out.WithAmounts(int64(chainAmount + changeAmount))
 		})
 		succIdx, err := txb.ProduceOutput(chainSucc)
 		require.NoError(t, err)
 
 		txb.PutSignatureUnlock(predIdx)
-		txb.PutUnlockParams(predIdx, constraintIdx,
-			ledger.NewChainUnlockParams(succIdx, constraintIdx))
+		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
+			ledger.NewChainUnlockParams(succIdx))
 		err = txb.PutUnlockReference(1, ledger.ConstraintIndexLock, 0)
 		require.NoError(t, err)
 		txb.TransactionData.SequencerOutputIndex = succIdx
@@ -289,21 +289,21 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		// Pre-branch consolidation skipped when numInputs == 1
 		succTs := base.T(chainIn.ID.Slot(), 110)
 
-		cc, constraintIdx := chainIn.Output.ChainConstraint()
+		cc := chainIn.Output.ChainConstraint()
 		txb := txbuilder.New()
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
-		nextCC := ledger.NewChainConstraint(chainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+		nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, cc.OriginAmount)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
-			out.PutConstraint(nextCC.Bytes(), constraintIdx)
+			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 		})
 		succIdx, err := txb.ProduceOutput(chainSucc)
 		require.NoError(t, err)
 
 		txb.PutSignatureUnlock(predIdx)
-		txb.PutUnlockParams(predIdx, constraintIdx,
-			ledger.NewChainUnlockParams(succIdx, constraintIdx))
+		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
+			ledger.NewChainUnlockParams(succIdx))
 		txb.TransactionData.SequencerOutputIndex = succIdx
 		txb.TransactionData.Timestamp = succTs
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
@@ -441,24 +441,24 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	// The predecessor (non-sequencer) is same-slot, and no endorsements → must fail
 	succTs := base.T(chainIn.ID.Slot(), 17)
 
-	cc, constraintIdx := chainIn.Output.ChainConstraint()
+	cc := chainIn.Output.ChainConstraint()
 
 	txb2 := txbuilder.New()
 	predIdx, err := txb2.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
-	nextCC := ledger.NewChainConstraint(chainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, cc.OriginAmount)
 	// Clone chain output and ADD sequencer constraint
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(nextCC.Bytes(), constraintIdx)
-		out.MustPushConstraint(ledger.NewSequencerConstraint(constraintIdx).Bytes())
+		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
+		out.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 	})
 	succIdx, err := txb2.ProduceOutput(chainSucc)
 	require.NoError(t, err)
 
 	txb2.PutSignatureUnlock(predIdx)
-	txb2.PutUnlockParams(predIdx, constraintIdx,
-		ledger.NewChainUnlockParams(succIdx, constraintIdx))
+	txb2.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
+		ledger.NewChainUnlockParams(succIdx))
 	txb2.TransactionData.SequencerOutputIndex = succIdx
 	// No endorsements — this should trigger the same-slot predecessor rejection
 	txb2.TransactionData.Timestamp = succTs

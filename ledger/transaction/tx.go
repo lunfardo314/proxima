@@ -442,8 +442,8 @@ func (tx *Transaction) SequencerChainPredecessor() (base.OutputID, byte) {
 func (tx *Transaction) FindChainOutput(chainID base.ChainID) *ledger.OutputWithID {
 	var ret *ledger.OutputWithID
 	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-		cc, idx := o.ChainConstraint()
-		if idx == 0xff {
+		cc := o.ChainConstraint()
+		if cc == nil {
 			return true
 		}
 		cID := cc.ChainID

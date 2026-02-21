@@ -51,19 +51,17 @@ type (
 		ChainConstraintData
 	}
 
-	// ChainConstraintData holds the parsed chain constraint and its index within the output tuple.
+	// ChainConstraintData holds the parsed chain constraint.
 	ChainConstraintData struct {
 		ChainConstraint
-		ChainConstraintIndex byte
 	}
 
 	// SequencerOutputData holds parsed sequencer and chain constraint data for a sequencer output.
 	SequencerOutputData struct {
-		SequencerConstraint      *SequencerConstraint
-		ChainConstraint          *ChainConstraint
-		AmountOnChain            uint64
-		SequencerConstraintIndex byte
-		SequencerData            *seqdata.SequencerData
+		SequencerConstraint *SequencerConstraint
+		ChainConstraint     *ChainConstraint
+		AmountOnChain       uint64
+		SequencerData       *seqdata.SequencerData
 	}
 
 	// OutputWithSequencerData is a parsed sequencer output with full sequencer metadata.
@@ -317,7 +315,7 @@ func (o *Output) TimeLock() (uint32, bool) {
 	var err error
 	lib := L(base.MaxSlot)
 	idx := o.IndexFunc(func(i int, data []byte) bool {
-		if byte(i) < ConstraintIndexFirstOptionalConstraint {
+		if byte(i) < ConstraintIndexChain {
 			return false
 		}
 		ret, err = TimelockFromBytesWithLib(data, lib)
@@ -329,22 +327,20 @@ func (o *Output) TimeLock() (uint32, bool) {
 	return uint32(ret), true
 }
 
-// ChainConstraint finds and parses the chain constraint. Returns 0xff as index if not found.
-func (o *Output) ChainConstraint() (*ChainConstraint, byte) {
-	var ret *ChainConstraint
-	var err error
-	lib := L(base.MaxSlot)
-	idx := o.IndexFunc(func(i int, data []byte) bool {
-		if byte(i) < ConstraintIndexFirstOptionalConstraint {
-			return false
-		}
-		ret, err = ChainConstraintFromBytesWithLib(data, lib)
-		return err == nil
-	})
-	if idx < 0 {
-		return nil, 0xff
+// ChainConstraint parses the chain constraint at fixed index 2. Returns nil if not found.
+func (o *Output) ChainConstraint() *ChainConstraint {
+	if o.NumConstraints() <= int(ConstraintIndexChain) {
+		return nil
 	}
-	return ret, byte(idx)
+	data, err := o.At(int(ConstraintIndexChain))
+	if err != nil {
+		return nil
+	}
+	ret, err := ChainConstraintFromBytesWithLib(data, L(base.MaxSlot))
+	if err != nil {
+		return nil
+	}
+	return ret
 }
 
 // SequencerConstraint finds and parses the sequencer constraint. Returns 0xff as index if not found.
@@ -353,7 +349,7 @@ func (o *Output) SequencerConstraint() (*SequencerConstraint, byte) {
 	var err error
 	lib := L(base.MaxSlot)
 	idx := o.IndexFunc(func(idx int, data []byte) bool {
-		if byte(idx) < ConstraintIndexFirstOptionalConstraint {
+		if byte(idx) < ConstraintIndexChain {
 			return false
 		}
 		ret, err = SequencerConstraintFromBytesWithLib(data, lib)
@@ -378,25 +374,21 @@ func (o *Output) Inflation() uint64 {
 
 // SequencerOutputData extracts sequencer and chain constraint data. Returns false if not a sequencer output.
 func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
-	chainConstraint, chainConstraintIndex := o.ChainConstraint()
-	if chainConstraintIndex == 0xff {
+	chainConstraint := o.ChainConstraint()
+	if chainConstraint == nil {
 		return nil, false
 	}
 	var err error
-	seqConstraintIndex := byte(0xff)
 	var seqConstraint *SequencerConstraint
 	lib := L(base.MaxSlot)
 	idx := o.IndexFunc(func(i int, data []byte) bool {
-		if byte(i) < ConstraintIndexFirstOptionalConstraint || byte(i) == chainConstraintIndex {
+		if byte(i) <= ConstraintIndexChain {
 			return false
 		}
 		seqConstraint, err = SequencerConstraintFromBytesWithLib(data, lib)
 		return err == nil
 	})
 	if idx < 0 {
-		return nil, false
-	}
-	if seqConstraint.ChainConstraintIndex != chainConstraintIndex {
 		return nil, false
 	}
 
@@ -406,11 +398,10 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	}
 
 	return &SequencerOutputData{
-		SequencerConstraintIndex: seqConstraintIndex,
-		SequencerConstraint:      seqConstraint,
-		ChainConstraint:          chainConstraint,
-		AmountOnChain:            o.TokenBalance(),
-		SequencerData:            pSeqData,
+		SequencerConstraint: seqConstraint,
+		ChainConstraint:     chainConstraint,
+		AmountOnChain:       o.TokenBalance(),
+		SequencerData:       pSeqData,
 	}, true
 }
 
@@ -433,7 +424,7 @@ func (o *Output) EnsureStopDelegationConstraint() (*EnsureStopDelegation, byte) 
 	var err error
 	lib := L(base.MaxSlot)
 	idx := o.IndexFunc(func(i int, data []byte) bool {
-		if byte(i) < ConstraintIndexFirstOptionalConstraint {
+		if byte(i) < ConstraintIndexChain {
 			return false
 		}
 		ret, err = EnsureStopDelegationFromBytesWithLib(data, lib)
@@ -581,15 +572,14 @@ func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWith
 	}, nil
 }
 
-// ParseAsChainOutput parses raw output data as a chain output. Returns the chain constraint index.
-func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error) {
+// ParseAsChainOutput parses raw output data as a chain output.
+func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, error) {
 	var chainConstr *ChainConstraint
-	var idx byte
 	var chainID base.ChainID
 
 	ret, err := o.Parse(func(oParsed *Output) error {
-		chainConstr, idx = oParsed.ChainConstraint()
-		if idx == 0xff {
+		chainConstr = oParsed.ChainConstraint()
+		if chainConstr == nil {
 			return fmt.Errorf("can't find chain constraint")
 		}
 		chainID = chainConstr.ChainID
@@ -599,15 +589,14 @@ func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error
 		return nil
 	})
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	return &OutputWithChainID{
 		OutputWithID: *ret,
 		ChainConstraintData: ChainConstraintData{
-			ChainConstraint:      *chainConstr,
-			ChainConstraintIndex: idx,
+			ChainConstraint: *chainConstr,
 		},
-	}, idx, nil
+	}, nil
 }
 
 // MustParse is like Parse but panics on error.
@@ -631,13 +620,12 @@ func AsOutputWithChainID(o *Output, oid base.OutputID) (OutputWithChainID, bool)
 
 // ExtractChainData parses the chain constraint from an output. Resolves ChainID for origins via blake2b(oid).
 func ExtractChainData(o *Output, oid base.OutputID) (chainConstraintData ChainConstraintData, ok bool) {
-	cc, idx := o.ChainConstraint()
-	if idx == 0xff {
+	cc := o.ChainConstraint()
+	if cc == nil {
 		return ChainConstraintData{}, false
 	}
 	ret := ChainConstraintData{
-		ChainConstraint:      *cc,
-		ChainConstraintIndex: idx,
+		ChainConstraint: *cc,
 	}
 	if cc.IsOrigin() {
 		ret.ChainID = blake2b.Sum256(oid[:])
@@ -645,10 +633,10 @@ func ExtractChainData(o *Output, oid base.OutputID) (chainConstraintData ChainCo
 	return ret, true
 }
 
-// ExtractChainID returns the ChainID, predecessor constraint index, and whether a chain constraint exists.
-func (o *OutputWithID) ExtractChainID() (chainID base.ChainID, predecessorConstraintIndex byte, ok bool) {
+// ExtractChainID returns the ChainID and whether a chain constraint exists.
+func (o *OutputWithID) ExtractChainID() (chainID base.ChainID, ok bool) {
 	ret, ok := ExtractChainData(o.Output, o.ID)
-	return ret.ChainID, ret.PredecessorInputIndex, ok
+	return ret.ChainID, ok
 }
 
 // AsChainOutput converts to OutputWithChainID, or returns error if not a chain output.
@@ -691,7 +679,7 @@ func (o *OutputWithID) Clone() *OutputWithID {
 func (o *OutputWithID) LinesSource(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("id: %s, hex: %s", o.ID.String(), o.ID.StringHex())
-	if cc, idx := o.Output.ChainConstraint(); idx != 0xff {
+	if cc := o.Output.ChainConstraint(); cc != nil {
 		var chainID base.ChainID
 		if cc.IsOrigin() {
 			chainID = blake2b.Sum256(o.ID[:])
@@ -707,7 +695,7 @@ func (o *OutputWithID) LinesSource(prefix ...string) *lines.Lines {
 func (o *OutputWithID) LinesHR(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("id: %s, hex: %s", o.ID.String(), o.ID.StringHex())
-	if cc, idx := o.Output.ChainConstraint(); idx != 0xff {
+	if cc := o.Output.ChainConstraint(); cc != nil {
 		var chainID base.ChainID
 		if cc.IsOrigin() {
 			chainID = blake2b.Sum256(o.ID[:])
@@ -854,8 +842,8 @@ func ParseAndSortOutputDataUpToAmount(outs []*OutputDataWithID, amount uint64, f
 func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 	ret := make([]*OutputWithChainID, 0)
 	for _, o := range outs {
-		cc, constraintIndex := o.Output.ChainConstraint()
-		if constraintIndex == 0xff {
+		cc := o.Output.ChainConstraint()
+		if cc == nil {
 			continue
 		}
 		d := &OutputWithChainID{
@@ -864,8 +852,7 @@ func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 				Output: o.Output,
 			},
 			ChainConstraintData: ChainConstraintData{
-				ChainConstraint:      *cc,
-				ChainConstraintIndex: constraintIndex,
+				ChainConstraint: *cc,
 			},
 		}
 		if cc.IsOrigin() {
@@ -894,8 +881,8 @@ func forEachOutputReadOnly(outs []*OutputDataWithID, lib *Library, fun func(o *O
 func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChainID, error) {
 	ret := make([]*OutputWithChainID, 0)
 	err := forEachOutputReadOnly(outs, L(base.MaxSlot), func(o *Output, odata *OutputDataWithID) bool {
-		ch, constraintIndex := o.ChainConstraint()
-		if constraintIndex == 0xff {
+		ch := o.ChainConstraint()
+		if ch == nil {
 			return true
 		}
 		d := &OutputWithChainID{
@@ -904,8 +891,7 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 				Output: o,
 			},
 			ChainConstraintData: ChainConstraintData{
-				ChainConstraint:      *ch,
-				ChainConstraintIndex: constraintIndex,
+				ChainConstraint: *ch,
 			},
 		}
 		if ch.IsOrigin() {

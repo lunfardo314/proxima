@@ -26,7 +26,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
-	out, _, lrbid, err := glb.GetClient().GetChainOutput(chainID)
+	out, lrbid, err := glb.GetClient().GetChainOutput(chainID)
 	glb.AssertNoError(err)
 	glb.PrintLRB(&lrbid)
 

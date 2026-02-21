@@ -65,7 +65,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
 	}
 
-	seqOut, _, _, err := glb.GetClient().GetChainOutput(targetSeqID)
+	seqOut, _, err := glb.GetClient().GetChainOutput(targetSeqID)
 	glb.Assertf(err == nil, "can't find sequencer id %s: %v", targetSeqID.StringShort(), err)
 	glb.Assertf(seqOut.Output.IsSequencerOutput(), "chainID %s does not represent a sequencer", targetSeqID.StringShort())
 

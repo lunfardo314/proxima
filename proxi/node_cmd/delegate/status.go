@@ -31,7 +31,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 	if len(args) >= 1 {
 		delegationID, err := base.ChainIDFromHexString(args[0])
 		glb.AssertNoError(err)
-		out, _, lrbid, err := clnt.GetChainOutput(delegationID)
+		out, lrbid, err := clnt.GetChainOutput(delegationID)
 		glb.Assertf(err == nil, "cannot to retrieve delegation %s: %v", delegationID.String(), err)
 		dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID)
 		glb.Assertf(ok, "unable to retrieve delegation output with ID %s", out.ID.String())

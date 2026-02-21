@@ -23,7 +23,7 @@ func runGetChainOutputCmd(_ *cobra.Command, args []string) {
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
-	o, _, _, err := glb.GetClient().GetChainOutput(chainID)
+	o, _, err := glb.GetClient().GetChainOutput(chainID)
 	glb.AssertNoError(err)
 
 	glb.Infof("%s", o.String())

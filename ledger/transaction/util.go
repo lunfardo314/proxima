@@ -154,7 +154,7 @@ func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...strin
 	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
 		totalSum += o.TokenBalance()
 		chainIdStr := ""
-		if cc, i := o.ChainConstraint(); i != 0xff {
+		if cc := o.ChainConstraint(); cc != nil {
 			var cid base.ChainID
 			if cc.IsOrigin() {
 				oid1 := base.MustNewOutputID(txid, idx)

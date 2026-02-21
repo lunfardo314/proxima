@@ -23,7 +23,7 @@ func (c *NoRequestTxBuilderCommand) Apply(txb *SeqTxBuilder) (valid bool, err er
 	if idx, err = txb.ConsumeOutput(c.Output, c.ID); err != nil {
 		return
 	}
-	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(c.Output.TokenBalance())
 	valid = true
 	return

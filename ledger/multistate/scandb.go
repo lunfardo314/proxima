@@ -264,7 +264,7 @@ func (r *Readable) ScanState() *ScannedState {
 				ret.AddInconsistency("output %s is not in the accounts index", o.ID.String())
 			}
 		}
-		if chainID, _, ok := o.ExtractChainID(); ok {
+		if chainID, ok := o.ExtractChainID(); ok {
 			if _, already := ret.Chains[chainID]; already {
 				ret.AddInconsistency("duplicated chain record:\n--- 1\n%s--- 2\n%s",
 					ret.Chains[chainID].LinesSource("   ").String(),

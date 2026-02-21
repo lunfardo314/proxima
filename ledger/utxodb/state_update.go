@@ -79,8 +79,8 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 			err = fmt.Errorf("BeforeAddTransaction: output %s already exist: cannot be produced", oid.StringShort())
 			return false
 		}
-		chainConstraint, i := o.ChainConstraint()
-		if i == 0xff {
+		chainConstraint := o.ChainConstraint()
+		if chainConstraint == nil {
 			return true
 		}
 		if chainConstraint.IsOrigin() {
@@ -128,8 +128,8 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 			err = fmt.Errorf("AfterAddTransaction: output %s must exist", oid.StringShort())
 			return false
 		}
-		chainConstraint, i := o.ChainConstraint()
-		if i == 0xff {
+		chainConstraint := o.ChainConstraint()
+		if chainConstraint == nil {
 			return true
 		}
 		var chainID base.ChainID

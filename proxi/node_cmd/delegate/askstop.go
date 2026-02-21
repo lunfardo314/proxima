@@ -37,7 +37,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	clnt := glb.GetClient()
-	out, _, _, err := clnt.GetChainOutput(delegationID)
+	out, _, err := clnt.GetChainOutput(delegationID)
 	glb.AssertNoError(err)
 	dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID)
 	glb.Assertf(ok, "not a delegation output:\n%s", out.String())

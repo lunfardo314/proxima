@@ -54,7 +54,7 @@ func (c *SetSequencerDataTxBuilderCommand) Apply(txb *SeqTxBuilder) (bool, error
 	idx, err := txb.ConsumeOutput(c.Output, c.ID)
 	util.AssertNoError(err)
 
-	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(c.Output.TokenBalance())
 	txb.nextSeqData = c.SequencerData.Clone()
 	return true, nil

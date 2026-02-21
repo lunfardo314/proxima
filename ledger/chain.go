@@ -16,14 +16,12 @@ import (
 //go:embed def/chain.easyfl
 var chainConstraintSource string
 
-// ChainConstraint is a chain constraint
+// ChainConstraint is a chain constraint. Always at index 2 in the output tuple.
 type ChainConstraint struct {
 	// ChainID all-0 for origin
 	ChainID base.ChainID
-	// Predecessor output index with the same ChainID. Must be 0xFF for the origin
+	// Predecessor input index. 0xFF means origin (no predecessor). Serialized as 0x (empty) for origin.
 	PredecessorInputIndex byte
-	// Predecessor constraint index. Must be 0xff for the origin
-	PredecessorConstraintIndex byte
 	// slot of the origin chain output
 	OriginSlot uint32
 	// amount on the chain at the origin
@@ -35,31 +33,21 @@ const (
 	chainConstraintTemplate = ChainConstraintName + "(0x%s, 0x%s, z32/%d, z64/%d)"
 )
 
-func NewChainConstraint(id base.ChainID, predOutputIndex, predConstraintIndex byte, originSlot uint32, originAmount uint64) *ChainConstraint {
+func NewChainConstraint(id base.ChainID, predInputIndex byte, originSlot uint32, originAmount uint64) *ChainConstraint {
 	return &ChainConstraint{
-		ChainID:                    id,
-		PredecessorInputIndex:      predOutputIndex,
-		PredecessorConstraintIndex: predConstraintIndex,
-		OriginSlot:                 originSlot,
-		OriginAmount:               originAmount,
+		ChainID:               id,
+		PredecessorInputIndex: predInputIndex,
+		OriginSlot:            originSlot,
+		OriginAmount:          originAmount,
 	}
 }
 
 func NewChainOrigin(startSlot uint32, startAmount uint64) *ChainConstraint {
-	return NewChainConstraint(base.NilChainID, 0xff, 0xff, startSlot, startAmount)
+	return NewChainConstraint(base.NilChainID, 0xff, startSlot, startAmount)
 }
 
 func (cc *ChainConstraint) IsOrigin() bool {
-	if cc.ChainID != base.NilChainID {
-		return false
-	}
-	if cc.PredecessorInputIndex != 0xff {
-		return false
-	}
-	if cc.PredecessorConstraintIndex != 0xff {
-		return false
-	}
-	return true
+	return cc.ChainID == base.NilChainID && cc.PredecessorInputIndex == 0xff
 }
 
 func (cc *ChainConstraint) Name() string {
@@ -72,18 +60,23 @@ func (cc *ChainConstraint) Bytes() []byte {
 
 func (cc *ChainConstraint) String() string {
 	chID := "ORIGIN"
+	predRefStr := "empty"
 	if !cc.IsOrigin() {
 		chID = cc.ChainID.String()
+		predRefStr = hex.EncodeToString([]byte{cc.PredecessorInputIndex})
 	}
-	predRef := []byte{cc.PredecessorInputIndex, cc.PredecessorConstraintIndex}
-	return fmt.Sprintf("%s(%s, predRef=%s, originSlot=%d, originAmount=%s)",
-		ChainConstraintName, chID, hex.EncodeToString(predRef), cc.OriginSlot, util.Th(cc.OriginAmount))
+	return fmt.Sprintf("%s(%s, predInputIdx=%s, originSlot=%d, originAmount=%s)",
+		ChainConstraintName, chID, predRefStr, cc.OriginSlot, util.Th(cc.OriginAmount))
 }
 
 func (cc *ChainConstraint) Source() string {
-	predRef := []byte{cc.PredecessorInputIndex, cc.PredecessorConstraintIndex}
+	var predRefHex string
+	if !cc.IsOrigin() {
+		predRefHex = hex.EncodeToString([]byte{cc.PredecessorInputIndex})
+	}
+	// For origin, predRefHex is empty → "0x" in EasyFL (empty bytes)
 	return fmt.Sprintf(chainConstraintTemplate,
-		hex.EncodeToString(cc.ChainID[:]), hex.EncodeToString(predRef), cc.OriginSlot, cc.OriginAmount)
+		hex.EncodeToString(cc.ChainID[:]), predRefHex, cc.OriginSlot, cc.OriginAmount)
 }
 
 func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
@@ -104,11 +97,15 @@ func ChainConstraintFromBytesWithLib(data []byte, lib *Library) (*ChainConstrain
 		return nil, err
 	}
 	args1 := easyfl.StripDataPrefix(args[1])
-	if len(args1) != 2 {
-		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong predecessor reference")
+	switch len(args1) {
+	case 0:
+		// origin: empty predecessor reference
+		ret.PredecessorInputIndex = 0xff
+	case 1:
+		ret.PredecessorInputIndex = args1[0]
+	default:
+		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong predecessor reference length %d", len(args1))
 	}
-	ret.PredecessorInputIndex = args1[0]
-	ret.PredecessorConstraintIndex = args1[1]
 	sl, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[2]))
 	if err != nil {
 		return nil, err
@@ -120,15 +117,14 @@ func ChainConstraintFromBytesWithLib(data []byte, lib *Library) (*ChainConstrain
 	return ret, nil
 }
 
-// NewChainUnlockParams unlock parameters for the chain constraint. 3 bytes:
+// NewChainUnlockParams unlock parameters for the chain constraint. 1 byte:
 // 0 - successor output index
-// 1 - successor block index
-// 2 - transition mode must be equal to the transition mode in the successor constraint data
-func NewChainUnlockParams(successorOutputIdx, successorConstraintIndex byte) []byte {
-	return []byte{successorOutputIdx, successorConstraintIndex}
+func NewChainUnlockParams(successorOutputIdx byte) []byte {
+	return []byte{successorOutputIdx}
 }
 
-var FinishChainUnlockParams = []byte{0xff, 0xff}
+// FinishChainUnlockParams discontinues the chain. Empty unlock data.
+var FinishChainUnlockParams = []byte{}
 
 func registerChainConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainConstraintName, 4, func(data []byte) (Constraint, error) {
@@ -155,7 +151,7 @@ func init() {
 			util.Assertf(chainIDBack == chainID, "chainIDBack == chainID")
 		}
 		{
-			chainConstr := NewChainConstraint(chainID, 0, 0, 1000, 10_000_000)
+			chainConstr := NewChainConstraint(chainID, 0, 1000, 10_000_000)
 			chainConstrBack, err := ChainConstraintFromBytesWithLib(chainConstr.Bytes(), lib)
 			util.AssertNoError(err)
 			util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
@@ -171,8 +167,8 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	o := ctx.SelfOutput()
 
 	amounts := o.Amounts()
-	cc, idx := o.ChainConstraint()
-	par.Require(idx != 0xff, "evalEnforceFrozenCoverageOnNonDelegationChain: chained output is expected")
+	cc := o.ChainConstraint()
+	par.Require(cc != nil, "evalEnforceFrozenCoverageOnNonDelegationChain: chained output is expected")
 	// produced output
 	if cc.IsOrigin() {
 		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")

@@ -138,7 +138,7 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput) bool {
 	if o == nil {
 		return true
 	}
-	if _, idx := o.ChainConstraint(); idx != 0xff {
+	if o.ChainConstraint() != nil {
 		// filter out all chain constrained outputs
 		return false
 	}

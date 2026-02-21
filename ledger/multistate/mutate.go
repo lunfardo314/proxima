@@ -261,7 +261,7 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 			}
 		}
 	}
-	chainConstraint, _ := out.ChainConstraint()
+	chainConstraint := out.ChainConstraint()
 	if chainConstraint == nil {
 		// not a chain output
 		return

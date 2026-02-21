@@ -2,28 +2,28 @@
 func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000000000000000000000)
 
 // $0 - chain ChainID
-// $1 - predecessor output index || predecessor constraint index (2 bytes)
+// $1 - predecessor input index (1 byte, or 0x empty for origin)
 // $2 - origin slot
 // $3 - origin amount
 func _validChainProduced :
 if(
    isChainOriginID($0),
-        // chain origin
+        // chain origin: predecessor ref must be empty
    require(
-     and(equal($1, 0xffff), equalUint($2, txSlot), equalUint($3, selfTokenBalanceValue)),
+     and(isZero($1), equalUint($2, txSlot), equalUint($3, selfTokenBalanceValue)),
      !!!invalid_chain_origin_data
    ),
-        // NOT chain origin. Crosscheck reference
+        // NOT chain origin. Crosscheck: predecessor's unlock params must point to this output
    require(
-     equal(unlockParamsByConstraintIndex($1), selfConstraintIndex),
+     equal(unlockParamsByConstraintIndex(concat($1, chainConstraintIndex)), selfOutputIndex),
      !!!predecessor_reference_crosscheck_failed
    )
 )
 
-// $0 - param number
+// Successor chain constraint is at (successorOutputIndex, chainConstraintIndex=2)
 func _chainSuccessorParam :
 	parseInlineDataArgument(
-        atPath(concat(pathToProducedOutputs, selfUnlockParameters)),
+        atPath(concat(pathToProducedOutputs, selfUnlockParameters, chainConstraintIndex)),
         $0,
 		selfBytecodePrefix
 	)
@@ -33,11 +33,11 @@ func _chainSuccessorParam :
 // $2 - origin amount
 func _validChainConsumed :
 or(
-      // discontinue chain. Check nothing
-   equal(selfUnlockParameters, 0xffff),
+      // discontinue chain. Empty unlock data (zero length, not zero value).
+   equal(len(selfUnlockParameters), u64/0),
       // chain continues
    and (
-      require(equal(len(selfUnlockParameters), u64/2), !!!unlock_parameters_must_be_2_bytes),
+      require(equal(len(selfUnlockParameters), u64/1), !!!unlock_parameters_must_be_1_byte),
         // check chainID match
       require(
          if(
@@ -47,9 +47,9 @@ or(
          ),
          !!!chain_ID_mismatch_with_successor
       ),
-        // crosscheck successor reference
+        // crosscheck successor reference: my input index must match successor's predecessor input index
       require(
-         equal(selfConstraintIndex, _chainSuccessorParam(1)),
+         equal(selfOutputIndex, _chainSuccessorParam(1)),
          !!!successor_reference_crosscheck_failed
       ),
       require(
@@ -64,19 +64,21 @@ or(
 )
 
 // $0 - chain ChainID
-// $1 - predecessor (input index || chain constraint index) - 2 bytes
+// $1 - predecessor input index (1 byte, or 0x empty for origin)
 // $2 - origin slot
 // $3 - origin amount
-// --- unlock data: 2 bytes: (successor output index || successor chain constraint), 0xffff means discontinue chain
+// --- unlock data: 1 byte (successor output index), 0x (empty) means discontinue chain
 func chain : and(
       // chain constraint cannot be on output with index 0xff = 255
    not(equal(selfOutputIndex, 0xff)),
+      // chain constraint must be at index 2
+   require(equal(selfBlockIndex, chainConstraintIndex), !!!chain_constraint_must_be_at_index_2),
    require(equal(len($0),u64/32), !!!chainID_must_be_32_bytes_long),
    or(
       and(
          selfIsProducedOutput,
          _validChainProduced($0,$1,$2,$3),
-         _validInflationAmount($0, byte($1,0), amountAt(selfSiblingConstraint(amountsConstraintIndex), 1)),
+         _validInflationAmount($0, $1, amountAt(selfSiblingConstraint(amountsConstraintIndex), 1)),
          or(
             selfHasLockType(#delegateLock),
             embeddedEnforceFrozenCoverageOnNonDelegationChain
@@ -89,17 +91,11 @@ func chain : and(
    )
 )
 
-// $0 chain constraint index
-func predecessorTokenBalanceByChainConstraintIndex : predecessorTokenBalance(selfChainPredInputIndex($0))
+// no parameter - chain constraint is always at index 2
+func predecessorTokenBalance : tokenBalanceByOutputPath(concat(pathToConsumedOutputs, selfChainPredInputIndex))
 
-// $0 input index (1 byte)
-func predecessorTokenBalance : tokenBalanceByOutputPath(concat(pathToConsumedOutputs, $0))
-
-// $0 - chain constraint index
-func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain), 0)
-
-// $0 chain constraint index
-// func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain),0) )
+// no parameter - chain constraint is always at index 2
+func selfChainPredInputIndex : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 1, #chain)
 
 // $0 - input index (1 byte). Returns frozen coverage at epoch 0 of the predecessor
 func _predecessorFrozenCoverage0 : amountAt(atPath(concat(pathToConsumedOutputs, $0, amountsConstraintIndex)), 2)
@@ -109,12 +105,12 @@ func _predecessorFrozenCoverage0 : amountAt(atPath(concat(pathToConsumedOutputs,
 func _predecessorInflatableAmount :
 if(
   selfHasLockType(#delegateLock),
-  predecessorTokenBalance($0),
-  add(predecessorTokenBalance($0), _predecessorFrozenCoverage0($0))
+  predecessorTokenBalance,
+  add(predecessorTokenBalance, _predecessorFrozenCoverage0(selfChainPredInputIndex))
 )
 
 // $0 - chain ChainID
-// $1 - predecessor output index || predecessor constraint index (2 bytes)
+// $1 - predecessor input index (1 byte, or 0x empty for origin)
 // $2 inflation amount value
 func _validInflationAmount :
 or(
@@ -134,6 +130,6 @@ if(
   if(
      isBranchTransaction,
      branchInflationBonus(vrfProofOnSuccessor),
-     chainInflationOneSlot(_predecessorInflatableAmount($0), slotOfInputByIndex($0))
+     chainInflationOneSlot(_predecessorInflatableAmount, slotOfInputByIndex($0))
   )
 )

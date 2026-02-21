@@ -198,21 +198,21 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
 	require.NoError(td, err)
 
-	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	seqChainIdx, err := txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance() - requiredAdvance))
-		o.PutConstraint(successorChainConstraint.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(td, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	predOutputIndex, err := txb.ConsumeOutput(td.delegatedOutput.Output, td.delegatedOutput.ID)
 	require.NoError(td, err)
 	require.EqualValues(td, 1, predOutputIndex)
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(1, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	require.NoError(td, err)
 
@@ -267,14 +267,14 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
 	require.NoError(td, err)
 
-	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	succChainIdx, err := txb.ProduceOutput(td.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(td.seqChainOrigin.Output.TokenBalance()))
-		o.PutConstraint(successorChainConstraint.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(td, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	inflation := uint64(0)
 	if inflate {
@@ -289,8 +289,8 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	delegatedOut, err := td.delegatedOutput.MakeDelegationRevokeOutput(delegatedOutPar)
 	require.NoError(td, err)
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(1, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	require.NoError(td, err)
 
@@ -349,8 +349,8 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	amount, _, err := txb.ConsumeOutputsNoUnlock(&td.delegatedOutput.OutputWithID)
 	require.NoError(td, err)
 
-	txb.PutUnlockParams(0, 1, []byte{0xff, 0xff, 0xff})
-	txb.PutUnlockParams(0, 2, ledger.FinishChainUnlockParams)
+	txb.PutUnlockParams(0, 1, []byte{0xff, 0xff})
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount - tagAlongFee)).WithLock(td.masterAddr)
@@ -653,22 +653,22 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 
 	amounts := append([]int64{int64(td.seqChainOrigin.Output.TokenBalance() - par.inflationAdvance), 0}, par.sequencerFrozenCoverage...)
 
-	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, 2, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(td.seqChainOrigin.ChainID, 0, td.seqChainOrigin.OriginSlot, td.seqChainOrigin.OriginAmount)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(amounts...)
 		o.WithLock(td.seqChainOrigin.Output.Lock())
-		o.MustPushConstraint(successorChainConstraint.Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint(2).Bytes())
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
+		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 	}))
 	util.AssertNoError(err)
 
 	amounts = append([]int64{int64(td.delegatedOutput.Output.TokenBalance() + par.inflationAdvance), 0}, par.successorFrozenCoverage...)
 
-	cc := ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, 2, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount)
+	cc := ledger.NewChainConstraint(td.delegatedOutput.ChainID, 1, td.delegatedOutput.OriginSlot, td.delegatedOutput.OriginAmount)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(amounts...)
 		o.WithLock(td.delegatedOutput.Output.Lock())
-		o.MustPushConstraint(cc.Bytes())
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		freezeUntil := uint32(0)
 		if par.frozenEpochs > 0 {
 			txEpoch := ledger.L(0).EpochFromSlotDirect(td.delegatedOutput.Target.ChainID(), par.ts.Slot)
@@ -683,10 +683,10 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 
 	// unlock
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2), 0)
-	txb.PutUnlockParams(1, 2, ledger.NewChainUnlockParams(1, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(1, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	require.NoError(td, err)
 

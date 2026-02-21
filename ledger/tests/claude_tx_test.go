@@ -64,8 +64,7 @@ func buildValidTransferTxBytes(
 	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
-		_, idx := o.ChainConstraint()
-		return idx == 0xff && o.Lock().Name() == ledger.SigLockName
+		return o.ChainConstraint() == nil && o.Lock().Name() == ledger.SigLockName
 	})
 	require.NoError(t, err)
 	require.True(t, len(outs) > 0, "source address must have UTXOs")
@@ -163,8 +162,7 @@ func TestTxDuplicateInputsRejected(t *testing.T) {
 	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
-		_, idx := o.ChainConstraint()
-		return idx == 0xff && o.Lock().Name() == ledger.SigLockName
+		return o.ChainConstraint() == nil && o.Lock().Name() == ledger.SigLockName
 	})
 	require.NoError(t, err)
 	require.True(t, len(outs) > 0)
@@ -265,8 +263,7 @@ func TestTxInputCommitmentWithWrongHash(t *testing.T) {
 	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
-		_, idx := o.ChainConstraint()
-		return idx == 0xff && o.Lock().Name() == ledger.SigLockName
+		return o.ChainConstraint() == nil && o.Lock().Name() == ledger.SigLockName
 	})
 	require.NoError(t, err)
 
@@ -477,8 +474,7 @@ func TestTxEdgeCaseTimePaceConstraint(t *testing.T) {
 	outsData, err := u.StateReader().GetUTXOsForController(srcAddr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
-		_, idx := o.ChainConstraint()
-		return idx == 0xff && o.Lock().Name() == ledger.SigLockName
+		return o.ChainConstraint() == nil && o.Lock().Name() == ledger.SigLockName
 	})
 	require.NoError(t, err)
 
@@ -621,8 +617,7 @@ func getSourceOutputs(t *testing.T, u *utxodb.UTXODB, addr ledger.SigLock) []*le
 	outsData, err := u.StateReader().GetUTXOsForController(addr.ControllerID())
 	require.NoError(t, err)
 	outs, err := ledger.ParseAndSortOutputData(outsData, func(oid *base.OutputID, o *ledger.Output) bool {
-		_, idx := o.ChainConstraint()
-		return idx == 0xff && o.Lock().Name() == ledger.SigLockName
+		return o.ChainConstraint() == nil && o.Lock().Name() == ledger.SigLockName
 	})
 	require.NoError(t, err)
 	require.True(t, len(outs) > 0, "address must have UTXOs")

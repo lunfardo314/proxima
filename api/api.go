@@ -413,7 +413,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 			Amount:      o.TokenBalance(),
 			LockName:    o.Lock().Name(),
 		}
-		if cc, idx := o.ChainConstraint(); idx != 0xff {
+		if cc := o.ChainConstraint(); cc != nil {
 			var chainID base.ChainID
 			if cc.IsOrigin() {
 				chainID = base.MakeOriginChainID(oid)

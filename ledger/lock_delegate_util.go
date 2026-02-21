@@ -33,7 +33,7 @@ func MakeDelegationInitOutput(par MakeDelegateInitOutputParams) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmounts(int64(par.Amount))
 		o.WithLock(NewDelegateLock(par.Target, par.MasterID, par.MaxFrozenEpochs, par.RequiredInflationShare))
-		o.MustPushConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes())
+		o.PutConstraint(NewChainOrigin(par.StartSlot, par.Amount).Bytes(), ConstraintIndexChain)
 		o.MustPushConstraint(DelegateLockState{}.Bytes())
 	})
 }
@@ -218,12 +218,12 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	for i := byte(0); i < byte(frozenEpochs); i++ {
 		amountsVector[AmountIndexFrozenCoverage+i] = int64(successorTokenBalance)
 	}
-	chainConstraint := NewChainConstraint(o.ChainID, predOutputIndex, 2, o.OriginSlot, o.OriginAmount)
+	chainConstraint := NewChainConstraint(o.ChainID, predOutputIndex, o.OriginSlot, o.OriginAmount)
 
 	ret = NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amountsVector[:]...)
 		o1.WithLock(NewDelegateLock(o.Target, o.MasterID, o.MaxFrozenEpochs, o.RequiredInflationShare))
-		o1.MustPushConstraint(chainConstraint.Bytes())
+		o1.PutConstraint(chainConstraint.Bytes(), ConstraintIndexChain)
 		o1.MustPushConstraint(DelegateLockState{LastFrozenEpoch: freezeUntilEpoch, State: DelegateLockStateFrozen}.Bytes())
 	})
 	return
@@ -369,11 +369,11 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 	frozenCoverageVector := o.MakeFrozenCoverageAmountDeltasForRevoking(par.TxTs)
 	amounts = append(amounts, frozenCoverageVector...)
 
-	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, 2, o.OriginSlot, o.OriginAmount)
+	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, o.OriginSlot, o.OriginAmount)
 	return NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amounts...)
 		o1.WithLock(NewDelegateLock(o.Target, o.MasterID, o.MaxFrozenEpochs, o.RequiredInflationShare))
-		o1.MustPushConstraint(chainConstraint.Bytes())
+		o1.PutConstraint(chainConstraint.Bytes(), ConstraintIndexChain)
 		o1.MustPushConstraint(DelegateLockState{
 			LastFrozenEpoch: 0,
 			State:           DelegateLockStateOnHold,

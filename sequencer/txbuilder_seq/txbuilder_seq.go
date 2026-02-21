@@ -217,7 +217,7 @@ func (txb *SeqTxBuilder) AddSimpleInput(o ledger.OutputWithID) error {
 			return fmt.Errorf("AddSimpleInput: %v", err)
 		}
 	case ledger.ChainLockName:
-		txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainUnlockParams(0, 2))
+		txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 	default:
 		return fmt.Errorf("AddSimpleInput: wrong ock type")
 	}
@@ -310,10 +310,10 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		return
 	}
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(advance)
-	// unlock delegation lock as target. First 2 bytes is chain unlock parameters, 3rd byte indicates it is target unlock
-	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0, 2), ledger.DelegationUnlockedByTarget)
+	// unlock delegation lock as target. First byte is chain lock unlock, 2nd byte indicates it is target unlock
+	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
 	// unlock chain
-	txb.PutUnlockParams(idx, 2, ledger.NewChainUnlockParams(successorIdx, 2))
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(successorIdx))
 
 	// add frozen coverage to the sequencer output
 	a := delegationOut.Amounts().FrozenCoverageVector(byte(txb.Library.MaxFrozenEpochs))
@@ -344,15 +344,15 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 	txb.PutSignatureUnlock(0)
 
 	// sequencer produced output
-	var chainOutConstraintIdx byte
 	chainOutIdx, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.PutAmounts(txb.chainOutAmounts[:]...)
 		o.PutLock(txb.chainInput.Output.Lock())
 
-		chainOutConstraint := ledger.NewChainConstraint(txb.chainInput.ChainID, 0, txb.chainInput.ChainConstraintIndex, txb.chainInput.OriginSlot, txb.chainInput.OriginAmount)
-		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
-		// put sequencer constraint
-		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
+		// chain constraint at fixed index 2
+		chainOutConstraint := ledger.NewChainConstraint(txb.chainInput.ChainID, 0, txb.chainInput.OriginSlot, txb.chainInput.OriginAmount)
+		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
+		// sequencer constraint (no parameters)
+		sequencerConstraint := ledger.NewSequencerConstraint()
 		o.MustPushConstraint(sequencerConstraint.Bytes())
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
 		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
@@ -363,7 +363,7 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 	}
 
 	// unlock sequencer chain constraint
-	txb.PutUnlockParams(0, txb.chainInput.ChainConstraintIndex, ledger.NewChainUnlockParams(chainOutIdx, chainOutConstraintIdx))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(chainOutIdx))
 	txb.TransactionData.SequencerOutputIndex = chainOutIdx
 
 	if txb.stemInput == nil {

@@ -135,7 +135,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	// consume tag-along with the revoke command message
 	tagAlongOutputIdx, err := txb.ConsumeOutput(r.Output, r.ID)
 	util.AssertNoError(err)
-	txb.PutUnlockParams(tagAlongOutputIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(tagAlongOutputIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 	// consume the delegation predecessor
 	predIdx, err := txb.ConsumeOutput(r.delegation.Output, r.delegation.ID)
@@ -148,8 +148,8 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	}
 
 	// unlock consumed delegation
-	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2), ledger.DelegationUnlockedByTarget)
-	txb.PutUnlockParams(predIdx, 2, ledger.NewChainUnlockParams(revocationOutputIndex, 2))
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(revocationOutputIndex))
 
 	if r.ensureStopDelegation != nil {
 		// unlock ensure revocation constraint

@@ -246,8 +246,8 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 	o := ctx.SelfOutput()
 
 	amounts := o.Amounts()
-	cc, idx := o.ChainConstraint()
-	par.Require(idx == 2, "evalEnforceFrozenCoverageOnDelegateOutput: chain constraint is expected at index 2")
+	cc := o.ChainConstraint()
+	par.Require(cc != nil, "evalEnforceFrozenCoverageOnDelegateOutput: chain constraint is expected at index 2")
 
 	lib := ctx.GetLibrary()
 	// produced output
@@ -273,13 +273,13 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 		return []byte{0xff}
 	}
 	// predecessor is delegation
-	// unlock parameters of predecessor delegation lock must be 3 bytes
+	// unlock parameters of predecessor delegation lock must be 2 bytes
 	unlock, err := ctx.UnlockParameters(dOut.PredecessorInputIndex, ConstraintIndexLock)
 	par.RequireNoError(err)
-	par.Require(len(unlock) >= 3, "evalEnforceFrozenCoverageOnDelegateOutput: unlock parameters of predecessor delegation lock at (%d, %d) must be 3 bytes",
+	par.Require(len(unlock) >= 2, "evalEnforceFrozenCoverageOnDelegateOutput: unlock parameters of predecessor delegation lock at (%d, %d) must be 2 bytes",
 		dOut.PredecessorInputIndex, ConstraintIndexLock)
 
-	if unlock[2] == DelegationUnlockedByMaster {
+	if unlock[1] == DelegationUnlockedByMaster {
 		// predecessor is delegation unlocked by master  -> must be all-0
 		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
 			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: predecessor is unlocked by the master")

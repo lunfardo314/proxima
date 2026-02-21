@@ -82,7 +82,7 @@ func (c *WithdrawFromChainTxBuilderCommand) Apply(txb *SeqTxBuilder) (bool, erro
 	idx, err := txb.ConsumeOutput(c.Output, c.ID)
 	util.AssertNoError(err)
 
-	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(c.Output.TokenBalance())
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {

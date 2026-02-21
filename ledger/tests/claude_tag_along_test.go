@@ -213,21 +213,21 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	_, err = txb2.ConsumeOutput(seqOriginB.Output, seqOriginB.ID)
 	require.NoError(t, err)
 	txb2.PutSignatureUnlock(0)
-	txb2.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb2.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	// consume the tag-along (targeted at chain A)
 	_, err = txb2.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
 	// provide unlock params referencing chain B (input 0, constraint 2)
 	// but the tag-along's $0 is chain A's ID -> mismatch
-	txb2.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+	txb2.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
 
 	// produce chain B successor with stolen fee
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(seqOriginB.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 		o.WithLock(seqOriginB.Output.Lock())
-		cc := ledger.NewChainConstraint(seqOriginB.ChainID, 0, 2, seqOriginB.OriginSlot, seqOriginB.OriginAmount)
-		o.MustPushConstraint(cc.Bytes())
+		cc := ledger.NewChainConstraint(seqOriginB.ChainID, 0, seqOriginB.OriginSlot, seqOriginB.OriginAmount)
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb2.ProduceOutput(next)
 	require.NoError(t, err)
@@ -246,38 +246,8 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 // - Wrong chain constraint index (pointing to amount constraint instead of chain)
 // - Self-referencing output index (tag-along references itself)
 func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
-	t.Run("wrong chain constraint index", func(t *testing.T) {
-		env := setupTagAlongEnv(t)
-		taOuts := env.u.SugaredStateReader().GetTagAlongBacklog(env.targetChainID)
-		require.EqualValues(t, 1, len(taOuts))
-
-		txb := txbuilder.New()
-		_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
-		require.NoError(t, err)
-		txb.PutSignatureUnlock(0)
-		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
-
-		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
-		require.NoError(t, err)
-		// provide unlock params with wrong constraint index: 0 (amount) instead of 2 (chain)
-		// the chain lock validator will try to parse amount constraint as chain -> fail
-		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 0))
-
-		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(env.seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
-			o.WithLock(env.seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(env.targetChainID, 0, 2, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
-			o.MustPushConstraint(cc.Bytes())
-		})
-		_, err = txb.ProduceOutput(next)
-		require.NoError(t, err)
-
-		txb.TransactionData.Timestamp = env.taTs.AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-		txb.SignED25519(env.privKeyTarget)
-		_, _, _, err = txb.BytesWithValidation()
-		require.Error(t, err, "wrong constraint index should be rejected")
-	})
+	// NOTE: "wrong chain constraint index" subtest removed — chain constraint index
+	// is now always implicit (ConstraintIndexChain=2), so that attack vector no longer exists.
 
 	t.Run("self-referencing unlock params", func(t *testing.T) {
 		env := setupTagAlongEnv(t)
@@ -288,19 +258,19 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
-		txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+		txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 		taIdx, err := txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
 		// self-reference: tag-along unlock params point to itself
 		// EasyFL chainLock checks: not(equal(selfOutputIndex, byte(selfUnlockParameters,0)))
-		txb.PutUnlockParams(taIdx, 1, ledger.NewChainLockUnlockParams(taIdx, 1))
+		txb.PutUnlockParams(taIdx, 1, ledger.NewChainLockUnlockParams(taIdx))
 
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(env.seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 			o.WithLock(env.seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(env.targetChainID, 0, 2, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
-			o.MustPushConstraint(cc.Bytes())
+			cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
+			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		})
 		_, err = txb.ProduceOutput(next)
 		require.NoError(t, err)
@@ -400,11 +370,11 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 	_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
 
 	// produce chain output with inflated balance: chain_amount + fee + extra
 	extra := uint64(1_000_000)
@@ -412,8 +382,8 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(inflatedBalance)
 		o.WithLock(env.seqOrigin.Output.Lock())
-		cc := ledger.NewChainConstraint(env.targetChainID, 0, 2, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
-		o.MustPushConstraint(cc.Bytes())
+		cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb.ProduceOutput(next)
 	require.NoError(t, err)
@@ -495,18 +465,18 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 	_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
 
 	expectedBalance := initialChainBalance + taFee
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(expectedBalance)
 		o.WithLock(env.seqOrigin.Output.Lock())
-		cc := ledger.NewChainConstraint(env.targetChainID, 0, 2, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
-		o.MustPushConstraint(cc.Bytes())
+		cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb.ProduceOutput(next)
 	require.NoError(t, err)
