@@ -149,7 +149,12 @@ var (
 		Denominator: 3,
 	}
 
-	FractionHealthyBranch = FractionHalf
+	Fraction7_12 = Fraction{
+		Numerator:   7,
+		Denominator: 12,
+	}
+
+	FractionHealthyBranch = Fraction7_12
 
 	ErrInterrupted = errors.New("interrupted by global stop")
 )

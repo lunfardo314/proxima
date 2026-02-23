@@ -214,6 +214,9 @@ func (q *TxSenders) isSpenderKnownInLRB(acc base.SpenderID) (ret bool) {
 }
 
 func (q *TxSenders) cleanup() {
+	if ledger.IsReset() {
+		return
+	}
 	nowTicks := ledger.TimeNow().TicksSinceGenesis()
 	if nowTicks < cleanupHorizonTicks {
 		return

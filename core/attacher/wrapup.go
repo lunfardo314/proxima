@@ -6,11 +6,9 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
-	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 func (a *milestoneAttacher) wrapUpAttacher() {
@@ -29,14 +27,12 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 		Supply:         util.Ref(a.BaselineSupply() + slotInflation),
 	}
 	if a.vid.IsBranchTransaction() {
-		root, stats := a.commitBranch()
-		a.finals.StateRoot = root
-		a.finals.MutationStats = stats
+		a.commitBranch()
 	}
 	a.checkConsistencyWithMetadata()
 }
 
-func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationStats) {
+func (a *milestoneAttacher) commitBranch() {
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	muts, stats, committedTxs := a.pastCone.Mutations(a.vid.Slot())
@@ -82,6 +78,9 @@ func (a *milestoneAttacher) commitBranch() (common.VCommitment, vertex.MutationS
 	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(*a.finals.CoverageDelta, *a.finals.Supply, global.FractionHealthyBranch))
 
 	branchID := a.vid.ID()
+
+	a.finals.StateRoot = upd.Root()
+	a.finals.MutationStats = stats
+
 	a.LogTx(time.Now(), fmt.Sprintf("committed in branch %s", branchID.String()), committedTxs...)
-	return upd.Root(), stats
 }
