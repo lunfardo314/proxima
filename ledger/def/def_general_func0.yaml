@@ -104,7 +104,7 @@ functions:
   -
     sym: isBranchTransaction
     numArgs: 0
-    source: "and(isSequencerTransaction, not(equal(txStemOutputIndex, 0xff)))"
+    source: "and(isSequencerTransaction, isZero(tickFromTimestampBytes(txTimestampBytes)))"
   -
     sym: numEndorsements
     numArgs: 0
@@ -145,6 +145,10 @@ functions:
     sym: selfIsProducedOutput
     numArgs: 0
     source: "isPathToProducedOutput(at)"
+  -
+    sym: selfIsChainedOutput
+    numArgs: 0
+    source: "and(lessThan(u64/2, selfNumConstraints), equal(parseBytecode(selfSiblingConstraint(2), 0x), #chain))"
   -
     sym: selfOutputIndex
     numArgs: 0

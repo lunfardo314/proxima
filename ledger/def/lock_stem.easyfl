@@ -35,7 +35,8 @@ func stemLock: and(
        and(
           selfIsProducedOutput,
             // must be consistent with the transaction level data
-          equal(selfOutputIndex, txStemOutputIndex)
+          equal(selfOutputIndex, txStemOutputIndex),
+		  selfEnforceZeroAmountsInNonChainedOutput
        )
     )
 )

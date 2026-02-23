@@ -58,3 +58,10 @@ functions:
     description: "enforces amounts on delegate output"
     numArgs: 0
     embedded_as: embeddedEnforceFrozenCoverageOnNonDelegationChain
+  -
+    sym: embeddedIsInflationAndFrozenCoverageZero
+    description: "returns true if inflation and frozen coverage amount are all zero"
+    numArgs: 0
+    embedded_as: embeddedIsInflationAndFrozenCoverageZero
+
+

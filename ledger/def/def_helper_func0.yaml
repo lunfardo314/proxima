@@ -15,10 +15,6 @@ functions:
     description: last byte of big-endian uint64 multiplication result
     source: "byte(mul($0,$1),7)"
   -
-    sym: div8
-    description: last byte of big-endian uint64 integer division result
-    source: "byte(div($0,$1),7)"
-  -
     sym: timestampBytes
     description: validates and composes $0 as slot value and $1 as ticks value into timestamp
     source: "concat(mustValidTimeSlot($0),mul8(mustValidTimeTick($1),2))"
@@ -37,8 +33,4 @@ functions:
   -
     sym: tickFromTimestampBytes
     description: returns ticks of the timestamp
-    source: "div8(byte($0, 4),2)"
-  -
-    sym: isTimestampBytesOnSlotBoundary
-    description: returns non-empty value if ticks of the $0 timestamp are 0
-    source: "isZero(tickFromTimestampBytes($0))"
+    source: "byte(rshift64(byte($0, 4), 1), 7)"

@@ -12,3 +12,11 @@ if(
 func tokenBalanceByOutputPath : amountAt(atPath(concat($0, amountsConstraintIndex)), 0)
 
 func selfTokenBalanceValue: amountAt(selfSiblingConstraint(amountsConstraintIndex),0)
+
+// no args.
+// Enforces all 0 in inflation and frozen coverage on non-chained output
+func selfEnforceZeroAmountsInNonChainedOutput :
+require(
+   or(selfIsChainedOutput, embeddedIsInflationAndFrozenCoverageZero),
+   !!!inflation_and_frozen_coverage_must_all_be_0_on_non-chained output
+)

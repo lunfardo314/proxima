@@ -18,6 +18,7 @@ or(
         equal($1, txSpenderID(txSignatureData)),
         !!!sender_hash_check_failed
      ),
+  	 selfEnforceZeroAmountsInNonChainedOutput
   ),
   and(
      selfIsConsumedOutput,

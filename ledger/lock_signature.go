@@ -20,7 +20,7 @@ const (
 )
 
 //go:embed def/lock_signature.easyfl
-var addressED25519ConstraintSource string // TODO rename
+var sigLockConstraintSource string
 
 // SigLockFromBytes parses an SigLock using the provided library.
 // Serde is library upgrade-independent

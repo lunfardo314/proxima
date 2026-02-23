@@ -142,6 +142,7 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalTupleLenAtPath":           evalTupleLenAtPath,
 	"embeddedEnforceFrozenCoverageOnDelegateOutput":     evalEnforceFrozenCoverageOnDelegateOutput,
 	"embeddedEnforceFrozenCoverageOnNonDelegationChain": evalEnforceFrozenCoverageOnNonDelegationChain,
+	"embeddedIsInflationAndFrozenCoverageZero":          evalIsInflationAndFrozenCoverageZero,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.

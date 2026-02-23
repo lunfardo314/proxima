@@ -166,3 +166,16 @@ func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
 	ret := easyfl_util.Uint64To8Bytes(uint64(par.DataContext().ProducedTotal(idxBin[0])))
 	return par.AllocData(ret[:]...)
 }
+
+func evalIsInflationAndFrozenCoverageZero(par *easyfl.CallParams[*EvalContext]) []byte {
+	ctx := par.DataContext()
+	lib := ctx.GetLibrary()
+	o := ctx.SelfOutput()
+
+	amounts := o.Amounts()
+	if amounts.NumElements() <= 1 ||
+		(amounts.InflationAmount() == 0 && amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs))) {
+		return par.AllocData(0xff)
+	}
+	return nil
+}

@@ -31,17 +31,8 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	)
 	util.AssertNoError(err)
 
-	//err := upgradeLibrary(lib,
-	//	[]byte(_definitionsEmbeddedYAMLUpgrade0),
-	//	ConstantsYAMLFromParamsUpgrade0(par),
-	//	[]byte(pathConstantsUpgrade0()),
-	//	[]byte(_helperFunctionsYAMLUpgrade0),
-	//	[]byte(_generalFunctionsYAMLUpgrade0),
-	//)
-	//util.AssertNoError(err)
-
 	err = lib.IntroduceUpdateManyMulti(
-		addressED25519ConstraintSource,
+		sigLockConstraintSource,
 		timelockSource,
 		amountsSource,
 		stemLockSource,
@@ -58,20 +49,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 
 	err = lib.CommitUpdate()
 	util.AssertNoError(err)
-
-	//lib.MustExtendMany(addressED25519ConstraintSource)
-	//lib.MustExtendMany(timelockSource)
-	//lib.MustExtendMany(amountsSource)
-	//lib.MustExtendMany(stemLockSource)
-	//lib.MustExtendMany(chainConstraintSource)
-	//lib.MustExtendMany(sequencerConstraintSource)
-	//lib.MustExtendMany(chainLockConstraintSource)
-	//lib.MustExtendMany(delegateLockSource)
-	//lib.MustExtendMany(tagAlongLockConstraintSource)
-	//lib.MustExtendMany(ensureStopFreezeDelegationConstraintSource)
-	//lib.MustExtendMany(_txLayoutValidator0)
-	//lib.MustExtendMany(_miscCalculationsSource)
-
 }
 
 // registerConstraints0 mass-registers all serde wrappers of constraints at genesis
