@@ -2,6 +2,8 @@
 package branches
 
 import (
+	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
@@ -35,11 +37,26 @@ type (
 		// HasUTXO, GetUTXO and similar do not require database involvement during attachment and solidification
 		// in the same slot. Inactive cached readers with their trie caches are constantly cleaned up
 		stateReaders map[base.TransactionID]*cachedStateReader
+
+		// pending holds deferred branch commits. The actual DB write is deferred until
+		// the branch state is requested via GetStateReaderForTheBranch().
+		// Orphan branches that are never requested are discarded during cleanup.
+		pending map[base.TransactionID]*PendingBranchCommit
 	}
 
 	cachedStateReader struct {
 		multistate.IndexedStateReader
 		lastActivity time.Time
+	}
+
+	// PendingBranchCommit holds data needed to lazily commit a branch to DB.
+	// The actual DB write is deferred until the branch state is requested via GetStateReaderForTheBranch().
+	PendingBranchCommit struct {
+		Mutations        *multistate.Mutations
+		RootRecParams    *multistate.RootRecordParams
+		BaselineBranchID base.TransactionID
+		TxIDTTLSlots     uint32
+		CommittedTxs     []base.TransactionID
 	}
 )
 
@@ -55,6 +72,7 @@ func New(env environment) *Branches {
 		snapshotBranchID: multistate.FetchSnapshotBranchID(env.StateStore()),
 		m:                make(map[base.TransactionID]branchDataWithLedgerCoverage),
 		stateReaders:     make(map[base.TransactionID]*cachedStateReader),
+		pending:          make(map[base.TransactionID]*PendingBranchCommit),
 	}
 	env.RepeatInBackground("branches_cleanup", 5*time.Second, func() bool {
 		ret.mutex.Lock()
@@ -206,11 +224,107 @@ func (b *Branches) _cleanupBranches() (int, int) {
 
 	for txid, br := range b.m {
 		if time.Since(br.lastActive) > ttl {
+			// if pending, discard the uncommitted state
+			if _, isPending := b.pending[txid]; isPending {
+				delete(b.pending, txid)
+				b.Log().Infof("orphaned branch %s, discarding uncommitted state", txid.StringShort())
+			}
 			delete(b.m, txid)
 			count++
 		}
 	}
 	return count, len(b.m)
+}
+
+// AddPendingBranch stores a deferred branch commit. The branch data is cached in b.m (with nil Root)
+// so that coverage, supply, and other non-trie lookups work immediately.
+// The actual DB commit is deferred until GetStateReaderForTheBranch() is called.
+func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBranchCommit,
+	stemOutput, sequencerOutput *ledger.OutputWithID) {
+
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	// build BranchData with nil Root for immediate use by coverage/supply lookups
+	bd := branchDataWithLedgerCoverage{
+		BranchData: &multistate.BranchData{
+			RootRecord: multistate.RootRecord{
+				// Root is nil — will be set when committed
+				SequencerID:   pb.RootRecParams.SeqID,
+				CoverageDelta: pb.RootRecParams.CoverageDelta,
+				FrozenCoverage: pb.RootRecParams.FrozenCoverage,
+				SlotInflation: pb.RootRecParams.SlotInflation,
+				Supply:        pb.RootRecParams.Supply,
+				NumTransactions: pb.RootRecParams.NumTransactions,
+			},
+			Stem:            stemOutput,
+			SequencerOutput: sequencerOutput,
+		},
+		ledgerCoverage: 0,
+		lastActive:     time.Now(),
+	}
+
+	b.m[branchID] = bd
+	b.pending[branchID] = pb
+}
+
+// _commitPendingBranch performs the actual DB commit for a deferred branch.
+// Must be called under b.mutex.
+func (b *Branches) _commitPendingBranch(branchID base.TransactionID) {
+	pb, ok := b.pending[branchID]
+	if !ok {
+		return
+	}
+
+	// get baseline branch root from cache or DB
+	baselineBD, baselineFound := b._getAndCacheNoLock(pb.BaselineBranchID)
+	b.Assertf(baselineFound, "_commitPendingBranch: baseline branch %s not found", pb.BaselineBranchID.StringShort)
+	b.Assertf(baselineBD.Root != nil, "_commitPendingBranch: baseline branch %s has nil root (still pending)", pb.BaselineBranchID.StringShort)
+
+	// create updatable state from baseline root
+	upd := multistate.MustNewUpdatable(b.StateStore(), baselineBD.Root)
+
+	// inject any missing upgrade UTXOs
+	baselineReader := multistate.MustNewReadable(b.StateStore(), baselineBD.Root, 0)
+	injectedUpgrades := multistate.InjectMissingUpgradeUTXOs(pb.Mutations, baselineReader, branchID.Slot())
+
+	// log upgrade activations
+	for _, upg := range injectedUpgrades {
+		b.Log().Infof("\n"+
+			"***************************************************************\n"+
+			"***         LEDGER UPGRADE ACTIVATED AT SLOT %-6d         ***\n"+
+			"***************************************************************\n"+
+			" Library Hash: %s\n"+
+			"***************************************************************",
+			upg.Slot, hex.EncodeToString(upg.LibraryHash[:]))
+	}
+
+	// GC old transaction IDs (deterministic operation on the state)
+	if branchID.Slot() > pb.TxIDTTLSlots {
+		gcSlot := branchID.Slot() - pb.TxIDTTLSlots
+		gcTxIDs := upd.Readable().KnownCommittedTxIDs(gcSlot)
+		pb.Mutations.DeleteTxIDs(gcTxIDs...)
+	}
+
+	// commit to DB
+	err := upd.Update(pb.Mutations, pb.RootRecParams)
+	if err != nil {
+		err = fmt.Errorf("_commitPendingBranch(%s) -> %w:\n-------- mutations --------\n%s",
+			branchID.StringShort(), err, pb.Mutations.Lines("    ").String())
+	}
+	b.Assertf(err == nil, "%v", err)
+
+	// update cached BranchData with the real root
+	bd := b.m[branchID]
+	bd.BranchData.Root = upd.Root()
+	b.m[branchID] = bd
+
+	// remove from pending
+	delete(b.pending, branchID)
+
+	// log the deferred commit and committed transactions
+	b.Log().Infof("committed pending branch %s", branchID.StringShort())
+	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 }
 
 func (b *Branches) SequencerOutputID(branchID base.TransactionID) (base.OutputID, bool) {
@@ -254,6 +368,11 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 	bd, found := b._getAndCacheNoLock(branchID)
 	if !found {
 		return nil
+	}
+	// if Root is nil, this is a pending (deferred) branch — commit it now
+	if bd.Root == nil {
+		b._commitPendingBranch(branchID)
+		bd = b.m[branchID]
 	}
 	b.stateReaders[branchID] = &cachedStateReader{
 		IndexedStateReader: multistate.MustNewReadable(b.StateStore(), bd.Root, stateReaderCacheLimit),
