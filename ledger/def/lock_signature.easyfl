@@ -20,7 +20,7 @@ func _referencedIndex : if( isZero(len($0)), 0xff, byte($0,0))
 // if it is 'produced' invocation context (constraint invoked in the input), only size of the spenderID is checked
 // In the 'consumed' context it will check unlock data.
 // Unlock data must be 1 byte. Two cases:
-// - either tt is an index of the previous sigLock-ed consumed output. i.e. with strictly smaller index
+// - either it is an index of the previous sigLock-ed consumed output. i.e. with strictly smaller index
 // - or unlock data is 0xff, then is checks if spenderID in the sigLock is equal to the txSpenderID, i.e. corresponds to the tx signature
 // $0 - spender ID: blake2b hash of the (<sig type byte> + <public key>)
 // Unlock data is 1 byte with reference index to the previous input or signature unlock with 0xff

@@ -172,7 +172,7 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	// produced output
 	if cc.IsOrigin() {
 		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")
-		return []byte{0xff}
+		return par.AllocData(0xff)
 	}
 	// it is a non-origin chained output
 
@@ -218,5 +218,5 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 			"evalEnforceFrozenCoverageOnNonDelegationChain: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",
 			i, predecessorFrozenCoverageValue, successorFrozenCoverage, successorFrozenCoverage-predecessorFrozenCoverageValue, sum)
 	}
-	return []byte{0xff}
+	return par.AllocData(0xff)
 }

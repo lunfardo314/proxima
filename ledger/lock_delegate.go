@@ -254,7 +254,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 	if cc.IsOrigin() {
 		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
 			"evalEnforceFrozenCoverageOnDelegateOutput: inflation and frozen coverage must be 0 on a non-chain output and on chain origin")
-		return []byte{0xff}
+		return par.AllocData(0xff)
 	}
 	// it is a non-origin chained output
 
@@ -283,7 +283,7 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 		// predecessor is delegation unlocked by master  -> must be all-0
 		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
 			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: predecessor is unlocked by the master")
-		return []byte{0xff}
+		return par.AllocData(0xff)
 	}
 
 	// unlocked by the target as enforced by the delegation lock
@@ -307,5 +307,5 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 	par.Require(len(expectedVector) == len(vectorToCheck), "len(expectedVector) == len(vectorToCheck)")
 	par.Require(slices.Equal(expectedVector, vectorToCheck), "evalEnforceFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation output: %s", dOut.ChainID.String)
 
-	return []byte{0xff}
+	return par.AllocData(0xff)
 }
