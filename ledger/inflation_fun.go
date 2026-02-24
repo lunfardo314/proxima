@@ -32,8 +32,10 @@ func (lib *Library) ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
 
 // BranchInflationBonus calculates the inflation bonus for a branch using the given proof.
 // Uses the library for the specified slot.
-func (lib *Library) BranchInflationBonus(proof []byte) uint64 {
-	res, err := lib.EvalFromSource(nil, "branchInflationBonus($0)", proof) // optimize precompile
+func (lib *Library) BranchInflationBonus(proof []byte, slot uint32) uint64 {
+	var slotBin [4]byte
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+	res, err := lib.EvalFromSource(nil, "branchInflationBonus($0, $1)", proof, slotBin[:]) // TODO optimize precompile
 	util.AssertNoError(err)
 	return easyfl_util.MustUint64FromBytes(res)
 }

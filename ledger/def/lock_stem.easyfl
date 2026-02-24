@@ -36,7 +36,18 @@ func stemLock: and(
           selfIsProducedOutput,
             // must be consistent with the transaction level data
           equal(selfOutputIndex, txStemOutputIndex),
-		  selfEnforceZeroAmountsInNonChainedOutput
+		  selfEnforceZeroAmountsInNonChainedOutput,
+	      // selfEnforceBranchCoverageBounds(add(selfTokenBalanceValue, selfFrozenCoverage), txSlot)
        )
     )
 )
+
+// $0 is self tokenBalance + frozenCoverage
+// $1 txSlot
+// Function enforces that $0 is between lower and upper bounds. At the bootstrap, we do not set
+// bounds for branch transactions, because impractical.
+// In later upgrades, we may want to limit too small and too big coverages in sequencers, for decentralization reasons.
+// This constraint can disincentivize sequencers to be too big or too small by preventing participation in the VRF
+// lottery for branch inflation bonus
+//func selfEnforceBranchCoverageBounds:
+// TODO TBD

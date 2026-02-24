@@ -117,7 +117,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 		if ret.IsSlotBoundary() {
 			// from VRF proof for branch
 			util.Assertf(len(ret.vrfProof) > 0, "len(vrfProof)>0")
-			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof))
+			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof, par.Timestamp.Slot))
 		} else {
 			// for non-branch
 			if ret.chainInput.Timestamp().Slot != ret.TransactionData.Timestamp.Slot {

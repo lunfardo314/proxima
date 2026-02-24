@@ -3,7 +3,7 @@
 # It validates main parts of the transaction layout
 version_data: '{"txIntegrityValidatorPartialContext":"txIntegrityValidatorPartialContext0", "txIntegrityValidatorFullContext":"txIntegrityValidatorFullContext0"}'
 
-# definitions of main ledger constants
+# definitions of main ledger constants and main formulas, such as inflation and branch bonus schedule
 functions:
    -
       sym: constInitialSupply
@@ -36,10 +36,6 @@ functions:
       sym: constSlotInflationBase
       description: maximum inflation of the total initial supply in slot 0
       source: u64/33000000
-   -
-      sym: constBranchInflationBonusBase
-      description: maximum value of the branch inflation bonus
-      source: u64/5000000
    -
       sym: constMaxNumberOfEndorsements
       description: up to 8 endorsements
@@ -94,9 +90,21 @@ functions:
       source: div($0,add(minimumInflatableAmount0,$1))
    -
       sym: branchInflationBonus
-      description: calculates pseudo-random yet deterministic value of branch inflation bonus based on VRF suppled as $0
-      source: add(randomFromSeed($0, constBranchInflationBonusBase), u64/1)
+      description: "calculates a deterministic pseudo-random value of branch inflation bonus based on VRF in $0 and slot $1"
+      source: "add(randomFromSeed($0, branchInflationBonusBase($1)), u64/1)"
    -
       sym: storageDeposit
       description: returns storage deposit for the UTXO with byte size of $0
-      source: if( lessThan($0, u64/303030), mul($0, 100), add(mul($0, 100), lshift64(sub($0,100), 2)))
+      source: "if( lessThan($0, u64/303030), mul($0, 100), add(mul($0, 100), lshift64(sub($0,100), 2)))"
+   -
+     sym: branchCoverageLowerBound
+     description: "total supply $0, slot number $1. Branch transaction cannot be issued if returned value is less than tokenBalance + frozenCoverage"
+     source: "if(lessThan($1, u64/0), u64/0, u64/0)"
+   -
+     sym: branchCoverageUpperBound
+     description: "total supply $0, slot number $1. Branch transaction cannot be issued if returned value is larger than tokenBalance + frozenCoverage"
+     source: "if(lessThan($1, u64/0), $0, $0)"
+   -
+     sym: branchInflationBonusBase
+     description: "maximum value of the branch inflation bonus at slot $0"
+     source: "if(equal($0,$0), u64/5000000, u64/5000000)"

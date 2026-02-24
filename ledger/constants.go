@@ -34,8 +34,6 @@ type Constants struct {
 	// ----------- begin inflation-related
 	SlotInflationBase        uint64 // inflation of the total initial supply in slot 0
 	MinimumInflatableAmount0 uint64 // initial supply / slot inflation base
-	// BranchInflationBonusBase inflation bonus
-	BranchInflationBonusBase uint64
 	// ----------- end inflation-related
 	// number of ticks between non-sequencer transactions
 	TransactionPace byte
@@ -102,8 +100,6 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.AssertNoError(err)
 	util.Assertf(ret.MinimumInflatableAmount0 == ret.InitialSupply/ret.SlotInflationBase, "ret.MinimumInflatableAmount0 == ret.InitialSupply / ret.SlotInflationBase")
 
-	ret.BranchInflationBonusBase, err = _uint64FromConst(lib, "constBranchInflationBonusBase")
-	util.AssertNoError(err)
 	ret.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
 	util.AssertNoError(err)
 	pb, err := _uint64FromConst(lib, "constPreBranchConsolidationTicks")
@@ -188,7 +184,6 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Slot duration: %v", c.SlotDuration()).
 		Add("Slot inflation base: %s", util.Th(c.SlotInflationBase)).
 		Add("Minimum inflatable amount in slot 0: %s", util.Th(c.MinimumInflatableAmount0)).
-		Add("Branch inflation bonus base: %s", util.Th(c.BranchInflationBonusBase)).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Post-branch consolidation ticks: %v", c.PostBranchConsolidationTicks).
 		Add("Transaction pace: %d", c.TransactionPace).

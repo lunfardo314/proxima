@@ -15,12 +15,12 @@ functions:
   # long
   -
     sym: "totalConsumed"
-    description: "sum of consumed amounts by the transaction at index $0 (1 byte, max 15)"
+    description: "sum of consumed amounts by the transaction at index $0 (1 byte)"
     numArgs: -1
     embedded_as: evalTotalConsumed
   -
     sym: "totalProduced"
-    description: "sum of produced amounts by the transaction at index $0 (1 byte, max 15)"
+    description: "sum of produced amounts by the transaction at index $0 (1 byte)"
     numArgs: -1
     embedded_as: evalTotalProduced
   -

@@ -551,7 +551,6 @@ func (tx *Transaction) ConsumedTotal(i byte) (ret int64) {
 	if i == 0 {
 		return tx.totalConsumedTokenBalance
 	}
-	util.Assertf(int(i) < 15, "ConsumedTotal: wrong index %d", i)
 	tx.ForEachConsumedOutput(func(idx byte, o ledger.OutputWithID) bool {
 		ret += o.Amounts().Amount(i)
 		return true

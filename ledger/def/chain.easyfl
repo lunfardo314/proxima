@@ -84,7 +84,7 @@ func _validCumulativeChainInflation :
 if(
   isBranchTransaction,
   require(
-    equalUint($1, add(_chainPredecessorParam($0, 3), sub(selfInflationAmount, branchInflationBonus(vrfProofOnSuccessor)))),
+    equalUint($1, add(_chainPredecessorParam($0, 3), sub(selfInflationAmount, branchInflationBonus(vrfProofOnSuccessor, txSlot)))),
     !!!wrong_cumulative_chain_inflation
   ),
   require(
@@ -98,7 +98,7 @@ func _validCumulativeBranchBonus :
 if(
   isBranchTransaction,
   require(
-    equalUint($1, add(_chainPredecessorParam($0, 4), branchInflationBonus(vrfProofOnSuccessor))),
+    equalUint($1, add(_chainPredecessorParam($0, 4), branchInflationBonus(vrfProofOnSuccessor, txSlot))),
     !!!wrong_cumulative_branch_bonus
   ),
   require(
@@ -190,7 +190,7 @@ if(
   u64/0,
   if(
      isBranchTransaction,
-     branchInflationBonus(vrfProofOnSuccessor),
+     branchInflationBonus(vrfProofOnSuccessor, txSlot),
      chainInflationOneSlot(_predecessorInflatableAmount, slotOfInputByIndex($0))
   )
 )
