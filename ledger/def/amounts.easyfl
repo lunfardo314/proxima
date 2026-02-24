@@ -23,5 +23,3 @@ require(
 
 // inflation amount from the amounts constraint of the current output
 func selfInflationAmount : amountAt(selfSiblingConstraint(amountsConstraintIndex), 1)
-
-func selfFrozenCoverage : amountAt(selfSiblingConstraint(amountsConstraintIndex), 2)

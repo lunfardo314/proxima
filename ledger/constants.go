@@ -62,6 +62,9 @@ type Constants struct {
 	// ---------- GC related
 	// number of slots to keep committed transaction IDs in state before GC
 	TxIDStateTTLSlots uint32
+	// ---------- branch coverage related
+	// minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction
+	BranchCoverageLowerBound uint64
 }
 
 // ConstantsFromLibrary loads all constants from library definition into a runtime structure
@@ -149,6 +152,10 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.Assertf(t64 < math.MaxUint32, "constTxIDStateTTLSlots: %d", t64)
 	ret.TxIDStateTTLSlots = uint32(t64)
 
+	// branch coverage related
+	ret.BranchCoverageLowerBound, err = _uint64FromConst(lib, "constBranchCoverageLowerBound")
+	util.AssertNoError(err)
+
 	return ret
 }
 
@@ -197,7 +204,8 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	ret.Add("Safe revocation slots: %d (%v)", c.SafeRevocationSlots, safeDuration).
 		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).
 		Add("Attachment cost budget: %d", c.AttachmentCostBudget).
-		Add("TxID state TTL slots: %d (%v)", c.TxIDStateTTLSlots, time.Duration(c.TxIDStateTTLSlots)*c.SlotDuration())
+		Add("TxID state TTL slots: %d (%v)", c.TxIDStateTTLSlots, time.Duration(c.TxIDStateTTLSlots)*c.SlotDuration()).
+		Add("Branch coverage lower bound: %s", util.Th(c.BranchCoverageLowerBound))
 	return ret
 }
 

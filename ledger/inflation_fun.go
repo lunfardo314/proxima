@@ -30,6 +30,15 @@ func (lib *Library) ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
 	return lib.ChainInflationMultiStep(amount, inSlot, 1)
 }
 
+// BranchInflationBonusBase returns the maximum branch inflation bonus for the given slot.
+func (lib *Library) BranchInflationBonusBase(slot uint32) uint64 {
+	var slotBin [4]byte
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+	res, err := lib.EvalFromSource(nil, "branchInflationBonusBase($0)", slotBin[:])
+	util.AssertNoError(err)
+	return easyfl_util.MustUint64FromBytes(res)
+}
+
 // BranchInflationBonus calculates the inflation bonus for a branch using the given proof.
 // Uses the library for the specified slot.
 func (lib *Library) BranchInflationBonus(proof []byte, slot uint32) uint64 {
