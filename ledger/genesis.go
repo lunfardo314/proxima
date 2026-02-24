@@ -20,7 +20,7 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 			ID: oid,
 			Output: NewOutput(func(o *OutputBuilder) {
 				o.WithAmounts(int64(initialSupply)).WithLock(controllerAddress)
-				o.PutConstraint(NewChainOrigin(0, initialSupply).Bytes(), ConstraintIndexChain)
+				o.PutConstraint(NewChainOrigin(0).Bytes(), ConstraintIndexChain)
 				o.MustPushConstraint(NewSequencerConstraint().Bytes())
 
 				msData := seqdata.New()
@@ -31,8 +31,7 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 		},
 		ChainConstraintData: ChainConstraintData{
 			ChainConstraint: ChainConstraint{
-				ChainID:      base.BoostrapSequencerID,
-				OriginAmount: initialSupply,
+				ChainID: base.BoostrapSequencerID,
 			},
 		},
 	}

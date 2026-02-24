@@ -226,7 +226,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(seqOriginB.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 		o.WithLock(seqOriginB.Output.Lock())
-		cc := ledger.NewChainConstraint(seqOriginB.ChainID, 0, seqOriginB.OriginSlot, seqOriginB.OriginAmount)
+		cc := ledger.NewChainConstraint(seqOriginB.ChainID, 0, seqOriginB.OriginSlot, 0, 0, seqOriginB.TransitionCounter+1)
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb2.ProduceOutput(next)
@@ -269,7 +269,7 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(env.seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 			o.WithLock(env.seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
+			cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, 0, 0, env.seqOrigin.TransitionCounter+1)
 			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		})
 		_, err = txb.ProduceOutput(next)
@@ -382,7 +382,7 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(inflatedBalance)
 		o.WithLock(env.seqOrigin.Output.Lock())
-		cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
+		cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, 0, 0, env.seqOrigin.TransitionCounter+1)
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb.ProduceOutput(next)
@@ -475,7 +475,7 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(expectedBalance)
 		o.WithLock(env.seqOrigin.Output.Lock())
-		cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
+		cc := ledger.NewChainConstraint(env.targetChainID, 0, env.seqOrigin.OriginSlot, 0, 0, env.seqOrigin.TransitionCounter+1)
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 	})
 	_, err = txb.ProduceOutput(next)

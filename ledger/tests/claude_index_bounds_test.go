@@ -247,7 +247,7 @@ func TestIndexTagAlongOutOfRangeUnlockParams(t *testing.T) {
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
-	cc := ledger.NewChainConstraint(env.targetChainID, predIdx, env.seqOrigin.OriginSlot, env.seqOrigin.OriginAmount)
+	cc := ledger.NewChainConstraint(env.targetChainID, predIdx, env.seqOrigin.OriginSlot, 0, 0, env.seqOrigin.TransitionCounter+1)
 	succIdx, err := txb.ProduceOutput(chainIn.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(chainIn.Output.TokenBalance() + taOut.Output.TokenBalance()))
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
@@ -288,7 +288,7 @@ func TestIndexDelegationOutOfRangeUnlockParams(t *testing.T) {
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
-	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, env.seqChainOrigin.OriginAmount)
+	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, 0, 0, env.seqChainOrigin.TransitionCounter+1)
 	_, err = txb.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance()))
 		o.PutConstraint(successorChainConstraint.Bytes(), 2)
@@ -305,7 +305,7 @@ func TestIndexDelegationOutOfRangeUnlockParams(t *testing.T) {
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce valid delegation successor
-	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, env.delegatedOutput.OriginAmount)
+	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, 0, 0, env.delegatedOutput.TransitionCounter+1)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.delegatedOutput.Output.TokenBalance()))
 		o.WithLock(env.delegatedOutput.Output.Lock())
@@ -348,7 +348,7 @@ func TestIndexChainPredecessorNonExistentInput(t *testing.T) {
 
 	// produce chain successor claiming predecessor at input index 5 (doesn't exist)
 	// Only 1 input (index 0). The crosscheck will fail.
-	fakeCC := ledger.NewChainConstraint(chainOut.ChainID, 5, chainOut.OriginSlot, chainOut.OriginAmount)
+	fakeCC := ledger.NewChainConstraint(chainOut.ChainID, 5, chainOut.OriginSlot, 0, 0, chainOut.TransitionCounter+1)
 	succIdx, err := txb.ProduceOutput(chainIn.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.PutConstraint(fakeCC.Bytes(), ledger.ConstraintIndexChain)
 	}))
@@ -424,7 +424,7 @@ func TestIndexChainLockSelfReference(t *testing.T) {
 	require.NoError(t, err)
 
 	// produce chain successor (output 0)
-	cc := ledger.NewChainConstraint(chainOut.ChainID, predIdx, chainOut.OriginSlot, chainOut.OriginAmount)
+	cc := ledger.NewChainConstraint(chainOut.ChainID, predIdx, chainOut.OriginSlot, 0, 0, chainOut.TransitionCounter+1)
 	succIdx, err := txb.ProduceOutput(chainIn.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(chainIn.Output.TokenBalance() + clOut.Output.TokenBalance()))
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)

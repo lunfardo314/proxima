@@ -76,7 +76,7 @@ func TestParseOutputData(t *testing.T) {
 	const amount = uint64(31415926535)
 	addr := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(100))
 	chainID := base.RandomChainID()
-	cc := ledger.NewChainConstraint(chainID, 1, 0, amount)
+	cc := ledger.NewChainConstraint(chainID, 1, 0, 0, 0, 1)
 	o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(amount).
 			WithLock(addr)

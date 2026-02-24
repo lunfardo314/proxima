@@ -68,7 +68,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 			o.PutConstraint(delegOut.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
 			delegateLock := ledger.NewDelegateLock(seqID, base.SpenderID(masterAddr), 1, 980)
 			o.WithLock(delegateLock)
-			o.PutConstraint(ledger.NewChainConstraint(delegChainID, 0, delegOut.OriginSlot, delegOut.OriginAmount).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(delegChainID, 0, delegOut.OriginSlot, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)

@@ -42,17 +42,17 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 		ln.Add("%34s  %20s  %s maxFrozen: %d", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status, o.MaxFrozenEpochs)
 		if VerbosityLevel() > 0 {
 			ln.Add("     delegation target %s", o.Target.String())
+			totalInflation := o.CumulativeChainInflation + o.CumulativeBranchBonus
+			ln.Add("     origin slot: %d, transitions: %d, cumulative inflation: %s",
+				o.OriginSlot, o.TransitionCounter, util.Th(totalInflation))
 			if o.IsMarkedFrozen() {
-				ln.Add("     origin slot: %d, max frozen epochs: %d", o.OriginSlot, o.MaxFrozenEpochs)
-				inflation := o.Output.TokenBalance() - o.OriginAmount
 				unfreeze := o.UnfreezeSlot()
 				totalSlots := unfreeze - o.OriginSlot + 1
-				// Use currentSlot for timing constants
 				lib := ledger.L(currentSlot)
-				perYear := inflation * uint64(lib.SlotsPerYear()) / uint64(totalSlots)
-				rate := (float64(perYear) * 100) / float64(o.OriginAmount)
+				perYear := totalInflation * uint64(lib.SlotsPerYear()) / uint64(totalSlots)
 				lessShareForSafeRevocation := 1 - float64(lib.SafeRevocationSlots)/float64(uint32(o.MaxFrozenEpochs)*lib.DelegationEpochSlots+lib.SafeRevocationSlots)
-				ln.Add("     estimated annualized inflation rate: %.2f%%", rate*lessShareForSafeRevocation)
+				ln.Add("     estimated annualized inflation: %s/year (adj. %.2f%%)",
+					util.Th(uint64(float64(perYear)*lessShareForSafeRevocation)), lessShareForSafeRevocation*100)
 			}
 		}
 	}
@@ -62,18 +62,15 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 func LinesChainOutputs(outs []ledger.OutputWithChainID, currentSlot uint32, prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
 
-	lib := ledger.L(currentSlot)
 	for _, o := range outs {
-		slots := currentSlot - uint32(o.OriginSlot)
-		inflation := o.Output.TokenBalance() - o.OriginAmount
-		yearly := uint64(lib.SlotsPerYear()) * inflation / uint64(slots)
-		yearlyRate := 100 * float64(yearly) / float64(o.OriginAmount)
-		ln.Add("%34s  %20s   since slot: %d, last active %d slots ago",
-			o.ChainID.String(), util.Th(o.Output.TokenBalance()), o.OriginSlot, currentSlot-uint32(o.ID.Slot()))
+		ln.Add("%34s  %20s   since slot: %d, last active %d slots ago, transitions: %d",
+			o.ChainID.String(), util.Th(o.Output.TokenBalance()), o.OriginSlot,
+			currentSlot-uint32(o.ID.Slot()), o.TransitionCounter)
 		if IsVerbose() {
-			ln.Add("      origin amount:        %s", util.Th(o.OriginAmount))
-			ln.Add("      inflation:            %s", util.Th(o.Output.TokenBalance()-o.OriginAmount))
-			ln.Add("      annualized inflation: %.2f%%", yearlyRate)
+			totalInflation := o.CumulativeChainInflation + o.CumulativeBranchBonus
+			ln.Add("      cumulative inflation: %s", util.Th(totalInflation))
+			ln.Add("        chain inflation:    %s", util.Th(o.CumulativeChainInflation))
+			ln.Add("        branch bonus:       %s", util.Th(o.CumulativeBranchBonus))
 		}
 	}
 	return ln

@@ -781,7 +781,7 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(par.Amount).
 			WithLock(par.Target).
-			MustPushConstraint(ledger.NewChainOrigin(ts.Slot, par.Amount).Bytes())
+			MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
 	})
 	_, err = txb.ProduceOutput(chainOut)
 	util.AssertNoError(err)

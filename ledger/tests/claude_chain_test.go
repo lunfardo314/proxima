@@ -88,10 +88,12 @@ func (e *chainTestEnv) buildChainTransition(
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
-	// Build successor chain constraint with correct values
+	// Build successor chain constraint with correct values.
+	// TransitionCounter increments each transition; for the helper we use 1
+	// (callers doing multi-step transitions override via modifier).
 	nextCC := ledger.NewChainConstraint(
 		chainData.ChainID, predIdx,
-		cc.OriginSlot, cc.OriginAmount,
+		cc.OriginSlot, 0, 0, cc.TransitionCounter+1,
 	)
 
 	chainOut := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
@@ -144,12 +146,11 @@ func TestChainOriginCreation(t *testing.T) {
 	require.EqualValues(t, chainOut.ID, stateOut.ID,
 		"state must map chain ID to the origin output")
 
-	// Origin slot and amount must match
+	// Origin slot must match
 	require.EqualValues(t, chainOut.ID.Slot(), cc.OriginSlot)
-	require.EqualValues(t, 200_000_000, cc.OriginAmount)
 
-	t.Logf("chain origin created: chainID=%s, outputID=%s, slot=%d, amount=%d",
-		chainOut.ChainID.StringShort(), chainOut.ID.StringShort(), cc.OriginSlot, cc.OriginAmount)
+	t.Logf("chain origin created: chainID=%s, outputID=%s, slot=%d",
+		chainOut.ChainID.StringShort(), chainOut.ID.StringShort(), cc.OriginSlot)
 }
 
 // --------------------------------------------------------------------------
@@ -181,7 +182,6 @@ func TestChainValidTransition(t *testing.T) {
 	require.False(t, cc.IsOrigin(), "successor must not be an origin")
 	require.EqualValues(t, chainID, cc.ChainID)
 	require.EqualValues(t, chainOut.OriginSlot, cc.OriginSlot, "origin slot must be preserved")
-	require.EqualValues(t, chainOut.OriginAmount, cc.OriginAmount, "origin amount must be preserved")
 
 	t.Logf("chain transition succeeded: %s -> %s", chainIn.ID.StringShort(), newChainOut.ID.StringShort())
 }
@@ -218,7 +218,6 @@ func TestChainMultiStepTransition(t *testing.T) {
 	require.NotNil(t, cc)
 	require.EqualValues(t, chainID, cc.ChainID)
 	require.EqualValues(t, chainOut.OriginSlot, cc.OriginSlot, "origin slot must survive 2 transitions")
-	require.EqualValues(t, chainOut.OriginAmount, cc.OriginAmount, "origin amount must survive 2 transitions")
 
 	t.Logf("multi-step chain: %s -> %s -> %s",
 		chainIn1.ID.StringShort(), chainIn2.ID.StringShort(), finalOut.ID.StringShort())
@@ -248,7 +247,7 @@ func TestChainTermination(t *testing.T) {
 
 	// Produce output without chain constraint (same amount, same lock)
 	nonChainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(cc.OriginAmount)).WithLock(chainIn.Output.Lock())
+		o.WithAmounts(int64(chainIn.Output.TokenBalance())).WithLock(chainIn.Output.Lock())
 	})
 	_, err = txb.ProduceOutput(nonChainOut)
 	require.NoError(t, err)
@@ -293,7 +292,7 @@ func TestChainInvalidPredecessorReference(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wrong: predecessor input index = 0xFF
-	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, 0xff, cc.OriginSlot, cc.OriginAmount)
+	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, 0xff, cc.OriginSlot, 0, 0, 1)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -333,7 +332,7 @@ func TestChainOriginSlotImmutability(t *testing.T) {
 	require.NoError(t, err)
 
 	// Tamper: origin slot + 1
-	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot+1, cc.OriginAmount)
+	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot+1, 0, 0, 1)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -350,18 +349,18 @@ func TestChainOriginSlotImmutability(t *testing.T) {
 
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "changing origin slot must be rejected")
-	require.NoError(t, util.MustErrorWith(err, "origin slot is immutable"))
-	t.Logf("origin slot immutability enforced: %v", err)
+	require.NoError(t, util.MustErrorWith(err, "origin slot mismatch"))
+	t.Logf("origin slot mismatch enforced: %v", err)
 }
 
 // --------------------------------------------------------------------------
-// TEST: Origin amount immutability
+// TEST: Transition counter immutability
 // --------------------------------------------------------------------------
 
-// TestChainOriginAmountImmutability verifies that changing the origin amount in a successor
-// chain constraint is rejected. The origin amount must remain constant throughout the
-// chain's lifetime. Inflation = 0.
-func TestChainOriginAmountImmutability(t *testing.T) {
+// TestChainTransitionCounterWrong verifies that providing a wrong transition counter
+// in a successor chain constraint is rejected. The transition counter must be exactly
+// predecessor's counter + 1. Inflation = 0.
+func TestChainTransitionCounterWrong(t *testing.T) {
 	e := newChainTestEnv(t, 1_000_000_000)
 	chainOut := e.createChainOrigin(t, 200_000_000)
 	chainIn := e.getChainOutput(t, chainOut.ChainID)
@@ -373,8 +372,8 @@ func TestChainOriginAmountImmutability(t *testing.T) {
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
-	// Tamper: origin amount + 1
-	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, cc.OriginAmount+1)
+	// Tamper: wrong transition counter (should be 1 for first transition from origin, use 5)
+	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 5)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -390,9 +389,8 @@ func TestChainOriginAmountImmutability(t *testing.T) {
 	txb.SignED25519(e.privKey)
 
 	_, _, _, err = txb.BytesWithValidation()
-	require.Error(t, err, "changing origin amount must be rejected")
-	require.NoError(t, util.MustErrorWith(err, "origin amount is immutable"))
-	t.Logf("origin amount immutability enforced: %v", err)
+	require.Error(t, err, "wrong transition counter must be rejected")
+	t.Logf("wrong transition counter rejected: %v", err)
 }
 
 // --------------------------------------------------------------------------
@@ -415,7 +413,7 @@ func TestChainIDMismatch(t *testing.T) {
 
 	// Create a fake chain ID (different from the real one)
 	fakeChainID := blake2b.Sum256([]byte("fake chain ID"))
-	wrongCC := ledger.NewChainConstraint(fakeChainID, predIdx, cc.OriginSlot, cc.OriginAmount)
+	wrongCC := ledger.NewChainConstraint(fakeChainID, predIdx, cc.OriginSlot, 0, 0, 1)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -456,7 +454,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
-		nextCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, cc.OriginAmount)
+		nextCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 1)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 		})
@@ -492,7 +490,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
-		nextCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, cc.OriginAmount)
+		nextCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 1)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 		})
@@ -551,7 +549,6 @@ func TestChainTransitionFromNonOrigin(t *testing.T) {
 	ccFinal := finalOut.Output.ChainConstraint()
 	require.EqualValues(t, chainID, ccFinal.ChainID)
 	require.EqualValues(t, chainOut.OriginSlot, ccFinal.OriginSlot)
-	require.EqualValues(t, chainOut.OriginAmount, ccFinal.OriginAmount)
 
 	t.Logf("non-origin transition succeeded: origin -> succ1 -> succ2")
 }
@@ -624,7 +621,7 @@ func TestChainLockValidUnlock(t *testing.T) {
 
 	// Output 0: chain successor
 	nextCC := ledger.NewChainConstraint(chainID, chainIdx,
-		cc.OriginSlot, cc.OriginAmount)
+		cc.OriginSlot, 0, 0, 1)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -722,7 +719,7 @@ func TestChainLockWrongChainID(t *testing.T) {
 
 	// Output 0: chain B successor
 	nextCCB := ledger.NewChainConstraint(chainIDB, chainIdx,
-		ccB.OriginSlot, ccB.OriginAmount)
+		ccB.OriginSlot, 0, 0, 1)
 	chainSuccB := chainInB.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCCB.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -814,7 +811,7 @@ func TestChainLockSelfReference(t *testing.T) {
 
 	// Output 0: chain successor
 	nextCC := ledger.NewChainConstraint(chainID, chainIdx,
-		cc.OriginSlot, cc.OriginAmount)
+		cc.OriginSlot, 0, 0, 1)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})

@@ -290,7 +290,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(amount))
 			o.WithLock(td.addrAux)
-			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot, amount).Bytes())
+			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
 		})
 		_, err = txb.ProduceOutput(o)
 		require.NoError(td.t, err)

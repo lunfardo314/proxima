@@ -4,19 +4,35 @@ func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000
 // $0 - chain ChainID
 // $1 - predecessor input index (1 byte, or 0x empty for origin)
 // $2 - origin slot
-// $3 - origin amount
+// $3 - cumulative chain inflation (z64 or 0x at origin)
+// $4 - cumulative branch inflation bonus (z64 or 0x at origin)
+// $5 - transition counter (z32 or 0x at origin)
 func _validChainProduced :
 if(
    isChainOriginID($0),
-        // chain origin: predecessor ref must be empty
+        // chain origin: predecessor ref must be empty, origin slot must be tx slot,
+        // $3, $4, $5 must be 0x (empty, zero length)
    require(
-     and(isZero($1), equalUint($2, txSlot), equalUint($3, selfTokenBalanceValue)),
+     and(
+       isZero($1),
+       equalUint($2, txSlot),
+       equal(len($3), u64/0),
+       equal(len($4), u64/0),
+       equal(len($5), u64/0)
+     ),
      !!!invalid_chain_origin_data
    ),
-        // NOT chain origin. Crosscheck: predecessor's unlock params must point to this output
-   require(
-     equal(unlockParamsByConstraintIndex(concat($1, chainConstraintIndex)), selfOutputIndex),
-     !!!predecessor_reference_crosscheck_failed
+        // NOT chain origin. Crosscheck: predecessor's unlock params must point to this output.
+        // Also enforce origin slot matches predecessor's origin slot.
+   and(
+     require(
+       equal(unlockParamsByConstraintIndex(concat($1, chainConstraintIndex)), selfOutputIndex),
+       !!!predecessor_reference_crosscheck_failed
+     ),
+     require(
+       equal($2, _chainPredecessorParam($1, 2)),
+       !!!origin_slot_mismatch
+     )
    )
 )
 
@@ -28,9 +44,16 @@ func _chainSuccessorParam :
 		#chain
 	)
 
+// Predecessor chain constraint is at (predecessorInputIndex, chainConstraintIndex=2)
+// $0 - predecessor input index, $1 - argument index in chain constraint
+func _chainPredecessorParam :
+	parseInlineDataArgument(
+		atPath(concat(pathToConsumedOutputs, $0, chainConstraintIndex)),
+		$1,
+		#chain
+	)
+
 // $0 - chain ChainID
-// $1 - origin slot
-// $2 - origin amount
 func _validChainConsumed :
 or(
       // discontinue chain. Empty unlock data (zero length, not zero value).
@@ -52,21 +75,51 @@ or(
          equal(selfOutputIndex, _chainSuccessorParam(1)),
          !!!successor_reference_crosscheck_failed
       ),
-      require(
-         equal($1, _chainSuccessorParam(2)),
-         !!!origin_slot_is_immutable
-      ),
-      require(
-         equal($2, _chainSuccessorParam(3)),
-         !!!origin_amount_is_immutable
-      ),
    )
+)
+
+// $0 - predecessor input index, $1 - cumulative chain inflation value on current output
+// Chain inflation = inflation_amount on non-branch, inflation_amount - branchInflationBonus on branch
+func _validCumulativeChainInflation :
+if(
+  isBranchTransaction,
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 3), sub(selfInflationAmount, branchInflationBonus(vrfProofOnSuccessor)))),
+    !!!wrong_cumulative_chain_inflation
+  ),
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 3), selfInflationAmount)),
+    !!!wrong_cumulative_chain_inflation
+  )
+)
+
+// $0 - predecessor input index, $1 - cumulative branch inflation bonus on current output
+func _validCumulativeBranchBonus :
+if(
+  isBranchTransaction,
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 4), branchInflationBonus(vrfProofOnSuccessor))),
+    !!!wrong_cumulative_branch_bonus
+  ),
+  require(
+    equalUint($1, _chainPredecessorParam($0, 4)),
+    !!!wrong_cumulative_branch_bonus
+  )
+)
+
+// $0 - predecessor input index, $1 - transition counter on current output
+func _validTransitionCounter :
+require(
+  equalUint($1, add(_chainPredecessorParam($0, 5), u32/1)),
+  !!!wrong_transition_counter
 )
 
 // $0 - chain ChainID
 // $1 - predecessor input index (1 byte, or 0x empty for origin)
 // $2 - origin slot
-// $3 - origin amount
+// $3 - cumulative chain inflation (z64 or 0x at origin)
+// $4 - cumulative branch inflation bonus (z64 or 0x at origin)
+// $5 - transition counter (z32 or 0x at origin)
 // --- unlock data: 1 byte (successor output index), 0x (empty) means discontinue chain
 func chain : and(
       // chain constraint cannot be on output with index 0xff = 255
@@ -77,8 +130,16 @@ func chain : and(
    or(
       and(
          selfIsProducedOutput,
-         _validChainProduced($0,$1,$2,$3),
-         _validInflationAmount($0, $1, amountAt(selfSiblingConstraint(amountsConstraintIndex), 1)),
+         _validChainProduced($0,$1,$2,$3,$4,$5),
+         or(
+            isChainOriginID($0),
+            and(
+               _validCumulativeChainInflation($1,$3),
+               _validCumulativeBranchBonus($1,$4),
+               _validTransitionCounter($1,$5)
+            )
+         ),
+         _validInflationAmount($0, $1, selfInflationAmount),
          or(
             selfHasLockType(#delegateLock),
             embeddedEnforceFrozenCoverageOnNonDelegationChain
@@ -86,7 +147,7 @@ func chain : and(
       ),
       and(
          selfIsConsumedOutput,
-         _validChainConsumed($0,$2,$3)
+         _validChainConsumed($0)
       )
    )
 )

@@ -114,7 +114,7 @@ func TestTagAlongSimple(t *testing.T) {
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 			o.WithLock(seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
+			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, 0, 0, seqOrigin.TransitionCounter+1)
 			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		})
 		_, err = txb.ProduceOutput(next)
@@ -361,7 +361,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 			next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 				o.WithTokenBalance(seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 				o.WithLock(seqOrigin.Output.Lock())
-				cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
+				cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, 0, 0, seqOrigin.TransitionCounter+1)
 				o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 			})
 			_, err = txb.ProduceOutput(next)
@@ -866,7 +866,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
 			o.WithLock(seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
+			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, 0, 0, seqOrigin.TransitionCounter+1)
 			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		})
 		_, err = txb.ProduceOutput(next)
@@ -1131,7 +1131,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(expectedBalance)
 			o.WithLock(seqOrigin.Output.Lock())
-			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, seqOrigin.OriginAmount)
+			cc := ledger.NewChainConstraint(targetChainID, 0, seqOrigin.OriginSlot, 0, 0, seqOrigin.TransitionCounter+1)
 			o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		})
 		_, err = txb2.ProduceOutput(next)

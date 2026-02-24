@@ -349,7 +349,22 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		o.PutLock(txb.chainInput.Output.Lock())
 
 		// chain constraint at fixed index 2
-		chainOutConstraint := ledger.NewChainConstraint(txb.chainInput.ChainID, 0, txb.chainInput.OriginSlot, txb.chainInput.OriginAmount)
+		// compute cumulative inflation values for the chain constraint
+		totalInflation := uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
+		var chainInflation, branchBonus uint64
+		if txb.stemInput != nil {
+			// branch transaction: all inflation is branch bonus
+			branchBonus = totalInflation
+		} else {
+			// non-branch transaction: all inflation is chain inflation
+			chainInflation = totalInflation
+		}
+		chainOutConstraint := ledger.NewChainConstraint(
+			txb.chainInput.ChainID, 0, txb.chainInput.OriginSlot,
+			txb.chainInput.CumulativeChainInflation+chainInflation,
+			txb.chainInput.CumulativeBranchBonus+branchBonus,
+			txb.chainInput.TransitionCounter+1,
+		)
 		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
 		// sequencer constraint (no parameters)
 		sequencerConstraint := ledger.NewSequencerConstraint()

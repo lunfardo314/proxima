@@ -170,6 +170,14 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID) {
 		glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
 		glb.Infof("      controller lock : %s", lock.String())
 		glb.Infof("      output          : %s", o.ID.String())
+		cc := o.Output.ChainConstraint()
+		if cc != nil {
+			glb.Infof("      origin slot     : %d", cc.OriginSlot)
+			glb.Infof("      transitions     : %d", cc.TransitionCounter)
+			totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus
+			glb.Infof("      cum. inflation  : %s (chain: %s, branch bonus: %s)",
+				util.Th(totalInflation), util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
+		}
 		count++
 	}
 	glb.Infof("\ntotal %d chains", count)

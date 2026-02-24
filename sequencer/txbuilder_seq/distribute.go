@@ -54,7 +54,7 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 			o.WithAmounts(int64(genesisDistribution[i].Balance)).
 				WithLock(genesisDistribution[i].Lock)
 			if genesisDistribution[i].ChainOrigin {
-				o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot, genesisDistribution[i].Balance).Bytes())
+				o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
 			}
 		})
 	}
@@ -71,8 +71,7 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 			OutputWithID: *initSupplyOutput,
 			ChainConstraintData: ledger.ChainConstraintData{
 				ChainConstraint: ledger.ChainConstraint{
-					ChainID:      base.BoostrapSequencerID,
-					OriginAmount: initSupplyOutput.Output.TokenBalance(),
+					ChainID: base.BoostrapSequencerID,
 				},
 			},
 		},

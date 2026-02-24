@@ -86,7 +86,7 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	//   index 3: sequencer constraint (pointing to chain at index 2)
 	chainOriginOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(total)).WithLock(e.addr)
-		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot, total).Bytes())
+		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
 		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 	})
 	originIdx, err := txb.ProduceOutput(chainOriginOut)
@@ -149,7 +149,7 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 	require.NoError(t, err)
 
 	// Build successor with updated chain constraint; sequencer constraint is inherited via Clone
-	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, cc.OriginAmount)
+	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})

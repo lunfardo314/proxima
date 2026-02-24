@@ -48,7 +48,7 @@ func TestBase(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, bal).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -333,7 +333,7 @@ func TestFreezeOneStep(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, seqInitBalance).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
@@ -513,7 +513,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
-			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, seqInitBalance).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -742,7 +742,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 			o.PutConstraint(out.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
 			delegateLock := ledger.NewDelegateLock(ret.seqID, base.SpenderID(ret.masterAddr), maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
-			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, out.OriginAmount).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)
