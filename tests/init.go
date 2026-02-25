@@ -64,3 +64,22 @@ func reinitTestLedgerWithBudget(budget int) func() {
 		initTestLedger()
 	}
 }
+
+// reinitTestLedgerWithCoverageBounds resets and re-initializes the ledger with custom
+// branch coverage bounds. Used to test that sequencers with coverage outside [lower, upper]
+// cannot produce branches. Returns a cleanup function that restores defaults.
+func reinitTestLedgerWithCoverageBounds(lowerBound, upperBound uint64) func() {
+	ledger.ResetForTesting()
+	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+		ledger.WithTickDuration(8*time.Millisecond),
+		ledger.WithTransactionPace(3),
+		ledger.WithTransactionPaceSequencer(3),
+		ledger.WithAttachmentCostBudget(600),
+		ledger.WithBranchCoverageLowerBound(lowerBound),
+		ledger.WithBranchCoverageUpperBound(upperBound),
+	)
+	return func() {
+		ledger.ResetForTesting()
+		initTestLedger()
+	}
+}

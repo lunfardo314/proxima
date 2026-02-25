@@ -260,6 +260,58 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	return ret
 }
 
+// initWorkflowTestWithAuxBalance is like initWorkflowTest but with an explicit auxiliary address balance.
+// Used when chain origins need non-uniform amounts that don't fit the standard nChains*initBalance formula.
+func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner ...bool) *workflowTestData {
+	t.Logf("genesis state id: %s", ledger.L(0).String())
+
+	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, auxBalance, initBalance)
+	ret := &workflowTestData{
+		t:             t,
+		privKey:       privKeys[0],
+		addr:          addrs[0],
+		privKeyAux:    privKeys[1],
+		addrAux:       addrs[1],
+		privKeyFaucet: privKeys[2],
+		addrFaucet:    addrs[2],
+	}
+	t.Logf("genesis addr: %s", ledger.SigLockFromED25519PrivateKey(genesisPrivateKey).String())
+	t.Logf("aux key addr: %s (balance: %s)", ret.addrAux.String(), util.Th(auxBalance))
+
+	require.True(t, ledger.SigLockMatchesED25519PrivateKey(ret.addr, ret.privKey))
+
+	stateStore := common.NewInMemoryKVStore()
+	ret.txStore = txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
+
+	var genesisRoot common.VCommitment
+	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreFromGlobals(stateStore)
+	txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
+	require.NoError(t, err)
+	_, err = ret.txStore.PersistTxBytesWithMetadata(txBytes, nil)
+	require.NoError(t, err)
+
+	ret.distributionBranchTx, err = transaction.ParseWithPartialValidation(txBytes)
+	require.NoError(t, err)
+	ret.distributionBranchTxID = ret.distributionBranchTx.ID()
+	t.Logf("distribution txID: %s", ret.distributionBranchTxID.StringShort())
+
+	ret.faucetOutput = ret.distributionBranchTx.MustProducedOutputWithIDAt(2)
+
+	ret.env = newWorkflowDummyEnvironment(stateStore, ret.txStore)
+	_ = genesisRoot
+	if len(startPruner) > 0 && startPruner[0] {
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy())
+	} else {
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+	}
+
+	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
+	for i := range distrib {
+		t.Logf("distributed %s -> %s", util.Th(distrib[i].Balance), distrib[i].Lock.String())
+	}
+	return ret
+}
+
 func (td *workflowTestData) saveFullDAG(fname string) {
 	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(td.wrk.StateStore())
 	tmpDag := memdag.MakeDAGFromTxStoreUntilSlot(td.txStore, 0, branchTxIDS...)
@@ -325,6 +377,67 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 		require.NoError(td.t, err)
 		td.chainOrigins[idx] = ochain
 		td.t.Logf("chain origin %s : %s, lock: %s", oid.StringShort(), td.chainOrigins[idx].ChainID.String(), td.chainOrigins[idx].Output.Lock().String())
+		return true
+	})
+}
+
+// makeChainOriginsWithAmounts creates chain origins from aux output with specified amounts per chain.
+// The aux output balance must equal sum(amounts) + tagAlongFee.
+func (td *workflowTestData) makeChainOriginsWithAmounts(amounts []uint64) {
+	n := len(amounts)
+	if n == 0 {
+		return
+	}
+	rdr := td.wrk.HeaviestStateForLatestTimeSlot()
+	oDatas, err := rdr.GetUTXOsForController(td.addrAux.ControllerID())
+	require.NoError(td.t, err)
+	require.EqualValues(td.t, 1, len(oDatas))
+
+	td.auxOutput, err = oDatas[0].Parse()
+	require.NoError(td.t, err)
+	td.t.Logf("auxiliary output id: %s, balance: %s", td.auxOutput.IDShort(), util.Th(td.auxOutput.Output.TokenBalance()))
+
+	txb := txbuilder.New()
+	_, _, err = txb.ConsumeOutputsUnlock(td.auxOutput)
+	require.NoError(td.t, err)
+
+	ts := td.auxOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
+	for i := 0; i < n; i++ {
+		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(amounts[i]))
+			o.WithLock(td.addrAux)
+			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
+		})
+		_, err = txb.ProduceOutput(o)
+		require.NoError(td.t, err)
+	}
+	tagAlongOut := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(td.privKeyAux)))
+	_, err = txb.ProduceOutput(tagAlongOut)
+	require.NoError(td.t, err)
+
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.TransactionData.Timestamp = ts
+	txb.SignED25519(td.privKeyAux)
+
+	txBytes := txb.TransactionData.Bytes()
+	td.chainOriginsTx, err = transaction.ParseWithPartialValidation(txBytes)
+	require.NoError(td.t, err)
+
+	td.chainOrigins = make([]*ledger.OutputWithChainID, n)
+	td.chainOriginsTx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
+		if int(idx) >= n {
+			return true
+		}
+		otmp := ledger.OutputWithID{
+			ID:     oid,
+			Output: o,
+		}
+		ochain, err := otmp.AsChainOutput()
+		require.NoError(td.t, err)
+		td.chainOrigins[idx] = ochain
+		td.t.Logf("chain origin %s : %s, amount: %s, lock: %s",
+			oid.StringShort(), td.chainOrigins[idx].ChainID.String(),
+			util.Th(amounts[idx]), td.chainOrigins[idx].Output.Lock().String())
 		return true
 	})
 }

@@ -99,11 +99,11 @@ functions:
    -
      sym: branchCoverageLowerBound
      description: "minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
-     source: "if(equal($0,$0), u64/0, u64/0)"
+     source: "{{if .BranchCoverageLowerBound}}if(equal($0,$0), u64/{{.BranchCoverageLowerBound}}, u64/{{.BranchCoverageLowerBound}}){{else}}if(equal($0,$0), u64/0, u64/0){{end}}"
    -
      sym: branchCoverageUpperBound
      description: "maximum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
-     source: "add(constInitialSupply, mul($0, u64/5000000))"
+     source: "{{if .BranchCoverageUpperBound}}if(equal($0,$0), u64/{{.BranchCoverageUpperBound}}, u64/{{.BranchCoverageUpperBound}}){{else}}add(constInitialSupply, mul($0, u64/5000000)){{end}}"
    -
      sym: branchInflationBonusBase
      description: "maximum value of the branch inflation bonus at slot $0"

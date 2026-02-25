@@ -6,7 +6,7 @@ or(
       require(isSequencerTransaction, !!!explicit_baseline:_can_only_be_set_on_a_sequencer_transaction),
       require(equal(len($0),u64/32), !!!explicit_baseline:_must_be_32_bytes_long_txid),
       require(branchFlagON($0), !!!"explicit_baseline:_must_be_a_branch_transaction_ID),
-      require(greaterOrEqualThan(sub(txSlot, slice($0,0,3)), constTransactionPaceSequencer), !!!explicit_baseline:_sequencer_pace_constraint_violated)
+      require(lessThan(u64/0, sub(txSlot, slice($0,0,3))), !!!explicit_baseline:_must_point_to_a_transaction_at_least_1_slot_in_the_past)
    )
 )
 

@@ -21,6 +21,8 @@ type InitParameters struct {
 	TransactionPaceSequencerTicks int
 	AttachmentCostBudget          int
 	TxIDStateTTLSlots             int
+	BranchCoverageLowerBound      uint64 // 0 = default formula, >0 = constant bound (for testing)
+	BranchCoverageUpperBound      uint64 // 0 = default formula, >0 = constant bound (for testing)
 }
 
 // default ledger init parameters
@@ -73,6 +75,8 @@ type constantsTemplateData struct {
 	AttachmentCostBudget          int
 	TxIDStateTTLSlots             int
 	DescriptionHex                string
+	BranchCoverageLowerBound      uint64 // 0 = use default formula
+	BranchCoverageUpperBound      uint64 // 0 = use default formula
 }
 
 var _constantsTemplate = template.Must(template.New("constants0").Parse(_definitionsLedgerConstantsTemplateUpgrade0))
@@ -89,6 +93,8 @@ func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
 		AttachmentCostBudget:          par.AttachmentCostBudget,
 		TxIDStateTTLSlots:             par.TxIDStateTTLSlots,
 		DescriptionHex:                hex.EncodeToString([]byte(par.Description)),
+		BranchCoverageLowerBound:      par.BranchCoverageLowerBound,
+		BranchCoverageUpperBound:      par.BranchCoverageUpperBound,
 	}
 	var buf bytes.Buffer
 	if err := _constantsTemplate.Execute(&buf, data); err != nil {

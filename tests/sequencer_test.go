@@ -344,6 +344,144 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 	}
 }
 
+// TestBranchCoverageBounds verifies that sequencers with coverage (tokenBalance + frozenCoverage)
+// outside [lowerBound, upperBound] cannot produce branch transactions, while those within bounds can.
+// Based on Test5SequencersIdlePruner.
+//
+// Setup: 5 non-bootstrap sequencers with different token balances:
+//   - seq0: 5T  (below lower bound 10T) → should NOT produce branches
+//   - seq1: 50T (within bounds)          → should produce branches
+//   - seq2: 50T (within bounds)          → should produce branches
+//   - seq3: 50T (within bounds)          → should produce branches
+//   - seq4: 810T (above upper bound 800T) → should NOT produce branches
+//
+// Bootstrap sequencer (~15T) is within bounds and produces branches normally.
+func TestBranchCoverageBounds(t *testing.T) {
+	const runTime = 30 * time.Second
+
+	// Coverage bounds for the test
+	lowerBound := uint64(10_000_000_000_000)  // 10T
+	upperBound := uint64(800_000_000_000_000) // 800T
+
+	// Chain amounts: [below, ok, ok, ok, above]
+	// Total chains: 5T + 50T + 50T + 50T + 810T = 965T
+	// Bootstrap gets: ~1000T - 965T - 10T(primary) - 10T(faucet) = ~15T (within bounds)
+	chainAmounts := []uint64{
+		5_000_000_000_000,   // 5T - below lower bound (10T)
+		50_000_000_000_000,  // 50T - within bounds
+		50_000_000_000_000,  // 50T - within bounds
+		50_000_000_000_000,  // 50T - within bounds
+		810_000_000_000_000, // 810T - above upper bound (800T)
+	}
+	nSequencers := len(chainAmounts)
+
+	var totalChainAmount uint64
+	for _, a := range chainAmounts {
+		totalChainAmount += a
+	}
+	auxBalance := totalChainAmount + tagAlongFee
+
+	// Reinit ledger with custom coverage bounds
+	cleanup := reinitTestLedgerWithCoverageBounds(lowerBound, upperBound)
+	defer cleanup()
+
+	lib := ledger.L(base.MaxSlot)
+	t.Logf("coverage bounds: lower=%s, upper=%s", util.Th(lowerBound), util.Th(upperBound))
+	t.Logf("library lower=%s, upper=%s (at slot 1)",
+		util.Th(lib.BranchCoverageLowerBound(1)), util.Th(lib.BranchCoverageUpperBound(1)))
+
+	// Initialize workflow test with custom aux balance
+	testData := initWorkflowTestWithAuxBalance(t, auxBalance, true)
+
+	testData.env.RepeatInBackground("test GC loop", 2*time.Second, func() bool {
+		runtime.GC()
+		return true
+	})
+
+	err := testData.wrk.EnsureLatestBranches()
+	require.NoError(t, err)
+
+	// Create chain origins with specified amounts
+	testData.makeChainOriginsWithAmounts(chainAmounts)
+	chainOriginsTxID, err := testData.wrk.TxBytesIn(testData.chainOriginsTx.Bytes())
+	require.NoError(t, err)
+	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
+
+	// Start bootstrap sequencer
+	testData.bootstrapSeq, err = sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+		sequencer.WithName("boot"),
+		sequencer.WithPace(5),
+		sequencer.WithDelayStart(3*time.Second),
+	)
+	require.NoError(t, err)
+
+	var bootBranchCount atomic.Int32
+	testData.bootstrapSeq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+		if ms.IsBranchTransaction() {
+			bootBranchCount.Add(1)
+		}
+	})
+	testData.bootstrapSeq.Start()
+
+	// Wait for chain origins to be finalized
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, 10*time.Second)
+	require.NoError(t, err)
+	t.Logf("chain origins tx %s finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
+
+	// Start sequencers and track branch counts per sequencer
+	branchCounts := make([]atomic.Int32, nSequencers)
+	testData.sequencers = make([]*sequencer.Sequencer, nSequencers)
+	for i := range testData.sequencers {
+		testData.sequencers[i], err = sequencer.New(testData.wrk, testData.chainOrigins[i].ChainID, testData.privKeyAux,
+			sequencer.WithName(fmt.Sprintf("seq%d", i)),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(1000),
+		)
+		require.NoError(t, err)
+		idx := i
+		testData.sequencers[i].OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+			if ms.IsBranchTransaction() {
+				branchCounts[idx].Add(1)
+			}
+		})
+		testData.sequencers[i].Start()
+	}
+
+	// Let the sequencers run
+	time.Sleep(runTime)
+
+	// Stop all sequencers
+	for _, seq := range testData.sequencers {
+		seq.Stop()
+	}
+	testData.bootstrapSeq.Stop()
+	success := testData.stopAndWait(5 * time.Second)
+	require.True(t, success)
+
+	// Log results
+	t.Logf("Bootstrap branches: %d", bootBranchCount.Load())
+	for i, amount := range chainAmounts {
+		t.Logf("  seq%d (amount: %s): %d branches", i, util.Th(amount), branchCounts[i].Load())
+	}
+
+	// Bootstrap must have produced branches (it's within bounds and required for the system to function)
+	require.Greater(t, bootBranchCount.Load(), int32(0), "bootstrap should produce branches")
+
+	// seq0 (5T, below lower bound 10T) should produce NO branches
+	require.EqualValues(t, 0, branchCounts[0].Load(), "seq0 (below lower bound) should not produce branches")
+
+	// seq4 (810T, above upper bound 800T) should produce NO branches
+	require.EqualValues(t, 0, branchCounts[4].Load(), "seq4 (above upper bound) should not produce branches")
+
+	// seq1, seq2, seq3 (50T, within bounds) should produce branches
+	require.Greater(t, branchCounts[1].Load(), int32(0), "seq1 (within bounds) should produce branches")
+	require.Greater(t, branchCounts[2].Load(), int32(0), "seq2 (within bounds) should produce branches")
+	require.Greater(t, branchCounts[3].Load(), int32(0), "seq3 (within bounds) should produce branches")
+
+	testData.saveFullDAG("utangle_full_coverage_bounds")
+	multistate.SaveBranchTree(testData.wrk.StateStore(), "utangle_tree_coverage_bounds")
+}
+
 func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) *workflowTestData {
 	// Reinitialize ledger with fresh genesis timestamp to avoid timing issues
 	// when tests run sequentially and the original genesis time becomes stale
