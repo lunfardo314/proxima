@@ -27,6 +27,7 @@ type (
 		SeparateLog               bool
 		GlobalLogging             bool
 		ControllerKeyFile         string // path to keystore file for deferred key loading
+		IgnoreUpperBoundOnFreeze  bool   // if true, skip upper bound check when freezing delegations
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -113,6 +114,9 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	if subViper.GetBool("ensure_synced_at_startup") {
 		cfg = append(cfg, WithEnsureSyncedAtStartup)
 	}
+	if subViper.GetBool("ignore_upper_bound_on_freeze") {
+		cfg = append(cfg, WithIgnoreUpperBoundOnFreeze)
+	}
 	return cfg, seqID, nil
 }
 
@@ -185,6 +189,10 @@ func WithControllerKeyFile(path string) ConfigOption {
 	}
 }
 
+func WithIgnoreUpperBoundOnFreeze(o *ConfigOptions) {
+	o.IgnoreUpperBoundOnFreeze = true
+}
+
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -198,5 +206,6 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("BacklogDelegationTTLSlots: %d", cfg.BacklogDelegationTTLSlots).
 		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
 		Add("Separate log: %v", cfg.SeparateLog).
-		Add("Copy to the global log: %v", cfg.GlobalLogging)
+		Add("Copy to the global log: %v", cfg.GlobalLogging).
+		Add("Ignore upper bound on freeze: %v", cfg.IgnoreUpperBoundOnFreeze)
 }

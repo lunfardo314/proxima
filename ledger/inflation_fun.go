@@ -39,6 +39,26 @@ func (lib *Library) BranchInflationBonusBase(slot uint32) uint64 {
 	return easyfl_util.MustUint64FromBytes(res)
 }
 
+// BranchCoverageLowerBound returns the minimum sequencer coverage (tokenBalance + frozenCoverage)
+// required to issue a branch transaction at the given slot.
+func (lib *Library) BranchCoverageLowerBound(slot uint32) uint64 {
+	var slotBin [4]byte
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+	res, err := lib.EvalFromSource(nil, "branchCoverageLowerBound($0)", slotBin[:])
+	util.AssertNoError(err)
+	return easyfl_util.MustUint64FromBytes(res)
+}
+
+// BranchCoverageUpperBound returns the maximum sequencer coverage (tokenBalance + frozenCoverage)
+// allowed to issue a branch transaction at the given slot.
+func (lib *Library) BranchCoverageUpperBound(slot uint32) uint64 {
+	var slotBin [4]byte
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+	res, err := lib.EvalFromSource(nil, "branchCoverageUpperBound($0)", slotBin[:])
+	util.AssertNoError(err)
+	return easyfl_util.MustUint64FromBytes(res)
+}
+
 // BranchInflationBonus calculates the inflation bonus for a branch using the given proof.
 // Uses the library for the specified slot.
 func (lib *Library) BranchInflationBonus(proof []byte, slot uint32) uint64 {

@@ -32,13 +32,14 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	}
 	signatureType, privKey, pubKey := p.ControllerKeys()
 	txb, err := txbuilder_seq.New(txbuilder_seq.Params{
-		Timestamp:     a.TargetTs(),
-		Predecessor:   &seqPred,
-		Stem:          stem,
-		SignatureType: signatureType,
-		PrivateKey:    privKey,
-		PublicKey:     pubKey,
-		StateReader:   a.BaselineSugaredStateReader(),
+		Timestamp:                a.TargetTs(),
+		Predecessor:              &seqPred,
+		Stem:                     stem,
+		SignatureType:            signatureType,
+		PrivateKey:               privKey,
+		PublicKey:                pubKey,
+		StateReader:              a.BaselineSugaredStateReader(),
+		IgnoreUpperBoundOnFreeze: p.environment.IgnoreUpperBoundOnFreeze(),
 	})
 	if err != nil {
 		a.Close() // FIX: close attacher on error

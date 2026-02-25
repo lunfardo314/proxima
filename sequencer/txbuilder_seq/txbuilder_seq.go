@@ -28,9 +28,11 @@ type (
 		publicKey             []byte
 		chainInput            *ledger.OutputWithChainID
 		stemInput             *ledger.OutputWithID // it is branch tx if != nil
-		doNotInflateMainChain bool                 // default is inflate
-		chainOutAmounts       [15]int64
-		vrfProof              []byte
+		doNotInflateMainChain    bool                 // default is inflate
+		chainOutAmounts          [15]int64
+		vrfProof                 []byte
+		branchCoverageUpperBound uint64 // upper bound for branch coverage, 0 means no enforcement
+		enforceFreezeUpperBound  bool   // if true, check upper bound before each delegation freeze
 	}
 
 	TxBuilderCommand interface {
@@ -43,14 +45,15 @@ type (
 		AttachmentCostDelta() int
 	}
 	Params struct {
-		Timestamp             base.LedgerTime
-		Predecessor           *ledger.OutputWithChainID
-		Stem                  *ledger.OutputWithID
-		SignatureType         byte
-		PrivateKey            []byte
-		PublicKey             []byte
-		StateReader           multistate.IndexedStateReader
-		DoNotInflateMainChain bool
+		Timestamp                base.LedgerTime
+		Predecessor              *ledger.OutputWithChainID
+		Stem                     *ledger.OutputWithID
+		SignatureType            byte
+		PrivateKey               []byte
+		PublicKey                []byte
+		StateReader              multistate.IndexedStateReader
+		DoNotInflateMainChain    bool
+		IgnoreUpperBoundOnFreeze bool
 	}
 )
 
@@ -145,6 +148,12 @@ func New(par Params) (*SeqTxBuilder, error) {
 	}
 	for i := uint32(0); i < ret.MaxFrozenEpochs; i++ {
 		ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
+	}
+
+	// initialize branch coverage bounds for delegation freeze checking
+	if ret.stemInput != nil {
+		ret.branchCoverageUpperBound = ret.Library.BranchCoverageUpperBound(par.Timestamp.Slot)
+		ret.enforceFreezeUpperBound = !par.IgnoreUpperBoundOnFreeze
 	}
 
 	// consume chain and stem (optionally) outputs but do not unlock it
@@ -295,6 +304,20 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	if err != nil {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 		return
+	}
+
+	// check if freezing this delegation would push coverage above the upper bound
+	if txb.enforceFreezeUpperBound {
+		projectedTokenBalance := txb.chainOutAmounts[ledger.AmountIndexTokenBalance] - int64(advance)
+		projectedFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage] +
+			delegationOut.Amounts().FrozenCoverageAt(0)
+		projectedCoverage := uint64(projectedTokenBalance + projectedFrozen0)
+		if projectedCoverage > txb.branchCoverageUpperBound {
+			valid = true
+			err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, would exceed branch coverage upper bound (%s > %s)",
+				util.Th(projectedCoverage), util.Th(txb.branchCoverageUpperBound))
+			return
+		}
 	}
 
 	idx, err := txb.ConsumeOutput(delegationIn.Output, delegationIn.ID)
@@ -464,6 +487,12 @@ func (txb *SeqTxBuilder) Slot() uint32 {
 	return txb.TransactionData.Timestamp.Slot
 }
 
+// CurrentBranchCoverage returns tokenBalance + frozenCoverage[epoch 0] of the sequencer chain output being built.
+func (txb *SeqTxBuilder) CurrentBranchCoverage() uint64 {
+	return uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance] +
+		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage])
+}
+
 func (txb *SeqTxBuilder) SetName(name string) {
 	txb.nextSeqData.SetName(name)
 }
@@ -496,6 +525,8 @@ type MakeSimpleSequencerTransactionParams struct {
 	//
 	DoNotInflateMainChain bool
 	//
+	IgnoreUpperBoundOnFreeze bool
+	//
 	AttachmentBudget uint16
 }
 
@@ -515,13 +546,14 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		}
 	}
 	txb, err := New(Params{
-		Timestamp:             par.Timestamp,
-		Predecessor:           par.ChainInput,
-		Stem:                  par.StemInput,
-		SignatureType:         par.SignatureType,
-		PrivateKey:            par.PrivateKey,
-		PublicKey:             par.PublicKey,
-		DoNotInflateMainChain: par.DoNotInflateMainChain,
+		Timestamp:                par.Timestamp,
+		Predecessor:              par.ChainInput,
+		Stem:                     par.StemInput,
+		SignatureType:            par.SignatureType,
+		PrivateKey:               par.PrivateKey,
+		PublicKey:                par.PublicKey,
+		DoNotInflateMainChain:    par.DoNotInflateMainChain,
+		IgnoreUpperBoundOnFreeze: par.IgnoreUpperBoundOnFreeze,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)

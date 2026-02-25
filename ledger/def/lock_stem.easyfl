@@ -37,8 +37,8 @@ func stemLock: and(
             // must be consistent with the transaction level data
           equal(selfOutputIndex, txStemOutputIndex),
 		  selfEnforceZeroAmountsInNonChainedOutput,
-            // enforce minimum sequencer coverage on the sequencer chain output
-          _enforceBranchCoverageLowerBound
+            // enforce sequencer coverage bounds on the sequencer chain output
+          _enforceBranchCoverageBounds
        )
     )
 )
@@ -46,9 +46,18 @@ func stemLock: and(
 // reads amounts constraint of the sequencer chain output
 func _seqChainAmounts : atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, amountsConstraintIndex))
 
-// enforces that sequencer coverage (tokenBalance + frozenCoverage) >= constBranchCoverageLowerBound
-// Currently constBranchCoverageLowerBound = 0, can be increased via ledger upgrade
-func _enforceBranchCoverageLowerBound : require(
-   not(lessThan(add(amountAt(_seqChainAmounts, 0), amountAt(_seqChainAmounts, 2)), constBranchCoverageLowerBound)),
-   !!!sequencer_coverage_below_minimum
+// sequencer coverage = tokenBalance + frozenCoverage[epoch 0]
+func _seqChainCoverage : add(amountAt(_seqChainAmounts, 0), amountAt(_seqChainAmounts, 2))
+
+// enforces that sequencer coverage is within [branchCoverageLowerBound, branchCoverageUpperBound]
+// Both bounds are slot-dependent functions, can be changed via ledger upgrade
+func _enforceBranchCoverageBounds : and(
+   require(
+      not(lessThan(_seqChainCoverage, branchCoverageLowerBound(txSlot))),
+      !!!sequencer_coverage_below_minimum
+   ),
+   require(
+      not(lessThan(branchCoverageUpperBound(txSlot), _seqChainCoverage)),
+      !!!sequencer_coverage_above_maximum
+   )
 )

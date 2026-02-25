@@ -97,10 +97,13 @@ functions:
       description: returns storage deposit for the UTXO with byte size of $0
       source: "if( lessThan($0, u64/303030), mul($0, 100), add(mul($0, 100), lshift64(sub($0,100), 2)))"
    -
-     sym: constBranchCoverageLowerBound
-     description: "minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction. Can be increased via upgrade"
-     source: u64/0
-     immutable: true
+     sym: branchCoverageLowerBound
+     description: "minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
+     source: "if(equal($0,$0), u64/0, u64/0)"
+   -
+     sym: branchCoverageUpperBound
+     description: "maximum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
+     source: "add(constInitialSupply, mul($0, u64/5000000))"
    -
      sym: branchInflationBonusBase
      description: "maximum value of the branch inflation bonus at slot $0"

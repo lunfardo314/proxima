@@ -87,6 +87,17 @@ func baseProposeGenerator(p *proposer) (*proposal, bool) {
 	}
 
 	if p.targetTs.IsSlotBoundary() {
+		// for branches, no delegations or tag-alongs are added, so coverage is fully known
+		lib := ret.SeqTxBuilder.Library
+		coverage := ret.SeqTxBuilder.CurrentBranchCoverage()
+		lower := lib.BranchCoverageLowerBound(p.targetTs.Slot)
+		upper := lib.BranchCoverageUpperBound(p.targetTs.Slot)
+		if coverage < lower || coverage > upper {
+			p.Log().Warnf("BaseProposer-%s: branch coverage %s out of bounds [%s, %s] at slot %d, skipping branch",
+				p.Name, util.Th(coverage), util.Th(lower), util.Th(upper), p.targetTs.Slot)
+			ret.Close()
+			return nil, true
+		}
 		p.Tracef(TraceTagBaseProposer, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
 			p.Name,
 			extend.IDStringShort, func() string { return util.Th(extend.VID.GetLedgerCoverage()) },
