@@ -485,6 +485,15 @@ func (o *Output) String() string {
 func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	ret := lines.New()
 	o.ForEach(func(i int, data []byte) bool {
+		if i == 0 {
+			// amounts
+			if a, err := AmountsFromBytes(data); err != nil {
+				ret.Add("%s%d: amounts = '%v'", prefix, i, err)
+			} else {
+				ret.Add("%s%d: amounts = %s", prefix, i, a.String())
+			}
+			return true
+		}
 		bc := ""
 		if verbose {
 			bc = fmt.Sprintf(prefix+"   bytecode: %s", easyfl_util.Fmt(data))
