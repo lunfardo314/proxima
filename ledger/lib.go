@@ -3,6 +3,7 @@ package ledger
 import (
 	"crypto/ed25519"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
@@ -25,13 +26,17 @@ type (
 	IntegrityValidator func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
 	Library            struct {
 		*easyfl.Library[*EvalContext]
-		Constants                          // Embedded ledger constants for this library version
-		definitionsYAML                    []byte
-		constraintByPrefix                 map[string]*constraintRecord
-		locksByName                        map[string]LockParser
-		upgradeChainData                   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
-		TxIntegrityValidatorPartialContext IntegrityValidator
-		TxIntegrityValidatorFullContext    IntegrityValidator
+		Constants                           // Embedded ledger constants for this library version
+		definitionsYAML                     []byte
+		constraintByPrefix                  map[string]*constraintRecord
+		locksByName                         map[string]LockParser
+		upgradeChainData                    *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		TxIntegrityValidatorPartialContext  IntegrityValidator
+		TxIntegrityValidatorFullContext     IntegrityValidator
+		BranchInflationBonusBasePrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
+		BranchCoverageLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
+		BranchCoverageUpperBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
+		BranchInflationBonusPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
 	}
 )
 
@@ -122,4 +127,11 @@ func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {
 
 	pk := testutil.GetTestingPrivateKey(s)
 	return DefaultParameters(pk, uint32(time.Now().Unix())), pk
+}
+
+func (lib *Library) mustCompile(src string, nArgs int) *easyfl.Expression[*EvalContext] {
+	expr, na, _, err := lib.CompileExpression(src)
+	util.AssertNoError(err)
+	util.Assertf(nArgs == na, "expected %d arguments, got %d", nArgs, na)
+	return expr
 }

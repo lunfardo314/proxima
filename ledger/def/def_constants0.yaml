@@ -89,10 +89,6 @@ functions:
       description: calculates one-slot inflation in slot $0 of amount $1
       source: div($0,add(minimumInflatableAmount0,$1))
    -
-      sym: branchInflationBonus
-      description: "calculates a deterministic pseudo-random value of branch inflation bonus based on VRF in $0 and slot $1"
-      source: "add(randomFromSeed($0, branchInflationBonusBase($1)), u64/1)"
-   -
       sym: storageDeposit
       description: returns storage deposit for the UTXO with byte size of $0
       source: "if( lessThan($0, u64/303030), mul($0, 100), add(mul($0, 100), lshift64(sub($0,100), 2)))"
@@ -116,3 +112,7 @@ functions:
      sym: proformaSupplyUpperBound
      description: "supply upper bound at slot $0, assuming constant inflation constants"
      source: add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))
+   -
+     sym: branchInflationBonus
+     description: "calculates a deterministic pseudo-random value of branch inflation bonus based on VRF in $0 and slot $1"
+     source: "add(randomFromSeed($0, branchInflationBonusBase($1)), u64/1)"
