@@ -36,7 +36,7 @@ require(
 // $0 chain predecessor input index
 func _sequencer :
 or(
-	and( equal($0, 0xff), _noChainPredecessorCase ),
+	and( equal($0, 0x), _noChainPredecessorCase ),
 	and( _inputSameSlot($0), _sameSlotPredecessorCase($0)),
 	and( not(_inputSameSlot($0)), _crossSlotPredecessorCase)
 )
