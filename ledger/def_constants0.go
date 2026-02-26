@@ -21,6 +21,7 @@ type InitParameters struct {
 	TransactionPaceSequencerTicks int
 	AttachmentCostBudget          int
 	TxIDStateTTLSlots             int
+	SetBranchCoverageBounds       bool   // true for testing only
 	BranchCoverageLowerBound      uint64 // 0 = default formula, >0 = constant bound (for testing)
 	BranchCoverageUpperBound      uint64 // 0 = default formula, >0 = constant bound (for testing)
 }
@@ -75,6 +76,7 @@ type constantsTemplateData struct {
 	AttachmentCostBudget          int
 	TxIDStateTTLSlots             int
 	DescriptionHex                string
+	SetBranchCoverageBounds       bool
 	BranchCoverageLowerBound      uint64 // 0 = use default formula
 	BranchCoverageUpperBound      uint64 // 0 = use default formula
 }
@@ -93,6 +95,7 @@ func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
 		AttachmentCostBudget:          par.AttachmentCostBudget,
 		TxIDStateTTLSlots:             par.TxIDStateTTLSlots,
 		DescriptionHex:                hex.EncodeToString([]byte(par.Description)),
+		SetBranchCoverageBounds:       par.SetBranchCoverageBounds,
 		BranchCoverageLowerBound:      par.BranchCoverageLowerBound,
 		BranchCoverageUpperBound:      par.BranchCoverageUpperBound,
 	}

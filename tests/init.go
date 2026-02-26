@@ -75,8 +75,7 @@ func reinitTestLedgerWithCoverageBounds(lowerBound, upperBound uint64) func() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
-		ledger.WithBranchCoverageLowerBound(lowerBound),
-		ledger.WithBranchCoverageUpperBound(upperBound),
+		ledger.WithBranchCoverageBounds(lowerBound, upperBound),
 	)
 	return func() {
 		ledger.ResetForTesting()

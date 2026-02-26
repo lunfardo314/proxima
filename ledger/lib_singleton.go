@@ -417,14 +417,10 @@ func WithAttachmentCostBudget(depth int) ParametersOption {
 	}
 }
 
-func WithBranchCoverageLowerBound(bound uint64) ParametersOption {
+func WithBranchCoverageBounds(lower, upper uint64) ParametersOption {
 	return func(par *InitParameters) {
-		par.BranchCoverageLowerBound = bound
-	}
-}
-
-func WithBranchCoverageUpperBound(bound uint64) ParametersOption {
-	return func(par *InitParameters) {
-		par.BranchCoverageUpperBound = bound
+		par.BranchCoverageLowerBound = lower
+		par.BranchCoverageUpperBound = upper
+		par.SetBranchCoverageBounds = true
 	}
 }

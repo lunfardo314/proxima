@@ -34,3 +34,7 @@ functions:
     sym: tickFromTimestampBytes
     description: returns ticks of the timestamp
     source: "byte(rshift64(byte($0, 4), 1), 7)"
+  -
+    sym: evalArg1
+    description: "returns $1"
+    source: "$1"
