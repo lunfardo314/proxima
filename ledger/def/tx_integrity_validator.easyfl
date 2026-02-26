@@ -6,7 +6,7 @@ or(
       require(isSequencerTransaction, !!!explicit_baseline:_can_only_be_set_on_a_sequencer_transaction),
       require(equal(len($0),u64/32), !!!explicit_baseline:_must_be_32_bytes_long_txid),
       require(branchFlagON($0), !!!"explicit_baseline:_must_be_a_branch_transaction_ID),
-      require(lessThan(slice($0,0,3), txSlot), !!!explicit_baseline:_must_point_to_a_transaction_in_a_past_slot)
+      require(lessThan(first4Bytes($0), txSlot), !!!explicit_baseline:_must_point_to_a_transaction_in_a_past_slot)
    )
 )
 
