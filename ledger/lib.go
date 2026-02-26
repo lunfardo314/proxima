@@ -26,13 +26,14 @@ type (
 	IntegrityValidator func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
 	Library            struct {
 		*easyfl.Library[*EvalContext]
-		Constants                           // Embedded ledger constants for this library version
-		definitionsYAML                     []byte
-		constraintByPrefix                  map[string]*constraintRecord
-		locksByName                         map[string]LockParser
-		upgradeChainData                    *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
-		TxIntegrityValidatorPartialContext  IntegrityValidator
-		TxIntegrityValidatorFullContext     IntegrityValidator
+		Constants                          // Embedded ledger constants for this library version
+		definitionsYAML                    []byte
+		constraintByPrefix                 map[string]*constraintRecord
+		locksByName                        map[string]LockParser
+		upgradeChainData                   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		TxIntegrityValidatorPartialContext IntegrityValidator
+		TxIntegrityValidatorFullContext    IntegrityValidator
+		// precompiled expressions for optimization
 		BranchInflationBonusBasePrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchCoverageLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchCoverageUpperBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
