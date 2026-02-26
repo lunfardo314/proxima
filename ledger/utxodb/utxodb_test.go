@@ -16,7 +16,9 @@ import (
 var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
-	genesisPrivateKey = ledger.InitWithTestingLedgerData()
+	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
+	)
 }
 
 func TestUTXODB(t *testing.T) {

@@ -28,7 +28,9 @@ import (
 var pastConeTestGenesisKey ed25519.PrivateKey
 
 func init() {
-	pastConeTestGenesisKey = ledger.InitWithTestingLedgerData()
+	pastConeTestGenesisKey = ledger.InitWithTestingLedgerData(
+		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
+	)
 }
 
 // TestFlagsPastCone tests the FlagsPastCone type used to track vertex state.

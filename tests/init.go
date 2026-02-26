@@ -22,6 +22,7 @@ func initTestLedger() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(600),
+		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
 	)
 	lib := ledger.L(base.MaxSlot)
 	fmt.Printf(`
@@ -57,6 +58,7 @@ func reinitTestLedgerWithBudget(budget int) func() {
 		ledger.WithTransactionPace(3),
 		ledger.WithTransactionPaceSequencer(3),
 		ledger.WithAttachmentCostBudget(budget),
+		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
 	)
 	return func() {
 		// Restore default budget

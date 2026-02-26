@@ -99,12 +99,20 @@ functions:
    -
      sym: branchCoverageLowerBound
      description: "minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
-     source: "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageLowerBound}}){{else}}evalArg1($0,u64/0){{end}}"
+     source: "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageLowerBound}}){{else}}div(proformaSupplyUpperBound($0), u64/1000){{end}}"
    -
      sym: branchCoverageUpperBound
      description: "maximum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
-     source: "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageUpperBound}}){{else}}add(constInitialSupply, mul($0, u64/5000000)){{end}}"
+     source: "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageUpperBound}}){{else}}div(proformaSupplyUpperBound($0), u64/10){{end}}"
    -
      sym: branchInflationBonusBase
      description: "maximum value of the branch inflation bonus at slot $0"
-     source: "evalArg1($0, u64/5000000)"
+     source: "evalArg1($0, constBranchInflationBonusBaseTail)"
+   -
+     sym: constBranchInflationBonusBaseTail
+     description: "branch inflation bonus base tail constant"
+     source: u64/5000000
+   -
+     sym: proformaSupplyUpperBound
+     description: "supply upper bound at slot $0, assuming constant inflation constants"
+     source: add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))
