@@ -1,12 +1,12 @@
 // $0 explicit baseline bytes
-func _mustValidExplicitBaseline :
+func _requireValidExplicitBaseline :
 or(
    isZero(len($0)), // not set
    and(
       require(isSequencerTransaction, !!!explicit_baseline:_can_only_be_set_on_a_sequencer_transaction),
       require(equal(len($0),u64/32), !!!explicit_baseline:_must_be_32_bytes_long_txid),
       require(branchFlagON($0), !!!"explicit_baseline:_must_be_a_branch_transaction_ID),
-      require(lessThan(u64/0, sub(txSlot, slice($0,0,3))), !!!explicit_baseline:_must_point_to_a_transaction_at_least_1_slot_in_the_past)
+      require(lessThan(slice($0,0,3), txSlot), !!!explicit_baseline:_must_point_to_a_transaction_in_a_past_slot)
    )
 )
 
@@ -49,7 +49,7 @@ func txIntegrityValidatorPartialContext0 : and(
    // check endorsements
    _validEndorsements,
    // check explicit baseline
-   _mustValidExplicitBaseline(txExplicitBaseline)
+   _requireValidExplicitBaseline(txExplicitBaseline)
 )
 
 // full context: does require consumed UTXOs

@@ -78,9 +78,8 @@ func sequencer: and(
         selfIsConsumedOutput,
 		and(
 			// produced
-			require(not(equal(selfOutputIndex, 0xff)), !!!sequencer_output_can't_be_at_index_0xff),
 			require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction),
-            require(zeroTickOnBranchOnly, !!!non-branch_sequencer_transaction_cant_be_on_slot_boundary),
+            require(zeroTickOnBranchOnly, !!!non-branch_sequencer_transaction_can't_be_on_slot_boundary),
 			checkPreBranchConsolidationTicks,
 			checkPostBranchConsolidationTicks,
             // check chain's past
