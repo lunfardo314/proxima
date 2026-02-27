@@ -138,10 +138,6 @@ func (tx *Transaction) writeStateMutationsTo(mut common.KVWriter) {
 	})
 }
 
-// TODO optimize and improve:
-//   - no need to pre-parse all outputs, we can run tuples directly
-//   - we can check mandatory constraints separately
-
 func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	outs, err := tx._scanOutputs(ledger.PathToConsumedOutputs)
 	if err != nil {
@@ -279,6 +275,8 @@ func PathToString(path []byte) string {
 			ret += ".tx"
 			if len(path) >= 2 {
 				switch path[1] {
+				case ledger.TxVersion:
+					ret += ".version"
 				case ledger.TxUnlockData:
 					ret += ".unlock"
 				case ledger.TxInputIDs:

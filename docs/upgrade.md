@@ -216,13 +216,15 @@ functions:
     embedded_as: embeddedTicksBefore_v1  # Maps to fixed version
 ```
 
-## Peering Rendezvous
+## Network Isolation via TxVersion
 
-The hash of the **pending upgrade library** (if defined) is used as the peering rendezvous code. This:
+Each transaction carries a `TxVersion` field (uint16 big-endian at tuple index 0) that must match the library's upgrade index for the transaction's slot. This provides upgrade isolation at the transaction validation layer:
 
-- Isolates upgraded nodes from non-upgraded nodes
-- Forces node operators to upgrade before the target slot
-- Ensures network consensus on upcoming changes
+- Non-upgraded nodes reject transactions from upgraded nodes at Stage 1 parsing (TxVersion mismatch or tuple element count mismatch)
+- Upgraded nodes reject old-format transactions for the same reason
+- Nodes that fall behind on upgrades naturally fall out of sync
+
+The peering rendezvous string is **fixed** (derived from the genesis library hash), so all nodes on the same ledger always discover each other regardless of upgrade status. Peering is no longer used for upgrade isolation.
 
 ## Verification
 

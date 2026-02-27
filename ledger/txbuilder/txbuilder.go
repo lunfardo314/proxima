@@ -3,6 +3,7 @@ package txbuilder
 import (
 	"crypto"
 	"crypto/ed25519"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
@@ -360,6 +361,10 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 		total += o.TokenBalance()
 	}
 	elems := make([]any, ledger.TxTreeTupleNumElements)
+	// TxVersion: uint16 big-endian, library upgrade index for the transaction's slot
+	versionBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(versionBytes, ledger.L(tx.Timestamp.Slot).UpgradeIndex())
+	elems[ledger.TxVersion] = versionBytes
 	elems[ledger.TxConstraints] = nil
 	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
 	if tx.SequencerOutputIndex != 0xff {

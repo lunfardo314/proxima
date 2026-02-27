@@ -114,6 +114,15 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 	}
 
 	lib.SetUpgradeChainData(chainData)
+
+	// Set upgrade index: ordinal position of this upgrade slot in the sorted list (0-based)
+	for i, s := range lc.upgradeSlots {
+		if s == upgradeSlot {
+			lib.upgradeIndex = uint16(i)
+			break
+		}
+	}
+
 	lc.cache[upgradeSlot] = lib
 
 	// Update latest library cache if this is the highest slot

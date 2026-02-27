@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -64,6 +65,20 @@ func Parse(txBytes []byte) (*Transaction, error) {
 	ret.timestamp = ret.txid.Timestamp()
 	// Cache the library for this transaction's slot once, to avoid repeated L(slot) calls
 	ret.Library = ledger.L(ret.timestamp.Slot)
+
+	// Validate TxVersion: must match the library's upgrade index for this transaction's slot
+	versionBytes, err := txTree.BytesAtPath([]byte{ledger.TxVersion})
+	if err != nil {
+		return nil, fmt.Errorf("tx.Parse: can't read TxVersion: %v", err)
+	}
+	if len(versionBytes) != 2 {
+		return nil, fmt.Errorf("tx.Parse: TxVersion must be exactly 2 bytes, got %d", len(versionBytes))
+	}
+	txVersion := binary.BigEndian.Uint16(versionBytes)
+	if txVersion != ret.Library.UpgradeIndex() {
+		return nil, fmt.Errorf("tx.Parse: TxVersion mismatch: transaction has %d, library expects %d", txVersion, ret.Library.UpgradeIndex())
+	}
+
 	ret.producedAmountTotals = make([]int64, ret.Library.MaxFrozenEpochs+2)
 	return ret, nil
 }

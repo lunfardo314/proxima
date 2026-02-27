@@ -31,6 +31,7 @@ type (
 		constraintByPrefix                 map[string]*constraintRecord
 		locksByName                        map[string]LockParser
 		upgradeChainData                   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		upgradeIndex                       uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
 		TxIntegrityValidatorPartialContext IntegrityValidator
 		TxIntegrityValidatorFullContext    IntegrityValidator
 		// precompiled expressions for optimization
@@ -73,6 +74,13 @@ func (lib *Library) UpgradeChainData() *UpgradeChainData {
 // Called when the library is loaded from the DB.
 func (lib *Library) SetUpgradeChainData(data *UpgradeChainData) {
 	lib.upgradeChainData = data
+}
+
+// UpgradeIndex returns the 0-based ordinal position of this library in the upgrade chain.
+// Genesis library = 0, first upgrade = 1, etc.
+// This value is used as TxVersion in the transaction tuple.
+func (lib *Library) UpgradeIndex() uint16 {
+	return lib.upgradeIndex
 }
 
 // MustPreCompileTxIntegrityValidators sets tx layout validator for the initialized library

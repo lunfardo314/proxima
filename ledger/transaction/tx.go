@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"encoding/binary"
 	"fmt"
 	"time"
 
@@ -155,6 +156,11 @@ func (tx *Transaction) StemOutput() *ledger.OutputWithID {
 
 func (tx *Transaction) Timestamp() base.LedgerTime {
 	return tx.timestamp
+}
+
+// Version returns the TxVersion uint16 from the transaction tuple
+func (tx *Transaction) Version() uint16 {
+	return binary.BigEndian.Uint16(tx.MustBytesAtPath(ledger.PathToTxVersion))
 }
 
 func (tx *Transaction) TimestampTime() time.Time {

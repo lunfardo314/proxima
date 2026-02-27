@@ -81,14 +81,10 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
 
-	// Rendezvous isolates upgraded nodes from non-upgraded nodes.
-	// Use pending upgrade's hash if defined, otherwise latest in-effect library.
-	var ledgerLibraryHash [32]byte
-	if ledger.PendingUpgrade != nil {
-		ledgerLibraryHash = ledger.L(ledger.PendingUpgrade.Slot).LibraryHash()
-	} else {
-		ledgerLibraryHash = ledger.L(base.MaxSlot).LibraryHash()
-	}
+	// Fixed rendezvous: always use genesis (slot 0) library hash.
+	// Network isolation for upgrades is handled by TxVersion validation
+	// in transaction parsing, not by peering separation.
+	ledgerLibraryHash := ledger.L(0).LibraryHash()
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
 	ret := &Peers{

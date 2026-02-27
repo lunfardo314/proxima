@@ -92,6 +92,7 @@ func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...strin
 	txid := tx.ID()
 	ret := lines.New(prefix...)
 	ret.Add("Transaction ID: %s, size: %d", txid.String(), len(tx.Bytes()))
+	ret.Add("TxVersion: %d", tx.Version())
 	ts := tx.Timestamp()
 	ret.Add("Timestamp: %s", ts.String())
 
