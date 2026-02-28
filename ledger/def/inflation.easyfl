@@ -1,0 +1,46 @@
+// inflation related definitions
+
+// ------ chain inflation is rewards for holders of chained accounts. It is linear and homogenous in time ---------
+
+// maximum inflation of the total initial supply in slot 0
+func constSlotInflationBase: u64/33000000
+
+// minimum amount which gives non-zero inflation in the slot 0 (3030303 at slot 0)
+func minimumInflatableAmount0: div(constInitialSupply, constSlotInflationBase)
+
+// calculates deterministic pseudo-random value of branch inflation bonus based on VRF in $0 and slot $1
+func branchInflationBonus : add(randomFromSeed($0, branchInflationBonusBase($1)), u64/1)
+
+// calculates one-slot inflation in slot $0 of amount $1
+func chainInflationOneSlot: div($0,add(minimumInflatableAmount0,$1))
+
+// calculates chain inflation generated  in $2 steps by amount $0 starting at slot $1
+func chainInflationMultiStep: mul($2,chainInflationOneSlot($0,$1))
+
+// ------- branch inflation bonus is VRF-base pseudo-random value with the upper bound that depends on the slot.
+// Branch inflation bonus upper bound starts from 65.000.000 immediately after bootstrap grace slots,
+// then linearly monthly declines down to the tail inflation bonus of 5.000.000. After 1 year
+// upper bounds becomes constant tail branch inflation bonus
+
+// $0 - slot of the transaction (4 bytes)
+// return branch inflation bonus base for specific slot $0
+func branchInflationBonusBaseSchedule : _branchInflationBonusBaseSchedule(div($0, u64/30))
+
+// $0 - div($0, u64/30), approx number of months since genesis
+func _branchInflationBonusBaseSchedule :
+if(
+   lessThan(u64/12, $0),
+   constBranchInflationBonusBaseTail,
+   mul(constBranchInflationBonusBaseTail, sub(u64/12, $0))
+)
+
+// maximum value of the branch inflation bonus at slot $0
+func branchInflationBonusBase:
+if(
+  isBootstrapGraceSlots($0),
+  constBranchInflationBonusBaseTail,
+  branchInflationBonusBaseSchedule($0)
+)
+
+// branch inflation bonus base tail constant
+func constBranchInflationBonusBaseTail : u64/5000000

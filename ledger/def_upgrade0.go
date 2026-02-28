@@ -15,6 +15,8 @@ var (
 	_generalFunctionsYAMLUpgrade0 string
 	//go:embed def/def_helper_func0.yaml
 	_helperFunctionsYAMLUpgrade0 string
+	//go:embed def/inflation.easyfl
+	inflation0 string
 	//go:embed def/tx_integrity_validator.easyfl
 	_txLayoutValidator0 string
 )
@@ -32,6 +34,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	util.AssertNoError(err)
 
 	err = lib.IntroduceUpdateManyMulti(
+		inflation0,
 		sigLockConstraintSource,
 		timelockSource,
 		amountsSource,

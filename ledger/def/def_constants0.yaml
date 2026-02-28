@@ -33,10 +33,6 @@ functions:
       description: number of ticks in the slot. Usually 128
       source: u64/{{.TicksPerSlot}}
    -
-      sym: constSlotInflationBase
-      description: maximum inflation of the total initial supply in slot 0
-      source: u64/33000000
-   -
       sym: constMaxNumberOfEndorsements
       description: up to 8 endorsements
       source: u64/8
@@ -77,42 +73,22 @@ functions:
       description: constant for the storage deposit constraint
       source: 5
    -
-      sym: minimumInflatableAmount0
-      description: minimum amount which gives non-zero inflation in the slot 0
-      source: div(constInitialSupply, constSlotInflationBase)
-   -
-      sym: chainInflationMultiStep
-      description: calculates chain inflation generated  in $2 steps by amount $0 starting at slot $1
-      source: mul($2,chainInflationOneSlot($0,$1))
-   -
-      sym: chainInflationOneSlot
-      description: calculates one-slot inflation in slot $0 of amount $1
-      source: div($0,add(minimumInflatableAmount0,$1))
-   -
       sym: storageDeposit
       description: returns storage deposit for the UTXO with byte size of $0
       source: "if( lessThan($0, u64/303030), mul($0, 100), add(mul($0, 100), lshift64(sub($0,100), 2)))"
    -
-     sym: branchCoverageLowerBound
-     description: "minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
-     source: "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageLowerBound}}){{else}}div(proformaSupplyUpperBound($0), u64/1000){{end}}"
+      sym: isBootstrapGraceSlots
+      description: "if $0 is less than grace period slots"
+      source: "lessThanUint($0, u64/8504)"
    -
-     sym: branchCoverageUpperBound
-     description: "maximum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
-     source: "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageUpperBound}}){{else}}div(proformaSupplyUpperBound($0), u64/10){{end}}"
+      sym: branchCoverageLowerBound
+      description: "minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
+      source: "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageLowerBound}}){{else}}if(isBootstrapGraceSlots($0), u64/0, div(proformaSupplyUpperBound($0), u64/1000)){{end}}"
    -
-     sym: branchInflationBonusBase
-     description: "maximum value of the branch inflation bonus at slot $0"
-     source: "evalArg1($0, constBranchInflationBonusBaseTail)"
+      sym: branchCoverageUpperBound
+      description: "maximum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0"
+      source: "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageUpperBound}}){{else}}if(isBootstrapGraceSlots($0),proformaSupplyUpperBound($0),div(proformaSupplyUpperBound($0), u64/10)){{end}}"
    -
-     sym: constBranchInflationBonusBaseTail
-     description: "branch inflation bonus base tail constant"
-     source: u64/5000000
-   -
-     sym: proformaSupplyUpperBound
-     description: "supply upper bound at slot $0, assuming constant inflation constants"
-     source: add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))
-   -
-     sym: branchInflationBonus
-     description: "calculates a deterministic pseudo-random value of branch inflation bonus based on VRF in $0 and slot $1"
-     source: "add(randomFromSeed($0, branchInflationBonusBase($1)), u64/1)"
+      sym: proformaSupplyUpperBound
+      description: "supply upper bound at slot $0, assuming constant inflation constants"
+      source: add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))
