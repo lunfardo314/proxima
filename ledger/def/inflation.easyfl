@@ -30,13 +30,17 @@ func constSlotsPerMonth : u64/255118
 // return branch inflation bonus base for specific slot $0
 func branchInflationBonusBaseSchedule : _branchInflationBonusBaseSchedule(div($0, constSlotsPerMonth))
 
-// $0 - number of months since genesis (div(slot, constSlotsPerMonth))
+// number of 30-day months after bootstrap grace period during which
+// initial large branch inflation bonus base linearly goes down to the tail value
 // month 0: 5M*13=65M, month 12: 5M*1=5M, month 13+: tail 5M
+func constBranchInflationBonusBaseGenesisSlopeMonths : u64/12
+
+// $0 - number of months since genesis (div(slot, constSlotsPerMonth))
 func _branchInflationBonusBaseSchedule :
 if(
-   lessThan(u64/12, $0),
+   lessThan($0, constBranchInflationBonusBaseGenesisSlopeMonths),
+   mul(constBranchInflationBonusBaseTail, sub(add(constBranchInflationBonusBaseGenesisSlopeMonths, u64/1), $0)),
    constBranchInflationBonusBaseTail,
-   mul(constBranchInflationBonusBaseTail, sub(u64/13, $0))
 )
 
 // maximum value of the branch inflation bonus at slot $0
