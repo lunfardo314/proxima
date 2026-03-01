@@ -295,6 +295,7 @@ func generateInflationChart(data []slotInflationData, slotsPerDay int, filename 
 	p.X.Label.Text = "Months since genesis"
 	p.Y.Label.Text = "Annualized rate, %"
 	p.Y.Min = 0
+	p.Y.Tick.Marker = plot.ConstantTicks(makePercentTicks(data))
 
 	totalLine, err := plotter.NewLine(totalPts)
 	if err != nil {
@@ -335,4 +336,20 @@ func generateInflationChart(data []slotInflationData, slotsPerDay int, filename 
 
 	_, err = wt.WriteTo(f)
 	return err
+}
+
+// makePercentTicks generates Y-axis ticks at 1% intervals up to the max data value.
+func makePercentTicks(data []slotInflationData) []plot.Tick {
+	maxY := 0.0
+	for _, d := range data {
+		if d.TotalAPR > maxY {
+			maxY = d.TotalAPR
+		}
+	}
+	top := int(math.Ceil(maxY))
+	ticks := make([]plot.Tick, 0, top+1)
+	for i := 0; i <= top; i++ {
+		ticks = append(ticks, plot.Tick{Value: float64(i), Label: fmt.Sprintf("%d", i)})
+	}
+	return ticks
 }
