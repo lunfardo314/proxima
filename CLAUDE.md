@@ -4,36 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Proxima is a DAG-based cooperative distributed ledger written in Go (~52K lines). It uses UTXO transactions as DAG vertices (no blocks, no mempool). Consensus is achieved through the **biggest ledger coverage rule** - similar to Bitcoin's longest chain but based on token coverage in the ledger state rather than proof of work.
+Proxima is a DAG-based cooperative distributed ledger written in Go (~52K lines). It uses UTXO transactions as DAG vertices (no blocks, no mempool). Consensus is achieved through the **biggest ledger coverage rule** - similar to Bitcoin's longest chain but based on token coverage in the ledger state rather than proof of work. The principle is called _cooperative consensus_, where token holder's themselves converge to probabilistic consensus by cooperating and thus gravitating together towards the ledger state delta with the biggest coverage.
 
 The multi-ledger DAG-based structure made of UTXO transactions as vertices is called the `tangle`.  
 
 Key dependencies (part of Proxima ecosystem):
 - `github.com/lunfardo314/easyfl` - EasyFL scripting language for UTXO constraints (covenants)
-- `github.com/lunfardo314/unitrie` - Trie data structure and merkle tree for multi-ledger state
-
-## Build and Test Commands
-
-```bash
-# Build the project
-go build ./...
-
-# Build the CLI tool
-go build -o proxi .
-
-# Run all tests
-go test ./...
-
-# Run tests in a specific package
-go test ./ledger/tests/...
-go test ./core/workflow/...
-
-# Run a single test
-go test -run TestName ./path/to/package/...
-
-# Run tests with verbose output
-go test -v ./...
-```
+- `github.com/lunfardo314/unitrie` - Trie data structure and Merkle tree for multi-ledger state
+- `github.com/lunfardo314/lunfrado314.github.io` - Contains all relevant documentation of Proxima
 
 ## Architecture
 
@@ -60,18 +38,28 @@ go test -v ./...
 | `proxi`              | CLI wallet and node management tool                                                                                                     |
 | `node`               | Node orchestration, lifecycle management                                                                                                |
 | `global`             | Shared infrastructure, logging, metrics, context                                                                                        |
-| `claude`             | Claude Code .md files with tasks, contexts, task status                                                                                 |
+| `claude`             | Claude Code .md files with tasks, contexts, task status, findings                                                                       |
 
-### Single-signature transaction model
+### UTXO transaction model 
+
+Proxima uses advanced UTXO model for its transactions.
+Read [Transaction Model Documentation](https://lunfardo314.github.io/#/txdocs/intro) or directly in the repo `github.com/lunfardo314/lunfrado314.github.io`.
+
+#### Single-signature transaction model
 
 Each transaction carries exactly one signature (`TxSignatureData`). This is an intentional design choice:
 - The single signature uniquely identifies the spender. All consumed inputs must be unlockable by that spender
 - Secure spender identification is crucial for spam prevention in the `txsenders` module (rate-limiting by public key)
 - Tag-along commands to the sequencer rely on unambiguous sender identification
-- Multi-signature schemes (m-of-n) are intentionally not supported at the protocol level
+- Multi-signature schemes (m-of-n) are intentionally not supported at the protocol level. However, it can be supported by a transaction through programmability features  
 
-### Some facts
+### Programmability of the transaction
+Proxima transaction is composed of data and scripts, that puts constraints on the data. This provides non-Turing complete programmability of transaction and individual UTXOs.
+The scripting language is functional language of formulas `EasyFL`. See [claude/easyfl.md](claude/easyfl.md) and [EasyFL docs](https://lunfardo314.github.io/#/txdocs/easyfl)
+The `EasyFL` serves also as serialization/deserializtion primitives.
 
+
+### Some facts and links
 * read [Proxima documentation](https://lunfardo314.github.io) for general proxima narrative
 * read [Proxima transaction model](https://lunfardo314.github.io/#/txdocs/intro) for description of the transaction data structure
 * all transactions make a directed-acyclic graph, a transaction DAG, called the tangle. MemDAG is in-memory cache of the part of the whole transactoon DAG 
@@ -117,35 +105,44 @@ Each transaction carries exactly one signature (`TxSignatureData`). This is an i
 
 ## Working Rules
 
-- directory `claude` serves for Claude tasks with contexts.
-- Only modify CLAUDE.md and CLAUDE.local.md upon explicit user confirmation
-- in case of suspected inconsistencies between prompt and instructions in .md, ask clarifying questions
+- keep the code minimalist and as simple as possible 
+- do not introduce new abstractions, concepts or functions unless they are resued several times or improve readability    
+- directory `claude` serves for Claude tasks with contexts
+- Only modify CLAUDE.md upon explicit user confirmation
+- in case of suspected inconsistencies between instructions in .md, ask clarifying questions
 - Never add "Generated by Claude Code" or co-authored lines in commit messages
 - Do not add "Generated by Claude Code" comments to files
 - Name all test files generated by Claude as `claude_<some_name>_test.go`
 - Always add explanatory comments to newly generated tests
-- Do not invent new KV store access interfaces. Use existing interfaces from `multistate/kvtypes.go` (e.g., `StateStore`, `StateStoreReader`). For read+write operations, use `StateStore` which includes `BatchedUpdatable`
+- Do not invent new KV store access interfaces. Use existing interfaces from `multistate/kvtypes.go` (e.g., `StateStore`, `StateStoreReader`). 
+For read+write operations, use `StateStore` which includes `BatchedUpdatable`
 - Always use `encoding/binary.BigEndian` for serialization/deserialization of multi-byte integers unless there's a documented special case
 - When building binaries, always use names `proxima` for the node and `proxi` for the CLI-tool. Never rename
 - Prefer anonymous (embedded) fields over unexported fields with getters when extending structs or sharing behavior 
 - **Mind `ledger.TimeNow()` for timing issues**: In tests, avoid using `ledger.TimeNow()` to derive timestamps for chain origins or transactions. Instead, derive timestamps from actual output timestamps (e.g., `outs[0].ID.Timestamp().AddSlots(1)`) to avoid race conditions between wall-clock time and ledger state time.
 - **Ask about backward compatibility**: When refactoring code or changing data formats, always ask whether backward compatibility with legacy code or formats is required before assuming it is needed. Do not add legacy support unless explicitly confirmed.
 
-### How to diagnose memory leak issues
+## Build and Test Commands
 
 ```bash
-# Enable pprof in proxima.yaml
-pprof:
-  enable: true
-  port: 8080
+# Build the project
+go build ./...
 
-# Capture heap profiles
-curl -o heap1.pprof http://localhost:8080/debug/pprof/heap
-# wait 30-60 minutes
-curl -o heap2.pprof http://localhost:8080/debug/pprof/heap
+# Build the CLI tool
+go build -o proxi .
 
-# Compare allocations
-go tool pprof -top -diff_base=heap1.pprof heap2.pprof
+# Run all tests
+go test ./...
+
+# Run tests in a specific package
+go test ./ledger/tests/...
+go test ./core/workflow/...
+
+# Run a single test
+go test -run TestName ./path/to/package/...
+
+# Run tests with verbose output
+go test -v ./...
 ```
 
-Send diff file to Claude 
+
