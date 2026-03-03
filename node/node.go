@@ -58,15 +58,12 @@ type (
 	}
 )
 
-func init() {
+func New() *ProximaNode {
 	viper.SetConfigName("proxima")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
 	util.AssertNoError(err)
-}
-
-func New() *ProximaNode {
 	ret := &ProximaNode{
 		Global:                    global.NewFromConfig(),
 		workProcessesStopStepChan: make(chan struct{}),
