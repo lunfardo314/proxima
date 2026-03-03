@@ -85,15 +85,8 @@ func New(env environment) *MemDAG {
 	return ret
 }
 
-const (
-	vertexTTLSlots = 24
-	//_vertexTTLSlotsMinimum = 6
-)
-
-//
-//func init() {
-//	util.Assertf(vertexTTLSlots >= _vertexTTLSlotsMinimum, "constant vertexTTLSlots must be at least %d", _vertexTTLSlotsMinimum)
-//}
+// vertexTTLSlots must be at least 6
+const vertexTTLSlots = 24
 
 func (d *MemDAG) WithGlobalWriteLock(fun func()) {
 	d.mutex.Lock()

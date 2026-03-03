@@ -58,7 +58,7 @@ func runMilestoneAttacher(
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
-			env.Infof0(a.logFinalStatusString(msData))
+			env.Infof1(a.logFinalStatusString(msData)) // hide branch logging at level 0
 			env.EvidenceBranchInflationBonus(vid.InflationAmount())
 		} else {
 			env.Infof1(a.logFinalStatusString(msData))
