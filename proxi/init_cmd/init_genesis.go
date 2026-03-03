@@ -53,10 +53,10 @@ func runGenesisCmd(_ *cobra.Command, _ []string) {
 	genesisTimeUnix := uint32(time.Now().Unix())
 
 	glb.Infof("Creating genesis snapshot...")
-	glb.Infof("  Genesis time: %d (%s)", genesisTimeUnix, time.Unix(int64(genesisTimeUnix), 0).UTC().Format(time.RFC3339))
+	glb.Infof("  Unix time now: %d (%s)", genesisTimeUnix, time.Unix(int64(genesisTimeUnix), 0).UTC().Format(time.RFC3339))
 	glb.Infof("  Output directory: %s", outputDir)
 	if description != "" {
-		glb.Infof("  Description: %s", description)
+		glb.Infof("  Description: '%s'", description)
 	}
 
 	// Build genesis data first to show constants before confirmation

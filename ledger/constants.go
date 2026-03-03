@@ -175,12 +175,10 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 	originChainID := OriginChainID()
 	ret := lines.New(prefix...).
 		Add("Library hash: %s", hex.EncodeToString(c.Hash[:])).
-		Add("Tx integrity validator (partial context): '%s'", c.TxIntegrityValidatorPartialContextName).
-		Add("Tx integrity validator (full context): '%s'", c.TxIntegrityValidatorFullContextName).
 		Add("Description: '%s'", c.Description).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).
 		Add("Genesis controller public key: %s", hex.EncodeToString(c.GenesisControllerPublicKey)).
-		Add("Genesis controller address (calculated): %s", c.GenesisControlledAddress().String()).
+		Add("Genesis controller address: %s", c.GenesisControlledAddress().String()).
 		Add("Genesis Unix time: %d (%s)", c.GenesisTimeUnix, c.GenesisTime().Format(time.DateTime)).
 		Add("Tick duration: %v", c.TickDuration).
 		Add("Ticks per slot: %d", c.TicksPerSlot).
@@ -191,7 +189,9 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Post-branch consolidation ticks: %v", c.PostBranchConsolidationTicks).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).
-		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements)
+		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements).
+		Add("Tx integrity validator (partial context): '%s'", c.TxIntegrityValidatorPartialContextName).
+		Add("Tx integrity validator (full context): '%s'", c.TxIntegrityValidatorFullContextName)
 	epochDuration := time.Duration(c.DelegationEpochSlots) * c.SlotDuration()
 	ret.Add("Delegation epoch slots: %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)
 	maxFrozenDuration := time.Duration(c.MaxFrozenEpochs) * epochDuration
@@ -201,6 +201,7 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).
 		Add("Attachment cost budget: %d", c.AttachmentCostBudget).
 		Add("TxID state TTL slots: %d (%v)", c.TxIDStateTTLSlots, time.Duration(c.TxIDStateTTLSlots)*c.SlotDuration())
+
 	return ret
 }
 
