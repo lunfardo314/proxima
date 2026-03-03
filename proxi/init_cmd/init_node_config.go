@@ -19,12 +19,10 @@ import (
 //go:embed node_config.template
 var configFileTemplate string
 
-//go:embed sequencer_config.template
-var sequencerConfigTemplate string
-
 var (
-	includeSeq  bool
-	includeBoot bool
+	includeSeq   bool
+	includeBoot  bool
+	includeTrace bool
 )
 
 func initNodeConfigCmd() *cobra.Command {
@@ -43,6 +41,10 @@ func initNodeConfigCmd() *cobra.Command {
 	err = viper.BindPFlag("boot", initNodeConfig.PersistentFlags().Lookup("boot"))
 	glb.AssertNoError(err)
 
+	initNodeConfig.PersistentFlags().BoolVarP(&includeTrace, "trace", "t", false, "include trace_tags and txlogger config sections (disabled)")
+	err = viper.BindPFlag("trace", initNodeConfig.PersistentFlags().Lookup("trace"))
+	glb.AssertNoError(err)
+
 	return initNodeConfig
 }
 
@@ -54,17 +56,21 @@ const (
 )
 
 type configFileData struct {
-	HostPrivateKey string
-	HostID         string
-	HostPort       int
-	Bootstrap      bool
-	APIPort        int
-	StaticPeers    []struct {
+	HostPrivateKey  string
+	HostID          string
+	HostPort        int
+	Bootstrap       bool
+	APIPort         int
+	StaticPeers     []struct {
 		Name      string
 		MultiAddr string
 	}
-	MaxDynamicPeers int
-	SequencerConfig string
+	MaxDynamicPeers  int
+	IncludeTrace     bool
+	IncludeSequencer bool
+	SeqName          string
+	SeqEnable        string
+	SeqChainID       string
 }
 
 func runNodeConfigCommand(_ *cobra.Command, _ []string) {
@@ -81,35 +87,23 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 	hid, err := peer.IDFromPrivateKey(pklpp)
 
 	data := configFileData{
-		HostPrivateKey:  hex.EncodeToString(privateKey),
-		HostID:          hid.String(),
-		HostPort:        peeringPort,
-		Bootstrap:       false,
-		APIPort:         apiPort,
-		StaticPeers:     nil,
-		MaxDynamicPeers: defaultMaxDynamicPeers,
+		HostPrivateKey:   hex.EncodeToString(privateKey),
+		HostID:           hid.String(),
+		HostPort:         peeringPort,
+		Bootstrap:        false,
+		APIPort:          apiPort,
+		StaticPeers:      nil,
+		MaxDynamicPeers:  defaultMaxDynamicPeers,
+		IncludeTrace:     includeTrace,
+		IncludeSequencer: includeSeq || includeBoot,
+		SeqName:          "<mandatory name>",
+		SeqEnable:        "false",
+		SeqChainID:       "<sequencer id hex encoded>",
 	}
-	if includeSeq || includeBoot {
-		seqData := struct {
-			SeqName    string
-			SeqEnable  string
-			SeqChainID string
-		}{
-			SeqName:    "<mandatory name>",
-			SeqEnable:  "false",
-			SeqChainID: "<sequencer id hex encoded>",
-		}
-		if includeBoot {
-			seqData.SeqName = "boot"
-			seqData.SeqEnable = "true"
-			seqData.SeqChainID = ledger.BoostrapSequencerIDHex
-		}
-		seqTempl, errSeq := template.New("seq").Parse(sequencerConfigTemplate)
-		glb.AssertNoError(errSeq)
-		var seqBuf bytes.Buffer
-		errSeq = seqTempl.Execute(&seqBuf, seqData)
-		glb.AssertNoError(errSeq)
-		data.SequencerConfig = seqBuf.String()
+	if includeBoot {
+		data.SeqName = "boot"
+		data.SeqEnable = "true"
+		data.SeqChainID = ledger.BoostrapSequencerIDHex
 	}
 	err = templ.Execute(&buf, data)
 	glb.AssertNoError(err)

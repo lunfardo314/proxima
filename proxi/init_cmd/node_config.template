@@ -82,6 +82,7 @@ metrics:
   enable: false
   port: 14000
 
+{{if .IncludeTrace}}
 # list of enabled trace tags. When enabled, it forces tracing of the specified module.
 # It may be very verbose, so it is only used For debugging.
 # For more available trace tags search the code for "TraceTag"
@@ -92,10 +93,33 @@ trace_tags:
 #  - txStore
 
 # Transaction logger
-#txlogger:
-#  enable_on_start: false
-#  level: "all"
-#  ttl_hours: 1
-#  enable_on_off_api: false
-
-{{.SequencerConfig}}
+txlogger:
+  enable_on_start: false
+  level: "all"
+  ttl_hours: 1
+  enable_on_off_api: false
+{{end}}
+{{if .IncludeSequencer}}
+# Sequencer configuration (optional)
+sequencer:
+    # sequencer name usually is 4 or so symbols. It is put into every sequencer transaction for tracking purposes
+  name: {{.SeqName}}
+    # start sequencer true/false
+  enable: {{.SeqEnable}}
+    # chain ID of the sequencer
+    # Sequencer chain is created by 'proxi node mkchain' command
+  chain_id: {{.SeqChainID}}
+  # path to the controller key file (JSON keystore format, created by 'proxi util key generate')
+  controller_key_file: proxima.key
+  # sequencer pace. Distance in ticks between two subsequent sequencer transactions
+  # cannot be less than the sequencer pace value set by the ledger
+  pace: 12
+  # maximum tag-along inputs allowed in the sequencer transaction (absolute maximum value is 254)
+  max_tag_along_inputs: 100
+  # if true, skip upper coverage bound check when freezing delegations in branch transactions
+  ignore_upper_bound_on_freeze: false
+  # write separate sequencer log (default: false)
+  logging: false
+  # if logging = true, duplicate sequencer log messages to the node's log (default: false)
+  global_logging: false
+{{end}}
