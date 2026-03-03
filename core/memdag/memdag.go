@@ -68,12 +68,14 @@ func New(env environment) *MemDAG {
 		} else {
 			ret.RepeatInBackground("memdag-GC", 5*time.Second, func() bool {
 				nDetached, nDeleted := ret.doGC()
-				env.Log().Infof("[memdag GC] detached: %d, deleted: %d", nDetached, nDeleted)
+				if nDetached > 0 || nDeleted > 0 {
+					env.Log().Infof("[memdag GC] detached: %d, deleted: %d", nDetached, nDeleted)
+				}
 				return true
 			}, true)
 		}
 
-		ret.RepeatInBackground("memdag-stats", 3*time.Second, func() bool {
+		ret.RepeatInBackground("memdag-stats", 10*time.Second, func() bool {
 			nVertices := ret.NumVertices()
 			env.Log().Infof("[memdag stats] vertices: %d", nVertices)
 			ret.numVerticesGauge.Set(float64(nVertices))
@@ -84,13 +86,14 @@ func New(env environment) *MemDAG {
 }
 
 const (
-	vertexTTLSlots         = 24
-	_vertexTTLSlotsMinimum = 6
+	vertexTTLSlots = 24
+	//_vertexTTLSlotsMinimum = 6
 )
 
-func init() {
-	util.Assertf(vertexTTLSlots >= _vertexTTLSlotsMinimum, "constant vertexTTLSlots must be at least %d", _vertexTTLSlotsMinimum)
-}
+//
+//func init() {
+//	util.Assertf(vertexTTLSlots >= _vertexTTLSlotsMinimum, "constant vertexTTLSlots must be at least %d", _vertexTTLSlotsMinimum)
+//}
 
 func (d *MemDAG) WithGlobalWriteLock(fun func()) {
 	d.mutex.Lock()

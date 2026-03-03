@@ -230,15 +230,10 @@ func (p *ProximaNode) startMetrics() {
 }
 
 func (p *ProximaNode) goLoggingMemStats() {
-	const memstatsLogPeriodDefault = 10 * time.Second
-
-	memStatsPeriod := time.Duration(viper.GetInt("logger.memstats_period_sec")) * time.Second
-	if memStatsPeriod == 0 {
-		memStatsPeriod = memstatsLogPeriodDefault
-	}
+	const memStatsLogPeriodDefault = 10 * time.Second
 
 	var memStats runtime.MemStats
-	p.RepeatInBackground("logging_memStats", memStatsPeriod, func() bool {
+	p.RepeatInBackground("logging_memStats", memStatsLogPeriodDefault, func() bool {
 		runtime.ReadMemStats(&memStats)
 		_, availableHDD, _ := diskusage.GetDiskUsage("/")
 		availableMB := float64(availableHDD) / (1 << 20)
@@ -268,16 +263,11 @@ func (p *ProximaNode) goLoggingMemStats() {
 
 func (p *ProximaNode) goLoggingSync() {
 	const (
-		syncLogPeriodDefault = 5 * time.Second
+		syncLogPeriodDefault = 10 * time.Second
 		slotSyncThreshold    = 5
 	)
 
-	logSyncPeriod := time.Duration(viper.GetInt("logger.syncstate_period_sec")) * time.Second
-	if logSyncPeriod == 0 {
-		logSyncPeriod = syncLogPeriodDefault
-	}
-
-	p.RepeatInBackground("logging_sync", logSyncPeriod, func() bool {
+	p.RepeatInBackground("logging_sync", syncLogPeriodDefault, func() bool {
 		start := time.Now()
 		lrb := p.GetLatestReliableBranch()
 		if lrb == nil {

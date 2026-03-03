@@ -169,7 +169,7 @@ const (
 	cooloffTTL         = 10 * time.Second
 	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
 	gracePeriodAfterAdded = 15 * heartbeatRate
-	logPeersEvery         = 5 * time.Second
+	logPeersEvery         = 10 * time.Second
 
 	/*
 	   ChatGPT:

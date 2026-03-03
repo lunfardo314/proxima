@@ -250,11 +250,11 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 		BranchData: &multistate.BranchData{
 			RootRecord: multistate.RootRecord{
 				// Root is nil — will be set when committed
-				SequencerID:   pb.RootRecParams.SeqID,
-				CoverageDelta: pb.RootRecParams.CoverageDelta,
-				FrozenCoverage: pb.RootRecParams.FrozenCoverage,
-				SlotInflation: pb.RootRecParams.SlotInflation,
-				Supply:        pb.RootRecParams.Supply,
+				SequencerID:     pb.RootRecParams.SeqID,
+				CoverageDelta:   pb.RootRecParams.CoverageDelta,
+				FrozenCoverage:  pb.RootRecParams.FrozenCoverage,
+				SlotInflation:   pb.RootRecParams.SlotInflation,
+				Supply:          pb.RootRecParams.Supply,
 				NumTransactions: pb.RootRecParams.NumTransactions,
 			},
 			Stem:            stemOutput,
@@ -323,7 +323,7 @@ func (b *Branches) _commitPendingBranch(branchID base.TransactionID) {
 	delete(b.pending, branchID)
 
 	// log the deferred commit and committed transactions
-	b.Log().Infof("committed pending branch %s", branchID.StringShort())
+	b.Log().Infof("--- BRANCH COMMIT %s", branchID.String())
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 }
 
