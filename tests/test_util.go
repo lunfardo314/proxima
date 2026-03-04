@@ -69,6 +69,10 @@ func (w *workflowDummyEnvironment) GetSnapshotBranchID() base.TransactionID {
 	return base.GenesisTransactionID()
 }
 
+func (w *workflowDummyEnvironment) GetSnapshotFilePath() (string, error) {
+	return "", fmt.Errorf("not available in test environment")
+}
+
 func (w *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Duration {
 	return 0
 }

@@ -34,6 +34,7 @@ const (
 	PathGetPeersInfo                     = PrefixAPIV1 + "/peers_info"
 	PathGetLatestReliableBranch          = PrefixAPIV1 + "/get_latest_reliable_branch"
 	PathGetSnapshotBranchID              = PrefixAPIV1 + "/get_snapshot_branch_id"
+	PathGetSnapshot                      = PrefixAPIV1 + "/get_snapshot"
 	PathCheckTxIDInLRB                   = PrefixAPIV1 + "/check_txid_in_lrb"
 	PathGetLastKnownSequencerMilestones  = PrefixAPIV1 + "/last_known_milestones"
 	PathGetMainChain                     = PrefixAPIV1 + "/get_mainchain"

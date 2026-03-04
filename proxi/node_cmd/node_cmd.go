@@ -67,6 +67,7 @@ func Init() *cobra.Command {
 		initChainCmd(),
 		initGetInactiveCmd(),
 		initTxLogCmd(),
+		initGetSnapshotCmd(),
 	)
 	return nodeCmd
 }

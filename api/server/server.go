@@ -35,6 +35,7 @@ type (
 		SubmitTxBytesFromAPI(txBytes []byte)
 		GetLatestReliableBranch() *multistate.BranchData
 		GetSnapshotBranchID() base.TransactionID
+		GetSnapshotFilePath() (string, error)
 		StateStore() global.Store
 		TxBytesStore() global.TxBytesStore
 		GetKnownLatestMilestonesJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble
@@ -107,6 +108,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
+	// GET snapshot file download /get_snapshot (binary, enable with snapshot.enable_api)
+	srv.addHandler(api.PathGetSnapshot, srv.getSnapshot)
 
 	// Transaction logger API
 	// POST /api/v1/txlog/enable?level=<level>

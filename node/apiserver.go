@@ -3,6 +3,10 @@ package node
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -137,6 +141,52 @@ func (p *ProximaNode) GetLatestReliableBranch() (ret *multistate.BranchData) {
 
 func (p *ProximaNode) GetSnapshotBranchID() base.TransactionID {
 	return multistate.FetchSnapshotBranchID(p.StateStore())
+}
+
+func (p *ProximaNode) GetSnapshotFilePath() (string, error) {
+	dir := viper.GetString("snapshot.directory")
+	if dir == "" {
+		dir = "snapshot"
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("cannot read snapshot directory '%s': %w", dir, err)
+	}
+
+	type fileEntry struct {
+		path    string
+		modTime time.Time
+	}
+	var files []fileEntry
+
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&os.ModeType != 0 {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, "__tmp__") {
+			continue
+		}
+		matched, err := filepath.Match("*.snapshot", name)
+		if err != nil || !matched {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, fileEntry{
+			path:    filepath.Join(dir, name),
+			modTime: info.ModTime(),
+		})
+	}
+	if len(files) == 0 {
+		return "", fmt.Errorf("no snapshot files found in '%s'", dir)
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].modTime.After(files[j].modTime)
+	})
+	return files[0].path, nil
 }
 
 func (p *ProximaNode) SelfPeerID() peer.ID {

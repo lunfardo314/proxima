@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -1226,4 +1228,60 @@ func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWith
 		}
 	}
 	return ret, &lrbid, nil
+}
+
+// DownloadSnapshot downloads the latest snapshot file from the node.
+// If destPath is non-empty, saves to that path. Otherwise uses the filename from the server response.
+// Returns the path of the saved file.
+func (c *APIClient) DownloadSnapshot(destPath string) (string, error) {
+	url := c.prefix + api.PathGetSnapshot
+
+	// Use a separate client with no timeout for large file downloads
+	downloadClient := http.Client{
+		Transport: c.c.Transport,
+	}
+	resp, err := downloadClient.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("snapshot download request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		var apiErr api.Error
+		if json.Unmarshal(body, &apiErr) == nil && apiErr.Error != "" {
+			return "", fmt.Errorf("from server: %s", apiErr.Error)
+		}
+		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+
+	if destPath == "" {
+		// Try to extract filename from Content-Disposition header
+		if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+			if _, params, err := mime.ParseMediaType(cd); err == nil {
+				if fn, ok := params["filename"]; ok && fn != "" {
+					destPath = fn
+				}
+			}
+		}
+		if destPath == "" {
+			destPath = "downloaded.snapshot"
+		}
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot create file '%s': %w", destPath, err)
+	}
+
+	_, err = io.Copy(f, resp.Body)
+	if closeErr := f.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(destPath)
+		return "", fmt.Errorf("failed to save snapshot: %w", err)
+	}
+
+	return destPath, nil
 }
