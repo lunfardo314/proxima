@@ -306,6 +306,14 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		return
 	}
 
+	// check if sequencer has enough token balance to pay the advance
+	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(advance) {
+		valid = true
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: not enough token balance for advance (%s < %s)",
+			util.Th(uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance])), util.Th(advance))
+		return
+	}
+
 	// check if freezing this delegation would push coverage above the upper bound
 	if txb.enforceFreezeUpperBound {
 		projectedTokenBalance := txb.chainOutAmounts[ledger.AmountIndexTokenBalance] - int64(advance)
