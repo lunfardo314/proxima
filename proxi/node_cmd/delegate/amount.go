@@ -39,7 +39,8 @@ func initDelegateAmountCmd() *cobra.Command {
 	err := viper.BindPFlag("seq", cmd.PersistentFlags().Lookup("seq"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 8, "max frozen epochs allowed by the delegator")
+	// 0 means use the ledger constant constDelegationMaxFrozenEpochs (default maximum)
+	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 0, "max frozen epochs allowed by the delegator (0 = maximum)")
 	err = viper.BindPFlag("epochs", cmd.PersistentFlags().Lookup("epochs"))
 	glb.AssertNoError(err)
 
@@ -90,7 +91,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	minimumAmount := lib.MinimumInflatableAmount0 + lib.ChainInflationMultiStep(lib.MinimumInflatableAmount0, 0, ts.Slot+10000)
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
-	glb.Assertf(maxFreezeEpochs > 0 && maxFreezeEpochs <= byte(lib.MaxFrozenEpochs), "wrong value of max freeze epochs")
+	glb.Assertf(maxFreezeEpochs <= byte(lib.MaxFrozenEpochs), "wrong value of max freeze epochs")
 
 	client := glb.GetClient()
 	walletOutputs, lrbid, _, err := client.GetOutputsForAmount(walletData.Account, amount+feeAmount)
