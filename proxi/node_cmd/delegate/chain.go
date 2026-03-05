@@ -29,7 +29,8 @@ func initDelegationSubmitCmd() *cobra.Command {
 	err := viper.BindPFlag("seq", cmd.PersistentFlags().Lookup("seq"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 8, "max frozen epochs allowed by the delegator")
+	// 0 means use the ledger constant constDelegationMaxFrozenEpochs (default maximum)
+	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 0, "max frozen epochs allowed by the delegator (0 = maximum)")
 	err = viper.BindPFlag("epochs", cmd.PersistentFlags().Lookup("epochs"))
 	glb.AssertNoError(err)
 
@@ -78,6 +79,8 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	client := glb.GetClient()
 	oIn, _, err := client.GetChainOutput(chainID)
 	glb.AssertNoError(err)
+
+	checkSequencerCanAcceptDelegation(seqOut, oIn.Output.TokenBalance(), maxFreezeEpochs, targetSeqID, ts.Slot)
 
 	dOut, isDelegation := ledger.AsDelegationOutput(oIn.Output, oIn.ID)
 	glb.Assertf(!isDelegation || dOut.IsUnlockableByMaster(ts.Slot), "chain is delegation output NOT unlockable by master")

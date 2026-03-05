@@ -70,6 +70,12 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(err == nil, "can't find sequencer id %s: %v", targetSeqID.StringShort(), err)
 	glb.Assertf(seqOut.Output.IsSequencerOutput(), "chainID %s does not represent a sequencer", targetSeqID.StringShort())
 
+	amountInt, err := strconv.Atoi(args[0])
+	glb.AssertNoError(err)
+	amount := uint64(amountInt)
+
+	checkSequencerCanAcceptDelegation(seqOut, amount, maxFreezeEpochs, targetSeqID, ledger.SlotNow())
+
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
@@ -83,10 +89,6 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	amountInt, err := strconv.Atoi(args[0])
-	glb.AssertNoError(err)
-	amount := uint64(amountInt)
-
 	lib := ledger.L(ts.Slot)
 	minimumAmount := lib.MinimumInflatableAmount0 + lib.ChainInflationMultiStep(lib.MinimumInflatableAmount0, 0, ts.Slot+10000)
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
