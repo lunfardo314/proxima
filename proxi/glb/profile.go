@@ -201,7 +201,10 @@ const maxLogLines = 200
 func PrintTxLogForTxID(txid base.TransactionID) {
 	prefix := txid.ShortID()
 	resp, err := GetClient().TxLogGet(hex.EncodeToString(prefix[:]), maxLogLines)
-	AssertNoError(err)
+	if err != nil {
+		Infof("transaction log not available: %v", err)
+		return
+	}
 	Infof("\n---- txlog of %s (%d records) ----\n ", txid.String(), len(resp.Records))
 	SortAndPrintTxLog(resp.Records)
 }
