@@ -37,6 +37,8 @@ type (
 		lastTimeBacklogCheckedE3 time.Time
 		// extend proposers optimization. If combination was already checked, flag indicates if it was consistent
 		alreadyCheckedCombination map[combinationHash]bool
+		// base proposer: coverage out of bounds already warned this slot
+		coverageBoundsWarned bool
 	}
 
 	combinationHash [8]byte

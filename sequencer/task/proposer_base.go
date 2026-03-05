@@ -96,8 +96,11 @@ func baseProposeGenerator(p *proposer) (*proposal, bool) {
 			lower := lib.BranchCoverageLowerBound(p.targetTs.Slot)
 			upper := lib.BranchCoverageUpperBound(p.targetTs.Slot)
 			if coverage < lower || coverage > upper {
-				p.Log().Warnf("BaseProposer-%s: branch coverage %s out of bounds [%s, %s] at slot %d, skipping branch",
-					p.Name, util.Th(coverage), util.Th(lower), util.Th(upper), p.targetTs.Slot)
+				if !p.slotData.coverageBoundsWarned {
+					p.slotData.coverageBoundsWarned = true
+					p.Log().Warnf("BaseProposer-%s: branch coverage %s out of bounds [%s, %s] at slot %d, skipping branch",
+						p.Name, util.Th(coverage), util.Th(lower), util.Th(upper), p.targetTs.Slot)
+				}
 				ret.Close()
 				return nil, true
 			}
