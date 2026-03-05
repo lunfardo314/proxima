@@ -40,14 +40,14 @@ api:
 
 snapshot:
   enable: false
-    # enable snapshot download API endpoint (independent of snapshot creation)
-  enable_api: false
     # where to put snapshot files. Directory must exist at startup
   directory: snapshot
     # 30 slots means snapshot is every ~5 min
   period_in_slots: 64
-    # keep latest up to 3 snapshots, older ones will be purged
+    # keep latest up to 2 snapshots, older ones will be purged
   keep_latest: 2
+    # enable snapshot download API endpoint (independent of snapshot creation)
+  enable_api: false
 
 # Automatic snapshot restore for state management
 # When enabled, periodically restarts the node and restores from latest snapshot

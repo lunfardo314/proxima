@@ -57,6 +57,7 @@ type (
 		BaselineBranchID base.TransactionID
 		TxIDTTLSlots     uint32
 		CommittedTxs     []base.TransactionID
+		SequencerName    string
 	}
 )
 
@@ -323,7 +324,9 @@ func (b *Branches) _commitPendingBranch(branchID base.TransactionID) {
 	delete(b.pending, branchID)
 
 	// log the deferred commit and committed transactions
-	b.Log().Infof("--- BRANCH COMMIT %s", branchID.String())
+	coveragePct := float64(pb.RootRecParams.CoverageDelta) * 100 / float64(pb.RootRecParams.Supply)
+	b.Log().Infof("--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%)",
+		branchID.StringShort(), pb.SequencerName, util.Th(pb.RootRecParams.CoverageDelta), coveragePct)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 }
 

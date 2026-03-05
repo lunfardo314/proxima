@@ -1231,8 +1231,10 @@ func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWith
 }
 
 // DownloadSnapshot downloads the latest snapshot file from the node.
-// If destPath is non-empty, saves to that path. Otherwise uses the filename from the server response.
+// If destPath is non-empty, saves to that path. Otherwise, uses the filename from the server response.
 // Returns the path of the saved file.
+// Use command 'wget --content-disposition http://<ip addr>>:<API port>/api/v1/get_snapshot'
+// to download snapshot file with original name
 func (c *APIClient) DownloadSnapshot(destPath string) (string, error) {
 	url := c.prefix + api.PathGetSnapshot
 

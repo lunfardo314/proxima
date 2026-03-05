@@ -66,6 +66,7 @@ func (a *milestoneAttacher) commitBranch() {
 		BaselineBranchID: a.finals.baseline,
 		TxIDTTLSlots:     a.TxIDStateTTLSlots,
 		CommittedTxs:     committedTxs,
+		SequencerName:    a.vid.SequencerName(),
 	}, stemOutput, seqOutput)
 
 	// evidence branch slot eagerly (not deferred) — needed for network progress tracking
