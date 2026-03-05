@@ -32,12 +32,12 @@ func initGetFundsCmd() *cobra.Command {
 
 func getFundsCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromNode()
-	walletData := glb.GetWalletData()
+	walletAccount := glb.GetWalletAccount()
 	faucetURL := fmt.Sprintf("http://%s:%d", viper.GetString("faucet.host"), viper.GetUint("faucet.port"))
 
 	glb.Infof("requesting funds from faucet at %s", faucetURL)
 
-	path := fmt.Sprintf(getFundsPath+"?addr=%s", walletData.Account.String())
+	path := fmt.Sprintf(getFundsPath+"?addr=%s", walletAccount.String())
 
 	c := client.NewWithGoogleDNS(faucetURL)
 	answer, err := c.Get(path)

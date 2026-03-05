@@ -25,7 +25,7 @@ func initDelegationStatusCmd() *cobra.Command {
 
 func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
-	wallet := glb.GetWalletData()
+	walletAccount := glb.GetWalletAccount()
 
 	clnt := glb.GetClient()
 	if len(args) >= 1 {
@@ -58,15 +58,15 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 		return
 	}
 
-	dOuts, lrbid, err := glb.GetClient().GetDelegationOutputs(wallet.Account)
+	dOuts, lrbid, err := glb.GetClient().GetDelegationOutputs(walletAccount)
 	glb.AssertNoError(err)
 	glb.PrintLRB(lrbid)
 	if len(dOuts) == 0 {
-		glb.Infof("no delegation outputs controlled by %s has been found", wallet.Account.String())
+		glb.Infof("no delegation outputs controlled by %s has been found", walletAccount.String())
 		os.Exit(0)
 	}
 
-	glb.Infof("found %d delegation outputs controlled by %s:", len(dOuts), wallet.Account.String())
+	glb.Infof("found %d delegation outputs controlled by %s:", len(dOuts), walletAccount.String())
 	for _, dOut := range dOuts {
 		targetID := dOut.Target
 		glb.Infof("   %s %s -> %s", dOut.ChainID.String(), util.Th(dOut.Output.TokenBalance()), targetID.String())

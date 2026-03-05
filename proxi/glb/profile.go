@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -72,6 +73,21 @@ func AddFlagTarget(cmd *cobra.Command) {
 	AssertNoError(err)
 }
 
+// GetWalletAccount returns the wallet's SigLock derived from the public key in the keystore.
+// Does NOT decrypt the private key, so no passphrase is needed.
+func GetWalletAccount() ledger.SigLock {
+	keyFile := viper.GetString("wallet.key_file")
+	Assertf(keyFile != "", "wallet.key_file not configured")
+
+	ks, err := keystore.LoadFromFile(keyFile)
+	AssertNoError(err)
+
+	pubKeyBytes, err := keystore.PublicKeyBytes(ks)
+	AssertNoError(err)
+
+	return ledger.SigLockFromED25519PublicKey(ed25519.PublicKey(pubKeyBytes))
+}
+
 func MustGetTarget() ledger.Controller {
 	var ret ledger.Controller
 	var err error
@@ -81,7 +97,7 @@ func MustGetTarget() ledger.Controller {
 		AssertNoError(err)
 		Infof("target account is: %s", ret.String())
 	} else {
-		ret = GetWalletData().Account
+		ret = GetWalletAccount()
 		Infof("wallet account (default as a target): %s ", ret.String())
 	}
 	return ret
