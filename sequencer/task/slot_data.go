@@ -55,6 +55,10 @@ func NewSlotData(slot uint32) *SlotData {
 	return ret
 }
 
+func (s *SlotData) Slot() uint32 {
+	return s.slot
+}
+
 func (s *SlotData) NewTarget() {
 	s.withWriteLock(func() {
 		s.numTargets++

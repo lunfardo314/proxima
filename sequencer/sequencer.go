@@ -475,7 +475,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 	seq.newTargetSet()
 
-	if seq.slotData == nil {
+	if seq.slotData == nil || seq.slotData.Slot() != targetTs.Slot {
 		seq.slotData = task.NewSlotData(targetTs.Slot)
 	}
 	seq.slotData.NewTarget()
