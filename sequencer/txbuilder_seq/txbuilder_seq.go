@@ -19,15 +19,15 @@ import (
 type (
 	SeqTxBuilder struct {
 		*txbuilder.TxBuilder
-		*ledger.Library       // cached library for this transaction's slot
-		origSeqData           *seqdata.SequencerData
-		rdr                   multistate.IndexedStateReader
-		nextSeqData           *seqdata.SequencerData
-		signatureType         byte
-		privateKey            []byte
-		publicKey             []byte
-		chainInput            *ledger.OutputWithChainID
-		stemInput             *ledger.OutputWithID // it is branch tx if != nil
+		*ledger.Library          // cached library for this transaction's slot
+		origSeqData              *seqdata.SequencerData
+		rdr                      multistate.IndexedStateReader
+		nextSeqData              *seqdata.SequencerData
+		signatureType            byte
+		privateKey               []byte
+		publicKey                []byte
+		chainInput               *ledger.OutputWithChainID
+		stemInput                *ledger.OutputWithID // it is branch tx if != nil
 		doNotInflateMainChain    bool                 // default is inflate
 		chainOutAmounts          [15]int64
 		vrfProof                 []byte
@@ -262,6 +262,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	return (projectedInflation * uint64(seqTolerance)) / 1000, nil
 }
 
+// FreezeDelegation makes delegated output frozen. Returned valid = false if output is permanently invalid and freezing should not be repeated again
 func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput, freezeUntilEpoch ...uint32) (successorIdx byte, valid bool, err error) {
 	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TransactionData.Timestamp.Slot) {
 		valid = true
@@ -307,8 +308,9 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	}
 
 	// check if sequencer has enough token balance to pay the advance
+	// If not, consider delegation to be permanently invalid (even not true 100%)
 	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(advance) {
-		valid = true
+		valid = false
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: not enough token balance for advance (%s < %s)",
 			util.Th(uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance])), util.Th(advance))
 		return
