@@ -52,16 +52,16 @@ const (
 	proximaNodeProfile     = "proxima.yaml"
 	peeringPort            = 4000
 	apiPort                = 8000
-	defaultMaxDynamicPeers = 5
+	defaultMaxDynamicPeers = 10
 )
 
 type configFileData struct {
-	HostPrivateKey  string
-	HostID          string
-	HostPort        int
-	Bootstrap       bool
-	APIPort         int
-	StaticPeers     []struct {
+	HostPrivateKey string
+	HostID         string
+	HostPort       int
+	Bootstrap      bool
+	APIPort        int
+	StaticPeers    []struct {
 		Name      string
 		MultiAddr string
 	}

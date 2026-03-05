@@ -13,12 +13,6 @@ wallet:
 api:
     endpoint: http://127.0.0.1:8000
 
-# alternative access points (testnet):
-#    endpoint: http://63.250.56.190:8001
-#    endpoint: http://113.30.191.219:8001
-#    endpoint: http://83.229.84.197:8001
-#    endpoint: http://5.180.181.103:8001
-
 tag_along:
     # tag-along fee amount and ID of the tag-along sequencer. Currently only one tag-along sequencer is supported
     # If not specified, the default sequencer ID will be used
