@@ -40,6 +40,7 @@ const (
 	PathGetMainChain                     = PrefixAPIV1 + "/get_mainchain"
 	PathGetAllChains                     = PrefixAPIV1 + "/get_all_chains"
 	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
+	PathGetSequencerTargetInfo           = PrefixAPIV1 + "/get_sequencer_target_info"
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
@@ -360,6 +361,46 @@ type (
 		Error
 		Enabled bool   `json:"enabled"`
 		Level   string `json:"level"`
+	}
+
+	// SequencerTargetInfo is returned by 'get_sequencer_target_info'.
+	// Contains comprehensive information about a sequencer for delegators.
+	// Only primary data is stored; derived values (e.g. AvailableForAdvance = TokenBalance - StorageDeposit)
+	// should be computed by the consumer.
+	SequencerTargetInfo struct {
+		Error
+		LRBID string `json:"lrbid"`
+
+		// Identity & chain
+		SequencerID       string `json:"sequencer_id"`
+		Name              string `json:"name,omitempty"`
+		OriginSlot        uint32 `json:"origin_slot"`
+		CurrentOutputSlot uint32 `json:"current_output_slot"`
+		TransitionCounter uint64 `json:"transition_counter"`
+		BranchCounter     uint32 `json:"branch_counter"`
+
+		// Balances
+		TokenBalance             uint64  `json:"token_balance"`
+		StorageDeposit           uint64  `json:"storage_deposit"`
+		FrozenCoverage           []int64 `json:"frozen_coverage"`
+		CumulativeChainInflation uint64  `json:"cumulative_chain_inflation"`
+		CumulativeBranchBonus    uint64  `json:"cumulative_branch_bonus"`
+
+		// Sequencer parameters
+		MinimumFee        uint64 `json:"minimum_fee"`
+		ProfitMarginPml   uint16 `json:"profit_margin_promille"`
+		Greedy            bool   `json:"greedy"`
+		Pace              byte   `json:"pace"`
+		IgnoreFreezeBound bool   `json:"ignore_freeze_bound"`
+
+		// Delegation info
+		NowSlot               uint32 `json:"now_slot"`
+		CurrentEpoch          uint32 `json:"current_epoch"`
+		NextEpochBoundarySlot uint32 `json:"next_epoch_boundary_slot"`
+		MaxFrozenEpochs       uint32 `json:"max_frozen_epochs"`
+		EpochDurationSlots    uint32 `json:"epoch_duration_slots"`
+		CoverageLowerBound    uint64 `json:"coverage_lower_bound"`
+		CoverageUpperBound    uint64 `json:"coverage_upper_bound"`
 	}
 )
 

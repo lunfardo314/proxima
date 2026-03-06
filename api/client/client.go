@@ -423,6 +423,25 @@ func (c *APIClient) GetSequencerData(chainID base.ChainID) (ret seqdata.Sequence
 	return ledger.ParseSequencerData(o.Output)
 }
 
+// GetSequencerTargetInfo returns comprehensive sequencer info for delegators.
+func (c *APIClient) GetSequencerTargetInfo(chainID base.ChainID) (*api.SequencerTargetInfo, error) {
+	path := fmt.Sprintf(api.PathGetSequencerTargetInfo+"?chainid=%s", chainID.StringHex())
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var res api.SequencerTargetInfo
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return nil, err
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("GetSequencerTargetInfo for %s: %s", chainID.StringShort(), res.Error.Error)
+	}
+	return &res, nil
+}
+
 // GetOutputData returns output data from the LRB state, if it exists there
 // Returns nil, nil if output does not exist
 func (c *APIClient) GetOutputData(oid *base.OutputID) ([]byte, error) {

@@ -104,6 +104,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetAllChains, srv.getAllChains)
 	// GET all sequencer chains in the LRB /get_sequencers
 	srv.addHandler(api.PathGetSequencers, srv.getSequencers)
+	// GET sequencer target info /get_sequencer_target_info?chainid=<hex-encoded chain id>
+	srv.addHandler(api.PathGetSequencerTargetInfo, srv.getSequencerTargetInfo)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
@@ -962,6 +964,86 @@ func (srv *server) checkTxIDIncludedInLRB(w http.ResponseWriter, r *http.Request
 		TxID:         txid.StringHex(),
 		LRBID:        lrbid.StringHex(),
 		FoundAtDepth: foundAtDepth,
+	}
+
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	lst, ok := r.URL.Query()["chainid"]
+	if !ok || len(lst) != 1 {
+		api.WriteErr(w, "wrong parameters in request 'get_sequencer_target_info': expected ?chainid=<hex>")
+		return
+	}
+	seqID, err := base.ChainIDFromHexString(lst[0])
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+
+	resp := &api.SequencerTargetInfo{}
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		o, err1 := rdr.GetChainOutputWithID(seqID)
+		if err1 != nil {
+			return err1
+		}
+		if !o.Output.IsSequencerOutput() {
+			return fmt.Errorf("chain %s is not a sequencer", seqID.StringShort())
+		}
+		seqData, ok := o.Output.SequencerOutputData()
+		if !ok {
+			return fmt.Errorf("cannot parse sequencer output data for %s", seqID.StringShort())
+		}
+
+		nowSlot := ledger.SlotNow()
+		lib := ledger.L(nowSlot)
+		cc := seqData.ChainConstraint
+
+		resp.SequencerID = seqID.String()
+		resp.OriginSlot = cc.OriginSlot
+		resp.CurrentOutputSlot = o.ID.Slot()
+		resp.TransitionCounter = cc.TransitionCounter
+		resp.BranchCounter = cc.BranchCounter
+
+		if seqData.SequencerData != nil {
+			sd := seqData.SequencerData
+			resp.Name = sd.Name()
+			resp.MinimumFee = sd.MinimumFee()
+			resp.ProfitMarginPml = sd.InflationProfitMarginPromille()
+			resp.Greedy = sd.IsGreedy()
+			resp.Pace = sd.Pace()
+			resp.IgnoreFreezeBound = sd.IsIgnoreFreezeBound()
+		}
+
+		resp.TokenBalance = o.Output.TokenBalance()
+		resp.StorageDeposit = ledger.MinimumStorageDeposit(o.Output)
+		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
+		resp.CumulativeChainInflation = cc.CumulativeChainInflation
+		resp.CumulativeBranchBonus = cc.CumulativeBranchBonus
+
+		resp.NowSlot = nowSlot
+		resp.CurrentEpoch = lib.EpochFromSlotDirect(seqID, nowSlot)
+		resp.NextEpochBoundarySlot = lib.LastSlotInEpochDirect(seqID, resp.CurrentEpoch)
+		resp.MaxFrozenEpochs = lib.MaxFrozenEpochs
+		resp.EpochDurationSlots = lib.DelegationEpochSlots
+		resp.CoverageLowerBound = lib.BranchCoverageLowerBound(nowSlot)
+		resp.CoverageUpperBound = lib.BranchCoverageUpperBound(nowSlot)
+
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+		return nil
+	})
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")

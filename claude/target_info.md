@@ -4,63 +4,40 @@
 
 Delegators need a way to evaluate a target sequencer before delegating. Currently they must piece together info from multiple commands. This command parses the latest sequencer output and displays comprehensive info for the delegator.
 
-## Task 1: Implement `target_info` command
+## Task 1: Implement `target_info` API and command — DONE
 
-### New file: `proxi/node_cmd/delegate/target_info.go`
+### Architecture
 
-**Command:** `proxi node delegate target_info <sequencer ID>`
+**API endpoint:** `GET /api/v1/get_sequencer_target_info?chainid=<hex>`
+- Server-side: computes library-dependent values (coverage bounds, epoch info, constants)
+- Returns `api.SequencerTargetInfo` JSON struct with only primary data
+- No delegator-assumption-dependent calculations (max delegation, advance estimates)
 
-**Data source:** `clnt.GetChainOutput(seqID)` → parse with `seqOut.Output.SequencerOutputData()` → `*ledger.SequencerOutputData` containing `ChainConstraint`, `SequencerData`.
+**API response struct:** `api.SequencerTargetInfo` in `api/api.go`
+- Only primary data stored; derived values computed by consumers:
+  - `AvailableForAdvance` = `TokenBalance - StorageDeposit`
+  - `InflatableAmount` = `TokenBalance + FrozenCoverage[0]`
+  - `InflatableWithinBounds` = bounds check on inflatable amount
 
-### Display sections
+**Client function:** `client.GetSequencerTargetInfo(chainID)` in `api/client/client.go`
 
-**Identity & chain:**
-- Sequencer ID (full hex)
-- Name (`SequencerData.Name()`)
-- Origin slot (`ChainConstraint.OriginSlot`)
-- Current output slot (`seqOut.ID.Slot()`)
-- Transition counter (`ChainConstraint.TransitionCounter`) — on-chain enforced (z64)
-- Branch counter (`ChainConstraint.BranchCounter`) — on-chain enforced (z32)
-- Up-time estimate: `TransitionCounter / (nowSlot - OriginSlot)` steps per slot
+**CLI command:** `proxi node delegate target_info <sequencer ID> [--json]`
+- File: `proxi/node_cmd/delegate/target_info.go`
+- Registered in `delegate_cmd.go`
+- Display-only, no delegation estimates
 
-**Balances:**
-- Token balance (`seqOut.Output.TokenBalance()`)
-- Storage deposit (`ledger.MinimumStorageDeposit(seqOut.Output)`)
-- Available for advance: `tokenBalance - storageDeposit`
-- Frozen coverage vector (`seqOut.Output.Amounts().FrozenCoverageVector(lib.MaxFrozenEpochs)`) — display non-zero entries with epoch index
-- Inflatable amount (`seqOut.Output.InflatableAmount()` = tokenBalance + frozenCoverage[0])
-- Cumulative chain inflation (`ChainConstraint.CumulativeChainInflation`)
-- Cumulative branch bonus (`ChainConstraint.CumulativeBranchBonus`)
+### Files changed
+- `api/api.go` — `PathGetSequencerTargetInfo`, `SequencerTargetInfo` struct
+- `api/server/server.go` — `getSequencerTargetInfo` handler
+- `api/client/client.go` — `GetSequencerTargetInfo` client method
+- `proxi/node_cmd/delegate/target_info.go` — CLI command
+- `proxi/node_cmd/delegate/delegate_cmd.go` — registration
 
-**Sequencer parameters:**
-- Minimum fee (`SequencerData.MinimumFee()`)
-- Profit margin promille (`SequencerData.InflationProfitMarginPromille()`)
-- Greedy flag (`SequencerData.IsGreedy()`)
-- Pace (`SequencerData.Pace()`)
-- Ignore freeze bound (`SequencerData.IsIgnoreFreezeBound()`)
-
-**Delegation info:**
-- Current epoch (`lib.EpochFromSlotDirect(seqID, nowSlot)`)
-- Next epoch boundary slot (`lib.LastSlotInEpochDirect(seqID, currentEpoch)`) + wall clock time
-- Max frozen epochs (`lib.MaxFrozenEpochs`)
-- Epoch duration (`lib.DelegationEpochSlots` slots)
-- Coverage bounds at now: `lib.BranchCoverageLowerBound(nowSlot)` / `BranchCoverageUpperBound(nowSlot)`
-- Whether inflatable amount is within bounds
-
-**Max acceptable delegation:**
-- Reuse `estimateMaxDelegationAmount()` from `check_advance.go:73` (same package)
-- Reuse `estimateAdvance()` from `check_advance.go:59`
-
-### Registration
-
-Add `initTargetInfoCmd()` to `delegate_cmd.go` `AddCommand` list.
-
-### Key reusable code
-- `estimateAdvance()` — `proxi/node_cmd/delegate/check_advance.go:59`
-- `estimateMaxDelegationAmount()` — `proxi/node_cmd/delegate/check_advance.go:73`
-- `ledger.MinimumStorageDeposit()` — `ledger/sdeposit.go:26`
-- `ledger.ClockTime()` for wall clock conversion
-- Existing display pattern from `status.go`
+### TODO (next session)
+- `proxi node delegate chain/amount` commands should use this API for delegation
+  estimates with delegator-specific flags (frozen epochs, inflation share, etc.)
+- Reuse `estimateAdvance()` and `estimateMaxDelegationAmount()` from `check_advance.go`
+  client-side with delegator assumptions
 
 ---
 
