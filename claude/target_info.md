@@ -33,11 +33,61 @@ Delegators need a way to evaluate a target sequencer before delegating. Currentl
 - `proxi/node_cmd/delegate/target_info.go` — CLI command
 - `proxi/node_cmd/delegate/delegate_cmd.go` — registration
 
-### TODO (next session)
-- `proxi node delegate chain/amount` commands should use this API for delegation
-  estimates with delegator-specific flags (frozen epochs, inflation share, etc.)
-- Reuse `estimateAdvance()` and `estimateMaxDelegationAmount()` from `check_advance.go`
-  client-side with delegator assumptions
+### TODO (next session) — DONE (Task 4)
+- ~~`proxi node delegate chain/amount` commands should use this API for delegation
+  estimates with delegator-specific flags (frozen epochs, inflation share, etc.)~~
+- ~~Reuse `estimateAdvance()` and `estimateMaxDelegationAmount()` from `check_advance.go`
+  client-side with delegator assumptions~~
+
+---
+
+## Task 4: Delegation advance estimation with delegator flags — DONE
+
+### New flag
+- `--share <uint16>` — required inflation share in promille (0-1000), default 900
+  - 900 = delegator keeps 90% of inflation, grants 10% to sequencer
+  - 0 = delegator grants all inflation to sequencer
+
+### Compatibility check
+The delegator's `requiredShare` must be `<= 1000 - profitMarginPml` (sequencer's tolerance).
+This is NOT enforced on-chain — the on-chain EasyFL (`_validInflationAdvanceProduced`) only
+enforces that the advance >= `requiredShare * projectedInflation / 1000`.
+The sequencer enforces its own profit margin in `calcAdvance()` and refuses to freeze
+delegations where `seqTolerance < delegatorRequirement`.
+
+### Architecture
+Both `delegate amount` and `delegate chain` commands now:
+1. Fetch sequencer info via `GetSequencerTargetInfo` API (replaces `GetChainOutput` for advance check)
+2. Compute advance estimate client-side using `estimateDelegation()` which mirrors
+   the sequencer's `calcAdvance()` logic:
+   - Pre-check: `seqTolerance >= requiredShare` (sequencer rejects if violated)
+   - Greedy: `advance = projectedInflation * requiredShare / 1000`
+   - Not greedy: `advance = projectedInflation * seqTolerance / 1000`
+3. Display detailed delegation estimate (amounts, epochs, advance, affordability)
+4. When NOT compatible or affordable:
+   - Share rejected (margin too high): suggest `seqTolerance` as max accepted share
+   - Greedy sequencer, unaffordable: suggest max affordable share
+   - Non-greedy sequencer, unaffordable: suggest max delegation amount
+5. User confirms delegation parameters before transaction is built
+6. Final confirmation prompt before submission
+
+### Key design points
+- Default share 900 promille = delegator keeps 90%, grants 10% to sequencer
+- Share range 0-1000: 0 = grant all inflation to sequencer
+- Sequencer compatibility is checked against `ProfitMarginPml` from `SequencerData`
+  (not on-chain covenant — sequencer business logic in `calcAdvance()`)
+- On-chain EasyFL (`_validInflationAdvanceProduced`) only enforces the delegator's
+  minimum: `advance >= requiredShare * projectedInflation / 1000`
+
+### Files changed
+- `proxi/node_cmd/delegate/check_advance.go` — complete rewrite:
+  - `delegationEstimate` struct with all computed values
+  - `estimateDelegation()` — main estimation using target_info
+  - `calcAdvanceEstimate()` — mirrors sequencer `calcAdvance()`
+  - `estimateMaxDelegationAmount()` — binary search (adapted)
+  - `confirmDelegationEstimate()` — display + handle unaffordable case
+- `proxi/node_cmd/delegate/amount.go` — `--share` flag (default 900), target_info API, `effShare`
+- `proxi/node_cmd/delegate/chain.go` — `--share` flag (default 900), target_info API, `effShare`
 
 ---
 
