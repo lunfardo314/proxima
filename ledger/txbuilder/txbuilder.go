@@ -272,7 +272,7 @@ func (txb *TxBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputData
 	if err != nil {
 		return err
 	}
-	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, cc.OriginSlot, cc.CumulativeChainInflation, cc.CumulativeBranchBonus, cc.TransitionCounter+1)
+	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, cc.OriginSlot, cc.CumulativeChainInflation, cc.CumulativeBranchBonus, cc.TransitionCounter+1, cc.BranchCounter)
 	chainOut := chainIN.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(successor.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -790,7 +790,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		o.PutAmounts(int64(chainOutAmount), int64(inflationAmount))
 		o.PutLock(par.ChainInput.Output.Lock())
 		// put chain constraint at fixed index 2
-		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraint.OriginSlot, chainInConstraint.CumulativeChainInflation+inflationAmount, chainInConstraint.CumulativeBranchBonus, chainInConstraint.TransitionCounter+1)
+		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraint.OriginSlot, chainInConstraint.CumulativeChainInflation+inflationAmount, chainInConstraint.CumulativeBranchBonus, chainInConstraint.TransitionCounter+1, chainInConstraint.BranchCounter)
 		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
 	})
 
@@ -870,7 +870,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 
 	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0,
-		par.ChainOutput.OriginSlot, par.ChainOutput.CumulativeChainInflation, par.ChainOutput.CumulativeBranchBonus, par.ChainOutput.TransitionCounter+1)
+		par.ChainOutput.OriginSlot, par.ChainOutput.CumulativeChainInflation, par.ChainOutput.CumulativeBranchBonus, par.ChainOutput.TransitionCounter+1, par.ChainOutput.BranchCounter)
 	util.Assertf(availableTokens > amount, "availableTokens > amount")
 
 	chainSuccessorOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {

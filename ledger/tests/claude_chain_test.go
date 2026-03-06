@@ -93,7 +93,7 @@ func (e *chainTestEnv) buildChainTransition(
 	// (callers doing multi-step transitions override via modifier).
 	nextCC := ledger.NewChainConstraint(
 		chainData.ChainID, predIdx,
-		cc.OriginSlot, 0, 0, cc.TransitionCounter+1,
+		cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0,
 	)
 
 	chainOut := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
@@ -292,7 +292,7 @@ func TestChainInvalidPredecessorReference(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wrong: predecessor input index = 0xFF
-	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, 0xff, cc.OriginSlot, 0, 0, 1)
+	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, 0xff, cc.OriginSlot, 0, 0, 1, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -332,7 +332,7 @@ func TestChainOriginSlotImmutability(t *testing.T) {
 	require.NoError(t, err)
 
 	// Tamper: origin slot + 1
-	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot+1, 0, 0, 1)
+	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot+1, 0, 0, 1, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -373,7 +373,7 @@ func TestChainTransitionCounterWrong(t *testing.T) {
 	require.NoError(t, err)
 
 	// Tamper: wrong transition counter (should be 1 for first transition from origin, use 5)
-	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 5)
+	wrongCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 5, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -413,7 +413,7 @@ func TestChainIDMismatch(t *testing.T) {
 
 	// Create a fake chain ID (different from the real one)
 	fakeChainID := blake2b.Sum256([]byte("fake chain ID"))
-	wrongCC := ledger.NewChainConstraint(fakeChainID, predIdx, cc.OriginSlot, 0, 0, 1)
+	wrongCC := ledger.NewChainConstraint(fakeChainID, predIdx, cc.OriginSlot, 0, 0, 1, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -454,7 +454,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
-		nextCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 1)
+		nextCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 1, 0)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 		})
@@ -490,7 +490,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
-		nextCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 1)
+		nextCC := ledger.NewChainConstraint(chainOut.ChainID, predIdx, cc.OriginSlot, 0, 0, 1, 0)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 		})
@@ -621,7 +621,7 @@ func TestChainLockValidUnlock(t *testing.T) {
 
 	// Output 0: chain successor
 	nextCC := ledger.NewChainConstraint(chainID, chainIdx,
-		cc.OriginSlot, 0, 0, 1)
+		cc.OriginSlot, 0, 0, 1, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -719,7 +719,7 @@ func TestChainLockWrongChainID(t *testing.T) {
 
 	// Output 0: chain B successor
 	nextCCB := ledger.NewChainConstraint(chainIDB, chainIdx,
-		ccB.OriginSlot, 0, 0, 1)
+		ccB.OriginSlot, 0, 0, 1, 0)
 	chainSuccB := chainInB.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCCB.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -811,7 +811,7 @@ func TestChainLockSelfReference(t *testing.T) {
 
 	// Output 0: chain successor
 	nextCC := ledger.NewChainConstraint(chainID, chainIdx,
-		cc.OriginSlot, 0, 0, 1)
+		cc.OriginSlot, 0, 0, 1, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})

@@ -25,12 +25,12 @@ import (
 )
 
 // --------------------------------------------------------------------------
-// TEST: Origin must have $3/$4/$5 = 0x (empty bytes)
+// TEST: Origin must have $3/$4/$5/$6 = 0x (empty bytes)
 // --------------------------------------------------------------------------
 
 // TestChainOriginCumulativesMustBeEmpty verifies that a chain origin with non-zero
-// cumulative fields ($3/$4/$5) is rejected. The EasyFL rule checks that these
-// arguments have zero length at origin (0x = empty bytes, not z64/0 = zero value).
+// cumulative fields ($3/$4/$5/$6) is rejected. The EasyFL rule checks that these
+// arguments equal 0x (empty bytes) at origin.
 func TestChainOriginCumulativesMustBeEmpty(t *testing.T) {
 	e := newChainTestEnv(t, 1_000_000_000)
 	outs := getSourceOutputs(t, e.u, e.addr)
@@ -46,7 +46,7 @@ func TestChainOriginCumulativesMustBeEmpty(t *testing.T) {
 
 	t.Run("non_zero_cumulative_inflation", func(t *testing.T) {
 		// $3 = z64/100 instead of 0x
-		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, z64/100, 0x, 0x)", nilChainIDHex, ts.Slot)
+		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, z64/100, 0x, 0x, 0x)", nilChainIDHex, ts.Slot)
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(src)
 		require.NoError(t, err)
 
@@ -60,7 +60,7 @@ func TestChainOriginCumulativesMustBeEmpty(t *testing.T) {
 
 	t.Run("non_zero_branch_bonus", func(t *testing.T) {
 		// $4 = z64/50 instead of 0x
-		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, 0x, z64/50, 0x)", nilChainIDHex, ts.Slot)
+		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, 0x, z64/50, 0x, 0x)", nilChainIDHex, ts.Slot)
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(src)
 		require.NoError(t, err)
 
@@ -74,7 +74,7 @@ func TestChainOriginCumulativesMustBeEmpty(t *testing.T) {
 
 	t.Run("non_zero_transition_counter", func(t *testing.T) {
 		// $5 = z32/1 instead of 0x
-		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, 0x, 0x, z32/1)", nilChainIDHex, ts.Slot)
+		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, 0x, 0x, z64/1, 0x)", nilChainIDHex, ts.Slot)
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(src)
 		require.NoError(t, err)
 
@@ -88,7 +88,7 @@ func TestChainOriginCumulativesMustBeEmpty(t *testing.T) {
 
 	t.Run("all_non_zero", func(t *testing.T) {
 		// All three non-empty
-		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, z64/100, z64/50, z32/1)", nilChainIDHex, ts.Slot)
+		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, z64/100, z64/50, z64/1, z32/1)", nilChainIDHex, ts.Slot)
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(src)
 		require.NoError(t, err)
 
@@ -103,7 +103,7 @@ func TestChainOriginCumulativesMustBeEmpty(t *testing.T) {
 	t.Run("zero_valued_z_encoded_is_empty", func(t *testing.T) {
 		// z64/0 encodes to empty bytes in EasyFL (zero-compression), same as 0x.
 		// So chain(... z64/0, z64/0, z32/0) is a valid origin — it IS empty at bytecode level.
-		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, z64/0, z64/0, z32/0)", nilChainIDHex, ts.Slot)
+		src := fmt.Sprintf("chain(0x%s, 0x, z32/%d, z64/0, z64/0, z64/0, z32/0)", nilChainIDHex, ts.Slot)
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(src)
 		require.NoError(t, err)
 
@@ -134,7 +134,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 				// Replace successor with counter=0 (should be 1)
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
-					0, 0, 0, // counter=0 is wrong
+					0, 0, 0, 0, // counter=0 is wrong
 				)
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
@@ -158,7 +158,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
-					0, 0, 2, // counter=2 is wrong (skips 1)
+					0, 0, 2, 0, // counter=2 is wrong (skips 1)
 				)
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
@@ -255,7 +255,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
-					1000, 0, 1, // cumulative inflation = 1000 is wrong
+					1000, 0, 1, 0, // cumulative inflation = 1000 is wrong
 				)
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
@@ -275,7 +275,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
-					999_999_999, 0, 1,
+					999_999_999, 0, 1, 0,
 				)
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
@@ -309,7 +309,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
-					0, 500, 1, // branch bonus = 500 is wrong on non-branch
+					0, 500, 1, 0, // branch bonus = 500 is wrong on non-branch
 				)
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
@@ -328,7 +328,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
-					0, 999_999_999, 1,
+					0, 999_999_999, 1, 0,
 				)
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
@@ -391,7 +391,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
-					100, 50, 5,
+					100, 50, 5, 0,
 				)
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
@@ -411,7 +411,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
-					100, 50, 1,
+					100, 50, 1, 0,
 				)
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
@@ -479,7 +479,7 @@ func TestChainConstraintSerializationRoundTrip(t *testing.T) {
 
 	t.Run("transition_round_trip", func(t *testing.T) {
 		chainID := base.RandomChainID()
-		cc := ledger.NewChainConstraint(chainID, 0, 100, 500_000, 100_000, 42)
+		cc := ledger.NewChainConstraint(chainID, 0, 100, 500_000, 100_000, 42, 0)
 		back, err := ledger.ChainConstraintFromBytes(cc.Bytes())
 		require.NoError(t, err)
 		require.False(t, back.IsOrigin())
@@ -498,20 +498,22 @@ func TestChainConstraintSerializationRoundTrip(t *testing.T) {
 		cc := ledger.NewChainConstraint(chainID, 3, 999_999,
 			18_446_744_073_709_551_000, // near max uint64
 			9_223_372_036_854_775_000,  // large uint64
-			4_294_967_290,              // near max uint32
+			4_294_967_290,              // large transition counter (z64)
+			999_999,                    // branch counter (z32)
 		)
 		back, err := ledger.ChainConstraintFromBytes(cc.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, uint64(18_446_744_073_709_551_000), back.CumulativeChainInflation)
 		require.EqualValues(t, uint64(9_223_372_036_854_775_000), back.CumulativeBranchBonus)
-		require.EqualValues(t, uint32(4_294_967_290), back.TransitionCounter)
+		require.EqualValues(t, uint64(4_294_967_290), back.TransitionCounter)
+		require.EqualValues(t, uint32(999_999), back.BranchCounter)
 		t.Logf("large values round-trip OK")
 	})
 
 	t.Run("zero_cumulatives_transition_round_trip", func(t *testing.T) {
 		// Transition with all-zero cumulatives (first transition from origin, non-branch)
 		chainID := base.RandomChainID()
-		cc := ledger.NewChainConstraint(chainID, 0, 50, 0, 0, 1)
+		cc := ledger.NewChainConstraint(chainID, 0, 50, 0, 0, 1, 0)
 		back, err := ledger.ChainConstraintFromBytes(cc.Bytes())
 		require.NoError(t, err)
 		require.False(t, back.IsOrigin())

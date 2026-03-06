@@ -20,6 +20,7 @@ func Init() *cobra.Command {
 	seqCmd.AddCommand(
 		initSeqWithdrawCmd(),
 		initSeqInfoCmd(),
+		initSeqSetCmd(),
 	)
 
 	seqCmd.InitDefaultHelpCmd()

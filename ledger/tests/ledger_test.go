@@ -356,7 +356,7 @@ func TestChain1(t *testing.T) {
 		return chains
 	}
 	t.Run("compile", func(t *testing.T) {
-		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0x, z32/1000, 0x, 0x, 0x)"
+		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0x, z32/1000, 0x, 0x, 0x, 0x)"
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 		origBytecode := ledger.NewChainOrigin(1000).Bytes()
@@ -407,7 +407,7 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin wrong 1", func(t *testing.T) {
 		initTest()
 
-		const source = "chain(0x0001, 0x0102, 1, 5, 6, 7)"
+		const source = "chain(0x0001, 0x0102, 1, 5, 6, 7, 3)"
 		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 
@@ -564,16 +564,16 @@ func TestChain2(t *testing.T) {
 		switch optionConstraint {
 		case 0:
 			// good
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 		case 1:
 			// wrong predecessor input index
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 		case 4:
 			// wrong origin slot
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot+1, 0, 0, cc.TransitionCounter+1)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot+1, 0, 0, cc.TransitionCounter+1, 0)
 		case 5:
 			// wrong transition counter
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+99)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+99, 0)
 		default:
 			panic("wrong test option 1")
 		}
@@ -704,7 +704,7 @@ func TestChain3(t *testing.T) {
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
-	nextChainConstraint := ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
+	nextChainConstraint := ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 
 	chainOut := chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextChainConstraint.Bytes(), ledger.ConstraintIndexChain)

@@ -91,7 +91,9 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 			sdHeight := ""
 			if md := sd.SequencerData; md != nil {
 				sdName = md.Name()
-				sdHeight = fmt.Sprintf("(%d/%d)", md.ChainHeight(), md.BranchHeight())
+			}
+			if cc := sd.ChainConstraint; cc != nil {
+				sdHeight = fmt.Sprintf("(%d/%d)", cc.TransitionCounter, cc.BranchCounter)
 			}
 			seqNames[o.ChainID] = sdName
 			seqHeight[o.ChainID] = sdHeight
@@ -156,7 +158,12 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID) {
 			}
 			seq = "YES"
 			if md := sd.SequencerData; md != nil {
-				seq = fmt.Sprintf("%s (%d/%d)", md.Name(), md.ChainHeight(), md.BranchHeight())
+				name := md.Name()
+				if cc := sd.ChainConstraint; cc != nil {
+					seq = fmt.Sprintf("%s (%d/%d)", name, cc.TransitionCounter, cc.BranchCounter)
+				} else {
+					seq = name
+				}
 			}
 		}
 

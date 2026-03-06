@@ -36,8 +36,6 @@ func TestBase(t *testing.T) {
 
 	sd := seqdata.New().
 		SetName("test_seq").
-		IncBranchHeight(2).
-		IncChainHeight(4).
 		SetMinimumFee(1)
 
 	predTs := base.T(1000, 50)
@@ -48,7 +46,7 @@ func TestBase(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -277,7 +275,7 @@ func TestBase(t *testing.T) {
 		tagAlongOut := ledger.OutputWithID{
 			ID: base.RandomOutputID(base.T(ts.Slot, 50)),
 			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, ledger.SigLockFromED25519PrivateKey(privKey), 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
-				sdUpdated.SetName("newName").IncChainHeight()
+				sdUpdated.SetName("newName")
 			})),
 		}
 
@@ -325,15 +323,13 @@ func TestFreezeOneStep(t *testing.T) {
 
 		sd := seqdata.New().
 			SetName("test_seq").
-			IncBranchHeight(2).
-			IncChainHeight(4).
 			SetMinimumFee(1).
 			SetSeqProfitMarginPromille(requiredSeqProfitMargin).
 			SetGreedy(greedy)
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
@@ -505,15 +501,13 @@ func TestFreezeMultipleSteps(t *testing.T) {
 	newPredChain := func(requiredSeqProfitMargin uint16, greedy bool) *ledger.OutputWithChainID {
 		sd := seqdata.New().
 			SetName("test_seq").
-			IncBranchHeight(2).
-			IncChainHeight(4).
 			SetMinimumFee(1).
 			SetSeqProfitMarginPromille(requiredSeqProfitMargin).
 			SetGreedy(greedy)
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
-			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -742,7 +736,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 			o.PutConstraint(out.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
 			delegateLock := ledger.NewDelegateLock(ret.seqID, base.SpenderID(ret.masterAddr), maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
-			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, 0, 0, 1).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)

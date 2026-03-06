@@ -397,7 +397,7 @@ func (a *milestoneAttacher) logFinalStatusString(msData *seqdata.SequencerData) 
 
 	msDataStr := " (n/a)"
 	if msData != nil {
-		msDataStr = fmt.Sprintf(" %s %d/%d", msData.Name(), msData.BranchHeight(), msData.ChainHeight())
+		msDataStr = fmt.Sprintf(" %s", msData.Name())
 	}
 
 	if a.vid.IsBranchTransaction() {

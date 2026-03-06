@@ -38,8 +38,7 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 		SignatureType:            signatureType,
 		PrivateKey:               privKey,
 		PublicKey:                pubKey,
-		StateReader:              a.BaselineSugaredStateReader(),
-		IgnoreUpperBoundOnFreeze: p.environment.IgnoreUpperBoundOnFreeze(),
+		StateReader: a.BaselineSugaredStateReader(),
 	})
 	if err != nil {
 		a.Close() // FIX: close attacher on error

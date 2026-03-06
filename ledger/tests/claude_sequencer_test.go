@@ -134,7 +134,7 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
-	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
+	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})
@@ -260,7 +260,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		require.NoError(t, err)
 
 		// Chain successor with both amounts consolidated
-		nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
+		nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 			out.WithAmounts(int64(chainAmount + changeAmount))
@@ -294,7 +294,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
-		nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
+		nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 		chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 			out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 		})
@@ -447,7 +447,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	predIdx, err := txb2.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
-	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
+	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 	// Clone chain output and ADD sequencer constraint
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)

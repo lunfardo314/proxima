@@ -14,16 +14,10 @@ func TestRoundTrip(t *testing.T) {
 	sd := New()
 	sd.SetName("kuku")
 	sd.SetMinimumFee(15)
-	sd.IncChainHeight()
-	sd.IncChainHeight()
-	sd.IncChainHeight()
-	sd.IncChainHeight()
-	sd.IncChainHeight()
-	sd.IncBranchHeight()
-	sd.IncBranchHeight()
 	sd.SetPace(3)
 	sd.SetGreedy(true)
 	sd.SetSeqProfitMarginPromille(500)
+	sd.SetIgnoreFreezeBound(true)
 
 	sdBin := sd.Bytes()
 	sdBack, err := FromBytes(sdBin)
@@ -32,11 +26,10 @@ func TestRoundTrip(t *testing.T) {
 	// verify all fields
 	require.Equal(t, "kuku", sdBack.Name())
 	require.EqualValues(t, 15, sdBack.MinimumFee())
-	require.EqualValues(t, 5, sdBack.ChainHeight())
-	require.EqualValues(t, 2, sdBack.BranchHeight())
 	require.EqualValues(t, 3, sdBack.Pace())
 	require.True(t, sdBack.IsGreedy())
 	require.EqualValues(t, 500, sdBack.InflationProfitMarginPromille())
+	require.True(t, sdBack.IsIgnoreFreezeBound())
 
 	// re-serialized bytes must match
 	require.Equal(t, sdBin, sdBack.Bytes())
@@ -55,11 +48,10 @@ func TestEmptyRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "", sdBack.Name())
 	require.EqualValues(t, 0, sdBack.MinimumFee())
-	require.EqualValues(t, 0, sdBack.ChainHeight())
-	require.EqualValues(t, 0, sdBack.BranchHeight())
 	require.EqualValues(t, 0, sdBack.Pace())
 	require.False(t, sdBack.IsGreedy())
 	require.EqualValues(t, 0, sdBack.InflationProfitMarginPromille())
+	require.False(t, sdBack.IsIgnoreFreezeBound())
 }
 
 // TestFromBytesEmpty verifies that empty/nil input returns zero-value SequencerData.
@@ -76,18 +68,18 @@ func TestFromBytesEmpty(t *testing.T) {
 // TestMinimalRoundTrip verifies serialization with only one field set.
 func TestMinimalRoundTrip(t *testing.T) {
 	sd := New()
-	sd.IncChainHeight()
+	sd.SetMinimumFee(42)
 	sdBin := sd.Bytes()
 
-	// only "c" key should be present
+	// only "f" key should be present
 	var m map[string]interface{}
 	require.NoError(t, json.Unmarshal(sdBin, &m))
 	require.Len(t, m, 1)
-	require.Contains(t, m, "c")
+	require.Contains(t, m, "f")
 
 	sdBack, err := FromBytes(sdBin)
 	require.NoError(t, err)
-	require.EqualValues(t, 1, sdBack.ChainHeight())
+	require.EqualValues(t, 42, sdBack.MinimumFee())
 	require.Equal(t, "", sdBack.Name())
 
 	t.Logf("minimal JSON: %s", string(sdBin))
@@ -96,13 +88,12 @@ func TestMinimalRoundTrip(t *testing.T) {
 // TestClone verifies deep independence and optional modifier.
 func TestClone(t *testing.T) {
 	sd := New()
-	sd.SetName("original").SetMinimumFee(100).IncChainHeight(5)
+	sd.SetName("original").SetMinimumFee(100)
 
 	// clone without modifier
 	cp := sd.Clone()
 	require.Equal(t, sd.Name(), cp.Name())
 	require.Equal(t, sd.MinimumFee(), cp.MinimumFee())
-	require.Equal(t, sd.ChainHeight(), cp.ChainHeight())
 
 	// mutating clone does not affect original
 	cp.SetName("modified")
@@ -149,7 +140,7 @@ func TestInflationProfitMarginEdgeCases(t *testing.T) {
 // TestCompactJSON verifies there is no extra whitespace in Bytes() output.
 func TestCompactJSON(t *testing.T) {
 	sd := New()
-	sd.SetName("test").SetMinimumFee(42).IncChainHeight(3)
+	sd.SetName("test").SetMinimumFee(42)
 	raw := string(sd.Bytes())
 
 	// compact JSON has no newlines or indentation
@@ -170,18 +161,6 @@ func TestPrettyJSON(t *testing.T) {
 	require.True(t, strings.Contains(pretty, "  "))
 
 	t.Logf("pretty:\n%s", pretty)
-}
-
-// TestIncHeightVariadic verifies IncChainHeight and IncBranchHeight with explicit amounts.
-func TestIncHeightVariadic(t *testing.T) {
-	sd := New()
-	sd.IncChainHeight()      // +1
-	sd.IncChainHeight(9)     // +9 = 10
-	sd.IncBranchHeight()     // +1
-	sd.IncBranchHeight(4)    // +4 = 5
-
-	require.EqualValues(t, 10, sd.ChainHeight())
-	require.EqualValues(t, 5, sd.BranchHeight())
 }
 
 // TestSetPaceZero verifies that pace 0 round-trips correctly.
@@ -211,4 +190,26 @@ func TestGreedyRoundTrip(t *testing.T) {
 	sdBack, err = FromBytes(sd.Bytes())
 	require.NoError(t, err)
 	require.False(t, sdBack.IsGreedy())
+}
+
+// TestIgnoreFreezeBoundRoundTrip verifies the ignoreFreezeBound flag serialization.
+func TestIgnoreFreezeBoundRoundTrip(t *testing.T) {
+	// default is false (omitted in JSON)
+	sd := New()
+	require.False(t, sd.IsIgnoreFreezeBound())
+	require.Equal(t, "{}", string(sd.Bytes()))
+
+	// set to true
+	sd.SetIgnoreFreezeBound(true)
+	require.True(t, sd.IsIgnoreFreezeBound())
+	sdBack, err := FromBytes(sd.Bytes())
+	require.NoError(t, err)
+	require.True(t, sdBack.IsIgnoreFreezeBound())
+
+	// set back to false (omitted in JSON)
+	sd.SetIgnoreFreezeBound(false)
+	require.False(t, sd.IsIgnoreFreezeBound())
+	sdBack, err = FromBytes(sd.Bytes())
+	require.NoError(t, err)
+	require.False(t, sdBack.IsIgnoreFreezeBound())
 }

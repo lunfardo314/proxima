@@ -113,8 +113,6 @@ sequencer:
   pace: 12
   # maximum tag-along inputs allowed in the sequencer transaction (absolute maximum value is 254)
   max_tag_along_inputs: 100
-  # if true, skip upper coverage bound check when freezing delegations in branch transactions
-  ignore_upper_bound_on_freeze: false
   # write separate sequencer log (default: false)
   logging: false
   # if logging = true, duplicate sequencer log messages to the node's log (default: false)

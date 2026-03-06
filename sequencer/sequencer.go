@@ -404,10 +404,6 @@ func (seq *Sequencer) SequencerName() string {
 	return seq.config.SequencerName
 }
 
-func (seq *Sequencer) IgnoreUpperBoundOnFreeze() bool {
-	return seq.config.IgnoreUpperBoundOnFreeze
-}
-
 // override global logger
 
 func (seq *Sequencer) Log() *zap.SugaredLogger {

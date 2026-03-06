@@ -53,18 +53,19 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 		return
 	}
 
-	var branchIndex, msIndex uint32
-	if od, err := ledger.ParseSequencerData(sequencerOutput.Output); err == nil {
-		branchIndex = od.BranchHeight()
-		msIndex = od.ChainHeight()
+	var branchCounter uint32
+	var txCounter uint64
+	if cc := sequencerOutput.Output.ChainConstraint(); cc != nil {
+		txCounter = cc.TransitionCounter
+		branchCounter = cc.BranchCounter
 	}
 
 	bl, ok := ms.BaselineBranch()
 	seq.Assertf(ok, "LogMilestoneSubmitDefault: can't unwrap baseline branch for milestone %s", ms.IDShortString())
 	seq.log.Debugf("%s %d/%d: %s, bl: %s, cov: %s<-%s (infl: %s), in/out: %d/%d, feeOut: %d, mem: %d/%d",
 		msType,
-		msIndex,
-		branchIndex,
+		txCounter,
+		branchCounter,
 		sequencerOutput.IDShort(),
 		bl.StringShort(),
 		util.Th(info.LedgerCoverage),

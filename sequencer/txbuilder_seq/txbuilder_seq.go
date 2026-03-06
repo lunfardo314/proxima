@@ -52,8 +52,7 @@ type (
 		PrivateKey               []byte
 		PublicKey                []byte
 		StateReader              multistate.IndexedStateReader
-		DoNotInflateMainChain    bool
-		IgnoreUpperBoundOnFreeze bool
+		DoNotInflateMainChain bool
 	}
 )
 
@@ -79,10 +78,6 @@ func New(par Params) (*SeqTxBuilder, error) {
 		ret.origSeqData = seqdata.New()
 	} else {
 		ret.origSeqData = &sd
-		ret.origSeqData.IncChainHeight()
-		if par.Stem != nil {
-			ret.origSeqData.IncBranchHeight()
-		}
 	}
 	ret.nextSeqData = ret.origSeqData.Clone()
 	diffTicksChain := base.DiffTicks(par.Timestamp, par.Predecessor.Timestamp())
@@ -153,7 +148,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 	// initialize branch coverage bounds for delegation freeze checking
 	if ret.stemInput != nil {
 		ret.branchCoverageUpperBound = ret.Library.BranchCoverageUpperBound(par.Timestamp.Slot)
-		ret.enforceFreezeUpperBound = !par.IgnoreUpperBoundOnFreeze
+		ret.enforceFreezeUpperBound = !ret.origSeqData.IsIgnoreFreezeBound()
 	}
 
 	// consume chain and stem (optionally) outputs but do not unlock it
@@ -392,11 +387,16 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 			// non-branch transaction: all inflation is chain inflation
 			chainInflation = totalInflation
 		}
+		var branchCounterInc uint32
+		if txb.stemInput != nil {
+			branchCounterInc = 1
+		}
 		chainOutConstraint := ledger.NewChainConstraint(
 			txb.chainInput.ChainID, 0, txb.chainInput.OriginSlot,
 			txb.chainInput.CumulativeChainInflation+chainInflation,
 			txb.chainInput.CumulativeBranchBonus+branchBonus,
 			txb.chainInput.TransitionCounter+1,
+			txb.chainInput.BranchCounter+branchCounterInc,
 		)
 		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
 		// sequencer constraint (no parameters)
@@ -535,8 +535,6 @@ type MakeSimpleSequencerTransactionParams struct {
 	//
 	DoNotInflateMainChain bool
 	//
-	IgnoreUpperBoundOnFreeze bool
-	//
 	AttachmentBudget uint16
 }
 
@@ -562,8 +560,7 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		SignatureType:            par.SignatureType,
 		PrivateKey:               par.PrivateKey,
 		PublicKey:                par.PublicKey,
-		DoNotInflateMainChain:    par.DoNotInflateMainChain,
-		IgnoreUpperBoundOnFreeze: par.IgnoreUpperBoundOnFreeze,
+		DoNotInflateMainChain: par.DoNotInflateMainChain,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)

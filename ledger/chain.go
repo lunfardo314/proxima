@@ -28,17 +28,20 @@ type ChainConstraint struct {
 	CumulativeChainInflation uint64
 	// cumulative branch inflation bonus (z64). 0x at origin. Non-zero only on sequencer chains.
 	CumulativeBranchBonus uint64
-	// incremental transition counter (z32). 0x at origin.
-	TransitionCounter uint32
+	// incremental transition counter (z64). 0x at origin.
+	TransitionCounter uint64
+	// incremental branch counter (z32). 0x at origin. Increments only on the sequencer output of branch transactions.
+	BranchCounter uint32
 }
 
 const (
-	ChainConstraintName              = "chain"
-	chainConstraintTemplateOrigin    = ChainConstraintName + "(0x%s, 0x%s, z32/%d, 0x, 0x, 0x)"
-	chainConstraintTemplateTransition = ChainConstraintName + "(0x%s, 0x%s, z32/%d, z64/%d, z64/%d, z32/%d)"
+	ChainConstraintName               = "chain"
+	chainConstraintTemplateOrigin     = ChainConstraintName + "(0x%s, 0x%s, z32/%d, 0x, 0x, 0x, 0x)"
+	chainConstraintTemplateTransition = ChainConstraintName + "(0x%s, 0x%s, z32/%d, z64/%d, z64/%d, z64/%d, z32/%d)"
 )
 
-func NewChainConstraint(id base.ChainID, predInputIndex byte, originSlot uint32, cumulativeChainInflation uint64, cumulativeBranchBonus uint64, transitionCounter uint32) *ChainConstraint {
+func NewChainConstraint(id base.ChainID, predInputIndex byte, originSlot uint32, cumulativeChainInflation uint64, cumulativeBranchBonus uint64, transitionCounter uint64, branchCounter uint32) *ChainConstraint {
+	util.Assertf(uint64(branchCounter) <= transitionCounter, "branchCounter (%d) cannot exceed transitionCounter (%d)", branchCounter, transitionCounter)
 	return &ChainConstraint{
 		ChainID:                 id,
 		PredecessorInputIndex:   predInputIndex,
@@ -46,11 +49,12 @@ func NewChainConstraint(id base.ChainID, predInputIndex byte, originSlot uint32,
 		CumulativeChainInflation: cumulativeChainInflation,
 		CumulativeBranchBonus:   cumulativeBranchBonus,
 		TransitionCounter:       transitionCounter,
+		BranchCounter:           branchCounter,
 	}
 }
 
 func NewChainOrigin(startSlot uint32) *ChainConstraint {
-	return NewChainConstraint(base.NilChainID, 0xff, startSlot, 0, 0, 0)
+	return NewChainConstraint(base.NilChainID, 0xff, startSlot, 0, 0, 0, 0)
 }
 
 func (cc *ChainConstraint) IsOrigin() bool {
@@ -72,9 +76,9 @@ func (cc *ChainConstraint) String() string {
 		chID = cc.ChainID.String()
 		predRefStr = hex.EncodeToString([]byte{cc.PredecessorInputIndex})
 	}
-	return fmt.Sprintf("%s(%s, predInputIdx=%s, originSlot=%d, cumInflation=%s, cumBranchBonus=%s, counter=%d)",
+	return fmt.Sprintf("%s(%s, predInputIdx=%s, originSlot=%d, cumInflation=%s, cumBranchBonus=%s, txCounter=%d, branchCounter=%d)",
 		ChainConstraintName, chID, predRefStr, cc.OriginSlot,
-		util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus), cc.TransitionCounter)
+		util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus), cc.TransitionCounter, cc.BranchCounter)
 }
 
 func (cc *ChainConstraint) Source() string {
@@ -89,7 +93,7 @@ func (cc *ChainConstraint) Source() string {
 	}
 	return fmt.Sprintf(chainConstraintTemplateTransition,
 		chainIDHex, predRefHex, cc.OriginSlot,
-		cc.CumulativeChainInflation, cc.CumulativeBranchBonus, cc.TransitionCounter)
+		cc.CumulativeChainInflation, cc.CumulativeBranchBonus, cc.TransitionCounter, cc.BranchCounter)
 }
 
 func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
@@ -97,7 +101,7 @@ func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
 }
 
 func ChainConstraintFromBytesWithLib(data []byte, lib *Library) (*ChainConstraint, error) {
-	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 6)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 7)
 	if err != nil {
 		return nil, err
 	}
@@ -125,26 +129,36 @@ func ChainConstraintFromBytesWithLib(data []byte, lib *Library) (*ChainConstrain
 	}
 	ret.OriginSlot = sl
 
-	// $3: cumulative chain inflation (z64 or 0x at origin)
+	// $3: cumulative chain inflation (z64)
 	args3 := easyfl.StripDataPrefix(args[3])
 	if len(args3) > 0 {
 		if ret.CumulativeChainInflation, err = easyfl_util.Uint64FromBytes(args3); err != nil {
 			return nil, err
 		}
 	}
-	// $4: cumulative branch inflation bonus (z64 or 0x at origin)
+	// $4: cumulative branch inflation bonus (z64)
 	args4 := easyfl.StripDataPrefix(args[4])
 	if len(args4) > 0 {
 		if ret.CumulativeBranchBonus, err = easyfl_util.Uint64FromBytes(args4); err != nil {
 			return nil, err
 		}
 	}
-	// $5: transition counter (z32 or 0x at origin)
+	// $5: transition counter (z64)
 	args5 := easyfl.StripDataPrefix(args[5])
 	if len(args5) > 0 {
-		if ret.TransitionCounter, err = easyfl_util.Uint32FromBytes(args5); err != nil {
+		if ret.TransitionCounter, err = easyfl_util.Uint64FromBytes(args5); err != nil {
 			return nil, err
 		}
+	}
+	// $6: branch counter (z32)
+	args6 := easyfl.StripDataPrefix(args[6])
+	if len(args6) > 0 {
+		if ret.BranchCounter, err = easyfl_util.Uint32FromBytes(args6); err != nil {
+			return nil, err
+		}
+	}
+	if uint64(ret.BranchCounter) > ret.TransitionCounter {
+		return nil, fmt.Errorf("ChainConstraintFromBytes: branchCounter (%d) cannot exceed transitionCounter (%d)", ret.BranchCounter, ret.TransitionCounter)
 	}
 	return ret, nil
 }
@@ -159,7 +173,7 @@ func NewChainUnlockParams(successorOutputIdx byte) []byte {
 var FinishChainUnlockParams = []byte{}
 
 func registerChainConstraint(lib *Library) {
-	lib.mustRegisterConstraint(ChainConstraintName, 6, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(ChainConstraintName, 7, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return ChainConstraintFromBytesWithLib(data, lib)
 	})
@@ -176,6 +190,7 @@ func init() {
 		util.Assertf(back.CumulativeChainInflation == 0, "origin CumulativeChainInflation == 0")
 		util.Assertf(back.CumulativeBranchBonus == 0, "origin CumulativeBranchBonus == 0")
 		util.Assertf(back.TransitionCounter == 0, "origin TransitionCounter == 0")
+		util.Assertf(back.BranchCounter == 0, "origin BranchCounter == 0")
 
 		var chainID base.ChainID
 		chainID = blake2b.Sum256([]byte("dummy"))
@@ -186,7 +201,7 @@ func init() {
 		}
 		{
 			// test transition serialization round-trip
-			chainConstr := NewChainConstraint(chainID, 0, 1000, 500_000, 100_000, 42)
+			chainConstr := NewChainConstraint(chainID, 0, 1000, 500_000, 100_000, 42, 7)
 			chainConstrBack, err := ChainConstraintFromBytesWithLib(chainConstr.Bytes(), lib)
 			util.AssertNoError(err)
 			util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")

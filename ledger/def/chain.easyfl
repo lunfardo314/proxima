@@ -3,22 +3,24 @@ func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000
 
 // $0 - chain ChainID
 // $1 - predecessor input index (1 byte, or 0x empty for origin)
-// $2 - origin slot
-// $3 - cumulative chain inflation (z64 or 0x at origin)
-// $4 - cumulative branch inflation bonus (z64 or 0x at origin)
-// $5 - transition counter (z32 or 0x at origin)
+// $2 - origin slot (z32)
+// $3 - cumulative chain inflation (z64)
+// $4 - cumulative branch inflation bonus (z64)
+// $5 - transition counter (z64)
+// $6 - branch counter (z32)
 func _validChainProduced :
 if(
    isChainOriginID($0),
         // chain origin: predecessor ref must be empty, origin slot must be tx slot,
-        // $3, $4, $5 must be 0x (empty, zero length)
+        // $3..$6 must be 0x at origin
    require(
      and(
        isZero($1),
        equalUint($2, txSlot),
-       equal(len($3), u64/0),
-       equal(len($4), u64/0),
-       equal(len($5), u64/0)
+       equal($3, 0x),
+       equal($4, 0x),
+       equal($5, 0x),
+       equal($6, 0x)
      ),
      !!!invalid_chain_origin_data
    ),
@@ -107,19 +109,35 @@ if(
   )
 )
 
-// $0 - predecessor input index, $1 - transition counter on current output
+// $0 - predecessor input index, $1 - transition counter on current output (z64)
 func _validTransitionCounter :
 require(
-  equalUint($1, add(_chainPredecessorParam($0, 5), u32/1)),
+  equalUint($1, add(_chainPredecessorParam($0, 5), u64/1)),
   !!!wrong_transition_counter
+)
+
+// $0 - predecessor input index, $1 - branch counter on current output (z32)
+// branch counter increments only on the sequencer output of a branch transaction
+func _validBranchCounter :
+if(
+  and(isBranchTransaction, equal(selfOutputIndex, txSequencerOutputIndex)),
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 6), u32/1)),
+    !!!wrong_branch_counter
+  ),
+  require(
+    equalUint($1, _chainPredecessorParam($0, 6)),
+    !!!wrong_branch_counter
+  )
 )
 
 // $0 - chain ChainID
 // $1 - predecessor input index (1 byte, or 0x empty for origin)
-// $2 - origin slot
-// $3 - cumulative chain inflation (z64 or 0x at origin)
-// $4 - cumulative branch inflation bonus (z64 or 0x at origin)
-// $5 - transition counter (z32 or 0x at origin)
+// $2 - origin slot (z32)
+// $3 - cumulative chain inflation (z64)
+// $4 - cumulative branch inflation bonus (z64)
+// $5 - transition counter (z64)
+// $6 - branch counter (z32)
 // --- unlock data: 1 byte (successor output index), 0x (empty) means discontinue chain
 func chain : and(
       // chain constraint cannot be on output with index 0xff = 255
@@ -130,13 +148,14 @@ func chain : and(
    or(
       and(
          selfIsProducedOutput,
-         _validChainProduced($0,$1,$2,$3,$4,$5),
+         _validChainProduced($0,$1,$2,$3,$4,$5,$6),
          or(
             isChainOriginID($0),
             and(
                _validCumulativeChainInflation($1,$3),
                _validCumulativeBranchBonus($1,$4),
-               _validTransitionCounter($1,$5)
+               _validTransitionCounter($1,$5),
+               _validBranchCounter($1,$6)
             )
          ),
          _validInflationAmount($0, $1, selfInflationAmount),

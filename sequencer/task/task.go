@@ -39,7 +39,6 @@ type (
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		EvidenceProposal(strategyShortName string)
 		EvidenceBestProposalForTheTarget(strategyShortName string)
-		IgnoreUpperBoundOnFreeze() bool
 	}
 
 	taskData struct {

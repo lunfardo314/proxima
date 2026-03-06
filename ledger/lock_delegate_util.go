@@ -218,7 +218,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	for i := byte(0); i < byte(frozenEpochs); i++ {
 		amountsVector[AmountIndexFrozenCoverage+i] = int64(successorTokenBalance)
 	}
-	chainConstraint := NewChainConstraint(o.ChainID, predOutputIndex, o.OriginSlot, o.CumulativeChainInflation+o.InflationOneSlot(), o.CumulativeBranchBonus, o.TransitionCounter+1)
+	chainConstraint := NewChainConstraint(o.ChainID, predOutputIndex, o.OriginSlot, o.CumulativeChainInflation+o.InflationOneSlot(), o.CumulativeBranchBonus, o.TransitionCounter+1, o.BranchCounter)
 
 	ret = NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amountsVector[:]...)
@@ -369,7 +369,7 @@ func (o *DelegationOutput) MakeDelegationRevokeOutput(par MakeDelegationRevokeOu
 	frozenCoverageVector := o.MakeFrozenCoverageAmountDeltasForRevoking(par.TxTs)
 	amounts = append(amounts, frozenCoverageVector...)
 
-	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, o.OriginSlot, o.CumulativeChainInflation+par.Inflation, o.CumulativeBranchBonus, o.TransitionCounter+1)
+	chainConstraint := NewChainConstraint(o.ChainID, par.PredOutputIndex, o.OriginSlot, o.CumulativeChainInflation+par.Inflation, o.CumulativeBranchBonus, o.TransitionCounter+1, o.BranchCounter)
 	return NewOutput(func(o1 *OutputBuilder) {
 		o1.WithAmounts(amounts...)
 		o1.WithLock(NewDelegateLock(o.Target, o.MasterID, o.MaxFrozenEpochs, o.RequiredInflationShare))

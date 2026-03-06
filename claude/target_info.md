@@ -19,9 +19,8 @@ Delegators need a way to evaluate a target sequencer before delegating. Currentl
 - Name (`SequencerData.Name()`)
 - Origin slot (`ChainConstraint.OriginSlot`)
 - Current output slot (`seqOut.ID.Slot()`)
-- Chain height (`SequencerData.ChainHeight()`) — currently unenforced, from seqdata JSON
-- Branch height (`SequencerData.BranchHeight()`) — currently unenforced, from seqdata JSON
-- Transition counter (`ChainConstraint.TransitionCounter`) — on-chain enforced
+- Transition counter (`ChainConstraint.TransitionCounter`) — on-chain enforced (z64)
+- Branch counter (`ChainConstraint.BranchCounter`) — on-chain enforced (z32)
 - Up-time estimate: `TransitionCounter / (nowSlot - OriginSlot)` steps per slot
 
 **Balances:**
@@ -38,6 +37,7 @@ Delegators need a way to evaluate a target sequencer before delegating. Currentl
 - Profit margin promille (`SequencerData.InflationProfitMarginPromille()`)
 - Greedy flag (`SequencerData.IsGreedy()`)
 - Pace (`SequencerData.Pace()`)
+- Ignore freeze bound (`SequencerData.IsIgnoreFreezeBound()`)
 
 **Delegation info:**
 - Current epoch (`lib.EpochFromSlotDirect(seqID, nowSlot)`)
@@ -64,26 +64,32 @@ Add `initTargetInfoCmd()` to `delegate_cmd.go` `AddCommand` list.
 
 ---
 
-## Task 2: Chain height / branch height refactoring (TBD)
+## Task 2: Chain constraint refactoring — DONE
 
-### Current state
-- `ChainConstraint.TransitionCounter` (arg $5, `z32`) — **on-chain enforced**, incremented each chain transition
-- `SequencerData.ChainH` / `SequencerData.BranchH` — in seqdata JSON blob, **not enforced**, maintained by sequencer software only
+### Changes made
+1. **Branch counter added** as arg $6 (z32) to chain constraint, on-chain enforced
+   - Increments only on the sequencer output of branch transactions
+   - Other chained outputs (delegations, etc.) copy predecessor's value
+   - Assertion: `branchCounter <= transitionCounter`
+2. **Transition counter** changed from z32 to z64 format
+3. **`ChainH` / `BranchH` removed** from `SequencerData` — rely solely on on-chain counters
+4. **`IgnoreFreezeBound` flag** added to `SequencerData` (JSON tag `"u"`, default false/omitted)
+   - Replaces the node-local `ignore_upper_bound_on_freeze` config parameter
+   - Now visible to delegators via on-chain sequencer data
 
-### Observation
-Chain height is already redundant with `TransitionCounter`. Branch height has no on-chain enforcement at all.
+## Task 3: `proxi node seq set` command — DONE
 
-### Possible directions (needs discussion)
-1. **Add branch counter to chain constraint** — new arg $6 (`z32`), enforced on-chain for branch transactions. Would require EasyFL changes in `chain.easyfl` and Go code in `chain.go`
-2. **Remove redundant `ChainH` from seqdata** — rely solely on `TransitionCounter` for chain height
-3. **Keep `BranchH` in seqdata** vs enforce it — trade-off between trust and simplicity
+**Command:** `proxi node seq set [flags]`
 
-### Impact areas if enforcing branch counter
-- `ledger/chain.go` — `ChainConstraint` struct, serialization templates, `NewChainConstraint()`
-- `ledger/def/chain.easyfl` — add arg $6, enforcement rule for branch transitions
-- `sequencer/txbuilder_seq/txbuilder_seq.go` — build chain constraint with branch counter
-- All callers of `NewChainConstraint()` (proxi delegate commands, tests)
-- Backward compatibility: existing chain outputs won't have $6
+**Flags** (all optional, only specified flags are changed):
+- `--name <string>` — sequencer name
+- `--fee <uint64>` — minimum tag-along fee
+- `--margin <uint16>` — inflation profit margin promille (0-1000)
+- `--greedy` / `--no-greedy` — greedy flag (use `--greedy=false`)
+- `--pace <uint8>` — pace value (ticks)
+- `--ignore-freeze-bound` / `--ignore-freeze-bound=false`
+
+**File:** `proxi/node_cmd/seq_cmd/set.go`
 
 ---
 
@@ -94,7 +100,8 @@ Chain height is already redundant with `TransitionCounter`. Branch height has no
 2. `proxi node delegate target_info <known-sequencer-id> -t <node-url>`
 3. Verify all sections display correctly
 
-### branch counter (if implemented)
-1. `go test ./ledger/tests/...`
-2. `go test ./sequencer/...`
-3. Manual test with one_node_bootstrap
+### chain constraint & seqdata refactoring
+1. `go test ./ledger/tests/...` — PASS
+2. `go test ./sequencer/seqdata/...` — PASS
+3. `go build ./...` — PASS
+4. Manual test with one_node_bootstrap

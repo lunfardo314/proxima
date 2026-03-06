@@ -149,7 +149,7 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 	require.NoError(t, err)
 
 	// Build successor with updated chain constraint; sequencer constraint is inherited via Clone
-	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1)
+	nextCC := ledger.NewChainConstraint(chainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
 	})

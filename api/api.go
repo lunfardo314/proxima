@@ -210,10 +210,10 @@ type (
 	}
 
 	MilestoneData struct {
-		Name         string `json:"name"`
-		MinimumFee   uint64 `json:"minimum_fee"`
-		ChainHeight  uint32 `json:"chain_height"`
-		BranchHeight uint32 `json:"branch_height"`
+		Name             string `json:"name"`
+		MinimumFee       uint64 `json:"minimum_fee"`
+		TransitionCounter uint64 `json:"transition_counter"`
+		BranchCounter    uint32 `json:"branch_counter"`
 	}
 
 	SequencerTxData struct {
@@ -386,10 +386,10 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		}
 		if md := seqData.SequencerOutputData.SequencerData; md != nil {
 			ret.SequencerTxData.MilestoneData = &MilestoneData{
-				Name:         md.Name(),
-				MinimumFee:   md.MinimumFee(),
-				ChainHeight:  md.ChainHeight(),
-				BranchHeight: md.BranchHeight(),
+				Name:              md.Name(),
+				MinimumFee:        md.MinimumFee(),
+				TransitionCounter: seqData.SequencerOutputData.ChainConstraint.TransitionCounter,
+				BranchCounter:     seqData.SequencerOutputData.ChainConstraint.BranchCounter,
 			}
 		}
 	}

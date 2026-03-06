@@ -11,13 +11,12 @@ import (
 // SequencerData holds sequencer configuration metadata stored in sequencer outputs.
 // Serialized as compact JSON (short tags, omitempty).
 type SequencerData struct {
-	SeqName        string `json:"n,omitempty"`
-	MinFee         uint64 `json:"f,omitempty"`
-	ProfitPromille uint16 `json:"m,omitempty"`
-	Greedy         bool   `json:"g,omitempty"`
-	ChainH         uint32 `json:"c,omitempty"`
-	BranchH        uint32 `json:"b,omitempty"`
-	PaceValue      byte   `json:"p,omitempty"`
+	SeqName          string `json:"n,omitempty"`
+	MinFee           uint64 `json:"f,omitempty"`
+	ProfitPromille   uint16 `json:"m,omitempty"`
+	Greedy           bool   `json:"g,omitempty"`
+	PaceValue        byte   `json:"p,omitempty"`
+	IgnoreFreezeBound bool  `json:"u,omitempty"`
 }
 
 func New() *SequencerData {
@@ -48,32 +47,6 @@ func (sd *SequencerData) MinimumFee() uint64 {
 
 func (sd *SequencerData) SetMinimumFee(fee uint64) *SequencerData {
 	sd.MinFee = fee
-	return sd
-}
-
-func (sd *SequencerData) ChainHeight() uint32 {
-	return sd.ChainH
-}
-
-func (sd *SequencerData) IncChainHeight(add ...uint32) *SequencerData {
-	s := uint32(1)
-	if len(add) > 0 {
-		s = add[0]
-	}
-	sd.ChainH += s
-	return sd
-}
-
-func (sd *SequencerData) BranchHeight() uint32 {
-	return sd.BranchH
-}
-
-func (sd *SequencerData) IncBranchHeight(add ...uint32) *SequencerData {
-	s := uint32(1)
-	if len(add) > 0 {
-		s = add[0]
-	}
-	sd.BranchH += s
 	return sd
 }
 
@@ -116,6 +89,15 @@ func (sd *SequencerData) SetGreedy(greedy bool) *SequencerData {
 
 func (sd *SequencerData) IsGreedy() bool {
 	return sd.Greedy
+}
+
+func (sd *SequencerData) SetIgnoreFreezeBound(ignore bool) *SequencerData {
+	sd.IgnoreFreezeBound = ignore
+	return sd
+}
+
+func (sd *SequencerData) IsIgnoreFreezeBound() bool {
+	return sd.IgnoreFreezeBound
 }
 
 // Bytes returns compact JSON serialization (no extra whitespace).
