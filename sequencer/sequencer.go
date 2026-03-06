@@ -516,7 +516,13 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	meta.TxBytesReceived = util.Ref(time.Now())
 
-	if msVID := seq.submitMilestone(msTx, meta); msVID != nil {
+	msVID := seq.submitMilestone(msTx, meta)
+	if msVID == nil {
+		// milestone didn't appear in tippool (rejected, failed validation, etc.)
+		// advance lastSubmittedTs to avoid retrying the same target indefinitely
+		seq.lastSubmittedTs = targetTs
+	}
+	if msVID != nil {
 		if saveLastSubmittedTs.IsSlotBoundary() && msVID.Timestamp().IsSlotBoundary() {
 			seq.Log().Warnf("branch jumped over the slot: %s -> %s. Step started: %s, %d (%s), %v ago, nowis: %s",
 				saveLastSubmittedTs.String(), targetTs.String(),
@@ -653,17 +659,22 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	return vid
 }
 
+// waitMilestoneInTippool polls the tippool until the submitted milestone appears or deadline expires.
+// Fixed: previously used select with default case, which made the deadline check dead code
+// (default always wins over channel receives, causing a tight spin loop and effective deadlock)
 func (seq *Sequencer) waitMilestoneInTippool(txid base.TransactionID, deadline time.Time) (*vertex.WrappedTx, error) {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-seq.Ctx().Done():
 			return nil, fmt.Errorf("waitMilestoneInTippool: %s has been cancelled", txid.StringShort())
-		case <-time.After(10 * time.Millisecond):
+		case <-ticker.C:
 			if time.Now().After(deadline) {
 				return nil, fmt.Errorf("waitMilestoneInTippool: deadline %v has been missed while waiting for %s in the tippool. hex=%s",
 					deadline, txid.StringShort(), txid.StringHex())
 			}
-		default:
 			vid := seq.GetLatestMilestone(seq.sequencerID)
 			if vid != nil && vid.ID() == txid {
 				return vid, nil
