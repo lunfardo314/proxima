@@ -1,5 +1,8 @@
 # Configuration file for the Proxima node
 
+# download snapshot with 'wget --content-disposition http://<host address>/api/v1/get_snapshot'
+# for example from <host address> = 113.30.191.219:8001 for testnet
+
 # Peering configuration
 peering:
   # libp2p host data:
