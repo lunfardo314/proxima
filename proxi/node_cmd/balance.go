@@ -94,7 +94,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 				return delegations[i].Output.TokenBalance() > delegations[j].Output.TokenBalance()
 			})
 		}
-		glb.Infof("\nDELEGATIONS (%d):\n\n%s\n", len(delegations), glb.LinesDelegationOutputs(delegations, currentSlot, "  ").String())
+		glb.Infof("\nDELEGATIONS (%d):\n\n%s\n", len(delegations), glb.LinesDelegationOutputs(delegations, currentSlot, sumOutsideChains, "  ").String())
 	}
 	if len(otherChains) > 0 {
 		glb.Infof("\nNON-DELEGATION CHAINS (%d):\n\n%s\n", len(otherChains), glb.LinesChainOutputs(otherChains, currentSlot, "  ").String())

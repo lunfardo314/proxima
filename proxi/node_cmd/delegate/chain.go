@@ -25,8 +25,8 @@ func initDelegationSubmitCmd() *cobra.Command {
 
 	glb.AddFlagTarget(cmd)
 
-	cmd.PersistentFlags().StringVarP(&targetChainIDStr, "seq", "q", "", "target sequencer id")
-	err := viper.BindPFlag("seq", cmd.PersistentFlags().Lookup("seq"))
+	cmd.PersistentFlags().StringVarP(&targetChainIDStr, "delegation_target", "q", "", "target sequencer id")
+	err := viper.BindPFlag("delegation_target", cmd.PersistentFlags().Lookup("delegation_target"))
 	glb.AssertNoError(err)
 
 	// 0 means use the ledger constant constDelegationMaxFrozenEpochs (default maximum)

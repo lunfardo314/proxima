@@ -35,11 +35,20 @@ func DelegationStatusString(o ledger.DelegationOutput, currentSlot uint32) (ret 
 	return
 }
 
-func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, prefix ...string) *lines.Lines {
+func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, walletBalance uint64, prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
 	for _, o := range outs {
 		status := DelegationStatusString(o, currentSlot)
-		ln.Add("%34s  %20s  %s maxFrozen: %d", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status, o.MaxFrozenEpochs)
+		line := fmt.Sprintf("%34s  %20s  %s maxFrozen: %d", o.ChainID.String(), util.Th(o.Output.TokenBalance()), status, o.MaxFrozenEpochs)
+		if o.IsInFrozenSlot(currentSlot) {
+			compensation := o.RevocationCompensationEstimate(currentSlot)
+			canAfford := ""
+			if walletBalance < compensation {
+				canAfford = " [INSUFFICIENT FUNDS]"
+			}
+			line += fmt.Sprintf(", askstop refund: %s%s", util.Th(compensation), canAfford)
+		}
+		ln.Add("%s", line)
 		if VerbosityLevel() > 0 {
 			ln.Add("     delegation target %s", o.Target.String())
 			totalInflation := o.CumulativeChainInflation + o.CumulativeBranchBonus
