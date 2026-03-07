@@ -226,9 +226,10 @@ func (b *Branches) _cleanupBranches() (int, int) {
 	for txid, br := range b.m {
 		if time.Since(br.lastActive) > ttl {
 			// if pending, discard the uncommitted state
-			if _, isPending := b.pending[txid]; isPending {
+			if pb, isPending := b.pending[txid]; isPending {
 				delete(b.pending, txid)
-				b.Log().Infof("orphaned branch %s, discarding uncommitted state", txid.StringShort())
+				b.Log().Infof("orphaned branch %s (%s, %s), discarding uncommitted state",
+					txid.StringShort(), pb.SequencerName, pb.RootRecParams.SeqID.StringShort())
 			}
 			delete(b.m, txid)
 			count++
