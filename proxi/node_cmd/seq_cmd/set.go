@@ -52,6 +52,8 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 	}
 
 	// apply only explicitly changed flags
+	// clear proposer strategy — it is set internally by the sequencer, not by the user
+	currentSD.SetProposerStrategy("")
 	newSD := currentSD.Clone()
 	changed := false
 

@@ -56,7 +56,10 @@ func (c *SetSequencerDataTxBuilderCommand) Apply(txb *SeqTxBuilder) (bool, error
 
 	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(c.Output.TokenBalance())
+	// preserve proposer strategy — it is set internally by the sequencer, not by the command
+	strategy := txb.nextSeqData.ProposerStrategy()
 	txb.nextSeqData = c.SequencerData.Clone()
+	txb.nextSeqData.SetProposerStrategy(strategy)
 	return true, nil
 }
 
