@@ -31,7 +31,7 @@ func setSequencerDataOutputParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	util.Assertf(o.RequestParams != nil, "o.RequestParams != nil")
 
 	// check authorisation
-	if o.SenderID != base.SpenderIDFromPublicKey(txb.signatureType, txb.publicKey) {
+	if o.SenderID != base.HolderIDFromPublicKey(txb.signatureType, txb.publicKey) {
 		// wrong sender -> may be attack
 		err = fmt.Errorf("sender hash does not match public key of the owner (authorisation failure)")
 		return
@@ -72,7 +72,7 @@ func NewSeqDataCommandOutput(seqID base.ChainID, sender ledger.SigLock, fee uint
 		o.WithTokenBalance(fee)
 		o.WithLock(&ledger.TagAlongLock{
 			TargetSequencerID: seqID,
-			SenderID:          base.SpenderID(sender),
+			SenderID:          base.HolderID(sender),
 		})
 		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
 	})

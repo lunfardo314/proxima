@@ -18,14 +18,14 @@ func generateTestKey(t *testing.T) ed25519.PrivateKey {
 	return priv
 }
 
-const testSpenderID = "a(0xtest_spender_id)"
+const testHolderID = "a(0xtest_holder_id)"
 
 // TestNewUnencrypted verifies creation and field correctness of unencrypted keystores.
 func TestNewUnencrypted(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testSpenderID)
+	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testHolderID)
 	if err != nil {
 		t.Fatalf("NewUnencrypted failed: %v", err)
 	}
@@ -45,8 +45,8 @@ func TestNewUnencrypted(t *testing.T) {
 	if ks.PublicKey == "" {
 		t.Error("expected PublicKey to be set")
 	}
-	if ks.SpenderID != testSpenderID {
-		t.Errorf("expected SpenderID=%q, got %q", testSpenderID, ks.SpenderID)
+	if ks.HolderID != testHolderID {
+		t.Errorf("expected HolderID=%q, got %q", testHolderID, ks.HolderID)
 	}
 }
 
@@ -55,7 +55,7 @@ func TestNewUnencryptedGetPrivateKey(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testSpenderID)
+	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testHolderID)
 	if err != nil {
 		t.Fatalf("NewUnencrypted failed: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 	pub := priv.Public().(ed25519.PublicKey)
 	passphrase := "test-passphrase-123"
 
-	ks, err := Encrypt(KeyTypeED25519, priv, pub, passphrase, testSpenderID)
+	ks, err := Encrypt(KeyTypeED25519, priv, pub, passphrase, testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestWrongPassphrase(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := Encrypt(KeyTypeED25519, priv, pub, "correct-passphrase", testSpenderID)
+	ks, err := Encrypt(KeyTypeED25519, priv, pub, "correct-passphrase", testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestVerifySuccess(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := Encrypt(KeyTypeED25519, priv, pub, "passphrase", testSpenderID)
+	ks, err := Encrypt(KeyTypeED25519, priv, pub, "passphrase", testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestVerifyWrongPassphrase(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := Encrypt(KeyTypeED25519, priv, pub, "correct", testSpenderID)
+	ks, err := Encrypt(KeyTypeED25519, priv, pub, "correct", testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestVerifyPubkeyMismatch(t *testing.T) {
 	otherPub := otherPriv.Public().(ed25519.PublicKey)
 
 	// Encrypt with one key but store a different public key
-	ks, err := Encrypt(KeyTypeED25519, priv, otherPub, "passphrase", testSpenderID)
+	ks, err := Encrypt(KeyTypeED25519, priv, otherPub, "passphrase", testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	pub := priv.Public().(ed25519.PublicKey)
 	passphrase := "file-test-passphrase"
 
-	ks, err := Encrypt(KeyTypeED25519, priv, pub, passphrase, testSpenderID)
+	ks, err := Encrypt(KeyTypeED25519, priv, pub, passphrase, testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -206,8 +206,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if !equal(decrypted, priv) {
 		t.Fatal("decrypted key from loaded keystore does not match original")
 	}
-	if loaded.SpenderID != testSpenderID {
-		t.Errorf("expected SpenderID=%q, got %q", testSpenderID, loaded.SpenderID)
+	if loaded.HolderID != testHolderID {
+		t.Errorf("expected HolderID=%q, got %q", testHolderID, loaded.HolderID)
 	}
 }
 
@@ -216,7 +216,7 @@ func TestSaveLoadUnencrypted(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testSpenderID)
+	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testHolderID)
 	if err != nil {
 		t.Fatalf("NewUnencrypted failed: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestEncryptKeystore(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testSpenderID)
+	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testHolderID)
 	if err != nil {
 		t.Fatalf("NewUnencrypted failed: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestEncryptKeystoreAlreadyEncrypted(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := Encrypt(KeyTypeED25519, priv, pub, "pass", testSpenderID)
+	ks, err := Encrypt(KeyTypeED25519, priv, pub, "pass", testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestDecryptKeystore(t *testing.T) {
 	pub := priv.Public().(ed25519.PublicKey)
 	passphrase := "decrypt-test"
 
-	encrypted, err := Encrypt(KeyTypeED25519, priv, pub, passphrase, testSpenderID)
+	encrypted, err := Encrypt(KeyTypeED25519, priv, pub, passphrase, testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -316,8 +316,8 @@ func TestDecryptKeystore(t *testing.T) {
 	if decrypted.Crypto != nil {
 		t.Error("expected nil Crypto")
 	}
-	if decrypted.SpenderID != testSpenderID {
-		t.Errorf("expected SpenderID=%q, got %q", testSpenderID, decrypted.SpenderID)
+	if decrypted.HolderID != testHolderID {
+		t.Errorf("expected HolderID=%q, got %q", testHolderID, decrypted.HolderID)
 	}
 
 	got, err := decrypted.GetPrivateKey("")
@@ -334,7 +334,7 @@ func TestDecryptKeystoreNotEncrypted(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, _ := NewUnencrypted(KeyTypeED25519, priv, pub, testSpenderID)
+	ks, _ := NewUnencrypted(KeyTypeED25519, priv, pub, testHolderID)
 	_, err := DecryptKeystore(ks, "pass")
 	if err == nil {
 		t.Fatal("expected error when decrypting unencrypted keystore")
@@ -348,7 +348,7 @@ func TestIsKeystoreFile(t *testing.T) {
 	// Write a valid v2 keystore file
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
-	ks, _ := NewUnencrypted(KeyTypeED25519, priv, pub, testSpenderID)
+	ks, _ := NewUnencrypted(KeyTypeED25519, priv, pub, testHolderID)
 	ksPath := filepath.Join(dir, "test.key")
 	if err := ks.SaveToFile(ksPath); err != nil {
 		t.Fatalf("SaveToFile failed: %v", err)
@@ -376,7 +376,7 @@ func TestEmptyPassphrase(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	_, err := Encrypt(KeyTypeED25519, priv, pub, "", testSpenderID)
+	_, err := Encrypt(KeyTypeED25519, priv, pub, "", testHolderID)
 	if err == nil {
 		t.Fatal("expected error for empty passphrase")
 	}
@@ -387,7 +387,7 @@ func TestUnknownKeyTypeVerify(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := Encrypt(99, priv, pub, "passphrase", testSpenderID)
+	ks, err := Encrypt(99, priv, pub, "passphrase", testHolderID)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestDecryptOnUnencryptedErrors(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, _ := NewUnencrypted(KeyTypeED25519, priv, pub, testSpenderID)
+	ks, _ := NewUnencrypted(KeyTypeED25519, priv, pub, testHolderID)
 	_, err := ks.Decrypt("anything")
 	if err == nil {
 		t.Fatal("expected error when calling Decrypt on unencrypted keystore")
@@ -419,7 +419,7 @@ func TestHintPreserved(t *testing.T) {
 	priv := generateTestKey(t)
 	pub := priv.Public().(ed25519.PublicKey)
 
-	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testSpenderID)
+	ks, err := NewUnencrypted(KeyTypeED25519, priv, pub, testHolderID)
 	if err != nil {
 		t.Fatalf("NewUnencrypted failed: %v", err)
 	}

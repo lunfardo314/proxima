@@ -30,7 +30,7 @@ func runKeyEncryptCmd(cmd *cobra.Command, _ []string) {
 	glb.Assertf(!ks.IsEncrypted(), "key file '%s' is already encrypted", file)
 
 	glb.Infof("Key type: %s", keystore.KeyTypeName(ks.KeyType))
-	glb.Infof("Spender ID (hash of <type>+<public key>): %s", ks.SpenderID)
+	glb.Infof("Holder ID (hash of <type>+<public key>): %s", ks.HolderID)
 
 	passphrase := glb.ReadPassphraseConfirm()
 

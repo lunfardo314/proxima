@@ -134,7 +134,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	// tentative with maximum epochs, to check storage deposit
 	outDelegation := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 amount,
-		MasterID:               base.SpenderID(walletData.Account),
+		MasterID:               base.HolderID(walletData.Account),
 		Target:                 targetSeqID,
 		MaxFrozenEpochs:        byte(lib.MaxFrozenEpochs),
 		RequiredInflationShare: effShare,
@@ -144,7 +144,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 
 	outDelegation = ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 amount,
-		MasterID:               base.SpenderID(walletData.Account),
+		MasterID:               base.HolderID(walletData.Account),
 		Target:                 targetSeqID,
 		MaxFrozenEpochs:        maxFreezeEpochs,
 		RequiredInflationShare: effShare,
@@ -154,7 +154,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	delegationOutputIdx, err := txb.ProduceOutput(outDelegation)
 	glb.AssertNoError(err)
 
-	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.SpenderID(walletData.Account))
+	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.HolderID(walletData.Account))
 	_, err = txb.ProduceOutput(outTagAlong)
 	glb.AssertNoError(err)
 

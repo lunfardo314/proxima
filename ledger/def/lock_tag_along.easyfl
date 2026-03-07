@@ -5,7 +5,7 @@ func constTagAlongReclaimSlots : u64/390 // 5 min + 1 hour
 func selfInputSlotPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
 
 // $0 - target sequencer ID, like in the chainLock
-// $1 - spender ID (32 bytes, blake2b hash of <sig type>+<public key>)
+// $1 - holder ID (32 bytes, blake2b hash of <sig type>+<public key>)
 func tagAlong :
 or(
   and(
@@ -15,7 +15,7 @@ or(
 	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
      require(lessThan(selfNumConstraints, u64/5), !!!tag-along_lock_allows_no_more_than_4_constraints),
      require(
-        equal($1, txSpenderID(txSignatureData)),
+        equal($1, txHolderID(txSignatureData)),
         !!!sender_hash_check_failed
      ),
   	 selfEnforceZeroAmountsInNonChainedOutput

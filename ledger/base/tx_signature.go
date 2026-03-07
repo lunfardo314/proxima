@@ -12,13 +12,17 @@ import (
 )
 
 type (
+	// Signature represents is a generic representation of a cryptographic signature such as ED25519, BLS or similar
+	// One byte indicates type of the signature.
+	// It is assumed that SignatureBytes includes public key so that it can be retrieved to form a HolderID
 	Signature struct {
-		SignatureType  byte
 		SignatureBytes []byte
+		SignatureType  byte
 	}
 
-	// SpenderID is blake2b hash of <signature type>+<public key>
-	SpenderID [32]byte
+	// HolderID is blake2b hash of <signature type>+<public key>.
+	// Analogous to what in crypto is commonly called 'address'
+	HolderID [32]byte
 )
 
 const (
@@ -50,18 +54,18 @@ func SignatureFromBytes(data []byte) (*Signature, error) {
 func (s *Signature) String() string {
 	switch s.SignatureType {
 	case SignatureTypeED25519:
-		return fmt.Sprintf("ED25519, spender ID: %s, sig=%s",
-			s.SpenderIDHex(), easyfl_util.Fmt(s.MustSignatureDataED25519()))
+		return fmt.Sprintf("ED25519, holder ID: %s, sig=%s",
+			s.HolderIDHex(), easyfl_util.Fmt(s.MustSignatureDataED25519()))
 	default:
 		return fmt.Sprintf("unsupported signature type=%d, data=%x", s.SignatureType, s.SignatureBytes)
 	}
 }
 
-func SpenderIDFromPublicKey(sigType byte, pubKey ed25519.PublicKey) SpenderID {
+func HolderIDFromPublicKey(sigType byte, pubKey ed25519.PublicKey) HolderID {
 	return blake2b.Sum256(common.Concat(sigType, []byte(pubKey)))
 }
 
-func (s *Signature) SpenderID() SpenderID {
+func (s *Signature) HolderID() HolderID {
 	var publicKey []byte
 	switch s.SignatureType {
 	case SignatureTypeED25519:
@@ -69,11 +73,11 @@ func (s *Signature) SpenderID() SpenderID {
 	default:
 		panic(fmt.Errorf("unknown signature type %d", s.SignatureType))
 	}
-	return SpenderIDFromPublicKey(s.SignatureType, publicKey)
+	return HolderIDFromPublicKey(s.SignatureType, publicKey)
 }
 
-func (s *Signature) SpenderIDHex() string {
-	ret := s.SpenderID()
+func (s *Signature) HolderIDHex() string {
+	ret := s.HolderID()
 	return hex.EncodeToString(ret[:])
 }
 

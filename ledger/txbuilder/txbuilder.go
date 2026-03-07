@@ -664,7 +664,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	tagAlongFee := uint64(0)
 	var tagAlongOut *ledger.Output
 	if par.TagAlong != nil {
-		tagAlongOut = ledger.NewTagAlongOutput(par.TagAlong.Amount, par.TagAlong.SeqID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(par.SenderPrivateKey)))
+		tagAlongOut = ledger.NewTagAlongOutput(par.TagAlong.Amount, par.TagAlong.SeqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.SenderPrivateKey)))
 		tagAlongFee = par.TagAlong.Amount
 	}
 
@@ -802,7 +802,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	txb.PutUnlockParams(chainPredIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(chainOutIndex))
 
 	if par.TagAlongFee > 0 {
-		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, base.SpenderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
+		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
 		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
 			return nil, 0, nil, errP(err)
 		}
@@ -957,7 +957,7 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 type MakeDelegationInitTransactionParams struct {
 	Timestamp              base.LedgerTime
 	Amount                 uint64
-	MasterID               base.SpenderID
+	MasterID               base.HolderID
 	Target                 base.ChainID
 	MaxFrozenEpochs        byte
 	RequiredInflationShare uint16
@@ -968,7 +968,7 @@ type MakeDelegationInitTransactionParams struct {
 }
 
 func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]byte, error) {
-	if par.MasterID != base.SpenderID(ledger.SigLockFromED25519PrivateKey(par.MasterPrivateKey)) {
+	if par.MasterID != base.HolderID(ledger.SigLockFromED25519PrivateKey(par.MasterPrivateKey)) {
 		return nil, fmt.Errorf("MakeDelegationInitTransaction: private key does not match master address")
 	}
 	inputTotal, inps, err := filterInputs(par.Inputs, par.Amount+par.TagAlongFee, true)

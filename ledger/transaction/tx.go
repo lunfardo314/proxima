@@ -569,10 +569,10 @@ func (tx *Transaction) ProducedTotal(i byte) int64 {
 	return tx.producedAmountTotals[i]
 }
 
-func (tx *Transaction) SpenderID() (base.SpenderID, error) {
+func (tx *Transaction) HolderID() (base.HolderID, error) {
 	sig, err := tx.Signature()
 	if err != nil {
 		return [32]byte{}, err
 	}
-	return sig.SpenderID(), nil
+	return sig.HolderID(), nil
 }

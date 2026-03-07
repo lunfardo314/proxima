@@ -57,7 +57,7 @@ type Keystore struct {
 	Crypto     *CryptoData `json:"crypto,omitempty"`      // non-nil means encrypted
 	PrivateKey string      `json:"private_key,omitempty"` // hex-encoded, present when not encrypted
 	PublicKey  string      `json:"public_key"`
-	SpenderID   string      `json:"spender_id"`
+	HolderID   string      `json:"holder_id"`
 	Hint       string      `json:"hint,omitempty"` // optional passphrase hint for encrypted keystores
 }
 
@@ -75,7 +75,7 @@ func NewUnencrypted(keyType int, privateKey, pubkey []byte, senderID string) (*K
 		KeyType:    keyType,
 		PrivateKey: hex.EncodeToString(privateKey),
 		PublicKey:  hex.EncodeToString(pubkey),
-		SpenderID:  senderID,
+		HolderID:  senderID,
 	}, nil
 }
 
@@ -96,7 +96,7 @@ func Encrypt(keyType int, privateKey, pubkey []byte, passphrase, senderID string
 		KeyType:   keyType,
 		Crypto:    cryptoData,
 		PublicKey: hex.EncodeToString(pubkey),
-		SpenderID: senderID,
+		HolderID: senderID,
 	}, nil
 }
 
@@ -124,7 +124,7 @@ func EncryptKeystore(ks *Keystore, passphrase, hint string) (*Keystore, error) {
 		KeyType:   ks.KeyType,
 		Crypto:    cryptoData,
 		PublicKey: ks.PublicKey,
-		SpenderID: ks.SpenderID,
+		HolderID: ks.HolderID,
 		Hint:      hint,
 	}, nil
 }
@@ -145,7 +145,7 @@ func DecryptKeystore(ks *Keystore, passphrase string) (*Keystore, error) {
 		KeyType:    ks.KeyType,
 		PrivateKey: hex.EncodeToString(privBytes),
 		PublicKey:  ks.PublicKey,
-		SpenderID:  ks.SpenderID,
+		HolderID:  ks.HolderID,
 	}, nil
 }
 
@@ -187,13 +187,13 @@ func (ks *Keystore) IsEncrypted() bool {
 }
 
 // ReadPassphraseFile looks for a passphrase file in the current directory.
-// The passphrase file is named after the spender ID (hex, no extension).
+// The passphrase file is named after the holder ID (hex, no extension).
 // Returns the passphrase and true if found, or empty string and false if not.
 func (ks *Keystore) ReadPassphraseFile() (string, bool) {
-	if ks.SpenderID == "" {
+	if ks.HolderID == "" {
 		return "", false
 	}
-	data, err := os.ReadFile(ks.SpenderID)
+	data, err := os.ReadFile(ks.HolderID)
 	if err != nil {
 		return "", false
 	}

@@ -61,7 +61,7 @@ type (
 	TxSenders struct {
 		environment
 		*core_modules.CoreModule[input]
-		txSenders   map[base.SpenderID]*seenTimestamps
+		txSenders   map[base.HolderID]*seenTimestamps
 		checkSeq    bool
 		checkNonSeq bool
 		// metrics
@@ -96,7 +96,7 @@ func init() {
 func New(env environment) *TxSenders {
 	ret := &TxSenders{
 		environment: env,
-		txSenders:   make(map[base.SpenderID]*seenTimestamps),
+		txSenders:   make(map[base.HolderID]*seenTimestamps),
 	}
 	ret.CoreModule = core_modules.New[input](env, Name, ret.consume)
 	ret.CoreModule.Start()
@@ -135,9 +135,9 @@ func (q *TxSenders) consume(inp input) {
 	}
 	// new tx
 	// parse signature (no validation, it is done by tx.ValidatePartialContext())
-	spenderID, err := inp.Tx.SpenderID()
+	holderID, err := inp.Tx.HolderID()
 	if err != nil {
-		txLogMsg := fmt.Sprintf("IGNORED: cannot parse spender ID: %v", err)
+		txLogMsg := fmt.Sprintf("IGNORED: cannot parse holder ID: %v", err)
 		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
 		q.Log().Warnf("tx %s: %s -> IGNORED", inp.Tx.IDShortString(), txLogMsg)
@@ -148,18 +148,18 @@ func (q *TxSenders) consume(inp input) {
 		q.attachAndGossip(&inp)
 		return
 	}
-	seen := q.txSenders[spenderID]
+	seen := q.txSenders[holderID]
 	if seen == nil {
-		if !q.isSpenderKnownInLRB(spenderID) {
+		if !q.isHolderKnownInLRB(holderID) {
 			// sender account not known -> ignore tx
-			txLogMsg := fmt.Sprintf("IGNORED: tx sender %s is not known in LRB", ledger.SigLock(spenderID).String())
+			txLogMsg := fmt.Sprintf("IGNORED: tx sender %s is not known in LRB", ledger.SigLock(holderID).String())
 			q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
 			q.Log().Warnf("tx %s: %s -> IGNORED", inp.Tx.IDShortString(), txLogMsg)
 			return
 		}
 		seen = &seenTimestamps{}
-		q.txSenders[spenderID] = seen
+		q.txSenders[holderID] = seen
 	}
 
 	var pass bool
@@ -170,9 +170,9 @@ func (q *TxSenders) consume(inp input) {
 	} else {
 		pass = !q.checkNonSeq || seen.nonSequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPace))
 	}
-	q.txSenders[spenderID] = seen
+	q.txSenders[holderID] = seen
 	if !pass {
-		txLogMsg := fmt.Sprintf("IGNORED: timestamp is too close to another tx from the same sender %s", ledger.SigLock(spenderID).String())
+		txLogMsg := fmt.Sprintf("IGNORED: timestamp is too close to another tx from the same sender %s", ledger.SigLock(holderID).String())
 		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
 		q.Log().Warnf("tx %s: %s-> IGNORED", inp.Tx.IDShortString(), txLogMsg)
@@ -203,7 +203,7 @@ func (q *TxSenders) attachAndGossip(inp *input) {
 	q.gossipedCounter.Inc()
 }
 
-func (q *TxSenders) isSpenderKnownInLRB(acc base.SpenderID) (ret bool) {
+func (q *TxSenders) isHolderKnownInLRB(acc base.HolderID) (ret bool) {
 	if lrb := q.GetLatestReliableBranch(); lrb != nil {
 		rdr := q.Branches().GetStateReaderForTheBranch(lrb.TxID())
 		ret = rdr.IsKnownController(ledger.SigLock(acc).ControllerID())
@@ -221,7 +221,7 @@ func (q *TxSenders) cleanup() {
 	if nowTicks < cleanupHorizonTicks {
 		return
 	}
-	maps.DeleteFunc(q.txSenders, func(_ base.SpenderID, timestamps *seenTimestamps) bool {
+	maps.DeleteFunc(q.txSenders, func(_ base.HolderID, timestamps *seenTimestamps) bool {
 		return timestamps.sequencer.lastestTicksSinceGenesis() < nowTicks-cleanupHorizonTicks &&
 			timestamps.nonSequencer.lastestTicksSinceGenesis() < nowTicks-cleanupHorizonTicks
 	})

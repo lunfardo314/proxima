@@ -34,7 +34,7 @@ type (
 		MustInputAt(idx byte) base.OutputID
 		OutputID(idx byte) base.OutputID
 		SequencerTransactionData() *SequencerTransactionData
-		SpenderID() (base.SpenderID, error)
+		HolderID() (base.HolderID, error)
 		UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
 		GetLibrary() *Library
 	}

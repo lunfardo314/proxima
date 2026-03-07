@@ -50,7 +50,7 @@ Expected: creates `proxima.key` with `"private_key"` field visible in JSON.
 ```bash
 proxi util key info --file proxima.key
 ```
-Expected: displays key type (ED25519), spender ID, public key.
+Expected: displays key type (ED25519), holder ID, public key.
 
 ### 1.5 Encrypt the key
 
@@ -64,7 +64,7 @@ Expected: prompts for passphrase twice, overwrites `proxima.key` with `"crypto"`
 ```bash
 proxi util key info --file proxima.key
 ```
-Expected: shows encrypted status, hint, spender ID, public key. No private key displayed.
+Expected: shows encrypted status, hint, holder ID, public key. No private key displayed.
 
 ### 1.7 Initialize wallet profile
 
@@ -134,7 +134,7 @@ Wait ~30 seconds for the sequencer to produce a few branches before running comm
 
 All commands below are run from the working directory in Terminal 2.
 If the key is encrypted, either set `PROXIMA_KEY_PASSPHRASE=<passphrase>` or create
-a passphrase file named after the spender ID (hex, no extension) in the working directory.
+a passphrase file named after the holder ID (hex, no extension) in the working directory.
 
 ### 3.1 Node info
 
@@ -492,7 +492,7 @@ If rebuilding while the node is running, stop the node first (`pkill proxima`) â
 
 - Key generation (`proxi util key generate`) requires an interactive terminal for entropy input. It will fail with a clear error if stdin is not a TTY.
 - Key encryption (`proxi util key encrypt`) also requires a TTY for passphrase prompts.
-- For CLI commands against a running node with encrypted keys, set `PROXIMA_KEY_PASSPHRASE=<passphrase>` in the environment, or create a passphrase file named after the spender ID (hex, no extension) in the working directory.
+- For CLI commands against a running node with encrypted keys, set `PROXIMA_KEY_PASSPHRASE=<passphrase>` in the environment, or create a passphrase file named after the holder ID (hex, no extension) in the working directory.
 - For the node process itself, `run_proxima.sh` handles passphrase prompting and sets `SEQUENCER_KEY_PASSPHRASE` env var.
 
 ### Timing

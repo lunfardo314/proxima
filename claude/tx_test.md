@@ -88,7 +88,7 @@ The task is incremental, the list to be expanded in the future.
    - `validate.go:validateOutputs()` line 160 — "mismatch between token amounts" (fires first)
    - `validate.go:ValidateFullContext()` line 95 — "unbalanced amount" (backup check)
 2. **Single token precision**: Even a ±1 token difference triggers rejection
-3. **sigLock constraint** (`lock_signature.easyfl`): `equal($0, txSpenderID(txSignatureData))` ensures only the private key holder can spend
+3. **sigLock constraint** (`lock_signature.easyfl`): `equal($0, txHolderID(txSignatureData))` ensures only the private key holder can spend
 4. **Unlock reference security**: `unlockedByReference` requires `equal(self, consumedConstraintByIndex($0, lockConstraintIndex))` — byte-for-byte identical lock. Cross-address references are impossible.
 5. **Replay protection**: Consumed UTXOs are removed from state immediately. Replaying a settled transaction fails at `SetFullContext` because inputs no longer exist.
 
@@ -213,7 +213,7 @@ Endorsement analysis: [claude/endorsement.md](endorsement.md).
 
 | # | Test | Validation Stage | Topic |
 |---|------|-----------------|-------|
-| 1 | `TestClaudeTagAlongSpoofedSenderID` | Full context (EasyFL) | Third party creates tag-along with victim's SpenderID |
+| 1 | `TestClaudeTagAlongSpoofedSenderID` | Full context (EasyFL) | Third party creates tag-along with victim's HolderID |
 | 2 | `TestClaudeTagAlongWrongSequencerConsumes` | Full context (EasyFL) | Chain B tries to consume tag-along targeted at chain A |
 | 3 | `TestClaudeTagAlongManipulatedUnlockParams/wrong_chain_constraint_index` | Full context (EasyFL) | Wrong constraint index in chain lock unlock params |
 | 4 | `TestClaudeTagAlongManipulatedUnlockParams/self-referencing_unlock_params` | Full context (EasyFL) | Tag-along unlock params reference self output |
@@ -225,7 +225,7 @@ Endorsement analysis: [claude/endorsement.md](endorsement.md).
 
 **Key findings:**
 
-1. **Sender ID is cryptographically bound at production**: EasyFL `equal($1, txSpenderID(txSignatureData))`
+1. **Sender ID is cryptographically bound at production**: EasyFL `equal($1, txHolderID(txSignatureData))`
    prevents anyone from creating a tag-along claiming another party's sender ID. This is critical
    because the sender ID controls who can reclaim in the reclaim window.
 2. **Cross-chain theft impossible**: `chainLock($0)` on consumption validates that the referenced
@@ -265,7 +265,7 @@ Endorsement analysis: [claude/endorsement.md](endorsement.md).
 **Key findings:**
 
 1. **Master unlock requires sigLock(masterID)**: The EasyFL `_masterUnlockedConsumed` wraps the raw
-   SpenderID with `sigLock($0)` and verifies against the transaction signer. A third party cannot
+   HolderID with `sigLock($0)` and verifies against the transaction signer. A third party cannot
    impersonate the master even with master unlock byte (0xff).
 2. **Target cannot reduce amount**: `lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor)`
    prevents any decrease in delegated token balance.
@@ -303,7 +303,7 @@ Endorsement analysis: [claude/endorsement.md](endorsement.md).
 **Key findings:**
 
 1. **sigLock defense-in-depth**: sigLock has an `or` clause — either `unlockedByReference` OR
-   `equal($0, txSpenderID)`. When signed by the correct key, signature always succeeds as fallback.
+   `equal($0, txHolderID)`. When signed by the correct key, signature always succeeds as fallback.
    The `lessThan` ordering check in `unlockedByReference` is defense-in-depth; the byte-exact
    `equal(self, consumedConstraintByIndex($0, lockConstraintIndex))` is the primary protection
    against cross-lock reference attacks.

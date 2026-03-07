@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-type SigLock base.SpenderID
+type SigLock base.HolderID
 
 const (
 	SigLockName     = "a"
@@ -57,7 +57,7 @@ func SigLockFromSource(src string) (SigLock, error) {
 }
 
 func SigLockFromED25519PublicKey(pubKey ed25519.PublicKey) SigLock {
-	return SigLock(base.SpenderIDFromPublicKey(base.SignatureTypeED25519, pubKey))
+	return SigLock(base.HolderIDFromPublicKey(base.SignatureTypeED25519, pubKey))
 }
 
 func SigLockFromED25519PrivateKey(privateKey ed25519.PrivateKey) SigLock {

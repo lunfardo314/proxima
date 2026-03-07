@@ -559,7 +559,7 @@ func TestChainTransitionFromNonOrigin(t *testing.T) {
 //
 // ChainLock (short name "c") is a lock type that restricts output unlocking
 // to whoever controls a specific chain. To spend a chain-locked output,
-// the spender must consume the chain output in the same transaction and
+// the holder must consume the chain output in the same transaction and
 // reference it in the unlock params.
 //
 // All tests assume inflation = 0.

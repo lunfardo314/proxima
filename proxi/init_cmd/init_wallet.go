@@ -45,18 +45,18 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 	glb.Assertf(!glb.FileExists(profileFname), "file %s already exists", profileFname)
 
 	keyFile := keystore.DefaultKeyFile
-	var spenderID string
+	var holderID string
 
 	// Check if a .key file already exists
 	if glb.FileExists(keyFile) {
 		if glb.YesNoPrompt("Found existing key file '"+keyFile+"'. Use it?", true) {
 			ks, err := keystore.LoadFromFile(keyFile)
 			glb.AssertNoError(err)
-			spenderID = ks.SpenderID
-			if spenderID == "" {
-				glb.Infof("Key file has no spender_id. Deriving from public key.")
+			holderID = ks.HolderID
+			if holderID == "" {
+				glb.Infof("Key file has no holder_id. Deriving from public key.")
 				// For v1 keystores, derive from public key if possible
-				spenderID = deriveSpenderIDFromKeystore(ks)
+				holderID = deriveHolderIDFromKeystore(ks)
 			}
 			glb.Infof("Using existing key file '%s'", keyFile)
 		} else {
@@ -68,10 +68,10 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 		privateKey := glb.AskEntropyGenEd25519PrivateKey(
 			"We need some entropy for the private key of the account.\nPlease enter at least 10 seed symbols as randomly as possible and press ENTER:", 10)
 		publicKey := privateKey.Public().(ed25519.PublicKey)
-		sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
-		spenderID = hex.EncodeToString(sid[:])
+		sid := base.HolderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
+		holderID = hex.EncodeToString(sid[:])
 
-		ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, spenderID)
+		ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, holderID)
 		glb.AssertNoError(err)
 
 		// Offer encryption
@@ -94,12 +94,12 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 
 	data := struct {
 		KeyFile        string
-		SpenderID      string
+		HolderID      string
 		BootstrapSeqID string
 		IncludeSpammer bool
 	}{
 		KeyFile:        keyFile,
-		SpenderID:      spenderID,
+		HolderID:      holderID,
 		BootstrapSeqID: ledger.BoostrapSequencerIDHex,
 		IncludeSpammer: includeSpammer,
 	}
@@ -109,12 +109,12 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 
 	err = os.WriteFile(profileFname, buf.Bytes(), 0600)
 	glb.AssertNoError(err)
-	glb.Infof("proxi profile '%s' has been created successfully.\nSpender ID (hash of <type>+<public key>): %s", profileFname, spenderID)
+	glb.Infof("proxi profile '%s' has been created successfully.\nHolder ID (hash of <type>+<public key>): %s", profileFname, holderID)
 }
 
-// deriveSpenderIDFromKeystore derives the spender ID from the public key stored in the keystore.
+// deriveHolderIDFromKeystore derives the holder ID from the public key stored in the keystore.
 // Works for ED25519 key types when the keystore has a valid public key field.
-func deriveSpenderIDFromKeystore(ks *keystore.Keystore) string {
+func deriveHolderIDFromKeystore(ks *keystore.Keystore) string {
 	if ks.KeyType != keystore.KeyTypeED25519 {
 		return ""
 	}
@@ -122,6 +122,6 @@ func deriveSpenderIDFromKeystore(ks *keystore.Keystore) string {
 	if err != nil {
 		return ""
 	}
-	sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, pubBytes)
+	sid := base.HolderIDFromPublicKey(base.SignatureTypeED25519, pubBytes)
 	return hex.EncodeToString(sid[:])
 }

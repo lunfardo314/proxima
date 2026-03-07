@@ -12,7 +12,7 @@ package tests
 //   - Lock must be at constraint index 1
 //   - Target chain ID must be non-zero and 32 bytes
 //   - Max 4 constraints per tag-along output
-//   - Sender ID must equal the transaction signer: $1 == txSpenderID(txSignatureData)
+//   - Sender ID must equal the transaction signer: $1 == txHolderID(txSignatureData)
 
 import (
 	"crypto/ed25519"
@@ -80,7 +80,7 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	taOutput := ledger.NewTagAlongOutput(taFee, env.targetChainID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(env.privKeySender)))
+	taOutput := ledger.NewTagAlongOutput(taFee, env.targetChainID, base.HolderID(ledger.SigLockFromED25519PrivateKey(env.privKeySender)))
 	env.tagAlongOutIdx, err = txb.ProduceOutput(taOutput)
 	require.NoError(t, err)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -101,8 +101,8 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 }
 
 // TestClaudeTagAlongSpoofedSenderID verifies that a third party cannot create a
-// tag-along output claiming someone else's SpenderID. The EasyFL constraint checks
-// $1 == txSpenderID(txSignatureData) on production, so the encoded sender must match
+// tag-along output claiming someone else's HolderID. The EasyFL constraint checks
+// $1 == txHolderID(txSignatureData) on production, so the encoded sender must match
 // the actual transaction signer. This prevents an attacker from creating a tag-along
 // with a victim's sender ID to confuse the sequencer about who can reclaim.
 func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
@@ -120,7 +120,7 @@ func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
 	seqOrigin, err := u.MakeNewChain(taChainAmount, privKeyTarget, addrTarget, targetOuts[0].ID.Timestamp().AddSlots(1))
 	require.NoError(t, err)
 
-	// Alice signs a tx but puts Bob's SpenderID as the sender
+	// Alice signs a tx but puts Bob's HolderID as the sender
 	txb := txbuilder.New()
 	outs, err := u.SugaredStateReader().GetOutputsForAccount(addrAlice.ControllerID())
 	require.NoError(t, err)
@@ -128,8 +128,8 @@ func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	// use Bob's SpenderID as sender while Alice signs
-	bobSenderID := base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeyBob))
+	// use Bob's HolderID as sender while Alice signs
+	bobSenderID := base.HolderID(ledger.SigLockFromED25519PrivateKey(privKeyBob))
 	taOutput := ledger.NewTagAlongOutput(taFee, seqOrigin.ChainID, bobSenderID)
 	_, err = txb.ProduceOutput(taOutput)
 	require.NoError(t, err)
@@ -182,7 +182,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	taOutput := ledger.NewTagAlongOutput(taFee, chainIDA, base.SpenderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
+	taOutput := ledger.NewTagAlongOutput(taFee, chainIDA, base.HolderID(ledger.SigLockFromED25519PrivateKey(privKeySender)))
 	_, err = txb.ProduceOutput(taOutput)
 	require.NoError(t, err)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -398,9 +398,9 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 }
 
 // TestClaudeTagAlongSenderHashForgeryOnReclaim verifies that during the reclaim
-// window, only the actual sender (whose SpenderID was embedded at production time)
+// window, only the actual sender (whose HolderID was embedded at production time)
 // can reclaim. A third party cannot forge the sender's identity because sigLock($1)
-// requires the transaction signature to match the stored SpenderID.
+// requires the transaction signature to match the stored HolderID.
 func TestClaudeTagAlongSenderHashForgeryOnReclaim(t *testing.T) {
 	env := setupTagAlongEnv(t)
 	taOuts := env.u.SugaredStateReader().GetTagAlongBacklog(env.targetChainID)
@@ -445,7 +445,7 @@ func TestClaudeTagAlongSenderHashForgeryOnReclaim(t *testing.T) {
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 	txb.SignED25519(env.privKeyRandom)
 	_, _, _, err = txb.BytesWithValidation()
-	// random party signed, but sigLock($1) checks against sender's SpenderID -> mismatch
+	// random party signed, but sigLock($1) checks against sender's HolderID -> mismatch
 	require.Error(t, err, "random party should not be able to reclaim in reclaim window")
 	require.NoError(t, util.MustErrorWith(err, "inside reclaim slots must be unlocked by the sender"))
 }

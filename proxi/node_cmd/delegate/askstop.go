@@ -45,7 +45,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 		glb.Infof("delegation output:\n%s", out.String())
 	}
 
-	glb.Assertf(dOut.MasterID == base.SpenderID(walletData.Account), "this wallet is not a master controller of the delegation %s", delegationID.String())
+	glb.Assertf(dOut.MasterID == base.HolderID(walletData.Account), "this wallet is not a master controller of the delegation %s", delegationID.String())
 
 	targetID := dOut.Target
 	glb.Infof("delegation target ID: %s", targetID.String())

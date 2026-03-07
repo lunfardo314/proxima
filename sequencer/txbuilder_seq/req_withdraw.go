@@ -32,7 +32,7 @@ func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		return
 	}
 	// check authorisation
-	ownSenderID := base.SpenderIDFromPublicKey(txb.signatureType, txb.publicKey)
+	ownSenderID := base.HolderIDFromPublicKey(txb.signatureType, txb.publicKey)
 	if o.SenderID != ownSenderID {
 		// wrong sender -> may be an attack
 		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: sender can't withdraw funds from the sequencer (authorisation failure)")
@@ -65,7 +65,7 @@ func NewWithdrawRequestOutput(withdrawFromChain base.ChainID, sender ledger.SigL
 		o.WithTokenBalance(fee)
 		o.WithLock(&ledger.TagAlongLock{
 			TargetSequencerID: withdrawFromChain,
-			SenderID:          base.SpenderID(sender),
+			SenderID:          base.HolderID(sender),
 		})
 		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
 	})

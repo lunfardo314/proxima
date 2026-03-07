@@ -13,7 +13,7 @@ import (
 
 type TagAlongLock struct {
 	TargetSequencerID base.ChainID
-	SenderID          base.SpenderID
+	SenderID          base.HolderID
 }
 
 const (
@@ -43,10 +43,10 @@ func TagAlongLockFromBytesWithLib(data []byte, lib *Library) (*TagAlongLock, err
 	}
 
 	senderIDbin := easyfl.StripDataPrefix(args[1])
-	if len(senderIDbin) != len(base.SpenderID{}) {
+	if len(senderIDbin) != len(base.HolderID{}) {
 		return nil, fmt.Errorf("wrong sender ID size in TagAlongLock")
 	}
-	var senderID base.SpenderID
+	var senderID base.HolderID
 	copy(senderID[:], senderIDbin)
 
 	return &TagAlongLock{
@@ -83,7 +83,7 @@ func (t *TagAlongLock) AsLock() Lock {
 	return t
 }
 
-func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderID base.SpenderID) *Output {
+func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderID base.HolderID) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithTokenBalance(fee)
 		o.WithLock(&TagAlongLock{
@@ -118,7 +118,7 @@ func registerTagAlongLockConstraint(lib *Library) {
 func init() {
 	registerInlineTest(func(lib *Library) {
 		chainID := base.RandomChainID()
-		senderID := base.SpenderID(SigLockRandom())
+		senderID := base.HolderID(SigLockRandom())
 		example := &TagAlongLock{
 			TargetSequencerID: chainID,
 			SenderID:          senderID,

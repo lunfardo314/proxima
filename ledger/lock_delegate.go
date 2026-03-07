@@ -17,7 +17,7 @@ import (
 type (
 	DelegateLock struct {
 		Target                 base.ChainID
-		MasterID               base.SpenderID
+		MasterID               base.HolderID
 		MaxFrozenEpochs        byte
 		RequiredInflationShare uint16 // in promille, <= 1000
 	}
@@ -51,7 +51,7 @@ var delegateLockSource string
 
 //------------ DelegateLock
 
-func NewDelegateLock(targetChainID base.ChainID, masterID base.SpenderID, maxFrozenEpochs byte, requiredInflationShare uint16) *DelegateLock {
+func NewDelegateLock(targetChainID base.ChainID, masterID base.HolderID, maxFrozenEpochs byte, requiredInflationShare uint16) *DelegateLock {
 	return &DelegateLock{
 		Target:                 targetChainID,
 		MasterID:               masterID,
@@ -100,9 +100,9 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 	if err != nil {
 		return nil, fmt.Errorf("DelegateLockFromBytes: wrong target chain ID: %w", err)
 	}
-	// master spender ID (raw 32 bytes)
+	// master holder ID (raw 32 bytes)
 	masterIDbin := easyfl.StripDataPrefix(args[1])
-	if len(masterIDbin) != len(base.SpenderID{}) {
+	if len(masterIDbin) != len(base.HolderID{}) {
 		return nil, fmt.Errorf("DelegateLockFromBytes: wrong master ID size")
 	}
 	copy(ret.MasterID[:], masterIDbin)
@@ -203,7 +203,7 @@ func (d DelegateLockState) Name() string {
 func init() {
 	registerInlineTest(func(lib *Library) {
 		targetChainID := base.RandomChainID()
-		masterID := base.SpenderID(SigLockRandom())
+		masterID := base.HolderID(SigLockRandom())
 		example := NewDelegateLock(targetChainID, masterID, 3, 10)
 
 		exampleBack, err := DelegateLockFromBytesWithLib(example.Bytes(), lib)

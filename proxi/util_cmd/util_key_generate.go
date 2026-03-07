@@ -34,10 +34,10 @@ func runKeyGenerateCmd(cmd *cobra.Command, _ []string) {
 	privateKey := glb.AskEntropyGenEd25519PrivateKey(
 		"Please enter at least 10 random seed symbols and press ENTER:", 10)
 	publicKey := privateKey.Public().(ed25519.PublicKey)
-	sid := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
-	spenderID := hex.EncodeToString(sid[:])
+	sid := base.HolderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
+	holderID := hex.EncodeToString(sid[:])
 
-	ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, spenderID)
+	ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, privateKey, publicKey, holderID)
 	glb.AssertNoError(err)
 
 	if encrypt {
@@ -51,5 +51,5 @@ func runKeyGenerateCmd(cmd *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("Key saved to '%s'", outputFile)
-	glb.Infof("Spender ID (hash of <type>+<public key>): %s", spenderID)
+	glb.Infof("Holder ID (hash of <type>+<public key>): %s", holderID)
 }

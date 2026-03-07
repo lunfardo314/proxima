@@ -21,7 +21,7 @@ type (
 
 	MakeDelegateInitOutputParams struct {
 		Amount                 uint64
-		MasterID               base.SpenderID
+		MasterID               base.HolderID
 		Target                 base.ChainID
 		MaxFrozenEpochs        byte
 		RequiredInflationShare uint16

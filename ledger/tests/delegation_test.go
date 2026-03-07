@@ -81,7 +81,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 		return nil, err
 	}
 
-	delegationLock := ledger.NewDelegateLock(td.target, base.SpenderID(td.masterAddr), maxFrozenEpochs, inflationShare)
+	delegationLock := ledger.NewDelegateLock(td.target, base.HolderID(td.masterAddr), maxFrozenEpochs, inflationShare)
 	s := ledger.DelegateLockStateUndef
 	if revoked {
 		s = ledger.DelegateLockStateOnHold
@@ -148,7 +148,7 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFrozenEpochs b
 	txBytes, err := txbuilder.MakeDelegationInitTransaction(txbuilder.MakeDelegationInitTransactionParams{
 		Timestamp:              ts,
 		Amount:                 delegatedTokens,
-		MasterID:               base.SpenderID(td.masterAddr),
+		MasterID:               base.HolderID(td.masterAddr),
 		Target:                 td.target,
 		MaxFrozenEpochs:        maxFrozenEpochs,
 		RequiredInflationShare: inflationShare,
@@ -359,7 +359,7 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(tagAlongFee).WithLock(ledger.ChainLockFromChainID(base.RandomChainID()))
 	}))
-	_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(tagAlongFee, base.RandomChainID(), base.SpenderID(td.masterAddr)))
+	_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(tagAlongFee, base.RandomChainID(), base.HolderID(td.masterAddr)))
 	require.NoError(td, err)
 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)

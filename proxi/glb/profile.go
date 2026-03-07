@@ -29,13 +29,13 @@ func GetWalletData() (ret WalletData) {
 	ret.Account = ledger.SigLockFromED25519PrivateKey(ret.PrivateKey)
 	ret.Sequencer = GetOwnSequencerID()
 
-	// Consistency check: if wallet config has spender_id, it must match the key file
-	configSpenderID := viper.GetString("wallet.spender_id")
-	if configSpenderID != "" {
-		derived := base.SpenderIDFromPublicKey(base.SignatureTypeED25519, ret.PrivateKey.Public().(ed25519.PublicKey))
+	// Consistency check: if wallet config has holder_id, it must match the key file
+	configHolderID := viper.GetString("wallet.holder_id")
+	if configHolderID != "" {
+		derived := base.HolderIDFromPublicKey(base.SignatureTypeED25519, ret.PrivateKey.Public().(ed25519.PublicKey))
 		derivedHex := hex.EncodeToString(derived[:])
-		Assertf(configSpenderID == derivedHex,
-			"spender_id mismatch: wallet config has '%s', key file derives '%s'", configSpenderID, derivedHex)
+		Assertf(configHolderID == derivedHex,
+			"holder_id mismatch: wallet config has '%s', key file derives '%s'", configHolderID, derivedHex)
 	}
 	return
 }

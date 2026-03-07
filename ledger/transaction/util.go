@@ -46,7 +46,7 @@ func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 	ret.Add("id: %s", tx.IDString())
 	sig, err := tx.Signature()
 	util.AssertNoError(err)
-	ret.Add("Spender ID: %s", sig.SpenderIDHex())
+	ret.Add("Holder ID: %s", sig.HolderIDHex())
 	ret.Add("Total: %s", util.Th(tx.TotalAmount()))
 	ret.Add("Inflation: %s", util.Th(tx.InflationAmount()))
 	if tx.IsSequencerTransaction() {

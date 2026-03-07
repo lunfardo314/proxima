@@ -37,7 +37,7 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 	util.AssertNoError(err)
 
 	if feeAmount > 0 {
-		tagAlongFeeOut := ledger.NewTagAlongOutput(feeAmount, par.TagAlongSeqID, base.SpenderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
+		tagAlongFeeOut := ledger.NewTagAlongOutput(feeAmount, par.TagAlongSeqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
 		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
 			return nil, err
 		}

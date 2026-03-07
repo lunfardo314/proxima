@@ -40,8 +40,8 @@ func runKeyInfoCmd(cmd *cobra.Command, _ []string) {
 		glb.Infof("Hint: %s", ks.Hint)
 	}
 	glb.Infof("Public key: %s", ks.PublicKey)
-	if ks.SpenderID != "" {
-		glb.Infof("Spender ID (hash of <type>+<public key>): %s", ks.SpenderID)
+	if ks.HolderID != "" {
+		glb.Infof("Holder ID (hash of <type>+<public key>): %s", ks.HolderID)
 	}
 
 	if verify {

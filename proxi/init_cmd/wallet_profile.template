@@ -5,7 +5,7 @@ default_sequencer_id: {{.BootstrapSeqID}}
 
 wallet:
     key_file: {{.KeyFile}}
-    spender_id: {{.SpenderID}}
+    holder_id: {{.HolderID}}
     # sequencer_id is the sequencer ID controlled by the private key of the wallet.
     # The controller wallet can withdraw tokens from the sequencer chain with command 'proxi node seq withdraw'
     # Default is the bootstrap sequencer ID; change if you control a different sequencer

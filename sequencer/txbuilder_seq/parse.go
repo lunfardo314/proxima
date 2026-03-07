@@ -11,7 +11,7 @@ import (
 type (
 	preParsedTagAlongOutput struct {
 		ledger.TagAlongOutput
-		SenderID      base.SpenderID
+		SenderID      base.HolderID
 		RequestCode   byte
 		RequestParams *base.SmallPersistentMap
 	}

@@ -188,7 +188,7 @@ functions:
     description: "$0 must be txID (the message), $1 must be signatureData (<sig type byte>+<signature proper>+<public key>). Checks validity of the signature depending on the type"
     source: "validSignatureED25519($0, signatureProper($1), signaturePublicKey($1))"
   -
-    sym: txSpenderID
+    sym: txHolderID
     description: "$0 must be signatureData. returns blake2b hash of <sig type byte>+<public key>"
     numArgs: 1
     source: "blake2b(concat(byte($0,0), signaturePublicKey($0)))"

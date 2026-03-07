@@ -91,7 +91,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 
 	delegOut := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 cdelegTokens,
-		MasterID:               base.SpenderID(env.masterAddr),
+		MasterID:               base.HolderID(env.masterAddr),
 		Target:                 env.target,
 		MaxFrozenEpochs:        maxFrozenEpochs,
 		RequiredInflationShare: inflationShare,
@@ -278,7 +278,7 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce delegation successor with MODIFIED lock (different master)
-	attackerMasterID := base.SpenderID(ledger.SigLockFromED25519PrivateKey(env.seqPrivateKey))
+	attackerMasterID := base.HolderID(ledger.SigLockFromED25519PrivateKey(env.seqPrivateKey))
 	tamperedLock := ledger.NewDelegateLock(env.target, attackerMasterID, 4, 0)
 	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, 0, 0, env.delegatedOutput.TransitionCounter+1, 0)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -375,7 +375,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	txb.PutSignatureUnlock(0)
 
 	// manually build delegation origin with frozen state (bypassing helper)
-	delegLock := ledger.NewDelegateLock(target, base.SpenderID(masterAddr), 4, 0)
+	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0)
 	frozenOrigin := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(cdelegTokens))
 		o.WithLock(delegLock)
@@ -445,7 +445,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	delegLock := ledger.NewDelegateLock(target, base.SpenderID(masterAddr), 4, 0)
+	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0)
 	// build delegation with extra constraint (5 total)
 	delegWithExtra := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(cdelegTokens))
@@ -595,7 +595,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 
 	delegOut := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 cdelegTokens,
-		MasterID:               base.SpenderID(masterAddr),
+		MasterID:               base.HolderID(masterAddr),
 		Target:                 target,
 		MaxFrozenEpochs:        4,
 		RequiredInflationShare: 1001, // above max

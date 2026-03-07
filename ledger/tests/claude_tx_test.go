@@ -875,12 +875,12 @@ func TestTxAmountMultipleOutputsExcess(t *testing.T) {
 // --------------------------------------------------------------------------
 //
 // The sigLock constraint (lock_signature.easyfl) enforces on consumed outputs:
-//   equal($0, txSpenderID(txSignatureData))
-// where $0 is the spender ID stored in the lock (blake2b of sigType+pubKey),
-// and txSpenderID is derived from the transaction signature's public key.
+//   equal($0, txHolderID(txSignatureData))
+// where $0 is the holder ID stored in the lock (blake2b of sigType+pubKey),
+// and txHolderID is derived from the transaction signature's public key.
 //
 // Only the holder of the matching private key can produce a valid signature
-// whose spender ID matches the lock. The unlock-by-reference mechanism
+// whose holder ID matches the lock. The unlock-by-reference mechanism
 // requires byte-for-byte identical lock constraints with strictly smaller index.
 
 // TestTxTheftSpendWithWrongKey proves that an attacker cannot spend someone
@@ -889,7 +889,7 @@ func TestTxAmountMultipleOutputsExcess(t *testing.T) {
 // Attack scenario: Alice has tokens locked to her address. Bob creates a
 // transaction consuming Alice's UTXO and signs with Bob's private key.
 // The sigLock constraint on Alice's consumed output checks that the
-// transaction's spender ID matches Alice's address — Bob's ID won't match.
+// transaction's holder ID matches Alice's address — Bob's ID won't match.
 func TestTxTheftSpendWithWrongKey(t *testing.T) {
 	const initAmount = 1_000_000_000
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
@@ -922,7 +922,7 @@ func TestTxTheftSpendWithWrongKey(t *testing.T) {
 	txBytes := buildAndSignTx(txb, maxTs, bobPrivKey)
 
 	// Validation must reject: sigLock on Alice's consumed output checks
-	// equal($0=Alice_spender_ID, txSpenderID=Bob_spender_ID) → false
+	// equal($0=Alice_holder_ID, txHolderID=Bob_holder_ID) → false
 	err = validateFull(txBytes, txb)
 	require.Error(t, err, "spending with wrong private key must be rejected")
 	// The sigLock constraint (named 'a') on the consumed output fails
@@ -980,7 +980,7 @@ func TestTxTheftUnlockReferenceDifferentLock(t *testing.T) {
 	// Validation must reject: on input 1 (Alice's output), the unlock reference
 	// checks equal(self=AliceLock, consumedConstraintByIndex(0, lockIdx)=BobLock)
 	// Alice's sigLock bytes ≠ Bob's sigLock bytes → reference fails.
-	// Direct signature check also fails: Alice's spender ID ≠ Bob's spender ID.
+	// Direct signature check also fails: Alice's holder ID ≠ Bob's holder ID.
 	err = validateFull(txBytes, txb)
 	require.Error(t, err, "unlock reference with different lock must be rejected")
 	require.NoError(t, util.MustErrorWith(err, "failed"))
