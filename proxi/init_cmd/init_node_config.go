@@ -96,7 +96,7 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 		MaxDynamicPeers:  defaultMaxDynamicPeers,
 		IncludeTrace:     includeTrace,
 		IncludeSequencer: includeSeq || includeBoot,
-		SeqName:          "<mandatory name>",
+		SeqName:          "",
 		SeqEnable:        "false",
 		SeqChainID:       "<sequencer id hex encoded>",
 	}

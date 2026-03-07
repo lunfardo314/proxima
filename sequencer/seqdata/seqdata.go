@@ -11,12 +11,13 @@ import (
 // SequencerData holds sequencer configuration metadata stored in sequencer outputs.
 // Serialized as compact JSON (short tags, omitempty).
 type SequencerData struct {
-	SeqName          string `json:"n,omitempty"`
-	MinFee           uint64 `json:"f,omitempty"`
-	ProfitPromille   uint16 `json:"m,omitempty"`
-	Greedy           bool   `json:"g,omitempty"`
-	PaceValue        byte   `json:"p,omitempty"`
-	IgnoreFreezeBound bool  `json:"u,omitempty"`
+	SeqName            string `json:"n,omitempty"`
+	ProposerStrategyID string `json:"s,omitempty"`
+	MinFee             uint64 `json:"f,omitempty"`
+	ProfitPromille     uint16 `json:"m,omitempty"`
+	Greedy             bool   `json:"g,omitempty"`
+	PaceValue          byte   `json:"p,omitempty"`
+	IgnoreFreezeBound  bool   `json:"u,omitempty"`
 }
 
 func New() *SequencerData {
@@ -38,6 +39,15 @@ func (sd *SequencerData) Name() string {
 
 func (sd *SequencerData) SetName(name string) *SequencerData {
 	sd.SeqName = name
+	return sd
+}
+
+func (sd *SequencerData) ProposerStrategy() string {
+	return sd.ProposerStrategyID
+}
+
+func (sd *SequencerData) SetProposerStrategy(strategy string) *SequencerData {
+	sd.ProposerStrategyID = strategy
 	return sd
 }
 

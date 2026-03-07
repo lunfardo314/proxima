@@ -40,7 +40,7 @@ const (
 
 func defaultConfigOptions() *ConfigOptions {
 	return &ConfigOptions{
-		SequencerName:             "seq",
+		SequencerName:             "",
 		Pace:                      int(ledger.L(base.MaxSlot).TransactionPaceSequencer),
 		MaxTargetTs:               base.NilLedgerTime,
 		MaxBranches:               math.MaxInt,
@@ -65,9 +65,6 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 		return nil, base.ChainID{}, nil
 	}
 	name := subViper.GetString("name")
-	if name == "" {
-		return nil, base.ChainID{}, fmt.Errorf("StartFromConfig: sequencer must have a name")
-	}
 
 	if !subViper.GetBool("enable") {
 		// will skip
@@ -118,6 +115,9 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 
 func WithName(name string) ConfigOption {
 	return func(o *ConfigOptions) {
+		if len(name) > 6 {
+			name = name[:6]
+		}
 		o.SequencerName = name
 	}
 }

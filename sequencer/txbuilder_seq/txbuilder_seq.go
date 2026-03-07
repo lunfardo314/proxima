@@ -503,8 +503,17 @@ func (txb *SeqTxBuilder) CurrentBranchCoverage() uint64 {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage])
 }
 
+// EffectiveName returns the current name from nextSeqData (inherited from predecessor).
+func (txb *SeqTxBuilder) EffectiveName() string {
+	return txb.nextSeqData.Name()
+}
+
 func (txb *SeqTxBuilder) SetName(name string) {
 	txb.nextSeqData.SetName(name)
+}
+
+func (txb *SeqTxBuilder) SetProposerStrategy(strategy string) {
+	txb.nextSeqData.SetProposerStrategy(strategy)
 }
 
 type MakeSimpleSequencerTransactionParams struct {

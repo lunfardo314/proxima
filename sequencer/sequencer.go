@@ -95,7 +95,11 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	out := viper.GetString("logger.output") + ".seq"
 	global.MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 
-	logName := "[SEQ:" + cfg.SequencerName + "]"
+	displayName := cfg.SequencerName
+	if displayName == "" {
+		displayName = seqID.StringHex()[:4]
+	}
+	logName := "[SEQ:" + displayName + "]"
 	var log *zap.SugaredLogger
 	if cfg.SeparateLog {
 		outputs := []string{out}
@@ -106,7 +110,7 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	} else {
 		log = env.Log().Named(logName)
 	}
-	log.Infof("starting sequencer '%s', seqID: %s", cfg.SequencerName, seqID.String())
+	log.Infof("starting sequencer '%s', seqID: %s", displayName, seqID.String())
 
 	ret := &Sequencer{
 		Environment:   env,
@@ -401,6 +405,9 @@ func (seq *Sequencer) ControllerKeys() (byte, []byte, []byte) {
 }
 
 func (seq *Sequencer) SequencerName() string {
+	if seq.config.SequencerName == "" {
+		return seq.sequencerID.StringHex()[:4]
+	}
 	return seq.config.SequencerName
 }
 
@@ -619,23 +626,26 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 	if tx.IsBranchTransaction() {
 		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch)
 		if healthy {
-			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, proposer: %s, coverage: %s, inflation: %s",
-				tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name(),
-				util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
+			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
+		seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, proposer: %s, coverage: %s, inflation: %s",
+			tx.IDShortString(), ledger.TimeNow().String(), sd.Name(), sd.ProposerStrategy(),
+			util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
 			return true
 		}
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
-			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. Now: %s, p: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
-				tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name(),
+			sd2 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
+			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. Now: %s, name: %s, p: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
+				tx.IDShortString(), ledger.TimeNow().String(), sd2.Name(), sd2.ProposerStrategy(),
 				util.Th(*meta.LedgerCoverage), util.Th(*meta.CoverageDelta), util.Th(*meta.Supply), util.Th(tx.InflationAmount()), util.Th(*meta.SlotInflation))
 			seq.wontSubmitBranchID = tx.ID()
 		}
 		return false
 	}
 
-	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, proposer: %s, coverage: %s, inflation: %s",
-		tx.IDShortString(), ledger.TimeNow().String(), tx.SequencerTransactionData().SequencerOutputData.SequencerData.Name(),
+	sd3 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
+	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, name: %s, proposer: %s, coverage: %s, inflation: %s",
+		tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), sd3.ProposerStrategy(),
 		util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
 	return true
 }

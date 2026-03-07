@@ -102,7 +102,8 @@ txlogger:
 {{if .IncludeSequencer}}
 # Sequencer configuration (optional)
 sequencer:
-    # sequencer name usually is 4 or so symbols. It is put into every sequencer transaction for tracking purposes
+    # optional sequencer name (1-6 characters). Stored on-chain in every sequencer transaction.
+    # Once set on-chain (via 'proxi node seq set-params --name'), the on-chain name takes priority.
   name: {{.SeqName}}
     # start sequencer true/false
   enable: {{.SeqEnable}}

@@ -44,7 +44,12 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 		a.Close() // FIX: close attacher on error
 		return nil, fmt.Errorf("newProposal: %w", err)
 	}
-	txb.SetName(p.environment.SequencerName() + "." + p.strategy.ShortName)
+	// resolve effective name: on-chain name (from predecessor) takes priority, then config name
+	// SequencerName() already falls back to first 4 hex chars of seqID when config name is empty
+	if txb.EffectiveName() == "" {
+		txb.SetName(p.environment.SequencerName())
+	}
+	txb.SetProposerStrategy(p.strategy.ShortName)
 
 	for _, vid := range a.Endorsing() {
 		if err = txb.AddEndorsement(vid.ID()); err != nil {
