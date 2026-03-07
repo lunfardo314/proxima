@@ -57,7 +57,7 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 
 	if cmd.Flags().Changed("name") {
 		v, _ := cmd.Flags().GetString("name")
-		glb.Assertf(len(v) >= 1 && len(v) <= 6, "name must be 1 to 6 characters")
+		glb.Assertf(len(v) <= 6, "name must be empty (reset to default) or 1 to 6 characters")
 		newSD.SetName(v)
 		changed = true
 	}
