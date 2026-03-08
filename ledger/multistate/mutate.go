@@ -239,6 +239,30 @@ func (mut *Mutations) IsChainDeleted(chainID base.ChainID) bool {
 	return false
 }
 
+// HasTx checks if a transaction was added in these mutations.
+func (mut *Mutations) HasTx(txid base.TransactionID) bool {
+	for _, m := range mut.mut {
+		if addTx, ok := m.(*mutationAddTx); ok {
+			if addTx.ID == txid {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// HasDeletedTx checks if a transaction was deleted (expired) in these mutations.
+func (mut *Mutations) HasDeletedTx(txid base.TransactionID) bool {
+	for _, m := range mut.mut {
+		if delTx, ok := m.(*mutationDelTx); ok {
+			if delTx.ID == txid {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
 	for i := range txid {
 		mut.mut = append(mut.mut, &mutationDelTx{

@@ -428,7 +428,34 @@ func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) boo
 	if branchID.Slot() <= txid.Slot() {
 		return false
 	}
-	return b.GetStateReaderForTheBranch(branchID).KnowsCommittedTransaction(txid)
+
+	// walk back through pending branches via stem links to avoid forcing DB commits
+	b.mutex.Lock()
+	currentID := branchID
+	for {
+		pb, isPending := b.pending[currentID]
+		if !isPending {
+			// reached a committed branch — use its state reader
+			b.mutex.Unlock()
+			rdr := b.GetStateReaderForTheBranch(currentID)
+			if rdr == nil {
+				return false
+			}
+			return rdr.KnowsCommittedTransaction(txid)
+		}
+		// check if this branch added the txID
+		if pb.Mutations.HasTx(txid) {
+			b.mutex.Unlock()
+			return true
+		}
+		// check if this branch deleted the txID (TTL expiry)
+		if pb.Mutations.HasDeletedTx(txid) {
+			b.mutex.Unlock()
+			return false
+		}
+		// not modified here — walk back to previous branch
+		currentID = pb.PreviousBranchID
+	}
 }
 
 func (b *Branches) SnapshotKnowsTransaction(txid base.TransactionID) bool {
