@@ -457,22 +457,25 @@ function drawEdges(range) {
         if (x1 < -100 || x1 > canvas.width + 100) continue;
         const y1 = vertexY(v);
 
-        const isSelected = (id === selectedVertexId);
+        // Is this edge part of the highlighted past cone?
+        const inCone = pastConeSet.size > 0 && pastConeSet.has(id);
 
         // Consumption edges (inputs)
         if (showCons) {
             for (let i = 0; i < v.inputs.length; i++) {
-                // Skip stem and seq predecessor — they get special treatment
+                // Skip stem — it gets special treatment
                 if (showStem && v.stemInputIdx !== undefined && i === v.stemInputIdx) continue;
 
-                const dep = findVertexByTxId(v.inputs[i]);
+                const depId = v.inputs[i];
+                const dep = findVertexByTxId(depId);
                 if (!dep) continue;
                 const x2 = timeToX(dep.timeMs);
                 if (x2 < -100 || x2 > canvas.width + 100) continue;
                 const y2 = vertexY(dep);
 
-                ctx.strokeStyle = isSelected ? 'rgba(80,80,80,0.6)' : 'rgba(160,160,160,0.3)';
-                ctx.lineWidth = isSelected ? 1.5 : 0.5;
+                const edgeInCone = inCone && pastConeSet.has(depId);
+                ctx.strokeStyle = edgeInCone ? 'rgba(40,40,40,0.8)' : 'rgba(160,160,160,0.3)';
+                ctx.lineWidth = edgeInCone ? 2 : 0.5;
                 ctx.setLineDash([]);
                 ctx.beginPath();
                 ctx.moveTo(x1, y1);
@@ -490,8 +493,9 @@ function drawEdges(range) {
                 if (x2 < -100 || x2 > canvas.width + 100) continue;
                 const y2 = vertexY(dep);
 
-                ctx.strokeStyle = isSelected ? seqColor(v.seqId) : seqColorDim(v.seqId);
-                ctx.lineWidth = isSelected ? 2 : 1;
+                const edgeInCone = inCone && pastConeSet.has(eid);
+                ctx.strokeStyle = edgeInCone ? seqColor(v.seqId) : seqColorDim(v.seqId);
+                ctx.lineWidth = edgeInCone ? 2.5 : 1;
                 ctx.setLineDash([6, 4]);
                 ctx.beginPath();
                 ctx.moveTo(x1, y1);
@@ -510,8 +514,9 @@ function drawEdges(range) {
                     const x2 = timeToX(dep.timeMs);
                     if (x2 > -100 && x2 < canvas.width + 100) {
                         const y2 = vertexY(dep);
-                        ctx.strokeStyle = isSelected ? '#fa0' : 'rgba(255,170,0,0.4)';
-                        ctx.lineWidth = isSelected ? 3 : 2;
+                        const edgeInCone = inCone && pastConeSet.has(stemTxId);
+                        ctx.strokeStyle = edgeInCone ? '#e90' : 'rgba(255,170,0,0.4)';
+                        ctx.lineWidth = edgeInCone ? 3.5 : 2;
                         ctx.beginPath();
                         ctx.moveTo(x1, y1);
                         ctx.lineTo(x2, y2);
@@ -550,15 +555,19 @@ function drawVertices(range) {
 
         const isHovered = (id === hoveredVertexId);
         const isSelected = (id === selectedVertexId);
+        const inCone = pastConeSet.size > 0 && pastConeSet.has(id);
+        const dimmed = pastConeSet.size > 0 && !inCone;
 
         let color = v.isSequencer ? seqColor(v.seqId) : '#999';
         if (isHovered || isSelected) {
             color = '#000';
+        } else if (dimmed) {
+            color = v.isSequencer ? seqColorDim(v.seqId) : 'rgba(160,160,160,0.3)';
         }
 
         ctx.fillStyle = color;
-        ctx.strokeStyle = isSelected ? '#000' : 'rgba(0,0,0,0)';
-        ctx.lineWidth = isSelected ? 2 : 0;
+        ctx.strokeStyle = (isSelected || inCone) ? '#000' : 'rgba(0,0,0,0)';
+        ctx.lineWidth = isSelected ? 2.5 : inCone ? 1.5 : 0;
 
         if (v.isBranch) {
             // Diamond shape for branches — slightly larger than circles
@@ -587,6 +596,60 @@ function drawVertices(range) {
     }
 }
 
+// ============ PAST CONE ============
+// Compute the set of vertex IDs in the past cone of a given vertex.
+// Walks inputs, endorsements, and stem links.
+// Stops traversal at the previous slot boundary for consumption edges.
+let pastConeSet = new Set();
+
+function computePastCone(rootId) {
+    pastConeSet = new Set();
+    if (!rootId) return;
+    const root = vertices.get(rootId);
+    if (!root) return;
+
+    const stack = [rootId];
+    pastConeSet.add(rootId);
+
+    while (stack.length > 0) {
+        const curId = stack.pop();
+        const cur = vertices.get(curId);
+        if (!cur) continue;
+
+        // Walk endorsements (same slot — always follow)
+        if (cur.endorsements) {
+            for (const eid of cur.endorsements) {
+                if (!pastConeSet.has(eid) && vertices.has(eid)) {
+                    pastConeSet.add(eid);
+                    stack.push(eid);
+                }
+            }
+        }
+
+        // Walk inputs (consumption edges + stem)
+        for (let i = 0; i < cur.inputs.length; i++) {
+            const depId = cur.inputs[i];
+            if (pastConeSet.has(depId) || !vertices.has(depId)) continue;
+            const dep = vertices.get(depId);
+            // For stem links, always follow (branch-to-branch chain)
+            // For consumption, stop at previous slot boundary
+            const isStem = (cur.stemInputIdx !== undefined && cur.stemInputIdx !== null && i === cur.stemInputIdx);
+            if (isStem) {
+                pastConeSet.add(depId);
+                stack.push(depId);
+            } else {
+                // Follow consumption edges only within the visible range
+                // Stop if dependency is more than 1 slot behind the root
+                const slotDiff = root.slot - dep.slot;
+                if (slotDiff <= 1) {
+                    pastConeSet.add(depId);
+                    stack.push(depId);
+                }
+            }
+        }
+    }
+}
+
 // ============ INTERACTION ============
 function onMouseMove(e) {
     mouseX = e.clientX;
@@ -598,6 +661,7 @@ function onMouseMove(e) {
 function onClick(e) {
     const clicked = findNearestVertex(e.clientX, e.clientY, 15);
     selectedVertexId = (clicked === selectedVertexId) ? null : clicked;
+    computePastCone(selectedVertexId);
 }
 
 function onWheel(e) {
