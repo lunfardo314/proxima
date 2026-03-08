@@ -44,6 +44,8 @@ const (
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
+	// PathDAGViz serves the DAG visualizer
+	PathDAGViz = "/dagviz"
 
 	// Transaction API calls
 

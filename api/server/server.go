@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/dagviz"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -108,6 +109,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetSequencerTargetInfo, srv.getSequencerTargetInfo)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
+	// GET DAG visualizer
+	srv.addHandler(api.PathDAGViz, dagviz.Handler)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
 	// GET snapshot file download /get_snapshot (binary, enable with snapshot.enable_api)

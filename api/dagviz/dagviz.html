@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proxima DAG Visualizer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #e0e0e0; font-family: 'Consolas', 'Monaco', monospace; overflow: hidden; }
+#canvas { display: block; cursor: crosshair; }
+#controls {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(20, 20, 40, 0.9); border: 1px solid #444; border-radius: 6px;
+    padding: 10px; font-size: 12px; z-index: 10; min-width: 220px;
+}
+#controls label { display: block; margin: 4px 0 2px; color: #aaa; }
+#controls input[type=text] {
+    width: 100%; background: #222; color: #eee; border: 1px solid #555;
+    border-radius: 3px; padding: 3px 6px; font-size: 12px; font-family: inherit;
+}
+#controls input[type=range] { width: 100%; }
+#controls button {
+    margin-top: 6px; padding: 4px 12px; background: #2a6;
+    color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;
+}
+#controls button:hover { background: #3b7; }
+#controls button.disconnect { background: #a44; }
+#controls button.disconnect:hover { background: #c55; }
+.ctrl-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+.ctrl-row label { margin: 0; flex-shrink: 0; }
+.ctrl-row span { color: #8f8; min-width: 30px; text-align: right; }
+#status { margin-top: 6px; padding: 3px; border-radius: 3px; text-align: center; font-size: 11px; }
+#status.connected { background: #1a4a1a; color: #6f6; }
+#status.disconnected { background: #4a1a1a; color: #f66; }
+#stats { margin-top: 4px; font-size: 11px; color: #888; }
+#tooltip {
+    display: none; position: absolute; background: rgba(10, 10, 30, 0.95);
+    border: 1px solid #666; border-radius: 4px; padding: 8px; font-size: 11px;
+    pointer-events: none; z-index: 20; max-width: 400px; white-space: pre-line;
+}
+.edge-toggle { margin: 2px 0; }
+.edge-toggle input { margin-right: 4px; }
+#legend {
+    position: absolute; bottom: 10px; left: 10px;
+    background: rgba(20, 20, 40, 0.9); border: 1px solid #444; border-radius: 6px;
+    padding: 8px; font-size: 11px; z-index: 10;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.legend-shape { width: 14px; height: 14px; display: inline-block; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="controls">
+    <strong>Proxima DAG Visualizer</strong>
+    <label>WebSocket URL</label>
+    <input type="text" id="wsUrl" value="">
+    <button id="connectBtn" onclick="toggleConnection()">Connect</button>
+    <div id="status" class="disconnected">Disconnected</div>
+
+    <div class="ctrl-row">
+        <label>Pane width (slots):</label>
+        <input type="range" id="paneSlots" min="3" max="30" value="8" oninput="updatePaneSlots()">
+        <span id="paneSlotsVal">8</span>
+    </div>
+    <div class="ctrl-row">
+        <label>Vertex size:</label>
+        <input type="range" id="vertexScale" min="1" max="20" value="6" oninput="updateVertexScale()">
+        <span id="vertexScaleVal">6</span>
+    </div>
+
+    <div style="margin-top:6px; font-size:11px; color:#aaa;">Edges:</div>
+    <div class="edge-toggle"><label><input type="checkbox" id="showConsumption" checked> Consumption (gray)</label></div>
+    <div class="edge-toggle"><label><input type="checkbox" id="showEndorsement" checked> Endorsement (dashed)</label></div>
+    <div class="edge-toggle"><label><input type="checkbox" id="showStem" checked> Stem (thick)</label></div>
+
+    <div style="margin-top:6px; font-size:11px; color:#aaa;">
+        <label><input type="checkbox" id="pauseScroll"> Pause scrolling (P)</label>
+    </div>
+
+    <div id="stats">
+        Vertices: <span id="vertexCount">0</span> |
+        TPS: <span id="tpsCount">0</span>
+    </div>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="legend">
+    <div class="legend-item"><canvas class="legend-shape" id="lgBranch"></canvas> Branch (sequencer, tick=0)</div>
+    <div class="legend-item"><canvas class="legend-shape" id="lgSeq"></canvas> Sequencer tx</div>
+    <div class="legend-item"><canvas class="legend-shape" id="lgNonSeq"></canvas> Non-sequencer tx</div>
+    <div class="legend-item"><span style="color:#888;">---</span> Consumption edge</div>
+    <div class="legend-item"><span style="color:#6af; letter-spacing:2px;">- -</span> Endorsement edge</div>
+    <div class="legend-item"><span style="color:#fa0; font-weight:bold;">|</span> Stem link</div>
+</div>
+
+<script>
+// ============ CONSTANTS ============
+const TICKS_PER_SLOT = 128;
+const SLOT_DURATION_MS = 10240; // 10.24 seconds
+const TICK_DURATION_MS = SLOT_DURATION_MS / TICKS_PER_SLOT; // 80ms
+const RIGHT_MARGIN_MS = 5000; // current time offset from right edge
+
+// ============ STATE ============
+let ws = null;
+let connected = false;
+let paused = false;
+
+// vertex map: txid_hex -> VertexData
+const vertices = new Map();
+// sequencer color cache: seqid -> hsl color
+const seqColors = new Map();
+
+let paneSlots = 8;
+let vertexScaleFactor = 6;
+let selectedVertexId = null;
+let hoveredVertexId = null;
+let mouseX = 0, mouseY = 0;
+
+// TPS tracking
+let txCountInWindow = 0;
+let txTimestamps = [];
+let currentTPS = 0;
+
+// Time reference: we'll sync pane to wall clock
+// The pane shows [now - paneWidth + rightMargin, now + rightMargin]
+let clockOffsetMs = 0; // adjustable if needed
+let genesisSlot = 0; // will be set from first received tx
+
+// Canvas
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// ============ INIT ============
+function init() {
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('click', onClick);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    document.addEventListener('keydown', onKeyDown);
+
+    // Auto-detect WebSocket URL from page location
+    const loc = window.location;
+    const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+    document.getElementById('wsUrl').value = wsProto + '//' + loc.host + '/wsapi/v1/dag_vertex_stream';
+
+    drawLegendShapes();
+    requestAnimationFrame(animate);
+}
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// ============ WEBSOCKET ============
+function toggleConnection() {
+    if (connected) {
+        disconnect();
+    } else {
+        connect();
+    }
+}
+
+function connect() {
+    const url = document.getElementById('wsUrl').value.trim();
+    if (!url) return;
+    try {
+        ws = new WebSocket(url);
+    } catch (e) {
+        setStatus('Error: ' + e.message, false);
+        return;
+    }
+
+    ws.onopen = () => {
+        connected = true;
+        setStatus('Connected', true);
+        document.getElementById('connectBtn').textContent = 'Disconnect';
+        document.getElementById('connectBtn').className = 'disconnect';
+    };
+
+    ws.onmessage = (evt) => {
+        try {
+            const data = JSON.parse(evt.data);
+            handleMessage(data);
+        } catch (e) {
+            console.warn('Failed to parse WS message:', e);
+        }
+    };
+
+    ws.onclose = () => {
+        connected = false;
+        setStatus('Disconnected', false);
+        document.getElementById('connectBtn').textContent = 'Connect';
+        document.getElementById('connectBtn').className = '';
+    };
+
+    ws.onerror = () => {
+        setStatus('Connection error', false);
+    };
+}
+
+function disconnect() {
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+}
+
+function setStatus(text, ok) {
+    const el = document.getElementById('status');
+    el.textContent = text;
+    el.className = ok ? 'connected' : 'disconnected';
+}
+
+// ============ MESSAGE HANDLING ============
+function handleMessage(data) {
+    // Deletion message: has "id" but no "in" field
+    if (data.id && !data.in) {
+        vertices.delete(data.id);
+        return;
+    }
+
+    if (!data.id || !data.in) return;
+
+    const ts = parseTxTimestamp(data.id);
+    if (!ts) return;
+
+    if (genesisSlot === 0) {
+        genesisSlot = ts.slot - 5; // set reference
+    }
+
+    const isBranch = ts.tick === 0 && !!data.seqid;
+    const isSequencer = !!data.seqid;
+
+    const v = {
+        id: data.id,
+        slot: ts.slot,
+        tick: ts.tick,
+        totalAmount: data.a || 0,
+        inflation: data.i || 0,
+        seqId: data.seqid || '',
+        seqInputIdx: data.seqidx,
+        stemInputIdx: data.stemidx,
+        inputs: data.in || [],       // these are tx IDs (not output IDs)
+        endorsements: data.endorse || [],
+        isBranch: isBranch,
+        isSequencer: isSequencer,
+        timeMs: slotTickToMs(ts.slot, ts.tick),
+    };
+
+    vertices.set(data.id, v);
+
+    // TPS tracking
+    const now = Date.now();
+    txTimestamps.push(now);
+    while (txTimestamps.length > 0 && txTimestamps[0] < now - 5000) {
+        txTimestamps.shift();
+    }
+    currentTPS = (txTimestamps.length / 5).toFixed(1);
+}
+
+// Parse timestamp from txID hex string
+// First 10 hex chars = 5 bytes: 4 bytes slot (big-endian) + 1 byte (7 bits tick + 1 bit seq flag)
+function parseTxTimestamp(txidHex) {
+    if (txidHex.length < 10) return null;
+    const slotHex = txidHex.substring(0, 8);
+    const tickByte = parseInt(txidHex.substring(8, 10), 16);
+    const slot = parseInt(slotHex, 16);
+    const tick = tickByte >> 1; // upper 7 bits
+    return { slot, tick };
+}
+
+// Convert slot+tick to a millisecond timestamp relative to genesis
+function slotTickToMs(slot, tick) {
+    return slot * SLOT_DURATION_MS + tick * TICK_DURATION_MS;
+}
+
+// Get wall-clock "now" in the same ms space
+// We anchor: current wall time corresponds to ledger.TimeNow()
+// For simplicity, we estimate current slot from first received data
+let timeAnchorWall = 0;
+let timeAnchorLedger = 0;
+
+function nowLedgerMs() {
+    if (timeAnchorWall === 0) {
+        // Set anchor from the first vertex we see
+        if (vertices.size > 0) {
+            const first = vertices.values().next().value;
+            timeAnchorWall = Date.now();
+            timeAnchorLedger = first.timeMs;
+        } else {
+            return 0;
+        }
+    }
+    return timeAnchorLedger + (Date.now() - timeAnchorWall);
+}
+
+// ============ COORDINATE SYSTEM ============
+function paneWidthMs() {
+    return paneSlots * SLOT_DURATION_MS;
+}
+
+// The visible time range: [nowMs - paneWidth + rightMargin, nowMs + rightMargin]
+function visibleRange() {
+    const now = nowLedgerMs();
+    if (now === 0) return { left: 0, right: 0 };
+    const right = now + RIGHT_MARGIN_MS;
+    const left = right - paneWidthMs();
+    return { left, right };
+}
+
+function timeToX(timeMs) {
+    const range = visibleRange();
+    if (range.right === range.left) return -1;
+    return ((timeMs - range.left) / (range.right - range.left)) * canvas.width;
+}
+
+function xToTime(x) {
+    const range = visibleRange();
+    return range.left + (x / canvas.width) * (range.right - range.left);
+}
+
+// Y position: sequencer-based lanes
+function vertexY(v) {
+    const h = canvas.height;
+    if (!v.isSequencer) {
+        // non-sequencer: spread based on txid hash
+        const hash = simpleHash(v.id);
+        return 40 + (hash % (h - 80));
+    }
+    // Sequencer lane: deterministic from seqId, jittered by tick
+    const laneHash = simpleHash(v.seqId);
+    const laneBase = 60 + (laneHash % (h - 120));
+    // Jitter within lane based on tick
+    const jitter = (v.tick - TICKS_PER_SLOT / 2) * 0.3;
+    return laneBase + jitter;
+}
+
+function simpleHash(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+}
+
+// ============ COLORS ============
+function seqColor(seqId) {
+    if (!seqId) return '#888';
+    if (seqColors.has(seqId)) return seqColors.get(seqId);
+    const hue = simpleHash(seqId) % 360;
+    const color = `hsl(${hue}, 70%, 60%)`;
+    seqColors.set(seqId, color);
+    return color;
+}
+
+function seqColorDim(seqId) {
+    if (!seqId) return 'rgba(136,136,136,0.3)';
+    const hue = simpleHash(seqId) % 360;
+    return `hsla(${hue}, 70%, 60%, 0.3)`;
+}
+
+// ============ RENDERING ============
+function animate() {
+    draw();
+    requestAnimationFrame(animate);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const range = visibleRange();
+    if (range.right === 0) {
+        drawWaitingMessage();
+        return;
+    }
+
+    drawGrid(range);
+    drawEdges(range);
+    drawVertices(range);
+    updateStats();
+}
+
+function drawWaitingMessage() {
+    ctx.fillStyle = '#555';
+    ctx.font = '16px Consolas, Monaco, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(connected ? 'Waiting for transactions...' : 'Not connected', canvas.width / 2, canvas.height / 2);
+    ctx.textAlign = 'left';
+}
+
+function drawGrid(range) {
+    // Find slot boundaries in visible range
+    const firstSlot = Math.floor(range.left / SLOT_DURATION_MS);
+    const lastSlot = Math.ceil(range.right / SLOT_DURATION_MS);
+
+    ctx.strokeStyle = 'rgba(100, 100, 140, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.font = '10px Consolas, Monaco, monospace';
+    ctx.fillStyle = 'rgba(100, 100, 140, 0.5)';
+
+    for (let s = firstSlot; s <= lastSlot; s++) {
+        const x = timeToX(s * SLOT_DURATION_MS);
+        if (x < 0 || x > canvas.width) continue;
+
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+
+        ctx.fillText('slot ' + s, x + 3, 14);
+    }
+
+    // "Now" line
+    const nowX = timeToX(nowLedgerMs());
+    if (nowX > 0 && nowX < canvas.width) {
+        ctx.strokeStyle = 'rgba(255, 100, 100, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(nowX, 0);
+        ctx.lineTo(nowX, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255, 100, 100, 0.7)';
+        ctx.fillText('now', nowX + 3, canvas.height - 6);
+    }
+}
+
+function drawEdges(range) {
+    const showCons = document.getElementById('showConsumption').checked;
+    const showEnd = document.getElementById('showEndorsement').checked;
+    const showStem = document.getElementById('showStem').checked;
+
+    for (const [id, v] of vertices) {
+        const x1 = timeToX(v.timeMs);
+        if (x1 < -100 || x1 > canvas.width + 100) continue;
+        const y1 = vertexY(v);
+
+        const isSelected = (id === selectedVertexId);
+
+        // Consumption edges (inputs)
+        if (showCons) {
+            for (let i = 0; i < v.inputs.length; i++) {
+                // Skip stem and seq predecessor — they get special treatment
+                if (showStem && v.stemInputIdx !== undefined && i === v.stemInputIdx) continue;
+
+                const dep = findVertexByTxId(v.inputs[i]);
+                if (!dep) continue;
+                const x2 = timeToX(dep.timeMs);
+                if (x2 < -100 || x2 > canvas.width + 100) continue;
+                const y2 = vertexY(dep);
+
+                ctx.strokeStyle = isSelected ? 'rgba(180,180,180,0.6)' : 'rgba(100,100,100,0.2)';
+                ctx.lineWidth = isSelected ? 1.5 : 0.5;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+        }
+
+        // Endorsement edges
+        if (showEnd && v.endorsements) {
+            for (const eid of v.endorsements) {
+                const dep = findVertexByTxId(eid);
+                if (!dep) continue;
+                const x2 = timeToX(dep.timeMs);
+                if (x2 < -100 || x2 > canvas.width + 100) continue;
+                const y2 = vertexY(dep);
+
+                ctx.strokeStyle = isSelected ? seqColor(v.seqId) : seqColorDim(v.seqId);
+                ctx.lineWidth = isSelected ? 2 : 1;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+        }
+        ctx.setLineDash([]);
+
+        // Stem link
+        if (showStem && v.stemInputIdx !== undefined && v.stemInputIdx !== null) {
+            const stemTxId = v.inputs[v.stemInputIdx];
+            if (stemTxId) {
+                const dep = findVertexByTxId(stemTxId);
+                if (dep) {
+                    const x2 = timeToX(dep.timeMs);
+                    if (x2 > -100 && x2 < canvas.width + 100) {
+                        const y2 = vertexY(dep);
+                        ctx.strokeStyle = isSelected ? '#fa0' : 'rgba(255,170,0,0.4)';
+                        ctx.lineWidth = isSelected ? 3 : 2;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Find a vertex whose txid matches (inputs are tx IDs)
+function findVertexByTxId(txId) {
+    // The vertex map is keyed by full txid hex
+    // But inputs in VertexWithDependencies are also full txid hex
+    return vertices.get(txId) || null;
+}
+
+function vertexRadius(v) {
+    const base = vertexScaleFactor;
+    if (!v.isSequencer) return Math.max(2, base * 0.4);
+    const amt = v.totalAmount || 1;
+    return Math.max(base * 0.6, base * 0.4 * Math.log10(amt / 1000000 + 1));
+}
+
+function drawVertices(range) {
+    for (const [id, v] of vertices) {
+        const x = timeToX(v.timeMs);
+        if (x < -20 || x > canvas.width + 20) continue;
+        const y = vertexY(v);
+        const r = vertexRadius(v);
+
+        const isHovered = (id === hoveredVertexId);
+        const isSelected = (id === selectedVertexId);
+
+        let color = v.isSequencer ? seqColor(v.seqId) : '#888';
+        if (isHovered || isSelected) {
+            color = '#fff';
+        }
+
+        ctx.fillStyle = color;
+        ctx.strokeStyle = isSelected ? '#fff' : 'rgba(0,0,0,0)';
+        ctx.lineWidth = isSelected ? 2 : 0;
+
+        if (v.isBranch) {
+            // Diamond shape for branches
+            ctx.beginPath();
+            ctx.moveTo(x, y - r * 1.4);
+            ctx.lineTo(x + r * 1.4, y);
+            ctx.lineTo(x, y + r * 1.4);
+            ctx.lineTo(x - r * 1.4, y);
+            ctx.closePath();
+            ctx.fill();
+            if (isSelected) ctx.stroke();
+        } else if (v.isSequencer) {
+            // Circle for sequencer tx
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+            if (isSelected) ctx.stroke();
+        } else {
+            // Small square for non-sequencer
+            ctx.fillRect(x - r / 2, y - r / 2, r, r);
+        }
+    }
+}
+
+// ============ INTERACTION ============
+function onMouseMove(e) {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    hoveredVertexId = findNearestVertex(mouseX, mouseY, 15);
+    updateTooltip();
+}
+
+function onClick(e) {
+    const clicked = findNearestVertex(e.clientX, e.clientY, 15);
+    selectedVertexId = (clicked === selectedVertexId) ? null : clicked;
+}
+
+function onWheel(e) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 1 : -1;
+    const slider = document.getElementById('paneSlots');
+    let val = parseInt(slider.value) + delta;
+    val = Math.max(3, Math.min(30, val));
+    slider.value = val;
+    updatePaneSlots();
+}
+
+function onKeyDown(e) {
+    if (e.key === 'p' || e.key === 'P') {
+        paused = !paused;
+        document.getElementById('pauseScroll').checked = paused;
+        if (paused) {
+            // Freeze current time
+            pausedLedgerMs = nowLedgerMs();
+        } else {
+            // Re-anchor
+            timeAnchorWall = Date.now();
+            timeAnchorLedger = pausedLedgerMs;
+        }
+    }
+}
+
+let pausedLedgerMs = 0;
+const _origNowLedgerMs = nowLedgerMs;
+
+// Override nowLedgerMs to support pause
+const _nowLedgerMs = nowLedgerMs;
+window._getNowLedgerMs = function() {
+    if (paused && pausedLedgerMs > 0) return pausedLedgerMs;
+    return _nowLedgerMs();
+};
+// Patch
+nowLedgerMs = function() { return window._getNowLedgerMs(); };
+
+function findNearestVertex(mx, my, maxDist) {
+    let nearest = null;
+    let nearestDist = maxDist;
+    for (const [id, v] of vertices) {
+        const x = timeToX(v.timeMs);
+        if (x < -20 || x > canvas.width + 20) continue;
+        const y = vertexY(v);
+        const d = Math.sqrt((mx - x) ** 2 + (my - y) ** 2);
+        if (d < nearestDist) {
+            nearestDist = d;
+            nearest = id;
+        }
+    }
+    return nearest;
+}
+
+function updateTooltip() {
+    const tip = document.getElementById('tooltip');
+    if (!hoveredVertexId) {
+        tip.style.display = 'none';
+        return;
+    }
+    const v = vertices.get(hoveredVertexId);
+    if (!v) { tip.style.display = 'none'; return; }
+
+    const lines = [];
+    lines.push('TxID: ' + v.id.substring(0, 20) + '...');
+    lines.push('Slot: ' + v.slot + '  Tick: ' + v.tick);
+    lines.push('Amount: ' + formatAmount(v.totalAmount));
+    if (v.inflation) lines.push('Inflation: ' + formatAmount(v.inflation));
+    if (v.seqId) lines.push('SeqID: ' + v.seqId.substring(0, 16) + '...');
+    lines.push('Type: ' + (v.isBranch ? 'Branch' : v.isSequencer ? 'Sequencer' : 'Non-seq'));
+    lines.push('Inputs: ' + v.inputs.length + '  Endorse: ' + v.endorsements.length);
+
+    tip.textContent = lines.join('\n');
+    tip.style.display = 'block';
+
+    // Position tooltip
+    let tx = mouseX + 15;
+    let ty = mouseY - 10;
+    if (tx + tip.offsetWidth > window.innerWidth) tx = mouseX - tip.offsetWidth - 10;
+    if (ty + tip.offsetHeight > window.innerHeight) ty = mouseY - tip.offsetHeight - 10;
+    tip.style.left = tx + 'px';
+    tip.style.top = ty + 'px';
+}
+
+function formatAmount(a) {
+    if (a >= 1e9) return (a / 1e9).toFixed(2) + 'G';
+    if (a >= 1e6) return (a / 1e6).toFixed(2) + 'M';
+    if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
+    return '' + a;
+}
+
+// ============ CONTROLS ============
+function updatePaneSlots() {
+    paneSlots = parseInt(document.getElementById('paneSlots').value);
+    document.getElementById('paneSlotsVal').textContent = paneSlots;
+}
+
+function updateVertexScale() {
+    vertexScaleFactor = parseInt(document.getElementById('vertexScale').value);
+    document.getElementById('vertexScaleVal').textContent = vertexScaleFactor;
+}
+
+function updateStats() {
+    document.getElementById('vertexCount').textContent = vertices.size;
+    document.getElementById('tpsCount').textContent = currentTPS;
+
+    // Garbage collect vertices far off the left edge
+    const range = visibleRange();
+    const gcThreshold = range.left - paneWidthMs(); // keep one extra pane width
+    for (const [id, v] of vertices) {
+        if (v.timeMs < gcThreshold) {
+            vertices.delete(id);
+        }
+    }
+}
+
+// ============ LEGEND ============
+function drawLegendShapes() {
+    // Branch diamond
+    const c1 = document.getElementById('lgBranch');
+    c1.width = 14; c1.height = 14;
+    const x1 = c1.getContext('2d');
+    x1.fillStyle = 'hsl(200, 70%, 60%)';
+    x1.beginPath();
+    x1.moveTo(7, 1); x1.lineTo(13, 7); x1.lineTo(7, 13); x1.lineTo(1, 7);
+    x1.closePath(); x1.fill();
+
+    // Sequencer circle
+    const c2 = document.getElementById('lgSeq');
+    c2.width = 14; c2.height = 14;
+    const x2 = c2.getContext('2d');
+    x2.fillStyle = 'hsl(120, 70%, 60%)';
+    x2.beginPath(); x2.arc(7, 7, 5, 0, Math.PI * 2); x2.fill();
+
+    // Non-sequencer dot
+    const c3 = document.getElementById('lgNonSeq');
+    c3.width = 14; c3.height = 14;
+    const x3 = c3.getContext('2d');
+    x3.fillStyle = '#888';
+    x3.fillRect(5, 5, 4, 4);
+}
+
+// ============ START ============
+init();
+</script>
+</body>
+</html>
