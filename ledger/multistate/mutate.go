@@ -202,6 +202,35 @@ func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+// FindAddedOutput looks for an output that was added in these mutations by its ID.
+// Returns the output and true if found, nil and false otherwise.
+func (mut *Mutations) FindAddedOutput(oid base.OutputID) (*ledger.Output, bool) {
+	for _, m := range mut.mut {
+		addOut, ok := m.(*mutationAddOutput)
+		if !ok {
+			continue
+		}
+		if addOut.ID == oid {
+			return addOut.Output, true
+		}
+	}
+	return nil, false
+}
+
+// HasDeletedOutput checks if an output was deleted (consumed) in these mutations.
+func (mut *Mutations) HasDeletedOutput(oid base.OutputID) bool {
+	for _, m := range mut.mut {
+		delOut, ok := m.(*mutationDelOutput)
+		if !ok {
+			continue
+		}
+		if delOut.ID == oid {
+			return true
+		}
+	}
+	return false
+}
+
 // FindChainOutput scans mutations for an added output with matching chain constraint.
 // Used to look up chain outputs in pending (uncommitted) branches without forcing a DB commit.
 func (mut *Mutations) FindChainOutput(chainID base.ChainID) (*ledger.OutputWithID, bool) {

@@ -163,7 +163,7 @@ func (a *milestoneAttacher) run() error {
 			printPastCone = false
 		)
 		if lastCheck {
-			err = a.pastCone.CheckFinalPastCone(a.Branches().GetStateReaderForTheBranch)
+			err = a.pastCone.CheckFinalPastCone(a.getBaselineStateReader)
 			if err != nil {
 				err = fmt.Errorf("%w\n------ past cone of %s ------\n%s",
 					err, a.vid.IDShortString(), a.pastCone.Lines("     ").Join("\n"))
@@ -360,7 +360,7 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.IDShortString)
 
-	if conflict := a.pastCone.CheckAndClean(a.Branches().GetStateReaderForTheBranch); conflict != nil {
+	if conflict := a.pastCone.CheckAndClean(a.getBaselineStateReader); conflict != nil {
 		a.setError(fmt.Errorf("conflict %s in the past cone:\n%s", conflict.IDStringShort(), a.pastCone.Lines("    ").String()))
 		v.UnReferenceDependencies()
 		return false, false

@@ -66,6 +66,9 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 		inputs:   make([]vertex.WrappedOutput, 0),
 		targetTs: targetTs,
 	}
+	// Use virtual state reader to avoid forcing DB commits of pending branches.
+	// The IncrementalAttacher is speculative — most proposals are discarded.
+	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
 
 	if err := ret.initIncrementalAttacher(baselineBranchID, targetTs, extend, endorse...); err != nil {
 		ret.Close()
@@ -102,6 +105,7 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 		targetTs:           targetTs,
 		explicitBaselineID: util.Ref(baselineID),
 	}
+	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
 
 	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
 		ret.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
@@ -185,7 +189,7 @@ func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedO
 	if !a.pastCone.IsKnownDefined(wOut.VID) {
 		return fmt.Errorf("output %s not solid yet", wOut.IDStringShort())
 	}
-	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut, a.Branches().GetStateReaderForTheBranch); conflict != nil {
+	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut, a.getBaselineStateReader); conflict != nil {
 		return fmt.Errorf("past cone contains double-spend %s", conflict.IDStringShort())
 	}
 	a.inputs = append(a.inputs, wOut)

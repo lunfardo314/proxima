@@ -78,6 +78,34 @@ func (s SugaredStateReader) GetOutputErr(oid base.OutputID) (*ledger.Output, err
 	return ret, nil
 }
 
+// GetOutputFromStateReader retrieves and parses an output from a basic StateReader.
+// Returns nil if the output is not found. This is a standalone function that does not
+// require IndexedStateReader, suitable for use with virtual state readers.
+func GetOutputFromStateReader(rdr StateReader, oid base.OutputID) *ledger.Output {
+	oData, found := rdr.GetUTXO(oid)
+	if !found {
+		return nil
+	}
+	ret, err := ledger.OutputFromBytes(oData)
+	if err != nil {
+		return nil
+	}
+	return ret
+}
+
+// GetOutputWithIDFromStateReader retrieves and parses an output with its ID from a basic StateReader.
+func GetOutputWithIDFromStateReader(rdr StateReader, oid base.OutputID) (*ledger.OutputWithID, error) {
+	oData, found := rdr.GetUTXO(oid)
+	if !found {
+		return nil, ErrNotFound
+	}
+	ret, err := ledger.OutputFromBytes(oData)
+	if err != nil {
+		return nil, err
+	}
+	return &ledger.OutputWithID{ID: oid, Output: ret}, nil
+}
+
 // GetOutput retrieves and parses output.
 // Warning: do not use in iteration bodies because of mutex lock
 func (s SugaredStateReader) GetOutput(oid base.OutputID) *ledger.Output {

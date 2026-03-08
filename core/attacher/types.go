@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 )
 
@@ -67,6 +68,10 @@ type (
 		// For milestone attacher: set to tip's cost (numInputs + numOutputs).
 		// For incremental attacher: set to 0 (budget check happens in atomicCheck callback instead).
 		seqTxCost int
+		// getBaselineStateReader returns a StateReader for a branch.
+		// For milestoneAttacher: defaults to GetStateReaderForTheBranch (triggers lazy DB commit).
+		// For IncrementalAttacher: set to GetVirtualStateReaderForTheBranch (no DB commit).
+		getBaselineStateReader func(base.TransactionID) multistate.StateReader
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone

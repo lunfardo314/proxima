@@ -191,7 +191,7 @@ func (pc *PastCone) AttachmentCostDirect() (ret int) {
 	return
 }
 
-func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) *WrappedOutput {
+func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, getStateReader func(branchID base.TransactionID) multistate.StateReader) *WrappedOutput {
 	if pc.delta == nil {
 		pc.addVirtuallyConsumedOutput(wOut)
 		return pc.CheckConflicts(getStateReader)
@@ -699,7 +699,7 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 
 // CheckFinalPastCone check determinism consistency of the past cone
 // If rootVid == nil, past cone must be fully deterministic
-func (pc *PastCone) CheckFinalPastCone(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (err error) {
+func (pc *PastCone) CheckFinalPastCone(getStateReader func(branchID base.TransactionID) multistate.StateReader) (err error) {
 	if pc.delta != nil {
 		return fmt.Errorf("CheckFinalPastCone: past cone has uncommitted delta")
 	}
@@ -802,7 +802,7 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 // CheckConflicts returns double-spent output (conflict) or nil if the past cone is consistent
 // The complexity is O(NxM) where N is number of vertices and M is an average number of conflicts in the UTXO tangle
 // Practically, it is linear wrt the number of vertices because M is 1 or close to 1.
-func (pc *PastCone) CheckConflicts(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (conflict *WrappedOutput) {
+func (pc *PastCone) CheckConflicts(getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput) {
 	rdr := getStateReader(*pc.GetBaseline())
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		conflict, _ = pc._checkVertex(vid, rdr)
@@ -813,7 +813,7 @@ func (pc *PastCone) CheckConflicts(getStateReader func(branchID base.Transaction
 
 // CheckAndClean iterates past cone, checks for conflicts and removes those vertices
 // that have consumers and all consumers are already in the state
-func (pc *PastCone) CheckAndClean(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (conflict *WrappedOutput) {
+func (pc *PastCone) CheckAndClean(getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput) {
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline!=nil")
 	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
@@ -836,7 +836,7 @@ func (pc *PastCone) CheckAndClean(getStateReader func(branchID base.TransactionI
 	return
 }
 
-func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.IndexedStateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
+func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
 	allConsumersAreInTheState := true
 	inTheState := pc.IsInTheState(vid)
 	byIdx := pc.consumersByOutputIndex(vid)
@@ -875,15 +875,15 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 // Returns:
 // - total coverage delta
 // - frozen coverage (included in the delta)
-func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (delta, frozen uint64) {
+func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta, frozen uint64) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
-	rdr := multistate.MakeSugared(getStateReader(*pc.GetBaseline()))
+	rdr := getStateReader(*pc.GetBaseline())
 	for vid := range pc.vertices {
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			oid := vid.OutputID(idx)
-			if o := rdr.GetOutput(oid); o != nil {
+			if o := multistate.GetOutputFromStateReader(rdr, oid); o != nil {
 				cov, fr := ledger.Coverage(o, oid, pc.txTs)
 				delta += cov
 				frozen += fr

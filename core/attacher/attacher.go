@@ -24,6 +24,11 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 		pastCone:    vertex.NewPastCone(env, tip, txTs, name),
 	}
+	// default: use committing state reader (triggers lazy DB commit for pending branches).
+	// IncrementalAttacher overrides this with virtual state reader.
+	ret.getBaselineStateReader = func(id base.TransactionID) multistate.StateReader {
+		return ret.Branches().GetStateReaderForTheBranch(id)
+	}
 	return ret
 }
 
@@ -37,15 +42,19 @@ func (a *attacher) Name() string {
 }
 
 func (a *attacher) BaselineSugaredStateReader() multistate.SugaredStateReader {
-	return multistate.MakeSugared(a.baselineStateReader())
+	branchID := a.pastCone.GetBaseline()
+	if branchID == nil {
+		return multistate.SugaredStateReader{}
+	}
+	return multistate.MakeSugared(a.Branches().GetStateReaderForTheBranch(*branchID))
 }
 
-func (a *attacher) baselineStateReader() multistate.IndexedStateReader {
+func (a *attacher) baselineStateReader() multistate.StateReader {
 	branchID := a.pastCone.GetBaseline()
 	if branchID == nil {
 		return nil
 	}
-	return a.Branches().GetStateReaderForTheBranch(*branchID)
+	return a.getBaselineStateReader(*branchID)
 }
 
 func (a *attacher) setError(err error) {
@@ -458,7 +467,7 @@ func (a *attacher) allInputsDefined(v *vertex.Vertex) bool {
 // If it is not, sets an error that UTXO is already consumed
 func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.OutputID) bool {
 	a.Assertf(a.pastCone.IsInTheState(vid), "a.pastCone.IsInTheState(wOut.VID)")
-	o, err := a.BaselineSugaredStateReader().GetOutputWithID(inputID)
+	o, err := multistate.GetOutputWithIDFromStateReader(a.baselineStateReader(), inputID)
 	if errors.Is(err, multistate.ErrNotFound) {
 		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed", inputID.StringShort()))
 		return false
@@ -590,7 +599,7 @@ func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint6
 // - coverage delta (including frozen part)
 // - frozen part separately
 func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
-	delta, frozen = a.pastCone.CoverageDeltaRaw(a.Branches().GetStateReaderForTheBranch)
+	delta, frozen = a.pastCone.CoverageDeltaRaw(a.getBaselineStateReader)
 	delta += a.coverageDeltaAdjustment()
 	return
 }
@@ -612,7 +621,7 @@ func (a *attacher) coverageDeltaAdjustment() uint64 {
 }
 
 func (a *attacher) CheckConflicts() *vertex.WrappedOutput {
-	return a.pastCone.CheckConflicts(a.Branches().GetStateReaderForTheBranch)
+	return a.pastCone.CheckConflicts(a.getBaselineStateReader)
 }
 
 // SlotInflation sums all inflation amounts in the past cone structure.
