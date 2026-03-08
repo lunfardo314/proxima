@@ -59,11 +59,17 @@ func (a *milestoneAttacher) commitBranch() {
 		NumTransactions: uint32(stats.NumTransactions),
 	}
 
+	// derive previous branch ID from the stem link
+	stemLock, ok := stemOutput.Output.StemLock()
+	util.Assertf(ok, "commitBranch: stem lock not found")
+	previousBranchID := stemLock.PredecessorOutputID.TransactionID()
+
 	// submit to Branches as a pending (deferred) commit
 	a.Branches().AddPendingBranch(a.vid.ID(), &branches.PendingBranchCommit{
 		Mutations:        muts,
 		RootRecParams:    params,
 		BaselineBranchID: a.finals.baseline,
+		PreviousBranchID: previousBranchID,
 		TxIDTTLSlots:     a.TxIDStateTTLSlots,
 		CommittedTxs:     committedTxs,
 		SequencerName:    a.vid.SequencerName(),

@@ -52,12 +52,13 @@ type (
 	// PendingBranchCommit holds data needed to lazily commit a branch to DB.
 	// The actual DB write is deferred until the branch state is requested via GetStateReaderForTheBranch().
 	PendingBranchCommit struct {
-		Mutations        *multistate.Mutations
-		RootRecParams    *multistate.RootRecordParams
-		BaselineBranchID base.TransactionID
-		TxIDTTLSlots     uint32
-		CommittedTxs     []base.TransactionID
-		SequencerName    string
+		Mutations          *multistate.Mutations
+		RootRecParams      *multistate.RootRecordParams
+		BaselineBranchID   base.TransactionID
+		PreviousBranchID   base.TransactionID // stem link to previous branch (for mutation chain traversal)
+		TxIDTTLSlots       uint32
+		CommittedTxs       []base.TransactionID
+		SequencerName      string
 	}
 )
 
@@ -383,6 +384,40 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 		lastActivity:       time.Now(),
 	}
 	return b.stateReaders[branchID]
+}
+
+// GetChainOutputFromBranch looks up a chain output in a branch without forcing a DB commit.
+// It walks back through pending branches via stem links, scanning mutations at each hop.
+// Only falls back to a committed state reader when a committed branch is reached.
+func (b *Branches) GetChainOutputFromBranch(branchID base.TransactionID, chainID base.ChainID) (*ledger.OutputWithID, error) {
+	b.mutex.Lock()
+
+	currentID := branchID
+	for {
+		pb, isPending := b.pending[currentID]
+		if !isPending {
+			// reached a committed (or DB-fetched) branch — use its state reader
+			b.mutex.Unlock()
+			rdr := b.GetStateReaderForTheBranch(currentID)
+			if rdr == nil {
+				return nil, multistate.ErrNotFound
+			}
+			return multistate.MakeSugared(rdr).GetChainOutputWithID(chainID)
+		}
+
+		// check mutations for the chain output
+		if out, found := pb.Mutations.FindChainOutput(chainID); found {
+			b.mutex.Unlock()
+			return out, nil
+		}
+		// check if chain was deleted in this branch
+		if pb.Mutations.IsChainDeleted(chainID) {
+			b.mutex.Unlock()
+			return nil, multistate.ErrNotFound
+		}
+		// chain not modified here — walk back to previous branch via stem link
+		currentID = pb.PreviousBranchID
+	}
 }
 
 func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) bool {

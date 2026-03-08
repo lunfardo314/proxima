@@ -202,6 +202,43 @@ func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+// FindChainOutput scans mutations for an added output with matching chain constraint.
+// Used to look up chain outputs in pending (uncommitted) branches without forcing a DB commit.
+func (mut *Mutations) FindChainOutput(chainID base.ChainID) (*ledger.OutputWithID, bool) {
+	for _, m := range mut.mut {
+		addOut, ok := m.(*mutationAddOutput)
+		if !ok {
+			continue
+		}
+		cc := addOut.Output.ChainConstraint()
+		if cc == nil {
+			continue
+		}
+		var outputChainID base.ChainID
+		if cc.IsOrigin() {
+			outputChainID = base.MakeOriginChainID(addOut.ID)
+		} else {
+			outputChainID = cc.ChainID
+		}
+		if outputChainID == chainID {
+			return &ledger.OutputWithID{ID: addOut.ID, Output: addOut.Output.Clone()}, true
+		}
+	}
+	return nil, false
+}
+
+// IsChainDeleted checks if the chain was terminated in these mutations.
+func (mut *Mutations) IsChainDeleted(chainID base.ChainID) bool {
+	for _, m := range mut.mut {
+		if delChain, ok := m.(*mutationDelChain); ok {
+			if delChain.ChainID == chainID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
 	for i := range txid {
 		mut.mut = append(mut.mut, &mutationDelTx{
