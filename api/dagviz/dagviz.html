@@ -6,44 +6,44 @@
 <title>Proxima DAG Visualizer</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #1a1a2e; color: #e0e0e0; font-family: 'Consolas', 'Monaco', monospace; overflow: hidden; }
+body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', monospace; overflow: hidden; }
 #canvas { display: block; cursor: crosshair; }
 #controls {
     position: absolute; top: 10px; left: 10px;
-    background: rgba(20, 20, 40, 0.9); border: 1px solid #444; border-radius: 6px;
+    background: rgba(255, 255, 255, 0.92); border: 1px solid #bbb; border-radius: 6px;
     padding: 10px; font-size: 12px; z-index: 10; min-width: 220px;
 }
-#controls label { display: block; margin: 4px 0 2px; color: #aaa; }
+#controls label { display: block; margin: 4px 0 2px; color: #555; }
 #controls input[type=text] {
-    width: 100%; background: #222; color: #eee; border: 1px solid #555;
+    width: 100%; background: #fff; color: #222; border: 1px solid #aaa;
     border-radius: 3px; padding: 3px 6px; font-size: 12px; font-family: inherit;
 }
 #controls input[type=range] { width: 100%; }
 #controls button {
-    margin-top: 6px; padding: 4px 12px; background: #2a6;
+    margin-top: 6px; padding: 4px 12px; background: #2a7;
     color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;
 }
-#controls button:hover { background: #3b7; }
-#controls button.disconnect { background: #a44; }
+#controls button:hover { background: #3b8; }
+#controls button.disconnect { background: #b44; }
 #controls button.disconnect:hover { background: #c55; }
 .ctrl-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
 .ctrl-row label { margin: 0; flex-shrink: 0; }
-.ctrl-row span { color: #8f8; min-width: 30px; text-align: right; }
+.ctrl-row span { color: #272; min-width: 30px; text-align: right; }
 #status { margin-top: 6px; padding: 3px; border-radius: 3px; text-align: center; font-size: 11px; }
-#status.connected { background: #1a4a1a; color: #6f6; }
-#status.disconnected { background: #4a1a1a; color: #f66; }
-#stats { margin-top: 4px; font-size: 11px; color: #888; }
+#status.connected { background: #d4f0d4; color: #272; }
+#status.disconnected { background: #f0d4d4; color: #922; }
+#stats { margin-top: 4px; font-size: 11px; color: #666; }
 #tooltip {
-    display: none; position: absolute; background: rgba(10, 10, 30, 0.95);
-    border: 1px solid #666; border-radius: 4px; padding: 8px; font-size: 11px;
+    display: none; position: absolute; background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #999; border-radius: 4px; padding: 8px; font-size: 11px; color: #222;
     pointer-events: none; z-index: 20; max-width: 400px; white-space: pre-line;
 }
 .edge-toggle { margin: 2px 0; }
 .edge-toggle input { margin-right: 4px; }
 #legend {
     position: absolute; bottom: 10px; left: 10px;
-    background: rgba(20, 20, 40, 0.9); border: 1px solid #444; border-radius: 6px;
-    padding: 8px; font-size: 11px; z-index: 10;
+    background: rgba(255, 255, 255, 0.92); border: 1px solid #bbb; border-radius: 6px;
+    padding: 8px; font-size: 11px; z-index: 10; color: #333;
 }
 .legend-item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
 .legend-shape { width: 14px; height: 14px; display: inline-block; }
@@ -91,9 +91,9 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: 'Consolas', 'Monaco', m
     <div class="legend-item"><canvas class="legend-shape" id="lgBranch"></canvas> Branch (sequencer, tick=0)</div>
     <div class="legend-item"><canvas class="legend-shape" id="lgSeq"></canvas> Sequencer tx</div>
     <div class="legend-item"><canvas class="legend-shape" id="lgNonSeq"></canvas> Non-sequencer tx</div>
-    <div class="legend-item"><span style="color:#888;">---</span> Consumption edge</div>
-    <div class="legend-item"><span style="color:#6af; letter-spacing:2px;">- -</span> Endorsement edge</div>
-    <div class="legend-item"><span style="color:#fa0; font-weight:bold;">|</span> Stem link</div>
+    <div class="legend-item"><span style="color:#aaa;">---</span> Consumption edge</div>
+    <div class="legend-item"><span style="color:#36a; letter-spacing:2px;">- -</span> Endorsement edge</div>
+    <div class="legend-item"><span style="color:#c70; font-weight:bold;">|</span> Stem link</div>
 </div>
 
 <script>
@@ -353,19 +353,30 @@ function simpleHash(str) {
 }
 
 // ============ COLORS ============
+// Golden ratio method: each new sequencer gets a hue maximally distant from previous ones.
+let seqColorIndex = 0;
+const GOLDEN_RATIO = 0.618033988749895;
+const seqHues = new Map();
+
+function assignSeqColor(seqId) {
+    if (seqHues.has(seqId)) return;
+    const hue = ((seqColorIndex * GOLDEN_RATIO) % 1.0) * 360;
+    seqColorIndex++;
+    seqHues.set(seqId, hue);
+    seqColors.set(seqId, `hsl(${hue}, 85%, 35%)`);
+}
+
 function seqColor(seqId) {
-    if (!seqId) return '#888';
-    if (seqColors.has(seqId)) return seqColors.get(seqId);
-    const hue = simpleHash(seqId) % 360;
-    const color = `hsl(${hue}, 70%, 60%)`;
-    seqColors.set(seqId, color);
-    return color;
+    if (!seqId) return '#666';
+    assignSeqColor(seqId);
+    return seqColors.get(seqId);
 }
 
 function seqColorDim(seqId) {
-    if (!seqId) return 'rgba(136,136,136,0.3)';
-    const hue = simpleHash(seqId) % 360;
-    return `hsla(${hue}, 70%, 60%, 0.3)`;
+    if (!seqId) return 'rgba(100,100,100,0.25)';
+    assignSeqColor(seqId);
+    const hue = seqHues.get(seqId);
+    return `hsla(${hue}, 85%, 35%, 0.3)`;
 }
 
 // ============ RENDERING ============
@@ -390,7 +401,7 @@ function draw() {
 }
 
 function drawWaitingMessage() {
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#999';
     ctx.font = '16px Consolas, Monaco, monospace';
     ctx.textAlign = 'center';
     ctx.fillText(connected ? 'Waiting for transactions...' : 'Not connected', canvas.width / 2, canvas.height / 2);
@@ -402,10 +413,10 @@ function drawGrid(range) {
     const firstSlot = Math.floor(range.left / SLOT_DURATION_MS);
     const lastSlot = Math.ceil(range.right / SLOT_DURATION_MS);
 
-    ctx.strokeStyle = 'rgba(100, 100, 140, 0.3)';
+    ctx.strokeStyle = 'rgba(150, 150, 180, 0.5)';
     ctx.lineWidth = 1;
     ctx.font = '10px Consolas, Monaco, monospace';
-    ctx.fillStyle = 'rgba(100, 100, 140, 0.5)';
+    ctx.fillStyle = 'rgba(100, 100, 130, 0.7)';
 
     for (let s = firstSlot; s <= lastSlot; s++) {
         const x = timeToX(s * SLOT_DURATION_MS);
@@ -431,8 +442,8 @@ function drawGrid(range) {
         ctx.lineTo(nowX, canvas.height);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(255, 100, 100, 0.7)';
-        ctx.fillText('now', nowX + 3, canvas.height - 6);
+        ctx.fillStyle = 'rgba(200, 60, 60, 0.8)';
+        ctx.fillText('now', nowX + 3, canvas.height - 20);
     }
 }
 
@@ -460,7 +471,7 @@ function drawEdges(range) {
                 if (x2 < -100 || x2 > canvas.width + 100) continue;
                 const y2 = vertexY(dep);
 
-                ctx.strokeStyle = isSelected ? 'rgba(180,180,180,0.6)' : 'rgba(100,100,100,0.2)';
+                ctx.strokeStyle = isSelected ? 'rgba(80,80,80,0.6)' : 'rgba(160,160,160,0.3)';
                 ctx.lineWidth = isSelected ? 1.5 : 0.5;
                 ctx.setLineDash([]);
                 ctx.beginPath();
@@ -540,13 +551,13 @@ function drawVertices(range) {
         const isHovered = (id === hoveredVertexId);
         const isSelected = (id === selectedVertexId);
 
-        let color = v.isSequencer ? seqColor(v.seqId) : '#888';
+        let color = v.isSequencer ? seqColor(v.seqId) : '#999';
         if (isHovered || isSelected) {
-            color = '#fff';
+            color = '#000';
         }
 
         ctx.fillStyle = color;
-        ctx.strokeStyle = isSelected ? '#fff' : 'rgba(0,0,0,0)';
+        ctx.strokeStyle = isSelected ? '#000' : 'rgba(0,0,0,0)';
         ctx.lineWidth = isSelected ? 2 : 0;
 
         if (v.isBranch) {
@@ -560,7 +571,7 @@ function drawVertices(range) {
             ctx.closePath();
             ctx.fill();
             // Outline to distinguish from circles
-            ctx.strokeStyle = isSelected ? '#fff' : 'rgba(255,255,255,0.4)';
+            ctx.strokeStyle = isSelected ? '#000' : 'rgba(0,0,0,0.3)';
             ctx.lineWidth = isSelected ? 2 : 1;
             ctx.stroke();
         } else if (v.isSequencer) {
