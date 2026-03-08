@@ -76,7 +76,7 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: 'Consolas', 'Monaco', m
     <div class="edge-toggle"><label><input type="checkbox" id="showStem" checked> Stem (thick)</label></div>
 
     <div style="margin-top:6px; font-size:11px; color:#aaa;">
-        <label><input type="checkbox" id="pauseScroll"> Pause scrolling (P)</label>
+        <label><input type="checkbox" id="pauseScroll" onchange="onPauseCheckbox()"> Pause scrolling (P)</label>
     </div>
 
     <div id="stats">
@@ -230,7 +230,7 @@ function handleMessage(data) {
     if (!ts) return;
 
     if (genesisSlot === 0) {
-        genesisSlot = ts.slot - 5; // set reference
+        genesisSlot = ts.slot - 5;
     }
 
     const isBranch = ts.tick === 0 && !!data.seqid;
@@ -253,6 +253,7 @@ function handleMessage(data) {
     };
 
     vertices.set(data.id, v);
+    updateTimeAnchor(v.timeMs);
 
     // TPS tracking
     const now = Date.now();
@@ -279,23 +280,26 @@ function slotTickToMs(slot, tick) {
     return slot * SLOT_DURATION_MS + tick * TICK_DURATION_MS;
 }
 
-// Get wall-clock "now" in the same ms space
-// We anchor: current wall time corresponds to ledger.TimeNow()
-// For simplicity, we estimate current slot from first received data
+// Time anchoring: track the most recent vertex arrival to calibrate clock.
+// We continuously update the anchor so that "now" in ledger time tracks
+// the latest vertex we've seen (which is close to the node's real time).
 let timeAnchorWall = 0;
 let timeAnchorLedger = 0;
+let pausedLedgerMs = 0;
+
+function updateTimeAnchor(vertexTimeMs) {
+    // Use the latest vertex as the best estimate of "current ledger time"
+    // Only update if this vertex is newer than our current anchor
+    const candidateLedger = vertexTimeMs;
+    if (timeAnchorWall === 0 || candidateLedger > timeAnchorLedger) {
+        timeAnchorWall = Date.now();
+        timeAnchorLedger = candidateLedger;
+    }
+}
 
 function nowLedgerMs() {
-    if (timeAnchorWall === 0) {
-        // Set anchor from the first vertex we see
-        if (vertices.size > 0) {
-            const first = vertices.values().next().value;
-            timeAnchorWall = Date.now();
-            timeAnchorLedger = first.timeMs;
-        } else {
-            return 0;
-        }
-    }
+    if (paused && pausedLedgerMs > 0) return pausedLedgerMs;
+    if (timeAnchorWall === 0) return 0;
     return timeAnchorLedger + (Date.now() - timeAnchorWall);
 }
 
@@ -413,6 +417,7 @@ function drawGrid(range) {
         ctx.stroke();
 
         ctx.fillText('slot ' + s, x + 3, 14);
+        ctx.fillText('' + s, x + 3, canvas.height - 6);
     }
 
     // "Now" line
@@ -594,32 +599,28 @@ function onWheel(e) {
     updatePaneSlots();
 }
 
-function onKeyDown(e) {
-    if (e.key === 'p' || e.key === 'P') {
-        paused = !paused;
-        document.getElementById('pauseScroll').checked = paused;
-        if (paused) {
-            // Freeze current time
-            pausedLedgerMs = nowLedgerMs();
-        } else {
-            // Re-anchor
-            timeAnchorWall = Date.now();
-            timeAnchorLedger = pausedLedgerMs;
-        }
+function setPaused(newPaused) {
+    if (newPaused === paused) return;
+    paused = newPaused;
+    document.getElementById('pauseScroll').checked = paused;
+    if (paused) {
+        pausedLedgerMs = nowLedgerMs();
+    } else {
+        // Re-anchor so clock continues from where we paused
+        timeAnchorWall = Date.now();
+        timeAnchorLedger = pausedLedgerMs;
     }
 }
 
-let pausedLedgerMs = 0;
-const _origNowLedgerMs = nowLedgerMs;
+function onPauseCheckbox() {
+    setPaused(document.getElementById('pauseScroll').checked);
+}
 
-// Override nowLedgerMs to support pause
-const _nowLedgerMs = nowLedgerMs;
-window._getNowLedgerMs = function() {
-    if (paused && pausedLedgerMs > 0) return pausedLedgerMs;
-    return _nowLedgerMs();
-};
-// Patch
-nowLedgerMs = function() { return window._getNowLedgerMs(); };
+function onKeyDown(e) {
+    if (e.key === 'p' || e.key === 'P') {
+        setPaused(!paused);
+    }
+}
 
 function findNearestVertex(mx, my, maxDist) {
     let nearest = null;
