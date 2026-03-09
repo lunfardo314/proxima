@@ -29,12 +29,8 @@ type InitParameters struct {
 // default ledger init parameters
 
 const (
-	defaultTickDuration = 80 * time.Millisecond
-
-	DustPerProxi         = 1_000_000
-	PRXI                 = DustPerProxi
-	initialSupplyProxi   = 1_000_000_000
-	DefaultInitialSupply = initialSupplyProxi * PRXI
+	defaultTickDuration  = 80 * time.Millisecond
+	DefaultInitialSupply = GProxi
 
 	defaultTransactionPace          = 12
 	defaultTransactionPaceSequencer = 2
@@ -42,6 +38,18 @@ const (
 
 	defaultAttachmentCostBudget = 550  // > than max transaction with 256 inputs and 256 outputs
 	defaultTxIDStateTTLSlots    = 8640 // 24 hours with 10 sec slots
+
+	BaseTokenName       = "Proxi"
+	BaseTokenNameTicker = "PRXI"
+	DustTokenName       = "dust"
+)
+
+const (
+	Proxi  = 1_000_000
+	KProxi = 1_000 * Proxi
+	MProxi = 1_000 * KProxi
+	GProxi = 1_000 * MProxi
+	TProxi = 1_000 * GProxi
 )
 
 func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, description ...string) InitParameters {

@@ -19,9 +19,3 @@ const (
 func init() {
 	util.Assertf(MaxSyncPortionSlots <= math.MaxUint16, "MaxSyncPortionSlots <= math.MaxUint16")
 }
-
-const (
-	BaseTokenName       = "Proxi"
-	BaseTokenNameTicker = "PRXI"
-	DustTokenName       = "dust"
-)

@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -51,4 +52,12 @@ func TestLedgerConstantsYAML(t *testing.T) {
 	id := ledger.DefaultParameters(pk, uint32(time.Now().UnixNano()), "---- testing the description ----")
 	yamlData := ledger.ConstantsYAMLFromParamsUpgrade0(id)
 	t.Logf("\n%s", string(yamlData))
+}
+
+func TestProxi(t *testing.T) {
+	t.Logf("1 x Proxi  = %s", util.Th(ledger.Proxi))
+	t.Logf("1 x KProxi = %s", util.Th(ledger.KProxi))
+	t.Logf("1 x MProxi = %s", util.Th(ledger.MProxi))
+	t.Logf("1 x GProxi = %s", util.Th(ledger.GProxi))
+	t.Logf("1 x TProxi = %s", util.Th(ledger.TProxi))
 }
