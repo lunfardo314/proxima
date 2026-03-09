@@ -44,12 +44,15 @@ type txListener struct {
 	handlers             map[int]func(tx *transaction.Transaction) bool
 	deleteHandlerCounter int
 	deleteHandlers       map[int]func(txid base.TransactionID) bool
+	vertexHandlerCounter int
+	vertexHandlers       map[int]func(data *NewVertexEventData) bool
 }
 
 func (w *Workflow) startListeningTransactions() {
 	w.txListener = &txListener{
 		handlers:       make(map[int]func(tx *transaction.Transaction) bool),
 		deleteHandlers: make(map[int]func(txid base.TransactionID) bool),
+		vertexHandlers: make(map[int]func(data *NewVertexEventData) bool),
 	}
 	w.events.OnEvent(EventNewTx, func(vid *vertex.WrappedTx) {
 		var tx *transaction.Transaction
@@ -61,6 +64,9 @@ func (w *Workflow) startListeningTransactions() {
 			// no need for goroutine because events are on queue
 			w.txListener.runFor(tx)
 		}
+	})
+	w.events.OnEvent(EventNewVertex, func(data *NewVertexEventData) {
+		w.txListener.runForVertex(data)
 	})
 	w.events.OnEvent(EventTxDeleted, func(txid base.TransactionID) {
 		w.txListener.runForDelete(txid)
@@ -87,6 +93,25 @@ func (tl *txListener) runForDelete(txid base.TransactionID) {
 			delete(tl.deleteHandlers, id)
 		}
 	}
+}
+
+func (tl *txListener) runForVertex(data *NewVertexEventData) {
+	tl.mutex.Lock()
+	defer tl.mutex.Unlock()
+
+	for id, fun := range tl.vertexHandlers {
+		if !fun(data) {
+			delete(tl.vertexHandlers, id)
+		}
+	}
+}
+
+func (w *Workflow) OnNewVertex(fun func(data *NewVertexEventData) bool) {
+	w.txListener.mutex.Lock()
+	defer w.txListener.mutex.Unlock()
+
+	w.txListener.vertexHandlers[w.txListener.vertexHandlerCounter] = fun
+	w.txListener.vertexHandlerCounter++
 }
 
 func (w *Workflow) OnTransaction(fun func(tx *transaction.Transaction) bool) {

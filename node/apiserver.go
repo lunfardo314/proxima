@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/api/server"
 	"github.com/lunfardo314/proxima/api/streaming"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
+	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -199,6 +200,10 @@ func (p *ProximaNode) GetKnownLatestMilestonesJSONAble() map[string]tippool.Late
 
 func (p *ProximaNode) OnTransaction(fun func(tx *transaction.Transaction) bool) {
 	p.workflow.OnTransaction(fun)
+}
+
+func (p *ProximaNode) OnNewVertex(fun func(data *workflow.NewVertexEventData) bool) {
+	p.workflow.OnNewVertex(fun)
 }
 
 func (p *ProximaNode) OnTxDeleted(fun func(txid base.TransactionID) bool) {

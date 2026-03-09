@@ -243,6 +243,11 @@ function handleMessage(data) {
         totalAmount: data.a || 0,
         inflation: data.i || 0,
         seqId: data.seqid || '',
+        seqName: data.seqname || '',
+        proposerStrategy: data.strategy || '',
+        holderId: data.holder || '',
+        coverageDelta: data.cd,
+        supply: data.supply,
         seqInputIdx: data.seqidx,
         stemInputIdx: data.stemidx,
         inputs: data.in || [],       // these are tx IDs (not output IDs)
@@ -273,6 +278,20 @@ function parseTxTimestamp(txidHex) {
     const slot = parseInt(slotHex, 16);
     const tick = tickByte >> 1; // upper 7 bits
     return { slot, tick };
+}
+
+// Human-readable short txid, matching node format: [<slot>|<tick>sq]<12hex>..
+function txidShort(txidHex) {
+    const ts = parseTxTimestamp(txidHex);
+    if (!ts) return txidHex.substring(0, 16) + '..';
+    const seqFlag = parseInt(txidHex.substring(8, 10), 16) & 1;
+    let suffix = '';
+    if (seqFlag) {
+        suffix = ts.tick === 0 ? 'br' : 'sq';
+    }
+    // hash portion starts at byte 6 (hex offset 12)
+    const hashPart = txidHex.substring(12, 24);
+    return '[' + ts.slot + '|' + ts.tick + suffix + ']' + hashPart + '..';
 }
 
 // Convert slot+tick to a millisecond timestamp relative to genesis
@@ -328,18 +347,20 @@ function xToTime(x) {
     return range.left + (x / canvas.width) * (range.right - range.left);
 }
 
-// Y position: sequencer-based lanes
+// Y position: sequencer-based lanes for seq txs, holder-based for non-seq
 function vertexY(v) {
     const h = canvas.height;
     if (!v.isSequencer) {
-        // non-sequencer: spread based on txid hash
-        const hash = simpleHash(v.id);
-        return 40 + (hash % (h - 80));
+        // non-sequencer: lane based on holder ID (like seqId for sequencers)
+        const laneKey = v.holderId || v.id;
+        const laneHash = simpleHash(laneKey);
+        const laneBase = 60 + (laneHash % (h - 120));
+        const jitter = (v.tick - TICKS_PER_SLOT / 2) * 0.2;
+        return laneBase + jitter;
     }
     // Sequencer lane: deterministic from seqId, jittered by tick
     const laneHash = simpleHash(v.seqId);
     const laneBase = 60 + (laneHash % (h - 120));
-    // Jitter within lane based on tick
     const jitter = (v.tick - TICKS_PER_SLOT / 2) * 0.3;
     return laneBase + jitter;
 }
@@ -474,8 +495,8 @@ function drawEdges(range) {
                 const y2 = vertexY(dep);
 
                 const edgeInCone = inCone && pastConeSet.has(depId);
-                ctx.strokeStyle = edgeInCone ? 'rgba(40,40,40,0.8)' : 'rgba(160,160,160,0.3)';
-                ctx.lineWidth = edgeInCone ? 2 : 0.5;
+                ctx.strokeStyle = edgeInCone ? 'rgba(40,40,40,0.8)' : 'rgba(130,130,130,0.45)';
+                ctx.lineWidth = edgeInCone ? 2 : 0.8;
                 ctx.setLineDash([]);
                 ctx.beginPath();
                 ctx.moveTo(x1, y1);
@@ -723,13 +744,18 @@ function updateTooltip() {
     if (!v) { tip.style.display = 'none'; return; }
 
     const lines = [];
-    lines.push('TxID: ' + v.id.substring(0, 20) + '...');
-    lines.push('Slot: ' + v.slot + '  Tick: ' + v.tick);
-    lines.push('Amount: ' + formatAmount(v.totalAmount));
-    if (v.inflation) lines.push('Inflation: ' + formatAmount(v.inflation));
-    if (v.seqId) lines.push('SeqID: ' + v.seqId.substring(0, 16) + '...');
-    lines.push('Type: ' + (v.isBranch ? 'Branch' : v.isSequencer ? 'Sequencer' : 'Non-seq'));
-    lines.push('Inputs: ' + v.inputs.length + '  Endorse: ' + v.endorsements.length);
+    lines.push(txidShort(v.id));
+    if (v.seqId) {
+        const seqLabel = v.seqId.substring(0, 8) + '..';
+        const meta = [v.seqName, v.proposerStrategy].filter(Boolean).join('.');
+        lines.push(meta ? seqLabel + '(' + meta + ')' : seqLabel);
+    }
+    lines.push('Total: ' + formatAmount(v.totalAmount) + (v.inflation ? '  Inflation: ' + formatAmount(v.inflation) : ''));
+    lines.push('Input/Endorse: ' + v.inputs.length + '/' + v.endorsements.length);
+    if (v.coverageDelta !== undefined && v.coverageDelta !== null) {
+        const pct = v.supply ? ((v.coverageDelta / v.supply) * 100).toFixed(2) : '?';
+        lines.push('Coverage: ' + formatAmount(v.coverageDelta) + ' (' + pct + '%)');
+    }
 
     tip.textContent = lines.join('\n');
     tip.style.display = 'block';

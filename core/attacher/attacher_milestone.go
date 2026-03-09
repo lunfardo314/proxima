@@ -61,6 +61,15 @@ func runMilestoneAttacher(
 		} else {
 			env.Infof1(a.logFinalStatusString(msData))
 		}
+		// post new vertex event with full metadata from wrapup
+		var seqName, proposerStrategy string
+		if msData != nil {
+			seqName = msData.Name()
+			proposerStrategy = msData.ProposerStrategy()
+		}
+		if tx := vid.GetTransaction(); tx != nil {
+			env.PostEventNewVertex(tx, &a.finals.TransactionMetadata, seqName, proposerStrategy)
+		}
 	}
 	// finished either way: good or bad
 	vid.SetSequencerAttachmentFinished()

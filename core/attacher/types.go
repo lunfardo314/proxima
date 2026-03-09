@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 )
 
@@ -38,6 +39,7 @@ type (
 
 	postEventEnvironment interface {
 		PostEventNewTransaction(vid *vertex.WrappedTx)
+		PostEventNewVertex(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, seqName, proposerStrategy string)
 	}
 
 	Environment interface {

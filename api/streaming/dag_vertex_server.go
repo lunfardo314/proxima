@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -19,7 +20,8 @@ type (
 	environment interface {
 		global.Logging
 		OnTransaction(fun func(tx *transaction.Transaction) bool)
-		OnTxDeleted(fun func(txid base.TransactionID) bool) // called whenever tx is GCed. Could be useful for the visualizer
+		OnNewVertex(fun func(data *workflow.NewVertexEventData) bool)
+		OnTxDeleted(fun func(txid base.TransactionID) bool)
 		TxBytesStore() global.TxBytesStore
 	}
 	wsServer struct {
@@ -47,7 +49,7 @@ func Run(env environment) {
 	srv := &wsServer{
 		environment: env,
 	}
-	srv.Log().Infof("[%s] web socket steraming is running", TraceTag)
+	srv.Log().Infof("[%s] web socket streaming is running", TraceTag)
 	http.HandleFunc(api.PathDAGVertexStream, srv.dagVertexStreamHandler)
 }
 
@@ -101,22 +103,21 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 
 	// Goroutine to handle closing message from the client
 	go func() {
-		//defer wg.Done()
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
 				srv.Log().Infof("[%s] WebSocket client disconnected, remote: %s, err: %v", TraceTag, r.RemoteAddr, err)
-				_ = conn.Close() // explicitly close the connection
+				_ = conn.Close()
 				return
 			}
-
 		}
 	}()
 
-	srv.OnTransaction(func(tx *transaction.Transaction) bool {
+	srv.OnNewVertex(func(data *workflow.NewVertexEventData) bool {
 		mu.Lock()
 		defer mu.Unlock()
 
+		tx := data.Transaction
 		txID := tx.IDShortString()
 		slot := tx.Timestamp().Slot
 
@@ -143,8 +144,14 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 			txSlots[slot] = set.New[string]()
 		}
 
-		// Convert transaction to vertex
-		vertexWD := api.VertexWithDependenciesFromTransaction(tx)
+		// Convert to vertex with extended data
+		vertexWD := api.VertexWithDependenciesExtended(
+			tx,
+			data.CoverageDelta,
+			data.Supply,
+			data.SeqName,
+			data.ProposerStrategy,
+		)
 
 		// Store transaction id in its slot
 		txSlots[slot].Insert(vertexWD.ID)
@@ -154,7 +161,7 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 			txid, err := base.TransactionIDFromHexString(i)
 			if err != nil {
 				srv.Log().Warnf("Failed to parse TransactionID from hex: %s, err: %v", i, err)
-				continue // Skip this input
+				continue
 			}
 
 			depSlot := txid.Timestamp().Slot

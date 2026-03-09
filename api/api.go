@@ -248,8 +248,13 @@ type (
 		TotalAmount           uint64   `json:"a"`                           // total produced amount on transaction
 		TotalInflation        uint64   `json:"i,omitempty"`                 // total inflation on transaction
 		SequencerID           string   `json:"seqid,omitempty"`             // "" (omitted) for non-seq. Useful for coloring
-		SequencerInputTxIndex *byte    `json:"seqidx,omitempty"`            // sequencer predecessor tx index for sequencer predecessor tx in the Inputs list, otherwise nil
-		StemInputTxIndex      *byte    `json:"stemidx,omitempty"`           // stem predecessor (branch) tx index for stem predecessor tx in the Inputs list, otherwise nil
+		SeqName               string   `json:"seqname,omitempty"`           // sequencer name from on-chain data
+		ProposerStrategy      string   `json:"strategy,omitempty"`          // proposer strategy ID
+		HolderID              string   `json:"holder,omitempty"`            // holder ID hex (for non-seq vertical placement)
+		CoverageDelta         *uint64  `json:"cd,omitempty"`                // coverage delta (sequencer txs only)
+		Supply                *uint64  `json:"supply,omitempty"`            // total supply (sequencer txs only)
+		SequencerInputTxIndex *byte    `json:"seqidx,omitempty"`            // sequencer predecessor tx index
+		StemInputTxIndex      *byte    `json:"stemidx,omitempty"`           // stem predecessor tx index
 		Inputs                []string `json:"in"`                          // list of input IDs (not empty)
 		Endorsements          []string `json:"endorse,omitempty"`           // list of endorsements (can be nil)
 		ExplicitBaseline      string   `json:"explicit_baseline,omitempty"` // explicit baseline ID, if available
@@ -478,12 +483,29 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 }
 
 func VertexWithDependenciesFromTransaction(tx *transaction.Transaction) *VertexWithDependencies {
+	return vertexWithDepsFromTx(tx, nil, nil, "", "")
+}
+
+func VertexWithDependenciesExtended(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName, proposerStrategy string) *VertexWithDependencies {
+	return vertexWithDepsFromTx(tx, coverageDelta, supply, seqName, proposerStrategy)
+}
+
+func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName, proposerStrategy string) *VertexWithDependencies {
 	ret := &VertexWithDependencies{
-		ID:             tx.IDStringHex(),
-		TotalAmount:    tx.TotalAmount(),
-		TotalInflation: tx.InflationAmount(),
-		Inputs:         make([]string, 0),
-		Endorsements:   make([]string, tx.NumEndorsements()),
+		ID:               tx.IDStringHex(),
+		TotalAmount:      tx.TotalAmount(),
+		TotalInflation:   tx.InflationAmount(),
+		SeqName:          seqName,
+		ProposerStrategy: proposerStrategy,
+		CoverageDelta:    coverageDelta,
+		Supply:           supply,
+		Inputs:           make([]string, 0),
+		Endorsements:     make([]string, tx.NumEndorsements()),
+	}
+	if holderID, err := tx.HolderID(); err == nil {
+		ret.HolderID = hex.EncodeToString(holderID[:])
+	} else {
+		ret.HolderID = err.Error()
 	}
 	seqInputIdx, stemInputIdx, seqID := tx.SequencerAndStemInputData()
 

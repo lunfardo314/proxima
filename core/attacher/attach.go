@@ -155,6 +155,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		}
 
 		env.PostEventNewTransaction(vid)
+
+		// post new vertex event for non-sequencer transactions immediately
+		if !vid.IsSequencerTransaction() {
+			env.PostEventNewVertex(tx, nil, "", "")
+		}
 	})
 	return
 }
