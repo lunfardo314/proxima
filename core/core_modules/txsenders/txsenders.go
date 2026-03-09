@@ -185,12 +185,12 @@ func (q *TxSenders) consume(inp input) {
 func (q *TxSenders) attachAndGossip(inp *input) {
 	if inp.FromPeer == "" {
 		if err := q.AttachTxFromAPI(inp.Tx); err != nil {
-			q.Log().Warn("attachAndGossip from API: %v", err)
+			q.Log().Warnf("attachAndGossip from API: '%v'", err)
 			return
 		}
 	} else {
 		if err := q.AttachTxFromPeer(inp.Tx, inp.TxMetaData, inp.FromPeer); err != nil {
-			q.Log().Warn("attachAndGossip from peer '%s': %v", inp.FromPeer, err)
+			q.Log().Warnf("attachAndGossip from peer '%s': '%v'", inp.FromPeer, err)
 			return
 		}
 	}

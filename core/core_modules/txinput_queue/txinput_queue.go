@@ -115,12 +115,12 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 	// now preparse it, calculate txid
 	tx, err := transaction.Parse(inp.TxBytes)
 	if err != nil {
-		q.Log().Warn("TxInputQueue: %v", err)
+		q.Log().Warnf("TxInputQueue: %v", err)
 		return
 	}
 	// check if message prefix is equal to txid
 	if tx.ID() != inp.PrefixTxID {
-		q.Log().Warn("TxInputQueue: tx message prefix (%s) != real txid (%s). Transaction IGNORED", inp.PrefixTxID.String(), tx.IDString())
+		q.Log().Warnf("TxInputQueue: tx message prefix (%s) != real txid (%s). Transaction IGNORED", inp.PrefixTxID.String(), tx.IDString())
 		return
 	}
 
@@ -148,7 +148,7 @@ func (q *TxInputQueue) fromAPI(inp *Input) {
 	}
 	tx, err := transaction.Parse(inp.TxBytes)
 	if err != nil {
-		q.Log().Warn("TxInputQueue from '%s': %v", from.String(), err)
+		q.Log().Warnf("TxInputQueue from '%s': %v", from.String(), err)
 		return
 	}
 	txid := tx.ID()
