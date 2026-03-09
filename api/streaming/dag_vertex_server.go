@@ -19,7 +19,6 @@ import (
 type (
 	environment interface {
 		global.Logging
-		OnTransaction(fun func(tx *transaction.Transaction) bool)
 		OnNewVertex(fun func(data *workflow.NewVertexEventData) bool)
 		OnTxDeleted(fun func(txid base.TransactionID) bool)
 		TxBytesStore() global.TxBytesStore

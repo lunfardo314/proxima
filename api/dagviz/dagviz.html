@@ -748,9 +748,12 @@ function updateTooltip() {
     if (v.seqId) {
         const seqLabel = v.seqId.substring(0, 8) + '..';
         const meta = [v.seqName, v.proposerStrategy].filter(Boolean).join('.');
-        lines.push(meta ? seqLabel + '(' + meta + ')' : seqLabel);
+        lines.push('Sequencer: ' + (meta ? seqLabel + '(' + meta + ')' : seqLabel));
     }
-    lines.push('Total: ' + formatAmount(v.totalAmount) + (v.inflation ? '  Inflation: ' + formatAmount(v.inflation) : ''));
+    lines.push('Total: ' + formatAmount(v.totalAmount));
+    if (v.inflation) {
+        lines.push('Inflation: ' + formatAmount(v.inflation));
+    }
     lines.push('Input/Endorse: ' + v.inputs.length + '/' + v.endorsements.length);
     if (v.coverageDelta !== undefined && v.coverageDelta !== null) {
         const pct = v.supply ? ((v.coverageDelta / v.supply) * 100).toFixed(2) : '?';
