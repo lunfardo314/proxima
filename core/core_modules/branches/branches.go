@@ -420,6 +420,112 @@ func (b *Branches) GetChainOutputFromBranch(branchID base.TransactionID, chainID
 	}
 }
 
+// FindLatestReliableBranch finds the LRB using both committed and pending branches from b.m.
+// Once found, the LRB is committed to DB via GetStateReaderForTheBranch.
+func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
+	b.mutex.Lock()
+
+	// find the latest slot in b.m that has at least one healthy branch
+	var latestHealthySlot uint32
+	found := false
+	for txid, bd := range b.m {
+		if !txid.IsBranchTransaction() {
+			continue
+		}
+		slot := txid.Slot()
+		if global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, global.FractionHealthyBranch) {
+			if !found || slot > latestHealthySlot {
+				latestHealthySlot = slot
+				found = true
+			}
+		}
+	}
+	if !found {
+		b.mutex.Unlock()
+		// b.m has no healthy branches (e.g., startup or tests) — fall back to DB
+		return multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
+	}
+
+	// collect all healthy branches at the latest healthy slot
+	type tipEntry struct {
+		id base.TransactionID
+		bd *multistate.BranchData
+	}
+	var tips []tipEntry
+	for txid, bd := range b.m {
+		if txid.Slot() == latestHealthySlot && txid.IsBranchTransaction() &&
+			global.IsHealthyCoverageDelta(bd.CoverageDelta, bd.Supply, global.FractionHealthyBranch) {
+			tips = append(tips, tipEntry{txid, bd.BranchData})
+		}
+	}
+	b.mutex.Unlock()
+
+	if len(tips) == 1 {
+		// single healthy branch — commit it and return
+		b.GetStateReaderForTheBranch(tips[0].id)
+		return tips[0].bd
+	}
+
+	// multiple healthy tips: pick the heaviest, walk back to find the reliable branch
+	heaviestIdx := 0
+	for i := 1; i < len(tips); i++ {
+		if tips[i].bd.CoverageDelta > tips[heaviestIdx].bd.CoverageDelta {
+			heaviestIdx = i
+		}
+	}
+
+	// collect non-heaviest tip branch IDs for cross-checking
+	otherTipIDs := make([]base.TransactionID, 0, len(tips)-1)
+	for i := range tips {
+		if i != heaviestIdx {
+			otherTipIDs = append(otherTipIDs, tips[i].id)
+		}
+	}
+
+	// walk back from the heaviest tip
+	currentID := tips[heaviestIdx].id
+	first := true
+	for {
+		if first {
+			// skip the tip itself — it can't be "reliable" (not known in other tips yet)
+			first = false
+		} else {
+			// check if currentID is known in all other tip branches
+			knownInAll := true
+			for _, otherID := range otherTipIDs {
+				if !b.BranchKnowsTransaction(otherID, currentID) {
+					knownInAll = false
+					break
+				}
+			}
+			if knownInAll {
+				// found the LRB — commit it to DB and return
+				b.GetStateReaderForTheBranch(currentID)
+				b.mutex.Lock()
+				bd, ok := b._getAndCacheNoLock(currentID)
+				b.mutex.Unlock()
+				if ok {
+					return bd.BranchData
+				}
+				return nil
+			}
+		}
+		// walk back via stem link
+		b.mutex.Lock()
+		bd, ok := b._getAndCacheNoLock(currentID)
+		if !ok {
+			b.mutex.Unlock()
+			return nil
+		}
+		stemLock, stemOk := bd.Stem.Output.StemLock()
+		b.mutex.Unlock()
+		if !stemOk {
+			return nil
+		}
+		currentID = stemLock.PredecessorOutputID.TransactionID()
+	}
+}
+
 func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) bool {
 	util.Assertf(branchID.IsBranchTransaction(), "branch tx expected. Got: %s", branchID.StringShort)
 	if branchID == txid {

@@ -558,7 +558,7 @@ function findVertexByTxId(txId) {
 
 function vertexRadius(v) {
     const base = vertexScaleFactor * 0.5;
-    if (!v.isSequencer) return Math.max(1.5, base * 0.3);
+    if (!v.isSequencer) return Math.max(1.5, base * 0.6);
     // Gentle log scaling: ln(amount) ranges ~15-25 for typical values
     // Normalize to a small multiplier around 1.0
     const amt = v.totalAmount || 1;

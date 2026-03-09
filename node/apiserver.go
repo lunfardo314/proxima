@@ -109,11 +109,11 @@ func (p *ProximaNode) GetPeersInfo() *api.PeersInfo {
 }
 
 func (p *ProximaNode) LatestReliableState() (multistate.SugaredStateReader, error) {
-	lrb := multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
+	lrb := p.workflow.Branches().FindLatestReliableBranch()
 	if lrb == nil {
 		return multistate.SugaredStateReader{}, fmt.Errorf("LatestReliableState: can't find latest reliable branch")
 	}
-	return multistate.MakeSugared(multistate.MustNewReadable(p.StateStore(), lrb.Root, 0), p), nil
+	return multistate.MakeSugared(p.workflow.Branches().GetStateReaderForTheBranch(lrb.TxID()), p), nil
 }
 
 func (p *ProximaNode) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
@@ -126,8 +126,7 @@ func (p *ProximaNode) SubmitTxBytesFromAPI(txBytes []byte) {
 
 func (p *ProximaNode) GetLatestReliableBranch() (ret *multistate.BranchData) {
 	err := util.CatchPanicOrError(func() error {
-		//ret = p.workflow.Branches().FindLatestReliableBranch(global.FractionHealthyBranch)
-		ret = multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
+		ret = p.workflow.Branches().FindLatestReliableBranch()
 		return nil
 	})
 	if err != nil {

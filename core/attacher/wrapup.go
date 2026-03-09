@@ -83,7 +83,7 @@ func (a *milestoneAttacher) commitBranch() {
 	// a.finals.StateRoot is NOT set — it will be computed at deferred commit time
 
 	branchID := a.vid.ID()
-	a.LogTx(time.Now(), fmt.Sprintf("pending branch %s", branchID.StringShort()), committedTxs...)
+	a.LogTx(time.Now(), fmt.Sprintf("included in pending branch %s", branchID.StringShort()), committedTxs...)
 }
 
 // extractBranchOutputs extracts stem and sequencer outputs from the branch transaction vertex.

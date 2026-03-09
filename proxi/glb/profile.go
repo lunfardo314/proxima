@@ -3,6 +3,7 @@ package glb
 import (
 	"crypto/ed25519"
 	"encoding/hex"
+	"fmt"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -162,7 +163,7 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...ti
 	defer PrintTxLogForTxID(txid)
 
 	inclusionDepth := GetTargetInclusionDepth()
-	Infof("tracking inclusion of the transaction %s.\ntarget inclusion depth: %d", txid.String(), inclusionDepth)
+	Infof("tracking inclusion of %s, target depth: %d", txid.StringShort(), inclusionDepth)
 	lrbids := set.New[base.TransactionID]()
 	clnt := GetClient()
 	start := time.Now()
@@ -178,10 +179,11 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...ti
 			}
 			since := time.Since(start) / time.Second
 			if foundAtDepth < 0 {
-				Infof("%2d sec. Transaction is NOT included in the latest reliable branch (LRB) %s", since, lrbidStr)
+				fmt.Printf("\r\033[K%2d sec. LRB: %s  transaction NOT included", since, lrbidStr)
 			} else {
-				Infof("%2d sec. Transaction is INCLUDED in the latest reliable branch (LRB) at depth %d: %s", since, foundAtDepth, lrbidStr)
+				fmt.Printf("\r\033[K%2d sec. LRB: %s  included at depth %d", since, lrbidStr, foundAtDepth)
 				if foundAtDepth == inclusionDepth {
+					fmt.Println()
 					Infof("target inclusion depth %d has been reached", inclusionDepth)
 					return true
 				}
@@ -191,6 +193,7 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...ti
 		}
 		time.Sleep(poll)
 		if len(timeout) > 0 && time.Since(start) > timeout[0] {
+			fmt.Println()
 			return false
 		}
 	}

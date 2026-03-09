@@ -33,7 +33,7 @@ type spammerConfig struct {
 func initSpamCmd() *cobra.Command {
 	spamCmd := &cobra.Command{
 		Use:   "spam",
-		Short: `spams the ledger according to spammer.scenario`,
+		Short: `spams the ledger by sending transactions to the target in a loop`,
 		Args:  cobra.NoArgs,
 		Run:   runSpamCmd,
 	}
@@ -154,7 +154,9 @@ func doSpamming(cfg spammerConfig) {
 
 		glb.Verbosef("Fetched inputs from account %s:\n%s", walletData.Account.String(), glb.LinesOutputsWithIDs(outs).String())
 
-		glb.Infof("transferable balance: %s, number of outputs: %d", util.Th(balance), len(outs))
+		glb.Infof("\n----------------------------------------")
+		glb.Infof("transferable balance: %s, number of UTXOs: %d, tag-along: %s",
+			util.Th(balance), len(outs), cfg.tagAlongSequencer.String())
 		requiredBalance := minimumBalance + cfg.outputAmount*uint64(cfg.bundleSize) + cfg.tagAlongFee
 		if balance < requiredBalance {
 			glb.Infof("transferable balance (%s) is too small for the bundle (required is %s). Waiting for more..",

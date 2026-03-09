@@ -758,8 +758,7 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("tippool 1"))
 	}
 	// didn't find in latest milestones in the tippool, try LRB
-	branchData := multistate.FindLatestReliableBranch(seq.StateStore(), global.FractionHealthyBranch)
-	//branchData := seq.Branches().FindLatestReliableBranch(global.FractionHealthyBranch)
+	branchData := seq.Branches().FindLatestReliableBranch()
 	if branchData == nil {
 		seq.Log().Warnf("bootstrapOwnMilestoneOutput: can't find LRB")
 		return vertex.WrappedOutput{}
@@ -776,7 +775,7 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 // validateSequencerIDExists checks if the sequencer ID exists in the latest reliable branch.
 // Returns false with error log if the chain doesn't exist (likely misconfigured sequencer_id in config).
 func (seq *Sequencer) validateSequencerIDExists() bool {
-	branchData := multistate.FindLatestReliableBranch(seq.StateStore(), global.FractionHealthyBranch)
+	branchData := seq.Branches().FindLatestReliableBranch()
 	if branchData == nil {
 		seq.log.Errorf("validateSequencerIDExists: can't find latest reliable branch")
 		return false

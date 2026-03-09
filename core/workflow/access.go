@@ -128,3 +128,26 @@ func (w *Workflow) DisableMemDAGGC() bool {
 func (w *Workflow) Branches() *branches.Branches {
 	return w.branches
 }
+
+// CheckTransactionInLRB shadows MemDAG.CheckTransactionInLRB to use Branches.FindLatestReliableBranch
+// (which sees pending branches) and Branches.BranchKnowsTransaction (which walks pending mutations).
+func (w *Workflow) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
+	foundAtDepth = -1
+	lrb := w.branches.FindLatestReliableBranch()
+	if lrb == nil {
+		return
+	}
+	lrbid = lrb.Stem.ID.TransactionID()
+
+	multistate.IterateBranchChainBack(w.StateStore(), lrb, func(branchID *base.TransactionID, branch *multistate.BranchData) bool {
+		if foundAtDepth >= maxDepth {
+			return false
+		}
+		if !w.branches.BranchKnowsTransaction(*branchID, txid) {
+			return false
+		}
+		foundAtDepth++
+		return true
+	})
+	return
+}

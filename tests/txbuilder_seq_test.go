@@ -824,6 +824,9 @@ func (td *testWithUTXODBData) tagAlongBacklog() []ledger.OutputWithID {
 	return ret
 }
 
+// TestWithUTXODB takes ~20s when run alone but times out at 300s when run with
+// the full test suite because earlier tests consume ~288s of the budget.
+// Use: go test -run TestWithUTXODB ./tests/... or increase -timeout to 600s.
 func TestWithUTXODB(t *testing.T) {
 	const (
 		numDelegations = 10
