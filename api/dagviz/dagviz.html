@@ -94,6 +94,7 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
     <div class="legend-item"><span style="color:#aaa;">---</span> Consumption edge</div>
     <div class="legend-item"><span style="color:#36a; letter-spacing:2px;">- -</span> Endorsement edge</div>
     <div class="legend-item"><span style="color:#c70; font-weight:bold;">|</span> Stem link</div>
+    <div class="legend-item"><span style="color:#e22; font-weight:bold;">&#9675;</span> LRB (latest reliable branch)</div>
 </div>
 
 <script>
@@ -123,6 +124,10 @@ let mouseX = 0, mouseY = 0;
 let txCountInWindow = 0;
 let txTimestamps = [];
 let currentTPS = 0;
+
+// LRB tracking
+let lrbTxId = null;
+let lrbFetchTimer = null;
 
 // Time reference: we'll sync pane to wall clock
 // The pane shows [now - paneWidth + rightMargin, now + rightMargin]
@@ -180,6 +185,8 @@ function connect() {
         setStatus('Connected', true);
         document.getElementById('connectBtn').textContent = 'Disconnect';
         document.getElementById('connectBtn').className = 'disconnect';
+        fetchLRB();
+        scheduleLRBFetch();
     };
 
     ws.onmessage = (evt) => {
@@ -207,6 +214,10 @@ function disconnect() {
     if (ws) {
         ws.close();
         ws = null;
+    }
+    if (lrbFetchTimer) {
+        clearTimeout(lrbFetchTimer);
+        lrbFetchTimer = null;
     }
 }
 
@@ -614,6 +625,16 @@ function drawVertices(range) {
             // Small square for non-sequencer
             ctx.fillRect(x - r / 2, y - r / 2, r, r);
         }
+
+        // LRB marker: circle around the LRB vertex
+        if (lrbTxId && id === lrbTxId) {
+            const lrbR = r * 2.5;
+            ctx.strokeStyle = '#e22';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(x, y, lrbR, 0, Math.PI * 2);
+            ctx.stroke();
+        }
     }
 }
 
@@ -828,6 +849,37 @@ function drawLegendShapes() {
     const x3 = c3.getContext('2d');
     x3.fillStyle = '#888';
     x3.fillRect(5, 5, 4, 4);
+}
+
+// ============ LRB FETCH ============
+function fetchLRB() {
+    const loc = window.location;
+    const url = loc.protocol + '//' + loc.host + '/api/v1/get_latest_reliable_branch';
+    fetch(url).then(r => r.json()).then(data => {
+        if (data.branch_id) {
+            lrbTxId = data.branch_id;
+        }
+    }).catch(() => {});
+}
+
+// Schedule LRB fetch 1 second after each slot edge
+function scheduleLRBFetch() {
+    if (lrbFetchTimer) clearTimeout(lrbFetchTimer);
+    const now = nowLedgerMs();
+    if (now === 0) {
+        // No time anchor yet — retry soon
+        lrbFetchTimer = setTimeout(scheduleLRBFetch, 1000);
+        return;
+    }
+    const slotMs = SLOT_DURATION_MS;
+    const msIntoSlot = now % slotMs;
+    // ms until 1 second after the next slot edge
+    let delay = slotMs - msIntoSlot + 1000;
+    if (delay > slotMs) delay -= slotMs;
+    lrbFetchTimer = setTimeout(() => {
+        fetchLRB();
+        scheduleLRBFetch();
+    }, delay);
 }
 
 // ============ START ============
