@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"crypto/ed25519"
+	"encoding/binary"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -239,8 +240,12 @@ func MustInitLibraryCache(store common.Traversable) {
 // Unlike MustInitLibraryCache, this function allows re-initialization by resetting
 // any existing cache first (safe for testing where multiple init calls may occur).
 func MustInitLibraryCacheFromYAML(defYaml []byte) {
-	// Reset if already initialized — this is safe because callers of this function
-	// don't rely on a persistent DB store (they provide fresh YAML each time).
+	MustInitLibraryCacheFromMap(map[uint32][]byte{0: defYaml})
+}
+
+// MustInitLibraryCacheFromMap initializes the library cache from a map of slot -> YAML.
+// Use this when the CLI needs to support multiple library versions (after upgrades).
+func MustInitLibraryCacheFromMap(libraries map[uint32][]byte) {
 	libraryCacheMutex.RLock()
 	alreadyInit := libraryCache != nil && libraryCache.store != nil
 	libraryCacheMutex.RUnlock()
@@ -249,42 +254,49 @@ func MustInitLibraryCacheFromYAML(defYaml []byte) {
 		ResetForTesting()
 	}
 
-	store := &singleLibraryStore{data: defYaml}
+	store := &memLibraryStore{entries: libraries}
 	MustInitLibraryCache(store)
 }
 
-// singleLibraryStore is a minimal Traversable store for a single library at slot 0.
-// Used by MustInitLibraryCacheFromYAML when no persistent DB is available.
-type singleLibraryStore struct {
-	data []byte
+// memLibraryStore is an in-memory Traversable store for library YAMLs keyed by upgrade slot.
+type memLibraryStore struct {
+	entries map[uint32][]byte
 }
 
-func (s *singleLibraryStore) Iterator(_ []byte) common.KVIterator {
-	return &singleLibraryIterator{data: s.data, done: false}
-}
-
-type singleLibraryIterator struct {
-	data []byte
-	done bool
-}
-
-func (it *singleLibraryIterator) Iterate(fun func(k, v []byte) bool) {
-	if it.done {
-		return
+func (s *memLibraryStore) Iterator(_ []byte) common.KVIterator {
+	slots := make([]uint32, 0, len(s.entries))
+	for slot := range s.entries {
+		slots = append(slots, slot)
 	}
-	it.done = true
-	// Key: partition byte (0x06) + slot 0 (4 bytes)
-	key := []byte{upgradeLibraryDBPartition, 0, 0, 0, 0}
-	fun(key, it.data)
+	sort.Slice(slots, func(i, j int) bool { return slots[i] < slots[j] })
+	return &memLibraryIterator{store: s, slots: slots}
 }
 
-func (it *singleLibraryIterator) IterateKeys(fun func(k []byte) bool) {
-	if it.done {
-		return
+type memLibraryIterator struct {
+	store *memLibraryStore
+	slots []uint32
+}
+
+func (it *memLibraryIterator) Iterate(fun func(k, v []byte) bool) {
+	for _, slot := range it.slots {
+		key := make([]byte, 5)
+		key[0] = upgradeLibraryDBPartition
+		binary.BigEndian.PutUint32(key[1:], slot)
+		if !fun(key, it.store.entries[slot]) {
+			return
+		}
 	}
-	it.done = true
-	key := []byte{upgradeLibraryDBPartition, 0, 0, 0, 0}
-	fun(key)
+}
+
+func (it *memLibraryIterator) IterateKeys(fun func(k []byte) bool) {
+	for _, slot := range it.slots {
+		key := make([]byte, 5)
+		key[0] = upgradeLibraryDBPartition
+		binary.BigEndian.PutUint32(key[1:], slot)
+		if !fun(key) {
+			return
+		}
+	}
 }
 
 // GetAllUpgradeSlots returns all upgrade slots up to and including maxSlot.
