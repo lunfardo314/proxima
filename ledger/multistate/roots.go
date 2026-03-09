@@ -588,26 +588,26 @@ func GetMainChain(store global.StoreReader, fraction global.Fraction, max ...int
 
 // CheckTransactionInLRB return number of slots behind the LRB which contains txid.
 // The backwards scan is capped by the maxDepth parameter. If maxDepth == 0, it means only LRB is checked
-func CheckTransactionInLRB(store global.StoreReader, txid base.TransactionID, maxDepth int, fraction global.Fraction) (lrb *BranchData, foundAtDepth int) {
-	foundAtDepth = -1
-	lrb = FindLatestReliableBranch(store, fraction)
-	if lrb == nil {
-		return
-	}
-
-	IterateBranchChainBack(store, lrb, func(branchID *base.TransactionID, branch *BranchData) bool {
-		if foundAtDepth >= maxDepth {
-			return false
-		}
-		rdr := MustNewReadable(store, branch.Root, 0)
-		if !rdr.KnowsCommittedTransaction(txid) {
-			return false
-		}
-		foundAtDepth++
-		return true
-	})
-	return
-}
+//func CheckTransactionInLRB(store global.StoreReader, txid base.TransactionID, maxDepth int, fraction global.Fraction) (lrb *BranchData, foundAtDepth int) {
+//	foundAtDepth = -1
+//	lrb = FindLatestReliableBranch(store, fraction)
+//	if lrb == nil {
+//		return
+//	}
+//
+//	IterateBranchChainBack(store, lrb, func(branchID *base.TransactionID, branch *BranchData) bool {
+//		if foundAtDepth >= maxDepth {
+//			return false
+//		}
+//		rdr := MustNewReadable(store, branch.Root, 0)
+//		if !rdr.KnowsCommittedTransaction(txid) {
+//			return false
+//		}
+//		foundAtDepth++
+//		return true
+//	})
+//	return
+//}
 
 func (br *BranchData) IsHealthy(fraction global.Fraction) bool {
 	return global.IsHealthyCoverageDelta(br.CoverageDelta, br.Supply, fraction)

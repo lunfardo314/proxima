@@ -210,14 +210,14 @@ func (d *MemDAG) HeaviestStateForLatestTimeSlot() multistate.SugaredStateReader 
 	return multistate.MakeSugared(multistate.MustNewReadable(d.StateStore(), rootRecords[0].Root, 0))
 }
 
-func (d *MemDAG) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
-	lrb, atDepth := multistate.CheckTransactionInLRB(d.StateStore(), txid, maxDepth, global.FractionHealthyBranch)
-	foundAtDepth = atDepth
-	if lrb != nil {
-		lrbid = lrb.Stem.ID.TransactionID()
-	}
-	return
-}
+//func (d *MemDAG) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
+//	lrb, atDepth := multistate.CheckTransactionInLRB(d.StateStore(), txid, maxDepth, global.FractionHealthyBranch)
+//	foundAtDepth = atDepth
+//	if lrb != nil {
+//		lrbid = lrb.Stem.ID.TransactionID()
+//	}
+//	return
+//}
 
 // WaitUntilTransactionInHeaviestState for testing mostly
 func (d *MemDAG) WaitUntilTransactionInHeaviestState(txid base.TransactionID, timeout ...time.Duration) (*vertex.WrappedTx, error) {

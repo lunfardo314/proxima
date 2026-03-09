@@ -109,7 +109,7 @@ func (v *virtualStateReader) KnowsCommittedTransaction(txid base.TransactionID) 
 // collecting mutation layers, until it reaches a committed branch.
 //
 // The caller must hold b.mutex.
-func (b *Branches) buildVirtualStateReader(branchID base.TransactionID) multistate.StateReader {
+func (b *Branches) buildVirtualStateReader(branchID base.TransactionID) *virtualStateReader {
 	var layers []*multistate.Mutations
 
 	currentID := branchID
