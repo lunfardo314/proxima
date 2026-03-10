@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/db_cmd"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/init_cmd"
+	"github.com/lunfardo314/proxima/proxi/multispam_cmd"
 	"github.com/lunfardo314/proxima/proxi/node_cmd"
 	"github.com/lunfardo314/proxima/proxi/snapshot_cmd"
 	"github.com/lunfardo314/proxima/proxi/util_cmd"
@@ -53,6 +54,7 @@ and withdraw funds from the sequencer chain
 		snapshot_cmd.Init(),
 		version.CmdVersion(),
 		wallet_cmd.InitWalletCmd(),
+		multispam_cmd.Init(),
 	)
 	rootCmd.InitDefaultHelpCmd()
 	if err = rootCmd.Execute(); err != nil {
