@@ -244,6 +244,7 @@ func (s *Sender) buildAndSubmitBatch(available []*ledger.OutputWithID, pace int,
 		}
 
 		s.metrics.TxSent.Add(1)
+		s.nextHost()
 		anySent = true
 
 		// Set up remainder for next tx in batch
@@ -373,7 +374,24 @@ func (s *Sender) client() *client.APIClient {
 	return client.NewWithGoogleDNS(h.URL, h.Timeout)
 }
 
+// nextHost advances to the next host according to the configured strategy.
+func (s *Sender) nextHost() {
+	if len(s.hosts) <= 1 {
+		return
+	}
+	switch s.cfg.Global.HostStrategy {
+	case StrategyRandom:
+		s.hostIdx = rand.Intn(len(s.hosts))
+	default: // "next" — round-robin
+		s.hostIdx = (s.hostIdx + 1) % len(s.hosts)
+	}
+}
+
+// rotateHost advances to a different host on error (always moves forward to avoid the failing host).
 func (s *Sender) rotateHost() {
+	if len(s.hosts) <= 1 {
+		return
+	}
 	s.hostIdx = (s.hostIdx + 1) % len(s.hosts)
 }
 

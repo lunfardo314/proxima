@@ -24,6 +24,7 @@ type GlobalConfig struct {
 	BatchSize         int    `yaml:"batch_size"`
 	TargetStrategy    string `yaml:"target_strategy"`
 	SequencerStrategy string `yaml:"sequencer_strategy"` // "next" (round-robin) or "random"
+	HostStrategy      string `yaml:"host_strategy"`      // "next" (round-robin) or "random"
 }
 
 type SenderConfig struct {
@@ -44,6 +45,7 @@ const (
 	DefaultBatchSize           = 1
 	DefaultTargetStrategy       = "self"
 	DefaultSequencerStrategy    = "next"
+	DefaultHostStrategy         = "random"
 	DefaultHostTimeout          = 10 * time.Second
 
 	StrategyS      = "self"
@@ -80,6 +82,9 @@ func (cfg *Config) applyDefaults() {
 	if cfg.Global.SequencerStrategy == "" {
 		cfg.Global.SequencerStrategy = DefaultSequencerStrategy
 	}
+	if cfg.Global.HostStrategy == "" {
+		cfg.Global.HostStrategy = DefaultHostStrategy
+	}
 	for i := range cfg.APIHosts {
 		if cfg.APIHosts[i].Timeout == 0 {
 			cfg.APIHosts[i].Timeout = DefaultHostTimeout
@@ -103,6 +108,11 @@ func (cfg *Config) validate() error {
 	case StrategyNext, StrategyRandom:
 	default:
 		return fmt.Errorf("unknown sequencer_strategy: '%s' (expected next, random)", cfg.Global.SequencerStrategy)
+	}
+	switch cfg.Global.HostStrategy {
+	case StrategyNext, StrategyRandom:
+	default:
+		return fmt.Errorf("unknown host_strategy: '%s' (expected next, random)", cfg.Global.HostStrategy)
 	}
 	for i, s := range cfg.Senders {
 		if s.Name == "" {
@@ -165,6 +175,7 @@ func GenerateDefaultConfig(numSenders int, apiHost string, keyDir string) *Confi
 			BatchSize:            DefaultBatchSize,
 			TargetStrategy:       DefaultTargetStrategy,
 			SequencerStrategy:    DefaultSequencerStrategy,
+			HostStrategy:         DefaultHostStrategy,
 		},
 		Senders: make([]SenderConfig, numSenders),
 	}
