@@ -604,7 +604,31 @@ func (b *Branches) branchKnowsTransactionCompute(branchID, txid base.Transaction
 }
 
 func (b *Branches) SnapshotKnowsTransaction(txid base.TransactionID) bool {
-	return b.BranchKnowsTransaction(b.snapshotBranchID, txid)
+	if b.BranchKnowsTransaction(b.snapshotBranchID, txid) {
+		return true
+	}
+	// Handle TxID TTL expiry: for very old transactions, the txID entry may have been deleted
+	// from the trie and all outputs consumed, causing BranchKnowsTransaction to return false
+	// even though the transaction was legitimately committed. This prevents the attacher cascade
+	// from walking the entire chain history back to genesis.
+	return b.txidMayHaveExpiredFromSnapshot(txid)
+}
+
+// txidMayHaveExpiredFromSnapshot returns true if the transaction is old enough relative
+// to the snapshot that its txID entry may have been deleted from the trie due to TTL expiry.
+// For such transactions, BranchKnowsTransaction may return false even though the transaction
+// was committed. This is safe because:
+// - The transaction predates the snapshot by more than the TTL period
+// - Any transaction loaded from the txstore with such an old timestamp was committed
+// - Fake old transactions from malicious peers are caught by constraint validation
+func (b *Branches) txidMayHaveExpiredFromSnapshot(txid base.TransactionID) bool {
+	txSlot := txid.Slot()
+	snapSlot := b.snapshotBranchID.Slot()
+	if txSlot >= snapSlot {
+		return false
+	}
+	ttl := ledger.L(snapSlot).TxIDStateTTLSlots
+	return snapSlot-txSlot > ttl
 }
 
 // IsDescendantBranch returns:
@@ -623,7 +647,11 @@ func (b *Branches) TransactionIsInSnapshotState(txid base.TransactionID) bool {
 	if txid.Timestamp().After(b.snapshotBranchID.Timestamp()) {
 		return false
 	}
-	return b.BranchKnowsTransaction(b.snapshotBranchID, txid)
+	if b.BranchKnowsTransaction(b.snapshotBranchID, txid) {
+		return true
+	}
+	// Handle TxID TTL expiry for very old transactions (see txidMayHaveExpiredFromSnapshot)
+	return b.txidMayHaveExpiredFromSnapshot(txid)
 }
 
 // ChainLines for debugging
