@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -24,13 +25,21 @@ type (
 	}
 
 	// Readable is a read-only ledger state, with the particular root.
-	// The trie reader maintains an internal cache that is mutated on every read, so every call requires
-	// an exclusive lock (sync.Mutex). RWMutex is not applicable here because even read operations
-	// write to the trie cache. To reduce contention, callers should use an L2 cache layer
-	// (e.g. Branches.knowsTxCache) to avoid hitting the trie for repeated queries.
+	// The trie reader mutates its internal cache on every read, so trie access requires
+	// an exclusive lock (mutex.Lock). However, the L2 txCache allows concurrent reads
+	// (mutex.RLock) for cached txID records, avoiding trie contention on hot paths
+	// (KnowsCommittedTransaction, HasUTXO).
 	Readable struct {
-		mutex *sync.Mutex
-		trie  *immutable.TrieReader
+		mutex   sync.RWMutex
+		trie    *immutable.TrieReader
+		txCache map[base.TransactionID]txCacheEntry
+	}
+
+	// txCacheEntry is an L2 cache entry for a txID record in the trie.
+	// exists == false means the txID is not in the state.
+	txCacheEntry struct {
+		exists  bool
+		unspent set256.Set256
 	}
 
 	// RootRecord is a persistent data stored in the DB partition with each state root
@@ -69,8 +78,6 @@ type (
 // i.e. txs and utxos are distinguished by size of their keys. This is significant optimization of the trie, because txid and tx outputs
 // have the same 32 byte long prefix
 
-// TODO optimization: maintain and store UTXO bitmap as a terminal of the txid in the trie
-
 const (
 	TriePartitionLedgerState = byte(iota)
 	TriePartitionControllers
@@ -108,8 +115,8 @@ func NewReadable(store common.KVReader, root common.VCommitment, clearCacheAtSiz
 		return nil, err
 	}
 	return &Readable{
-		mutex: &sync.Mutex{},
-		trie:  trie,
+		trie:    trie,
+		txCache: make(map[base.TransactionID]txCacheEntry),
 	}, nil
 }
 
@@ -138,7 +145,51 @@ func MustNewUpdatable(store global.Store, root common.VCommitment) *Updatable {
 	return ret
 }
 
+// _lookupTxRecord returns the cached txID record, populating the cache from the trie on miss.
+// Uses RLock for cache hits (concurrent), Lock only for misses (trie access).
+func (r *Readable) _lookupTxRecord(txid base.TransactionID) txCacheEntry {
+	// Fast path: RLock for cache hit
+	r.mutex.RLock()
+	if entry, ok := r.txCache[txid]; ok {
+		r.mutex.RUnlock()
+		return entry
+	}
+	r.mutex.RUnlock()
+
+	// Slow path: exclusive lock for trie read + cache write
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// Double-check after acquiring write lock
+	if entry, ok := r.txCache[txid]; ok {
+		return entry
+	}
+	return r._readAndCacheTxRecord(txid)
+}
+
+// _readAndCacheTxRecord reads a txID record from the trie and stores it in the L2 cache.
+// Caller must hold exclusive lock (mutex.Lock).
+func (r *Readable) _readAndCacheTxRecord(txid base.TransactionID) txCacheEntry {
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	defer partition.Dispose()
+
+	v := partition.Get(txid[:])
+	entry := txCacheEntry{exists: len(v) > 0}
+	if entry.exists {
+		entry.unspent = set256.NewFromSlice(v)
+	}
+	r.txCache[txid] = entry
+	return entry
+}
+
 func (r *Readable) GetUTXO(oid base.OutputID) ([]byte, bool) {
+	// Synthetic upgrade UTXOs have no txID record — skip Set256 check
+	if !base.IsUpgradeOutputID(oid) {
+		entry := r._lookupTxRecord(oid.TransactionID())
+		if !entry.exists || !entry.unspent.Contains(oid.Index()) {
+			return nil, false
+		}
+	}
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -163,23 +214,22 @@ func (r *Readable) _getUTXO(oid base.OutputID, partition ...*common.ReaderPartit
 }
 
 func (r *Readable) HasUTXO(oid base.OutputID) bool {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+	// Synthetic upgrade UTXOs have no txID record — fall back to 33-byte key lookup
+	if base.IsUpgradeOutputID(oid) {
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
 
-	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
-	defer partition.Dispose()
+		partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+		defer partition.Dispose()
 
-	return partition.Has(oid[:])
+		return partition.Has(oid[:])
+	}
+	entry := r._lookupTxRecord(oid.TransactionID())
+	return entry.exists && entry.unspent.Contains(oid.Index())
 }
 
 func (r *Readable) KnowsCommittedTransaction(txid base.TransactionID) bool {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	partition := common.MakeTraversableReaderPartition(r.trie, TriePartitionLedgerState)
-	defer partition.Dispose()
-
-	return common.HasWithPrefix(partition, txid[:])
+	return r._lookupTxRecord(txid).exists
 }
 
 func (r *Readable) GetUTXOIDsForController(addr ledger.ControllerID) ([]base.OutputID, error) {
@@ -342,8 +392,8 @@ func (r *Readable) Iterator(prefix []byte) common.KVIterator {
 }
 
 // IterateKnownCommittedTransactions iterates transaction IDs in the state. Optionally, iteration is restricted
-// for a slot. In that case first iterates non-sequencer transactions, the sequencer transactions
-func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.TransactionID, slot uint32) bool, txidSlot ...uint32) {
+// for a slot. In that case first iterates non-sequencer transactions, the sequencer transactions.
+func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.TransactionID) bool, txidSlot ...uint32) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -357,20 +407,49 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.Transact
 			return true
 		}
 		txid := base.MustTransactionIDFromBytes(d)
-		slot, err := base.SlotFromBytes(v)
-		util.AssertNoError(err)
-
-		return fun(txid, slot)
+		return fun(txid)
 	})
 }
 
 func (r *Readable) KnownCommittedTxIDs(slot uint32) []base.TransactionID {
 	ret := make([]base.TransactionID, 0)
-	r.IterateKnownCommittedTransactions(func(txid base.TransactionID, _ uint32) bool {
+	r.IterateKnownCommittedTransactions(func(txid base.TransactionID) bool {
 		ret = append(ret, txid)
 		return true
 	}, slot)
 	return ret
+}
+
+// PrunableTxIDsAtSlot returns txIDs at the given slot whose unspent output set is empty,
+// meaning all outputs have been consumed and the txID record can be safely pruned.
+func (r *Readable) PrunableTxIDsAtSlot(slot uint32) []base.TransactionID {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	ret := make([]base.TransactionID, 0)
+	keyPrefix := append([]byte{TriePartitionLedgerState}, base.Slot2Bytes(slot)...)
+	r.trie.Iterator(keyPrefix).Iterate(func(k, v []byte) bool {
+		d := k[1:]
+		if len(d) != base.TransactionIDLength {
+			return true
+		}
+		s := set256.NewFromSlice(v)
+		if s.IsEmpty() {
+			ret = append(ret, base.MustTransactionIDFromBytes(d))
+		}
+		return true
+	})
+	return ret
+}
+
+// GetTxUnspentOutputSet returns the Set256 of unspent output indices for the given txID.
+// Returns the set and true if the txID record exists, empty set and false otherwise.
+func (r *Readable) GetTxUnspentOutputSet(txid base.TransactionID) (set256.Set256, bool) {
+	entry := r._lookupTxRecord(txid)
+	if !entry.exists {
+		return set256.Set256{}, false
+	}
+	return entry.unspent, true
 }
 
 func (r *Readable) IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error {
@@ -463,8 +542,8 @@ func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, o
 
 func (u *Updatable) Readable() *Readable {
 	return &Readable{
-		mutex: &sync.Mutex{},
-		trie:  u.trie.TrieReader,
+		trie:    u.trie.TrieReader,
+		txCache: make(map[base.TransactionID]txCacheEntry),
 	}
 }
 

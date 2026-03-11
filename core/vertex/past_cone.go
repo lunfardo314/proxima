@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/proxima/util/set256"
 	"golang.org/x/exp/maps"
 )
 
@@ -568,7 +569,7 @@ type MutationStats struct {
 	NumCreated      int
 }
 
-func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats MutationStats, txs []base.TransactionID) {
+func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats, txs []base.TransactionID) {
 	muts = multistate.NewMutations()
 	txs = make([]base.TransactionID, 0)
 
@@ -599,13 +600,15 @@ func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats Mu
 				}
 			}
 		} else {
-			// xTODO no need to store number of outputs: now all is contained in the id
-			muts.InsertAddTxMutation(vid.id, slot, byte(vid.id.NumProducedOutputs()-1))
+			produced := pc.producedIndices(vid)
+			var unspent set256.Set256
+			unspent.InsertAll(produced...)
+			muts.InsertAddTxMutation(vid.id, unspent)
 			stats.NumTransactions++
 			txs = append(txs, vid.id)
 
 			// ADD OUTPUT mutations only for not consumed outputs
-			for _, idx := range pc.producedIndices(vid) {
+			for _, idx := range produced {
 				o := vid.MustOutputAt(idx)
 				oid := vid.OutputID(idx)
 				muts.InsertAddOutputMutation(oid, o)

@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -36,9 +37,8 @@ type (
 	}
 
 	mutationAddTx struct {
-		ID              base.TransactionID
-		TimeSlot        uint32
-		LastOutputIndex byte
+		ID             base.TransactionID
+		UnspentOutputs set256.Set256
 	}
 
 	mutationDelTx struct {
@@ -87,11 +87,11 @@ func (m *mutationAddOutput) timestamp() base.LedgerTime {
 }
 
 func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
-	return addTxToTrie(trie, &m.ID, m.TimeSlot, m.LastOutputIndex)
+	return addTxToTrie(trie, &m.ID, &m.UnspentOutputs)
 }
 
 func (m *mutationAddTx) text() string {
-	return fmt.Sprintf("ADDTX %s : slot %d", m.ID.StringShort(), m.TimeSlot)
+	return fmt.Sprintf("ADDTX %s : unspent %v", m.ID.StringShort(), m.UnspentOutputs.Elements())
 }
 
 func (m *mutationAddTx) sortOrder() byte {
@@ -172,11 +172,10 @@ func (mut *Mutations) InsertDelOutputMutation(id base.OutputID) {
 	mut.mut = append(mut.mut, &mutationDelOutput{ID: id})
 }
 
-func (mut *Mutations) InsertAddTxMutation(id base.TransactionID, slot uint32, lastOutputIndex byte) {
+func (mut *Mutations) InsertAddTxMutation(id base.TransactionID, unspentOutputs set256.Set256) {
 	mut.mut = append(mut.mut, &mutationAddTx{
-		ID:              id,
-		TimeSlot:        slot,
-		LastOutputIndex: lastOutputIndex,
+		ID:             id,
+		UnspentOutputs: unspentOutputs,
 	})
 }
 
@@ -327,7 +326,36 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 		// must exist
 		util.Assertf(existed, "deleteOutputFromTrie: account record for %s wasn't found as expected: output %s", accountable.String(), oid.StringShort())
 	}
+
+	// Update the parent txID record: remove this output index from the unspent Set256
+	updateTxUnspentSet(trie, oid.TransactionID(), oid.Index(), false)
 	return
+}
+
+// updateTxUnspentSet modifies the unspent outputs Set256 in the txID record.
+// If add is true, inserts the index; if false, removes it.
+// If the txID record doesn't exist, does nothing (it may have been pruned).
+func updateTxUnspentSet(trie *immutable.TrieUpdatable, txid base.TransactionID, index byte, add bool) {
+	var txKey [1 + base.TransactionIDLength]byte
+	txKey[0] = TriePartitionLedgerState
+	copy(txKey[1:], txid[:])
+
+	txValue := trie.Get(txKey[:])
+	if len(txValue) == 0 {
+		// txID record not present (possibly pruned), nothing to update
+		return
+	}
+	s := set256.NewFromSlice(txValue)
+	if add {
+		s.Insert(index)
+	} else {
+		s.Remove(index)
+	}
+	newValue := s.Bytes()
+	if newValue == nil {
+		newValue = []byte{0}
+	}
+	trie.Update(txKey[:], newValue)
 }
 
 func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledger.Output) (delta supplyDelta, err error) {
@@ -390,11 +418,17 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 	return
 }
 
-func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, slot uint32, lastOutputIndex byte) (delta supplyDelta, err error) {
+func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, unspentOutputs *set256.Set256) (delta supplyDelta, err error) {
 	var stateKey [1 + base.TransactionIDLength]byte
 	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], txid[:])
-	if trie.Update(stateKey[:], base.Slot2Bytes(slot)) {
+	// Store unspent output indices as Set256 bitmap.
+	// Use []byte{0} for empty set to avoid empty trie value (which means "not present").
+	value := unspentOutputs.Bytes()
+	if value == nil {
+		value = []byte{0}
+	}
+	if trie.Update(stateKey[:], value) {
 		// key should not exist
 		err = fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.StringShort())
 	}

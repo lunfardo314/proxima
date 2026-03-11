@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -75,7 +76,9 @@ func genesisUpdateMutations(genesisOut, genesisStemOut, dustOut, upgradeOut *led
 	ret.InsertAddOutputMutation(dustOut.ID, dustOut.Output)
 	// Use raw clone for upgrade UTXO since it doesn't have a standard lock
 	ret.InsertAddOutputMutationRaw(upgradeOut.ID, upgradeOut.Output)
-	ret.InsertAddTxMutation(base.GenesisTransactionID(), genesisOut.ID.Slot(), 1)
+	var unspent set256.Set256
+	unspent.InsertRange(0, 3) // 4 genesis outputs: indices 0-3
+	ret.InsertAddTxMutation(base.GenesisTransactionID(), unspent)
 	return ret
 }
 

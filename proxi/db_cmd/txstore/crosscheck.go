@@ -56,7 +56,7 @@ func runReconcileCmd(_ *cobra.Command, args []string) {
 	nSlots := 0
 	start := time.Now()
 	for ; slot >= downToSlot; slot-- {
-		rdr.IterateKnownCommittedTransactions(func(txid base.TransactionID, slot uint32) bool {
+		rdr.IterateKnownCommittedTransactions(func(txid base.TransactionID) bool {
 			if !glb.TxBytesStore().HasTxBytes(&txid) {
 				glb.Infof("transaction %s not in the txStore: hex id = %s", txid.String(), txid.StringHex())
 			}

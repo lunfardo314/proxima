@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 )
@@ -485,7 +486,9 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 		ret.InsertAddOutputMutation(oid, o)
 		return true
 	})
-	ret.InsertAddTxMutation(tx.ID(), tx.Slot(), byte(tx.NumProducedOutputs()-1))
+	var unspent set256.Set256
+	unspent.InsertRange(0, byte(tx.NumProducedOutputs()-1))
+	ret.InsertAddTxMutation(tx.ID(), unspent)
 
 	// TODO not correct. ChainIDs of discontinued chains must be deleted. We leave it as is because tx.StateMutations is not used
 	//  in the UTXO tangle but mostly in tests

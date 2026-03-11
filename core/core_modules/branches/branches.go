@@ -67,13 +67,13 @@ type (
 	// PendingBranchCommit holds data needed to lazily commit a branch to DB.
 	// The actual DB write is deferred until the branch state is requested via GetStateReaderForTheBranch().
 	PendingBranchCommit struct {
-		Mutations          *multistate.Mutations
-		RootRecParams      *multistate.RootRecordParams
-		BaselineBranchID   base.TransactionID
-		PreviousBranchID   base.TransactionID // stem link to previous branch (for mutation chain traversal)
-		TxIDTTLSlots       uint32
-		CommittedTxs       []base.TransactionID
-		SequencerName      string
+		Mutations        *multistate.Mutations
+		RootRecParams    *multistate.RootRecordParams
+		BaselineBranchID base.TransactionID
+		PreviousBranchID base.TransactionID // stem link to previous branch (for mutation chain traversal)
+		TxIDTTLSlots     uint32
+		CommittedTxs     []base.TransactionID
+		SequencerName    string
 	}
 )
 
@@ -318,10 +318,10 @@ func (b *Branches) _commitPendingBranch(branchID base.TransactionID) {
 			upg.Slot, hex.EncodeToString(upg.LibraryHash[:]))
 	}
 
-	// GC old transaction IDs (deterministic operation on the state)
+	// GC old transaction IDs: only prune txIDs whose unspent output set is empty
 	if branchID.Slot() > pb.TxIDTTLSlots {
 		gcSlot := branchID.Slot() - pb.TxIDTTLSlots
-		gcTxIDs := upd.Readable().KnownCommittedTxIDs(gcSlot)
+		gcTxIDs := upd.Readable().PrunableTxIDsAtSlot(gcSlot)
 		pb.Mutations.DeleteTxIDs(gcTxIDs...)
 	}
 

@@ -41,7 +41,7 @@ func (a *milestoneAttacher) commitBranch() {
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	// compute mutations from past cone (same as before)
-	muts, stats, committedTxs := a.pastCone.Mutations(a.vid.Slot())
+	muts, stats, committedTxs := a.pastCone.Mutations()
 
 	seqID, stemOID := a.vid.MustSequencerIDAndStemID()
 
