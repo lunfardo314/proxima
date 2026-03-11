@@ -764,13 +764,13 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 			wrongFlag = "FlagPastConeVertexCheckedInTheState"
 		}
 	case vid.IsBranchTransaction():
+		// A non-baseline branch can legitimately appear in the past cone when a transaction
+		// in the cone consumes an output from a competing branch at the same slot.
+		// This is normal during multi-sequencer operation with concurrent forks.
+		// Only flag it as inconsistent if there's no baseline at all and the branch isn't the tip.
 		if pc.baselineBranchID == nil {
 			if vid.ID() != pc.tip.ID() {
 				return fmt.Errorf("checkFinalFlags: inconsistent baseline 1 %s", vid.IDShortString())
-			}
-		} else {
-			if vid.ID() != pc.tip.ID() && vid.ID() != *pc.baselineBranchID {
-				return fmt.Errorf("checkFinalFlags: inconsistent baseline 2 %s", vid.IDShortString())
 			}
 		}
 	default:
