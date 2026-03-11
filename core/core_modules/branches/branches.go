@@ -26,6 +26,15 @@ type (
 		ledgerCoverage uint64
 		lastActive     time.Time
 	}
+
+	// knowsTxKey is the cache key for L2 KnowsCommittedTransaction cache.
+	// It avoids hitting the trie (which requires an exclusive Readable.mutex lock)
+	// for repeated queries on the same (branchID, txid) pair.
+	knowsTxKey struct {
+		branchID base.TransactionID
+		txid     base.TransactionID
+	}
+
 	Branches struct {
 		environment
 		mutex            sync.Mutex
@@ -42,6 +51,12 @@ type (
 		// the branch state is requested via GetStateReaderForTheBranch().
 		// Orphan branches that are never requested are discarded during cleanup.
 		pending map[base.TransactionID]*PendingBranchCommit
+
+		// knowsTxCache is an L2 cache for BranchKnowsTransaction results.
+		// Protected by knowsTxMu (RWMutex): RLock for cache hits, Lock for cache writes.
+		// This avoids contention on the trie's exclusive Readable.mutex for repeated queries.
+		knowsTxMu    sync.RWMutex
+		knowsTxCache map[knowsTxKey]bool
 	}
 
 	cachedStateReader struct {
@@ -75,6 +90,7 @@ func New(env environment) *Branches {
 		m:                make(map[base.TransactionID]branchDataWithLedgerCoverage),
 		stateReaders:     make(map[base.TransactionID]*cachedStateReader),
 		pending:          make(map[base.TransactionID]*PendingBranchCommit),
+		knowsTxCache:     make(map[knowsTxKey]bool),
 	}
 	env.RepeatInBackground("branches_cleanup", 5*time.Second, func() bool {
 		ret.mutex.Lock()
@@ -535,6 +551,28 @@ func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) boo
 		return false
 	}
 
+	// check L2 cache first (RLock — no contention with other readers)
+	cacheKey := knowsTxKey{branchID: branchID, txid: txid}
+	b.knowsTxMu.RLock()
+	if result, cached := b.knowsTxCache[cacheKey]; cached {
+		b.knowsTxMu.RUnlock()
+		return result
+	}
+	b.knowsTxMu.RUnlock()
+
+	// cache miss — compute the result
+	result := b.branchKnowsTransactionCompute(branchID, txid)
+
+	// populate L2 cache
+	b.knowsTxMu.Lock()
+	b.knowsTxCache[cacheKey] = result
+	b.knowsTxMu.Unlock()
+
+	return result
+}
+
+// branchKnowsTransactionCompute walks pending branches then falls through to the trie
+func (b *Branches) branchKnowsTransactionCompute(branchID, txid base.TransactionID) bool {
 	// walk back through pending branches via stem links to avoid forcing DB commits
 	b.mutex.Lock()
 	currentID := branchID
@@ -543,6 +581,7 @@ func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) boo
 		if !isPending {
 			// reached a committed branch — use its state reader
 			b.mutex.Unlock()
+			// TODO: add context/timeout to KnowsCommittedTransaction to prevent indefinite blocking on slow trie reads
 			rdr := b.GetStateReaderForTheBranch(currentID)
 			if rdr == nil {
 				return false

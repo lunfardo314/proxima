@@ -23,8 +23,11 @@ type (
 		store global.Store
 	}
 
-	// Readable is a read-only ledger state, with the particular root
-	// It is thread-safe. The state itself is read-only, but trie cache needs write-lock with every call
+	// Readable is a read-only ledger state, with the particular root.
+	// The trie reader maintains an internal cache that is mutated on every read, so every call requires
+	// an exclusive lock (sync.Mutex). RWMutex is not applicable here because even read operations
+	// write to the trie cache. To reduce contention, callers should use an L2 cache layer
+	// (e.g. Branches.knowsTxCache) to avoid hitting the trie for repeated queries.
 	Readable struct {
 		mutex *sync.Mutex
 		trie  *immutable.TrieReader

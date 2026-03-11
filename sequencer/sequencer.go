@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"runtime"
 	"sync"
@@ -436,9 +435,9 @@ func (seq *Sequencer) sequencerLoop() {
 	const deadlockTolerance = 10 * time.Second
 
 	checkpoint := checkpoints.New(func(name string) {
-		buf := make([]byte, 2*math.MaxUint16)
-		runtime.Stack(buf, true)
-		seq.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf))
+		buf := make([]byte, 1<<20) // 1MB buffer to capture all goroutines
+		n := runtime.Stack(buf, true)
+		seq.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf[:n]))
 	})
 	defer checkpoint.Close()
 
