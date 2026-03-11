@@ -137,13 +137,17 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				}
 
 			case vertex.Good:
-				a.Assertf(vid.IsSequencerTransaction(), "vid.IsSequencerTransaction()")
 				// dependency is GOOD, so merge its (deterministic) past cone into the current attacher.
 				// Note that MergePastCone checks the compatibility of baselines and swaps them if necessary,
-				// however, does not check for double-spends here
-				if !a.pastCone.MergePastCone(vid.GetPastConeNoLock(), a.Branches()) {
-					a.setError(fmt.Errorf("conflicting baselines %s and %s", a.pastCone.GetBaseline().StringShort(), vid.IDShortString()))
-					return
+				// however, does not check for double-spends here.
+				// Past cone may be nil for transactions marked GOOD from snapshot state (no attacher ran)
+				// — this includes both sequencer and non-sequencer txs.
+				pcb := vid.GetPastConeNoLock()
+				if pcb != nil {
+					if !a.pastCone.MergePastCone(pcb, a.Branches()) {
+						a.setError(fmt.Errorf("conflicting baselines %s and %s", a.pastCone.GetBaseline().StringShort(), vid.IDShortString()))
+						return
+					}
 				}
 				ok = true
 				defined = true

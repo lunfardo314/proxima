@@ -78,10 +78,19 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			// it is in the snapshot state -> mark it GOOD branch
 			vid.SetTxStatusGoodNoLock(nil, 0)
 		} else {
-			// it is not in the snapshot state -> mark it BAD branch
-			err := fmt.Errorf("baseline branch state %s is before snapshot slot %d and is not available -> can't solidify baseline",
-				txid.String(), snapID.Slot())
-			vid.SetTxStatusBadNoLock(err)
+			// KnowsCommittedTransaction returned false. This can happen when the txID key
+			// has been deleted from the trie (TTL expiry) AND all outputs are consumed.
+			// For such ancient branches, treat as GOOD — they were committed before the snapshot.
+			snapSlot := snapID.Slot()
+			txSlot := txid.Slot()
+			if txSlot < snapSlot && snapSlot-txSlot > ledger.L(snapSlot).TxIDStateTTLSlots {
+				vid.SetTxStatusGoodNoLock(nil, 0)
+			} else {
+				// it is not in the snapshot state -> mark it BAD branch
+				err := fmt.Errorf("baseline branch state %s is before snapshot slot %d and is not available -> can't solidify baseline",
+					txid.String(), snapID.Slot())
+				vid.SetTxStatusBadNoLock(err)
+			}
 		}
 	})
 	return
@@ -104,7 +113,19 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
 
 	if env.Branches().TransactionIsInSnapshotState(txid) {
-		// if the transaction is in the snapshot state, no need to start attacher, transaction can stay virtual
+		// Transaction is in the snapshot state — it was committed before the snapshot.
+		// Convert to full vertex and mark GOOD so that dependent attachers can proceed,
+		// but don't start an attacher (no need to validate already-committed transactions).
+		vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
+			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
+				return
+			}
+			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
+			vid.ConvertVirtualTxToVertexNoLock(vertex.NewVertex(tx))
+			if vid.GetTxStatusNoLock() != vertex.Good {
+				vid.SetTxStatusGoodNoLock(nil, 0)
+			}
+		})
 		return vid
 	}
 

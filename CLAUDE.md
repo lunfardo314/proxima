@@ -145,4 +145,20 @@ go test -run TestName ./path/to/package/...
 go test -v ./...
 ```
 
+## Testnet
+
+Testnet is running on the following 4 machines:
+- `boot`: `113.30.191.219`
+- `loc0`: `63.250.56.190`
+- `seq1`: `83.229.84.197`
+- `loc1`: `5.180.181.103`
+
+Sudo user `lunfardo` is used to do all operations on each machine.
+
+On each machine there are 2 nodes configured:
+- full/access node on directory `/home/nodes/<machine name>-acc`  
+- sequencer node on directory `/home/nodes/<machine name>`
+
+Both nodes are configured as `systemd` services.
+
 
