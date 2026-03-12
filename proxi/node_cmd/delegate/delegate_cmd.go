@@ -18,6 +18,7 @@ func Init() *cobra.Command {
 		initDelegationStatusCmd(),
 		initDelegationSubmitCmd(),
 		initTargetInfoCmd(),
+		initEstimateCmd(),
 	)
 
 	delegationCmd.InitDefaultHelpCmd()
