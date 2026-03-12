@@ -47,8 +47,10 @@ func (td *testData) init() {
 	require.NoError(td, err)
 
 	// create chain for sequencer
-	par, err := td.u.MakeTransferInputData(td.seqPrivateKey, nil, ledger.TimeNow().AddSlots(1))
+	// Use NilLedgerTime first to populate inputs, then derive timestamp from actual input
+	par, err := td.u.MakeTransferInputData(td.seqPrivateKey, nil, base.NilLedgerTime)
 	require.NoError(td, err)
+	par.Timestamp = par.Inputs[0].ID.Timestamp().AddSlots(1)
 	outs, err := td.u.DoTransferOutputs(par.
 		WithAmount(seqOnChainBalance).
 		WithTargetLock(seqControllerAddr).
