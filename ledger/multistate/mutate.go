@@ -14,9 +14,16 @@ import (
 	"github.com/lunfardo314/unitrie/immutable"
 )
 
+// txBitmapCache tracks in-memory modifications to TX record bitmaps during a batch
+// of trie mutations. This is necessary because TrieUpdatable.Get() reads from the
+// persistent (committed) state, not from the buffered (mutated) state. Without this
+// cache, when multiple DEL mutations target outputs of the same TX, each would read
+// the ORIGINAL bitmap and the last write would overwrite all previous changes.
+type txBitmapCache map[base.TransactionID]*set256.Set256
+
 type (
 	mutationCmd interface {
-		mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error)
+		mutate(trie *immutable.TrieUpdatable, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error)
 		text() string
 		sortOrder() byte
 		timestamp() base.LedgerTime
@@ -50,12 +57,13 @@ type (
 	}
 
 	Mutations struct {
-		mut []mutationCmd
+		mut    []mutationCmd
+		GCSlot uint32 // slot threshold: TX records at or before this slot are pruned when their unspent set becomes empty
 	}
 )
 
-func (m *mutationDelOutput) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
-	return deleteOutputFromTrie(trie, m.ID)
+func (m *mutationDelOutput) mutate(trie *immutable.TrieUpdatable, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
+	return deleteOutputFromTrie(trie, m.ID, gcSlot, bitmapCache)
 }
 
 func (m *mutationDelOutput) text() string {
@@ -70,7 +78,7 @@ func (m *mutationDelOutput) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
+func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable, _ uint32, _ txBitmapCache) (delta supplyDelta, err error) {
 	return addOutputToTrie(trie, m.ID, m.Output)
 }
 
@@ -86,7 +94,11 @@ func (m *mutationAddOutput) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
+func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable, _ uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
+	// Register the bitmap in the cache so subsequent DEL mutations for this TX
+	// (if any) see the correct starting bitmap rather than stale persistent data
+	s := m.UnspentOutputs // copy
+	bitmapCache[m.ID] = &s
 	return addTxToTrie(trie, &m.ID, &m.UnspentOutputs)
 }
 
@@ -102,7 +114,8 @@ func (m *mutationAddTx) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationDelTx) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
+func (m *mutationDelTx) mutate(trie *immutable.TrieUpdatable, _ uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
+	delete(bitmapCache, m.ID)
 	err = delTxFromTrie(trie, &m.ID)
 	return
 }
@@ -119,7 +132,7 @@ func (m *mutationDelTx) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationDelChain) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
+func (m *mutationDelChain) mutate(trie *immutable.TrieUpdatable, _ uint32, _ txBitmapCache) (delta supplyDelta, err error) {
 	return deleteChainFromTrie(trie, m.ChainID)
 }
 
@@ -299,7 +312,7 @@ func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
 	}
 }
 
-func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (delta supplyDelta, err error) {
+func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
 	var stateKey [1 + base.OutputIDLength]byte
 	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], oid[:])
@@ -327,29 +340,54 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 		util.Assertf(existed, "deleteOutputFromTrie: account record for %s wasn't found as expected: output %s", accountable.String(), oid.StringShort())
 	}
 
-	// Update the parent txID record: remove this output index from the unspent Set256
-	updateTxUnspentSet(trie, oid.TransactionID(), oid.Index(), false)
+	// Update the parent txID record: remove this output index from the unspent Set256.
+	// If the set becomes empty and the TX is beyond the GC threshold, delete the TX record
+	// to avoid leaving orphaned TX records as garbage in the trie
+	updateTxUnspentSet(trie, oid.TransactionID(), oid.Index(), false, gcSlot, bitmapCache)
 	return
 }
 
 // updateTxUnspentSet modifies the unspent outputs Set256 in the txID record.
 // If add is true, inserts the index; if false, removes it.
 // If the txID record doesn't exist, does nothing (it may have been pruned).
-func updateTxUnspentSet(trie *immutable.TrieUpdatable, txid base.TransactionID, index byte, add bool) {
+// When removing an index results in an empty set and the TX's slot is at or before gcSlot,
+// the TX record is deleted from the trie (late GC for TXs that had unspent outputs when
+// their slot was first scanned for pruning).
+//
+// IMPORTANT: bitmapCache is used to track in-memory bitmap state across multiple mutations
+// in the same batch. TrieUpdatable.Get() reads from the persistent (committed) state, not
+// from the buffered state. Without this cache, multiple DEL mutations for the same TX would
+// each read the ORIGINAL bitmap, and the last write would overwrite all previous changes.
+func updateTxUnspentSet(trie *immutable.TrieUpdatable, txid base.TransactionID, index byte, add bool, gcSlot uint32, bitmapCache txBitmapCache) {
 	var txKey [1 + base.TransactionIDLength]byte
 	txKey[0] = TriePartitionLedgerState
 	copy(txKey[1:], txid[:])
 
-	txValue := trie.Get(txKey[:])
-	if len(txValue) == 0 {
-		// txID record not present (possibly pruned), nothing to update
-		return
+	var s set256.Set256
+	if cached, ok := bitmapCache[txid]; ok {
+		s = *cached
+	} else {
+		// First access to this TX's bitmap in this batch — read from persistent trie
+		txValue := trie.Get(txKey[:])
+		if len(txValue) == 0 {
+			// txID record not present (possibly pruned), nothing to update
+			return
+		}
+		s = set256.NewFromSlice(txValue)
 	}
-	s := set256.NewFromSlice(txValue)
 	if add {
 		s.Insert(index)
 	} else {
 		s.Remove(index)
+	}
+	// Store the updated bitmap in the cache for subsequent mutations
+	bitmapCache[txid] = &s
+
+	if s.IsEmpty() && gcSlot > 0 && txid.Slot() <= gcSlot {
+		// All outputs consumed and TX is beyond the GC threshold: delete the TX record
+		trie.Delete(txKey[:])
+		delete(bitmapCache, txid)
+		return
 	}
 	newValue := s.Bytes()
 	if newValue == nil {
@@ -471,8 +509,14 @@ func updateTrie(trie *immutable.TrieUpdatable, mut *Mutations, inflation ...uint
 	var delAmount, addAmount uint64
 	var delta supplyDelta
 
+	// bitmapCache tracks in-memory bitmap state for TX records modified during this batch.
+	// This is critical because TrieUpdatable.Get() reads from the persistent (committed) state,
+	// not from the buffered state. Without this, multiple DEL mutations for the same TX would
+	// each read the stale original bitmap and the last write would overwrite earlier changes.
+	bitmapCache := make(txBitmapCache)
+
 	for _, m := range mut.mut {
-		delta, err = m.mutate(trie)
+		delta, err = m.mutate(trie, mut.GCSlot, bitmapCache)
 		if err != nil {
 			return
 		}

@@ -323,13 +323,16 @@ func (b *Branches) _commitPendingBranch(branchID base.TransactionID) {
 		gcSlot := branchID.Slot() - pb.TxIDTTLSlots
 		gcTxIDs := upd.Readable().PrunableTxIDsAtSlot(gcSlot)
 		pb.Mutations.DeleteTxIDs(gcTxIDs...)
+		// Set GCSlot so that output deletions also clean up TX records
+		// for TXs that missed the per-slot GC scan because they still had unspent outputs
+		pb.Mutations.GCSlot = gcSlot
 	}
 
 	// commit to DB
 	err := upd.Update(pb.Mutations, pb.RootRecParams)
 	if err != nil {
-		err = fmt.Errorf("_commitPendingBranch(%s) -> %w:\n-------- mutations --------\n%s",
-			branchID.StringShort(), err, pb.Mutations.Lines("    ").String())
+		err = fmt.Errorf("_commitPendingBranch(%s) baseline=%s -> %w:\n-------- mutations --------\n%s",
+			branchID.StringShort(), pb.BaselineBranchID.StringShort(), err, pb.Mutations.Lines("    ").String())
 	}
 	b.Assertf(err == nil, "%v", err)
 
