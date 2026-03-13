@@ -389,6 +389,11 @@ function simpleHash(str) {
 }
 
 // ============ COLORS ============
+const SEQ_COLOR = '#444';
+const SEQ_COLOR_DIM = 'rgba(68,68,68,0.3)';
+const NONSEQ_COLOR = '#999';
+const NONSEQ_COLOR_DIM = 'rgba(160,160,160,0.3)';
+
 // Golden ratio method: each new sequencer gets a hue maximally distant from previous ones.
 let seqColorIndex = 0;
 const GOLDEN_RATIO = 0.618033988749895;
@@ -530,7 +535,7 @@ function drawEdges(range) {
                 const y2 = vertexY(dep);
 
                 const edgeInCone = inCone && pastConeSet.has(eid);
-                ctx.strokeStyle = edgeInCone ? seqColor(v.seqId) : seqColorDim(v.seqId);
+                ctx.strokeStyle = edgeInCone ? SEQ_COLOR : SEQ_COLOR_DIM;
                 ctx.lineWidth = edgeInCone ? 2.5 : 1;
                 ctx.setLineDash([6, 4]);
                 ctx.beginPath();
@@ -573,13 +578,8 @@ function findVertexByTxId(txId) {
 
 function vertexRadius(v) {
     const base = vertexScaleFactor * 0.5;
-    if (!v.isSequencer) return Math.max(1.5, base * 0.6);
-    // Gentle log scaling: ln(amount) ranges ~15-25 for typical values
-    // Normalize to a small multiplier around 1.0
-    const amt = v.totalAmount || 1;
-    const logAmt = Math.log(amt + 1); // ln, not log10
-    const scale = 0.5 + (logAmt / 50); // ~0.8 to ~1.0 for typical amounts
-    return Math.max(base * 0.5, base * scale);
+    if (!v.isSequencer) return Math.max(1.5, base * 0.5);
+    return Math.max(3, base);
 }
 
 function drawVertices(range) {
@@ -594,11 +594,11 @@ function drawVertices(range) {
         const inCone = pastConeSet.size > 0 && pastConeSet.has(id);
         const dimmed = pastConeSet.size > 0 && !inCone;
 
-        let color = v.isSequencer ? seqColor(v.seqId) : '#999';
+        let color = v.isSequencer ? SEQ_COLOR : NONSEQ_COLOR;
         if (isHovered || isSelected) {
             color = '#000';
         } else if (dimmed) {
-            color = v.isSequencer ? seqColorDim(v.seqId) : 'rgba(160,160,160,0.3)';
+            color = v.isSequencer ? SEQ_COLOR_DIM : NONSEQ_COLOR_DIM;
         }
 
         ctx.fillStyle = color;
@@ -835,7 +835,7 @@ function drawLegendShapes() {
     const c1 = document.getElementById('lgBranch');
     c1.width = 14; c1.height = 14;
     const x1 = c1.getContext('2d');
-    x1.fillStyle = 'hsl(200, 70%, 60%)';
+    x1.fillStyle = SEQ_COLOR;
     x1.beginPath();
     x1.moveTo(7, 1); x1.lineTo(13, 7); x1.lineTo(7, 13); x1.lineTo(1, 7);
     x1.closePath(); x1.fill();
@@ -844,14 +844,14 @@ function drawLegendShapes() {
     const c2 = document.getElementById('lgSeq');
     c2.width = 14; c2.height = 14;
     const x2 = c2.getContext('2d');
-    x2.fillStyle = 'hsl(120, 70%, 60%)';
+    x2.fillStyle = SEQ_COLOR;
     x2.beginPath(); x2.arc(7, 7, 5, 0, Math.PI * 2); x2.fill();
 
     // Non-sequencer dot
     const c3 = document.getElementById('lgNonSeq');
     c3.width = 14; c3.height = 14;
     const x3 = c3.getContext('2d');
-    x3.fillStyle = '#888';
+    x3.fillStyle = NONSEQ_COLOR;
     x3.fillRect(5, 5, 4, 4);
 }
 
