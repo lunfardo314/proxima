@@ -623,15 +623,12 @@ function drawVertices(range) {
             ctx.strokeStyle = isSelected ? '#000' : 'rgba(0,0,0,0.3)';
             ctx.lineWidth = isSelected ? 2 : 1;
             ctx.stroke();
-        } else if (v.isSequencer) {
-            // Circle for sequencer tx
+        } else {
+            // Circle for both sequencer and non-sequencer tx
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.fill();
             if (isSelected) ctx.stroke();
-        } else {
-            // Small square for non-sequencer
-            ctx.fillRect(x - r / 2, y - r / 2, r, r);
         }
 
         // LRB marker: circle around the LRB vertex
@@ -856,7 +853,7 @@ function drawLegendShapes() {
     c3.width = 14; c3.height = 14;
     const x3 = c3.getContext('2d');
     x3.fillStyle = NONSEQ_COLOR;
-    x3.fillRect(5, 5, 4, 4);
+    x3.beginPath(); x3.arc(7, 7, 3, 0, Math.PI * 2); x3.fill();
 }
 
 // ============ LRB FETCH ============
