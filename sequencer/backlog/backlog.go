@@ -94,7 +94,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	// start periodic cleanup in background
 	env.RepeatInBackground(env.SequencerName()+"_backlogCleanup", backlogCleanupPeriod, func() bool {
 		if n, remain := ret.purgeBacklog(); n > 0 {
-			ret.Log().Infof("deleted %d outputs from the backlog, remain %d", n, remain)
+			ret.LogTopicf("tag_along", 1, "deleted %d outputs from the backlog, remain %d", n, remain)
 		}
 		return true
 	})

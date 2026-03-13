@@ -67,13 +67,17 @@ snapshot_restore:
 # logger config
 # logger.previous can be 'erase' or 'save'
 logger:
-  # verbosity: 0 - logging branches, 1 - logging branches, sequencer transaction, - not implemented
+  # global verbosity: default level for all topics (0=essential, 1=normal, 2=verbose)
   verbosity: 0
   output: proxima.log
   # options: 'erase' (previous will be erased), 'save' (previous will be saved and then deleted)
   # Otherwise or when absent: log will be appended to the same existing file
   previous: save
   keep_latest_logs: 2
+  # per-topic verbosity overrides. Overrides global verbosity for specific topics.
+  # Available topics: tag_along
+  # topics:
+  #   tag_along: 1
 
 # Other parameters used for tracing and debugging
 # Prometheus metrics exposure

@@ -26,6 +26,7 @@ type Global struct {
 	*zap.SugaredLogger
 	outputs        []string
 	logVerbosity   int
+	topicVerbosity map[string]int
 	ctx            context.Context
 	stopFun        context.CancelFunc
 	logStopOnce    *sync.Once
@@ -107,7 +108,21 @@ func NewFromConfig() *Global {
 		ret.SugaredLogger.Warnf("previous logfile has been saved as %s", savedPrev)
 	}
 	ret.logVerbosity = viper.GetInt("logger.verbosity")
+	ret.topicVerbosity = make(map[string]int)
+	for k, v := range viper.GetStringMap("logger.topics") {
+		switch val := v.(type) {
+		case int:
+			ret.topicVerbosity[k] = val
+		case float64:
+			ret.topicVerbosity[k] = int(val)
+		case int64:
+			ret.topicVerbosity[k] = int(val)
+		}
+	}
 	ret.SugaredLogger.Infof("logger verbosity level is %d", ret.logVerbosity)
+	if len(ret.topicVerbosity) > 0 {
+		ret.SugaredLogger.Infof("logger topic verbosity: %v", ret.topicVerbosity)
+	}
 
 	if v := viper.GetInt("transaction_pull.repeat_after_sec"); v > 0 {
 		ret.txPullRepeatPeriod = time.Duration(v) * time.Second
@@ -329,6 +344,30 @@ func (l *Global) Infof1(template string, args ...any) {
 
 func (l *Global) Infof2(template string, args ...any) {
 	l.InfofAtLevel(2, template, args...)
+}
+
+// TopicVerbosityLevel returns the verbosity level for the given topic.
+// If the topic is not configured, returns the global verbosity level.
+func (l *Global) TopicVerbosityLevel(topic string) int {
+	if v, ok := l.topicVerbosity[topic]; ok {
+		return v
+	}
+	return l.logVerbosity
+}
+
+// LogTopicf logs a message if the topic's verbosity level is >= requiredLevel.
+// Usage: LogTopicf("tag_along", 1, "output %s added", id)
+func (l *Global) LogTopicf(topic string, requiredLevel int, template string, args ...any) {
+	if requiredLevel <= l.TopicVerbosityLevel(topic) {
+		l.Infof(template, args...)
+	}
+}
+
+// WarnTopicf logs a warning if the topic's verbosity level is >= requiredLevel.
+func (l *Global) WarnTopicf(topic string, requiredLevel int, template string, args ...any) {
+	if requiredLevel <= l.TopicVerbosityLevel(topic) {
+		l.Warnf(template, args...)
+	}
 }
 
 // ClockCatchUpWithLedgerTime waits until the wall clock catches up with the given ledger time.

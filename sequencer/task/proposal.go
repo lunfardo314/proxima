@@ -136,17 +136,17 @@ func (p *proposal) insertTagAlongInputs() {
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
-			p.proposer.Log().Warnf("TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
+			p.proposer.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
 				err, o.o.LinesSource("     ").String())
 		} else {
 			if err != nil {
 				if strings.Contains(err.Error(), "already consumed") {
 					p.Backlog().RemoveOutput(o.wOut)
 				}
-				p.proposer.Log().Warnf("TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
+				p.proposer.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
 			} else {
 				p.proposer.Assertf(cmd != nil, "cmd != nil")
-				p.proposer.Log().Infof("TAG_ALONG: output %s has been added to '%s', cmd='%s'",
+				p.proposer.LogTopicf("tag_along", 1, "TAG_ALONG: output %s has been added to '%s', cmd='%s'",
 					o.o.ID.StringShort(), p.Name, cmd.Lines().Join(", "))
 			}
 		}
@@ -210,15 +210,15 @@ func (p *proposal) insertDelegations() {
 				if strings.Contains(err.Error(), "already consumed") {
 					p.Backlog().RemoveOutput(wOut)
 				}
-				p.proposer.Log().Warnf("FREEZE failed, id = %s, oid = %s, reason = '%v'",
+				p.proposer.WarnTopicf("tag_along", 1, "FREEZE failed, id = %s, oid = %s, reason = '%v'",
 					o.ChainID.String(), o.ID.StringShort(), err)
 			} else {
 				p.Backlog().AddToBlacklist(wOut)
-				p.proposer.Log().Errorf("FREEZE failed PERMANENTLY, id = %s, oid = %s, reason = '%v'",
+				p.proposer.WarnTopicf("tag_along", 0, "FREEZE failed PERMANENTLY, id = %s, oid = %s, reason = '%v'",
 					o.ChainID.String(), o.ID.StringShort(), err)
 			}
 		} else {
-			p.proposer.Log().Infof("FREEZE delegation %s, oid = %s",
+			p.proposer.LogTopicf("tag_along", 1, "FREEZE delegation %s, oid = %s",
 				o.ChainID.String(), o.ID.StringShort())
 		}
 
