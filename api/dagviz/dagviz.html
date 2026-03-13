@@ -120,11 +120,9 @@ let selectedVertexId = null;
 let hoveredVertexId = null;
 let mouseX = 0, mouseY = 0;
 
-// TPS tracking: per-slot average
-let tpsCurrentSlot = 0;       // slot number being accumulated
-let tpsCurrentSlotCount = 0;  // tx count in current slot
-let tpsLastSlotCount = 0;     // tx count in last completed slot
+// TPS tracking: count vertices in a completed slot, refresh 5s after slot boundary
 let currentTPS = 0;
+let tpsScheduledSlot = 0;
 
 // LRB tracking
 let lrbTxId = null;
@@ -272,16 +270,18 @@ function handleMessage(data) {
     vertices.set(data.id, v);
     updateTimeAnchor(v.timeMs);
 
-    // TPS tracking: count transactions per ledger slot
-    if (ts.slot !== tpsCurrentSlot) {
-        if (tpsCurrentSlot > 0) {
-            tpsLastSlotCount = tpsCurrentSlotCount;
-            currentTPS = (tpsLastSlotCount / (SLOT_DURATION_MS / 1000)).toFixed(1);
-        }
-        tpsCurrentSlot = ts.slot;
-        tpsCurrentSlotCount = 0;
+    // TPS tracking: when a new slot's branch arrives, schedule a count 5s later
+    if (v.isBranch && ts.slot > tpsScheduledSlot) {
+        tpsScheduledSlot = ts.slot;
+        const countSlot = ts.slot - 1;
+        setTimeout(() => {
+            let count = 0;
+            for (const [, vtx] of vertices) {
+                if (vtx.slot === countSlot) count++;
+            }
+            currentTPS = (count / (SLOT_DURATION_MS / 1000)).toFixed(1);
+        }, 5000);
     }
-    tpsCurrentSlotCount++;
 }
 
 // Parse timestamp from txID hex string
