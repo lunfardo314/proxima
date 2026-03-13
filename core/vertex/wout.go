@@ -57,7 +57,7 @@ func (o *WrappedOutput) IsAvailable() (available bool) {
 }
 
 func (o *WrappedOutput) Output() (ret *ledger.Output) {
-	o.VID.Unwrap(UnwrapOptions{
+	o.VID.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			var err error
 			if ret, err = v.ProducedOutputAt(o.Index); err != nil {
