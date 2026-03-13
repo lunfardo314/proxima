@@ -268,7 +268,11 @@ function handleMessage(data) {
     };
 
     vertices.set(data.id, v);
-    updateTimeAnchor(v.timeMs);
+    // Only recalibrate the time anchor on branch transactions (once per slot)
+    // to avoid glitching when sequencer txs arrive with increasing ticks
+    if (v.isBranch || timeAnchorWall === 0) {
+        updateTimeAnchor(v.timeMs);
+    }
 
     // TPS tracking: when a new slot's branch arrives, schedule a count 5s later
     if (v.isBranch && ts.slot > tpsScheduledSlot) {
