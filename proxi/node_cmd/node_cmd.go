@@ -49,7 +49,6 @@ func Init() *cobra.Command {
 		initCompactOutputsCmd(),
 		initBalanceCmd(),
 		initTransferCmd(),
-		initSpamCmd(),
 		initMakeChainCmd(),
 		initKillChainCmd(),
 		initNodeInfoCmd(),

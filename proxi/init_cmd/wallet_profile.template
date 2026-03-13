@@ -19,28 +19,3 @@ tag_along:
     fee: 1
 # uncomment the line and specify your preferred tag-along sequencer ID
 #    sequencer_id: <tag-along sequencer ID>
-
-# provides parameters for 'proxi node getfunds' command
-faucet:
-    port:  9500
-    host:  113.30.191.219
-
-{{if .IncludeSpammer}}
-# provides parameters for 'proxi node spam' command
-# 'Spammer' is a testing tool, rarely used in every day activity
-# The spammer sends in a loop bundles of transactions to the target sigLock address via specified tag-along sequencer
-# Before sending next bundle, the spammer waits for the finality of the previous according to the provided criterion
-spammer:
-    bundle_size: 5
-    output_amount: 1000
-    pace: 25
-    tag_along:
-        fee: 1
-        # <sequencer ID hex encoded> is tag-along sequencer ID for the tip transaction in the bundle
-        # If not specified, the default sequencer ID will be used
-        # sequencer_id: <sequencer id hex encoded>
-    # target address
-    target: <target address in EasyFL format>
-    inclusion_timeout_sec: 20
-    finality_slots: 1
-{{end}}

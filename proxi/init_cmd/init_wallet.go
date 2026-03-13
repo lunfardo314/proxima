@@ -13,13 +13,10 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 //go:embed wallet_profile.template
 var walletProfileTemplate string
-
-var includeSpammer bool
 
 func initWalletCmd() *cobra.Command {
 	initWallet := &cobra.Command{
@@ -28,10 +25,6 @@ func initWalletCmd() *cobra.Command {
 		Short: "initializes new proxi wallet profile proxi.yaml with a .key file",
 		Run:   runInitWalletCommand,
 	}
-
-	initWallet.PersistentFlags().BoolVarP(&includeSpammer, "spammer", "", false, "include spammer config section")
-	err := viper.BindPFlag("spammer", initWallet.PersistentFlags().Lookup("spammer"))
-	glb.AssertNoError(err)
 
 	return initWallet
 }
@@ -94,14 +87,12 @@ func runInitWalletCommand(_ *cobra.Command, args []string) {
 
 	data := struct {
 		KeyFile        string
-		HolderID      string
+		HolderID       string
 		BootstrapSeqID string
-		IncludeSpammer bool
 	}{
 		KeyFile:        keyFile,
-		HolderID:      holderID,
+		HolderID:       holderID,
 		BootstrapSeqID: ledger.BoostrapSequencerIDHex,
-		IncludeSpammer: includeSpammer,
 	}
 	var buf bytes.Buffer
 	err = templ.Execute(&buf, data)
