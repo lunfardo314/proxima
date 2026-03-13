@@ -389,8 +389,8 @@ function simpleHash(str) {
 }
 
 // ============ COLORS ============
-const SEQ_COLOR = '#444';
-const SEQ_COLOR_DIM = 'rgba(68,68,68,0.3)';
+const SEQ_COLOR = '#666';
+const SEQ_COLOR_DIM = 'rgba(100,100,100,0.3)';
 const NONSEQ_COLOR = '#999';
 const NONSEQ_COLOR_DIM = 'rgba(160,160,160,0.3)';
 
@@ -577,9 +577,9 @@ function findVertexByTxId(txId) {
 }
 
 function vertexRadius(v) {
-    const base = vertexScaleFactor * 0.5;
-    if (!v.isSequencer) return Math.max(1.5, base * 0.5);
-    return Math.max(3, base);
+    const r = vertexScaleFactor;
+    if (!v.isSequencer) return Math.max(2, r * 0.5);
+    return Math.max(4, r);
 }
 
 function drawVertices(range) {
