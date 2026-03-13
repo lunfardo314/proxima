@@ -204,6 +204,18 @@ func (b *TagAlongBacklog) AddToBlacklist(wOut vertex.WrappedOutput) {
 	}
 }
 
+// RemoveOutput removes a specific output from the backlog.
+// Used when an output is known to be already consumed in the ledger state.
+func (b *TagAlongBacklog) RemoveOutput(wOut vertex.WrappedOutput) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if _, exists := b.outputs[wOut]; exists {
+		delete(b.outputs, wOut)
+		b.removedOutputsSinceReset++
+	}
+}
+
 func (b *TagAlongBacklog) _isInBlacklist(oid base.OutputID) bool {
 	_, found := b.blacklist[oid]
 	return found

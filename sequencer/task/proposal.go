@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -139,6 +140,9 @@ func (p *proposal) insertTagAlongInputs() {
 				err, o.o.LinesSource("     ").String())
 		} else {
 			if err != nil {
+				if strings.Contains(err.Error(), "already consumed") {
+					p.Backlog().RemoveOutput(o.wOut)
+				}
 				p.proposer.Log().Warnf("TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
 			} else {
 				p.proposer.Assertf(cmd != nil, "cmd != nil")
@@ -203,6 +207,9 @@ func (p *proposal) insertDelegations() {
 		})
 		if err != nil {
 			if valid {
+				if strings.Contains(err.Error(), "already consumed") {
+					p.Backlog().RemoveOutput(wOut)
+				}
 				p.proposer.Log().Warnf("FREEZE failed, id = %s, oid = %s, reason = '%v'",
 					o.ChainID.String(), o.ID.StringShort(), err)
 			} else {
