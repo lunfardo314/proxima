@@ -264,18 +264,35 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 		nDelegationsByUnfreezeEpochMap[e] = 0
 	}
 
+	// Collect all delegation outputs under the Readable lock, then filter by blacklist
+	// outside to avoid holding the Readable lock while accessing the backlog lock
+	type _delegationCandidate struct {
+		delegation *ledger.DelegationOutput
+		frozen     bool
+	}
+	var candidates []_delegationCandidate
+
 	p.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
-		if p.Backlog().IsInBlacklist(o.ID) {
-			return true
-		}
-		if o.IsUnlockableByTargetForFreezing(p.proposer.targetTs.Slot) {
-			ret = append(ret, _delegationToFreeze{o, 0})
-		}
+		c := _delegationCandidate{delegation: o}
 		if o.IsInFrozenSlot(p.proposer.targetTs.Slot) {
-			nDelegationsByUnfreezeEpochMap[o.LastFrozenEpoch]++
+			c.frozen = true
 		}
+		candidates = append(candidates, c)
 		return true
 	})
+
+	// Filter and classify outside the Readable lock
+	for _, c := range candidates {
+		if p.Backlog().IsInBlacklist(c.delegation.ID) {
+			continue
+		}
+		if c.delegation.IsUnlockableByTargetForFreezing(p.proposer.targetTs.Slot) {
+			ret = append(ret, _delegationToFreeze{c.delegation, 0})
+		}
+		if c.frozen {
+			nDelegationsByUnfreezeEpochMap[c.delegation.LastFrozenEpoch]++
+		}
+	}
 
 	for i := range ret {
 		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.TransactionData.Timestamp), nDelegationsByUnfreezeEpochMap)

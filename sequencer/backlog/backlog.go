@@ -179,14 +179,20 @@ func (b *TagAlongBacklog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 }
 
 func (b *TagAlongBacklog) IterateOutputs(fun func(wOut vertex.WrappedOutput) bool) {
+	// Collect outputs under the lock, then iterate without holding it.
+	// This prevents deadlocks where the callback accesses WrappedTx locks
+	// while the backlog RLock blocks writers, creating lock-ordering cycles.
 	b.mutex.RLock()
-	defer b.mutex.RUnlock()
-
+	snapshot := make([]vertex.WrappedOutput, 0, len(b.outputs))
 	for wOut := range b.outputs {
 		oid := wOut.DecodeID()
-		if b._isInBlacklist(oid) {
-			continue
+		if !b._isInBlacklist(oid) {
+			snapshot = append(snapshot, wOut)
 		}
+	}
+	b.mutex.RUnlock()
+
+	for _, wOut := range snapshot {
 		if !fun(wOut) {
 			return
 		}
