@@ -51,6 +51,7 @@ func (m *mockEnvironment) TracefLog(log *zap.SugaredLogger, tag string, format s
 func (m *mockEnvironment) StartTracingTags(tags ...string)                                          {}
 func (m *mockEnvironment) Assertf(cond bool, format string, args ...any)                            {}
 func (m *mockEnvironment) AssertNoError(err error, prefix ...string)                                {}
+func (m *mockEnvironment) TopicVerbosityLevel(topic string) int                                     { return 0 }
 func (m *mockEnvironment) LogTopicf(topic string, requiredLevel int, template string, args ...any)  {}
 func (m *mockEnvironment) WarnTopicf(topic string, requiredLevel int, template string, args ...any) {}
 func (m *mockEnvironment) IncCounter(name string)                                                   {}
