@@ -269,8 +269,9 @@ function handleMessage(data) {
 
     vertices.set(data.id, v);
     // Only recalibrate the time anchor on branch transactions (once per slot)
-    // to avoid glitching when sequencer txs arrive with increasing ticks
-    if (v.isBranch || timeAnchorWall === 0) {
+    // to avoid glitching when sequencer txs arrive with increasing ticks.
+    // Skip updates while paused to prevent anchor drift that causes jump on unpause.
+    if (!paused && (v.isBranch || timeAnchorWall === 0)) {
         updateTimeAnchor(v.timeMs);
     }
 
@@ -728,9 +729,10 @@ function setPaused(newPaused) {
     if (paused) {
         pausedLedgerMs = nowLedgerMs();
     } else {
-        // Re-anchor so clock continues from where we paused
+        // Re-anchor: ledger time advanced by the same duration as wall clock during pause
+        const wallElapsed = Date.now() - timeAnchorWall;
+        timeAnchorLedger += wallElapsed;
         timeAnchorWall = Date.now();
-        timeAnchorLedger = pausedLedgerMs;
     }
 }
 
