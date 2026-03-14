@@ -62,6 +62,9 @@ func (c *Checkpoints) Close() {
 }
 
 func (c *Checkpoints) loop(checkEvery time.Duration) {
+	timer := time.NewTimer(checkEvery)
+	defer timer.Stop()
+
 	for {
 		select {
 		case checkData := <-c.ch:
@@ -80,12 +83,13 @@ func (c *Checkpoints) loop(checkEvery time.Duration) {
 			}
 			c.m[checkData.name] = checkData.nowis.Add(checkData.nextExpectedAfter)
 
-		case <-time.After(checkEvery):
+		case <-timer.C:
 			for name, d := range c.m {
 				if d.Before(time.Now()) {
 					c.callback(name)
 				}
 			}
+			timer.Reset(checkEvery)
 		}
 	}
 }

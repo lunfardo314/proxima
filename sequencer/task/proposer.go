@@ -23,11 +23,21 @@ func (p *proposer) run() {
 	var err error
 
 	const loopDelay = 10 * time.Millisecond
+	delayTimer := time.NewTimer(loopDelay)
+	defer delayTimer.Stop()
+
 	waitExit := func() bool {
+		if !delayTimer.Stop() {
+			select {
+			case <-delayTimer.C:
+			default:
+			}
+		}
+		delayTimer.Reset(loopDelay)
 		select {
 		case <-p.ctx.Done():
 			return true
-		case <-time.After(loopDelay):
+		case <-delayTimer.C:
 		}
 		return false
 	}

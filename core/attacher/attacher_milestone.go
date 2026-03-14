@@ -20,8 +20,8 @@ import (
 
 const (
 	TraceTagAttachMilestone = "milestone"
-	// lazyRepeatEach polling time. TODO Probably should be adaptable rather than a constant
-	lazyRepeatEach = 50 * time.Millisecond
+	// lazyRepeatEach polling fallback. With buffered pokeChan, this is only a safety net.
+	lazyRepeatEach = 10 * time.Millisecond
 )
 
 var errDetachedInAttacher = errors.New("detached transaction in the attacher")
@@ -84,7 +84,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 		attacher:         newPastConeAttacher(env, vid, vid.Timestamp(), vid.IDShortString()),
 		vid:              vid,
 		providedMetadata: metadata,
-		pokeChan:         make(chan struct{}),
+		pokeChan:         make(chan struct{}, 1), // buffered: poke while fun() is running is retained, not lost
 		finals:           attachFinals{started: time.Now()},
 		ctx:              providedCtx,
 	}
@@ -213,17 +213,33 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 	}
 	// ===== deadlock catching ====
 
+	// reusable timer avoids per-iteration allocation of time.After (reduces GC pressure under high TPS)
+	fallbackTimer := time.NewTimer(lazyRepeatEach)
+	defer fallbackTimer.Stop()
+
 	for {
-		// repeat until becomes defined or interrupted
 		if status := fun(); status != vertex.Undefined {
 			return status
 		}
+
+		// drain and reset the fallback timer for the next iteration
+		if !fallbackTimer.Stop() {
+			select {
+			case <-fallbackTimer.C:
+			default:
+			}
+		}
+		fallbackTimer.Reset(lazyRepeatEach)
+
+		// wait for: poke (dependency satisfied), shutdown, or fallback timeout.
+		// With buffered pokeChan, pokes arriving while fun() runs are retained
+		// and picked up here immediately without waiting for the fallback timer.
 		select {
 		case <-a.pokeChan:
 		case <-a.ctx.Done():
 			a.setError(fmt.Errorf("%w. Undefined past cone: %s", global.ErrInterrupted, a.pastCone.UndefinedListLines().Join(", ")))
 			return vertex.Bad
-		case <-time.After(lazyRepeatEach):
+		case <-fallbackTimer.C:
 		}
 
 		if !a.DeadlockCatchingDisabled() {

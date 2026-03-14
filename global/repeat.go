@@ -22,14 +22,18 @@ func (l *Global) RepeatInBackground(name string, period time.Duration, fun func(
 }
 
 func (l *Global) RepeatSync(period time.Duration, fun func() bool) bool {
+	timer := time.NewTimer(period)
+	defer timer.Stop()
+
 	for {
 		select {
 		case <-l.Ctx().Done():
 			return false
-		case <-time.After(period):
+		case <-timer.C:
 			if !fun() {
 				return true
 			}
+			timer.Reset(period)
 		}
 	}
 }
