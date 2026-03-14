@@ -129,14 +129,16 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		return vid
 	}
 
+	// Track whether this attachment is new (not already started) so we can post events
+	// outside the vertex lock to avoid backpressure blocking the lock holder.
+	newlyAttached := false
+
 	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
 			if options.attachmentCallback != nil {
 				go func() {
-					//env.IncCounter("call")
 					options.attachmentCallback(vid, vid.GetErrorNoLock())
-					//env.DecCounter("call")
 				}()
 			}
 			return
@@ -175,13 +177,18 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			env.PokeAllWith(vid)
 		}
 
+		newlyAttached = true
+	})
+
+	// Post events outside the vertex lock to prevent backpressure from the event queue
+	// blocking the lock holder and causing cascading deadlocks under high TPS.
+	if newlyAttached {
 		env.PostEventNewTransaction(vid)
 
-		// post new vertex event for non-sequencer transactions immediately
 		if !vid.IsSequencerTransaction() {
 			env.PostEventNewVertex(tx, nil, "", "")
 		}
-	})
+	}
 	return
 }
 
