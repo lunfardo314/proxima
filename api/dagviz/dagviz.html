@@ -724,16 +724,18 @@ function onWheel(e) {
 
 function setPaused(newPaused) {
     if (newPaused === paused) return;
-    paused = newPaused;
-    document.getElementById('pauseScroll').checked = paused;
-    if (paused) {
+    if (newPaused) {
+        // Capture current ledger time BEFORE setting paused flag
         pausedLedgerMs = nowLedgerMs();
+        paused = true;
     } else {
-        // Re-anchor: ledger time advanced by the same duration as wall clock during pause
+        // Re-anchor: advance ledger time by wall time elapsed during pause
         const wallElapsed = Date.now() - timeAnchorWall;
         timeAnchorLedger += wallElapsed;
         timeAnchorWall = Date.now();
+        paused = false;
     }
+    document.getElementById('pauseScroll').checked = paused;
 }
 
 function onPauseCheckbox() {
