@@ -163,7 +163,7 @@ func (q *TxSenders) consume(inp input) {
 				txLogMsg := fmt.Sprintf("tx sender %s is not known in LRB -> IGNORED", ledger.SigLock(holderID).String())
 				q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
-				q.Log().Warnf("tx %s : %s", inp.Tx.IDShortString(), txLogMsg)
+				q.WarnTopicf("rate_control", 1, "tx %s : %s", inp.Tx.IDShortString(), txLogMsg)
 				return
 			}
 			// TODO new branch transactions with unknown sender pass. This may be an attack vector
@@ -186,7 +186,7 @@ func (q *TxSenders) consume(inp input) {
 		txLogMsg := fmt.Sprintf("timestamp is too close to another tx from the same sender %s -> IGNORED", holderID.String())
 		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
-		q.Log().Warnf("tx %s: %s", inp.Tx.IDShortString(), txLogMsg)
+		q.WarnTopicf("rate_control", 1, "tx %s: %s", inp.Tx.IDShortString(), txLogMsg)
 		return
 	}
 	// send transaction for attachment

@@ -26,15 +26,16 @@ Setting a topic to a higher level enables more detailed output for that topic on
 
 ### Available topics
 
-| Topic | Levels | Description |
-|---|---|---|
-| `lifecycle` | 0 | Work process start/stop messages |
-| `tag_along` | 0, 1 | Tag-along output processing. Level 0: permanent failures (blacklisted). Level 1: successful additions, transient failures |
-| `freeze_delegation` | 1 | Delegation freeze operations during proposal building |
-| `branch_attach` | 1 | Branch transaction attachment status (coverage, inflation, supply) |
-| `seq_attach` | 1 | Non-branch sequencer transaction attachment status |
-| `branch_commit` | 1 | Branch state commit to the multi-state DB, orphan detection |
-| `poker` | 2 | Poker module purge statistics |
+| Topic               | Levels | Description                                                                                                               |
+|---------------------|---|---------------------------------------------------------------------------------------------------------------------------|
+| `lifecycle`         | 0 | Work process start/stop messages                                                                                          |
+| `tag_along`         | 0, 1 | Tag-along output processing. Level 0: permanent failures (blacklisted). Level 1: successful additions, transient failures |
+| `freeze_delegation` | 1 | Delegation freeze operations during proposal building                                                                     |
+| `branch_attach`     | 1 | Branch transaction attachment status (coverage, inflation, supply)                                                        |
+| `seq_attach`        | 1 | Non-branch sequencer transaction attachment status                                                                        |
+| `branch_commit`     | 1 | Branch state commit to the multi-state DB, orphan detection                                                               |
+| `rate_control`      | 1 | `txsenders` module events of exceeding rate control bounds                                                                |
+| `poker`             | 2 | Poker module purge statistics                                                                                             |
 
 ### How levels work
 
