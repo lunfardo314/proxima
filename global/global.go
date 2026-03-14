@@ -324,28 +324,6 @@ func (l *Global) TracefLog(log *zap.SugaredLogger, tag string, format string, ar
 	}
 }
 
-func (l *Global) VerbosityLevel() int {
-	return l.logVerbosity
-}
-
-func (l *Global) InfofAtLevel(level int, template string, args ...any) {
-	if level <= l.logVerbosity {
-		l.Infof(template, args...)
-	}
-}
-
-func (l *Global) Infof0(template string, args ...any) {
-	l.InfofAtLevel(0, template, args...)
-}
-
-func (l *Global) Infof1(template string, args ...any) {
-	l.InfofAtLevel(1, template, args...)
-}
-
-func (l *Global) Infof2(template string, args ...any) {
-	l.InfofAtLevel(2, template, args...)
-}
-
 // TopicVerbosityLevel returns the verbosity level for the given topic.
 // If the topic is not configured, returns the global verbosity level.
 func (l *Global) TopicVerbosityLevel(topic string) int {
@@ -371,7 +349,7 @@ func (l *Global) WarnTopicf(topic string, requiredLevel int, template string, ar
 }
 
 // ClockCatchUpWithLedgerTime waits until the wall clock catches up with the given ledger time.
-// It is context-aware and will return early if the global context is cancelled (shutdown).
+// It is context-aware and will return early if the global context is canceled (shutdown).
 // Returns true if completed normally (clock caught up), false if interrupted by shutdown.
 func (l *Global) ClockCatchUpWithLedgerTime(ts base.LedgerTime) bool {
 	targetTime := ledger.ClockTime(ts)

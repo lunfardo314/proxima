@@ -89,13 +89,9 @@ type (
 		// Assertf asserts only if global shutdown wasn't issued
 		Assertf(cond bool, format string, args ...any)
 		AssertNoError(err error, prefix ...string)
-		VerbosityLevel() int
 		TopicVerbosityLevel(topic string) int
 		LogTopicf(topic string, requiredLevel int, template string, args ...any)
 		WarnTopicf(topic string, requiredLevel int, template string, args ...any)
-		Infof0(template string, args ...any)
-		Infof1(template string, args ...any)
-		Infof2(template string, args ...any)
 
 		// counting
 

@@ -56,10 +56,10 @@ func runMilestoneAttacher(
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
-			env.Infof1(a.logFinalStatusString(msData)) // hide branch logging at level 0
+			env.LogTopicf("branch_attach", 1, "%s", a.logFinalStatusString(msData)) // hide branch logging at level 0
 			env.EvidenceBranchInflationBonus(vid.InflationAmount())
 		} else {
-			env.Infof1(a.logFinalStatusString(msData))
+			env.LogTopicf("seq_attach", 1, "%s", a.logFinalStatusString(msData))
 		}
 		// post new vertex event with full metadata from wrapup
 		var seqName, proposerStrategy string
@@ -422,10 +422,12 @@ func (a *milestoneAttacher) logFinalStatusString(msData *seqdata.SequencerData) 
 	} else {
 		msg += fmt.Sprintf(", base: %s, cov/delta: %s/%s", a.finals.baseline.StringShort(),
 			util.Th(*a.finals.TransactionMetadata.LedgerCoverage), util.Th(*a.finals.TransactionMetadata.CoverageDelta))
-		if a.VerbosityLevel() > 0 {
-			if a.vid.IsBranchTransaction() {
+		if a.vid.IsBranchTransaction() {
+			if a.TopicVerbosityLevel("branch_attach") > 0 {
 				msg += fmt.Sprintf(", slot inflation: %s, supply: %s", util.Th(*a.finals.TransactionMetadata.SlotInflation), util.Th(*a.finals.TransactionMetadata.Supply))
-			} else {
+			}
+		} else {
+			if a.TopicVerbosityLevel("seq_attach") > 0 {
 				msg += fmt.Sprintf(", slot inflation: %s", util.Th(*a.finals.TransactionMetadata.SlotInflation))
 			}
 		}

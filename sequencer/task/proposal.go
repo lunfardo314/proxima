@@ -33,13 +33,13 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	}
 	signatureType, privKey, pubKey := p.ControllerKeys()
 	txb, err := txbuilder_seq.New(txbuilder_seq.Params{
-		Timestamp:                a.TargetTs(),
-		Predecessor:              &seqPred,
-		Stem:                     stem,
-		SignatureType:            signatureType,
-		PrivateKey:               privKey,
-		PublicKey:                pubKey,
-		StateReader: a.BaselineSugaredStateReader(),
+		Timestamp:     a.TargetTs(),
+		Predecessor:   &seqPred,
+		Stem:          stem,
+		SignatureType: signatureType,
+		PrivateKey:    privKey,
+		PublicKey:     pubKey,
+		StateReader:   a.BaselineSugaredStateReader(),
 	})
 	if err != nil {
 		a.Close() // FIX: close attacher on error
@@ -218,7 +218,7 @@ func (p *proposal) insertDelegations() {
 					o.ChainID.String(), o.ID.StringShort(), err)
 			}
 		} else {
-			p.proposer.LogTopicf("tag_along", 1, "FREEZE delegation %s, oid = %s",
+			p.proposer.LogTopicf("freeze_delegation", 1, "FREEZE delegation %s, oid = %s",
 				o.ChainID.String(), o.ID.StringShort())
 		}
 

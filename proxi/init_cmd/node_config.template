@@ -75,9 +75,17 @@ logger:
   previous: save
   keep_latest_logs: 2
   # per-topic verbosity overrides. Overrides global verbosity for specific topics.
-  # Available topics: tag_along
+  # Available topics (with their levels):
+  #   lifecycle         - work process start/stop (0)
+  #   tag_along         - tag-along output processing (0: permanent failures, 1: additions/transient)
+  #   freeze_delegation - delegation freeze operations (1)
+  #   branch_attach     - branch transaction attachment status (1)
+  #   seq_attach        - sequencer transaction attachment status (1)
+  #   branch_commit     - branch state commit/orphan (1)
+  #   poker             - poker purge stats (2)
   # topics:
   #   tag_along: 1
+  #   branch_attach: 1
 
 # Other parameters used for tracing and debugging
 # Prometheus metrics exposure

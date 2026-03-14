@@ -245,7 +245,7 @@ func (b *Branches) _cleanupBranches() (int, int) {
 			// if pending, discard the uncommitted state
 			if pb, isPending := b.pending[txid]; isPending {
 				delete(b.pending, txid)
-				b.Log().Infof("orphaned branch %s (%s, %s), discarding uncommitted state",
+				b.LogTopicf("branch_commit", 1, "orphaned branch %s (%s, %s), discarding uncommitted state",
 					txid.StringShort(), pb.SequencerName, pb.RootRecParams.SeqID.StringShort())
 			}
 			delete(b.m, txid)
@@ -346,7 +346,7 @@ func (b *Branches) _commitPendingBranch(branchID base.TransactionID) {
 
 	// log the deferred commit and committed transactions
 	coveragePct := float64(pb.RootRecParams.CoverageDelta) * 100 / float64(pb.RootRecParams.Supply)
-	b.Log().Infof("--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%)",
+	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%)",
 		branchID.StringShort(), pb.SequencerName, util.Th(pb.RootRecParams.CoverageDelta), coveragePct)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 }
