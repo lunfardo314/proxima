@@ -653,7 +653,8 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs
 		return nil, nil, 0, nil
 	}
 	ret = util.PurgeSlice(ret, func(o *ledger.OutputWithID) bool {
-		return ledger.EqualControllers(account, o.Output.Lock().Master())
+		master := o.Output.Lock().Master()
+		return master != nil && ledger.EqualControllers(account, master)
 	})
 	ret = util.TrimSlice(ret, maxO)
 	sum := uint64(0)
