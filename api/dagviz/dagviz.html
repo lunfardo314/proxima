@@ -76,7 +76,7 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
     <div class="edge-toggle"><label><input type="checkbox" id="showStem" checked> Stem (thick)</label></div>
 
     <div style="margin-top:6px; font-size:11px; color:#aaa;">
-        <label><input type="checkbox" id="pauseScroll" onchange="onPauseCheckbox()"> Pause scrolling (P)</label>
+        <label><input type="checkbox" id="pauseScroll" onchange="onPauseCheckbox()"> Pause scrolling (Space/P)</label>
     </div>
 
     <div id="stats">
@@ -739,7 +739,8 @@ function onPauseCheckbox() {
 }
 
 function onKeyDown(e) {
-    if (e.key === 'p' || e.key === 'P') {
+    if (e.key === 'p' || e.key === 'P' || e.key === ' ') {
+        e.preventDefault();
         setPaused(!paused);
     }
 }
