@@ -158,6 +158,8 @@ github.com/lunfardo314/easyfl v0.0.0-20260228162647-2c107ef2cc51 h1:6bJkb0mzPg1+
 github.com/lunfardo314/easyfl v0.0.0-20260228162647-2c107ef2cc51/go.mod h1:nA7EmFm4z4/y31Cs/VgF7dJkkMDmIdS4UxZ3hpnqBxQ=
 github.com/lunfardo314/unitrie v0.0.0-20251216150455-04594b4b3164 h1:jRsH3we7IZ0YeYWjCcSNtU1LB03Iq3uB7OUAL0sgBoU=
 github.com/lunfardo314/unitrie v0.0.0-20251216150455-04594b4b3164/go.mod h1:Nz3iB2ONbFCx0CTKg3PNhRoNCtW0OEe/y87izJ7K6+U=
+github.com/lunfardo314/unitrie v0.0.0-20260314163528-a8f90dd7141f h1:XJYMHP6RYVgd6PCoNJL6I8rxZkV//hEdVrzSV/xNL8E=
+github.com/lunfardo314/unitrie v0.0.0-20260314163528-a8f90dd7141f/go.mod h1:Nz3iB2ONbFCx0CTKg3PNhRoNCtW0OEe/y87izJ7K6+U=
 github.com/marcopolo/simnet v0.0.4 h1:50Kx4hS9kFGSRIbrt9xUS3NJX33EyPqHVmpXvaKLqrY=
 github.com/marcopolo/simnet v0.0.4/go.mod h1:tfQF1u2DmaB6WHODMtQaLtClEf3a296CKQLq5gAsIS0=
 github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd h1:br0buuQ854V8u83wA0rVZ8ttrq5CpaPZdvrK0LP2lOk=
