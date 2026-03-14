@@ -81,6 +81,7 @@ func (s *Sender) Name() string            { return s.name }
 func (s *Sender) Run(ctx context.Context) {
 	pace := int(ledger.L(base.MaxSlot).TransactionPace)
 	paceDuration := time.Duration(pace) * ledger.TickDuration()
+	mindRateControl := s.cfg.IsMindRateControl()
 
 	for {
 		select {
@@ -90,8 +91,8 @@ func (s *Sender) Run(ctx context.Context) {
 		}
 
 		sent := s.doRound(pace)
-		if !sent {
-			// Nothing to spend — wait a bit longer before retrying
+		if !sent || mindRateControl {
+			// Wait pace duration: either nothing to spend, or respecting rate control
 			select {
 			case <-ctx.Done():
 				return

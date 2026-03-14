@@ -19,12 +19,13 @@ type HostConfig struct {
 }
 
 type GlobalConfig struct {
-	TransferAmount    uint64 `yaml:"transfer_amount"`
-	FinalityTimeoutSlots int `yaml:"finality_timeout_slots"`
-	BatchSize         int    `yaml:"batch_size"`
-	TargetStrategy    string `yaml:"target_strategy"`
-	SequencerStrategy string `yaml:"sequencer_strategy"` // "next" (round-robin) or "random"
-	HostStrategy      string `yaml:"host_strategy"`      // "next" (round-robin) or "random"
+	TransferAmount       uint64 `yaml:"transfer_amount"`
+	FinalityTimeoutSlots int    `yaml:"finality_timeout_slots"`
+	BatchSize            int    `yaml:"batch_size"`
+	TargetStrategy       string `yaml:"target_strategy"`
+	SequencerStrategy    string `yaml:"sequencer_strategy"`     // "next" (round-robin) or "random"
+	HostStrategy         string `yaml:"host_strategy"`          // "next" (round-robin) or "random"
+	MindRateControl      *bool  `yaml:"mind_rate_control"`      // default true: wait pace duration between rounds
 }
 
 type SenderConfig struct {
@@ -64,6 +65,10 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	cfg.applyDefaults()
 	return &cfg, cfg.validate()
+}
+
+func (cfg *Config) IsMindRateControl() bool {
+	return cfg.Global.MindRateControl == nil || *cfg.Global.MindRateControl
 }
 
 func (cfg *Config) applyDefaults() {
