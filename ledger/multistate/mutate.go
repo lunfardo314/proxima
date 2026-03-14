@@ -115,8 +115,8 @@ func (m *mutationAddTx) timestamp() base.LedgerTime {
 }
 
 func (m *mutationDelTx) mutate(trie *immutable.TrieUpdatable, _ uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
+	err = delTxFromTrie(trie, &m.ID, bitmapCache)
 	delete(bitmapCache, m.ID)
-	err = delTxFromTrie(trie, &m.ID)
 	return
 }
 
@@ -473,14 +473,24 @@ func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, unspen
 	return
 }
 
-func delTxFromTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID) (err error) {
+func delTxFromTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, bitmapCache txBitmapCache) (err error) {
 	var stateKey [1 + base.TransactionIDLength]byte
 	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], txid[:])
 
-	if !trie.Delete(stateKey[:]) {
-		// key should not exist
-		err = fmt.Errorf("delTxFromTrie: transaction ID key should exist: %s", txid.StringShort())
+	existed := trie.Delete(stateKey[:])
+	_, inCache := bitmapCache[*txid]
+
+	if existed {
+		// TX record was present in the trie — expected for explicit GC via PrunableTxIDsAtSlot.
+		// It must NOT be in bitmapCache, because inline GC (updateTxUnspentSet) removes
+		// the cache entry when it deletes the TX record directly.
+		util.Assertf(!inCache, "delTxFromTrie: TX %s was deleted from trie but still in bitmapCache", txid.StringShort)
+	} else {
+		// TX record was already deleted — this happens when inline GC in updateTxUnspentSet
+		// deleted it (bitmap became empty and txid.Slot() <= gcSlot). In that case the entry
+		// must have been removed from bitmapCache too.
+		util.Assertf(!inCache, "delTxFromTrie: TX %s not in trie but still in bitmapCache", txid.StringShort)
 	}
 	return
 }

@@ -85,7 +85,7 @@ const (
 
 	keepTimestamps = 4
 	// concentrationTolerance is how many transactions is a pace window are tolerated
-	// E.g. 1 means any transaction in the same pace window is ignored
+	// E.g. 1 means any next transaction in the same pace window is ignored
 	concentrationTolerance = 1
 )
 
