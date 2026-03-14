@@ -29,6 +29,10 @@ const (
 	SignatureTypeED25519 = byte(0)
 )
 
+func (h *HolderID) String() string {
+	return hex.EncodeToString(h[:])
+}
+
 // SignatureFromBytes parses signature data
 // - first byte is signature type. 0 - is of ED25519 signature
 // - bytes 1:... are the full signature bytes, that includes proper signature and the public key, depending on the type

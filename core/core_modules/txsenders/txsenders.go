@@ -144,19 +144,30 @@ func (q *TxSenders) consume(inp input) {
 		return
 	}
 	if inp.Wanted {
-		// if transaction is requested, send for attachment without caching
+		// transaction was pulled, so it passes
 		q.attachAndGossip(&inp)
 		return
 	}
+	// tx not pulled. Check cache
+
 	seen := q.txSenders[holderID]
 	if seen == nil {
+		// it is a new sender, never seen in the cache
+		// check if it is known in the LRB
 		if !q.isHolderKnownInLRB(holderID) {
-			// sender account not known -> ignore tx
-			txLogMsg := fmt.Sprintf("IGNORED: tx sender %s is not known in LRB", ledger.SigLock(holderID).String())
-			q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
+			// sender is new to LRB not known
+			// that may be attack, or the node may be lagging behind the actual state
+			if !inp.Tx.IsBranchTransaction() {
+				// non-branch transactions with sender new to the ledger we ignore.
+				// They can come back later, if pulled
+				txLogMsg := fmt.Sprintf("tx sender %s is not known in LRB -> IGNORED", ledger.SigLock(holderID).String())
+				q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
-			q.Log().Warnf("tx %s: %s -> IGNORED", inp.Tx.IDShortString(), txLogMsg)
-			return
+				q.Log().Warnf("tx %s : %s", inp.Tx.IDShortString(), txLogMsg)
+				return
+			}
+			// TODO new branch transactions with unknown sender pass. This may be an attack vector
+			//  we are leaving this for now because otherwise it may not be possible to sync old snapshots
 		}
 		seen = &seenTimestamps{}
 		q.txSenders[holderID] = seen
@@ -172,10 +183,10 @@ func (q *TxSenders) consume(inp input) {
 	}
 	q.txSenders[holderID] = seen
 	if !pass {
-		txLogMsg := fmt.Sprintf("IGNORED: timestamp is too close to another tx from the same sender %s", ledger.SigLock(holderID).String())
+		txLogMsg := fmt.Sprintf("timestamp is too close to another tx from the same sender %s -> IGNORED", holderID.String())
 		q.LogTx(time.Now(), txLogMsg, inp.Tx.ID())
 
-		q.Log().Warnf("tx %s: %s-> IGNORED", inp.Tx.IDShortString(), txLogMsg)
+		q.Log().Warnf("tx %s: %s", inp.Tx.IDShortString(), txLogMsg)
 		return
 	}
 	// send transaction for attachment
@@ -237,10 +248,10 @@ func (q *TxSenders) registerMetrics() {
 	)
 }
 
-// addTs if ts is closer than allowed to any of already recorded, the tx will be ignored.
-// Otherwise, ts is added to the ring buffer
+// addTs checks if ts is closer than allowed to any of already recorded, then tx will be ignored.
+// Otherwise, ts is added to the ring buffer.
 // Returns true if tx passes the check, otherwise it should be ignored
-func (t *tsRingBuffer) addTs(ticksSinceGenesis, minAllowedDiff int64) bool {
+func (t *tsRingBuffer) addTs(ticksSinceGenesis, minAllowedDiff int64) (pass bool) {
 	n := 0
 	for _, ticks := range t.timestamps {
 		if util.Abs(ticksSinceGenesis-ticks) < minAllowedDiff {
