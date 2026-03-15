@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -52,6 +53,12 @@ type (
 		// Orphan branches that are never requested are discarded during cleanup.
 		pending map[base.TransactionID]*PendingBranchCommit
 
+		// committing tracks branches currently being committed outside the mutex.
+		// When a pending branch commit begins, a closed-when-done channel is stored here.
+		// Other goroutines that need the same branch wait on that channel instead of
+		// duplicating the commit work. Entries are removed once the commit completes.
+		committing map[base.TransactionID]chan struct{}
+
 		// knowsTxCache is an L2 cache for BranchKnowsTransaction results.
 		// Protected by knowsTxMu (RWMutex): RLock for cache hits, Lock for cache writes.
 		// This avoids contention on the trie's exclusive Readable.mutex for repeated queries.
@@ -90,6 +97,7 @@ func New(env environment) *Branches {
 		m:                make(map[base.TransactionID]branchDataWithLedgerCoverage),
 		stateReaders:     make(map[base.TransactionID]*cachedStateReader),
 		pending:          make(map[base.TransactionID]*PendingBranchCommit),
+		committing:       make(map[base.TransactionID]chan struct{}),
 		knowsTxCache:     make(map[knowsTxKey]bool),
 	}
 	env.RepeatInBackground("branches_cleanup", 5*time.Second, func() bool {
@@ -287,24 +295,17 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 	b.pending[branchID] = pb
 }
 
-// _commitPendingBranch performs the actual DB commit for a deferred branch.
-// Must be called under b.mutex.
-func (b *Branches) _commitPendingBranch(branchID base.TransactionID) {
-	pb, ok := b.pending[branchID]
-	if !ok {
-		return
-	}
-
-	// get baseline branch root from cache or DB
-	baselineBD, baselineFound := b._getAndCacheNoLock(pb.BaselineBranchID)
-	b.Assertf(baselineFound, "_commitPendingBranch: baseline branch %s not found", pb.BaselineBranchID.StringShort)
-	b.Assertf(baselineBD.Root != nil, "_commitPendingBranch: baseline branch %s has nil root (still pending)", pb.BaselineBranchID.StringShort)
-
+// _commitPendingBranchUnlocked performs the actual DB commit for a deferred branch.
+// Called WITHOUT b.mutex held to avoid blocking all branches.mutex users during the
+// expensive trie iteration (PrunableTxIDsAtSlot) and DB commit.
+// The caller must extract pb and baselineRoot under the lock before calling this method,
+// and must update b.m / b.pending / b.committing under the lock after it returns.
+func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb *PendingBranchCommit, baselineRoot common.VCommitment) *multistate.Updatable {
 	// create updatable state from baseline root
-	upd := multistate.MustNewUpdatable(b.StateStore(), baselineBD.Root)
+	upd := multistate.MustNewUpdatable(b.StateStore(), baselineRoot)
 
 	// inject any missing upgrade UTXOs
-	baselineReader := multistate.MustNewReadable(b.StateStore(), baselineBD.Root, 0)
+	baselineReader := multistate.MustNewReadable(b.StateStore(), baselineRoot, 0)
 	injectedUpgrades := multistate.InjectMissingUpgradeUTXOs(pb.Mutations, baselineReader, branchID.Slot())
 
 	// log upgrade activations
@@ -331,24 +332,18 @@ func (b *Branches) _commitPendingBranch(branchID base.TransactionID) {
 	// commit to DB
 	err := upd.Update(pb.Mutations, pb.RootRecParams)
 	if err != nil {
-		err = fmt.Errorf("_commitPendingBranch(%s) baseline=%s -> %w:\n-------- mutations --------\n%s",
+		err = fmt.Errorf("_commitPendingBranchUnlocked(%s) baseline=%s -> %w:\n-------- mutations --------\n%s",
 			branchID.StringShort(), pb.BaselineBranchID.StringShort(), err, pb.Mutations.Lines("    ").String())
 	}
 	b.Assertf(err == nil, "%v", err)
-
-	// update cached BranchData with the real root
-	bd := b.m[branchID]
-	bd.BranchData.Root = upd.Root()
-	b.m[branchID] = bd
-
-	// remove from pending
-	delete(b.pending, branchID)
 
 	// log the deferred commit and committed transactions
 	coveragePct := float64(pb.RootRecParams.CoverageDelta) * 100 / float64(pb.RootRecParams.Supply)
 	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%)",
 		branchID.StringShort(), pb.SequencerName, util.Th(pb.RootRecParams.CoverageDelta), coveragePct)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
+
+	return upd
 }
 
 func (b *Branches) SequencerOutputID(branchID base.TransactionID) (base.OutputID, bool) {
@@ -364,7 +359,19 @@ func (b *Branches) SequencerOutputID(branchID base.TransactionID) (base.OutputID
 }
 
 // GetStateReaderForTheBranch returns a state reader for the branch or nil if the state does not exist.
-// If the branch is before the snapshot and branch ChainID is known in the snapshot state, it returns the snapshot state (which always exists)
+// If the branch is before the snapshot and branch ChainID is known in the snapshot state, it returns the snapshot state (which always exists).
+//
+// For pending (deferred) branches, the DB commit is performed outside b.mutex to prevent
+// a lock convoy. Previously, _commitPendingBranch ran under b.mutex and its slow trie
+// iteration (PrunableTxIDsAtSlot GC scan) blocked all concurrent GetStateReaderForTheBranch,
+// BranchKnowsTransaction, and other branches.mutex callers for seconds, which cascaded
+// through IsConsumedInThePastPath (holding ownMilestonesMutex) to stall the entire
+// sequencer loop and trigger the deadlock detector.
+//
+// The commit-outside-lock pattern uses the b.committing channel map: the first goroutine
+// to reach a pending branch registers a channel, releases the mutex, performs the commit,
+// then stores results and closes the channel. Concurrent goroutines for the same branch
+// wait on the channel and retry.
 func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multistate.IndexedStateReader {
 	util.Assertf(branchID.IsBranchTransaction(), "GetStateReaderForTheBranchExt: branch tx expected. Got: %s", branchID.StringShort())
 
@@ -382,27 +389,74 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 	}
 
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
 
-	ret := b.stateReaders[branchID]
-	if ret != nil {
+	// fast path: cached state reader
+	if ret := b.stateReaders[branchID]; ret != nil {
 		ret.lastActivity = time.Now()
+		b.mutex.Unlock()
 		return ret.IndexedStateReader
 	}
+
 	bd, found := b._getAndCacheNoLock(branchID)
 	if !found {
+		b.mutex.Unlock()
 		return nil
 	}
-	// if Root is nil, this is a pending (deferred) branch — commit it now
-	if bd.Root == nil {
-		b._commitPendingBranch(branchID)
-		bd = b.m[branchID]
+
+	if bd.Root != nil {
+		// committed branch: create and cache state reader
+		rdr := &cachedStateReader{
+			IndexedStateReader: multistate.MustNewReadable(b.StateStore(), bd.Root, stateReaderCacheLimit),
+			lastActivity:       time.Now(),
+		}
+		b.stateReaders[branchID] = rdr
+		b.mutex.Unlock()
+		return rdr.IndexedStateReader
 	}
-	b.stateReaders[branchID] = &cachedStateReader{
+
+	// pending branch — check if another goroutine is already committing it
+	if ch, alreadyCommitting := b.committing[branchID]; alreadyCommitting {
+		b.mutex.Unlock()
+		// wait for the other goroutine to finish committing
+		<-ch
+		// retry — state reader should now be cached
+		return b.GetStateReaderForTheBranch(branchID)
+	}
+
+	// extract pending data and baseline root under the lock
+	pb := b.pending[branchID]
+	baselineBD, baselineFound := b._getAndCacheNoLock(pb.BaselineBranchID)
+	b.Assertf(baselineFound, "GetStateReaderForTheBranch: baseline branch %s not found", pb.BaselineBranchID.StringShort)
+	b.Assertf(baselineBD.Root != nil, "GetStateReaderForTheBranch: baseline branch %s has nil root (still pending)", pb.BaselineBranchID.StringShort)
+	baselineRoot := baselineBD.Root
+
+	// mark this branch as being committed so other goroutines wait
+	ch := make(chan struct{})
+	b.committing[branchID] = ch
+	b.mutex.Unlock()
+
+	// do the expensive commit work outside the mutex
+	upd := b._commitPendingBranchUnlocked(branchID, pb, baselineRoot)
+
+	// store results under the lock
+	b.mutex.Lock()
+	bd = b.m[branchID]
+	bd.BranchData.Root = upd.Root()
+	b.m[branchID] = bd
+	delete(b.pending, branchID)
+	delete(b.committing, branchID)
+
+	rdr := &cachedStateReader{
 		IndexedStateReader: multistate.MustNewReadable(b.StateStore(), bd.Root, stateReaderCacheLimit),
 		lastActivity:       time.Now(),
 	}
-	return b.stateReaders[branchID]
+	b.stateReaders[branchID] = rdr
+	b.mutex.Unlock()
+
+	// wake up any goroutines waiting for this commit
+	close(ch)
+
+	return rdr.IndexedStateReader
 }
 
 // GetChainOutputFromBranch looks up a chain output in a branch without forcing a DB commit.

@@ -49,16 +49,34 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 	return ret
 }
 
+// IsConsumedInThePastPath checks if an output is consumed in the past chain of the given milestone.
+// Uses a two-phase locking pattern to avoid holding ownMilestonesMutex during slow state reader I/O.
+//
+// Previously, this method held ownMilestonesMutex (write lock) for the entire call, including
+// getStateReader().OutputIsConsumed() which acquires branches.mutex -> trie reads.
+// When branches.mutex was held by a slow _commitPendingBranch (trie iteration for GC),
+// this created a lock convoy: proposer holds ownMilestonesMutex waiting on branches.mutex,
+// while other proposers, recreateMapOwnMilestones, and the sequencer loop all block on
+// ownMilestonesMutex, causing a >10s stall that triggers the deadlock detector.
+//
+// Fix: RLock for cache check (allows concurrent readers), no lock during I/O, brief Lock only to update cache.
 func (seq *Sequencer) IsConsumedInThePastPath(oid base.OutputID, ms *vertex.WrappedTx, getStateReader func() multistate.SugaredStateReader) bool {
-	seq.ownMilestonesMutex.Lock()
-	defer seq.ownMilestonesMutex.Unlock()
-
+	// phase 1: check cache under read lock (concurrent with other readers)
+	seq.ownMilestonesMutex.RLock()
 	if seq.ownMilestones[ms].consumed.Contains(oid) {
+		seq.ownMilestonesMutex.RUnlock()
 		return true
 	}
+	seq.ownMilestonesMutex.RUnlock()
+
+	// phase 2: I/O outside any lock — may block on branches.mutex without holding ownMilestonesMutex
 	ret := getStateReader().OutputIsConsumed(oid)
+
+	// phase 3: brief write lock to update cache on hit
 	if ret {
+		seq.ownMilestonesMutex.Lock()
 		seq.ownMilestones[ms].consumed.Insert(oid)
+		seq.ownMilestonesMutex.Unlock()
 	}
 	return ret
 }
