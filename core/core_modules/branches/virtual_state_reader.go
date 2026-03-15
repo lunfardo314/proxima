@@ -42,6 +42,7 @@ package branches
 import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/unitrie/common"
 )
 
 // virtualStateReader overlays pending branch mutations on a committed ancestor.
@@ -104,9 +105,36 @@ func (v *virtualStateReader) KnowsCommittedTransaction(txid base.TransactionID) 
 	return v.ancestor.KnowsCommittedTransaction(txid)
 }
 
+// _getRootForCommittedBranch returns the trie root for a committed branch.
+// If the branch is pending, it forces a commit first via GetStateReaderForTheBranch.
+// The caller must hold b.mutex.
+func (b *Branches) _getRootForCommittedBranch(branchID base.TransactionID) common.VCommitment {
+	bd, found := b._getAndCacheNoLock(branchID)
+	if !found {
+		return nil
+	}
+	if bd.Root != nil {
+		return bd.Root
+	}
+	// pending branch — force commit to get the root
+	b.mutex.Unlock()
+	rdr := b.GetStateReaderForTheBranch(branchID)
+	b.mutex.Lock()
+	if rdr == nil {
+		return nil
+	}
+	bd, found = b._getAndCacheNoLock(branchID)
+	if !found {
+		return nil
+	}
+	return bd.Root
+}
+
 // buildVirtualStateReader constructs a virtual state reader for a pending branch.
 // It walks back through the pending branch chain via stem links (PreviousBranchID),
 // collecting mutation layers, until it reaches a committed branch.
+// Creates a fresh Readable for the ancestor so the caller has its own trie cache,
+// avoiding mutex contention on the shared cached state reader.
 //
 // The caller must hold b.mutex.
 func (b *Branches) buildVirtualStateReader(branchID base.TransactionID) *virtualStateReader {
@@ -116,15 +144,12 @@ func (b *Branches) buildVirtualStateReader(branchID base.TransactionID) *virtual
 	for {
 		pb, isPending := b.pending[currentID]
 		if !isPending {
-			// Reached a committed branch — get its state reader as the ancestor.
-			// We must unlock before calling GetStateReaderForTheBranch (it takes its own lock).
-			b.mutex.Unlock()
-			ancestor := b.GetStateReaderForTheBranch(currentID)
-			b.mutex.Lock()
-			if ancestor == nil {
-				// Branch not found (shouldn't happen in normal operation)
+			// Reached a committed branch — create a fresh Readable as the ancestor.
+			root := b._getRootForCommittedBranch(currentID)
+			if root == nil {
 				return nil
 			}
+			ancestor := multistate.MustNewReadable(b.StateStore(), root, 0)
 			return &virtualStateReader{
 				layers:   layers,
 				ancestor: ancestor,
@@ -137,9 +162,14 @@ func (b *Branches) buildVirtualStateReader(branchID base.TransactionID) *virtual
 }
 
 // GetVirtualStateReaderForTheBranch returns a StateReader for the branch without
-// forcing a DB commit. If the branch is already committed, it returns the committed
-// reader directly. If the branch is pending, it builds a virtual reader that overlays
-// mutations on the nearest committed ancestor.
+// forcing a DB commit. If the branch is already committed, it returns a fresh Readable.
+// If the branch is pending, it builds a virtual reader that overlays mutations on the
+// nearest committed ancestor.
+//
+// Each call creates its own Readable with an independent trie cache, so concurrent
+// callers (e.g., multiple proposer goroutines) do not contend on the same mutex.
+// This eliminates the Readable.mutex bottleneck where all proposers were serialized
+// on the single cached state reader from branches.stateReaders.
 //
 // Use this instead of GetStateReaderForTheBranch when you only need StateReader
 // methods (GetUTXO, HasUTXO, KnowsCommittedTransaction) and want to avoid
@@ -149,13 +179,13 @@ func (b *Branches) GetVirtualStateReaderForTheBranch(branchID base.TransactionID
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	// If the branch is not pending, return the committed reader directly
+	// If the branch is not pending, create a fresh Readable directly
 	if _, isPending := b.pending[branchID]; !isPending {
-		// unlock/relock around GetStateReaderForTheBranch since it takes its own lock
-		b.mutex.Unlock()
-		rdr := b.GetStateReaderForTheBranch(branchID)
-		b.mutex.Lock()
-		return rdr
+		root := b._getRootForCommittedBranch(branchID)
+		if root == nil {
+			return nil
+		}
+		return multistate.MustNewReadable(b.StateStore(), root, 0)
 	}
 
 	return b.buildVirtualStateReader(branchID)
