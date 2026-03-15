@@ -22,8 +22,15 @@
 //   - If not referenced in any layer → delegate to committed ancestor
 //
 // This correctly models the state after applying all pending mutations without
-// writing anything to DB. The ancestor is always a committed branch whose state
-// reader is already cached.
+// writing anything to DB.
+//
+// Performance:
+// Each call to GetVirtualStateReaderForTheBranch creates a fresh Readable for the
+// committed ancestor, giving each caller its own TrieReader with an independent
+// trie node cache. This eliminates mutex contention on the shared cached state
+// reader (Readable.mutex) that was the #1 bottleneck under load — multiple proposer
+// goroutines were serialized on the single cached Readable because TrieReader
+// mutates its internal cache on every read.
 //
 // Limitations:
 // The virtual reader only implements StateReader (GetUTXO, HasUTXO,
@@ -34,8 +41,8 @@
 //
 // Thread safety:
 // Mutations are immutable once created (built during attachment, never modified after
-// being added to the pending map). The ancestor reader has its own internal mutex.
-// The virtual reader itself is safe for concurrent reads.
+// being added to the pending map). Each caller gets its own Readable instance, so
+// there is no shared mutable state between concurrent virtual readers.
 
 package branches
 

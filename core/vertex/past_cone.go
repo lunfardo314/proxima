@@ -682,6 +682,7 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 	}
 	for vid, flags := range pcb.vertices {
 		if vid.ID() != *pcb.baselineBranchID {
+			// closure defers expensive pcb.Lines() — only evaluated if assertion fails (via lazyargs.Eval)
 			pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined), "inconsistent flag in merged past cone: %s\n%s\n%s",
 				flags.String, vid.IDShortString, func() string { return pcb.Lines("    ").String() })
 		}
