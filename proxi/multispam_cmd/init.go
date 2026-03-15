@@ -25,6 +25,7 @@ func initInitCmd() *cobra.Command {
 }
 
 func runInitCmd(cmd *cobra.Command, _ []string) {
+	glb.TryReadInConfig()
 	addMode, _ := cmd.Flags().GetBool("add")
 	if addMode {
 		runAddSenders(cmd)

@@ -155,6 +155,24 @@ func ReadInConfig() {
 
 }
 
+// TryReadInConfig attempts to load proxi.yaml but does not fail if it doesn't exist.
+func TryReadInConfig() {
+	configName := viper.GetString("config")
+	if configName == "" {
+		configName = "proxi"
+	}
+	viper.AddConfigPath(".")
+	viper.SetConfigType("yaml")
+	viper.SetConfigName(configName)
+	viper.SetConfigFile("./" + configName + ".yaml")
+
+	viper.AutomaticEnv()
+
+	if err := viper.ReadInConfig(); err == nil {
+		Infof("config profile: %s", viper.ConfigFileUsed())
+	}
+}
+
 func NoWait() bool {
 	return viper.GetBool("nowait")
 }

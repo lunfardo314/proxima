@@ -32,6 +32,7 @@ func initFundCmd() *cobra.Command {
 }
 
 func runFundCmd(cmd *cobra.Command, _ []string) {
+	glb.ReadInConfig()
 	glb.InitLedgerFromNode()
 
 	configFile := viper.GetString("multispam-config")

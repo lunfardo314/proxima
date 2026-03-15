@@ -26,11 +26,18 @@ func initRunCmd() *cobra.Command {
 }
 
 func runRunCmd(cmd *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
-
 	configFile := viper.GetString("multispam-config")
 	cfg, err := multispam.LoadConfig(configFile)
 	glb.AssertNoError(err)
+
+	// Use first API host from multispam config so wallet config is not required
+	firstHost := cfg.APIHosts[0]
+	viper.Set("api.endpoint", firstHost.URL)
+	if firstHost.Timeout > 0 {
+		viper.Set("api.timeout_sec", int(firstHost.Timeout.Seconds()))
+	}
+
+	glb.InitLedgerFromNode()
 
 	numSenders, _ := cmd.Flags().GetInt("senders")
 	maxDuration, _ := cmd.Flags().GetDuration("max-duration")

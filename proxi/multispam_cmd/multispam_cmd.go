@@ -11,12 +11,9 @@ func Init() *cobra.Command {
 		Use:   "multispam [<subcommand>]",
 		Short: "multi-sender spammer for TPS testing",
 		Args:  cobra.NoArgs,
-		PersistentPreRun: func(_ *cobra.Command, _ []string) {
-			glb.ReadInConfig()
-		},
 	}
 
-	multispamCmd.PersistentFlags().StringP("config", "c", "", "proxi config profile name")
+	multispamCmd.PersistentFlags().StringP("config", "c", "", "proxi config profile name (for fund/init only)")
 	err := viper.BindPFlag("config", multispamCmd.PersistentFlags().Lookup("config"))
 	glb.AssertNoError(err)
 
