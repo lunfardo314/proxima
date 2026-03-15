@@ -147,30 +147,38 @@ ledger constants (from slot 0 library):
 
 ## Automatic Restore on Startup
 
-When `snapshot_restore` is enabled in `proxima.yaml`, the node automatically restores from snapshot if:
+The node automatically restores from snapshot on startup if the DB is missing or corrupted, **regardless of whether `snapshot_restore` is enabled**. The snapshot is always searched in the single canonical `snapshot.directory` (default: current working directory).
 
-1. **DB is missing**: Fresh node with only a snapshot file
-2. **DB is corrupted**: Restore-in-progress marker present from interrupted restore
-3. **Cleanup triggered**: State file indicates periodic cleanup in progress
+Restore triggers:
+
+1. **DB is missing**: Fresh node, or DB was deleted
+2. **DB is corrupted**: Cannot be opened by BadgerDB
+3. **Restore interrupted**: Restore-in-progress marker present from a previous incomplete restore
+4. **Cleanup in progress**: State file indicates periodic cleanup was triggered
+
+If no snapshot is found in `snapshot.directory`, the node **refuses to start**.
 
 ### Configuration
 
 ```yaml
+snapshot:
+  directory: ""            # Single location for snapshots. Default "" = current working directory.
+
 snapshot_restore:
-  enable: true
-  period_slots: 8438      # ~24 hours between cleanups
-  window_slots: 1406      # ~4 hour random window
-  ttl_minutes: 10         # Max time for cleanup operation
-  snapshot_directory: snapshot
+  enable: true             # Enable periodic cleanup (restore on missing/corrupted DB always works)
+  period_slots: 8438       # ~24 hours between cleanups
+  window_slots: 1406       # ~4 hour random window
+  ttl_minutes: 10          # Max time for cleanup operation
 ```
 
 ### Restore Process
 
 ```
 node.Start()
-  └─> checkAndRestoreOnStartup()
+  └─> CheckAndRestoreOnStartup()
         ├─> Check if DB missing/corrupted
-        ├─> Find latest .snapshot file
+        ├─> Find latest .snapshot in snapshot.directory
+        │     └─> No snapshot found → REFUSE TO START
         ├─> Validate snapshot matches ledger config
         ├─> Delete old/corrupted DB
         ├─> RestoreFromSnapshot()

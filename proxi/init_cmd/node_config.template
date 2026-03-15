@@ -38,9 +38,12 @@ api:
 
 snapshot:
   enable: false
-    # where to put snapshot files. Directory must exist at startup
-  directory: snapshot
-    # 30 slots means snapshot is every ~5 min
+    # The single directory for snapshot files, used by both snapshot creation and restore.
+    # Default "" means current working directory.
+    # On startup with missing/corrupted DB, the node searches here for a snapshot to restore from.
+    # If no snapshot is found, the node refuses to start.
+  directory: ""
+    # 64 slots means snapshot is every ~10 min
   period_in_slots: 64
     # keep latest up to 2 snapshots, older ones will be purged
   keep_latest: 2

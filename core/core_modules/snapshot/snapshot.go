@@ -33,7 +33,7 @@ type (
 const (
 	Name = "snapshot"
 
-	defaultSnapshotDirectory     = "snapshot"
+	defaultSnapshotDirectory     = "."
 	defaultSnapshotPeriodInSlots = 30
 	defaultKeepLatest            = 3
 	defaultSafetySlots           = 20
@@ -50,10 +50,7 @@ func Start(env environment) {
 	}
 	env.Log().Infof("[snapshot] is enabled")
 
-	ret.directory = viper.GetString("snapshot.directory")
-	if ret.directory == "" {
-		ret.directory = defaultSnapshotDirectory
-	}
+	ret.directory = SnapshotDirectory()
 	env.Log().Infof("%s directory is '%s'", Name, ret.directory)
 	if !directoryExists(ret.directory) {
 		err := os.MkdirAll(ret.directory, 0777)
@@ -91,6 +88,17 @@ func Start(env environment) {
 		Add("safety slot back: %d", ret.safeSlotsBack)
 	ret.Log().Infof("[snapshot] work process STARTED\n%s", ln.String())
 	return
+}
+
+// SnapshotDirectory returns the configured snapshot directory from snapshot.directory config.
+// Default is "." (current working directory). This is the single authoritative location
+// for snapshot files, used by both snapshot creation and snapshot_restore.
+func SnapshotDirectory() string {
+	dir := viper.GetString("snapshot.directory")
+	if dir == "" {
+		dir = defaultSnapshotDirectory
+	}
+	return dir
 }
 
 func (s *Snapshot) registerMetrics() {

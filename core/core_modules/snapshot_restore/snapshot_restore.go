@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -138,13 +139,10 @@ func Start(env environment) {
 		s.ttlMinutes = defaultTTLMinutes
 	}
 
-	// Use snapshot_restore.snapshot_directory if set, otherwise fall back to snapshot.directory
+	// Use snapshot_restore.snapshot_directory if explicitly set, otherwise use the shared snapshot.directory
 	s.snapshotDir = viper.GetString("snapshot_restore.snapshot_directory")
 	if s.snapshotDir == "" {
-		s.snapshotDir = viper.GetString("snapshot.directory")
-	}
-	if s.snapshotDir == "" {
-		s.snapshotDir = "snapshot"
+		s.snapshotDir = snapshot.SnapshotDirectory()
 	}
 
 	// Initialize cleanup log if configured
@@ -237,15 +235,16 @@ func (s *SnapshotRestore) checkAndTriggerCleanup() {
 	s.triggerCleanup()
 }
 
-// triggerCleanup initiates the cleanup process
+// triggerCleanup initiates the cleanup process.
+// Skips cleanup if no snapshots are available in the snapshot directory.
 func (s *SnapshotRestore) triggerCleanup() {
 	triggerStart := time.Now()
 	s.logCleanup("=== CLEANUP TRIGGERED at slot %d ===", ledger.SlotNow())
 
-	// Find latest snapshot
+	// Find latest snapshot in the configured snapshot directory
 	snapshotFile, err := FindLatestSnapshot(s.snapshotDir)
 	if err != nil {
-		s.logCleanupError("no snapshot available: %v - rescheduling", err)
+		s.logCleanupError("no snapshot available in %s: %v - rescheduling", s.snapshotDir, err)
 		s.scheduleNextCleanup()
 		return
 	}
@@ -368,28 +367,21 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		}
 	}
 
-	// Get snapshot file - first try state file, then find latest
+	// Get snapshot file - first try state file (in-progress cleanup), then find latest
+	// in the single configured snapshot directory
 	snapshotFile := stateFile.GetSnapshotFile()
 	if snapshotFile == "" {
-		// No snapshot in state file - search multiple directories for the latest one
-		// Priority: working directory (for genesis.snapshot), then configured snapshot directory
-		snapshotDir := viper.GetString("snapshot_restore.snapshot_directory")
-		if snapshotDir == "" {
-			snapshotDir = viper.GetString("snapshot.directory")
-		}
-		if snapshotDir == "" {
-			snapshotDir = "snapshot"
-		}
-		// Search working dir first, then configured snapshot dir
-		snapshotFile, err = FindLatestSnapshotInDirs(".", snapshotDir)
+		// No snapshot in state file - search the configured snapshot directory
+		snapshotDir := snapshot.SnapshotDirectory()
+		snapshotFile, err = FindLatestSnapshot(snapshotDir)
 		if err != nil {
-			logRestoreError(log, "no snapshot available for restore: %v", err)
+			logRestoreError(log, "no snapshot found in %s: %v", snapshotDir, err)
 			if cleanupInProgress {
 				if err := stateFile.ResetCleanupState(); err != nil {
 					return false, fmt.Errorf("failed to reset cleanup state: %w", err)
 				}
 			}
-			return false, fmt.Errorf("database missing/corrupted and no snapshot available: %w", err)
+			return false, fmt.Errorf("database missing/corrupted and no snapshot available in '%s'", snapshotDir)
 		}
 		logRestoreMsg(log, "found snapshot for restore: %s", snapshotFile)
 	}
@@ -476,21 +468,6 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 	logRestoreMsg(log, "database size after: %s", FormatBytes(dbSizeAfter))
 	if dbSizeBefore > 0 {
 		logRestoreMsg(log, "database size reduced by: %s (%.1f%%)", FormatBytes(dbSizeDelta), float64(dbSizeDelta)*100/float64(dbSizeBefore))
-	}
-
-	// Copy snapshot to working directory and cleanup old snapshots
-	destPath := filepath.Base(snapshotFile)
-	if err := CopyFile(snapshotFile, destPath); err != nil {
-		logRestoreMsg(log, "warning: failed to copy snapshot to working dir: %v", err)
-	} else {
-		logRestoreMsg(log, "snapshot copied to: %s", destPath)
-
-		// Cleanup old snapshots in working directory, keeping only the one just copied
-		if err := util.PurgeFilesInDirectory(".", "*.snapshot", 1); err != nil {
-			logRestoreMsg(log, "warning: failed to cleanup old snapshots: %v", err)
-		} else {
-			logRestoreMsg(log, "old snapshots cleaned up in working directory")
-		}
 	}
 
 	// Calculate next cleanup slot using constants from the restored snapshot

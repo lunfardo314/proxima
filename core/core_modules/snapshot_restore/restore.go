@@ -322,10 +322,11 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 	return stats, nil
 }
 
-// FindLatestSnapshot finds the most recent snapshot file in the given directory
+// FindLatestSnapshot finds the most recent snapshot file in the given directory.
+// Uses "." (current working directory) if directory is empty.
 func FindLatestSnapshot(directory string) (string, error) {
 	if directory == "" {
-		directory = "snapshot"
+		directory = "."
 	}
 
 	entries, err := os.ReadDir(directory)

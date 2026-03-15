@@ -96,12 +96,13 @@ The `EasyFL` serves also as serialization/deserializtion primitives.
 ## Node Initialization Sequence
 
 1. `startMetrics()` - Prometheus metrics
-2. `initMultiStateLedger()` - Initialize UTXO state
-3. `initTxStore()` - Initialize transaction store
-4. `initPeering()` - Set up P2P network
-5. `startWorkflow()` - Start transaction processing
-6. `startSequencer()` - Optional sequencer
-7. `startAPIServer()` - REST API
+2. `CheckAndRestoreOnStartup()` - If DB missing/corrupted, restore from latest snapshot in `snapshot.directory` (refuses to start if none found)
+3. `initMultiStateLedger()` - Initialize UTXO state
+4. `initTxStore()` - Initialize transaction store
+5. `initPeering()` - Set up P2P network
+6. `startWorkflow()` - Start transaction processing (includes snapshot and snapshot_restore modules)
+7. `startSequencer()` - Optional sequencer
+8. `startAPIServer()` - REST API
 
 ## Working Rules
 
