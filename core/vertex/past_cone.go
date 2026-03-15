@@ -683,7 +683,7 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 	for vid, flags := range pcb.vertices {
 		if vid.ID() != *pcb.baselineBranchID {
 			pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined), "inconsistent flag in merged past cone: %s\n%s\n%s",
-				flags.String, vid.IDShortString, pcb.Lines("    ").String)
+				flags.String, vid.IDShortString, func() string { return pcb.Lines("    ").String() })
 		}
 		if !flags.FlagsUp(FlagPastConeVertexInTheState) {
 			// if vertex is in the state of the appended past cone, it will be in the state of the new baseline
