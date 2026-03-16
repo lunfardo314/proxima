@@ -238,13 +238,18 @@ The strategy hands this skeleton to the worker for finalization AND simultaneous
 to spawn another proposer that tries adding more endorsements. This means no work is wasted -- every
 intermediate result is submittable, and the clone-and-extend is purely additive.
 
+A strategy can run **several conflicting proposers in parallel**, each extending from different points
+in the own-milestone chain or trying different endorsement candidates. This is normal and desirable for
+coverage maximization. To avoid/minimize redundant work, the strategy should track which
+(extend, endorse) pairs are currently in flight and skip combinations already being explored.
+
 ```
 Strategy (persistent, one per type):
   polls backlog for endorsement candidates
   selects (extend, endorse) pair using shared logic
   builds IncrementalAttacher with 1 endorsement    <-- VALID PROPOSAL
     |-- sends skeleton to Worker
-    +-- clones attacher
+    +-- clones attacher (must have no pending delta -- asserted)
           |-- spawns Proposer(clone, candidate2, target) -> skeleton -> Worker
           +-- optionally spawns Proposer(clone, candidate2b, target) -> skeleton -> Worker
                 (bounded fan-out: try different 2nd endorsement candidates in parallel)
@@ -257,10 +262,19 @@ Worker (single goroutine):
 Coordinator (tick-based sampling):
   maintains proposal pool
   at each tick checkpoint within the slot: evaluate pool
-    - compare coverage, endorsement count, timing
+    - only submits if coverage is strictly bigger than last submitted milestone
+    - compare endorsement count, timing, input count
     - submit best if threshold met or deadline approaching
+  after submission: wait for the milestone to appear in the tippool before next submission
   flush at pre-branch consolidation boundary
 ```
+
+**Submission back-pressure**: after submitting a milestone, the coordinator waits for it to appear
+in the tippool (as the current sequencer does). This creates natural adaptive pacing: if the node
+can't keep up with the network (attachment is slow, network latency is high), the submission loop
+slows down and the sequencer automatically calms down. If the submission loop becomes constant-time,
+it indicates the node is at its limit. This is the right behavior -- the sequencer should not
+overwhelm its own node.
 
 ### Slot timing structure
 
@@ -279,16 +293,16 @@ determines when strategies should stop spawning new proposers.
 
 Cloning is the critical enabler. It does not exist today and must be implemented.
 
+**Clone precondition:** only an IncrementalAttacher with no pending delta transaction can be cloned.
+This must be asserted. In practice this means: clone after `InsertEndorsement` completes (delta committed
+or rolled back), not during.
+
 **Clone semantics:**
 - **Share** (immutable from attacher's perspective): pointers to WrappedTx vertices, baseline state reader,
   transaction data
 - **Deep copy** (mutable state): consumed output set, conflict tracking set, endorsement/input lists,
   coverage accumulators
-- **Fork**: delta transaction context -- the clone starts a fresh delta layer from the same base state
-
-The existing delta transaction mechanism (`InsertEndorsement` wraps in a delta with rollback on failure)
-already implies a layered state model. Cloning is essentially "snapshot the current layer, start a new
-one on top."
+- **Fork**: the clone starts from committed state -- no delta layer to carry over
 
 ### Strategies as static plugins
 
@@ -326,6 +340,11 @@ The coordinator's decision logic is a core part of the research task. It must ba
 - Time remaining in the slot
 - Whether a milestone has already been submitted this slot (safety satisfied?)
 - Properties of the proposal (endorsement count, input count, coverage delta)
+
+**Hard rule**: a milestone is submitted only if it has **strictly bigger coverage** than the last
+submitted milestone. This prevents submitting inferior or equal proposals. Combined with the
+tippool back-pressure (wait for submission to appear before next), this naturally limits the rate
+of transactions and ensures each one is an improvement.
 
 Some redundancy in submitted transactions is inevitable and acceptable -- the sequencer issuing
 conflicting transactions is normal behavior for coverage maximization. The coordinator's job is to
