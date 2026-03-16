@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
@@ -120,6 +121,35 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 			name, extend.IDStringShort(), conflict.IDStringShort())
 	}
 	return ret, nil
+}
+
+// Clone creates an independent copy of the IncrementalAttacher.
+// The clone shares vertex pointers (WrappedTx) but has its own mutable state
+// (past cone tracking, endorsement/input lists, coverage accumulators).
+// Must be called with no pending delta in the past cone (asserted inside PastCone.Clone).
+// The clone can independently add endorsements and inputs without affecting the original.
+func (a *IncrementalAttacher) Clone(name string) *IncrementalAttacher {
+	util.Assertf(!a.IsClosed(), "IncrementalAttacher.Clone: attacher is closed")
+
+	ret := &IncrementalAttacher{
+		attacher: attacher{
+			Environment: a.Environment,
+			Library:     a.Library,
+			pastCone:    a.pastCone.Clone(name),
+			name:        name,
+		},
+		endorse:         slices.Clone(a.endorse),
+		inputs:          slices.Clone(a.inputs),
+		targetTs:        a.targetTs,
+		stemOutput:      a.stemOutput,
+		inflationAmount: a.inflationAmount,
+	}
+	if a.explicitBaselineID != nil {
+		id := *a.explicitBaselineID
+		ret.explicitBaselineID = &id
+	}
+	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
+	return ret
 }
 
 // Close releases all references of vertices. Repetitive closing has no effect
