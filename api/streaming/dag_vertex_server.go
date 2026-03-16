@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/lunfardo314/proxima/api"
@@ -15,6 +17,8 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
+
+const wsWriteTimeout = 5 * time.Second
 
 type (
 	environment interface {
@@ -95,6 +99,20 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 
 	srv.Log().Infof("[%s] web socket client connected, remote: %s", TraceTag, r.RemoteAddr)
 
+	// closed is set when any write fails or the reader detects disconnect.
+	// Both handlers check it so they are removed promptly once the connection is gone.
+	var closed atomic.Bool
+
+	// writeMsg sets a write deadline before each write so a slow/dead client
+	// cannot block the events consumer goroutine indefinitely.
+	writeMsg := func(data []byte) error {
+		if closed.Load() {
+			return websocket.ErrCloseSent
+		}
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+		return conn.WriteMessage(websocket.TextMessage, data)
+	}
+
 	// Thread-safe storage for transactions per slot
 	var mu sync.Mutex
 	txSlots := make(map[uint32]set.Set[string]) // Slot -> Set of transaction IDs
@@ -106,6 +124,7 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 			_, _, err := conn.ReadMessage()
 			if err != nil {
 				srv.Log().Infof("[%s] WebSocket client disconnected, remote: %s, err: %v", TraceTag, r.RemoteAddr, err)
+				closed.Store(true)
 				_ = conn.Close()
 				return
 			}
@@ -113,6 +132,10 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 	}()
 
 	srv.OnNewVertex(func(data *workflow.NewVertexEventData) bool {
+		if closed.Load() {
+			return false
+		}
+
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -175,34 +198,47 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 				if respBin != nil {
 					srv.Tracef(TraceTag, "Send tx not seen yet %s", i)
 					txSlots[depSlot].Insert(i)
-					if err = conn.WriteMessage(websocket.TextMessage, respBin); err != nil {
+					if err = writeMsg(respBin); err != nil {
 						srv.Log().Infof("[%s] WebSocket client disconnected, remote: %s, err = %v", TraceTag, r.RemoteAddr, err)
+						closed.Store(true)
+						_ = conn.Close()
 						break
 					}
 				}
 			}
 		}
 
+		if closed.Load() {
+			return false
+		}
+
 		// Send the transaction itself
 		respBin, err := json.MarshalIndent(vertexWD, "", "  ")
 		util.AssertNoError(err)
 
-		if err = conn.WriteMessage(websocket.TextMessage, respBin); err != nil {
+		if err = writeMsg(respBin); err != nil {
 			srv.Log().Infof("[%s] web socket client disconnected, remote: %s, err = %v", TraceTag, r.RemoteAddr, err)
+			closed.Store(true)
+			_ = conn.Close()
 		}
-		return err == nil // returns false to remove callback
+		return !closed.Load()
 	})
 
 	srv.OnTxDeleted(func(txid base.TransactionID) bool {
+		if closed.Load() {
+			return false
+		}
 		vertex := &api.VertexDelete{
 			ID: txid.StringHex(),
 		}
 		respBin, err := json.MarshalIndent(vertex, "", "  ")
 		util.AssertNoError(err)
 
-		if err = conn.WriteMessage(websocket.TextMessage, respBin); err != nil {
+		if err = writeMsg(respBin); err != nil {
 			srv.Log().Infof("[%s] web socket client disconnected, remote: %s, err = %v", TraceTag, r.RemoteAddr, err)
+			closed.Store(true)
+			_ = conn.Close()
 		}
-		return err == nil // returns false to remove callback
+		return !closed.Load()
 	})
 }

@@ -126,9 +126,18 @@ func (d *MemDAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 	}
 }
 
-func (d *MemDAG) deleteNoLock(txid base.TransactionID) {
+// deleteFromMapNoLock removes the vertex from the map without posting events.
+// Caller must collect the txid and post events after releasing the lock.
+func (d *MemDAG) deleteFromMapNoLock(txid base.TransactionID) {
 	delete(d.vertices, txid)
-	d.PostEventTxDeleted(txid)
+}
+
+// postDeleteEvents posts TxDeleted events outside the write lock to avoid
+// holding the lock while the events pipeline (including WebSocket writes) drains.
+func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
+	for _, txid := range deletedIDs {
+		d.PostEventTxDeleted(txid)
+	}
 }
 
 // doGC traverses all known transaction IDs and:
@@ -137,16 +146,20 @@ func (d *MemDAG) deleteNoLock(txid base.TransactionID) {
 // -- nullifies strong references of those expired thus preparing them for GC
 func (d *MemDAG) doGC() (detached, deleted int) {
 	expired := make([]*vertex.WrappedTx, 0)
+	var deletedIDs []base.TransactionID
+
 	if !d.IsSynced() {
 		// if not synced, simplified scenario: just delete all GCed vertices
 		d.WithGlobalWriteLock(func() {
 			for txid, rec := range d.vertices {
 				if rec.Pointer.Value() == nil {
-					d.deleteNoLock(txid)
+					d.deleteFromMapNoLock(txid)
+					deletedIDs = append(deletedIDs, txid)
 					deleted++
 				}
 			}
 		})
+		d.postDeleteEvents(deletedIDs)
 		return
 	}
 	// is synced.
@@ -155,7 +168,8 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 		slotNow := ledger.TimeNow().Slot
 		for txid, rec := range d.vertices {
 			if rec.Pointer.Value() == nil {
-				d.deleteNoLock(txid)
+				d.deleteFromMapNoLock(txid)
+				deletedIDs = append(deletedIDs, txid)
 				deleted++
 			} else {
 				if rec.WrappedTx != nil && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots {
@@ -164,6 +178,9 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			}
 		}
 	})
+	d.postDeleteEvents(deletedIDs)
+	deletedIDs = deletedIDs[:0]
+
 	if len(expired) == 0 {
 		return
 	}
@@ -175,7 +192,8 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			txid := vid.ID()
 			if rec, found := d.vertices[txid]; found {
 				if rec.Value() == nil {
-					d.deleteNoLock(txid)
+					d.deleteFromMapNoLock(txid)
+					deletedIDs = append(deletedIDs, txid)
 					deleted++
 				} else {
 					rec.WrappedTx = nil
@@ -185,6 +203,7 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			}
 		}
 	})
+	d.postDeleteEvents(deletedIDs)
 	return
 }
 
