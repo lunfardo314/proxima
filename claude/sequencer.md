@@ -302,13 +302,17 @@ closes the rest.
 
 #### TSF behavior
 
-**Trigger**: a new own milestone appearing in the tippool. When TSF detects a new own milestone,
-it starts a new round:
+**Target slot**: set externally via `SetTargetSlot(slot)`. The factory does not use wall clock —
+only ledger time (logical clock). The sequencer level decides when to advance the slot.
+`SetTargetSlot` cancels any ongoing round, resets checked-combinations and best coverage.
+
+**Round structure**: within a target slot, the factory repeatedly runs rounds:
 
 1. Call `ChooseFirstExtendEndorsePair` to find the first valid (extend, endorse) pair.
    This produces skeleton_0 with 1 endorsement.
 2. Post skeleton_0 to the output channel.
 3. Enter the improvement loop: try adding more endorsements to increase coverage.
+4. When improvement stalls (see below), return to step 1 with fresh tippool state.
 
 **Improvement loop**:
 - Clone the current best skeleton.
@@ -322,26 +326,38 @@ it starts a new round:
 - Collect results from the result channel. If any worker produced a skeleton with strictly
   higher coverage than the current best, that becomes the new best. Post it to the output
   channel. Close all losers.
-- Repeat until all candidates are exhausted or context is cancelled. All candidates are
-  eventually tried — the N workers are for congestion control only.
+- The N workers are for congestion control only.
 
-**Strictly increasing coverage**: TSF tracks the best coverage delta it produced in the current
-round. It only posts new skeletons that strictly exceed this. An internal filter goroutine
-sits between workers and the output channel to enforce this.
+**Improvement stall and restart**: with hundreds of sequencers, exhausting all endorsement
+candidates is combinatorial explosion and too expensive. Instead, the improvement loop detects
+**stall**: if N consecutive batches of workers all fail to increase coverage, the current
+improvement chain has likely reached a local maximum. The loop returns, and the outer loop
+calls `ChooseFirstExtendEndorsePair` again with fresh tippool state to explore a different
+starting point.
 
-**Checked-combinations set**: per-round. Tracks which `(extend, {endorse1, endorse2, ...})`
-combinations have been checked. The key is the **set** of endorsed transaction IDs — endorsement
-order is irrelevant (swapping two endorsements produces the same skeleton). Reset when a new
-round starts (new own milestone detected).
+This avoids two bad extremes:
+- Exhausting all candidates (too expensive with hundreds of sequencers)
+- Resetting on every new own milestone (discards valuable multi-endorsement skeletons)
 
-**Round restart**: when a new own milestone appears in the tippool while an improvement loop
-is running, the current round is cancelled and a new round starts from `ChooseFirstExtendEndorsePair`.
-The new milestone is a better starting point because it is already endorsed by others.
+Productive improvement chains with many endorsement opportunities keep running. Chains that
+quickly hit a local maximum restart fast to try a different extend-endorse pair.
 
-**Cancellation**: the TSF respects a context. When cancelled (slot end, shutdown, round restart),
+**Own milestones**: the factory does NOT reset on new own milestones. New own milestones change
+what `FutureConeOwnMilestonesOrdered` returns, so the *next* call to `ChooseFirstExtendEndorsePair`
+(after stall) naturally picks up the new state. The checked-combinations set persists within
+the slot, preventing re-checking old combinations. New milestones from other sequencers create
+new combinations that haven't been checked, so they will be tried.
+
+**Strictly increasing coverage**: TSF tracks the best coverage it produced in the current slot
+(atomic, reset by `SetTargetSlot`). It only posts new skeletons that strictly exceed this.
+
+**Checked-combinations set**: per-slot (reset by `SetTargetSlot`). Tracks which
+`(extend, {endorse1, endorse2, ...})` combinations have been checked. The key is the **set**
+of endorsed transaction IDs — endorsement order is irrelevant (swapping two endorsements
+produces the same skeleton).
+
+**Cancellation**: the TSF respects a context. When canceled (slot change, shutdown),
 all in-flight workers are stopped and pending skeletons are closed.
-If no new own milestone arrives, the TSF should not block forever — it should poll periodically
-or use a timeout to remain responsive to context cancellation.
 
 #### Architecture
 
@@ -352,45 +368,36 @@ N persistent worker goroutines:
   if success: send clone to resultCh
   else: close clone
 
-TSF main goroutine:
+TSF main goroutine (Run loop):
   start N workers (persistent, read from jobCh, write to resultCh)
   loop:
-    poll tippool for new own milestone (with timeout/context)
-    if new milestone:
-      reset checked-combinations set
-      ChooseFirstExtendEndorsePair -> skeleton_0
-      if skeleton_0 == nil: continue
-      currentBest = skeleton_0
-      post skeleton_0 -> filterCh
+    wait for targetSlot != 0
+    create round context (cancelable by SetTargetSlot)
 
-      improvement loop:
-        re-query tippool for fresh endorsement candidates
-        filter out already-checked combinations
-        if no untried candidates: break
-        for each untried candidate:
-          push (currentBest.Clone(), candidate) -> jobCh
-          mark combination as checked
-        collect results from resultCh
-        pick best by coverage among results
-        if best > currentBest coverage:
-          close currentBest
-          currentBest = best
-          post currentBest -> filterCh
-          close all other results
-          continue
-        else:
-          close all results
-          break
-        check for new own milestone -> restart round if changed
+    ChooseFirstExtendEndorsePair -> skeleton_0
+    if skeleton_0 == nil: continue
+    post skeleton_0 -> outCh (if strictly better coverage)
 
-Filter goroutine:
-  reads from filterCh
-  compares against bestCoverageSoFar
-  if strictly better:
-    forward to outCh
-    update bestCoverageSoFar
-  else:
-    close and discard
+    improvement loop:
+      re-query tippool for fresh endorsement candidates
+      filter out already-checked combinations
+      if no untried candidates: break (stall -> restart from ChooseFirst)
+      for each untried candidate (up to N at a time):
+        push (currentBest.Clone(), candidate) -> jobCh
+        mark combination as checked
+      collect results from resultCh
+      pick best by coverage among results
+      if best > currentBest coverage:
+        currentBest = best
+        post currentBest -> outCh (if strictly better)
+        stallCount = 0
+        continue
+      else:
+        stallCount++
+        if stallCount >= stallThreshold: break (stall -> restart from ChooseFirst)
+        continue
+
+    // loop back to ChooseFirstExtendEndorsePair with fresh tippool state
 
 outCh (output channel, buffered):
   consumer reads at own pace
