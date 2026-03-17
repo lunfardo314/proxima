@@ -86,7 +86,8 @@ type (
 		attacher
 		endorse            []*vertex.WrappedTx
 		inputs             []vertex.WrappedOutput
-		targetTs           base.LedgerTime // kept for backward compatibility; will be phased out
+		targetSlot         uint32
+		isBranch           bool
 		stemOutput         vertex.WrappedOutput
 		explicitBaselineID *base.TransactionID
 		inflationAmount    uint64

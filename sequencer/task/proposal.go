@@ -29,11 +29,11 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	var stem *ledger.OutputWithID
 	if stemWrapped := a.Stem(); stemWrapped.VID != nil {
 		stem = stemWrapped.OutputWithID()
-		p.Assertf(!a.TargetTs().IsSlotBoundary() || stem != nil, "newProposal: !a.TargetTs().IsSlotBoundary() || stem != nil")
+		p.Assertf(!a.IsBranchTarget() || stem != nil, "newProposal: !a.IsBranchTarget() || stem != nil")
 	}
 	signatureType, privKey, pubKey := p.ControllerKeys()
 	txb, err := txbuilder_seq.New(txbuilder_seq.Params{
-		Timestamp:     a.TargetTs(),
+		Timestamp:     p.targetTs,
 		Predecessor:   &seqPred,
 		Stem:          stem,
 		SignatureType: signatureType,
