@@ -580,13 +580,16 @@ func (a *attacher) BaselineSupply() uint64 {
 	return a.Branches().Supply(*a.pastCone.GetBaseline())
 }
 
-func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint64) uint64 {
+// FinalLedgerCoverage calculates full ledger coverage for the attacher.
+// Timestamp is not always defined in the generic attacher, so it is supplied as an argument
+// Timestamp is used to determine slot of the attacher and calculate coverage correctly on slot boundaries
+func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint64 {
 	var baselineLC uint64
 
 	// note that timestamp of the transaction can be before the baseline when baseline is snapshot
-	if bl := a.pastCone.GetBaseline(); bl != nil && currentTs.After(bl.Timestamp()) {
-		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint64(currentTs.Slot-bl.Slot())
-		if !currentTs.IsSlotBoundary() {
+	if bl := a.pastCone.GetBaseline(); bl != nil && ts.After(bl.Timestamp()) {
+		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint64(ts.Slot-bl.Slot())
+		if !ts.IsSlotBoundary() {
 			baselineLC >>= 1
 		}
 	}

@@ -2,28 +2,31 @@
 // TSF is a persistent process that continuously scans the tippool and produces
 // transaction skeletons (IncrementalAttachers with extend + endorsements, no tag-alongs)
 // with strictly increasing coverage.
+// The factory operates within a target slot set externally via SetTargetSlot.
+// It does not use wall clock — only ledger time (logical clock).
 package factory
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 )
 
 const (
-	TraceTag           = "factory"
+	TraceTag              = "factory"
 	NumImprovementWorkers = 3
-	TippoolPollInterval   = 50 * time.Millisecond
+	RunLoopPollInterval   = 50 * time.Millisecond
 )
 
 type (
-	Environment interface {
+	environment interface {
 		global.NodeGlobal
 		attacher.Environment
 		SequencerID() base.ChainID
@@ -43,20 +46,25 @@ type (
 	}
 
 	Factory struct {
-		Environment
-		ctx       context.Context
-		cancel    context.CancelFunc
-		outCh     chan *Skeleton
+		environment
+		ctx    context.Context
+		cancel context.CancelFunc
+		outCh  chan *Skeleton
+
+		slotMutex           sync.RWMutex
+		targetSlot          uint32 // 0 means not set
+		roundCancel         context.CancelFunc
 		checkedCombinations combinationSet
+		bestCoverage        atomic.Uint64
 	}
 )
 
 // New creates a new TransactionSkeletonFactory. Call Run() to start it.
-// The caller reads skeletons from OutCh().
-func New(env Environment, ctx context.Context) *Factory {
+// The caller reads skeletons from OutCh() and sets the target slot via SetTargetSlot.
+func New(env environment, ctx context.Context) *Factory {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Factory{
-		Environment: env,
+		environment: env,
 		ctx:         ctx,
 		cancel:      cancel,
 		outCh:       make(chan *Skeleton, 4),
@@ -71,15 +79,52 @@ func (f *Factory) Stop() {
 	f.cancel()
 }
 
-// Run is the main TSF goroutine. It polls the tippool for new own milestones and
-// produces skeletons with strictly increasing coverage.
+// SetTargetSlot sets the target slot and restarts any ongoing round.
+// Thread-safe — can be called from any goroutine.
+func (f *Factory) SetTargetSlot(slot uint32) {
+	f.slotMutex.Lock()
+	defer f.slotMutex.Unlock()
+
+	if f.targetSlot == slot {
+		return
+	}
+
+	// cancel the current round if running
+	if f.roundCancel != nil {
+		f.roundCancel()
+		f.roundCancel = nil
+	}
+
+	f.targetSlot = slot
+	f.checkedCombinations = newCombinationSet()
+	f.bestCoverage.Store(0)
+
+	f.Tracef(TraceTag, "SetTargetSlot: %d", slot)
+}
+
+func (f *Factory) getTargetSlot() uint32 {
+	f.slotMutex.RLock()
+	defer f.slotMutex.RUnlock()
+	return f.targetSlot
+}
+
+// syntheticTargetTs returns a synthetic timestamp for the current target slot.
+// Uses last tick in the slot so that pace checks are maximally permissive
+// (any candidate in the slot will pass). The exact tick doesn't matter for
+// coverage calculation or structural decisions — only the slot matters.
+func (f *Factory) syntheticTargetTs() base.LedgerTime {
+	return base.T(f.getTargetSlot(), base.MaxTickValue)
+}
+
+// Run is the main TSF goroutine. It waits for a target slot to be set,
+// then continuously tries to produce skeletons with increasing coverage.
 func (f *Factory) Run() {
 	defer close(f.outCh)
 
-	var lastOwnMilestoneVID *vertex.WrappedTx
-
-	ticker := time.NewTicker(TippoolPollInterval)
+	ticker := time.NewTicker(RunLoopPollInterval)
 	defer ticker.Stop()
+
+	var lastSlot uint32
 
 	for {
 		select {
@@ -88,44 +133,55 @@ func (f *Factory) Run() {
 		case <-ticker.C:
 		}
 
-		currentOwn := f.GetLatestMilestone(f.SequencerID())
-		if currentOwn == nil || currentOwn == lastOwnMilestoneVID {
+		slot := f.getTargetSlot()
+		if slot == 0 {
 			continue
 		}
-		lastOwnMilestoneVID = currentOwn
 
-		f.Tracef(TraceTag, "new own milestone detected: %s", currentOwn.IDShortString())
-		f.runRound(currentOwn)
+		if slot != lastSlot {
+			lastSlot = slot
+			f.Tracef(TraceTag, "starting round for slot %d", slot)
+		}
+
+		f.runRound(slot)
 	}
 }
 
-// runRound runs one improvement round starting from the given own milestone.
-// It finds the first extend-endorse pair, posts it, then tries to improve.
-// Returns when improvement is exhausted, context is cancelled, or a new own milestone appears.
-func (f *Factory) runRound(ownMilestone *vertex.WrappedTx) {
-	f.checkedCombinations = newCombinationSet()
+// runRound runs one improvement round for the given slot.
+// Returns when improvement is exhausted, context is cancelled, or target slot changes.
+func (f *Factory) runRound(slot uint32) {
+	// create a round-scoped context that SetTargetSlot can cancel
+	f.slotMutex.Lock()
+	if f.targetSlot != slot {
+		f.slotMutex.Unlock()
+		return
+	}
+	roundCtx, roundCancel := context.WithCancel(f.ctx)
+	f.roundCancel = roundCancel
+	f.slotMutex.Unlock()
 
-	targetSlot := ledger.TimeNow().Slot
-	targetTs := base.T(targetSlot, ledger.L(targetSlot).PostBranchConsolidationTicks)
+	defer roundCancel()
 
-	skeleton := f.chooseFirstExtendEndorsePair(targetTs, ownMilestone)
+	skeleton := f.chooseFirstExtendEndorsePair(slot)
 	if skeleton == nil {
 		return
 	}
 
-	coverage := skeleton.FinalLedgerCoverage(targetTs)
+	syntheticTs := base.T(slot, base.MaxTickValue)
+	coverage := skeleton.FinalLedgerCoverage(syntheticTs)
 	f.Tracef(TraceTag, "first skeleton: %s, coverage: %d", skeleton.Name(), coverage)
 
-	bestCoverage := coverage
-	f.postSkeleton(skeleton, coverage)
+	if !f.tryPostSkeleton(skeleton, coverage) {
+		skeleton.Close()
+		return
+	}
 
-	// improvement loop with persistent workers
-	f.improvementLoop(ownMilestone, targetTs, skeleton, &bestCoverage)
+	f.improvementLoop(roundCtx, syntheticTs, skeleton)
 }
 
 // improvementLoop tries adding endorsements to improve coverage.
 // Uses N persistent workers reading from a job channel.
-func (f *Factory) improvementLoop(ownMilestone *vertex.WrappedTx, targetTs base.LedgerTime, currentBest *attacher.IncrementalAttacher, bestCoverage *uint64) {
+func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.LedgerTime, currentBest *attacher.IncrementalAttacher) {
 	type job struct {
 		clone     *attacher.IncrementalAttacher
 		candidate *vertex.WrappedTx
@@ -139,7 +195,7 @@ func (f *Factory) improvementLoop(ownMilestone *vertex.WrappedTx, targetTs base.
 	resultCh := make(chan result, NumImprovementWorkers)
 
 	// start persistent workers
-	workerCtx, workerCancel := context.WithCancel(f.ctx)
+	workerCtx, workerCancel := context.WithCancel(roundCtx)
 	defer workerCancel()
 
 	for i := 0; i < NumImprovementWorkers; i++ {
@@ -161,7 +217,7 @@ func (f *Factory) improvementLoop(ownMilestone *vertex.WrappedTx, targetTs base.
 					resultCh <- result{}
 					continue
 				}
-				cov := j.clone.FinalLedgerCoverage(targetTs)
+				cov := j.clone.FinalLedgerCoverage(syntheticTs)
 				resultCh <- result{attacher: j.clone, coverage: cov}
 			}
 		}()
@@ -170,22 +226,15 @@ func (f *Factory) improvementLoop(ownMilestone *vertex.WrappedTx, targetTs base.
 	defer close(jobCh)
 
 	for {
-		// check for new own milestone (round restart)
-		if current := f.GetLatestMilestone(f.SequencerID()); current != nil && current != ownMilestone {
-			f.Tracef(TraceTag, "new own milestone during improvement, restarting round")
-			currentBest.Close()
-			return
-		}
-
 		select {
-		case <-f.ctx.Done():
+		case <-roundCtx.Done():
 			currentBest.Close()
 			return
 		default:
 		}
 
 		// get fresh endorsement candidates
-		candidates := f.Backlog().CandidatesToEndorseSorted(targetTs)
+		candidates := f.Backlog().CandidatesToEndorseSorted(syntheticTs)
 		untried := f.filterUntried(currentBest, candidates)
 		if len(untried) == 0 {
 			currentBest.Close()
@@ -201,7 +250,7 @@ func (f *Factory) improvementLoop(ownMilestone *vertex.WrappedTx, targetTs base.
 			select {
 			case jobCh <- job{clone: clone, candidate: candidate}:
 				sent++
-			case <-f.ctx.Done():
+			case <-roundCtx.Done():
 				clone.Close()
 				currentBest.Close()
 				return
@@ -230,7 +279,7 @@ func (f *Factory) improvementLoop(ownMilestone *vertex.WrappedTx, targetTs base.
 			}
 		}
 
-		if bestResult == nil || bestResultCov <= *bestCoverage {
+		if bestResult == nil || !f.tryPostSkeleton(bestResult, bestResultCov) {
 			if bestResult != nil {
 				bestResult.Close()
 			}
@@ -241,12 +290,9 @@ func (f *Factory) improvementLoop(ownMilestone *vertex.WrappedTx, targetTs base.
 		// improvement found
 		currentBest.Close()
 		currentBest = bestResult
-		*bestCoverage = bestResultCov
 
 		f.Tracef(TraceTag, "improved skeleton: %s, coverage: %d, endorsements: %d",
 			currentBest.Name(), bestResultCov, len(currentBest.Endorsing()))
-
-		f.postSkeleton(currentBest, bestResultCov)
 	}
 }
 
@@ -258,7 +304,6 @@ func (f *Factory) filterUntried(currentBest *attacher.IncrementalAttacher, candi
 
 	ret := make([]*vertex.WrappedTx, 0, len(candidates))
 	for _, c := range candidates {
-		// skip if already endorsed
 		alreadyEndorsed := false
 		for _, e := range currentEndorsements {
 			if e == c {
@@ -277,14 +322,23 @@ func (f *Factory) filterUntried(currentBest *attacher.IncrementalAttacher, candi
 	return ret
 }
 
-// markChecked records that the combination of current skeleton + new candidate has been tried.
 func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candidate *vertex.WrappedTx) {
 	f.checkedCombinations.markChecked(currentBest.Extending(), currentBest.Endorsing(), candidate)
 }
 
-// postSkeleton clones the skeleton and sends the clone to the output channel.
-// The caller retains ownership of the original for further improvement.
-func (f *Factory) postSkeleton(a *attacher.IncrementalAttacher, coverage uint64) {
+// tryPostSkeleton posts a skeleton to the output channel if its coverage strictly exceeds
+// the best so far. Returns true if posted, false if not an improvement.
+func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint64) bool {
+	for {
+		current := f.bestCoverage.Load()
+		if coverage <= current {
+			return false
+		}
+		if f.bestCoverage.CompareAndSwap(current, coverage) {
+			break
+		}
+	}
+
 	clone := a.Clone("skeleton-out")
 	sk := &Skeleton{
 		IncrementalAttacher: clone,
@@ -292,7 +346,9 @@ func (f *Factory) postSkeleton(a *attacher.IncrementalAttacher, coverage uint64)
 	}
 	select {
 	case f.outCh <- sk:
+		return true
 	case <-f.ctx.Done():
 		sk.Close()
+		return false
 	}
 }

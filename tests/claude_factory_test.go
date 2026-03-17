@@ -17,9 +17,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/stretchr/testify/require"
 )
+
+// keepTargetSlotUpdated periodically updates the factory's target slot
+// to match the current ledger time. Stops when ctx is cancelled.
+func keepTargetSlotUpdated(ctx context.Context, f *factory.Factory) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			f.SetTargetSlot(ledger.TimeNow().Slot)
+		}
+	}
+}
 
 // TestFactoryProducesSkeletons verifies that TSF produces at least one skeleton
 // when multiple sequencers are running and generating milestones.
@@ -32,15 +48,14 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 	testData := initMultiSequencerTest(t, nSequencers, true)
 	testData.startSequencersWithTimeout(maxSlots)
 
-	// start factory attached to the bootstrap sequencer
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
 	f := factory.New(testData.bootstrapSeq, ctx)
 	go f.Run()
+	go keepTargetSlotUpdated(ctx, f)
 
 	var skeletonCount atomic.Int32
 
-	// collect skeletons in background
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -52,7 +67,6 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 		}
 	}()
 
-	// run for a while, then stop
 	time.Sleep(15 * time.Second)
 	cancel()
 	testData.stopAndWait()
@@ -78,6 +92,7 @@ func TestFactorySkeletonStructure(t *testing.T) {
 	defer cancel()
 	f := factory.New(testData.bootstrapSeq, ctx)
 	go f.Run()
+	go keepTargetSlotUpdated(ctx, f)
 
 	var checked atomic.Int32
 
@@ -119,6 +134,7 @@ func TestFactoryIncreasingCoverage(t *testing.T) {
 	defer cancel()
 	f := factory.New(testData.bootstrapSeq, ctx)
 	go f.Run()
+	go keepTargetSlotUpdated(ctx, f)
 
 	var lastCoverage uint64
 	var increases atomic.Int32
@@ -164,8 +180,8 @@ func TestFactoryStopsCleanly(t *testing.T) {
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	f := factory.New(testData.bootstrapSeq, ctx)
 	go f.Run()
+	go keepTargetSlotUpdated(ctx, f)
 
-	// drain skeletons
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -174,7 +190,6 @@ func TestFactoryStopsCleanly(t *testing.T) {
 		}
 	}()
 
-	// let it run briefly, then cancel
 	time.Sleep(5 * time.Second)
 	cancel()
 	testData.stopAndWait()
