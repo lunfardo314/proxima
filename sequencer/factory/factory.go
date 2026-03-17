@@ -108,14 +108,6 @@ func (f *Factory) getTargetSlot() uint32 {
 	return f.targetSlot
 }
 
-// syntheticTargetTs returns a synthetic timestamp for the current target slot.
-// Uses last tick in the slot so that pace checks are maximally permissive
-// (any candidate in the slot will pass). The exact tick doesn't matter for
-// coverage calculation or structural decisions — only the slot matters.
-func (f *Factory) syntheticTargetTs() base.LedgerTime {
-	return base.T(f.getTargetSlot(), base.MaxTickValue)
-}
-
 // Run is the main TSF goroutine. It waits for a target slot to be set,
 // then continuously tries to produce skeletons with increasing coverage.
 func (f *Factory) Run() {
