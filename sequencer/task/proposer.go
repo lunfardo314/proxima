@@ -131,7 +131,7 @@ const TraceTagChooseFirstExtendEndorsePair = "chooseFirstPair"
 // ChooseFirstExtendEndorsePair returns incremental attacher which corresponds to the first
 // extend-endorse pair encountered while traversing endorse candidates.
 // Endorse candidates are either sorted descending by coverage, or randomly shuffled
-// Pairs are filtered before checking. It allows of excluding the repeating pairs
+// Pairs are filtered before checking. This way repeating pairs can be filtered out
 func (p *proposer) ChooseFirstExtendEndorsePair(shuffleEndorseCandidates bool, pairFilter func(extend vertex.WrappedOutput, endorse *vertex.WrappedTx) bool) *attacher.IncrementalAttacher {
 	p.Tracef(TraceTagChooseFirstExtendEndorsePair, "IN %s", p.Name)
 
