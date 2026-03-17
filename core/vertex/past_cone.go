@@ -112,6 +112,25 @@ func (pb *PastConeBase) CloneImmutable() *PastConeBase {
 	return ret
 }
 
+// Clone creates a deep copy of PastConeBase including virtuallyConsumed state.
+func (pb *PastConeBase) Clone() *PastConeBase {
+	ret := &PastConeBase{
+		baselineBranchID: pb.baselineBranchID,
+		vertices:         make(map[*WrappedTx]FlagsPastCone, len(pb.vertices)),
+		attachmentCost:   pb.attachmentCost,
+	}
+	for vid, flags := range pb.vertices {
+		ret.vertices[vid] = flags
+	}
+	if len(pb.virtuallyConsumed) > 0 {
+		ret.virtuallyConsumed = make(map[*WrappedTx]set.Set[byte], len(pb.virtuallyConsumed))
+		for vid, indices := range pb.virtuallyConsumed {
+			ret.virtuallyConsumed[vid] = indices.Clone()
+		}
+	}
+	return ret
+}
+
 func (pb *PastConeBase) addVirtuallyConsumedOutput(wOut WrappedOutput) {
 	if pb.virtuallyConsumed == nil {
 		pb.virtuallyConsumed = map[*WrappedTx]set.Set[byte]{}
@@ -241,6 +260,21 @@ func (pc *PastCone) GetBaseline() *base.TransactionID {
 		return pc.delta.baselineBranchID
 	}
 	return nil
+}
+
+// Clone creates an independent deep copy of the PastCone.
+// Must be called with no pending delta (asserted).
+// Vertex pointers (WrappedTx) are shared — only the mutable tracking state is copied.
+func (pc *PastCone) Clone(name string) *PastCone {
+	util.Assertf(pc.delta == nil, "PastCone.Clone: no pending delta allowed")
+
+	return &PastCone{
+		Logging:      pc.Logging,
+		tip:          pc.tip,
+		txTs:         pc.txTs,
+		name:         name,
+		PastConeBase: pc.PastConeBase.Clone(),
+	}
 }
 
 func (pc *PastCone) BeginDelta() {

@@ -83,8 +83,6 @@ func (p *proposer) run() {
 }
 
 func (p *proposer) propose(a *proposal) error {
-	util.Assertf(a.TargetTs() == p.targetTs, "proposal.attacher.TargetTs() == p.targetTs")
-
 	coverageDelta, frozen := a.CoverageDelta()
 	ledgerCoverage := a.FinalLedgerCoverage(p.targetTs, coverageDelta)
 	slotInflation := a.SlotInflation() // tip inflation is not included

@@ -13,32 +13,38 @@ Key dependencies (part of Proxima ecosystem):
 - `github.com/lunfardo314/unitrie` - Trie data structure and Merkle tree for multi-ledger state
 - `github.com/lunfardo314/lunfrado314.github.io` - Contains all relevant documentation of Proxima
 
+## Knowledge base
+Main reference point is `CLAUDE.md`.
+
+Directories `docs` and `claude` contain proper user documentation, task prompts, plans, findings and session reports.
+Claude should use the content of these directories as a persistent and incrementally-improved knowledge base about the Project.
+Claude should maintain index of the knowledge-base here in CLAUDE.md
+
 ## Architecture
 
 ### Core Packages
 
-| Package              | Purpose                                                                                                                                 |
-|----------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `ledger`             | Ledger model, transaction validity rules, library of UTXO covenants, including locks and other constraints.                             |
-| `ledger/base`        | base data types: transaction ID, UTXO/outputs ID, timestamp. Genesis definitions                                                        |
-| `ledger/multistate`  | Multiple ledger states (branches) in overlapping Merkle trees (based on `unitrie`). BadgerDB-backed store                               |
-| `ledger/transaction` | transaction, transaction context and related code                                                                                       |
-| `ledger/txbuilder`   | various utility functions for transaction building                                                                                      |
-| `ledger/utxodb`      | in-memory storage for the ledger state. Fully mimics multistate. Intended for unit tests                                                |
-| `ledger/tests`       | unit tests for the `ledger` package. Mostly uses `utxodb` for transaction settlement                                                    |
-| `core/workflow`      | Main transaction processing engine, coordinates all core modules                                                                        |
-| `core/memdag`        | In-memory transaction DAG cache, with weak pointer caching                                                                              |
-| `core/attacher`      | Validates and solidifies transactions, constructs UTXO tangle. One attacher goroutine per sequencer transaction                         |
-| `core/vertex`        | In-memory transaction representations (`WrappedTx`, `Vertex`, `VirtualTx`)                                                              |
-| `core/core_modules`  | permanent transaction workflow processes that handles incoming and outgoing flow of transactions, initiates attachers                   |
-| `core/txmetadata`    | Optional data structure that can be attached to each raw transaction for consistency checking                                           |
-| `sequencer`          | An optional process on the node, representing a token holder on the network that does _sequencing_ by pro-actively issuing transactions |
-| `peering`            | P2P networking via libp2p, Kademlia DHT discovery                                                                                       |
-| `api`                | REST and WebSocket API endpoints                                                                                                        |
-| `proxi`              | CLI wallet and node management tool                                                                                                     |
-| `node`               | Node orchestration, lifecycle management                                                                                                |
-| `global`             | Shared infrastructure, logging, metrics, context                                                                                        |
-| `claude`             | Claude Code .md files with tasks, contexts, task status, findings                                                                       |
+| Package              | Purpose                                                                                                                                   |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `ledger`             | Ledger model, transaction validity rules, library of UTXO covenants, including locks and other constraints.                               |
+| `ledger/base`        | base data types: transaction ID, UTXO/outputs ID, timestamp. Genesis definitions                                                          |
+| `ledger/multistate`  | Multiple ledger states (branches) in overlapping Merkle trees (based on `unitrie`). BadgerDB-backed store                                 |
+| `ledger/transaction` | transaction, transaction context and related code                                                                                         |
+| `ledger/txbuilder`   | various utility functions for transaction building                                                                                        |
+| `ledger/utxodb`      | in-memory storage for the ledger state. Fully mimics multistate. Intended for unit tests                                                  |
+| `ledger/tests`       | unit tests for the `ledger` package. Mostly uses `utxodb` for transaction settlement                                                      |
+| `core/workflow`      | Main transaction processing engine, coordinates all core modules                                                                          |
+| `core/memdag`        | In-memory transaction DAG cache, with weak pointer caching                                                                                |
+| `core/attacher`      | Validates and solidifies transactions, constructs UTXO tangle. One attacher goroutine per sequencer transaction                           |
+| `core/vertex`        | In-memory transaction representations (`WrappedTx`, `Vertex`, `VirtualTx`)                                                                |
+| `core/core_modules`  | permanent transaction workflow processes that handles incoming and outgoing flow of transactions, initiates attachers                     |
+| `core/txmetadata`    | Optional data structure that can be attached to each raw transaction for consistency checking                                             |
+| `sequencer`          | An optional process on the node, representing a token holder on the network that does _sequencing_ by pro-actively issuing transactions   |
+| `peering`            | P2P networking via libp2p, Kademlia DHT discovery                                                                                         |
+| `api`                | REST and WebSocket API endpoints                                                                                                          |
+| `proxi`              | CLI wallet and node management tool                                                                                                       |
+| `node`               | Node orchestration, lifecycle management                                                                                                  |
+| `global`             | Shared infrastructure, logging, metrics, context                                                                                          |
 
 ### UTXO transaction model 
 

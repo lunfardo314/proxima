@@ -1547,3 +1547,149 @@ func TestAttachmentCostComplexScenario(t *testing.T) {
 	require.Equal(t, cost4b, pc.AttachmentCost())
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 }
+
+// =============================================================================
+// PastCone.Clone() Tests
+// =============================================================================
+
+// TestPastConeBaseClone tests that PastConeBase.Clone() deep copies all mutable state.
+func TestPastConeBaseClone(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	vid1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+	vid2 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1002, 50)))
+
+	pb := NewPastConeBase(&branchID)
+	pb.vertices[vid1] = FlagPastConeVertexKnown | FlagPastConeVertexDefined
+	pb.vertices[vid2] = FlagPastConeVertexKnown
+	pb.addVirtuallyConsumedOutput(WrappedOutput{VID: vid1, Index: 0})
+	pb.addVirtuallyConsumedOutput(WrappedOutput{VID: vid1, Index: 2})
+	pb.attachmentCost = 42
+
+	clone := pb.Clone()
+
+	// Same content
+	require.Equal(t, *pb.baselineBranchID, *clone.baselineBranchID)
+	require.Equal(t, len(pb.vertices), len(clone.vertices))
+	require.Equal(t, pb.vertices[vid1], clone.vertices[vid1])
+	require.Equal(t, pb.vertices[vid2], clone.vertices[vid2])
+	require.Equal(t, pb.attachmentCost, clone.attachmentCost)
+	require.True(t, clone.virtuallyConsumed[vid1].Contains(byte(0)))
+	require.True(t, clone.virtuallyConsumed[vid1].Contains(byte(2)))
+
+	// Independence: mutate clone, original unaffected
+	vid3 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1003, 50)))
+	clone.vertices[vid3] = FlagPastConeVertexKnown
+	require.Equal(t, 2, len(pb.vertices))
+	require.Equal(t, 3, len(clone.vertices))
+
+	clone.addVirtuallyConsumedOutput(WrappedOutput{VID: vid2, Index: 1})
+	require.Equal(t, 1, len(pb.virtuallyConsumed))  // only vid1
+	require.Equal(t, 2, len(clone.virtuallyConsumed)) // vid1 + vid2
+
+	// Mutate original's virtuallyConsumed, clone unaffected
+	pb.addVirtuallyConsumedOutput(WrappedOutput{VID: vid1, Index: 5})
+	require.True(t, pb.virtuallyConsumed[vid1].Contains(byte(5)))
+	require.False(t, clone.virtuallyConsumed[vid1].Contains(byte(5)))
+}
+
+// TestPastConeClone tests PastCone.Clone() preserves all state and is independent.
+func TestPastConeClone(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "original", NewPastConeBase(&branchID))
+
+	vid1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
+	vid2 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1002, 50)))
+	pc.MarkVertexKnown(vid1)
+	pc.SetFlagsUp(vid1, FlagPastConeVertexDefined|FlagPastConeVertexInTheState)
+	pc.MarkVertexKnown(vid2)
+	pc.addVirtuallyConsumedOutput(WrappedOutput{VID: vid1, Index: 0})
+
+	clone := pc.Clone("cloned")
+
+	// Metadata
+	require.Equal(t, "cloned", clone.name)
+	require.Equal(t, pc.tip, clone.tip)
+	require.Equal(t, pc.txTs, clone.txTs)
+	require.Nil(t, clone.delta)
+
+	// Content matches
+	require.Equal(t, *pc.baselineBranchID, *clone.baselineBranchID)
+	require.Equal(t, pc.Flags(vid1), clone.Flags(vid1))
+	require.Equal(t, pc.Flags(vid2), clone.Flags(vid2))
+	require.True(t, clone.isVirtuallyConsumed(WrappedOutput{VID: vid1, Index: 0}))
+	require.Equal(t, pc.AttachmentCost(), clone.AttachmentCost())
+
+	// Independence: mutate clone
+	vid3 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1003, 50)))
+	clone.MarkVertexKnown(vid3)
+	require.False(t, pc.IsKnown(vid3))
+	require.True(t, clone.IsKnown(vid3))
+
+	// Independence: delta on clone doesn't affect original
+	clone.BeginDelta()
+	vid4 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1004, 50)))
+	clone.MarkVertexKnown(vid4)
+	clone.CommitDelta()
+	require.True(t, clone.IsKnown(vid4))
+	require.False(t, pc.IsKnown(vid4))
+}
+
+// TestPastConeClonePanicsWithPendingDelta verifies Clone asserts no pending delta.
+func TestPastConeClonePanicsWithPendingDelta(t *testing.T) {
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
+	pc.BeginDelta()
+
+	require.Panics(t, func() {
+		pc.Clone("should_panic")
+	})
+
+	pc.RollbackDelta()
+}
+
+// TestPastConeCloneWithRealTransactions tests Clone preserves attachment cost with real txs.
+func TestPastConeCloneWithRealTransactions(t *testing.T) {
+	u := utxodb.NewUTXODB(pastConeTestGenesisKey, true)
+
+	vid1 := createTestTransaction(t, u, 900)
+	vid2 := createTestTransaction(t, u, 902)
+
+	branchID := base.RandomTransactionID(true, 2, base.T(1000, 0))
+	tipTxID := base.RandomTransactionID(true, 5, base.T(1010, 50))
+	tip := WrapTxID(tipTxID)
+	ts := tipTxID.Timestamp()
+
+	pc := newPastConeFromBase(nil, tip, ts, "original", NewPastConeBase(&branchID))
+
+	pc.MarkVertexKnown(vid1)
+	pc.MustMarkVertexNotInTheState(vid1)
+	pc.MarkVertexKnown(vid2)
+	pc.MustMarkVertexNotInTheState(vid2)
+	pc.addVirtuallyConsumedOutput(WrappedOutput{VID: vid1, Index: 0})
+
+	origCost := pc.AttachmentCost()
+	require.Greater(t, origCost, 0)
+
+	clone := pc.Clone("cloned")
+
+	// Clone has same cost
+	require.Equal(t, origCost, clone.AttachmentCost())
+	require.Equal(t, clone.AttachmentCostDirect(), clone.AttachmentCost())
+
+	// Adding to clone doesn't affect original
+	vid3 := createTestTransaction(t, u, 904)
+	clone.MarkVertexKnown(vid3)
+	clone.MustMarkVertexNotInTheState(vid3)
+
+	require.Equal(t, origCost, pc.AttachmentCost())
+	require.Greater(t, clone.AttachmentCost(), origCost)
+	require.Equal(t, clone.AttachmentCostDirect(), clone.AttachmentCost())
+}
