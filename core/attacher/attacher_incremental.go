@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -16,21 +15,21 @@ const (
 	TraceTagIncrementalAttacherWithExplicitBaseline = "incAttachExplicitBL"
 )
 
+// NewIncrementalAttacher creates an IncrementalAttacher for the given target timestamp.
+// The attacher uses only targetTs.Slot and targetTs.IsSlotBoundary() for structural decisions
+// (baseline direction, stem input). Pace checks are the caller's responsibility.
 func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTime, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) (*IncrementalAttacher, error) {
-	lib := ledger.L(targetTs.Slot) // cache library for targetTs slot
-	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
-		lib.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
-
 	for _, endorseVID := range endorse {
 		env.Assertf(endorseVID.IsSequencerTransaction(), "NewIncrementalAttacher: endorseVID.IsSequencerTransaction()")
 		env.Assertf(targetTs.Slot == endorseVID.Slot(), "NewIncrementalAttacher: targetTs.Slot() == endorseVid.Slot()")
-		env.Assertf(ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs), "NewIncrementalAttacher: ledger.ValidTransactionPace(endorseVID.Timestamp(), targetTs)")
 	}
 	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
 		name, extend.IDStringShort, func() string { return vertex.VerticesLines(endorse).Join(",") })
 
+	isBranch := targetTs.IsSlotBoundary()
+
 	var baselineDirection *vertex.WrappedTx
-	if targetTs.Tick == 0 {
+	if isBranch {
 		// target is branch
 		env.Assertf(len(endorse) == 0, "NewIncrementalAttacher: len(endorse)==0")
 		if !extend.VID.IsSequencerTransaction() {
@@ -71,7 +70,7 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 	// The IncrementalAttacher is speculative — most proposals are discarded.
 	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
 
-	if err := ret.initIncrementalAttacher(baselineBranchID, targetTs, extend, endorse...); err != nil {
+	if err := ret.initIncrementalAttacher(baselineBranchID, isBranch, extend, endorse...); err != nil {
 		ret.Close()
 		return nil, err
 	}
@@ -108,10 +107,7 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 	}
 	ret.getBaselineStateReader = ret.Branches().GetVirtualStateReaderForTheBranch
 
-	env.Assertf(ledger.ValidSequencerPace(extend.Timestamp(), targetTs), "NewIncrementalAttacher: target is closer than allowed pace (%d): %s -> %s",
-		ret.TransactionPaceSequencer, extend.Timestamp().String, targetTs.String)
-
-	if err := ret.initIncrementalAttacher(baselineID, targetTs, extend); err != nil {
+	if err := ret.initIncrementalAttacher(baselineID, false, extend); err != nil {
 		ret.Close()
 		return nil, err
 	}
@@ -171,7 +167,7 @@ func (a *IncrementalAttacher) BaselineBranch() *base.TransactionID {
 	return a.pastCone.GetBaseline()
 }
 
-func (a *IncrementalAttacher) initIncrementalAttacher(baselineBranchID base.TransactionID, targetTs base.LedgerTime, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) error {
+func (a *IncrementalAttacher) initIncrementalAttacher(baselineBranchID base.TransactionID, isBranch bool, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) error {
 	a.setBaseline(util.Ref(baselineBranchID))
 	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", a.name, baselineBranchID.StringShort)
 
@@ -188,7 +184,7 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baselineBranchID base.Tran
 		return err
 	}
 
-	if targetTs.IsSlotBoundary() {
+	if isBranch {
 		// stem input, if any, will be at index 1
 		// for branches, include stem input
 		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", a.name)
@@ -230,12 +226,10 @@ func (a *IncrementalAttacher) ExplicitBaselineID() *base.TransactionID {
 	return a.explicitBaselineID
 }
 
-// InsertEndorsement preserves consistency in case of failure. Assumes valid pace, otherwise crashes
+// InsertEndorsement preserves consistency in case of failure.
+// Pace checks are the caller's responsibility.
 func (a *IncrementalAttacher) InsertEndorsement(endorsement *vertex.WrappedTx) error {
 	a.Assertf(!a.IsClosed(), "a.IsClosed()")
-	if !endorsement.ValidSequencerPace(a.targetTs) {
-		return fmt.Errorf("IncrementalAttacher(%s).InsertEndorsement: invalid sequencer pace in %s", a.name, endorsement.IDShortString())
-	}
 
 	if a.pastCone.IsKnown(endorsement) {
 		return fmt.Errorf("endorsing makes no sense: %s is already in the past cone", endorsement.IDShortString())
@@ -270,15 +264,11 @@ func (a *IncrementalAttacher) PastConeAttachmentCost() int {
 
 // InsertInput inserts tag along or delegation input.
 // In case of failure returns false and attacher state with vertex references remains consistent.
-// seqTxCost is the current cost of the sequencer transaction being built.
+// Pace checks are the caller's responsibility.
 // atomicCheck callback receives pastConeCost and seqTxCost to verify budget before committing delta.
 func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck func() (bool, error)) (valid bool, err error) {
 	util.Assertf(!a.IsClosed(), "a.IsClosed()")
 	util.AssertNoError(a.err)
-
-	if !wOut.VID.ValidSequencerPace(a.targetTs) {
-		return true, fmt.Errorf("InsertInput(%s): invalid sequencer pace in %s", a.name, wOut.IDStringShort())
-	}
 
 	// save state for possible rollback because in case of fail the side effect makes attacher inconsistent
 	a.pastCone.BeginDelta()
@@ -301,6 +291,58 @@ func (a *IncrementalAttacher) InsertInput(wOut vertex.WrappedOutput, atomicCheck
 
 func (a *IncrementalAttacher) TargetTs() base.LedgerTime {
 	return a.targetTs
+}
+
+// TargetSlot returns the target slot of the attacher.
+func (a *IncrementalAttacher) TargetSlot() uint32 {
+	return a.targetTs.Slot
+}
+
+// IsBranchTarget returns true if the attacher targets a branch transaction (slot boundary).
+func (a *IncrementalAttacher) IsBranchTarget() bool {
+	return a.targetTs.IsSlotBoundary()
+}
+
+// TimestampLowerBound returns the earliest valid target timestamp for a sequencer transaction
+// built from this attacher's current state.
+// For branches, this is always (targetSlot, 0).
+// For non-branches, it is the maximum timestamp among all inputs and endorsements
+// plus the sequencer pace, adjusted for slot boundary crossing and post-branch consolidation.
+func (a *IncrementalAttacher) TimestampLowerBound() base.LedgerTime {
+	if a.targetTs.IsSlotBoundary() {
+		return base.T(a.targetTs.Slot, 0)
+	}
+
+	lib := a.Library
+	pace := int64(lib.TransactionPaceSequencer)
+
+	// find the maximum timestamp among all inputs and endorsements
+	var maxTicks int64
+	for _, wOut := range a.inputs {
+		t := wOut.Timestamp().TicksSinceGenesis()
+		if t > maxTicks {
+			maxTicks = t
+		}
+	}
+	for _, vid := range a.endorse {
+		t := vid.Timestamp().TicksSinceGenesis()
+		if t > maxTicks {
+			maxTicks = t
+		}
+	}
+
+	lower, err := base.LedgerTimeFromTicksSinceGenesis(maxTicks + pace)
+	if err != nil {
+		// overflow — return targetTs as fallback
+		return a.targetTs
+	}
+
+	// if it crossed into the next slot, it must be past post-branch consolidation in that slot
+	if lower.Tick > 0 && lower.Tick < lib.PostBranchConsolidationTicks {
+		lower = base.T(lower.Slot, lib.PostBranchConsolidationTicks)
+	}
+
+	return lower
 }
 
 func (a *IncrementalAttacher) NumInputs() int {

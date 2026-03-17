@@ -78,12 +78,15 @@ type (
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone
 	// transaction by adding new tag-along inputs one-by-one. It ensures the past cone is conflict-free
-	// It is used to generate the transaction and after that it is discarded
+	// It is used to generate the transaction and after that it is discarded.
+	// The attacher is agnostic about the exact target timestamp — it only needs the target slot
+	// and whether the target is a branch transaction. The exact timestamp is determined later
+	// via TimestampLowerBound() when building the final transaction.
 	IncrementalAttacher struct {
 		attacher
 		endorse            []*vertex.WrappedTx
 		inputs             []vertex.WrappedOutput
-		targetTs           base.LedgerTime
+		targetTs           base.LedgerTime // kept for backward compatibility; will be phased out
 		stemOutput         vertex.WrappedOutput
 		explicitBaselineID *base.TransactionID
 		inflationAmount    uint64

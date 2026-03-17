@@ -195,6 +195,55 @@ to release memDAG references. Currently no clone/fork capability exists.
 
 ---
 
+## IncrementalAttacher timestamp dependency analysis
+
+Investigation of how IncrementalAttacher uses `targetTs`. Key finding: **the exact tick is irrelevant
+for incremental attachment. Only the target slot and branch/non-branch flag matter.**
+
+### Coverage calculation uses only `txTs.Slot`
+
+`Coverage()` → `AdjustedFrozenCoverage(txTs)` → `DiffEpochs(chainID, txTs, predTs)` → uses only
+`txTs.Slot`. The tick value is irrelevant. `IsInFrozenSlot()` also uses only the slot.
+
+### Classification of all `targetTs` uses
+
+**Slot-only (work with just a target slot):**
+- Library caching: `ledger.L(targetTs.Slot)` — needs slot
+- Coverage: `CoverageDeltaRaw` → `ledger.Coverage` → `AdjustedFrozenCoverage` — slot only
+- Endorsement slot matching: `targetTs.Slot == endorseVID.Slot()` — slot
+- Cross-slot detection: `extend.Slot() != targetTs.Slot` — slot
+- Delegation freeze checks: `IsInFrozenSlot(txTs.Slot)` — slot
+
+**Branch detection (binary: tick == 0 or not):**
+- `targetTs.IsSlotBoundary()` — determines stem input, no endorsements, baseline direction
+
+**Pace checks (need exact timestamp — deferrable):**
+- Constructor: `ValidSequencerPace(extend.Timestamp(), targetTs)` — assertion
+- Constructor: `ValidTransactionPace(endorseVID.Timestamp(), targetTs)` — assertion
+- `InsertEndorsement`: `endorsement.ValidSequencerPace(a.targetTs)` — can be deferred
+- `InsertInput`: `wOut.VID.ValidSequencerPace(a.targetTs)` — can be deferred
+- Pre/post-branch consolidation — proposal-level concern, not attachment
+
+**Builder-only (after attachment):**
+- `txbuilder_seq.Params{Timestamp: a.TargetTs()}` — final tx construction
+- `FinalLedgerCoverage(p.targetTs)` — proposal comparison
+
+### Implication
+
+Two non-branch targets in the same slot produce **structurally identical** IncrementalAttachers
+(same baseline, same past cone, same coverage). The only difference is pace filtering. This means:
+- Attachers can be reused across targets within the same slot
+- Pace checks can be deferred to proposal/builder phase
+- Clone() becomes even more powerful: one attacher per slot, cloned for different targets
+
+### Refactoring: IA takes (slot, isBranch) instead of targetTs
+
+Implemented: constructor takes `targetSlot` and `isBranch` instead of exact `targetTs`.
+`TimestampLowerBound()` method computes the earliest valid timestamp from the inputs/endorsements
+already inserted. Pace checks removed from IA — caller's responsibility.
+
+---
+
 ## Revised approach: incremental refactoring (not rewrite)
 
 ### Why not a full rewrite
