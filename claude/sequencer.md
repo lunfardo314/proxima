@@ -195,188 +195,94 @@ to release memDAG references. Currently no clone/fork capability exists.
 
 ---
 
-## High-level plan for `sequencer2`
+## Revised approach: incremental refactoring (not rewrite)
 
-### Core architectural shift
+### Why not a full rewrite
 
-From **"fixed-target racing"** (pick timestamp -> race 7 proposers -> submit best)
-to **"strategy-driven pipeline with incremental building"** (strategies build and clone ->
-worker finalizes -> coordinator submits on tick grid).
+The `sequencer2` from-scratch approach was attempted and reverted. Key realizations:
 
-### Architecture
+1. **Sequencing is inherently CPU intensive.** With 100s of sequencers in the network, the sequencer
+   process will consume the majority of CPU anyway — it is heuristics-guided brute force. The goal
+   is not to eliminate CPU usage but to eliminate *wasted* CPU usage (duplicate work).
 
-```
-sequencer2
-+-- strategies/           -- static plugins, each a concrete type implementing Strategy interface
-|   +-- safety            -- ensures branch tx + at least 1 milestone per slot (combines b0/x roles)
-|   +-- endorsement       -- incremental endorsement building with clone-and-extend
-|   +-- reactive          -- responds to high-coverage tips arriving in backlog
-|
-+-- worker                -- single goroutine: receives skeletons, inserts tag-alongs/delegations
-+-- coordinator           -- tick-based sampling of proposal pool, decides submit/skip
-+-- shared/
-|   +-- extend-endorse pair selection (extracted from current proposer.go)
-|   +-- IncrementalAttacher + Clone()
-|
-+-- backlog               -- reuse existing (CandidatesToEndorseSorted, etc.)
-+-- own_milestones        -- reuse existing (FutureConeOwnMilestonesOrdered, etc.)
-```
+2. **The current code handles subtle timing correctly.** The relationship between ledger time and
+   wall clock is delicate: they are assumed close but may diverge, and incoming transactions may be
+   from the ledger past or future indefinitely. The current implementation handles this carefully.
+   A rewrite risks breaking these invariants.
 
-### Pipeline flow
+3. **Fixed targets are not the problem.** IncrementalAttachers don't rely heavily on the target
+   timestamp — the target is mainly used for pace validation and deadline. The real waste comes
+   from duplicate attacher creations across proposers, not from the target-setting mechanism.
 
-**Strategy -> Proposer -> Worker -> Coordinator**
+4. **Node activity must have CPU priority.** Incoming transactions, gossip, and attachment are the
+   node's core function. The sequencer takes whatever CPU is left. This is already the case with
+   the current architecture.
 
-The strategy is persistent and autonomous. It polls the backlog for endorsement candidates,
-selects (extend, endorse) pairs using the shared selection logic, and builds IncrementalAttachers.
+5. **The submit-wait pattern may be removable.** Currently the sequencer blocks waiting for its
+   own milestone to appear in the tippool. Removing or relaxing this could improve throughput
+   without architectural changes.
 
-Each proposer receives a **bounded task** from its strategy: target timestamp (or bounds), number of
-endorsements to attempt, max inputs. The proposer executes deterministically against that target.
-It does not poll or adapt -- it runs the IncrementalAttacher to completion and returns.
+### What we have from the analysis
 
-The key insight: **an IncrementalAttacher with 1 endorsement is already a valid proposal.**
-The strategy hands this skeleton to the worker for finalization AND simultaneously clones the attacher
-to spawn another proposer that tries adding more endorsements. This means no work is wasted -- every
-intermediate result is submittable, and the clone-and-extend is purely additive.
+**Implemented and available:**
+- `IncrementalAttacher.Clone()` — deep copies mutable state, shares vertex references.
+  Asserts no pending delta. Tested with 6 unit tests. Ready to use in proposers.
 
-A strategy can run **several conflicting proposers in parallel**, each extending from different points
-in the own-milestone chain or trying different endorsement candidates. This is normal and desirable for
-coverage maximization. To avoid/minimize redundant work, the strategy should track which
-(extend, endorse) pairs are currently in flight and skip combinations already being explored.
+**Key findings preserved:**
+- e2/r2 win most often; e3/r3 never win (CPU bottleneck, not lack of candidates)
+- 100-150 proposals per slot under low load, most losing — duplicate work
+- `alreadyCheckedCombination` cache is a patch over redundant proposer work
+- Backtracking (conflicting txs) is fundamental and must be preserved
+- The extend-endorse pair selection (`ChooseFirstExtendEndorsePair`) is the core decision loop
 
-```
-Strategy (persistent, one per type):
-  polls backlog for endorsement candidates
-  selects (extend, endorse) pair using shared logic
-  builds IncrementalAttacher with 1 endorsement    <-- VALID PROPOSAL
-    |-- sends skeleton to Worker
-    +-- clones attacher (must have no pending delta -- asserted)
-          |-- spawns Proposer(clone, candidate2, target) -> skeleton -> Worker
-          +-- optionally spawns Proposer(clone, candidate2b, target) -> skeleton -> Worker
-                (bounded fan-out: try different 2nd endorsement candidates in parallel)
+### Incremental optimization plan
 
-Worker (single goroutine):
-  receives skeleton from proposer
-  inserts tag-alongs / delegations greedily (sorted by value from backlog)
-  sends finished proposal to Coordinator
+Refactor the existing `sequencer` step by step. Each step is independently testable on testnet.
+No new package, no new architecture — just targeted improvements.
 
-Coordinator (tick-based sampling):
-  maintains proposal pool
-  at each tick checkpoint within the slot: evaluate pool
-    - only submits if coverage is strictly bigger than last submitted milestone
-    - compare endorsement count, timing, input count
-    - submit best if threshold met or deadline approaching
-  after submission: wait for the milestone to appear in the tippool before next submission
-  flush at pre-branch consolidation boundary
-```
+**Step 1 — Use Clone() to eliminate duplicate attacher creations**
 
-**Submission back-pressure**: after submitting a milestone, the coordinator waits for it to appear
-in the tippool (as the current sequencer does). This creates natural adaptive pacing: if the node
-can't keep up with the network (attachment is slow, network latency is high), the submission loop
-slows down and the sequencer automatically calms down. If the submission loop becomes constant-time,
-it indicates the node is at its limit. This is the right behavior -- the sequencer should not
-overwhelm its own node.
+The main source of waste: e1, e2, e3, r2, r3 all call `ChooseFirstExtendEndorsePair` independently,
+creating new IncrementalAttachers from scratch for the same (extend, endorse) pairs.
 
-### Slot timing structure
+Instead: e1 finds the first valid 1-endorsement attacher. If it wins the proposal round, e2 can
+**clone** it and try adding a 2nd endorsement, rather than recreating from scratch. Similarly e3
+clones e2's result.
 
-The coordinator's tick grid respects the slot's structural constraints:
+This requires changing how proposers share state within a `task.Run` round. Currently they are
+independent goroutines. The change: let e1 publish its best attacher; e2 picks it up and clones.
 
-```
-slot start -- post-branch consolidation (ticks 0..11) -- active period -- pre-branch consolidation -- slot end
-               no sequencer tx allowed                    full operation    no tag-alongs allowed
-```
+**Step 2 — Profile and measure**
 
-Early in the active period, the coordinator waits (more proposals arriving). As the slot progresses,
-urgency increases. Near pre-branch consolidation, it must submit what it has. The time grid also
-determines when strategies should stop spawning new proposers.
+Before further optimization, instrument the sequencer with metrics:
+- Time spent in attacher creation vs input insertion vs tx building
+- Number of attacher creations per slot (before and after Step 1)
+- Endorsement count distribution per submitted milestone
+- CPU time per proposal by strategy
 
-### IncrementalAttacher cloning
+This will show where the real bottlenecks are.
 
-Cloning is the critical enabler. It does not exist today and must be implemented.
+**Step 3 — Evaluate submit-wait pattern**
 
-**Clone precondition:** only an IncrementalAttacher with no pending delta transaction can be cloned.
-This must be asserted. In practice this means: clone after `InsertEndorsement` completes (delta committed
-or rolled back), not during.
+Currently `submitMilestone` → `waitMilestoneInTippool` blocks the sequencer loop. This means
+the sequencer cannot start working on the next target while waiting. Evaluate whether:
+- Submission can be decoupled (submit in background, continue proposing)
+- The wait provides essential back-pressure that should be preserved
+- A hybrid approach works (wait with timeout, continue if slow)
 
-**Clone semantics:**
-- **Share** (immutable from attacher's perspective): pointers to WrappedTx vertices, baseline state reader,
-  transaction data
-- **Deep copy** (mutable state): consumed output set, conflict tracking set, endorsement/input lists,
-  coverage accumulators
-- **Fork**: the clone starts from committed state -- no delta layer to carry over
+**Step 4 — Reduce proposer count**
 
-### Strategies as static plugins
+Based on metrics from Step 2, consider:
+- Dropping e3/r3 if they still never win after Step 1
+- Merging r2 into e2 (alternate sorted/shuffled within the same proposer)
+- Making proposer count configurable
 
-Each strategy is a concrete type implementing a common interface, registered at compile time.
-The set can grow by adding code but is fixed at compile time. No runtime discovery.
+**Step 5 — Further clone-based optimizations**
 
-```go
-type Strategy interface {
-    Name() string
-    Run(ctx context.Context, env StrategyEnv)
-}
-```
+With metrics guiding decisions:
+- Clone across targets: if the next target is close to the previous one, clone the previous
+  round's best attacher instead of starting fresh
+- Clone for input insertion: build the endorsement skeleton first, clone it, insert different
+  sets of tag-alongs/delegations to compare
 
-Where `StrategyEnv` provides access to backlog, own milestones, the skeleton channel to the worker,
-and the shared extend-endorse pair selection logic.
-
-**Planned strategies:**
-
-- **Safety**: ensures the sequencer has at least one milestone per slot and a branch transaction at the
-  slot boundary. Uses the simplest possible transaction (own chain extension, maybe one endorsement).
-  Combines the roles of current `b0` and `x` strategies.
-
-- **Endorsement**: the main optimization strategy. Builds 1-endorsement attacher, clones and tries
-  adding more endorsements. The clone-chain produces multiple proposals of increasing quality arriving
-  over time. Separate instances can target different endorsement counts (like current e1/e2/e3 but
-  sharing work via cloning instead of duplicating it).
-
-- **Reactive**: responds to high-coverage tips appearing in the backlog. When a valuable endorsement
-  opportunity arrives, immediately tries to grab it. Fast, opportunistic.
-
-### Coordinator heuristics (open research question)
-
-The coordinator's decision logic is a core part of the research task. It must balance:
-- Coverage quality of proposals in the pool
-- Time remaining in the slot
-- Whether a milestone has already been submitted this slot (safety satisfied?)
-- Properties of the proposal (endorsement count, input count, coverage delta)
-
-**Hard rule**: a milestone is submitted only if it has **strictly bigger coverage** than the last
-submitted milestone. This prevents submitting inferior or equal proposals. Combined with the
-tippool back-pressure (wait for submission to appear before next), this naturally limits the rate
-of transactions and ensures each one is an improvement.
-
-Some redundancy in submitted transactions is inevitable and acceptable -- the sequencer issuing
-conflicting transactions is normal behavior for coverage maximization. The coordinator's job is to
-avoid submitting clearly inferior proposals while not holding back good-enough ones for too long.
-
-### Implementation phases
-
-**Phase 1 -- Scaffold and IncrementalAttacher cloning**
-
-Scaffold `sequencer2` package with the new architecture (not a clone of `sequencer`). Reuse
-startup/config infrastructure from `sequencer`. Implement `IncrementalAttacher.Clone()` in
-`core/attacher/` -- this is shared infrastructure that benefits both sequencer versions.
-
-**Phase 2 -- Pipeline: strategies, worker, coordinator**
-
-Implement the strategy interface, the single worker goroutine, and the tick-based coordinator.
-Start with the safety strategy only, to validate the pipeline end-to-end.
-
-**Phase 3 -- Endorsement and reactive strategies**
-
-Implement the endorsement strategy with clone-and-extend. Implement the reactive strategy.
-Extract the shared extend-endorse pair selection logic from current `sequencer/task/proposer.go`.
-
-**Phase 4 -- Test and iterate on testnet**
-
-Deploy sequencer2 alongside sequencer on the 4-node testnet. Compare:
-- Coverage growth rate per slot
-- Endorsements per milestone (expect increase)
-- CPU utilization per milestone (expect decrease due to fewer wasted attachers)
-- Branch inclusion rate (must not regress)
-- Tag-along and delegation consumption rates
-- Behavior under varying spammer load
-
-Iterate on heuristics (coordinator thresholds, strategy timing, clone fan-out) based on observations.
-This is expected to be an ongoing process -- the plan is a starting direction, not a final design.
+Each step is a small, testable change to the existing codebase.
