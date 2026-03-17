@@ -143,25 +143,20 @@ func (f *Factory) Run() {
 			f.Tracef(TraceTag, "starting round for slot %d", slot)
 		}
 
-		f.runRound(slot)
+		// create a round-scoped context that SetTargetSlot can cancel
+		f.slotMutex.Lock()
+		roundCtx, roundCancel := context.WithCancel(f.ctx)
+		f.roundCancel = roundCancel
+		f.slotMutex.Unlock()
+
+		f.runRound(roundCtx, slot)
+		roundCancel()
 	}
 }
 
 // runRound runs one improvement round for the given slot.
-// Returns when improvement is exhausted, context is cancelled, or target slot changes.
-func (f *Factory) runRound(slot uint32) {
-	// create a round-scoped context that SetTargetSlot can cancel
-	f.slotMutex.Lock()
-	if f.targetSlot != slot {
-		f.slotMutex.Unlock()
-		return
-	}
-	roundCtx, roundCancel := context.WithCancel(f.ctx)
-	f.roundCancel = roundCancel
-	f.slotMutex.Unlock()
-
-	defer roundCancel()
-
+// Returns when improvement is exhausted or roundCtx is canceled (by SetTargetSlot or shutdown).
+func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	skeleton := f.chooseFirstExtendEndorsePair(slot)
 	if skeleton == nil {
 		return
