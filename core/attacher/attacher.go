@@ -345,6 +345,8 @@ func (a *attacher) checkAttachmentCostBudget() bool {
 
 // defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly, if possible.
 // For non-sequencer transactions not in the state, it also adds attachment cost tracking.
+// Handles TxID TTL expiry: very old transactions whose txID entry has been deleted from the
+// trie are still treated as "in the state" if they are older than the TTL relative to the baseline.
 func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	a.Assertf(a.pastCone.IsKnown(vid), "a.pastCone.IsKnown(vid): %s", vid.IDShortString)
 	a.Assertf(a.pastCone.GetBaseline() != nil, "a.baseline != nil")
@@ -353,13 +355,32 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 		return
 	}
 
-	if a.Branches().BranchKnowsTransaction(*a.pastCone.GetBaseline(), vid.ID()) {
+	baselineID := *a.pastCone.GetBaseline()
+	txid := vid.ID()
+
+	if a.Branches().BranchKnowsTransaction(baselineID, txid) {
+		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
+	} else if txidMayHaveExpired(baselineID, txid) {
+		// The txID entry was deleted from the trie due to TTL expiry, but the transaction
+		// is legitimately committed. Treat it as "in the state".
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 	} else {
 		// not in the state, so it is not defined yet
 		// use MustMarkVertexNotInTheState to properly track attachment cost for non-sequencer transactions
 		a.pastCone.MustMarkVertexNotInTheState(vid)
 	}
+}
+
+// txidMayHaveExpired returns true if the transaction is old enough relative to the baseline
+// branch that its txID entry may have been deleted from the trie due to TTL expiry.
+func txidMayHaveExpired(baselineID, txid base.TransactionID) bool {
+	txSlot := txid.Slot()
+	baselineSlot := baselineID.Slot()
+	if txSlot >= baselineSlot {
+		return false
+	}
+	ttl := ledger.L(baselineSlot).TxIDStateTTLSlots
+	return baselineSlot-txSlot > ttl
 }
 
 func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
