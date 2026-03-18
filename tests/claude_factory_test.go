@@ -16,6 +16,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -24,20 +25,62 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	sequencer2 "github.com/lunfardo314/proxima/sequencer2"
+	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer2/factory"
 	"github.com/stretchr/testify/require"
 )
 
-// bootstrapSeqV2 returns the bootstrap sequencer as *sequencer2.Sequencer for factory tests.
-// Factory is a v2 feature and requires the concrete v2 type as its environment.
-func bootstrapSeqV2(t *testing.T, td *workflowTestData) *sequencer2.Sequencer {
+// initFactoryTest sets up a multi-sequencer test using v1 sequencers (regardless of
+// testSequencerVersion) and returns the v1 bootstrap sequencer for use as factory environment.
+// Factory tests test the factory in isolation — v1 sequencers generate the milestones
+// that the factory needs as endorsement candidates.
+func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTestData, *sequencer.Sequencer) {
 	t.Helper()
-	seq, ok := td.bootstrapSeq.(*sequencer2.Sequencer)
-	if !ok {
-		t.Skip("factory tests require testSequencerVersion = v2")
+	reinitTestLedger()
+	testData := initWorkflowTest(t, nSequencers, true)
+
+	err := testData.wrk.EnsureLatestBranches()
+	require.NoError(t, err)
+
+	testData.makeChainOrigins(nSequencers)
+	chainOriginsTxID, err := testData.wrk.TxBytesIn(testData.chainOriginsTx.Bytes())
+	require.NoError(t, err)
+	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
+
+	// always v1 for factory tests
+	bootSeq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+		sequencer.WithName("boot"),
+		sequencer.WithPace(5),
+		sequencer.WithDelayStart(3*time.Second),
+	)
+	require.NoError(t, err)
+	testData.bootstrapSeq = bootSeq
+	bootSeq.Start()
+
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, 10*time.Second)
+	require.NoError(t, err)
+	t.Logf("chain origins tx %s finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
+
+	// start additional v1 sequencers
+	testData.sequencers = make([]testSequencer, len(testData.chainOrigins))
+	for seqNr := range testData.sequencers {
+		testData.sequencers[seqNr], err = sequencer.New(testData.wrk, testData.chainOrigins[seqNr].ChainID, testData.privKeyAux,
+			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
+			sequencer.WithPace(5),
+			sequencer.WithMaxBranches(maxSlots),
+		)
+		require.NoError(t, err)
+		testData.sequencers[seqNr].Start()
 	}
-	return seq
+	go func() {
+		<-testData.env.Ctx().Done()
+		for _, seq := range testData.sequencers {
+			seq.Stop()
+		}
+		bootSeq.Stop()
+	}()
+
+	return testData, bootSeq
 }
 
 // keepTargetSlotUpdated periodically updates the factory's target slot
@@ -63,12 +106,11 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 		nSequencers = 2 // in addition to bootstrap
 	)
 
-	testData := initMultiSequencerTest(t, nSequencers, true)
-	testData.startSequencersWithTimeout(maxSlots)
+	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootstrapSeqV2(t, testData), ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -103,12 +145,11 @@ func TestFactorySkeletonStructure(t *testing.T) {
 		nSequencers = 2
 	)
 
-	testData := initMultiSequencerTest(t, nSequencers, true)
-	testData.startSequencersWithTimeout(maxSlots)
+	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootstrapSeqV2(t, testData), ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -147,12 +188,11 @@ func TestFactoryNonDecreasingCoverage(t *testing.T) {
 		nSequencers = 2
 	)
 
-	testData := initMultiSequencerTest(t, nSequencers, true)
-	testData.startSequencersWithTimeout(maxSlots)
+	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootstrapSeqV2(t, testData), ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -199,11 +239,10 @@ func TestFactoryStopsCleanly(t *testing.T) {
 		nSequencers = 1
 	)
 
-	testData := initMultiSequencerTest(t, nSequencers, true)
-	testData.startSequencersWithTimeout(maxSlots)
+	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
-	f := factory.New(bootstrapSeqV2(t, testData), ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -238,12 +277,11 @@ func TestFactoryOwnMilestoneRestart(t *testing.T) {
 		nSequencers = 3 // more sequencers = more endorsement opportunities = more milestones
 	)
 
-	testData := initMultiSequencerTest(t, nSequencers, true)
-	testData.startSequencersWithTimeout(maxSlots)
+	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootstrapSeqV2(t, testData), ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -294,12 +332,11 @@ func TestFactoryMultiEndorsement(t *testing.T) {
 		nSequencers = 4 // need enough endorsement candidates
 	)
 
-	testData := initMultiSequencerTest(t, nSequencers, true)
-	testData.startSequencersWithTimeout(maxSlots)
+	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootstrapSeqV2(t, testData), ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -354,13 +391,12 @@ func TestFactoryParallelWithTagAlong(t *testing.T) {
 		spammingTimeout = 15 * time.Second
 	)
 
-	testData := initMultiSequencerTest(t, nSequencers, true)
-	testData.startSequencersWithTimeout(maxSlots)
+	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	// start factory on bootstrap sequencer
 	factoryCtx, factoryCancel := context.WithCancel(testData.env.Ctx())
 	defer factoryCancel()
-	f := factory.New(bootstrapSeqV2(t, testData), factoryCtx)
+	f := factory.New(bootSeq, factoryCtx)
 	go f.Run()
 	go keepTargetSlotUpdated(factoryCtx, f)
 
@@ -423,12 +459,11 @@ func TestFactorySlotTransition(t *testing.T) {
 		nSequencers = 2
 	)
 
-	testData := initMultiSequencerTest(t, nSequencers, true)
-	testData.startSequencersWithTimeout(maxSlots)
+	testData, bootSeq := initFactoryTest(t, nSequencers, maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(bootstrapSeqV2(t, testData), ctx)
+	f := factory.New(bootSeq, ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
