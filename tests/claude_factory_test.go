@@ -24,9 +24,21 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	sequencer2 "github.com/lunfardo314/proxima/sequencer2"
 	"github.com/lunfardo314/proxima/sequencer2/factory"
 	"github.com/stretchr/testify/require"
 )
+
+// bootstrapSeqV2 returns the bootstrap sequencer as *sequencer2.Sequencer for factory tests.
+// Factory is a v2 feature and requires the concrete v2 type as its environment.
+func bootstrapSeqV2(t *testing.T, td *workflowTestData) *sequencer2.Sequencer {
+	t.Helper()
+	seq, ok := td.bootstrapSeq.(*sequencer2.Sequencer)
+	if !ok {
+		t.Skip("factory tests require testSequencerVersion = v2")
+	}
+	return seq
+}
 
 // keepTargetSlotUpdated periodically updates the factory's target slot
 // to match the current ledger time. Stops when ctx is cancelled.
@@ -56,7 +68,7 @@ func TestFactoryProducesSkeletons(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(testData.bootstrapSeq, ctx)
+	f := factory.New(bootstrapSeqV2(t, testData), ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -96,7 +108,7 @@ func TestFactorySkeletonStructure(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(testData.bootstrapSeq, ctx)
+	f := factory.New(bootstrapSeqV2(t, testData), ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -140,7 +152,7 @@ func TestFactoryNonDecreasingCoverage(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(testData.bootstrapSeq, ctx)
+	f := factory.New(bootstrapSeqV2(t, testData), ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -191,7 +203,7 @@ func TestFactoryStopsCleanly(t *testing.T) {
 	testData.startSequencersWithTimeout(maxSlots)
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
-	f := factory.New(testData.bootstrapSeq, ctx)
+	f := factory.New(bootstrapSeqV2(t, testData), ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -231,7 +243,7 @@ func TestFactoryOwnMilestoneRestart(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(testData.bootstrapSeq, ctx)
+	f := factory.New(bootstrapSeqV2(t, testData), ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -287,7 +299,7 @@ func TestFactoryMultiEndorsement(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(testData.bootstrapSeq, ctx)
+	f := factory.New(bootstrapSeqV2(t, testData), ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 
@@ -348,7 +360,7 @@ func TestFactoryParallelWithTagAlong(t *testing.T) {
 	// start factory on bootstrap sequencer
 	factoryCtx, factoryCancel := context.WithCancel(testData.env.Ctx())
 	defer factoryCancel()
-	f := factory.New(testData.bootstrapSeq, factoryCtx)
+	f := factory.New(bootstrapSeqV2(t, testData), factoryCtx)
 	go f.Run()
 	go keepTargetSlotUpdated(factoryCtx, f)
 
@@ -416,7 +428,7 @@ func TestFactorySlotTransition(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(testData.env.Ctx())
 	defer cancel()
-	f := factory.New(testData.bootstrapSeq, ctx)
+	f := factory.New(bootstrapSeqV2(t, testData), ctx)
 	go f.Run()
 	go keepTargetSlotUpdated(ctx, f)
 

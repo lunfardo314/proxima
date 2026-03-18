@@ -722,6 +722,13 @@ func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, ms *vertex.W
 	}
 }
 
+// OnMilestoneSubmittedVID is a type-agnostic convenience wrapper around OnMilestoneSubmitted.
+func (seq *Sequencer) OnMilestoneSubmittedVID(fun func(ms *vertex.WrappedTx)) {
+	seq.OnMilestoneSubmitted(func(_ *Sequencer, ms *vertex.WrappedTx) {
+		fun(ms)
+	})
+}
+
 func (seq *Sequencer) OnExitOnce(fun func()) {
 	seq.onCallbackMutex.Lock()
 	defer seq.onCallbackMutex.Unlock()
