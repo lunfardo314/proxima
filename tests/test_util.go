@@ -36,7 +36,7 @@ import (
 
 // testSequencerVersion controls which sequencer implementation is used in tests.
 // Change to "v2" to run all tests with sequencer2.
-const testSequencerVersion = "v1"
+const testSequencerVersion = "v2"
 
 // testSequencer is the interface that both sequencer v1 and v2 satisfy for testing purposes.
 type testSequencer interface {
