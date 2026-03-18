@@ -66,6 +66,7 @@ type (
 		*attacher.IncrementalAttacher
 		*txbuilder_seq.SeqTxBuilder
 		attachmentCost uint16
+		effectiveTs    base.LedgerTime // overrides p.targetTs when set (used by f0)
 	}
 
 	finalProposal struct {

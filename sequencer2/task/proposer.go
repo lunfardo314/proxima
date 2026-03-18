@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -83,8 +84,16 @@ func (p *proposer) run() {
 }
 
 func (p *proposer) propose(a *proposal) error {
+	ts := p.targetTs
+	if a.effectiveTs != base.NilLedgerTime {
+		ts = a.effectiveTs
+	}
+	return p.proposeWithTimestamp(a, ts)
+}
+
+func (p *proposer) proposeWithTimestamp(a *proposal, ts base.LedgerTime) error {
 	coverageDelta, frozen := a.CoverageDelta()
-	ledgerCoverage := a.FinalLedgerCoverage(p.targetTs, coverageDelta)
+	ledgerCoverage := a.FinalLedgerCoverage(ts, coverageDelta)
 	slotInflation := a.SlotInflation() // tip inflation is not included
 	baselineSupply := a.BaselineSupply()
 

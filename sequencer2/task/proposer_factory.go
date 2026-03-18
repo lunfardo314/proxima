@@ -4,11 +4,21 @@
 // The factory runs as a persistent goroutine at the sequencer level, continuously producing
 // skeletons with non-decreasing coverage. The f0 proposer drains the factory output,
 // keeping the best skeleton. When the target deadline arrives, it takes the best skeleton,
+// computes the effective timestamp from the skeleton's lower bound and the target,
 // inserts inputs, and proposes it.
+//
+// Timestamp logic:
+//   - lowerBound = skeleton.TimestampLowerBound() (after inputs are inserted)
+//   - effectiveTs = max(targetTs, lowerBound)
+//   - both must be on the same slot; if not, the skeleton is discarded
 
 package task
 
-import "github.com/lunfardo314/proxima/core/attacher"
+import (
+	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
+)
 
 const TraceTagFactoryProposer = "propose-f0"
 
@@ -39,7 +49,6 @@ func factoryProposalGenerator(p *proposer) (*proposal, bool) {
 		select {
 		case sk, ok := <-f.OutCh():
 			if !ok {
-				// factory channel closed
 				goto done
 			}
 			if sk.Coverage >= bestCoverage {
@@ -57,7 +66,7 @@ func factoryProposalGenerator(p *proposer) (*proposal, bool) {
 			goto done
 
 		default:
-			// no more skeletons available right now — use what we have
+			// no more skeletons available right now
 			goto done
 		}
 	}
@@ -72,15 +81,50 @@ done:
 		return nil, false
 	}
 
-	p.Tracef(TraceTagFactoryProposer, "using skeleton %s, coverage=%d, endorsements=%d",
-		bestSkeleton.Name(), bestCoverage, len(bestSkeleton.Endorsing()))
+	// compute the effective timestamp: max(targetTs, skeleton lower bound)
+	lowerBound := bestSkeleton.TimestampLowerBound()
 
-	ret, err := p.newProposal(bestSkeleton)
+	// check slot consistency: skeleton and target must be on the same slot
+	if lowerBound.Slot != p.targetTs.Slot {
+		p.Tracef(TraceTagFactoryProposer, "skeleton slot %d != target slot %d, discarding",
+			lowerBound.Slot, p.targetTs.Slot)
+		bestSkeleton.Close()
+		return nil, false
+	}
+
+	effectiveTs := base.MaximumTime(p.targetTs, lowerBound)
+
+	p.Tracef(TraceTagFactoryProposer, "skeleton %s, coverage=%d, endorsements=%d, lowerBound=%s, effectiveTs=%s",
+		bestSkeleton.Name(), bestCoverage, len(bestSkeleton.Endorsing()), lowerBound.String(), effectiveTs.String())
+
+	ret, err := p.newProposalWithTimestamp(bestSkeleton, effectiveTs)
 	if err != nil {
 		p.Tracef(TraceTagFactoryProposer, "failed to create proposal: %v", err)
 		return nil, false
 	}
-	ret.insertInputs()
+
+	// insert tag-along and delegation inputs unless in pre-branch consolidation zone
+	if !ledger.L(effectiveTs.Slot).IsPreBranchConsolidationTimestamp(effectiveTs) {
+		ret.insertInputs()
+	}
+
+	// after inserting inputs, recompute the lower bound — new inputs may push it forward
+	newLowerBound := ret.TimestampLowerBound()
+	if newLowerBound.Slot != effectiveTs.Slot {
+		p.Tracef(TraceTagFactoryProposer, "after inputs: lower bound slot %d != effective slot %d, discarding",
+			newLowerBound.Slot, effectiveTs.Slot)
+		ret.Close()
+		return nil, false
+	}
+
+	// update effective timestamp if inputs pushed the lower bound forward
+	if newLowerBound.After(effectiveTs) {
+		effectiveTs = newLowerBound
+		ret.SeqTxBuilder.TransactionData.Timestamp = effectiveTs
+	}
+
+	// store effective timestamp on the proposal so propose() uses it
+	ret.effectiveTs = effectiveTs
 
 	if !ret.Completed() {
 		ret.Close()
