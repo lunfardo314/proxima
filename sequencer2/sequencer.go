@@ -20,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
+	"github.com/lunfardo314/proxima/sequencer2/factory"
 	"github.com/lunfardo314/proxima/sequencer2/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/checkpoints"
@@ -68,6 +69,7 @@ type (
 		slotData             *task.SlotData
 		wontSubmitBranchID   base.TransactionID
 		metrics              *sequencerMetrics
+		skeletonFactory      *factory.Factory
 	}
 
 	outputsWithTime struct {
@@ -178,6 +180,10 @@ func (seq *Sequencer) Start() {
 			seq.recreateMapOwnMilestones()
 			return true
 		})
+
+		// start the skeleton factory — runs as a persistent goroutine producing skeletons
+		seq.skeletonFactory = factory.New(seq, seq.ctx)
+		go seq.skeletonFactory.Run()
 
 		seq.sequencerLoop()
 
@@ -395,6 +401,10 @@ func (seq *Sequencer) Backlog() *backlog.TagAlongBacklog {
 	return seq.backlog
 }
 
+func (seq *Sequencer) SkeletonFactory() *factory.Factory {
+	return seq.skeletonFactory
+}
+
 func (seq *Sequencer) SequencerID() base.ChainID {
 	return seq.sequencerID
 }
@@ -491,6 +501,11 @@ func (seq *Sequencer) doSequencerStep() bool {
 	if seq.config.MaxTargetTs != base.NilLedgerTime && targetTs.After(seq.config.MaxTargetTs) {
 		seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
 		return false
+	}
+
+	// keep the factory informed about the current target slot
+	if seq.skeletonFactory != nil {
+		seq.skeletonFactory.SetTargetSlot(targetTs.Slot)
 	}
 
 	seq.Tracef(TraceTagTarget, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())

@@ -10,13 +10,14 @@ import (
 
 const TraceTagEndorse2RndProposer = "propose-endorse2rnd"
 
-func init() {
-	registerProposerStrategy(&proposerStrategy{
-		Name:             "endorse2rnd",
-		ShortName:        "r2",
-		GenerateProposal: endorse2RndProposeGenerator,
-	})
-}
+// disabled in sequencer2: replaced by f0 (factory proposer)
+// func init() {
+// 	registerProposerStrategy(&proposerStrategy{
+// 		Name:             "endorse2rnd",
+// 		ShortName:        "r2",
+// 		GenerateProposal: endorse2RndProposeGenerator,
+// 	})
+// }
 
 func endorse2RndProposeGenerator(p *proposer) (*proposal, bool) {
 	if p.targetTs.IsSlotBoundary() {
