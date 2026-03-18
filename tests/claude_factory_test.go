@@ -24,7 +24,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/sequencer/factory"
+	"github.com/lunfardo314/proxima/sequencer2/factory"
 	"github.com/stretchr/testify/require"
 )
 
