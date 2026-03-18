@@ -124,6 +124,13 @@ let mouseX = 0, mouseY = 0;
 let currentTPS = 0;
 let tpsScheduledSlot = 0;
 
+// Fine-grained TPS chart: divide each slot into TPS_PORTIONS portions
+const TPS_PORTIONS = 16;
+const PORTION_TICKS = TICKS_PER_SLOT / TPS_PORTIONS; // 8 ticks per portion
+const PORTION_DURATION_S = (SLOT_DURATION_MS / TPS_PORTIONS) / 1000; // seconds per portion
+const TPS_CHART_FRACTION = 1 / 15; // fraction of canvas height for the chart
+const TPS_CHART_MAX_DEFAULT = 30; // default max TPS for vertical scale
+
 // LRB tracking
 let lrbTxId = null;
 let lrbFetchTimer = null;
@@ -425,6 +432,112 @@ function seqColorDim(seqId) {
     return `hsla(${hue}, 85%, 35%, 0.3)`;
 }
 
+// ============ TPS CHART ============
+// Compute vertex counts per portion for all visible slots.
+// Returns Map<slot, Array[TPS_PORTIONS]> where each element is the TPS for that portion.
+function computePortionTPS(range) {
+    const firstSlot = Math.floor(range.left / SLOT_DURATION_MS);
+    const lastSlot = Math.ceil(range.right / SLOT_DURATION_MS);
+
+    // Count vertices per (slot, portion)
+    const counts = new Map(); // slot -> int[TPS_PORTIONS]
+    for (const [, v] of vertices) {
+        if (v.slot < firstSlot || v.slot > lastSlot) continue;
+        if (!counts.has(v.slot)) counts.set(v.slot, new Array(TPS_PORTIONS).fill(0));
+        const portion = Math.min(Math.floor(v.tick / PORTION_TICKS), TPS_PORTIONS - 1);
+        counts.get(v.slot)[portion]++;
+    }
+
+    // Convert counts to TPS (extrapolated per second)
+    const tpsData = new Map();
+    for (const [slot, arr] of counts) {
+        tpsData.set(slot, arr.map(c => c / PORTION_DURATION_S));
+    }
+    return tpsData;
+}
+
+function drawTPSChart(range) {
+    const tpsData = computePortionTPS(range);
+    if (tpsData.size === 0) return;
+
+    const chartHeight = Math.floor(canvas.height * TPS_CHART_FRACTION);
+    const chartTop = canvas.height - chartHeight;
+    const chartBottom = canvas.height;
+
+    // Find max TPS across all portions for scaling
+    let maxTPS = TPS_CHART_MAX_DEFAULT;
+    for (const [, arr] of tpsData) {
+        for (const tps of arr) {
+            if (tps > maxTPS) maxTPS = tps;
+        }
+    }
+    // Round up to a nice number
+    maxTPS = Math.ceil(maxTPS / 5) * 5;
+    if (maxTPS < 5) maxTPS = 5;
+
+    // Draw chart background
+    ctx.fillStyle = 'rgba(240, 240, 245, 0.85)';
+    ctx.fillRect(0, chartTop, canvas.width, chartHeight);
+
+    // Separator line
+    ctx.strokeStyle = 'rgba(150, 150, 180, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, chartTop);
+    ctx.lineTo(canvas.width, chartTop);
+    ctx.stroke();
+
+    // Draw bars for each portion
+    const firstSlot = Math.floor(range.left / SLOT_DURATION_MS);
+    const lastSlot = Math.ceil(range.right / SLOT_DURATION_MS);
+    const portionDurationMs = SLOT_DURATION_MS / TPS_PORTIONS;
+
+    for (let s = firstSlot; s <= lastSlot; s++) {
+        const arr = tpsData.get(s);
+        if (!arr) continue;
+
+        for (let p = 0; p < TPS_PORTIONS; p++) {
+            const tps = arr[p];
+            if (tps === 0) continue;
+
+            const portionStartMs = s * SLOT_DURATION_MS + p * portionDurationMs;
+            const portionEndMs = portionStartMs + portionDurationMs;
+            const x1 = timeToX(portionStartMs);
+            const x2 = timeToX(portionEndMs);
+            const barWidth = x2 - x1;
+            if (x2 < 0 || x1 > canvas.width) continue;
+
+            const barHeight = (tps / maxTPS) * (chartHeight - 4);
+            const barY = chartBottom - 2 - barHeight;
+
+            // Color: interpolate from green (low) to orange (medium) to red (high)
+            const ratio = Math.min(tps / maxTPS, 1);
+            let r, g, b;
+            if (ratio < 0.5) {
+                // green -> orange
+                const t = ratio * 2;
+                r = Math.floor(50 + 200 * t);
+                g = Math.floor(180 - 50 * t);
+                b = 50;
+            } else {
+                // orange -> red
+                const t = (ratio - 0.5) * 2;
+                r = Math.floor(250);
+                g = Math.floor(130 - 100 * t);
+                b = Math.floor(50 - 20 * t);
+            }
+            ctx.fillStyle = `rgba(${r},${g},${b},0.7)`;
+            ctx.fillRect(x1 + 0.5, barY, Math.max(barWidth - 1, 1), barHeight);
+        }
+    }
+
+    // Scale label
+    ctx.fillStyle = 'rgba(100, 100, 130, 0.7)';
+    ctx.font = '9px Consolas, Monaco, monospace';
+    ctx.fillText('TPS ' + maxTPS, 3, chartTop + 10);
+    ctx.fillText('0', 3, chartBottom - 3);
+}
+
 // ============ RENDERING ============
 function animate() {
     draw();
@@ -443,6 +556,7 @@ function draw() {
     drawGrid(range);
     drawEdges(range);
     drawVertices(range);
+    drawTPSChart(range);
     updateStats();
 }
 
