@@ -147,7 +147,7 @@ func (f *Factory) Run() {
 }
 
 // runRound runs one improvement round for the given slot.
-// Returns when improvement is exhausted or roundCtx is canceled (by SetTargetSlot or shutdown).
+// Returns when improvement is exhausted, a new own milestone appears, or roundCtx is canceled.
 func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	skeleton := f.chooseFirstExtendEndorsePair(slot)
 	if skeleton == nil {
@@ -158,17 +158,18 @@ func (f *Factory) runRound(roundCtx context.Context, slot uint32) {
 	coverage := skeleton.FinalLedgerCoverage(syntheticTs)
 	f.Tracef(TraceTag, "first skeleton: %s, coverage: %d", skeleton.Name(), coverage)
 
-	if !f.tryPostSkeleton(skeleton, coverage) {
-		skeleton.Close()
-		return
-	}
+	f.tryPostSkeleton(skeleton, coverage)
 
-	f.improvementLoop(roundCtx, syntheticTs, skeleton)
+	// snapshot own milestone at round start; if it changes, restart from ChooseFirst
+	ownMilestoneAtStart := f.GetLatestMilestone(f.SequencerID())
+
+	f.improvementLoop(roundCtx, syntheticTs, skeleton, ownMilestoneAtStart)
 }
 
 // improvementLoop tries adding endorsements to improve coverage.
 // Uses N persistent workers reading from a job channel.
-func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.LedgerTime, currentBest *attacher.IncrementalAttacher) {
+// Returns when: no untried candidates (stall), own milestone changed, or roundCtx canceled.
+func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.LedgerTime, currentBest *attacher.IncrementalAttacher, ownMilestoneAtStart *vertex.WrappedTx) {
 	type job struct {
 		clone     *attacher.IncrementalAttacher
 		candidate *vertex.WrappedTx
@@ -218,6 +219,13 @@ func (f *Factory) improvementLoop(roundCtx context.Context, syntheticTs base.Led
 			currentBest.Close()
 			return
 		default:
+		}
+
+		// check if own milestone changed — restart from ChooseFirst to pick up new extend candidates
+		if current := f.GetLatestMilestone(f.SequencerID()); current != ownMilestoneAtStart {
+			f.Tracef(TraceTag, "own milestone changed, restarting round")
+			currentBest.Close()
+			return
 		}
 
 		// get fresh endorsement candidates
@@ -313,12 +321,13 @@ func (f *Factory) markChecked(currentBest *attacher.IncrementalAttacher, candida
 	f.checkedCombinations.markChecked(currentBest.Extending(), currentBest.Endorsing(), candidate)
 }
 
-// tryPostSkeleton posts a skeleton to the output channel if its coverage strictly exceeds
-// the best so far. Returns true if posted, false if not an improvement.
+// tryPostSkeleton posts a skeleton to the output channel if its coverage is at least as good
+// as the best so far. Equal coverage is accepted because the outer loop (sequencer) adds
+// tag-along and delegation inputs that increase coverage beyond the skeleton's base.
 func (f *Factory) tryPostSkeleton(a *attacher.IncrementalAttacher, coverage uint64) bool {
 	for {
 		current := f.bestCoverage.Load()
-		if coverage <= current {
+		if coverage < current {
 			return false
 		}
 		if f.bestCoverage.CompareAndSwap(current, coverage) {

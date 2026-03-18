@@ -342,14 +342,23 @@ This avoids two bad extremes:
 Productive improvement chains with many endorsement opportunities keep running. Chains that
 quickly hit a local maximum restart fast to try a different extend-endorse pair.
 
-**Own milestones**: the factory does NOT reset on new own milestones. New own milestones change
-what `FutureConeOwnMilestonesOrdered` returns, so the *next* call to `ChooseFirstExtendEndorsePair`
-(after stall) naturally picks up the new state. The checked-combinations set persists within
-the slot, preventing re-checking old combinations. New milestones from other sequencers create
-new combinations that haven't been checked, so they will be tried.
+**Own milestones**: the factory checks for new own milestones (via `GetLatestMilestone`) at
+each improvement iteration. When a new own milestone appears, the improvement loop exits and
+the outer loop restarts from `ChooseFirstExtendEndorsePair`, which picks up the new extend
+candidates from `FutureConeOwnMilestonesOrdered`. This ensures the factory reacts promptly to
+own milestones without resetting the checked-combinations set (which persists within the slot).
 
-**Strictly increasing coverage**: TSF tracks the best coverage it produced in the current slot
-(atomic, reset by `SetTargetSlot`). It only posts new skeletons that strictly exceed this.
+**Coverage stall**: when the improvement loop exhausts untried candidates without finding a
+better skeleton, it returns to the outer loop which calls `ChooseFirstExtendEndorsePair` again
+with fresh tippool state. Between own-milestone triggers and stall-based restarts, the factory
+naturally advances to higher coverage.
+
+**Coverage filter (non-strict)**: TSF tracks the best coverage it produced in the current slot
+(atomic, reset by `SetTargetSlot`). It posts skeletons with coverage **>= best** (not strictly
+greater). Equal-coverage skeletons are valuable because the outer loop (sequencer) appends
+tag-along and delegation inputs that increase coverage beyond the skeleton's base. The
+responsibility for final coverage optimization and timestamp target setting belongs to the
+outer loop.
 
 **Checked-combinations set**: per-slot (reset by `SetTargetSlot`). Tracks which
 `(extend, {endorse1, endorse2, ...})` combinations have been checked. The key is the **set**
@@ -379,6 +388,7 @@ TSF main goroutine (Run loop):
     post skeleton_0 -> outCh (if strictly better coverage)
 
     improvement loop:
+      if own milestone changed: break (restart from ChooseFirst)
       re-query tippool for fresh endorsement candidates
       filter out already-checked combinations
       if no untried candidates: break (stall -> restart from ChooseFirst)
@@ -387,15 +397,12 @@ TSF main goroutine (Run loop):
         mark combination as checked
       collect results from resultCh
       pick best by coverage among results
-      if best > currentBest coverage:
+      if best >= currentBest coverage:
         currentBest = best
-        post currentBest -> outCh (if strictly better)
-        stallCount = 0
+        post currentBest -> outCh (if coverage >= best known)
         continue
       else:
-        stallCount++
-        if stallCount >= stallThreshold: break (stall -> restart from ChooseFirst)
-        continue
+        break (stall -> restart from ChooseFirst)
 
     // loop back to ChooseFirstExtendEndorsePair with fresh tippool state
 
