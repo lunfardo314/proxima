@@ -130,6 +130,7 @@ const PORTION_TICKS = TICKS_PER_SLOT / TPS_PORTIONS; // 8 ticks per portion
 const PORTION_DURATION_S = (SLOT_DURATION_MS / TPS_PORTIONS) / 1000; // seconds per portion
 const TPS_CHART_FRACTION = 1 / 15; // fraction of canvas height for the chart
 const TPS_CHART_MAX_DEFAULT = 30; // default max TPS for vertical scale
+let lastTPSData = null; // cached for tooltip lookup
 
 // LRB tracking
 let lrbTxId = null;
@@ -458,6 +459,7 @@ function computePortionTPS(range) {
 
 function drawTPSChart(range) {
     const tpsData = computePortionTPS(range);
+    lastTPSData = tpsData;
     if (tpsData.size === 0) return;
 
     const chartHeight = Math.floor(canvas.height * TPS_CHART_FRACTION);
@@ -879,8 +881,39 @@ function findNearestVertex(mx, my, maxDist) {
     return nearest;
 }
 
+// Look up TPS value at mouse position if hovering over the chart area
+function tpsAtMouse(mx, my) {
+    const chartHeight = Math.floor(canvas.height * TPS_CHART_FRACTION);
+    const chartTop = canvas.height - chartHeight;
+    if (my < chartTop || !lastTPSData) return null;
+
+    const timeMs = xToTime(mx);
+    const slot = Math.floor(timeMs / SLOT_DURATION_MS);
+    const arr = lastTPSData.get(slot);
+    if (!arr) return null;
+
+    const msIntoSlot = timeMs - slot * SLOT_DURATION_MS;
+    const portion = Math.min(Math.floor(msIntoSlot / (SLOT_DURATION_MS / TPS_PORTIONS)), TPS_PORTIONS - 1);
+    if (portion < 0) return null;
+    return arr[portion];
+}
+
 function updateTooltip() {
     const tip = document.getElementById('tooltip');
+
+    // Check TPS chart hover first
+    const tpsVal = tpsAtMouse(mouseX, mouseY);
+    if (tpsVal !== null && !hoveredVertexId) {
+        tip.textContent = 'TPS: ' + tpsVal.toFixed(1);
+        tip.style.display = 'block';
+        let tx = mouseX + 15;
+        let ty = mouseY - 10;
+        if (tx + tip.offsetWidth > window.innerWidth) tx = mouseX - tip.offsetWidth - 10;
+        tip.style.left = tx + 'px';
+        tip.style.top = ty + 'px';
+        return;
+    }
+
     if (!hoveredVertexId) {
         tip.style.display = 'none';
         return;
