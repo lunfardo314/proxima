@@ -100,7 +100,7 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	if displayName == "" {
 		displayName = seqID.StringHex()[:4]
 	}
-	logName := "[SEQ:" + displayName + "]"
+	logName := "[SEQ2:" + displayName + "]"
 	var log *zap.SugaredLogger
 	if cfg.SeparateLog {
 		outputs := []string{out}
