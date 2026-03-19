@@ -115,10 +115,10 @@ func (w *Workflow) attachTx(tx *transaction.Transaction, opts ...TxInOption) err
 
 	if !txid.IsSequencerTransaction() {
 		w.EvidenceNonSequencerTx()
-		w.Tracef(TraceTagTxInputNonSeq, "-> non-seq-tx %s, meta: %s", txid.StringShort, options.txMetadata.String())
+		//w.Tracef(TraceTagTxInputNonSeq, "-> non-seq-tx %s, meta: %s", txid.StringShort, options.txMetadata.String)
 	}
 
-	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
+	//w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String)
 
 	// check time bounds for external transactions
 	// transaction is rejected if it is too far in the future wrt the local clock
