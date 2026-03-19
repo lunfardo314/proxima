@@ -397,6 +397,16 @@ func (l *Global) DecCounter(name string) {
 	l.counters[name] = l.counters[name] - 1
 }
 
+func (l *Global) SetCounter(name string, value int) {
+	l.countersMutex.Lock()
+	defer l.countersMutex.Unlock()
+
+	if collector, found := l.generalPurposeCollectors[name]; found {
+		collector.Set(float64(value))
+	}
+	l.counters[name] = value
+}
+
 func (l *Global) Counter(name string) int {
 	l.countersMutex.RLock()
 	defer l.countersMutex.RUnlock()

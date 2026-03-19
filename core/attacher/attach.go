@@ -172,6 +172,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 				}
 			}()
 		}
+		if !vid.IsSequencerTransaction() {
+			env.IncCounter("nonseq")
+		}
 		// significantly speeds up non-sequencer transactions
 		if !vid.IsSequencerTransaction() || vid.IsBranchTransaction() {
 			env.PokeAllWith(vid)
