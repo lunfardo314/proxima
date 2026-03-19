@@ -926,12 +926,16 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 // Returns:
 // - total coverage delta
 // - frozen coverage (included in the delta)
-func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta, frozen uint64) {
+func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta, frozen uint64, err error) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
 	rdr := getStateReader(*pc.GetBaseline())
 	for vid := range pc.vertices {
+		if e := ctx.Err(); e != nil {
+			err = e
+			return
+		}
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			oid := vid.OutputID(idx)
 			if o := multistate.GetOutputFromStateReader(rdr, oid); o != nil {

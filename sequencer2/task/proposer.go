@@ -92,7 +92,13 @@ func (p *proposer) propose(a *proposal) error {
 }
 
 func (p *proposer) proposeWithTimestamp(a *proposal, ts base.LedgerTime) error {
-	coverageDelta, frozen := a.CoverageDelta()
+	if err := p.ctx.Err(); err != nil {
+		return err
+	}
+	coverageDelta, frozen, err := a.CoverageDeltaWithContext(p.ctx)
+	if err != nil {
+		return err
+	}
 	ledgerCoverage := a.FinalLedgerCoverage(ts, coverageDelta)
 	slotInflation := a.SlotInflation() // tip inflation is not included
 	baselineSupply := a.BaselineSupply()

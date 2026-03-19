@@ -696,7 +696,16 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 // - coverage delta (including frozen part)
 // - frozen part separately
 func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
-	delta, frozen = a.pastCone.CoverageDeltaRaw(a.getBaselineStateReader)
+	delta, frozen, _ = a.pastCone.CoverageDeltaRaw(context.Background(), a.getBaselineStateReader)
+	delta += a.coverageDeltaAdjustment()
+	return
+}
+
+func (a *attacher) CoverageDeltaWithContext(ctx context.Context) (delta uint64, frozen uint64, err error) {
+	delta, frozen, err = a.pastCone.CoverageDeltaRaw(ctx, a.getBaselineStateReader)
+	if err != nil {
+		return
+	}
 	delta += a.coverageDeltaAdjustment()
 	return
 }
