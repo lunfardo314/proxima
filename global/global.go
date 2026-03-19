@@ -54,7 +54,7 @@ type Global struct {
 	disableDeadlockCatching bool
 }
 
-var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close")
+var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
