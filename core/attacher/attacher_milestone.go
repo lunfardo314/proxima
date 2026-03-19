@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"runtime"
 	"time"
 
@@ -194,7 +193,7 @@ func (a *milestoneAttacher) run() error {
 // the duration threshold. EnableDeadlockCatching(0) disables deadlock catching
 // Default is enabled for 10 seconds
 
-const deadlockThreshold = 10 * time.Second
+const deadlockThreshold = 30 * time.Second
 
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
@@ -204,10 +203,10 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 	checkName := a.Name() + "_" + loopName
 	if !a.DeadlockCatchingDisabled() {
 		checkpoint = checkpoints.New(func(name string) {
-			buf := make([]byte, 2*math.MaxUint16)
-			runtime.Stack(buf, true)
+			buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
+			n := runtime.Stack(buf, true)
 			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
-				checkName, deadlockThreshold, string(buf))
+				checkName, deadlockThreshold, string(buf[:n]))
 		})
 		defer checkpoint.Close()
 	}
