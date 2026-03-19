@@ -325,8 +325,8 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 
 				const doubleCheck = true
 				if doubleCheck && finalSuccess {
-					// double check
-					conflict := a.CheckConflicts()
+					// double check — no timeout, debug assertion only
+					conflict, _ := a.CheckConflicts(context.Background())
 					a.Assertf(conflict == nil, "unexpected conflict %s in %s", conflict.IDStringShort(), a.name)
 				}
 			},
@@ -385,7 +385,11 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.IDShortString)
 
-	if conflict := a.pastCone.CheckAndClean(a.getBaselineStateReader); conflict != nil {
+	if conflict, err := a.pastCone.CheckAndClean(context.Background(), a.getBaselineStateReader); err != nil {
+		a.setError(err)
+		v.UnReferenceDependencies()
+		return false, false
+	} else if conflict != nil {
 		a.setError(fmt.Errorf("conflict %s in the past cone:\n%s", conflict.IDStringShort(), a.pastCone.Lines("    ").String()))
 		v.UnReferenceDependencies()
 		return false, false

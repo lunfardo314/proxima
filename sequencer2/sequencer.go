@@ -442,10 +442,10 @@ func (seq *Sequencer) sequencerLoop() {
 		seq.Log().Infof("sequencer loop STOPPING..")
 	}()
 
-	const deadlockTolerance = 10 * time.Second
+	const deadlockTolerance = 30 * time.Second
 
 	checkpoint := checkpoints.New(func(name string) {
-		buf := make([]byte, 1<<20) // 1MB buffer to capture all goroutines
+		buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
 		n := runtime.Stack(buf, true)
 		seq.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf[:n]))
 	})

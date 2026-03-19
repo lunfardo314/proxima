@@ -1,7 +1,6 @@
 package checkpoints
 
 import (
-	"math"
 	"runtime"
 	"time"
 
@@ -95,8 +94,8 @@ func (c *Checkpoints) loop(checkEvery time.Duration) {
 }
 
 func ReportDeadlockFatal(name string, threshold time.Duration, log *zap.SugaredLogger) {
-	buf := make([]byte, 2*math.MaxUint16)
-	runtime.Stack(buf, true)
+	buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
+	n := runtime.Stack(buf, true)
 	log.Fatalf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
-		name, threshold, string(buf))
+		name, threshold, string(buf[:n]))
 }

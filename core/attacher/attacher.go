@@ -1,6 +1,7 @@
 package attacher
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -648,8 +649,8 @@ func (a *attacher) coverageDeltaAdjustment() uint64 {
 	return 0
 }
 
-func (a *attacher) CheckConflicts() *vertex.WrappedOutput {
-	return a.pastCone.CheckConflicts(a.getBaselineStateReader)
+func (a *attacher) CheckConflicts(ctx context.Context) (*vertex.WrappedOutput, error) {
+	return a.pastCone.CheckConflicts(ctx, a.getBaselineStateReader)
 }
 
 // SlotInflation sums all inflation amounts in the past cone structure.

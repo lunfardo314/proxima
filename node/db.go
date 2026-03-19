@@ -25,6 +25,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 	opts := badger.DefaultOptions(dbname)
 	opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
 	opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
+	opts.NumCompactors = 2         // reduce from default 4 to lower I/O contention
 
 	bdb, err := badger_adaptor.OpenBadgerDB(dbname, opts)
 	if err != nil {
@@ -91,6 +92,7 @@ func (p *ProximaNode) initTxStore() {
 		opts := badger.DefaultOptions(dbname)
 		opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
 		opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
+		opts.NumCompactors = 2         // reduce from default 4 to lower I/O contention
 
 		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname, opts))
 		p.dbClosedWG.Add(1)

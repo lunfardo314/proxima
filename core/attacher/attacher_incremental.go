@@ -1,8 +1,10 @@
 package attacher
 
 import (
+	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -13,7 +15,16 @@ import (
 const (
 	TraceTagIncrementalAttacher                     = "incAttach"
 	TraceTagIncrementalAttacherWithExplicitBaseline = "incAttachExplicitBL"
+	// conflictCheckTimeout limits how long CheckConflicts can run in incremental attachers.
+	// Prevents goroutine starvation under I/O contention (BadgerDB compaction, trie reads).
+	conflictCheckTimeout = 5 * time.Second
 )
+
+func (a *IncrementalAttacher) checkConflictsWithTimeout() (*vertex.WrappedOutput, error) {
+	ctx, cancel := context.WithTimeout(a.Ctx(), conflictCheckTimeout)
+	defer cancel()
+	return a.CheckConflicts(ctx)
+}
 
 // NewIncrementalAttacher creates an IncrementalAttacher for the given target timestamp.
 // Only targetTs.Slot and targetTs.IsSlotBoundary() are used for structural decisions
@@ -72,7 +83,10 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 		ret.Close()
 		return nil, err
 	}
-	if conflict := ret.CheckConflicts(); conflict != nil {
+	if conflict, err := ret.checkConflictsWithTimeout(); err != nil {
+		ret.Close()
+		return nil, err
+	} else if conflict != nil {
 		ret.Close()
 		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to create incremental attacher extending  %s: double-spend (conflict) %s in the past cone",
 			name, extend.IDStringShort(), conflict.IDStringShort())
@@ -111,7 +125,10 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 		ret.Close()
 		return nil, err
 	}
-	if conflict := ret.CheckConflicts(); conflict != nil {
+	if conflict, err := ret.checkConflictsWithTimeout(); err != nil {
+		ret.Close()
+		return nil, err
+	} else if conflict != nil {
 		ret.Close()
 		return nil, fmt.Errorf("NewIncrementalAttacher %s: failed to create incremental attacher extending  %s: double-spend (conflict) %s in the past cone",
 			name, extend.IDStringShort(), conflict.IDStringShort())
@@ -211,7 +228,11 @@ func (a *IncrementalAttacher) insertVirtuallyConsumedOutput(wOut vertex.WrappedO
 	if !a.pastCone.IsKnownDefined(wOut.VID) {
 		return fmt.Errorf("output %s not solid yet", wOut.IDStringShort())
 	}
-	if conflict := a.pastCone.AddVirtuallyConsumedOutput(wOut, a.getBaselineStateReader); conflict != nil {
+	ctx, cancel := context.WithTimeout(a.Ctx(), conflictCheckTimeout)
+	defer cancel()
+	if conflict, err := a.pastCone.AddVirtuallyConsumedOutput(ctx, wOut, a.getBaselineStateReader); err != nil {
+		return err
+	} else if conflict != nil {
 		return fmt.Errorf("past cone contains double-spend %s", conflict.IDStringShort())
 	}
 	a.inputs = append(a.inputs, wOut)
@@ -246,7 +267,9 @@ func (a *IncrementalAttacher) insertEndorsement(endorsement *vertex.WrappedTx) e
 		return a.err
 	}
 
-	if conflict := a.CheckConflicts(); conflict != nil {
+	if conflict, err := a.checkConflictsWithTimeout(); err != nil {
+		return err
+	} else if conflict != nil {
 		return fmt.Errorf("insertEndorsement: double-spend (conflict) %s in the past cone", conflict.IDStringShort())
 	}
 	a.endorse = append(a.endorse, endorsement)
