@@ -97,12 +97,16 @@ All metrics use the existing `Counter`/`IncCounter`/`DecCounter`/`SetCounter` in
 Queue length reporting uses `SetCounter` with an `OnLenChange` callback on the elastic queue,
 invoked only when the length actually changes.
 
-### Thresholds
+### Thresholds (adjusted through testnet iterations)
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| `maxConcurrentAttachers` | 1000 | Normal operation: 0-4 attachers. Crash had 27 at 6.9GB. 1000 is a safety ceiling. |
-| `maxNonSeqVertices` | 5000 | Normal operation: ~500 vertices. Crash had 3425. 5000 allows headroom before OOM. |
+| `maxConcurrentAttachers` | 200 | Normal operation: 0-4. Crash had 223. Only applies when synced. |
+| `maxNonSeqVertices` | 5000 | Normal operation: ~500 vertices. Crash had 3425. |
+| `maxQueueLen` (nonseq) | 1000 | Queue grew to 111K when vertex gate didn't trigger. |
+
+**Syncing exception:** seq_attach limit is disabled when `!IsSynced()`. During sync, all seq
+transactions must pass — dropping them stalls the recursive solidification chain.
 
 ### Files
 
@@ -118,15 +122,62 @@ invoked only when the length actually changes.
 | `core/attacher/attach.go` | Increments `nonseq` counter on new non-seq vertex |
 | `core/memdag/memdag.go` | Decrements `nonseq` counter on vertex delete/detach |
 
+## Testnet observations (2025-03-19, 117 senders)
+
+### What worked
+- `nonseq_attach` queue length limit (1000) prevents unbounded queue growth
+- `seq_attach` dropping non-pulled seq txs when `att >= 200` caps attacher goroutines
+- `RUnwrap` for solid non-seq vertices reduces lock contention on overlapping past cones
+- Context-aware `CheckConflicts` and `CoverageDeltaRaw` prevent proposer stalls
+
+### What didn't work or needs attention
+
+**1. Access nodes have no protection against sequencer vertex accumulation.**
+Access node crashed at 5.9GB with `nonseq: 0` and empty queues. The memory was from
+sequencer vertices in the memDAG and GC unable to reclaim. Rate control gates only check
+non-seq count and attacher count — sequencer vertex count on access nodes is uncontrolled.
+Need a total vertex count gate or a separate mechanism for access nodes.
+
+**2. The `nonseq` counter alone is insufficient as a gate metric.**
+On loc0, the nonseq queue grew to 111K because memDAG `nonseq` stayed at ~700 (queue consumer
+couldn't keep up). The queue length check fixes this, but the broader lesson: multiple metrics
+must be checked. Total vertex count, queue length, and attacher count together provide
+coverage that any single metric misses.
+
+**3. GC stalling is the ultimate killer, rate control can't fix it.**
+In every OOM crash, Go's GC counter freezes while memory climbs. Rate control prevents new
+load from entering, but can't reclaim memory from load already inside. When GC stalls, the
+node is doomed regardless of rate control. This may need Go runtime tuning (GOGC, GOMEMLIMIT)
+or architectural changes (bounded data structures, object pooling).
+
+**4. Two nodes on 8GB machines is fragile under load.**
+Current testnet machines have 8GB RAM, no swap, running 2 nodes each. Any memory spike on one
+node triggers OOM killer for both. This is a testing environment constraint — production nodes
+will have dedicated resources. But we want to squeeze maximum learning from the current testnet
+before moving to machines with real specs.
+
+**5. Syncing and normal operation need different strategies.**
+See [sync.md](sync.md). Rate control that works for normal operation (drop excess) actively
+harms syncing (blocks needed dependencies). The `IsSynced()` gate is a pragmatic workaround
+but not a proper solution. Syncing needs its own architecture.
+
+**6. Lock contention cascades under resource pressure.**
+The tippool `purgeAndLog` write lock blocked the sequencer for >30 seconds — not because the
+operation was slow, but because the goroutine was CPU-starved (OOM neighbor consuming all
+resources). Rate control can't protect against OS-level resource exhaustion.
+
 ## Phase 2 (future)
 
-There's one special situation: syncing.
+### Syncing
+See [sync.md](sync.md) for detailed analysis.
 
-When snapshot state is far away, more than 1000 slots back, syncing process creates a lot of attachers that are recursively waiting
-for their dependencies to finish the work. This makes it more difficult if branches carries many transactions in their past cones.
-Many attachers with their 10ms polling (currently) consumes a lot of resource and the system is not able to keep up with the current load.
-We have to invent a strategy how to deal with it. Some options:
-- assume we do not sync from a snapshot further than several hundreds of slot back (more nuanced)
-- assume higher node requirements during syncing
-- invent some special 'warp syncing' mechanism, e.g. sending past transactions in a bulk to the local txstore before starting building a DAG
-- etc
+### Additional rate control metrics to consider
+- Total vertex count (seq + non-seq) as a gate, especially for access nodes
+- GC pressure indicators (allocation rate vs collection rate)
+- Memory-based emergency gate (e.g., `runtime.MemStats.Alloc > threshold` → drop all non-pulled)
+- Per-chain sequencer tip count (detect runaway chains)
+
+### Structural improvements
+- `GOMEMLIMIT` environment variable to give Go GC a hard ceiling
+- Bounded memDAG with eviction policy (LRU by slot)
+- Object pooling for past cone structures to reduce GC pressure
