@@ -17,6 +17,9 @@ const (
 	// maxNonSeqVertices is the memDAG non-sequencer vertex count threshold.
 	// When exceeded, non-pulled non-sequencer transactions are dropped.
 	maxNonSeqVertices = 5000
+	// maxQueueLen is the maximum queue length before non-pulled transactions are dropped.
+	// Prevents unbounded queue growth when transactions arrive faster than they can be attached.
+	maxQueueLen = 1000
 )
 
 type (
@@ -54,7 +57,9 @@ func New(env environment, attachFun AttachFun) *NonSeqAttach {
 }
 
 func (q *NonSeqAttach) consume(inp *Input) {
-	if !inp.Pulled && q.Counter("nonseq") >= maxNonSeqVertices {
+	// TODO only drop non-seq transactions when number of non-solid of them exceeds limit (not total number)
+	//  reason: solid (validated) non-seq transaction do not consume CPU, only memory
+	if !inp.Pulled && (q.Counter("nonseq") >= maxNonSeqVertices || q.Queue.Len() >= maxQueueLen) {
 		q.IncCounter("nonseq_drop")
 		return
 	}

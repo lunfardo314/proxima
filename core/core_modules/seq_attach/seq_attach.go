@@ -15,9 +15,11 @@ import (
 
 const (
 	Name = "seqAttach"
-	// maxConcurrentAttachers is the limit for concurrent attacher goroutines.
+	// maxConcurrentAttachers limits concurrent sequencer attacher goroutines.
+	// Only sequencer transactions spawn attacher goroutines; non-sequencer transactions
+	// are just added to the memDAG without an attacher.
 	// When reached, non-pulled sequencer transactions block until an attacher finishes.
-	maxConcurrentAttachers = 1000
+	maxConcurrentAttachers = 50
 	blockPollInterval      = 50 * time.Millisecond
 )
 
