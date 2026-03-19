@@ -23,6 +23,7 @@ const (
 type (
 	environment interface {
 		global.NodeGlobal
+		IsSynced() bool
 	}
 
 	// AttachFun performs the actual attachment (workflow._attach)
@@ -55,7 +56,8 @@ func New(env environment, attachFun AttachFun) *SeqAttach {
 }
 
 func (q *SeqAttach) consume(inp *Input) {
-	if !inp.Pulled && q.Counter("att") >= maxConcurrentAttachers {
+	// during syncing, all seq transactions pass — dropping them would stall sync
+	if !inp.Pulled && q.IsSynced() && q.Counter("att") >= maxConcurrentAttachers {
 		q.IncCounter("seq_drop")
 		return
 	}
