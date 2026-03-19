@@ -1,12 +1,9 @@
 // seq_attach core module queues sequencer transactions for attachment.
-// Non-pulled sequencer transactions block when the number of concurrent attacher
-// goroutines exceeds the limit, creating backpressure upstream.
+// Non-pulled sequencer transactions are dropped when the attacher limit is reached.
 // Pulled transactions always pass immediately (with queue priority).
 package seq_attach
 
 import (
-	"time"
-
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules"
 	"github.com/lunfardo314/proxima/global"
@@ -18,9 +15,9 @@ const (
 	// maxConcurrentAttachers limits concurrent sequencer attacher goroutines.
 	// Only sequencer transactions spawn attacher goroutines; non-sequencer transactions
 	// are just added to the memDAG without an attacher.
-	// When reached, non-pulled sequencer transactions block until an attacher finishes.
-	maxConcurrentAttachers = 50
-	blockPollInterval      = 50 * time.Millisecond
+	// When reached, non-pulled sequencer transactions are dropped.
+	// Pulled transactions (needed for solidification/syncing) always pass.
+	maxConcurrentAttachers = 200
 )
 
 type (
@@ -58,14 +55,9 @@ func New(env environment, attachFun AttachFun) *SeqAttach {
 }
 
 func (q *SeqAttach) consume(inp *Input) {
-	if !inp.Pulled {
-		for q.Counter("att") >= maxConcurrentAttachers {
-			select {
-			case <-q.Ctx().Done():
-				return
-			case <-time.After(blockPollInterval):
-			}
-		}
+	if !inp.Pulled && q.Counter("att") >= maxConcurrentAttachers {
+		q.IncCounter("seq_drop")
+		return
 	}
 	q.attachFun(inp.Tx, inp.Opts...)
 }
