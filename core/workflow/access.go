@@ -73,8 +73,8 @@ func (w *Workflow) MaxConcurrentAttachers() int {
 	return w.cfg.maxConcurrentAttachers
 }
 
-func (w *Workflow) NotifyBranchCommitted() {
-	w.syncModule.NotifyBranchCommitted()
+func (w *Workflow) NotifyBranchCommitted(branchSlot uint32) {
+	w.syncModule.NotifyBranchCommitted(branchSlot)
 }
 
 func (w *Workflow) ForceCommitBranch(branchID base.TransactionID) {

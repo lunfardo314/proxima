@@ -48,10 +48,11 @@ type (
 		pullAhead     int // pull k-th branch ahead to parallelize past cone solidification
 		isSyncing     atomic.Bool
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
-		branchList   []base.TransactionID
-		frontierSlot atomic.Uint32
-		lastPullTime time.Time    // when the current target branch was last pulled
-		wakeup       chan struct{} // signaled when a branch commits
+		branchList    []base.TransactionID
+		frontierSlot  atomic.Uint32
+		currentTarget atomic.Uint32 // slot of the branch we're waiting for
+		lastPullTime  time.Time     // when the current target branch was last pulled
+		wakeup        chan struct{} // signaled when the target branch commits
 	}
 )
 
@@ -144,9 +145,12 @@ func (s *Sync) SyncFrontierSlot() uint32 {
 	return s.frontierSlot.Load()
 }
 
-// NotifyBranchCommitted wakes up the sync loop to check for the next branch immediately.
-func (s *Sync) NotifyBranchCommitted() {
+// NotifyBranchCommitted wakes up the sync loop only when the current target branch commits.
+func (s *Sync) NotifyBranchCommitted(branchSlot uint32) {
 	if s == nil {
+		return
+	}
+	if branchSlot < s.currentTarget.Load() {
 		return
 	}
 	select {
@@ -249,19 +253,18 @@ func (s *Sync) syncTick() {
 			Name, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot(), lrbSlot)
 	}
 
-	// remove already committed branches from head of list
-	committed := 0
+	// force-commit and remove all committed branches from head of list
+	nCommitted := 0
 	for len(s.branchList) > 0 {
-		// force deferred DB commit if the branch is pending
 		s.ForceCommitBranch(s.branchList[0])
 		if _, ok := multistate.FetchRootRecord(s.StateStore(), s.branchList[0]); !ok {
 			break
 		}
 		s.branchList = s.branchList[1:]
-		committed++
+		nCommitted++
 	}
-	if committed > 0 {
-		s.Log().Infof("[%s] committed %d branches, %d remaining", Name, committed, len(s.branchList))
+	if nCommitted > 0 {
+		s.Log().Infof("[%s] committed %d branches, %d remaining", Name, nCommitted, len(s.branchList))
 		s.lastPullTime = time.Time{} // reset so next target is pulled immediately
 	}
 
@@ -277,8 +280,9 @@ func (s *Sync) syncTick() {
 	}
 	target := s.branchList[targetIdx]
 
-	// set frontier to the target's slot — all branches up to this slot will solidify
+	// set frontier and current target
 	s.frontierSlot.Store(target.Slot())
+	s.currentTarget.Store(target.Slot())
 
 	// mark as pulled so it passes the sync filter if it arrives via gossip
 	s.AddPulledTransaction(target)
