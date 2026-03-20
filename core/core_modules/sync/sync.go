@@ -5,6 +5,8 @@
 package sync
 
 import (
+	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -34,7 +36,8 @@ type (
 
 	Sync struct {
 		environment
-		source        *client.APIClient
+		sources       []*client.APIClient
+		sourceIdx     int // current source index, cycles on failure
 		thresholdUp   uint32
 		thresholdDown uint32
 		isSyncing     atomic.Bool
@@ -44,11 +47,45 @@ type (
 	}
 )
 
-// Start initializes and starts the sync module. If sync.source is not configured, the module is inactive.
+// isSelfURL returns true if the URL points to this node's own API
+func isSelfURL(url string, selfAPIPort int) bool {
+	selfSuffix := fmt.Sprintf(":%d", selfAPIPort)
+	for _, prefix := range []string{"http://127.0.0.1", "http://localhost", "https://127.0.0.1", "https://localhost"} {
+		if strings.HasPrefix(url, prefix+selfSuffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// Start initializes and starts the sync module. If no sync sources configured, the module is inactive.
 func Start(env environment) *Sync {
-	sourceURL := viper.GetString("sync.source")
-	if sourceURL == "" {
-		env.Log().Infof("[%s] no sync source configured, sync module inactive", Name)
+	sourceURLs := viper.GetStringSlice("sync.sources")
+	if len(sourceURLs) == 0 {
+		// backward compat: try singular "source"
+		if s := viper.GetString("sync.source"); s != "" {
+			sourceURLs = []string{s}
+		}
+	}
+	if len(sourceURLs) == 0 {
+		env.Log().Infof("[%s] no sync sources configured, sync module inactive", Name)
+		return nil
+	}
+
+	// filter out self
+	selfAPIPort := viper.GetInt("api.port")
+	filtered := make([]string, 0, len(sourceURLs))
+	for _, url := range sourceURLs {
+		if isSelfURL(url, selfAPIPort) {
+			env.Log().Infof("[%s] skipping self URL %s", Name, url)
+			continue
+		}
+		filtered = append(filtered, url)
+	}
+	sourceURLs = filtered
+
+	if len(sourceURLs) == 0 {
+		env.Log().Infof("[%s] all sync sources are self, sync module inactive", Name)
 		return nil
 	}
 
@@ -61,9 +98,14 @@ func Start(env environment) *Sync {
 		thDown = defaultThresholdDown
 	}
 
+	sources := make([]*client.APIClient, len(sourceURLs))
+	for i, url := range sourceURLs {
+		sources[i] = client.NewWithGoogleDNS(url, 10*time.Second)
+	}
+
 	ret := &Sync{
 		environment:   env,
-		source:        client.NewWithGoogleDNS(sourceURL, 10*time.Second),
+		sources:       sources,
 		thresholdUp:   uint32(thUp),
 		thresholdDown: uint32(thDown),
 	}
@@ -73,7 +115,7 @@ func Start(env environment) *Sync {
 		return true
 	})
 
-	env.Log().Infof("[%s] started, source: %s, threshold up: %d, down: %d", Name, sourceURL, thUp, thDown)
+	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d", Name, sourceURLs, thUp, thDown)
 	return ret
 }
 
@@ -93,6 +135,23 @@ func (s *Sync) SyncFrontierSlot() uint32 {
 		return 0
 	}
 	return s.frontierSlot.Load()
+}
+
+// requestBranchList tries each source starting from the current index, cycling on failure.
+func (s *Sync) requestBranchList(fromSlot uint32) ([]base.TransactionID, uint32, error) {
+	n := len(s.sources)
+	var lastErr error
+	for i := 0; i < n; i++ {
+		idx := (s.sourceIdx + i) % n
+		branches, lrbSlot, err := s.sources[idx].GetBranchList(fromSlot, 100)
+		if err == nil {
+			s.sourceIdx = idx
+			return branches, lrbSlot, nil
+		}
+		lastErr = err
+		s.Log().Warnf("[%s] source %d failed: %v, trying next", Name, idx, err)
+	}
+	return nil, 0, fmt.Errorf("all %d sync sources failed, last error: %v", n, lastErr)
 }
 
 func (s *Sync) syncTick() {
@@ -130,13 +189,13 @@ func (s *Sync) syncTick() {
 
 	// request branch list if empty
 	if len(s.branchList) == 0 {
-		branches, lrbSlot, err := s.source.GetBranchList(healthySlot, 100)
+		branches, lrbSlot, err := s.requestBranchList(healthySlot)
 		if err != nil {
-			s.Log().Warnf("[%s] failed to get branch list from sync source: %v", Name, err)
+			s.Log().Warnf("[%s] %v", Name, err)
 			return
 		}
 		if len(branches) == 0 {
-			s.Log().Infof("[%s] sync source returned empty branch list (source LRB slot=%d)", Name, lrbSlot)
+			s.Log().Infof("[%s] sync source returned empty branch list (LRB slot=%d)", Name, lrbSlot)
 			return
 		}
 		s.branchList = branches
