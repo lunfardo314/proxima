@@ -45,7 +45,8 @@ type (
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList   []base.TransactionID
 		frontierSlot atomic.Uint32
-		lastPullTime time.Time // when the current branch was last pulled
+		lastPullTime time.Time    // when the current branch was last pulled
+		wakeup       chan struct{} // signaled when a branch commits
 	}
 )
 
@@ -104,12 +105,10 @@ func Start(env environment) *Sync {
 		sources:       sources,
 		thresholdUp:   uint32(thUp),
 		thresholdDown: uint32(thDown),
+		wakeup:        make(chan struct{}, 1),
 	}
 
-	env.RepeatInBackground(Name, syncLoopPeriod, func() bool {
-		ret.syncTick()
-		return true
-	})
+	go ret.syncLoop()
 
 	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d", Name, sourceURLs, thUp, thDown)
 	return ret
@@ -131,6 +130,34 @@ func (s *Sync) SyncFrontierSlot() uint32 {
 		return 0
 	}
 	return s.frontierSlot.Load()
+}
+
+// NotifyBranchCommitted wakes up the sync loop to check for the next branch immediately.
+func (s *Sync) NotifyBranchCommitted() {
+	if s == nil {
+		return
+	}
+	select {
+	case s.wakeup <- struct{}{}:
+	default:
+	}
+}
+
+// syncLoop runs until shutdown. Wakes up on branch commit notification or periodic timer.
+func (s *Sync) syncLoop() {
+	timer := time.NewTimer(syncLoopPeriod)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-s.Ctx().Done():
+			return
+		case <-s.wakeup:
+		case <-timer.C:
+		}
+		s.syncTick()
+		timer.Reset(syncLoopPeriod)
+	}
 }
 
 // requestBranchList tries each source starting from the current index, cycling on failure.

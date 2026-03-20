@@ -20,6 +20,7 @@ type (
 	environment interface {
 		global.NodeGlobal
 		StateStore() global.Store
+		NotifyBranchCommitted()
 	}
 
 	branchDataWithLedgerCoverage struct {
@@ -342,6 +343,8 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%)",
 		branchID.StringShort(), pb.SequencerName, util.Th(pb.RootRecParams.CoverageDelta), coveragePct)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
+
+	b.NotifyBranchCommitted()
 
 	return upd
 }

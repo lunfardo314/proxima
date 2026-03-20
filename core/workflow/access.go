@@ -73,6 +73,10 @@ func (w *Workflow) MaxConcurrentAttachers() int {
 	return w.cfg.maxConcurrentAttachers
 }
 
+func (w *Workflow) NotifyBranchCommitted() {
+	w.syncModule.NotifyBranchCommitted()
+}
+
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	return w.tippool.LatestActiveMilestonesDescending(filter...)
