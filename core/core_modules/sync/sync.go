@@ -24,6 +24,7 @@ const (
 	defaultThresholdUp   = 5
 	defaultThresholdDown = 3
 	syncLoopPeriod       = time.Second
+	pullRepeatInterval   = 5 * time.Second
 )
 
 type (
@@ -44,6 +45,7 @@ type (
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList   []base.TransactionID
 		frontierSlot atomic.Uint32
+		lastPullTime time.Time // when the current branch was last pulled
 	}
 )
 
@@ -214,7 +216,9 @@ func (s *Sync) syncTick() {
 		if !committed {
 			break
 		}
+		s.Log().Infof("[%s] branch %s committed, %d remaining", Name, s.branchList[0].StringShort(), len(s.branchList)-1)
 		s.branchList = s.branchList[1:]
+		s.lastPullTime = time.Time{} // reset so next branch is pulled immediately
 	}
 
 	if len(s.branchList) == 0 {
@@ -226,9 +230,12 @@ func (s *Sync) syncTick() {
 	target := s.branchList[0]
 	s.frontierSlot.Store(target.Slot())
 
-	// pull the branch
-	s.AddPulledTransaction(target)
-	nPeers := s.PullFromPeers(target)
-	s.Log().Infof("[%s] pulling branch %s (slot %d), %d remaining, requested from %d peers",
-		Name, target.StringShort(), target.Slot(), len(s.branchList)-1, nPeers)
+	// pull the branch once, then only re-pull after timeout
+	if s.lastPullTime.IsZero() || time.Since(s.lastPullTime) >= pullRepeatInterval {
+		s.AddPulledTransaction(target)
+		nPeers := s.PullFromPeers(target)
+		s.lastPullTime = time.Now()
+		s.Log().Infof("[%s] pulling branch %s, %d remaining, requested from %d peers",
+			Name, target.StringShort(), len(s.branchList)-1, nPeers)
+	}
 }

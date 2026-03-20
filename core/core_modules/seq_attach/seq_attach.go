@@ -60,16 +60,11 @@ func New(env environment, attachFun AttachFun) *SeqAttach {
 
 func (q *SeqAttach) consume(inp *Input) {
 	if q.IsSyncing() {
+		// during sync: pass only pulled transactions with timestamps at or before the sync frontier
 		frontier := q.SyncFrontierSlot()
 		txid := inp.Tx.ID()
-		// during sync: drop non-pulled and transactions beyond the sync frontier
 		if !inp.Pulled || txid.Slot() > frontier {
 			q.IncCounter("seq_drop")
-			return
-		}
-		// during sync: enforce attacher limit even for pulled transactions
-		// to prevent recursive pull explosion in deep past cones
-		if q.Counter("att") >= q.MaxConcurrentAttachers() {
 			return
 		}
 	} else {
