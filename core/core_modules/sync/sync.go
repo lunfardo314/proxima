@@ -23,6 +23,7 @@ const (
 
 	defaultThresholdUp   = 5
 	defaultThresholdDown = 3
+	defaultPullAhead     = 5
 	syncLoopPeriod       = time.Second
 	pullRepeatInterval   = 5 * time.Second
 )
@@ -44,11 +45,12 @@ type (
 		sourceIdx     int // current source index, cycles on failure
 		thresholdUp   uint32
 		thresholdDown uint32
+		pullAhead     int // pull k-th branch ahead to parallelize past cone solidification
 		isSyncing     atomic.Bool
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList   []base.TransactionID
 		frontierSlot atomic.Uint32
-		lastPullTime time.Time    // when the current branch was last pulled
+		lastPullTime time.Time    // when the current target branch was last pulled
 		wakeup       chan struct{} // signaled when a branch commits
 	}
 )
@@ -97,6 +99,10 @@ func Start(env environment) *Sync {
 	if thDown <= 0 {
 		thDown = defaultThresholdDown
 	}
+	pullAhead := viper.GetInt("sync.pull_ahead")
+	if pullAhead <= 0 {
+		pullAhead = defaultPullAhead
+	}
 
 	sources := make([]*client.APIClient, len(sourceURLs))
 	for i, url := range sourceURLs {
@@ -108,6 +114,7 @@ func Start(env environment) *Sync {
 		sources:       sources,
 		thresholdUp:   uint32(thUp),
 		thresholdDown: uint32(thDown),
+		pullAhead:     pullAhead,
 		wakeup:        make(chan struct{}, 1),
 	}
 	// start with IsSyncing=true to prevent gossip-driven recursion before gap is evaluated
@@ -115,7 +122,7 @@ func Start(env environment) *Sync {
 
 	go ret.syncLoop()
 
-	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d", Name, sourceURLs, thUp, thDown)
+	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d, pull ahead: %d", Name, sourceURLs, thUp, thDown, pullAhead)
 	return ret
 }
 
@@ -252,7 +259,7 @@ func (s *Sync) syncTick() {
 		}
 		s.Log().Infof("[%s] branch %s committed, %d remaining", Name, s.branchList[0].StringShort(), len(s.branchList)-1)
 		s.branchList = s.branchList[1:]
-		s.lastPullTime = time.Time{} // reset so next branch is pulled immediately
+		s.lastPullTime = time.Time{} // reset so next target is pulled immediately
 	}
 
 	if len(s.branchList) == 0 {
@@ -260,15 +267,22 @@ func (s *Sync) syncTick() {
 		return
 	}
 
-	// set frontier to the slot of the branch we're syncing
-	target := s.branchList[0]
+	// pick the target: k-th branch ahead (or last available)
+	targetIdx := s.pullAhead - 1
+	if targetIdx >= len(s.branchList) {
+		targetIdx = len(s.branchList) - 1
+	}
+	target := s.branchList[targetIdx]
+
+	// set frontier to the target's slot — all branches up to this slot will solidify
 	s.frontierSlot.Store(target.Slot())
 
 	// mark as pulled so it passes the sync filter if it arrives via gossip
 	s.AddPulledTransaction(target)
 
 	if s.lastPullTime.IsZero() {
-		s.Log().Infof("[%s] pulling branch %s, %d remaining", Name, target.StringShort(), len(s.branchList)-1)
+		s.Log().Infof("[%s] pulling branch %s (%d ahead), %d remaining",
+			Name, target.StringShort(), targetIdx+1, len(s.branchList)-1)
 
 		// try local txstore first — the branch may already be there from gossip
 		if txBytes := s.TxBytesStore().GetTxBytesWithMetadata(&target); len(txBytes) > 0 {
@@ -280,7 +294,6 @@ func (s *Sync) syncTick() {
 		}
 		s.lastPullTime = time.Now()
 	} else if time.Since(s.lastPullTime) >= pullRepeatInterval {
-		// re-pull after timeout if not yet committed
 		s.PullFromPeers(target)
 		s.lastPullTime = time.Now()
 	}
