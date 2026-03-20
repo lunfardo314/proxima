@@ -339,9 +339,17 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	b.Assertf(err == nil, "%v", err)
 
 	// log the deferred commit and committed transactions
+	var numSeq, numNonSeq int
+	for i := range pb.CommittedTxs {
+		if pb.CommittedTxs[i].IsSequencerTransaction() {
+			numSeq++
+		} else {
+			numNonSeq++
+		}
+	}
 	coveragePct := float64(pb.RootRecParams.CoverageDelta) * 100 / float64(pb.RootRecParams.Supply)
-	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%)",
-		branchID.StringShort(), pb.SequencerName, util.Th(pb.RootRecParams.CoverageDelta), coveragePct)
+	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%), tx: %d seq + %d non-seq",
+		branchID.StringShort(), pb.SequencerName, util.Th(pb.RootRecParams.CoverageDelta), coveragePct, numSeq, numNonSeq)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 
 	b.NotifyBranchCommitted()
