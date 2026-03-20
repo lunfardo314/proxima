@@ -62,12 +62,6 @@ func isSelfURL(url string, selfAPIPort int) bool {
 func Start(env environment) *Sync {
 	sourceURLs := viper.GetStringSlice("sync.sources")
 	if len(sourceURLs) == 0 {
-		// backward compat: try singular "source"
-		if s := viper.GetString("sync.source"); s != "" {
-			sourceURLs = []string{s}
-		}
-	}
-	if len(sourceURLs) == 0 {
 		env.Log().Infof("[%s] no sync sources configured, sync module inactive", Name)
 		return nil
 	}
