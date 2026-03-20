@@ -35,6 +35,7 @@ type (
 		TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.TransactionID, error)
 		PullFromPeers(txid base.TransactionID) int
 		AddPulledTransaction(txid base.TransactionID)
+		ForceCommitBranch(branchID base.TransactionID)
 	}
 
 	Sync struct {
@@ -241,6 +242,8 @@ func (s *Sync) syncTick() {
 
 	// remove already committed branches from head of list
 	for len(s.branchList) > 0 {
+		// force deferred DB commit if the branch is pending
+		s.ForceCommitBranch(s.branchList[0])
 		_, committed := multistate.FetchRootRecord(s.StateStore(), s.branchList[0])
 		if !committed {
 			break
