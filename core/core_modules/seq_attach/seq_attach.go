@@ -1,9 +1,18 @@
 // seq_attach core module queues sequencer transactions for attachment.
-// Non-pulled sequencer transactions are dropped when the attacher limit is reached.
-// During sync, only pulled transactions with timestamps at or before the sync frontier pass.
+//
+// Attacher cap with deadlock prevention:
+//   - Track the slot of the latest attached transaction
+//   - When attacher count >= cap, transactions with timestamp strictly before
+//     the latest pass (dependencies are always older than dependents),
+//     others are dropped
+//
+// During sync, an additional filter drops non-pulled transactions
+// and transactions beyond the sync frontier.
 package seq_attach
 
 import (
+	"sync/atomic"
+
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules"
 	"github.com/lunfardo314/proxima/global"
@@ -12,11 +21,8 @@ import (
 
 const (
 	Name = "seqAttach"
-	// DefaultMaxConcurrentAttachers limits concurrent sequencer attacher goroutines.
-	// Only sequencer transactions spawn attacher goroutines; non-sequencer transactions
-	// are just added to the memDAG without an attacher.
-	// When reached, non-pulled sequencer transactions are dropped.
-	// Pulled transactions (needed for solidification/syncing) always pass.
+	// DefaultMaxConcurrentAttachers is the attacher cap.
+	// When reached, only transactions older than the latest attached pass.
 	DefaultMaxConcurrentAttachers = 20
 )
 
@@ -41,7 +47,8 @@ type (
 	SeqAttach struct {
 		environment
 		*core_modules.CoreModule[*Input]
-		attachFun AttachFun
+		attachFun          AttachFun
+		latestAttachedSlot atomic.Uint32
 	}
 )
 
@@ -59,20 +66,37 @@ func New(env environment, attachFun AttachFun) *SeqAttach {
 }
 
 func (q *SeqAttach) consume(inp *Input) {
+	txid := inp.Tx.ID()
+	txSlot := txid.Slot()
+
+	// during sync: only pulled txs at or before sync frontier
 	if q.IsSyncing() {
-		// during sync: pass only pulled transactions with timestamps at or before the sync frontier
 		frontier := q.SyncFrontierSlot()
-		txid := inp.Tx.ID()
-		if !inp.Pulled || txid.Slot() > frontier {
-			q.IncCounter("seq_drop")
-			return
-		}
-	} else {
-		// normal operation: drop non-pulled when attacher limit is reached
-		if !inp.Pulled && q.Counter("att") >= q.MaxConcurrentAttachers() {
+		if !inp.Pulled || txSlot > frontier {
 			q.IncCounter("seq_drop")
 			return
 		}
 	}
+
+	// attacher cap with deadlock prevention:
+	// when at the cap, only allow transactions strictly older than the latest attached
+	if q.Counter("att") >= q.MaxConcurrentAttachers() {
+		if txSlot >= q.latestAttachedSlot.Load() {
+			q.IncCounter("seq_drop")
+			return
+		}
+	}
+
+	// track the latest attached slot (atomic max)
+	for {
+		cur := q.latestAttachedSlot.Load()
+		if txSlot <= cur {
+			break
+		}
+		if q.latestAttachedSlot.CompareAndSwap(cur, txSlot) {
+			break
+		}
+	}
+
 	q.attachFun(inp.Tx, inp.Opts...)
 }

@@ -110,6 +110,8 @@ func Start(env environment) *Sync {
 		thresholdDown: uint32(thDown),
 		wakeup:        make(chan struct{}, 1),
 	}
+	// start with IsSyncing=true to prevent gossip-driven recursion before gap is evaluated
+	ret.isSyncing.Store(true)
 
 	go ret.syncLoop()
 
