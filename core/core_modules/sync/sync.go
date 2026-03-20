@@ -31,6 +31,8 @@ type (
 	environment interface {
 		global.NodeGlobal
 		StateStore() global.Store
+		TxBytesStore() global.TxBytesStore
+		TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.TransactionID, error)
 		PullFromPeers(txid base.TransactionID) int
 		AddPulledTransaction(txid base.TransactionID)
 	}
@@ -257,12 +259,24 @@ func (s *Sync) syncTick() {
 	target := s.branchList[0]
 	s.frontierSlot.Store(target.Slot())
 
-	// pull the branch once, then only re-pull after timeout
-	if s.lastPullTime.IsZero() || time.Since(s.lastPullTime) >= pullRepeatInterval {
-		s.AddPulledTransaction(target)
-		nPeers := s.PullFromPeers(target)
+	// mark as pulled so it passes the sync filter if it arrives via gossip
+	s.AddPulledTransaction(target)
+
+	if s.lastPullTime.IsZero() {
+		s.Log().Infof("[%s] pulling branch %s, %d remaining", Name, target.StringShort(), len(s.branchList)-1)
+
+		// try local txstore first — the branch may already be there from gossip
+		if txBytes := s.TxBytesStore().GetTxBytesWithMetadata(&target); len(txBytes) > 0 {
+			if _, err := s.TxBytesFromStoreIn(txBytes); err != nil {
+				s.Log().Warnf("[%s] re-inject from txstore failed: %v", Name, err)
+			}
+		} else {
+			s.PullFromPeers(target)
+		}
 		s.lastPullTime = time.Now()
-		s.Log().Infof("[%s] pulling branch %s, %d remaining, requested from %d peers",
-			Name, target.StringShort(), len(s.branchList)-1, nPeers)
+	} else if time.Since(s.lastPullTime) >= pullRepeatInterval {
+		// re-pull after timeout if not yet committed
+		s.PullFromPeers(target)
+		s.lastPullTime = time.Now()
 	}
 }
