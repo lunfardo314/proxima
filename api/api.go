@@ -43,6 +43,7 @@ const (
 	PathGetSequencerTargetInfo           = PrefixAPIV1 + "/get_sequencer_target_info"
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
 	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
+	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
 	// PathDAGViz serves the DAG visualizer
@@ -278,6 +279,14 @@ type (
 	SnapshotID struct {
 		Error
 		ID string `json:"id"`
+	}
+
+	// SnapshotInfo is returned by get_snapshot_info: metadata about the latest snapshot
+	SnapshotInfo struct {
+		Error
+		Slot     uint32 `json:"slot"`
+		FileSize int64  `json:"file_size"`
+		FileName string `json:"file_name"`
 	}
 	MainChain struct {
 		Error

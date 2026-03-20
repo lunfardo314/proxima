@@ -900,6 +900,22 @@ func (c *APIClient) GetBranchList(fromSlot uint32, max int) ([]base.TransactionI
 	return ret, res.LRBSlot, nil
 }
 
+// GetSnapshotInfo returns metadata about the latest snapshot on the remote host.
+func (c *APIClient) GetSnapshotInfo() (*api.SnapshotInfo, error) {
+	body, err := c.getBody(api.PathGetSnapshotInfo)
+	if err != nil {
+		return nil, err
+	}
+	var res api.SnapshotInfo
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("unmarshal returned: %v", err)
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	return &res, nil
+}
+
 func (c *APIClient) GetSnapshotBranchID() (ret base.TransactionID, err error) {
 	body, err := c.getBody(api.PathGetSnapshotBranchID)
 	if err != nil {

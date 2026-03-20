@@ -47,8 +47,8 @@ type (
 	}
 )
 
-// isSelfURL returns true if the URL points to this node's own API
-func isSelfURL(url string, selfAPIPort int) bool {
+// IsSelfURL returns true if the URL points to this node's own API
+func IsSelfURL(url string, selfAPIPort int) bool {
 	selfSuffix := fmt.Sprintf(":%d", selfAPIPort)
 	for _, prefix := range []string{"http://127.0.0.1", "http://localhost", "https://127.0.0.1", "https://localhost"} {
 		if strings.HasPrefix(url, prefix+selfSuffix) {
@@ -70,7 +70,7 @@ func Start(env environment) *Sync {
 	selfAPIPort := viper.GetInt("api.port")
 	filtered := make([]string, 0, len(sourceURLs))
 	for _, url := range sourceURLs {
-		if isSelfURL(url, selfAPIPort) {
+		if IsSelfURL(url, selfAPIPort) {
 			env.Log().Infof("[%s] skipping self URL %s", Name, url)
 			continue
 		}
