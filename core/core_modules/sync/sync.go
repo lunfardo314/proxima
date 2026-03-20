@@ -132,20 +132,31 @@ func (s *Sync) SyncFrontierSlot() uint32 {
 }
 
 // requestBranchList tries each source starting from the current index, cycling on failure.
+// A source that returns an empty list (its LRB is not ahead of fromSlot) is skipped.
 func (s *Sync) requestBranchList(fromSlot uint32) ([]base.TransactionID, uint32, error) {
 	n := len(s.sources)
 	var lastErr error
 	for i := 0; i < n; i++ {
 		idx := (s.sourceIdx + i) % n
 		branches, lrbSlot, err := s.sources[idx].GetBranchList(fromSlot, 100)
-		if err == nil {
-			s.sourceIdx = idx
-			return branches, lrbSlot, nil
+		if err != nil {
+			lastErr = err
+			s.Log().Warnf("[%s] source %d failed: %v, trying next", Name, idx, err)
+			continue
 		}
-		lastErr = err
-		s.Log().Warnf("[%s] source %d failed: %v, trying next", Name, idx, err)
+		if len(branches) == 0 {
+			s.Log().Infof("[%s] source %d returned empty list (LRB slot=%d <= from_slot=%d), trying next", Name, idx, lrbSlot, fromSlot)
+			continue
+		}
+		s.sourceIdx = idx
+		return branches, lrbSlot, nil
 	}
-	return nil, 0, fmt.Errorf("all %d sync sources failed, last error: %v", n, lastErr)
+	// advance index for next attempt so we don't always start from the same source
+	s.sourceIdx = (s.sourceIdx + 1) % n
+	if lastErr != nil {
+		return nil, 0, fmt.Errorf("all %d sync sources failed, last error: %v", n, lastErr)
+	}
+	return nil, 0, nil
 }
 
 func (s *Sync) syncTick() {

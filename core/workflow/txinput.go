@@ -162,7 +162,10 @@ func (w *Workflow) attachTx(tx *transaction.Transaction, opts ...TxInOption) err
 		attacher.WithInvokedBy("txInput"),
 		attacher.WithEnforceTimestampBeforeRealTime,
 	}
-	pulled := options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePulled
+	// txStore-sourced transactions are local re-injections by attachers for solidification,
+	// treat them the same as pulled for rate control and sync filtering purposes
+	pulled := options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePulled ||
+		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore
 
 	if time.Until(txTime) <= 0 {
 		w.pushToAttachQueue(tx, attachOpts, pulled)
