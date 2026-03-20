@@ -250,15 +250,18 @@ func (s *Sync) syncTick() {
 	}
 
 	// remove already committed branches from head of list
+	committed := 0
 	for len(s.branchList) > 0 {
 		// force deferred DB commit if the branch is pending
 		s.ForceCommitBranch(s.branchList[0])
-		_, committed := multistate.FetchRootRecord(s.StateStore(), s.branchList[0])
-		if !committed {
+		if _, ok := multistate.FetchRootRecord(s.StateStore(), s.branchList[0]); !ok {
 			break
 		}
-		s.Log().Infof("[%s] branch %s committed, %d remaining", Name, s.branchList[0].StringShort(), len(s.branchList)-1)
 		s.branchList = s.branchList[1:]
+		committed++
+	}
+	if committed > 0 {
+		s.Log().Infof("[%s] committed %d branches, %d remaining", Name, committed, len(s.branchList))
 		s.lastPullTime = time.Time{} // reset so next target is pulled immediately
 	}
 
