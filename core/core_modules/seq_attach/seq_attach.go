@@ -1,6 +1,6 @@
 // seq_attach core module queues sequencer transactions for attachment.
 // Non-pulled sequencer transactions are dropped when the attacher limit is reached.
-// Pulled transactions always pass immediately (with queue priority).
+// During sync, only pulled transactions with timestamps at or before the sync frontier pass.
 package seq_attach
 
 import (
@@ -12,18 +12,21 @@ import (
 
 const (
 	Name = "seqAttach"
-	// maxConcurrentAttachers limits concurrent sequencer attacher goroutines.
+	// DefaultMaxConcurrentAttachers limits concurrent sequencer attacher goroutines.
 	// Only sequencer transactions spawn attacher goroutines; non-sequencer transactions
 	// are just added to the memDAG without an attacher.
 	// When reached, non-pulled sequencer transactions are dropped.
 	// Pulled transactions (needed for solidification/syncing) always pass.
-	maxConcurrentAttachers = 200
+	DefaultMaxConcurrentAttachers = 20
 )
 
 type (
 	environment interface {
 		global.NodeGlobal
 		IsSynced() bool
+		IsSyncing() bool
+		SyncFrontierSlot() uint32
+		MaxConcurrentAttachers() int
 	}
 
 	// AttachFun performs the actual attachment (workflow._attach)
@@ -56,8 +59,18 @@ func New(env environment, attachFun AttachFun) *SeqAttach {
 }
 
 func (q *SeqAttach) consume(inp *Input) {
-	// during syncing, all seq transactions pass — dropping them would stall sync
-	if !inp.Pulled && q.IsSynced() && q.Counter("att") >= maxConcurrentAttachers {
+	// during sync: pass only pulled transactions with timestamps at or before the sync frontier
+	if q.IsSyncing() {
+		frontier := q.SyncFrontierSlot()
+		txid := inp.Tx.ID()
+		if !inp.Pulled || txid.Slot() > frontier {
+			q.IncCounter("seq_drop")
+			return
+		}
+	}
+
+	// normal operation: drop non-pulled when attacher limit is reached
+	if !inp.Pulled && q.Counter("att") >= q.MaxConcurrentAttachers() {
 		q.IncCounter("seq_drop")
 		return
 	}

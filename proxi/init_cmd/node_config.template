@@ -137,3 +137,13 @@ sequencer:
   # if logging = true, duplicate sequencer log messages to the node's log (default: false)
   global_logging: false
 {{end}}
+# Sync configuration (sequential branch-by-branch catch-up)
+# sync:
+#   # trusted API endpoint to request branch lists from during sync
+#   # typically a reliable access node
+#   source: "http://<access-node-ip>:<api-port>"
+#   # gap thresholds (in slots) with hysteresis to avoid oscillation
+#   # enter sync mode when gap >= threshold_up (default: 5)
+#   threshold_up: 5
+#   # exit sync mode when gap <= threshold_down (default: 3)
+#   threshold_down: 3

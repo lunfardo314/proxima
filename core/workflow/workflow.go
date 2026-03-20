@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
+	syncmod "github.com/lunfardo314/proxima/core/core_modules/sync"
 	"github.com/lunfardo314/proxima/core/core_modules/nonseq_attach"
 	"github.com/lunfardo314/proxima/core/core_modules/seq_attach"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
@@ -62,6 +63,7 @@ type (
 		nonSeqAttach  *nonseq_attach.NonSeqAttach
 		tippool       *tippool.SequencerTips
 		branches      *branches.Branches
+		syncModule    *syncmod.Sync
 		// particular event handlers
 		txListener *txListener
 		//
@@ -99,6 +101,7 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.txInputQueue = txinput_queue.New(ret)
 	snapshot.Start(ret)
 	snapshot_restore.Start(ret)
+	ret.syncModule = syncmod.Start(ret)
 	ret.startListeningTransactions()
 
 	ret.peers.OnReceiveTxBytes(func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID) {

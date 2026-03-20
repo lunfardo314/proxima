@@ -25,6 +25,8 @@ const (
 type (
 	environment interface {
 		global.NodeGlobal
+		IsSyncing() bool
+		SyncFrontierSlot() uint32
 	}
 
 	// AttachFun performs the actual attachment (workflow._attach)
@@ -57,6 +59,16 @@ func New(env environment, attachFun AttachFun) *NonSeqAttach {
 }
 
 func (q *NonSeqAttach) consume(inp *Input) {
+	// during sync: pass only pulled transactions with timestamps at or before the sync frontier
+	if q.IsSyncing() {
+		frontier := q.SyncFrontierSlot()
+		txid := inp.Tx.ID()
+		if !inp.Pulled || txid.Slot() > frontier {
+			q.IncCounter("nonseq_drop")
+			return
+		}
+	}
+
 	// TODO only drop non-seq transactions when number of non-solid of them exceeds limit (not total number)
 	//  reason: solid (validated) non-seq transaction do not consume CPU, only memory
 	if !inp.Pulled && (q.Counter("nonseq") >= maxNonSeqVertices || q.Queue.Len() >= maxQueueLen) {

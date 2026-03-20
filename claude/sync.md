@@ -154,6 +154,7 @@ current gossip-only behavior (with a warning log).
 
 ### Step 5: Config and startup
 - Read `sync.source`, `sync.threshold_up`, `sync.threshold_down` from viper
+- Add `sync:` section to `proxi init node` config template (`proxi/init_cmd/`)
 - On node startup, check gap immediately — if behind, enter sync mode before starting sequencer
 - Sequencer should not start proposing until `IsSyncing == false`
 

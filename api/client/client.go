@@ -874,6 +874,32 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.Tran
 	return rr, res.BranchID, nil
 }
 
+// GetBranchList returns branch IDs on the main chain forward from fromSlot, up to max entries.
+// Used by the sync module to get the branch sequence for catch-up.
+func (c *APIClient) GetBranchList(fromSlot uint32, max int) ([]base.TransactionID, uint32, error) {
+	path := fmt.Sprintf("%s?from_slot=%d&max=%d", api.PathGetBranchList, fromSlot, max)
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	var res api.BranchList
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, 0, fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+	}
+	if res.Error.Error != "" {
+		return nil, 0, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	ret := make([]base.TransactionID, 0, len(res.Branches))
+	for _, hexID := range res.Branches {
+		txid, err := base.TransactionIDFromHexString(hexID)
+		if err != nil {
+			return nil, 0, fmt.Errorf("invalid branch ID '%s': %v", hexID, err)
+		}
+		ret = append(ret, txid)
+	}
+	return ret, res.LRBSlot, nil
+}
+
 func (c *APIClient) GetSnapshotBranchID() (ret base.TransactionID, err error) {
 	body, err := c.getBody(api.PathGetSnapshotBranchID)
 	if err != nil {

@@ -61,6 +61,18 @@ func (w *Workflow) IsSynced() bool {
 	return slotNow == 0 || multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1, global.FractionHealthyBranch)
 }
 
+func (w *Workflow) IsSyncing() bool {
+	return w.syncModule.IsSyncing()
+}
+
+func (w *Workflow) SyncFrontierSlot() uint32 {
+	return w.syncModule.SyncFrontierSlot()
+}
+
+func (w *Workflow) MaxConcurrentAttachers() int {
+	return w.cfg.maxConcurrentAttachers
+}
+
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	return w.tippool.LatestActiveMilestonesDescending(filter...)

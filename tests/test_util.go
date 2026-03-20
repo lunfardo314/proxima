@@ -289,9 +289,9 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 	ret.env = newWorkflowDummyEnvironment(stateStore, ret.txStore)
 	if len(startPruner) > 0 && startPruner[0] {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy())
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionMaxConcurrentAttachers(200))
 	} else {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 	}
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
@@ -343,9 +343,9 @@ func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner
 	ret.env = newWorkflowDummyEnvironment(stateStore, ret.txStore)
 	_ = genesisRoot
 	if len(startPruner) > 0 && startPruner[0] {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy())
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionMaxConcurrentAttachers(200))
 	} else {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 	}
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
@@ -1052,7 +1052,7 @@ func StartTestEnv() (*workflowDummyEnvironment, *base.TransactionID, error) {
 	env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 	env.root = root
 
-	workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+	workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 	txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, privKey, distrib)
 	if err != nil {

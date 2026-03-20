@@ -113,6 +113,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathDAGViz, dagviz.Handler)
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
+	// GET branch list for sync /get_branch_list?from_slot=<slot>&max=<max>
+	srv.addHandler(api.PathGetBranchList, srv.getBranchList)
 	// GET snapshot file download /get_snapshot (binary, enable with snapshot.enable_api)
 	srv.addHandler(api.PathGetSnapshot, srv.getSnapshot)
 
@@ -741,6 +743,72 @@ func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+const defaultMaxBranchListSize = 100
+
+// getBranchList returns branch IDs on the main chain forward from a given slot.
+// Used by the sync module to get the branch sequence to catch up.
+func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	var fromSlot uint32
+	if lst, ok := r.URL.Query()["from_slot"]; ok && len(lst) == 1 {
+		v, err := strconv.Atoi(lst[0])
+		if err != nil || v < 0 {
+			api.WriteErr(w, "invalid 'from_slot' parameter")
+			return
+		}
+		fromSlot = uint32(v)
+	}
+
+	maxEntries := defaultMaxBranchListSize
+	if lst, ok := r.URL.Query()["max"]; ok && len(lst) == 1 {
+		v, err := strconv.Atoi(lst[0])
+		if err != nil || v <= 0 {
+			api.WriteErr(w, "invalid 'max' parameter")
+			return
+		}
+		maxEntries = v
+	}
+
+	lrb := multistate.FindLatestReliableBranch(srv.StateStore(), global.FractionHealthyBranch)
+	if lrb == nil {
+		api.WriteErr(w, "can't find latest reliable branch")
+		return
+	}
+	lrbSlot := lrb.Stem.ID.Slot()
+
+	// collect branches walking back from LRB, filter by from_slot
+	var collected []string
+	multistate.IterateBranchChainBack(srv.StateStore(), lrb, func(branchID *base.TransactionID, _ *multistate.BranchData) bool {
+		if branchID.Slot() <= fromSlot {
+			return false // stop, we've gone past the requested range
+		}
+		collected = append(collected, branchID.StringHex())
+		return true
+	})
+
+	// reverse to oldest-first order and cap at max
+	n := len(collected)
+	for i := 0; i < n/2; i++ {
+		collected[i], collected[n-1-i] = collected[n-1-i], collected[i]
+	}
+	if len(collected) > maxEntries {
+		collected = collected[:maxEntries]
+	}
+
+	resp := api.BranchList{
+		Branches: collected,
+		LRBSlot:  lrbSlot,
+	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		api.WriteErr(w, err.Error())

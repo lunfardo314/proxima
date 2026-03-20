@@ -42,7 +42,7 @@ func TestAttachBasic(t *testing.T) {
 
 		env.StartTracingTags(global.TraceTag)
 
-		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 		_, _, err := multistate.ScanGenesisState(stateStore)
 		require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestAttachBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 		txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestAttachBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 		txBytes, err := txbuilder_seq.MakeDistributionTransaction(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
@@ -213,7 +213,7 @@ func TestAttachBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 		txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
