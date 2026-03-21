@@ -8,15 +8,14 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-const TraceTagPull = "pull"
+const TraceTagPull = "pullFromPeers"
 
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 	a.Tracef(TraceTagPull, "pullIfNeeded IN (%s): %s", tag, deptVID.IDShortString)
 	ok := true
 	virtual := false
-	// pull is only may be needed for the virtual tx
-	// all information about pull is contained in the vertex. It is equally available to all attacher
-	// which needs the vertex
+	// pullFromPeers is only may be needed for the virtual tx
+	// all information about pullFromPeers is contained in the vertex. It is equally available to all attachers that need the vertex
 	deptVID.UnwrapVirtualTx(func(virtualTx *vertex.VirtualTransaction) {
 		ok = a.pullIfNeededUnwrapped(virtualTx, deptVID)
 		virtual = true
@@ -31,7 +30,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	repeatPullAfter, maxPullAttempts := a.TxPullParameters()
 	if virtualTx.PullRulesDefined() {
-		if virtualTx.PullPatienceExpired(maxPullAttempts) {
+		if virtualTx.PullPatienceExpired(maxPullAttempts, deptVID.GetAttachmentDepthNoLock()) {
 			// solidification deadline
 			a.Log().Errorf("SOLIDIFICATION FAILURE %s at depth %d, hex: %s attacher: %s ",
 				deptVID.IDShortString(), deptVID.GetAttachmentDepthNoLock(), util.Ref(deptVID.ID()).StringHex(), a.Name())
@@ -39,8 +38,8 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 				ErrSolidificationDeadline, maxPullAttempts, repeatPullAfter, deptVID.IDShortString()))
 			return false
 		}
-		if virtualTx.PullNeeded() {
-			a.pull(virtualTx, deptVID, repeatPullAfter)
+		if virtualTx.PullNeeded(deptVID.GetAttachmentDepthNoLock()) {
+			a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 		}
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 1: %s", deptVID.IDShortString)
 		return true
@@ -68,23 +67,23 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 	virtualTx.SetPullNeeded()
-	a.pull(virtualTx, deptVID, repeatPullAfter)
+	a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 4: %s", deptVID.IDShortString)
 	return true
 }
 
-func (a *attacher) pull(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration) {
+func (a *attacher) pullFromPeers(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration) {
 	// notify poker to poke add this attacher to notification list of the dependency
 	a.pokeMe(deptVID)
 	// add transaction to the wanted/expected list in the input queue
 	a.AddPulledTransaction(deptVID.ID())
-	// do not pull is node is not connected to any peer longer than 2 pull repeat periods
+	// do not pullFromPeers is node is not connected to any peer longer than 2 pullFromPeers repeat periods
 	if a.DurationSinceLastMessageFromPeer() <= 2*repeatPullAfter {
 		a.PullFromPeers(deptVID.ID())
 		virtualTx.SetPullHappened(repeatPullAfter)
 
-		a.Tracef(TraceTagPull, "pull: %s", deptVID.IDShortString)
+		a.Tracef(TraceTagPull, "pullFromPeers: %s", deptVID.IDShortString)
 	} else {
-		a.Tracef(TraceTagPull, "pull postponed (node disconnected): %s", deptVID.IDShortString)
+		a.Tracef(TraceTagPull, "pullFromPeers postponed (node disconnected): %s", deptVID.IDShortString)
 	}
 }

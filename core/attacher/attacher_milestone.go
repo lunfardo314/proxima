@@ -405,7 +405,7 @@ func (a *milestoneAttacher) _doPoke() {
 		select {
 		case a.pokeChan <- struct{}{}:
 		default:
-			// poke is lost when blocked, but that is ok because there's pull from the attacher's side
+			// poke is lost when blocked, but that is ok because there's pullFromPeers from the attacher's side
 		}
 	}
 }

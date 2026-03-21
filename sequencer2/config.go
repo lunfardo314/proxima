@@ -26,7 +26,7 @@ type (
 		SingleSequencerEnforced   bool
 		SeparateLog               bool
 		GlobalLogging             bool
-		ControllerKeyFile string // path to keystore file for deferred key loading
+		ControllerKeyFile         string // path to keystore file for deferred key loading
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -44,7 +44,7 @@ func defaultConfigOptions() *ConfigOptions {
 		Pace:                      int(ledger.L(base.MaxSlot).TransactionPaceSequencer),
 		MaxTargetTs:               base.NilLedgerTime,
 		MaxBranches:               math.MaxInt,
-		DelayStart:                ledger.SlotDuration(),
+		DelayStart:                0, // ledger.SlotDuration(),
 		BacklogTagAlongTTLSlots:   minimumBacklogTagAlongTTLSlots,
 		BacklogDelegationTTLSlots: minimumBacklogDelegationTTLSlots,
 		MilestonesTTLSlots:        minimumMilestonesTTLSlots,
