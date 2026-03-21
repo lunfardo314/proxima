@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -11,6 +12,16 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 )
+
+// numAttachers is the authoritative count of running sequencer attacher goroutines.
+// Incremented before the goroutine starts (synchronously in AttachTransaction),
+// decremented when the goroutine finishes.
+var numAttachers atomic.Int32
+
+// NumAttachers returns the current number of running sequencer attacher goroutines.
+func NumAttachers() int {
+	return int(numAttachers.Load())
+}
 
 // AttachTxID ensures the txid is on the MemDAG
 // It load existing branches but does not pullFromPeers anything
@@ -156,9 +167,10 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		if vid.IsSequencerTransaction() {
 			// for sequencer milestones start attacher
 			metadata := options.metadata
+			numAttachers.Add(1) // increment synchronously, before goroutine starts
 			// start attacher routine
 			go func() {
-				env.DecCounter("pending") // was incremented in seq_attach before spawning
+				defer numAttachers.Add(-1)
 				env.IncCounter("att")
 				defer env.DecCounter("att")
 

@@ -4,7 +4,7 @@
 //   - Track the slot of the latest attached transaction
 //   - When attacher count >= cap, only transactions with timestamp strictly
 //     before the latest attached pass (dependencies are always older than dependents)
-//   - Recursive pull depth is capped separately (maxAttachmentDepthForPull in virtual_tx.go)
+//   - Recursive pull depth is capped separately (MaxAttachmentDepthForPull in virtual_tx.go)
 //   - Forward-sync fills in deep dependencies that recursive pull can't reach
 package seq_attach
 
@@ -65,7 +65,6 @@ func (q *SeqAttach) consume(inp *Input) {
 	txSlot := txid.Slot()
 
 	// track the latest attached slot (atomic max) BEFORE the cap check
-	// so that subsequent transactions at the same slot are correctly filtered
 	for {
 		cur := q.latestAttachedSlot.Load()
 		if txSlot <= cur {
@@ -77,18 +76,15 @@ func (q *SeqAttach) consume(inp *Input) {
 	}
 
 	// attacher cap with deadlock prevention:
-	// Use pending+att as effective count. 'pending' is incremented here (synchronous,
-	// single consume goroutine) and decremented when the attacher goroutine starts and
-	// increments 'att'. This prevents leaking attachers between the cap check and
-	// the async goroutine start.
-	effectiveAtt := q.Counter("att") + q.Counter("pending")
-	if effectiveAtt >= q.MaxConcurrentAttachers() {
+	// attacher.NumAttachers() is the authoritative count — incremented synchronously
+	// in AttachTransaction before the goroutine starts, decremented when it finishes.
+	// When at the cap, only transactions strictly older than the latest pass.
+	if attacher.NumAttachers() >= q.MaxConcurrentAttachers() {
 		if txSlot >= q.latestAttachedSlot.Load() {
 			q.IncCounter("seq_drop")
 			return
 		}
 	}
 
-	q.IncCounter("pending")
 	q.attachFun(inp.Tx, inp.Opts...)
 }
