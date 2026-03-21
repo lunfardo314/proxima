@@ -64,16 +64,8 @@ func (q *SeqAttach) consume(inp *Input) {
 	txid := inp.Tx.ID()
 	txSlot := txid.Slot()
 
-	// attacher cap with deadlock prevention:
-	// when at the cap, only allow transactions strictly older than the latest attached
-	if q.Counter("att") >= q.MaxConcurrentAttachers() {
-		if txSlot >= q.latestAttachedSlot.Load() {
-			q.IncCounter("seq_drop")
-			return
-		}
-	}
-
-	// track the latest attached slot (atomic max)
+	// track the latest attached slot (atomic max) BEFORE the cap check
+	// so that subsequent transactions at the same slot are correctly filtered
 	for {
 		cur := q.latestAttachedSlot.Load()
 		if txSlot <= cur {
@@ -84,5 +76,19 @@ func (q *SeqAttach) consume(inp *Input) {
 		}
 	}
 
+	// attacher cap with deadlock prevention:
+	// Use pending+att as effective count. 'pending' is incremented here (synchronous,
+	// single consume goroutine) and decremented when the attacher goroutine starts and
+	// increments 'att'. This prevents leaking attachers between the cap check and
+	// the async goroutine start.
+	effectiveAtt := q.Counter("att") + q.Counter("pending")
+	if effectiveAtt >= q.MaxConcurrentAttachers() {
+		if txSlot >= q.latestAttachedSlot.Load() {
+			q.IncCounter("seq_drop")
+			return
+		}
+	}
+
+	q.IncCounter("pending")
 	q.attachFun(inp.Tx, inp.Opts...)
 }

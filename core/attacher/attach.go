@@ -158,6 +158,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			metadata := options.metadata
 			// start attacher routine
 			go func() {
+				env.DecCounter("pending") // was incremented in seq_attach before spawning
 				env.IncCounter("att")
 				defer env.DecCounter("att")
 

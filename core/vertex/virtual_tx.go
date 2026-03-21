@@ -150,13 +150,13 @@ func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts, depth int) boo
 	return v.PullNeeded(depth) && v.timesPulled >= maxPullAttempts
 }
 
-// maxAttachmentDepthForPull is cap for the attachment depth
-// if attachment goes deeper (recursively), it is considered not needed,
-// so the transaction wait to appear in the txstore via the forward-syncing
-const maxAttachmentDepthForPull = 20
+// MaxAttachmentDepthForPull is cap for the attachment depth.
+// If attachment goes deeper (recursively), pulling is suppressed and the
+// transaction waits to appear in the committed state via forward-syncing.
+const MaxAttachmentDepthForPull = 20
 
 func (v *VirtualTransaction) PullNeeded(depth int) bool {
-	return depth <= maxAttachmentDepthForPull && v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
+	return depth <= MaxAttachmentDepthForPull && v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
 }
 
 func (v *VirtualTransaction) findChainOutput(txid base.TransactionID, chainID *base.ChainID) *ledger.OutputWithID {

@@ -52,22 +52,27 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// not in the state or not known 'inTheState status'
 
-	// try to find in the local txBytes store
-	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
-	if len(txBytesWithMetadata) > 0 {
-		go func() {
-			//a.IncCounter("store")
-			//defer a.DecCounter("store")
+	depth := deptVID.GetAttachmentDepthNoLock()
 
-			if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
-				a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
-			}
-		}()
-		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3: %s", deptVID.IDShortString)
-		return true
+	// try to find in the local txBytes store (only within depth cap)
+	if depth <= vertex.MaxAttachmentDepthForPull {
+		txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
+		if len(txBytesWithMetadata) > 0 {
+			// mark as pulled so re-injected tx passes rate control
+			a.AddPulledTransaction(deptVID.ID())
+			go func() {
+				if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
+					a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
+				}
+			}()
+			a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3: %s", deptVID.IDShortString)
+			return true
+		}
 	}
 	virtualTx.SetPullNeeded()
-	a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
+	if depth <= vertex.MaxAttachmentDepthForPull {
+		a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
+	}
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 4: %s", deptVID.IDShortString)
 	return true
 }
