@@ -146,9 +146,9 @@ sequencer:
 #     - "http://<access-node-1-ip>:<api-port>"
 #     - "http://<access-node-2-ip>:<api-port>"
 #   # gap thresholds (in slots) with hysteresis to avoid oscillation
-#   # enter sync mode when gap >= threshold_up (default: 5)
-#   threshold_up: 5
-#   # exit sync mode when gap <= threshold_down (default: 3)
+#   # start forward-sync when gap >= threshold_up (default: 15)
+#   threshold_up: 15
+#   # stop forward-sync when gap <= threshold_down (default: 3)
 #   threshold_down: 3
 #   # pull k-th branch ahead to parallelize past cone solidification (default: 5)
 #   pull_ahead: 5
