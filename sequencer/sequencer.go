@@ -100,7 +100,7 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	if displayName == "" {
 		displayName = seqID.StringHex()[:4]
 	}
-	logName := "[SEQ2:" + displayName + "]"
+	logName := "[SEQ:" + displayName + "]"
 	var log *zap.SugaredLogger
 	if cfg.SeparateLog {
 		outputs := []string{out}
@@ -639,9 +639,9 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch)
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
-		seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, proposer: %s, coverage: %s, inflation: %s",
-			tx.IDShortString(), ledger.TimeNow().String(), sd.Name(), sd.ProposerStrategy(),
-			util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
+			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, proposer: %s, coverage: %s, inflation: %s",
+				tx.IDShortString(), ledger.TimeNow().String(), sd.Name(), sd.ProposerStrategy(),
+				util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
 			return true
 		}
 		if seq.wontSubmitBranchID != tx.ID() {
