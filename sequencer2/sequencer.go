@@ -257,8 +257,6 @@ func (seq *Sequencer) ensurePreConditions() bool {
 		seq.log.Warnf("ensurePreConditions: Can't start sequencer. EXIT..")
 		return false
 	}
-	seq.log.Infof("ensurePreConditions: waiting for %v (1 slot) before starting sequencer", ledger.L(0).SlotDuration())
-	time.Sleep(ledger.L(0).SlotDuration())
 	return true
 }
 
