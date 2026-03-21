@@ -1,4 +1,4 @@
-// Package sync implements forward-syncing: sequential branch-by-branch catch-up.
+// Package forward_sync implements forward-syncing: sequential branch-by-branch catch-up.
 //
 // Always-on background process. Monitors the gap between wall-clock slot and the
 // latest committed healthy branch. When gap >= thresholdUp, starts pulling branches
@@ -8,7 +8,7 @@
 // (capped at maxAttachmentDepthForPull). When they stall at the depth cap,
 // the gap grows, forward-sync kicks in and commits the missing branches,
 // satisfying the stalled attachers' dependencies.
-package sync
+package forward_sync
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	Name = "sync"
+	Name = "forward_sync"
 
 	defaultThresholdUp   = 15
 	defaultThresholdDown = 3

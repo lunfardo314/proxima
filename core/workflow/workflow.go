@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/pull_tx_server"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
-	syncmod "github.com/lunfardo314/proxima/core/core_modules/sync"
+	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
 	"github.com/lunfardo314/proxima/core/core_modules/nonseq_attach"
 	"github.com/lunfardo314/proxima/core/core_modules/seq_attach"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"

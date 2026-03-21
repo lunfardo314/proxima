@@ -13,7 +13,7 @@ import (
 
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
-	syncmod "github.com/lunfardo314/proxima/core/core_modules/sync"
+	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
