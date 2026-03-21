@@ -44,7 +44,7 @@ func defaultConfigOptions() *ConfigOptions {
 		Pace:                      int(ledger.L(base.MaxSlot).TransactionPaceSequencer),
 		MaxTargetTs:               base.NilLedgerTime,
 		MaxBranches:               math.MaxInt,
-		DelayStart:                ledger.SlotDuration(),
+		DelayStart:                ledger.SlotDuration(), // to fill up the tippool
 		BacklogTagAlongTTLSlots:   minimumBacklogTagAlongTTLSlots,
 		BacklogDelegationTTLSlots: minimumBacklogDelegationTTLSlots,
 		MilestonesTTLSlots:        minimumMilestonesTTLSlots,

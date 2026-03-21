@@ -20,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
+	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/checkpoints"
@@ -68,6 +69,7 @@ type (
 		slotData             *task.SlotData
 		wontSubmitBranchID   base.TransactionID
 		metrics              *sequencerMetrics
+		skeletonFactory      *factory.Factory
 	}
 
 	outputsWithTime struct {
@@ -98,7 +100,7 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	if displayName == "" {
 		displayName = seqID.StringHex()[:4]
 	}
-	logName := "[SEQ:" + displayName + "]"
+	logName := "[SEQ2:" + displayName + "]"
 	var log *zap.SugaredLogger
 	if cfg.SeparateLog {
 		outputs := []string{out}
@@ -179,6 +181,10 @@ func (seq *Sequencer) Start() {
 			return true
 		})
 
+		// start the skeleton factory — runs as a persistent goroutine producing skeletons
+		seq.skeletonFactory = factory.New(seq, seq.ctx)
+		go seq.skeletonFactory.Run()
+
 		seq.sequencerLoop()
 
 		seq.onCallbackMutex.RLock()
@@ -251,8 +257,6 @@ func (seq *Sequencer) ensurePreConditions() bool {
 		seq.log.Warnf("ensurePreConditions: Can't start sequencer. EXIT..")
 		return false
 	}
-	seq.log.Infof("ensurePreConditions: waiting for %v (1 slot) before starting sequencer", ledger.L(0).SlotDuration())
-	time.Sleep(ledger.L(0).SlotDuration())
 	return true
 }
 
@@ -395,6 +399,10 @@ func (seq *Sequencer) Backlog() *backlog.TagAlongBacklog {
 	return seq.backlog
 }
 
+func (seq *Sequencer) SkeletonFactory() *factory.Factory {
+	return seq.skeletonFactory
+}
+
 func (seq *Sequencer) SequencerID() base.ChainID {
 	return seq.sequencerID
 }
@@ -432,10 +440,10 @@ func (seq *Sequencer) sequencerLoop() {
 		seq.Log().Infof("sequencer loop STOPPING..")
 	}()
 
-	const deadlockTolerance = 10 * time.Second
+	const deadlockTolerance = 30 * time.Second
 
 	checkpoint := checkpoints.New(func(name string) {
-		buf := make([]byte, 1<<20) // 1MB buffer to capture all goroutines
+		buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
 		n := runtime.Stack(buf, true)
 		seq.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf[:n]))
 	})
@@ -491,6 +499,11 @@ func (seq *Sequencer) doSequencerStep() bool {
 	if seq.config.MaxTargetTs != base.NilLedgerTime && targetTs.After(seq.config.MaxTargetTs) {
 		seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
 		return false
+	}
+
+	// keep the factory informed about the current target slot
+	if seq.skeletonFactory != nil {
+		seq.skeletonFactory.SetTargetSlot(targetTs.Slot)
 	}
 
 	seq.Tracef(TraceTagTarget, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
@@ -708,7 +721,6 @@ func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, ms *vertex.W
 }
 
 // OnMilestoneSubmittedVID is a type-agnostic convenience wrapper around OnMilestoneSubmitted.
-// The callback receives only the milestone VID, not the sequencer instance.
 func (seq *Sequencer) OnMilestoneSubmittedVID(fun func(ms *vertex.WrappedTx)) {
 	seq.OnMilestoneSubmitted(func(_ *Sequencer, ms *vertex.WrappedTx) {
 		fun(ms)

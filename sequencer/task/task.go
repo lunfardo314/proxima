@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/sequencer/factory"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 	"golang.org/x/exp/maps"
@@ -39,6 +40,7 @@ type (
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
 		EvidenceProposal(strategyShortName string)
 		EvidenceBestProposalForTheTarget(strategyShortName string)
+		SkeletonFactory() *factory.Factory
 	}
 
 	taskData struct {
@@ -64,6 +66,7 @@ type (
 		*attacher.IncrementalAttacher
 		*txbuilder_seq.SeqTxBuilder
 		attachmentCost uint16
+		effectiveTs    base.LedgerTime // overrides p.targetTs when set (used by f0)
 	}
 
 	finalProposal struct {

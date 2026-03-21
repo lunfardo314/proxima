@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
@@ -20,6 +21,10 @@ const TraceTagProposal = "proposal"
 // and stem in it, and packages it with the transaction builder
 // It is ready to be filled up with tag-along inputs and delegations
 func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, error) {
+	return p.newProposalWithTimestamp(a, p.targetTs)
+}
+
+func (p *proposer) newProposalWithTimestamp(a *attacher.IncrementalAttacher, ts base.LedgerTime) (*proposal, error) {
 	p.Assertf(!a.IsClosed(), "!a.IsClosed()")
 
 	seqPredVID := a.Extending()
@@ -33,7 +38,7 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	}
 	signatureType, privKey, pubKey := p.ControllerKeys()
 	txb, err := txbuilder_seq.New(txbuilder_seq.Params{
-		Timestamp:     p.targetTs,
+		Timestamp:     ts,
 		Predecessor:   &seqPred,
 		Stem:          stem,
 		SignatureType: signatureType,
