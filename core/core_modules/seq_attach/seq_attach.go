@@ -66,18 +66,6 @@ func (q *SeqAttach) consume(inp *Input) {
 	txid := inp.Tx.ID()
 	txTicks := txid.Timestamp().TicksSinceGenesis()
 
-	// track the latest attached timestamp (atomic max) BEFORE the cap check
-	for {
-		cur := q.latestAttachedTimestamp.Load()
-		if txTicks <= cur {
-			break
-		}
-		if q.latestAttachedTimestamp.CompareAndSwap(cur, txTicks) {
-			q.Tracef(traceTag, "seq_attach: latestAttachedTimestamp updated to %s", txid.StringShort)
-			break
-		}
-	}
-
 	// attacher cap with deadlock prevention:
 	// attacher.NumAttachers() is the authoritative count — incremented synchronously
 	// in AttachTransaction before the goroutine starts, decremented when it finishes.
@@ -93,6 +81,13 @@ func (q *SeqAttach) consume(inp *Input) {
 		}
 		q.Tracef(traceTag, "seq_attach PASS (older) %s: att=%d >= cap=%d, txTicks=%d < latest=%d",
 			txid.StringShort, nAtt, q.MaxConcurrentAttachers(), txTicks, q.latestAttachedTimestamp.Load())
+	}
+
+	// update latest attached timestamp only for txs that actually get attached
+	// (consume is single-goroutine, no concurrent writers)
+	if txTicks > q.latestAttachedTimestamp.Load() {
+		q.latestAttachedTimestamp.Store(txTicks)
+		q.Tracef(traceTag, "seq_attach: latestAttachedTimestamp updated to %s", txid.StringShort)
 	}
 
 	q.attachFun(inp.Tx, inp.Opts...)
