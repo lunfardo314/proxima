@@ -107,6 +107,14 @@ trace_tags:
 #  - txinput
 #  - txStore
 
+# WebSocket streaming (DAG visualizer)
+# streaming:
+#   enable: true
+#   # max simultaneous WebSocket connections (default: 5)
+#   max_connections: 5
+#   # connection rotation timeout in minutes (default: 5)
+#   connection_ttl_minutes: 5
+
 # Transaction logger
 txlogger:
   enable_on_start: false
