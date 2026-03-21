@@ -129,6 +129,9 @@ func (d *MemDAG) AddVertexNoLock(vid *vertex.WrappedTx) {
 // deleteFromMapNoLock removes the vertex from the map without posting events.
 // Caller must collect the txid and post events after releasing the lock.
 func (d *MemDAG) deleteFromMapNoLock(txid base.TransactionID) {
+	if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
+		d.DecCounter("nonseq")
+	}
 	delete(d.vertices, txid)
 }
 
@@ -196,6 +199,9 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 					deletedIDs = append(deletedIDs, txid)
 					deleted++
 				} else {
+					if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
+						d.DecCounter("nonseq")
+					}
 					rec.WrappedTx = nil
 					d.vertices[txid] = rec
 					detached++

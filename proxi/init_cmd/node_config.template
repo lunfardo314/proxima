@@ -137,3 +137,18 @@ sequencer:
   # if logging = true, duplicate sequencer log messages to the node's log (default: false)
   global_logging: false
 {{end}}
+# Sync configuration (sequential branch-by-branch catch-up)
+# Self URLs (localhost with own api.port) are automatically skipped.
+# sync:
+#   # trusted API endpoints to request branch lists from during sync
+#   # cycles to next source on failure
+#   sources:
+#     - "http://<access-node-1-ip>:<api-port>"
+#     - "http://<access-node-2-ip>:<api-port>"
+#   # gap thresholds (in slots) with hysteresis to avoid oscillation
+#   # start forward-sync when gap >= threshold_up (default: 15)
+#   threshold_up: 15
+#   # stop forward-sync when gap <= threshold_down (default: 3)
+#   threshold_down: 3
+#   # pull k-th branch ahead to parallelize past cone solidification (default: 5)
+#   pull_ahead: 5

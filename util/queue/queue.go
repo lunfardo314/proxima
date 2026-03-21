@@ -15,6 +15,7 @@ type (
 		inCh                    chan _inElem[T]
 		outCh                   chan T
 		consume                 func(e T)
+		onLenChange             func(int) // optional callback when queue length changes
 		inMutex                 sync.RWMutex
 		closing                 bool
 		processRemainingOnClose bool // mainly for testing
@@ -74,6 +75,12 @@ func (q *Queue[T]) Len() int {
 	return int(q.len.Load())
 }
 
+// OnLenChange sets a callback invoked whenever the queue length changes.
+// Must be called before Start/New. Not thread-safe.
+func (q *Queue[T]) OnLenChange(fn func(int)) {
+	q.onLenChange = fn
+}
+
 func (q *Queue[T]) inputLoop() {
 	defer close(q.outCh)
 
@@ -124,7 +131,10 @@ func (q *Queue[T]) inputLoop() {
 			q.d.PopFront()
 		default:
 		}
-		q.len.Store(int32(q.d.Len()))
+		newLen := int32(q.d.Len())
+		if old := q.len.Swap(newLen); old != newLen && q.onLenChange != nil {
+			q.onLenChange(int(newLen))
+		}
 	}
 }
 

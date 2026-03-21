@@ -320,7 +320,7 @@ func TestVirtualTransactionPullLogic(t *testing.T) {
 		vid.UnwrapVirtualTx(func(v *VirtualTransaction) {
 			v.SetPullNeeded()
 			require.True(t, v.PullRulesDefined())
-			require.True(t, v.PullNeeded()) // time.Now() is after nextPull
+			require.True(t, v.PullNeeded(0)) // time.Now() is after nextPull
 		})
 	})
 
@@ -330,11 +330,11 @@ func TestVirtualTransactionPullLogic(t *testing.T) {
 
 		vid.UnwrapVirtualTx(func(v *VirtualTransaction) {
 			v.SetPullNeeded()
-			require.True(t, v.PullNeeded())
+			require.True(t, v.PullNeeded(0))
 
 			v.SetPullHappened(100 * time.Millisecond)
 			// Right after pull, next pull is in the future
-			require.False(t, v.PullNeeded())
+			require.False(t, v.PullNeeded(0))
 		})
 	})
 
@@ -353,9 +353,9 @@ func TestVirtualTransactionPullLogic(t *testing.T) {
 			// Ensure nextPull is in the past so PullNeeded returns true
 			v.nextPull = time.Now().Add(-time.Millisecond)
 
-			require.True(t, v.PullNeeded())
-			require.True(t, v.PullPatienceExpired(5))
-			require.False(t, v.PullPatienceExpired(10))
+			require.True(t, v.PullNeeded(0))
+			require.True(t, v.PullPatienceExpired(5, 0))
+			require.False(t, v.PullPatienceExpired(10, 0))
 		})
 	})
 }

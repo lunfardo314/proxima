@@ -97,6 +97,7 @@ type (
 
 		IncCounter(name string)
 		DecCounter(name string)
+		SetCounter(name string, value int)
 		Counter(name string) int
 		CounterLines(prefix ...string) *lines.Lines
 		AttachmentFinished(started ...time.Time)

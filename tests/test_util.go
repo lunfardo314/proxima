@@ -24,6 +24,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
+	sequencer2 "github.com/lunfardo314/proxima/sequencer2"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
@@ -32,6 +33,44 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/stretchr/testify/require"
 )
+
+// testSequencerVersion controls which sequencer implementation is used in tests.
+// Change to "v2" to run all tests with sequencer2.
+const testSequencerVersion = "v2"
+
+// testSequencer is the interface that both sequencer v1 and v2 satisfy for testing purposes.
+type testSequencer interface {
+	Start()
+	Stop()
+	SequencerID() base.ChainID
+	OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx))
+	OnExitOnce(func())
+}
+
+// newTestSequencer creates a sequencer of the version specified by testSequencerVersion.
+func newTestSequencer(env *workflow.Workflow, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...sequencer.ConfigOption) (testSequencer, error) {
+	switch testSequencerVersion {
+	case "v1":
+		return sequencer.New(env, seqID, controllerKey, opts...)
+	case "v2":
+		// convert v1 config options to v2 config options (same signatures, different types)
+		opts2 := make([]sequencer2.ConfigOption, len(opts))
+		for i, opt := range opts {
+			// both v1 and v2 ConfigOption are func(*ConfigOptions)
+			// since the struct layouts are identical, we can convert via a wrapper
+			capturedOpt := opt
+			opts2[i] = func(o *sequencer2.ConfigOptions) {
+				// apply v1 option to a v1 config, then copy fields to v2
+				v1cfg := sequencer.ConfigOptions(*o)
+				capturedOpt(&v1cfg)
+				*o = sequencer2.ConfigOptions(v1cfg)
+			}
+		}
+		return sequencer2.New(env, seqID, controllerKey, opts2...)
+	default:
+		panic("unknown testSequencerVersion: " + testSequencerVersion)
+	}
+}
 
 type workflowDummyEnvironment struct {
 	*global.Global
@@ -184,8 +223,8 @@ type workflowTestData struct {
 	chainOriginsTx         *transaction.Transaction
 	seqChain               [][]*transaction.Transaction
 	transferChain          []*transaction.Transaction
-	bootstrapSeq           *sequencer.Sequencer
-	sequencers             []*sequencer.Sequencer
+	bootstrapSeq           testSequencer
+	sequencers             []testSequencer
 }
 
 type longConflictTestData struct {
@@ -250,9 +289,9 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 
 	ret.env = newWorkflowDummyEnvironment(stateStore, ret.txStore)
 	if len(startPruner) > 0 && startPruner[0] {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy())
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionMaxConcurrentAttachers(200))
 	} else {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 	}
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
@@ -304,9 +343,9 @@ func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner
 	ret.env = newWorkflowDummyEnvironment(stateStore, ret.txStore)
 	_ = genesisRoot
 	if len(startPruner) > 0 && startPruner[0] {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy())
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionMaxConcurrentAttachers(200))
 	} else {
-		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		ret.wrk = workflow.Start(ret.env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 	}
 
 	t.Logf("bootstrap chain id: %s", ret.bootstrapChainID.String())
@@ -976,10 +1015,10 @@ func (td *workflowTestData) startSequencersWithTimeout(maxSlots int, timeout ...
 		ctx = td.env.Ctx()
 	}
 
-	td.sequencers = make([]*sequencer.Sequencer, len(td.chainOrigins))
+	td.sequencers = make([]testSequencer, len(td.chainOrigins))
 	var err error
 	for seqNr := range td.sequencers {
-		td.sequencers[seqNr], err = sequencer.New(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux,
+		td.sequencers[seqNr], err = newTestSequencer(td.wrk, td.chainOrigins[seqNr].ChainID, td.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", seqNr)),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(maxSlots),
@@ -1013,7 +1052,7 @@ func StartTestEnv() (*workflowDummyEnvironment, *base.TransactionID, error) {
 	env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
 	env.root = root
 
-	workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+	workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 	txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, privKey, distrib)
 	if err != nil {

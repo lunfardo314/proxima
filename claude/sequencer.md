@@ -284,54 +284,153 @@ The `sequencer2` from-scratch approach was attempted and reverted. Key realizati
 - Backtracking (conflicting txs) is fundamental and must be preserved
 - The extend-endorse pair selection (`ChooseFirstExtendEndorsePair`) is the core decision loop
 
-### Incremental optimization plan
+### TransactionSkeletonFactory (TSF)
 
-Refactor the existing `sequencer` step by step. Each step is independently testable on testnet.
-No new package, no new architecture — just targeted improvements.
+The core optimization component. A persistent process that continuously scans the tippool and
+produces **transaction skeletons** with strictly increasing coverage. Located in `sequencer/factory/`.
 
-**Step 1 — Use Clone() to eliminate duplicate attacher creations**
+#### Definitions
 
-The main source of waste: e1, e2, e3, r2, r3 all call `ChooseFirstExtendEndorsePair` independently,
-creating new IncrementalAttachers from scratch for the same (extend, endorse) pairs.
+**TransactionSkeleton** (skeleton): an IncrementalAttacher that extends own milestone and endorses
+1 or more milestones of other sequencers. Has a target slot and particular coverage delta.
+A skeleton contains only endorsements — no tag-along or delegation inputs. Those are added
+later by whoever consumes the skeleton.
 
-Instead: e1 finds the first valid 1-endorsement attacher. If it wins the proposal round, e2 can
-**clone** it and try adding a 2nd endorsement, rather than recreating from scratch. Similarly e3
-clones e2's result.
+**TransactionSkeletonFactory** (TSF): a persistent goroutine that produces skeletons and sends
+them to an output channel. The consumer reads skeletons, keeps the one with biggest coverage,
+closes the rest.
 
-This requires changing how proposers share state within a `task.Run` round. Currently they are
-independent goroutines. The change: let e1 publish its best attacher; e2 picks it up and clones.
+#### TSF behavior
 
-**Step 2 — Profile and measure**
+**Target slot**: set externally via `SetTargetSlot(slot)`. The factory does not use wall clock —
+only ledger time (logical clock). The sequencer level decides when to advance the slot.
+`SetTargetSlot` cancels any ongoing round, resets checked-combinations and best coverage.
 
-Before further optimization, instrument the sequencer with metrics:
-- Time spent in attacher creation vs input insertion vs tx building
-- Number of attacher creations per slot (before and after Step 1)
-- Endorsement count distribution per submitted milestone
-- CPU time per proposal by strategy
+**Round structure**: within a target slot, the factory repeatedly runs rounds:
 
-This will show where the real bottlenecks are.
+1. Call `ChooseFirstExtendEndorsePair` to find the first valid (extend, endorse) pair.
+   This produces skeleton_0 with 1 endorsement.
+2. Post skeleton_0 to the output channel.
+3. Enter the improvement loop: try adding more endorsements to increase coverage.
+4. When improvement stalls (see below), return to step 1 with fresh tippool state.
 
-**Step 3 — Evaluate submit-wait pattern**
+**Improvement loop**:
+- Clone the current best skeleton.
+- Re-query the tippool for fresh endorsement candidates. The candidate set is dynamic — new
+  milestones arrive constantly. A candidate sequencer S's milestone may be replaced by a newer
+  one mid-check. The checked-combinations set prevents re-checking the same combination, but
+  a new milestone from S is a new combination.
+- Push `(clone, candidate)` work items into a **job channel** read by N persistent worker
+  goroutines (e.g. 3-5). Workers try `InsertEndorsement` on the clone and push results to a
+  result channel. Workers are persistent for the lifetime of the round — no goroutine churn.
+- Collect results from the result channel. If any worker produced a skeleton with strictly
+  higher coverage than the current best, that becomes the new best. Post it to the output
+  channel. Close all losers.
+- The N workers are for congestion control only.
 
-Currently `submitMilestone` → `waitMilestoneInTippool` blocks the sequencer loop. This means
-the sequencer cannot start working on the next target while waiting. Evaluate whether:
-- Submission can be decoupled (submit in background, continue proposing)
-- The wait provides essential back-pressure that should be preserved
-- A hybrid approach works (wait with timeout, continue if slow)
+**Improvement stall and restart**: with hundreds of sequencers, exhausting all endorsement
+candidates is combinatorial explosion and too expensive. Instead, the improvement loop detects
+**stall**: if N consecutive batches of workers all fail to increase coverage, the current
+improvement chain has likely reached a local maximum. The loop returns, and the outer loop
+calls `ChooseFirstExtendEndorsePair` again with fresh tippool state to explore a different
+starting point.
 
-**Step 4 — Reduce proposer count**
+This avoids two bad extremes:
+- Exhausting all candidates (too expensive with hundreds of sequencers)
+- Resetting on every new own milestone (discards valuable multi-endorsement skeletons)
 
-Based on metrics from Step 2, consider:
-- Dropping e3/r3 if they still never win after Step 1
-- Merging r2 into e2 (alternate sorted/shuffled within the same proposer)
-- Making proposer count configurable
+Productive improvement chains with many endorsement opportunities keep running. Chains that
+quickly hit a local maximum restart fast to try a different extend-endorse pair.
 
-**Step 5 — Further clone-based optimizations**
+**Own milestones**: the factory checks for new own milestones (via `GetLatestMilestone`) at
+each improvement iteration. When a new own milestone appears, the improvement loop exits and
+the outer loop restarts from `ChooseFirstExtendEndorsePair`, which picks up the new extend
+candidates from `FutureConeOwnMilestonesOrdered`. This ensures the factory reacts promptly to
+own milestones without resetting the checked-combinations set (which persists within the slot).
 
-With metrics guiding decisions:
-- Clone across targets: if the next target is close to the previous one, clone the previous
-  round's best attacher instead of starting fresh
-- Clone for input insertion: build the endorsement skeleton first, clone it, insert different
-  sets of tag-alongs/delegations to compare
+**Coverage stall**: when the improvement loop exhausts untried candidates without finding a
+better skeleton, it returns to the outer loop which calls `ChooseFirstExtendEndorsePair` again
+with fresh tippool state. Between own-milestone triggers and stall-based restarts, the factory
+naturally advances to higher coverage.
 
-Each step is a small, testable change to the existing codebase.
+**Coverage filter (non-strict)**: TSF tracks the best coverage it produced in the current slot
+(atomic, reset by `SetTargetSlot`). It posts skeletons with coverage **>= best** (not strictly
+greater). Equal-coverage skeletons are valuable because the outer loop (sequencer) appends
+tag-along and delegation inputs that increase coverage beyond the skeleton's base. The
+responsibility for final coverage optimization and timestamp target setting belongs to the
+outer loop.
+
+**Checked-combinations set**: per-slot (reset by `SetTargetSlot`). Tracks which
+`(extend, {endorse1, endorse2, ...})` combinations have been checked. The key is the **set**
+of endorsed transaction IDs — endorsement order is irrelevant (swapping two endorsements
+produces the same skeleton).
+
+**Cancellation**: the TSF respects a context. When canceled (slot change, shutdown),
+all in-flight workers are stopped and pending skeletons are closed.
+
+#### Architecture
+
+```
+N persistent worker goroutines:
+  read (clone, candidate) from jobCh
+  clone -> InsertEndorsement(candidate)
+  if success: send clone to resultCh
+  else: close clone
+
+TSF main goroutine (Run loop):
+  start N workers (persistent, read from jobCh, write to resultCh)
+  loop:
+    wait for targetSlot != 0
+    create round context (cancelable by SetTargetSlot)
+
+    ChooseFirstExtendEndorsePair -> skeleton_0
+    if skeleton_0 == nil: continue
+    post skeleton_0 -> outCh (if strictly better coverage)
+
+    improvement loop:
+      if own milestone changed: break (restart from ChooseFirst)
+      re-query tippool for fresh endorsement candidates
+      filter out already-checked combinations
+      if no untried candidates: break (stall -> restart from ChooseFirst)
+      for each untried candidate (up to N at a time):
+        push (currentBest.Clone(), candidate) -> jobCh
+        mark combination as checked
+      collect results from resultCh
+      pick best by coverage among results
+      if best >= currentBest coverage:
+        currentBest = best
+        post currentBest -> outCh (if coverage >= best known)
+        continue
+      else:
+        break (stall -> restart from ChooseFirst)
+
+    // loop back to ChooseFirstExtendEndorsePair with fresh tippool state
+
+outCh (output channel, buffered):
+  consumer reads at own pace
+  keeps skeleton with biggest coverage, closes rest
+```
+
+#### Code organization
+
+- Package: `sequencer/factory/`
+- `ChooseFirstExtendEndorsePair` and related extend-endorse selection logic moves here
+  from `sequencer/task/proposer.go`. The current proposers will import from factory.
+- Environment interface: similar to backlog's — needs tippool, branches, own milestones,
+  attacher.Environment
+- For now: standalone, not integrated into the sequencer. Test and debug independently.
+  Later: integrate as the skeleton source for the sequencer's proposal pipeline.
+
+#### Not in scope for TSF
+
+- Branch transactions (handled by existing b0 proposer)
+- Tag-along / delegation input insertion (consumer's responsibility)
+- Transaction building and submission (consumer's responsibility)
+- Boot/bootstrap proposer (explicit baseline case)
+
+#### Integration plan (later)
+
+When TSF is proven reliable, it replaces e1/e2/e3/r2/r3 proposers in the sequencer.
+The existing sequencer loop reads from TSF's output channel instead of running `task.Run`.
+The b0 (branch) and x (boot) proposers remain unchanged.
+The sequencer adds tag-along inputs to the skeleton and builds the transaction.

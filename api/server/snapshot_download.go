@@ -1,14 +1,62 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/viper"
 )
+
+// getSnapshotInfo returns metadata about the latest available snapshot (slot, size, filename).
+func (srv *server) getSnapshotInfo(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	if !viper.GetBool("snapshot.enable_api") {
+		api.WriteErr(w, "snapshot API is disabled")
+		return
+	}
+
+	fpath, err := srv.GetSnapshotFilePath()
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+
+	fi, err := os.Stat(fpath)
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+
+	// parse slot from filename: first number before '_'
+	name := filepath.Base(fpath)
+	var slot uint32
+	if parts := strings.SplitN(name, "_", 2); len(parts) >= 1 {
+		if v, err := strconv.ParseUint(parts[0], 10, 32); err == nil {
+			slot = uint32(v)
+		}
+	}
+
+	resp := api.SnapshotInfo{
+		Slot:     slot,
+		FileSize: fi.Size(),
+		FileName: name,
+	}
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
 
 func (srv *server) getSnapshot(w http.ResponseWriter, r *http.Request) {
 	if !viper.GetBool("snapshot.enable_api") {

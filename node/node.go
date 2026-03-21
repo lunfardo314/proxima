@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
+	sequencer2 "github.com/lunfardo314/proxima/sequencer2"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/diskusage"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
@@ -26,6 +27,13 @@ import (
 )
 
 type (
+	// sequencerRunner is the interface that both sequencer v1 and v2 satisfy.
+	sequencerRunner interface {
+		Start()
+		SequencerID() base.ChainID
+		LedgerCoverage() uint64
+	}
+
 	ProximaNode struct {
 		*global.Global
 		multiStateDB              *badger_adaptor.DB
@@ -35,7 +43,7 @@ type (
 		txLogger                  *txlogger.TxLoggerModule
 		txLogOnOffAPI             bool
 		peers                     *peering.Peers
-		sequencer                 *sequencer.Sequencer
+		sequencer                 sequencerRunner
 		workflow                  *workflow.Workflow
 		workProcessesStopStepChan chan struct{}
 		dbClosedWG                sync.WaitGroup
@@ -183,16 +191,39 @@ func (p *ProximaNode) startWorkflow() {
 }
 
 func (p *ProximaNode) startSequencer() {
-	var err error
-	p.sequencer, err = sequencer.NewFromConfig(p.workflow)
-	if err != nil {
-		p.Log().Errorf("can't start sequencer: '%v'", err)
+	version := viper.GetString("sequencer.version")
+
+	switch version {
+	case "", "v1":
+		seq, err := sequencer.NewFromConfig(p.workflow)
+		if err != nil {
+			p.Log().Errorf("can't start sequencer: '%v'", err)
+			return
+		}
+		if seq == nil {
+			p.Log().Infof("sequencer is not configured or disabled")
+			return
+		}
+		p.sequencer = seq
+
+	case "v2":
+		seq, err := sequencer2.NewFromConfig(p.workflow)
+		if err != nil {
+			p.Log().Errorf("can't start sequencer v2: '%v'", err)
+			return
+		}
+		if seq == nil {
+			p.Log().Infof("sequencer is not configured or disabled")
+			return
+		}
+		p.sequencer = seq
+
+	default:
+		p.Log().Errorf("unknown sequencer version '%s' (supported: v1, v2)", version)
 		return
 	}
-	if p.sequencer == nil {
-		p.Log().Infof("sequencer is not configured or disabled")
-		return
-	}
+
+	p.Log().Infof("starting sequencer (version: %s)", util.Cond(version == "", "v1", version))
 	p.sequencer.Start()
 }
 

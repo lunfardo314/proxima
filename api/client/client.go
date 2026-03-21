@@ -874,6 +874,59 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.Tran
 	return rr, res.BranchID, nil
 }
 
+// GetBranchListAfter returns branch IDs on the source's main chain after the given branch.
+// Returns an error if the branch is not in the source's chain (different fork).
+func (c *APIClient) GetBranchListAfter(afterBranch base.TransactionID, max int) ([]base.TransactionID, uint32, error) {
+	path := fmt.Sprintf("%s?after_branch=%s&max=%d", api.PathGetBranchList, afterBranch.StringHex(), max)
+	return c.parseBranchListResponse(path)
+}
+
+// GetBranchListFromSlot returns branch IDs on the main chain forward from fromSlot.
+// No fork detection — use GetBranchListAfter when fork safety is needed.
+func (c *APIClient) GetBranchListFromSlot(fromSlot uint32, max int) ([]base.TransactionID, uint32, error) {
+	path := fmt.Sprintf("%s?from_slot=%d&max=%d", api.PathGetBranchList, fromSlot, max)
+	return c.parseBranchListResponse(path)
+}
+
+func (c *APIClient) parseBranchListResponse(path string) ([]base.TransactionID, uint32, error) {
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	var res api.BranchList
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, 0, fmt.Errorf("unmarshal returned: %v\nbody: '%s'", err, string(body))
+	}
+	if res.Error.Error != "" {
+		return nil, 0, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	ret := make([]base.TransactionID, 0, len(res.Branches))
+	for _, hexID := range res.Branches {
+		txid, err := base.TransactionIDFromHexString(hexID)
+		if err != nil {
+			return nil, 0, fmt.Errorf("invalid branch ID '%s': %v", hexID, err)
+		}
+		ret = append(ret, txid)
+	}
+	return ret, res.LRBSlot, nil
+}
+
+// GetSnapshotInfo returns metadata about the latest snapshot on the remote host.
+func (c *APIClient) GetSnapshotInfo() (*api.SnapshotInfo, error) {
+	body, err := c.getBody(api.PathGetSnapshotInfo)
+	if err != nil {
+		return nil, err
+	}
+	var res api.SnapshotInfo
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("unmarshal returned: %v", err)
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("from server: %s", res.Error.Error)
+	}
+	return &res, nil
+}
+
 func (c *APIClient) GetSnapshotBranchID() (ret base.TransactionID, err error) {
 	body, err := c.getBody(api.PathGetSnapshotBranchID)
 	if err != nil {

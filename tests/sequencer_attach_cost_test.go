@@ -138,12 +138,12 @@ func TestSequencerAttachCostTagAlongChainExceedsBudget(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Start the sequencer
-	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	seq, err := newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithMaxBranches(maxSlots))
 	require.NoError(t, err)
 
 	var countSeq atomic.Int32
-	seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+	seq.OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
 		countSeq.Add(1)
 		t.Logf("Sequencer milestone submitted: %s (branch: %v)", ms.IDShortString(), ms.IsBranchTransaction())
 	})
@@ -264,7 +264,7 @@ func TestSequencerAttachCostManyTagAlongsExceedBudget(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Start the sequencer
-	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	seq, err := newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithMaxBranches(maxSlots))
 	require.NoError(t, err)
 
@@ -272,7 +272,7 @@ func TestSequencerAttachCostManyTagAlongsExceedBudget(t *testing.T) {
 	var maxInputsInTx atomic.Int32
 	var countBadTx atomic.Int32
 
-	seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+	seq.OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
 		countSeq.Add(1)
 		// Track the number of inputs in each milestone
 		numInputs := ms.NumInputs()
@@ -385,12 +385,12 @@ func TestSequencerAttachCostBudgetBaseline(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Start sequencer
-	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	seq, err := newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithMaxBranches(maxSlots))
 	require.NoError(t, err)
 
 	var countSeq atomic.Int32
-	seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+	seq.OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
 		countSeq.Add(1)
 		t.Logf("Milestone: %s, inputs: %d", ms.IDShortString(), ms.NumInputs())
 	})

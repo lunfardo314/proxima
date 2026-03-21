@@ -6,6 +6,8 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
+	"github.com/lunfardo314/proxima/core/core_modules/nonseq_attach"
+	"github.com/lunfardo314/proxima/core/core_modules/seq_attach"
 	"github.com/lunfardo314/proxima/core/core_modules/txinput_queue"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
@@ -113,10 +115,10 @@ func (w *Workflow) attachTx(tx *transaction.Transaction, opts ...TxInOption) err
 
 	if !txid.IsSequencerTransaction() {
 		w.EvidenceNonSequencerTx()
-		w.Tracef(TraceTagTxInputNonSeq, "-> non-seq-tx %s, meta: %s", txid.StringShort, options.txMetadata.String())
+		//w.Tracef(TraceTagTxInputNonSeq, "-> non-seq-tx %s, meta: %s", txid.StringShort, options.txMetadata.String)
 	}
 
-	w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String())
+	//w.Tracef(TraceTagTxInput, "-> %s, meta: %s", txid.StringShort, options.txMetadata.String)
 
 	// check time bounds for external transactions
 	// transaction is rejected if it is too far in the future wrt the local clock
@@ -150,7 +152,7 @@ func (w *Workflow) attachTx(tx *transaction.Transaction, opts ...TxInOption) err
 		w.MustPersistTxBytesWithMetadata(tx.Bytes(), &options.txMetadata, tx.ID())
 	}
 
-	// passes transaction to attacher
+	// passes transaction to the appropriate attach queue
 	// - immediately if timestamp is in the past
 	// - with delay if timestamp is in the future
 	txTime := ledger.ClockTime(txid.Timestamp())
@@ -160,10 +162,13 @@ func (w *Workflow) attachTx(tx *transaction.Transaction, opts ...TxInOption) err
 		attacher.WithInvokedBy("txInput"),
 		attacher.WithEnforceTimestampBeforeRealTime,
 	}
+	// txStore-sourced transactions are local re-injections by attachers for solidification,
+	// treat them the same as pulled for rate control and sync filtering purposes
+	pulled := options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypePulled ||
+		options.txMetadata.SourceTypeNonPersistent == txmetadata.SourceTypeTxStore
 
 	if time.Until(txTime) <= 0 {
-		// timestamp is in the past -> attachTx immediately
-		w._attach(tx, attachOpts...)
+		w.pushToAttachQueue(tx, attachOpts, pulled)
 	} else {
 		// timestamp is in the future: let clock catch up before attaching
 		go func() {
@@ -177,10 +182,29 @@ func (w *Workflow) attachTx(tx *transaction.Transaction, opts ...TxInOption) err
 
 			w.Tracef(TraceTagTxInput, "%s -> release", txid.StringShort)
 
-			w._attach(tx, attachOpts...)
+			w.pushToAttachQueue(tx, attachOpts, pulled)
 		}()
 	}
 	return nil
+}
+
+// pushToAttachQueue routes the transaction to the sequencer or non-sequencer attach queue.
+// Pulled transactions are pushed with priority so they are processed first.
+func (w *Workflow) pushToAttachQueue(tx *transaction.Transaction, opts []attacher.AttachTxOption, pulled bool) {
+	txid := tx.ID()
+	if txid.IsSequencerTransaction() {
+		w.seqAttach.Push(&seq_attach.Input{
+			Tx:     tx,
+			Opts:   opts,
+			Pulled: pulled,
+		}, pulled)
+	} else {
+		w.nonSeqAttach.Push(&nonseq_attach.Input{
+			Tx:     tx,
+			Opts:   opts,
+			Pulled: pulled,
+		}, pulled)
+	}
 }
 
 func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachTxOption) {

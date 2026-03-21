@@ -8,7 +8,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"strconv"
+	"strings"
+
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
+	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
@@ -300,6 +305,72 @@ func logRestoreError(mainLog global.Logging, format string, args ...any) {
 	}
 }
 
+// snapshotSlotFromFileName extracts the slot number from a snapshot filename.
+// Snapshot filenames start with the slot number followed by '_'.
+func snapshotSlotFromFileName(name string) uint32 {
+	base := filepath.Base(name)
+	if parts := strings.SplitN(base, "_", 2); len(parts) >= 1 {
+		if v, err := strconv.ParseUint(parts[0], 10, 32); err == nil {
+			return uint32(v)
+		}
+	}
+	return 0
+}
+
+// tryDownloadRemoteSnapshot queries sync.sources for snapshot info and downloads
+// the newest one if it is newer than the local snapshot. Returns the downloaded
+// file path, or empty string if no download was performed.
+func tryDownloadRemoteSnapshot(log global.Logging, snapshotDir string) string {
+	sourceURLs := viper.GetStringSlice("sync.sources")
+	if len(sourceURLs) == 0 {
+		return ""
+	}
+
+	selfAPIPort := viper.GetInt("api.port")
+
+	// find local snapshot slot for comparison
+	var localSlot uint32
+	if localFile, err := FindLatestSnapshot(snapshotDir); err == nil {
+		localSlot = snapshotSlotFromFileName(localFile)
+	}
+
+	// query all sources, find the one with highest slot
+	var bestSlot uint32
+	var bestSource *client.APIClient
+	for _, url := range sourceURLs {
+		if syncmod.IsSelfURL(url, selfAPIPort) {
+			continue
+		}
+		c := client.NewWithGoogleDNS(url, 15*time.Second)
+		info, err := c.GetSnapshotInfo()
+		if err != nil {
+			log.Log().Warnf("[%s] snapshot info from %s: %v", Name, url, err)
+			continue
+		}
+		log.Log().Infof("[%s] remote snapshot at %s: slot %d, size %d", Name, url, info.Slot, info.FileSize)
+		if info.Slot > bestSlot {
+			bestSlot = info.Slot
+			bestSource = c
+		}
+	}
+
+	if bestSource == nil || bestSlot <= localSlot {
+		if bestSlot > 0 && bestSlot <= localSlot {
+			log.Log().Infof("[%s] remote snapshot (slot %d) is not newer than local (slot %d), skipping download", Name, bestSlot, localSlot)
+		}
+		return ""
+	}
+
+	log.Log().Infof("[%s] downloading snapshot (slot %d) from remote source...", Name, bestSlot)
+	downloaded, err := bestSource.DownloadSnapshot(snapshotDir)
+	if err != nil {
+		log.Log().Errorf("[%s] failed to download snapshot: %v", Name, err)
+		return ""
+	}
+	log.Log().Infof("[%s] snapshot downloaded: %s", Name, downloaded)
+	return downloaded
+}
+
 // CheckAndRestoreOnStartup should be called at node startup to check if restore is needed.
 // This function handles two scenarios:
 // 1. Genesis bootstrap: DB is missing, find and restore from any available snapshot (including genesis.snapshot)
@@ -367,21 +438,30 @@ func CheckAndRestoreOnStartup(log global.Logging) (bool, error) {
 		}
 	}
 
-	// Get snapshot file - first try state file (in-progress cleanup), then find latest
-	// in the single configured snapshot directory
+	// Get snapshot file - first try state file (in-progress cleanup), then try remote
+	// download from sync sources, then find latest in local snapshot directory
 	snapshotFile := stateFile.GetSnapshotFile()
 	if snapshotFile == "" {
-		// No snapshot in state file - search the configured snapshot directory
 		snapshotDir := snapshot.SnapshotDirectory()
-		snapshotFile, err = FindLatestSnapshot(snapshotDir)
-		if err != nil {
-			logRestoreError(log, "no snapshot found in %s: %v", snapshotDir, err)
-			if cleanupInProgress {
-				if err := stateFile.ResetCleanupState(); err != nil {
-					return false, fmt.Errorf("failed to reset cleanup state: %w", err)
+
+		// Try to download a newer snapshot from remote sync sources
+		if downloaded := tryDownloadRemoteSnapshot(log, snapshotDir); downloaded != "" {
+			snapshotFile = downloaded
+			logRestoreMsg(log, "using downloaded snapshot: %s", snapshotFile)
+		}
+
+		// Fall back to local snapshot directory
+		if snapshotFile == "" {
+			snapshotFile, err = FindLatestSnapshot(snapshotDir)
+			if err != nil {
+				logRestoreError(log, "no snapshot found in %s: %v", snapshotDir, err)
+				if cleanupInProgress {
+					if err := stateFile.ResetCleanupState(); err != nil {
+						return false, fmt.Errorf("failed to reset cleanup state: %w", err)
+					}
 				}
+				return false, fmt.Errorf("database missing/corrupted and no snapshot available in '%s'", snapshotDir)
 			}
-			return false, fmt.Errorf("database missing/corrupted and no snapshot available in '%s'", snapshotDir)
 		}
 		logRestoreMsg(log, "found snapshot for restore: %s", snapshotFile)
 	}

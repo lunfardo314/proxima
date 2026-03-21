@@ -56,6 +56,7 @@ func (m *mockEnvironment) LogTopicf(topic string, requiredLevel int, template st
 func (m *mockEnvironment) WarnTopicf(topic string, requiredLevel int, template string, args ...any) {}
 func (m *mockEnvironment) IncCounter(name string)                                                   {}
 func (m *mockEnvironment) DecCounter(name string)                                                   {}
+func (m *mockEnvironment) SetCounter(name string, value int)                                        {}
 func (m *mockEnvironment) Counter(name string) int                                                  { return 0 }
 func (m *mockEnvironment) CounterLines(prefix ...string) *lines.Lines                               { return nil }
 func (m *mockEnvironment) AttachmentFinished(started ...time.Time)                                  {}

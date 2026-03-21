@@ -13,7 +13,7 @@ import (
 )
 
 // AttachTxID ensures the txid is on the MemDAG
-// It load existing branches but does not pull anything
+// It load existing branches but does not pullFromPeers anything
 func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {
@@ -171,6 +171,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 					env.AttachmentFinished()
 				}
 			}()
+		}
+		if !vid.IsSequencerTransaction() {
+			env.IncCounter("nonseq")
 		}
 		// significantly speeds up non-sequencer transactions
 		if !vid.IsSequencerTransaction() || vid.IsBranchTransaction() {

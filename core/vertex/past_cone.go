@@ -1,6 +1,7 @@
 package vertex
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -211,16 +212,16 @@ func (pc *PastCone) AttachmentCostDirect() (ret int) {
 	return
 }
 
-func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, getStateReader func(branchID base.TransactionID) multistate.StateReader) *WrappedOutput {
+func (pc *PastCone) AddVirtuallyConsumedOutput(ctx context.Context, wOut WrappedOutput, getStateReader func(branchID base.TransactionID) multistate.StateReader) (*WrappedOutput, error) {
 	if pc.delta == nil {
 		pc.addVirtuallyConsumedOutput(wOut)
-		return pc.CheckConflicts(getStateReader)
+		return pc.CheckConflicts(ctx, getStateReader)
 	}
 	if pc.isVirtuallyConsumed(wOut) {
-		return nil
+		return nil, nil
 	}
 	pc.delta.addVirtuallyConsumedOutput(wOut)
-	return pc.CheckConflicts(getStateReader)
+	return pc.CheckConflicts(ctx, getStateReader)
 }
 
 func (pc *PastCone) isVirtuallyConsumed(wOut WrappedOutput) bool {
@@ -775,7 +776,9 @@ func (pc *PastCone) CheckFinalPastCone(getStateReader func(branchID base.Transac
 			return
 		}
 	}
-	if conflict := pc.CheckConflicts(getStateReader); conflict != nil {
+	if conflict, ctxErr := pc.CheckConflicts(context.Background(), getStateReader); ctxErr != nil {
+		return ctxErr
+	} else if conflict != nil {
 		return fmt.Errorf("past cone %s contains double-spent output %s", pc.name, conflict.IDStringShort())
 	}
 	return nil
@@ -837,12 +840,17 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 	return ret
 }
 
-// CheckConflicts returns double-spent output (conflict) or nil if the past cone is consistent
+// CheckConflicts returns double-spent output (conflict) or nil if the past cone is consistent.
+// Returns context error if the context is cancelled or its deadline exceeded during iteration.
 // The complexity is O(NxM) where N is number of vertices and M is an average number of conflicts in the UTXO tangle
 // Practically, it is linear wrt the number of vertices because M is 1 or close to 1.
-func (pc *PastCone) CheckConflicts(getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput) {
+func (pc *PastCone) CheckConflicts(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput, err error) {
 	rdr := getStateReader(*pc.GetBaseline())
 	pc.forAllVertices(func(vid *WrappedTx) bool {
+		if e := ctx.Err(); e != nil {
+			err = e
+			return false
+		}
 		conflict, _ = pc._checkVertex(vid, rdr)
 		return conflict == nil
 	})
@@ -850,8 +858,9 @@ func (pc *PastCone) CheckConflicts(getStateReader func(branchID base.Transaction
 }
 
 // CheckAndClean iterates past cone, checks for conflicts and removes those vertices
-// that have consumers and all consumers are already in the state
-func (pc *PastCone) CheckAndClean(getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput) {
+// that have consumers and all consumers are already in the state.
+// Returns context error if the context is cancelled or its deadline exceeded during iteration.
+func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput, err error) {
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline!=nil")
 	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
@@ -860,6 +869,10 @@ func (pc *PastCone) CheckAndClean(getStateReader func(branchID base.TransactionI
 
 	rdr := getStateReader(*pc.GetBaseline())
 	for vid, flags := range pc.vertices {
+		if e := ctx.Err(); e != nil {
+			err = e
+			return
+		}
 		if vid != pc.tip && vid.ID() != *pc.baselineBranchID {
 			pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState), "wrong flag in %s", vid.IDShortString)
 		}
@@ -913,12 +926,16 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 // Returns:
 // - total coverage delta
 // - frozen coverage (included in the delta)
-func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta, frozen uint64) {
+func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta, frozen uint64, err error) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
 	rdr := getStateReader(*pc.GetBaseline())
 	for vid := range pc.vertices {
+		if e := ctx.Err(); e != nil {
+			err = e
+			return
+		}
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			oid := vid.OutputID(idx)
 			if o := multistate.GetOutputFromStateReader(rdr, oid); o != nil {

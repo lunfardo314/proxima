@@ -1,6 +1,7 @@
 package attacher
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -112,11 +113,21 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 
 // attachVertexNonBranch if vertex undefined, recursively attaches past cone
 // Does not check for past cone consistency -> resulting past cone may contain double spends util attacher solidifies all of it
+// For non-sequencer vertices that are already validated (solid), uses RUnwrap (read lock) instead
+// of Unwrap (write lock) to eliminate write lock contention on overlapping past cones.
 func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
 	if a.pastCone.IsKnownDefined(vid) {
 		return true
+	}
+
+	// For already-validated non-sequencer vertices, the vertex state is immutable:
+	// no writes happen during traversal, only reads + building the attacher's own pastCone.
+	// Use RUnwrap (read lock) to allow concurrent traversal by multiple attachers.
+	// FlagVertexConstraintsValid is monotonic (once set, never cleared), so the check is safe.
+	if !vid.IsSequencerTransaction() && vid.FlagsUp(vertex.FlagVertexConstraintsValid) {
+		return a.attachVertexNonBranchSolid(vid)
 	}
 
 	defined := false
@@ -170,6 +181,64 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 			ok = true
 		},
 	})
+	if !ok {
+		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
+		return
+	}
+
+	if defined {
+		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
+	} else {
+		a.pokeMe(vid)
+	}
+	return
+}
+
+// attachVertexNonBranchSolid is the fast path for already-validated non-sequencer vertices.
+// Uses RUnwrap (read lock) since the vertex state is immutable after validation.
+// If the vertex was detached between the flag check and the RUnwrap, falls back to the
+// write-lock path via the regular attachVertexNonBranch Unwrap logic.
+func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
+	needFallback := false
+	defined := false
+
+	vid.RUnwrap(vertex.UnwrapOptions{
+		Vertex: func(v *vertex.Vertex) {
+			ok = a.attachVertexUnwrapped(v, vid)
+			if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
+				defined = true
+			}
+		},
+		DetachedVertex: func(v *vertex.DetachedVertex) {
+			// vertex was detached after our solid check — fall back to write-lock path
+			needFallback = true
+		},
+		VirtualTx: func(_ *vertex.VirtualTransaction) {
+			// shouldn't happen for a validated vertex, but handle gracefully
+			needFallback = true
+		},
+	})
+
+	if needFallback {
+		// re-enter with write lock (the regular Unwrap path handles DetachedVertex properly)
+		vid.Unwrap(vertex.UnwrapOptions{
+			DetachedVertex: func(v *vertex.DetachedVertex) {
+				AttachTransaction(v.Transaction, a,
+					WithInvokedBy(a.name),
+					WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
+				)
+				ok = true
+			},
+			VirtualTx: func(_ *vertex.VirtualTransaction) {
+				ok = true
+			},
+		})
+		if !ok {
+			a.pokeMe(vid)
+		}
+		return
+	}
+
 	if !ok {
 		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
 		return
@@ -601,13 +670,16 @@ func (a *attacher) BaselineSupply() uint64 {
 	return a.Branches().Supply(*a.pastCone.GetBaseline())
 }
 
-func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint64) uint64 {
+// FinalLedgerCoverage calculates full ledger coverage for the attacher.
+// Timestamp is not always defined in the generic attacher, so it is supplied as an argument
+// Timestamp is used to determine slot of the attacher and calculate coverage correctly on slot boundaries
+func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint64 {
 	var baselineLC uint64
 
 	// note that timestamp of the transaction can be before the baseline when baseline is snapshot
-	if bl := a.pastCone.GetBaseline(); bl != nil && currentTs.After(bl.Timestamp()) {
-		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint64(currentTs.Slot-bl.Slot())
-		if !currentTs.IsSlotBoundary() {
+	if bl := a.pastCone.GetBaseline(); bl != nil && ts.After(bl.Timestamp()) {
+		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint64(ts.Slot-bl.Slot())
+		if !ts.IsSlotBoundary() {
 			baselineLC >>= 1
 		}
 	}
@@ -624,7 +696,16 @@ func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint6
 // - coverage delta (including frozen part)
 // - frozen part separately
 func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
-	delta, frozen = a.pastCone.CoverageDeltaRaw(a.getBaselineStateReader)
+	delta, frozen, _ = a.pastCone.CoverageDeltaRaw(context.Background(), a.getBaselineStateReader)
+	delta += a.coverageDeltaAdjustment()
+	return
+}
+
+func (a *attacher) CoverageDeltaWithContext(ctx context.Context) (delta uint64, frozen uint64, err error) {
+	delta, frozen, err = a.pastCone.CoverageDeltaRaw(ctx, a.getBaselineStateReader)
+	if err != nil {
+		return
+	}
 	delta += a.coverageDeltaAdjustment()
 	return
 }
@@ -645,8 +726,8 @@ func (a *attacher) coverageDeltaAdjustment() uint64 {
 	return 0
 }
 
-func (a *attacher) CheckConflicts() *vertex.WrappedOutput {
-	return a.pastCone.CheckConflicts(a.getBaselineStateReader)
+func (a *attacher) CheckConflicts(ctx context.Context) (*vertex.WrappedOutput, error) {
+	return a.pastCone.CheckConflicts(ctx, a.getBaselineStateReader)
 }
 
 // SlotInflation sums all inflation amounts in the past cone structure.

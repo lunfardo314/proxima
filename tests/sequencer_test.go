@@ -32,11 +32,11 @@ func Test1SequencerPrunerIdle(t *testing.T) {
 		return true
 	})
 
-	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	seq, err := newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithMaxBranches(maxSlots))
 	require.NoError(t, err)
 	var countBr atomic.Int32
-	seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+	seq.OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
 		if ms.IsBranchTransaction() {
 			countBr.Add(1)
 		}
@@ -67,11 +67,11 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 	//testData.wrk.StartTracingTags(task.TraceTagBaseProposer)
 	//testData.wrk.StartTracingTags(task.TraceTagInsertTagAlongInputs)
 
-	seq, err := sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	seq, err := newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithMaxBranches(maxSlots))
 	require.NoError(t, err)
 	var countBr, countSeq atomic.Int32
-	seq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+	seq.OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
 		if ms.IsBranchTransaction() {
 			countBr.Add(1)
 		} else {
@@ -408,7 +408,7 @@ func TestBranchCoverageBounds(t *testing.T) {
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
 	// Start bootstrap sequencer
-	testData.bootstrapSeq, err = sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	testData.bootstrapSeq, err = newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithName("boot"),
 		sequencer.WithPace(5),
 		sequencer.WithDelayStart(3*time.Second),
@@ -416,7 +416,7 @@ func TestBranchCoverageBounds(t *testing.T) {
 	require.NoError(t, err)
 
 	var bootBranchCount atomic.Int32
-	testData.bootstrapSeq.OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+	testData.bootstrapSeq.OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
 		if ms.IsBranchTransaction() {
 			bootBranchCount.Add(1)
 		}
@@ -430,16 +430,16 @@ func TestBranchCoverageBounds(t *testing.T) {
 
 	// Start sequencers and track branch counts per sequencer
 	branchCounts := make([]atomic.Int32, nSequencers)
-	testData.sequencers = make([]*sequencer.Sequencer, nSequencers)
+	testData.sequencers = make([]testSequencer, nSequencers)
 	for i := range testData.sequencers {
-		testData.sequencers[i], err = sequencer.New(testData.wrk, testData.chainOrigins[i].ChainID, testData.privKeyAux,
+		testData.sequencers[i], err = newTestSequencer(testData.wrk, testData.chainOrigins[i].ChainID, testData.privKeyAux,
 			sequencer.WithName(fmt.Sprintf("seq%d", i)),
 			sequencer.WithPace(5),
 			sequencer.WithMaxBranches(1000),
 		)
 		require.NoError(t, err)
 		idx := i
-		testData.sequencers[i].OnMilestoneSubmitted(func(_ *sequencer.Sequencer, ms *vertex.WrappedTx) {
+		testData.sequencers[i].OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
 			if ms.IsBranchTransaction() {
 				branchCounts[idx].Add(1)
 			}
@@ -500,14 +500,12 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 	require.NoError(t, err)
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
-	testData.bootstrapSeq, err = sequencer.New(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+	testData.bootstrapSeq, err = newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
 		sequencer.WithName("boot"),
 		sequencer.WithPace(5),
 		sequencer.WithDelayStart(3*time.Second),
 	)
 	require.NoError(t, err)
-
-	//testData.wrk.StartTracingTags(sequencer.TraceTag)
 
 	testData.bootstrapSeq.Start()
 

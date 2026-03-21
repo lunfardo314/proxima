@@ -91,12 +91,11 @@ func (p *ProximaNode) GetSyncInfo() *api.SyncInfo {
 		PerSequencer:   make(map[string]api.SequencerSyncInfo),
 	}
 	if p.sequencer != nil {
-		seqInfo := p.sequencer.Info()
 		ssi := api.SequencerSyncInfo{
 			Synced:              synced,
 			LatestHealthySlot:   uint32(latestHealthySlot),
 			LatestCommittedSlot: uint32(latestSlot),
-			LedgerCoverage:      seqInfo.LedgerCoverage,
+			LedgerCoverage:      p.sequencer.LedgerCoverage(),
 		}
 		chainId := p.sequencer.SequencerID()
 		ret.PerSequencer[chainId.StringHex()] = ssi

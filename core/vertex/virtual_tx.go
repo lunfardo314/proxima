@@ -146,12 +146,17 @@ func (v *VirtualTransaction) SetPullHappened(repeatAfter time.Duration) {
 	v.nextPull = time.Now().Add(repeatAfter)
 }
 
-func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int) bool {
-	return v.PullNeeded() && v.timesPulled >= maxPullAttempts
+func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts, depth int) bool {
+	return v.PullNeeded(depth) && v.timesPulled >= maxPullAttempts
 }
 
-func (v *VirtualTransaction) PullNeeded() bool {
-	return v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
+// maxAttachmentDepthForPull is cap for the attachment depth
+// if attachment goes deeper (recursively), it is considered not needed,
+// so the transaction wait to appear in the txstore via the forward-syncing
+const maxAttachmentDepthForPull = 20
+
+func (v *VirtualTransaction) PullNeeded(depth int) bool {
+	return depth <= maxAttachmentDepthForPull && v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
 }
 
 func (v *VirtualTransaction) findChainOutput(txid base.TransactionID, chainID *base.ChainID) *ledger.OutputWithID {
