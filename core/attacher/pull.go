@@ -65,9 +65,12 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 					a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
 				}
 			}()
-			a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3: %s", deptVID.IDShortString)
+			a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3 (txstore): %s", deptVID.IDShortString)
 			return true
 		}
+	} else {
+		a.Tracef("sync", "depth cap: skip txstore/pull for %s at depth %d (cap=%d), attacher=%s",
+			deptVID.IDShortString, depth, vertex.MaxAttachmentDepthForPull, a.Name())
 	}
 	virtualTx.SetPullNeeded()
 	if depth <= vertex.MaxAttachmentDepthForPull {

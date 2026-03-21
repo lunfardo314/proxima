@@ -42,8 +42,8 @@ type (
 	SeqAttach struct {
 		environment
 		*core_modules.CoreModule[*Input]
-		attachFun          AttachFun
-		latestAttachedSlot atomic.Uint32
+		attachFun              AttachFun
+		latestAttachedTimestamp atomic.Int64 // TicksSinceGenesis of the latest attached tx
 	}
 )
 
@@ -60,17 +60,20 @@ func New(env environment, attachFun AttachFun) *SeqAttach {
 	return ret
 }
 
+const traceTag = "sync"
+
 func (q *SeqAttach) consume(inp *Input) {
 	txid := inp.Tx.ID()
-	txSlot := txid.Slot()
+	txTicks := txid.Timestamp().TicksSinceGenesis()
 
-	// track the latest attached slot (atomic max) BEFORE the cap check
+	// track the latest attached timestamp (atomic max) BEFORE the cap check
 	for {
-		cur := q.latestAttachedSlot.Load()
-		if txSlot <= cur {
+		cur := q.latestAttachedTimestamp.Load()
+		if txTicks <= cur {
 			break
 		}
-		if q.latestAttachedSlot.CompareAndSwap(cur, txSlot) {
+		if q.latestAttachedTimestamp.CompareAndSwap(cur, txTicks) {
+			q.Tracef(traceTag, "seq_attach: latestAttachedTimestamp updated to %s", txid.StringShort)
 			break
 		}
 	}
@@ -78,12 +81,18 @@ func (q *SeqAttach) consume(inp *Input) {
 	// attacher cap with deadlock prevention:
 	// attacher.NumAttachers() is the authoritative count — incremented synchronously
 	// in AttachTransaction before the goroutine starts, decremented when it finishes.
-	// When at the cap, only transactions strictly older than the latest pass.
-	if attacher.NumAttachers() >= q.MaxConcurrentAttachers() {
-		if txSlot >= q.latestAttachedSlot.Load() {
+	// When at the cap, only transactions strictly older than the latest pass
+	// (dependencies always have earlier timestamps than their dependents).
+	nAtt := attacher.NumAttachers()
+	if nAtt >= q.MaxConcurrentAttachers() {
+		if txTicks >= q.latestAttachedTimestamp.Load() {
+			q.Tracef(traceTag, "seq_attach DROP %s: att=%d >= cap=%d, txTicks=%d >= latest=%d, pulled=%v",
+				txid.StringShort, nAtt, q.MaxConcurrentAttachers(), txTicks, q.latestAttachedTimestamp.Load(), inp.Pulled)
 			q.IncCounter("seq_drop")
 			return
 		}
+		q.Tracef(traceTag, "seq_attach PASS (older) %s: att=%d >= cap=%d, txTicks=%d < latest=%d",
+			txid.StringShort, nAtt, q.MaxConcurrentAttachers(), txTicks, q.latestAttachedTimestamp.Load())
 	}
 
 	q.attachFun(inp.Tx, inp.Opts...)

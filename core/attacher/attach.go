@@ -167,10 +167,14 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		if vid.IsSequencerTransaction() {
 			// for sequencer milestones start attacher
 			metadata := options.metadata
-			numAttachers.Add(1) // increment synchronously, before goroutine starts
+			n := numAttachers.Add(1) // increment synchronously, before goroutine starts
+			env.Tracef("sync", "attacher START %s, numAttachers=%d, depth=%d", tx.IDShortString, n, options.depth)
 			// start attacher routine
 			go func() {
-				defer numAttachers.Add(-1)
+				defer func() {
+					n := numAttachers.Add(-1)
+					env.Tracef("sync", "attacher FINISH %s, numAttachers=%d", tx.IDShortString, n)
+				}()
 				env.IncCounter("att")
 				defer env.DecCounter("att")
 
