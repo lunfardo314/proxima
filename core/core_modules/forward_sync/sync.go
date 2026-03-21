@@ -32,6 +32,9 @@ const (
 	defaultPullAhead     = 5
 	syncLoopPeriod       = time.Second
 	pullRepeatInterval   = 5 * time.Second
+	// forkSafetyDepth: how many branches back from LRB to use as the anchor point
+	// when requesting branch lists. Going back K slots gives margin for short-lived forks.
+	forkSafetyDepth = 10
 )
 
 type (
@@ -161,30 +164,58 @@ func (s *Sync) syncLoop() {
 	}
 }
 
+// findAnchorBranch returns a branch ID K slots back from the latest committed healthy branch.
+// This anchor is sent to sync sources so they can verify it's on their chain (fork detection).
+// Returns zero ID if no suitable anchor is found.
+func (s *Sync) findAnchorBranch() base.TransactionID {
+	lrb := multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch)
+	if lrb == nil {
+		return base.TransactionID{}
+	}
+	var anchor base.TransactionID
+	n := 0
+	multistate.IterateBranchChainBack(s.StateStore(), lrb, func(branchID *base.TransactionID, _ *multistate.BranchData) bool {
+		anchor = *branchID
+		n++
+		return n < forkSafetyDepth
+	})
+	return anchor
+}
+
 // requestBranchList tries each source starting from the current index, cycling on failure.
-// A source that returns an empty list (its LRB is not ahead of fromSlot) is skipped.
-func (s *Sync) requestBranchList(fromSlot uint32) ([]base.TransactionID, uint32, error) {
+// Uses fork-safe after_branch mode: sends an anchor branch from our own chain.
+// The source returns branches after that anchor, or error if it's on a different fork.
+// On fork mismatch, tries the next source.
+//
+// Future improvement: query ALL sources, compute common prefix across their chains
+// and our own, then sync from the fork point. This handles the case where all sources
+// are on a different fork.
+func (s *Sync) requestBranchList() ([]base.TransactionID, uint32, error) {
+	anchor := s.findAnchorBranch()
+	if anchor == (base.TransactionID{}) {
+		return nil, 0, fmt.Errorf("no anchor branch found")
+	}
+
 	n := len(s.sources)
 	var lastErr error
 	for i := 0; i < n; i++ {
 		idx := (s.sourceIdx + i) % n
-		branches, lrbSlot, err := s.sources[idx].GetBranchList(fromSlot, 100)
+		branches, lrbSlot, err := s.sources[idx].GetBranchListAfter(anchor, 100)
 		if err != nil {
 			lastErr = err
-			s.Log().Warnf("[%s] source %d failed: %v, trying next", Name, idx, err)
+			s.Log().Warnf("[%s] source %d: %v, trying next", Name, idx, err)
 			continue
 		}
 		if len(branches) == 0 {
-			s.Log().Infof("[%s] source %d returned empty list (LRB slot=%d <= from_slot=%d), trying next", Name, idx, lrbSlot, fromSlot)
+			// source's LRB is at or before our anchor — nothing to sync from this source
 			continue
 		}
 		s.sourceIdx = idx
 		return branches, lrbSlot, nil
 	}
-	// advance index for next attempt so we don't always start from the same source
 	s.sourceIdx = (s.sourceIdx + 1) % n
 	if lastErr != nil {
-		return nil, 0, fmt.Errorf("all %d sync sources failed, last error: %v", n, lastErr)
+		return nil, 0, fmt.Errorf("all %d sync sources failed, last: %v", n, lastErr)
 	}
 	return nil, 0, nil
 }
@@ -223,7 +254,7 @@ func (s *Sync) syncTick() {
 
 	// request branch list if empty
 	if len(s.branchList) == 0 {
-		branches, lrbSlot, err := s.requestBranchList(healthySlot)
+		branches, lrbSlot, err := s.requestBranchList()
 		if err != nil {
 			s.Log().Warnf("[%s] %v", Name, err)
 			return

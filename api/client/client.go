@@ -874,10 +874,21 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.Tran
 	return rr, res.BranchID, nil
 }
 
-// GetBranchList returns branch IDs on the main chain forward from fromSlot, up to max entries.
-// Used by the sync module to get the branch sequence for catch-up.
-func (c *APIClient) GetBranchList(fromSlot uint32, max int) ([]base.TransactionID, uint32, error) {
+// GetBranchListAfter returns branch IDs on the source's main chain after the given branch.
+// Returns an error if the branch is not in the source's chain (different fork).
+func (c *APIClient) GetBranchListAfter(afterBranch base.TransactionID, max int) ([]base.TransactionID, uint32, error) {
+	path := fmt.Sprintf("%s?after_branch=%s&max=%d", api.PathGetBranchList, afterBranch.StringHex(), max)
+	return c.parseBranchListResponse(path)
+}
+
+// GetBranchListFromSlot returns branch IDs on the main chain forward from fromSlot.
+// No fork detection — use GetBranchListAfter when fork safety is needed.
+func (c *APIClient) GetBranchListFromSlot(fromSlot uint32, max int) ([]base.TransactionID, uint32, error) {
 	path := fmt.Sprintf("%s?from_slot=%d&max=%d", api.PathGetBranchList, fromSlot, max)
+	return c.parseBranchListResponse(path)
+}
+
+func (c *APIClient) parseBranchListResponse(path string) ([]base.TransactionID, uint32, error) {
 	body, err := c.getBody(path)
 	if err != nil {
 		return nil, 0, err
