@@ -29,16 +29,26 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
 
 	repeatPullAfter, maxPullAttempts := a.TxPullParameters()
+
+	// depth cap applies only to gossip-driven recursion (txs after the forward-sync frontier).
+	// txs in forward-sync territory (at or before the frontier) are exempt —
+	// their depth is bounded naturally by the slot structure.
+	depth := deptVID.GetAttachmentDepthNoLock()
+	depTs := deptVID.Timestamp()
+	isDepthCapped := func() bool {
+		return depth > vertex.MaxAttachmentDepthForPull && depTs.After(a.LatestForwardSyncedTimestamp())
+	}
+
 	if virtualTx.PullRulesDefined() {
-		if virtualTx.PullPatienceExpired(maxPullAttempts, deptVID.GetAttachmentDepthNoLock()) {
+		if virtualTx.PullPatienceExpired(maxPullAttempts, isDepthCapped) {
 			// solidification deadline
 			a.Log().Errorf("SOLIDIFICATION FAILURE %s at depth %d, hex: %s attacher: %s ",
-				deptVID.IDShortString(), deptVID.GetAttachmentDepthNoLock(), util.Ref(deptVID.ID()).StringHex(), a.Name())
+				deptVID.IDShortString(), depth, util.Ref(deptVID.ID()).StringHex(), a.Name())
 			a.setError(fmt.Errorf("%w(%d x %v): can't solidify %s",
 				ErrSolidificationDeadline, maxPullAttempts, repeatPullAfter, deptVID.IDShortString()))
 			return false
 		}
-		if virtualTx.PullNeeded(deptVID.GetAttachmentDepthNoLock()) {
+		if virtualTx.PullNeeded(isDepthCapped) {
 			a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 		}
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 1: %s", deptVID.IDShortString)
@@ -52,10 +62,8 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// not in the state or not known 'inTheState status'
 
-	depth := deptVID.GetAttachmentDepthNoLock()
-
-	// try to find in the local txBytes store (only within depth cap)
-	if depth <= vertex.MaxAttachmentDepthForPull {
+	// try to find in the local txBytes store
+	if !isDepthCapped() {
 		txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
 		if len(txBytesWithMetadata) > 0 {
 			// mark as pulled so re-injected tx passes rate control
@@ -73,7 +81,7 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 			deptVID.IDShortString, depth, vertex.MaxAttachmentDepthForPull, a.Name())
 	}
 	virtualTx.SetPullNeeded()
-	if depth <= vertex.MaxAttachmentDepthForPull {
+	if !isDepthCapped() {
 		a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 	}
 	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 4: %s", deptVID.IDShortString)

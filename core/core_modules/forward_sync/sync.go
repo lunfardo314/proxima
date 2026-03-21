@@ -56,6 +56,9 @@ type (
 		thresholdDown uint32
 		pullAhead     int // pull k-th branch ahead to parallelize past cone solidification
 		syncing       bool
+		// latestTargetTicks is TicksSinceGenesis of the current forward-sync target.
+		// Read by attacher goroutines via LatestForwardSyncedTimestamp() to skip depth cap.
+		latestTargetTicks atomic.Int64
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList    []base.TransactionID
 		currentTarget atomic.Uint32 // slot of the branch we're waiting for
@@ -130,6 +133,21 @@ func Start(env environment) *Sync {
 	go ret.syncLoop()
 
 	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d, pull ahead: %d", Name, sourceURLs, thUp, thDown, pullAhead)
+	return ret
+}
+
+// LatestForwardSyncedTimestamp returns the timestamp of the current forward-sync target.
+// Attachers with dependencies at or before this timestamp skip the depth cap.
+// Returns zero LedgerTime when forward-sync is idle or nil.
+func (s *Sync) LatestForwardSyncedTimestamp() base.LedgerTime {
+	if s == nil {
+		return base.LedgerTime{}
+	}
+	ticks := s.latestTargetTicks.Load()
+	if ticks <= 0 {
+		return base.LedgerTime{}
+	}
+	ret, _ := base.LedgerTimeFromTicksSinceGenesis(ticks)
 	return ret
 }
 
@@ -237,6 +255,7 @@ func (s *Sync) syncTick() {
 			s.Log().Infof("[%s] caught up (gap=%d), going idle", Name, gap)
 			s.syncing = false
 			s.branchList = nil
+			s.latestTargetTicks.Store(0)
 		}
 		return
 	}
@@ -295,8 +314,9 @@ func (s *Sync) syncTick() {
 	}
 	target := s.branchList[targetIdx]
 
-	// set current target for NotifyBranchCommitted filtering
+	// set current target for NotifyBranchCommitted filtering and depth cap exemption
 	s.currentTarget.Store(target.Slot())
+	s.latestTargetTicks.Store(target.Timestamp().TicksSinceGenesis())
 
 	// mark as pulled so it passes rate control as a wanted transaction
 	s.AddPulledTransaction(target)

@@ -73,6 +73,10 @@ func (w *Workflow) ForceCommitBranch(branchID base.TransactionID) {
 	w.branches.GetStateReaderForTheBranch(branchID)
 }
 
+func (w *Workflow) LatestForwardSyncedTimestamp() base.LedgerTime {
+	return w.syncModule.LatestForwardSyncedTimestamp()
+}
+
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	return w.tippool.LatestActiveMilestonesDescending(filter...)

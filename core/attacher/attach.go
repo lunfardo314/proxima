@@ -23,6 +23,7 @@ func NumAttachers() int {
 	return int(numAttachers.Load())
 }
 
+
 // AttachTxID ensures the txid is on the MemDAG
 // It load existing branches but does not pullFromPeers anything
 func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {

@@ -54,6 +54,10 @@ type (
 		Branches() *branches.Branches
 		EvidenceTxValidationStats(took time.Duration, numIn, numOut int)
 		EvidenceBranchInflationBonus(ib uint64)
+		// LatestForwardSyncedTimestamp returns the timestamp of the current forward-sync target.
+		// Attachers with dependencies at or before this timestamp skip the depth cap.
+		// Returns zero LedgerTime when forward-sync is idle.
+		LatestForwardSyncedTimestamp() base.LedgerTime
 	}
 
 	attacher struct {

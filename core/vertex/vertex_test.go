@@ -317,30 +317,33 @@ func TestVirtualTransactionPullLogic(t *testing.T) {
 		txid := base.RandomTransactionID(false, 5, base.T(1000, 50))
 		vid := WrapTxID(txid)
 
+		notCapped := func() bool { return false }
 		vid.UnwrapVirtualTx(func(v *VirtualTransaction) {
 			v.SetPullNeeded()
 			require.True(t, v.PullRulesDefined())
-			require.True(t, v.PullNeeded(0)) // time.Now() is after nextPull
+			require.True(t, v.PullNeeded(notCapped)) // time.Now() is after nextPull
 		})
 	})
 
 	t.Run("pull happened updates state", func(t *testing.T) {
 		txid := base.RandomTransactionID(false, 5, base.T(1000, 50))
 		vid := WrapTxID(txid)
+		notCapped := func() bool { return false }
 
 		vid.UnwrapVirtualTx(func(v *VirtualTransaction) {
 			v.SetPullNeeded()
-			require.True(t, v.PullNeeded(0))
+			require.True(t, v.PullNeeded(notCapped))
 
 			v.SetPullHappened(100 * time.Millisecond)
 			// Right after pull, next pull is in the future
-			require.False(t, v.PullNeeded(0))
+			require.False(t, v.PullNeeded(notCapped))
 		})
 	})
 
 	t.Run("pull patience expired", func(t *testing.T) {
 		txid := base.RandomTransactionID(false, 5, base.T(1000, 50))
 		vid := WrapTxID(txid)
+		notCapped := func() bool { return false }
 
 		vid.UnwrapVirtualTx(func(v *VirtualTransaction) {
 			v.SetPullNeeded()
@@ -353,9 +356,9 @@ func TestVirtualTransactionPullLogic(t *testing.T) {
 			// Ensure nextPull is in the past so PullNeeded returns true
 			v.nextPull = time.Now().Add(-time.Millisecond)
 
-			require.True(t, v.PullNeeded(0))
-			require.True(t, v.PullPatienceExpired(5, 0))
-			require.False(t, v.PullPatienceExpired(10, 0))
+			require.True(t, v.PullNeeded(notCapped))
+			require.True(t, v.PullPatienceExpired(5, notCapped))
+			require.False(t, v.PullPatienceExpired(10, notCapped))
 		})
 	})
 }

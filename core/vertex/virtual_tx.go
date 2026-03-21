@@ -146,17 +146,20 @@ func (v *VirtualTransaction) SetPullHappened(repeatAfter time.Duration) {
 	v.nextPull = time.Now().Add(repeatAfter)
 }
 
-func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts, depth int) bool {
-	return v.PullNeeded(depth) && v.timesPulled >= maxPullAttempts
+func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int, isDepthCapped func() bool) bool {
+	return v.PullNeeded(isDepthCapped) && v.timesPulled >= maxPullAttempts
 }
 
-// MaxAttachmentDepthForPull is cap for the attachment depth.
-// If attachment goes deeper (recursively), pulling is suppressed and the
-// transaction waits to appear in the committed state via forward-syncing.
+// MaxAttachmentDepthForPull is the depth cap for gossip-driven recursive pull.
+// Transactions in the forward-sync territory (before latestForwardSyncedTicks)
+// are exempt from this cap — the caller determines this via the isDepthCapped closure.
 const MaxAttachmentDepthForPull = 20
 
-func (v *VirtualTransaction) PullNeeded(depth int) bool {
-	return depth <= MaxAttachmentDepthForPull && v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
+// PullNeeded returns true if pulling is needed and allowed.
+// isDepthCapped closure is provided by the caller — it captures attachment depth
+// and forward-sync frontier to decide whether depth-capping applies.
+func (v *VirtualTransaction) PullNeeded(isDepthCapped func() bool) bool {
+	return !isDepthCapped() && v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
 }
 
 func (v *VirtualTransaction) findChainOutput(txid base.TransactionID, chainID *base.ChainID) *ledger.OutputWithID {
