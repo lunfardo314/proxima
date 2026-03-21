@@ -1,7 +1,13 @@
-// Package sync implements sequential branch-by-branch syncing.
-// When the node falls behind by more than SyncThresholdUp slots, the sync module
-// requests a branch list from a trusted API source and pulls branches one at a time.
-// Transactions with timestamps beyond the current sync frontier are dropped from attachment.
+// Package sync implements forward-syncing: sequential branch-by-branch catch-up.
+//
+// Always-on background process. Monitors the gap between wall-clock slot and the
+// latest committed healthy branch. When gap >= thresholdUp, starts pulling branches
+// sequentially from trusted API sources. When gap <= thresholdDown, goes idle.
+//
+// Coexists with recursive pull: recursive attachers handle recent transactions
+// (capped at maxAttachmentDepthForPull). When they stall at the depth cap,
+// the gap grows, forward-sync kicks in and commits the missing branches,
+// satisfying the stalled attachers' dependencies.
 package sync
 
 import (
@@ -21,7 +27,7 @@ import (
 const (
 	Name = "sync"
 
-	defaultThresholdUp   = 5
+	defaultThresholdUp   = 15
 	defaultThresholdDown = 3
 	defaultPullAhead     = 5
 	syncLoopPeriod       = time.Second
@@ -46,10 +52,9 @@ type (
 		thresholdUp   uint32
 		thresholdDown uint32
 		pullAhead     int // pull k-th branch ahead to parallelize past cone solidification
-		isSyncing     atomic.Bool
+		syncing       bool
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList    []base.TransactionID
-		frontierSlot  atomic.Uint32
 		currentTarget atomic.Uint32 // slot of the branch we're waiting for
 		lastPullTime  time.Time     // when the current target branch was last pulled
 		wakeup        chan struct{} // signaled when the target branch commits
@@ -67,11 +72,11 @@ func IsSelfURL(url string, selfAPIPort int) bool {
 	return false
 }
 
-// Start initializes and starts the sync module. If no sync sources configured, the module is inactive.
+// Start initializes and starts the sync module. Always active when sources are configured.
 func Start(env environment) *Sync {
 	sourceURLs := viper.GetStringSlice("sync.sources")
 	if len(sourceURLs) == 0 {
-		env.Log().Infof("[%s] no sync sources configured, sync module inactive", Name)
+		env.Log().Infof("[%s] no sync sources configured, forward-sync inactive", Name)
 		return nil
 	}
 
@@ -88,7 +93,7 @@ func Start(env environment) *Sync {
 	sourceURLs = filtered
 
 	if len(sourceURLs) == 0 {
-		env.Log().Infof("[%s] all sync sources are self, sync module inactive", Name)
+		env.Log().Infof("[%s] all sync sources are self, forward-sync inactive", Name)
 		return nil
 	}
 
@@ -118,31 +123,11 @@ func Start(env environment) *Sync {
 		pullAhead:     pullAhead,
 		wakeup:        make(chan struct{}, 1),
 	}
-	// start with IsSyncing=true to prevent gossip-driven recursion before gap is evaluated
-	ret.isSyncing.Store(true)
 
 	go ret.syncLoop()
 
 	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d, pull ahead: %d", Name, sourceURLs, thUp, thDown, pullAhead)
 	return ret
-}
-
-// IsSyncing returns true when the node is in sync catch-up mode
-func (s *Sync) IsSyncing() bool {
-	if s == nil {
-		return false
-	}
-	return s.isSyncing.Load()
-}
-
-// SyncFrontierSlot returns the slot of the branch currently being synced.
-// Transactions with timestamps after this slot should be dropped from attachment.
-// Returns 0 when not syncing (meaning no filtering).
-func (s *Sync) SyncFrontierSlot() uint32 {
-	if s == nil {
-		return 0
-	}
-	return s.frontierSlot.Load()
 }
 
 // NotifyBranchCommitted wakes up the sync loop only when the current target branch commits.
@@ -215,22 +200,21 @@ func (s *Sync) syncTick() {
 
 	gap := nowSlot - healthySlot
 
-	// hysteresis: clear sync if gap is small enough
+	// hysteresis: go idle if gap is small enough
 	if gap <= s.thresholdDown {
-		if s.isSyncing.Load() {
-			s.Log().Infof("[%s] caught up (gap=%d), exiting sync mode", Name, gap)
-			s.isSyncing.Store(false)
-			s.frontierSlot.Store(0)
+		if s.syncing {
+			s.Log().Infof("[%s] caught up (gap=%d), going idle", Name, gap)
+			s.syncing = false
 			s.branchList = nil
 		}
 		return
 	}
 
-	// enter sync mode if gap exceeds threshold
-	if !s.isSyncing.Load() {
+	// start syncing if gap exceeds threshold
+	if !s.syncing {
 		if gap >= s.thresholdUp {
-			s.Log().Infof("[%s] entering sync mode (gap=%d, healthy slot=%d, now=%d)", Name, gap, healthySlot, nowSlot)
-			s.isSyncing.Store(true)
+			s.Log().Infof("[%s] starting forward-sync (gap=%d, healthy slot=%d, now=%d)", Name, gap, healthySlot, nowSlot)
+			s.syncing = true
 			s.branchList = nil
 		} else {
 			return
@@ -280,11 +264,10 @@ func (s *Sync) syncTick() {
 	}
 	target := s.branchList[targetIdx]
 
-	// set frontier and current target
-	s.frontierSlot.Store(target.Slot())
+	// set current target for NotifyBranchCommitted filtering
 	s.currentTarget.Store(target.Slot())
 
-	// mark as pulled so it passes the sync filter if it arrives via gossip
+	// mark as pulled so it passes rate control as a wanted transaction
 	s.AddPulledTransaction(target)
 
 	if s.lastPullTime.IsZero() {

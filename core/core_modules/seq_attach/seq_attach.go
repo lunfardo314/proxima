@@ -1,13 +1,11 @@
 // seq_attach core module queues sequencer transactions for attachment.
 //
-// Attacher cap with deadlock prevention:
+// Permanent attacher cap with timestamp-based deadlock prevention:
 //   - Track the slot of the latest attached transaction
-//   - When attacher count >= cap, transactions with timestamp strictly before
-//     the latest pass (dependencies are always older than dependents),
-//     others are dropped
-//
-// During sync, an additional filter drops non-pulled transactions
-// and transactions beyond the sync frontier.
+//   - When attacher count >= cap, only transactions with timestamp strictly
+//     before the latest attached pass (dependencies are always older than dependents)
+//   - Recursive pull depth is capped separately (maxAttachmentDepthForPull in virtual_tx.go)
+//   - Forward-sync fills in deep dependencies that recursive pull can't reach
 package seq_attach
 
 import (
@@ -29,9 +27,6 @@ const (
 type (
 	environment interface {
 		global.NodeGlobal
-		IsSynced() bool
-		IsSyncing() bool
-		SyncFrontierSlot() uint32
 		MaxConcurrentAttachers() int
 	}
 
@@ -68,15 +63,6 @@ func New(env environment, attachFun AttachFun) *SeqAttach {
 func (q *SeqAttach) consume(inp *Input) {
 	txid := inp.Tx.ID()
 	txSlot := txid.Slot()
-
-	// during sync: only pulled txs at or before sync frontier
-	if q.IsSyncing() {
-		frontier := q.SyncFrontierSlot()
-		if !inp.Pulled || txSlot > frontier {
-			q.IncCounter("seq_drop")
-			return
-		}
-	}
 
 	// attacher cap with deadlock prevention:
 	// when at the cap, only allow transactions strictly older than the latest attached

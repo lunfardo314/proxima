@@ -1,6 +1,6 @@
 // nonseq_attach core module queues non-sequencer transactions for attachment.
-// Non-pulled transactions are dropped when the memDAG non-sequencer vertex count
-// exceeds the limit, preventing memory exhaustion under heavy transaction load.
+// Non-pulled transactions are dropped when the attacher cap is reached,
+// or when memDAG/queue limits are exceeded.
 // Dropped transactions remain in the txstore and can be pulled later if needed.
 // Pulled transactions always pass immediately (with queue priority).
 package nonseq_attach
@@ -25,8 +25,7 @@ const (
 type (
 	environment interface {
 		global.NodeGlobal
-		IsSyncing() bool
-		SyncFrontierSlot() uint32
+		MaxConcurrentAttachers() int
 	}
 
 	// AttachFun performs the actual attachment (workflow._attach)
@@ -59,19 +58,10 @@ func New(env environment, attachFun AttachFun) *NonSeqAttach {
 }
 
 func (q *NonSeqAttach) consume(inp *Input) {
-	// during sync: pass only pulled transactions with timestamps at or before the sync frontier
-	if q.IsSyncing() {
-		frontier := q.SyncFrontierSlot()
-		txid := inp.Tx.ID()
-		if !inp.Pulled || txid.Slot() > frontier {
-			q.IncCounter("nonseq_drop")
-			return
-		}
-	}
-
-	// TODO only drop non-seq transactions when number of non-solid of them exceeds limit (not total number)
-	//  reason: solid (validated) non-seq transaction do not consume CPU, only memory
-	if !inp.Pulled && (q.Counter("nonseq") >= maxNonSeqVertices || q.Queue.Len() >= maxQueueLen) {
+	// drop non-pulled non-seq transactions when resources are constrained
+	if !inp.Pulled && (q.Counter("att") >= q.MaxConcurrentAttachers() ||
+		q.Counter("nonseq") >= maxNonSeqVertices ||
+		q.Queue.Len() >= maxQueueLen) {
 		q.IncCounter("nonseq_drop")
 		return
 	}
