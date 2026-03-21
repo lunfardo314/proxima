@@ -26,7 +26,7 @@ type (
 		SingleSequencerEnforced   bool
 		SeparateLog               bool
 		GlobalLogging             bool
-		ControllerKeyFile string // path to keystore file for deferred key loading
+		ControllerKeyFile         string // path to keystore file for deferred key loading
 	}
 
 	ConfigOption func(options *ConfigOptions)
