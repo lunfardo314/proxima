@@ -472,6 +472,16 @@ const TraceTagTarget = "target"
 
 func (seq *Sequencer) doSequencerStep() bool {
 	seq.Tracef(TraceTag, "doSequencerStep")
+
+	// pause proposing while snapshot is being generated to reduce resource contention
+	if seq.IsSnapshotting() {
+		seq.log.Infof("sequencer paused: snapshot in progress")
+		seq.RepeatSync(2*time.Second, func() bool {
+			return seq.IsSnapshotting()
+		})
+		seq.log.Infof("sequencer resumed: snapshot finished")
+	}
+
 	if seq.config.MaxBranches != 0 && seq.branchCount >= seq.config.MaxBranches {
 		seq.log.Infof("reached max limit of branch milestones %d -> stopping", seq.config.MaxBranches)
 		return false

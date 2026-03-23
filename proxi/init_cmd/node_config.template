@@ -43,8 +43,8 @@ snapshot:
     # On startup with missing/corrupted DB, the node searches here for a snapshot to restore from.
     # If no snapshot is found, the node refuses to start.
   directory: ""
-    # 64 slots means snapshot is every ~10 min
-  period_in_slots: 64
+    # 176 slots means snapshot is every ~30 min (at 10.24 sec/slot)
+  period_in_slots: 176
     # keep latest up to 2 snapshots, older ones will be purged
   keep_latest: 2
     # enable snapshot download API endpoint (independent of snapshot creation)

@@ -64,6 +64,14 @@ const traceTag = "sync"
 
 func (q *SeqAttach) consume(inp *Input) {
 	txid := inp.Tx.ID()
+
+	// during snapshot generation, drop all non-pulled transactions to shed load
+	if !inp.Pulled && q.IsSnapshotting() {
+		q.Tracef(traceTag, "seq_attach DROP %s: snapshotting, non-pulled", txid.StringShort)
+		q.IncCounter("seq_drop")
+		return
+	}
+
 	txTicks := txid.Timestamp().TicksSinceGenesis()
 
 	// attacher cap with deadlock prevention:

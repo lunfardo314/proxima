@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"io"
+	"math/rand"
 	"os"
 	"time"
 
@@ -34,7 +35,7 @@ const (
 	Name = "snapshot"
 
 	defaultSnapshotDirectory     = "."
-	defaultSnapshotPeriodInSlots = 30
+	defaultSnapshotPeriodInSlots = 176 // ~30 minutes at 10.24 sec/slot
 	defaultKeepLatest            = 3
 	defaultSafetySlots           = 20
 )
@@ -75,18 +76,37 @@ func Start(env environment) {
 
 	ret.registerMetrics()
 
-	env.RepeatInBackground(Name, period, func() bool {
-		ret.doSnapshot()
-		ret.purgeOldSnapshots()
-		return true
-	}, true)
+	// randomize initial delay to minimize snapshot overlap between nodes
+	initialDelay := time.Duration(rand.Int63n(int64(period)))
 
 	ln := lines.New("          ").
 		Add("target directory: %s", ret.directory).
 		Add("frequency: %v (%d slots)", period, periodInSlots).
 		Add("keep latest: %d", ret.keepLatest).
-		Add("safety slot back: %d", ret.safeSlotsBack)
+		Add("safety slot back: %d", ret.safeSlotsBack).
+		Add("initial delay: %v", initialDelay)
 	ret.Log().Infof("[snapshot] work process STARTED\n%s", ln.String())
+
+	env.MarkWorkProcessStarted(Name)
+	go func() {
+		defer env.MarkWorkProcessStopped(Name)
+
+		// wait random initial delay
+		select {
+		case <-env.Ctx().Done():
+			return
+		case <-time.After(initialDelay):
+		}
+		// first snapshot immediately after delay
+		ret.doSnapshot()
+		ret.purgeOldSnapshots()
+		// then periodic
+		env.RepeatSync(period, func() bool {
+			ret.doSnapshot()
+			ret.purgeOldSnapshots()
+			return true
+		})
+	}()
 	return
 }
 
@@ -120,7 +140,9 @@ func (s *Snapshot) doSnapshot() {
 		s.Log().Errorf("[snapshot] can't find latest reliable branch")
 		return
 	}
+	s.SetSnapshotting(true)
 	fname, stats, err := multistate.SaveSnapshot(s.StateStore(), snapshotBranch, s.Ctx(), s.directory, io.Discard)
+	s.SetSnapshotting(false)
 	if err != nil {
 		s.Log().Errorf("[snapshot] failed to save snapshot: %v", err)
 	} else {

@@ -58,8 +58,9 @@ func New(env environment, attachFun AttachFun) *NonSeqAttach {
 }
 
 func (q *NonSeqAttach) consume(inp *Input) {
-	// drop non-pulled non-seq transactions when resources are constrained
-	if !inp.Pulled && (q.Counter("att") >= q.MaxConcurrentAttachers() ||
+	// drop non-pulled non-seq transactions when resources are constrained or during snapshot
+	if !inp.Pulled && (q.IsSnapshotting() ||
+		q.Counter("att") >= q.MaxConcurrentAttachers() ||
 		q.Counter("nonseq") >= maxNonSeqVertices ||
 		q.Queue.Len() >= maxQueueLen) {
 		q.IncCounter("nonseq_drop")

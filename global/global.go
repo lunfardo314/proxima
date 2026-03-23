@@ -31,6 +31,7 @@ type Global struct {
 	stopFun        context.CancelFunc
 	logStopOnce    *sync.Once
 	isShuttingDown atomic.Bool
+	isSnapshotting atomic.Bool
 	stopOnce       *sync.Once
 	mutex          sync.RWMutex
 	components     set.Set[string]
@@ -199,6 +200,14 @@ func (l *Global) Stop() {
 
 func (l *Global) IsShuttingDown() bool {
 	return l.isShuttingDown.Load()
+}
+
+func (l *Global) IsSnapshotting() bool {
+	return l.isSnapshotting.Load()
+}
+
+func (l *Global) SetSnapshotting(on bool) {
+	l.isSnapshotting.Store(on)
 }
 
 func (l *Global) Ctx() context.Context {
