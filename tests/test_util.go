@@ -71,8 +71,10 @@ func (w *workflowDummyEnvironment) EvidencePastConeSize(_ int) {}
 
 func (w *workflowDummyEnvironment) EvidenceNumberOfTxDependencies(_ int) {}
 
+// GetOwnSequencerID returns nil in test environment.
+// This disables the nonseq_attach sequencer target filter, letting all non-pulled non-seq txs pass.
 func (w *workflowDummyEnvironment) GetOwnSequencerID() *base.ChainID {
-	panic("not implemented")
+	return nil
 }
 
 func (w *workflowDummyEnvironment) SnapshotBranchID() base.TransactionID {

@@ -579,3 +579,31 @@ func (tx *Transaction) HolderID() (base.HolderID, error) {
 	}
 	return sig.HolderID(), nil
 }
+
+// HasOutputForSequencer returns true if any produced output has a lock targeting
+// the given sequencer chain ID (chainLock, tagAlong, or delegateLock).
+func (tx *Transaction) HasOutputForSequencer(seqID base.ChainID) bool {
+	found := false
+	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, _ base.OutputID) bool {
+		lock := o.Lock()
+		switch l := lock.(type) {
+		case ledger.ChainLock:
+			if l.ChainID() == seqID {
+				found = true
+				return false
+			}
+		case *ledger.TagAlongLock:
+			if l.TargetSequencerID == seqID {
+				found = true
+				return false
+			}
+		case *ledger.DelegateLock:
+			if l.Target == seqID {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
+}

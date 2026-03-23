@@ -41,8 +41,10 @@ func (d *workflowDummyEnvironment) PullFromPeers(_ base.TransactionID) int {
 	panic("not implemented")
 }
 
+// GetOwnSequencerID returns nil in test environment.
+// This disables the nonseq_attach sequencer target filter, letting all non-pulled non-seq txs pass.
 func (d *workflowDummyEnvironment) GetOwnSequencerID() *base.ChainID {
-	panic("not implemented")
+	return nil
 }
 
 func (d *workflowDummyEnvironment) EvidenceNumberOfTxDependencies(_ int) {}

@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 )
 
@@ -26,6 +27,7 @@ type (
 	environment interface {
 		global.NodeGlobal
 		MaxConcurrentAttachers() int
+		GetOwnSequencerID() *base.ChainID
 	}
 
 	// AttachFun performs the actual attachment (workflow._attach)
@@ -58,13 +60,22 @@ func New(env environment, attachFun AttachFun) *NonSeqAttach {
 }
 
 func (q *NonSeqAttach) consume(inp *Input) {
-	// drop non-pulled non-seq transactions when resources are constrained or during snapshot
-	if !inp.Pulled && (q.IsSnapshotting() ||
-		q.Counter("att") >= q.MaxConcurrentAttachers() ||
-		q.Counter("nonseq") >= maxNonSeqVertices ||
-		q.Queue.Len() >= maxQueueLen) {
-		q.IncCounter("nonseq_drop")
-		return
+	if !inp.Pulled {
+		// drop non-pulled non-seq transactions when resources are constrained or during snapshot
+		if q.IsSnapshotting() ||
+			q.Counter("att") >= q.MaxConcurrentAttachers() ||
+			q.Counter("nonseq") >= maxNonSeqVertices ||
+			q.Queue.Len() >= maxQueueLen {
+			q.IncCounter("nonseq_drop")
+			return
+		}
+		// drop non-pulled non-seq transactions that don't target the local sequencer.
+		// When seqID is nil (no local sequencer or test environment), the filter is disabled.
+		// Dropped txs remain in txstore and can be pulled later during solidification.
+		if seqID := q.GetOwnSequencerID(); seqID != nil && !inp.Tx.HasOutputForSequencer(*seqID) {
+			q.IncCounter("nonseq_drop")
+			return
+		}
 	}
 	q.attachFun(inp.Tx, inp.Opts...)
 }
