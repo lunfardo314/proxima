@@ -1,8 +1,14 @@
-// Package forward_sync implements forward-syncing: sequential branch-by-branch catch-up.
+// Package forward_sync implements forward-syncing: windowed parallel branch catch-up.
 //
 // Always-on background process. Monitors the gap between wall-clock slot and the
 // latest committed healthy branch. When gap >= thresholdUp, starts pulling branches
-// sequentially from trusted API sources. When gap <= thresholdDown, goes idle.
+// from trusted API sources. When gap <= thresholdDown, goes idle.
+//
+// Pull strategy: pulls a window of pull_ahead branches in parallel (ascending slot order).
+// Each branch triggers an attacher goroutine that recursively solidifies its past cone.
+// Parallel attachers overlap their network round-trips, dramatically speeding up sync
+// compared to pulling one branch at a time. The next window starts after all branches
+// in the current window are committed.
 //
 // Coexists with recursive pull: recursive attachers handle recent transactions
 // (capped at maxAttachmentDepthForPull). When they stall at the depth cap,
@@ -56,7 +62,7 @@ type (
 		sourceIdx     int // current source index, cycles on failure
 		thresholdUp   uint32
 		thresholdDown uint32
-		pullAhead     int // pull k-th branch ahead to parallelize past cone solidification
+		pullAhead     int // window size: pull this many branches ahead in parallel
 		commitBatch   int // max branches to commit per sync tick before forcing GC
 		syncing       bool
 		// latestTargetTicks is TicksSinceGenesis of the current forward-sync target.
@@ -65,7 +71,8 @@ type (
 		// cached branch list (oldest first), protected by the sync loop goroutine (no concurrent access)
 		branchList    []base.TransactionID
 		currentTarget atomic.Uint32 // slot of the branch we're waiting for
-		lastPullTime  time.Time     // when the current target branch was last pulled
+		windowPulled  bool          // true when all branches in the current window have been pulled
+		lastPullTime  time.Time     // when the current window was last pulled
 		wakeup        chan struct{} // signaled when the target branch commits
 	}
 )
@@ -264,6 +271,7 @@ func (s *Sync) syncTick() {
 			s.Log().Infof("[%s] caught up (gap=%d), going idle", Name, gap)
 			s.syncing = false
 			s.branchList = nil
+			s.windowPulled = false
 			s.latestTargetTicks.Store(0)
 		}
 		return
@@ -292,6 +300,7 @@ func (s *Sync) syncTick() {
 			return
 		}
 		s.branchList = branches
+		s.windowPulled = false
 		s.Log().Infof("[%s] received %d branches from sync source (slots %d..%d, source LRB=%d)",
 			Name, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot(), lrbSlot)
 	}
@@ -315,7 +324,8 @@ func (s *Sync) syncTick() {
 			runtime.GC()
 		}
 		s.Log().Infof("[%s] committed %d branches, %d remaining", Name, nCommitted, len(s.branchList))
-		s.lastPullTime = time.Time{} // reset so next target is pulled immediately
+		// branches were committed — reset window so next window is pulled
+		s.windowPulled = false
 	}
 
 	if len(s.branchList) == 0 {
@@ -323,35 +333,41 @@ func (s *Sync) syncTick() {
 		return
 	}
 
-	// pick the target: k-th branch ahead (or last available)
-	targetIdx := s.pullAhead - 1
-	if targetIdx >= len(s.branchList) {
-		targetIdx = len(s.branchList) - 1
+	// determine the window: up to pullAhead branches from the head of branchList
+	windowEnd := s.pullAhead
+	if windowEnd > len(s.branchList) {
+		windowEnd = len(s.branchList)
 	}
-	target := s.branchList[targetIdx]
+	window := s.branchList[:windowEnd]
+	target := window[windowEnd-1]
 
 	// set current target for NotifyBranchCommitted filtering and depth cap exemption
 	s.currentTarget.Store(target.Slot())
 	s.latestTargetTicks.Store(target.Timestamp().TicksSinceGenesis())
 
-	// mark as pulled so it passes rate control as a wanted transaction
-	s.AddPulledTransaction(target)
-
-	if s.lastPullTime.IsZero() {
-		s.Log().Infof("[%s] pulling branch %s (%d ahead), %d remaining",
-			Name, target.StringShort(), targetIdx+1, len(s.branchList)-1)
-
-		// try local txstore first — the branch may already be there from gossip
-		if txBytes := s.TxBytesStore().GetTxBytesWithMetadata(&target); len(txBytes) > 0 {
-			if _, err := s.TxBytesFromStoreIn(txBytes); err != nil {
-				s.Log().Warnf("[%s] re-inject from txstore failed: %v", Name, err)
+	if !s.windowPulled {
+		// pull all branches in the window in ascending slot order.
+		// Each pull triggers an attacher goroutine that recursively solidifies the past cone.
+		// Parallel attachers overlap their network round-trips, dramatically speeding up sync.
+		s.Log().Infof("[%s] pulling window of %d branches (slots %d..%d), %d remaining",
+			Name, windowEnd, window[0].Slot(), target.Slot(), len(s.branchList)-1)
+		for _, branchID := range window {
+			s.AddPulledTransaction(branchID)
+			if txBytes := s.TxBytesStore().GetTxBytesWithMetadata(&branchID); len(txBytes) > 0 {
+				if _, err := s.TxBytesFromStoreIn(txBytes); err != nil {
+					s.Log().Warnf("[%s] re-inject from txstore failed for %s: %v", Name, branchID.StringShort(), err)
+				}
+			} else {
+				s.PullFromPeers(branchID)
 			}
-		} else {
-			s.PullFromPeers(target)
 		}
+		s.windowPulled = true
 		s.lastPullTime = time.Now()
 	} else if time.Since(s.lastPullTime) >= pullRepeatInterval {
-		s.PullFromPeers(target)
+		// re-pull the window if solidification is stalled
+		for _, branchID := range window {
+			s.PullFromPeers(branchID)
+		}
 		s.lastPullTime = time.Now()
 	}
 }
