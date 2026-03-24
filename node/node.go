@@ -230,12 +230,12 @@ func (p *ProximaNode) startMetrics() {
 }
 
 func (p *ProximaNode) initMemoryLimit() {
-	limitMB := viper.GetInt("memory.limit_mb")
-	if limitMB <= 0 {
+	limitBytes := p.MemLimitBytes()
+	if limitBytes == 0 {
 		return
 	}
-	limitBytes := int64(limitMB) << 20
-	debug.SetMemoryLimit(limitBytes)
+	limitMB := limitBytes >> 20
+	debug.SetMemoryLimit(int64(limitBytes))
 	p.Log().Infof("[memory] soft GC limit set to %d MB", limitMB)
 
 	shutdownPct := viper.GetInt("memory.shutdown_pct")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,6 +54,8 @@ type Global struct {
 	txPullMaxAttempts  int
 	//
 	disableDeadlockCatching bool
+	// memory pressure management
+	memLimitBytes uint64
 }
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
@@ -139,6 +142,10 @@ func NewFromConfig() *Global {
 	if ret.disableDeadlockCatching {
 		ret.SugaredLogger.Infof("deadlock catching in the attacher has been disabled")
 	}
+
+	if limitMB := viper.GetInt("memory.limit_mb"); limitMB > 0 {
+		ret.memLimitBytes = uint64(limitMB) << 20
+	}
 	return ret
 }
 
@@ -208,6 +215,40 @@ func (l *Global) IsSnapshotting() bool {
 
 func (l *Global) SetSnapshotting(on bool) {
 	l.isSnapshotting.Store(on)
+}
+
+func (l *Global) MemLimitBytes() uint64 {
+	return l.memLimitBytes
+}
+
+const (
+	memPressureGCPct    = 50 // force GC when heap exceeds this % of limit
+	memPressurePausePct = 70 // pause briefly after GC if heap still exceeds this %
+	memPressurePause    = 500 * time.Millisecond
+)
+
+// MemoryPressureGC checks actual heap allocation against the configured memory limit.
+// If above 50%, forces GC. If still above 70% after GC, pauses briefly to let GC finish.
+// No-op when memory.limit_mb is not configured.
+// Called by any component that generates heavy allocations (branch commits, snapshots, etc.)
+func (l *Global) MemoryPressureGC() {
+	if l.memLimitBytes == 0 {
+		return
+	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	gcThreshold := uint64(float64(l.memLimitBytes) * memPressureGCPct / 100)
+	if ms.Alloc <= gcThreshold {
+		return
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&ms)
+	pauseThreshold := uint64(float64(l.memLimitBytes) * memPressurePausePct / 100)
+	if ms.Alloc > pauseThreshold {
+		l.Log().Warnf("[memory] pressure: %d MB after GC (limit %d MB), pausing %v",
+			ms.Alloc>>20, l.memLimitBytes>>20, memPressurePause)
+		time.Sleep(memPressurePause)
+	}
 }
 
 func (l *Global) Ctx() context.Context {

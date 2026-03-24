@@ -124,6 +124,10 @@ type (
 		// Used by attach queues and sequencer to shed load during snapshot.
 		IsSnapshotting() bool
 		SetSnapshotting(on bool)
+		// MemoryPressureGC forces GC when heap exceeds 50% of memory.limit_mb.
+		// Pauses briefly if still above 70% after GC. No-op when limit not configured.
+		MemoryPressureGC()
+		MemLimitBytes() uint64
 	}
 
 	Metrics interface {
