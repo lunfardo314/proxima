@@ -62,22 +62,22 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// not in the state or not known 'inTheState status'
 
-	// try to find in the local txBytes store
-	if !isDepthCapped() {
-		txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
-		if len(txBytesWithMetadata) > 0 {
-			// mark as pulled so re-injected tx passes rate control
-			a.AddPulledTransaction(deptVID.ID())
-			go func() {
-				if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
-					a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
-				}
-			}()
-			a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3 (txstore): %s", deptVID.IDShortString)
-			return true
-		}
-	} else {
-		a.Tracef("sync", "depth cap: skip txstore/pull for %s at depth %d (cap=%d), attacher=%s",
+	// always try the local txBytes store — local lookups are cheap and not a DoS vector,
+	// unlike peer pulls which are depth-capped to prevent unbounded network amplification
+	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
+	if len(txBytesWithMetadata) > 0 {
+		// mark as pulled so re-injected tx passes rate control
+		a.AddPulledTransaction(deptVID.ID())
+		go func() {
+			if _, err := a.TxBytesFromStoreIn(txBytesWithMetadata); err != nil {
+				a.Log().Errorf("TxBytesFromStoreIn %s returned '%v'", deptVID.IDShortString(), err)
+			}
+		}()
+		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3 (txstore): %s", deptVID.IDShortString)
+		return true
+	}
+	if isDepthCapped() {
+		a.Tracef("sync", "depth cap: skip peer pull for %s at depth %d (cap=%d), attacher=%s",
 			deptVID.IDShortString, depth, vertex.MaxAttachmentDepthForPull, a.Name())
 	}
 	virtualTx.SetPullNeeded()
