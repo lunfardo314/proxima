@@ -18,6 +18,7 @@ package forward_sync
 
 import (
 	"fmt"
+	"net"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -77,15 +78,40 @@ type (
 	}
 )
 
-// IsSelfURL returns true if the URL points to this node's own API
+// IsSelfURL returns true if the URL points to this node's own API.
+// Checks localhost, 127.0.0.1, and all local interface IPs.
 func IsSelfURL(url string, selfAPIPort int) bool {
-	selfSuffix := fmt.Sprintf(":%d", selfAPIPort)
-	for _, prefix := range []string{"http://127.0.0.1", "http://localhost", "https://127.0.0.1", "https://localhost"} {
-		if strings.HasPrefix(url, prefix+selfSuffix) {
+	for selfURL := range localSelfURLs(selfAPIPort) {
+		if strings.HasPrefix(url, selfURL) {
 			return true
 		}
 	}
 	return false
+}
+
+// localSelfURLs builds the set of URL prefixes that point to this node's own API.
+// Called once at startup to avoid repeated net.InterfaceAddrs() calls.
+func localSelfURLs(selfAPIPort int) map[string]bool {
+	suffix := fmt.Sprintf(":%d", selfAPIPort)
+	result := make(map[string]bool)
+	// always include loopback/localhost
+	for _, host := range []string{"127.0.0.1", "localhost"} {
+		result["http://"+host+suffix] = true
+		result["https://"+host+suffix] = true
+	}
+	// include all local interface IPs
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return result
+	}
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok {
+			ip := ipNet.IP.String()
+			result["http://"+ip+suffix] = true
+			result["https://"+ip+suffix] = true
+		}
+	}
+	return result
 }
 
 // Start initializes and starts the sync module. Always active when sources are configured.
@@ -96,11 +122,19 @@ func Start(env environment) *Sync {
 		return nil
 	}
 
-	// filter out self
-	selfAPIPort := viper.GetInt("api.port")
+	// filter out self — detect all local IPs once at startup
+	selfURLs := localSelfURLs(viper.GetInt("api.port"))
 	filtered := make([]string, 0, len(sourceURLs))
 	for _, url := range sourceURLs {
-		if IsSelfURL(url, selfAPIPort) {
+		// strip trailing path to match against the prefix set
+		isSelf := false
+		for selfURL := range selfURLs {
+			if strings.HasPrefix(url, selfURL) {
+				isSelf = true
+				break
+			}
+		}
+		if isSelf {
 			env.Log().Infof("[%s] skipping self URL %s", Name, url)
 			continue
 		}
@@ -310,10 +344,22 @@ func (s *Sync) syncTick() {
 			s.Log().Infof("[%s] sync source returned empty branch list (LRB slot=%d)", Name, lrbSlot)
 			return
 		}
-		s.branchList = branches
+		// filter out branches that are already committed locally
+		newBranches := make([]base.TransactionID, 0, len(branches))
+		for _, b := range branches {
+			if _, committed := multistate.FetchRootRecord(s.StateStore(), b); !committed {
+				newBranches = append(newBranches, b)
+			}
+		}
+		s.Log().Infof("[%s] received %d branches from sync source (slots %d..%d, source LRB=%d), %d new",
+			Name, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot(), lrbSlot, len(newBranches))
+		if len(newBranches) == 0 {
+			s.Log().Warnf("[%s] all %d branches already committed locally — sync source (LRB=%d) is not ahead of us (healthy=%d)",
+				Name, len(branches), lrbSlot, healthySlot)
+			return
+		}
+		s.branchList = newBranches
 		s.windowPulled = false
-		s.Log().Infof("[%s] received %d branches from sync source (slots %d..%d, source LRB=%d)",
-			Name, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot(), lrbSlot)
 	}
 
 	// force-commit branches in bounded batches to prevent GC death spiral under rapid sync.
