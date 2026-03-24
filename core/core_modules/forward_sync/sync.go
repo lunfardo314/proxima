@@ -64,7 +64,8 @@ type (
 		thresholdUp   uint32
 		thresholdDown uint32
 		pullAhead     int // window size: pull this many branches ahead in parallel
-		commitBatch   int // max branches to commit per sync tick before forcing GC
+		commitBatch   int // max branches to commit per sync tick
+		memLimitBytes uint64 // memory limit from config; 0 = no pressure-based GC
 		syncing       bool
 		// latestTargetTicks is TicksSinceGenesis of the current forward-sync target.
 		// Read by attacher goroutines via LatestForwardSyncedTimestamp() to skip depth cap.
@@ -169,6 +170,8 @@ func Start(env environment) *Sync {
 		sources[i] = client.NewWithGoogleDNS(url, 10*time.Second)
 	}
 
+	memLimitMB := viper.GetInt("memory.limit_mb")
+
 	ret := &Sync{
 		environment:   env,
 		sources:       sources,
@@ -176,6 +179,7 @@ func Start(env environment) *Sync {
 		thresholdDown: uint32(thDown),
 		pullAhead:     pullAhead,
 		commitBatch:   commitBatch,
+		memLimitBytes: uint64(memLimitMB) << 20,
 		wakeup:        make(chan struct{}, 1),
 	}
 
@@ -362,9 +366,9 @@ func (s *Sync) syncTick() {
 		s.windowPulled = false
 	}
 
-	// force-commit branches in bounded batches to prevent GC death spiral under rapid sync.
-	// After each batch, runtime.GC() forces collection of the heavy per-branch allocations
-	// (mutations, committed tx slices, trie caches) before the next batch starts.
+	// force-commit branches in bounded batches with memory-pressure-based GC.
+	// After each batch, check actual heap allocation against the configured memory limit.
+	// This adapts to any hardware — no static assumptions about allocation rates or batch sizes.
 	nCommitted := 0
 	nAlreadyCommitted := 0
 	for len(s.branchList) > 0 && nCommitted < s.commitBatch {
@@ -383,11 +387,7 @@ func (s *Sync) syncTick() {
 		nCommitted++
 	}
 	if nCommitted > 0 {
-		if nCommitted >= s.commitBatch {
-			// only force GC when a full batch was processed — indicates sustained allocation pressure.
-			// Partial batches mean we're waiting for past cone solidification, not allocating heavily.
-			runtime.GC()
-		}
+		s.memoryPressureGC()
 		s.Log().Infof("[%s] committed %d branches (%d new, %d already committed), %d remaining",
 			Name, nCommitted, nCommitted-nAlreadyCommitted, nAlreadyCommitted, len(s.branchList))
 		// branches were committed — reset window so next window is pulled
@@ -435,5 +435,32 @@ func (s *Sync) syncTick() {
 			s.PullFromPeers(branchID)
 		}
 		s.lastPullTime = time.Now()
+	}
+}
+
+const (
+	// memPressureGCThreshold: force GC when heap exceeds this fraction of the memory limit
+	memPressureGCThreshold = 0.50
+	// memPressurePauseThreshold: pause briefly after GC if heap still exceeds this fraction
+	memPressurePauseThreshold = 0.70
+	memPressurePauseDuration  = 500 * time.Millisecond
+)
+
+// memoryPressureGC checks actual heap allocation against the configured memory limit
+// and triggers GC when needed. Adapts to any hardware — no static assumptions.
+func (s *Sync) memoryPressureGC() {
+	if s.memLimitBytes == 0 {
+		return
+	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	if ms.Alloc > uint64(float64(s.memLimitBytes)*memPressureGCThreshold) {
+		runtime.GC()
+		runtime.ReadMemStats(&ms)
+		if ms.Alloc > uint64(float64(s.memLimitBytes)*memPressurePauseThreshold) {
+			s.Log().Warnf("[%s] memory pressure: %d MB after GC (limit %d MB), pausing",
+				Name, ms.Alloc>>20, s.memLimitBytes>>20)
+			time.Sleep(memPressurePauseDuration)
+		}
 	}
 }
