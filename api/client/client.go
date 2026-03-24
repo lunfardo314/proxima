@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -1330,18 +1331,28 @@ func (c *APIClient) DownloadSnapshot(destPath string) (string, error) {
 		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
-	if destPath == "" {
-		// Try to extract filename from Content-Disposition header
-		if cd := resp.Header.Get("Content-Disposition"); cd != "" {
-			if _, params, err := mime.ParseMediaType(cd); err == nil {
-				if fn, ok := params["filename"]; ok && fn != "" {
-					destPath = fn
-				}
+	// extract filename from Content-Disposition header
+	headerFilename := ""
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if _, params, err := mime.ParseMediaType(cd); err == nil {
+			if fn, ok := params["filename"]; ok && fn != "" {
+				headerFilename = fn
 			}
 		}
+	}
+
+	if destPath == "" {
+		destPath = headerFilename
 		if destPath == "" {
 			destPath = "downloaded.snapshot"
 		}
+	} else if info, err := os.Stat(destPath); err == nil && info.IsDir() {
+		// destPath is a directory — place the file inside it
+		fn := headerFilename
+		if fn == "" {
+			fn = "downloaded.snapshot"
+		}
+		destPath = filepath.Join(destPath, fn)
 	}
 
 	f, err := os.Create(destPath)

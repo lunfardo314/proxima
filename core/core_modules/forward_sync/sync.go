@@ -309,7 +309,11 @@ func (s *Sync) syncTick() {
 		nCommitted++
 	}
 	if nCommitted > 0 {
-		runtime.GC()
+		if nCommitted >= s.commitBatch {
+			// only force GC when a full batch was processed — indicates sustained allocation pressure.
+			// Partial batches mean we're waiting for past cone solidification, not allocating heavily.
+			runtime.GC()
+		}
 		s.Log().Infof("[%s] committed %d branches, %d remaining", Name, nCommitted, len(s.branchList))
 		s.lastPullTime = time.Time{} // reset so next target is pulled immediately
 	}
