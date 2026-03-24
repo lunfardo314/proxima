@@ -204,6 +204,7 @@ func (s *Sync) syncLoop() {
 func (s *Sync) findAnchorBranch() base.TransactionID {
 	lrb := multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch)
 	if lrb == nil {
+		s.Log().Warnf("[%s] findAnchorBranch: no reliable branch found", Name)
 		return base.TransactionID{}
 	}
 	var anchor base.TransactionID
@@ -213,6 +214,8 @@ func (s *Sync) findAnchorBranch() base.TransactionID {
 		n++
 		return n < forkSafetyDepth
 	})
+	s.Log().Infof("[%s] findAnchorBranch: LRB slot=%d, walked back %d -> anchor slot=%d (%s)",
+		Name, lrb.Slot(), n, anchor.Slot(), anchor.StringShort())
 	return anchor
 }
 
@@ -230,6 +233,8 @@ func (s *Sync) requestBranchList() ([]base.TransactionID, uint32, error) {
 		return nil, 0, fmt.Errorf("no anchor branch found")
 	}
 
+	s.Log().Infof("[%s] requestBranchList: anchor=%s (slot %d)", Name, anchor.StringShort(), anchor.Slot())
+
 	n := len(s.sources)
 	var lastErr error
 	for i := 0; i < n; i++ {
@@ -241,9 +246,12 @@ func (s *Sync) requestBranchList() ([]base.TransactionID, uint32, error) {
 			continue
 		}
 		if len(branches) == 0 {
-			// source's LRB is at or before our anchor — nothing to sync from this source
+			s.Log().Infof("[%s] source %d: returned 0 branches (source LRB=%d, our anchor slot=%d) — source is at or before our anchor",
+				Name, idx, lrbSlot, anchor.Slot())
 			continue
 		}
+		s.Log().Infof("[%s] source %d: returned %d branches (slots %d..%d, source LRB=%d)",
+			Name, idx, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot(), lrbSlot)
 		s.sourceIdx = idx
 		return branches, lrbSlot, nil
 	}
@@ -260,10 +268,13 @@ func (s *Sync) syncTick() {
 	// find latest committed healthy slot
 	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore(), global.FractionHealthyBranch)
 	if !found {
+		s.Log().Warnf("[%s] no healthy slot found", Name)
 		return
 	}
 
 	gap := nowSlot - healthySlot
+	s.Tracef("sync", "syncTick: nowSlot=%d, healthySlot=%d, gap=%d, syncing=%v, branchList=%d",
+		nowSlot, healthySlot, gap, s.syncing, len(s.branchList))
 
 	// hysteresis: go idle if gap is small enough
 	if gap <= s.thresholdDown {
@@ -309,10 +320,18 @@ func (s *Sync) syncTick() {
 	// After each batch, runtime.GC() forces collection of the heavy per-branch allocations
 	// (mutations, committed tx slices, trie caches) before the next batch starts.
 	nCommitted := 0
+	nAlreadyCommitted := 0
 	for len(s.branchList) > 0 && nCommitted < s.commitBatch {
-		s.ForceCommitBranch(s.branchList[0])
-		if _, ok := multistate.FetchRootRecord(s.StateStore(), s.branchList[0]); !ok {
+		branchID := s.branchList[0]
+		// check if already committed before forcing
+		_, wasAlreadyCommitted := multistate.FetchRootRecord(s.StateStore(), branchID)
+		s.ForceCommitBranch(branchID)
+		if _, ok := multistate.FetchRootRecord(s.StateStore(), branchID); !ok {
+			s.Log().Infof("[%s] branch %s (slot %d) not yet ready, stopping batch", Name, branchID.StringShort(), branchID.Slot())
 			break
+		}
+		if wasAlreadyCommitted {
+			nAlreadyCommitted++
 		}
 		s.branchList = s.branchList[1:]
 		nCommitted++
@@ -323,7 +342,8 @@ func (s *Sync) syncTick() {
 			// Partial batches mean we're waiting for past cone solidification, not allocating heavily.
 			runtime.GC()
 		}
-		s.Log().Infof("[%s] committed %d branches, %d remaining", Name, nCommitted, len(s.branchList))
+		s.Log().Infof("[%s] committed %d branches (%d new, %d already committed), %d remaining",
+			Name, nCommitted, nCommitted-nAlreadyCommitted, nAlreadyCommitted, len(s.branchList))
 		// branches were committed — reset window so next window is pulled
 		s.windowPulled = false
 	}
