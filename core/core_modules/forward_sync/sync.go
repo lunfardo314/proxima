@@ -12,6 +12,7 @@ package forward_sync
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -30,6 +31,7 @@ const (
 	defaultThresholdUp   = 15
 	defaultThresholdDown = 3
 	defaultPullAhead     = 5
+	defaultCommitBatch   = 10
 	syncLoopPeriod       = time.Second
 	pullRepeatInterval   = 5 * time.Second
 	// forkSafetyDepth: how many branches back from LRB to use as the anchor point
@@ -55,6 +57,7 @@ type (
 		thresholdUp   uint32
 		thresholdDown uint32
 		pullAhead     int // pull k-th branch ahead to parallelize past cone solidification
+		commitBatch   int // max branches to commit per sync tick before forcing GC
 		syncing       bool
 		// latestTargetTicks is TicksSinceGenesis of the current forward-sync target.
 		// Read by attacher goroutines via LatestForwardSyncedTimestamp() to skip depth cap.
@@ -115,6 +118,10 @@ func Start(env environment) *Sync {
 	if pullAhead <= 0 {
 		pullAhead = defaultPullAhead
 	}
+	commitBatch := viper.GetInt("sync.commit_batch")
+	if commitBatch <= 0 {
+		commitBatch = defaultCommitBatch
+	}
 
 	sources := make([]*client.APIClient, len(sourceURLs))
 	for i, url := range sourceURLs {
@@ -127,12 +134,14 @@ func Start(env environment) *Sync {
 		thresholdUp:   uint32(thUp),
 		thresholdDown: uint32(thDown),
 		pullAhead:     pullAhead,
+		commitBatch:   commitBatch,
 		wakeup:        make(chan struct{}, 1),
 	}
 
 	go ret.syncLoop()
 
-	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d, pull ahead: %d", Name, sourceURLs, thUp, thDown, pullAhead)
+	env.Log().Infof("[%s] started, sources: %v, threshold up: %d, down: %d, pull ahead: %d, commit batch: %d",
+		Name, sourceURLs, thUp, thDown, pullAhead, commitBatch)
 	return ret
 }
 
@@ -287,9 +296,11 @@ func (s *Sync) syncTick() {
 			Name, len(branches), branches[0].Slot(), branches[len(branches)-1].Slot(), lrbSlot)
 	}
 
-	// force-commit and remove all committed branches from head of list
+	// force-commit branches in bounded batches to prevent GC death spiral under rapid sync.
+	// After each batch, runtime.GC() forces collection of the heavy per-branch allocations
+	// (mutations, committed tx slices, trie caches) before the next batch starts.
 	nCommitted := 0
-	for len(s.branchList) > 0 {
+	for len(s.branchList) > 0 && nCommitted < s.commitBatch {
 		s.ForceCommitBranch(s.branchList[0])
 		if _, ok := multistate.FetchRootRecord(s.StateStore(), s.branchList[0]); !ok {
 			break
@@ -298,6 +309,7 @@ func (s *Sync) syncTick() {
 		nCommitted++
 	}
 	if nCommitted > 0 {
+		runtime.GC()
 		s.Log().Infof("[%s] committed %d branches, %d remaining", Name, nCommitted, len(s.branchList))
 		s.lastPullTime = time.Time{} // reset so next target is pulled immediately
 	}

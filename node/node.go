@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -161,6 +162,7 @@ func (p *ProximaNode) Start() {
 	p.Log().Infof("Proxima node has been started successfully")
 	p.Log().Debug("running in debug mode")
 
+	p.initMemoryLimit()
 	p.goLoggingMemStats()
 	p.goLoggingSync()
 }
@@ -225,6 +227,40 @@ func (p *ProximaNode) startMetrics() {
 		p.Log().Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 	}()
 	p.Log().Infof("Prometheus metrics exposed on port %d", port)
+}
+
+func (p *ProximaNode) initMemoryLimit() {
+	limitMB := viper.GetInt("memory.limit_mb")
+	if limitMB <= 0 {
+		return
+	}
+	limitBytes := int64(limitMB) << 20
+	debug.SetMemoryLimit(limitBytes)
+	p.Log().Infof("[memory] soft GC limit set to %d MB", limitMB)
+
+	shutdownPct := viper.GetInt("memory.shutdown_pct")
+	if shutdownPct <= 0 {
+		shutdownPct = 90
+	}
+	warnBytes := uint64(float64(limitBytes) * 0.80)
+	shutdownBytes := uint64(float64(limitBytes) * float64(shutdownPct) / 100)
+
+	var memStats runtime.MemStats
+	p.RepeatInBackground("memory_watchdog", 5*time.Second, func() bool {
+		runtime.ReadMemStats(&memStats)
+		alloc := memStats.Alloc
+		if alloc >= shutdownBytes {
+			p.Log().Errorf("[memory] allocated %d MB >= shutdown threshold %d MB (%d%% of %d MB), initiating graceful shutdown",
+				alloc>>20, shutdownBytes>>20, shutdownPct, limitMB)
+			p.Stop()
+			return false
+		}
+		if alloc >= warnBytes {
+			p.Log().Warnf("[memory] allocated %d MB approaching limit %d MB (%.0f%%)",
+				alloc>>20, limitMB, float64(alloc)*100/float64(limitBytes))
+		}
+		return true
+	})
 }
 
 func (p *ProximaNode) goLoggingMemStats() {

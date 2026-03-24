@@ -160,3 +160,15 @@ sequencer:
 #   threshold_down: 3
 #   # pull k-th branch ahead to parallelize past cone solidification (default: 5)
 #   pull_ahead: 5
+#   # max branches to commit per sync tick before forcing GC (default: 10)
+#   # lower values reduce memory spikes during rapid forward-sync at the cost of slower catch-up
+#   commit_batch: 10
+
+# Memory management
+# When limit_mb > 0, sets Go's soft GC limit (debug.SetMemoryLimit) and starts
+# a watchdog that initiates graceful shutdown when heap reaches shutdown_pct of the limit.
+# memory:
+#   # soft memory limit in MB; 0 = disabled (default)
+#   limit_mb: 0
+#   # graceful shutdown threshold as percentage of limit_mb (default: 90)
+#   shutdown_pct: 90

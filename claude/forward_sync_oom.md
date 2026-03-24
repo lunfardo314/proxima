@@ -66,48 +66,88 @@ committed old-slot branches are still "fresh" relative to wall-clock time and wo
 `stateReaderCacheLimit = 3000`. During rapid forward-sync, many state readers are created
 for branch commits. Each holds trie cache references that prevent deep GC.
 
-## Proposed Fixes (pending implementation)
+## Implemented Fixes (2026-03-24)
 
-### Quick wins
+All proposed measures (A–G) have been implemented, plus a programmatic memory limit
+with graceful shutdown.
 
-**A. `runtime.GC()` between forward-sync batches**
-After each 100-branch batch completes, call `runtime.GC()` to force collection before
-the next batch. Simple, non-invasive, addresses the GC death spiral directly.
+### A+B+D. Batched commit loop with GC trigger
 
-**B. Rate-limit forward-sync when memory is high**
-Check `runtime.MemStats.Alloc` between commits. If above a threshold (e.g., 2 GB),
-sleep briefly to let GC catch up. Or simply limit commits to N per second.
+**File:** `core/core_modules/forward_sync/sync.go`
 
-**C. Set `GOMEMLIMIT` environment variable**
-Give Go GC a hard ceiling (e.g., `GOMEMLIMIT=6G`). This makes GC more aggressive as
-memory approaches the limit, trading CPU for memory safety. Zero code changes — just
-set in the systemd service file.
+The unbounded commit loop is now capped to `sync.commit_batch` branches per tick (default 10).
+After each batch, `runtime.GC()` forces collection of the heavy per-branch allocations before
+the next tick. The 1-second tick period provides natural rate limiting.
 
-### Structural fixes
+### C. Programmatic GOMEMLIMIT via config
 
-**D. Commit-count-based GC trigger during forward-sync**
-After every N branch commits (e.g., 50), trigger memDAG GC explicitly — don't rely solely
-on the 5-second timer. This ensures vertex cleanup keeps pace with commit rate.
+**File:** `node/node.go`
 
-**E. Limit pending branch accumulation**
-Don't pull more branches (pull_ahead) while the number of pending uncommitted branches
-exceeds a threshold. This bounds the amount of in-flight branch data.
+`debug.SetMemoryLimit()` is called at startup when `memory.limit_mb > 0`. This is the
+programmatic equivalent of `GOMEMLIMIT` and is driven from `proxima.yaml`.
 
-**F. Eagerly free branch commit data**
-Clear `mutations` and `committedTxs` slices immediately after the DB write completes,
-rather than waiting for cache eviction or GC. Set fields to nil in `_commitPendingBranch`
-after successful commit.
+### E. Pending branch accumulation bounded
 
-**G. Bound state reader cache during forward-sync**
-Reduce `stateReaderCacheLimit` or eagerly evict readers for branches that are already
-committed and no longer needed.
+The batch limit in A+B+D naturally bounds pending accumulation: at most `commit_batch`
+branches are committed per second, and `pull_ahead` (default 5) limits in-flight pulls.
 
-### Recommended implementation order
+### F. Eager free of branch commit data
 
-1. **C** (GOMEMLIMIT) — immediate deployment, no code change
-2. **A** (runtime.GC between batches) — small code change, direct fix
-3. **F** (eager free) — moderate change, reduces GC pressure structurally
-4. **D + E** (rate limiting) — proper long-term solution
+**File:** `core/core_modules/branches/branches.go`
+
+After the DB commit completes and the pending entry is removed from the map,
+`pb.Mutations` and `pb.CommittedTxs` are set to nil. This allows GC to reclaim
+the heavy allocations immediately rather than waiting for map eviction.
+
+### G. State reader cache hard cap
+
+**File:** `core/core_modules/branches/branches.go`
+
+`_cleanupCachedStateReaders()` now enforces a hard cap of 100 cached state readers.
+When exceeded, the oldest entries (by `lastActivity`) are evicted regardless of TTL.
+
+### Memory watchdog with graceful shutdown
+
+**File:** `node/node.go`
+
+When `memory.limit_mb` is configured, a background watchdog (every 5s) monitors
+`runtime.MemStats.Alloc`. It warns at 80% of the limit and initiates graceful shutdown
+(`p.Stop()`) at `memory.shutdown_pct` (default 90%).
+
+## Configuration Reference
+
+### `sync` section
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `sync.sources` | string list | `[]` | Trusted API endpoints for branch-list requests. Self URLs are auto-skipped. |
+| `sync.threshold_up` | int | `15` | Start forward-sync when slot gap >= this value. |
+| `sync.threshold_down` | int | `3` | Go idle when slot gap <= this value. Must be < threshold_up. |
+| `sync.pull_ahead` | int | `5` | Pull the k-th branch ahead to overlap solidification with pulling. |
+| `sync.commit_batch` | int | `10` | Max branches to commit per sync tick before forcing GC. Lower values reduce memory spikes at the cost of slower catch-up. |
+
+### `memory` section
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `memory.limit_mb` | int | `0` (disabled) | Soft memory limit in MB. Sets `debug.SetMemoryLimit()` and enables the watchdog. |
+| `memory.shutdown_pct` | int | `90` | Graceful shutdown threshold as percentage of `limit_mb`. Watchdog calls `Stop()` when heap allocation reaches this level. Warn at 80%. |
+
+### Example
+
+```yaml
+sync:
+  sources:
+    - "http://113.30.191.219:8001"
+  threshold_up: 15
+  threshold_down: 3
+  pull_ahead: 5
+  commit_batch: 10
+
+memory:
+  limit_mb: 6000
+  shutdown_pct: 90
+```
 
 ## Related
 

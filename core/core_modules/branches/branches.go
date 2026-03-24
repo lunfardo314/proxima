@@ -89,6 +89,7 @@ const (
 	stateReaderTTLSlots     = 2
 	branchDataCacheTTLSlots = 12
 	stateReaderCacheLimit   = 3000
+	stateReaderCacheMaxSize = 100 // hard cap on cached state readers; evict oldest when exceeded
 )
 
 func New(env environment) *Branches {
@@ -237,6 +238,19 @@ func (b *Branches) _cleanupCachedStateReaders() (int, int) {
 			delete(b.stateReaders, txid)
 			count++
 		}
+	}
+	// hard cap: if cache still exceeds limit, evict the oldest entries
+	for len(b.stateReaders) > stateReaderCacheMaxSize {
+		var oldestID base.TransactionID
+		var oldestTime time.Time
+		for txid, br := range b.stateReaders {
+			if oldestTime.IsZero() || br.lastActivity.Before(oldestTime) {
+				oldestID = txid
+				oldestTime = br.lastActivity
+			}
+		}
+		delete(b.stateReaders, oldestID)
+		count++
 	}
 	return count, len(b.stateReaders)
 }
@@ -456,6 +470,10 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 	b.m[branchID] = bd
 	delete(b.pending, branchID)
 	delete(b.committing, branchID)
+	// eagerly free heavy allocations now that the pending entry is removed
+	// and no concurrent virtual state reader can reference them
+	pb.Mutations = nil
+	pb.CommittedTxs = nil
 
 	rdr := &cachedStateReader{
 		IndexedStateReader: multistate.MustNewReadable(b.StateStore(), bd.Root, stateReaderCacheLimit),
