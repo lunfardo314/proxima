@@ -59,13 +59,23 @@ func New(env environment, attachFun AttachFun) *NonSeqAttach {
 	return ret
 }
 
+// PushNonSeqTransaction decides whether to accept or drop a non-sequencer transaction
+// before it enters the queue. Dropped transactions remain in the txstore and can be
+// pulled later if needed for solidification.
+func (q *NonSeqAttach) PushNonSeqTransaction(inp *Input) {
+	if !inp.Pulled && q.Queue.Len() >= maxQueueLen {
+		q.IncCounter("nonseq_drop")
+		return
+	}
+	q.Queue.Push(inp, inp.Pulled)
+}
+
 func (q *NonSeqAttach) consume(inp *Input) {
 	if !inp.Pulled {
 		// drop non-pulled non-seq transactions when resources are constrained or during snapshot
 		if q.IsSnapshotting() ||
 			q.Counter("att") >= q.MaxConcurrentAttachers() ||
-			q.Counter("nonseq") >= maxNonSeqVertices ||
-			q.Queue.Len() >= maxQueueLen {
+			q.Counter("nonseq") >= maxNonSeqVertices {
 			q.IncCounter("nonseq_drop")
 			return
 		}

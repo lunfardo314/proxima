@@ -199,11 +199,11 @@ func (w *Workflow) pushToAttachQueue(tx *transaction.Transaction, opts []attache
 			Pulled: pulled,
 		}, pulled)
 	} else {
-		w.nonSeqAttach.Push(&nonseq_attach.Input{
+		w.nonSeqAttach.PushNonSeqTransaction(&nonseq_attach.Input{
 			Tx:     tx,
 			Opts:   opts,
 			Pulled: pulled,
-		}, pulled)
+		})
 	}
 }
 
