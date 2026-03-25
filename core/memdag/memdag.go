@@ -85,8 +85,14 @@ func New(env environment) *MemDAG {
 	return ret
 }
 
-// vertexTTLSlots must be at least 6
-const vertexTTLSlots = 24
+const (
+	// vertexTTLSlots: wall-clock TTL — evict vertices added more than N wall-clock slots ago.
+	vertexTTLSlots = 24
+	// vertexLedgerTTLSlots: ledger-time TTL — evict vertices whose transaction slot is more than
+	// N slots behind the latest committed branch. Handles forward-sync where vertices are
+	// "fresh" by wall clock but ancient by ledger time.
+	vertexLedgerTTLSlots = 48
+)
 
 func (d *MemDAG) WithGlobalWriteLock(fun func()) {
 	d.mutex.Lock()
@@ -145,39 +151,39 @@ func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
 
 // doGC traverses all known transaction IDs and:
 // -- deletes those with weak pointers GC-ed
-// -- collects those which are already expired and not referenced by other parts of the system (in different critical section)
+// -- collects those which are expired by wall-clock TTL or ledger-time TTL
 // -- nullifies strong references of those expired thus preparing them for GC
+//
+// Expiration criteria (either triggers eviction):
+//   - wall-clock: vertex was added more than vertexTTLSlots wall-clock slots ago (only when synced)
+//   - ledger-time: vertex's transaction slot is more than vertexLedgerTTLSlots behind the latest
+//     committed branch (always active — handles forward-sync where vertices are "fresh" by wall clock
+//     but ancient by ledger time)
 func (d *MemDAG) doGC() (detached, deleted int) {
 	expired := make([]*vertex.WrappedTx, 0)
 	var deletedIDs []base.TransactionID
+	synced := d.IsSynced()
 
-	if !d.IsSynced() {
-		// if not synced, simplified scenario: just delete all GCed vertices
-		d.WithGlobalWriteLock(func() {
-			for txid, rec := range d.vertices {
-				if rec.Pointer.Value() == nil {
-					d.deleteFromMapNoLock(txid)
-					deletedIDs = append(deletedIDs, txid)
-					deleted++
-				}
-			}
-		})
-		d.postDeleteEvents(deletedIDs)
-		return
-	}
-	// is synced.
-	// collect those expired
 	d.WithGlobalWriteLock(func() {
 		slotNow := ledger.TimeNow().Slot
+		latestBranch := d.latestBranchSlot
+
 		for txid, rec := range d.vertices {
 			if rec.Pointer.Value() == nil {
 				d.deleteFromMapNoLock(txid)
 				deletedIDs = append(deletedIDs, txid)
 				deleted++
-			} else {
-				if rec.WrappedTx != nil && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots {
-					expired = append(expired, rec.WrappedTx)
-				}
+				continue
+			}
+			if rec.WrappedTx == nil {
+				continue
+			}
+			// wall-clock TTL (only when synced)
+			wallClockExpired := synced && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
+			// ledger-time TTL (always active)
+			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
+			if wallClockExpired || ledgerTimeExpired {
+				expired = append(expired, rec.WrappedTx)
 			}
 		}
 	})

@@ -108,11 +108,31 @@ When exceeded, the oldest entries (by `lastActivity`) are evicted regardless of 
 
 ### Memory watchdog with graceful shutdown
 
-**File:** `node/node.go`
+**File:** `node/node.go`, `global/global.go`
 
 When `memory.limit_mb` is configured, a background watchdog (every 5s) monitors
 `runtime.MemStats.Alloc`. It warns at 80% of the limit and initiates graceful shutdown
 (`p.Stop()`) at `memory.shutdown_pct` (default 90%).
+
+`MemoryPressureGC()` on `global.Global` (available to all components via `StartStop` interface):
+forces GC at 50% of limit, pauses 500ms if still above 70% after GC.
+
+### Ledger-time-based memDAG GC
+
+**File:** `core/memdag/memdag.go`
+
+The memDAG GC now uses two eviction criteria (either triggers eviction):
+
+1. **Wall-clock TTL** (`vertexTTLSlots = 24`): vertex was added more than 24 wall-clock slots
+   ago. Only active when synced — same as before.
+2. **Ledger-time TTL** (`vertexLedgerTTLSlots = 48`): vertex's transaction slot is more than
+   48 slots behind the latest committed branch. Always active.
+
+During forward-sync, the node commits historical branches (e.g., slot 75000) while the
+wall clock is at slot 94000. Previously, all vertices from committed branches looked "fresh"
+to the wall-clock TTL and were never evicted — vertex count grew unboundedly (4K → 100K+)
+causing OOM. The ledger-time TTL evicts these ancient vertices within seconds of their
+branch being committed, keeping vertex count stable (~4-5K) during sync.
 
 ## Configuration Reference
 
