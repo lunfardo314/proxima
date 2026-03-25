@@ -61,13 +61,12 @@ func runMilestoneAttacher(
 			env.LogTopicf("seq_attach", 1, "%s", a.logFinalStatusString(msData))
 		}
 		// post new vertex event with full metadata from wrapup
-		var seqName, proposerStrategy string
+		var seqName string
 		if msData != nil {
 			seqName = msData.Name()
-			proposerStrategy = msData.ProposerStrategy()
 		}
 		if tx := vid.GetTransaction(); tx != nil {
-			env.PostEventNewVertex(tx, &a.finals.TransactionMetadata, seqName, proposerStrategy)
+			env.PostEventNewVertex(tx, &a.finals.TransactionMetadata, seqName)
 		}
 	}
 	// finished either way: good or bad
@@ -433,8 +432,12 @@ func (a *milestoneAttacher) logFinalStatusString(msData *seqdata.SequencerData) 
 			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.MutationStats.NumTransactions,
 			util.Th(a.vid.InflationAmount()))
 	} else {
-		msg = fmt.Sprintf("--- SEQ TX%s %s(in %d), i = %s, lnow: %s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, util.Th(a.vid.InflationAmount()), ledger.TimeNow().String())
+		numEndorse := 0
+		if tx := a.vid.GetTransaction(); tx != nil {
+			numEndorse = tx.NumEndorsements()
+		}
+		msg = fmt.Sprintf("--- SEQ TX%s %s(in %d, endorse %d), i = %s, lnow: %s",
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, numEndorse, util.Th(a.vid.InflationAmount()), ledger.TimeNow().String())
 	}
 	if a.vid.GetTxStatus() == vertex.Bad {
 		msg += fmt.Sprintf("BAD: err = '%v'", a.vid.GetError())

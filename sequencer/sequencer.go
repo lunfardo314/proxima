@@ -649,16 +649,16 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch)
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
-			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, proposer: %s, coverage: %s, inflation: %s",
-				tx.IDShortString(), ledger.TimeNow().String(), sd.Name(), sd.ProposerStrategy(),
+			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, coverage: %s, inflation: %s",
+				tx.IDShortString(), ledger.TimeNow().String(), sd.Name(),
 				util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
 			return true
 		}
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
 			sd2 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
-			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. Now: %s, name: %s, p: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
-				tx.IDShortString(), ledger.TimeNow().String(), sd2.Name(), sd2.ProposerStrategy(),
+			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. Now: %s, name: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
+				tx.IDShortString(), ledger.TimeNow().String(), sd2.Name(),
 				util.Th(*meta.LedgerCoverage), util.Th(*meta.CoverageDelta), util.Th(*meta.Supply), util.Th(tx.InflationAmount()), util.Th(*meta.SlotInflation))
 			seq.wontSubmitBranchID = tx.ID()
 		}
@@ -666,8 +666,8 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 	}
 
 	sd3 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
-	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, name: %s, proposer: %s, coverage: %s, inflation: %s",
-		tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), sd3.ProposerStrategy(),
+	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, name: %s, endorse: %d, coverage: %s, inflation: %s",
+		tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), tx.NumEndorsements(),
 		util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
 	return true
 }

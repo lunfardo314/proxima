@@ -38,8 +38,7 @@ type (
 		AddOwnMilestone(vid *vertex.WrappedTx)
 		FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOutput, targetTs base.LedgerTime) []vertex.WrappedOutput
 		LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx
-		EvidenceProposal(strategyShortName string)
-		EvidenceBestProposalForTheTarget(strategyShortName string)
+		EvidenceEndorsementCount(numEndorsements int)
 		SkeletonFactory() *factory.Factory
 	}
 
@@ -155,7 +154,6 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 		for p := range task.proposalChan {
 			proposals[p.tx.ID()] = p
 			task.slotData.ProposalSubmitted(p.strategyShortName)
-			task.EvidenceProposal(p.strategyShortName)
 		}
 		close(readStop)
 	}()
@@ -187,7 +185,7 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 		return nil, nil, "", fmt.Errorf("%w (res: %s, best: %s, %s)",
 			ErrNotGoodEnough, util.Th(best.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
-	task.EvidenceBestProposalForTheTarget(best.strategyShortName)
+	task.EvidenceEndorsementCount(best.tx.NumEndorsements())
 	return best.tx, best.txMetadata, best.hrString, nil
 }
 

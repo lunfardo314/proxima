@@ -512,10 +512,6 @@ func (txb *SeqTxBuilder) SetName(name string) {
 	txb.nextSeqData.SetName(name)
 }
 
-func (txb *SeqTxBuilder) SetProposerStrategy(strategy string) {
-	txb.nextSeqData.SetProposerStrategy(strategy)
-}
-
 type MakeSimpleSequencerTransactionParams struct {
 	// sequencer name (set only if != ""
 	SeqName string

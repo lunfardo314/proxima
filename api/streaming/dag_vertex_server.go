@@ -264,7 +264,6 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 			data.CoverageDelta,
 			data.Supply,
 			data.SeqName,
-			data.ProposerStrategy,
 		)
 
 		// Store transaction id in its slot

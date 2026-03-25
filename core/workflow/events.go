@@ -20,19 +20,17 @@ var (
 type NewVertexEventData struct {
 	*transaction.Transaction
 	txmetadata.TransactionMetadata
-	SeqName          string
-	ProposerStrategy string
+	SeqName string
 }
 
 func (w *Workflow) PostEventNewTransaction(vid *vertex.WrappedTx) {
 	w.events.PostEvent(EventNewTx, vid)
 }
 
-func (w *Workflow) PostEventNewVertex(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, seqName, proposerStrategy string) {
+func (w *Workflow) PostEventNewVertex(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, seqName string) {
 	data := &NewVertexEventData{
-		Transaction:      tx,
-		SeqName:          seqName,
-		ProposerStrategy: proposerStrategy,
+		Transaction: tx,
+		SeqName:     seqName,
 	}
 	if metadata != nil {
 		data.TransactionMetadata = *metadata

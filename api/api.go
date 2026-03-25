@@ -251,7 +251,7 @@ type (
 		TotalInflation        uint64   `json:"i,omitempty"`                 // total inflation on transaction
 		SequencerID           string   `json:"seqid,omitempty"`             // "" (omitted) for non-seq. Useful for coloring
 		SeqName               string   `json:"seqname,omitempty"`           // sequencer name from on-chain data
-		ProposerStrategy      string   `json:"strategy,omitempty"`          // proposer strategy ID
+		NumEndorsements       int      `json:"num_endorse,omitempty"`       // number of endorsements
 		HolderID              string   `json:"holder,omitempty"`            // holder ID hex (for non-seq vertical placement)
 		CoverageDelta         *uint64  `json:"cd,omitempty"`                // coverage delta (sequencer txs only)
 		Supply                *uint64  `json:"supply,omitempty"`            // total supply (sequencer txs only)
@@ -501,22 +501,22 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 }
 
 func VertexWithDependenciesFromTransaction(tx *transaction.Transaction) *VertexWithDependencies {
-	return vertexWithDepsFromTx(tx, nil, nil, "", "")
+	return vertexWithDepsFromTx(tx, nil, nil, "")
 }
 
-func VertexWithDependenciesExtended(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName, proposerStrategy string) *VertexWithDependencies {
-	return vertexWithDepsFromTx(tx, coverageDelta, supply, seqName, proposerStrategy)
+func VertexWithDependenciesExtended(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName string) *VertexWithDependencies {
+	return vertexWithDepsFromTx(tx, coverageDelta, supply, seqName)
 }
 
-func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName, proposerStrategy string) *VertexWithDependencies {
+func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName string) *VertexWithDependencies {
 	ret := &VertexWithDependencies{
-		ID:               tx.IDStringHex(),
-		TotalAmount:      tx.TotalAmount(),
-		TotalInflation:   tx.InflationAmount(),
-		SeqName:          seqName,
-		ProposerStrategy: proposerStrategy,
-		CoverageDelta:    coverageDelta,
-		Supply:           supply,
+		ID:              tx.IDStringHex(),
+		TotalAmount:     tx.TotalAmount(),
+		TotalInflation:  tx.InflationAmount(),
+		SeqName:         seqName,
+		NumEndorsements: tx.NumEndorsements(),
+		CoverageDelta:   coverageDelta,
+		Supply:          supply,
 		Inputs:           make([]string, 0),
 		Endorsements:     make([]string, tx.NumEndorsements()),
 	}

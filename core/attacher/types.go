@@ -39,7 +39,7 @@ type (
 
 	postEventEnvironment interface {
 		PostEventNewTransaction(vid *vertex.WrappedTx)
-		PostEventNewVertex(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, seqName, proposerStrategy string)
+		PostEventNewVertex(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, seqName string)
 	}
 
 	Environment interface {

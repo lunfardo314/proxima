@@ -55,8 +55,6 @@ func (p *proposer) newProposalWithTimestamp(a *attacher.IncrementalAttacher, ts 
 	if txb.EffectiveName() == "" {
 		txb.SetName(p.environment.SequencerName())
 	}
-	txb.SetProposerStrategy(p.strategy.ShortName)
-
 	for _, vid := range a.Endorsing() {
 		if err = txb.AddEndorsement(vid.ID()); err != nil {
 			a.Close() // FIX: close attacher on error
