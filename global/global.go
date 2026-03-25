@@ -55,7 +55,8 @@ type Global struct {
 	//
 	disableDeadlockCatching bool
 	// memory pressure management
-	memLimitBytes uint64
+	memLimitBytes     uint64
+	lastPressureGCNs  atomic.Int64 // UnixNano of last MemoryPressureGC execution
 }
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
@@ -222,17 +223,29 @@ func (l *Global) MemLimitBytes() uint64 {
 }
 
 const (
-	memPressureGCPct    = 50 // force GC when heap exceeds this % of limit
-	memPressurePausePct = 70 // pause briefly after GC if heap still exceeds this %
-	memPressurePause    = 500 * time.Millisecond
+	memPressureGCPct      = 50 // force GC when heap exceeds this % of limit
+	memPressurePausePct   = 70 // pause briefly after GC if heap still exceeds this %
+	memPressurePause      = 500 * time.Millisecond
+	memPressureMinInterval = 100 * time.Millisecond // minimum interval between GC invocations
 )
 
 // MemoryPressureGC checks actual heap allocation against the configured memory limit.
 // If above 50%, forces GC. If still above 70% after GC, pauses briefly to let GC finish.
 // No-op when memory.limit_mb is not configured.
+// Skips if called within memPressureMinInterval of the last invocation to prevent
+// concurrent callers from stacking GC cycles and pauses.
 // Called by any component that generates heavy allocations (branch commits, snapshots, etc.)
 func (l *Global) MemoryPressureGC() {
 	if l.memLimitBytes == 0 {
+		return
+	}
+	now := time.Now().UnixNano()
+	last := l.lastPressureGCNs.Load()
+	if now-last < int64(memPressureMinInterval) {
+		return
+	}
+	// best-effort dedup: only one caller proceeds if multiple arrive simultaneously
+	if !l.lastPressureGCNs.CompareAndSwap(last, now) {
 		return
 	}
 	var ms runtime.MemStats
