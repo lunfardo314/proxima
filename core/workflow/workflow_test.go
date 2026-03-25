@@ -51,6 +51,8 @@ func (d *workflowDummyEnvironment) EvidenceNumberOfTxDependencies(_ int) {}
 
 func (d *workflowDummyEnvironment) EvidencePastConeSize(_ int) {}
 
+func (d *workflowDummyEnvironment) EvidenceBranchMutations(_, _ int) {}
+
 func (d *workflowDummyEnvironment) SnapshotBranchID() base.TransactionID {
 	return base.GenesisTransactionID()
 }

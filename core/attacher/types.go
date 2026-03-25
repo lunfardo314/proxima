@@ -50,6 +50,7 @@ type (
 		ParseMilestoneData(msVID *vertex.WrappedTx) *seqdata.SequencerData
 		SaveFullDAG(fname string)
 		EvidencePastConeSize(sz int)
+		EvidenceBranchMutations(numMutations, numTxs int)
 		DurationSinceLastMessageFromPeer() time.Duration
 		Branches() *branches.Branches
 		EvidenceTxValidationStats(took time.Duration, numIn, numOut int)

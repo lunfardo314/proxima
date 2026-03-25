@@ -56,6 +56,8 @@ type (
 		validationTimeNs      prometheus.Gauge
 		validationNumUTXO     prometheus.Gauge
 		branchInflationBonus  prometheus.Gauge
+		branchMutations       prometheus.Counter
+		branchTxCount         prometheus.Counter
 	}
 )
 
@@ -372,6 +374,14 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_branch_inflation_bonus",
 		Help: "branch inflation bonus values of attached branches",
 	})
+	p.branchMutations = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_branch_mutations",
+		Help: "cumulative number of mutation commands in branch commits",
+	})
+	p.branchTxCount = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_branch_tx_count",
+		Help: "cumulative number of transactions in branch commits",
+	})
 
 	p.MetricsRegistry().MustRegister(
 		p.lrbCoverage,
@@ -385,6 +395,8 @@ func (p *ProximaNode) registerMetrics() {
 		p.validationTimeNs,
 		p.validationNumUTXO,
 		p.branchInflationBonus,
+		p.branchMutations,
+		p.branchTxCount,
 	)
 }
 
@@ -412,6 +424,11 @@ func (p *ProximaNode) EvidenceTxValidationStats(took time.Duration, numIn, numOu
 
 func (p *ProximaNode) EvidenceBranchInflationBonus(ib uint64) {
 	p.branchInflationBonus.Set(float64(ib))
+}
+
+func (p *ProximaNode) EvidenceBranchMutations(numMutations, numTxs int) {
+	p.branchMutations.Add(float64(numMutations))
+	p.branchTxCount.Add(float64(numTxs))
 }
 
 func (p *ProximaNode) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {

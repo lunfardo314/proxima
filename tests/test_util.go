@@ -69,6 +69,8 @@ func (w *workflowDummyEnvironment) PullFromPeers(txid base.TransactionID) int {
 
 func (w *workflowDummyEnvironment) EvidencePastConeSize(_ int) {}
 
+func (w *workflowDummyEnvironment) EvidenceBranchMutations(_, _ int) {}
+
 func (w *workflowDummyEnvironment) EvidenceNumberOfTxDependencies(_ int) {}
 
 // GetOwnSequencerID returns nil in test environment.
