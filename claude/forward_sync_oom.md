@@ -169,6 +169,49 @@ memory:
   shutdown_pct: 90
 ```
 
+## Interim Conclusions (2026-03-26)
+
+### Testnet Results
+
+4-node testnet (4 cores, 8 GB RAM each), 217 concurrent senders (~20 TPS sustained):
+
+- **3 of 4 sequencer nodes** ran stable for 18+ hours under continuous load
+- **loc0 failed** due to deployment config: both nodes on 8 GB machine configured for 6 GB each (12 GB total demand). Fix: set `memory.limit_mb` per node to half available RAM
+- **Non-seq oscillation** discovered and fixed: batched txstore writer's write-behind buffer was invisible to the pull_tx_server, causing peers to miss buffered txs
+
+### Protection Layers Implemented
+
+| Layer | Mechanism | Scope |
+|-------|-----------|-------|
+| Memory limit | `debug.SetMemoryLimit` + watchdog (80% warn, 90% shutdown) | Node-wide |
+| Memory pressure GC | `MemoryPressureGC()` at 50%/70% thresholds, rate-limited 100ms | Any component |
+| MemDAG vertex eviction | Wall-clock TTL (24 slots) + ledger-time TTL (48 slots behind latest branch) | Always active |
+| Non-seq queue bound | Push-site check (`maxQueueLen=1000`) + vertex limit (500 access / 5000 sequencer) | nonSeqAttach |
+| Pulled tx backpressure | Skip txstore lookup when `nonseq_attach_q >= 5000` | Attacher pull |
+| Batched txstore writes | Write-behind buffer (100 items / 500ms flush), read-through for pull | txstore_writer |
+| Forward-sync pacing | Windowed parallel pull, commit batches, memory-pressure GC between batches | forward_sync |
+| State reader cache | Hard cap 100 entries, TTL-based eviction | branches |
+
+### Performance Characteristics (4-core, 8 GB machines)
+
+- **Sequencer node**: ~400-600 MB steady state, ~1.7 GB peak under load
+- **Access node**: ~600-1000 MB steady state, ~3 GB peak under load
+- **Forward-sync**: ~10 branches/sec with parallel window pull
+- **Branch commit**: ~30ms per branch (trie operations)
+- **TPS**: ~20 sustained across the testnet
+
+### Known Remaining Issues
+
+1. **Sequencer stall after non-seq flood**: seq1 stopped endorsing others after queue overflow (9978 items). The push-site queue bound should prevent recurrence, but the stall recovery mechanism needs investigation.
+2. **ProposerStrategy removed**: sequencer strategy no longer stored on-chain; endorsement count metrics replace strategy metrics.
+3. **Access node goroutines**: 700-1000 goroutines vs ~175 for sequencer nodes. Mostly libp2p/quic internals, not a leak. Memory impact is from BadgerDB compaction, not goroutines.
+
+### Next Steps
+
+- Deploy to target hardware (32 GB RAM, 256 GB SSD, 7+ cores) for 100 TPS testing
+- Profile with pprof on larger machines to find CPU bottlenecks (constraint evaluation, trie ops)
+- Investigate batched txstore write tuning (batch size vs flush delay trade-off)
+
 ## Related
 
 - [ratecontrol.md](ratecontrol.md) — general rate control architecture
