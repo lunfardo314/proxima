@@ -8,7 +8,13 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-const TraceTagPull = "pullFromPeers"
+const (
+	TraceTagPull = "pullFromPeers"
+	// maxNonSeqQueueForPull: skip txstore lookup when the non-seq attach queue
+	// already has this many items. The tx stays in the txstore and will be pulled
+	// again when the queue drains. Prevents unbounded queue growth from pulled txs.
+	maxNonSeqQueueForPull = 5000
+)
 
 func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
 	a.Tracef(TraceTagPull, "pullIfNeeded IN (%s): %s", tag, deptVID.IDShortString)
@@ -62,7 +68,16 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// not in the state or not known 'inTheState status'
 
-	// always try the local txBytes store — local lookups are cheap and not a DoS vector,
+	// skip txstore lookup if the non-seq attach queue is already heavily loaded.
+	// The tx stays in the txstore and will be pulled again on a later iteration.
+	if a.Counter("nonseq_attach_q") >= maxNonSeqQueueForPull {
+		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped: skip txstore (nonseq_attach_q >= %d): %s",
+			maxNonSeqQueueForPull, deptVID.IDShortString)
+		virtualTx.SetPullNeeded()
+		return true
+	}
+
+	// try the local txBytes store — local lookups are cheap and not a DoS vector,
 	// unlike peer pulls which are depth-capped to prevent unbounded network amplification
 	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
 	if len(txBytesWithMetadata) > 0 {
