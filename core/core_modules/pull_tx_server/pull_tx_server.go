@@ -15,6 +15,8 @@ type (
 	environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
+		// GetTxBytesWithMetadata checks the write-behind buffer first, then the store.
+		GetTxBytesWithMetadata(txid *base.TransactionID) []byte
 		StateStore() global.Store
 		SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID) bool
 	}
@@ -47,7 +49,7 @@ func New(env environment) *PullTxServer {
 }
 
 func (d *PullTxServer) consume(inp *Input) {
-	txBytesWithMetadata := d.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID)
+	txBytesWithMetadata := d.GetTxBytesWithMetadata(&inp.TxID)
 	if len(txBytesWithMetadata) == 0 {
 		d.Tracef(TraceTag, "NOT FOUND %s, request from %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
 		return
