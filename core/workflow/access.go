@@ -48,8 +48,21 @@ func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.Tra
 }
 
 func (w *Workflow) MustPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid ...base.TransactionID) {
-	_, err := w.TxBytesStore().PersistTxBytesWithMetadata(txBytes, metadata, txid...)
-	util.AssertNoError(err)
+	if len(txid) > 0 {
+		w.txStoreWriter.PersistTxBytesQueued(txBytes, metadata, txid[0])
+	} else {
+		// fallback: synchronous write (no txid provided, rare path)
+		_, err := w.TxBytesStore().PersistTxBytesWithMetadata(txBytes, metadata)
+		util.AssertNoError(err)
+	}
+}
+
+// GetTxBytesWithMetadata checks the write-behind buffer first, then the underlying store.
+func (w *Workflow) GetTxBytesWithMetadata(txid *base.TransactionID) []byte {
+	if data := w.txStoreWriter.GetPending(txid); data != nil {
+		return data
+	}
+	return w.TxBytesStore().GetTxBytesWithMetadata(txid)
 }
 
 func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {

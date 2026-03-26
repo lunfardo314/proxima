@@ -18,6 +18,7 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/core_modules/txinput_queue"
 	"github.com/lunfardo314/proxima/core/core_modules/txsenders"
+	"github.com/lunfardo314/proxima/core/core_modules/txstore_writer"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
@@ -60,9 +61,10 @@ type (
 		events       *events.Events
 		txInputQueue  *txinput_queue.TxInputQueue
 		txSenders     *txsenders.TxSenders
-		seqAttach     *seq_attach.SeqAttach
-		nonSeqAttach  *nonseq_attach.NonSeqAttach
-		tippool       *tippool.SequencerTips
+		seqAttach      *seq_attach.SeqAttach
+		nonSeqAttach   *nonseq_attach.NonSeqAttach
+		txStoreWriter  *txstore_writer.TxStoreWriter
+		tippool        *tippool.SequencerTips
 		branches      *branches.Branches
 		syncModule    *syncmod.Sync
 		// particular event handlers
@@ -99,6 +101,7 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.txSenders = txsenders.New(ret)
 	ret.seqAttach = seq_attach.New(ret, ret._attach)
 	ret.nonSeqAttach = nonseq_attach.New(ret, ret._attach)
+	ret.txStoreWriter = txstore_writer.New(ret, ret.TxBytesStore())
 	ret.txInputQueue = txinput_queue.New(ret)
 	snapshot.Start(ret)
 	snapshot_restore.Start(ret)

@@ -77,9 +77,9 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		return true
 	}
 
-	// try the local txBytes store — local lookups are cheap and not a DoS vector,
-	// unlike peer pulls which are depth-capped to prevent unbounded network amplification
-	txBytesWithMetadata := a.TxBytesStore().GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
+	// try the local txBytes store (including write-behind buffer) — local lookups are cheap
+	// and not a DoS vector, unlike peer pulls which are depth-capped
+	txBytesWithMetadata := a.GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
 	if len(txBytesWithMetadata) > 0 {
 		// mark as pulled so re-injected tx passes rate control
 		a.AddPulledTransaction(deptVID.ID())

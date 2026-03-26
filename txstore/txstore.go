@@ -127,12 +127,38 @@ func (s *SimpleTxBytesStore) HasTxBytes(txid *base.TransactionID) bool {
 	return s.s.Has(txid[:])
 }
 
+// PersistTxBytesBatch writes multiple entries in a single DB transaction.
+// Uses BatchedWriter if available, otherwise falls back to individual writes.
+func (s *SimpleTxBytesStore) PersistTxBytesBatch(batch map[base.TransactionID][]byte) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	if batchable, ok := s.s.(common.BatchedUpdatable); ok {
+		w := batchable.BatchedWriter()
+		for txid, data := range batch {
+			key := txid
+			w.Set(key[:], data)
+		}
+		return w.Commit()
+	}
+	// fallback: individual writes
+	for txid, data := range batch {
+		key := txid
+		s.s.Set(key[:], data)
+	}
+	return nil
+}
+
 func NewDummyTxBytesStore() DummyTxBytesStore {
 	return DummyTxBytesStore{}
 }
 
 func (d DummyTxBytesStore) PersistTxBytesWithMetadata(_ []byte, _ *txmetadata.TransactionMetadata, _ ...base.TransactionID) (base.TransactionID, error) {
 	return base.TransactionID{}, nil
+}
+
+func (d DummyTxBytesStore) PersistTxBytesBatch(_ map[base.TransactionID][]byte) error {
+	return nil
 }
 
 func (d DummyTxBytesStore) GetTxBytesWithMetadata(_ *base.TransactionID) []byte {

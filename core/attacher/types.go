@@ -27,6 +27,9 @@ type (
 		SendToTippool(vid *vertex.WrappedTx)
 		EvidenceBranchSlot(s uint32, healthy bool)
 		TxBytesStore() global.TxBytesStore
+		// GetTxBytesWithMetadata checks the write-behind buffer first, then the store.
+		// Must be used instead of TxBytesStore().GetTxBytesWithMetadata() when buffered writes are enabled.
+		GetTxBytesWithMetadata(txid *base.TransactionID) []byte
 		TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.TransactionID, error)
 		AddPulledTransaction(txid base.TransactionID)
 	}

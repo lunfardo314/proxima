@@ -39,6 +39,10 @@ type (
 		// metadata == nil is interpreted as empty metadata (one 0 byte as prefix)
 		// optionally, transaction ChainID can be provided to avoid the need to parse the transaction bytes. In the latter case txid is used as DB key as is
 		PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid ...base.TransactionID) (base.TransactionID, error)
+		// PersistTxBytesBatch writes multiple transaction entries in a single DB transaction.
+		// Each entry is a TxBytesWithMetadata keyed by transaction ID.
+		// Implementation must not depend on map iteration order.
+		PersistTxBytesBatch(batch map[base.TransactionID][]byte) error
 	}
 	TxBytesStore interface {
 		TxBytesGet
