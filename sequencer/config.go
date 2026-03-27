@@ -27,6 +27,7 @@ type (
 		SeparateLog               bool
 		GlobalLogging             bool
 		ControllerKeyFile         string // path to keystore file for deferred key loading
+		AsyncMode                 bool   // experimental: async milestone submission (no tippool wait)
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -110,6 +111,9 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	if subViper.GetBool("ensure_synced_at_startup") {
 		cfg = append(cfg, WithEnsureSyncedAtStartup)
 	}
+	if subViper.GetBool("async_mode") {
+		cfg = append(cfg, WithAsyncMode)
+	}
 	return cfg, seqID, nil
 }
 
@@ -185,6 +189,10 @@ func WithControllerKeyFile(path string) ConfigOption {
 	}
 }
 
+func WithAsyncMode(o *ConfigOptions) {
+	o.AsyncMode = true
+}
+
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -199,5 +207,6 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
 		Add("Separate log: %v", cfg.SeparateLog).
 		Add("Copy to the global log: %v", cfg.GlobalLogging).
-		Add("Controller key file: %s", cfg.ControllerKeyFile)
+		Add("Controller key file: %s", cfg.ControllerKeyFile).
+		Add("Async mode: %v", cfg.AsyncMode)
 }

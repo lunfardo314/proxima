@@ -54,6 +54,42 @@ func Test1SequencerPrunerIdle(t *testing.T) {
 	testData.saveFullDAG("full_dag")
 }
 
+// claude_Test1SequencerPrunerIdleAsync is the async-mode variant of Test1SequencerPrunerIdle.
+// Verifies that the async strategy (fire-and-forget submission with background milestone watcher)
+// produces the expected number of branches.
+func TestClaude_1SequencerPrunerIdleAsync(t *testing.T) {
+	const maxSlots = 10
+
+	testData := initWorkflowTest(t, 1, true)
+	t.Logf("%s", testData.wrk.Info())
+
+	testData.env.RepeatInBackground("test GC loop", time.Second, func() bool {
+		runtime.GC()
+		return true
+	})
+
+	seq, err := newTestSequencer(testData.wrk, testData.bootstrapChainID, genesisPrivateKey,
+		sequencer.WithMaxBranches(maxSlots),
+		sequencer.WithAsyncMode,
+	)
+	require.NoError(t, err)
+	var countBr atomic.Int32
+	seq.OnMilestoneSubmittedVID(func(ms *vertex.WrappedTx) {
+		if ms.IsBranchTransaction() {
+			countBr.Add(1)
+		}
+	})
+	seq.OnExitOnce(func() {
+		testData.stop()
+	})
+	seq.Start()
+
+	testData.waitStop()
+
+	require.EqualValues(t, maxSlots, int(countBr.Load()))
+	testData.saveFullDAG("full_dag_async")
+}
+
 func Test1SequencerPrunerTransfers(t *testing.T) {
 	const (
 		maxSlots   = 30

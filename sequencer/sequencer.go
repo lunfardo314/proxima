@@ -56,6 +56,7 @@ type (
 		backlog              *backlog.TagAlongBacklog
 		config               *ConfigOptions
 		log                  *zap.SugaredLogger
+		strategy             sequencerStrategy
 		ownMilestonesMutex   sync.RWMutex
 		ownMilestones        map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
 		milestoneCount       int
@@ -184,6 +185,15 @@ func (seq *Sequencer) Start() {
 		// start the skeleton factory — runs as a persistent goroutine producing skeletons
 		seq.skeletonFactory = factory.New(seq, seq.ctx)
 		go seq.skeletonFactory.Run()
+
+		// select strategy based on config
+		if seq.config.AsyncMode {
+			seq.strategy = newAsyncStrategy(seq)
+			seq.Log().Infof("using ASYNC sequencer strategy")
+		} else {
+			seq.strategy = newSyncStrategy(seq)
+			seq.Log().Infof("using SYNC sequencer strategy")
+		}
 
 		seq.sequencerLoop()
 
@@ -440,6 +450,8 @@ func (seq *Sequencer) sequencerLoop() {
 		seq.Log().Infof("sequencer loop STOPPING..")
 	}()
 
+	seq.strategy.start()
+
 	const deadlockTolerance = 30 * time.Second
 
 	checkpoint := checkpoints.New(func(name string) {
@@ -488,7 +500,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 
 	timerStart := time.Now()
-	targetTs, ok := seq.getNextTargetTime()
+	targetTs, ok := seq.strategy.getNextTargetTime()
 	if !ok {
 		// interrupted by shutdown
 		return false
@@ -541,40 +553,9 @@ func (seq *Sequencer) doSequencerStep() bool {
 	seq.Tracef(TraceTag, "produced milestone %s for the target logical time %s in %v. Meta: %s",
 		msTx.IDShortString, targetTs, time.Since(timerStart), meta.String)
 
-	saveLastSubmittedTs := seq.lastSubmittedTs
-
 	meta.TxBytesReceived = util.Ref(time.Now())
 
-	msVID := seq.submitMilestone(msTx, meta)
-	if msVID == nil {
-		// milestone didn't appear in tippool (rejected, failed validation, etc.)
-		// advance lastSubmittedTs to avoid retrying the same target indefinitely
-		seq.lastSubmittedTs = targetTs
-	}
-	if msVID != nil {
-		if saveLastSubmittedTs.IsSlotBoundary() && msVID.Timestamp().IsSlotBoundary() {
-			seq.Log().Warnf("branch jumped over the slot: %s -> %s. Step started: %s, %d (%s), %v ago, nowis: %s",
-				saveLastSubmittedTs.String(), targetTs.String(),
-				timerStart.Format(time.StampNano), timerStart.UnixNano(), ledger.TimeFromClockTime(timerStart).String(), time.Since(timerStart),
-				ledger.TimeNow().String())
-		}
-
-		seq.AddOwnMilestone(msVID)
-		seq.milestoneCount++
-		if msVID.IsBranchTransaction() {
-			seq.branchCount++
-			seq.slotData.BranchTxSubmitted(msVID.ID())
-		} else {
-			seq.slotData.SequencerTxSubmitted(msVID.ID())
-		}
-		seq.updateInfo(msVID)
-		seq.runOnMilestoneSubmitted(msVID)
-		seq.onMilestoneSubmittedMetrics(msVID)
-
-		if targetTs.IsSlotBoundary() {
-			seq.Log().Infof("SLOT STATS: %s", seq.slotData.Lines().Join(", "))
-		}
-	}
+	seq.strategy.submit(msTx, meta, targetTs)
 
 	if targetTs.IsSlotBoundary() {
 		seq.slotData = nil
@@ -583,58 +564,9 @@ func (seq *Sequencer) doSequencerStep() bool {
 	return true
 }
 
-// getNextTargetTime returns the next target ledger time for milestone generation.
-// Returns (targetTime, true) on success, or (NilLedgerTime, false) if interrupted by shutdown.
-func (seq *Sequencer) getNextTargetTime() (base.LedgerTime, bool) {
-	// wait to catch up with ledger time
-	if !seq.ClockCatchUpWithLedgerTime(seq.lastSubmittedTs) {
-		// interrupted by shutdown
-		return base.NilLedgerTime, false
-	}
-
-	nowis := ledger.TimeNow()
-
-	nextBoundarySlot := nowis.NextSlotBoundary().Slot
-	libNextSlot := ledger.L(nextBoundarySlot)
-	if base.DiffTicks(nowis.NextSlotBoundary(), nowis) < int64(libNextSlot.PreBranchConsolidationTicks) {
-		return nowis.NextSlotBoundary(), true
-	}
-
-	var targetAbsoluteMinimum base.LedgerTime
-
-	if seq.lastSubmittedTs.IsSlotBoundary() {
-		targetAbsoluteMinimum = seq.lastSubmittedTs.AddTicks(int(libNextSlot.PostBranchConsolidationTicks))
-	} else {
-		targetAbsoluteMinimum = base.MaximumTime(
-			seq.lastSubmittedTs.AddTicks(seq.config.Pace),
-			nowis.AddTicks(1),
-		)
-	}
-	if uint8(targetAbsoluteMinimum.Tick) < libNextSlot.PostBranchConsolidationTicks {
-		targetAbsoluteMinimum = base.T(targetAbsoluteMinimum.Slot, libNextSlot.PostBranchConsolidationTicks)
-	}
-	nextSlotBoundary := nowis.NextSlotBoundary()
-
-	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
-		return targetAbsoluteMinimum, true
-	}
-	// absolute minimum is before the next slot boundary, take the time now as a baseline
-	minimumTicksAheadFromNow := (seq.config.Pace * 2) / 3 // seq.config.Pace
-	targetAbsoluteMinimum = base.MaximumTime(targetAbsoluteMinimum, nowis.AddTicks(minimumTicksAheadFromNow))
-	if !targetAbsoluteMinimum.Before(nextSlotBoundary) {
-		return targetAbsoluteMinimum, true
-	}
-
-	if targetAbsoluteMinimum.TicksToNextSlotBoundary() <= seq.config.Pace {
-		return base.MaximumTime(nextSlotBoundary, targetAbsoluteMinimum), true
-	}
-
-	return targetAbsoluteMinimum, true
-}
-
 const disconnectTolerance = 4 * time.Second
 
-// decideSubmitMilestone branch transactions are issued only if healthy, or bootstrap mode enabled
+// decideSubmitMilestone checks health and connectivity. Used by both sync and async strategies.
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
 	if seq.DurationSinceLastMessageFromPeer() >= disconnectTolerance {
 		if seq.wontSubmitBranchID != tx.ID() {
@@ -670,49 +602,6 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 		tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), tx.NumEndorsements(),
 		util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
 	return true
-}
-
-const submitTimeout = 2 * time.Second
-
-func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) *vertex.WrappedTx {
-	if !seq.decideSubmitMilestone(tx, meta) {
-		return nil
-	}
-
-	// send transaction to the node's input queue
-	seq.OwnSequencerMilestoneIn(tx.Bytes(), meta, tx.ID())
-
-	vid, err := seq.waitMilestoneInTippool(tx.ID(), time.Now().Add(submitTimeout))
-	if err != nil {
-		seq.Log().Error(err)
-		return nil
-	}
-	seq.lastSubmittedTs = vid.Timestamp()
-	return vid
-}
-
-// waitMilestoneInTippool polls the tippool until the submitted milestone appears or deadline expires.
-// Fixed: previously used select with default case, which made the deadline check dead code
-// (default always wins over channel receives, causing a tight spin loop and effective deadlock)
-func (seq *Sequencer) waitMilestoneInTippool(txid base.TransactionID, deadline time.Time) (*vertex.WrappedTx, error) {
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-seq.Ctx().Done():
-			return nil, fmt.Errorf("waitMilestoneInTippool: %s has been cancelled", txid.StringShort())
-		case <-ticker.C:
-			if time.Now().After(deadline) {
-				return nil, fmt.Errorf("waitMilestoneInTippool: deadline %v has been missed while waiting for %s in the tippool. hex=%s",
-					deadline, txid.StringShort(), txid.StringHex())
-			}
-			vid := seq.GetLatestMilestone(seq.sequencerID)
-			if vid != nil && vid.ID() == txid {
-				return vid, nil
-			}
-		}
-	}
 }
 
 func (seq *Sequencer) OnMilestoneSubmitted(fun func(seq *Sequencer, ms *vertex.WrappedTx)) {
