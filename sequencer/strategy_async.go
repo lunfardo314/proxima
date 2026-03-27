@@ -18,12 +18,20 @@ const (
 
 // asyncStrategy implements the async sequencer approach:
 // milestones are submitted fire-and-forget, a background watcher monitors the tippool.
+//
+// Target pacing within a slot:
+//
+//	branch → post-consolidation (ASAP) → +2*pace → +pace → +pace → ... → branch
 type asyncStrategy struct {
-	seq *Sequencer
+	seq             *Sequencer
+	firstAfterBranch bool // true when the next non-branch target is the first after a branch
 }
 
 func newAsyncStrategy(seq *Sequencer) *asyncStrategy {
-	return &asyncStrategy{seq: seq}
+	return &asyncStrategy{
+		seq:             seq,
+		firstAfterBranch: true, // sequencer always starts after a branch
+	}
 }
 
 func (a *asyncStrategy) start() {
@@ -48,10 +56,16 @@ func (a *asyncStrategy) getNextTargetTime() (base.LedgerTime, bool) {
 
 	var target base.LedgerTime
 
-	if seq.lastSubmittedTs.IsSlotBoundary() {
-		// first after branch: ASAP at post-branch consolidation boundary
+	switch {
+	case seq.lastSubmittedTs.IsSlotBoundary():
+		// right after branch: ASAP at post-branch consolidation boundary
 		target = seq.lastSubmittedTs.AddTicks(int(libNextSlot.PostBranchConsolidationTicks))
-	} else {
+		a.firstAfterBranch = true
+	case a.firstAfterBranch:
+		// first non-branch after post-consolidation: allow 2x pace for coverage accumulation
+		target = seq.lastSubmittedTs.AddTicks(2 * targetIntervalTicks)
+		a.firstAfterBranch = false
+	default:
 		// regular: targetIntervalTicks after last submission
 		target = seq.lastSubmittedTs.AddTicks(targetIntervalTicks)
 	}
