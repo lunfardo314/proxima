@@ -43,6 +43,11 @@ const (
 	// forkSafetyDepth: how many branches back from LRB to use as the anchor point
 	// when requesting branch lists. Going back K slots gives margin for short-lived forks.
 	forkSafetyDepth = 10
+	// stallWarningTicks: after this many consecutive sync ticks where no source is ahead,
+	// emit an ERROR-level warning. At 1s per tick this is ~30 seconds.
+	stallWarningTicks = 30
+	// stallWarningRepeat: repeat the stall warning every N ticks (~60 seconds)
+	stallWarningRepeat = 60
 )
 
 type (
@@ -59,7 +64,8 @@ type (
 	Sync struct {
 		environment
 		sources       []*client.APIClient
-		sourceIdx     int // current source index, cycles on failure
+		sourceURLs    []string // original URLs for diagnostics
+		sourceIdx     int      // current source index, cycles on failure
 		thresholdUp   uint32
 		thresholdDown uint32
 		pullAhead     int // window size: pull this many branches ahead in parallel
@@ -74,6 +80,7 @@ type (
 		windowPulled  bool          // true when all branches in the current window have been pulled
 		lastPullTime  time.Time     // when the current window was last pulled
 		wakeup        chan struct{} // signaled when the target branch commits
+		stallCounter  int          // consecutive sync ticks where no source was ahead
 	}
 )
 
@@ -171,6 +178,7 @@ func Start(env environment) *Sync {
 	ret := &Sync{
 		environment:   env,
 		sources:       sources,
+		sourceURLs:    sourceURLs,
 		thresholdUp:   uint32(thUp),
 		thresholdDown: uint32(thDown),
 		pullAhead:     pullAhead,
@@ -316,6 +324,7 @@ func (s *Sync) syncTick() {
 			s.syncing = false
 			s.branchList = nil
 			s.windowPulled = false
+			s.stallCounter = 0
 			s.latestTargetTicks.Store(0)
 		}
 		return
@@ -337,10 +346,12 @@ func (s *Sync) syncTick() {
 		branches, lrbSlot, err := s.requestBranchList()
 		if err != nil {
 			s.Log().Warnf("[%s] %v", Name, err)
+			s.syncStalled(gap, healthySlot)
 			return
 		}
 		if len(branches) == 0 {
 			s.Log().Infof("[%s] sync source returned empty branch list (LRB slot=%d)", Name, lrbSlot)
+			s.syncStalled(gap, healthySlot)
 			return
 		}
 		// filter out branches that are already committed locally
@@ -355,11 +366,14 @@ func (s *Sync) syncTick() {
 		if len(newBranches) == 0 {
 			s.Log().Warnf("[%s] all %d branches already committed locally — sync source (LRB=%d) is not ahead of us (healthy=%d)",
 				Name, len(branches), lrbSlot, healthySlot)
+			s.syncStalled(gap, healthySlot)
 			return
 		}
 		s.branchList = newBranches
 		s.windowPulled = false
 	}
+
+	s.stallCounter = 0 // got new branches, reset stall detection
 
 	// force-commit branches in bounded batches with memory-pressure-based GC.
 	// After each batch, check actual heap allocation against the configured memory limit.
@@ -382,6 +396,7 @@ func (s *Sync) syncTick() {
 		nCommitted++
 	}
 	if nCommitted > 0 {
+		s.stallCounter = 0 // progress made, reset stall detection
 		s.MemoryPressureGC()
 		s.Log().Infof("[%s] committed %d branches (%d new, %d already committed), %d remaining",
 			Name, nCommitted, nCommitted-nAlreadyCommitted, nAlreadyCommitted, len(s.branchList))
@@ -430,5 +445,17 @@ func (s *Sync) syncTick() {
 			s.PullFromPeers(branchID)
 		}
 		s.lastPullTime = time.Now()
+	}
+}
+
+// syncStalled increments the stall counter and emits periodic ERROR warnings
+// when the node cannot make sync progress because no source has newer branches.
+func (s *Sync) syncStalled(gap, healthySlot uint32) {
+	s.stallCounter++
+	if s.stallCounter == stallWarningTicks || (s.stallCounter > stallWarningTicks && (s.stallCounter-stallWarningTicks)%stallWarningRepeat == 0) {
+		s.Log().Errorf("[%s] SYNC STALLED: node is %d slots behind (healthy slot=%d) but no sync source "+
+			"has newer branches. This usually means all configured sync sources are also behind or have their API disabled. "+
+			"Configured sources: %v. Ensure at least one source points to a node that is fully synced and has API enabled",
+			Name, gap, healthySlot, s.sourceURLs)
 	}
 }
