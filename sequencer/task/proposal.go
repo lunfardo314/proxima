@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -16,6 +17,10 @@ import (
 )
 
 const TraceTagProposal = "proposal"
+
+// tagAlongBudgetFraction: tag-alongs may use up to this fraction of AttachmentCostBudget.
+// Delegation freezes then use whatever remains of the full budget.
+var tagAlongBudgetFraction = global.Fraction23
 
 // newProposal takes initial incremental attacher only with endorsements
 // and stem in it, and packages it with the transaction builder
@@ -129,10 +134,11 @@ func (p *proposal) insertTagAlongInputs() {
 			if cmd, valid1, err1 = p.TxBuilderCommandFromOutput(*o.o); err1 != nil {
 				return
 			}
-			// check if the attachment cost after the command will fit the budget
+			// check if the attachment cost after the command will fit the tag-along sub-budget
 			attachmentCost := p.PastConeAttachmentCost() + p.SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()
-			if attachmentCost > p.Library.AttachmentCostBudget {
-				return true, fmt.Errorf("attachment cost budget exceeded")
+			tagAlongBudget := tagAlongBudgetFraction.Numerator * p.Library.AttachmentCostBudget / tagAlongBudgetFraction.Denominator
+			if attachmentCost > tagAlongBudget {
+				return true, fmt.Errorf("tag-along budget exceeded")
 			}
 			valid1, err1 = cmd.Apply(p.SeqTxBuilder)
 			return
@@ -232,8 +238,10 @@ func (p *proposal) insertDelegations() {
 }
 
 func (p *proposal) insertInputs() {
-	p.insertDelegations()
+	// tag-alongs first: they use up to tagAlongBudgetFraction of the attachment cost budget.
+	// delegations second: they use whatever remains of the full budget.
 	p.insertTagAlongInputs()
+	p.insertDelegations()
 }
 
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
