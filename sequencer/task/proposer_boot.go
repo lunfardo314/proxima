@@ -46,6 +46,12 @@ func bootProposeGenerator(p *proposer) (*proposal, bool) {
 		return nil, true
 	}
 
+	// explicit baseline must be in a past slot (ledger constraint)
+	if lrb.Stem.ID.Slot() >= p.targetTs.Slot {
+		p.Tracef(TraceTagBootProposer, "%s LRB slot %d >= target slot %d, skipping", p.Name, lrb.Stem.ID.Slot(), p.targetTs.Slot)
+		return nil, true
+	}
+
 	a, err := attacher.NewIncrementalAttacherWithExplicitBaseline(p.Name, p.environment, p.targetTs, extend, lrb.Stem.ID.TransactionID())
 	if err != nil {
 		p.Tracef(TraceTagBootProposer, "%s can't create attacher: '%v'", p.Name, err)
