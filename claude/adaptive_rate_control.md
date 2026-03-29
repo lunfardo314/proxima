@@ -59,9 +59,10 @@ The rate control has exactly three levers, ordered from least to most aggressive
 | 2 | Drop unsolicited non-seq targeting own sequencer | Reduces non-seq vertices, lighter branch commits | stress > 60% or pipeline too large |
 | 3 | Drop transactions before entering txinput_queue | Last resort: shed load at the gate | stress > 80% |
 
-**Access nodes**: always drop all unsolicited transactions (both seq and non-seq). Access nodes
-have no sequencer, so unsolicited non-seq txs serve no purpose. All needed transactions arrive
-via pull during solidification. This is the simplest and most effective policy for access nodes.
+**Access nodes**: always drop all unsolicited non-seq transactions (no local sequencer to target).
+Unsolicited seq transactions follow the same rules as sequencer nodes: branches always pass,
+non-branches are subject to the attacher cap (lever 1). Essentially not much different from
+sequencer nodes — the only difference is lever 2 is always "drop all" on access nodes.
 
 Pulled transactions always pass, regardless of stress level.
 
@@ -82,10 +83,11 @@ gate but a throttle on how many tag-along inputs the sequencer pulls per milesto
 
 | Stress | Unsolicited seq | Unsolicited non-seq | Input gate | Notes |
 |--------|-----------------|---------------------|------------|-------|
-| 0–40%  | drop all | drop all | normal | access nodes never attach unsolicited |
-| 40–70% | drop all | drop all | normal | |
-| 70–85% | drop all | drop all | start dropping | reduce gossip processing |
-| 85%+   | drop all | drop all | drop all non-pulled | |
+| 0–40%  | same as sequencer nodes (branches pass, non-branches capped) | drop all | normal | |
+| 40–55% | tighten: cap attacher count | drop all | normal | |
+| 55–70% | aggressive: only branches pass | drop all | normal | |
+| 70–85% | aggressive | drop all | start dropping | |
+| 85%+   | aggressive | drop all | drop all non-pulled | |
 
 ### Hysteresis
 
@@ -146,7 +148,7 @@ All constants and rate-control related variables must be well-commented.
 
 1. Replace static `shouldAttachSequencer` / `shouldAttachNonSeq` with stress-aware decisions
 2. Implement the three levers with hysteresis using stress level thresholds
-3. Access nodes: always drop all unsolicited (both seq and non-seq)
+3. Access nodes: always drop unsolicited non-seq; seq follows same rules as sequencer nodes
 4. Add input gate: `txinput_queue.consume()` checks stress before processing
 
 ### Phase 3: Sequencer tag-along throttle
