@@ -30,7 +30,8 @@ type (
 		// GetTxBytesWithMetadata checks the write-behind buffer first, then the store.
 		// Must be used instead of TxBytesStore().GetTxBytesWithMetadata() when buffered writes are enabled.
 		GetTxBytesWithMetadata(txid *base.TransactionID) []byte
-		TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.TransactionID, error)
+		// TxBytesFromStoreInSolicited sends txstore bytes to the solicit queue (fast-track, no rate control).
+		TxBytesFromStoreInSolicited(txBytesWithMetadata []byte)
 		AddPulledTransaction(txid base.TransactionID)
 	}
 

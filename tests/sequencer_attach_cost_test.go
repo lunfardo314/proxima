@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -251,7 +250,7 @@ func TestSequencerAttachCostManyTagAlongsExceedBudget(t *testing.T) {
 		require.EqualValues(t, 1, len(tagAlongOuts), "transaction %d should have 1 tag-along output", i)
 
 		// Submit the transaction to the workflow
-		txid, err := testData.wrk.TxBytesIn(txBytes, workflow.WithSourceType(1))
+		txid, err := testData.wrk.TxBytesIn(txBytes)
 		require.NoError(t, err)
 
 		tagAlongTxIDs = append(tagAlongTxIDs, txid)
@@ -374,7 +373,7 @@ func TestSequencerAttachCostBudgetBaseline(t *testing.T) {
 		txBytes, newRemainder, err := txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 		require.NoError(t, err)
 
-		txid, err := testData.wrk.TxBytesIn(txBytes, workflow.WithSourceType(1))
+		txid, err := testData.wrk.TxBytesIn(txBytes)
 		require.NoError(t, err)
 
 		tagAlongTxIDs = append(tagAlongTxIDs, txid)

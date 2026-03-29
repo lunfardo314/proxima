@@ -136,8 +136,9 @@ func (w *Workflow) AddPulledTransaction(txid base.TransactionID) {
 	w.txInputQueue.AddPulledTransaction(txid)
 }
 
-func (w *Workflow) EvidenceNonSequencerTx() {
-	w.txInputQueue.EvidenceNonSequencerTx()
+// TxBytesFromStoreInSolicited sends txstore bytes to the solicit queue for fast-track attachment.
+func (w *Workflow) TxBytesFromStoreInSolicited(txBytesWithMetadata []byte) {
+	w.txSolicitQueue.PushTxBytesFromStore(txBytesWithMetadata)
 }
 
 func (w *Workflow) SaveFullDAG(fname string) {

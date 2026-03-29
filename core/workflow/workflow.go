@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/core/core_modules/events"
 	"github.com/lunfardo314/proxima/core/core_modules/poker"
@@ -13,17 +14,16 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
 	syncmod "github.com/lunfardo314/proxima/core/core_modules/forward_sync"
-	"github.com/lunfardo314/proxima/core/core_modules/nonseq_attach"
-	"github.com/lunfardo314/proxima/core/core_modules/seq_attach"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/core_modules/txinput_queue"
-	"github.com/lunfardo314/proxima/core/core_modules/txsenders"
+	"github.com/lunfardo314/proxima/core/core_modules/txsolicit_queue"
 	"github.com/lunfardo314/proxima/core/core_modules/txstore_writer"
 	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/viper"
@@ -56,17 +56,15 @@ type (
 		peers        *peering.Peers
 		earliestSlot uint32 // cached, immutable
 		// queues and daemons
-		pullTxServer *pull_tx_server.PullTxServer
-		poker        *poker.Poker
-		events       *events.Events
-		txInputQueue  *txinput_queue.TxInputQueue
-		txSenders     *txsenders.TxSenders
-		seqAttach      *seq_attach.SeqAttach
-		nonSeqAttach   *nonseq_attach.NonSeqAttach
+		pullTxServer   *pull_tx_server.PullTxServer
+		poker          *poker.Poker
+		events         *events.Events
+		txInputQueue   *txinput_queue.TxInputQueue
+		txSolicitQueue *txsolicit_queue.TxSolicitQueue
 		txStoreWriter  *txstore_writer.TxStoreWriter
 		tippool        *tippool.SequencerTips
-		branches      *branches.Branches
-		syncModule    *syncmod.Sync
+		branches       *branches.Branches
+		syncModule     *syncmod.Sync
 		// particular event handlers
 		txListener *txListener
 		//
@@ -77,6 +75,9 @@ type (
 )
 
 const recreateMapPeriod = time.Minute
+
+// DefaultMaxConcurrentAttachers is the attacher cap used when not overridden by config.
+const DefaultMaxConcurrentAttachers = 20
 
 func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflow {
 	cfg := defaultConfigParams()
@@ -98,10 +99,8 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 	ret.pullTxServer = pull_tx_server.New(ret)
 	ret.tippool = tippool.New(ret)
 	ret.branches = branches.New(ret)
-	ret.txSenders = txsenders.New(ret)
-	ret.seqAttach = seq_attach.New(ret, ret._attach)
-	ret.nonSeqAttach = nonseq_attach.New(ret, ret._attach)
 	ret.txStoreWriter = txstore_writer.New(ret, ret.TxBytesStore())
+	ret.txSolicitQueue = txsolicit_queue.New(ret, ret._attach)
 	ret.txInputQueue = txinput_queue.New(ret)
 	snapshot.Start(ret)
 	snapshot_restore.Start(ret)
@@ -135,4 +134,9 @@ func StartFromConfig(env environment, peers *peering.Peers) *Workflow {
 		opts = append(opts, OptionEnableSyncManager)
 	}
 	return Start(env, peers, opts...)
+}
+
+// AttachFun returns the attach function for use by txinput_queue.
+func (w *Workflow) AttachFun() func(tx *transaction.Transaction, opts ...attacher.AttachTxOption) {
+	return w._attach
 }

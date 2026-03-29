@@ -1,14 +1,13 @@
 package workflow
 
 import (
-	"github.com/lunfardo314/proxima/core/core_modules/seq_attach"
 	"go.uber.org/zap"
 )
 
 type (
 	ConfigParams struct {
-		disableMemDAGGC      bool
-		enableSyncManager    bool
+		disableMemDAGGC        bool
+		enableSyncManager      bool
 		maxConcurrentAttachers int
 	}
 
@@ -17,7 +16,7 @@ type (
 
 func defaultConfigParams() ConfigParams {
 	return ConfigParams{
-		maxConcurrentAttachers: seq_attach.DefaultMaxConcurrentAttachers,
+		maxConcurrentAttachers: DefaultMaxConcurrentAttachers,
 	}
 }
 

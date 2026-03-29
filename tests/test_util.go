@@ -13,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/memdag"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -918,9 +917,7 @@ func (td *workflowTestData) spamTransfers(par *spammerParams, ctx context.Contex
 		for _, txBytes := range txBytesSeq {
 			var wg sync.WaitGroup
 			wg.Add(1)
-			txid, err := td.wrk.TxBytesIn(txBytes,
-				workflow.WithSourceType(txmetadata.SourceTypeAPI),
-			)
+			txid, err := td.wrk.TxBytesIn(txBytes)
 			require.NoError(td.t, err)
 			par.spammedTxIDs = append(par.spammedTxIDs, txid)
 		}
