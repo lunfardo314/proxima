@@ -1,4 +1,4 @@
-// txsolicit_queue is the fast-track input queue for solicited (wanted/pulled) transactions.
+// Package txsolicit_queue is the fast-track input queue for solicited (wanted/pulled) transactions.
 // Transactions enter here from txstore lookups or peer pull responses.
 // No dedup, no rate control, no gossip — all transactions are attached directly.
 package txsolicit_queue
@@ -26,7 +26,7 @@ type (
 	Input struct {
 		// either TxBytesWithMetadata or Tx is set
 		TxBytesWithMetadata []byte                   // raw bytes from txstore (includes metadata)
-		Tx                  *transaction.Transaction  // already parsed transaction
+		Tx                  *transaction.Transaction // already parsed transaction
 	}
 
 	TxSolicitQueue struct {
@@ -65,8 +65,9 @@ func (q *TxSolicitQueue) consume(inp *Input) {
 		}
 	}
 
-	// re-parsed transactions need partial context validation (initializes internal structures)
-	if err := tx.ValidatePartialContext(); err != nil {
+	// reparsed transactions need partial context validation (initializes internal structures)
+	// validation script is skipped because it is assumed that partial context (including signature) was already validated once
+	if err := tx.ValidatePartialContext(false); err != nil {
 		q.Log().Warnf("%s: partial context validation failed for %s: %v", Name, tx.IDShortString(), err)
 		return
 	}

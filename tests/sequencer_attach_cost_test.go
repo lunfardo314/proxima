@@ -250,7 +250,7 @@ func TestSequencerAttachCostManyTagAlongsExceedBudget(t *testing.T) {
 		require.EqualValues(t, 1, len(tagAlongOuts), "transaction %d should have 1 tag-along output", i)
 
 		// Submit the transaction to the workflow
-		txid, err := testData.wrk.TxBytesIn(txBytes)
+		txid, err := testData.wrk.TxBytesInForTests(txBytes)
 		require.NoError(t, err)
 
 		tagAlongTxIDs = append(tagAlongTxIDs, txid)
@@ -373,7 +373,7 @@ func TestSequencerAttachCostBudgetBaseline(t *testing.T) {
 		txBytes, newRemainder, err := txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
 		require.NoError(t, err)
 
-		txid, err := testData.wrk.TxBytesIn(txBytes)
+		txid, err := testData.wrk.TxBytesInForTests(txBytes)
 		require.NoError(t, err)
 
 		tagAlongTxIDs = append(tagAlongTxIDs, txid)

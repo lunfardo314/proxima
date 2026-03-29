@@ -90,7 +90,7 @@ func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
 	if err != nil {
 		return nil, err
 	}
-	return tx, tx.ValidatePartialContext()
+	return tx, tx.ValidatePartialContext(true)
 }
 
 // TxIDFromTransactionDataTree takes raw tx bytes and validates timestamp, sequencer data bytes and makes transaction ID

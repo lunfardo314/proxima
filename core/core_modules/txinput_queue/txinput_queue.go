@@ -196,7 +196,7 @@ func (q *TxInputQueue) fromPeer(inp *Input) {
 
 	metaData := inp.TxMetaData
 	if metaData == nil {
-		metaData = &txmetadata.TransactionMetadata{}
+		metaData = new(txmetadata.TransactionMetadata)
 	}
 	if wanted {
 		metaData.SourceTypeNonPersistent = txmetadata.SourceTypePulled
@@ -255,18 +255,18 @@ func (q *TxInputQueue) processValidated(tx *transaction.Transaction, meta *txmet
 		meta.SourceTypeNonPersistent == txmetadata.SourceTypePeer
 	if err := q.checkTimestampUpperBound(tx); err != nil {
 		if enforceTimeBounds {
-			msg := fmt.Sprintf("enforcing time bounds: %v", err)
+			msg := fmt.Sprintf("enforcing time bounds (from peer %s): %v", fromPeer, err)
 			q.LogTx(time.Now(), msg, txid)
 			q.Log().Warnf("%s -- %s", msg, txid.StringShort())
 			attacher.InvalidateTxID(txid, q.attacherEnv(), err)
 			return
 		}
 		q.LogTx(time.Now(), err.Error(), txid)
-		q.Log().Warnf("%v -- %s", err, txid.StringShort())
+		q.Log().Warnf("(from peer '%s') %v -- %s", fromPeer, err, txid.StringShort())
 	}
 
 	// --- partial context validation (signature etc) ---
-	if err := tx.ValidatePartialContext(); err != nil {
+	if err := tx.ValidatePartialContext(true); err != nil {
 		err = fmt.Errorf("error while pre-validating transaction %s: '%w'", txid.StringShort(), err)
 		q.LogTx(time.Now(), err.Error(), txid)
 		attacher.InvalidateTxID(txid, q.attacherEnv(), err)

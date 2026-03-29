@@ -917,7 +917,7 @@ func (td *workflowTestData) spamTransfers(par *spammerParams, ctx context.Contex
 		for _, txBytes := range txBytesSeq {
 			var wg sync.WaitGroup
 			wg.Add(1)
-			txid, err := td.wrk.TxBytesIn(txBytes)
+			txid, err := td.wrk.TxBytesInForTests(txBytes)
 			require.NoError(td.t, err)
 			par.spammedTxIDs = append(par.spammedTxIDs, txid)
 		}

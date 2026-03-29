@@ -26,14 +26,14 @@ func (w *Workflow) TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.Transact
 	return w.txSolicitQueue.TxBytesFromStoreIn(txBytesWithMetadata)
 }
 
-// TxBytesIn parses and processes a transaction synchronously.
+// TxBytesInForTests parses and processes a transaction synchronously.
 // Used in tests and for direct submission (not through gossip/API queues).
-func (w *Workflow) TxBytesIn(txBytes []byte) (base.TransactionID, error) {
+func (w *Workflow) TxBytesInForTests(txBytes []byte) (base.TransactionID, error) {
 	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return base.TransactionID{}, err
 	}
-	if err = tx.ValidatePartialContext(); err != nil {
+	if err = tx.ValidatePartialContext(true); err != nil {
 		return base.TransactionID{}, err
 	}
 	nowis := time.Now()
@@ -45,7 +45,7 @@ func (w *Workflow) TxBytesIn(txBytes []byte) (base.TransactionID, error) {
 
 	opts := []attacher.AttachTxOption{
 		attacher.WithTransactionMetadata(meta),
-		attacher.WithInvokedBy("TxBytesIn"),
+		attacher.WithInvokedBy("TxBytesInForTests"),
 		attacher.WithEnforceTimestampBeforeRealTime,
 	}
 	txid := tx.ID()

@@ -43,7 +43,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 	require.NoError(t, err)
 
 	testData.makeChainOrigins(nSequencers)
-	chainOriginsTxID, err := testData.wrk.TxBytesIn(testData.chainOriginsTx.Bytes())
+	chainOriginsTxID, err := testData.wrk.TxBytesInForTests(testData.chainOriginsTx.Bytes())
 	require.NoError(t, err)
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 

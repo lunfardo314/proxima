@@ -101,10 +101,10 @@ func TestBasic(t *testing.T) {
 
 	w := Start(env, peers, OptionDisableMemDAGGC)
 
-	_, err := w.TxBytesIn(nil)
+	_, err := w.TxBytesInForTests(nil)
 	require.Error(t, err)
 
-	_, err = w.TxBytesIn([]byte("dummy data"))
+	_, err = w.TxBytesInForTests([]byte("dummy data"))
 	require.Error(t, err)
 
 	env.Stop()

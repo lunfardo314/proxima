@@ -40,18 +40,23 @@ func (tx *Transaction) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.Ev
 // ValidatePartialContext runs all validation scripts (constraints) that only needs partial context,
 // i.e. no need for the past cone.
 // This is STAGE 2 of the transaction validation
-func (tx *Transaction) ValidatePartialContext() error {
+// It always scans partial context and optionally runs script of integrity validation in partial context (that includes signature checking)
+// Script can be disabled if it is redundant in the context, e.g. when signature is already validated
+func (tx *Transaction) ValidatePartialContext(runIntegrityValidationScript bool) error {
 	util.Assertf(!tx.partialContextValidated, "repeating run on partial context")
-
-	spool := slicepool.New()
-	defer spool.Dispose()
 
 	tx.partialContextValidated = true
 	return util.CatchPanicOrError(func() error {
 		if err := tx.scanPartialContext(); err != nil {
 			return err
 		}
-		return tx.TxIntegrityValidatorPartialContext(tx.makeEvalContext(nil), spool)
+		if runIntegrityValidationScript {
+			spool := slicepool.New()
+			defer spool.Dispose()
+
+			return tx.TxIntegrityValidatorPartialContext(tx.makeEvalContext(nil), spool)
+		}
+		return nil
 	})
 }
 
@@ -63,7 +68,7 @@ func (tx *Transaction) ValidateFullContext() error {
 
 	var err error
 	if !tx.partialContextValidated {
-		if err = tx.ValidatePartialContext(); err != nil {
+		if err = tx.ValidatePartialContext(true); err != nil {
 			return err
 		}
 	}
