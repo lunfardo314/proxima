@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 	"weak"
 
@@ -48,6 +49,10 @@ type (
 		latestBranchSlot        uint32
 		latestHealthyBranchSlot uint32
 
+		// pruneNeeded is an atomic flag set by external callers (branch commit, memory pressure)
+		// to request LRB-depth pruning on the next tick of the prune loop.
+		pruneNeeded atomic.Bool
+
 		metrics
 	}
 
@@ -75,6 +80,19 @@ func New(env environment) *MemDAG {
 			}, true)
 		}
 
+		// LRB-depth prune loop: checks atomic flag every 1 second.
+		// External callers (branch commit, memory pressure) set the flag via RequestPrune().
+		ret.RepeatInBackground("memdag-prune", pruneLoopPeriod, func() bool {
+			if ret.pruneNeeded.CompareAndSwap(true, false) {
+				nDetached, nDeleted := ret.doLRBDepthPrune()
+				if nDetached > 0 || nDeleted > 0 {
+					env.Log().Infof("[memdag prune] LRB-depth: detached: %d, deleted: %d, stress: %d%%",
+						nDetached, nDeleted, env.MemoryStressLevel())
+				}
+			}
+			return true
+		})
+
 		ret.RepeatInBackground("memdag-stats", 10*time.Second, func() bool {
 			nVertices := ret.NumVertices()
 			env.Log().Infof("[memdag stats] vertices: %d", nVertices)
@@ -92,6 +110,17 @@ const (
 	// N slots behind the latest committed branch. Handles forward-sync where vertices are
 	// "fresh" by wall clock but ancient by ledger time.
 	vertexLedgerTTLSlots = 48
+
+	// pruneLoopPeriod: how often the prune loop checks the pruneNeeded flag.
+	pruneLoopPeriod = 1 * time.Second
+
+	// lrbDepthNormal: default LRB-depth pruning threshold (slots behind healthy branch).
+	// Vertices whose tx slot is this many slots behind the latest healthy branch are pruned.
+	lrbDepthNormal = 3
+	// lrbDepthStress60: LRB-depth threshold when memory stress >= 60%.
+	lrbDepthStress60 = 2
+	// lrbDepthStress80: LRB-depth threshold when memory stress >= 80%.
+	lrbDepthStress80 = 1
 )
 
 func (d *MemDAG) WithGlobalWriteLock(fun func()) {
@@ -183,6 +212,88 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			// ledger-time TTL (always active)
 			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
 			if wallClockExpired || ledgerTimeExpired {
+				expired = append(expired, rec.WrappedTx)
+			}
+		}
+	})
+	d.postDeleteEvents(deletedIDs)
+	deletedIDs = deletedIDs[:0]
+
+	if len(expired) == 0 {
+		return
+	}
+	for _, vid := range expired {
+		vid.ConvertToDetached()
+	}
+	d.WithGlobalWriteLock(func() {
+		for _, vid := range expired {
+			txid := vid.ID()
+			if rec, found := d.vertices[txid]; found {
+				if rec.Value() == nil {
+					d.deleteFromMapNoLock(txid)
+					deletedIDs = append(deletedIDs, txid)
+					deleted++
+				} else {
+					if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
+						d.DecCounter("nonseq")
+					}
+					rec.WrappedTx = nil
+					d.vertices[txid] = rec
+					detached++
+				}
+			}
+		}
+	})
+	d.postDeleteEvents(deletedIDs)
+	return
+}
+
+// RequestPrune sets the atomic flag to trigger LRB-depth pruning on the next tick.
+// Called by branch commit, branch disposal, memory pressure handlers, etc.
+func (d *MemDAG) RequestPrune() {
+	d.pruneNeeded.Store(true)
+}
+
+// lrbDepthForStress returns the LRB-depth pruning threshold based on current memory stress.
+func lrbDepthForStress(stress int) uint32 {
+	switch {
+	case stress >= 80:
+		return lrbDepthStress80
+	case stress >= 60:
+		return lrbDepthStress60
+	default:
+		return lrbDepthNormal
+	}
+}
+
+// doLRBDepthPrune prunes vertices whose transaction slot is N+ slots behind the latest
+// healthy branch (LRB). N depends on current memory stress level.
+// This is a structural DAG-based criterion, not a clock-based TTL.
+func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
+	stress := d.MemoryStressLevel()
+	depth := lrbDepthForStress(stress)
+
+	expired := make([]*vertex.WrappedTx, 0)
+	var deletedIDs []base.TransactionID
+
+	d.WithGlobalWriteLock(func() {
+		healthySlot := d.latestHealthyBranchSlot
+		if healthySlot <= depth {
+			return
+		}
+		pruneBeforeSlot := healthySlot - depth
+
+		for txid, rec := range d.vertices {
+			if rec.Pointer.Value() == nil {
+				d.deleteFromMapNoLock(txid)
+				deletedIDs = append(deletedIDs, txid)
+				deleted++
+				continue
+			}
+			if rec.WrappedTx == nil {
+				continue
+			}
+			if txid.Slot() < pruneBeforeSlot {
 				expired = append(expired, rec.WrappedTx)
 			}
 		}

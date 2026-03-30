@@ -82,6 +82,11 @@ func (w *Workflow) NotifyBranchCommitted(branchSlot uint32) {
 	w.syncModule.NotifyBranchCommitted(branchSlot)
 }
 
+// RequestPrune signals the memDAG to run LRB-depth pruning on the next tick.
+func (w *Workflow) RequestPrune() {
+	w.MemDAG.RequestPrune()
+}
+
 func (w *Workflow) ForceCommitBranch(branchID base.TransactionID) {
 	w.branches.GetStateReaderForTheBranch(branchID)
 }

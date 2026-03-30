@@ -21,6 +21,8 @@ type (
 		global.NodeGlobal
 		StateStore() global.Store
 		NotifyBranchCommitted(branchSlot uint32)
+		// RequestPrune signals the memDAG to run LRB-depth pruning on the next tick.
+		RequestPrune()
 	}
 
 	branchDataWithLedgerCoverage struct {
@@ -487,6 +489,9 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 
 	// wake up any goroutines waiting for this commit
 	close(ch)
+
+	// signal memDAG to run LRB-depth pruning after this commit
+	b.RequestPrune()
 
 	return rdr.IndexedStateReader
 }
