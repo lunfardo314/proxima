@@ -96,8 +96,8 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
     <div style="display:flex; align-items:center; gap:8px;">
         <canvas id="stressGauge" width="16" height="80"></canvas>
         <div>
-            <div>Stress: <span id="stressValue">-</span>%</div>
-            <div>Pipeline: <span id="pipelineValue">-</span></div>
+            <div>Stress: <span id="stressValue">0</span>%</div>
+            <div>Pipeline: <span id="pipelineValue">0</span></div>
             <div id="syncFlag" style="display:none; color:#c70;">SYNCING</div>
             <div id="snapshotFlag" style="display:none; color:#c70;">SNAPSHOT</div>
         </div>
@@ -177,6 +177,8 @@ function init() {
     document.getElementById('wsUrl').value = wsProto + '//' + loc.host + '/wsapi/v1/dag_vertex_stream';
 
     drawLegendShapes();
+    updateNodeStatusDisplay();
+    fetchNodeStatus();
     requestAnimationFrame(animate);
 }
 
@@ -1034,13 +1036,18 @@ let nodeIsSnapshotting = false;
 function fetchNodeStatus() {
     const loc = window.location;
     const url = loc.protocol + '//' + loc.host + '/api/v1/get_node_info';
-    fetch(url).then(r => r.json()).then(data => {
+    fetch(url).then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }).then(data => {
         nodeStress = data.memory_stress_level || 0;
         nodePipeline = data.pipeline_size || 0;
         nodeIsSyncing = !!data.is_syncing;
         nodeIsSnapshotting = !!data.is_snapshotting;
         updateNodeStatusDisplay();
-    }).catch(() => {});
+    }).catch(e => {
+        console.warn('fetchNodeStatus failed:', e);
+    });
 }
 
 function stressColor(level) {

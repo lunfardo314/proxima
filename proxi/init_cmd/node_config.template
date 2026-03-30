@@ -166,9 +166,7 @@ sequencer:
 
 # Memory management
 # When limit_mb > 0, sets Go's soft GC limit (debug.SetMemoryLimit) and starts
-# a watchdog that initiates graceful shutdown when heap reaches shutdown_pct of the limit.
+# a watchdog that initiates graceful shutdown when heap reaches the limit (stress = 100%).
 # memory:
 #   # soft memory limit in MB; 0 = disabled (default)
 #   limit_mb: 0
-#   # graceful shutdown threshold as percentage of limit_mb (default: 90)
-#   shutdown_pct: 90
