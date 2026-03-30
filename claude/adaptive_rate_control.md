@@ -266,3 +266,117 @@ All constants and rate-control related variables must be well-commented.
 2. Run spammer at increasing TPS
 3. Observe stress gauge, adjust thresholds empirically
 4. Document final thresholds
+
+---
+
+## Testnet findings (2026-03-30)
+
+### Session summary
+
+Branch `develop07-txflow2`. Testnet: 4 machines, 4 cores / 8 GB each, 2 nodes per machine
+(sequencer + access). Memory limits: 3700-3800 MB per access node.
+
+Implemented phases 1-3 + GC equalization + goroutine profiling. Phases 4-5 not yet implemented.
+
+### Run 1: 117 senders (~25 TPS)
+
+Stable for ~10 minutes, then **simultaneous memory spike** on all access nodes at ~10 min mark.
+Two access nodes crashed (loc0-acc, boot-acc), two survived (seq1-acc, loc1-acc).
+
+After spammers stopped, all 4 sequencer nodes and 2 surviving access nodes **recovered fully**:
+goroutines dropped 500+→176, memory stabilized at 400-550 MB.
+
+### Run 2: 217 senders (~40+ TPS)
+
+Sequencers could not keep up. `context deadline exceeded` appeared within 2 minutes — proposers
+can't build milestones fast enough when past cones contain 100+ non-seq transactions per branch.
+loc0-acc crashed at 11 min. After stopping spammers, sequencers **did not recover** — stuck in
+a loop of `context deadline exceeded` every 10s with stale tippool/backlog.
+
+### GC frequency gap (root cause of access node crashes)
+
+The fundamental issue: sequencer nodes run 5-10x more GC cycles than access nodes.
+
+| Node type | GC cycles / 17 min | Mechanism |
+|-----------|-------------------|-----------|
+| Sequencer | 348-388 (~22/min) | Go's automatic GC + `MemoryPressureGC` from milestone attachment |
+| Access | 44-53 (~4/min) | Go's automatic GC only (periodic `MemoryPressureGC` too conservative) |
+
+The periodic 5s `MemoryPressureGC` was implemented but only forces GC when stress >= 50%.
+Access nodes hover at 8-18% stress normally, so the forced GC never fires. The sequencer node
+gets frequent GC from Go's automatic collector because its allocation pattern (milestone
+generation, past cone walks) triggers GC more often.
+
+**Next step**: Lower the threshold or force `runtime.GC()` unconditionally every 5s. The cost
+(~5-10ms) is trivial compared to a crash. This should equalize GC frequency across node types.
+
+### Goroutine profile (access nodes under load)
+
+All 4 access nodes showed the same profile when goroutines exceeded 300:
+
+```
+IO wait:      210-314   (libp2p/quic network connections — gossip traffic)
+select:       121-130   (background loops: cleanup, peering, poker, etc.)
+chan receive:  65-68     (queue consumers, events)
+running:      1-11
+syscall:      1
+```
+
+The goroutine growth is **IO wait from libp2p** — not a code leak. Under 117+ senders, gossip
+volume increases network connections. Access nodes accept more incoming connections because
+they don't send outgoing milestones. After spammers stop, goroutines drop from 500+ to ~176
+within seconds — connections close naturally.
+
+### Memory spike pattern
+
+The spike is simultaneous across all access nodes (within the same 10-second window), suggesting
+a network-wide trigger — likely a heavy branch commit with many non-seq transactions. Example:
+branch commits with `tx: 10 seq + 115 non-seq` appear right before the spike.
+
+On the access node that survived (seq1-acc), the spike went: 637→1626→1987→2234→2736→2996→434 MB
+over 70 seconds. GC eventually caught up (gc: 27→42) and memory dropped. The nodes that crashed
+were those where GC couldn't recover before hitting the 100% limit.
+
+### "WON'T SUBMIT BRANCH" analysis
+
+These appear when `IsHealthyCoverageDelta` returns false — the branch's coverage delta is below
+the healthy threshold. This happens when the sequencer can't endorse enough other sequencers'
+milestones (they're not in the tippool because everyone is struggling). It's a cascading failure:
+one slow sequencer → less coverage for others → they also can't produce healthy branches.
+
+### No recovery after 217 senders
+
+After stopping the 217-sender spammer, sequencers remained stuck with continuous
+`context deadline exceeded`. The tippool had 154 stale own milestones. Each failed proposal
+attempt wastes the full timeout period (~10s), preventing the node from making progress.
+This confirms the need for sequencer survival mode (reduce work, clean backlog, produce
+branches-only).
+
+### loc0 machine anomaly
+
+loc0-acc consistently crashes first despite:
+- Same hardware as all other machines (4-core Xeon 2.60GHz, 8 GB)
+- Same CPU benchmark performance
+- Actually **better** I/O throughput (396 MB/s reads vs 140-318 on others)
+- Same 2-node config (sequencer + access)
+
+The cause remains unclear. Possibly Badger internal state (LSM tree shape, compaction history)
+or timing-related (loc0 runs the spammer, so gossip arrives with slightly different timing).
+
+### Remaining work for next session
+
+1. **Fix GC equalization**: force `runtime.GC()` unconditionally every 5s in the stress loop
+   (or lower `memPressureGCPct` from 50 to something like 10-15%). This is the single most
+   impactful change for access node stability.
+
+2. **Phase 4**: Stress-aware gates in `txinput_queue`. When stress rises, drop unsolicited
+   seq non-branches. This prevents attacher goroutine pileup during memory spikes.
+
+3. **Phase 5**: Sequencer budget throttle + backlog pruning by LRB depth. This reduces
+   non-seq per branch (currently 50-115) which is the root cause of heavy branch commits.
+
+4. **Sequencer survival mode**: When `context deadline exceeded` repeats, switch to
+   branches-only production with minimal tag-alongs and aggressive backlog cleanup.
+
+5. **Investigate loc0 anomaly**: Run with profiling (pprof) on loc0-acc specifically to
+   find if there's a Badger or OS-level difference.
