@@ -334,6 +334,7 @@ func (s *Sync) syncTick() {
 			s.windowPulled = false
 			s.stallCounter = 0
 			s.latestTargetTicks.Store(0)
+			s.currentTarget.Store(0)
 		}
 		return
 	}
