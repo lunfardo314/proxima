@@ -66,18 +66,29 @@ sequencer nodes — the only difference is lever 2 is always "drop all" on acces
 
 Pulled transactions always pass, regardless of stress level.
 
-Additionally, the **sequencer tag-along budget** is reduced under pressure — this is not a drop
-gate but a throttle on how many tag-along inputs the sequencer pulls per milestone.
+Additionally, the **sequencer tag-along budget** and **backlog cleanup** are adjusted under pressure:
+
+**Attachment budget throttle**: The attachment cost budget has a deterministic consensus cap that
+all nodes must agree on for validation. The local sequencer can only set a **lower** local cap,
+never exceed the consensus one. Under stress, the sequencer reduces its local budget cap, which
+means fewer tag-along inputs per milestone on average. This reduces the non-seq transactions
+that need solidification in subsequent branches.
+
+**Backlog pruning by LRB depth**: Tag-along outputs in the sequencer backlog that are already
+N slots behind the LRB can be removed from the backlog. Same principle as the memDAG LRB-depth
+pruning — if a tag-along output's transaction is deep in confirmed state, it's either already
+been included in a branch or is too old to be useful. Pruning stale backlog entries reduces
+the work the sequencer does scanning candidates and prevents unbounded backlog growth.
 
 ### Graduated response (sequencer nodes)
 
-| Stress | Lever 1 (unsolicited seq) | Lever 2 (unsolicited non-seq) | Lever 3 (input gate) | Tag-along budget |
-|--------|---------------------------|-------------------------------|----------------------|------------------|
-| 0–40%  | normal (all pass) | normal (all pass) | normal | full (2/3) |
-| 40–55% | tighten: cap attacher count | normal | normal | reduced (1/3) |
-| 55–70% | aggressive: only branches pass | tighten: lower vertex limit | normal | minimal (1-2 inputs) |
-| 70–85% | aggressive | drop all unsolicited non-seq | start dropping | zero tag-alongs |
-| 85%+   | aggressive | drop all | drop all non-pulled | zero |
+| Stress | Lever 1 (unsolicited seq) | Lever 2 (unsolicited non-seq) | Lever 3 (input gate) | Sequencer local budget cap | Backlog pruning |
+|--------|---------------------------|-------------------------------|----------------------|---------------------------|-----------------|
+| 0–40%  | normal (all pass) | normal (all pass) | normal | consensus cap (full) | normal TTL |
+| 40–55% | tighten: cap attacher count | normal | normal | 2/3 of consensus cap | LRB depth 3 |
+| 55–70% | aggressive: only branches pass | tighten: lower vertex limit | normal | 1/3 of consensus cap | LRB depth 2 |
+| 70–85% | aggressive | drop all unsolicited non-seq | start dropping | minimal (branches only) | LRB depth 1 |
+| 85%+   | aggressive | drop all | drop all non-pulled | minimal | LRB depth 1 |
 
 ### Graduated response (access nodes)
 
@@ -96,6 +107,51 @@ To prevent oscillation, lever activation uses asymmetric thresholds:
 - **Deactivate** only when stress drops 10% below activation (e.g., lever 1 deactivates at 40%)
 
 This prevents rapid on/off cycling when stress hovers near a threshold.
+
+### MemDAG pruning as a backpressure lever
+
+Currently memDAG GC runs every 5 seconds and prunes vertices based on two criteria:
+- **Wall-clock TTL** (`vertexTTLSlots = 24`): vertex added > 24 wall-clock slots ago (only when synced)
+- **Ledger-time TTL** (`vertexLedgerTTLSlots = 48`): tx slot > 48 slots behind latest committed branch
+
+These are passive, time-based criteria. They don't respond to memory pressure — a vertex 10 slots
+old is kept regardless of whether the node is at 30% or 85% stress.
+
+#### LRB-depth pruning
+
+Add a third pruning criterion: **depth behind the Latest Reliable Branch (LRB)**.
+
+Once a transaction is included in a committed branch that is N branches deep behind the LRB,
+it is no longer needed in the memDAG — it's confirmed in the persistent state and no attacher
+will reference it. It can be safely detached and removed.
+
+**Mechanism**: track the set of vertex IDs (vids) in the past cone of each committed branch.
+When a branch reaches depth N behind the LRB, all vertices in its past cone set are eligible
+for pruning. Reasonable starting value: **N = 3**.
+
+This is more precise than slot-based TTL: a vertex from 2 slots ago that's already 3 branches
+deep is safe to prune, while the current TTL would keep it for 22 more slots.
+
+**Data structure**: `map[base.TransactionID]set.Set[*vertex.WrappedTx]` — branch ID to its past
+cone vertex set. Updated during branch commits (the committed tx list is already available).
+Pruned entries are removed when the branch itself falls off the depth window.
+
+#### Stress-triggered memDAG cleanup
+
+Under memory pressure, the node should actively prune the memDAG rather than waiting for the
+next 5-second GC tick. Add memDAG cleanup as a response to rising stress, analogous to how
+`MemoryPressureGC()` currently forces Go runtime GC:
+
+| Stress | MemDAG pruning behavior |
+|--------|------------------------|
+| 0–40%  | Normal: 5-second periodic GC, TTL + ledger-time criteria |
+| 40–60% | Normal + LRB-depth pruning at depth 3 |
+| 60–80% | Aggressive: reduce LRB-depth to 2, run memDAG GC on every stress check (1s) |
+| 80%+   | Emergency: reduce LRB-depth to 1, run memDAG GC immediately, force Go GC between runs |
+
+This gives the node two ways to shed memory:
+1. **Admission control** (the three levers) — reduces inflow
+2. **Aggressive pruning** — reduces what's already in memory
 
 ### MemoryPressureGC before branch commits
 
@@ -144,26 +200,35 @@ All constants and rate-control related variables must be well-commented.
 4. Add stress level and pipeline size to `/api/v1/get_node_info` response
 5. Call `MemoryPressureGC()` before each `ForceCommitBranch` in branches module
 
-### Phase 2: Graduated gates in txinput_queue
+### Phase 2: Dagviz gauge
+
+1. Add stress level, pipeline size, isSyncing, isSnapshotting to WebSocket feed
+2. Render vertical rainbow gauge on dagviz canvas
+3. Show numeric values for stress and pipeline size, boolean flags for sync/snapshot
+
+### Phase 3: LRB-depth pruning in memDAG
+
+1. Track past cone vertex sets per committed branch in the branches module
+2. Add LRB-depth pruning criterion to `doGC()`: prune vertices in branches at depth >= N behind LRB
+3. Wire stress level into memDAG GC: at higher stress, reduce depth threshold and increase GC frequency
+4. Clean up branch past-cone sets when the branch itself falls off the depth window
+
+### Phase 4: Graduated gates in txinput_queue
 
 1. Replace static `shouldAttachSequencer` / `shouldAttachNonSeq` with stress-aware decisions
 2. Implement the three levers with hysteresis using stress level thresholds
 3. Access nodes: always drop unsolicited non-seq; seq follows same rules as sequencer nodes
 4. Add input gate: `txinput_queue.consume()` checks stress before processing
 
-### Phase 3: Sequencer tag-along throttle
+### Phase 5: Sequencer budget throttle and backlog pruning
 
 1. Expose stress level to sequencer via existing `NodeGlobal`
-2. Scale tag-along budget based on stress: full → reduced → minimal → zero
-3. The sequencer already has budget logic in the factory — add stress multiplier
+2. Scale local attachment budget cap based on stress (never above consensus cap)
+3. Add LRB-depth pruning to the sequencer backlog: remove tag-along outputs whose
+   transactions are N+ slots behind LRB (N decreases with stress)
+4. The sequencer already has budget logic in the factory — apply stress-scaled local cap
 
-### Phase 4: Dagviz gauge
-
-1. Add stress level, pipeline size, isSyncing, isSnapshotting to WebSocket feed
-2. Render vertical rainbow gauge on dagviz canvas
-3. Show numeric values for stress and pipeline size, boolean flags for sync/snapshot
-
-### Phase 5: Tuning
+### Phase 6: Tuning
 
 1. Deploy to testnet with default thresholds
 2. Run spammer at increasing TPS
