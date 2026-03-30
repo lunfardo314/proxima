@@ -163,11 +163,33 @@ This gives the node two ways to shed memory:
 1. **Admission control** (the three levers) — reduces inflow
 2. **Aggressive pruning** — reduces what's already in memory
 
-### MemoryPressureGC before branch commits
+### GC policy: uniform across node types
 
-Independent of the stress level, call `MemoryPressureGC()` before each `ForceCommitBranch`.
-Branch commits are the heaviest allocators (trie mutations, committed tx lists). Giving GC a
-chance to run between commits prevents the GC-stall death spiral observed in the crash log.
+Two GC mechanisms work together to prevent memory spikes:
+
+1. **Periodic baseline GC** (every 5s): `MemoryPressureGC()` called from the stress level loop.
+   Keeps Go's GC "warm" on all node types uniformly. Without this, access nodes get 5-8x fewer
+   GC cycles than sequencer nodes (which get GC from milestone attachment) and suffer memory
+   spikes when allocation bursts outpace GC.
+
+2. **Push-triggered GC** after bulk operations: `MemoryPressureGC()` called after branch commits,
+   LRB-depth pruning, forward-sync batch commits. Catches spikes right after heavy allocations.
+
+Both coexist. The periodic one prevents drift; the push one handles spikes. `MemoryPressureGC`
+is internally rate-limited (100ms) so overlapping calls are harmless.
+
+### Sequencer survival mode
+
+When `context deadline exceeded` occurs repeatedly (proposer can't build milestones in time),
+the sequencer should switch to survival mode:
+- Minimize tag-along inputs (reduce attachment budget to near-zero)
+- Skip non-branch milestone targets (only produce branches to maintain coverage)
+- Prune stale milestones from the tippool aggressively
+- Log the condition clearly so operators can diagnose
+
+Without survival mode, the sequencer gets stuck in a loop of failed proposals — it can't
+recover because each failed attempt wastes the full timeout period, and the tippool/backlog
+accumulates stale state that doesn't clear even after load drops.
 
 ## Visualization: stress gauge in dagviz
 

@@ -233,16 +233,23 @@ func (l *Global) MemoryStressLevel() int {
 const (
 	// stressComputeInterval is how often the memory stress level is recomputed.
 	stressComputeInterval = 1 * time.Second
+	// periodicGCInterval is how often MemoryPressureGC is called regardless of stress level.
+	// Keeps Go's GC "warm" on all node types uniformly. Without this, access nodes get 5-8x
+	// fewer GC cycles than sequencer nodes (which get GC from milestone attachment) and suffer
+	// memory spikes when GC can't keep up with allocation bursts.
+	// This is the baseline; push-triggered MemoryPressureGC after bulk operations (branch commit,
+	// LRB-depth pruning) supplements it for spike handling.
+	periodicGCInterval = 5 * time.Second
 )
 
-// startStressLevelComputation starts a background loop that recomputes memory stress every second.
-// Also calls MemoryPressureGC on every tick — this ensures uniform GC frequency across all node
-// types (sequencer nodes previously got frequent GC from milestone attachment, access nodes did not).
+// startStressLevelComputation starts a background loop that recomputes memory stress every second
+// and calls MemoryPressureGC every periodicGCInterval.
 // No-op when memory.limit_mb is not configured.
 func (l *Global) startStressLevelComputation() {
 	if l.memLimitBytes == 0 {
 		return
 	}
+	var ticksSinceGC int
 	l.RepeatInBackground("stress_level", stressComputeInterval, func() bool {
 		var ms runtime.MemStats
 		runtime.ReadMemStats(&ms)
@@ -251,12 +258,13 @@ func (l *Global) startStressLevelComputation() {
 			level = 100
 		}
 		l.memoryStressLevel.Store(level)
-		// when stress exceeds the GC threshold, force GC on all node types uniformly.
-		// This prevents GC stall on access nodes that don't get MemoryPressureGC
-		// from milestone attachment. Avoids redundant ReadMemStats since we already
-		// have the allocation info.
-		if int(level) >= memPressureGCPct {
-			runtime.GC()
+		// periodic GC: call MemoryPressureGC every periodicGCInterval ticks.
+		// The function checks the 50% threshold internally and is rate-limited,
+		// so extra calls from push triggers (branch commit etc.) are harmless.
+		ticksSinceGC++
+		if ticksSinceGC >= int(periodicGCInterval/stressComputeInterval) {
+			ticksSinceGC = 0
+			l.MemoryPressureGC()
 		}
 		return true
 	})
