@@ -236,6 +236,8 @@ const (
 )
 
 // startStressLevelComputation starts a background loop that recomputes memory stress every second.
+// Also calls MemoryPressureGC on every tick — this ensures uniform GC frequency across all node
+// types (sequencer nodes previously got frequent GC from milestone attachment, access nodes did not).
 // No-op when memory.limit_mb is not configured.
 func (l *Global) startStressLevelComputation() {
 	if l.memLimitBytes == 0 {
@@ -249,6 +251,9 @@ func (l *Global) startStressLevelComputation() {
 			level = 100
 		}
 		l.memoryStressLevel.Store(level)
+		// keep GC active on all node types — prevents GC stall on access nodes
+		// that don't get MemoryPressureGC from milestone attachment
+		l.MemoryPressureGC()
 		return true
 	})
 }
