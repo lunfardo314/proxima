@@ -460,6 +460,9 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 	b.committing[branchID] = ch
 	b.mutex.Unlock()
 
+	// branch commits are heavy allocators — give GC a chance to run before
+	b.MemoryPressureGC()
+
 	// do the expensive commit work outside the mutex
 	upd := b._commitPendingBranchUnlocked(branchID, pb, baselineRoot)
 

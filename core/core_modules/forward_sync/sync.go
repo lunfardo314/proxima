@@ -208,6 +208,14 @@ func (s *Sync) LatestForwardSyncedTimestamp() base.LedgerTime {
 	return ret
 }
 
+// IsSyncing returns true when forward-sync is actively catching up.
+func (s *Sync) IsSyncing() bool {
+	if s == nil {
+		return false
+	}
+	return s.currentTarget.Load() > 0
+}
+
 // NotifyBranchCommitted wakes up the sync loop only when the current target branch commits.
 func (s *Sync) NotifyBranchCommitted(branchSlot uint32) {
 	if s == nil {

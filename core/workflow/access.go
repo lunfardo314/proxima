@@ -90,6 +90,11 @@ func (w *Workflow) LatestForwardSyncedTimestamp() base.LedgerTime {
 	return w.syncModule.LatestForwardSyncedTimestamp()
 }
 
+// IsSyncing returns true when forward-sync is actively catching up.
+func (w *Workflow) IsSyncing() bool {
+	return w.syncModule.IsSyncing()
+}
+
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	return w.tippool.LatestActiveMilestonesDescending(filter...)
@@ -139,6 +144,12 @@ func (w *Workflow) AddPulledTransaction(txid base.TransactionID) {
 // TxBytesFromStoreInSolicited sends txstore bytes to the solicit queue for fast-track attachment.
 func (w *Workflow) TxBytesFromStoreInSolicited(txBytesWithMetadata []byte) {
 	w.txSolicitQueue.PushTxBytesFromStore(txBytesWithMetadata)
+}
+
+// PipelineSize returns the total number of transactions in the processing pipeline:
+// memDAG vertices + solicited queue length + txs waiting for clock alignment.
+func (w *Workflow) PipelineSize() int {
+	return w.NumVertices() + w.txSolicitQueue.Len() + w.Counter("wait")
 }
 
 func (w *Workflow) SaveFullDAG(fname string) {

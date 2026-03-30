@@ -132,6 +132,9 @@ type (
 		// Pauses briefly if still above 70% after GC. No-op when limit not configured.
 		MemoryPressureGC()
 		MemLimitBytes() uint64
+		// MemoryStressLevel returns the current memory stress level (0-100).
+		// Computed as 100 * allocated / limit. Returns 0 when limit is not configured.
+		MemoryStressLevel() int
 	}
 
 	Metrics interface {

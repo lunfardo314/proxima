@@ -47,6 +47,11 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
 }
 .legend-item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
 .legend-shape { width: 14px; height: 14px; display: inline-block; }
+#node-status {
+    position: absolute; bottom: 10px; right: 10px;
+    background: rgba(255, 255, 255, 0.92); border: 1px solid #bbb; border-radius: 6px;
+    padding: 8px; font-size: 11px; z-index: 10; color: #333;
+}
 </style>
 </head>
 <body>
@@ -86,6 +91,18 @@ body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', mono
 </div>
 
 <div id="tooltip"></div>
+
+<div id="node-status">
+    <div style="display:flex; align-items:center; gap:8px;">
+        <canvas id="stressGauge" width="16" height="80"></canvas>
+        <div>
+            <div>Stress: <span id="stressValue">-</span>%</div>
+            <div>Pipeline: <span id="pipelineValue">-</span></div>
+            <div id="syncFlag" style="display:none; color:#c70;">SYNCING</div>
+            <div id="snapshotFlag" style="display:none; color:#c70;">SNAPSHOT</div>
+        </div>
+    </div>
+</div>
 
 <div id="legend">
     <div class="legend-item"><canvas class="legend-shape" id="lgBranch"></canvas> Branch (sequencer, tick=0)</div>
@@ -1007,6 +1024,73 @@ function drawLegendShapes() {
     x3.fillStyle = NONSEQ_COLOR;
     x3.beginPath(); x3.arc(7, 7, 3, 0, Math.PI * 2); x3.fill();
 }
+
+// ============ NODE STATUS FETCH ============
+let nodeStress = 0;
+let nodePipeline = 0;
+let nodeIsSyncing = false;
+let nodeIsSnapshotting = false;
+
+function fetchNodeStatus() {
+    const loc = window.location;
+    const url = loc.protocol + '//' + loc.host + '/api/v1/get_node_info';
+    fetch(url).then(r => r.json()).then(data => {
+        nodeStress = data.memory_stress_level || 0;
+        nodePipeline = data.pipeline_size || 0;
+        nodeIsSyncing = !!data.is_syncing;
+        nodeIsSnapshotting = !!data.is_snapshotting;
+        updateNodeStatusDisplay();
+    }).catch(() => {});
+}
+
+function stressColor(level) {
+    // Rainbow: blue(0) -> green(40) -> yellow(70) -> red(100)
+    if (level <= 40) {
+        // blue to green: hue 220 -> 120
+        const h = 220 - (level / 40) * 100;
+        return `hsl(${h}, 80%, 45%)`;
+    } else if (level <= 70) {
+        // green to yellow: hue 120 -> 50
+        const h = 120 - ((level - 40) / 30) * 70;
+        return `hsl(${h}, 85%, 45%)`;
+    } else {
+        // yellow to red: hue 50 -> 0
+        const h = 50 - ((level - 70) / 30) * 50;
+        return `hsl(${h}, 90%, 45%)`;
+    }
+}
+
+function updateNodeStatusDisplay() {
+    document.getElementById('stressValue').textContent = nodeStress;
+    document.getElementById('pipelineValue').textContent = nodePipeline;
+    document.getElementById('syncFlag').style.display = nodeIsSyncing ? 'block' : 'none';
+    document.getElementById('snapshotFlag').style.display = nodeIsSnapshotting ? 'block' : 'none';
+
+    // Draw the stress gauge
+    const gc = document.getElementById('stressGauge');
+    const gctx = gc.getContext('2d');
+    const w = gc.width, h = gc.height;
+    gctx.clearRect(0, 0, w, h);
+
+    // Background
+    gctx.fillStyle = '#ddd';
+    gctx.fillRect(0, 0, w, h);
+
+    // Filled portion (bottom-up)
+    const fillH = Math.round((nodeStress / 100) * h);
+    if (fillH > 0) {
+        gctx.fillStyle = stressColor(nodeStress);
+        gctx.fillRect(0, h - fillH, w, fillH);
+    }
+
+    // Border
+    gctx.strokeStyle = '#888';
+    gctx.lineWidth = 1;
+    gctx.strokeRect(0, 0, w, h);
+}
+
+// Poll node status every 2 seconds
+setInterval(fetchNodeStatus, 2000);
 
 // ============ LRB FETCH ============
 function fetchLRB() {

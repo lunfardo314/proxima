@@ -55,8 +55,9 @@ type Global struct {
 	//
 	disableDeadlockCatching bool
 	// memory pressure management
-	memLimitBytes     uint64
-	lastPressureGCNs  atomic.Int64 // UnixNano of last MemoryPressureGC execution
+	memLimitBytes        uint64
+	lastPressureGCNs     atomic.Int64 // UnixNano of last MemoryPressureGC execution
+	memoryStressLevel    atomic.Int32 // current stress level 0-100, updated every stressComputeInterval
 }
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
@@ -147,6 +148,7 @@ func NewFromConfig() *Global {
 	if limitMB := viper.GetInt("memory.limit_mb"); limitMB > 0 {
 		ret.memLimitBytes = uint64(limitMB) << 20
 	}
+	ret.startStressLevelComputation()
 	return ret
 }
 
@@ -220,6 +222,35 @@ func (l *Global) SetSnapshotting(on bool) {
 
 func (l *Global) MemLimitBytes() uint64 {
 	return l.memLimitBytes
+}
+
+// MemoryStressLevel returns the current memory stress level (0-100).
+// Computed as 100 * allocated / limit. Returns 0 when limit is not configured.
+func (l *Global) MemoryStressLevel() int {
+	return int(l.memoryStressLevel.Load())
+}
+
+const (
+	// stressComputeInterval is how often the memory stress level is recomputed.
+	stressComputeInterval = 1 * time.Second
+)
+
+// startStressLevelComputation starts a background loop that recomputes memory stress every second.
+// No-op when memory.limit_mb is not configured.
+func (l *Global) startStressLevelComputation() {
+	if l.memLimitBytes == 0 {
+		return
+	}
+	l.RepeatInBackground("stress_level", stressComputeInterval, func() bool {
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		level := int32(100 * ms.Alloc / l.memLimitBytes)
+		if level > 100 {
+			level = 100
+		}
+		l.memoryStressLevel.Store(level)
+		return true
+	})
 }
 
 const (

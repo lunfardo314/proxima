@@ -58,13 +58,17 @@ func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
 	aliveStaticPeers, aliveDynamicPeers, _ := p.peers.NumAlive()
 
 	ret := &global.NodeInfo{
-		ID:              p.peers.SelfPeerID(),
-		Version:         global.Version,
-		NumStaticAlive:  uint16(aliveStaticPeers),
-		NumDynamicAlive: uint16(aliveDynamicPeers),
-		Sequencer:       p.GetOwnSequencerID(),
-		CommitHash:      global.CommitHash,
-		CommitTime:      global.CommitTime,
+		ID:                p.peers.SelfPeerID(),
+		Version:           global.Version,
+		NumStaticAlive:    uint16(aliveStaticPeers),
+		NumDynamicAlive:   uint16(aliveDynamicPeers),
+		Sequencer:         p.GetOwnSequencerID(),
+		CommitHash:        global.CommitHash,
+		CommitTime:        global.CommitTime,
+		MemoryStressLevel: p.MemoryStressLevel(),
+		PipelineSize:      p.workflow.PipelineSize(),
+		IsSyncing:         p.workflow.IsSyncing(),
+		IsSnapshotting:    p.IsSnapshotting(),
 	}
 	return ret
 }
