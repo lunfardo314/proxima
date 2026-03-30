@@ -56,17 +56,21 @@ The rate control has exactly three levers, ordered from least to most aggressive
 | # | Lever | Effect | When |
 |---|-------|--------|------|
 | 1 | Drop unsolicited seq transactions | Reduces attacher goroutines, slows pipeline growth | stress > 50% or pipeline too large |
-| 2 | Drop unsolicited non-seq targeting own sequencer | Reduces non-seq vertices, lighter branch commits | stress > 60% or pipeline too large |
+| 2 | Cut sequencer attachment budget | Fewer tag-along inputs per milestone, lighter branch commits | stress > 40% |
 | 3 | Drop transactions before entering txinput_queue | Last resort: shed load at the gate | stress > 80% |
+
+**Important**: unsolicited non-seq transactions targeting the local sequencer are **never dropped**.
+They are needed for the sequencer to include tag-along inputs. The way to reduce non-seq load
+is lever 2: cutting the attachment budget so the sequencer includes fewer tag-alongs per milestone.
 
 **Access nodes**: always drop all unsolicited non-seq transactions (no local sequencer to target).
 Unsolicited seq transactions follow the same rules as sequencer nodes: branches always pass,
 non-branches are subject to the attacher cap (lever 1). Essentially not much different from
-sequencer nodes — the only difference is lever 2 is always "drop all" on access nodes.
+sequencer nodes — the only difference is there's no sequencer and no tag-along budget to cut.
 
 Pulled transactions always pass, regardless of stress level.
 
-Additionally, the **sequencer tag-along budget** and **backlog cleanup** are adjusted under pressure:
+### Sequencer attachment budget and backlog management
 
 **Attachment budget throttle**: The attachment cost budget has a deterministic consensus cap that
 all nodes must agree on for validation. The local sequencer can only set a **lower** local cap,
@@ -74,31 +78,37 @@ never exceed the consensus one. Under stress, the sequencer reduces its local bu
 means fewer tag-along inputs per milestone on average. This reduces the non-seq transactions
 that need solidification in subsequent branches.
 
-**Backlog pruning by LRB depth**: Tag-along outputs in the sequencer backlog that are already
-N slots behind the LRB can be removed from the backlog. Same principle as the memDAG LRB-depth
-pruning — if a tag-along output's transaction is deep in confirmed state, it's either already
-been included in a branch or is too old to be useful. Pruning stale backlog entries reduces
-the work the sequencer does scanning candidates and prevents unbounded backlog growth.
+**Backlog pruning by LRB depth**: Tag-along outputs in the sequencer backlog are pruned
+primarily by checking whether the tagged-along transaction is N slots below the LRB — not just
+clock TTL. If a tag-along output's transaction is confirmed deep in the branch chain, it's
+either already been included in a branch or is too old to be useful. LRB-depth check is
+the primary criterion; clock TTL is the fallback for cases where LRB info is unavailable.
+Pruning stale backlog entries reduces the work the sequencer does scanning candidates and
+prevents unbounded backlog growth.
 
 ### Graduated response (sequencer nodes)
 
-| Stress | Lever 1 (unsolicited seq) | Lever 2 (unsolicited non-seq) | Lever 3 (input gate) | Sequencer local budget cap | Backlog pruning |
-|--------|---------------------------|-------------------------------|----------------------|---------------------------|-----------------|
-| 0–40%  | normal (all pass) | normal (all pass) | normal | consensus cap (full) | normal TTL |
-| 40–55% | tighten: cap attacher count | normal | normal | 2/3 of consensus cap | LRB depth 3 |
-| 55–70% | aggressive: only branches pass | tighten: lower vertex limit | normal | 1/3 of consensus cap | LRB depth 2 |
-| 70–85% | aggressive | drop all unsolicited non-seq | start dropping | minimal (branches only) | LRB depth 1 |
-| 85%+   | aggressive | drop all | drop all non-pulled | minimal | LRB depth 1 |
+| Stress | Lever 1 (unsolicited seq) | Lever 2 (budget cap) | Lever 3 (input gate) | Backlog pruning |
+|--------|---------------------------|----------------------|----------------------|-----------------|
+| 0–40%  | normal (all pass) | consensus cap (full) | normal | LRB depth 3 + clock TTL |
+| 40–55% | tighten: cap attacher count | 2/3 of consensus cap | normal | LRB depth 3 |
+| 55–70% | aggressive: only branches pass | 1/3 of consensus cap | normal | LRB depth 2 |
+| 70–85% | aggressive | minimal (branches only) | start dropping | LRB depth 1 |
+| 85%+   | aggressive | minimal | drop all non-pulled | LRB depth 1 |
+
+Non-seq transactions targeting local sequencer always pass (never dropped).
 
 ### Graduated response (access nodes)
 
-| Stress | Unsolicited seq | Unsolicited non-seq | Input gate | Notes |
-|--------|-----------------|---------------------|------------|-------|
-| 0–40%  | same as sequencer nodes (branches pass, non-branches capped) | drop all | normal | |
-| 40–55% | tighten: cap attacher count | drop all | normal | |
-| 55–70% | aggressive: only branches pass | drop all | normal | |
-| 70–85% | aggressive | drop all | start dropping | |
-| 85%+   | aggressive | drop all | drop all non-pulled | |
+| Stress | Unsolicited seq | Unsolicited non-seq | Input gate |
+|--------|-----------------|---------------------|------------|
+| 0–40%  | same as sequencer nodes (branches pass, non-branches capped) | drop all | normal |
+| 40–55% | tighten: cap attacher count | drop all | normal |
+| 55–70% | aggressive: only branches pass | drop all | normal |
+| 70–85% | aggressive | drop all | start dropping |
+| 85%+   | aggressive | drop all | drop all non-pulled |
+
+No attachment budget or backlog management (no local sequencer).
 
 ### Hysteresis
 
