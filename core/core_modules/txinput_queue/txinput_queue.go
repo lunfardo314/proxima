@@ -68,8 +68,6 @@ type (
 		// sender pace config
 		checkSeq    bool
 		checkNonSeq bool
-		// non-seq vertex limit (differs for access vs sequencer nodes)
-		nonSeqVertexLimit int
 		// deadlock prevention: latest attached sequencer tx timestamp
 		latestAttachedTimestamp atomic.Int64
 		// metrics
@@ -106,11 +104,6 @@ const (
 	keepTimestamps            = 4
 	concentrationTolerance    = 1
 
-	// attach gate constants
-	maxNonSeqVertices           = 5000
-	maxNonSeqVerticesAccessNode = 500
-	maxNonSeqQueueLen           = 1000
-
 	// time bounds
 	maxSlotsInTheFuture = 6
 )
@@ -120,17 +113,10 @@ func init() {
 }
 
 func New(env environment) *TxInputQueue {
-	nonSeqLimit := maxNonSeqVertices
-	if env.GetOwnSequencerID() == nil {
-		nonSeqLimit = maxNonSeqVerticesAccessNode
-		env.Log().Infof("[%s] access node mode: non-seq vertex limit = %d", Name, nonSeqLimit)
-	}
-
 	ret := &TxInputQueue{
-		environment:       env,
-		inGate:            newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds),
-		txSenders:         make(map[base.HolderID]*seenTimestamps),
-		nonSeqVertexLimit: nonSeqLimit,
+		environment: env,
+		inGate:      newInGate[base.TransactionID](inGateBlackListTTLSlots*ledger.L(0).SlotDuration(), cleanIfExceeds),
+		txSenders:   make(map[base.HolderID]*seenTimestamps),
 	}
 	ret.checkSeq, ret.checkNonSeq = env.CheckTxSenderConfig()
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
@@ -374,25 +360,27 @@ func (q *TxInputQueue) shouldAttachSequencer(tx *transaction.Transaction) bool {
 	return true
 }
 
-// shouldAttachNonSeq implements non-sequencer resource gates
-// (from former nonseq_attach module).
+// shouldAttachNonSeq decides whether to attach an unsolicited non-sequencer transaction.
+// Non-seq transactions don't spawn attacher goroutines, so they're cheap to attach.
+//
+// - Access node (no local sequencer): drop all. The access node doesn't issue transactions,
+//   it only constructs the DAG from others. Everything it needs can be pulled.
+// - Sequencer node: always attach if tx targets local sequencer (this is the sequencer's
+//   mempool — if dropped, it can't be pulled back). Drop all others.
+//   The overall non-seq rate is controlled by the sequencer's attachment budget, not by dropping.
 func (q *TxInputQueue) shouldAttachNonSeq(tx *transaction.Transaction) bool {
-	// attacher cap check
-	if q.Counter("att") >= q.MaxConcurrentAttachers() {
+	seqID := q.GetOwnSequencerID()
+	if seqID == nil {
+		// access node: drop all unsolicited non-seq transactions
 		q.IncCounter("nonseq_drop")
 		return false
 	}
-	// vertex limit check
-	if q.Counter("nonseq") >= q.nonSeqVertexLimit {
-		q.IncCounter("nonseq_drop")
-		return false
+	if tx.HasOutputForSequencer(*seqID) {
+		// targets local sequencer — always attach (sequencer mempool)
+		return true
 	}
-	// sequencer-target filter: only attach if tx has output for local sequencer
-	if seqID := q.GetOwnSequencerID(); seqID != nil && !tx.HasOutputForSequencer(*seqID) {
-		q.IncCounter("nonseq_drop")
-		return false
-	}
-	return true
+	q.IncCounter("nonseq_drop")
+	return false
 }
 
 // --- sender pace control (absorbed from txsenders) ---
