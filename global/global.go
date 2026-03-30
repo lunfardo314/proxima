@@ -251,9 +251,13 @@ func (l *Global) startStressLevelComputation() {
 			level = 100
 		}
 		l.memoryStressLevel.Store(level)
-		// keep GC active on all node types — prevents GC stall on access nodes
-		// that don't get MemoryPressureGC from milestone attachment
-		l.MemoryPressureGC()
+		// when stress exceeds the GC threshold, force GC on all node types uniformly.
+		// This prevents GC stall on access nodes that don't get MemoryPressureGC
+		// from milestone attachment. Avoids redundant ReadMemStats since we already
+		// have the allocation info.
+		if int(level) >= memPressureGCPct {
+			runtime.GC()
+		}
 		return true
 	})
 }
