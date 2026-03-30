@@ -84,10 +84,10 @@ func New(env environment) *MemDAG {
 		// External callers (branch commit, memory pressure) set the flag via RequestPrune().
 		ret.RepeatInBackground("memdag-prune", pruneLoopPeriod, func() bool {
 			if ret.pruneNeeded.CompareAndSwap(true, false) {
-				nDetached, nDeleted := ret.doLRBDepthPrune()
-				if nDetached > 0 || nDeleted > 0 {
-					env.Log().Infof("[memdag prune] LRB-depth: detached: %d, deleted: %d, stress: %d%%",
-						nDetached, nDeleted, env.MemoryStressLevel())
+				nMarked := ret.doLRBDepthPrune()
+				if nMarked > 0 {
+					env.Log().Infof("[memdag prune] LRB-depth: marked %d for GC, stress: %d%%",
+						nMarked, env.MemoryStressLevel())
 				}
 			}
 			return true
@@ -266,14 +266,19 @@ func lrbDepthForStress(stress int) uint32 {
 	}
 }
 
-// doLRBDepthPrune prunes vertices whose transaction slot is N+ slots behind the latest
-// healthy branch (LRB). N depends on current memory stress level.
+// doLRBDepthPrune marks vertices for removal whose transaction slot is N+ slots behind the
+// latest healthy branch (LRB). N depends on current memory stress level.
 // This is a structural DAG-based criterion, not a clock-based TTL.
-func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
+//
+// This does NOT call ConvertToDetached — doing so on many vertices in a tight loop takes
+// per-vertex write locks and starves attacher/sequencer RLock readers, causing deadlock
+// detection timeouts. Instead, it only nullifies the strong reference in the vertex record.
+// The regular doGC loop (every 5s) handles actual detachment and cleanup when the weak
+// pointers are collected by Go's GC.
+func (d *MemDAG) doLRBDepthPrune() (marked int) {
 	stress := d.MemoryStressLevel()
 	depth := lrbDepthForStress(stress)
 
-	expired := make([]*vertex.WrappedTx, 0)
 	var deletedIDs []base.TransactionID
 
 	d.WithGlobalWriteLock(func() {
@@ -287,42 +292,18 @@ func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
 			if rec.Pointer.Value() == nil {
 				d.deleteFromMapNoLock(txid)
 				deletedIDs = append(deletedIDs, txid)
-				deleted++
 				continue
 			}
 			if rec.WrappedTx == nil {
 				continue
 			}
 			if txid.Slot() < pruneBeforeSlot {
-				expired = append(expired, rec.WrappedTx)
-			}
-		}
-	})
-	d.postDeleteEvents(deletedIDs)
-	deletedIDs = deletedIDs[:0]
-
-	if len(expired) == 0 {
-		return
-	}
-	for _, vid := range expired {
-		vid.ConvertToDetached()
-	}
-	d.WithGlobalWriteLock(func() {
-		for _, vid := range expired {
-			txid := vid.ID()
-			if rec, found := d.vertices[txid]; found {
-				if rec.Value() == nil {
-					d.deleteFromMapNoLock(txid)
-					deletedIDs = append(deletedIDs, txid)
-					deleted++
-				} else {
-					if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
-						d.DecCounter("nonseq")
-					}
-					rec.WrappedTx = nil
-					d.vertices[txid] = rec
-					detached++
+				if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
+					d.DecCounter("nonseq")
 				}
+				rec.WrappedTx = nil
+				d.vertices[txid] = rec
+				marked++
 			}
 		}
 	})
