@@ -1035,7 +1035,7 @@ let nodeIsSnapshotting = false;
 
 function fetchNodeStatus() {
     const loc = window.location;
-    const url = loc.protocol + '//' + loc.host + '/api/v1/get_node_info';
+    const url = loc.protocol + '//' + loc.host + '/api/v1/node_info';
     fetch(url).then(r => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
