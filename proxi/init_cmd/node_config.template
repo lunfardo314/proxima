@@ -167,6 +167,10 @@ sequencer:
 # Memory management
 # When limit_mb > 0, sets Go's soft GC limit (debug.SetMemoryLimit) and starts
 # a watchdog that initiates graceful shutdown when heap reaches the limit (stress = 100%).
+# gogc controls Go's GC frequency (default 50, Go default is 100). Lower values make GC
+# run more often, keeping the heap compact and reducing sensitivity to allocation spikes.
 # memory:
 #   # soft memory limit in MB; 0 = disabled (default)
 #   limit_mb: 0
+#   # GOGC percentage (default: 50). Lower = more frequent GC, less spike sensitivity
+#   gogc: 50

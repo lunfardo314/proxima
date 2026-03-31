@@ -232,6 +232,12 @@ func (p *ProximaNode) startMetrics() {
 	p.Log().Infof("Prometheus metrics exposed on port %d", port)
 }
 
+// defaultGOGC is the default GOGC value when memory.limit_mb is configured.
+// Lower than Go's default (100) to keep the heap compact and prevent GC stall
+// during allocation bursts. With GOGC=50, GC triggers when heap grows to 1.5x
+// live data (vs 2x at default 100), running ~2x more often.
+const defaultGOGC = 50
+
 func (p *ProximaNode) initMemoryLimit() {
 	limitBytes := p.MemLimitBytes()
 	if limitBytes == 0 {
@@ -240,6 +246,14 @@ func (p *ProximaNode) initMemoryLimit() {
 	limitMB := limitBytes >> 20
 	debug.SetMemoryLimit(int64(limitBytes))
 	p.Log().Infof("[memory] soft GC limit set to %d MB", limitMB)
+
+	// set GOGC: configurable via memory.gogc, default 50
+	gogc := viper.GetInt("memory.gogc")
+	if gogc <= 0 {
+		gogc = defaultGOGC
+	}
+	oldGOGC := debug.SetGCPercent(gogc)
+	p.Log().Infof("[memory] GOGC set to %d (was %d)", gogc, oldGOGC)
 
 	// memory watchdog: graceful shutdown when stress reaches 100% (allocated >= limit)
 	p.RepeatInBackground("memory_watchdog", 5*time.Second, func() bool {
