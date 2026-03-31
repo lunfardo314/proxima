@@ -15,6 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 type (
@@ -26,6 +27,8 @@ type (
 		GetStemWrappedOutput(branch base.TransactionID) vertex.WrappedOutput
 		SendToTippool(vid *vertex.WrappedTx)
 		EvidenceBranchSlot(s uint32, healthy bool)
+		// RegisterBranchVertices records the vertex set of a branch's past cone for fine-grained pruning.
+		RegisterBranchVertices(branchID base.TransactionID, predecessorBranchID base.TransactionID, vertices set.Set[*vertex.WrappedTx])
 		TxBytesStore() global.TxBytesStore
 		// GetTxBytesWithMetadata checks the write-behind buffer first, then the store.
 		// Must be used instead of TxBytesStore().GetTxBytesWithMetadata() when buffered writes are enabled.

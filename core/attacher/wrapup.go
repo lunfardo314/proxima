@@ -75,6 +75,9 @@ func (a *milestoneAttacher) commitBranch() {
 		SequencerName:    a.vid.SequencerName(),
 	}, stemOutput, seqOutput)
 
+	// register branch vertex set for fine-grained pruning (before PastCone is discarded)
+	a.RegisterBranchVertices(a.vid.ID(), previousBranchID, a.pastCone.PastConeBase.VertexSet())
+
 	// evidence branch slot eagerly (not deferred) — needed for network progress tracking
 	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(*a.finals.CoverageDelta, *a.finals.Supply, global.FractionHealthyBranch))
 

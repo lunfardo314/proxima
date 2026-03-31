@@ -16,6 +16,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 func (w *Workflow) MaxDurationInTheFuture() time.Duration {
@@ -85,6 +86,11 @@ func (w *Workflow) NotifyBranchCommitted(branchSlot uint32) {
 // RequestPrune signals the memDAG to run LRB-depth pruning on the next tick.
 func (w *Workflow) RequestPrune() {
 	w.MemDAG.RequestPrune()
+}
+
+// RegisterBranchVertices records the vertex set of a branch's past cone for fine-grained pruning.
+func (w *Workflow) RegisterBranchVertices(branchID base.TransactionID, predecessorBranchID base.TransactionID, vertices set.Set[*vertex.WrappedTx]) {
+	w.MemDAG.RegisterBranchVertices(branchID, predecessorBranchID, vertices)
 }
 
 func (w *Workflow) ForceCommitBranch(branchID base.TransactionID) {

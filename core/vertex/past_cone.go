@@ -184,6 +184,12 @@ func (pb *PastConeBase) Len() int {
 	return len(pb.vertices)
 }
 
+// VertexSet returns the set of all vertices in the past cone.
+// Used to track which vertices are confirmed in a branch for fine-grained pruning.
+func (pb *PastConeBase) VertexSet() set.Set[*WrappedTx] {
+	return set.NewFromKeys(pb.vertices)
+}
+
 // AttachmentCost is sum of attachment costs of all non-sequencer vertices that ar definitely not in the state
 func (pc *PastCone) AttachmentCost() (ret int) {
 	if pc.delta == nil {
