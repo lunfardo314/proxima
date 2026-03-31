@@ -103,10 +103,10 @@ func New(env environment) *MemDAG {
 		// External callers (branch commit, memory pressure) set the flag via RequestPrune().
 		ret.RepeatInBackground("memdag-prune", pruneLoopPeriod, func() bool {
 			if ret.pruneNeeded.CompareAndSwap(true, false) {
-				nMarked := ret.doLRBDepthPrune()
-				if nMarked > 0 {
-					env.Log().Infof("[memdag prune] LRB-depth: marked %d for GC, stress: %d%%",
-						nMarked, env.MemoryStressLevel())
+				nDetached, nDeleted := ret.doLRBDepthPrune()
+				if nDetached > 0 || nDeleted > 0 {
+					env.Log().Infof("[memdag prune] LRB-depth: detached: %d, deleted: %d, stress: %d%%",
+						nDetached, nDeleted, env.MemoryStressLevel())
 				}
 			}
 			return true
@@ -353,40 +353,66 @@ func (d *MemDAG) updatePrunableSetNoLock() {
 	}
 }
 
-// doLRBDepthPrune marks prunable vertices for removal in the memDAG.
-// Vertices are prunable if they are in the prunable set (confirmed in branches deep behind LRB)
-// or if they exceed the slot-based TTL (fallback).
+// doLRBDepthPrune detaches and removes prunable vertices from the memDAG.
+// Vertices are prunable if they are in the prunable set (confirmed in branches deep behind LRB).
 //
-// Does NOT call ConvertToDetached — only nullifies strong references.
-// The regular doGC loop handles actual detachment.
-func (d *MemDAG) doLRBDepthPrune() (marked int) {
+// Follows the same pattern as doGC:
+// 1. Collect prunable vertices under global write lock
+// 2. Call ConvertToDetached outside the lock (breaks reference graph)
+// 3. Nullify strong refs under global write lock
+func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
+	var toDetach []*vertex.WrappedTx
 	var deletedIDs []base.TransactionID
 
 	d.WithGlobalWriteLock(func() {
-		// first update the prunable set based on current LRB
 		d.updatePrunableSetNoLock()
-
-		if d.prunable.IsEmpty() {
-			return
-		}
 
 		for txid, rec := range d.vertices {
 			if rec.Pointer.Value() == nil {
 				d.deleteFromMapNoLock(txid)
 				deletedIDs = append(deletedIDs, txid)
+				deleted++
 				continue
 			}
 			if rec.WrappedTx == nil {
 				continue
 			}
 			if d.prunable.Contains(rec.WrappedTx) {
-				if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
-					d.DecCounter("nonseq")
-				}
-				rec.WrappedTx = nil
-				d.vertices[txid] = rec
+				toDetach = append(toDetach, rec.WrappedTx)
 				d.prunable.Remove(rec.WrappedTx)
-				marked++
+			}
+		}
+	})
+	d.postDeleteEvents(deletedIDs)
+	deletedIDs = deletedIDs[:0]
+
+	if len(toDetach) == 0 {
+		return
+	}
+
+	// ConvertToDetached outside global lock — breaks the reference graph
+	// (clears Inputs/Endorsements) so weak pointers can eventually go nil
+	for _, vid := range toDetach {
+		vid.ConvertToDetached()
+	}
+
+	// nullify strong refs
+	d.WithGlobalWriteLock(func() {
+		for _, vid := range toDetach {
+			txid := vid.ID()
+			if rec, found := d.vertices[txid]; found {
+				if rec.Value() == nil {
+					d.deleteFromMapNoLock(txid)
+					deletedIDs = append(deletedIDs, txid)
+					deleted++
+				} else {
+					if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
+						d.DecCounter("nonseq")
+					}
+					rec.WrappedTx = nil
+					d.vertices[txid] = rec
+					detached++
+				}
 			}
 		}
 	})
