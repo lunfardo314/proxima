@@ -416,6 +416,11 @@ func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
 				}
 			}
 		}
+
+		// clear the prunable set to release strong references to vertices that were
+		// already detached in a previous cycle (rec.WrappedTx == nil, skipped above).
+		// Without this, the prunable set leaks strong refs and weak pointers never go nil.
+		d.prunable = set.New[*vertex.WrappedTx]()
 	})
 	d.postDeleteEvents(deletedIDs)
 	deletedIDs = deletedIDs[:0]
