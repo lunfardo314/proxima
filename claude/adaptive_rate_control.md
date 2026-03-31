@@ -129,90 +129,137 @@ old is kept regardless of whether the node is at 30% or 85% stress.
 
 #### LRB-depth pruning (refined design)
 
-##### Current state (partially implemented)
+##### How vertex GC works (important constraints)
 
-The current `doLRBDepthPrune` uses a **slot-based approximation**: prune vertices whose
-`txid.Slot() < healthySlot - N`. This is coarse — a vertex from 1 slot ago that's already
-in 3 confirmed branches stays in the memDAG until N slots pass.
+The `*WrappedTx` pointer serves as the vertex identity in the memDAG. Direct pointer equality
+is used throughout the system (past cone traversal, conflict checking, endorsement matching).
+This means:
 
-##### Target: per-branch vertex set tracking
+1. **Map entry and object must appear/disappear atomically**: can't delete the map entry while
+   any other part of the system holds the pointer. The weak pointer mechanism enforces this —
+   the map entry is only deleted when `rec.Pointer.Value() == nil`, meaning zero strong refs.
 
-Track exactly which vertices are confirmed in each branch's past cone. When a branch becomes
-deep enough behind the LRB, all its vertices become prunable immediately.
+2. **Can't check vertex state under global lock**: the vertex mutex and global memDAG mutex
+   have no defined ordering — locking both causes deadlocks.
 
-**Source of truth**: The `PastCone.vertices` map (`map[*WrappedTx]FlagsPastCone`) contains all
-vertices in a branch's past cone. It's available in the milestone attacher at
-`attacher_milestone.go:156-160`, right before `ConvertToDetached()` discards it.
+3. **Can't nil out Inputs/Endorsements on live vertices**: these are the DAG edges used for
+   fast traversal. Breaking them breaks conflict checking.
 
-**Data structure** (in memDAG or workflow):
+The three-step GC process:
+1. `ConvertToDetached` — breaks outgoing refs (clears Inputs, Endorsements, pastCone)
+2. Nullify `rec.WrappedTx` in map — removes the map's strong reference
+3. Wait for weak pointer to go nil (all incoming refs from future cone released) → delete entry
+
+A vertex's weak pointer goes nil only when ALL vertices that reference it in their
+`Inputs`/`Endorsements` are themselves detached. This cascade works oldest-to-newest:
+detach the oldest layer → their referents lose one holder → eventually all holders are
+detached → weak pointer goes nil → map entry deleted.
+
+##### The orphaned vertex problem (root cause of memory growth)
+
+TTL-based pruning (48 slots) works correctly but too slowly. The deeper problem: **orphaned
+sequencer transactions** anchor entire past cones in memory.
+
+Each slot, 4 sequencers produce ~5-6 milestones each. Only ~4 branches "win" (one per
+sequencer). The remaining ~16-20 orphaned milestones per slot are never confirmed in any
+branch. Each orphaned tx holds its past cone via `Inputs[i]` pointers — strong refs to
+potentially hundreds of vertices. Those vertices can't be GC'd until the orphaned tx itself
+is detached.
+
+The cascade: orphaned tx at slot S holds vertices from S, S-1, S-2... Those vertices are
+also held by orphaned txs from other slots. The entire reachable subgraph stays alive until
+the 48-slot TTL expires for ALL of them.
+
+With 117 senders (25+ TPS), each branch has 50-100+ non-seq transactions. Orphaned seq txs
+hold those large past cones. At ~20 orphaned txs per slot × ~100 vertices per past cone,
+that's ~2000 vertices per slot that can't be GC'd. Over 48 slots, that's ~96K held vertices.
+
+**Who holds orphaned seq transactions alive:**
+
+- **The memDAG map** (`rec.WrappedTx`) — the map's strong ref keeps them alive. This is broken
+  by `doGC` TTL expiry or `doLRBDepthPrune` detachment.
+- **Other seq txs' Endorsements** — sequencer tx A endorses B, if A is also orphaned, both
+  stay alive via mutual endorsement refs.
+- **Own milestones in tippool** — the tippool keeps the latest milestone per sequencer. If a
+  sequencer stops producing, its last milestone stays in the tippool indefinitely, anchoring
+  the entire past cone. Dead sequencer milestones need TTL-based eviction from tippool.
+- **Sequencer backlog** — tag-along outputs reference `WrappedTx`. Backlog cleanup with
+  shorter TTL or LRB-based eviction is needed.
+
+##### Strategy: detach orphaned vertices aggressively
+
+**Principle**: A vertex is detachable when it's either (a) confirmed deep in LRB chain, or
+(b) orphaned and old enough to be irrelevant. In both cases, if the vertex is needed later,
+it can be reattached from txstore.
+
+**Three pruning criteria (any triggers detachment):**
+
+1. **LRB-confirmed**: vertex is in a `branchVertices` set for a branch that is >= N slots
+   (N=2) behind the LRB slot in ledger time. These are confirmed transactions — safe to detach.
+
+2. **Orphaned sequencer tx**: vertex is a sequencer transaction whose ledger time is >= N
+   slots behind LRB, AND the vertex is NOT in ANY `branchVertices` set (not in LRB chain,
+   not in any fork). These are abandoned milestones — never confirmed, never will be.
+   After fork branch sets are removed (orphaned fork cleanup), previously fork-included
+   seq txs also become subject to this criterion.
+
+3. **TTL fallback**: vertex was added more than `vertexTTLSlots` wall-clock slots ago (only
+   when synced), or vertex's ledger slot is more than `vertexLedgerTTLSlots` behind latest
+   branch. This catches everything else — non-seq vertices not in any branch, vertices from
+   before tracking started, etc.
+
+**Abandoned fork branches**: When a branch is orphaned (logged as "orphaned branch ...
+discarding uncommitted state"), its `branchVertices` entry should be removed. This makes its
+seq txs eligible for orphan detection (criterion 2).
+
+**Tippool cleanup**: Remove milestones from sequencers that haven't produced anything for
+N slots (reasonable N = 3-5). The existing `purgeAndLog` in tippool may need tighter TTL.
+A dead sequencer's last milestone in the tippool holds a strong `*WrappedTx` ref that anchors
+an entire past cone.
+
+**Backlog cleanup**: Tag-along outputs in the sequencer backlog that reference vertices
+confirmed or orphaned (in prunable set or older than N slots behind LRB) should be removed.
+
+**Reattachment safety**: Any detached/deleted vertex can be reattached from txstore. When an
+attacher encounters a `DetachedVertex`, it calls `AttachTransaction(v.Transaction, ...)` which
+creates a fresh vertex from the stored transaction data. When a map entry is fully deleted
+(weak pointer nil), `AttachTxID` creates a new `VirtualTx` and pulls from txstore/peers. This
+is the existing mechanism — no new code needed.
+
+##### Per-branch vertex set tracking (implemented)
+
+Track exactly which vertices are confirmed in each branch's past cone.
+
+**Source of truth**: `PastCone.vertices` map, extracted via `PastConeBase.VertexSet()` in the
+milestone attacher before `ConvertToDetached()` discards the past cone.
+
+**Data structure** (in memDAG):
 
 ```go
-type branchVertexSet struct {
+type branchVertexRecord struct {
     predecessorBranchID base.TransactionID
     vertices            set.Set[*vertex.WrappedTx]
 }
-
-// map from branch ID to its past cone vertex set + predecessor link
-branchVertices map[base.TransactionID]*branchVertexSet
+branchVertices map[base.TransactionID]*branchVertexRecord
 ```
 
-**Global prunable set**: `P set.Set[*vertex.WrappedTx]` — vertices eligible for pruning.
-Both the memDAG pruner and the sequencer backlog pruner check membership in P.
+**Lifecycle**:
 
-##### Lifecycle
-
-1. **Branch finalization** (attacher, before PastCone is discarded):
-   - Extract vertex set from `pastCone.vertices` (just the keys)
-   - Call `RegisterBranchVertices(branchID, predecessorBranchID, vertexSet)`
-   - Store in `branchVertices` map
-
-2. **LRB changes** (when new healthy branch is evidenced):
-   - Find all branches in the map that are >= N slots behind LRB (reasonable N=2)
-   - Collect all their vertices into the prunable set P
-   - Remove those branches from the map
-   - Walk predecessor links to find fork branches that are now rootless (no successor
-     in the map chains to them) — remove those too
-   - Signal the pruner (`RequestPrune`)
-
-3. **Pruner** (existing `doLRBDepthPrune` loop, 1-second tick):
-   - For each vertex in memDAG: if in P → mark for removal (nullify strong ref)
-   - Existing TTL-based criteria remain as fallback
-
-4. **Backlog pruner** (sequencer):
-   - When scanning tag-along candidates, skip outputs whose `WrappedTx` is in P
-   - Periodically remove entries from backlog whose vertex is in P
-
-5. **Map cleanup**:
-   - When P is consumed by the pruner, entries can be removed from P
-   - Special case: no LRB or LRB older than K slots (K = vertexTTLSlots) → clear the map
-     and P entirely. This handles edge cases during sync startup.
+1. **Branch finalization**: attacher calls `RegisterBranchVertices(branchID, predID, vertexSet)`
+2. **LRB advance**: `updatePrunableSetNoLock` scans for deep branches, moves their vertices
+   to prunable set, removes rootless forks
+3. **Pruner**: `doLRBDepthPrune` detaches prunable vertices + orphaned seq txs
+4. **Map bounded** at ~20 entries; forced cleanup if exceeded
 
 ##### Syncing considerations
 
-During forward-sync the LRB advances rapidly (many branches committed per second). This is
-actually beneficial — branches fall behind the LRB quickly, so vertices become prunable almost
-immediately after commit. However:
+During forward-sync the LRB advances rapidly. Branches fall behind quickly, so vertices become
+prunable almost immediately. The map is bounded (20 entries) to prevent unbounded growth during
+rapid commits. The fork-detection logic handles multi-sequencer rapid commits.
 
-- The map could grow if branches are committed faster than the LRB-check runs. The 1-second
-  prune loop should be fast enough (it just checks slot numbers).
-- During sync, the node solidifies deep historical past cones. These vertices should be
-  prunable immediately once committed — the N=2 depth ensures they don't linger.
-- The map should be bounded: if it grows beyond a reasonable size (e.g., 100 entries),
-  force a cleanup pass regardless of LRB position.
-- Verify that the fork-detection logic (rootless branches) handles the case where sync
-  commits branches from multiple sequencers in rapid succession.
-
-##### Why this is better than slot-based pruning
-
-| Scenario | Slot-based (current) | Per-branch (proposed) |
-|----------|---------------------|----------------------|
-| Vertex 1 slot old, in 3 confirmed branches | Kept (< N slots) | **Prunable** (depth >= N) |
-| Vertex 5 slots old, NOT in any branch | Prunable (> N slots) | Prunable (TTL fallback) |
-| Heavy branch with 100+ non-seq txs | All kept until slot-based TTL | **Prunable next LRB advance** |
-| Fork branch vertices | Kept until TTL | **Prunable when fork orphaned** |
-
-The third row is the key improvement: heavy branches (the ones causing memory spikes) get
-their vertices pruned immediately instead of waiting for the slot-based TTL.
+Forward-sync does not produce orphaned sequencer transactions — it only pulls and solidifies
+branches that are already on the confirmed chain. No speculative milestones are generated
+during sync, so the orphan problem is specific to normal (synced) operation.
 
 #### Stress-triggered memDAG cleanup
 
