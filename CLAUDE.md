@@ -169,4 +169,170 @@ On each machine there are 2 nodes configured:
 
 Both nodes are configured as `systemd` services.
 
+### Prometheus monitoring
+
+Prometheus runs on `boot` (`113.30.191.219`), scraping all 8 nodes every 15s. Retention: 10 days / 10 GB.
+
+**Access**: `ssh lunfardo@113.30.191.219`, then `curl -s 'http://localhost:9090/api/v1/query?query=<METRIC>'`
+
+**Grafana**: `http://113.30.191.219:3000`
+
+**Instance mapping** (port 14000 = sequencer, port 14001 = access node):
+
+| Instance | Node |
+|----------|------|
+| `113.30.191.219:14000` | boot |
+| `113.30.191.219:14001` | boot-acc |
+| `63.250.56.190:14000` | loc0 |
+| `63.250.56.190:14001` | loc0-acc |
+| `83.229.84.197:14000` | seq1 |
+| `83.229.84.197:14001` | seq1-acc |
+| `5.180.181.103:14000` | loc1 |
+| `5.180.181.103:14001` | loc1-acc |
+
+**Scrape interval**: 15s is sufficient. Memory spikes take ~60s (4 data points), steady-state analysis doesn't need higher resolution. 5s would double storage for marginal benefit.
+
+Claude should proactively query Prometheus when analyzing node behavior, comparing seq vs access nodes, or investigating crashes.
+
+#### Proxima application metrics
+
+**MemDAG & pipeline:**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `proxima_memDAG_numVerticesGauge` | gauge | Vertices in the memDAG |
+| `proxima_general_gauge_att` | gauge | Active attacher goroutines |
+| `proxima_general_gauge_nonseq` | gauge | Non-seq vertices in memDAG |
+| `proxima_general_gauge_nonseq_drop` | gauge | Dropped non-seq transactions (cumulative counter exposed as gauge) |
+| `proxima_general_gauge_wait` | gauge | Txs waiting for clock alignment |
+| `proxima_general_gauge_prop` | gauge | Active proposers |
+| `proxima_general_gauge_store` | gauge | Store operations |
+| `proxima_general_gauge_call` | gauge | Misc call counter |
+| `proxima_general_gauge_close` | gauge | Close operations |
+| `proxima_past_cone_size` | gauge | Transactions in past cone delta of last sequencer tx |
+
+**Transaction input:**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `proxima_txInputQueue_in` | counter | Total incoming transactions |
+| `proxima_txInputQueue_gossiped` | counter | Transactions gossiped to peers |
+| `proxima_txInputQueue_pulled` | counter | Pulled (solicited) transactions |
+| `proxima_txInputQueue_repeating` | counter | Dedup filter hits (bloom filter) |
+| `proxima_txInputQueue_nonSequencer` | counter | Non-sequencer transactions received |
+| `proxima_txInputQueue_txBytesSize` | gauge | Size of last received transaction bytes |
+
+**Peering:**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `proxima_peering_txReceived` | counter | Transaction messages received from peers |
+| `proxima_peering_txBytesReceived` | counter | Transaction bytes received from peers |
+| `proxima_peering_inMsgCounter` | counter | Total incoming peer messages |
+| `proxima_peering_outMsgCounter` | counter | Total outgoing peer messages |
+| `proxima_peering_pullRequestsIn` | counter | Pull requests received |
+| `proxima_peering_pullRequestsOut` | counter | Pull requests sent |
+| `proxima_peers_alive` | gauge | Alive peers |
+| `proxima_peers_all` | gauge | Total known peers |
+| `proxima_peers_dead` | gauge | Dead peers |
+| `proxima_peers_static` | gauge | Static (configured) peers |
+| `proxima_peers_pull_targets` | gauge | Peers available for pull |
+| `proxima_response_to_pull_counter` | counter | Responses to pull requests served |
+
+**LRB (Latest Reliable Branch):**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `proxima_lrb_coverage` | gauge | Ledger coverage of LRB |
+| `proxima_lrb_supply` | gauge | Total supply on LRB |
+| `proxima_lrb_slots_behind` | gauge | LRB slots behind current slot |
+| `proxima_lrb_num_tx` | gauge | Transactions committed on LRB |
+
+**Sequencer (only on sequencer nodes):**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `proxima_seq_milestones` | counter | Sequencer transactions submitted (incl. branches) |
+| `proxima_seq_branches` | counter | Branch transactions submitted |
+| `proxima_seq_targets` | counter | Sequencer target timestamps generated |
+| `proxima_seq_backlog_size` | gauge | Tag-along outputs in sequencer backlog |
+| `proxima_seq_own_milestones` | gauge | Own milestones in tippool |
+| `proxima_seq_endorsements_N` | counter | Txs with N endorsements (N=0..8) |
+
+**Validation & storage:**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `proxima_tx_validation_time_ns` | gauge | Last transaction validation time (ns) |
+| `proxima_tx_validation_num_utxo` | gauge | Inputs + outputs in last validated tx |
+| `proxima_glb_attachmentDurationMs` | gauge | Last attachment duration (ms) |
+| `proxima_glb_attachments_counter` | counter | Total attachments |
+| `proxima_txStore_txCounter` | counter | Transactions stored |
+| `proxima_txStore_txBytesCounter` | counter | Cumulative bytes stored |
+| `proxima_txStore_hit` | counter | TxStore lookup hits |
+| `proxima_txStore_txBytesSizeHistogram` | histogram | Raw transaction size distribution |
+| `proxima_txStore_txBytesSeqNonBranchSizeHistogram` | histogram | Seq non-branch tx size distribution |
+| `proxima_branch_mutations` | counter | Cumulative mutation commands in branch commits |
+| `proxima_branch_tx_count` | counter | Cumulative transactions in branch commits |
+| `proxima_branch_inflation_bonus` | gauge | Branch inflation bonus of last attached branch |
+| `proxima_num_tx_dependencies` | gauge | Inputs + endorsements in last transaction |
+| `proxima_counter_tx_dependencies` | counter | Cumulative inputs + endorsements |
+| `proxima_disk_space` | gauge | Available disk space (MB) |
+| `proxima_api_totalRequests` | counter | Total REST API requests |
+
+#### Go runtime metrics (auto-collected)
+
+| Metric | Description |
+|--------|-------------|
+| `go_goroutines` | Current goroutine count |
+| `go_memstats_alloc_bytes` | Allocated heap bytes |
+| `go_memstats_heap_alloc_bytes` | Heap allocation bytes |
+| `go_memstats_heap_inuse_bytes` | Heap in-use bytes |
+| `go_memstats_heap_sys_bytes` | Heap system bytes |
+| `go_memstats_heap_objects` | Heap object count |
+| `go_gc_cycles_total_gc_cycles_total` | Total GC cycles |
+| `go_gc_cycles_forced_gc_cycles_total` | Forced GC cycles |
+| `go_gc_heap_live_bytes` | Live heap bytes after GC |
+| `go_gc_heap_goal_bytes` | GC target heap size |
+| `go_gc_gomemlimit_bytes` | Configured GOMEMLIMIT |
+| `go_gc_duration_seconds` | GC pause duration summary |
+| `go_gc_pauses_seconds` | GC pause histogram |
+| `go_threads` | OS threads |
+| `go_sched_goroutines_goroutines` | Goroutine count (scheduler) |
+| `process_resident_memory_bytes` | RSS (resident set size) |
+| `process_virtual_memory_bytes` | Virtual memory |
+| `process_cpu_seconds_total` | Cumulative CPU time |
+| `process_open_fds` | Open file descriptors |
+
+#### Useful PromQL queries
+
+```promql
+# Compare GC cycles between seq and access node on same machine
+go_gc_cycles_total_gc_cycles_total{instance=~"63.250.56.190:.*"}
+
+# Memory allocation rate (bytes/sec)
+rate(go_memstats_alloc_bytes_total[1m])
+
+# Goroutine count across all nodes
+go_goroutines
+
+# Attacher goroutines on access nodes only
+proxima_general_gauge_att{instance=~".*:14001"}
+
+# Non-seq drop rate
+rate(proxima_general_gauge_nonseq_drop[1m])
+
+# TPS (transactions received per second)
+rate(proxima_peering_txReceived[1m])
+
+# Branch commit rate
+rate(proxima_seq_branches[1m])
+
+# Committed TPS (transactions finalized per second)
+rate(proxima_branch_tx_count{instance="$instance"}[1m])
+
+# Branch mutations rate (state changes per second, scaled)
+rate(proxima_branch_mutations{instance="$instance"}[1m]) * 10
+```
+
 
