@@ -131,7 +131,8 @@ const (
 	// vertexLedgerTTLSlots: ledger-time TTL — evict vertices whose transaction slot is more than
 	// N slots behind the latest committed branch. Handles forward-sync where vertices are
 	// "fresh" by wall clock but ancient by ledger time.
-	vertexLedgerTTLSlots = 48
+	// Reduced from 48 to 12 to accelerate cleanup of orphaned vertices.
+	vertexLedgerTTLSlots = 12
 
 	// pruneLoopPeriod: how often the prune loop checks the pruneNeeded flag.
 	pruneLoopPeriod = 1 * time.Second
@@ -356,11 +357,26 @@ func (d *MemDAG) updatePrunableSetNoLock() {
 	}
 }
 
-// doLRBDepthPrune detaches and removes prunable vertices from the memDAG.
-// Vertices are prunable if they are in the prunable set (confirmed in branches deep behind LRB).
+// isInAnyBranchSetNoLock checks if a vertex is in any branchVertices set.
+// Caller must hold d.mutex.
+func (d *MemDAG) isInAnyBranchSetNoLock(vid *vertex.WrappedTx) bool {
+	for _, rec := range d.branchVertices {
+		if rec.vertices.Contains(vid) {
+			return true
+		}
+	}
+	return false
+}
+
+// doLRBDepthPrune detaches and removes prunable and orphaned vertices from the memDAG.
+//
+// Detachment criteria (any triggers):
+// 1. LRB-confirmed: vertex is in the prunable set (from branches deep behind LRB)
+// 2. Orphaned seq tx: sequencer tx older than branchPruneDepth behind LRB, not in any
+//    branchVertices set (never confirmed, never will be)
 //
 // Follows the same pattern as doGC:
-// 1. Collect prunable vertices under global write lock
+// 1. Collect under global write lock
 // 2. Call ConvertToDetached outside the lock (breaks reference graph)
 // 3. Nullify strong refs under global write lock
 func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
@@ -369,6 +385,13 @@ func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
 
 	d.WithGlobalWriteLock(func() {
 		d.updatePrunableSetNoLock()
+
+		healthySlot := d.latestHealthyBranchSlot
+		// orphan detection threshold: seq txs older than this are candidates
+		var orphanThresholdSlot uint32
+		if healthySlot > branchPruneDepth {
+			orphanThresholdSlot = healthySlot - branchPruneDepth
+		}
 
 		for txid, rec := range d.vertices {
 			if rec.Pointer.Value() == nil {
@@ -380,9 +403,17 @@ func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
 			if rec.WrappedTx == nil {
 				continue
 			}
+			// criterion 1: LRB-confirmed
 			if d.prunable.Contains(rec.WrappedTx) {
 				toDetach = append(toDetach, rec.WrappedTx)
 				d.prunable.Remove(rec.WrappedTx)
+				continue
+			}
+			// criterion 2: orphaned sequencer tx
+			if txid.IsSequencerTransaction() && orphanThresholdSlot > 0 && txid.Slot() < orphanThresholdSlot {
+				if !d.isInAnyBranchSetNoLock(rec.WrappedTx) {
+					toDetach = append(toDetach, rec.WrappedTx)
+				}
 			}
 		}
 	})
