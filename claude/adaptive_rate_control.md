@@ -261,6 +261,54 @@ Forward-sync does not produce orphaned sequencer transactions — it only pulls 
 branches that are already on the confirmed chain. No speculative milestones are generated
 during sync, so the orphan problem is specific to normal (synced) operation.
 
+##### ConvertToDetached vs tippool/sequencer conflict (unresolved)
+
+**Problem**: `ConvertToDetached` takes `vid.mutex.Lock()` (write lock) on each vertex. The
+tippool and sequencer frequently call `GetLedgerCoverageP()`, `GetLatestActiveMilestone()`,
+etc. which need `vid.mutex.RLock()`. When the pruner processes many vertices sequentially,
+each write lock starves the tippool/sequencer RLock readers for >10 seconds → deadlock
+detection fires.
+
+**Observed pattern**: All 3 sequencer nodes crash simultaneously with `DEADLOCK suspected`.
+The blocked goroutine is always in tippool → `vid.GetLedgerCoverageP()` → `RLock` [BLOCKED].
+The pruner holds the write lock via `ConvertToDetached`.
+
+**The vertex being contended**: A milestone that is both in the tippool (latest milestone for
+some sequencer) AND old enough to be in the prunable set. The pruner tries to detach it while
+the tippool tries to read its coverage.
+
+**Possible fixes to explore in next session**:
+
+1. **Don't prune vertices that are in the tippool**: Check if the vertex is a tippool entry
+   before detaching. This avoids the conflict entirely but requires tippool awareness in the
+   pruner. The tippool already evicts milestones after 40s of inactivity, so they'll be
+   prunable soon after.
+
+2. **Yield between ConvertToDetached calls**: Insert brief yields (runtime.Gosched or small
+   sleep) between vertex detachments to let pending RLock readers through. Doesn't prevent
+   the conflict but limits starvation window.
+
+3. **Non-blocking detach**: Instead of `vid.Unwrap()` (which takes Lock), use `TryLock` and
+   skip vertices that are currently read-locked. Retry on next prune cycle.
+
+4. **Separate detach from reference breaking**: Split `ConvertToDetached` into two phases:
+   (a) clear Inputs/Endorsements without converting to DetachedVertex (no type change, no
+   write lock needed if done carefully), (b) convert type later when no readers.
+
+5. **Prunable set as advisory**: Don't actually call `ConvertToDetached` from the pruner at
+   all. Instead, mark vertices as "prunable" and let `doGC` handle the actual detachment on
+   its 5-second cycle (which already works without deadlocks because it processes fewer
+   vertices per cycle).
+
+Option 5 is safest but brings us back to the vertex leak problem — unless we also ensure the
+prunable advisory marking is enough for the cascade to work. The key insight from this session:
+the prunable set itself was leaking strong refs (fixed), AND `ConvertToDetached` is needed to
+break the reference graph, BUT calling it on many vertices at once causes deadlocks.
+
+The fundamental tension: aggressive pruning needs ConvertToDetached to break refs, but
+ConvertToDetached conflicts with concurrent readers. The solution must either avoid the
+conflict (options 1, 3) or limit its duration (option 2).
+
 #### Stress-triggered memDAG cleanup
 
 Under memory pressure, the node should actively prune the memDAG rather than waiting for the
