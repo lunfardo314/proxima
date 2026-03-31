@@ -127,24 +127,92 @@ Currently memDAG GC runs every 5 seconds and prunes vertices based on two criter
 These are passive, time-based criteria. They don't respond to memory pressure — a vertex 10 slots
 old is kept regardless of whether the node is at 30% or 85% stress.
 
-#### LRB-depth pruning
+#### LRB-depth pruning (refined design)
 
-Add a third pruning criterion: **depth behind the Latest Reliable Branch (LRB)**.
+##### Current state (partially implemented)
 
-Once a transaction is included in a committed branch that is N branches deep behind the LRB,
-it is no longer needed in the memDAG — it's confirmed in the persistent state and no attacher
-will reference it. It can be safely detached and removed.
+The current `doLRBDepthPrune` uses a **slot-based approximation**: prune vertices whose
+`txid.Slot() < healthySlot - N`. This is coarse — a vertex from 1 slot ago that's already
+in 3 confirmed branches stays in the memDAG until N slots pass.
 
-**Mechanism**: track the set of vertex IDs (vids) in the past cone of each committed branch.
-When a branch reaches depth N behind the LRB, all vertices in its past cone set are eligible
-for pruning. Reasonable starting value: **N = 3**.
+##### Target: per-branch vertex set tracking
 
-This is more precise than slot-based TTL: a vertex from 2 slots ago that's already 3 branches
-deep is safe to prune, while the current TTL would keep it for 22 more slots.
+Track exactly which vertices are confirmed in each branch's past cone. When a branch becomes
+deep enough behind the LRB, all its vertices become prunable immediately.
 
-**Data structure**: `map[base.TransactionID]set.Set[*vertex.WrappedTx]` — branch ID to its past
-cone vertex set. Updated during branch commits (the committed tx list is already available).
-Pruned entries are removed when the branch itself falls off the depth window.
+**Source of truth**: The `PastCone.vertices` map (`map[*WrappedTx]FlagsPastCone`) contains all
+vertices in a branch's past cone. It's available in the milestone attacher at
+`attacher_milestone.go:156-160`, right before `ConvertToDetached()` discards it.
+
+**Data structure** (in memDAG or workflow):
+
+```go
+type branchVertexSet struct {
+    predecessorBranchID base.TransactionID
+    vertices            set.Set[*vertex.WrappedTx]
+}
+
+// map from branch ID to its past cone vertex set + predecessor link
+branchVertices map[base.TransactionID]*branchVertexSet
+```
+
+**Global prunable set**: `P set.Set[*vertex.WrappedTx]` — vertices eligible for pruning.
+Both the memDAG pruner and the sequencer backlog pruner check membership in P.
+
+##### Lifecycle
+
+1. **Branch finalization** (attacher, before PastCone is discarded):
+   - Extract vertex set from `pastCone.vertices` (just the keys)
+   - Call `RegisterBranchVertices(branchID, predecessorBranchID, vertexSet)`
+   - Store in `branchVertices` map
+
+2. **LRB changes** (when new healthy branch is evidenced):
+   - Find all branches in the map that are >= N slots behind LRB (reasonable N=2)
+   - Collect all their vertices into the prunable set P
+   - Remove those branches from the map
+   - Walk predecessor links to find fork branches that are now rootless (no successor
+     in the map chains to them) — remove those too
+   - Signal the pruner (`RequestPrune`)
+
+3. **Pruner** (existing `doLRBDepthPrune` loop, 1-second tick):
+   - For each vertex in memDAG: if in P → mark for removal (nullify strong ref)
+   - Existing TTL-based criteria remain as fallback
+
+4. **Backlog pruner** (sequencer):
+   - When scanning tag-along candidates, skip outputs whose `WrappedTx` is in P
+   - Periodically remove entries from backlog whose vertex is in P
+
+5. **Map cleanup**:
+   - When P is consumed by the pruner, entries can be removed from P
+   - Special case: no LRB or LRB older than K slots (K = vertexTTLSlots) → clear the map
+     and P entirely. This handles edge cases during sync startup.
+
+##### Syncing considerations
+
+During forward-sync the LRB advances rapidly (many branches committed per second). This is
+actually beneficial — branches fall behind the LRB quickly, so vertices become prunable almost
+immediately after commit. However:
+
+- The map could grow if branches are committed faster than the LRB-check runs. The 1-second
+  prune loop should be fast enough (it just checks slot numbers).
+- During sync, the node solidifies deep historical past cones. These vertices should be
+  prunable immediately once committed — the N=2 depth ensures they don't linger.
+- The map should be bounded: if it grows beyond a reasonable size (e.g., 100 entries),
+  force a cleanup pass regardless of LRB position.
+- Verify that the fork-detection logic (rootless branches) handles the case where sync
+  commits branches from multiple sequencers in rapid succession.
+
+##### Why this is better than slot-based pruning
+
+| Scenario | Slot-based (current) | Per-branch (proposed) |
+|----------|---------------------|----------------------|
+| Vertex 1 slot old, in 3 confirmed branches | Kept (< N slots) | **Prunable** (depth >= N) |
+| Vertex 5 slots old, NOT in any branch | Prunable (> N slots) | Prunable (TTL fallback) |
+| Heavy branch with 100+ non-seq txs | All kept until slot-based TTL | **Prunable next LRB advance** |
+| Fork branch vertices | Kept until TTL | **Prunable when fork orphaned** |
+
+The third row is the key improvement: heavy branches (the ones causing memory spikes) get
+their vertices pruned immediately instead of waiting for the slot-based TTL.
 
 #### Stress-triggered memDAG cleanup
 
@@ -154,10 +222,10 @@ next 5-second GC tick. Add memDAG cleanup as a response to rising stress, analog
 
 | Stress | MemDAG pruning behavior |
 |--------|------------------------|
-| 0–40%  | Normal: 5-second periodic GC, TTL + ledger-time criteria |
-| 40–60% | Normal + LRB-depth pruning at depth 3 |
-| 60–80% | Aggressive: reduce LRB-depth to 2, run memDAG GC on every stress check (1s) |
-| 80%+   | Emergency: reduce LRB-depth to 1, run memDAG GC immediately, force Go GC between runs |
+| 0–40%  | Normal: 5-second periodic GC, TTL + per-branch pruning at depth 2 |
+| 40–60% | Reduce depth to 1 |
+| 60–80% | Depth 1 + run pruner on every stress check (1s) |
+| 80%+   | Emergency: depth 1 + immediate pruner run + force Go GC |
 
 This gives the node two ways to shed memory:
 1. **Admission control** (the three levers) — reduces inflow
@@ -238,12 +306,39 @@ All constants and rate-control related variables must be well-commented.
 2. Render vertical rainbow gauge on dagviz canvas
 3. Show numeric values for stress and pipeline size, boolean flags for sync/snapshot
 
-### Phase 3: LRB-depth pruning in memDAG
+### Phase 3: Per-branch vertex tracking and fine-grained pruning
 
-1. Track past cone vertex sets per committed branch in the branches module
-2. Add LRB-depth pruning criterion to `doGC()`: prune vertices in branches at depth >= N behind LRB
-3. Wire stress level into memDAG GC: at higher stress, reduce depth threshold and increase GC frequency
-4. Clean up branch past-cone sets when the branch itself falls off the depth window
+**Status**: Partially done (slot-based approximation). Per-branch tracking not yet implemented.
+
+#### 3a. Per-branch vertex set infrastructure
+
+1. Add `branchVertexSet` struct and `branchVertices` map to memDAG
+2. Add `RegisterBranchVertices(branchID, predecessorID, vertices)` method
+3. In milestone attacher (`attacher_milestone.go:157`), before `ConvertToDetached`:
+   extract `pastCone.vertices` keys and call `RegisterBranchVertices`
+4. Add prunable set P (`set.Set[*vertex.WrappedTx]`)
+
+#### 3b. LRB-change driven pruning
+
+1. On `EvidenceBranchSlot` (when healthy branch advances): scan `branchVertices` map
+   for branches >= N slots behind LRB, collect vertices into P, remove from map
+2. Detect and remove rootless fork branches (walk predecessor links)
+3. Special case: no LRB or stale LRB → clear map and P
+4. Bound the map size (max ~20 entries, force cleanup if exceeded)
+5. Clear all map entries (set inner maps to nil) before removing — helps GC
+6. Signal pruner via `RequestPrune`
+
+#### 3c. Wire prunable set into memDAG pruner and backlog
+
+1. Replace slot-based `doLRBDepthPrune` with P-membership check
+2. Existing TTL-based pruning remains as fallback
+3. Wire P into sequencer backlog pruner (Phase 5): skip/remove outputs whose vertex is in P
+
+#### 3d. Syncing safety
+
+1. Verify map doesn't grow unboundedly during rapid forward-sync commits
+2. Test that fork detection handles multi-sequencer rapid commits
+3. Ensure LRB advancement during sync triggers timely pruning
 
 ### Phase 4: Graduated gates in txinput_queue
 
