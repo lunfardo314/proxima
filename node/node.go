@@ -19,7 +19,6 @@ import (
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/diskusage"
-	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -272,15 +271,9 @@ func (p *ProximaNode) initMemoryLimit() {
 }
 
 func (p *ProximaNode) goLoggingMemStats() {
-	const (
-		memStatsLogPeriodDefault = 10 * time.Second
-		// goroutineWarnThreshold: log a warning with goroutine profile summary
-		// when goroutine count exceeds this value
-		goroutineWarnThreshold = 300
-	)
+	const memStatsLogPeriodDefault = 10 * time.Second
 
 	var memStats runtime.MemStats
-	goroutineWarned := false
 
 	p.RepeatInBackground("logging_memStats", memStatsLogPeriodDefault, func() bool {
 		runtime.ReadMemStats(&memStats)
@@ -293,91 +286,21 @@ func (p *ProximaNode) goLoggingMemStats() {
 		if availableGB > 0 {
 			diskSpace = fmt.Sprintf(", available disk space: %.2f GB", availableGB)
 		}
-		nGoroutines := runtime.NumGoroutine()
 		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d%s",
 			ledger.TimeNow().Slot,
 			p.CounterLines().Join(","),
 			time.Since(p.started).Round(time.Second),
 			float32(memStats.Alloc*10/(1<<20))/10,
 			memStats.NumGC,
-			nGoroutines,
+			runtime.NumGoroutine(),
 			diskSpace,
 		)
 
 		if availableGB > 0 && availableGB < 2 {
 			p.Log().Warnf("------- available disk space is < 2 GB !!! ----------")
 		}
-
-		// log goroutine profile summary when count exceeds threshold
-		if nGoroutines > goroutineWarnThreshold && !goroutineWarned {
-			goroutineWarned = true
-			p.Log().Warnf("[goroutines] count %d exceeds threshold %d, dumping profile summary",
-				nGoroutines, goroutineWarnThreshold)
-			p.logGoroutineProfile()
-		}
-		if nGoroutines <= goroutineWarnThreshold {
-			goroutineWarned = false
-		}
 		return true
 	})
-}
-
-// logGoroutineProfile logs a summary of goroutine states grouped by top function.
-func (p *ProximaNode) logGoroutineProfile() {
-	buf := make([]byte, 1<<20) // 1MB buffer
-	n := runtime.Stack(buf, true)
-	if n == 0 {
-		return
-	}
-	// count goroutines by state: parse "goroutine N [state]:" lines
-	counts := make(map[string]int)
-	for _, line := range splitLines(buf[:n]) {
-		if len(line) > 10 && line[0] == 'g' && line[1] == 'o' {
-			// extract state from "goroutine N [state]:"
-			start := -1
-			end := -1
-			for i, c := range line {
-				if c == '[' {
-					start = i + 1
-				}
-				if c == ']' {
-					end = i
-					break
-				}
-			}
-			if start > 0 && end > start {
-				state := string(line[start:end])
-				// trim duration suffix like ", 5 minutes"
-				for i, c := range state {
-					if c == ',' {
-						state = state[:i]
-						break
-					}
-				}
-				counts[state]++
-			}
-		}
-	}
-	ln := lines.New("    ")
-	for state, count := range counts {
-		ln.Add("%s: %d", state, count)
-	}
-	p.Log().Warnf("[goroutines] profile summary:\n%s", ln.String())
-}
-
-func splitLines(data []byte) [][]byte {
-	var result [][]byte
-	start := 0
-	for i, b := range data {
-		if b == '\n' {
-			result = append(result, data[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(data) {
-		result = append(result, data[start:])
-	}
-	return result
 }
 
 func (p *ProximaNode) goLoggingSync() {
