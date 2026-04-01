@@ -340,13 +340,66 @@ in the full test suite (balance = 0, expected 5B). Hypotheses:
    before the test's transfer chain completes. The reattachment works but adds latency that
    the test timeout doesn't account for.
 
-**Next steps**: Investigate whether `AttachTxID` returns the same vid or a new one when called
-on a recently-detached vertex. Check if the detached vertex's map entry still exists (strong
-ref nullified but weak pointer alive) or was fully deleted.
+##### Reattachment crashes (found)
 
-Also investigate `own_milestones.go:40-42` — `SequencerPredecessor` calls `vid.Unwrap` (Lock)
-and inside the `DetachedVertex` callback calls `AttachTxID` (global lock). Same self-deadlock
-pattern if the returned vid is the same. This path may need the same fix.
+The self-deadlock was fixed by moving `AttachTransaction` outside the `Unwrap` callback
+(both in `attachVertexNonBranch` and `attachVertexNonBranchSolid`).
+
+`ReattachDetachedVertexNoLock` was added to `AttachTransaction` — converts DetachedVertex
+back to Vertex. But this causes **assertion failures** on testnet:
+
+- `CheckFinalPastCone: at least one rooted output is expected`
+- `not all dependencies solid`
+
+**Root cause**: `ReattachDetachedVertexNoLock` creates a bare `Vertex(NewVertex(tx))` but
+keeps stale flags (Good, AttachmentFinished, ConstraintsValid). The attacher trusts these
+flags and expects full state (past cone, resolved inputs, baseline). But:
+- `pastCone` is nil (cleared by `ConvertToDetached`)
+- `Inputs[]` are all nil (cleared by `UnReferenceDependencies`)
+- `BaselineBranchID` is nil
+- Coverage is still set (atomic, survives detach)
+
+The flags lie — the vertex looks Good but has no supporting state.
+
+**The fundamental dilemma**:
+
+1. **Non-seq vertex reattached**: attacher can re-resolve nil inputs via `AttachTxID`.
+   But `FlagVertexConstraintsValid` makes `attachVertexNonBranchSolid` take the fast path
+   which assumes inputs are already solid → assertion failure.
+
+2. **Seq vertex reattached**: status Good means other attachers merge its (nil) past cone
+   → assertion failure. Resetting status to Undefined means starting a new attacher
+   goroutine — expensive, and the vertex was already validated.
+
+**Options for next session**:
+
+A. **Reset flags on reattach**: Clear ConstraintsValid, AttachmentStarted/Finished, set
+   status Undefined. For non-seq: attacher re-validates from scratch (cheap). For seq:
+   new attacher goroutine starts (expensive but correct). Risk: cascading reattachments
+   if many vertices in a past cone are detached.
+
+B. **Don't reattach — convert to VirtualTx instead**: Replace DetachedVertex with a fresh
+   VirtualTx (empty outputs map). `AttachTransaction`'s `UnwrapVirtualTx` path handles it
+   normally — converts to Vertex, starts attacher if seq. The VirtualTx doesn't carry
+   stale flags. Risk: loses output data that the DetachedVertex had.
+
+C. **Don't reattach at all — pull from txstore**: When attacher encounters DetachedVertex,
+   trigger a pull via txsolicit_queue. The fresh flow creates a completely new VirtualTx →
+   Vertex lifecycle. The old DetachedVertex stays in the map as a placeholder. Risk: changes
+   attacher semantics — returning `ok = true` without resolving the dependency.
+
+D. **Reduce pruning aggressiveness**: Increase `branchPruneDepth` so vertices are only
+   pruned when they're old enough that no attacher will encounter them. Effectively
+   reverting to TTL-like behavior but with LRB-based threshold. Safe but defeats the
+   purpose of aggressive pruning.
+
+E. **Hybrid**: For non-seq vertices, reset flags and reattach (cheap re-validation). For
+   seq vertices, don't reattach — convert to VirtualTx and let the normal path handle it.
+   Seq vertex reattachment is rare (orphaned milestones) and the attacher goroutine cost
+   is acceptable for correctness.
+
+`SequencerPredecessor` in `own_milestones.go:40-42` is safe — `reattachBranch` calls
+`AttachTxID` on a different txid (branch ID), not on vid itself. Documented with comment.
 
 #### Stress-triggered memDAG cleanup
 
