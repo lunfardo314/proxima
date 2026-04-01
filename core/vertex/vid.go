@@ -82,6 +82,22 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	}
 }
 
+// ReattachDetachedVertexNoLock converts a DetachedVertex back to a full Vertex.
+// Called when an attacher encounters a vertex that was detached by GC but is still needed.
+// The vertex retains its flags (AttachmentStarted, AttachmentFinished, etc.) so no new
+// attacher goroutine is started. The Inputs/Endorsements of the new Vertex are nil —
+// the attacher resolves them via AttachTxID as needed.
+// Returns true if conversion happened, false if the vertex is not a DetachedVertex.
+// Caller must hold vid.mutex.Lock.
+func (vid *WrappedTx) ReattachDetachedVertexNoLock(tx *transaction.Transaction) bool {
+	_, isDetached := vid._genericVertex.(_detachedVertex)
+	if !isDetached {
+		return false
+	}
+	vid._put(_vertex{Vertex: NewVertex(tx)})
+	return true
+}
+
 // ConvertToDetached detaches past cone and leaves only a collection of produced outputs
 // Detaches input dependencies and converts to the DetachedVertex
 // Note, however, that for branches, WrappedTx with DetachedVertex can later contain reference to the pastCone structure.
