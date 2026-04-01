@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 	"weak"
 
@@ -58,17 +57,10 @@ type (
 		latestBranchSlot        uint32
 		latestHealthyBranchSlot uint32
 
-		// pruneNeeded is an atomic flag set by external callers (branch commit, memory pressure)
-		// to request LRB-depth pruning on the next tick of the prune loop.
-		pruneNeeded atomic.Bool
-
 		// per-branch vertex tracking for fine-grained pruning.
 		// branchVertices maps branch ID to its past cone vertex set + predecessor link.
-		// prunable is the global set of vertices eligible for removal (accumulated from
-		// branches that fell behind the LRB by branchPruneDepth slots).
-		// Both protected by mutex (same as vertices map).
+		// Protected by mutex (same as vertices map).
 		branchVertices map[base.TransactionID]*branchVertexRecord
-		prunable       set.Set[*vertex.WrappedTx]
 
 		metrics
 	}
@@ -84,14 +76,13 @@ func New(env environment) *MemDAG {
 		environment:    env,
 		vertices:       make(map[base.TransactionID]_vertexRecord),
 		branchVertices: make(map[base.TransactionID]*branchVertexRecord),
-		prunable:       set.New[*vertex.WrappedTx](),
 	}
 	if env != nil {
 		ret.registerMetrics()
 		if env.DisableMemDAGGC() {
 			env.Log().Infof("[memdag cleanup] DISABLED")
 		} else {
-			ret.RepeatInBackground("memdag-GC", 5*time.Second, func() bool {
+			ret.RepeatInBackground("memdag-GC", gcLoopPeriod, func() bool {
 				nDetached, nDeleted := ret.doGC()
 				if nDetached > 0 || nDeleted > 0 {
 					env.Log().Infof("[memdag GC] detached: %d, deleted: %d", nDetached, nDeleted)
@@ -99,19 +90,6 @@ func New(env environment) *MemDAG {
 				return true
 			}, true)
 		}
-
-		// LRB-depth prune loop: checks atomic flag every 1 second.
-		// External callers (branch commit, memory pressure) set the flag via RequestPrune().
-		ret.RepeatInBackground("memdag-prune", pruneLoopPeriod, func() bool {
-			if ret.pruneNeeded.CompareAndSwap(true, false) {
-				nDetached, nDeleted := ret.doLRBDepthPrune()
-				if nDetached > 0 || nDeleted > 0 {
-					env.Log().Infof("[memdag prune] LRB-depth: detached: %d, deleted: %d, stress: %d%%",
-						nDetached, nDeleted, env.MemoryStressLevel())
-				}
-			}
-			return true
-		})
 
 		ret.RepeatInBackground("memdag-stats", 10*time.Second, func() bool {
 			nVertices := ret.NumVertices()
@@ -134,12 +112,12 @@ const (
 	// Reduced from 48 to 12 to accelerate cleanup of orphaned vertices.
 	vertexLedgerTTLSlots = 12
 
-	// pruneLoopPeriod: how often the prune loop checks the pruneNeeded flag.
-	pruneLoopPeriod = 1 * time.Second
+	// gcLoopPeriod: how often the full GC pass runs (unless triggered earlier by RequestPrune).
+	gcLoopPeriod = 5 * time.Second
 
-	// branchPruneDepth: branches this many slots behind the LRB have their vertices
-	// moved to the prunable set. All vertices confirmed in those branches become eligible
-	// for removal from the memDAG.
+	// branchPruneDepth: branches this many slots behind the LRB have their vertex sets
+	// cleaned up. Vertices confirmed in those branches and not referenced by newer branches
+	// become eligible for detachment.
 	branchPruneDepth uint32 = 2
 	// maxBranchVertexRecords: maximum entries in the branchVertices map.
 	// If exceeded, force a cleanup regardless of LRB position.
@@ -203,24 +181,34 @@ func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
 	}
 }
 
-// doGC traverses all known transaction IDs and:
-// -- deletes those with weak pointers GC-ed
-// -- collects those which are expired by wall-clock TTL or ledger-time TTL
-// -- nullifies strong references of those expired thus preparing them for GC
+// doGC is the unified pruning loop. Traverses all vertices and applies three expiration
+// criteria (any triggers detachment):
 //
-// Expiration criteria (either triggers eviction):
-//   - wall-clock: vertex was added more than vertexTTLSlots wall-clock slots ago (only when synced)
-//   - ledger-time: vertex's transaction slot is more than vertexLedgerTTLSlots behind the latest
-//     committed branch (always active — handles forward-sync where vertices are "fresh" by wall clock
-//     but ancient by ledger time)
+//  1. TTL: wall-clock TTL (only when synced) or ledger-time TTL (always active)
+//  2. LRB-confirmed: vertex's slot is old enough AND vertex is NOT in any remaining
+//     branchVertices set (was confirmed in a branch that has been cleaned up)
+//  3. Orphaned: same check as 2 — vertex old enough and not tracked by any recent branch.
+//     Catches both confirmed txs and orphaned seq txs that were never in any branch.
+//
+// Pattern: collect expired under global lock → ConvertToDetached outside lock → nullify under lock.
 func (d *MemDAG) doGC() (detached, deleted int) {
 	expired := make([]*vertex.WrappedTx, 0)
 	var deletedIDs []base.TransactionID
 	synced := d.IsSynced()
 
 	d.WithGlobalWriteLock(func() {
+		// clean up branchVertices: remove deep branches and rootless forks
+		d.cleanupBranchVerticesNoLock()
+
 		slotNow := ledger.TimeNow().Slot
 		latestBranch := d.latestBranchSlot
+		healthySlot := d.latestHealthyBranchSlot
+
+		// threshold for LRB-depth/orphan criteria: only check vertices older than this slot
+		var confirmThresholdSlot uint32
+		if healthySlot > branchPruneDepth {
+			confirmThresholdSlot = healthySlot - branchPruneDepth
+		}
 
 		for txid, rec := range d.vertices {
 			if rec.Pointer.Value() == nil {
@@ -230,14 +218,23 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 				continue
 			}
 			if rec.WrappedTx == nil {
+				// already detached, waiting for weak pointer to go nil
 				continue
 			}
-			// wall-clock TTL (only when synced)
+
+			// criterion 1: TTL
 			wallClockExpired := synced && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
-			// ledger-time TTL (always active)
 			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
 			if wallClockExpired || ledgerTimeExpired {
 				expired = append(expired, rec.WrappedTx)
+				continue
+			}
+
+			// criteria 2+3: confirmed or orphaned — old enough and not in any recent branch set
+			if confirmThresholdSlot > 0 && txid.Slot() < confirmThresholdSlot {
+				if !d.isInAnyBranchSetNoLock(rec.WrappedTx) {
+					expired = append(expired, rec.WrappedTx)
+				}
 			}
 		}
 	})
@@ -273,10 +270,9 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 	return
 }
 
-// RequestPrune sets the atomic flag to trigger pruning on the next tick.
-// Called by branch commit, branch disposal, memory pressure handlers, etc.
+// RequestPrune is a no-op retained for interface compatibility.
+// All pruning is handled by the unified doGC loop on its regular period.
 func (d *MemDAG) RequestPrune() {
-	d.pruneNeeded.Store(true)
 }
 
 // RegisterBranchVertices records the set of vertices confirmed in a branch's past cone.
@@ -294,14 +290,15 @@ func (d *MemDAG) RegisterBranchVertices(branchID base.TransactionID, predecessor
 
 	// if map grows too large, force cleanup
 	if len(d.branchVertices) > maxBranchVertexRecords {
-		d.updatePrunableSetNoLock()
+		d.cleanupBranchVerticesNoLock()
 	}
 }
 
-// updatePrunableSetNoLock scans branchVertices for branches that are deep enough behind
-// the LRB and moves their vertices into the prunable set. Also removes rootless forks.
+// cleanupBranchVerticesNoLock removes deep branches and rootless forks from the
+// branchVertices map. After cleanup, vertices not in any remaining set are candidates
+// for criteria 2+3 in doGC (confirmed or orphaned).
 // Caller must hold d.mutex.
-func (d *MemDAG) updatePrunableSetNoLock() {
+func (d *MemDAG) cleanupBranchVerticesNoLock() {
 	healthySlot := d.latestHealthyBranchSlot
 	if healthySlot == 0 {
 		return
@@ -314,29 +311,18 @@ func (d *MemDAG) updatePrunableSetNoLock() {
 			rec.vertices = nil // help GC
 			delete(d.branchVertices, branchID)
 		}
-		d.prunable = set.New[*vertex.WrappedTx]()
 		return
 	}
 
-	// find branches deep enough behind the LRB
-	var toRemove []base.TransactionID
+	// remove branches deep enough behind the LRB
 	for branchID, rec := range d.branchVertices {
 		if branchID.Slot()+branchPruneDepth <= healthySlot {
-			// move vertices to prunable set
-			rec.vertices.ForEach(func(vid *vertex.WrappedTx) bool {
-				d.prunable.Insert(vid)
-				return true
-			})
 			rec.vertices = nil // help GC
-			toRemove = append(toRemove, branchID)
+			delete(d.branchVertices, branchID)
 		}
 	}
-	for _, branchID := range toRemove {
-		delete(d.branchVertices, branchID)
-	}
 
-	// remove rootless fork branches: branches whose predecessor is not in the map
-	// and is not the LRB or newer
+	// remove rootless fork branches: predecessor not in the map and old enough
 	changed := true
 	for changed {
 		changed = false
@@ -344,11 +330,6 @@ func (d *MemDAG) updatePrunableSetNoLock() {
 			predSlot := rec.predecessorBranchID.Slot()
 			_, predInMap := d.branchVertices[rec.predecessorBranchID]
 			if !predInMap && predSlot+branchPruneDepth <= healthySlot {
-				// predecessor was already pruned — this is an orphaned fork
-				rec.vertices.ForEach(func(vid *vertex.WrappedTx) bool {
-					d.prunable.Insert(vid)
-					return true
-				})
 				rec.vertices = nil
 				delete(d.branchVertices, branchID)
 				changed = true
@@ -366,97 +347,6 @@ func (d *MemDAG) isInAnyBranchSetNoLock(vid *vertex.WrappedTx) bool {
 		}
 	}
 	return false
-}
-
-// doLRBDepthPrune detaches and removes prunable and orphaned vertices from the memDAG.
-//
-// Detachment criteria (any triggers):
-// 1. LRB-confirmed: vertex is in the prunable set (from branches deep behind LRB)
-// 2. Orphaned seq tx: sequencer tx older than branchPruneDepth behind LRB, not in any
-//    branchVertices set (never confirmed, never will be)
-//
-// Follows the same pattern as doGC:
-// 1. Collect under global write lock
-// 2. Call ConvertToDetached outside the lock (breaks reference graph)
-// 3. Nullify strong refs under global write lock
-func (d *MemDAG) doLRBDepthPrune() (detached, deleted int) {
-	var toDetach []*vertex.WrappedTx
-	var deletedIDs []base.TransactionID
-
-	d.WithGlobalWriteLock(func() {
-		d.updatePrunableSetNoLock()
-
-		healthySlot := d.latestHealthyBranchSlot
-		// orphan detection threshold: seq txs older than this are candidates
-		var orphanThresholdSlot uint32
-		if healthySlot > branchPruneDepth {
-			orphanThresholdSlot = healthySlot - branchPruneDepth
-		}
-
-		for txid, rec := range d.vertices {
-			if rec.Pointer.Value() == nil {
-				d.deleteFromMapNoLock(txid)
-				deletedIDs = append(deletedIDs, txid)
-				deleted++
-				continue
-			}
-			if rec.WrappedTx == nil {
-				continue
-			}
-			// criterion 1: LRB-confirmed
-			if d.prunable.Contains(rec.WrappedTx) {
-				toDetach = append(toDetach, rec.WrappedTx)
-				d.prunable.Remove(rec.WrappedTx)
-				continue
-			}
-			// criterion 2: orphaned sequencer tx
-			if txid.IsSequencerTransaction() && orphanThresholdSlot > 0 && txid.Slot() < orphanThresholdSlot {
-				if !d.isInAnyBranchSetNoLock(rec.WrappedTx) {
-					toDetach = append(toDetach, rec.WrappedTx)
-				}
-			}
-		}
-
-		// clear the prunable set to release strong references to vertices that were
-		// already detached in a previous cycle (rec.WrappedTx == nil, skipped above).
-		// Without this, the prunable set leaks strong refs and weak pointers never go nil.
-		d.prunable = set.New[*vertex.WrappedTx]()
-	})
-	d.postDeleteEvents(deletedIDs)
-	deletedIDs = deletedIDs[:0]
-
-	if len(toDetach) == 0 {
-		return
-	}
-
-	// ConvertToDetached outside global lock — breaks the reference graph
-	// (clears Inputs/Endorsements) so weak pointers can eventually go nil
-	for _, vid := range toDetach {
-		vid.ConvertToDetached()
-	}
-
-	// nullify strong refs
-	d.WithGlobalWriteLock(func() {
-		for _, vid := range toDetach {
-			txid := vid.ID()
-			if rec, found := d.vertices[txid]; found {
-				if rec.Value() == nil {
-					d.deleteFromMapNoLock(txid)
-					deletedIDs = append(deletedIDs, txid)
-					deleted++
-				} else {
-					if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
-						d.DecCounter("nonseq")
-					}
-					rec.WrappedTx = nil
-					d.vertices[txid] = rec
-					detached++
-				}
-			}
-		}
-	})
-	d.postDeleteEvents(deletedIDs)
-	return
 }
 
 func (d *MemDAG) GetStemWrappedOutput(branch base.TransactionID) (ret vertex.WrappedOutput) {
@@ -508,7 +398,7 @@ func (d *MemDAG) WaitUntilTransactionInHeaviestState(txid base.TransactionID, ti
 	}
 }
 
-// EvidenceBranchSlot maintains cached values and triggers prunable set update when LRB advances.
+// EvidenceBranchSlot maintains cached values of latest branch and healthy branch slots.
 func (d *MemDAG) EvidenceBranchSlot(s uint32, isHealthy bool) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
@@ -517,12 +407,8 @@ func (d *MemDAG) EvidenceBranchSlot(s uint32, isHealthy bool) {
 		d.latestBranchSlot = s
 	}
 	if isHealthy {
-		prevHealthy := d.latestHealthyBranchSlot
-		if s > prevHealthy {
+		if s > d.latestHealthyBranchSlot {
 			d.latestHealthyBranchSlot = s
-			// LRB advanced — update the prunable set and signal the pruner
-			d.updatePrunableSetNoLock()
-			d.pruneNeeded.Store(true)
 		}
 	}
 }

@@ -279,25 +279,44 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	_ = ttlDelegationSlots
 	horizonTagAlong := time.Now().Add(-time.Duration(ttlTagAlongSlots) * ledger.L(0).SlotDuration())
 
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
-	count := 0
+	// snapshot outputs under the lock, then check LockName() without holding it.
+	// LockName() calls vid.RUnwrap which takes vid.mutex.RLock — holding backlog.mutex
+	// at the same time creates a lock-ordering cycle with proposers that hold vid.mutex
+	// and need backlog.mutex.
+	b.mutex.RLock()
+	type candidate struct {
+		wOut      vertex.WrappedOutput
+		whenAdded time.Time
+	}
+	snapshot := make([]candidate, 0, len(b.outputs))
 	for wOut, whenAdded := range b.outputs {
-		del := true
-		n := wOut.LockName()
+		snapshot = append(snapshot, candidate{wOut, whenAdded})
+	}
+	b.mutex.RUnlock()
+
+	// check LockName outside the lock
+	var toDelete []vertex.WrappedOutput
+	for _, c := range snapshot {
+		n := c.wOut.LockName()
 		if n == ledger.TagAlongLockName || n == ledger.ChainLockName {
-			del = whenAdded.Before(horizonTagAlong)
+			if c.whenAdded.Before(horizonTagAlong) {
+				toDelete = append(toDelete, c.wOut)
+			}
 		} else {
 			b.Log().Fatalf("unexpected type of the lock in backlog: '%s'", n)
 		}
-		if del {
-			delete(b.outputs, wOut)
-			count++
-		}
 	}
-	b.EvidenceBacklogSize(len(b.outputs))
-	return count, len(b.outputs)
+
+	// delete under write lock
+	b.mutex.Lock()
+	for _, wOut := range toDelete {
+		delete(b.outputs, wOut)
+	}
+	remaining := len(b.outputs)
+	b.mutex.Unlock()
+
+	b.EvidenceBacklogSize(remaining)
+	return len(toDelete), remaining
 }
 
 func (b *TagAlongBacklog) recreateMap() {

@@ -156,7 +156,7 @@ func (vid *WrappedTx) SetTxStatusGoodNoLock(pastCone *PastConeBase, coverage uin
 	} else {
 		vid.pastCone = pastCone
 		if coverage > 0 {
-			vid.coverage = util.Ref(coverage)
+			vid.coverage.Store(util.Ref(coverage))
 		}
 	}
 }
@@ -672,19 +672,17 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	return ret
 }
 
-func (vid *WrappedTx) GetLedgerCoverageNoLock() *uint64 {
-	return vid.coverage
-}
-
+// GetLedgerCoverageP returns pointer to coverage value, nil if not set.
+// Coverage is stored as atomic pointer — lock-free, safe to call concurrently
+// with ConvertToDetached and other vertex mutations. This eliminates the
+// RLock contention between tippool reads and memDAG pruning writes.
 func (vid *WrappedTx) GetLedgerCoverageP() *uint64 {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.coverage
+	return vid.coverage.Load()
 }
 
+// GetLedgerCoverage returns coverage value, 0 if not set. Lock-free (atomic).
 func (vid *WrappedTx) GetLedgerCoverage() uint64 {
-	ret := vid.GetLedgerCoverageP()
+	ret := vid.coverage.Load()
 	if ret == nil {
 		return 0
 	}
@@ -726,8 +724,8 @@ func (vid *WrappedTx) String() (ret string) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			cov := uint64(0)
-			if vid.coverage != nil {
-				cov = *vid.coverage
+			if p := vid.coverage.Load(); p != nil {
+				cov = *p
 			}
 			t := "vertex (" + vid.GetTxStatusNoLock().String() + ")"
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, err: '%v', cov: %s",
@@ -744,8 +742,8 @@ func (vid *WrappedTx) String() (ret string) {
 		},
 		DetachedVertex: func(v *DetachedVertex) {
 			cov := uint64(0)
-			if vid.coverage != nil {
-				cov = *vid.coverage
+			if p := vid.coverage.Load(); p != nil {
+				cov = *p
 			}
 			t := "vertex (" + vid.GetTxStatusNoLock().String() + ")"
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, err: '%v', cov: %s",
