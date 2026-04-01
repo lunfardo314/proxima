@@ -794,6 +794,10 @@ func (vid *WrappedTx) String() (ret string) {
 	return
 }
 
+// SequencerPredecessor returns the predecessor vertex of a sequencer transaction.
+// For a DetachedVertex, reattachBranch is called with the branch ID (not vid's own ID),
+// so there is no self-deadlock risk — AttachTxID locks a different vertex.
+// For non-branch detached vertices, BranchID is nil and ret stays nil (caller handles this).
 func (vid *WrappedTx) SequencerPredecessor(reattachBranch func(txid base.TransactionID) *WrappedTx) (ret *WrappedTx) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
