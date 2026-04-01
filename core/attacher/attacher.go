@@ -231,19 +231,24 @@ func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
 	})
 
 	if needFallback {
-		// re-enter with write lock (the regular Unwrap path handles DetachedVertex properly)
+		// re-enter with write lock — cannot call AttachTransaction inside Unwrap
+		// because it would try to Lock the same vid again (self-deadlock).
+		var detachedTx *transaction.Transaction
 		vid.Unwrap(vertex.UnwrapOptions{
 			DetachedVertex: func(v *vertex.DetachedVertex) {
-				AttachTransaction(v.Transaction, a,
-					WithInvokedBy(a.name),
-					WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
-				)
+				detachedTx = v.Transaction
 				ok = true
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {
 				ok = true
 			},
 		})
+		if detachedTx != nil {
+			AttachTransaction(detachedTx, a,
+				WithInvokedBy(a.name),
+				WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
+			)
+		}
 		if !ok {
 			a.pokeMe(vid)
 		}
