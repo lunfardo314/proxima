@@ -309,6 +309,45 @@ The fundamental tension: aggressive pruning needs ConvertToDetached to break ref
 ConvertToDetached conflicts with concurrent readers. The solution must either avoid the
 conflict (options 1, 3) or limit its duration (option 2).
 
+##### Self-deadlock in reattachment path (found and partially fixed)
+
+**Root cause found**: `attachVertexNonBranch` at `attacher.go:134` calls `vid.Unwrap` (takes
+`vid.mutex.Lock`). Inside the `DetachedVertex` callback, it calls `AttachTransaction` which
+calls `AttachTxID` — this returns the SAME `*WrappedTx` (found in the map). Then
+`vid.UnwrapVirtualTx` tries to `vid.mutex.Lock` again — self-deadlock on non-reentrant
+`sync.RWMutex`.
+
+This was always latent but never triggered because old TTL-based pruning (48 slots) only
+detached very old vertices that no attacher would encounter. With branchPruneDepth=2 and
+orphan detection, vertices only 2 slots old get detached — attachers actively process them.
+
+**Fix applied**: Move `AttachTransaction` call outside the `Unwrap` callback. Store
+`v.Transaction` in a local variable, release the lock, then reattach.
+
+**Remaining issue**: `Test1SequencerPrunerTransfers` passes in isolation but fails consistently
+in the full test suite (balance = 0, expected 5B). Hypotheses:
+
+1. **Reattachment produces different vid**: If `AttachTxID` creates a new `VirtualTx` instead
+   of finding the existing entry (because the map entry was deleted between detach and reattach),
+   the new vid lacks cached state (coverage, past cone, status=Good). The attacher treats it
+   as a fresh undefined vertex.
+
+2. **Gap between Unwrap and reattach**: Between releasing `vid.mutex.Lock` and calling
+   `AttachTransaction`, another goroutine could modify the vertex state (e.g., doGC nullifies
+   the strong ref, or another attacher races to access it).
+
+3. **Test timing**: With aggressive pruning and short test slots (~1s), vertices are pruned
+   before the test's transfer chain completes. The reattachment works but adds latency that
+   the test timeout doesn't account for.
+
+**Next steps**: Investigate whether `AttachTxID` returns the same vid or a new one when called
+on a recently-detached vertex. Check if the detached vertex's map entry still exists (strong
+ref nullified but weak pointer alive) or was fully deleted.
+
+Also investigate `own_milestones.go:40-42` — `SequencerPredecessor` calls `vid.Unwrap` (Lock)
+and inside the `DetachedVertex` callback calls `AttachTxID` (global lock). Same self-deadlock
+pattern if the returned vid is the same. This path may need the same fix.
+
 #### Stress-triggered memDAG cleanup
 
 Under memory pressure, the node should actively prune the memDAG rather than waiting for the

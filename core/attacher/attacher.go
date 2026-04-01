@@ -8,6 +8,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
@@ -131,6 +132,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	}
 
 	defined := false
+	var detachedTx *transaction.Transaction
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			switch vid.GetTxStatusNoLock() {
@@ -171,16 +173,25 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 			}
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			AttachTransaction(v.Transaction, a,
-				WithInvokedBy(a.name),
-				WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
-			)
+			// cannot call AttachTransaction here — we hold vid.mutex.Lock and
+			// AttachTransaction would try to Lock the same vid again (self-deadlock).
+			// Store the transaction for reattachment after releasing the lock.
+			detachedTx = v.Transaction
 			ok = true
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			ok = true
 		},
 	})
+	// reattach detached vertex outside vid.mutex.Lock to avoid self-deadlock:
+	// AttachTransaction calls AttachTxID which returns the same vid, then
+	// vid.UnwrapVirtualTx tries to Lock vid again — deadlock on non-reentrant RWMutex.
+	if detachedTx != nil {
+		AttachTransaction(detachedTx, a,
+			WithInvokedBy(a.name),
+			WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
+		)
+	}
 	if !ok {
 		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
 		return
