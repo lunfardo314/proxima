@@ -144,6 +144,12 @@ sequencer:
   logging: false
   # if logging = true, duplicate sequencer log messages to the node's log (default: false)
   global_logging: false
+  # force_activity: always issue branch + milestone regardless of throttle pressure.
+  # Use for bootstrap sequencers that must keep producing to maintain network liveness.
+  # force_activity: false
+  # disable_throttle: disable tag-along budget throttling entirely.
+  # Budget always stays at full (2/3 of consensus). For debugging.
+  # disable_throttle: false
 {{end}}
 # Sync configuration (sequential branch-by-branch catch-up)
 # Self URLs (localhost with own api.port) are automatically skipped.

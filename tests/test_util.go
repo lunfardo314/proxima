@@ -43,6 +43,8 @@ type testSequencer interface {
 
 // newTestSequencer creates a sequencer instance.
 func newTestSequencer(env *workflow.Workflow, seqID base.ChainID, controllerKey ed25519.PrivateKey, opts ...sequencer.ConfigOption) (testSequencer, error) {
+	// disable throttle in tests to prevent budget cuts under test-suite CPU load
+	opts = append(opts, sequencer.WithDisableThrottle)
 	return sequencer.New(env, seqID, controllerKey, opts...)
 }
 

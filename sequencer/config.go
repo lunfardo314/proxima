@@ -28,6 +28,13 @@ type (
 		GlobalLogging             bool
 		ControllerKeyFile         string // path to keystore file for deferred key loading
 		AsyncMode                 bool   // experimental: async milestone submission (no tippool wait)
+		// ForceActivity when true, the sequencer always issues at least a branch and one
+		// milestone per slot regardless of pressure level. Used for bootstrap sequencers
+		// that must keep producing to maintain network liveness.
+		ForceActivity bool
+		// DisableThrottle when true, disables tag-along budget throttling entirely.
+		// Budget always stays at full (2/3 of consensus). For tests and debugging.
+		DisableThrottle bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -114,6 +121,12 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	if subViper.GetBool("async_mode") {
 		cfg = append(cfg, WithAsyncMode)
 	}
+	if subViper.GetBool("force_activity") {
+		cfg = append(cfg, WithForceActivity)
+	}
+	if subViper.GetBool("disable_throttle") {
+		cfg = append(cfg, WithDisableThrottle)
+	}
 	return cfg, seqID, nil
 }
 
@@ -193,6 +206,14 @@ func WithAsyncMode(o *ConfigOptions) {
 	o.AsyncMode = true
 }
 
+func WithForceActivity(o *ConfigOptions) {
+	o.ForceActivity = true
+}
+
+func WithDisableThrottle(o *ConfigOptions) {
+	o.DisableThrottle = true
+}
+
 func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
@@ -208,5 +229,7 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Separate log: %v", cfg.SeparateLog).
 		Add("Copy to the global log: %v", cfg.GlobalLogging).
 		Add("Controller key file: %s", cfg.ControllerKeyFile).
-		Add("Async mode: %v", cfg.AsyncMode)
+		Add("Async mode: %v", cfg.AsyncMode).
+		Add("Force activity: %v", cfg.ForceActivity).
+		Add("Disable throttle: %v", cfg.DisableThrottle)
 }

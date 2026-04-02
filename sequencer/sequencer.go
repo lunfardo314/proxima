@@ -71,10 +71,10 @@ type (
 		wontSubmitBranchID   base.TransactionID
 		metrics              *sequencerMetrics
 		skeletonFactory      *factory.Factory
-		// pressure tracks sequencer's ability to keep up. Incremented on deadline exceeded
-		// or no proposals, decremented on success. Higher pressure = more aggressive throttling
-		// of tag-along inputs and non-essential milestones.
-		pressure int
+		// budgetLevel tracks the tag-along budget allowance (0..maxBudgetLevel).
+		// Starts at max (full budget). Cuts sharply on failure, increases slowly on success.
+		// TCP-like congestion control for tag-along throughput.
+		budgetLevel int
 	}
 
 	outputsWithTime struct {
@@ -125,6 +125,7 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 		ownMilestones: make(map[*vertex.WrappedTx]outputsWithTime),
 		config:        cfg,
 		log:           log,
+		budgetLevel:   maxBudgetLevel, // start at full budget
 	}
 	if cfg.SingleSequencerEnforced {
 		ret.metrics = &sequencerMetrics{}
@@ -539,19 +540,19 @@ func (seq *Sequencer) doSequencerStep() bool {
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
 		seq.slotData.NotGoodEnough()
-		seq.adjustPressure(false)
+		// not good enough is not a pressure signal — the proposer finished in time
 		seq.Tracef(TraceTagTarget, "'not good enough' for the target logical time %s in %v",
 			targetTs, time.Since(timerStart))
 		return true
 	case errors.Is(err, task.ErrNoProposals):
 		seq.slotData.NoProposals()
-		seq.adjustPressure(false)
+		seq.adjustBudget(false)
 		seq.Tracef(TraceTagTarget, "'no proposals' for the target logical time %s in %v",
 			targetTs, time.Since(timerStart))
 		return true
 	case err != nil:
-		seq.adjustPressure(false)
-		seq.Log().Warnf("%v (pressure: %d/%d)", err, seq.pressure, maxPressure)
+		seq.adjustBudget(false)
+		seq.Log().Warnf("%v (budget: %d/%d)", err, seq.budgetLevel, maxBudgetLevel)
 		return true
 	}
 	util.Assertf(msTx != nil, "msTx != nil")
@@ -562,7 +563,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	meta.TxBytesReceived = util.Ref(time.Now())
 
 	seq.strategy.submit(msTx, meta, targetTs)
-	seq.adjustPressure(true)
+	seq.adjustBudget(true)
 
 	if targetTs.IsSlotBoundary() {
 		seq.slotData = nil
@@ -574,42 +575,56 @@ func (seq *Sequencer) doSequencerStep() bool {
 const disconnectTolerance = 4 * time.Second
 
 const (
-	// maxPressure is the maximum pressure level. At max pressure the sequencer
-	// produces only branches with zero tag-along inputs.
-	maxPressure = 5
-	// pressureDecay: on each successful milestone, pressure decreases by this amount.
-	pressureDecay = 2
+	// maxBudgetLevel is the maximum tag-along budget level.
+	// Budget scales linearly: 0 = no tag-alongs, maxBudgetLevel = full 2/3 budget.
+	maxBudgetLevel = 6
+	// budgetCutOnFailure: on deadline exceeded / no proposals, cut budget by this amount.
+	// Sharp decrease for fast response to overload.
+	budgetCutOnFailure = 3
+	// budgetIncreaseOnSuccess: on each successful milestone, increase budget by 1.
+	// Slow ramp-up to probe how much load the sequencer can handle.
+	budgetIncreaseOnSuccess = 1
 )
 
-// adjustPressure updates pressure based on the result of generateMilestoneForTarget.
-// success=true means a milestone was produced; success=false means deadline exceeded or no proposals.
-func (seq *Sequencer) adjustPressure(success bool) {
+// adjustBudget updates the tag-along budget level based on milestone outcome.
+// TCP-like congestion control: slow increase on success, sharp cut on failure.
+// No-op when throttling is disabled.
+func (seq *Sequencer) adjustBudget(success bool) {
+	if seq.config.DisableThrottle {
+		return
+	}
 	if success {
-		seq.pressure -= pressureDecay
-		if seq.pressure < 0 {
-			seq.pressure = 0
+		seq.budgetLevel += budgetIncreaseOnSuccess
+		if seq.budgetLevel > maxBudgetLevel {
+			seq.budgetLevel = maxBudgetLevel
 		}
 	} else {
-		seq.pressure++
-		if seq.pressure > maxPressure {
-			seq.pressure = maxPressure
+		seq.budgetLevel -= budgetCutOnFailure
+		if seq.budgetLevel < 0 {
+			seq.budgetLevel = 0
 		}
 	}
 }
 
-// TagAlongBudgetNumerator returns the tag-along budget numerator scaled by pressure.
-// At pressure 0: full budget (2/3 of consensus). At maxPressure: 0 (no tag-alongs).
+// TagAlongBudgetNumerator returns the tag-along budget numerator scaled by budget level.
+// At level 0: no tag-alongs. At maxBudgetLevel: full 2/3 budget (numerator=2, denominator=3).
+// When ForceActivity is set, minimum numerator is 1 (1/3 budget).
+// When DisableThrottle is set, always returns full budget (2).
 // The denominator is always 3 (from tagAlongBudgetFraction).
 func (seq *Sequencer) TagAlongBudgetNumerator() int {
-	// full budget numerator is 2 (from Fraction23 = 2/3)
-	switch {
-	case seq.pressure >= maxPressure:
-		return 0 // no tag-alongs
-	case seq.pressure >= 3:
-		return 1 // 1/3 of consensus budget
-	default:
-		return 2 // full 2/3 of consensus budget
+	if seq.config.DisableThrottle {
+		return 2
 	}
+	minNumerator := 0
+	if seq.config.ForceActivity {
+		minNumerator = 1
+	}
+	// linear scale: numerator = 2 * budgetLevel / maxBudgetLevel
+	numerator := 2 * seq.budgetLevel / maxBudgetLevel
+	if numerator < minNumerator {
+		numerator = minNumerator
+	}
+	return numerator
 }
 
 // decideSubmitMilestone checks health and connectivity. Used by both sync and async strategies.
