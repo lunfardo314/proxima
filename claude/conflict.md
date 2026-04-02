@@ -257,6 +257,36 @@ into the past cone without any compatibility guard.
 the vertex's `BaselineBranch()` method (which reads from the vertex state, not the past cone).
 If incompatible, reject the merge.
 
+**Update**: Fix at attacher.go:150-162 did NOT prevent the conflict. The "incompatible
+baseline" error never triggered (0 occurrences). The conflict enters through a DIFFERENT path.
+
+### Third incident: 2026-04-02 ~16:06 (after fix deployed)
+
+Same pattern: `[170736|0br]014454607192..[1]` with baseline `[170742|0br]` (6 slots gap).
+
+**Critical finding**: The failing tx `[170745|55sq]0027ce072524..` DIRECTLY CONSUMES
+output 0 (chain output) of branch `[170736|0br]` — it's the tx's own INPUT, not a
+dependency merged via MergePastCone.
+
+```
+#0 S+ [170736|0br]014454607192..
+  consumers: {1: {[170742|0br]0197e72ea826..}, 0: {[170745|55sq]0027ce072524..}}
+```
+
+The sequencer's chain predecessor is a branch from 9 slots ago (170736 → 170745). The
+sequencer lost 9 slots' worth of branches and its chain goes through the old one. Meanwhile
+the baseline (LRB) is at slot 170742, which consumes the STEM of that same old branch.
+
+**Why the fix didn't help**: Our fix guards `MergePastCone` for Good vertices with nil
+past cone. But this conflict comes from the tx's OWN INPUT — the `IncrementalAttacher`
+added a chain predecessor from an incompatible fork as a direct input. The baseline
+compatibility check needs to be in `InsertInput` or during chain predecessor selection
+in the proposer.
+
+**The IncrementalAttacher/proposer builds a tx consuming from an old branch on a losing
+fork while the baseline is on a winning fork.** The `CheckConflicts` runs too late (after
+the tx is fully built) and catches it as an error instead of preventing it.
+
 ### Affected nodes
 
 - boot: 23 conflicts
