@@ -152,12 +152,26 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				// Note that MergePastCone checks the compatibility of baselines and swaps them if necessary,
 				// however, does not check for double-spends here.
 				// Past cone may be nil for transactions marked GOOD from snapshot state (no attacher ran)
-				// — this includes both sequencer and non-sequencer txs.
+				// or for vertices detached by GC.
 				pcb := vid.GetPastConeNoLock()
 				if pcb != nil {
 					if !a.pastCone.MergePastCone(pcb, a.Branches()) {
 						a.setError(fmt.Errorf("conflicting baselines %s and %s", a.pastCone.GetBaseline().StringShort(), vid.IDShortString()))
 						return
+					}
+				} else if vid.IsSequencerTransaction() {
+					// past cone is nil (detached or snapshot vertex). For sequencer transactions,
+					// still check baseline compatibility to prevent mixing forks in the past cone.
+					// Without this check, a detached vertex from a losing fork can pull its
+					// fork's branch into the past cone alongside the winning fork's baseline.
+					if baseline := a.pastCone.GetBaseline(); baseline != nil {
+						if vidBaseline, hasBaseline := vid.BaselineBranch(); hasBaseline {
+							if !a.branchesCompatible(baseline, &vidBaseline) {
+								a.setError(fmt.Errorf("incompatible baseline for detached vertex %s: attacher baseline %s vs vertex baseline %s",
+									vid.IDShortString(), baseline.StringShort(), vidBaseline.StringShort()))
+								return
+							}
+						}
 					}
 				}
 				ok = true

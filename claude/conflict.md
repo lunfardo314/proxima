@@ -229,6 +229,34 @@ C. **Detect fork divergence in the attacher** — if chain predecessor is on a d
 D. **The sequencer should detect its own fork divergence** — when its branch loses coverage,
    it should switch to the winning fork before producing more milestones
 
+### THE BUG FOUND
+
+In `attacher.go` line 150-162, when a Good vertex's past cone is merged:
+
+```go
+case vertex.Good:
+    pcb := vid.GetPastConeNoLock()  // nil for detached vertices!
+    if pcb != nil {
+        if !a.pastCone.MergePastCone(pcb, a.Branches()) {  // baseline compatibility check
+            // ... reject incompatible baselines
+        }
+    }
+    ok = true    // CONTINUES even when pcb is nil — NO compatibility check!
+    defined = true
+```
+
+When `ConvertToDetached` clears `pastCone`, `GetPastConeNoLock()` returns nil. The
+`MergePastCone` call (which includes `IsDescendantBranch` baseline compatibility check) is
+**skipped entirely**. The attacher adds the vertex to its past cone without verifying that
+the vertex's baseline is compatible with the attacher's baseline.
+
+The vertex's inputs (referencing a different fork's branch) then pull the conflicting branch
+into the past cone without any compatibility guard.
+
+**Fix**: When `pcb == nil` for a Good vertex, still verify baseline compatibility using
+the vertex's `BaselineBranch()` method (which reads from the vertex state, not the past cone).
+If incompatible, reject the merge.
+
 ### Affected nodes
 
 - boot: 23 conflicts
