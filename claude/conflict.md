@@ -324,3 +324,87 @@ All conflicts reference the same baseline and same conflicting output.
 ### Logs
 
 Log files are on respective machines at `/home/nodes/<name>/proxima.log`.
+
+---
+
+## Session analysis: root cause of third incident (2026-04-02)
+
+### Key finding: false positive in `_checkVertex`
+
+The past cone of every failing tx is only **3 vertices**:
+
+```
+#0 S+ [170736|0br]014454607192..  inTheState: (true,true)   consumers: {1: {[170742|0br]}, 0: {[170745|55sq]}}
+#1 S? [170742|0br]0197e72ea826..  inTheState: (false,false)  consumers: {}
+#2 S- [170745|55sq]0027ce072524..  inTheState: (true,false)   consumers: {}
+```
+
+### Timeline context
+
+No branches were committed between slots 170737 and 170742. The LRB was stuck for 5 slots
+(18:05:31 → 18:06:22), then jumped directly to `[170742|0br]` (boot's branch). This means
+`[170742|0br]` directly consumes the stem of `[170736|0br]` — no intermediate branches.
+
+### The false positive mechanism
+
+In `_checkVertex` (`past_cone.go:896`), for vertex `[170736|0br]` output 1 (stem):
+
+1. `inTheState([170736|0br])` = true (rooted in the baseline state)
+2. Output 1 has 1 consumer in the past cone: `[170742|0br]` (the baseline itself)
+3. `IsInTheState([170742|0br])` = false — the baseline defines the state but is NOT "in" its
+   own state (it's `S?`, not checked in state)
+4. `allConsumersAreInTheState = false`
+5. `stateReader.HasUTXO([170736|0br]...[1])` → the stem was consumed when `[170742|0br]` was
+   committed → returns **false**
+6. → **double-spend detected** (line 912)
+
+The "double-spend" is: the stem is consumed in the state (by the commit of [170742|0br]) AND
+consumed by [170742|0br] in the past cone (which is not "in the state"). But it's the **same
+consumer** — the baseline branch. This is a false positive.
+
+### Why it only happens with multi-slot branch gaps
+
+Normally, each branch consumes only its immediate predecessor's stem (slot S branch consumes
+slot S-1 stem). The baseline `[170742|0br]` would consume `[170741|0br]`'s stem, not
+`[170736|0br]`'s stem. The old branch `[170736|0br]` would have its stem consumed by
+`[170737|0br]` which would be rooted in the state — `IsInTheState` returns true → no conflict.
+
+When branches are skipped (no branch committed at slots 170737-170741), the baseline jumps
+directly to consume the stem from 6 slots ago. That old branch is in the past cone (as the
+chain predecessor's producing tx), and the baseline is also in the past cone as `S?`.
+
+### Why is the chain predecessor on the old branch?
+
+The sequencer's chain was last committed at slot 170736. When the tippool evicts the stale
+milestone (40s TTL), `bootstrapOwnMilestoneOutput` queries `GetChainOutputFromBranch` on the
+LRB state, which returns the chain output from `[170736|0br]`. The `IncrementalAttacher` is
+created with this as the extend output + the current LRB as baseline.
+
+### Connection to aggressive pruning
+
+Without aggressive pruning, the sequencer's milestones would stay in the tippool longer, and
+the chain would extend through intermediate milestones (not the old branch). Aggressive pruning
++ tippool eviction forces fallback to `bootstrapOwnMilestoneOutput`, which doesn't verify
+fork/lineage compatibility.
+
+### Open question for next session
+
+The proposed quick fix "skip HasUTXO when sole consumer is the baseline" needs more thought —
+may not be correct in general. The deeper question: should `_checkVertex` treat the baseline
+branch specially? Or should the `IncrementalAttacher` prevent creating a tx where the chain
+predecessor's producing branch has its stem consumed by the baseline (which means the chain
+predecessor is on the baseline's lineage, consumed as stem — not as chain output)?
+
+Alternative angles:
+- Is `[170742|0br]` correctly registered in `vid.consumed` of `[170736|0br]`? When was
+  `AddConsumer` called? It happens at `attacher.go:524` during milestone attachment. But the
+  milestone attacher for `[170745|55sq]` has only 3 vertices — how did `[170742|0br]` get
+  registered as consumer of `[170736|0br]`? It must have been registered during the attachment
+  of `[170742|0br]` itself (when boot's branch was committed). The consumer map on `[170736|0br]`
+  persists even after detachment.
+- The `IncrementalAttacher`'s `CheckConflicts` at creation time does NOT catch this because at
+  that point the past cone has only the extend vertex + endorsement's merged past cone, and the
+  cleaned past cone likely doesn't include the old branch. The conflict only manifests during
+  the milestone attacher's `CheckAndClean` which reads the global `vid.consumed` map.
+- Consider whether `_checkVertex` should explicitly handle the case where a rooted vertex's
+  output is consumed by the baseline branch (not a conflict — it's the expected state transition).
