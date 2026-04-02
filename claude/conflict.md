@@ -185,6 +185,50 @@ the past cone, it pulls in both branches. This could happen if:
    the time of the conflict (15:14:30-15:14:40). The branch from slot 170439 was 5 slots
    behind by the time the conflict was detected — well within the pruning window.
 
+### Confirmation: conflicts only appear with new pruning code
+
+Checked older log files on loc0: **zero conflicts** in previous runs. The conflict ONLY
+appears in the current run with the aggressive pruning changes. This confirms the pruning
+connection.
+
+### Detailed timeline
+
+```
+15:14:39  slot 170439  loc0 SUBMIT BRANCH (healthy, 100%)
+15:14:49  slot 170440  loc0 SUBMIT BRANCH (healthy, 100%)
+15:14:59  slot 170441  loc0 WON'T SUBMIT BRANCH (coverage unhealthy)
+15:15:00  slot 170440  boot's branch committed (LRB moves to boot's branch)
+15:15:11  slot 170442  loc0 SUBMIT SEQ TX (coverage 260T = 25% — very low)
+15:15:31  slot 170444  loc0 SUBMIT SEQ TX → CONFLICT
+```
+
+At slot 170441, loc0's branch lost the coverage competition. The LRB moved to boot's branch
+at slot 170440. Loc0's chain continues through its own (losing) branch at 170440. At slot
+170444, the attacher uses boot's branch as baseline but loc0's chain pulls in loc0's branch
+→ both forks in the past cone → stem conflict.
+
+### Root cause conclusion
+
+The conflict is caused by the attacher building a past cone that spans two forks. This
+happens when:
+1. The sequencer's own branch loses the coverage competition (forks diverge)
+2. Aggressive pruning detaches the losing branch before the chain can be reconciled
+3. The attacher encounters detached vertices and can't properly track fork boundaries
+4. The past cone includes vertices from both forks
+
+Without aggressive pruning, the branch stays as a live Vertex long enough for the attacher
+to detect the fork divergence and handle it properly.
+
+### Fix direction
+
+Options:
+A. **Increase branchPruneDepth** so branches survive long enough for fork reconciliation
+B. **Don't prune branches** — only prune non-seq and orphaned seq vertices
+C. **Detect fork divergence in the attacher** — if chain predecessor is on a different fork
+   than the baseline, abandon the attachment
+D. **The sequencer should detect its own fork divergence** — when its branch loses coverage,
+   it should switch to the winning fork before producing more milestones
+
 ### Affected nodes
 
 - boot: 23 conflicts
