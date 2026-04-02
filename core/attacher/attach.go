@@ -124,14 +124,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
 
-	// if the vertex was detached by GC, convert it back to a full Vertex.
-	// The flags (AttachmentStarted, AttachmentFinished) survive detachment,
-	// so no new attacher goroutine will be started — the vertex is simply
-	// restored for DAG traversal. Inputs are nil and resolved by attachers on demand.
-	vid.Unwrap(vertex.UnwrapOptions{
+	// log when AttachTransaction is called on a DetachedVertex — the vertex stays detached,
+	// the attacher will treat it as unresolved and pull from txstore
+	vid.RUnwrap(vertex.UnwrapOptions{
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			vid.ReattachDetachedVertexNoLock(tx)
-			env.LogTx(time.Now(), "REATTACH from DetachedVertex", txid)
+			env.LogTx(time.Now(), fmt.Sprintf("AttachTransaction: vid is DetachedVertex, NOT reattaching. seq=%v", txid.IsSequencerTransaction()), txid)
 		},
 	})
 

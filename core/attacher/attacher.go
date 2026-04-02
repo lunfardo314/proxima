@@ -8,7 +8,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
@@ -132,7 +131,6 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	}
 
 	defined := false
-	var detachedTx *transaction.Transaction
 	vid.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			switch vid.GetTxStatusNoLock() {
@@ -173,26 +171,15 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 			}
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			// cannot call AttachTransaction here — we hold vid.mutex.Lock and
-			// AttachTransaction would try to Lock the same vid again (self-deadlock).
-			// Store the transaction for reattachment after releasing the lock.
-			detachedTx = v.Transaction
+			// vertex was detached by GC — don't reattach (stale flags/coverage).
+			// The attacher will treat this as unresolved and poke/pull.
+			a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (non-branch path), NOT reattaching", a.name), vid.ID())
 			ok = true
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			ok = true
 		},
 	})
-	// reattach detached vertex outside vid.mutex.Lock to avoid self-deadlock:
-	// AttachTransaction calls AttachTxID which returns the same vid, then
-	// vid.UnwrapVirtualTx tries to Lock vid again — deadlock on non-reentrant RWMutex.
-	if detachedTx != nil {
-		a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (non-branch path)", a.name), vid.ID())
-		AttachTransaction(detachedTx, a,
-			WithInvokedBy(a.name),
-			WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
-		)
-	}
 	if !ok {
 		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
 		return
@@ -232,28 +219,11 @@ func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
 	})
 
 	if needFallback {
-		// re-enter with write lock — cannot call AttachTransaction inside Unwrap
-		// because it would try to Lock the same vid again (self-deadlock).
-		var detachedTx *transaction.Transaction
-		vid.Unwrap(vertex.UnwrapOptions{
-			DetachedVertex: func(v *vertex.DetachedVertex) {
-				detachedTx = v.Transaction
-				ok = true
-			},
-			VirtualTx: func(_ *vertex.VirtualTransaction) {
-				ok = true
-			},
-		})
-		if detachedTx != nil {
-			a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (solid path)", a.name), vid.ID())
-			AttachTransaction(detachedTx, a,
-				WithInvokedBy(a.name),
-				WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
-			)
-		}
-		if !ok {
-			a.pokeMe(vid)
-		}
+		// vertex was detached or virtual after our solid check — log, poke, and return ok=true
+		// so the attacher doesn't treat this as a fatal error. It will revisit on the next poke.
+		a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (solid path), NOT reattaching", a.name), vid.ID())
+		a.pokeMe(vid)
+		ok = true
 		return
 	}
 
