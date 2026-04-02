@@ -192,7 +192,11 @@ func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
 //
 // Pattern: collect expired under global lock → ConvertToDetached outside lock → nullify under lock.
 func (d *MemDAG) doGC() (detached, deleted int) {
-	expired := make([]*vertex.WrappedTx, 0)
+	type expiredEntry struct {
+		vid    *vertex.WrappedTx
+		reason string // "wallclock_ttl", "ledger_ttl", "confirmed_or_orphan"
+	}
+	expired := make([]expiredEntry, 0)
 	var deletedIDs []base.TransactionID
 	synced := d.IsSynced()
 
@@ -212,6 +216,7 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 
 		for txid, rec := range d.vertices {
 			if rec.Pointer.Value() == nil {
+				d.LogTx(time.Now(), "GC: map entry DELETED (weak ptr nil)", txid)
 				d.deleteFromMapNoLock(txid)
 				deletedIDs = append(deletedIDs, txid)
 				deleted++
@@ -225,15 +230,19 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			// criterion 1: TTL
 			wallClockExpired := synced && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
 			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
-			if wallClockExpired || ledgerTimeExpired {
-				expired = append(expired, rec.WrappedTx)
+			if wallClockExpired {
+				expired = append(expired, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
+				continue
+			}
+			if ledgerTimeExpired {
+				expired = append(expired, expiredEntry{rec.WrappedTx, "ledger_ttl"})
 				continue
 			}
 
 			// criteria 2+3: confirmed or orphaned — old enough and not in any recent branch set
 			if confirmThresholdSlot > 0 && txid.Slot() < confirmThresholdSlot {
 				if !d.isInAnyBranchSetNoLock(rec.WrappedTx) {
-					expired = append(expired, rec.WrappedTx)
+					expired = append(expired, expiredEntry{rec.WrappedTx, "confirmed_or_orphan"})
 				}
 			}
 		}
@@ -244,18 +253,20 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 	if len(expired) == 0 {
 		return
 	}
-	for _, vid := range expired {
-		vid.ConvertToDetached()
+	for _, e := range expired {
+		e.vid.ConvertToDetached()
 	}
 	d.WithGlobalWriteLock(func() {
-		for _, vid := range expired {
-			txid := vid.ID()
+		for _, e := range expired {
+			txid := e.vid.ID()
 			if rec, found := d.vertices[txid]; found {
 				if rec.Value() == nil {
+					d.LogTx(time.Now(), fmt.Sprintf("GC: DETACHED+DELETED reason=%s", e.reason), txid)
 					d.deleteFromMapNoLock(txid)
 					deletedIDs = append(deletedIDs, txid)
 					deleted++
 				} else {
+					d.LogTx(time.Now(), fmt.Sprintf("GC: DETACHED reason=%s", e.reason), txid)
 					if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
 						d.DecCounter("nonseq")
 					}

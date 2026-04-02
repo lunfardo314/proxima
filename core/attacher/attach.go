@@ -131,7 +131,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	vid.Unwrap(vertex.UnwrapOptions{
 		DetachedVertex: func(v *vertex.DetachedVertex) {
 			vid.ReattachDetachedVertexNoLock(tx)
-			env.Tracef(TraceTagAttach, "reattached detached vertex: %s", tx.IDShortString)
+			env.LogTx(time.Now(), "REATTACH from DetachedVertex", txid)
 		},
 	})
 
@@ -171,6 +171,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 
 		// mark the vertex to prevent repetitive attachment
 		vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
+		env.LogTx(time.Now(), fmt.Sprintf("ATTACH START seq=%v", txid.IsSequencerTransaction()), txid)
 
 		// virtual tx is converted into full vertex with the full transaction
 		env.Tracef(TraceTagAttach, ">>>>>>>>>>>>>>>>>>>>>>> ConvertVirtualTxToVertexNoLock: %s", tx.IDShortString())

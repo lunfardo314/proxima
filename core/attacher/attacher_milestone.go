@@ -284,6 +284,7 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 			DetachedVertex: func(v *vertex.DetachedVertex) {
 				err := fmt.Errorf("solidifyBaseline: abandon current attacher %s: %w", a.vid.StringNoLock(), errDetachedInAttacher)
 				a.Log().Error(err.Error())
+				a.LogTx(time.Now(), fmt.Sprintf("attacher %s: own vertex DETACHED during solidifyBaseline", a.name), a.vid.ID())
 				a.setError(err)
 				ok = false
 			},
@@ -333,6 +334,7 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 			DetachedVertex: func(v *vertex.DetachedVertex) {
 				err := fmt.Errorf("solidifyPastCone: abandon current attacher %s: %w", a.vid.StringNoLock(), errDetachedInAttacher)
 				a.Log().Error(err.Error())
+				a.LogTx(time.Now(), fmt.Sprintf("attacher %s: own vertex DETACHED during solidifyPastCone", a.name), a.vid.ID())
 				a.setError(err)
 				ok = false
 			},

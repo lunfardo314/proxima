@@ -187,6 +187,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	// AttachTransaction calls AttachTxID which returns the same vid, then
 	// vid.UnwrapVirtualTx tries to Lock vid again — deadlock on non-reentrant RWMutex.
 	if detachedTx != nil {
+		a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (non-branch path)", a.name), vid.ID())
 		AttachTransaction(detachedTx, a,
 			WithInvokedBy(a.name),
 			WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
@@ -244,6 +245,7 @@ func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
 			},
 		})
 		if detachedTx != nil {
+			a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (solid path)", a.name), vid.ID())
 			AttachTransaction(detachedTx, a,
 				WithInvokedBy(a.name),
 				WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
