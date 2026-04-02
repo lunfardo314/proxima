@@ -122,15 +122,68 @@ This is a **transaction building bug** — the sequencer proposer selected the w
 The network is stuck because all sequencers use [170440|0br]01d301b79dbe.. (boot's buggy branch)
 as baseline, and the conflict is embedded in that baseline's past cone.
 
-### Hypothesis
+### Corrected analysis (from txstore inspection)
 
-The proposer may have confused chain predecessors due to:
-1. **Detached vertex**: if loc0's branch was detached by GC and reattached, the predecessor
-   lookup might return wrong data
-2. **Stale baseline**: the proposer used an outdated view of the chain where boot's predecessor
-   appeared to be loc0's branch
-3. **Race condition in IncrementalAttacher**: the proposer built a branch while the
-   predecessor was being modified concurrently
+**The transactions are valid.** Boot's branch correctly consumes:
+- Input #0: `[170439|48sq]00a85c577ec7..[0]` — boot's own chain predecessor (chain ID $/9d2c6f..)
+- Input #1: `[170439|0br]018563ce2b62..[1]` — the stem output of slot 170439's branch
+
+The stem is shared — all branches at slot S consume the same stem from slot S-1. Both boot's
+and loc0's branch at slot 170440 correctly consume the stem from [170439|0br]. This is by design.
+
+**The bug is in the past cone construction**, not in transaction building. The milestone
+attacher at `[170444|12sq]` has baseline `[170440|0br]01d301b79dbe..` (boot's branch). Its
+past cone includes BOTH branches from slot 170440:
+- boot's: `[170440|0br]01d301b79dbe..` (correct — it's the baseline)
+- loc0's: `[170440|0br]01cd776f40a3..` (should NOT be there — competing fork)
+
+Both consume the stem from [170439|0br], creating the conflict. In a correct past cone,
+only ONE branch per slot should be included — the baseline branch.
+
+### Root cause hypothesis
+
+The attacher's past cone includes loc0's branch because a non-seq transaction or seq tx
+in the past cone has loc0's branch in its own inputs/endorsements. When the attacher walks
+the past cone, it pulls in both branches. This could happen if:
+
+1. **A non-seq tx was included in BOTH branches' past cones** — common under high load where
+   branches have overlapping tag-along inputs. The attacher follows the non-seq tx's input
+   references and pulls in loc0's branch alongside boot's.
+
+2. **The IncrementalAttacher added a tag-along input that was already consumed in loc0's
+   branch** — creating a cross-reference between the two forks.
+
+3. **Related to GC/pruning**: The conflict point is at slot 170439, the failing tx at slot
+   170444 — 5 slots gap. With `branchPruneDepth=2`, the branch vertex could have been
+   detached by GC when healthySlot reached 170441. Key hypothesis:
+   
+   `ConvertToDetached` clears Inputs/Endorsements but NOT the consumer map
+   (`consumed map[byte]set.Set[*WrappedTx]`). If the branch was detached and then
+   consumers from a different fork context were added (via `AddConsumer` which uses
+   `mutexDescendants`, not `mutex`), the consumer map would accumulate consumers from
+   BOTH forks. When the attacher later checks conflicts, it sees consumers from both
+   forks on the same output → conflict.
+   
+   To verify: check if `[170439|0br]018563ce2b62..` was detached by GC during the window
+   between its creation (15:14:39) and the conflict (15:15:31). That's 52 seconds — with
+   branchPruneDepth=2 (~20 seconds), this is well within the pruning window.
+   
+   **Update**: Verified that `AddConsumer` uses `mutexDescendants` (not cleared by detach)
+   and the `consumed` map survives detachment. HOWEVER, this is NOT the direct cause —
+   both branches at slot 170440 ALWAYS consume the same stem from 170439 (expected behavior).
+   The conflict check should handle same-slot branches as different forks.
+   
+   **The real issue**: The past cone includes BOTH forks because loc0's chain predecessor
+   path goes through loc0's branch at 170440, while the baseline is boot's branch at 170440.
+   The attacher should not build a tx where the chain path and baseline are on different forks.
+   
+   The GC/pruning connection: if the branch vertex was detached and its internal state
+   degraded (e.g., lost fork information), the attacher may have lost the ability to
+   distinguish which fork the chain predecessor belongs to, allowing it to mix forks.
+   
+   Heavy GC activity (93-115 detachments per 5-second cycle) was occurring at exactly
+   the time of the conflict (15:14:30-15:14:40). The branch from slot 170439 was 5 slots
+   behind by the time the conflict was detected — well within the pruning window.
 
 ### Affected nodes
 
