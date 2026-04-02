@@ -219,10 +219,12 @@ func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
 	})
 
 	if needFallback {
-		// vertex was detached or virtual after our solid check — log, poke, and return ok=true
-		// so the attacher doesn't treat this as a fatal error. It will revisit on the next poke.
+		// vertex was detached or virtual after our solid check — log and return ok=true
+		// so the attacher doesn't treat this as a fatal error.
 		a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (solid path), NOT reattaching", a.name), vid.ID())
-		a.pokeMe(vid)
+		if a.pokeMe != nil {
+			a.pokeMe(vid)
+		}
 		ok = true
 		return
 	}
