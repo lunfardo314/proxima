@@ -79,3 +79,68 @@ Just before the conflict: `context deadline exceeded` at 13:07:36.661.
 
 Full past cone dump is in the seq1 log at 04-02 13:07:36.911.
 The seq1 log file is at: `83.229.84.197:/home/nodes/seq1/proxima.log`
+
+---
+
+## Second incident: systemic conflict 2026-04-02 15:14-17:16
+
+### Summary
+
+All 4 sequencer nodes produced conflicting transactions (23-59 per node). All point to the
+SAME conflict. The network got stuck — every seq tx after the initial conflict failed.
+
+### The conflict
+
+Branch `[170439|0br]018563ce2b62..` (**loc0's** branch, slot 170439).
+Output 1 (sequencer chain output) consumed by TWO branches at slot 170440:
+- `[170440|0br]01cd776f40a3..` — **loc0's** branch (correct — consumes own predecessor)
+- `[170440|0br]01d301b79dbe..` — **boot's** branch (WRONG — consumes loc0's chain output)
+
+### Root cause
+
+Boot's branch at slot 170440 consumed loc0's sequencer chain output instead of its own.
+This is a **transaction building bug** — the sequencer proposer selected the wrong predecessor.
+
+### Evidence
+
+```
+#141 S+ [170439|0br]018563ce2b62.. consumers: {
+    0: {[170439|12sq]00f4e4886704..},   -- output 0 (stem) consumed by loc0's seq tx
+    1: {[170440|0br]01d301b79dbe..,     -- output 1 (chain) consumed by boot's branch (WRONG)
+        [170440|0br]01cd776f40a3..}     -- output 1 (chain) consumed by loc0's branch (correct)
+}
+```
+
+### Timeline
+
+- 15:14:39 — loc0 submits branch [170439|0br]018563ce2b62.. (healthy, 100% coverage)
+- 15:14:49 — loc0 submits branch [170440|0br]01cd776f40a3.. (healthy, consumes own predecessor correctly)
+- 15:15:00 — boot's branch [170440|0br]01d301b79dbe.. committed (consumes loc0's chain output — BUG)
+- 15:15:31 — first conflict detected on loc0 during seq tx attachment
+- 15:15:31+ — ALL subsequent seq txs from ALL sequencers fail with same conflict
+
+The network is stuck because all sequencers use [170440|0br]01d301b79dbe.. (boot's buggy branch)
+as baseline, and the conflict is embedded in that baseline's past cone.
+
+### Hypothesis
+
+The proposer may have confused chain predecessors due to:
+1. **Detached vertex**: if loc0's branch was detached by GC and reattached, the predecessor
+   lookup might return wrong data
+2. **Stale baseline**: the proposer used an outdated view of the chain where boot's predecessor
+   appeared to be loc0's branch
+3. **Race condition in IncrementalAttacher**: the proposer built a branch while the
+   predecessor was being modified concurrently
+
+### Affected nodes
+
+- boot: 23 conflicts
+- loc0: 47 conflicts
+- seq1: 55 conflicts
+- loc1: 59 conflicts
+
+All conflicts reference the same baseline and same conflicting output.
+
+### Logs
+
+Log files are on respective machines at `/home/nodes/<name>/proxima.log`.
