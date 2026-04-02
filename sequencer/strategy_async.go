@@ -93,7 +93,7 @@ func (a *asyncStrategy) submit(tx *transaction.Transaction, meta *txmetadata.Tra
 	seq.lastSubmittedTs = tx.Timestamp()
 
 	if targetTs.IsSlotBoundary() {
-		seq.Log().Infof("SLOT STATS: %s", seq.slotData.Lines().Join(", "))
+		seq.Log().Infof("SLOT STATS: %s, pressure: %d/%d", seq.slotData.Lines().Join(", "), seq.pressure, maxPressure)
 	}
 }
 

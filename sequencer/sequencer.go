@@ -71,6 +71,10 @@ type (
 		wontSubmitBranchID   base.TransactionID
 		metrics              *sequencerMetrics
 		skeletonFactory      *factory.Factory
+		// pressure tracks sequencer's ability to keep up. Incremented on deadline exceeded
+		// or no proposals, decremented on success. Higher pressure = more aggressive throttling
+		// of tag-along inputs and non-essential milestones.
+		pressure int
 	}
 
 	outputsWithTime struct {
@@ -535,17 +539,19 @@ func (seq *Sequencer) doSequencerStep() bool {
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
 		seq.slotData.NotGoodEnough()
+		seq.adjustPressure(false)
 		seq.Tracef(TraceTagTarget, "'not good enough' for the target logical time %s in %v",
 			targetTs, time.Since(timerStart))
 		return true
 	case errors.Is(err, task.ErrNoProposals):
 		seq.slotData.NoProposals()
+		seq.adjustPressure(false)
 		seq.Tracef(TraceTagTarget, "'no proposals' for the target logical time %s in %v",
 			targetTs, time.Since(timerStart))
 		return true
 	case err != nil:
-		seq.Log().Warnf("FAILED to generate transaction for target %s. Now is %s. Reason: %v",
-			targetTs, ledger.TimeNow(), err)
+		seq.adjustPressure(false)
+		seq.Log().Warnf("%v (pressure: %d/%d)", err, seq.pressure, maxPressure)
 		return true
 	}
 	util.Assertf(msTx != nil, "msTx != nil")
@@ -556,6 +562,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	meta.TxBytesReceived = util.Ref(time.Now())
 
 	seq.strategy.submit(msTx, meta, targetTs)
+	seq.adjustPressure(true)
 
 	if targetTs.IsSlotBoundary() {
 		seq.slotData = nil
@@ -565,6 +572,45 @@ func (seq *Sequencer) doSequencerStep() bool {
 }
 
 const disconnectTolerance = 4 * time.Second
+
+const (
+	// maxPressure is the maximum pressure level. At max pressure the sequencer
+	// produces only branches with zero tag-along inputs.
+	maxPressure = 5
+	// pressureDecay: on each successful milestone, pressure decreases by this amount.
+	pressureDecay = 2
+)
+
+// adjustPressure updates pressure based on the result of generateMilestoneForTarget.
+// success=true means a milestone was produced; success=false means deadline exceeded or no proposals.
+func (seq *Sequencer) adjustPressure(success bool) {
+	if success {
+		seq.pressure -= pressureDecay
+		if seq.pressure < 0 {
+			seq.pressure = 0
+		}
+	} else {
+		seq.pressure++
+		if seq.pressure > maxPressure {
+			seq.pressure = maxPressure
+		}
+	}
+}
+
+// TagAlongBudgetNumerator returns the tag-along budget numerator scaled by pressure.
+// At pressure 0: full budget (2/3 of consensus). At maxPressure: 0 (no tag-alongs).
+// The denominator is always 3 (from tagAlongBudgetFraction).
+func (seq *Sequencer) TagAlongBudgetNumerator() int {
+	// full budget numerator is 2 (from Fraction23 = 2/3)
+	switch {
+	case seq.pressure >= maxPressure:
+		return 0 // no tag-alongs
+	case seq.pressure >= 3:
+		return 1 // 1/3 of consensus budget
+	default:
+		return 2 // full 2/3 of consensus budget
+	}
+}
 
 // decideSubmitMilestone checks health and connectivity. Used by both sync and async strategies.
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {

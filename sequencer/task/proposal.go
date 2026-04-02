@@ -134,9 +134,11 @@ func (p *proposal) insertTagAlongInputs() {
 			if cmd, valid1, err1 = p.TxBuilderCommandFromOutput(*o.o); err1 != nil {
 				return
 			}
-			// check if the attachment cost after the command will fit the tag-along sub-budget
+			// check if the attachment cost after the command will fit the tag-along sub-budget.
+			// Budget numerator is scaled by sequencer pressure (2=full, 1=reduced, 0=none).
 			attachmentCost := p.PastConeAttachmentCost() + p.SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()
-			tagAlongBudget := tagAlongBudgetFraction.Numerator * p.Library.AttachmentCostBudget / tagAlongBudgetFraction.Denominator
+			budgetNumerator := p.TagAlongBudgetNumerator()
+			tagAlongBudget := budgetNumerator * p.Library.AttachmentCostBudget / tagAlongBudgetFraction.Denominator
 			if attachmentCost > tagAlongBudget {
 				return true, fmt.Errorf("tag-along budget exceeded")
 			}
