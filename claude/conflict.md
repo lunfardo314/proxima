@@ -287,6 +287,31 @@ in the proposer.
 fork while the baseline is on a winning fork.** The `CheckConflicts` runs too late (after
 the tx is fully built) and catches it as an error instead of preventing it.
 
+### Root cause traced to bootstrapOwnMilestoneOutput
+
+When the sequencer's own milestones are evicted from the tippool (40s inactivity TTL),
+`OwnLatestMilestoneOutput` falls through to `bootstrapOwnMilestoneOutput` (sequencer.go:723).
+
+This function queries the LRB state for the chain tip: `rdr.GetChainOutputWithID(seq.SequencerID())`.
+The committed state returns the chain output from the LAST time the sequencer's branch was in
+the LRB lineage — which could be many slots ago on a DIFFERENT fork.
+
+Example: sequencer's branch was last committed at slot 170736. Since then, other sequencers
+won the coverage competition (slots 170737-170742). The LRB at 170742 contains the chain tip
+from 170736. The sequencer picks it up and tries to extend — but that chain tip is on a
+different fork lineage than the current LRB.
+
+**Fix**: After finding the chain output from the state, verify that the chain output's
+transaction is on the same lineage as the LRB. Use `branchesCompatible()` or
+`BranchKnowsTransaction()` to check. If incompatible, the sequencer should NOT extend
+from that chain output — it should wait for the network to include its chain output in a
+branch on the current LRB lineage, or explicitly create a new chain transition that bridges
+to the current fork.
+
+This is fundamentally a PROTOCOL-LEVEL issue exposed by aggressive pruning: under heavy load,
+sequencer branches lose the coverage competition, the tippool evicts stale milestones, and the
+bootstrap path picks up a chain output from an incompatible fork.
+
 ### Affected nodes
 
 - boot: 23 conflicts
