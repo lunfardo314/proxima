@@ -87,7 +87,9 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 func (a *attacher) pullFromPeers(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx, repeatPullAfter time.Duration) {
 	// notify poker to poke add this attacher to notification list of the dependency
-	a.pokeMe(deptVID)
+	if a.pokeMe != nil {
+		a.pokeMe(deptVID)
+	}
 	// add transaction to the wanted/expected list in the input queue
 	a.AddPulledTransaction(deptVID.ID())
 	// do not pullFromPeers is node is not connected to any peer longer than 2 pullFromPeers repeat periods

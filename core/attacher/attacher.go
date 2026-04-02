@@ -187,7 +187,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 
 	if defined {
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
-	} else {
+	} else if a.pokeMe != nil {
 		a.pokeMe(vid)
 	}
 	return
@@ -236,7 +236,7 @@ func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
 
 	if defined {
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
-	} else {
+	} else if a.pokeMe != nil {
 		a.pokeMe(vid)
 	}
 	return
