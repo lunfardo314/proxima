@@ -239,8 +239,15 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 				continue
 			}
 
-			// criteria 2+3: confirmed or orphaned — old enough and not in any recent branch set
-			if confirmThresholdSlot > 0 && txid.Slot() < confirmThresholdSlot {
+			// criteria 2+3: confirmed or orphaned — old enough by BOTH ledger time and wall clock,
+			// and not in any recent branch set.
+			// Ledger time: vertex's tx slot is old enough behind the healthy branch.
+			// Wall clock: vertex has been in the memDAG long enough (using SlotWhenAdded).
+			// Both must hold — protects vertices freshly pulled by forward-sync that have
+			// ancient ledger slots but were just added to the memDAG.
+			ledgerOldEnough := confirmThresholdSlot > 0 && txid.Slot() < confirmThresholdSlot
+			wallClockOldEnough := slotNow > branchPruneDepth && rec.WrappedTx.SlotWhenAdded+branchPruneDepth < slotNow
+			if ledgerOldEnough && wallClockOldEnough {
 				if !d.isInAnyBranchSetNoLock(rec.WrappedTx) {
 					expired = append(expired, expiredEntry{rec.WrappedTx, "confirmed_or_orphan"})
 				}
