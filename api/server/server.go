@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,8 +27,7 @@ import (
 
 type (
 	environment interface {
-		global.Logging
-		global.Metrics
+		global.NodeGlobal
 		GetNodeInfo() *global.NodeInfo
 		GetSyncInfo() *api.SyncInfo
 		GetPeersInfo() *api.PeersInfo
@@ -1191,8 +1191,19 @@ func Run(addr string, env environment) {
 	srv.registerHandlers()
 	srv.registerMetrics()
 
+	// graceful shutdown: stop accepting new connections when global context is cancelled,
+	// preventing "database is closed or unavailable" panics during shutdown
+	go func() {
+		<-env.Ctx().Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
 	err := srv.ListenAndServe()
-	util.AssertNoError(err)
+	if err != nil && err != http.ErrServerClosed {
+		env.Log().Errorf("API server error: %v", err)
+	}
 }
 
 func (srv *server) registerMetrics() {
