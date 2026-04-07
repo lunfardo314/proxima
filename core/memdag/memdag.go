@@ -226,18 +226,10 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			wallClockExpired := synced && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
 			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
 			if wallClockExpired {
-				if txid.IsBranchTransaction() {
-					d.Log().Infof("[GC] candidate BRANCH %s reason=wallclock_ttl (slotNow=%d, addedAt=%d, diff=%d, latestBranch=%d, healthy=%d)",
-						txid.StringShort(), slotNow, rec.WrappedTx.SlotWhenAdded, slotNow-rec.WrappedTx.SlotWhenAdded, latestBranch, healthySlot)
-				}
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
 				continue
 			}
 			if ledgerTimeExpired {
-				if txid.IsBranchTransaction() {
-					d.Log().Infof("[GC] candidate BRANCH %s reason=ledger_ttl (txSlot=%d, latestBranch=%d, diff=%d, addedAt=%d)",
-						txid.StringShort(), txid.Slot(), latestBranch, latestBranch-txid.Slot(), rec.WrappedTx.SlotWhenAdded)
-				}
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "ledger_ttl"})
 				continue
 			}
@@ -246,10 +238,6 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			// slots behind the LRB. Wall-clock age check protects forward-sync vertices.
 			wallClockOldEnough := slotNow > branchPruneDepth && rec.WrappedTx.SlotWhenAdded+branchPruneDepth < slotNow
 			if wallClockOldEnough && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) {
-				if txid.IsBranchTransaction() {
-					d.Log().Infof("[GC] candidate BRANCH %s reason=confirmed_deep (txSlot=%d, addedAt=%d, healthy=%d)",
-						txid.StringShort(), txid.Slot(), rec.WrappedTx.SlotWhenAdded, healthySlot)
-				}
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "confirmed_deep"})
 			}
 		}
