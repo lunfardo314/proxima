@@ -196,8 +196,10 @@ func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
 func (d *MemDAG) doGC() (detached, deleted int) {
 	type expiredEntry struct {
 		vid    *vertex.WrappedTx
-		reason string // "wallclock_ttl", "ledger_ttl", "confirmed_or_orphan"
+		reason string // "wallclock_ttl", "ledger_ttl", "confirmed_deep"
 	}
+	// Phase 1: collect candidates under global lock (no external lock calls here)
+	candidates := make([]expiredEntry, 0)
 	expired := make([]expiredEntry, 0)
 	var deletedIDs []base.TransactionID
 	synced := d.IsSynced()
@@ -223,26 +225,34 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			// criterion 1: TTL — wall-clock or ledger-time expiry
 			wallClockExpired := synced && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
 			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
-			if wallClockExpired && !d.IsVertexReferencedBySequencer(rec.WrappedTx) {
-				expired = append(expired, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
+			if wallClockExpired {
+				candidates = append(candidates, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
 				continue
 			}
-			if ledgerTimeExpired && !d.IsVertexReferencedBySequencer(rec.WrappedTx) {
-				expired = append(expired, expiredEntry{rec.WrappedTx, "ledger_ttl"})
+			if ledgerTimeExpired {
+				candidates = append(candidates, expiredEntry{rec.WrappedTx, "ledger_ttl"})
 				continue
 			}
 
 			// criterion 2: confirmed deep — vertex is in a branch set that is branchPruneDepth
 			// slots behind the LRB. Wall-clock age check protects forward-sync vertices.
 			wallClockOldEnough := slotNow > branchPruneDepth && rec.WrappedTx.SlotWhenAdded+branchPruneDepth < slotNow
-			if wallClockOldEnough && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) && !d.IsVertexReferencedBySequencer(rec.WrappedTx) {
-				expired = append(expired, expiredEntry{rec.WrappedTx, "confirmed_deep"})
+			if wallClockOldEnough && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) {
+				candidates = append(candidates, expiredEntry{rec.WrappedTx, "confirmed_deep"})
 			}
 		}
 
 		// clean up branchVertices after pruning check (so deep sets are available for isConfirmedDeepNoLock)
 		d.cleanupBranchVerticesNoLock()
 	})
+
+	// Phase 2: filter candidates by sequencer references OUTSIDE the global lock
+	// (IsVertexReferencedBySequencer takes sequencer-internal locks)
+	for _, c := range candidates {
+		if !d.IsVertexReferencedBySequencer(c.vid) {
+			expired = append(expired, c)
+		}
+	}
 	d.postDeleteEvents(deletedIDs)
 	deletedIDs = deletedIDs[:0]
 
