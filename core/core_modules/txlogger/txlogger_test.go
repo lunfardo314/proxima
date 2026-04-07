@@ -69,6 +69,7 @@ func (m *mockEnvironment) MetricsRegistry() *prometheus.Registry                
 func (m *mockEnvironment) MemLimitBytes() uint64                                                    { return 0 }
 func (m *mockEnvironment) MemoryPressureGC()                                                        {}
 func (m *mockEnvironment) MemoryStressLevel() int                                                   { return 0 }
+func (m *mockEnvironment) GracefulShutdown(reason string)                                           { m.cancel() }
 
 func (m *mockEnvironment) MarkWorkProcessStarted(name string) {
 	m.processMu.Lock()

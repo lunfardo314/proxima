@@ -128,7 +128,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	// the attacher will treat it as unresolved and pull from txstore
 	vid.RUnwrap(vertex.UnwrapOptions{
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			env.LogTx(time.Now(), fmt.Sprintf("AttachTransaction: vid is DetachedVertex, NOT reattaching. seq=%v", txid.IsSequencerTransaction()), txid)
+			env.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in AttachTransaction", txid.StringShort()))
 		},
 	})
 

@@ -102,7 +102,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 			ret.finals.numOutputs = v.NumProducedOutputs()
 		},
 		DetachedVertex: func(_ *vertex.DetachedVertex) {
-			env.Log().Fatalf("unexpected detached Tx: %s", vid.IDShortString())
+			env.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in newMilestoneAttacher", vid.IDShortString()))
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			env.Log().Fatalf("unexpected virtual Tx: %s", vid.IDShortString())
@@ -282,10 +282,8 @@ func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 				}
 			},
 			DetachedVertex: func(v *vertex.DetachedVertex) {
-				err := fmt.Errorf("solidifyBaseline: abandon current attacher %s: %w", a.vid.StringNoLock(), errDetachedInAttacher)
-				a.Log().Error(err.Error())
-				a.LogTx(time.Now(), fmt.Sprintf("attacher %s: own vertex DETACHED during solidifyBaseline", a.name), a.vid.ID())
-				a.setError(err)
+				a.setError(fmt.Errorf("solidifyBaseline: %w in attacher %s", errDetachedInAttacher, a.name))
+				a.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in solidifyBaseline of attacher %s", a.vid.IDShortString(), a.name))
 				ok = false
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {
@@ -332,10 +330,8 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 				}
 			},
 			DetachedVertex: func(v *vertex.DetachedVertex) {
-				err := fmt.Errorf("solidifyPastCone: abandon current attacher %s: %w", a.vid.StringNoLock(), errDetachedInAttacher)
-				a.Log().Error(err.Error())
-				a.LogTx(time.Now(), fmt.Sprintf("attacher %s: own vertex DETACHED during solidifyPastCone", a.name), a.vid.ID())
-				a.setError(err)
+				a.setError(fmt.Errorf("solidifyPastCone: %w in attacher %s", errDetachedInAttacher, a.name))
+				a.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in solidifyPastCone of attacher %s", a.vid.IDShortString(), a.name))
 				ok = false
 			},
 			VirtualTx: func(_ *vertex.VirtualTransaction) {

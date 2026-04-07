@@ -253,6 +253,19 @@ func (b *TagAlongBacklog) NumOutputsInBuffer() int {
 	return len(b.outputs)
 }
 
+// IsVertexReferenced returns true if any output in the backlog references the given vertex.
+func (b *TagAlongBacklog) IsVertexReferenced(vid *vertex.WrappedTx) bool {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
+
+	for wOut := range b.outputs {
+		if wOut.VID == vid {
+			return true
+		}
+	}
+	return false
+}
+
 func (b *TagAlongBacklog) getStatsAndReset() (ret Stats) {
 	b.mutex.RLock()
 	defer b.mutex.RUnlock()
@@ -294,7 +307,7 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	}
 	b.mutex.RUnlock()
 
-	// check LockName outside the lock
+	// check LockName and TTL outside the lock
 	var toDelete []vertex.WrappedOutput
 	for _, c := range snapshot {
 		n := c.wOut.LockName()
@@ -304,6 +317,24 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 			}
 		} else {
 			b.Log().Fatalf("unexpected type of the lock in backlog: '%s'", n)
+		}
+	}
+
+	// depth-based cleanup: remove outputs consumed in the LRB state.
+	// Only check outputs old enough (slot + backlogPurgeDepth <= lrb slot).
+	const backlogPurgeDepth uint32 = 2
+	lrb := b.Branches().FindLatestReliableBranch()
+	if lrb != nil {
+		lrbSlot := lrb.Stem.ID.Slot()
+		rdr := multistate.MustNewSugaredReadableState(b.StateStore(), lrb.Root, 0)
+		for _, c := range snapshot {
+			if c.wOut.Slot()+backlogPurgeDepth > lrbSlot {
+				continue
+			}
+			oid := c.wOut.DecodeID()
+			if !rdr.HasUTXO(oid) {
+				toDelete = append(toDelete, c.wOut)
+			}
 		}
 	}
 

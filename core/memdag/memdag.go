@@ -27,6 +27,9 @@ type (
 		PostEventTxDeleted(txid base.TransactionID)
 		IsSynced() bool
 		SnapshotBranchID() base.TransactionID
+		// IsVertexReferencedBySequencer returns true if the vertex is still referenced by
+		// the sequencer's tippool, backlog, or own milestones. Returns false if no sequencer is running.
+		IsVertexReferencedBySequencer(vid *vertex.WrappedTx) bool
 	}
 
 	_vertexRecord struct {
@@ -115,10 +118,9 @@ const (
 	// gcLoopPeriod: how often the full GC pass runs (unless triggered earlier by RequestPrune).
 	gcLoopPeriod = 5 * time.Second
 
-	// branchPruneDepth: branches this many slots behind the LRB have their vertex sets
-	// cleaned up. Vertices confirmed in those branches and not referenced by newer branches
-	// become eligible for detachment.
-	branchPruneDepth uint32 = 2
+	// branchPruneDepth: vertices confirmed in branches this many slots behind the LRB
+	// become eligible for detachment (if not referenced by sequencer).
+	branchPruneDepth uint32 = 3
 	// maxBranchVertexRecords: maximum entries in the branchVertices map.
 	// If exceeded, force a cleanup regardless of LRB position.
 	maxBranchVertexRecords = 20
@@ -201,18 +203,9 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 	synced := d.IsSynced()
 
 	d.WithGlobalWriteLock(func() {
-		// clean up branchVertices: remove deep branches and rootless forks
-		d.cleanupBranchVerticesNoLock()
-
 		slotNow := ledger.TimeNow().Slot
 		latestBranch := d.latestBranchSlot
 		healthySlot := d.latestHealthyBranchSlot
-
-		// threshold for LRB-depth/orphan criteria: only check vertices older than this slot
-		var confirmThresholdSlot uint32
-		if healthySlot > branchPruneDepth {
-			confirmThresholdSlot = healthySlot - branchPruneDepth
-		}
 
 		for txid, rec := range d.vertices {
 			if rec.Pointer.Value() == nil {
@@ -227,32 +220,28 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 				continue
 			}
 
-			// criterion 1: TTL
+			// criterion 1: TTL — wall-clock or ledger-time expiry
 			wallClockExpired := synced && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
 			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
-			if wallClockExpired {
+			if wallClockExpired && !d.IsVertexReferencedBySequencer(rec.WrappedTx) {
 				expired = append(expired, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
 				continue
 			}
-			if ledgerTimeExpired {
+			if ledgerTimeExpired && !d.IsVertexReferencedBySequencer(rec.WrappedTx) {
 				expired = append(expired, expiredEntry{rec.WrappedTx, "ledger_ttl"})
 				continue
 			}
 
-			// criteria 2+3: confirmed or orphaned — old enough by BOTH ledger time and wall clock,
-			// and not in any recent branch set.
-			// Ledger time: vertex's tx slot is old enough behind the healthy branch.
-			// Wall clock: vertex has been in the memDAG long enough (using SlotWhenAdded).
-			// Both must hold — protects vertices freshly pulled by forward-sync that have
-			// ancient ledger slots but were just added to the memDAG.
-			ledgerOldEnough := confirmThresholdSlot > 0 && txid.Slot() < confirmThresholdSlot
+			// criterion 2: confirmed deep — vertex is in a branch set that is branchPruneDepth
+			// slots behind the LRB. Wall-clock age check protects forward-sync vertices.
 			wallClockOldEnough := slotNow > branchPruneDepth && rec.WrappedTx.SlotWhenAdded+branchPruneDepth < slotNow
-			if ledgerOldEnough && wallClockOldEnough {
-				if !d.isInAnyBranchSetNoLock(rec.WrappedTx) {
-					expired = append(expired, expiredEntry{rec.WrappedTx, "confirmed_or_orphan"})
-				}
+			if wallClockOldEnough && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) && !d.IsVertexReferencedBySequencer(rec.WrappedTx) {
+				expired = append(expired, expiredEntry{rec.WrappedTx, "confirmed_deep"})
 			}
 		}
+
+		// clean up branchVertices after pruning check (so deep sets are available for isConfirmedDeepNoLock)
+		d.cleanupBranchVerticesNoLock()
 	})
 	d.postDeleteEvents(deletedIDs)
 	deletedIDs = deletedIDs[:0]
@@ -361,6 +350,19 @@ func (d *MemDAG) cleanupBranchVerticesNoLock() {
 func (d *MemDAG) isInAnyBranchSetNoLock(vid *vertex.WrappedTx) bool {
 	for _, rec := range d.branchVertices {
 		if rec.vertices.Contains(vid) {
+			return true
+		}
+	}
+	return false
+}
+
+// isConfirmedDeepNoLock checks if a vertex is confirmed in a branch that is deep enough
+// behind the LRB (branchPruneDepth slots). Returns true if the vertex should be pruned
+// because it's confirmed and deep.
+// Caller must hold d.mutex.
+func (d *MemDAG) isConfirmedDeepNoLock(vid *vertex.WrappedTx, healthySlot uint32) bool {
+	for branchID, rec := range d.branchVertices {
+		if branchID.Slot()+branchPruneDepth <= healthySlot && rec.vertices.Contains(vid) {
 			return true
 		}
 	}

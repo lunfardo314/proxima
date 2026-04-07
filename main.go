@@ -28,7 +28,7 @@ func main() {
 	n := node.New()
 	go func() {
 		<-killChan
-		n.Stop()
+		n.GracefulShutdown("received SIGINT/SIGTERM")
 	}()
 
 	// initialize and start node

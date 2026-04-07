@@ -229,6 +229,19 @@ func (t *SequencerTips) NumSequencerTips() int {
 	return len(t.latestMilestones)
 }
 
+// IsVertexReferenced returns true if the vertex is one of the latest milestone tips.
+func (t *SequencerTips) IsVertexReferenced(vid *vertex.WrappedTx) bool {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+
+	for _, md := range t.latestMilestones {
+		if md.WrappedTx == vid {
+			return true
+		}
+	}
+	return false
+}
+
 const activityTTL = 40 * time.Second
 
 // purgeAndLog removes all transactions with baseline == nil, i.e. all non-branch sequencers which are virtualTx

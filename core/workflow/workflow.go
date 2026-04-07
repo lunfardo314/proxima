@@ -8,6 +8,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/core_modules/events"
 	"github.com/lunfardo314/proxima/core/core_modules/poker"
 	"github.com/lunfardo314/proxima/core/core_modules/pull_tx_server"
@@ -47,6 +48,9 @@ type (
 		EvidenceBranchInflationBonus(ib uint64)
 		GetLatestReliableBranch() (ret *multistate.BranchData)
 		CheckTxSenderConfig() (checkSeq, checkNonSeq bool)
+		// IsVertexReferencedBySequencer returns true if the vertex is still referenced by
+		// the sequencer's tippool, backlog, or own milestones. Returns false if no sequencer is running.
+		IsVertexReferencedBySequencer(vid *vertex.WrappedTx) bool
 	}
 
 	Workflow struct {

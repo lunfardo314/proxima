@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -83,6 +84,10 @@ func (d *workflowDummyEnvironment) GetLatestReliableBranch() (ret *multistate.Br
 
 func (d *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
 	return true, false
+}
+
+func (d *workflowDummyEnvironment) IsVertexReferencedBySequencer(_ *vertex.WrappedTx) bool {
+	return false
 }
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {

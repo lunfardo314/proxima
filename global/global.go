@@ -208,6 +208,13 @@ func (l *Global) Stop() {
 	})
 }
 
+// GracefulShutdown initiates orderly node shutdown with a prominently logged reason.
+// Callable from any context. Idempotent — delegates to Stop() which uses sync.Once.
+func (l *Global) GracefulShutdown(reason string) {
+	l.Log().Errorf(">>>>>> GRACEFUL SHUTDOWN: %s. Recommend restarting the node", reason)
+	l.Stop()
+}
+
 func (l *Global) IsShuttingDown() bool {
 	return l.isShuttingDown.Load()
 }

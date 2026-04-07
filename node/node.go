@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/easyfl/slicepool"
 	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
 	"github.com/lunfardo314/proxima/core/core_modules/txlogger"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -258,9 +259,7 @@ func (p *ProximaNode) initMemoryLimit() {
 	p.RepeatInBackground("memory_watchdog", 5*time.Second, func() bool {
 		stress := p.MemoryStressLevel()
 		if stress >= 100 {
-			p.Log().Errorf("[memory] stress %d%% (allocated >= limit %d MB), initiating graceful shutdown",
-				stress, limitMB)
-			p.Stop()
+			p.GracefulShutdown(fmt.Sprintf("memory stress %d%% (allocated >= limit %d MB)", stress, limitMB))
 			return false
 		}
 		if stress >= 80 {
@@ -440,6 +439,20 @@ func (p *ProximaNode) EvidenceBranchMutations(numMutations, numTxs int) {
 func (p *ProximaNode) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
 	// in tests it may be differently to avoid problems with reusing private keys
 	return true, true
+}
+
+// IsVertexReferencedBySequencer returns true if the vertex is referenced by the sequencer's
+// tippool, backlog, or own milestones. Returns false if no sequencer is running.
+func (p *ProximaNode) IsVertexReferencedBySequencer(vid *vertex.WrappedTx) bool {
+	if p.sequencer == nil {
+		return false
+	}
+	// check tippool (workflow-level)
+	if p.workflow.IsVertexReferencedInTippool(vid) {
+		return true
+	}
+	// check own milestones and backlog (sequencer-level)
+	return p.sequencer.IsVertexReferenced(vid)
 }
 
 // TxLogger returns the transaction logger module.

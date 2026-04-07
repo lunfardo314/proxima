@@ -118,6 +118,10 @@ type (
 	StartStop interface {
 		Ctx() context.Context // global context of the node. Canceling means stopping the node
 		Stop()
+		// GracefulShutdown initiates orderly node shutdown with a reason logged prominently.
+		// Callable from any context (detached vertex, signal handler, memory watchdog, etc.).
+		// Idempotent — safe to call multiple times from different goroutines.
+		GracefulShutdown(reason string)
 		IsShuttingDown() bool
 		ClockCatchUpWithLedgerTime(ts base.LedgerTime) bool
 		MarkWorkProcessStarted(name string)

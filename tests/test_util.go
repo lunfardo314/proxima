@@ -145,6 +145,10 @@ func (p *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq 
 	return false, true
 }
 
+func (p *workflowDummyEnvironment) IsVertexReferencedBySequencer(_ *vertex.WrappedTx) bool {
+	return false
+}
+
 // TxLog methods for api/server environment interface
 func (p *workflowDummyEnvironment) TxLogEnable(_ global.TxLogLevel) {}
 

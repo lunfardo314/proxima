@@ -185,10 +185,8 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 			}
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			// vertex was detached by GC — don't reattach (stale flags/coverage).
-			// The attacher will treat this as unresolved and poke/pull.
-			a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (non-branch path), NOT reattaching", a.name), vid.ID())
-			ok = true
+			a.setError(fmt.Errorf("attacher %s: detached vertex %s encountered during attachment", a.name, vid.IDShortString()))
+			a.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in attacher %s", vid.IDShortString(), a.name))
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			ok = true
@@ -223,8 +221,8 @@ func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
 			}
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			// vertex was detached after our solid check — fall back to write-lock path
-			needFallback = true
+			a.setError(fmt.Errorf("attacher %s: detached vertex %s encountered during attachment (solid path)", a.name, vid.IDShortString()))
+			a.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in attacher %s (solid path)", vid.IDShortString(), a.name))
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			// shouldn't happen for a validated vertex, but handle gracefully
@@ -233,9 +231,6 @@ func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
 	})
 
 	if needFallback {
-		// vertex was detached or virtual after our solid check — log and return ok=true
-		// so the attacher doesn't treat this as a fatal error.
-		a.LogTx(time.Now(), fmt.Sprintf("attacher %s: encountered DetachedVertex (solid path), NOT reattaching", a.name), vid.ID())
 		if a.pokeMe != nil {
 			a.pokeMe(vid)
 		}

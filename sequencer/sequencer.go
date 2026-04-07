@@ -790,3 +790,16 @@ func (seq *Sequencer) NumOutputsInBuffer() int {
 func (seq *Sequencer) NumMilestones() int {
 	return seq.NumSequencerTips()
 }
+
+// IsVertexReferenced returns true if the vertex is referenced by own milestones or backlog.
+func (seq *Sequencer) IsVertexReferenced(vid *vertex.WrappedTx) bool {
+	// check own milestones
+	seq.ownMilestonesMutex.RLock()
+	_, inOwnMilestones := seq.ownMilestones[vid]
+	seq.ownMilestonesMutex.RUnlock()
+	if inOwnMilestones {
+		return true
+	}
+	// check backlog
+	return seq.backlog.IsVertexReferenced(vid)
+}

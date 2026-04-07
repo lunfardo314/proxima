@@ -106,6 +106,11 @@ func (w *Workflow) IsSyncing() bool {
 	return w.syncModule.IsSyncing()
 }
 
+// IsVertexReferencedInTippool returns true if the vertex is one of the latest milestone tips.
+func (w *Workflow) IsVertexReferencedInTippool(vid *vertex.WrappedTx) bool {
+	return w.tippool.IsVertexReferenced(vid)
+}
+
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
 func (w *Workflow) LatestMilestonesDescending(filter ...func(seqID base.ChainID, vid *vertex.WrappedTx) bool) []*vertex.WrappedTx {
 	return w.tippool.LatestActiveMilestonesDescending(filter...)
