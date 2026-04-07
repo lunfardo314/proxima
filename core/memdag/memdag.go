@@ -186,7 +186,7 @@ func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
 // doGC is the unified pruning loop. Traverses all vertices and applies three expiration
 // criteria (any triggers detachment):
 //
-//  1. TTL: wall-clock TTL (only when synced) or ledger-time TTL (always active)
+//  1. TTL: wall-clock TTL (always active) or ledger-time TTL (always active)
 //  2. LRB-confirmed: vertex's slot is old enough AND vertex is NOT in any remaining
 //     branchVertices set (was confirmed in a branch that has been cleaned up)
 //  3. Orphaned: same check as 2 — vertex old enough and not tracked by any recent branch.
@@ -202,8 +202,6 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 	candidates := make([]expiredEntry, 0)
 	expired := make([]expiredEntry, 0)
 	var deletedIDs []base.TransactionID
-	synced := d.IsSynced()
-
 	d.WithGlobalWriteLock(func() {
 		slotNow := ledger.TimeNow().Slot
 		latestBranch := d.latestBranchSlot
@@ -223,7 +221,10 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			}
 
 			// criterion 1: TTL — wall-clock or ledger-time expiry
-			wallClockExpired := synced && slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
+			// Wall-clock TTL does not depend on sync status: old vertices must be pruned
+			// even when the node is out of sync, otherwise the memDAG stays bloated and
+			// conflict checks remain slow, preventing recovery.
+			wallClockExpired := slotNow-rec.WrappedTx.SlotWhenAdded > vertexTTLSlots
 			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
 			if wallClockExpired {
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
