@@ -124,11 +124,12 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
 
-	// log when AttachTransaction is called on a DetachedVertex — the vertex stays detached,
-	// the attacher will treat it as unresolved and pull from txstore
+	// Log when AttachTransaction is called on a DetachedVertex.
+	// This is normal — the vertex was pruned and re-received from a peer.
+	// The attacher past-cone walk will handle it (or trigger shutdown if unrecoverable).
 	vid.RUnwrap(vertex.UnwrapOptions{
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			env.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in AttachTransaction", txid.StringShort()))
+			env.Log().Warnf("AttachTransaction: vid %s is DetachedVertex, seq=%v", txid.StringShort(), txid.IsSequencerTransaction())
 		},
 	})
 
