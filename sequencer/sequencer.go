@@ -56,7 +56,6 @@ type (
 		backlog              *backlog.TagAlongBacklog
 		config               *ConfigOptions
 		log                  *zap.SugaredLogger
-		strategy             sequencerStrategy
 		ownMilestonesMutex   sync.RWMutex
 		ownMilestones        map[*vertex.WrappedTx]outputsWithTime // map ms -> consumed outputs in the past
 		milestoneCount       int
@@ -191,14 +190,8 @@ func (seq *Sequencer) Start() {
 		seq.skeletonFactory = factory.New(seq, seq.ctx)
 		go seq.skeletonFactory.Run()
 
-		// select strategy based on config
-		if seq.config.AsyncMode {
-			seq.strategy = newAsyncStrategy(seq)
-			seq.Log().Infof("using ASYNC sequencer strategy")
-		} else {
-			seq.strategy = newSyncStrategy(seq)
-			seq.Log().Infof("using SYNC sequencer strategy")
-		}
+		// start the background milestone watcher
+		go seq.milestoneWatcher()
 
 		seq.sequencerLoop()
 
@@ -455,8 +448,6 @@ func (seq *Sequencer) sequencerLoop() {
 		seq.Log().Infof("sequencer loop STOPPING..")
 	}()
 
-	seq.strategy.start()
-
 	const deadlockTolerance = 30 * time.Second
 
 	checkpoint := checkpoints.New(func(name string) {
@@ -505,7 +496,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 	}
 
 	timerStart := time.Now()
-	targetTs, ok := seq.strategy.getNextTargetTime()
+	targetTs, ok := seq.getNextTargetTime()
 	if !ok {
 		// interrupted by shutdown
 		return false
@@ -562,7 +553,7 @@ func (seq *Sequencer) doSequencerStep() bool {
 
 	meta.TxBytesReceived = util.Ref(time.Now())
 
-	seq.strategy.submit(msTx, meta, targetTs)
+	seq.submitMilestone(msTx, meta, targetTs)
 	seq.adjustBudget(true)
 
 	if targetTs.IsSlotBoundary() {
@@ -627,7 +618,7 @@ func (seq *Sequencer) TagAlongBudgetNumerator() int {
 	return numerator
 }
 
-// decideSubmitMilestone checks health and connectivity. Used by both sync and async strategies.
+// decideSubmitMilestone checks health and connectivity before submitting a milestone.
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
 	if seq.DurationSinceLastMessageFromPeer() >= disconnectTolerance {
 		if seq.wontSubmitBranchID != tx.ID() {

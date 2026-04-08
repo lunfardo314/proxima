@@ -27,7 +27,6 @@ type (
 		SeparateLog               bool
 		GlobalLogging             bool
 		ControllerKeyFile         string // path to keystore file for deferred key loading
-		AsyncMode                 bool   // experimental: async milestone submission (no tippool wait)
 		// ForceActivity when true, the sequencer always issues at least a branch and one
 		// milestone per slot regardless of pressure level. Used for bootstrap sequencers
 		// that must keep producing to maintain network liveness.
@@ -118,9 +117,6 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	if subViper.GetBool("ensure_synced_at_startup") {
 		cfg = append(cfg, WithEnsureSyncedAtStartup)
 	}
-	if subViper.GetBool("async_mode") {
-		cfg = append(cfg, WithAsyncMode)
-	}
 	if subViper.GetBool("force_activity") {
 		cfg = append(cfg, WithForceActivity)
 	}
@@ -202,10 +198,6 @@ func WithControllerKeyFile(path string) ConfigOption {
 	}
 }
 
-func WithAsyncMode(o *ConfigOptions) {
-	o.AsyncMode = true
-}
-
 func WithForceActivity(o *ConfigOptions) {
 	o.ForceActivity = true
 }
@@ -229,7 +221,6 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("Separate log: %v", cfg.SeparateLog).
 		Add("Copy to the global log: %v", cfg.GlobalLogging).
 		Add("Controller key file: %s", cfg.ControllerKeyFile).
-		Add("Async mode: %v", cfg.AsyncMode).
 		Add("Force activity: %v", cfg.ForceActivity).
 		Add("Disable throttle: %v", cfg.DisableThrottle)
 }

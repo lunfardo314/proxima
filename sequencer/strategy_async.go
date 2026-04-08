@@ -16,29 +16,12 @@ const (
 	milestoneWatchInterval = 20 * time.Millisecond
 )
 
-// asyncStrategy implements the async sequencer approach:
-// milestones are submitted fire-and-forget, a background watcher monitors the tippool.
+// getNextTargetTime computes the next target timestamp for milestone generation.
 //
 // Target pacing within a slot:
 //
 //	branch → post-consolidation (ASAP) → +pace → +pace → ... → branch
-type asyncStrategy struct {
-	seq *Sequencer
-}
-
-func newAsyncStrategy(seq *Sequencer) *asyncStrategy {
-	return &asyncStrategy{
-		seq: seq,
-	}
-}
-
-func (a *asyncStrategy) start() {
-	go a.milestoneWatcher()
-}
-
-func (a *asyncStrategy) getNextTargetTime() (base.LedgerTime, bool) {
-	seq := a.seq
-
+func (seq *Sequencer) getNextTargetTime() (base.LedgerTime, bool) {
 	if !seq.ClockCatchUpWithLedgerTime(seq.lastSubmittedTs) {
 		return base.NilLedgerTime, false
 	}
@@ -80,9 +63,8 @@ func (a *asyncStrategy) getNextTargetTime() (base.LedgerTime, bool) {
 	return target, true
 }
 
-func (a *asyncStrategy) submit(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, targetTs base.LedgerTime) {
-	seq := a.seq
-
+// submitMilestone sends a milestone to the network fire-and-forget and advances lastSubmittedTs optimistically.
+func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, targetTs base.LedgerTime) {
 	if !seq.decideSubmitMilestone(tx, meta) {
 		seq.lastSubmittedTs = targetTs
 		return
@@ -98,8 +80,7 @@ func (a *asyncStrategy) submit(tx *transaction.Transaction, meta *txmetadata.Tra
 }
 
 // milestoneWatcher polls the tippool for own milestones and calls onMilestoneConfirmed.
-func (a *asyncStrategy) milestoneWatcher() {
-	seq := a.seq
+func (seq *Sequencer) milestoneWatcher() {
 	ticker := time.NewTicker(milestoneWatchInterval)
 	defer ticker.Stop()
 
@@ -118,5 +99,3 @@ func (a *asyncStrategy) milestoneWatcher() {
 		seq.onMilestoneConfirmed(vid)
 	}
 }
-
-var _ sequencerStrategy = (*asyncStrategy)(nil)
