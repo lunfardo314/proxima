@@ -676,8 +676,13 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 }
 
 func (pc *PastCone) hasRooted() bool {
-	for _, flags := range pc.vertices {
+	for vid, flags := range pc.vertices {
 		if flags.FlagsUp(FlagPastConeVertexInTheState) {
+			return true
+		}
+		// baseline defines the state — it is implicitly rooted even when not marked InTheState
+		// (detached branches have defined=false, so defineInTheStateStatus is never called for them)
+		if pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID {
 			return true
 		}
 	}
