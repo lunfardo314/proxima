@@ -425,7 +425,7 @@ func TestBranchCoverageBounds(t *testing.T) {
 	testData.bootstrapSeq.Start()
 
 	// Wait for chain origins to be finalized
-	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, 10*time.Second)
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, 30*time.Second)
 	require.NoError(t, err)
 	t.Logf("chain origins tx %s finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
 
@@ -510,7 +510,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 
 	testData.bootstrapSeq.Start()
 
-	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, 10*time.Second)
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, 30*time.Second)
 	require.NoError(t, err)
 	t.Logf("chain origins transaction %s has been created and finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
 	return testData

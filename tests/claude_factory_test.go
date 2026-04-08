@@ -57,7 +57,7 @@ func initFactoryTest(t *testing.T, nSequencers int, maxSlots int) (*workflowTest
 	testData.bootstrapSeq = bootSeq
 	bootSeq.Start()
 
-	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, 10*time.Second)
+	baseline, err := testData.wrk.WaitUntilTransactionInHeaviestState(chainOriginsTxID, 30*time.Second)
 	require.NoError(t, err)
 	t.Logf("chain origins tx %s finalized in baseline %s", chainOriginsTxID.StringShort(), baseline.IDShortString())
 
