@@ -3,6 +3,7 @@ package txinput_queue
 import (
 	"fmt"
 	"maps"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -63,8 +64,9 @@ type (
 	TxInputQueue struct {
 		environment
 		*core_modules.CoreModule[Input]
-		inGate    *inGate[base.TransactionID]
-		txSenders map[base.HolderID]*seenTimestamps
+		inGate       *inGate[base.TransactionID]
+		sendersMutex sync.Mutex
+		txSenders    map[base.HolderID]*seenTimestamps
 		// sender pace config
 		checkSeq    bool
 		checkNonSeq bool
@@ -138,7 +140,9 @@ func New(env environment) *TxInputQueue {
 		return true
 	})
 	ret.RepeatInBackground(Name+"_senderRebuildMap", senderRebuildMapPeriod, func() bool {
+		ret.sendersMutex.Lock()
 		ret.txSenders = maps.Clone(ret.txSenders)
+		ret.sendersMutex.Unlock()
 		return true
 	})
 
@@ -394,7 +398,10 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 		return false
 	}
 
+	q.sendersMutex.Lock()
 	seen := q.txSenders[holderID]
+	q.sendersMutex.Unlock()
+
 	if seen == nil {
 		if !q.isHolderKnownInLRB(holderID) {
 			if !tx.IsBranchTransaction() {
@@ -405,7 +412,6 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 			}
 		}
 		seen = &seenTimestamps{}
-		q.txSenders[holderID] = seen
 	}
 
 	var pass bool
@@ -416,7 +422,10 @@ func (q *TxInputQueue) checkSenderPace(tx *transaction.Transaction) bool {
 	} else {
 		pass = !q.checkNonSeq || seen.nonSequencer.addTs(txTs.TicksSinceGenesis(), int64(lib.TransactionPace))
 	}
+
+	q.sendersMutex.Lock()
 	q.txSenders[holderID] = seen
+	q.sendersMutex.Unlock()
 	if !pass {
 		txLogMsg := fmt.Sprintf("timestamp is too close to another tx from the same sender %s -> IGNORED", holderID.String())
 		q.LogTx(time.Now(), txLogMsg, tx.ID())
@@ -444,6 +453,9 @@ func (q *TxInputQueue) cleanupSenders() {
 	if nowTicks < senderCleanupHorizonTicks {
 		return
 	}
+	q.sendersMutex.Lock()
+	defer q.sendersMutex.Unlock()
+
 	maps.DeleteFunc(q.txSenders, func(_ base.HolderID, timestamps *seenTimestamps) bool {
 		return timestamps.sequencer.lastestTicksSinceGenesis() < nowTicks-senderCleanupHorizonTicks &&
 			timestamps.nonSequencer.lastestTicksSinceGenesis() < nowTicks-senderCleanupHorizonTicks
