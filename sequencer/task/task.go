@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
@@ -16,15 +15,11 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/backlog"
-	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/sequencer/factory"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/spf13/viper"
-	"golang.org/x/exp/maps"
 )
 
-// Task to generate proposals for the target ledger time. The taskData is interrupted
-// by the context with deadline
 type (
 	environment interface {
 		global.NodeGlobal
@@ -47,79 +42,48 @@ type (
 
 	taskData struct {
 		environment
-		targetTs     base.LedgerTime
-		ctx          context.Context
-		proposersWG  sync.WaitGroup
-		proposalChan chan *finalProposal
-		slotData     *SlotData
-		// proposals    []*proposal
-		Name string
-	}
-
-	proposer struct {
-		*taskData
-		strategy *proposerStrategy
+		targetTs base.LedgerTime
+		ctx      context.Context
+		slotData *SlotData
 		Name     string
-		Msg      string // how proposer ended. For debugging
 	}
 
 	proposal struct {
-		*proposer
+		*taskData
 		*attacher.IncrementalAttacher
 		*txbuilder_seq.SeqTxBuilder
 		attachmentCost uint16
-		effectiveTs    base.LedgerTime // overrides p.targetTs when set (used by f0)
+		effectiveTs    base.LedgerTime // overrides targetTs when set (used by factory proposer)
 	}
 
 	finalProposal struct {
-		tx                *transaction.Transaction
-		txMetadata        *txmetadata.TransactionMetadata
-		txSize            int
-		hrString          string
-		coverageDelta     uint64
-		ledgerCoverage    uint64
-		inflation         uint64
-		attacherName      string
-		strategyShortName string
-	}
-
-	// ProposalGenerator returns proposal as draft transaction or otherwise nil and forceExit flag = true
-	ProposalGenerator func(p *proposer) (*proposal, bool)
-
-	proposerStrategy struct {
-		Name             string
-		ShortName        string
-		GenerateProposal ProposalGenerator
+		tx             *transaction.Transaction
+		txMetadata     *txmetadata.TransactionMetadata
+		txSize         int
+		hrString       string
+		coverageDelta  uint64
+		ledgerCoverage uint64
+		inflation      uint64
+		attacherName   string
+		source         string // which proposer produced this ("boot", "branch", "factory", "base")
 	}
 )
 
 const TraceRunTagTask = "runTask"
 
 var (
-	AllProposingStrategies = make(map[string]*proposerStrategy)
-	ErrNoProposals         = errors.New("no proposals were generated")
-	ErrNotGoodEnough       = errors.New("proposals aren't good enough")
+	ErrNoProposals   = errors.New("no proposals were generated")
+	ErrNotGoodEnough = errors.New("proposals aren't good enough")
 )
 
-func registerProposerStrategy(s *proposerStrategy) {
-	AllProposingStrategies[s.Name] = s
-}
-
-func allProposingStrategies() []*proposerStrategy {
-	ret := make([]*proposerStrategy, 0)
-	for _, s := range AllProposingStrategies {
-		if !viper.GetBool("sequencer.disable_proposer." + s.ShortName) {
-			ret = append(ret, s)
-		}
-	}
-	return ret
-}
-
-// Run starts taskData with the aim to generate sequencer transaction for the target ledger time.
-// The proposer taskData consists of several proposers (goroutines)
-// Each proposer generates proposals and writes it to the channel of the taskData.
-// The best proposal is selected and returned. Function only returns transaction which is better
-// than others in the tippool for the current slot. Otherwise, returns nil
+// Run generates a sequencer transaction for the target ledger time.
+// Proposal sources are tried sequentially:
+//  1. Boot proposer (only when own milestone is stale — bootstrap/recovery)
+//  2. Branch proposer (only for slot boundary targets)
+//  3. Factory proposer (consumes pre-built skeleton with endorsements)
+//  4. Base extend proposer (fallback: extend own latest milestone without endorsements)
+//
+// Returns the best proposal or ErrNoProposals/ErrNotGoodEnough.
 func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
 	deadline := ledger.ClockTime(targetTs)
 	nowis := time.Now()
@@ -128,95 +92,58 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 		targetTs.String, deadline.Format("15:04:05.999"), nowis.Format("15:04:05.999"))
 	defer env.Tracef(TraceRunTagTask, "END: target: %s", targetTs.String)
 
+	var cancel func()
 	task := &taskData{
-		environment:  env,
-		targetTs:     targetTs,
-		ctx:          nil,
-		proposalChan: make(chan *finalProposal),
-		slotData:     slotData,
-		Name:         fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
+		environment: env,
+		targetTs:    targetTs,
+		slotData:    slotData,
+		Name:        fmt.Sprintf("%s[%s]", env.SequencerName(), targetTs.String()),
+	}
+	task.ctx, cancel = context.WithDeadline(env.Ctx(), deadline)
+	defer cancel()
+
+	var result *finalProposal
+
+	// 1. Boot proposer: only fires when own milestone is stale (>1 slot behind)
+	if fp := task.tryBootProposal(); fp != nil {
+		result = fp
 	}
 
-	// start proposers
-	var cancel func()
-	task.ctx, cancel = context.WithDeadline(env.Ctx(), deadline)
-	defer cancel() // to prevent context leak
-
-	// starts one goroutine for each known strategy
-	task.startProposers()
-
-	// reads all proposals from proposers into the slice
-	// stops reading when all goroutines exit
-
-	// chanel is needed to make sure the reading loop has ended
-	readStop := make(chan struct{})
-
-	proposals := make(map[base.TransactionID]*finalProposal)
-
-	go func() {
-		for p := range task.proposalChan {
-			proposals[p.tx.ID()] = p
-			task.slotData.ProposalSubmitted(p.strategyShortName)
+	// 2. Branch target: use base proposer for branch generation
+	if result == nil && targetTs.IsSlotBoundary() {
+		if fp := task.tryBranchProposal(); fp != nil {
+			result = fp
 		}
-		close(readStop)
-	}()
+	}
 
-	task.proposersWG.Wait()
-	close(task.proposalChan)
-	<-readStop
+	// 3. Factory proposer: consume best pre-built skeleton
+	if result == nil && !targetTs.IsSlotBoundary() {
+		if fp := task.tryFactoryProposal(); fp != nil {
+			result = fp
+		}
+	}
 
-	if len(proposals) == 0 {
+	// 4. Base extend fallback: extend own latest milestone without endorsements
+	if result == nil && !targetTs.IsSlotBoundary() {
+		if fp := task.tryBaseExtendProposal(); fp != nil {
+			result = fp
+		}
+	}
+
+	if result == nil {
 		return nil, nil, "", ErrNoProposals
 	}
 
-	proposalsSlice := maps.Values(proposals)
-	best := util.Maximum(proposalsSlice, func(p1, p2 *finalProposal) bool {
-		switch {
-		case p1.ledgerCoverage < p2.ledgerCoverage:
-			return true
-		case p1.ledgerCoverage == p2.ledgerCoverage:
-			// out of two with equal coverage, we select the one with less size
-			return p1.txSize > p2.txSize
-		}
-		return false
-	})
-
-	// check if the newly generated non-branch transaction has coverage strongly bigger than the previously generated
-	// non-branch transaction on the same slot
+	// validate: coverage must be strictly better than previous non-branch milestone on this slot
 	ownLatest := env.OwnLatestMilestoneOutput().VID
-	if !ownLatest.IsBranchTransaction() && ownLatest.Slot() == targetTs.Slot && best.ledgerCoverage <= ownLatest.GetLedgerCoverage() {
+	if !ownLatest.IsBranchTransaction() && ownLatest.Slot() == targetTs.Slot && result.ledgerCoverage <= ownLatest.GetLedgerCoverage() {
 		return nil, nil, "", fmt.Errorf("%w (res: %s, best: %s, %s)",
-			ErrNotGoodEnough, util.Th(best.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
+			ErrNotGoodEnough, util.Th(result.ledgerCoverage), ownLatest.IDShortString(), util.Th(ownLatest.GetLedgerCoverage()))
 	}
-	task.EvidenceEndorsementCount(best.tx.NumEndorsements())
-	return best.tx, best.txMetadata, best.hrString, nil
+	task.EvidenceEndorsementCount(result.tx.NumEndorsements())
+	return result.tx, result.txMetadata, result.hrString, nil
 }
 
-func (p *finalProposal) String() string {
-	return p.hrString
-}
-
-func (t *taskData) newProposer(s *proposerStrategy) *proposer {
-	ret := &proposer{
-		taskData: t,
-		strategy: s,
-		Name:     t.Name + "-" + s.Name,
-	}
-
-	return ret
-}
-
-func (t *taskData) startProposers() {
-	for _, s := range allProposingStrategies() {
-		p := t.newProposer(s)
-		t.proposersWG.Add(1)
-		go func() {
-			t.IncCounter("prop")
-
-			p.run()
-
-			t.proposersWG.Done()
-			t.DecCounter("prop")
-		}()
-	}
+func (fp *finalProposal) String() string {
+	return fp.hrString
 }

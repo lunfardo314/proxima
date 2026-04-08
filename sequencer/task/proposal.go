@@ -23,25 +23,25 @@ const TraceTagProposal = "proposal"
 var tagAlongBudgetFraction = global.Fraction23
 
 // newProposal takes initial incremental attacher only with endorsements
-// and stem in it, and packages it with the transaction builder
-// It is ready to be filled up with tag-along inputs and delegations
-func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, error) {
-	return p.newProposalWithTimestamp(a, p.targetTs)
+// and stem in it, and packages it with the transaction builder.
+// It is ready to be filled up with tag-along inputs and delegations.
+func (t *taskData) newProposal(a *attacher.IncrementalAttacher) (*proposal, error) {
+	return t.newProposalWithTimestamp(a, t.targetTs)
 }
 
-func (p *proposer) newProposalWithTimestamp(a *attacher.IncrementalAttacher, ts base.LedgerTime) (*proposal, error) {
-	p.Assertf(!a.IsClosed(), "!a.IsClosed()")
+func (t *taskData) newProposalWithTimestamp(a *attacher.IncrementalAttacher, ts base.LedgerTime) (*proposal, error) {
+	t.Assertf(!a.IsClosed(), "!a.IsClosed()")
 
 	seqPredVID := a.Extending()
 	seqPred, ok := seqPredVID.OutputWithChainID()
-	p.Assertf(ok, "newProposal: inconsistency: must be a chain output")
+	t.Assertf(ok, "newProposal: inconsistency: must be a chain output")
 
 	var stem *ledger.OutputWithID
 	if stemWrapped := a.Stem(); stemWrapped.VID != nil {
 		stem = stemWrapped.OutputWithID()
-		p.Assertf(!a.IsBranchTarget() || stem != nil, "newProposal: !a.IsBranchTarget() || stem != nil")
+		t.Assertf(!a.IsBranchTarget() || stem != nil, "newProposal: !a.IsBranchTarget() || stem != nil")
 	}
-	signatureType, privKey, pubKey := p.ControllerKeys()
+	signatureType, privKey, pubKey := t.ControllerKeys()
 	txb, err := txbuilder_seq.New(txbuilder_seq.Params{
 		Timestamp:     ts,
 		Predecessor:   &seqPred,
@@ -52,17 +52,16 @@ func (p *proposer) newProposalWithTimestamp(a *attacher.IncrementalAttacher, ts 
 		StateReader:   a.BaselineSugaredStateReader(),
 	})
 	if err != nil {
-		a.Close() // FIX: close attacher on error
+		a.Close()
 		return nil, fmt.Errorf("newProposal: %w", err)
 	}
 	// resolve effective name: on-chain name (from predecessor) takes priority, then config name
-	// SequencerName() already falls back to first 4 hex chars of seqID when config name is empty
 	if txb.EffectiveName() == "" {
-		txb.SetName(p.environment.SequencerName())
+		txb.SetName(t.environment.SequencerName())
 	}
 	for _, vid := range a.Endorsing() {
 		if err = txb.AddEndorsement(vid.ID()); err != nil {
-			a.Close() // FIX: close attacher on error
+			a.Close()
 			return nil, fmt.Errorf("newProposal: %w", err)
 		}
 	}
@@ -70,7 +69,7 @@ func (p *proposer) newProposalWithTimestamp(a *attacher.IncrementalAttacher, ts 
 	txb.PutExplicitBaseline(a.ExplicitBaselineID())
 
 	return &proposal{
-		proposer:            p,
+		taskData:            t,
 		IncrementalAttacher: a,
 		SeqTxBuilder:        txb,
 	}, nil
@@ -88,8 +87,8 @@ type _inputCandidate struct {
 }
 
 func (p *proposal) insertTagAlongInputs() {
-	p.Tracef(TraceTagProposal, "insertTagAlongInputs")
-	if p.Library.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
+	p.taskData.Tracef(TraceTagProposal, "insertTagAlongInputs")
+	if p.Library.IsPreBranchConsolidationTimestamp(p.taskData.targetTs) {
 		return
 	}
 	if p.InputsAreFull() {
@@ -99,7 +98,7 @@ func (p *proposal) insertTagAlongInputs() {
 	outs := make([]*_inputCandidate, 0)
 
 	p.Backlog().IterateOutputs(func(wOut vertex.WrappedOutput) bool {
-		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.proposer.targetTs) {
+		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.taskData.targetTs) {
 			return true
 		}
 		outs = append(outs, &_inputCandidate{
@@ -147,17 +146,17 @@ func (p *proposal) insertTagAlongInputs() {
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
-			p.proposer.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
+			p.taskData.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
 				err, o.o.LinesSource("     ").String())
 		} else {
 			if err != nil {
 				if strings.Contains(err.Error(), "already consumed") {
 					p.Backlog().RemoveOutput(o.wOut)
 				}
-				p.proposer.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
+				p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
 			} else {
-				p.proposer.Assertf(cmd != nil, "cmd != nil")
-				p.proposer.LogTopicf("tag_along", 1, "TAG_ALONG: output %s has been added to '%s', cmd='%s'",
+				p.taskData.Assertf(cmd != nil, "cmd != nil")
+				p.taskData.LogTopicf("tag_along", 1, "TAG_ALONG: output %s has been added to '%s', cmd='%s'",
 					o.o.ID.StringShort(), p.Name, cmd.Lines().Join(", "))
 			}
 		}
@@ -168,10 +167,10 @@ func (p *proposal) insertTagAlongInputs() {
 }
 
 func (p *proposal) insertDelegations() {
-	p.Tracef(TraceTagProposal, "insertDelegations IN")
-	defer p.Tracef(TraceTagProposal, "insertDelegations OUT")
+	p.taskData.Tracef(TraceTagProposal, "insertDelegations IN")
+	defer p.taskData.Tracef(TraceTagProposal, "insertDelegations OUT")
 
-	if p.Library.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
+	if p.Library.IsPreBranchConsolidationTimestamp(p.taskData.targetTs) {
 		return
 	}
 	if p.InputsAreFull() {
@@ -190,7 +189,7 @@ func (p *proposal) insertDelegations() {
 		return
 	}
 
-	p.Tracef(TraceTagProposal, "insertDelegations end IterateDelegatedOutputs")
+	p.taskData.Tracef(TraceTagProposal, "insertDelegations end IterateDelegatedOutputs")
 	// sort by frozen amount descending
 	sort.Slice(outs, func(i, j int) bool {
 		if outs[i].Output.TokenBalance() > outs[j].Output.TokenBalance() {
@@ -204,7 +203,7 @@ func (p *proposal) insertDelegations() {
 			return
 		default:
 		}
-		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
+		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.taskData)
 		// just skip if freezing failed for any reason
 		valid, err := p.InsertInput(wOut, func() (bool, error) {
 			// adding one more delegation means +1 input and +1 output, 2 cost units of the transaction attachment cost more.
@@ -221,15 +220,15 @@ func (p *proposal) insertDelegations() {
 				if strings.Contains(err.Error(), "already consumed") {
 					p.Backlog().RemoveOutput(wOut)
 				}
-				p.proposer.WarnTopicf("tag_along", 1, "FREEZE failed, id = %s, oid = %s, reason = '%v'",
+				p.taskData.WarnTopicf("tag_along", 1, "FREEZE failed, id = %s, oid = %s, reason = '%v'",
 					o.ChainID.String(), o.ID.StringShort(), err)
 			} else {
 				p.Backlog().AddToBlacklist(wOut)
-				p.proposer.WarnTopicf("tag_along", 0, "FREEZE failed PERMANENTLY, id = %s, oid = %s, reason = '%v'",
+				p.taskData.WarnTopicf("tag_along", 0, "FREEZE failed PERMANENTLY, id = %s, oid = %s, reason = '%v'",
 					o.ChainID.String(), o.ID.StringShort(), err)
 			}
 		} else {
-			p.proposer.LogTopicf("freeze_delegation", 1, "FREEZE delegation %s, oid = %s",
+			p.taskData.LogTopicf("freeze_delegation", 1, "FREEZE delegation %s, oid = %s",
 				o.ChainID.String(), o.ID.StringShort())
 		}
 
@@ -287,7 +286,7 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 
 	p.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
 		c := _delegationCandidate{delegation: o}
-		if o.IsInFrozenSlot(p.proposer.targetTs.Slot) {
+		if o.IsInFrozenSlot(p.taskData.targetTs.Slot) {
 			c.frozen = true
 		}
 		candidates = append(candidates, c)
@@ -299,7 +298,7 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 		if p.Backlog().IsInBlacklist(c.delegation.ID) {
 			continue
 		}
-		if c.delegation.IsUnlockableByTargetForFreezing(p.proposer.targetTs.Slot) {
+		if c.delegation.IsUnlockableByTargetForFreezing(p.taskData.targetTs.Slot) {
 			ret = append(ret, _delegationToFreeze{c.delegation, 0})
 		}
 		if c.frozen {
