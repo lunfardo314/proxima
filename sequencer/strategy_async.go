@@ -170,8 +170,9 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
-	// target is 1 tick ahead to give task.Run a valid future deadline
-	targetTs := base.MaximumTime(nowTs.AddTicks(1), paceMin)
+	// target must be far enough in the future for task.Run to solidify and finalize.
+	// plateauHoldTicks ahead gives the same amount of time as the plateau wait itself.
+	targetTs := base.MaximumTime(nowTs.AddTicks(plateauHoldTicks), paceMin)
 
 	// don't overshoot into next slot
 	nextBoundary := nowTs.NextSlotBoundary()
@@ -249,6 +250,12 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 
 	seq.Log().Infof("SLOT STATS: %s, budget: %d/%d", seq.slotData.Lines().Join(", "), seq.budgetLevel, maxBudgetLevel)
 	seq.slotData = nil
+
+	// advance lastSubmittedTs past the branch boundary even on failure,
+	// so the next doSequencerSlot iteration starts at the next slot, not this one
+	if branchTs.After(seq.lastSubmittedTs) {
+		seq.lastSubmittedTs = branchTs
+	}
 	return true
 }
 
