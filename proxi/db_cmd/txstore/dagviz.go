@@ -477,14 +477,19 @@ body { font-family: "Consolas", "Monaco", monospace; background: #1a1a2e; color:
 #legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
 #canvas-wrap { flex: 1; position: relative; overflow: hidden; }
 svg { width: 100%; height: 100%; }
-.node rect { stroke-width: 1.5; cursor: pointer; }
-.node text { font-size: 10px; fill: #e0e0e0; pointer-events: none; }
+.node rect { stroke-width: 1; cursor: pointer; }
+.node text { font-size: 10px; fill: #999; pointer-events: none; }
+.node.in-cone rect { stroke-width: 2.5; }
+.node.in-cone text { fill: #e0e0e0; }
 .node.selected rect { stroke: #fff !important; stroke-width: 3; }
-.edge { fill: none; stroke-width: 1.2; }
+.node.selected text { fill: #fff; }
+.edge { fill: none; stroke-width: 0.8; opacity: 0.4; }
+.edge.in-cone { stroke-width: 2; opacity: 1; }
 .edge.input { stroke: #888; }
 .edge.endorsement { stroke: #ff6b6b; stroke-dasharray: 5,3; }
 .edge.baseline { stroke: #6dd5ed; stroke-dasharray: 2,4; }
-.edge-label { font-size: 8px; fill: #666; }
+.edge-label { font-size: 8px; fill: #444; }
+.edge-label.in-cone { fill: #999; }
 .tier-label { font-size: 10px; fill: #555; font-weight: bold; }
 .slot-label { font-size: 12px; fill: #6dd5ed; font-weight: bold; cursor: pointer; }
 .slot-label:hover { fill: #fff; }
@@ -764,10 +769,12 @@ function render(data) {
     const cx = (from.x + to.x)/2 + dx * 0.08;
     const cy = (from.y + to.y)/2;
     edgeG.append("path").attr("class", "edge " + e.type)
+      .attr("data-from", e.from).attr("data-to", e.to)
       .attr("d", "M"+from.x+","+(from.y+NODE_H/2)+" Q"+cx+","+cy+" "+to.x+","+(to.y-NODE_H/2))
       .attr("marker-end", "url(#arr-"+e.type+")");
     if (e.label) {
       edgeG.append("text").attr("class","edge-label")
+        .attr("data-from", e.from).attr("data-to", e.to)
         .attr("x", cx).attr("y", cy-3).attr("text-anchor","middle").text(e.label);
     }
   });
@@ -791,15 +798,41 @@ function render(data) {
       if (d.is_seq && d.seq_chain_id) return chainColorMap[d.seq_chain_id]||"#ffd700";
       return "#4a6fa5";
     })
-    .attr("stroke-width", d => d.is_branch ? 3 : 1.5);
+    .attr("stroke-width", d => d.is_branch ? 2 : 1);
 
   nodeG.append("text").attr("x",NODE_W/2).attr("y",NODE_H/2+3).attr("text-anchor","middle")
     .text(d => d.short_id);
 }
 
 function selectNode(d, data) {
-  d3.selectAll(".node").classed("selected", false);
+  // compute past cone: BFS from selected vertex following edges forward (from→to)
+  const coneSet = new Set();
+  const queue = [d.id];
+  coneSet.add(d.id);
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    data.edges.forEach(e => {
+      if (e.from === cur && !coneSet.has(e.to)) {
+        coneSet.add(e.to);
+        queue.push(e.to);
+      }
+    });
+  }
+
+  // clear previous highlights
+  d3.selectAll(".node").classed("selected", false).classed("in-cone", false);
+  d3.selectAll(".edge").classed("in-cone", false);
+  d3.selectAll(".edge-label").classed("in-cone", false);
+
+  // highlight past cone nodes and edges
+  d3.selectAll(".node").filter(n => coneSet.has(n.id)).classed("in-cone", true);
   d3.selectAll(".node").filter(n => n.id === d.id).classed("selected", true);
+  d3.selectAll(".edge").filter(function() {
+    return coneSet.has(d3.select(this).attr("data-from")) && coneSet.has(d3.select(this).attr("data-to"));
+  }).classed("in-cone", true);
+  d3.selectAll(".edge-label").filter(function() {
+    return coneSet.has(d3.select(this).attr("data-from")) && coneSet.has(d3.select(this).attr("data-to"));
+  }).classed("in-cone", true);
 
   const inE = data.edges.filter(e => e.from===d.id && e.type==="input");
   const enE = data.edges.filter(e => e.from===d.id && e.type==="endorsement");
