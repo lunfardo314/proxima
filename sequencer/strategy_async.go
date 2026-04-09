@@ -153,15 +153,17 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			continue
 		}
 
-		// plateau detected: submit if there's a skeleton worth submitting
-		if bestCoverage > 0 {
-			if !seq.tryBuildAndSubmit() {
-				seq.adjustBudget(false)
-			}
-			lastSeenCoverage = seq.skeletonFactory.BestCoverage()
-			lastImprovementTime = time.Now()
-			lastBacklogCheck = time.Now()
+		// plateau detected: try to submit.
+		// Even when bestCoverage == 0 (factory has no skeleton yet), task.Run falls
+		// back to the base extend proposer which issues milestones without endorsements.
+		// These "seed" milestones expose the sequencer to others for endorsement and
+		// serve as tag-along vehicles when endorsement coverage isn't growing.
+		if !seq.tryBuildAndSubmit() {
+			seq.adjustBudget(false)
 		}
+		lastSeenCoverage = seq.skeletonFactory.BestCoverage()
+		lastImprovementTime = time.Now()
+		lastBacklogCheck = time.Now()
 	}
 }
 
