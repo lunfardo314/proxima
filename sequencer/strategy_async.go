@@ -155,7 +155,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		// plateau detected: submit if there's a skeleton worth submitting
 		if bestCoverage > 0 {
-			seq.tryBuildAndSubmit()
+			if !seq.tryBuildAndSubmit() {
+				seq.adjustBudget(false)
+			}
 			lastSeenCoverage = seq.skeletonFactory.BestCoverage()
 			lastImprovementTime = time.Now()
 			lastBacklogCheck = time.Now()
@@ -200,10 +202,8 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 		return false
 	case errors.Is(err, task.ErrNoProposals):
 		seq.slotData.NoProposals()
-		seq.adjustBudget(false)
 		return false
 	case err != nil:
-		seq.adjustBudget(false)
 		return false
 	}
 	util.Assertf(msTx != nil, "msTx != nil")
