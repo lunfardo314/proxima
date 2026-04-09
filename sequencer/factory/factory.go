@@ -75,6 +75,11 @@ func (f *Factory) OutCh() <-chan *Skeleton {
 	return f.outCh
 }
 
+// BestCoverage returns the best skeleton coverage found so far for the current target slot.
+func (f *Factory) BestCoverage() uint64 {
+	return f.bestCoverage.Load()
+}
+
 func (f *Factory) Stop() {
 	f.cancel()
 }

@@ -209,6 +209,11 @@ func (seq *Sequencer) Start() {
 		go runFun()
 	} else {
 		util.RunWrappedRoutine(seq.config.SequencerName+"[sequencerLoop]", runFun, func(err error) bool {
+			if seq.Ctx().Err() != nil {
+				// panic during shutdown (e.g., ledger library cleaned up) — suppress
+				seq.log.Warnf("sequencer loop panic during shutdown: %v", err)
+				return false
+			}
 			seq.log.Fatal(err)
 			return false
 		})
@@ -462,14 +467,14 @@ func (seq *Sequencer) sequencerLoop() {
 		case <-seq.Ctx().Done():
 			return
 		default:
-			start := time.Now()
-			if !seq.doSequencerStep() {
+			if !seq.doSequencerSlot() {
 				return
 			}
-			duration := time.Since(start)
-			if duration > 3*time.Second {
-				seq.Log().Warnf(">>>>>>>>>>>>> sequencer step took %v", duration)
-			}
+		}
+
+		// check if context was cancelled during the slot (shutdown race with ledger cleanup)
+		if seq.Ctx().Err() != nil {
+			return
 		}
 
 		checkpoint.Check("SEQ_LOOP", deadlockTolerance)
@@ -477,91 +482,6 @@ func (seq *Sequencer) sequencerLoop() {
 }
 
 const TraceTagTarget = "target"
-
-func (seq *Sequencer) doSequencerStep() bool {
-	seq.Tracef(TraceTag, "doSequencerStep")
-
-	// pause proposing while snapshot is being generated to reduce resource contention
-	if seq.IsSnapshotting() {
-		seq.log.Infof("sequencer paused: snapshot in progress")
-		seq.RepeatSync(2*time.Second, func() bool {
-			return seq.IsSnapshotting()
-		})
-		seq.log.Infof("sequencer resumed: snapshot finished")
-	}
-
-	if seq.config.MaxBranches != 0 && seq.branchCount >= seq.config.MaxBranches {
-		seq.log.Infof("reached max limit of branch milestones %d -> stopping", seq.config.MaxBranches)
-		return false
-	}
-
-	timerStart := time.Now()
-	targetTs, ok := seq.getNextTargetTime()
-	if !ok {
-		// interrupted by shutdown
-		return false
-	}
-	seq.newTargetSet()
-
-	if seq.slotData == nil || seq.slotData.Slot() != targetTs.Slot {
-		seq.slotData = task.NewSlotData(targetTs.Slot)
-	}
-	seq.slotData.NewTarget()
-
-	seq.Assertf(ledger.ValidSequencerPace(seq.lastSubmittedTs, targetTs), "target is closer than allowed pace (%d): %s -> %s",
-		ledger.L(targetTs.Slot).TransactionPaceSequencer, seq.lastSubmittedTs.String, targetTs.String)
-
-	seq.Assertf(targetTs.After(seq.lastSubmittedTs), "wrong target ts %s: should be after previous submitted %s",
-		targetTs.String, seq.lastSubmittedTs.String)
-
-	if seq.config.MaxTargetTs != base.NilLedgerTime && targetTs.After(seq.config.MaxTargetTs) {
-		seq.log.Infof("next target ts %s is after maximum ts %s -> stopping", targetTs, seq.config.MaxTargetTs)
-		return false
-	}
-
-	// keep the factory informed about the current target slot
-	if seq.skeletonFactory != nil {
-		seq.skeletonFactory.SetTargetSlot(targetTs.Slot)
-	}
-
-	seq.Tracef(TraceTagTarget, "target ts: %s. Now is: %s", targetTs, ledger.TimeNow())
-
-	msTx, meta, _, err := seq.generateMilestoneForTarget(targetTs)
-
-	switch {
-	case errors.Is(err, task.ErrNotGoodEnough):
-		seq.slotData.NotGoodEnough()
-		// not good enough is not a pressure signal — the proposer finished in time
-		seq.Tracef(TraceTagTarget, "'not good enough' for the target logical time %s in %v",
-			targetTs, time.Since(timerStart))
-		return true
-	case errors.Is(err, task.ErrNoProposals):
-		seq.slotData.NoProposals()
-		seq.adjustBudget(false)
-		seq.Tracef(TraceTagTarget, "'no proposals' for the target logical time %s in %v",
-			targetTs, time.Since(timerStart))
-		return true
-	case err != nil:
-		seq.adjustBudget(false)
-		seq.Log().Warnf("%v (budget: %d/%d)", err, seq.budgetLevel, maxBudgetLevel)
-		return true
-	}
-	util.Assertf(msTx != nil, "msTx != nil")
-
-	seq.Tracef(TraceTag, "produced milestone %s for the target logical time %s in %v. Meta: %s",
-		msTx.IDShortString, targetTs, time.Since(timerStart), meta.String)
-
-	meta.TxBytesReceived = util.Ref(time.Now())
-
-	seq.submitMilestone(msTx, meta, targetTs)
-	seq.adjustBudget(true)
-
-	if targetTs.IsSlotBoundary() {
-		seq.slotData = nil
-	}
-
-	return true
-}
 
 const disconnectTolerance = 4 * time.Second
 
