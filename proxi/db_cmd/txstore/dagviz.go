@@ -220,6 +220,7 @@ func servePastCone(w http.ResponseWriter, r *http.Request, txStore global.TxByte
 	loader.data.TipID = hex.EncodeToString(txid.Bytes())
 
 	sortVertices(loader.data.Vertices)
+	ensureNonNil(&loader.data)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(loader.data)
 }
@@ -260,6 +261,7 @@ func serveSlot(w http.ResponseWriter, r *http.Request, txStore global.TxBytesGet
 	}
 
 	sortVertices(loader.data.Vertices)
+	ensureNonNil(&loader.data)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(loader.data)
 }
@@ -400,6 +402,16 @@ func hasPrefix(data, prefix []byte) bool {
 		}
 	}
 	return true
+}
+
+// ensureNonNil prevents nil slices from being serialized as JSON null
+func ensureNonNil(d *dagVizData) {
+	if d.Vertices == nil {
+		d.Vertices = []dagVizVertex{}
+	}
+	if d.Edges == nil {
+		d.Edges = []dagVizEdge{}
+	}
 }
 
 func sortVertices(vertices []dagVizVertex) {
