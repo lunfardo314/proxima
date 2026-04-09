@@ -150,6 +150,12 @@ func (l *dagVizLoader) load(txid base.TransactionID, depth int, isTip bool) {
 		return
 	}
 
+	l.addEdges(txid, tx, depth)
+}
+
+func (l *dagVizLoader) addEdges(txid base.TransactionID, tx *transaction.Transaction, depth int) {
+	txHex := hex.EncodeToString(txid.Bytes())
+
 	// load inputs
 	for i := 0; i < tx.NumInputs(); i++ {
 		oid := tx.MustInputAt(byte(i))
@@ -163,7 +169,7 @@ func (l *dagVizLoader) load(txid base.TransactionID, depth int, isTip bool) {
 			}
 		}
 		l.data.Edges = append(l.data.Edges, dagVizEdge{
-			From:  hex.EncodeToString(txid.Bytes()),
+			From:  txHex,
 			To:    hex.EncodeToString(inpTxID.Bytes()),
 			Type:  "input",
 			Label: label,
@@ -175,7 +181,7 @@ func (l *dagVizLoader) load(txid base.TransactionID, depth int, isTip bool) {
 		endID := tx.MustEndorsementAt(byte(i))
 		l.load(endID, depth-1, false)
 		l.data.Edges = append(l.data.Edges, dagVizEdge{
-			From: hex.EncodeToString(txid.Bytes()),
+			From: txHex,
 			To:   hex.EncodeToString(endID.Bytes()),
 			Type: "endorsement",
 		})
@@ -185,7 +191,7 @@ func (l *dagVizLoader) load(txid base.TransactionID, depth int, isTip bool) {
 	if baselineID, ok := tx.ExplicitBaseline(); ok {
 		l.load(baselineID, depth-1, false)
 		l.data.Edges = append(l.data.Edges, dagVizEdge{
-			From: hex.EncodeToString(txid.Bytes()),
+			From: txHex,
 			To:   hex.EncodeToString(baselineID.Bytes()),
 			Type: "baseline",
 		})
@@ -225,7 +231,9 @@ func servePastCone(w http.ResponseWriter, r *http.Request, txStore global.TxByte
 	_ = json.NewEncoder(w).Encode(loader.data)
 }
 
-// serveSlot returns all transactions in a given slot with their edges (inputs/endorsements loaded at depth 0)
+// serveSlot returns all transactions in the given slot and optionally several slots back.
+// Transactions within the range are loaded at depth 1 (edges to immediate dependencies),
+// while dependencies outside the range are loaded at depth 0 (vertex only, no further edges).
 func serveSlot(w http.ResponseWriter, r *http.Request, txStore global.TxBytesGet, rawDB *badger_adaptor.DB) {
 	slotStr := r.URL.Query().Get("slot")
 	if slotStr == "" {
@@ -239,25 +247,37 @@ func serveSlot(w http.ResponseWriter, r *http.Request, txStore global.TxBytesGet
 	}
 	slot := uint32(slot64)
 
-	// collect all txids in this slot
-	prefix := base.Slot2Bytes(slot)
-	txids := make([]base.TransactionID, 0)
-	rawDB.Iterator(prefix).IterateKeys(func(k []byte) bool {
-		txid, err := base.TransactionIDFromBytes(k)
-		if err == nil {
-			txids = append(txids, txid)
+	slotsBack := 0
+	if sb := r.URL.Query().Get("slots_back"); sb != "" {
+		if n, err := strconv.Atoi(sb); err == nil && n >= 0 {
+			slotsBack = n
 		}
-		return true
-	})
+	}
 
 	loader := &dagVizLoader{
 		txStore: txStore,
 		txCache: make(map[base.TransactionID]*transaction.Transaction),
 		visited: make(map[base.TransactionID]bool),
 	}
-	// load each tx at depth 0 (just the vertex + edges, no recursion into dependencies)
-	for _, txid := range txids {
-		loader.load(txid, 0, false)
+
+	// collect and load all txids in the slot range
+	firstSlot := slot
+	if uint32(slotsBack) < slot {
+		firstSlot = slot - uint32(slotsBack)
+	} else {
+		firstSlot = 0
+	}
+	for s := firstSlot; s <= slot; s++ {
+		prefix := base.Slot2Bytes(s)
+		rawDB.Iterator(prefix).IterateKeys(func(k []byte) bool {
+			txid, err := base.TransactionIDFromBytes(k)
+			if err != nil {
+				return true
+			}
+			// load with depth 1: creates the vertex AND its edges (dependencies loaded at depth 0)
+			loader.load(txid, 1, false)
+			return true
+		})
 	}
 
 	sortVertices(loader.data.Vertices)
@@ -440,7 +460,7 @@ body { font-family: "Consolas", "Monaco", monospace; background: #1a1a2e; color:
 #sidebar input, #sidebar select { width: 100%; padding: 5px 7px; background: #0f3460; border: 1px solid #444; color: #e0e0e0; border-radius: 3px; font-family: inherit; font-size: 12px; }
 #sidebar button { padding: 6px 10px; background: #0f3460; border: 1px solid #6dd5ed; color: #6dd5ed; cursor: pointer; border-radius: 3px; font-family: inherit; font-size: 11px; }
 #sidebar button:hover { background: #1a4a8a; }
-.btn-row { display: flex; gap: 6px; }
+.btn-row { display: flex; gap: 6px; align-items: center; }
 .btn-row button { flex: 1; }
 #search-results { max-height: 150px; overflow-y: auto; font-size: 11px; }
 #search-results div { padding: 3px 4px; cursor: pointer; border-bottom: 1px solid #222; }
@@ -466,7 +486,10 @@ svg { width: 100%; height: 100%; }
 .edge.baseline { stroke: #6dd5ed; stroke-dasharray: 2,4; }
 .edge-label { font-size: 8px; fill: #666; }
 .tier-label { font-size: 10px; fill: #555; font-weight: bold; }
+.slot-label { font-size: 12px; fill: #6dd5ed; font-weight: bold; cursor: pointer; }
+.slot-label:hover { fill: #fff; }
 .tier-line { stroke: #252545; stroke-width: 0.5; }
+.slot-line { stroke: #334; stroke-width: 1; }
 #status { position: absolute; bottom: 8px; left: 8px; font-size: 10px; color: #666; background: rgba(26,26,46,0.8); padding: 2px 6px; border-radius: 3px; }
 #nav-hint { position: absolute; top: 8px; right: 8px; font-size: 10px; color: #555; background: rgba(26,26,46,0.8); padding: 4px 8px; border-radius: 3px; }
 </style>
@@ -479,7 +502,9 @@ svg { width: 100%; height: 100%; }
     <div class="section-title">Browse by slot</div>
     <div class="btn-row">
       <input id="slotInput" type="number" placeholder="slot number" style="flex:2">
-      <button onclick="loadSlot()">Go</button>
+      <label style="white-space:nowrap;flex:0">back:</label>
+      <input id="slotsBackInput" type="number" value="3" min="0" max="50" style="width:45px;flex:0">
+      <button onclick="loadSlot()" style="flex:0">Go</button>
     </div>
     <div class="btn-row" style="margin-top:4px">
       <button onclick="scrollSlot(-1)" title="older slot">&#x25BC; Slot -1</button>
@@ -497,8 +522,9 @@ svg { width: 100%; height: 100%; }
     <div class="section-title">Past cone from tip</div>
     <div class="btn-row">
       <input id="txidInput" placeholder="full hex txid" style="flex:2">
-      <input id="depthInput" type="number" value="6" min="1" max="30" style="width:50px;flex:0">
-      <button onclick="loadPastCone()">Load</button>
+      <label style="white-space:nowrap;flex:0">depth:</label>
+      <input id="depthInput" type="number" value="6" min="1" max="30" style="width:45px;flex:0">
+      <button onclick="loadPastCone()" style="flex:0">Load</button>
     </div>
   </div>
 
@@ -507,8 +533,7 @@ svg { width: 100%; height: 100%; }
   <hr style="border-color:#333">
   <div id="legend">
     <div><span class="swatch" style="background:#4a6fa5"></span> Non-sequencer</div>
-    <div><span class="swatch" style="background:#ffd700"></span> Sequencer</div>
-    <div><span class="swatch" style="background:#ff6b6b"></span> Branch</div>
+    <div><span class="swatch" style="background:#ffd700"></span> Sequencer (colored by chain)</div>
     <div><span class="swatch" style="background:#555"></span> Missing / Leaf</div>
     <div style="margin-top:4px"><span style="color:#888">&#x2500;&#x2500;</span> Input &nbsp; <span style="color:#ff6b6b">- -</span> Endorse &nbsp; <span style="color:#6dd5ed">&#xB7;&#xB7;</span> Baseline</div>
   </div>
@@ -517,7 +542,7 @@ svg { width: 100%; height: 100%; }
 <div id="canvas-wrap">
   <svg id="dag"></svg>
   <div id="status"></div>
-  <div id="nav-hint">scroll: zoom &nbsp;|&nbsp; drag: pan &nbsp;|&nbsp; click: details &nbsp;|&nbsp; dbl-click: explore</div>
+  <div id="nav-hint">scroll: zoom &nbsp;|&nbsp; drag: pan &nbsp;|&nbsp; click: details &nbsp;|&nbsp; dbl-click: explore &nbsp;|&nbsp; click slot label: browse slot</div>
 </div>
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -528,17 +553,19 @@ let currentData = null, currentSlot = null;
 
 // --- Slot browsing ---
 
-async function loadSlot() {
-  const slot = parseInt(document.getElementById("slotInput").value);
+async function loadSlot(slotOverride) {
+  const slot = slotOverride != null ? slotOverride : parseInt(document.getElementById("slotInput").value);
   if (isNaN(slot)) return;
   currentSlot = slot;
-  setStatus("Loading slot " + slot + "...");
+  document.getElementById("slotInput").value = slot;
+  const slotsBack = parseInt(document.getElementById("slotsBackInput").value) || 0;
+  setStatus("Loading slots " + (slot - slotsBack) + ".." + slot + "...");
   try {
-    const resp = await fetch("/api/slot?slot=" + slot);
+    const resp = await fetch("/api/slot?slot=" + slot + "&slots_back=" + slotsBack);
     if (!resp.ok) { alert(await resp.text()); return; }
     currentData = await resp.json();
     render(currentData);
-    setStatus(currentData.vertices.length + " vertices in slot " + slot);
+    setStatus(currentData.vertices.length + " vertices, " + currentData.edges.length + " edges, slots " + (slot - slotsBack) + ".." + slot);
   } catch(e) { alert("Error: " + e); }
 }
 
@@ -671,7 +698,7 @@ function render(data) {
     minX = Math.min(minX, p.x - NODE_W/2); maxX = Math.max(maxX, p.x + NODE_W/2);
     minY = Math.min(minY, p.y - NODE_H/2); maxY = Math.max(maxY, p.y + NODE_H/2);
   });
-  const pad = 50;
+  const pad = 60;
   minX -= pad; minY -= pad; maxX += pad; maxY += pad;
 
   const g = svg.append("g");
@@ -695,15 +722,37 @@ function render(data) {
       .append("path").attr("d","M0,0 L10,5 L0,10 Z").attr("fill",c);
   });
 
-  // tier lines + labels
+  // tier lines + labels: show slot number only once per slot
+  const slotSeen = new Set();
   tierKeys.forEach(tk => {
     const nodes = tierMap.get(tk);
     const y = posMap[nodes[0].id].y;
     const slot = Math.floor(tk / 256), tick = tk % 256;
+
+    // thin tier line for each tick
     g.append("line").attr("class","tier-line")
-      .attr("x1", minX).attr("x2", maxX).attr("y1", y).attr("y2", y);
+      .attr("x1", minX + 60).attr("x2", maxX).attr("y1", y).attr("y2", y);
+
+    // tick label (small, right of slot label)
     g.append("text").attr("class","tier-label")
-      .attr("x", minX + 4).attr("y", y - 5).text("[" + slot + "|" + tick + "]");
+      .attr("x", minX + 50).attr("y", y + 4).attr("text-anchor","end")
+      .text("|" + tick);
+
+    // slot label only once per slot
+    if (!slotSeen.has(slot)) {
+      slotSeen.add(slot);
+      // thicker slot separator line
+      g.append("line").attr("class","slot-line")
+        .attr("x1", minX).attr("x2", maxX).attr("y1", y + NODE_H/2 + 4).attr("y2", y + NODE_H/2 + 4);
+      // clickable slot label
+      g.append("text").attr("class","slot-label")
+        .attr("x", minX + 4).attr("y", y + NODE_H/2 + 15)
+        .text("slot " + slot)
+        .on("click", () => {
+          document.getElementById("slotInput").value = slot;
+          loadSlot(slot);
+        });
+    }
   });
 
   // edges
@@ -733,17 +782,16 @@ function render(data) {
   nodeG.append("rect").attr("width",NODE_W).attr("height",NODE_H).attr("rx",4).attr("ry",4)
     .attr("fill", d => {
       if (d.is_missing) return "#333";
-      if (d.is_branch) return "#5a2020";
       if (d.is_seq && d.seq_chain_id) return dim(chainColorMap[d.seq_chain_id]||"#ffd700", 0.35);
       return "#2a3a5a";
     })
     .attr("stroke", d => {
       if (d.is_tip) return "#fff";
       if (d.is_missing || d.is_leaf) return "#555";
-      if (d.is_branch) return "#ff6b6b";
       if (d.is_seq && d.seq_chain_id) return chainColorMap[d.seq_chain_id]||"#ffd700";
       return "#4a6fa5";
-    });
+    })
+    .attr("stroke-width", d => d.is_branch ? 3 : 1.5);
 
   nodeG.append("text").attr("x",NODE_W/2).attr("y",NODE_H/2+3).attr("text-anchor","middle")
     .text(d => d.short_id);
@@ -758,9 +806,8 @@ function selectNode(d, data) {
   const blE = data.edges.filter(e => e.from===d.id && e.type==="baseline");
 
   let h = '<div>';
-  h += '<div><span class="field">ID:</span> <span class="copyable val" onclick="copyTxt(this)" title="click to copy">' + d.id + '</span></div>';
-  h += '<div><span class="field">Short:</span> <span class="val">' + d.short_id + '</span></div>';
-  h += '<div><span class="field">Slot:</span> <span class="val">' + d.slot + '</span> <span class="field">Tick:</span> <span class="val">' + d.tick + '</span></div>';
+  h += '<div><span class="copyable val" onclick="copyTxt(this)" title="click to copy">' + d.short_id + '</span></div>';
+  h += '<div style="font-size:9px;color:#666;margin-bottom:4px">' + d.id + '</div>';
   if (d.is_branch) h += '<div class="branch">BRANCH</div>';
   else if (d.is_seq) h += '<div class="seq">SEQUENCER</div>';
   if (d.seq_chain_id) h += '<div><span class="field">Chain:</span> <span class="seq">' + d.seq_chain_id + '</span></div>';
@@ -791,9 +838,9 @@ function setStatus(s) { document.getElementById("status").textContent = s; }
 function dim(hex, factor) {
   hex = hex.replace("#","");
   const r = Math.round(parseInt(hex.substring(0,2),16)*factor);
-  const g = Math.round(parseInt(hex.substring(2,4),16)*factor);
+  const gg = Math.round(parseInt(hex.substring(2,4),16)*factor);
   const b = Math.round(parseInt(hex.substring(4,6),16)*factor);
-  return "#"+[r,g,b].map(c=>Math.max(0,Math.min(255,c)).toString(16).padStart(2,"0")).join("");
+  return "#"+[r,gg,b].map(c=>Math.max(0,Math.min(255,c)).toString(16).padStart(2,"0")).join("");
 }
 
 document.getElementById("slotInput").addEventListener("keydown", e => { if(e.key==="Enter") loadSlot(); });
