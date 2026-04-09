@@ -18,6 +18,7 @@ func Init() *cobra.Command {
 		initPutCmd(),
 		initPastConeCmd(),
 		initIDListCmd(),
+		initDagVizCmd(),
 	)
 	return dbCmd
 }
