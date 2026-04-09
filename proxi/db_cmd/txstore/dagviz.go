@@ -63,18 +63,22 @@ func runDagVizCmd(cmd *cobra.Command, _ []string) {
 // dagviz data types for JSON response
 
 type dagVizVertex struct {
-	ID          string `json:"id"`
-	ShortID     string `json:"short_id"`
-	Slot        uint32 `json:"slot"`
-	Tick        byte   `json:"tick"`
-	IsSequencer bool   `json:"is_seq"`
-	IsBranch    bool   `json:"is_branch"`
-	SeqChainID  string `json:"seq_chain_id,omitempty"`
-	NumInputs   int    `json:"num_inputs"`
-	NumOutputs  int    `json:"num_outputs"`
-	IsTip       bool   `json:"is_tip,omitempty"`
-	IsLeaf      bool   `json:"is_leaf,omitempty"`
-	IsMissing   bool   `json:"is_missing,omitempty"`
+	ID              string  `json:"id"`
+	ShortID         string  `json:"short_id"`
+	Slot            uint32  `json:"slot"`
+	Tick            byte    `json:"tick"`
+	IsSequencer     bool    `json:"is_seq"`
+	IsBranch        bool    `json:"is_branch"`
+	SeqChainID      string  `json:"seq_chain_id,omitempty"`
+	NumInputs       int     `json:"num_inputs"`
+	NumOutputs      int     `json:"num_outputs"`
+	LedgerCoverage  *uint64 `json:"ledger_coverage,omitempty"`
+	CoverageDelta   *uint64 `json:"coverage_delta,omitempty"`
+	Supply          *uint64 `json:"supply,omitempty"`
+	SlotInflation   *uint64 `json:"slot_inflation,omitempty"`
+	IsTip           bool    `json:"is_tip,omitempty"`
+	IsLeaf          bool    `json:"is_leaf,omitempty"`
+	IsMissing       bool    `json:"is_missing,omitempty"`
 }
 
 type dagVizEdge struct {
@@ -117,7 +121,7 @@ func (l *dagVizLoader) load(txid base.TransactionID, depth int, isTip bool) {
 		return
 	}
 
-	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMeta)
+	txBytes, meta, err := txmetadata.ParseTxMetadata(txBytesWithMeta)
 	if err != nil {
 		return
 	}
@@ -143,6 +147,12 @@ func (l *dagVizLoader) load(txid base.TransactionID, depth int, isTip bool) {
 		if seqData := tx.SequencerTransactionData(); seqData != nil {
 			vtx.SeqChainID = seqData.SequencerID.StringShort()
 		}
+	}
+	if meta != nil {
+		vtx.LedgerCoverage = meta.LedgerCoverage
+		vtx.CoverageDelta = meta.CoverageDelta
+		vtx.Supply = meta.Supply
+		vtx.SlotInflation = meta.SlotInflation
 	}
 	l.data.Vertices = append(l.data.Vertices, vtx)
 
@@ -802,6 +812,17 @@ function render(data) {
 
   nodeG.append("text").attr("x",NODE_W/2).attr("y",NODE_H/2+3).attr("text-anchor","middle")
     .text(d => d.short_id);
+
+  // tooltip with coverage on hover for sequencer/branch txs
+  nodeG.append("title").text(d => {
+    let t = d.short_id;
+    if (d.ledger_coverage != null) t += "\ncoverage: " + fmtNum(d.ledger_coverage);
+    if (d.coverage_delta != null) t += "\ndelta: " + fmtNum(d.coverage_delta);
+    if (d.supply != null) t += "\nsupply: " + fmtNum(d.supply);
+    if (d.slot_inflation != null) t += "\ninflation: " + fmtNum(d.slot_inflation);
+    if (d.seq_chain_id) t += "\nchain: " + d.seq_chain_id;
+    return t;
+  });
 }
 
 function selectNode(d, data) {
@@ -847,6 +868,10 @@ function selectNode(d, data) {
   if (d.is_missing) h += '<div style="color:#ff6b6b">NOT IN TXSTORE</div>';
   if (d.is_leaf && !d.is_missing) h += '<div style="color:#888">DEPTH LIMIT</div>';
   h += '<div><span class="field">In:</span> ' + d.num_inputs + ' <span class="field">Out:</span> ' + d.num_outputs + '</div>';
+  if (d.ledger_coverage != null) h += '<div><span class="field">Coverage:</span> <span class="val">' + fmtNum(d.ledger_coverage) + '</span></div>';
+  if (d.coverage_delta != null) h += '<div><span class="field">Delta:</span> <span class="val">' + fmtNum(d.coverage_delta) + '</span></div>';
+  if (d.supply != null) h += '<div><span class="field">Supply:</span> <span class="val">' + fmtNum(d.supply) + '</span></div>';
+  if (d.slot_inflation != null) h += '<div><span class="field">Inflation:</span> <span class="val">' + fmtNum(d.slot_inflation) + '</span></div>';
 
   const edgeList = (edges, label, color) => {
     if (!edges.length) return '';
@@ -866,8 +891,23 @@ function selectNode(d, data) {
 
 function selFoundTx(id) { document.getElementById("txidInput").value = id; loadPastCone(); }
 function findShort(data, id) { const v = data.vertices.find(v => v.id===id); return v ? v.short_id : id.substring(0,16)+".."; }
-function copyTxt(el) { navigator.clipboard.writeText(el.textContent); el.style.color="#6dd5ed"; setTimeout(()=>el.style.color="",500); }
+function copyTxt(el) {
+  const text = el.textContent || el.innerText;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      el.style.color="#6dd5ed"; setTimeout(()=>el.style.color="",500);
+    });
+  } else {
+    // fallback for non-HTTPS contexts
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.left = "-9999px";
+    document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); document.body.removeChild(ta);
+    el.style.color="#6dd5ed"; setTimeout(()=>el.style.color="",500);
+  }
+}
 function setStatus(s) { document.getElementById("status").textContent = s; }
+function fmtNum(n) { if (n == null) return "?"; return n.toLocaleString(); }
 function dim(hex, factor) {
   hex = hex.replace("#","");
   const r = Math.round(parseInt(hex.substring(0,2),16)*factor);
