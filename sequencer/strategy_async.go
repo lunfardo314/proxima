@@ -20,6 +20,14 @@ const (
 	// because both increase coverage.
 	plateauHoldTicks = 3
 
+	// finalizationTicks is the deadline buffer for task.Run. The target timestamp is set this
+	// many ticks ahead of "now", giving task.Run enough wall-clock time to create an attacher,
+	// solidify the past cone, insert tag-alongs, compute coverage delta, and build the tx.
+	// Separate from plateauHoldTicks because plateau detection and finalization have different
+	// time requirements: plateau hold can be short (3 ticks = 240ms), but finalization needs
+	// ~1 second due to state trie I/O and coverage computation.
+	finalizationTicks = 12
+
 	// milestoneWatchInterval is how often the background watcher polls the tippool
 	milestoneWatchInterval = 20 * time.Millisecond
 )
@@ -158,9 +166,10 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// back to the base extend proposer which issues milestones without endorsements.
 		// These "seed" milestones expose the sequencer to others for endorsement and
 		// serve as tag-along vehicles when endorsement coverage isn't growing.
-		if !seq.tryBuildAndSubmit() {
-			seq.adjustBudget(false)
-		}
+		// Note: no adjustBudget(false) here. "No proposals" or "not good enough" are
+		// normal idle conditions, not overload signals. Budget is only cut on branch
+		// failures where tag-along pressure actually matters.
+		seq.tryBuildAndSubmit()
 		lastSeenCoverage = seq.skeletonFactory.BestCoverage()
 		lastImprovementTime = time.Now()
 		lastBacklogCheck = time.Now()
@@ -175,8 +184,8 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	lib := ledger.L(nowTs.Slot)
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
 	// target must be far enough in the future for task.Run to solidify and finalize.
-	// plateauHoldTicks ahead gives the same amount of time as the plateau wait itself.
-	targetTs := base.MaximumTime(nowTs.AddTicks(plateauHoldTicks), paceMin)
+	// finalizationTicks gives ~1s for attacher creation, state trie I/O, and tx building.
+	targetTs := base.MaximumTime(nowTs.AddTicks(finalizationTicks), paceMin)
 
 	// don't overshoot into next slot
 	nextBoundary := nowTs.NextSlotBoundary()
