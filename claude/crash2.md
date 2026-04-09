@@ -312,27 +312,34 @@ The conflict might be: output `[230238|0br]...[0]` is consumed by `[230238|88sq]
 
 Wait — that can't be right either. The baseline `[230239|0br]` consumes `[230238|0br]...[1]` (stem output), and `[230238|88sq]` consumes `[230238|0br]...[0]` (chain output). Both are in the past cone. The baseline was built on top of `[230238|88sq]` (since the baseline branch extends boot's chain through `[230238|88sq]`).
 
-#### This needs further investigation
+#### Key insight: explicit baseline from boot strategy
 
-The conflict detection logic needs to be traced to understand exactly what condition is being violated. The past cone dump shows the full state — all vertices with their consumers and flags. The conflict is reported on `[230238|0br]...[0]` but the consumer `[230238|88sq]` appears to be legitimately in the past cone.
+The conflict is clearly related to the **explicit baseline** set in transaction `[230239|46sq]0090062f6c7b..` (entry #7). This transaction consumes a very old output from slot 233 (`[230233|27sq]008044959046..`), which is 6 slots behind. This pattern — consuming an output many slots behind with an explicit baseline — is the signature of the **boot proposer** (`tryBootProposal` in `task/proposer_boot.go`).
 
-Possible explanations:
-1. The conflict checker considers consumers from the GLOBAL consumer set (not just the past cone), and finds another consumer of `[230238|0br]...[0]` that conflicts
-2. There's a subtle issue with the `S+`/`S-` (InTheState) classification that causes a false positive
-3. The conflict is related to the same non-state-branch traversal bug as Issue 1 — incomplete past cone leads to incorrect conflict detection
+The boot proposer creates transactions with an explicit baseline (the LRB) when the sequencer's own milestone is more than 1 slot behind. It fires when `extend.VID.Slot()+1 < targetTs.Slot`. However, in this context there was **no reason for the boot strategy to be active** — the network had active branches and sequencer transactions, the sequencer was not stale, and normal factory/base strategies should have been used instead.
 
-This occurred only once and might be a transient race condition. But it should be investigated alongside Issue 1 since both involve past cone integrity.
+**The boot strategy kicked in incorrectly.** This likely happened because `OwnLatestMilestoneOutput()` returned a stale milestone (from the tippool gap after branch submission), making the boot condition `extend.VID.Slot()+1 < targetTs.Slot` evaluate to true when it shouldn't have.
+
+The explicit baseline introduced by the boot strategy creates a transaction whose past cone merges two independent state views — the explicit baseline (LRB) and the endorsement chain — which can have conflicting consumers for the same outputs.
+
+#### Investigation needed
+
+1. **Why the boot strategy fired**: Trace the conditions that led to `tryBootProposal` returning a proposal when normal strategies should have worked. Likely related to the tippool gap (branch not yet processed, OwnLatestMilestoneOutput returning stale data).
+
+2. **Past cone reaction is inadequate**: The past cone logic's response to this kind of incorrectness (an explicit baseline that conflicts with the endorsement chain) should be investigated. Rather than producing a transaction that gets rejected as BAD with a conflict, the attacher or proposal validation should detect this incompatibility earlier and reject the proposal before submission. The fact that it was submitted, gossiped, and then rejected on access nodes means the conflict detection happens too late in the pipeline.
+
+3. **Conflict detection specifics**: Trace the exact conflict detection logic to understand what condition `[230238|0br]010aea43e400..[0]` violates — whether it's a legitimate double-spend from merging incompatible state views, or a false positive from incomplete past cone traversal.
 
 ---
 
 ## Relationship Between the Two Issues
 
-Both issues involve the past cone containing transactions whose full dependency chain is NOT properly traversed:
+Both issues stem from Phase 2 changes creating scenarios that weren't common before:
 
-- **Issue 1**: Non-baseline branches' inputs are not traversed → missing DEL mutations → token conservation violation
-- **Issue 2**: Possibly related — incomplete past cone state leads to incorrect conflict detection
+- **Issue 1**: Non-baseline branches' inputs are not traversed → missing DEL mutations → token conservation violation. Root cause: branch short-circuit in `attachOutput` (line 591-594) that skips input traversal for non-state branch dependencies.
+- **Issue 2**: Boot strategy fires incorrectly due to stale `OwnLatestMilestoneOutput()` (tippool gap after branch submission) → creates a transaction with explicit baseline that merges incompatible state views → conflict detected too late (after submission and gossip). Root cause: boot proposer condition check doesn't account for the tippool gap, and the past cone logic doesn't fail-fast on incompatible explicit baselines.
 
-The root cause is the same: the branch short-circuit in `attachOutput` (line 591-594) that skips input traversal for branch dependencies. When branches from different sequencers at the same slot enter the past cone (which wasn't common before Phase 2), the incomplete traversal causes both token conservation and conflict detection failures.
+Both are triggered by the new timing characteristics of Phase 2 (plateau detection, longer intervals between submissions, tippool gap from fire-and-forget branch submission).
 
 ---
 
