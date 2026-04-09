@@ -11,9 +11,11 @@ import (
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/txstore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/cobra"
@@ -51,6 +53,9 @@ func runDagVizCmd(cmd *cobra.Command, _ []string) {
 	})
 	http.HandleFunc("/api/find_tx", func(w http.ResponseWriter, r *http.Request) {
 		serveFindTx(w, r, rawDB)
+	})
+	http.HandleFunc("/api/tx_detail", func(w http.ResponseWriter, r *http.Request) {
+		serveTxDetail(w, r, txStore)
 	})
 
 	addr := fmt.Sprintf(":%d", port)
@@ -363,6 +368,51 @@ func serveFindTx(w http.ResponseWriter, r *http.Request, rawDB *badger_adaptor.D
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(results)
+}
+
+// serveTxDetail returns parsed transaction text (same as `proxi db txstore get -p`)
+func serveTxDetail(w http.ResponseWriter, r *http.Request, txStore global.TxBytesGet) {
+	txidHex := r.URL.Query().Get("txid")
+	if txidHex == "" {
+		http.Error(w, "missing txid parameter", http.StatusBadRequest)
+		return
+	}
+	txid, err := base.TransactionIDFromHexString(txidHex)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid txid: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	txBytesWithMeta := txStore.GetTxBytesWithMetadata(&txid)
+	if len(txBytesWithMeta) == 0 {
+		http.Error(w, "transaction not found", http.StatusNotFound)
+		return
+	}
+
+	metaBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMeta)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("metadata split error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("metadata parse error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("tx parse error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	_ = tx.SetFullContext(func(i byte) (*ledger.Output, error) {
+		return txstore.LoadOutput(txStore, tx.MustInputAt(i))
+	})
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = fmt.Fprintf(w, "--- transaction ---\n%s\n--- metadata ---\n%s", tx.String(), meta.String())
 }
 
 // parseShortTxID parses formats like:
@@ -884,11 +934,25 @@ function selectNode(d, data) {
   };
   h += edgeList(inE, "Inputs", "#ccc");
   h += edgeList(enE, "Endorsements", "#ff6b6b");
-  h += edgeList(blE, "Baseline", "#6dd5ed");
+  h += edgeList(blE, "Explicit baseline", "#6dd5ed");
+  if (!d.is_missing) h += '<div style="margin-top:6px"><button onclick="showParsedTx(\'' + d.id + '\')">Show parsed</button></div>';
+  h += '<pre id="parsed-tx" style="margin-top:6px;white-space:pre-wrap;word-break:break-all;font-size:10px;color:#bbb;max-height:500px;overflow-y:auto;display:none"></pre>';
   h += '</div>';
   document.getElementById("details").innerHTML = h;
 }
 
+async function showParsedTx(id) {
+  const el = document.getElementById("parsed-tx");
+  if (!el) return;
+  if (el.style.display !== "none") { el.style.display = "none"; return; }
+  el.textContent = "Loading...";
+  el.style.display = "block";
+  try {
+    const resp = await fetch("/api/tx_detail?txid=" + encodeURIComponent(id));
+    if (!resp.ok) { el.textContent = "Error: " + (await resp.text()); return; }
+    el.textContent = await resp.text();
+  } catch(e) { el.textContent = "Error: " + e; }
+}
 function selFoundTx(id) { document.getElementById("txidInput").value = id; loadPastCone(); }
 function findShort(data, id) { const v = data.vertices.find(v => v.id===id); return v ? v.short_id : id.substring(0,16)+".."; }
 function copyTxt(el) {
