@@ -61,6 +61,11 @@ func TxBytesStore() global.TxBytesStore {
 	return txBytesStore
 }
 
+// TxBytesDBRaw returns a raw DB adaptor for the txstore, enabling prefix iteration.
+func TxBytesDBRaw() *badger_adaptor.DB {
+	return badger_adaptor.New(txBytesDB)
+}
+
 func InitDBRaw(dbName string) *badger_adaptor.DB {
 	Infof("Opening raw database: %s", dbName)
 	FileMustExist(dbName)
