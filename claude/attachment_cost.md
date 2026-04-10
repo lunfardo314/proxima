@@ -94,7 +94,7 @@ Without fail-fast checking, an attacker could construct a malicious past cone th
 
 ### Fail-fast flow
 
-1. During recursive traversal, `MustMarkVertexNotInTheState()` is called for a non-sequencer transaction
+1. During recursive traversal, `MarkVertexNotInTheState()` is called for a non-sequencer transaction
 2. Cost is added to `pastConeCost` and `FlagPastConeDirectCost` is set
 3. **Immediately after**: check `pastConeCost + seqTxCost > budget`
 4. If exceeded → invalidate attacher immediately, stop traversal
@@ -102,12 +102,12 @@ Without fail-fast checking, an attacker could construct a malicious past cone th
 
 ### Implementation location
 
-The budget check should occur right after `MustMarkVertexNotInTheState()` returns, in the calling code
+The budget check should occur right after `MarkVertexNotInTheState()` returns, in the calling code
 (attacher functions). This ensures every addition is checked before proceeding with further traversal.
 
 ```go
 // Example pattern in attacher
-pc.MustMarkVertexNotInTheState(vid)
+pc.MarkVertexNotInTheState(vid)
 if pc.AttachmentCost() + seqTxCost > budget {
     a.setError(fmt.Errorf("attachment cost budget exceeded"))
     return false  // Stop immediately
@@ -126,11 +126,11 @@ Add to `past_cone.go`:
 FlagPastConeDirectCost = FlagsPastCone(0b10000000) // vertex contributes to direct attachment cost
 ```
 
-### Update `MustMarkVertexNotInTheState()`
+### Update `MarkVertexNotInTheState()`
 
 Set the direct cost flag when adding cost:
 ```go
-func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
+func (pc *PastCone) MarkVertexNotInTheState(vid *WrappedTx) {
     pc.Assertf(!pc.IsInTheState(vid), "!pc.IsInTheState(vid)")
     pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState)
     pc.Assertf(pc.isNotInTheState(vid), "pc.isNotInTheState(vid)")
@@ -239,7 +239,7 @@ Implementation completed in commits:
 
 ### Core Changes
 - `FlagPastConeDirectCost` flag added to mark vertices contributing to direct cost
-- `MustMarkVertexNotInTheState()` sets the flag for non-sequencer transactions
+- `MarkVertexNotInTheState()` sets the flag for non-sequencer transactions
 - `MergePastCone()` masks out the flag (merged past cones don't contribute)
 - Fail-fast budget check in `checkAttachmentCostBudget()` after attachment
 - `AttachmentCostBudget` ledger constant (default: 600)
@@ -316,7 +316,7 @@ budget, allowing fail-fast behavior to be verified with a small chain of transac
 |----------|---------|
 | `core/vertex/past_cone.go:48-56` | `FlagPastConeDirectCost` constant |
 | `core/vertex/past_cone.go:165` | `AttachmentCost()` method |
-| `core/vertex/past_cone.go:335` | `MustMarkVertexNotInTheState()` - sets flag |
+| `core/vertex/past_cone.go:335` | `MarkVertexNotInTheState()` - sets flag |
 | `core/vertex/past_cone.go:650` | `MergePastCone()` - masks out flag |
 | `core/attacher/attacher.go:311` | `checkAttachmentCostBudget()` - fail-fast check |
 | `core/attacher/attacher_incremental.go:236` | `InsertInput()` with budget callback |

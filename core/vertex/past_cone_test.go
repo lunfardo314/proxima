@@ -373,7 +373,7 @@ func TestPastConeStateStatus(t *testing.T) {
 
 	t.Run("mark not in state", func(t *testing.T) {
 		pc.MarkVertexKnown(vid)
-		pc.MustMarkVertexNotInTheState(vid)
+		pc.MarkVertexNotInTheState(vid)
 
 		// Should be known and checked, but not in state
 		require.True(t, pc.IsKnown(vid))
@@ -920,7 +920,7 @@ func TestMutationStats(t *testing.T) {
 // =============================================================================
 //
 // These tests verify that incremental attachment cost calculation (maintained via
-// MustMarkVertexNotInTheState) always equals the direct calculation (AttachmentCostDirect).
+// MarkVertexNotInTheState) always equals the direct calculation (AttachmentCostDirect).
 // AttachmentCost is the sum of (NumInputs + NumProducedOutputs) for all non-sequencer
 // transactions that are definitely NOT in the baseline state.
 //
@@ -958,7 +958,7 @@ func TestAttachmentCostBasic(t *testing.T) {
 	t.Run("virtual tx marked not-in-state has zero cost", func(t *testing.T) {
 		vid := WrapTxID(base.RandomTransactionID(false, 3, base.T(1002, 50)))
 		pc.MarkVertexKnown(vid)
-		pc.MustMarkVertexNotInTheState(vid)
+		pc.MarkVertexNotInTheState(vid)
 
 		// VirtualTx has AttachmentCost() = 0
 		require.Equal(t, 0, pc.AttachmentCost())
@@ -982,7 +982,7 @@ func TestAttachmentCostSequencerExcluded(t *testing.T) {
 	require.True(t, seqVid.IsSequencerTransaction())
 
 	pc.MarkVertexKnown(seqVid)
-	pc.MustMarkVertexNotInTheState(seqVid)
+	pc.MarkVertexNotInTheState(seqVid)
 
 	// Sequencer transactions don't contribute to attachment cost
 	require.Equal(t, 0, pc.AttachmentCost())
@@ -1001,7 +1001,7 @@ func TestAttachmentCostDeltaCommit(t *testing.T) {
 	// Add some vertices to base
 	vid1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
 	pc.MarkVertexKnown(vid1)
-	pc.MustMarkVertexNotInTheState(vid1)
+	pc.MarkVertexNotInTheState(vid1)
 
 	initialCost := pc.AttachmentCost()
 	require.Equal(t, pc.AttachmentCostDirect(), initialCost)
@@ -1012,7 +1012,7 @@ func TestAttachmentCostDeltaCommit(t *testing.T) {
 	// Add vertex in delta
 	vid2 := WrapTxID(base.RandomTransactionID(false, 4, base.T(1002, 50)))
 	pc.MarkVertexKnown(vid2)
-	pc.MustMarkVertexNotInTheState(vid2)
+	pc.MarkVertexNotInTheState(vid2)
 
 	// During delta, cost should include both base and delta contributions
 	deltaCost := pc.AttachmentCost()
@@ -1039,7 +1039,7 @@ func TestAttachmentCostDeltaRollback(t *testing.T) {
 	// Add some vertices to base
 	vid1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
 	pc.MarkVertexKnown(vid1)
-	pc.MustMarkVertexNotInTheState(vid1)
+	pc.MarkVertexNotInTheState(vid1)
 
 	initialCost := pc.AttachmentCost()
 	require.Equal(t, pc.AttachmentCostDirect(), initialCost)
@@ -1050,7 +1050,7 @@ func TestAttachmentCostDeltaRollback(t *testing.T) {
 	// Add vertex in delta
 	vid2 := WrapTxID(base.RandomTransactionID(false, 4, base.T(1002, 50)))
 	pc.MarkVertexKnown(vid2)
-	pc.MustMarkVertexNotInTheState(vid2)
+	pc.MarkVertexNotInTheState(vid2)
 
 	// During delta, cost may differ
 	deltaCost := pc.AttachmentCost()
@@ -1078,7 +1078,7 @@ func TestAttachmentCostMultipleDeltaCycles(t *testing.T) {
 	pc.BeginDelta()
 	vid1 := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
 	pc.MarkVertexKnown(vid1)
-	pc.MustMarkVertexNotInTheState(vid1)
+	pc.MarkVertexNotInTheState(vid1)
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 	pc.CommitDelta()
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
@@ -1087,7 +1087,7 @@ func TestAttachmentCostMultipleDeltaCycles(t *testing.T) {
 	pc.BeginDelta()
 	vid2 := WrapTxID(base.RandomTransactionID(false, 4, base.T(1002, 50)))
 	pc.MarkVertexKnown(vid2)
-	pc.MustMarkVertexNotInTheState(vid2)
+	pc.MarkVertexNotInTheState(vid2)
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 	pc.RollbackDelta()
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
@@ -1096,7 +1096,7 @@ func TestAttachmentCostMultipleDeltaCycles(t *testing.T) {
 	pc.BeginDelta()
 	vid3 := WrapTxID(base.RandomTransactionID(false, 5, base.T(1003, 50)))
 	pc.MarkVertexKnown(vid3)
-	pc.MustMarkVertexNotInTheState(vid3)
+	pc.MarkVertexNotInTheState(vid3)
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 	pc.CommitDelta()
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
@@ -1114,13 +1114,13 @@ func TestAttachmentCostMixedVertexTypes(t *testing.T) {
 	// Add non-sequencer vertex
 	nonSeqVid := WrapTxID(base.RandomTransactionID(false, 3, base.T(1001, 50)))
 	pc.MarkVertexKnown(nonSeqVid)
-	pc.MustMarkVertexNotInTheState(nonSeqVid)
+	pc.MarkVertexNotInTheState(nonSeqVid)
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 
 	// Add sequencer vertex - should not change cost (sequencers excluded)
 	seqVid := WrapTxID(base.RandomTransactionID(true, 4, base.T(1002, 50)))
 	pc.MarkVertexKnown(seqVid)
-	pc.MustMarkVertexNotInTheState(seqVid)
+	pc.MarkVertexNotInTheState(seqVid)
 
 	// Cost should still match direct calculation
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
@@ -1130,12 +1130,12 @@ func TestAttachmentCostMixedVertexTypes(t *testing.T) {
 
 	nonSeqVid2 := WrapTxID(base.RandomTransactionID(false, 2, base.T(1003, 50)))
 	pc.MarkVertexKnown(nonSeqVid2)
-	pc.MustMarkVertexNotInTheState(nonSeqVid2)
+	pc.MarkVertexNotInTheState(nonSeqVid2)
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 
 	seqVid2 := WrapTxID(base.RandomTransactionID(true, 5, base.T(1004, 50)))
 	pc.MarkVertexKnown(seqVid2)
-	pc.MustMarkVertexNotInTheState(seqVid2)
+	pc.MarkVertexNotInTheState(seqVid2)
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 
 	pc.CommitDelta()
@@ -1277,7 +1277,7 @@ func TestAttachmentCostWithRealTransaction(t *testing.T) {
 	pc := newPastConeFromBase(nil, tip, ts, "test", NewPastConeBase(&branchID))
 
 	pc.MarkVertexKnown(vid)
-	pc.MustMarkVertexNotInTheState(vid)
+	pc.MarkVertexNotInTheState(vid)
 
 	// Incremental and direct calculations should match
 	require.Equal(t, cost, pc.AttachmentCost())
@@ -1300,7 +1300,7 @@ func TestAttachmentCostWithRealTransactionDeltaCommit(t *testing.T) {
 
 	// Add first transaction to base
 	pc.MarkVertexKnown(vid1)
-	pc.MustMarkVertexNotInTheState(vid1)
+	pc.MarkVertexNotInTheState(vid1)
 
 	baseCost := pc.AttachmentCost()
 	require.Equal(t, pc.AttachmentCostDirect(), baseCost)
@@ -1310,7 +1310,7 @@ func TestAttachmentCostWithRealTransactionDeltaCommit(t *testing.T) {
 	pc.BeginDelta()
 
 	pc.MarkVertexKnown(vid2)
-	pc.MustMarkVertexNotInTheState(vid2)
+	pc.MarkVertexNotInTheState(vid2)
 
 	deltaCost := pc.AttachmentCost()
 	require.Equal(t, pc.AttachmentCostDirect(), deltaCost)
@@ -1340,7 +1340,7 @@ func TestAttachmentCostWithRealTransactionDeltaRollback(t *testing.T) {
 
 	// Add first transaction to base
 	pc.MarkVertexKnown(vid1)
-	pc.MustMarkVertexNotInTheState(vid1)
+	pc.MarkVertexNotInTheState(vid1)
 
 	baseCost := pc.AttachmentCost()
 	require.Equal(t, pc.AttachmentCostDirect(), baseCost)
@@ -1350,7 +1350,7 @@ func TestAttachmentCostWithRealTransactionDeltaRollback(t *testing.T) {
 	pc.BeginDelta()
 
 	pc.MarkVertexKnown(vid2)
-	pc.MustMarkVertexNotInTheState(vid2)
+	pc.MarkVertexNotInTheState(vid2)
 
 	deltaCost := pc.AttachmentCost()
 	require.Equal(t, pc.AttachmentCostDirect(), deltaCost)
@@ -1385,7 +1385,7 @@ func TestAttachmentCostMultipleRealTransactions(t *testing.T) {
 	expectedCost := 0
 	for i, vid := range vids {
 		pc.MarkVertexKnown(vid)
-		pc.MustMarkVertexNotInTheState(vid)
+		pc.MarkVertexNotInTheState(vid)
 
 		expectedCost += vid.AttachmentCost()
 
@@ -1410,7 +1410,7 @@ func TestAttachmentCostMixedRealAndVirtual(t *testing.T) {
 
 	// Add real transaction
 	pc.MarkVertexKnown(realVid)
-	pc.MustMarkVertexNotInTheState(realVid)
+	pc.MarkVertexNotInTheState(realVid)
 
 	realCost := realVid.AttachmentCost()
 	require.Equal(t, realCost, pc.AttachmentCost())
@@ -1418,7 +1418,7 @@ func TestAttachmentCostMixedRealAndVirtual(t *testing.T) {
 
 	// Add virtual transaction (cost = 0)
 	pc.MarkVertexKnown(virtualVid)
-	pc.MustMarkVertexNotInTheState(virtualVid)
+	pc.MarkVertexNotInTheState(virtualVid)
 
 	// Cost should remain the same (virtual has 0 cost)
 	require.Equal(t, realCost, pc.AttachmentCost())
@@ -1451,7 +1451,7 @@ func TestAttachmentCostAccumulationInDelta(t *testing.T) {
 	baseCost := 0
 	for _, vid := range baseVids {
 		pc.MarkVertexKnown(vid)
-		pc.MustMarkVertexNotInTheState(vid)
+		pc.MarkVertexNotInTheState(vid)
 		baseCost += vid.AttachmentCost()
 	}
 	require.Equal(t, baseCost, pc.AttachmentCost())
@@ -1464,7 +1464,7 @@ func TestAttachmentCostAccumulationInDelta(t *testing.T) {
 	deltaCost := baseCost
 	for _, vid := range deltaVids {
 		pc.MarkVertexKnown(vid)
-		pc.MustMarkVertexNotInTheState(vid)
+		pc.MarkVertexNotInTheState(vid)
 		deltaCost += vid.AttachmentCost()
 
 		require.Equal(t, deltaCost, pc.AttachmentCost())
@@ -1495,7 +1495,7 @@ func TestAttachmentCostComplexScenario(t *testing.T) {
 	vid1 := createTestTransaction(t, u, addrIdx)
 	addrIdx += 2
 	pc.MarkVertexKnown(vid1)
-	pc.MustMarkVertexNotInTheState(vid1)
+	pc.MarkVertexNotInTheState(vid1)
 	cost1 := vid1.AttachmentCost()
 	require.Equal(t, cost1, pc.AttachmentCost())
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
@@ -1505,7 +1505,7 @@ func TestAttachmentCostComplexScenario(t *testing.T) {
 	vid2 := createTestTransaction(t, u, addrIdx)
 	addrIdx += 2
 	pc.MarkVertexKnown(vid2)
-	pc.MustMarkVertexNotInTheState(vid2)
+	pc.MarkVertexNotInTheState(vid2)
 	cost2 := cost1 + vid2.AttachmentCost()
 	require.Equal(t, cost2, pc.AttachmentCost())
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
@@ -1518,7 +1518,7 @@ func TestAttachmentCostComplexScenario(t *testing.T) {
 	vid3 := createTestTransaction(t, u, addrIdx)
 	addrIdx += 2
 	pc.MarkVertexKnown(vid3)
-	pc.MustMarkVertexNotInTheState(vid3)
+	pc.MarkVertexNotInTheState(vid3)
 	cost3 := cost2 + vid3.AttachmentCost()
 	require.Equal(t, cost3, pc.AttachmentCost())
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
@@ -1531,14 +1531,14 @@ func TestAttachmentCostComplexScenario(t *testing.T) {
 	vid4 := createTestTransaction(t, u, addrIdx)
 	addrIdx += 2
 	pc.MarkVertexKnown(vid4)
-	pc.MustMarkVertexNotInTheState(vid4)
+	pc.MarkVertexNotInTheState(vid4)
 	cost4a := cost2 + vid4.AttachmentCost()
 	require.Equal(t, cost4a, pc.AttachmentCost())
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
 
 	vid5 := createTestTransaction(t, u, addrIdx)
 	pc.MarkVertexKnown(vid5)
-	pc.MustMarkVertexNotInTheState(vid5)
+	pc.MarkVertexNotInTheState(vid5)
 	cost4b := cost4a + vid5.AttachmentCost()
 	require.Equal(t, cost4b, pc.AttachmentCost())
 	require.Equal(t, pc.AttachmentCostDirect(), pc.AttachmentCost())
@@ -1670,9 +1670,9 @@ func TestPastConeCloneWithRealTransactions(t *testing.T) {
 	pc := newPastConeFromBase(nil, tip, ts, "original", NewPastConeBase(&branchID))
 
 	pc.MarkVertexKnown(vid1)
-	pc.MustMarkVertexNotInTheState(vid1)
+	pc.MarkVertexNotInTheState(vid1)
 	pc.MarkVertexKnown(vid2)
-	pc.MustMarkVertexNotInTheState(vid2)
+	pc.MarkVertexNotInTheState(vid2)
 	pc.addVirtuallyConsumedOutput(WrappedOutput{VID: vid1, Index: 0})
 
 	origCost := pc.AttachmentCost()
@@ -1687,7 +1687,7 @@ func TestPastConeCloneWithRealTransactions(t *testing.T) {
 	// Adding to clone doesn't affect original
 	vid3 := createTestTransaction(t, u, 904)
 	clone.MarkVertexKnown(vid3)
-	clone.MustMarkVertexNotInTheState(vid3)
+	clone.MarkVertexNotInTheState(vid3)
 
 	require.Equal(t, origCost, pc.AttachmentCost())
 	require.Greater(t, clone.AttachmentCost(), origCost)

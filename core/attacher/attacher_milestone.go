@@ -110,7 +110,7 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 	})
 	// Set the sequencer transaction cost for budget checking during traversal
 	ret.attacher.seqTxCost = ret.finals.numInputs + ret.finals.numOutputs
-	ret.pastCone.MustMarkVertexNotInTheState(vid)
+	ret.pastCone.MarkVertexNotInTheState(vid)
 
 	return ret
 }

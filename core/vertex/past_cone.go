@@ -373,16 +373,28 @@ func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
 	pc.SetFlagsUp(vid, flags)
 }
 
-// MustMarkVertexNotInTheState is marked definitely not rooted
-// attachmentCost increased for non-sequencer transactions
-// FlagPastConeDirectCost is set for non-sequencer transactions to mark them as directly contributing to cost
-func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
+// MarkVertexNotInTheState marks the vertex as checked and not in the baseline state.
+// The result is provisional: it may be upgraded to in-the-state later if a re-check
+// against a newer baseline finds the tx (see UpgradeToInTheState).
+// Cost tracking is idempotent — guarded by FlagPastConeDirectCost to prevent double-counting.
+func (pc *PastCone) MarkVertexNotInTheState(vid *WrappedTx) {
 	pc.Assertf(!pc.IsInTheState(vid), "!pc.IsInTheState(vid)")
 	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState)
-	pc.Assertf(pc.isNotInTheState(vid), "pc.isNotInTheState(vid)")
-	if !vid.IsSequencerTransaction() {
+	if !vid.IsSequencerTransaction() && !pc.Flags(vid).FlagsUp(FlagPastConeDirectCost) {
 		pc.addToAttachmentCost(vid.AttachmentCost())
 		pc.SetFlagsUp(vid, FlagPastConeDirectCost)
+	}
+}
+
+// UpgradeToInTheState upgrades a vertex previously marked not-in-state to in-the-state.
+// This happens when a PastConeBase merge brought stale not-in-state flags from an older
+// baseline, and a re-check against the current (newer) baseline finds the tx is committed.
+// Reverses the attachment cost added by MarkVertexNotInTheState.
+func (pc *PastCone) UpgradeToInTheState(vid *WrappedTx) {
+	pc.SetFlagsUp(vid, FlagPastConeVertexInTheState|FlagPastConeVertexDefined)
+	if pc.Flags(vid).FlagsUp(FlagPastConeDirectCost) {
+		pc.addToAttachmentCost(-vid.AttachmentCost())
+		pc.SetFlagsDown(vid, FlagPastConeDirectCost)
 	}
 }
 

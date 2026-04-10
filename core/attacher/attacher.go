@@ -415,11 +415,28 @@ func (a *attacher) checkAttachmentCostBudget() bool {
 // For non-sequencer transactions not in the state, it also adds attachment cost tracking.
 // Handles TxID TTL expiry: very old transactions whose txID entry has been deleted from the
 // trie are still treated as "in the state" if they are older than the TTL relative to the baseline.
+//
+// A positive "in the state" result is monotonic: if a tx is in baseline B1's state, it is in
+// any descendant B2's state. A negative result is NOT monotonic: a tx absent from B1's state
+// may be present in descendant B2's state. Therefore, when CheckedInTheState is already set
+// (possibly from a PastConeBase merge that used an older baseline), we trust positives but
+// re-check negatives against the current baseline.
 func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	a.Assertf(a.pastCone.IsKnown(vid), "a.pastCone.IsKnown(vid): %s", vid.IDShortString)
 	a.Assertf(a.pastCone.GetBaseline() != nil, "a.baseline != nil")
 
-	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
+	flags := a.pastCone.Flags(vid)
+	if flags.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
+		if flags.FlagsUp(vertex.FlagPastConeVertexInTheState) {
+			return // positive is monotonic — always valid for descendant baselines
+		}
+		// Negative "not in the state" may be stale from a merge with an older baseline.
+		// Re-check against the current baseline; only upgrade, never downgrade.
+		baselineID := *a.pastCone.GetBaseline()
+		txid := vid.ID()
+		if a.Branches().BranchKnowsTransaction(baselineID, txid) || txidMayHaveExpired(baselineID, txid) {
+			a.pastCone.UpgradeToInTheState(vid)
+		}
 		return
 	}
 
@@ -433,9 +450,8 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 		// is legitimately committed. Treat it as "in the state".
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 	} else {
-		// not in the state, so it is not defined yet
-		// use MustMarkVertexNotInTheState to properly track attachment cost for non-sequencer transactions
-		a.pastCone.MustMarkVertexNotInTheState(vid)
+		// provisionally not in the state — may be upgraded later by a re-check
+		a.pastCone.MarkVertexNotInTheState(vid)
 	}
 }
 
