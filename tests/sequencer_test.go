@@ -350,29 +350,31 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 // Based on Test5SequencersIdlePruner.
 //
 // Setup: 5 non-bootstrap sequencers with different token balances:
-//   - seq0: 5T  (below lower bound 10T) → should NOT produce branches
-//   - seq1: 50T (within bounds)          → should produce branches
-//   - seq2: 50T (within bounds)          → should produce branches
-//   - seq3: 50T (within bounds)          → should produce branches
-//   - seq4: 810T (above upper bound 800T) → should NOT produce branches
+//   - seq0: 5T  (below lower bound 10T)  → should NOT produce branches
+//   - seq1: 50T (within bounds)           → should produce branches
+//   - seq2: 50T (within bounds)           → should produce branches
+//   - seq3: 50T (within bounds)           → should produce branches
+//   - seq4: 110T (above upper bound 100T) → should NOT produce branches
 //
-// Bootstrap sequencer (~15T) is within bounds and produces branches normally.
+// Bootstrap sequencer (~715T) produces branches normally.
+// Note: boot must have enough coverage to pass the IsHealthyCoverageDelta health check
+// (>7/12 of supply) since it runs alone initially before other sequencers start.
 func TestBranchCoverageBounds(t *testing.T) {
 	const runTime = 30 * time.Second
 
 	// Coverage bounds for the test
 	lowerBound := uint64(10_000_000_000_000)  // 10T
-	upperBound := uint64(800_000_000_000_000) // 800T
+	upperBound := uint64(100_000_000_000_000) // 100T
 
 	// Chain amounts: [below, ok, ok, ok, above]
-	// Total chains: 5T + 50T + 50T + 50T + 810T = 965T
-	// Bootstrap gets: ~1000T - 965T - 10T(primary) - 10T(faucet) = ~15T (within bounds)
+	// Total chains: 5T + 50T + 50T + 50T + 110T = 265T
+	// Bootstrap gets: ~1000T - 265T - 10T(primary) - 10T(faucet) = ~715T (healthy and within bounds)
 	chainAmounts := []uint64{
 		5_000_000_000_000,   // 5T - below lower bound (10T)
 		50_000_000_000_000,  // 50T - within bounds
 		50_000_000_000_000,  // 50T - within bounds
 		50_000_000_000_000,  // 50T - within bounds
-		810_000_000_000_000, // 810T - above upper bound (800T)
+		110_000_000_000_000, // 110T - above upper bound (100T)
 	}
 	nSequencers := len(chainAmounts)
 
