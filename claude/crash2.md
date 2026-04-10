@@ -130,42 +130,57 @@ The Issue 2 fix (re-checking stale not-in-state flags in `defineInTheStateStatus
 
 Phase 2's plateau detection accumulates more endorsements per milestone. Boot's `[230326|56sq]` had `endorse: 2`, pulling in cross-slot dependency chains. Combined with the explicit baseline (boot proposal pattern, which fires more often in Phase 2 due to longer pauses), this creates past cones that span multiple sequencer chains with cross-slot dependencies — exactly the topology that exposes the nil-PastConeBase bug.
 
-### Proposed Fix
+### Proposed Fix (Revised)
 
-The nil-PastConeBase handler in `attachVertexNonBranch` (GOOD case) should NOT mark a vertex as Defined when it is NOT InTheState. A not-in-state vertex with nil PastConeBase has a missing subtree — marking it Defined silently hides the problem.
+#### Mechanism clarification: DetachedVertex vs nil PastConeBase
 
-```go
-case vertex.Good:
-    pcb := vid.GetPastConeNoLock()
-    if pcb != nil {
-        if !a.pastCone.MergePastCone(pcb, a.Branches()) {
-            a.setError(fmt.Errorf("conflicting baselines ..."))
-            return
-        }
-    } else if vid.IsSequencerTransaction() {
-        if baseline := a.pastCone.GetBaseline(); baseline != nil {
-            if vidBaseline, hasBaseline := vid.BaselineBranch(); hasBaseline {
-                if !a.branchesCompatible(baseline, &vidBaseline) {
-                    a.setError(...)
-                    return
-                }
-            }
-        }
-        // If NOT InTheState, the subtree is needed but missing.
-        // Don't mark as Defined — let solidification loop retry/poke.
-        if !a.pastCone.IsInTheState(vid) {
-            ok = true
-            return  // skip defined=true
-        }
-    }
-    ok = true
-    defined = true
-```
+The earlier proposed fix (modifying the GOOD handler in the `Vertex` case of `attachVertexNonBranch`) has a mechanism gap. When `ConvertToDetached()` runs, it atomically changes the vertex type from `_vertex` to `_detachedVertex` AND sets `pastCone = nil` — both under the same lock (vid.go:98-106). A GC'd non-branch vertex is always `_detachedVertex`, never `_vertex` with nil PastConeBase.
 
-**For InTheState vertices with nil PastConeBase**: safe — state boundary, subtree is committed.
-**For NOT InTheState with nil PastConeBase**: don't mark Defined. The solidification loop retries via the poke mechanism. If the vertex eventually gets reattached (PastConeBase recovered) or if `defineInTheStateStatus` later upgrades it to InTheState (via the Issue 2 re-check), it can then be marked Defined.
+In `attachVertexNonBranch`, Unwrap dispatches by **type**, not status. A `_detachedVertex` hits the `DetachedVertex` handler (line 187-189), which calls `GracefulShutdown` — it **never reaches** the `Vertex` → `Good` → nil PastConeBase handler at line 150-176.
 
-**Open question**: can we guarantee the vertex will eventually become Defined? If GC permanently lost the PastConeBase and the vertex is genuinely not in state, the attacher may loop indefinitely. May need a fallback (error after timeout, or forced reattachment).
+The only production path creating `_vertex` + Good + nil PastConeBase is `SetTxStatusGood(nil, 0)` in the snapshot paths (attach.go:91,99,147), which doesn't apply to recent-slot transactions.
+
+Therefore the fix must address the `DetachedVertex` handler path, not the nil-PastConeBase-within-Vertex path.
+
+#### Fix direction: Undef on detach + mutation reconstruction from persistent storage
+
+**Step 1: Set Undefined on detach.** Clear `FlagVertexDefined` in `ConvertToDetached` so `GetTxStatusNoLock()` returns `Undefined`. This makes DetachedVertex vertices visible to the attachment logic as "needing work" rather than falsely appearing as resolved.
+
+**Step 2: Handle InTheState DetachedVertex (no change needed).** For vertices where `BKT(baseline, vid) = true`: `defineInTheStateStatus` marks them `InTheState + Defined` at line 447 **before** `attachVertexNonBranch` is reached. `attachOutput` sees Defined at line 603 → returns true. The DetachedVertex handler never fires. This covers all vertices from slots before the baseline branch — the common case.
+
+**Step 3: Handle NOT InTheState DetachedVertex — reconstruct mutations from persistent storage.** For vertices like `[230326|47sq]` (tick 47 vs baseline tick 0), full reattachment (rebuild PastConeBase with WrappedTx references) is problematic:
+- `ReattachDetachedVertexNoLock` was disabled due to stale flags/coverage causing assertion failures (vid.go:85-87)
+- Re-referencing memDAG vertices risks encountering more GC'd vertices → recursive reattachment cascade
+- Brings data back into memory that GC freed → defeats the purpose of GC
+
+**Instead, reconstruct the mutation delta directly from persistent storage** (txstore + baseline trie), bypassing the memDAG entirely. Everything needed for mutations exists in persistent storage:
+- **txstore**: raw transaction bytes → inputs consumed, outputs produced
+- **baseline trie**: which txIDs are committed → InTheState determination
+- **output existence in trie**: whether a specific output is still unspent → DEL candidates
+
+For each transaction in the sub-cone of the DetachedVertex:
+- txID in baseline trie? → "rooted". Outputs consumed by non-rooted txs → DEL mutations
+- txID not in trie? → "delta". Unspent outputs → ADD mutations, tx itself → ADDTX
+
+This approach:
+- Uses no memDAG references — immune to further GC
+- Requires no reattachment — no stale flags, no concurrent milestoneAttacher issues
+- Adds no memory pressure — reads from persistent storage, produces plain mutation data
+- Is deterministic — same data → same mutations
+
+**Integration point**: At wrapup time, `Mutations()` detects vertices with incomplete PastConeBase (DetachedVertex or nil PastConeBase). For those sub-cones, falls back to txstore-based mutation reconstruction. The attachment logic marks such vertices with a "needs reconstruction" flag instead of marking Defined.
+
+#### Recovery guarantee
+
+- **InTheState vertices**: Always recoverable via BKT — no PastConeBase needed
+- **NOT InTheState vertices**: Recoverable via txstore-based mutation reconstruction — no reattachment needed
+- **No infinite loops**: The reconstruction is a one-shot computation from persistent storage, not a retry loop
+
+#### Open questions for implementation
+
+1. Where exactly to plug in: option A (at `Mutations()` time) vs option B (during attachment, pre-compute sub-cone mutations and merge as plain data)
+2. How to walk the sub-cone from txstore efficiently — depth-first from the DetachedVertex, stopping at rooted (in-trie) boundaries
+3. Whether to cache reconstructed mutations to avoid repeated txstore reads on `lazyRepeat` retries
 
 ### Location of the invariant check
 
