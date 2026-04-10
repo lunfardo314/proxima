@@ -600,7 +600,7 @@ svg { width: 100%; height: 100%; }
     <div><span class="swatch" style="background:#4a6fa5"></span> Non-sequencer</div>
     <div><span class="swatch" style="background:#ffd700"></span> Sequencer (colored by chain)</div>
     <div><span class="swatch" style="background:#555"></span> Missing / Leaf</div>
-    <div style="margin-top:4px"><span style="color:#888">&#x2500;&#x2500;</span> Input &nbsp; <span style="color:#ff6b6b">- -</span> Endorse &nbsp; <span style="color:#6dd5ed">&#xB7;&#xB7;</span> Baseline</div>
+    <div style="margin-top:4px"><span style="color:#888">&#x2500;&#x2500;</span> Input &nbsp; <span style="color:#ff6b6b">- -</span> Endorse &nbsp; <span style="color:#6dd5ed">&#xB7;&#xB7;</span> Explicit baseline</div>
   </div>
 </div>
 
