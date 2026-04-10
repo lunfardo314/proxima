@@ -73,86 +73,99 @@ ADDTX [230327|0br]01c8cc156afc.. : unspent [0 1]
 19:35:34.383  FATAL assertion
 ```
 
-### Root Cause Analysis
+### Root Cause Analysis (Revised)
 
-The bug is in `core/attacher/attacher.go`, function `attachOutput`, lines 591-594:
+**Previous analysis (incorrect)** blamed the branch short-circuit in `attachOutput` (lines 607-611). That analysis assumed the endorsement chain was `[230326|47sq] → [230326|44sq] → [230326|15sq]` extending through loc1's branch. The dagviz shows a different structure, and the branch short-circuit is correct by design — branches are committed state boundaries that should not be traversed behind.
 
-```go
-if wOut.VID.IsBranchTransaction() {
-    // if it is on the branch tx, it must be marked as defined
-    a.pastCone.SetFlagsUp(wOut.VID, vertex.FlagPastConeVertexDefined)
-    return true
-}
-```
-
-This code handles branch transaction dependencies during past cone solidification. When the attacher encounters a branch in the dependency chain, it marks it as Defined and **returns immediately without recursing into the branch's inputs**.
-
-This is correct when the branch IS in the baseline state — all its inputs are already accounted for in the state trie. But it's **incorrect when the branch is NOT in the baseline state**, because:
-
-1. The branch is added to `pc.vertices` (Known + NotInTheState + Defined)
-2. The branch's **consumed inputs are never traversed** — the predecessor chain outputs that the branch consumes are NOT added to the past cone
-3. The predecessor vertices are NOT in `pc.vertices` at all
-4. In `Mutations()`, the branch goes to the `else` branch (not in state), but since its consumed outputs' predecessors are missing, no DEL mutations are generated for them
-
-#### Why the other sequencers' branches are NOT in the baseline state
-
-`BranchKnowsTransaction(baselineID, txid)` in `branches.go:644`:
-
-```go
-if branchID.Slot() <= txid.Slot() {
-    return false
-}
-```
-
-Boot's baseline is slot 326, and the other sequencers' branches are also slot 326. Since `326 <= 326 → true → return false`, same-slot branches from different sequencers are never "in" each other's state. This is correct behavior — same-slot branches conflict.
-
-#### The chain that leads to the bug
+#### Corrected DAG structure (from dagviz)
 
 ```
-[230327|0br] (boot's new branch)
+[230327|0br] (boot's new branch, baseline: [230326|0br]boot)
   extends [230326|56sq] (boot's seq tx, endorse: 2)
-    endorses [230326|47sq] (other sequencer's tx)
-      extends [230326|44sq]
-        extends [230326|15sq]
-          extends [230326|0br]015dc8d51941.. (loc1's branch, DETACHED)
-            ← consumes output from loc1's slot 325 milestone (IN STATE)
-            ← THIS INPUT IS NEVER TRAVERSED
+    endorses [230326|47sq]
+      extends [230325|47sq] (cross-slot predecessor, slot 325)
+      endorses [230326|15sq] (HAS EXPLICIT BASELINE)
+    endorses [230326|44sq] (another sequencer's chain)
 ```
 
-When the attacher reaches `[230326|0br]015dc8d51941..` (loc1's detached branch):
-- `refreshDependencyStatus` → Known, NOT InTheState (same-slot conflict)
-- `attachOutput` → not InTheState → check IsBranch → YES → mark Defined → **return true**
-- **No recursion** into loc1's branch inputs
-- Loc1's slot 325 predecessor (which IS in boot's baseline state) is never added to `pc.vertices`
-- No DEL mutation is generated for the consumed output
+Key fact: `[230326|15sq]` has an **explicit baseline** (boot proposal pattern). Since `[230326|47sq]` is cross-slot non-branch, its `BaselineDirection` = first endorsement = `[230326|15sq]`. So `[230326|47sq]`'s baseline is derived from the explicit baseline of `[230326|15sq]` — a slot 325 branch.
+
+#### The actual bug: nil PastConeBase + premature Defined marking
+
+The bug is in `attachVertexNonBranch` (attacher.go, the GOOD+nil handler at lines 150-178).
+
+When `[230327|0br]`'s attacher processes the endorsement `[230326|47sq]`:
+
+1. `attachEndorsementDependency([230326|47sq])` → `refreshDependencyStatus` → `defineInTheStateStatus`
+   - BKT([230326|0br]boot, [230326|47sq]) → 326 ≤ 326 → false → NOT InTheState
+2. `attachVertexNonBranch([230326|47sq])` → GOOD → `vid.GetPastConeNoLock()` → **nil** (GC'd)
+3. Nil PastConeBase handler (lines 162-176): baseline compatibility check passes
+4. `ok = true; defined = true` → **[230326|47sq] marked Defined**
+
+The problem: [230326|47sq]'s PastConeBase was nil (lost to GC — `ConvertToDetached` sets `vid.pastCone = nil`). The nil handler marks the vertex as **Defined** without its subtree. Since it's Defined, `IsKnownDefined` at line 121 returns true on any future encounter — [230326|47sq]'s inputs (including `[230325|47sq]`) are **never processed**.
+
+Result: `[230325|47sq]` and its entire subtree are **absent from `pc.vertices`**. No DEL mutations are generated for their consumed outputs. Token conservation fails.
+
+#### Why [230325|47sq]'s PastConeBase is nil
+
+`[230325|47sq]` is from slot 325 (the previous slot). The timeline shows GC at 19:35:30, right before `[230327|0br]`'s submission. Branch vertices are detached immediately after commit (`ConvertToDetached` at `attacher_milestone.go:159`), but non-branch GOOD vertices are also detached by memdag GC. On the second `ConvertToDetached` call, `vid.pastCone = nil` (line 110). Since `[230325|47sq]` is old enough to be GC'd across all nodes, the crash is deterministic — all 8 nodes have the same incomplete past cone.
+
+Actually, more precisely: it is `[230326|47sq]`'s PastConeBase that is nil, not `[230325|47sq]`'s. `[230326|47sq]` was GC'd, so when the attacher encounters it as GOOD with nil PastConeBase, the merge is skipped and `[230325|47sq]` never enters the past cone.
+
+#### The explicit baseline connection
+
+The explicit baseline in `[230326|15sq]` is relevant in two ways:
+
+1. **It determines `[230326|47sq]`'s baseline** via `BaselineDirection` → first endorsement. This creates a cross-slot dependency structure where `[230325|47sq]` enters through `[230326|47sq]` — a vertex whose PastConeBase may be nil.
+
+2. **Baseline incompatibility masking**: If `[230326|47sq]`'s PastConeBase were non-nil, the merge of `[230325|47sq]`'s PastConeBase might fail due to incompatible baselines (the explicit baseline's slot 325 branch vs `[230325|47sq]`'s own slot 325 branch, if different). The nil PastConeBase silently skips this check — the merge is never attempted.
+
+#### Relationship to Issue 2 fix
+
+The Issue 2 fix (re-checking stale not-in-state flags in `defineInTheStateStatus`) is necessary but not sufficient:
+- If `[230325|47sq]` WERE in the past cone, the re-check against boot's baseline would correctly upgrade it to InTheState (BKT would find it in boot's trie). As InTheState, no PastConeBase needed — state boundary.
+- But `[230325|47sq]` never enters the past cone because `[230326|47sq]` is marked Defined with nil PastConeBase. The Issue 2 fix can't help vertices that are absent from `pc.vertices`.
 
 #### Why this wasn't triggered before Phase 2
 
-Before Phase 2, the sequencer rarely accumulated 2+ endorsements from different sequencers in a single non-branch milestone. The old fixed-pace model submitted milestones quickly with 0-1 endorsements. Phase 2's plateau detection waits for coverage to stabilize, allowing more endorsements to accumulate. Boot's `[230326|56sq]` had `endorse: 2`, pulling multiple non-baseline same-slot branches into the past cone.
+Phase 2's plateau detection accumulates more endorsements per milestone. Boot's `[230326|56sq]` had `endorse: 2`, pulling in cross-slot dependency chains. Combined with the explicit baseline (boot proposal pattern, which fires more often in Phase 2 due to longer pauses), this creates past cones that span multiple sequencer chains with cross-slot dependencies — exactly the topology that exposes the nil-PastConeBase bug.
 
 ### Proposed Fix
 
-The branch short-circuit in `attachOutput` must be conditional on the branch being in the baseline state:
+The nil-PastConeBase handler in `attachVertexNonBranch` (GOOD case) should NOT mark a vertex as Defined when it is NOT InTheState. A not-in-state vertex with nil PastConeBase has a missing subtree — marking it Defined silently hides the problem.
 
 ```go
-if wOut.VID.IsBranchTransaction() {
-    a.pastCone.SetFlagsUp(wOut.VID, vertex.FlagPastConeVertexDefined)
-    if a.pastCone.IsInTheState(wOut.VID) {
-        return true  // state boundary — no need to recurse
+case vertex.Good:
+    pcb := vid.GetPastConeNoLock()
+    if pcb != nil {
+        if !a.pastCone.MergePastCone(pcb, a.Branches()) {
+            a.setError(fmt.Errorf("conflicting baselines ..."))
+            return
+        }
+    } else if vid.IsSequencerTransaction() {
+        if baseline := a.pastCone.GetBaseline(); baseline != nil {
+            if vidBaseline, hasBaseline := vid.BaselineBranch(); hasBaseline {
+                if !a.branchesCompatible(baseline, &vidBaseline) {
+                    a.setError(...)
+                    return
+                }
+            }
+        }
+        // If NOT InTheState, the subtree is needed but missing.
+        // Don't mark as Defined — let solidification loop retry/poke.
+        if !a.pastCone.IsInTheState(vid) {
+            ok = true
+            return  // skip defined=true
+        }
     }
-    // NOT in baseline state — must recurse to find the proper state boundary
-    // Need to traverse this branch's inputs to generate proper DEL mutations
-    // Note: attachVertexNonBranch asserts !IsBranchTransaction, so a new
-    // traversal path is needed for non-state branches.
-}
+    ok = true
+    defined = true
 ```
 
-**Challenge**: `attachVertexNonBranch` has `Assertf(!vid.IsBranchTransaction())` at line 119. A new code path is needed for non-state branches that:
-1. Traverses the branch's inputs (the chain output it consumes)
-2. For each input, follows the chain until reaching a state vertex
-3. Properly tracks consumers so DEL mutations are generated
+**For InTheState vertices with nil PastConeBase**: safe — state boundary, subtree is committed.
+**For NOT InTheState with nil PastConeBase**: don't mark Defined. The solidification loop retries via the poke mechanism. If the vertex eventually gets reattached (PastConeBase recovered) or if `defineInTheStateStatus` later upgrades it to InTheState (via the Issue 2 re-check), it can then be marked Defined.
 
-Alternative: relax the assertion in `attachVertexNonBranch` for this specific case, or create a `attachBranchInputsForDelta` function.
+**Open question**: can we guarantee the vertex will eventually become Defined? If GC permanently lost the PastConeBase and the vertex is genuinely not in state, the attacher may loop indefinitely. May need a fallback (error after timeout, or forced reattachment).
 
 ### Location of the invariant check
 
@@ -169,14 +182,13 @@ if addAmount != delAmount+inflation[0] {
 
 | File | Relevance |
 |------|-----------|
-| `core/attacher/attacher.go:591-594` | **Bug location**: branch short-circuit in `attachOutput` |
-| `core/attacher/attacher.go:118-206` | `attachVertexNonBranch` — the recursion that's skipped |
-| `core/attacher/attacher.go:499-532` | `attachInput` — how inputs are processed |
-| `core/attacher/attacher.go:414-440` | `defineInTheStateStatus` — determines InTheState |
-| `core/vertex/past_cone.go:613-676` | `Mutations()` — generates DEL/ADD mutation set |
-| `core/vertex/past_cone.go:546-583` | `consumersByOutputIndex` — tracks output consumers |
-| `core/vertex/past_cone.go:586-605` | `producedIndices` — identifies unspent outputs |
-| `core/core_modules/branches/branches.go:639-646` | `BranchKnowsTransaction` — slot comparison |
+| `core/attacher/attacher.go:150-178` | **Bug location**: GOOD+nil PastConeBase handler marks Defined prematurely |
+| `core/attacher/attacher.go:607-611` | Branch short-circuit in `attachOutput` — correct by design |
+| `core/attacher/attacher.go:118-206` | `attachVertexNonBranch` — contains the nil handler |
+| `core/attacher/attacher.go:499-548` | `attachInput` — `refreshDependencyStatus` called before `attachOutput` |
+| `core/attacher/attacher.go:414-457` | `defineInTheStateStatus` — Issue 2 fix re-checks negatives |
+| `core/vertex/vid.go:93-116` | `ConvertToDetached` — sets `vid.pastCone = nil` |
+| `core/vertex/past_cone.go:625-689` | `Mutations()` — generates DEL/ADD mutation set |
 | `ledger/multistate/mutate.go:547-551` | Token conservation assertion |
 | `core/attacher/wrapup.go:40-90` | `commitBranch` — where mutations are computed |
 
