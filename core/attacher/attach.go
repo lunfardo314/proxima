@@ -124,42 +124,50 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
 
-	// Reattach DetachedVertex in-place: the vertex was GC'd but its *transaction.Transaction
+	// Check if vid is a DetachedVertex (read lock only — no contention on the common path).
+	// If so, reattach in-place: the vertex was GC'd but its *transaction.Transaction
 	// is immutable and still valid. Reset flags and convert back to fresh Vertex.
-	// For sequencer transactions, start a milestoneAttacher to re-solidify the past cone.
-	reattached := false
-	vid.Unwrap(vertex.UnwrapOptions{
-		DetachedVertex: func(v *vertex.DetachedVertex) {
-			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished) {
-				return // reattachment already in progress (started but not yet finished)
-			}
-			// Either never attached, or attachment completed then GC'd — allow reattachment
-			env.Log().Infof("REATTACH START %s seq=%v", txid.StringShort(), txid.IsSequencerTransaction())
-			vid.ReattachVertexNoLock(v.Transaction)
-
-			if vid.IsSequencerTransaction() {
-				n := numAttachers.Add(1)
-				env.Tracef("sync", "reattach attacher START %s, numAttachers=%d", tx.IDShortString, n)
-				go func() {
-					defer func() {
-						n := numAttachers.Add(-1)
-						env.Tracef("sync", "reattach attacher FINISH %s, numAttachers=%d", tx.IDShortString, n)
-					}()
-					env.IncCounter("att")
-					defer env.DecCounter("att")
-
-					env.MarkWorkProcessStarted(vid.IDShortString() + "_reattach")
-					runMilestoneAttacher(vid, nil, nil, env, nil)
-					env.MarkWorkProcessStopped(vid.IDShortString() + "_reattach")
-					env.AttachmentFinished()
-				}()
-			}
-			reattached = true
+	isDetached := false
+	vid.RUnwrap(vertex.UnwrapOptions{
+		DetachedVertex: func(_ *vertex.DetachedVertex) {
+			isDetached = true
 		},
 	})
-	if reattached {
-		env.PokeAllWith(vid)
-		return
+	if isDetached {
+		reattached := false
+		vid.Unwrap(vertex.UnwrapOptions{
+			DetachedVertex: func(v *vertex.DetachedVertex) {
+				if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished) {
+					return // reattachment already in progress (started but not yet finished)
+				}
+				// Either never attached, or attachment completed then GC'd — allow reattachment
+				env.Log().Infof("REATTACH START %s seq=%v", txid.StringShort(), txid.IsSequencerTransaction())
+				vid.ReattachVertexNoLock(v.Transaction)
+
+				if vid.IsSequencerTransaction() {
+					n := numAttachers.Add(1)
+					env.Tracef("sync", "reattach attacher START %s, numAttachers=%d", tx.IDShortString, n)
+					go func() {
+						defer func() {
+							n := numAttachers.Add(-1)
+							env.Tracef("sync", "reattach attacher FINISH %s, numAttachers=%d", tx.IDShortString, n)
+						}()
+						env.IncCounter("att")
+						defer env.DecCounter("att")
+
+						env.MarkWorkProcessStarted(vid.IDShortString() + "_reattach")
+						runMilestoneAttacher(vid, nil, nil, env, nil)
+						env.MarkWorkProcessStopped(vid.IDShortString() + "_reattach")
+						env.AttachmentFinished()
+					}()
+				}
+				reattached = true
+			},
+		})
+		if reattached {
+			env.PokeAllWith(vid)
+			return
+		}
 	}
 
 	if env.Branches().TransactionIsInSnapshotState(txid) {
