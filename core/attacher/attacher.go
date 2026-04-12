@@ -148,34 +148,44 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				}
 
 			case vertex.Good:
-				// dependency is GOOD, so merge its (deterministic) past cone into the current attacher.
-				// Note that MergePastCone checks the compatibility of baselines and swaps them if necessary,
-				// however, does not check for double-spends here.
-				// Past cone may be nil for transactions marked GOOD from snapshot state (no attacher ran)
-				// or for vertices detached by GC.
+				// Only sequencer transactions become Good. Non-seq are either Undefined or Bad.
+				// Merge the PastConeBase if available. If nil (snapshot path or GC),
+				// handle based on InTheState status.
 				pcb := vid.GetPastConeNoLock()
 				if pcb != nil {
 					if !a.pastCone.MergePastCone(pcb, a.Branches()) {
 						a.setError(fmt.Errorf("conflicting baselines %s and %s", a.pastCone.GetBaseline().StringShort(), vid.IDShortString()))
 						return
 					}
-				} else if vid.IsSequencerTransaction() {
-					// past cone is nil (detached or snapshot vertex). For sequencer transactions,
-					// still check baseline compatibility to prevent mixing forks in the past cone.
-					// Without this check, a detached vertex from a losing fork can pull its
-					// fork's branch into the past cone alongside the winning fork's baseline.
+					ok = true
+					defined = true
+				} else if a.pastCone.IsInTheState(vid) {
+					// InTheState with nil PastConeBase: safe — state boundary, subtree is committed
+					ok = true
+					defined = true
+				} else {
+					// NOT InTheState, nil PastConeBase (snapshot path or FlagVertexIgnoreAbsenceOfPastCone).
+					// The subtree is needed but missing — do NOT mark Defined.
+					// Check baseline compatibility, then trigger reattachment or return error.
 					if baseline := a.pastCone.GetBaseline(); baseline != nil {
 						if vidBaseline, hasBaseline := vid.BaselineBranch(); hasBaseline {
 							if !a.branchesCompatible(baseline, &vidBaseline) {
-								a.setError(fmt.Errorf("incompatible baseline for detached vertex %s: attacher baseline %s vs vertex baseline %s",
+								a.setError(fmt.Errorf("incompatible baseline for vertex %s with nil PastConeBase: attacher baseline %s vs vertex baseline %s",
 									vid.IDShortString(), baseline.StringShort(), vidBaseline.StringShort()))
 								return
 							}
 						}
 					}
+					if a.onDetachedVertex != nil {
+						a.Log().Infof("REATTACH (nil PastCone) triggered for %s by attacher %s", vid.IDShortString(), a.name)
+						a.onDetachedVertex(vid, v.Transaction)
+					} else {
+						a.setError(fmt.Errorf("attacher %s: vertex %s has nil PastConeBase and is not InTheState", a.name, vid.IDShortString()))
+						return
+					}
+					ok = true
+					// defined remains false — poke will be registered
 				}
-				ok = true
-				defined = true
 
 			case vertex.Bad:
 				a.setError(vid.GetErrorNoLock())
