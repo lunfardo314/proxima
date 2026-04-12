@@ -112,27 +112,13 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		}
 
 		// --- Zone A: post-branch consolidation ---
-		// During this zone, build a seed milestone targeting the earliest possible tick
-		// (PostBranchConsolidationTicks). This exposes the sequencer to others for
-		// endorsement as early as possible — no plateau wait for the first milestone.
+		// Wait for branches from this slot to propagate via gossip.
+		// The factory starts building skeletons at tick 0 (SetTargetSlot above).
+		// By tick 12, it should have at least one skeleton with an endorsement
+		// (extend own milestone + endorse a peer's branch from this slot).
+		// If the branch arrives later, the first endorsed milestone is simply delayed.
+		// The bootstrap case (no branches at all) is handled by tryBootProposal.
 		if nowTs.Tick < lib.PostBranchConsolidationTicks {
-			if !seq.slotData.SeedIssued() {
-				seedTarget := base.T(currentSlot, lib.PostBranchConsolidationTicks)
-				if ledger.ValidSequencerPace(seq.lastSubmittedTs, seedTarget) {
-					seq.slotData.SetSeedIssued()
-					seq.newTargetSet()
-					seq.slotData.NewTarget()
-					msTx, meta, _, err := seq.generateMilestoneForTarget(seedTarget)
-					if err == nil && msTx != nil {
-						meta.TxBytesReceived = util.Ref(time.Now())
-						seq.submitMilestone(msTx, meta, seedTarget)
-						seq.adjustBudget(true)
-						lastSeenCoverage = 0
-						lastImprovementTime = time.Now()
-						lastBacklogCheck = time.Now()
-					}
-				}
-			}
 			continue
 		}
 
@@ -158,14 +144,6 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		// Priority 2: plateau detection — wait for endorsement coverage to stabilize.
 		// Only active when backlog is empty (all tag-alongs consumed).
-		//
-		// Exception: the first Zone B submission skips the plateau hold.
-		// After the seed (tick 12), other sequencers need time to gossip their own
-		// milestones. By the time Zone B starts, some may have arrived — the factory
-		// might already have a skeleton with endorsements. Submit immediately to
-		// minimize the gap between seed and first endorsed milestone.
-		firstZoneBSubmission := seq.slotData.SeedIssued() && seq.slotData.NumSubmitted() <= 1
-
 		backlogChanged := seq.backlog.ArrivedOutputsSince(lastBacklogCheck)
 
 		improved := false
@@ -178,17 +156,19 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			improved = true
 		}
 
-		if improved && !firstZoneBSubmission {
+		if improved {
 			lastImprovementTime = time.Now()
 			continue
 		}
 
-		// check for plateau (skipped on first Zone B submission)
-		if !firstZoneBSubmission && time.Since(lastImprovementTime) < holdDuration {
+		// check for plateau
+		if time.Since(lastImprovementTime) < holdDuration {
 			continue
 		}
 
-		// plateau detected (or first Zone B submission): try to submit.
+		// plateau detected: try to submit.
+		// The factory provides skeletons with endorsements (coverage improvement).
+		// Base extend is the fallback — useful for tag-along drain and bootstrap recovery.
 		seq.tryBuildAndSubmit()
 		lastSeenCoverage = seq.skeletonFactory.BestCoverage()
 		lastImprovementTime = time.Now()

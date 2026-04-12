@@ -1,8 +1,6 @@
 package task
 
 import (
-	"time"
-
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -105,15 +103,6 @@ func (t *taskData) tryBaseExtendProposal() *finalProposal {
 		return nil
 	}
 
-	// optimization: skip if backlog and extended output haven't changed since last target
-	noChanges := t.slotData.lastExtendedOutputIDB0 == extend.DecodeID() &&
-		!t.Backlog().ArrivedOutputsSince(t.slotData.lastTimeBacklogCheckedB0)
-	t.slotData.lastTimeBacklogCheckedB0 = time.Now()
-	if noChanges {
-		t.Tracef(TraceTagBaseProposerExit, "tryBaseExtendProposal %s: no changes, extend = %s", t.Name, extend.IDStringShort)
-		return nil
-	}
-
 	t.Tracef(TraceTagBaseProposer, "tryBaseExtendProposal %s: predecessor %s is sequencer milestone with coverage %s",
 		t.Name, extend.IDStringShort, extend.VID.GetLedgerCoverageString)
 
@@ -131,8 +120,6 @@ func (t *taskData) tryBaseExtendProposal() *finalProposal {
 
 	t.Tracef(TraceTagBaseProposer, "tryBaseExtendProposal %s: collecting and inserting tag-along inputs, extending %s", t.Name, extend.IDStringShort)
 	prop.insertInputs()
-
-	t.slotData.lastExtendedOutputIDB0 = extend.DecodeID()
 
 	fp, err := prop.finalize("base")
 	if err != nil {
