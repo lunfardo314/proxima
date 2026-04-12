@@ -201,6 +201,9 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baselineBranchID base.Tran
 
 	if isBranch {
 		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", a.name)
+		// Ensure the baseline branch is in the memDAG. It may have been GC'd if the node
+		// fell far behind. AttachTxID fetches it from the state DB if needed.
+		AttachTxID(baselineBranchID, a.Environment, WithInvokedBy("stemInput"))
 		a.stemOutput = a.GetStemWrappedOutput(baselineBranchID)
 		if a.stemOutput.VID == nil {
 			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baselineBranchID.StringShort())
