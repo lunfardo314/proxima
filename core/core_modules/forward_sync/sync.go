@@ -312,6 +312,9 @@ func (s *Sync) requestBranchList() ([]base.TransactionID, uint32, error) {
 }
 
 func (s *Sync) syncTick() {
+	if s.Ctx().Err() != nil {
+		return // shutting down — DB may already be closed
+	}
 	nowSlot := ledger.TimeNow().Slot
 
 	// find latest committed healthy slot
@@ -366,6 +369,9 @@ func (s *Sync) syncTick() {
 		// filter out branches that are already committed locally
 		newBranches := make([]base.TransactionID, 0, len(branches))
 		for _, b := range branches {
+			if s.Ctx().Err() != nil {
+				return // shutting down — DB may already be closed
+			}
 			if _, committed := multistate.FetchRootRecord(s.StateStore(), b); !committed {
 				newBranches = append(newBranches, b)
 			}
