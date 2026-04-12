@@ -113,7 +113,27 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		}
 
 		// --- Zone A: post-branch consolidation ---
+		// During this zone, build a seed milestone targeting the earliest possible tick
+		// (PostBranchConsolidationTicks). This exposes the sequencer to others for
+		// endorsement as early as possible — no plateau wait for the first milestone.
 		if nowTs.Tick < lib.PostBranchConsolidationTicks {
+			if !seq.slotData.SeedIssued() {
+				seedTarget := base.T(currentSlot, lib.PostBranchConsolidationTicks)
+				if ledger.ValidSequencerPace(seq.lastSubmittedTs, seedTarget) {
+					seq.slotData.SetSeedIssued()
+					seq.newTargetSet()
+					seq.slotData.NewTarget()
+					msTx, meta, _, err := seq.generateMilestoneForTarget(seedTarget)
+					if err == nil && msTx != nil {
+						meta.TxBytesReceived = util.Ref(time.Now())
+						seq.submitMilestone(msTx, meta, seedTarget)
+						seq.adjustBudget(true)
+						lastSeenCoverage = 0
+						lastImprovementTime = time.Now()
+						lastBacklogCheck = time.Now()
+					}
+				}
+			}
 			continue
 		}
 

@@ -22,6 +22,8 @@ type SlotData struct {
 	lastTimeBacklogCheckedB0 time.Time
 	// coverage out of bounds already warned this slot
 	coverageBoundsWarned bool
+	// seed milestone issued this slot (early base-extend to expose sequencer)
+	seedIssued bool
 }
 
 func NewSlotData(slot uint32) *SlotData {
@@ -83,6 +85,18 @@ func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 	}
 
 	return ret
+}
+
+func (s *SlotData) SeedIssued() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.seedIssued
+}
+
+func (s *SlotData) SetSeedIssued() {
+	s.withWriteLock(func() {
+		s.seedIssued = true
+	})
 }
 
 func (s *SlotData) withWriteLock(fun func()) {
