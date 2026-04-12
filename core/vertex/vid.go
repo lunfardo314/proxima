@@ -84,11 +84,16 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 
 // ReattachVertexNoLock converts a DetachedVertex back to a fresh Vertex for re-solidification.
 // Resets all mutable flags and status — the vertex becomes Undefined with clean state.
-// Safe because *transaction.Transaction inside DetachedVertex is immutable.
+// Re-parses the transaction from raw bytes to get a fresh partial-context copy,
+// because the original *transaction.Transaction may already have full context set
+// (SetFullContext was called during the first attachment), and SetFullContext asserts
+// it can only be called once.
 // Must be called under write lock (inside Unwrap).
 // The consumed map is preserved — consumer tracking from before detachment remains valid.
 func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
-	vid._put(_vertex{NewVertex(tx)})
+	freshTx, err := transaction.ParseWithPartialValidation(tx.Bytes())
+	util.AssertNoError(err)
+	vid._put(_vertex{NewVertex(freshTx)})
 	vid.flags = FlagVertexTxAttachmentStarted
 	vid.err = nil
 	vid.pastCone = nil // already nil after detachment, explicit for clarity
