@@ -158,6 +158,14 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		// Priority 2: plateau detection — wait for endorsement coverage to stabilize.
 		// Only active when backlog is empty (all tag-alongs consumed).
+		//
+		// Exception: the first Zone B submission skips the plateau hold.
+		// After the seed (tick 12), other sequencers need time to gossip their own
+		// milestones. By the time Zone B starts, some may have arrived — the factory
+		// might already have a skeleton with endorsements. Submit immediately to
+		// minimize the gap between seed and first endorsed milestone.
+		firstZoneBSubmission := seq.slotData.SeedIssued() && seq.slotData.NumSubmitted() <= 1
+
 		backlogChanged := seq.backlog.ArrivedOutputsSince(lastBacklogCheck)
 
 		improved := false
@@ -170,24 +178,17 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			improved = true
 		}
 
-		if improved {
+		if improved && !firstZoneBSubmission {
 			lastImprovementTime = time.Now()
 			continue
 		}
 
-		// check for plateau
-		if time.Since(lastImprovementTime) < holdDuration {
+		// check for plateau (skipped on first Zone B submission)
+		if !firstZoneBSubmission && time.Since(lastImprovementTime) < holdDuration {
 			continue
 		}
 
-		// plateau detected: try to submit.
-		// Even when bestCoverage == 0 (factory has no skeleton yet), task.Run falls
-		// back to the base extend proposer which issues milestones without endorsements.
-		// These "seed" milestones expose the sequencer to others for endorsement and
-		// serve as tag-along vehicles when endorsement coverage isn't growing.
-		// Note: no adjustBudget(false) here. "No proposals" or "not good enough" are
-		// normal idle conditions, not overload signals. Budget is only cut on branch
-		// failures where tag-along pressure actually matters.
+		// plateau detected (or first Zone B submission): try to submit.
 		seq.tryBuildAndSubmit()
 		lastSeenCoverage = seq.skeletonFactory.BestCoverage()
 		lastImprovementTime = time.Now()

@@ -87,6 +87,12 @@ func (s *SlotData) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+func (s *SlotData) NumSubmitted() int {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return len(s.seqTxSubmitted)
+}
+
 func (s *SlotData) SeedIssued() bool {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
