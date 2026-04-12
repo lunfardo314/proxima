@@ -124,14 +124,42 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
 
-	// Log when AttachTransaction is called on a DetachedVertex.
-	// This is normal — the vertex was pruned and re-received from a peer.
-	// The attacher past-cone walk will handle it (or trigger shutdown if unrecoverable).
-	vid.RUnwrap(vertex.UnwrapOptions{
+	// Reattach DetachedVertex in-place: the vertex was GC'd but its *transaction.Transaction
+	// is immutable and still valid. Reset flags and convert back to fresh Vertex.
+	// For sequencer transactions, start a milestoneAttacher to re-solidify the past cone.
+	reattached := false
+	vid.Unwrap(vertex.UnwrapOptions{
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			env.Log().Warnf("AttachTransaction: vid %s is DetachedVertex, seq=%v", txid.StringShort(), txid.IsSequencerTransaction())
+			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
+				return // reattachment already in progress
+			}
+			env.Log().Infof("REATTACH START %s seq=%v", txid.StringShort(), txid.IsSequencerTransaction())
+			vid.ReattachVertexNoLock(v.Transaction)
+
+			if vid.IsSequencerTransaction() {
+				n := numAttachers.Add(1)
+				env.Tracef("sync", "reattach attacher START %s, numAttachers=%d", tx.IDShortString, n)
+				go func() {
+					defer func() {
+						n := numAttachers.Add(-1)
+						env.Tracef("sync", "reattach attacher FINISH %s, numAttachers=%d", tx.IDShortString, n)
+					}()
+					env.IncCounter("att")
+					defer env.DecCounter("att")
+
+					env.MarkWorkProcessStarted(vid.IDShortString() + "_reattach")
+					runMilestoneAttacher(vid, nil, nil, env, nil)
+					env.MarkWorkProcessStopped(vid.IDShortString() + "_reattach")
+					env.AttachmentFinished()
+				}()
+			}
+			reattached = true
 		},
 	})
+	if reattached {
+		env.PokeAllWith(vid)
+		return
+	}
 
 	if env.Branches().TransactionIsInSnapshotState(txid) {
 		// Transaction is in the snapshot state — it was committed before the snapshot.

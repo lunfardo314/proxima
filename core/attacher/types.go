@@ -86,6 +86,10 @@ type (
 		// For milestoneAttacher: defaults to GetStateReaderForTheBranch (triggers lazy DB commit).
 		// For IncrementalAttacher: set to GetVirtualStateReaderForTheBranch (no DB commit).
 		getBaselineStateReader func(base.TransactionID) multistate.StateReader
+		// onDetachedVertex is called when the attacher encounters a DetachedVertex during past cone traversal.
+		// milestoneAttacher: triggers reattachment via go AttachTransaction(tx, env).
+		// IncrementalAttacher: nil — returns error, sequencer abandons the proposal.
+		onDetachedVertex func(vid *vertex.WrappedTx, tx *transaction.Transaction)
 	}
 
 	// IncrementalAttacher the sequencer uses it to build a sequencer milestone

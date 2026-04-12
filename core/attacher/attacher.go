@@ -184,9 +184,16 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				a.Log().Fatalf("inconsistency: wrong tx status")
 			}
 		},
+		// TODO: unify attachVertexNonBranch and attachVertexNonBranchSolid — use RUnwrap first,
+		// upgrade to Unwrap only for the Undefined non-seq case that needs write access.
+		// DetachedVertex handling is identical in both paths.
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			a.setError(fmt.Errorf("attacher %s: detached vertex %s encountered during attachment", a.name, vid.IDShortString()))
-			a.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in attacher %s", vid.IDShortString(), a.name))
+			if a.onDetachedVertex != nil {
+				a.onDetachedVertex(vid, v.Transaction)
+				ok = true // not defined — poke will be registered below
+			} else {
+				a.setError(fmt.Errorf("attacher %s: detached vertex %s: dependency unavailable", a.name, vid.IDShortString()))
+			}
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			ok = true
@@ -220,9 +227,14 @@ func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
 				defined = true
 			}
 		},
+		// TODO: unify with attachVertexNonBranch — same DetachedVertex handling in both paths
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			a.setError(fmt.Errorf("attacher %s: detached vertex %s encountered during attachment (solid path)", a.name, vid.IDShortString()))
-			a.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in attacher %s (solid path)", vid.IDShortString(), a.name))
+			if a.onDetachedVertex != nil {
+				a.onDetachedVertex(vid, v.Transaction)
+				needFallback = true
+			} else {
+				a.setError(fmt.Errorf("attacher %s: detached vertex %s: dependency unavailable (solid path)", a.name, vid.IDShortString()))
+			}
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			// shouldn't happen for a validated vertex, but handle gracefully

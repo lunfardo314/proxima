@@ -130,57 +130,125 @@ The Issue 2 fix (re-checking stale not-in-state flags in `defineInTheStateStatus
 
 Phase 2's plateau detection accumulates more endorsements per milestone. Boot's `[230326|56sq]` had `endorse: 2`, pulling in cross-slot dependency chains. Combined with the explicit baseline (boot proposal pattern, which fires more often in Phase 2 due to longer pauses), this creates past cones that span multiple sequencer chains with cross-slot dependencies — exactly the topology that exposes the nil-PastConeBase bug.
 
-### Proposed Fix (Revised)
+### Proposed Fix: In-Place Reattachment
 
 #### Mechanism clarification: DetachedVertex vs nil PastConeBase
 
-The earlier proposed fix (modifying the GOOD handler in the `Vertex` case of `attachVertexNonBranch`) has a mechanism gap. When `ConvertToDetached()` runs, it atomically changes the vertex type from `_vertex` to `_detachedVertex` AND sets `pastCone = nil` — both under the same lock (vid.go:98-106). A GC'd non-branch vertex is always `_detachedVertex`, never `_vertex` with nil PastConeBase.
+When `ConvertToDetached()` runs, it atomically changes the vertex type from `_vertex` to `_detachedVertex` AND sets `pastCone = nil` — both under the same write lock (vid.go:98-106). A GC'd non-branch vertex is always `_detachedVertex`, never `_vertex` with nil PastConeBase.
 
-In `attachVertexNonBranch`, Unwrap dispatches by **type**, not status. A `_detachedVertex` hits the `DetachedVertex` handler (line 187-189), which calls `GracefulShutdown` — it **never reaches** the `Vertex` → `Good` → nil PastConeBase handler at line 150-176.
+In `attachVertexNonBranch`, Unwrap dispatches by **type**, not status. A `_detachedVertex` hits the `DetachedVertex` handler (line 187-189), which calls `GracefulShutdown` — it **never reaches** the `Vertex` → `Good` → nil PastConeBase handler at line 150-176. The only production path creating `_vertex` + Good + nil PastConeBase is `SetTxStatusGood(nil, 0)` in the snapshot paths (attach.go:91,99,147), which doesn't apply to recent-slot transactions.
 
-The only production path creating `_vertex` + Good + nil PastConeBase is `SetTxStatusGood(nil, 0)` in the snapshot paths (attach.go:91,99,147), which doesn't apply to recent-slot transactions.
+Therefore the fix must address the `DetachedVertex` handler path.
 
-Therefore the fix must address the `DetachedVertex` handler path, not the nil-PastConeBase-within-Vertex path.
+#### Root cause summary
 
-#### Fix direction: Undef on detach + mutation reconstruction from persistent storage
+The fundamental problem is that memDAG GC (ConvertToDetached) destroys information that active attachers may later need. A detached vertex is GOOD (was fully solidified once), but its `_detachedVertex` type + nil PastConeBase makes it unusable for past cone traversal. The transaction data (`*transaction.Transaction`) inside the DetachedVertex is **immutable** — this is the key fact that enables safe reattachment.
 
-**Step 1: Set Undefined on detach.** Clear `FlagVertexDefined` in `ConvertToDetached` so `GetTxStatusNoLock()` returns `Undefined`. This makes DetachedVertex vertices visible to the attachment logic as "needing work" rather than falsely appearing as resolved.
+Patching the detached DAG with special-case logic (mutation reconstruction, flag workarounds) leads to increasing complexity and heterogeneous code paths. The solid approach: treat a DetachedVertex as a vertex that needs re-solidification, using the immutable transaction data that is already available.
 
-**Step 2: Handle InTheState DetachedVertex (no change needed).** For vertices where `BKT(baseline, vid) = true`: `defineInTheStateStatus` marks them `InTheState + Defined` at line 447 **before** `attachVertexNonBranch` is reached. `attachOutput` sees Defined at line 603 → returns true. The DetachedVertex handler never fires. This covers all vertices from slots before the baseline branch — the common case.
+#### Design: in-place reattachment via `AttachTransaction`
 
-**Step 3: Handle NOT InTheState DetachedVertex — reconstruct mutations from persistent storage.** For vertices like `[230326|47sq]` (tick 47 vs baseline tick 0), full reattachment (rebuild PastConeBase with WrappedTx references) is problematic:
-- `ReattachDetachedVertexNoLock` was disabled due to stale flags/coverage causing assertion failures (vid.go:85-87)
-- Re-referencing memDAG vertices risks encountering more GC'd vertices → recursive reattachment cascade
-- Brings data back into memory that GC freed → defeats the purpose of GC
+**Core idea**: When an attacher encounters a DetachedVertex, it triggers `go AttachTransaction(v.Transaction, env)` which re-solidifies the vertex in-place on the same `*WrappedTx`. This preserves pointer identity — no aliasing in PastCone maps, `consumed` maps, or `Vertex.Inputs` references.
 
-**Instead, reconstruct the mutation delta directly from persistent storage** (txstore + baseline trie), bypassing the memDAG entirely. Everything needed for mutations exists in persistent storage:
-- **txstore**: raw transaction bytes → inputs consumed, outputs produced
-- **baseline trie**: which txIDs are committed → InTheState determination
-- **output existence in trie**: whether a specific output is still unspent → DEL candidates
+**RUnwrap safety**: The existing RWMutex on `*WrappedTx` guarantees safety. `Unwrap` (write lock) for the in-place type change is mutually exclusive with `RUnwrap` (read lock) readers. After the write lock releases, all readers see the new `_vertex` type with cleared flags. The flag-check-then-RUnwrap gap at attacher.go:129 is also safe: after reattachment clears `FlagVertexConstraintsValid`, no attacher enters the RUnwrap path; if an attacher checked the flag before the clear, the RUnwrap's `FlagsUpNoLock` re-check inside the lock sees false → not marked Defined → poke registered.
 
-For each transaction in the sub-cone of the DetachedVertex:
-- txID in baseline trie? → "rooted". Outputs consumed by non-rooted txs → DEL mutations
-- txID not in trie? → "delta". Unspent outputs → ADD mutations, tx itself → ADDTX
+**`consumed` map**: Stays on the same `*WrappedTx` — no split, no aliasing. Existing consumer tracking remains valid.
 
-This approach:
-- Uses no memDAG references — immune to further GC
-- Requires no reattachment — no stale flags, no concurrent milestoneAttacher issues
-- Adds no memory pressure — reads from persistent storage, produces plain mutation data
-- Is deterministic — same data → same mutations
+**Flag reset during reattachment**: Clear ALL mutable flags (`FlagVertexDefined`, `FlagVertexConstraintsValid`, `FlagVertexTxAttachmentFinished`, `FlagVertexIgnoreAbsenceOfPastCone`), then set `FlagVertexTxAttachmentStarted`. Clear `err`, reset `coverage` to nil. The vertex starts clean as Undefined.
 
-**Integration point**: At wrapup time, `Mutations()` detects vertices with incomplete PastConeBase (DetachedVertex or nil PastConeBase). For those sub-cones, falls back to txstore-based mutation reconstruction. The attachment logic marks such vertices with a "needs reconstruction" flag instead of marking Defined.
+#### Milestone attacher vs incremental attacher behavior
 
-#### Recovery guarantee
+The `attacher` struct is shared between `milestoneAttacher` and `IncrementalAttacher`. They must behave differently on DetachedVertex:
 
-- **InTheState vertices**: Always recoverable via BKT — no PastConeBase needed
-- **NOT InTheState vertices**: Recoverable via txstore-based mutation reconstruction — no reattachment needed
-- **No infinite loops**: The reconstruction is a one-shot computation from persistent storage, not a retry loop
+| | Milestone attacher | Incremental attacher |
+|---|---|---|
+| **On DetachedVertex** | Trigger reattachment, wait via poke | Return error, abandon proposal |
+| **Why** | Must solidify this specific tx (received from peer/self) | Building a proposal — can pick different dependencies |
+| **Mechanism** | `go AttachTransaction(v.Transaction, env)` + ok=true | `setError(...)` + ok=false |
 
-#### Open questions for implementation
+The incremental attacher (sequencer) should NOT trigger reattachment. A detached dependency means the proposal is stale — the sequencer should abandon it and try a different extend/endorse target. The detached vertex will eventually be reattached by a milestone attacher when the transaction arrives via gossip or pull. Future incremental attacher proposals can then use it.
 
-1. Where exactly to plug in: option A (at `Mutations()` time) vs option B (during attachment, pre-compute sub-cone mutations and merge as plain data)
-2. How to walk the sub-cone from txstore efficiently — depth-first from the DetachedVertex, stopping at rooted (in-trie) boundaries
-3. Whether to cache reconstructed mutations to avoid repeated txstore reads on `lazyRepeat` retries
+**Distinction mechanism**: Add `onDetachedVertex` callback to the `attacher` struct:
+
+```go
+attacher struct {
+    // ... existing fields ...
+    onDetachedVertex func(vid *vertex.WrappedTx, tx *transaction.Transaction)
+}
+```
+
+- milestoneAttacher sets: `func(vid, tx) { go AttachTransaction(tx, env) }`
+- IncrementalAttacher leaves nil (default)
+
+DetachedVertex handler in `attachVertexNonBranch`:
+```go
+DetachedVertex: func(v *vertex.DetachedVertex) {
+    if a.onDetachedVertex != nil {
+        a.onDetachedVertex(vid, v.Transaction)
+        ok = true  // wait for reattachment via poke
+    } else {
+        a.setError(fmt.Errorf("detached vertex %s: dependency unavailable",
+            vid.IDShortString()))
+    }
+}
+```
+
+Similarly in `attachVertexNonBranchSolid`:
+```go
+DetachedVertex: func(v *vertex.DetachedVertex) {
+    if a.onDetachedVertex != nil {
+        a.onDetachedVertex(vid, v.Transaction)
+        needFallback = true  // retry via poke
+    } else {
+        a.setError(fmt.Errorf("detached vertex %s: dependency unavailable (solid path)",
+            vid.IDShortString()))
+    }
+}
+```
+
+#### Re-solidification flow
+
+When `go AttachTransaction(v.Transaction, env)` runs:
+
+1. `AttachTxID(txid)` → finds existing vid in memDAG (same `*WrappedTx`)
+2. Snapshot check → false (recent tx)
+3. **New DetachedVertex handler** in `AttachTransaction` (parallel to existing VirtualTx handler):
+   - Check `FlagVertexTxAttachmentStarted` → if set, reattachment already in progress, skip
+   - Reset flags: `vid.flags = FlagVertexTxAttachmentStarted`
+   - Clear err, reset coverage to nil
+   - In-place conversion: `vid._put(_vertex{vertex.NewVertex(tx)})`
+   - For seq tx: start milestoneAttacher goroutine (same as existing VirtualTx path)
+   - For non-seq tx: `env.PokeAllWith(vid)` — encountering attachers will process inline
+4. milestoneAttacher builds past cone from scratch, populating `Vertex.Inputs` and `Vertex.Endorsements` via `AttachTxID` for each dependency
+5. On completion: `SetTxStatusGood(pastConeBase, coverage)` → `PokeAllWith(vid)`
+6. All waiting attachers retry → `MergePastCone` with non-nil PastConeBase → subtree imported
+
+#### Recursive reattachment (entire past cone detached)
+
+If the reattached vertex's milestoneAttacher encounters MORE DetachedVertex dependencies, the same mechanism triggers recursively:
+
+```
+milestoneAttacher(branch) → encounters DetachedVertex seq tx A
+  → go AttachTransaction(A.Transaction) → starts milestoneAttacher(A)
+    → milestoneAttacher(A) encounters DetachedVertex seq tx B
+      → go AttachTransaction(B.Transaction) → starts milestoneAttacher(B)
+        → ... bottoms out at InTheState or alive vertices
+      ← B becomes Good → PokeAllWith(B)
+    ← A's attacher retries, B now Good → merge B's PastCone
+  ← A becomes Good → PokeAllWith(A)
+← branch attacher retries, A now Good → merge A's PastCone
+```
+
+Each level spawns a goroutine. The chain terminates at:
+- **InTheState vertices**: BKT marks them Defined in `defineInTheStateStatus` before `attachVertexNonBranch` is reached. No traversal needed.
+- **Alive (non-detached) Good vertices**: Normal `MergePastCone`.
+- **VirtualTx**: Normal pull from txstore/peers.
+
+The recursive case is bounded by TTL — with proper TTL tuning, most ancestors of a detached vertex are either still alive or InTheState. The double solidification effort is rare and doesn't cause slowdown.
+
+#### InTheState vertices — no reattachment needed
+
+For vertices where `BKT(baseline, vid) = true`: `defineInTheStateStatus` marks them `InTheState + Defined` at line 447 **before** `attachVertexNonBranch` is reached. `attachOutput` sees Defined at line 603 → returns true. The DetachedVertex handler never fires. This covers all vertices from slots before the baseline branch — the common case.
 
 ### Location of the invariant check
 
@@ -193,19 +261,153 @@ if addAmount != delAmount+inflation[0] {
 }
 ```
 
+### Implementation Plan
+
+#### Phase 1: In-place reattachment mechanism
+
+**Step 1.1: `core/vertex/vid.go` — Add `ReattachVertexNoLock` method**
+
+Replace the disabled `ReattachDetachedVertexNoLock` with a clean implementation:
+
+```go
+// ReattachVertexNoLock converts a DetachedVertex back to a fresh Vertex.
+// Resets all mutable flags and status. The vertex becomes Undefined with clean state.
+// Safe because *transaction.Transaction inside DetachedVertex is immutable.
+// Must be called under write lock (inside Unwrap).
+func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
+    vid._put(_vertex{NewVertex(tx)})
+    vid.flags = FlagVertexTxAttachmentStarted
+    vid.err = nil
+    vid.pastCone = nil  // already nil, explicit for clarity
+    vid.coverage.Store(nil)
+}
+```
+
+**Step 1.2: `core/attacher/types.go` — Add `onDetachedVertex` callback**
+
+Add field to the `attacher` struct:
+
+```go
+attacher struct {
+    // ... existing fields ...
+    // onDetachedVertex is called when the attacher encounters a DetachedVertex.
+    // milestoneAttacher: triggers reattachment. IncrementalAttacher: nil (returns error).
+    onDetachedVertex func(vid *vertex.WrappedTx, tx *transaction.Transaction)
+}
+```
+
+**Step 1.3: `core/attacher/attacher_milestone.go` — Set callback for milestone attacher**
+
+In `newMilestoneAttacher`, after setting `pokeMe`:
+
+```go
+ret.attacher.onDetachedVertex = func(vid *vertex.WrappedTx, tx *transaction.Transaction) {
+    go AttachTransaction(tx, env)
+}
+```
+
+IncrementalAttacher: no change needed — `onDetachedVertex` stays nil (default).
+
+#### Phase 2: DetachedVertex handlers in attachment paths
+
+**Step 2.1: `core/attacher/attacher.go` — `attachVertexNonBranch` DetachedVertex handler**
+
+Replace GracefulShutdown with reattachment-or-error:
+
+```go
+DetachedVertex: func(v *vertex.DetachedVertex) {
+    if a.onDetachedVertex != nil {
+        a.onDetachedVertex(vid, v.Transaction)
+        ok = true  // not defined — poke registered at line 202
+    } else {
+        a.setError(fmt.Errorf("detached vertex %s: dependency unavailable",
+            vid.IDShortString()))
+    }
+},
+```
+
+**Step 2.2: `core/attacher/attacher.go` — `attachVertexNonBranchSolid` DetachedVertex handler**
+
+Same pattern for the RUnwrap path:
+
+```go
+DetachedVertex: func(v *vertex.DetachedVertex) {
+    if a.onDetachedVertex != nil {
+        a.onDetachedVertex(vid, v.Transaction)
+        needFallback = true
+    } else {
+        a.setError(fmt.Errorf("detached vertex %s: dependency unavailable (solid path)",
+            vid.IDShortString()))
+    }
+},
+```
+
+#### Phase 3: `AttachTransaction` DetachedVertex support
+
+**Step 3.1: `core/attacher/attach.go` — Add DetachedVertex handler in `AttachTransaction`**
+
+After the existing VirtualTx handler (line ~212), add:
+
+```go
+reattached := false
+vid.Unwrap(vertex.UnwrapOptions{
+    DetachedVertex: func(v *vertex.DetachedVertex) {
+        if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
+            return // reattachment already in progress
+        }
+        vid.ReattachVertexNoLock(v.Transaction)
+        env.LogTx(time.Now(), "REATTACH START", txid)
+
+        if vid.IsSequencerTransaction() {
+            n := numAttachers.Add(1)
+            go func() {
+                defer numAttachers.Add(-1)
+                env.IncCounter("att")
+                defer env.DecCounter("att")
+                env.MarkWorkProcessStarted(vid.IDShortString() + "_reattach")
+                runMilestoneAttacher(vid, nil, nil, env, nil)
+                env.MarkWorkProcessStopped(vid.IDShortString() + "_reattach")
+            }()
+        }
+        reattached = true
+    },
+})
+if reattached {
+    env.PokeAllWith(vid)
+}
+```
+
+**Step 3.2: Remove or update the existing DetachedVertex warning log** (attach.go:130-134) — no longer just a warning, reattachment is handled.
+
+#### Phase 4: Cleanup and safeguards
+
+**Step 4.1: Remove the disabled `ReattachDetachedVertexNoLock`** (vid.go:85-91) — replaced by the new `ReattachVertexNoLock`.
+
+**Step 4.2: Add reattachment counter metric** — `proxima_reattach_counter` to monitor frequency. If reattachments are frequent, TTL tuning is needed.
+
+**Step 4.3: Logging** — Log reattachment events at Info level for operational visibility: vertex ID, which attacher triggered it, depth of recursive reattachment chain.
+
+#### Testing strategy
+
+1. **Unit test**: Create a vertex, mark Good, ConvertToDetached, then ReattachVertexNoLock. Verify flags are clean, type is _vertex, consumed map preserved.
+2. **Integration test**: In a sequencer test, force GC of a mid-slot dependency before the branch attacher runs. Verify the branch commits successfully with correct mutations.
+3. **Incremental attacher test**: Verify that IncrementalAttacher encountering a DetachedVertex returns an error (not crash, not reattachment).
+4. **Recursive reattachment test**: Force GC of multiple levels of dependencies. Verify the chain of reattachments completes and the top-level attacher succeeds.
+
 ### Files involved
 
 | File | Relevance |
 |------|-----------|
-| `core/attacher/attacher.go:150-178` | **Bug location**: GOOD+nil PastConeBase handler marks Defined prematurely |
-| `core/attacher/attacher.go:607-611` | Branch short-circuit in `attachOutput` — correct by design |
-| `core/attacher/attacher.go:118-206` | `attachVertexNonBranch` — contains the nil handler |
-| `core/attacher/attacher.go:499-548` | `attachInput` — `refreshDependencyStatus` called before `attachOutput` |
-| `core/attacher/attacher.go:414-457` | `defineInTheStateStatus` — Issue 2 fix re-checks negatives |
-| `core/vertex/vid.go:93-116` | `ConvertToDetached` — sets `vid.pastCone = nil` |
-| `core/vertex/past_cone.go:625-689` | `Mutations()` — generates DEL/ADD mutation set |
-| `ledger/multistate/mutate.go:547-551` | Token conservation assertion |
-| `core/attacher/wrapup.go:40-90` | `commitBranch` — where mutations are computed |
+| `core/vertex/vid.go:85-91` | Disabled `ReattachDetachedVertexNoLock` → replace with `ReattachVertexNoLock` |
+| `core/vertex/vid.go:93-116` | `ConvertToDetached` — the GC mechanism that creates the problem |
+| `core/attacher/types.go:71-89` | `attacher` struct → add `onDetachedVertex` callback |
+| `core/attacher/attacher.go:118-206` | `attachVertexNonBranch` → change DetachedVertex handler |
+| `core/attacher/attacher.go:212-252` | `attachVertexNonBranchSolid` → change DetachedVertex handler |
+| `core/attacher/attacher_milestone.go:78-110` | `newMilestoneAttacher` → set `onDetachedVertex` callback |
+| `core/attacher/attach.go:111-224` | `AttachTransaction` → add DetachedVertex reattachment path |
+| `core/attacher/attacher.go:414-457` | `defineInTheStateStatus` — handles InTheState DetachedVertex (no change needed) |
+| `core/vertex/past_cone.go:625-689` | `Mutations()` — generates DEL/ADD mutation set (no change needed) |
+| `ledger/multistate/mutate.go:547-551` | Token conservation assertion (no change needed) |
 
 ---
 

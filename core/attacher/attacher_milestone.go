@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/checkpoints"
@@ -92,6 +93,10 @@ func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txme
 
 	ret.attacher.pokeMe = func(vid *vertex.WrappedTx) {
 		ret.pokeMe(vid)
+	}
+	ret.attacher.onDetachedVertex = func(detachedVid *vertex.WrappedTx, tx *transaction.Transaction) {
+		env.Log().Infof("REATTACH triggered for %s by attacher %s", detachedVid.IDShortString(), ret.name)
+		go AttachTransaction(tx, env)
 	}
 	ret.vid.OnPoke(func() {
 		ret._doPoke()

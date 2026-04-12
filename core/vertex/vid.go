@@ -82,12 +82,17 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 	}
 }
 
-// ReattachDetachedVertexNoLock is DISABLED — converting DetachedVertex back to Vertex
-// preserves stale flags and coverage that cause assertion failures.
-// Kept as a no-op with logging for tracing purposes.
-func (vid *WrappedTx) ReattachDetachedVertexNoLock(tx *transaction.Transaction) bool {
-	_, isDetached := vid._genericVertex.(_detachedVertex)
-	return isDetached // returns true if it WAS detached, but does NOT convert
+// ReattachVertexNoLock converts a DetachedVertex back to a fresh Vertex for re-solidification.
+// Resets all mutable flags and status — the vertex becomes Undefined with clean state.
+// Safe because *transaction.Transaction inside DetachedVertex is immutable.
+// Must be called under write lock (inside Unwrap).
+// The consumed map is preserved — consumer tracking from before detachment remains valid.
+func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
+	vid._put(_vertex{NewVertex(tx)})
+	vid.flags = FlagVertexTxAttachmentStarted
+	vid.err = nil
+	vid.pastCone = nil // already nil after detachment, explicit for clarity
+	vid.coverage.Store(nil)
 }
 
 // ConvertToDetached detaches past cone and leaves only a collection of produced outputs
