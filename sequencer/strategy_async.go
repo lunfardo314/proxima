@@ -26,7 +26,7 @@ const (
 	// Separate from plateauHoldTicks because plateau detection and finalization have different
 	// time requirements: plateau hold can be short (3 ticks = 240ms), but finalization needs
 	// ~1 second due to state trie I/O and coverage computation.
-	finalizationTicks = 12
+	finalizationTicks = 24
 
 	// milestoneWatchInterval is how often the background watcher polls the tippool
 	milestoneWatchInterval = 20 * time.Millisecond
