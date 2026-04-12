@@ -1,8 +1,6 @@
 package task
 
 import (
-	"time"
-
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -16,12 +14,6 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		ts = p.effectiveTs
 	}
 
-	if dl, ok := p.ctx.Deadline(); ok {
-		remaining := time.Until(dl)
-		if remaining < 500*time.Millisecond {
-			p.taskData.Log().Warnf("finalize-%s(%s): only %v remaining before deadline", source, p.Name, remaining)
-		}
-	}
 	if err := p.ctx.Err(); err != nil {
 		return nil, err
 	}

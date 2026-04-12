@@ -20,13 +20,12 @@ const (
 	// because both increase coverage.
 	plateauHoldTicks = 3
 
-	// finalizationTicks is the deadline buffer for task.Run. The target timestamp is set this
-	// many ticks ahead of "now", giving task.Run enough wall-clock time to create an attacher,
-	// solidify the past cone, insert tag-alongs, compute coverage delta, and build the tx.
-	// Separate from plateauHoldTicks because plateau detection and finalization have different
-	// time requirements: plateau hold can be short (3 ticks = 240ms), but finalization needs
-	// ~1 second due to state trie I/O and coverage computation.
-	finalizationTicks = 24
+	// targetOffsetTicks controls how far ahead of "now" the milestone's timestamp is set.
+	// This determines the minimum spacing between milestones (along with TransactionPaceSequencer).
+	// Smaller values = more milestones per slot = faster coverage convergence.
+	// The target offset is decoupled from the build budget: task.Run uses a separate
+	// buildBudget (wall-clock duration) that can be longer than the target offset.
+	targetOffsetTicks = 6
 
 	// milestoneWatchInterval is how often the background watcher polls the tippool
 	milestoneWatchInterval = 20 * time.Millisecond
@@ -199,13 +198,19 @@ func (seq *Sequencer) doSequencerSlot() bool {
 // tryBuildAndSubmit computes an effective timestamp from "now", builds a milestone
 // via task.Run (which inserts tag-alongs and freezes on top of the skeleton), and submits it.
 // Returns true on successful submission.
+//
+// Timing: targetTs is set targetOffsetTicks ahead of "now". This determines the
+// milestone's ledger timestamp (logical clock). The build budget (wall-clock time for
+// task.Run) is separate and configured via buildBudget. The target can be close to
+// "now" for fast pace, while the builder has enough time for I/O-heavy operations.
 func (seq *Sequencer) tryBuildAndSubmit() bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
-	// target must be far enough in the future for task.Run to solidify and finalize.
-	// finalizationTicks gives ~1s for attacher creation, state trie I/O, and tx building.
-	targetTs := base.MaximumTime(nowTs.AddTicks(finalizationTicks), paceMin)
+	// target = max(now + targetOffsetTicks, paceMin).
+	// targetOffsetTicks determines the milestone's timestamp freshness.
+	// buildBudget (in task.Run) determines how long the builder has to complete.
+	targetTs := base.MaximumTime(nowTs.AddTicks(targetOffsetTicks), paceMin)
 
 	// don't overshoot into next slot
 	nextBoundary := nowTs.NextSlotBoundary()

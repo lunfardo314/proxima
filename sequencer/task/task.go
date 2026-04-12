@@ -10,7 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -71,6 +70,12 @@ type (
 
 const TraceRunTagTask = "runTask"
 
+// BuildBudget is the wall-clock time task.Run has to build a proposal.
+// Decoupled from the target timestamp offset: the target can be close to "now" for
+// fast milestone pace, while the builder has enough time for I/O-heavy operations
+// (lazy branch commit, state trie reads, coverage delta computation).
+const BuildBudget = 2 * time.Second
+
 var (
 	ErrNoProposals   = errors.New("no proposals were generated")
 	ErrNotGoodEnough = errors.New("proposals aren't good enough")
@@ -83,9 +88,20 @@ var (
 //  3. Factory proposer (consumes pre-built skeleton with endorsements)
 //  4. Base extend proposer (fallback: extend own latest milestone without endorsements)
 //
+// Timing model:
+// The transaction's timestamp (targetTs) is a logical clock, not a wall-clock deadline.
+// Nodes do not enforce strict synchronicity between ledger time and wall clock:
+// a transaction with timestamp TS is valid whether built slightly before or after ClockTime(TS).
+// The real validity constraints are sequencer pace and slot boundaries — both checked in
+// ledger time, not wall clock.
+//
+// The build budget (BuildBudget) is a wall-clock duration decoupled from the target timestamp.
+// This allows close-to-"now" targets (small targetOffsetTicks → high milestone rate) while
+// giving the builder enough time for I/O-heavy operations (lazy branch commit, state trie reads).
+//
 // Returns the best proposal or ErrNoProposals/ErrNotGoodEnough.
 func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
-	deadline := ledger.ClockTime(targetTs)
+	deadline := time.Now().Add(BuildBudget)
 	nowis := time.Now()
 
 	env.Tracef(TraceRunTagTask, "START: target: %s, deadline: %s, nowis: %s",
