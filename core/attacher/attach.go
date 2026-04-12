@@ -130,9 +130,10 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	reattached := false
 	vid.Unwrap(vertex.UnwrapOptions{
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
-				return // reattachment already in progress
+			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished) {
+				return // reattachment already in progress (started but not yet finished)
 			}
+			// Either never attached, or attachment completed then GC'd — allow reattachment
 			env.Log().Infof("REATTACH START %s seq=%v", txid.StringShort(), txid.IsSequencerTransaction())
 			vid.ReattachVertexNoLock(v.Transaction)
 
