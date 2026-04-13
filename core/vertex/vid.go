@@ -108,10 +108,13 @@ func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
 func (vid *WrappedTx) ConvertToDetached() {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			//if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
-			//	// to prevent detached vertex appear in the attacher
-			//	return
-			//}
+			if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
+				// Attacher is actively processing this vertex — do not detach.
+				// Without this guard, GC can oscillate the vertex between Vertex and
+				// DetachedVertex, causing duplicate reattachments that panic on
+				// MarkWorkProcessStarted.
+				return
+			}
 			vid.convertToDetachedTxUnlocked(v)
 			vid.pastCone = nil
 		},
