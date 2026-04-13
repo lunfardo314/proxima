@@ -920,7 +920,10 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 		if len(consumers) != 1 {
 			return &wOut, false
 		}
-		if pc.IsInTheState(consumers[0]) {
+		// The baseline branch is the state boundary: its consumption of outputs
+		// (e.g. the predecessor's stem) is already reflected in the state reader.
+		// Treat it as "in the state" for conflict-checking purposes.
+		if pc.IsInTheState(consumers[0]) || (consumers[0] != nil && pc.baselineBranchID != nil && consumers[0].ID() == *pc.baselineBranchID) {
 			continue
 		}
 		// virtual consumer nil is never in the state
