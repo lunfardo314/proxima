@@ -882,6 +882,13 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 // The complexity is O(NxM) where N is number of vertices and M is an average number of conflicts in the UTXO tangle
 // Practically, it is linear wrt the number of vertices because M is 1 or close to 1.
 func (pc *PastCone) CheckConflicts(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput, err error) {
+	// detect orphaned branches before checking individual vertices —
+	// the per-vertex check misses conflicts when the stem producer is not in pc.vertices
+	if orphanConflict := pc._detectOrphanedBranch(); orphanConflict != nil {
+		conflict = orphanConflict
+		return
+	}
+
 	rdr := getStateReader(*pc.GetBaseline())
 	pc.forAllVertices(func(vid *WrappedTx) bool {
 		if e := ctx.Err(); e != nil {
@@ -1007,6 +1014,26 @@ func (pc *PastCone) _removeOrphanedBranchSubtrees() (int, *WrappedOutput) {
 		delete(pc.vertices, vid)
 	}
 	return len(orphans), nil
+}
+
+// _detectOrphanedBranch returns a conflict if any orphaned branch exists in the past cone.
+// Read-only: does not modify pc.vertices. Safe to call during an active delta.
+func (pc *PastCone) _detectOrphanedBranch() *WrappedOutput {
+	var found *WrappedOutput
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		if !vid.IsBranchTransaction() || pc.IsInTheState(vid) {
+			return true
+		}
+		if vid == pc.tip {
+			return true
+		}
+		if pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID {
+			return true
+		}
+		found = &WrappedOutput{VID: vid, Index: 0}
+		return false
+	})
+	return found
 }
 
 func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
