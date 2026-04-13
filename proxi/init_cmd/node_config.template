@@ -138,8 +138,11 @@ sequencer:
   # sequencer pace. Distance in ticks between two subsequent sequencer transactions
   # cannot be less than the sequencer pace value set by the ledger
   pace: 12
-  # maximum tag-along inputs allowed in the sequencer transaction (absolute maximum value is 254)
-  max_tag_along_inputs: 100
+  # maximum tag-along inputs per milestone (default: 15). Controls batch size.
+  max_tag_along_inputs: 15
+  # target tag-alongs to drain per slot (default: 100, ~10 TPS per sequencer).
+  # Together with max_tag_along_inputs, controls how many drain milestones per slot.
+  tag_along_drain_rate: 100
   # write separate sequencer log (default: false)
   logging: false
   # if logging = true, duplicate sequencer log messages to the node's log (default: false)

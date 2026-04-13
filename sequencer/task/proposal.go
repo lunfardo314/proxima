@@ -94,6 +94,8 @@ func (p *proposal) insertTagAlongInputs() {
 	if p.InputsAreFull() {
 		return
 	}
+	maxTagAlongs := p.taskData.MaxTagAlongInputs()
+	tagAlongsInserted := 0
 
 	outs := make([]*_inputCandidate, 0)
 
@@ -158,9 +160,10 @@ func (p *proposal) insertTagAlongInputs() {
 				p.taskData.Assertf(cmd != nil, "cmd != nil")
 				p.taskData.LogTopicf("tag_along", 1, "TAG_ALONG: output %s has been added to '%s', cmd='%s'",
 					o.o.ID.StringShort(), p.Name, cmd.Lines().Join(", "))
+				tagAlongsInserted++
 			}
 		}
-		if p.InputsAreFull() {
+		if p.InputsAreFull() || tagAlongsInserted >= maxTagAlongs {
 			return
 		}
 	}

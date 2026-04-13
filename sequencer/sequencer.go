@@ -538,6 +538,10 @@ func (seq *Sequencer) TagAlongBudgetNumerator() int {
 	return numerator
 }
 
+func (seq *Sequencer) MaxTagAlongInputs() int {
+	return seq.config.MaxTagAlongInputs
+}
+
 // decideSubmitMilestone checks health and connectivity before submitting a milestone.
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
 	if seq.DurationSinceLastMessageFromPeer() >= disconnectTolerance {

@@ -59,9 +59,24 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	tickDuration := ledger.TickDuration()
 	holdDuration := time.Duration(plateauHoldTicks) * tickDuration
 
+	// Drain interval: space drain milestones evenly across the slot.
+	// drainRate tag-alongs / slot, batchSize per milestone → drainRate/batchSize milestones/slot.
+	// Usable ticks ≈ 128 - PostBranch - PreBranch.
+	lib0 := ledger.L(0)
+	usableTicks := int(base.MaxTickValue) - int(lib0.PostBranchConsolidationTicks) - int(lib0.PreBranchConsolidationTicks)
+	if usableTicks < 1 {
+		usableTicks = 1
+	}
+	drainIntervalTicks := usableTicks * seq.config.MaxTagAlongInputs / seq.config.TagAlongDrainRate
+	if drainIntervalTicks < 1 {
+		drainIntervalTicks = 1
+	}
+	drainInterval := time.Duration(drainIntervalTicks) * tickDuration
+
 	var lastSeenCoverage uint64
 	lastImprovementTime := time.Now()
 	lastBacklogCheck := time.Now()
+	lastDrainTime := time.Time{} // zero: first drain fires immediately
 
 	ticker := time.NewTicker(tickDuration)
 	defer ticker.Stop()
@@ -129,17 +144,18 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		bestCoverage := seq.skeletonFactory.BestCoverage()
 
-		// Priority 1: backlog drain — submit at pace rate to consume pending tag-alongs.
-		// Tag-alongs always add coverage, so draining them is always worthwhile.
-		// No plateau wait: submit as soon as pace allows.
-		// Loop until backlog is drained or submission fails (pace/budget exhausted).
-		for seq.backlog.NumOutputsInBuffer() > 0 {
-			if !seq.tryBuildAndSubmit() {
-				break
+		// Priority 1: backlog drain — batch tag-alongs into milestones at a controlled rate.
+		// Each milestone picks up to MaxTagAlongInputs. Drain submissions are spaced by
+		// drainInterval (derived from TagAlongDrainRate and MaxTagAlongInputs) to avoid
+		// flooding the DAG with low-payload milestones under sustained spam.
+		if seq.backlog.NumOutputsInBuffer() > 0 && time.Since(lastDrainTime) >= drainInterval {
+			if seq.tryBuildAndSubmit() {
+				lastDrainTime = time.Now()
+				lastSeenCoverage = seq.skeletonFactory.BestCoverage()
+				lastImprovementTime = time.Now()
+				lastBacklogCheck = time.Now()
 			}
-			lastSeenCoverage = seq.skeletonFactory.BestCoverage()
-			lastImprovementTime = time.Now()
-			lastBacklogCheck = time.Now()
+			continue
 		}
 
 		// Priority 2: plateau detection — wait for endorsement coverage to stabilize.

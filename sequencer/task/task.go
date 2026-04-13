@@ -37,6 +37,8 @@ type (
 		// TagAlongBudgetNumerator returns the tag-along budget numerator scaled by sequencer pressure.
 		// Full budget = 2 (2/3 of consensus). Under pressure, reduced to 1 or 0.
 		TagAlongBudgetNumerator() int
+		// MaxTagAlongInputs returns the configured max tag-along inputs per milestone.
+		MaxTagAlongInputs() int
 	}
 
 	taskData struct {

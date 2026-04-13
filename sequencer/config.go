@@ -23,6 +23,8 @@ type (
 		BacklogTagAlongTTLSlots   int
 		BacklogDelegationTTLSlots int
 		MilestonesTTLSlots        int
+		MaxTagAlongInputs    int // max tag-along inputs per milestone
+		TagAlongDrainRate    int // target tag-alongs to drain per slot
 		SingleSequencerEnforced   bool
 		SeparateLog               bool
 		GlobalLogging             bool
@@ -43,6 +45,8 @@ const (
 	minimumBacklogTagAlongTTLSlots   = 10
 	minimumBacklogDelegationTTLSlots = 20
 	minimumMilestonesTTLSlots        = 24 // 10
+	defaultMaxTagAlongInputs    = 15
+	defaultTagAlongDrainRate    = 100 // ~10 TPS per sequencer with 1.024s slots
 )
 
 func defaultConfigOptions() *ConfigOptions {
@@ -55,6 +59,8 @@ func defaultConfigOptions() *ConfigOptions {
 		BacklogTagAlongTTLSlots:   minimumBacklogTagAlongTTLSlots,
 		BacklogDelegationTTLSlots: minimumBacklogDelegationTTLSlots,
 		MilestonesTTLSlots:        minimumMilestonesTTLSlots,
+		MaxTagAlongInputs:    defaultMaxTagAlongInputs,
+		TagAlongDrainRate:    defaultTagAlongDrainRate,
 	}
 }
 
@@ -110,6 +116,8 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 		WithBacklogTagAlongTTLSlots(backlogTagAlongTTLSlots),
 		WithBacklogDelegationTTLSlots(backlogDelegationTTLSlots),
 		WithMilestonesTTLSlots(milestonesTTLSlots),
+		WithMaxTagAlongInputs(subViper.GetInt("max_tag_along_inputs")),
+		WithTagAlongDrainRate(subViper.GetInt("tag_along_drain_rate")),
 		WithSingleSequencerEnforced,
 		WithSeparateLog(subViper.GetBool("logging"), subViper.GetBool("global_logging")),
 		WithControllerKeyFile(keyFile),
@@ -177,6 +185,22 @@ func WithMilestonesTTLSlots(slots int) ConfigOption {
 	}
 }
 
+func WithMaxTagAlongInputs(n int) ConfigOption {
+	return func(o *ConfigOptions) {
+		if n >= 1 {
+			o.MaxTagAlongInputs = n
+		}
+	}
+}
+
+func WithTagAlongDrainRate(rate int) ConfigOption {
+	return func(o *ConfigOptions) {
+		if rate >= 1 {
+			o.TagAlongDrainRate = rate
+		}
+	}
+}
+
 func WithEnsureSyncedAtStartup(o *ConfigOptions) {
 	o.EnsureSyncedBeforeStart = true
 }
@@ -218,6 +242,8 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, p
 		Add("BacklogTagAlongTTLSlots: %d", cfg.BacklogTagAlongTTLSlots).
 		Add("BacklogDelegationTTLSlots: %d", cfg.BacklogDelegationTTLSlots).
 		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
+		Add("MaxTagAlongInputs: %d", cfg.MaxTagAlongInputs).
+		Add("TagAlongDrainRate: %d/slot", cfg.TagAlongDrainRate).
 		Add("Separate log: %v", cfg.SeparateLog).
 		Add("Copy to the global log: %v", cfg.GlobalLogging).
 		Add("Controller key file: %s", cfg.ControllerKeyFile).
