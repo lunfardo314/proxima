@@ -661,6 +661,12 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 				}
 			}
 		} else {
+			// DEBUG: detect orphaned branch in mutations (skip tip)
+			if vid.IsBranchTransaction() && vid != pc.tip {
+				util.Assertf(pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID,
+					"ORPHANED BRANCH %s in past cone %s (baseline %s, tip %s)",
+					vid.IDShortString(), pc.name, pc.baselineBranchID.StringShort(), pc.tip.IDShortString())
+			}
 			produced := pc.producedIndices(vid)
 			var unspent set256.Set256
 			unspent.InsertAll(produced...)
@@ -898,6 +904,18 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 
 	var canBeRemoved bool
 
+	// Phase 1: detect and remove orphaned branch subtrees.
+	// An orphaned branch is a not-in-state branch vertex that is neither the baseline nor the tip.
+	// It indicates a competing branch chain that leaked into the past cone through transitive
+	// PastConeBase merges or the Good+InTheState+nil-PastConeBase code path.
+	// Removing the orphaned branch alone is not enough — all not-in-state vertices that
+	// transitively consume its outputs must also be removed, otherwise Mutations() would
+	// generate ADD mutations without corresponding DELs (conservation invariant violation).
+	if n := pc._removeOrphanedBranchSubtrees(); n > 0 {
+		pc.Log().Warnf("CheckAndClean %s: removed %d orphaned vertices from past cone", pc.name, n)
+	}
+
+	// Phase 2: check for conflicts and remove vertices whose consumers are all in-state
 	rdr := getStateReader(*pc.GetBaseline())
 	for vid, flags := range pc.vertices {
 		if e := ctx.Err(); e != nil {
@@ -920,6 +938,61 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		}
 	}
 	return
+}
+
+// _removeOrphanedBranchSubtrees detects competing branches in the past cone and removes
+// them together with all not-in-state vertices that transitively depend on their outputs.
+// Returns the number of removed vertices.
+//
+// A branch vertex is orphaned if it is not-in-state, not the baseline, and not the tip.
+// In a valid past cone only two branches can be not-in-state: the baseline (state boundary)
+// and the tip (being committed). Any other not-in-state branch is from a competing fork
+// that leaked in through PastConeBase merges.
+func (pc *PastCone) _removeOrphanedBranchSubtrees() int {
+	// Step 1: seed the orphan set with competing branches
+	orphans := set.New[*WrappedTx]()
+	for vid := range pc.vertices {
+		if !vid.IsBranchTransaction() {
+			continue
+		}
+		if pc.IsInTheState(vid) {
+			continue
+		}
+		if vid == pc.tip {
+			continue
+		}
+		if pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID {
+			continue
+		}
+		orphans.Insert(vid)
+	}
+	if len(orphans) == 0 {
+		return 0
+	}
+
+	// Step 2: propagate forward — any not-in-state vertex that consumes an output
+	// produced by an orphan is itself orphaned
+	changed := true
+	for changed {
+		changed = false
+		for orphan := range orphans {
+			byIdx := pc.consumersByOutputIndex(orphan)
+			for _, consumers := range byIdx {
+				for _, consumer := range consumers {
+					if consumer != nil && !pc.IsInTheState(consumer) && !orphans.Contains(consumer) {
+						orphans.Insert(consumer)
+						changed = true
+					}
+				}
+			}
+		}
+	}
+
+	// Step 3: remove all orphaned vertices from the past cone
+	for vid := range orphans {
+		delete(pc.vertices, vid)
+	}
+	return len(orphans)
 }
 
 func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
