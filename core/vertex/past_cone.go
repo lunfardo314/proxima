@@ -911,7 +911,11 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 		if conflict != nil {
 			return
 		}
-		if canBeRemoved {
+		if canBeRemoved && !vid.IsBranchTransaction() {
+			// Never remove branch vertices: their stem is consumed by the next slot's
+			// branch (often the baseline, which is not in pc.vertices). Removing them
+			// strips conflict evidence needed when this PastConeBase is later merged
+			// into another attacher's past cone with a competing branch from the same slot.
 			delete(pc.vertices, vid)
 		}
 	}
