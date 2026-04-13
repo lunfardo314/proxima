@@ -910,19 +910,6 @@ func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branc
 	return
 }
 
-// _isLegitimateConsumer returns true if the consumer is either in-the-state or is the baseline branch.
-// The baseline branch is the state boundary: its consumption of outputs is already reflected
-// in the state reader, so it should be treated as "in the state" for conflict-checking purposes.
-func (pc *PastCone) _isLegitimateConsumer(consumer *WrappedTx) bool {
-	if consumer == nil {
-		return false // virtual consumer is never in the state
-	}
-	if pc.IsInTheState(consumer) {
-		return true
-	}
-	return pc.baselineBranchID != nil && consumer.ID() == *pc.baselineBranchID
-}
-
 func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
 	allConsumersAreInTheState := true
 	inTheState := pc.IsInTheState(vid)
@@ -930,35 +917,13 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 	for idx, consumers := range byIdx {
 		wOut := WrappedOutput{VID: vid, Index: idx}
 		pc.Assertf(len(consumers) > 0, "len(consumers) > 0")
-
-		// Count legitimate consumers: those that are in-the-state or are the baseline branch.
-		// Multiple branches from the same slot may all consume the same stem, but only one
-		// is the winner (the baseline or its ancestor). The others are losers that happen
-		// to be in the past cone via endorsement chains. This is not a real conflict.
-		legitimateCount := 0
-		for _, c := range consumers {
-			if pc._isLegitimateConsumer(c) {
-				legitimateCount++
-			}
+		if len(consumers) != 1 {
+			return &wOut, false
 		}
-		if legitimateCount == 1 {
-			// Exactly one legitimate consumer — no conflict for this output.
-			// If there are other (non-legitimate) consumers, they are losing branches.
-			if len(consumers) > 1 {
-				allConsumersAreInTheState = false
-			}
+		if pc.IsInTheState(consumers[0]) {
 			continue
 		}
-		if legitimateCount > 1 {
-			// Multiple legitimate consumers — genuine double-spend
-			return &wOut, false
-		}
-		// No legitimate consumer (legitimateCount == 0)
-		if len(consumers) != 1 {
-			// Multiple consumers, none legitimate — conflict
-			return &wOut, false
-		}
-		// Single non-legitimate consumer
+		// virtual consumer nil is never in the state
 		allConsumersAreInTheState = false
 		if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
 			return &wOut, false
