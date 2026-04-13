@@ -111,10 +111,10 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 	panic("wrong vertex state")
 }
 
-// attachVertexNonBranch if vertex undefined, recursively attaches past cone
-// Does not check for past cone consistency -> resulting past cone may contain double spends util attacher solidifies all of it
-// For non-sequencer vertices that are already validated (solid), uses RUnwrap (read lock) instead
-// of Unwrap (write lock) to eliminate write lock contention on overlapping past cones.
+// attachVertexNonBranch attaches a non-branch vertex by traversing its past cone.
+// Uses RUnwrap (read lock) first for all cases. Escalates to Unwrap (write lock) only
+// for Undefined non-sequencer vertices that need mutation (referencing deps + validation).
+// This eliminates write lock contention on overlapping past cones between concurrent attachers.
 func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
@@ -122,16 +122,11 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 		return true
 	}
 
-	// For already-validated non-sequencer vertices, the vertex state is immutable:
-	// no writes happen during traversal, only reads + building the attacher's own pastCone.
-	// Use RUnwrap (read lock) to allow concurrent traversal by multiple attachers.
-	// FlagVertexConstraintsValid is monotonic (once set, never cleared), so the check is safe.
-	if !vid.IsSequencerTransaction() && vid.FlagsUp(vertex.FlagVertexConstraintsValid) {
-		return a.attachVertexNonBranchSolid(vid)
-	}
-
+	needWriteLock := false
 	defined := false
-	vid.Unwrap(vertex.UnwrapOptions{
+
+	// Step 1: RUnwrap — read lock first for all cases
+	vid.RUnwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			switch vid.GetTxStatusNoLock() {
 			case vertex.Undefined:
@@ -140,11 +135,17 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 					ok = true
 					return
 				}
-				// non-sequencer transaction
-				ok = a.attachVertexUnwrapped(v, vid)
-				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
-					a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
-					defined = true
+				// FlagVertexConstraintsValid is monotonic (once set, never cleared).
+				// If set, the vertex is immutable — read-only traversal is safe under read lock.
+				if vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) {
+					ok = a.attachVertexUnwrapped(v, vid)
+					if ok && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
+						defined = true
+					}
+				} else {
+					// Needs write access for referencing deps + validation
+					needWriteLock = true
+					ok = true
 				}
 
 			case vertex.Good:
@@ -194,9 +195,6 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				a.Log().Fatalf("inconsistency: wrong tx status")
 			}
 		},
-		// TODO: unify attachVertexNonBranch and attachVertexNonBranchSolid — use RUnwrap first,
-		// upgrade to Unwrap only for the Undefined non-seq case that needs write access.
-		// DetachedVertex handling is identical in both paths.
 		DetachedVertex: func(v *vertex.DetachedVertex) {
 			if a.onDetachedVertex != nil {
 				a.onDetachedVertex(vid, v.Transaction)
@@ -209,60 +207,49 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 			ok = true
 		},
 	})
+
 	if !ok {
 		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
 		return
 	}
 
-	if defined {
-		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
-	} else if a.pokeMe != nil {
-		a.pokeMe(vid)
-	}
-	return
-}
-
-// attachVertexNonBranchSolid is the fast path for already-validated non-sequencer vertices.
-// Uses RUnwrap (read lock) since the vertex state is immutable after validation.
-// If the vertex was detached between the flag check and the RUnwrap, falls back to the
-// write-lock path via the regular attachVertexNonBranch Unwrap logic.
-func (a *attacher) attachVertexNonBranchSolid(vid *vertex.WrappedTx) (ok bool) {
-	needFallback := false
-	defined := false
-
-	vid.RUnwrap(vertex.UnwrapOptions{
-		Vertex: func(v *vertex.Vertex) {
-			ok = a.attachVertexUnwrapped(v, vid)
-			if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
-				defined = true
-			}
-		},
-		// TODO: unify with attachVertexNonBranch — same DetachedVertex handling in both paths
-		DetachedVertex: func(v *vertex.DetachedVertex) {
-			if a.onDetachedVertex != nil {
-				a.onDetachedVertex(vid, v.Transaction)
-				needFallback = true
-			} else {
-				a.setError(fmt.Errorf("attacher %s: detached vertex %s: dependency unavailable (solid path)", a.name, vid.IDShortString()))
-			}
-		},
-		VirtualTx: func(_ *vertex.VirtualTransaction) {
-			// shouldn't happen for a validated vertex, but handle gracefully
-			needFallback = true
-		},
-	})
-
-	if needFallback {
-		if a.pokeMe != nil {
-			a.pokeMe(vid)
+	// Step 2: Escalate to write lock only for Undefined non-seq that needs mutation
+	if needWriteLock {
+		vid.Unwrap(vertex.UnwrapOptions{
+			Vertex: func(v *vertex.Vertex) {
+				// Re-check: another attacher may have validated between RUnwrap release and Unwrap acquire.
+				// FlagVertexConstraintsValid is monotonic, so if true now, vertex is immutable.
+				if vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) {
+					ok = a.attachVertexUnwrapped(v, vid)
+					if ok && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
+						defined = true
+					}
+					return
+				}
+				// Still Undefined — do the write work (reference deps + validate)
+				ok = a.attachVertexUnwrapped(v, vid)
+				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
+					defined = true
+				}
+			},
+			DetachedVertex: func(v *vertex.DetachedVertex) {
+				// Race: converted between RUnwrap and Unwrap
+				if a.onDetachedVertex != nil {
+					a.onDetachedVertex(vid, v.Transaction)
+					ok = true
+				} else {
+					a.setError(fmt.Errorf("attacher %s: detached vertex %s: dependency unavailable", a.name, vid.IDShortString()))
+					ok = false
+				}
+			},
+			VirtualTx: func(_ *vertex.VirtualTransaction) {
+				ok = true
+			},
+		})
+		if !ok {
+			a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
+			return
 		}
-		ok = true
-		return
-	}
-
-	if !ok {
-		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
-		return
 	}
 
 	if defined {

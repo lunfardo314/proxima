@@ -268,95 +268,89 @@ func (a *milestoneAttacher) close() {
 	})
 }
 
+// solidifyBaseline determines the baseline state for this sequencer transaction.
+// Uses GetVertex() to obtain the Vertex pointer under a brief read lock, then processes
+// without holding the tip's lock.
 func (a *milestoneAttacher) solidifyBaseline() vertex.Status {
 	return a.lazyRepeat("baseline solidification", func() vertex.Status {
-		ok := false
-		finalSuccess := false
 		util.Assertf(a.vid.FlagsUp(vertex.FlagVertexTxAttachmentStarted), "AttachmentStarted flag must be up")
 		util.Assertf(!a.vid.FlagsUp(vertex.FlagVertexTxAttachmentFinished), "AttachmentFinished flag must be down")
 
-		a.vid.Unwrap(vertex.UnwrapOptions{
-			Vertex: func(v *vertex.Vertex) {
-				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined:\n%s", a.vid.StringNoLock)
-				a.Assertf(a.pastCone.GetBaseline() == nil, "a.baseline == nil")
-
-				ok = a.solidifyBaselineUnwrapped(v, a.vid)
-				if ok && v.BaselineBranchID != nil {
-					a.setBaseline(v.BaselineBranchID)
-					finalSuccess = true
-				}
-			},
-			DetachedVertex: func(v *vertex.DetachedVertex) {
-				a.setError(fmt.Errorf("solidifyBaseline: %w in attacher %s", errDetachedInAttacher, a.name))
-				a.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in solidifyBaseline of attacher %s", a.vid.IDShortString(), a.name))
-				ok = false
-			},
-			VirtualTx: func(_ *vertex.VirtualTransaction) {
-				a.Log().Fatalf("solidifyBaseline: unexpected virtual tx %s", a.vid.StringNoLock())
-			},
-		})
-
-		switch {
-		case !ok:
+		v := a.vid.GetVertex()
+		if v == nil {
+			a.setError(fmt.Errorf("solidifyBaseline: vertex %s is not a Vertex (detached or virtual)", a.vid.IDShortString()))
+			a.GracefulShutdown(fmt.Sprintf("non-vertex %s encountered in solidifyBaseline of attacher %s", a.vid.IDShortString(), a.name))
 			return vertex.Bad
-		case finalSuccess:
-			return vertex.Good
-		default:
-			return vertex.Undefined
 		}
+
+		// Status check under brief read lock
+		if a.vid.GetTxStatus() != vertex.Undefined {
+			a.setError(fmt.Errorf("solidifyBaseline: unexpected status for %s", a.vid.IDShortString()))
+			return vertex.Bad
+		}
+		a.Assertf(a.pastCone.GetBaseline() == nil, "a.baseline == nil")
+
+		// Baseline solidification WITHOUT holding tip's lock
+		if ok := a.solidifyBaselineUnwrapped(v, a.vid); !ok {
+			return vertex.Bad
+		}
+		if v.BaselineBranchID != nil {
+			a.setBaseline(v.BaselineBranchID)
+			return vertex.Good
+		}
+		return vertex.Undefined
 	})
 }
 
-// solidifyPastCone solidifies and validates sequencer transaction in the context of the known baseline state
+// solidifyPastCone solidifies and validates sequencer transaction in the context of the known baseline state.
+// Uses GetVertex() to obtain the Vertex pointer under a brief read lock, then processes
+// the past cone without holding the tip's lock. This eliminates deadlocks between
+// concurrent milestone attachers with overlapping past cones.
+// The Vertex pointer is safe to use after the lock is released because
+// FlagVertexTxAttachmentStarted prevents ConvertToDetached during attachment.
 func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 	return a.lazyRepeat("past cone solidification", func() (status vertex.Status) {
-		ok := false
-		finalSuccess := false
-		a.vid.Unwrap(vertex.UnwrapOptions{
-			Vertex: func(v *vertex.Vertex) {
-				a.Assertf(a.vid.GetTxStatusNoLock() == vertex.Undefined, "a.vid.GetTxStatusNoLock() == vertex.Undefined")
-
-				if ok = a.attachVertexUnwrapped(v, a.vid); !ok {
-					a.Assertf(a.err != nil, "a.err != nil")
-					return
-				}
-
-				if ok, finalSuccess = a.validateSequencerTxUnwrapped(v); !ok {
-					a.Assertf(a.err != nil, "a.err != nil")
-					return
-				}
-				a.Tracef(TraceTagAttachVertex, "NOT final..")
-
-				const doubleCheck = true
-				if doubleCheck && finalSuccess {
-					// double check — no timeout, debug assertion only
-					conflict, _ := a.CheckConflicts(context.Background())
-					a.Assertf(conflict == nil, "unexpected conflict %s in %s", conflict.IDStringShort(), a.name)
-				}
-			},
-			DetachedVertex: func(v *vertex.DetachedVertex) {
-				a.setError(fmt.Errorf("solidifyPastCone: %w in attacher %s", errDetachedInAttacher, a.name))
-				a.GracefulShutdown(fmt.Sprintf("detached vertex %s encountered in solidifyPastCone of attacher %s", a.vid.IDShortString(), a.name))
-				ok = false
-			},
-			VirtualTx: func(_ *vertex.VirtualTransaction) {
-				a.Log().Fatalf("solidifyPastCone: unexpected virtual tx %s", a.vid.StringNoLock())
-			},
-		})
-		switch {
-		case !ok:
-			a.Assertf(a.err != nil, "a.err!=nil")
+		v := a.vid.GetVertex()
+		if v == nil {
+			a.setError(fmt.Errorf("solidifyPastCone: vertex %s is not a Vertex (detached or virtual)", a.vid.IDShortString()))
+			a.GracefulShutdown(fmt.Sprintf("non-vertex %s encountered in solidifyPastCone of attacher %s", a.vid.IDShortString(), a.name))
 			return vertex.Bad
+		}
 
-		case finalSuccess:
-			util.Assertf(!a.pastCone.ContainsUndefined(),
-				"inconsistency: attacher %s is 'finalSuccess' but still contains undefined Vertices. LinesVerbose:\n%s",
-				a.name, a.dumpLinesString)
-			return vertex.Good
+		// Status check under brief read lock
+		if a.vid.GetTxStatus() != vertex.Undefined {
+			a.setError(fmt.Errorf("solidifyPastCone: unexpected status for %s", a.vid.IDShortString()))
+			return vertex.Bad
+		}
 
-		default:
+		// Past cone traversal WITHOUT holding tip's lock
+		if ok := a.attachVertexUnwrapped(v, a.vid); !ok {
+			a.Assertf(a.err != nil, "a.err != nil")
+			return vertex.Bad
+		}
+
+		ok, finalSuccess := a.validateSequencerTxUnwrapped(v)
+		if !ok {
+			a.Assertf(a.err != nil, "a.err != nil")
+			return vertex.Bad
+		}
+
+		if !finalSuccess {
+			a.Tracef(TraceTagAttachVertex, "NOT final..")
 			return vertex.Undefined
 		}
+
+		const doubleCheck = true
+		if doubleCheck {
+			// double check — no timeout, debug assertion only
+			conflict, _ := a.CheckConflicts(context.Background())
+			a.Assertf(conflict == nil, "unexpected conflict %s in %s", conflict.IDStringShort(), a.name)
+		}
+
+		util.Assertf(!a.pastCone.ContainsUndefined(),
+			"inconsistency: attacher %s is 'finalSuccess' but still contains undefined Vertices. LinesVerbose:\n%s",
+			a.name, a.dumpLinesString)
+		return vertex.Good
 	})
 }
 

@@ -473,6 +473,26 @@ func (vid *WrappedTx) OutputID(idx byte) (ret base.OutputID) {
 	return
 }
 
+// GetVertex returns the Vertex pointer under a brief read lock.
+// Returns nil if the underlying type is not _vertex (DetachedVertex or VirtualTx).
+// The returned pointer is safe to use after the lock is released when the caller
+// guarantees no concurrent type change (FlagVertexTxAttachmentStarted is set).
+func (vid *WrappedTx) GetVertex() *Vertex {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.GetVertexNoLock()
+}
+
+// GetVertexNoLock returns the Vertex pointer without locking.
+// For use inside existing Unwrap/RUnwrap callbacks where the lock is already held.
+func (vid *WrappedTx) GetVertexNoLock() *Vertex {
+	if v, ok := vid._genericVertex.(_vertex); ok {
+		return v.Vertex
+	}
+	return nil
+}
+
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
