@@ -58,15 +58,17 @@ type (
 	}
 
 	finalProposal struct {
-		tx             *transaction.Transaction
-		txMetadata     *txmetadata.TransactionMetadata
-		txSize         int
-		hrString       string
-		coverageDelta  uint64
-		ledgerCoverage uint64
-		inflation      uint64
-		attacherName   string
-		source         string // which proposer produced this ("boot", "branch", "factory", "base")
+		tx               *transaction.Transaction
+		txMetadata       *txmetadata.TransactionMetadata
+		txSize           int
+		hrString         string
+		coverageDelta    uint64
+		ledgerCoverage   uint64
+		inflation        uint64
+		attacherName     string
+		source           string        // which proposer produced this ("boot", "branch", "factory", "base")
+		predecessorTs    base.LedgerTime // timestamp of the extended predecessor
+		attachmentCost   int
 	}
 )
 
@@ -134,17 +136,22 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 		}
 	}
 
-	// 3. Factory proposer: consume best pre-built skeleton
+	// 3+4. Non-branch: build both extend-only and extend+endorse, pick by coverage.
+	// Extend-only (base) is the selfish default; extend+endorse (factory) is only
+	// preferred when it produces strictly better coverage.
 	if result == nil && !targetTs.IsSlotBoundary() {
-		if fp := task.tryFactoryProposal(); fp != nil {
-			result = fp
-		}
-	}
+		baseResult := task.tryBaseExtendProposal()
+		factoryResult := task.tryFactoryProposal()
 
-	// 4. Base extend fallback: extend own latest milestone without endorsements
-	if result == nil && !targetTs.IsSlotBoundary() {
-		if fp := task.tryBaseExtendProposal(); fp != nil {
-			result = fp
+		switch {
+		case baseResult == nil && factoryResult == nil:
+			// neither available
+		case baseResult == nil:
+			result = factoryResult
+		case factoryResult == nil:
+			result = baseResult
+		default:
+			result = betterProposal(baseResult, factoryResult)
 		}
 	}
 
@@ -160,6 +167,27 @@ func Run(env environment, targetTs base.LedgerTime, slotData *SlotData) (*transa
 	}
 	task.EvidenceEndorsementCount(result.tx.NumEndorsements())
 	return result.tx, result.txMetadata, result.hrString, nil
+}
+
+// betterProposal picks the better of two non-nil proposals.
+// 1. Higher coverage wins
+// 2. On equal coverage: younger (later) predecessor wins
+// 3. On equal predecessor: smaller attachment cost wins
+func betterProposal(a, b *finalProposal) *finalProposal {
+	switch {
+	case a.ledgerCoverage > b.ledgerCoverage:
+		return a
+	case b.ledgerCoverage > a.ledgerCoverage:
+		return b
+	case a.predecessorTs.After(b.predecessorTs):
+		return a
+	case b.predecessorTs.After(a.predecessorTs):
+		return b
+	case a.attachmentCost <= b.attachmentCost:
+		return a
+	default:
+		return b
+	}
 }
 
 func (fp *finalProposal) String() string {

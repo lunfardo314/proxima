@@ -25,6 +25,8 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	slotInflation := p.SlotInflation()
 	baselineSupply := p.BaselineSupply()
 
+	pastConeAttachmentCost := p.PastConeAttachmentCost()
+
 	tx, hrString, err := p.makeTx() // closes the attacher
 	if err != nil {
 		return nil, err
@@ -37,6 +39,13 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	if frozen > 0 {
 		frozenP = util.Ref(frozen)
 	}
+	// extract predecessor timestamp from the built transaction
+	var predTs base.LedgerTime
+	if seqData := tx.SequencerTransactionData(); seqData != nil {
+		predOID := tx.MustInputAt(seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex)
+		predTs = predOID.Timestamp()
+	}
+
 	fp := &finalProposal{
 		tx:     tx,
 		txSize: len(tx.Bytes()),
@@ -52,6 +61,8 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		inflation:      tx.InflationAmount(),
 		attacherName:   p.IncrementalAttacher.Name(),
 		source:         source,
+		predecessorTs:  predTs,
+		attachmentCost: pastConeAttachmentCost,
 	}
 
 	if tx.IsBranchTransaction() {
