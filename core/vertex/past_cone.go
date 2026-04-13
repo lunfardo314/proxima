@@ -536,6 +536,14 @@ func (pc *PastCone) _filterConsumingVertices(consumers set.Set[*WrappedTx]) []*W
 	for vid := range consumers {
 		if pc.IsKnown(vid) {
 			ret = append(ret, vid)
+			continue
+		}
+		// The baseline branch is not in pc.vertices but IS a legitimate consumer
+		// of outputs in the past cone (e.g. it consumes the predecessor's stem).
+		// Without this, CheckAndClean removes in-state branches whose stem consumer
+		// (the baseline) is invisible, stripping conflict evidence from the PastConeBase.
+		if pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID {
+			ret = append(ret, vid)
 		}
 	}
 	if len(ret) == 0 {
