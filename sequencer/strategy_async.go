@@ -188,10 +188,18 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
-	// target = max(now + targetOffsetTicks, paceMin).
-	// targetOffsetTicks determines the milestone's timestamp freshness.
-	// buildBudget (in task.Run) determines how long the builder has to complete.
-	targetTs := base.MaximumTime(nowTs.AddTicks(targetOffsetTicks), paceMin)
+
+	var targetTs base.LedgerTime
+	if seq.lastSubmittedTs.IsSlotBoundary() {
+		// First milestone after branch (seed): target exactly at post-branch consolidation boundary.
+		// No offset needed — PostBranchConsolidationTicks already provides the buffer.
+		targetTs = base.MaximumTime(base.T(nowTs.Slot, lib.PostBranchConsolidationTicks), paceMin)
+	} else {
+		// Subsequent milestones: target = max(now + targetOffsetTicks, paceMin).
+		// targetOffsetTicks determines the milestone's timestamp freshness.
+		// buildBudget (in task.Run) determines how long the builder has to complete.
+		targetTs = base.MaximumTime(nowTs.AddTicks(targetOffsetTicks), paceMin)
+	}
 
 	// don't overshoot into next slot
 	nextBoundary := nowTs.NextSlotBoundary()
