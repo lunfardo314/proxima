@@ -585,7 +585,12 @@ func (a *attacher) allInputsDefined(v *vertex.Vertex) bool {
 // If it is not, sets an error that UTXO is already consumed
 func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.OutputID) bool {
 	a.Assertf(a.pastCone.IsInTheState(vid), "a.pastCone.IsInTheState(wOut.VID)")
-	o, err := multistate.GetOutputWithIDFromStateReader(a.baselineStateReader(), inputID)
+	rdr := a.baselineStateReader()
+	if rdr == nil {
+		a.setError(fmt.Errorf("checkOutputInTheState: baseline state reader unavailable for %s", inputID.StringShort()))
+		return false
+	}
+	o, err := multistate.GetOutputWithIDFromStateReader(rdr, inputID)
 	if errors.Is(err, multistate.ErrNotFound) {
 		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed", inputID.StringShort()))
 		return false
