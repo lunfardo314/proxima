@@ -75,7 +75,6 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 	var lastSeenCoverage uint64
 	lastImprovementTime := time.Now()
-	lastBacklogCheck := time.Now()
 	lastDrainTime := time.Time{} // zero: first drain fires immediately
 
 	ticker := time.NewTicker(tickDuration)
@@ -137,58 +136,51 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			continue
 		}
 
-		// --- Zone B: active polling with plateau detection ---
+		// --- Zone B: coverage-first strategy with backlog drain ---
+		// Coverage improvement via endorsements is the primary goal.
+		// While the factory is actively improving coverage, we wait — giving
+		// it uninterrupted time to accumulate endorsements.
+		// Once coverage plateaus, we submit (tag-alongs included via insertInputs).
+		// Backlog drain runs only during coverage plateaus, filling the dead time
+		// between factory improvements rather than competing with them.
 		if seq.skeletonFactory == nil {
 			continue
 		}
 
 		bestCoverage := seq.skeletonFactory.BestCoverage()
 
-		// Priority 1: backlog drain — batch tag-alongs into milestones at a controlled rate.
-		// Each milestone picks up to MaxTagAlongInputs. Drain submissions are spaced by
-		// drainInterval (derived from TagAlongDrainRate and MaxTagAlongInputs) to avoid
-		// flooding the DAG with low-payload milestones under sustained spam.
-		if seq.backlog.NumOutputsInBuffer() > 0 && time.Since(lastDrainTime) >= drainInterval {
-			if seq.tryBuildAndSubmit() {
-				lastDrainTime = time.Now()
-				lastSeenCoverage = seq.skeletonFactory.BestCoverage()
-				lastImprovementTime = time.Now()
-				lastBacklogCheck = time.Now()
-			}
-			continue
-		}
-
-		// Priority 2: plateau detection — wait for endorsement coverage to stabilize.
-		// Only active when backlog is empty (all tag-alongs consumed).
-		backlogChanged := seq.backlog.ArrivedOutputsSince(lastBacklogCheck)
-
-		improved := false
+		// Priority 1: track coverage improvements from factory.
+		// While coverage is improving, defer all submissions to let the factory
+		// build up endorsements without being restarted by milestone changes.
 		if bestCoverage > lastSeenCoverage {
 			lastSeenCoverage = bestCoverage
-			improved = true
-		}
-		if backlogChanged {
-			lastBacklogCheck = time.Now()
-			improved = true
-		}
-
-		if improved {
 			lastImprovementTime = time.Now()
 			continue
 		}
 
-		// check for plateau
+		// Wait for coverage to plateau before submitting
 		if time.Since(lastImprovementTime) < holdDuration {
 			continue
 		}
 
-		// plateau detected: try to submit.
+		// Coverage plateaued — submit milestone (tag-alongs included via insertInputs).
 		// The factory provides skeletons with endorsements (coverage improvement).
-		// Base extend is the fallback — useful for tag-along drain and bootstrap recovery.
-		seq.tryBuildAndSubmit()
-		lastSeenCoverage = seq.skeletonFactory.BestCoverage()
+		// Base extend is the fallback — useful for bootstrap recovery and tag-along drain.
+		if seq.tryBuildAndSubmit() {
+			lastSeenCoverage = seq.skeletonFactory.BestCoverage()
+			lastImprovementTime = time.Now()
+			lastDrainTime = time.Now()
+			continue
+		}
+
+		// Priority 2: backlog drain — only when coverage has plateaued and
+		// the plateau submission didn't succeed (ErrNotGoodEnough / ErrNoProposals).
+		// Drain at a controlled rate to avoid flooding the DAG.
+		if seq.backlog.NumOutputsInBuffer() > 0 && time.Since(lastDrainTime) >= drainInterval {
+			seq.tryBuildAndSubmit()
+			lastDrainTime = time.Now()
+		}
 		lastImprovementTime = time.Now()
-		lastBacklogCheck = time.Now()
 	}
 }
 
