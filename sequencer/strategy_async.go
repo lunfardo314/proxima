@@ -163,6 +163,17 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			continue
 		}
 
+		// Guard: don't start a potentially slow tryBuildAndSubmit if we're
+		// close to the slot boundary. tryBuildAndSubmit can block on state I/O
+		// for hundreds of milliseconds under load, which could cause us to miss
+		// the pre-branch consolidation window entirely (skipping a slot boundary).
+		// Leave enough margin for the branch check to fire on the next tick.
+		nowGuard := ledger.TimeNow()
+		guardTicks := base.DiffTicks(nowGuard.NextSlotBoundary(), nowGuard)
+		if guardTicks < int64(lib.PreBranchConsolidationTicks)+5 {
+			continue
+		}
+
 		// Coverage plateaued — submit milestone (tag-alongs included via insertInputs).
 		// The factory provides skeletons with endorsements (coverage improvement).
 		// Base extend is the fallback — useful for bootstrap recovery and tag-along drain.
