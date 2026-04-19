@@ -64,11 +64,16 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 
 	// not in the state or not known 'inTheState status'
 
-	// try the local txBytes store (including write-behind buffer) — local lookups are cheap
-	// and not a DoS vector, unlike peer pulls which are depth-capped.
-	// Found txs go to txsolicit_queue (fast-track, no rate control).
-	txBytesWithMetadata := a.GetTxBytesWithMetadata(util.Ref(deptVID.ID()))
-	if len(txBytesWithMetadata) > 0 {
+	// try the transaction cache first (pre-parsed, no re-parsing needed),
+	// then fall back to the txstore. Local lookups are cheap and not a DoS vector,
+	// unlike peer pulls which are depth-capped.
+	depID := deptVID.ID()
+	if tx, _ := a.TakeCachedTx(util.Ref(depID)); tx != nil {
+		a.CachedTxInSolicited(tx)
+		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3 (cache->solicit): %s", deptVID.IDShortString)
+		return true
+	}
+	if txBytesWithMetadata := a.GetTxBytesWithMetadata(util.Ref(depID)); len(txBytesWithMetadata) > 0 {
 		a.TxBytesFromStoreInSolicited(txBytesWithMetadata)
 		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3 (txstore->solicit): %s", deptVID.IDShortString)
 		return true

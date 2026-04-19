@@ -14,7 +14,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
@@ -47,22 +46,22 @@ func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.Tra
 	w.peers.GossipTxBytesToPeers(txBytes, metadata, txid, except...)
 }
 
-func (w *Workflow) MustPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid ...base.TransactionID) {
-	if len(txid) > 0 {
-		w.txStoreWriter.PersistTxBytesQueued(txBytes, metadata, txid[0])
-	} else {
-		// fallback: synchronous write (no txid provided, rare path)
-		_, err := w.TxBytesStore().PersistTxBytesWithMetadata(txBytes, metadata)
-		util.AssertNoError(err)
-	}
+func (w *Workflow) MustPersistTxBytesWithMetadata(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
+	w.txStoreWriter.PersistTxBytesQueued(tx, metadata)
 }
 
-// GetTxBytesWithMetadata checks the write-behind buffer first, then the underlying store.
+// GetTxBytesWithMetadata checks the transaction cache first, then the underlying store.
 func (w *Workflow) GetTxBytesWithMetadata(txid *base.TransactionID) []byte {
-	if data := w.txStoreWriter.GetPending(txid); data != nil {
+	if data := w.txStoreWriter.GetTxBytesWithMetadata(txid); data != nil {
 		return data
 	}
 	return w.TxBytesStore().GetTxBytesWithMetadata(txid)
+}
+
+// TakeCachedTx returns a pre-parsed transaction from the cache and removes it.
+// Returns nil if not cached. The write buffer is not affected.
+func (w *Workflow) TakeCachedTx(txid *base.TransactionID) (*transaction.Transaction, *txmetadata.TransactionMetadata) {
+	return w.txStoreWriter.TakeCachedTx(txid)
 }
 
 func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
@@ -156,7 +155,12 @@ func (w *Workflow) AddPulledTransaction(txid base.TransactionID) {
 	w.txInputQueue.AddPulledTransaction(txid)
 }
 
-// TxBytesFromStoreInSolicited sends txstore bytes to the solicit queue for fast-track attachment.
+// CachedTxInSolicited sends a pre-parsed transaction from cache to the solicit queue for fast-track attachment.
+func (w *Workflow) CachedTxInSolicited(tx *transaction.Transaction) {
+	w.txSolicitQueue.PushParsedTx(tx)
+}
+
+// TxBytesFromStoreInSolicited sends raw txstore bytes to the solicit queue (fallback for disk-only lookups).
 func (w *Workflow) TxBytesFromStoreInSolicited(txBytesWithMetadata []byte) {
 	w.txSolicitQueue.PushTxBytesFromStore(txBytesWithMetadata)
 }

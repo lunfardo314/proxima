@@ -41,7 +41,7 @@ func (w *Workflow) TxBytesInForTests(txBytes []byte) (base.TransactionID, error)
 		SourceTypeNonPersistent: txmetadata.SourceTypeAPI,
 		TxBytesReceived:         &nowis,
 	}
-	w.MustPersistTxBytesWithMetadata(tx.Bytes(), meta, tx.ID())
+	w.MustPersistTxBytesWithMetadata(tx, meta)
 
 	opts := []attacher.AttachTxOption{
 		attacher.WithTransactionMetadata(meta),
