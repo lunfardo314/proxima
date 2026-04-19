@@ -20,10 +20,6 @@ func NewVertex(tx *transaction.Transaction) *Vertex {
 	}
 }
 
-func (v *Vertex) TimeSlot() uint32 {
-	return v.Slot()
-}
-
 func (v *Vertex) ReferenceInput(i byte, vid *WrappedTx) {
 	util.Assertf(int(i) < len(v.Inputs), "ReferenceInput: wrong input index")
 	util.Assertf(v.Inputs[i] == nil, "ReferenceInput: repetitive")
@@ -144,29 +140,6 @@ func (v *Vertex) MissingInputTxIDString() string {
 		ret = append(ret, txid.StringShort())
 	}
 	return strings.Join(ret, ", ")
-}
-
-func (v *Vertex) StemInputIndex() byte {
-	util.Assertf(v.IsBranchTransaction(), "branch vertex expected")
-
-	predOID := v.StemOutputData().PredecessorOutputID
-	var stemInputIdx byte
-	var stemInputFound bool
-
-	v.ForEachInputID(func(i byte, oid base.OutputID) bool {
-		if oid == predOID {
-			stemInputIdx = i
-			stemInputFound = true
-		}
-		return !stemInputFound
-	})
-	util.Assertf(stemInputFound, "can't find stem input")
-	return stemInputIdx
-}
-
-func (v *Vertex) SequencerInputIndex() byte {
-	util.Assertf(v.IsSequencerTransaction(), "sequencer milestone expected")
-	return v.SequencerTransactionData().SequencerOutputData.ChainConstraint.PredecessorInputIndex
 }
 
 func (v *Vertex) ForEachInputDependency(fun func(i byte, vidInput *WrappedTx) bool) {

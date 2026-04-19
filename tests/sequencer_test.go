@@ -51,7 +51,6 @@ func Test1SequencerPrunerIdle(t *testing.T) {
 	require.EqualValues(t, maxSlots, int(countBr.Load()))
 	//t.Logf("%s", testData.wrk.Info(true))
 	//t.Logf("------------------------------\n%s", testData.wrk.InfoRefLines("     ").String())
-	testData.saveFullDAG("full_dag")
 }
 
 
@@ -117,7 +116,6 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 	testData.waitStop()
 	t.Logf("%s", testData.wrk.Info(false))
 
-	testData.saveFullDAG("utangle_full")
 
 	require.EqualValues(t, maxSlots, int(countBr.Load()))
 
@@ -142,7 +140,6 @@ func TestFinalizeChainOrigins(t *testing.T) {
 	testData.stopAndWait()
 
 	t.Logf("%s", testData.wrk.Info(true))
-	testData.saveFullDAG("utangle_full")
 }
 
 func TestIdle2(t *testing.T) {
@@ -159,8 +156,6 @@ func TestIdle2(t *testing.T) {
 	testData.stopAndWait()
 
 	t.Logf("%s", testData.wrk.Info(false))
-	testData.saveFullDAG("utangle_full")
-	multistate.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 }
 
 func Test5SequencersIdlePruner(t *testing.T) {
@@ -196,8 +191,6 @@ func Test5SequencersIdlePruner(t *testing.T) {
 	//time.Sleep(time.Second)
 	//t.Logf("--------\n%s", testData.wrk.Info(true))
 
-	testData.saveFullDAG("utangle_full")
-	multistate.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d", nSequencers+1))
 }
 
 func Test3Seq1TagAlong(t *testing.T) {
@@ -246,7 +239,6 @@ func Test3Seq1TagAlong(t *testing.T) {
 	testData.stopAndWait(3 * time.Second)
 
 	t.Logf("%s", testData.wrk.Info())
-	//testData.saveFullDAG("utangle_full_3")
 
 	rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
 	for _, txid := range par.spammedTxIDs {
@@ -327,9 +319,6 @@ func Test3SeqMultiTagAlong(t *testing.T) {
 		require.True(t, rdr.KnowsCommittedTransaction(txid))
 		//t.Logf("    %s: in the heaviest state: %v", txid.StringShort(), rdr.KnowsCommittedTransaction(&txid))
 	}
-
-	//testData.saveFullDAG(fmt.Sprintf("utangle_full_%d_2", nSequencers+1))
-	multistate.SaveBranchTree(testData.wrk.StateStore(), fmt.Sprintf("utangle_tree_%d_2", nSequencers+1))
 
 	targetBalance := rdr.BalanceOf(targetAddr.ControllerID())
 	require.EqualValues(t, len(par.spammedTxIDs)*sendAmount, int(targetBalance))
@@ -480,9 +469,6 @@ func TestBranchCoverageBounds(t *testing.T) {
 	require.Greater(t, branchCounts[1].Load(), int32(0), "seq1 (within bounds) should produce branches")
 	require.Greater(t, branchCounts[2].Load(), int32(0), "seq2 (within bounds) should produce branches")
 	require.Greater(t, branchCounts[3].Load(), int32(0), "seq3 (within bounds) should produce branches")
-
-	testData.saveFullDAG("utangle_full_coverage_bounds")
-	multistate.SaveBranchTree(testData.wrk.StateStore(), "utangle_tree_coverage_bounds")
 }
 
 func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) *workflowTestData {

@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -150,9 +149,6 @@ func (a *milestoneAttacher) run() error {
 	a.AssertNoError(a.err)
 
 	err := a.checkConsistencyBeforeWrapUp()
-	if err != nil {
-		memdag.SaveGraphPastCone(a.vid, "inconsistent_before_wrapup")
-	}
 	a.AssertNoError(err)
 
 	// finalizing touches
@@ -181,7 +177,6 @@ func (a *milestoneAttacher) run() error {
 			if err != nil {
 				err = fmt.Errorf("%w\n------ past cone of %s ------\n%s",
 					err, a.vid.IDShortString(), a.pastCone.Lines("     ").Join("\n"))
-				memdag.SaveGraphPastCone(a.vid, "past_cone_CheckFinalPastCone")
 			}
 			a.AssertNoError(err)
 		}

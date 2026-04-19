@@ -7,7 +7,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -166,12 +165,6 @@ func (w *Workflow) TxBytesFromStoreInSolicited(txBytesWithMetadata []byte) {
 // memDAG vertices + solicited queue length + txs waiting for clock alignment.
 func (w *Workflow) PipelineSize() int {
 	return w.NumVertices() + w.txSolicitQueue.Len() + w.Counter("wait")
-}
-
-func (w *Workflow) SaveFullDAG(fname string) {
-	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(w.StateStore())
-	tmpDag := memdag.MakeDAGFromTxStoreUntilSlot(w.TxBytesStore(), 0, branchTxIDS...)
-	tmpDag.SaveGraph(fname)
 }
 
 func (w *Workflow) GetKnownLatestSequencerDataJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble {

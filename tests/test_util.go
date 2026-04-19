@@ -12,7 +12,6 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -337,12 +336,6 @@ func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner
 		t.Logf("distributed %s -> %s", util.Th(distrib[i].Balance), distrib[i].Lock.String())
 	}
 	return ret
-}
-
-func (td *workflowTestData) saveFullDAG(fname string) {
-	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(td.wrk.StateStore())
-	tmpDag := memdag.MakeDAGFromTxStoreUntilSlot(td.txStore, 0, branchTxIDS...)
-	tmpDag.SaveGraph(fname)
 }
 
 // makes chain origins transaction from aux output

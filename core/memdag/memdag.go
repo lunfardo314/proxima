@@ -2,7 +2,6 @@ package memdag
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 	"weak"
@@ -533,14 +532,6 @@ func (d *MemDAG) VerticesFiltered(filterByID func(txid base.TransactionID) bool)
 	return util.PurgeSlice(d.Vertices(), func(vid *vertex.WrappedTx) bool {
 		return filterByID(vid.ID())
 	})
-}
-
-func (d *MemDAG) VerticesDescending() []*vertex.WrappedTx {
-	ret := d.Vertices()
-	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].Timestamp().After(ret[j].Timestamp())
-	})
-	return ret
 }
 
 // RecreateVertexMap to avoid memory leak

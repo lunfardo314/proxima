@@ -4,7 +4,6 @@ go 1.26.0
 
 require (
 	github.com/dgraph-io/badger/v4 v4.9.0
-	github.com/dominikbraun/graph v0.23.0
 	github.com/gammazero/deque v1.2.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/libp2p/go-libp2p v0.47.0
@@ -24,6 +23,7 @@ require (
 	golang.org/x/text v0.34.0
 	gonum.org/v1/plot v0.16.0
 	gopkg.in/yaml.v2 v2.4.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -151,6 +151,5 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )

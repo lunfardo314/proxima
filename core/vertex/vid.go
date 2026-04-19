@@ -348,14 +348,6 @@ func (vid *WrappedTx) MustOutputAt(idx byte) *ledger.Output {
 	return ret
 }
 
-func (vid *WrappedTx) SequencerIDStringVeryShort() string {
-	cid := vid.SequencerID.Load()
-	if cid == nil {
-		return "/$??"
-	}
-	return cid.StringVeryShort()
-}
-
 func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID base.ChainID, stemID base.OutputID) {
 	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
 	p := vid.SequencerID.Load()
@@ -525,21 +517,6 @@ func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
 			opt.VirtualTx(v.VirtualTransaction)
 		}
 	}
-}
-
-func (vid *WrappedTx) TxLines(prefix ...string) (ret *lines.Lines) {
-	vid.RUnwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret = v.Transaction.Lines(v.InputLoaderByIndex, prefix...)
-		},
-		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.LinesShort(prefix...)
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			ret = lines.New(prefix...).Add("== virtual tx %s", vid.IDShortString())
-		},
-	})
-	return
 }
 
 func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
@@ -837,22 +814,6 @@ func (vid *WrappedTx) SequencerPredecessor(reattachBranch func(txid base.Transac
 		},
 	})
 	return
-}
-
-func (vid *WrappedTx) LinesTx(prefix ...string) *lines.Lines {
-	ret := lines.New()
-	vid.RUnwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret.Append(v.LinesShort(prefix...))
-		},
-		DetachedVertex: func(v *DetachedVertex) {
-			ret.Append(v.LinesShort(prefix...))
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			ret.Add("a virtual tx %s", vid.IDShortString())
-		},
-	})
-	return ret
 }
 
 func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {

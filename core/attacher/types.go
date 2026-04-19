@@ -55,7 +55,6 @@ type (
 		pullEnvironment
 		postEventEnvironment
 		ParseMilestoneData(msVID *vertex.WrappedTx) *seqdata.SequencerData
-		SaveFullDAG(fname string)
 		EvidencePastConeSize(sz int)
 		EvidenceBranchMutations(numMutations, numTxs int)
 		DurationSinceLastMessageFromPeer() time.Duration

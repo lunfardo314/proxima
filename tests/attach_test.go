@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -652,7 +651,6 @@ func TestAttachConflictsNAttachersSeqStartTxFee(t *testing.T) {
 		}
 	}
 
-	//testData.wrk.SaveGraph("utangle")
 }
 
 func TestAttachConflictsNAttachersOneFork(t *testing.T) {
@@ -713,14 +711,6 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
 	//testData.env.StartTracingTags(attacher.TraceTagSolidifySequencerBaseline)
 
-	const saveGraph = false
-	if saveGraph {
-		txid1, err := testData.txStore.PersistTxBytesWithMetadata(txBytesSeq, nil)
-		require.NoError(t, err)
-		require.EqualValues(t, txid, txid1)
-		memdag.SavePastConeFromTxStoreUntilSlot(txid, testData.txStore, 0, "pastCone_TestAttachConflictsNAttachersOneFork")
-	}
-
 	waitCh := make(chan struct{})
 	vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 		close(waitCh)
@@ -735,7 +725,6 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
 	conflict := testData.forkOutput.ID.TransactionID()
 	require.NoError(t, util.MustErrorWith(vidSeq.GetError(), conflict.StringShort(), "conflict"))
-	//testData.wrk.SaveGraph("utangle")
 }
 
 func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
@@ -802,7 +791,6 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 
 	testData.stopAndWait()
 	testData.logDAGInfo()
-	//testData.wrk.SaveGraph("utangle")
 }
 
 func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
@@ -895,7 +883,6 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData.stopAndWait()
 	testData.logDAGInfo()
 
-	//testData.wrk.SaveGraph("utangle")
 
 	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
 	t.Logf("expected error: %v", vid.GetError())
@@ -1052,7 +1039,6 @@ func TestAttachSeqChains(t *testing.T) {
 		for _, vid := range vids {
 			require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
 		}
-		//testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("with 1 branch pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -1112,8 +1098,6 @@ func TestAttachSeqChains(t *testing.T) {
 		testData.stopAndWait()
 		testData.logDAGInfo()
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
-		//testData.wrk.SaveGraph("utangle")
-		//memdag.SaveGraphPastCone(vidBranch, "utangle")
 	})
 	t.Run("with N branches pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -1170,8 +1154,6 @@ func TestAttachSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		//testData.wrk.SaveGraph("utangle")
-		//dag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 		time.Sleep(500 * time.Millisecond)
@@ -1236,7 +1218,6 @@ func TestAttachSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		//memdag.SaveGraphPastCone(vidBranch, "utangle")
 
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
@@ -1306,7 +1287,6 @@ func TestAttachSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		//memdag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 		time.Sleep(500 * time.Millisecond)
