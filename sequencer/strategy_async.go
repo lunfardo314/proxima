@@ -87,7 +87,6 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		case <-ticker.C:
 		}
 
-		// check context before accessing ledger (avoids panic during test teardown)
 		if seq.Ctx().Err() != nil {
 			return false
 		}

@@ -3,6 +3,7 @@ package ledger
 import (
 	"crypto/ed25519"
 	"encoding/binary"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -54,12 +55,19 @@ var (
 // L returns the library version applicable to the given slot.
 // For the latest library version, use L(base.MaxSlot).
 // Libraries are lazily loaded from DB and cached on first access.
+// During test teardown (after ResetForTesting), L panics via runtime.Goexit
+// so background goroutines terminate cleanly without crashing the test process.
 func L(slot uint32) *Library {
 	libraryCacheMutex.RLock()
 	defer libraryCacheMutex.RUnlock()
 
-	util.Assertf(libraryCache != nil, "ledger library cache not initialized")
-	util.Assertf(libraryCache.store != nil, "ledger library cache store not set")
+	if libraryCache == nil || libraryCache.store == nil {
+		if ledgerReset.Load() {
+			// test teardown: terminate the calling goroutine silently
+			runtime.Goexit()
+		}
+		util.Assertf(false, "ledger library cache not initialized")
+	}
 
 	return libraryCache.getOrLoad(slot)
 }

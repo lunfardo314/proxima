@@ -166,9 +166,9 @@ func (w *Workflow) TxBytesFromStoreInSolicited(txBytesWithMetadata []byte) {
 }
 
 // PipelineSize returns the total number of transactions in the processing pipeline:
-// memDAG vertices + solicited queue length + txs waiting for clock alignment.
+// memDAG vertices + solicited queue length + txstore cache + txs waiting for clock alignment.
 func (w *Workflow) PipelineSize() int {
-	return w.NumVertices() + w.txSolicitQueue.Len() + w.Counter("wait")
+	return w.NumVertices() + w.txSolicitQueue.Len() + w.txStoreWriter.CacheSize() + w.Counter("wait")
 }
 
 func (w *Workflow) GetKnownLatestSequencerDataJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble {
