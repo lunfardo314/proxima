@@ -180,6 +180,208 @@ Each phase: implement → deploy to testnet → measure → tune parameters → 
 - Sequencer step duration (existing timing log)
 - Memory usage under load
 
-## Next vision of the sequencer
+## Refinement after 2026-04-20 testnet run
 
-The original rough ideas for async sequencer and throttling have been refined and incorporated into **Phase 2** above (event-driven sequencer with plateau detection). Phase 2 is now the specification for this work.
+Phases 1 and 2 shipped. Running them on the live testnet exposed that
+several independently-reasonable heuristics — plateau-wait, attempted-primary
+gate, fire-and-forget throttle, backlog drain, first-after-branch target
+floor — interact in pathological ways under thin traffic. Specifically:
+under minimal load every sequencer waits for factory coverage to plateau,
+plateau arrives ~50 ticks into the slot, each sequencer's first milestone
+has a timestamp floored at `T(slot, PostBranchConsolidationTicks)` while
+being submitted at wall-clock tick 50+, and this makes the milestone look
+stale to peers so cross-sequencer endorsement windows collapse — branches
+then fail the coverage-delta health check, slots get skipped, liveness
+degrades. None of the individual rules is wrong; the combination has no
+principled priority order.
+
+This section replaces Phase 2's submission-loop spec with a simpler
+unified policy, and frames the longer-term direction.
+
+### Purpose and scope
+
+This is the **reference implementation** of sequencer submission policy
+for early mainnet. Goals in order of priority:
+
+1. **Liveness** — keep the chain moving even in adverse regimes (no load,
+   thin gossip, partial peer connectivity).
+2. **Predictability and observability** — one decision point, explicit
+   parameters, explicit log lines for each signal firing.
+3. **Good-enough coverage optimisation** — wait for endorsements when it
+   helps, but never at the cost of the first two.
+
+Optimality is explicitly not a goal. There is no single best sequencer
+strategy; different regimes favour different trade-offs. The reference
+policy is deliberately simple so operators can reason about it, and so a
+future learned/evolved strategy (see "Future directions" below) has a
+well-specified baseline to compare against.
+
+### Forces the policy balances
+
+| Force | Regime where it dominates |
+|---|---|
+| Flood-protection (throttle) | High-load, when own attachment cannot keep up with own issuance |
+| Liveness floor | Thin traffic, bootstrap, post-orphan recovery |
+| Coverage opportunism (plateau-wait) | Medium load, when factory skeletons keep improving |
+| Tag-along drain | Persistent backlog of sender txs |
+
+These are not independent heuristics with private gates; they are four
+signals feeding **one** submission decision, ordered by priority.
+
+### Ledger time vs wall clock — the centre-of-mass framing
+
+Proxima's two time axes can and will diverge. Under normal operation the
+incentive structure keeps them aligned. A sequencer's coverage rises when
+its tx arrives at peers with a timestamp close to the peers' wall-clock at
+arrival. Too-early (big backdate) → peer treats it as stale, has already
+built against a different chain tip. Too-late (far future timestamp) →
+peer has to hold it before it can be used, meanwhile others commit
+alternatives.
+
+So every honest sequencer is implicitly running a positional strategy:
+minimise RTT to the centre of mass of sequencer capitals, where "distance"
+is RTT/latency to peers with significant stake. Being a latency outlier
+costs coverage. This is the silent pressure that keeps the network's
+clocks aligned — and the constraint every submission-timing heuristic must
+respect.
+
+### First-milestone timing: a probabilistic sweet spot
+
+The first non-branch milestone in a slot must carry timestamp ≥ the
+post-branch consolidation boundary (`T(slot, PBC)` = tick 12 today). That
+floor is the ledger's price for branch propagation: it guarantees a slot
+of gossip time before any sequencer tx can claim to extend that slot.
+
+Submission wall-clock, however, is not pinned to tick 12. The issuance
+point sits in a probabilistic sweet spot:
+
+- Submit at wall-clock ≈ tick 12: fresh timestamp, but most peer branches
+  haven't reached us yet → our tx carries few endorsements → low own
+  coverage, peers prefer someone else's tip.
+- Submit at wall-clock ≫ tick 12 (say tick 40+): we've seen more branches
+  and can endorse more, but our tx arrives at peers with a timestamp
+  already behind their wall-clock → stale-looking → not worth endorsing.
+- Sweet spot: the centre of a distribution, maybe wall-clock tick 15-20,
+  which picks up most of the branch-gossip inflow without looking stale.
+
+The timestamp floor (`T(slot, 12)`) is fine to keep — it's the minimum
+pace, not a backdate. What must not drift is the wall-clock submission
+time relative to the timestamp. The liveness floor (below) bounds that
+drift.
+
+### Unified decision policy
+
+Priority-ordered evaluation every tick after PBC:
+
+```
+if overloaded():              # (1) flood-protection: in-flight self submission
+    continue                  #     stale beyond tolerance → skip
+
+ticksSinceLastAttempt := now - lastAttemptedTime
+livenessDue   := ticksSinceLastAttempt >= maxGapTicks
+improvementOk := bestCoverage > lastSubmittedCoverage
+plateauStable := time.Since(lastImprovementTime) >= plateauHoldTicks
+coverageReady := improvementOk && plateauStable
+drainDue      := backlog.NumOutputsInBuffer() > 0 &&
+                  ticksSinceLastDrain >= drainIntervalTicks
+
+if livenessDue || coverageReady || drainDue:
+    tryBuildAndSubmit()
+    lastAttemptedTime = now
+    if backlog_tx_attached: lastDrainTime = now
+```
+
+Key properties:
+
+- **No separate "first probe" gate**. The liveness floor handles bootstrap
+  and first-of-slot: on slot start `lastAttemptedTime` is the previous
+  branch's time, so `livenessDue` fires shortly after PBC ends, naturally
+  positioning the first milestone in the sweet spot.
+- **Throttle still gates everything**. Nothing submits while a previous
+  own milestone is stuck unconfirmed past tolerance. Preserves the
+  flood-protection guarantee.
+- **Coverage opportunism within a budget**. `plateauHoldTicks` is a
+  maximum wait, not a fixed delay. If `livenessDue` fires first, we go
+  with what we have. If coverage keeps improving past the liveness deadline
+  we go anyway (improvement didn't converge in time; submit and move on).
+- **Drain integrated symmetrically**. No longer a fallback tier; one of
+  four equal signals. Tag-along backpressure never starves beyond
+  `drainIntervalTicks`.
+
+### Parameters
+
+| Parameter | Role | Starting value | Notes |
+|---|---|---|---|
+| `maxGapTicks` | liveness floor (ticks without an attempt) | 15-20 | Shorter = faster recovery, more conservative on coverage optimisation |
+| `plateauHoldTicks` | max wait for coverage plateau | 3 | Matches current default |
+| `drainIntervalTicks` | tag-along drain cadence | from `MaxTagAlongInputs` / `TagAlongDrainRate` | Unchanged from current |
+| `selfAttachmentLatencyToleranceTicks` | throttle tolerance | 12 | Unchanged from current |
+| `TagAlongDrainRate`, `MaxTagAlongInputs` | drain throughput | as configured | Operator knob; watch these with the unified policy on testnet |
+
+All parameters remain in the sequencer config (yaml). No abstraction
+layer between policy and config for now — the reference implementation
+reads config, applies it, and logs every signal firing under a single
+trace tag. If a future evolving agent wants to tune these, it can write
+new values into config or (later) propagate them via the sequencer's own
+on-chain output (see below).
+
+### Observability requirements
+
+Every signal in the policy above must emit a one-line log when it fires:
+
+- `liveness-floor fired: gap=%d maxGap=%d`
+- `coverage-plateau fired: cov=%s last=%s held=%dms`
+- `drain-due fired: backlog=%d interval=%dms`
+- `throttled: in-flight=%s elapsed=%v tolerance=%v`
+- `submit attempted: signal=<liveness|coverage|drain> built=<yes|no>`
+
+A slot-end summary line gives aggregate counts. This is what makes the
+policy diagnosable in production without deep tracing.
+
+### What changes from the current code
+
+Compared to the state on branch `develop07-pastcone-diag` today:
+
+1. Replace the priority-1 (coverage) + priority-2 (drain) two-tier loop
+   in `doSequencerSlot` with the single conditional above.
+2. Remove the `attemptedPrimary` flag — its only purpose was "one probe
+   per plateau", now subsumed by the liveness floor.
+3. Track `lastAttemptedTime` instead of (or alongside) the coverage-tied
+   `lastImprovementTime` — separate the "when did I last try?" question
+   from the "when did the factory last improve?" question.
+4. Drop the first-after-branch special case in `tryBuildAndSubmit`. The
+   floor `T(slot, PBC)` stays in the general `max(nowTs+offset, paceMin,
+   T(slot, PBC))` formula; no separate branch.
+5. Integrate the tag-along drain as a co-equal signal in the unified
+   condition. Keep `drainIntervalTicks` computed from existing config.
+6. Wire the five log lines listed above, all under a single trace tag
+   (`seq_policy` or similar) so operators can enable them selectively.
+
+No policy/mechanics interface layer yet. The decision block lives inline
+in `doSequencerSlot`; if it ever needs replacement, extraction into a
+function behind an interface is easy and localised.
+
+## Future directions
+
+Once the reference policy is in and the testnet is stable on it, the next
+steps are out of scope for this doc but worth naming so that current
+choices stay compatible:
+
+- **Per-operator parameter tuning**. Operators at high RTT from the centre
+  of mass should be able to adjust `maxGapTicks` and `plateauHoldTicks`
+  without forking the policy. All parameters live in config.
+- **On-chain parameter persistence**. The sequencer's own chained output
+  (`seqdata`) is the natural place to stamp the current parameter set
+  used by this sequencer. That gives every transition a provenance trail
+  and makes the sequencer's strategy snapshot readable by any observer
+  without needing access to the operator's config file. Not implemented
+  now — keep the current simple YAML path — but the schema for `seqdata`
+  should leave room for a small parameter block in a future upgrade.
+- **Evolving strategy agent**. The long-term vision is a learned agent
+  per operator: observe the node's slot-by-slot outcomes (own coverage,
+  peer coverage, orphan rate, RTT deltas) and adapt its parameters as a
+  persistent "genome" — written to and carried forward by `seqdata`.
+  Different operators will evolve different genomes suited to their
+  network position. The reference policy in this document is not meant
+  to compete with that; it is the well-specified baseline every evolved
+  genome is measured against.
