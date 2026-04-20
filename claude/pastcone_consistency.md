@@ -1,57 +1,80 @@
 # Past-Cone Consistency Analysis
 
-*Task doc for the 2026-04-20 conflict-cascade investigation. Tracks the architecture, invariants, failure modes, and a concrete diagnostic plan for the past-cone / attacher subsystem.*
+*Task doc for the 2026-04-20 conflict-cascade investigation. Tracks the
+architecture, invariants, failure modes confirmed against the live DB, and
+a concrete diagnostic plan for the past-cone / attacher subsystem.*
 
 ## 1. Problem statement
 
-On 2026-04-20 the testnet (no load) entered a persistent BAD-conflict cascade on
-seq1-acc where every newly-arriving milestone in slots 319835+ was rejected as:
+On 2026-04-20 the testnet (no load) entered a persistent BAD-conflict cascade.
+Two distinct captures were analysed; both show the same class of symptom.
 
+**Capture 1** (earlier session, seq1-acc, baseline `[319821|0br]01a4a2015f97..`):
 ```
-ATTACH [319835|82sq]… (baseline [319821|0br]01a4a2015f97..)
-  -> BAD(conflict [319819|64sq]00825c8f5961..[0] in the past cone: …)
-```
-
-The past-cone dump (`past_cone.go:497` `VertexLine`) shows the node's own
-internal view at the moment of detection:
-
-```
-#2 S+ [319819|64sq]00825c8f5961..   consumers: {0: {[319820|69sq]00dda93aeb38..}}
-#5 S- [319820|69sq]00dda93aeb38..   consumers: {}
+ATTACH [319835|82sq]… -> BAD(conflict [319819|64sq]00825c8f5961..[0] in the past cone)
+  #2 S+ [319819|64sq]..  consumers: {0: {[319820|69sq]..}}
+  #5 S- [319820|69sq]..  consumers: {}
 ```
 
-`S+` = `FlagPastConeVertexInTheState`. `S-` = `FlagPastConeVertexCheckedInTheState` without `InTheState`.
+**Capture 2** (later, loc1, baseline `[320755|0br]019dda9fd6db..`) — used as
+the anchor from here on because it is verified end-to-end against the DB:
+```
+ATTACH [320755|79sq]005dbd2364db.. -> BAD(conflict [320753|80sq]003cd1012296..[0] in the past cone)
+  #3 S+ [320753|80sq]..  consumers: {0: {[320754|79sq]0086a8b3dfae..}}
+  #7 S- [320754|79sq]..  consumers: {0: [320754|88sq]..}
+```
 
-Given those flags, `_checkVertex` (past_cone.go:1039) consults the baseline state reader:
+`S+` = `FlagPastConeVertexInTheState`. `S-` =
+`FlagPastConeVertexCheckedInTheState` without `InTheState`. `_checkVertex`
+(past_cone.go:1039) consults the state reader:
 
 ```go
-inTheState := pc.IsInTheState(vid)    // true for #2
-...
-if pc.IsInTheState(consumers[0]) { continue }   // false for [319820|69sq]
-...
+inTheState := pc.IsInTheState(vid)              // true for #3
+if pc.IsInTheState(consumers[0]) { continue }   // false — consumer marked S-
 if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
-    return &wOut, false               // → BAD
+    return &wOut, false                          // → BAD
 }
 ```
 
-So the node is saying: `[319819|64sq]` is committed in my baseline state, but
-`[319819|64sq][0]` is **not an unspent UTXO** in that state — therefore some
-other tx (not in the past cone) has consumed it.
+### 1.1 Root cause — confirmed against the DB
 
-There are three non-exclusive possibilities for why this reached BAD:
+Using `proxi db txstore get -p` and `proxi db findtx -b <baseline>` on loc0's
+node (testnet was stopped; DB retained), the facts of Capture 2 are:
 
-  1. **Real fork** — the sequencer that owns `[319819|64sq]` really did issue two
-     successors; the baseline committed one, the past cone extends via the other.
-  2. **Stale `InTheState` flag** — `#2` was tagged `S+` by an attacher whose
-     baseline disagrees with the current baseline; the current baseline was
-     never re-verified.
-  3. **Stale consumer tracking** — `vid.consumed` at `#2` is missing the state's
-     actual consumer (it was GC'd / the state consumer was detached) so the past
-     cone's view of "who consumes this output" differs from what the state knows.
+| Tx | Input #0 | Endorsement | In state of `[320755|0br]019dda9fd6db..`? |
+|---|---|---|---|
+| `[320753|80sq]003cd1012296` | `[320752|12sq][0]` | `[320753|12sq]005989a9843d` | **Yes** |
+| `[320753|86sq]000803be6894` | `[320752|12sq][0]` | `[320753|74sq]0040dbe56bb4` | No |
+| `[320754|79sq]0086a8b3dfae` | `[320753|80sq][0]` | `[320754|12sq]00df1132e927` | **Yes** |
+| `[320754|0br]017828b5dfc1` (won) | `[320753|91sq][0]`, stem | — | — |
+| `[320754|0br]01f576b83261` (orphaned) | `[320753|86sq][0]`, stem | — | No |
 
-This document maps the subsystem, the invariants it *tries* to maintain, the
-places those invariants can break, and a concrete diagnostic plan to tell the
-three hypotheses apart on the testnet.
+The conflict reported on loc1 is a **false positive**. State of baseline
+`[320755|0br]019dda9fd6db..` contains *both* `[320753|80sq]` *and* its
+successor `[320754|79sq]`; `[320754|79sq]` does legitimately consume
+`[320753|80sq][0]`. The past cone's consumer and the state's consumer are
+the same transaction. No double-spend.
+
+The bug is entirely local to the past-cone flag cache on loc1:
+`[320754|79sq]` is present in the past cone with its S- flag set (stale)
+and was never upgraded when the baseline it is being checked against moved
+to `[320755|0br]019dda9fd6db..`. `_checkVertex` walks into the
+`inTheState && !HasUTXO` branch because `pc.IsInTheState([320754|79sq])`
+returns false, and issues a phantom conflict. Actual `[320754|79sq]` is in
+state; `BranchKnowsTransaction([320755|0br]019dda9fd6db.., [320754|79sq])`
+returns true (verified via DB).
+
+### 1.2 Separate observation — two siblings on loc0's chain
+
+`[320753|80sq]` and `[320753|86sq]` are both signed by loc0 and both consume
+`[320752|12sq][0]`. They are siblings, not a parent and child. Per the
+ledger this is *allowed*: a sequencer may produce multiple conflicting seq
+milestones inside a slot and the coverage rule resolves which one wins.
+`[320753|80sq]` won (went to state); `[320753|86sq]` was extended only by
+loc0's own branch `[320754|0br]01f576b83261` which itself lost the branch
+race — whole subtree orphaned. Not a ledger violation, not the cause of
+the cascade. Mentioned here only to document that the earlier framing of
+this as "equivocation" was incorrect.
 
 ## 2. Architecture summary
 
@@ -104,36 +127,72 @@ make the rest of the system cheap; they also concentrate most of the risk.
 
 ## 4. Where each invariant can break
 
-### 4.1 I2 — "positive InTheState is monotonic"
+### 4.1 I2 — positive monotonic / negative may be stale
 
-Safe only when the attacher's baseline is always a descendant of every pcb
-baseline it merged in. That is enforced at merge time by `IsDescendantBranch`,
-which in turn calls `BranchKnowsTransaction` on the live `Branches` index.
+The flag state-machine `defineInTheStateStatus` (attacher.go:433) encodes:
 
-**Breakage surface:**
-- `Branches` is a node-local cache of committed branch data, populated by
-  `forward_sync` and per-branch commits. It is not proven transactionally
-  consistent with the attacher's read of `pc.baselineBranchID`.
-- After `MergePastCone` succeeds, nothing re-validates the flag if the attacher
-  later calls `setBaseline` via needsBaselineSwap inside the same
-  `MergePastCone`. The swap assumes the new baseline is a descendant of the old
-  one; but that check is re-done via `IsDescendantBranch` **at the time of
-  merge** only.
-- The attacher's baseline is set once at milestone construction
-  (`attacher_milestone.go:293`) and later can only swap forward via merge.
-  If the node's notion of "which branch is ancestor of which" later *changes*
-  (e.g. a branch gets re-ranked during LRB promotion, or a slot is re-committed
-  from sync), flags frozen into an immutable pcb may become stale **for readers
-  of that pcb**. The pcb itself is immutable, so any attacher reading it
-  re-applies its own `IsDescendantBranch` check, which is fine *if* `Branches`
-  is internally consistent with the current baseline selection.
-- **Cascade effect**: a pcb of vertex V is produced while V's attacher has
-  baseline A with flags `{x: InTheState}`. Later, V is merged into an attacher
-  at baseline B which is a descendant of A. The flag is copied. `defineInTheStateStatus`
-  of that attacher may also encounter `x` via another path, sees `InTheState`
-  already set, returns early without re-checking against B.  If `Branches`'
-  view of "A is ancestor of B" was wrong at the time `V`'s attacher ran, the
-  pcb is already poisoned; once in it, no later check catches it.
+- **Positive (S+) is monotonic across descendant baselines** — `v in state(A)`
+  and A is an ancestor of B ⇒ `v in state(B)`. Once S+ is set, no re-check.
+- **Negative (S-) may be stale** — `v not in state(A)` does NOT imply
+  `v not in state(B)`. A downstream attacher at baseline B must re-check a
+  vertex carrying an S- flag from a pcb produced at baseline A, and upgrade
+  to S+ via `UpgradeToInTheState` when `BranchKnowsTransaction(B, v.id)` is
+  true.
+
+Both directions exist as failure modes.
+
+#### 4.1.a Negative-direction staleness — **confirmed by DB on 2026-04-20**
+
+A consumer vertex carries an S- flag that is never upgraded when the attacher's
+baseline includes the vertex. `_checkVertex` then reads `pc.IsInTheState(consumers[0])
+== false`, falls through past the early-`continue`, hits `inTheState && !HasUTXO`
+and returns BAD — a phantom conflict.
+
+Confirmed instance: `[320754|79sq]0086a8b3dfae` on loc1 at 10:48:44, baseline
+`[320755|0br]019dda9fd6db..`. Past cone dump showed S-, DB confirms the vertex
+is committed in the baseline's state. See §1.1.
+
+Upgrade is attempted in two places:
+
+- `MergePastCone` at past_cone.go:761-766 — when a pcb is merged in, any S-
+  flag in pcb is upgraded to S+ if the current baseline knows the tx.
+- `defineInTheStateStatus` attacher.go:442-448 — when a vertex is
+  (re)visited during solidification and CheckedInTheState is already set,
+  re-ask `BranchKnowsTransaction`; upgrade to S+ on positive.
+
+Both upgrade paths require the attacher to actually *visit* the vertex
+during its current run. If the vertex came in via a pcb that was merged
+successfully, and after that merge the attacher never enters
+`defineInTheStateStatus` for that vertex (e.g., because `attachVertexNonBranch`
+took the short path "status == Good, merge, done" at attacher.go:151-162),
+the stale S- persists until `_checkVertex` reads it. That is exactly the
+code path traversed by the loc1 case: the consumer vertex was in a Good
+dependency's merged pcb, never directly visited, and never re-checked.
+
+#### 4.1.b Positive-direction staleness
+
+A pcb of vertex V is produced while V's attacher has baseline A with flags
+`{x: InTheState}`. Later, V is merged into an attacher at baseline B, and
+`IsDescendantBranch` approves the merge. The S+ flag on x is copied. If
+`Branches`' view of "A is ancestor of B" was wrong at the time V's attacher
+ran (stale index, racy commit, etc.), the pcb is already poisoned; future
+readers re-apply `IsDescendantBranch` against the live index, which is fine
+*only if* the index is internally consistent.
+
+Not observed in the 2026-04-20 data. Lower-priority to investigate than 4.1.a
+because the live `Branches` index is append-only and derived from the trie,
+so the necessary inconsistency is speculative.
+
+#### 4.1.c Why this passes the existing upgrade path in `MergePastCone`
+
+`MergePastCone` walks `pcb.vertices` and upgrades negatives when the current
+baseline knows the tx. But there is an asymmetry: the merge handles flags on
+vertices present *in the pcb being merged*. It does not rescan vertices
+already in `pc.vertices` that were marked S- earlier. If a consumer vertex
+arrived via a different path (earlier merge, direct attach) and was marked
+S- then, it stays S- regardless of subsequent merges. The loc1 case fits this
+shape: the consumer `[320754|79sq]` was in the pc as S- at some earlier
+moment and never re-examined when boot's winning branch's pcb was merged.
 
 ### 4.2 I6 — TxID TTL assumption
 
@@ -297,24 +356,33 @@ correctness**. All instrumentation is:
 
 ### 6.1 At-conflict cross-check
 
-In `_checkVertex`, when we are about to return `(&wOut, false)` for the
-`inTheState && !HasUTXO` case, call an additional diagnostic hook that:
+In `_checkVertex`, when about to return `(&wOut, false)` for the
+`inTheState && !HasUTXO` case, the diagnostic hook calls
+`BranchKnowsTransaction` on **both** `vid` and `consumers[0]` against the
+current baseline, and classifies:
 
-1. Looks up `Branches().BranchKnowsTransaction(baseline, vid.id)`. If **false**,
-   the S+ flag is lying — this is a stale-flag bug. Log
-   `[past_cone_diag] STALE S+ flag: baseline=%s vid=%s knowsTx=false`.
-2. If true, ask the baseline state reader for the actual consumer of
-   `wOut.DecodeID()`:  walk `rdr.KnowsCommittedTransaction` + look at consumed-outputs index if available, or call the existing `multistate` API for a given UTXO's metadata. Produces either "unspent" (contradicts !HasUTXO → bug), a single consumer txid, or "not indexed".
-3. Cross-check that consumer txid against the past-cone consumers (`consumers[0]`). If equal, `vid.consumed` is missing a pointer that the state has → this is §5.4 (GC-stranded consumer) or §4.3 (completeness). Log
-   `[past_cone_diag] STATE_CONSUMER match pc_consumer=%s: consumer tracking gap`.
-4. If different, this is either §5.1 or a real fork. Log
-   `[past_cone_diag] REAL conflict: state_consumer=%s pc_consumer=%s`.
-5. Dump the past-cone flags for `vid` and the immediate ancestor of the
-   past-cone consumer (so we can see how the consumer got into the past cone).
+1. `vid` knowsTx=**false** → the S+ flag on vid is lying (positive-staleness
+   §4.1.b). Log
+   `[past_cone_diag] STALE S+ on vid: baseline=%s vid=%s`.
+2. `consumers[0]` knowsTx=**true** → consumer is actually in state but the
+   past cone marks it S- (negative-staleness §4.1.a, **confirmed class**).
+   Log
+   `[past_cone_diag] STALE S- on consumer: baseline=%s vid=%s consumer=%s`.
+3. Both knowsTx=true / vid=true, consumer=false → a genuine fork (state
+   holds a different consumer from the past cone's). Log
+   `[past_cone_diag] REAL conflict: baseline=%s vid=%s pcConsumer=%s`.
+4. Both knowsTx=false → inconsistent: the S+ flag on vid was already a lie,
+   so `_checkVertex` shouldn't even be in this branch. Log as a bug:
+   `[past_cone_diag] INCONSISTENT: vid S+ but branchKnowsTx=false`.
 
-Nothing on this hook changes the return value — `_checkVertex` still returns
-`(&wOut, false)` and the node still rejects the milestone. We just annotate
-the event.
+Case (2) is the one the 2026-04-20 cascade maps to. Current implementation
+only checks `vid`; extending to also check the consumer surfaces the
+confirmed class immediately.
+
+Nothing changes the return value — `_checkVertex` still returns BAD and the
+attacher still rejects. The hook annotates only, so that when case (2) shows
+up we know the conflict is a phantom caused by stale flag and the attach
+should have succeeded.
 
 ### 6.2 At-merge cross-check
 
@@ -380,8 +448,63 @@ unverified (phantom baseline via TTL bless, non-deterministic
 BranchKnowsTransaction in §5.3); fixing those inputs keeps the
 flag-based fast path intact.
 
-## 8. Scope of this patch
+## 8. Status (2026-04-20) and guiding principle
 
-This patch only adds the §6 diagnostics behind trace-tag `past_cone_diag`.
-No behaviour change. Deployable on testnet to narrow the cascade next time it
-reproduces.
+### 8.1 Current state
+
+- §6 diagnostics are in (trace-tag `past_cone_diag`) — behaviour unchanged
+  when the tag is off; on testnet they already surfaced the confirmed
+  negative-staleness case on `[320754|79sq]` (see §1.1, §4.1.a).
+- §6.1 is extended to also check the consumer direction (§4.1.a) — the class
+  that matches the observed cascade.
+- Next fix: make the milestone attacher re-check an S- consumer flag against
+  the current baseline before `_checkVertex` walks into the BAD branch.
+  Minimum change: when `_checkVertex` sees `pc.IsInTheState(consumers[0])
+  == false`, call `Branches.BranchKnowsTransaction` and `UpgradeToInTheState`
+  if positive before returning BAD. Confines the re-check to the rare path
+  and keeps the hot loop flag-cached.
+
+### 8.2 The two attachers, and where the bug lives
+
+- **Incremental attacher** (`attacher_incremental.go`): runs inside the
+  sequencer during milestone *construction*. Builds the past cone step by
+  step as proposers accumulate candidates, and checks conflicts incrementally
+  so the tx about to be signed is conflict-free against its own checker.
+- **Milestone attacher** (`attacher_milestone.go`): runs on every node when
+  a fully-formed sequencer milestone arrives from gossip. Independently
+  solidifies the past cone from that node's memDAG and re-checks conflicts
+  against its own baseline.
+
+In the 2026-04-20 case the incremental attacher on loc0 did the right
+thing — the tx it produced had a valid, conflict-free past cone. The false
+positive was raised by the milestone attacher on loc1 because *its* local
+past-cone flag cache had a stale S- on `[320754|79sq]`. The bug is entirely
+on the downstream side.
+
+### 8.3 Guiding principle — determinism of the conclusion, not of the path
+
+Solidification and attachment are inherently non-deterministic across nodes:
+the order in which dependencies resolve, which merges happen first, when GC
+kicks in, how many attachers race on overlapping past cones — none of that
+is reproducible node-to-node, nor should it be. What must be deterministic
+is the **binary answer**: for a given past cone, every correct attacher,
+regardless of how it arrived there, must agree on whether the past cone
+contains a conflict.
+
+Today that invariant is violated by §4.1: two attachers reading the same
+underlying DAG and the same baseline can disagree because one of them holds
+a stale S- flag on a consumer and the other does not. Every fix direction
+in §7 serves this one invariant. The diagnostics in §6 exist to catch the
+cases where the answer diverges from the truth the state trie already
+knows.
+
+### 8.4 Ground rule for DAG analysis
+
+Log lines describe what the node *logged*; they do not describe what the
+DAG actually *is*. Draw DAG topology conclusions from `proxi db txstore get
+-p` or the `/api/tx_detail` / `/api/past_cone` endpoints exposed by
+`proxi db txstore dagviz`, not from log reconstructions. The earlier
+version of this doc — and the now-removed `nothing-at-stake.md` — reached a
+wrong "equivocation" conclusion by inferring successor relationships from
+submit-order timestamps; the actual inputs contradicted the story once read
+from the DB.
