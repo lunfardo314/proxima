@@ -20,6 +20,11 @@ type (
 		closing                 bool
 		processRemainingOnClose bool // mainly for testing
 		len                     atomic.Int32
+		// done tracks the inputLoop and consumeLoop goroutines. Close waits on it so
+		// that any in-flight consume call finishes before Close returns — otherwise a
+		// consumer that calls into downstream (e.g. a DB) may still be running when
+		// the caller assumes the module is stopped and proceeds to tear those deps down.
+		done sync.WaitGroup
 	}
 
 	_inElem[T any] struct {
@@ -35,21 +40,31 @@ func New[T any](consume func(e T)) *Queue[T] {
 		outCh:   make(chan T),
 		consume: consume,
 	}
-	go ret.inputLoop()
-	go ret.consumeLoop()
+	ret.done.Add(2)
+	go func() {
+		defer ret.done.Done()
+		ret.inputLoop()
+	}()
+	go func() {
+		defer ret.done.Done()
+		ret.consumeLoop()
+	}()
 	return ret
 }
 
-// Close queue must be closed in order to close channels and stop goroutines
+// Close initiates shutdown and blocks until both the inputLoop and consumeLoop
+// goroutines have exited. The caller is guaranteed that, after Close returns,
+// no further consume invocations are in progress.
 func (q *Queue[T]) Close(processRemaining bool) {
 	q.inMutex.Lock()
-	defer q.inMutex.Unlock()
-
 	if !q.closing {
 		q.closing = true
 		q.processRemainingOnClose = processRemaining
 		close(q.inCh)
 	}
+	q.inMutex.Unlock()
+
+	q.done.Wait()
 }
 
 // Push places element into the queue optionally with priority
