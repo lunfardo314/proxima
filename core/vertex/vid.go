@@ -160,6 +160,18 @@ func (vid *WrappedTx) GetPastConeNoLock() *PastConeBase {
 	return vid.pastCone
 }
 
+// PastConeSize returns the cached past cone's vertex count without taking the mutex,
+// or 0 if the past cone is not attached. Used for diagnostic purposes only; a concurrent
+// SetTxStatusGood may race but the diagnostic tolerates a stale read.
+func (vid *WrappedTx) PastConeSize() int {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+	if vid.pastCone == nil {
+		return 0
+	}
+	return vid.pastCone.Len()
+}
+
 // SetTxStatusGood sets 'good' status and past cone
 func (vid *WrappedTx) SetTxStatusGood(pastCone *PastConeBase, coverage uint64) {
 	vid.mutex.Lock()

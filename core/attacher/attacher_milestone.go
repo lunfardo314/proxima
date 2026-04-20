@@ -157,6 +157,8 @@ func (a *milestoneAttacher) run() error {
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)
 	if a.vid.IsBranchTransaction() {
 		// branch transaction vertex is immediately detached. Thus branch transaction does not reference the past cone
+		a.Tracef(vertex.TraceTagPastConeDiag, "DETACH (branch wrapup): vid=%s pastConeSize=%d",
+			a.vid.IDShortString, a.pastCone.PastConeBase.Len())
 		a.vid.ConvertToDetached()
 		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
 		// report branch mutation size and check memory pressure

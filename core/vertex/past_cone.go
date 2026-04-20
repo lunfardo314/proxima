@@ -26,6 +26,11 @@ import (
 // and valid
 // Flags (except 'asked for poke') become final and immutable after they are set 'ON'
 
+// TraceTagPastConeDiag toggles diagnostic cross-checks at conflict-detection and merge
+// boundaries. When enabled, the past-cone subsystem emits structured logs distinguishing
+// stale-S+ flags, TTL-blessed txs, and GC-stranded consumers. See claude/pastcone_consistency.md.
+const TraceTagPastConeDiag = "past_cone_diag"
+
 type (
 	FlagsPastCone byte
 
@@ -34,6 +39,11 @@ type (
 		tip            *WrappedTx
 		txTs           base.LedgerTime
 		name           string
+
+		// diagBranches, when non-nil, enables runtime consistency cross-checks for this
+		// past cone. Set via SetDiagBranches. Diagnostic output is gated by trace tag
+		// TraceTagPastConeDiag so the hot paths stay free when the tag is off.
+		diagBranches *branches.Branches
 
 		*PastConeBase
 		delta *PastConeBase
@@ -238,6 +248,59 @@ func (pc *PastCone) isVirtuallyConsumed(wOut WrappedOutput) bool {
 		return pc.delta._isVirtuallyConsumed(wOut)
 	}
 	return false
+}
+
+// SetDiagBranches opts this PastCone into runtime diagnostic cross-checks. When set, conflict
+// detection, merge boundaries and TTL-bless paths cross-reference flags against the live
+// Branches index and emit structured Tracef logs under TraceTagPastConeDiag. Safe to pass
+// nil to disable. Called once by the attacher at construction.
+func (pc *PastCone) SetDiagBranches(br *branches.Branches) {
+	pc.diagBranches = br
+}
+
+// diagLogSuspectConflict is called from _checkVertex just before returning BAD for the
+// "inTheState && !HasUTXO" case. It distinguishes stale-S+ vs. real-fork by consulting
+// Branches directly; nothing on this path changes the conflict decision.
+func (pc *PastCone) diagLogSuspectConflict(vid *WrappedTx, wOut WrappedOutput, pcConsumer *WrappedTx) {
+	if pc.diagBranches == nil || pc.baselineBranchID == nil {
+		return
+	}
+	baseline := *pc.baselineBranchID
+	knowsTx := pc.diagBranches.BranchKnowsTransaction(baseline, vid.ID())
+	consumerStr := "<virtual>"
+	if pcConsumer != nil {
+		consumerStr = pcConsumer.IDShortString()
+	}
+	if !knowsTx {
+		pc.Tracef(TraceTagPastConeDiag, "STALE S+ flag at conflict: pc=%s baseline=%s vid=%s flag=S+ branchKnowsTx=false pcConsumer=%s output=%d",
+			pc.name, baseline.StringShort(), vid.IDShortString(), consumerStr, wOut.Index)
+		return
+	}
+	pc.Tracef(TraceTagPastConeDiag, "CONFLICT ok-flag: pc=%s baseline=%s vid=%s output=%d branchKnowsTx=true pcConsumer=%s hasUTXO=false (state holds a different consumer or pc consumer was GC-stranded)",
+		pc.name, baseline.StringShort(), vid.IDShortString(), wOut.Index, consumerStr)
+}
+
+// diagCheckMerge verifies that every S+ vertex carried in from pcb is also known to the
+// current baseline per Branches. Disagreement means the merge admitted a flag whose
+// construction-time invariant no longer holds against the current baseline — a §5.3 case.
+// Bounded cost: at most one trie read per S+ vertex at merge time, cached by Branches.
+func (pc *PastCone) diagCheckMerge(pcb *PastConeBase) {
+	if pc.diagBranches == nil || pc.baselineBranchID == nil {
+		return
+	}
+	baseline := *pc.baselineBranchID
+	for vid, flags := range pcb.vertices {
+		if !flags.FlagsUp(FlagPastConeVertexInTheState) {
+			continue
+		}
+		if vid.ID() == baseline {
+			continue
+		}
+		if !pc.diagBranches.BranchKnowsTransaction(baseline, vid.ID()) {
+			pc.Tracef(TraceTagPastConeDiag, "MERGE inconsistent S+: pc=%s baseline=%s pcb.baseline=%s vid=%s branchKnowsTx=false",
+				pc.name, baseline.StringShort(), pcb.baselineBranchID.StringShort(), vid.IDShortString())
+		}
+	}
 }
 
 func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
@@ -752,6 +815,8 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 			return true
 		})
 	}
+	// diagnostic: verify every S+ flag carried in from pcb still holds against our baseline
+	pc.diagCheckMerge(pcb)
 	for vid, flags := range pcb.vertices {
 		if vid.ID() != *pcb.baselineBranchID {
 			// closure defers expensive pcb.Lines() — only evaluated if assertion fails (via lazyargs.Eval)
@@ -1052,6 +1117,7 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 		// virtual consumer nil is never in the state
 		allConsumersAreInTheState = false
 		if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
+			pc.diagLogSuspectConflict(vid, wOut, consumers[0])
 			return &wOut, false
 		}
 	}
