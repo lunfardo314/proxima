@@ -131,7 +131,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	}
 	drainInterval := time.Duration(drainIntervalTicks) * tickDuration
 
-	var lastSeenCoverage uint64
+	var lastSeenCoverage uint64      // highest factory coverage observed this slot (plateau detection)
+	var lastSubmittedCoverage uint64 // factory coverage at the last successful primary submission this slot
+	var attemptedPrimary bool        // one primary-submit probe per plateau level; covers boot/base proposers when factory is flat
 	lastImprovementTime := time.Now()
 	lastDrainTime := time.Time{} // zero: first drain fires immediately
 
@@ -194,8 +196,8 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		// --- Branch time: within PreBranchConsolidationTicks of slot edge ---
 		if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
-			// submit if there's an unused skeleton before switching to branch
-			if !throttled && seq.skeletonFactory != nil && seq.skeletonFactory.BestCoverage() > lastSeenCoverage {
+			// flush an unused skeleton improvement before switching to branch
+			if !throttled && seq.skeletonFactory != nil && seq.skeletonFactory.BestCoverage() > lastSubmittedCoverage {
 				seq.tryBuildAndSubmit()
 			}
 			// branch generation still runs; decideSubmitMilestone gates the actual submit
@@ -231,11 +233,12 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		bestCoverage := seq.skeletonFactory.BestCoverage()
 
 		// Priority 1: track coverage improvements from factory.
-		// While coverage is improving, defer all submissions to let the factory
-		// build up endorsements without being restarted by milestone changes.
+		// A new plateau level resets the primary-attempt flag so the next plateau
+		// earns its own probe. This is also what gives coverage-laddering under load.
 		if bestCoverage > lastSeenCoverage {
 			lastSeenCoverage = bestCoverage
 			lastImprovementTime = time.Now()
+			attemptedPrimary = false
 			continue
 		}
 
@@ -255,21 +258,31 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			continue
 		}
 
-		// Coverage plateaued — submit milestone (tag-alongs included via insertInputs).
-		// The factory provides skeletons with endorsements (coverage improvement).
-		// Base extend is the fallback — useful for bootstrap recovery and tag-along drain.
-		if seq.tryBuildAndSubmit() {
-			lastSeenCoverage = seq.skeletonFactory.BestCoverage()
-			lastImprovementTime = time.Now()
-			lastDrainTime = time.Now()
-			continue
+		// Value gate: submit only when there's something new to commit.
+		// - Factory coverage improved beyond the last successful submission → submit.
+		// - OR no primary attempt has been made at this plateau level yet → one probe
+		//   covers bootstrap (tryBootProposal runs inside tryBuildAndSubmit when the
+		//   factory is flat) and base-extend under fresh/no-load conditions.
+		// Under no load the factory stays flat, one probe fires per slot, lastSubmittedCoverage
+		// moves to the plateau value, and subsequent iterations are quiet until branch.
+		if !attemptedPrimary || bestCoverage > lastSubmittedCoverage {
+			attemptedPrimary = true
+			if seq.tryBuildAndSubmit() {
+				lastSubmittedCoverage = seq.skeletonFactory.BestCoverage()
+				lastSeenCoverage = lastSubmittedCoverage
+				lastImprovementTime = time.Now()
+				lastDrainTime = time.Now()
+				continue
+			}
 		}
 
-		// Priority 2: backlog drain — only when coverage has plateaued and
-		// the plateau submission didn't succeed (ErrNotGoodEnough / ErrNoProposals).
-		// Drain at a controlled rate to avoid flooding the DAG.
+		// Priority 2: backlog drain — when tag-alongs are waiting, submit to
+		// flush them. Drain is independent of coverage improvement (tag-alongs
+		// themselves are the value). Rate-limited to avoid flooding.
 		if seq.backlog.NumOutputsInBuffer() > 0 && time.Since(lastDrainTime) >= drainInterval {
-			seq.tryBuildAndSubmit()
+			if seq.tryBuildAndSubmit() {
+				lastSubmittedCoverage = seq.skeletonFactory.BestCoverage()
+			}
 			lastDrainTime = time.Now()
 		}
 		lastImprovementTime = time.Now()
