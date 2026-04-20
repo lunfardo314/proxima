@@ -301,29 +301,6 @@ func (pc *PastCone) diagLogSuspectConflict(vid *WrappedTx, wOut WrappedOutput, p
 	}
 }
 
-// diagCheckMerge verifies that every S+ vertex carried in from pcb is also known to the
-// current baseline per Branches. Disagreement means the merge admitted a flag whose
-// construction-time invariant no longer holds against the current baseline — a §5.3 case.
-// Bounded cost: at most one trie read per S+ vertex at merge time, cached by Branches.
-func (pc *PastCone) diagCheckMerge(pcb *PastConeBase) {
-	if pc.diagBranches == nil || pc.baselineBranchID == nil {
-		return
-	}
-	baseline := *pc.baselineBranchID
-	for vid, flags := range pcb.vertices {
-		if !flags.FlagsUp(FlagPastConeVertexInTheState) {
-			continue
-		}
-		if vid.ID() == baseline {
-			continue
-		}
-		if !pc.diagBranches.BranchKnowsTransaction(baseline, vid.ID()) {
-			pc.Tracef(TraceTagPastConeDiag, "MERGE inconsistent S+: pc=%s baseline=%s pcb.baseline=%s vid=%s branchKnowsTx=false",
-				pc.name, baseline.StringShort(), pcb.baselineBranchID.StringShort(), vid.IDShortString())
-		}
-	}
-}
-
 func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
 	if cond {
 		return
@@ -470,12 +447,18 @@ func (pc *PastCone) MarkVertexNotInTheState(vid *WrappedTx) {
 	}
 }
 
-// UpgradeToInTheState upgrades a vertex previously marked not-in-state to in-the-state.
-// This happens when a PastConeBase merge brought stale not-in-state flags from an older
-// baseline, and a re-check against the current (newer) baseline finds the tx is committed.
-// Reverses the attachment cost added by MarkVertexNotInTheState.
+// UpgradeToInTheState upgrades a vertex to in-the-state. This happens when a
+// PastConeBase merge or the _checkVertex safety net finds that the vertex is in
+// fact in the current baseline's state, overriding an earlier (or default) view.
+// Reverses the attachment cost added by MarkVertexNotInTheState, if any.
+//
+// Sets CheckedInTheState alongside InTheState — the invariant isVertexInTheState
+// asserts is "InTheState ⇒ CheckedInTheState". Callers that use this on a vertex
+// that does not already carry CheckedInTheState (e.g. a baseline branch added
+// synthetically via _filterConsumingVertices) would otherwise trip that assert
+// on the next read.
 func (pc *PastCone) UpgradeToInTheState(vid *WrappedTx) {
-	pc.SetFlagsUp(vid, FlagPastConeVertexInTheState|FlagPastConeVertexDefined)
+	pc.SetFlagsUp(vid, FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState|FlagPastConeVertexDefined)
 	if pc.Flags(vid).FlagsUp(FlagPastConeDirectCost) {
 		pc.addToAttachmentCost(-vid.AttachmentCost())
 		pc.SetFlagsDown(vid, FlagPastConeDirectCost)
@@ -836,8 +819,6 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 			return true
 		})
 	}
-	// diagnostic: verify every S+ flag carried in from pcb still holds against our baseline
-	pc.diagCheckMerge(pcb)
 	for vid, flags := range pcb.vertices {
 		if vid.ID() != *pcb.baselineBranchID {
 			// closure defers expensive pcb.Lines() — only evaluated if assertion fails (via lazyargs.Eval)
