@@ -16,7 +16,7 @@ const PullTransactions = byte(iota)
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	defer func() {
 		_ = stream.Close()
-		ps.Log().Warnf("[peering] pull: streamHandler exit")
+		ps.Tracef(TraceTagPeeringPeers, "[peering] pull: streamHandler exit")
 	}()
 
 	if ps.cfg.IgnoreAllPullRequests {

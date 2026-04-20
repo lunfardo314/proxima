@@ -635,51 +635,98 @@ func (p *Peer) _isAlive() bool {
 
 //const TraceTagSendMsg = "sendMsg"
 
-func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
-	var err error
-	var stream network.Stream
+const (
+	sendMsgTimeout   = 4 * time.Second
+	redialTimeout    = 2 * time.Second
+	sendMsgMaxTries  = 2 // one initial + one retry after redial
+)
 
+func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
+	var ps_ *peerStream
 	ps.withPeer(peerID, func(p *Peer) {
 		if p != nil {
-			if _stream, ok := p.streams[protocolID]; ok {
-				_stream.mutex.RLock()
-				stream = _stream.stream
-				_stream.mutex.RUnlock()
-			}
+			ps_ = p.streams[protocolID]
 		}
 	})
-
-	if stream == nil {
-		ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s stream==nil", ShortPeerIDString(peerID), len(data), protocolID)
+	if ps_ == nil {
+		ps.Tracef(TraceTagPeeringPeers, "[peering] sendMsgBytesOut: no peerStream for peer %s id=%s", ShortPeerIDString(peerID), protocolID)
 		return false
 	}
 
-	// Set up timeout context
-	var ctx context.Context
-	var cancel context.CancelFunc
-	const sendTimeout = 4 * time.Second
-
-	ctx, cancel = context.WithTimeout(context.Background(), sendTimeout) // Default timeout
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- writeFrame(stream, data)
-	}()
-
-	select {
-	case <-ctx.Done():
-		ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, ctx.Err())
-		return false
-	case err = <-done:
-		if err != nil {
-			ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, err)
+	// Transient stream failures (QUIC idle timeout, peer restart, one-sided reset) are
+	// expected; redial once and retry before returning failure. This avoids the drop-peer
+	// cycle triggered whenever a stream reset occurs on an otherwise-healthy peer.
+	for attempt := 0; attempt < sendMsgMaxTries; attempt++ {
+		if err := ps.ensurePeerStream(peerID, protocolID, ps_); err != nil {
+			ps.Tracef(TraceTagPeeringPeers, "[peering] redial to peer %s id=%s failed: %v", ShortPeerIDString(peerID), protocolID, err)
 			return false
 		}
+		if ps.writeFrameToPeerStream(ps_, data) {
+			ps.outMsgCounter.Inc()
+			return true
+		}
+		// write failed — clear the cached stream so the next iteration redials
+		ps.clearPeerStream(ps_)
 	}
+	ps.Tracef(TraceTagPeeringPeers, "[peering] send to peer %s id=%s failed after %d tries", ShortPeerIDString(peerID), protocolID, sendMsgMaxTries)
+	return false
+}
 
-	ps.outMsgCounter.Inc()
-	return true
+// ensurePeerStream opens a new stream only when the cached one is absent.
+func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *peerStream) error {
+	s.mutex.RLock()
+	present := s.stream != nil
+	s.mutex.RUnlock()
+	if present {
+		return nil
+	}
+	newStream, err := ps.NewStream(peerID, protocolID, redialTimeout)
+	if err != nil {
+		return err
+	}
+	s.mutex.Lock()
+	old := s.stream
+	s.stream = newStream
+	s.mutex.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	return nil
+}
+
+// writeFrameToPeerStream writes one framed message to the given peerStream under its write lock,
+// with a wall-clock timeout. Serializing per-stream writes avoids interleaving when multiple
+// goroutines target the same peer+protocol.
+func (ps *Peers) writeFrameToPeerStream(s *peerStream, data []byte) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.stream == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), sendMsgTimeout)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- writeFrame(s.stream, data)
+	}()
+	select {
+	case <-ctx.Done():
+		return false
+	case err := <-done:
+		return err == nil
+	}
+}
+
+// clearPeerStream nils the cached stream and closes the old one. Called on write failure
+// so that the next send attempt will open a fresh stream.
+func (ps *Peers) clearPeerStream(s *peerStream) {
+	s.mutex.Lock()
+	old := s.stream
+	s.stream = nil
+	s.mutex.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
 }
 
 // sendMsgBytesOutMulti send to multiple peers in parallel

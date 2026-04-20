@@ -13,7 +13,7 @@ import (
 func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	defer func() {
 		_ = stream.Close()
-		ps.Log().Infof("[peering] gossip: streamHandler exit")
+		ps.Tracef(TraceTagPeeringPeers, "[peering] gossip: streamHandler exit")
 	}()
 
 	id := stream.Conn().RemotePeer()

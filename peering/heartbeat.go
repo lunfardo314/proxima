@@ -29,6 +29,11 @@ const (
 const (
 	TraceTagHeartBeatRecv = "peering_hb_recv"
 	TraceTagHeartBeatSend = "peering_hb_send"
+
+	// hbSendErrThreshold bounds how many consecutive heartbeat send failures are tolerated
+	// before considering dropping the peer. A transient stream reset costs 1; a genuinely
+	// gone peer accumulates them until the check fires.
+	hbSendErrThreshold = 10
 )
 
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic, pullTargets int) {
@@ -209,11 +214,14 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	}
 	if ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes()) {
 		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
+		p.numHBSendErr = 0
 	} else {
 		p.numHBSendErr++
-		if p.numHBSendErr > 2 {
-			ps.Log().Warnf("[peering] error sending heartbeat. Drop peer.")
-			ps.dropPeer(id, "hb send error", false) // peer probably just restart
+		// drop only when we can neither send to nor recently hear from the peer,
+		// avoiding drops caused by one-way transient stream resets
+		if p.numHBSendErr >= hbSendErrThreshold && !p._isAlive() {
+			ps.Log().Warnf("[peering] error sending heartbeat and no incoming HB for %v. Drop peer %s.", aliveDuration, ShortPeerIDString(id))
+			ps.dropPeer(id, "hb send error", false) // peer probably just restarted
 			p.numHBSendErr = 0
 		}
 	}
