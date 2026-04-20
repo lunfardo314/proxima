@@ -74,6 +74,20 @@ type (
 		// Starts at max (full budget). Cuts sharply on failure, increases slowly on success.
 		// TCP-like congestion control for tag-along throughput.
 		budgetLevel int
+		// pendingSubmit tracks the last milestone submitted via fire-and-forget that
+		// hasn't yet appeared back in the tippool. Used to throttle the sequencer when
+		// self-attachment latency exceeds tolerance, preventing the submit-faster-than-attach
+		// spiral that detaches the sequencer from its own chain under heavy load.
+		pendingSubmitMu     sync.Mutex
+		pendingSubmit       pendingSubmitStatus
+		lastOverloadLogSlot uint32
+	}
+
+	pendingSubmitStatus struct {
+		awaiting bool
+		since    time.Time
+		ts       base.LedgerTime
+		txID     base.TransactionID
 	}
 
 	outputsWithTime struct {
@@ -554,6 +568,15 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 		return false
 	}
 	if tx.IsBranchTransaction() {
+		if overloaded, elapsed, pending := seq.isOverloaded(); overloaded {
+			if seq.wontSubmitBranchID != tx.ID() {
+				tolerance := time.Duration(selfAttachmentLatencyToleranceTicks) * ledger.TickDuration()
+				seq.Log().Warnf("WON'T SUBMIT BRANCH %s. reason: self-attachment latency %v exceeds tolerance %v (pending %s)",
+					tx.IDShortString(), elapsed, tolerance, pending.txID.StringShort())
+				seq.wontSubmitBranchID = tx.ID()
+			}
+			return false
+		}
 		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch)
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
@@ -565,7 +588,7 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
 			sd2 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
-			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. Now: %s, name: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
+			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. reason: insufficient coverage delta. Now: %s, name: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
 				tx.IDShortString(), ledger.TimeNow().String(), sd2.Name(),
 				util.Th(*meta.LedgerCoverage), util.Th(*meta.CoverageDelta), util.Th(*meta.Supply), util.Th(tx.InflationAmount()), util.Th(*meta.SlotInflation))
 			seq.wontSubmitBranchID = tx.ID()

@@ -6,6 +6,7 @@ import (
 
 // onMilestoneConfirmed is the shared bookkeeping called when a milestone appears in the tippool.
 func (seq *Sequencer) onMilestoneConfirmed(vid *vertex.WrappedTx) {
+	seq.clearPendingSubmitIfMatch(vid.ID())
 	seq.AddOwnMilestone(vid)
 	seq.milestoneCount++
 	if vid.IsBranchTransaction() {

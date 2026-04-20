@@ -29,7 +29,65 @@ const (
 
 	// milestoneWatchInterval is how often the background watcher polls the tippool
 	milestoneWatchInterval = 20 * time.Millisecond
+
+	// selfAttachmentLatencyToleranceTicks is the maximum wall-clock latency (in ticks)
+	// between fire-and-forget submission of an own milestone and its appearance in the
+	// tippool. If exceeded, the sequencer throttles: it stops issuing new milestones
+	// until either the pending one is confirmed or the next slot's post-branch
+	// consolidation zone is reached. Prevents the submit-faster-than-attach spiral.
+	selfAttachmentLatencyToleranceTicks = 12
 )
+
+// isOverloaded reports whether the last submitted own milestone has not appeared
+// in the tippool within selfAttachmentLatencyToleranceTicks. Returns elapsed wall-clock
+// since submission and the pending status snapshot when overloaded.
+func (seq *Sequencer) isOverloaded() (bool, time.Duration, pendingSubmitStatus) {
+	seq.pendingSubmitMu.Lock()
+	defer seq.pendingSubmitMu.Unlock()
+	if !seq.pendingSubmit.awaiting {
+		return false, 0, pendingSubmitStatus{}
+	}
+	elapsed := time.Since(seq.pendingSubmit.since)
+	tolerance := time.Duration(selfAttachmentLatencyToleranceTicks) * ledger.TickDuration()
+	if elapsed <= tolerance {
+		return false, elapsed, seq.pendingSubmit
+	}
+	return true, elapsed, seq.pendingSubmit
+}
+
+// recordPendingSubmit marks a milestone as awaiting self-attachment confirmation.
+// Called from submitMilestone after the fire-and-forget send succeeds.
+func (seq *Sequencer) recordPendingSubmit(txID base.TransactionID, ts base.LedgerTime) {
+	seq.pendingSubmitMu.Lock()
+	defer seq.pendingSubmitMu.Unlock()
+	seq.pendingSubmit = pendingSubmitStatus{
+		awaiting: true,
+		since:    time.Now(),
+		ts:       ts,
+		txID:     txID,
+	}
+}
+
+// clearPendingSubmitIfMatch clears the pending marker if the observed milestone's
+// txID matches the pending one. Strict equality avoids false clears from stale
+// milestones re-surfacing in the tippool.
+func (seq *Sequencer) clearPendingSubmitIfMatch(txID base.TransactionID) {
+	seq.pendingSubmitMu.Lock()
+	defer seq.pendingSubmitMu.Unlock()
+	if seq.pendingSubmit.awaiting && seq.pendingSubmit.txID == txID {
+		seq.pendingSubmit = pendingSubmitStatus{}
+	}
+}
+
+// clearPendingSubmit unconditionally clears the pending marker. Used as the
+// slot-rollover escape hatch: if the pending milestone never attached and a
+// fresh slot is past post-branch consolidation, stop waiting and resume from
+// whatever chain tip is currently visible.
+func (seq *Sequencer) clearPendingSubmit() {
+	seq.pendingSubmitMu.Lock()
+	defer seq.pendingSubmitMu.Unlock()
+	seq.pendingSubmit = pendingSubmitStatus{}
+}
 
 // doSequencerSlot runs one iteration of the sequencer loop.
 // Polls the factory for coverage plateaus (considering both skeleton coverage and
@@ -115,12 +173,32 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		ticksToSlotEnd := base.DiffTicks(nextBoundary, nowTs)
 
+		// --- Throttle check: if the last submitted own milestone has not attached
+		// within tolerance, pause submissions. Escape when pending milestone is in
+		// a prior slot and we've entered the next slot's post-branch consolidation
+		// zone (accept the loss and resume from whatever chain tip is visible).
+		throttled := false
+		if overloaded, elapsed, pending := seq.isOverloaded(); overloaded {
+			if nowTs.Slot > pending.ts.Slot && nowTs.Tick >= lib.PostBranchConsolidationTicks {
+				seq.clearPendingSubmit()
+			} else {
+				throttled = true
+				if seq.lastOverloadLogSlot != nowTs.Slot {
+					tolerance := time.Duration(selfAttachmentLatencyToleranceTicks) * ledger.TickDuration()
+					seq.Log().Warnf("sequencer throttled: self-attachment latency %v exceeds tolerance %v (pending %s)",
+						elapsed, tolerance, pending.txID.StringShort())
+					seq.lastOverloadLogSlot = nowTs.Slot
+				}
+			}
+		}
+
 		// --- Branch time: within PreBranchConsolidationTicks of slot edge ---
 		if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
 			// submit if there's an unused skeleton before switching to branch
-			if seq.skeletonFactory != nil && seq.skeletonFactory.BestCoverage() > lastSeenCoverage {
+			if !throttled && seq.skeletonFactory != nil && seq.skeletonFactory.BestCoverage() > lastSeenCoverage {
 				seq.tryBuildAndSubmit()
 			}
+			// branch generation still runs; decideSubmitMilestone gates the actual submit
 			return seq.generateAndSubmitBranch(nextBoundary)
 		}
 
@@ -132,6 +210,10 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		// If the branch arrives later, the first endorsed milestone is simply delayed.
 		// The bootstrap case (no branches at all) is handled by tryBootProposal.
 		if nowTs.Tick < lib.PostBranchConsolidationTicks {
+			continue
+		}
+
+		if throttled {
 			continue
 		}
 
@@ -312,6 +394,7 @@ func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetad
 	// fire-and-forget: send to input queue and advance optimistically
 	seq.OwnSequencerMilestoneIn(tx.Bytes(), meta, tx.ID())
 	seq.lastSubmittedTs = tx.Timestamp()
+	seq.recordPendingSubmit(tx.ID(), tx.Timestamp())
 }
 
 // milestoneWatcher polls the tippool for own milestones and calls onMilestoneConfirmed.
