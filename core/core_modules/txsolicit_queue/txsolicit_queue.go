@@ -50,9 +50,10 @@ func (q *TxSolicitQueue) consume(inp *Input) {
 	var tx *transaction.Transaction
 
 	if inp.Tx != nil {
+		// already parsed and partial-context-validated by the pusher
 		tx = inp.Tx
 	} else {
-		// parse raw bytes from txstore
+		// parse raw bytes from txstore and initialize partial context (signature already validated upstream)
 		txBytes, _, err := txmetadata.ParseTxMetadata(inp.TxBytesWithMetadata)
 		if err != nil {
 			q.Log().Warnf("%s: failed to parse txstore bytes: %v", Name, err)
@@ -63,13 +64,10 @@ func (q *TxSolicitQueue) consume(inp *Input) {
 			q.Log().Warnf("%s: failed to parse transaction: %v", Name, err)
 			return
 		}
-	}
-
-	// reparsed transactions need partial context validation (initializes internal structures)
-	// validation script is skipped because it is assumed that partial context (including signature) was already validated once
-	if err := tx.ValidatePartialContext(false); err != nil {
-		q.Log().Warnf("%s: partial context validation failed for %s: %v", Name, tx.IDShortString(), err)
-		return
+		if err := tx.ValidatePartialContext(false); err != nil {
+			q.Log().Warnf("%s: partial context validation failed for %s: %v", Name, tx.IDShortString(), err)
+			return
+		}
 	}
 
 	nowis := time.Now()
@@ -100,6 +98,8 @@ func (q *TxSolicitQueue) PushParsedTx(tx *transaction.Transaction) {
 
 // TxBytesFromStoreIn is the replacement for workflow.TxBytesFromStoreIn.
 // It parses txstore bytes, extracts txid, and queues the transaction.
+// Partial context is initialized here (signature skipped — already validated upstream)
+// so that consume() can uniformly assume inp.Tx is already validated.
 func (q *TxSolicitQueue) TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.TransactionID, error) {
 	txBytes, _, err := txmetadata.ParseTxMetadata(txBytesWithMetadata)
 	if err != nil {
@@ -107,6 +107,9 @@ func (q *TxSolicitQueue) TxBytesFromStoreIn(txBytesWithMetadata []byte) (base.Tr
 	}
 	tx, err := transaction.Parse(txBytes)
 	if err != nil {
+		return base.TransactionID{}, err
+	}
+	if err := tx.ValidatePartialContext(false); err != nil {
 		return base.TransactionID{}, err
 	}
 	q.Push(&Input{Tx: tx})

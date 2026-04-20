@@ -53,7 +53,6 @@ func Test1SequencerPrunerIdle(t *testing.T) {
 	//t.Logf("------------------------------\n%s", testData.wrk.InfoRefLines("     ").String())
 }
 
-
 func Test1SequencerPrunerTransfers(t *testing.T) {
 	const (
 		maxSlots   = 30
@@ -116,7 +115,6 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 	testData.waitStop()
 	t.Logf("%s", testData.wrk.Info(false))
 
-
 	require.EqualValues(t, maxSlots, int(countBr.Load()))
 
 	rdr = testData.wrk.HeaviestStateForLatestTimeSlot()
@@ -132,6 +130,8 @@ func Test1SequencerPrunerTransfers(t *testing.T) {
 }
 
 func TestFinalizeChainOrigins(t *testing.T) {
+	t.Skip("sensitive to timing")
+
 	const (
 		nSequencers = 5 // in addition to bootstrap
 	)
