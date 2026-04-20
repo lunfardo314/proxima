@@ -111,19 +111,20 @@ func (s *TxLogStore) ShouldLog(txid base.TransactionID) bool {
 // WriteRecord writes log records to the store for one or more transactions.
 // All records share the same clock timestamp and message.
 // Creates entries in both the "by transaction" and "by timestamp" indexes.
+//
+// Holds the RLock for the full operation so that Close cannot race with an
+// in-flight write and close the underlying db under our feet.
 func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txids ...base.TransactionID) error {
 	s.mu.RLock()
-	db := s.db
-	enabled := s.enabled
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
-	if !enabled || db == nil || len(txids) == 0 {
+	if !s.enabled || s.db == nil || len(txids) == 0 {
 		return nil
 	}
 
 	clockNs := clockTs.UnixNano()
 
-	batch := db.BatchedWriter()
+	batch := s.db.BatchedWriter()
 	for _, txid := range txids {
 		txShortID := txid.ShortID()
 		keyByTx := makeKeyByTx(txShortID, clockNs)
@@ -137,13 +138,13 @@ func (s *TxLogStore) WriteRecord(clockTs time.Time, msg string, txids ...base.Tr
 // TxLogGet retrieves log records for transactions matching the given prefix.
 // Returns records sorted by timestamp in ascending order.
 // Implements global.TxLogReader interface.
+//
+// Holds the RLock for the full operation (see WriteRecord).
 func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLogRecord, error) {
 	s.mu.RLock()
-	db := s.db
-	enabled := s.enabled
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
-	if !enabled || db == nil {
+	if !s.enabled || s.db == nil {
 		return nil, ErrLoggerDisabled
 	}
 
@@ -155,7 +156,7 @@ func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLo
 	prefix := makeKeyByTxPrefix(txShortIDPrefix)
 	var records []global.TxLogRecord
 
-	db.Iterator(prefix).Iterate(func(k, v []byte) bool {
+	s.db.Iterator(prefix).Iterate(func(k, v []byte) bool {
 		txShortID, clockNs, err := parseKeyByTx(k)
 		if err != nil {
 			return true // skip invalid keys
@@ -186,13 +187,13 @@ func (s *TxLogStore) TxLogGet(txShortIDPrefix []byte, max ...int) ([]global.TxLo
 
 // TxLogIterate iterates over log records starting from the given time.
 // Implements global.TxLogReader interface.
+//
+// Holds the RLock for the full operation (see WriteRecord).
 func (s *TxLogStore) TxLogIterate(begin time.Time, fun func(rec global.TxLogRecord)) error {
 	s.mu.RLock()
-	db := s.db
-	enabled := s.enabled
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
-	if !enabled || db == nil {
+	if !s.enabled || s.db == nil {
 		return ErrLoggerDisabled
 	}
 
@@ -201,7 +202,7 @@ func (s *TxLogStore) TxLogIterate(begin time.Time, fun func(rec global.TxLogReco
 	// For now, iterate all time-indexed records and filter
 	prefix := makeKeyByTimePrefix()
 
-	db.Iterator(prefix).Iterate(func(k, v []byte) bool {
+	s.db.Iterator(prefix).Iterate(func(k, v []byte) bool {
 		clockNs, txShortID, err := parseKeyByTime(k)
 		if err != nil {
 			return true // skip invalid keys
@@ -214,7 +215,7 @@ func (s *TxLogStore) TxLogIterate(begin time.Time, fun func(rec global.TxLogReco
 
 		// Look up the value from the "by transaction" index (contains ledger timestamp + message)
 		keyByTx := makeKeyByTx(txShortID, clockNs)
-		val := db.Get(keyByTx)
+		val := s.db.Get(keyByTx)
 
 		txid, msg := decodeValue(val, txShortID)
 
@@ -231,13 +232,15 @@ func (s *TxLogStore) TxLogIterate(begin time.Time, fun func(rec global.TxLogReco
 
 // DeleteExpired deletes records older than the specified TTL.
 // Returns the number of deleted records.
+//
+// Holds the RLock for the full operation (see WriteRecord). This is the
+// path that triggered the shutdown-time SIGSEGV when Close ran concurrently
+// with an in-flight iteration.
 func (s *TxLogStore) DeleteExpired(ttl time.Duration) (int, error) {
 	s.mu.RLock()
-	db := s.db
-	enabled := s.enabled
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
-	if !enabled || db == nil {
+	if !s.enabled || s.db == nil {
 		return 0, nil
 	}
 
@@ -247,7 +250,7 @@ func (s *TxLogStore) DeleteExpired(ttl time.Duration) (int, error) {
 	// Collect keys to delete
 	var keysToDelete [][]byte
 
-	db.Iterator(prefix).Iterate(func(k, v []byte) bool {
+	s.db.Iterator(prefix).Iterate(func(k, v []byte) bool {
 		clockNs, txShortID, err := parseKeyByTime(k)
 		if err != nil {
 			return true
@@ -269,7 +272,7 @@ func (s *TxLogStore) DeleteExpired(ttl time.Duration) (int, error) {
 	}
 
 	// Delete in batch
-	batch := db.BatchedWriter()
+	batch := s.db.BatchedWriter()
 	for _, key := range keysToDelete {
 		batch.Set(key, nil) // nil value deletes the key
 	}
@@ -282,17 +285,17 @@ func (s *TxLogStore) DeleteExpired(ttl time.Duration) (int, error) {
 }
 
 // RunGC runs Badger's garbage collection.
+//
+// Holds the RLock for the full operation (see WriteRecord).
 func (s *TxLogStore) RunGC() error {
 	s.mu.RLock()
-	db := s.db
-	enabled := s.enabled
-	s.mu.RUnlock()
+	defer s.mu.RUnlock()
 
-	if !enabled || db == nil {
+	if !s.enabled || s.db == nil {
 		return nil
 	}
 
-	return db.RunValueLogGC(0.5)
+	return s.db.RunValueLogGC(0.5)
 }
 
 // copyBytes creates a copy of a byte slice.
