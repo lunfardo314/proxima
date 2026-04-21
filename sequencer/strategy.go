@@ -1,12 +1,18 @@
 package sequencer
 
 import (
+	"time"
+
 	"github.com/lunfardo314/proxima/core/vertex"
 )
 
 // onMilestoneConfirmed is the shared bookkeeping called when a milestone appears in the tippool.
 func (seq *Sequencer) onMilestoneConfirmed(vid *vertex.WrappedTx) {
 	seq.clearPendingSubmitIfMatch(vid.ID())
+	// Anchor the pulse to the moment of tippool observation.
+	// Updating from a stale value to a fresh one is always monotonic forward;
+	// the next pulse will fire pulseInterval after this.
+	seq.lastPulseAnchor = time.Now()
 	seq.AddOwnMilestone(vid)
 	seq.milestoneCount++
 	if vid.IsBranchTransaction() {

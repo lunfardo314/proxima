@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test1SequencerPrunerIdle: base scenario, 1 sequencer, idle. Runtime ≈ 12s.
 func Test1SequencerPrunerIdle(t *testing.T) {
 	const (
 		maxSlots = 10
@@ -53,6 +54,7 @@ func Test1SequencerPrunerIdle(t *testing.T) {
 	//t.Logf("------------------------------\n%s", testData.wrk.InfoRefLines("     ").String())
 }
 
+// Test1SequencerPrunerTransfers: base scenario, 1 sequencer, with transfers. Runtime ≈ 32s.
 func Test1SequencerPrunerTransfers(t *testing.T) {
 	const (
 		maxSlots   = 30
@@ -142,6 +144,9 @@ func TestFinalizeChainOrigins(t *testing.T) {
 	t.Logf("%s", testData.wrk.Info(true))
 }
 
+// TestIdle2: base scenario, 2 sequencers (bootstrap + 1), idle. Runtime ≈ 24s.
+// Flaky under full-suite CPU pressure: the 30s WaitUntilTransactionInHeaviestState
+// timeout in initMultiSequencerTest can slip when the CPU is busy with prior tests.
 func TestIdle2(t *testing.T) {
 	const (
 		maxSlots    = 50

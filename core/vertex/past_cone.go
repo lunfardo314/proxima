@@ -26,6 +26,11 @@ import (
 // and valid
 // Flags (except 'asked for poke') become final and immutable after they are set 'ON'
 
+// TraceTagPastConeDiag toggles diagnostic cross-checks at conflict-detection and merge
+// boundaries. When enabled, the past-cone subsystem emits structured logs distinguishing
+// stale-S+ flags, TTL-blessed txs, and GC-stranded consumers. See claude/pastcone_consistency.md.
+const TraceTagPastConeDiag = "past_cone_diag"
+
 type (
 	FlagsPastCone byte
 
@@ -34,6 +39,11 @@ type (
 		tip            *WrappedTx
 		txTs           base.LedgerTime
 		name           string
+
+		// diagBranches, when non-nil, enables runtime consistency cross-checks for this
+		// past cone. Set via SetDiagBranches. Diagnostic output is gated by trace tag
+		// TraceTagPastConeDiag so the hot paths stay free when the tag is off.
+		diagBranches *branches.Branches
 
 		*PastConeBase
 		delta *PastConeBase
@@ -240,6 +250,57 @@ func (pc *PastCone) isVirtuallyConsumed(wOut WrappedOutput) bool {
 	return false
 }
 
+// SetDiagBranches opts this PastCone into runtime diagnostic cross-checks. When set, conflict
+// detection, merge boundaries and TTL-bless paths cross-reference flags against the live
+// Branches index and emit structured Tracef logs under TraceTagPastConeDiag. Safe to pass
+// nil to disable. Called once by the attacher at construction.
+func (pc *PastCone) SetDiagBranches(br *branches.Branches) {
+	pc.diagBranches = br
+}
+
+// baselineKnowsTx delegates to the live Branches index to answer "is txid in the
+// committed state of pc.baselineBranchID?". Returns false if the past cone was
+// constructed without a Branches reference (primarily test scaffolding) or has no
+// baseline set. Used both by diagnostics and by the stale-S- safety net in _checkVertex.
+func (pc *PastCone) baselineKnowsTx(txid base.TransactionID) bool {
+	if pc.diagBranches == nil || pc.baselineBranchID == nil {
+		return false
+	}
+	return pc.diagBranches.BranchKnowsTransaction(*pc.baselineBranchID, txid)
+}
+
+// diagLogSuspectConflict is called from _checkVertex just before returning BAD for
+// the "inTheState && !HasUTXO" case. With the safety net in _checkVertex consuming
+// the stale-S--on-consumer class upstream, this hook now classifies the remaining
+// cases: stale-S+ on vid, real fork (state has a different consumer), and the
+// inconsistent combination. See claude/pastcone_consistency.md §6.1.
+func (pc *PastCone) diagLogSuspectConflict(vid *WrappedTx, wOut WrappedOutput, pcConsumer *WrappedTx) {
+	if pc.diagBranches == nil || pc.baselineBranchID == nil {
+		return
+	}
+	baseline := *pc.baselineBranchID
+	vidKnown := pc.diagBranches.BranchKnowsTransaction(baseline, vid.ID())
+	consumerStr := "<virtual>"
+	var consumerKnown bool
+	if pcConsumer != nil {
+		consumerStr = pcConsumer.IDShortString()
+		consumerKnown = pc.diagBranches.BranchKnowsTransaction(baseline, pcConsumer.ID())
+	}
+	switch {
+	case !vidKnown:
+		pc.Tracef(TraceTagPastConeDiag, "STALE S+ on vid: pc=%s baseline=%s vid=%s flag=S+ branchKnowsTx=false pcConsumer=%s output=%d",
+			pc.name, baseline.StringShort(), vid.IDShortString(), consumerStr, wOut.Index)
+	case consumerKnown:
+		// Should have been caught by the _checkVertex safety net; reaching here means
+		// the safety net is not firing (e.g., Branches wiring missing). Log loudly.
+		pc.Tracef(TraceTagPastConeDiag, "STALE S- on consumer (unexpected — safety net should have upgraded): pc=%s baseline=%s vid=%s consumer=%s output=%d",
+			pc.name, baseline.StringShort(), vid.IDShortString(), consumerStr, wOut.Index)
+	default:
+		pc.Tracef(TraceTagPastConeDiag, "REAL conflict: pc=%s baseline=%s vid=%s output=%d pcConsumer=%s (state holds a different consumer or consumer is GC-stranded)",
+			pc.name, baseline.StringShort(), vid.IDShortString(), wOut.Index, consumerStr)
+	}
+}
+
 func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
 	if cond {
 		return
@@ -386,12 +447,18 @@ func (pc *PastCone) MarkVertexNotInTheState(vid *WrappedTx) {
 	}
 }
 
-// UpgradeToInTheState upgrades a vertex previously marked not-in-state to in-the-state.
-// This happens when a PastConeBase merge brought stale not-in-state flags from an older
-// baseline, and a re-check against the current (newer) baseline finds the tx is committed.
-// Reverses the attachment cost added by MarkVertexNotInTheState.
+// UpgradeToInTheState upgrades a vertex to in-the-state. This happens when a
+// PastConeBase merge or the _checkVertex safety net finds that the vertex is in
+// fact in the current baseline's state, overriding an earlier (or default) view.
+// Reverses the attachment cost added by MarkVertexNotInTheState, if any.
+//
+// Sets CheckedInTheState alongside InTheState — the invariant isVertexInTheState
+// asserts is "InTheState ⇒ CheckedInTheState". Callers that use this on a vertex
+// that does not already carry CheckedInTheState (e.g. a baseline branch added
+// synthetically via _filterConsumingVertices) would otherwise trip that assert
+// on the next read.
 func (pc *PastCone) UpgradeToInTheState(vid *WrappedTx) {
-	pc.SetFlagsUp(vid, FlagPastConeVertexInTheState|FlagPastConeVertexDefined)
+	pc.SetFlagsUp(vid, FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState|FlagPastConeVertexDefined)
 	if pc.Flags(vid).FlagsUp(FlagPastConeDirectCost) {
 		pc.addToAttachmentCost(-vid.AttachmentCost())
 		pc.SetFlagsDown(vid, FlagPastConeDirectCost)
@@ -1049,9 +1116,22 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateRea
 		if pc.IsInTheState(consumers[0]) {
 			continue
 		}
+		// Safety net for claude/pastcone_consistency.md §4.1.a: the consumer flag may be
+		// stale S- (CheckedInTheState=true, InTheState=false) against an older baseline,
+		// even though this past cone's baseline has the consumer committed. Verify
+		// against the live Branches index and upgrade the flag in place so the
+		// conflict-check path matches the state-trie ground truth. Only fires on the
+		// rare fall-through from the flag cache, so the hot loop stays flag-cached.
+		if consumers[0] != nil && pc.baselineKnowsTx(consumers[0].ID()) {
+			pc.Tracef(TraceTagPastConeDiag, "STALE S- upgraded in _checkVertex: pc=%s baseline=%s vid=%s consumer=%s",
+				pc.name, pc.baselineBranchID.StringShort(), vid.IDShortString(), consumers[0].IDShortString())
+			pc.UpgradeToInTheState(consumers[0])
+			continue
+		}
 		// virtual consumer nil is never in the state
 		allConsumersAreInTheState = false
 		if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
+			pc.diagLogSuspectConflict(vid, wOut, consumers[0])
 			return &wOut, false
 		}
 	}

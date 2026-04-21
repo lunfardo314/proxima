@@ -13,21 +13,7 @@ import (
 )
 
 const (
-	// plateauHoldTicks is the number of ticks the combined coverage signal (factory skeleton +
-	// tag-along backlog) must remain stable before submitting.
-	// The final coverage includes tag-alongs and freezes inserted by task.Run at submission time.
-	// Plateau detection defers submission while endorsements or tag-alongs are still arriving,
-	// because both increase coverage.
-	plateauHoldTicks = 3
-
-	// targetOffsetTicks controls how far ahead of "now" the milestone's timestamp is set.
-	// This determines the minimum spacing between milestones (along with TransactionPaceSequencer).
-	// Smaller values = more milestones per slot = faster coverage convergence.
-	// The target offset is decoupled from the build budget: task.Run uses a separate
-	// buildBudget (wall-clock duration) that can be longer than the target offset.
-	targetOffsetTicks = 6
-
-	// milestoneWatchInterval is how often the background watcher polls the tippool
+	// milestoneWatchInterval is how often the background watcher polls the tippool.
 	milestoneWatchInterval = 20 * time.Millisecond
 
 	// selfAttachmentLatencyToleranceTicks is the maximum wall-clock latency (in ticks)
@@ -36,6 +22,10 @@ const (
 	// until either the pending one is confirmed or the next slot's post-branch
 	// consolidation zone is reached. Prevents the submit-faster-than-attach spiral.
 	selfAttachmentLatencyToleranceTicks = 12
+
+	// TraceTagSeqPolicy gates the pulse-policy trace lines (pulse waits, attempts,
+	// zone C, throttled). Enable via logger.traceTags in the node config.
+	TraceTagSeqPolicy = "seq_policy"
 )
 
 // isOverloaded reports whether the last submitted own milestone has not appeared
@@ -89,10 +79,20 @@ func (seq *Sequencer) clearPendingSubmit() {
 	seq.pendingSubmit = pendingSubmitStatus{}
 }
 
-// doSequencerSlot runs one iteration of the sequencer loop.
-// Polls the factory for coverage plateaus (considering both skeleton coverage and
-// tag-along backlog), submits milestones when the combined signal stabilizes,
-// and generates a branch at the slot edge.
+// doSequencerSlot runs the sequencer loop for one slot (returns on branch submission or stop).
+//
+// Pulse-based reference policy:
+//   - the sequencer emits at most one own milestone per pulse interval (sequencerPulseTicks);
+//   - the pulse is anchored to the moment the previous own milestone became visible in the
+//     local tippool (see strategy.go:onMilestoneConfirmed);
+//   - within pulseInterval since the anchor, submissions are skipped;
+//   - a pending in-flight submission gates the pulse (no new submission while our previous
+//     one has not been observed) — the throttle is a second-line safety for stuck pending;
+//   - at slot-edge entry to the pre-branch zone, the loop switches to branch submission.
+//
+// What the factory produces is taken as-is at pulse time (no plateau wait). Coverage
+// improvements and backlog drain influence WHAT goes in, not WHETHER to submit.
+//
 // Returns false if the sequencer should stop.
 func (seq *Sequencer) doSequencerSlot() bool {
 	// pause during snapshot
@@ -115,25 +115,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 	}
 
 	tickDuration := ledger.TickDuration()
-	holdDuration := time.Duration(plateauHoldTicks) * tickDuration
-
-	// Drain interval: space drain milestones evenly across the slot.
-	// drainRate tag-alongs / slot, batchSize per milestone → drainRate/batchSize milestones/slot.
-	// Usable ticks ≈ 128 - PostBranch - PreBranch.
-	lib0 := ledger.L(0)
-	usableTicks := int(base.MaxTickValue) - int(lib0.PostBranchConsolidationTicks) - int(lib0.PreBranchConsolidationTicks)
-	if usableTicks < 1 {
-		usableTicks = 1
-	}
-	drainIntervalTicks := usableTicks * seq.config.MaxTagAlongInputs / seq.config.TagAlongDrainRate
-	if drainIntervalTicks < 1 {
-		drainIntervalTicks = 1
-	}
-	drainInterval := time.Duration(drainIntervalTicks) * tickDuration
-
-	var lastSeenCoverage uint64
-	lastImprovementTime := time.Now()
-	lastDrainTime := time.Time{} // zero: first drain fires immediately
+	// Pulse interval = cfg.Pace ticks of wall-clock, see claude/seq-improvements.md.
+	// Default cfg.Pace = defaultSequencerPaceTicks (12); tests override via WithPace().
+	pulseInterval := time.Duration(seq.config.Pace) * tickDuration
 
 	ticker := time.NewTicker(tickDuration)
 	defer ticker.Stop()
@@ -160,8 +144,8 @@ func (seq *Sequencer) doSequencerSlot() bool {
 			return false
 		}
 
-		// The factory targets the current slot. Non-branch milestones are built
-		// within the current slot; the branch at the slot edge transitions to the next.
+		// The factory targets the current slot. Non-branch milestones are built within the
+		// current slot; the branch at the slot edge transitions to the next.
 		if seq.skeletonFactory != nil {
 			seq.skeletonFactory.SetTargetSlot(currentSlot)
 		}
@@ -173,133 +157,80 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		ticksToSlotEnd := base.DiffTicks(nextBoundary, nowTs)
 
-		// --- Throttle check: if the last submitted own milestone has not attached
-		// within tolerance, pause submissions. Escape when pending milestone is in
-		// a prior slot and we've entered the next slot's post-branch consolidation
-		// zone (accept the loss and resume from whatever chain tip is visible).
-		throttled := false
+		// --- Throttle check (stuck pending): if the last submitted own milestone has
+		// not attached within tolerance, pause submissions. Escape when the pending
+		// milestone is in a prior slot and we've entered the next slot's post-branch
+		// consolidation zone (accept the loss, resume from whatever chain tip is visible).
+		// NOTE: under normal operation the pending.awaiting gate below also blocks the
+		// pulse. This check exists only to log and to escape the stuck case.
 		if overloaded, elapsed, pending := seq.isOverloaded(); overloaded {
 			if nowTs.Slot > pending.ts.Slot && nowTs.Tick >= lib.PostBranchConsolidationTicks {
 				seq.clearPendingSubmit()
 			} else {
-				throttled = true
 				if seq.lastOverloadLogSlot != nowTs.Slot {
 					tolerance := time.Duration(selfAttachmentLatencyToleranceTicks) * ledger.TickDuration()
 					seq.Log().Warnf("sequencer throttled: self-attachment latency %v exceeds tolerance %v (pending %s)",
 						elapsed, tolerance, pending.txID.StringShort())
+					seq.Tracef(TraceTagSeqPolicy, "throttled: elapsed=%v tolerance=%v pending=%s",
+						elapsed, tolerance, pending.txID.StringShort())
 					seq.lastOverloadLogSlot = nowTs.Slot
 				}
+				continue
 			}
 		}
 
 		// --- Branch time: within PreBranchConsolidationTicks of slot edge ---
+		// Zone C is branch-only in this reference; non-branch pulses are suppressed here.
+		// The rare tick-126 + tick-0 two-tx play (see claude/seq-improvements.md) is not
+		// implemented in the reference policy.
 		if ticksToSlotEnd < int64(lib.PreBranchConsolidationTicks) {
-			// submit if there's an unused skeleton before switching to branch
-			if !throttled && seq.skeletonFactory != nil && seq.skeletonFactory.BestCoverage() > lastSeenCoverage {
-				seq.tryBuildAndSubmit()
-			}
-			// branch generation still runs; decideSubmitMilestone gates the actual submit
+			seq.Tracef(TraceTagSeqPolicy, "zone C: submitting branch at %s", nextBoundary)
 			return seq.generateAndSubmitBranch(nextBoundary)
 		}
 
-		// --- Zone A: post-branch consolidation ---
-		// Wait for branches from this slot to propagate via gossip.
-		// The factory starts building skeletons at tick 0 (SetTargetSlot above).
-		// By tick 12, it should have at least one skeleton with an endorsement
-		// (extend own milestone + endorse a peer's branch from this slot).
-		// If the branch arrives later, the first endorsed milestone is simply delayed.
-		// The bootstrap case (no branches at all) is handled by tryBootProposal.
-		if nowTs.Tick < lib.PostBranchConsolidationTicks {
+		// --- Pulse gate (primary): previous own milestone not yet observed in tippool. ---
+		seq.pendingSubmitMu.Lock()
+		awaiting := seq.pendingSubmit.awaiting
+		seq.pendingSubmitMu.Unlock()
+		if awaiting {
 			continue
 		}
 
-		if throttled {
+		// --- Pulse gate (timing): pulseInterval must have elapsed since anchor. ---
+		elapsedSinceAnchor := time.Since(seq.lastPulseAnchor)
+		if elapsedSinceAnchor < pulseInterval {
 			continue
 		}
 
-		// --- Zone B: coverage-first strategy with backlog drain ---
-		// Coverage improvement via endorsements is the primary goal.
-		// While the factory is actively improving coverage, we wait — giving
-		// it uninterrupted time to accumulate endorsements.
-		// Once coverage plateaus, we submit (tag-alongs included via insertInputs).
-		// Backlog drain runs only during coverage plateaus, filling the dead time
-		// between factory improvements rather than competing with them.
-		if seq.skeletonFactory == nil {
-			continue
-		}
-
-		bestCoverage := seq.skeletonFactory.BestCoverage()
-
-		// Priority 1: track coverage improvements from factory.
-		// While coverage is improving, defer all submissions to let the factory
-		// build up endorsements without being restarted by milestone changes.
-		if bestCoverage > lastSeenCoverage {
-			lastSeenCoverage = bestCoverage
-			lastImprovementTime = time.Now()
-			continue
-		}
-
-		// Wait for coverage to plateau before submitting
-		if time.Since(lastImprovementTime) < holdDuration {
-			continue
-		}
-
-		// Guard: don't start a potentially slow tryBuildAndSubmit if we're
-		// close to the slot boundary. tryBuildAndSubmit can block on state I/O
-		// for hundreds of milliseconds under load, which could cause us to miss
-		// the pre-branch consolidation window entirely (skipping a slot boundary).
-		// Leave enough margin for the branch check to fire on the next tick.
-		nowGuard := ledger.TimeNow()
-		guardTicks := base.DiffTicks(nowGuard.NextSlotBoundary(), nowGuard)
-		if guardTicks < int64(lib.PreBranchConsolidationTicks)+5 {
-			continue
-		}
-
-		// Coverage plateaued — submit milestone (tag-alongs included via insertInputs).
-		// The factory provides skeletons with endorsements (coverage improvement).
-		// Base extend is the fallback — useful for bootstrap recovery and tag-along drain.
-		if seq.tryBuildAndSubmit() {
-			lastSeenCoverage = seq.skeletonFactory.BestCoverage()
-			lastImprovementTime = time.Now()
-			lastDrainTime = time.Now()
-			continue
-		}
-
-		// Priority 2: backlog drain — only when coverage has plateaued and
-		// the plateau submission didn't succeed (ErrNotGoodEnough / ErrNoProposals).
-		// Drain at a controlled rate to avoid flooding the DAG.
-		if seq.backlog.NumOutputsInBuffer() > 0 && time.Since(lastDrainTime) >= drainInterval {
-			seq.tryBuildAndSubmit()
-			lastDrainTime = time.Now()
-		}
-		lastImprovementTime = time.Now()
+		// Pulse fires: attempt build and submit. Advance the anchor regardless of outcome
+		// so we don't rapid-fire after a failed attempt. On success, the tippool
+		// observation of the new milestone will further advance the anchor.
+		fired := seq.tryBuildAndSubmit()
+		seq.lastPulseAnchor = time.Now()
+		seq.Tracef(TraceTagSeqPolicy, "pulse fired: elapsed=%v built=%v", elapsedSinceAnchor, fired)
 	}
 }
 
-// tryBuildAndSubmit computes an effective timestamp from "now", builds a milestone
-// via task.Run (which inserts tag-alongs and freezes on top of the skeleton), and submits it.
-// Returns true on successful submission.
+// tryBuildAndSubmit builds a milestone via task.Run (which inserts tag-alongs and freezes
+// on top of the skeleton) and submits it. Returns true on successful submission.
 //
-// Timing: targetTs is set targetOffsetTicks ahead of "now". This determines the
-// milestone's ledger timestamp (logical clock). The build budget (wall-clock time for
-// task.Run) is separate and configured via buildBudget. The target can be close to
-// "now" for fast pace, while the builder has enough time for I/O-heavy operations.
+// Target timestamp = max(nowTs, paceMin, T(slot, PostBranchConsolidationTicks)).
+//
+//   - paceMin = lastSubmittedTs + TransactionPaceSequencer (ledger-enforced in parse.go).
+//   - PostBranchConsolidationTicks floor is still required by the EasyFL constraint
+//     checkPostBranchConsolidationTicks in ledger/def/sequencer.easyfl. It will be removed
+//     when the ledger-side refactor ships with the next testnet reset; until then, the
+//     Go sequencer must keep producing timestamps that satisfy it.
+//
+// The pulse cadence (doSequencerSlot) already spaces these attempts ~1 s apart, so nowTs
+// is a good enough target — no separate look-ahead offset is needed.
 func (seq *Sequencer) tryBuildAndSubmit() bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
+	pbcFloor := base.T(nowTs.Slot, lib.PostBranchConsolidationTicks)
 
-	var targetTs base.LedgerTime
-	if seq.lastSubmittedTs.IsSlotBoundary() {
-		// First milestone after branch (seed): target exactly at post-branch consolidation boundary.
-		// No offset needed — PostBranchConsolidationTicks already provides the buffer.
-		targetTs = base.MaximumTime(base.T(nowTs.Slot, lib.PostBranchConsolidationTicks), paceMin)
-	} else {
-		// Subsequent milestones: target = max(now + targetOffsetTicks, paceMin).
-		// targetOffsetTicks determines the milestone's timestamp freshness.
-		// buildBudget (in task.Run) determines how long the builder has to complete.
-		targetTs = base.MaximumTime(nowTs.AddTicks(targetOffsetTicks), paceMin)
-	}
+	targetTs := base.MaximumTime(nowTs, paceMin, pbcFloor)
 
 	// don't overshoot into next slot
 	nextBoundary := nowTs.NextSlotBoundary()

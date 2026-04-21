@@ -157,11 +157,16 @@ func (a *milestoneAttacher) run() error {
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)
 	if a.vid.IsBranchTransaction() {
 		// branch transaction vertex is immediately detached. Thus branch transaction does not reference the past cone
+		a.Tracef(vertex.TraceTagPastConeDiag, "DETACH (branch wrapup): vid=%s pastConeSize=%d",
+			a.vid.IDShortString, a.pastCone.PastConeBase.Len())
 		a.vid.ConvertToDetached()
 		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
-		// report branch mutation size and check memory pressure
+		// report branch mutation size.
+		// NOTE: previously this called MemoryPressureGC() here. Removed for the same
+		// reason as in branches.GetStateReaderForTheBranch — synchronous runtime.GC()
+		// on the sequencer hot path can block >30s under memory pressure. The periodic
+		// memory watchdog handles pressure off the hot path.
 		a.EvidenceBranchMutations(a.finals.MutationStats.NumCreated+a.finals.MutationStats.NumDeleted, a.finals.MutationStats.NumTransactions)
-		a.MemoryPressureGC()
 	} else {
 		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
 		a.EvidencePastConeSize(a.pastCone.PastConeBase.Len())
