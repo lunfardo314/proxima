@@ -3,6 +3,7 @@ package transaction
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
@@ -35,6 +36,11 @@ type Transaction struct {
 	traceOption               int
 	partialContextValidated   bool
 	fullContextValidated      bool
+	// fullContextOnce serialises SetFullContext so concurrent attachers can't race
+	// on the "set only once" invariant. The first caller runs the setup; others wait
+	// on Do and then see the already-populated tree (and the first call's error, if any).
+	fullContextOnce sync.Once
+	fullContextErr  error
 }
 
 // Parse parses main elements of the transaction and creates Transaction ID and transaction structure:
