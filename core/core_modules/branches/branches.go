@@ -462,10 +462,12 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 	b.committing[branchID] = ch
 	b.mutex.Unlock()
 
-	// branch commits are heavy allocators — give GC a chance to run before
-	b.MemoryPressureGC()
-
-	// do the expensive commit work outside the mutex
+	// do the expensive commit work outside the mutex.
+	// NOTE: previously this called MemoryPressureGC() right here to pre-empt GC
+	// before heavy allocation. Removed: on a pressured node, runtime.GC() is
+	// exactly slowest at the moment it's cheapest to defer, and the sequencer
+	// ends up blocked in a >30s STW on its branch path (deadlock checkpoint
+	// trips). The periodic memory watchdog handles pressure off the hot path.
 	upd := b._commitPendingBranchUnlocked(branchID, pb, baselineRoot)
 
 	// store results under the lock
