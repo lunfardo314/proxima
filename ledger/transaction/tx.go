@@ -21,8 +21,25 @@ func (tx *Transaction) IsPartialContext() bool {
 	return len(tx.MustBytesAtPath(ledger.PathToConsumedOutputs)) == 0
 }
 
+// SetFullContext promotes the transaction from partial to full context by loading its
+// consumed UTXOs via the supplied loader and rebuilding the tuple tree.
+//
+// Safe to call concurrently and/or multiple times: the setup runs exactly once (guarded
+// by a sync.Once on the Transaction); all subsequent or concurrent callers block briefly
+// on the Once and then observe the already-populated tree, returning the first call's
+// error (if any). The loader from the first winning caller is the one actually invoked —
+// this is fine because consumed outputs are determined solely by input OutputIDs, which
+// are immutable on the transaction, so all valid loaders produce the same result.
 func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
-	util.Assertf(tx.IsPartialContext(), "tx.SetFullContext: full context can be set only once")
+	tx.fullContextOnce.Do(func() {
+		tx.fullContextErr = tx.setFullContextLocked(inputLoaderByIndex)
+	})
+	return tx.fullContextErr
+}
+
+// setFullContextLocked is the actual setup. Runs at most once per Transaction, invoked
+// from inside fullContextOnce.Do.
+func (tx *Transaction) setFullContextLocked(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
 	var err error
 	var o *ledger.Output
 

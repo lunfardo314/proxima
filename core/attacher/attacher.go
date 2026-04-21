@@ -25,6 +25,8 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 		pastCone:    vertex.NewPastCone(env, tip, txTs, name),
 	}
+	// opt the past cone into runtime diagnostic cross-checks (gated by TraceTagPastConeDiag)
+	ret.pastCone.SetDiagBranches(env.Branches())
 	// default: use committing state reader (triggers lazy DB commit for pending branches).
 	// IncrementalAttacher overrides this with virtual state reader.
 	ret.getBaselineStateReader = func(id base.TransactionID) multistate.StateReader {
@@ -443,7 +445,11 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 		// Re-check against the current baseline; only upgrade, never downgrade.
 		baselineID := *a.pastCone.GetBaseline()
 		txid := vid.ID()
-		if a.Branches().BranchKnowsTransaction(baselineID, txid) || txidMayHaveExpired(baselineID, txid) {
+		if a.Branches().BranchKnowsTransaction(baselineID, txid) {
+			a.pastCone.UpgradeToInTheState(vid)
+		} else if txidMayHaveExpired(baselineID, txid) {
+			a.Tracef(vertex.TraceTagPastConeDiag, "TTL bless upgrade: baseline=%s vid=%s (txid record pruned per TxIDStateTTLSlots; treating as in-state without proof)",
+				baselineID.StringShort, vid.IDShortString)
 			a.pastCone.UpgradeToInTheState(vid)
 		}
 		return
@@ -457,6 +463,8 @@ func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
 	} else if txidMayHaveExpired(baselineID, txid) {
 		// The txID entry was deleted from the trie due to TTL expiry, but the transaction
 		// is legitimately committed. Treat it as "in the state".
+		a.Tracef(vertex.TraceTagPastConeDiag, "TTL bless: baseline=%s vid=%s (txid record pruned per TxIDStateTTLSlots; treating as in-state without proof)",
+			baselineID.StringShort, vid.IDShortString)
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
 	} else {
 		// provisionally not in the state — may be upgraded later by a re-check

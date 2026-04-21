@@ -81,6 +81,11 @@ type (
 		pendingSubmitMu     sync.Mutex
 		pendingSubmit       pendingSubmitStatus
 		lastOverloadLogSlot uint32
+		// lastPulseAnchor anchors the sequencer pulse (see strategy_async.go).
+		// Updated on: own-milestone tippool observation, successful or failed pulse attempt.
+		// The pulse fires when (time.Since(lastPulseAnchor) >= pulseInterval) AND the
+		// previous own milestone has been observed (pendingSubmit.awaiting == false).
+		lastPulseAnchor time.Time
 	}
 
 	pendingSubmitStatus struct {
@@ -469,10 +474,15 @@ func (seq *Sequencer) sequencerLoop() {
 
 	const deadlockTolerance = 30 * time.Second
 
+	// On deadlock suspicion, dump all goroutines and initiate a graceful shutdown
+	// (rather than Fatalf, which kills the process immediately and skips DB flush / peer
+	// cleanup). The full stack dump is still logged at Error level so the cause can be
+	// investigated post-mortem.
 	checkpoint := checkpoints.New(func(name string) {
 		buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
 		n := runtime.Stack(buf, true)
-		seq.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf[:n]))
+		seq.Log().Errorf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf[:n]))
+		seq.GracefulShutdown("deadlock suspected in sequencer loop")
 	})
 	defer checkpoint.Close()
 

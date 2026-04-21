@@ -260,6 +260,13 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 		return
 	}
 	for _, e := range expired {
+		// diagnostic: observe GC-driven detachment (see claude/pastcone_consistency.md §5.4).
+		// Gated by TraceTagPastConeDiag; measures the window where vid.consumed can drop
+		// consumer pointers silently from an already-built past cone.
+		if size := e.vid.PastConeSize(); size > 0 {
+			d.Tracef(vertex.TraceTagPastConeDiag, "DETACH (memdag GC): vid=%s pastConeSize=%d reason=%s",
+				e.vid.IDShortString, size, e.reason)
+		}
 		e.vid.ConvertToDetached()
 	}
 	d.WithGlobalWriteLock(func() {
