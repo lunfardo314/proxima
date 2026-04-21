@@ -196,170 +196,233 @@ degrades. None of the individual rules is wrong; the combination has no
 principled priority order.
 
 This section replaces Phase 2's submission-loop spec with a simpler
-unified policy, and frames the longer-term direction.
+**pulse-based** policy. The design also calls for a matching ledger
+refactor (pace semantics, PBC removal, endorsement-monotonicity-only),
+but that is **consensus-breaking** against the currently-running testnet
+and is deferred to the next testnet reset.
+
+### Rollout in two phases
+
+**Phase S (now, testnet-compatible):** sequencer policy rewrite only.
+The pulse interval lives on a sequencer-internal constant
+(`sequencerPulseTicks = 12`), fully decoupled from
+`TransactionPaceSequencer` (still 2 on the live testnet). The sequencer
+continues to respect the existing ledger rules in its timestamp
+calculation, in particular `checkPostBranchConsolidationTicks` and
+`checkPreBranchConsolidationTicks` (EasyFL) and the existing
+`ValidSequencerPace` floor in `parse.go`. Cooperative alignment at
+12 ticks comes from every honest operator running the same reference
+policy, not from a ledger hard floor.
+
+**Phase L (later, with next testnet reset):** ledger refactor described
+in the "Ledger-layer changes" section below. Bundled with other
+ledger-layer changes queued for the reset. The sequencer's internal
+`sequencerPulseTicks` is removed at that point and the policy reads
+`lib.TransactionPaceSequencer` directly.
+
+The doc below keeps the Phase L design intact (as target state), and
+marks items that belong to Phase S vs Phase L where the distinction
+matters.
+
+### Ledger-layer changes (Go constants, testnet-compatible)
+
+Three distinct pace constraints apply to **consumed outputs**; endorsed
+inputs have only monotonicity. The only input-side distinction is
+consumed-vs-endorsed — within "consumed" there is no per-input-type
+differentiation (chain predecessor, tag-along and delegation inputs are
+treated identically).
+
+| Constraint | Applies to | Value |
+|---|---|---|
+| Non-seq pace | output consumed by any non-sequencer tx | existing constant (~24 ticks) — **unchanged**, anti-spam on regular txs |
+| Seq pace | output consumed by a **non-branch** sequencer tx | **12 ticks** (`TransactionPaceSequencer`) |
+| Branch-consumer pace | output consumed by a **branch** sequencer tx | monotonicity only (≥1 tick) |
+| Endorsement | endorsed tx | monotonicity only (≥1 tick); no pace |
+
+**Consequences:**
+
+- `PostBranchConsolidationTicks` constant and concept are removed. The
+  12-tick seq pace applied to a branch output (which sits at tick 0 of
+  its slot) forces the first non-branch extender to land at tick ≥12
+  automatically — same effect, one less concept.
+- **Extending an own same-slot branch**: min tick 12 (pace floor).
+- **Extending a prev-slot branch or milestone**: cross-slot distance
+  generally ≫ 12 ticks, so pace is trivially satisfied; the new
+  timestamp is strategy-driven — could be tick 1, 12, or anywhere later.
+  Best strategy here is unknown and regime-dependent: a sequencer may
+  wait for enough peer branches to arrive, then pick the extend-endorse
+  pair with biggest coverage, timestamping at whatever tick respects
+  pace.
+- **Branch seq txs** consume under monotonicity only, so the tick-126
+  milestone + tick-0 branch two-tx play is structurally supported. Not
+  the target of the reference policy: normally the global plateau is
+  reached before the pre-branch zone, so this pattern only pays when a
+  last-moment coverage opportunity appears in zone C. Rare.
+- **Tag-along inclusion latency** under a non-branch seq consumer: a
+  tag-along becomes consumable ≥12 ticks after its own timestamp. Users
+  see a ~1s settlement-inclusion floor, consistent with the pulse cadence.
+- `PreBranchConsolidationTicks` and its semantics (no tag-alongs / no
+  delegation freezes in zone C) are kept as is. Endorsement-only
+  milestones remain valid anywhere up to tick 127. The purpose of the
+  pre-branch zone remains: prevent a sequencer from revealing
+  self-controlled coverage at the last moment and denying others the
+  chance to reference it in the heaviest-branch race.
 
 ### Purpose and scope
 
 This is the **reference implementation** of sequencer submission policy
-for early mainnet. Goals in order of priority:
+for early mainnet. Goals in priority order:
 
-1. **Liveness** — keep the chain moving even in adverse regimes (no load,
+1. **Liveness** — keep the chain moving in adverse regimes (no load,
    thin gossip, partial peer connectivity).
 2. **Predictability and observability** — one decision point, explicit
-   parameters, explicit log lines for each signal firing.
-3. **Good-enough coverage optimisation** — wait for endorsements when it
-   helps, but never at the cost of the first two.
+   parameters, explicit log lines.
+3. **Good-enough coverage** — submit what the factory has at pulse time;
+   don't wait for a plateau.
 
 Optimality is explicitly not a goal. There is no single best sequencer
 strategy; different regimes favour different trade-offs. The reference
-policy is deliberately simple so operators can reason about it, and so a
+policy is deliberately simple so operators can reason about it and so a
 future learned/evolved strategy (see "Future directions" below) has a
 well-specified baseline to compare against.
-
-### Forces the policy balances
-
-| Force | Regime where it dominates |
-|---|---|
-| Flood-protection (throttle) | High-load, when own attachment cannot keep up with own issuance |
-| Liveness floor | Thin traffic, bootstrap, post-orphan recovery |
-| Coverage opportunism (plateau-wait) | Medium load, when factory skeletons keep improving |
-| Tag-along drain | Persistent backlog of sender txs |
-
-These are not independent heuristics with private gates; they are four
-signals feeding **one** submission decision, ordered by priority.
 
 ### Ledger time vs wall clock — the centre-of-mass framing
 
 Proxima's two time axes can and will diverge. Under normal operation the
 incentive structure keeps them aligned. A sequencer's coverage rises when
-its tx arrives at peers with a timestamp close to the peers' wall-clock at
-arrival. Too-early (big backdate) → peer treats it as stale, has already
-built against a different chain tip. Too-late (far future timestamp) →
-peer has to hold it before it can be used, meanwhile others commit
-alternatives.
+its tx arrives at peers with a timestamp close to the peers' wall-clock
+at arrival. Too-early (big backdate) → peer treats it as stale, has
+already built against a different chain tip. Too-late (far future
+timestamp) → peer has to hold it before it can be used, meanwhile others
+commit alternatives.
 
 So every honest sequencer is implicitly running a positional strategy:
-minimise RTT to the centre of mass of sequencer capitals, where "distance"
-is RTT/latency to peers with significant stake. Being a latency outlier
-costs coverage. This is the silent pressure that keeps the network's
-clocks aligned — and the constraint every submission-timing heuristic must
-respect.
+minimise RTT to the centre of mass of sequencer capitals, where
+"distance" is RTT/latency to peers with significant stake. Being a
+latency outlier costs coverage. This is the silent pressure that keeps
+the network's clocks aligned — and the constraint every submission
+heuristic must respect. With the 12-tick seq pace and rational operators,
+sequencers self-align at roughly one milestone per second of wall-clock,
+which sets the natural pulse rate.
 
-### First-milestone timing: a probabilistic sweet spot
+### Pulse-based submission policy
 
-The first non-branch milestone in a slot must carry timestamp ≥ the
-post-branch consolidation boundary (`T(slot, PBC)` = tick 12 today). That
-floor is the ledger's price for branch propagation: it guarantees a slot
-of gossip time before any sequencer tx can claim to extend that slot.
-
-Submission wall-clock, however, is not pinned to tick 12. The issuance
-point sits in a probabilistic sweet spot:
-
-- Submit at wall-clock ≈ tick 12: fresh timestamp, but most peer branches
-  haven't reached us yet → our tx carries few endorsements → low own
-  coverage, peers prefer someone else's tip.
-- Submit at wall-clock ≫ tick 12 (say tick 40+): we've seen more branches
-  and can endorse more, but our tx arrives at peers with a timestamp
-  already behind their wall-clock → stale-looking → not worth endorsing.
-- Sweet spot: the centre of a distribution, maybe wall-clock tick 15-20,
-  which picks up most of the branch-gossip inflow without looking stale.
-
-The timestamp floor (`T(slot, 12)`) is fine to keep — it's the minimum
-pace, not a backdate. What must not drift is the wall-clock submission
-time relative to the timestamp. The liveness floor (below) bounds that
-drift.
-
-### Unified decision policy
-
-Priority-ordered evaluation every tick after PBC:
+Every rational non-branch sequencer submission is gated below by the
+12-tick seq pace on its chain predecessor. In wall-clock terms that's
+~1 s between consecutive non-branch milestones under approximately
+tick-to-wall-clock unity. The reference policy is: **pulse at exactly
+that rate**, anchored to when the previous own milestone becomes visible
+in the local tippool.
 
 ```
-if overloaded():              # (1) flood-protection: in-flight self submission
-    continue                  #     stale beyond tolerance → skip
-
-ticksSinceLastAttempt := now - lastAttemptedTime
-livenessDue   := ticksSinceLastAttempt >= maxGapTicks
-improvementOk := bestCoverage > lastSubmittedCoverage
-plateauStable := time.Since(lastImprovementTime) >= plateauHoldTicks
-coverageReady := improvementOk && plateauStable
-drainDue      := backlog.NumOutputsInBuffer() > 0 &&
-                  ticksSinceLastDrain >= drainIntervalTicks
-
-if livenessDue || coverageReady || drainDue:
-    tryBuildAndSubmit()
-    lastAttemptedTime = now
-    if backlog_tx_attached: lastDrainTime = now
+after previous own milestone is observed in the tippool at time T_obs:
+  wait until wallClock >= T_obs + pace * tickDuration
+  then, if not overloaded() and slot-edge discipline permits:
+    build from factory's current best skeleton (don't wait for plateau)
+    attach tag-alongs / delegations if not in zone C
+    submit
 ```
 
 Key properties:
 
-- **No separate "first probe" gate**. The liveness floor handles bootstrap
-  and first-of-slot: on slot start `lastAttemptedTime` is the previous
-  branch's time, so `livenessDue` fires shortly after PBC ends, naturally
-  positioning the first milestone in the sweet spot.
-- **Throttle still gates everything**. Nothing submits while a previous
-  own milestone is stuck unconfirmed past tolerance. Preserves the
-  flood-protection guarantee.
-- **Coverage opportunism within a budget**. `plateauHoldTicks` is a
-  maximum wait, not a fixed delay. If `livenessDue` fires first, we go
-  with what we have. If coverage keeps improving past the liveness deadline
-  we go anyway (improvement didn't converge in time; submit and move on).
-- **Drain integrated symmetrically**. No longer a fallback tier; one of
-  four equal signals. Tag-along backpressure never starves beyond
-  `drainIntervalTicks`.
+- **Tippool-observation anchor.** The wait starts only once the previous
+  own milestone has been re-observed in the tippool, not at submit time.
+  Under healthy load, attachment is sub-tick (≈80 ms), so the realised
+  pace is ≈ `12 · tickDuration + attachment` ≈ just over 1 s.
+- **Natural self-throttle.** Under stress, attachment lags → the pulse
+  delays itself automatically. No extra mechanism needed; the existing
+  `selfAttachmentLatencyToleranceTicks = 12` throttle remains as a
+  belt-and-braces cutoff for pathological stalls.
+- **No plateau wait.** Submit whatever the factory has at pulse time.
+  Coverage growth and backlog drain influence *what* goes in, not
+  *whether* to submit. Back to "sequencer pulse priority" in the
+  original sense.
+- **First-of-slot behaviour falls out for free.** In general, the seq
+  pace floor on the next non-branch milestone is
+  `previousOwnMilestone.tick + 12` in absolute ledger time.
+  - Own last milestone is a branch in the current slot (tick 0) → pace
+    floor is tick 12; pulse typically lands at tick 12 + a little.
+  - Own last milestone is a non-branch in the previous slot at tick `k`
+    → pace floor is `k + 12` in absolute time, i.e. tick `k + 12 − 128`
+    of the new slot (for `k ≥ 116`, that's tick `k − 116`). For example
+    `k = 126` ⇒ pace satisfied only from tick 10 of the new slot.
+  - Own last milestone is a branch in a previous slot (tick 0) → pace
+    floor is `0 + 12` in the prior slot's time = well before the new
+    slot begins; any tick ≥ 1 of the new slot satisfies pace.
+  The pulse anchor (tippool observation of the prev own milestone) sets
+  wall-clock timing; sequencer is free to choose among extend-endorse
+  pairs at that moment. The reference just uses the pulse wait; richer
+  strategies are open future work.
+- **Slot-edge discipline.** Near the slot edge, the sequencer issues a
+  branch rather than a non-branch milestone. Inside zone C, tag-along
+  and delegation attachment is suppressed; endorsement-only milestones
+  can still fire on pulse up to tick 127. The tick-126 + tick-0 two-tx
+  play is supported but not targeted — it only pays when a last-moment
+  coverage opportunity appears after the global plateau.
+- **Removed from current code.** `attemptedPrimary`, `plateauHoldTicks`,
+  `maxGapTicks` liveness-floor, first-after-branch special-case
+  target-floor in `tryBuildAndSubmit`, two-tier Zone B loop.
 
 ### Parameters
 
 | Parameter | Role | Starting value | Notes |
 |---|---|---|---|
-| `maxGapTicks` | liveness floor (ticks without an attempt) | 15-20 | Shorter = faster recovery, more conservative on coverage optimisation |
-| `plateauHoldTicks` | max wait for coverage plateau | 3 | Matches current default |
-| `drainIntervalTicks` | tag-along drain cadence | from `MaxTagAlongInputs` / `TagAlongDrainRate` | Unchanged from current |
-| `selfAttachmentLatencyToleranceTicks` | throttle tolerance | 12 | Unchanged from current |
-| `TagAlongDrainRate`, `MaxTagAlongInputs` | drain throughput | as configured | Operator knob; watch these with the unified policy on testnet |
+| `TransactionPaceSequencer` | seq pace on non-branch seq consumers | 12 | Ledger-enforced. Sequencer derives pulse interval from this. |
+| `selfAttachmentLatencyToleranceTicks` | throttle tolerance | 12 | Unchanged. Skips issuance while own last milestone remains unattached past tolerance. |
+| `TagAlongDrainRate`, `MaxTagAlongInputs` | drain throughput | as configured | Operator knob; observe under the new pulse policy. |
 
-All parameters remain in the sequencer config (yaml). No abstraction
-layer between policy and config for now — the reference implementation
-reads config, applies it, and logs every signal firing under a single
-trace tag. If a future evolving agent wants to tune these, it can write
-new values into config or (later) propagate them via the sequencer's own
-on-chain output (see below).
+No separate `plateauHoldTicks` or `maxGapTicks`. Parameters live in the
+sequencer config yaml; no abstraction layer yet.
 
 ### Observability requirements
 
-Every signal in the policy above must emit a one-line log when it fires:
+Every pulse event emits a one-line log under a single trace tag
+(`seq_policy`):
 
-- `liveness-floor fired: gap=%d maxGap=%d`
-- `coverage-plateau fired: cov=%s last=%s held=%dms`
-- `drain-due fired: backlog=%d interval=%dms`
+- `pulse waiting: since_tippool=%v required=%v`
 - `throttled: in-flight=%s elapsed=%v tolerance=%v`
-- `submit attempted: signal=<liveness|coverage|drain> built=<yes|no>`
+- `submit attempted: cov=%s skeleton=%s built=<yes|no>`
+- `zone C: endorsement-only milestone` / `zone C: suppressing tag-alongs`
+- `branch submitted: slot=%d cov=%s`
 
-A slot-end summary line gives aggregate counts. This is what makes the
-policy diagnosable in production without deep tracing.
+A slot-end summary line aggregates counts.
 
 ### What changes from the current code
 
-Compared to the state on branch `develop07-pastcone-diag` today:
+**Phase S items (ship to current testnet on `develop07-pastcone-diag`):**
 
-1. Replace the priority-1 (coverage) + priority-2 (drain) two-tier loop
-   in `doSequencerSlot` with the single conditional above.
-2. Remove the `attemptedPrimary` flag — its only purpose was "one probe
-   per plateau", now subsumed by the liveness floor.
-3. Track `lastAttemptedTime` instead of (or alongside) the coverage-tied
-   `lastImprovementTime` — separate the "when did I last try?" question
-   from the "when did the factory last improve?" question.
-4. Drop the first-after-branch special case in `tryBuildAndSubmit`. The
-   floor `T(slot, PBC)` stays in the general `max(nowTs+offset, paceMin,
-   T(slot, PBC))` formula; no separate branch.
-5. Integrate the tag-along drain as a co-equal signal in the unified
-   condition. Keep `drainIntervalTicks` computed from existing config.
-6. Wire the five log lines listed above, all under a single trace tag
-   (`seq_policy` or similar) so operators can enable them selectively.
+1. Add sequencer-internal constant `sequencerPulseTicks = 12` with a
+   one-line comment noting its Phase L migration to
+   `lib.TransactionPaceSequencer`.
+2. Replace the two-tier Zone B loop in `doSequencerSlot` with the pulse
+   loop above.
+3. Remove `attemptedPrimary`, plateau tracking, liveness floor,
+   first-after-branch special case in `tryBuildAndSubmit`.
+4. Tag-along and delegation attachment become by-products of the pulse,
+   not gating signals. Zone C suppression stays.
+5. Track `lastOwnMilestoneTippoolObservedTime` as the anchor for the
+   pulse wait. Set it on tippool observation of an own milestone (same
+   path that currently calls `clearPendingSubmitIfMatch`).
+6. Keep existing `tryBuildAndSubmit` target-timestamp floor logic that
+   respects `PostBranchConsolidationTicks` and `ValidSequencerPace` —
+   the EasyFL constraints are still live.
+7. Wire the `seq_policy` trace-tag log lines.
+
+**Phase L items (held for next testnet reset):**
+
+8. Raise `defaultTransactionPaceSequencer` to 12.
+9. Split `parse.go scanInputs` dispatch by branch/non-branch (branch
+   consumers → monotonicity only; non-branch seq consumers → seq pace
+   12; non-seq consumers → unchanged).
+10. Reduce `parse.go scanEndorsements` to monotonicity-only.
+11. Remove `checkPostBranchConsolidationTicks` in
+    `ledger/def/sequencer.easyfl`.
+12. Remove the sequencer-internal `sequencerPulseTicks` and drive the
+    pulse from `lib.TransactionPaceSequencer` directly.
 
 No policy/mechanics interface layer yet. The decision block lives inline
-in `doSequencerSlot`; if it ever needs replacement, extraction into a
-function behind an interface is easy and localised.
+in `doSequencerSlot`; extraction behind an interface remains easy if a
+future learned strategy wants to replace it.
 
 ## Future directions
 

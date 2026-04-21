@@ -81,6 +81,11 @@ type (
 		pendingSubmitMu     sync.Mutex
 		pendingSubmit       pendingSubmitStatus
 		lastOverloadLogSlot uint32
+		// lastPulseAnchor anchors the sequencer pulse (see strategy_async.go).
+		// Updated on: own-milestone tippool observation, successful or failed pulse attempt.
+		// The pulse fires when (time.Since(lastPulseAnchor) >= pulseInterval) AND the
+		// previous own milestone has been observed (pendingSubmit.awaiting == false).
+		lastPulseAnchor time.Time
 	}
 
 	pendingSubmitStatus struct {
