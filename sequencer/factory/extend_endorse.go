@@ -136,7 +136,11 @@ func (f *Factory) chooseBestExtendForEndorsement(endorse *vertex.WrappedTx, exte
 		switch {
 		case best == nil:
 			best = a
-		case a.FinalLedgerCoverage(syntheticTs) > best.FinalLedgerCoverage(syntheticTs):
+		// Tiebreaker: >= (not >) so later (newer-timestamp) candidates replace earlier
+		// (older) ones at equal coverage. extendCandidates is ordered oldest-first, so
+		// this picks the newest tip on tie — avoids generating siblings off an old output
+		// when a newer chain tip with the same coverage is available.
+		case a.FinalLedgerCoverage(syntheticTs) >= best.FinalLedgerCoverage(syntheticTs):
 			best.Close()
 			best = a
 		default:
