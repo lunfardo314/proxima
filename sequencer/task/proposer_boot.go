@@ -60,6 +60,8 @@ func (t *taskData) tryBootProposal() *finalProposal {
 		t.Log().Warnf("BootProposer-%s: finalize failed: %v", t.Name, err)
 		return nil
 	}
-	t.Tracef(TraceTagBootProposer, "exit with proposal in %s: extend = %s", t.Name, extend.IDStringShort)
+	lrbTxID := lrb.Stem.ID.TransactionID()
+	t.Log().Warnf("BootProposer-%s: FIRED target=%s extend=%s extSlot=%d baselineLRB=%s",
+		t.Name, t.targetTs.String(), extend.IDStringShort(), extend.VID.Slot(), lrbTxID.StringShort())
 	return fp
 }

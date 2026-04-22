@@ -22,26 +22,33 @@ func (t *taskData) tryBranchProposal() *finalProposal {
 		t.Log().Warnf("tryBranchProposal-%s: can't find own milestone output", t.Name)
 		return nil
 	}
+	extBaselineSlot := uint32(0)
+	if extBaseline, ok := extend.VID.BaselineBranch(); ok {
+		extBaselineSlot = extBaseline.Slot()
+	}
 	if !extend.VID.IsBranchTransaction() && extend.VID.Slot()+1 != t.targetTs.Slot {
-		// the latest output is beyond reach for the branch as the next transaction
-		t.Tracef(TraceTagBaseProposerExit, "OUT tryBranchProposal %s: latest output is beyond reach: %s", t.Name, extend.IDStringShort())
+		t.Log().Warnf("tryBranchProposal-%s: OUT_OF_REACH target=%d extend=%s extSlot=%d extIsBranch=%v extBaselineSlot=%d",
+			t.Name, t.targetTs.Slot, extend.IDStringShort(), extend.VID.Slot(), extend.VID.IsBranchTransaction(), extBaselineSlot)
 		return nil
 	}
 
 	if !ledger.ValidSequencerPace(extend.Timestamp(), t.targetTs) {
-		t.Tracef(TraceTagBaseProposerExit, "tryBranchProposal %s: invalid pace from %s", t.Name, extend.IDStringShort)
+		t.Log().Warnf("tryBranchProposal-%s: INVALID_PACE target=%s extend=%s extTs=%s",
+			t.Name, t.targetTs.String(), extend.IDStringShort(), extend.Timestamp().String())
 		return nil
 	}
 
 	a, err := attacher.NewIncrementalAttacher(t.Name, t.environment, t.targetTs, extend)
 	if err != nil {
-		t.Tracef(TraceTagBaseProposerExit, "tryBranchProposal %s: can't create attacher: '%v'", t.Name, err)
+		t.Log().Warnf("tryBranchProposal-%s: ATTACHER_FAIL target=%d extend=%s extSlot=%d extIsBranch=%v extBaselineSlot=%d err=%v",
+			t.Name, t.targetTs.Slot, extend.IDStringShort(), extend.VID.Slot(), extend.VID.IsBranchTransaction(), extBaselineSlot, err)
 		return nil
 	}
 
 	prop, err := t.newProposal(a)
 	if err != nil {
-		t.Tracef(TraceTagBaseProposerExit, "tryBranchProposal %s: can't create proposal: '%v'", t.Name, err)
+		t.Log().Warnf("tryBranchProposal-%s: PROPOSAL_FAIL target=%d extend=%s err=%v",
+			t.Name, t.targetTs.Slot, extend.IDStringShort(), err)
 		return nil
 	}
 
