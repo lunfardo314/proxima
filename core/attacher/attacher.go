@@ -732,8 +732,12 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 // CoverageDelta returns
 // - coverage delta (including frozen part)
 // - frozen part separately
+// Uses the global node context (a.Ctx()) rather than context.Background() so that
+// CoverageDeltaRaw — which reads state via BadgerDB — bails out cleanly on node
+// shutdown instead of racing with a closed DB and panicking. Any ctx error is
+// intentionally swallowed: during shutdown the result is unused (vertex is abandoned).
 func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
-	delta, frozen, _ = a.pastCone.CoverageDeltaRaw(context.Background(), a.getBaselineStateReader)
+	delta, frozen, _ = a.pastCone.CoverageDeltaRaw(a.Ctx(), a.getBaselineStateReader)
 	delta += a.coverageDeltaAdjustment()
 	return
 }

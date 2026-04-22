@@ -340,8 +340,10 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 
 		const doubleCheck = true
 		if doubleCheck {
-			// double check — no timeout, debug assertion only
-			conflict, _ := a.CheckConflicts(context.Background())
+			// debug assertion only — use a.ctx so state reads abort on shutdown instead
+			// of racing with a closed DB. ctx cancellation yields conflict=nil, err!=nil,
+			// which satisfies the Assertf (conflict == nil) — safe on shutdown.
+			conflict, _ := a.CheckConflicts(a.ctx)
 			a.Assertf(conflict == nil, "unexpected conflict %s in %s", conflict.IDStringShort(), a.name)
 		}
 
