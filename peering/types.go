@@ -82,6 +82,10 @@ type (
 		blacklist        map[peer.ID]_deadlineWithReason
 		cooloffList      map[peer.ID]time.Time
 		connectList      set.Set[peer.ID]
+		// reconnecting tracks in-flight static-peer reconnect goroutines so duplicate
+		// Notifiee.Disconnected events don't spawn parallel dials for the same peer.
+		// Guarded by the main mutex. Empty until phase 3a activates Notifiee.
+		reconnecting set.Set[peer.ID]
 
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID)

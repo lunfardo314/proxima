@@ -48,27 +48,6 @@ func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic, pullTargets int) {
 	return
 }
 
-func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
-	ps.withPeer(id, func(p *Peer) {
-		if p == nil {
-			return
-		}
-		if p._isDead() && p.lastLoggedConnected {
-			ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s')",
-				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
-			p.lastLoggedConnected = false
-			return
-		}
-
-		if p._isAlive() && !p.lastLoggedConnected {
-			ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s')",
-				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
-			p.lastLoggedConnected = true
-		}
-
-	})
-}
-
 func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	// received heartbeat message from peer
 	defer func() {

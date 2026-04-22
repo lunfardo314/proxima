@@ -35,6 +35,7 @@ func NewPeersDummy() *Peers {
 		peers:           make(map[peer.ID]*Peer),
 		blacklist:       make(map[peer.ID]_deadlineWithReason),
 		cooloffList:     make(map[peer.ID]time.Time),
+		reconnecting:    set.New[peer.ID](),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
 		onReceivePullTx: func(_ peer.ID, _ base.TransactionID) {},
 	}
@@ -57,6 +58,11 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("unable to create ConnManager: %w", err)
 	}
 
+	// gater is wired to the Peers struct later, once ret is constructed. During
+	// the tiny window between libp2p.New and the assignment below, gater methods
+	// return "allow" for any peer — there is no blacklist to consult yet.
+	gater := &connectionGater{}
+
 	options := []libp2p.Option{
 		libp2p.Identity(hostIDPrivateKey),
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", cfg.HostPort)),
@@ -65,6 +71,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		libp2p.DisableRelay(),
 		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
 		libp2p.ConnectionManager(connManager),
+		libp2p.ConnectionGater(gater),
 	}
 
 	if !cfg.DisableQuicreuse {
@@ -92,6 +99,7 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		blacklist:            make(map[peer.ID]_deadlineWithReason),
 		cooloffList:          make(map[peer.ID]time.Time),
 		connectList:          set.New[peer.ID](),
+		reconnecting:         set.New[peer.ID](),
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
 		onReceivePullTx:      func(_ peer.ID, _ base.TransactionID) {},
 		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
@@ -99,6 +107,11 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
 		rendezvousString:     fmt.Sprintf("%d", rendezvousNumber),
 	}
+
+	// wire the gater back-reference now that ret exists, and register the
+	// Notifiee for connection-level events.
+	gater.ps = ret
+	ret.host.Network().Notify(&peeringNotifiee{ps: ret})
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
@@ -189,8 +202,6 @@ func (ps *Peers) Run() {
 		peerIDs := ps.peerIDs()
 
 		for _, id := range peerIDs {
-			ps.logConnectionStatusIfNeeded(id)
-
 			idCopy := id
 			hbCounterCopy := hbCounter
 			ps.sendHeartbeatToPeer(idCopy, hbCounterCopy)
@@ -279,6 +290,9 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString strin
 	}
 	ps.Log().Infof("[peering] added pre-configured peer %s as '%s'", addrString, name)
 	ps.addPeer(info, name, true)
+	// tell ConnManager not to trim this connection when it hits the high watermark.
+	// Idempotent; safe on re-registration via cleanCoolofflist in current code.
+	ps.host.ConnManager().Protect(info.ID, "static")
 	_, found := ps.staticPeers[info.ID]
 	if !found {
 		ps.staticPeers[info.ID] = &staticPeerInfo{
