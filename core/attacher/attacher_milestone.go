@@ -380,7 +380,11 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.IDShortString)
 
-	if conflict, err := a.pastCone.CheckAndClean(context.Background(), a.getBaselineStateReader); err != nil {
+	// Use a.ctx (not context.Background) so that CheckAndClean — which reads state
+	// via a.getBaselineStateReader → multistate → BadgerDB — bails out cleanly when
+	// the node is shutting down. Otherwise the state read can race with the DB close
+	// during graceful shutdown and panic with "database is closed or unavailable".
+	if conflict, err := a.pastCone.CheckAndClean(a.ctx, a.getBaselineStateReader); err != nil {
 		a.setError(err)
 		v.UnReferenceDependencies()
 		return false, false
