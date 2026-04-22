@@ -80,7 +80,7 @@ func TestBasic2(t *testing.T) {
 	peers.Stop()
 }
 
-func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
+func makeHosts(t *testing.T, nHosts int) []*Peers {
 	hosts := make([]*Peers, nHosts)
 	var err error
 	for i := 0; i < nHosts; i++ {
@@ -88,20 +88,13 @@ func makeHosts(t *testing.T, nHosts int, trace bool) []*Peers {
 		env := newEnvironment()
 		hosts[i], err = New(env, cfg)
 		require.NoError(t, err)
-		if trace {
-			env.StartTracingTags(TraceTag)
-		}
 	}
 	return hosts
 }
 
 func TestHeartbeat(t *testing.T) {
-	const (
-		numHosts = 5
-		trace    = false
-	)
-	hosts := makeHosts(t, numHosts, trace)
-	//hosts[0].StartTracingTags(TraceTagSendMsg)
+	const numHosts = 5
+	hosts := makeHosts(t, numHosts)
 	for _, h := range hosts {
 		h.Run()
 	}
@@ -125,11 +118,8 @@ func TestHeartbeat(t *testing.T) {
 
 func TestSendMsg(t *testing.T) {
 	t.Run("1", func(t *testing.T) {
-		const (
-			numHosts = 5
-			trace    = false
-		)
-		hosts := makeHosts(t, numHosts, trace)
+		const numHosts = 5
+		hosts := makeHosts(t, numHosts)
 
 		for _, h := range hosts {
 			h1 := h
@@ -153,10 +143,9 @@ func TestSendMsg(t *testing.T) {
 	t.Run("2-from one host", func(t *testing.T) {
 		const (
 			numHosts = 5
-			trace    = false
 			numMsg   = 1000
 		)
-		hosts := makeHosts(t, numHosts, trace)
+		hosts := makeHosts(t, numHosts)
 		counter := countdown.New(numMsg*(numHosts-1), 2*time.Second)
 		var counter1 atomic.Int64
 		for _, h := range hosts {
@@ -193,10 +182,9 @@ func TestSendMsg(t *testing.T) {
 		// TODO test fails with bigger numMsg
 		const (
 			numHosts = 5
-			trace    = false
 			numMsg   = 90 // 100 // 721 // 720 pass, 721 does not
 		)
-		hosts := makeHosts(t, numHosts, trace)
+		hosts := makeHosts(t, numHosts)
 		counter := countdown.New(numHosts*numMsg*(numHosts-1), 20*time.Second)
 		var counter1 atomic.Int64
 		for _, h := range hosts {
@@ -239,10 +227,9 @@ func TestSendMsg(t *testing.T) {
 		// TODO test fails with bigger numMsg
 		const (
 			numHosts = 5
-			trace    = false
 			numMsg   = 700
 		)
-		hosts := makeHosts(t, numHosts, trace)
+		hosts := makeHosts(t, numHosts)
 		counter := countdown.New(numHosts*(numHosts-1)*numMsg, 10*time.Second)
 		t.Logf("sending %d messages", numHosts*(numHosts-1)*numMsg)
 
@@ -277,10 +264,9 @@ func TestSendMsg(t *testing.T) {
 	t.Run("pull", func(t *testing.T) {
 		const (
 			numHosts = 5
-			trace    = false
 			numTx    = 50
 		)
-		hosts := makeHosts(t, numHosts, trace)
+		hosts := makeHosts(t, numHosts)
 		counter := countdown.New(numTx*numHosts*(numHosts-1), 15*time.Second)
 
 		txSet := set.New[base.TransactionID]()

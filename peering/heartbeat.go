@@ -26,15 +26,10 @@ const (
 	flagRespondsToPullRequests = byte(0b00000001)
 )
 
-const (
-	TraceTagHeartBeatRecv = "peering_hb_recv"
-	TraceTagHeartBeatSend = "peering_hb_send"
-
-	// hbSendErrThreshold bounds how many consecutive heartbeat send failures are tolerated
-	// before considering dropping the peer. A transient stream reset costs 1; a genuinely
-	// gone peer accumulates them until the check fires.
-	hbSendErrThreshold = 10
-)
+// hbSendErrThreshold bounds how many consecutive heartbeat send failures are tolerated
+// before considering dropping the peer. A transient stream reset costs 1; a genuinely
+// gone peer accumulates them until the check fires.
+const hbSendErrThreshold = 10
 
 func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic, pullTargets int) {
 	ps.forEachPeerRLock(func(p *Peer) bool {
@@ -78,7 +73,6 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	// received heartbeat message from peer
 	defer func() {
 		_ = stream.Close()
-		ps.Tracef(TraceTagHeartBeatRecv, "[peering] hb: streamHandler exit")
 	}()
 
 	id := stream.Conn().RemotePeer()
@@ -87,7 +81,6 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {})
 	if blacklisted {
 		// ignore
-		ps.Tracef(TraceTagHeartBeatRecv, "[peering] node %s blacklisted", id.String())
 		// extend blacklisting
 		//ps.restartBlacklistTime(id)
 		return
@@ -95,18 +88,14 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
-			ps.Tracef(TraceTagHeartBeatRecv, "[peering] node does not take any incoming dynamic peers")
 			return
 		}
 		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
-	ps.Tracef(TraceTagHeartBeatRecv, "[peering] hb: ******** streamHandler started for %s", ShortPeerIDString(id))
-
 	// receive start
 	_, err := readFrame(stream)
 	if err != nil {
-		ps.Tracef(TraceTagHeartBeatRecv, "[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
 
@@ -121,7 +110,6 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		})
 
 		if err != nil {
-			ps.Log().Errorf("[peering] hb: error while reading message from peer %s: err='%v'. Ignore", ShortPeerIDString(id), err)
 			ps.dropPeer(id, err.Error(), false) // peer probably just restart
 			return
 		}
@@ -180,9 +168,6 @@ func (ps *Peers) _evidenceHeartBeat(p *Peer, hbInfo heartbeatInfo) {
 	p.lastHeartbeatReceived = nowis
 
 	p.respondsToPullRequests = hbInfo.respondsToPullRequests
-
-	ps.Tracef(TraceTagHeartBeatRecv, ">>>>> received #%d from %s: clock diff: %v, median: %v, responds to pull: %v, alive: %v",
-		hbInfo.counter, ShortPeerIDString(p.id), diff, q[1], p.respondsToPullRequests, p._isAlive())
 }
 
 func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
@@ -194,14 +179,12 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	}
 	p := ps.getPeer(id)
 	if p == nil {
-		ps.Tracef(TraceTagHeartBeatSend, "peer for node #%d nil. Ignore", ShortPeerIDString(id))
 		return
 	}
 	_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
 	})
 	if blacklisted {
 		// ignore
-		ps.Tracef(TraceTagHeartBeatSend, "node #%s blacklisted. Ignore", ShortPeerIDString(id))
 		p.numHBSendErr = 0
 		return
 	}
@@ -213,7 +196,6 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 		clock:                  time.Now(),
 	}
 	if ps.sendMsgBytesOut(id, ps.lppProtocolHeartbeat, msg.Bytes()) {
-		ps.Tracef(TraceTagHeartBeatSend, ">>>>>>> sent #%d to %s", hbCounter, ShortPeerIDString(id))
 		p.numHBSendErr = 0
 	} else {
 		p.numHBSendErr++

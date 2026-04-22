@@ -16,7 +16,6 @@ const PullTransactions = byte(iota)
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	defer func() {
 		_ = stream.Close()
-		ps.Tracef(TraceTagPeeringPeers, "[peering] pull: streamHandler exit")
 	}()
 
 	if ps.cfg.IgnoreAllPullRequests {
@@ -38,7 +37,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 			ps.Log().Warnf("[peering] node does not take any incoming dynamic peers")
 			return
 		}
-		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
 	if !static && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
@@ -49,7 +47,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	// receive start
 	_, err := readFrame(stream)
 	if err != nil {
-		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
 	var msgData []byte
@@ -67,7 +64,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 		ps.inMsgCounter.Inc()
 		switch {
 		case err != nil:
-			ps.Log().Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
 			return
 		case len(msgData) == 0:
 			ps.Log().Errorf("pull: error while reading message from peer %s: empty data", id.String())

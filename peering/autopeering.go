@@ -9,10 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-const (
-	TraceTagAutopeering = "autopeering"
-	checkPeersEvery     = 3 * time.Second
-)
+const checkPeersEvery = 3 * time.Second
 
 func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 	if id == ps.host.ID() {
@@ -25,8 +22,7 @@ func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 }
 
 func (ps *Peers) discoverPeersIfNeeded() {
-	aliveStatic, aliveDynamic, pullTargets := ps.NumAlive()
-	ps.Tracef(TraceTagAutopeering, "FindPeers: num alive dynamic = %d, static = %d, pull targets = %d", aliveDynamic, aliveStatic, pullTargets)
+	_, aliveDynamic, _ := ps.NumAlive()
 
 	if aliveDynamic >= ps.cfg.MaxDynamicPeers {
 		return
@@ -47,7 +43,6 @@ func (ps *Peers) discoverPeersIfNeeded() {
 			candidates = append(candidates, addrInfo)
 		}
 	}
-	ps.Tracef(TraceTagAutopeering, "FindPeers: len(candidates) = %d", len(candidates))
 
 	if len(candidates) == 0 {
 		return
@@ -61,7 +56,6 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	for _, a := range candidates {
 		if ps.addPeer(&a, "", false) {
 			ps.Log().Infof("[peering] added dynamic peer %s", a.ID.String())
-			ps.Tracef(TraceTagAutopeering, "added dynamic peer %s", a.String())
 		}
 	}
 }

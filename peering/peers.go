@@ -30,10 +30,6 @@ import (
 
 // TODO minimize synchronicity assumptions -> get rid of clock in hb, probably remove heartbeat protocol altogether
 
-const (
-	TraceTagPeeringPeers = "peering_peers"
-)
-
 func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
@@ -131,7 +127,6 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		p2putil.Advertise(env.Ctx(), ret.routingDiscovery, ret.rendezvousString)
 
 		env.Log().Infof("[peering] autopeering is enabled with max dynamic peers = %d", cfg.MaxDynamicPeers)
-		env.Tracef(TraceTagAutopeering, "autopeering is enabled")
 
 	} else {
 		env.Log().Infof("[peering] autopeering is disabled")
@@ -141,9 +136,17 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	ret.registerMetrics()
 
+	// log once per state transition (connected <-> disconnected) instead of every tick
+	disconnected := false
 	ret.RepeatInBackground("disconn_log_loop", 3*heartbeatRate, func() bool {
-		if ret.DurationSinceLastMessageFromPeer() > 2*heartbeatRate {
-			ret.Log().Warnf("[peering] node is DISCONNECTED from the network for %v", ret.DurationSinceLastMessageFromPeer())
+		d := ret.DurationSinceLastMessageFromPeer()
+		switch {
+		case d > 2*heartbeatRate && !disconnected:
+			ret.Log().Warnf("[peering] node is DISCONNECTED from the network (no incoming message for %v)", d)
+			disconnected = true
+		case d <= 2*heartbeatRate && disconnected:
+			ret.Log().Infof("[peering] node RECONNECTED to the network")
+			disconnected = false
 		}
 		return true
 	})
@@ -169,8 +172,6 @@ func (ps *Peers) SelfPeerID() peer.ID {
 func (ps *Peers) Host() host.Host {
 	return ps.host
 }
-
-const TraceTagPullTargets = "peering_pull_targets"
 
 func (ps *Peers) Run() {
 	ps.environment.MarkWorkProcessStarted(Name)
@@ -376,7 +377,6 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		time.Sleep(100 * time.Millisecond) //?? Delay
 		err := ps.dialPeer(addrInfo.ID, p)
 		if err != nil {
-			ps.Log().Warnf("[peering] dialPeer err %s", err.Error())
 			ps.host.Peerstore().RemovePeer(addrInfo.ID)
 			ps.mutex.Lock()
 			ps._removeFromConnectList(addrInfo.ID)
@@ -437,7 +437,6 @@ func (ps *Peers) _dropPeer(p *Peer, reason string, blacklist bool) {
 }
 
 func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
-	ps.Tracef(TraceTagPeeringPeers, "[peering] add to blacklist peer %s", ShortPeerIDString(id))
 	ps._removeFromCoolOffList(id)
 	ps.blacklist[id] = _deadlineWithReason{
 		Time:   time.Now().Add(time.Duration(ps.cfg.BlacklistTTL)),
@@ -456,16 +455,12 @@ func (ps *Peers) restartBlacklistTime(id peer.ID) {
 }
 
 func (ps *Peers) _addToCoolOfflist(id peer.ID) {
-	ps.Tracef(TraceTagPeeringPeers, "[peering] add to cooloff list peer %s", ShortPeerIDString(id))
-
 	if !ps._isInBlacklist(id) {
 		ps.cooloffList[id] = time.Now().Add(time.Duration(ps.cfg.CooloffListTTL))
 	}
 }
 
 func (ps *Peers) _removeFromCoolOffList(id peer.ID) {
-	ps.Tracef(TraceTagPeeringPeers, "[peering] remove from cooloff list peer %s", ShortPeerIDString(id))
-
 	_, found := ps.cooloffList[id]
 	if found {
 		delete(ps.cooloffList, id)
@@ -474,7 +469,6 @@ func (ps *Peers) _removeFromCoolOffList(id peer.ID) {
 
 func (ps *Peers) _addToConnectList(id peer.ID) {
 	if !ps.connectList.Contains(id) {
-		ps.Tracef(TraceTagPeeringPeers, "[peering] add to connect list peer %s", ShortPeerIDString(id))
 		ps.connectList.Insert(id)
 	}
 }
@@ -633,12 +627,10 @@ func (p *Peer) _isAlive() bool {
 	return time.Since(p.lastHeartbeatReceived) < aliveDuration
 }
 
-//const TraceTagSendMsg = "sendMsg"
-
 const (
-	sendMsgTimeout   = 4 * time.Second
-	redialTimeout    = 2 * time.Second
-	sendMsgMaxTries  = 2 // one initial + one retry after redial
+	sendMsgTimeout  = 4 * time.Second
+	redialTimeout   = 2 * time.Second
+	sendMsgMaxTries = 2 // one initial + one retry after redial
 )
 
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
@@ -649,7 +641,6 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 		}
 	})
 	if ps_ == nil {
-		ps.Tracef(TraceTagPeeringPeers, "[peering] sendMsgBytesOut: no peerStream for peer %s id=%s", ShortPeerIDString(peerID), protocolID)
 		return false
 	}
 
@@ -658,7 +649,6 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 	// cycle triggered whenever a stream reset occurs on an otherwise-healthy peer.
 	for attempt := 0; attempt < sendMsgMaxTries; attempt++ {
 		if err := ps.ensurePeerStream(peerID, protocolID, ps_); err != nil {
-			ps.Tracef(TraceTagPeeringPeers, "[peering] redial to peer %s id=%s failed: %v", ShortPeerIDString(peerID), protocolID, err)
 			return false
 		}
 		if ps.writeFrameToPeerStream(ps_, data) {
@@ -668,7 +658,6 @@ func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []
 		// write failed — clear the cached stream so the next iteration redials
 		ps.clearPeerStream(ps_)
 	}
-	ps.Tracef(TraceTagPeeringPeers, "[peering] send to peer %s id=%s failed after %d tries", ShortPeerIDString(peerID), protocolID, sendMsgMaxTries)
 	return false
 }
 

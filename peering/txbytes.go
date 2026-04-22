@@ -13,7 +13,6 @@ import (
 func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	defer func() {
 		_ = stream.Close()
-		ps.Tracef(TraceTagPeeringPeers, "[peering] gossip: streamHandler exit")
 	}()
 
 	id := stream.Conn().RemotePeer()
@@ -30,13 +29,11 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			ps.Log().Warnf("[peering] node does not take any incoming dynamic peers")
 			return
 		}
-		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
 	// receive start
 	_, err := readFrame(stream)
 	if err != nil {
-		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
 
@@ -55,7 +52,6 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			return
 		}
 		if err != nil {
-			ps.Log().Errorf("gossip: error while reading message from peer %s: %v", id.String(), err)
 			return
 		}
 		if len(txBytesWithMetadata) < base.TransactionIDLength {

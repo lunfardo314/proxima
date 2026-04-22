@@ -137,10 +137,7 @@ type (
 	}
 )
 
-const (
-	Name     = "peers"
-	TraceTag = Name
-)
+const Name = "peers"
 
 const (
 	// protocol name templates. Last component is first 8 bytes of ledger constraint library hash, interpreted as bigendian uint64
