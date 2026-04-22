@@ -54,15 +54,15 @@ func (ps *Peers) logConnectionStatusIfNeeded(id peer.ID) {
 			return
 		}
 		if p._isDead() && p.lastLoggedConnected {
-			ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s'). Host (self): %s",
-				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
+			ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s')",
+				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
 			p.lastLoggedConnected = false
 			return
 		}
 
 		if p._isAlive() && !p.lastLoggedConnected {
-			ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s'). Host (self): %s",
-				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name, ShortPeerIDString(ps.host.ID()))
+			ps.Log().Infof("[peering] CONNECTED to %s peer %s ('%s')",
+				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
 			p.lastLoggedConnected = true
 		}
 
