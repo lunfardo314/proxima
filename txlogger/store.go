@@ -230,8 +230,24 @@ func (s *TxLogStore) TxLogIterate(begin time.Time, fun func(rec global.TxLogReco
 	return nil
 }
 
+// ttlBatchSize is the maximum number of keys accumulated in memory before a
+// deletion batch is committed. Two keys per record (time index + tx index), so
+// 10_000 keys = 5_000 records per commit. Keeps peak memory during cleanup
+// bounded to a few MB regardless of backlog size and stays well under Badger's
+// MaxTxnSize, which otherwise fails the whole commit with "Txn is too big to
+// fit into one request" when the backlog is large.
+const ttlBatchSize = 10_000
+
 // DeleteExpired deletes records older than the specified TTL.
 // Returns the number of deleted records.
+//
+// Streams the deletion in bounded batches (see ttlBatchSize) so peak memory is
+// independent of backlog size. The previous implementation collected the entire
+// expired set into one []byte slice and committed a single batch, which (1)
+// allocated proportionally to the backlog — observed spikes up to ~3 GB on
+// acc nodes with ~500 MB of accumulated txlog — and (2) failed atomically with
+// Badger's "Txn is too big" error once the batch exceeded MaxTxnSize, leaving
+// the backlog intact for the next 10-minute cycle.
 //
 // Holds the RLock for the full operation (see WriteRecord). This is the
 // path that triggered the shutdown-time SIGSEGV when Close ran concurrently
@@ -247,41 +263,53 @@ func (s *TxLogStore) DeleteExpired(ttl time.Duration) (int, error) {
 	cutoffNs := time.Now().Add(-ttl).UnixNano()
 	prefix := makeKeyByTimePrefix()
 
-	// Collect keys to delete
-	var keysToDelete [][]byte
+	keysToDelete := make([][]byte, 0, ttlBatchSize)
+	totalDeleted := 0
+	var flushErr error
+
+	flush := func() error {
+		if len(keysToDelete) == 0 {
+			return nil
+		}
+		batch := s.db.BatchedWriter()
+		for _, key := range keysToDelete {
+			batch.Set(key, nil) // nil value deletes the key
+		}
+		if err := batch.Commit(); err != nil {
+			return err
+		}
+		totalDeleted += len(keysToDelete) / 2 // each record contributes 2 keys
+		keysToDelete = keysToDelete[:0]
+		return nil
+	}
 
 	s.db.Iterator(prefix).Iterate(func(k, v []byte) bool {
 		clockNs, txShortID, err := parseKeyByTime(k)
 		if err != nil {
 			return true
 		}
-
-		if clockNs < cutoffNs {
-			// Add both keys to delete list
-			keysToDelete = append(keysToDelete, copyBytes(k))
-			keysToDelete = append(keysToDelete, makeKeyByTx(txShortID, clockNs))
-		} else {
-			// Records are sorted by time, so we can stop when we reach non-expired records
+		if clockNs >= cutoffNs {
+			// records are sorted by time; past the cutoff means the rest are all live
 			return false
+		}
+		keysToDelete = append(keysToDelete, copyBytes(k))
+		keysToDelete = append(keysToDelete, makeKeyByTx(txShortID, clockNs))
+		if len(keysToDelete) >= ttlBatchSize {
+			if err := flush(); err != nil {
+				flushErr = err
+				return false // stop iteration on commit failure
+			}
 		}
 		return true
 	})
 
-	if len(keysToDelete) == 0 {
-		return 0, nil
+	if flushErr != nil {
+		return totalDeleted, flushErr
 	}
-
-	// Delete in batch
-	batch := s.db.BatchedWriter()
-	for _, key := range keysToDelete {
-		batch.Set(key, nil) // nil value deletes the key
+	if err := flush(); err != nil {
+		return totalDeleted, err
 	}
-	err := batch.Commit()
-	if err != nil {
-		return 0, err
-	}
-
-	return len(keysToDelete) / 2, nil // each record has 2 keys
+	return totalDeleted, nil
 }
 
 // RunGC runs Badger's garbage collection.
