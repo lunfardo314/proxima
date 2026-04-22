@@ -22,13 +22,16 @@ func (t *taskData) tryBranchProposal() *finalProposal {
 		t.Log().Warnf("tryBranchProposal-%s: can't find own milestone output", t.Name)
 		return nil
 	}
-	extBaselineSlot := uint32(0)
-	if extBaseline, ok := extend.VID.BaselineBranch(); ok {
-		extBaselineSlot = extBaseline.Slot()
+	// Note: extend.VID.BaselineBranch() panics on VirtualTx, so only call it when safe.
+	extBaselineSlot := int64(-1)
+	if !extend.VID.IsVirtualTx() {
+		if extBaseline, ok := extend.VID.BaselineBranch(); ok {
+			extBaselineSlot = int64(extBaseline.Slot())
+		}
 	}
 	if !extend.VID.IsBranchTransaction() && extend.VID.Slot()+1 != t.targetTs.Slot {
-		t.Log().Warnf("tryBranchProposal-%s: OUT_OF_REACH target=%d extend=%s extSlot=%d extIsBranch=%v extBaselineSlot=%d",
-			t.Name, t.targetTs.Slot, extend.IDStringShort(), extend.VID.Slot(), extend.VID.IsBranchTransaction(), extBaselineSlot)
+		t.Log().Warnf("tryBranchProposal-%s: OUT_OF_REACH target=%d extend=%s extSlot=%d extIsBranch=%v extIsVirtual=%v extBaselineSlot=%d",
+			t.Name, t.targetTs.Slot, extend.IDStringShort(), extend.VID.Slot(), extend.VID.IsBranchTransaction(), extend.VID.IsVirtualTx(), extBaselineSlot)
 		return nil
 	}
 
