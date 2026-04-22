@@ -319,45 +319,31 @@ func (ps *Peers) NewStream(peerID peer.ID, pID protocol.ID, timeout time.Duratio
 	return stream, err
 }
 
-func (ps *Peers) dialPeer(peerID peer.ID, peer *Peer) error {
+// dialPeer establishes the libp2p connection to the peer and initialises the
+// peerStream map with an empty entry per application protocol. The actual
+// protocol streams are opened lazily on first send via ensurePeerStream — the
+// same redial path that handles transient stream resets. This avoids paying
+// 3x multistream-select negotiation up front (one RTT per stream per new
+// peer) when only one protocol is likely to be used first, and unifies
+// "initial open" with "reopen after reset" in a single code path.
+//
+// peerstore addresses are registered by _addPeer before this goroutine runs,
+// so passing AddrInfo with ID only is sufficient — libp2p resolves the addrs
+// from the peerstore.
+func (ps *Peers) dialPeer(peerID peer.ID, p *Peer) error {
 	timeout := 15 * time.Second
+	ctx, cancel := context.WithTimeout(ps.Ctx(), timeout)
+	defer cancel()
 
-	peer.streams = make(map[protocol.ID]*peerStream)
-	// the NewStream waits until context is done
-
-	stream, err := ps.NewStream(peerID, ps.lppProtocolHeartbeat, timeout)
-	if err != nil {
+	if err := ps.host.Connect(ctx, peer.AddrInfo{ID: peerID}); err != nil {
 		return err
 	}
-	peer.streams[ps.lppProtocolHeartbeat] = &peerStream{
-		stream: stream,
+	p.streams = map[protocol.ID]*peerStream{
+		ps.lppProtocolHeartbeat: {},
+		ps.lppProtocolPull:      {},
+		ps.lppProtocolGossip:    {},
 	}
-	stream, err = ps.NewStream(peerID, ps.lppProtocolPull, timeout)
-	if err != nil {
-		for _, s := range peer.streams {
-			if s.stream != nil {
-				_ = s.stream.Close()
-			}
-		}
-		return err
-	}
-	peer.streams[ps.lppProtocolPull] = &peerStream{
-		stream: stream,
-	}
-	stream, err = ps.NewStream(peerID, ps.lppProtocolGossip, timeout)
-	if err != nil {
-		for _, s := range peer.streams {
-			if s.stream != nil {
-				_ = s.stream.Close()
-			}
-		}
-		return err
-	}
-	peer.streams[ps.lppProtocolGossip] = &peerStream{
-		stream: stream,
-	}
-
-	return err
+	return nil
 }
 
 func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
