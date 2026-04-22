@@ -132,8 +132,9 @@ type (
 		// Used by attach queues and sequencer to shed load during snapshot.
 		IsSnapshotting() bool
 		SetSnapshotting(on bool)
-		// MemoryPressureGC forces GC when heap exceeds 50% of memory.limit_mb.
-		// Pauses briefly if still above 70% after GC. No-op when limit not configured.
+		// MemoryPressureGC is a non-blocking nudge to the async GC worker. Safe on any hot path.
+		// The worker serialises runtime.GC() off-thread, rate-limits to one GC per 5s, and only
+		// runs when heap is above 50% of memory.limit_mb. No-op when limit not configured.
 		MemoryPressureGC()
 		MemLimitBytes() uint64
 		// MemoryStressLevel returns the current memory stress level (0-100).

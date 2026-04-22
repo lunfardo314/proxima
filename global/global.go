@@ -55,9 +55,10 @@ type Global struct {
 	//
 	disableDeadlockCatching bool
 	// memory pressure management
-	memLimitBytes        uint64
-	lastPressureGCNs     atomic.Int64 // UnixNano of last MemoryPressureGC execution
-	memoryStressLevel    atomic.Int32 // current stress level 0-100, updated every stressComputeInterval
+	memLimitBytes     uint64
+	lastPressureGCNs  atomic.Int64    // UnixNano of last actual runtime.GC() from the async worker
+	memoryStressLevel atomic.Int32    // current stress level 0-100, updated every stressComputeInterval
+	gcRequestCh       chan struct{}   // coalescing request channel for the async GC worker (buffered size 1)
 }
 
 var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
@@ -148,6 +149,7 @@ func NewFromConfig() *Global {
 	if limitMB := viper.GetInt("memory.limit_mb"); limitMB > 0 {
 		ret.memLimitBytes = uint64(limitMB) << 20
 	}
+	ret.startAsyncGCWorker()
 	ret.startStressLevelComputation()
 	return ret
 }
@@ -172,6 +174,7 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		counters:           make(map[string]int),
 		txPullRepeatPeriod: PullRepeatPeriodDefault,
 		txPullMaxAttempts:  PullMaxAttemptsDefault,
+		gcRequestCh:        make(chan struct{}, 1),
 	}
 	ret.registerMetrics()
 	return ret
@@ -243,9 +246,8 @@ const (
 )
 
 // startStressLevelComputation starts a background loop that recomputes memory stress every second.
-// GC frequency is managed by GOGC (set at node startup, default 50) rather than explicit
-// runtime.GC() calls. Push-triggered MemoryPressureGC after bulk operations (branch commits,
-// pruning) remains for spike handling.
+// Also pings the async GC worker when stress crosses stressGCPingPct — this catches bursts
+// from operations that don't call MemoryPressureGC directly (e.g. forward-sync batches).
 // No-op when memory.limit_mb is not configured.
 func (l *Global) startStressLevelComputation() {
 	if l.memLimitBytes == 0 {
@@ -259,34 +261,74 @@ func (l *Global) startStressLevelComputation() {
 			level = 100
 		}
 		l.memoryStressLevel.Store(level)
+		if level >= stressGCPingPct {
+			l.pingGCWorker()
+		}
 		return true
 	})
 }
 
 const (
-	memPressureGCPct      = 50 // force GC when heap exceeds this % of limit
-	memPressurePausePct   = 70 // pause briefly after GC if heap still exceeds this %
-	memPressurePause      = 500 * time.Millisecond
-	memPressureMinInterval = 100 * time.Millisecond // minimum interval between GC invocations
+	memPressureGCPct   = 50                // force GC when heap exceeds this % of limit
+	stressGCPingPct    = 60                // stress loop pings the GC worker when level reaches this
+	asyncGCMinInterval = 5 * time.Second   // minimum interval between actual runtime.GC() runs in the async worker
 )
 
-// MemoryPressureGC checks actual heap allocation against the configured memory limit.
-// If above 50%, forces GC. If still above 70% after GC, pauses briefly to let GC finish.
+// MemoryPressureGC is a non-blocking signal that asks the async GC worker to consider running GC.
+// Safe to call from any hot path — this function does not run GC itself, only nudges the worker.
+// The worker decides whether to actually GC based on heap threshold and rate limit.
 // No-op when memory.limit_mb is not configured.
-// Skips if called within memPressureMinInterval of the last invocation to prevent
-// concurrent callers from stacking GC cycles and pauses.
-// Called by any component that generates heavy allocations (branch commits, snapshots, etc.)
 func (l *Global) MemoryPressureGC() {
 	if l.memLimitBytes == 0 {
 		return
 	}
-	now := time.Now().UnixNano()
-	last := l.lastPressureGCNs.Load()
-	if now-last < int64(memPressureMinInterval) {
+	l.pingGCWorker()
+}
+
+// pingGCWorker performs a non-blocking send to the coalescing GC request channel. If a request
+// is already pending, this call is a no-op — multiple callers in the same burst collapse into
+// a single worker wake-up.
+func (l *Global) pingGCWorker() {
+	select {
+	case l.gcRequestCh <- struct{}{}:
+	default:
+	}
+}
+
+// startAsyncGCWorker launches a single goroutine that serialises runtime.GC() calls off the
+// hot paths. The worker blocks on gcRequestCh and, on each request, only runs GC if:
+//   - at least asyncGCMinInterval has elapsed since the last GC (rate limit), AND
+//   - heap allocation is above memPressureGCPct % of memory.limit_mb.
+// Otherwise it no-ops, as per design spec.
+// No-op when memory.limit_mb is not configured.
+func (l *Global) startAsyncGCWorker() {
+	if l.memLimitBytes == 0 {
 		return
 	}
-	// best-effort dedup: only one caller proceeds if multiple arrive simultaneously
-	if !l.lastPressureGCNs.CompareAndSwap(last, now) {
+	const name = "mem_pressure_gc_worker"
+	l.MarkWorkProcessStarted(name)
+	l.LogTopicf("lifecycle", 0, "[%s] STARTED", name)
+	go func() {
+		defer func() {
+			l.MarkWorkProcessStopped(name)
+			l.LogTopicf("lifecycle", 0, "[%s] STOPPED", name)
+		}()
+		for {
+			select {
+			case <-l.ctx.Done():
+				return
+			case <-l.gcRequestCh:
+				l.maybeRunGC()
+			}
+		}
+	}()
+}
+
+// maybeRunGC is the worker-side decision point: rate limit + heap threshold.
+func (l *Global) maybeRunGC() {
+	now := time.Now().UnixNano()
+	last := l.lastPressureGCNs.Load()
+	if now-last < int64(asyncGCMinInterval) {
 		return
 	}
 	var ms runtime.MemStats
@@ -296,13 +338,7 @@ func (l *Global) MemoryPressureGC() {
 		return
 	}
 	runtime.GC()
-	runtime.ReadMemStats(&ms)
-	pauseThreshold := uint64(float64(l.memLimitBytes) * memPressurePausePct / 100)
-	if ms.Alloc > pauseThreshold {
-		l.Log().Warnf("[memory] pressure: %d MB after GC (limit %d MB), pausing %v",
-			ms.Alloc>>20, l.memLimitBytes>>20, memPressurePause)
-		time.Sleep(memPressurePause)
-	}
+	l.lastPressureGCNs.Store(time.Now().UnixNano())
 }
 
 func (l *Global) Ctx() context.Context {
