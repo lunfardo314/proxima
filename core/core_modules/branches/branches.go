@@ -321,9 +321,14 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	// create updatable state from baseline root
 	upd := multistate.MustNewUpdatable(b.StateStore(), baselineRoot)
 
+	// pb.Mutations must stay immutable after AddPendingBranch: it is read without b.mutex
+	// by virtualStateReader and under b.mutex by branchKnowsTransactionCompute /
+	// GetChainOutputFromBranch. Apply commit-time appends (upgrade inject, GC) to a clone.
+	muts := pb.Mutations.Clone()
+
 	// inject any missing upgrade UTXOs
 	baselineReader := multistate.MustNewReadable(b.StateStore(), baselineRoot, 0)
-	injectedUpgrades := multistate.InjectMissingUpgradeUTXOs(pb.Mutations, baselineReader, branchID.Slot())
+	injectedUpgrades := multistate.InjectMissingUpgradeUTXOs(muts, baselineReader, branchID.Slot())
 
 	// log upgrade activations
 	for _, upg := range injectedUpgrades {
@@ -340,17 +345,17 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	if branchID.Slot() > pb.TxIDTTLSlots {
 		gcSlot := branchID.Slot() - pb.TxIDTTLSlots
 		gcTxIDs := upd.Readable().PrunableTxIDsAtSlot(gcSlot)
-		pb.Mutations.DeleteTxIDs(gcTxIDs...)
+		muts.DeleteTxIDs(gcTxIDs...)
 		// Set GCSlot so that output deletions also clean up TX records
 		// for TXs that missed the per-slot GC scan because they still had unspent outputs
-		pb.Mutations.GCSlot = gcSlot
+		muts.GCSlot = gcSlot
 	}
 
 	// commit to DB
-	err := upd.Update(pb.Mutations, pb.RootRecParams)
+	err := upd.Update(muts, pb.RootRecParams)
 	if err != nil {
 		err = fmt.Errorf("_commitPendingBranchUnlocked(%s) baseline=%s -> %w:\n-------- mutations --------\n%s",
-			branchID.StringShort(), pb.BaselineBranchID.StringShort(), err, pb.Mutations.Lines("    ").String())
+			branchID.StringShort(), pb.BaselineBranchID.StringShort(), err, muts.Lines("    ").String())
 	}
 	b.Assertf(err == nil, "%v", err)
 

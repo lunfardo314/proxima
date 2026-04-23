@@ -312,6 +312,18 @@ func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
 	}
 }
 
+// Clone returns a shallow copy with a fresh backing array for mut.
+// mutationCmd elements are treated as immutable and not deep-copied.
+// Use before mutating if the original is referenced by concurrent readers.
+func (mut *Mutations) Clone() *Mutations {
+	if mut == nil {
+		return nil
+	}
+	cp := make([]mutationCmd, len(mut.mut))
+	copy(cp, mut.mut)
+	return &Mutations{mut: cp, GCSlot: mut.GCSlot}
+}
+
 func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
 	var stateKey [1 + base.OutputIDLength]byte
 	stateKey[0] = TriePartitionLedgerState
