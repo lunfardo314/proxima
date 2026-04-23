@@ -174,6 +174,16 @@ func (p *ProximaNode) DiagCompareReaders(branchID base.TransactionID, oid base.O
 	return result
 }
 
+// DiagListBranchesAtSlot diagnostic helper.
+func (p *ProximaNode) DiagListBranchesAtSlot(slot uint32) []map[string]any {
+	return p.workflow.Branches().DiagListBranchesAtSlot(slot)
+}
+
+// DiagAllPendingBranches diagnostic helper.
+func (p *ProximaNode) DiagAllPendingBranches() []map[string]any {
+	return p.workflow.Branches().DiagAllPendingBranches()
+}
+
 func (p *ProximaNode) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
 	return p.workflow.CheckTransactionInLRB(txid, maxDepth)
 }
