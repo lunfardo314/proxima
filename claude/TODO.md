@@ -32,3 +32,10 @@ This file contains TODO list for future Claude sessions.
   snapshot and formed a divergent mainchain. Forward-sync rejected peers'
   branches as "not in main chain (possible fork)". Resolved manually by copying
   boot's snapshot to the other three nodes.
+
+## Tools
+
+- APIs exposed by `proxi db txstore dagviz` should be exposed by the node
+- limit number of dagviz connection (it is already the case). Add clear message for the user if that is the case
+- Default of the dagviz connection time let be 20 min
+- remove `proxi multispam` from `proxima' repo` and move to separate private repo
