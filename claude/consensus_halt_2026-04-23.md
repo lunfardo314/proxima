@@ -131,6 +131,54 @@ develop07-peering + restart all 4 sequencers) becomes the right remediation.
   (`pprof.external_access_enabled: true` in proxima.yaml). Useful for
   goroutine dumps without restart.
 
+## Closing the investigation — outcome and fixes (end of 2026-04-23)
+
+The corrupted in-memory state on boot/loc0/loc1 did not produce any additional
+insight beyond "the `pb.Mutations` race leaves b.pending/b.m inconsistent; the
+inconsistency prevents branch proposals." Further poking of their state was
+ruled out in favour of a clean-state restart against the fixed binary.
+
+### What shipped on `develop07-peering`
+
+- `ff05e018` — race fix on `pb.Mutations` during deferred branch commit
+  (`Mutations.Clone()`). This is the **root cause fix**.
+- `622f486f` — enriched `ATTACHER_FAIL` / `checkOutputInTheState` logs with
+  full baseline branch id, `b.pending` flag, root hex. Low-cost permanent
+  diagnostic for future state-corruption incidents.
+- `726c8128`, `511e5a1a`, `dedde301` — three read-only debug endpoints
+  (`/api/v1/debug_compare_readers`, `/api/v1/debug_branches_at_slot`,
+  `/api/v1/debug_pending_branches`) plus helpers on `Branches` / `ProximaNode`,
+  **gated behind `debug.enable` config flag**.
+- `c2e3bac4` — `bootstrapOwnMilestoneOutput` always starts from the LRB
+  rather than iterating tippool-reported milestones. Bounds the attacher
+  past-cone walk at the LRB's committed state; eliminates the cold-start
+  deadlock path that tripped the sequencer watchdog during the investigation.
+
+### What was dropped
+
+- Tolerance bumps (`selfAttachmentLatencyToleranceTicks`, `deadlockTolerance`)
+  — those were diagnostic work-arounds. With the boot-proposer fix the
+  underlying blocking path is gone, so the watchdog's default 30 s is fine.
+- Task ctx plumbing through `AttachTxID` / `pullIfNeeded` — was going to be
+  belt-and-suspenders for bounded `task.Run` wall-clock; decided unnecessary
+  once the primary blocking path was closed. File as a follow-up only if we
+  see the watchdog fire again under load.
+
+### Testnet reset plan (executed in this session)
+
+1. Final `go build` + `go test -race` on `develop07-peering`.
+2. Push `develop07-peering`.
+3. Revert the seq1 diag-session local changes (restore original
+   `proxima.yaml`, original binary, systemd unit) so the reset uses the
+   real production posture.
+4. Stop all 4 nodes, wipe DB + txstore + txlog on each, snapshot-restore
+   from the genesis snapshot, restart in order `boot → loc0 → seq1 → loc1`.
+5. Re-enable spammer / faucet once all 4 are healthy.
+6. Watch `proxima_lrb_slots_behind` (should stay ≤ 2), `proxima_general_gauge_att`
+   (should stay bounded), and the newly-enriched `ATTACHER_FAIL` log lines
+   (should never fire). Any recurrence has the full diag toolkit available
+   via `debug.enable: true` on one node.
+
 ## Key files for next-session reference
 
 - `core/core_modules/branches/branches.go` — branch commit lifecycle, the
