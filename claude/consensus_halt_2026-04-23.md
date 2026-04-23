@@ -131,6 +131,22 @@ develop07-peering + restart all 4 sequencers) becomes the right remediation.
   (`pprof.external_access_enabled: true` in proxima.yaml). Useful for
   goroutine dumps without restart.
 
+## 2026-04-23 evening — loop ended, return next day
+
+Session closed while testnet stayed healthy. Last canary snapshot (~16:34 and
+again ~17:0X): all 8 instances up, LRB lag 1 slot, each of 4 sequencers at
+0.095 br/s, memDAG ~380–480 vertices, goroutines ~180–200, zero panics /
+DEADLOCK / ATTACHER_FAIL in the 30-minute window. Attachment duration sample
+2–150 ms typical on most instances; no 2000 ms spikes in the last iteration.
+
+The self-paced observation loop produced nothing more interesting than a
+baseline — no incidents, no trigger events, nothing actionable. Plan for the
+next session: skim journalctl from each of the 4 testnet boxes
+(`proxima-boot*`, `proxima-loc0*`, `proxima-seq1*`, `proxima-loc1*`) for the
+overnight window; compare `proxima_glb_attachmentDurationMs` trend against
+the earlier pre-halt pattern to see whether the regression is improving or
+holding steady.
+
 ## Closing the investigation — outcome and fixes (end of 2026-04-23)
 
 The corrupted in-memory state on boot/loc0/loc1 did not produce any additional
