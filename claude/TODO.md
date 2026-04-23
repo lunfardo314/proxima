@@ -1,5 +1,18 @@
 # TODO — backlog
 
+## Attachment time regression
+
+- **Attachment time is long and volatile.** Grafana "Attachment time
+  milliseconds" on 2026-04-22/23 shows values in the 500–3000 ms range with
+  high variance; in an idle network this metric should be ~1 ms. Something on
+  `develop07-peering` has introduced a significant regression on the attacher
+  hot path. The effect is visible even before the halt (post-halt the metric
+  plateaus because nothing new attaches, but the pre-halt variance is already
+  far above normal). Bisect against recent `develop07-peering` commits to find
+  which change increased attacher wall-clock; likely candidates are the
+  peering refactor steps, LRB-depth pruning tweaks, and the sibling-commit
+  path on access nodes. Screenshot: `attachment_time.png`.
+
 ## Snapshot protocol
 
 - **Don't rush snapshotting right after start.** Wait at least ~30 slots after the
