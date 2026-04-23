@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh lunfardo@113.30.191.219:*)",
+      "Bash(ssh lunfardo@63.250.56.190:*)",
+      "Bash(ssh lunfardo@83.229.84.197:*)",
+      "Bash(ssh lunfardo@5.180.181.103:*)",
+      "Bash(ssh -o ProxyJump=lunfardo@113.30.191.219 lunfardo@*:*)",
+      "Bash(scp lunfardo@*:*)",
+      "Bash(go vet:*)"
+    ]
+  }
+}

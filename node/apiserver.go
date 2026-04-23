@@ -1,6 +1,7 @@
 package node
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -117,6 +118,60 @@ func (p *ProximaNode) LatestReliableState() (multistate.SugaredStateReader, erro
 		return multistate.SugaredStateReader{}, fmt.Errorf("LatestReliableState: can't find latest reliable branch")
 	}
 	return multistate.MakeSugared(p.workflow.Branches().GetStateReaderForTheBranch(lrb.TxID()), p), nil
+}
+
+// DiagCompareReaders is a diagnostic helper for the 2026-04-23 consensus halt.
+// It looks up the output `oid` through both state-reader paths used in production —
+// GetStateReaderForTheBranch (used by the API) and GetVirtualStateReaderForTheBranch
+// (used by the incremental attacher) — and reports their results side by side along
+// with internal bookkeeping about the branch. Remove before shipping.
+func (p *ProximaNode) DiagCompareReaders(branchID base.TransactionID, oid base.OutputID) map[string]any {
+	br := p.workflow.Branches()
+	snapID := br.SnapshotBranchID()
+	result := map[string]any{
+		"branchID":       (&branchID).StringHex(),
+		"outputID":       (&oid).StringHex(),
+		"isPending":      br.IsPending(branchID),
+		"rootHex":        br.GetRootHex(branchID),
+		"snapshotBranch": (&snapID).StringHex(),
+	}
+
+	lookupBitmap := func(rdr multistate.StateReader) any {
+		if rr, ok := rdr.(*multistate.Readable); ok {
+			if unspent, ok2 := rr.GetTxUnspentOutputSet(oid.TransactionID()); ok2 {
+				return unspent.Elements()
+			}
+			return "tx record not in trie"
+		}
+		return "reader is not *Readable (virtual overlay)"
+	}
+
+	rdrApi := br.GetStateReaderForTheBranch(branchID)
+	if rdrApi == nil {
+		result["apiReader"] = "nil"
+	} else {
+		dataApi, foundApi := rdrApi.GetUTXO(oid)
+		rApi := map[string]any{"found": foundApi, "dataLen": len(dataApi)}
+		if foundApi {
+			rApi["dataHex"] = hex.EncodeToString(dataApi)
+		}
+		rApi["bitmapElements"] = lookupBitmap(rdrApi)
+		result["apiReader"] = rApi
+	}
+
+	rdrAtt := br.GetVirtualStateReaderForTheBranch(branchID)
+	if rdrAtt == nil {
+		result["attacherReader"] = "nil"
+	} else {
+		dataAtt, foundAtt := rdrAtt.GetUTXO(oid)
+		rAtt := map[string]any{"found": foundAtt, "dataLen": len(dataAtt)}
+		if foundAtt {
+			rAtt["dataHex"] = hex.EncodeToString(dataAtt)
+		}
+		rAtt["bitmapElements"] = lookupBitmap(rdrAtt)
+		result["attacherReader"] = rAtt
+	}
+	return result
 }
 
 func (p *ProximaNode) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {

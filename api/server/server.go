@@ -32,6 +32,10 @@ type (
 		GetSyncInfo() *api.SyncInfo
 		GetPeersInfo() *api.PeersInfo
 		LatestReliableState() (multistate.SugaredStateReader, error)
+		// DiagCompareReaders: diagnostic helper for consensus-halt 2026-04-23.
+		// Returns a JSON-marshalable map with results of looking up `oid` against the
+		// branch `branchID` via BOTH paths used in production code, plus bookkeeping.
+		DiagCompareReaders(branchID base.TransactionID, oid base.OutputID) map[string]any
 		CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int)
 		SubmitTxBytesFromAPI(txBytes []byte)
 		GetLatestReliableBranch() *multistate.BranchData
@@ -119,6 +123,10 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetSnapshotInfo, srv.getSnapshotInfo)
 	// GET snapshot file download /get_snapshot (binary, enable with snapshot.enable_api)
 	srv.addHandler(api.PathGetSnapshot, srv.getSnapshot)
+
+	// DIAG 2026-04-23: compare API-path vs attacher-path state readers for a given
+	// (branchid, outputid). /api/v1/debug_compare_readers?branchid=<hex>&outputid=<hex>
+	srv.addHandler("/api/v1/debug_compare_readers", srv.debugCompareReaders)
 
 	// Transaction logger API
 	// POST /api/v1/txlog/enable?level=<level>
@@ -1166,6 +1174,34 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 	}
 	_, err = w.Write(respBin)
 	util.AssertNoError(err)
+}
+
+// DIAG 2026-04-23
+func (srv *server) debugCompareReaders(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+	bHex := r.URL.Query().Get("branchid")
+	oHex := r.URL.Query().Get("outputid")
+	if bHex == "" || oHex == "" {
+		api.WriteErr(w, "need branchid and outputid (hex)")
+		return
+	}
+	branchID, err := base.TransactionIDFromHexString(bHex)
+	if err != nil {
+		api.WriteErr(w, "branchid: "+err.Error())
+		return
+	}
+	oid, err := base.OutputIDFromHexString(oHex)
+	if err != nil {
+		api.WriteErr(w, "outputid: "+err.Error())
+		return
+	}
+	result := srv.DiagCompareReaders(branchID, oid)
+	resp, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, _ = w.Write(resp)
 }
 
 func (srv *server) withLRB(fun func(rdr multistate.SugaredStateReader) error) error {
