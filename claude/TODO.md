@@ -1,5 +1,7 @@
 # TODO — backlog
 
+This file contains TODO list for future Claude sessions.
+
 ## Attachment time regression
 
 - **Attachment time is long and volatile.** Grafana "Attachment time
