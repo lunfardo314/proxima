@@ -600,7 +600,15 @@ func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.Out
 	}
 	o, err := multistate.GetOutputWithIDFromStateReader(rdr, inputID)
 	if errors.Is(err, multistate.ErrNotFound) {
-		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed", inputID.StringShort()))
+		baselineID := a.pastCone.GetBaseline()
+		baselineHex, baselineIsPending, baselineRootHex := "", false, ""
+		if baselineID != nil {
+			baselineHex = baselineID.StringHex()
+			baselineIsPending = a.Branches().IsPending(*baselineID)
+			baselineRootHex = a.Branches().GetRootHex(*baselineID)
+		}
+		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed (baselineHex=%s baselineIsPending=%v baselineRoot=%s)",
+			inputID.StringShort(), baselineHex, baselineIsPending, baselineRootHex))
 		return false
 	}
 	a.AssertNoError(err)

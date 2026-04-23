@@ -116,6 +116,28 @@ func New(env environment) *Branches {
 	return ret
 }
 
+// IsPending reports whether the given branch ID is currently held in b.pending
+// (i.e. its state is not yet committed to the trie).
+// Diagnostic helper for the 2026-04-23 consensus-halt investigation.
+func (b *Branches) IsPending(branchID base.TransactionID) bool {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	_, ok := b.pending[branchID]
+	return ok
+}
+
+// GetRootHex returns the committed root of the branch as hex, or "" if not
+// committed / not known. Diagnostic helper.
+func (b *Branches) GetRootHex(branchID base.TransactionID) string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	bd, ok := b.m[branchID]
+	if !ok || bd.Root == nil {
+		return ""
+	}
+	return hex.EncodeToString(bd.Root.Bytes())
+}
+
 func (b *Branches) Get(branchTxID base.TransactionID) *multistate.BranchData {
 	util.Assertf(branchTxID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchTxID.StringShort)
 
