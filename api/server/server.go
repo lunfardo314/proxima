@@ -22,6 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/spf13/viper"
 	"golang.org/x/exp/slices"
 )
 
@@ -126,13 +127,23 @@ func (srv *server) registerHandlers() {
 	// GET snapshot file download /get_snapshot (binary, enable with snapshot.enable_api)
 	srv.addHandler(api.PathGetSnapshot, srv.getSnapshot)
 
-	// DIAG 2026-04-23: compare API-path vs attacher-path state readers for a given
-	// (branchid, outputid). /api/v1/debug_compare_readers?branchid=<hex>&outputid=<hex>
-	srv.addHandler("/api/v1/debug_compare_readers", srv.debugCompareReaders)
-	// /api/v1/debug_branches_at_slot?slot=<uint32>
-	srv.addHandler("/api/v1/debug_branches_at_slot", srv.debugBranchesAtSlot)
-	// /api/v1/debug_pending_branches
-	srv.addHandler("/api/v1/debug_pending_branches", srv.debugPendingBranches)
+	// Debug endpoints — gated behind `debug.enable` config flag. These expose internal
+	// Branches state (pending/committed, roots, tx-record bitmaps) for post-mortem of
+	// corruption/halt incidents. Read-only, no side effects, but off by default so
+	// production nodes don't advertise their internals.
+	if viper.GetBool("debug.enable") {
+		// /api/v1/debug_compare_readers?branchid=<hex>&outputid=<hex>
+		// Compares API-path (GetStateReaderForTheBranch) vs attacher-path
+		// (GetVirtualStateReaderForTheBranch) lookup of a given output.
+		srv.addHandler("/api/v1/debug_compare_readers", srv.debugCompareReaders)
+		// /api/v1/debug_branches_at_slot?slot=<uint32>
+		// Lists every branch known to b.m at the given slot.
+		srv.addHandler("/api/v1/debug_branches_at_slot", srv.debugBranchesAtSlot)
+		// /api/v1/debug_pending_branches
+		// Lists every pending (uncommitted) branch in b.pending with its mutations length.
+		srv.addHandler("/api/v1/debug_pending_branches", srv.debugPendingBranches)
+		srv.Log().Infof("debug endpoints enabled: /api/v1/debug_compare_readers, /api/v1/debug_branches_at_slot, /api/v1/debug_pending_branches")
+	}
 
 	// Transaction logger API
 	// POST /api/v1/txlog/enable?level=<level>
