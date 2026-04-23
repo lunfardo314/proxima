@@ -3,7 +3,6 @@ package sequencer
 import (
 	"context"
 	"crypto/ed25519"
-	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -667,24 +666,21 @@ func (seq *Sequencer) BacklogTTLSlots() (int, int) {
 	return seq.config.BacklogTagAlongTTLSlots, seq.config.BacklogDelegationTTLSlots
 }
 
-// bootstrapOwnMilestoneOutput find own milestone output in one of the latest milestones, or, alternatively in the LRB
+// bootstrapOwnMilestoneOutput finds this sequencer's chain-output starting point when
+// the tippool has no non-virtual own milestone available.
+//
+// Always starts from the LRB, never from tippool-reported latest milestones. This bounds
+// the subsequent attacher past-cone walk to the LRB's committed state — a single trie
+// read — rather than letting AttachOutputWithID chase a long chain of uncommitted
+// sequencer txs via peer pulls. In a healthy network the LRB is 1–2 slots behind, so
+// the regression is negligible; in a degraded network (e.g. consensus halt with many
+// uncommitted slots stacked on stale peers), starting from the LRB is the only way the
+// sequencer can make progress without blocking for minutes in the boot proposer.
+//
+// Prior behaviour iterated LatestMilestonesDescending first and could trigger pending-
+// branch commits plus deep peer pulls; reverted 2026-04-23 after observing the
+// cold-start sequencer deadlock during the halt investigation.
 func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
-	milestones := seq.LatestMilestonesDescending()
-	for _, ms := range milestones {
-		baselineBranchID, ok := ms.BaselineBranch()
-		if !ok {
-			continue
-		}
-		rdr := multistate.MakeSugared(seq.Branches().GetStateReaderForTheBranch(baselineBranchID))
-		chainOut, _, err := rdr.GetChainTips(seq.sequencerID)
-		if errors.Is(err, multistate.ErrNotFound) {
-			continue
-		}
-		seq.AssertNoError(err)
-
-		return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("tippool 1"))
-	}
-	// didn't find in latest milestones in the tippool, try LRB
 	branchData := seq.Branches().FindLatestReliableBranch()
 	if branchData == nil {
 		seq.Log().Warnf("bootstrapOwnMilestoneOutput: can't find LRB")
@@ -696,7 +692,7 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		seq.Log().Warnf("bootstrapOwnMilestoneOutput: can't load own milestone output from LRB")
 		return vertex.WrappedOutput{}
 	}
-	return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("tippool 2"))
+	return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("bootstrap-from-LRB"))
 }
 
 // validateSequencerIDExists checks if the sequencer ID exists in the latest reliable branch.
