@@ -54,7 +54,7 @@ commit, pruning the window covered since the last scan. The schedule must be
 deterministic (same slots on every node) so branch roots stay identical across
 the network. Breaking change — requires coordinated upgrade.
 
-## Revisit trie sub-trie iteration performance
+_Revisit trie sub-trie iteration performance_
 
 `PrunableTxIDsAtSlot` uses `trie.Iterator(keyPrefix).Iterate(...)` with a
 5-byte prefix (partition + 4-byte slot). A prefix iteration should be
@@ -64,9 +64,26 @@ the iterator path in `unitrie` deserves an optimisation pass — confirm it
 walks only the matching subtree, uses the node cache effectively, and
 doesn't touch sibling subtries.
 
-## Keep TriePartitionLedgerState shared between TX and UTXO records
+_Keep TriePartitionLedgerState shared between TX and UTXO records_
 
 Splitting txID records into a separate trie partition would duplicate the
 shared 32-byte prefix (txid = first 32 bytes of OutputID) across two subtries
 and undo the current reuse optimisation. Don't do this as a workaround for
 the iteration cost — fix the iterator path instead.
+
+## Needed for bridging
+(needs refinement)
+- include coverage delta, supply, baseline root into the stem. Enforce at the node level. Remove it from the metadata. Probably remove the persistent metadata as such
+- Expose Merkle proof in the Readable
+- Remove plain data list element at the tx tuple level
+- I implement evidenceHash(hashPrefix, data) enforcer hasPrefix(hash(data), hashPrefix). Use it in the enforced script list at the txLevel.
+- Implement validateWithRedeemed(index of evidenceHash() bytecode, redeemed lib hash prefix, lib tuple index called function, args …). It will compare hashes and call library. The idea is not to run hash function for each revocation
+- Library compilation cashing
+- Inclusion proof validation embedded opcode
+- Implement open lock as plain index data list value. The index will be the evaluated data. Unlockable by anybody. Consider randomization of the unlock slot, e.g. by hash(public key||UTXO ID||slot) mod 5 == 0
+Another option. Interpret open lock data as tuple of index values
+
+## Misc
+- 24 byte VCommitment
+
+
