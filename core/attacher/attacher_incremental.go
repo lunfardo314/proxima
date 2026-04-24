@@ -200,14 +200,29 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baselineBranchID base.Tran
 	}
 
 	if isBranch {
-		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput", a.name)
+		// The branch being built must stem-consume the CURRENT baseline's stem output.
+		// a.pastCone.GetBaseline() may have been upgraded during the endorsement/extend
+		// past-cone walks above (via MergePastCone when a stem-descendant branch is
+		// reached), so it can differ from the baselineBranchID we were constructed with.
+		// Using the original argument here would compute the stem of a superseded
+		// ancestor, and that stem is already consumed in the current baseline's state
+		// → the "already consumed" liveness halt observed on 2026-04-24.
+		//
+		// Ledger invariant: a branch's stem predecessor IS its baseline (enforced on
+		// consumption). Assertion below catches any future regression where the past
+		// cone's baseline drifts away from what should be the stem predecessor.
+		effectiveBaseline := *a.pastCone.GetBaseline()
+		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput from %s", a.name, effectiveBaseline.StringShort)
 		// Ensure the baseline branch is in the memDAG. It may have been GC'd if the node
 		// fell far behind. AttachTxID fetches it from the state DB if needed.
-		AttachTxID(baselineBranchID, a.Environment, WithInvokedBy("stemInput"))
-		a.stemOutput = a.GetStemWrappedOutput(baselineBranchID)
+		AttachTxID(effectiveBaseline, a.Environment, WithInvokedBy("stemInput"))
+		a.stemOutput = a.GetStemWrappedOutput(effectiveBaseline)
 		if a.stemOutput.VID == nil {
-			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", baselineBranchID.StringShort())
+			return fmt.Errorf("NewIncrementalAttacher: stem output is not available for baseline %s", effectiveBaseline.StringShort())
 		}
+		a.Assertf(a.stemOutput.VID.ID() == effectiveBaseline,
+			"stem predecessor invariant: stemOutput.VID (%s) must be the current baseline (%s)",
+			a.stemOutput.VID.IDShortString, effectiveBaseline.StringShort)
 		if err := a.insertVirtuallyConsumedOutput(a.stemOutput); err != nil {
 			return err
 		}
