@@ -62,16 +62,12 @@ func TestFlagsPastCone(t *testing.T) {
 			FlagPastConeVertexDefined |
 			FlagPastConeVertexCheckedInTheState |
 			FlagPastConeVertexInTheState |
-			FlagPastConeVertexEndorsementsSolid |
-			FlagPastConeVertexInputsSolid |
 			FlagPastConeVertexAskedForPoke
 
 		require.True(t, f.FlagsUp(FlagPastConeVertexKnown))
 		require.True(t, f.FlagsUp(FlagPastConeVertexDefined))
 		require.True(t, f.FlagsUp(FlagPastConeVertexCheckedInTheState))
 		require.True(t, f.FlagsUp(FlagPastConeVertexInTheState))
-		require.True(t, f.FlagsUp(FlagPastConeVertexEndorsementsSolid))
-		require.True(t, f.FlagsUp(FlagPastConeVertexInputsSolid))
 		require.True(t, f.FlagsUp(FlagPastConeVertexAskedForPoke))
 	})
 

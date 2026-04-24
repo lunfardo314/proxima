@@ -361,8 +361,7 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		a.Tracef(TraceTagValidateSequencer, "contains undefined in the past cone:\n%s", a.pastCone.Lines("     ").Join("\n"))
 		return true, false
 	}
-	flags := a.pastCone.Flags(a.vid)
-	if !flags.FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) || !flags.FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
+	if !a.allEndorsementsDefined(v) || !a.allInputsDefined(v) {
 		return true, false
 	}
 	// inputs solid
