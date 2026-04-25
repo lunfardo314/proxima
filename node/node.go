@@ -285,9 +285,14 @@ func (p *ProximaNode) goLoggingMemStats() {
 		if availableGB > 0 {
 			diskSpace = fmt.Sprintf(", available disk space: %.2f GB", availableGB)
 		}
-		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d%s",
+		pipelineStr := ""
+		if p.workflow != nil {
+			pipelineStr = fmt.Sprintf(", pipeline: %d", p.workflow.PipelineSize())
+		}
+		p.Log().Infof("[memstats] current slot: %d, [%s]%s, uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d%s",
 			ledger.TimeNow().Slot,
 			p.CounterLines().Join(","),
+			pipelineStr,
 			time.Since(p.started).Round(time.Second),
 			float32(memStats.Alloc*10/(1<<20))/10,
 			memStats.NumGC,

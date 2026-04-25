@@ -27,6 +27,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
 )
 
@@ -71,6 +72,10 @@ type (
 		syncModule     *syncmod.Sync
 		// particular event handlers
 		txListener *txListener
+		// pipelineGauge mirrors PipelineSize() into Prometheus. Lives on Workflow
+		// (not memDAG) because PipelineSize sums state from queues and caches that
+		// memDAG can't reach.
+		pipelineGauge prometheus.Gauge
 		//
 		enableTrace    atomic.Bool
 		traceTagsMutex sync.RWMutex
@@ -126,6 +131,19 @@ func Start(env environment, peers *peering.Peers, opts ...ConfigOption) *Workflo
 		ret.RecreateVertexMap()
 		return true
 	})
+
+	// Prometheus pipeline gauge, fed from the same PipelineSize() that
+	// /api/v1/node_info and dagviz use, so the numbers always agree.
+	ret.pipelineGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "proxima_pipeline_size",
+		Help: "total transactions in the pipeline: memDAG vertices + txSolicitQueue + txStoreWriter cache + clock wait counter",
+	})
+	ret.MetricsRegistry().MustRegister(ret.pipelineGauge)
+	ret.RepeatInBackground("workflow-stats", 10*time.Second, func() bool {
+		ret.pipelineGauge.Set(float64(ret.PipelineSize()))
+		return true
+	})
+
 	return ret
 }
 

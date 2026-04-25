@@ -69,7 +69,6 @@ type (
 
 	metrics struct {
 		numVerticesGauge prometheus.Gauge
-		pipelineGauge    prometheus.Gauge
 	}
 )
 
@@ -95,10 +94,8 @@ func New(env environment) *MemDAG {
 
 		ret.RepeatInBackground("memdag-stats", 10*time.Second, func() bool {
 			nVertices := ret.NumVertices()
-			pipeline := nVertices + ret.Counter("wait")
 			env.Log().Infof("[memdag stats] vertices: %d", nVertices)
 			ret.numVerticesGauge.Set(float64(nVertices))
-			ret.pipelineGauge.Set(float64(pipeline))
 			return true
 		})
 	}
@@ -556,9 +553,5 @@ func (d *MemDAG) registerMetrics() {
 		Name: "proxima_memDAG_numVerticesGauge",
 		Help: "number of vertices in the memDAG",
 	})
-	d.pipelineGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_pipeline_size",
-		Help: "total transactions in the pipeline (vertices + solicited queue + clock wait)",
-	})
-	d.MetricsRegistry().MustRegister(d.numVerticesGauge, d.pipelineGauge)
+	d.MetricsRegistry().MustRegister(d.numVerticesGauge)
 }
