@@ -398,10 +398,20 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 			upg.Slot, hex.EncodeToString(upg.LibraryHash[:]))
 	}
 
-	// GC old transaction IDs: only prune txIDs whose unspent output set is empty
+	// GC old transaction IDs: only prune txIDs whose unspent output set is empty.
+	// Route the trie iteration through the cached state reader for the baseline
+	// rather than upd.Readable() — the cached reader's trie node cache (sized
+	// stateReaderCacheLimit) survives across commits, so the top-of-trie nodes
+	// stay warm and PrunableTxIDsAtSlot doesn't pay full cold-cache I/O each time.
+	// See claude/trie_iteration.md §2.a.
 	if branchID.Slot() > pb.TxIDTTLSlots {
 		gcSlot := branchID.Slot() - pb.TxIDTTLSlots
-		gcTxIDs := upd.Readable().PrunableTxIDsAtSlot(gcSlot)
+		gcTxIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlot)
+		if gcTxIDs == nil {
+			// Fallback: cached reader unavailable (e.g., baseline state reader couldn't
+			// be created). Fall back to the per-call fresh Updatable's reader.
+			gcTxIDs = upd.Readable().PrunableTxIDsAtSlot(gcSlot)
+		}
 		muts.DeleteTxIDs(gcTxIDs...)
 		// Set GCSlot so that output deletions also clean up TX records
 		// for TXs that missed the per-slot GC scan because they still had unspent outputs
@@ -706,6 +716,25 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 // state reader. Readable already has its own L2 cache for txID records
 // (Readable.txCache), evicted when the reader itself is evicted from
 // b.stateReaders — no separate global cache is needed here.
+// prunableTxIDsAtSlotCached returns prunable txIDs at `slot` in `branchID`'s state,
+// going through the cached state reader for `branchID` (b.stateReaders) rather than
+// constructing a fresh *Readable. The cached reader's trie node cache is reused
+// across commits, so the top-of-trie nodes stay warm. Returns nil if the cached
+// reader is unavailable; the caller should fall back to a fresh reader path.
+func (b *Branches) prunableTxIDsAtSlotCached(branchID base.TransactionID, slot uint32) []base.TransactionID {
+	rdr := b.GetStateReaderForTheBranch(branchID)
+	if rdr == nil {
+		return nil
+	}
+	// GetStateReaderForTheBranch always returns the *multistate.Readable wrapped
+	// in the IndexedStateReader interface (see cachedStateReader construction).
+	r, ok := rdr.(*multistate.Readable)
+	if !ok {
+		return nil
+	}
+	return r.PrunableTxIDsAtSlot(slot)
+}
+
 func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) bool {
 	util.Assertf(branchID.IsBranchTransaction(), "branch tx expected. Got: %s", branchID.StringShort)
 	if branchID == txid {
