@@ -188,9 +188,12 @@ func (vid *WrappedTx) SetTxStatusGoodNoLock(pastCone *PastConeBase, coverage uin
 		vid.flags.SetFlagsUp(FlagVertexIgnoreAbsenceOfPastCone)
 	} else {
 		vid.pastCone = pastCone
-		if coverage > 0 {
-			vid.coverage.Store(util.Ref(coverage))
-		}
+		// Always store the coverage. A Good vid must have a non-nil coverage —
+		// the consistency checks in attacher/check.go rely on
+		// (coverage == nil) ⇔ (vid was reset by ReattachVertexNoLock).
+		// Storing 0 (rare edge case for genesis-adjacent txs) is preferable to
+		// leaving nil, which would be indistinguishable from the reattach race.
+		vid.coverage.Store(util.Ref(coverage))
 	}
 }
 

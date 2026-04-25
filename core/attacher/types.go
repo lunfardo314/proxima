@@ -158,6 +158,15 @@ type (
 
 var ErrSolidificationDeadline = errors.New("solidification deadline")
 
+// ErrAttacherTransientStaleState signals that an attacher detected a dependency
+// that has been reset (reattached) underneath it during its run — typically
+// observed in the wrap-up consistency checks where an input's ledger coverage
+// has been cleared by ReattachVertexNoLock before this attacher could read it.
+// The consumer transaction itself is fine; the attacher just can't trust its
+// own past-cone snapshot anymore. Callers must NOT mark the consumer Bad —
+// the attempt is abandoned and the framework retries.
+var ErrAttacherTransientStaleState = errors.New("attacher transient stale state")
+
 func WithTransactionMetadata(metadata *txmetadata.TransactionMetadata) AttachTxOption {
 	return func(options *_attacherOptions) {
 		options.metadata = metadata

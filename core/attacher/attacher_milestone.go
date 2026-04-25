@@ -46,12 +46,20 @@ func runMilestoneAttacher(
 	}()
 
 	if err = a.run(); err != nil {
-		vid.SetTxStatusBad(err)
-		if !errors.Is(err, ErrSolidificationDeadline) {
-			// solidification errors with big attachment depth are too verbose
-			env.Log().Warnf(a.logErrorStatusString(err))
+		if errors.Is(err, ErrAttacherTransientStaleState) {
+			// Transient race against a concurrent reattach. The consumer transaction
+			// is fine — its dependency was reset under it. Don't mark the vid Bad;
+			// the framework will retry the milestone once dependency state stabilizes.
+			env.Log().Warnf("[transient stale state] attacher %s aborted: %v", a.name, err)
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
+		} else {
+			vid.SetTxStatusBad(err)
+			if !errors.Is(err, ErrSolidificationDeadline) {
+				// solidification errors with big attachment depth are too verbose
+				env.Log().Warnf(a.logErrorStatusString(err))
+			}
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
 		}
-		a.LogTx(time.Now(), err.Error(), a.vid.ID())
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
@@ -149,7 +157,15 @@ func (a *milestoneAttacher) run() error {
 	a.AssertNoError(a.err)
 
 	err := a.checkConsistencyBeforeWrapUp()
-	a.AssertNoError(err)
+	if err != nil {
+		// ErrAttacherTransientStaleState is expected under the detach/reattach race:
+		// a dependency was reset under us. Don't FATAL, don't mark this vid Bad —
+		// just abandon the attempt; the framework will retry once state stabilizes.
+		if errors.Is(err, ErrAttacherTransientStaleState) {
+			return err
+		}
+		a.AssertNoError(err)
+	}
 
 	// finalizing touches
 	a.wrapUpAttacher()
