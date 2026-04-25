@@ -31,14 +31,6 @@ type (
 		lastActive     time.Time
 	}
 
-	// knowsTxKey is the cache key for L2 KnowsCommittedTransaction cache.
-	// It avoids hitting the trie (which requires an exclusive Readable.mutex lock)
-	// for repeated queries on the same (branchID, txid) pair.
-	knowsTxKey struct {
-		branchID base.TransactionID
-		txid     base.TransactionID
-	}
-
 	Branches struct {
 		environment
 		mutex            sync.Mutex
@@ -61,12 +53,6 @@ type (
 		// Other goroutines that need the same branch wait on that channel instead of
 		// duplicating the commit work. Entries are removed once the commit completes.
 		committing map[base.TransactionID]chan struct{}
-
-		// knowsTxCache is an L2 cache for BranchKnowsTransaction results.
-		// Protected by knowsTxMu (RWMutex): RLock for cache hits, Lock for cache writes.
-		// This avoids contention on the trie's exclusive Readable.mutex for repeated queries.
-		knowsTxMu    sync.RWMutex
-		knowsTxCache map[knowsTxKey]bool
 	}
 
 	cachedStateReader struct {
@@ -102,7 +88,6 @@ func New(env environment) *Branches {
 		stateReaders:     make(map[base.TransactionID]*cachedStateReader),
 		pending:          make(map[base.TransactionID]*PendingBranchCommit),
 		committing:       make(map[base.TransactionID]chan struct{}),
-		knowsTxCache:     make(map[knowsTxKey]bool),
 	}
 	env.RepeatInBackground("branches_cleanup", 5*time.Second, func() bool {
 		ret.mutex.Lock()
@@ -715,6 +700,12 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 	}
 }
 
+// BranchKnowsTransaction reports whether `txid` is part of the state at `branchID`.
+// Walks back through pending (uncommitted) branches via stem links to answer
+// without forcing a DB commit; on reaching a committed branch, delegates to its
+// state reader. Readable already has its own L2 cache for txID records
+// (Readable.txCache), evicted when the reader itself is evicted from
+// b.stateReaders — no separate global cache is needed here.
 func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) bool {
 	util.Assertf(branchID.IsBranchTransaction(), "branch tx expected. Got: %s", branchID.StringShort)
 	if branchID == txid {
@@ -723,30 +714,6 @@ func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) boo
 	if branchID.Slot() <= txid.Slot() {
 		return false
 	}
-
-	// check L2 cache first (RLock — no contention with other readers)
-	cacheKey := knowsTxKey{branchID: branchID, txid: txid}
-	b.knowsTxMu.RLock()
-	if result, cached := b.knowsTxCache[cacheKey]; cached {
-		b.knowsTxMu.RUnlock()
-		return result
-	}
-	b.knowsTxMu.RUnlock()
-
-	// cache miss — compute the result
-	result := b.branchKnowsTransactionCompute(branchID, txid)
-
-	// populate L2 cache
-	b.knowsTxMu.Lock()
-	b.knowsTxCache[cacheKey] = result
-	b.knowsTxMu.Unlock()
-
-	return result
-}
-
-// branchKnowsTransactionCompute walks pending branches then falls through to the trie
-func (b *Branches) branchKnowsTransactionCompute(branchID, txid base.TransactionID) bool {
-	// walk back through pending branches via stem links to avoid forcing DB commits
 	b.mutex.Lock()
 	currentID := branchID
 	for {
