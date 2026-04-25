@@ -95,8 +95,11 @@ func (seq *Sequencer) clearPendingSubmit() {
 //
 // Returns false if the sequencer should stop.
 func (seq *Sequencer) doSequencerSlot() bool {
-	// pause during snapshot
+	// pause during snapshot. Cancel the loop watchdog so it doesn't fire while we
+	// intentionally wait for the snapshot to finish; the per-tick Check below
+	// re-arms it once the inner loop starts running.
 	if seq.IsSnapshotting() {
+		seq.cancelLoopCheckpoint()
 		seq.log.Infof("sequencer paused: snapshot in progress")
 		seq.RepeatSync(2*time.Second, func() bool {
 			return seq.IsSnapshotting()
@@ -109,7 +112,9 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		return false
 	}
 
-	// wait for clock to catch up with last submission
+	// wait for clock to catch up with last submission. Same reasoning as above:
+	// this is an intentional wait, not a stuck loop.
+	seq.cancelLoopCheckpoint()
 	if !seq.ClockCatchUpWithLedgerTime(seq.lastSubmittedTs) {
 		return false
 	}
@@ -132,6 +137,12 @@ func (seq *Sequencer) doSequencerSlot() bool {
 		if seq.Ctx().Err() != nil {
 			return false
 		}
+
+		// Feed the loop watchdog once per tick. As long as the loop keeps ticking
+		// it's by definition not stuck, regardless of whether the current ledger
+		// slot completes (under load, throttle / awaiting gates can let the loop
+		// span multiple slots before the branch-zone exit fires).
+		seq.checkLoopCheckpoint()
 
 		nowTs := ledger.TimeNow()
 		nextBoundary := nowTs.NextSlotBoundary()
