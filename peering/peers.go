@@ -28,8 +28,6 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// TODO minimize synchronicity assumptions -> get rid of clock in hb, probably remove heartbeat protocol altogether
-
 func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
@@ -92,12 +90,11 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		peers:                make(map[peer.ID]*Peer),
 		staticPeers:          make(map[peer.ID]multiaddr.Multiaddr),
 		reconnecting:         set.New[peer.ID](),
-		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
-		onReceivePullTx:      func(_ peer.ID, _ base.TransactionID) {},
-		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
-		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
-		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
-		rendezvousString:     fmt.Sprintf("%d", rendezvousNumber),
+		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
+		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
+		lppProtocolGossip: protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
+		lppProtocolPull:   protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
+		rendezvousString:  fmt.Sprintf("%d", rendezvousNumber),
 	}
 
 	// register the Notifiee for connection-level events. CONNECTED/LOST CONNECTION
@@ -140,15 +137,22 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	ret.registerMetrics()
 
-	// log once per state transition (connected <-> disconnected) instead of every tick
+	// log once per state transition (connected <-> disconnected). "Disconnected
+	// from the network" means no incoming gossip/pull traffic for the threshold;
+	// reconnection clears it. Independent of any per-peer heartbeat — pure
+	// inbound-traffic liveness signal.
+	const (
+		disconnLogPeriod    = 6 * time.Second
+		disconnLogThreshold = 4 * time.Second
+	)
 	disconnected := false
-	ret.RepeatInBackground("disconn_log_loop", 3*heartbeatRate, func() bool {
+	ret.RepeatInBackground("disconn_log_loop", disconnLogPeriod, func() bool {
 		d := ret.DurationSinceLastMessageFromPeer()
 		switch {
-		case d > 2*heartbeatRate && !disconnected:
+		case d > disconnLogThreshold && !disconnected:
 			ret.Log().Warnf("[peering] node is DISCONNECTED from the network (no incoming message for %v)", d)
 			disconnected = true
-		case d <= 2*heartbeatRate && disconnected:
+		case d <= disconnLogThreshold && disconnected:
 			ret.Log().Infof("[peering] node RECONNECTED to the network")
 			disconnected = false
 		}
@@ -182,34 +186,14 @@ func (ps *Peers) Run() {
 
 	ps.host.SetStreamHandler(ps.lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
-	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
-	//ps.startHeartbeat()
-	var logNumPeersDeadline time.Time
-	hbCounter := uint32(0)
-
-	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
+	ps.RepeatInBackground("peering_log_peers_loop", logPeersEvery, func() bool {
 		nowis := time.Now()
-		peerIDs := ps.peerIDs()
+		aliveStatic, aliveDynamic, pullTargets := ps.NumAlive()
 
-		for _, id := range peerIDs {
-			idCopy := id
-			hbCounterCopy := hbCounter
-			ps.sendHeartbeatToPeer(idCopy, hbCounterCopy)
-
-			hbCounter++
-		}
-
-		if nowis.After(logNumPeersDeadline) {
-			aliveStatic, aliveDynamic, pullTargets := ps.NumAlive()
-
-			ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d, pull targets: %d (%v)",
-				aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
-				aliveDynamic, ps.cfg.MaxDynamicPeers, pullTargets, time.Since(nowis))
-
-			logNumPeersDeadline = nowis.Add(logPeersEvery)
-		}
-
+		ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d, pull targets: %d (%v)",
+			aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
+			aliveDynamic, ps.cfg.MaxDynamicPeers, pullTargets, time.Since(nowis))
 		return true
 	}, true)
 
@@ -225,11 +209,6 @@ func (ps *Peers) Run() {
 		ps.updatePeerMetrics(ps.peerStats())
 		return true
 	})
-
-	ps.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
-		ps.logBigClockDiffs()
-		return true
-	}, true)
 
 	ps.Log().Infof("[peering] libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enabled: %v",
 		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers, ps.isAutopeeringEnabled())
@@ -339,9 +318,8 @@ func (ps *Peers) dialPeer(peerID peer.ID, p *Peer) error {
 		return err
 	}
 	p.streams = map[protocol.ID]*peerStream{
-		ps.lppProtocolHeartbeat: {},
-		ps.lppProtocolPull:      {},
-		ps.lppProtocolGossip:    {},
+		ps.lppProtocolPull:   {},
+		ps.lppProtocolGossip: {},
 	}
 	return nil
 }
@@ -365,11 +343,10 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		// p.streams[protocolID] to exist (the cached stream itself is opened
 		// lazily by ensurePeerStream on first send). scheduleStaticReconnect's
 		// host.Connect establishes the underlying libp2p connection; the first
-		// HB / gossip / pull then opens the actual stream over it.
+		// gossip / pull then opens the actual stream over it.
 		p.streams = map[protocol.ID]*peerStream{
-			ps.lppProtocolHeartbeat: {},
-			ps.lppProtocolPull:      {},
-			ps.lppProtocolGossip:    {},
+			ps.lppProtocolPull:   {},
+			ps.lppProtocolGossip: {},
 		}
 		ps.peers[addrInfo.ID] = p
 		go ps.scheduleStaticReconnect(addrInfo.ID)
@@ -512,21 +489,25 @@ func (ps *Peers) PeerName(id peer.ID) string {
 	return p.name
 }
 
-func (p *Peer) _isDead() bool {
-	return !p._isAlive() && time.Since(p.whenAdded) > gracePeriodAfterAdded
+// _isAlive reports whether libp2p currently considers the peer connected.
+// Single source of truth — no local mirror, no timing thresholds.
+func (ps *Peers) _isAlive(p *Peer) bool {
+	return ps.host.Network().Connectedness(p.id) == network.Connected
+}
+
+// _isDead is the negation of _isAlive for dynamic peers; static peers are never
+// considered dead (we keep retrying via scheduleStaticReconnect).
+func (ps *Peers) _isDead(p *Peer) bool {
+	return !p.isStatic && !ps._isAlive(p)
 }
 
 func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
 	ps.withPeer(id, func(p *Peer) {
 		if p != nil {
-			isAlive = p._isAlive()
+			isAlive = ps._isAlive(p)
 		}
 	})
 	return
-}
-
-func (p *Peer) _isAlive() bool {
-	return time.Since(p.lastHeartbeatReceived) < aliveDuration
 }
 
 const (
@@ -637,29 +618,14 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	var qClock, qHB [3]int64
-
 	for _, p := range ps.peers {
-		qClock[0] = p.clockDifferenceQuartiles[0].Nanoseconds()
-		qClock[1] = p.clockDifferenceQuartiles[1].Nanoseconds()
-		qClock[2] = p.clockDifferenceQuartiles[2].Nanoseconds()
-
-		qHB[0] = p.hbMsgDifferenceQuartiles[0].Nanoseconds()
-		qHB[1] = p.hbMsgDifferenceQuartiles[1].Nanoseconds()
-		qHB[2] = p.hbMsgDifferenceQuartiles[2].Nanoseconds()
-
 		pi := api.PeerInfo{
-			ID:                        p.id.String(),
-			IsStatic:                  p.isStatic,
-			RespondsToPull:            p.respondsToPullRequests,
-			IsAlive:                   p._isAlive(),
-			WhenAdded:                 p.whenAdded.UnixNano(),
-			LastHeartbeatReceived:     p.lastHeartbeatReceived.UnixNano(),
-			ClockDifferencesQuartiles: qClock,
-			HBMsgDifferencesQuartiles: qHB,
-			NumIncomingHB:             p.numIncomingHB,
-			NumIncomingPull:           p.numIncomingPull,
-			NumIncomingTx:             p.numIncomingTx,
+			ID:              p.id.String(),
+			IsStatic:        p.isStatic,
+			IsAlive:         ps._isAlive(p),
+			WhenAdded:       p.whenAdded.UnixNano(),
+			NumIncomingPull: p.numIncomingPull,
+			NumIncomingTx:   p.numIncomingTx,
 		}
 		pi.MultiAddresses = make([]string, 0)
 		for _, ma := range ps.host.Peerstore().Addrs(p.id) {
@@ -669,4 +635,53 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 	}
 
 	return ret
+}
+
+// NumAlive returns counts of alive static / dynamic peers and pull targets.
+// "Alive" is libp2p-Connectedness-driven (see _isAlive).
+func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic, pullTargets int) {
+	ps.forEachPeerRLock(func(p *Peer) bool {
+		if ps._isAlive(p) {
+			if p.isStatic {
+				aliveStatic++
+			} else {
+				aliveDynamic++
+			}
+		}
+		if ps._isPullTarget(p) {
+			pullTargets++
+		}
+		return true
+	})
+	return
+}
+
+// peerIDsAlive returns IDs of peers libp2p reports as connected. Used by gossip
+// to pick recipients (a peer that just disconnected won't be in the list).
+func (ps *Peers) peerIDsAlive(except ...peer.ID) []peer.ID {
+	ret := make([]peer.ID, 0)
+	ps.forEachPeerRLock(func(p *Peer) bool {
+		if len(except) > 0 && p.id == except[0] {
+			return true
+		}
+		if ps._isAlive(p) {
+			ret = append(ret, p.id)
+		}
+		return true
+	})
+	return ret
+}
+
+// evidenceMessage stamps the per-Peers "last incoming message" timestamp.
+// Called by gossip and pull receive paths; drives the disconn_log_loop's
+// "node is DISCONNECTED from network" warning.
+func (ps *Peers) evidenceMessage() {
+	ps.lastMsgReceived.Store(time.Now().UnixNano())
+}
+
+func (ps *Peers) DurationSinceLastMessageFromPeer() time.Duration {
+	if ps.lastMsgReceived.Load() == 0 {
+		return 0
+	}
+	return time.Since(time.Unix(0, ps.lastMsgReceived.Load()))
 }

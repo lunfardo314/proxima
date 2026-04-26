@@ -92,13 +92,17 @@ func makeHosts(t *testing.T, nHosts int) []*Peers {
 	return hosts
 }
 
-func TestHeartbeat(t *testing.T) {
+// TestPeerLiveness verifies the connection-driven IsAlive path (post-HB
+// removal): all hosts should report each other alive once libp2p has
+// established the connections, and after stopping host 0, the others should
+// observe its connection going down.
+func TestPeerLiveness(t *testing.T) {
 	const numHosts = 5
 	hosts := makeHosts(t, numHosts)
 	for _, h := range hosts {
 		h.Run()
 	}
-	time.Sleep(10 * time.Second)
+	time.Sleep(5 * time.Second)
 	for _, ps := range hosts {
 		require.True(t, len(ps.getPeerIDs()) == numHosts-1)
 		for _, id := range ps.getPeerIDs() {
@@ -107,7 +111,9 @@ func TestHeartbeat(t *testing.T) {
 	}
 
 	hosts[0].Stop()
-	time.Sleep(aliveDuration)
+	// libp2p needs a moment to tear down the connection on the remote end and
+	// fire Notifiee.Disconnected; ~2 s is plenty over QUIC.
+	time.Sleep(2 * time.Second)
 	for i, ps := range hosts {
 		if i != 0 {
 			require.True(t, !ps.IsAlive(hosts[0].host.ID()))
@@ -244,7 +250,7 @@ func TestSendMsg(t *testing.T) {
 		for _, h := range hosts {
 			h.Run()
 		}
-		time.Sleep(heartbeatRate * 5)
+		time.Sleep(2 * time.Second)
 
 		for _, h := range hosts {
 			h1 := h

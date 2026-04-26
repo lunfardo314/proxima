@@ -43,10 +43,6 @@ type (
 		AcceptPullRequestsFromStaticPeersOnly bool
 		// AllowLocalIPs defines if local IPs are allowed to be used for autopeering.
 		AllowLocalIPs bool `default:"false" usage:"allow local IPs to be used for autopeering"`
-		// used for testing only. Otherwise, remote peer sets the pull flags
-		ForcePullFromAllPeers bool
-		// timeout for heartbeat. If not set, used special defaultSendHeartbeatTimeout
-		SendTimeoutHeartbeat time.Duration
 
 		// disable Quicreuse
 		DisableQuicreuse bool
@@ -84,10 +80,9 @@ type (
 		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID)
 		onReceivePullTx func(from peer.ID, txid base.TransactionID)
 		// lpp protocol names
-		lppProtocolGossip    protocol.ID
-		lppProtocolPull      protocol.ID
-		lppProtocolHeartbeat protocol.ID
-		rendezvousString     string
+		lppProtocolGossip protocol.ID
+		lppProtocolPull   protocol.ID
+		rendezvousString  string
 		metrics
 	}
 	peersStats struct {
@@ -104,28 +99,15 @@ type (
 	}
 
 	Peer struct {
-		id                     peer.ID
-		name                   string
-		streams                map[protocol.ID]*peerStream
-		isStatic               bool // statically pre-configured (manual peering)
-		respondsToPullRequests bool // from hb info
-		whenAdded              time.Time
-		lastHeartbeatReceived  time.Time
-		lastLoggedConnected    bool // toggle
-		// ring buffer with last clock differences
-		clockDifferences         [10]time.Duration
-		clockDifferencesIdx      int
-		clockDifferenceQuartiles [3]time.Duration
-		// ring buffer with durations between subsequent HB messages
-		hbMsgDifferences         [10]time.Duration
-		hbMsgDifferencesIdx      int
-		hbMsgDifferenceQuartiles [3]time.Duration
+		id                  peer.ID
+		name                string
+		streams             map[protocol.ID]*peerStream
+		isStatic            bool // statically pre-configured (manual peering)
+		whenAdded           time.Time
+		lastLoggedConnected bool // dedups CONNECTED/LOST CONNECTION log lines
 		// msg counters
-		numIncomingHB   int
 		numIncomingPull int
 		numIncomingTx   int
-
-		numHBSendErr int
 	}
 )
 
@@ -135,47 +117,10 @@ const (
 	// protocol name templates. Last component is first 8 bytes of ledger constraint library hash, interpreted as bigendian uint64
 	// Peering is only possible between same versions of the ledger.
 	// Nodes with different versions of the ledger constraints will just ignore each other
-	lppProtocolGossip    = "/proxima/gossip/%d"
-	lppProtocolPull      = "/proxima/pull/%d"
-	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
+	lppProtocolGossip = "/proxima/gossip/%d"
+	lppProtocolPull   = "/proxima/pull/%d"
 
-	// clockTolerance is how big the difference between local and remote clocks is tolerated.
-	// The difference includes difference between local clocks (positive or negative) plus
-	// positive heartbeat message latency between peers
-	// In any case nodes has interest to sync their clocks with global reference.
-	// This constant indicates when to drop the peer
-	clockTolerance = 4 * time.Second
-
-	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
-	// of dynamic peer cap, use this instead
-	//numMaxDynamicPeersForBootNodeAtLeast = 10
-
-	// heartbeatRate heartbeat issued every period
-	heartbeatRate      = 2 * time.Second
-	aliveNumHeartbeats = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
-	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
-	gracePeriodAfterAdded = 15 * heartbeatRate
-	logPeersEvery         = 10 * time.Second
-
-	/*
-	   ChatGPT:
-	   For Quick UDP Internet Connections (QUIC), the dial timeout can vary depending on the network environment and application requirements.
-	   Typically, the recommended dial timeout is in the range of 10 to 60 seconds. A shorter timeout (e.g., 10-15 seconds) is
-	   common for applications where responsiveness is critical, while longer timeouts (e.g., 30-60 seconds) may be suitable
-	   for more stable or less time-sensitive environments.
-
-	   In some scenarios, particularly when using QUIC in environments like Cloudflare Tunnels,
-	   the timeout for failed connections is reported to be around 60 seconds (GitHub). For OPC UA (which isn't QUIC but a
-	   similar protocol for different purposes), various timeouts are set between 10-60 seconds depending on the
-	   operation being performed (OPC Labs Knowledge Base). This suggests a reasonable ballpark range for QUIC timeouts too.
-
-	   However, the ideal timeout depends on how tolerant the system is to network latency and connection delays.
-	*/
-
-	// default timeouts for QUIC
-	// HB must dial usually
-	defaultSendHeartbeatTimeout = 10 * time.Second
+	logPeersEvery = 10 * time.Second
 )
 
 func readPeeringConfig() (*Config, error) {
@@ -235,10 +180,6 @@ func readPeeringConfig() (*Config, error) {
 	cfg.AcceptPullRequestsFromStaticPeersOnly = viper.GetBool("peering.pull_requests_from_static_peers_only")
 	cfg.AllowLocalIPs = viper.GetBool("peering.allow_local_ips")
 
-	cfg.SendTimeoutHeartbeat = time.Duration(viper.GetInt("peering.send_timeout_hb_millis")) * time.Millisecond
-	if cfg.SendTimeoutHeartbeat == 0 {
-		cfg.SendTimeoutHeartbeat = defaultSendHeartbeatTimeout
-	}
 	cfg.DisableQuicreuse = viper.GetBool("peering.disable_quicreuse")
 	return cfg, nil
 }

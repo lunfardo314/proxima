@@ -79,10 +79,10 @@ func (ps *Peers) registerMetrics() {
 func (ps *Peers) peerStats() (ret peersStats) {
 	ps.forEachPeerRLock(func(p *Peer) bool {
 		ret.peersAll++
-		if p._isAlive() {
+		if ps._isAlive(p) {
 			ret.peersAlive++
 		}
-		if p._isDead() {
+		if ps._isDead(p) {
 			ret.peersDead++
 		}
 		if p.isStatic {

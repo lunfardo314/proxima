@@ -44,13 +44,12 @@ func MakeConfigFor(n, hostIdx int) *Config {
 	util.AssertNoError(err)
 
 	cfg := &Config{
-		HostIDPrivateKey:      pk,
-		HostID:                hid,
-		HostPort:              BeginPort + hostIdx,
-		PreConfiguredPeers:    make(map[string]_multiaddr),
-		ForcePullFromAllPeers: true,
-		MaxDynamicPeers:       10,   // allow dynamic peers
-		DisableQuicreuse:      true, // with quic reuse enabled quic cannot be properly shutdown and subsequent tests will fail
+		HostIDPrivateKey:   pk,
+		HostID:             hid,
+		HostPort:           BeginPort + hostIdx,
+		PreConfiguredPeers: make(map[string]_multiaddr),
+		MaxDynamicPeers:    10,   // allow dynamic peers
+		DisableQuicreuse:   true, // with quic reuse enabled quic cannot be properly shutdown and subsequent tests will fail
 	}
 	ids := hostID[:n]
 	for i := range ids {

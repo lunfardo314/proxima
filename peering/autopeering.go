@@ -75,8 +75,6 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 		return
 	}
 	for _, p := range dynamicPeers[:len(dynamicPeers)-ps.cfg.MaxDynamicPeers] {
-		if time.Since(p.whenAdded) > gracePeriodAfterAdded {
-			ps._dropPeer(p, "excess peer (by rank)")
-		}
+		ps._dropPeer(p, "excess peer (by rank)")
 	}
 }

@@ -111,8 +111,14 @@ func decodePullTransactionMsg(data []byte) (base.TransactionID, error) {
 	return base.TransactionIDFromBytes(data[1:])
 }
 
+// _isPullTarget reports whether the peer is currently eligible to receive pull
+// requests. After the heartbeat protocol was removed there is no remote
+// "responds-to-pull" capability advertisement — every connected peer is a
+// candidate; servers that don't want to serve simply don't reply (see
+// IgnoreAllPullRequests / AcceptPullRequestsFromStaticPeersOnly in
+// pullStreamHandler).
 func (ps *Peers) _isPullTarget(p *Peer) bool {
-	return p.respondsToPullRequests || ps.cfg.ForcePullFromAllPeers
+	return ps._isAlive(p)
 }
 
 // out message wrappers
