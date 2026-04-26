@@ -25,12 +25,8 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	known, blacklisted, static := ps.knownPeer(id, func(p *Peer) {
+	known, static := ps.knownPeer(id, func(p *Peer) {
 	})
-	if blacklisted {
-		// just ignore
-		return
-	}
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
@@ -53,13 +49,9 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	for {
 		msgData, err = readFrame(stream)
-		_, blacklisted, _ = ps.knownPeer(id, func(p *Peer) {
+		ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingPull++
 		})
-		if blacklisted {
-			// just ignore
-			return
-		}
 
 		ps.inMsgCounter.Inc()
 		switch {

@@ -57,13 +57,7 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 	id := stream.Conn().RemotePeer()
 	remote := stream.Conn().RemoteMultiaddr()
 
-	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {})
-	if blacklisted {
-		// ignore
-		// extend blacklisting
-		//ps.restartBlacklistTime(id)
-		return
-	}
+	known, _ := ps.knownPeer(id, func(p *Peer) {})
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
@@ -89,14 +83,14 @@ func (ps *Peers) heartbeatStreamHandler(stream network.Stream) {
 		})
 
 		if err != nil {
-			ps.dropPeer(id, err.Error(), false) // peer probably just restart
+			ps.dropPeer(id, err.Error()) // peer probably just restart
 			return
 		}
 		if hbInfo, err = heartbeatInfoFromBytes(msgData); err != nil {
 			// protocol violation
 			err = fmt.Errorf("[peering] hb: error while serializing message from peer %s: %v. Reset connection", ShortPeerIDString(id), err)
 			ps.Log().Error(err)
-			ps.dropPeer(id, err.Error(), true)
+			ps.dropPeer(id, err.Error())
 			return
 		}
 
@@ -160,13 +154,6 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 	if p == nil {
 		return
 	}
-	_, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
-	})
-	if blacklisted {
-		// ignore
-		p.numHBSendErr = 0
-		return
-	}
 
 	msg := &heartbeatInfo{
 		// time now will be set in the queue consumer
@@ -182,7 +169,7 @@ func (ps *Peers) sendHeartbeatToPeer(id peer.ID, hbCounter uint32) {
 		// avoiding drops caused by one-way transient stream resets
 		if p.numHBSendErr >= hbSendErrThreshold && !p._isAlive() {
 			ps.Log().Warnf("[peering] error sending heartbeat and no incoming HB for %v. Drop peer %s.", aliveDuration, ShortPeerIDString(id))
-			ps.dropPeer(id, "hb send error", false) // peer probably just restarted
+			ps.dropPeer(id, "hb send error") // peer probably just restarted
 			p.numHBSendErr = 0
 		}
 	}

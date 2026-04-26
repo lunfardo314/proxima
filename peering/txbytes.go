@@ -17,12 +17,8 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	known, blacklisted, _ := ps.knownPeer(id, func(p *Peer) {
+	known, _ := ps.knownPeer(id, func(p *Peer) {
 	})
-	if blacklisted {
-		// ignore
-		return
-	}
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
@@ -44,13 +40,9 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 	for {
 		txBytesWithMetadata, err = readFrame(stream)
 		ps.inMsgCounter.Inc()
-		_, blacklisted, _ = ps.knownPeer(id, func(p *Peer) {
+		ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingTx++
 		})
-		if blacklisted {
-			// ignore
-			return
-		}
 		if err != nil {
 			return
 		}
@@ -58,7 +50,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			// protocol violation
 			err = fmt.Errorf("gossip: wrong tx message from peer %s (txid prefix): at least 32 bytes expected", id.String())
 			ps.Log().Error(err)
-			ps.dropPeer(id, err.Error(), true)
+			ps.dropPeer(id, err.Error())
 			return
 		}
 		txIDPrefix, err = base.TransactionIDFromBytes(txBytesWithMetadata[:base.TransactionIDLength])
@@ -66,7 +58,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			// protocol violation
 			err = fmt.Errorf("gossip: wrong tx message from peer (txid prefix) %s: %v", id.String(), err)
 			ps.Log().Error(err)
-			ps.dropPeer(id, err.Error(), true)
+			ps.dropPeer(id, err.Error())
 			return
 		}
 		txBytesWithMetadata = txBytesWithMetadata[base.TransactionIDLength:]
@@ -75,7 +67,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			// protocol violation
 			err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
-			ps.dropPeer(id, err.Error(), true)
+			ps.dropPeer(id, err.Error())
 			return
 		}
 		metadata, err = txmetadata.TransactionMetadataFromBytes(metadataBytes)
@@ -83,7 +75,7 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			// protocol violation
 			err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
 			ps.Log().Error(err)
-			ps.dropPeer(id, err.Error(), true)
+			ps.dropPeer(id, err.Error())
 			return
 		}
 

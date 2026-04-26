@@ -16,7 +16,11 @@ func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 		return
 	}
 	ps.withPeer(id, func(p *Peer) {
-		yes = p == nil && !ps._isInBlacklist(id) && !ps._isInCoolOffList(id) && !ps._isInConnectList(id)
+		// libp2p's host.Connect dedups in-flight dials internally, so we don't
+		// need a separate connectList. Peers we've previously dropped aren't
+		// auto-redialled — they get re-discovered organically via DHT or peer
+		// exchange and have to pass through this check again.
+		yes = p == nil
 	})
 	return
 }
@@ -72,7 +76,7 @@ func (ps *Peers) dropExcessPeersIfNeeded() {
 	}
 	for _, p := range dynamicPeers[:len(dynamicPeers)-ps.cfg.MaxDynamicPeers] {
 		if time.Since(p.whenAdded) > gracePeriodAfterAdded {
-			ps._dropPeer(p, "excess peer (by rank)", true)
+			ps._dropPeer(p, "excess peer (by rank)")
 		}
 	}
 }

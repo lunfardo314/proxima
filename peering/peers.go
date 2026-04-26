@@ -33,8 +33,6 @@ import (
 func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
-		blacklist:       make(map[peer.ID]_deadlineWithReason),
-		cooloffList:     make(map[peer.ID]time.Time),
 		reconnecting:    set.New[peer.ID](),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
 		onReceivePullTx: func(_ peer.ID, _ base.TransactionID) {},
@@ -58,11 +56,6 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("unable to create ConnManager: %w", err)
 	}
 
-	// gater is wired to the Peers struct later, once ret is constructed. During
-	// the tiny window between libp2p.New and the assignment below, gater methods
-	// return "allow" for any peer — there is no blacklist to consult yet.
-	gater := &connectionGater{}
-
 	options := []libp2p.Option{
 		libp2p.Identity(hostIDPrivateKey),
 		libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic-v1", cfg.HostPort)),
@@ -71,7 +64,6 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		libp2p.DisableRelay(),
 		libp2p.AddrsFactory(FilterAddresses(cfg.AllowLocalIPs)),
 		libp2p.ConnectionManager(connManager),
-		libp2p.ConnectionGater(gater),
 	}
 
 	if !cfg.DisableQuicreuse {
@@ -90,15 +82,15 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	ledgerLibraryHash := ledger.L(0).LibraryHash()
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
+	stoppedCtx, stop := context.WithCancel(env.Ctx())
 	ret := &Peers{
 		environment:          env,
 		cfg:                  cfg,
 		host:                 lppHost,
+		stoppedCtx:           stoppedCtx,
+		stop:                 stop,
 		peers:                make(map[peer.ID]*Peer),
-		staticPeers:          make(map[peer.ID]*staticPeerInfo),
-		blacklist:            make(map[peer.ID]_deadlineWithReason),
-		cooloffList:          make(map[peer.ID]time.Time),
-		connectList:          set.New[peer.ID](),
+		staticPeers:          make(map[peer.ID]multiaddr.Multiaddr),
 		reconnecting:         set.New[peer.ID](),
 		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
 		onReceivePullTx:      func(_ peer.ID, _ base.TransactionID) {},
@@ -108,14 +100,13 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		rendezvousString:     fmt.Sprintf("%d", rendezvousNumber),
 	}
 
-	// wire the gater back-reference now that ret exists, and register the
-	// Notifiee for connection-level events.
-	gater.ps = ret
+	// register the Notifiee for connection-level events. CONNECTED/LOST CONNECTION
+	// log lines and static-peer reconnect scheduling are driven from here.
 	ret.host.Network().Notify(&peeringNotifiee{ps: ret})
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
-		if err = ret.addStaticPeer(maddr.Multiaddr, name, maddr.addrString); err != nil {
+		if err = ret.addStaticPeer(maddr.Multiaddr, name); err != nil {
 			return nil, err
 		}
 	}
@@ -230,12 +221,6 @@ func (ps *Peers) Run() {
 		}, true)
 	}
 
-	ps.RepeatInBackground(Name+"_blacklist_cleanup", 2*time.Second, func() bool {
-		ps.cleanBlacklist()
-		ps.cleanCoolofflist()
-		return true
-	})
-
 	ps.RepeatInBackground(Name+"_update_peer_metrics", 2*time.Second, func() bool {
 		ps.updatePeerMetrics(ps.peerStats())
 		return true
@@ -261,7 +246,14 @@ func (ps *Peers) Stop() {
 
 		ps.Log().Infof("[peering] stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.Log().Sync()
-		_ = ps.kademliaDHT.Close()
+		// cancel the per-Peers context first so background goroutines (e.g.
+		// scheduleStaticReconnect) bail out before we tear down libp2p.
+		if ps.stop != nil {
+			ps.stop()
+		}
+		if ps.kademliaDHT != nil {
+			_ = ps.kademliaDHT.Close()
+		}
 		_ = ps.host.Close()
 		ps.Log().Infof("[peering] libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
 	})
@@ -278,7 +270,7 @@ func _findMultiaddr(lst []multiaddr.Multiaddr, maddr multiaddr.Multiaddr) int {
 }
 
 // addStaticPeer adds preconfigured peer to the list. It will never be deleted
-func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString string) error {
+func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string) error {
 	if _findMultiaddr(ps.host.Addrs(), maddr) > 0 {
 		ps.Log().Warnf("[peering] ignore static peer with the multiaddress of the host")
 		return nil
@@ -288,18 +280,12 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString strin
 	if err != nil {
 		return fmt.Errorf("can't get multiaddress info: %v", err)
 	}
-	ps.Log().Infof("[peering] added pre-configured peer %s as '%s'", addrString, name)
+	ps.Log().Infof("[peering] added pre-configured peer %s as '%s'", maddr.String(), name)
 	ps.addPeer(info, name, true)
 	// tell ConnManager not to trim this connection when it hits the high watermark.
-	// Idempotent; safe on re-registration via cleanCoolofflist in current code.
 	ps.host.ConnManager().Protect(info.ID, "static")
-	_, found := ps.staticPeers[info.ID]
-	if !found {
-		ps.staticPeers[info.ID] = &staticPeerInfo{
-			maddr:      maddr,
-			name:       name,
-			addrString: addrString,
-		}
+	if _, found := ps.staticPeers[info.ID]; !found {
+		ps.staticPeers[info.ID] = maddr
 	}
 	return nil
 }
@@ -368,51 +354,72 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		whenAdded: time.Now(),
 	}
 
-	ps._addToConnectList(addrInfo.ID)
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
 
+	if static {
+		// Track static peers immediately so scheduleStaticReconnect (which checks
+		// ps.peers[id]) can drive the dial loop with backoff. Initialize the
+		// per-protocol stream map up front — sendMsgBytesOut requires
+		// p.streams[protocolID] to exist (the cached stream itself is opened
+		// lazily by ensurePeerStream on first send). scheduleStaticReconnect's
+		// host.Connect establishes the underlying libp2p connection; the first
+		// HB / gossip / pull then opens the actual stream over it.
+		p.streams = map[protocol.ID]*peerStream{
+			ps.lppProtocolHeartbeat: {},
+			ps.lppProtocolPull:      {},
+			ps.lppProtocolGossip:    {},
+		}
+		ps.peers[addrInfo.ID] = p
+		go ps.scheduleStaticReconnect(addrInfo.ID)
+		return p
+	}
+
+	// Dynamic peer: try to dial; on success register in peers, on failure forget.
+	// libp2p's Connect tracks in-flight dials internally; autopeering may
+	// rediscover and retry on a future tick if the peer is reachable later.
 	go func() {
-		time.Sleep(100 * time.Millisecond) //?? Delay
+		time.Sleep(100 * time.Millisecond)
 		err := ps.dialPeer(addrInfo.ID, p)
 		if err != nil {
 			ps.host.Peerstore().RemovePeer(addrInfo.ID)
-			ps.mutex.Lock()
-			ps._removeFromConnectList(addrInfo.ID)
-			if static {
-				ps._addToBlacklist(addrInfo.ID, err.Error())
-			} else {
-				ps._addToCoolOfflist(addrInfo.ID)
-			}
-			ps.mutex.Unlock()
 			return
 		}
 
 		ps.mutex.Lock()
 		defer ps.mutex.Unlock()
-
-		ps._removeFromConnectList(addrInfo.ID)
 		ps.peers[addrInfo.ID] = p
 	}()
 
 	return p
 }
 
-// dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
-func (ps *Peers) dropPeer(id peer.ID, reason string, blacklist bool) {
+// dropPeer terminates a peer's connection and removes it from local tracking.
+// For static peers, dropping is a no-op other than logging — static peers are
+// trusted by configuration; reconnection is handled by scheduleStaticReconnect
+// when libp2p reports the connection lost. Closing a static peer's connection
+// here would just trigger an immediate reconnect, masking the underlying
+// problem (config / version mismatch / malformed gossip from a misconfigured
+// trusted node) which the operator should see in the logs and address.
+func (ps *Peers) dropPeer(id peer.ID, reason string) {
 	ps.withPeer(id, func(p *Peer) {
 		if p != nil {
-			ps._dropPeer(p, reason, blacklist)
+			ps._dropPeer(p, reason)
 		}
 	})
 }
 
-func (ps *Peers) _dropPeer(p *Peer, reason string, blacklist bool) {
-
+func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	why := ""
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Drop reason: '%s'", reason)
+	}
+
+	if p.isStatic {
+		ps.Log().Warnf("[peering] static peer %s ('%s') triggered drop%s — keeping it (static peers are not dropped)",
+			ShortPeerIDString(p.id), p.name, why)
+		return
 	}
 
 	for _, s := range p.streams {
@@ -427,65 +434,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string, blacklist bool) {
 	_ = ps.host.Network().ClosePeer(p.id)
 	delete(ps.peers, p.id)
 
-	if blacklist {
-		ps._addToBlacklist(p.id, "")
-	} else {
-		ps._addToCoolOfflist(p.id)
-	}
-
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
-}
-
-func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
-	ps._removeFromCoolOffList(id)
-	ps.blacklist[id] = _deadlineWithReason{
-		Time:   time.Now().Add(time.Duration(ps.cfg.BlacklistTTL)),
-		reason: reason,
-	}
-}
-
-func (ps *Peers) restartBlacklistTime(id peer.ID) {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	if entry, exists := ps.blacklist[id]; exists {
-		entry.Time = time.Now().Add(time.Duration(ps.cfg.BlacklistTTL))
-		ps.blacklist[id] = entry
-	}
-}
-
-func (ps *Peers) _addToCoolOfflist(id peer.ID) {
-	if !ps._isInBlacklist(id) {
-		ps.cooloffList[id] = time.Now().Add(time.Duration(ps.cfg.CooloffListTTL))
-	}
-}
-
-func (ps *Peers) _removeFromCoolOffList(id peer.ID) {
-	_, found := ps.cooloffList[id]
-	if found {
-		delete(ps.cooloffList, id)
-	}
-}
-
-func (ps *Peers) _addToConnectList(id peer.ID) {
-	if !ps.connectList.Contains(id) {
-		ps.connectList.Insert(id)
-	}
-}
-
-func (ps *Peers) _isInCoolOffList(id peer.ID) bool {
-	_, yes := ps.cooloffList[id]
-	return yes
-}
-
-func (ps *Peers) _isInBlacklist(id peer.ID) bool {
-	_, yes := ps.blacklist[id]
-	return yes
-}
-
-func (ps *Peers) _isInConnectList(id peer.ID) bool {
-	yes := ps.connectList.Contains(id)
-	return yes
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID)) {
@@ -516,11 +465,10 @@ func (ps *Peers) getPeer(id peer.ID) *Peer {
 	return ps._getPeer(id)
 }
 
-func (ps *Peers) knownPeer(id peer.ID, ifExists func(p *Peer)) (known, blacklisted, static bool) {
+func (ps *Peers) knownPeer(id peer.ID, ifExists func(p *Peer)) (known, static bool) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	_, blacklisted = ps.blacklist[id]
 	var p *Peer
 	if p, known = ps.peers[id]; known {
 		static = p.isStatic
@@ -564,45 +512,6 @@ func (ps *Peers) PeerName(id peer.ID) string {
 	return p.name
 }
 
-func (ps *Peers) cleanBlacklist() {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	nowis := time.Now()
-	for id, deadline := range ps.blacklist {
-		if deadline.Before(nowis) {
-			delete(ps.blacklist, id)
-			ps._addToCoolOfflist(id)
-		}
-	}
-}
-
-func (ps *Peers) cleanCoolofflist() {
-	ps.mutex.Lock()
-
-	toDelete := make([]peer.ID, 0, len(ps.cooloffList))
-	nowis := time.Now()
-	for id, deadline := range ps.cooloffList {
-		if deadline.Before(nowis) {
-			toDelete = append(toDelete, id)
-		}
-	}
-	for _, id := range toDelete {
-		delete(ps.cooloffList, id)
-	}
-	ps.mutex.Unlock()
-	for _, id := range toDelete {
-		p, static := ps.staticPeers[id]
-		if static {
-			_ = ps.addStaticPeer(p.maddr, p.name, p.addrString)
-		}
-	}
-}
-
-func (ps *Peers) _removeFromConnectList(id peer.ID) {
-	ps.connectList.Remove(id)
-}
-
 func (p *Peer) _isDead() bool {
 	return !p._isAlive() && time.Since(p.whenAdded) > gracePeriodAfterAdded
 }
@@ -613,13 +522,6 @@ func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
 			isAlive = p._isAlive()
 		}
 	})
-	return
-}
-
-func (ps *Peers) IsBlacklisted(id peer.ID) (isBlacklisted bool) {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-	_, isBlacklisted = ps.blacklist[id]
 	return
 }
 
@@ -728,9 +630,8 @@ func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID,
 
 func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 	ret := &api.PeersInfo{
-		HostID:    ps.host.ID().String(),
-		Blacklist: make(map[string]string),
-		Peers:     make([]api.PeerInfo, 0),
+		HostID: ps.host.ID().String(),
+		Peers:  make([]api.PeerInfo, 0),
 	}
 
 	ps.mutex.RLock()
@@ -767,8 +668,5 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 		ret.Peers = append(ret.Peers, pi)
 	}
 
-	for id, r := range ps.blacklist {
-		ret.Blacklist[id.String()] = r.reason
-	}
 	return ret
 }

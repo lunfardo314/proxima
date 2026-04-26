@@ -10,7 +10,6 @@ import (
 )
 
 const BeginPort = 4000
-const TestBlacklistTTL = 20 // ms
 
 var (
 	allPrivateKeys = []string{
@@ -50,9 +49,7 @@ func MakeConfigFor(n, hostIdx int) *Config {
 		HostPort:              BeginPort + hostIdx,
 		PreConfiguredPeers:    make(map[string]_multiaddr),
 		ForcePullFromAllPeers: true,
-		MaxDynamicPeers:       10, // allow dynamic peers
-		BlacklistTTL:          TestBlacklistTTL,
-		CooloffListTTL:        5,
+		MaxDynamicPeers:       10,   // allow dynamic peers
 		DisableQuicreuse:      true, // with quic reuse enabled quic cannot be properly shutdown and subsequent tests will fail
 	}
 	ids := hostID[:n]
