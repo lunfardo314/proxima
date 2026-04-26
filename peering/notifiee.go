@@ -39,23 +39,33 @@ func (n *peeringNotifiee) Connected(_ network.Network, conn network.Conn) {
 
 func (n *peeringNotifiee) Disconnected(_ network.Network, conn network.Conn) {
 	id := conn.RemotePeer()
-	var isStatic bool
-	var shouldReconnect bool
+	var isStatic, known bool
 	n.ps.withPeer(id, func(p *Peer) {
 		if p == nil {
 			return
 		}
+		known = true
 		if p.lastLoggedConnected {
 			n.ps.Log().Infof("[peering] LOST CONNECTION with %s peer %s ('%s')",
 				util.Cond(p.isStatic, "static", "dynamic"), ShortPeerIDString(id), p.name)
 			p.lastLoggedConnected = false
 		}
 		isStatic = p.isStatic
-		shouldReconnect = isStatic
 	})
-	if shouldReconnect {
-		go n.ps.scheduleStaticReconnect(id)
+	if !known {
+		return
 	}
+	if isStatic {
+		go n.ps.scheduleStaticReconnect(id)
+		return
+	}
+	// Dynamic peer disconnected — could be a ConnManager trim, peer restart,
+	// or a network blip. Drop our tracking; the DHT will re-surface the peer
+	// to autopeering if it remains reachable. Keeping stale entries would
+	// confuse the alive-counter and prevent re-add of the same peer ID.
+	n.ps.mutex.Lock()
+	delete(n.ps.peers, id)
+	n.ps.mutex.Unlock()
 }
 
 // scheduleStaticReconnect keeps attempting to reconnect to a static peer that

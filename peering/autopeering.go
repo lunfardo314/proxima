@@ -64,17 +64,3 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	}
 }
 
-func (ps *Peers) dropExcessPeersIfNeeded() {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	dynamicPeers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
-		return !p.isStatic
-	})
-	if len(dynamicPeers) <= ps.cfg.MaxDynamicPeers {
-		return
-	}
-	for _, p := range dynamicPeers[:len(dynamicPeers)-ps.cfg.MaxDynamicPeers] {
-		ps._dropPeer(p, "excess peer (by rank)")
-	}
-}

@@ -45,10 +45,14 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("wrong private key: %w", err)
 	}
 
+	// Watermarks count TOTAL libp2p connections (statics + dynamics). Static
+	// peers are Protect-ed (see addStaticPeer) so trims target only dynamics;
+	// shifting the watermarks by numStatic ensures the cap on dynamics is
+	// exactly cfg.MaxDynamicPeers after a trim down to lo.
+	numStatic := len(cfg.PreConfiguredPeers)
 	connManager, err := connmgr.NewConnManager(
-		cfg.MaxDynamicPeers,   // lo,
-		cfg.MaxDynamicPeers+5, // hi,
-		//connmgr.WithEmergencyTrim(true), // deprecated??
+		numStatic+cfg.MaxDynamicPeers,   // lo,
+		numStatic+cfg.MaxDynamicPeers+5, // hi,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create ConnManager: %w", err)
@@ -200,7 +204,6 @@ func (ps *Peers) Run() {
 	if ps.isAutopeeringEnabled() {
 		ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
 			ps.discoverPeersIfNeeded()
-			ps.dropExcessPeersIfNeeded() // dropping excess dynamic peers one-by-one
 			return true
 		}, true)
 	}
