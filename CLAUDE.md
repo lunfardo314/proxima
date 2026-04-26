@@ -238,7 +238,6 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_peers_all` | gauge | Total known peers |
 | `proxima_peers_dead` | gauge | Dead peers |
 | `proxima_peers_static` | gauge | Static (configured) peers |
-| `proxima_peers_pull_targets` | gauge | Peers available for pull |
 | `proxima_response_to_pull_counter` | counter | Responses to pull requests served |
 
 **LRB (Latest Reliable Branch):**
