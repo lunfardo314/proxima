@@ -86,11 +86,10 @@ type (
 		metrics
 	}
 	peersStats struct {
-		peersAll         int
-		peersStatic      int
-		peersDead        int
-		peersAlive       int
-		peersPullTargets int
+		peersAll    int
+		peersStatic int
+		peersDead   int
+		peersAlive  int
 	}
 
 	peerStream struct {

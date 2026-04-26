@@ -86,14 +86,14 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	stoppedCtx, stop := context.WithCancel(env.Ctx())
 	ret := &Peers{
-		environment:          env,
-		cfg:                  cfg,
-		host:                 lppHost,
-		stoppedCtx:           stoppedCtx,
-		stop:                 stop,
-		peers:                make(map[peer.ID]*Peer),
-		staticPeers:          make(map[peer.ID]multiaddr.Multiaddr),
-		reconnecting:         set.New[peer.ID](),
+		environment:       env,
+		cfg:               cfg,
+		host:              lppHost,
+		stoppedCtx:        stoppedCtx,
+		stop:              stop,
+		peers:             make(map[peer.ID]*Peer),
+		staticPeers:       make(map[peer.ID]multiaddr.Multiaddr),
+		reconnecting:      set.New[peer.ID](),
 		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
 		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
 		lppProtocolGossip: protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
@@ -192,12 +192,11 @@ func (ps *Peers) Run() {
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
 
 	ps.RepeatInBackground("peering_log_peers_loop", logPeersEvery, func() bool {
-		nowis := time.Now()
-		aliveStatic, aliveDynamic, pullTargets := ps.NumAlive()
+		aliveStatic, aliveDynamic := ps.NumAlive()
 
-		ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d, pull targets: %d (%v)",
+		ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d",
 			aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
-			aliveDynamic, ps.cfg.MaxDynamicPeers, pullTargets, time.Since(nowis))
+			aliveDynamic, ps.cfg.MaxDynamicPeers)
 		return true
 	}, true)
 
@@ -642,7 +641,7 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 
 // NumAlive returns counts of alive static / dynamic peers and pull targets.
 // "Alive" is libp2p-Connectedness-driven (see _isAlive).
-func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic, pullTargets int) {
+func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
 	ps.forEachPeerRLock(func(p *Peer) bool {
 		if ps._isAlive(p) {
 			if p.isStatic {
@@ -650,9 +649,6 @@ func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic, pullTargets int) {
 			} else {
 				aliveDynamic++
 			}
-		}
-		if ps._isPullTarget(p) {
-			pullTargets++
 		}
 		return true
 	})

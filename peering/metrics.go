@@ -10,11 +10,10 @@ type metrics struct {
 	pullRequestsOut prometheus.Counter
 
 	// peers metrics
-	peersAll         prometheus.Gauge
-	peersStatic      prometheus.Gauge
-	peersDead        prometheus.Gauge
-	peersAlive       prometheus.Gauge
-	peersPullTargets prometheus.Gauge
+	peersAll    prometheus.Gauge
+	peersStatic prometheus.Gauge
+	peersDead   prometheus.Gauge
+	peersAlive  prometheus.Gauge
 
 	// txMsg metrics
 	transactionsReceivedCounter prometheus.Counter
@@ -57,11 +56,7 @@ func (ps *Peers) registerMetrics() {
 		Name: "proxima_peers_alive",
 		Help: "number of alive peers",
 	})
-	ps.peersPullTargets = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_peers_pull_targets",
-		Help: "number of possible pull targets",
-	})
-	ps.MetricsRegistry().MustRegister(ps.peersAll, ps.peersStatic, ps.peersDead, ps.peersAlive, ps.peersPullTargets)
+	ps.MetricsRegistry().MustRegister(ps.peersAll, ps.peersStatic, ps.peersDead, ps.peersAlive)
 
 	// tx counters
 	ps.transactionsReceivedCounter = prometheus.NewCounter(prometheus.CounterOpts{
@@ -88,9 +83,6 @@ func (ps *Peers) peerStats() (ret peersStats) {
 		if p.isStatic {
 			ret.peersStatic++
 		}
-		if ps._isPullTarget(p) {
-			ret.peersPullTargets++
-		}
 		return true
 	})
 	return
@@ -101,5 +93,4 @@ func (ps *Peers) updatePeerMetrics(stats peersStats) {
 	ps.peersStatic.Set(float64(stats.peersStatic))
 	ps.peersDead.Set(float64(stats.peersDead))
 	ps.peersAlive.Set(float64(stats.peersAlive))
-	ps.peersPullTargets.Set(float64(stats.peersPullTargets))
 }

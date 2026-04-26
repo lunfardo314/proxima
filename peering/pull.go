@@ -76,9 +76,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 		go ps.onReceivePullTx(id, txid)
 		ps.pullRequestsIn.Inc()
-
-		// return buffer for reuse
-		//bytepool.DisposeArray(msgData)
 	}
 }
 
@@ -91,7 +88,7 @@ func (ps *Peers) sendPullTransactionToPeers(ids []peer.ID, txid base.Transaction
 
 // PullTransactionsFromPeers sends pull request to all peers that respond to pull requests
 func (ps *Peers) PullTransactionsFromPeers(txid base.TransactionID) int {
-	targets := ps.allPullTargetIDs()
+	targets := ps.allAliveIDs()
 	ps.sendPullTransactionToPeers(targets, txid)
 	return len(targets)
 }
@@ -111,16 +108,6 @@ func decodePullTransactionMsg(data []byte) (base.TransactionID, error) {
 	return base.TransactionIDFromBytes(data[1:])
 }
 
-// _isPullTarget reports whether the peer is currently eligible to receive pull
-// requests. After the heartbeat protocol was removed there is no remote
-// "responds-to-pull" capability advertisement — every connected peer is a
-// candidate; servers that don't want to serve simply don't reply (see
-// IgnoreAllPullRequests / AcceptPullRequestsFromStaticPeersOnly in
-// pullStreamHandler).
-func (ps *Peers) _isPullTarget(p *Peer) bool {
-	return ps._isAlive(p)
-}
-
 // out message wrappers
 type _pullTransaction struct {
 	txid base.TransactionID
@@ -128,14 +115,14 @@ type _pullTransaction struct {
 
 func (pt *_pullTransaction) Bytes() []byte { return encodePullTransactionMsg(pt.txid) }
 
-func (ps *Peers) allPullTargetIDs() []peer.ID {
+func (ps *Peers) allAliveIDs() []peer.ID {
 	ret := make([]peer.ID, 0)
 
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
 	for _, p := range ps.peers {
-		if ps._isPullTarget(p) {
+		if ps._isAlive(p) {
 			ret = append(ret, p.id)
 		}
 	}

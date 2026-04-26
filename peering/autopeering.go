@@ -26,7 +26,7 @@ func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 }
 
 func (ps *Peers) discoverPeersIfNeeded() {
-	_, aliveDynamic, _ := ps.NumAlive()
+	_, aliveDynamic := ps.NumAlive()
 
 	if aliveDynamic >= ps.cfg.MaxDynamicPeers {
 		return
@@ -63,4 +63,3 @@ func (ps *Peers) discoverPeersIfNeeded() {
 		}
 	}
 }
-

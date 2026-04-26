@@ -56,7 +56,7 @@ func (p *ProximaNode) startStreaming() {
 
 // GetNodeInfo TODO not finished
 func (p *ProximaNode) GetNodeInfo() *global.NodeInfo {
-	aliveStaticPeers, aliveDynamicPeers, _ := p.peers.NumAlive()
+	aliveStaticPeers, aliveDynamicPeers := p.peers.NumAlive()
 
 	ret := &global.NodeInfo{
 		ID:                p.peers.SelfPeerID(),
