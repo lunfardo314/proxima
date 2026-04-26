@@ -35,7 +35,10 @@ func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (
 		}
 		lcEnd := vidEndorsed.GetLedgerCoverageP()
 		if lcEnd == nil {
-			err = fmt.Errorf("ledger coverage not set in the endorsed %s", vidEndorsed.IDShortString())
+			// Endorsed vid was reattached during this attacher's lifetime — its coverage
+			// was cleared and the new attacher hasn't restored it yet. Bail this milestone
+			// without marking the (still-fine) consumer Bad. See ErrAttacherTransientStaleState.
+			err = fmt.Errorf("%w: endorsed %s coverage cleared (reattached)", ErrAttacherTransientStaleState, vidEndorsed.IDShortString())
 			return false
 		}
 		lcCalc := a.FinalLedgerCoverage(a.vid.Timestamp())
@@ -61,7 +64,11 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 		}
 		lc := vidInp.GetLedgerCoverageP()
 		if lc == nil {
-			err = fmt.Errorf("ledger coverage not set in the input tx %s", vidInp.IDShortString())
+			// Input was reattached during this attacher's lifetime — its coverage
+			// was cleared and the new attacher hasn't restored it yet. Bail this
+			// milestone without marking the (still-fine) consumer Bad. See
+			// ErrAttacherTransientStaleState.
+			err = fmt.Errorf("%w: input %s coverage cleared (reattached)", ErrAttacherTransientStaleState, vidInp.IDShortString())
 			return false
 		}
 		delta, _ := a.CoverageDelta()

@@ -69,7 +69,6 @@ type (
 
 	metrics struct {
 		numVerticesGauge prometheus.Gauge
-		pipelineGauge    prometheus.Gauge
 	}
 )
 
@@ -85,9 +84,11 @@ func New(env environment) *MemDAG {
 			env.Log().Infof("[memdag cleanup] DISABLED")
 		} else {
 			ret.RepeatInBackground("memdag-GC", gcLoopPeriod, func() bool {
-				nDetached, nDeleted := ret.doGC()
-				if nDetached > 0 || nDeleted > 0 {
-					env.Log().Infof("[memdag GC] detached: %d, deleted: %d", nDetached, nDeleted)
+				s := ret.doGC()
+				if s.detached > 0 || s.deleted > 0 || s.sec1Dur > gcLogSlowThreshold || s.sec2Dur > gcLogSlowThreshold {
+					env.Log().Infof("[memdag GC] detached: %d, deleted: %d | iter: %d nilPtr: %d ttl: %d deep: %d expired: %d | t1: %v filter: %v detach: %v t2: %v",
+						s.detached, s.deleted, s.nIterated, s.nNilPtr, s.nTTLCand, s.nDeepCand, s.nExpired,
+						s.sec1Dur, s.filterDur, s.detachDur, s.sec2Dur)
 				}
 				return true
 			}, true)
@@ -95,10 +96,8 @@ func New(env environment) *MemDAG {
 
 		ret.RepeatInBackground("memdag-stats", 10*time.Second, func() bool {
 			nVertices := ret.NumVertices()
-			pipeline := nVertices + ret.Counter("wait")
 			env.Log().Infof("[memdag stats] vertices: %d", nVertices)
 			ret.numVerticesGauge.Set(float64(nVertices))
-			ret.pipelineGauge.Set(float64(pipeline))
 			return true
 		})
 	}
@@ -125,7 +124,27 @@ const (
 	maxBranchVertexRecords = 20
 	// staleLRBSlots: if the LRB is this many slots old, clear the branch tracking map entirely.
 	staleLRBSlots uint32 = 24 // same as vertexTTLSlots
+
+	// gcLogSlowThreshold: log doGC stats whenever a single locked section exceeds this.
+	// Diagnostic for the 14:42 boot deadlock; expected steady state is well under 100ms.
+	gcLogSlowThreshold = 100 * time.Millisecond
 )
+
+// gcStats carries per-pass diagnostic counters and timings out of doGC.
+// Logged by the memdag-GC background loop when work was done or when a
+// locked section exceeded gcLogSlowThreshold.
+type gcStats struct {
+	detached, deleted int
+	nIterated         int           // vertices visited under the first lock
+	nNilPtr           int           // weak-pointer-nil entries deleted in section 1
+	nTTLCand          int           // wallclock or ledger TTL candidates added
+	nDeepCand         int           // confirmed-deep candidates added
+	nExpired          int           // candidates that survived sequencer-ref filter
+	sec1Dur           time.Duration // time inside the first WithGlobalWriteLock callback
+	filterDur         time.Duration // unlocked IsVertexReferencedBySequencer pass
+	detachDur         time.Duration // unlocked ConvertToDetached pass
+	sec2Dur           time.Duration // time inside the second WithGlobalWriteLock callback
+}
 
 func (d *MemDAG) WithGlobalWriteLock(fun func()) {
 	d.mutex.Lock()
@@ -192,7 +211,7 @@ func (d *MemDAG) postDeleteEvents(deletedIDs []base.TransactionID) {
 //     Catches both confirmed txs and orphaned seq txs that were never in any branch.
 //
 // Pattern: collect expired under global lock → ConvertToDetached outside lock → nullify under lock.
-func (d *MemDAG) doGC() (detached, deleted int) {
+func (d *MemDAG) doGC() (s gcStats) {
 	type expiredEntry struct {
 		vid    *vertex.WrappedTx
 		reason string // "wallclock_ttl", "ledger_ttl", "confirmed_deep"
@@ -201,17 +220,20 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 	candidates := make([]expiredEntry, 0)
 	expired := make([]expiredEntry, 0)
 	var deletedIDs []base.TransactionID
+	t1 := time.Now()
 	d.WithGlobalWriteLock(func() {
 		slotNow := ledger.TimeNow().Slot
 		latestBranch := d.latestBranchSlot
 		healthySlot := d.latestHealthyBranchSlot
 
 		for txid, rec := range d.vertices {
+			s.nIterated++
 			if rec.Pointer.Value() == nil {
 				d.LogTx(time.Now(), "GC: map entry DELETED (weak ptr nil)", txid)
 				d.deleteFromMapNoLock(txid)
 				deletedIDs = append(deletedIDs, txid)
-				deleted++
+				s.deleted++
+				s.nNilPtr++
 				continue
 			}
 			if rec.WrappedTx == nil {
@@ -227,10 +249,12 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			ledgerTimeExpired := latestBranch > 0 && txid.Slot()+vertexLedgerTTLSlots < latestBranch
 			if wallClockExpired {
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "wallclock_ttl"})
+				s.nTTLCand++
 				continue
 			}
 			if ledgerTimeExpired {
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "ledger_ttl"})
+				s.nTTLCand++
 				continue
 			}
 
@@ -239,26 +263,32 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 			wallClockOldEnough := slotNow > branchPruneDepth && rec.WrappedTx.SlotWhenAdded+branchPruneDepth < slotNow
 			if wallClockOldEnough && d.isConfirmedDeepNoLock(rec.WrappedTx, healthySlot) {
 				candidates = append(candidates, expiredEntry{rec.WrappedTx, "confirmed_deep"})
+				s.nDeepCand++
 			}
 		}
 
 		// clean up branchVertices after pruning check (so deep sets are available for isConfirmedDeepNoLock)
 		d.cleanupBranchVerticesNoLock()
 	})
+	s.sec1Dur = time.Since(t1)
 
 	// Phase 2: filter candidates by sequencer references OUTSIDE the global lock
 	// (IsVertexReferencedBySequencer takes sequencer-internal locks)
+	tFilter := time.Now()
 	for _, c := range candidates {
 		if !d.IsVertexReferencedBySequencer(c.vid) {
 			expired = append(expired, c)
 		}
 	}
+	s.filterDur = time.Since(tFilter)
+	s.nExpired = len(expired)
 	d.postDeleteEvents(deletedIDs)
 	deletedIDs = deletedIDs[:0]
 
 	if len(expired) == 0 {
 		return
 	}
+	tDetach := time.Now()
 	for _, e := range expired {
 		// diagnostic: observe GC-driven detachment (see claude/pastcone_consistency.md §5.4).
 		// Gated by TraceTagPastConeDiag; measures the window where vid.consumed can drop
@@ -269,6 +299,8 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 		}
 		e.vid.ConvertToDetached()
 	}
+	s.detachDur = time.Since(tDetach)
+	t2 := time.Now()
 	d.WithGlobalWriteLock(func() {
 		for _, e := range expired {
 			txid := e.vid.ID()
@@ -277,7 +309,7 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 					d.LogTx(time.Now(), fmt.Sprintf("GC: DETACHED+DELETED reason=%s", e.reason), txid)
 					d.deleteFromMapNoLock(txid)
 					deletedIDs = append(deletedIDs, txid)
-					deleted++
+					s.deleted++
 				} else {
 					d.LogTx(time.Now(), fmt.Sprintf("GC: DETACHED reason=%s", e.reason), txid)
 					if !txid.IsSequencerTransaction() && d.Counter("nonseq") > 0 {
@@ -285,11 +317,12 @@ func (d *MemDAG) doGC() (detached, deleted int) {
 					}
 					rec.WrappedTx = nil
 					d.vertices[txid] = rec
-					detached++
+					s.detached++
 				}
 			}
 		}
 	})
+	s.sec2Dur = time.Since(t2)
 	d.postDeleteEvents(deletedIDs)
 	return
 }
@@ -556,9 +589,5 @@ func (d *MemDAG) registerMetrics() {
 		Name: "proxima_memDAG_numVerticesGauge",
 		Help: "number of vertices in the memDAG",
 	})
-	d.pipelineGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_pipeline_size",
-		Help: "total transactions in the pipeline (vertices + solicited queue + clock wait)",
-	})
-	d.MetricsRegistry().MustRegister(d.numVerticesGauge, d.pipelineGauge)
+	d.MetricsRegistry().MustRegister(d.numVerticesGauge)
 }

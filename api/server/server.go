@@ -22,6 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/spf13/viper"
 	"golang.org/x/exp/slices"
 )
 
@@ -32,6 +33,12 @@ type (
 		GetSyncInfo() *api.SyncInfo
 		GetPeersInfo() *api.PeersInfo
 		LatestReliableState() (multistate.SugaredStateReader, error)
+		// DiagCompareReaders: diagnostic helper for consensus-halt 2026-04-23.
+		// Returns a JSON-marshalable map with results of looking up `oid` against the
+		// branch `branchID` via BOTH paths used in production code, plus bookkeeping.
+		DiagCompareReaders(branchID base.TransactionID, oid base.OutputID) map[string]any
+		DiagListBranchesAtSlot(slot uint32) []map[string]any
+		DiagAllPendingBranches() []map[string]any
 		CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int)
 		SubmitTxBytesFromAPI(txBytes []byte)
 		GetLatestReliableBranch() *multistate.BranchData
@@ -119,6 +126,24 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetSnapshotInfo, srv.getSnapshotInfo)
 	// GET snapshot file download /get_snapshot (binary, enable with snapshot.enable_api)
 	srv.addHandler(api.PathGetSnapshot, srv.getSnapshot)
+
+	// Debug endpoints — gated behind `debug.enable` config flag. These expose internal
+	// Branches state (pending/committed, roots, tx-record bitmaps) for post-mortem of
+	// corruption/halt incidents. Read-only, no side effects, but off by default so
+	// production nodes don't advertise their internals.
+	if viper.GetBool("debug.enable") {
+		// /api/v1/debug_compare_readers?branchid=<hex>&outputid=<hex>
+		// Compares API-path (GetStateReaderForTheBranch) vs attacher-path
+		// (GetVirtualStateReaderForTheBranch) lookup of a given output.
+		srv.addHandler("/api/v1/debug_compare_readers", srv.debugCompareReaders)
+		// /api/v1/debug_branches_at_slot?slot=<uint32>
+		// Lists every branch known to b.m at the given slot.
+		srv.addHandler("/api/v1/debug_branches_at_slot", srv.debugBranchesAtSlot)
+		// /api/v1/debug_pending_branches
+		// Lists every pending (uncommitted) branch in b.pending with its mutations length.
+		srv.addHandler("/api/v1/debug_pending_branches", srv.debugPendingBranches)
+		srv.Log().Infof("debug endpoints enabled: /api/v1/debug_compare_readers, /api/v1/debug_branches_at_slot, /api/v1/debug_pending_branches")
+	}
 
 	// Transaction logger API
 	// POST /api/v1/txlog/enable?level=<level>
@@ -1166,6 +1191,56 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 	}
 	_, err = w.Write(respBin)
 	util.AssertNoError(err)
+}
+
+// DIAG 2026-04-23
+func (srv *server) debugBranchesAtSlot(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+	s := r.URL.Query().Get("slot")
+	slot, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		api.WriteErr(w, "slot: "+err.Error())
+		return
+	}
+	result := srv.DiagListBranchesAtSlot(uint32(slot))
+	resp, _ := json.MarshalIndent(result, "", "  ")
+	_, _ = w.Write(resp)
+}
+
+// DIAG 2026-04-23
+func (srv *server) debugPendingBranches(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+	result := srv.DiagAllPendingBranches()
+	resp, _ := json.MarshalIndent(result, "", "  ")
+	_, _ = w.Write(resp)
+}
+
+// DIAG 2026-04-23
+func (srv *server) debugCompareReaders(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+	bHex := r.URL.Query().Get("branchid")
+	oHex := r.URL.Query().Get("outputid")
+	if bHex == "" || oHex == "" {
+		api.WriteErr(w, "need branchid and outputid (hex)")
+		return
+	}
+	branchID, err := base.TransactionIDFromHexString(bHex)
+	if err != nil {
+		api.WriteErr(w, "branchid: "+err.Error())
+		return
+	}
+	oid, err := base.OutputIDFromHexString(oHex)
+	if err != nil {
+		api.WriteErr(w, "outputid: "+err.Error())
+		return
+	}
+	result := srv.DiagCompareReaders(branchID, oid)
+	resp, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		api.WriteErr(w, err.Error())
+		return
+	}
+	_, _ = w.Write(resp)
 }
 
 func (srv *server) withLRB(fun func(rdr multistate.SugaredStateReader) error) error {

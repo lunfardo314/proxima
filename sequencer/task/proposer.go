@@ -1,6 +1,8 @@
 package task
 
 import (
+	"time"
+
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -9,16 +11,21 @@ import (
 // finalize computes coverage, builds the transaction, and returns a finalProposal.
 // The proposal's attacher is closed after building the transaction.
 func (p *proposal) finalize(source string) (*finalProposal, error) {
+	start := time.Now()
 	ts := p.targetTs
 	if p.effectiveTs != base.NilLedgerTime {
 		ts = p.effectiveTs
 	}
 
 	if err := p.ctx.Err(); err != nil {
+		p.Log().Warnf("finalize[%s]: FAIL_AT_ENTRY target=%s err=%v", source, p.targetTs.String(), err)
 		return nil, err
 	}
+	covStart := time.Now()
 	coverageDelta, frozen, err := p.CoverageDeltaWithContext(p.ctx)
 	if err != nil {
+		p.Log().Warnf("finalize[%s]: FAIL_AT_COVERAGE target=%s covElapsed=%v totalElapsed=%v err=%v",
+			source, p.targetTs.String(), time.Since(covStart), time.Since(start), err)
 		return nil, err
 	}
 	ledgerCoverage := p.FinalLedgerCoverage(ts, coverageDelta)
@@ -27,8 +34,11 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 
 	pastConeAttachmentCost := p.PastConeAttachmentCost()
 
+	mkStart := time.Now()
 	tx, hrString, err := p.makeTx() // closes the attacher
 	if err != nil {
+		p.Log().Warnf("finalize[%s]: FAIL_AT_MAKETX target=%s mkElapsed=%v totalElapsed=%v err=%v",
+			source, p.targetTs.String(), time.Since(mkStart), time.Since(start), err)
 		return nil, err
 	}
 

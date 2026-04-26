@@ -223,9 +223,26 @@ func (w *TxStoreWriter) flushLocked() {
 	w.SetCounter("txstore_batch", len(batch))
 }
 
-// evictIfNeededLocked evicts oldest entries when cache is at capacity.
-// Caller must hold w.mu.
+// evictIfNeededLocked evicts oldest entries when cache is at capacity, and also
+// compacts evictOrder by dropping txids no longer in the cache. Caller must hold w.mu.
+//
+// Compaction is needed because TakeCachedTx removes from `cache` but not from
+// `evictOrder`. Under load most cached txs are TakeCachedTx'd quickly, so the
+// cache stays below maxCacheSize and the eviction-by-target path below rarely
+// runs — without compaction here, evictOrder grows monotonically forever
+// (one TransactionID per persisted tx).
 func (w *TxStoreWriter) evictIfNeededLocked() {
+	// Compact: drop stale txids. This bounds evictOrder at len(cache).
+	// Trigger only when slack is significant to avoid O(N) churn on every call.
+	if len(w.evictOrder) > 2*len(w.cache) {
+		fresh := make([]base.TransactionID, 0, len(w.cache))
+		for _, txid := range w.evictOrder {
+			if _, exists := w.cache[txid]; exists {
+				fresh = append(fresh, txid)
+			}
+		}
+		w.evictOrder = fresh
+	}
 	if len(w.cache) < maxCacheSize {
 		return
 	}

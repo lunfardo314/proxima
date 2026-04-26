@@ -141,7 +141,7 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				// If set, the vertex is immutable — read-only traversal is safe under read lock.
 				if vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) {
 					ok = a.attachVertexUnwrapped(v, vid)
-					if ok && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
+					if ok && a.allInputsDefined(v) && a.allEndorsementsDefined(v) {
 						defined = true
 					}
 				} else {
@@ -223,14 +223,14 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 				// FlagVertexConstraintsValid is monotonic, so if true now, vertex is immutable.
 				if vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) {
 					ok = a.attachVertexUnwrapped(v, vid)
-					if ok && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
+					if ok && a.allInputsDefined(v) && a.allEndorsementsDefined(v) {
 						defined = true
 					}
 					return
 				}
 				// Still Undefined — do the write work (reference deps + validate)
 				ok = a.attachVertexUnwrapped(v, vid)
-				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
+				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.allInputsDefined(v) && a.allEndorsementsDefined(v) {
 					defined = true
 				}
 			},
@@ -289,7 +289,7 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 
 	// --  attach endorsements if needed (results in recursion)
 
-	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
+	if !a.allEndorsementsDefined(v) {
 		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.IDShortString)
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vidUnwrapped) { // <<< recursive
@@ -298,18 +298,15 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 			return false
 		}
 	}
-	// check consistency
-	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
-		a.Assertf(a.allEndorsementsDefined(v), "not all endorsements defined:\n%s", func() string { return a.pastCone.Lines("       ").String() })
-
+	if a.allEndorsementsDefined(v) {
 		a.Tracef(TraceTagAttachVertex, "endorsements are all solid in %s", v.IDShortString)
 	} else {
-		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.IDShortString)
+		a.Tracef(TraceTagAttachVertex, "endorsements NOT all solid in %s", v.IDShortString)
 	}
 
 	// --  attach inputs if needed (results in recursion)
 
-	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
+	if !a.allInputsDefined(v) {
 		a.Tracef(TraceTagAttachVertex, "BEFORE attachInputs(%s)", v.IDShortString)
 		if !a.attachInputs(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
@@ -317,9 +314,8 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		}
 	}
 
-	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
+	if a.allInputsDefined(v) {
 		a.Tracef(TraceTagAttachVertex, "inputs solid (%s)", v.IDShortString)
-		a.Assertf(a.allInputsDefined(v), "a.allInputsDefined(v)")
 
 		if !v.IsSequencerTransaction() {
 			if !a.finalTouchNonSequencer(v, vidUnwrapped) {
@@ -485,17 +481,13 @@ func txidMayHaveExpired(baselineID, txid base.TransactionID) bool {
 }
 
 func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
-	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
+	if a.allEndorsementsDefined(v) {
 		return true
 	}
 	for i := range v.Endorsements {
 		if !a.attachEndorsement(v, vid, byte(i)) {
 			return false
 		}
-	}
-
-	if a.allEndorsementsDefined(v) {
-		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexEndorsementsSolid)
 	}
 	return true
 }
@@ -565,14 +557,14 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 }
 
 func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
+	if a.allInputsDefined(v) {
+		return true
+	}
 	for i := range v.Inputs {
 		if !a.attachInput(v, vidUnwrapped, byte(i)) {
 			a.Assertf(a.err != nil, "a.err!=nil in %s, idx %d", a.name, i)
 			return false
 		}
-	}
-	if a.allInputsDefined(v) {
-		a.pastCone.SetFlagsUp(vidUnwrapped, vertex.FlagPastConeVertexInputsSolid)
 	}
 	return true
 }
@@ -600,7 +592,15 @@ func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.Out
 	}
 	o, err := multistate.GetOutputWithIDFromStateReader(rdr, inputID)
 	if errors.Is(err, multistate.ErrNotFound) {
-		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed", inputID.StringShort()))
+		baselineID := a.pastCone.GetBaseline()
+		baselineHex, baselineIsPending, baselineRootHex := "", false, ""
+		if baselineID != nil {
+			baselineHex = baselineID.StringHex()
+			baselineIsPending = a.Branches().IsPending(*baselineID)
+			baselineRootHex = a.Branches().GetRootHex(*baselineID)
+		}
+		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed (baselineHex=%s baselineIsPending=%v baselineRoot=%s)",
+			inputID.StringShort(), baselineHex, baselineIsPending, baselineRootHex))
 		return false
 	}
 	a.AssertNoError(err)
@@ -732,8 +732,12 @@ func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint
 // CoverageDelta returns
 // - coverage delta (including frozen part)
 // - frozen part separately
+// Uses the global node context (a.Ctx()) rather than context.Background() so that
+// CoverageDeltaRaw — which reads state via BadgerDB — bails out cleanly on node
+// shutdown instead of racing with a closed DB and panicking. Any ctx error is
+// intentionally swallowed: during shutdown the result is unused (vertex is abandoned).
 func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
-	delta, frozen, _ = a.pastCone.CoverageDeltaRaw(context.Background(), a.getBaselineStateReader)
+	delta, frozen, _ = a.pastCone.CoverageDeltaRaw(a.Ctx(), a.getBaselineStateReader)
 	delta += a.coverageDeltaAdjustment()
 	return
 }

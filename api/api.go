@@ -138,26 +138,20 @@ type (
 
 	PeersInfo struct {
 		Error
-		HostID    string            `json:"host_id"`
-		Peers     []PeerInfo        `json:"peers,omitempty"`
-		Blacklist map[string]string `json:"blacklist,omitempty"` // map: peerID -> reason why it is in the blacklist
+		HostID string     `json:"host_id"`
+		Peers  []PeerInfo `json:"peers,omitempty"`
 	}
 
 	PeerInfo struct {
 		// The libp2p identifier of the peer.
 		ID string `json:"id"`
 		// The libp2p multi addresses of the peer.
-		MultiAddresses            []string `json:"multiAddresses,omitempty"`
-		IsStatic                  bool     `json:"is_static"`
-		RespondsToPull            bool     `json:"responds_to_pull"`
-		IsAlive                   bool     `json:"is_alive"`
-		WhenAdded                 int64    `json:"when_added"`
-		LastHeartbeatReceived     int64    `json:"last_heartbeat_received"`
-		ClockDifferencesQuartiles [3]int64 `json:"clock_differences_quartiles"`
-		HBMsgDifferencesQuartiles [3]int64 `json:"hb_differences_quartiles"`
-		NumIncomingHB             int      `json:"num_incoming_hb"`
-		NumIncomingPull           int      `json:"num_incoming_pull"`
-		NumIncomingTx             int      `json:"num_incoming_tx"`
+		MultiAddresses  []string `json:"multiAddresses,omitempty"`
+		IsStatic        bool     `json:"is_static"`
+		IsAlive         bool     `json:"is_alive"`
+		WhenAdded       int64    `json:"when_added"`
+		NumIncomingPull int      `json:"num_incoming_pull"`
+		NumIncomingTx   int      `json:"num_incoming_tx"`
 	}
 
 	// LatestReliableBranch returned by get_latest_reliable_branch

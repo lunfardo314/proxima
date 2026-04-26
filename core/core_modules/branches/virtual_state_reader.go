@@ -40,9 +40,12 @@
 // uses StateReader methods.
 //
 // Thread safety:
-// Mutations are immutable once created (built during attachment, never modified after
-// being added to the pending map). Each caller gets its own Readable instance, so
-// there is no shared mutable state between concurrent virtual readers.
+// pb.Mutations is immutable after AddPendingBranch: built synchronously in the
+// attacher and, once published, never mutated in place. _commitPendingBranchUnlocked
+// applies commit-time appends (upgrade inject, GC DeleteTxIDs, GCSlot) to a clone
+// via Mutations.Clone(), so the pointer captured in layers here is safe to read
+// without b.mutex. Each caller gets its own Readable instance, so there is no
+// shared mutable state between concurrent virtual readers.
 
 package branches
 

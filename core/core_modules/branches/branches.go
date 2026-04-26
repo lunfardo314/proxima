@@ -31,14 +31,6 @@ type (
 		lastActive     time.Time
 	}
 
-	// knowsTxKey is the cache key for L2 KnowsCommittedTransaction cache.
-	// It avoids hitting the trie (which requires an exclusive Readable.mutex lock)
-	// for repeated queries on the same (branchID, txid) pair.
-	knowsTxKey struct {
-		branchID base.TransactionID
-		txid     base.TransactionID
-	}
-
 	Branches struct {
 		environment
 		mutex            sync.Mutex
@@ -61,12 +53,6 @@ type (
 		// Other goroutines that need the same branch wait on that channel instead of
 		// duplicating the commit work. Entries are removed once the commit completes.
 		committing map[base.TransactionID]chan struct{}
-
-		// knowsTxCache is an L2 cache for BranchKnowsTransaction results.
-		// Protected by knowsTxMu (RWMutex): RLock for cache hits, Lock for cache writes.
-		// This avoids contention on the trie's exclusive Readable.mutex for repeated queries.
-		knowsTxMu    sync.RWMutex
-		knowsTxCache map[knowsTxKey]bool
 	}
 
 	cachedStateReader struct {
@@ -102,7 +88,6 @@ func New(env environment) *Branches {
 		stateReaders:     make(map[base.TransactionID]*cachedStateReader),
 		pending:          make(map[base.TransactionID]*PendingBranchCommit),
 		committing:       make(map[base.TransactionID]chan struct{}),
-		knowsTxCache:     make(map[knowsTxKey]bool),
 	}
 	env.RepeatInBackground("branches_cleanup", 5*time.Second, func() bool {
 		ret.mutex.Lock()
@@ -114,6 +99,78 @@ func New(env environment) *Branches {
 		return true
 	}, true)
 	return ret
+}
+
+// IsPending reports whether the given branch ID is currently held in b.pending
+// (i.e. its state is not yet committed to the trie).
+// Diagnostic helper for the 2026-04-23 consensus-halt investigation.
+func (b *Branches) IsPending(branchID base.TransactionID) bool {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	_, ok := b.pending[branchID]
+	return ok
+}
+
+// DiagListBranchesAtSlot returns a list of (txidHex, pending, rootHex) for every
+// branch held in b.m at the given slot. Diagnostic helper.
+func (b *Branches) DiagListBranchesAtSlot(slot uint32) []map[string]any {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	out := []map[string]any{}
+	for txid, bd := range b.m {
+		if txid.Slot() != slot {
+			continue
+		}
+		entry := map[string]any{
+			"txid":           (&txid).StringHex(),
+			"pending":        false,
+			"rootHex":        "",
+			"coverageDelta":  bd.CoverageDelta,
+			"lastActiveAgoS": time.Since(bd.lastActive).Seconds(),
+		}
+		if _, isPending := b.pending[txid]; isPending {
+			entry["pending"] = true
+		}
+		if bd.Root != nil {
+			entry["rootHex"] = hex.EncodeToString(bd.Root.Bytes())
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// DiagAllPendingBranches returns a list of all pending branch IDs.
+func (b *Branches) DiagAllPendingBranches() []map[string]any {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	out := []map[string]any{}
+	for txid, pb := range b.pending {
+		entry := map[string]any{
+			"txid":               (&txid).StringHex(),
+			"seqName":            pb.SequencerName,
+			"baselineBranchID":   pb.BaselineBranchID.StringHex(),
+			"previousBranchID":   pb.PreviousBranchID.StringHex(),
+			"mutationsLen":       0,
+			"committedTxsLen":    len(pb.CommittedTxs),
+		}
+		if pb.Mutations != nil {
+			entry["mutationsLen"] = pb.Mutations.Len()
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// GetRootHex returns the committed root of the branch as hex, or "" if not
+// committed / not known. Diagnostic helper.
+func (b *Branches) GetRootHex(branchID base.TransactionID) string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	bd, ok := b.m[branchID]
+	if !ok || bd.Root == nil {
+		return ""
+	}
+	return hex.EncodeToString(bd.Root.Bytes())
 }
 
 func (b *Branches) Get(branchTxID base.TransactionID) *multistate.BranchData {
@@ -321,9 +378,14 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 	// create updatable state from baseline root
 	upd := multistate.MustNewUpdatable(b.StateStore(), baselineRoot)
 
+	// pb.Mutations must stay immutable after AddPendingBranch: it is read without b.mutex
+	// by virtualStateReader and under b.mutex by branchKnowsTransactionCompute /
+	// GetChainOutputFromBranch. Apply commit-time appends (upgrade inject, GC) to a clone.
+	muts := pb.Mutations.Clone()
+
 	// inject any missing upgrade UTXOs
 	baselineReader := multistate.MustNewReadable(b.StateStore(), baselineRoot, 0)
-	injectedUpgrades := multistate.InjectMissingUpgradeUTXOs(pb.Mutations, baselineReader, branchID.Slot())
+	injectedUpgrades := multistate.InjectMissingUpgradeUTXOs(muts, baselineReader, branchID.Slot())
 
 	// log upgrade activations
 	for _, upg := range injectedUpgrades {
@@ -336,21 +398,31 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 			upg.Slot, hex.EncodeToString(upg.LibraryHash[:]))
 	}
 
-	// GC old transaction IDs: only prune txIDs whose unspent output set is empty
+	// GC old transaction IDs: only prune txIDs whose unspent output set is empty.
+	// Route the trie iteration through the cached state reader for the baseline
+	// rather than upd.Readable() — the cached reader's trie node cache (sized
+	// stateReaderCacheLimit) survives across commits, so the top-of-trie nodes
+	// stay warm and PrunableTxIDsAtSlot doesn't pay full cold-cache I/O each time.
+	// See claude/trie_iteration.md §2.a.
 	if branchID.Slot() > pb.TxIDTTLSlots {
 		gcSlot := branchID.Slot() - pb.TxIDTTLSlots
-		gcTxIDs := upd.Readable().PrunableTxIDsAtSlot(gcSlot)
-		pb.Mutations.DeleteTxIDs(gcTxIDs...)
+		gcTxIDs := b.prunableTxIDsAtSlotCached(pb.BaselineBranchID, gcSlot)
+		if gcTxIDs == nil {
+			// Fallback: cached reader unavailable (e.g., baseline state reader couldn't
+			// be created). Fall back to the per-call fresh Updatable's reader.
+			gcTxIDs = upd.Readable().PrunableTxIDsAtSlot(gcSlot)
+		}
+		muts.DeleteTxIDs(gcTxIDs...)
 		// Set GCSlot so that output deletions also clean up TX records
 		// for TXs that missed the per-slot GC scan because they still had unspent outputs
-		pb.Mutations.GCSlot = gcSlot
+		muts.GCSlot = gcSlot
 	}
 
 	// commit to DB
-	err := upd.Update(pb.Mutations, pb.RootRecParams)
+	err := upd.Update(muts, pb.RootRecParams)
 	if err != nil {
 		err = fmt.Errorf("_commitPendingBranchUnlocked(%s) baseline=%s -> %w:\n-------- mutations --------\n%s",
-			branchID.StringShort(), pb.BaselineBranchID.StringShort(), err, pb.Mutations.Lines("    ").String())
+			branchID.StringShort(), pb.BaselineBranchID.StringShort(), err, muts.Lines("    ").String())
 	}
 	b.Assertf(err == nil, "%v", err)
 
@@ -462,12 +534,12 @@ func (b *Branches) GetStateReaderForTheBranch(branchID base.TransactionID) multi
 	b.committing[branchID] = ch
 	b.mutex.Unlock()
 
-	// do the expensive commit work outside the mutex.
-	// NOTE: previously this called MemoryPressureGC() right here to pre-empt GC
-	// before heavy allocation. Removed: on a pressured node, runtime.GC() is
-	// exactly slowest at the moment it's cheapest to defer, and the sequencer
-	// ends up blocked in a >30s STW on its branch path (deadlock checkpoint
-	// trips). The periodic memory watchdog handles pressure off the hot path.
+	// branch commits are heavy allocators — nudge the async GC worker so it can
+	// run runtime.GC() off-thread if heap is above threshold. Non-blocking: the
+	// caller does not stall for STW. Worker rate-limits to one GC per asyncGCMinInterval.
+	b.MemoryPressureGC()
+
+	// do the expensive commit work outside the mutex
 	upd := b._commitPendingBranchUnlocked(branchID, pb, baselineRoot)
 
 	// store results under the lock
@@ -638,6 +710,31 @@ func (b *Branches) FindLatestReliableBranch() *multistate.BranchData {
 	}
 }
 
+// BranchKnowsTransaction reports whether `txid` is part of the state at `branchID`.
+// Walks back through pending (uncommitted) branches via stem links to answer
+// without forcing a DB commit; on reaching a committed branch, delegates to its
+// state reader. Readable already has its own L2 cache for txID records
+// (Readable.txCache), evicted when the reader itself is evicted from
+// b.stateReaders — no separate global cache is needed here.
+// prunableTxIDsAtSlotCached returns prunable txIDs at `slot` in `branchID`'s state,
+// going through the cached state reader for `branchID` (b.stateReaders) rather than
+// constructing a fresh *Readable. The cached reader's trie node cache is reused
+// across commits, so the top-of-trie nodes stay warm. Returns nil if the cached
+// reader is unavailable; the caller should fall back to a fresh reader path.
+func (b *Branches) prunableTxIDsAtSlotCached(branchID base.TransactionID, slot uint32) []base.TransactionID {
+	rdr := b.GetStateReaderForTheBranch(branchID)
+	if rdr == nil {
+		return nil
+	}
+	// GetStateReaderForTheBranch always returns the *multistate.Readable wrapped
+	// in the IndexedStateReader interface (see cachedStateReader construction).
+	r, ok := rdr.(*multistate.Readable)
+	if !ok {
+		return nil
+	}
+	return r.PrunableTxIDsAtSlot(slot)
+}
+
 func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) bool {
 	util.Assertf(branchID.IsBranchTransaction(), "branch tx expected. Got: %s", branchID.StringShort)
 	if branchID == txid {
@@ -646,30 +743,6 @@ func (b *Branches) BranchKnowsTransaction(branchID, txid base.TransactionID) boo
 	if branchID.Slot() <= txid.Slot() {
 		return false
 	}
-
-	// check L2 cache first (RLock — no contention with other readers)
-	cacheKey := knowsTxKey{branchID: branchID, txid: txid}
-	b.knowsTxMu.RLock()
-	if result, cached := b.knowsTxCache[cacheKey]; cached {
-		b.knowsTxMu.RUnlock()
-		return result
-	}
-	b.knowsTxMu.RUnlock()
-
-	// cache miss — compute the result
-	result := b.branchKnowsTransactionCompute(branchID, txid)
-
-	// populate L2 cache
-	b.knowsTxMu.Lock()
-	b.knowsTxCache[cacheKey] = result
-	b.knowsTxMu.Unlock()
-
-	return result
-}
-
-// branchKnowsTransactionCompute walks pending branches then falls through to the trie
-func (b *Branches) branchKnowsTransactionCompute(branchID, txid base.TransactionID) bool {
-	// walk back through pending branches via stem links to avoid forcing DB commits
 	b.mutex.Lock()
 	currentID := branchID
 	for {

@@ -46,12 +46,20 @@ func runMilestoneAttacher(
 	}()
 
 	if err = a.run(); err != nil {
-		vid.SetTxStatusBad(err)
-		if !errors.Is(err, ErrSolidificationDeadline) {
-			// solidification errors with big attachment depth are too verbose
-			env.Log().Warnf(a.logErrorStatusString(err))
+		if errors.Is(err, ErrAttacherTransientStaleState) {
+			// Transient race against a concurrent reattach. The consumer transaction
+			// is fine — its dependency was reset under it. Don't mark the vid Bad;
+			// the framework will retry the milestone once dependency state stabilizes.
+			env.Log().Warnf("[transient stale state] attacher %s aborted: %v", a.name, err)
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
+		} else {
+			vid.SetTxStatusBad(err)
+			if !errors.Is(err, ErrSolidificationDeadline) {
+				// solidification errors with big attachment depth are too verbose
+				env.Log().Warnf(a.logErrorStatusString(err))
+			}
+			a.LogTx(time.Now(), err.Error(), a.vid.ID())
 		}
-		a.LogTx(time.Now(), err.Error(), a.vid.ID())
 	} else {
 		msData := env.ParseMilestoneData(vid)
 		if vid.IsBranchTransaction() {
@@ -149,7 +157,15 @@ func (a *milestoneAttacher) run() error {
 	a.AssertNoError(a.err)
 
 	err := a.checkConsistencyBeforeWrapUp()
-	a.AssertNoError(err)
+	if err != nil {
+		// ErrAttacherTransientStaleState is expected under the detach/reattach race:
+		// a dependency was reset under us. Don't FATAL, don't mark this vid Bad —
+		// just abandon the attempt; the framework will retry once state stabilizes.
+		if errors.Is(err, ErrAttacherTransientStaleState) {
+			return err
+		}
+		a.AssertNoError(err)
+	}
 
 	// finalizing touches
 	a.wrapUpAttacher()
@@ -161,12 +177,10 @@ func (a *milestoneAttacher) run() error {
 			a.vid.IDShortString, a.pastCone.PastConeBase.Len())
 		a.vid.ConvertToDetached()
 		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
-		// report branch mutation size.
-		// NOTE: previously this called MemoryPressureGC() here. Removed for the same
-		// reason as in branches.GetStateReaderForTheBranch — synchronous runtime.GC()
-		// on the sequencer hot path can block >30s under memory pressure. The periodic
-		// memory watchdog handles pressure off the hot path.
 		a.EvidenceBranchMutations(a.finals.MutationStats.NumCreated+a.finals.MutationStats.NumDeleted, a.finals.MutationStats.NumTransactions)
+		// branch wrap-up freed a lot of state — nudge the async GC worker. Non-blocking:
+		// the worker decides whether to actually runtime.GC() based on heap threshold + rate limit.
+		a.MemoryPressureGC()
 	} else {
 		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
 		a.EvidencePastConeSize(a.pastCone.PastConeBase.Len())
@@ -195,11 +209,19 @@ func (a *milestoneAttacher) run() error {
 	return nil
 }
 
-// deadlock catcher, if enabled, calls the callback function whenever the lazyRepeat loop is stuck for more than
-// the duration threshold. EnableDeadlockCatching(0) disables deadlock catching
-// Default is enabled for 10 seconds
+// Deadlock catcher: if a single iteration of the lazyRepeat loop (i.e. one fun()
+// call plus the subsequent select wait) does not complete within deadlockThreshold,
+// initiate a graceful shutdown with the full goroutine dump logged. The threshold
+// is intentionally generous — under sustained load with deep past cones,
+// fun() (e.g. solidifyPastCone) can take several seconds against slow state
+// reads or pulled deps; 30s was too tight (boot/seq1 tripped on legitimately-
+// progressing tail iterations). 90s catches genuine stuck loops within ~1.5min
+// while tolerating load spikes.
+//
+// Mirrors the sequencer outer-loop watchdog (sequencer.go) — Errorf + graceful
+// shutdown rather than Fatalf, so DB flush and peer cleanup happen before exit.
 
-const deadlockThreshold = 30 * time.Second
+const deadlockThreshold = 90 * time.Second
 
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
@@ -211,8 +233,9 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 		checkpoint = checkpoints.New(func(name string) {
 			buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
 			n := runtime.Stack(buf, true)
-			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
+			a.Log().Errorf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
 				checkName, deadlockThreshold, string(buf[:n]))
+			a.GracefulShutdown(fmt.Sprintf("deadlock suspected in lazyRepeat loop '%s'", checkName))
 		})
 		defer checkpoint.Close()
 	}
@@ -342,8 +365,10 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 
 		const doubleCheck = true
 		if doubleCheck {
-			// double check — no timeout, debug assertion only
-			conflict, _ := a.CheckConflicts(context.Background())
+			// debug assertion only — use a.ctx so state reads abort on shutdown instead
+			// of racing with a closed DB. ctx cancellation yields conflict=nil, err!=nil,
+			// which satisfies the Assertf (conflict == nil) — safe on shutdown.
+			conflict, _ := a.CheckConflicts(a.ctx)
 			a.Assertf(conflict == nil, "unexpected conflict %s in %s", conflict.IDStringShort(), a.name)
 		}
 
@@ -361,8 +386,7 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 		a.Tracef(TraceTagValidateSequencer, "contains undefined in the past cone:\n%s", a.pastCone.Lines("     ").Join("\n"))
 		return true, false
 	}
-	flags := a.pastCone.Flags(a.vid)
-	if !flags.FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) || !flags.FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
+	if !a.allEndorsementsDefined(v) || !a.allInputsDefined(v) {
 		return true, false
 	}
 	// inputs solid
@@ -382,7 +406,11 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.IDShortString)
 
-	if conflict, err := a.pastCone.CheckAndClean(context.Background(), a.getBaselineStateReader); err != nil {
+	// Use a.ctx (not context.Background) so that CheckAndClean — which reads state
+	// via a.getBaselineStateReader → multistate → BadgerDB — bails out cleanly when
+	// the node is shutting down. Otherwise the state read can race with the DB close
+	// during graceful shutdown and panic with "database is closed or unavailable".
+	if conflict, err := a.pastCone.CheckAndClean(a.ctx, a.getBaselineStateReader); err != nil {
 		a.setError(err)
 		v.UnReferenceDependencies()
 		return false, false

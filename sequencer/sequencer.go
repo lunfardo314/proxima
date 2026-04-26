@@ -3,7 +3,6 @@ package sequencer
 import (
 	"context"
 	"crypto/ed25519"
-	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -86,6 +85,10 @@ type (
 		// The pulse fires when (time.Since(lastPulseAnchor) >= pulseInterval) AND the
 		// previous own milestone has been observed (pendingSubmit.awaiting == false).
 		lastPulseAnchor time.Time
+		// loopCheckpoint is the deadlock watchdog for the sequencer loop. Fed once per
+		// tick from inside doSequencerSlot so the tolerance reflects loop liveness, not
+		// slot-completion cadence (which varies under load when slots are skipped).
+		loopCheckpoint *checkpoints.Checkpoints
 	}
 
 	pendingSubmitStatus struct {
@@ -472,19 +475,17 @@ func (seq *Sequencer) sequencerLoop() {
 		seq.Log().Infof("sequencer loop STOPPING..")
 	}()
 
-	const deadlockTolerance = 30 * time.Second
-
 	// On deadlock suspicion, dump all goroutines and initiate a graceful shutdown
 	// (rather than Fatalf, which kills the process immediately and skips DB flush / peer
 	// cleanup). The full stack dump is still logged at Error level so the cause can be
 	// investigated post-mortem.
-	checkpoint := checkpoints.New(func(name string) {
+	seq.loopCheckpoint = checkpoints.New(func(name string) {
 		buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
 		n := runtime.Stack(buf, true)
 		seq.Log().Errorf(">>>>>>>> DEADLOCK suspected in the sequencer loop:\n%s", string(buf[:n]))
 		seq.GracefulShutdown("deadlock suspected in sequencer loop")
 	})
-	defer checkpoint.Close()
+	defer seq.loopCheckpoint.Close()
 
 	for {
 		select {
@@ -500,14 +501,33 @@ func (seq *Sequencer) sequencerLoop() {
 		if seq.Ctx().Err() != nil {
 			return
 		}
+	}
+}
 
-		checkpoint.Check("SEQ_LOOP", deadlockTolerance)
+// SeqLoopDeadlockTolerance bounds the time the inner per-tick loop in
+// doSequencerSlot may go without making progress. Fed once per tick from inside
+// strategy_async.go so this is the actual stuck-loop threshold, not a per-slot bound.
+const SeqLoopDeadlockTolerance = 30 * time.Second
+
+// checkLoopCheckpoint feeds the loop watchdog with a fresh deadline. Called per
+// tick from doSequencerSlot. No-op if the watchdog hasn't been installed yet
+// (e.g. in tests that drive doSequencerSlot directly).
+func (seq *Sequencer) checkLoopCheckpoint() {
+	if seq.loopCheckpoint != nil {
+		seq.loopCheckpoint.Check("SEQ_LOOP", SeqLoopDeadlockTolerance)
+	}
+}
+
+// cancelLoopCheckpoint clears the watchdog deadline so an intentional wait
+// (snapshot pause, clock catch-up) doesn't trigger a false-positive deadlock.
+// The next checkLoopCheckpoint call re-arms it.
+func (seq *Sequencer) cancelLoopCheckpoint() {
+	if seq.loopCheckpoint != nil {
+		seq.loopCheckpoint.Check("SEQ_LOOP")
 	}
 }
 
 const TraceTagTarget = "target"
-
-const disconnectTolerance = 4 * time.Second
 
 const (
 	// maxBudgetLevel is the maximum tag-along budget level.
@@ -568,10 +588,10 @@ func (seq *Sequencer) MaxTagAlongInputs() int {
 
 // decideSubmitMilestone checks health and connectivity before submitting a milestone.
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
-	if seq.DurationSinceLastMessageFromPeer() >= disconnectTolerance {
+	if !seq.IsConnectedToNetwork() {
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
-			seq.Log().Warnf("WON'T SUBMIT BRANCH %s: node is disconnected for %v", tx.IDShortString(), seq.DurationSinceLastMessageFromPeer())
+			seq.Log().Warnf("WON'T SUBMIT BRANCH %s: node is disconnected from the network", tx.IDShortString())
 			seq.wontSubmitBranchID = tx.ID()
 			return false
 		}
@@ -667,24 +687,21 @@ func (seq *Sequencer) BacklogTTLSlots() (int, int) {
 	return seq.config.BacklogTagAlongTTLSlots, seq.config.BacklogDelegationTTLSlots
 }
 
-// bootstrapOwnMilestoneOutput find own milestone output in one of the latest milestones, or, alternatively in the LRB
+// bootstrapOwnMilestoneOutput finds this sequencer's chain-output starting point when
+// the tippool has no non-virtual own milestone available.
+//
+// Always starts from the LRB, never from tippool-reported latest milestones. This bounds
+// the subsequent attacher past-cone walk to the LRB's committed state — a single trie
+// read — rather than letting AttachOutputWithID chase a long chain of uncommitted
+// sequencer txs via peer pulls. In a healthy network the LRB is 1–2 slots behind, so
+// the regression is negligible; in a degraded network (e.g. consensus halt with many
+// uncommitted slots stacked on stale peers), starting from the LRB is the only way the
+// sequencer can make progress without blocking for minutes in the boot proposer.
+//
+// Prior behaviour iterated LatestMilestonesDescending first and could trigger pending-
+// branch commits plus deep peer pulls; reverted 2026-04-23 after observing the
+// cold-start sequencer deadlock during the halt investigation.
 func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
-	milestones := seq.LatestMilestonesDescending()
-	for _, ms := range milestones {
-		baselineBranchID, ok := ms.BaselineBranch()
-		if !ok {
-			continue
-		}
-		rdr := multistate.MakeSugared(seq.Branches().GetStateReaderForTheBranch(baselineBranchID))
-		chainOut, _, err := rdr.GetChainTips(seq.sequencerID)
-		if errors.Is(err, multistate.ErrNotFound) {
-			continue
-		}
-		seq.AssertNoError(err)
-
-		return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("tippool 1"))
-	}
-	// didn't find in latest milestones in the tippool, try LRB
 	branchData := seq.Branches().FindLatestReliableBranch()
 	if branchData == nil {
 		seq.Log().Warnf("bootstrapOwnMilestoneOutput: can't find LRB")
@@ -696,7 +713,7 @@ func (seq *Sequencer) bootstrapOwnMilestoneOutput() vertex.WrappedOutput {
 		seq.Log().Warnf("bootstrapOwnMilestoneOutput: can't load own milestone output from LRB")
 		return vertex.WrappedOutput{}
 	}
-	return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("tippool 2"))
+	return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("bootstrap-from-LRB"))
 }
 
 // validateSequencerIDExists checks if the sequencer ID exists in the latest reliable branch.

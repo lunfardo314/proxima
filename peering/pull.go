@@ -16,7 +16,6 @@ const PullTransactions = byte(iota)
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	defer func() {
 		_ = stream.Close()
-		ps.Log().Warnf("[peering] pull: streamHandler exit")
 	}()
 
 	if ps.cfg.IgnoreAllPullRequests {
@@ -26,19 +25,14 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	known, blacklisted, static := ps.knownPeer(id, func(p *Peer) {
+	known, static := ps.knownPeer(id, func(p *Peer) {
 	})
-	if blacklisted {
-		// just ignore
-		return
-	}
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
 			ps.Log().Warnf("[peering] node does not take any incoming dynamic peers")
 			return
 		}
-		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
 	if !static && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
@@ -49,25 +43,19 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	// receive start
 	_, err := readFrame(stream)
 	if err != nil {
-		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
 	var msgData []byte
 
 	for {
 		msgData, err = readFrame(stream)
-		_, blacklisted, _ = ps.knownPeer(id, func(p *Peer) {
+		ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingPull++
 		})
-		if blacklisted {
-			// just ignore
-			return
-		}
 
 		ps.inMsgCounter.Inc()
 		switch {
 		case err != nil:
-			ps.Log().Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
 			return
 		case len(msgData) == 0:
 			ps.Log().Errorf("pull: error while reading message from peer %s: empty data", id.String())
@@ -123,8 +111,14 @@ func decodePullTransactionMsg(data []byte) (base.TransactionID, error) {
 	return base.TransactionIDFromBytes(data[1:])
 }
 
+// _isPullTarget reports whether the peer is currently eligible to receive pull
+// requests. After the heartbeat protocol was removed there is no remote
+// "responds-to-pull" capability advertisement — every connected peer is a
+// candidate; servers that don't want to serve simply don't reply (see
+// IgnoreAllPullRequests / AcceptPullRequestsFromStaticPeersOnly in
+// pullStreamHandler).
 func (ps *Peers) _isPullTarget(p *Peer) bool {
-	return p.respondsToPullRequests || ps.cfg.ForcePullFromAllPeers
+	return ps._isAlive(p)
 }
 
 // out message wrappers

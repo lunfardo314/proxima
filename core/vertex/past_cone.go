@@ -62,8 +62,6 @@ const (
 	FlagPastConeVertexDefined           = FlagsPastCone(0b00000010) // means vertex is 'defined', i.e. its validity is checked
 	FlagPastConeVertexCheckedInTheState = FlagsPastCone(0b00000100) // means vertex has been checked if it is in the state (it may or may not be there)
 	FlagPastConeVertexInTheState        = FlagsPastCone(0b00001000) // means vertex is definitely in the state (must be checked before)
-	FlagPastConeVertexEndorsementsSolid = FlagsPastCone(0b00010000) // means all endorsements were validated
-	FlagPastConeVertexInputsSolid       = FlagsPastCone(0b00100000) // means all consumed inputs are checked and valid
 	FlagPastConeVertexAskedForPoke      = FlagsPastCone(0b01000000) //
 	FlagPastConeDirectCost              = FlagsPastCone(0b10000000) // vertex contributes to direct attachment cost (not merged from other past cones)
 )
@@ -73,14 +71,12 @@ func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
 }
 
 func (f FlagsPastCone) String() string {
-	return fmt.Sprintf("%08b known: %v, defined: %v, inTheState: (%v,%v), endorsementsOk: %v, inputsOk: %v, poke: %v, directCost: %v",
+	return fmt.Sprintf("%08b known: %v, defined: %v, inTheState: (%v,%v), poke: %v, directCost: %v",
 		f,
 		f.FlagsUp(FlagPastConeVertexKnown),
 		f.FlagsUp(FlagPastConeVertexDefined),
 		f.FlagsUp(FlagPastConeVertexCheckedInTheState),
 		f.FlagsUp(FlagPastConeVertexInTheState),
-		f.FlagsUp(FlagPastConeVertexEndorsementsSolid),
-		f.FlagsUp(FlagPastConeVertexInputsSolid),
 		f.FlagsUp(FlagPastConeVertexAskedForPoke),
 		f.FlagsUp(FlagPastConeDirectCost),
 	)
@@ -865,20 +861,14 @@ func (pc *PastCone) CheckFinalPastCone(getStateReader func(branchID base.Transac
 		if status == Bad {
 			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
 		}
-		if pc.IsInTheState(vid) {
-			// do not check dependencies if the transaction is rooted
-			continue
-		}
-		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			missingInputs, missingEndorsements := v.NumMissingInputs()
-			if missingInputs+missingEndorsements > 0 {
-				err = fmt.Errorf("not all dependencies solid in %s\n      missing inputs: %d\n      missing endorsements: %d,\n      missing input txs: [%s]",
-					vid.IDShortString(), missingInputs, missingEndorsements, v.MissingInputTxIDString())
-			}
-		}})
-		if err != nil {
-			return
-		}
+		// We used to also Unwrap the Vertex here and call v.NumMissingInputs() as a
+		// belt-and-suspenders check that v.Inputs was populated. That read races with
+		// GC's ConvertToDetached → UnReferenceDependencies (clears v.Inputs) and
+		// ReattachVertexNoLock (installs a fresh Vertex with nil-init Inputs). Under
+		// load this fired false-positive even though the dependency vid was still in
+		// the past cone with FlagPastConeVertexDefined set. The past cone's own
+		// bookkeeping (checkFinalFlags above) is the source of truth for "all
+		// dependencies present"; the Vertex-state read added nothing but a race.
 	}
 	if conflict, ctxErr := pc.CheckConflicts(context.Background(), getStateReader); ctxErr != nil {
 		return ctxErr
@@ -917,13 +907,6 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 			if vid.ID() != pc.tip.ID() {
 				return fmt.Errorf("checkFinalFlags: inconsistent baseline 1 %s", vid.IDShortString())
 			}
-		}
-	default:
-		switch {
-		case !flags.FlagsUp(FlagPastConeVertexInputsSolid):
-			wrongFlag = "FlagPastConeVertexInputsSolid"
-		case !flags.FlagsUp(FlagPastConeVertexEndorsementsSolid):
-			wrongFlag = "FlagPastConeVertexEndorsementsSolid"
 		}
 	}
 	if wrongFlag != "" {

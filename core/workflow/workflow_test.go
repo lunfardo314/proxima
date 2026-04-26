@@ -62,6 +62,10 @@ func (d *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Durat
 	return 0
 }
 
+func (d *workflowDummyEnvironment) IsConnectedToNetwork() bool {
+	return true
+}
+
 func (d *workflowDummyEnvironment) SelfPeerID() peer.ID {
 	return "self"
 }
