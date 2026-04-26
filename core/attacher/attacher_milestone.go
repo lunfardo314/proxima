@@ -209,11 +209,19 @@ func (a *milestoneAttacher) run() error {
 	return nil
 }
 
-// deadlock catcher, if enabled, calls the callback function whenever the lazyRepeat loop is stuck for more than
-// the duration threshold. EnableDeadlockCatching(0) disables deadlock catching
-// Default is enabled for 10 seconds
+// Deadlock catcher: if a single iteration of the lazyRepeat loop (i.e. one fun()
+// call plus the subsequent select wait) does not complete within deadlockThreshold,
+// initiate a graceful shutdown with the full goroutine dump logged. The threshold
+// is intentionally generous — under sustained load with deep past cones,
+// fun() (e.g. solidifyPastCone) can take several seconds against slow state
+// reads or pulled deps; 30s was too tight (boot/seq1 tripped on legitimately-
+// progressing tail iterations). 90s catches genuine stuck loops within ~1.5min
+// while tolerating load spikes.
+//
+// Mirrors the sequencer outer-loop watchdog (sequencer.go) — Errorf + graceful
+// shutdown rather than Fatalf, so DB flush and peer cleanup happen before exit.
 
-const deadlockThreshold = 30 * time.Second
+const deadlockThreshold = 90 * time.Second
 
 // lazyRepeat repeats closure until it returns Good or Bad
 func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status) vertex.Status {
@@ -225,8 +233,9 @@ func (a *milestoneAttacher) lazyRepeat(loopName string, fun func() vertex.Status
 		checkpoint = checkpoints.New(func(name string) {
 			buf := make([]byte, 4<<20) // 4MB buffer to capture all goroutines
 			n := runtime.Stack(buf, true)
-			a.Log().Fatalf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
+			a.Log().Errorf(">>>>>>>> DEADLOCK suspected in the loop '%s' (stuck for %v):\n%s",
 				checkName, deadlockThreshold, string(buf[:n]))
+			a.GracefulShutdown(fmt.Sprintf("deadlock suspected in lazyRepeat loop '%s'", checkName))
 		})
 		defer checkpoint.Close()
 	}
