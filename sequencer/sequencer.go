@@ -529,8 +529,6 @@ func (seq *Sequencer) cancelLoopCheckpoint() {
 
 const TraceTagTarget = "target"
 
-const disconnectTolerance = 4 * time.Second
-
 const (
 	// maxBudgetLevel is the maximum tag-along budget level.
 	// Budget scales linearly: 0 = no tag-alongs, maxBudgetLevel = full 2/3 budget.
@@ -590,10 +588,10 @@ func (seq *Sequencer) MaxTagAlongInputs() int {
 
 // decideSubmitMilestone checks health and connectivity before submitting a milestone.
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
-	if seq.DurationSinceLastMessageFromPeer() >= disconnectTolerance {
+	if !seq.IsConnectedToNetwork() {
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
-			seq.Log().Warnf("WON'T SUBMIT BRANCH %s: node is disconnected for %v", tx.IDShortString(), seq.DurationSinceLastMessageFromPeer())
+			seq.Log().Warnf("WON'T SUBMIT BRANCH %s: node is disconnected from the network", tx.IDShortString())
 			seq.wontSubmitBranchID = tx.ID()
 			return false
 		}

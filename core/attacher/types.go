@@ -62,6 +62,7 @@ type (
 		EvidencePastConeSize(sz int)
 		EvidenceBranchMutations(numMutations, numTxs int)
 		DurationSinceLastMessageFromPeer() time.Duration
+		IsConnectedToNetwork() bool
 		Branches() *branches.Branches
 		EvidenceTxValidationStats(took time.Duration, numIn, numOut int)
 		EvidenceBranchInflationBonus(ib uint64)

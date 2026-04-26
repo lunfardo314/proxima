@@ -427,6 +427,10 @@ func (p *ProximaNode) DurationSinceLastMessageFromPeer() time.Duration {
 	return p.peers.DurationSinceLastMessageFromPeer()
 }
 
+func (p *ProximaNode) IsConnectedToNetwork() bool {
+	return p.peers.IsConnectedToNetwork()
+}
+
 func (p *ProximaNode) EvidenceTxValidationStats(took time.Duration, numIn, numOut int) {
 	p.validationTimeNs.Set(float64(took.Nanoseconds()))
 	p.validationNumUTXO.Set(float64(numIn + numOut))

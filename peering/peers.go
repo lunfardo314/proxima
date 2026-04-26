@@ -688,3 +688,20 @@ func (ps *Peers) DurationSinceLastMessageFromPeer() time.Duration {
 	}
 	return time.Since(time.Unix(0, ps.lastMsgReceived.Load()))
 }
+
+// IsConnectedToNetwork returns true if libp2p reports at least one peer
+// currently connected. After the heartbeat protocol was removed, this is the
+// authoritative "node has a working connection to the network" signal — the
+// previous traffic-timestamp proxy is too quiet on low-load networks (e.g. a
+// pair of just-restarted nodes with no transactions to gossip).
+func (ps *Peers) IsConnectedToNetwork() bool {
+	connected := false
+	ps.forEachPeerRLock(func(p *Peer) bool {
+		if ps._isAlive(p) {
+			connected = true
+			return false
+		}
+		return true
+	})
+	return connected
+}

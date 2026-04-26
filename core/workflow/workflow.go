@@ -43,6 +43,7 @@ type (
 		EvidenceNumberOfTxDependencies(n int)
 		SnapshotBranchID() base.TransactionID
 		DurationSinceLastMessageFromPeer() time.Duration
+		IsConnectedToNetwork() bool
 		SelfPeerID() peer.ID
 		EvidenceTxValidationStats(took time.Duration, numIn, numOut int)
 		LatestReliableState() (multistate.SugaredStateReader, error)
