@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 
 	"github.com/gammazero/deque"
-	"github.com/lunfardo314/proxima/util"
 )
 
 type (
@@ -96,60 +95,70 @@ func (q *Queue[T]) OnLenChange(fn func(int)) {
 	q.onLenChange = fn
 }
 
+// inputLoop multiplexes between the producer (inCh) and the consumer (outCh).
+//
+// When the deque is empty, the goroutine simply blocks on inCh — the consumer
+// has nothing to take.
+//
+// When the deque has elements, the goroutine blocks on a single select with
+// both directions: a producer push wakes us to enqueue; a consumer ready to
+// receive wakes us to dispatch the front element. Either side makes progress;
+// neither side can starve the other.
+//
+// The previous implementation used non-blocking selects with `default:` on
+// both branches, which spun whenever the deque held data and the consumer was
+// busy — burning CPU for no progress. The blocking-select form preserves the
+// "never jams" property (deque is unbounded, growing as long as the producer
+// outpaces the consumer) without the spin.
 func (q *Queue[T]) inputLoop() {
 	defer close(q.outCh)
 
-	for {
-		// read incoming
-		if q.d.Len() == 0 {
-			// buffer is empty. Waits for incoming element
-			select {
-			case e, ok := <-q.inCh:
-				if !ok {
-					// immediately close because buffer is empty
-					return
-				}
-				if e.priority {
-					q.d.PushFront(e.elem)
-				} else {
-					q.d.PushBack(e.elem)
-				}
-			}
+	push := func(e _inElem[T]) {
+		if e.priority {
+			q.d.PushFront(e.elem)
 		} else {
-			// tries to read incoming element but does not block because buffer has data to be consumed
-			select {
-			case e, ok := <-q.inCh:
-				if ok {
-					if e.priority {
-						q.d.PushFront(e.elem)
-					} else {
-						q.d.PushBack(e.elem)
-					}
-				} else {
-					if !q.processRemainingOnClose {
-						// close only no need to process remaining element in the buffer
-						return
-					}
-				}
-			default:
-			}
+			q.d.PushBack(e.elem)
 		}
+	}
 
-		util.Assertf(q.d.Len() > 0, "q.d.Len()>0")
-		// consume output. Sends front element (FIFO) into the out channel.
-		// If successful, removes element from queue, otherwise it is blocked,
-		// just skips.
-		// It happens only if buffer is not empty
-		select {
-		case q.outCh <- q.d.Front():
-			// if send to channel succeeds, element is removed from the buffer
-			q.d.PopFront()
-		default:
-		}
+	updateLen := func() {
 		newLen := int32(q.d.Len())
 		if old := q.len.Swap(newLen); old != newLen && q.onLenChange != nil {
 			q.onLenChange(int(newLen))
 		}
+	}
+
+	for {
+		if q.d.Len() == 0 {
+			// nothing to dispatch — only the producer can wake us
+			e, ok := <-q.inCh
+			if !ok {
+				// channel closed and deque empty — done
+				return
+			}
+			push(e)
+		} else {
+			// either side can make progress; block until one fires
+			select {
+			case e, ok := <-q.inCh:
+				if !ok {
+					// channel closed; either drain the rest or bail
+					if !q.processRemainingOnClose {
+						return
+					}
+					for q.d.Len() > 0 {
+						q.outCh <- q.d.Front()
+						q.d.PopFront()
+					}
+					updateLen()
+					return
+				}
+				push(e)
+			case q.outCh <- q.d.Front():
+				q.d.PopFront()
+			}
+		}
+		updateLen()
 	}
 }
 
