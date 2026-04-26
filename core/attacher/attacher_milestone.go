@@ -383,7 +383,11 @@ const TraceTagValidateSequencer = "validateSeq"
 
 func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, finalSuccess bool) {
 	if a.pastCone.ContainsUndefined() {
-		a.Tracef(TraceTagValidateSequencer, "contains undefined in the past cone:\n%s", a.pastCone.Lines("     ").Join("\n"))
+		// defer the past-cone dump via func() string — lazyargs.Eval evaluates only when the
+		// trace tag is enabled. Without this wrapper Lines walks the entire past cone on every
+		// solidifyPastCone retry, on every node, even when tracing is off.
+		a.Tracef(TraceTagValidateSequencer, "contains undefined in the past cone:\n%s",
+			func() string { return a.pastCone.Lines("     ").Join("\n") })
 		return true, false
 	}
 	if !a.allEndorsementsDefined(v) || !a.allInputsDefined(v) {
