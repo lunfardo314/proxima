@@ -313,3 +313,200 @@ guesses.
   also contributed to the mutex-contention reduction
 - `sequencer/sequencer.go` — `IsConnectedToNetwork()` gate
   (post-HB necessity)
+
+## 2026-04-27 evening: scaling assessment for 100 TPS / 8 seq
+
+Context: planning a target topology of 4 sequencer machines (no
+snapshot) + 4 access machines (with snapshot), txlogging disabled.
+Reference hardware: 32 GB / 7-core bare metal (~80 EUR/mo class —
+actually conservative, Hetzner AX41-NVMe gives 64 GB/6c for €44/mo).
+Current load test: 217 senders, ~50 TPS sustained, 4 sequencers, 8
+nodes (sequencer+access co-resident on each of 4 machines).
+
+### Live numbers under 50 TPS / 4 seq
+
+| Metric | Sequencer nodes | Access nodes |
+|---|---|---|
+| TPS received (gossip) | 80–100/s | 80–100/s |
+| `branch_tx_count` rate (3m) | 45–48/s | 45–48/s |
+| `attachmentDurationMs` | 11–45 ms | 26–73 ms |
+| Avg `attachment_cost` per attachment | 25–32 | 20–25 |
+| memDAG vertices | 4.1k | 2.7–2.8k |
+| RSS | 1.5–1.7 GB | 1.7–1.9 GB |
+| goroutines | 169–200 | 494–909 |
+| `lrb_slots_behind` | 1 | 1 |
+
+API request rate: zero on sequencers, 96–195/s on each access node
+(total ~650/s — spammer fan-in concentrated on the 4 access nodes,
+goroutine count tracks API rate). With the changes from 2026-04-26 +
+the metric fix from earlier today, attachment time is clean — no 2 s
+clock-alignment artifacts.
+
+### Hardware budget
+
+32 GB / 7c bare metal at 80 EUR/mo is conservative for 100 TPS / 8
+seq:
+
+- **Memory**: each machine runs 2 processes today at ~1.5–1.9 GB
+  each ≈ 4 GB. Even at 3× growth (100 TPS, 8 seq, larger state) ~12
+  GB RSS. 32 GB is comfortable, 64 GB luxurious.
+- **CPU**: 7 dedicated cores beat typical 4 burstable vCPUs of cloud
+  VPS. Helps goroutine-heavy access nodes (700–900 → projected
+  ~1500–2000 at 100 TPS).
+- **NVMe vs shared SSD**: meaningful for snapshot + Badger; bare
+  metal helps the 11-min snapshot spike.
+- **Network**: ~1 Mbps in/out per node — trivial.
+
+The hardware is not the constraint. The binding constraint is
+software contention.
+
+### Risk #1: `Readable.GetUTXO` exclusive-lock contention (revisited)
+
+`ledger/multistate/state.go:185-197`:
+
+```go
+func (r *Readable) GetUTXO(oid base.OutputID) ([]byte, bool) {
+    if !base.IsUpgradeOutputID(oid) {
+        entry := r._lookupTxRecord(oid.TransactionID())  // RLock fastpath
+        if !entry.exists || ... { return nil, false }
+    }
+    r.mutex.Lock()                                       // ← always exclusive
+    defer r.mutex.Unlock()
+    return r._getUTXO(oid)
+}
+```
+
+The fast-path RLock in `_lookupTxRecord` only gates the txID-presence
+check. Every UTXO byte read still serializes on the writer lock.
+
+**Why exclusive**: `_getUTXO → partition.Get → unitrie.NodeStore.
+FetchNodeData` reads `ns.cache` (a plain Go map). On overflow it is
+nuked with `ns.cache = make(...)`. Map access is not goroutine-safe.
+
+**Bonus finding** in unitrie's `FetchNodeData`
+(`immutable/nodestore.go:57`): the cache is *checked* (`if ret,
+inCache := ns.cache[dbKey]`) but **never populated** — there is no
+`ns.cache[dbKey] = ret` write anywhere in that function. If
+confirmed, every fetch hits Badger and the "cache" is dead code.
+This would explain the 28.8% CPU on `unitrie.NodeStore.FetchNodeData
+→ Badger` in the boot-node profile.
+
+**Interference with memdag GC**: separate mutexes, but they sequence
+the same attacher goroutine. solidify-pastcone alternates `memdag
+.mutex` (vertex lookup) and `r.mutex` (state lookup). Burst of
+attachers funnels through both — stacking, not interleaving.
+
+#### Mitigation options, by ROI
+
+| # | Change | Effort | Wins |
+|---|---|---|---|
+| A | Confirm + fix unitrie cache: populate on miss; convert map → sync.Map or RWMutex-protected; LRU eviction instead of nuke | upstream PR | huge — eliminates Badger reads on hot path AND removes the rationale for `r.mutex.Lock()` |
+| B | Switch `r.mutex.Lock()` → `RLock()` in `GetUTXO`/`HasUTXO` cache-hit case, fall through to `Lock()` only on miss | small, in-repo | most reads parallel; depends on A correctness |
+| C | Shard `Readable` — N=8 sub-readers per branch, key by `hash(oid) mod N` | self-contained in `multistate` | ~8× less queueing without touching unitrie |
+| D | Pre-warm at branch commit: deterministic walk of just-committed mutations populates the trie cache | small | shifts cost from attacher hot path to commit path |
+
+A is the right fix. C is the local mitigation that does not depend
+on upstream.
+
+### Risk #2: `Branches.mutex` (next bottleneck once Readable is fixed)
+
+`core/core_modules/branches/branches.go` — single `b.mutex`
+protects: `m`, `stateReaders`, `pending`, `committing`, plus the 5 s
+background `branches_cleanup`. Hot callers: `Get`,
+`GetStateReaderForTheBranch`, `BranchKnowsTransaction` (loops
+walking pending chain holding the lock), `IsDescendantBranch`. Every
+attacher hits this. 4 → 8 seq doubles the live branch-set; pending
+walks get longer.
+
+Mitigation: split into per-branch entries (sync.Map for
+stateReaders), shorter `BranchKnowsTransaction` critical sections —
+snapshot pending chain into a slice under lock, walk outside.
+
+### Risk #3: memdag global write lock — Phase-1 GC scan is O(N)
+
+`core/memdag/memdag.go:224` `WithGlobalWriteLock` over `for txid,
+rec := range d.vertices`. At 8–12k vertices it is a few ms but
+blocks every attacher's memdag access for the window.
+
+Mitigation: chunked GC, or read-lock-with-sweep-list (collect
+candidates under RLock, only WLock the nullify phase).
+
+### Risk #4: past-cone merge work scales with seq count
+
+8 sequencers → up to 7 endorsements per milestone → 7 merges per
+attacher. Each merge is O(merged-pastcone size). Sequencer nodes
+feel this most.
+
+### Risk #5: cached state-reader pool size = 100
+
+`branches.go:80` `stateReaderCacheMaxSize = 100`. At 8 seq with
+overlapping baselines this can spill — eviction → cold Readable →
+cold trie cache. Raise to 200–300 once Risk #1 lands (memory cost
+was what blocked it before — see "Anti-decisions" above).
+
+### Risk #6: snapshot vs Badger I/O on access nodes
+
+Your plan keeps snapshot on the access side. State grows linearly
+with `TPS × uptime`. At 100 TPS the snapshot window doubles the I/O
+contention with attachers. Access nodes also carry API + spammer
+fan-in, so they're the most loaded class. Mitigation candidates:
+lower-priority I/O during snapshot, snapshot on a dedicated replica,
+or incremental delta snapshots (hard).
+
+### Risk #7: branch commit critical section
+
+`_commitPendingBranchUnlocked` runs outside the mutex, but every
+attacher waiting on `committing[branchID]` chan stalls until commit
+completes. With 8 sequencers committing in parallel near slot edges,
+this is a synchronized stall.
+
+### Risk #8: txInputQueue clock-alignment goroutine churn
+
+Per "future" tx the input queue spawns a goroutine to wait + attach
+(see metric-fix earlier today). Cheap individually, but at 100 TPS
+with 8 sequencers' branches stacking at slot edges, ~8 wait-
+goroutines per access node per slot just for branches plus more for
+non-branch.
+
+### Risk #9: API rate concentration
+
+Today ~650/s API across 4 access nodes (~160/s each). At 100 TPS
+with the same fan-in: ~1300/s, ~325/s per access node. txsenders
+rate-limit-by-pubkey handles correctness, but goroutine count likely
+exceeds 1500 per access node.
+
+### Setup choices — assessment
+
+| Choice | Effect |
+|---|---|
+| Sequencer machines without snapshot | ✓ Removes the biggest steady-state I/O competitor on the hot path. Sequencers stay attacher-bound, not I/O-bound. |
+| Access machines with snapshot | ✓ Keeps snapshot off sequencer; — at the cost of putting snapshot + API + spammer on the same box. Watch attDur p99 on access during snapshot windows. |
+| txlogging disabled | ✓ Removes per-attached-tx log write. Free win. |
+
+The split is sensible. The risk of consolidating snapshot + API on
+access is that *one* class of machine bears all variable load —
+32 GB / 7c gives the headroom to absorb it.
+
+### Suggested order of work
+
+1. **Confirm unitrie `FetchNodeData` cache-population finding** —
+   the cache may be dead code. If so, a single small upstream change
+   gives back ~28% CPU and removes the rationale for
+   `r.mutex.Lock()`. Owner: user (unitrie author).
+2. **Land local Readable sharding** (mitigation C) as parallel work
+   that does not depend on upstream — bounds tail latency in case
+   the upstream fix takes longer.
+3. **Reproduce 100 TPS / 4 seq** on the split topology to isolate
+   the seq-count axis from the load axis. If attDur p99 stays
+   <500 ms, the path to 100 TPS / 8 seq is clear.
+4. Attack `Branches.mutex` and chunked memdag GC if the previous
+   steps do not deliver.
+
+### Verdict
+
+100 TPS / 8 seq on the proposed hardware is **plausible** and
+becomes **likely-stable** with at least Risk #1 addressed. The
+proposed sequencer/access split + no-snapshot-on-seq + no-txlog is
+the right setup direction. Hardware is not the binding constraint;
+software contention is, and the worst offender is well-localized
+(`Readable.GetUTXO` → unitrie node-store cache).
