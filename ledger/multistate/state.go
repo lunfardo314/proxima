@@ -26,13 +26,14 @@ type (
 
 	// Readable is a read-only ledger state, with the particular root.
 	// The trie reader mutates its internal cache on every read, so trie access requires
-	// an exclusive lock (mutex.Lock). However, the L2 txCache allows concurrent reads
-	// (mutex.RLock) for cached txID records, avoiding trie contention on hot paths
-	// (KnowsCommittedTransaction, HasUTXO).
+	// an exclusive lock (mutex.Lock). However, the L2 caches (txCache, utxoCache) allow
+	// concurrent reads (mutex.RLock) for cached entries, avoiding trie contention on hot
+	// paths (KnowsCommittedTransaction, HasUTXO, GetUTXO).
 	Readable struct {
-		mutex   sync.RWMutex
-		trie    *immutable.TrieReader
-		txCache map[base.TransactionID]txCacheEntry
+		mutex     sync.RWMutex
+		trie      *immutable.TrieReader
+		txCache   map[base.TransactionID]txCacheEntry
+		utxoCache map[base.OutputID]utxoCacheEntry
 	}
 
 	// txCacheEntry is an L2 cache entry for a txID record in the trie.
@@ -40,6 +41,14 @@ type (
 	txCacheEntry struct {
 		exists  bool
 		unspent set256.Set256
+	}
+
+	// utxoCacheEntry is an L2 cache entry for a UTXO byte payload in the trie.
+	// found == false means the OID is not in the state (rare: passes the txCache
+	// presence check but the partition lookup misses).
+	utxoCacheEntry struct {
+		data  []byte
+		found bool
 	}
 
 	// RootRecord is a persistent data stored in the DB partition with each state root
@@ -115,8 +124,9 @@ func NewReadable(store common.KVReader, root common.VCommitment, clearCacheAtSiz
 		return nil, err
 	}
 	return &Readable{
-		trie:    trie,
-		txCache: make(map[base.TransactionID]txCacheEntry),
+		trie:      trie,
+		txCache:   make(map[base.TransactionID]txCacheEntry),
+		utxoCache: make(map[base.OutputID]utxoCacheEntry),
 	}, nil
 }
 
@@ -190,10 +200,27 @@ func (r *Readable) GetUTXO(oid base.OutputID) ([]byte, bool) {
 			return nil, false
 		}
 	}
+
+	// Fast path: RLock for cache hit
+	r.mutex.RLock()
+	if e, ok := r.utxoCache[oid]; ok {
+		r.mutex.RUnlock()
+		return e.data, e.found
+	}
+	r.mutex.RUnlock()
+
+	// Slow path: exclusive lock for trie read + cache write
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	return r._getUTXO(oid)
+	// Double-check after acquiring write lock
+	if e, ok := r.utxoCache[oid]; ok {
+		return e.data, e.found
+	}
+
+	data, found := r._getUTXO(oid)
+	r.utxoCache[oid] = utxoCacheEntry{data: data, found: found}
+	return data, found
 }
 
 func (r *Readable) _getUTXO(oid base.OutputID, partition ...*common.ReaderPartition) ([]byte, bool) {
@@ -542,8 +569,9 @@ func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, o
 
 func (u *Updatable) Readable() *Readable {
 	return &Readable{
-		trie:    u.trie.TrieReader,
-		txCache: make(map[base.TransactionID]txCacheEntry),
+		trie:      u.trie.TrieReader,
+		txCache:   make(map[base.TransactionID]txCacheEntry),
+		utxoCache: make(map[base.OutputID]utxoCacheEntry),
 	}
 }
 
