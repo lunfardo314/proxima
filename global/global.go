@@ -48,6 +48,7 @@ type Global struct {
 	generalPurposeCollectors   map[string]prometheus.Gauge
 	attachmentTimeMilliseconds prometheus.Gauge
 	attachmentsCounter         prometheus.Counter
+	attachmentCostCounter      prometheus.Counter
 	// transaction pull parameters
 	// repeat pull after. Default 2 sec
 	txPullRepeatPeriod time.Duration
@@ -569,14 +570,18 @@ func (l *Global) CounterLines(prefix ...string) *lines.Lines {
 func (l *Global) registerMetrics() {
 	l.attachmentTimeMilliseconds = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_glb_attachmentDurationMs",
-		Help: "attachment time in milliseconds",
+		Help: "sequencer transaction attachment duration in milliseconds. Does not include branch commitment time, but may include baseline branch commitment time on first reference",
 	})
 	l.attachmentsCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_glb_attachments_counter",
 		Help: "total number of attachments",
 	})
+	l.attachmentCostCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_glb_attachment_cost_counter",
+		Help: "cumulative attachment cost of finished sequencer attachments (past-cone cost + own tx cost)",
+	})
 
-	l.MetricsRegistry().MustRegister(l.attachmentsCounter, l.attachmentTimeMilliseconds)
+	l.MetricsRegistry().MustRegister(l.attachmentsCounter, l.attachmentTimeMilliseconds, l.attachmentCostCounter)
 
 	l.generalPurposeCollectors = make(map[string]prometheus.Gauge)
 	knownGeneralPurposeGauges.ForEach(func(name string) bool {
@@ -589,11 +594,10 @@ func (l *Global) registerMetrics() {
 	})
 }
 
-func (l *Global) AttachmentFinished(started ...time.Time) {
+func (l *Global) AttachmentFinished(started time.Time, cost int) {
 	l.attachmentsCounter.Inc()
-	if len(started) > 0 {
-		l.attachmentTimeMilliseconds.Set(float64(time.Since(started[0]) / time.Millisecond))
-	}
+	l.attachmentTimeMilliseconds.Set(float64(time.Since(started) / time.Millisecond))
+	l.attachmentCostCounter.Add(float64(cost))
 }
 
 func (l *Global) TxPullParameters() (repeatPeriod time.Duration, maxAttempts int) {

@@ -112,6 +112,114 @@ wall). doGC fell out of the top contention sources entirely.
 CPU utilization on access node: 57% → 15% in steady state — most of
 the previous 57% was queue spin, not work.
 
+## Update 2026-04-27: spike root cause is **NOT** snapshotting
+
+User disabled snapshotting on seq1-acc around 08:00 log time. The
+~2000 ms spikes in `proxima_glb_attachmentDurationMs` continued
+unchanged. Investigation:
+
+### The metric includes the clock-alignment wait
+
+`global/global.go:592` — `AttachmentFinished` records
+`time.Since(metadata.TxBytesReceived)`. `TxBytesReceived` is stamped
+when the bytes hit the input queue (`core_modules/txinput_queue/
+txinput_queue.go:226`), **before** the clock-alignment gate at
+`txinput_queue.go:290-310`:
+
+```go
+txTime := ledger.ClockTime(txid.Timestamp())
+if time.Until(txTime) <= 0 {
+    q.doAttach(tx, attachOpts)
+} else {
+    go func() {
+        q.IncCounter("wait")
+        defer q.DecCounter("wait")
+        if !q.ClockCatchUpWithLedgerTime(txid.Timestamp()) { return }
+        q.doAttach(tx, attachOpts)
+    }()
+}
+```
+
+So the recorded "attachment duration" = clock-alignment wait + actual
+attacher work. For txs whose timestamp is in the past at receipt
+(virtually all non-branches), wait=0 and the metric reflects only
+attacher work. For txs whose timestamp is in the *future*, the wait
+is included.
+
+### Branches arrive ~2 s ahead of their timestamp
+
+Ledger constants (`ledger/def/def_constants0.yaml`):
+- `constTickDuration = 80 ms`
+- `constMaxTickValuePerSlot = 127` → 128 ticks/slot → slot duration
+  **10.24 s**
+- `constPreBranchConsolidationTicks = 25` → **2.0 s** at end of each
+  slot
+
+Branch transactions have timestamp = next slot boundary (tick 0).
+The sequencer starts building the branch up to
+`PreBranchConsolidationTicks = 25 ticks = 2.0 s` before the boundary
+and submits/gossips it as soon as the build finishes. Peers receive
+the branch ~2 s before its ledger time. They sit in the clock-
+alignment wait until `ClockTime(boundary)` is reached, then attach.
+Total recorded duration ≈ 2 s (wait) + a few ms (attacher) ≈ 2000 ms.
+
+### Evidence
+
+- Distribution on seq1-acc over 14 h is **bimodal**: 675 points
+  <50 ms, 0 points 200-1500 ms, 101 points 1500-2050 ms, 1 outlier.
+  No continuum — the signature of a fixed timer, not random load.
+- Spike value is consistently 1956-2013 ms. Matches
+  `PreBranchConsolidationTicks × TickDuration = 25 × 80 ms = 2000 ms`
+  almost exactly.
+- Branch rate per sequencer = ~0.098/s = one every 10.2 s = once per
+  slot. Confirmed via `rate(proxima_seq_branches[5m])`.
+- `proxima_general_gauge_wait` on seq1-acc fluctuates between 0 and
+  4 (= 4 sequencers' branches simultaneously waiting for the boundary)
+  — exactly what the model predicts.
+- `proxima_txInputQueue_pulled` and `proxima_peering_pullRequestsOut`
+  on seq1-acc are **0** — so spikes have nothing to do with pull
+  retries (the other 2-second timer in the system).
+
+### Why some scrapes show <50 ms and others ~2000 ms
+
+The metric is a `Gauge` set on every `AttachmentFinished` call. With
+~1.75 attachments/s on seq1-acc, the gauge is overwritten constantly.
+A scrape returns whichever attachment was last when the scrape lands.
+~6 branches/min ÷ ~105 attachments/min ≈ 6% chance of a branch being
+last → matches the 101/781 ≈ 13% spike rate (slightly higher because
+branches finish in clusters when 4 sequencers' branches all clear the
+wait gate at the same boundary).
+
+### Why the metric is misleading
+
+The metric's name suggests "wall time the attacher routine runs", but
+because `TxBytesReceived` is stamped before the clock-alignment gate,
+it actually includes intentional waiting. Branch txs are *expected*
+to sit in the gate for up to `PreBranchConsolidationTicks` —
+that's by design, not a performance problem.
+
+### Possible fixes (not done yet, awaiting decision)
+
+1. Move the `TxBytesReceived` stamp inside the
+   `ClockCatchUpWithLedgerTime` branch — set it again to `time.Now()`
+   right before `q.doAttach(tx, attachOpts)` in the gated case. The
+   metric would then reflect actual attacher work only.
+2. Or: leave the metric, document that branch txs include the
+   alignment wait, and use a separate metric for attacher-only time.
+
+Option 1 is a 2-line change in `txinput_queue.go` and is more
+honest about what the metric measures.
+
+### Net effect on yesterday's findings
+
+The "11-min snapshot-correlated spikes" in the post-deploy Grafana
+observation were misread. The actual spike cadence is per-slot
+(~10.2 s), and what looked like 11-min cycles in Grafana was just the
+period at which Prometheus's 15-s scrape aliased onto the slot
+cadence. Yesterday's plan item "snapshot cost mitigation" can be
+deprioritised until we have evidence of *actual* snapshot-induced
+slowdowns (separate from the metric artifact).
+
 ## Grafana observations (post-deploy ~20:24 CEST)
 
 - **Attachment time**: noise floor went from 1-2 s to 200-400 ms. The

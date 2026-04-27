@@ -156,9 +156,10 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 						defer env.DecCounter("att")
 
 						env.MarkWorkProcessStarted(vid.IDShortString() + "_reattach")
-						runMilestoneAttacher(vid, nil, nil, env, nil)
+						started := time.Now()
+						cost := runMilestoneAttacher(vid, nil, nil, env, nil)
 						env.MarkWorkProcessStopped(vid.IDShortString() + "_reattach")
-						env.AttachmentFinished()
+						env.AttachmentFinished(started, cost)
 					}()
 				}
 				reattached = true
@@ -227,14 +228,11 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 				defer env.DecCounter("att")
 
 				env.MarkWorkProcessStarted(vid.IDShortString())
-				runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
+				started := time.Now()
+				cost := runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
 				env.MarkWorkProcessStopped(vid.IDShortString())
 
-				if metadata != nil && metadata.TxBytesReceived != nil {
-					env.AttachmentFinished(*metadata.TxBytesReceived)
-				} else {
-					env.AttachmentFinished()
-				}
+				env.AttachmentFinished(started, cost)
 			}()
 		}
 		if !vid.IsSequencerTransaction() {

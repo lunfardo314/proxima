@@ -31,11 +31,15 @@ func runMilestoneAttacher(
 	callback func(vid *vertex.WrappedTx, err error),
 	env Environment,
 	ctx context.Context,
-) {
+) (cost int) {
 	a := newMilestoneAttacher(vid, env, metadata, ctx)
 	var err error
 
 	defer func() {
+		// capture attachment cost before close() disposes the past cone in a separate goroutine
+		if a.pastCone != nil {
+			cost = a.pastCone.AttachmentCost() + a.seqTxCost
+		}
 		go func() {
 			a.close()
 		}()
@@ -81,6 +85,7 @@ func runMilestoneAttacher(
 	vid.SetSequencerAttachmentFinished()
 
 	env.PokeAllWith(vid)
+	return
 }
 
 func newMilestoneAttacher(vid *vertex.WrappedTx, env Environment, metadata *txmetadata.TransactionMetadata, providedCtx context.Context) *milestoneAttacher {

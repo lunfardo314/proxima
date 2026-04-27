@@ -104,7 +104,7 @@ type (
 		SetCounter(name string, value int)
 		Counter(name string) int
 		CounterLines(prefix ...string) *lines.Lines
-		AttachmentFinished(started ...time.Time)
+		AttachmentFinished(started time.Time, cost int)
 
 		// TxPullParameters repeat after period, max attempts, num peers
 		TxPullParameters() (repeatPeriod time.Duration, maxAttempts int)
