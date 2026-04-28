@@ -278,12 +278,3 @@ func combineTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.Transaction
 	copy(data[len(mdBytes):], txBytes)
 	return data
 }
-
-// MustParseTxID extracts transaction ID from raw bytes.
-func MustParseTxID(txBytes []byte) base.TransactionID {
-	txid, err := transaction.IDFromParsedTransactionBytes(txBytes)
-	if err != nil {
-		panic(err)
-	}
-	return txid
-}
