@@ -152,18 +152,6 @@ func (p *workflowDummyEnvironment) IsVertexReferencedBySequencer(_ *vertex.Wrapp
 	return false
 }
 
-func (p *workflowDummyEnvironment) DiagAllPendingBranches() []map[string]any {
-	return nil
-}
-
-func (p *workflowDummyEnvironment) DiagCompareReaders(_ base.TransactionID, _ base.OutputID) map[string]any {
-	return nil
-}
-
-func (p *workflowDummyEnvironment) DiagListBranchesAtSlot(_ uint32) []map[string]any {
-	return nil
-}
-
 // TxLog methods for api/server environment interface
 func (p *workflowDummyEnvironment) TxLogEnable(_ global.TxLogLevel) {}
 

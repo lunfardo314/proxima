@@ -12,13 +12,9 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-const (
-	TraceTagIncrementalAttacher                     = "incAttach"
-	TraceTagIncrementalAttacherWithExplicitBaseline = "incAttachExplicitBL"
-	// conflictCheckTimeout limits how long CheckConflicts can run in incremental attachers.
-	// Prevents goroutine starvation under I/O contention (BadgerDB compaction, trie reads).
-	conflictCheckTimeout = 5 * time.Second
-)
+// conflictCheckTimeout limits how long CheckConflicts can run in incremental attachers.
+// Prevents goroutine starvation under I/O contention (BadgerDB compaction, trie reads).
+const conflictCheckTimeout = 5 * time.Second
 
 func (a *IncrementalAttacher) checkConflictsWithTimeout() (*vertex.WrappedOutput, error) {
 	ctx, cancel := context.WithTimeout(a.Ctx(), conflictCheckTimeout)
@@ -37,8 +33,6 @@ func NewIncrementalAttacher(name string, env Environment, targetTs base.LedgerTi
 		env.Assertf(endorseVID.IsSequencerTransaction(), "NewIncrementalAttacher: endorseVID.IsSequencerTransaction()")
 		env.Assertf(targetSlot == endorseVID.Slot(), "NewIncrementalAttacher: targetSlot == endorseVid.Slot()")
 	}
-	env.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). extend: %s, endorse: {%s}",
-		name, extend.IDStringShort, func() string { return vertex.VerticesLines(endorse).Join(",") })
 
 	var baselineDirection *vertex.WrappedTx
 	if isBranch {
@@ -101,9 +95,6 @@ func NewIncrementalAttacherWithExplicitBaseline(name string, env Environment, ta
 	env.Assertf(!targetTs.IsSlotBoundary(), "!targetTs.IsSlotBoundary()")
 	env.Assertf(int(targetSlot)-int(extend.Slot()) >= 1, "int(targetSlot)(%d)-int(extend.Slot())(%s)>=1",
 		targetSlot, extend.IDStringShort)
-
-	env.Tracef(TraceTagIncrementalAttacherWithExplicitBaseline, "NewIncrementalAttacherWithExpliciteBaseline(%s). extend: %s, explicit baseline: %s",
-		name, extend.IDStringShort, baselineID.StringShort)
 
 	baseline := AttachTxID(baselineID, env, WithInvokedBy(name))
 	if baseline.GetTxStatus() != vertex.Good {
@@ -186,10 +177,8 @@ func (a *IncrementalAttacher) BaselineBranch() *base.TransactionID {
 
 func (a *IncrementalAttacher) initIncrementalAttacher(baselineBranchID base.TransactionID, isBranch bool, extend vertex.WrappedOutput, endorse ...*vertex.WrappedTx) error {
 	a.setBaseline(util.Ref(baselineBranchID))
-	a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). baseline: %s", a.name, baselineBranchID.StringShort)
 
 	for _, endorsement := range endorse {
-		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertEndorsement: %s", a.name, endorsement.IDShortString)
 		if err := a.insertEndorsement(endorsement); err != nil {
 			return err
 		}
@@ -212,7 +201,6 @@ func (a *IncrementalAttacher) initIncrementalAttacher(baselineBranchID base.Tran
 		// consumption). Assertion below catches any future regression where the past
 		// cone's baseline drifts away from what should be the stem predecessor.
 		effectiveBaseline := *a.pastCone.GetBaseline()
-		a.Tracef(TraceTagIncrementalAttacher, "NewIncrementalAttacher(%s). insertStemInput from %s", a.name, effectiveBaseline.StringShort)
 		// Ensure the baseline branch is in the memDAG. It may have been GC'd if the node
 		// fell far behind. AttachTxID fetches it from the state DB if needed.
 		AttachTxID(effectiveBaseline, a.Environment, WithInvokedBy("stemInput"))

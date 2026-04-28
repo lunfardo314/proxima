@@ -151,13 +151,6 @@ func TestAttachBasic(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
 
-		//wrk.StartTracingTags(attacher.TraceTagAttach)
-		//wrk.StartTracingTags(attacher.TraceTagAttachMilestone)
-		//wrk.StartTracingTags(attacher.TraceTagAttachVertex)
-		//wrk.StartTracingTags(attacher.TraceTagAttachInputs)
-		//wrk.StartTracingTags(attacher.TraceTagValidateSequencer)
-		//wrk.StartTracingTags(attacher.TraceTagAttachEndorsements)
-
 		vidDistrib, err := wrk.EnsureBranch(distribTxID, 10*time.Minute) //3*time.Second)
 		require.NoError(t, err)
 
@@ -545,8 +538,6 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		//testData.env.StartTracingTags(attacher.TraceTagPull)
-
 		wg.Add(1)
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
@@ -666,9 +657,6 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	testData.makeSeqBeginnings(true)
 	testData.printTxIDs()
 
-	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
-	//testData.env.StartTracingTags(attacher.TraceTagAttach)
-
 	if pullYN {
 		testData.txBytesToStore()
 		for seqNr := range testData.seqChain {
@@ -705,12 +693,6 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	t.Logf("   chain input: %s", chainIn[0].ID.StringShort())
 	t.Logf("   endrosement: %s", chainIn[1].ID.StringShort())
 
-	//testData.env.StartTracingTags(attacher.TraceTagAttach)
-	//testData.env.StartTracingTags(attacher.TraceTagPull)
-	//testData.env.StartTracingTags(attacher.TraceTagAttachEndorsements)
-	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
-	//testData.env.StartTracingTags(attacher.TraceTagSolidifySequencerBaseline)
-
 	waitCh := make(chan struct{})
 	vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 		close(waitCh)
@@ -738,9 +720,6 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 	testData.makeSeqBeginnings(true)
 	testData.printTxIDs()
-
-	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
-	//testData.env.StartTracingTags(attacher.TraceTagAttachOutput)
 
 	if pullYN {
 		testData.txBytesToStore()
@@ -805,8 +784,6 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 	testData.makeSeqBeginnings(true)
 	//testData.printTxIDs()
-
-	//testData.env.StartTracingTags(global.TraceTag, attacher.TraceTagAttachMilestone)
 
 	if pullYN {
 		testData.txBytesToStore()
@@ -1085,9 +1062,6 @@ func TestAttachSeqChains(t *testing.T) {
 		//	PrivateKey: testData.privKeyAux,
 		//})
 		require.NoError(t, err)
-
-		//testData.wrk.StartTracingTags(attacher.TraceTagAttach, attacher.TraceTagAttachVertex)
-		//testData.wrk.StartTracingTags(poker.TraceTag, pull_client.TraceTag, pull_server.TraceTag)
 
 		wg.Add(1)
 		vidBranch, err := attacher.AttachTransactionFromBytes(txBytesBranch, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {

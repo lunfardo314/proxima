@@ -13,10 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-const (
-	TraceTagTxInput = "txinput"
-)
-
 func (w *Workflow) TxFromStoreIn(txid base.TransactionID) (err error) {
 	_, err = w.TxBytesFromStoreIn(w.TxBytesStore().GetTxBytesWithMetadata(&txid))
 	return
@@ -89,7 +85,6 @@ func (w *Workflow) TxBytesInFromPeerQueued(txBytesReceived []byte, metaData *txm
 }
 
 func (w *Workflow) _attach(tx *transaction.Transaction, opts ...attacher.AttachTxOption) {
-	w.Tracef(TraceTagTxInput, "-> attachTx tx %s", tx.IDShortString)
 	attacher.AttachTransaction(tx, w, opts...)
 }
 

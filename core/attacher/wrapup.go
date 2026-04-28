@@ -15,8 +15,6 @@ import (
 )
 
 func (a *milestoneAttacher) wrapUpAttacher() {
-	a.Tracef(TraceTagAttachMilestone, "wrapUpAttacher")
-
 	a.finals.baseline = *a.pastCone.GetBaseline()
 	a.finals.numVertices = a.pastCone.NumVertices()
 

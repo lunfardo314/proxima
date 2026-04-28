@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyargs"
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
@@ -34,11 +33,6 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 	}
 	return ret
 }
-
-const (
-	TraceTagAttach       = "attach"
-	TraceTagAttachVertex = "attachVertex"
-)
 
 func (a *attacher) Name() string {
 	return a.name
@@ -64,17 +58,12 @@ func (a *attacher) setError(err error) {
 	a.err = err
 }
 
-const TraceTagSolidifySequencerBaseline = "seqBase"
-
 // solidifyBaselineUnwrapped directs the attachment process down the MemDAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
 // Success of the baseline solidification is when the function returns true and v.BaselineBranchID != nil
 // Special edge case: when the baseline branch is before the snapshot state, it has to be taken into account if
 // it can be used as a baseline or not
 func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
-	a.Tracef(TraceTagSolidifySequencerBaseline, "IN for %s", v.IDShortString)
-	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT for %s", v.IDShortString)
-
 	// determine the baseline
 	baselineDirectionID := v.BaselineDirection()
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
@@ -98,17 +87,14 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 			a.name, func() string { return baselineDirection.Lines("    ").String() })
 
 		v.BaselineBranchID = util.Ref(baseline)
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 1 %s. BaselineBranchID: %s", v.IDShortString, v.BaselineBranchID.StringShort)
 		return true
 
 	case vertex.Bad:
 		a.setError(baselineDirection.GetError())
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 2 %s %v", v.IDShortString, baselineDirection.GetError)
 		return false
 
 	case vertex.Undefined:
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 3 %s", v.IDShortString)
-		return a.pullIfNeeded(baselineDirection, "solidifyBaselineUnwrapped")
+		return a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
 }
@@ -284,13 +270,11 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		return false
 	}
 
-	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vidUnwrapped.IDShortString)
 	a.Assertf(!util.IsNil(a.BaselineSugaredStateReader), "!util.IsNil(a.BaselineSugaredStateReader)")
 
 	// --  attach endorsements if needed (results in recursion)
 
 	if !a.allEndorsementsDefined(v) {
-		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.IDShortString)
 		// depth-first along endorsements
 		if !a.attachEndorsements(v, vidUnwrapped) { // <<< recursive
 			// not ok -> leave attacher
@@ -298,16 +282,10 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 			return false
 		}
 	}
-	if a.allEndorsementsDefined(v) {
-		a.Tracef(TraceTagAttachVertex, "endorsements are all solid in %s", v.IDShortString)
-	} else {
-		a.Tracef(TraceTagAttachVertex, "endorsements NOT all solid in %s", v.IDShortString)
-	}
 
 	// --  attach inputs if needed (results in recursion)
 
 	if !a.allInputsDefined(v) {
-		a.Tracef(TraceTagAttachVertex, "BEFORE attachInputs(%s)", v.IDShortString)
 		if !a.attachInputs(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
@@ -315,19 +293,13 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 	}
 
 	if a.allInputsDefined(v) {
-		a.Tracef(TraceTagAttachVertex, "inputs solid (%s)", v.IDShortString)
-
 		if !v.IsSequencerTransaction() {
 			if !a.finalTouchNonSequencer(v, vidUnwrapped) {
 				a.Assertf(a.err != nil, "a.err!=nil")
 				return false
 			}
 		}
-	} else {
-		a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) not all inputs solid", v.IDShortString)
 	}
-
-	a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) return OK", v.IDShortString)
 	return true
 }
 
@@ -351,14 +323,12 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 
 			v.UnReferenceDependencies()
 			a.setError(err)
-			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
 		}
 		a.LogTx(time.Now(), "validation OK", v.ID())
 		// mark transaction validated
 		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 
-		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.IDShortString)
 		a.PokeAllWith(vid)
 	}
 	glbFlags = vid.FlagsNoLock()
@@ -393,7 +363,7 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 		return false
 	}
 
-	if !a.pullIfNeeded(vidDep, "refreshDependencyStatus") {
+	if !a.pullIfNeeded(vidDep) {
 		return false
 	}
 	return true
@@ -524,11 +494,8 @@ func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx) bo
 func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte) bool {
 	oid := v.MustInputAt(inputIdx)
 
-	a.Tracef(TraceTagAttachVertex, "attachInput(%s): %s", v.IDShortString, oid.StringShort)
-
 	vidDep := v.Inputs[inputIdx]
 
-	var ok bool
 	if vidDep == nil {
 		vidDep = AttachTxID(oid.TransactionID(), a,
 			WithInvokedBy(a.name),
@@ -547,13 +514,7 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 		VID:   vidDep,
 		Index: oid.Index(),
 	}
-	a.Tracef(TraceTagAttachVertex, "before attachOutput(%s): %s", wOut.IDStringShort, a.pastCone.Flags(vidDep).String())
-	ok = a.attachOutput(wOut)
-	if !ok {
-		return false
-	}
-	a.Tracef(TraceTagAttachVertex, "after attachOutput(%s): %s", wOut.IDStringShort, a.pastCone.Flags(vidDep).String())
-	return true
+	return a.attachOutput(wOut)
 }
 
 func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
@@ -657,9 +618,6 @@ func (a *attacher) branchesCompatible(branchID1, branchID2 *base.TransactionID) 
 // setBaseline sets baseline, references it from the attacher
 // For sequencer transaction baseline will be on the same slot, for branch transactions it can be further in the past
 func (a *attacher) setBaseline(baselineID *base.TransactionID) {
-	a.Tracef(TraceTagSolidifySequencerBaseline, "IN setBaseline(%s)", baselineID.StringShort)
-	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT setBaseline(%s)", baselineID.StringShort)
-
 	a.Assertf(baselineID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
 	a.pastCone.SetBaseline(baselineID)
 }
@@ -690,16 +648,7 @@ func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) bool {
 	return true
 }
 
-func (a *attacher) SetTraceAttacher(name string) {
-	a.forceTrace = name
-}
-
 func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
-	if a.forceTrace != "" {
-		lazyArgs := fmt.Sprintf(format, lazyargs.Eval(args...)...)
-		a.Log().Infof("%s LOCAL TRACE(%s//%s) %s", a.name, traceLabel, a.forceTrace, lazyArgs)
-		return
-	}
 	a.Environment.Tracef(traceLabel, a.name+format+" ", args...)
 }
 

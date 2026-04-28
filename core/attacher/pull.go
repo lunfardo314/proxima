@@ -8,28 +8,17 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-const (
-	TraceTagPull = "pullFromPeers"
-)
-
-func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx, tag string) bool {
-	a.Tracef(TraceTagPull, "pullIfNeeded IN (%s): %s", tag, deptVID.IDShortString)
+func (a *attacher) pullIfNeeded(deptVID *vertex.WrappedTx) bool {
 	ok := true
-	virtual := false
 	// pullFromPeers is only may be needed for the virtual tx
 	// all information about pullFromPeers is contained in the vertex. It is equally available to all attachers that need the vertex
 	deptVID.UnwrapVirtualTx(func(virtualTx *vertex.VirtualTransaction) {
 		ok = a.pullIfNeededUnwrapped(virtualTx, deptVID)
-		virtual = true
 	})
-
-	a.Tracef(TraceTagPull, "pullIfNeeded OUT (%s) (virtual = %v): %s", tag, virtual, deptVID.IDShortString)
 	return ok
 }
 
 func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, deptVID *vertex.WrappedTx) bool {
-	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped IN: %s", deptVID.IDShortString)
-
 	repeatPullAfter, maxPullAttempts := a.TxPullParameters()
 
 	// depth cap applies only to gossip-driven recursion (txs after the forward-sync frontier).
@@ -53,12 +42,10 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 		if virtualTx.PullNeeded(isDepthCapped) {
 			a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 		}
-		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 1: %s", deptVID.IDShortString)
 		return true
 	}
 
 	if a.pastCone.IsInTheState(deptVID) {
-		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 2: %s", deptVID.IDShortString)
 		return true
 	}
 
@@ -70,23 +57,16 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	depID := deptVID.ID()
 	if tx, _ := a.TakeCachedTx(util.Ref(depID)); tx != nil {
 		a.CachedTxInSolicited(tx)
-		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3 (cache->solicit): %s", deptVID.IDShortString)
 		return true
 	}
 	if txBytesWithMetadata := a.GetTxBytesWithMetadata(util.Ref(depID)); len(txBytesWithMetadata) > 0 {
 		a.TxBytesFromStoreInSolicited(txBytesWithMetadata)
-		a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 3 (txstore->solicit): %s", deptVID.IDShortString)
 		return true
-	}
-	if isDepthCapped() {
-		a.Tracef("sync", "depth cap: skip peer pull for %s at depth %d (cap=%d), attacher=%s",
-			deptVID.IDShortString, depth, vertex.MaxAttachmentDepthForPull, a.Name())
 	}
 	virtualTx.SetPullNeeded()
 	if !isDepthCapped() {
 		a.pullFromPeers(virtualTx, deptVID, repeatPullAfter)
 	}
-	a.Tracef(TraceTagPull, "pullIfNeededUnwrapped OUT 4: %s", deptVID.IDShortString)
 	return true
 }
 
@@ -101,9 +81,5 @@ func (a *attacher) pullFromPeers(virtualTx *vertex.VirtualTransaction, deptVID *
 	if a.DurationSinceLastMessageFromPeer() <= 2*repeatPullAfter {
 		a.PullFromPeers(deptVID.ID())
 		virtualTx.SetPullHappened(repeatPullAfter)
-
-		a.Tracef(TraceTagPull, "pullFromPeers: %s", deptVID.IDShortString)
-	} else {
-		a.Tracef(TraceTagPull, "pullFromPeers postponed (node disconnected): %s", deptVID.IDShortString)
 	}
 }

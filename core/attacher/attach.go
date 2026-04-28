@@ -119,7 +119,6 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		now := ledger.TimeNow()
 		util.Assertf(!now.Before(tx.Timestamp()), "!now(%s).Before(tx.Timestamp())(%s)", now.String, tx.Timestamp().String)
 	}
-	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
@@ -145,13 +144,9 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 				vid.ReattachVertexNoLock(v.Transaction)
 
 				if vid.IsSequencerTransaction() {
-					n := numAttachers.Add(1)
-					env.Tracef("sync", "reattach attacher START %s, numAttachers=%d", tx.IDShortString, n)
+					numAttachers.Add(1)
 					go func() {
-						defer func() {
-							n := numAttachers.Add(-1)
-							env.Tracef("sync", "reattach attacher FINISH %s, numAttachers=%d", tx.IDShortString, n)
-						}()
+						defer numAttachers.Add(-1)
 						env.IncCounter("att")
 						defer env.DecCounter("att")
 
@@ -192,7 +187,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 	// outside the vertex lock to avoid backpressure blocking the lock holder.
 	newlyAttached := false
 
-	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
+	vid.UnwrapVirtualTx(func(_ *vertex.VirtualTransaction) {
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
 			if options.attachmentCallback != nil {
@@ -203,27 +198,20 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 			return
 		}
 
-		env.Tracef(TraceTagPull, "AttachTransaction %s. Since attachID: %v", tx.IDShortString, time.Since(v.Created))
-
 		// mark the vertex to prevent repetitive attachment
 		vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
 		env.LogTx(time.Now(), fmt.Sprintf("ATTACH START seq=%v", txid.IsSequencerTransaction()), txid)
 
 		// virtual tx is converted into full vertex with the full transaction
-		env.Tracef(TraceTagAttach, ">>>>>>>>>>>>>>>>>>>>>>> ConvertVirtualTxToVertexNoLock: %s", tx.IDShortString())
 		vid.ConvertVirtualTxToVertexNoLock(vertex.NewVertex(tx))
 
 		if vid.IsSequencerTransaction() {
 			// for sequencer milestones start attacher
 			metadata := options.metadata
-			n := numAttachers.Add(1) // increment synchronously, before goroutine starts
-			env.Tracef("sync", "attacher START %s, numAttachers=%d, depth=%d", tx.IDShortString, n, options.depth)
+			numAttachers.Add(1) // increment synchronously, before goroutine starts
 			// start attacher routine
 			go func() {
-				defer func() {
-					n := numAttachers.Add(-1)
-					env.Tracef("sync", "attacher FINISH %s, numAttachers=%d", tx.IDShortString, n)
-				}()
+				defer numAttachers.Add(-1)
 				env.IncCounter("att")
 				defer env.DecCounter("att")
 
@@ -269,8 +257,6 @@ func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...AttachT
 
 // InvalidateTxID marks existing vertex as BAD or creates new BAD
 func InvalidateTxID(txid base.TransactionID, env Environment, reason error) {
-	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
-
 	vid := AttachTxID(txid, env, WithInvokedBy("InvalidateTxID"))
 	vid.SetTxStatusBad(reason)
 }

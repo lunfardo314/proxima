@@ -111,56 +111,6 @@ func (b *Branches) IsPending(branchID base.TransactionID) bool {
 	return ok
 }
 
-// DiagListBranchesAtSlot returns a list of (txidHex, pending, rootHex) for every
-// branch held in b.m at the given slot. Diagnostic helper.
-func (b *Branches) DiagListBranchesAtSlot(slot uint32) []map[string]any {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	out := []map[string]any{}
-	for txid, bd := range b.m {
-		if txid.Slot() != slot {
-			continue
-		}
-		entry := map[string]any{
-			"txid":           (&txid).StringHex(),
-			"pending":        false,
-			"rootHex":        "",
-			"coverageDelta":  bd.CoverageDelta,
-			"lastActiveAgoS": time.Since(bd.lastActive).Seconds(),
-		}
-		if _, isPending := b.pending[txid]; isPending {
-			entry["pending"] = true
-		}
-		if bd.Root != nil {
-			entry["rootHex"] = hex.EncodeToString(bd.Root.Bytes())
-		}
-		out = append(out, entry)
-	}
-	return out
-}
-
-// DiagAllPendingBranches returns a list of all pending branch IDs.
-func (b *Branches) DiagAllPendingBranches() []map[string]any {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	out := []map[string]any{}
-	for txid, pb := range b.pending {
-		entry := map[string]any{
-			"txid":               (&txid).StringHex(),
-			"seqName":            pb.SequencerName,
-			"baselineBranchID":   pb.BaselineBranchID.StringHex(),
-			"previousBranchID":   pb.PreviousBranchID.StringHex(),
-			"mutationsLen":       0,
-			"committedTxsLen":    len(pb.CommittedTxs),
-		}
-		if pb.Mutations != nil {
-			entry["mutationsLen"] = pb.Mutations.Len()
-		}
-		out = append(out, entry)
-	}
-	return out
-}
-
 // GetRootHex returns the committed root of the branch as hex, or "" if not
 // committed / not known. Diagnostic helper.
 func (b *Branches) GetRootHex(branchID base.TransactionID) string {

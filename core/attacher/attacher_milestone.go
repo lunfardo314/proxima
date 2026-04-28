@@ -17,11 +17,8 @@ import (
 	"github.com/lunfardo314/proxima/util/checkpoints"
 )
 
-const (
-	TraceTagAttachMilestone = "milestone"
-	// lazyRepeatEach polling fallback. With buffered pokeChan, this is only a safety net.
-	lazyRepeatEach = 10 * time.Millisecond
-)
+// lazyRepeatEach polling fallback. With buffered pokeChan, this is only a safety net.
+const lazyRepeatEach = 10 * time.Millisecond
 
 var errDetachedInAttacher = errors.New("detached transaction in the attacher")
 
@@ -136,29 +133,22 @@ func (a *milestoneAttacher) run() error {
 	// first determine the baseline state
 
 	if status := a.solidifyBaseline(); status != vertex.Good {
-		a.Tracef(TraceTagAttachMilestone, "baseline solidification failed. Reason: %v", a.err)
 		util.AssertMustError(a.err)
 		return a.err
 	}
 
 	a.Assertf(a.pastCone.GetBaseline() != nil, "a.pastCone.GetBaseline() != nil")
-	a.Tracef(TraceTagAttachMilestone, "baseline is OK <- %s", a.pastCone.GetBaseline().StringShort)
 
 	// then solidify past cone
-
-	a.Tracef(TraceTagAttachMilestone, "BEFORE solidifyPastCone %s")
 	status := a.solidifyPastCone()
-	a.Tracef(TraceTagAttachMilestone, "AFTER solidifyPastCone %s")
 
 	a.Assertf(status != vertex.Undefined, "status!=vertex.Undefined")
 
 	if status != vertex.Good {
-		a.Tracef(TraceTagAttachMilestone, "past cone solidification failed. Reason: %v", a.err)
 		a.Assertf(a.err != nil, "a.err!=nil")
 		return a.err
 	}
 
-	a.Tracef(TraceTagAttachMilestone, "past cone OK")
 	a.AssertNoError(a.err)
 
 	err := a.checkConsistencyBeforeWrapUp()
@@ -364,7 +354,6 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 		}
 
 		if !finalSuccess {
-			a.Tracef(TraceTagAttachVertex, "NOT final..")
 			return vertex.Undefined
 		}
 
@@ -384,15 +373,8 @@ func (a *milestoneAttacher) solidifyPastCone() vertex.Status {
 	})
 }
 
-const TraceTagValidateSequencer = "validateSeq"
-
 func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, finalSuccess bool) {
 	if a.pastCone.ContainsUndefined() {
-		// defer the past-cone dump via func() string — lazyargs.Eval evaluates only when the
-		// trace tag is enabled. Without this wrapper Lines walks the entire past cone on every
-		// solidifyPastCone retry, on every node, even when tracing is off.
-		a.Tracef(TraceTagValidateSequencer, "contains undefined in the past cone:\n%s",
-			func() string { return a.pastCone.Lines("     ").Join("\n") })
 		return true, false
 	}
 	if !a.allEndorsementsDefined(v) || !a.allInputsDefined(v) {
@@ -407,13 +389,11 @@ func (a *milestoneAttacher) validateSequencerTxUnwrapped(v *vertex.Vertex) (ok, 
 
 		a.setError(err)
 		v.UnReferenceDependencies()
-		a.Tracef(TraceTagValidateSequencer, "constraint validation failed in %s: '%v'", a.vid.IDShortString, err)
 		return false, false
 	}
 	a.LogTx(time.Now(), "validation OK", a.vid.ID())
 
 	a.vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
-	a.Tracef(TraceTagValidateSequencer, "constraints has been validated OK: %s", v.IDShortString)
 
 	// Use a.ctx (not context.Background) so that CheckAndClean — which reads state
 	// via a.getBaselineStateReader → multistate → BadgerDB — bails out cleanly when
@@ -449,7 +429,6 @@ func (a *milestoneAttacher) pokeMe(with *vertex.WrappedTx) {
 	flags := a.pastCone.Flags(with)
 	util.Assertf(a.pastCone.IsKnown(with), "must be marked known %s", with.IDShortString)
 	if !flags.FlagsUp(vertex.FlagPastConeVertexAskedForPoke) {
-		a.Tracef(TraceTagAttachMilestone, "pokeMe with %s", with.IDShortString)
 		a.PokeMe(a.vid, with)
 		a.pastCone.SetFlagsUp(with, vertex.FlagPastConeVertexAskedForPoke)
 	}
