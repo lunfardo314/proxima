@@ -142,15 +142,13 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	ret.registerMetrics()
 
 	// log once per state transition (connected <-> disconnected). "Disconnected
-	// from the network" means no incoming gossip/pull traffic for the threshold;
-	// reconnection clears it. Independent of any per-peer heartbeat — pure
-	// inbound-traffic liveness signal.
-	const (
-		disconnLogPeriod    = 6 * time.Second
-		disconnLogThreshold = 4 * time.Second
-	)
+	// from the network" means no incoming gossip/pull traffic for at least one
+	// slot — at steady state every node should see ≥1 inbound tx per slot, so
+	// silence longer than that means the node is effectively isolated. Pure
+	// inbound-traffic liveness signal, independent of per-peer connection state.
+	disconnLogThreshold := ledger.SlotDuration()
 	disconnected := false
-	ret.RepeatInBackground("disconn_log_loop", disconnLogPeriod, func() bool {
+	ret.RepeatInBackground("disconn_log_loop", disconnLogThreshold, func() bool {
 		d := ret.DurationSinceLastMessageFromPeer()
 		switch {
 		case d > disconnLogThreshold && !disconnected:
