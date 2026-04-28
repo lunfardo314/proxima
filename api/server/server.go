@@ -110,6 +110,8 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetSequencerTargetInfo, srv.getSequencerTargetInfo)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
+	// GET peers dashboard (auto-refreshing peer info page)
+	srv.addHandler(api.PathGetPeersDashboard, srv.getPeersDashboard)
 	// GET live MemDAG visualizer page
 	srv.addHandler(api.PathDAGViz, dagviz.Handler)
 	// DAG explorer (browses the txstore DB): HTML page + JSON APIs

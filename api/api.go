@@ -46,6 +46,8 @@ const (
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
+	// PathGetPeersDashboard returns the peers dashboard (auto-refreshing peer info page)
+	PathGetPeersDashboard = "/peers"
 	// PathDAGViz serves the live MemDAG visualizer
 	PathDAGViz = "/dagviz"
 	// PathDAGExplorer serves the static DAG explorer page (browses the txstore DB)
@@ -158,6 +160,9 @@ type (
 		WhenAdded       int64    `json:"when_added"`
 		NumIncomingPull int      `json:"num_incoming_pull"`
 		NumIncomingTx   int      `json:"num_incoming_tx"`
+		// RTTMs is the most recent round-trip ping time in milliseconds.
+		// Omitted if no measurement has been taken yet.
+		RTTMs float64 `json:"rtt_ms,omitempty"`
 	}
 
 	// LatestReliableBranch returned by get_latest_reliable_branch

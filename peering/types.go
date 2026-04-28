@@ -16,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -62,6 +63,9 @@ type (
 		stoppedCtx       context.Context    // child of env.Ctx(); cancelled by Stop().
 		stop             context.CancelFunc // cancels stoppedCtx; used by background goroutines (e.g. scheduleStaticReconnect) to bail when peering is shutting down even if env's ctx is still alive (e.g. across tests).
 		host             host.Host
+		// pingService runs the libp2p /ipfs/ping/1.0.0 protocol on the host
+		// (responds to incoming pings, used to measure outgoing RTT).
+		pingService      *ping.PingService
 		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
 		routingDiscovery *routing.RoutingDiscovery
 		peers            map[peer.ID]*Peer // except self/host
@@ -107,6 +111,9 @@ type (
 		// msg counters
 		numIncomingPull int
 		numIncomingTx   int
+		// lastRTTNs is the most recent ping RTT in nanoseconds; 0 = no measurement yet.
+		// Updated by the peer_rtt_loop, read by GetPeersInfo. Atomic for lock-free reads.
+		lastRTTNs atomic.Int64
 	}
 )
 

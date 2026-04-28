@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -17,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	reuse "github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/lunfardo314/proxima/api"
@@ -104,6 +106,10 @@ func New(env environment, cfg *Config) (*Peers, error) {
 	// register the Notifiee for connection-level events. CONNECTED/LOST CONNECTION
 	// log lines and static-peer reconnect scheduling are driven from here.
 	ret.host.Network().Notify(&peeringNotifiee{ps: ret})
+
+	// register the libp2p ping protocol on the host (so we both respond to
+	// peers' pings and can measure outgoing RTT to them).
+	ret.pingService = ping.NewPingService(ret.host)
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
@@ -207,6 +213,11 @@ func (ps *Peers) Run() {
 
 	ps.RepeatInBackground(Name+"_update_peer_metrics", 2*time.Second, func() bool {
 		ps.updatePeerMetrics(ps.peerStats())
+		return true
+	})
+
+	ps.RepeatInBackground("peer_rtt_loop", peerRTTInterval, func() bool {
+		ps.measurePeerRTTs()
 		return true
 	})
 
@@ -627,6 +638,9 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 			NumIncomingPull: p.numIncomingPull,
 			NumIncomingTx:   p.numIncomingTx,
 		}
+		if rtt := p.lastRTTNs.Load(); rtt > 0 {
+			pi.RTTMs = float64(rtt) / float64(time.Millisecond)
+		}
 		pi.MultiAddresses = make([]string, 0)
 		for _, ma := range ps.host.Peerstore().Addrs(p.id) {
 			pi.MultiAddresses = append(pi.MultiAddresses, ma.String())
@@ -674,6 +688,44 @@ func (ps *Peers) peerIDsAlive(except ...peer.ID) []peer.ID {
 // "node is DISCONNECTED from network" warning.
 func (ps *Peers) evidenceMessage() {
 	ps.lastMsgReceived.Store(time.Now().UnixNano())
+}
+
+const (
+	peerRTTInterval = 5 * time.Second
+	peerRTTTimeout  = 4 * time.Second // bounded so a slow/dead peer doesn't stall the cycle
+)
+
+// measurePeerRTTs takes one ping RTT sample from every alive peer in parallel
+// and stores it on the Peer struct (atomic, lock-free reads). Failures leave
+// the previous sample untouched.
+func (ps *Peers) measurePeerRTTs() {
+	alive := ps.peerIDsAlive()
+	if len(alive) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, id := range alive {
+		wg.Add(1)
+		go func(pid peer.ID) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(ps.stoppedCtx, peerRTTTimeout)
+			defer cancel()
+			select {
+			case res, ok := <-ps.pingService.Ping(ctx, pid):
+				if !ok || res.Error != nil {
+					return
+				}
+				ps.mutex.RLock()
+				p, found := ps.peers[pid]
+				ps.mutex.RUnlock()
+				if found {
+					p.lastRTTNs.Store(int64(res.RTT))
+				}
+			case <-ctx.Done():
+			}
+		}(id)
+	}
+	wg.Wait()
 }
 
 func (ps *Peers) DurationSinceLastMessageFromPeer() time.Duration {
