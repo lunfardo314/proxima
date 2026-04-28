@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/dag_explorer"
 	"github.com/lunfardo314/proxima/api/dagviz"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/global"
@@ -109,8 +110,14 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetSequencerTargetInfo, srv.getSequencerTargetInfo)
 	// GET dashboard for node
 	srv.addHandler(api.PathGetDashboard, srv.getDashboard)
-	// GET DAG visualizer
+	// GET live MemDAG visualizer page
 	srv.addHandler(api.PathDAGViz, dagviz.Handler)
+	// DAG explorer (browses the txstore DB): HTML page + JSON APIs
+	if explorerStore, ok := srv.TxBytesStore().(dag_explorer.TxStore); ok {
+		dag_explorer.Register(srv.addHandler, explorerStore)
+	} else {
+		srv.Log().Warnf("DAG explorer not registered: TxBytesStore does not support prefix iteration")
+	}
 	// GET inactive UTXOs in LRB /get_inactive?[slots_back=<slot>]
 	srv.addHandler(api.PathGetInactive, srv.getInactive)
 	// GET branch list for sync /get_branch_list?from_slot=<slot>&max=<max>

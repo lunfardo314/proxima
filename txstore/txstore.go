@@ -127,6 +127,14 @@ func (s *SimpleTxBytesStore) HasTxBytes(txid *base.TransactionID) bool {
 	return s.s.Has(txid[:])
 }
 
+// Iterator exposes prefix iteration over the underlying KV store. Used by the
+// DAG explorer to walk all txids belonging to a given slot (5-byte timestamp
+// prefix). Panics if the backing store doesn't implement common.Traversable;
+// both production backends (BadgerDB and InMemoryKVStore) do.
+func (s *SimpleTxBytesStore) Iterator(prefix []byte) common.KVIterator {
+	return s.s.(common.Traversable).Iterator(prefix)
+}
+
 // PersistTxBytesBatch writes multiple entries in a single DB transaction.
 // Uses BatchedWriter if available, otherwise falls back to individual writes.
 func (s *SimpleTxBytesStore) PersistTxBytesBatch(batch map[base.TransactionID][]byte) error {

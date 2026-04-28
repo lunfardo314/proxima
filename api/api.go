@@ -46,8 +46,14 @@ const (
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
-	// PathDAGViz serves the DAG visualizer
+	// PathDAGViz serves the live MemDAG visualizer
 	PathDAGViz = "/dagviz"
+	// PathDAGExplorer serves the static DAG explorer page (browses the txstore DB)
+	PathDAGExplorer            = "/dag_explorer"
+	PathDAGExplorerPastCone    = PrefixAPIV1 + "/dag_explorer/past_cone"
+	PathDAGExplorerSlot        = PrefixAPIV1 + "/dag_explorer/slot"
+	PathDAGExplorerFindTx      = PrefixAPIV1 + "/dag_explorer/find_tx"
+	PathDAGExplorerTxDetail    = PrefixAPIV1 + "/dag_explorer/tx_detail"
 
 	// Transaction API calls
 
