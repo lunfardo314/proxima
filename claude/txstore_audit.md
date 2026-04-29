@@ -21,14 +21,14 @@ Three independent purposes, served by the same traversal:
 ## CLI
 
 ```
-proxi db txstore audit <slot from> [<slot back to, default slot 0>] [--validate] [-o|--output <new-db>] [-m|--meta]
+proxi db txstore audit <slot from> [<slot back to, default slot 0>] [-V|--validate] [-o|--output <new-db>] [-m|--meta]
 ``` 
 
 | Flag                    | Meaning                                                                                                                                                                                                                                |
 |-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `<slot from>`           | Starting slot. Required positional arg. The tool reads all transactions in this slot, picks the branch transactions, and traverses backward from there.                                                                                |
 | `<slot nack to>`        | Oldes slot to traverse. Optional positional arg. The tool reads all transactions back to this slot. Default is slot 0, genesis                                                                                                         |
-| `--validate`            | Run full-context validation (`SetFullContext` + `ValidateFullContext`) on every visited transaction. Skip — and report — any transaction whose consumed UTXOs are not all available locally. No shorthand: `-v` is the global verbose flag. |
+| `-V`, `--validate`      | Run full-context validation (`SetFullContext` + `ValidateFullContext`) on every visited transaction. Skip — and report — any transaction whose consumed UTXOs are not all available locally. **Shorthand is upper-case `-V`** because the proxi root reserves lower-case `-v` for `--verbose`.                                       |
 | `-o`, `--output <path>` | Write each visited transaction into a new Badger txstore at `<path>` (same on-disk layout as a normal `proximadb.txstore` — just cleaned of orphans). Refuses to start if the path already exists.                                     |
 | `-m`, `--meta`          | Only meaningful with `--output`. If set, the per-transaction metadata is copied verbatim from the source. If unset (default), the output DB stores each tx with **empty metadata** (`txmetadata.TransactionMetadata{}.Bytes()` prefix). |
 

@@ -44,8 +44,8 @@ func initAuditCmd() *cobra.Command {
 		Args:  cobra.RangeArgs(1, 2),
 		Run:   runAuditCmd,
 	}
-	// no shorthand for --validate: -v is reserved for the global --verbose flag.
-	cmd.PersistentFlags().BoolVar(&auditValidate, "validate", false, "run full-context validation on every visited transaction (requires multistate DB)")
+	// shorthand is upper-case -V because lower-case -v is the global --verbose flag.
+	cmd.PersistentFlags().BoolVarP(&auditValidate, "validate", "V", false, "run full-context validation on every visited transaction (requires multistate DB). Note: shorthand is upper-case -V; lower-case -v is the global --verbose flag")
 	cmd.PersistentFlags().StringVarP(&auditOutput, "output", "o", "", "write visited transactions to a new txstore at this path (refuses if path exists)")
 	cmd.PersistentFlags().BoolVarP(&auditMeta, "meta", "m", false, "preserve per-transaction metadata in --output (default: write empty metadata)")
 	cmd.InitDefaultHelpCmd()
