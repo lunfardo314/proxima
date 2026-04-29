@@ -2,6 +2,7 @@ package attacher
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -12,8 +13,19 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// numAttachers is the authoritative count of running sequencer attacher goroutines.
+// Incremented before the goroutine starts (synchronously in AttachTransaction),
+// decremented when the goroutine finishes.
+var numAttachers atomic.Int32
+
+// NumAttachers returns the current number of running sequencer attacher goroutines.
+func NumAttachers() int {
+	return int(numAttachers.Load())
+}
+
+
 // AttachTxID ensures the txid is on the MemDAG
-// It load existing branches but does not pull anything
+// It load existing branches but does not pullFromPeers anything
 func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption) (vid *vertex.WrappedTx) {
 	options := &_attacherOptions{}
 	for _, opt := range opts {
@@ -78,10 +90,19 @@ func AttachTxID(txid base.TransactionID, env Environment, opts ...AttachTxOption
 			// it is in the snapshot state -> mark it GOOD branch
 			vid.SetTxStatusGoodNoLock(nil, 0)
 		} else {
-			// it is not in the snapshot state -> mark it BAD branch
-			err := fmt.Errorf("baseline branch state %s is before snapshot slot %d and is not available -> can't solidify baseline",
-				txid.String(), snapID.Slot())
-			vid.SetTxStatusBadNoLock(err)
+			// KnowsCommittedTransaction returned false. This can happen when the txID key
+			// has been deleted from the trie (TTL expiry) AND all outputs are consumed.
+			// For such ancient branches, treat as GOOD — they were committed before the snapshot.
+			snapSlot := snapID.Slot()
+			txSlot := txid.Slot()
+			if txSlot < snapSlot && snapSlot-txSlot > ledger.L(snapSlot).TxIDStateTTLSlots {
+				vid.SetTxStatusGoodNoLock(nil, 0)
+			} else {
+				// it is not in the snapshot state -> mark it BAD branch
+				err := fmt.Errorf("baseline branch state %s is before snapshot slot %d and is not available -> can't solidify baseline",
+					txid.String(), snapID.Slot())
+				vid.SetTxStatusBadNoLock(err)
+			}
 		}
 	})
 	return
@@ -98,70 +119,136 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		now := ledger.TimeNow()
 		util.Assertf(!now.Before(tx.Timestamp()), "!now(%s).Before(tx.Timestamp())(%s)", now.String, tx.Timestamp().String)
 	}
-	env.Tracef(TraceTagAttach, "AttachTransaction: %s", tx.IDShortString)
 
 	txid := tx.ID()
 	vid = AttachTxID(txid, env, WithInvokedBy("addTx"))
 
+	// Check if vid is a DetachedVertex (read lock only — no contention on the common path).
+	// If so, reattach in-place: the vertex was GC'd but its *transaction.Transaction
+	// is immutable and still valid. Reset flags and convert back to fresh Vertex.
+	isDetached := false
+	vid.RUnwrap(vertex.UnwrapOptions{
+		DetachedVertex: func(_ *vertex.DetachedVertex) {
+			isDetached = true
+		},
+	})
+	if isDetached {
+		reattached := false
+		vid.Unwrap(vertex.UnwrapOptions{
+			DetachedVertex: func(v *vertex.DetachedVertex) {
+				if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentFinished) {
+					return // reattachment already in progress (started but not yet finished)
+				}
+				// Either never attached, or attachment completed then GC'd — allow reattachment
+				env.Log().Infof("REATTACH START %s seq=%v", txid.StringShort(), txid.IsSequencerTransaction())
+				vid.ReattachVertexNoLock(v.Transaction)
+
+				if vid.IsSequencerTransaction() {
+					numAttachers.Add(1)
+					go func() {
+						defer numAttachers.Add(-1)
+						env.IncCounter("att")
+						defer env.DecCounter("att")
+
+						env.MarkWorkProcessStarted(vid.IDShortString() + "_reattach")
+						started := time.Now()
+						cost := runMilestoneAttacher(vid, nil, nil, env, nil)
+						env.MarkWorkProcessStopped(vid.IDShortString() + "_reattach")
+						env.AttachmentFinished(started, cost)
+					}()
+				}
+				reattached = true
+			},
+		})
+		if reattached {
+			env.PokeAllWith(vid)
+			return
+		}
+	}
+
 	if env.Branches().TransactionIsInSnapshotState(txid) {
-		// if the transaction is in the snapshot state, no need to start attacher, transaction can stay virtual
+		// Transaction is in the snapshot state — it was committed before the snapshot.
+		// Convert to full vertex and mark GOOD so that dependent attachers can proceed,
+		// but don't start an attacher (no need to validate already-committed transactions).
+		vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
+			if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
+				return
+			}
+			vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
+			vid.ConvertVirtualTxToVertexNoLock(vertex.NewVertex(tx))
+			if vid.GetTxStatusNoLock() != vertex.Good {
+				vid.SetTxStatusGoodNoLock(nil, 0)
+			}
+		})
 		return vid
 	}
 
-	vid.UnwrapVirtualTx(func(v *vertex.VirtualTransaction) {
+	// Track whether this attachment is new (not already started) so we can post events
+	// outside the vertex lock to avoid backpressure blocking the lock holder.
+	newlyAttached := false
+
+	vid.UnwrapVirtualTx(func(_ *vertex.VirtualTransaction) {
 		if vid.FlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted) {
 			// case with already attached transaction
 			if options.attachmentCallback != nil {
 				go func() {
-					//env.IncCounter("call")
 					options.attachmentCallback(vid, vid.GetErrorNoLock())
-					//env.DecCounter("call")
 				}()
 			}
 			return
 		}
 
-		env.Tracef(TraceTagPull, "AttachTransaction %s. Since attachID: %v", tx.IDShortString, time.Since(v.Created))
-
 		// mark the vertex to prevent repetitive attachment
 		vid.SetFlagsUpNoLock(vertex.FlagVertexTxAttachmentStarted)
+		env.LogTx(time.Now(), fmt.Sprintf("ATTACH START seq=%v", txid.IsSequencerTransaction()), txid)
 
 		// virtual tx is converted into full vertex with the full transaction
-		env.Tracef(TraceTagAttach, ">>>>>>>>>>>>>>>>>>>>>>> ConvertVirtualTxToVertexNoLock: %s", tx.IDShortString())
 		vid.ConvertVirtualTxToVertexNoLock(vertex.NewVertex(tx))
 
-		if vid.IsSequencerMilestone() {
+		if vid.IsSequencerTransaction() {
 			// for sequencer milestones start attacher
 			metadata := options.metadata
+			numAttachers.Add(1) // increment synchronously, before goroutine starts
 			// start attacher routine
 			go func() {
+				defer numAttachers.Add(-1)
 				env.IncCounter("att")
 				defer env.DecCounter("att")
 
 				env.MarkWorkProcessStarted(vid.IDShortString())
-				runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
+				started := time.Now()
+				cost := runMilestoneAttacher(vid, metadata, options.attachmentCallback, env, options.ctx)
 				env.MarkWorkProcessStopped(vid.IDShortString())
 
-				if metadata != nil && metadata.TxBytesReceived != nil {
-					env.AttachmentFinished(*metadata.TxBytesReceived)
-				} else {
-					env.AttachmentFinished()
-				}
+				env.AttachmentFinished(started, cost)
 			}()
 		}
+		if !vid.IsSequencerTransaction() {
+			env.IncCounter("nonseq")
+		}
 		// significantly speeds up non-sequencer transactions
-		if !vid.IsSequencerMilestone() || vid.IsBranchTransaction() {
+		if !vid.IsSequencerTransaction() || vid.IsBranchTransaction() {
 			env.PokeAllWith(vid)
 		}
 
-		env.PostEventNewTransaction(vid)
+		newlyAttached = true
 	})
+
+	// Post events outside the vertex lock to prevent backpressure from the event queue
+	// blocking the lock holder and causing cascading deadlocks under high TPS.
+	if newlyAttached {
+		env.PostEventNewTransaction(vid)
+
+		if !vid.IsSequencerTransaction() {
+			env.PostEventNewVertex(tx, nil, "")
+		}
+	}
 	return
 }
 
 // AttachTransactionFromBytes used for testing
 func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...AttachTxOption) (*vertex.WrappedTx, error) {
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +257,6 @@ func AttachTransactionFromBytes(txBytes []byte, env Environment, opts ...AttachT
 
 // InvalidateTxID marks existing vertex as BAD or creates new BAD
 func InvalidateTxID(txid base.TransactionID, env Environment, reason error) {
-	env.Tracef(TraceTagAttach, "InvalidateTxID: %s", txid.StringShort())
-
 	vid := AttachTxID(txid, env, WithInvokedBy("InvalidateTxID"))
 	vid.SetTxStatusBad(reason)
 }

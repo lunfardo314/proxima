@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -16,16 +17,16 @@ import (
 )
 
 func init() {
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 }
 
 type workflowDummyEnvironment struct {
 	*global.Global
-	stateStore   multistate.StateStore
+	stateStore   global.Store
 	txBytesStore global.TxBytesStore
 }
 
-func (d *workflowDummyEnvironment) StateStore() multistate.StateStore {
+func (d *workflowDummyEnvironment) StateStore() global.Store {
 	return d.stateStore
 }
 
@@ -41,13 +42,17 @@ func (d *workflowDummyEnvironment) PullFromPeers(_ base.TransactionID) int {
 	panic("not implemented")
 }
 
+// GetOwnSequencerID returns nil in test environment.
+// This disables the nonseq_attach sequencer target filter, letting all non-pulled non-seq txs pass.
 func (d *workflowDummyEnvironment) GetOwnSequencerID() *base.ChainID {
-	panic("not implemented")
+	return nil
 }
 
 func (d *workflowDummyEnvironment) EvidenceNumberOfTxDependencies(_ int) {}
 
 func (d *workflowDummyEnvironment) EvidencePastConeSize(_ int) {}
+
+func (d *workflowDummyEnvironment) EvidenceBranchMutations(_, _ int) {}
 
 func (d *workflowDummyEnvironment) SnapshotBranchID() base.TransactionID {
 	return base.GenesisTransactionID()
@@ -55,6 +60,10 @@ func (d *workflowDummyEnvironment) SnapshotBranchID() base.TransactionID {
 
 func (d *workflowDummyEnvironment) DurationSinceLastMessageFromPeer() time.Duration {
 	return 0
+}
+
+func (d *workflowDummyEnvironment) IsConnectedToNetwork() bool {
+	return true
 }
 
 func (d *workflowDummyEnvironment) SelfPeerID() peer.ID {
@@ -81,8 +90,8 @@ func (d *workflowDummyEnvironment) CheckTxSenderConfig() (checkSeq, checkNonSeq 
 	return true, false
 }
 
-func (d *workflowDummyEnvironment) MaxAttachmentRecursionDepth() int {
-	return 20
+func (d *workflowDummyEnvironment) IsVertexReferencedBySequencer(_ *vertex.WrappedTx) bool {
+	return false
 }
 
 func newWorkflowDummyEnvironment() *workflowDummyEnvironment {
@@ -101,10 +110,10 @@ func TestBasic(t *testing.T) {
 
 	w := Start(env, peers, OptionDisableMemDAGGC)
 
-	_, err := w.TxBytesIn(nil)
+	_, err := w.TxBytesInForTests(nil)
 	require.Error(t, err)
 
-	_, err = w.TxBytesIn([]byte("dummy data"))
+	_, err = w.TxBytesInForTests([]byte("dummy data"))
 	require.Error(t, err)
 
 	env.Stop()

@@ -9,6 +9,7 @@ import (
 const (
 	MultiStateDBName     = "proximadb"
 	TxStoreDBName        = "proximadb.txstore"
+	TxLogDBName          = "proximadb.txlog"
 	ConfigKeyTxStoreType = "txstore.type"
 
 	// MaxSyncPortionSlots max number of slots in the sync portion
@@ -18,9 +19,3 @@ const (
 func init() {
 	util.Assertf(MaxSyncPortionSlots <= math.MaxUint16, "MaxSyncPortionSlots <= math.MaxUint16")
 }
-
-const (
-	BaseTokenName       = "Proxi"
-	BaseTokenNameTicker = "PRXI"
-	DustTokenName       = "dust"
-)

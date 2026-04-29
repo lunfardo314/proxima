@@ -15,13 +15,17 @@ import (
 	"github.com/lunfardo314/unitrie/immutable"
 )
 
-// two additional partitions of the k/v store
+// additional partitions of the k/v store
 const (
 	// rootRecordDBPartition
 	rootRecordDBPartition        = immutable.PartitionOther
 	latestSlotDBPartition        = rootRecordDBPartition + 1
 	earliestSlotDBPartition      = latestSlotDBPartition + 1
 	restoreInProgressDBPartition = earliestSlotDBPartition + 1
+	// upgradeLibraryDBPartition stores compiled library YAMLs keyed by upgrade slot.
+	// Key: partition byte + 4-byte slot (big-endian)
+	// Value: compiled library YAML bytes
+	upgradeLibraryDBPartition = restoreInProgressDBPartition + 1
 )
 
 func WriteRootRecord(w common.KVWriter, branchTxID base.TransactionID, rootData RootRecord) {
@@ -141,7 +145,7 @@ func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 	proc := (float32(r.FrozenCoverage) * 100) / float32(r.CoverageDelta)
 	ret.Add("sequencer id:    %s", r.SequencerID.String()).
 		Add("supply:          %s", util.Th(r.Supply)).
-		Add("coverage delta:  %s (%s, %.2f%s)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc, "%%").
+		Add("coverage delta:  %s (%s, %.2f%s)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc, "%").
 		Add("frozen coverage: %s", util.Th(r.FrozenCoverage)).
 		Add("healthy(%s):     %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverageDelta(r.CoverageDelta, r.Supply, global.FractionHealthyBranch))
 	return ret
@@ -211,14 +215,14 @@ func FetchRootRecord(store common.KVReader, branchTxID base.TransactionID) (ret 
 }
 
 // FetchAnyLatestRootRecord return first root record for the latest slot
-func FetchAnyLatestRootRecord(store StateStoreReader) RootRecord {
+func FetchAnyLatestRootRecord(store global.StoreReader) RootRecord {
 	recs := FetchRootRecords(store, FetchLatestCommittedSlot(store))
 	util.Assertf(len(recs) > 0, "FetchAnyLatestRootRecord: can't find any root records in DB")
 	return recs[0]
 }
 
 // FetchRootRecordsNSlotsBack load root records from N lates slots, present in the store
-func FetchRootRecordsNSlotsBack(store StateStoreReader, nBack int) []RootRecord {
+func FetchRootRecordsNSlotsBack(store global.StoreReader, nBack int) []RootRecord {
 	if nBack <= 0 {
 		return nil
 	}
@@ -261,7 +265,7 @@ func FetchRootRecords(store common.Traversable, slots ...uint32) []RootRecord {
 }
 
 // FetchLatestRootRecords sorted descending by coverage
-func FetchLatestRootRecords(store StateStoreReader) []RootRecord {
+func FetchLatestRootRecords(store global.StoreReader) []RootRecord {
 	ret := FetchRootRecords(store, FetchLatestCommittedSlot(store))
 	sort.Slice(ret, func(i, j int) bool {
 		return ret[i].CoverageDelta > ret[j].CoverageDelta
@@ -293,7 +297,7 @@ func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchDat
 }
 
 // FetchBranchDataMulti returns branch records for particular root records
-func FetchBranchDataMulti(store StateStoreReader, rootData ...RootRecord) []*BranchData {
+func FetchBranchDataMulti(store global.StoreReader, rootData ...RootRecord) []*BranchData {
 	ret := make([]*BranchData, len(rootData))
 	for i, rd := range rootData {
 		bd := FetchBranchDataByRoot(store, rd)
@@ -303,12 +307,12 @@ func FetchBranchDataMulti(store StateStoreReader, rootData ...RootRecord) []*Bra
 }
 
 // FetchLatestBranches branches of the latest slot sorted by coverage descending
-func FetchLatestBranches(store StateStoreReader) []*BranchData {
+func FetchLatestBranches(store global.StoreReader) []*BranchData {
 	return FetchBranchDataMulti(store, FetchLatestRootRecords(store)...)
 }
 
 // FetchLatestBranchTransactionIDs sorted descending by coverage
-func FetchLatestBranchTransactionIDs(store StateStoreReader) []base.TransactionID {
+func FetchLatestBranchTransactionIDs(store global.StoreReader) []base.TransactionID {
 	bd := FetchLatestBranches(store)
 	ret := make([]base.TransactionID, len(bd))
 
@@ -319,7 +323,7 @@ func FetchLatestBranchTransactionIDs(store StateStoreReader) []base.TransactionI
 }
 
 // FetchHeaviestBranchChainNSlotsBack descending by epoch
-func FetchHeaviestBranchChainNSlotsBack(store StateStoreReader, nBack int) []*BranchData {
+func FetchHeaviestBranchChainNSlotsBack(store global.StoreReader, nBack int) []*BranchData {
 	rootData := make(map[base.TransactionID]RootRecord)
 	latestSlot := FetchLatestCommittedSlot(store)
 
@@ -377,7 +381,7 @@ func FetchHeaviestBranchChainNSlotsBack(store StateStoreReader, nBack int) []*Br
 	return ret
 }
 
-func FindFirstBranchThat(store StateStoreReader, filter func(branch *BranchData) bool) *BranchData {
+func FindFirstBranchThat(store global.StoreReader, filter func(branch *BranchData) bool) *BranchData {
 	var ret BranchData
 	found := false
 	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
@@ -398,7 +402,7 @@ func FindFirstBranchThat(store StateStoreReader, filter func(branch *BranchData)
 // FindLatestHealthySlot finds latest slot, which has at least one branch
 // with coverage > numerator/denominator * 2 * totalSupply
 // Returns false flag if not found
-func FindLatestHealthySlot(store StateStoreReader, fraction global.Fraction) (uint32, bool) {
+func FindLatestHealthySlot(store global.StoreReader, fraction global.Fraction) (uint32, bool) {
 	ret := FindFirstBranchThat(store, func(branch *BranchData) bool {
 		return branch.IsHealthy(fraction)
 	})
@@ -411,7 +415,7 @@ func FindLatestHealthySlot(store StateStoreReader, fraction global.Fraction) (ui
 // FirstHealthySlotIsNotBefore determines if first healthy slot is not before tha refSlot.
 // Usually refSlot is just few slots back, so the operation does not require
 // each time traversing unbounded number of slots
-func FirstHealthySlotIsNotBefore(store StateStoreReader, refSlot uint32, fraction global.Fraction) (ret bool) {
+func FirstHealthySlotIsNotBefore(store global.StoreReader, refSlot uint32, fraction global.Fraction) (ret bool) {
 	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
 		if slot < refSlot {
 			return false
@@ -428,7 +432,7 @@ func FirstHealthySlotIsNotBefore(store StateStoreReader, refSlot uint32, fractio
 }
 
 // IterateSlotsBack iterates descending slots from the latest committed slot down to the earliest available
-func IterateSlotsBack(store StateStoreReader, fun func(slot uint32, roots []RootRecord) bool) {
+func IterateSlotsBack(store global.StoreReader, fun func(slot uint32, roots []RootRecord) bool) {
 	earliest := FetchEarliestSlot(store)
 	slot := FetchLatestCommittedSlot(store)
 	for {
@@ -446,7 +450,7 @@ func IterateSlotsBack(store StateStoreReader, fun func(slot uint32, roots []Root
 // Normally it will exist tho, because:
 // - either database contains all branches down to genesis
 // - or it was started from snapshot which (normally) represents a healthy state
-func FindRootsFromLatestHealthySlot(store StateStoreReader, fraction global.Fraction) ([]RootRecord, bool) {
+func FindRootsFromLatestHealthySlot(store global.StoreReader, fraction global.Fraction) ([]RootRecord, bool) {
 	var rootsFound []RootRecord
 
 	IterateSlotsBack(store, func(slot uint32, roots []RootRecord) bool {
@@ -467,7 +471,7 @@ func FindRootsFromLatestHealthySlot(store StateStoreReader, fraction global.Frac
 
 // IterateBranchChainBack iterates the past chain of the tip branch (including the tip)
 // Stops when the current branch has no predecessor
-func IterateBranchChainBack(store StateStoreReader, branch *BranchData, fun func(branchID *base.TransactionID, branch *BranchData) bool) {
+func IterateBranchChainBack(store global.StoreReader, branch *BranchData, fun func(branchID *base.TransactionID, branch *BranchData) bool) {
 	branchID := branch.Stem.ID.TransactionID()
 	for {
 		if !fun(&branchID, branch) {
@@ -489,7 +493,7 @@ func IterateBranchChainBack(store StateStoreReader, branch *BranchData, fun func
 // tip from the latest healthy branch with coverage delta bigger than the fraction of total supply.
 // Reliable branch is the latest global consensus state with big probability
 // Returns nil if not found
-func FindLatestReliableBranch(store StateStoreReader, fraction global.Fraction) *BranchData {
+func FindLatestReliableBranch(store global.StoreReader, fraction global.Fraction) *BranchData {
 	tipRoots, ok := FindRootsFromLatestHealthySlot(store, fraction)
 	if !ok {
 		// if the healthy slot does not exist, the reliable branch does not exist either
@@ -552,7 +556,7 @@ func FindLatestReliableBranch(store StateStoreReader, fraction global.Fraction) 
 
 // FindLatestReliableBranchAndNSlotsBack finds LRB and iterates n slots back along the main chain from LRB.
 // It is a precaution if LRB will be orphaned later
-func FindLatestReliableBranchAndNSlotsBack(store StateStoreReader, n int, fraction global.Fraction) (ret *BranchData) {
+func FindLatestReliableBranchAndNSlotsBack(store global.StoreReader, n int, fraction global.Fraction) (ret *BranchData) {
 	lrb := FindLatestReliableBranch(store, fraction)
 	if lrb == nil {
 		return
@@ -566,7 +570,7 @@ func FindLatestReliableBranchAndNSlotsBack(store StateStoreReader, n int, fracti
 }
 
 // GetMainChain returns the chain of branches starting from LRB
-func GetMainChain(store StateStoreReader, fraction global.Fraction, max ...int) ([]*BranchData, error) {
+func GetMainChain(store global.StoreReader, fraction global.Fraction, max ...int) ([]*BranchData, error) {
 	lrb := FindLatestReliableBranch(store, fraction)
 	if lrb == nil {
 		return nil, fmt.Errorf("can't find latest reliable branch")
@@ -584,26 +588,26 @@ func GetMainChain(store StateStoreReader, fraction global.Fraction, max ...int) 
 
 // CheckTransactionInLRB return number of slots behind the LRB which contains txid.
 // The backwards scan is capped by the maxDepth parameter. If maxDepth == 0, it means only LRB is checked
-func CheckTransactionInLRB(store StateStoreReader, txid base.TransactionID, maxDepth int, fraction global.Fraction) (lrb *BranchData, foundAtDepth int) {
-	foundAtDepth = -1
-	lrb = FindLatestReliableBranch(store, fraction)
-	if lrb == nil {
-		return
-	}
-
-	IterateBranchChainBack(store, lrb, func(branchID *base.TransactionID, branch *BranchData) bool {
-		if foundAtDepth >= maxDepth {
-			return false
-		}
-		rdr := MustNewReadable(store, branch.Root, 0)
-		if !rdr.KnowsCommittedTransaction(txid) {
-			return false
-		}
-		foundAtDepth++
-		return true
-	})
-	return
-}
+//func CheckTransactionInLRB(store global.StoreReader, txid base.TransactionID, maxDepth int, fraction global.Fraction) (lrb *BranchData, foundAtDepth int) {
+//	foundAtDepth = -1
+//	lrb = FindLatestReliableBranch(store, fraction)
+//	if lrb == nil {
+//		return
+//	}
+//
+//	IterateBranchChainBack(store, lrb, func(branchID *base.TransactionID, branch *BranchData) bool {
+//		if foundAtDepth >= maxDepth {
+//			return false
+//		}
+//		rdr := MustNewReadable(store, branch.Root, 0)
+//		if !rdr.KnowsCommittedTransaction(txid) {
+//			return false
+//		}
+//		foundAtDepth++
+//		return true
+//	})
+//	return
+//}
 
 func (br *BranchData) IsHealthy(fraction global.Fraction) bool {
 	return global.IsHealthyCoverageDelta(br.CoverageDelta, br.Supply, fraction)

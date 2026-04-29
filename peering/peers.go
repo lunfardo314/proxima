@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
@@ -17,6 +18,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	p2putil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	p2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	reuse "github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	"github.com/lunfardo314/proxima/api"
@@ -28,17 +30,10 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// TODO minimize synchronicity assumptions -> get rid of clock in hb, probably remove heartbeat protocol altogether
-
-const (
-	TraceTagPeeringPeers = "peering_peers"
-)
-
 func NewPeersDummy() *Peers {
 	ret := &Peers{
 		peers:           make(map[peer.ID]*Peer),
-		blacklist:       make(map[peer.ID]_deadlineWithReason),
-		cooloffList:     make(map[peer.ID]time.Time),
+		reconnecting:    set.New[peer.ID](),
 		onReceiveTx:     func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
 		onReceivePullTx: func(_ peer.ID, _ base.TransactionID) {},
 	}
@@ -52,10 +47,14 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("wrong private key: %w", err)
 	}
 
+	// Watermarks count TOTAL libp2p connections (statics + dynamics). Static
+	// peers are Protect-ed (see addStaticPeer) so trims target only dynamics;
+	// shifting the watermarks by numStatic ensures the cap on dynamics is
+	// exactly cfg.MaxDynamicPeers after a trim down to lo.
+	numStatic := len(cfg.PreConfiguredPeers)
 	connManager, err := connmgr.NewConnManager(
-		cfg.MaxDynamicPeers,   // lo,
-		cfg.MaxDynamicPeers+5, // hi,
-		//connmgr.WithEmergencyTrim(true), // deprecated??
+		numStatic+cfg.MaxDynamicPeers,   // lo,
+		numStatic+cfg.MaxDynamicPeers+5, // hi,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create ConnManager: %w", err)
@@ -81,29 +80,40 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		return nil, fmt.Errorf("unable create libp2p host: %w", err)
 	}
 
-	ledgerLibraryHash := ledger.L().Library.LibraryHash()
+	// Fixed rendezvous: always use genesis (slot 0) library hash.
+	// Network isolation for upgrades is handled by TxVersion validation
+	// in transaction parsing, not by peering separation.
+	ledgerLibraryHash := ledger.L(0).LibraryHash()
 	rendezvousNumber := binary.BigEndian.Uint64(ledgerLibraryHash[:8])
 
+	stoppedCtx, stop := context.WithCancel(env.Ctx())
 	ret := &Peers{
-		environment:          env,
-		cfg:                  cfg,
-		host:                 lppHost,
-		peers:                make(map[peer.ID]*Peer),
-		staticPeers:          make(map[peer.ID]*staticPeerInfo),
-		blacklist:            make(map[peer.ID]_deadlineWithReason),
-		cooloffList:          make(map[peer.ID]time.Time),
-		connectList:          set.New[peer.ID](),
-		onReceiveTx:          func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
-		onReceivePullTx:      func(_ peer.ID, _ base.TransactionID) {},
-		lppProtocolGossip:    protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
-		lppProtocolPull:      protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
-		lppProtocolHeartbeat: protocol.ID(fmt.Sprintf(lppProtocolHeartbeat, rendezvousNumber)),
-		rendezvousString:     fmt.Sprintf("%d", rendezvousNumber),
+		environment:       env,
+		cfg:               cfg,
+		host:              lppHost,
+		stoppedCtx:        stoppedCtx,
+		stop:              stop,
+		peers:             make(map[peer.ID]*Peer),
+		staticPeers:       make(map[peer.ID]multiaddr.Multiaddr),
+		reconnecting:      set.New[peer.ID](),
+		onReceiveTx:       func(_ peer.ID, _ []byte, _ *txmetadata.TransactionMetadata, _ base.TransactionID) {},
+		onReceivePullTx:   func(_ peer.ID, _ base.TransactionID) {},
+		lppProtocolGossip: protocol.ID(fmt.Sprintf(lppProtocolGossip, rendezvousNumber)),
+		lppProtocolPull:   protocol.ID(fmt.Sprintf(lppProtocolPull, rendezvousNumber)),
+		rendezvousString:  fmt.Sprintf("%d", rendezvousNumber),
 	}
+
+	// register the Notifiee for connection-level events. CONNECTED/LOST CONNECTION
+	// log lines and static-peer reconnect scheduling are driven from here.
+	ret.host.Network().Notify(&peeringNotifiee{ps: ret})
+
+	// register the libp2p ping protocol on the host (so we both respond to
+	// peers' pings and can measure outgoing RTT to them).
+	ret.pingService = ping.NewPingService(ret.host)
 
 	env.Log().Infof("[peering] rendezvous number is %d", rendezvousNumber)
 	for name, maddr := range cfg.PreConfiguredPeers {
-		if err = ret.addStaticPeer(maddr.Multiaddr, name, maddr.addrString); err != nil {
+		if err = ret.addStaticPeer(maddr.Multiaddr, name); err != nil {
 			return nil, err
 		}
 	}
@@ -128,7 +138,6 @@ func New(env environment, cfg *Config) (*Peers, error) {
 		p2putil.Advertise(env.Ctx(), ret.routingDiscovery, ret.rendezvousString)
 
 		env.Log().Infof("[peering] autopeering is enabled with max dynamic peers = %d", cfg.MaxDynamicPeers)
-		env.Tracef(TraceTagAutopeering, "autopeering is enabled")
 
 	} else {
 		env.Log().Infof("[peering] autopeering is disabled")
@@ -138,9 +147,22 @@ func New(env environment, cfg *Config) (*Peers, error) {
 
 	ret.registerMetrics()
 
-	ret.RepeatInBackground("disconn_log_loop", 3*heartbeatRate, func() bool {
-		if ret.DurationSinceLastMessageFromPeer() > 2*heartbeatRate {
-			ret.Log().Warnf("[peering] node is DISCONNECTED from the network for %v", ret.DurationSinceLastMessageFromPeer())
+	// log once per state transition (connected <-> disconnected). "Disconnected
+	// from the network" means no incoming gossip/pull traffic for at least one
+	// slot — at steady state every node should see ≥1 inbound tx per slot, so
+	// silence longer than that means the node is effectively isolated. Pure
+	// inbound-traffic liveness signal, independent of per-peer connection state.
+	disconnLogThreshold := ledger.SlotDuration()
+	disconnected := false
+	ret.RepeatInBackground("disconn_log_loop", disconnLogThreshold, func() bool {
+		d := ret.DurationSinceLastMessageFromPeer()
+		switch {
+		case d > disconnLogThreshold && !disconnected:
+			ret.Log().Warnf("[peering] node is DISCONNECTED from the network (no incoming message for %v)", d)
+			disconnected = true
+		case d <= disconnLogThreshold && disconnected:
+			ret.Log().Infof("[peering] node RECONNECTED to the network")
+			disconnected = false
 		}
 		return true
 	})
@@ -167,69 +189,37 @@ func (ps *Peers) Host() host.Host {
 	return ps.host
 }
 
-const TraceTagPullTargets = "peering_pull_targets"
-
 func (ps *Peers) Run() {
 	ps.environment.MarkWorkProcessStarted(Name)
 
 	ps.host.SetStreamHandler(ps.lppProtocolGossip, ps.gossipStreamHandler)
 	ps.host.SetStreamHandler(ps.lppProtocolPull, ps.pullStreamHandler)
-	ps.host.SetStreamHandler(ps.lppProtocolHeartbeat, ps.heartbeatStreamHandler)
 
-	//ps.startHeartbeat()
-	var logNumPeersDeadline time.Time
-	hbCounter := uint32(0)
+	ps.RepeatInBackground("peering_log_peers_loop", logPeersEvery, func() bool {
+		aliveStatic, aliveDynamic := ps.NumAlive()
 
-	ps.RepeatInBackground("peering_heartbeat_loop", heartbeatRate, func() bool {
-		nowis := time.Now()
-		peerIDs := ps.peerIDs()
-
-		for _, id := range peerIDs {
-			ps.logConnectionStatusIfNeeded(id)
-
-			idCopy := id
-			hbCounterCopy := hbCounter
-			ps.sendHeartbeatToPeer(idCopy, hbCounterCopy)
-
-			hbCounter++
-		}
-
-		if nowis.After(logNumPeersDeadline) {
-			aliveStatic, aliveDynamic, pullTargets := ps.NumAlive()
-
-			ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d, pull targets: %d (%v)",
-				aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
-				aliveDynamic, ps.cfg.MaxDynamicPeers, pullTargets, time.Since(nowis))
-
-			logNumPeersDeadline = nowis.Add(logPeersEvery)
-		}
-
+		ps.Log().Infof("[peering] node is connected to %d peer(s). Static: %d/%d, dynamic %d/%d",
+			aliveStatic+aliveDynamic, aliveStatic, len(ps.cfg.PreConfiguredPeers),
+			aliveDynamic, ps.cfg.MaxDynamicPeers)
 		return true
 	}, true)
 
 	if ps.isAutopeeringEnabled() {
 		ps.RepeatInBackground("autopeering_loop", checkPeersEvery, func() bool {
 			ps.discoverPeersIfNeeded()
-			ps.dropExcessPeersIfNeeded() // dropping excess dynamic peers one-by-one
 			return true
 		}, true)
 	}
-
-	ps.RepeatInBackground(Name+"_blacklist_cleanup", 2*time.Second, func() bool {
-		ps.cleanBlacklist()
-		ps.cleanCoolofflist()
-		return true
-	})
 
 	ps.RepeatInBackground(Name+"_update_peer_metrics", 2*time.Second, func() bool {
 		ps.updatePeerMetrics(ps.peerStats())
 		return true
 	})
 
-	ps.RepeatInBackground("peering_clock_tolerance_loop", 2*clockTolerance, func() bool {
-		ps.logBigClockDiffs()
+	ps.RepeatInBackground("peer_rtt_loop", peerRTTInterval, func() bool {
+		ps.measurePeerRTTs()
 		return true
-	}, true)
+	})
 
 	ps.Log().Infof("[peering] libp2p host %s (self) started on %v with %d pre-configured peers, maximum dynamic peers: %d, autopeering enabled: %v",
 		ShortPeerIDString(ps.host.ID()), ps.host.Addrs(), len(ps.cfg.PreConfiguredPeers), ps.cfg.MaxDynamicPeers, ps.isAutopeeringEnabled())
@@ -246,7 +236,14 @@ func (ps *Peers) Stop() {
 
 		ps.Log().Infof("[peering] stopping libp2p host %s (self)..", ShortPeerIDString(ps.host.ID()))
 		_ = ps.Log().Sync()
-		_ = ps.kademliaDHT.Close()
+		// cancel the per-Peers context first so background goroutines (e.g.
+		// scheduleStaticReconnect) bail out before we tear down libp2p.
+		if ps.stop != nil {
+			ps.stop()
+		}
+		if ps.kademliaDHT != nil {
+			_ = ps.kademliaDHT.Close()
+		}
 		_ = ps.host.Close()
 		ps.Log().Infof("[peering] libp2p host %s (self) has been stopped", ShortPeerIDString(ps.host.ID()))
 	})
@@ -263,7 +260,7 @@ func _findMultiaddr(lst []multiaddr.Multiaddr, maddr multiaddr.Multiaddr) int {
 }
 
 // addStaticPeer adds preconfigured peer to the list. It will never be deleted
-func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString string) error {
+func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name string) error {
 	if _findMultiaddr(ps.host.Addrs(), maddr) > 0 {
 		ps.Log().Warnf("[peering] ignore static peer with the multiaddress of the host")
 		return nil
@@ -273,15 +270,12 @@ func (ps *Peers) addStaticPeer(maddr multiaddr.Multiaddr, name, addrString strin
 	if err != nil {
 		return fmt.Errorf("can't get multiaddress info: %v", err)
 	}
-	ps.Log().Infof("[peering] added pre-configured peer %s as '%s'", addrString, name)
+	ps.Log().Infof("[peering] added pre-configured peer %s as '%s'", maddr.String(), name)
 	ps.addPeer(info, name, true)
-	_, found := ps.staticPeers[info.ID]
-	if !found {
-		ps.staticPeers[info.ID] = &staticPeerInfo{
-			maddr:      maddr,
-			name:       name,
-			addrString: addrString,
-		}
+	// tell ConnManager not to trim this connection when it hits the high watermark.
+	ps.host.ConnManager().Protect(info.ID, "static")
+	if _, found := ps.staticPeers[info.ID]; !found {
+		ps.staticPeers[info.ID] = maddr
 	}
 	return nil
 }
@@ -315,45 +309,30 @@ func (ps *Peers) NewStream(peerID peer.ID, pID protocol.ID, timeout time.Duratio
 	return stream, err
 }
 
-func (ps *Peers) dialPeer(peerID peer.ID, peer *Peer) error {
+// dialPeer establishes the libp2p connection to the peer and initialises the
+// peerStream map with an empty entry per application protocol. The actual
+// protocol streams are opened lazily on first send via ensurePeerStream — the
+// same redial path that handles transient stream resets. This avoids paying
+// 3x multistream-select negotiation up front (one RTT per stream per new
+// peer) when only one protocol is likely to be used first, and unifies
+// "initial open" with "reopen after reset" in a single code path.
+//
+// peerstore addresses are registered by _addPeer before this goroutine runs,
+// so passing AddrInfo with ID only is sufficient — libp2p resolves the addrs
+// from the peerstore.
+func (ps *Peers) dialPeer(peerID peer.ID, p *Peer) error {
 	timeout := 15 * time.Second
+	ctx, cancel := context.WithTimeout(ps.Ctx(), timeout)
+	defer cancel()
 
-	peer.streams = make(map[protocol.ID]*peerStream)
-	// the NewStream waits until context is done
-
-	stream, err := ps.NewStream(peerID, ps.lppProtocolHeartbeat, timeout)
-	if err != nil {
+	if err := ps.host.Connect(ctx, peer.AddrInfo{ID: peerID}); err != nil {
 		return err
 	}
-	peer.streams[ps.lppProtocolHeartbeat] = &peerStream{
-		stream: stream,
+	p.streams = map[protocol.ID]*peerStream{
+		ps.lppProtocolPull:   {},
+		ps.lppProtocolGossip: {},
 	}
-	stream, err = ps.NewStream(peerID, ps.lppProtocolPull, timeout)
-	if err != nil {
-		for _, s := range peer.streams {
-			if s.stream != nil {
-				_ = s.stream.Close()
-			}
-		}
-		return err
-	}
-	peer.streams[ps.lppProtocolPull] = &peerStream{
-		stream: stream,
-	}
-	stream, err = ps.NewStream(peerID, ps.lppProtocolGossip, timeout)
-	if err != nil {
-		for _, s := range peer.streams {
-			if s.stream != nil {
-				_ = s.stream.Close()
-			}
-		}
-		return err
-	}
-	peer.streams[ps.lppProtocolGossip] = &peerStream{
-		stream: stream,
-	}
-
-	return err
+	return nil
 }
 
 func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Peer {
@@ -364,52 +343,71 @@ func (ps *Peers) _addPeer(addrInfo *peer.AddrInfo, name string, static bool) *Pe
 		whenAdded: time.Now(),
 	}
 
-	ps._addToConnectList(addrInfo.ID)
 	for _, a := range addrInfo.Addrs {
 		ps.host.Peerstore().AddAddr(addrInfo.ID, a, peerstore.PermanentAddrTTL)
 	}
 
+	if static {
+		// Track static peers immediately so scheduleStaticReconnect (which checks
+		// ps.peers[id]) can drive the dial loop with backoff. Initialize the
+		// per-protocol stream map up front — sendMsgBytesOut requires
+		// p.streams[protocolID] to exist (the cached stream itself is opened
+		// lazily by ensurePeerStream on first send). scheduleStaticReconnect's
+		// host.Connect establishes the underlying libp2p connection; the first
+		// gossip / pull then opens the actual stream over it.
+		p.streams = map[protocol.ID]*peerStream{
+			ps.lppProtocolPull:   {},
+			ps.lppProtocolGossip: {},
+		}
+		ps.peers[addrInfo.ID] = p
+		go ps.scheduleStaticReconnect(addrInfo.ID)
+		return p
+	}
+
+	// Dynamic peer: try to dial; on success register in peers, on failure forget.
+	// libp2p's Connect tracks in-flight dials internally; autopeering may
+	// rediscover and retry on a future tick if the peer is reachable later.
 	go func() {
-		time.Sleep(100 * time.Millisecond) //?? Delay
+		time.Sleep(100 * time.Millisecond)
 		err := ps.dialPeer(addrInfo.ID, p)
 		if err != nil {
-			ps.Log().Warnf("[peering] dialPeer err %s", err.Error())
 			ps.host.Peerstore().RemovePeer(addrInfo.ID)
-			ps.mutex.Lock()
-			ps._removeFromConnectList(addrInfo.ID)
-			if static {
-				ps._addToBlacklist(addrInfo.ID, err.Error())
-			} else {
-				ps._addToCoolOfflist(addrInfo.ID)
-			}
-			ps.mutex.Unlock()
 			return
 		}
 
 		ps.mutex.Lock()
 		defer ps.mutex.Unlock()
-
-		ps._removeFromConnectList(addrInfo.ID)
 		ps.peers[addrInfo.ID] = p
 	}()
 
 	return p
 }
 
-// dropPeer removes dynamic peer and blacklists for 1 min. Ignores otherwise
-func (ps *Peers) dropPeer(id peer.ID, reason string, blacklist bool) {
+// dropPeer terminates a peer's connection and removes it from local tracking.
+// For static peers, dropping is a no-op other than logging — static peers are
+// trusted by configuration; reconnection is handled by scheduleStaticReconnect
+// when libp2p reports the connection lost. Closing a static peer's connection
+// here would just trigger an immediate reconnect, masking the underlying
+// problem (config / version mismatch / malformed gossip from a misconfigured
+// trusted node) which the operator should see in the logs and address.
+func (ps *Peers) dropPeer(id peer.ID, reason string) {
 	ps.withPeer(id, func(p *Peer) {
 		if p != nil {
-			ps._dropPeer(p, reason, blacklist)
+			ps._dropPeer(p, reason)
 		}
 	})
 }
 
-func (ps *Peers) _dropPeer(p *Peer, reason string, blacklist bool) {
-
+func (ps *Peers) _dropPeer(p *Peer, reason string) {
 	why := ""
 	if len(reason) > 0 {
 		why = fmt.Sprintf(". Drop reason: '%s'", reason)
+	}
+
+	if p.isStatic {
+		ps.Log().Warnf("[peering] static peer %s ('%s') triggered drop%s — keeping it (static peers are not dropped)",
+			ShortPeerIDString(p.id), p.name, why)
+		return
 	}
 
 	for _, s := range p.streams {
@@ -424,71 +422,7 @@ func (ps *Peers) _dropPeer(p *Peer, reason string, blacklist bool) {
 	_ = ps.host.Network().ClosePeer(p.id)
 	delete(ps.peers, p.id)
 
-	if blacklist {
-		ps._addToBlacklist(p.id, "")
-	} else {
-		ps._addToCoolOfflist(p.id)
-	}
-
 	ps.Log().Infof("[peering] dropped dynamic peer %s - %s%s", ShortPeerIDString(p.id), p.name, why)
-}
-
-func (ps *Peers) _addToBlacklist(id peer.ID, reason string) {
-	ps.Tracef(TraceTagPeeringPeers, "[peering] add to blacklist peer %s", ShortPeerIDString(id))
-	ps._removeFromCoolOffList(id)
-	ps.blacklist[id] = _deadlineWithReason{
-		Time:   time.Now().Add(time.Duration(ps.cfg.BlacklistTTL)),
-		reason: reason,
-	}
-}
-
-func (ps *Peers) restartBlacklistTime(id peer.ID) {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	if entry, exists := ps.blacklist[id]; exists {
-		entry.Time = time.Now().Add(time.Duration(ps.cfg.BlacklistTTL))
-		ps.blacklist[id] = entry
-	}
-}
-
-func (ps *Peers) _addToCoolOfflist(id peer.ID) {
-	ps.Tracef(TraceTagPeeringPeers, "[peering] add to cooloff list peer %s", ShortPeerIDString(id))
-
-	if !ps._isInBlacklist(id) {
-		ps.cooloffList[id] = time.Now().Add(time.Duration(ps.cfg.CooloffListTTL))
-	}
-}
-
-func (ps *Peers) _removeFromCoolOffList(id peer.ID) {
-	ps.Tracef(TraceTagPeeringPeers, "[peering] remove from cooloff list peer %s", ShortPeerIDString(id))
-
-	_, found := ps.cooloffList[id]
-	if found {
-		delete(ps.cooloffList, id)
-	}
-}
-
-func (ps *Peers) _addToConnectList(id peer.ID) {
-	if !ps.connectList.Contains(id) {
-		ps.Tracef(TraceTagPeeringPeers, "[peering] add to connect list peer %s", ShortPeerIDString(id))
-		ps.connectList.Insert(id)
-	}
-}
-
-func (ps *Peers) _isInCoolOffList(id peer.ID) bool {
-	_, yes := ps.cooloffList[id]
-	return yes
-}
-
-func (ps *Peers) _isInBlacklist(id peer.ID) bool {
-	_, yes := ps.blacklist[id]
-	return yes
-}
-
-func (ps *Peers) _isInConnectList(id peer.ID) bool {
-	yes := ps.connectList.Contains(id)
-	return yes
 }
 
 func (ps *Peers) OnReceiveTxBytes(fun func(from peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID)) {
@@ -519,11 +453,10 @@ func (ps *Peers) getPeer(id peer.ID) *Peer {
 	return ps._getPeer(id)
 }
 
-func (ps *Peers) knownPeer(id peer.ID, ifExists func(p *Peer)) (known, blacklisted, static bool) {
+func (ps *Peers) knownPeer(id peer.ID, ifExists func(p *Peer)) (known, static bool) {
 	ps.mutex.Lock()
 	defer ps.mutex.Unlock()
 
-	_, blacklisted = ps.blacklist[id]
 	var p *Peer
 	if p, known = ps.peers[id]; known {
 		static = p.isStatic
@@ -567,116 +500,116 @@ func (ps *Peers) PeerName(id peer.ID) string {
 	return p.name
 }
 
-func (ps *Peers) cleanBlacklist() {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	nowis := time.Now()
-	for id, deadline := range ps.blacklist {
-		if deadline.Before(nowis) {
-			delete(ps.blacklist, id)
-			ps._addToCoolOfflist(id)
-		}
-	}
+// _isAlive reports whether libp2p currently considers the peer connected.
+// Single source of truth — no local mirror, no timing thresholds.
+func (ps *Peers) _isAlive(p *Peer) bool {
+	return ps.host.Network().Connectedness(p.id) == network.Connected
 }
 
-func (ps *Peers) cleanCoolofflist() {
-	ps.mutex.Lock()
-
-	toDelete := make([]peer.ID, 0, len(ps.cooloffList))
-	nowis := time.Now()
-	for id, deadline := range ps.cooloffList {
-		if deadline.Before(nowis) {
-			toDelete = append(toDelete, id)
-		}
-	}
-	for _, id := range toDelete {
-		delete(ps.cooloffList, id)
-	}
-	ps.mutex.Unlock()
-	for _, id := range toDelete {
-		p, static := ps.staticPeers[id]
-		if static {
-			_ = ps.addStaticPeer(p.maddr, p.name, p.addrString)
-		}
-	}
-}
-
-func (ps *Peers) _removeFromConnectList(id peer.ID) {
-	ps.connectList.Remove(id)
-}
-
-func (p *Peer) _isDead() bool {
-	return !p._isAlive() && time.Since(p.whenAdded) > gracePeriodAfterAdded
+// _isDead is the negation of _isAlive for dynamic peers; static peers are never
+// considered dead (we keep retrying via scheduleStaticReconnect).
+func (ps *Peers) _isDead(p *Peer) bool {
+	return !p.isStatic && !ps._isAlive(p)
 }
 
 func (ps *Peers) IsAlive(id peer.ID) (isAlive bool) {
 	ps.withPeer(id, func(p *Peer) {
 		if p != nil {
-			isAlive = p._isAlive()
+			isAlive = ps._isAlive(p)
 		}
 	})
 	return
 }
 
-func (ps *Peers) IsBlacklisted(id peer.ID) (isBlacklisted bool) {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-	_, isBlacklisted = ps.blacklist[id]
-	return
-}
-
-func (p *Peer) _isAlive() bool {
-	return time.Since(p.lastHeartbeatReceived) < aliveDuration
-}
-
-//const TraceTagSendMsg = "sendMsg"
+const (
+	sendMsgTimeout  = 4 * time.Second
+	redialTimeout   = 2 * time.Second
+	sendMsgMaxTries = 2 // one initial + one retry after redial
+)
 
 func (ps *Peers) sendMsgBytesOut(peerID peer.ID, protocolID protocol.ID, data []byte) bool {
-	var err error
-	var stream network.Stream
-
+	var ps_ *peerStream
 	ps.withPeer(peerID, func(p *Peer) {
 		if p != nil {
-			if _stream, ok := p.streams[protocolID]; ok {
-				_stream.mutex.RLock()
-				stream = _stream.stream
-				_stream.mutex.RUnlock()
-			}
+			ps_ = p.streams[protocolID]
 		}
 	})
-
-	if stream == nil {
-		ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s stream==nil", ShortPeerIDString(peerID), len(data), protocolID)
+	if ps_ == nil {
 		return false
 	}
 
-	// Set up timeout context
-	var ctx context.Context
-	var cancel context.CancelFunc
-	const sendTimeout = 4 * time.Second
-
-	ctx, cancel = context.WithTimeout(context.Background(), sendTimeout) // Default timeout
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- writeFrame(stream, data)
-	}()
-
-	select {
-	case <-ctx.Done():
-		ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, ctx.Err())
-		return false
-	case err = <-done:
-		if err != nil {
-			ps.Log().Warnf("[peering] error while sending message to peer %s len=%d id=%s err=%v", ShortPeerIDString(peerID), len(data), protocolID, err)
+	// Transient stream failures (QUIC idle timeout, peer restart, one-sided reset) are
+	// expected; redial once and retry before returning failure. This avoids the drop-peer
+	// cycle triggered whenever a stream reset occurs on an otherwise-healthy peer.
+	for attempt := 0; attempt < sendMsgMaxTries; attempt++ {
+		if err := ps.ensurePeerStream(peerID, protocolID, ps_); err != nil {
 			return false
 		}
+		if ps.writeFrameToPeerStream(ps_, data) {
+			ps.outMsgCounter.Inc()
+			return true
+		}
+		// write failed — clear the cached stream so the next iteration redials
+		ps.clearPeerStream(ps_)
 	}
+	return false
+}
 
-	ps.outMsgCounter.Inc()
-	return true
+// ensurePeerStream opens a new stream only when the cached one is absent.
+func (ps *Peers) ensurePeerStream(peerID peer.ID, protocolID protocol.ID, s *peerStream) error {
+	s.mutex.RLock()
+	present := s.stream != nil
+	s.mutex.RUnlock()
+	if present {
+		return nil
+	}
+	newStream, err := ps.NewStream(peerID, protocolID, redialTimeout)
+	if err != nil {
+		return err
+	}
+	s.mutex.Lock()
+	old := s.stream
+	s.stream = newStream
+	s.mutex.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	return nil
+}
+
+// writeFrameToPeerStream writes one framed message to the given peerStream under its write lock,
+// with a wall-clock timeout. Serializing per-stream writes avoids interleaving when multiple
+// goroutines target the same peer+protocol.
+func (ps *Peers) writeFrameToPeerStream(s *peerStream, data []byte) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.stream == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), sendMsgTimeout)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- writeFrame(s.stream, data)
+	}()
+	select {
+	case <-ctx.Done():
+		return false
+	case err := <-done:
+		return err == nil
+	}
+}
+
+// clearPeerStream nils the cached stream and closes the old one. Called on write failure
+// so that the next send attempt will open a fresh stream.
+func (ps *Peers) clearPeerStream(s *peerStream) {
+	s.mutex.Lock()
+	old := s.stream
+	s.stream = nil
+	s.mutex.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
 }
 
 // sendMsgBytesOutMulti send to multiple peers in parallel
@@ -689,37 +622,24 @@ func (ps *Peers) sendMsgBytesOutMulti(peerIDs []peer.ID, protocolID protocol.ID,
 
 func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 	ret := &api.PeersInfo{
-		HostID:    ps.host.ID().String(),
-		Blacklist: make(map[string]string),
-		Peers:     make([]api.PeerInfo, 0),
+		HostID: ps.host.ID().String(),
+		Peers:  make([]api.PeerInfo, 0),
 	}
 
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
-	var qClock, qHB [3]int64
-
 	for _, p := range ps.peers {
-		qClock[0] = p.clockDifferenceQuartiles[0].Nanoseconds()
-		qClock[1] = p.clockDifferenceQuartiles[1].Nanoseconds()
-		qClock[2] = p.clockDifferenceQuartiles[2].Nanoseconds()
-
-		qHB[0] = p.hbMsgDifferenceQuartiles[0].Nanoseconds()
-		qHB[1] = p.hbMsgDifferenceQuartiles[1].Nanoseconds()
-		qHB[2] = p.hbMsgDifferenceQuartiles[2].Nanoseconds()
-
 		pi := api.PeerInfo{
-			ID:                        p.id.String(),
-			IsStatic:                  p.isStatic,
-			RespondsToPull:            p.respondsToPullRequests,
-			IsAlive:                   p._isAlive(),
-			WhenAdded:                 p.whenAdded.UnixNano(),
-			LastHeartbeatReceived:     p.lastHeartbeatReceived.UnixNano(),
-			ClockDifferencesQuartiles: qClock,
-			HBMsgDifferencesQuartiles: qHB,
-			NumIncomingHB:             p.numIncomingHB,
-			NumIncomingPull:           p.numIncomingPull,
-			NumIncomingTx:             p.numIncomingTx,
+			ID:              p.id.String(),
+			IsStatic:        p.isStatic,
+			IsAlive:         ps._isAlive(p),
+			WhenAdded:       p.whenAdded.UnixNano(),
+			NumIncomingPull: p.numIncomingPull,
+			NumIncomingTx:   p.numIncomingTx,
+		}
+		if rtt := p.lastRTTNs.Load(); rtt > 0 {
+			pi.RTTMs = float64(rtt) / float64(time.Millisecond)
 		}
 		pi.MultiAddresses = make([]string, 0)
 		for _, ma := range ps.host.Peerstore().Addrs(p.id) {
@@ -728,8 +648,106 @@ func (ps *Peers) GetPeersInfo() *api.PeersInfo {
 		ret.Peers = append(ret.Peers, pi)
 	}
 
-	for id, r := range ps.blacklist {
-		ret.Blacklist[id.String()] = r.reason
-	}
 	return ret
+}
+
+// NumAlive returns counts of alive static / dynamic peers and pull targets.
+// "Alive" is libp2p-Connectedness-driven (see _isAlive).
+func (ps *Peers) NumAlive() (aliveStatic, aliveDynamic int) {
+	ps.forEachPeerRLock(func(p *Peer) bool {
+		if ps._isAlive(p) {
+			if p.isStatic {
+				aliveStatic++
+			} else {
+				aliveDynamic++
+			}
+		}
+		return true
+	})
+	return
+}
+
+// peerIDsAlive returns IDs of peers libp2p reports as connected. Used by gossip
+// to pick recipients (a peer that just disconnected won't be in the list).
+func (ps *Peers) peerIDsAlive(except ...peer.ID) []peer.ID {
+	ret := make([]peer.ID, 0)
+	ps.forEachPeerRLock(func(p *Peer) bool {
+		if len(except) > 0 && p.id == except[0] {
+			return true
+		}
+		if ps._isAlive(p) {
+			ret = append(ret, p.id)
+		}
+		return true
+	})
+	return ret
+}
+
+// evidenceMessage stamps the per-Peers "last incoming message" timestamp.
+// Called by gossip and pull receive paths; drives the disconn_log_loop's
+// "node is DISCONNECTED from network" warning.
+func (ps *Peers) evidenceMessage() {
+	ps.lastMsgReceived.Store(time.Now().UnixNano())
+}
+
+const (
+	peerRTTInterval = 5 * time.Second
+	peerRTTTimeout  = 4 * time.Second // bounded so a slow/dead peer doesn't stall the cycle
+)
+
+// measurePeerRTTs takes one ping RTT sample from every alive peer in parallel
+// and stores it on the Peer struct (atomic, lock-free reads). Failures leave
+// the previous sample untouched.
+func (ps *Peers) measurePeerRTTs() {
+	alive := ps.peerIDsAlive()
+	if len(alive) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, id := range alive {
+		wg.Add(1)
+		go func(pid peer.ID) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(ps.stoppedCtx, peerRTTTimeout)
+			defer cancel()
+			select {
+			case res, ok := <-ps.pingService.Ping(ctx, pid):
+				if !ok || res.Error != nil {
+					return
+				}
+				ps.mutex.RLock()
+				p, found := ps.peers[pid]
+				ps.mutex.RUnlock()
+				if found {
+					p.lastRTTNs.Store(int64(res.RTT))
+				}
+			case <-ctx.Done():
+			}
+		}(id)
+	}
+	wg.Wait()
+}
+
+func (ps *Peers) DurationSinceLastMessageFromPeer() time.Duration {
+	if ps.lastMsgReceived.Load() == 0 {
+		return 0
+	}
+	return time.Since(time.Unix(0, ps.lastMsgReceived.Load()))
+}
+
+// IsConnectedToNetwork returns true if libp2p reports at least one peer
+// currently connected. After the heartbeat protocol was removed, this is the
+// authoritative "node has a working connection to the network" signal — the
+// previous traffic-timestamp proxy is too quiet on low-load networks (e.g. a
+// pair of just-restarted nodes with no transactions to gossip).
+func (ps *Peers) IsConnectedToNetwork() bool {
+	connected := false
+	ps.forEachPeerRLock(func(p *Peer) bool {
+		if ps._isAlive(p) {
+			connected = true
+			return false
+		}
+		return true
+	})
+	return connected
 }

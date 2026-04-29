@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 
 	"github.com/lunfardo314/easyfl/slicepool"
-	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
+	"github.com/lunfardo314/proxima/core/core_modules/txlogger"
+	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util"
@@ -32,6 +34,8 @@ type (
 		snapshotBranchID          base.TransactionID
 		txStoreDB                 *badger_adaptor.DB
 		txBytesStore              global.TxBytesStore
+		txLogger                  *txlogger.TxLoggerModule
+		txLogOnOffAPI             bool
 		peers                     *peering.Peers
 		sequencer                 *sequencer.Sequencer
 		workflow                  *workflow.Workflow
@@ -53,18 +57,17 @@ type (
 		validationTimeNs      prometheus.Gauge
 		validationNumUTXO     prometheus.Gauge
 		branchInflationBonus  prometheus.Gauge
+		branchMutations       prometheus.Counter
+		branchTxCount         prometheus.Counter
 	}
 )
 
-func init() {
+func New() *ProximaNode {
 	viper.SetConfigName("proxima")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
 	util.AssertNoError(err)
-}
-
-func New() *ProximaNode {
 	ret := &ProximaNode{
 		Global:                    global.NewFromConfig(),
 		workProcessesStopStepChan: make(chan struct{}),
@@ -90,7 +93,7 @@ func (p *ProximaNode) WaitAllDBClosed() {
 	p.dbClosedWG.Wait()
 }
 
-func (p *ProximaNode) StateStore() multistate.StateStore {
+func (p *ProximaNode) StateStore() global.Store {
 	return p.multiStateDB
 }
 
@@ -131,7 +134,7 @@ func (p *ProximaNode) Start() {
 		initStep = "startMetrics"
 		p.startMetrics()
 		initStep = "checkAndRestoreOnStartup"
-		if restored, err := state_cleanup.CheckAndRestoreOnStartup(p.Global); err != nil {
+		if restored, err := snapshot_restore.CheckAndRestoreOnStartup(p); err != nil {
 			return fmt.Errorf("state cleanup restore failed: %w", err)
 		} else if restored {
 			p.Log().Infof("state restored from snapshot, continuing with normal startup")
@@ -140,6 +143,8 @@ func (p *ProximaNode) Start() {
 		p.initMultiStateLedger()
 		initStep = "initTxStore"
 		p.initTxStore()
+		initStep = "initTxLogger"
+		p.initTxLogger()
 		initStep = "initPeering"
 		p.initPeering()
 
@@ -160,6 +165,7 @@ func (p *ProximaNode) Start() {
 	p.Log().Infof("Proxima node has been started successfully")
 	p.Log().Debug("running in debug mode")
 
+	p.initMemoryLimit()
 	p.goLoggingMemStats()
 	p.goLoggingSync()
 }
@@ -182,16 +188,17 @@ func (p *ProximaNode) startWorkflow() {
 }
 
 func (p *ProximaNode) startSequencer() {
-	var err error
-	p.sequencer, err = sequencer.NewFromConfig(p.workflow)
+	seq, err := sequencer.NewFromConfig(p.workflow)
 	if err != nil {
 		p.Log().Errorf("can't start sequencer: '%v'", err)
 		return
 	}
-	if p.sequencer == nil {
+	if seq == nil {
 		p.Log().Infof("sequencer is not configured or disabled")
 		return
 	}
+	p.sequencer = seq
+	p.Log().Infof("starting sequencer")
 	p.sequencer.Start()
 }
 
@@ -225,16 +232,49 @@ func (p *ProximaNode) startMetrics() {
 	p.Log().Infof("Prometheus metrics exposed on port %d", port)
 }
 
-func (p *ProximaNode) goLoggingMemStats() {
-	const memstatsLogPeriodDefault = 10 * time.Second
+// defaultGOGC is the default GOGC value when memory.limit_mb is configured.
+// Lower than Go's default (100) to keep the heap compact and prevent GC stall
+// during allocation bursts. With GOGC=50, GC triggers when heap grows to 1.5x
+// live data (vs 2x at default 100), running ~2x more often.
+const defaultGOGC = 50
 
-	memStatsPeriod := time.Duration(viper.GetInt("logger.memstats_period_sec")) * time.Second
-	if memStatsPeriod == 0 {
-		memStatsPeriod = memstatsLogPeriodDefault
+func (p *ProximaNode) initMemoryLimit() {
+	limitBytes := p.MemLimitBytes()
+	if limitBytes == 0 {
+		return
 	}
+	limitMB := limitBytes >> 20
+	debug.SetMemoryLimit(int64(limitBytes))
+	p.Log().Infof("[memory] soft GC limit set to %d MB", limitMB)
+
+	// set GOGC: configurable via memory.gogc, default 50
+	gogc := viper.GetInt("memory.gogc")
+	if gogc <= 0 {
+		gogc = defaultGOGC
+	}
+	oldGOGC := debug.SetGCPercent(gogc)
+	p.Log().Infof("[memory] GOGC set to %d (was %d)", gogc, oldGOGC)
+
+	// memory watchdog: graceful shutdown when stress reaches 100% (allocated >= limit)
+	p.RepeatInBackground("memory_watchdog", 5*time.Second, func() bool {
+		stress := p.MemoryStressLevel()
+		if stress >= 100 {
+			p.GracefulShutdown(fmt.Sprintf("memory stress %d%% (allocated >= limit %d MB)", stress, limitMB))
+			return false
+		}
+		if stress >= 80 {
+			p.Log().Warnf("[memory] stress %d%% approaching limit %d MB", stress, limitMB)
+		}
+		return true
+	})
+}
+
+func (p *ProximaNode) goLoggingMemStats() {
+	const memStatsLogPeriodDefault = 10 * time.Second
 
 	var memStats runtime.MemStats
-	p.RepeatInBackground("logging_memStats", memStatsPeriod, func() bool {
+
+	p.RepeatInBackground("logging_memStats", memStatsLogPeriodDefault, func() bool {
 		runtime.ReadMemStats(&memStats)
 		_, availableHDD, _ := diskusage.GetDiskUsage("/")
 		availableMB := float64(availableHDD) / (1 << 20)
@@ -245,9 +285,14 @@ func (p *ProximaNode) goLoggingMemStats() {
 		if availableGB > 0 {
 			diskSpace = fmt.Sprintf(", available disk space: %.2f GB", availableGB)
 		}
-		p.Log().Infof("[memstats] current slot: %d, [%s], uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d%s",
+		pipelineStr := ""
+		if p.workflow != nil {
+			pipelineStr = fmt.Sprintf(", pipeline: %d", p.workflow.PipelineSize())
+		}
+		p.Log().Infof("[memstats] current slot: %d, [%s]%s, uptime: %v, allocated memory: %.1f MB, GC counter: %d, Goroutines: %d%s",
 			ledger.TimeNow().Slot,
 			p.CounterLines().Join(","),
+			pipelineStr,
 			time.Since(p.started).Round(time.Second),
 			float32(memStats.Alloc*10/(1<<20))/10,
 			memStats.NumGC,
@@ -264,16 +309,11 @@ func (p *ProximaNode) goLoggingMemStats() {
 
 func (p *ProximaNode) goLoggingSync() {
 	const (
-		syncLogPeriodDefault = 5 * time.Second
+		syncLogPeriodDefault = 10 * time.Second
 		slotSyncThreshold    = 5
 	)
 
-	logSyncPeriod := time.Duration(viper.GetInt("logger.syncstate_period_sec")) * time.Second
-	if logSyncPeriod == 0 {
-		logSyncPeriod = syncLogPeriodDefault
-	}
-
-	p.RepeatInBackground("logging_sync", logSyncPeriod, func() bool {
+	p.RepeatInBackground("logging_sync", syncLogPeriodDefault, func() bool {
 		start := time.Now()
 		lrb := p.GetLatestReliableBranch()
 		if lrb == nil {
@@ -344,6 +384,14 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_branch_inflation_bonus",
 		Help: "branch inflation bonus values of attached branches",
 	})
+	p.branchMutations = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_branch_mutations",
+		Help: "cumulative number of mutation commands in branch commits",
+	})
+	p.branchTxCount = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_branch_tx_count",
+		Help: "cumulative number of transactions in branch commits",
+	})
 
 	p.MetricsRegistry().MustRegister(
 		p.lrbCoverage,
@@ -357,6 +405,8 @@ func (p *ProximaNode) registerMetrics() {
 		p.validationTimeNs,
 		p.validationNumUTXO,
 		p.branchInflationBonus,
+		p.branchMutations,
+		p.branchTxCount,
 	)
 }
 
@@ -377,6 +427,10 @@ func (p *ProximaNode) DurationSinceLastMessageFromPeer() time.Duration {
 	return p.peers.DurationSinceLastMessageFromPeer()
 }
 
+func (p *ProximaNode) IsConnectedToNetwork() bool {
+	return p.peers.IsConnectedToNetwork()
+}
+
 func (p *ProximaNode) EvidenceTxValidationStats(took time.Duration, numIn, numOut int) {
 	p.validationTimeNs.Set(float64(took.Nanoseconds()))
 	p.validationNumUTXO.Set(float64(numIn + numOut))
@@ -386,11 +440,39 @@ func (p *ProximaNode) EvidenceBranchInflationBonus(ib uint64) {
 	p.branchInflationBonus.Set(float64(ib))
 }
 
+func (p *ProximaNode) EvidenceBranchMutations(numMutations, numTxs int) {
+	p.branchMutations.Add(float64(numMutations))
+	p.branchTxCount.Add(float64(numTxs))
+}
+
 func (p *ProximaNode) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {
 	// in tests it may be differently to avoid problems with reusing private keys
 	return true, true
 }
 
-func (p *ProximaNode) MaxAttachmentRecursionDepth() int {
-	return 10
+// IsVertexReferencedBySequencer returns true if the vertex is referenced by the sequencer's
+// tippool, backlog, or own milestones. Returns false if no sequencer is running.
+func (p *ProximaNode) IsVertexReferencedBySequencer(vid *vertex.WrappedTx) bool {
+	if p.sequencer == nil {
+		return false
+	}
+	// check tippool (workflow-level)
+	if p.workflow.IsVertexReferencedInTippool(vid) {
+		return true
+	}
+	// check own milestones and backlog (sequencer-level)
+	return p.sequencer.IsVertexReferenced(vid)
+}
+
+// TxLogger returns the transaction logger module.
+func (p *ProximaNode) TxLogger() *txlogger.TxLoggerModule {
+	return p.txLogger
+}
+
+// LogTx logs a message for the given transaction(s) with the specified clock timestamp.
+// No-op if txLogger is nil or disabled.
+func (p *ProximaNode) LogTx(clockTs time.Time, msg string, txid ...base.TransactionID) {
+	if p.txLogger != nil {
+		p.txLogger.TxLog(clockTs, msg, txid...)
+	}
 }

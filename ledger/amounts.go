@@ -1,22 +1,23 @@
 package ledger
 
 import (
-	"encoding/binary"
-	"encoding/hex"
+	_ "embed"
 	"fmt"
 	"math"
-	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/util"
 )
 
-type Amounts []int64
+//go:embed def/amounts.easyfl
+var amountsSource string
 
-const AmountsConstraintName = "amounts"
+type Amounts struct {
+	*tuples.Tuple
+}
 
 const (
 	AmountIndexTokenBalance = byte(iota)
@@ -24,60 +25,45 @@ const (
 	AmountIndexFrozenCoverage
 )
 
-func NewAmounts(args ...int64) Amounts {
-	util.Assertf(len(args) <= 15, "NewAmounts: too many arguments")
-	lastNotZero := -1
-	for i, arg := range args {
-		if arg != 0 {
-			lastNotZero = i
+func NewAmounts(args ...int64) (ret Amounts) {
+	t := tuples.EmptyTupleEditable(256)
+	util.Assertf(len(args) <= 256, "NewAmounts: too many elements")
+	// find last non-zero to skip trailing zeros only
+	lastNonZero := -1
+	for i := len(args) - 1; i >= 0; i-- {
+		if args[i] != 0 {
+			lastNonZero = i
+			break
 		}
 	}
-	if lastNotZero == -1 {
-		return nil
+	for i := 0; i <= lastNonZero; i++ {
+		t.MustPush(easyfl_util.TrimmedLeadingZeroUint64(uint64(args[i])))
 	}
-	return slices.Clone(args[:lastNotZero+1])
-}
-
-func (a Amounts) Name() string {
-	return AmountsConstraintName
-}
-
-func (a Amounts) Bytes() []byte {
-	return mustBinFromSource(a.Source())
-}
-
-func (a Amounts) Source() string {
-	if len(a) == 0 {
-		return AmountsConstraintName
-	}
-	argsStr := make([]string, len(a))
-	for i, arg := range a {
-		if 0 < arg && arg <= 255 {
-			// one byte
-			argsStr[i] = strconv.FormatInt(arg, 10)
-		} else {
-			// zero-trimmed 8 uint64 bytes
-			var b [8]byte
-			binary.BigEndian.PutUint64(b[:], uint64(arg))
-			trimmed := easyfl_util.TrimLeadingZeroBytes(b[:])
-			argsStr[i] = "0x" + hex.EncodeToString(trimmed)
-		}
-	}
-	return AmountsConstraintName + "(" + strings.Join(argsStr, ",") + ")"
+	ret.Tuple = t.Tuple()
+	return
 }
 
 func (a Amounts) String() string {
-	argsStr := make([]string, len(a))
-	for i, arg := range a {
-		argsStr[i] = util.Th(arg)
+	argsStr := make([]string, a.NumElements())
+	err := util.CatchPanicOrError(func() error {
+		a.ForEach(func(i int, data []byte) bool {
+			v := int64(easyfl_util.MustUint64FromBytes(data))
+			argsStr[i] = util.Th(v)
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		return fmt.Sprintf("amount.String(): %v", err)
 	}
-	return AmountsConstraintName + "(" + strings.Join(argsStr, ",") + ")"
+	return "(" + strings.Join(argsStr, ",") + ")"
 }
 
 func (a Amounts) Amount(i byte) (ret int64) {
-	util.Assertf(i <= 15, "amount index is out of range: %d", i)
-	if int(i) < len(a) {
-		ret = a[i]
+	if int(i) < a.NumElements() {
+		u, err := easyfl_util.Uint64FromBytes(a.MustAt(int(i)))
+		util.AssertNoError(err, "amount.Amount()")
+		ret = int64(u)
 	}
 	return
 }
@@ -94,8 +80,8 @@ func (a Amounts) InflationAmount() uint64 {
 	return uint64(ret)
 }
 
-func (a Amounts) IsFrozenCoverageZero() bool {
-	for i := 0; i < int(Const.MaxFrozenEpochs); i++ {
+func (a Amounts) IsFrozenCoverageZero(maxFrozenEpochs byte) bool {
+	for i := 0; i < int(maxFrozenEpochs); i++ {
 		if a.Amount(AmountIndexFrozenCoverage+byte(i)) != 0 {
 			return false
 		}
@@ -104,29 +90,34 @@ func (a Amounts) IsFrozenCoverageZero() bool {
 }
 
 func (a Amounts) FrozenCoverageAt(i byte) (ret int64) {
-	util.Assertf(uint32(i) < Const.MaxFrozenEpochs, "Amounts.FrozenCoverageAt: wrong vector index %d", i)
 	return a.Amount(AmountIndexFrozenCoverage + i)
 }
 
-func (a Amounts) FrozenCoverageVector() []int64 {
-	ret := make([]int64, Const.MaxFrozenEpochs)
-	for i := range ret {
-		ret[i] = a.FrozenCoverageAt(byte(i))
+func (a Amounts) FrozenCoverageVector(maxFrozenEpochs byte) []int64 {
+	ret := make([]int64, maxFrozenEpochs)
+	for i := byte(0); i < maxFrozenEpochs; i++ {
+		ret[i] = a.Amount(AmountIndexFrozenCoverage + i)
 	}
 	return ret
 }
 
-// AddToVector adds amounts to vector with safe arithmetics
+// AddToVector adds int64 amounts from the tuple to vector with safe arithmetics
+// Bounds safe, but vector must be longer than the tuple
 // Returns false in case of arithmetic overflow, but does not panic
-// It is up to the caller to process overflow
-func (a Amounts) AddToVector(vect *[15]int64) (overflow bool) {
-	for i, v := range a {
-		if v >= 0 {
-			if vect[i] >= math.MaxInt64-v {
+// It is up to the caller to process the overflow
+func (a Amounts) AddToVector(vect []int64) (overflow bool) {
+	sz := a.NumElements()
+	for i := range vect {
+		if i >= sz {
+			return
+		}
+		v := int64(easyfl_util.MustUint64FromBytes(a.MustAt(i)))
+		if overflowThreshold := math.MaxInt64 - v; v >= 0 {
+			if vect[i] >= overflowThreshold {
 				overflow = true
 			}
 		} else {
-			if vect[i] < math.MinInt64-v {
+			if vect[i] < overflowThreshold {
 				overflow = true
 			}
 		}
@@ -135,80 +126,56 @@ func (a Amounts) AddToVector(vect *[15]int64) (overflow bool) {
 	return
 }
 
-func AmountsFromBytes(data []byte) (Amounts, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data)
-	if err != nil {
-		return nil, err
+// AmountsFromBytes parses an Amounts constraint using the provided library.
+// Serde is Library upgrade-invariant
+func AmountsFromBytes(data []byte) (ret Amounts, err error) {
+	var r *tuples.Tuple
+	if r, err = tuples.TupleFromBytes(data, 256); err != nil {
+		return Amounts{}, fmt.Errorf("AmountsFromBytes: %v", err)
 	}
-	if sym != AmountsConstraintName {
-		return nil, fmt.Errorf("AmountsFromBytes: not 'amounts' constraint")
-	}
-	ret := make(Amounts, len(args))
-	var v uint64
-	for i, arg := range args {
-		v, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(arg))
-		if err != nil {
-			return nil, fmt.Errorf("AmountsFromBytes: %w", err)
+	r.ForEach(func(i int, d []byte) bool {
+		if _, err = easyfl_util.Uint64FromBytes(d); err != nil {
+			err = fmt.Errorf("AmountsFromBytes: wrong data at index %d: %v", i, err)
+			return false
 		}
-		ret[i] = int64(v)
+		return true
+	})
+	if err == nil {
+		ret.Tuple = r
 	}
-	return ret, nil
+	return
 }
 
-func TokenBalanceFromAmountsBytes(data []byte) (int64, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data)
+// TokenBalanceFromAmountsBytes parses the token balance using
+func TokenBalanceFromAmountsBytes(data []byte) (uint64, error) {
+	a, err := AmountsFromBytes(data)
 	if err != nil {
 		return 0, err
 	}
-	if sym != AmountsConstraintName {
-		return 0, fmt.Errorf("TokenBalanceFromAmountsBytes: not 'amounts' constraint")
-	}
-	if len(args) == 0 {
-		return 0, nil
-	}
-	ret, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
-	if err != nil {
-		return 0, fmt.Errorf("TokenBalanceFromAmountsBytes: %w", err)
-	}
-	if int64(ret) < 0 {
-		return 0, fmt.Errorf("TokenBalanceFromAmountsBytes: negative amount")
-	}
-	return int64(ret), nil
+	return a.TokenBalance(), nil
 }
 
-func registerAmountsConstraint(lib *Library) {
-	lib.mustRegisterVarargConstraint(AmountsConstraintName, func(data []byte) (Constraint, error) {
-		return AmountsFromBytes(data)
-	}, initTestAmountsConstraint)
+func evalTotalConsumed(par *easyfl.CallParams[*EvalContext]) []byte {
+	idxBin := par.Arg(0)
+	ret := easyfl_util.Uint64To8Bytes(uint64(par.DataContext().ConsumedTotal(idxBin[0])))
+	return par.AllocData(ret[:]...)
 }
 
-func initTestAmountsConstraint() {
-	example := NewAmounts(1, 2, 1337, 0x01020304050607)
-
-	exampleBack, err := ConstraintFromBytes(example.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(example.Name() == AmountsConstraintName, "inconsistency 1")
-	exampleBack1 := exampleBack.(Amounts)
-	util.Assertf(len(exampleBack1) == 4, "inconsistency 2")
-
-	util.Assertf(exampleBack1[0] == 1, "exampleBack1[0]==1")
-	util.Assertf(exampleBack1[1] == 2, "exampleBack1[1]==2")
-	util.Assertf(exampleBack1[2] == 1337, "exampleBack1[2]==1337")
-	util.Assertf(exampleBack1[3] == 0x01020304050607, "exampleBack1[3]==0x01020304050607")
+func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
+	idxBin := par.Arg(0)
+	ret := easyfl_util.Uint64To8Bytes(uint64(par.DataContext().ProducedTotal(idxBin[0])))
+	return par.AllocData(ret[:]...)
 }
 
-const amountsAuxSource = `
-// $0 - 'amounts'' bytecode
-// $1 - index of 'amounts' vector element, 1 byte
-func amountAt:
-if(
-   lessThan($1, parseNumArgs($0)),
-   uint8Bytes(parseInlineDataArgument($0, $1, #amounts)),
-   u64/0
-)
+func evalIsInflationAndFrozenCoverageZero(par *easyfl.CallParams[*EvalContext]) []byte {
+	ctx := par.DataContext()
+	lib := ctx.GetLibrary()
+	o := ctx.SelfOutput()
 
-// $0 path to output
-func tokenBalanceByOutputPath : amountAt(atPath(concat($0, amountsConstraintIndex)), 0)
-
-func selfTokenBalanceValue: amountAt(selfSiblingConstraint(amountsConstraintIndex),0)
-`
+	amounts := o.Amounts()
+	if amounts.NumElements() <= 1 ||
+		(amounts.InflationAmount() == 0 && amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs))) {
+		return par.AllocData(0xff)
+	}
+	return nil
+}

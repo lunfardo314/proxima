@@ -21,9 +21,9 @@ func InitWalletCmd() *cobra.Command {
 
 func runWalletCmd(_ *cobra.Command, _ []string) {
 	glb.GetClient()
-	walletData := glb.GetWalletData()
+	walletAccount := glb.GetWalletAccount()
 	glb.Infof("")
-	glb.Infof("wallet address:             %s", walletData.Account.String())
+	glb.Infof("wallet address:             %s", walletAccount.String())
 	glb.Infof("actual tag-along sequencer: %s", glb.GetTagAlongSequencerID(true).String())
 	glb.Infof("tag-along fee:              %d", glb.GetTagAlongFee())
 }

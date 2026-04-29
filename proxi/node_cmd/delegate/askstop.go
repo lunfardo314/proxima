@@ -37,7 +37,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	clnt := glb.GetClient()
-	out, _, _, err := clnt.GetChainOutput(delegationID)
+	out, _, err := clnt.GetChainOutput(delegationID)
 	glb.AssertNoError(err)
 	dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID)
 	glb.Assertf(ok, "not a delegation output:\n%s", out.String())
@@ -45,9 +45,9 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 		glb.Infof("delegation output:\n%s", out.String())
 	}
 
-	glb.Assertf(ledger.EqualAccountables(dOut.MasterLock, walletData.Account), "this wallet is not a master controller of the delegation %s", delegationID.String())
+	glb.Assertf(dOut.MasterID == base.HolderID(walletData.Account), "this wallet is not a master controller of the delegation %s", delegationID.String())
 
-	targetID := dOut.Target.ChainID()
+	targetID := dOut.Target
 	glb.Infof("delegation target ID: %s", targetID.String())
 
 	ts := ledger.TimeNow()

@@ -1,0 +1,39 @@
+
+func constTagAlongSlots : u64/30  // 5 min
+func constTagAlongReclaimSlots : u64/390 // 5 min + 1 hour
+
+func selfInputSlotPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
+
+// $0 - target sequencer ID, like in the chainLock
+// $1 - holder ID (32 bytes, blake2b hash of <sig type>+<public key>)
+func tagAlong :
+or(
+  and(
+     selfIsProducedOutput,
+     require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
+	 require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
+	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
+     require(lessThan(selfNumConstraints, u64/5), !!!tag-along_lock_allows_no_more_than_4_constraints),
+     require(
+        equal($1, txHolderID(txSignatureData)),
+        !!!sender_hash_check_failed
+     ),
+  	 selfEnforceZeroAmountsInNonChainedOutput
+  ),
+  and(
+     selfIsConsumedOutput,
+	 or(
+		greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots),  // unlockable by anybody
+		and(
+			 // unlockable by the target
+		   lessThan(selfInputSlotPace, constTagAlongSlots),
+		   require(chainLock($0), !!!unlock_window_error:_inside_tag_along_slots_must_be_unlocked_by_the_target)
+		),
+			 // unlockable by the sender
+        require(
+           sigLock($1),
+           !!!unlock_window_error:_inside_reclaim_slots_must_be_unlocked_by_the_sender
+        )
+	 )
+  )
+)

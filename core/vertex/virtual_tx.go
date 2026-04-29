@@ -31,7 +31,7 @@ func newVirtualBranchTx(br *multistate.BranchData) *VirtualTransaction {
 
 // toDetachedVertex preserves information about all outputs and baseline in the virtualTx
 func (v *Vertex) toDetachedVertex() *DetachedVertex {
-	ret := &DetachedVertex{Tx: v.Tx}
+	ret := &DetachedVertex{Transaction: v.Transaction}
 	ret.BranchID = v.BaselineBranchID
 	return ret
 }
@@ -136,7 +136,7 @@ func (v *VirtualTransaction) SetPullNeeded() {
 	v.pullRulesDefined = true
 	v.needsPull = true
 	v.timesPulled = 0
-	v.nextPull = time.Now()
+	v.nextPull = time.Now().Add(-time.Nanosecond) // slightly in the past to ensure PullNeeded() returns true immediately
 }
 
 // SetPullHappened increases pull counter and sets nex pull deadline
@@ -146,12 +146,20 @@ func (v *VirtualTransaction) SetPullHappened(repeatAfter time.Duration) {
 	v.nextPull = time.Now().Add(repeatAfter)
 }
 
-func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int) bool {
-	return v.PullNeeded() && v.timesPulled >= maxPullAttempts
+func (v *VirtualTransaction) PullPatienceExpired(maxPullAttempts int, isDepthCapped func() bool) bool {
+	return v.PullNeeded(isDepthCapped) && v.timesPulled >= maxPullAttempts
 }
 
-func (v *VirtualTransaction) PullNeeded() bool {
-	return v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
+// MaxAttachmentDepthForPull is the depth cap for gossip-driven recursive pull.
+// Transactions in the forward-sync territory (before latestForwardSyncedTicks)
+// are exempt from this cap — the caller determines this via the isDepthCapped closure.
+const MaxAttachmentDepthForPull = 20
+
+// PullNeeded returns true if pulling is needed and allowed.
+// isDepthCapped closure is provided by the caller — it captures attachment depth
+// and forward-sync frontier to decide whether depth-capping applies.
+func (v *VirtualTransaction) PullNeeded(isDepthCapped func() bool) bool {
+	return !isDepthCapped() && v.pullRulesDefined && v.needsPull && v.nextPull.Before(time.Now())
 }
 
 func (v *VirtualTransaction) findChainOutput(txid base.TransactionID, chainID *base.ChainID) *ledger.OutputWithID {
@@ -159,7 +167,7 @@ func (v *VirtualTransaction) findChainOutput(txid base.TransactionID, chainID *b
 	defer v.mutex.RUnlock()
 
 	for outIdx, o := range v.outputs {
-		if c, cIdx := o.ChainConstraint(); cIdx != 0xff && c.ChainID == *chainID {
+		if c := o.ChainConstraint(); c != nil && c.ChainID == *chainID {
 			return &ledger.OutputWithID{
 				ID:     base.MustNewOutputID(txid, outIdx),
 				Output: o,

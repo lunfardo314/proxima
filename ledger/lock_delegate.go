@@ -2,7 +2,11 @@ package ledger
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
+	"slices"
+
+	_ "embed"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -12,8 +16,8 @@ import (
 
 type (
 	DelegateLock struct {
-		Target                 ChainLock
-		MasterLock             Accountable
+		Target                 base.ChainID
+		MasterID               base.HolderID
 		MaxFrozenEpochs        byte
 		RequiredInflationShare uint16 // in promille, <= 1000
 	}
@@ -25,8 +29,8 @@ type (
 
 const (
 	DelegateLockName       = "delegateLock"
-	DelegateLockTemplate   = DelegateLockName + "(%s, %s, %s, z16/%d)"
-	DelegateLockTemplateHR = DelegateLockName + "(target=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%%%)"
+	DelegateLockTemplate   = DelegateLockName + "(0x%s, 0x%s, %s, z16/%d)"
+	DelegateLockTemplateHR = DelegateLockName + "(targetChainID=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%)"
 
 	DelegateLockStateName       = "delegateLockState"
 	DelegateLockStateTemplate   = DelegateLockStateName + "(z32/%d, %d)"
@@ -42,74 +46,82 @@ const (
 	DelegationUnlockedByMaster = byte(0xff)
 )
 
+//go:embed def/lock_delegate.easyfl
+var delegateLockSource string
+
 //------------ DelegateLock
 
-func NewDelegateLock(target ChainLock, master Accountable, maxFreezeEpochs byte, requiredInflationShare uint16) *DelegateLock {
+func NewDelegateLock(targetChainID base.ChainID, masterID base.HolderID, maxFrozenEpochs byte, requiredInflationShare uint16) *DelegateLock {
 	return &DelegateLock{
-		Target:                 target,
-		MasterLock:             master,
-		MaxFrozenEpochs:        maxFreezeEpochs,
+		Target:                 targetChainID,
+		MasterID:               masterID,
+		MaxFrozenEpochs:        maxFrozenEpochs,
 		RequiredInflationShare: requiredInflationShare,
 	}
 }
 
 func (d *DelegateLock) Source() string {
 	m := "0x"
-	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(Const.MaxFrozenEpochs) {
+	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(L(base.MaxSlot).MaxFrozenEpochs) {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
 	}
-	return fmt.Sprintf(DelegateLockTemplate, d.Target.Source(), d.MasterLock.Source(), m, d.RequiredInflationShare)
+	return fmt.Sprintf(DelegateLockTemplate, hex.EncodeToString(d.Target[:]), hex.EncodeToString(d.MasterID[:]), m, d.RequiredInflationShare)
 }
 
 func (d *DelegateLock) String() string {
-	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), d.MasterLock.String(), d.MaxFrozenEpochs, d.RequiredInflationShare)
+	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), hex.EncodeToString(d.MasterID[:]), d.MaxFrozenEpochs, d.RequiredInflationShare)
 }
 
 func (d *DelegateLock) Bytes() []byte {
 	return mustBinFromSource(d.Source())
 }
 
-func (d *DelegateLock) Accounts() []Accountable {
-	return NoDuplicatesAccountables([]Accountable{d.Target, d.MasterLock})
+func (d *DelegateLock) Controllers() []Controller {
+	targetLock := ChainLockFromChainID(d.Target)
+	if EqualControllers(targetLock, SigLock(d.MasterID)) {
+		return []Controller{targetLock}
+	}
+	return []Controller{targetLock, SigLock(d.MasterID)}
 }
 
-func Delegate2LockFromBytes(data []byte) (*DelegateLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 4)
+func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: %w", err)
 	}
 	if sym != DelegateLockName {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: not a DelegateLock")
+		return nil, fmt.Errorf("DelegateLockFromBytes: not a DelegateLock")
 	}
-	// chain constraint index
 	ret := &DelegateLock{}
 
-	// target lock
-	ret.Target, err = ChainLockFromBytes(args[0])
+	// target chain ID (raw 32 bytes)
+	targetBin := easyfl.StripDataPrefix(args[0])
+	ret.Target, err = base.ChainIDFromBytes(targetBin)
 	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong target chain ID: %w", err)
 	}
-	// master lock
-	ret.MasterLock, err = AccountableFromBytes(args[1])
-	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: %w", err)
+	// master holder ID (raw 32 bytes)
+	masterIDbin := easyfl.StripDataPrefix(args[1])
+	if len(masterIDbin) != len(base.HolderID{}) {
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong master ID size")
 	}
+	copy(ret.MasterID[:], masterIDbin)
 
-	// max coverage lock slots
+	// max frozen epochs
 	a2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
 	if err != nil || a2 >= 256 {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong max frozen epochs: %v", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong max frozen epochs: %v", err)
 	}
 	ret.MaxFrozenEpochs = byte(a2)
 	if ret.MaxFrozenEpochs == 0 {
-		// set default
-		ret.MaxFrozenEpochs = byte(Const.MaxFrozenEpochs)
+		// set default from the library for this slot
+		ret.MaxFrozenEpochs = byte(lib.MaxFrozenEpochs)
 	}
 
-	// minimum inflation advance
+	// required inflation share
 	ret.RequiredInflationShare, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
 	if err != nil {
-		return nil, fmt.Errorf("Delegate2LockFromBytes: wrong max inflation margin: %v", err)
+		return nil, fmt.Errorf("DelegateLockFromBytes: wrong required inflation share: %v", err)
 	}
 
 	return ret, nil
@@ -119,56 +131,32 @@ func (d *DelegateLock) Name() string {
 	return DelegateLockName
 }
 
-func (d *DelegateLock) Master() Accountable {
-	return d.MasterLock
+func (d *DelegateLock) Master() Controller {
+	return SigLock(d.MasterID)
 }
 
 func registerDelegateLock(lib *Library) {
 	lib.mustRegisterConstraint(DelegateLockName, 4, func(data []byte) (Constraint, error) {
-		return Delegate2LockFromBytes(data)
-	}, initTestDelegateConstraint)
-	lib.mustRegisterLock(DelegateLockName, func(bytes []byte) (Lock, error) {
-		ret, err := Delegate2LockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		return DelegateLockFromBytesWithLib(data, lib)
+	})
+	lib.mustRegisterLockSerde(DelegateLockName, func(bytes []byte) (Lock, error) {
+		// Use latest library version for library registration parsing
+		ret, err := DelegateLockFromBytesWithLib(bytes, lib)
 		if err != nil {
 			return nil, err
 		}
 		return ret, nil
 	})
 	lib.mustRegisterConstraint(DelegateLockStateName, 2, func(data []byte) (Constraint, error) {
-		return DelegateLockStateFromBytes(data)
-	}, initTestDelegate2LockState)
-}
-
-func initTestDelegateConstraint() {
-	target := ChainLockFromChainID(base.RandomChainID())
-	master := AddressED25519Random()
-	example := NewDelegateLock(target, master, 3, 10)
-
-	exampleBack, err := Delegate2LockFromBytes(example.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(example.MaxFrozenEpochs == 3, "Delegate2LockFromBytes: wrong back 1")
-	util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "Delegate2LockFromBytes: wrong back 2")
-	util.Assertf(exampleBack.RequiredInflationShare == example.RequiredInflationShare, "Delegate2LockFromBytes: wrong back 3")
-	util.Assertf(example.RequiredInflationShare == 10, "Delegate2LockFromBytes: wrong back 4")
-
-	util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
-	exampleBack2, err := LockFromBytes(example.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegateLockName)
-
-	pref1, err := L().ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
-
-	pref2, err := L().EvalFromSource(nil, "#"+DelegateLockName)
-	util.AssertNoError(err)
-	util.Assertf(bytes.Equal(pref1, pref2), "bytes.Equal(pref1, pref2)")
-	util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
+		return DelegateLockStateFromBytesWithLib(data, lib)
+	})
 }
 
 //--------------------------- delegationLockState
 
-func DelegateLockStateFromBytes(data []byte) (DelegateLockState, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
+func DelegateLockStateFromBytesWithLib(data []byte, lib *Library) (DelegateLockState, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: %w", err)
 	}
@@ -212,293 +200,112 @@ func (d DelegateLockState) Name() string {
 	return DelegateLockStateName
 }
 
-func initTestDelegate2LockState() {
-	dlz := DelegateLockState{3001, DelegateLockStateFrozen}
+func init() {
+	registerInlineTest(func(lib *Library) {
+		targetChainID := base.RandomChainID()
+		masterID := base.HolderID(SigLockRandom())
+		example := NewDelegateLock(targetChainID, masterID, 3, 10)
 
-	dlzBack, err := DelegateLockStateFromBytes(dlz.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(dlzBack.LastFrozenEpoch == 3001, "DelegateLockState: inconsistency 1")
-	util.Assertf(dlzBack.State == DelegateLockStateFrozen, "DelegateLockState: inconsistency 2")
-	util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
+		exampleBack, err := DelegateLockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(example.MaxFrozenEpochs == 3, "DelegateLockFromBytes: wrong back 1")
+		util.Assertf(exampleBack.MaxFrozenEpochs == example.MaxFrozenEpochs, "DelegateLockFromBytes: wrong back 2")
+		util.Assertf(exampleBack.RequiredInflationShare == example.RequiredInflationShare, "DelegateLockFromBytes: wrong back 3")
+		util.Assertf(example.RequiredInflationShare == 10, "DelegateLockFromBytes: wrong back 4")
+
+		util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
+		exampleBack2, err := LockFromBytes(example.Bytes())
+		util.AssertNoError(err)
+		util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegateLockName)
+
+		pref1, err := lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+
+		pref2, err := lib.EvalFromSource(nil, "#"+DelegateLockName)
+		util.AssertNoError(err)
+		util.Assertf(bytes.Equal(pref1, pref2), "bytes.Equal(pref1, pref2)")
+		util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
+	})
+
+	registerInlineTest(func(lib *Library) {
+		dlz := DelegateLockState{3001, DelegateLockStateFrozen}
+
+		dlzBack, err := DelegateLockStateFromBytesWithLib(dlz.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(dlzBack.LastFrozenEpoch == 3001, "DelegateLockState: inconsistency 1")
+		util.Assertf(dlzBack.State == DelegateLockStateFrozen, "DelegateLockState: inconsistency 2")
+		util.Assertf(dlz == dlzBack, "DelegateLockState: inconsistency 3")
+	})
 }
 
-const delegateLock2Source = `
-func constDelegationSafeRevocationSlots  : 60  // 10 min
-func constDelegationEpochSlots : u32/530  // 1.5 hours
-func constDelegationMaxFrozenEpochs : 8   // 12 hours
+// evalEnforceFrozenCoverageOnDelegateOutput is embedded EasyFL function that enforces correct frozen coverage values
+func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalContext]) []byte {
+	path := par.DataContext().EvalPath()
+	ctx := par.DataContext()
+	par.Require(ctx.SelfIsProducedOutput(), "evalEnforceFrozenCoverageOnDelegateOutput: produced output expected")
+	o := ctx.SelfOutput()
 
-// $0 target chain ChainID
-// -> chainID[0:3] mod slots-in-epoch 
-func delegationEpochOffset : mod( slice($0, 0, 3), constDelegationEpochSlots)
+	amounts := o.Amounts()
+	cc := o.ChainConstraint()
+	par.Require(cc != nil, "evalEnforceFrozenCoverageOnDelegateOutput: chain constraint is expected at index 2")
 
-// $0 target chain ChainID
-// $1 epoch
-// -> epoch x slots-in-epoch + offs
-func lastSlotInDelegationEpoch : add( mul($1, constDelegationEpochSlots), delegationEpochOffset($0))
+	lib := ctx.GetLibrary()
+	// produced output
+	if cc.IsOrigin() {
+		par.Require(o.Inflation() == 0 && amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
+			"evalEnforceFrozenCoverageOnDelegateOutput: inflation and frozen coverage must be 0 on a non-chain output and on chain origin")
+		return par.AllocData(0xff)
+	}
+	// it is a non-origin chained output
 
-// $0 slot uint32
-// $1 delegationEpochOffset
-// -> 1 + (slot-offs-1) / slots-in-epoch if offs <= slot, otherwise 0
-func _delegationEpochFromSlot :
-if( lessOrEqualThan($0, $1), u64/0, add(div(sub(sub($0,$1), u64/1), constDelegationEpochSlots), u64/1 ))
+	succID := ctx.OutputID(path[len(path)-2])
 
-// $0 target chain ChainID
-// $1 slot
-func delegationEpochFromSlot : _delegationEpochFromSlot(uint8Bytes($1), delegationEpochOffset($0))
+	dOut, ok := AsDelegationOutput(o, succID)
+	par.Require(ok, "evalEnforceFrozenCoverageOnDelegateOutput: inconsistency, delegation output expectedVector 1")
 
-func _selfIsDelegationOrigin : isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(2), 0, #chain))
+	pred, err := ctx.ConsumedOutput(dOut.PredecessorInputIndex)
+	par.RequireNoError(err)
 
-// $0 index of the constraint on the successor output
-func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2),0), $0))
+	if pred.Lock().Name() != DelegateLockName {
+		// predecessor is not delegation -> must be all-0
+		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
+			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: chain predecessor is not a delegation")
+		return []byte{0xff}
+	}
+	// predecessor is delegation
+	// unlock parameters of predecessor delegation lock must be 2 bytes
+	unlock, err := ctx.UnlockParameters(dOut.PredecessorInputIndex, ConstraintIndexLock)
+	par.RequireNoError(err)
+	par.Require(len(unlock) >= 2, "evalEnforceFrozenCoverageOnDelegateOutput: unlock parameters of predecessor delegation lock at (%d, %d) must be 2 bytes",
+		dOut.PredecessorInputIndex, ConstraintIndexLock)
 
-func _predecessorTokenBalance : amountAt(consumedConstraintByIndex(selfChainPredInputIndex(2), 0), 0)
+	if unlock[1] == DelegationUnlockedByMaster {
+		// predecessor is delegation unlocked by master  -> must be all-0
+		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)),
+			"evalEnforceFrozenCoverageOnDelegateOutput: expectedVector all-0 frozen coverage due to the reason: predecessor is unlocked by the master")
+		return par.AllocData(0xff)
+	}
 
-// $0 last frozen epoch
-// $1 state. 1 byte-long. 
-//  - 0x00 mean 'undef'
-//  - 0x01 means 'frozen'
-//  - 0x02 means 'on hold (stopped)'. 
-//  - The rest values are invalid 
-// 
-// mutable part of the delegation output
-func delegateLockState : 
-or(
-   // not checked in the consumed context
-   not(selfIsProducedOutput),
-   // 'produced' context
-   require(equal(len($1), u64/1), !!!delegateLockState_$1_must_be_1_byte), 
-)
+	// unlocked by the target as enforced by the delegation lock
+	var expectedVector []int64
+	// the expected vector is different for frozen and revoked delegation outputs
+	if dOut.State == DelegateLockStateOnHold {
+		dOutPred, ok := AsDelegationOutput(pred, ctx.MustInputAt(dOut.PredecessorInputIndex))
+		par.Require(ok, "evalEnforceFrozenCoverageOnDelegateOutput: delegation output expectedVector at predecessor")
 
-// self id delegation output - does not depend on consumed/produced context
+		// the expected vector contains negative deltas of revoked frozen coverage in the current transaction (adjusted to the epoch difference)
+		expectedVector = dOutPred.MakeFrozenCoverageAmountDeltasForRevoking(ctx.Timestamp())
+	} else {
+		_, _, frozenEpochs := dOut.FrozenEpochs(ctx.Timestamp())
+		par.Require(frozenEpochs <= 256, "inconsistency: frozenEpochs <= 256")
+		// the expected vector contains frozen coverages for the span of the frozen epochs
+		expectedVector, err = dOut.MakeFrozenCoverageAmounts(ctx.Timestamp(), byte(frozenEpochs), dOut.Output.TokenBalance())
+		par.RequireNoError(err)
+	}
 
-func _selfTarget : parseBytecode(self, 0, selfBytecodePrefix)
-func _selfTargetChainID : parseInlineDataArgument(_selfTarget,0)
-func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(3),0, #delegateLockState))
-func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(3), 1, #delegateLockState)
-func _selfIsMarkedFrozen : equal(_selfStateMark, 1)
-func _selfIsMarkedOnHold : equal(_selfStateMark, 2)
-func _selfIsMarkedUndef : and(not(_selfIsMarkedOnHold), not(_selfIsMarkedFrozen))
+	vectorToCheck := o.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
+	par.Require(len(expectedVector) == len(vectorToCheck), "len(expectedVector) == len(vectorToCheck)")
+	par.Require(slices.Equal(expectedVector, vectorToCheck), "evalEnforceFrozenCoverageOnDelegateOutput: wrong frozen coverage value in delegation output: %s", dOut.ChainID.String)
 
-func _successorEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
-
-func _selfLastSlotInLastFrozenEpoch : lastSlotInDelegationEpoch(_selfTargetChainID, _selfLastFrozenEpoch)
-
-func _consumedIsFrozenInTx : 
-and(
-   _selfIsMarkedFrozen,
-   lessOrEqualThan(uint8Bytes(txSlot), _selfLastSlotInLastFrozenEpoch)
-)
-
-// $0 uint8Bytes(txSlot)
-// $1 _selfLastSlotInLastFrozenEpoch
-func __consumedIsInTheSafeRevocationWindowTx : 
-and(
-   _selfIsMarkedFrozen,
-   lessThan($1, $0),
-   lessOrEqualThan($0, add($1, constDelegationSafeRevocationSlots))
-)
-
-func _consumedIsInTheSafeRevocationWindowTx :
-   __consumedIsInTheSafeRevocationWindowTx(
-      uint8Bytes(txSlot), 
-      _selfLastSlotInLastFrozenEpoch
-   )
-
-// $0 amount
-// $1 share in promille
-// = (a * share)/1000
-func _takeShare : div( mul($0, $1), u64/1000 )
-
-// $0 frozen slots in the transaction
-// $1 slot of the transaction
-// $2 predecessor token balance
-// $3 required inflation share in promille (0-1000, uint64)
-// Linear extrapolation rather than precise calculation.
-// Result will be slightly bigger than the precise inflation projection 
-// due to the degrading inflation rate each slot
-func requiredInflationAdvance : _takeShare( chainInflation( $2, $1, $0), $3 )
-
-func _txFrozenSlots : add(sub( _selfLastSlotInLastFrozenEpoch, txSlot ), u64/1)
-
-// $0 required inflation share in promille (0-1000, uint64)
-// $1 _predecessorTokenBalance
-//
-// It uses an approximation (linear extrapolation) of the future projected inflation (non-linear)
-// At the sequencer side, it must be taken into account that margins are not the same for 
-// the delegator and the sequencer. The difference is expected to be minor
-func _requiredInflationAdvance :
-     requiredInflationAdvance(_txFrozenSlots, txSlot, $1, $0) 
-
-// $0 required inflation share in promille (0-1000, uint64)
-// $1 _predecessorTokenBalance
-func _validInflationAdvanceProduced :
-require(
-       // not checked if predecessor is not a delegation
-   or(
-     _selfIsDelegationOrigin,
-      not(equal(parseBytecode(consumedConstraintByIndex(selfChainPredInputIndex(2), 1), 0x), selfBytecodePrefix)),
-      lessOrEqualThan( _requiredInflationAdvance($0, $1), sub(selfTokenBalanceValue, $1))
-   ),
-   !!!not_enough_inflation_advance
-)
-
-func _txEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
-func _txFrozenEpochsProduced : add(sub(_selfLastFrozenEpoch, _txEpoch), u64/1) 
-
-// $0 max frozen epochs (uint64)
-func _validLimitsProducedFrozen :
-and(
-    require(
-       lessOrEqualThan(_txEpoch, _selfLastFrozenEpoch),
-       !!!last_frozen_epoch_cannot_be_in_the_past
-    ),
-    require(
-       lessOrEqualThan(_txFrozenEpochsProduced, $0),
-       !!!frozen_epochs_cannot_exceed_maximum_set_by_delegator
-    ),
-    require(
-       not(_selfIsDelegationOrigin),
-       !!!delegation_origin_cannot_be_frozen
-    )
-)   
-
-// $0 max frozen epochs (uint64)
-// $1 required inflation share in promille (0-1000, uint64)
-func _validLimitsProduced :
-and(
-   	require(
-	   lessOrEqualThan($1, u64/1000),
-	   !!!max_required_inflation_share_must_be_in_promille_less_or_equal_than_1000
-	),
-	or(
-	   and( // frozen
-		  _selfIsMarkedFrozen, 
-		  _validLimitsProducedFrozen($0), 
-		  _validInflationAdvanceProduced($1, _predecessorTokenBalance)
-	   ),
-	   and( // revoked
-		  _selfIsMarkedOnHold,
-		  require( isZero(_selfLastFrozenEpoch), !!!last_frozen_epoch_must_be_0_on_revoked_output), 
-	   ),
-	   and( // undef
-		  _selfIsMarkedUndef,
-		  and(
-			  require( equal(_selfStateMark, 0), !!!undef_status_mark_must_be_0 ),
-			  require( isZero(_selfLastFrozenEpoch), !!!last_frozen_epoch_must_be_0_on_marked_undef_output), 
-		  )
-	   )
-	)
-)
-
-// $0 max frozen epochs uint64
-func _validStructureProduced :
-and(
-    require(
-	   equal(selfNumConstraints, u64/4), 
-	   !!!delegation_must_have_exactly_4_constraints
-    ), // to prevent injection attacks
-    parseBytecode(_selfTarget, 0x, #c, #chainLock),
-    parseBytecode(selfSiblingConstraint(2), 0x, #chain),
-    parseBytecode(selfSiblingConstraint(3), 0x, #delegateLockState),
-    require(
-       and(not(isZero($0)), lessOrEqualThan($0, uint8Bytes(constDelegationMaxFrozenEpochs))),
-       !!!wrong_max_frozen_epochs_value
-    )
-)
-
-// checks validity of the composition of the produced constraint 
-// $0 max frozen epochs uint64
-// $1 required inflation share in promille (0-1000, uint64)
-func _validDelegationProduced :
-and(
-    selfIsProducedOutput,
-    _validStructureProduced($0),
-    _validLimitsProduced($0, $1)
-)
-
-// $0 master lock
-// (consumed context)
-func _masterUnlockedConsumed : 
-and( 
-    equal(byte(selfUnlockParameters,2), 0xff), 
-    require(not(_consumedIsFrozenInTx), !!!frozen_output_cannot_be_unlocked_by_master), 
-    $0, 
-)
-
-func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(2), 0)))
-
-// $0 unfreezeSlot
-func _txInsideSafeRevocationWindow : and(
-    not(_selfIsDelegationOrigin),
-	lessOrEqualThan(uint8Bytes($0), uint8Bytes(txSlot)),
-    lessThan(uint8Bytes(txSlot), add($0, constDelegationSafeRevocationSlots))
-)
-
-func _successorIsOnHold : equal(parseInlineDataArgument(successorConstraint(3), 1, #delegateLockState), 2)
-
-func _requireUnlockableByTheTarget :
-and(
-   require(not(_selfIsMarkedOnHold), !!!on_hold_delegation_cannot_be_unlocked_by_the_target),
-   require(lessThan(slotOfInputByIndex(selfOutputIndex), txSlot), !!!delegation_successor_timestamp_must_be_at_least_1_slot_after),
-   or(
-      not(_selfIsMarkedFrozen),
-      if(
-         _consumedIsFrozenInTx,
-         require(_successorIsOnHold, !!!frozen_delegation_can_be_unlocked_by_the_target_only_for_putting_on_hold),
-         require(not(_consumedIsInTheSafeRevocationWindowTx), !!!delegation_cannot_be_unlocked_by_the_target_in_safe_revocation_window)
-      )
-   )
-)
-
-// $0 target lock
-// 'consumed' context
-func _targetUnlockedConsumed :
-and(
-   not(equal(byte(selfUnlockParameters,2), 0xff)), // not marked as unlocked by master
-	  // output must be unlockable in principle
-   _requireUnlockableByTheTarget,
-	  // target lock must be unlocked
-   require($0, !!!delegation_target_chain_must_be_unlocked),  
-      // target cannot discontinue the chain
-   require(not(equal(selfSiblingUnlockParams(2),0xffff)), !!!target_cannot_discontinue_the_delegation_chain),
-	  // amount should not decrease
-   require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease),
-	  // delegation lock must be exactly equal
-   require(equal(successorConstraint(1), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_on_successor_must_be_exactly_the_same)
-)
-
-// $0 target chain lock
-// $1 master lock
-func _validDelegationConsumed : and(
-   selfIsConsumedOutput,
-   require(
-      equal(len(selfUnlockParameters), u64/3), 
-      !!!unlock_parameters_of_the_delegation_lock_must_be_3_bytes_long
-   ),
-   or(
-      _masterUnlockedConsumed($1),
-      _targetUnlockedConsumed($0)
-   )
-)
-
-// $0 - max frozen epochs as set in the output
-// return uin64: isZero is constDelegationMaxFrozenEpochs, otherwise must be between 1 and constDelegationMaxFrozenEpochs inclusive
-func _adjustedMaxFrozenEpochs: if( isZero($0), uint8Bytes(constDelegationMaxFrozenEpochs), uint8Bytes($0))
-
-// Delegation lock output. Immutable 
-// $0 target chain lock
-// $1 master lock
-// $2 max frozen epochs limit set by the delegator. If isZero, then default constDelegationMaxFrozenEpochs, otherwise must be <= constDelegationMaxFrozenEpochs
-// $3 required inflation share in promille (0-1000, z64).    
-//
-// Unlock parameters 3 bytes first 1 or 2 bytes are used to unlock address or chain locks
-// Bytes with index 2 must be 0xff for master unlock, otherwise it is target unlock 
-func delegateLock: and(
-	require(equal(selfBlockIndex,1), !!!locks_must_be_at_index_1),
-    or(
-       _validDelegationProduced(_adjustedMaxFrozenEpochs($2), uint8Bytes($3)),
-       _validDelegationConsumed($0, $1)
-    )
-)
-
-`
+	return par.AllocData(0xff)
+}

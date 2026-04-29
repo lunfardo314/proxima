@@ -30,7 +30,7 @@ sequencer:
   enable: true
   name: <sequencer name>
   chain_id: <chain ID>
-  controller_key: <private key hex>
+  controller_key_file: proxima_sequencer.key
   pace: 5
 ```
 
@@ -38,12 +38,41 @@ With `sequencer.enable` = `true/false` you can enable or disable the start of th
 node is just an access node.
 
 `sequencer.name` is any mnemonic name used for the sequencer. It will appear in the logs and in the sequencer transactions.
-It is recommended to have it no longer than 4-6 characters. 
+It is recommended to have it no longer than 4-6 characters.
 
 `sequencer.chain_id` is the ID of the newly created chain (hex encoded, not with `$/` prefix). It is also called _sequencer ID_.
 
-`sequencer.controller_key` is the controlling private key (hex encoded). Sequencer will use it to sign transactions. Copy it from your wallet config
-profile `proxi.yaml`
+`sequencer.controller_key_file` is the path to a file containing the controlling private key (hex encoded).
+The file should have restricted permissions (`chmod 0600`). The `proxi node setup_seq` command creates this file automatically as `proxima_sequencer.key`.
+
+Alternatively, `sequencer.controller_key` can be used to specify the private key inline in the YAML (less secure, supported for backward compatibility).
+
+The controller key can also be provided via the `PROXIMA_SEQUENCER_KEY` environment variable (hex-encoded).
+This is useful for containerized deployments and CI/CD pipelines where secrets are injected as environment variables.
+
+Priority: `PROXIMA_SEQUENCER_KEY` env var > `controller_key_file` > `controller_key` (inline).
+
+### Encrypting the key file with a passphrase
+
+For additional security, the plaintext key file can be encrypted with a passphrase:
+
+```bash
+proxi util encrypt_key
+```
+
+This reads `proxima_sequencer.key`, prompts for a passphrase, and creates `proxima_sequencer.keystore` — a JSON file
+with the key encrypted using AES-256-GCM (Argon2id key derivation). It also updates `proxima.yaml` to point to the keystore.
+
+The keystore format is detected automatically. When starting the node, the passphrase is read from the `PROXIMA_KEY_PASSPHRASE`
+environment variable. If not set, the node prompts on stdin.
+
+To verify a keystore file:
+
+```bash
+proxi util check_keystore
+```
+
+This decrypts the keystore and verifies the key matches the stored public key.
 
 `sequencer.pace` parameter is minimum number of ticks between two subsequent sequencers transactions. In the testnet version 
 it should not be less than `3` and not exceed `20` or so. 1 tick is 80 milliseconds on the clock-time scale.

@@ -55,7 +55,8 @@ type (
 )
 
 func runChainStats() {
-	maxInflation := ledger.L().BranchInflationBonusBaseFromSource()
+	lib := ledger.L(base.MaxSlot)
+	maxInflation := lib.BranchInflationBonusBase(0)
 	buckets := make([]int, _numBuckets)
 	sequencers := make(map[base.ChainID]*seqStats)
 	allBibs := make([]uint64, 0, 100000)
@@ -83,10 +84,10 @@ func runChainStats() {
 		stemConstraint, ok := br.Stem.Output.StemLock()
 		glb.Assertf(ok, "stem lock not found in %s hex=%s", br.Stem.ID.String(), br.Stem.ID.StringHex())
 
-		bibCalc := ledger.BranchInflationBonus(stemConstraint.VRFProof)
+		bibCalc := lib.BranchInflationBonus(stemConstraint.VRFProof, br.Slot())
 		glb.Assertf(bib == bibCalc, "provided vs calculated inflation mismatch %s != %s in %s",
 			util.Th(bib), util.Th(bibCalc), br.Lines("        ").String())
-		bibDirect := ledger.BranchInflationBonus(stemConstraint.VRFProof)
+		bibDirect := lib.BranchInflationBonus(stemConstraint.VRFProof, br.Slot())
 		glb.Assertf(bib == bibDirect, "provided vs directly calculated inflation mismatch: %s != %s in %s",
 			util.Th(bib), util.Th(bibDirect), br.Lines("        ").String())
 		bucketNo := bib * _numBuckets / maxInflation
@@ -98,7 +99,7 @@ func runChainStats() {
 			minBib = min(minBib, bib)
 		}
 
-		seqID, _, ok := br.SequencerOutput.ExtractChainID()
+		seqID, ok := br.SequencerOutput.ExtractChainID()
 		glb.Assertf(ok, "failed to extract chain id from %s", br.Lines("        ").String())
 
 		seqStatsRec, ok := sequencers[seqID]

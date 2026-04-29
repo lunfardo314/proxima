@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/spf13/viper"
 )
 
@@ -41,23 +41,28 @@ func GetClient(endpoint ...string) *client.APIClient {
 }
 
 func InitLedgerFromNode() {
-	ledgerIDData, err := GetClient().GetLedgerIdentityData()
-	AssertNoError(err)
-	// pre-parse
-	fromYAML, err := easyfl.ReadLibraryFromYAML(ledgerIDData)
-	if err != nil {
-		Infof("failed to parse ledger definition")
-		if IsVerbose() {
-			Infof("easyfl.ReadLibraryFromYAML returned '%v'", err)
-		}
-		Assertf(false, "exit")
-		return
-	}
-	Infof("successfully parsed ledger definitions. Library hash = %s", fromYAML.Hash)
+	clnt := GetClient()
 
-	ledger.MustInitSingleton(ledgerIDData)
+	// Fetch all upgrade libraries by walking the upgrade chain from latest back to genesis
+	libraries := make(map[uint32][]byte)
+	resp, err := clnt.GetLedgerDefinition(nil)
+	AssertNoError(err)
+
+	libraries[resp.UpgradeSlot] = []byte(resp.LibraryYAML)
+	Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)
+
+	// Walk back through previous upgrades until we reach genesis (slot 0)
+	for resp.UpgradeSlot > 0 {
+		prevSlot := resp.PrevUpgradeSlot
+		resp, err = clnt.GetLedgerDefinition(&prevSlot)
+		AssertNoError(err)
+		libraries[resp.UpgradeSlot] = []byte(resp.LibraryYAML)
+		Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)
+	}
+
+	ledger.MustInitLibraryCacheFromMap(libraries)
 	Infof("successfully connected to the node at %s", viper.GetString("api.endpoint"))
 	Infof("verbose = %v", IsVerbose())
-	h := ledger.L().LibraryHash()
+	h := ledger.L(base.MaxSlot).LibraryHash()
 	Infof("ledger library hash: %s", hex.EncodeToString(h[:]))
 }

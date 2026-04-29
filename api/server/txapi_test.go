@@ -74,13 +74,13 @@ func TestParseOutputData(t *testing.T) {
 	srv := &server{}
 
 	const amount = uint64(31415926535)
-	addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(100))
+	addr := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(100))
 	chainID := base.RandomChainID()
-	cc := ledger.NewChainConstraint(chainID, 1, 2, 0, amount)
+	cc := ledger.NewChainConstraint(chainID, 1, 0, 0, 0, 1, 0)
 	o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(amount).
 			WithLock(addr)
-		o.MustPushConstraint(cc.Bytes())
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 	})
 	oDataStr := hex.EncodeToString(o.Bytes())
 	reqStr := fmt.Sprintf("/txapi/v1/parse_output_data?output_data=%s&human_readable=", oDataStr)
@@ -214,7 +214,8 @@ func TestGetParsedTransaction(t *testing.T) {
 	var ret api.TransactionJSONAble
 	err = json.Unmarshal(data, &ret)
 	assert.NoError(t, err)
-	assert.Equal(t, ret.TotalAmount, uint64(0x38d7ea4c68000))
+	// TotalAmount includes branch inflation (VRF-based, non-zero on branch transactions)
+	assert.True(t, ret.TotalAmount > ledger.DefaultInitialSupply-1)
 	assert.Equal(t, ret.IsBranch, true)
 	assert.Equal(t, len(ret.Inputs), 2)
 	assert.Equal(t, len(ret.Outputs), 5)
@@ -254,10 +255,11 @@ func TestGetVertexDep(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, ret.SequencerID, ledger.BoostrapSequencerIDHex)
 	assert.EqualValues(t, *txid, txidBack)
-	assert.True(t, txid.IsSequencerMilestone())
+	assert.True(t, txid.IsSequencerTransaction())
 	assert.True(t, txid.IsBranchTransaction())
-	assert.EqualValues(t, 1_000_000_000_000_000, ret.TotalAmount)
-	assert.EqualValues(t, 0, ret.TotalInflation)
+	// TotalAmount includes branch inflation (VRF-based, non-zero on branch transactions)
+	assert.True(t, ret.TotalInflation > 0)
+	assert.EqualValues(t, ledger.DefaultInitialSupply-1+ret.TotalInflation, ret.TotalAmount)
 	assert.True(t, ret.SequencerInputTxIndex != nil && *ret.SequencerInputTxIndex == 0)
 	assert.True(t, ret.StemInputTxIndex != nil && *ret.StemInputTxIndex == 0)
 	assert.EqualValues(t, 1, len(ret.Inputs))

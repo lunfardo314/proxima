@@ -16,7 +16,6 @@ const PullTransactions = byte(iota)
 func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	defer func() {
 		_ = stream.Close()
-		ps.Log().Warnf("[peering] pull: streamHandler exit")
 	}()
 
 	if ps.cfg.IgnoreAllPullRequests {
@@ -26,19 +25,14 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 	id := stream.Conn().RemotePeer()
 
-	known, blacklisted, static := ps.knownPeer(id, func(p *Peer) {
+	known, static := ps.knownPeer(id, func(p *Peer) {
 	})
-	if blacklisted {
-		// just ignore
-		return
-	}
 	if !known {
 		if !ps.isAutopeeringEnabled() {
 			// node does not take any incoming dynamic peers
 			ps.Log().Warnf("[peering] node does not take any incoming dynamic peers")
 			return
 		}
-		ps.Log().Infof("[peering] incoming peer request. Add new dynamic peer %s", id.String())
 	}
 
 	if !static && ps.cfg.AcceptPullRequestsFromStaticPeersOnly {
@@ -49,25 +43,19 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 	// receive start
 	_, err := readFrame(stream)
 	if err != nil {
-		ps.Log().Errorf("[peering] hb: error while reading start message from peer %s: err='%v'", ShortPeerIDString(id), err)
 		return
 	}
 	var msgData []byte
 
 	for {
 		msgData, err = readFrame(stream)
-		_, blacklisted, _ = ps.knownPeer(id, func(p *Peer) {
+		ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingPull++
 		})
-		if blacklisted {
-			// just ignore
-			return
-		}
 
 		ps.inMsgCounter.Inc()
 		switch {
 		case err != nil:
-			ps.Log().Errorf("pull: error while reading message from peer %s: %v", id.String(), err)
 			return
 		case len(msgData) == 0:
 			ps.Log().Errorf("pull: error while reading message from peer %s: empty data", id.String())
@@ -88,9 +76,6 @@ func (ps *Peers) pullStreamHandler(stream network.Stream) {
 
 		go ps.onReceivePullTx(id, txid)
 		ps.pullRequestsIn.Inc()
-
-		// return buffer for reuse
-		//bytepool.DisposeArray(msgData)
 	}
 }
 
@@ -103,7 +88,7 @@ func (ps *Peers) sendPullTransactionToPeers(ids []peer.ID, txid base.Transaction
 
 // PullTransactionsFromPeers sends pull request to all peers that respond to pull requests
 func (ps *Peers) PullTransactionsFromPeers(txid base.TransactionID) int {
-	targets := ps.allPullTargetIDs()
+	targets := ps.allAliveIDs()
 	ps.sendPullTransactionToPeers(targets, txid)
 	return len(targets)
 }
@@ -123,10 +108,6 @@ func decodePullTransactionMsg(data []byte) (base.TransactionID, error) {
 	return base.TransactionIDFromBytes(data[1:])
 }
 
-func (ps *Peers) _isPullTarget(p *Peer) bool {
-	return p.respondsToPullRequests || ps.cfg.ForcePullFromAllPeers
-}
-
 // out message wrappers
 type _pullTransaction struct {
 	txid base.TransactionID
@@ -134,14 +115,14 @@ type _pullTransaction struct {
 
 func (pt *_pullTransaction) Bytes() []byte { return encodePullTransactionMsg(pt.txid) }
 
-func (ps *Peers) allPullTargetIDs() []peer.ID {
+func (ps *Peers) allAliveIDs() []peer.ID {
 	ret := make([]peer.ID, 0)
 
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
 	for _, p := range ps.peers {
-		if ps._isPullTarget(p) {
+		if ps._isAlive(p) {
 			ret = append(ret, p.id)
 		}
 	}

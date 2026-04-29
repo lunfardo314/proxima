@@ -37,13 +37,16 @@ type (
 	}
 
 	faucetServer struct {
-		cfg                 faucetServerConfig
-		walletData          glb.WalletData
-		mutex               sync.Mutex
-		accountRequestList  map[string][]time.Time
-		addressRequestList  map[string][]time.Time
-		addressRequestCount map[string]uint
-		client              *client.APIClient
+		cfg                   faucetServerConfig
+		walletData            glb.WalletData
+		mutex                 sync.Mutex
+		accountRequestList    map[string][]time.Time
+		addressRequestList    map[string][]time.Time
+		addressRequestCount   map[string]uint
+		client                *client.APIClient
+		withdrawTagAlongFee   uint64        // fee for withdrawing from own chain (fromChain mode)
+		transferTagAlongFee   uint64        // fee for transfer from wallet
+		transferTagAlongSeqID *base.ChainID // sequencer ID for wallet transfer tag-along
 	}
 )
 
@@ -67,8 +70,6 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("\nstarting Proxima faucet server on the wallet..\n")
 	walletData := glb.GetWalletData()
 	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer id")
-	glb.Assertf(glb.GetTagAlongFee() > 0, "tag-along amount not specified")
-	glb.Assertf(glb.GetTagAlongSequencerID() != nil, "tag-along sequencer not specified")
 
 	fct := &faucetServer{
 		walletData:          walletData,
@@ -79,15 +80,28 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 	}
 	fct.readFaucetServerConfigIn()
 
+	// Get tag-along fees at startup (don't prompt interactively for server)
+	// For withdrawing from own chain
+	withdrawFee, err := glb.GetRequiredTagAlongFee(*walletData.Sequencer)
+	glb.AssertNoError(err)
+	fct.withdrawTagAlongFee = withdrawFee
+
+	// For wallet transfers
+	fct.transferTagAlongSeqID = glb.GetTagAlongSequencerID()
+	glb.Assertf(fct.transferTagAlongSeqID != nil, "tag-along sequencer not specified")
+	transferFee, err := glb.GetRequiredTagAlongFee(*fct.transferTagAlongSeqID)
+	glb.AssertNoError(err)
+	fct.transferTagAlongFee = transferFee
+
 	fct.displayFaucetConfig()
 
 	if fct.cfg.fromChain {
-		o, _, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
+		o, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
 		glb.AssertNoError(err)
-		glb.Assertf(o.Output.TokenBalance() > ledger.Const.MinimumAmountOnSequencer+fct.cfg.amount,
+		glb.Assertf(o.Output.TokenBalance() > fct.cfg.amount,
 			"not enough balance on own sequencer %s", fct.walletData.Sequencer.String())
 	} else {
-		_, _, _, err := fct.client.GetOutputsForAmount(walletData.Account, fct.cfg.amount+glb.GetTagAlongFee())
+		_, _, _, err := fct.client.GetOutputsForAmount(walletData.Account, fct.cfg.amount+fct.transferTagAlongFee)
 		glb.AssertNoError(err)
 	}
 	fct.run()
@@ -124,15 +138,15 @@ func (fct *faucetServer) readFaucetServerConfigIn() {
 
 func (fct *faucetServer) absoluteBottom() uint64 {
 	if fct.cfg.fromChain {
-		return ledger.Const.MinimumAmountOnSequencer + fct.cfg.amount
+		return fct.cfg.amount
 	}
-	return fct.cfg.amount + glb.GetTagAlongFee()
+	return fct.cfg.amount + fct.transferTagAlongFee
 }
 
 func (fct *faucetServer) checkBottom() error {
 	abs := fct.absoluteBottom()
 	if fct.cfg.fromChain {
-		o, _, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
+		o, _, err := fct.client.GetChainOutput(*glb.GetOwnSequencerID())
 		if err != nil {
 			return err
 		}
@@ -163,11 +177,15 @@ func (fct *faucetServer) displayFaucetConfig() {
 	glb.Infof("     port:                     %d", fct.cfg.port)
 	glb.Infof("     wallet address:           %s", fct.walletData.Account.String())
 	glb.Infof("     wallet balance:           %s", util.Th(walletBalance))
-	glb.Infof("     tag-along amount:         %d", glb.GetTagAlongFee())
-	glb.Infof("     tag-along sequencer:      %s", glb.GetTagAlongSequencerID().String())
+	if fct.cfg.fromChain {
+		glb.Infof("     withdraw tag-along fee:   %s (to own sequencer)", util.Th(fct.withdrawTagAlongFee))
+	} else {
+		glb.Infof("     transfer tag-along fee:   %s", util.Th(fct.transferTagAlongFee))
+		glb.Infof("     tag-along sequencer:      %s", fct.transferTagAlongSeqID.String())
+	}
 	glb.Infof("     bottom:                   %s", util.Th(fct.cfg.bottom))
 	if fct.cfg.fromChain {
-		chainOut, _, _, err := fct.client.GetChainOutput(*fct.walletData.Sequencer)
+		chainOut, _, err := fct.client.GetChainOutput(*fct.walletData.Sequencer)
 		glb.AssertNoError(err)
 		glb.Infof("     funds will be drawn from: %s (balance %s)", fct.walletData.Sequencer.String(), util.Th(chainOut.Output.TokenBalance()))
 
@@ -205,9 +223,9 @@ func (fct *faucetServer) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetLock, err := ledger.AccountableFromSource(targetStr[0])
+	targetLock, err := ledger.ControllerFromSource(targetStr[0])
 	if err != nil {
-		glb.Infof("error from AccountableFromSource: %s", err.Error())
+		glb.Infof("error from ControllerFromSource: %s", err.Error())
 		writeResponse(w, err.Error())
 		return
 	}
@@ -235,17 +253,17 @@ func (fct *faucetServer) handler(w http.ResponseWriter, r *http.Request) {
 	logRequest(targetStr[0], r.RemoteAddr, fct.cfg.amount, err)
 }
 
-func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.TransactionID, error) {
+func (fct *faucetServer) redrawFromChain(targetLock ledger.Controller) (base.TransactionID, error) {
 	clnt := glb.GetClient()
-	o, _, _, err := clnt.GetChainOutput(*glb.GetOwnSequencerID())
+	o, _, err := clnt.GetChainOutput(*glb.GetOwnSequencerID())
 	if err != nil {
 		return base.TransactionID{}, err
 	}
-	if o.Output.TokenBalance() < ledger.Const.MinimumAmountOnSequencer+fct.cfg.amount {
+	if o.Output.TokenBalance() < fct.cfg.amount {
 		return base.TransactionID{}, fmt.Errorf("not enough tokens on the sequencer %s", glb.GetOwnSequencerID().String())
 	}
 
-	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*fct.walletData.Sequencer, fct.walletData.Account, glb.GetTagAlongFee(), fct.cfg.amount, targetLock.AsLock())
+	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*fct.walletData.Sequencer, fct.walletData.Account, fct.withdrawTagAlongFee, fct.cfg.amount, targetLock.AsLock())
 	ts := ledger.TimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
@@ -266,11 +284,11 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Accountable) (base.Tr
 	return txid, nil
 }
 
-func (fct *faucetServer) redrawFromAccount(targetLock ledger.Accountable) (base.TransactionID, error) {
+func (fct *faucetServer) redrawFromAccount(targetLock ledger.Controller) (base.TransactionID, error) {
 	txCtx, err := glb.GetClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: fct.walletData.PrivateKey,
-		TagAlongSeqID:    glb.GetTagAlongSequencerID(),
-		TagAlongFee:      glb.GetTagAlongFee(),
+		TagAlongSeqID:    fct.transferTagAlongSeqID,
+		TagAlongFee:      fct.transferTagAlongFee,
 		Amount:           fct.cfg.amount,
 		Target:           targetLock.AsLock(),
 	})

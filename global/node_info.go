@@ -17,6 +17,11 @@ type NodeInfo struct {
 	NumStaticAlive  uint16        `json:"num_static_peers"`
 	NumDynamicAlive uint16        `json:"num_dynamic_alive"`
 	Sequencer       *base.ChainID `json:"sequencers,omitempty"`
+	// Adaptive rate control metrics
+	MemoryStressLevel int  `json:"memory_stress_level"`        // 0-100, derived from allocated/limit
+	PipelineSize      int  `json:"pipeline_size"`              // total vertices + solicited queue + wait counter
+	IsSyncing         bool `json:"is_syncing,omitempty"`       // true when forward-sync is active
+	IsSnapshotting    bool `json:"is_snapshotting,omitempty"`  // true when snapshot is being generated
 }
 
 func (ni *NodeInfo) Bytes() []byte {
@@ -45,6 +50,8 @@ func (ni *NodeInfo) Lines(prefix ...string) *lines.Lines {
 		Add("dynamic peers alive: %d", ni.NumDynamicAlive).
 		Add("sequencer: %s", seqStr).
 		Add("commit hash: %s", ni.CommitHash).
-		Add("commit time: %s", ni.CommitTime)
+		Add("commit time: %s", ni.CommitTime).
+		Add("memory stress: %d%%", ni.MemoryStressLevel).
+		Add("pipeline size: %d", ni.PipelineSize)
 	return ret
 }

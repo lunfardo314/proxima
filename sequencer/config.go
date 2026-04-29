@@ -1,14 +1,13 @@
 package sequencer
 
 import (
-	"crypto/ed25519"
 	"fmt"
 	"math"
+	"os"
 	"time"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/spf13/viper"
 )
@@ -24,9 +23,19 @@ type (
 		BacklogTagAlongTTLSlots   int
 		BacklogDelegationTTLSlots int
 		MilestonesTTLSlots        int
+		MaxTagAlongInputs    int // max tag-along inputs per milestone
+		TagAlongDrainRate    int // target tag-alongs to drain per slot
 		SingleSequencerEnforced   bool
 		SeparateLog               bool
 		GlobalLogging             bool
+		ControllerKeyFile         string // path to keystore file for deferred key loading
+		// ForceActivity when true, the sequencer always issues at least a branch and one
+		// milestone per slot regardless of pressure level. Used for bootstrap sequencers
+		// that must keep producing to maintain network liveness.
+		ForceActivity bool
+		// DisableThrottle when true, disables tag-along budget throttling entirely.
+		// Budget always stays at full (2/3 of consensus). For tests and debugging.
+		DisableThrottle bool
 	}
 
 	ConfigOption func(options *ConfigOptions)
@@ -36,18 +45,28 @@ const (
 	minimumBacklogTagAlongTTLSlots   = 10
 	minimumBacklogDelegationTTLSlots = 20
 	minimumMilestonesTTLSlots        = 24 // 10
+	defaultMaxTagAlongInputs         = 15
+	defaultTagAlongDrainRate         = 100 // ~10 TPS per sequencer with 1.024s slots
+
+	// defaultSequencerPaceTicks is the wall-clock pulse interval (in ticks) used by the
+	// reference policy. See claude/seq-improvements.md "Rollout in two phases": this is a
+	// Phase S sequencer-internal constant, decoupled from the ledger TransactionPaceSequencer
+	// (still 2 on the live testnet; Phase L will raise it and remove this default).
+	defaultSequencerPaceTicks = 12
 )
 
 func defaultConfigOptions() *ConfigOptions {
 	return &ConfigOptions{
-		SequencerName:             "seq",
-		Pace:                      int(ledger.Const.TransactionPaceSequencer),
+		SequencerName:             "",
+		Pace:                      defaultSequencerPaceTicks,
 		MaxTargetTs:               base.NilLedgerTime,
 		MaxBranches:               math.MaxInt,
-		DelayStart:                ledger.SlotDuration(),
+		DelayStart:                ledger.SlotDuration(), // to fill up the tippool
 		BacklogTagAlongTTLSlots:   minimumBacklogTagAlongTTLSlots,
 		BacklogDelegationTTLSlots: minimumBacklogDelegationTTLSlots,
 		MilestonesTTLSlots:        minimumMilestonesTTLSlots,
+		MaxTagAlongInputs:    defaultMaxTagAlongInputs,
+		TagAlongDrainRate:    defaultTagAlongDrainRate,
 	}
 }
 
@@ -59,27 +78,28 @@ func configOptions(opts ...ConfigOption) *ConfigOptions {
 	return cfg
 }
 
-func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error) {
+func paramsFromConfig() ([]ConfigOption, base.ChainID, error) {
 	subViper := viper.Sub("sequencer")
 	if subViper == nil {
-		return nil, base.ChainID{}, nil, nil
+		return nil, base.ChainID{}, nil
 	}
 	name := subViper.GetString("name")
-	if name == "" {
-		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: sequencer must have a name")
-	}
 
 	if !subViper.GetBool("enable") {
 		// will skip
-		return nil, base.ChainID{}, nil, nil
+		return nil, base.ChainID{}, nil
 	}
 	seqID, err := base.ChainIDFromHexString(subViper.GetString("chain_id"))
 	if err != nil {
-		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse sequencer chain id: %v", err)
+		return nil, base.ChainID{}, fmt.Errorf("StartFromConfig: can't parse sequencer chain ID: %v", err)
 	}
-	controllerKey, err := util.ED25519PrivateKeyFromHexString(subViper.GetString("controller_key"))
-	if err != nil {
-		return nil, base.ChainID{}, nil, fmt.Errorf("StartFromConfig: can't parse private key: %v", err)
+
+	keyFile := subViper.GetString("controller_key_file")
+	if keyFile == "" {
+		return nil, base.ChainID{}, fmt.Errorf("StartFromConfig: 'controller_key_file' is required in sequencer config")
+	}
+	if _, err := os.Stat(keyFile); err != nil {
+		return nil, base.ChainID{}, fmt.Errorf("StartFromConfig: controller key file '%s': %v", keyFile, err)
 	}
 
 	backlogTagAlongTTLSlots := subViper.GetInt("backlog_tag_along_ttl_slots")
@@ -102,25 +122,38 @@ func paramsFromConfig() ([]ConfigOption, base.ChainID, ed25519.PrivateKey, error
 		WithBacklogTagAlongTTLSlots(backlogTagAlongTTLSlots),
 		WithBacklogDelegationTTLSlots(backlogDelegationTTLSlots),
 		WithMilestonesTTLSlots(milestonesTTLSlots),
+		WithMaxTagAlongInputs(subViper.GetInt("max_tag_along_inputs")),
+		WithTagAlongDrainRate(subViper.GetInt("tag_along_drain_rate")),
 		WithSingleSequencerEnforced,
 		WithSeparateLog(subViper.GetBool("logging"), subViper.GetBool("global_logging")),
+		WithControllerKeyFile(keyFile),
 	}
 	if subViper.GetBool("ensure_synced_at_startup") {
 		cfg = append(cfg, WithEnsureSyncedAtStartup)
 	}
-	return cfg, seqID, controllerKey, nil
+	if subViper.GetBool("force_activity") {
+		cfg = append(cfg, WithForceActivity)
+	}
+	if subViper.GetBool("disable_throttle") {
+		cfg = append(cfg, WithDisableThrottle)
+	}
+	return cfg, seqID, nil
 }
 
 func WithName(name string) ConfigOption {
 	return func(o *ConfigOptions) {
+		if len(name) > 6 {
+			name = name[:6]
+		}
 		o.SequencerName = name
 	}
 }
 
 func WithPace(pace int) ConfigOption {
 	return func(o *ConfigOptions) {
-		if pace < int(ledger.Const.TransactionPaceSequencer) {
-			pace = int(ledger.Const.TransactionPaceSequencer)
+		lib := ledger.L(base.MaxSlot)
+		if pace < int(lib.TransactionPaceSequencer) {
+			pace = int(lib.TransactionPaceSequencer)
 		}
 		o.Pace = pace
 	}
@@ -158,6 +191,22 @@ func WithMilestonesTTLSlots(slots int) ConfigOption {
 	}
 }
 
+func WithMaxTagAlongInputs(n int) ConfigOption {
+	return func(o *ConfigOptions) {
+		if n >= 1 {
+			o.MaxTagAlongInputs = n
+		}
+	}
+}
+
+func WithTagAlongDrainRate(rate int) ConfigOption {
+	return func(o *ConfigOptions) {
+		if rate >= 1 {
+			o.TagAlongDrainRate = rate
+		}
+	}
+}
+
 func WithEnsureSyncedAtStartup(o *ConfigOptions) {
 	o.EnsureSyncedBeforeStart = true
 }
@@ -173,7 +222,21 @@ func WithSeparateLog(yesNo, globalLogging bool) ConfigOption {
 	}
 }
 
-func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.AddressED25519, prefix ...string) *lines.Lines {
+func WithControllerKeyFile(path string) ConfigOption {
+	return func(o *ConfigOptions) {
+		o.ControllerKeyFile = path
+	}
+}
+
+func WithForceActivity(o *ConfigOptions) {
+	o.ForceActivity = true
+}
+
+func WithDisableThrottle(o *ConfigOptions) {
+	o.DisableThrottle = true
+}
+
+func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.SigLock, prefix ...string) *lines.Lines {
 	return lines.New(prefix...).
 		Add("id: %s", seqID.String()).
 		Add("Controller: %s", controller.String()).
@@ -185,6 +248,11 @@ func (cfg *ConfigOptions) lines(seqID base.ChainID, controller ledger.AddressED2
 		Add("BacklogTagAlongTTLSlots: %d", cfg.BacklogTagAlongTTLSlots).
 		Add("BacklogDelegationTTLSlots: %d", cfg.BacklogDelegationTTLSlots).
 		Add("MilestoneTTLSlots: %d", cfg.MilestonesTTLSlots).
+		Add("MaxTagAlongInputs: %d", cfg.MaxTagAlongInputs).
+		Add("TagAlongDrainRate: %d/slot", cfg.TagAlongDrainRate).
 		Add("Separate log: %v", cfg.SeparateLog).
-		Add("Copy to the global log: %v", cfg.GlobalLogging)
+		Add("Copy to the global log: %v", cfg.GlobalLogging).
+		Add("Controller key file: %s", cfg.ControllerKeyFile).
+		Add("Force activity: %v", cfg.ForceActivity).
+		Add("Disable throttle: %v", cfg.DisableThrottle)
 }

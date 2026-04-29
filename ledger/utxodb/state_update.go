@@ -14,8 +14,8 @@ func updateValidateNoDebug(u *multistate.Updatable, txBytes []byte) (*transactio
 	return updateValidateOptions(u, txBytes, transaction.TraceOptionNone, nil)
 }
 
-func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation ...func(ctx *transaction.TxContext, err error) error) (*transaction.Transaction, error) {
-	var fun func(ctx *transaction.TxContext, err error) error
+func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation ...func(ctx *transaction.Transaction, err error) error) (*transaction.Transaction, error) {
+	var fun func(ctx *transaction.Transaction, err error) error
 	if len(onValidation) > 0 {
 		fun = onValidation[0]
 	}
@@ -23,25 +23,26 @@ func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation .
 }
 
 // updateValidateNoDebug updates/mutates the ledger state by transaction. For testing mostly
-func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(ctx *transaction.TxContext, err error) error) (*transaction.Transaction, error) {
-	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(tx *transaction.Transaction, err error) error) (*transaction.Transaction, error) {
+	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
-	ctx, err := transaction.TxContextFromTransaction(tx, tx.InputLoaderByIndex(u.Readable().GetUTXO), traceOption)
-	if err != nil {
+	tx.SetTraceOption(traceOption)
+
+	if err = tx.SetFullContext(tx.InputLoaderByIndex(u.Readable().GetUTXO)); err != nil {
 		return nil, err
 	}
-	err = ctx.Validate()
+	err = tx.ValidateFullContext()
 	if onValidation != nil {
-		err = onValidation(ctx, err)
+		err = onValidation(tx, err)
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	muts := tx.StateMutations()
-	if err := ConsistencyCheckBeforeAddTransaction(tx, u.Readable()); err != nil {
+	if err = ConsistencyCheckBeforeAddTransaction(tx, u.Readable()); err != nil {
 		return nil, err
 	}
 
@@ -50,19 +51,19 @@ func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption 
 		return nil, err
 	}
 
-	if err := ConsistencyCheckAfterAddTransaction(tx, u.Readable()); err != nil {
+	if err = ConsistencyCheckAfterAddTransaction(tx, u.Readable()); err != nil {
 		return nil, err
 	}
 	return tx, nil
 }
 
+// ConsistencyCheckBeforeAddTransaction redundant?
 // TODO check account consistency
-
 func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multistate.Readable) (err error) {
 	if r.KnowsCommittedTransaction(tx.ID()) {
 		return fmt.Errorf("BeforeAddTransaction: transaction %s already in the state: cannot be added", tx.IDShortString())
 	}
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		if !r.HasUTXO(oid) {
 			err = fmt.Errorf("BeforeAddTransaction: output %s does not exist: cannot be consumed", oid.StringShort())
 			return false
@@ -78,8 +79,8 @@ func ConsistencyCheckBeforeAddTransaction(tx *transaction.Transaction, r *multis
 			err = fmt.Errorf("BeforeAddTransaction: output %s already exist: cannot be produced", oid.StringShort())
 			return false
 		}
-		chainConstraint, i := o.ChainConstraint()
-		if i == 0xff {
+		chainConstraint := o.ChainConstraint()
+		if chainConstraint == nil {
 			return true
 		}
 		if chainConstraint.IsOrigin() {
@@ -113,7 +114,7 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 	if !r.KnowsCommittedTransaction(tx.ID()) {
 		return fmt.Errorf("AfterAddTransaction: transaction %s is expected to be in the state", tx.IDShortString())
 	}
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		if r.HasUTXO(oid) {
 			err = fmt.Errorf("input %s must not exist", oid.StringShort())
 			return false
@@ -127,8 +128,8 @@ func ConsistencyCheckAfterAddTransaction(tx *transaction.Transaction, r *multist
 			err = fmt.Errorf("AfterAddTransaction: output %s must exist", oid.StringShort())
 			return false
 		}
-		chainConstraint, i := o.ChainConstraint()
-		if i == 0xff {
+		chainConstraint := o.ChainConstraint()
+		if chainConstraint == nil {
 			return true
 		}
 		var chainID base.ChainID

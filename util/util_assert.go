@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"testing"
 
 	"github.com/lunfardo314/proxima/util/lazyargs"
-	"github.com/stretchr/testify/require"
 )
 
 // Assertf with optionally deferred evaluation of arguments
@@ -50,17 +48,6 @@ func IsNil(p interface{}) bool {
 	return p == nil || (reflect.ValueOf(p).Kind() == reflect.Ptr && reflect.ValueOf(p).IsNil())
 }
 
-func RequireErrorWithOld(t *testing.T, err error, fragments ...string) {
-	t.Logf("error: %v, fragments: %+v", err, fragments)
-	require.Error(t, err)
-	for _, f := range fragments {
-		if !strings.Contains(err.Error(), f) {
-			t.Errorf("\n-------------- error does not contain required fragment -------------------\nERROR: %s\nREQUIRED FRAGMENT: '%s'", err.Error(), f)
-			return
-		}
-	}
-}
-
 func MustErrorWith(err error, fragments ...string) error {
 	if err == nil {
 		return fmt.Errorf("-------------- error was expected -------------------")
@@ -73,6 +60,3 @@ func MustErrorWith(err error, fragments ...string) error {
 	return nil
 }
 
-func RequirePanicOrErrorWith(t *testing.T, f func() error, fragments ...string) {
-	RequireErrorWithOld(t, CatchPanicOrError(f), fragments...)
-}

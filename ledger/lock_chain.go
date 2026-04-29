@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	_ "embed"
+
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -17,6 +19,9 @@ const (
 	chainLockTemplate = ChainLockName + "(0x%s)"
 )
 
+//go:embed def/lock_chain.easyfl
+var chainLockConstraintSource string
+
 var NilChainLock = ChainLockFromChainID(base.NilChainID)
 
 func ChainLockFromChainID(chainID base.ChainID) ChainLock {
@@ -25,8 +30,10 @@ func ChainLockFromChainID(chainID base.ChainID) ChainLock {
 	return ret
 }
 
-func ChainLockFromBytes(data []byte) (ChainLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+// ChainLockFromBytesWithLib parses a ChainLock using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func ChainLockFromBytesWithLib(data []byte, lib *Library) (ChainLock, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -50,11 +57,11 @@ func (cl ChainLock) Bytes() []byte {
 	return mustBinFromSource(cl.Source())
 }
 
-func (cl ChainLock) Accounts() []Accountable {
-	return []Accountable{cl}
+func (cl ChainLock) Controllers() []Controller {
+	return []Controller{cl}
 }
 
-func (cl ChainLock) AccountID() AccountID {
+func (cl ChainLock) ControllerID() ControllerID {
 	return cl.Bytes()
 }
 
@@ -76,20 +83,24 @@ func (cl ChainLock) ChainID() base.ChainID {
 	return ret
 }
 
-func (cl ChainLock) Master() Accountable {
+func (cl ChainLock) Master() Controller {
 	return cl
 }
 
-func NewChainLockUnlockParams(predChainOutputIndex, predChainConstraintIndex byte) []byte {
-	return []byte{predChainOutputIndex, predChainConstraintIndex}
+// NewChainLockUnlockParams creates unlock params for chain lock. 1 byte: the input index
+// of the consumed chain output. The chain constraint is always at index 2.
+func NewChainLockUnlockParams(predChainOutputIndex byte) []byte {
+	return []byte{predChainOutputIndex}
 }
 
 func registerChainLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(ChainLockName, 1, func(data []byte) (Constraint, error) {
-		return ChainLockFromBytes(data)
-	}, initTestChainLockConstraint)
-	lib.mustRegisterLock(ChainLockName, func(bytes []byte) (Lock, error) {
-		ret, err := ChainLockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		return ChainLockFromBytesWithLib(data, lib)
+	})
+	lib.mustRegisterLockSerde(ChainLockName, func(bytes []byte) (Lock, error) {
+		// Use latest library version for library registration parsing
+		ret, err := ChainLockFromBytesWithLib(bytes, lib)
 		if err != nil {
 			return nil, err
 		}
@@ -97,62 +108,14 @@ func registerChainLockConstraint(lib *Library) {
 	})
 }
 
-func initTestChainLockConstraint() {
-	example := NilChainLock
-	chainLockBack, err := ChainLockFromBytes(example.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		example := NilChainLock
+		chainLockBack, err := ChainLockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(EqualConstraints(chainLockBack, NilChainLock), "inconsistency "+ChainLockName)
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
+		_, err = lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+	})
 }
-
-const chainLockConstraintSource = `
-
-// $0 selfUnlockParameters
-func _selfReferencedChainID : 
-	parseInlineDataArgument(
-		consumedConstraintByIndex(byte($0, 0), byte($0, 1)),
-        0,
-		#chain
-	)
-
-// $0 - unlock params
-func _selfReferencedChainIDAdjusted : if(
-	isZero(_selfReferencedChainID($0)),
-	blake2b(inputIDByIndex(byte($0, 0))),
-	_selfReferencedChainID($0)
-)
-
-// $0 selfUnlockParameters
-func _chainLockUnlock : if( lessThan(len($0), u64/2), 0xffff, slice($0,0,1) )
-
-// $0 - chainID
-func _validChainUnlock : 
-       // chain id must be equal to the referenced chain id 
-   equal($0, _selfReferencedChainIDAdjusted(_chainLockUnlock(selfUnlockParameters))) 
-
-
-// $0 - chainID
-// Unlock parameters first 2 bytes: [unlocked chain output index, chain constraint index]
-func chainLock : 
-or(
-	and(
-		selfIsProducedOutput, 
-		require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
-		require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
-		require(not(isZero($0)), !!!non_zero_argument_expected)   // to prevent common error
-	),
-	and(
-		selfIsConsumedOutput,
-        greaterOrEqualThan(len(selfUnlockParameters), u64/2),
-		not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing 
-		_validChainUnlock($0)
-	)
-)
-
-// short version of chainLock
-// $0 - chainID
-// Unlock parameters 2 bytes: [unlocked chain output index, chain constraint index]
-func c : chainLock($0)
-`

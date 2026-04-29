@@ -9,24 +9,24 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-const (
-	TraceTagAutopeering = "autopeering"
-	checkPeersEvery     = 3 * time.Second
-)
+const checkPeersEvery = 3 * time.Second
 
 func (ps *Peers) isCandidateToConnect(id peer.ID) (yes bool) {
 	if id == ps.host.ID() {
 		return
 	}
 	ps.withPeer(id, func(p *Peer) {
-		yes = p == nil && !ps._isInBlacklist(id) && !ps._isInCoolOffList(id) && !ps._isInConnectList(id)
+		// libp2p's host.Connect dedups in-flight dials internally, so we don't
+		// need a separate connectList. Peers we've previously dropped aren't
+		// auto-redialled — they get re-discovered organically via DHT or peer
+		// exchange and have to pass through this check again.
+		yes = p == nil
 	})
 	return
 }
 
 func (ps *Peers) discoverPeersIfNeeded() {
-	aliveStatic, aliveDynamic, pullTargets := ps.NumAlive()
-	ps.Tracef(TraceTagAutopeering, "FindPeers: num alive dynamic = %d, static = %d, pull targets = %d", aliveDynamic, aliveStatic, pullTargets)
+	_, aliveDynamic := ps.NumAlive()
 
 	if aliveDynamic >= ps.cfg.MaxDynamicPeers {
 		return
@@ -47,7 +47,6 @@ func (ps *Peers) discoverPeersIfNeeded() {
 			candidates = append(candidates, addrInfo)
 		}
 	}
-	ps.Tracef(TraceTagAutopeering, "FindPeers: len(candidates) = %d", len(candidates))
 
 	if len(candidates) == 0 {
 		return
@@ -61,24 +60,6 @@ func (ps *Peers) discoverPeersIfNeeded() {
 	for _, a := range candidates {
 		if ps.addPeer(&a, "", false) {
 			ps.Log().Infof("[peering] added dynamic peer %s", a.ID.String())
-			ps.Tracef(TraceTagAutopeering, "added dynamic peer %s", a.String())
-		}
-	}
-}
-
-func (ps *Peers) dropExcessPeersIfNeeded() {
-	ps.mutex.Lock()
-	defer ps.mutex.Unlock()
-
-	dynamicPeers := util.ValuesFiltered(ps.peers, func(p *Peer) bool {
-		return !p.isStatic
-	})
-	if len(dynamicPeers) <= ps.cfg.MaxDynamicPeers {
-		return
-	}
-	for _, p := range dynamicPeers[:len(dynamicPeers)-ps.cfg.MaxDynamicPeers] {
-		if time.Since(p.whenAdded) > gracePeriodAfterAdded {
-			ps._dropPeer(p, "excess peer (by rank)", true)
 		}
 	}
 }

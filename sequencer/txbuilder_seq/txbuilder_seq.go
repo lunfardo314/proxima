@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
@@ -18,68 +19,82 @@ import (
 type (
 	SeqTxBuilder struct {
 		*txbuilder.TxBuilder
-		origSeqData           *seqdata.SequencerData
-		rdr                   multistate.IndexedStateReader
-		nextSeqData           *seqdata.SequencerData
-		privateKey            ed25519.PrivateKey
-		chainInput            *ledger.OutputWithChainID
-		stemInput             *ledger.OutputWithID // it is branch tx if != nil
-		doNotInflateMainChain bool                 // default is inflate
-		chainOutAmounts       [15]int64
-		vrfProof              []byte
+		*ledger.Library          // cached library for this transaction's slot
+		origSeqData              *seqdata.SequencerData
+		rdr                      multistate.IndexedStateReader
+		nextSeqData              *seqdata.SequencerData
+		signatureType            byte
+		privateKey               []byte
+		publicKey                []byte
+		chainInput               *ledger.OutputWithChainID
+		stemInput                *ledger.OutputWithID // it is branch tx if != nil
+		doNotInflateMainChain    bool                 // default is inflate
+		chainOutAmounts          [15]int64
+		vrfProof                 []byte
+		branchCoverageUpperBound uint64 // upper bound for branch coverage, 0 means no enforcement
+		enforceFreezeUpperBound  bool   // if true, check upper bound before each delegation freeze
 	}
 
 	TxBuilderCommand interface {
 		// Apply valid=false means it is permanently invalid, err is a reason why not possible to apply it
 		Apply(txb *SeqTxBuilder) (valid bool, err error)
 		Lines(prefix ...string) *lines.Lines
+		// AttachmentCostDelta returns the total attachment cost contribution of this command,
+		// including the base tag-along input (+1) plus any additional inputs/outputs the command creates.
+		// This value is added to seqTxCost to predict the final sequencer transaction cost.
+		AttachmentCostDelta() int
+	}
+	Params struct {
+		Timestamp                base.LedgerTime
+		Predecessor              *ledger.OutputWithChainID
+		Stem                     *ledger.OutputWithID
+		SignatureType            byte
+		PrivateKey               []byte
+		PublicKey                []byte
+		StateReader              multistate.IndexedStateReader
+		DoNotInflateMainChain bool
 	}
 )
 
 // New initializes sequencer tx builder and performs necessary validity check
-func New(ts base.LedgerTime,
-	predecessor *ledger.OutputWithChainID,
-	stem *ledger.OutputWithID,
-	privateKey ed25519.PrivateKey,
-	rdr multistate.IndexedStateReader, doNotInflateMainChain ...bool) (*SeqTxBuilder, error) {
+func New(par Params) (*SeqTxBuilder, error) {
 
 	ret := &SeqTxBuilder{
-		privateKey:            privateKey,
-		chainInput:            predecessor,
-		stemInput:             stem,
+		Library:               ledger.L(par.Timestamp.Slot), // cached library for this transaction's slot
+		signatureType:         par.SignatureType,
+		privateKey:            par.PrivateKey,
+		publicKey:             par.PublicKey,
+		chainInput:            par.Predecessor,
+		stemInput:             par.Stem,
 		TxBuilder:             txbuilder.New(),
-		rdr:                   rdr,
-		doNotInflateMainChain: func() bool { return len(doNotInflateMainChain) > 0 && doNotInflateMainChain[0] }(),
+		rdr:                   par.StateReader,
+		doNotInflateMainChain: par.DoNotInflateMainChain,
 	}
 
 	var err error
-	sd, err := ledger.ParseSequencerData(predecessor.Output)
+	sd, err := ledger.ParseSequencerData(par.Predecessor.Output)
 
 	if err != nil {
 		ret.origSeqData = seqdata.New()
 	} else {
 		ret.origSeqData = &sd
-		ret.origSeqData.IncChainHeight()
-		if stem != nil {
-			ret.origSeqData.IncBranchHeight()
-		}
 	}
 	ret.nextSeqData = ret.origSeqData.Clone()
-	diffTicksChain := base.DiffTicks(ts, predecessor.Timestamp())
-	if diffTicksChain < int64(ledger.Const.TransactionPaceSequencer) ||
+	diffTicksChain := base.DiffTicks(par.Timestamp, par.Predecessor.Timestamp())
+	if diffTicksChain < int64(ret.TransactionPaceSequencer) ||
 		diffTicksChain < int64(ret.origSeqData.Pace()) {
-		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", ts.String())
+		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", par.Timestamp.String())
 	}
 
-	ret.TransactionData.Timestamp = ts
+	ret.TransactionData.Timestamp = par.Timestamp
 
 	if ret.IsSlotBoundary() {
-		if stem == nil {
-			return nil, fmt.Errorf("SeqTxBuilder: wrong timestamp or stem for branch transaction: %s", ts.String())
+		if par.Stem == nil {
+			return nil, fmt.Errorf("SeqTxBuilder: wrong timestamp or stem for branch transaction: %s", par.Timestamp.String())
 		}
 	} else {
-		if !ledger.Const.IsPostBranchConsolidationTimestamp(ts) {
-			return nil, fmt.Errorf("SeqTxBuilder: timestamp violates post-branch timestamp constraint: %s", ts.String())
+		if !ret.IsPostBranchConsolidationTimestamp(par.Timestamp) {
+			return nil, fmt.Errorf("SeqTxBuilder: timestamp violates post-branch timestamp constraint: %s", par.Timestamp.String())
 		}
 	}
 
@@ -90,7 +105,7 @@ func New(ts base.LedgerTime,
 
 		// sign concatenation of predecessor VRFProof with slot number and next VRF proof
 		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TransactionData.Timestamp.Slot))
-		ret.vrfProof = ed25519.Sign(ret.privateKey, msg)
+		ret.vrfProof = common.Concat(base.SignatureTypeED25519, ed25519.Sign(ret.privateKey, msg))
 	}
 
 	// form initial amounts vector
@@ -100,33 +115,40 @@ func New(ts base.LedgerTime,
 		if ret.IsSlotBoundary() {
 			// from VRF proof for branch
 			util.Assertf(len(ret.vrfProof) > 0, "len(vrfProof)>0")
-			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.BranchInflationBonus(ret.vrfProof))
+			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof, par.Timestamp.Slot))
 		} else {
 			// for non-branch
 			if ret.chainInput.Timestamp().Slot != ret.TransactionData.Timestamp.Slot {
-				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ledger.ChainInflationOneSlot(
+				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.ChainInflationOneSlot(
 					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0)),
 					ret.chainInput.Timestamp().Slot,
 				))
 			}
 		}
 	}
-	predAmounts := predecessor.Output.Amounts()
+	predAmounts := par.Predecessor.Output.Amounts()
 	ret.chainOutAmounts[ledger.AmountIndexTokenBalance] = int64(predAmounts.TokenBalance()) + ret.chainOutAmounts[ledger.AmountIndexInflation]
 
 	// frozen coverage at the predecessor adjusted to the epoch of the successor
-	diffEpochsInt := ledger.Const.DiffEpochs(predecessor.ChainID, ts, predecessor.Timestamp())
+	diffEpochsInt := ret.DiffEpochs(par.Predecessor.ChainID, par.Timestamp, par.Predecessor.Timestamp())
 	util.Assertf(diffEpochsInt >= 0, "diffEpochsInt>=0")
 	diffEpochs := uint32(diffEpochsInt)
 
-	predecessorFrozenCoverageAdjusted := func(i uint32) (ret int64) {
-		if idx := i + diffEpochs; idx < ledger.Const.MaxFrozenEpochs {
-			ret = predAmounts.FrozenCoverageAt(byte(idx))
+	maxFrozenEpochs := ret.MaxFrozenEpochs
+	predecessorFrozenCoverageAdjusted := func(i uint32) (result int64) {
+		if idx := i + diffEpochs; idx < maxFrozenEpochs {
+			result = predAmounts.FrozenCoverageAt(byte(idx))
 		}
 		return
 	}
-	for i := uint32(0); i < ledger.Const.MaxFrozenEpochs; i++ {
+	for i := uint32(0); i < ret.MaxFrozenEpochs; i++ {
 		ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
+	}
+
+	// initialize branch coverage bounds for delegation freeze checking
+	if ret.stemInput != nil {
+		ret.branchCoverageUpperBound = ret.Library.BranchCoverageUpperBound(par.Timestamp.Slot)
+		ret.enforceFreezeUpperBound = !ret.origSeqData.IsIgnoreFreezeBound()
 	}
 
 	// consume chain and stem (optionally) outputs but do not unlock it
@@ -134,7 +156,7 @@ func New(ts base.LedgerTime,
 	util.AssertNoError(err)
 	util.Assertf(idx == 0, "idx==0")
 
-	if stem != nil {
+	if par.Stem != nil {
 		idx, err = ret.ConsumeOutput(ret.stemInput.Output, ret.stemInput.ID)
 		util.AssertNoError(err)
 		util.Assertf(idx == 1, "idx==1")
@@ -155,7 +177,15 @@ func NewWithSequencerID(ts base.LedgerTime,
 	if ts.IsSlotBoundary() {
 		stemIn = rdr.GetStemOutput()
 	}
-	return New(ts, &seqIn, stemIn, privateKey, rdr)
+	return New(Params{
+		Timestamp:     ts,
+		Predecessor:   &seqIn,
+		Stem:          stemIn,
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    privateKey,
+		PublicKey:     privateKey.Public().(ed25519.PublicKey),
+		StateReader:   rdr,
+	})
 }
 
 func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
@@ -172,7 +202,7 @@ func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
 
 func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid)
-	if len(txb.TransactionData.Endorsements) > int(ledger.Const.MaxNumberOfEndorsements) {
+	if len(txb.TransactionData.Endorsements) > int(txb.MaxNumberOfEndorsements) {
 		return fmt.Errorf("SeqTxBuilder: too many endorsements")
 	}
 	return nil
@@ -186,12 +216,12 @@ func (txb *SeqTxBuilder) AddSimpleInput(o ledger.OutputWithID) error {
 	}
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(o.Output.TokenBalance())
 	switch o.Output.Lock().Name() {
-	case ledger.AddressED25519Name:
+	case ledger.SigLockName:
 		if err = txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0); err != nil {
 			return fmt.Errorf("AddSimpleInput: %v", err)
 		}
 	case ledger.ChainLockName:
-		txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainUnlockParams(0, 2))
+		txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 	default:
 		return fmt.Errorf("AddSimpleInput: wrong ock type")
 	}
@@ -218,8 +248,8 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
-	frozenSlots := ledger.Const.FrozenSlotsFromFrozenEpochs(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot, frozenEpochs)
-	projectedInflation := ledger.ChainInflation(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
+	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TransactionData.Timestamp.Slot, frozenEpochs)
+	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
 		return (projectedInflation * uint64(delegatorRequirement)) / 1000, nil
@@ -227,6 +257,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	return (projectedInflation * uint64(seqTolerance)) / 1000, nil
 }
 
+// FreezeDelegation makes delegated output frozen. Returned valid = false if output is permanently invalid and freezing should not be repeated again
 func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput, freezeUntilEpoch ...uint32) (successorIdx byte, valid bool, err error) {
 	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TransactionData.Timestamp.Slot) {
 		valid = true
@@ -243,11 +274,11 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
 		return
 	}
-	if delegationIn.Target.ChainID() != txb.chainInput.ChainID {
+	if delegationIn.Target != txb.chainInput.ChainID {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
 		return
 	}
-	txEpoch := ledger.Const.EpochFromSlotDirect(delegationIn.Target.ChainID(), txb.TransactionData.Timestamp.Slot)
+	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TransactionData.Timestamp.Slot)
 
 	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
 	var lastEpochToFreeze uint32
@@ -271,6 +302,29 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		return
 	}
 
+	// check if sequencer has enough token balance to pay the advance
+	// If not, consider delegation to be permanently invalid (even not true 100%)
+	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(advance) {
+		valid = false
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: not enough token balance for advance (%s < %s)",
+			util.Th(uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance])), util.Th(advance))
+		return
+	}
+
+	// check if freezing this delegation would push coverage above the upper bound
+	if txb.enforceFreezeUpperBound {
+		projectedTokenBalance := txb.chainOutAmounts[ledger.AmountIndexTokenBalance] - int64(advance)
+		projectedFrozen0 := txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage] +
+			delegationOut.Amounts().FrozenCoverageAt(0)
+		projectedCoverage := uint64(projectedTokenBalance + projectedFrozen0)
+		if projectedCoverage > txb.branchCoverageUpperBound {
+			valid = true
+			err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: skipping, would exceed branch coverage upper bound (%s > %s)",
+				util.Th(projectedCoverage), util.Th(txb.branchCoverageUpperBound))
+			return
+		}
+	}
+
 	idx, err := txb.ConsumeOutput(delegationIn.Output, delegationIn.ID)
 	if err != nil {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
@@ -284,13 +338,13 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		return
 	}
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(advance)
-	// unlock delegation lock as target. First 2 bytes is chain unlock parameters, 3rd byte indicates it is target unlock
-	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0, 2), ledger.DelegationUnlockedByTarget)
+	// unlock delegation lock as target. First byte is chain lock unlock, 2nd byte indicates it is target unlock
+	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
 	// unlock chain
-	txb.PutUnlockParams(idx, 2, ledger.NewChainUnlockParams(successorIdx, 2))
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(successorIdx))
 
 	// add frozen coverage to the sequencer output
-	a := delegationOut.Amounts().FrozenCoverageVector()
+	a := delegationOut.Amounts().FrozenCoverageVector(byte(txb.Library.MaxFrozenEpochs))
 	for i, c := range a {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] += c
 	}
@@ -299,11 +353,11 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 }
 
 func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
-	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero() {
+	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero(byte(txb.Library.MaxFrozenEpochs)) {
 		return fmt.Errorf("AddWithdrawOutput: only token balance can be non-zero")
 	}
 	amount := o.TokenBalance()
-	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.Const.MinimumAmountOnSequencer+amount) {
+	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(amount) {
 		return fmt.Errorf("AddWithdrawOutput: not enough token balance")
 	}
 	if _, err := txb.ProduceOutput(o); err != nil {
@@ -314,24 +368,39 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 }
 
 func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
-	if txb.chainOutAmounts[ledger.AmountIndexTokenBalance] < int64(ledger.Const.MinimumAmountOnSequencer) {
-		return fmt.Errorf("SeqTxBuilder: amount %s on the produced chain output is below minimum %s required for the sequencer",
-			util.Th(txb.chainOutAmounts[ledger.AmountIndexTokenBalance]),
-			util.Th(ledger.Const.MinimumAmountOnSequencer))
-	}
 	// sequencer input
 	txb.PutSignatureUnlock(0)
 
 	// sequencer produced output
-	var chainOutConstraintIdx byte
 	chainOutIdx, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.PutAmounts(txb.chainOutAmounts[:]...)
 		o.PutLock(txb.chainInput.Output.Lock())
 
-		chainOutConstraint := ledger.NewChainConstraint(txb.chainInput.ChainID, 0, txb.chainInput.ChainConstraintIndex, txb.chainInput.OriginSlot, txb.chainInput.OriginAmount)
-		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
-		// put sequencer constraint
-		sequencerConstraint := ledger.NewSequencerConstraint(chainOutConstraintIdx)
+		// chain constraint at fixed index 2
+		// compute cumulative inflation values for the chain constraint
+		totalInflation := uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
+		var chainInflation, branchBonus uint64
+		if txb.stemInput != nil {
+			// branch transaction: all inflation is branch bonus
+			branchBonus = totalInflation
+		} else {
+			// non-branch transaction: all inflation is chain inflation
+			chainInflation = totalInflation
+		}
+		var branchCounterInc uint32
+		if txb.stemInput != nil {
+			branchCounterInc = 1
+		}
+		chainOutConstraint := ledger.NewChainConstraint(
+			txb.chainInput.ChainID, 0, txb.chainInput.OriginSlot,
+			txb.chainInput.CumulativeChainInflation+chainInflation,
+			txb.chainInput.CumulativeBranchBonus+branchBonus,
+			txb.chainInput.TransitionCounter+1,
+			txb.chainInput.BranchCounter+branchCounterInc,
+		)
+		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
+		// sequencer constraint (no parameters)
+		sequencerConstraint := ledger.NewSequencerConstraint()
 		o.MustPushConstraint(sequencerConstraint.Bytes())
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
 		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
@@ -342,7 +411,7 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 	}
 
 	// unlock sequencer chain constraint
-	txb.PutUnlockParams(0, txb.chainInput.ChainConstraintIndex, ledger.NewChainUnlockParams(chainOutIdx, chainOutConstraintIdx))
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(chainOutIdx))
 	txb.TransactionData.SequencerOutputIndex = chainOutIdx
 
 	if txb.stemInput == nil {
@@ -361,6 +430,15 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		return fmt.Errorf("SeqTxBuilder: %w", err)
 	}
 	return nil
+}
+
+func (txb *SeqTxBuilder) BuildTransactionWithValidation() (*transaction.Transaction, error) {
+	if err := txb.buildSequencerAndStemOutputs(); err != nil {
+		return nil, fmt.Errorf("SeqTxBuilder: %w", err)
+	}
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(txb.privateKey)
+	return txb.TxBuilder.BuildTransactionWithValidation()
 }
 
 func (txb *SeqTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
@@ -398,12 +476,36 @@ func (txb *SeqTxBuilder) InputsAreFull() bool {
 	return txb.NumInputs()+txb.reservedInputs() >= 256
 }
 
+// AttachmentCost returns the predicted final attachment cost of the sequencer transaction.
+// This is the sum of inputs and outputs, including chain output and stem output (if branch)
+// that will be added at finalization.
+func (txb *SeqTxBuilder) AttachmentCost() int {
+	// Current inputs + current outputs + chain output (always 1)
+	cost := txb.NumInputs() + txb.NumOutputs() + 1
+	if txb.stemInput != nil {
+		// Stem output will be added for branch transactions
+		cost++
+	}
+	return cost
+}
+
 func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
 	return txb.TransactionData.Timestamp
 }
 
 func (txb *SeqTxBuilder) Slot() uint32 {
 	return txb.TransactionData.Timestamp.Slot
+}
+
+// CurrentBranchCoverage returns tokenBalance + frozenCoverage[epoch 0] of the sequencer chain output being built.
+func (txb *SeqTxBuilder) CurrentBranchCoverage() uint64 {
+	return uint64(txb.chainOutAmounts[ledger.AmountIndexTokenBalance] +
+		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage])
+}
+
+// EffectiveName returns the current name from nextSeqData (inherited from predecessor).
+func (txb *SeqTxBuilder) EffectiveName() string {
+	return txb.nextSeqData.Name()
 }
 
 func (txb *SeqTxBuilder) SetName(name string) {
@@ -429,10 +531,16 @@ type MakeSimpleSequencerTransactionParams struct {
 	Endorsements []base.TransactionID
 	// ExplicitBaseline or nil if none
 	ExplicitBaseline *base.TransactionID
+	// private key type
+	SignatureType byte
 	// chain controller
-	PrivateKey ed25519.PrivateKey
+	PrivateKey []byte
+	//
+	PublicKey []byte
 	//
 	DoNotInflateMainChain bool
+	//
+	AttachmentBudget uint16
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
@@ -450,7 +558,15 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 			return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with additional input")
 		}
 	}
-	txb, err := New(par.Timestamp, par.ChainInput, par.StemInput, par.PrivateKey, nil, par.DoNotInflateMainChain)
+	txb, err := New(Params{
+		Timestamp:                par.Timestamp,
+		Predecessor:              par.ChainInput,
+		Stem:                     par.StemInput,
+		SignatureType:            par.SignatureType,
+		PrivateKey:               par.PrivateKey,
+		PublicKey:                par.PublicKey,
+		DoNotInflateMainChain: par.DoNotInflateMainChain,
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: %w", err)
 	}

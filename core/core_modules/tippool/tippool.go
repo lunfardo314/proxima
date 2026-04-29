@@ -69,7 +69,7 @@ const (
 func New(env environment) *SequencerTips {
 	ret := &SequencerTips{
 		latestMilestones:                make(map[base.ChainID]_activeMilestoneData),
-		expectedSequencerActivityPeriod: time.Duration(expectedSequencerActivityPeriodInSlots) * ledger.Const.SlotDuration(),
+		expectedSequencerActivityPeriod: time.Duration(expectedSequencerActivityPeriodInSlots) * ledger.L(0).SlotDuration(),
 		latestSequencerData:             make(map[base.ChainID]LatestSequencerTipData),
 	}
 	ret.CoreModule = core_modules.New[Input](env, Name, ret.consume)
@@ -133,7 +133,7 @@ func (t *SequencerTips) consume(inp Input) {
 func (t *SequencerTips) updateLatestSequencerData(vid *vertex.WrappedTx, seqID base.ChainID) {
 	seqData := t.latestSequencerData[seqID]
 	seqData.LatestMilestoneTxID = vid.ID()
-	if vid.IsSequencerMilestone() {
+	if vid.IsSequencerTransaction() {
 		seqData.LastBranchTxID = util.Ref(vid.ID())
 	}
 	seqData.MilestoneCount++
@@ -227,6 +227,19 @@ func (t *SequencerTips) NumSequencerTips() int {
 	defer t.mutex.RUnlock()
 
 	return len(t.latestMilestones)
+}
+
+// IsVertexReferenced returns true if the vertex is one of the latest milestone tips.
+func (t *SequencerTips) IsVertexReferenced(vid *vertex.WrappedTx) bool {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+
+	for _, md := range t.latestMilestones {
+		if md.WrappedTx == vid {
+			return true
+		}
+	}
+	return false
 }
 
 const activityTTL = 40 * time.Second

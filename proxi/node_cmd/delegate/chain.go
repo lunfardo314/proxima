@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -24,12 +25,17 @@ func initDelegationSubmitCmd() *cobra.Command {
 
 	glb.AddFlagTarget(cmd)
 
-	cmd.PersistentFlags().StringVarP(&targetChainIDStr, "seq", "q", "", "target sequencer id")
-	err := viper.BindPFlag("seq", cmd.PersistentFlags().Lookup("seq"))
+	cmd.PersistentFlags().StringVarP(&targetChainIDStr, "delegation_target", "q", "", "target sequencer id")
+	err := viper.BindPFlag("delegation_target", cmd.PersistentFlags().Lookup("delegation_target"))
 	glb.AssertNoError(err)
 
-	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 8, "max frozen epochs allowed by the delegator")
+	// 0 means use the ledger constant constDelegationMaxFrozenEpochs (default maximum)
+	cmd.PersistentFlags().Uint8VarP(&maxFreezeEpochs, "epochs", "e", 0, "max frozen epochs allowed by the delegator (0 = maximum)")
 	err = viper.BindPFlag("epochs", cmd.PersistentFlags().Lookup("epochs"))
+	glb.AssertNoError(err)
+
+	cmd.PersistentFlags().Uint16Var(&requiredShare, "share", 900, "required inflation share in promille (0-1000)")
+	err = viper.BindPFlag("share", cmd.PersistentFlags().Lookup("share"))
 	glb.AssertNoError(err)
 
 	cmd.InitDefaultHelpCmd()
@@ -49,7 +55,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	if targetChainIDStr == "" {
-		glb.Infof("selecing optimal/random target sequencer..")
+		glb.Infof("selecting optimal/random target sequencer..")
 		targetSeqID, err = chooseRandomSequencerForDelegation()
 		glb.AssertNoError(err)
 	} else {
@@ -57,46 +63,54 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(err == nil, "failed parsing target chainID: %v", err)
 	}
 
-	seqOut, _, _, err := glb.GetClient().GetChainOutput(targetSeqID)
-	glb.Assertf(err == nil, "can't find sequencer id %s: %v", targetSeqID.StringShort(), err)
-	glb.Assertf(seqOut.ID.IsSequencerTransaction(), "chainID %s does not represent a sequencer", targetSeqID.StringShort())
+	glb.Assertf(requiredShare <= 1000, "required inflation share must be 0-1000 promille")
 
-	var tagAlongSeqID *base.ChainID
-	feeAmount := glb.GetTagAlongFee()
-	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
-	tagAlongSeqID = glb.GetTagAlongSequencerID()
+	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+	feeAmount, err := glb.GetRequiredTagAlongFee(*tagAlongSeqID)
+	if err != nil {
+		glb.Infof("error getting tag-along fee: %s", err)
+		return
+	}
+	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
 
 	ts := ledger.TimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
 	client := glb.GetClient()
-	oIn, _, _, err := client.GetChainOutput(chainID)
+	oIn, _, err := client.GetChainOutput(chainID)
 	glb.AssertNoError(err)
+
+	ti, err := client.GetSequencerTargetInfo(targetSeqID)
+	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
+
+	est := estimateDelegation(ti, oIn.Output.TokenBalance(), maxFreezeEpochs, requiredShare, targetSeqID, ts.Slot)
+	effShare := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredShare, targetSeqID)
 
 	dOut, isDelegation := ledger.AsDelegationOutput(oIn.Output, oIn.ID)
 	glb.Assertf(!isDelegation || dOut.IsUnlockableByMaster(ts.Slot), "chain is delegation output NOT unlockable by master")
 
-	inflation := ledger.ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
+	inflation := ledger.L(base.MaxSlot).ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
 
 	// tentatively checking maximum storage deposit
+	lib := ledger.L(ts.Slot)
 	oOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-glb.GetTagAlongFee()), int64(inflation))
-		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, byte(ledger.Const.MaxFrozenEpochs), 100)
+		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
+		lock := ledger.NewDelegateLock(targetSeqID, base.HolderID(walletData.Account), byte(lib.MaxFrozenEpochs), effShare)
 		o.WithLock(lock)
-		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
-		o.MustPushConstraint(cc.Bytes())
+		cc := ledger.NewChainConstraint(chainID, 0, oIn.OriginSlot, oIn.CumulativeChainInflation+inflation, oIn.CumulativeBranchBonus, oIn.TransitionCounter+1, oIn.BranchCounter)
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 	})
 	glb.AssertNoError(oOut.EnoughAmountForStorageDeposit())
 
 	oOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-glb.GetTagAlongFee()), int64(inflation))
-		lock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(targetSeqID), walletData.Account, maxFreezeEpochs, 100)
+		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
+		lock := ledger.NewDelegateLock(targetSeqID, base.HolderID(walletData.Account), maxFreezeEpochs, effShare)
 		o.WithLock(lock)
-		cc := ledger.NewChainConstraint(chainID, 0, 2, oIn.OriginSlot, oIn.OriginAmount)
-		o.MustPushConstraint(cc.Bytes())
+		cc := ledger.NewChainConstraint(chainID, 0, oIn.OriginSlot, oIn.CumulativeChainInflation+inflation, oIn.CumulativeBranchBonus, oIn.TransitionCounter+1, oIn.BranchCounter)
+		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
 		o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 	})
 
@@ -104,14 +118,14 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	predIdx, err := txb.ConsumeOutput(oIn.Output, oIn.ID)
 	glb.AssertNoError(err)
 	glb.Assertf(predIdx == 0, "predIdx==0")
-	txb.PutSignatureUnlock(0, 0, ledger.DelegationUnlockedByMaster)
-	txb.PutUnlockParams(0, 2, ledger.NewChainUnlockParams(0, 2))
+	txb.PutSignatureUnlock(0, ledger.DelegationUnlockedByMaster)
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(0))
 
 	succIdx, err := txb.ProduceOutput(oOut)
 	glb.AssertNoError(err)
 	glb.Assertf(succIdx == 0, "succIdx==0")
 
-	taOut := ledger.NewTagAlongOutput(glb.GetTagAlongFee(), *glb.GetTagAlongSequencerID(), walletData.Account)
+	taOut := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.HolderID(walletData.Account))
 	tagAlongIdx, err := txb.ProduceOutput(taOut)
 	glb.AssertNoError(err)
 	glb.Assertf(tagAlongIdx == 1, "tagAlongIdx==1")
@@ -127,7 +141,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Verbosef("\n-------- tx OK (len = %d) -----------\n%s", len(txBytes), txString)
 
-	prompt := fmt.Sprintf("delegate %s to sequencer %s?", chainID.StringShort(), targetSeqID.String())
+	prompt := fmt.Sprintf("delegate %s to sequencer %s (share %d promille)?", chainID.StringShort(), targetSeqID.String(), effShare)
 	if !glb.YesNoPrompt(prompt, true) {
 		return
 	}

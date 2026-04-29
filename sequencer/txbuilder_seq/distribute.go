@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -13,7 +14,7 @@ import (
 
 // MakeDistributionTransaction creates initial distribution transaction according to distribution list.
 // It is a branch transaction. Remainder goes to the genesis chain
-func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
+func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
 	constants, genesisRoot, err := multistate.ScanGenesisState(stateStore)
 	if err != nil {
 		return nil, err
@@ -32,9 +33,9 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 	distributeTotal := uint64(0)
 	for i := range genesisDistribution {
 		distributeTotal += genesisDistribution[i].Balance
-		err = util.ErrorCondf(distributeTotal+ledger.Const.MinimumAmountOnSequencer <= constants.InitialSupply,
-			"condition failed: distributeTotal(%d) + MinimumBalanceOnBoostrapSequencer(%d) < InitialSupply(%d)",
-			distributeTotal, ledger.Const.MinimumAmountOnSequencer, constants.InitialSupply)
+		err = util.ErrorCondf(distributeTotal <= constants.InitialSupply,
+			"condition failed: distributeTotal(%d) > InitialSupply(%d)",
+			distributeTotal, constants.InitialSupply)
 		if err != nil {
 			return nil, err
 		}
@@ -53,7 +54,7 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 			o.WithAmounts(int64(genesisDistribution[i].Balance)).
 				WithLock(genesisDistribution[i].Lock)
 			if genesisDistribution[i].ChainOrigin {
-				o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot, genesisDistribution[i].Balance).Bytes())
+				o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
 			}
 		})
 	}
@@ -70,17 +71,17 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 			OutputWithID: *initSupplyOutput,
 			ChainConstraintData: ledger.ChainConstraintData{
 				ChainConstraint: ledger.ChainConstraint{
-					ChainID:      base.BoostrapSequencerID,
-					OriginAmount: initSupplyOutput.Output.TokenBalance(),
+					ChainID: base.BoostrapSequencerID,
 				},
-				ChainConstraintIndex: 2,
 			},
 		},
 		StemInput:             genesisStem,
 		Timestamp:             ts,
 		WithdrawOutputs:       genesisDistributionOutputs,
+		SignatureType:         base.SignatureTypeED25519,
 		PrivateKey:            originPrivateKey,
-		DoNotInflateMainChain: true,
+		PublicKey:             originPrivateKey.Public().(ed25519.PublicKey),
+		DoNotInflateMainChain: false,
 	})
 	if err != nil {
 		return nil, err
@@ -92,12 +93,12 @@ func MakeDistributionTransaction(stateStore multistate.StateStore, originPrivate
 // adding initial distribution transaction.
 // Distribution transaction is a branch transaction in the slot next after the genesis.
 // Distribution parameter is added to the transaction store
-func DistributeInitialSupply(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
+func DistributeInitialSupply(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, error) {
 	txBytes, _, err := DistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
 	return txBytes, err
 }
 
-func DistributeInitialSupplyExt(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID, error) {
+func DistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID, error) {
 	var ret []byte
 	var txid base.TransactionID
 	err := util.CatchPanicOrError(func() error {
@@ -111,13 +112,13 @@ func DistributeInitialSupplyExt(stateStore multistate.StateStore, originPrivateK
 }
 
 // MustDistributeInitialSupply makes distribution transaction and commits it into the multi-ledger state with branch record
-func MustDistributeInitialSupply(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) []byte {
+func MustDistributeInitialSupply(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) []byte {
 	ret, _ := MustDistributeInitialSupplyExt(stateStore, originPrivateKey, genesisDistribution)
 	return ret
 }
 
 // MustDistributeInitialSupplyExt makes a distribution transaction and commits it into the multi-ledger state with branch record
-func MustDistributeInitialSupplyExt(stateStore multistate.StateStore, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID) {
+func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed25519.PrivateKey, genesisDistribution []ledger.LockBalance) ([]byte, base.TransactionID) {
 	txBytes, err := MakeDistributionTransaction(stateStore, originPrivateKey, genesisDistribution)
 	util.AssertNoError(err)
 
@@ -127,11 +128,20 @@ func MustDistributeInitialSupplyExt(stateStore multistate.StateStore, originPriv
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
 	bootstrapChainID := ledger.OriginChainID()
 
-	tx, err := transaction.FromBytesMainChecksWithOpt(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	util.AssertNoError(err)
 
-	err = tx.Validate(transaction.ValidateOptionWithFullContext(tx.InputLoaderFromState(rdr)))
+	err = tx.SetFullContext(tx.InputLoaderFromState(rdr))
 	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", err, tx.String)
+
+	err = tx.ValidateFullContext()
+	util.Assertf(err == nil, "%v\n>>>>>>>>>>>>>>>>> %s\n<<<<<<<<<<<<<\n", err, tx.String)
+
+	// extract branch inflation from the sequencer output
+	seqData := tx.SequencerTransactionData()
+	util.Assertf(seqData != nil, "expected sequencer transaction")
+	seqOut := tx.MustProducedOutputWithIDAt(seqData.SequencerOutputIndex)
+	branchInflation := seqOut.Output.Inflation()
 
 	nextStem := tx.FindStemProducedOutput()
 	util.Assertf(nextStem != nil, "nextStem != nil")
@@ -142,8 +152,8 @@ func MustDistributeInitialSupplyExt(stateStore multistate.StateStore, originPriv
 		StemOutputID:    nextStem.ID,
 		SeqID:           bootstrapChainID,
 		CoverageDelta:   stateID.InitialSupply,
-		SlotInflation:   0,
-		Supply:          stateID.InitialSupply,
+		SlotInflation:   branchInflation,
+		Supply:          stateID.InitialSupply + branchInflation,
 		NumTransactions: 1,
 	})
 	return txBytes, tx.ID()

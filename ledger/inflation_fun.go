@@ -4,19 +4,16 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (lib *Library) ChainInflationOriginal(amount uint64, inSlot, forSlots uint32) uint64 {
-	src := fmt.Sprintf("chainInflation(u64/%d, u64/%d, u64/%d)", amount, inSlot, forSlots)
+func (lib *Library) ChainInflationMultiStep(amount uint64, inSlot, forSlots uint32) uint64 {
+	src := fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)", amount, inSlot, forSlots)
 	resBin, err := lib.EvalFromSource(nil, src)
 	util.AssertNoError(err)
 	return binary.BigEndian.Uint64(resBin)
-}
-
-func ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
-	return uint64(forSlots) * (amount / (Const.MinimumInflatableAmount0 + uint64(inSlot)))
 }
 
 // AdjustedAmount calculates amount adjusted to the maximum inflation.
@@ -26,23 +23,89 @@ func ChainInflation(amount uint64, inSlot, forSlots uint32) uint64 {
 //   - consider name 'real supply/amount/balance'
 //   - consider adjustment of the branch inflation bonus
 func AdjustedAmount(amount uint64, slot uint32) uint64 {
-	return Const.MinimumInflatableAmount0 * (amount / (Const.MinimumInflatableAmount0 + uint64(slot)))
+	lib := L(slot)
+	return lib.MinimumInflatableAmount0 * (amount / (lib.MinimumInflatableAmount0 + uint64(slot)))
 }
 
-func ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
-	return ChainInflation(amount, inSlot, 1)
+func (lib *Library) ChainInflationOneSlot(amount uint64, inSlot uint32) uint64 {
+	return lib.ChainInflationMultiStep(amount, inSlot, 1)
 }
 
-func (lib *Library) BranchInflationBonusBaseFromSource() uint64 {
-	res, err := lib.EvalFromSource(nil, "constBranchInflationBonusBase")
+// BranchCoverageLowerBound returns the minimum sequencer coverage (tokenBalance + frozenCoverage)
+// required to issue a branch transaction at the given slot.
+func (lib *Library) BranchCoverageLowerBound(slot uint32) uint64 {
+	expr := lib.BranchCoverageLowerBoundPrecompiled.Load()
+	if expr == nil {
+		expr = lib.mustCompile("branchCoverageLowerBound($0)", 1)
+		lib.BranchCoverageLowerBoundPrecompiled.Store(expr)
+	}
+	var slotBin [4]byte
+	var res []byte
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+
+	err := util.CatchPanicOrError(func() error {
+		res = easyfl.EvalExpressionWithSlicePool(nil, nil, expr, slotBin[:])
+		return nil
+	})
 	util.AssertNoError(err)
 	return easyfl_util.MustUint64FromBytes(res)
 }
 
-func BranchInflationBonus(proof []byte) uint64 {
-	return RandomFromSeed(proof, Const.BranchInflationBonusBase) + 1
+// BranchCoverageUpperBound returns the maximum sequencer coverage (tokenBalance + frozenCoverage)
+// allowed to issue a branch transaction at the given slot.
+func (lib *Library) BranchCoverageUpperBound(slot uint32) uint64 {
+	expr := lib.BranchCoverageUpperBoundPrecompiled.Load()
+	if expr == nil {
+		expr = lib.mustCompile("branchCoverageUpperBound($0)", 1)
+		lib.BranchCoverageUpperBoundPrecompiled.Store(expr)
+	}
+	var slotBin [4]byte
+	var res []byte
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+
+	err := util.CatchPanicOrError(func() error {
+		res = easyfl.EvalExpressionWithSlicePool(nil, nil, expr, slotBin[:])
+		return nil
+	})
+	util.AssertNoError(err)
+	return easyfl_util.MustUint64FromBytes(res)
 }
 
-func MinimumInflatableAmount(slot uint32) uint64 {
-	return Const.MinimumInflatableAmount0 + ChainInflation(Const.MinimumInflatableAmount0, 0, slot)
+// BranchInflationBonusBase returns the maximum branch inflation bonus for the given slot.
+func (lib *Library) BranchInflationBonusBase(slot uint32) uint64 {
+	expr := lib.BranchInflationBonusBasePrecompiled.Load()
+	if expr == nil {
+		expr = lib.mustCompile("branchInflationBonusBase($0)", 1)
+		lib.BranchInflationBonusBasePrecompiled.Store(expr)
+	}
+	var slotBin [4]byte
+	var res []byte
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+
+	err := util.CatchPanicOrError(func() error {
+		res = easyfl.EvalExpressionWithSlicePool(nil, nil, expr, slotBin[:])
+		return nil
+	})
+	util.AssertNoError(err)
+	return easyfl_util.MustUint64FromBytes(res)
+}
+
+// BranchInflationBonus calculates the inflation bonus for a branch using the given proof.
+// Uses the library for the specified slot.
+func (lib *Library) BranchInflationBonus(proof []byte, slot uint32) uint64 {
+	expr := lib.BranchInflationBonusPrecompiled.Load()
+	if expr == nil {
+		expr = lib.mustCompile("branchInflationBonus($0, $1)", 2)
+		lib.BranchInflationBonusPrecompiled.Store(expr)
+	}
+	var slotBin [4]byte
+	var res []byte
+
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+	err := util.CatchPanicOrError(func() error {
+		res = easyfl.EvalExpressionWithSlicePool(nil, nil, expr, proof, slotBin[:])
+		return nil
+	})
+	util.AssertNoError(err)
+	return easyfl_util.MustUint64FromBytes(res)
 }

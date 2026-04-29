@@ -73,7 +73,7 @@ func ParseAndDisplayTxBytes(txBytesWithMetadata []byte) {
 	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
 	AssertNoError(err)
 
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	AssertNoError(err)
 
 	Infof("--- transaction ---\n%s", tx.String())
@@ -91,19 +91,13 @@ func ParseAndDisplayTxFromSore(txid base.TransactionID) {
 	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
 	AssertNoError(err)
 
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	AssertNoError(err)
 
-	ctx, err := transaction.TxContextFromTransaction(tx, func(i byte) (*ledger.Output, error) {
+	err = tx.SetFullContext(func(i byte) (*ledger.Output, error) {
 		return txstore.LoadOutput(TxBytesStore(), tx.MustInputAt(i))
 	})
-	if err != nil {
-		Infof("!!! cannot create full transaction context: '%v'.\n Inputs will not be displayed", err)
-		Infof("--- transaction ---\n%s", tx.String())
-	} else {
-		Infof("--- transaction ---\n%s", ctx.String())
-	}
-
+	Infof("--- transaction ---\n%s", tx.String())
 	Infof("--- metadata ---\n%s", meta.String())
 
 }

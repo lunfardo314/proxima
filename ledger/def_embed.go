@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"math/big"
 
+	_ "embed"
+
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
@@ -19,19 +22,21 @@ import (
 type (
 	TxContextAccess interface {
 		BytesAtPath([]byte) ([]byte, error)
+		SubtreeAtPath([]byte) (*tuples.Tree, error)
 		ConsumedOutput(idx byte) (*Output, error)
 		ConsumedTotal(i byte) int64
 		ProducedTotal(i byte) int64
 		IsBranchTransaction() bool
 		IsSequencerTransaction() bool
-		MustSequencerAndStemOutputIndices() (byte, byte)
+		ID() base.TransactionID
 		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
 		Timestamp() base.LedgerTime
 		MustInputAt(idx byte) base.OutputID
 		OutputID(idx byte) base.OutputID
 		SequencerTransactionData() *SequencerTransactionData
-		SenderAddress() AddressED25519
+		HolderID() (base.HolderID, error)
 		UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
+		GetLibrary() *Library
 	}
 
 	EvalContext struct {
@@ -66,6 +71,7 @@ func (c *EvalContext) SelfOutputBytes() (ret []byte) {
 }
 
 func (c *EvalContext) SelfOutput() *Output {
+	// Uses latest library version - upgrade code must maintain backward-compatible parsing
 	ret, err := OutputFromBytes(c.SelfOutputBytes())
 	util.AssertNoError(err)
 	return ret
@@ -92,78 +98,77 @@ func (c *EvalContext) SetEvalPath(path []byte) {
 	c.path = bytes.Clone(path)
 }
 
-var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
-	"at":             evalPath,
-	"atPath":         evalAtPath,
-	"amounts":        evalAmounts,
-	"totalConsumed":  evalTotalConsumed,
-	"totalProduced":  evalTotalProduced,
-	"ticksBefore":    evalTicksBefore64, // TODO make it in pure EasyFL
-	"randomFromSeed": evalRandomFromSeed,
+// EmbeddedResolver resolves a symbol to an embedded function.
+// Returns nil if the symbol is not in this resolver's scope.
+type EmbeddedResolver func(string) easyfl.EmbeddedFunction[*EvalContext]
+
+// upgradeEmbeddedResolvers is the static list of embedded function resolvers.
+// Each entry represents an upgrade that adds new embedded functions.
+// Entries are in ascending slot order. Upgrades with only pure EasyFL formulas
+// don't need an entry here.
+var upgradeEmbeddedResolvers []struct {
+	Slot     uint32
+	Resolver EmbeddedResolver
 }
 
+func init() {
+	upgradeEmbeddedResolvers = []struct {
+		Slot     uint32
+		Resolver EmbeddedResolver
+	}{
+		{0, resolveEmbeddedUpgrade0},
+		// Future upgrades that add embedded functions are added here.
+		// Example: {100, resolveEmbeddedUpgrade1} for sum3
+	}
+}
+
+// resolveEmbeddedUpgrade0 resolves embedded functions from upgrade 0.
+func resolveEmbeddedUpgrade0(sym string) easyfl.EmbeddedFunction[*EvalContext] {
+	if ret, found := _unboundedEmbedded[sym]; found {
+		return ret
+	}
+	return nil
+}
+
+var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
+	"evalPath":                     evalPath,
+	"evalAtPath":                   evalAtPath,
+	"evalTotalConsumed":            evalTotalConsumed,
+	"evalTotalProduced":            evalTotalProduced,
+	"evalTicksBefore64":            evalTicksBefore64, // TODO make it in pure EasyFL
+	"evalRandomFromSeed":           evalRandomFromSeed,
+	"evalTxID":                     evalTxID,
+	"evalTupleHasDuplicatesAtPath": evalTupleHasDuplicatesAtPath,
+	"evalTupleLenAtPath":           evalTupleLenAtPath,
+	"embeddedEnforceFrozenCoverageOnDelegateOutput":     evalEnforceFrozenCoverageOnDelegateOutput,
+	"embeddedEnforceFrozenCoverageOnNonDelegationChain": evalEnforceFrozenCoverageOnNonDelegationChain,
+	"embeddedIsInflationAndFrozenCoverageZero":          evalIsInflationAndFrozenCoverageZero,
+}
+
+// GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.
+// It searches through upgrade resolvers in descending order (newest first),
+// then falls back to the base easyfl resolver.
 func GetEmbeddedFunctionResolver(lib *easyfl.Library[*EvalContext]) func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
 	baseResolver := easyfl.EmbeddedFunctions(lib)
 	return func(sym string) easyfl.EmbeddedFunction[*EvalContext] {
-		if ret, found := _unboundedEmbedded[sym]; found {
-			return ret
+		// Try each upgrade resolver in descending order (newest first)
+		for i := len(upgradeEmbeddedResolvers) - 1; i >= 0; i-- {
+			entry := upgradeEmbeddedResolvers[i]
+			if entry.Resolver != nil {
+				if ret := entry.Resolver(sym); ret != nil {
+					return ret
+				}
+			}
 		}
+		// Fall back to base easyfl resolver
 		if ret := baseResolver(sym); ret != nil {
 			return ret
 		}
 		return func(glb *easyfl.CallParams[*EvalContext]) []byte {
-			panic(fmt.Sprintf("inconsistency: embeded function symbol '%s' wasn't resolved properly", sym))
+			panic(fmt.Sprintf("inconsistency: embedded function symbol '%s' wasn't resolved properly", sym))
 		}
 	}
 }
-
-// EmbedHardcoded upgrades library with hardcoded (embedded) functions of the proxima ledger
-func EmbedHardcoded(lib *easyfl.Library[*EvalContext]) error {
-	return lib.UpgradeFromYAML([]byte(_definitionsEmbeddedYAML), GetEmbeddedFunctionResolver(lib))
-}
-
-const _definitionsEmbeddedYAML string = `
-functions:
-# short
-   -
-      sym: "at"
-      description: "returns path in the transaction of the validity constraint being evaluated"
-      numArgs: 0
-      embedded: true
-      short: true
-   -
-      sym: "atPath"
-      description: "returns element of the transaction at path $0"
-      numArgs: 1
-      embedded: true
-      short: true
-# long
-   -
-      sym: "amounts"
-      description: "UTXO constraint for the vector of amounts"
-      numArgs: -1
-      embedded: true
-   -
-      sym: "totalConsumed"
-      description: "sum of consumed amounts by the transaction at index $0 (1 byte, max 15)"
-      numArgs: -1
-      embedded: true
-   -
-      sym: "totalProduced"
-      description: "sum of produced amounts by the transaction at index $0 (1 byte, max 15)"
-      numArgs: -1
-      embedded: true
-   -
-      sym: ticksBefore
-      description: "number of ticks between timestamps $0 and $1 as big-endian uint64 if $0 is before $1, or 0x otherwise"
-      numArgs: 2
-      embedded: true
-   -
-      sym: randomFromSeed
-      description: "uses $0 as seed to deterministically calculate a pseudo-random value. Returns 8-byte big-endian integer bytes in the interval [0,$1)"
-      numArgs: 2
-      embedded: true
-`
 
 // embedded functions
 
@@ -180,6 +185,8 @@ func evalAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
 	return par.AllocData(res...)
 }
 
+// deterministic pseudo-random uint64 value from seed scaled to $0 bytes.
+// Used for extraction of value from VRF
 func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 	data := par.Arg(0)
 	scale := easyfl_util.MustUint64FromBytes(par.Arg(1))
@@ -196,6 +203,36 @@ func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 	ret := par.Alloc(8)
 	binary.BigEndian.PutUint64(ret, rnd)
 	return ret
+}
+
+func evalTxID(par *easyfl.CallParams[*EvalContext]) []byte {
+	ret := par.DataContext().ID()
+	return par.AllocData(ret[:]...)
+}
+
+func evalTupleLenAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
+	path := par.Arg(0)
+	subtree, err := par.DataContext().SubtreeAtPath(path)
+	if err != nil {
+		par.TracePanic("evalTupleLenAtPath: path=%+v -> %v", path, err)
+		return nil
+	}
+	ret := par.Alloc(8)
+	binary.BigEndian.PutUint64(ret, uint64(subtree.Tuple.NumElements()))
+	return ret
+}
+
+func evalTupleHasDuplicatesAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
+	path := par.Arg(0)
+	subtree, err := par.DataContext().SubtreeAtPath(path)
+	if err != nil {
+		par.TracePanic("evalTupleHasDuplicatesAtPath: path=%+v -> %v", path, err)
+		return nil
+	}
+	if subtree.Tuple.HasDuplicates() {
+		return []byte{0xff}
+	}
+	return nil
 }
 
 // arg 0 and arg 1 are timestamps (5 bytes each)

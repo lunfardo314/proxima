@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,10 +27,12 @@ type Global struct {
 	*zap.SugaredLogger
 	outputs        []string
 	logVerbosity   int
+	topicVerbosity map[string]int
 	ctx            context.Context
 	stopFun        context.CancelFunc
 	logStopOnce    *sync.Once
 	isShuttingDown atomic.Bool
+	isSnapshotting atomic.Bool
 	stopOnce       *sync.Once
 	mutex          sync.RWMutex
 	components     set.Set[string]
@@ -45,15 +48,21 @@ type Global struct {
 	generalPurposeCollectors   map[string]prometheus.Gauge
 	attachmentTimeMilliseconds prometheus.Gauge
 	attachmentsCounter         prometheus.Counter
+	attachmentCostCounter      prometheus.Counter
 	// transaction pull parameters
 	// repeat pull after. Default 2 sec
 	txPullRepeatPeriod time.Duration
 	txPullMaxAttempts  int
 	//
 	disableDeadlockCatching bool
+	// memory pressure management
+	memLimitBytes     uint64
+	lastPressureGCNs  atomic.Int64    // UnixNano of last actual runtime.GC() from the async worker
+	memoryStressLevel atomic.Int32    // current stress level 0-100, updated every stressComputeInterval
+	gcRequestCh       chan struct{}   // coalescing request channel for the async GC worker (buffered size 1)
 }
 
-var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close")
+var knownGeneralPurposeGauges = set.New[string]().Insert("att", "wait", "call", "store", "prop", "close", "nonseq", "nonseq_drop")
 
 // PullTimeout maximum time allowed for the virtual txid become transaction (full vertex)
 const (
@@ -107,7 +116,21 @@ func NewFromConfig() *Global {
 		ret.SugaredLogger.Warnf("previous logfile has been saved as %s", savedPrev)
 	}
 	ret.logVerbosity = viper.GetInt("logger.verbosity")
+	ret.topicVerbosity = make(map[string]int)
+	for k, v := range viper.GetStringMap("logger.topics") {
+		switch val := v.(type) {
+		case int:
+			ret.topicVerbosity[k] = val
+		case float64:
+			ret.topicVerbosity[k] = int(val)
+		case int64:
+			ret.topicVerbosity[k] = int(val)
+		}
+	}
 	ret.SugaredLogger.Infof("logger verbosity level is %d", ret.logVerbosity)
+	if len(ret.topicVerbosity) > 0 {
+		ret.SugaredLogger.Infof("logger topic verbosity: %v", ret.topicVerbosity)
+	}
 
 	if v := viper.GetInt("transaction_pull.repeat_after_sec"); v > 0 {
 		ret.txPullRepeatPeriod = time.Duration(v) * time.Second
@@ -123,6 +146,12 @@ func NewFromConfig() *Global {
 	if ret.disableDeadlockCatching {
 		ret.SugaredLogger.Infof("deadlock catching in the attacher has been disabled")
 	}
+
+	if limitMB := viper.GetInt("memory.limit_mb"); limitMB > 0 {
+		ret.memLimitBytes = uint64(limitMB) << 20
+	}
+	ret.startAsyncGCWorker()
+	ret.startStressLevelComputation()
 	return ret
 }
 
@@ -146,6 +175,7 @@ func _new(logLevel zapcore.Level, outputs []string) *Global {
 		counters:           make(map[string]int),
 		txPullRepeatPeriod: PullRepeatPeriodDefault,
 		txPullMaxAttempts:  PullMaxAttemptsDefault,
+		gcRequestCh:        make(chan struct{}, 1),
 	}
 	ret.registerMetrics()
 	return ret
@@ -182,8 +212,134 @@ func (l *Global) Stop() {
 	})
 }
 
+// GracefulShutdown initiates orderly node shutdown with a prominently logged reason.
+// Callable from any context. Idempotent — delegates to Stop() which uses sync.Once.
+func (l *Global) GracefulShutdown(reason string) {
+	l.Log().Errorf(">>>>>> GRACEFUL SHUTDOWN: %s. Recommend restarting the node", reason)
+	l.Stop()
+}
+
 func (l *Global) IsShuttingDown() bool {
 	return l.isShuttingDown.Load()
+}
+
+func (l *Global) IsSnapshotting() bool {
+	return l.isSnapshotting.Load()
+}
+
+func (l *Global) SetSnapshotting(on bool) {
+	l.isSnapshotting.Store(on)
+}
+
+func (l *Global) MemLimitBytes() uint64 {
+	return l.memLimitBytes
+}
+
+// MemoryStressLevel returns the current memory stress level (0-100).
+// Computed as 100 * allocated / limit. Returns 0 when limit is not configured.
+func (l *Global) MemoryStressLevel() int {
+	return int(l.memoryStressLevel.Load())
+}
+
+const (
+	// stressComputeInterval is how often the memory stress level is recomputed.
+	stressComputeInterval = 1 * time.Second
+)
+
+// startStressLevelComputation starts a background loop that recomputes memory stress every second.
+// Also pings the async GC worker when stress crosses stressGCPingPct — this catches bursts
+// from operations that don't call MemoryPressureGC directly (e.g. forward-sync batches).
+// No-op when memory.limit_mb is not configured.
+func (l *Global) startStressLevelComputation() {
+	if l.memLimitBytes == 0 {
+		return
+	}
+	l.RepeatInBackground("stress_level", stressComputeInterval, func() bool {
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		level := int32(100 * ms.Alloc / l.memLimitBytes)
+		if level > 100 {
+			level = 100
+		}
+		l.memoryStressLevel.Store(level)
+		if level >= stressGCPingPct {
+			l.pingGCWorker()
+		}
+		return true
+	})
+}
+
+const (
+	memPressureGCPct   = 50                // force GC when heap exceeds this % of limit
+	stressGCPingPct    = 60                // stress loop pings the GC worker when level reaches this
+	asyncGCMinInterval = 5 * time.Second   // minimum interval between actual runtime.GC() runs in the async worker
+)
+
+// MemoryPressureGC is a non-blocking signal that asks the async GC worker to consider running GC.
+// Safe to call from any hot path — this function does not run GC itself, only nudges the worker.
+// The worker decides whether to actually GC based on heap threshold and rate limit.
+// No-op when memory.limit_mb is not configured.
+func (l *Global) MemoryPressureGC() {
+	if l.memLimitBytes == 0 {
+		return
+	}
+	l.pingGCWorker()
+}
+
+// pingGCWorker performs a non-blocking send to the coalescing GC request channel. If a request
+// is already pending, this call is a no-op — multiple callers in the same burst collapse into
+// a single worker wake-up.
+func (l *Global) pingGCWorker() {
+	select {
+	case l.gcRequestCh <- struct{}{}:
+	default:
+	}
+}
+
+// startAsyncGCWorker launches a single goroutine that serialises runtime.GC() calls off the
+// hot paths. The worker blocks on gcRequestCh and, on each request, only runs GC if:
+//   - at least asyncGCMinInterval has elapsed since the last GC (rate limit), AND
+//   - heap allocation is above memPressureGCPct % of memory.limit_mb.
+// Otherwise it no-ops, as per design spec.
+// No-op when memory.limit_mb is not configured.
+func (l *Global) startAsyncGCWorker() {
+	if l.memLimitBytes == 0 {
+		return
+	}
+	const name = "mem_pressure_gc_worker"
+	l.MarkWorkProcessStarted(name)
+	l.LogTopicf("lifecycle", 0, "[%s] STARTED", name)
+	go func() {
+		defer func() {
+			l.MarkWorkProcessStopped(name)
+			l.LogTopicf("lifecycle", 0, "[%s] STOPPED", name)
+		}()
+		for {
+			select {
+			case <-l.ctx.Done():
+				return
+			case <-l.gcRequestCh:
+				l.maybeRunGC()
+			}
+		}
+	}()
+}
+
+// maybeRunGC is the worker-side decision point: rate limit + heap threshold.
+func (l *Global) maybeRunGC() {
+	now := time.Now().UnixNano()
+	last := l.lastPressureGCNs.Load()
+	if now-last < int64(asyncGCMinInterval) {
+		return
+	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	gcThreshold := uint64(float64(l.memLimitBytes) * memPressureGCPct / 100)
+	if ms.Alloc <= gcThreshold {
+		return
+	}
+	runtime.GC()
+	l.lastPressureGCNs.Store(time.Now().UnixNano())
 }
 
 func (l *Global) Ctx() context.Context {
@@ -309,30 +465,32 @@ func (l *Global) TracefLog(log *zap.SugaredLogger, tag string, format string, ar
 	}
 }
 
-func (l *Global) VerbosityLevel() int {
+// TopicVerbosityLevel returns the verbosity level for the given topic.
+// If the topic is not configured, returns the global verbosity level.
+func (l *Global) TopicVerbosityLevel(topic string) int {
+	if v, ok := l.topicVerbosity[topic]; ok {
+		return v
+	}
 	return l.logVerbosity
 }
 
-func (l *Global) InfofAtLevel(level int, template string, args ...any) {
-	if level <= l.logVerbosity {
+// LogTopicf logs a message if the topic's verbosity level is >= requiredLevel.
+// Usage: LogTopicf("tag_along", 1, "output %s added", id)
+func (l *Global) LogTopicf(topic string, requiredLevel int, template string, args ...any) {
+	if requiredLevel <= l.TopicVerbosityLevel(topic) {
 		l.Infof(template, args...)
 	}
 }
 
-func (l *Global) Infof0(template string, args ...any) {
-	l.InfofAtLevel(0, template, args...)
-}
-
-func (l *Global) Infof1(template string, args ...any) {
-	l.InfofAtLevel(1, template, args...)
-}
-
-func (l *Global) Infof2(template string, args ...any) {
-	l.InfofAtLevel(2, template, args...)
+// WarnTopicf logs a warning if the topic's verbosity level is >= requiredLevel.
+func (l *Global) WarnTopicf(topic string, requiredLevel int, template string, args ...any) {
+	if requiredLevel <= l.TopicVerbosityLevel(topic) {
+		l.Warnf(template, args...)
+	}
 }
 
 // ClockCatchUpWithLedgerTime waits until the wall clock catches up with the given ledger time.
-// It is context-aware and will return early if the global context is cancelled (shutdown).
+// It is context-aware and will return early if the global context is canceled (shutdown).
 // Returns true if completed normally (clock caught up), false if interrupted by shutdown.
 func (l *Global) ClockCatchUpWithLedgerTime(ts base.LedgerTime) bool {
 	targetTime := ledger.ClockTime(ts)
@@ -380,6 +538,16 @@ func (l *Global) DecCounter(name string) {
 	l.counters[name] = l.counters[name] - 1
 }
 
+func (l *Global) SetCounter(name string, value int) {
+	l.countersMutex.Lock()
+	defer l.countersMutex.Unlock()
+
+	if collector, found := l.generalPurposeCollectors[name]; found {
+		collector.Set(float64(value))
+	}
+	l.counters[name] = value
+}
+
 func (l *Global) Counter(name string) int {
 	l.countersMutex.RLock()
 	defer l.countersMutex.RUnlock()
@@ -402,14 +570,18 @@ func (l *Global) CounterLines(prefix ...string) *lines.Lines {
 func (l *Global) registerMetrics() {
 	l.attachmentTimeMilliseconds = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_glb_attachmentDurationMs",
-		Help: "attachment time in milliseconds",
+		Help: "sequencer transaction attachment duration in milliseconds. Does not include branch commitment time, but may include baseline branch commitment time on first reference",
 	})
 	l.attachmentsCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_glb_attachments_counter",
 		Help: "total number of attachments",
 	})
+	l.attachmentCostCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_glb_attachment_cost_counter",
+		Help: "cumulative attachment cost of finished sequencer attachments (past-cone cost + own tx cost)",
+	})
 
-	l.MetricsRegistry().MustRegister(l.attachmentsCounter, l.attachmentTimeMilliseconds)
+	l.MetricsRegistry().MustRegister(l.attachmentsCounter, l.attachmentTimeMilliseconds, l.attachmentCostCounter)
 
 	l.generalPurposeCollectors = make(map[string]prometheus.Gauge)
 	knownGeneralPurposeGauges.ForEach(func(name string) bool {
@@ -422,11 +594,10 @@ func (l *Global) registerMetrics() {
 	})
 }
 
-func (l *Global) AttachmentFinished(started ...time.Time) {
+func (l *Global) AttachmentFinished(started time.Time, cost int) {
 	l.attachmentsCounter.Inc()
-	if len(started) > 0 {
-		l.attachmentTimeMilliseconds.Set(float64(time.Since(started[0]) / time.Millisecond))
-	}
+	l.attachmentTimeMilliseconds.Set(float64(time.Since(started) / time.Millisecond))
+	l.attachmentCostCounter.Add(float64(cost))
 }
 
 func (l *Global) TxPullParameters() (repeatPeriod time.Duration, maxAttempts int) {
@@ -435,4 +606,10 @@ func (l *Global) TxPullParameters() (repeatPeriod time.Duration, maxAttempts int
 
 func (l *Global) DeadlockCatchingDisabled() bool {
 	return l.disableDeadlockCatching
+}
+
+// LogTx is a no-op implementation of the Logging interface.
+// The actual transaction logging is handled at the node level via TxLoggerModule.
+func (l *Global) LogTx(_ time.Time, _ string, _ ...base.TransactionID) {
+	// no-op: actual logging happens at node level
 }

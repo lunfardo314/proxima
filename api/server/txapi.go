@@ -52,7 +52,7 @@ func (srv *server) compileScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _, bytecode, err := ledger.L().CompileExpression(lst[0])
+	_, _, bytecode, err := ledger.L(base.MaxSlot).CompileExpression(lst[0])
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("EasyFL compile error: '%v'", err))
 		return
@@ -83,7 +83,7 @@ func (srv *server) decompileBytecode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	src, err := ledger.L().DecompileBytecode(bytecode)
+	src, err := ledger.L(base.MaxSlot).DecompileBytecode(bytecode)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("can't decompile bytecode: '%v'", err))
 		return
@@ -133,7 +133,7 @@ func (srv *server) parseOutput(w http.ResponseWriter, r *http.Request) {
 		Amount:      o.TokenBalance(),
 		LockName:    o.Lock().Name(),
 	}
-	if cc, pos := o.ChainConstraint(); pos != 0xff {
+	if cc := o.ChainConstraint(); cc != nil {
 		var chainID base.ChainID
 		if cc.IsOrigin() {
 			chainID = base.MakeOriginChainID(oid)
@@ -169,6 +169,7 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// API server uses latest library version for parsing outputs
 	o, err := ledger.OutputFromBytes(outBin)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("can't parse output: '%v'", err))
@@ -188,7 +189,7 @@ func (srv *server) parseOutputData(w http.ResponseWriter, r *http.Request) {
 		Amount:      o.TokenBalance(),
 		LockName:    o.Lock().Name(),
 	}
-	if cc, pos := o.ChainConstraint(); pos != 0xff {
+	if cc := o.ChainConstraint(); cc != nil {
 		resp.ChainID = hex.EncodeToString(cc.ChainID[:])
 	}
 
@@ -273,7 +274,7 @@ func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return
@@ -320,7 +321,7 @@ func (srv *server) getVertexWithDependencies(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return

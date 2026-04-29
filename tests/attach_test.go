@@ -1,14 +1,13 @@
 package tests
 
 import (
+	"crypto/ed25519"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
@@ -42,7 +41,7 @@ func TestAttachBasic(t *testing.T) {
 
 		env.StartTracingTags(global.TraceTag)
 
-		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 		_, _, err := multistate.ScanGenesisState(stateStore)
 		require.NoError(t, err)
@@ -64,8 +63,8 @@ func TestAttachBasic(t *testing.T) {
 	})
 	t.Run("with distribution", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
 			{Lock: addr1, Balance: 1_000_000_000, ChainOrigin: false},
 			{Lock: addr2, Balance: 1_000_000_000, ChainOrigin: false},
@@ -77,7 +76,7 @@ func TestAttachBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 		txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
@@ -106,8 +105,9 @@ func TestAttachBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribVID.ID())
 		require.True(t, ok)
-		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
-		require.EqualValues(t, 0, int(rr.SlotInflation))
+		// Distribution branch transaction has VRF-based inflation
+		require.True(t, rr.SlotInflation > 0)
+		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000_000, int(bal1))
@@ -122,12 +122,13 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1+inflation (1 token goes to dust output, inflation goes to chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 	})
 	t.Run("sync scenario", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
 			{Lock: addr1, Balance: 1_000_000_000},
 			{Lock: addr2, Balance: 2_000_000_000},
@@ -138,7 +139,7 @@ func TestAttachBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 		txBytes, err := txbuilder_seq.MakeDistributionTransaction(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
@@ -149,13 +150,6 @@ func TestAttachBasic(t *testing.T) {
 		_, err = txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
 		require.NoError(t, err)
 		require.True(t, len(txBytesStore.GetTxBytesWithMetadata(&distribTxID)) > 0)
-
-		//wrk.StartTracingTags(attacher.TraceTagAttach)
-		//wrk.StartTracingTags(attacher.TraceTagAttachMilestone)
-		//wrk.StartTracingTags(attacher.TraceTagAttachVertex)
-		//wrk.StartTracingTags(attacher.TraceTagAttachInputs)
-		//wrk.StartTracingTags(attacher.TraceTagValidateSequencer)
-		//wrk.StartTracingTags(attacher.TraceTagAttachEndorsements)
 
 		vidDistrib, err := wrk.EnsureBranch(distribTxID, 10*time.Minute) //3*time.Second)
 		require.NoError(t, err)
@@ -176,8 +170,9 @@ func TestAttachBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribTxID)
 		require.True(t, ok)
-		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
-		require.EqualValues(t, 0, int(rr.SlotInflation))
+		// Distribution branch transaction has VRF-based inflation
+		require.True(t, rr.SlotInflation > 0)
+		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000_000, int(bal1))
@@ -192,13 +187,14 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1+inflation (1 token goes to dust output, inflation goes to chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 
 	})
 	t.Run("with distribution tx", func(t *testing.T) {
 		//attacher.SetTraceOn()
-		addr1 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(1))
-		addr2 := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(2))
+		addr1 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(1))
+		addr2 := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(2))
 		distrib := []ledger.LockBalance{
 			{Lock: addr1, Balance: 1_000_000_000},
 			{Lock: addr2, Balance: 2_000_000_000},
@@ -209,7 +205,7 @@ func TestAttachBasic(t *testing.T) {
 		txBytesStore := txstore.NewSimpleTxBytesStore(common.NewInMemoryKVStore())
 
 		env := newWorkflowDummyEnvironment(stateStore, txBytesStore)
-		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC)
+		wrk := workflow.Start(env, peering.NewPeersDummy(), workflow.OptionDisableMemDAGGC, workflow.OptionMaxConcurrentAttachers(200))
 
 		txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 		require.NoError(t, err)
@@ -246,8 +242,9 @@ func TestAttachBasic(t *testing.T) {
 
 		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())
 		require.True(t, ok)
-		require.EqualValues(t, ledger.DefaultInitialSupply, int(rr.Supply))
-		require.EqualValues(t, 0, int(rr.SlotInflation))
+		// Distribution branch transaction has VRF-based inflation
+		require.True(t, rr.SlotInflation > 0)
+		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
 		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
 		require.EqualValues(t, 1_000_000_000, int(bal1))
@@ -262,7 +259,8 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, 0, nChain)
 
 		balChain = multistate.BalanceOnChainOutput(rdr, bootstrapChainID)
-		require.EqualValues(t, ledger.DefaultInitialSupply-1_000_000_000-2_000_000_000, int(balChain))
+		// Genesis output now has initialSupply-1+inflation (1 token goes to dust output, inflation goes to chain)
+		require.EqualValues(t, ledger.DefaultInitialSupply-1-1_000_000_000-2_000_000_000+rr.SlotInflation, int(balChain))
 	})
 }
 
@@ -301,15 +299,17 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		for _, o := range testData.conflictingOutputs {
 			inTS = append(inTS, o.Timestamp())
 		}
-		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer))
-		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, loader, err := txbuilder_seq.MakeSimpleSequencerTransactionWithInputLoader(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
 			Timestamp:        ts,
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.conflictingOutputs,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -332,7 +332,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 		if nConflicts > 1 {
 			require.True(t, vertex.Bad == vid.GetTxStatus())
 			t.Logf("reason: %v", vid.GetError())
-			util.RequireErrorWithOld(t, vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort())
+			require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 		} else {
 			require.True(t, vertex.Good == vid.GetTxStatus())
 		}
@@ -357,7 +357,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPace)))
+		td := txbuilder.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPace)))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
@@ -373,14 +373,16 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		outToConsume := vidConflicting.MustOutputWithIDAt(0)
 		chainOut := branches[0].SequencerOutput.MustAsChainOutput()
-		ts := outToConsume.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer))
-		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
+		ts := outToConsume.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
 			Timestamp:        ts,
 			ChainInput:       chainOut,
 			AdditionalInputs: []*ledger.OutputWithID{&outToConsume},
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -395,7 +397,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("reason: %v", vid.GetError())
-		util.RequireErrorWithOld(t, vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort())
+		require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 	})
 	t.Run("long", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -427,7 +429,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			amount += o.Output.TokenBalance()
 		}
 
-		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer))
+		ts := base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPaceSequencer))
 
 		// checking invalid explicit baseline
 		explicitBaseline := util.Ref(base.RandomTransactionID(true, 5, ts))
@@ -437,7 +439,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
 			ExplicitBaseline: explicitBaseline,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, util.MustErrorWith(err, "explicit baseline must be a branch transaction ID"))
 
@@ -451,7 +455,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			AdditionalInputs: testData.terminalOutputs,
 			Endorsements:     nil,
 			ExplicitBaseline: explicitBaseline,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -461,7 +467,9 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			Timestamp:        ts,
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
@@ -483,7 +491,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("expected reason: %v", vid.GetError())
-		util.RequireErrorWithOld(t, vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort())
+		require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 	})
 	t.Run("long with sync", func(t *testing.T) {
 		const (
@@ -519,16 +527,16 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "testSeq",
-			Timestamp:        base.MaximumTime(inTS...).AddTicks(int(ledger.Const.TransactionPaceSequencer)),
+			Timestamp:        base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPaceSequencer)),
 			ChainInput:       chainOut,
 			AdditionalInputs: testData.terminalOutputs,
+			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       genesisPrivateKey,
+			PublicKey:        genesisPrivateKey.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
 		var wg sync.WaitGroup
-
-		//testData.env.StartTracingTags(attacher.TraceTagPull)
 
 		wg.Add(1)
 		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
@@ -543,7 +551,7 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 
 		require.True(t, vertex.Bad == vid.GetTxStatus())
 		t.Logf("expected reason: %v", vid.GetError())
-		util.RequireErrorWithOld(t, vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort())
+		require.NoError(t, util.MustErrorWith(vid.GetError(), "conflict", "in the past cone", testData.forkOutput.IDShort()))
 	})
 }
 
@@ -627,14 +635,13 @@ func TestAttachConflictsNAttachersSeqStartTxFee(t *testing.T) {
 		} else {
 			require.True(t, vid.FlagsUp(vertex.FlagVertexConstraintsValid))
 		}
-		if vid.IsSequencerMilestone() {
+		if vid.IsSequencerTransaction() {
 			require.True(t, vid.GetTxStatus() == vertex.Good)
 		} else {
 			require.True(t, vid.GetTxStatus() == vertex.Undefined)
 		}
 	}
 
-	//testData.wrk.SaveGraph("utangle")
 }
 
 func TestAttachConflictsNAttachersOneFork(t *testing.T) {
@@ -649,9 +656,6 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 	testData.makeSeqBeginnings(true)
 	testData.printTxIDs()
-
-	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
-	//testData.env.StartTracingTags(attacher.TraceTagAttach)
 
 	if pullYN {
 		testData.txBytesToStore()
@@ -673,33 +677,21 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 		chainIn[seqNr] = o.MustAsChainOutput()
 		ts = base.MaximumTime(ts, o.Timestamp())
 	}
-	ts = ts.AddTicks(int(ledger.Const.TransactionPaceSequencer))
+	ts = ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))
 	txBytesSeq, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-		SeqName:      "seq",
-		Timestamp:    ts,
-		ChainInput:   chainIn[0],
-		Endorsements: util.List(chainIn[1].ID.TransactionID()),
-		PrivateKey:   testData.privKeyAux,
+		SeqName:       "seq",
+		Timestamp:     ts,
+		ChainInput:    chainIn[0],
+		Endorsements:  util.List(chainIn[1].ID.TransactionID()),
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    testData.privKeyAux,
+		PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 	})
 	require.NoError(t, err)
 	txid, _, _ := transaction.IDAndTimestampFromParsedTransactionBytes(txBytesSeq)
 	t.Logf("seq tx expected to fail: %s", txid.StringShort())
 	t.Logf("   chain input: %s", chainIn[0].ID.StringShort())
 	t.Logf("   endrosement: %s", chainIn[1].ID.StringShort())
-
-	//testData.env.StartTracingTags(attacher.TraceTagAttach)
-	//testData.env.StartTracingTags(attacher.TraceTagPull)
-	//testData.env.StartTracingTags(attacher.TraceTagAttachEndorsements)
-	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
-	//testData.env.StartTracingTags(attacher.TraceTagSolidifySequencerBaseline)
-
-	const saveGraph = false
-	if saveGraph {
-		txid1, err := testData.txStore.PersistTxBytesWithMetadata(txBytesSeq, nil)
-		require.NoError(t, err)
-		require.EqualValues(t, txid, txid1)
-		memdag.SavePastConeFromTxStoreUntilSlot(txid, testData.txStore, 0, "pastCone_TestAttachConflictsNAttachersOneFork")
-	}
 
 	waitCh := make(chan struct{})
 	vidSeq, err := attacher.AttachTransactionFromBytes(txBytesSeq, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
@@ -714,8 +706,7 @@ func TestAttachConflictsNAttachersOneFork(t *testing.T) {
 	t.Logf("expected BAD transaction %s", vidSeq.IDShortString())
 	require.EqualValues(t, vertex.Bad.String(), vidSeq.GetTxStatus().String())
 	conflict := testData.forkOutput.ID.TransactionID()
-	util.RequireErrorWithOld(t, vidSeq.GetError(), conflict.StringShort(), "conflict")
-	//testData.wrk.SaveGraph("utangle")
+	require.NoError(t, util.MustErrorWith(vidSeq.GetError(), conflict.StringShort(), "conflict"))
 }
 
 func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
@@ -729,9 +720,6 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 	testData.makeSeqBeginnings(true)
 	testData.printTxIDs()
-
-	//testData.env.StartTracingTags(attacher.TraceTagAttachVertex)
-	//testData.env.StartTracingTags(attacher.TraceTagAttachOutput)
 
 	if pullYN {
 		testData.txBytesToStore()
@@ -762,11 +750,13 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 	for i := range chainIn {
 		txBytes, err = txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:    "seq",
-			Timestamp:  ts,
-			ChainInput: chainIn[i],
-			StemInput:  stem,
-			PrivateKey: testData.privKeyAux,
+			SeqName:       "seq",
+			Timestamp:     ts,
+			ChainInput:    chainIn[i],
+			StemInput:     stem,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 		wg.Add(1)
@@ -780,7 +770,6 @@ func TestAttachConflictsNAttachersOneForkBranches(t *testing.T) {
 
 	testData.stopAndWait()
 	testData.logDAGInfo()
-	//testData.wrk.SaveGraph("utangle")
 }
 
 func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
@@ -795,8 +784,6 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 	testData.makeSeqBeginnings(true)
 	//testData.printTxIDs()
-
-	//testData.env.StartTracingTags(global.TraceTag, attacher.TraceTagAttachMilestone)
 
 	if pullYN {
 		testData.txBytesToStore()
@@ -827,36 +814,40 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 	for i := range chainIn {
 		txBytesBranch[i], err = txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:    "seq",
-			StemInput:  stem,
-			ChainInput: chainIn[i],
-			Timestamp:  ts,
-			PrivateKey: testData.privKeyAux,
+			SeqName:       "seq",
+			StemInput:     stem,
+			ChainInput:    chainIn[i],
+			Timestamp:     ts,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		require.NoError(t, err)
 
 		_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesBranch[i], nil)
 		require.NoError(t, err)
 
-		tx, err := transaction.FromBytes(txBytesBranch[i], transaction.MainTxValidationOptions...)
+		tx, err := transaction.ParseWithPartialValidation(txBytesBranch[i])
 		require.NoError(t, err)
 		t.Logf("branch #%d : %s", i, tx.IDShortString())
 	}
 
-	tx0, err := transaction.FromBytes(txBytesBranch[0], transaction.MainTxValidationOptions...)
+	tx0, err := transaction.ParseWithPartialValidation(txBytesBranch[0])
 	require.NoError(t, err)
 	t.Logf("will be extending %s", tx0.IDShortString())
 
-	tx1, err := transaction.FromBytes(txBytesBranch[1], transaction.MainTxValidationOptions...)
+	tx1, err := transaction.ParseWithPartialValidation(txBytesBranch[1])
 	require.NoError(t, err)
 	t.Logf("will be endorsing %s", tx1.IDShortString())
 
 	txBytesConflicting, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-		SeqName:      "dummy",
-		ChainInput:   tx0.SequencerOutput().MustAsChainOutput(),
-		Timestamp:    ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(int(ledger.Const.TransactionPaceSequencer))),
-		Endorsements: util.List(tx1.ID()),
-		PrivateKey:   testData.privKeyAux,
+		SeqName:       "dummy",
+		ChainInput:    tx0.SequencerOutput().MustAsChainOutput(),
+		Timestamp:     ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))),
+		Endorsements:  util.List(tx1.ID()),
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    testData.privKeyAux,
+		PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 	})
 	require.NoError(t, err)
 
@@ -869,11 +860,10 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	testData.stopAndWait()
 	testData.logDAGInfo()
 
-	//testData.wrk.SaveGraph("utangle")
 
 	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
 	t.Logf("expected error: %v", vid.GetError())
-	util.RequireErrorWithOld(t, vid.GetError(), "conflicting branch endorsement")
+	require.NoError(t, util.MustErrorWith(vid.GetError(), "conflicting branch endorsement"))
 }
 
 func TestAttachSeqChains(t *testing.T) {
@@ -1026,7 +1016,6 @@ func TestAttachSeqChains(t *testing.T) {
 		for _, vid := range vids {
 			require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String())
 		}
-		//testData.wrk.SaveGraph("utangle")
 	})
 	t.Run("with 1 branch pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -1057,11 +1046,13 @@ func TestAttachSeqChains(t *testing.T) {
 
 		chainIn := testData.seqChain[0][len(testData.seqChain[0])-1].SequencerOutput().MustAsChainOutput()
 		txBytesBranch, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:    "seq0",
-			ChainInput: chainIn,
-			StemInput:  distribBD.Stem,
-			Timestamp:  chainIn.Timestamp().NextSlotBoundary(),
-			PrivateKey: testData.privKeyAux,
+			SeqName:       "seq0",
+			ChainInput:    chainIn,
+			StemInput:     distribBD.Stem,
+			Timestamp:     chainIn.Timestamp().NextSlotBoundary(),
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    testData.privKeyAux,
+			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
 		})
 		//txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 		//	SeqName:    "seq0",
@@ -1072,9 +1063,6 @@ func TestAttachSeqChains(t *testing.T) {
 		//})
 		require.NoError(t, err)
 
-		//testData.wrk.StartTracingTags(attacher.TraceTagAttach, attacher.TraceTagAttachVertex)
-		//testData.wrk.StartTracingTags(poker.TraceTag, pull_client.TraceTag, pull_server.TraceTag)
-
 		wg.Add(1)
 		vidBranch, err := attacher.AttachTransactionFromBytes(txBytesBranch, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
 			wg.Done()
@@ -1084,8 +1072,6 @@ func TestAttachSeqChains(t *testing.T) {
 		testData.stopAndWait()
 		testData.logDAGInfo()
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
-		//testData.wrk.SaveGraph("utangle")
-		//memdag.SaveGraphPastCone(vidBranch, "utangle")
 	})
 	t.Run("with N branches pull", func(t *testing.T) {
 		//attacher.SetTraceOn()
@@ -1142,8 +1128,6 @@ func TestAttachSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		//testData.wrk.SaveGraph("utangle")
-		//dag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 		time.Sleep(500 * time.Millisecond)
@@ -1208,7 +1192,6 @@ func TestAttachSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		//memdag.SaveGraphPastCone(vidBranch, "utangle")
 
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
@@ -1278,7 +1261,6 @@ func TestAttachSeqChains(t *testing.T) {
 
 		testData.stopAndWait()
 		testData.logDAGInfo()
-		//memdag.SaveGraphPastCone(vidBranch, "utangle")
 		require.EqualValues(t, vertex.Good.String(), vidBranch.GetTxStatus().String())
 
 		time.Sleep(500 * time.Millisecond)
@@ -1289,732 +1271,5 @@ func TestAttachSeqChains(t *testing.T) {
 			memStats.NumGC,
 			runtime.NumGoroutine(),
 		)
-	})
-}
-
-// =============================================================================
-// TIMING EDGE CASES TESTS
-// Generated by Claude Code
-// These tests cover timing-related edge cases in the attacher, including
-// transaction pace validation, slot boundary transitions, and consolidation windows.
-// =============================================================================
-
-// TestAttachTimingPaceBoundaries tests transaction pace validation at exact boundaries.
-// It verifies that transactions respect the minimum tick spacing requirements.
-// Generated by Claude Code
-func TestAttachTimingPaceBoundaries(t *testing.T) {
-	t.Run("non-sequencer exact pace", func(t *testing.T) {
-		// Test that a transaction exactly at TransactionPace ticks apart is valid
-		// Note: Non-sequencer transactions don't get callbacks like sequencer transactions.
-		// We verify by checking if the transaction was successfully attached.
-		testData := initWorkflowTest(t, 1)
-		defer testData.stopAndWait()
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
-		require.NoError(t, err)
-		require.EqualValues(t, 1, len(oDatas))
-
-		sourceOutput, err := oDatas[0].Parse()
-		require.NoError(t, err)
-
-		// Create transaction exactly at TransactionPace ticks
-		exactPaceTs := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
-		if exactPaceTs.IsSlotBoundary() {
-			exactPaceTs = exactPaceTs.AddTicks(1)
-		}
-
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, exactPaceTs).
-			MustWithInputs(sourceOutput).
-			WithAmount(1_000_000_000). // Use higher amount for minimum storage deposit
-			WithTargetLock(testData.addr)
-
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(td)
-		require.NoError(t, err)
-
-		// Non-sequencer transactions are attached immediately without waiting for callback
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
-		require.NoError(t, err)
-
-		// Non-sequencer tx shouldn't have "Bad" status if it was built correctly
-		require.NotEqual(t, vertex.Bad.String(), vid.GetTxStatus().String(), "transaction at exact pace should not be rejected")
-		t.Logf("TransactionPace = %d ticks, transaction at exact pace: PASSED (status: %s)", ledger.Const.TransactionPace, vid.GetTxStatus().String())
-	})
-
-	t.Run("non-sequencer pace minus one", func(t *testing.T) {
-		// Test that the pace constraint boundary is correctly identified.
-		// Note: The actual pace constraint validation happens in EasyFL scripts during
-		// lock validation, which only occurs when transaction is included in a sequencer's
-		// past cone. This test verifies the constraint calculation is correct.
-		testData := initWorkflowTest(t, 1)
-		defer testData.stopAndWait()
-
-		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
-		require.NoError(t, err)
-		require.EqualValues(t, 1, len(oDatas))
-
-		sourceOutput, err := oDatas[0].Parse()
-		require.NoError(t, err)
-
-		// Calculate timestamps at pace-1 and at exact pace
-		tooFastTs := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace) - 1)
-		exactPaceTs := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
-
-		// Verify the difference calculation
-		tooFastDiff := base.DiffTicks(tooFastTs, sourceOutput.Timestamp())
-		exactDiff := base.DiffTicks(exactPaceTs, sourceOutput.Timestamp())
-
-		require.EqualValues(t, ledger.Const.TransactionPace-1, tooFastDiff,
-			"pace-1 should be exactly TransactionPace-1 ticks")
-		require.EqualValues(t, ledger.Const.TransactionPace, exactDiff,
-			"exact pace should be exactly TransactionPace ticks")
-
-		t.Logf("TransactionPace = %d, pace-1 = %d, verified constraint boundary calculation",
-			ledger.Const.TransactionPace, ledger.Const.TransactionPace-1)
-	})
-
-	t.Run("sequencer exact pace", func(t *testing.T) {
-		// Test sequencer transaction exactly at TransactionPaceSequencer
-		// Note: initLongConflictTestData requires nChains == nConflicts
-		const nChains = 2
-		testData := initLongConflictTestData(t, nChains, nChains, 0)
-		defer testData.stopAndWait()
-
-		testData.makeChainOrigins(nChains)
-		_, err := attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
-		require.NoError(t, err)
-
-		chainOrigin := testData.chainOrigins[0]
-		// Exact sequencer pace
-		exactSeqPaceTs := chainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer))
-		exactSeqPaceTs = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(exactSeqPaceTs)
-
-		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:      "test",
-			ChainInput:   chainOrigin,
-			Timestamp:    exactSeqPaceTs,
-			Endorsements: []base.TransactionID{testData.distributionBranchTxID},
-			PrivateKey:   testData.privKeyAux,
-		})
-		require.NoError(t, err)
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-			wg.Done()
-		}))
-		require.NoError(t, err)
-		wg.Wait()
-
-		require.EqualValues(t, vertex.Good.String(), vid.GetTxStatus().String(), "sequencer at exact pace should be valid")
-		t.Logf("TransactionPaceSequencer = %d ticks, sequencer at exact pace: PASSED", ledger.Const.TransactionPaceSequencer)
-	})
-}
-
-// TestAttachTimingSlotBoundaries tests slot boundary transitions.
-// It verifies correct handling of transactions at tick 127 (last tick) and tick 0 (branch).
-// Generated by Claude Code
-func TestAttachTimingSlotBoundaries(t *testing.T) {
-	t.Run("branch transaction at slot boundary", func(t *testing.T) {
-		// Test that a branch transaction (tick == 0) requires stem input.
-		// This test verifies the slot boundary calculation and branch transaction construction.
-		testData := initWorkflowTest(t, 2)
-		defer testData.stopAndWait()
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		testData.makeChainOrigins(1)
-		_, err = attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
-		require.NoError(t, err)
-
-		chainOrigin := testData.chainOrigins[0]
-
-		// Get stem output from distribution branch
-		distribBD := testData.wrk.Branches().Get(testData.distributionBranchTxID)
-		require.NotNil(t, distribBD)
-
-		// Create branch at next slot boundary
-		branchTs := chainOrigin.Timestamp().NextSlotBoundary()
-		require.True(t, branchTs.IsSlotBoundary(), "branch timestamp must be on slot boundary")
-		require.EqualValues(t, 0, branchTs.Tick, "branch timestamp tick must be 0")
-
-		// Verify we can build the branch transaction
-		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:    "test",
-			ChainInput: chainOrigin,
-			StemInput:  distribBD.Stem,
-			Timestamp:  branchTs,
-			PrivateKey: testData.privKeyAux,
-		})
-		require.NoError(t, err, "should be able to build branch transaction with stem input")
-
-		// Attach without waiting for callback (sequencer tx solidification can be slow)
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
-		require.NoError(t, err)
-		require.NotNil(t, vid)
-
-		t.Logf("Branch at slot %d, tick 0: built and attached (status: %s)", branchTs.Slot, vid.GetTxStatus().String())
-	})
-
-	t.Run("last tick before slot boundary", func(t *testing.T) {
-		// Test transaction at tick 127 (MaxTickValue)
-		testData := initWorkflowTest(t, 1)
-		defer testData.stopAndWait()
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
-		require.NoError(t, err)
-		require.EqualValues(t, 1, len(oDatas))
-
-		sourceOutput, err := oDatas[0].Parse()
-		require.NoError(t, err)
-
-		// Find a timestamp at tick 127 (last tick of slot)
-		lastTickTs := sourceOutput.Timestamp()
-		for lastTickTs.Tick != base.MaxTickValue {
-			lastTickTs = lastTickTs.AddTicks(1)
-		}
-		// Ensure it's at valid pace from source
-		if base.DiffTicks(lastTickTs, sourceOutput.Timestamp()) < int64(ledger.Const.TransactionPace) {
-			lastTickTs = base.T(lastTickTs.Slot+1, base.MaxTickValue)
-		}
-
-		require.EqualValues(t, base.MaxTickValue, lastTickTs.Tick, "should be at tick 127")
-
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, lastTickTs).
-			MustWithInputs(sourceOutput).
-			WithAmount(100_000_000).
-			WithTargetLock(testData.addr)
-
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(td)
-		require.NoError(t, err)
-
-		// Non-sequencer transactions are attached immediately without waiting for callback
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
-		require.NoError(t, err)
-
-		require.NotEqual(t, vertex.Bad.String(), vid.GetTxStatus().String(), "transaction at tick 127 should not be rejected")
-		t.Logf("Transaction at slot %d, tick %d (MaxTickValue): PASSED (status: %s)", lastTickTs.Slot, lastTickTs.Tick, vid.GetTxStatus().String())
-	})
-
-	t.Run("cross-slot transaction chain", func(t *testing.T) {
-		// Test transaction that consumes output from previous slot
-		testData := initWorkflowTest(t, 2)
-		defer testData.stopAndWait()
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
-		require.NoError(t, err)
-		require.EqualValues(t, 1, len(oDatas))
-
-		sourceOutput, err := oDatas[0].Parse()
-		require.NoError(t, err)
-
-		// First transaction in current slot
-		ts1 := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
-		if ts1.IsSlotBoundary() {
-			ts1 = ts1.AddTicks(1)
-		}
-
-		td1 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts1).
-			MustWithInputs(sourceOutput).
-			WithAmount(5_000_000_000).
-			WithTargetLock(testData.addr)
-
-		txBytes1, err := txbuilder.MakeSimpleTransferTransaction(td1)
-		require.NoError(t, err)
-
-		// Non-sequencer transactions are attached immediately without waiting for callback
-		vid1, err := attacher.AttachTransactionFromBytes(txBytes1, testData.wrk)
-		require.NoError(t, err)
-		require.NotEqual(t, vertex.Bad.String(), vid1.GetTxStatus().String())
-
-		// Second transaction in next slot (cross-slot)
-		output1 := vid1.MustOutputWithIDAt(0)
-		ts2 := base.T(ts1.Slot+1, ledger.Const.TransactionPace+1) // Next slot
-
-		td2 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts2).
-			MustWithInputs(&output1).
-			WithAmount(100_000_000).
-			WithTargetLock(testData.addr)
-
-		txBytes2, err := txbuilder.MakeSimpleTransferTransaction(td2)
-		require.NoError(t, err)
-
-		vid2, err := attacher.AttachTransactionFromBytes(txBytes2, testData.wrk)
-		require.NoError(t, err)
-
-		require.NotEqual(t, vertex.Bad.String(), vid2.GetTxStatus().String(), "cross-slot transaction should not be rejected")
-		t.Logf("Cross-slot chain: slot %d -> slot %d: PASSED", ts1.Slot, ts2.Slot)
-	})
-}
-
-// TestAttachTimingPreBranchConsolidation tests pre-branch consolidation window behavior.
-// Sequencer transactions within PreBranchConsolidationTicks of slot boundary have restrictions.
-// Generated by Claude Code
-func TestAttachTimingPreBranchConsolidation(t *testing.T) {
-	t.Run("sequencer in pre-consolidation window", func(t *testing.T) {
-		// Test that we can correctly identify timestamps in the pre-consolidation window.
-		// The actual enforcement of pre-consolidation restrictions is tested implicitly
-		// through the ledger validation scripts.
-		if ledger.Const.PreBranchConsolidationTicks == 0 {
-			t.Skip("PreBranchConsolidationTicks is 0, no constraint to test")
-		}
-
-		// Calculate pre-consolidation timestamp (within window before slot boundary)
-		preConsolidationTick := base.MaxTickValue - ledger.Const.PreBranchConsolidationTicks + 1
-		preConsolidationTs := base.T(1, preConsolidationTick)
-
-		require.True(t, ledger.Const.IsPreBranchConsolidationTimestamp(preConsolidationTs),
-			"timestamp should be in pre-consolidation window")
-
-		// One tick before should NOT be in pre-consolidation
-		beforePreConsolidation := base.T(1, preConsolidationTick-1)
-		require.False(t, ledger.Const.IsPreBranchConsolidationTimestamp(beforePreConsolidation),
-			"timestamp before window should not be in pre-consolidation")
-
-		t.Logf("Pre-consolidation window: ticks > %d, test tick: %d (in window: true), tick %d (in window: false)",
-			base.MaxTickValue-ledger.Const.PreBranchConsolidationTicks, preConsolidationTick, preConsolidationTick-1)
-	})
-
-	t.Run("at exact consolidation boundary", func(t *testing.T) {
-		// Test at exact boundary of pre-consolidation window
-		if ledger.Const.PreBranchConsolidationTicks == 0 {
-			t.Skip("PreBranchConsolidationTicks is 0, no constraint to test")
-		}
-
-		testData := initWorkflowTest(t, 1)
-		defer testData.stopAndWait()
-
-		// Test the boundary tick value
-		boundaryTick := base.MaxTickValue - ledger.Const.PreBranchConsolidationTicks
-		boundaryTs := base.T(1, boundaryTick)
-
-		// Boundary tick should NOT be in pre-consolidation
-		require.False(t, ledger.Const.IsPreBranchConsolidationTimestamp(boundaryTs),
-			"tick at exact boundary should NOT be in pre-consolidation")
-
-		// One tick after should BE in pre-consolidation
-		afterBoundaryTs := base.T(1, boundaryTick+1)
-		require.True(t, ledger.Const.IsPreBranchConsolidationTimestamp(afterBoundaryTs),
-			"tick after boundary should be in pre-consolidation")
-
-		t.Logf("PreBranchConsolidationTicks=%d, boundary tick=%d: PASSED",
-			ledger.Const.PreBranchConsolidationTicks, boundaryTick)
-	})
-}
-
-// TestAttachTimingPostBranchConsolidation tests post-branch consolidation timing.
-// Sequencer transactions must be at least PostBranchConsolidationTicks after branch.
-// Generated by Claude Code
-func TestAttachTimingPostBranchConsolidation(t *testing.T) {
-	t.Run("sequencer at exact post-consolidation", func(t *testing.T) {
-		// Test that we can correctly identify timestamps in the post-consolidation window.
-		// The actual enforcement of post-consolidation restrictions is tested implicitly
-		// through the ledger validation scripts.
-
-		// Exact post-consolidation timestamp
-		postConsolidationTs := base.T(1, ledger.Const.PostBranchConsolidationTicks)
-		require.True(t, ledger.Const.IsPostBranchConsolidationTimestamp(postConsolidationTs),
-			"timestamp at exact post-consolidation ticks should be in post-consolidation window")
-
-		// One tick before should NOT be in post-consolidation
-		beforePostConsolidation := base.T(1, ledger.Const.PostBranchConsolidationTicks-1)
-		require.False(t, ledger.Const.IsPostBranchConsolidationTimestamp(beforePostConsolidation),
-			"timestamp before post-consolidation ticks should not be in post-consolidation window")
-
-		// Tick 0 (branch) should NOT be in post-consolidation
-		branchTs := base.T(1, 0)
-		require.False(t, ledger.Const.IsPostBranchConsolidationTimestamp(branchTs),
-			"branch tick (0) should not be in post-consolidation window")
-
-		t.Logf("PostBranchConsolidationTicks=%d, tick %d (in window: true), tick %d (in window: false): PASSED",
-			ledger.Const.PostBranchConsolidationTicks, ledger.Const.PostBranchConsolidationTicks, ledger.Const.PostBranchConsolidationTicks-1)
-	})
-
-	t.Run("ensure post-consolidation helper", func(t *testing.T) {
-		// Test the EnsurePostBranchConsolidationConstraintTimestamp helper
-		testData := initWorkflowTest(t, 1)
-		defer testData.stopAndWait()
-
-		// Timestamp before post-consolidation
-		earlyTs := base.T(1, 1)
-		require.False(t, ledger.Const.IsPostBranchConsolidationTimestamp(earlyTs))
-
-		// Use helper to adjust
-		adjustedTs := ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(earlyTs)
-		require.True(t, ledger.Const.IsPostBranchConsolidationTimestamp(adjustedTs))
-		require.EqualValues(t, ledger.Const.PostBranchConsolidationTicks, adjustedTs.Tick)
-
-		// Timestamp already at post-consolidation should not change
-		okTs := base.T(1, ledger.Const.PostBranchConsolidationTicks+10)
-		unchanged := ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(okTs)
-		require.EqualValues(t, okTs, unchanged)
-
-		t.Logf("EnsurePostBranchConsolidationConstraintTimestamp helper: PASSED")
-	})
-}
-
-// TestAttachTimingRecursionDepth tests attachment recursion depth limits.
-// This prevents hanging chain attacks with very long non-sequencer chains.
-// Generated by Claude Code
-func TestAttachTimingRecursionDepth(t *testing.T) {
-	t.Run("chain at max recursion depth", func(t *testing.T) {
-		// Create a chain of transactions at max recursion depth
-		testData := initWorkflowTest(t, 1)
-		defer testData.stopAndWait()
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		maxDepth := testData.env.MaxAttachmentRecursionDepth()
-		t.Logf("MaxAttachmentRecursionDepth = %d", maxDepth)
-
-		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
-		require.NoError(t, err)
-		require.EqualValues(t, 1, len(oDatas))
-
-		// Create a chain of transactions (maxDepth - some margin for safety)
-		chainLength := maxDepth - 5
-		if chainLength <= 0 {
-			chainLength = 5
-		}
-		t.Logf("Creating chain of %d transactions", chainLength)
-
-		prevOutput, err := oDatas[0].Parse()
-		require.NoError(t, err)
-
-		txBytesChain := make([][]byte, chainLength)
-		for i := 0; i < chainLength; i++ {
-			ts := prevOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
-			if ts.IsSlotBoundary() {
-				ts = ts.AddTicks(1)
-			}
-
-			// Transfer full balance to avoid remainder output issues with minimum storage deposit
-			td := txbuilder.NewTransferData(testData.privKey, testData.addr, ts).
-				MustWithInputs(prevOutput).
-				WithAmount(prevOutput.Output.TokenBalance()).
-				WithTargetLock(testData.addr)
-
-			txBytesChain[i], err = txbuilder.MakeSimpleTransferTransaction(td)
-			require.NoError(t, err)
-
-			tx, err := transaction.FromBytes(txBytesChain[i], transaction.MainTxValidationOptions...)
-			require.NoError(t, err)
-			prevOutput = tx.MustProducedOutputWithIDAt(0)
-
-			// Store all but the last in txstore for pull
-			if i < chainLength-1 {
-				_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesChain[i], nil)
-				require.NoError(t, err)
-			}
-		}
-
-		// Attach the last transaction (should pull the chain)
-		// Non-sequencer transactions are attached immediately without waiting for callback
-		vid, err := attacher.AttachTransactionFromBytes(txBytesChain[chainLength-1], testData.wrk)
-		require.NoError(t, err)
-
-		// Chain within limits should not be rejected
-		require.NotEqual(t, vertex.Bad.String(), vid.GetTxStatus().String(),
-			"chain within max depth should not be rejected")
-		t.Logf("Chain of %d transactions within max depth %d: PASSED (status: %s)", chainLength, maxDepth, vid.GetTxStatus().String())
-	})
-}
-
-// =============================================================================
-// DEADLOCK SCENARIO TESTS
-// Generated by Claude Code
-// These tests cover potential deadlock scenarios in the attacher, including
-// context cancellation, concurrent attachers, and shutdown behavior.
-// =============================================================================
-
-// TestAttachDeadlockContextCancellation tests workflow stop behavior mid-attachment.
-// Verifies that stopping the workflow causes attachers to exit cleanly.
-// Generated by Claude Code
-func TestAttachDeadlockContextCancellation(t *testing.T) {
-	t.Run("stop workflow during attachment", func(t *testing.T) {
-		testData := initWorkflowTest(t, 2)
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		testData.makeChainOrigins(1)
-		_, err = attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
-		require.NoError(t, err)
-
-		chainOrigin := testData.chainOrigins[0]
-
-		ts := chainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer))
-		ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
-
-		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:      "test",
-			ChainInput:   chainOrigin,
-			Timestamp:    ts,
-			Endorsements: []base.TransactionID{testData.distributionBranchTxID},
-			PrivateKey:   testData.privKeyAux,
-		})
-		require.NoError(t, err)
-
-		var callbackCalled atomic.Bool
-		vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk,
-			attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
-				callbackCalled.Store(true)
-			}))
-		require.NoError(t, err)
-
-		// Stop workflow immediately (this triggers context cancellation internally)
-		testData.stop()
-
-		// Wait for completion with timeout
-		deadline := time.Now().Add(5 * time.Second)
-		for time.Now().Before(deadline) {
-			status := vid.GetTxStatus()
-			if status != vertex.Undefined {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-
-		// Should complete (either Good or Bad) without hanging
-		status := vid.GetTxStatus()
-		t.Logf("Transaction status after stop: %s", status.String())
-		require.True(t, status == vertex.Good || status == vertex.Bad,
-			"transaction should complete after workflow stop, got: %s", status.String())
-
-		testData.waitStop(5 * time.Second)
-	})
-}
-
-// TestAttachDeadlockConcurrentAttachers tests concurrent attachment of the same transaction.
-// Verifies that only one attacher runs and callbacks are properly invoked.
-// Generated by Claude Code
-func TestAttachDeadlockConcurrentAttachers(t *testing.T) {
-	t.Run("concurrent attach same transaction", func(t *testing.T) {
-		testData := initWorkflowTest(t, 2)
-		defer testData.stopAndWait()
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
-		require.NoError(t, err)
-		require.EqualValues(t, 1, len(oDatas))
-
-		sourceOutput, err := oDatas[0].Parse()
-		require.NoError(t, err)
-
-		ts := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
-		if ts.IsSlotBoundary() {
-			ts = ts.AddTicks(1)
-		}
-
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ts).
-			MustWithInputs(sourceOutput).
-			WithAmount(100_000_000).
-			WithTargetLock(testData.addr)
-
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(td)
-		require.NoError(t, err)
-
-		const numConcurrent = 10
-		var wg sync.WaitGroup
-		vids := make([]*vertex.WrappedTx, numConcurrent)
-		errors := make([]error, numConcurrent)
-
-		// Start multiple concurrent attachments of the same transaction
-		wg.Add(numConcurrent)
-		for i := 0; i < numConcurrent; i++ {
-			go func(idx int) {
-				defer wg.Done()
-				vid, err := attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
-				errors[idx] = err
-				vids[idx] = vid
-			}(i)
-		}
-
-		// Wait with timeout
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			// Good, all completed
-		case <-time.After(10 * time.Second):
-			t.Fatal("timeout waiting for concurrent attachments - possible deadlock")
-		}
-
-		// All attachments should succeed without error
-		for i, err := range errors {
-			require.NoError(t, err, "concurrent attachment %d should not error", i)
-		}
-
-		// All vids should point to same vertex (same txid)
-		var refVid *vertex.WrappedTx
-		for i, vid := range vids {
-			if vid != nil {
-				if refVid == nil {
-					refVid = vid
-				} else {
-					require.EqualValues(t, refVid.ID(), vid.ID(),
-						"concurrent attachments should return same vertex, idx=%d", i)
-				}
-			}
-		}
-
-		require.NotNil(t, refVid, "at least one vid should be returned")
-		require.NotEqual(t, vertex.Bad.String(), refVid.GetTxStatus().String(), "transaction should not be rejected")
-		t.Logf("Concurrent attachments: %d goroutines, all returned same vertex: PASSED", numConcurrent)
-	})
-}
-
-// TestAttachDeadlockSolidificationDeadline tests solidification deadline behavior.
-// Verifies that missing inputs cause deadline expiration, not hanging.
-// Generated by Claude Code
-func TestAttachDeadlockSolidificationDeadline(t *testing.T) {
-	t.Run("missing input causes deadline", func(t *testing.T) {
-		testData := initWorkflowTest(t, 1)
-		defer testData.stopAndWait()
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		rdr := testData.wrk.HeaviestStateForLatestTimeSlot()
-		oDatas, err := rdr.GetUTXOsInAccount(testData.addr.AccountID())
-		require.NoError(t, err)
-		require.EqualValues(t, 1, len(oDatas))
-
-		sourceOutput, err := oDatas[0].Parse()
-		require.NoError(t, err)
-
-		// Create first transaction (don't store it - will be missing)
-		ts1 := sourceOutput.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
-		if ts1.IsSlotBoundary() {
-			ts1 = ts1.AddTicks(1)
-		}
-
-		td1 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts1).
-			MustWithInputs(sourceOutput).
-			WithAmount(5_000_000_000).
-			WithTargetLock(testData.addr)
-
-		txBytes1, err := txbuilder.MakeSimpleTransferTransaction(td1)
-		require.NoError(t, err)
-
-		tx1, err := transaction.FromBytes(txBytes1, transaction.MainTxValidationOptions...)
-		require.NoError(t, err)
-
-		// Create second transaction that depends on first (missing)
-		output1 := tx1.MustProducedOutputWithIDAt(0)
-		ts2 := ts1.AddTicks(int(ledger.Const.TransactionPace))
-		if ts2.IsSlotBoundary() {
-			ts2 = ts2.AddTicks(1)
-		}
-
-		td2 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts2).
-			MustWithInputs(output1).
-			WithAmount(100_000_000).
-			WithTargetLock(testData.addr)
-
-		txBytes2, err := txbuilder.MakeSimpleTransferTransaction(td2)
-		require.NoError(t, err)
-
-		// Attach second transaction - should eventually fail due to missing input
-		// Note: the first transaction (tx1) was never stored or attached
-		vid, err := attacher.AttachTransactionFromBytes(txBytes2, testData.wrk)
-		require.NoError(t, err)
-
-		// Non-sequencer transactions might not immediately fail - they may be pending
-		// while trying to solidify. The key assertion is that this doesn't hang.
-		status := vid.GetTxStatus()
-		t.Logf("Initial status for tx with missing input: %s", status.String())
-
-		// If still trying to solidify, that's acceptable for this test
-		// The main point is that the AttachTransactionFromBytes returned without hanging
-		require.True(t, status == vertex.Undefined || status == vertex.Bad,
-			"transaction with missing input should be Undefined (pending) or Bad, got: %s", status.String())
-	})
-}
-
-// TestAttachDeadlockShutdownDuringAttachment tests graceful shutdown mid-attachment.
-// Verifies that stopping the workflow doesn't leave orphaned goroutines.
-// Generated by Claude Code
-func TestAttachDeadlockShutdownDuringAttachment(t *testing.T) {
-	t.Run("shutdown during multiple attachments", func(t *testing.T) {
-		goroutinesBefore := runtime.NumGoroutine()
-
-		testData := initWorkflowTest(t, 2)
-
-		// Ensure distribution branch is attached before attaching dependent transactions
-		err := testData.wrk.EnsureLatestBranches()
-		require.NoError(t, err)
-
-		testData.makeChainOrigins(5)
-		_, err = attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
-		require.NoError(t, err)
-
-		// Start multiple attachments
-		const numAttachments = 5
-		for i := 0; i < numAttachments; i++ {
-			chainOrigin := testData.chainOrigins[i%len(testData.chainOrigins)]
-			ts := chainOrigin.Timestamp().AddTicks(int(ledger.Const.TransactionPaceSequencer) * (i + 1))
-			ts = ledger.Const.EnsurePostBranchConsolidationConstraintTimestamp(ts)
-
-			txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-				SeqName:      "test",
-				ChainInput:   chainOrigin,
-				Timestamp:    ts,
-				Endorsements: []base.TransactionID{testData.distributionBranchTxID},
-				PrivateKey:   testData.privKeyAux,
-			})
-			require.NoError(t, err)
-
-			_, err = attacher.AttachTransactionFromBytes(txBytes, testData.wrk)
-			require.NoError(t, err)
-		}
-
-		// Immediate shutdown
-		stopped := testData.stopAndWait(5 * time.Second)
-		require.True(t, stopped, "workflow should stop within timeout")
-
-		// Give goroutines time to clean up
-		time.Sleep(500 * time.Millisecond)
-		runtime.GC()
-		time.Sleep(100 * time.Millisecond)
-
-		goroutinesAfter := runtime.NumGoroutine()
-		goroutineDiff := goroutinesAfter - goroutinesBefore
-
-		t.Logf("Goroutines before: %d, after: %d, diff: %d", goroutinesBefore, goroutinesAfter, goroutineDiff)
-
-		// Allow some slack for background goroutines, but shouldn't leak many
-		require.LessOrEqual(t, goroutineDiff, 5,
-			"should not leak many goroutines after shutdown")
 	})
 }

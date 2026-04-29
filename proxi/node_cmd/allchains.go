@@ -91,7 +91,9 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 			sdHeight := ""
 			if md := sd.SequencerData; md != nil {
 				sdName = md.Name()
-				sdHeight = fmt.Sprintf("(%d/%d)", md.ChainHeight(), md.BranchHeight())
+			}
+			if cc := sd.ChainConstraint; cc != nil {
+				sdHeight = fmt.Sprintf("(%d/%d)", cc.TransitionCounter, cc.BranchCounter)
 			}
 			seqNames[o.ChainID] = sdName
 			seqHeight[o.ChainID] = sdHeight
@@ -119,7 +121,7 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 			}
 			lock := o.Output.Lock()
 			if dlg, isDelegation := lock.(*ledger.DelegateLock); isDelegation {
-				targetID := dlg.Target.ChainID()
+				targetID := dlg.Target
 				targetName := targetID.String()
 				if _, ok := seqNames[targetID]; ok {
 					targetName = seqNames[targetID]
@@ -156,7 +158,12 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID) {
 			}
 			seq = "YES"
 			if md := sd.SequencerData; md != nil {
-				seq = fmt.Sprintf("%s (%d/%d)", md.Name(), md.ChainHeight(), md.BranchHeight())
+				name := md.Name()
+				if cc := sd.ChainConstraint; cc != nil {
+					seq = fmt.Sprintf("%s (%d/%d)", name, cc.TransitionCounter, cc.BranchCounter)
+				} else {
+					seq = name
+				}
 			}
 		}
 
@@ -170,6 +177,14 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID) {
 		glb.Infof("      balance         : %s", util.Th(o.Output.TokenBalance()))
 		glb.Infof("      controller lock : %s", lock.String())
 		glb.Infof("      output          : %s", o.ID.String())
+		cc := o.Output.ChainConstraint()
+		if cc != nil {
+			glb.Infof("      origin slot     : %d", cc.OriginSlot)
+			glb.Infof("      transitions     : %d", cc.TransitionCounter)
+			totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus
+			glb.Infof("      cum. inflation  : %s (chain: %s, branch bonus: %s)",
+				util.Th(totalInflation), util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
+		}
 		count++
 	}
 	glb.Infof("\ntotal %d chains", count)
@@ -223,7 +238,7 @@ func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 				seqs++
 			} else {
 				if dOut, isDelegation := ledger.AsDelegationOutput(o.Output, o.ID); isDelegation {
-					ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), util.Ref(dOut.Target.ChainID()).String(), util.Th(o.Output.TokenBalance()))
+					ln.Add("delegation %s -> %s balance %s", o.ChainID.String(), dOut.Target.String(), util.Th(o.Output.TokenBalance()))
 					delegations++
 				} else {
 					ln.Add("           %s balance %s", o.ChainID.String(), util.Th(o.Output.TokenBalance()))
@@ -234,7 +249,7 @@ func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 		glb.Infof("  %s (%2d = %d sequencers + %2d delegations + %2d other), total balance: %s",
 			owner, len(lst), seqs, delegations, others, util.Th(sum))
 		if glb.IsVerbose() {
-			glb.Infof(ln.String())
+			glb.Infof("%s", ln.String())
 		}
 	}
 	glb.Infof("----------------------")

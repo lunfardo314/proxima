@@ -7,7 +7,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
@@ -15,7 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/set"
 )
 
 func (w *Workflow) MaxDurationInTheFuture() time.Duration {
@@ -47,9 +46,22 @@ func (w *Workflow) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.Tra
 	w.peers.GossipTxBytesToPeers(txBytes, metadata, txid, except...)
 }
 
-func (w *Workflow) MustPersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid ...base.TransactionID) {
-	_, err := w.TxBytesStore().PersistTxBytesWithMetadata(txBytes, metadata, txid...)
-	util.AssertNoError(err)
+func (w *Workflow) MustPersistTxBytesWithMetadata(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata) {
+	w.txStoreWriter.PersistTxBytesQueued(tx, metadata)
+}
+
+// GetTxBytesWithMetadata checks the transaction cache first, then the underlying store.
+func (w *Workflow) GetTxBytesWithMetadata(txid *base.TransactionID) []byte {
+	if data := w.txStoreWriter.GetTxBytesWithMetadata(txid); data != nil {
+		return data
+	}
+	return w.TxBytesStore().GetTxBytesWithMetadata(txid)
+}
+
+// TakeCachedTx returns a pre-parsed transaction from the cache and removes it.
+// Returns nil if not cached. The write buffer is not affected.
+func (w *Workflow) TakeCachedTx(txid *base.TransactionID) (*transaction.Transaction, *txmetadata.TransactionMetadata) {
+	return w.txStoreWriter.TakeCachedTx(txid)
 }
 
 func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
@@ -59,6 +71,42 @@ func (w *Workflow) SendToTippool(vid *vertex.WrappedTx) {
 func (w *Workflow) IsSynced() bool {
 	slotNow := ledger.TimeNow().Slot
 	return slotNow == 0 || multistate.FirstHealthySlotIsNotBefore(w.StateStore(), slotNow-1, global.FractionHealthyBranch)
+}
+
+func (w *Workflow) MaxConcurrentAttachers() int {
+	return w.cfg.maxConcurrentAttachers
+}
+
+func (w *Workflow) NotifyBranchCommitted(branchSlot uint32) {
+	w.syncModule.NotifyBranchCommitted(branchSlot)
+}
+
+// RequestPrune signals the memDAG to run LRB-depth pruning on the next tick.
+func (w *Workflow) RequestPrune() {
+	w.MemDAG.RequestPrune()
+}
+
+// RegisterBranchVertices records the vertex set of a branch's past cone for fine-grained pruning.
+func (w *Workflow) RegisterBranchVertices(branchID base.TransactionID, predecessorBranchID base.TransactionID, vertices set.Set[*vertex.WrappedTx]) {
+	w.MemDAG.RegisterBranchVertices(branchID, predecessorBranchID, vertices)
+}
+
+func (w *Workflow) ForceCommitBranch(branchID base.TransactionID) {
+	w.branches.GetStateReaderForTheBranch(branchID)
+}
+
+func (w *Workflow) LatestForwardSyncedTimestamp() base.LedgerTime {
+	return w.syncModule.LatestForwardSyncedTimestamp()
+}
+
+// IsSyncing returns true when forward-sync is actively catching up.
+func (w *Workflow) IsSyncing() bool {
+	return w.syncModule.IsSyncing()
+}
+
+// IsVertexReferencedInTippool returns true if the vertex is one of the latest milestone tips.
+func (w *Workflow) IsVertexReferencedInTippool(vid *vertex.WrappedTx) bool {
+	return w.tippool.IsVertexReferenced(vid)
 }
 
 // LatestMilestonesDescending returns optionally filtered sorted transactions from the sequencer tippool
@@ -107,14 +155,20 @@ func (w *Workflow) AddPulledTransaction(txid base.TransactionID) {
 	w.txInputQueue.AddPulledTransaction(txid)
 }
 
-func (w *Workflow) EvidenceNonSequencerTx() {
-	w.txInputQueue.EvidenceNonSequencerTx()
+// CachedTxInSolicited sends a pre-parsed transaction from cache to the solicit queue for fast-track attachment.
+func (w *Workflow) CachedTxInSolicited(tx *transaction.Transaction) {
+	w.txSolicitQueue.PushParsedTx(tx)
 }
 
-func (w *Workflow) SaveFullDAG(fname string) {
-	branchTxIDS := multistate.FetchLatestBranchTransactionIDs(w.StateStore())
-	tmpDag := memdag.MakeDAGFromTxStoreUntilSlot(w.TxBytesStore(), 0, branchTxIDS...)
-	tmpDag.SaveGraph(fname)
+// TxBytesFromStoreInSolicited sends raw txstore bytes to the solicit queue (fallback for disk-only lookups).
+func (w *Workflow) TxBytesFromStoreInSolicited(txBytesWithMetadata []byte) {
+	w.txSolicitQueue.PushTxBytesFromStore(txBytesWithMetadata)
+}
+
+// PipelineSize returns the total number of transactions in the processing pipeline:
+// memDAG vertices + solicited queue length + txstore cache + txs waiting for clock alignment.
+func (w *Workflow) PipelineSize() int {
+	return w.NumVertices() + w.txSolicitQueue.Len() + w.txStoreWriter.CacheSize() + w.Counter("wait")
 }
 
 func (w *Workflow) GetKnownLatestSequencerDataJSONAble() map[string]tippool.LatestSequencerTipDataJSONAble {
@@ -127,4 +181,27 @@ func (w *Workflow) DisableMemDAGGC() bool {
 
 func (w *Workflow) Branches() *branches.Branches {
 	return w.branches
+}
+
+// CheckTransactionInLRB shadows MemDAG.CheckTransactionInLRB to use Branches.FindLatestReliableBranch
+// (which sees pending branches) and Branches.BranchKnowsTransaction (which walks pending mutations).
+func (w *Workflow) CheckTransactionInLRB(txid base.TransactionID, maxDepth int) (lrbid base.TransactionID, foundAtDepth int) {
+	foundAtDepth = -1
+	lrb := w.branches.FindLatestReliableBranch()
+	if lrb == nil {
+		return
+	}
+	lrbid = lrb.Stem.ID.TransactionID()
+
+	multistate.IterateBranchChainBack(w.StateStore(), lrb, func(branchID *base.TransactionID, branch *multistate.BranchData) bool {
+		if foundAtDepth >= maxDepth {
+			return false
+		}
+		if !w.branches.BranchKnowsTransaction(*branchID, txid) {
+			return false
+		}
+		foundAtDepth++
+		return true
+	})
+	return
 }

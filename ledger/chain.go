@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/hex"
 	"fmt"
 
@@ -12,50 +13,52 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-// ChainConstraint is a chain constraint
+//go:embed def/chain.easyfl
+var chainConstraintSource string
+
+// ChainConstraint is a chain constraint. Always at index 2 in the output tuple.
 type ChainConstraint struct {
 	// ChainID all-0 for origin
 	ChainID base.ChainID
-	// Predecessor output index with the same ChainID. Must be 0xFF for the origin
+	// Predecessor input index. 0xFF means origin (no predecessor). Serialized as 0x (empty) for origin.
 	PredecessorInputIndex byte
-	// Predecessor constraint index. Must be 0xff for the origin
-	PredecessorConstraintIndex byte
 	// slot of the origin chain output
 	OriginSlot uint32
-	// amount on the chain at the origin
-	OriginAmount uint64
+	// cumulative chain inflation (z64). 0x at origin.
+	CumulativeChainInflation uint64
+	// cumulative branch inflation bonus (z64). 0x at origin. Non-zero only on sequencer chains.
+	CumulativeBranchBonus uint64
+	// incremental transition counter (z64). 0x at origin.
+	TransitionCounter uint64
+	// incremental branch counter (z32). 0x at origin. Increments only on the sequencer output of branch transactions.
+	BranchCounter uint32
 }
 
 const (
-	ChainConstraintName     = "chain"
-	chainConstraintTemplate = ChainConstraintName + "(0x%s, 0x%s, z32/%d, z64/%d)"
+	ChainConstraintName               = "chain"
+	chainConstraintTemplateOrigin     = ChainConstraintName + "(0x%s, 0x%s, z32/%d, 0x, 0x, 0x, 0x)"
+	chainConstraintTemplateTransition = ChainConstraintName + "(0x%s, 0x%s, z32/%d, z64/%d, z64/%d, z64/%d, z32/%d)"
 )
 
-func NewChainConstraint(id base.ChainID, predOutputIndex, predConstraintIndex byte, originSlot uint32, originAmount uint64) *ChainConstraint {
+func NewChainConstraint(id base.ChainID, predInputIndex byte, originSlot uint32, cumulativeChainInflation uint64, cumulativeBranchBonus uint64, transitionCounter uint64, branchCounter uint32) *ChainConstraint {
+	util.Assertf(uint64(branchCounter) <= transitionCounter, "branchCounter (%d) cannot exceed transitionCounter (%d)", branchCounter, transitionCounter)
 	return &ChainConstraint{
-		ChainID:                    id,
-		PredecessorInputIndex:      predOutputIndex,
-		PredecessorConstraintIndex: predConstraintIndex,
-		OriginSlot:                 originSlot,
-		OriginAmount:               originAmount,
+		ChainID:                 id,
+		PredecessorInputIndex:   predInputIndex,
+		OriginSlot:              originSlot,
+		CumulativeChainInflation: cumulativeChainInflation,
+		CumulativeBranchBonus:   cumulativeBranchBonus,
+		TransitionCounter:       transitionCounter,
+		BranchCounter:           branchCounter,
 	}
 }
 
-func NewChainOrigin(startSlot uint32, startAmount uint64) *ChainConstraint {
-	return NewChainConstraint(base.NilChainID, 0xff, 0xff, startSlot, startAmount)
+func NewChainOrigin(startSlot uint32) *ChainConstraint {
+	return NewChainConstraint(base.NilChainID, 0xff, startSlot, 0, 0, 0, 0)
 }
 
 func (cc *ChainConstraint) IsOrigin() bool {
-	if cc.ChainID != base.NilChainID {
-		return false
-	}
-	if cc.PredecessorInputIndex != 0xff {
-		return false
-	}
-	if cc.PredecessorConstraintIndex != 0xff {
-		return false
-	}
-	return true
+	return cc.ChainID == base.NilChainID && cc.PredecessorInputIndex == 0xff
 }
 
 func (cc *ChainConstraint) Name() string {
@@ -68,22 +71,37 @@ func (cc *ChainConstraint) Bytes() []byte {
 
 func (cc *ChainConstraint) String() string {
 	chID := "ORIGIN"
+	predRefStr := "empty"
 	if !cc.IsOrigin() {
 		chID = cc.ChainID.String()
+		predRefStr = hex.EncodeToString([]byte{cc.PredecessorInputIndex})
 	}
-	predRef := []byte{cc.PredecessorInputIndex, cc.PredecessorConstraintIndex}
-	return fmt.Sprintf("%s(%s, predRef=%s, originSlot=%d, originAmount=%s)",
-		ChainConstraintName, chID, hex.EncodeToString(predRef), cc.OriginSlot, util.Th(cc.OriginAmount))
+	return fmt.Sprintf("%s(%s, predInputIdx=%s, originSlot=%d, cumInflation=%s, cumBranchBonus=%s, txCounter=%d, branchCounter=%d)",
+		ChainConstraintName, chID, predRefStr, cc.OriginSlot,
+		util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus), cc.TransitionCounter, cc.BranchCounter)
 }
 
 func (cc *ChainConstraint) Source() string {
-	predRef := []byte{cc.PredecessorInputIndex, cc.PredecessorConstraintIndex}
-	return fmt.Sprintf(chainConstraintTemplate,
-		hex.EncodeToString(cc.ChainID[:]), hex.EncodeToString(predRef), cc.OriginSlot, cc.OriginAmount)
+	var predRefHex string
+	if !cc.IsOrigin() {
+		predRefHex = hex.EncodeToString([]byte{cc.PredecessorInputIndex})
+	}
+	chainIDHex := hex.EncodeToString(cc.ChainID[:])
+	// At origin, $3/$4/$5 are 0x (empty bytes). At transitions, use z64/z32 encoding.
+	if cc.IsOrigin() {
+		return fmt.Sprintf(chainConstraintTemplateOrigin, chainIDHex, predRefHex, cc.OriginSlot)
+	}
+	return fmt.Sprintf(chainConstraintTemplateTransition,
+		chainIDHex, predRefHex, cc.OriginSlot,
+		cc.CumulativeChainInflation, cc.CumulativeBranchBonus, cc.TransitionCounter, cc.BranchCounter)
 }
 
 func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 4)
+	return ChainConstraintFromBytesWithLib(data, L(base.MaxSlot))
+}
+
+func ChainConstraintFromBytesWithLib(data []byte, lib *Library) (*ChainConstraint, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 7)
 	if err != nil {
 		return nil, err
 	}
@@ -96,152 +114,159 @@ func ChainConstraintFromBytes(data []byte) (*ChainConstraint, error) {
 		return nil, err
 	}
 	args1 := easyfl.StripDataPrefix(args[1])
-	if len(args1) != 2 {
-		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong predecessor reference")
+	switch len(args1) {
+	case 0:
+		// origin: empty predecessor reference
+		ret.PredecessorInputIndex = 0xff
+	case 1:
+		ret.PredecessorInputIndex = args1[0]
+	default:
+		return nil, fmt.Errorf("ChainConstraintFromBytes: wrong predecessor reference length %d", len(args1))
 	}
-	ret.PredecessorInputIndex = args1[0]
-	ret.PredecessorConstraintIndex = args1[1]
 	sl, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[2]))
 	if err != nil {
 		return nil, err
 	}
 	ret.OriginSlot = sl
-	if ret.OriginAmount, err = easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3])); err != nil {
-		return nil, err
+
+	// $3: cumulative chain inflation (z64)
+	args3 := easyfl.StripDataPrefix(args[3])
+	if len(args3) > 0 {
+		if ret.CumulativeChainInflation, err = easyfl_util.Uint64FromBytes(args3); err != nil {
+			return nil, err
+		}
+	}
+	// $4: cumulative branch inflation bonus (z64)
+	args4 := easyfl.StripDataPrefix(args[4])
+	if len(args4) > 0 {
+		if ret.CumulativeBranchBonus, err = easyfl_util.Uint64FromBytes(args4); err != nil {
+			return nil, err
+		}
+	}
+	// $5: transition counter (z64)
+	args5 := easyfl.StripDataPrefix(args[5])
+	if len(args5) > 0 {
+		if ret.TransitionCounter, err = easyfl_util.Uint64FromBytes(args5); err != nil {
+			return nil, err
+		}
+	}
+	// $6: branch counter (z32)
+	args6 := easyfl.StripDataPrefix(args[6])
+	if len(args6) > 0 {
+		if ret.BranchCounter, err = easyfl_util.Uint32FromBytes(args6); err != nil {
+			return nil, err
+		}
+	}
+	if uint64(ret.BranchCounter) > ret.TransitionCounter {
+		return nil, fmt.Errorf("ChainConstraintFromBytes: branchCounter (%d) cannot exceed transitionCounter (%d)", ret.BranchCounter, ret.TransitionCounter)
 	}
 	return ret, nil
 }
 
-// NewChainUnlockParams unlock parameters for the chain constraint. 3 bytes:
+// NewChainUnlockParams unlock parameters for the chain constraint. 1 byte:
 // 0 - successor output index
-// 1 - successor block index
-// 2 - transition mode must be equal to the transition mode in the successor constraint data
-func NewChainUnlockParams(successorOutputIdx, successorConstraintIndex byte) []byte {
-	return []byte{successorOutputIdx, successorConstraintIndex}
+func NewChainUnlockParams(successorOutputIdx byte) []byte {
+	return []byte{successorOutputIdx}
 }
 
-var FinishChainUnlockParams = []byte{0xff, 0xff}
+// FinishChainUnlockParams discontinues the chain. Empty unlock data.
+var FinishChainUnlockParams = []byte{}
 
 func registerChainConstraint(lib *Library) {
-	lib.mustRegisterConstraint(ChainConstraintName, 4, func(data []byte) (Constraint, error) {
-		return ChainConstraintFromBytes(data)
-	}, initTestChainConstraintInlineTest)
+	lib.mustRegisterConstraint(ChainConstraintName, 7, func(data []byte) (Constraint, error) {
+		// Use latest library version for library registration parsing
+		return ChainConstraintFromBytesWithLib(data, lib)
+	})
 }
 
-func initTestChainConstraintInlineTest() {
-	example := NewChainOrigin(1000, 10_000_000)
-	back, err := ChainConstraintFromBytes(example.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
-	util.Assertf(back.OriginSlot == 1000, "back.OriginSlot == 1000")
-	util.Assertf(back.OriginAmount == 10_000_000, "back.OriginAmount == 10_000_000")
+func init() {
+	registerInlineTest(func(lib *Library) {
+		// test origin serialization round-trip
+		example := NewChainOrigin(1000)
+		back, err := ChainConstraintFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(bytes.Equal(back.Bytes(), example.Bytes()), "inconsistency in "+ChainConstraintName)
+		util.Assertf(back.OriginSlot == 1000, "back.OriginSlot == 1000")
+		util.Assertf(back.CumulativeChainInflation == 0, "origin CumulativeChainInflation == 0")
+		util.Assertf(back.CumulativeBranchBonus == 0, "origin CumulativeBranchBonus == 0")
+		util.Assertf(back.TransitionCounter == 0, "origin TransitionCounter == 0")
+		util.Assertf(back.BranchCounter == 0, "origin BranchCounter == 0")
 
-	var chainID base.ChainID
-	chainID = blake2b.Sum256([]byte("dummy"))
-	{
-		chainIDBack, err := base.ChainIDFromBytes(chainID.Bytes())
-		util.AssertNoError(err)
-		util.Assertf(chainIDBack == chainID, "chainIDBack == chainID")
-	}
-	{
-		chainConstr := NewChainConstraint(chainID, 0, 0, 1000, 10_000_000)
-		chainConstrBack, err := ChainConstraintFromBytes(chainConstr.Bytes())
-		util.AssertNoError(err)
-		util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
-	}
+		var chainID base.ChainID
+		chainID = blake2b.Sum256([]byte("dummy"))
+		{
+			chainIDBack, err := base.ChainIDFromBytes(chainID.Bytes())
+			util.AssertNoError(err)
+			util.Assertf(chainIDBack == chainID, "chainIDBack == chainID")
+		}
+		{
+			// test transition serialization round-trip
+			chainConstr := NewChainConstraint(chainID, 0, 1000, 500_000, 100_000, 42, 7)
+			chainConstrBack, err := ChainConstraintFromBytesWithLib(chainConstr.Bytes(), lib)
+			util.AssertNoError(err)
+			util.Assertf(*chainConstrBack == *chainConstr, "*chainConstrBack == *chainConstr")
+		}
+	})
 }
 
-const chainConstraintSource = `
-func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000000000000000000000)
+// evalEnforceFrozenCoverageOnNonDelegationChain assumes sequencer output and enforces the validity of the frozen coverage values
+func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContext]) []byte {
+	ctx := par.DataContext()
+	par.Require(ctx.SelfIsProducedOutput(), "evalEnforceFrozenCoverageOnNonDelegationChain: produced output expected")
+	lib := ctx.GetLibrary()
+	o := ctx.SelfOutput()
 
-// $0 - chain ChainID
-// $1 - predecessor output index || predecessor constraint index (2 bytes)
-// $2 - origin slot
-// $3 - origin amount
-func _validChainProduced : 
-if(
-   isChainOriginID($0),
-        // chain origin
-   require(
-     and(equal($1, 0xffff), equalUint($2, txSlot), equalUint($3, selfTokenBalanceValue)),
-     !!!invalid_chain_origin_data
-   ),
-        // NOT chain origin. Crosscheck reference
-   require(
-     equal(unlockParamsByConstraintIndex($1), selfConstraintIndex),
-     !!!predecessor_reference_crosscheck_failed
-   )
-)
+	amounts := o.Amounts()
+	cc := o.ChainConstraint()
+	par.Require(cc != nil, "evalEnforceFrozenCoverageOnNonDelegationChain: chained output is expected")
+	// produced output
+	if cc.IsOrigin() {
+		par.Require(amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs)), "evalEnforceFrozenCoverageOnNonDelegationChain: frozen coverage must be 0 on chain origin")
+		return par.AllocData(0xff)
+	}
+	// it is a non-origin chained output
 
-// $0 - param number
-func _chainSuccessorParam :
-	parseInlineDataArgument(
-        atPath(concat(pathToProducedOutputs, selfUnlockParameters)),
-        $0,
-		selfBytecodePrefix
-	)
+	predOut, err := ctx.ConsumedOutput(cc.PredecessorInputIndex)
+	par.RequireNoError(err)
+	predAmounts := predOut.Amounts()
 
-// $0 - chain ChainID
-// $1 - origin slot
-// $2 - origin amount
-func _validChainConsumed : 
-or(
-      // discontinue chain. Check nothing
-   equal(selfUnlockParameters, 0xffff),
-      // chain continues
-   and (
-      require(equal(len(selfUnlockParameters), u64/2), !!!unlock_parameters_must_be_2_bytes),
-        // check chainID match
-      require(
-         if(
-           isChainOriginID($0),
-           equal(blake2b(inputIDByIndex(selfOutputIndex)), _chainSuccessorParam(0)),
-           equal($0, _chainSuccessorParam(0))
-         ),
-         !!!chain_ID_mismatch_with_successor
-      ),
-        // crosscheck successor reference
-      require(
-         equal(selfConstraintIndex, _chainSuccessorParam(1)),
-         !!!successor_reference_crosscheck_failed
-      ),
-      require(
-         equal($1, _chainSuccessorParam(2)),
-         !!!origin_slot_is_immutable
-      ),
-      require(
-         equal($2, _chainSuccessorParam(3)),
-         !!!origin_amount_is_immutable
-      ),
-   )
-)
+	path := ctx.EvalPath()
 
-// $0 - chain ChainID
-// $1 - predecessor (input index || chain constraint index) - 2 bytes 
-// $2 - origin slot
-// $3 - origin amount
-// --- unlock data: 2 bytes: (successor output index || successor chain constraint), 0xffff means discontinue chain
-func chain : and(
-      // chain constraint cannot be on output with index 0xff = 255
-   not(equal(selfOutputIndex, 0xff)),
-   require(equal(len($0),u64/32), !!!chainID_must_be_32_bytes_long),
-   or(
-      and(
-         selfIsProducedOutput,
-         _validChainProduced($0,$1,$2,$3),
-      ),
-      and(
-         selfIsConsumedOutput,
-         _validChainConsumed($0,$2,$3)
-      )
-   )
-)
+	predID := ctx.MustInputAt(cc.PredecessorInputIndex)
+	succID := ctx.OutputID(path[len(path)-2])
 
-// $0 - chain constraint index
-func selfChainID : parseInlineDataArgument(selfSiblingConstraint($0), 0, #chain)
-func selfChainPredInputIndex : byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain), 0)
+	diffEpochsInt := lib.DiffEpochs(cc.ChainID, succID.Timestamp(), predID.Timestamp())
+	par.Require(diffEpochsInt >= 0, "evalEnforceFrozenCoverageOnNonDelegationChain: inconsistency with timestamps")
+	diffEpochs := uint32(diffEpochsInt)
 
-// $0 chain constraint index
-func selfChainPredecessorTimestamp : timestampOfInputByIndex( byte(parseInlineDataArgument(selfSiblingConstraint($0), 1, #chain),0) )
+	// frozen coverage at the predecessor adjusted to the epoch of the successor
+	predecessorFrozenCoverageAdjusted := func(i uint32) (ret int64) {
+		if idx := i + diffEpochs; idx < lib.MaxFrozenEpochs {
+			ret = predAmounts.FrozenCoverageAt(byte(idx))
+		}
+		return
+	}
 
-`
+	// Enforce correct frozen coverage on sequencer output.
+	// the validity constraint of frozen coverage on the chain at index i:
+	// pred_i - value of the predecessor's frozen coverage at index i adjusted for the epoch difference between input and transaction
+	// succ_i - value of the successor's (current output) frozen coverage at index i
+	// delta_i (aux variable) - sum of frozen coverages (deltas, effectively) of produced delegation outputs at index i (not the target chain)
+	// sum_i  - sum of ALL frozen coverages of produced outputs at index i
+	// The equations:
+	//    pred_i + delta_i = succ_i
+	//    succ_i + delta_i = sum_i
+	// leads to elimination of delta_i and final enforced validity constraint:
+	//    pred_i + sum_i = 2 x succ_i
+
+	for i := 0; i < int(lib.MaxFrozenEpochs); i++ {
+		successorFrozenCoverage := amounts.FrozenCoverageAt(byte(i))
+		predecessorFrozenCoverageValue := predecessorFrozenCoverageAdjusted(uint32(i))
+		sum := ctx.ProducedTotal(byte(i + 2))
+
+		par.Require(2*successorFrozenCoverage == sum+predecessorFrozenCoverageValue,
+			"evalEnforceFrozenCoverageOnNonDelegationChain: mismatch between frozen coverage totals at index %d: predCov=%d, succCov=%d, delta=%d, producedSum=%d",
+			i, predecessorFrozenCoverageValue, successorFrozenCoverage, successorFrozenCoverage-predecessorFrozenCoverageValue, sum)
+	}
+	return par.AllocData(0xff)
+}

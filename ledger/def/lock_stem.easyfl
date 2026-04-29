@@ -1,0 +1,71 @@
+
+func producedStemLockOfSelfTx : atPath(concat(pathToProducedOutputs, txStemOutputIndex, lockConstraintIndex))
+
+func _predOutputIDOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 0)
+
+// vrfProofOnSuccessor is sig type byte + signature proper
+func vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 1)
+
+// $0 - stem predecessor index
+func _predVRFProof : parseInlineDataArgument( consumedConstraintByIndex($0,1), 1, #stemLock)
+
+// $0 - predecessor output id
+// $1 - VRF proof (signature data (sig type byte + signature proper) of message = <VRF proof from the stem predecessor> || <slot of the transaction>)
+// does not require unlock parameters
+func stemLock: and(
+	require(isBranchTransaction, !!!must_be_a_branch_transaction),
+    require(equalUint(selfNumConstraints, 2), !!!stem_output_must_contain_exactly_2_constraints),
+	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
+	require(isZero(selfTokenBalanceValue), !!!amount_must_be_zero),
+	mustSize($0, 33),
+    or(
+       and(
+          selfIsConsumedOutput,
+             // enforce correct predecessor output on the successor
+          require(
+             equal(inputIDByIndex(selfOutputIndex), _predOutputIDOnSuccessor),
+             !!!wrong_stem_predecessor_output_ID_on_successor
+          ),
+             // enforce correct VRF proof on successor
+		  require(
+             validSignature(concat($1, txSlot), concat(vrfProofOnSuccessor, signaturePublicKey(txSignatureData))),
+             !!!VRF_proof_check_failed
+          )
+       ),
+       and(
+          selfIsProducedOutput,
+            // must be consistent with the transaction level data
+          equal(selfOutputIndex, txStemOutputIndex),
+		  selfEnforceZeroAmountsInNonChainedOutput,
+            // enforce sequencer coverage bounds on the sequencer chain output
+          _enforceBranchCoverageBounds
+       )
+    )
+)
+
+// reads amounts constraint of the sequencer chain output
+func _seqChainAmounts : atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, amountsConstraintIndex))
+
+// sequencer coverage = tokenBalance + frozenCoverage[epoch 0]
+func _seqChainCoverage : add(amountAt(_seqChainAmounts, 0), amountAt(_seqChainAmounts, 2))
+
+// reads chain constraint of the sequencer output and extracts chain ID
+func _seqChainConstraint : atPath(concat(pathToProducedOutputs, txSequencerOutputIndex, chainConstraintIndex))
+func _seqChainID : parseInlineDataArgument(_seqChainConstraint, 0, #chain)
+
+// enforces that sequencer coverage is within [branchCoverageLowerBound, branchCoverageUpperBound]
+// Both bounds are slot-dependent functions, can be changed via ledger upgrade
+// The bootstrap chain (constBootstrapChainID) is exempt from coverage bounds
+func _enforceBranchCoverageBounds : or(
+   equal(_seqChainID, constBootstrapChainID),
+   and(
+      require(
+         not(lessThan(_seqChainCoverage, branchCoverageLowerBound(txSlot))),
+         !!!sequencer_coverage_below_minimum
+      ),
+      require(
+         not(lessThan(branchCoverageUpperBound(txSlot), _seqChainCoverage)),
+         !!!sequencer_coverage_above_maximum
+      )
+   )
+)

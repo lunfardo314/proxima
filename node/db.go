@@ -5,10 +5,13 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/lunfardo314/proxima/core/core_modules/txlogger"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/txstore"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/spf13/viper"
 )
@@ -22,6 +25,7 @@ func (p *ProximaNode) initMultiStateLedger() {
 	opts := badger.DefaultOptions(dbname)
 	opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
 	opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
+	opts.NumCompactors = 2         // reduce from default 4 to lower I/O contention
 
 	bdb, err := badger_adaptor.OpenBadgerDB(dbname, opts)
 	if err != nil {
@@ -33,13 +37,23 @@ func (p *ProximaNode) initMultiStateLedger() {
 
 	// initialize the ledger library singleton with the ledger ID data from DB
 	multistate.InitLedgerFromStore(p.multiStateDB)
-	p.Log().Infof("ledger ID params:\n%s", ledger.Const.Lines("       ").String())
-	h := ledger.L().LibraryHash()
-	p.Log().Infof("ledger constraint library hash: %s", hex.EncodeToString(h[:]))
+	p.Log().Infof("ledger ID params:\n%s", ledger.L(0).Lines("       ").String())
+
+	// Log all upgrades in effect
+	p.logUpgradesList()
 
 	p.snapshotBranchID = multistate.FetchSnapshotBranchID(p.multiStateDB)
 	p.Log().Infof("current slot: %d", ledger.TimeNow().Slot)
 	p.Log().Infof("snapshot branch id: %s", p.snapshotBranchID.String())
+
+	// Initialize pending upgrade tracking for optimization
+	// This checks which upgrade UTXOs already exist in the latest state
+	branchData, ok := multistate.FetchBranchData(p.multiStateDB, p.snapshotBranchID)
+	util.Assertf(ok, "FetchBranchData: branch data not found for %s", p.snapshotBranchID.String())
+	stateReader := multistate.MustNewSugaredReadableState(p.multiStateDB, branchData.Root)
+	ledger.InitNextPendingUpgradeSlot(func(oid base.OutputID) bool {
+		return stateReader.HasUTXO(oid)
+	})
 
 	p.RepeatInBackground("Badger_DB_GC_loop", 5*time.Minute, func() bool {
 		p.databaseGC()
@@ -78,6 +92,7 @@ func (p *ProximaNode) initTxStore() {
 		opts := badger.DefaultOptions(dbname)
 		opts.BlockCacheSize = 64 << 20 // 64MB block cache limit
 		opts.IndexCacheSize = 32 << 20 // 32MB index cache limit
+		opts.NumCompactors = 2         // reduce from default 4 to lower I/O contention
 
 		p.txStoreDB = badger_adaptor.New(badger_adaptor.MustCreateOrOpenBadgerDB(dbname, opts))
 		p.dbClosedWG.Add(1)
@@ -102,4 +117,82 @@ func (p *ProximaNode) databaseGC() {
 	start := time.Now()
 	err := p.multiStateDB.RunValueLogGC(0.5)
 	p.Log().Infof("----- Badger DB GC (%v): %v", time.Since(start), err)
+}
+
+// logUpgradesList logs all upgrades with their slots and library hashes.
+// Activated upgrades are marked as "IN EFFECT", pending ones as "PENDING".
+func (p *ProximaNode) logUpgradesList() {
+	slots := ledger.GetAllUpgradeSlots(base.MaxSlot)
+	if len(slots) == 0 {
+		p.Log().Warnf("no upgrades found in ledger")
+		return
+	}
+
+	currentSlot := ledger.TimeNow().Slot
+
+	p.Log().Infof("ledger upgrades stored in the database:")
+	for _, slot := range slots {
+		lib := ledger.L(slot)
+		hash := lib.LibraryHash()
+		status := "IN EFFECT"
+		if slot > currentSlot {
+			status = "PENDING"
+		}
+		p.Log().Infof("       slot %8d: %s  %s", slot, hex.EncodeToString(hash[:]), status)
+	}
+}
+
+// initTxLogger initializes the transaction logger module.
+// The logger starts disabled and can be enabled via API or config.
+func (p *ProximaNode) initTxLogger() {
+	p.txLogger = txlogger.New(p)
+	p.Log().Infof("transaction logger initialized (disabled by default)")
+
+	// Configure TTL if specified
+	ttlHours := viper.GetInt("txlogger.ttl_hours")
+	if ttlHours > 0 {
+		p.txLogger.SetTTL(time.Duration(ttlHours) * time.Hour)
+	}
+
+	// Configure on/off API gate
+	p.txLogOnOffAPI = viper.GetBool("txlogger.enable_on_off_api")
+
+	// Auto-enable if configured
+	if viper.GetBool("txlogger.enable_on_start") {
+		levelStr := viper.GetString("txlogger.level")
+		level := parseTxLogLevel(levelStr)
+		if level != global.TxLogLevelOff {
+			p.txLogger.TxLogEnable(level)
+			p.Log().Infof("transaction logger auto-enabled with level: %s", levelStr)
+		}
+	}
+
+	// Handle graceful shutdown
+	go func() {
+		<-p.Ctx().Done()
+		if p.txLogger.IsEnabled() {
+			if err := p.txLogger.Close(); err != nil {
+				p.Log().Warnf("error closing transaction logger: %v", err)
+			}
+			p.Log().Infof("transaction logger closed")
+		}
+	}()
+}
+
+// parseTxLogLevel converts a string level name to TxLogLevel.
+func parseTxLogLevel(s string) global.TxLogLevel {
+	switch s {
+	case "off", "":
+		return global.TxLogLevelOff
+	case "branch":
+		return global.TxLogLevelBranchTransactionsOnly
+	case "sequencer":
+		return global.TxLogLevelSequencerTransactionsOnly
+	case "non_sequencer":
+		return global.TxLogLevelNonSequencerTransactionsOnly
+	case "all":
+		return global.TxLogLevelAllTransactions
+	default:
+		return global.TxLogLevelOff
+	}
 }

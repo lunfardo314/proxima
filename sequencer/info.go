@@ -10,7 +10,7 @@ func (seq *Sequencer) updateInfo(ms *vertex.WrappedTx) {
 	seq.infoMutex.Lock()
 	defer seq.infoMutex.Unlock()
 
-	seq.Assertf(ms.IsSequencerMilestone(), "msOutput.VID.IsSequencerTransaction()")
+	seq.Assertf(ms.IsSequencerTransaction(), "msOutput.VID.IsSequencerTransaction()")
 
 	nConsumed := ms.NumInputs() - 1
 	if ms.IsBranchTransaction() {
@@ -35,6 +35,10 @@ func (seq *Sequencer) Info() Info {
 	return seq.info
 }
 
+func (seq *Sequencer) LedgerCoverage() uint64 {
+	return seq.Info().LedgerCoverage
+}
+
 func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 	info := seq.Info()
 	msType := "MS"
@@ -45,7 +49,7 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 	var sequencerOutput *ledger.OutputWithID
 	ms.Unwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
-			sequencerOutput = v.Tx.SequencerOutput()
+			sequencerOutput = v.SequencerOutput()
 		},
 	})
 	if sequencerOutput == nil {
@@ -53,18 +57,19 @@ func (seq *Sequencer) LogMilestoneSubmitDefault(ms *vertex.WrappedTx) {
 		return
 	}
 
-	var branchIndex, msIndex uint32
-	if od, err := ledger.ParseSequencerData(sequencerOutput.Output); err == nil {
-		branchIndex = od.BranchHeight()
-		msIndex = od.ChainHeight()
+	var branchCounter uint32
+	var txCounter uint64
+	if cc := sequencerOutput.Output.ChainConstraint(); cc != nil {
+		txCounter = cc.TransitionCounter
+		branchCounter = cc.BranchCounter
 	}
 
 	bl, ok := ms.BaselineBranch()
 	seq.Assertf(ok, "LogMilestoneSubmitDefault: can't unwrap baseline branch for milestone %s", ms.IDShortString())
 	seq.log.Debugf("%s %d/%d: %s, bl: %s, cov: %s<-%s (infl: %s), in/out: %d/%d, feeOut: %d, mem: %d/%d",
 		msType,
-		msIndex,
-		branchIndex,
+		txCounter,
+		branchCounter,
 		sequencerOutput.IDShort(),
 		bl.StringShort(),
 		util.Th(info.LedgerCoverage),

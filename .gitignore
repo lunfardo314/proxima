@@ -23,6 +23,6 @@ go.work
 /proximadb.txstore/
 .vscode/launch.json
 tests/node-docker-setup/data
-CLAUDE.local.md
+claude/big_tasks.md
 # Test output files
 *.gv

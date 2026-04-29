@@ -16,11 +16,13 @@ import (
 var genesisPrivateKey ed25519.PrivateKey
 
 func init() {
-	genesisPrivateKey = ledger.InitWithTestingLedgerIDData()
+	genesisPrivateKey = ledger.InitWithTestingLedgerData(
+		ledger.WithBranchCoverageBounds(0, 2*ledger.DefaultInitialSupply),
+	)
 }
 
 func TestUTXODB(t *testing.T) {
-	initFaucetBalance := ledger.Const.InitialSupply / 2
+	initFaucetBalance := ledger.L(0).InitialSupply / 2
 	t.Run("origin", func(t *testing.T) {
 		u := NewUTXODB(genesisPrivateKey)
 		t.Logf("genesis addr: %s, balance: %s", u.GenesisControllerAddress().String(), util.Th(u.Balance(u.GenesisControllerAddress())))
@@ -36,13 +38,17 @@ func TestUTXODB(t *testing.T) {
 
 		t.Logf("\nUTXODB origin distribution transaction:\n%s", u.OriginDistributionTransactionString())
 		require.EqualValues(t, int(initFaucetBalance), int(u.Balance(u.FaucetAddress())))
-		require.EqualValues(t, int(ledger.Const.InitialSupply-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
-		require.EqualValues(t, ledger.Const.InitialSupply-initFaucetBalance, onChain)
+		// Genesis output has initialSupply-1 tokens (1 token is in the controller dust output)
+		// After distribution, on-chain balance is initialSupply-1-initFaucetBalance
+		// Controller's wallet balance includes the dust output (1 token)
+		// Supply() includes branch inflation from the distribution transaction
+		require.EqualValues(t, int(u.Supply()-initFaucetBalance), int(u.Balance(u.GenesisControllerAddress())))
+		require.EqualValues(t, u.Supply()-1-initFaucetBalance, onChain)
 		require.EqualValues(t, 0, controlledByChain)
 	})
 	t.Run("from faucet", func(t *testing.T) {
 		u := NewUTXODB(genesisPrivateKey)
-		addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey(100))
+		addr := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey(100))
 		// Use amount above minimum storage deposit
 		const testAmount = 100_000_000
 		err := u.TokensFromFaucet(addr, testAmount)

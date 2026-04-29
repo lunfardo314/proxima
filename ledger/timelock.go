@@ -3,25 +3,15 @@ package ledger
 import (
 	"fmt"
 
+	_ "embed"
+
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
-const timelockSource = `
-// enforces output can be unlocked only after specified time slot is reached
-// $0 is time slot
-func timelock: and(
-    mustValidTimeSlot($0),
-	or(
-		selfIsProducedOutput, 
-		and( 
-			selfIsConsumedOutput,
-			lessOrEqualThan($0, txSlot)
-		) 
-	)
-)
-`
+//go:embed def/timelock.easyfl
+var timelockSource string
 
 const (
 	TimelockName     = "timelock"
@@ -52,8 +42,9 @@ func (t Timelock) Source() string {
 	return fmt.Sprintf(timelockTemplate, t)
 }
 
-func TimelockFromBytes(data []byte) (Timelock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 1)
+// TimelockFromBytesWithLib parses a Timelock constraint using the library for the given slot.
+func TimelockFromBytesWithLib(data []byte, lib *Library) (Timelock, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return NilTimelock, err
 	}
@@ -70,17 +61,19 @@ func TimelockFromBytes(data []byte) (Timelock, error) {
 
 func registerTimeLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(TimelockName, 1, func(data []byte) (Constraint, error) {
-		return TimelockFromBytes(data)
-	}, initTestTimelockConstraint)
+		return TimelockFromBytesWithLib(data, lib)
+	})
 }
 
-func initTestTimelockConstraint() {
-	example := NewTimelock(1337)
-	sym, _, args, err := L().ParseBytecodeOneLevel(example.Bytes(), 1)
-	util.AssertNoError(err)
-	tlBin := easyfl.StripDataPrefix(args[0])
-	e, err := base.SlotFromBytes(tlBin)
-	util.AssertNoError(err)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		example := NewTimelock(1337)
+		sym, _, args, err := lib.ParseBytecodeOneLevel(example.Bytes(), 1)
+		util.AssertNoError(err)
+		tlBin := easyfl.StripDataPrefix(args[0])
+		e, err := base.SlotFromBytes(tlBin)
+		util.AssertNoError(err)
 
-	util.Assertf(sym == TimelockName && e == 1337, "inconsistency in 'timelock'")
+		util.Assertf(sym == TimelockName && e == 1337, "inconsistency in 'timelock'")
+	})
 }

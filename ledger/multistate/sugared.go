@@ -53,6 +53,7 @@ func (s SugaredStateReader) GetOutputWithID(oid base.OutputID) (*ledger.OutputWi
 	if !found {
 		return nil, ErrNotFound
 	}
+	// Use output's slot for parsing
 	ret, err := ledger.OutputFromBytes(oData)
 	if err != nil {
 		return nil, err
@@ -69,11 +70,40 @@ func (s SugaredStateReader) GetOutputErr(oid base.OutputID) (*ledger.Output, err
 	if !found {
 		return nil, ErrNotFound
 	}
+	// Use output's slot for parsing
 	ret, err := ledger.OutputFromBytes(oData)
 	if err != nil {
 		return nil, err
 	}
 	return ret, nil
+}
+
+// GetOutputFromStateReader retrieves and parses an output from a basic StateReader.
+// Returns nil if the output is not found. This is a standalone function that does not
+// require IndexedStateReader, suitable for use with virtual state readers.
+func GetOutputFromStateReader(rdr StateReader, oid base.OutputID) *ledger.Output {
+	oData, found := rdr.GetUTXO(oid)
+	if !found {
+		return nil
+	}
+	ret, err := ledger.OutputFromBytes(oData)
+	if err != nil {
+		return nil
+	}
+	return ret
+}
+
+// GetOutputWithIDFromStateReader retrieves and parses an output with its ID from a basic StateReader.
+func GetOutputWithIDFromStateReader(rdr StateReader, oid base.OutputID) (*ledger.OutputWithID, error) {
+	oData, found := rdr.GetUTXO(oid)
+	if !found {
+		return nil, ErrNotFound
+	}
+	ret, err := ledger.OutputFromBytes(oData)
+	if err != nil {
+		return nil, err
+	}
+	return &ledger.OutputWithID{ID: oid, Output: ret}, nil
 }
 
 // GetOutput retrieves and parses output.
@@ -93,19 +123,21 @@ func (s SugaredStateReader) MustGetOutputWithID(oid base.OutputID) *ledger.Outpu
 	return ret
 }
 
-func (s SugaredStateReader) GetOutputsForAccount(addr ledger.AccountID) ([]*ledger.OutputWithID, error) {
-	oDatas, err := s.GetUTXOsInAccount(addr)
+func (s SugaredStateReader) GetOutputsForAccount(addr ledger.ControllerID) ([]*ledger.OutputWithID, error) {
+	oDatas, err := s.GetUTXOsForController(addr)
 	if err != nil {
 		return nil, err
 	}
 	return ledger.ParseAndSortOutputData(oDatas, nil)
 }
 
-func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Accountable, fun func(oid base.OutputID, o *ledger.Output) bool) (err error) {
+func (s SugaredStateReader) IterateOutputsForAccount(addr ledger.Controller, fun func(oid base.OutputID, o *ledger.Output) bool) (err error) {
 	var o *ledger.Output
 	var err1 error
-	return s.IterateUTXOsInAccount(addr.AccountID(), func(oid base.OutputID, odata []byte) bool {
-		o, err1 = ledger.OutputFromBytes(odata)
+	lib := ledger.L(base.MaxSlot)
+	return s.IterateUTXOsForController(addr.ControllerID(), func(oid base.OutputID, odata []byte) bool {
+		// Use output's slot for parsing
+		o, err1 = ledger.OutputFromBytesWithLib(odata, lib)
 		if err1 != nil {
 			return true
 		}
@@ -136,7 +168,7 @@ func (s SugaredStateReader) ScanInactive(slotNow, inactiveSinceSlot uint32, maxR
 }
 
 func (s SugaredStateReader) GetStemOutput() *ledger.OutputWithID {
-	oData, err := s.IndexedStateReader.GetUTXOsInAccount(ledger.StemAccountID)
+	oData, err := s.IndexedStateReader.GetUTXOsForController(ledger.StemAccountID)
 	util.AssertNoError(err)
 	var stateID base.TransactionID
 	if len(oData) > 0 {
@@ -154,6 +186,7 @@ func (s SugaredStateReader) GetChainOutputWithID(chainID base.ChainID) (*ledger.
 	if err != nil {
 		return nil, err
 	}
+	// Use output's slot for parsing
 	ret, err := ledger.OutputFromBytes(oData.Data)
 	if err != nil {
 		return nil, err
@@ -198,6 +231,7 @@ func (s SugaredStateReader) GetChainTips(chainID base.ChainID) (*ledger.OutputWi
 	if err != nil {
 		return nil, nil, err
 	}
+	// Use output's slot for parsing
 	outSeq, err := ledger.OutputFromBytes(oData.Data)
 	if err != nil {
 		return nil, nil, err
@@ -221,7 +255,7 @@ func (s SugaredStateReader) GetChainTips(chainID base.ChainID) (*ledger.OutputWi
 	return retSeq, stemOut, nil
 }
 
-func (s SugaredStateReader) BalanceOf(addr ledger.AccountID) uint64 {
+func (s SugaredStateReader) BalanceOf(addr ledger.ControllerID) uint64 {
 	outs, err := s.GetOutputsForAccount(addr)
 	util.AssertNoError(err)
 	ret := uint64(0)
@@ -231,7 +265,7 @@ func (s SugaredStateReader) BalanceOf(addr ledger.AccountID) uint64 {
 	return ret
 }
 
-func (s SugaredStateReader) NumOutputs(addr ledger.AccountID) int {
+func (s SugaredStateReader) NumOutputs(addr ledger.ControllerID) int {
 	outs, err := s.GetOutputsForAccount(addr)
 	util.AssertNoError(err)
 	return len(outs)
@@ -245,25 +279,24 @@ func (s SugaredStateReader) BalanceOnChain(chainID base.ChainID) uint64 {
 	return o.Output.TokenBalance()
 }
 
-func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Accountable) ([]*ledger.OutputWithChainID, error) {
+func (s SugaredStateReader) GetOutputsDelegatedToAccount2(addr ledger.Controller) ([]*ledger.OutputWithChainID, error) {
 	ret := make([]*ledger.OutputWithChainID, 0)
 	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
 		lock := o.DelegationLock()
-		if lock != nil && ledger.EqualAccountables(lock.Target, addr) {
-			cc, idx := o.ChainConstraint()
+		if lock != nil && ledger.EqualControllers(ledger.ChainLockFromChainID(lock.Target), addr) {
+			cc := o.ChainConstraint()
+			util.Assertf(cc != nil, "inconsistency: chain constraint expected")
 			chainID := cc.ChainID
 			if cc.IsOrigin() {
 				chainID = base.MakeOriginChainID(oid)
 			}
-			util.Assertf(idx != 0xff, "inconsistency: chain constraint expected")
 			out := &ledger.OutputWithChainID{
 				OutputWithID: ledger.OutputWithID{
 					ID:     oid,
 					Output: o,
 				},
 				ChainConstraintData: ledger.ChainConstraintData{
-					ChainConstraint:      *cc,
-					ChainConstraintIndex: idx,
+					ChainConstraint: *cc,
 				},
 			}
 			out.ChainID = chainID
@@ -281,7 +314,7 @@ func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget base.ChainI
 	target := ledger.ChainLockFromChainID(delegationTarget)
 	err := s.IterateOutputsForAccount(target, func(oid base.OutputID, o *ledger.Output) bool {
 		out, ok := ledger.AsDelegationOutput(o, oid)
-		if ok && ledger.EqualAccountables(target, out.Target) {
+		if ok && ledger.EqualControllers(target, ledger.ChainLockFromChainID(out.Target)) {
 			return fun(&out)
 		}
 		return true
@@ -290,7 +323,7 @@ func (s SugaredStateReader) IterateDelegatedOutputs(delegationTarget base.ChainI
 }
 
 // GetOutputsLockedInAddressED25519ForAmount returns outputs locked in simple address. Skip delegated and other
-func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledger.AddressED25519, targetAmount uint64) ([]*ledger.OutputWithID, uint64) {
+func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledger.SigLock, targetAmount uint64) ([]*ledger.OutputWithID, uint64) {
 	ret := make([]*ledger.OutputWithID, 0)
 	retAmount := uint64(0)
 	err := s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
@@ -307,9 +340,9 @@ func (s SugaredStateReader) GetOutputsLockedInAddressED25519ForAmount(addr ledge
 	return ret, retAmount
 }
 
-func (s SugaredStateReader) IterateChainsInAccount(addr ledger.Accountable, fun func(oid base.OutputID, o *ledger.Output, chainID base.ChainID) bool) error {
+func (s SugaredStateReader) IterateChainsInAccount(addr ledger.Controller, fun func(oid base.OutputID, o *ledger.Output, chainID base.ChainID) bool) error {
 	return s.IterateOutputsForAccount(addr, func(oid base.OutputID, o *ledger.Output) bool {
-		if cc, idx := o.ChainConstraint(); idx != 0xff {
+		if cc := o.ChainConstraint(); cc != nil {
 			if cc.IsOrigin() {
 				return fun(oid, o, base.MakeOriginChainID(oid))
 			}
@@ -375,16 +408,15 @@ func (s SugaredStateReader) IterateChainedOutputs(fun func(out ledger.OutputWith
 			return fmt.Errorf("IterateChainedOutputs: inconsistency: cannot get chain output: %s, oid: %s",
 				tip.chainID.String(), tip.oid.String())
 		}
-		cc, idx := o.ChainConstraint()
-		util.Assertf(idx != 0xff, "inconsistency: chain constraint expected")
+		cc := o.ChainConstraint()
+		util.Assertf(cc != nil, "inconsistency: chain constraint expected")
 		out := ledger.OutputWithChainID{
 			OutputWithID: ledger.OutputWithID{
 				ID:     tip.oid,
 				Output: o,
 			},
 			ChainConstraintData: ledger.ChainConstraintData{
-				ChainConstraint:      *cc,
-				ChainConstraintIndex: idx,
+				ChainConstraint: *cc,
 			},
 		}
 		out.ChainID = tip.chainID
@@ -426,14 +458,14 @@ func (s SugaredStateReader) GetSequencersWithDelegations() (map[base.ChainID]Del
 			ret[o.ChainID] = seqEntry
 		} else {
 			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-				seqEntry, seqEntryExists := ret[dOut.Target.ChainID()]
+				seqEntry, seqEntryExists := ret[dOut.Target]
 				if !seqEntryExists {
 					seqEntry = DelegationsOnSequencer{
 						Delegations: make(map[base.ChainID]ledger.DelegationOutput),
 					}
 				}
 				seqEntry.Delegations[o.ChainID] = dOut
-				ret[dOut.Target.ChainID()] = seqEntry
+				ret[dOut.Target] = seqEntry
 			}
 		}
 	}
@@ -453,7 +485,7 @@ func (s SugaredStateReader) GetDelegationsForSequencer(seqID base.ChainID, filte
 			return true
 		}
 		delegateLock := lock.(*ledger.DelegateLock)
-		if !ledger.EqualAccountables(delegateLock.Target, seqChainLock) {
+		if !ledger.EqualControllers(ledger.ChainLockFromChainID(delegateLock.Target), seqChainLock) {
 			return true
 		}
 		if dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID); ok && flt(&dOut) {
@@ -476,7 +508,7 @@ func (s SugaredStateReader) GetTagAlongBacklogForSequencer(seqID base.ChainID, f
 	ret := make([]ledger.OutputWithID, 0)
 
 	err := s.IterateOutputsForAccount(seqChainLock, func(oid base.OutputID, o *ledger.Output) bool {
-		if _, idx := o.ChainConstraint(); idx != 0xff {
+		if o.ChainConstraint() != nil {
 			// skip chained outputs
 			return true
 		}

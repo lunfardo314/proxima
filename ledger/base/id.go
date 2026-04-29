@@ -8,13 +8,16 @@ import (
 	"errors"
 	"fmt"
 	rand2 "math/rand"
+	"strconv"
+	"strings"
 
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
 )
 
 const (
-	TransactionIDShortLength     = 27
+	TransactionHashLength        = 26
+	TransactionIDShortLength     = TransactionHashLength + 1
 	TransactionIDLength          = LedgerTimeByteLength + TransactionIDShortLength
 	OutputIDLength               = TransactionIDLength + 1
 	ChainIDLength                = 32
@@ -22,9 +25,11 @@ const (
 )
 
 type (
+	// TransactionHash is last 26 bytes of the blake2b hash of the transaction essence bytes
+	TransactionHash [TransactionHashLength]byte
 	// TransactionIDShort
 	// byte 0 is maximum index of produced outputs
-	// the rest 26 bytes is bytes [1:28] (26 bytes) of the blake2b 32-byte hash of transaction bytes
+	// the rest 26 bytes is bytes of the TransactionHash
 	TransactionIDShort [TransactionIDShortLength]byte
 	// TransactionIDVeryShort4 is first 4 bytes of TransactionIDShort.
 	// Warning. Collisions cannot be ruled out
@@ -99,6 +104,11 @@ func (txid *TransactionID) NumProducedOutputs() int {
 	return int(txid[MaxOutputIndexPositionInTxID]) + 1
 }
 
+func (txid *TransactionID) TransactionHash() (ret TransactionHash) {
+	copy(ret[:], txid[TransactionIDLength-TransactionHashLength:TransactionHashLength])
+	return
+}
+
 // ShortID return hash part of id
 func (txid *TransactionID) ShortID() (ret TransactionIDShort) {
 	copy(ret[:], txid[LedgerTimeByteLength:])
@@ -133,12 +143,12 @@ func (txid *TransactionID) Tick() byte {
 	return txid[TickByteIndex] >> 1
 }
 
-func (txid *TransactionID) IsSequencerMilestone() bool {
+func (txid *TransactionID) IsSequencerTransaction() bool {
 	return txid[TickByteIndex]&SequencerBitMaskInTick != 0
 }
 
 func (txid *TransactionID) IsBranchTransaction() bool {
-	return txid.IsSequencerMilestone() && txid.Tick() == 0
+	return txid.IsSequencerTransaction() && txid.Tick() == 0
 }
 
 func (txid *TransactionID) Bytes() []byte {
@@ -198,7 +208,7 @@ func (txid *TransactionID) String() string {
 	if txid == nil {
 		return "<nil>"
 	}
-	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
+	return TransactionIDString(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
 }
 
 func (txid *TransactionID) StringHex() string {
@@ -212,25 +222,25 @@ func (txid *TransactionID) StringShort() string {
 	if txid == nil {
 		return "<nil>"
 	}
-	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
+	return TransactionIDStringShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
 }
 
 func (txid *TransactionID) StringVeryShort() string {
 	if txid == nil {
 		return "<nil>"
 	}
-	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerMilestone())
+	return TransactionIDStringVeryShort(txid.Timestamp(), txid.ShortID(), txid.IsSequencerTransaction())
 }
 
 func (txid *TransactionID) AsFileName() string {
 	id := txid.ShortID()
-	return TransactionIDAsFileName(txid.Timestamp(), id[:], txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	return TransactionIDAsFileName(txid.Timestamp(), id[:], txid.IsSequencerTransaction(), txid.IsBranchTransaction())
 }
 
 func (txid *TransactionID) AsFileNameShort() string {
 	id := txid.ShortID()
 	prefix4 := id[:4]
-	return TransactionIDAsFileName(txid.Timestamp(), prefix4[:], txid.IsSequencerMilestone(), txid.IsBranchTransaction())
+	return TransactionIDAsFileName(txid.Timestamp(), prefix4[:], txid.IsSequencerTransaction(), txid.IsBranchTransaction())
 }
 
 // LessTxID comparison is lexicographical. It coincides with the order of timestamps.
@@ -403,4 +413,110 @@ func RandomChainID() (ret ChainID) {
 
 func MakeOriginChainID(originOutputID OutputID) ChainID {
 	return blake2b.Sum256(originOutputID[:])
+}
+
+// String2 returns a deterministically parseable human-readable form of the transaction ID:
+// <prefix><slot>-<tick>-<maxOutputIndex>-<hash hex 26 bytes>
+// prefix: 'b' for branch, 's' for sequencer non-branch, 't' for non-sequencer
+func (txid *TransactionID) String2() string {
+	if txid == nil {
+		return "<nil>"
+	}
+	ts := txid.Timestamp()
+	isSeq := txid.IsSequencerTransaction()
+	var prefix byte
+	switch {
+	case isSeq && ts.Tick == 0:
+		prefix = 'b'
+	case isSeq:
+		prefix = 's'
+	default:
+		prefix = 't'
+	}
+	maxOutIdx := txid[MaxOutputIndexPositionInTxID]
+	hash := txid[TransactionIDLength-TransactionHashLength:]
+	return fmt.Sprintf("%c%d-%d-%d-%s", prefix, ts.Slot, ts.Tick, maxOutIdx, hex.EncodeToString(hash))
+}
+
+// TransactionIDFromString2 parses the format produced by String2
+func TransactionIDFromString2(s string) (ret TransactionID, err error) {
+	if len(s) < 3 {
+		return ret, errors.New("TransactionIDFromString2: string too short")
+	}
+	prefix := s[0]
+	var isSeq bool
+	switch prefix {
+	case 'b':
+		isSeq = true
+	case 's':
+		isSeq = true
+	case 't':
+		isSeq = false
+	default:
+		return ret, fmt.Errorf("TransactionIDFromString2: invalid prefix '%c'", prefix)
+	}
+
+	parts := strings.SplitN(s[1:], "-", 4)
+	if len(parts) != 4 {
+		return ret, errors.New("TransactionIDFromString2: expected 4 dash-separated fields after prefix")
+	}
+
+	slot, e := strconv.ParseUint(parts[0], 10, 32)
+	if e != nil {
+		return ret, fmt.Errorf("TransactionIDFromString2: bad slot: %w", e)
+	}
+	tick, e := strconv.ParseUint(parts[1], 10, 8)
+	if e != nil {
+		return ret, fmt.Errorf("TransactionIDFromString2: bad tick: %w", e)
+	}
+	maxOutIdx, e := strconv.ParseUint(parts[2], 10, 8)
+	if e != nil {
+		return ret, fmt.Errorf("TransactionIDFromString2: bad maxOutputIndex: %w", e)
+	}
+	hashBytes, e := hex.DecodeString(parts[3])
+	if e != nil {
+		return ret, fmt.Errorf("TransactionIDFromString2: bad hash hex: %w", e)
+	}
+	if len(hashBytes) != TransactionHashLength {
+		return ret, fmt.Errorf("TransactionIDFromString2: hash must be %d bytes, got %d", TransactionHashLength, len(hashBytes))
+	}
+
+	// validate prefix vs tick consistency
+	if prefix == 'b' && tick != 0 {
+		return ret, fmt.Errorf("TransactionIDFromString2: branch prefix 'b' but tick=%d (must be 0)", tick)
+	}
+
+	ts := T(uint32(slot), byte(tick))
+	var h TransactionIDShort
+	h[0] = byte(maxOutIdx)
+	copy(h[1:], hashBytes)
+	return NewTransactionID(ts, h, isSeq), nil
+}
+
+// String2 returns a deterministically parseable human-readable form of the output ID:
+// <txid String2>-<output index>
+func (oid *OutputID) String2() string {
+	txid := oid.TransactionID()
+	return fmt.Sprintf("%s-%d", txid.String2(), oid.Index())
+}
+
+// OutputIDFromString2 parses the format produced by OutputID.String2
+func OutputIDFromString2(s string) (ret OutputID, err error) {
+	// find last '-' — that's the output index separator
+	lastDash := strings.LastIndex(s, "-")
+	if lastDash < 0 {
+		return ret, errors.New("OutputIDFromString2: no dash found")
+	}
+	txidStr := s[:lastDash]
+	idxStr := s[lastDash+1:]
+
+	txid, e := TransactionIDFromString2(txidStr)
+	if e != nil {
+		return ret, fmt.Errorf("OutputIDFromString2: %w", e)
+	}
+	idx, e := strconv.ParseUint(idxStr, 10, 8)
+	if e != nil {
+		return ret, fmt.Errorf("OutputIDFromString2: bad output index: %w", e)
+	}
+	return MustNewOutputID(txid, byte(idx)), nil
 }

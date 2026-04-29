@@ -4,26 +4,48 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/txmetadata"
+	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/spf13/viper"
+)
+
+const (
+	wsWriteTimeout        = 5 * time.Second
+	defaultMaxConnections = 5
+	defaultConnectionTTL  = 5 // minutes
 )
 
 type (
 	environment interface {
 		global.Logging
-		OnTransaction(fun func(tx *transaction.Transaction) bool)
-		OnTxDeleted(fun func(txid base.TransactionID) bool) // called whenever tx is GCed. Could be useful for the visualizer
+		OnNewVertex(fun func(data *workflow.NewVertexEventData) bool)
+		OnTxDeleted(fun func(txid base.TransactionID) bool)
 		TxBytesStore() global.TxBytesStore
 	}
+	// wsConnection tracks a single WebSocket client connection
+	wsConnection struct {
+		conn      *websocket.Conn
+		remote    string
+		createdAt time.Time
+		closed    atomic.Bool
+	}
+
 	wsServer struct {
 		environment
+		mu          sync.Mutex
+		connections []*wsConnection
+		maxConn     int
+		connTTL     time.Duration
 	}
 )
 
@@ -44,11 +66,75 @@ func checkWebSocketOrigin(r *http.Request) bool {
 }
 
 func Run(env environment) {
+	maxConn := viper.GetInt("streaming.max_connections")
+	if maxConn <= 0 {
+		maxConn = defaultMaxConnections
+	}
+	connTTLMinutes := viper.GetInt("streaming.connection_ttl_minutes")
+	if connTTLMinutes <= 0 {
+		connTTLMinutes = defaultConnectionTTL
+	}
 	srv := &wsServer{
 		environment: env,
+		maxConn:     maxConn,
+		connTTL:     time.Duration(connTTLMinutes) * time.Minute,
 	}
-	srv.Log().Infof("[%s] web socket steraming is running", TraceTag)
+	srv.Log().Infof("[%s] web socket streaming is running (max connections: %d, TTL: %dm)",
+		TraceTag, maxConn, connTTLMinutes)
 	http.HandleFunc(api.PathDAGVertexStream, srv.dagVertexStreamHandler)
+}
+
+// addConnection registers a new connection, evicting the oldest if at capacity.
+func (srv *wsServer) addConnection(conn *websocket.Conn, remote string) *wsConnection {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	// evict expired connections first
+	now := time.Now()
+	remaining := srv.connections[:0]
+	for _, c := range srv.connections {
+		if now.Sub(c.createdAt) > srv.connTTL {
+			srv.Log().Infof("[%s] closing expired connection %s (age: %v)",
+				TraceTag, c.remote, now.Sub(c.createdAt).Round(time.Second))
+			c.closed.Store(true)
+			_ = c.conn.Close()
+		} else {
+			remaining = append(remaining, c)
+		}
+	}
+	srv.connections = remaining
+
+	// if still at capacity, evict the oldest
+	if len(srv.connections) >= srv.maxConn {
+		oldest := srv.connections[0]
+		srv.Log().Infof("[%s] evicting oldest connection %s (age: %v) to make room",
+			TraceTag, oldest.remote, time.Since(oldest.createdAt).Round(time.Second))
+		oldest.closed.Store(true)
+		_ = oldest.conn.Close()
+		srv.connections = srv.connections[1:]
+	}
+
+	wsc := &wsConnection{
+		conn:      conn,
+		remote:    remote,
+		createdAt: time.Now(),
+	}
+	srv.connections = append(srv.connections, wsc)
+	srv.Log().Infof("[%s] connection added: %s (%d/%d)", TraceTag, remote, len(srv.connections), srv.maxConn)
+	return wsc
+}
+
+// removeConnection removes a connection from the tracked list.
+func (srv *wsServer) removeConnection(wsc *wsConnection) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+
+	for i, c := range srv.connections {
+		if c == wsc {
+			srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
+			break
+		}
+	}
 }
 
 func vertexDepsForTx(srv *wsServer, txidstr string) []byte {
@@ -68,7 +154,7 @@ func vertexDepsForTx(srv *wsServer, txidstr string) []byte {
 		return nil
 	}
 
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		return nil
 	}
@@ -92,7 +178,18 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	srv.Log().Infof("[%s] web socket client connected, remote: %s", TraceTag, r.RemoteAddr)
+	// register connection with cap enforcement and TTL tracking
+	wsc := srv.addConnection(conn, r.RemoteAddr)
+
+	// writeMsg sets a write deadline before each write so a slow/dead client
+	// cannot block the events consumer goroutine indefinitely.
+	writeMsg := func(data []byte) error {
+		if wsc.closed.Load() {
+			return websocket.ErrCloseSent
+		}
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+		return conn.WriteMessage(websocket.TextMessage, data)
+	}
 
 	// Thread-safe storage for transactions per slot
 	var mu sync.Mutex
@@ -101,22 +198,40 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 
 	// Goroutine to handle closing message from the client
 	go func() {
-		//defer wg.Done()
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
 				srv.Log().Infof("[%s] WebSocket client disconnected, remote: %s, err: %v", TraceTag, r.RemoteAddr, err)
-				_ = conn.Close() // explicitly close the connection
+				wsc.closed.Store(true)
+				_ = conn.Close()
+				srv.removeConnection(wsc)
 				return
 			}
-
 		}
 	}()
 
-	srv.OnTransaction(func(tx *transaction.Transaction) bool {
+	// TTL watchdog: close connection after configured timeout
+	go func() {
+		timer := time.NewTimer(srv.connTTL)
+		defer timer.Stop()
+		<-timer.C
+		if !wsc.closed.Load() {
+			srv.Log().Infof("[%s] connection TTL expired, disconnecting %s", TraceTag, r.RemoteAddr)
+			wsc.closed.Store(true)
+			_ = conn.Close()
+			srv.removeConnection(wsc)
+		}
+	}()
+
+	srv.OnNewVertex(func(data *workflow.NewVertexEventData) bool {
+		if wsc.closed.Load() {
+			return false
+		}
+
 		mu.Lock()
 		defer mu.Unlock()
 
+		tx := data.Transaction
 		txID := tx.IDShortString()
 		slot := tx.Timestamp().Slot
 
@@ -143,8 +258,13 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 			txSlots[slot] = set.New[string]()
 		}
 
-		// Convert transaction to vertex
-		vertexWD := api.VertexWithDependenciesFromTransaction(tx)
+		// Convert to vertex with extended data
+		vertexWD := api.VertexWithDependenciesExtended(
+			tx,
+			data.CoverageDelta,
+			data.Supply,
+			data.SeqName,
+		)
 
 		// Store transaction id in its slot
 		txSlots[slot].Insert(vertexWD.ID)
@@ -154,7 +274,7 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 			txid, err := base.TransactionIDFromHexString(i)
 			if err != nil {
 				srv.Log().Warnf("Failed to parse TransactionID from hex: %s, err: %v", i, err)
-				continue // Skip this input
+				continue
 			}
 
 			depSlot := txid.Timestamp().Slot
@@ -169,34 +289,49 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 				if respBin != nil {
 					srv.Tracef(TraceTag, "Send tx not seen yet %s", i)
 					txSlots[depSlot].Insert(i)
-					if err = conn.WriteMessage(websocket.TextMessage, respBin); err != nil {
+					if err = writeMsg(respBin); err != nil {
 						srv.Log().Infof("[%s] WebSocket client disconnected, remote: %s, err = %v", TraceTag, r.RemoteAddr, err)
+						wsc.closed.Store(true)
+						_ = conn.Close()
 						break
 					}
 				}
 			}
 		}
 
+		if wsc.closed.Load() {
+			return false
+		}
+
 		// Send the transaction itself
 		respBin, err := json.MarshalIndent(vertexWD, "", "  ")
 		util.AssertNoError(err)
 
-		if err = conn.WriteMessage(websocket.TextMessage, respBin); err != nil {
+		if err = writeMsg(respBin); err != nil {
 			srv.Log().Infof("[%s] web socket client disconnected, remote: %s, err = %v", TraceTag, r.RemoteAddr, err)
+			wsc.closed.Store(true)
+			_ = conn.Close()
+			srv.removeConnection(wsc)
 		}
-		return err == nil // returns false to remove callback
+		return !wsc.closed.Load()
 	})
 
 	srv.OnTxDeleted(func(txid base.TransactionID) bool {
+		if wsc.closed.Load() {
+			return false
+		}
 		vertex := &api.VertexDelete{
 			ID: txid.StringHex(),
 		}
 		respBin, err := json.MarshalIndent(vertex, "", "  ")
 		util.AssertNoError(err)
 
-		if err = conn.WriteMessage(websocket.TextMessage, respBin); err != nil {
+		if err = writeMsg(respBin); err != nil {
 			srv.Log().Infof("[%s] web socket client disconnected, remote: %s, err = %v", TraceTag, r.RemoteAddr, err)
+			wsc.closed.Store(true)
+			_ = conn.Close()
+			srv.removeConnection(wsc)
 		}
-		return err == nil // returns false to remove callback
+		return !wsc.closed.Load()
 	})
 }

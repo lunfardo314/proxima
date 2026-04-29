@@ -54,9 +54,9 @@ func runReliableBranchCmd(_ *cobra.Command, _ []string) {
 
 		slotsBefore := int(branchID.Slot()) - int(lrbID.Slot())
 		if glb.IsVerbose() {
-			glb.Infof("     (%d branches, %d slots) %s %s", 1-counter, slotsBefore, branchID.String(), branch.LinesVerbose().Join("  "))
+			glb.Infof("     (%d branches, %d slots) %s\n%s", 1-counter, slotsBefore, branchID.String(), branch.LinesVerbose("        ").String())
 		} else {
-			glb.Infof("     (%d branches, %d slots) %s %s", 1-counter, slotsBefore, branchID.String(), branch.Lines().Join("  "))
+			glb.Infof("     (%d branches, %d slots) %s\n%s", 1-counter, slotsBefore, branchID.String(), branch.Lines("        ").String())
 		}
 		return true
 	})

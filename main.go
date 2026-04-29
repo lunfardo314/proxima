@@ -1,23 +1,34 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	"github.com/lunfardo314/proxima/core/core_modules/state_cleanup"
+	"github.com/lunfardo314/proxima/core/core_modules/snapshot_restore"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/node"
 	"github.com/lunfardo314/proxima/util/restart"
 )
 
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "version" || os.Args[1] == "ver") {
+		sinceCommit := (time.Since(global.CommitTimeParsed) / time.Second) * time.Second
+		fmt.Printf("    Version:      %s\n", global.Version)
+		fmt.Printf("    Commit time:  %s (%s ago)\n", global.CommitTime, sinceCommit.String())
+		fmt.Printf("    Commit hash:  %s\n", global.CommitHash)
+		return
+	}
+
 	killChan := make(chan os.Signal, 1)
 	signal.Notify(killChan, syscall.SIGINT, syscall.SIGTERM)
 
 	n := node.New()
 	go func() {
 		<-killChan
-		n.Stop()
+		n.GracefulShutdown("received SIGINT/SIGTERM")
 	}()
 
 	// initialize and start node
@@ -28,8 +39,8 @@ func main() {
 	n.WaitAllDBClosed()
 
 	// Check if state cleanup requested a restart
-	if state_cleanup.CleanupRequestedFlag.Load() {
-		snapshotFile, _ := state_cleanup.SnapshotFileForRestore.Load().(string)
+	if snapshot_restore.CleanupRequestedFlag.Load() {
+		snapshotFile, _ := snapshot_restore.SnapshotFileForRestore.Load().(string)
 		n.Log().Infof("state cleanup requested, restarting node to restore from: %s", snapshotFile)
 
 		binary, err := os.Executable()

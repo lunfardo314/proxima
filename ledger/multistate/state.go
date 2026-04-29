@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
@@ -19,14 +21,34 @@ type (
 	// DB (store) is updated atomically with all mutations in one DB transaction
 	Updatable struct {
 		trie  *immutable.TrieUpdatable
-		store StateStore
+		store global.Store
 	}
 
-	// Readable is a read-only ledger state, with the particular root
-	// It is thread-safe. The state itself is read-only, but trie cache needs write-lock with every call
+	// Readable is a read-only ledger state, with the particular root.
+	// The trie reader mutates its internal cache on every read, so trie access requires
+	// an exclusive lock (mutex.Lock). However, the L2 caches (txCache, utxoCache) allow
+	// concurrent reads (mutex.RLock) for cached entries, avoiding trie contention on hot
+	// paths (KnowsCommittedTransaction, HasUTXO, GetUTXO).
 	Readable struct {
-		mutex *sync.Mutex
-		trie  *immutable.TrieReader
+		mutex     sync.RWMutex
+		trie      *immutable.TrieReader
+		txCache   map[base.TransactionID]txCacheEntry
+		utxoCache map[base.OutputID]utxoCacheEntry
+	}
+
+	// txCacheEntry is an L2 cache entry for a txID record in the trie.
+	// exists == false means the txID is not in the state.
+	txCacheEntry struct {
+		exists  bool
+		unspent set256.Set256
+	}
+
+	// utxoCacheEntry is an L2 cache entry for a UTXO byte payload in the trie.
+	// found == false means the OID is not in the state (rare: passes the txCache
+	// presence check but the partition lookup misses).
+	utxoCacheEntry struct {
+		data  []byte
+		found bool
 	}
 
 	// RootRecord is a persistent data stored in the DB partition with each state root
@@ -65,11 +87,9 @@ type (
 // i.e. txs and utxos are distinguished by size of their keys. This is significant optimization of the trie, because txid and tx outputs
 // have the same 32 byte long prefix
 
-// TODO optimization: maintain and store UTXO bitmap as a terminal of the txid in the trie
-
 const (
 	TriePartitionLedgerState = byte(iota)
-	TriePartitionAccounts
+	TriePartitionControllers
 	TriePartitionChainID
 )
 
@@ -77,7 +97,7 @@ func PartitionToString(p byte) string {
 	switch p {
 	case TriePartitionLedgerState:
 		return "UTXO"
-	case TriePartitionAccounts:
+	case TriePartitionControllers:
 		return "ACCN"
 	case TriePartitionChainID:
 		return "CHID"
@@ -86,12 +106,12 @@ func PartitionToString(p byte) string {
 	}
 }
 
-func LedgerIdentityBytesFromStore(store StateStore) []byte {
+func LedgerIdentityBytesFromStore(store global.Store) []byte {
 	rr := FetchAnyLatestRootRecord(store)
 	return LedgerIdentityBytesFromRoot(store, rr.Root)
 }
 
-func LedgerIdentityBytesFromRoot(store StateStoreReader, root common.VCommitment) []byte {
+func LedgerIdentityBytesFromRoot(store global.StoreReader, root common.VCommitment) []byte {
 	trie, err := immutable.NewTrieReader(ledger.CommitmentModel, store, root, 0)
 	util.AssertNoError(err)
 	return trie.Get(nil)
@@ -104,8 +124,9 @@ func NewReadable(store common.KVReader, root common.VCommitment, clearCacheAtSiz
 		return nil, err
 	}
 	return &Readable{
-		mutex: &sync.Mutex{},
-		trie:  trie,
+		trie:      trie,
+		txCache:   make(map[base.TransactionID]txCacheEntry),
+		utxoCache: make(map[base.OutputID]utxoCacheEntry),
 	}, nil
 }
 
@@ -117,7 +138,7 @@ func MustNewReadable(store common.KVReader, root common.VCommitment, clearCacheA
 
 // NewUpdatable creates updatable state with the given root. After updated, the root changes.
 // Suitable for chained updates of the ledger state
-func NewUpdatable(store StateStore, root common.VCommitment) (*Updatable, error) {
+func NewUpdatable(store global.Store, root common.VCommitment) (*Updatable, error) {
 	trie, err := immutable.NewTrieUpdatable(ledger.CommitmentModel, store, root)
 	if err != nil {
 		return nil, err
@@ -128,17 +149,78 @@ func NewUpdatable(store StateStore, root common.VCommitment) (*Updatable, error)
 	}, nil
 }
 
-func MustNewUpdatable(store StateStore, root common.VCommitment) *Updatable {
+func MustNewUpdatable(store global.Store, root common.VCommitment) *Updatable {
 	ret, err := NewUpdatable(store, root)
 	util.AssertNoError(err)
 	return ret
 }
 
-func (r *Readable) GetUTXO(oid base.OutputID) ([]byte, bool) {
+// _lookupTxRecord returns the cached txID record, populating the cache from the trie on miss.
+// Uses RLock for cache hits (concurrent), Lock only for misses (trie access).
+func (r *Readable) _lookupTxRecord(txid base.TransactionID) txCacheEntry {
+	// Fast path: RLock for cache hit
+	r.mutex.RLock()
+	if entry, ok := r.txCache[txid]; ok {
+		r.mutex.RUnlock()
+		return entry
+	}
+	r.mutex.RUnlock()
+
+	// Slow path: exclusive lock for trie read + cache write
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	return r._getUTXO(oid)
+	// Double-check after acquiring write lock
+	if entry, ok := r.txCache[txid]; ok {
+		return entry
+	}
+	return r._readAndCacheTxRecord(txid)
+}
+
+// _readAndCacheTxRecord reads a txID record from the trie and stores it in the L2 cache.
+// Caller must hold exclusive lock (mutex.Lock).
+func (r *Readable) _readAndCacheTxRecord(txid base.TransactionID) txCacheEntry {
+	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+	defer partition.Dispose()
+
+	v := partition.Get(txid[:])
+	entry := txCacheEntry{exists: len(v) > 0}
+	if entry.exists {
+		entry.unspent = set256.NewFromSlice(v)
+	}
+	r.txCache[txid] = entry
+	return entry
+}
+
+func (r *Readable) GetUTXO(oid base.OutputID) ([]byte, bool) {
+	// Synthetic upgrade UTXOs have no txID record — skip Set256 check
+	if !base.IsUpgradeOutputID(oid) {
+		entry := r._lookupTxRecord(oid.TransactionID())
+		if !entry.exists || !entry.unspent.Contains(oid.Index()) {
+			return nil, false
+		}
+	}
+
+	// Fast path: RLock for cache hit
+	r.mutex.RLock()
+	if e, ok := r.utxoCache[oid]; ok {
+		r.mutex.RUnlock()
+		return e.data, e.found
+	}
+	r.mutex.RUnlock()
+
+	// Slow path: exclusive lock for trie read + cache write
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// Double-check after acquiring write lock
+	if e, ok := r.utxoCache[oid]; ok {
+		return e.data, e.found
+	}
+
+	data, found := r._getUTXO(oid)
+	r.utxoCache[oid] = utxoCacheEntry{data: data, found: found}
+	return data, found
 }
 
 func (r *Readable) _getUTXO(oid base.OutputID, partition ...*common.ReaderPartition) ([]byte, bool) {
@@ -159,26 +241,25 @@ func (r *Readable) _getUTXO(oid base.OutputID, partition ...*common.ReaderPartit
 }
 
 func (r *Readable) HasUTXO(oid base.OutputID) bool {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+	// Synthetic upgrade UTXOs have no txID record — fall back to 33-byte key lookup
+	if base.IsUpgradeOutputID(oid) {
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
 
-	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
-	defer partition.Dispose()
+		partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
+		defer partition.Dispose()
 
-	return partition.Has(oid[:])
+		return partition.Has(oid[:])
+	}
+	entry := r._lookupTxRecord(oid.TransactionID())
+	return entry.exists && entry.unspent.Contains(oid.Index())
 }
 
 func (r *Readable) KnowsCommittedTransaction(txid base.TransactionID) bool {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	partition := common.MakeTraversableReaderPartition(r.trie, TriePartitionLedgerState)
-	defer partition.Dispose()
-
-	return common.HasWithPrefix(partition, txid[:])
+	return r._lookupTxRecord(txid).exists
 }
 
-func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error) {
+func (r *Readable) GetUTXOIDsForController(addr ledger.ControllerID) ([]base.OutputID, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -189,7 +270,7 @@ func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, 
 	var oid base.OutputID
 	var err error
 
-	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(addr)), addr)
+	accountPrefix := common.Concat(TriePartitionControllers, byte(len(addr)), addr)
 	r.trie.Iterator(accountPrefix).IterateKeys(func(k []byte) bool {
 		oid, err = base.OutputIDFromBytes(k[len(accountPrefix):])
 		if err != nil {
@@ -205,12 +286,12 @@ func (r *Readable) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, 
 	return ret, nil
 }
 
-func (r *Readable) GetUTXOsInAccount(addr ledger.AccountID) ([]*ledger.OutputDataWithID, error) {
+func (r *Readable) GetUTXOsForController(addr ledger.ControllerID) ([]*ledger.OutputDataWithID, error) {
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
 	ret := make([]*ledger.OutputDataWithID, 0)
-	err := r.IterateUTXOsInAccount(addr, func(oid base.OutputID, odata []byte) bool {
+	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
 		ret = append(ret, &ledger.OutputDataWithID{
 			ID:   oid,
 			Data: odata,
@@ -223,11 +304,11 @@ func (r *Readable) GetUTXOsInAccount(addr ledger.AccountID) ([]*ledger.OutputDat
 	return ret, nil
 }
 
-func (r *Readable) IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid base.OutputID, odata []byte) bool) (err error) {
+func (r *Readable) IterateUTXOsForController(controllerID ledger.ControllerID, fun func(oid base.OutputID, odata []byte) bool) (err error) {
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	return r.IterateUTXOIDsInAccount(addr, func(oid base.OutputID) bool {
+	return r.IterateUTXOIDsForController(controllerID, func(oid base.OutputID) bool {
 		if odata, found := r._getUTXO(oid, partition); found {
 			return fun(oid, odata)
 		}
@@ -235,8 +316,8 @@ func (r *Readable) IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid bas
 	})
 }
 
-func (r *Readable) IsKnownAccount(addr ledger.AccountID) (ret bool) {
-	err := r.IterateUTXOsInAccount(addr, func(oid base.OutputID, odata []byte) bool {
+func (r *Readable) IsKnownController(addr ledger.ControllerID) (ret bool) {
+	err := r.IterateUTXOsForController(addr, func(oid base.OutputID, odata []byte) bool {
 		ret = true
 		return false
 	})
@@ -244,14 +325,14 @@ func (r *Readable) IsKnownAccount(addr ledger.AccountID) (ret bool) {
 	return
 }
 
-func (r *Readable) IterateUTXOIDsInAccount(addr ledger.AccountID, fun func(oid base.OutputID) bool) (err error) {
+func (r *Readable) IterateUTXOIDsForController(controller ledger.ControllerID, fun func(oid base.OutputID) bool) (err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if len(addr) > 255 {
-		return fmt.Errorf("accountID length should be <= 255")
+	if len(controller) > 255 {
+		return fmt.Errorf("controllerID length should be <= 255")
 	}
-	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(addr)), addr)
+	accountPrefix := common.Concat(TriePartitionControllers, byte(len(controller)), controller)
 
 	var oid base.OutputID
 
@@ -302,7 +383,7 @@ func (r *Readable) GetStem() (uint32, []byte) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	accountPrefix := common.Concat(TriePartitionAccounts, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
+	accountPrefix := common.Concat(TriePartitionControllers, byte(len(ledger.StemAccountID)), ledger.StemAccountID)
 
 	var found bool
 	var retSlot uint32
@@ -338,8 +419,8 @@ func (r *Readable) Iterator(prefix []byte) common.KVIterator {
 }
 
 // IterateKnownCommittedTransactions iterates transaction IDs in the state. Optionally, iteration is restricted
-// for a slot. In that case first iterates non-sequencer transactions, the sequencer transactions
-func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.TransactionID, slot uint32) bool, txidSlot ...uint32) {
+// for a slot. In that case first iterates non-sequencer transactions, the sequencer transactions.
+func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.TransactionID) bool, txidSlot ...uint32) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -353,20 +434,49 @@ func (r *Readable) IterateKnownCommittedTransactions(fun func(txid base.Transact
 			return true
 		}
 		txid := base.MustTransactionIDFromBytes(d)
-		slot, err := base.SlotFromBytes(v)
-		util.AssertNoError(err)
-
-		return fun(txid, slot)
+		return fun(txid)
 	})
 }
 
 func (r *Readable) KnownCommittedTxIDs(slot uint32) []base.TransactionID {
 	ret := make([]base.TransactionID, 0)
-	r.IterateKnownCommittedTransactions(func(txid base.TransactionID, _ uint32) bool {
+	r.IterateKnownCommittedTransactions(func(txid base.TransactionID) bool {
 		ret = append(ret, txid)
 		return true
 	}, slot)
 	return ret
+}
+
+// PrunableTxIDsAtSlot returns txIDs at the given slot whose unspent output set is empty,
+// meaning all outputs have been consumed and the txID record can be safely pruned.
+func (r *Readable) PrunableTxIDsAtSlot(slot uint32) []base.TransactionID {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	ret := make([]base.TransactionID, 0)
+	keyPrefix := append([]byte{TriePartitionLedgerState}, base.Slot2Bytes(slot)...)
+	r.trie.Iterator(keyPrefix).Iterate(func(k, v []byte) bool {
+		d := k[1:]
+		if len(d) != base.TransactionIDLength {
+			return true
+		}
+		s := set256.NewFromSlice(v)
+		if s.IsEmpty() {
+			ret = append(ret, base.MustTransactionIDFromBytes(d))
+		}
+		return true
+	})
+	return ret
+}
+
+// GetTxUnspentOutputSet returns the Set256 of unspent output indices for the given txID.
+// Returns the set and true if the txID record exists, empty set and false otherwise.
+func (r *Readable) GetTxUnspentOutputSet(txid base.TransactionID) (set256.Set256, bool) {
+	entry := r._lookupTxRecord(txid)
+	if !entry.exists {
+		return set256.Set256{}, false
+	}
+	return entry.unspent, true
 }
 
 func (r *Readable) IterateChainTips(fun func(chainID base.ChainID, oid base.OutputID) bool) error {
@@ -404,7 +514,7 @@ func (r *Readable) IterateUTXOIDs(fun func(oid base.OutputID) bool) (err error) 
 
 	var oid base.OutputID
 
-	r.trie.Iterator([]byte{TriePartitionAccounts}).IterateKeys(func(k []byte) bool {
+	r.trie.Iterator([]byte{TriePartitionControllers}).IterateKeys(func(k []byte) bool {
 		if oid, err = base.OutputIDFromBytes(k[2+k[1]:]); err != nil {
 			return false
 		}
@@ -426,6 +536,7 @@ func (r *Readable) IterateUTXOs(fun func(o ledger.OutputWithID) bool) (err error
 	return r.IterateUTXOIDs(func(oid base.OutputID) bool {
 		oData, ok := r._getUTXO(oid, partition)
 		util.Assertf(ok, "IterateUTXOs: can't find UTXO %s", oid.String())
+		// Use output's slot for parsing (output was created at oid.Slot())
 		o, err = ledger.OutputFromBytes(oData)
 		util.AssertNoError(err, "IterateUTXOs")
 
@@ -458,8 +569,9 @@ func (r *Readable) IterateUTXOsInSlot(slot uint32, fun func(oid base.OutputID, o
 
 func (u *Updatable) Readable() *Readable {
 	return &Readable{
-		mutex: &sync.Mutex{},
-		trie:  u.trie.TrieReader,
+		trie:      u.trie.TrieReader,
+		txCache:   make(map[base.TransactionID]txCacheEntry),
+		utxoCache: make(map[base.OutputID]utxoCacheEntry),
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -44,7 +45,7 @@ func runDBStatsCmd(_ *cobra.Command, _ []string) {
 }
 
 func runBranchInflationBonusStats() {
-	maxInflation := ledger.L().BranchInflationBonusBaseFromSource()
+	maxInflation := ledger.L(base.MaxSlot).BranchInflationBonusBase(0)
 	buckets := make([]int, numBuckets)
 	numBranches := 0
 	var maxBib, minBib uint64

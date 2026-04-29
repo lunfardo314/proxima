@@ -8,7 +8,7 @@ import (
 // IsPreferredMilestoneAgainstTheOther returns if vid1 is strongly better than vid2
 // 'better' means aligned coverage is bigger, or, if equal, transaction id is smaller
 func IsPreferredMilestoneAgainstTheOther(vid1, vid2 *WrappedTx) bool {
-	util.Assertf(vid1.IsSequencerMilestone() && vid2.IsSequencerMilestone(), "vid1.IsSequencerTransaction() && vid2.IsSequencerTransaction()")
+	util.Assertf(vid1.IsSequencerTransaction() && vid2.IsSequencerTransaction(), "vid1.IsSequencerTransaction() && vid2.IsSequencerTransaction()")
 	if vid1 == vid2 {
 		return false
 	}

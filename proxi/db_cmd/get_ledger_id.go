@@ -14,7 +14,7 @@ import (
 func initDbGetLedgerIDCmd() *cobra.Command {
 	retCmd := &cobra.Command{
 		Use:   "get_ledger_definitions",
-		Short: fmt.Sprintf("retrieves ledger definitions from DB and saves in file '%s'", glb.LedgerIDFileName),
+		Short: fmt.Sprintf("retrieves ledger definitions from DB and saves in file '%s'", glb.LedgerDefinitionsFileName),
 		Args:  cobra.NoArgs,
 		Run:   dbGetLedgerIDCmd,
 	}
@@ -31,14 +31,14 @@ func dbGetLedgerIDCmd(_ *cobra.Command, _ []string) {
 	yamlData := multistate.LedgerIdentityBytesFromStore(stateStore)
 	defer glb.CloseDatabases()
 
-	if glb.FileExists(glb.LedgerIDFileName) {
-		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Owerwrite", glb.LedgerIDFileName), false) {
+	if glb.FileExists(glb.LedgerDefinitionsFileName) {
+		if !glb.YesNoPrompt(fmt.Sprintf("file '%s' already exists. Owerwrite", glb.LedgerDefinitionsFileName), false) {
 			glb.Infof("exit")
 			return
 		}
 	}
 
-	err := os.WriteFile(glb.LedgerIDFileName, yamlData, 0644)
+	err := os.WriteFile(glb.LedgerDefinitionsFileName, yamlData, 0644)
 	glb.AssertNoError(err)
-	glb.Infof("ledger definitions has been saved to '%s'", glb.LedgerIDFileName)
+	glb.Infof("ledger definitions has been saved to '%s'", glb.LedgerDefinitionsFileName)
 }

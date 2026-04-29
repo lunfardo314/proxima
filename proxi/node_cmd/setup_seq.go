@@ -11,6 +11,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 )
@@ -45,10 +46,6 @@ func runSeqSetupCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 
 		glb.Infof("amount: %s", util.Th(amount))
-		if amount < ledger.Const.MinimumAmountOnSequencer {
-			glb.Infof("minimum amout required: %d", ledger.Const.MinimumAmountOnSequencer)
-			return
-		}
 
 		// wait for available funds
 		waitForFunds(accountable, amount)
@@ -79,7 +76,7 @@ func runSeqSetupCmd(_ *cobra.Command, args []string) {
 	}
 }
 
-func getChainIdForAccount(account ledger.Accountable) *base.ChainID {
+func getChainIdForAccount(account ledger.Controller) *base.ChainID {
 	clnt := glb.GetClient()
 	chains, _, err := clnt.GetAllChains()
 	glb.AssertNoError(err)
@@ -99,14 +96,13 @@ func getChainIdForAccount(account ledger.Accountable) *base.ChainID {
 	return nil
 }
 
-func waitForFunds(accountable ledger.Accountable, amount uint64) {
+func waitForFunds(accountable ledger.Controller, amount uint64) {
 	for {
 		sumOutsideChains := uint64(0)
 		outs, _, err := glb.GetClient().GetAccountOutputs(accountable)
 		glb.AssertNoError(err)
 		for _, o := range outs {
-			if _, idx := o.Output.ChainConstraint(); idx != 0xff {
-			} else {
+			if o.Output.ChainConstraint() == nil {
 				sumOutsideChains += o.Output.TokenBalance()
 			}
 		}
@@ -137,11 +133,32 @@ func updateWalletConfig(chainId base.ChainID) {
 	glb.AssertNoError(err)
 
 	// Write the modified YAML back to the file
-	err = os.WriteFile("proxi.yaml", modifiedData, 0666)
+	err = os.WriteFile("proxi.yaml", modifiedData, 0600)
 	glb.AssertNoError(err)
 }
 
 func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID) {
+	// Create a JSON keystore file for the sequencer controller key
+	publicKey := key.Public().(ed25519.PublicKey)
+	sid := base.HolderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
+	holderID := hex.EncodeToString(sid[:])
+	seqKeyFile := keystore.DefaultKeyFile
+
+	ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, key, publicKey, holderID)
+	glb.AssertNoError(err)
+
+	// Offer encryption
+	if glb.YesNoPrompt("Encrypt the sequencer key file with a passphrase?", false) {
+		passphrase := glb.ReadPassphraseConfirm()
+		ks, err = keystore.EncryptKeystore(ks, passphrase, "")
+		glb.AssertNoError(err)
+		glb.Infof("Key encrypted.")
+	}
+
+	err = ks.SaveToFile(seqKeyFile)
+	glb.AssertNoError(err)
+	glb.Infof("sequencer controller key saved to '%s'", seqKeyFile)
+
 	// Read the YAML file
 	data, err := os.ReadFile("proxima.yaml")
 	glb.AssertNoError(err)
@@ -154,9 +171,11 @@ func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID)
 	// Access the "sequencer" section and update its fields
 	if sequencer, ok := config["sequencer"].(map[interface{}]interface{}); ok {
 		sequencer["name"] = name
-		sequencer["enable"] = true // Enable the sequencer
+		sequencer["enable"] = true
 		sequencer["chain_id"] = chainId.StringHex()
-		sequencer["controller_key"] = hex.EncodeToString(key)
+		sequencer["controller_key_file"] = seqKeyFile
+		// Remove inline key if previously set (from old configs)
+		delete(sequencer, "controller_key")
 	} else {
 		glb.Infof("!!! Error sequencer key not found")
 	}
@@ -166,6 +185,6 @@ func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID)
 	glb.AssertNoError(err)
 
 	// Write the modified YAML back to the file
-	err = os.WriteFile("proxima.yaml", modifiedData, 0666)
+	err = os.WriteFile("proxima.yaml", modifiedData, 0600)
 	glb.AssertNoError(err)
 }

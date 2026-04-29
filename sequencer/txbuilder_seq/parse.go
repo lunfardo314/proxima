@@ -11,7 +11,7 @@ import (
 type (
 	preParsedTagAlongOutput struct {
 		ledger.TagAlongOutput
-		SenderHash    [32]byte
+		SenderID      base.HolderID
 		RequestCode   byte
 		RequestParams *base.SmallPersistentMap
 	}
@@ -45,12 +45,8 @@ func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutpu
 			reason = fmt.Errorf("tag-along lock does not allow output can't contain more than 4 constraints, got %d", o.Output.NumConstraints())
 			return
 		}
-		if lock.Sender.Name() != ledger.AddressED25519Name {
-			reason = fmt.Errorf("tag-along lock allows only ED25519 address as sender")
-			return
-		}
 		ret.TagAlongLock = lock
-		copy(ret.SenderHash[:], lock.Sender.(ledger.AddressED25519))
+		ret.SenderID = lock.SenderID
 		if o.Output.NumConstraints() == 2 {
 			valid = true
 			return

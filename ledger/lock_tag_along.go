@@ -1,7 +1,10 @@
 package ledger
 
 import (
+	"encoding/hex"
 	"fmt"
+
+	_ "embed"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -10,17 +13,22 @@ import (
 
 type TagAlongLock struct {
 	TargetSequencerID base.ChainID
-	Sender            Accountable
+	SenderID          base.HolderID
 }
 
 const (
 	TagAlongLockName           = "tagAlong"
-	tagAlongLockTemplateSource = TagAlongLockName + "(0x%s, %s)"
+	tagAlongLockTemplateSource = TagAlongLockName + "(0x%s, 0x%s)"
 	tagAlongLockTemplateHR     = TagAlongLockName + "(target=%s, sender=%s)"
 )
 
-func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
+// TODO randomize access to purgeable tag-along outputs and incentivize ledger cleanup
+
+//go:embed def/lock_tag_along.easyfl
+var tagAlongLockConstraintSource string
+
+func TagAlongLockFromBytesWithLib(data []byte, lib *Library) (*TagAlongLock, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -34,35 +42,36 @@ func TagAlongLockFromBytes(data []byte) (*TagAlongLock, error) {
 		return nil, err
 	}
 
-	//senderBin := easyfl.StripDataPrefix(args[1])
-	sender, err := AccountableFromBytes(args[1])
-	if err != nil {
-		return nil, err
+	senderIDbin := easyfl.StripDataPrefix(args[1])
+	if len(senderIDbin) != len(base.HolderID{}) {
+		return nil, fmt.Errorf("wrong sender ID size in TagAlongLock")
 	}
+	var senderID base.HolderID
+	copy(senderID[:], senderIDbin)
 
 	return &TagAlongLock{
 		TargetSequencerID: chainID,
-		Sender:            sender,
+		SenderID:          senderID,
 	}, nil
 }
 
 func (t *TagAlongLock) Source() string {
-	return fmt.Sprintf(tagAlongLockTemplateSource, t.TargetSequencerID.StringHex(), t.Sender.Source())
+	return fmt.Sprintf(tagAlongLockTemplateSource, t.TargetSequencerID.StringHex(), hex.EncodeToString(t.SenderID[:]))
 }
 
 func (t *TagAlongLock) String() string {
-	return fmt.Sprintf(tagAlongLockTemplateHR, t.TargetSequencerID.String(), t.Sender.String())
+	return fmt.Sprintf(tagAlongLockTemplateHR, t.TargetSequencerID.String(), hex.EncodeToString(t.SenderID[:]))
 }
 
 func (t *TagAlongLock) Bytes() []byte {
 	return mustBinFromSource(t.Source())
 }
 
-func (t *TagAlongLock) Accounts() []Accountable {
-	return []Accountable{ChainLockFromChainID(t.TargetSequencerID), t.Sender}
+func (t *TagAlongLock) Controllers() []Controller {
+	return []Controller{ChainLockFromChainID(t.TargetSequencerID), SigLock(t.SenderID)}
 }
 
-func (t *TagAlongLock) Master() Accountable {
+func (t *TagAlongLock) Master() Controller {
 	return nil
 }
 
@@ -74,26 +83,31 @@ func (t *TagAlongLock) AsLock() Lock {
 	return t
 }
 
-func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, sender AddressED25519) *Output {
+func NewTagAlongOutput(fee uint64, targetChainID base.ChainID, senderID base.HolderID) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithTokenBalance(fee)
 		o.WithLock(&TagAlongLock{
 			TargetSequencerID: targetChainID,
-			Sender:            sender,
+			SenderID:          senderID,
 		})
 	})
 }
 
-func NewTagAlongLockUnlockParams(predChainOutputIndex, predChainConstraintIndex, unlockMode byte) []byte {
-	return []byte{predChainOutputIndex, predChainConstraintIndex, unlockMode}
+// NewTagAlongLockUnlockParams creates unlock params for tag-along lock. 2 bytes:
+// the input index of the consumed chain output, and the unlock mode.
+// The chain constraint is always at index 2.
+func NewTagAlongLockUnlockParams(predChainOutputIndex, unlockMode byte) []byte {
+	return []byte{predChainOutputIndex, unlockMode}
 }
 
 func registerTagAlongLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(TagAlongLockName, 2, func(data []byte) (Constraint, error) {
-		return TagAlongLockFromBytes(data)
-	}, initTestTagAlongLockConstraint)
-	lib.mustRegisterLock(TagAlongLockName, func(bytes []byte) (Lock, error) {
-		ret, err := TagAlongLockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		return TagAlongLockFromBytesWithLib(data, lib)
+	})
+	lib.mustRegisterLockSerde(TagAlongLockName, func(bytes []byte) (Lock, error) {
+		// Use latest library version for library registration parsing
+		ret, err := TagAlongLockFromBytesWithLib(bytes, lib)
 		if err != nil {
 			return nil, err
 		}
@@ -101,19 +115,21 @@ func registerTagAlongLockConstraint(lib *Library) {
 	})
 }
 
-func initTestTagAlongLockConstraint() {
-	chainID := base.RandomChainID()
-	sender := AddressED25519Random()
-	example := &TagAlongLock{
-		TargetSequencerID: chainID,
-		Sender:            sender,
-	}
-	tagAlongLockBack, err := TagAlongLockFromBytes(example.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(EqualConstraints(tagAlongLockBack, example), "inconsistency "+TagAlongLockName)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		chainID := base.RandomChainID()
+		senderID := base.HolderID(SigLockRandom())
+		example := &TagAlongLock{
+			TargetSequencerID: chainID,
+			SenderID:          senderID,
+		}
+		tagAlongLockBack, err := TagAlongLockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(EqualConstraints(tagAlongLockBack, example), "inconsistency "+TagAlongLockName)
 
-	_, err = L().ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
+		_, err = lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+	})
 }
 
 // --- helper structure
@@ -125,17 +141,20 @@ type TagAlongOutput struct {
 
 func (o *TagAlongOutput) IsTagAlongSlot(slot uint32) bool {
 	s := o.ID.Slot()
-	return slot >= s && slot-s < Const.TagAlongSlots
+	lib := L(s) // use library from output creation slot
+	return slot >= s && slot-s < lib.TagAlongSlots
 }
 
 func (o *TagAlongOutput) IsTagAlongReclaimSlot(slot uint32) bool {
 	s := o.ID.Slot()
-	return slot >= s && slot-s >= Const.TagAlongSlots && slot-s < Const.TagAlongReclaimSlots
+	lib := L(s) // use library from output creation slot
+	return slot >= s && slot-s >= lib.TagAlongSlots && slot-s < lib.TagAlongReclaimSlots
 }
 
 func (o *TagAlongOutput) IsTagAlongPurgeSlot(slot uint32) bool {
 	s := o.ID.Slot()
-	return slot >= s && slot-s >= Const.TagAlongReclaimSlots
+	lib := L(s) // use library from output creation slot
+	return slot >= s && slot-s >= lib.TagAlongReclaimSlots
 }
 
 func (o *TagAlongOutput) StatusInSlot(slot uint32) string {
@@ -149,50 +168,3 @@ func (o *TagAlongOutput) StatusInSlot(slot uint32) string {
 	}
 	return "undefined"
 }
-
-// TODO randomize access to purgeable tag-along outputs and incentivize ledger cleanup
-
-const tagAlongLockConstraintSource = `
-func constTagAlongSlots : u64/30  // 5 min
-func constTagAlongReclaimSlots : u64/390 // 5 min + 1 hour
-
-func selfInputSlotPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
-
-func _selfSenderBytecode : parseBytecode(self, 1, selfBytecodePrefix)
-
-// $0 - target sequencer ID, like in the chainLock
-// $1 - sender account source, usually addressED25519 
-func tagAlong : 
-or(
-  and(
-     selfIsProducedOutput,
-     require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
-	 require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
-	 require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error
-     require(lessThan(selfNumConstraints, u64/5), !!!tag-along_lock_allows_no_more_than_4_constraints),
-     require(
-        equal(
-           parseInlineDataArgument(_selfSenderBytecode, 0, #a, #addressED25519), 
-           blake2b(publicKeyED25519(txSignature))
-        ),
-        !!!sender_hash_check_failed
-     ),
-  ),
-  and(
-     selfIsConsumedOutput,
-	 or(
-		greaterOrEqualThan(selfInputSlotPace, constTagAlongReclaimSlots),  // unlockable by anybody  
-		and( 
-			 // unlockable by the target
-		   lessThan(selfInputSlotPace, constTagAlongSlots),
-		   require(chainLock($0), !!!unlock_window_error:_inside_tag_along_slots_must_be_unlocked_by_the_target)
-		),
-			 // unlockable by the sender
-        require(
-           $1,
-           !!!unlock_window_error:_inside_reclaim_slots_must_be_unlocked_by_the_sender
-        )
-	 )
-  ),
-)
-`

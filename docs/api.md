@@ -148,8 +148,8 @@ curl -L -X GET 'http://localhost:8000/txapi/v1/get_parsed_transaction?txid=80000
     "milestone_data": {
       "name": "boot.b0",
       "minimum_fee": 0,
-      "chain_height": 34,
-      "branch_height": 18
+      "transition_counter": 34,
+      "branch_counter": 18
     }
   },
   "sender": "a(0x033d48aa6f02b3f37811ae82d9c383855d3d23373cbd28ab94639fdd94a4f02d)",

@@ -22,11 +22,11 @@ func (d _dummyStateReader) KnowsCommittedTransaction(txid base.TransactionID) bo
 	return false
 }
 
-func (d _dummyStateReader) IterateUTXOIDsInAccount(addr ledger.AccountID, fun func(oid base.OutputID) bool) (err error) {
+func (d _dummyStateReader) IterateUTXOIDsForController(addr ledger.ControllerID, fun func(oid base.OutputID) bool) (err error) {
 	return nil
 }
 
-func (d _dummyStateReader) IterateUTXOsInAccount(addr ledger.AccountID, fun func(oid base.OutputID, odata []byte) bool) (err error) {
+func (d _dummyStateReader) IterateUTXOsForController(addr ledger.ControllerID, fun func(oid base.OutputID, odata []byte) bool) (err error) {
 	return nil
 }
 
@@ -42,11 +42,11 @@ func (d _dummyStateReader) IterateChainTips(fun func(chainID base.ChainID, oid b
 	return nil
 }
 
-func (d _dummyStateReader) GetUTXOIDsInAccount(addr ledger.AccountID) ([]base.OutputID, error) {
+func (d _dummyStateReader) GetUTXOIDsForController(addr ledger.ControllerID) ([]base.OutputID, error) {
 	return nil, nil
 }
 
-func (d _dummyStateReader) GetUTXOsInAccount(accountID ledger.AccountID) ([]*ledger.OutputDataWithID, error) {
+func (d _dummyStateReader) GetUTXOsForController(accountID ledger.ControllerID) ([]*ledger.OutputDataWithID, error) {
 	return nil, nil
 }
 
@@ -62,6 +62,6 @@ func (d _dummyStateReader) MustLedgerIdentityBytes() []byte {
 	return nil
 }
 
-func (d _dummyStateReader) IsKnownAccount(accountID ledger.AccountID) bool {
+func (d _dummyStateReader) IsKnownController(accountID ledger.ControllerID) bool {
 	return true
 }
