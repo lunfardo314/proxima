@@ -124,7 +124,11 @@ async function loadSlot(slotOverride) {
     if (!resp.ok) { alert(await resp.text()); return; }
     currentData = await resp.json();
     render(currentData);
-    setStatus(currentData.vertices.length + " vertices, " + currentData.edges.length + " edges, slots " + (slot - slotsBack) + ".." + slot);
+    if (currentData.diagnostic) {
+      setStatus(currentData.diagnostic);
+    } else {
+      setStatus(currentData.vertices.length + " vertices, " + currentData.edges.length + " edges, slots " + (slot - slotsBack) + ".." + slot);
+    }
   } catch(e) { alert("Error: " + e); }
 }
 

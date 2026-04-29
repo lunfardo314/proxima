@@ -88,6 +88,10 @@ type graph struct {
 	Vertices []vertex `json:"vertices"`
 	Edges    []edge   `json:"edges"`
 	TipID    string   `json:"tip_id,omitempty"`
+	// Diagnostic explains an empty serveSlot result so the UI can tell the
+	// user why no transactions were found. Txstore is append-only, so a
+	// missing slot means this node never stored those txs locally.
+	Diagnostic string `json:"diagnostic,omitempty"`
 }
 
 // loader collects vertices and edges from the txstore
@@ -286,10 +290,57 @@ func serveSlot(w http.ResponseWriter, r *http.Request, store TxStore) {
 		})
 	}
 
+	if len(l.data.Vertices) == 0 {
+		l.data.Diagnostic = emptySlotDiagnostic(store, firstSlot, slot)
+	}
+
 	sortVertices(l.data.Vertices)
 	ensureNonNil(&l.data)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(l.data)
+}
+
+// emptySlotDiagnostic builds a user-facing message explaining why slots
+// firstSlot..lastSlot returned no transactions. It probes the local txstore
+// for its earliest-stored slot via a single iterator-seek (cheap on Badger:
+// the first key returned is the lexicographically smallest, and txid keys
+// start with the 4-byte big-endian slot, so the first key's slot is the
+// earliest one in the store).
+func emptySlotDiagnostic(store TxStore, firstSlot, lastSlot uint32) string {
+	earliest, ok := earliestStoredSlot(store)
+	if !ok {
+		return "this node's txstore is empty — no transactions have been stored locally yet"
+	}
+	rangeStr := fmt.Sprintf("slot %d", lastSlot)
+	if firstSlot != lastSlot {
+		rangeStr = fmt.Sprintf("slots %d..%d", firstSlot, lastSlot)
+	}
+	if lastSlot < earliest {
+		return fmt.Sprintf("no transactions in %s — this node's earliest stored slot is %d. "+
+			"Each node only keeps transactions it has personally received; older slots are "+
+			"unavailable here (txstore is append-only and is not back-filled from peers).",
+			rangeStr, earliest)
+	}
+	return fmt.Sprintf("no transactions in %s on this node (earliest stored slot: %d)", rangeStr, earliest)
+}
+
+// earliestStoredSlot returns the slot of the lexicographically smallest key
+// in the txstore. Txstore keys are 32-byte transaction IDs whose first 4 BE
+// bytes are the slot, so the smallest key's slot is the earliest one stored.
+// Returns false if the store has no parseable transaction IDs.
+func earliestStoredSlot(store TxStore) (uint32, bool) {
+	var earliest uint32
+	var found bool
+	store.Iterator(nil).IterateKeys(func(k []byte) bool {
+		txid, err := base.TransactionIDFromBytes(k)
+		if err != nil {
+			return true // skip and keep going (shouldn't happen for txstore)
+		}
+		earliest = txid.Slot()
+		found = true
+		return false // stop after the first valid key
+	})
+	return earliest, found
 }
 
 // serveFindTx searches for transactions matching a prefix.
