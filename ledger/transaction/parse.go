@@ -43,10 +43,21 @@ type Transaction struct {
 	fullContextErr  error
 }
 
-// Parse parses main elements of the transaction and creates Transaction ID and transaction structure:
-// This is STAGE 1 of transaction validation. This is minimal check to pass for the blob to be a raw transaction.
-// If it is impossible to extract txid from the blob, it is not a transaction
-func Parse(txBytes []byte) (*Transaction, error) {
+// ParseLibraryAgnostic parses tx bytes into a *Transaction without
+// touching the ledger library cache (no `ledger.L(slot)` call, no
+// TxVersion-vs-UpgradeIndex check, no produced-amount allocation). The
+// returned object has Library == nil and producedAmountTotals == nil.
+//
+// Library-free accessors are safe to call: ID, Timestamp,
+// IsBranchTransaction, IsSequencerTransaction, NumInputs, MustInputAt,
+// NumEndorsements, MustEndorsementAt, ExplicitBaseline, Signature.
+// Anything that runs EasyFL constraints, decodes outputs, or relies on
+// `tx.Library` will panic.
+//
+// Used by tools that need to walk transaction structure (txid graph,
+// past-cone audit, dump) before — or independently of — the multistate
+// DB being initialised.
+func ParseLibraryAgnostic(txBytes []byte) (*Transaction, error) {
 	if len(txBytes) > MaxTransactionSize {
 		return nil, fmt.Errorf("tx.Parse: transaction size %d exceeds maximum %d bytes", len(txBytes), MaxTransactionSize)
 	}
@@ -69,11 +80,23 @@ func Parse(txBytes []byte) (*Transaction, error) {
 		return nil, fmt.Errorf("tx.Parse: %v", err)
 	}
 	ret.timestamp = ret.txid.Timestamp()
+	return ret, nil
+}
+
+// Parse parses main elements of the transaction and creates Transaction ID and transaction structure:
+// This is STAGE 1 of transaction validation. This is minimal check to pass for the blob to be a raw transaction.
+// If it is impossible to extract txid from the blob, it is not a transaction
+func Parse(txBytes []byte) (*Transaction, error) {
+	ret, err := ParseLibraryAgnostic(txBytes)
+	if err != nil {
+		return nil, err
+	}
+
 	// Cache the library for this transaction's slot once, to avoid repeated L(slot) calls
 	ret.Library = ledger.L(ret.timestamp.Slot)
 
 	// Validate TxVersion: must match the library's upgrade index for this transaction's slot
-	versionBytes, err := txTree.BytesAtPath([]byte{ledger.TxVersion})
+	versionBytes, err := ret.Tree.BytesAtPath(ledger.PathToTxVersion)
 	if err != nil {
 		return nil, fmt.Errorf("tx.Parse: can't read TxVersion: %v", err)
 	}

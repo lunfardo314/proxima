@@ -21,14 +21,14 @@ Three independent purposes, served by the same traversal:
 ## CLI
 
 ```
-proxi db txstore audit <slot from> [<slot back to, default slot 0>] [-v|--validate] [-o|--output <new-db>] [-m|--meta]
+proxi db txstore audit <slot from> [<slot back to, default slot 0>] [--validate] [-o|--output <new-db>] [-m|--meta]
 ``` 
 
 | Flag                    | Meaning                                                                                                                                                                                                                                |
 |-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `<slot from>`           | Starting slot. Required positional arg. The tool reads all transactions in this slot, picks the branch transactions, and traverses backward from there.                                                                                |
 | `<slot nack to>`        | Oldes slot to traverse. Optional positional arg. The tool reads all transactions back to this slot. Default is slot 0, genesis                                                                                                         |
-| `-v`, `--validate`      | Run full-context validation (`SetFullContext` + `ValidateFullContext`) on every visited transaction. Skip — and report — any transaction whose consumed UTXOs are not all available locally.                                           |
+| `--validate`            | Run full-context validation (`SetFullContext` + `ValidateFullContext`) on every visited transaction. Skip — and report — any transaction whose consumed UTXOs are not all available locally. No shorthand: `-v` is the global verbose flag. |
 | `-o`, `--output <path>` | Write each visited transaction into a new Badger txstore at `<path>` (same on-disk layout as a normal `proximadb.txstore` — just cleaned of orphans). Refuses to start if the path already exists.                                     |
 | `-m`, `--meta`          | Only meaningful with `--output`. If set, the per-transaction metadata is copied verbatim from the source. If unset (default), the output DB stores each tx with **empty metadata** (`txmetadata.TransactionMetadata{}.Bytes()` prefix). |
 
@@ -40,9 +40,14 @@ txstore read-only and the output DB read-write.
 
 The DB should be accessed via the txstore abstraction, in order to be able to replaced with say rockdb in the future.
 
-The tool also opens the multistate DB read-only to call
-`InitLedgerFromStore` — full validation needs the ledger library, and the
-library is loaded from the multistate DB, not the txstore.
+**Multistate DB is opened only when `--validate` is set.** Without `-v`,
+the tool never touches the state DB and never initialises the ledger
+library — checking dependencies and writing to the output DB doesn't need
+either. Phase 2 in that mode uses a minimal extractor that walks the raw
+tuple tree directly (`tuples.TreeFromBytesReadOnly` + path lookups) so
+that we can read input txids / endorsements / explicit baseline without
+calling `transaction.Parse()` (which loads `ledger.L(slot)` for the
+TxVersion check).
 
 ## Algorithm
 
@@ -80,9 +85,13 @@ For each popped `txid`:
    * If `len == 0`: record `txid` as a missing dependency, continue. **Do not
      fail.** This is the explicit "missing deps are ignored and reported" rule.
 4. Mark `visited[txid] = {}`.
-5. `transaction.Parse(txBytes)` (Stage 1 only — enough to extract inputs,
-   endorsements, baseline).
-   * If parse fails: record as a corrupt-record error, continue.
+5. Extract dependencies. If `--validate` is set, use
+   `transaction.Parse(txBytes)` (the parsed `*Transaction` is reused in
+   Phase 3). Otherwise, run a minimal local extractor that calls
+   `tuples.TreeFromBytesReadOnly(txBytes)` and reads `[TxInputIDs, i]`,
+   `[TxEndorsements, i]`, and `[TxExplicitBaseline]` directly, skipping
+   the library-dependent version check. If extraction fails: record as a
+   corrupt-record error, continue.
 6. If `--output`: append `(txid, valueBytes)` to a write batch and flush
    in batches of e.g. 1000 via `PersistTxBytesBatch`. `valueBytes` is:
    * `--meta` set:    `txBytesWithMetadata` (verbatim from source).
