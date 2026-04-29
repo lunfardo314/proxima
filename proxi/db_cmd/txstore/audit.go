@@ -482,18 +482,28 @@ func printReport(st *auditStats) {
 		ln.Add("failed                 : %s", util.Th(st.valFailed))
 		ln.Add("skipped (missing deps) : %s", util.Th(st.valSkipped))
 		if len(st.valTimes) > 0 {
-			mean := st.valTotalNs / int64(len(st.valTimes))
-			p95 := percentileNs(st.valTimes, 0.95)
-			meanPerUTXO := int64(0)
+			meanNs := st.valTotalNs / int64(len(st.valTimes))
+			p95Ns := percentileNs(st.valTimes, 0.95)
+			maxNs := int64(0)
+			for _, v := range st.valTimes {
+				if v > maxNs {
+					maxNs = v
+				}
+			}
+			meanPerUTXONs := int64(0)
 			if st.valUTXOs > 0 {
-				meanPerUTXO = st.valTotalNs / st.valUTXOs
+				meanPerUTXONs = st.valTotalNs / st.valUTXOs
 			}
 			tps := float64(len(st.valTimes)) / (float64(st.valTotalNs) / 1e9)
 			utxoPS := float64(st.valUTXOs) / (float64(st.valTotalNs) / 1e9)
+			// ms-denominated stats: validation per-tx is typically tens of µs,
+			// so we show 4 decimal places to keep sub-millisecond resolution
+			// readable.
 			ln.Add("total time             : %s", time.Duration(st.valTotalNs))
-			ln.Add("mean per tx            : %s", time.Duration(mean))
-			ln.Add("p95 per tx             : %s", time.Duration(p95))
-			ln.Add("mean per UTXO          : %s", time.Duration(meanPerUTXO))
+			ln.Add("mean per tx            : %.4f ms", float64(meanNs)/1e6)
+			ln.Add("p95 per tx             : %.4f ms", float64(p95Ns)/1e6)
+			ln.Add("max per tx             : %.4f ms", float64(maxNs)/1e6)
+			ln.Add("mean per consumed+produced UTXO : %.4f ms", float64(meanPerUTXONs)/1e6)
 			ln.Add("throughput             : %.0f tx/s, %.0f UTXO/s", tps, utxoPS)
 		}
 	}

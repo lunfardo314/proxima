@@ -203,9 +203,10 @@ Validation (--validate):
   failed                 : 2     (listed below)
   skipped (missing deps) : 7
   total time             : 12.46 s
-  mean per tx            : 30.18 µs
-  p95 per tx             : 71 µs
-  mean per UTXO          : 6.24 µs
+  mean per tx            : 0.0302 ms
+  p95 per tx             : 0.0710 ms
+  max per tx             : 0.4815 ms
+  mean per consumed+produced UTXO : 0.0062 ms
   throughput             : 33 137 tx/s, 160 256 UTXO/s
 
 Missing dependencies (7):
