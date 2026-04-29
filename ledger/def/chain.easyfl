@@ -1,0 +1,215 @@
+
+func isChainOriginID: equal($0, 0x0000000000000000000000000000000000000000000000000000000000000000)
+
+// $0 - chain ChainID
+// $1 - predecessor input index (1 byte, or 0x empty for origin)
+// $2 - origin slot (z32)
+// $3 - cumulative chain inflation (z64)
+// $4 - cumulative branch inflation bonus (z64)
+// $5 - transition counter (z64)
+// $6 - branch counter (z32)
+func _validChainProduced :
+if(
+   isChainOriginID($0),
+        // chain origin: predecessor ref must be empty, origin slot must be tx slot,
+        // $3..$6 must be 0x at origin
+   require(
+     and(
+       isZero($1),
+       equalUint($2, txSlot),
+       equal($3, 0x),
+       equal($4, 0x),
+       equal($5, 0x),
+       equal($6, 0x)
+     ),
+     !!!invalid_chain_origin_data
+   ),
+        // NOT chain origin. Crosscheck: predecessor's unlock params must point to this output.
+        // Also enforce origin slot matches predecessor's origin slot.
+   and(
+     require(
+       equal(unlockParamsByConstraintIndex(concat($1, chainConstraintIndex)), selfOutputIndex),
+       !!!predecessor_reference_crosscheck_failed
+     ),
+     require(
+       equal($2, _chainPredecessorParam($1, 2)),
+       !!!origin_slot_mismatch
+     )
+   )
+)
+
+// Successor chain constraint is at (successorOutputIndex, chainConstraintIndex=2)
+func _chainSuccessorParam :
+	parseInlineDataArgument(
+        atPath(concat(pathToProducedOutputs, selfUnlockParameters, chainConstraintIndex)),
+        $0,
+		#chain
+	)
+
+// Predecessor chain constraint is at (predecessorInputIndex, chainConstraintIndex=2)
+// $0 - predecessor input index, $1 - argument index in chain constraint
+func _chainPredecessorParam :
+	parseInlineDataArgument(
+		atPath(concat(pathToConsumedOutputs, $0, chainConstraintIndex)),
+		$1,
+		#chain
+	)
+
+// $0 - chain ChainID
+func _validChainConsumed :
+or(
+      // discontinue chain. Empty unlock data (zero length, not zero value).
+   equal(len(selfUnlockParameters), u64/0),
+      // chain continues
+   and (
+      require(equal(len(selfUnlockParameters), u64/1), !!!unlock_parameters_must_be_1_byte),
+        // check chainID match
+      require(
+         if(
+           isChainOriginID($0),
+           equal(blake2b(inputIDByIndex(selfOutputIndex)), _chainSuccessorParam(0)),
+           equal($0, _chainSuccessorParam(0))
+         ),
+         !!!chain_ID_mismatch_with_successor
+      ),
+        // crosscheck successor reference: my input index must match successor's predecessor input index
+      require(
+         equal(selfOutputIndex, _chainSuccessorParam(1)),
+         !!!successor_reference_crosscheck_failed
+      ),
+   )
+)
+
+// $0 - predecessor input index, $1 - cumulative chain inflation value on current output
+// Chain inflation = inflation_amount on non-branch, inflation_amount - branchInflationBonus on branch
+func _validCumulativeChainInflation :
+if(
+  isBranchTransaction,
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 3), sub(selfInflationAmount, branchInflationBonus(vrfProofOnSuccessor, txSlot)))),
+    !!!wrong_cumulative_chain_inflation
+  ),
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 3), selfInflationAmount)),
+    !!!wrong_cumulative_chain_inflation
+  )
+)
+
+// $0 - predecessor input index, $1 - cumulative branch inflation bonus on current output
+func _validCumulativeBranchBonus :
+if(
+  isBranchTransaction,
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 4), branchInflationBonus(vrfProofOnSuccessor, txSlot))),
+    !!!wrong_cumulative_branch_bonus
+  ),
+  require(
+    equalUint($1, _chainPredecessorParam($0, 4)),
+    !!!wrong_cumulative_branch_bonus
+  )
+)
+
+// $0 - predecessor input index, $1 - transition counter on current output (z64)
+func _validTransitionCounter :
+require(
+  equalUint($1, add(_chainPredecessorParam($0, 5), u64/1)),
+  !!!wrong_transition_counter
+)
+
+// $0 - predecessor input index, $1 - branch counter on current output (z32)
+// branch counter increments only on the sequencer output of a branch transaction
+func _validBranchCounter :
+if(
+  and(isBranchTransaction, equal(selfOutputIndex, txSequencerOutputIndex)),
+  require(
+    equalUint($1, add(_chainPredecessorParam($0, 6), u32/1)),
+    !!!wrong_branch_counter
+  ),
+  require(
+    equalUint($1, _chainPredecessorParam($0, 6)),
+    !!!wrong_branch_counter
+  )
+)
+
+// $0 - chain ChainID
+// $1 - predecessor input index (1 byte, or 0x empty for origin)
+// $2 - origin slot (z32)
+// $3 - cumulative chain inflation (z64)
+// $4 - cumulative branch inflation bonus (z64)
+// $5 - transition counter (z64)
+// $6 - branch counter (z32)
+// --- unlock data: 1 byte (successor output index), 0x (empty) means discontinue chain
+func chain : and(
+      // chain constraint cannot be on output with index 0xff = 255
+   not(equal(selfOutputIndex, 0xff)),
+      // chain constraint must be at index 2
+   require(equal(selfBlockIndex, chainConstraintIndex), !!!chain_constraint_must_be_at_index_2),
+   require(equal(len($0),u64/32), !!!chainID_must_be_32_bytes_long),
+   or(
+      and(
+         selfIsProducedOutput,
+         _validChainProduced($0,$1,$2,$3,$4,$5,$6),
+         or(
+            isChainOriginID($0),
+            and(
+               _validCumulativeChainInflation($1,$3),
+               _validCumulativeBranchBonus($1,$4),
+               _validTransitionCounter($1,$5),
+               _validBranchCounter($1,$6)
+            )
+         ),
+         _validInflationAmount($0, $1, selfInflationAmount),
+         or(
+            selfHasLockType(#delegateLock),
+            embeddedEnforceFrozenCoverageOnNonDelegationChain
+         )
+      ),
+      and(
+         selfIsConsumedOutput,
+         _validChainConsumed($0)
+      )
+   )
+)
+
+// no parameter - chain constraint is always at index 2
+func predecessorTokenBalance : tokenBalanceByOutputPath(concat(pathToConsumedOutputs, selfChainPredInputIndex))
+
+// no parameter - chain constraint is always at index 2
+func selfChainPredInputIndex : parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 1, #chain)
+
+// $0 - input index (1 byte). Returns frozen coverage at epoch 0 of the predecessor
+func _predecessorFrozenCoverage0 : amountAt(atPath(concat(pathToConsumedOutputs, $0, amountsConstraintIndex)), 2)
+
+// $0 - input index (1 byte). Returns amount used for chain inflation calculation.
+// For delegation outputs, only token balance is inflated. Otherwise token balance + frozen coverage at epoch 0.
+func _predecessorInflatableAmount :
+if(
+  selfHasLockType(#delegateLock),
+  predecessorTokenBalance,
+  add(predecessorTokenBalance, _predecessorFrozenCoverage0(selfChainPredInputIndex))
+)
+
+// $0 - chain ChainID
+// $1 - predecessor input index (1 byte, or 0x empty for origin)
+// $2 inflation amount value
+func _validInflationAmount :
+or(
+  and(isChainOriginID($0), isZero($2)),
+  and(not(isBranchTransaction), isZero($2)),
+  require(
+     equalUint( _expectedInflationAmount($1), $2),
+     !!!chain_constraint:_wrong_inflation_amount
+  )
+)
+
+// $0 - predecessor output (input) index
+func _expectedInflationAmount:
+if(
+  isZero(sub(txSlot, slotOfInputByIndex($0))),
+  u64/0,
+  if(
+     isBranchTransaction,
+     branchInflationBonus(vrfProofOnSuccessor, txSlot),
+     chainInflationOneSlot(_predecessorInflatableAmount, slotOfInputByIndex($0))
+  )
+)

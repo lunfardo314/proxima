@@ -2,29 +2,42 @@ package glb
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
+	"sort"
 	"sync/atomic"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-const LedgerIDFileName = "proxima.genesis.id.yaml"
+const LedgerDefinitionsFileName = "proxima.genesis.definitions.yaml"
 
 type WalletData struct {
 	PrivateKey ed25519.PrivateKey
-	Account    ledger.AddressED25519
+	Account    ledger.SigLock
 	Sequencer  *base.ChainID
 }
 
 func GetWalletData() (ret WalletData) {
 	ret.PrivateKey = MustGetPrivateKey()
-	ret.Account = ledger.AddressED25519FromPrivateKey(ret.PrivateKey)
+	ret.Account = ledger.SigLockFromED25519PrivateKey(ret.PrivateKey)
 	ret.Sequencer = GetOwnSequencerID()
+
+	// Consistency check: if wallet config has holder_id, it must match the key file
+	configHolderID := viper.GetString("wallet.holder_id")
+	if configHolderID != "" {
+		derived := base.HolderIDFromPublicKey(base.SignatureTypeED25519, ret.PrivateKey.Public().(ed25519.PublicKey))
+		derivedHex := hex.EncodeToString(derived[:])
+		Assertf(configHolderID == derivedHex,
+			"holder_id mismatch: wallet config has '%s', key file derives '%s'", configHolderID, derivedHex)
+	}
 	return
 }
 
@@ -34,13 +47,22 @@ func MustGetPrivateKey() ed25519.PrivateKey {
 	return ret
 }
 
+var cachedPrivateKey ed25519.PrivateKey
+
 func GetPrivateKey() (ed25519.PrivateKey, bool) {
-	privateKeyStr := viper.GetString("wallet.private_key")
-	if privateKeyStr == "" {
+	if cachedPrivateKey != nil {
+		return cachedPrivateKey, true
+	}
+	keyFile := viper.GetString("wallet.key_file")
+	if keyFile == "" {
 		return nil, false
 	}
-	ret, err := util.ED25519PrivateKeyFromHexString(privateKeyStr)
-	return ret, err == nil
+	ret, err := LoadPrivateKeyFromFile(keyFile)
+	if err != nil {
+		return nil, false
+	}
+	cachedPrivateKey = ret
+	return ret, true
 }
 
 // without Var does not work
@@ -52,16 +74,31 @@ func AddFlagTarget(cmd *cobra.Command) {
 	AssertNoError(err)
 }
 
-func MustGetTarget() ledger.Accountable {
-	var ret ledger.Accountable
+// GetWalletAccount returns the wallet's SigLock derived from the public key in the keystore.
+// Does NOT decrypt the private key, so no passphrase is needed.
+func GetWalletAccount() ledger.SigLock {
+	keyFile := viper.GetString("wallet.key_file")
+	Assertf(keyFile != "", "wallet.key_file not configured")
+
+	ks, err := keystore.LoadFromFile(keyFile)
+	AssertNoError(err)
+
+	pubKeyBytes, err := keystore.PublicKeyBytes(ks)
+	AssertNoError(err)
+
+	return ledger.SigLockFromED25519PublicKey(ed25519.PublicKey(pubKeyBytes))
+}
+
+func MustGetTarget() ledger.Controller {
+	var ret ledger.Controller
 	var err error
 
 	if targetStr != "" {
-		ret, err = ledger.AccountableFromSource(targetStr)
+		ret, err = ledger.ControllerFromSource(targetStr)
 		AssertNoError(err)
 		Infof("target account is: %s", ret.String())
 	} else {
-		ret = GetWalletData().Account
+		ret = GetWalletAccount()
 		Infof("wallet account (default as a target): %s ", ret.String())
 	}
 	return ret
@@ -118,13 +155,33 @@ func ReadInConfig() {
 
 }
 
+// TryReadInConfig attempts to load proxi.yaml but does not fail if it doesn't exist.
+func TryReadInConfig() {
+	configName := viper.GetString("config")
+	if configName == "" {
+		configName = "proxi"
+	}
+	viper.AddConfigPath(".")
+	viper.SetConfigType("yaml")
+	viper.SetConfigName(configName)
+	viper.SetConfigFile("./" + configName + ".yaml")
+
+	viper.AutomaticEnv()
+
+	if err := viper.ReadInConfig(); err == nil {
+		Infof("config profile: %s", viper.ConfigFileUsed())
+	}
+}
+
 func NoWait() bool {
 	return viper.GetBool("nowait")
 }
 
 func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...time.Duration) bool {
+	defer PrintTxLogForTxID(txid)
+
 	inclusionDepth := GetTargetInclusionDepth()
-	Infof("tracking inclusion of the transaction %s.\ntarget inclusion depth: %d", txid.String(), inclusionDepth)
+	Infof("tracking inclusion of %s, target depth: %d", txid.StringShort(), inclusionDepth)
 	lrbids := set.New[base.TransactionID]()
 	clnt := GetClient()
 	start := time.Now()
@@ -140,10 +197,11 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...ti
 			}
 			since := time.Since(start) / time.Second
 			if foundAtDepth < 0 {
-				Infof("%2d sec. Transaction is NOT included in the latest reliable branch (LRB) %s", since, lrbidStr)
+				fmt.Printf("\r\033[K%2d sec. LRB: %s  transaction NOT included", since, lrbidStr)
 			} else {
-				Infof("%2d sec. Transaction is INCLUDED in the latest reliable branch (LRB) at depth %d: %s", since, foundAtDepth, lrbidStr)
+				fmt.Printf("\r\033[K%2d sec. LRB: %s  included at depth %d", since, lrbidStr, foundAtDepth)
 				if foundAtDepth == inclusionDepth {
+					fmt.Println()
 					Infof("target inclusion depth %d has been reached", inclusionDepth)
 					return true
 				}
@@ -153,8 +211,38 @@ func TrackTxInclusion(txid base.TransactionID, poll time.Duration, timeout ...ti
 		}
 		time.Sleep(poll)
 		if len(timeout) > 0 && time.Since(start) > timeout[0] {
+			fmt.Println()
 			return false
 		}
+	}
+}
+
+const maxLogLines = 200
+
+func PrintTxLogForTxID(txid base.TransactionID) {
+	prefix := txid.ShortID()
+	resp, err := GetClient().TxLogGet(hex.EncodeToString(prefix[:]), maxLogLines)
+	if err != nil {
+		Infof("transaction log not available: %v", err)
+		return
+	}
+	Infof("\n---- txlog of %s (%d records) ----\n ", txid.String(), len(resp.Records))
+	SortAndPrintTxLog(resp.Records)
+}
+
+func SortAndPrintTxLog(recs []api.TxLogRecord) {
+	sort.Slice(recs, func(i, j int) bool {
+		return recs[i].ClockTimestamp < recs[j].ClockTimestamp
+	})
+
+	const txidFieldWidth = 30
+
+	for _, rec := range recs {
+		ts := time.Unix(0, rec.ClockTimestamp).UTC()
+		txid, err := base.TransactionIDFromHexString(rec.TxID)
+		AssertNoError(err)
+
+		Infof("  %s %-*s %s", ts.Format("15:04:05.000"), txidFieldWidth, txid.StringShort(), rec.Message)
 	}
 }
 

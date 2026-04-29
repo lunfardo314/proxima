@@ -1,6 +1,7 @@
 package vertex
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/proxima/util/set256"
 	"golang.org/x/exp/maps"
 )
 
@@ -24,6 +26,11 @@ import (
 // and valid
 // Flags (except 'asked for poke') become final and immutable after they are set 'ON'
 
+// TraceTagPastConeDiag toggles diagnostic cross-checks at conflict-detection and merge
+// boundaries. When enabled, the past-cone subsystem emits structured logs distinguishing
+// stale-S+ flags, TTL-blessed txs, and GC-stranded consumers. See claude/pastcone_consistency.md.
+const TraceTagPastConeDiag = "past_cone_diag"
+
 type (
 	FlagsPastCone byte
 
@@ -33,6 +40,11 @@ type (
 		txTs           base.LedgerTime
 		name           string
 
+		// diagBranches, when non-nil, enables runtime consistency cross-checks for this
+		// past cone. Set via SetDiagBranches. Diagnostic output is gated by trace tag
+		// TraceTagPastConeDiag so the hot paths stay free when the tag is off.
+		diagBranches *branches.Branches
+
 		*PastConeBase
 		delta *PastConeBase
 	}
@@ -41,7 +53,7 @@ type (
 		baselineBranchID  *base.TransactionID
 		vertices          map[*WrappedTx]FlagsPastCone // byte is used by attacher for flags
 		virtuallyConsumed map[*WrappedTx]set.Set[byte]
-		//num               int // tmp
+		attachmentCost    int
 	}
 )
 
@@ -50,9 +62,8 @@ const (
 	FlagPastConeVertexDefined           = FlagsPastCone(0b00000010) // means vertex is 'defined', i.e. its validity is checked
 	FlagPastConeVertexCheckedInTheState = FlagsPastCone(0b00000100) // means vertex has been checked if it is in the state (it may or may not be there)
 	FlagPastConeVertexInTheState        = FlagsPastCone(0b00001000) // means vertex is definitely in the state (must be checked before)
-	FlagPastConeVertexEndorsementsSolid = FlagsPastCone(0b00010000) // means all endorsements were validated
-	FlagPastConeVertexInputsSolid       = FlagsPastCone(0b00100000) // means all consumed inputs are checked and valid
 	FlagPastConeVertexAskedForPoke      = FlagsPastCone(0b01000000) //
+	FlagPastConeDirectCost              = FlagsPastCone(0b10000000) // vertex contributes to direct attachment cost (not merged from other past cones)
 )
 
 func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
@@ -60,15 +71,14 @@ func (f FlagsPastCone) FlagsUp(fl FlagsPastCone) bool {
 }
 
 func (f FlagsPastCone) String() string {
-	return fmt.Sprintf("%08b known: %v, defined: %v, inTheState: (%v,%v), endorsementsOk: %v, inputsOk: %v, poke: %v",
+	return fmt.Sprintf("%08b known: %v, defined: %v, inTheState: (%v,%v), poke: %v, directCost: %v",
 		f,
 		f.FlagsUp(FlagPastConeVertexKnown),
 		f.FlagsUp(FlagPastConeVertexDefined),
 		f.FlagsUp(FlagPastConeVertexCheckedInTheState),
 		f.FlagsUp(FlagPastConeVertexInTheState),
-		f.FlagsUp(FlagPastConeVertexEndorsementsSolid),
-		f.FlagsUp(FlagPastConeVertexInputsSolid),
 		f.FlagsUp(FlagPastConeVertexAskedForPoke),
+		f.FlagsUp(FlagPastConeDirectCost),
 	)
 }
 
@@ -109,6 +119,25 @@ func (pb *PastConeBase) CloneImmutable() *PastConeBase {
 	return ret
 }
 
+// Clone creates a deep copy of PastConeBase including virtuallyConsumed state.
+func (pb *PastConeBase) Clone() *PastConeBase {
+	ret := &PastConeBase{
+		baselineBranchID: pb.baselineBranchID,
+		vertices:         make(map[*WrappedTx]FlagsPastCone, len(pb.vertices)),
+		attachmentCost:   pb.attachmentCost,
+	}
+	for vid, flags := range pb.vertices {
+		ret.vertices[vid] = flags
+	}
+	if len(pb.virtuallyConsumed) > 0 {
+		ret.virtuallyConsumed = make(map[*WrappedTx]set.Set[byte], len(pb.virtuallyConsumed))
+		for vid, indices := range pb.virtuallyConsumed {
+			ret.virtuallyConsumed[vid] = indices.Clone()
+		}
+	}
+	return ret
+}
+
 func (pb *PastConeBase) addVirtuallyConsumedOutput(wOut WrappedOutput) {
 	if pb.virtuallyConsumed == nil {
 		pb.virtuallyConsumed = map[*WrappedTx]set.Set[byte]{}
@@ -136,16 +165,75 @@ func (pb *PastConeBase) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func (pc *PastCone) AddVirtuallyConsumedOutput(wOut WrappedOutput, getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) *WrappedOutput {
+func (pb *PastConeBase) Dispose() {
+	if pb == nil {
+		return
+	}
+	pb.baselineBranchID = nil
+	clear(pb.vertices)
+	pb.vertices = nil
+	clear(pb.virtuallyConsumed)
+	pb.virtuallyConsumed = nil
+}
+
+func (pb *PastConeBase) _isVirtuallyConsumed(wOut WrappedOutput) bool {
+	if len(pb.virtuallyConsumed) == 0 {
+		return false
+	}
+	if consumedIndices := pb.virtuallyConsumed[wOut.VID]; len(consumedIndices) > 0 {
+		return consumedIndices.Contains(wOut.Index)
+	}
+	return false
+}
+
+func (pb *PastConeBase) Len() int {
+	return len(pb.vertices)
+}
+
+// VertexSet returns the set of all vertices in the past cone.
+// Used to track which vertices are confirmed in a branch for fine-grained pruning.
+func (pb *PastConeBase) VertexSet() set.Set[*WrappedTx] {
+	return set.NewFromKeys(pb.vertices)
+}
+
+// AttachmentCost is sum of attachment costs of all non-sequencer vertices that ar definitely not in the state
+func (pc *PastCone) AttachmentCost() (ret int) {
+	if pc.delta == nil {
+		return pc.attachmentCost
+	}
+	return pc.attachmentCost + pc.delta.attachmentCost
+}
+
+func (pc *PastCone) addToAttachmentCost(delta int) {
+	if pc.delta != nil {
+		pc.delta.attachmentCost += delta
+	} else {
+		pc.attachmentCost += delta
+	}
+}
+
+// AttachmentCostDirect calculates attachment cost by iterating vertices with FlagPastConeDirectCost.
+// Only vertices that were directly added (not merged from other past cones) contribute to the cost.
+func (pc *PastCone) AttachmentCostDirect() (ret int) {
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		if pc.Flags(vid).FlagsUp(FlagPastConeDirectCost) {
+			ret += vid.AttachmentCost()
+		}
+		return true
+	})
+	return
+}
+
+func (pc *PastCone) AddVirtuallyConsumedOutput(ctx context.Context, wOut WrappedOutput, getStateReader func(branchID base.TransactionID) multistate.StateReader) (*WrappedOutput, error) {
 	if pc.delta == nil {
 		pc.addVirtuallyConsumedOutput(wOut)
-		return pc.CheckConflicts(getStateReader)
+		return pc.CheckConflicts(ctx, getStateReader)
 	}
 	if pc.isVirtuallyConsumed(wOut) {
-		return nil
+		return nil, nil
 	}
 	pc.delta.addVirtuallyConsumedOutput(wOut)
-	return pc.CheckConflicts(getStateReader)
+	return pc.CheckConflicts(ctx, getStateReader)
 }
 
 func (pc *PastCone) isVirtuallyConsumed(wOut WrappedOutput) bool {
@@ -158,14 +246,55 @@ func (pc *PastCone) isVirtuallyConsumed(wOut WrappedOutput) bool {
 	return false
 }
 
-func (pb *PastConeBase) _isVirtuallyConsumed(wOut WrappedOutput) bool {
-	if len(pb.virtuallyConsumed) == 0 {
+// SetDiagBranches opts this PastCone into runtime diagnostic cross-checks. When set, conflict
+// detection, merge boundaries and TTL-bless paths cross-reference flags against the live
+// Branches index and emit structured Tracef logs under TraceTagPastConeDiag. Safe to pass
+// nil to disable. Called once by the attacher at construction.
+func (pc *PastCone) SetDiagBranches(br *branches.Branches) {
+	pc.diagBranches = br
+}
+
+// baselineKnowsTx delegates to the live Branches index to answer "is txid in the
+// committed state of pc.baselineBranchID?". Returns false if the past cone was
+// constructed without a Branches reference (primarily test scaffolding) or has no
+// baseline set. Used both by diagnostics and by the stale-S- safety net in _checkVertex.
+func (pc *PastCone) baselineKnowsTx(txid base.TransactionID) bool {
+	if pc.diagBranches == nil || pc.baselineBranchID == nil {
 		return false
 	}
-	if consumedIndices := pb.virtuallyConsumed[wOut.VID]; len(consumedIndices) > 0 {
-		return consumedIndices.Contains(wOut.Index)
+	return pc.diagBranches.BranchKnowsTransaction(*pc.baselineBranchID, txid)
+}
+
+// diagLogSuspectConflict is called from _checkVertex just before returning BAD for
+// the "inTheState && !HasUTXO" case. With the safety net in _checkVertex consuming
+// the stale-S--on-consumer class upstream, this hook now classifies the remaining
+// cases: stale-S+ on vid, real fork (state has a different consumer), and the
+// inconsistent combination. See claude/pastcone_consistency.md §6.1.
+func (pc *PastCone) diagLogSuspectConflict(vid *WrappedTx, wOut WrappedOutput, pcConsumer *WrappedTx) {
+	if pc.diagBranches == nil || pc.baselineBranchID == nil {
+		return
 	}
-	return false
+	baseline := *pc.baselineBranchID
+	vidKnown := pc.diagBranches.BranchKnowsTransaction(baseline, vid.ID())
+	consumerStr := "<virtual>"
+	var consumerKnown bool
+	if pcConsumer != nil {
+		consumerStr = pcConsumer.IDShortString()
+		consumerKnown = pc.diagBranches.BranchKnowsTransaction(baseline, pcConsumer.ID())
+	}
+	switch {
+	case !vidKnown:
+		pc.Tracef(TraceTagPastConeDiag, "STALE S+ on vid: pc=%s baseline=%s vid=%s flag=S+ branchKnowsTx=false pcConsumer=%s output=%d",
+			pc.name, baseline.StringShort(), vid.IDShortString(), consumerStr, wOut.Index)
+	case consumerKnown:
+		// Should have been caught by the _checkVertex safety net; reaching here means
+		// the safety net is not firing (e.g., Branches wiring missing). Log loudly.
+		pc.Tracef(TraceTagPastConeDiag, "STALE S- on consumer (unexpected — safety net should have upgraded): pc=%s baseline=%s vid=%s consumer=%s output=%d",
+			pc.name, baseline.StringShort(), vid.IDShortString(), consumerStr, wOut.Index)
+	default:
+		pc.Tracef(TraceTagPastConeDiag, "REAL conflict: pc=%s baseline=%s vid=%s output=%d pcConsumer=%s (state holds a different consumer or consumer is GC-stranded)",
+			pc.name, baseline.StringShort(), vid.IDShortString(), wOut.Index, consumerStr)
+	}
 }
 
 func (pc *PastCone) Assertf(cond bool, format string, args ...any) {
@@ -197,6 +326,21 @@ func (pc *PastCone) GetBaseline() *base.TransactionID {
 	return nil
 }
 
+// Clone creates an independent deep copy of the PastCone.
+// Must be called with no pending delta (asserted).
+// Vertex pointers (WrappedTx) are shared — only the mutable tracking state is copied.
+func (pc *PastCone) Clone(name string) *PastCone {
+	util.Assertf(pc.delta == nil, "PastCone.Clone: no pending delta allowed")
+
+	return &PastCone{
+		Logging:      pc.Logging,
+		tip:          pc.tip,
+		txTs:         pc.txTs,
+		name:         name,
+		PastConeBase: pc.PastConeBase.Clone(),
+	}
+}
+
 func (pc *PastCone) BeginDelta() {
 	util.Assertf(pc.delta == nil, "BeginDelta: pc.delta == nil")
 	pc.delta = NewPastConeBase(pc.baselineBranchID)
@@ -214,6 +358,7 @@ func (pc *PastCone) CommitDelta() {
 			pc.addVirtuallyConsumedOutput(WrappedOutput{VID: vid, Index: idx})
 		}
 	}
+	pc.attachmentCost += pc.delta.attachmentCost
 	pc.delta = nil
 }
 
@@ -285,11 +430,35 @@ func (pc *PastCone) markVertexWithFlags(vid *WrappedTx, flags FlagsPastCone) {
 	pc.SetFlagsUp(vid, flags)
 }
 
-// MustMarkVertexNotInTheState is marked definitely not rooted
-func (pc *PastCone) MustMarkVertexNotInTheState(vid *WrappedTx) {
+// MarkVertexNotInTheState marks the vertex as checked and not in the baseline state.
+// The result is provisional: it may be upgraded to in-the-state later if a re-check
+// against a newer baseline finds the tx (see UpgradeToInTheState).
+// Cost tracking is idempotent — guarded by FlagPastConeDirectCost to prevent double-counting.
+func (pc *PastCone) MarkVertexNotInTheState(vid *WrappedTx) {
 	pc.Assertf(!pc.IsInTheState(vid), "!pc.IsInTheState(vid)")
 	pc.SetFlagsUp(vid, FlagPastConeVertexKnown|FlagPastConeVertexCheckedInTheState)
-	pc.Assertf(pc.isNotInTheState(vid), "pc.isNotInTheState(vid)")
+	if !vid.IsSequencerTransaction() && !pc.Flags(vid).FlagsUp(FlagPastConeDirectCost) {
+		pc.addToAttachmentCost(vid.AttachmentCost())
+		pc.SetFlagsUp(vid, FlagPastConeDirectCost)
+	}
+}
+
+// UpgradeToInTheState upgrades a vertex to in-the-state. This happens when a
+// PastConeBase merge or the _checkVertex safety net finds that the vertex is in
+// fact in the current baseline's state, overriding an earlier (or default) view.
+// Reverses the attachment cost added by MarkVertexNotInTheState, if any.
+//
+// Sets CheckedInTheState alongside InTheState — the invariant isVertexInTheState
+// asserts is "InTheState ⇒ CheckedInTheState". Callers that use this on a vertex
+// that does not already carry CheckedInTheState (e.g. a baseline branch added
+// synthetically via _filterConsumingVertices) would otherwise trip that assert
+// on the next read.
+func (pc *PastCone) UpgradeToInTheState(vid *WrappedTx) {
+	pc.SetFlagsUp(vid, FlagPastConeVertexCheckedInTheState|FlagPastConeVertexInTheState|FlagPastConeVertexDefined)
+	if pc.Flags(vid).FlagsUp(FlagPastConeDirectCost) {
+		pc.addToAttachmentCost(-vid.AttachmentCost())
+		pc.SetFlagsDown(vid, FlagPastConeDirectCost)
+	}
 }
 
 func (pc *PastCone) ContainsUndefined() bool {
@@ -430,6 +599,14 @@ func (pc *PastCone) _filterConsumingVertices(consumers set.Set[*WrappedTx]) []*W
 	for vid := range consumers {
 		if pc.IsKnown(vid) {
 			ret = append(ret, vid)
+			continue
+		}
+		// The baseline branch is not in pc.vertices but IS a legitimate consumer
+		// of outputs in the past cone (e.g. it consumes the predecessor's stem).
+		// Without this, CheckAndClean removes in-state branches whose stem consumer
+		// (the baseline) is invisible, stripping conflict evidence from the PastConeBase.
+		if pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID {
+			ret = append(ret, vid)
 		}
 	}
 	if len(ret) == 0 {
@@ -516,8 +693,9 @@ type MutationStats struct {
 	NumCreated      int
 }
 
-func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats MutationStats) {
+func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats, txs []base.TransactionID) {
 	muts = multistate.NewMutations()
+	txs = make([]base.TransactionID, 0)
 
 	// need to handle discontinued chains
 	deletedChainIDs := set.New[base.ChainID]()
@@ -533,7 +711,7 @@ func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats Mu
 				if pc.isNotInTheState(consumersOfRooted[0]) {
 					oid := vid.OutputID(idx)
 					o := vid.MustOutputAt(idx)
-					if cc, ccIdx := o.ChainConstraint(); ccIdx != 0xff {
+					if cc := o.ChainConstraint(); cc != nil {
 						chainID := cc.ChainID
 						if cc.IsOrigin() {
 							chainID = base.MakeOriginChainID(oid)
@@ -546,18 +724,27 @@ func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats Mu
 				}
 			}
 		} else {
-			// xTODO no need to store number of outputs: now all is contained in the id
-			muts.InsertAddTxMutation(vid.id, slot, byte(vid.id.NumProducedOutputs()-1))
+			// DEBUG: detect orphaned branch in mutations (skip tip)
+			if vid.IsBranchTransaction() && vid != pc.tip {
+				util.Assertf(pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID,
+					"ORPHANED BRANCH %s in past cone %s (baseline %s, tip %s)",
+					vid.IDShortString(), pc.name, pc.baselineBranchID.StringShort(), pc.tip.IDShortString())
+			}
+			produced := pc.producedIndices(vid)
+			var unspent set256.Set256
+			unspent.InsertAll(produced...)
+			muts.InsertAddTxMutation(vid.id, unspent)
 			stats.NumTransactions++
+			txs = append(txs, vid.id)
 
 			// ADD OUTPUT mutations only for not consumed outputs
-			for _, idx := range pc.producedIndices(vid) {
+			for _, idx := range produced {
 				o := vid.MustOutputAt(idx)
 				oid := vid.OutputID(idx)
 				muts.InsertAddOutputMutation(oid, o)
 				stats.NumCreated++
 
-				if cc, ccIdx := o.ChainConstraint(); ccIdx != 0xff {
+				if cc := o.ChainConstraint(); cc != nil {
 					chainID := cc.ChainID
 					if cc.IsOrigin() {
 						chainID = base.MakeOriginChainID(oid)
@@ -578,8 +765,13 @@ func (pc *PastCone) Mutations(slot uint32) (muts *multistate.Mutations, stats Mu
 }
 
 func (pc *PastCone) hasRooted() bool {
-	for _, flags := range pc.vertices {
+	for vid, flags := range pc.vertices {
 		if flags.FlagsUp(FlagPastConeVertexInTheState) {
+			return true
+		}
+		// baseline defines the state — it is implicitly rooted even when not marked InTheState
+		// (detached branches have defined=false, so defineInTheStateStatus is never called for them)
+		if pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID {
 			return true
 		}
 	}
@@ -625,8 +817,9 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 	}
 	for vid, flags := range pcb.vertices {
 		if vid.ID() != *pcb.baselineBranchID {
+			// closure defers expensive pcb.Lines() — only evaluated if assertion fails (via lazyargs.Eval)
 			pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined), "inconsistent flag in merged past cone: %s\n%s\n%s",
-				flags.String, vid.IDShortString, pcb.Lines("    ").String)
+				flags.String, vid.IDShortString, func() string { return pcb.Lines("    ").String() })
 		}
 		if !flags.FlagsUp(FlagPastConeVertexInTheState) {
 			// if vertex is in the state of the appended past cone, it will be in the state of the new baseline
@@ -636,14 +829,16 @@ func (pc *PastCone) MergePastCone(pcb *PastConeBase, br *branches.Branches) bool
 			}
 		}
 		// it will also create a new entry in the target past cone if necessary
-		pc.markVertexWithFlags(vid, flags & ^FlagPastConeVertexAskedForPoke)
+		// FlagPastConeDirectCost is masked out: merged transactions don't contribute to direct attachment cost
+		// (they were already accounted for in the source attacher's cost)
+		pc.markVertexWithFlags(vid, flags & ^FlagPastConeVertexAskedForPoke & ^FlagPastConeDirectCost)
 	}
 	return true
 }
 
 // CheckFinalPastCone check determinism consistency of the past cone
 // If rootVid == nil, past cone must be fully deterministic
-func (pc *PastCone) CheckFinalPastCone(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (err error) {
+func (pc *PastCone) CheckFinalPastCone(getStateReader func(branchID base.TransactionID) multistate.StateReader) (err error) {
 	if pc.delta != nil {
 		return fmt.Errorf("CheckFinalPastCone: past cone has uncommitted delta")
 	}
@@ -666,22 +861,18 @@ func (pc *PastCone) CheckFinalPastCone(getStateReader func(branchID base.Transac
 		if status == Bad {
 			return fmt.Errorf("BAD vertex in the past cone: %s", vid.IDShortString())
 		}
-		if pc.IsInTheState(vid) {
-			// do not check dependencies if the transaction is rooted
-			continue
-		}
-		vid.Unwrap(UnwrapOptions{Vertex: func(v *Vertex) {
-			missingInputs, missingEndorsements := v.NumMissingInputs()
-			if missingInputs+missingEndorsements > 0 {
-				err = fmt.Errorf("not all dependencies solid in %s\n      missing inputs: %d\n      missing endorsements: %d,\n      missing input txs: [%s]",
-					vid.IDShortString(), missingInputs, missingEndorsements, v.MissingInputTxIDString())
-			}
-		}})
-		if err != nil {
-			return
-		}
+		// We used to also Unwrap the Vertex here and call v.NumMissingInputs() as a
+		// belt-and-suspenders check that v.Inputs was populated. That read races with
+		// GC's ConvertToDetached → UnReferenceDependencies (clears v.Inputs) and
+		// ReattachVertexNoLock (installs a fresh Vertex with nil-init Inputs). Under
+		// load this fired false-positive even though the dependency vid was still in
+		// the past cone with FlagPastConeVertexDefined set. The past cone's own
+		// bookkeeping (checkFinalFlags above) is the source of truth for "all
+		// dependencies present"; the Vertex-state read added nothing but a race.
 	}
-	if conflict := pc.CheckConflicts(getStateReader); conflict != nil {
+	if conflict, ctxErr := pc.CheckConflicts(context.Background(), getStateReader); ctxErr != nil {
+		return ctxErr
+	} else if conflict != nil {
 		return fmt.Errorf("past cone %s contains double-spent output %s", pc.name, conflict.IDStringShort())
 	}
 	return nil
@@ -708,21 +899,14 @@ func (pc *PastCone) checkFinalFlags(vid *WrappedTx) error {
 			wrongFlag = "FlagPastConeVertexCheckedInTheState"
 		}
 	case vid.IsBranchTransaction():
+		// A non-baseline branch can legitimately appear in the past cone when a transaction
+		// in the cone consumes an output from a competing branch at the same slot.
+		// This is normal during multi-sequencer operation with concurrent forks.
+		// Only flag it as inconsistent if there's no baseline at all and the branch isn't the tip.
 		if pc.baselineBranchID == nil {
 			if vid.ID() != pc.tip.ID() {
 				return fmt.Errorf("checkFinalFlags: inconsistent baseline 1 %s", vid.IDShortString())
 			}
-		} else {
-			if vid.ID() != pc.tip.ID() && vid.ID() != *pc.baselineBranchID {
-				return fmt.Errorf("checkFinalFlags: inconsistent baseline 2 %s", vid.IDShortString())
-			}
-		}
-	default:
-		switch {
-		case !flags.FlagsUp(FlagPastConeVertexInputsSolid):
-			wrongFlag = "FlagPastConeVertexInputsSolid"
-		case !flags.FlagsUp(FlagPastConeVertexEndorsementsSolid):
-			wrongFlag = "FlagPastConeVertexEndorsementsSolid"
 		}
 	}
 	if wrongFlag != "" {
@@ -743,16 +927,24 @@ func (pc *PastCone) CloneForDebugOnly(env global.Logging, name string) *PastCone
 	return ret
 }
 
-func (pb *PastConeBase) Len() int {
-	return len(pb.vertices)
-}
-
-// CheckConflicts returns double-spent output (conflict) or nil if the past cone is consistent
+// CheckConflicts returns double-spent output (conflict) or nil if the past cone is consistent.
+// Returns context error if the context is cancelled or its deadline exceeded during iteration.
 // The complexity is O(NxM) where N is number of vertices and M is an average number of conflicts in the UTXO tangle
 // Practically, it is linear wrt the number of vertices because M is 1 or close to 1.
-func (pc *PastCone) CheckConflicts(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (conflict *WrappedOutput) {
+func (pc *PastCone) CheckConflicts(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput, err error) {
+	// detect orphaned branches before checking individual vertices —
+	// the per-vertex check misses conflicts when the stem producer is not in pc.vertices
+	if orphanConflict := pc._detectOrphanedBranch(); orphanConflict != nil {
+		conflict = orphanConflict
+		return
+	}
+
 	rdr := getStateReader(*pc.GetBaseline())
 	pc.forAllVertices(func(vid *WrappedTx) bool {
+		if e := ctx.Err(); e != nil {
+			err = e
+			return false
+		}
 		conflict, _ = pc._checkVertex(vid, rdr)
 		return conflict == nil
 	})
@@ -760,16 +952,37 @@ func (pc *PastCone) CheckConflicts(getStateReader func(branchID base.Transaction
 }
 
 // CheckAndClean iterates past cone, checks for conflicts and removes those vertices
-// that have consumers and all consumers are already in the state
-func (pc *PastCone) CheckAndClean(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (conflict *WrappedOutput) {
+// that have consumers and all consumers are already in the state.
+// Returns context error if the context is cancelled or its deadline exceeded during iteration.
+func (pc *PastCone) CheckAndClean(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (conflict *WrappedOutput, err error) {
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline!=nil")
 	pc.Assertf(len(pc.virtuallyConsumed) == 0, "len(pb.virtuallyConsumed)==0")
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 
 	var canBeRemoved bool
 
+	// Phase 1: detect and remove orphaned branch subtrees.
+	// An orphaned branch is a not-in-state branch vertex that is neither the baseline nor the tip.
+	// It indicates a competing branch chain that leaked into the past cone through transitive
+	// PastConeBase merges or the Good+InTheState+nil-PastConeBase code path.
+	// Removing the orphaned branch alone is not enough — all not-in-state vertices that
+	// transitively consume its outputs must also be removed, otherwise Mutations() would
+	// generate ADD mutations without corresponding DELs (conservation invariant violation).
+	if n, orphanConflict := pc._removeOrphanedBranchSubtrees(); orphanConflict != nil {
+		// tip or baseline depends on an orphaned branch — the past cone is invalid
+		conflict = orphanConflict
+		return
+	} else if n > 0 {
+		pc.Log().Warnf("CheckAndClean %s: removed %d orphaned vertices from past cone", pc.name, n)
+	}
+
+	// Phase 2: check for conflicts and remove vertices whose consumers are all in-state
 	rdr := getStateReader(*pc.GetBaseline())
 	for vid, flags := range pc.vertices {
+		if e := ctx.Err(); e != nil {
+			err = e
+			return
+		}
 		if vid != pc.tip && vid.ID() != *pc.baselineBranchID {
 			pc.Assertf(flags.FlagsUp(FlagPastConeVertexKnown|FlagPastConeVertexDefined|FlagPastConeVertexCheckedInTheState), "wrong flag in %s", vid.IDShortString)
 		}
@@ -777,14 +990,103 @@ func (pc *PastCone) CheckAndClean(getStateReader func(branchID base.TransactionI
 		if conflict != nil {
 			return
 		}
-		if canBeRemoved {
+		if canBeRemoved && !vid.IsBranchTransaction() {
+			// Never remove branch vertices: their stem is consumed by the next slot's
+			// branch (often the baseline, which is not in pc.vertices). Removing them
+			// strips conflict evidence needed when this PastConeBase is later merged
+			// into another attacher's past cone with a competing branch from the same slot.
 			delete(pc.vertices, vid)
 		}
 	}
 	return
 }
 
-func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.IndexedStateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
+// _removeOrphanedBranchSubtrees detects competing branches in the past cone and removes
+// them together with all not-in-state vertices that transitively depend on their outputs.
+// Returns the number of removed vertices and a conflict output if the tip depends on an orphan.
+//
+// A branch vertex is orphaned if it is not-in-state, not the baseline, and not the tip.
+// In a valid past cone only two branches can be not-in-state: the baseline (state boundary)
+// and the tip (being committed). Any other not-in-state branch is from a competing fork
+// that leaked in through PastConeBase merges.
+//
+// If the tip or baseline transitively consumes from an orphaned branch, the past cone is
+// fundamentally invalid — return a conflict instead of removing.
+func (pc *PastCone) _removeOrphanedBranchSubtrees() (int, *WrappedOutput) {
+	// Step 1: seed the orphan set with competing branches
+	orphans := set.New[*WrappedTx]()
+	for vid := range pc.vertices {
+		if !vid.IsBranchTransaction() {
+			continue
+		}
+		if pc.IsInTheState(vid) {
+			continue
+		}
+		if vid == pc.tip {
+			continue
+		}
+		if pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID {
+			continue
+		}
+		orphans.Insert(vid)
+	}
+	if len(orphans) == 0 {
+		return 0, nil
+	}
+
+	// Step 2: propagate forward — any not-in-state vertex that consumes an output
+	// produced by an orphan is itself orphaned.
+	// If the tip or baseline consumes from an orphan, the past cone is invalid.
+	changed := true
+	for changed {
+		changed = false
+		for orphan := range orphans {
+			byIdx := pc.consumersByOutputIndex(orphan)
+			for _, consumers := range byIdx {
+				for _, consumer := range consumers {
+					if consumer == nil || pc.IsInTheState(consumer) || orphans.Contains(consumer) {
+						continue
+					}
+					if consumer == pc.tip || (pc.baselineBranchID != nil && consumer.ID() == *pc.baselineBranchID) {
+						// the tip or baseline depends on the orphaned branch — past cone is invalid
+						conflictOut := WrappedOutput{VID: orphan, Index: 0}
+						return 0, &conflictOut
+					}
+					orphans.Insert(consumer)
+					changed = true
+				}
+			}
+		}
+	}
+
+	// Step 3: remove all orphaned vertices from the past cone
+	for vid := range orphans {
+		delete(pc.vertices, vid)
+	}
+	return len(orphans), nil
+}
+
+// _detectOrphanedBranch returns a conflict if any orphaned branch exists in the past cone.
+// Read-only: does not modify pc.vertices. Safe to call during an active delta.
+func (pc *PastCone) _detectOrphanedBranch() *WrappedOutput {
+	var found *WrappedOutput
+	pc.forAllVertices(func(vid *WrappedTx) bool {
+		if !vid.IsBranchTransaction() || pc.IsInTheState(vid) {
+			return true
+		}
+		if vid == pc.tip {
+			return true
+		}
+		if pc.baselineBranchID != nil && vid.ID() == *pc.baselineBranchID {
+			return true
+		}
+		found = &WrappedOutput{VID: vid, Index: 0}
+		return false
+	})
+	return found
+}
+
+func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.StateReader) (doubleSpend *WrappedOutput, canBeRemoved bool) {
 	allConsumersAreInTheState := true
 	inTheState := pc.IsInTheState(vid)
 	byIdx := pc.consumersByOutputIndex(vid)
@@ -797,9 +1099,22 @@ func (pc *PastCone) _checkVertex(vid *WrappedTx, stateReader multistate.IndexedS
 		if pc.IsInTheState(consumers[0]) {
 			continue
 		}
+		// Safety net for claude/pastcone_consistency.md §4.1.a: the consumer flag may be
+		// stale S- (CheckedInTheState=true, InTheState=false) against an older baseline,
+		// even though this past cone's baseline has the consumer committed. Verify
+		// against the live Branches index and upgrade the flag in place so the
+		// conflict-check path matches the state-trie ground truth. Only fires on the
+		// rare fall-through from the flag cache, so the hot loop stays flag-cached.
+		if consumers[0] != nil && pc.baselineKnowsTx(consumers[0].ID()) {
+			pc.Tracef(TraceTagPastConeDiag, "STALE S- upgraded in _checkVertex: pc=%s baseline=%s vid=%s consumer=%s",
+				pc.name, pc.baselineBranchID.StringShort(), vid.IDShortString(), consumers[0].IDShortString())
+			pc.UpgradeToInTheState(consumers[0])
+			continue
+		}
 		// virtual consumer nil is never in the state
 		allConsumersAreInTheState = false
 		if inTheState && !stateReader.HasUTXO(wOut.DecodeID()) {
+			pc.diagLogSuspectConflict(vid, wOut, consumers[0])
 			return &wOut, false
 		}
 	}
@@ -823,15 +1138,19 @@ func (pc *PastCone) SlotInflation() (ret uint64) {
 // Returns:
 // - total coverage delta
 // - frozen coverage (included in the delta)
-func (pc *PastCone) CoverageDeltaRaw(getStateReader func(branchID base.TransactionID) multistate.IndexedStateReader) (delta, frozen uint64) {
+func (pc *PastCone) CoverageDeltaRaw(ctx context.Context, getStateReader func(branchID base.TransactionID) multistate.StateReader) (delta, frozen uint64, err error) {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
 	pc.Assertf(pc.baselineBranchID != nil, "pc.baseline != nil")
 
-	rdr := multistate.MakeSugared(getStateReader(*pc.GetBaseline()))
+	rdr := getStateReader(*pc.GetBaseline())
 	for vid := range pc.vertices {
+		if e := ctx.Err(); e != nil {
+			err = e
+			return
+		}
 		for _, idx := range pc.consumedUTXOIndices(vid) {
 			oid := vid.OutputID(idx)
-			if o := rdr.GetOutput(oid); o != nil {
+			if o := multistate.GetOutputFromStateReader(rdr, oid); o != nil {
 				cov, fr := ledger.Coverage(o, oid, pc.txTs)
 				delta += cov
 				frozen += fr
@@ -884,15 +1203,4 @@ func (pc *PastCone) Dispose() {
 		pc.delta.Dispose()
 	}
 	pc.delta = nil
-}
-
-func (pb *PastConeBase) Dispose() {
-	if pb == nil {
-		return
-	}
-	pb.baselineBranchID = nil
-	clear(pb.vertices)
-	pb.vertices = nil
-	clear(pb.virtuallyConsumed)
-	pb.virtuallyConsumed = nil
 }

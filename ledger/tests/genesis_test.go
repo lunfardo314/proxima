@@ -31,7 +31,7 @@ func TestOriginBase(t *testing.T) {
 	fmt.Printf("short (trimmed) human readable non-branch sequencer transaction ChainID: %s\n", rndtxid.StringShort())
 
 	const supply = 10_000_000_000
-	addr := ledger.AddressED25519FromPrivateKey(testutil.GetTestingPrivateKey())
+	addr := ledger.SigLockFromED25519PrivateKey(testutil.GetTestingPrivateKey())
 	genesisTimeSlot := 1337
 	gOut := ledger.GenesisOutput(supply, addr)
 	t.Logf("Genesis: suppy = %d, genesis slot = %d:\n", supply, genesisTimeSlot)

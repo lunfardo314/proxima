@@ -3,6 +3,7 @@ package txbuilder
 import (
 	"crypto"
 	"crypto/ed25519"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
@@ -24,17 +25,16 @@ type (
 	}
 
 	transactionData struct {
-		InputIDs             []*base.OutputID
-		Outputs              []*ledger.Output
-		UnlockBlocks         []*UnlockParams
-		Signature            []byte
-		SequencerOutputIndex byte
-		StemOutputIndex      byte
-		Timestamp            base.LedgerTime
-		InputCommitment      [32]byte
-		Endorsements         []base.TransactionID
-		ExplicitBaseline     *base.TransactionID
-		LocalLibraries       [][]byte
+		InputIDs         []*base.OutputID
+		Outputs          []*ledger.Output
+		UnlockBlocks     []*UnlockParams
+		SignatureData    []byte
+		Timestamp        base.LedgerTime
+		InputCommitment  [32]byte
+		Endorsements     []base.TransactionID
+		ExplicitBaseline *base.TransactionID
+		OtherData        [][]byte
+		ledger.SequencerDataBytes
 	}
 
 	UnlockParams struct {
@@ -46,15 +46,14 @@ func New() *TxBuilder {
 	return &TxBuilder{
 		ConsumedOutputs: make([]*ledger.Output, 0),
 		TransactionData: &transactionData{
-			InputIDs:             make([]*base.OutputID, 0),
-			Outputs:              make([]*ledger.Output, 0),
-			UnlockBlocks:         make([]*UnlockParams, 0),
-			SequencerOutputIndex: 0xff,
-			StemOutputIndex:      0xff,
-			Timestamp:            base.NilLedgerTime,
-			InputCommitment:      [32]byte{},
-			Endorsements:         make([]base.TransactionID, 0),
-			LocalLibraries:       make([][]byte, 0),
+			InputIDs:           make([]*base.OutputID, 0),
+			Outputs:            make([]*ledger.Output, 0),
+			UnlockBlocks:       make([]*UnlockParams, 0),
+			SequencerDataBytes: ledger.MustSequencerDataBytesFromBytes([]byte{0xff, 0xff, 0xff, 0xff}),
+			Timestamp:          base.NilLedgerTime,
+			InputCommitment:    [32]byte{},
+			Endorsements:       make([]base.TransactionID, 0),
+			OtherData:          make([][]byte, 0),
 		},
 	}
 }
@@ -80,7 +79,7 @@ func (txb *TxBuilder) ConsumeOutput(out *ledger.Output, oid base.OutputID) (byte
 	return byte(len(txb.ConsumedOutputs) - 1), nil
 }
 
-func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.OutputID, chainInIdx, chainConstraintIndex byte) (byte, error) {
+func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.OutputID, chainInIdx byte) (byte, error) {
 	lock := o.Lock()
 	if lock.Name() != ledger.ChainLockName {
 		return 0, fmt.Errorf("not a chain lock")
@@ -89,7 +88,7 @@ func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.Out
 	if err != nil {
 		return 0, err
 	}
-	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(chainInIdx, chainConstraintIndex))
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(chainInIdx))
 	return idx, nil
 }
 
@@ -101,8 +100,8 @@ func (txb *TxBuilder) ConsumeOutputsUnlock(outs ...*ledger.OutputWithID) (uint64
 	total := uint64(0)
 	maxTs := base.LedgerTime{}
 	for i, o := range outs {
-		if o.Output.Lock().Name() != ledger.AddressED25519Name {
-			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputsUnlock: only AddressED25519 locks are allowed")
+		if o.Output.Lock().Name() != ledger.SigLockName {
+			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputsUnlock: only SigLock locks are allowed")
 		}
 		if o.Output.TokenBalance() >= math.MaxUint64-total {
 			return 0, base.LedgerTime{}, fmt.Errorf("ConsumeOutputsUnlock: amount overflow")
@@ -216,27 +215,35 @@ func (txb *TxBuilder) Transaction() (*transaction.Transaction, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w\n==== failing transaction ====\n%s", err, txString)
 	}
-	return transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	return transaction.ParseWithPartialValidation(txBytes)
+}
+
+// BuildTransactionWithValidation builds transaction, parses it and validates with full context.
+// In case validation fails with full cotext, it may return err != nil and tx != nil
+func (txb *TxBuilder) BuildTransactionWithValidation() (*transaction.Transaction, error) {
+	txBytes := txb.TransactionData.Bytes()
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	if err != nil {
+		return nil, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
+	}
+	if err = tx.SetFullContext(txb.LoadInput); err != nil {
+		return tx, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
+	}
+	if err = tx.ValidateFullContext(); err != nil {
+		return tx, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
+	}
+	return tx, nil
 }
 
 func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
-	txBytes := txb.TransactionData.Bytes()
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+	tx, err := txb.BuildTransactionWithValidation()
 	if err != nil {
-		txString := ""
-		if tx != nil {
-			txString = tx.Lines(txb.LoadInput).String()
+		if tx == nil {
+			return nil, base.TransactionID{}, "", err
 		}
-		return nil, base.TransactionID{}, txString, err
+		return tx.Bytes(), tx.ID(), tx.String(), err
 	}
-	ctx, err := transaction.TxContextFromTransaction(tx, txb.LoadInput)
-	if err != nil {
-		return nil, base.TransactionID{}, "", err
-	}
-	if err = ctx.Validate(); err != nil {
-		return nil, base.TransactionID{}, ctx.LinesHR().String(), err
-	}
-	return txBytes, tx.ID(), ctx.LinesHR().String(), nil
+	return tx.Bytes(), tx.ID(), tx.String(), nil
 }
 
 func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {
@@ -252,27 +259,28 @@ func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {
 // InsertSimpleChainTransition inserts a simple chain transition. Takes output with chain constraint from parameters,
 // Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
 func (txb *TxBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, _ base.LedgerTime) error {
-	chainIN, err := ledger.OutputFromBytes(inChainData.Data)
+	// Use input's slot for parsing (output was created at that slot)
+	chainIN, err := ledger.OutputFromBytesWithLib(inChainData.Data, ledger.L(inChainData.ID.Slot()))
 	if err != nil {
 		return err
 	}
-	cc, predecessorConstraintIndex := chainIN.ChainConstraint()
-	if predecessorConstraintIndex == 0xff {
+	cc := chainIN.ChainConstraint()
+	if cc == nil {
 		return fmt.Errorf("can't find chain constrain in the output")
 	}
 	predecessorOutputIndex, err := txb.ConsumeOutput(chainIN, inChainData.ID)
 	if err != nil {
 		return err
 	}
-	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, predecessorConstraintIndex, cc.OriginSlot, cc.OriginAmount)
+	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, cc.OriginSlot, cc.CumulativeChainInflation, cc.CumulativeBranchBonus, cc.TransitionCounter+1, cc.BranchCounter)
 	chainOut := chainIN.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(successor.Bytes(), predecessorConstraintIndex)
+		out.PutConstraint(successor.Bytes(), ledger.ConstraintIndexChain)
 	})
 	successorOutputIndex, err := txb.ProduceOutput(chainOut)
 	if err != nil {
 		return err
 	}
-	txb.PutUnlockParams(predecessorOutputIndex, predecessorConstraintIndex, []byte{successorOutputIndex, predecessorConstraintIndex, 0})
+	txb.PutUnlockParams(predecessorOutputIndex, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(successorOutputIndex))
 	txb.PutSignatureUnlock(successorOutputIndex)
 
 	return nil
@@ -288,7 +296,8 @@ func (txb *TxBuilder) LoadInput(i byte) (*ledger.Output, error) {
 
 // CalcFrozenCoverageDelta sums up frozen coverage vectors of all delegation outputs
 func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
-	sum := new([15]int64)
+	lib := ledger.L(txb.TransactionData.Timestamp.Slot)
+	sum := make([]int64, lib.MaxFrozenEpochs+2)
 	for _, o := range txb.TransactionData.Outputs {
 		if o.Lock().Name() == ledger.DelegateLockName {
 			if overflow := o.Amounts().AddToVector(sum); overflow {
@@ -296,22 +305,25 @@ func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 			}
 		}
 	}
-	return sum[2 : 2+ledger.Const.MaxFrozenEpochs], nil
+	return sum[2 : 2+lib.MaxFrozenEpochs], nil
 }
 
 func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
 	o := txb.TransactionData.Outputs[producedOutputIdx]
-	a := new([15]int64) // TODO strange code
-	copy(a[:], o.Amounts())
+
+	lib := ledger.L(targetTs.Slot)
+	a := make([]int64, lib.MaxFrozenEpochs+2)
+	a[0] = int64(o.TokenBalance())
+	a[1] = int64(o.Inflation())
 	copy(a[2:], frozenCoverageDeltaVector)
 
 	// find the predecessor and adjust its vector
-	cc, idx := o.ChainConstraint()
-	util.Assertf(idx != 0xff, "MustPutFrozenCoverage: inconsistency 1")
+	cc := o.ChainConstraint()
+	util.Assertf(cc != nil, "MustPutFrozenCoverage: inconsistency 1")
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
-	predVector := oPred.Amounts().FrozenCoverageVector()
+	predVector := oPred.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
 	predTs := txb.TransactionData.InputIDs[cc.PredecessorInputIndex].Timestamp()
-	predVectorAdjusted := ledger.Const.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
+	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
 	for i := range frozenCoverageDeltaVector {
 		a[i+2] += predVectorAdjusted[i]
 	}
@@ -348,18 +360,24 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	for _, o := range tx.Outputs {
 		total += o.TokenBalance()
 	}
-	elems := make([]any, ledger.TxTreeIndexMax)
-	elems[ledger.TxUnlockData] = unlockParams
-	elems[ledger.TxInputIDs] = inputIDs
-	elems[ledger.TxOutputs] = outputs
-	elems[ledger.TxSignature] = tx.Signature
-	elems[ledger.TxSequencerAndStemOutputIndices] = []byte{tx.SequencerOutputIndex, tx.StemOutputIndex}
+	elems := make([]any, ledger.TxTreeTupleNumElements)
+	// TxVersion: uint16 big-endian, library upgrade index for the transaction's slot
+	versionBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(versionBytes, ledger.L(tx.Timestamp.Slot).UpgradeIndex())
+	elems[ledger.TxVersion] = versionBytes
+	elems[ledger.TxConstraints] = nil
 	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
-	//elems[ledger.TxTotalProducedAmount] = easyfl_util.TrimmedLeadingZeroUint64(total)
+	if tx.SequencerOutputIndex != 0xff {
+		elems[ledger.TxSequencerDataBytes] = tx.SequencerDataBytes.Bytes()
+	}
+	elems[ledger.TxSignatureData] = tx.SignatureData
 	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]
-	elems[ledger.TxEndorsements] = endorsements
 	elems[ledger.TxExplicitBaseline] = explicitBaseline
-	elems[ledger.TxLocalLibraries] = tuples.MakeTupleFromDataElements(tx.LocalLibraries...)
+	elems[ledger.TxInputIDs] = inputIDs
+	elems[ledger.TxUnlockData] = unlockParams
+	elems[ledger.TxOutputs] = outputs
+	elems[ledger.TxEndorsements] = endorsements
+	elems[ledger.TxOtherData] = tuples.MakeTupleFromDataElements(tx.OtherData...)
 	return tuples.MakeTupleFromSerializableElements(elems...)
 }
 
@@ -375,26 +393,26 @@ func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey) {
 	sig, err := privKey.Sign(rnd, txid[:], crypto.Hash(0))
 	util.AssertNoError(err)
 	pubKey := privKey.Public().(ed25519.PublicKey)
-	txb.TransactionData.Signature = common.Concat(sig, []byte(pubKey))
+	// signature data in the transaction is <sig type byte> + <signature proper> + <public key>
+	txb.TransactionData.SignatureData = common.Concat(base.SignatureTypeED25519, sig, []byte(pubKey))
 }
 
 type (
 	TransferData struct {
-		SenderPrivateKey  ed25519.PrivateKey
-		SenderPublicKey   ed25519.PublicKey
-		SourceAccount     ledger.Accountable
-		Inputs            []*ledger.OutputWithID
-		ChainOutput       *ledger.OutputWithChainID
-		Timestamp         base.LedgerTime // takes ledger.TimeFromClockTime(time.Now()) if ledger.NilLedgerTime
-		Lock              ledger.Lock
-		Amount            uint64
-		AdjustToMinimum   bool
-		AddConstraints    [][]byte
-		MarkAsSequencerTx bool
-		UnlockData        []*UnlockData
-		Endorsements      []base.TransactionID
-		ExplicitBaseline  *base.TransactionID
-		TagAlong          *TagAlongData
+		SenderPrivateKey ed25519.PrivateKey
+		SenderPublicKey  ed25519.PublicKey
+		SourceAccount    ledger.Controller
+		Inputs           []*ledger.OutputWithID
+		ChainOutput      *ledger.OutputWithChainID
+		Timestamp        base.LedgerTime // takes ledger.TimeFromClockTime(time.Now()) if ledger.NilLedgerTime
+		Lock             ledger.Lock
+		Amount           uint64
+		AdjustToMinimum  bool
+		AddConstraints   [][]byte
+		UnlockData       []*UnlockData
+		Endorsements     []base.TransactionID
+		ExplicitBaseline *base.TransactionID
+		TagAlong         *TagAlongData
 	}
 
 	// MakeChainSuccTransactionParams contains parameters for building a chain transaction
@@ -426,10 +444,10 @@ type (
 	}
 )
 
-func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount ledger.Accountable, ts base.LedgerTime) *TransferData {
+func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount ledger.Controller, ts base.LedgerTime) *TransferData {
 	sourcePubKey := senderKey.Public().(ed25519.PublicKey)
 	if util.IsNil(sourceAccount) {
-		sourceAccount = ledger.AddressED25519FromPublicKey(sourcePubKey)
+		sourceAccount = ledger.SigLockFromED25519PublicKey(sourcePubKey)
 	}
 	return &TransferData{
 		SenderPrivateKey: senderKey,
@@ -465,7 +483,7 @@ func (t *TransferData) WithConstraintBinary(constr []byte, idx ...byte) *Transfe
 	if len(idx) == 0 {
 		t.AddConstraints = append(t.AddConstraints, constr)
 	} else {
-		util.Assertf(idx[0] == 0xff || idx[0] < ledger.ConstraintIndexFirstOptionalConstraint, "WithConstraintBinary: wrong constraint index")
+		util.Assertf(idx[0] == 0xff || idx[0] < ledger.ConstraintIndexChain, "WithConstraintBinary: wrong constraint index")
 		t.AddConstraints[idx[0]] = constr
 	}
 	return t
@@ -562,7 +580,7 @@ func filterInputs(outs []*ledger.OutputWithID, amount uint64, ed25519Only ...boo
 	filterNotED25519 := len(ed25519Only) > 0 && ed25519Only[0]
 
 	for _, o := range outs {
-		if filterNotED25519 && o.Output.Lock().Name() != ledger.AddressED25519Name {
+		if filterNotED25519 && o.Output.Lock().Name() != ledger.SigLockName {
 			continue
 		}
 		if len(ret) >= 256 {
@@ -611,8 +629,9 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	}
 	util.Assertf(availableTokens == checkTotal, "availableTokens == checkTotal")
 
+	targetSlot := base.MaximumTime(inputTs, par.Timestamp).Slot
 	adjustedTs := base.MaximumTime(inputTs, par.Timestamp).
-		AddTicks(int(ledger.Const.TransactionPace))
+		AddTicks(int(ledger.L(targetSlot).TransactionPace))
 
 	util.Assertf(base.ValidTime(adjustedTs), "ledger.ValidTime(adjustedTs): ts bytes 0x%s", adjustedTs.Hex)
 
@@ -645,7 +664,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	tagAlongFee := uint64(0)
 	var tagAlongOut *ledger.Output
 	if par.TagAlong != nil {
-		tagAlongOut = ledger.NewTagAlongOutput(par.TagAlong.Amount, par.TagAlong.SeqID, ledger.AddressED25519FromPrivateKey(par.SenderPrivateKey))
+		tagAlongOut = ledger.NewTagAlongOutput(par.TagAlong.Amount, par.TagAlong.SeqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.SenderPrivateKey)))
 		tagAlongFee = par.TagAlong.Amount
 	}
 
@@ -719,17 +738,18 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	}
 
 	// enforce validity time constraints taking into account transaction pace constraint
-	if tsIn := par.ChainInput.ID.Timestamp(); par.Timestamp.Before(par.ChainInput.ID.Timestamp().AddTicks(int(ledger.Const.TransactionPace))) {
+	lib := ledger.L(par.Timestamp.Slot)
+	if tsIn := par.ChainInput.ID.Timestamp(); par.Timestamp.Before(par.ChainInput.ID.Timestamp().AddTicks(int(lib.TransactionPace))) {
 		return nil, 0, nil, errP("timestamp %s is inconsistent with latest chain output timestamp %s", par.Timestamp.String(), tsIn.String())
 	}
 
 	// find chain constraint in the predecessor
-	chainInConstraint, chainInConstraintIdx := par.ChainInput.Output.ChainConstraint()
-	if chainInConstraintIdx == 0xff {
+	chainInConstraint := par.ChainInput.Output.ChainConstraint()
+	if chainInConstraint == nil {
 		return nil, 0, nil, errP("not a chain output: %s", par.ChainInput.ID.StringShort())
 	}
 	// calculate inflation amount and create inflation constraint
-	inflationAmount := ledger.ChainInflationOneSlot(
+	inflationAmount := lib.ChainInflationOneSlot(
 		par.ChainInput.Output.TokenBalance()+uint64(par.ChainInput.Output.FrozenCoverage(0)),
 		par.ChainInput.Timestamp().Slot,
 	)
@@ -766,13 +786,12 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 	}
 
 	// make chain output
-	var chainOutConstraintIdx byte
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.PutAmounts(int64(chainOutAmount), int64(inflationAmount))
 		o.PutLock(par.ChainInput.Output.Lock())
-		// put chain constraint
-		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraintIdx, chainInConstraint.OriginSlot, chainInConstraint.OriginAmount)
-		chainOutConstraintIdx = o.MustPushConstraint(chainOutConstraint.Bytes())
+		// put chain constraint at fixed index 2
+		chainOutConstraint := ledger.NewChainConstraint(chainID, chainPredIdx, chainInConstraint.OriginSlot, chainInConstraint.CumulativeChainInflation+inflationAmount, chainInConstraint.CumulativeBranchBonus, chainInConstraint.TransitionCounter+1, chainInConstraint.BranchCounter)
+		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
 	})
 
 	chainOutIndex, err := txb.ProduceOutput(chainOut)
@@ -780,10 +799,10 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		return nil, 0, nil, errP(err)
 	}
 	// unlock chain input (chain constraint unlock + inflation (optionally)
-	txb.PutUnlockParams(chainPredIdx, chainInConstraintIdx, ledger.NewChainUnlockParams(chainOutIndex, chainOutConstraintIdx))
+	txb.PutUnlockParams(chainPredIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(chainOutIndex))
 
 	if par.TagAlongFee > 0 {
-		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, ledger.AddressED25519FromPrivateKey(par.PrivateKey))
+		tagAlongOut := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
 		if _, err = txb.ProduceOutput(tagAlongOut); err != nil {
 			return nil, 0, nil, errP(err)
 		}
@@ -829,16 +848,14 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	if err != nil {
 		return nil, err
 	}
-	if par.MarkAsSequencerTx {
-		txb.TransactionData.SequencerOutputIndex = 0
-	}
 	checkAmount, inputTs, err := txb.ConsumeOutputsNoUnlock(consumedOuts...)
 	if err != nil {
 		return nil, err
 	}
 	util.Assertf(availableTokens == checkAmount+par.ChainOutput.Output.TokenBalance(), "availableTokens == checkAmount")
+	targetSlot := base.MaximumTime(inputTs, par.ChainOutput.Timestamp()).Slot
 	adjustedTs := base.MaximumTime(inputTs, par.ChainOutput.Timestamp()).
-		AddTicks(int(ledger.Const.TransactionPace))
+		AddTicks(int(ledger.L(targetSlot).TransactionPace))
 
 	for i := range par.Endorsements {
 		if len(disableEndorsementChecking) == 0 || !disableEndorsementChecking[0] {
@@ -852,15 +869,14 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		}
 	}
 
-	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0, par.ChainOutput.ChainConstraintIndex,
-		par.ChainOutput.OriginSlot, par.ChainOutput.OriginAmount)
+	chainConstr := ledger.NewChainConstraint(par.ChainOutput.ChainID, 0,
+		par.ChainOutput.OriginSlot, par.ChainOutput.CumulativeChainInflation, par.ChainOutput.CumulativeBranchBonus, par.ChainOutput.TransitionCounter+1, par.ChainOutput.BranchCounter)
 	util.Assertf(availableTokens > amount, "availableTokens > amount")
 
-	var outChainConstraintIdx byte
 	chainSuccessorOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(availableTokens - amount))
 		o.WithLock(par.ChainOutput.Output.Lock())
-		outChainConstraintIdx = o.MustPushConstraint(chainConstr.Bytes())
+		o.PutConstraint(chainConstr.Bytes(), ledger.ConstraintIndexChain)
 	})
 	outChainOutputIdx, err := txb.ProduceOutput(chainSuccessorOutput)
 	if err != nil {
@@ -886,11 +902,11 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	}
 	// unlock chain input
 	txb.PutSignatureUnlock(outChainOutputIdx)
-	txb.PutUnlockParams(0, par.ChainOutput.ChainConstraintIndex, []byte{outChainOutputIdx, outChainConstraintIdx})
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(outChainOutputIdx))
 
 	// always reference chain input
 	for i := range consumedOuts {
-		chainUnlockRef := ledger.NewChainLockUnlockParams(0, outChainConstraintIdx)
+		chainUnlockRef := ledger.NewChainLockUnlockParams(0)
 		txb.PutUnlockParams(byte(i+1), ledger.ConstraintIndexLock, chainUnlockRef)
 		util.AssertNoError(err)
 	}
@@ -927,7 +943,7 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 	if len(chainData) != 1 {
 		return nil, nil, fmt.Errorf("error while parsing chain output")
 	}
-	retData, err := srdr.GetUTXOsInAccount(ledger.ChainLockFromChainID(chainID).AccountID())
+	retData, err := srdr.GetUTXOsForController(ledger.ChainLockFromChainID(chainID).ControllerID())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -939,20 +955,20 @@ func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, d
 }
 
 type MakeDelegationInitTransactionParams struct {
-	Timestamp                       base.LedgerTime
-	Amount                          uint64
-	Master                          ledger.AddressED25519
-	Target                          ledger.ChainLock
-	MaxFrozenEpochs                 byte
-	MaxToleratedInflationCostMargin uint16
-	MasterPrivateKey                ed25519.PrivateKey
-	Inputs                          []*ledger.OutputWithID
-	TagAlongSequencer               base.ChainID
-	TagAlongFee                     uint64
+	Timestamp              base.LedgerTime
+	Amount                 uint64
+	MasterID               base.HolderID
+	Target                 base.ChainID
+	MaxFrozenEpochs        byte
+	RequiredInflationShare uint16
+	MasterPrivateKey       ed25519.PrivateKey
+	Inputs                 []*ledger.OutputWithID
+	TagAlongSequencer      base.ChainID
+	TagAlongFee            uint64
 }
 
 func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]byte, error) {
-	if !ledger.AddressED25519MatchesPrivateKey(par.Master, par.MasterPrivateKey) {
+	if par.MasterID != base.HolderID(ledger.SigLockFromED25519PrivateKey(par.MasterPrivateKey)) {
 		return nil, fmt.Errorf("MakeDelegationInitTransaction: private key does not match master address")
 	}
 	inputTotal, inps, err := filterInputs(par.Inputs, par.Amount+par.TagAlongFee, true)
@@ -968,29 +984,30 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
-	if tsIn.AddTicks(int(ledger.Const.TransactionPace)).After(par.Timestamp) {
+	lib := ledger.L(par.Timestamp.Slot)
+	if tsIn.AddTicks(int(lib.TransactionPace)).After(par.Timestamp) {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: transaction pace constraint violated")
 	}
 
 	delegateOutput := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:             par.Amount,
-		Master:             par.Master,
-		Target:             par.Target,
-		MaxFreezeEpochs:    par.MaxFrozenEpochs,
-		MaxSeqProfitMargin: par.MaxToleratedInflationCostMargin,
-		StartSlot:          par.Timestamp.Slot,
+		Amount:                 par.Amount,
+		MasterID:               par.MasterID,
+		Target:                 par.Target,
+		MaxFrozenEpochs:        par.MaxFrozenEpochs,
+		RequiredInflationShare: par.RequiredInflationShare,
+		StartSlot:              par.Timestamp.Slot,
 	})
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
-	tagAlong := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, par.Master)
+	tagAlong := ledger.NewTagAlongOutput(par.TagAlongFee, par.TagAlongSequencer, par.MasterID)
 	if _, err = txb.ProduceOutput(tagAlong); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)
 	}
 	if inputTotal > par.Amount+par.TagAlongFee {
 		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(inputTotal - par.Amount - par.TagAlongFee))
-			o.WithLock(par.Master.AsLock())
+			o.WithLock(ledger.SigLock(par.MasterID))
 		})
 		if _, err = txb.ProduceOutput(remainder); err != nil {
 			return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)

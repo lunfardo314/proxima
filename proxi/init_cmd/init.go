@@ -8,14 +8,13 @@ func CmdInit() *cobra.Command {
 	initCmd := &cobra.Command{
 		Use:   "init",
 		Args:  cobra.NoArgs,
-		Short: "specifies initialization subcommands",
+		Short: "various initialization subcommands",
 		Run: func(cmd *cobra.Command, args []string) {
 		},
 	}
 	initCmd.AddCommand(
 		initWalletCmd(),
-		initGenesisDBCmd(),
-		initBootstrapAccountCmd(),
+		initGenesisCmd(),
 		initNodeConfigCmd(),
 	)
 	initCmd.InitDefaultHelpCmd()

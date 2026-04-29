@@ -9,19 +9,19 @@ import (
 
 const (
 	BootstrapSequencerName = "boot"
-	// BoostrapSequencerIDHex is a constant
-	BoostrapSequencerIDHex = "8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5"
+	// BoostrapSequencerIDHex is a constant (must match base.BoostrapSequencerIDHex)
+	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d"
 )
 
-func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *OutputWithChainID {
+func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithChainID {
 	oid := base.GenesisOutputID()
 	return &OutputWithChainID{
 		OutputWithID: OutputWithID{
 			ID: oid,
 			Output: NewOutput(func(o *OutputBuilder) {
 				o.WithAmounts(int64(initialSupply)).WithLock(controllerAddress)
-				chainIdx := o.MustPushConstraint(NewChainOrigin(0, initialSupply).Bytes())
-				o.MustPushConstraint(NewSequencerConstraint(chainIdx).Bytes())
+				o.PutConstraint(NewChainOrigin(0).Bytes(), ConstraintIndexChain)
+				o.MustPushConstraint(NewSequencerConstraint().Bytes())
 
 				msData := seqdata.New()
 				msData.SetName(BootstrapSequencerName)
@@ -31,10 +31,8 @@ func GenesisOutput(initialSupply uint64, controllerAddress AddressED25519) *Outp
 		},
 		ChainConstraintData: ChainConstraintData{
 			ChainConstraint: ChainConstraint{
-				ChainID:      base.BoostrapSequencerID,
-				OriginAmount: initialSupply,
+				ChainID: base.BoostrapSequencerID,
 			},
-			ChainConstraintIndex: 2,
 		},
 	}
 }
@@ -47,6 +45,18 @@ func GenesisStemOutput() *OutputWithID {
 				WithLock(&StemLock{
 					PredecessorOutputID: base.OutputID{},
 				})
+		}),
+	}
+}
+
+// GenesisControllerDustOutput creates a minimal output for the controller's wallet.
+// This ensures the controller always has at least one output to create transactions
+// (e.g., withdraw requests from their sequencer when wallet is otherwise empty).
+func GenesisControllerDustOutput(controllerAddress SigLock) *OutputWithID {
+	return &OutputWithID{
+		ID: base.GenesisControllerDustOutputID(),
+		Output: NewOutput(func(o *OutputBuilder) {
+			o.WithTokenBalance(1).WithLock(controllerAddress)
 		}),
 	}
 }

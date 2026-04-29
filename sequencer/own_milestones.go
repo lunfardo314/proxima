@@ -34,7 +34,7 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 	visited := set.New[*vertex.WrappedTx](rootOutput.VID)
 	ret := []vertex.WrappedOutput{rootOutput}
 	for _, vid := range ordered {
-		if vid.IsBad() || !vid.IsSequencerMilestone() || !ledger.ValidTransactionPace(vid.Timestamp(), targetTs) {
+		if vid.IsBad() || !vid.IsSequencerTransaction() || !ledger.ValidTransactionPace(vid.Timestamp(), targetTs) {
 			continue
 		}
 		pred := vid.SequencerPredecessor(func(txid base.TransactionID) *vertex.WrappedTx {
@@ -49,16 +49,34 @@ func (seq *Sequencer) FutureConeOwnMilestonesOrdered(rootOutput vertex.WrappedOu
 	return ret
 }
 
+// IsConsumedInThePastPath checks if an output is consumed in the past chain of the given milestone.
+// Uses a two-phase locking pattern to avoid holding ownMilestonesMutex during slow state reader I/O.
+//
+// Previously, this method held ownMilestonesMutex (write lock) for the entire call, including
+// getStateReader().OutputIsConsumed() which acquires branches.mutex -> trie reads.
+// When branches.mutex was held by a slow _commitPendingBranch (trie iteration for GC),
+// this created a lock convoy: proposer holds ownMilestonesMutex waiting on branches.mutex,
+// while other proposers, recreateMapOwnMilestones, and the sequencer loop all block on
+// ownMilestonesMutex, causing a >10s stall that triggers the deadlock detector.
+//
+// Fix: RLock for cache check (allows concurrent readers), no lock during I/O, brief Lock only to update cache.
 func (seq *Sequencer) IsConsumedInThePastPath(oid base.OutputID, ms *vertex.WrappedTx, getStateReader func() multistate.SugaredStateReader) bool {
-	seq.ownMilestonesMutex.Lock()
-	defer seq.ownMilestonesMutex.Unlock()
-
+	// phase 1: check cache under read lock (concurrent with other readers)
+	seq.ownMilestonesMutex.RLock()
 	if seq.ownMilestones[ms].consumed.Contains(oid) {
+		seq.ownMilestonesMutex.RUnlock()
 		return true
 	}
+	seq.ownMilestonesMutex.RUnlock()
+
+	// phase 2: I/O outside any lock — may block on branches.mutex without holding ownMilestonesMutex
 	ret := getStateReader().OutputIsConsumed(oid)
+
+	// phase 3: brief write lock to update cache on hit
 	if ret {
+		seq.ownMilestonesMutex.Lock()
 		seq.ownMilestones[ms].consumed.Insert(oid)
+		seq.ownMilestonesMutex.Unlock()
 	}
 	return ret
 }
@@ -66,12 +84,12 @@ func (seq *Sequencer) IsConsumedInThePastPath(oid base.OutputID, ms *vertex.Wrap
 func (seq *Sequencer) OwnLatestMilestoneOutput() vertex.WrappedOutput {
 	ret := seq.GetLatestMilestone(seq.sequencerID)
 	if ret != nil {
-		seq.AddOwnMilestone(ret)
 		chainOut := ret.FindChainOutput(&seq.sequencerID)
-		if chainOut.Output == nil {
-			return vertex.WrappedOutput{}
+		if chainOut != nil && chainOut.Output != nil {
+			seq.AddOwnMilestone(ret)
+			return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("OwnLatestMilestoneOutput"))
 		}
-		return attacher.AttachOutputWithID(*chainOut, seq, attacher.WithInvokedBy("OwnLatestMilestoneOutput"))
+		// chain output not found in tippool milestone, fall through to bootstrap
 	}
 	// there's no own milestone in the tippool, find in one of the baseline states of other sequencers or in LRB
 	return seq.bootstrapOwnMilestoneOutput()
@@ -87,11 +105,11 @@ func (seq *Sequencer) _collectConsumed(ms *vertex.WrappedTx) set.Set[base.Output
 
 		ms.RUnwrap(vertex.UnwrapOptions{
 			Vertex: func(v *vertex.Vertex) {
-				v.Tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+				v.ForEachInputID(func(i byte, oid base.OutputID) bool {
 					ret.Insert(oid)
 					return true
 				})
-				if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+				if seqData := v.SequencerTransactionData(); seqData != nil {
 					// continue along own predecessors in the cache
 					msPred = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
 					if _, predIsOwnMilestone := seq.ownMilestones[msPred]; !predIsOwnMilestone {

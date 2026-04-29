@@ -32,7 +32,7 @@ Creates configuration profile `proxi.yaml`.
 The file will contain something like this (with explanatory comments):
 
 ```yaml
-default_sequencer_id: 8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5
+default_sequencer_id: 9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d
 
 wallet:
   private_key: 7e04abec3f41f7770345e86e85baee3be8bd65eb92f9c667f6c2aa19df25161b04eb57e55cba9cc735b0241db170e8000baa2680f43315e80b015fb918a1a0ee

@@ -1,107 +1,147 @@
 package task
 
 import (
-	"time"
-
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
-
-// Base proposer generates branches and bootstraps sequencer when no other sequencers are around
 
 const (
 	TraceTagBaseProposer     = "propose-base"
 	TraceTagBaseProposerExit = "propose-base-exit"
 )
 
-func init() {
-	registerProposerStrategy(&proposerStrategy{
-		Name:             "base",
-		ShortName:        "b0",
-		GenerateProposal: baseProposeGenerator,
-	})
+// tryBranchProposal generates a branch transaction (slot boundary target).
+// Returns nil if branch cannot be produced.
+func (t *taskData) tryBranchProposal() *finalProposal {
+	t.Tracef(TraceTagBaseProposer, "IN tryBranchProposal %s", t.Name)
+
+	extend := t.OwnLatestMilestoneOutput()
+	if extend.VID == nil {
+		t.Log().Warnf("tryBranchProposal-%s: can't find own milestone output", t.Name)
+		return nil
+	}
+	// Note: extend.VID.BaselineBranch() panics on VirtualTx, so only call it when safe.
+	extBaselineSlot := int64(-1)
+	extBaselineHex := ""
+	extBaselineIsPending := false
+	extBaselineRootHex := ""
+	if !extend.VID.IsVirtualTx() {
+		if extBaseline, ok := extend.VID.BaselineBranch(); ok {
+			extBaselineSlot = int64(extBaseline.Slot())
+			extBaselineHex = extBaseline.StringHex()
+			extBaselineIsPending = t.Branches().IsPending(extBaseline)
+			extBaselineRootHex = t.Branches().GetRootHex(extBaseline)
+		}
+	}
+	if !extend.VID.IsBranchTransaction() && extend.VID.Slot()+1 != t.targetTs.Slot {
+		t.Log().Warnf("tryBranchProposal-%s: OUT_OF_REACH target=%d extend=%s extSlot=%d extIsBranch=%v extIsVirtual=%v extBaselineSlot=%d",
+			t.Name, t.targetTs.Slot, extend.IDStringShort(), extend.VID.Slot(), extend.VID.IsBranchTransaction(), extend.VID.IsVirtualTx(), extBaselineSlot)
+		return nil
+	}
+
+	if !ledger.ValidSequencerPace(extend.Timestamp(), t.targetTs) {
+		t.Log().Warnf("tryBranchProposal-%s: INVALID_PACE target=%s extend=%s extTs=%s",
+			t.Name, t.targetTs.String(), extend.IDStringShort(), extend.Timestamp().String())
+		return nil
+	}
+
+	a, err := attacher.NewIncrementalAttacher(t.Name, t.environment, t.targetTs, extend)
+	if err != nil {
+		t.Log().Warnf("tryBranchProposal-%s: ATTACHER_FAIL target=%d extend=%s extSlot=%d extIsBranch=%v extBaselineSlot=%d extBaselineHex=%s extBaselineIsPending=%v extBaselineRoot=%s err=%v",
+			t.Name, t.targetTs.Slot, extend.IDStringShort(), extend.VID.Slot(), extend.VID.IsBranchTransaction(),
+			extBaselineSlot, extBaselineHex, extBaselineIsPending, extBaselineRootHex, err)
+		return nil
+	}
+
+	prop, err := t.newProposal(a)
+	if err != nil {
+		t.Log().Warnf("tryBranchProposal-%s: PROPOSAL_FAIL target=%d extend=%s err=%v",
+			t.Name, t.targetTs.Slot, extend.IDStringShort(), err)
+		return nil
+	}
+
+	// branch coverage bounds check (bootstrap chain is exempt)
+	if t.SequencerID() != base.BoostrapSequencerID {
+		lib := prop.SeqTxBuilder.Library
+		coverage := prop.SeqTxBuilder.CurrentBranchCoverage()
+		lower := lib.BranchCoverageLowerBound(t.targetTs.Slot)
+		upper := lib.BranchCoverageUpperBound(t.targetTs.Slot)
+		if coverage < lower || coverage > upper {
+			if !t.slotData.coverageBoundsWarned {
+				t.slotData.coverageBoundsWarned = true
+				t.Log().Warnf("tryBranchProposal-%s: branch coverage %s out of bounds [%s, %s] at slot %d, skipping branch",
+					t.Name, util.Th(coverage), util.Th(lower), util.Th(upper), t.targetTs.Slot)
+			}
+			prop.Close()
+			return nil
+		}
+	}
+
+	t.Tracef(TraceTagBaseProposer, "tryBranchProposal %s: making branch, extending %s cov: %s, attacher %s cov: %s",
+		t.Name,
+		extend.IDStringShort, func() string { return util.Th(extend.VID.GetLedgerCoverage()) },
+		a.Name(), func() string { return util.Th(a.FinalLedgerCoverage(t.targetTs)) },
+	)
+
+	// branches don't get tag-along or delegation inputs
+	fp, err := prop.finalize("branch")
+	if err != nil {
+		t.Log().Warnf("tryBranchProposal-%s: finalize failed: %v", t.Name, err)
+		return nil
+	}
+	return fp
 }
 
-func baseProposeGenerator(p *proposer) (*proposal, bool) {
-	p.Tracef(TraceTagBaseProposerExit, "IN base proposer %s", p.Name)
+// tryBaseExtendProposal generates a non-branch transaction by extending the own latest milestone
+// without endorsements. This is the fallback when the factory has no skeleton.
+// Returns nil if the extend is not possible or would not improve coverage.
+func (t *taskData) tryBaseExtendProposal() *finalProposal {
+	t.Tracef(TraceTagBaseProposer, "IN tryBaseExtendProposal %s", t.Name)
 
-	extend := p.OwnLatestMilestoneOutput()
+	extend := t.OwnLatestMilestoneOutput()
 	if extend.VID == nil {
-		p.Log().Warnf("BaseProposer-%s: can't find own milestone output", p.Name)
-		return nil, true
-	}
-	if p.targetTs.IsSlotBoundary() && !extend.VID.IsBranchTransaction() && extend.VID.Slot()+1 != p.targetTs.Slot {
-		// the latest output is beyond reach for the branch as the next transaction
-		p.Tracef(TraceTagBaseProposerExit, "OUT base proposer %s: latest output is beyond reach: %s", p.Name, extend.IDStringShort())
-		return nil, true
+		t.Log().Warnf("tryBaseExtendProposal-%s: can't find own milestone output", t.Name)
+		return nil
 	}
 
-	if !ledger.ValidSequencerPace(extend.Timestamp(), p.targetTs) {
-		// it means the proposer is obsolete, abandon it
-		p.Tracef(TraceTagBaseProposerExit, "force exit in %s: own latest milestone and target ledger time does not make valid pace %s",
-			p.Name, extend.IDStringShort)
-		return nil, true
+	if !ledger.ValidSequencerPace(extend.Timestamp(), t.targetTs) {
+		t.Tracef(TraceTagBaseProposerExit, "tryBaseExtendProposal %s: invalid pace from %s", t.Name, extend.IDStringShort)
+		return nil
 	}
 
-	p.Tracef(TraceTagBaseProposer, "%s extending %s", p.Name, extend.IDStringShort)
-	// own latest milestone exists
-	if !p.targetTs.IsSlotBoundary() {
-		// the target is not a branch target
-		p.Tracef(TraceTagBaseProposer, "%s target is not a branch target", p.Name)
-		if extend.Slot() != p.targetTs.Slot {
-			p.Tracef(TraceTagBaseProposerExit, "%s force exit: cross-slot %s", p.Name, extend.IDStringShort)
-			return nil, true
-		}
-		p.Tracef(TraceTagBaseProposer, "%s target is not a branch and it is on the same slot", p.Name)
-		if !extend.VID.IsSequencerMilestone() {
-			p.Tracef(TraceTagBaseProposerExit, "%s force exit: not-sequencer %s", p.Name, extend.IDStringShort)
-			return nil, true
-		}
-		// proposer optimization: if backlog and extended output didn't change since last target,
-		// makes no sense to continue with proposals.
-		noChanges := p.slotData.lastExtendedOutputIDB0 == extend.DecodeID() &&
-			!p.Backlog().ArrivedOutputsSince(p.slotData.lastTimeBacklogCheckedB0)
-		p.slotData.lastTimeBacklogCheckedB0 = time.Now()
-		if noChanges {
-			p.Tracef(TraceTagBaseProposerExit, "%s 'no changes extend' = %s", p.Name, extend.IDStringShort)
-			return nil, true
-		}
+	if extend.Slot() != t.targetTs.Slot {
+		t.Tracef(TraceTagBaseProposerExit, "tryBaseExtendProposal %s: cross-slot %s", t.Name, extend.IDStringShort)
+		return nil
+	}
+	if !extend.VID.IsSequencerTransaction() {
+		t.Tracef(TraceTagBaseProposerExit, "tryBaseExtendProposal %s: not-sequencer %s", t.Name, extend.IDStringShort)
+		return nil
 	}
 
-	p.Tracef(TraceTagBaseProposer, "%s predecessor %s is sequencer milestone with coverage %s",
-		p.Name, extend.IDStringShort, extend.VID.GetLedgerCoverageString)
+	t.Tracef(TraceTagBaseProposer, "tryBaseExtendProposal %s: predecessor %s is sequencer milestone with coverage %s",
+		t.Name, extend.IDStringShort, extend.VID.GetLedgerCoverageString)
 
-	a, err := attacher.NewIncrementalAttacher(p.Name, p.environment, p.targetTs, extend)
+	a, err := attacher.NewIncrementalAttacher(t.Name, t.environment, t.targetTs, extend)
 	if err != nil {
-		p.Tracef(TraceTagBaseProposerExit, "%s can't create attacher: '%v'", p.Name, err)
-		return nil, true
+		t.Tracef(TraceTagBaseProposerExit, "tryBaseExtendProposal %s: can't create attacher: '%v'", t.Name, err)
+		return nil
 	}
-	p.Tracef(TraceTagBaseProposer, "%s created attacher with baseline %s, cov: %s",
-		p.Name, a.BaselineBranch().StringShort, func() string { return util.Th(a.FinalLedgerCoverage(p.targetTs)) },
-	)
-	ret, err := p.newProposal(a)
+
+	prop, err := t.newProposal(a)
 	if err != nil {
-		p.Tracef(TraceTagBaseProposerExit, "%s can't create proposal: '%v'", p.Name, err)
-		return nil, true
+		t.Tracef(TraceTagBaseProposerExit, "tryBaseExtendProposal %s: can't create proposal: '%v'", t.Name, err)
+		return nil
 	}
 
-	if p.targetTs.IsSlotBoundary() {
-		p.Tracef(TraceTagBaseProposer, "%s making branch, no tag-along, extending %s cov: %s, attacher %s cov: %s",
-			p.Name,
-			extend.IDStringShort, func() string { return util.Th(extend.VID.GetLedgerCoverage()) },
-			a.Name(), func() string { return util.Th(a.FinalLedgerCoverage(p.targetTs)) },
-		)
-	} else {
-		p.Tracef(TraceTagBaseProposer, "%s making non-branch, extending %s, collecting and inserting tag-along inputs", p.Name, extend.IDStringShort)
+	t.Tracef(TraceTagBaseProposer, "tryBaseExtendProposal %s: collecting and inserting tag-along inputs, extending %s", t.Name, extend.IDStringShort)
+	prop.insertInputs()
 
-		ret.insertInputs()
+	fp, err := prop.finalize("base")
+	if err != nil {
+		t.Log().Warnf("tryBaseExtendProposal-%s: finalize failed: %v", t.Name, err)
+		return nil
 	}
-
-	p.slotData.lastExtendedOutputIDB0 = extend.DecodeID()
-	// only need one proposal when extending a branch
-	stopProposing := extend.VID.IsBranchTransaction()
-	p.Tracef(TraceTagBaseProposerExit, "exit with finalProposal in %s: extend = %s",
-		p.Name, extend.IDStringShort)
-	return ret, stopProposing
+	return fp
 }

@@ -26,12 +26,14 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
-	out, _, lrbid, err := glb.GetClient().GetChainOutput(chainID)
+	out, lrbid, err := glb.GetClient().GetChainOutput(chainID)
 	glb.AssertNoError(err)
 	glb.PrintLRB(&lrbid)
 
 	dOut, isDelegation := ledger.AsDelegationOutput(out.Output, out.ID)
 	seqData, isSequencer := out.Output.SequencerOutputData()
+
+	cc := out.Output.ChainConstraint()
 
 	glb.Infof("\nCHAIN OUTPUT DATA:\n-----------------")
 	glb.Infof("chain ID:             %s", chainID.String())
@@ -40,6 +42,13 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("is delegation output: %v", isDelegation)
 	glb.Infof("is sequencer output:  %v", isSequencer)
 	glb.Infof("is branch output:     %v", out.ID.IsBranchTransaction())
+	if cc != nil {
+		glb.Infof("origin slot:          %d", cc.OriginSlot)
+		glb.Infof("transition counter:   %d", cc.TransitionCounter)
+		glb.Infof("cumulative inflation: %s (chain: %s, branch bonus: %s)",
+			util.Th(cc.CumulativeChainInflation+cc.CumulativeBranchBonus),
+			util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
+	}
 	if glb.IsVerbose() {
 		glb.Infof("constraints:\n%s", out.Output.LinesHR("      "))
 	}

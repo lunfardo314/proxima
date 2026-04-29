@@ -1,7 +1,6 @@
 package txbuilder_seq
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 
@@ -62,22 +61,16 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	}
 
 	// ---------- authenticate: check if the sender of the request and the sequencer must be entitled to revoke particular delegation ID
-	if ret.delegation.Target.ChainID() != txb.chainInput.ChainID {
+	if ret.delegation.Target != txb.chainInput.ChainID {
 		// this sequencer cannot revoke specific delegation
 		reason = fmt.Errorf("AskStopDelegationRequest: the sequencer cannot revoke delegation %s (failed authorisation)", delegationID.String())
 		return
 	}
-	master, ok := ret.delegation.Master().(ledger.AddressED25519)
-	if !ok {
-		// wrong master (cannot be)
-		reason = fmt.Errorf("AskStopDelegationRequest: inconsistecy while checking master lock")
-		return
-	}
 	// check authorisation
-	if !bytes.Equal(o.SenderHash[:], master) {
+	if o.SenderID != ret.delegation.MasterID {
 		// this sender cannot revoke delegation -> may be an attack
 		reason = fmt.Errorf("AskStopDelegationRequest: sender with hash %s cannot revoke delegation %s (authorisation failure)",
-			hex.EncodeToString(o.SenderHash[:]), delegationID.String())
+			hex.EncodeToString(o.SenderID[:]), delegationID.String())
 		return
 	}
 
@@ -89,7 +82,8 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	util.Assertf(unfreezeSlot > txb.Slot(), "unfreezeSlot > txb.Slot()")
 
 	const patienceMargin = 6
-	lostSlots := txb.Slot() - unfreezeSlot
+	// fix: was txb.Slot() - unfreezeSlot, uint32 underflow because unfreezeSlot > txb.Slot() (asserted above)
+	lostSlots := unfreezeSlot - txb.Slot()
 	if lostSlots <= patienceMargin {
 		// less than 1 min slots until the end of the freeze, refuse to revoke.
 		// Just 1 min of patience, and it will be released to the safe revocation window without revocation command
@@ -97,16 +91,20 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		return
 	}
 	// all token balance on the delegation output is frozen and available for the sequencer to generate inflation
-	neededCompensation := ledger.ChainInflation(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
-	if neededCompensation < o.Output.TokenBalance() {
+	neededCompensation := txb.Library.ChainInflationMultiStep(ret.delegation.Output.TokenBalance(), txb.Slot(), lostSlots)
+	if neededCompensation > o.Output.TokenBalance() {
 		// projected inflation advance is bigger than number of tokens in the revocation output
 		// -> sequencer do not want loss -> ignore the revocation request
+		// fix: bare return left cmd=nil, reason=nil -> nil pointer dereference in AddTagAlongInput
+		reason = fmt.Errorf("AskStopDelegationRequest: compensation not sufficient (needed %d, provided %d)", neededCompensation, o.Output.TokenBalance())
 		return
 	}
 	// check if 'ensureStopDelegation' constraint exists, if yes, sequencer will need to unlock it
 	if ens, idx := o.Output.EnsureStopDelegationConstraint(); idx != 0xff {
 		if idx != 3 || ens.ChainID != delegationID {
 			// wrong structure. Ensure revocation constraint expected at index 3
+			// fix: bare return left cmd=nil, reason=nil -> nil pointer dereference in AddTagAlongInput
+			reason = fmt.Errorf("AskStopDelegationRequest: wrong ensureStopDelegation constraint (idx=%d)", idx)
 			return
 		}
 		ret.ensureStopDelegation = ens
@@ -122,7 +120,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	if len(txb.TransactionData.Outputs) > 255 {
 		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to produce")
 	}
-	inflation := ledger.ChainInflationOneSlot(r.delegation.Output.TokenBalance(), r.delegation.ID.Slot())
+	inflation := txb.Library.ChainInflationOneSlot(r.delegation.Output.TokenBalance(), r.delegation.ID.Slot())
 
 	oProduce, err := r.delegation.MakeDelegationRevokeOutput(ledger.MakeDelegationRevokeOutputParams{
 		TxTs:             txb.Timestamp(),
@@ -137,7 +135,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	// consume tag-along with the revoke command message
 	tagAlongOutputIdx, err := txb.ConsumeOutput(r.Output, r.ID)
 	util.AssertNoError(err)
-	txb.PutUnlockParams(tagAlongOutputIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2))
+	txb.PutUnlockParams(tagAlongOutputIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 	// consume the delegation predecessor
 	predIdx, err := txb.ConsumeOutput(r.delegation.Output, r.delegation.ID)
@@ -150,8 +148,8 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	}
 
 	// unlock consumed delegation
-	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0, 2), ledger.DelegationUnlockedByTarget)
-	txb.PutUnlockParams(predIdx, 2, ledger.NewChainUnlockParams(revocationOutputIndex, 2))
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(revocationOutputIndex))
 
 	if r.ensureStopDelegation != nil {
 		// unlock ensure revocation constraint
@@ -159,7 +157,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	}
 
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(r.Output.TokenBalance() + inflation)
-	maxFrozenEpochs := byte(ledger.Const.MaxFrozenEpochs)
+	maxFrozenEpochs := byte(txb.MaxFrozenEpochs)
 	a := oProduce.Amounts()
 	// add negative deltas to the sequencer totals
 	for i := byte(0); i < maxFrozenEpochs; i++ {
@@ -172,7 +170,12 @@ func (r *AskStopDelegationRequest) Lines(prefix ...string) *lines.Lines {
 	return lines.New(prefix...).Add("AskStopDelegationRequest: delegation ID = " + r.delegationID.StringShort())
 }
 
-func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.Accountable, delegationID base.ChainID, fee uint64) *ledger.Output {
+func (r *AskStopDelegationRequest) AttachmentCostDelta() int {
+	// +1 for the consumed tag-along input, +1 for the delegation input, +1 for the unfrozen delegation output
+	return 3
+}
+
+func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.SigLock, delegationID base.ChainID, fee uint64) *ledger.Output {
 	par := base.NewSmallPersistentMap()
 	par.Set(FieldCmdCode, []byte{RequestCodeAskStopDelegation})
 	par.Set(FieldRevokeDelegationID, delegationID[:])
@@ -181,7 +184,7 @@ func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.Accountable
 		o.WithTokenBalance(fee)
 		o.WithLock(&ledger.TagAlongLock{
 			TargetSequencerID: seqID,
-			Sender:            sender,
+			SenderID:          base.HolderID(sender),
 		})
 		o.MustPushConstraint(easyfl.InlineDataBytecode(par.Bytes()))
 		o.MustPushConstraint((&ledger.EnsureStopDelegation{ChainID: delegationID}).Bytes())

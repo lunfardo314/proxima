@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Proxima — Peers</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0f1722;
+    --panel: #16213e;
+    --row: #1a2540;
+    --row-alt: #1d294a;
+    --border: #2a3a5a;
+    --text: #e0e0e0;
+    --muted: #8a96a8;
+    --accent: #6dd5ed;
+    --good: #4ade80;
+    --bad: #f87171;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Consolas', 'Monaco', monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  h1 { font-size: 16px; color: var(--accent); margin-bottom: 8px; font-weight: normal; }
+  h1 .self { color: var(--muted); font-size: 11px; margin-left: 8px; }
+  .summary {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 12px; padding: 8px 12px;
+    background: var(--panel); border-radius: 4px; font-size: 11px;
+  }
+  .summary span { color: var(--muted); }
+  .summary b { color: var(--text); font-weight: normal; margin-left: 4px; }
+  .summary .ok { color: var(--good); }
+  .summary .err { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 4px; overflow: hidden; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th {
+    background: var(--bg); color: var(--accent); font-weight: normal;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  th:hover { color: #fff; }
+  th.sorted::after { content: ' ▼'; font-size: 8px; }
+  th.sorted.asc::after { content: ' ▲'; }
+  tr:nth-child(even) td { background: var(--row-alt); }
+  tr:nth-child(odd) td { background: var(--row); }
+  tr:hover td { background: #243154; }
+  .id { color: var(--muted); font-size: 10px; }
+  .pill {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .pill.alive { background: rgba(74,222,128,0.15); color: var(--good); }
+  .pill.dead  { background: rgba(248,113,113,0.15); color: var(--bad); }
+  .pill.static  { background: rgba(109,213,237,0.15); color: var(--accent); }
+  .pill.dynamic { background: rgba(138,150,168,0.15); color: var(--muted); }
+  td.rtt-good { color: var(--good); }
+  td.rtt-mid  { color: var(--warn); }
+  td.rtt-bad  { color: var(--bad); }
+  td.muted { color: var(--muted); }
+  td.right { text-align: right; font-variant-numeric: tabular-nums; }
+  #status {
+    margin-top: 12px; font-size: 10px; color: var(--muted);
+    display: flex; gap: 12px; align-items: center;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; }
+  .dot.stale { background: var(--bad); }
+  #addrs-toggle { color: var(--accent); cursor: pointer; }
+  .addrs { font-size: 10px; color: var(--muted); display: none; }
+  .addrs.show { display: block; }
+</style>
+</head>
+<body>
+<h1>Proxima — Peers <span class="self" id="self"></span></h1>
+<div class="summary" id="summary"><span>Loading…</span></div>
+<table id="peers">
+  <thead>
+    <tr>
+      <th data-key="name">Peer</th>
+      <th data-key="is_static">Type</th>
+      <th data-key="is_alive">State</th>
+      <th data-key="rtt_ms" class="right">RTT (ms)</th>
+      <th data-key="num_incoming_tx" class="right">In Tx</th>
+      <th data-key="num_incoming_pull" class="right">In Pull</th>
+      <th data-key="when_added">Added</th>
+    </tr>
+  </thead>
+  <tbody id="rows"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+</table>
+<div id="status">
+  <span class="dot" id="dot"></span>
+  <span id="last-updated">never refreshed</span>
+  <span style="margin-left:auto">refresh: 5s · <span id="addrs-toggle">show addresses</span></span>
+</div>
+
+<script>
+const POLL_MS = 5000;
+let sortKey = 'rtt_ms';
+let sortAsc = true;
+let lastData = null;
+let showAddrs = false;
+
+function fmtRTT(ms) {
+  if (ms == null || ms === 0) return '—';
+  if (ms < 10) return ms.toFixed(2);
+  if (ms < 1000) return ms.toFixed(1);
+  return ms.toFixed(0);
+}
+function rttClass(ms) {
+  if (ms == null || ms === 0) return 'muted';
+  if (ms < 50) return 'rtt-good';
+  if (ms < 200) return 'rtt-mid';
+  return 'rtt-bad';
+}
+function fmtTime(ns) {
+  if (!ns) return '—';
+  const d = new Date(ns / 1e6);
+  return d.toLocaleString();
+}
+function shortID(id) {
+  if (!id) return '';
+  if (id.length <= 16) return id;
+  return id.slice(0, 6) + '…' + id.slice(-6);
+}
+
+async function refresh() {
+  try {
+    const [piRes, niRes] = await Promise.all([
+      fetch('/api/v1/peers_info'),
+      fetch('/api/v1/node_info'),
+    ]);
+    const peersInfo = await piRes.json();
+    const nodeInfo = await niRes.json();
+    lastData = { peersInfo, nodeInfo };
+    render();
+    document.getElementById('dot').classList.remove('stale');
+    document.getElementById('last-updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    console.error('refresh failed', e);
+    document.getElementById('dot').classList.add('stale');
+    document.getElementById('last-updated').textContent = 'fetch error: ' + e;
+  }
+}
+
+function render() {
+  if (!lastData) return;
+  const { peersInfo, nodeInfo } = lastData;
+
+  document.getElementById('self').textContent = peersInfo.host_id || '';
+
+  const peers = peersInfo.peers || [];
+  const aliveStatic  = peers.filter(p => p.is_alive && p.is_static).length;
+  const aliveDynamic = peers.filter(p => p.is_alive && !p.is_static).length;
+  const dead         = peers.filter(p => !p.is_alive).length;
+
+  const rttSamples = peers.filter(p => p.rtt_ms > 0).map(p => p.rtt_ms);
+  const avgRTT = rttSamples.length
+    ? (rttSamples.reduce((a,b) => a+b, 0) / rttSamples.length).toFixed(1)
+    : '—';
+
+  document.getElementById('summary').innerHTML =
+    `<div><span>peers:</span><b>${peers.length}</b></div>` +
+    `<div><span>alive static:</span><b class="ok">${aliveStatic}</b></div>` +
+    `<div><span>alive dynamic:</span><b class="ok">${aliveDynamic}</b></div>` +
+    `<div><span>dead:</span><b class="${dead ? 'err' : ''}">${dead}</b></div>` +
+    `<div><span>avg RTT (ms):</span><b>${avgRTT}</b></div>` +
+    (nodeInfo ? `<div><span>version:</span><b>${nodeInfo.version || '?'}</b></div>` : '') +
+    (nodeInfo && nodeInfo.sequencer ? `<div><span>seq:</span><b>${shortID(nodeInfo.sequencer)}</b></div>` : '');
+
+  // sort
+  const sorted = peers.slice().sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (sortKey === 'name' || sortKey === 'id') { av = a.id; bv = b.id; }
+    if (av == null) av = '';
+    if (bv == null) bv = '';
+    if (sortKey === 'rtt_ms' || sortKey === 'when_added' ||
+        sortKey === 'num_incoming_tx' || sortKey === 'num_incoming_pull') {
+      av = av || 0; bv = bv || 0;
+      return sortAsc ? av - bv : bv - av;
+    }
+    if (sortKey === 'is_alive' || sortKey === 'is_static') {
+      return sortAsc ? (av === bv ? 0 : av ? -1 : 1) : (av === bv ? 0 : av ? 1 : -1);
+    }
+    return sortAsc ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+  });
+
+  // header sort indicators
+  document.querySelectorAll('th').forEach(th => {
+    th.classList.remove('sorted', 'asc');
+    if (th.dataset.key === sortKey) {
+      th.classList.add('sorted');
+      if (sortAsc) th.classList.add('asc');
+    }
+  });
+
+  // rows
+  const rows = sorted.map(p => {
+    const rttCls = rttClass(p.rtt_ms);
+    const addrs = showAddrs && p.multiAddresses && p.multiAddresses.length
+      ? `<div class="addrs show">${p.multiAddresses.join('<br>')}</div>` : '';
+    return `<tr>
+      <td>
+        <div title="${p.id}">${shortID(p.id)}</div>
+        ${addrs}
+      </td>
+      <td><span class="pill ${p.is_static ? 'static' : 'dynamic'}">${p.is_static ? 'static' : 'dynamic'}</span></td>
+      <td><span class="pill ${p.is_alive ? 'alive' : 'dead'}">${p.is_alive ? 'alive' : 'dead'}</span></td>
+      <td class="right ${rttCls}">${fmtRTT(p.rtt_ms)}</td>
+      <td class="right">${(p.num_incoming_tx || 0).toLocaleString()}</td>
+      <td class="right">${(p.num_incoming_pull || 0).toLocaleString()}</td>
+      <td class="muted">${fmtTime(p.when_added)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('rows').innerHTML = rows ||
+    '<tr><td colspan="7" class="muted">No peers.</td></tr>';
+}
+
+// click headers to sort
+document.querySelectorAll('th[data-key]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    if (sortKey === key) sortAsc = !sortAsc;
+    else { sortKey = key; sortAsc = (key !== 'rtt_ms'); }
+    render();
+  });
+});
+document.getElementById('addrs-toggle').addEventListener('click', () => {
+  showAddrs = !showAddrs;
+  document.getElementById('addrs-toggle').textContent = showAddrs ? 'hide addresses' : 'show addresses';
+  render();
+});
+
+refresh();
+setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>

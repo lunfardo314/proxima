@@ -1,15 +1,16 @@
 package attacher
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lazyargs"
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
@@ -18,39 +19,44 @@ func newPastConeAttacher(env Environment, tip *vertex.WrappedTx, txTs base.Ledge
 
 	ret := attacher{
 		Environment: env,
+		Library:     ledger.L(txTs.Slot),
 		name:        name,
 		pokeMe:      func(_ *vertex.WrappedTx) {},
 		pastCone:    vertex.NewPastCone(env, tip, txTs, name),
 	}
+	// opt the past cone into runtime diagnostic cross-checks (gated by TraceTagPastConeDiag)
+	ret.pastCone.SetDiagBranches(env.Branches())
+	// default: use committing state reader (triggers lazy DB commit for pending branches).
+	// IncrementalAttacher overrides this with virtual state reader.
+	ret.getBaselineStateReader = func(id base.TransactionID) multistate.StateReader {
+		return ret.Branches().GetStateReaderForTheBranch(id)
+	}
 	return ret
 }
-
-const (
-	TraceTagAttach       = "attach"
-	TraceTagAttachVertex = "attachVertex"
-)
 
 func (a *attacher) Name() string {
 	return a.name
 }
 
 func (a *attacher) BaselineSugaredStateReader() multistate.SugaredStateReader {
-	return multistate.MakeSugared(a.baselineStateReader())
+	branchID := a.pastCone.GetBaseline()
+	if branchID == nil {
+		return multistate.SugaredStateReader{}
+	}
+	return multistate.MakeSugared(a.Branches().GetStateReaderForTheBranch(*branchID))
 }
 
-func (a *attacher) baselineStateReader() multistate.IndexedStateReader {
+func (a *attacher) baselineStateReader() multistate.StateReader {
 	branchID := a.pastCone.GetBaseline()
 	if branchID == nil {
 		return nil
 	}
-	return a.Branches().GetStateReaderForTheBranch(*branchID)
+	return a.getBaselineStateReader(*branchID)
 }
 
 func (a *attacher) setError(err error) {
 	a.err = err
 }
-
-const TraceTagSolidifySequencerBaseline = "seqBase"
 
 // solidifyBaselineUnwrapped directs the attachment process down the MemDAG to reach the deterministically known baseline state
 // for a sequencer milestone. Existence of it is guaranteed by the ledger constraints
@@ -58,11 +64,8 @@ const TraceTagSolidifySequencerBaseline = "seqBase"
 // Special edge case: when the baseline branch is before the snapshot state, it has to be taken into account if
 // it can be used as a baseline or not
 func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
-	a.Tracef(TraceTagSolidifySequencerBaseline, "IN for %s", v.Tx.IDShortString)
-	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT for %s", v.Tx.IDShortString)
-
 	// determine the baseline
-	baselineDirectionID := v.Tx.BaselineDirection()
+	baselineDirectionID := v.BaselineDirection()
 	util.Assertf(baselineDirectionID != base.TransactionID{}, "baselineDirectionID!=base.TransactionID()")
 
 	if a.Branches().SnapshotKnowsTransaction(baselineDirectionID) {
@@ -84,58 +87,94 @@ func (a *attacher) solidifyBaselineUnwrapped(v *vertex.Vertex, vidUnwrapped *ver
 			a.name, func() string { return baselineDirection.Lines("    ").String() })
 
 		v.BaselineBranchID = util.Ref(baseline)
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 1 %s. BaselineBranchID: %s", v.Tx.IDShortString, v.BaselineBranchID.StringShort)
 		return true
 
 	case vertex.Bad:
 		a.setError(baselineDirection.GetError())
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 2 %s %v", v.Tx.IDShortString, baselineDirection.GetError)
 		return false
 
 	case vertex.Undefined:
-		a.Tracef(TraceTagSolidifySequencerBaseline, "solidifyBaselineUnwrapped 3 %s", v.Tx.IDShortString)
-		return a.pullIfNeeded(baselineDirection, "solidifyBaselineUnwrapped")
+		return a.pullIfNeeded(baselineDirection)
 	}
 	panic("wrong vertex state")
 }
 
-// attachVertexNonBranch if vertex undefined, recursively attaches past cone
-// Does not check for past cone consistency -> resulting past cone may contain double spends util attacher solidifies all of it
-func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok bool) {
+// attachVertexNonBranch attaches a non-branch vertex by traversing its past cone.
+// Uses RUnwrap (read lock) first for all cases. Escalates to Unwrap (write lock) only
+// for Undefined non-sequencer vertices that need mutation (referencing deps + validation).
+// This eliminates write lock contention on overlapping past cones between concurrent attachers.
+func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx) (ok bool) {
 	a.Assertf(!vid.IsBranchTransaction(), "!vid.IsBranchTransaction(): %s", vid.IDShortString)
 
 	if a.pastCone.IsKnownDefined(vid) {
 		return true
 	}
 
+	needWriteLock := false
 	defined := false
-	vid.Unwrap(vertex.UnwrapOptions{
+
+	// Step 1: RUnwrap — read lock first for all cases
+	vid.RUnwrap(vertex.UnwrapOptions{
 		Vertex: func(v *vertex.Vertex) {
 			switch vid.GetTxStatusNoLock() {
 			case vertex.Undefined:
-				if vid.IsSequencerMilestone() {
+				if vid.IsSequencerTransaction() {
 					// don't go deeper for undefined sequencers
 					ok = true
 					return
 				}
-				// non-sequencer transaction
-				ok = a.attachVertexUnwrapped(v, vid, depth+1)
-				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexInputsSolid|vertex.FlagPastConeVertexEndorsementsSolid) {
-					a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
-					defined = true
+				// FlagVertexConstraintsValid is monotonic (once set, never cleared).
+				// If set, the vertex is immutable — read-only traversal is safe under read lock.
+				if vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) {
+					ok = a.attachVertexUnwrapped(v, vid)
+					if ok && a.allInputsDefined(v) && a.allEndorsementsDefined(v) {
+						defined = true
+					}
+				} else {
+					// Needs write access for referencing deps + validation
+					needWriteLock = true
+					ok = true
 				}
 
 			case vertex.Good:
-				a.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerTransaction()")
-				// dependency is GOOD, so merge its (deterministic) past cone into the current attacher.
-				// Note that MergePastCone checks the compatibility of baselines and swaps them if necessary,
-				// however, does not check for double-spends here
-				if !a.pastCone.MergePastCone(vid.GetPastConeNoLock(), a.Branches()) {
-					a.setError(fmt.Errorf("conflicting baselines %s and %s", a.pastCone.GetBaseline().StringShort(), vid.IDShortString()))
-					return
+				// Only sequencer transactions become Good. Non-seq are either Undefined or Bad.
+				// Merge the PastConeBase if available. If nil (snapshot path or GC),
+				// handle based on InTheState status.
+				pcb := vid.GetPastConeNoLock()
+				if pcb != nil {
+					if !a.pastCone.MergePastCone(pcb, a.Branches()) {
+						a.setError(fmt.Errorf("conflicting baselines %s and %s", a.pastCone.GetBaseline().StringShort(), vid.IDShortString()))
+						return
+					}
+					ok = true
+					defined = true
+				} else if a.pastCone.IsInTheState(vid) {
+					// InTheState with nil PastConeBase: safe — state boundary, subtree is committed
+					ok = true
+					defined = true
+				} else {
+					// NOT InTheState, nil PastConeBase (snapshot path or FlagVertexIgnoreAbsenceOfPastCone).
+					// The subtree is needed but missing — do NOT mark Defined.
+					// Check baseline compatibility, then trigger reattachment or return error.
+					if baseline := a.pastCone.GetBaseline(); baseline != nil {
+						if vidBaseline, hasBaseline := vid.BaselineBranch(); hasBaseline {
+							if !a.branchesCompatible(baseline, &vidBaseline) {
+								a.setError(fmt.Errorf("incompatible baseline for vertex %s with nil PastConeBase: attacher baseline %s vs vertex baseline %s",
+									vid.IDShortString(), baseline.StringShort(), vidBaseline.StringShort()))
+								return
+							}
+						}
+					}
+					if a.onDetachedVertex != nil {
+						a.Log().Infof("REATTACH (nil PastCone) triggered for %s by attacher %s", vid.IDShortString(), a.name)
+						a.onDetachedVertex(vid, v.Transaction)
+					} else {
+						a.setError(fmt.Errorf("attacher %s: vertex %s has nil PastConeBase and is not InTheState", a.name, vid.IDShortString()))
+						return
+					}
+					ok = true
+					// defined remains false — poke will be registered
 				}
-				ok = true
-				defined = true
 
 			case vertex.Bad:
 				a.setError(vid.GetErrorNoLock())
@@ -145,24 +184,65 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 			}
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {
-			AttachTransaction(v.Tx, a,
-				WithInvokedBy(a.name),
-				WithAttachmentDepth(vid.GetAttachmentDepthNoLock()+1),
-			)
-			ok = true
+			if a.onDetachedVertex != nil {
+				a.onDetachedVertex(vid, v.Transaction)
+				ok = true // not defined — poke will be registered below
+			} else {
+				a.setError(fmt.Errorf("attacher %s: detached vertex %s: dependency unavailable", a.name, vid.IDShortString()))
+			}
 		},
 		VirtualTx: func(_ *vertex.VirtualTransaction) {
 			ok = true
 		},
 	})
+
 	if !ok {
 		a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
 		return
 	}
 
+	// Step 2: Escalate to write lock only for Undefined non-seq that needs mutation
+	if needWriteLock {
+		vid.Unwrap(vertex.UnwrapOptions{
+			Vertex: func(v *vertex.Vertex) {
+				// Re-check: another attacher may have validated between RUnwrap release and Unwrap acquire.
+				// FlagVertexConstraintsValid is monotonic, so if true now, vertex is immutable.
+				if vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) {
+					ok = a.attachVertexUnwrapped(v, vid)
+					if ok && a.allInputsDefined(v) && a.allEndorsementsDefined(v) {
+						defined = true
+					}
+					return
+				}
+				// Still Undefined — do the write work (reference deps + validate)
+				ok = a.attachVertexUnwrapped(v, vid)
+				if ok && vid.FlagsUpNoLock(vertex.FlagVertexConstraintsValid) && a.allInputsDefined(v) && a.allEndorsementsDefined(v) {
+					defined = true
+				}
+			},
+			DetachedVertex: func(v *vertex.DetachedVertex) {
+				// Race: converted between RUnwrap and Unwrap
+				if a.onDetachedVertex != nil {
+					a.onDetachedVertex(vid, v.Transaction)
+					ok = true
+				} else {
+					a.setError(fmt.Errorf("attacher %s: detached vertex %s: dependency unavailable", a.name, vid.IDShortString()))
+					ok = false
+				}
+			},
+			VirtualTx: func(_ *vertex.VirtualTransaction) {
+				ok = true
+			},
+		})
+		if !ok {
+			a.Assertf(a.err != nil, "a.err != nil: %s", vid.IDShortString())
+			return
+		}
+	}
+
 	if defined {
 		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexDefined)
-	} else {
+	} else if a.pokeMe != nil {
 		a.pokeMe(vid)
 	}
 	return
@@ -181,8 +261,8 @@ func (a *attacher) attachVertexNonBranch(vid *vertex.WrappedTx, depth int) (ok b
 //   - Upon reaching constant limit, function returns failed transaction duo to recursions depth.
 //     This trick prevents unbounded chains of non-sequencer transactions in the past cone: an attack vector
 //   - this is deterministic, i.e. same on all nodes
-func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, depth int) (ok bool) {
-	a.Assertf(!v.Tx.IsSequencerTransaction() || a.pastCone.GetBaseline() != nil, "!v.Tx.IsSequencerTransaction() || a.baseline != nil in %s", v.Tx.IDShortString)
+func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
+	a.Assertf(!v.IsSequencerTransaction() || a.pastCone.GetBaseline() != nil, "!v.Tx.IsSequencerTransaction() || a.baseline != nil in %s", v.IDShortString)
 
 	if vidUnwrapped.GetTxStatusNoLock() == vertex.Bad {
 		a.setError(vidUnwrapped.GetErrorNoLock())
@@ -190,66 +270,42 @@ func (a *attacher) attachVertexUnwrapped(v *vertex.Vertex, vidUnwrapped *vertex.
 		return false
 	}
 
-	if depth > a.MaxAttachmentRecursionDepth() {
-		// possible hanging chain attack
-		a.setError(fmt.Errorf("maximum attachment recursion depth %d reached in %s", a.MaxAttachmentRecursionDepth(), v.Tx.IDShortString()))
-		return false
-	}
-
-	a.Tracef(TraceTagAttachVertex, " %s IN: %s", a.name, vidUnwrapped.IDShortString)
 	a.Assertf(!util.IsNil(a.BaselineSugaredStateReader), "!util.IsNil(a.BaselineSugaredStateReader)")
 
 	// --  attach endorsements if needed (results in recursion)
 
-	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
-		a.Tracef(TraceTagAttachVertex, "endorsements not all solidified in %s -> attachEndorsements", v.Tx.IDShortString)
+	if !a.allEndorsementsDefined(v) {
 		// depth-first along endorsements
-		if !a.attachEndorsements(v, vidUnwrapped, depth) { // <<< recursive
+		if !a.attachEndorsements(v, vidUnwrapped) { // <<< recursive
 			// not ok -> leave attacher
 			a.Assertf(a.err != nil, "a.err != nil")
 			return false
 		}
 	}
-	// check consistency
-	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
-		a.Assertf(a.allEndorsementsDefined(v), "not all endorsements defined:\n%s", func() string { return a.pastCone.Lines("       ").String() })
-
-		a.Tracef(TraceTagAttachVertex, "endorsements are all solid in %s", v.Tx.IDShortString)
-	} else {
-		a.Tracef(TraceTagAttachVertex, "endorsements NOT marked solid in %s", v.Tx.IDShortString)
-	}
 
 	// --  attach inputs if needed (results in recursion)
 
-	if !a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
-		a.Tracef(TraceTagAttachVertex, "BEFORE attachInputs(%s)", v.Tx.IDShortString)
-		if !a.attachInputs(v, vidUnwrapped, depth) {
+	if !a.allInputsDefined(v) {
+		if !a.attachInputs(v, vidUnwrapped) {
 			a.Assertf(a.err != nil, "a.err!=nil")
 			return false
 		}
 	}
 
-	if a.pastCone.Flags(vidUnwrapped).FlagsUp(vertex.FlagPastConeVertexInputsSolid) {
-		a.Tracef(TraceTagAttachVertex, "inputs solid (%s)", v.Tx.IDShortString)
-		a.Assertf(a.allInputsDefined(v), "a.allInputsDefined(v)")
-
-		if !v.Tx.IsSequencerTransaction() {
+	if a.allInputsDefined(v) {
+		if !v.IsSequencerTransaction() {
 			if !a.finalTouchNonSequencer(v, vidUnwrapped) {
 				a.Assertf(a.err != nil, "a.err!=nil")
 				return false
 			}
 		}
-	} else {
-		a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) not all inputs solid", v.Tx.IDShortString)
 	}
-
-	a.Tracef(TraceTagAttachVertex, "attachVertexUnwrapped(%s) return OK", v.Tx.IDShortString)
 	return true
 }
 
 // finalTouchNonSequencer finishes validation of non-sequencer transactions
 func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
-	a.Assertf(!vid.IsSequencerMilestone(), "non-sequencer tx expected, got %s", vid.IDShortString)
+	a.Assertf(!vid.IsSequencerTransaction(), "non-sequencer tx expected, got %s", vid.IDShortString)
 
 	glbFlags := vid.FlagsNoLock()
 	if !glbFlags.FlagsUp(vertex.FlagVertexConstraintsValid) {
@@ -263,15 +319,16 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 
 		// constraints are not validated yet
 		if err := a.validateVertex(v); err != nil {
+			a.LogTx(time.Now(), fmt.Sprintf("validation failed: '%v'", err), v.ID())
+
 			v.UnReferenceDependencies()
 			a.setError(err)
-			a.Tracef(TraceTagAttachVertex, "constraint validation failed in %s: '%v'", vid.IDShortString(), err)
 			return false
 		}
+		a.LogTx(time.Now(), "validation OK", v.ID())
 		// mark transaction validated
 		vid.SetFlagsUpNoLock(vertex.FlagVertexConstraintsValid)
 
-		a.Tracef(TraceTagAttachVertex, "constraints has been validated OK: %s", v.Tx.IDShortString)
 		a.PokeAllWith(vid)
 	}
 	glbFlags = vid.FlagsNoLock()
@@ -285,7 +342,7 @@ func (a *attacher) finalTouchNonSequencer(v *vertex.Vertex, vid *vertex.WrappedT
 func (a *attacher) validateVertex(v *vertex.Vertex) (err error) {
 	start := time.Now()
 	if err = v.ValidateConstraints(); err == nil {
-		a.EvidenceTxValidationStats(time.Since(start), v.Tx.NumInputs(), v.Tx.NumProducedOutputs())
+		a.EvidenceTxValidationStats(time.Since(start), v.NumInputs(), v.NumProducedOutputs())
 	}
 	return
 }
@@ -299,49 +356,116 @@ func (a *attacher) refreshDependencyStatus(vidDep *vertex.WrappedTx) (ok bool) {
 	a.pastCone.MarkVertexKnown(vidDep)
 	a.defineInTheStateStatus(vidDep)
 
-	if !a.pullIfNeeded(vidDep, "refreshDependencyStatus") {
+	// Fail-fast budget check: immediately check if attachment cost budget is exceeded
+	// This prevents attacks where the attacher traverses a huge past cone before failing
+	// Note: for incremental attacher, seqTxCost is 0 and budget check happens in atomicCheck instead
+	if !a.checkAttachmentCostBudget() {
+		return false
+	}
+
+	if !a.pullIfNeeded(vidDep) {
 		return false
 	}
 	return true
 }
 
-// defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly, if possible
-func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
-	a.Assertf(a.pastCone.IsKnown(vid), "a.pastCone.IsKnown(vid): %s", vid.IDShortString)
-	a.Assertf(a.pastCone.GetBaseline() != nil, "a.baseline != nil")
-
-	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
-		return
-	}
-
-	if a.Branches().BranchKnowsTransaction(*a.pastCone.GetBaseline(), vid.ID()) {
-		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
-	} else {
-		// not on the state, so it is not defined
-		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState)
-	}
-}
-
-func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx, depth int) (ok bool) {
-	if a.pastCone.Flags(vid).FlagsUp(vertex.FlagPastConeVertexEndorsementsSolid) {
+// checkAttachmentCostBudget checks if the total attachment cost (pastCone + seqTx) exceeds the budget.
+// Returns true if within budget, false if exceeded (sets error).
+// For incremental attacher (seqTxCost == 0), this always returns true as the budget check
+// happens in the atomicCheck callback instead.
+func (a *attacher) checkAttachmentCostBudget() bool {
+	if a.seqTxCost == 0 {
+		// Incremental attacher: budget check happens in atomicCheck callback
 		return true
 	}
-	for i := range v.Endorsements {
-		if !a.attachEndorsement(v, vid, byte(i), depth) {
-			return false
-		}
-	}
-
-	if a.allEndorsementsDefined(v) {
-		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexEndorsementsSolid)
+	totalCost := a.pastCone.AttachmentCost() + a.seqTxCost
+	// Use AttachmentCostBudget as budget for now (will be replaced with AttachmentCostBudget)
+	if totalCost > a.AttachmentCostBudget {
+		a.setError(fmt.Errorf("attachment cost budget %d exceeded (pastCone=%d, seqTx=%d)",
+			a.AttachmentCostBudget, a.pastCone.AttachmentCost(), a.seqTxCost))
+		return false
 	}
 	return true
 }
 
-func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte, depth int) bool {
+// defineInTheStateStatus checks if dependency is in the baseline state and marks it correspondingly, if possible.
+// For non-sequencer transactions not in the state, it also adds attachment cost tracking.
+// Handles TxID TTL expiry: very old transactions whose txID entry has been deleted from the
+// trie are still treated as "in the state" if they are older than the TTL relative to the baseline.
+//
+// A positive "in the state" result is monotonic: if a tx is in baseline B1's state, it is in
+// any descendant B2's state. A negative result is NOT monotonic: a tx absent from B1's state
+// may be present in descendant B2's state. Therefore, when CheckedInTheState is already set
+// (possibly from a PastConeBase merge that used an older baseline), we trust positives but
+// re-check negatives against the current baseline.
+func (a *attacher) defineInTheStateStatus(vid *vertex.WrappedTx) {
+	a.Assertf(a.pastCone.IsKnown(vid), "a.pastCone.IsKnown(vid): %s", vid.IDShortString)
+	a.Assertf(a.pastCone.GetBaseline() != nil, "a.baseline != nil")
+
+	flags := a.pastCone.Flags(vid)
+	if flags.FlagsUp(vertex.FlagPastConeVertexCheckedInTheState) {
+		if flags.FlagsUp(vertex.FlagPastConeVertexInTheState) {
+			return // positive is monotonic — always valid for descendant baselines
+		}
+		// Negative "not in the state" may be stale from a merge with an older baseline.
+		// Re-check against the current baseline; only upgrade, never downgrade.
+		baselineID := *a.pastCone.GetBaseline()
+		txid := vid.ID()
+		if a.Branches().BranchKnowsTransaction(baselineID, txid) {
+			a.pastCone.UpgradeToInTheState(vid)
+		} else if txidMayHaveExpired(baselineID, txid) {
+			a.Tracef(vertex.TraceTagPastConeDiag, "TTL bless upgrade: baseline=%s vid=%s (txid record pruned per TxIDStateTTLSlots; treating as in-state without proof)",
+				baselineID.StringShort, vid.IDShortString)
+			a.pastCone.UpgradeToInTheState(vid)
+		}
+		return
+	}
+
+	baselineID := *a.pastCone.GetBaseline()
+	txid := vid.ID()
+
+	if a.Branches().BranchKnowsTransaction(baselineID, txid) {
+		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
+	} else if txidMayHaveExpired(baselineID, txid) {
+		// The txID entry was deleted from the trie due to TTL expiry, but the transaction
+		// is legitimately committed. Treat it as "in the state".
+		a.Tracef(vertex.TraceTagPastConeDiag, "TTL bless: baseline=%s vid=%s (txid record pruned per TxIDStateTTLSlots; treating as in-state without proof)",
+			baselineID.StringShort, vid.IDShortString)
+		a.pastCone.SetFlagsUp(vid, vertex.FlagPastConeVertexCheckedInTheState|vertex.FlagPastConeVertexInTheState|vertex.FlagPastConeVertexDefined)
+	} else {
+		// provisionally not in the state — may be upgraded later by a re-check
+		a.pastCone.MarkVertexNotInTheState(vid)
+	}
+}
+
+// txidMayHaveExpired returns true if the transaction is old enough relative to the baseline
+// branch that its txID entry may have been deleted from the trie due to TTL expiry.
+func txidMayHaveExpired(baselineID, txid base.TransactionID) bool {
+	txSlot := txid.Slot()
+	baselineSlot := baselineID.Slot()
+	if txSlot >= baselineSlot {
+		return false
+	}
+	ttl := ledger.L(baselineSlot).TxIDStateTTLSlots
+	return baselineSlot-txSlot > ttl
+}
+
+func (a *attacher) attachEndorsements(v *vertex.Vertex, vid *vertex.WrappedTx) (ok bool) {
+	if a.allEndorsementsDefined(v) {
+		return true
+	}
+	for i := range v.Endorsements {
+		if !a.attachEndorsement(v, vid, byte(i)) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, index byte) bool {
 	vidEndorsed := v.Endorsements[index]
 	if vidEndorsed == nil {
-		vidEndorsed = AttachTxID(v.Tx.MustEndorsementAt(index), a,
+		vidEndorsed = AttachTxID(v.MustEndorsementAt(index), a,
 			WithInvokedBy(a.name),
 			WithAttachmentDepth(vidUnwrapped.GetAttachmentDepthNoLock()+1),
 		)
@@ -349,10 +473,10 @@ func (a *attacher) attachEndorsement(v *vertex.Vertex, vidUnwrapped *vertex.Wrap
 	}
 	a.Assertf(vidEndorsed != nil, "vidEndorsed!=nil")
 
-	return a.attachEndorsementDependency(vidEndorsed, depth)
+	return a.attachEndorsementDependency(vidEndorsed)
 }
 
-func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx, depth int) bool {
+func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx) bool {
 	if !a.refreshDependencyStatus(vidEndorsed) {
 		return false
 	}
@@ -364,17 +488,14 @@ func (a *attacher) attachEndorsementDependency(vidEndorsed *vertex.WrappedTx, de
 		a.Assertf(a.pastCone.IsKnownDefined(vidEndorsed), "expected to be 'defined': %s", vidEndorsed.IDShortString)
 		return true
 	}
-	return a.attachVertexNonBranch(vidEndorsed, depth)
+	return a.attachVertexNonBranch(vidEndorsed)
 }
 
-func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte, depth int) bool {
-	oid := v.Tx.MustInputAt(inputIdx)
-
-	a.Tracef(TraceTagAttachVertex, "attachInput(%s): %s", v.Tx.IDShortString, oid.StringShort)
+func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, inputIdx byte) bool {
+	oid := v.MustInputAt(inputIdx)
 
 	vidDep := v.Inputs[inputIdx]
 
-	var ok bool
 	if vidDep == nil {
 		vidDep = AttachTxID(oid.TransactionID(), a,
 			WithInvokedBy(a.name),
@@ -393,24 +514,18 @@ func (a *attacher) attachInput(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx,
 		VID:   vidDep,
 		Index: oid.Index(),
 	}
-	a.Tracef(TraceTagAttachVertex, "before attachOutput(%s): %s", wOut.IDStringShort, a.pastCone.Flags(vidDep).String())
-	ok = a.attachOutput(wOut, depth)
-	if !ok {
-		return false
-	}
-	a.Tracef(TraceTagAttachVertex, "after attachOutput(%s): %s", wOut.IDStringShort, a.pastCone.Flags(vidDep).String())
-	return true
+	return a.attachOutput(wOut)
 }
 
-func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx, depth int) (ok bool) {
+func (a *attacher) attachInputs(v *vertex.Vertex, vidUnwrapped *vertex.WrappedTx) (ok bool) {
+	if a.allInputsDefined(v) {
+		return true
+	}
 	for i := range v.Inputs {
-		if !a.attachInput(v, vidUnwrapped, byte(i), depth) {
+		if !a.attachInput(v, vidUnwrapped, byte(i)) {
 			a.Assertf(a.err != nil, "a.err!=nil in %s, idx %d", a.name, i)
 			return false
 		}
-	}
-	if a.allInputsDefined(v) {
-		a.pastCone.SetFlagsUp(vidUnwrapped, vertex.FlagPastConeVertexInputsSolid)
 	}
 	return true
 }
@@ -431,9 +546,22 @@ func (a *attacher) allInputsDefined(v *vertex.Vertex) bool {
 // If it is not, sets an error that UTXO is already consumed
 func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.OutputID) bool {
 	a.Assertf(a.pastCone.IsInTheState(vid), "a.pastCone.IsInTheState(wOut.VID)")
-	o, err := a.BaselineSugaredStateReader().GetOutputWithID(inputID)
+	rdr := a.baselineStateReader()
+	if rdr == nil {
+		a.setError(fmt.Errorf("checkOutputInTheState: baseline state reader unavailable for %s", inputID.StringShort()))
+		return false
+	}
+	o, err := multistate.GetOutputWithIDFromStateReader(rdr, inputID)
 	if errors.Is(err, multistate.ErrNotFound) {
-		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed", inputID.StringShort()))
+		baselineID := a.pastCone.GetBaseline()
+		baselineHex, baselineIsPending, baselineRootHex := "", false, ""
+		if baselineID != nil {
+			baselineHex = baselineID.StringHex()
+			baselineIsPending = a.Branches().IsPending(*baselineID)
+			baselineRootHex = a.Branches().GetRootHex(*baselineID)
+		}
+		a.setError(fmt.Errorf("checkOutputInTheState: output %s is already consumed (baselineHex=%s baselineIsPending=%v baselineRoot=%s)",
+			inputID.StringShort(), baselineHex, baselineIsPending, baselineRootHex))
 		return false
 	}
 	a.AssertNoError(err)
@@ -441,7 +569,7 @@ func (a *attacher) checkOutputInTheState(vid *vertex.WrappedTx, inputID base.Out
 	return true
 }
 
-func (a *attacher) attachOutput(wOut vertex.WrappedOutput, depth int) bool {
+func (a *attacher) attachOutput(wOut vertex.WrappedOutput) bool {
 	if !wOut.ValidID() {
 		return false
 	}
@@ -465,7 +593,7 @@ func (a *attacher) attachOutput(wOut vertex.WrappedOutput, depth int) bool {
 		return true
 	}
 	// not defined, not branch, not in the state or unknown
-	return a.attachVertexNonBranch(wOut.VID, depth)
+	return a.attachVertexNonBranch(wOut.VID)
 }
 
 func (a *attacher) branchesCompatible(branchID1, branchID2 *base.TransactionID) bool {
@@ -490,9 +618,6 @@ func (a *attacher) branchesCompatible(branchID1, branchID2 *base.TransactionID) 
 // setBaseline sets baseline, references it from the attacher
 // For sequencer transaction baseline will be on the same slot, for branch transactions it can be further in the past
 func (a *attacher) setBaseline(baselineID *base.TransactionID) {
-	a.Tracef(TraceTagSolidifySequencerBaseline, "IN setBaseline(%s)", baselineID.StringShort)
-	defer a.Tracef(TraceTagSolidifySequencerBaseline, "OUT setBaseline(%s)", baselineID.StringShort)
-
 	a.Assertf(baselineID.IsBranchTransaction(), "setBaseline: baselineVID.IsBranchTransaction()")
 	a.pastCone.SetBaseline(baselineID)
 }
@@ -523,16 +648,7 @@ func (a *attacher) allEndorsementsDefined(v *vertex.Vertex) bool {
 	return true
 }
 
-func (a *attacher) SetTraceAttacher(name string) {
-	a.forceTrace = name
-}
-
 func (a *attacher) Tracef(traceLabel string, format string, args ...any) {
-	if a.forceTrace != "" {
-		lazyArgs := fmt.Sprintf(format, lazyargs.Eval(args...)...)
-		a.Log().Infof("%s LOCAL TRACE(%s//%s) %s", a.name, traceLabel, a.forceTrace, lazyArgs)
-		return
-	}
 	a.Environment.Tracef(traceLabel, a.name+format+" ", args...)
 }
 
@@ -540,13 +656,16 @@ func (a *attacher) BaselineSupply() uint64 {
 	return a.Branches().Supply(*a.pastCone.GetBaseline())
 }
 
-func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint64) uint64 {
+// FinalLedgerCoverage calculates full ledger coverage for the attacher.
+// Timestamp is not always defined in the generic attacher, so it is supplied as an argument
+// Timestamp is used to determine slot of the attacher and calculate coverage correctly on slot boundaries
+func (a *attacher) FinalLedgerCoverage(ts base.LedgerTime, delta ...uint64) uint64 {
 	var baselineLC uint64
 
 	// note that timestamp of the transaction can be before the baseline when baseline is snapshot
-	if bl := a.pastCone.GetBaseline(); bl != nil && currentTs.After(bl.Timestamp()) {
-		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint64(currentTs.Slot-bl.Slot())
-		if !currentTs.IsSlotBoundary() {
+	if bl := a.pastCone.GetBaseline(); bl != nil && ts.After(bl.Timestamp()) {
+		baselineLC = a.Branches().LedgerCoverage(*bl) >> uint64(ts.Slot-bl.Slot())
+		if !ts.IsSlotBoundary() {
 			baselineLC >>= 1
 		}
 	}
@@ -562,8 +681,21 @@ func (a *attacher) FinalLedgerCoverage(currentTs base.LedgerTime, delta ...uint6
 // CoverageDelta returns
 // - coverage delta (including frozen part)
 // - frozen part separately
+// Uses the global node context (a.Ctx()) rather than context.Background() so that
+// CoverageDeltaRaw — which reads state via BadgerDB — bails out cleanly on node
+// shutdown instead of racing with a closed DB and panicking. Any ctx error is
+// intentionally swallowed: during shutdown the result is unused (vertex is abandoned).
 func (a *attacher) CoverageDelta() (delta uint64, frozen uint64) {
-	delta, frozen = a.pastCone.CoverageDeltaRaw(a.Branches().GetStateReaderForTheBranch)
+	delta, frozen, _ = a.pastCone.CoverageDeltaRaw(a.Ctx(), a.getBaselineStateReader)
+	delta += a.coverageDeltaAdjustment()
+	return
+}
+
+func (a *attacher) CoverageDeltaWithContext(ctx context.Context) (delta uint64, frozen uint64, err error) {
+	delta, frozen, err = a.pastCone.CoverageDeltaRaw(ctx, a.getBaselineStateReader)
+	if err != nil {
+		return
+	}
 	delta += a.coverageDeltaAdjustment()
 	return
 }
@@ -584,8 +716,8 @@ func (a *attacher) coverageDeltaAdjustment() uint64 {
 	return 0
 }
 
-func (a *attacher) CheckConflicts() *vertex.WrappedOutput {
-	return a.pastCone.CheckConflicts(a.Branches().GetStateReaderForTheBranch)
+func (a *attacher) CheckConflicts(ctx context.Context) (*vertex.WrappedOutput, error) {
+	return a.pastCone.CheckConflicts(ctx, a.getBaselineStateReader)
 }
 
 // SlotInflation sums all inflation amounts in the past cone structure.

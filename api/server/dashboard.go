@@ -160,19 +160,9 @@ const dashboardHTML = `
                     "<div class='info-row'><span class='label'>Multi Addresses:</span><span>" + peer.multiAddresses.join(', ') + "</span></div>" +
                     "<div class='info-row'><span class='label'>Is Alive:</span><span>" + peer.is_alive + "</span></div>" +
                     "<div class='info-row'><span class='label'>Is Static:</span><span>" + peer.is_static + "</span></div>" +
-                    "<div class='info-row'><span class='label'>Responds to pull:</span><span>" + peer.responds_to_pull + "</span></div>" +
                     "<div class='info-row'><span class='label'>Added:</span><span>" + convertTimestamp(peer.when_added) + "</span></div>" +
-                    "<div class='info-row'><span class='label'>Last HB:</span><span>" + convertTimestamp(peer.last_heartbeat_received) + "</span></div>" +
-                    "<div class='info-row'><span class='label'>Clock Diff Qu:</span><span>" + peer.clock_differences_quartiles[0] + " " + 
-                    peer.clock_differences_quartiles[1] + " " + 
-                    peer.clock_differences_quartiles[2] + "</span></div>" +
-                    "<div class='info-row'><span class='label'>HB Diff Qu:</span><span>" + peer.hb_differences_quartiles[0] + " " +
-                    peer.hb_differences_quartiles[1] + " " + 
-                    peer.hb_differences_quartiles[2] + "</span></div>" + 
                     "<div class='info-row'><span class='label'># Incoming Tx:</span><span>" +  peer.num_incoming_tx + "</span></div>" +
-                    "<div class='info-row'><span class='label'># Incoming HB:</span><span>" +  peer.num_incoming_hb + "</span></div>" +
                     "<div class='info-row'><span class='label'># Incoming Pull:</span><span>" +  peer.num_incoming_pull + "</span></div>" +
-                    "<div class='info-row'><span class='label'>Blacklist size:</span><span>" + getMapSize(peer.blacklist) + "</span></div>" +
                     "</li>";
             });
 

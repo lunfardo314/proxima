@@ -22,7 +22,6 @@ type EndChainParams struct {
 }
 
 func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, error) {
-	_, predecessorConstraintIndex := par.ChainIn.Output.ChainConstraint()
 	txb := New()
 
 	consumedIndex, err := txb.ConsumeOutput(par.ChainIn.Output, par.ChainIn.ID)
@@ -32,21 +31,21 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 
 	outNonChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(par.ChainIn.Output.TokenBalance() - feeAmount)).
-			WithLock(ledger.AddressED25519FromPrivateKey(par.PrivateKey))
+			WithLock(ledger.SigLockFromED25519PrivateKey(par.PrivateKey))
 	})
 	_, err = txb.ProduceOutput(outNonChain)
 	util.AssertNoError(err)
 
 	if feeAmount > 0 {
-		tagAlongFeeOut := ledger.NewTagAlongOutput(feeAmount, par.TagAlongSeqID, ledger.AddressED25519FromPrivateKey(par.PrivateKey))
+		tagAlongFeeOut := ledger.NewTagAlongOutput(feeAmount, par.TagAlongSeqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.PrivateKey)))
 		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
 			return nil, err
 		}
 	}
 
-	// two additional bytes 0,x00,0xff are added to the unlock parameters to satisfy 'master unlock' condition of the delegation lock
-	txb.PutSignatureUnlock(consumedIndex, 0, ledger.DelegationUnlockedByMaster)
-	txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.FinishChainUnlockParams)
+	// additional byte 0xff is added to unlock parameters to satisfy 'master unlock' condition of the delegation lock
+	txb.PutSignatureUnlock(consumedIndex, ledger.DelegationUnlockedByMaster)
+	txb.PutUnlockParams(consumedIndex, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	// finalize the transaction
 	txb.TransactionData.Timestamp = par.Timestamp

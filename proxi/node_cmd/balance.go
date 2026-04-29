@@ -41,7 +41,7 @@ func runBalanceCmd(_ *cobra.Command, _ []string) {
 	displayBalanceTotals(outs, accountable)
 }
 
-func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Accountable) {
+func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Controller) {
 	var sumOnNonDelegationChains, sumOutsideChains, sumDelegation uint64
 	var numNonChains int
 
@@ -51,7 +51,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Acco
 	for _, o := range outs {
 		if oChain, err := o.AsChainOutput(); err == nil {
 			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-				if !ledger.EqualAccountables(dOut.Master(), walletAccount) {
+				if !ledger.EqualControllers(dOut.Master(), walletAccount) {
 					// for delegation locks only count those which are owned by the wallet
 					continue
 				}
@@ -68,19 +68,12 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Acco
 	}
 	currentSlot := ledger.TimeNow().Slot
 	glb.Infof("Current slot is %d", currentSlot)
-	glb.Infof("\nSUMMARY of controlled by %s (non-adjusted):", walletAccount.String())
+	glb.Infof("\nSUMMARY controlled by %s:", walletAccount.String())
 	glb.Infof("    on %2d non-chain outputs:            %s", numNonChains, util.Th(sumOutsideChains))
 	glb.Infof("    on %2d delegation outputs:           %s", len(delegations), util.Th(sumDelegation))
 	glb.Infof("    on %2d non-delegation chain outputs: %s", len(otherChains), util.Th(sumOnNonDelegationChains))
 	glb.Infof("-----------------\nTOTAL controlled on %d outputs: %s",
 		len(delegations)+len(otherChains)+numNonChains, util.Th(sumDelegation+sumOnNonDelegationChains+sumOutsideChains))
-
-	glb.Infof("\nSUMMARY of controlled by %s (ADJUSTED):", walletAccount.String())
-	glb.Infof("    on %2d non-chain outputs:            %s", numNonChains, util.Th(ledger.AdjustedAmount(sumOutsideChains, currentSlot)))
-	glb.Infof("    on %2d delegation outputs:           %s", len(delegations), util.Th(ledger.AdjustedAmount(sumDelegation, currentSlot)))
-	glb.Infof("    on %2d non-delegation chain outputs: %s", len(otherChains), util.Th(ledger.AdjustedAmount(sumOnNonDelegationChains, currentSlot)))
-	glb.Infof("-----------------\nTOTAL (ADJUSTED) controlled on %d outputs: %s",
-		len(delegations)+len(otherChains)+numNonChains, util.Th(ledger.AdjustedAmount(sumDelegation+sumOnNonDelegationChains+sumOutsideChains, currentSlot)))
 
 	if len(delegations) == 0 {
 		glb.Infof("\nNO DELEGATIONS")
@@ -94,7 +87,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Acco
 				return delegations[i].Output.TokenBalance() > delegations[j].Output.TokenBalance()
 			})
 		}
-		glb.Infof("\nDELEGATIONS (%d):\n\n%s\n", len(delegations), glb.LinesDelegationOutputs(delegations, currentSlot, "  ").String())
+		glb.Infof("\nDELEGATIONS (%d):\n\n%s\n", len(delegations), glb.LinesDelegationOutputs(delegations, currentSlot, sumOutsideChains, "  ").String())
 	}
 	if len(otherChains) > 0 {
 		glb.Infof("\nNON-DELEGATION CHAINS (%d):\n\n%s\n", len(otherChains), glb.LinesChainOutputs(otherChains, currentSlot, "  ").String())

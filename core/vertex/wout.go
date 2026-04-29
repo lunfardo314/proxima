@@ -44,10 +44,10 @@ func (o *WrappedOutput) Slot() uint32 {
 func (o *WrappedOutput) IsAvailable() (available bool) {
 	o.VID.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			available = int(o.Index) < v.Tx.NumProducedOutputs()
+			available = int(o.Index) < v.NumProducedOutputs()
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			available = int(o.Index) < v.Tx.NumProducedOutputs()
+			available = int(o.Index) < v.NumProducedOutputs()
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			_, available = v.OutputAt(o.Index)
@@ -57,16 +57,16 @@ func (o *WrappedOutput) IsAvailable() (available bool) {
 }
 
 func (o *WrappedOutput) Output() (ret *ledger.Output) {
-	o.VID.Unwrap(UnwrapOptions{
+	o.VID.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			var err error
-			if ret, err = v.Tx.ProducedOutputAt(o.Index); err != nil {
+			if ret, err = v.ProducedOutputAt(o.Index); err != nil {
 				ret = nil
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
 			var err error
-			if ret, err = v.Tx.ProducedOutputAt(o.Index); err != nil {
+			if ret, err = v.ProducedOutputAt(o.Index); err != nil {
 				ret = nil
 			}
 		},

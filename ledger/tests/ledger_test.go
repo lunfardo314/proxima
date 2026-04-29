@@ -19,7 +19,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/blake2b"
 )
 
 func TestOutput(t *testing.T) {
@@ -29,29 +28,29 @@ func TestOutput(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("basic", func(t *testing.T) {
-		out := ledger.OutputBasic(0, ledger.AddressED25519Null())
+		out := ledger.OutputBasic(0, ledger.SigLock{})
 		outBack, err := ledger.OutputFromBytes(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("empty output: %d bytes", len(out.Bytes()))
 	})
 	t.Run("address", func(t *testing.T) {
-		addr := ledger.AddressED25519FromPublicKey(pubKey)
+		addr := ledger.SigLockFromED25519PublicKey(pubKey)
 		t.Logf("address: %s", addr.String())
 		t.Logf("address hex: 0x%s", hex.EncodeToString(addr.Bytes()))
-		out := ledger.OutputBasic(0, ledger.AddressED25519FromPublicKey(pubKey))
+		out := ledger.OutputBasic(0, ledger.SigLockFromED25519PublicKey(pubKey))
 		outBack, err := ledger.OutputFromBytes(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
 		t.Logf("output: %d bytes", len(out.Bytes()))
 		t.Logf("output:\n%s", out.Lines().String())
 
-		_, err = ledger.AddressED25519FromBytes(outBack.Lock().Bytes())
+		_, err = ledger.SigLockFromBytes(outBack.Lock().Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, out.Lock(), outBack.Lock())
 	})
 	t.Run("tokens", func(t *testing.T) {
-		out := ledger.OutputBasic(1337, ledger.AddressED25519Null())
+		out := ledger.OutputBasic(1337, ledger.SigLock{})
 		outBack, err := ledger.OutputFromBytes(out.Bytes())
 		require.NoError(t, err)
 		require.EqualValues(t, outBack.Bytes(), out.Bytes())
@@ -68,7 +67,7 @@ func TestMainConstraints(t *testing.T) {
 		_, _, addr := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr))
 		require.EqualValues(t, 1, u.NumUTXOs(addr))
@@ -78,7 +77,7 @@ func TestMainConstraints(t *testing.T) {
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
@@ -88,7 +87,7 @@ func TestMainConstraints(t *testing.T) {
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(100_000_000))
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000-100_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
@@ -100,7 +99,7 @@ func TestMainConstraints(t *testing.T) {
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
@@ -111,14 +110,14 @@ func TestMainConstraints(t *testing.T) {
 		in.SenderPrivateKey = privKeyWrong
 		require.NoError(t, err)
 		err = u.DoTransfer(in.WithTargetLock(addrNext).WithAmount(100_000_000))
-		util.RequireErrorWithOld(t, err, "failed")
+		require.NoError(t, util.MustErrorWith(err, "failed"))
 	})
 	t.Run("not enough deposit", func(t *testing.T) {
 		u := utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey1, _, addr1 := u.GenerateAddress(1)
 		err := u.TokensFromFaucet(addr1, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr1))
 		require.EqualValues(t, 1, u.NumUTXOs(addr1))
@@ -153,14 +152,50 @@ func TestTxID(t *testing.T) {
 	txBytes, err := txbuilder.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
-	ctx, err := u.TxContextFromBytes(txBytes)
+	ctx, err := u.TxFullContextFromBytes(txBytes)
 	require.NoError(t, err)
 
+	lib := ledger.L(0)
 	txID := ctx.ID()
-	dctx := ledger.L().NewGlobalDataTracePrint(ledger.NewEvalContext(ctx))
-	res, err := ledger.L().EvalFromSource(dctx, "txID")
-
+	dctx := lib.NewGlobalDataTracePrint(ledger.NewEvalContext(ctx))
+	res, err := lib.EvalFromSource(dctx, "atPath(pathToSequencerDataBytes)")
 	require.NoError(t, err)
+	require.EqualValues(t, 0, len(res))
+
+	// taking txid from the embedded function
+	res, err = lib.EvalFromSource(dctx, "txID")
+	require.NoError(t, err)
+
+	require.EqualValues(t, txID[:], res)
+
+	// direct computation of the txid in EasyFL
+	const directTxID = `
+      concat(
+         if(
+            isSequencerTransaction, 
+            bitwiseOR(txTimestampBytes, 0x0000000001), 
+            txTimestampBytes
+         ), 
+         byte(sub(numProducedOutputs,1), 7), 
+         slice(blake2b(
+            concat(
+              atPath(pathToTxVersion),
+              atPath(pathToTimestamp),
+              atPath(pathToSequencerDataBytes),
+              atPath(pathToInputCommitment),
+		  	  atPath(pathToExplicitBaseline),
+              atPath(pathToInputIDs), 
+              atPath(pathToUnlockParams),
+              atPath(pathToProducedOutputs), 
+              atPath(pathToEndorsements),
+              atPath(pathToTxConstraints), 
+              atPath(pathToOtherData)
+            )
+         ),6,31))
+`
+	res, err = lib.EvalFromSource(dctx, directTxID)
+	require.NoError(t, err)
+
 	require.EqualValues(t, txID[:], res)
 }
 
@@ -229,7 +264,7 @@ func TestTimelock(t *testing.T) {
 			WithTargetLock(addr0),
 		)
 		if err != nil {
-			tx, err1 := transaction.FromBytesMainChecksWithOpt(txBytes)
+			tx, err1 := transaction.ParseWithPartialValidation(txBytes)
 			require.NoError(t, err1)
 			t.Logf("resulting tx ts: %s", tx.Timestamp())
 			require.True(t, tx.Timestamp().Slot > timelockSlot)
@@ -295,7 +330,7 @@ func TestTimelock(t *testing.T) {
 func TestChain1(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 ledger.AddressED25519
+	var addr0 ledger.SigLock
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
@@ -308,10 +343,10 @@ func TestChain1(t *testing.T) {
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(30_000_000).
 			WithTargetLock(addr0).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 30_000_000)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -321,10 +356,10 @@ func TestChain1(t *testing.T) {
 		return chains
 	}
 	t.Run("compile", func(t *testing.T) {
-		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0xffff, z32/1000, z64/2000)"
-		_, _, code, err := ledger.L().CompileExpression(source)
+		const source = "chain(0x0000000000000000000000000000000000000000000000000000000000000000, 0x, z32/1000, 0x, 0x, 0x, 0x)"
+		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
-		origBytecode := ledger.NewChainOrigin(1000, 2000).Bytes()
+		origBytecode := ledger.NewChainOrigin(1000).Bytes()
 		require.EqualValues(t, origBytecode, code)
 	})
 	t.Run("create origin ok", func(t *testing.T) {
@@ -337,10 +372,10 @@ func TestChain1(t *testing.T) {
 		err = u.DoTransfer(par.
 			WithAmount(100_000_000).
 			WithTargetLock(addr0).
-			WithConstraintBinary(ledger.NewChainOrigin(par.Timestamp.Slot, 100_000_000).Bytes()),
+			WithConstraintBinary(ledger.NewChainOrigin(par.Timestamp.Slot).Bytes()),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -348,60 +383,32 @@ func TestChain1(t *testing.T) {
 	t.Run("create origin twice in the same output", func(t *testing.T) {
 		initTest()
 
-		// chain constrained output with two origins will be valid, however there will be no way to create a predecessor of it
-		// the only way is to destroy output with two chain origins
+		// With chain constraint enforcing index 2, a second chain at index 3 is now rejected
 
-		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow().AddSlots(1))
-		code := ledger.NewChainOrigin(par.Timestamp.Slot, 60_000_000).Bytes()
-		outs, err := u.DoTransferOutputs(par.
+		// First get inputs with a placeholder timestamp
+		par, err := u.MakeTransferInputData(privKey0, nil, base.NilLedgerTime)
+		require.NoError(t, err)
+		// Derive timestamp from actual inputs to avoid timing race (see CLAUDE.local.md)
+		inputTs := par.Inputs[0].Timestamp()
+		par.Timestamp = inputTs.AddTicks(int(ledger.L(inputTs.Slot).TransactionPace))
+		if par.Timestamp.IsSlotBoundary() {
+			par.Timestamp = par.Timestamp.AddTicks(1)
+		}
+		code := ledger.NewChainOrigin(par.Timestamp.Slot).Bytes()
+		err = u.DoTransfer(par.
 			WithAmount(60_000_000).
 			WithTargetLock(addr0).
 			WithConstraintBinary(code).
 			WithConstraintBinary(code),
 		)
-		require.NoError(t, err)
-		for _, o := range outs {
-			t.Logf("---------------\n%s", o)
-		}
-
-		_, idx := outs[1].Output.ChainConstraint()
-		require.EqualValues(t, 2, idx)
-
-		_, err = ledger.ChainConstraintFromBytes(outs[1].Output.MustAt(2))
-		require.NoError(t, err)
-		_, err = ledger.ChainConstraintFromBytes(outs[1].Output.MustAt(3))
-		require.NoError(t, err)
-
-		// create destroying transaction
-		txb := txbuilder.New()
-		total, ts, err := txb.ConsumeOutputsNoUnlock(outs...)
-		require.NoError(t, err)
-		txb.PutSignatureUnlock(0)
-		// unlock data must be for both
-		txb.PutUnlockParams(1, 2, ledger.FinishChainUnlockParams)
-		txb.PutUnlockParams(1, 3, ledger.FinishChainUnlockParams)
-
-		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(int64(total)).WithLock(outs[0].Output.Lock())
-		}))
-		require.NoError(t, err)
-
-		txb.TransactionData.Timestamp = ts.AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-		txb.SignED25519(privKey0)
-
-		txBytes := txb.TransactionData.Bytes()
-		t.Logf("------------ chain destroying transaction:\n%s", u.TxStringFromBytes(txBytes))
-
-		err = u.AddTransaction(txBytes)
-		require.NoError(t, err)
-
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "chain constraint must be at index 2")
 	})
 	t.Run("create origin wrong 1", func(t *testing.T) {
 		initTest()
 
-		const source = "chain(0x0001, 0x0102, 1, 5)"
-		_, _, code, err := ledger.L().CompileExpression(source)
+		const source = "chain(0x0001, 0x0102, 1, 5, 6, 7, 3)"
+		_, _, code, err := ledger.L(base.MaxSlot).CompileExpression(source)
 		require.NoError(t, err)
 
 		par, err := u.MakeTransferInputData(privKey0, nil, ledger.TimeNow())
@@ -423,8 +430,8 @@ func TestChain1(t *testing.T) {
 		require.NoError(t, err)
 		o, err := ledger.OutputFromBytes(chs.Data)
 		require.NoError(t, err)
-		ch, idx := o.ChainConstraint()
-		require.True(t, idx != 0xff)
+		ch := o.ChainConstraint()
+		require.NotNil(t, ch)
 		require.True(t, ch.IsOrigin())
 		t.Logf("chain created: %s", easyfl_util.Fmt(chains[0].ChainID[:]))
 	})
@@ -443,13 +450,13 @@ func TestChain1(t *testing.T) {
 		require.NoError(t, err)
 		// get chain constraint from the output
 		// It is expected to be origin
-		ch, predecessorConstraintIndex := chainIN.Output.ChainConstraint()
-		require.True(t, predecessorConstraintIndex != 0xff)
+		ch := chainIN.Output.ChainConstraint()
+		require.NotNil(t, ch)
 		require.True(t, ch.IsOrigin())
 		t.Logf("chain created: %s", easyfl_util.Fmt(chains[0].ChainID[:]))
 
 		// add ticks to output timestamp to have valid timestamp of the next transaction
-		ts := chainIN.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 
 		// create transaction builder
 		txb := txbuilder.New()
@@ -466,13 +473,10 @@ func TestChain1(t *testing.T) {
 		_, err = txb.ProduceOutput(outNonChain)
 		require.NoError(t, err)
 
-		// we put 'destroy' unlock parameters 3xffffff for the chain constraint in the predecessor output
+		// we put empty unlock parameters for the chain constraint in the predecessor output
 		// It makes the chain constraint script of the consumed output not to enforce produced successor,
 		// as in the usual chain transition from predecessor to successor. With this chain is discontinued.
-		// We explicitly specify input index and the index of the chain constraint in the output.
-		// This is because we assume chain constraint do not have pre-defined index in the output,
-		// it can be any except 0xff, therefore must always be explicit.
-		txb.PutUnlockParams(consumedIndex, predecessorConstraintIndex, ledger.FinishChainUnlockParams)
+		txb.PutUnlockParams(consumedIndex, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 		// put unlock parameters for the chain controller lock. It is locked with usual sig lock
 		// The signature unlock of the address25519 constraint just refers to the signature at the
@@ -492,7 +496,7 @@ func TestChain1(t *testing.T) {
 		_, err = u.StateReader().GetUTXOForChainID(chainID)
 		require.True(t, errors.Is(err, multistate.ErrNotFound))
 
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, int(u.Supply()-u.FaucetBalance()-1_000_000_000), int(u.Balance(u.GenesisControllerAddress())))
 		require.EqualValues(t, 1_000_000_000, int(u.Balance(addr0)))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -507,13 +511,13 @@ func TestChain1(t *testing.T) {
 func TestChain2(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 ledger.AddressED25519
+	var addr0 ledger.SigLock
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
 		err := u.TokensFromFaucet(addr0, 1_000_000_000)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 1, u.NumUTXOs(addr0))
@@ -524,10 +528,10 @@ func TestChain2(t *testing.T) {
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(200_000_000).
 			WithTargetLock(addr0).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 200_000_000)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -547,10 +551,10 @@ func TestChain2(t *testing.T) {
 		chainIN, err := chs.Parse()
 		require.NoError(t, err)
 
-		cc, constraintIdx := chainIN.Output.ChainConstraint()
-		require.True(t, constraintIdx != 0xff)
+		cc := chainIN.Output.ChainConstraint()
+		require.NotNil(t, cc)
 
-		ts := chainIN.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 		txb := txbuilder.New()
 		predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
@@ -560,23 +564,22 @@ func TestChain2(t *testing.T) {
 		switch optionConstraint {
 		case 0:
 			// good
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 		case 1:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, constraintIdx, cc.OriginSlot, cc.OriginAmount)
-		case 2:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, 0xff, cc.OriginSlot, cc.OriginAmount)
-		case 3:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, 0xff, cc.OriginSlot, cc.OriginAmount)
+			// wrong predecessor input index
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, 0xff, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 		case 4:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot+1, cc.OriginAmount)
+			// wrong origin slot
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot+1, 0, 0, cc.TransitionCounter+1, 0)
 		case 5:
-			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount+1)
+			// wrong transition counter
+			nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+99, 0)
 		default:
 			panic("wrong test option 1")
 		}
 
 		chainOut := chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
-			out.PutConstraint(nextChainConstraint.Bytes(), constraintIdx)
+			out.PutConstraint(nextChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 		})
 
 		succIdx, err := txb.ProduceOutput(chainOut)
@@ -586,13 +589,10 @@ func TestChain2(t *testing.T) {
 		switch optionUnlock {
 		case 0:
 			// good
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx})
+			txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 		case 1:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{0xff, constraintIdx})
-		case 2:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, 0xff})
-		case 3:
-			txb.PutUnlockParams(predIdx, constraintIdx, []byte{0xff, 0xff})
+			// wrong successor output index
+			txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, []byte{0xff})
 		default:
 			panic("wrong test option 2")
 		}
@@ -614,7 +614,7 @@ func TestChain2(t *testing.T) {
 		_, err = u.StateReader().GetUTXOForChainID(chainID)
 		require.NoError(t, err)
 
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -635,49 +635,33 @@ func TestChain2(t *testing.T) {
 	t.Run("transit 1,0", func(t *testing.T) {
 		txString, err := runOption(1, 0)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
+		require.NoError(t, util.MustErrorWith(err, "successor reference crosscheck failed"))
 	})
-	t.Run("transit 2,0", func(t *testing.T) {
-		txString, err := runOption(2, 0)
-		prn(txString)
-		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
-	})
-	t.Run("transit 3,0", func(t *testing.T) {
-		txString, err := runOption(3, 0)
-		prn(txString)
-		util.RequireErrorWithOld(t, err, "successor reference crosscheck failed")
-	})
+	// Cases 2,0 and 3,0 removed: they tested wrong constraint index in chain constraint,
+	// which is now always implicit (ConstraintIndexChain=2).
 	t.Run("transit 4,0", func(t *testing.T) {
 		txString, err := runOption(4, 0)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "origin slot is immutable")
+		require.NoError(t, util.MustErrorWith(err, "origin slot mismatch"))
 	})
 	t.Run("transit 5,0", func(t *testing.T) {
 		txString, err := runOption(5, 0)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "origin amount is immutable")
+		require.NoError(t, util.MustErrorWith(err, "wrong transition counter"))
 	})
 	t.Run("transit 0,1", func(t *testing.T) {
 		txString, err := runOption(0, 1)
 		prn(txString)
-		util.RequireErrorWithOld(t, err, "index is out of range")
+		require.NoError(t, util.MustErrorWith(err, "index is out of range"))
 	})
-	t.Run("transit 0,2", func(t *testing.T) {
-		txString, err := runOption(0, 2)
-		prn(txString)
-		util.RequireErrorWithOld(t, err, "index is out of range")
-	})
-	t.Run("transit 0,3", func(t *testing.T) {
-		txString, err := runOption(0, 3)
-		prn(txString)
-		util.RequireErrorWithOld(t, err, "predecessor reference crosscheck failed")
-	})
+	// Cases 0,2 and 0,3 removed: they tested wrong constraint index in unlock params,
+	// which is now always implicit (ConstraintIndexChain=2).
 }
 
 func TestChain3(t *testing.T) {
 	var privKey0 ed25519.PrivateKey
 	var u *utxodb.UTXODB
-	var addr0 ledger.AddressED25519
+	var addr0 ledger.SigLock
 	initTest := func() {
 		u = utxodb.NewUTXODB(genesisPrivateKey, true)
 		privKey0, _, addr0 = u.GenerateAddress(0)
@@ -690,10 +674,10 @@ func TestChain3(t *testing.T) {
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(200_000_000).
 			WithTargetLock(addr0).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 200_000_000)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -712,24 +696,23 @@ func TestChain3(t *testing.T) {
 	chainIN, err := chs.Parse()
 	require.NoError(t, err)
 
-	cc, constraintIdx := chainIN.Output.ChainConstraint()
-	require.True(t, constraintIdx != 0xff)
+	cc := chainIN.Output.ChainConstraint()
+	require.NotNil(t, cc)
 
-	ts := chainIN.Timestamp().AddTicks(int(ledger.Const.TransactionPace))
+	ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 	txb := txbuilder.New()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
-	var nextChainConstraint *ledger.ChainConstraint
-	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, constraintIdx, cc.OriginSlot, cc.OriginAmount)
+	nextChainConstraint := ledger.NewChainConstraint(theChainData.ChainID, predIdx, cc.OriginSlot, 0, 0, cc.TransitionCounter+1, 0)
 
 	chainOut := chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(nextChainConstraint.Bytes(), constraintIdx)
+		out.PutConstraint(nextChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	})
 	succIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(predIdx, constraintIdx, []byte{succIdx, constraintIdx})
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 	txb.PutSignatureUnlock(0)
 
 	txb.TransactionData.Timestamp = ts
@@ -748,7 +731,7 @@ func TestChain3(t *testing.T) {
 	_, err = u.StateReader().GetUTXOForChainID(chainID)
 	require.NoError(t, err)
 
-	require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+	require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 	require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
 	require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 	require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -757,7 +740,7 @@ func TestChain3(t *testing.T) {
 
 func TestChainLock(t *testing.T) {
 	var privKey0, privKey1 ed25519.PrivateKey
-	var addr0, addr1 ledger.AddressED25519
+	var addr0, addr1 ledger.SigLock
 	var u *utxodb.UTXODB
 	var chainID base.ChainID
 	var chainAddr ledger.ChainLock
@@ -774,10 +757,10 @@ func TestChainLock(t *testing.T) {
 		outs, err := u.DoTransferOutputs(par.
 			WithAmount(200_000_000).
 			WithTargetLock(addr0).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 200_000_000)),
+			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)),
 		)
 		require.NoError(t, err)
-		require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
+		require.EqualValues(t, 2, u.NumUTXOs(u.GenesisControllerAddress())) // sequencer output + controller dust output
 		require.EqualValues(t, u.Supply()-u.FaucetBalance()-1_000_0000_000, u.Balance(u.GenesisControllerAddress()))
 		require.EqualValues(t, 1_000_0000_000, u.Balance(addr0))
 		require.EqualValues(t, 2, u.NumUTXOs(addr0))
@@ -831,7 +814,7 @@ func TestChainLock(t *testing.T) {
 		require.EqualValues(t, 110_000_000, int(onLocked))
 		require.EqualValues(t, 200_000_000, int(onChainOut))
 
-		outs, err := u.StateReader().GetUTXOsInAccount(chainAddr.AccountID())
+		outs, err := u.StateReader().GetUTXOsForController(chainAddr.ControllerID())
 		require.NoError(t, err)
 		require.EqualValues(t, 2, len(outs))
 
@@ -842,7 +825,7 @@ func TestChainLock(t *testing.T) {
 		txBytes, err := txbuilder.MakeTransferTransaction(par)
 		require.NoError(t, err)
 
-		v, err := u.TxContextFromBytes(txBytes)
+		v, err := u.TxFullContextFromBytes(txBytes)
 		require.NoError(t, err)
 		t.Logf("\n%s", v.String())
 
@@ -859,398 +842,47 @@ func TestChainLock(t *testing.T) {
 }
 
 func TestLocalLibrary(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
 	const source = `
  func fun1 : concat($0,$1)
  func fun2 : fun1(fun1($0,$1), fun1($0,$1))
  func fun3 : fun2($0, $0)
 `
-	libBin, err := ledger.L().Library.CompileLocalLibraryToTuple(source)
+	libBin, err := lib.Library.CompileLocalLibraryToTuple(source)
 	require.NoError(t, err)
 	t.Run("1", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 2, 5)", hex.EncodeToString(libBin))
 		t.Logf("src = '%s', len = %d", src, len(libBin))
-		ledger.L().MustEqual(src, "0x05050505")
+		lib.MustEqual(src, "0x05050505")
 	})
 	t.Run("2", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 0, 5, 6)", hex.EncodeToString(libBin))
 		t.Logf("src = '%s', len = %d", src, len(libBin))
-		ledger.L().MustEqual(src, "0x0506")
+		lib.MustEqual(src, "0x0506")
 	})
 	t.Run("3", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 1, 5, 6)", hex.EncodeToString(libBin))
 		t.Logf("src = '%s', len = %d", src, len(libBin))
-		ledger.L().MustEqual(src, "0x05060506")
+		lib.MustEqual(src, "0x05060506")
 	})
 	t.Run("4", func(t *testing.T) {
 		src := fmt.Sprintf("callLocalLibrary(0x%s, 3)", hex.EncodeToString(libBin))
 		t.Logf("src = '%s', len = %d", src, len(libBin))
-		ledger.L().MustError(src)
+		lib.MustError(src)
 	})
 }
-
-func TestHashUnlock(t *testing.T) {
-	const secretUnlockScript = "func fun1: and" // fun1 always returns true
-	libBin, err := ledger.L().Library.CompileLocalLibraryToTuple(secretUnlockScript)
-	require.NoError(t, err)
-	t.Logf("library size: %d", len(libBin))
-	libHash := blake2b.Sum256(libBin)
-	t.Logf("library hash: %s", easyfl_util.Fmt(libHash[:]))
-
-	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-	privKey0, _, addr0 := u.GenerateAddress(0)
-	err = u.TokensFromFaucet(addr0, 1_000_000_000)
-	require.NoError(t, err)
-
-	constraintSource := fmt.Sprintf("or(isPathToProducedOutput(at),callLocalLibrary(selfHashUnlock(0x%s), 0))", hex.EncodeToString(libHash[:]))
-	_, _, constraintBin, err := ledger.L().CompileExpression(constraintSource)
-	require.NoError(t, err)
-	t.Logf("constraint source: %s", constraintSource)
-	t.Logf("constraint size: %d", len(constraintBin))
-
-	par, err := u.MakeTransferInputData(privKey0, nil, base.NilLedgerTime)
-	require.NoError(t, err)
-	constr := ledger.NewGeneralScript(constraintBin)
-	t.Logf("constraint: %s", constr)
-	par.WithAmount(100_000_000).
-		WithTargetLock(addr0).
-		WithConstraint(constr)
-	txbytes, err := txbuilder.MakeTransferTransaction(par)
-	require.NoError(t, err)
-
-	ctx, err := transaction.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
-	require.NoError(t, err)
-
-	t.Logf("%s", ctx.String())
-	outs, err := u.DoTransferOutputs(par)
-	require.NoError(t, err)
-
-	outs = ledger.FilterOutputsSortByAmount(outs, func(o *ledger.Output) bool {
-		return o.TokenBalance() == 100_000_000
-	})
-
-	// produce transaction without providing hash unlocking library for the output with script
-	par = txbuilder.NewTransferData(privKey0, addr0, base.NilLedgerTime)
-	par.MustWithInputs(outs...).
-		WithAmount(50_000_000).
-		WithTargetLock(addr0)
-
-	txbytes, err = txbuilder.MakeTransferTransaction(par)
-	require.NoError(t, err)
-
-	ctx, err = transaction.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
-	require.NoError(t, err)
-
-	t.Logf("---- transaction without hash unlock: FAILING\n %s", ctx.String())
-	err = u.DoTransfer(par)
-	require.Error(t, err)
-
-	// now adding unlock data the unlocking library/script
-	par.WithUnlockData(0, ledger.ConstraintIndexFirstOptionalConstraint, libBin)
-
-	txbytes, err = txbuilder.MakeTransferTransaction(par)
-	require.NoError(t, err)
-
-	ctx, err = transaction.TxContextFromTransferableBytes(txbytes, u.StateReader().GetUTXO)
-	require.NoError(t, err)
-
-	t.Logf("---- transaction with hash unlock, the library/script: SUCCESS\n %s", ctx.String())
-	t.Logf("%s", ctx.String())
-	err = u.DoTransfer(par)
-	require.NoError(t, err)
-}
-
-//func TestImmutable(t *testing.T) {
-//	u := utxodb.NewUTXODB(genesisPrivateKey, true)
-//	privKey, _, addr0 := u.GenerateAddress(0)
-//	err := u.TokensFromFaucet(addr0, 10000)
-//	require.NoError(t, err)
-//
-//	// create origin chain
-//	par, err := u.MakeTransferInputData(privKey, nil, ledger.TimeNow().AddSlots(1))
-//	require.NoError(t, err)
-//	par.WithAmount(2000).
-//		WithTargetLock(addr0).
-//		WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot, 2000))
-//	txbytes, err := txbuilder.MakeTransferTransaction(par)
-//	require.NoError(t, err)
-//	t.Logf("tx1 = %s", u.TxToString(txbytes))
-//
-//	outs, err := u.DoTransferOutputs(par)
-//	require.NoError(t, err)
-//	require.EqualValues(t, 1, u.NumUTXOs(u.GenesisControllerAddress()))
-//	require.EqualValues(t, u.Supply()-u.FaucetBalance()-10000, u.Balance(u.GenesisControllerAddress()))
-//	require.EqualValues(t, 10000, u.Balance(addr0))
-//	require.EqualValues(t, 2, u.NumUTXOs(addr0))
-//	require.EqualValues(t, 2, len(outs))
-//	chains, err := ledger.FilterChainOutputs(outs)
-//	require.NoError(t, err)
-//
-//	theChainData := chains[0]
-//	chainID := theChainData.ChainID
-//
-//	// -------------------------- make transition
-//	chs, err := u.StateReader().GetUTXOForChainID(chainID)
-//	require.NoError(t, err)
-//
-//	chainIN, err := chs.Parse()
-//	require.NoError(t, err)
-//
-//	cc, chainConstraintIdx := chainIN.Output.ChainConstraint()
-//	require.True(t, chainConstraintIdx != 0xff)
-//
-//	ts := chainIN.Timestamp().AddTicks(ledger.TransactionPace())
-//	txb := txbuilder.New()
-//	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ChainID)
-//	require.NoError(t, err)
-//
-//	var nextChainConstraint *ledger.ChainConstraint
-//	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
-//
-//	var dataConstraintIdx, immutableConstraintIdx byte
-//	chainOut := chainIN.Output.Clone(func(o *ledger.OutputBuilder) {
-//		o.PutConstraint(nextChainConstraint.Bytes(), chainConstraintIdx)
-//
-//		immutableData, err := ledger.NewGeneralScriptFromSource("concat(0x01020304030201)")
-//		require.NoError(t, err)
-//		// push data constraint
-//		dataConstraintIdx = o.MustPushConstraint(immutableData)
-//		// push immutable constraint
-//		immutableConstraintIdx = o.MustPushConstraint(ledger.NewImmutable(chainConstraintIdx, dataConstraintIdx).Bytes())
-//	})
-//
-//	succIdx, err := txb.ProduceOutput(chainOut)
-//	require.NoError(t, err)
-//
-//	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
-//	txb.PutSignatureUnlock(0)
-//
-//	txb.TransactionData.Timestamp = ts
-//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-//
-//	txb.SignED25519(privKey)
-//
-//	txbytes = txb.TransactionData.Bytes()
-//	t.Logf("tx2 = %s", u.TxToString(txbytes))
-//	err = u.AddTransaction(txbytes)
-//	require.NoError(t, err)
-//
-//	// -------------------------------- make transition #2
-//	chs, err = u.StateReader().GetUTXOForChainID(chainID)
-//	require.NoError(t, err)
-//
-//	chainIN, err = chs.Parse()
-//	require.NoError(t, err)
-//
-//	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
-//	require.True(t, chainConstraintIdx != 0xff)
-//
-//	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
-//	txb = txbuilder.New()
-//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chainIN.ChainID)
-//	require.NoError(t, err)
-//
-//	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
-//
-//	chainOut = chainIN.Output.Clone()
-//
-//	succIdx, err = txb.ProduceOutput(chainOut)
-//	require.NoError(t, err)
-//
-//	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
-//	// skip immutable unlock
-//	txb.PutSignatureUnlock(0)
-//
-//	txb.TransactionData.Timestamp = ts
-//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-//
-//	txb.SignED25519(privKey)
-//
-//	txbytes = txb.TransactionData.Bytes()
-//	t.Logf("tx3 = %s", u.TxToString(txbytes))
-//	err = u.AddTransaction(txbytes)
-//
-//	// fails because wrong unlock parameters
-//	util.RequireErrorWith(t, err, "'immutable' failed with error")
-//
-//	// --------------------------------- transit with wrong immutable data
-//	chs, err = u.StateReader().GetUTXOForChainID(chainID)
-//	require.NoError(t, err)
-//
-//	chainIN, err = chs.Parse()
-//	require.NoError(t, err)
-//
-//	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
-//	require.True(t, chainConstraintIdx != 0xff)
-//
-//	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
-//	txb = txbuilder.New()
-//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ChainID)
-//	require.NoError(t, err)
-//
-//	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
-//
-//	chainOut = chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
-//		// put wrong data
-//		wrongImmutableData, err := ledger.NewGeneralScriptFromSource("concat(0x010203040302010000)")
-//		require.NoError(t, err)
-//		out.PutConstraint(wrongImmutableData.Bytes(), dataConstraintIdx)
-//	})
-//	succIdx, err = txb.ProduceOutput(chainOut)
-//	require.NoError(t, err)
-//
-//	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
-//	// put correct unlock params
-//	txb.PutUnlockParams(predIdx, dataConstraintIdx, []byte{dataConstraintIdx, immutableConstraintIdx})
-//
-//	// skip immutable unlock
-//	txb.PutSignatureUnlock(0)
-//
-//	txb.TransactionData.Timestamp = ts
-//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-//
-//	txb.SignED25519(privKey)
-//
-//	txbytes = txb.TransactionData.Bytes()
-//	t.Logf("tx4 = %s", u.TxToString(txbytes))
-//	err = u.AddTransaction(txbytes)
-//
-//	// fails because wrong unlock parameters
-//	util.RequireErrorWith(t, err, "'immutable' failed with error")
-//
-//	// put it all correct
-//	chs, err = u.StateReader().GetUTXOForChainID(chainID)
-//	require.NoError(t, err)
-//
-//	chainIN, err = chs.Parse()
-//	require.NoError(t, err)
-//
-//	cc, chainConstraintIdx = chainIN.Output.ChainConstraint()
-//	require.True(t, chainConstraintIdx != 0xff)
-//
-//	ts = chainIN.Timestamp().AddTicks(ledger.TransactionPace())
-//	txb = txbuilder.New()
-//	predIdx, err = txb.ConsumeOutput(chainIN.Output, chs.ChainID)
-//	require.NoError(t, err)
-//
-//	nextChainConstraint = ledger.NewChainConstraint(theChainData.ChainID, predIdx, chainConstraintIdx, cc.OriginSlot, cc.OriginAmount)
-//
-//	chainOut = chainIN.Output.Clone(func(out *ledger.OutputBuilder) {
-//		// put wrong data
-//		sameImmutableData, err := ledger.NewGeneralScriptFromSource("concat(0x01020304030201)")
-//		require.NoError(t, err)
-//		out.PutConstraint(sameImmutableData.Bytes(), dataConstraintIdx)
-//	})
-//
-//	succIdx, err = txb.ProduceOutput(chainOut)
-//	require.NoError(t, err)
-//
-//	txb.PutUnlockParams(predIdx, chainConstraintIdx, []byte{succIdx, chainConstraintIdx})
-//	// put correct unlock params
-//	txb.PutUnlockParams(predIdx, immutableConstraintIdx, []byte{dataConstraintIdx, immutableConstraintIdx})
-//
-//	// skip immutable unlock
-//	txb.PutSignatureUnlock(0)
-//
-//	txb.TransactionData.Timestamp = ts
-//	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-//
-//	txb.SignED25519(privKey)
-//
-//	txbytes = txb.TransactionData.Bytes()
-//	t.Logf("tx5 = %s", u.TxToString(txbytes))
-//	err = u.AddTransaction(txbytes)
-//	require.NoError(t, err)
-//}
 
 func TestGGG(t *testing.T) {
+	lib := ledger.L(base.MaxSlot)
 	t.Logf("now = %d", uint32(time.Now().Unix()))
 	loc, err := time.LoadLocation("UTC")
 	require.NoError(t, err)
 	jan1 := time.Date(2023, 1, 1, 0, 0, 0, 0, loc)
 	t.Logf("Jan 1, 2023 UTC = %d", uint32(jan1.Unix()))
 
-	_, _, bin, err := ledger.L().CompileExpression("amounts(u64/1337)")
+	_, _, bin, err := lib.CompileExpression("sigLock(0x)")
 	require.NoError(t, err)
-	prefix, err := ledger.L().ParsePrefixBytecode(bin)
+	prefix, err := lib.ParsePrefixBytecode(bin)
 	require.NoError(t, err)
 	t.Logf("bin = %s, prefix = %s", hex.EncodeToString(bin), hex.EncodeToString(prefix))
 }
-
-//func TestTotalAmount(t *testing.T) {
-//	t.Run("total amount ok", func(t *testing.T) {
-//		u := utxodb.NewUTXODB(genesisPrivateKey, true)
-//		const (
-//			numUTXOs   = 100
-//			initAmount = 10_000
-//		)
-//		privKey0, _, addr0 := u.GenerateAddress(0)
-//		require.EqualValues(t, 0, u.NumUTXOs(addr0))
-//
-//		utxos := u.GenerateUTXOsWithFaucetAmount(addr0, numUTXOs, initAmount)
-//		require.EqualValues(t, len(utxos), u.NumUTXOs(addr0))
-//
-//		txb := txbuilder.New()
-//		total, ts, err := txb.ConsumeOutputsNoUnlock(utxos...)
-//		require.NoError(t, err)
-//
-//		txb.PutSignatureUnlock(0)
-//		for i := 1; i < numUTXOs; i++ {
-//			err = txb.PutUnlockReference(byte(i), 1, 0)
-//			require.NoError(t, err)
-//		}
-//		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-//			o.WithAmounts(int64(total)).WithLock(addr0)
-//			o.MustPushConstraint(ledger.NewTotalAmount(total).Bytes())
-//		})
-//
-//		_, err = txb.ProduceOutput(out)
-//		require.NoError(t, err)
-//
-//		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-//		txb.TransactionData.Timestamp = ts.AddSlots(1)
-//		txb.SignED25519(privKey0)
-//
-//		txBytes := txb.TransactionData.Bytes()
-//
-//		err = transaction.ValidateTxBytes(txBytes, txb.LoadInput)
-//		require.NoError(t, err)
-//	})
-//	t.Run("total amount fail", func(t *testing.T) {
-//		u := utxodb.NewUTXODB(genesisPrivateKey, true)
-//		const (
-//			numUTXOs   = 100
-//			initAmount = 10_000
-//		)
-//		privKey0, _, addr0 := u.GenerateAddress(0)
-//		require.EqualValues(t, 0, u.NumUTXOs(addr0))
-//
-//		utxos := u.GenerateUTXOsWithFaucetAmount(addr0, numUTXOs, initAmount)
-//		require.EqualValues(t, len(utxos), u.NumUTXOs(addr0))
-//
-//		txb := txbuilder.New()
-//		total, ts, err := txb.ConsumeOutputsNoUnlock(utxos...)
-//		require.NoError(t, err)
-//
-//		txb.PutSignatureUnlock(0)
-//		for i := 1; i < numUTXOs; i++ {
-//			err = txb.PutUnlockReference(byte(i), 1, 0)
-//			require.NoError(t, err)
-//		}
-//		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-//			o.WithAmounts(int64(total)).WithLock(addr0)
-//			o.MustPushConstraint(ledger.NewTotalAmount(total / 3).Bytes())
-//		})
-//
-//		_, err = txb.ProduceOutput(out)
-//		require.NoError(t, err)
-//
-//		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-//		txb.TransactionData.Timestamp = ts.AddSlots(1)
-//		txb.SignED25519(privKey0)
-//
-//		txBytes := txb.TransactionData.Bytes()
-//
-//		err = transaction.ValidateTxBytes(txBytes, txb.LoadInput)
-//		util.RequireErrorWithOld(t, err, "total amount constraint failed")
-//	})
-//}

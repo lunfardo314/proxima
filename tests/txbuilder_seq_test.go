@@ -25,19 +25,17 @@ import (
 //var genesisPrivateKey ed25519.PrivateKey
 
 //func init() {
-//	genesisPrivateKey = ledger.InitWithTestingLedgerIDData()
+//	genesisPrivateKey = ledger.InitWithTestingLedgerData()
 //}
 
 func TestBase(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
-	addr := ledger.AddressED25519FromPrivateKey(privKey)
+	addr := ledger.SigLockFromED25519PrivateKey(privKey)
 	seqID := base.RandomChainID()
 	bal := uint64(1_000_000_000_000)
 
 	sd := seqdata.New().
 		SetName("test_seq").
-		IncBranchHeight(2).
-		IncChainHeight(4).
 		SetMinimumFee(1)
 
 	predTs := base.T(1000, 50)
@@ -48,8 +46,8 @@ func TestBase(t *testing.T) {
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, bal).Bytes())
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -59,7 +57,15 @@ func TestBase(t *testing.T) {
 	}
 
 	newTxb := func(ts base.LedgerTime, frozen ...int64) *txbuilder_seq.SeqTxBuilder {
-		txb, err := txbuilder_seq.New(ts, newPredChain(frozen...), nil, privKey, multistate.DummyStateReader)
+		txb, err := txbuilder_seq.New(txbuilder_seq.Params{
+			Timestamp:     ts,
+			Predecessor:   newPredChain(frozen...),
+			Stem:          nil,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    privKey,
+			PublicKey:     privKey.Public().(ed25519.PublicKey),
+			StateReader:   multistate.DummyStateReader,
+		})
 		require.NoError(t, err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -150,7 +156,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(99)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(privKey))),
 			//txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 1_000_000, addr),
 		}
 		ts = ts.AddSlots(1)
@@ -167,7 +173,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(privKey))),
 		}
 
 		ts = ts.AddSlots(1)
@@ -185,13 +191,13 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: ledger.NewTagAlongOutput(200, seqID, ledger.AddressED25519FromPrivateKey(privKey)),
+			Output: ledger.NewTagAlongOutput(200, seqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(privKey))),
 		}
-		txb := newTxb(ts.AddSlots(ledger.Const.TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		txb := newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, util.MustErrorWith(err, "missed tag-along window"))
 
-		txb = newTxb(ts.AddSlots(ledger.Const.TagAlongSlots-1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		txb = newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots-1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
@@ -205,7 +211,7 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 40_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.SigLockFromED25519PrivateKey(privKey), 200, 40_000_000, addr),
 		}
 		txb := newTxb(ts.AddSlots(1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
@@ -220,13 +226,13 @@ func TestBase(t *testing.T) {
 		ts := predTs.AddSlots(999)
 		tagAlongOut := ledger.OutputWithID{
 			ID:     base.RandomOutputID(ts),
-			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, 40_000_000, addr),
+			Output: txbuilder_seq.NewWithdrawRequestOutput(seqID, ledger.SigLockFromED25519PrivateKey(privKey), 200, 40_000_000, addr),
 		}
-		txb := newTxb(ts.AddSlots(ledger.Const.TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		txb := newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, util.MustErrorWith(err, "missed tag-along window"))
 
-		txb = newTxb(ts.AddSlots(ledger.Const.TagAlongSlots-5), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		txb = newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots-5), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
@@ -237,9 +243,9 @@ func TestBase(t *testing.T) {
 	})
 	t.Run("many withdraw", func(t *testing.T) {
 		ts := predTs.AddSlots(1000)
-		txb := newTxb(ts.AddSlots(ledger.Const.TagAlongSlots-1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+		txb := newTxb(ts.AddSlots(ledger.L(0).TagAlongSlots-1), 1_000_000, 1_000_000, 1_000_000, 1_000_000)
 
-		sender := ledger.AddressED25519FromPrivateKey(privKey)
+		sender := ledger.SigLockFromED25519PrivateKey(privKey)
 		rndWithdraw := func(amount uint64, slot uint32) error {
 			tagAlongOut := ledger.OutputWithID{
 				ID:     base.RandomOutputID(base.T(slot, 50)),
@@ -268,8 +274,8 @@ func TestBase(t *testing.T) {
 
 		tagAlongOut := ledger.OutputWithID{
 			ID: base.RandomOutputID(base.T(ts.Slot, 50)),
-			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, ledger.AddressED25519FromPrivateKey(privKey), 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
-				sdUpdated.SetName("newName").IncChainHeight()
+			Output: txbuilder_seq.NewSeqDataCommandOutput(seqID, ledger.SigLockFromED25519PrivateKey(privKey), 200, predSeqData.Clone(func(sdUpdated *seqdata.SequencerData) {
+				sdUpdated.SetName("newName")
 			})),
 		}
 
@@ -283,18 +289,18 @@ func TestBase(t *testing.T) {
 	})
 }
 
-func delegationInit(master ledger.Accountable, seqID base.ChainID, startSlot uint32, maxSeqProfitMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
-	maxEpochs := byte(ledger.Const.MaxFrozenEpochs)
+func delegationInit(masterID base.HolderID, seqID base.ChainID, startSlot uint32, maxSeqProfitMargin uint16, maxFreezeEpochs ...byte) ledger.DelegationOutput {
+	maxEpochs := byte(ledger.L(0).MaxFrozenEpochs)
 	if len(maxFreezeEpochs) > 0 {
 		maxEpochs = maxFreezeEpochs[0]
 	}
 	ret := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:             1_000_000_000,
-		Master:             master,
-		Target:             ledger.ChainLockFromChainID(seqID),
-		MaxFreezeEpochs:    maxEpochs,
-		MaxSeqProfitMargin: maxSeqProfitMargin,
-		StartSlot:          startSlot,
+		Amount:                 1_000_000_000,
+		MasterID:               masterID,
+		Target:                 seqID,
+		MaxFrozenEpochs:        maxEpochs,
+		RequiredInflationShare: maxSeqProfitMargin,
+		StartSlot:              startSlot,
 	})
 	delegationInitOid := base.MustNewOutputID(base.RandomTransactionID(false, 2, base.T(startSlot, 50)), 1)
 
@@ -305,9 +311,9 @@ func delegationInit(master ledger.Accountable, seqID base.ChainID, startSlot uin
 
 func TestFreezeOneStep(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
-	addr := ledger.AddressED25519FromPrivateKey(privKey)
+	addr := ledger.SigLockFromED25519PrivateKey(privKey)
 	seqID := base.RandomChainID()
-	seqInitBalance := ledger.Const.MinimumAmountOnSequencer << 8
+	seqInitBalance := uint64(1_000_000_000) << 8
 
 	predTs := base.T(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
@@ -317,16 +323,14 @@ func TestFreezeOneStep(t *testing.T) {
 
 		sd := seqdata.New().
 			SetName("test_seq").
-			IncBranchHeight(2).
-			IncChainHeight(4).
 			SetMinimumFee(1).
 			SetSeqProfitMarginPromille(requiredSeqProfitMargin).
 			SetGreedy(greedy)
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
-			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, seqInitBalance).Bytes())
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -337,7 +341,15 @@ func TestFreezeOneStep(t *testing.T) {
 	}
 
 	newTxb := func(ts base.LedgerTime, seqProfitMargin uint16, greedy bool, frozen ...int64) *txbuilder_seq.SeqTxBuilder {
-		txb, err := txbuilder_seq.New(ts, newPredChain(seqProfitMargin, greedy, frozen...), nil, privKey, multistate.DummyStateReader)
+		txb, err := txbuilder_seq.New(txbuilder_seq.Params{
+			Timestamp:     ts,
+			Predecessor:   newPredChain(seqProfitMargin, greedy, frozen...),
+			Stem:          nil,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    privKey,
+			PublicKey:     privKey.Public().(ed25519.PublicKey),
+			StateReader:   multistate.DummyStateReader,
+		})
 		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -348,7 +360,7 @@ func TestFreezeOneStep(t *testing.T) {
 	runTest := func(startSlot uint32, seqProfitMargin, inflationShareByDelegator uint16, greedy bool, maxFreezeEpochs byte, prnTx bool) (errTest error) {
 		name := fmt.Sprintf("seqProfit=%d inflationShare=%d greedy=%v maxFreezeEpochs=%d", seqProfitMargin, inflationShareByDelegator, greedy, maxFreezeEpochs)
 		t.Run(name, func(t *testing.T) {
-			dIn := delegationInit(addr, seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
+			dIn := delegationInit(base.HolderID(addr), seqID, startSlot, inflationShareByDelegator, maxFreezeEpochs)
 			//t.Logf("------------\n%s", dIn.LinesHR("    ").String())
 
 			ts := base.MaximumTime(predTs.AddSlots(1), dIn.Timestamp().AddSlots(1))
@@ -373,7 +385,7 @@ func TestFreezeOneStep(t *testing.T) {
 				return
 			}
 
-			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytes)
 			if err != nil {
 				errTest = err
 				return
@@ -386,7 +398,7 @@ func TestFreezeOneStep(t *testing.T) {
 			// TODO something is fishy. Seq profit projections slightly inconsistent (too good) compared to the produced output
 
 			// calculate profitability of freezing
-			inflationOneSlotDelegator := ledger.ChainInflationOneSlot(dIn.Output.TokenBalance(), dIn.ID.Slot())
+			inflationOneSlotDelegator := txb.Library.ChainInflationOneSlot(dIn.Output.TokenBalance(), dIn.ID.Slot())
 			advance := dOut.Output.TokenBalance() - dIn.Output.TokenBalance() - inflationOneSlotDelegator
 
 			t.Logf("delegation init ID: %s", dIn.ID.String())
@@ -396,11 +408,11 @@ func TestFreezeOneStep(t *testing.T) {
 			frozenAmount := dIn.Output.TokenBalance() + inflationOneSlotDelegator
 			t.Logf("frozen amount: %s", util.Th(frozenAmount))
 
-			inflationOneSlotSeq := ledger.ChainInflationOneSlot(seqInitBalance, predTs.Slot)
+			inflationOneSlotSeq := txb.Library.ChainInflationOneSlot(seqInitBalance, predTs.Slot)
 			seqInflatableBalanceDoNothing := seqInitBalance + inflationOneSlotSeq
-			seqInflationDoNothing := ledger.ChainInflation(seqInflatableBalanceDoNothing, ts.Slot, frozenSlots)
+			seqInflationDoNothing := txb.Library.ChainInflationMultiStep(seqInflatableBalanceDoNothing, ts.Slot, frozenSlots)
 			seqInflatableBalanceFreeze := seqInitBalance + inflationOneSlotSeq - advance + frozenAmount
-			seqInflationFreeze := ledger.ChainInflation(seqInflatableBalanceFreeze, ts.Slot, frozenSlots)
+			seqInflationFreeze := txb.Library.ChainInflationMultiStep(seqInflatableBalanceFreeze, ts.Slot, frozenSlots)
 			repaymentSeq := int64(seqInflationFreeze) - int64(seqInflationDoNothing)
 			roiSeq := repaymentSeq - int64(advance)
 			roiSeqPercent := 100 * (float64(roiSeq) / float64(advance))
@@ -479,9 +491,9 @@ type _epochStats struct {
 
 func TestFreezeMultipleSteps(t *testing.T) {
 	privKey := testutil.GetTestingPrivateKey()
-	addr := ledger.AddressED25519FromPrivateKey(privKey)
+	addr := ledger.SigLockFromED25519PrivateKey(privKey)
 	seqID := base.RandomChainID()
-	seqInitBalance := ledger.Const.MinimumAmountOnSequencer << 8
+	seqInitBalance := uint64(1_000_000_000) << 8
 
 	predTs := base.T(1000, 50)
 	predID := base.MustNewOutputID(base.RandomTransactionID(true, 2, predTs), 0)
@@ -489,16 +501,14 @@ func TestFreezeMultipleSteps(t *testing.T) {
 	newPredChain := func(requiredSeqProfitMargin uint16, greedy bool) *ledger.OutputWithChainID {
 		sd := seqdata.New().
 			SetName("test_seq").
-			IncBranchHeight(2).
-			IncChainHeight(4).
 			SetMinimumFee(1).
 			SetSeqProfitMarginPromille(requiredSeqProfitMargin).
 			SetGreedy(greedy)
 
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
-			ccIdx := o.MustPushConstraint(ledger.NewChainConstraint(seqID, 0, 2, 1000, seqInitBalance).Bytes())
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ccIdx).Bytes())
+			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -508,7 +518,15 @@ func TestFreezeMultipleSteps(t *testing.T) {
 	}
 
 	newTxb := func(predChain *ledger.OutputWithChainID, ts base.LedgerTime, seqProfitMargin uint16, greedy bool) *txbuilder_seq.SeqTxBuilder {
-		txb, err := txbuilder_seq.New(ts, predChain, nil, privKey, multistate.DummyStateReader)
+		txb, err := txbuilder_seq.New(txbuilder_seq.Params{
+			Timestamp:     ts,
+			Predecessor:   predChain,
+			Stem:          nil,
+			SignatureType: base.SignatureTypeED25519,
+			PrivateKey:    privKey,
+			PublicKey:     privKey.Public().(ed25519.PublicKey),
+			StateReader:   multistate.DummyStateReader,
+		})
 		util.AssertNoError(err)
 		rndEndorsement := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 		err = txb.AddEndorsement(rndEndorsement)
@@ -522,7 +540,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		delegations = make([]ledger.DelegationOutput, par.numDelegations)
 		for i := range delegations {
 			maxFreeze := byte(i) % par.maxFreezeEpochs
-			delegations[i] = delegationInit(addr, seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
+			delegations[i] = delegationInit(base.HolderID(addr), seqID, par.startSlot+uint32(i), par.inflationShareByDelegator, maxFreeze)
 		}
 		seqOut := newPredChain(par.seqProfitMargin, par.greedy)
 		var ok bool
@@ -534,7 +552,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		for step := 0; step < par.howManySteps; step++ {
 			ts = ts.AddSlots(1)
 			txSlot = ts.Slot
-			epoch := ledger.Const.EpochFromSlotDirect(seqID, txSlot)
+			epoch := ledger.L(0).EpochFromSlotDirect(seqID, txSlot)
 			if epochStats == nil || epochStats.epoch != epoch {
 				if epochStats != nil && par.prnEpochStats {
 					a := seqOut.Output.TokenBalance()
@@ -588,7 +606,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 				return
 			}
 
-			tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
+			tx, err := transaction.ParseWithPartialValidation(txBytes)
 			if err != nil {
 				errTest = err
 				return
@@ -636,9 +654,9 @@ type (
 	testWithUTXODBData struct {
 		*testing.T
 		masterPrivateKey ed25519.PrivateKey
-		masterAddr       ledger.AddressED25519
+		masterAddr       ledger.SigLock
 		targetPrivateKey ed25519.PrivateKey
-		targetAddr       ledger.AddressED25519
+		targetAddr       ledger.SigLock
 		u                *utxodb.UTXODB
 		seqID            base.ChainID
 		delegationIDs    []base.ChainID
@@ -648,7 +666,7 @@ type (
 
 func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData, base.LedgerTime) {
 	u := utxodb.NewUTXODB(genesisPrivateKey)
-	seqInitBalance := ledger.Const.MinimumAmountOnSequencer << 8
+	seqInitBalance := uint64(1_000_000_000) << 8
 	pk, _, addrs := u.GenerateAddressesWithFaucetAmount(314, 2, seqInitBalance*2)
 	ret := &testWithUTXODBData{
 		T:                t,
@@ -668,7 +686,15 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	ret.seqID = seqChainOrig.ChainID
 	t.Logf("seqID: %s", ret.seqID.String())
 	ts := seqChainOrig.ID.Timestamp().AddSlots(1)
-	txbSeq, err := txbuilder_seq.New(ts, seqChainOrig, nil, ret.targetPrivateKey, nil)
+	txbSeq, err := txbuilder_seq.New(txbuilder_seq.Params{
+		Timestamp:     ts,
+		Predecessor:   seqChainOrig,
+		Stem:          nil,
+		SignatureType: base.SignatureTypeED25519,
+		PrivateKey:    ret.targetPrivateKey,
+		PublicKey:     ret.targetPrivateKey.Public().(ed25519.PublicKey),
+		StateReader:   nil,
+	})
 	require.NoError(t, err)
 	rndTxid := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 	err = txbSeq.AddEndorsement(rndTxid)
@@ -702,15 +728,15 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 			err = txb.PutUnlockReference(byte(i), 1, 0)
 			require.NoError(t, err)
 		}
-		txb.PutUnlockParams(byte(i), 2, ledger.NewChainUnlockParams(byte(i), 2))
+		txb.PutUnlockParams(byte(i), ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(byte(i)))
 
-		maxFreezeEpochs := byte(uint32(i)%ledger.Const.MaxFrozenEpochs + 1)
+		maxFreezeEpochs := byte(uint32(i)%ledger.L(0).MaxFrozenEpochs + 1)
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(out.Output.Amounts()...)
-			delegateLock := ledger.NewDelegateLock(ledger.ChainLockFromChainID(ret.seqID), ret.masterAddr, maxFreezeEpochs, 980)
+			o.PutConstraint(out.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
+			delegateLock := ledger.NewDelegateLock(ret.seqID, base.HolderID(ret.masterAddr), maxFreezeEpochs, 980)
 			o.WithLock(delegateLock)
-			o.MustPushConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), 2, out.OriginSlot, out.OriginAmount).Bytes())
+			o.PutConstraint(ledger.NewChainConstraint(out.ChainID, byte(i), out.OriginSlot, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)
@@ -765,12 +791,12 @@ var _revokeSchedule = map[uint32][]struct{ d, s uint32 }{
 
 // postRevokeRequestsInEpoch creates revocation requests
 func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
-	epoch := ledger.Const.EpochFromSlotDirect(td.seqID, slot)
+	epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, slot)
 	lst, ok := _revokeSchedule[epoch]
 	if !ok {
 		return 0
 	}
-	firstSlot, _ := ledger.Const.EpochLimits(td.seqID, epoch)
+	firstSlot, _ := ledger.L(0).EpochLimits(td.seqID, epoch)
 	nrSlotInEpoch := slot - firstSlot + 1
 	nRequests := 0
 	for i := range lst {
@@ -798,6 +824,9 @@ func (td *testWithUTXODBData) tagAlongBacklog() []ledger.OutputWithID {
 	return ret
 }
 
+// TestWithUTXODB takes ~20s when run alone but times out at 300s when run with
+// the full test suite because earlier tests consume ~288s of the budget.
+// Use: go test -run TestWithUTXODB ./tests/... or increase -timeout to 600s.
 func TestWithUTXODB(t *testing.T) {
 	const (
 		numDelegations = 10
@@ -820,7 +849,7 @@ func TestWithUTXODB(t *testing.T) {
 		ts = ts.AddSlots(1)
 		txSlot := ts.Slot
 
-		epoch := ledger.Const.EpochFromSlotDirect(td.seqID, ts.Slot)
+		epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, ts.Slot)
 		if stats == nil || epoch != stats.epoch {
 			if stats != nil {
 				t.Logf("%4d (%5d + %3d slots), freezes: %3d   maxTx: %5d    %s",

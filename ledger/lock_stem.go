@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	_ "embed"
+
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -22,9 +24,12 @@ type (
 	}
 )
 
-var StemAccountID = AccountID([]byte{0})
+//go:embed def/lock_stem.easyfl
+var stemLockSource string
 
-func (st *StemLock) AccountID() AccountID {
+var StemAccountID = ControllerID([]byte{0})
+
+func (st *StemLock) ControllerID() ControllerID {
 	return StemAccountID
 }
 
@@ -52,20 +57,22 @@ func (st *StemLock) String() string {
 	//return fmt.Sprintf("stem(%s)", st.PredecessorOutputID.StringShort())
 }
 
-func (st *StemLock) Accounts() []Accountable {
-	return []Accountable{st}
+func (st *StemLock) Controllers() []Controller {
+	return []Controller{st}
 }
 
-func (st *StemLock) Master() Accountable {
+func (st *StemLock) Master() Controller {
 	return nil
 }
 
 func registerStemLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(StemLockName, 2, func(data []byte) (Constraint, error) {
-		return StemLockFromBytes(data)
-	}, initTestStemLockConstraint)
-	lib.mustRegisterLock(StemLockName, func(bytes []byte) (Lock, error) {
-		ret, err := StemLockFromBytes(bytes)
+		// Use latest library version for library registration parsing
+		return StemLockFromBytesWithLib(data, lib)
+	})
+	lib.mustRegisterLockSerde(StemLockName, func(bytes []byte) (Lock, error) {
+		// Use latest library version for library registration parsing
+		ret, err := StemLockFromBytesWithLib(bytes, lib)
 		if err != nil {
 			return nil, err
 		}
@@ -73,22 +80,26 @@ func registerStemLockConstraint(lib *Library) {
 	})
 }
 
-func initTestStemLockConstraint() {
-	txid := base.RandomTransactionID(true, 1)
-	predID := base.MustNewOutputID(txid, byte(txid.NumProducedOutputs()-1))
-	example := StemLock{
-		PredecessorOutputID: predID,
-		VRFProof:            []byte{0x01, 0x02, 0x03},
-	}
-	exampleBack, err := StemLockFromBytes(example.Bytes())
-	util.AssertNoError(err)
-	util.Assertf(bytes.Equal(example.Bytes(), exampleBack.Bytes()), "bytes.Equal(example.Bytes(), exampleBack.Bytes())")
-	_, err = L().ParsePrefixBytecode(example.Bytes())
-	util.AssertNoError(err)
+func init() {
+	registerInlineTest(func(lib *Library) {
+		txid := base.RandomTransactionID(true, 1)
+		predID := base.MustNewOutputID(txid, byte(txid.NumProducedOutputs()-1))
+		example := StemLock{
+			PredecessorOutputID: predID,
+			VRFProof:            []byte{0x01, 0x02, 0x03},
+		}
+		exampleBack, err := StemLockFromBytesWithLib(example.Bytes(), lib)
+		util.AssertNoError(err)
+		util.Assertf(bytes.Equal(example.Bytes(), exampleBack.Bytes()), "bytes.Equal(example.Bytes(), exampleBack.Bytes())")
+		_, err = lib.ParsePrefixBytecode(example.Bytes())
+		util.AssertNoError(err)
+	})
 }
 
-func StemLockFromBytes(data []byte) (*StemLock, error) {
-	sym, _, args, err := L().ParseBytecodeOneLevel(data, 2)
+// StemLockFromBytesWithLib parses a StemLock using the provided library.
+// This is the core implementation that avoids repeated L(slot) calls.
+func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -105,48 +116,3 @@ func StemLockFromBytes(data []byte) (*StemLock, error) {
 		VRFProof:            easyfl.StripDataPrefix(args[1]),
 	}, nil
 }
-
-const stemLockSource = `
-func producedStemLockOfSelfTx : lockConstraint(producedOutputByIndex(txStemOutputIndex))
-
-func _predOutputIDOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 0)
-func _vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 1)
-
-// $0 - stem predecessor index
-func _predVRFProof : parseInlineDataArgument(
-    consumedConstraintByIndex($0,1), 
-    1, 
-    selfBytecodePrefix
-)
-
-// $0 - predecessor output id
-// $1 - VRF proof (ED25519 signature of concatenation of VRF proof from the stem predecessor and slot of the transaction)
-// does not require unlock parameters
-func stemLock: and(
-	require(isBranchTransaction, !!!must_be_a_branch_transaction),
-    require(equalUint(selfNumConstraints, 2), !!!stem_output_must_contain_exactly_2_constraints),
-	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1), 
-	require(isZero(selfTokenBalanceValue), !!!amount_must_be_zero),
-	mustSize($0, 33),
-    or(
-       and(
-          selfIsConsumedOutput,
-             // enforce correct predecessor output on the successor
-          require(
-             equal(inputIDByIndex(selfOutputIndex), _predOutputIDOnSuccessor), 
-             !!!wrong_stem_predecessor_output_ID_on_successor
-          ),
-             // enforce correct VRF proof on successor
-		  require(
-             validSignatureED25519(concat($1, txSlot), _vrfProofOnSuccessor, publicKeyED25519(txSignature)), 
-             !!!VRF_proof_check_failed
-          )
-       ),
-       and(
-          selfIsProducedOutput,
-            // must be consistent with the transaction level data
-          equal(selfOutputIndex, txStemOutputIndex)
-       )
-    )
-)
-`

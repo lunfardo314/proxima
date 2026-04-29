@@ -6,7 +6,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,7 +15,9 @@ type (
 	environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
-		StateStore() multistate.StateStore
+		// GetTxBytesWithMetadata checks the write-behind buffer first, then the store.
+		GetTxBytesWithMetadata(txid *base.TransactionID) []byte
+		StateStore() global.Store
 		SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID) bool
 	}
 
@@ -48,7 +49,7 @@ func New(env environment) *PullTxServer {
 }
 
 func (d *PullTxServer) consume(inp *Input) {
-	txBytesWithMetadata := d.TxBytesStore().GetTxBytesWithMetadata(&inp.TxID)
+	txBytesWithMetadata := d.GetTxBytesWithMetadata(&inp.TxID)
 	if len(txBytesWithMetadata) == 0 {
 		d.Tracef(TraceTag, "NOT FOUND %s, request from %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
 		return

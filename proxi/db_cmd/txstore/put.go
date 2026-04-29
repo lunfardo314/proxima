@@ -34,7 +34,7 @@ func runPutCmd(_ *cobra.Command, args []string) {
 	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
 	glb.AssertNoError(err)
 
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	glb.AssertNoError(err)
 
 	txid := tx.ID()

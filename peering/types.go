@@ -1,6 +1,7 @@
 package peering
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -42,15 +44,6 @@ type (
 		AcceptPullRequestsFromStaticPeersOnly bool
 		// AllowLocalIPs defines if local IPs are allowed to be used for autopeering.
 		AllowLocalIPs bool `default:"false" usage:"allow local IPs to be used for autopeering"`
-		// used for testing only. Otherwise, remote peer sets the pull flags
-		ForcePullFromAllPeers bool
-		// timeout for heartbeat. If not set, used special defaultSendHeartbeatTimeout
-		SendTimeoutHeartbeat time.Duration
-
-		// wait time to allow a blacklisted peer to connect again
-		BlacklistTTL int
-		// wait time after a disconnected peer can be reconnected again
-		CooloffListTTL int
 
 		// disable Quicreuse
 		DisableQuicreuse bool
@@ -61,49 +54,46 @@ type (
 		multiaddr.Multiaddr
 	}
 
-	staticPeerInfo struct {
-		maddr      multiaddr.Multiaddr
-		name       string
-		addrString string
-	}
-
 	Peers struct {
 		environment
 
 		mutex            sync.RWMutex
 		cfg              *Config
 		stopOnce         sync.Once
+		stoppedCtx       context.Context    // child of env.Ctx(); cancelled by Stop().
+		stop             context.CancelFunc // cancels stoppedCtx; used by background goroutines (e.g. scheduleStaticReconnect) to bail when peering is shutting down even if env's ctx is still alive (e.g. across tests).
 		host             host.Host
+		// pingService runs the libp2p /ipfs/ping/1.0.0 protocol on the host
+		// (responds to incoming pings, used to measure outgoing RTT).
+		pingService      *ping.PingService
 		kademliaDHT      *dht.IpfsDHT // not nil if autopeering is enabled
 		routingDiscovery *routing.RoutingDiscovery
 		peers            map[peer.ID]*Peer // except self/host
-		staticPeers      map[peer.ID]*staticPeerInfo
-		lastMsgReceived  atomic.Int64
-		blacklist        map[peer.ID]_deadlineWithReason
-		cooloffList      map[peer.ID]time.Time
-		connectList      set.Set[peer.ID]
+		// staticPeers maps preconfigured peer IDs to their multiaddr — used to
+		// distinguish "static" from "dynamic" and (eventually) for re-bootstrap
+		// after restart. The Peer struct in `peers` is the source of truth for
+		// connection state; this map is metadata only.
+		staticPeers     map[peer.ID]multiaddr.Multiaddr
+		lastMsgReceived atomic.Int64
+		// reconnecting tracks in-flight static-peer reconnect goroutines so duplicate
+		// dial attempts (e.g. simultaneous Notifiee.Disconnected + initial-dial
+		// failure) don't spawn parallel dials for the same peer. Guarded by mutex.
+		reconnecting set.Set[peer.ID]
 
 		// on receive handlers
 		onReceiveTx     func(from peer.ID, txBytes []byte, mdata *txmetadata.TransactionMetadata, txIDPrefix base.TransactionID)
 		onReceivePullTx func(from peer.ID, txid base.TransactionID)
 		// lpp protocol names
-		lppProtocolGossip    protocol.ID
-		lppProtocolPull      protocol.ID
-		lppProtocolHeartbeat protocol.ID
-		rendezvousString     string
+		lppProtocolGossip protocol.ID
+		lppProtocolPull   protocol.ID
+		rendezvousString  string
 		metrics
 	}
-
-	_deadlineWithReason struct {
-		time.Time
-		reason string
-	}
 	peersStats struct {
-		peersAll         int
-		peersStatic      int
-		peersDead        int
-		peersAlive       int
-		peersPullTargets int
+		peersAll    int
+		peersStatic int
+		peersDead   int
+		peersAlive  int
 	}
 
 	peerStream struct {
@@ -112,83 +102,31 @@ type (
 	}
 
 	Peer struct {
-		id                     peer.ID
-		name                   string
-		streams                map[protocol.ID]*peerStream
-		isStatic               bool // statically pre-configured (manual peering)
-		respondsToPullRequests bool // from hb info
-		whenAdded              time.Time
-		lastHeartbeatReceived  time.Time
-		lastLoggedConnected    bool // toggle
-		// ring buffer with last clock differences
-		clockDifferences         [10]time.Duration
-		clockDifferencesIdx      int
-		clockDifferenceQuartiles [3]time.Duration
-		// ring buffer with durations between subsequent HB messages
-		hbMsgDifferences         [10]time.Duration
-		hbMsgDifferencesIdx      int
-		hbMsgDifferenceQuartiles [3]time.Duration
+		id                  peer.ID
+		name                string
+		streams             map[protocol.ID]*peerStream
+		isStatic            bool // statically pre-configured (manual peering)
+		whenAdded           time.Time
+		lastLoggedConnected bool // dedups CONNECTED/LOST CONNECTION log lines
 		// msg counters
-		numIncomingHB   int
 		numIncomingPull int
 		numIncomingTx   int
-
-		numHBSendErr int
+		// lastRTTNs is the most recent ping RTT in nanoseconds; 0 = no measurement yet.
+		// Updated by the peer_rtt_loop, read by GetPeersInfo. Atomic for lock-free reads.
+		lastRTTNs atomic.Int64
 	}
 )
 
-const (
-	Name     = "peers"
-	TraceTag = Name
-)
+const Name = "peers"
 
 const (
 	// protocol name templates. Last component is first 8 bytes of ledger constraint library hash, interpreted as bigendian uint64
 	// Peering is only possible between same versions of the ledger.
 	// Nodes with different versions of the ledger constraints will just ignore each other
-	lppProtocolGossip    = "/proxima/gossip/%d"
-	lppProtocolPull      = "/proxima/pull/%d"
-	lppProtocolHeartbeat = "/proxima/heartbeat/%d"
+	lppProtocolGossip = "/proxima/gossip/%d"
+	lppProtocolPull   = "/proxima/pull/%d"
 
-	// clockTolerance is how big the difference between local and remote clocks is tolerated.
-	// The difference includes difference between local clocks (positive or negative) plus
-	// positive heartbeat message latency between peers
-	// In any case nodes has interest to sync their clocks with global reference.
-	// This constant indicates when to drop the peer
-	clockTolerance = 4 * time.Second
-
-	// if the node is bootstrap, and it has configured less than numMaxDynamicPeersForBootNodeAtLeast
-	// of dynamic peer cap, use this instead
-	//numMaxDynamicPeersForBootNodeAtLeast = 10
-
-	// heartbeatRate heartbeat issued every period
-	heartbeatRate      = 2 * time.Second
-	aliveNumHeartbeats = 10 // if no hb over this period, it means not-alive -> dynamic peer will be dropped
-	aliveDuration      = time.Duration(aliveNumHeartbeats) * heartbeatRate
-	blacklistTTL       = 2 * time.Minute
-	cooloffTTL         = 10 * time.Second
-	// gracePeriodAfterAdded period of time peer is considered not dead after added even if messages are not coming
-	gracePeriodAfterAdded = 15 * heartbeatRate
-	logPeersEvery         = 5 * time.Second
-
-	/*
-	   ChatGPT:
-	   For Quick UDP Internet Connections (QUIC), the dial timeout can vary depending on the network environment and application requirements.
-	   Typically, the recommended dial timeout is in the range of 10 to 60 seconds. A shorter timeout (e.g., 10-15 seconds) is
-	   common for applications where responsiveness is critical, while longer timeouts (e.g., 30-60 seconds) may be suitable
-	   for more stable or less time-sensitive environments.
-
-	   In some scenarios, particularly when using QUIC in environments like Cloudflare Tunnels,
-	   the timeout for failed connections is reported to be around 60 seconds (GitHub). For OPC UA (which isn't QUIC but a
-	   similar protocol for different purposes), various timeouts are set between 10-60 seconds depending on the
-	   operation being performed (OPC Labs Knowledge Base). This suggests a reasonable ballpark range for QUIC timeouts too.
-
-	   However, the ideal timeout depends on how tolerant the system is to network latency and connection delays.
-	*/
-
-	// default timeouts for QUIC
-	// HB must dial usually
-	defaultSendHeartbeatTimeout = 10 * time.Second
+	logPeersEvery = 10 * time.Second
 )
 
 func readPeeringConfig() (*Config, error) {
@@ -248,18 +186,6 @@ func readPeeringConfig() (*Config, error) {
 	cfg.AcceptPullRequestsFromStaticPeersOnly = viper.GetBool("peering.pull_requests_from_static_peers_only")
 	cfg.AllowLocalIPs = viper.GetBool("peering.allow_local_ips")
 
-	cfg.SendTimeoutHeartbeat = time.Duration(viper.GetInt("peering.send_timeout_hb_millis")) * time.Millisecond
-	if cfg.SendTimeoutHeartbeat == 0 {
-		cfg.SendTimeoutHeartbeat = defaultSendHeartbeatTimeout
-	}
-	cfg.BlacklistTTL = viper.GetInt("blacklist_ttl")
-	if cfg.BlacklistTTL == 0 {
-		cfg.BlacklistTTL = int(blacklistTTL)
-	}
-	cfg.CooloffListTTL = viper.GetInt("coolofflist_ttl")
-	if cfg.CooloffListTTL == 0 {
-		cfg.CooloffListTTL = int(cooloffTTL)
-	}
 	cfg.DisableQuicreuse = viper.GetBool("peering.disable_quicreuse")
 	return cfg, nil
 }

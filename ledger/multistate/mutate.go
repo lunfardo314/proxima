@@ -9,13 +9,21 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"github.com/lunfardo314/unitrie/immutable"
 )
 
+// txBitmapCache tracks in-memory modifications to TX record bitmaps during a batch
+// of trie mutations. This is necessary because TrieUpdatable.Get() reads from the
+// persistent (committed) state, not from the buffered (mutated) state. Without this
+// cache, when multiple DEL mutations target outputs of the same TX, each would read
+// the ORIGINAL bitmap and the last write would overwrite all previous changes.
+type txBitmapCache map[base.TransactionID]*set256.Set256
+
 type (
 	mutationCmd interface {
-		mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error)
+		mutate(trie *immutable.TrieUpdatable, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error)
 		text() string
 		sortOrder() byte
 		timestamp() base.LedgerTime
@@ -36,9 +44,8 @@ type (
 	}
 
 	mutationAddTx struct {
-		ID              base.TransactionID
-		TimeSlot        uint32
-		LastOutputIndex byte
+		ID             base.TransactionID
+		UnspentOutputs set256.Set256
 	}
 
 	mutationDelTx struct {
@@ -50,12 +57,13 @@ type (
 	}
 
 	Mutations struct {
-		mut []mutationCmd
+		mut    []mutationCmd
+		GCSlot uint32 // slot threshold: TX records at or before this slot are pruned when their unspent set becomes empty
 	}
 )
 
-func (m *mutationDelOutput) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
-	return deleteOutputFromTrie(trie, m.ID)
+func (m *mutationDelOutput) mutate(trie *immutable.TrieUpdatable, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
+	return deleteOutputFromTrie(trie, m.ID, gcSlot, bitmapCache)
 }
 
 func (m *mutationDelOutput) text() string {
@@ -70,7 +78,7 @@ func (m *mutationDelOutput) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
+func (m *mutationAddOutput) mutate(trie *immutable.TrieUpdatable, _ uint32, _ txBitmapCache) (delta supplyDelta, err error) {
 	return addOutputToTrie(trie, m.ID, m.Output)
 }
 
@@ -86,12 +94,16 @@ func (m *mutationAddOutput) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
-	return addTxToTrie(trie, &m.ID, m.TimeSlot, m.LastOutputIndex)
+func (m *mutationAddTx) mutate(trie *immutable.TrieUpdatable, _ uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
+	// Register the bitmap in the cache so subsequent DEL mutations for this TX
+	// (if any) see the correct starting bitmap rather than stale persistent data
+	s := m.UnspentOutputs // copy
+	bitmapCache[m.ID] = &s
+	return addTxToTrie(trie, &m.ID, &m.UnspentOutputs)
 }
 
 func (m *mutationAddTx) text() string {
-	return fmt.Sprintf("ADDTX %s : slot %d", m.ID.StringShort(), m.TimeSlot)
+	return fmt.Sprintf("ADDTX %s : unspent %v", m.ID.StringShort(), m.UnspentOutputs.Elements())
 }
 
 func (m *mutationAddTx) sortOrder() byte {
@@ -102,8 +114,9 @@ func (m *mutationAddTx) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationDelTx) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
-	err = delTxFromTrie(trie, &m.ID)
+func (m *mutationDelTx) mutate(trie *immutable.TrieUpdatable, _ uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
+	err = delTxFromTrie(trie, &m.ID, bitmapCache)
+	delete(bitmapCache, m.ID)
 	return
 }
 
@@ -119,7 +132,7 @@ func (m *mutationDelTx) timestamp() base.LedgerTime {
 	return m.ID.Timestamp()
 }
 
-func (m *mutationDelChain) mutate(trie *immutable.TrieUpdatable) (delta supplyDelta, err error) {
+func (m *mutationDelChain) mutate(trie *immutable.TrieUpdatable, _ uint32, _ txBitmapCache) (delta supplyDelta, err error) {
 	return deleteChainFromTrie(trie, m.ChainID)
 }
 
@@ -159,15 +172,23 @@ func (mut *Mutations) InsertAddOutputMutation(id base.OutputID, o *ledger.Output
 	})
 }
 
+// InsertAddOutputMutationRaw inserts an output without validating its lock.
+// Use this for special outputs like upgrade UTXOs that don't have standard locks.
+func (mut *Mutations) InsertAddOutputMutationRaw(id base.OutputID, o *ledger.Output) {
+	mut.mut = append(mut.mut, &mutationAddOutput{
+		ID:     id,
+		Output: o.CloneRaw(),
+	})
+}
+
 func (mut *Mutations) InsertDelOutputMutation(id base.OutputID) {
 	mut.mut = append(mut.mut, &mutationDelOutput{ID: id})
 }
 
-func (mut *Mutations) InsertAddTxMutation(id base.TransactionID, slot uint32, lastOutputIndex byte) {
+func (mut *Mutations) InsertAddTxMutation(id base.TransactionID, unspentOutputs set256.Set256) {
 	mut.mut = append(mut.mut, &mutationAddTx{
-		ID:              id,
-		TimeSlot:        slot,
-		LastOutputIndex: lastOutputIndex,
+		ID:             id,
+		UnspentOutputs: unspentOutputs,
 	})
 }
 
@@ -193,6 +214,96 @@ func (mut *Mutations) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
+// FindAddedOutput looks for an output that was added in these mutations by its ID.
+// Returns the output and true if found, nil and false otherwise.
+func (mut *Mutations) FindAddedOutput(oid base.OutputID) (*ledger.Output, bool) {
+	for _, m := range mut.mut {
+		addOut, ok := m.(*mutationAddOutput)
+		if !ok {
+			continue
+		}
+		if addOut.ID == oid {
+			return addOut.Output, true
+		}
+	}
+	return nil, false
+}
+
+// HasDeletedOutput checks if an output was deleted (consumed) in these mutations.
+func (mut *Mutations) HasDeletedOutput(oid base.OutputID) bool {
+	for _, m := range mut.mut {
+		delOut, ok := m.(*mutationDelOutput)
+		if !ok {
+			continue
+		}
+		if delOut.ID == oid {
+			return true
+		}
+	}
+	return false
+}
+
+// FindChainOutput scans mutations for an added output with matching chain constraint.
+// Used to look up chain outputs in pending (uncommitted) branches without forcing a DB commit.
+func (mut *Mutations) FindChainOutput(chainID base.ChainID) (*ledger.OutputWithID, bool) {
+	for _, m := range mut.mut {
+		addOut, ok := m.(*mutationAddOutput)
+		if !ok {
+			continue
+		}
+		cc := addOut.Output.ChainConstraint()
+		if cc == nil {
+			continue
+		}
+		var outputChainID base.ChainID
+		if cc.IsOrigin() {
+			outputChainID = base.MakeOriginChainID(addOut.ID)
+		} else {
+			outputChainID = cc.ChainID
+		}
+		if outputChainID == chainID {
+			return &ledger.OutputWithID{ID: addOut.ID, Output: addOut.Output.Clone()}, true
+		}
+	}
+	return nil, false
+}
+
+// IsChainDeleted checks if the chain was terminated in these mutations.
+func (mut *Mutations) IsChainDeleted(chainID base.ChainID) bool {
+	for _, m := range mut.mut {
+		if delChain, ok := m.(*mutationDelChain); ok {
+			if delChain.ChainID == chainID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// HasTx checks if a transaction was added in these mutations.
+func (mut *Mutations) HasTx(txid base.TransactionID) bool {
+	for _, m := range mut.mut {
+		if addTx, ok := m.(*mutationAddTx); ok {
+			if addTx.ID == txid {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// HasDeletedTx checks if a transaction was deleted (expired) in these mutations.
+func (mut *Mutations) HasDeletedTx(txid base.TransactionID) bool {
+	for _, m := range mut.mut {
+		if delTx, ok := m.(*mutationDelTx); ok {
+			if delTx.ID == txid {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
 	for i := range txid {
 		mut.mut = append(mut.mut, &mutationDelTx{
@@ -201,7 +312,19 @@ func (mut *Mutations) DeleteTxIDs(txid ...base.TransactionID) {
 	}
 }
 
-func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (delta supplyDelta, err error) {
+// Clone returns a shallow copy with a fresh backing array for mut.
+// mutationCmd elements are treated as immutable and not deep-copied.
+// Use before mutating if the original is referenced by concurrent readers.
+func (mut *Mutations) Clone() *Mutations {
+	if mut == nil {
+		return nil
+	}
+	cp := make([]mutationCmd, len(mut.mut))
+	copy(cp, mut.mut)
+	return &Mutations{mut: cp, GCSlot: mut.GCSlot}
+}
+
+func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID, gcSlot uint32, bitmapCache txBitmapCache) (delta supplyDelta, err error) {
 	var stateKey [1 + base.OutputIDLength]byte
 	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], oid[:])
@@ -212,6 +335,7 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 		return
 	}
 
+	// Use output's slot for parsing
 	o, err := ledger.OutputFromBytes(oData)
 	util.AssertNoError(err)
 
@@ -222,12 +346,66 @@ func deleteOutputFromTrie(trie *immutable.TrieUpdatable, oid base.OutputID) (del
 	existed = trie.Delete(stateKey[:])
 	util.Assertf(existed, "deleteOutputFromTrie: inconsistency while deleting output %s", oid.StringShort())
 
-	for _, accountable := range o.Lock().Accounts() {
-		existed = trie.Delete(makeAccountKey(accountable.AccountID(), oid))
+	for _, accountable := range o.Lock().Controllers() {
+		existed = trie.Delete(makeAccountKey(accountable.ControllerID(), oid))
 		// must exist
 		util.Assertf(existed, "deleteOutputFromTrie: account record for %s wasn't found as expected: output %s", accountable.String(), oid.StringShort())
 	}
+
+	// Update the parent txID record: remove this output index from the unspent Set256.
+	// If the set becomes empty and the TX is beyond the GC threshold, delete the TX record
+	// to avoid leaving orphaned TX records as garbage in the trie
+	updateTxUnspentSet(trie, oid.TransactionID(), oid.Index(), false, gcSlot, bitmapCache)
 	return
+}
+
+// updateTxUnspentSet modifies the unspent outputs Set256 in the txID record.
+// If add is true, inserts the index; if false, removes it.
+// If the txID record doesn't exist, does nothing (it may have been pruned).
+// When removing an index results in an empty set and the TX's slot is at or before gcSlot,
+// the TX record is deleted from the trie (late GC for TXs that had unspent outputs when
+// their slot was first scanned for pruning).
+//
+// IMPORTANT: bitmapCache is used to track in-memory bitmap state across multiple mutations
+// in the same batch. TrieUpdatable.Get() reads from the persistent (committed) state, not
+// from the buffered state. Without this cache, multiple DEL mutations for the same TX would
+// each read the ORIGINAL bitmap, and the last write would overwrite all previous changes.
+func updateTxUnspentSet(trie *immutable.TrieUpdatable, txid base.TransactionID, index byte, add bool, gcSlot uint32, bitmapCache txBitmapCache) {
+	var txKey [1 + base.TransactionIDLength]byte
+	txKey[0] = TriePartitionLedgerState
+	copy(txKey[1:], txid[:])
+
+	var s set256.Set256
+	if cached, ok := bitmapCache[txid]; ok {
+		s = *cached
+	} else {
+		// First access to this TX's bitmap in this batch — read from persistent trie
+		txValue := trie.Get(txKey[:])
+		if len(txValue) == 0 {
+			// txID record not present (possibly pruned), nothing to update
+			return
+		}
+		s = set256.NewFromSlice(txValue)
+	}
+	if add {
+		s.Insert(index)
+	} else {
+		s.Remove(index)
+	}
+	// Store the updated bitmap in the cache for subsequent mutations
+	bitmapCache[txid] = &s
+
+	if s.IsEmpty() && gcSlot > 0 && txid.Slot() <= gcSlot {
+		// All outputs consumed and TX is beyond the GC threshold: delete the TX record
+		trie.Delete(txKey[:])
+		delete(bitmapCache, txid)
+		return
+	}
+	newValue := s.Bytes()
+	if newValue == nil {
+		newValue = []byte{0}
+	}
+	trie.Update(txKey[:], newValue)
 }
 
 func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledger.Output) (delta supplyDelta, err error) {
@@ -241,14 +419,17 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 		err = fmt.Errorf("addOutputToTrie: UTXO key should not exist: %s", oid.StringShort())
 		return
 	}
-	for _, accountable := range out.Lock().Accounts() {
-		if trie.Update(makeAccountKey(accountable.AccountID(), oid), []byte{0xff}) {
-			// key should not exist
-			err = fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.StringShort())
-			return
+	// Skip account indexing for upgrade UTXOs (they don't have parseable locks)
+	if !base.IsUpgradeOutputID(oid) {
+		for _, accountable := range out.Lock().Controllers() {
+			if trie.Update(makeAccountKey(accountable.ControllerID(), oid), []byte{0xff}) {
+				// key should not exist
+				err = fmt.Errorf("addOutputToTrie: index key should not exist: %s", oid.StringShort())
+				return
+			}
 		}
 	}
-	chainConstraint, _ := out.ChainConstraint()
+	chainConstraint := out.ChainConstraint()
 	if chainConstraint == nil {
 		// not a chain output
 		return
@@ -287,25 +468,41 @@ func addOutputToTrie(trie *immutable.TrieUpdatable, oid base.OutputID, out *ledg
 	return
 }
 
-func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, slot uint32, lastOutputIndex byte) (delta supplyDelta, err error) {
+func addTxToTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, unspentOutputs *set256.Set256) (delta supplyDelta, err error) {
 	var stateKey [1 + base.TransactionIDLength]byte
 	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], txid[:])
-	if trie.Update(stateKey[:], base.Slot2Bytes(slot)) {
+	// Store unspent output indices as Set256 bitmap.
+	// Use []byte{0} for empty set to avoid empty trie value (which means "not present").
+	value := unspentOutputs.Bytes()
+	if value == nil {
+		value = []byte{0}
+	}
+	if trie.Update(stateKey[:], value) {
 		// key should not exist
 		err = fmt.Errorf("addTxToTrie: transaction key should not exist: %s", txid.StringShort())
 	}
 	return
 }
 
-func delTxFromTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID) (err error) {
+func delTxFromTrie(trie *immutable.TrieUpdatable, txid *base.TransactionID, bitmapCache txBitmapCache) (err error) {
 	var stateKey [1 + base.TransactionIDLength]byte
 	stateKey[0] = TriePartitionLedgerState
 	copy(stateKey[1:], txid[:])
 
-	if !trie.Delete(stateKey[:]) {
-		// key should not exist
-		err = fmt.Errorf("delTxFromTrie: transaction ID key should exist: %s", txid.StringShort())
+	existed := trie.Delete(stateKey[:])
+	_, inCache := bitmapCache[*txid]
+
+	if existed {
+		// TX record was present in the trie — expected for explicit GC via PrunableTxIDsAtSlot.
+		// It must NOT be in bitmapCache, because inline GC (updateTxUnspentSet) removes
+		// the cache entry when it deletes the TX record directly.
+		util.Assertf(!inCache, "delTxFromTrie: TX %s was deleted from trie but still in bitmapCache", txid.StringShort)
+	} else {
+		// TX record was already deleted — this happens when inline GC in updateTxUnspentSet
+		// deleted it (bitmap became empty and txid.Slot() <= gcSlot). In that case the entry
+		// must have been removed from bitmapCache too.
+		util.Assertf(!inCache, "delTxFromTrie: TX %s not in trie but still in bitmapCache", txid.StringShort)
 	}
 	return
 }
@@ -322,8 +519,8 @@ func deleteChainFromTrie(trie *immutable.TrieUpdatable, chainID base.ChainID) (d
 	return
 }
 
-func makeAccountKey(id ledger.AccountID, oid base.OutputID) []byte {
-	return common.Concat([]byte{TriePartitionAccounts, byte(len(id))}, id[:], oid[:])
+func makeAccountKey(id ledger.ControllerID, oid base.OutputID) []byte {
+	return common.Concat([]byte{TriePartitionControllers, byte(len(id))}, id[:], oid[:])
 }
 
 func makeChainIDKey(chainID *base.ChainID) []byte {
@@ -334,8 +531,14 @@ func updateTrie(trie *immutable.TrieUpdatable, mut *Mutations, inflation ...uint
 	var delAmount, addAmount uint64
 	var delta supplyDelta
 
+	// bitmapCache tracks in-memory bitmap state for TX records modified during this batch.
+	// This is critical because TrieUpdatable.Get() reads from the persistent (committed) state,
+	// not from the buffered state. Without this, multiple DEL mutations for the same TX would
+	// each read the stale original bitmap and the last write would overwrite earlier changes.
+	bitmapCache := make(txBitmapCache)
+
 	for _, m := range mut.mut {
-		delta, err = m.mutate(trie)
+		delta, err = m.mutate(trie, mut.GCSlot, bitmapCache)
 		if err != nil {
 			return
 		}

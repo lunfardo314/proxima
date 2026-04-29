@@ -22,12 +22,15 @@ Run `proxi -h`, `proxi init -h`, `proxi db -h` etc., to check if it works.
 Below we assume we use the same working directory for all configuration profiles and databases.
 
 ### 2. Download snapshot file
-At least one of the testnet nodes is constantly producing multi-state database snapshots. 
+At least one of the testnet nodes is constantly producing multi-state database snapshots.
 
-The temporary place for download is http://83-229-84-197.cloud-xip.com/downloads/ . 
-Go there and download the latest snapshot file to the directory on your computer where the node's database will reside. 
+The temporary place for download is http://83-229-84-197.cloud-xip.com/downloads/ .
+Go there and download the latest snapshot file to the node's working directory (or the directory configured as `snapshot.directory` in `proxima.yaml`).
 
-The snapshot file name is made out of the transaction ID of the branch which represents the snapshot state. 
+The snapshot file name is made out of the transaction ID of the branch which represents the snapshot state.
+
+On startup, if the database is missing or corrupted, the node will automatically find and restore from the latest snapshot file in `snapshot.directory` (default: current working directory). If no snapshot is found, the node refuses to start.
+
 
 ### 3. Check of snapshot file if suitable to start a node
 In the directory with the downloaded snapshot file run a command:
@@ -49,13 +52,13 @@ the snapshot:
 Command `proxi snapshot check_all --api.endpoint <APIendpoint>` scans all snapshot files in the current directory and check each of it.
 
 ### 4. Create a multi-state database
-In the directory with the snapshot file run command `proxi snapshot restore -v`.
-Depending on the computer, it may take several minutes to build the database. Interrupting the process makes DB inconsistent,
-the `proximadb` directory must be deleted and the command run again.
+The database is created automatically on first startup if a snapshot file is present in `snapshot.directory` (default: current working directory). Simply place the snapshot file there and start the node.
 
-Upon finish, the command will report statistics of snapshot file.
+Alternatively, you can manually restore with `proxi snapshot restore -v`.
+Depending on the computer, it may take several minutes to build the database. Interrupting the process is safe — on next startup the node detects the incomplete restore and re-creates the database from the snapshot automatically.
 
-The result of the command will be a newly created `proximadb` directory in the working directory. 
+The result will be a newly created `proximadb` directory in the working directory.
+
 
 ### 5. Prepare node configuration profile
 Run the command `proxi init node`. It will ask to enter some entropy needed for generation of the private key and the
@@ -103,12 +106,15 @@ coverage is at least `1_300_000_000_000_000`.
 
 You also can check current parameters of the network by running `proxi node lrb` command. 
 
-Note that if you use an old snapshot file (more than, say, 12 hours old), the syncing process may take much longer and even may fail. 
-Node preserves the consistency of the database even in case of a crash. So, if the node crashes during the sync process, 
-restarting it will usually continue from the last commited branch.
+Note that if you use an old snapshot file (more than, say, 12 hours old), the syncing process may take much longer and even may fail.
+Node preserves the consistency of the database even in case of a crash. If the node crashes during sync,
+restarting it will continue from the last committed branch. If the database is corrupted, the node
+automatically restores from the latest snapshot in `snapshot.directory`.
 
-Node is safely stopped with  `ctrl-C`.
+Node is safely stopped with `ctrl-C`.
 
-One may consider setting up a system service of the Proxima node (to control it with `systemctl`). 
-It is also recommended to put periodic restart of the node on the `crontab`, say every 12 hours (e.g. `sudo systemctl restart proxima-node-service`). 
-That would mitigate memory leak problems which may still be present. 
+One may consider setting up a system service of the Proxima node (to control it with `systemctl`).
+
+For automatic state cleanup, enable `snapshot_restore` in `proxima.yaml` — this periodically
+restarts the node and restores from the latest snapshot, keeping the database compact.
+Alternatively, periodic restarts via `crontab` (e.g. every 12 hours) can mitigate memory issues.

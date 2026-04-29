@@ -57,7 +57,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	out, _, _, err := clnt.GetChainOutput(chainID)
+	out, _, err := clnt.GetChainOutput(chainID)
 	glb.AssertNoError(err)
 
 	ts := ledger.TimeNow()

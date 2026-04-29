@@ -5,10 +5,10 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"os"
-	"time"
 
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
+	"golang.org/x/term"
 )
 
 func AskEntropyGenEd25519PrivateKey(msg string, minSeedLength ...int) ed25519.PrivateKey {
@@ -19,17 +19,15 @@ func AskEntropyGenEd25519PrivateKey(msg string, minSeedLength ...int) ed25519.Pr
 		seedLen = minSeedLength[0]
 	}
 
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		Fatalf("stdin is not a terminal. This command requires interactive input for entropy.")
+	}
+
 	Infof(msg)
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Scan()
 	seedSymbols := scanner.Bytes()
-	if len(seedSymbols) < seedLen {
-		Infof("error: must be at least %d seed symbols. Using timestamp instead", seedLen)
-		// for docker setup fallback to timestamp
-		timestamp := time.Now()
-		formattedTimestamp := timestamp.Format(time.RFC3339)
-		seedSymbols = []byte(formattedTimestamp)
-	}
+	Assertf(len(seedSymbols) >= seedLen, "error: must be at least %d seed symbols", seedLen)
 
 	var rndBytes [32]byte
 	n, err := rand.Read(rndBytes[:])

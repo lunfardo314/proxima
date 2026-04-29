@@ -3,6 +3,7 @@ package ledger
 import (
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"math"
 	"time"
 
@@ -16,6 +17,9 @@ import (
 // Constants contains constant values of the ledger
 type Constants struct {
 	Hash [32]byte
+	//
+	TxIntegrityValidatorPartialContextName string
+	TxIntegrityValidatorFullContextName    string
 	// arbitrary string up 255 bytes
 	Description string
 	// genesis time unix seconds
@@ -30,15 +34,11 @@ type Constants struct {
 	// ----------- begin inflation-related
 	SlotInflationBase        uint64 // inflation of the total initial supply in slot 0
 	MinimumInflatableAmount0 uint64 // initial supply / slot inflation base
-	// BranchInflationBonusBase inflation bonus
-	BranchInflationBonusBase uint64
 	// ----------- end inflation-related
 	// number of ticks between non-sequencer transactions
 	TransactionPace byte
 	// number of ticks between sequencer transactions
 	TransactionPaceSequencer byte
-	// this limits number of sequencers in the network. Reasonable amount would be few hundreds of sequencers
-	MinimumAmountOnSequencer uint64
 	// limit maximum number of endorsements. For determinism
 	MaxNumberOfEndorsements uint64
 	// PreBranchConsolidationTicks enforces endorsement-only constraint for specified amount of ticks
@@ -57,19 +57,32 @@ type Constants struct {
 	// ---------- tag-along related
 	TagAlongSlots        uint32
 	TagAlongReclaimSlots uint32
+	// ---------- attachment related
+	AttachmentCostBudget int
+	// ---------- GC related
+	// number of slots to keep committed transaction IDs in state before GC
+	TxIDStateTTLSlots uint32
+	// ---------- branch coverage related
+	// Branch coverage bounds are now slot-dependent functions accessed via Library methods:
+	// Library.BranchCoverageLowerBound(slot) and Library.BranchCoverageUpperBound(slot)
 }
 
-var Const *Constants
-
-// ConstantsFromLibrary load all constants from library definition into a runtime structure
-func initConstantsSingleton(lib *easyfl.Library[*EvalContext]) {
-	Const = ConstantsFromLibrary(lib)
-}
-
+// ConstantsFromLibrary loads all constants from library definition into a runtime structure
 func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	ret := &Constants{Hash: lib.LibraryHash()}
 	var err error
 	var res []byte
+
+	if len(lib.VersionData) > 0 {
+		var marshalled map[string]string
+		err = json.Unmarshal(lib.VersionData, &marshalled)
+		util.AssertNoError(err, "unmarshalling version data JSON")
+		ret.TxIntegrityValidatorPartialContextName = marshalled["txIntegrityValidatorPartialContext"]
+		util.Assertf(ret.TxIntegrityValidatorPartialContextName != "", "txIntegrityValidatorPartialContext not specified")
+		ret.TxIntegrityValidatorFullContextName = marshalled["txIntegrityValidatorFullContext"]
+		util.Assertf(ret.TxIntegrityValidatorFullContextName != "", "txIntegrityValidatorFullContext not specified")
+	}
+
 	ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
 	util.AssertNoError(err)
 	res, err = lib.EvalFromSource(nil, "constGenesisControllerPublicKey")
@@ -90,10 +103,6 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.AssertNoError(err)
 	util.Assertf(ret.MinimumInflatableAmount0 == ret.InitialSupply/ret.SlotInflationBase, "ret.MinimumInflatableAmount0 == ret.InitialSupply / ret.SlotInflationBase")
 
-	ret.BranchInflationBonusBase, err = _uint64FromConst(lib, "constBranchInflationBonusBase")
-	util.AssertNoError(err)
-	ret.MinimumAmountOnSequencer, err = _uint64FromConst(lib, "constMinimumAmountOnSequencer")
-	util.AssertNoError(err)
 	ret.MaxNumberOfEndorsements, err = _uint64FromConst(lib, "constMaxNumberOfEndorsements")
 	util.AssertNoError(err)
 	pb, err := _uint64FromConst(lib, "constPreBranchConsolidationTicks")
@@ -132,6 +141,17 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.Assertf(t64 < math.MaxUint32, "constTagAlongReclaimSlots: %d", t64)
 	ret.TagAlongReclaimSlots = uint32(t64)
 
+	// attachment related
+	t64, err = _uint64FromConst(lib, "constAttachmentCostBudget")
+	util.AssertNoError(err)
+	ret.AttachmentCostBudget = int(t64)
+
+	// GC related
+	t64, err = _uint64FromConst(lib, "constTxIDStateTTLSlots")
+	util.AssertNoError(err)
+	util.Assertf(t64 < math.MaxUint32, "constTxIDStateTTLSlots: %d", t64)
+	ret.TxIDStateTTLSlots = uint32(t64)
+
 	return ret
 }
 
@@ -158,27 +178,30 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Description: '%s'", c.Description).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).
 		Add("Genesis controller public key: %s", hex.EncodeToString(c.GenesisControllerPublicKey)).
-		Add("Genesis controller address (calculated): %s", c.GenesisControlledAddress().String()).
+		Add("Genesis controller address: %s", c.GenesisControlledAddress().String()).
 		Add("Genesis Unix time: %d (%s)", c.GenesisTimeUnix, c.GenesisTime().Format(time.DateTime)).
 		Add("Tick duration: %v", c.TickDuration).
 		Add("Ticks per slot: %d", c.TicksPerSlot).
 		Add("Slot duration: %v", c.SlotDuration()).
 		Add("Slot inflation base: %s", util.Th(c.SlotInflationBase)).
 		Add("Minimum inflatable amount in slot 0: %s", util.Th(c.MinimumInflatableAmount0)).
-		Add("Branch inflation bonus base: %s", util.Th(c.BranchInflationBonusBase)).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
 		Add("Post-branch consolidation ticks: %v", c.PostBranchConsolidationTicks).
-		Add("Minimum amount on sequencer: %s", util.Th(c.MinimumAmountOnSequencer)).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).
-		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements)
+		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements).
+		Add("Tx integrity validator (partial context): '%s'", c.TxIntegrityValidatorPartialContextName).
+		Add("Tx integrity validator (full context): '%s'", c.TxIntegrityValidatorFullContextName)
 	epochDuration := time.Duration(c.DelegationEpochSlots) * c.SlotDuration()
 	ret.Add("Delegation epoch slots: %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)
 	maxFrozenDuration := time.Duration(c.MaxFrozenEpochs) * epochDuration
 	ret.Add("Maximum frozen delegation epochs: %d (%v)", c.MaxFrozenEpochs, maxFrozenDuration)
 	safeDuration := time.Duration(c.SafeRevocationSlots) * c.SlotDuration()
 	ret.Add("Safe revocation slots: %d (%v)", c.SafeRevocationSlots, safeDuration).
-		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String())
+		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).
+		Add("Attachment cost budget: %d", c.AttachmentCostBudget).
+		Add("TxID state TTL slots: %d (%v)", c.TxIDStateTTLSlots, time.Duration(c.TxIDStateTTLSlots)*c.SlotDuration())
+
 	return ret
 }
 
@@ -222,8 +245,8 @@ func OriginChainID() base.ChainID {
 	return base.MakeOriginChainID(oid)
 }
 
-func (c *Constants) GenesisControlledAddress() AddressED25519 {
-	return AddressED25519FromPublicKey(c.GenesisControllerPublicKey)
+func (c *Constants) GenesisControlledAddress() SigLock {
+	return SigLockFromED25519PublicKey(c.GenesisControllerPublicKey)
 }
 
 func (c *Constants) GenesisTime() time.Time {

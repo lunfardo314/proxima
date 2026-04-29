@@ -17,7 +17,7 @@ func (d *MemDAG) QueryTxIDStatus(txid base.TransactionID) (ret vertex.TxIDStatus
 		Vertex: func(v *vertex.Vertex) {
 			ret.Status = vid.GetTxStatusNoLock()
 			ret.Flags = vid.FlagsNoLock()
-			ret.Coverage = vid.GetLedgerCoverageNoLock()
+			ret.Coverage = vid.GetLedgerCoverageP()
 			ret.Err = vid.GetErrorNoLock()
 		},
 		DetachedVertex: func(v *vertex.DetachedVertex) {

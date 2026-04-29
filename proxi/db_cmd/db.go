@@ -16,8 +16,6 @@ func Init() *cobra.Command {
 	dbCmd.InitDefaultHelpCmd()
 	dbCmd.AddCommand(
 		initDBInfoCmd(),
-		initDBTreeCmd(),
-		initDBDAGCmd(),
 		initMainChainCmd(),
 		initAccountsCmd(),
 		initBranchesCmd(),
@@ -32,6 +30,7 @@ func Init() *cobra.Command {
 		initDbChainStatsCmd(),
 		initAnalyzeBranchesCmd(),
 		initCountTxCmd(),
+		initUpgradesCmd(),
 	)
 	return dbCmd
 }

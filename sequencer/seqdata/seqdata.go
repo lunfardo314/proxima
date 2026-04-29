@@ -1,33 +1,31 @@
 package seqdata
 
 import (
+	"encoding/json"
 	"math"
 
-	"github.com/lunfardo314/easyfl/easyfl_util"
-	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
+// SequencerData holds sequencer configuration metadata stored in sequencer outputs.
+// Serialized as compact JSON (short tags, omitempty).
 type SequencerData struct {
-	base.SmallPersistentMap
+	SeqName           string `json:"n,omitempty"`
+	MinFee            uint64 `json:"f,omitempty"`
+	ProfitPromille    uint16 `json:"m,omitempty"`
+	Greedy            bool   `json:"g,omitempty"`
+	PaceValue         byte   `json:"p,omitempty"`
+	IgnoreFreezeBound bool   `json:"u,omitempty"`
 }
 
-const (
-	KeyName = byte(iota)
-	KeyMinimumFee
-	KeySeqProfitMarginPromille
-	KeyGreedy
-	KeyChainHeight
-	KeyBranchHeight
-	KeyPace
-)
-
 func New() *SequencerData {
-	return &SequencerData{base.NewSmallPersistentMap()}
+	return &SequencerData{}
 }
 
 func (sd *SequencerData) Clone(modify ...func(sdUpdated *SequencerData)) *SequencerData {
-	ret := &SequencerData{sd.SmallPersistentMap.Clone()}
+	cp := *sd
+	ret := &cp
 	if len(modify) > 0 {
 		modify[0](ret)
 	}
@@ -35,64 +33,38 @@ func (sd *SequencerData) Clone(modify ...func(sdUpdated *SequencerData)) *Sequen
 }
 
 func (sd *SequencerData) Name() string {
-	return string(sd.Get(KeyName))
+	return sd.SeqName
 }
 
 func (sd *SequencerData) SetName(name string) *SequencerData {
-	sd.Set(KeyName, []byte(name))
+	sd.SeqName = name
 	return sd
 }
 
-func (sd *SequencerData) MinimumFee() (ret uint64) {
-	ret, _ = easyfl_util.Uint64FromBytes(sd.Get(KeyMinimumFee))
-	return
+func (sd *SequencerData) MinimumFee() uint64 {
+	return sd.MinFee
 }
 
 func (sd *SequencerData) SetMinimumFee(fee uint64) *SequencerData {
-	sd.Set(KeyMinimumFee, easyfl_util.TrimmedLeadingZeroUint64(fee))
+	sd.MinFee = fee
 	return sd
 }
 
-func (sd *SequencerData) ChainHeight() (ret uint32) {
-	ret, _ = easyfl_util.Uint32FromBytes(sd.Get(KeyChainHeight))
-	return
+func (sd *SequencerData) InflationProfitMarginPromille() uint16 {
+	return sd.ProfitPromille
 }
 
-func (sd *SequencerData) IncChainHeight(add ...uint32) *SequencerData {
-	s := uint32(1)
-	if len(add) > 0 {
-		s = add[0]
-	}
-	sd.Set(KeyChainHeight, easyfl_util.TrimmedLeadingZeroUint32(sd.ChainHeight()+s))
+func (sd *SequencerData) SetSeqProfitMarginPromille(margin uint16) *SequencerData {
+	sd.ProfitPromille = margin
 	return sd
 }
 
-func (sd *SequencerData) BranchHeight() (ret uint32) {
-	ret, _ = easyfl_util.Uint32FromBytes(sd.Get(KeyBranchHeight))
-	return
-}
-
-func (sd *SequencerData) IncBranchHeight(add ...uint32) *SequencerData {
-	s := uint32(1)
-	if len(add) > 0 {
-		s = add[0]
-	}
-	sd.Set(KeyBranchHeight, easyfl_util.TrimmedLeadingZeroUint32(sd.BranchHeight()+s))
-	return sd
-}
-
-func (sd *SequencerData) InflationProfitMarginPromille() (ret uint16) {
-	ret, _ = easyfl_util.Uint16FromBytes(sd.Get(KeySeqProfitMarginPromille))
-	return
-}
-
-func (sd *SequencerData) InflationProfitMargin(amount uint64) (ret uint64) {
+func (sd *SequencerData) InflationProfitMargin(amount uint64) uint64 {
 	p := sd.InflationProfitMarginPromille()
 	if p == 0 {
 		return 0
 	}
 	if p > 1000 {
-		// everything is taken
 		return amount
 	}
 	if amount > math.MaxUint64/uint64(p) {
@@ -101,51 +73,57 @@ func (sd *SequencerData) InflationProfitMargin(amount uint64) (ret uint64) {
 	return (amount * uint64(p)) / 1000
 }
 
-func (sd *SequencerData) SetSeqProfitMarginPromille(margin uint16) *SequencerData {
-	sd.Set(KeySeqProfitMarginPromille, easyfl_util.TrimmedLeadingZeroUint16(margin))
-	return sd
-}
-
-func (sd *SequencerData) Pace() (ret byte) {
-	ret, _ = easyfl_util.ByteFromBytes(sd.Get(KeyPace))
-	return
+func (sd *SequencerData) Pace() byte {
+	return sd.PaceValue
 }
 
 func (sd *SequencerData) SetPace(pace byte) *SequencerData {
-	if pace == 0 {
-		sd.Set(KeyPace, nil)
-	} else {
-		sd.Set(KeyPace, []byte{pace})
-	}
+	sd.PaceValue = pace
 	return sd
 }
 
 func (sd *SequencerData) SetGreedy(greedy bool) *SequencerData {
-	if greedy {
-		sd.Set(KeyGreedy, []byte{0xff})
-	} else {
-		sd.Set(KeyGreedy, nil)
-	}
+	sd.Greedy = greedy
 	return sd
 }
 
 func (sd *SequencerData) IsGreedy() bool {
-	return len(sd.Get(KeyGreedy)) > 0
+	return sd.Greedy
 }
 
+func (sd *SequencerData) SetIgnoreFreezeBound(ignore bool) *SequencerData {
+	sd.IgnoreFreezeBound = ignore
+	return sd
+}
+
+func (sd *SequencerData) IsIgnoreFreezeBound() bool {
+	return sd.IgnoreFreezeBound
+}
+
+// Bytes returns compact JSON serialization (no extra whitespace).
+func (sd *SequencerData) Bytes() []byte {
+	data, err := json.Marshal(sd)
+	util.AssertNoError(err, "SequencerData.Bytes:")
+	return data
+}
+
+// FromBytes deserializes SequencerData from JSON bytes.
 func FromBytes(data []byte) (ret SequencerData, err error) {
-	ret.SmallPersistentMap, err = base.SmallPersistentMapFromBytes(data)
+	if len(data) == 0 {
+		return SequencerData{}, nil
+	}
+	err = json.Unmarshal(data, &ret)
 	return
 }
 
+// Lines returns pretty-formatted JSON representation.
 func (sd *SequencerData) Lines(prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
-	ln.Add("Name: %s", sd.Name())
-	ln.Add("Height (chain/branch): %d / %d", sd.ChainHeight(), sd.BranchHeight())
-	ln.Add("Minimum fee: %d", sd.MinimumFee())
-	ln.Add("Pace: %d", sd.Pace())
-	im := sd.InflationProfitMarginPromille()
-	ln.Add("Inflation profit margin: %d promille (%.1f%%)", im, float64(im)/10)
-	ln.Add("Greedy: %v", sd.IsGreedy())
+	data, err := json.MarshalIndent(sd, "", "  ")
+	if err != nil {
+		ln.Add("(json marshal error: %v)", err)
+		return ln
+	}
+	ln.Add("%s", string(data))
 	return ln
 }

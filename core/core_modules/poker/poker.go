@@ -124,9 +124,8 @@ func (d *Poker) periodicCleanup() {
 		}
 	}
 	if count > 0 {
-		d.Infof0("[poker] purged %d entries, remain %d", count, len(d.m))
+		d.LogTopicf("poker", 2, "[poker] purged %d entries, remain %d", count, len(d.m))
 	}
-	//d.Tracef(TraceTag, "wanted list size: %d", len(d.m))
 }
 
 func (d *Poker) PokeMe(me, waitingFor *vertex.WrappedTx) {

@@ -1,0 +1,25 @@
+
+// $0 - 'amounts'' serialized tuple
+// $1 - index of 'amounts' vector element, 1 byte
+func amountAt:
+if(
+   lessThan(uint8Bytes($1), tupleLen($0)),
+   uint8Bytes(atTuple8($0, $1)),
+   u64/0
+)
+
+// $0 path to output
+func tokenBalanceByOutputPath : amountAt(atPath(concat($0, amountsConstraintIndex)), 0)
+
+func selfTokenBalanceValue: amountAt(selfSiblingConstraint(amountsConstraintIndex),0)
+
+// no args.
+// Enforces all 0 in inflation and frozen coverage on non-chained output
+func selfEnforceZeroAmountsInNonChainedOutput :
+require(
+   or(selfIsChainedOutput, embeddedIsInflationAndFrozenCoverageZero),
+   !!!inflation_and_frozen_coverage_must_all_be_0_on_non-chained output
+)
+
+// inflation amount from the amounts constraint of the current output
+func selfInflationAmount : amountAt(selfSiblingConstraint(amountsConstraintIndex), 1)

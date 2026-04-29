@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	GenesisOutputIndex     = byte(0)
-	GenesisStemOutputIndex = byte(1)
+	GenesisOutputIndex               = byte(0)
+	GenesisStemOutputIndex           = byte(1)
+	GenesisControllerDustOutputIndex = byte(2)
 
 	// BoostrapSequencerIDHex is constant on all ledgers
-	BoostrapSequencerIDHex = "8739faa34a6902e49bc16455bbd642fd3c649e8959d97089e43f214ca57ea0e5"
+	// This is the blake2b hash of the genesis output ID (tx ID + output index 0)
+	BoostrapSequencerIDHex = "9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d"
 )
 
 // BoostrapSequencerID is a constant
@@ -36,9 +38,10 @@ func init() {
 	util.Assertf(MakeOriginChainID(oid) == BoostrapSequencerID, "MakeOriginChainID(&oid) == BoostrapSequencerID")
 }
 
-// GenesisTransactionIDShort set max index of produced UTXOs to 1
+// GenesisTransactionIDShort set max index of produced UTXOs to 2
+// (genesis output at 0, stem output at 1, controller dust output at 2)
 func GenesisTransactionIDShort() (ret TransactionIDShort) {
-	ret[0] = 1
+	ret[0] = 2
 	return
 }
 
@@ -58,5 +61,12 @@ func GenesisOutputID() (ret OutputID) {
 // GenesisStemOutputID independent on ledger constants, except GenesisStemOutputIndex which is byte(1)
 func GenesisStemOutputID() (ret OutputID) {
 	ret = MustNewOutputID(GenesisTransactionID(), GenesisStemOutputIndex)
+	return
+}
+
+// GenesisControllerDustOutputID returns the output ID for the controller's dust output (index 2)
+// This ensures the controller always has at least one output to create transactions
+func GenesisControllerDustOutputID() (ret OutputID) {
+	ret = MustNewOutputID(GenesisTransactionID(), GenesisControllerDustOutputIndex)
 	return
 }

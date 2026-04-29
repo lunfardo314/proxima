@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	outputFile  string
 	outputFname string
 	slotsBack   uint16
 )

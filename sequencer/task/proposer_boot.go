@@ -2,66 +2,66 @@ package task
 
 import (
 	"github.com/lunfardo314/proxima/core/attacher"
-	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 )
 
-// boot proposer generates non-branch transaction proposals with LRB as an explicit baseline
-// when the own latest milestone is more than 1 slot in the past from now
-// The purpose of it is to bootstrap the network. When the network starts from scratch, all start UTXOs of sequencers
-// are in the past. It makes it impossible to issue sequencer transaction with the implicit baseline,
-// because there's no what to endorse.
-// With boot proposer, sequencer issues non-branch transactions by bypassing endorsement and setting an explicit
-// baseline branch. Thus, transaction can be solidified, and when several sequencers are issuing bootstrap transactions,
-// the next ones can endorse it and ledger coverage starts growing.
-// After the bootstrap phase, the boot proposer becomes idle
+// tryBootProposal generates a non-branch transaction with an explicit baseline (LRB)
+// when the own latest milestone is more than 1 slot in the past.
+// This bootstraps the network: when all sequencer start UTXOs are far in the past,
+// there's nothing to endorse, so the boot proposer bypasses endorsement by setting
+// an explicit baseline branch. Once several sequencers produce boot transactions,
+// they can endorse each other and coverage starts growing.
+// Returns nil when the boot condition is not met (normal operation).
 
-const (
-	TraceTagBootProposer = "propose-boot"
-)
+const TraceTagBootProposer = "propose-boot"
 
-func init() {
-	registerProposerStrategy(&proposerStrategy{
-		Name:             "boot",
-		ShortName:        "x",
-		GenerateProposal: bootProposeGenerator,
-	})
-}
-
-func bootProposeGenerator(p *proposer) (*proposal, bool) {
-	extend := p.OwnLatestMilestoneOutput()
+func (t *taskData) tryBootProposal() *finalProposal {
+	extend := t.OwnLatestMilestoneOutput()
 	if extend.VID == nil {
-		p.Log().Warnf("BootProposer-%s: can't find own latest milestone output", p.Name)
-		return nil, true
+		t.Log().Warnf("BootProposer-%s: can't find own latest milestone output", t.Name)
+		return nil
 	}
 
-	if p.targetTs.IsSlotBoundary() || extend.VID.Slot()+1 >= p.targetTs.Slot {
-		// idle phase of the base proposer
-		p.Tracef(TraceTagBootProposer, "idle phase(%s). target: %s, extend: %s", p.Name, p.targetTs.String, extend.IDStringShort)
-		return nil, true
+	if t.targetTs.IsSlotBoundary() || extend.VID.Slot()+1 >= t.targetTs.Slot {
+		// not in boot condition: milestone is recent enough
+		t.Tracef(TraceTagBootProposer, "idle phase(%s). target: %s, extend: %s", t.Name, t.targetTs.String, extend.IDStringShort)
+		return nil
 	}
 
-	lrb := multistate.FindLatestReliableBranch(p.StateStore(), global.FractionHealthyBranch)
+	lrb := t.Branches().FindLatestReliableBranch()
 	if lrb == nil {
-		p.Log().Warnf("BootProposer-%s: can't find latest reliable branch", p.Name)
-		return nil, true
+		t.Log().Warnf("BootProposer-%s: can't find latest reliable branch", t.Name)
+		return nil
 	}
 
-	a, err := attacher.NewIncrementalAttacherWithExplicitBaseline(p.Name, p.environment, p.targetTs, extend, lrb.Stem.ID.TransactionID())
-	if err != nil {
-		p.Tracef(TraceTagBootProposer, "%s can't create attacher: '%v'", p.Name, err)
-		return nil, true
+	// explicit baseline must be in a past slot (ledger constraint)
+	if lrb.Stem.ID.Slot() >= t.targetTs.Slot {
+		t.Tracef(TraceTagBootProposer, "%s LRB slot %d >= target slot %d, skipping", t.Name, lrb.Stem.ID.Slot(), t.targetTs.Slot)
+		return nil
 	}
-	p.Tracef(TraceTagBootProposer, "%s created attacher with baseline %s, cov: %s",
-		p.Name, a.BaselineBranch().StringShort, func() string { return util.Th(a.FinalLedgerCoverage(p.targetTs)) },
+
+	a, err := attacher.NewIncrementalAttacherWithExplicitBaseline(t.Name, t.environment, t.targetTs, extend, lrb.Stem.ID.TransactionID())
+	if err != nil {
+		t.Tracef(TraceTagBootProposer, "%s can't create attacher: '%v'", t.Name, err)
+		return nil
+	}
+	t.Tracef(TraceTagBootProposer, "%s created attacher with baseline %s, cov: %s",
+		t.Name, a.BaselineBranch().StringShort, func() string { return util.Th(a.FinalLedgerCoverage(t.targetTs)) },
 	)
 
-	ret, err := p.newProposal(a)
+	prop, err := t.newProposal(a)
 	if err != nil {
-		p.Tracef(TraceTagBootProposer, "%s can't create proposal: '%v'", p.Name, err)
-		return nil, true
+		t.Tracef(TraceTagBootProposer, "%s can't create proposal: '%v'", t.Name, err)
+		return nil
 	}
-	p.Tracef(TraceTagBootProposer, "exit with proposal in %s: extend = %s", p.Name, extend.IDStringShort)
-	return ret, true
+
+	fp, err := prop.finalize("boot")
+	if err != nil {
+		t.Log().Warnf("BootProposer-%s: finalize failed: %v", t.Name, err)
+		return nil
+	}
+	lrbTxID := lrb.Stem.ID.TransactionID()
+	t.Log().Warnf("BootProposer-%s: FIRED target=%s extend=%s extSlot=%d baselineLRB=%s",
+		t.Name, t.targetTs.String(), extend.IDStringShort(), extend.VID.Slot(), lrbTxID.StringShort())
+	return fp
 }

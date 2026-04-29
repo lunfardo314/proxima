@@ -5,7 +5,6 @@ import (
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 )
@@ -48,6 +47,3 @@ func (d *MemDAG) LinesVerticesInSlotAndAfter(slot uint32) *lines.Lines {
 	return vertex.VerticesLines(d.VerticesInSlotAndAfter(slot))
 }
 
-func (d *MemDAG) FetchSummarySupplyAndInflation(nBack int) *multistate.SummarySupplyAndInflation {
-	return multistate.FetchSummarySupply(d.StateStore(), nBack)
-}

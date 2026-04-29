@@ -27,8 +27,6 @@ func initSeqWithdrawCmd() *cobra.Command {
 	return seqSendCmd
 }
 
-const ownSequencerCmdFee = 500
-
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
@@ -43,7 +41,15 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	glb.Infof("amount: %s", util.Th(amount))
 
-	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*walletData.Sequencer, walletData.Account, ownSequencerCmdFee, amount, targetLock.AsLock())
+	// Get the minimum tag-along fee from the sequencer
+	fee, err := glb.GetRequiredTagAlongFee(*walletData.Sequencer)
+	if err != nil {
+		glb.Infof("error getting tag-along fee: %s", err)
+		return
+	}
+	glb.Verbosef("tag-along fee: %s", util.Th(fee))
+
+	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*walletData.Sequencer, walletData.Account, fee, amount, targetLock.AsLock())
 	ts := ledger.TimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)

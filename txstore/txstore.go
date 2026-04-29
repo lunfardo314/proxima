@@ -106,7 +106,7 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 		s.txCounter.Inc()
 		s.txBytesCounter.Add(size)
 		s.txBytesSizeHistogram.Observe(size)
-		if txid.IsSequencerMilestone() && !txid.IsBranchTransaction() {
+		if txid.IsSequencerTransaction() && !txid.IsBranchTransaction() {
 			s.txBytesSeqNonBranchSizeHistogram.Observe(size)
 		}
 	}
@@ -127,12 +127,46 @@ func (s *SimpleTxBytesStore) HasTxBytes(txid *base.TransactionID) bool {
 	return s.s.Has(txid[:])
 }
 
+// Iterator exposes prefix iteration over the underlying KV store. Used by the
+// DAG explorer to walk all txids belonging to a given slot (5-byte timestamp
+// prefix). Panics if the backing store doesn't implement common.Traversable;
+// both production backends (BadgerDB and InMemoryKVStore) do.
+func (s *SimpleTxBytesStore) Iterator(prefix []byte) common.KVIterator {
+	return s.s.(common.Traversable).Iterator(prefix)
+}
+
+// PersistTxBytesBatch writes multiple entries in a single DB transaction.
+// Uses BatchedWriter if available, otherwise falls back to individual writes.
+func (s *SimpleTxBytesStore) PersistTxBytesBatch(batch map[base.TransactionID][]byte) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	if batchable, ok := s.s.(common.BatchedUpdatable); ok {
+		w := batchable.BatchedWriter()
+		for txid, data := range batch {
+			key := txid
+			w.Set(key[:], data)
+		}
+		return w.Commit()
+	}
+	// fallback: individual writes
+	for txid, data := range batch {
+		key := txid
+		s.s.Set(key[:], data)
+	}
+	return nil
+}
+
 func NewDummyTxBytesStore() DummyTxBytesStore {
 	return DummyTxBytesStore{}
 }
 
 func (d DummyTxBytesStore) PersistTxBytesWithMetadata(_ []byte, _ *txmetadata.TransactionMetadata, _ ...base.TransactionID) (base.TransactionID, error) {
 	return base.TransactionID{}, nil
+}
+
+func (d DummyTxBytesStore) PersistTxBytesBatch(_ map[base.TransactionID][]byte) error {
+	return nil
 }
 
 func (d DummyTxBytesStore) GetTxBytesWithMetadata(_ *base.TransactionID) []byte {
@@ -152,7 +186,7 @@ func LoadAndParseTransaction(store global.TxBytesGet, txid base.TransactionID) (
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := transaction.FromBytes(txBytes)
+	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return nil, nil, err
 	}

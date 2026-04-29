@@ -4,19 +4,20 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/vertex"
-	"github.com/lunfardo314/proxima/sequencer/task"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type sequencerMetrics struct {
-	branchCounter           prometheus.Counter
-	seqMilestoneCounter     prometheus.Counter
-	targets                 prometheus.Counter
-	proposalsByStrategy     map[string]prometheus.Counter
-	bestProposalsByStrategy map[string]prometheus.Counter
-	backlogSize             prometheus.Gauge
-	ownMilestones           prometheus.Gauge
+	branchCounter       prometheus.Counter
+	seqMilestoneCounter prometheus.Counter
+	targets             prometheus.Counter
+	backlogSize         prometheus.Gauge
+	ownMilestones       prometheus.Gauge
+	// endorsement distribution: counter per endorsement count (0, 1, 2, ... maxEndorsements)
+	endorsementCounters []prometheus.Counter
 }
+
+const maxEndorsementMetricLabel = 8 // matches max endorsements in ledger
 
 func (seq *Sequencer) registerMetrics() {
 	seq.Assertf(seq.config.SingleSequencerEnforced, "seq.config.SingleSequencerEnforced")
@@ -40,28 +41,14 @@ func (seq *Sequencer) registerMetrics() {
 		seq.metrics.targets,
 	)
 
-	// all proposal counters per strategy
-	seq.metrics.proposalsByStrategy = make(map[string]prometheus.Counter)
-	for _, s := range task.AllProposingStrategies {
-		seq.metrics.proposalsByStrategy[s.ShortName] = prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "proxima_seq_proposals_" + s.ShortName,
-			Help: fmt.Sprintf("number of proposals submitted by proposer %s(%s)", s.Name, s.ShortName),
+	// endorsement count distribution: one counter per endorsement count
+	seq.metrics.endorsementCounters = make([]prometheus.Counter, maxEndorsementMetricLabel+1)
+	for i := 0; i <= maxEndorsementMetricLabel; i++ {
+		seq.metrics.endorsementCounters[i] = prometheus.NewCounter(prometheus.CounterOpts{
+			Name: fmt.Sprintf("proxima_seq_endorsements_%d", i),
+			Help: fmt.Sprintf("number of sequencer transactions with %d endorsements", i),
 		})
-	}
-	for _, m := range seq.metrics.proposalsByStrategy {
-		seq.MetricsRegistry().MustRegister(m)
-	}
-
-	// best proposal counters per strategy
-	seq.metrics.bestProposalsByStrategy = make(map[string]prometheus.Counter)
-	for _, s := range task.AllProposingStrategies {
-		seq.metrics.bestProposalsByStrategy[s.ShortName] = prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "proxima_seq_best_proposals_" + s.ShortName,
-			Help: fmt.Sprintf("number of best proposals for the target %s(%s)", s.Name, s.ShortName),
-		})
-	}
-	for _, m := range seq.metrics.bestProposalsByStrategy {
-		seq.MetricsRegistry().MustRegister(m)
+		seq.MetricsRegistry().MustRegister(seq.metrics.endorsementCounters[i])
 	}
 
 	seq.metrics.backlogSize = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -76,7 +63,6 @@ func (seq *Sequencer) registerMetrics() {
 		seq.metrics.backlogSize,
 		seq.metrics.ownMilestones,
 	)
-
 }
 
 func (seq *Sequencer) onMilestoneSubmittedMetrics(vid *vertex.WrappedTx) {
@@ -96,18 +82,15 @@ func (seq *Sequencer) newTargetSet() {
 	seq.metrics.targets.Inc()
 }
 
-func (seq *Sequencer) EvidenceProposal(strategyShortName string) {
+func (seq *Sequencer) EvidenceEndorsementCount(numEndorsements int) {
 	if seq.metrics == nil {
 		return
 	}
-	seq.metrics.proposalsByStrategy[strategyShortName].Inc()
-}
-
-func (seq *Sequencer) EvidenceBestProposalForTheTarget(strategyShortName string) {
-	if seq.metrics == nil {
-		return
+	idx := numEndorsements
+	if idx > maxEndorsementMetricLabel {
+		idx = maxEndorsementMetricLabel
 	}
-	seq.metrics.bestProposalsByStrategy[strategyShortName].Inc()
+	seq.metrics.endorsementCounters[idx].Inc()
 }
 
 func (seq *Sequencer) EvidenceBacklogSize(size int) {

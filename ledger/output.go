@@ -17,53 +17,61 @@ import (
 )
 
 type (
+	// Output is an immutable UTXO: a tuple of constraint bytecodes.
 	Output struct {
 		*tuples.Tuple
 	}
 
+	// OutputBuilder is a mutable Output under construction.
 	OutputBuilder struct {
 		*tuples.TupleEditable
 	}
 
+	// OutputWithID pairs a parsed Output with its OutputID.
 	OutputWithID struct {
 		*Output
 		ID base.OutputID
 	}
 
+	// OutputDataWithID pairs raw output bytes with their OutputID.
 	OutputDataWithID struct {
 		ID   base.OutputID
 		Data []byte
 	}
 
+	// OutputDataWithChainID extends OutputDataWithID with the resolved ChainID.
 	OutputDataWithChainID struct {
 		OutputDataWithID
 		ChainID base.ChainID
 	}
 
+	// OutputWithChainID is a parsed chain output with its ChainID and constraint metadata.
 	OutputWithChainID struct {
 		OutputWithID
 		ChainConstraintData
 	}
 
+	// ChainConstraintData holds the parsed chain constraint.
 	ChainConstraintData struct {
 		ChainConstraint
-		ChainConstraintIndex byte
 	}
 
+	// SequencerOutputData holds parsed sequencer and chain constraint data for a sequencer output.
 	SequencerOutputData struct {
-		SequencerConstraint      *SequencerConstraint
-		ChainConstraint          *ChainConstraint
-		AmountOnChain            uint64
-		SequencerConstraintIndex byte
-		SequencerData            *seqdata.SequencerData
+		SequencerConstraint *SequencerConstraint
+		ChainConstraint     *ChainConstraint
+		AmountOnChain       uint64
+		SequencerData       *seqdata.SequencerData
 	}
 
+	// OutputWithSequencerData is a parsed sequencer output with full sequencer metadata.
 	OutputWithSequencerData struct {
 		OutputWithID
 		SequencerOutputData
 	}
 )
 
+// NewOutput creates an Output by invoking buildFun on a fresh OutputBuilder.
 func NewOutput(buildFun func(o *OutputBuilder)) *Output {
 	arr := tuples.EmptyTupleEditable(256)
 	builder := &OutputBuilder{arr}
@@ -71,12 +79,14 @@ func NewOutput(buildFun func(o *OutputBuilder)) *Output {
 	return &Output{arr.Tuple()}
 }
 
+// OutputBasic creates a minimal output with the given token amount and lock.
 func OutputBasic(amount int64, lock Lock) *Output {
 	return NewOutput(func(o *OutputBuilder) {
 		o.WithAmounts(amount).WithLock(lock)
 	})
 }
 
+// OutputBuilderFromBytes creates a mutable OutputBuilder from serialized output bytes.
 func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 	ret, err := tuples.TupleFromBytesEditable(data, 256)
 	if err != nil {
@@ -85,65 +95,70 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 	return &OutputBuilder{ret}, nil
 }
 
+// OutputFromBytesMain parses an output and returns its amounts and lock using the latest library.
+func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
+	return OutputFromBytesMainWithLib(data, L(base.MaxSlot))
+}
+
+// OutputFromBytesMainWithLib parses an output and returns its amounts and lock.
+func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lock, error) {
+	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
+	if err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	ret := &Output{arr}
+
+	var amounts Amounts
+	var lock Lock
+	if ret.NumElements() < 2 {
+		return nil, Amounts{}, nil, fmt.Errorf("at least 2 elements in the UTXO tuple are expected")
+	}
+	amountBin, err := ret.At(int(ConstraintIndexAmounts))
+	if err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	if amounts, err = AmountsFromBytes(amountBin); err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	lockBin, err := ret.At(int(ConstraintIndexLock))
+	if err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	if lock, err = LockFromBytesWithLib(lockBin, lib); err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	return ret, amounts, lock, nil
+}
+
+// OutputFromBytes parses an output from bytes using the latest library, with optional validation.
 func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
-	ret, _, _, err := OutputFromBytesMain(data)
+	return OutputFromBytesWithLib(data, L(base.MaxSlot), validateOpt...)
+}
+
+// OutputFromBytesWithLib parses an output with optional validation using the given library.
+func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
+	ret, _, _, err := OutputFromBytesMainWithLib(data, lib)
 	if err != nil {
 		return nil, err
 	}
 	for _, validate := range validateOpt {
-		if err := validate(ret); err != nil {
+		if err = validate(ret); err != nil {
 			return nil, err
 		}
 	}
 	return ret, nil
 }
 
+// OutputFromHexString parses an output from a hex-encoded string.
 func OutputFromHexString(hexStr string, validateOpt ...func(*Output) error) (*Output, error) {
 	data, err := hex.DecodeString(hexStr)
 	if err != nil {
 		return nil, err
 	}
-	ret, _, _, err := OutputFromBytesMain(data)
-	if err != nil {
-		return nil, err
-	}
-	for _, validate := range validateOpt {
-		if err := validate(ret); err != nil {
-			return nil, err
-		}
-	}
-	return ret, nil
+	return OutputFromBytes(data, validateOpt...)
 }
 
-func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
-	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	ret := &Output{arr}
-
-	var amount Amounts
-	var lock Lock
-	if ret.NumElements() < 2 {
-		return nil, nil, nil, fmt.Errorf("at least 2 constraints expected")
-	}
-	amountBin, err := ret.At(int(ConstraintIndexAmounts))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	if amount, err = AmountsFromBytes(amountBin); err != nil {
-		return nil, nil, nil, err
-	}
-	lockBin, err := ret.At(int(ConstraintIndexLock))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	if lock, err = LockFromBytes(lockBin); err != nil {
-		return nil, nil, nil, err
-	}
-	return ret, amount, lock, nil
-}
-
+// ConstraintsRawBytes returns raw bytecode of all constraints in the output tuple.
 func (o *Output) ConstraintsRawBytes() [][]byte {
 	ret := make([][]byte, o.NumConstraints())
 	o.ForEach(func(i int, data []byte) bool {
@@ -153,6 +168,7 @@ func (o *Output) ConstraintsRawBytes() [][]byte {
 	return ret
 }
 
+// StemLock returns the stem lock if the output has one.
 func (o *Output) StemLock() (*StemLock, bool) {
 	ret, ok := o.Lock().(*StemLock)
 	return ret, ok
@@ -164,16 +180,18 @@ func (o *Output) MustStemLock() *StemLock {
 	return ret
 }
 
-// WithAmounts can only be used inside r/o override closure
+// WithAmounts sets the amounts constraint on the output being built.
 func (o *OutputBuilder) WithAmounts(amount ...int64) *OutputBuilder {
 	o.MustPutAtIdxWithPadding(ConstraintIndexAmounts, NewAmounts(amount...).Bytes())
 	return o
 }
 
+// WithTokenBalance sets a single token amount on the output being built.
 func (o *OutputBuilder) WithTokenBalance(bal uint64) *OutputBuilder {
 	return o.WithAmounts(int64(bal))
 }
 
+// Amounts returns the parsed amounts vector from the output.
 func (o *Output) Amounts() Amounts {
 	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)
@@ -182,6 +200,7 @@ func (o *Output) Amounts() Amounts {
 	return ret
 }
 
+// TokenBalance returns the token balance (first element of the amounts vector).
 func (o *Output) TokenBalance() uint64 {
 	bin, err := o.At(int(ConstraintIndexAmounts))
 	util.AssertNoError(err)
@@ -190,35 +209,40 @@ func (o *Output) TokenBalance() uint64 {
 	return uint64(ret)
 }
 
+// FrozenCoverage returns the frozen coverage at index i (starting from index 2 of the amounts vector).
 func (o *Output) FrozenCoverage(i byte) int64 {
 	return o.Amounts().FrozenCoverageAt(i)
 }
 
+// InflatableAmount returns token balance plus the first frozen coverage, used for inflation calculation.
 func (o *Output) InflatableAmount() uint64 {
 	return o.TokenBalance() + uint64(o.FrozenCoverage(0))
 }
 
+// AdjustedFrozenCoverage returns the frozen coverage adjusted for elapsed epochs since the predecessor.
 func (o *OutputWithChainID) AdjustedFrozenCoverage(txTs base.LedgerTime) int64 {
 	predTs := o.ID.Timestamp()
 	util.Assertf(txTs.AfterOrEqual(predTs), "txTs.AfterOrEqual(predTs)")
-	diff := Const.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp())
-	if diff >= int(Const.MaxFrozenEpochs) {
+	lib := L(txTs.Slot)
+	diff := lib.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp())
+	if diff >= int(lib.MaxFrozenEpochs) {
 		return 0
 	}
 	return o.Output.FrozenCoverage(byte(diff))
 }
 
-// WithLock can only be used inside r/o override closure
+// WithLock sets the lock constraint on the output being built.
 func (o *OutputBuilder) WithLock(lock Lock) *OutputBuilder {
 	o.PutConstraint(lock.Bytes(), ConstraintIndexLock)
 	return o
 }
 
+// Hex returns the output bytes as a hex string.
 func (o *Output) Hex() string {
 	return hex.EncodeToString(o.Bytes())
 }
 
-// Clone clones output and gives a chance to modify it
+// Clone creates a copy of the output, optionally applying modifications via buildFun.
 func (o *Output) Clone(buildFun ...func(o *OutputBuilder)) *Output {
 	if len(buildFun) == 0 {
 		ret, err := OutputFromBytes(o.Bytes())
@@ -231,30 +255,41 @@ func (o *Output) Clone(buildFun ...func(o *OutputBuilder)) *Output {
 	return &Output{builder.Tuple()}
 }
 
-// MustPushConstraint can only be used inside the edit closure
+// CloneRaw creates a byte-level copy without lock validation (for special outputs like upgrade UTXOs).
+func (o *Output) CloneRaw() *Output {
+	arr, err := tuples.TupleFromBytes(bytes.Clone(o.Bytes()), 256)
+	util.AssertNoError(err)
+	return &Output{arr}
+}
+
+// MustPushConstraint appends a constraint bytecode and returns its index. Panics if >= 256.
 func (o *OutputBuilder) MustPushConstraint(c []byte) byte {
 	util.Assertf(o.NumConstraints() < 256, "too many constraints")
 	o.MustPush(c)
 	return byte(o.NumElements() - 1)
 }
 
-// PutConstraint places bytecode at the specific index
+// PutConstraint places constraint bytecode at the given index.
 func (o *OutputBuilder) PutConstraint(c []byte, idx byte) {
 	o.MustPutAtIdxWithPadding(idx, c)
 }
 
+// PutAmounts sets the amounts vector at constraint index 0.
 func (o *OutputBuilder) PutAmounts(amount ...int64) {
 	o.PutConstraint(NewAmounts(amount...).Bytes(), ConstraintIndexAmounts)
 }
 
+// PutLock sets the lock constraint at index 1.
 func (o *OutputBuilder) PutLock(lock Lock) {
 	o.PutConstraint(lock.Bytes(), ConstraintIndexLock)
 }
 
+// MustConstraintAt returns raw constraint bytecode at the given index. Panics if out of range.
 func (o *Output) MustConstraintAt(idx byte) []byte {
 	return o.MustAt(int(idx))
 }
 
+// ConstraintAt returns raw constraint bytecode at the given index.
 func (o *Output) ConstraintAt(idx byte) ([]byte, error) {
 	return o.At(int(idx))
 }
@@ -267,124 +302,93 @@ func (o *Output) NumConstraints() int {
 	return o.NumElements()
 }
 
-func (o *Output) ForEachConstraint(fun func(idx byte, constr []byte) bool) {
-	o.ForEach(func(i int, data []byte) bool {
-		return fun(byte(i), data)
-	})
-}
-
+// Lock parses and returns the lock constraint at index 1.
 func (o *Output) Lock() Lock {
 	ret, err := LockFromBytes(o.MustAt(int(ConstraintIndexLock)))
 	util.AssertNoError(err)
 	return ret
 }
 
-func (o *Output) AccountIDs() []AccountID {
-	ret := make([]AccountID, 0)
-	for _, a := range o.Lock().Accounts() {
-		ret = append(ret, a.AccountID())
+// TimeLock returns the timelock slot if the output has a timelock constraint.
+func (o *Output) TimeLock() (uint32, bool) {
+	var ret Timelock
+	var err error
+	lib := L(base.MaxSlot)
+	idx := o.IndexFunc(func(i int, data []byte) bool {
+		if byte(i) < ConstraintIndexChain {
+			return false
+		}
+		ret, err = TimelockFromBytesWithLib(data, lib)
+		return err == nil
+	})
+	if idx < 0 {
+		return 0, false
+	}
+	return uint32(ret), true
+}
+
+// ChainConstraint parses the chain constraint at fixed index 2. Returns nil if not found.
+func (o *Output) ChainConstraint() *ChainConstraint {
+	if o.NumConstraints() <= int(ConstraintIndexChain) {
+		return nil
+	}
+	data, err := o.At(int(ConstraintIndexChain))
+	if err != nil {
+		return nil
+	}
+	ret, err := ChainConstraintFromBytesWithLib(data, L(base.MaxSlot))
+	if err != nil {
+		return nil
 	}
 	return ret
 }
 
-func (o *Output) TimeLock() (uint32, bool) {
-	var ret Timelock
-	var err error
-	found := false
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
-		}
-		if ret, err = TimelockFromBytes(constr); err == nil {
-			found = true
-			return false
-		}
-		return true
-	})
-	if found {
-		return uint32(ret), true
-	}
-	return 0, false
-}
-
-// ChainConstraint finds and parses chain constraint. Returns its constraintIndex or 0xff if not found
-func (o *Output) ChainConstraint() (*ChainConstraint, byte) {
-	var ret *ChainConstraint
-	var err error
-	found := byte(0xff)
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
-		}
-		ret, err = ChainConstraintFromBytes(constr)
-		if err == nil {
-			found = idx
-			return false
-		}
-		return true
-	})
-	if found != 0xff {
-		return ret, found
-	}
-	return nil, 0xff
-}
-
-// SequencerConstraint finds and parses chain constraint. Returns its constraintIndex or 0xff if not found
+// SequencerConstraint finds and parses the sequencer constraint. Returns 0xff as index if not found.
 func (o *Output) SequencerConstraint() (*SequencerConstraint, byte) {
 	var ret *SequencerConstraint
 	var err error
-	found := byte(0xff)
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
-		}
-		ret, err = SequencerConstraintFromBytes(constr)
-		if err == nil {
-			found = idx
+	lib := L(base.MaxSlot)
+	idx := o.IndexFunc(func(idx int, data []byte) bool {
+		if byte(idx) < ConstraintIndexChain {
 			return false
 		}
-		return true
+		ret, err = SequencerConstraintFromBytesWithLib(data, lib)
+		return err == nil
 	})
-	if found != 0xff {
-		return ret, found
+	if idx < 0 {
+		return nil, 0xff
 	}
-	return nil, 0xff
+	return ret, byte(idx)
 }
 
-// IsSequencerOutput output contains sequencer constraint
+// IsSequencerOutput returns true if the output contains a sequencer constraint.
 func (o *Output) IsSequencerOutput() bool {
 	_, idx := o.SequencerConstraint()
 	return idx != 0xff
 }
 
+// Inflation returns the inflation amount (index 1 in the amounts vector).
 func (o *Output) Inflation() uint64 {
 	return o.Amounts().InflationAmount()
 }
 
+// SequencerOutputData extracts sequencer and chain constraint data. Returns false if not a sequencer output.
 func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
-	chainConstraint, chainConstraintIndex := o.ChainConstraint()
-	if chainConstraintIndex == 0xff {
+	chainConstraint := o.ChainConstraint()
+	if chainConstraint == nil {
 		return nil, false
 	}
 	var err error
-	seqConstraintIndex := byte(0xff)
 	var seqConstraint *SequencerConstraint
-
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint || idx == chainConstraintIndex {
-			return true
-		}
-		seqConstraint, err = SequencerConstraintFromBytes(constr)
-		if err == nil {
-			seqConstraintIndex = idx
+	lib := L(base.MaxSlot)
+	idx := o.IndexFunc(func(i int, data []byte) bool {
+		if byte(i) <= ConstraintIndexChain {
 			return false
 		}
-		return true
+		seqConstraint, err = SequencerConstraintFromBytesWithLib(data, lib)
+		return err == nil
 	})
-	if seqConstraintIndex == 0xff {
-		return nil, false
-	}
-	if seqConstraint.ChainConstraintIndex != chainConstraintIndex {
+	if idx < 0 {
 		return nil, false
 	}
 
@@ -394,11 +398,10 @@ func (o *Output) SequencerOutputData() (*SequencerOutputData, bool) {
 	}
 
 	return &SequencerOutputData{
-		SequencerConstraintIndex: seqConstraintIndex,
-		SequencerConstraint:      seqConstraint,
-		ChainConstraint:          chainConstraint,
-		AmountOnChain:            o.TokenBalance(),
-		SequencerData:            pSeqData,
+		SequencerConstraint: seqConstraint,
+		ChainConstraint:     chainConstraint,
+		AmountOnChain:       o.TokenBalance(),
+		SequencerData:       pSeqData,
 	}, true
 }
 
@@ -406,6 +409,7 @@ func (s *SequencerOutputData) Lines(prefix ...string) *lines.Lines {
 	return s.SequencerData.Lines(prefix...)
 }
 
+// DelegationLock returns the DelegateLock if the output has one, otherwise nil.
 func (o *Output) DelegationLock() *DelegateLock {
 	lock := o.Lock()
 	if lock.Name() != DelegateLockName {
@@ -414,27 +418,25 @@ func (o *Output) DelegationLock() *DelegateLock {
 	return lock.(*DelegateLock)
 }
 
+// EnsureStopDelegationConstraint finds the stop-delegation constraint. Returns 0xff as index if not found.
 func (o *Output) EnsureStopDelegationConstraint() (*EnsureStopDelegation, byte) {
 	var ret *EnsureStopDelegation
 	var err error
-	found := byte(0xff)
-	o.ForEachConstraint(func(idx byte, constr []byte) bool {
-		if idx < ConstraintIndexFirstOptionalConstraint {
-			return true
-		}
-		ret, err = EnsureStopDelegationFromBytes(constr)
-		if err == nil {
-			found = idx
+	lib := L(base.MaxSlot)
+	idx := o.IndexFunc(func(i int, data []byte) bool {
+		if byte(i) < ConstraintIndexChain {
 			return false
 		}
-		return true
+		ret, err = EnsureStopDelegationFromBytesWithLib(data, lib)
+		return err == nil
 	})
-	if found != 0xff {
-		return ret, found
+	if idx < 0 {
+		return nil, 0xff
 	}
-	return nil, 0xff
+	return ret, byte(idx)
 }
 
+// ToString returns a human-readable representation of the output.
 func (o *Output) ToString(prefix ...string) string {
 	return o.Lines(prefix...).String()
 }
@@ -479,18 +481,28 @@ func (o *Output) String() string {
 	return o.Lines().String()
 }
 
+// _lines formats all constraints as lines. If source=true, prints EasyFL source; if verbose=true, includes bytecode.
 func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	ret := lines.New()
-	o.ForEachConstraint(func(i byte, data []byte) bool {
+	o.ForEach(func(i int, data []byte) bool {
+		if i == 0 {
+			// amounts
+			if a, err := AmountsFromBytes(data); err != nil {
+				ret.Add("%s%d: amounts = '%v'", prefix, i, err)
+			} else {
+				ret.Add("%s%d: amounts = %s", prefix, i, a.String())
+			}
+			return true
+		}
 		bc := ""
 		if verbose {
 			bc = fmt.Sprintf(prefix+"   bytecode: %s", easyfl_util.Fmt(data))
 		}
-		c, err := ConstraintFromBytes(data)
+		c, err := ConstraintFromBytesWithLib(data, L(base.MaxSlot))
 
 		if err != nil {
-			if src, err := L().DecompileBytecode(data); err != nil {
-				ret.Add("%s%d: bytecode=%s (%v)", hex.EncodeToString(data), err)
+			if src, err := L(base.MaxSlot).DecompileBytecode(data); err != nil {
+				ret.Add("%s%d: bytecode=%s (%v)", prefix, i, hex.EncodeToString(data), err)
 			} else {
 				ret.Add("%s%d: bytecode=%s (len=%d)", prefix, i, src, len(data))
 				if sm, err := base.SmallPersistentMapFromBytes(easyfl.StripDataPrefix(data)); err == nil {
@@ -509,10 +521,20 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	return ret
 }
 
+// LinesPlainSource formats constraints as EasyFL source, with amounts shown as a parsed vector.
 func (o *Output) LinesPlainSource() *lines.Lines {
 	ret := lines.New()
-	o.ForEachConstraint(func(i byte, data []byte) bool {
-		c, err := ConstraintFromBytes(data)
+	o.ForEach(func(i int, data []byte) bool {
+		if byte(i) == ConstraintIndexAmounts {
+			a, err := AmountsFromBytes(data)
+			if err != nil {
+				ret.Add(err.Error())
+			} else {
+				ret.Add("amounts" + a.String())
+			}
+			return true
+		}
+		c, err := ConstraintFromBytesWithLib(data, L(base.MaxSlot))
 		if err != nil {
 			ret.Add(err.Error())
 		} else {
@@ -523,10 +545,20 @@ func (o *Output) LinesPlainSource() *lines.Lines {
 	return ret
 }
 
+// LinesPlainHR formats constraints as human-readable strings, with amounts shown as a parsed vector.
 func (o *Output) LinesPlainHR() *lines.Lines {
 	ret := lines.New()
-	o.ForEachConstraint(func(i byte, data []byte) bool {
-		c, err := ConstraintFromBytes(data)
+	o.ForEach(func(i int, data []byte) bool {
+		if byte(i) == ConstraintIndexAmounts {
+			a, err := AmountsFromBytes(data)
+			if err != nil {
+				ret.Add(err.Error())
+			} else {
+				ret.Add("amounts" + a.String())
+			}
+			return true
+		}
+		c, err := ConstraintFromBytesWithLib(data, L(base.MaxSlot))
 		if err != nil {
 			ret.Add(err.Error())
 		} else {
@@ -537,6 +569,7 @@ func (o *Output) LinesPlainHR() *lines.Lines {
 	return ret
 }
 
+// Parse deserializes the raw output data into an OutputWithID, with optional validation.
 func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWithID, error) {
 	ret, err := OutputFromBytes(o.Data, validOpt...)
 	if err != nil {
@@ -548,15 +581,14 @@ func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWith
 	}, nil
 }
 
-// ParseAsChainOutput parses raw output data expecting chain output. Returns parsed output and index of the chain constraint in it
-func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error) {
+// ParseAsChainOutput parses raw output data as a chain output.
+func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, error) {
 	var chainConstr *ChainConstraint
-	var idx byte
 	var chainID base.ChainID
 
 	ret, err := o.Parse(func(oParsed *Output) error {
-		chainConstr, idx = oParsed.ChainConstraint()
-		if idx == 0xff {
+		chainConstr = oParsed.ChainConstraint()
+		if chainConstr == nil {
 			return fmt.Errorf("can't find chain constraint")
 		}
 		chainID = chainConstr.ChainID
@@ -566,23 +598,24 @@ func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, byte, error
 		return nil
 	})
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	return &OutputWithChainID{
 		OutputWithID: *ret,
 		ChainConstraintData: ChainConstraintData{
-			ChainConstraint:      *chainConstr,
-			ChainConstraintIndex: idx,
+			ChainConstraint: *chainConstr,
 		},
-	}, idx, nil
+	}, nil
 }
 
+// MustParse is like Parse but panics on error.
 func (o *OutputDataWithID) MustParse() *OutputWithID {
 	ret, err := o.Parse()
 	util.AssertNoError(err)
 	return ret
 }
 
+// AsOutputWithChainID wraps an Output as OutputWithChainID if it has a chain constraint.
 func AsOutputWithChainID(o *Output, oid base.OutputID) (OutputWithChainID, bool) {
 	cData, ok := ExtractChainData(o, oid)
 	if !ok {
@@ -594,14 +627,14 @@ func AsOutputWithChainID(o *Output, oid base.OutputID) (OutputWithChainID, bool)
 	}, true
 }
 
+// ExtractChainData parses the chain constraint from an output. Resolves ChainID for origins via blake2b(oid).
 func ExtractChainData(o *Output, oid base.OutputID) (chainConstraintData ChainConstraintData, ok bool) {
-	cc, idx := o.ChainConstraint()
-	if idx == 0xff {
+	cc := o.ChainConstraint()
+	if cc == nil {
 		return ChainConstraintData{}, false
 	}
 	ret := ChainConstraintData{
-		ChainConstraint:      *cc,
-		ChainConstraintIndex: idx,
+		ChainConstraint: *cc,
 	}
 	if cc.IsOrigin() {
 		ret.ChainID = blake2b.Sum256(oid[:])
@@ -609,12 +642,13 @@ func ExtractChainData(o *Output, oid base.OutputID) (chainConstraintData ChainCo
 	return ret, true
 }
 
-// ExtractChainID return chainID, predecessor constraint index, existence flag
-func (o *OutputWithID) ExtractChainID() (chainID base.ChainID, predecessorConstraintIndex byte, ok bool) {
+// ExtractChainID returns the ChainID and whether a chain constraint exists.
+func (o *OutputWithID) ExtractChainID() (chainID base.ChainID, ok bool) {
 	ret, ok := ExtractChainData(o.Output, o.ID)
-	return ret.ChainID, ret.PredecessorInputIndex, ok
+	return ret.ChainID, ok
 }
 
+// AsChainOutput converts to OutputWithChainID, or returns error if not a chain output.
 func (o *OutputWithID) AsChainOutput() (*OutputWithChainID, error) {
 	cdata, ok := ExtractChainData(o.Output, o.ID)
 	if !ok {
@@ -626,6 +660,7 @@ func (o *OutputWithID) AsChainOutput() (*OutputWithChainID, error) {
 	}, nil
 }
 
+// AsTagAlong wraps the output as a TagAlongOutput.
 func (o *OutputWithID) AsTagAlong() TagAlongOutput {
 	return TagAlongOutput{
 		OutputWithID: *o,
@@ -653,7 +688,7 @@ func (o *OutputWithID) Clone() *OutputWithID {
 func (o *OutputWithID) LinesSource(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("id: %s, hex: %s", o.ID.String(), o.ID.StringHex())
-	if cc, idx := o.Output.ChainConstraint(); idx != 0xff {
+	if cc := o.Output.ChainConstraint(); cc != nil {
 		var chainID base.ChainID
 		if cc.IsOrigin() {
 			chainID = blake2b.Sum256(o.ID[:])
@@ -669,7 +704,7 @@ func (o *OutputWithID) LinesSource(prefix ...string) *lines.Lines {
 func (o *OutputWithID) LinesHR(prefix ...string) *lines.Lines {
 	ret := lines.New(prefix...)
 	ret.Add("id: %s, hex: %s", o.ID.String(), o.ID.StringHex())
-	if cc, idx := o.Output.ChainConstraint(); idx != 0xff {
+	if cc := o.Output.ChainConstraint(); cc != nil {
 		var chainID base.ChainID
 		if cc.IsOrigin() {
 			chainID = blake2b.Sum256(o.ID[:])
@@ -698,11 +733,12 @@ func (o *OutputWithID) IDShort() string {
 	return o.ID.StringShort()
 }
 
-// AdjustedTokenBalance adjusted to inflation
+// AdjustedTokenBalance returns the token balance adjusted for inflation at the output's slot.
 func (o *OutputWithID) AdjustedTokenBalance() uint64 {
 	return AdjustedAmount(o.TokenBalance(), o.ID.Slot())
 }
 
+// OutputsWithIDToString formats multiple outputs with their IDs and bytecode.
 func OutputsWithIDToString(outs ...*OutputWithID) string {
 	ret := lines.New()
 	for i, o := range outs {
@@ -713,35 +749,13 @@ func OutputsWithIDToString(outs ...*OutputWithID) string {
 	return ret.String()
 }
 
-func (o *Output) hasConstraintAt(pos byte, constraintName string) bool {
-	constr, err := ConstraintFromBytes(o.MustConstraintAt(pos))
-	util.AssertNoError(err)
-
-	return constr.Name() == constraintName
-}
-
-func (o *Output) MustHaveConstraintAnyOfAt(pos byte, names ...string) {
-	util.Assertf(o.NumConstraints() >= int(pos), "no constraint at position %d", pos)
-
-	constr, err := ConstraintFromBytes(o.MustConstraintAt(pos))
-	util.AssertNoError(err)
-
-	for _, n := range names {
-		if constr.Name() == n {
-			return
-		}
-	}
-	util.Panicf("any of %+v was expected at the position %d, got '%s' instead", names, pos, constr.Name())
-}
-
-// MustValidOutput checks if amount and lock constraints are as expected
+// MustValidOutput panics if the lock constraint at index 1 is not parseable.
 func (o *Output) MustValidOutput() {
-	o.MustHaveConstraintAnyOfAt(0, AmountsConstraintName)
 	_, err := LockFromBytes(o.MustConstraintAt(1))
 	util.AssertNoError(err)
 }
 
-// HashOutputs calculates input commitment from outputs: the hash of lazyarray composed of output data
+// HashOutputs computes the blake2b hash of serialized outputs (used as input commitment).
 func HashOutputs(outs ...*Output) [32]byte {
 	arr := tuples.EmptyTupleEditable(256)
 	for _, o := range outs {
@@ -750,6 +764,7 @@ func HashOutputs(outs ...*Output) [32]byte {
 	return blake2b.Sum256(arr.Bytes())
 }
 
+// ParseAndSortOutputData parses, filters, and sorts outputs by token balance (ascending by default).
 func ParseAndSortOutputData(outs []*OutputDataWithID, filter func(oid *base.OutputID, o *Output) bool, desc ...bool) ([]*OutputWithID, error) {
 	ret, err := ParseOutputDataAndFilter(outs, filter)
 	if err != nil {
@@ -767,10 +782,13 @@ func ParseAndSortOutputData(outs []*OutputDataWithID, filter func(oid *base.Outp
 	return ret, nil
 }
 
+// ParseOutputDataAndFilter parses raw output data and applies an optional filter.
 func ParseOutputDataAndFilter(outs []*OutputDataWithID, filter func(oid *base.OutputID, o *Output) bool) ([]*OutputWithID, error) {
 	ret := make([]*OutputWithID, 0, len(outs))
+	lib := L(base.MaxSlot)
 	for _, od := range outs {
-		out, err := OutputFromBytes(od.Data)
+		// Uses latest library version - upgrade code must maintain backward-compatible parsing
+		out, err := OutputFromBytesWithLib(od.Data, lib)
 		if err != nil {
 			return nil, err
 		}
@@ -785,6 +803,7 @@ func ParseOutputDataAndFilter(outs []*OutputDataWithID, filter func(oid *base.Ou
 	return ret, nil
 }
 
+// FilterOutputsSortByAmount filters parsed outputs and sorts by token balance (ascending by default).
 func FilterOutputsSortByAmount(outs []*OutputWithID, filter func(o *Output) bool, desc ...bool) []*OutputWithID {
 	ret := make([]*OutputWithID, 0, len(outs))
 	for _, out := range outs {
@@ -805,6 +824,7 @@ func FilterOutputsSortByAmount(outs []*OutputWithID, filter func(o *Output) bool
 	return ret
 }
 
+// ParseAndSortOutputDataUpToAmount collects sorted outputs until the cumulative balance reaches amount.
 func ParseAndSortOutputDataUpToAmount(outs []*OutputDataWithID, amount uint64, filter func(oid *base.OutputID, o *Output) bool, desc ...bool) ([]*OutputWithID, uint64, base.LedgerTime, error) {
 	outsWitID, err := ParseAndSortOutputData(outs, filter, desc...)
 	if err != nil {
@@ -827,11 +847,12 @@ func ParseAndSortOutputDataUpToAmount(outs []*OutputDataWithID, amount uint64, f
 	return retOuts, retSum, retTs, nil
 }
 
+// FilterChainOutputs returns only outputs that have a chain constraint, with resolved ChainIDs.
 func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 	ret := make([]*OutputWithChainID, 0)
 	for _, o := range outs {
-		cc, constraintIndex := o.Output.ChainConstraint()
-		if constraintIndex == 0xff {
+		cc := o.Output.ChainConstraint()
+		if cc == nil {
 			continue
 		}
 		d := &OutputWithChainID{
@@ -840,8 +861,7 @@ func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 				Output: o.Output,
 			},
 			ChainConstraintData: ChainConstraintData{
-				ChainConstraint:      *cc,
-				ChainConstraintIndex: constraintIndex,
+				ChainConstraint: *cc,
 			},
 		}
 		if cc.IsOrigin() {
@@ -852,9 +872,10 @@ func FilterChainOutputs(outs []*OutputWithID) ([]*OutputWithChainID, error) {
 	return ret, nil
 }
 
-func forEachOutputReadOnly(outs []*OutputDataWithID, fun func(o *Output, odata *OutputDataWithID) bool) error {
+// forEachOutputReadOnly parses each raw output and calls fun. Stops on first false return or error.
+func forEachOutputReadOnly(outs []*OutputDataWithID, lib *Library, fun func(o *Output, odata *OutputDataWithID) bool) error {
 	for _, odata := range outs {
-		o, err := OutputFromBytes(odata.Data)
+		o, err := OutputFromBytesWithLib(odata.Data, lib)
 		if err != nil {
 			return err
 		}
@@ -865,11 +886,12 @@ func forEachOutputReadOnly(outs []*OutputDataWithID, fun func(o *Output, odata *
 	return nil
 }
 
+// ParseChainConstraintsFromData parses raw outputs and returns those with chain constraints.
 func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChainID, error) {
 	ret := make([]*OutputWithChainID, 0)
-	err := forEachOutputReadOnly(outs, func(o *Output, odata *OutputDataWithID) bool {
-		ch, constraintIndex := o.ChainConstraint()
-		if constraintIndex == 0xff {
+	err := forEachOutputReadOnly(outs, L(base.MaxSlot), func(o *Output, odata *OutputDataWithID) bool {
+		ch := o.ChainConstraint()
+		if ch == nil {
 			return true
 		}
 		d := &OutputWithChainID{
@@ -878,8 +900,7 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 				Output: o,
 			},
 			ChainConstraintData: ChainConstraintData{
-				ChainConstraint:      *ch,
-				ChainConstraintIndex: constraintIndex,
+				ChainConstraint: *ch,
 			},
 		}
 		if ch.IsOrigin() {
@@ -896,7 +917,7 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 
 const SeqMilestoneDataFixedIndex = 4
 
-// ParseSequencerData expected at index 4
+// ParseSequencerData parses the sequencer data from constraint index 4.
 func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
 	if o.NumConstraints() <= SeqMilestoneDataFixedIndex {
 		err = fmt.Errorf("ParseSequencerData: wrong number of constraints")
@@ -909,15 +930,16 @@ func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
 	return seqdata.FromBytes(data)
 }
 
-// TagAlongLock return tag-along lock if present, otherwise nil
+// TagAlongLock returns the tag-along lock if the output has one, otherwise nil.
 func (o *Output) TagAlongLock() *TagAlongLock {
-	ret, err := TagAlongLockFromBytes(o.MustAt(int(ConstraintIndexLock)))
+	ret, err := TagAlongLockFromBytesWithLib(o.MustAt(int(ConstraintIndexLock)), L(base.MaxSlot))
 	if err != nil {
 		return nil
 	}
 	return ret
 }
 
+// EnoughAmountForStorageDeposit returns an error if the token balance is below the minimum storage deposit.
 func (o *Output) EnoughAmountForStorageDeposit() error {
 	m := MinimumStorageDeposit(o)
 	if o.TokenBalance() >= m {

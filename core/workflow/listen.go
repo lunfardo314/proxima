@@ -6,17 +6,23 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 )
 
-// ListenToAccount listens to all outputs that belong to the account (except stem-locked outputs)
-func (w *Workflow) ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput)) {
+// ListenToControllerAccount listens to all outputs that are
+// unlockable by the controller, except stem-locked outputs
+// - ordinary sigLock-ed UTXOs
+// - ordinary chainLocked-ed UTXOs
+// - delegation output has 2 controller, so delegation output will be seen either by
+// target, or master listener. It is up to the callback to filter UTXO that are exactly needed
+func (w *Workflow) ListenToControllerAccount(controller ledger.Controller, fun func(wOut vertex.WrappedOutput)) {
 	w.events.OnEvent(EventNewTx, func(vid *vertex.WrappedTx) {
 		var _indices [256]byte
 		indices := _indices[:0]
+		seqData := vid.SequencerTransactionData()
 		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			v.Tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-				if ledger.BelongsToAccount(o.Lock(), account) && o.Lock().Name() != ledger.StemLockName {
+			v.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
+				// skip stem outputs
+				if (seqData == nil || idx != seqData.StemOutputIndex) && ledger.LockIsControlledBy(o.Lock(), controller) {
 					indices = append(indices, idx)
 				}
 				return true
@@ -33,42 +39,23 @@ func (w *Workflow) ListenToAccount(account ledger.Accountable, fun func(wOut ver
 
 type txListener struct {
 	mutex                sync.Mutex
-	handlerCounter       int
-	handlers             map[int]func(tx *transaction.Transaction) bool
 	deleteHandlerCounter int
 	deleteHandlers       map[int]func(txid base.TransactionID) bool
+	vertexHandlerCounter int
+	vertexHandlers       map[int]func(data *NewVertexEventData) bool
 }
 
 func (w *Workflow) startListeningTransactions() {
 	w.txListener = &txListener{
-		handlers:       make(map[int]func(tx *transaction.Transaction) bool),
 		deleteHandlers: make(map[int]func(txid base.TransactionID) bool),
+		vertexHandlers: make(map[int]func(data *NewVertexEventData) bool),
 	}
-	w.events.OnEvent(EventNewTx, func(vid *vertex.WrappedTx) {
-		var tx *transaction.Transaction
-
-		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
-			tx = v.Tx
-		}})
-		if tx != nil {
-			// no need for goroutine because events are on queue
-			w.txListener.runFor(tx)
-		}
+	w.events.OnEvent(EventNewVertex, func(data *NewVertexEventData) {
+		w.txListener.runForVertex(data)
 	})
 	w.events.OnEvent(EventTxDeleted, func(txid base.TransactionID) {
 		w.txListener.runForDelete(txid)
 	})
-}
-
-func (tl *txListener) runFor(tx *transaction.Transaction) {
-	tl.mutex.Lock()
-	defer tl.mutex.Unlock()
-
-	for id, fun := range tl.handlers {
-		if !fun(tx) {
-			delete(tl.handlers, id)
-		}
-	}
 }
 
 func (tl *txListener) runForDelete(txid base.TransactionID) {
@@ -82,12 +69,23 @@ func (tl *txListener) runForDelete(txid base.TransactionID) {
 	}
 }
 
-func (w *Workflow) OnTransaction(fun func(tx *transaction.Transaction) bool) {
+func (tl *txListener) runForVertex(data *NewVertexEventData) {
+	tl.mutex.Lock()
+	defer tl.mutex.Unlock()
+
+	for id, fun := range tl.vertexHandlers {
+		if !fun(data) {
+			delete(tl.vertexHandlers, id)
+		}
+	}
+}
+
+func (w *Workflow) OnNewVertex(fun func(data *NewVertexEventData) bool) {
 	w.txListener.mutex.Lock()
 	defer w.txListener.mutex.Unlock()
 
-	w.txListener.handlers[w.txListener.handlerCounter] = fun
-	w.txListener.handlerCounter++
+	w.txListener.vertexHandlers[w.txListener.vertexHandlerCounter] = fun
+	w.txListener.vertexHandlerCounter++
 }
 
 func (w *Workflow) OnTxDeleted(fun func(txid base.TransactionID) bool) {

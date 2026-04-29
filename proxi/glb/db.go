@@ -13,7 +13,7 @@ import (
 
 var (
 	stateDB      *badger.DB
-	stateStore   multistate.StateStore
+	stateStore   global.Store
 	txBytesDB    *badger.DB
 	txBytesStore global.TxBytesStore
 )
@@ -29,13 +29,13 @@ func InitLedgerFromDB() {
 }
 
 func InitLedgerFromProvidedID() {
-	idBytes, err := os.ReadFile(LedgerIDFileName)
+	idBytes, err := os.ReadFile(LedgerDefinitionsFileName)
 	AssertNoError(err)
-	ledger.MustInitSingleton(idBytes)
-	Infof("ledger was initialized from definitions provided in file '%s'", LedgerIDFileName)
+	ledger.MustInitLibraryCacheFromYAML(idBytes)
+	Infof("ledger was initialized from definitions provided in file '%s'", LedgerDefinitionsFileName)
 }
 
-func StateStore() multistate.StateStore {
+func StateStore() global.Store {
 	return stateStore
 }
 
@@ -59,6 +59,11 @@ func InitTxStoreDB() {
 
 func TxBytesStore() global.TxBytesStore {
 	return txBytesStore
+}
+
+// TxBytesDBRaw returns a raw DB adaptor for the txstore, enabling prefix iteration.
+func TxBytesDBRaw() *badger_adaptor.DB {
+	return badger_adaptor.New(txBytesDB)
 }
 
 func InitDBRaw(dbName string) *badger_adaptor.DB {

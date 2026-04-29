@@ -17,11 +17,11 @@ import (
 )
 
 func (v _vertex) _outputAt(idx byte) (*ledger.Output, error) {
-	return v.Tx.ProducedOutputAt(idx)
+	return v.ProducedOutputAt(idx)
 }
 
 func (v _detachedVertex) _outputAt(idx byte) (*ledger.Output, error) {
-	return v.Tx.ProducedOutputAt(idx)
+	return v.ProducedOutputAt(idx)
 }
 
 func (v _virtualTx) _outputAt(idx byte) (*ledger.Output, error) {
@@ -73,13 +73,31 @@ func (vid *WrappedTx) FlagsUpNoLock(f Flags) bool {
 }
 
 func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
-	util.Assertf(vid.id == v.Tx.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.id.StringShort)
+	util.Assertf(vid.id == v.ID(), "ConvertVirtualTxToVertexNoLock: txid-s do not match in: %s", vid.id.StringShort)
 	_, isVirtualTx := vid._genericVertex.(_virtualTx)
 	util.Assertf(isVirtualTx, "ConvertVirtualTxToVertexNoLock: virtual tx target expected %s", vid.id.StringShort)
 	vid._put(_vertex{Vertex: v})
-	if v.Tx.IsSequencerTransaction() {
-		vid.SequencerID.Store(util.Ref(v.Tx.SequencerTransactionData().SequencerID))
+	if v.IsSequencerTransaction() {
+		vid.SequencerID.Store(util.Ref(v.SequencerTransactionData().SequencerID))
 	}
+}
+
+// ReattachVertexNoLock converts a DetachedVertex back to a fresh Vertex for re-solidification.
+// Resets all mutable flags and status — the vertex becomes Undefined with clean state.
+// Re-parses the transaction from raw bytes to get a fresh partial-context copy,
+// because the original *transaction.Transaction may already have full context set
+// (SetFullContext was called during the first attachment), and SetFullContext asserts
+// it can only be called once.
+// Must be called under write lock (inside Unwrap).
+// The consumed map is preserved — consumer tracking from before detachment remains valid.
+func (vid *WrappedTx) ReattachVertexNoLock(tx *transaction.Transaction) {
+	freshTx, err := transaction.ParseWithPartialValidation(tx.Bytes())
+	util.AssertNoError(err)
+	vid._put(_vertex{NewVertex(freshTx)})
+	vid.flags = FlagVertexTxAttachmentStarted
+	vid.err = nil
+	vid.pastCone = nil // already nil after detachment, explicit for clarity
+	vid.coverage.Store(nil)
 }
 
 // ConvertToDetached detaches past cone and leaves only a collection of produced outputs
@@ -90,10 +108,13 @@ func (vid *WrappedTx) ConvertVirtualTxToVertexNoLock(v *Vertex) {
 func (vid *WrappedTx) ConvertToDetached() {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			//if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
-			//	// to prevent detached vertex appear in the attacher
-			//	return
-			//}
+			if vid.FlagsUpNoLock(FlagVertexTxAttachmentStarted) && !vid.FlagsUpNoLock(FlagVertexTxAttachmentFinished) {
+				// Attacher is actively processing this vertex — do not detach.
+				// Without this guard, GC can oscillate the vertex between Vertex and
+				// DetachedVertex, causing duplicate reattachments that panic on
+				// MarkWorkProcessStarted.
+				return
+			}
 			vid.convertToDetachedTxUnlocked(v)
 			vid.pastCone = nil
 		},
@@ -139,6 +160,18 @@ func (vid *WrappedTx) GetPastConeNoLock() *PastConeBase {
 	return vid.pastCone
 }
 
+// PastConeSize returns the cached past cone's vertex count without taking the mutex,
+// or 0 if the past cone is not attached. Used for diagnostic purposes only; a concurrent
+// SetTxStatusGood may race but the diagnostic tolerates a stale read.
+func (vid *WrappedTx) PastConeSize() int {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+	if vid.pastCone == nil {
+		return 0
+	}
+	return vid.pastCone.Len()
+}
+
 // SetTxStatusGood sets 'good' status and past cone
 func (vid *WrappedTx) SetTxStatusGood(pastCone *PastConeBase, coverage uint64) {
 	vid.mutex.Lock()
@@ -155,14 +188,17 @@ func (vid *WrappedTx) SetTxStatusGoodNoLock(pastCone *PastConeBase, coverage uin
 		vid.flags.SetFlagsUp(FlagVertexIgnoreAbsenceOfPastCone)
 	} else {
 		vid.pastCone = pastCone
-		if coverage > 0 {
-			vid.coverage = util.Ref(coverage)
-		}
+		// Always store the coverage. A Good vid must have a non-nil coverage —
+		// the consistency checks in attacher/check.go rely on
+		// (coverage == nil) ⇔ (vid was reset by ReattachVertexNoLock).
+		// Storing 0 (rare edge case for genesis-adjacent txs) is preferable to
+		// leaving nil, which would be indistinguishable from the reattach race.
+		vid.coverage.Store(util.Ref(coverage))
 	}
 }
 
 func (vid *WrappedTx) SetSequencerAttachmentFinished() {
-	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerTransaction()")
+	util.Assertf(vid.IsSequencerTransaction(), "vid.IsSequencerTransaction()")
 
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
@@ -277,8 +313,8 @@ func (vid *WrappedTx) IsBranchTransaction() bool {
 	return vid.id.IsBranchTransaction()
 }
 
-func (vid *WrappedTx) IsSequencerMilestone() bool {
-	return vid.id.IsSequencerMilestone()
+func (vid *WrappedTx) IsSequencerTransaction() bool {
+	return vid.id.IsSequencerTransaction()
 }
 
 func (vid *WrappedTx) Timestamp() base.LedgerTime {
@@ -327,14 +363,6 @@ func (vid *WrappedTx) MustOutputAt(idx byte) *ledger.Output {
 	return ret
 }
 
-func (vid *WrappedTx) SequencerIDStringVeryShort() string {
-	cid := vid.SequencerID.Load()
-	if cid == nil {
-		return "/$??"
-	}
-	return cid.StringVeryShort()
-}
-
 func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID base.ChainID, stemID base.OutputID) {
 	util.Assertf(vid.IsBranchTransaction(), "vid.IsBranchTransaction()")
 	p := vid.SequencerID.Load()
@@ -342,10 +370,10 @@ func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID base.ChainID, stemID bas
 	seqID = *p
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
+			stemID = vid.OutputID(v.SequencerTransactionData().StemOutputIndex)
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			stemID = vid.OutputID(v.Tx.SequencerTransactionData().StemOutputIndex)
+			stemID = vid.OutputID(v.SequencerTransactionData().StemOutputIndex)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			util.Assertf(v.sequencerOutputIndices != nil, "v.sequencerOutputs != nil")
@@ -356,12 +384,12 @@ func (vid *WrappedTx) MustSequencerIDAndStemID() (seqID base.ChainID, stemID bas
 }
 
 func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
-	util.Assertf(vid.IsSequencerMilestone(), "vid.IsSequencerTransaction()")
+	util.Assertf(vid.IsSequencerTransaction(), "vid.IsSequencerTransaction()")
 
 	var seqData *ledger.SequencerTransactionData
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			seqData = v.Tx.SequencerTransactionData()
+			seqData = v.SequencerTransactionData()
 			util.Assertf(seqData != nil, "seqData is nil")
 			ret = WrappedOutput{
 				VID:   vid,
@@ -369,7 +397,7 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			seqData = v.Tx.SequencerTransactionData()
+			seqData = v.SequencerTransactionData()
 			util.Assertf(seqData != nil, "seqData is nil")
 			ret = WrappedOutput{
 				VID:   vid,
@@ -391,10 +419,10 @@ func (vid *WrappedTx) SequencerWrappedOutput() (ret WrappedOutput) {
 func (vid *WrappedTx) FindChainOutput(chainID *base.ChainID) (ret *ledger.OutputWithID) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret = v.Tx.FindChainOutput(*chainID)
+			ret = v.FindChainOutput(*chainID)
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.Tx.FindChainOutput(*chainID)
+			ret = v.FindChainOutput(*chainID)
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			ret = v.findChainOutput(vid.id, chainID)
@@ -408,18 +436,18 @@ func (vid *WrappedTx) StemWrappedOutput() (ret WrappedOutput) {
 
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			if seqData := v.SequencerTransactionData(); seqData != nil {
 				ret = WrappedOutput{
 					VID:   vid,
-					Index: v.Tx.SequencerTransactionData().StemOutputIndex,
+					Index: v.SequencerTransactionData().StemOutputIndex,
 				}
 			}
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			if seqData := v.SequencerTransactionData(); seqData != nil {
 				ret = WrappedOutput{
 					VID:   vid,
-					Index: v.Tx.SequencerTransactionData().StemOutputIndex,
+					Index: v.SequencerTransactionData().StemOutputIndex,
 				}
 			}
 		},
@@ -455,6 +483,26 @@ func (vid *WrappedTx) OutputID(idx byte) (ret base.OutputID) {
 	return
 }
 
+// GetVertex returns the Vertex pointer under a brief read lock.
+// Returns nil if the underlying type is not _vertex (DetachedVertex or VirtualTx).
+// The returned pointer is safe to use after the lock is released when the caller
+// guarantees no concurrent type change (FlagVertexTxAttachmentStarted is set).
+func (vid *WrappedTx) GetVertex() *Vertex {
+	vid.mutex.RLock()
+	defer vid.mutex.RUnlock()
+
+	return vid.GetVertexNoLock()
+}
+
+// GetVertexNoLock returns the Vertex pointer without locking.
+// For use inside existing Unwrap/RUnwrap callbacks where the lock is already held.
+func (vid *WrappedTx) GetVertexNoLock() *Vertex {
+	if v, ok := vid._genericVertex.(_vertex); ok {
+		return v.Vertex
+	}
+	return nil
+}
+
 func (vid *WrappedTx) Unwrap(opt UnwrapOptions) {
 	vid.mutex.Lock()
 	defer vid.mutex.Unlock()
@@ -484,21 +532,6 @@ func (vid *WrappedTx) _unwrap(opt UnwrapOptions) {
 			opt.VirtualTx(v.VirtualTransaction)
 		}
 	}
-}
-
-func (vid *WrappedTx) TxLines(prefix ...string) (ret *lines.Lines) {
-	vid.RUnwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret = v.Tx.Lines(v.InputLoaderByIndex, prefix...)
-		},
-		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.Tx.LinesShort(prefix...)
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			ret = lines.New(prefix...).Add("== virtual tx %s", vid.IDShortString())
-		},
-	})
-	return
 }
 
 func (vid *WrappedTx) Lines(prefix ...string) *lines.Lines {
@@ -545,7 +578,7 @@ func (vid *WrappedTx) LinesNoLock(prefix ...string) *lines.Lines {
 	}
 	switch v := vid._genericVertex.(type) {
 	case _vertex:
-		ret.Add("---- transaction ----\n" + v.Tx.LinesShort(prefix...).String())
+		ret.Add("---- transaction ----\n" + v.LinesShort(prefix...).String())
 	case _virtualTx:
 		if v.needsPull {
 			ret.Add("Pull: number of pulls: %d, next pull in %v", v.timesPulled, time.Until(v.nextPull))
@@ -564,10 +597,10 @@ func (vid *WrappedTx) NumInputs() int {
 	ret := 0
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret = v.Tx.NumInputs()
+			ret = v.NumInputs()
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.Tx.NumInputs()
+			ret = v.NumInputs()
 		},
 	})
 	return ret
@@ -607,14 +640,14 @@ func (vid *WrappedTx) BaselineBranch() (baselineBranchID base.TransactionID, ok 
 func (vid *WrappedTx) MustEnsureOutput(o *ledger.Output, idx byte) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			util.Assertf(bytes.Equal(o.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()),
+			util.Assertf(bytes.Equal(o.Bytes(), v.MustProducedOutputAt(idx).Bytes()),
 				"MustEnsureOutput: inconsistent output data in %s",
-				func() string { return util.Ref(v.Tx.OutputID(idx)).StringShort() })
+				func() string { return util.Ref(v.OutputID(idx)).StringShort() })
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			util.Assertf(bytes.Equal(o.Bytes(), v.Tx.MustProducedOutputAt(idx).Bytes()),
+			util.Assertf(bytes.Equal(o.Bytes(), v.MustProducedOutputAt(idx).Bytes()),
 				"MustEnsureOutput: inconsistent output data in %s",
-				func() string { return util.Ref(v.Tx.OutputID(idx)).StringShort() })
+				func() string { return util.Ref(v.OutputID(idx)).StringShort() })
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			v.mustAddOutput(idx, o)
@@ -655,10 +688,10 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	nOutputs := 0
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			nOutputs = v.Tx.NumProducedOutputs()
+			nOutputs = v.NumProducedOutputs()
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			nOutputs = v.Tx.NumProducedOutputs()
+			nOutputs = v.NumProducedOutputs()
 		},
 	})
 
@@ -672,19 +705,17 @@ func (vid *WrappedTx) NotConsumedOutputIndices(allConsumers set.Set[*WrappedTx])
 	return ret
 }
 
-func (vid *WrappedTx) GetLedgerCoverageNoLock() *uint64 {
-	return vid.coverage
-}
-
+// GetLedgerCoverageP returns pointer to coverage value, nil if not set.
+// Coverage is stored as atomic pointer — lock-free, safe to call concurrently
+// with ConvertToDetached and other vertex mutations. This eliminates the
+// RLock contention between tippool reads and memDAG pruning writes.
 func (vid *WrappedTx) GetLedgerCoverageP() *uint64 {
-	vid.mutex.RLock()
-	defer vid.mutex.RUnlock()
-
-	return vid.coverage
+	return vid.coverage.Load()
 }
 
+// GetLedgerCoverage returns coverage value, 0 if not set. Lock-free (atomic).
 func (vid *WrappedTx) GetLedgerCoverage() uint64 {
-	ret := vid.GetLedgerCoverageP()
+	ret := vid.coverage.Load()
 	if ret == nil {
 		return 0
 	}
@@ -726,15 +757,15 @@ func (vid *WrappedTx) String() (ret string) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
 			cov := uint64(0)
-			if vid.coverage != nil {
-				cov = *vid.coverage
+			if p := vid.coverage.Load(); p != nil {
+				cov = *p
 			}
 			t := "vertex (" + vid.GetTxStatusNoLock().String() + ")"
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, err: '%v', cov: %s",
 				t,
 				vid.id.StringShort(),
-				v.Tx.NumInputs(),
-				v.Tx.NumProducedOutputs(),
+				v.NumInputs(),
+				v.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
 				vid.flags,
@@ -744,15 +775,15 @@ func (vid *WrappedTx) String() (ret string) {
 		},
 		DetachedVertex: func(v *DetachedVertex) {
 			cov := uint64(0)
-			if vid.coverage != nil {
-				cov = *vid.coverage
+			if p := vid.coverage.Load(); p != nil {
+				cov = *p
 			}
 			t := "vertex (" + vid.GetTxStatusNoLock().String() + ")"
 			ret = fmt.Sprintf("%20s %s :: in: %d, out: %d, consumed: %d, conflicts: %d, Flags: %08b, err: '%v', cov: %s",
 				t,
 				vid.id.StringShort(),
-				v.Tx.NumInputs(),
-				v.Tx.NumProducedOutputs(),
+				v.NumInputs(),
+				v.NumProducedOutputs(),
 				consumed,
 				doubleSpent,
 				vid.flags,
@@ -780,10 +811,14 @@ func (vid *WrappedTx) String() (ret string) {
 	return
 }
 
+// SequencerPredecessor returns the predecessor vertex of a sequencer transaction.
+// For a DetachedVertex, reattachBranch is called with the branch ID (not vid's own ID),
+// so there is no self-deadlock risk — AttachTxID locks a different vertex.
+// For non-branch detached vertices, BranchID is nil and ret stays nil (caller handles this).
 func (vid *WrappedTx) SequencerPredecessor(reattachBranch func(txid base.TransactionID) *WrappedTx) (ret *WrappedTx) {
 	vid.Unwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			if seqData := v.Tx.SequencerTransactionData(); seqData != nil {
+			if seqData := v.SequencerTransactionData(); seqData != nil {
 				ret = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
 			}
 		},
@@ -794,22 +829,6 @@ func (vid *WrappedTx) SequencerPredecessor(reattachBranch func(txid base.Transac
 		},
 	})
 	return
-}
-
-func (vid *WrappedTx) LinesTx(prefix ...string) *lines.Lines {
-	ret := lines.New()
-	vid.RUnwrap(UnwrapOptions{
-		Vertex: func(v *Vertex) {
-			ret.Append(v.Tx.LinesShort(prefix...))
-		},
-		DetachedVertex: func(v *DetachedVertex) {
-			ret.Append(v.Tx.LinesShort(prefix...))
-		},
-		VirtualTx: func(v *VirtualTransaction) {
-			ret.Add("a virtual tx %s", vid.IDShortString())
-		},
-	})
-	return ret
 }
 
 func VerticesLines(vertices []*WrappedTx, prefix ...string) *lines.Lines {
@@ -896,10 +915,10 @@ func (vid *WrappedTx) _traversePastCone(opt *_unwrapOptionsTraverse) bool {
 func (vid *WrappedTx) InflationAmount() (ret uint64) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			ret = v.Tx.InflationAmount()
+			ret = v.InflationAmount()
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			ret = v.Tx.InflationAmount()
+			ret = v.InflationAmount()
 		},
 		VirtualTx: func(v *VirtualTransaction) {
 			ret = v.inflation
@@ -958,13 +977,20 @@ func (vid *WrappedTx) SequencerName() (ret string) {
 	return
 }
 
+func (vid *WrappedTx) SequencerTransactionData() (ret *ledger.SequencerTransactionData) {
+	if tx := vid.GetTransaction(); tx != nil {
+		ret = tx.SequencerTransactionData()
+	}
+	return
+}
+
 func (vid *WrappedTx) GetTransaction() (tx *transaction.Transaction) {
 	vid.RUnwrap(UnwrapOptions{
 		Vertex: func(v *Vertex) {
-			tx = v.Tx
+			tx = v.Transaction
 		},
 		DetachedVertex: func(v *DetachedVertex) {
-			tx = v.Tx
+			tx = v.Transaction
 		},
 	})
 	return
@@ -972,4 +998,18 @@ func (vid *WrappedTx) GetTransaction() (tx *transaction.Transaction) {
 
 func (vid *WrappedTx) ValidSequencerPace(targetTs base.LedgerTime) bool {
 	return ledger.ValidSequencerPace(vid.Timestamp(), targetTs)
+}
+
+func (vid *WrappedTx) AttachmentCost() (ret int) {
+	vid.RUnwrap(UnwrapOptions{
+		Vertex: func(v *Vertex) {
+			ret = v.AttachmentCost()
+			return
+		},
+		DetachedVertex: func(v *DetachedVertex) {
+			ret = v.AttachmentCost()
+			return
+		},
+	})
+	return
 }

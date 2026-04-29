@@ -1,0 +1,202 @@
+package ledger
+
+// This file defines the upgrade commitment UTXO format.
+// Upgrade UTXOs commit to library upgrades at specific slots.
+//
+// UTXO Format:
+// - Amount: 0 (no tokens)
+// - Lock: empty inline data (unspendable - evaluates to false)
+// - Constraint 2: inline data containing the library hash (32 bytes)
+// - Constraint 3: inline data containing the previous library hash (32 bytes)
+// - Constraint 4: inline data containing the previous upgrade slot (4 bytes, BigEndian)
+//
+// Constraints 3 and 4 create a chain of commitments - each upgrade UTXO commits
+// to its library hash AND links to the previous upgrade, forming a hash chain
+// that commits to the entire upgrade history.
+//
+// For slot 0 (genesis):
+// - Previous library hash is the hash of the EasyFL base library (before upgrade0)
+// - Previous upgrade slot is MaxSlot (sentinel indicating "base library")
+//
+// The synthetic OutputID is created using base.UpgradeOutputID(upgradeSlot).
+
+import (
+	"encoding/binary"
+	"fmt"
+
+	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/ledger/base"
+)
+
+// BaseLibraryHash returns the hash of the EasyFL base library (before any upgrades).
+// This is used as the previous library hash for slot 0 upgrade UTXO.
+func BaseLibraryHash() [32]byte {
+	baseLib := newBaseLibrary()
+	return baseLib.LibraryHash()
+}
+
+// UpgradeUTXO creates an upgrade commitment UTXO.
+// This is an unspendable output that commits to a library hash at a specific upgrade slot,
+// along with the previous library hash and slot to create a chain of commitments.
+//
+// Parameters:
+// - upgradeSlot: the slot number for this upgrade
+// - libraryHash: 32-byte hash of the compiled library YAML
+// - prevLibraryHash: 32-byte hash of the previous library (BaseLibraryHash() for slot 0)
+// - prevUpgradeSlot: slot of the previous upgrade (base.MaxSlot for slot 0)
+//
+// Returns:
+// - OutputWithID containing the upgrade commitment UTXO
+func UpgradeUTXO(upgradeSlot uint32, libraryHash, prevLibraryHash [32]byte, prevUpgradeSlot uint32) *OutputWithID {
+	output := NewOutput(func(o *OutputBuilder) {
+		// Amount: 0 (no tokens)
+		o.WithAmounts(0)
+
+		// Lock: empty inline data (evaluates to false, making output unspendable)
+		o.PutConstraint(easyfl.InlineDataBytecode(nil), ConstraintIndexLock)
+
+		// Constraint 2: library hash as inline data
+		hashData := easyfl.InlineDataBytecode(libraryHash[:])
+		o.MustPushConstraint(hashData)
+
+		// Constraint 3: previous library hash as inline data
+		prevHashData := easyfl.InlineDataBytecode(prevLibraryHash[:])
+		o.MustPushConstraint(prevHashData)
+
+		// Constraint 4: previous upgrade slot as inline data (4 bytes BigEndian)
+		prevSlotBytes := make([]byte, 4)
+		binary.BigEndian.PutUint32(prevSlotBytes, prevUpgradeSlot)
+		prevSlotData := easyfl.InlineDataBytecode(prevSlotBytes)
+		o.MustPushConstraint(prevSlotData)
+	})
+
+	return &OutputWithID{
+		ID:     base.UpgradeOutputID(upgradeSlot),
+		Output: output,
+	}
+}
+
+// UpgradeUTXOData contains all data extracted from an upgrade UTXO.
+type UpgradeUTXOData struct {
+	LibraryHash     [32]byte // Hash of the library at this upgrade slot
+	PrevLibraryHash [32]byte // Hash of the previous library
+	PrevUpgradeSlot uint32   // Slot of the previous upgrade (MaxSlot = base library)
+}
+
+// ParseUpgradeUTXO parses an output and verifies it's a valid upgrade UTXO.
+// Returns the upgrade data if valid, error otherwise.
+func ParseUpgradeUTXO(o *Output) (*UpgradeUTXOData, error) {
+	// Check amount is 0
+	if o.TokenBalance() != 0 {
+		return nil, fmt.Errorf("upgrade UTXO must have 0 token balance, got %d", o.TokenBalance())
+	}
+
+	// Check we have at least 5 constraints (amount, lock, hash, prevHash, prevSlot)
+	if o.NumConstraints() < 5 {
+		return nil, fmt.Errorf("upgrade UTXO must have at least 5 constraints, got %d", o.NumConstraints())
+	}
+
+	// Get the library hash from constraint 2
+	hashData, err := o.ConstraintAt(2)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get library hash constraint: %w", err)
+	}
+	rawHash := easyfl.StripDataPrefix(hashData)
+	if len(rawHash) != 32 {
+		return nil, fmt.Errorf("upgrade UTXO library hash must be 32 bytes, got %d", len(rawHash))
+	}
+
+	// Get the previous library hash from constraint 3
+	prevHashData, err := o.ConstraintAt(3)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get previous library hash constraint: %w", err)
+	}
+	rawPrevHash := easyfl.StripDataPrefix(prevHashData)
+	if len(rawPrevHash) != 32 {
+		return nil, fmt.Errorf("upgrade UTXO previous library hash must be 32 bytes, got %d", len(rawPrevHash))
+	}
+
+	// Get the previous upgrade slot from constraint 4
+	prevSlotData, err := o.ConstraintAt(4)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get previous upgrade slot constraint: %w", err)
+	}
+	rawPrevSlot := easyfl.StripDataPrefix(prevSlotData)
+	if len(rawPrevSlot) != 4 {
+		return nil, fmt.Errorf("upgrade UTXO previous slot must be 4 bytes, got %d", len(rawPrevSlot))
+	}
+
+	result := &UpgradeUTXOData{
+		PrevUpgradeSlot: binary.BigEndian.Uint32(rawPrevSlot),
+	}
+	copy(result.LibraryHash[:], rawHash)
+	copy(result.PrevLibraryHash[:], rawPrevHash)
+
+	return result, nil
+}
+
+// IsUpgradeUTXO checks if an output with ID is a valid upgrade UTXO.
+func IsUpgradeUTXO(o *OutputWithID) bool {
+	// Check if the OutputID is a synthetic upgrade OutputID
+	if !base.IsUpgradeOutputID(o.ID) {
+		return false
+	}
+
+	// Try to parse as upgrade UTXO
+	_, err := ParseUpgradeUTXO(o.Output)
+	return err == nil
+}
+
+// VerifyUpgradeUTXO verifies that an upgrade UTXO matches the expected values.
+func VerifyUpgradeUTXO(o *OutputWithID, expectedHash, expectedPrevHash [32]byte, expectedPrevSlot uint32) error {
+	if !base.IsUpgradeOutputID(o.ID) {
+		return fmt.Errorf("not a valid upgrade OutputID")
+	}
+
+	data, err := ParseUpgradeUTXO(o.Output)
+	if err != nil {
+		return err
+	}
+
+	if data.LibraryHash != expectedHash {
+		return fmt.Errorf("library hash mismatch")
+	}
+
+	if data.PrevLibraryHash != expectedPrevHash {
+		return fmt.Errorf("previous library hash mismatch")
+	}
+
+	if data.PrevUpgradeSlot != expectedPrevSlot {
+		return fmt.Errorf("previous upgrade slot mismatch: expected %d, got %d", expectedPrevSlot, data.PrevUpgradeSlot)
+	}
+
+	return nil
+}
+
+// VerifyUpgradeUTXOChain verifies that an upgrade UTXO correctly links to its predecessor.
+// For slot 0, verifies that prevHash matches BaseLibraryHash() and prevSlot is MaxSlot.
+// For other slots, the caller must verify the link to the previous upgrade UTXO.
+func VerifyUpgradeUTXOChain(o *OutputWithID) (*UpgradeUTXOData, error) {
+	upgradeSlot, ok := base.UpgradeSlotFromOutputID(o.ID)
+	if !ok {
+		return nil, fmt.Errorf("not a valid upgrade OutputID")
+	}
+
+	data, err := ParseUpgradeUTXO(o.Output)
+	if err != nil {
+		return nil, err
+	}
+
+	// For slot 0, verify against base library
+	if upgradeSlot == 0 {
+		if data.PrevUpgradeSlot != base.MaxSlot {
+			return nil, fmt.Errorf("slot 0 upgrade UTXO must have prevSlot = MaxSlot, got %d", data.PrevUpgradeSlot)
+		}
+		expectedPrevHash := BaseLibraryHash()
+		if data.PrevLibraryHash != expectedPrevHash {
+			return nil, fmt.Errorf("slot 0 upgrade UTXO prevHash does not match base library hash")
+		}
+	}
+
+	return data, nil
+}

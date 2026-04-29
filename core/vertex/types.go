@@ -16,14 +16,14 @@ import (
 type (
 	// Vertex is a transaction with past cone dependencies
 	Vertex struct {
-		Tx               *transaction.Transaction
+		*transaction.Transaction
 		Inputs           []*WrappedTx
 		Endorsements     []*WrappedTx
 		BaselineBranchID *base.TransactionID
 	}
 
 	DetachedVertex struct {
-		Tx       *transaction.Transaction
+		*transaction.Transaction
 		BranchID *base.TransactionID
 	}
 
@@ -52,7 +52,7 @@ type (
 		mutex       sync.RWMutex // *sema.Sema // sync.RWMutex // protects _genericVertex
 		flags       Flags
 		err         error
-		coverage    *uint64 // nil for non-sequencer or not set yet
+		coverage atomic.Pointer[uint64] // nil for non-sequencer or not set yet. Atomic — no mutex needed for reads.
 
 		// notification callback. Must be func(vid *WrappedTx)
 		onPoke atomic.Value

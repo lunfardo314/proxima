@@ -1,514 +1,135 @@
 package transaction
 
 import (
-	"bytes"
+	"encoding/binary"
 	"fmt"
-	"strings"
 	"time"
 
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/lines"
-	"github.com/lunfardo314/proxima/util/set"
+	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
-	"golang.org/x/crypto/ed25519"
 )
 
-// Transaction provides access to the tree of transferable transaction
-type (
-	Transaction struct {
-		tree                     *tuples.Tree
-		txid                     base.TransactionID
-		sender                   ledger.AddressED25519
-		timestamp                base.LedgerTime
-		producedAmountTotals     [15]int64                        // calculated by summing up amount vectors
-		sequencerTransactionData *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
-	}
-
-	TxValidationOption func(tx *Transaction) error
-)
-
-// MainTxValidationOptions is all except Base, ParseSender, the time bounds and input context validation. Fastest first
-var MainTxValidationOptions = []TxValidationOption{
-	//ParseTotalProducedAmount,
-	ParseSequencerData,
-	CheckExplicitBaseline,
-	CheckSizeOfInputCommitment,
-	ScanInputs,
-	ScanEndorsements,
-	ScanOutputs,
+// IsPartialContext if true, it means consumed UTXOs are not available (yet)
+func (tx *Transaction) IsPartialContext() bool {
+	return len(tx.MustBytesAtPath(ledger.PathToConsumedOutputs)) == 0
 }
 
-var essenceIndices = []byte{
-	ledger.TxInputIDs,
-	ledger.TxUnlockData,
-	ledger.TxOutputs,
-	// skip signature
-	ledger.TxSequencerAndStemOutputIndices,
-	ledger.TxTimestamp,
-	//ledger.TxTotalProducedAmount,
-	ledger.TxInputCommitment,
-	ledger.TxEndorsements,
-	ledger.TxExplicitBaseline,
-	ledger.TxLocalLibraries,
+// SetFullContext promotes the transaction from partial to full context by loading its
+// consumed UTXOs via the supplied loader and rebuilding the tuple tree.
+//
+// Safe to call concurrently and/or multiple times: the setup runs exactly once (guarded
+// by a sync.Once on the Transaction); all subsequent or concurrent callers block briefly
+// on the Once and then observe the already-populated tree, returning the first call's
+// error (if any). The loader from the first winning caller is the one actually invoked —
+// this is fine because consumed outputs are determined solely by input OutputIDs, which
+// are immutable on the transaction, so all valid loaders produce the same result.
+func (tx *Transaction) SetFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
+	tx.fullContextOnce.Do(func() {
+		tx.fullContextErr = tx.setFullContextLocked(inputLoaderByIndex)
+	})
+	return tx.fullContextErr
 }
 
-func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
-	hasher, err := blake2b.New256(nil)
-	util.AssertNoError(err)
+// setFullContextLocked is the actual setup. Runs at most once per Transaction, invoked
+// from inside fullContextOnce.Do.
+func (tx *Transaction) setFullContextLocked(inputLoaderByIndex func(i byte) (*ledger.Output, error)) error {
+	var err error
+	var o *ledger.Output
 
-	var d []byte
-	for _, i := range essenceIndices {
-		d, err = txTree.BytesAtPath([]byte{i})
+	// make tuple of consumed UTXOs
+	consumedUTXOs := tuples.EmptyTupleEditable(256)
+	n := tx.NumInputs()
+	for i := 0; i < n; i++ {
+		o, err = inputLoaderByIndex(byte(i))
 		if err != nil {
-			return [32]byte{}, err
+			return fmt.Errorf("tx.SetFullContext: '%v'", err)
 		}
-		hasher.Write(d)
-	}
-	copy(ret[:], hasher.Sum(nil))
-	return
-}
-
-// TxIDFromTransactionDataTree validates timestamp, sequencer and stem indices and makes transaction ChainID
-// This is minimal check to pass for the blob to be a raw transaction.
-// If it is impossible to extract txid from the blob, it is not a transaction
-func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, err error) {
-	var tsBin []byte
-	if tsBin, err = txTree.BytesAtPath([]byte{ledger.TxTimestamp}); err != nil {
-		err = fmt.Errorf("can't parse timestamp: %w", err)
-		return
-	}
-	var ts base.LedgerTime
-	if ts, err = base.LedgerTimeFromBytes(tsBin); err != nil {
-		err = fmt.Errorf("wrong timestamp: %w", err)
-		return
-	}
-	var seqBin []byte
-	seqBin, err = txTree.BytesAtPath([]byte{ledger.TxSequencerAndStemOutputIndices})
-	if err != nil {
-		err = fmt.Errorf("can't parse sequencer UTXO indices: %w", err)
-		return
-	}
-	if len(seqBin) != 2 {
-		err = fmt.Errorf("wrong sequencer UTXO indices")
-		return
-	}
-	isSeqTx := seqBin[0] != 0xff
-	if isSeqTx && ts.Tick == 0 && seqBin[1] == 0xff {
-		err = fmt.Errorf("wrong stem index value")
-		return
-	}
-	if ret, err = hashEssenceBytesFromTransactionDataTree(txTree); err != nil {
-		return
-	}
-	// replace first 5 bytes with transaction ChainID prefix
-	copy(ret[:], tsBin)
-	if isSeqTx {
-		ret[base.TickByteIndex] |= base.SequencerBitMaskInTick
-	}
-	// set the number of produced outputs byte
-	nUTXO, err := txTree.NumElementsAtPath([]byte{ledger.TxOutputs})
-	if err != nil {
-		return
-	}
-	if nUTXO == 0 || nUTXO > 256 {
-		err = fmt.Errorf("wrong number of produced outputs")
-		return
-	}
-	ret[base.LedgerTimeByteLength] = byte(nUTXO - 1)
-	util.Assertf(len(seqBin) > 0 || !ret.IsSequencerMilestone(), "len(seqBin)>0||!ret.IsSequencerMilestone()")
-	return
-}
-
-func FromBytes(txBytes []byte, opt ...TxValidationOption) (*Transaction, error) {
-	ret, err := transactionFromBytes(txBytes, _baseValidation)
-	if err != nil {
-		return nil, fmt.Errorf("transaction.FromBytes: basic parse failed: '%v'", err)
-	}
-	if err = ret.Validate(opt...); err != nil {
-		return ret, fmt.Errorf("FromBytes: validation failed, txid = %s: '%v'", ret.IDShortString(), err)
-	}
-	return ret, nil
-}
-
-func FromBytesMainChecksWithOpt(txBytes []byte) (*Transaction, error) {
-	tx, err := FromBytes(txBytes, MainTxValidationOptions...)
-	if err != nil {
-		return nil, err
-	}
-	return tx, nil
-}
-
-func transactionFromBytes(txBytes []byte, opts ...TxValidationOption) (*Transaction, error) {
-	tree, err := tuples.TreeFromBytesReadOnly(txBytes)
-	if err != nil {
-		return nil, err
-	}
-	ret := &Transaction{tree: tree}
-	if err := ret.Validate(opts...); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-func IDAndTimestampFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, base.LedgerTime, error) {
-	tx, err := FromBytes(txBytes)
-	if err != nil {
-		return base.TransactionID{}, base.LedgerTime{}, err
-	}
-	return tx.ID(), tx.Timestamp(), nil
-}
-
-func IDFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, error) {
-	tx, err := FromBytes(txBytes)
-	if err != nil {
-		return base.TransactionID{}, err
-	}
-	return tx.ID(), nil
-}
-
-func (tx *Transaction) Validate(opt ...TxValidationOption) error {
-	return util.CatchPanicOrError(func() error {
-		for _, fun := range opt {
-			if err := fun(tx); err != nil {
-				return err
-			}
+		if o == nil {
+			return fmt.Errorf("tx.SetFullContext: cannot get consumed output at input index %d", i)
 		}
-		return nil
+		consumedUTXOs.MustPush(o.Bytes())
+	}
+	txTree, err := tx.Subtree(ledger.PathToRawTransaction)
+	util.AssertNoError(err, "tx.Subtree([]byte{ledger.TransactionTuple})")
+
+	// index 0 for transaction, index 1 for consumed outputs
+	tx.Tree = tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromSerializableElements(consumedUTXOs).AsTree())
+	util.Assertf(!tx.IsPartialContext(), "tx.SetFullContext: full context expected")
+
+	return nil
+}
+
+func (tx *Transaction) SetFullContextWithFetch(fetchOutput func(oid base.OutputID) ([]byte, bool)) error {
+	return tx.SetFullContext(func(i byte) (*ledger.Output, error) {
+		oid, err1 := tx.InputAt(i)
+		if err1 != nil {
+			return nil, err1
+		}
+		oData, ok := fetchOutput(oid)
+		if !ok {
+			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
+		}
+		o, err1 := ledger.OutputFromBytesWithLib(oData, tx.Library)
+		if err1 != nil {
+			return nil, err1
+		}
+		return o, nil
 	})
 }
 
-func (tx *Transaction) SignatureBytes() []byte {
-	return tx.tree.MustBytesAtPath(Path(ledger.TxSignature))
+// Bytes return raw transaction bytes
+func (tx *Transaction) Bytes() []byte {
+	return tx.MustBytesAtPath(ledger.PathToRawTransaction)
 }
 
-// _baseValidation is a checking of being able to extract id. If not, bytes are not identifiable as a transaction
-func _baseValidation(tx *Transaction) (err error) {
-	tx.txid, err = TxIDFromTransactionDataTree(tx.tree)
-	if err != nil {
-		return err
-	}
-	tx.timestamp = tx.txid.Timestamp()
-	return nil
-}
-
-func CheckTimestampUpperBound(upperBound time.Time) TxValidationOption {
-	return func(tx *Transaction) error {
-		ts := ledger.ClockTime(tx.timestamp)
-		if ts.After(upperBound) {
-			return fmt.Errorf("transaction is %d msec too far in the future", int64(ts.Sub(upperBound))/int64(time.Millisecond))
-		}
-		return nil
-	}
-}
-
-//func ParseTotalProducedAmount(tx *Transaction) error {
-//	// parse the total amount as trimmed-prefix uint68. Validity of the sum is not checked here
-//	totalAmountBin, err := tx.tree.BytesAtPath(Path(ledger.TxTotalProducedAmount))
-//	if err != nil {
-//		return err
-//	}
-//	tx.totalAmountPersisted, err = easyfl_util.Uint64FromBytes(totalAmountBin)
-//	if err != nil {
-//		return fmt.Errorf("wrong total amount in transaction: %v", err)
-//	}
-//	return nil
-//}
-
-// ParseSequencerData validates and parses sequencer data if relevant. Data is cached for frequent extraction
-func ParseSequencerData(tx *Transaction) error {
-	if !tx.txid.IsSequencerMilestone() {
-		return nil
-	}
-	outputIndexData := tx.tree.MustBytesAtPath(Path(ledger.TxSequencerAndStemOutputIndices))
-	util.Assertf(len(outputIndexData) == 2, "len(outputIndexData) == 2")
-	sequencerOutputIndex, stemOutputIndex := outputIndexData[0], outputIndexData[1]
-
-	// check sequencer output
-	if int(sequencerOutputIndex) >= tx.NumProducedOutputs() {
-		return fmt.Errorf("wrong sequencer output index")
-	}
-	out, err := tx.ProducedOutputWithIDAt(sequencerOutputIndex)
-	if err != nil {
-		return fmt.Errorf("ParseSequencerData: '%v' at produced output %d", err, sequencerOutputIndex)
-	}
-	seqOutputData, valid := out.Output.SequencerOutputData()
-	if !valid {
-		return fmt.Errorf("ParseSequencerData: invalid sequencer output data")
-	}
-
-	var sequencerID base.ChainID
-	if seqOutputData.ChainConstraint.IsOrigin() {
-		sequencerID = base.MakeOriginChainID(out.ID)
-	} else {
-		sequencerID = seqOutputData.ChainConstraint.ChainID
-	}
-
-	// it is a sequencer milestone transaction
-	tx.sequencerTransactionData = &ledger.SequencerTransactionData{
-		SequencerOutputData:  seqOutputData,
-		SequencerID:          sequencerID,
-		SequencerOutputIndex: sequencerOutputIndex,
-		StemOutputIndex:      stemOutputIndex,
-		StemOutputData:       nil,
-	}
-
-	// ---  check stem output data
-	if tx.timestamp.Tick != 0 {
-		// not a branch transaction
-		return nil
-	}
-	if stemOutputIndex == sequencerOutputIndex || int(stemOutputIndex) >= tx.NumProducedOutputs() {
-		return fmt.Errorf("ParseSequencerData: wrong stem output index")
-	}
-	outStem, err := tx.ProducedOutputWithIDAt(stemOutputIndex)
-	if err != nil {
-		return fmt.Errorf("ParseSequencerData stem: %v", err)
-	}
-	lock := outStem.Output.Lock()
-	if lock.Name() != ledger.StemLockName {
-		return fmt.Errorf("ParseSequencerData: not a stem lock")
-	}
-	tx.sequencerTransactionData.StemOutputData = lock.(*ledger.StemLock)
-	return nil
-}
-
-// ParseSender parses and checks ED25519 signature, sets the sender field
-func ParseSender(tx *Transaction) error {
-	// mandatory sender signature
-	sigData := tx.SignatureBytes()
-	senderPubKey := ed25519.PublicKey(sigData[64:])
-	tx.sender = ledger.AddressED25519FromPublicKey(senderPubKey)
-	// verify if txid is signed
-	if !ed25519.Verify(senderPubKey, tx.txid[:], sigData[0:64]) {
-		return fmt.Errorf("invalid signature")
-	}
-	return nil
-}
-
-// ScanInputs validation option scans all inputs:
-// - checks number of them
-// - check if number of inputs is equal to the number of unlock datas
-// - checks for repeating inputs
-// - enforces pace constraints
-func ScanInputs(tx *Transaction) error {
-	numInputs, err := tx.tree.NumElementsAtPath(Path(ledger.TxInputIDs))
-	if err != nil {
-		return fmt.Errorf("scanning inputs: '%v'", err)
-	}
-	var oid base.OutputID
-
-	// enforce non-empty input set
-	if numInputs <= 0 {
-		return fmt.Errorf("number of inputs can't be 0")
-	}
-	// enforce exactly one unlock data for one input
-	numUnlock, err := tx.tree.NumElementsAtPath(Path(ledger.TxUnlockData))
-	if err != nil {
-		return fmt.Errorf("scanning inputs: '%v'", err)
-	}
-	if numInputs != numUnlock {
-		return fmt.Errorf("number of unlock datas must be equal to the number of inputs")
-	}
-
-	ts := tx.Timestamp()
-	isSequencer := tx.IsSequencerTransaction()
-	path := []byte{ledger.TxInputIDs, 0}
-	inps := set.New[base.OutputID]()
-
-	for i := 0; i < numInputs; i++ {
-		path[1] = byte(i)
-		// parse output ChainID
-		oid, err = base.OutputIDFromBytes(tx.tree.MustBytesAtPath(path))
-		if err != nil {
-			return fmt.Errorf("parsing input #%d: '%v'", i, err)
-		}
-		// check uniqueness
-		if inps.Contains(oid) {
-			return fmt.Errorf("repeating input #%d: %s", i, oid.StringShort())
-		}
-		inps.Insert(oid)
-		// check time pace constraint
-		if isSequencer {
-			if !ledger.ValidSequencerPace(oid.Timestamp(), ts) {
-				return fmt.Errorf("input #%d violates sequencer time pace constraint: %s", i, oid.StringShort())
-			}
-		} else {
-			if !ledger.ValidTransactionPace(oid.Timestamp(), ts) {
-				return fmt.Errorf("input #%d violates transaction time pace constraint: %s", i, oid.StringShort())
-			}
-		}
-	}
-	return nil
-}
-
-// ScanEndorsements
-// - parses and checks validity of each endorsement
-// - checks repeating endorsements (no very necessary)
-// - enforces sequencer pace constraint
-func ScanEndorsements(tx *Transaction) error {
-	numEndorsements, err := tx.tree.NumElementsAtPath(Path(ledger.TxEndorsements))
-	if err != nil {
-		return fmt.Errorf("scanning endorsements: '%v'", err)
-	}
-	if numEndorsements == 0 {
-		return nil
-	}
-	// check max number of endorsements
-	if numEndorsements > int(ledger.Const.MaxNumberOfEndorsements) {
-		return fmt.Errorf("number of endorsements should not exceed %d", ledger.Const.MaxNumberOfEndorsements)
-	}
-	// enforce only sequencer transaction can endorse
-	if !tx.IsSequencerTransaction() {
-		return fmt.Errorf("non-sequencer transaction cannot contain endorsements")
-	}
-
-	var endorsementID base.TransactionID
-
-	unique := set.New[base.TransactionID]()
-	txTs := tx.Timestamp()
-
-	path := []byte{ledger.TxEndorsements, 0}
-	for i := 0; i < numEndorsements; i++ {
-		path[1] = byte(i)
-		// parse transaction ChainID
-		endorsementID, err = base.TransactionIDFromBytes(tx.tree.MustBytesAtPath(path))
-		if err != nil {
-			return fmt.Errorf("parsing endorsement #%d: '%v'", i, err)
-		}
-		// check uniqueness
-		if unique.Contains(endorsementID) {
-			return fmt.Errorf("repeating endorsement #%d: %s", i, endorsementID.StringShort())
-		}
-		unique.Insert(endorsementID)
-		// check cross-slot endorsements
-		if txTs.Slot != endorsementID.Slot() {
-			return fmt.Errorf("cross-slot endorsements are not allowed:  %s ->  %s", tx.IDShortString(), endorsementID.StringShort())
-		}
-		// check time pace
-		if !ledger.ValidSequencerPace(endorsementID.Timestamp(), txTs) {
-			return fmt.Errorf("endorsement #%d violates sequencer time pace constraint: %s -> %s", i, txTs.String(), endorsementID.StringShort())
-		}
-	}
-	return nil
-}
-
-// ScanOutputs
-// - scans all outputs
-// - enforces the existence of the mandatory constrains,
-// - computes total of outputs and total inflation
-func ScanOutputs(tx *Transaction) error {
-	numOutputs, err := tx.tree.NumElementsAtPath(Path(ledger.TxOutputs))
-	if err != nil {
-		return fmt.Errorf("scanning outputs: '%v'", err)
-	}
-	var amounts ledger.Amounts
-
-	pathToAmounts := []byte{ledger.TxOutputs, 0, 0}
-	pathToLock := []byte{ledger.TxOutputs, 0, 1}
-
-	for i := 0; i < numOutputs; i++ {
-		pathToAmounts[1] = byte(i)
-		amounts, err = ledger.AmountsFromBytes(tx.tree.MustBytesAtPath(pathToAmounts))
-		if err != nil {
-			return fmt.Errorf("scanning output #%d: '%v'", i, err)
-		}
-
-		// just enforcing known lock at index 1
-		if _, err = ledger.LockFromBytes(tx.tree.MustBytesAtPath(pathToLock)); err != nil {
-			return fmt.Errorf("scanning output #%d: '%v'", i, err)
-		}
-		if overflow := amounts.AddToVector(&tx.producedAmountTotals); overflow {
-			return fmt.Errorf("scanning output #%d: 'arithmetic overflow while calculating total of outputs'", i)
-		}
-	}
-	return nil
-}
-
-// CheckSizeOfInputCommitment check if inout commitment is 32-bytes long. Not very necessary
-func CheckSizeOfInputCommitment(tx *Transaction) error {
-	data, err := tx.tree.BytesAtPath(Path(ledger.TxInputCommitment))
-	if err != nil {
-		return fmt.Errorf("checking input commitment: '%v'", err)
-	}
-	if len(data) != 32 {
-		return fmt.Errorf("input commitment must be 32-bytes long")
-	}
-	return nil
-}
-
-// CheckExplicitBaseline validates explicit baseline data
-func CheckExplicitBaseline(tx *Transaction) error {
-	data, err := tx.tree.BytesAtPath(Path(ledger.TxExplicitBaseline))
-	if err != nil {
-		return fmt.Errorf("checking explicit baseline: '%v'", err)
-	}
-	if len(data) == 0 {
-		return nil
-	}
-	if !tx.IsSequencerTransaction() {
-		return fmt.Errorf("checking explicit baseline: can't only be set on a sequencer transaction")
-	}
-	txid, err := base.TransactionIDFromBytes(data)
-	if err != nil {
-		return fmt.Errorf("checking explicit baseline: %v", err)
-	}
-	if !txid.IsBranchTransaction() {
-		return fmt.Errorf("explicit baseline must be a branch transaction ID, got %s", txid.String())
-	}
-	if !ledger.ValidSequencerPace(txid.Timestamp(), tx.timestamp) {
-		return fmt.Errorf("explicit baseline violates sequencer pace constraint: %s", txid.String())
-	}
-	return nil
-}
-
-func ValidateOptionWithFullContext(inputLoaderByIndex func(i byte) (*ledger.Output, error)) TxValidationOption {
-	return func(tx *Transaction) error {
-		var ctx *TxContext
-		var err error
-		if __printLogOnFail.Load() {
-			ctx, err = TxContextFromTransaction(tx, inputLoaderByIndex, TraceOptionAll)
-		} else {
-			ctx, err = TxContextFromTransaction(tx, inputLoaderByIndex)
-		}
-		if err != nil {
-			return err
-		}
-		return ctx.Validate()
-	}
-}
-
+// ID returns transaction ID
 func (tx *Transaction) ID() base.TransactionID {
 	return tx.txid
 }
 
+// IDString returns human-readable form of the transaction ID
 func (tx *Transaction) IDString() string {
-	return base.TransactionIDString(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerMilestone())
+	return base.TransactionIDString(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
 }
 
+// IDShortString returns shortened human-readable form of the transaction ID
 func (tx *Transaction) IDShortString() string {
-	return base.TransactionIDStringShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerMilestone())
+	return base.TransactionIDStringShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
 }
 
+// IDVeryShortString returns very short human-readable form of the transaction ID
 func (tx *Transaction) IDVeryShortString() string {
-	return base.TransactionIDStringVeryShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerMilestone())
+	return base.TransactionIDStringVeryShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
 }
 
+// IDStringHex returns hex encoded bytes of the raw txid bytes
 func (tx *Transaction) IDStringHex() string {
 	id := tx.ID()
 	return id.StringHex()
 }
 
+// Slot - slot if the transaction timestamp
 func (tx *Transaction) Slot() uint32 {
 	return tx.timestamp.Slot
 }
 
-func (tx *Transaction) Hash() base.TransactionIDShort {
-	return tx.txid.ShortID()
+func (tx *Transaction) Signature() (*base.Signature, error) {
+	sigBytes, err := tx.BytesAtPath(ledger.PathToSignature)
+	if err != nil {
+		return nil, fmt.Errorf("tx.Signature: %v", err)
+	}
+	ret, err := base.SignatureFromBytes(sigBytes)
+	if err != nil {
+		return nil, fmt.Errorf("tx.Signature: %v", err)
+	}
+	return ret, nil
 }
 
 // SequencerTransactionData returns nil it is not a sequencer milestone
@@ -517,7 +138,7 @@ func (tx *Transaction) SequencerTransactionData() *ledger.SequencerTransactionDa
 }
 
 func (tx *Transaction) ExplicitBaseline() (base.TransactionID, bool) {
-	data := tx.tree.MustBytesAtPath(Path(ledger.TxExplicitBaseline))
+	data := tx.MustBytesAtPath(ledger.PathToExplicitBaseline)
 	if len(data) == 0 {
 		return base.TransactionID{}, false
 	}
@@ -527,11 +148,11 @@ func (tx *Transaction) ExplicitBaseline() (base.TransactionID, bool) {
 }
 
 func (tx *Transaction) IsSequencerTransaction() bool {
-	return tx.txid.IsSequencerMilestone()
+	return tx.txid.IsSequencerTransaction()
 }
 
 func (tx *Transaction) IsBranchTransaction() bool {
-	return tx.txid.IsSequencerMilestone() && tx.timestamp.Tick == 0
+	return tx.txid.IsSequencerTransaction() && tx.timestamp.Tick == 0
 }
 
 func (tx *Transaction) StemOutputData() *ledger.StemLock {
@@ -551,12 +172,13 @@ func (tx *Transaction) StemOutput() *ledger.OutputWithID {
 	return tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().StemOutputIndex)
 }
 
-func (tx *Transaction) SenderAddress() ledger.AddressED25519 {
-	return tx.sender
-}
-
 func (tx *Transaction) Timestamp() base.LedgerTime {
 	return tx.timestamp
+}
+
+// Version returns the TxVersion uint16 from the transaction tuple
+func (tx *Transaction) Version() uint16 {
+	return binary.BigEndian.Uint16(tx.MustBytesAtPath(ledger.PathToTxVersion))
 }
 
 func (tx *Transaction) TimestampTime() time.Time {
@@ -567,37 +189,33 @@ func (tx *Transaction) TotalAmount() uint64 {
 	return uint64(tx.producedAmountTotals[0])
 }
 
-func (tx *Transaction) Bytes() []byte {
-	return tx.tree.Bytes()
-}
-
 func (tx *Transaction) NumProducedOutputs() int {
-	return tx.tree.MustNumElementsAtPath(Path(ledger.TxOutputs))
+	return tx.MustNumElementsAtPath(ledger.PathToProducedOutputs)
 }
 
 func (tx *Transaction) NumInputs() int {
-	return tx.tree.MustNumElementsAtPath(Path(ledger.TxInputIDs))
+	return tx.MustNumElementsAtPath(ledger.PathToInputIDs)
 }
 
 func (tx *Transaction) NumEndorsements() int {
-	return tx.tree.MustNumElementsAtPath(Path(ledger.TxEndorsements))
+	return tx.MustNumElementsAtPath(ledger.PathToEndorsements)
 }
 
 func (tx *Transaction) MustOutputDataAt(idx byte) []byte {
-	return tx.tree.MustBytesAtPath(common.Concat(ledger.TxOutputs, idx))
+	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToProducedOutputs, idx))
 }
 
 func (tx *Transaction) MustProducedOutputAt(idx byte) *ledger.Output {
-	ret, err := ledger.OutputFromBytes(tx.MustOutputDataAt(idx))
+	ret, err := ledger.OutputFromBytesWithLib(tx.MustOutputDataAt(idx), tx.Library)
 	util.AssertNoError(err)
 	return ret
 }
 
 func (tx *Transaction) ProducedOutputAt(idx byte) (*ledger.Output, error) {
 	if int(idx) >= tx.NumProducedOutputs() {
-		return nil, fmt.Errorf("wrong output index")
+		return nil, fmt.Errorf("ProducedOutputAt: wrong output index %d", idx)
 	}
-	out, err := ledger.OutputFromBytes(tx.MustOutputDataAt(idx))
+	out, err := ledger.OutputFromBytesWithLib(tx.MustOutputDataAt(idx), tx.Library)
 	if err != nil {
 		return nil, err
 	}
@@ -633,7 +251,7 @@ func (tx *Transaction) InputAt(idx byte) (ret base.OutputID, err error) {
 	if int(idx) >= tx.NumInputs() {
 		return [33]byte{}, fmt.Errorf("InputAt: wrong input index")
 	}
-	ret, err = base.OutputIDFromBytes(tx.tree.MustBytesAtPath(common.Concat(ledger.TxInputIDs, idx)))
+	ret, err = base.OutputIDFromBytes(tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToInputIDs, idx)))
 	return
 }
 
@@ -644,108 +262,90 @@ func (tx *Transaction) MustInputAt(idx byte) base.OutputID {
 }
 
 func (tx *Transaction) MustOutputIndexOfTheInput(inputIdx byte) byte {
-	return base.MustOutputIndexFromIDBytes(tx.tree.MustBytesAtPath(common.Concat(ledger.TxInputIDs, inputIdx)))
-}
-
-func (tx *Transaction) InputAtString(idx byte) string {
-	ret, err := tx.InputAt(idx)
-	if err != nil {
-		return err.Error()
-	}
-	return ret.String()
-}
-
-func (tx *Transaction) InputAtShort(idx byte) string {
-	ret, err := tx.InputAt(idx)
-	if err != nil {
-		return err.Error()
-	}
-	return ret.StringShort()
+	return base.MustOutputIndexFromIDBytes(tx.MustBytesAtPath(common.Concat(ledger.PathToInputIDs, inputIdx)))
 }
 
 func (tx *Transaction) Inputs() []base.OutputID {
 	ret := make([]base.OutputID, tx.NumInputs())
-	for i := range ret {
-		ret[i] = tx.MustInputAt(byte(i))
-	}
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
+		ret[i] = oid
+		return true
+	})
 	return ret
 }
 
 func (tx *Transaction) MustUnlockDataAt(idx byte) []byte {
-	return tx.tree.MustBytesAtPath(common.Concat(ledger.TxUnlockData, idx))
+	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, idx))
 }
 
-func (tx *Transaction) ConsumedOutputAt(idx byte, fetchOutput func(id *base.OutputID) ([]byte, bool)) (*ledger.OutputDataWithID, error) {
-	oid, err := tx.InputAt(idx)
-	if err != nil {
-		return nil, err
+func (tx *Transaction) ConsumedOutputAt(idx byte) (ret ledger.OutputWithID, err error) {
+	var oid base.OutputID
+	if oid, err = tx.InputAt(idx); err != nil {
+		return
 	}
-	ret, ok := fetchOutput(&oid)
-	if !ok {
-		return nil, fmt.Errorf("can't fetch output %s", oid.StringShort())
+	var oData []byte
+	if oData, err = tx.BytesAtPath(easyfl_util.Concat(ledger.PathToConsumedOutputs, idx)); err != nil {
+		return
 	}
-	return &ledger.OutputDataWithID{
-		ID:   oid,
-		Data: ret,
-	}, nil
+	var o *ledger.Output
+	if o, err = ledger.OutputFromBytes(oData); err != nil {
+		return
+	}
+	ret = ledger.OutputWithID{
+		Output: o,
+		ID:     oid,
+	}
+	return
 }
 
 func (tx *Transaction) MustEndorsementAt(idx byte) base.TransactionID {
-	data := tx.tree.MustBytesAtPath(common.Concat(ledger.TxEndorsements, idx))
+	data := tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToEndorsements, idx))
 	ret, err := base.TransactionIDFromBytes(data)
 	util.AssertNoError(err)
 	return ret
 }
 
 func (tx *Transaction) UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error) {
-	ret, err := tx.tree.BytesAtPath(common.Concat(ledger.TxUnlockData, inputIdx, constraintIdx))
+	ret, err := tx.BytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, inputIdx, constraintIdx))
 	if err != nil {
 		return nil, err
 	}
 	return ret, nil
 }
 
-// HashInputsAndEndorsements blake2b of concatenated input IDs and endorsements
-// independent of any other tx data but inputs
-func (tx *Transaction) HashInputsAndEndorsements() [32]byte {
-	var buf bytes.Buffer
-
-	buf.Write(tx.tree.MustBytesAtPath(Path(ledger.TxInputIDs)))
-	buf.Write(tx.tree.MustBytesAtPath(Path(ledger.TxEndorsements)))
-
-	return blake2b.Sum256(buf.Bytes())
+func (tx *Transaction) GetLibrary() *ledger.Library {
+	return tx.Library
 }
 
-func (tx *Transaction) ForEachInput(fun func(i byte, oid base.OutputID) bool) {
-	err := tx.tree.ForEach(func(i byte, data []byte) bool {
+func (tx *Transaction) ForEachInputID(fun func(i byte, oid base.OutputID) bool) {
+	err := tx.ForEach(func(i byte, data []byte) bool {
 		oid, err := base.OutputIDFromBytes(data)
-		util.Assertf(err == nil, "ForEachInput @ %d: %v", i, err)
+		util.Assertf(err == nil, "ForEachInputID @ %d: %v", i, err)
 		return fun(i, oid)
-	}, Path(ledger.TxInputIDs))
+	}, ledger.PathToInputIDs)
 	util.AssertNoError(err)
 }
 
 func (tx *Transaction) ForEachEndorsement(fun func(idx byte, txid base.TransactionID) bool) {
-	err := tx.tree.ForEach(func(i byte, data []byte) bool {
+	err := tx.ForEach(func(i byte, data []byte) bool {
 		txid, err := base.TransactionIDFromBytes(data)
 		util.Assertf(err == nil, "ForEachEndorsement @ %d: %v", i, err)
 		return fun(i, txid)
-	}, Path(ledger.TxEndorsements))
+	}, ledger.PathToEndorsements)
 	util.AssertNoError(err)
 }
 
-func (tx *Transaction) ForEachOutputData(fun func(idx byte, oData []byte) bool) {
-	_ = tx.tree.ForEach(func(i byte, data []byte) bool {
+func (tx *Transaction) ForEachProducedOutputData(fun func(idx byte, oData []byte) bool) {
+	err := tx.ForEach(func(i byte, data []byte) bool {
 		return fun(i, data)
-	}, Path(ledger.TxOutputs))
+	}, ledger.PathToProducedOutputs)
+	util.AssertNoError(err)
 }
 
-// ForEachProducedOutput traverses all produced outputs
-// Inside callback function the correct outputID must be obtained with OutputID(idx byte) ledger.OutputID
-// because stem output ID has a special form
 func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output, oid base.OutputID) bool) {
-	tx.ForEachOutputData(func(idx byte, oData []byte) bool {
-		o, _ := ledger.OutputFromBytes(oData)
+	tx.ForEachProducedOutputData(func(idx byte, oData []byte) bool {
+		o, err := ledger.OutputFromBytesWithLib(oData, tx.Library)
+		util.AssertNoError(err)
 		oid := tx.OutputID(idx)
 		if !fun(idx, o, oid) {
 			return false
@@ -754,24 +354,16 @@ func (tx *Transaction) ForEachProducedOutput(fun func(idx byte, o *ledger.Output
 	})
 }
 
-func (tx *Transaction) PredecessorTransactionIDs() set.Set[base.TransactionID] {
-	ret := set.New[base.TransactionID]()
-	tx.ForEachInput(func(_ byte, oid base.OutputID) bool {
-		ret.Insert(oid.TransactionID())
-		return true
-	})
-	tx.ForEachEndorsement(func(_ byte, txid base.TransactionID) bool {
-		ret.Insert(txid)
-		return true
-	})
-	return ret
-}
-
-// MustSequencerAndStemOutputIndices return seq output index and stem output index
-func (tx *Transaction) MustSequencerAndStemOutputIndices() (byte, byte) {
-	ret := tx.tree.MustBytesAtPath([]byte{ledger.TxSequencerAndStemOutputIndices})
-	util.Assertf(len(ret) == 2, "len(ret)==2")
-	return ret[0], ret[1]
+func (tx *Transaction) ForEachConsumedOutput(fun func(idx byte, o ledger.OutputWithID) bool) {
+	util.Assertf(!tx.IsPartialContext(), "ForEachConsumedOutput: full context expected")
+	n := tx.NumInputs()
+	for i := 0; i < n; i++ {
+		o, err := tx.ConsumedOutputAt(byte(i))
+		util.AssertNoError(err)
+		if !fun(byte(i), o) {
+			return
+		}
+	}
 }
 
 func (tx *Transaction) OutputID(idx byte) base.OutputID {
@@ -783,7 +375,7 @@ func (tx *Transaction) InflationAmount() uint64 {
 }
 
 func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*ledger.OutputWithID, error) {
-	tx, err := FromBytes(txBytes)
+	tx, err := Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -794,49 +386,20 @@ func OutputWithIDFromTransactionBytes(txBytes []byte, idx byte) (*ledger.OutputW
 }
 
 func OutputsWithIDFromTransactionBytes(txBytes []byte) ([]*ledger.OutputWithID, error) {
-	tx, err := FromBytes(txBytes)
+	tx, err := Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
 
 	ret := make([]*ledger.OutputWithID, tx.NumProducedOutputs())
-	for idx := 0; idx < tx.NumProducedOutputs(); idx++ {
+	n := tx.NumProducedOutputs()
+	for idx := 0; idx < n; idx++ {
 		ret[idx], err = tx.ProducedOutputWithIDAt(byte(idx))
 		if err != nil {
 			return nil, err
 		}
 	}
 	return ret, nil
-}
-
-func (tx *Transaction) ToString(fetchOutput func(oid base.OutputID) ([]byte, bool)) string {
-	ctx, err := TxContextFromTransaction(tx, func(i byte) (*ledger.Output, error) {
-		oid, err1 := tx.InputAt(i)
-		if err1 != nil {
-			return nil, err1
-		}
-		oData, ok := fetchOutput(oid)
-		if !ok {
-			return nil, fmt.Errorf("output %s has not been found", oid.StringShort())
-		}
-		o, err1 := ledger.OutputFromBytes(oData)
-		if err1 != nil {
-			return nil, err1
-		}
-		return o, nil
-	})
-	if err != nil {
-		return err.Error()
-	}
-	return ctx.String()
-}
-
-func (tx *Transaction) ToStringWithInputLoaderByIndex(fetchOutput func(i byte) (*ledger.Output, error)) string {
-	ctx, err := TxContextFromTransaction(tx, fetchOutput)
-	if err != nil {
-		return err.Error()
-	}
-	return ctx.String()
 }
 
 func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([]byte, bool)) func(byte) (*ledger.Output, error) {
@@ -846,7 +409,7 @@ func (tx *Transaction) InputLoaderByIndex(fetchOutput func(oid base.OutputID) ([
 		if !ok {
 			return nil, fmt.Errorf("can't load input #%d: %s", idx, inp.String())
 		}
-		o, err := ledger.OutputFromBytes(odata)
+		o, err := ledger.OutputFromBytesWithLib(odata, tx.Library)
 		if err != nil {
 			return nil, fmt.Errorf("can't load input #%d: %s, '%v'", idx, inp.String(), err)
 		}
@@ -871,7 +434,7 @@ func (tx *Transaction) SequencerAndStemInputData() (seqInputIdx *byte, stemInput
 	seqID = util.Ref(seqMeta.SequencerID)
 
 	if tx.IsBranchTransaction() {
-		tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+		tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 			if oid == seqMeta.StemOutputData.PredecessorOutputID {
 				stemInputIdx = util.Ref(i)
 			}
@@ -903,8 +466,8 @@ func (tx *Transaction) SequencerChainPredecessor() (base.OutputID, byte) {
 func (tx *Transaction) FindChainOutput(chainID base.ChainID) *ledger.OutputWithID {
 	var ret *ledger.OutputWithID
 	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-		cc, idx := o.ChainConstraint()
-		if idx == 0xff {
+		cc := o.ChainConstraint()
+		if cc == nil {
 			return true
 		}
 		cID := cc.ChainID
@@ -930,27 +493,9 @@ func (tx *Transaction) FindStemProducedOutput() *ledger.OutputWithID {
 	return tx.MustProducedOutputWithIDAt(tx.SequencerTransactionData().StemOutputIndex)
 }
 
-func (tx *Transaction) EndorsementsVeryShort() string {
-	ret := make([]string, tx.NumEndorsements())
-	tx.ForEachEndorsement(func(idx byte, txid base.TransactionID) bool {
-		ret[idx] = txid.StringVeryShort()
-		return true
-	})
-	return strings.Join(ret, ", ")
-}
-
-func (tx *Transaction) ProducedOutputsToString() string {
-	ret := make([]string, 0)
-	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-		ret = append(ret, fmt.Sprintf("  %d :", idx), o.ToString("    "))
-		return true
-	})
-	return strings.Join(ret, "\n")
-}
-
 func (tx *Transaction) StateMutations() *multistate.Mutations {
 	ret := multistate.NewMutations()
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		ret.InsertDelOutputMutation(oid)
 		return true
 	})
@@ -958,87 +503,13 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 		ret.InsertAddOutputMutation(oid, o)
 		return true
 	})
-	ret.InsertAddTxMutation(tx.ID(), tx.Slot(), byte(tx.NumProducedOutputs()-1))
+	var unspent set256.Set256
+	unspent.InsertRange(0, byte(tx.NumProducedOutputs()-1))
+	ret.InsertAddTxMutation(tx.ID(), unspent)
 
 	// TODO not correct. ChainIDs of discontinued chains must be deleted. We leave it as is because tx.StateMutations is not used
-	//  in the UTXO tangle but mostly in tests or at the DB inception
+	//  in the UTXO tangle but mostly in tests
 	return ret
-}
-
-func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
-	ctx, err := TxContextFromTransaction(tx, inputLoaderByIndex)
-	if err != nil {
-		ret := lines.New(prefix...)
-		ret.Add("can't create context of transaction %s: '%v'", tx.IDShortString(), err)
-		return ret
-	}
-	return ctx.Lines(prefix...)
-}
-
-func (tx *Transaction) ProducedTagAlongOutputs(targetID ...base.ChainID) []ledger.TagAlongOutput {
-	ret := make([]ledger.TagAlongOutput, 0)
-	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, oid base.OutputID) bool {
-		out := ledger.OutputWithID{ID: oid, Output: o}
-		ta := out.AsTagAlong()
-		if ta.TagAlongLock == nil {
-			return true
-		}
-		if len(targetID) > 0 && ta.TagAlongLock.TargetSequencerID != targetID[0] {
-			return true
-		}
-		ret = append(ret, ta)
-		return true
-	})
-	return ret
-}
-
-func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
-	ret := lines.New(prefix...)
-	ret.Add("id: %s", tx.IDString())
-	ret.Add("Sender address: %s", tx.SenderAddress().String())
-	ret.Add("Total: %s", util.Th(tx.TotalAmount()))
-	ret.Add("Inflation: %s", util.Th(tx.InflationAmount()))
-	if tx.IsSequencerTransaction() {
-		ret.Add("Sequencer output index: %d, Stem output index: %d", tx.sequencerTransactionData.SequencerOutputIndex, tx.sequencerTransactionData.StemOutputIndex)
-	}
-	ret.Add("Endorsements (%d):", tx.NumEndorsements())
-	tx.ForEachEndorsement(func(idx byte, txid base.TransactionID) bool {
-		ret.Add("    %3d: %s", idx, txid.String())
-		return true
-	})
-	ret.Add("Inputs (%d):", tx.NumInputs())
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
-		ret.Add("    %3d: %s", i, oid.String())
-		ret.Add("       Unlock data: %s", UnlockDataToString(tx.MustUnlockDataAt(i)))
-		return true
-	})
-	ret.Add("Outputs (%d):", tx.NumProducedOutputs())
-	pref := ""
-	if len(prefix) > 0 {
-		pref = prefix[0]
-	}
-	tx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-		ret.Add("%s", oid.StringShort())
-		ret.Append(o.Lines(pref + "    "))
-		return true
-	})
-	return ret
-}
-
-func (tx *Transaction) String() string {
-	return tx.LinesShort().String()
-}
-
-func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
-	tx, err := FromBytes(txBytes)
-	if err != nil {
-		return lines.New(prefix...).Add("FromBytes returned: %v", err)
-	}
-	txCtx, err := TxContextFromTransaction(tx, inputLoader)
-	if err != nil {
-		return lines.New(prefix...).Add("TxContextFromTransaction returned: %v", err)
-	}
-	return txCtx.Lines(prefix...)
 }
 
 // BaselineDirection is the input, endorsement or explicit baseline of the sequencer transaction where to look for a baseline branch
@@ -1072,10 +543,84 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	return
 }
 
-func (tx *Transaction) TotalProducedAmounts() [15]int64 {
+func (tx *Transaction) TotalProducedAmounts() []int64 {
 	return tx.producedAmountTotals
 }
 
 func (tx *Transaction) InputCommitment() []byte {
-	return tx.tree.MustBytesAtPath(Path(ledger.TxInputCommitment))
+	return tx.MustBytesAtPath(ledger.PathToInputCommitment)
+}
+
+func (tx *Transaction) AttachmentCost() int {
+	return tx.NumInputs() + tx.NumProducedOutputs()
+}
+
+// ConsumedOutputHash is ias blake2b hash of the tuple composed of output data
+func (tx *Transaction) ConsumedOutputHash() [32]byte {
+	util.Assertf(!tx.IsPartialContext(), "ConsumedOutputHash: can't be ekeleton context")
+	return blake2b.Sum256(tx.MustBytesAtPath(ledger.PathToConsumedOutputs))
+}
+
+func (tx *Transaction) BytesAtPath(path []byte) ([]byte, error) {
+	return tx.Tree.BytesAtPath(path)
+}
+
+func (tx *Transaction) ConsumedOutput(idx byte) (*ledger.Output, error) {
+	ret, err := tx.ConsumedOutputAt(idx)
+	if err != nil {
+		return nil, err
+	}
+	return ret.Output, nil
+}
+
+func (tx *Transaction) ConsumedTotal(i byte) (ret int64) {
+	if i == 0 {
+		return tx.totalConsumedTokenBalance
+	}
+	tx.ForEachConsumedOutput(func(idx byte, o ledger.OutputWithID) bool {
+		ret += o.Amounts().Amount(i)
+		return true
+	})
+	return
+}
+
+func (tx *Transaction) ProducedTotal(i byte) int64 {
+	util.Assertf(int(i) < len(tx.producedAmountTotals), "ProducedTotal: wrong index %d", i)
+	return tx.producedAmountTotals[i]
+}
+
+func (tx *Transaction) HolderID() (base.HolderID, error) {
+	sig, err := tx.Signature()
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sig.HolderID(), nil
+}
+
+// HasOutputForSequencer returns true if any produced output has a lock targeting
+// the given sequencer chain ID (chainLock, tagAlong, or delegateLock).
+func (tx *Transaction) HasOutputForSequencer(seqID base.ChainID) bool {
+	found := false
+	tx.ForEachProducedOutput(func(_ byte, o *ledger.Output, _ base.OutputID) bool {
+		lock := o.Lock()
+		switch l := lock.(type) {
+		case ledger.ChainLock:
+			if l.ChainID() == seqID {
+				found = true
+				return false
+			}
+		case *ledger.TagAlongLock:
+			if l.TargetSequencerID == seqID {
+				found = true
+				return false
+			}
+		case *ledger.DelegateLock:
+			if l.Target == seqID {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
 }

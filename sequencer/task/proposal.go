@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/lunfardo314/proxima/core/attacher"
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
@@ -15,31 +18,50 @@ import (
 
 const TraceTagProposal = "proposal"
 
+// tagAlongBudgetFraction: tag-alongs may use up to this fraction of AttachmentCostBudget.
+// Delegation freezes then use whatever remains of the full budget.
+var tagAlongBudgetFraction = global.Fraction23
+
 // newProposal takes initial incremental attacher only with endorsements
-// and stem in it, and packages it with the transaction builder
-// It is ready to be filled up with tag-along inputs and delegations
-func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, error) {
-	p.Assertf(!a.IsClosed(), "!a.IsClosed()")
+// and stem in it, and packages it with the transaction builder.
+// It is ready to be filled up with tag-along inputs and delegations.
+func (t *taskData) newProposal(a *attacher.IncrementalAttacher) (*proposal, error) {
+	return t.newProposalWithTimestamp(a, t.targetTs)
+}
+
+func (t *taskData) newProposalWithTimestamp(a *attacher.IncrementalAttacher, ts base.LedgerTime) (*proposal, error) {
+	t.Assertf(!a.IsClosed(), "!a.IsClosed()")
 
 	seqPredVID := a.Extending()
 	seqPred, ok := seqPredVID.OutputWithChainID()
-	p.Assertf(ok, "newProposal: inconsistency: must be a chain output")
+	t.Assertf(ok, "newProposal: inconsistency: must be a chain output")
 
 	var stem *ledger.OutputWithID
 	if stemWrapped := a.Stem(); stemWrapped.VID != nil {
 		stem = stemWrapped.OutputWithID()
-		p.Assertf(!a.TargetTs().IsSlotBoundary() || stem != nil, "newProposal: !a.TargetTs().IsSlotBoundary() || stem != nil")
+		t.Assertf(!a.IsBranchTarget() || stem != nil, "newProposal: !a.IsBranchTarget() || stem != nil")
 	}
-	txb, err := txbuilder_seq.New(a.TargetTs(), &seqPred, stem, p.ControllerPrivateKey(), a.BaselineSugaredStateReader())
+	signatureType, privKey, pubKey := t.ControllerKeys()
+	txb, err := txbuilder_seq.New(txbuilder_seq.Params{
+		Timestamp:     ts,
+		Predecessor:   &seqPred,
+		Stem:          stem,
+		SignatureType: signatureType,
+		PrivateKey:    privKey,
+		PublicKey:     pubKey,
+		StateReader:   a.BaselineSugaredStateReader(),
+	})
 	if err != nil {
-		a.Close() // FIX: close attacher on error
+		a.Close()
 		return nil, fmt.Errorf("newProposal: %w", err)
 	}
-	txb.SetName(p.environment.SequencerName() + "." + p.strategy.ShortName)
-
+	// resolve effective name: on-chain name (from predecessor) takes priority, then config name
+	if txb.EffectiveName() == "" {
+		txb.SetName(t.environment.SequencerName())
+	}
 	for _, vid := range a.Endorsing() {
 		if err = txb.AddEndorsement(vid.ID()); err != nil {
-			a.Close() // FIX: close attacher on error
+			a.Close()
 			return nil, fmt.Errorf("newProposal: %w", err)
 		}
 	}
@@ -47,9 +69,9 @@ func (p *proposer) newProposal(a *attacher.IncrementalAttacher) (*proposal, erro
 	txb.PutExplicitBaseline(a.ExplicitBaselineID())
 
 	return &proposal{
-		proposer:            p,
+		taskData:            t,
 		IncrementalAttacher: a,
-		txb:                 txb,
+		SeqTxBuilder:        txb,
 	}, nil
 }
 
@@ -65,18 +87,20 @@ type _inputCandidate struct {
 }
 
 func (p *proposal) insertTagAlongInputs() {
-	p.Tracef(TraceTagProposal, "insertTagAlongInputs")
-	if ledger.Const.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
+	p.taskData.Tracef(TraceTagProposal, "insertTagAlongInputs")
+	if p.Library.IsPreBranchConsolidationTimestamp(p.taskData.targetTs) {
 		return
 	}
-	if p.txb.InputsAreFull() {
+	if p.InputsAreFull() {
 		return
 	}
+	maxTagAlongs := p.taskData.MaxTagAlongInputs()
+	tagAlongsInserted := 0
 
 	outs := make([]*_inputCandidate, 0)
 
 	p.Backlog().IterateOutputs(func(wOut vertex.WrappedOutput) bool {
-		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.proposer.targetTs) {
+		if !ledger.ValidSequencerPace(wOut.Timestamp(), p.taskData.targetTs) {
 			return true
 		}
 		outs = append(outs, &_inputCandidate{
@@ -108,36 +132,51 @@ func (p *proposal) insertTagAlongInputs() {
 		var cmd txbuilder_seq.TxBuilderCommand
 
 		valid, err := p.InsertInput(o.wOut, func() (valid1 bool, err1 error) {
-			cmd, valid1, err1 = p.txb.AddTagAlongInput(*o.o)
+			if cmd, valid1, err1 = p.TxBuilderCommandFromOutput(*o.o); err1 != nil {
+				return
+			}
+			// check if the attachment cost after the command will fit the tag-along sub-budget.
+			// Budget numerator is scaled by sequencer pressure (2=full, 1=reduced, 0=none).
+			attachmentCost := p.PastConeAttachmentCost() + p.SeqTxBuilder.AttachmentCost() + cmd.AttachmentCostDelta()
+			budgetNumerator := p.TagAlongBudgetNumerator()
+			tagAlongBudget := budgetNumerator * p.Library.AttachmentCostBudget / tagAlongBudgetFraction.Denominator
+			if attachmentCost > tagAlongBudget {
+				return true, fmt.Errorf("tag-along budget exceeded")
+			}
+			valid1, err1 = cmd.Apply(p.SeqTxBuilder)
 			return
 		})
 		if !valid {
 			p.Backlog().AddToBlacklist(o.wOut)
-			p.proposer.Log().Warnf("TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
+			p.taskData.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
 				err, o.o.LinesSource("     ").String())
 		} else {
 			if err != nil {
-				p.proposer.Log().Warnf("TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
+				if strings.Contains(err.Error(), "already consumed") {
+					p.Backlog().RemoveOutput(o.wOut)
+				}
+				p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
 			} else {
-				p.proposer.Assertf(cmd != nil, "cmd != nil")
-				p.proposer.Log().Infof("TAG_ALONG: output %s has been added to '%s', cmd='%s'",
+				p.taskData.Assertf(cmd != nil, "cmd != nil")
+				p.taskData.LogTopicf("tag_along", 1, "TAG_ALONG: output %s has been added to '%s', cmd='%s'",
 					o.o.ID.StringShort(), p.Name, cmd.Lines().Join(", "))
+				tagAlongsInserted++
 			}
 		}
-		if p.txb.InputsAreFull() {
+		if p.InputsAreFull() || tagAlongsInserted >= maxTagAlongs {
 			return
 		}
 	}
 }
 
 func (p *proposal) insertDelegations() {
-	p.Tracef(TraceTagProposal, "insertDelegations IN")
-	defer p.Tracef(TraceTagProposal, "insertDelegations OUT")
+	p.taskData.Tracef(TraceTagProposal, "insertDelegations IN")
+	defer p.taskData.Tracef(TraceTagProposal, "insertDelegations OUT")
 
-	if ledger.Const.IsPreBranchConsolidationTimestamp(p.proposer.targetTs) {
+	if p.Library.IsPreBranchConsolidationTimestamp(p.taskData.targetTs) {
 		return
 	}
-	if p.txb.InputsAreFull() {
+	if p.InputsAreFull() {
 		return
 	}
 
@@ -153,7 +192,7 @@ func (p *proposal) insertDelegations() {
 		return
 	}
 
-	p.Tracef(TraceTagProposal, "insertDelegations end IterateDelegatedOutputs")
+	p.taskData.Tracef(TraceTagProposal, "insertDelegations end IterateDelegatedOutputs")
 	// sort by frozen amount descending
 	sort.Slice(outs, func(i, j int) bool {
 		if outs[i].Output.TokenBalance() > outs[j].Output.TokenBalance() {
@@ -167,47 +206,59 @@ func (p *proposal) insertDelegations() {
 			return
 		default:
 		}
-		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.proposer)
+		wOut := attacher.AttachOutputWithID(o.OutputWithID, p.taskData)
 		// just skip if freezing failed for any reason
 		valid, err := p.InsertInput(wOut, func() (bool, error) {
-			_, valid, err1 := p.txb.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
+			// adding one more delegation means +1 input and +1 output, 2 cost units of the transaction attachment cost more.
+			// Checking if the updated proposal will still fit the attachment budget
+			attachmentCost := p.PastConeAttachmentCost() + p.PastConeAttachmentCost() + p.SeqTxBuilder.AttachmentCost() + 2
+			if attachmentCost > p.Library.AttachmentCostBudget {
+				return true, fmt.Errorf("attachment budget exceeded")
+			}
+			_, valid, err1 := p.FreezeDelegation(o.DelegationOutput, o.freezeUntilEpoch)
 			return valid, err1
 		})
 		if err != nil {
 			if valid {
-				p.proposer.Log().Warnf("FREEZE failed, id = %s, oid = %s, reason = '%v'",
+				if strings.Contains(err.Error(), "already consumed") {
+					p.Backlog().RemoveOutput(wOut)
+				}
+				p.taskData.WarnTopicf("tag_along", 1, "FREEZE failed, id = %s, oid = %s, reason = '%v'",
 					o.ChainID.String(), o.ID.StringShort(), err)
 			} else {
 				p.Backlog().AddToBlacklist(wOut)
-				p.proposer.Log().Errorf("FREEZE failed PERMANENTLY, id = %s, oid = %s, reason = '%v'",
+				p.taskData.WarnTopicf("tag_along", 0, "FREEZE failed PERMANENTLY, id = %s, oid = %s, reason = '%v'",
 					o.ChainID.String(), o.ID.StringShort(), err)
 			}
 		} else {
-			p.proposer.Log().Infof("FREEZE delegation %s, oid = %s",
+			p.taskData.LogTopicf("freeze_delegation", 1, "FREEZE delegation %s, oid = %s",
 				o.ChainID.String(), o.ID.StringShort())
 		}
 
-		if p.txb.InputsAreFull() {
+		if p.InputsAreFull() {
 			return
 		}
 	}
 }
 
 func (p *proposal) insertInputs() {
-	p.insertDelegations()
+	// tag-alongs first: they use up to tagAlongBudgetFraction of the attachment cost budget.
+	// delegations second: they use whatever remains of the full budget.
 	p.insertTagAlongInputs()
+	p.insertDelegations()
 }
 
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 	p.Close()
-	txBytes, _, txString, err := p.txb.BytesWithValidation()
+
+	tx, err := p.BuildTransactionWithValidation()
 	if err != nil {
-		return nil, txString, err
+		if tx != nil {
+			return tx, tx.String(), err
+		}
+		return nil, "", err
 	}
-	// TODO redundant parsing back and forth
-	tx, err := transaction.FromBytes(txBytes, transaction.MainTxValidationOptions...)
-	p.proposer.AssertNoError(err)
-	return tx, txString, nil
+	return tx, tx.String(), nil
 }
 
 type _delegationToFreeze struct {
@@ -222,27 +273,44 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	ret := make([]_delegationToFreeze, 0)
 	nDelegationsByUnfreezeEpochMap := make(map[uint32]int)
 
-	txEpoch := ledger.Const.EpochFromSlotDirect(p.SequencerID(), p.txb.TransactionData.Timestamp.Slot)
+	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TransactionData.Timestamp.Slot)
 
-	for e := txEpoch; e < txEpoch+ledger.Const.MaxFrozenEpochs; e++ {
+	for e := txEpoch; e < txEpoch+p.MaxFrozenEpochs; e++ {
 		nDelegationsByUnfreezeEpochMap[e] = 0
 	}
 
-	p.txb.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
-		if p.Backlog().IsInBlacklist(o.ID) {
-			return true
+	// Collect all delegation outputs under the Readable lock, then filter by blacklist
+	// outside to avoid holding the Readable lock while accessing the backlog lock
+	type _delegationCandidate struct {
+		delegation *ledger.DelegationOutput
+		frozen     bool
+	}
+	var candidates []_delegationCandidate
+
+	p.StateReader().IterateDelegatedOutputs(p.SequencerID(), func(o *ledger.DelegationOutput) bool {
+		c := _delegationCandidate{delegation: o}
+		if o.IsInFrozenSlot(p.taskData.targetTs.Slot) {
+			c.frozen = true
 		}
-		if o.IsUnlockableByTargetForFreezing(p.proposer.targetTs.Slot) {
-			ret = append(ret, _delegationToFreeze{o, 0})
-		}
-		if o.IsInFrozenSlot(p.proposer.targetTs.Slot) {
-			nDelegationsByUnfreezeEpochMap[o.LastFrozenEpoch]++
-		}
+		candidates = append(candidates, c)
 		return true
 	})
 
+	// Filter and classify outside the Readable lock
+	for _, c := range candidates {
+		if p.Backlog().IsInBlacklist(c.delegation.ID) {
+			continue
+		}
+		if c.delegation.IsUnlockableByTargetForFreezing(p.taskData.targetTs.Slot) {
+			ret = append(ret, _delegationToFreeze{c.delegation, 0})
+		}
+		if c.frozen {
+			nDelegationsByUnfreezeEpochMap[c.delegation.LastFrozenEpoch]++
+		}
+	}
+
 	for i := range ret {
-		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.txb.TransactionData.Timestamp), nDelegationsByUnfreezeEpochMap)
+		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.TransactionData.Timestamp), nDelegationsByUnfreezeEpochMap)
 		nDelegationsByUnfreezeEpochMap[ret[i].freezeUntilEpoch]++
 	}
 	return ret

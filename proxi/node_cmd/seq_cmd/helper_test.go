@@ -8,7 +8,7 @@ import (
 )
 
 func TestHelper(t *testing.T) {
-	ledger.InitWithTestingLedgerIDData()
-	t.Logf("init supply: %s", util.Th(ledger.Const.InitialSupply))
-	t.Logf("1/5 of init supply: %s", util.Th(ledger.Const.InitialSupply/5))
+	ledger.InitWithTestingLedgerData()
+	t.Logf("init supply: %s", util.Th(ledger.L(0).InitialSupply))
+	t.Logf("1/5 of init supply: %s", util.Th(ledger.L(0).InitialSupply/5))
 }

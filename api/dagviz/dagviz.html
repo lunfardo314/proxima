@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proxima DAG Visualizer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #f0f0f0; color: #222; font-family: 'Consolas', 'Monaco', monospace; overflow: hidden; }
+#canvas { display: block; cursor: crosshair; }
+#controls {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(255, 255, 255, 0.92); border: 1px solid #bbb; border-radius: 6px;
+    padding: 10px; font-size: 12px; z-index: 10; min-width: 220px;
+}
+#controls label { display: block; margin: 4px 0 2px; color: #555; }
+#controls input[type=text] {
+    width: 100%; background: #fff; color: #222; border: 1px solid #aaa;
+    border-radius: 3px; padding: 3px 6px; font-size: 12px; font-family: inherit;
+}
+#controls input[type=range] { width: 100%; }
+#controls button {
+    margin-top: 6px; padding: 4px 12px; background: #2a7;
+    color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;
+}
+#controls button:hover { background: #3b8; }
+#controls button.disconnect { background: #b44; }
+#controls button.disconnect:hover { background: #c55; }
+.ctrl-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+.ctrl-row label { margin: 0; flex-shrink: 0; }
+.ctrl-row span { color: #272; min-width: 30px; text-align: right; }
+#status { margin-top: 6px; padding: 3px; border-radius: 3px; text-align: center; font-size: 11px; }
+#status.connected { background: #d4f0d4; color: #272; }
+#status.disconnected { background: #f0d4d4; color: #922; }
+#stats { margin-top: 4px; font-size: 11px; color: #666; }
+#tooltip {
+    display: none; position: absolute; background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #999; border-radius: 4px; padding: 8px; font-size: 11px; color: #222;
+    pointer-events: none; z-index: 20; max-width: 400px; white-space: pre-line;
+}
+.edge-toggle { margin: 2px 0; }
+.edge-toggle input { margin-right: 4px; }
+#legend {
+    position: absolute; bottom: 10px; left: 10px;
+    background: rgba(255, 255, 255, 0.92); border: 1px solid #bbb; border-radius: 6px;
+    padding: 8px; font-size: 11px; z-index: 10; color: #333;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.legend-shape { width: 14px; height: 14px; display: inline-block; }
+#node-status {
+    position: absolute; bottom: 10px; right: 10px;
+    background: rgba(255, 255, 255, 0.92); border: 1px solid #bbb; border-radius: 6px;
+    padding: 8px; font-size: 11px; z-index: 10; color: #333;
+}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="controls">
+    <strong>Proxima DAG Visualizer</strong>
+    <input type="hidden" id="wsUrl" value="">
+    <button id="connectBtn" onclick="toggleConnection()">Connect</button>
+    <div id="status" class="disconnected">Disconnected</div>
+
+    <div class="ctrl-row">
+        <label>Pane width (slots):</label>
+        <input type="range" id="paneSlots" min="3" max="30" value="8" oninput="updatePaneSlots()">
+        <span id="paneSlotsVal">8</span>
+    </div>
+    <div class="ctrl-row">
+        <label>Vertex size:</label>
+        <input type="range" id="vertexScale" min="1" max="20" value="6" oninput="updateVertexScale()">
+        <span id="vertexScaleVal">6</span>
+    </div>
+
+    <div style="margin-top:6px; font-size:11px; color:#aaa;">Edges:</div>
+    <div class="edge-toggle"><label><input type="checkbox" id="showConsumption" checked> Consumption (gray)</label></div>
+    <div class="edge-toggle"><label><input type="checkbox" id="showEndorsement" checked> Endorsement (dashed)</label></div>
+    <div class="edge-toggle"><label><input type="checkbox" id="showStem" checked> Stem (thick)</label></div>
+
+    <div style="margin-top:6px; font-size:11px; color:#aaa;">
+        <label><input type="checkbox" id="pauseScroll" onchange="onPauseCheckbox()"> Pause scrolling (Space/P)</label>
+    </div>
+
+    <div id="stats">
+        Vertices: <span id="vertexCount">0</span> |
+        TPS: <span id="tpsCount">0</span>
+    </div>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="node-status">
+    <div style="display:flex; align-items:center; gap:8px;">
+        <canvas id="stressGauge" width="16" height="80"></canvas>
+        <div>
+            <div>Stress: <span id="stressValue">0</span>%</div>
+            <div>Pipeline: <span id="pipelineValue">0</span></div>
+            <div id="syncFlag" style="display:none; color:#c70;">SYNCING</div>
+            <div id="snapshotFlag" style="display:none; color:#c70;">SNAPSHOT</div>
+        </div>
+    </div>
+</div>
+
+<div id="legend">
+    <div class="legend-item"><canvas class="legend-shape" id="lgBranch"></canvas> Branch (sequencer, tick=0)</div>
+    <div class="legend-item"><canvas class="legend-shape" id="lgSeq"></canvas> Sequencer tx</div>
+    <div class="legend-item"><canvas class="legend-shape" id="lgNonSeq"></canvas> Non-sequencer tx</div>
+    <div class="legend-item"><span style="color:#aaa;">---</span> Consumption edge</div>
+    <div class="legend-item"><span style="color:#36a; letter-spacing:2px;">- -</span> Endorsement edge</div>
+    <div class="legend-item"><span style="color:#c70; font-weight:bold;">|</span> Stem link</div>
+    <div class="legend-item"><span style="color:#e22; font-weight:bold;">&#9675;</span> LRB (latest reliable branch)</div>
+</div>
+
+<script>
+// ============ CONSTANTS ============
+const TICKS_PER_SLOT = 128;
+const SLOT_DURATION_MS = 10240; // 10.24 seconds
+const TICK_DURATION_MS = SLOT_DURATION_MS / TICKS_PER_SLOT; // 80ms
+const RIGHT_MARGIN_MS = 5000; // current time offset from right edge
+
+// ============ STATE ============
+let ws = null;
+let connected = false;
+let paused = false;
+
+// vertex map: txid_hex -> VertexData
+const vertices = new Map();
+// sequencer color cache: seqid -> hsl color
+const seqColors = new Map();
+
+let paneSlots = 8;
+let vertexScaleFactor = 6;
+let selectedVertexId = null;
+let hoveredVertexId = null;
+let mouseX = 0, mouseY = 0;
+
+// TPS tracking: count vertices in a completed slot, refresh 5s after slot boundary
+let currentTPS = 0;
+let tpsScheduledSlot = 0;
+
+// Fine-grained TPS chart: divide each slot into TPS_PORTIONS portions
+const TPS_PORTIONS = 16;
+const PORTION_TICKS = TICKS_PER_SLOT / TPS_PORTIONS; // 8 ticks per portion
+const PORTION_DURATION_S = (SLOT_DURATION_MS / TPS_PORTIONS) / 1000; // seconds per portion
+const TPS_CHART_FRACTION = 1 / 15; // fraction of canvas height for the chart
+const TPS_CHART_MAX_DEFAULT = 30; // default max TPS for vertical scale
+let lastTPSData = null; // cached for tooltip lookup
+
+// LRB tracking
+let lrbTxId = null;
+let lrbFetchTimer = null;
+
+// Time reference: we'll sync pane to wall clock
+// The pane shows [now - paneWidth + rightMargin, now + rightMargin]
+let clockOffsetMs = 0; // adjustable if needed
+let genesisSlot = 0; // will be set from first received tx
+
+// Canvas
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// ============ INIT ============
+function init() {
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('click', onClick);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    document.addEventListener('keydown', onKeyDown);
+
+    // Auto-detect WebSocket URL from page location
+    const loc = window.location;
+    const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+    document.getElementById('wsUrl').value = wsProto + '//' + loc.host + '/wsapi/v1/dag_vertex_stream';
+
+    drawLegendShapes();
+    updateNodeStatusDisplay();
+    fetchNodeStatus();
+    requestAnimationFrame(animate);
+}
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// ============ WEBSOCKET ============
+function toggleConnection() {
+    if (connected) {
+        disconnect();
+    } else {
+        connect();
+    }
+}
+
+function connect() {
+    const url = document.getElementById('wsUrl').value.trim();
+    if (!url) return;
+    try {
+        ws = new WebSocket(url);
+    } catch (e) {
+        setStatus('Error: ' + e.message, false);
+        return;
+    }
+
+    ws.onopen = () => {
+        connected = true;
+        setStatus('Connected', true);
+        document.getElementById('connectBtn').textContent = 'Disconnect';
+        document.getElementById('connectBtn').className = 'disconnect';
+        fetchLRB();
+        scheduleLRBFetch();
+    };
+
+    ws.onmessage = (evt) => {
+        try {
+            const data = JSON.parse(evt.data);
+            handleMessage(data);
+        } catch (e) {
+            console.warn('Failed to parse WS message:', e);
+        }
+    };
+
+    ws.onclose = () => {
+        connected = false;
+        setStatus('Disconnected', false);
+        document.getElementById('connectBtn').textContent = 'Connect';
+        document.getElementById('connectBtn').className = '';
+    };
+
+    ws.onerror = () => {
+        setStatus('Connection error', false);
+    };
+}
+
+function disconnect() {
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+    if (lrbFetchTimer) {
+        clearTimeout(lrbFetchTimer);
+        lrbFetchTimer = null;
+    }
+}
+
+function setStatus(text, ok) {
+    const el = document.getElementById('status');
+    el.textContent = text;
+    el.className = ok ? 'connected' : 'disconnected';
+}
+
+// ============ MESSAGE HANDLING ============
+function handleMessage(data) {
+    // Deletion message: has "id" but no "in" field
+    if (data.id && !data.in) {
+        vertices.delete(data.id);
+        return;
+    }
+
+    if (!data.id || !data.in) return;
+
+    const ts = parseTxTimestamp(data.id);
+    if (!ts) return;
+
+    if (genesisSlot === 0) {
+        genesisSlot = ts.slot - 5;
+    }
+
+    const isBranch = ts.tick === 0 && !!data.seqid;
+    const isSequencer = !!data.seqid;
+
+    const v = {
+        id: data.id,
+        slot: ts.slot,
+        tick: ts.tick,
+        totalAmount: data.a || 0,
+        inflation: data.i || 0,
+        seqId: data.seqid || '',
+        seqName: data.seqname || '',
+        proposerStrategy: data.strategy || '',
+        holderId: data.holder || '',
+        coverageDelta: data.cd,
+        supply: data.supply,
+        seqInputIdx: data.seqidx,
+        stemInputIdx: data.stemidx,
+        inputs: data.in || [],       // these are tx IDs (not output IDs)
+        endorsements: data.endorse || [],
+        isBranch: isBranch,
+        isSequencer: isSequencer,
+        timeMs: slotTickToMs(ts.slot, ts.tick),
+    };
+
+    vertices.set(data.id, v);
+    // Only recalibrate the time anchor on branch transactions (once per slot)
+    // to avoid glitching when sequencer txs arrive with increasing ticks.
+    // Skip updates while paused to prevent anchor drift that causes jump on unpause.
+    if (!paused && (v.isBranch || timeAnchorWall === 0)) {
+        updateTimeAnchor(v.timeMs);
+    }
+
+    // TPS tracking: when a new slot's branch arrives, schedule a count 5s later
+    if (v.isBranch && ts.slot > tpsScheduledSlot) {
+        tpsScheduledSlot = ts.slot;
+        const countSlot = ts.slot - 1;
+        setTimeout(() => {
+            let count = 0;
+            for (const [, vtx] of vertices) {
+                if (vtx.slot === countSlot) count++;
+            }
+            currentTPS = (count / (SLOT_DURATION_MS / 1000)).toFixed(1);
+        }, 5000);
+    }
+}
+
+// Parse timestamp from txID hex string
+// First 10 hex chars = 5 bytes: 4 bytes slot (big-endian) + 1 byte (7 bits tick + 1 bit seq flag)
+function parseTxTimestamp(txidHex) {
+    if (txidHex.length < 10) return null;
+    const slotHex = txidHex.substring(0, 8);
+    const tickByte = parseInt(txidHex.substring(8, 10), 16);
+    const slot = parseInt(slotHex, 16);
+    const tick = tickByte >> 1; // upper 7 bits
+    return { slot, tick };
+}
+
+// Human-readable short txid, matching node format: [<slot>|<tick>sq]<12hex>..
+function txidShort(txidHex) {
+    const ts = parseTxTimestamp(txidHex);
+    if (!ts) return txidHex.substring(0, 16) + '..';
+    const seqFlag = parseInt(txidHex.substring(8, 10), 16) & 1;
+    let suffix = '';
+    if (seqFlag) {
+        suffix = ts.tick === 0 ? 'br' : 'sq';
+    }
+    // hash portion starts at byte 6 (hex offset 12)
+    const hashPart = txidHex.substring(12, 24);
+    return '[' + ts.slot + '|' + ts.tick + suffix + ']' + hashPart + '..';
+}
+
+// Convert slot+tick to a millisecond timestamp relative to genesis
+function slotTickToMs(slot, tick) {
+    return slot * SLOT_DURATION_MS + tick * TICK_DURATION_MS;
+}
+
+// Time anchoring: track the most recent vertex arrival to calibrate clock.
+// We continuously update the anchor so that "now" in ledger time tracks
+// the latest vertex we've seen (which is close to the node's real time).
+let timeAnchorWall = 0;
+let timeAnchorLedger = 0;
+let pausedLedgerMs = 0;
+
+function updateTimeAnchor(vertexTimeMs) {
+    // Use the latest vertex as the best estimate of "current ledger time"
+    // Only update if this vertex is newer than our current anchor
+    const candidateLedger = vertexTimeMs;
+    if (timeAnchorWall === 0 || candidateLedger > timeAnchorLedger) {
+        timeAnchorWall = Date.now();
+        timeAnchorLedger = candidateLedger;
+    }
+}
+
+function nowLedgerMs() {
+    if (paused && pausedLedgerMs > 0) return pausedLedgerMs;
+    if (timeAnchorWall === 0) return 0;
+    return timeAnchorLedger + (Date.now() - timeAnchorWall);
+}
+
+// ============ COORDINATE SYSTEM ============
+function paneWidthMs() {
+    return paneSlots * SLOT_DURATION_MS;
+}
+
+// The visible time range: [nowMs - paneWidth + rightMargin, nowMs + rightMargin]
+function visibleRange() {
+    const now = nowLedgerMs();
+    if (now === 0) return { left: 0, right: 0 };
+    const right = now + RIGHT_MARGIN_MS;
+    const left = right - paneWidthMs();
+    return { left, right };
+}
+
+function timeToX(timeMs) {
+    const range = visibleRange();
+    if (range.right === range.left) return -1;
+    return ((timeMs - range.left) / (range.right - range.left)) * canvas.width;
+}
+
+function xToTime(x) {
+    const range = visibleRange();
+    return range.left + (x / canvas.width) * (range.right - range.left);
+}
+
+// Y position: sequencer-based lanes for seq txs, holder-based for non-seq
+function vertexY(v) {
+    const h = canvas.height;
+    if (!v.isSequencer) {
+        // non-sequencer: lane based on holder ID (like seqId for sequencers)
+        const laneKey = v.holderId || v.id;
+        const laneHash = simpleHash(laneKey);
+        const laneBase = 60 + (laneHash % (h - 120));
+        const jitter = (v.tick - TICKS_PER_SLOT / 2) * 0.2;
+        return laneBase + jitter;
+    }
+    // Sequencer lane: deterministic from seqId, jittered by tick
+    const laneHash = simpleHash(v.seqId);
+    const laneBase = 60 + (laneHash % (h - 120));
+    const jitter = (v.tick - TICKS_PER_SLOT / 2) * 0.3;
+    return laneBase + jitter;
+}
+
+function simpleHash(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+}
+
+// ============ COLORS ============
+const SEQ_COLOR = '#666';
+const SEQ_COLOR_DIM = 'rgba(100,100,100,0.3)';
+const NONSEQ_COLOR = '#999';
+const NONSEQ_COLOR_DIM = 'rgba(160,160,160,0.3)';
+
+// Golden ratio method: each new sequencer gets a hue maximally distant from previous ones.
+let seqColorIndex = 0;
+const GOLDEN_RATIO = 0.618033988749895;
+const seqHues = new Map();
+
+function assignSeqColor(seqId) {
+    if (seqHues.has(seqId)) return;
+    const hue = ((seqColorIndex * GOLDEN_RATIO) % 1.0) * 360;
+    seqColorIndex++;
+    seqHues.set(seqId, hue);
+    seqColors.set(seqId, `hsl(${hue}, 85%, 35%)`);
+}
+
+function seqColor(seqId) {
+    if (!seqId) return '#666';
+    assignSeqColor(seqId);
+    return seqColors.get(seqId);
+}
+
+function seqColorDim(seqId) {
+    if (!seqId) return 'rgba(100,100,100,0.25)';
+    assignSeqColor(seqId);
+    const hue = seqHues.get(seqId);
+    return `hsla(${hue}, 85%, 35%, 0.3)`;
+}
+
+// ============ TPS CHART ============
+// Compute vertex counts per portion for all visible slots.
+// Returns Map<slot, Array[TPS_PORTIONS]> where each element is the TPS for that portion.
+function computePortionTPS(range) {
+    const firstSlot = Math.floor(range.left / SLOT_DURATION_MS);
+    const lastSlot = Math.ceil(range.right / SLOT_DURATION_MS);
+
+    // Count vertices per (slot, portion)
+    const counts = new Map(); // slot -> int[TPS_PORTIONS]
+    for (const [, v] of vertices) {
+        if (v.slot < firstSlot || v.slot > lastSlot) continue;
+        if (!counts.has(v.slot)) counts.set(v.slot, new Array(TPS_PORTIONS).fill(0));
+        const portion = Math.min(Math.floor(v.tick / PORTION_TICKS), TPS_PORTIONS - 1);
+        counts.get(v.slot)[portion]++;
+    }
+
+    // Convert counts to TPS (extrapolated per second)
+    const tpsData = new Map();
+    for (const [slot, arr] of counts) {
+        tpsData.set(slot, arr.map(c => c / PORTION_DURATION_S));
+    }
+    return tpsData;
+}
+
+function drawTPSChart(range) {
+    const tpsData = computePortionTPS(range);
+    lastTPSData = tpsData;
+    if (tpsData.size === 0) return;
+
+    const chartHeight = Math.floor(canvas.height * TPS_CHART_FRACTION);
+    const chartTop = canvas.height - chartHeight;
+    const chartBottom = canvas.height;
+
+    // Find max TPS across all portions for scaling
+    let maxTPS = TPS_CHART_MAX_DEFAULT;
+    for (const [, arr] of tpsData) {
+        for (const tps of arr) {
+            if (tps > maxTPS) maxTPS = tps;
+        }
+    }
+    // Round up to a nice number
+    maxTPS = Math.ceil(maxTPS / 5) * 5;
+    if (maxTPS < 5) maxTPS = 5;
+
+    // Draw chart background
+    ctx.fillStyle = 'rgba(240, 240, 245, 0.85)';
+    ctx.fillRect(0, chartTop, canvas.width, chartHeight);
+
+    // Separator line
+    ctx.strokeStyle = 'rgba(150, 150, 180, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, chartTop);
+    ctx.lineTo(canvas.width, chartTop);
+    ctx.stroke();
+
+    // Draw bars for each portion
+    const firstSlot = Math.floor(range.left / SLOT_DURATION_MS);
+    const lastSlot = Math.ceil(range.right / SLOT_DURATION_MS);
+    const portionDurationMs = SLOT_DURATION_MS / TPS_PORTIONS;
+
+    for (let s = firstSlot; s <= lastSlot; s++) {
+        const arr = tpsData.get(s);
+        if (!arr) continue;
+
+        for (let p = 0; p < TPS_PORTIONS; p++) {
+            const tps = arr[p];
+            if (tps === 0) continue;
+
+            const portionStartMs = s * SLOT_DURATION_MS + p * portionDurationMs;
+            const portionEndMs = portionStartMs + portionDurationMs;
+            const x1 = timeToX(portionStartMs);
+            const x2 = timeToX(portionEndMs);
+            const barWidth = x2 - x1;
+            if (x2 < 0 || x1 > canvas.width) continue;
+
+            const barHeight = (tps / maxTPS) * (chartHeight - 4);
+            const barY = chartBottom - 2 - barHeight;
+
+            // Color: interpolate from green (low) to orange (medium) to red (high)
+            const ratio = Math.min(tps / maxTPS, 1);
+            let r, g, b;
+            if (ratio < 0.5) {
+                // green -> orange
+                const t = ratio * 2;
+                r = Math.floor(50 + 200 * t);
+                g = Math.floor(180 - 50 * t);
+                b = 50;
+            } else {
+                // orange -> red
+                const t = (ratio - 0.5) * 2;
+                r = Math.floor(250);
+                g = Math.floor(130 - 100 * t);
+                b = Math.floor(50 - 20 * t);
+            }
+            ctx.fillStyle = `rgba(${r},${g},${b},0.7)`;
+            ctx.fillRect(x1 + 0.5, barY, Math.max(barWidth - 1, 1), barHeight);
+        }
+    }
+
+    // Scale label
+    ctx.fillStyle = 'rgba(100, 100, 130, 0.7)';
+    ctx.font = '9px Consolas, Monaco, monospace';
+    ctx.fillText('TPS ' + maxTPS, 3, chartTop + 10);
+    ctx.fillText('0', 3, chartBottom - 3);
+}
+
+// ============ RENDERING ============
+function animate() {
+    draw();
+    requestAnimationFrame(animate);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const range = visibleRange();
+    if (range.right === 0) {
+        drawWaitingMessage();
+        return;
+    }
+
+    drawGrid(range);
+    drawEdges(range);
+    drawVertices(range);
+    drawTPSChart(range);
+    updateStats();
+}
+
+function drawWaitingMessage() {
+    ctx.fillStyle = '#999';
+    ctx.font = '16px Consolas, Monaco, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(connected ? 'Waiting for transactions...' : 'Not connected', canvas.width / 2, canvas.height / 2);
+    ctx.textAlign = 'left';
+}
+
+function drawGrid(range) {
+    // Find slot boundaries in visible range
+    const firstSlot = Math.floor(range.left / SLOT_DURATION_MS);
+    const lastSlot = Math.ceil(range.right / SLOT_DURATION_MS);
+
+    ctx.strokeStyle = 'rgba(150, 150, 180, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.font = '10px Consolas, Monaco, monospace';
+    ctx.fillStyle = 'rgba(100, 100, 130, 0.7)';
+
+    for (let s = firstSlot; s <= lastSlot; s++) {
+        const x = timeToX(s * SLOT_DURATION_MS);
+        if (x < 0 || x > canvas.width) continue;
+
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+
+        ctx.fillText('slot ' + s, x + 3, 14);
+        ctx.fillText('' + s, x + 3, canvas.height - 6);
+    }
+
+    // "Now" line
+    const nowX = timeToX(nowLedgerMs());
+    if (nowX > 0 && nowX < canvas.width) {
+        ctx.strokeStyle = 'rgba(255, 100, 100, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(nowX, 0);
+        ctx.lineTo(nowX, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(200, 60, 60, 0.8)';
+        ctx.fillText('now', nowX + 3, canvas.height - 20);
+    }
+}
+
+function drawEdges(range) {
+    const showCons = document.getElementById('showConsumption').checked;
+    const showEnd = document.getElementById('showEndorsement').checked;
+    const showStem = document.getElementById('showStem').checked;
+
+    for (const [id, v] of vertices) {
+        const x1 = timeToX(v.timeMs);
+        if (x1 < -100 || x1 > canvas.width + 100) continue;
+        const y1 = vertexY(v);
+
+        // Is this edge part of the highlighted past cone?
+        const inCone = pastConeSet.size > 0 && pastConeSet.has(id);
+
+        // Consumption edges (inputs)
+        if (showCons) {
+            for (let i = 0; i < v.inputs.length; i++) {
+                // Skip stem — it gets special treatment
+                if (showStem && v.stemInputIdx !== undefined && i === v.stemInputIdx) continue;
+
+                const depId = v.inputs[i];
+                const dep = findVertexByTxId(depId);
+                if (!dep) continue;
+                const x2 = timeToX(dep.timeMs);
+                if (x2 < -100 || x2 > canvas.width + 100) continue;
+                const y2 = vertexY(dep);
+
+                const edgeInCone = inCone && pastConeSet.has(depId);
+                ctx.strokeStyle = edgeInCone ? 'rgba(40,40,40,0.8)' : 'rgba(130,130,130,0.45)';
+                ctx.lineWidth = edgeInCone ? 2 : 0.8;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+        }
+
+        // Endorsement edges
+        if (showEnd && v.endorsements) {
+            for (const eid of v.endorsements) {
+                const dep = findVertexByTxId(eid);
+                if (!dep) continue;
+                const x2 = timeToX(dep.timeMs);
+                if (x2 < -100 || x2 > canvas.width + 100) continue;
+                const y2 = vertexY(dep);
+
+                const edgeInCone = inCone && pastConeSet.has(eid);
+                ctx.strokeStyle = edgeInCone ? SEQ_COLOR : SEQ_COLOR_DIM;
+                ctx.lineWidth = edgeInCone ? 2.5 : 1;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+        }
+        ctx.setLineDash([]);
+
+        // Stem link
+        if (showStem && v.stemInputIdx !== undefined && v.stemInputIdx !== null) {
+            const stemTxId = v.inputs[v.stemInputIdx];
+            if (stemTxId) {
+                const dep = findVertexByTxId(stemTxId);
+                if (dep) {
+                    const x2 = timeToX(dep.timeMs);
+                    if (x2 > -100 && x2 < canvas.width + 100) {
+                        const y2 = vertexY(dep);
+                        const edgeInCone = inCone && pastConeSet.has(stemTxId);
+                        ctx.strokeStyle = edgeInCone ? '#e90' : 'rgba(255,170,0,0.4)';
+                        ctx.lineWidth = edgeInCone ? 3.5 : 2;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Find a vertex whose txid matches (inputs are tx IDs)
+function findVertexByTxId(txId) {
+    // The vertex map is keyed by full txid hex
+    // But inputs in VertexWithDependencies are also full txid hex
+    return vertices.get(txId) || null;
+}
+
+function vertexRadius(v) {
+    const r = vertexScaleFactor;
+    if (!v.isSequencer) return Math.max(2, r * 0.5);
+    return Math.max(4, r);
+}
+
+function drawVertices(range) {
+    for (const [id, v] of vertices) {
+        const x = timeToX(v.timeMs);
+        if (x < -20 || x > canvas.width + 20) continue;
+        const y = vertexY(v);
+        const r = vertexRadius(v);
+
+        const isHovered = (id === hoveredVertexId);
+        const isSelected = (id === selectedVertexId);
+        const inCone = pastConeSet.size > 0 && pastConeSet.has(id);
+        const dimmed = pastConeSet.size > 0 && !inCone;
+
+        let color = v.isSequencer ? SEQ_COLOR : NONSEQ_COLOR;
+        if (isHovered || isSelected) {
+            color = '#000';
+        } else if (dimmed) {
+            color = v.isSequencer ? SEQ_COLOR_DIM : NONSEQ_COLOR_DIM;
+        }
+
+        ctx.fillStyle = color;
+        ctx.strokeStyle = (isSelected || inCone) ? '#000' : 'rgba(0,0,0,0)';
+        ctx.lineWidth = isSelected ? 2.5 : inCone ? 1.5 : 0;
+
+        if (v.isBranch) {
+            // Diamond shape for branches — slightly larger than circles
+            const d = r * 1.3;
+            ctx.beginPath();
+            ctx.moveTo(x, y - d);
+            ctx.lineTo(x + d, y);
+            ctx.lineTo(x, y + d);
+            ctx.lineTo(x - d, y);
+            ctx.closePath();
+            ctx.fill();
+            // Outline to distinguish from circles
+            ctx.strokeStyle = isSelected ? '#000' : 'rgba(0,0,0,0.3)';
+            ctx.lineWidth = isSelected ? 2 : 1;
+            ctx.stroke();
+        } else {
+            // Circle for both sequencer and non-sequencer tx
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+            if (isSelected) ctx.stroke();
+        }
+
+        // LRB marker: circle around the LRB vertex
+        if (lrbTxId && id === lrbTxId) {
+            const lrbR = r * 2.5;
+            ctx.strokeStyle = '#e22';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(x, y, lrbR, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+}
+
+// ============ PAST CONE ============
+// Compute the set of vertex IDs in the past cone of a given vertex.
+// Walks inputs, endorsements, and stem links.
+// Stops traversal at the previous slot boundary for consumption edges.
+let pastConeSet = new Set();
+
+function computePastCone(rootId) {
+    pastConeSet = new Set();
+    if (!rootId) return;
+    const root = vertices.get(rootId);
+    if (!root) return;
+
+    const stack = [rootId];
+    pastConeSet.add(rootId);
+
+    while (stack.length > 0) {
+        const curId = stack.pop();
+        const cur = vertices.get(curId);
+        if (!cur) continue;
+
+        // Walk endorsements (same slot — always follow)
+        if (cur.endorsements) {
+            for (const eid of cur.endorsements) {
+                if (!pastConeSet.has(eid) && vertices.has(eid)) {
+                    pastConeSet.add(eid);
+                    stack.push(eid);
+                }
+            }
+        }
+
+        // Walk inputs (consumption edges + stem)
+        for (let i = 0; i < cur.inputs.length; i++) {
+            const depId = cur.inputs[i];
+            if (pastConeSet.has(depId) || !vertices.has(depId)) continue;
+            const dep = vertices.get(depId);
+            // For stem links, always follow (branch-to-branch chain)
+            // For consumption, stop at previous slot boundary
+            const isStem = (cur.stemInputIdx !== undefined && cur.stemInputIdx !== null && i === cur.stemInputIdx);
+            if (isStem) {
+                pastConeSet.add(depId);
+                stack.push(depId);
+            } else {
+                // Follow consumption edges only within the visible range
+                // Stop if dependency is more than 1 slot behind the root
+                const slotDiff = root.slot - dep.slot;
+                if (slotDiff <= 1) {
+                    pastConeSet.add(depId);
+                    stack.push(depId);
+                }
+            }
+        }
+    }
+}
+
+// ============ INTERACTION ============
+function onMouseMove(e) {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    hoveredVertexId = findNearestVertex(mouseX, mouseY, 15);
+    updateTooltip();
+}
+
+function onClick(e) {
+    const clicked = findNearestVertex(e.clientX, e.clientY, 15);
+    selectedVertexId = (clicked === selectedVertexId) ? null : clicked;
+    computePastCone(selectedVertexId);
+}
+
+function onWheel(e) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 1 : -1;
+    const slider = document.getElementById('paneSlots');
+    let val = parseInt(slider.value) + delta;
+    val = Math.max(3, Math.min(30, val));
+    slider.value = val;
+    updatePaneSlots();
+}
+
+function setPaused(newPaused) {
+    if (newPaused === paused) return;
+    if (newPaused) {
+        // Capture current ledger time BEFORE setting paused flag
+        pausedLedgerMs = nowLedgerMs();
+        paused = true;
+    } else {
+        // Re-anchor: advance ledger time by wall time elapsed during pause
+        const wallElapsed = Date.now() - timeAnchorWall;
+        timeAnchorLedger += wallElapsed;
+        timeAnchorWall = Date.now();
+        paused = false;
+    }
+    document.getElementById('pauseScroll').checked = paused;
+}
+
+function onPauseCheckbox() {
+    setPaused(document.getElementById('pauseScroll').checked);
+}
+
+function onKeyDown(e) {
+    if (e.key === 'p' || e.key === 'P' || e.key === ' ') {
+        e.preventDefault();
+        setPaused(!paused);
+    }
+}
+
+function findNearestVertex(mx, my, maxDist) {
+    let nearest = null;
+    let nearestDist = maxDist;
+    for (const [id, v] of vertices) {
+        const x = timeToX(v.timeMs);
+        if (x < -20 || x > canvas.width + 20) continue;
+        const y = vertexY(v);
+        const d = Math.sqrt((mx - x) ** 2 + (my - y) ** 2);
+        if (d < nearestDist) {
+            nearestDist = d;
+            nearest = id;
+        }
+    }
+    return nearest;
+}
+
+// Look up TPS value at mouse position if hovering over the chart area
+function tpsAtMouse(mx, my) {
+    const chartHeight = Math.floor(canvas.height * TPS_CHART_FRACTION);
+    const chartTop = canvas.height - chartHeight;
+    if (my < chartTop || !lastTPSData) return null;
+
+    const timeMs = xToTime(mx);
+    const slot = Math.floor(timeMs / SLOT_DURATION_MS);
+    const arr = lastTPSData.get(slot);
+    if (!arr) return null;
+
+    const msIntoSlot = timeMs - slot * SLOT_DURATION_MS;
+    const portion = Math.min(Math.floor(msIntoSlot / (SLOT_DURATION_MS / TPS_PORTIONS)), TPS_PORTIONS - 1);
+    if (portion < 0) return null;
+    return arr[portion];
+}
+
+function updateTooltip() {
+    const tip = document.getElementById('tooltip');
+
+    // Check TPS chart hover first
+    const tpsVal = tpsAtMouse(mouseX, mouseY);
+    if (tpsVal !== null && !hoveredVertexId) {
+        tip.textContent = 'TPS: ' + tpsVal.toFixed(1);
+        tip.style.display = 'block';
+        let tx = mouseX + 15;
+        let ty = mouseY - 10;
+        if (tx + tip.offsetWidth > window.innerWidth) tx = mouseX - tip.offsetWidth - 10;
+        tip.style.left = tx + 'px';
+        tip.style.top = ty + 'px';
+        return;
+    }
+
+    if (!hoveredVertexId) {
+        tip.style.display = 'none';
+        return;
+    }
+    const v = vertices.get(hoveredVertexId);
+    if (!v) { tip.style.display = 'none'; return; }
+
+    const lines = [];
+    lines.push(txidShort(v.id));
+    if (v.seqId) {
+        const seqLabel = v.seqId.substring(0, 8) + '..';
+        const meta = [v.seqName, v.proposerStrategy].filter(Boolean).join('.');
+        lines.push('Sequencer: ' + (meta ? seqLabel + '(' + meta + ')' : seqLabel));
+    }
+    lines.push('Total: ' + formatAmount(v.totalAmount));
+    if (v.inflation) {
+        lines.push('Inflation: ' + formatAmount(v.inflation));
+    }
+    lines.push('Input/Endorse: ' + v.inputs.length + '/' + v.endorsements.length);
+    if (v.coverageDelta !== undefined && v.coverageDelta !== null) {
+        const pct = v.supply ? ((v.coverageDelta / v.supply) * 100).toFixed(2) : '?';
+        lines.push('Coverage: ' + formatAmount(v.coverageDelta) + ' (' + pct + '%)');
+    }
+
+    tip.textContent = lines.join('\n');
+    tip.style.display = 'block';
+
+    // Position tooltip
+    let tx = mouseX + 15;
+    let ty = mouseY - 10;
+    if (tx + tip.offsetWidth > window.innerWidth) tx = mouseX - tip.offsetWidth - 10;
+    if (ty + tip.offsetHeight > window.innerHeight) ty = mouseY - tip.offsetHeight - 10;
+    tip.style.left = tx + 'px';
+    tip.style.top = ty + 'px';
+}
+
+function formatAmount(a) {
+    if (a >= 1e9) return (a / 1e9).toFixed(2) + 'G';
+    if (a >= 1e6) return (a / 1e6).toFixed(2) + 'M';
+    if (a >= 1e3) return (a / 1e3).toFixed(1) + 'K';
+    return '' + a;
+}
+
+// ============ CONTROLS ============
+function updatePaneSlots() {
+    paneSlots = parseInt(document.getElementById('paneSlots').value);
+    document.getElementById('paneSlotsVal').textContent = paneSlots;
+}
+
+function updateVertexScale() {
+    vertexScaleFactor = parseInt(document.getElementById('vertexScale').value);
+    document.getElementById('vertexScaleVal').textContent = vertexScaleFactor;
+}
+
+function updateStats() {
+    document.getElementById('vertexCount').textContent = vertices.size;
+    document.getElementById('tpsCount').textContent = currentTPS;
+
+    // Garbage collect vertices far off the left edge
+    const range = visibleRange();
+    const gcThreshold = range.left - paneWidthMs(); // keep one extra pane width
+    for (const [id, v] of vertices) {
+        if (v.timeMs < gcThreshold) {
+            vertices.delete(id);
+        }
+    }
+}
+
+// ============ LEGEND ============
+function drawLegendShapes() {
+    // Branch diamond
+    const c1 = document.getElementById('lgBranch');
+    c1.width = 14; c1.height = 14;
+    const x1 = c1.getContext('2d');
+    x1.fillStyle = SEQ_COLOR;
+    x1.beginPath();
+    x1.moveTo(7, 1); x1.lineTo(13, 7); x1.lineTo(7, 13); x1.lineTo(1, 7);
+    x1.closePath(); x1.fill();
+
+    // Sequencer circle
+    const c2 = document.getElementById('lgSeq');
+    c2.width = 14; c2.height = 14;
+    const x2 = c2.getContext('2d');
+    x2.fillStyle = SEQ_COLOR;
+    x2.beginPath(); x2.arc(7, 7, 5, 0, Math.PI * 2); x2.fill();
+
+    // Non-sequencer dot
+    const c3 = document.getElementById('lgNonSeq');
+    c3.width = 14; c3.height = 14;
+    const x3 = c3.getContext('2d');
+    x3.fillStyle = NONSEQ_COLOR;
+    x3.beginPath(); x3.arc(7, 7, 3, 0, Math.PI * 2); x3.fill();
+}
+
+// ============ NODE STATUS FETCH ============
+let nodeStress = 0;
+let nodePipeline = 0;
+let nodeIsSyncing = false;
+let nodeIsSnapshotting = false;
+
+function fetchNodeStatus() {
+    const loc = window.location;
+    const url = loc.protocol + '//' + loc.host + '/api/v1/node_info';
+    fetch(url).then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }).then(data => {
+        nodeStress = data.memory_stress_level || 0;
+        nodePipeline = data.pipeline_size || 0;
+        nodeIsSyncing = !!data.is_syncing;
+        nodeIsSnapshotting = !!data.is_snapshotting;
+        updateNodeStatusDisplay();
+    }).catch(e => {
+        console.warn('fetchNodeStatus failed:', e);
+    });
+}
+
+function stressColor(level) {
+    // Rainbow: blue(0) -> green(40) -> yellow(70) -> red(100)
+    if (level <= 40) {
+        // blue to green: hue 220 -> 120
+        const h = 220 - (level / 40) * 100;
+        return `hsl(${h}, 80%, 45%)`;
+    } else if (level <= 70) {
+        // green to yellow: hue 120 -> 50
+        const h = 120 - ((level - 40) / 30) * 70;
+        return `hsl(${h}, 85%, 45%)`;
+    } else {
+        // yellow to red: hue 50 -> 0
+        const h = 50 - ((level - 70) / 30) * 50;
+        return `hsl(${h}, 90%, 45%)`;
+    }
+}
+
+function updateNodeStatusDisplay() {
+    document.getElementById('stressValue').textContent = nodeStress;
+    document.getElementById('pipelineValue').textContent = nodePipeline;
+    document.getElementById('syncFlag').style.display = nodeIsSyncing ? 'block' : 'none';
+    document.getElementById('snapshotFlag').style.display = nodeIsSnapshotting ? 'block' : 'none';
+
+    // Draw the stress gauge
+    const gc = document.getElementById('stressGauge');
+    const gctx = gc.getContext('2d');
+    const w = gc.width, h = gc.height;
+    gctx.clearRect(0, 0, w, h);
+
+    // Background
+    gctx.fillStyle = '#ddd';
+    gctx.fillRect(0, 0, w, h);
+
+    // Filled portion (bottom-up)
+    const fillH = Math.round((nodeStress / 100) * h);
+    if (fillH > 0) {
+        gctx.fillStyle = stressColor(nodeStress);
+        gctx.fillRect(0, h - fillH, w, fillH);
+    }
+
+    // Border
+    gctx.strokeStyle = '#888';
+    gctx.lineWidth = 1;
+    gctx.strokeRect(0, 0, w, h);
+}
+
+// Poll node status every 2 seconds
+setInterval(fetchNodeStatus, 2000);
+
+// ============ LRB FETCH ============
+function fetchLRB() {
+    const loc = window.location;
+    const url = loc.protocol + '//' + loc.host + '/api/v1/get_latest_reliable_branch';
+    fetch(url).then(r => r.json()).then(data => {
+        if (data.branch_id) {
+            lrbTxId = data.branch_id;
+        }
+    }).catch(() => {});
+}
+
+// Schedule LRB fetch 1 second after each slot edge
+function scheduleLRBFetch() {
+    if (lrbFetchTimer) clearTimeout(lrbFetchTimer);
+    const now = nowLedgerMs();
+    if (now === 0) {
+        // No time anchor yet — retry soon
+        lrbFetchTimer = setTimeout(scheduleLRBFetch, 1000);
+        return;
+    }
+    const slotMs = SLOT_DURATION_MS;
+    const msIntoSlot = now % slotMs;
+    // ms until 1 second after the next slot edge
+    let delay = slotMs - msIntoSlot + 1000;
+    if (delay > slotMs) delay -= slotMs;
+    lrbFetchTimer = setTimeout(() => {
+        fetchLRB();
+        scheduleLRBFetch();
+    }, delay);
+}
+
+// ============ START ============
+init();
+</script>
+</body>
+</html>

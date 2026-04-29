@@ -20,7 +20,7 @@ type (
 	Environment interface {
 		global.NodeGlobal
 		attacher.Environment
-		ListenToAccount(account ledger.Accountable, fun func(wOut vertex.WrappedOutput))
+		ListenToControllerAccount(account ledger.Controller, fun func(wOut vertex.WrappedOutput))
 		SequencerID() base.ChainID
 		SequencerName() string
 		GetLatestMilestone(seqID base.ChainID) *vertex.WrappedTx
@@ -64,7 +64,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	env.Tracef(TraceTag, "starting input backlog for the sequencer %s..", env.SequencerName)
 
 	// start listening to chain-locked account. Tag-along outputs
-	env.ListenToAccount(ledger.ChainLockFromChainID(seqID), func(wOut vertex.WrappedOutput) {
+	env.ListenToControllerAccount(ledger.ChainLockFromChainID(seqID), func(wOut vertex.WrappedOutput) {
 		env.Tracef(TraceTag, "[%s] output IN: %s", ret.SequencerName, wOut.IDStringShort)
 
 		ret.mutex.Lock()
@@ -94,7 +94,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 	// start periodic cleanup in background
 	env.RepeatInBackground(env.SequencerName()+"_backlogCleanup", backlogCleanupPeriod, func() bool {
 		if n, remain := ret.purgeBacklog(); n > 0 {
-			ret.Log().Infof("deleted %d outputs from the backlog, remain %d", n, remain)
+			ret.LogTopicf("tag_along", 1, "deleted %d outputs from the backlog, remain %d", n, remain)
 		}
 		return true
 	})
@@ -138,7 +138,7 @@ func (b *TagAlongBacklog) checkCandidate(wOut vertex.WrappedOutput) bool {
 	if o == nil {
 		return true
 	}
-	if _, idx := o.ChainConstraint(); idx != 0xff {
+	if o.ChainConstraint() != nil {
 		// filter out all chain constrained outputs
 		return false
 	}
@@ -179,14 +179,20 @@ func (b *TagAlongBacklog) GetOwnLatestMilestoneTx() *vertex.WrappedTx {
 }
 
 func (b *TagAlongBacklog) IterateOutputs(fun func(wOut vertex.WrappedOutput) bool) {
+	// Collect outputs under the lock, then iterate without holding it.
+	// This prevents deadlocks where the callback accesses WrappedTx locks
+	// while the backlog RLock blocks writers, creating lock-ordering cycles.
 	b.mutex.RLock()
-	defer b.mutex.RUnlock()
-
+	snapshot := make([]vertex.WrappedOutput, 0, len(b.outputs))
 	for wOut := range b.outputs {
 		oid := wOut.DecodeID()
-		if b._isInBlacklist(oid) {
-			continue
+		if !b._isInBlacklist(oid) {
+			snapshot = append(snapshot, wOut)
 		}
+	}
+	b.mutex.RUnlock()
+
+	for _, wOut := range snapshot {
 		if !fun(wOut) {
 			return
 		}
@@ -201,6 +207,18 @@ func (b *TagAlongBacklog) AddToBlacklist(wOut vertex.WrappedOutput) {
 	if _, already := b.blacklist[oid]; !already {
 		b.blacklist[oid] = time.Now().Add(blacklistTTL)
 		delete(b.outputs, wOut)
+	}
+}
+
+// RemoveOutput removes a specific output from the backlog.
+// Used when an output is known to be already consumed in the ledger state.
+func (b *TagAlongBacklog) RemoveOutput(wOut vertex.WrappedOutput) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if _, exists := b.outputs[wOut]; exists {
+		delete(b.outputs, wOut)
+		b.removedOutputsSinceReset++
 	}
 }
 
@@ -235,6 +253,19 @@ func (b *TagAlongBacklog) NumOutputsInBuffer() int {
 	return len(b.outputs)
 }
 
+// IsVertexReferenced returns true if any output in the backlog references the given vertex.
+func (b *TagAlongBacklog) IsVertexReferenced(vid *vertex.WrappedTx) bool {
+	b.mutex.RLock()
+	defer b.mutex.RUnlock()
+
+	for wOut := range b.outputs {
+		if wOut.VID == vid {
+			return true
+		}
+	}
+	return false
+}
+
 func (b *TagAlongBacklog) getStatsAndReset() (ret Stats) {
 	b.mutex.RLock()
 	defer b.mutex.RUnlock()
@@ -259,27 +290,64 @@ func (b *TagAlongBacklog) numOutputs() int {
 func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	ttlTagAlongSlots, ttlDelegationSlots := b.BacklogTTLSlots()
 	_ = ttlDelegationSlots
-	horizonTagAlong := time.Now().Add(-time.Duration(ttlTagAlongSlots) * ledger.Const.SlotDuration())
+	horizonTagAlong := time.Now().Add(-time.Duration(ttlTagAlongSlots) * ledger.L(0).SlotDuration())
 
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
-	count := 0
+	// snapshot outputs under the lock, then check LockName() without holding it.
+	// LockName() calls vid.RUnwrap which takes vid.mutex.RLock — holding backlog.mutex
+	// at the same time creates a lock-ordering cycle with proposers that hold vid.mutex
+	// and need backlog.mutex.
+	b.mutex.RLock()
+	type candidate struct {
+		wOut      vertex.WrappedOutput
+		whenAdded time.Time
+	}
+	snapshot := make([]candidate, 0, len(b.outputs))
 	for wOut, whenAdded := range b.outputs {
-		del := true
-		n := wOut.LockName()
+		snapshot = append(snapshot, candidate{wOut, whenAdded})
+	}
+	b.mutex.RUnlock()
+
+	// check LockName and TTL outside the lock
+	var toDelete []vertex.WrappedOutput
+	for _, c := range snapshot {
+		n := c.wOut.LockName()
 		if n == ledger.TagAlongLockName || n == ledger.ChainLockName {
-			del = whenAdded.Before(horizonTagAlong)
+			if c.whenAdded.Before(horizonTagAlong) {
+				toDelete = append(toDelete, c.wOut)
+			}
 		} else {
 			b.Log().Fatalf("unexpected type of the lock in backlog: '%s'", n)
 		}
-		if del {
-			delete(b.outputs, wOut)
-			count++
+	}
+
+	// depth-based cleanup: remove outputs consumed in the LRB state.
+	// Only check outputs old enough (slot + backlogPurgeDepth <= lrb slot).
+	const backlogPurgeDepth uint32 = 2
+	lrb := b.Branches().FindLatestReliableBranch()
+	if lrb != nil {
+		lrbSlot := lrb.Stem.ID.Slot()
+		rdr := multistate.MustNewSugaredReadableState(b.StateStore(), lrb.Root, 0)
+		for _, c := range snapshot {
+			if c.wOut.Slot()+backlogPurgeDepth > lrbSlot {
+				continue
+			}
+			oid := c.wOut.DecodeID()
+			if !rdr.HasUTXO(oid) {
+				toDelete = append(toDelete, c.wOut)
+			}
 		}
 	}
-	b.EvidenceBacklogSize(len(b.outputs))
-	return count, len(b.outputs)
+
+	// delete under write lock
+	b.mutex.Lock()
+	for _, wOut := range toDelete {
+		delete(b.outputs, wOut)
+	}
+	remaining := len(b.outputs)
+	b.mutex.Unlock()
+
+	b.EvidenceBacklogSize(remaining)
+	return len(toDelete), remaining
 }
 
 func (b *TagAlongBacklog) recreateMap() {
@@ -291,8 +359,7 @@ func (b *TagAlongBacklog) recreateMap() {
 
 // LoadSequencerStartTips loads tip transactions relevant to the sequencer startup from persistent state to the memDAG
 func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
-	branchData := multistate.FindLatestReliableBranch(b.StateStore(), global.FractionHealthyBranch)
-	//branchData := b.Branches().FindLatestReliableBranch(global.FractionHealthyBranch)
+	branchData := b.Branches().FindLatestReliableBranch()
 	if branchData == nil {
 		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
 	}
@@ -318,7 +385,7 @@ func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 		vidBranch.IDShortString(), chainOut.LinesSource("         ").String())
 
 	// load pending tag-along outputs
-	oids, err := rdr.GetUTXOIDsInAccount(ledger.ChainLockFromChainID(seqID).AccountID())
+	oids, err := rdr.GetUTXOIDsForController(ledger.ChainLockFromChainID(seqID).ControllerID())
 	util.AssertNoError(err)
 	for _, oid := range oids {
 		o := rdr.MustGetOutputWithID(oid)

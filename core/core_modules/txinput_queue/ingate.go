@@ -66,7 +66,7 @@ func (g *inGate[T]) purgeInGate() {
 
 	nowis := time.Now()
 	for key, entry := range g.m {
-		if nowis.After(entry.purgeDeadline) {
+		if !entry.purgeDeadline.After(nowis) {
 			delete(g.m, key)
 		}
 	}

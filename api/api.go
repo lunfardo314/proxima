@@ -18,8 +18,8 @@ const (
 	PrefixTxAPIV1     = "/txapi/v1"
 	PrefixWebSocketV1 = "/wsapi/v1"
 
-	PathGetLedgerIDData                  = PrefixAPIV1 + "/get_ledger_id_data"
-	PathGetAccountOutputs                = PrefixAPIV1 + "/get_account_outputs"
+	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
+	PathGetUTXOsControlledBy             = PrefixAPIV1 + "/get_utxos_controlled_by"
 	PathGetAccountParsedOutputs          = PrefixAPIV1 + "/get_account_parsed_outputs"
 	PathGetAccountSimpleSiglockedOutputs = PrefixAPIV1 + "/get_account_simple_siglocked"
 	PathGetOutputsForAmount              = PrefixAPIV1 + "/get_outputs_for_amount"
@@ -34,14 +34,28 @@ const (
 	PathGetPeersInfo                     = PrefixAPIV1 + "/peers_info"
 	PathGetLatestReliableBranch          = PrefixAPIV1 + "/get_latest_reliable_branch"
 	PathGetSnapshotBranchID              = PrefixAPIV1 + "/get_snapshot_branch_id"
+	PathGetSnapshot                      = PrefixAPIV1 + "/get_snapshot"
 	PathCheckTxIDInLRB                   = PrefixAPIV1 + "/check_txid_in_lrb"
 	PathGetLastKnownSequencerMilestones  = PrefixAPIV1 + "/last_known_milestones"
 	PathGetMainChain                     = PrefixAPIV1 + "/get_mainchain"
 	PathGetAllChains                     = PrefixAPIV1 + "/get_all_chains"
 	PathGetSequencers                    = PrefixAPIV1 + "/get_sequencers"
+	PathGetSequencerTargetInfo           = PrefixAPIV1 + "/get_sequencer_target_info"
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
+	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
+	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
+	// PathGetPeersDashboard returns the peers dashboard (auto-refreshing peer info page)
+	PathGetPeersDashboard = "/peers"
+	// PathDAGViz serves the live MemDAG visualizer
+	PathDAGViz = "/dagviz"
+	// PathDAGExplorer serves the static DAG explorer page (browses the txstore DB)
+	PathDAGExplorer            = "/dag_explorer"
+	PathDAGExplorerPastCone    = PrefixAPIV1 + "/dag_explorer/past_cone"
+	PathDAGExplorerSlot        = PrefixAPIV1 + "/dag_explorer/slot"
+	PathDAGExplorerFindTx      = PrefixAPIV1 + "/dag_explorer/find_tx"
+	PathDAGExplorerTxDetail    = PrefixAPIV1 + "/dag_explorer/tx_detail"
 
 	// Transaction API calls
 
@@ -55,6 +69,12 @@ const (
 
 	// WebSocket API
 	PathDAGVertexStream = PrefixWebSocketV1 + "/dag_vertex_stream"
+
+	// Transaction Logger API
+	PathTxLogEnable = PrefixAPIV1 + "/txlog/enable"
+	PathTxLogGet    = PrefixAPIV1 + "/txlog/get"
+	PathTxLogRange  = PrefixAPIV1 + "/txlog/range"
+	PathTxLogStatus = PrefixAPIV1 + "/txlog/status"
 )
 
 type (
@@ -126,26 +146,23 @@ type (
 
 	PeersInfo struct {
 		Error
-		HostID    string            `json:"host_id"`
-		Peers     []PeerInfo        `json:"peers,omitempty"`
-		Blacklist map[string]string `json:"blacklist,omitempty"` // map: peerID -> reason why it is in the blacklist
+		HostID string     `json:"host_id"`
+		Peers  []PeerInfo `json:"peers,omitempty"`
 	}
 
 	PeerInfo struct {
 		// The libp2p identifier of the peer.
 		ID string `json:"id"`
 		// The libp2p multi addresses of the peer.
-		MultiAddresses            []string `json:"multiAddresses,omitempty"`
-		IsStatic                  bool     `json:"is_static"`
-		RespondsToPull            bool     `json:"responds_to_pull"`
-		IsAlive                   bool     `json:"is_alive"`
-		WhenAdded                 int64    `json:"when_added"`
-		LastHeartbeatReceived     int64    `json:"last_heartbeat_received"`
-		ClockDifferencesQuartiles [3]int64 `json:"clock_differences_quartiles"`
-		HBMsgDifferencesQuartiles [3]int64 `json:"hb_differences_quartiles"`
-		NumIncomingHB             int      `json:"num_incoming_hb"`
-		NumIncomingPull           int      `json:"num_incoming_pull"`
-		NumIncomingTx             int      `json:"num_incoming_tx"`
+		MultiAddresses  []string `json:"multiAddresses,omitempty"`
+		IsStatic        bool     `json:"is_static"`
+		IsAlive         bool     `json:"is_alive"`
+		WhenAdded       int64    `json:"when_added"`
+		NumIncomingPull int      `json:"num_incoming_pull"`
+		NumIncomingTx   int      `json:"num_incoming_tx"`
+		// RTTMs is the most recent round-trip ping time in milliseconds.
+		// Omitted if no measurement has been taken yet.
+		RTTMs float64 `json:"rtt_ms,omitempty"`
 	}
 
 	// LatestReliableBranch returned by get_latest_reliable_branch
@@ -203,10 +220,10 @@ type (
 	}
 
 	MilestoneData struct {
-		Name         string `json:"name"`
-		MinimumFee   uint64 `json:"minimum_fee"`
-		ChainHeight  uint32 `json:"chain_height"`
-		BranchHeight uint32 `json:"branch_height"`
+		Name             string `json:"name"`
+		MinimumFee       uint64 `json:"minimum_fee"`
+		TransitionCounter uint64 `json:"transition_counter"`
+		BranchCounter    uint32 `json:"branch_counter"`
 	}
 
 	SequencerTxData struct {
@@ -225,7 +242,6 @@ type (
 		TotalInflation   uint64 `json:"total_inflation"`
 		IsBranch         bool   `json:"is_branch"`
 		*SequencerTxData `json:"sequencer_tx_data,omitempty"`
-		Sender           string                                  `json:"sender"`
 		Signature        string                                  `json:"signature"`
 		Inputs           []Input                                 `json:"inputs"`
 		Outputs          []ParsedOutput                          `json:"outputs"`
@@ -239,8 +255,13 @@ type (
 		TotalAmount           uint64   `json:"a"`                           // total produced amount on transaction
 		TotalInflation        uint64   `json:"i,omitempty"`                 // total inflation on transaction
 		SequencerID           string   `json:"seqid,omitempty"`             // "" (omitted) for non-seq. Useful for coloring
-		SequencerInputTxIndex *byte    `json:"seqidx,omitempty"`            // sequencer predecessor tx index for sequencer predecessor tx in the Inputs list, otherwise nil
-		StemInputTxIndex      *byte    `json:"stemidx,omitempty"`           // stem predecessor (branch) tx index for stem predecessor tx in the Inputs list, otherwise nil
+		SeqName               string   `json:"seqname,omitempty"`           // sequencer name from on-chain data
+		NumEndorsements       int      `json:"num_endorse,omitempty"`       // number of endorsements
+		HolderID              string   `json:"holder,omitempty"`            // holder ID hex (for non-seq vertical placement)
+		CoverageDelta         *uint64  `json:"cd,omitempty"`                // coverage delta (sequencer txs only)
+		Supply                *uint64  `json:"supply,omitempty"`            // total supply (sequencer txs only)
+		SequencerInputTxIndex *byte    `json:"seqidx,omitempty"`            // sequencer predecessor tx index
+		StemInputTxIndex      *byte    `json:"stemidx,omitempty"`           // stem predecessor tx index
 		Inputs                []string `json:"in"`                          // list of input IDs (not empty)
 		Endorsements          []string `json:"endorse,omitempty"`           // list of endorsements (can be nil)
 		ExplicitBaseline      string   `json:"explicit_baseline,omitempty"` // explicit baseline ID, if available
@@ -264,9 +285,25 @@ type (
 		Error
 		ID string `json:"id"`
 	}
+
+	// SnapshotInfo is returned by get_snapshot_info: metadata about the latest snapshot
+	SnapshotInfo struct {
+		Error
+		Slot     uint32 `json:"slot"`
+		FileSize int64  `json:"file_size"`
+		FileName string `json:"file_name"`
+	}
 	MainChain struct {
 		Error
 		Branches []BranchData `json:"branches"`
+	}
+
+	// BranchList is returned by get_branch_list: branch IDs on the main chain
+	// forward from a given slot, used by the sync module
+	BranchList struct {
+		Error
+		Branches []string `json:"branches"`
+		LRBSlot  uint32   `json:"lrb_slot"`
 	}
 
 	Balance struct {
@@ -317,6 +354,84 @@ type (
 		Amount       uint64 `json:"amount"`
 		OutputString string `json:"output_string"`
 	}
+
+	// LedgerDefinition is returned by 'get_ledger_definition'
+	// Contains the library YAML and upgrade UTXO chain data for a specific slot
+	LedgerDefinition struct {
+		Error
+		// UpgradeSlot is the upgrade slot this definition applies to
+		UpgradeSlot uint32 `json:"upgrade_slot"`
+		// LibraryYAML is the compiled library YAML (UTF-8 text)
+		LibraryYAML string `json:"library_yaml"`
+		// LibraryHash is the hex-encoded hash of the library
+		LibraryHash string `json:"library_hash"`
+		// PrevLibraryHash is the hex-encoded hash of the previous library
+		// For slot 0, this is the EasyFL base library hash
+		PrevLibraryHash string `json:"prev_library_hash"`
+		// PrevUpgradeSlot is the slot of the previous upgrade
+		// For slot 0, this is MaxSlot (sentinel for base library)
+		PrevUpgradeSlot uint32 `json:"prev_upgrade_slot"`
+	}
+
+	// TxLogRecord is a single transaction log record for API responses
+	TxLogRecord struct {
+		TxID           string `json:"txid"`            // hex-encoded full TransactionID (32 bytes)
+		ClockTimestamp int64  `json:"clock_timestamp"` // Unix nanoseconds
+		Message        string `json:"message"`
+	}
+
+	// TxLogResponse is returned by txlog/get and txlog/range endpoints
+	TxLogResponse struct {
+		Error
+		Records []TxLogRecord `json:"records,omitempty"`
+	}
+
+	// TxLogEnableResponse is returned by txlog/enable endpoint
+	TxLogEnableResponse struct {
+		Error
+		Enabled bool   `json:"enabled"`
+		Level   string `json:"level"`
+	}
+
+	// SequencerTargetInfo is returned by 'get_sequencer_target_info'.
+	// Contains comprehensive information about a sequencer for delegators.
+	// Only primary data is stored; derived values (e.g. AvailableForAdvance = TokenBalance - StorageDeposit)
+	// should be computed by the consumer.
+	SequencerTargetInfo struct {
+		Error
+		LRBID string `json:"lrbid"`
+
+		// Identity & chain
+		SequencerID       string `json:"sequencer_id"`
+		Name              string `json:"name,omitempty"`
+		OriginSlot        uint32 `json:"origin_slot"`
+		CurrentOutputSlot uint32 `json:"current_output_slot"`
+		TransitionCounter uint64 `json:"transition_counter"`
+		BranchCounter     uint32 `json:"branch_counter"`
+
+		// Balances
+		TokenBalance             uint64  `json:"token_balance"`
+		StorageDeposit           uint64  `json:"storage_deposit"`
+		FrozenCoverage           []int64 `json:"frozen_coverage"`
+		CumulativeChainInflation uint64  `json:"cumulative_chain_inflation"`
+		CumulativeBranchBonus    uint64  `json:"cumulative_branch_bonus"`
+
+		// Sequencer parameters
+		MinimumFee        uint64 `json:"minimum_fee"`
+		ProfitMarginPml   uint16 `json:"profit_margin_promille"`
+		Greedy            bool   `json:"greedy"`
+		Pace              byte   `json:"pace"`
+		IgnoreFreezeBound bool   `json:"ignore_freeze_bound"`
+
+		// Delegation info
+		NowSlot               uint32 `json:"now_slot"`
+		CurrentEpoch          uint32 `json:"current_epoch"`
+		NextEpochBoundarySlot uint32 `json:"next_epoch_boundary_slot"`
+		MaxFrozenEpochs       uint32 `json:"max_frozen_epochs"`
+		EpochDurationSlots    uint32 `json:"epoch_duration_slots"`
+		CoverageLowerBound    uint64 `json:"coverage_lower_bound"`
+		CoverageUpperBound    uint64 `json:"coverage_upper_bound"`
+	}
 )
 
 const ErrGetOutputNotFound = "output not found"
@@ -342,10 +457,10 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		}
 		if md := seqData.SequencerOutputData.SequencerData; md != nil {
 			ret.SequencerTxData.MilestoneData = &MilestoneData{
-				Name:         md.Name(),
-				MinimumFee:   md.MinimumFee(),
-				ChainHeight:  md.ChainHeight(),
-				BranchHeight: md.BranchHeight(),
+				Name:              md.Name(),
+				MinimumFee:        md.MinimumFee(),
+				TransitionCounter: seqData.SequencerOutputData.ChainConstraint.TransitionCounter,
+				BranchCounter:     seqData.SequencerOutputData.ChainConstraint.BranchCounter,
 			}
 		}
 	}
@@ -355,7 +470,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		return true
 	})
 
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		ret.Inputs[i] = Input{
 			OutputID:   oid.StringHex(),
 			UnlockData: hex.EncodeToString(tx.MustUnlockDataAt(i)),
@@ -370,7 +485,7 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 			Amount:      o.TokenBalance(),
 			LockName:    o.Lock().Name(),
 		}
-		if cc, idx := o.ChainConstraint(); idx != 0xff {
+		if cc := o.ChainConstraint(); cc != nil {
 			var chainID base.ChainID
 			if cc.IsOrigin() {
 				chainID = base.MakeOriginChainID(oid)
@@ -381,18 +496,39 @@ func JSONAbleFromTransaction(tx *transaction.Transaction) *TransactionJSONAble {
 		}
 		return true
 	})
-	ret.Sender = tx.SenderAddress().String()
-	ret.Signature = hex.EncodeToString(tx.SignatureBytes())
+	sig, err := tx.Signature()
+	if err == nil {
+		ret.Signature = sig.String()
+	} else {
+		ret.Signature = err.Error()
+	}
 	return ret
 }
 
 func VertexWithDependenciesFromTransaction(tx *transaction.Transaction) *VertexWithDependencies {
+	return vertexWithDepsFromTx(tx, nil, nil, "")
+}
+
+func VertexWithDependenciesExtended(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName string) *VertexWithDependencies {
+	return vertexWithDepsFromTx(tx, coverageDelta, supply, seqName)
+}
+
+func vertexWithDepsFromTx(tx *transaction.Transaction, coverageDelta, supply *uint64, seqName string) *VertexWithDependencies {
 	ret := &VertexWithDependencies{
-		ID:             tx.IDStringHex(),
-		TotalAmount:    tx.TotalAmount(),
-		TotalInflation: tx.InflationAmount(),
-		Inputs:         make([]string, 0),
-		Endorsements:   make([]string, tx.NumEndorsements()),
+		ID:              tx.IDStringHex(),
+		TotalAmount:     tx.TotalAmount(),
+		TotalInflation:  tx.InflationAmount(),
+		SeqName:         seqName,
+		NumEndorsements: tx.NumEndorsements(),
+		CoverageDelta:   coverageDelta,
+		Supply:          supply,
+		Inputs:           make([]string, 0),
+		Endorsements:     make([]string, tx.NumEndorsements()),
+	}
+	if holderID, err := tx.HolderID(); err == nil {
+		ret.HolderID = hex.EncodeToString(holderID[:])
+	} else {
+		ret.HolderID = err.Error()
 	}
 	seqInputIdx, stemInputIdx, seqID := tx.SequencerAndStemInputData()
 
@@ -403,7 +539,7 @@ func VertexWithDependenciesFromTransaction(tx *transaction.Transaction) *VertexW
 	var stemTxID, seqTxID base.TransactionID
 
 	inputTxIDs := set.New[base.TransactionID]()
-	tx.ForEachInput(func(i byte, oid base.OutputID) bool {
+	tx.ForEachInputID(func(i byte, oid base.OutputID) bool {
 		inputTxIDs.Insert(oid.TransactionID())
 		if tx.IsSequencerTransaction() {
 			if *seqInputIdx == i {

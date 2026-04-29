@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
@@ -50,7 +51,7 @@ type (
 	}
 )
 
-func MustCollectAccountInfo(store StateStore, root common.VCommitment) *AccountInfo {
+func MustCollectAccountInfo(store global.Store, root common.VCommitment) *AccountInfo {
 	rdr := MustNewReadable(store, root)
 	chainRecs, err := MakeSugared(rdr).GetAllChainsOld() // TODO a bit ugly
 	util.AssertNoError(err)
@@ -97,7 +98,7 @@ func (a *AccountInfo) Lines(prefix ...string) *lines.Lines {
 	return ret
 }
 
-func FetchSummarySupply(stateStore StateStore, nBack int) *SummarySupplyAndInflation {
+func FetchSummarySupply(stateStore global.Store, nBack int) *SummarySupplyAndInflation {
 	branchData := FetchHeaviestBranchChainNSlotsBack(stateStore, nBack) // descending
 	util.Assertf(len(branchData) > 0, "len(branchData) > 0")
 
@@ -171,6 +172,7 @@ func (s *SummarySupplyAndInflation) Lines(prefix ...string) *lines.Lines {
 }
 
 func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
+	lib := ledger.L(base.MaxSlot)
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -182,14 +184,15 @@ func (r *Readable) AccountsByLocks() map[string]LockedAccountInfo {
 	partition := common.MakeReaderPartition(r.trie, TriePartitionLedgerState)
 	defer partition.Dispose()
 
-	r.trie.Iterator([]byte{TriePartitionAccounts}).IterateKeys(func(k []byte) bool {
+	r.trie.Iterator([]byte{TriePartitionControllers}).IterateKeys(func(k []byte) bool {
 		oid, err = base.OutputIDFromBytes(k[2+k[1]:])
 		util.AssertNoError(err)
 
 		oData, found := r._getUTXO(oid, partition)
 		util.Assertf(found, "can't get output")
 
-		_, amounts, lock, err := ledger.OutputFromBytesMain(oData)
+		// Use output's slot for parsing
+		_, amounts, lock, err := ledger.OutputFromBytesMainWithLib(oData, lib)
 		util.AssertNoError(err)
 
 		lockStr := lock.String()
@@ -255,13 +258,13 @@ func (r *Readable) ScanState() *ScannedState {
 			}
 			ret.Stem = util.Ref(o)
 		}
-		for _, accountable := range o.Output.Lock().Accounts() {
-			accountKey := makeAccountKey(accountable.AccountID(), o.ID)
+		for _, accountable := range o.Output.Lock().Controllers() {
+			accountKey := makeAccountKey(accountable.ControllerID(), o.ID)
 			if oData := r.trie.Get(accountKey); len(oData) == 0 {
 				ret.AddInconsistency("output %s is not in the accounts index", o.ID.String())
 			}
 		}
-		if chainID, _, ok := o.ExtractChainID(); ok {
+		if chainID, ok := o.ExtractChainID(); ok {
 			if _, already := ret.Chains[chainID]; already {
 				ret.AddInconsistency("duplicated chain record:\n--- 1\n%s--- 2\n%s",
 					ret.Chains[chainID].LinesSource("   ").String(),

@@ -15,14 +15,14 @@ import (
 )
 
 func init() {
-	ledger.InitWithTestingLedgerIDData()
+	ledger.InitWithTestingLedgerData()
 	fmt.Printf(`
 >>> ledger parameters for the test <<<
      tick duration    : %v
      transaction pace : %d ticks
      sequencer pace   : %d ticks
 `,
-		ledger.TickDuration(), ledger.Const.TransactionPace, ledger.Const.TransactionPaceSequencer,
+		ledger.TickDuration(), ledger.L(0).TransactionPace, ledger.L(0).TransactionPaceSequencer,
 	)
 }
 

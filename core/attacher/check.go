@@ -3,7 +3,6 @@ package attacher
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima/core/memdag"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/util"
 )
@@ -25,7 +24,6 @@ func (a *milestoneAttacher) checkConsistencyBeforeWrapUp() (err error) {
 	}})
 	if err != nil {
 		err = fmt.Errorf("checkConsistencyBeforeWrapUp in attacher %s: %v\n---- attacher lines ----\n%s", a.name, err, a.dumpLinesString("       "))
-		memdag.SavePastConeFromTxStoreUntilSlot(a.vid.ID(), a.TxBytesStore(), a.vid.Slot()-3, "inconsist_"+util.Ref(a.vid.ID()).AsFileNameShort()+".gv")
 	}
 	return err
 }
@@ -37,7 +35,10 @@ func (a *milestoneAttacher) _checkMonotonicityOfEndorsements(v *vertex.Vertex) (
 		}
 		lcEnd := vidEndorsed.GetLedgerCoverageP()
 		if lcEnd == nil {
-			err = fmt.Errorf("ledger coverage not set in the endorsed %s", vidEndorsed.IDShortString())
+			// Endorsed vid was reattached during this attacher's lifetime — its coverage
+			// was cleared and the new attacher hasn't restored it yet. Bail this milestone
+			// without marking the (still-fine) consumer Bad. See ErrAttacherTransientStaleState.
+			err = fmt.Errorf("%w: endorsed %s coverage cleared (reattached)", ErrAttacherTransientStaleState, vidEndorsed.IDShortString())
 			return false
 		}
 		lcCalc := a.FinalLedgerCoverage(a.vid.Timestamp())
@@ -57,13 +58,17 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 	util.Assertf(len(setOfInputTransactions) > 0, "len(setOfInputTransactions)>0")
 
 	setOfInputTransactions.ForEach(func(vidInp *vertex.WrappedTx) bool {
-		if !vidInp.IsSequencerMilestone() || vidInp.IsBranchTransaction() || v.Tx.Slot() != vidInp.Slot() {
+		if !vidInp.IsSequencerTransaction() || vidInp.IsBranchTransaction() || v.Slot() != vidInp.Slot() {
 			// checking sequencer, non-branch inputs on the same slot
 			return true
 		}
 		lc := vidInp.GetLedgerCoverageP()
 		if lc == nil {
-			err = fmt.Errorf("ledger coverage not set in the input tx %s", vidInp.IDShortString())
+			// Input was reattached during this attacher's lifetime — its coverage
+			// was cleared and the new attacher hasn't restored it yet. Bail this
+			// milestone without marking the (still-fine) consumer Bad. See
+			// ErrAttacherTransientStaleState.
+			err = fmt.Errorf("%w: input %s coverage cleared (reattached)", ErrAttacherTransientStaleState, vidInp.IDShortString())
 			return false
 		}
 		delta, _ := a.CoverageDelta()
