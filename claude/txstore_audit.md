@@ -51,127 +51,111 @@ TxVersion check).
 
 ## Algorithm
 
+The traversal uses a frontier set `C` (unprocessed) and a transient
+`visited` set (processed, kept only as long as some future `C` entry might
+reference its outputs). `visited` is pruned aggressively, so working-set
+memory stays bounded by current DAG thickness — independent of how far
+back we walk. Going to genesis with hundreds of millions of transactions
+in a wide ledger is expected to fit in a few hundred MB.
+
 ### Phase 1 — find branches in the starting slot
 
-Iterate the source txstore with prefix `Slot2Bytes(<slot>)`. Among all keys
-returned, keep those for which `txid.IsBranchTransaction()` is true. 
-If none are found, find the first non-empty earlier slot and ask user if proceed.
+Iterate the source txstore with prefix `Slot2Bytes(<slot from>)`. Keep
+keys for which `txid.IsBranchTransaction()` is true. If none are found,
+scan up to `auditPhase1FallbackSearch` slots downward for the first slot
+containing any branch and prompt the user to use it instead.
 
-### Phase 2 — past-cone traversal (BFS)
-
-Starting from the branch txids, BFS backward through the past cone using:
-
-* every input's transaction ID (`tx.MustInputAt(i).TransactionID()`),
-* every endorsement (`tx.MustEndorsementAt(i)`),
-* the explicit baseline if present (`tx.ExplicitBaseline()`).
+### Phase 2 — frontier loop
 
 State:
 
 ```
-visited := map[base.TransactionID]struct{}{}    // membership only — IDs
-missing := []base.OutputID / []base.TransactionID  // categorised below
-queue   := []base.TransactionID
-parsedCache := lru.New(N)                       // optional, see "double-loading"
-floor   := <slot back to>                       // 0 by default
+C       := frontier of *Transaction (not yet processed)
+visited := frontier of *Transaction (recently processed; kept for input lookup)
+branchesInC := map[slot]int   // running count of branch txs in C, per slot
+floor   := <slot back to>     // 0 by default
 ```
 
-For each popped `txid`:
+Seed `C` with the parsed branches from Phase 1, plus the per-slot branch
+counter for `<slot from>`.
 
-1. If `txid.Slot() < floor`: skip silently (out of audit range — not the same
-   thing as a missing dependency).
-2. Skip if already `visited`.
-3. `store.GetTxBytesWithMetadata(&txid)` (via the `txstore.SimpleTxBytesStore`
-   handle, not the raw KV — see *Implementation pointers*).
-   * If `len == 0`: record `txid` as a missing dependency, continue. **Do not
-     fail.** This is the explicit "missing deps are ignored and reported" rule.
-4. Mark `visited[txid] = {}`.
-5. Extract dependencies. If `--validate` is set, use
-   `transaction.Parse(txBytes)` (the parsed `*Transaction` is reused in
-   Phase 3). Otherwise, run a minimal local extractor that calls
-   `tuples.TreeFromBytesReadOnly(txBytes)` and reads `[TxInputIDs, i]`,
-   `[TxEndorsements, i]`, and `[TxExplicitBaseline]` directly, skipping
-   the library-dependent version check. If extraction fails: record as a
-   corrupt-record error, continue.
-6. If `--output`: append `(txid, valueBytes)` to a write batch and flush
-   in batches of e.g. 1000 via `PersistTxBytesBatch`. `valueBytes` is:
-   * `--meta` set:    `txBytesWithMetadata` (verbatim from source).
-   * `--meta` unset:  `(*txmetadata.TransactionMetadata)(nil).Bytes() ||
-     txBytes`, where `txBytes` is obtained via
-     `txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)`. A nil
-     metadata serialises to a length-zero prefix, which is the standard
-     "no metadata attached" form already understood by the txstore reader.
-7. Push every input txID, every endorsement, and the baseline (if any) onto
-   the queue.
+While `C` is non-empty and `max(slot ∈ C) ≥ floor`:
 
-Termination: queue empty. Natural stopping points:
+1. Pick `T ∈ C` from the bucket at `max(slot ∈ C)` (any tx in that bucket).
+2. **Discover deps.** For each input txid, endorsement, and explicit
+   baseline of `T`:
+   * if `dep.Slot() < floor`: skip (out of audit window).
+   * if `dep ∈ C` or `dep ∈ visited`: skip.
+   * else fetch tx bytes from source via
+     `(*SimpleTxBytesStore).GetTxBytesWithMetadata`. If absent, **report
+     missing on stdout** with the citing `T.ID` and continue. If present,
+     parse:
+     * with `transaction.Parse` if `--validate` (the parsed object is
+       reused for the validation step),
+     * with `transaction.ParseLibraryAgnostic` otherwise (no
+       multistate/library dependency).
+     Add to `C` and bump `branchesInC[dep.Slot]` if `dep` is a branch.
+3. **Validate** (only if `--validate`). Check first that every input
+   producer is in `C ∪ visited`; if any is missing (below floor / not in
+   DB / parse-failed), count `valSkipped++`, log on stdout, skip
+   validation. Otherwise time `SetFullContextWithFetch` +
+   `ValidateFullContext` together, with a loader that resolves OutputIDs
+   by looking up the producer in `C ∪ visited` and returning
+   `producer.MustOutputDataAt(idx)`. Record the wall-clock duration and
+   `NumInputs + NumProducedOutputs` per tx.
+4. **Move T to visited.** Remove from `C`, insert into `visited`,
+   increment `visitedTotal[category]` (category derived from `T.ID()`
+   bits — branch / seq non-branch / non-seq).
+5. **Output write** (only if `--output`). Append to a 1 000-record batch
+   and flush via `PersistTxBytesBatch`. `--meta` controls metadata
+   preservation (see flag table).
+6. **Branch-slot completion.** If `T` is a branch, decrement
+   `branchesInC[T.Slot]`; when it drops to zero, fire `onBranchSlotComplete`
+   (next subsection).
 
-* `floor == 0` (the default): genesis (no inputs / no endorsements), or any
-  tip whose dependencies are all missing.
-* `floor > 0`: any link that would cross below `floor` is dropped at the
-  guard in step 1.
+When the loop exits, flush any pending output batch.
 
-### Phase 3 — validation (only if `--validate`)
+### Per-slot completion: in-DB scan, prune, progress
 
-After Phase 2, sort the visited set by `(slot asc, tick asc)` and validate
-in that topological-ish order. (Strictly topological isn't required for
-correctness — the loader looks deps up by ID — but processing oldest-first
-keeps the parsed-tx LRU warm for descendant lookups.)
+`onBranchSlotComplete(S)` runs the bookkeeping that makes the algorithm
+streaming and bounded:
 
-For each visited txid in sorted order:
-
-1. Reload `txBytes` from the source txstore. Parse with `Parse()`.
-2. Build the loader:
-   ```go
-   loader := tx.InputLoaderByIndex(func(oid base.OutputID) ([]byte, bool) {
-       // 1. parsed-tx LRU lookup
-       // 2. fall back to txstore.LoadOutput
-       // 3. on miss, return false → SetFullContext returns "missing input" err
-   })
+1. **Source-DB scan, key-only.** Iterate
+   `Iterator(Slot2Bytes(S)).IterateKeys` and bucket each txid by category
+   from its bits — never load the value bytes. Add the result to
+   `seenInDBTotal`.
+2. **Prune `visited`.** Recompute `maxC = max(slot in C)`. Delete every
+   entry `X` from `visited` with `X.slot > maxC`: walking backward, no
+   future `C` entry can reference such `X` (their slot ≤ maxC < X.slot,
+   and deps are strictly older). If `C` is empty, drop `visited` entirely.
+3. **Compressed progress line every `auditProgressInterval` (= 100)
+   completed branch-slots.** One line, terse:
    ```
-3. Time `tx.SetFullContext(loader)` + `tx.ValidateFullContext()` together
-   (single wall-clock measurement per tx). If the loader returns "not
-   found" for any input, count this tx as **skipped — missing dependency**
-   instead of a validation failure.
-4. Insert the parsed `*Transaction` into the LRU cache so descendants can
-   reuse its outputs without re-parsing.
+   slots A..B (Δ=100): visited N (br/seq/ns x/y/z), in-DB M, orphans M-N, |C|=… |V|=… | val 0.0301 ms/tx 0.0062 ms/UTXO
+   ```
+   The `val …` segment is added only with `--validate`. The window stats
+   are deltas vs. the previous emit, so each line characterises the most
+   recent 100 slots — independently usable for spot-checks.
 
-Stats accumulated in this phase:
+Why couple slot-completion specifically to *branches* (and not "any tx at
+the current max slot"): branches are the canonical "I have advanced past
+slot S" event, since the chain of branches is what the audit is following
+in the first place. After the initial fan-in (slot from with K parallel
+branches), the past cone collapses to one branch per slot — so each
+branch-slot-complete moment is a real reset point in the traversal.
 
-* Validations attempted, succeeded, failed, skipped (missing deps).
-* Total wall time across validations.
-* Per-tx mean / median / p95 / max in nanoseconds.
-* Per-UTXO mean — UTXOs counted as `NumInputs() + NumProducedOutputs()`,
-  matching the live `proxima_tx_validation_num_utxo` metric so numbers are
-  directly comparable to Prometheus data.
-* Slot-by-slot rolling average (printed with progress; useful to see whether
-  validation cost has changed across history).
+### No separate orphan phase
 
-### Phase 4 — orphan stats
-
-Always run, regardless of flags. Single sequential pass over the source
-store with `Iterator(nil)`:
+Orphan counts are derived after the loop exits, by category, from the
+accumulated totals:
 
 ```
-for each k in source:
-    txid := base.TransactionIDFromBytes(k)
-    if txid.Slot() < floor: continue            // out of audit window
-    if _, seen := visited[txid]; seen: continue // in past cone, not orphan
-
-    switch {
-    case txid.IsBranchTransaction():       orphan_branches++
-    case txid.IsSequencerTransaction():    orphan_seq_nonbranch++
-    default:                               orphan_nonseq++
-    }
+orphans = seenInDBTotal − visitedTotal
 ```
 
-The orphans themselves are not enumerated or written anywhere — they are
-implicitly defined as everything in the source DB that is not in `visited`
-and falls within `[floor, +∞)`. Only the three counts are kept.
-
-Why bother: an orphan-heavy txstore is the signature of a node that's been
-chasing forks or has accumulated late-arriving txs that never made it onto
-a baseline branch path. The category split (branches / seq / non-seq)
-makes that signature interpretable at a glance.
+The full source DB is **not** scanned end-to-end. We only iterate keys
+within slots we actually traverse, paid one slot at a time at completion.
+This keeps the audit usable on stores with hundreds of millions of keys.
 
 ### Phase 5 — final report
 
@@ -218,57 +202,47 @@ Validation failures (2):
   [350001|17]a3… : amount conservation violated
 ```
 
-While running, the tool prints a one-line progress update every N visited
-txs (default 50 000) showing slot reached + cumulative counts.
-
 ## Avoiding double-loading
 
-The user requirement is "prevents double loading the transaction" during the
-validate path. The interpretation:
+Each tx that ends up in the past cone is parsed at most once. The traversal
+parses on first encounter (the result is held in `C` until processed), the
+optional validation step reuses that same `*Transaction`, and producer-tx
+output lookups during validation hit either `C` or `visited` directly — no
+re-parsing. Because `visited` is pruned aggressively past the
+max-slot-in-`C` watermark, this stays bounded.
 
-* Each visited tx must be parsed at most twice across the whole run — once
-  in Phase 2 (to extract links) and once in Phase 3 (to validate). This is
-  unavoidable unless we keep all parsed objects in memory across phases,
-  which is too expensive on a full-genesis run.
-* During Phase 3, when validating tx X we must not re-parse the
-  producing-tx of every input. Solution: a parsed-tx **LRU cache** (size
-  configurable, default 50 000 entries) populated as we validate. When
-  looking up an output for an input, hit the cache first; on miss, load and
-  parse once and insert.
-* The Phase 2 parse cannot meaningfully feed Phase 3 because Phase 2
-  processes newest-first (BFS from branches) but Phase 3 processes
-  oldest-first. Holding all Phase-2 parsed Txs alive between phases is the
-  alternative; rejected on memory grounds.
-
-If profiling shows Phase 2 is also a bottleneck, we can drop Phase 2's full
-`Parse()` in favour of a hand-rolled "extract inputs + endorsements +
-baseline" pass that skips the upgrade-index check and the produced-amount
-allocation. Not in v1.
+There is no LRU cache. The frontier itself is the cache: we keep parsed
+producers alive exactly as long as the rest of the still-unprocessed
+frontier might consume them, and not a moment longer.
 
 ## Edge cases / decisions
 
 * **Multiple branches in the starting slot.** Expected, normal — the past
-  cones merge backward in a few slots. We BFS from all of them simultaneously
-  and rely on `visited` to dedupe.
-* **Genesis.** Genesis is a branch transaction at slot 0. Phase 2 reaches it
-  via baseline / chain-input links and stops there because it has no inputs
-  or endorsements.
-* **Output DB already exists.** Refuse to start. No `--force`. The point of
-  this command is to produce a clean DB; overwriting is foot-gunny.
+  cones merge backward in a few slots. We seed `C` with all of them and
+  rely on `C`/`visited` membership to dedupe. The fan-in is reflected in
+  the initial `branchesInC[<slot from>]` count.
+* **Genesis.** Genesis is a branch transaction at slot 0. The frontier
+  loop reaches it via baseline / chain-input links and stops naturally
+  because it has no inputs or endorsements.
+* **Output DB already exists.** Refuse to start. No `--force`. The point
+  of this command is to produce a clean DB; overwriting is foot-gunny.
 * **Missing dependencies, one tx referenced by many descendants.** Report
-  the missing txid once, with a small list of citing txids (cap at e.g. 5
-  to keep the report bounded).
+  the missing txid once on stdout when first seen; record up to
+  `auditMaxMissingSamples` (5) referrers in the final report.
 * **Validation failure.** Counts as failure, not as missing-dep. Listed
-  separately. Tool exits 0 either way unless flag-driven (see `--strict`
-  below if we ever add it). Rationale: this is an audit tool — we want the
-  full picture, not first-failure abort.
-* **Memory.** Worst case is a full-genesis run on a heavily populated
-  ledger: the `visited` set is ~32 bytes per entry × N transactions. At
-  10⁷ txs that's ~320 MB of in-memory map, acceptable for a one-off CLI.
-  The LRU is bounded.
+  separately. Tool exits 0 either way. Rationale: this is an audit tool
+  — we want the full picture, not first-failure abort.
+* **Validation skipped.** Happens when an input producer is below `floor`,
+  missing from the source DB, or failed to parse. Logged with a `VAL SKIP`
+  prefix on stdout while running and counted in the final report.
+* **Memory.** Bounded by `|C ∪ visited|` ≈ DAG thickness near the current
+  slot — typically a few thousand parsed txs at most. Independent of how
+  far back we walk: a full-genesis audit on a 10⁹-tx ledger fits in the
+  same working set as a 10⁵-tx audit.
 * **`--validate` without `--output`** is the audit/perf use case.
-  **`--output` without `--validate`** is the GC use case (faster, doesn't
-  pay the validation cost).
+  **`--output` without `--validate`** is the GC use case (faster — it
+  skips validation entirely and uses `ParseLibraryAgnostic`, so it
+  doesn't even open the multistate DB).
 
 ## Implementation pointers
 
@@ -290,20 +264,24 @@ allocation. Not in v1.
 * Iterating slot: `store.Iterator(base.Slot2Bytes(slot)).IterateKeys(...)`,
   filter on `txid.IsBranchTransaction()`. The `Iterator` method on
   `SimpleTxBytesStore` is already exposed (used by the DAG explorer).
-* Phase-1 fallback (no branches in `<slot from>`): walk the source store
-  with `Iterator(nil)` until the first key whose slot < `<slot from>` and
-  whose `txid.IsBranchTransaction()` is true; print it and prompt the user
-  before continuing. Single sequential scan, bounded by the gap.
-* Tx parsing: `transaction.Parse(txBytes)` for Phase 2 (no signature check
-  needed); the same `Parse` plus `SetFullContext` + `ValidateFullContext`
-  for Phase 3.
-* Looking up an output for the loader: `txstore.LoadOutput(store, oid)` —
-  but wrap it with the parsed-tx LRU so we don't re-parse the same producer
-  on every consumer.
-* Branch detection: `txid.IsBranchTransaction()` (already used in
-  `dag_explorer/dag_explorer.go`).
-* Stats struct kept locally in `audit.go`; final print via
+* Phase-1 fallback (no branches in `<slot from>`): scan up to
+  `auditPhase1FallbackSearch` (= 1024) slots downward, slot by slot, until
+  one with a branch is found; prompt the user before adopting it.
+* Tx parsing: `transaction.ParseLibraryAgnostic(txBytes)` when
+  `--validate` is off (no multistate / no `ledger.L(slot)` access);
+  `transaction.Parse(txBytes)` when `--validate` is on, since
+  `ValidateFullContext` runs slot-specific EasyFL constraints.
+* Looking up an output for the validation loader: lookup in `C ∪ visited`
+  directly via `(*frontier).Get`. No external cache — the frontier *is*
+  the cache.
+* Branch detection: `txid.IsBranchTransaction()` (txid bits, no parse
+  required) — used both for filtering branches in slot-prefix iteration
+  and for slot-completion detection.
+* In-DB key-only iteration: `Iterator(prefix).IterateKeys` — txid bits
+  give the category; we never load tx bytes during the per-slot count.
+* Stats struct kept locally in `audit.go` (`auditState`); final print via
   `util/lines.Lines` for consistency with the rest of the proxi output.
+  Periodic progress lines are plain `glb.Infof` one-liners.
 
 ## Out of scope (for v1)
 
