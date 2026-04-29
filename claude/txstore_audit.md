@@ -21,15 +21,16 @@ Three independent purposes, served by the same traversal:
 ## CLI
 
 ```
-proxi db txstore audit <slot from> [<slot back to, default slot 0>] [-v|--validate] [-o|--output <new-db>]
+proxi db txstore audit <slot from> [<slot back to, default slot 0>] [-v|--validate] [-o|--output <new-db>] [-m|--meta]
 ``` 
 
-| Flag                    | Meaning                                                                                                                                                                                      |
-|-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `<slot from>`           | Starting slot. Required positional arg. The tool reads all transactions in this slot, picks the branch transactions, and traverses backward from there.                                      |
-| `<slot nack to>`        | Oldes slot to traverse. Optional positional arg. The tool reads all transactions back to this slot. Default is slot 0, genesis                                                               |
-| `-v`, `--validate`      | Run full-context validation (`SetFullContext` + `ValidateFullContext`) on every visited transaction. Skip — and report — any transaction whose consumed UTXOs are not all available locally. |
-| `-o`, `--output <path>` | Write each visited transaction (raw bytes + metadata, exactly as stored) into a new Badger txstore at `<path>`. Refuses to start if the path already exists.                                 |
+| Flag                    | Meaning                                                                                                                                                                                                                                |
+|-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `<slot from>`           | Starting slot. Required positional arg. The tool reads all transactions in this slot, picks the branch transactions, and traverses backward from there.                                                                                |
+| `<slot nack to>`        | Oldes slot to traverse. Optional positional arg. The tool reads all transactions back to this slot. Default is slot 0, genesis                                                                                                         |
+| `-v`, `--validate`      | Run full-context validation (`SetFullContext` + `ValidateFullContext`) on every visited transaction. Skip — and report — any transaction whose consumed UTXOs are not all available locally.                                           |
+| `-o`, `--output <path>` | Write each visited transaction into a new Badger txstore at `<path>` (same on-disk layout as a normal `proximadb.txstore` — just cleaned of orphans). Refuses to start if the path already exists.                                     |
+| `-m`, `--meta`          | Only meaningful with `--output`. If set, the per-transaction metadata is copied verbatim from the source. If unset (default), the output DB stores each tx with **empty metadata** (`txmetadata.TransactionMetadata{}.Bytes()` prefix). |
 
 Absence of flags means txstore is just traversed and dependencies are checked, missing dependencies are reported, no more effect. 
 
@@ -82,8 +83,14 @@ For each popped `txid`:
 5. `transaction.Parse(txBytes)` (Stage 1 only — enough to extract inputs,
    endorsements, baseline).
    * If parse fails: record as a corrupt-record error, continue.
-6. If `--output`: append `(txid, txBytesWithMetadata)` to a write batch.
-   Flush in batches of e.g. 1000 via `PersistTxBytesBatch`.
+6. If `--output`: append `(txid, valueBytes)` to a write batch and flush
+   in batches of e.g. 1000 via `PersistTxBytesBatch`. `valueBytes` is:
+   * `--meta` set:    `txBytesWithMetadata` (verbatim from source).
+   * `--meta` unset:  `(*txmetadata.TransactionMetadata)(nil).Bytes() ||
+     txBytes`, where `txBytes` is obtained via
+     `txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)`. A nil
+     metadata serialises to a length-zero prefix, which is the standard
+     "no metadata attached" form already understood by the txstore reader.
 7. Push every input txID, every endorsement, and the baseline (if any) onto
    the queue.
 
@@ -130,7 +137,34 @@ Stats accumulated in this phase:
 * Slot-by-slot rolling average (printed with progress; useful to see whether
   validation cost has changed across history).
 
-### Phase 4 — final report
+### Phase 4 — orphan stats
+
+Always run, regardless of flags. Single sequential pass over the source
+store with `Iterator(nil)`:
+
+```
+for each k in source:
+    txid := base.TransactionIDFromBytes(k)
+    if txid.Slot() < floor: continue            // out of audit window
+    if _, seen := visited[txid]; seen: continue // in past cone, not orphan
+
+    switch {
+    case txid.IsBranchTransaction():       orphan_branches++
+    case txid.IsSequencerTransaction():    orphan_seq_nonbranch++
+    default:                               orphan_nonseq++
+    }
+```
+
+The orphans themselves are not enumerated or written anywhere — they are
+implicitly defined as everything in the source DB that is not in `visited`
+and falls within `[floor, +∞)`. Only the three counts are kept.
+
+Why bother: an orphan-heavy txstore is the signature of a node that's been
+chasing forks or has accumulated late-arriving txs that never made it onto
+a baseline branch path. The category split (branches / seq / non-seq)
+makes that signature interpretable at a glance.
+
+### Phase 5 — final report
 
 Single multi-section report on stdout. Example:
 
@@ -142,8 +176,15 @@ Past cone of slot 391000 (3 branches):
   missing dependencies   : 7   (listed below)
   parse errors           : 0
 
+Orphans in source (slots ≥ 0, not reachable from slot 391000 branches):
+  branch                 : 41
+  sequencer non-branch   : 1 873
+  non-sequencer          : 9 412
+  total                  : 11 326   (2.7% of source)
+
 Output:
   written to             : ./audit.txstore
+  metadata               : preserved   (--meta)
   records written        : 412 879
   bytes written          : 287.3 MB
 
@@ -265,12 +306,14 @@ allocation. Not in v1.
 * `--from <other-txstore-db>` — letting the audit read from a different DB
   than the configured node DB. Easy to add if needed.
 
-## Open questions
+## Resolved decisions (2026-04-29)
 
-1. Should the output DB also include the source DB's snapshot-branch-id /
-   any non-tx metadata keys? Currently the source txstore has only tx
-   entries, so this is a no-op. Confirming: yes, source has only 32-byte
-   txid keys.
-2. Reporting orphans by enumerating "everything in source not in visited
-   and `>= floor`" is a separate ~1-line iteration after Phase 2. Worth
-   doing as part of this command, or leave to a follow-up?
+* **Output DB layout** = "just another txstore, only cleaned up". Same
+  on-disk Badger format as a regular `proximadb.txstore`, only tx entries,
+  no extra keys. Already what the spec implies.
+* **Orphan handling** = ignore for traversal, count by category for the
+  report (Phase 4 above).
+* **`--meta` / `-m` flag** added: default is to write transactions with
+  empty metadata (matches the assumption that audited txs aren't going to
+  be re-attached at the meta-level — they're being archived / GC'd). Pass
+  `--meta` to copy source metadata verbatim.
