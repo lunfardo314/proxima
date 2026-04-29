@@ -468,27 +468,48 @@ func (st *auditState) recordMissing(missing, referrer base.TransactionID) {
 	}
 }
 
-// validateOne validates t when all of its inputs are findable in C ∪ visited.
-// If any input is unavailable (below floor, missing from DB, or parse-failed)
-// validation is skipped and reported.
+// validateOne runs SetFullContext + ValidateFullContext on t. The loader
+// resolves OutputIDs in priority order:
+//
+//  1. C (already-frontier producer)  — most common path
+//  2. visited                        — recently processed producer
+//  3. silent fresh load from source  — for producers below floor (not
+//     traversed) or otherwise outside the audit window. The fetched tx is
+//     NOT added to C or visited and is therefore not counted as visited;
+//     it's just providing output bytes for this single validation.
+//
+// VAL SKIP fires only when even the lazy load fails (producer not in DB
+// at all). That's a real completeness gap, not a normal floor edge effect.
 func (st *auditState) validateOne(t *transaction.Transaction) {
-	for i := 0; i < t.NumInputs(); i++ {
-		oid := t.MustInputAt(byte(i))
-		inp := oid.TransactionID()
-		if !st.C.Has(inp) && !st.visited.Has(inp) {
-			st.valSkipped++
-			glb.Infof("VAL SKIP: %s — input producer %s not loaded", t.IDShortString(), inp.StringShort())
-			return
-		}
-	}
 	nUTXO := int64(t.NumInputs() + t.NumProducedOutputs())
 
 	loader := func(oid base.OutputID) ([]byte, bool) {
-		producer, ok := st.C.Get(oid.TransactionID())
-		if !ok {
-			producer, ok = st.visited.Get(oid.TransactionID())
+		producerID := oid.TransactionID()
+		if producer, ok := st.C.Get(producerID); ok {
+			if int(oid.Index()) >= producer.NumProducedOutputs() {
+				return nil, false
+			}
+			return producer.MustOutputDataAt(oid.Index()), true
 		}
-		if !ok {
+		if producer, ok := st.visited.Get(producerID); ok {
+			if int(oid.Index()) >= producer.NumProducedOutputs() {
+				return nil, false
+			}
+			return producer.MustOutputDataAt(oid.Index()), true
+		}
+		// Silent fresh load — producer is outside the audit window (below
+		// floor, typically) but we still need its output bytes to validate
+		// the consumer. Don't add to any set.
+		txBytesWithMeta := st.src.GetTxBytesWithMetadata(&producerID)
+		if len(txBytesWithMeta) == 0 {
+			return nil, false
+		}
+		txBytes, _, err := txmetadata.ParseTxMetadata(txBytesWithMeta)
+		if err != nil {
+			return nil, false
+		}
+		producer, err := transaction.Parse(txBytes)
+		if err != nil {
 			return nil, false
 		}
 		if int(oid.Index()) >= producer.NumProducedOutputs() {
@@ -497,12 +518,10 @@ func (st *auditState) validateOne(t *transaction.Transaction) {
 		return producer.MustOutputDataAt(oid.Index()), true
 	}
 
-	st.valSucceeded++ // optimistically; reverted on failure below
 	start := time.Now()
 	if err := t.SetFullContextWithFetch(loader); err != nil {
-		st.valSucceeded--
 		st.valSkipped++
-		glb.Infof("VAL SKIP: %s — SetFullContext: %v", t.IDShortString(), err)
+		glb.Infof("VAL SKIP: %s — %v", t.IDShortString(), err)
 		return
 	}
 	if err := t.ValidateFullContext(); err != nil {
@@ -510,7 +529,6 @@ func (st *auditState) validateOne(t *transaction.Transaction) {
 		st.valTotalNs += elapsed
 		st.valTimesNs = append(st.valTimesNs, elapsed)
 		st.valUTXOs += nUTXO
-		st.valSucceeded--
 		st.valFailed++
 		st.valFailures = append(st.valFailures, validationFailure{txid: t.ID(), err: err.Error()})
 		return
@@ -519,6 +537,7 @@ func (st *auditState) validateOne(t *transaction.Transaction) {
 	st.valTotalNs += elapsed
 	st.valTimesNs = append(st.valTimesNs, elapsed)
 	st.valUTXOs += nUTXO
+	st.valSucceeded++
 }
 
 // onBranchSlotComplete fires when the last branch at `slot` has been moved

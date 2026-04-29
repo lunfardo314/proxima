@@ -95,14 +95,23 @@ While `C` is non-empty and `max(slot ∈ C) ≥ floor`:
      * with `transaction.ParseLibraryAgnostic` otherwise (no
        multistate/library dependency).
      Add to `C` and bump `branchesInC[dep.Slot]` if `dep` is a branch.
-3. **Validate** (only if `--validate`). Check first that every input
-   producer is in `C ∪ visited`; if any is missing (below floor / not in
-   DB / parse-failed), count `valSkipped++`, log on stdout, skip
-   validation. Otherwise time `SetFullContextWithFetch` +
-   `ValidateFullContext` together, with a loader that resolves OutputIDs
-   by looking up the producer in `C ∪ visited` and returning
-   `producer.MustOutputDataAt(idx)`. Record the wall-clock duration and
-   `NumInputs + NumProducedOutputs` per tx.
+3. **Validate** (only if `--validate`). Time `SetFullContextWithFetch` +
+   `ValidateFullContext` together. The loader resolves an OutputID's
+   producer in this priority order:
+   1. `C` — most common path (we just added all of `T`'s deps as part
+      of step 2).
+   2. `visited` — recently processed producer.
+   3. **Silent fresh load** from the source store, parsed locally.
+      Producers fetched here are *not* added to `C` or `visited` and
+      do *not* count as "traversed". This handles inputs that point
+      below `floor` — we want their output bytes for validation, but
+      we don't want them in the traversal stats. No noisy log line.
+   `VAL SKIP` is logged and counted in `valSkipped` only when even the
+   silent load fails (i.e. the producer is genuinely missing from the
+   DB) — that's a real completeness gap, not a normal floor edge
+   effect.
+   Record `NumInputs + NumProducedOutputs` and the wall-clock duration
+   on success.
 4. **Move T to visited.** Remove from `C`, insert into `visited`,
    increment `visitedTotal[category]` (category derived from `T.ID()`
    bits — branch / seq non-branch / non-seq).
