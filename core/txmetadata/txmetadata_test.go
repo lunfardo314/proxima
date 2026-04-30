@@ -29,7 +29,7 @@ func TestTxMetadata(t *testing.T) {
 	})
 	t.Run("2", func(t *testing.T) {
 		h := blake2b.Sum256([]byte("data"))
-		c, err := common.VectorCommitmentFromBytes(ledger.CommitmentModel, h[:])
+		c, err := common.VectorCommitmentFromBytes(ledger.CommitmentModel, h[:ledger.TrieHashSize])
 		require.NoError(t, err)
 		m := &TransactionMetadata{
 			SourceTypeNonPersistent: SourceTypeSequencer,

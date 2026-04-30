@@ -15,9 +15,7 @@ import (
 
 const (
 	TrieArity    = common.PathArity16
-	TrieHashSize = trie_blake2b.HashSize256
+	TrieHashSize = trie_blake2b.HashSize192
 )
-
-// TODO move to 24-byte hash commitments
 
 var CommitmentModel = trie_blake2b.New(TrieArity, TrieHashSize)
