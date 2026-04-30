@@ -41,10 +41,6 @@ functions:
       description: number of last ticks in a slot when sequencer transaction cannot consume more than 2 UTXOs
       source: u64/25
    -
-      sym: constPostBranchConsolidationTicks
-      description: number of first ticks in the timestamp of the sequencer transaction
-      source: u64/12
-   -
       sym: constTransactionPace
       description: minimum number of ticks between non-sequencer transaction and its inputs
       source: u64/{{.TransactionPaceTicks}}

@@ -156,27 +156,6 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 }
 
 // --------------------------------------------------------------------------
-// TEST: Post-branch consolidation ticks
-// --------------------------------------------------------------------------
-
-// TestSequencerPostBranchConsolidation verifies that a non-branch sequencer
-// transaction at tick < PostBranchConsolidationTicks (12) is rejected.
-// The zeroTickOnBranchOnly check fires first for tick 0, but for ticks 1-11
-// the post-branch consolidation check catches them.
-func TestSequencerPostBranchConsolidation(t *testing.T) {
-	e := newSequencerTestEnv(t, 10_000_000_000)
-
-	// Tick 5 is below PostBranchConsolidationTicks (12) and above 0 (not slot boundary)
-	originTs := base.T(getSourceOutputs(t, e.u, e.addr)[0].ID.Slot()+1, 5)
-	originBytes := e.buildSequencerOrigin(t, originTs)
-
-	err := e.u.AddTransaction(originBytes)
-	require.Error(t, err, "sequencer tx at tick 5 must violate post-branch consolidation")
-	require.NoError(t, util.MustErrorWith(err, "sequencer transaction violates post branch consolidation ticks constraint"))
-	t.Logf("correctly rejected: %v", err)
-}
-
-// --------------------------------------------------------------------------
 // TEST: Pre-branch consolidation ticks
 // --------------------------------------------------------------------------
 
@@ -351,40 +330,41 @@ func TestSequencerSlotBoundaryNonBranch(t *testing.T) {
 // --------------------------------------------------------------------------
 
 // TestSequencerInputPace verifies the sequencer-specific input pace constraint
-// (TransactionPaceSequencer = 2 ticks). Inputs must be at least 2 ticks before
+// (TransactionPaceSequencer ticks). Inputs must be at least pace ticks before
 // the transaction timestamp. This is enforced in scanInputs() at parse stage.
 func TestSequencerInputPace(t *testing.T) {
 	e := newSequencerTestEnv(t, 10_000_000_000)
+	pace := int(ledger.L(0).TransactionPaceSequencer)
 
 	// Settle chain origin at tick 20
 	outs := getSourceOutputs(t, e.u, e.addr)
 	originTs := base.T(outs[0].ID.Slot()+1, 20)
 	chainIn, chainID := e.settleSequencerOrigin(t, originTs)
 
-	t.Run("one_tick_gap_rejected", func(t *testing.T) {
-		// Successor at tick 21 — gap = 1 tick < TransactionPaceSequencer (2)
-		succTs := base.T(chainIn.ID.Slot(), chainIn.ID.Timestamp().Tick+1)
+	t.Run("under_pace_rejected", func(t *testing.T) {
+		// Successor at gap = pace-1 ticks < TransactionPaceSequencer
+		succTs := base.T(chainIn.ID.Slot(), chainIn.ID.Timestamp().Tick+byte(pace-1))
 		txBytes, _ := e.buildSequencerSuccessor(t, chainIn, chainID, succTs, nil)
 
 		_, err := transaction.ParseWithPartialValidation(txBytes)
-		require.Error(t, err, "1-tick gap must violate sequencer input pace")
+		require.Error(t, err, "pace-1 gap must violate sequencer input pace")
 		require.NoError(t, util.MustErrorWith(err, "violates sequencer time pace constraint"))
-		t.Logf("1-tick gap correctly rejected: %v", err)
+		t.Logf("pace-1 gap correctly rejected: %v", err)
 	})
 
-	t.Run("two_tick_gap_accepted", func(t *testing.T) {
-		// Successor at tick 22 — gap = 2 ticks = TransactionPaceSequencer
-		succTs := base.T(chainIn.ID.Slot(), chainIn.ID.Timestamp().Tick+2)
+	t.Run("at_pace_accepted", func(t *testing.T) {
+		// Successor at gap = pace ticks = TransactionPaceSequencer
+		succTs := base.T(chainIn.ID.Slot(), chainIn.ID.Timestamp().Tick+byte(pace))
 		txBytes, _ := e.buildSequencerSuccessor(t, chainIn, chainID, succTs, nil)
 
 		// ParseWithPartialValidation should pass (pace OK)
 		_, err := transaction.ParseWithPartialValidation(txBytes)
-		require.NoError(t, err, "2-tick gap must pass parse + partial validation")
+		require.NoError(t, err, "pace gap must pass parse + partial validation")
 
 		// Full validation should also pass (same-slot sequencer predecessor)
 		err = e.u.AddTransaction(txBytes)
-		require.NoError(t, err, "2-tick gap must pass full validation")
-		t.Logf("2-tick gap accepted")
+		require.NoError(t, err, "pace gap must pass full validation")
+		t.Logf("pace gap accepted")
 	})
 }
 
@@ -437,9 +417,10 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	chainIn, err := chs.Parse()
 	require.NoError(t, err)
 
-	// Build successor WITH sequencer constraint at same slot, tick 17 (gap 2, pace OK)
-	// The predecessor (non-sequencer) is same-slot, and no endorsements → must fail
-	succTs := base.T(chainIn.ID.Slot(), 17)
+	// Build successor WITH sequencer constraint at same slot, gap = pace ticks (pace OK)
+	// The predecessor (non-sequencer) is same-slot, and no endorsements → must fail at EasyFL
+	pace := int(ledger.L(0).TransactionPaceSequencer)
+	succTs := base.T(chainIn.ID.Slot(), chainOriginTs.Tick+byte(pace))
 
 	cc := chainIn.Output.ChainConstraint()
 

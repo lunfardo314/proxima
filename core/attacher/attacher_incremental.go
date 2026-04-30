@@ -333,8 +333,9 @@ func (a *IncrementalAttacher) IsBranchTarget() bool {
 // TimestampLowerBound returns the earliest valid target timestamp for a sequencer transaction
 // built from this attacher's current state.
 // For branches, returns (targetSlot, 0).
-// For non-branches, returns max(input/endorsement timestamps) + sequencer pace,
-// adjusted for post-branch consolidation.
+// For non-branches, the bound is max over:
+//   - per-input  : input.ts + TransactionPaceSequencer
+//   - per-endorsement: endorsement.ts + 1 (strict monotonicity, no pace constant)
 func (a *IncrementalAttacher) TimestampLowerBound() base.LedgerTime {
 	if a.isBranch {
 		return base.T(a.targetSlot, 0)
@@ -342,27 +343,22 @@ func (a *IncrementalAttacher) TimestampLowerBound() base.LedgerTime {
 
 	pace := int64(a.Library.TransactionPaceSequencer)
 
-	var maxTicks int64
+	var lowerTicks int64
 	for _, wOut := range a.inputs {
-		if t := wOut.Timestamp().TicksSinceGenesis(); t > maxTicks {
-			maxTicks = t
+		if t := wOut.Timestamp().TicksSinceGenesis() + pace; t > lowerTicks {
+			lowerTicks = t
 		}
 	}
 	for _, vid := range a.endorse {
-		if t := vid.Timestamp().TicksSinceGenesis(); t > maxTicks {
-			maxTicks = t
+		if t := vid.Timestamp().TicksSinceGenesis() + 1; t > lowerTicks {
+			lowerTicks = t
 		}
 	}
 
-	lower, err := base.LedgerTimeFromTicksSinceGenesis(maxTicks + pace)
+	lower, err := base.LedgerTimeFromTicksSinceGenesis(lowerTicks)
 	if err != nil {
-		return base.T(a.targetSlot, a.Library.PostBranchConsolidationTicks)
+		return base.T(a.targetSlot, byte(pace))
 	}
-
-	if lower.Tick > 0 && lower.Tick < a.Library.PostBranchConsolidationTicks {
-		lower = base.T(lower.Slot, a.Library.PostBranchConsolidationTicks)
-	}
-
 	return lower
 }
 

@@ -45,8 +45,7 @@ type Constants struct {
 	// before the slot boundary. It means, sequencer transaction can have only one input, its own predecessor
 	// for any transaction with timestamp ticks > MaxTickValueInSlot - PreBranchConsolidationTicks
 	// value 0 of PreBranchConsolidationTicks effectively means no constraint
-	PreBranchConsolidationTicks  uint8
-	PostBranchConsolidationTicks uint8
+	PreBranchConsolidationTicks uint8
 	// -------------- delegation related
 	// number of slots where target cannot consume delegation output
 	SafeRevocationSlots uint32
@@ -108,9 +107,6 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	pb, err := _uint64FromConst(lib, "constPreBranchConsolidationTicks")
 	util.AssertNoError(err)
 	ret.PreBranchConsolidationTicks = byte(pb)
-	pb, err = _uint64FromConst(lib, "constPostBranchConsolidationTicks")
-	util.AssertNoError(err)
-	ret.PostBranchConsolidationTicks = byte(pb)
 	tp, err := _uint64FromConst(lib, "constTransactionPace")
 	util.AssertNoError(err)
 	ret.TransactionPace = byte(tp)
@@ -186,7 +182,6 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Slot inflation base: %s", util.Th(c.SlotInflationBase)).
 		Add("Minimum inflatable amount in slot 0: %s", util.Th(c.MinimumInflatableAmount0)).
 		Add("Pre-branch consolidation ticks: %v", c.PreBranchConsolidationTicks).
-		Add("Post-branch consolidation ticks: %v", c.PostBranchConsolidationTicks).
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).
 		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements).
@@ -283,17 +278,6 @@ func (c *Constants) LedgerTimeFromClockTime(nowis time.Time) base.LedgerTime {
 
 func (c *Constants) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
 	return ts.Tick > base.MaxTickValue-c.PreBranchConsolidationTicks
-}
-
-func (c *Constants) IsPostBranchConsolidationTimestamp(ts base.LedgerTime) bool {
-	return ts.Tick >= c.PostBranchConsolidationTicks
-}
-
-func (c *Constants) EnsurePostBranchConsolidationConstraintTimestamp(ts base.LedgerTime) base.LedgerTime {
-	if c.IsPostBranchConsolidationTimestamp(ts) {
-		return ts
-	}
-	return base.T(ts.Slot, c.PostBranchConsolidationTicks)
 }
 
 func (c *Constants) GenesisTimeUnixNano() int64 {

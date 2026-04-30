@@ -478,7 +478,6 @@ func TestAttachCostBudgetExceededMilestoneAttacher(t *testing.T) {
 
 		// Timestamp must be after the last chain transaction
 		ts := chainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
-		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		// Make sure timestamp is after the last transaction in the chain
 		lastTx, err := transaction.ParseWithPartialValidation(txBytesChain[chainLength-1])

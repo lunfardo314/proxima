@@ -52,8 +52,8 @@ func newEndorsementTestEnv(t *testing.T) *endorsementTestEnv {
 // (EasyFL: "sequencer chain origin must endorse another sequencer transaction"),
 // so a dummy endorsement is included.
 // Returns the chain output from state, derived chain ID, and a valid successor
-// timestamp. The successor is placed in the next slot at tick 50 — above
-// PostBranchConsolidationTicks (12) and with enough room for endorsement timing.
+// timestamp. The successor is placed in the next slot at tick 20 with enough room
+// for endorsement timing.
 func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	chainIn *ledger.OutputWithID,
 	chainID base.ChainID,
@@ -63,8 +63,8 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 
 	outs := getSourceOutputs(t, e.u, e.addr)
 
-	// Place origin in next slot at tick 20 — above PostBranchConsolidationTicks (12)
-	// and with room for a dummy endorsement at tick 15 (5-tick gap > TransactionPaceSequencer)
+	// Place origin in next slot at tick 20, with room for a dummy endorsement
+	// at tick 15 (5-tick gap > TransactionPaceSequencer in tests = 3)
 	originTs := base.T(outs[0].ID.Slot()+1, 20)
 
 	txb := txbuilder.New()
@@ -236,29 +236,47 @@ func TestEndorsementCrossSlotRejected(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// TEST: Sequencer pace violation on endorsement
+// TEST: Endorsement monotonicity
 // --------------------------------------------------------------------------
 
-// TestEndorsementPaceViolation verifies that endorsements violating the sequencer
-// pace constraint are rejected. The endorsed transaction's timestamp must be at least
-// TransactionPaceSequencer ticks before the endorsing transaction's timestamp.
+// TestEndorsementMonotonicityViolation verifies that an endorsement with the
+// same timestamp as the endorsing transaction is rejected. Endorsements have
+// no ledger pace constant — only strict monotonicity (≥1 tick).
 // Enforced in scanEndorsements() at parse stage.
-func TestEndorsementPaceViolation(t *testing.T) {
+func TestEndorsementMonotonicityViolation(t *testing.T) {
 	e := newEndorsementTestEnv(t)
 
 	chainIn, chainID, succTs := e.setupSequencerChain(t)
 
-	// Endorsement with only 1 tick gap — TransactionPaceSequencer requires >= 2
-	tooCloseEnd := base.NewTransactionID(
+	// Endorsement at the same timestamp as the endorsing tx — violates monotonicity
+	sameTickEnd := base.NewTransactionID(succTs, base.TransactionIDShort{}, true)
+
+	txBytes, _ := e.buildSequencerSuccessor(t, chainIn, chainID, succTs,
+		[]base.TransactionID{sameTickEnd})
+	_, err := transaction.ParseWithPartialValidation(txBytes)
+	require.Error(t, err, "same-tick endorsement must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "violates strict monotonicity"))
+	t.Logf("same-tick endorsement correctly rejected: %v", err)
+}
+
+// TestEndorsementOneTickGapAccepted verifies that an endorsement exactly one
+// tick before the endorsing tx is accepted — the lower bound of monotonicity.
+// This case used to be rejected under the old ValidSequencerPace rule.
+func TestEndorsementOneTickGapAccepted(t *testing.T) {
+	e := newEndorsementTestEnv(t)
+
+	chainIn, chainID, succTs := e.setupSequencerChain(t)
+
+	// 1-tick gap satisfies strict monotonicity
+	oneTickBack := base.NewTransactionID(
 		succTs.AddTicks(-1), base.TransactionIDShort{}, true,
 	)
 
 	txBytes, _ := e.buildSequencerSuccessor(t, chainIn, chainID, succTs,
-		[]base.TransactionID{tooCloseEnd})
+		[]base.TransactionID{oneTickBack})
 	_, err := transaction.ParseWithPartialValidation(txBytes)
-	require.Error(t, err, "pace-violating endorsement must be rejected")
-	require.NoError(t, util.MustErrorWith(err, "violates sequencer time pace constraint"))
-	t.Logf("pace-violating endorsement correctly rejected: %v", err)
+	require.NoError(t, err, "1-tick endorsement gap must be accepted under monotonicity")
+	t.Logf("1-tick endorsement gap correctly accepted")
 }
 
 // --------------------------------------------------------------------------

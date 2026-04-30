@@ -307,7 +307,9 @@ func (tx *Transaction) scanInputs() error {
 		if err != nil {
 			return fmt.Errorf("parsing input #%d: '%v'", i, err)
 		}
-		// check time pace constraint
+		// pace constraint applies only to consumed inputs.
+		// Two cases: sequencer consumer (incl. branch) → TransactionPaceSequencer;
+		// non-sequencer consumer → TransactionPace.
 		if isSequencer {
 			if !ledger.ValidSequencerPace(oid.Timestamp(), ts) {
 				return fmt.Errorf("input #%d violates sequencer time pace constraint: %s", i, oid.StringShort())
@@ -330,7 +332,8 @@ func (tx *Transaction) scanInputs() error {
 // scanEndorsements
 // - parses and checks validity of each endorsement
 // - enforces no cross-slot endorsements
-// - enforces sequencer pace constraint
+// - enforces strict monotonicity (≥1 tick) between endorsement and endorsing tx;
+//   no ledger pace constant applies to endorsements
 func (tx *Transaction) scanEndorsements() error {
 	numEndorsements, err := tx.NumElementsAtPath(ledger.PathToEndorsements)
 	if err != nil {
@@ -356,9 +359,9 @@ func (tx *Transaction) scanEndorsements() error {
 			return fmt.Errorf("scanEndorsements: cross-slot endorsements are not allowed:  %s ->  %s",
 				tx.IDShortString(), endorsementID.StringShort())
 		}
-		// check time pace
-		if !ledger.ValidSequencerPace(endorsementID.Timestamp(), txTs) {
-			return fmt.Errorf("scanEndorsements: endorsement #%d violates sequencer time pace constraint: %s -> %s",
+		// strict monotonicity: endorsement must be strictly earlier than endorsing tx
+		if base.DiffTicks(txTs, endorsementID.Timestamp()) < 1 {
+			return fmt.Errorf("scanEndorsements: endorsement #%d violates strict monotonicity: %s -> %s",
 				i, txTs.String(), endorsementID.StringShort())
 		}
 	}

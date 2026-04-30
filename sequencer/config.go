@@ -47,18 +47,12 @@ const (
 	minimumMilestonesTTLSlots        = 24 // 10
 	defaultMaxTagAlongInputs         = 15
 	defaultTagAlongDrainRate         = 100 // ~10 TPS per sequencer with 1.024s slots
-
-	// defaultSequencerPaceTicks is the wall-clock pulse interval (in ticks) used by the
-	// reference policy. See claude/seq-improvements.md "Rollout in two phases": this is a
-	// Phase S sequencer-internal constant, decoupled from the ledger TransactionPaceSequencer
-	// (still 2 on the live testnet; Phase L will raise it and remove this default).
-	defaultSequencerPaceTicks = 12
 )
 
 func defaultConfigOptions() *ConfigOptions {
 	return &ConfigOptions{
 		SequencerName:             "",
-		Pace:                      defaultSequencerPaceTicks,
+		Pace:                      int(ledger.L(base.MaxSlot).TransactionPaceSequencer),
 		MaxTargetTs:               base.NilLedgerTime,
 		MaxBranches:               math.MaxInt,
 		DelayStart:                ledger.SlotDuration(), // to fill up the tippool

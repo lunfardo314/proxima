@@ -92,10 +92,6 @@ func New(par Params) (*SeqTxBuilder, error) {
 		if par.Stem == nil {
 			return nil, fmt.Errorf("SeqTxBuilder: wrong timestamp or stem for branch transaction: %s", par.Timestamp.String())
 		}
-	} else {
-		if !ret.IsPostBranchConsolidationTimestamp(par.Timestamp) {
-			return nil, fmt.Errorf("SeqTxBuilder: timestamp violates post-branch timestamp constraint: %s", par.Timestamp.String())
-		}
 	}
 
 	if ret.stemInput != nil {

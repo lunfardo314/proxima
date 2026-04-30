@@ -170,12 +170,12 @@ func (seq *Sequencer) doSequencerSlot() bool {
 
 		// --- Throttle check (stuck pending): if the last submitted own milestone has
 		// not attached within tolerance, pause submissions. Escape when the pending
-		// milestone is in a prior slot and we've entered the next slot's post-branch
-		// consolidation zone (accept the loss, resume from whatever chain tip is visible).
+		// milestone is in a prior slot and we've crossed at least one sequencer pace
+		// into the next slot (accept the loss, resume from whatever chain tip is visible).
 		// NOTE: under normal operation the pending.awaiting gate below also blocks the
 		// pulse. This check exists only to log and to escape the stuck case.
 		if overloaded, elapsed, pending := seq.isOverloaded(); overloaded {
-			if nowTs.Slot > pending.ts.Slot && nowTs.Tick >= lib.PostBranchConsolidationTicks {
+			if nowTs.Slot > pending.ts.Slot && nowTs.Tick >= lib.TransactionPaceSequencer {
 				seq.clearPendingSubmit()
 			} else {
 				if seq.lastOverloadLogSlot != nowTs.Slot {
@@ -225,13 +225,8 @@ func (seq *Sequencer) doSequencerSlot() bool {
 // tryBuildAndSubmit builds a milestone via task.Run (which inserts tag-alongs and freezes
 // on top of the skeleton) and submits it. Returns true on successful submission.
 //
-// Target timestamp = max(nowTs, paceMin, T(slot, PostBranchConsolidationTicks)).
-//
-//   - paceMin = lastSubmittedTs + TransactionPaceSequencer (ledger-enforced in parse.go).
-//   - PostBranchConsolidationTicks floor is still required by the EasyFL constraint
-//     checkPostBranchConsolidationTicks in ledger/def/sequencer.easyfl. It will be removed
-//     when the ledger-side refactor ships with the next testnet reset; until then, the
-//     Go sequencer must keep producing timestamps that satisfy it.
+// Target timestamp = max(nowTs, paceMin), where
+// paceMin = lastSubmittedTs + TransactionPaceSequencer (ledger-enforced in parse.go).
 //
 // The pulse cadence (doSequencerSlot) already spaces these attempts ~1 s apart, so nowTs
 // is a good enough target — no separate look-ahead offset is needed.
@@ -239,9 +234,8 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	nowTs := ledger.TimeNow()
 	lib := ledger.L(nowTs.Slot)
 	paceMin := seq.lastSubmittedTs.AddTicks(int(lib.TransactionPaceSequencer))
-	pbcFloor := base.T(nowTs.Slot, lib.PostBranchConsolidationTicks)
 
-	targetTs := base.MaximumTime(nowTs, paceMin, pbcFloor)
+	targetTs := base.MaximumTime(nowTs, paceMin)
 
 	// don't overshoot into next slot
 	nextBoundary := nowTs.NextSlotBoundary()

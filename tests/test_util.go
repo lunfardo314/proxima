@@ -563,7 +563,7 @@ func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "1",
 			ChainInput:       chainOrigin,
-			Timestamp:        ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts),
+			Timestamp:        ts,
 			Endorsements:     []base.TransactionID{td.distributionBranchTxID},
 			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       td.privKeyAux,
@@ -728,7 +728,6 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 			endorse = nil
 		}
 		ts := branch.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
-		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:       "seq0",

@@ -33,7 +33,7 @@ const (
 	DefaultInitialSupply = GProxi
 
 	defaultTransactionPace          = 12
-	defaultTransactionPaceSequencer = 2
+	defaultTransactionPaceSequencer = 12
 	defaultDescription              = "Proxima ledger definitions"
 
 	defaultAttachmentCostBudget = 550  // > than max transaction with 256 inputs and 256 outputs

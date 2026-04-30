@@ -63,15 +63,6 @@ or(
    )
 )
 
-func checkPostBranchConsolidationTicks :
-   require(
-       or(
-          isBranchTransaction,
-          lessOrEqualThan(constPostBranchConsolidationTicks, uint8Bytes(txTick))
-	   ),
-       !!!sequencer_transaction_violates_post_branch_consolidation_ticks_constraint
-   )
-
 // no parameters - chain constraint is always at index 2
 func sequencer: and(
     or(
@@ -81,7 +72,6 @@ func sequencer: and(
 			require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction),
             require(zeroTickOnBranchOnly, !!!non-branch_sequencer_transaction_can't_be_on_slot_boundary),
 			checkPreBranchConsolidationTicks,
-			checkPostBranchConsolidationTicks,
             // check chain's past
 			_sequencer( selfChainPredInputIndex )
 		)

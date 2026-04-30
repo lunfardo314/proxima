@@ -112,7 +112,6 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 		chainOrigin := testData.chainOrigins[0]
 		// Exact sequencer pace
 		exactSeqPaceTs := chainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
-		exactSeqPaceTs = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(exactSeqPaceTs)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:       "test",
@@ -341,52 +340,3 @@ func TestAttachTimingPreBranchConsolidation(t *testing.T) {
 	})
 }
 
-// TestAttachTimingPostBranchConsolidation tests post-branch consolidation timing.
-// Sequencer transactions must be at least PostBranchConsolidationTicks after branch.
-func TestAttachTimingPostBranchConsolidation(t *testing.T) {
-	t.Run("sequencer at exact post-consolidation", func(t *testing.T) {
-		// Test that we can correctly identify timestamps in the post-consolidation window.
-		// The actual enforcement of post-consolidation restrictions is tested implicitly
-		// through the ledger validation scripts.
-
-		// Exact post-consolidation timestamp
-		postConsolidationTs := base.T(1, ledger.L(0).PostBranchConsolidationTicks)
-		require.True(t, ledger.L(0).IsPostBranchConsolidationTimestamp(postConsolidationTs),
-			"timestamp at exact post-consolidation ticks should be in post-consolidation window")
-
-		// One tick before should NOT be in post-consolidation
-		beforePostConsolidation := base.T(1, ledger.L(0).PostBranchConsolidationTicks-1)
-		require.False(t, ledger.L(0).IsPostBranchConsolidationTimestamp(beforePostConsolidation),
-			"timestamp before post-consolidation ticks should not be in post-consolidation window")
-
-		// Tick 0 (branch) should NOT be in post-consolidation
-		branchTs := base.T(1, 0)
-		require.False(t, ledger.L(0).IsPostBranchConsolidationTimestamp(branchTs),
-			"branch tick (0) should not be in post-consolidation window")
-
-		t.Logf("PostBranchConsolidationTicks=%d, tick %d (in window: true), tick %d (in window: false): PASSED",
-			ledger.L(0).PostBranchConsolidationTicks, ledger.L(0).PostBranchConsolidationTicks, ledger.L(0).PostBranchConsolidationTicks-1)
-	})
-
-	t.Run("ensure post-consolidation helper", func(t *testing.T) {
-		// Test the EnsurePostBranchConsolidationConstraintTimestamp helper
-		testData := initWorkflowTest(t, 1)
-		defer testData.stopAndWait()
-
-		// Timestamp before post-consolidation
-		earlyTs := base.T(1, 1)
-		require.False(t, ledger.L(0).IsPostBranchConsolidationTimestamp(earlyTs))
-
-		// Use helper to adjust
-		adjustedTs := ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(earlyTs)
-		require.True(t, ledger.L(0).IsPostBranchConsolidationTimestamp(adjustedTs))
-		require.EqualValues(t, ledger.L(0).PostBranchConsolidationTicks, adjustedTs.Tick)
-
-		// Timestamp already at post-consolidation should not change
-		okTs := base.T(1, ledger.L(0).PostBranchConsolidationTicks+10)
-		unchanged := ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(okTs)
-		require.EqualValues(t, okTs, unchanged)
-
-		t.Logf("EnsurePostBranchConsolidationConstraintTimestamp helper: PASSED")
-	})
-}

@@ -41,7 +41,6 @@ func TestAttachDeadlockContextCancellation(t *testing.T) {
 		chainOrigin := testData.chainOrigins[0]
 
 		ts := chainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer))
-		ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:       "test",
@@ -259,7 +258,6 @@ func TestAttachDeadlockShutdownDuringAttachment(t *testing.T) {
 		for i := 0; i < numAttachments; i++ {
 			chainOrigin := testData.chainOrigins[i%len(testData.chainOrigins)]
 			ts := chainOrigin.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer) * (i + 1))
-			ts = ledger.L(0).EnsurePostBranchConsolidationConstraintTimestamp(ts)
 
 			txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 				SeqName:       "test",
