@@ -852,8 +852,10 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 	return tx, chainID, err
 }
 
-// GetLatestReliableBranch retrieves latest reliable branch info from the node
-func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.TransactionID, error) {
+// GetLatestReliableBranch retrieves latest reliable branch info from the node.
+// The returned BranchDataJSONAble carries Root + SequencerID + the
+// stem-projected aggregates (Supply, CoverageDelta, etc.).
+func (c *APIClient) GetLatestReliableBranch() (*multistate.BranchDataJSONAble, base.TransactionID, error) {
 	body, err := c.getBody(api.PathGetLatestReliableBranch)
 	if err != nil {
 		return nil, base.TransactionID{}, err
@@ -867,12 +869,7 @@ func (c *APIClient) GetLatestReliableBranch() (*multistate.RootRecord, base.Tran
 	if res.Error.Error != "" {
 		return nil, base.TransactionID{}, fmt.Errorf("from server: %s", res.Error.Error)
 	}
-
-	rr, err := res.RootData.Parse()
-	if err != nil {
-		return nil, base.TransactionID{}, fmt.Errorf("parse failed: %v", err)
-	}
-	return rr, res.BranchID, nil
+	return &res.BranchData, res.BranchID, nil
 }
 
 // GetBranchListAfter returns branch IDs on the source's main chain after the given branch.

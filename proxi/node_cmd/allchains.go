@@ -65,7 +65,7 @@ func runAllChainsCmd(_ *cobra.Command, _ []string) {
 	}
 }
 
-func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.RootRecord) {
+func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble) {
 	perc := func(denom, num uint64) string {
 		return fmt.Sprintf("%.2f%%", 100*float64(denom)/float64(num))
 	}
@@ -191,7 +191,7 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID) {
 
 }
 
-func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.RootRecord) {
+func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble) {
 	glb.Infof("\nshow sequencers only = %v", showSequencersOnly)
 	glb.Infof("show delegations only = %v", showDelegationsOnly)
 
@@ -204,7 +204,7 @@ func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.Ro
 	}
 }
 
-func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.RootRecord) {
+func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble) {
 	m := make(map[string][]*ledger.OutputWithChainID)
 
 	var ownerStr string

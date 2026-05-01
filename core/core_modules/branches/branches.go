@@ -70,6 +70,16 @@ type (
 		TxIDTTLSlots     uint32
 		CommittedTxs     []base.TransactionID
 		SequencerName    string
+		// Stem aggregates carried for the in-memory BranchData cache (so callers
+		// see the same values they will see after commit). These are also on the
+		// produced stem output — kept here to avoid parsing the stem on hot paths.
+		Supply          uint64
+		TotalCoverage   uint64
+		CoverageDelta   uint64
+		FrozenCoverage  uint64
+		SlotInflation   uint64
+		NumTransactions uint32
+		BaselineRoot    []byte
 	}
 )
 
@@ -146,10 +156,6 @@ func (b *Branches) SnapshotSlot() uint32 {
 func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (branchDataWithLedgerCoverage, bool) {
 	bd, ok := b.m[branchID]
 	if ok {
-		if branchID.Slot() > 0 {
-			b.Assertf(bd.ledgerCoverage == 0 || bd.ledgerCoverage >= bd.CoverageDelta, "bd.ledgerCoverage == 0 || bd.LedgerCoverage(%s) >= bd.CoverageDeltaRaw(%s) for %s",
-				util.Th(bd.ledgerCoverage), util.Th(bd.CoverageDelta), branchID.StringShort)
-		}
 		bd.lastActive = time.Now()
 		b.m[branchID] = bd
 		return bd, true
@@ -175,33 +181,10 @@ func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (branchDataWi
 	return branchDataWithLedgerCoverage{}, false
 }
 
-// _ledgerCoverage traverses branches back up to 64 slots and calculates full coverage
-func (b *Branches) _ledgerCoverage(br branchDataWithLedgerCoverage) (ret uint64) {
-	b.Assertf(br.ledgerCoverage == 0, "brOrig.ledgerCoverage == 0")
-
-	var slotsBack uint32
-	var ok bool
-
-	branchID := br.TxID()
-	origSlot := br.Slot()
-
-	// coverage delta cannot be greater than supply
-	for maxContribution := br.Supply; maxContribution > 0; maxContribution >>= 1 {
-		if br, ok = b._getAndCacheNoLock(branchID); !ok {
-			break
-		}
-		slotsBack = origSlot - branchID.Slot()
-		ret += br.CoverageDelta >> slotsBack
-		branchID = br.StemPredecessorBranchID()
-	}
-	return
-}
-
-// LedgerCoverage strictly speaking, is non-deterministic if the snapshot is after the genesis
-// However:
-//   - if branchID is far enough (63 slots), it is guaranteed to be the real value and therefore deterministic
-//   - if the snapshot is N slots behind the branchID, it is guaranteed that the returned value differs from
-//     the real value no more than by 1/2^N
+// LedgerCoverage returns the total ledger coverage of the branch — read
+// directly from the on-chain stemLock TotalCoverage field (post metadata-
+// refactor §6/§9.6). The off-chain 64-slot halving traversal is gone; the
+// recurrence enforced inside the stemLock constraint is the single source.
 func (b *Branches) LedgerCoverage(branchID base.TransactionID) uint64 {
 	util.Assertf(branchID.IsBranchTransaction(), "branch transaction ChainID expected. Got %s", branchID.StringShort)
 
@@ -212,14 +195,7 @@ func (b *Branches) LedgerCoverage(branchID base.TransactionID) uint64 {
 	if !ok {
 		return 0
 	}
-	if bd.ledgerCoverage > 0 {
-		return bd.ledgerCoverage
-	}
-	bd.ledgerCoverage = b._ledgerCoverage(bd)
-	b.Assertf(bd.ledgerCoverage > 0, "LedgerCoverage: bd.ledgerCoverage > 0 for %s", branchID.StringShort)
-
-	b.m[branchID] = bd
-	return bd.ledgerCoverage
+	return bd.TotalCoverage
 }
 
 func (b *Branches) Supply(branchID base.TransactionID) uint64 {
@@ -296,20 +272,24 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	// build BranchData with nil Root for immediate use by coverage/supply lookups
+	// build BranchData with nil Root for immediate use by coverage/supply lookups.
+	// Stem-projected aggregates come from the PendingBranchCommit so callers see
+	// the same values they will see after commit.
 	bd := branchDataWithLedgerCoverage{
 		BranchData: &multistate.BranchData{
 			RootRecord: multistate.RootRecord{
 				// Root is nil — will be set when committed
-				SequencerID:     pb.RootRecParams.SeqID,
-				CoverageDelta:   pb.RootRecParams.CoverageDelta,
-				FrozenCoverage:  pb.RootRecParams.FrozenCoverage,
-				SlotInflation:   pb.RootRecParams.SlotInflation,
-				Supply:          pb.RootRecParams.Supply,
-				NumTransactions: pb.RootRecParams.NumTransactions,
+				SequencerID: pb.RootRecParams.SeqID,
 			},
 			Stem:            stemOutput,
 			SequencerOutput: sequencerOutput,
+			Supply:          pb.Supply,
+			TotalCoverage:   pb.TotalCoverage,
+			CoverageDelta:   pb.CoverageDelta,
+			FrozenCoverage:  pb.FrozenCoverage,
+			SlotInflation:   pb.SlotInflation,
+			NumTransactions: pb.NumTransactions,
+			BaselineRoot:    pb.BaselineRoot,
 		},
 		ledgerCoverage: 0,
 		lastActive:     time.Now(),
@@ -385,9 +365,12 @@ func (b *Branches) _commitPendingBranchUnlocked(branchID base.TransactionID, pb 
 			numNonSeq++
 		}
 	}
-	coveragePct := float64(pb.RootRecParams.CoverageDelta) * 100 / float64(pb.RootRecParams.Supply)
+	var coveragePct float64
+	if pb.Supply > 0 {
+		coveragePct = float64(pb.CoverageDelta) * 100 / float64(pb.Supply)
+	}
 	b.LogTopicf("branch_commit", 1, "--- BRANCH COMMIT %s '%s' coverage delta: %s (%.2f%%), tx: %d seq + %d non-seq",
-		branchID.StringShort(), pb.SequencerName, util.Th(pb.RootRecParams.CoverageDelta), coveragePct, numSeq, numNonSeq)
+		branchID.StringShort(), pb.SequencerName, util.Th(pb.CoverageDelta), coveragePct, numSeq, numNonSeq)
 	b.LogTx(time.Now(), fmt.Sprintf("committed in branch %s (deferred)", branchID.String()), pb.CommittedTxs...)
 
 	b.NotifyBranchCommitted(branchID.Slot())
@@ -790,7 +773,7 @@ func (b *Branches) ChainLines(tipOrig base.TransactionID, prefix ...string) *lin
 		b.Assertf(tip.Slot() == bd.Slot(), "tip.Slot() == bd.Slot()")
 		ret.Add("%2d:  %s (-%d), delta: %s, delta>>slots: %s, coverage: %s",
 			i, tip.StringShort(), slotsSinceTip, util.Th(bd.CoverageDelta),
-			util.Th(bd.CoverageDelta>>slotsSinceTip), util.Th(bd.ledgerCoverage))
+			util.Th(bd.CoverageDelta>>slotsSinceTip), util.Th(bd.TotalCoverage))
 
 		tip = bd.StemPredecessorBranchID()
 	}

@@ -168,8 +168,11 @@ type (
 	// LatestReliableBranch returned by get_latest_reliable_branch
 	LatestReliableBranch struct {
 		Error
-		RootData multistate.RootRecordJSONAble `json:"root_record,omitempty"`
-		BranchID base.TransactionID            `json:"branch_id,omitempty"`
+		// BranchData carries Root + SequencerID + the stem-projected aggregates
+		// (Supply, CoverageDelta, etc.). After the metadata-refactor (§5),
+		// these aggregates live on the stem output rather than RootRecord.
+		BranchData multistate.BranchDataJSONAble `json:"branch_data,omitempty"`
+		BranchID   base.TransactionID            `json:"branch_id,omitempty"`
 	}
 
 	CheckTxIDInLRB struct {

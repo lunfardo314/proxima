@@ -122,7 +122,7 @@ func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed
 	txBytes, err := MakeDistributionTransaction(stateStore, originPrivateKey, genesisDistribution)
 	util.AssertNoError(err)
 
-	stateID, genesisRoot, err := multistate.ScanGenesisState(stateStore)
+	_, genesisRoot, err := multistate.ScanGenesisState(stateStore)
 	util.AssertNoError(err)
 
 	rdr := multistate.MustNewSugaredReadableState(stateStore, genesisRoot)
@@ -149,12 +149,9 @@ func MustDistributeInitialSupplyExt(stateStore global.Store, originPrivateKey ed
 
 	updatableOrigin := multistate.MustNewUpdatable(stateStore, genesisRoot)
 	updatableOrigin.MustUpdate(muts, &multistate.RootRecordParams{
-		StemOutputID:    nextStem.ID,
-		SeqID:           bootstrapChainID,
-		CoverageDelta:   stateID.InitialSupply,
-		SlotInflation:   branchInflation,
-		Supply:          stateID.InitialSupply + branchInflation,
-		NumTransactions: 1,
+		StemOutputID:  nextStem.ID,
+		SeqID:         bootstrapChainID,
+		SlotInflation: branchInflation,
 	})
 	return txBytes, tx.ID()
 }

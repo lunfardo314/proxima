@@ -103,7 +103,7 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
 		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
-		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribVID.ID())
+		rr, ok := multistate.FetchBranchData(wrk.StateStore(), distribVID.ID())
 		require.True(t, ok)
 		// Distribution branch transaction has VRF-based inflation
 		require.True(t, rr.SlotInflation > 0)
@@ -168,7 +168,7 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, distribTxID, stemOut.ID.TransactionID())
 		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
-		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), distribTxID)
+		rr, ok := multistate.FetchBranchData(wrk.StateStore(), distribTxID)
 		require.True(t, ok)
 		// Distribution branch transaction has VRF-based inflation
 		require.True(t, rr.SlotInflation > 0)
@@ -240,7 +240,7 @@ func TestAttachBasic(t *testing.T) {
 		require.EqualValues(t, int(stemOut.ID.Slot()), int(distribTxID.Slot()))
 		require.EqualValues(t, 0, stemOut.Output.TokenBalance())
 
-		rr, ok := multistate.FetchRootRecord(wrk.StateStore(), stemOut.ID.TransactionID())
+		rr, ok := multistate.FetchBranchData(wrk.StateStore(), stemOut.ID.TransactionID())
 		require.True(t, ok)
 		// Distribution branch transaction has VRF-based inflation
 		require.True(t, rr.SlotInflation > 0)

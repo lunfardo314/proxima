@@ -113,20 +113,14 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 	rootParams := &RootRecordParams{
 		StemOutputID:      gStemOut.ID,
 		SeqID:             gout.ChainID,
-		CoverageDelta:     initialSupply,
-		SlotInflation:     initialSupply,
-		Supply:            initialSupply,
+		SlotInflation:     initialSupply, // updateTrie invariant: produced == consumed + slotInflation
 		WriteEarliestSlot: true,
 	}
 	updatable.MustUpdate(mutations, rootParams)
 
-	// Create root record
 	rootRecord := RootRecord{
-		Root:          updatable.Root(),
-		SequencerID:   gout.ChainID,
-		CoverageDelta: initialSupply,
-		SlotInflation: initialSupply,
-		Supply:        initialSupply,
+		Root:        updatable.Root(),
+		SequencerID: gout.ChainID,
 	}
 
 	return &GenesisSnapshotData{

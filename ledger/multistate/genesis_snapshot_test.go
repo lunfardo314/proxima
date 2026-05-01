@@ -54,11 +54,9 @@ func TestBuildGenesisSnapshotData_Basic(t *testing.T) {
 	// Verify branch ID is at slot 0
 	require.Equal(t, uint32(0), data.BranchID.Slot())
 
-	// Verify root record
+	// Verify root record (Root + SequencerID; aggregates moved to the stem)
 	require.NotNil(t, data.RootRecord.Root)
-	require.Equal(t, uint64(ledger.DefaultInitialSupply), data.RootRecord.Supply)
-	require.Equal(t, uint64(ledger.DefaultInitialSupply), data.RootRecord.CoverageDelta)
-	require.Equal(t, uint64(ledger.DefaultInitialSupply), data.RootRecord.SlotInflation)
+	require.Equal(t, base.BoostrapSequencerID, data.RootRecord.SequencerID)
 
 	// Verify store is populated
 	require.NotNil(t, data.Store)
@@ -254,7 +252,7 @@ func TestGenesisSnapshotData_DeterministicOutput(t *testing.T) {
 	require.Equal(t, data1.Identity.Description, data2.Identity.Description)
 	require.Equal(t, data1.BranchID, data2.BranchID)
 	require.Equal(t, data1.BootstrapChainID, data2.BootstrapChainID)
-	require.Equal(t, data1.RootRecord.Supply, data2.RootRecord.Supply)
+	require.Equal(t, data1.RootRecord.SequencerID, data2.RootRecord.SequencerID)
 	require.Equal(t, data1.LibraryYAML, data2.LibraryYAML)
 
 	// Root commitments should be equal

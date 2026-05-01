@@ -959,8 +959,8 @@ func (srv *server) getLatestReliableBranch(w http.ResponseWriter, _ *http.Reques
 	}
 
 	resp := &api.LatestReliableBranch{
-		RootData: *bd.RootRecord.JSONAble(),
-		BranchID: bd.Stem.ID.TransactionID(),
+		BranchData: *bd.JSONAble(),
+		BranchID:   bd.Stem.ID.TransactionID(),
 	}
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {

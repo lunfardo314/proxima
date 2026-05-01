@@ -61,9 +61,7 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 	updatable.MustUpdate(genesisUpdateMutations(&gout.OutputWithID, gStemOut, dustOut, upgradeOut), &RootRecordParams{
 		StemOutputID:      gStemOut.ID,
 		SeqID:             gout.ChainID,
-		CoverageDelta:     initialSupply,
-		SlotInflation:     initialSupply,
-		Supply:            initialSupply,
+		SlotInflation:     initialSupply, // updateTrie invariant: produced == consumed + slotInflation
 		WriteEarliestSlot: true,
 	})
 	return gout.ChainID, updatable.Root()

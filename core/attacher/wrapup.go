@@ -46,23 +46,27 @@ func (a *milestoneAttacher) commitBranch() {
 	// extract stem and sequencer outputs from the branch transaction (before detach)
 	stemOutput, seqOutput := a.extractBranchOutputs(stemOID, seqID)
 
-	// build root record params for deferred commit
-	params := &multistate.RootRecordParams{
-		StemOutputID:    stemOID,
-		SeqID:           seqID,
-		CoverageDelta:   *a.finals.CoverageDelta,
-		FrozenCoverage:  *a.finals.FrozenCoverage,
-		SlotInflation:   *a.finals.SlotInflation,
-		Supply:          *a.finals.Supply,
-		NumTransactions: uint32(stats.NumTransactions),
-	}
-
-	// derive previous branch ID from the stem link
+	// derive previous branch ID from the stem link, and read the on-chain
+	// aggregates the produced stem carries (post metadata-refactor).
 	stemLock, ok := stemOutput.Output.StemLock()
 	util.Assertf(ok, "commitBranch: stem lock not found")
 	previousBranchID := stemLock.PredecessorOutputID.TransactionID()
 
-	// submit to Branches as a pending (deferred) commit
+	// build root record params for deferred commit. SlotInflation here is the
+	// updateTrie input/output amount invariant only (consumed + slotInflation
+	// == produced). It must match the actual mutations the attacher saw — i.e.
+	// the milestone attacher's past-cone slot inflation, which can differ from
+	// the sequencer-declared stem.SlotInflation if the attacher's past cone
+	// has extra vertices (consensus mismatch between Go and stem is a separate
+	// concern surfaced in Phase D).
+	params := &multistate.RootRecordParams{
+		StemOutputID:  stemOID,
+		SeqID:         seqID,
+		SlotInflation: *a.finals.SlotInflation,
+	}
+
+	// submit to Branches as a pending (deferred) commit. Aggregates are passed
+	// directly so the cached BranchData can answer queries before commit.
 	a.Branches().AddPendingBranch(a.vid.ID(), &branches.PendingBranchCommit{
 		Mutations:        muts,
 		RootRecParams:    params,
@@ -71,6 +75,13 @@ func (a *milestoneAttacher) commitBranch() {
 		TxIDTTLSlots:     a.TxIDStateTTLSlots,
 		CommittedTxs:     committedTxs,
 		SequencerName:    a.vid.SequencerName(),
+		Supply:           stemLock.TotalSupply,
+		TotalCoverage:    stemLock.TotalCoverage,
+		CoverageDelta:    stemLock.CoverageDelta,
+		FrozenCoverage:   stemLock.FrozenCoverage,
+		SlotInflation:    stemLock.SlotInflation,
+		NumTransactions:  stemLock.NumTransactions,
+		BaselineRoot:     stemLock.BaselineRoot,
 	}, stemOutput, seqOutput)
 
 	// register branch vertex set for fine-grained pruning (before PastCone is discarded)
