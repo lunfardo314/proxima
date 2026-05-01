@@ -20,21 +20,20 @@ way** coverage is computed in the system.
 
 Values to move into `stemLock`:
 
-| Value           | Current location                                | After refactor                              |
-|-----------------|-------------------------------------------------|---------------------------------------------|
-| Total supply    | `RootRecord.Supply`                             | `stemLock` arg                              |
-| Coverage delta  | `RootRecord.CoverageDelta`                      | `stemLock` arg                              |
-| Total coverage  | derived off-chain (`Branches.LedgerCoverage`)   | `stemLock` arg (stored explicitly)          |
-| Slot inflation  | `RootRecord.SlotInflation`                      | `stemLock` arg                              |
-| Frozen coverage | `RootRecord.FrozenCoverage`                     | `stemLock` arg (kept as "trustless stats")  |
-| Num transactions | `RootRecord.NumTransactions`                   | `stemLock` arg AND kept in `RootRecord`     |
-| Baseline root   | (only inside `RootRecord` of the predecessor)   | `stemLock` arg (predecessor's state root)   |
+| Value           | Current location                                | After refactor                             |
+|-----------------|-------------------------------------------------|--------------------------------------------|
+| Total supply    | `RootRecord.Supply`                             | `stemLock` arg                             |
+| Coverage delta  | `RootRecord.CoverageDelta`                      | `stemLock` arg                             |
+| Total coverage  | derived off-chain (`Branches.LedgerCoverage`)   | `stemLock` arg (stored explicitly)         |
+| Slot inflation  | `RootRecord.SlotInflation`                      | `stemLock` arg                             |
+| Frozen coverage | `RootRecord.FrozenCoverage`                     | `stemLock` arg (kept as "trustless stats") |
+| Num transactions | `RootRecord.NumTransactions`                   | `stemLock` arg (kept as "trustless stats")  |
+| Baseline root   | (only inside `RootRecord` of the predecessor)   | `stemLock` arg (predecessor's state root)  |
 
 Survivors in `RootRecord`:
 
 - `Root` — current state's trie root (cannot live inside its own state → cyclical)
-- `SequencerID`
-- `NumTransactions` (also mirrored on stem)
+- `SequencerID` - used for quick look-up of the chained output in the state
 
 The state root is stored on the **successor** stem, not on its own (i.e. stem `N+1` carries
 `baselineRoot = root_N`). This breaks the cyclic-commitment problem and gives a Merkle-provable
@@ -108,16 +107,29 @@ Notes:
 In addition to the current checks, the produced branch of `stemLock` must enforce the recurrence
 plus a **healthy-coverage check** (no unhealthy branches can be sealed by stemLock).
 
-Healthy fraction is parameterised by two new ledger constants — defaults numerator=7, denominator=12:
+Healthy fraction is parameterized by two new ledger constants — defaults numerator=7, denominator=12:
 
 ```
 func constHealthyCoverageNumerator   : u64/7
 func constHealthyCoverageDenominator : u64/12
 ```
 
-The Go-side `global.FractionHealthyBranch` is repointed to read from these ledger constants
-(single source of truth — every reference in the rest of the codebase reads the value from
-ledger definitions). The constants are configurable via ledger upgrade like other ledger params.
+The healthiness predicate itself is exposed as an EasyFL function so it can be called both from
+the stemLock constraint and from Go (via the precompiled-function path):
+
+```
+// returns true iff the branch is healthy:
+//   coverageDelta * denominator > 2 * supply * numerator
+func healthyCoverageDelta :
+    lessThan(mul(mul(u64/2, $0), constHealthyCoverageNumerator),
+             mul($1,            constHealthyCoverageDenominator))
+```
+
+The Go-side `global.FractionHealthyBranch` and `global.IsHealthyCoverageDelta` are repointed to
+read from these ledger definitions (single source of truth — every reference in the rest of the
+codebase routes through the ledger; `IsHealthyCoverageDelta` becomes a thin wrapper that calls
+the precompiled `healthyCoverageDelta`). The constants are configurable via ledger upgrade like
+other ledger params.
 
 Constraint sketch (produced branch):
 
@@ -146,16 +158,13 @@ require(equalUint(totalCoverage, add(rshift64(_predTotalCoverage, K), coverageDe
 require(lessThan(frozenCoverage, coverageDelta),
         !!!frozen_coverage_must_be_strictly_less_than_coverage_delta)
 
-// branch must be healthy:
-//   coverageDelta * denominator > 2 * totalSupply * numerator
-require(lessThan(mul(mul(u64/2, totalSupply), constHealthyCoverageNumerator),
-                 mul(coverageDelta, constHealthyCoverageDenominator)),
+// branch must be healthy (delegates to the EasyFL function declared above)
+require(healthyCoverageDelta(totalSupply, coverageDelta),
         !!!branch_unhealthy)
 ```
 
-Bootstrap-chain exemption: today `_enforceBranchCoverageBounds` exempts the bootstrap chain.
-Decide whether the new healthiness check inherits the exemption (likely yes, until the network
-has enough non-bootstrap coverage). Listed as open question §9.7.
+Bootstrap-chain exemption: the new healthiness check **inherits the existing exemption** from
+`_enforceBranchCoverageBounds` — the bootstrap chain is exempt, same as today. See §9.7.
 
 What EasyFL **cannot** verify (must remain in Go):
 
@@ -178,9 +187,10 @@ is out of consensus.
 type RootRecord struct {
     Root            common.VCommitment
     SequencerID     base.ChainID
-    NumTransactions uint32
 }
 ```
+
+`NumTransactions` is removed from `RootRecord` — it lives only on the stem now.
 
 **`BranchData` (in-memory convenience type)** keeps the full set of values for code-readability
 and call-site compatibility, but the values come from parsing the stem output (already fetched
@@ -188,7 +198,7 @@ the same way as today via `FetchBranchDataByRoot`):
 
 ```go
 type BranchData struct {
-    RootRecord                      // Root, SequencerID, NumTransactions (from DB)
+    RootRecord                      // Root, SequencerID (from DB)
     Stem            *ledger.OutputWithID
     SequencerOutput *ledger.OutputWithID
 
@@ -198,6 +208,7 @@ type BranchData struct {
     CoverageDelta   uint64
     FrozenCoverage  uint64
     SlotInflation   uint64
+    NumTransactions uint32
     BaselineRoot    common.VCommitment
 }
 ```
@@ -237,7 +248,7 @@ After:
      stage 3, so the panic at the Go level catches inconsistency between Go-computed and
      stem-declared base aggregates.
 3. The five stem-derived values are no longer written to `RootRecord`. `Update()` only persists
-   `Root, SequencerID, NumTransactions`.
+   `Root, SequencerID`.
 4. `Branches.LedgerCoverage(branchID)` becomes a one-liner: read the branch's stem output,
    parse `stemLock`, return `totalCoverage`. The 64-slot halving traversal in `branches.go:178`
    is deleted. The cache of derived values in `branches.go` is removed (per
@@ -248,18 +259,16 @@ After:
 After the move, every persistent field of `TransactionMetadata` is either (a) on-chain in the
 stem (for branch txs), or (b) recomputable. Therefore:
 
-1. Drop the persistent fields entirely. `TransactionMetadata` collapses to:
-   ```go
-   type TransactionMetadata struct {
-       SourceTypeNonPersistent SourceType
-       TxBytesReceived         *time.Time
-   }
-   ```
-   Pure ephemeral struct — pass via Go params, never serialize.
+1. **Remove the `TransactionMetadata` struct type entirely.** The two ephemeral fields
+   (`SourceType`, `TxBytesReceived`) are passed as plain Go function parameters on the receive
+   path, or folded into existing context structs (e.g. attacher/workflow input descriptors).
+   No serialization, no JSON mirror, no dedicated type — the package
+   `core/txmetadata` is deleted.
 2. `txstore` stops persisting metadata. `PersistTxBytesWithMetadata` becomes
    `PersistTxBytes(txBytes, txid?)`. The `mdBytes ||` prefix in `txstore.go:94-99` is removed.
    Callers of `GetTxBytesWithMetadata` are renamed/migrated to plain `GetTxBytes`.
-3. `txmetadata.SplitTxBytesWithMetadata` / `ParseTxMetadata` are removed (only used by txstore).
+3. `txmetadata.SplitTxBytesWithMetadata` / `ParseTxMetadata` and the entire
+   `core/txmetadata` package are removed.
 4. P2P wire format (`peering/txbytes.go`): drop the metadata prefix on send/receive. Source type
    stays as a *runtime* field on the receive path, set from the connection origin.
 5. API path: drop metadata serialization on `submit_tx`, plus the optional metadata block in
@@ -277,7 +286,10 @@ Order chosen so the tree compiles after each phase.
 ### Phase A — EasyFL & ledger types (the source of truth)
 
 A1. Add ledger constants `constHealthyCoverageNumerator` (=7), `constHealthyCoverageDenominator`
-    (=12). Wire `global.FractionHealthyBranch` (and every other reference) to read from these.
+    (=12) and the EasyFL function `healthyCoverageDelta(supply, covDelta)` (§4). Wire
+    `global.FractionHealthyBranch` and `global.IsHealthyCoverageDelta` (and every other
+    reference) to read from / call into these ledger definitions (precompiled call for the
+    function — single source of truth).
 A2. Extend `StemLock` Go struct with new fields. Update `Source()` template, `Bytes()`,
     `StemLockFromBytesWithLib`. Re-run inline test (`registerInlineTest`). Use compressed
     integer encoding (z64/z32) consistent with EasyFL conventions.
@@ -306,8 +318,8 @@ B3. Sanity assert in build path: the sequencer's projection of `totalCoverage` m
 
 ### Phase C — Multistate / Branches
 
-C1. Trim `RootRecord` and `RootRecordParams`. Update `Bytes()`/`FromBytes()` to a 3-element
-    tuple. Bump tuple element count constant. Hard break.
+C1. Trim `RootRecord` and `RootRecordParams` to `Root` + `SequencerID` only. Update
+    `Bytes()`/`FromBytes()` to a 2-element tuple. Bump tuple element count constant. Hard break.
 C2. Project all stem-derived fields into `BranchData` inside `FetchBranchDataByRoot`. Code that
     currently reads `br.CoverageDelta`, `br.Supply`, etc. continues to work.
 C3. Rewrite `branches.LedgerCoverage`/`Supply` to read from stem output (drop the halving loop
@@ -330,20 +342,22 @@ D1. Replace `checkConsistencyWithMetadata` (advisory) with `enforceStemValues` (
 D2. For non-branch sequencer txs: nothing to enforce on stem (no stem produced); ledger coverage
     monotonicity checks (`check.go:31-85`) already use computed values — no change needed beyond
     swapping the source of `Branches.LedgerCoverage` to stem-read.
-D3. Drop population of persistent `TransactionMetadata` fields in `wrapup.go:23-29`.
+D3. Drop population of persistent metadata fields in `wrapup.go:23-29` (removed entirely along
+    with the `TransactionMetadata` type — see Phase E).
 
 ### Phase E — TxMetadata teardown
 
-E1. Strip persistent fields from `TransactionMetadata`; keep only `SourceTypeNonPersistent`,
-    `TxBytesReceived`.
-E2. Remove `Bytes()`, `flags()`, `TransactionMetadataFromBytes`, `SplitTxBytesWithMetadata`,
-    `ParseTxMetadata`. Remove the JSON-able mirror.
+E1. Delete the `TransactionMetadata` type and the entire `core/txmetadata` package. The two
+    ephemeral fields (`SourceType`, `TxBytesReceived`) become plain Go parameters on the receive
+    path, or are folded into existing context structs (e.g. attacher/workflow input descriptors).
+E2. With the package gone, `Bytes()`, `flags()`, `TransactionMetadataFromBytes`,
+    `SplitTxBytesWithMetadata`, `ParseTxMetadata`, and the JSON mirror disappear with it.
 E3. `txstore`: drop metadata prefix; rename APIs accordingly.
 E4. `peering/txbytes.go`: drop metadata in/out on the wire.
 E5. `api/server/txapi.go` + `proxi/db_cmd/txstore/...`: update CLI/API paths.
-E6. Update all 30 files in the TxMetadata fan-out (`grep -l TxMetadata`).
-E7. Delete `core/txmetadata/txmetadata_test.go` cases that no longer apply; add new test for
-    the ephemeral-only struct if anything remains.
+E6. Update all ~30 call sites in the former TxMetadata fan-out (`grep -l TxMetadata`) to use the
+    plain-param form.
+E7. Delete `core/txmetadata/txmetadata_test.go` along with the package.
 
 ### Phase F — Tooling, docs, telemetry
 
@@ -355,7 +369,8 @@ F3. Update CLAUDE.md memory (Active Task list + key learnings) only when phases 
 
 1. **Stem field widths** — accept §3 layout. ✅ keep `frozenCoverage` as trustless stats.
    Compressed `z64/`/`z32/` encoding, not fixed-width.
-2. **`NumTransactions`** — ✅ mirrored in stem AND kept in `RootRecord` (small DB convenience).
+2. **`NumTransactions`** — ✅ moved to the stemLock only; removed from `RootRecord`. Read from
+   the stem output (projected into `BranchData` at construction time, §5).
 3. **Genesis stem** — ✅ `totalCoverage = totalSupply`, all deltas = 0, `baselineRoot` = zero
    bytes. EasyFL produced-branch path detects genesis (e.g. via `equal(_predOutputID, ...)`
    or `equal(K, 0)`-style discriminator) and skips the recurrence checks while still asserting
