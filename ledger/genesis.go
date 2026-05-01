@@ -38,12 +38,21 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 }
 
 func GenesisStemOutput() *OutputWithID {
+	// Genesis stem aggregates (per metadata-refactor §9.3):
+	//   TotalSupply   = constInitialSupply
+	//   TotalCoverage = TotalSupply
+	//   all deltas    = 0
+	//   BaselineRoot  = TrieHashSize zero bytes
+	initialSupply := L(0).InitialSupply
 	return &OutputWithID{
 		ID: base.GenesisStemOutputID(),
 		Output: NewOutput(func(o *OutputBuilder) {
 			o.WithAmounts(0).
 				WithLock(&StemLock{
 					PredecessorOutputID: base.OutputID{},
+					TotalSupply:         initialSupply,
+					TotalCoverage:       initialSupply,
+					BaselineRoot:        make([]byte, TrieHashSize),
 				})
 		}),
 	}

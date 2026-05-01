@@ -11,6 +11,13 @@ func _predVRFProof : parseInlineDataArgument( consumedConstraintByIndex($0,1), 1
 
 // $0 - predecessor output id
 // $1 - VRF proof (signature data (sig type byte + signature proper) of message = <VRF proof from the stem predecessor> || <slot of the transaction>)
+// $2 - totalSupply (z64): Σ tokens on this branch's state
+// $3 - totalCoverage (z64): accumulated halving sum at this slot (recurrence enforced in A3)
+// $4 - coverageDelta (z64): sum of consumed amounts on this branch's past cone
+// $5 - frozenCoverage (z64): frozen part of $4 (trustless stats)
+// $6 - slotInflation (z64): Σ inflation amounts in this branch's past cone
+// $7 - numTransactions (z32): new tx count in the branch's past cone
+// $8 - baselineRoot (24): predecessor branch's trie root. All zero at genesis.
 // does not require unlock parameters
 func stemLock: and(
 	require(isBranchTransaction, !!!must_be_a_branch_transaction),
@@ -18,6 +25,7 @@ func stemLock: and(
 	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
 	require(isZero(selfTokenBalanceValue), !!!amount_must_be_zero),
 	mustSize($0, 33),
+	mustSize($8, 24),
     or(
        and(
           selfIsConsumedOutput,
