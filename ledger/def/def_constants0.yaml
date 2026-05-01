@@ -91,12 +91,12 @@ functions:
       source: add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))
    -
       sym: constHealthyCoverageNumerator
-      description: "numerator of the healthy-branch coverage fraction (default 7/12)"
-      source: u64/7
+      description: "numerator of the healthy-branch coverage fraction (production default 7/12)"
+      source: u64/{{.HealthyCoverageNumerator}}
    -
       sym: constHealthyCoverageDenominator
-      description: "denominator of the healthy-branch coverage fraction (default 7/12)"
-      source: u64/12
+      description: "denominator of the healthy-branch coverage fraction (production default 7/12)"
+      source: u64/{{.HealthyCoverageDenominator}}
    -
       sym: healthyCoverageDelta
       description: "returns 1 (true) iff coverageDelta * denominator > supply * numerator (i.e. coverageDelta > (numerator/denominator) * supply). $0 = supply, $1 = coverageDelta"

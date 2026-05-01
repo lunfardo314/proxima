@@ -6,13 +6,25 @@ func _predOutputIDOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx
 // vrfProofOnSuccessor is sig type byte + signature proper
 func vrfProofOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 1)
 
+// Aggregates declared on the produced (successor) stem.
+func _totalSupplyOnSuccessor    : parseInlineDataArgument(producedStemLockOfSelfTx, 2)
+func _totalCoverageOnSuccessor  : parseInlineDataArgument(producedStemLockOfSelfTx, 3)
+func _coverageDeltaOnSuccessor  : parseInlineDataArgument(producedStemLockOfSelfTx, 4)
+func _frozenCoverageOnSuccessor : parseInlineDataArgument(producedStemLockOfSelfTx, 5)
+func _slotInflationOnSuccessor  : parseInlineDataArgument(producedStemLockOfSelfTx, 6)
+
 // $0 - stem predecessor index
 func _predVRFProof : parseInlineDataArgument( consumedConstraintByIndex($0,1), 1, #stemLock)
+
+// _kSlotsBack = txSlot - slotOf(this consumed stem). Evaluated only inside the
+// consumed branch of stemLock, where `self` IS the predecessor stem and
+// `inputIDByIndex(selfOutputIndex)` is the predecessor stem's outputID.
+func _kSlotsBack : sub(txSlot, first4Bytes(inputIDByIndex(selfOutputIndex)))
 
 // $0 - predecessor output id
 // $1 - VRF proof (signature data (sig type byte + signature proper) of message = <VRF proof from the stem predecessor> || <slot of the transaction>)
 // $2 - totalSupply (z64): Σ tokens on this branch's state
-// $3 - totalCoverage (z64): accumulated halving sum at this slot (recurrence enforced in A3)
+// $3 - totalCoverage (z64): accumulated halving sum at this slot
 // $4 - coverageDelta (z64): sum of consumed amounts on this branch's past cone
 // $5 - frozenCoverage (z64): frozen part of $4 (trustless stats)
 // $6 - slotInflation (z64): Σ inflation amounts in this branch's past cone
@@ -38,6 +50,41 @@ func stemLock: and(
 		  require(
              validSignature(concat($1, txSlot), concat(vrfProofOnSuccessor, signaturePublicKey(txSignatureData))),
              !!!VRF_proof_check_failed
+          ),
+            // ----- recurrences and trustless-stats sanity -----
+            // Evaluated here, in the consumed branch, because `self` IS the
+            // predecessor stem so $2/$3 read the predecessor's TotalSupply /
+            // TotalCoverage directly. The successor's aggregates come from
+            // `producedStemLockOfSelfTx` (the new stem on this same tx).
+            //
+            // Supply recurrence:  totalSupply == predTotalSupply + slotInflation
+          require(
+             equalUint(_totalSupplyOnSuccessor, add($2, _slotInflationOnSuccessor)),
+             !!!supply_inconsistent_with_predecessor
+          ),
+            // Total-coverage halving recurrence (the only formula in the system):
+            //   totalCoverage == (predTotalCoverage >> K) + coverageDelta
+            // K = slot diff from previous branch. rshift64 returns 0 for K >= 64,
+            // matching the off-chain "≤64-slot halving" convention.
+          require(
+             equalUint(_totalCoverageOnSuccessor, add(rshift64($3, _kSlotsBack), _coverageDeltaOnSuccessor)),
+             !!!total_coverage_inconsistent_with_predecessor
+          ),
+            // Trustless-stats sanity: frozen part is strictly less than the total delta.
+            // uint8Bytes normalises compressed z64 values to 8-byte uint64 form so
+            // `lessThan` (which requires equal-length operands) compares numerically.
+          require(
+             lessThan(uint8Bytes(_frozenCoverageOnSuccessor), uint8Bytes(_coverageDeltaOnSuccessor)),
+             !!!frozen_coverage_must_be_strictly_less_than_coverage_delta
+          ),
+            // Branch must be healthy (bootstrap chain exempt, same convention as
+            // _enforceBranchCoverageBounds — see metadata-refactor §9.7).
+          require(
+             or(
+                equal(_seqChainID, constBootstrapChainID),
+                healthyCoverageDelta(_totalSupplyOnSuccessor, _coverageDeltaOnSuccessor)
+             ),
+             !!!branch_unhealthy
           )
        ),
        and(

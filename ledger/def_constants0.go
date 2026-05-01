@@ -24,6 +24,11 @@ type InitParameters struct {
 	SetBranchCoverageBounds       bool   // true for testing only
 	BranchCoverageLowerBound      uint64 // 0 = default formula, >0 = constant bound (for testing)
 	BranchCoverageUpperBound      uint64 // 0 = default formula, >0 = constant bound (for testing)
+	// Healthy-branch coverage fraction (numerator/denominator). 0/0 means "use default 7/12".
+	// Tests with small synthetic coverage typically set HealthyCoverageNumerator=0 to relax
+	// the on-chain healthiness check (matches the WithBranchCoverageBounds(0,0) pattern).
+	HealthyCoverageNumerator   uint64
+	HealthyCoverageDenominator uint64
 }
 
 // default ledger init parameters
@@ -87,11 +92,25 @@ type constantsTemplateData struct {
 	SetBranchCoverageBounds       bool
 	BranchCoverageLowerBound      uint64 // 0 = use default formula
 	BranchCoverageUpperBound      uint64 // 0 = use default formula
+	HealthyCoverageNumerator      uint64
+	HealthyCoverageDenominator    uint64
 }
 
 var _constantsTemplate = template.Must(template.New("constants0").Parse(_definitionsLedgerConstantsTemplateUpgrade0))
 
+// DefaultHealthyCoverageNumerator and DefaultHealthyCoverageDenominator define
+// the production healthy-branch fraction (7/12). Used when InitParameters
+// leaves the values at zero (test code can override).
+const (
+	DefaultHealthyCoverageNumerator   = 7
+	DefaultHealthyCoverageDenominator = 12
+)
+
 func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
+	num, den := par.HealthyCoverageNumerator, par.HealthyCoverageDenominator
+	if num == 0 && den == 0 {
+		num, den = DefaultHealthyCoverageNumerator, DefaultHealthyCoverageDenominator
+	}
 	data := constantsTemplateData{
 		GenesisControllerPublicKeyHex: hex.EncodeToString(par.GenesisControllerPublicKey),
 		GenesisTimeUnix:               par.GenesisTimeUnix,
@@ -106,6 +125,8 @@ func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
 		SetBranchCoverageBounds:       par.SetBranchCoverageBounds,
 		BranchCoverageLowerBound:      par.BranchCoverageLowerBound,
 		BranchCoverageUpperBound:      par.BranchCoverageUpperBound,
+		HealthyCoverageNumerator:      num,
+		HealthyCoverageDenominator:    den,
 	}
 	var buf bytes.Buffer
 	if err := _constantsTemplate.Execute(&buf, data); err != nil {

@@ -136,7 +136,15 @@ func GetTestingLedgerParams(seed ...int) (InitParameters, ed25519.PrivateKey) {
 	}
 
 	pk := testutil.GetTestingPrivateKey(s)
-	return DefaultParameters(pk, uint32(time.Now().Unix())), pk
+	par := DefaultParameters(pk, uint32(time.Now().Unix()))
+	// Relax the on-chain healthiness check for tests: synthetic conflict /
+	// short-past-cone branches typically have small coverageDelta. Setting
+	// numerator=0 makes the predicate `0 < covDelta * den` — accepts any
+	// positive coverageDelta, matching the relaxed-bounds convention used
+	// elsewhere in test infrastructure (e.g. WithBranchCoverageBounds).
+	par.HealthyCoverageNumerator = 0
+	par.HealthyCoverageDenominator = 1
+	return par, pk
 }
 
 func (lib *Library) mustCompile(src string, nArgs int) *easyfl.Expression[*EvalContext] {
