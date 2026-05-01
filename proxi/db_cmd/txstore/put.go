@@ -3,7 +3,6 @@ package txstore
 import (
 	"os"
 
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
@@ -12,7 +11,7 @@ import (
 func initPutCmd() *cobra.Command {
 	getCmd := &cobra.Command{
 		Use:   "put <transaction file name>",
-		Short: "persist transaction bytes with metadata contained in the file into the txStore",
+		Short: "persist raw transaction bytes from the file into the txStore",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPutCmd,
 	}
@@ -20,18 +19,14 @@ func initPutCmd() *cobra.Command {
 	return getCmd
 }
 
+// runPutCmd reads a file containing raw transaction bytes (no metadata prefix
+// after metadata-refactor §7) and persists them to the txStore.
 func runPutCmd(_ *cobra.Command, args []string) {
 	glb.InitLedgerFromDB()
 	glb.InitTxStoreDB()
 	defer glb.CloseDatabases()
 
-	txBytesWithMetadata, err := os.ReadFile(args[0])
-	glb.AssertNoError(err)
-
-	metaBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-	glb.AssertNoError(err)
-
-	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
+	txBytes, err := os.ReadFile(args[0])
 	glb.AssertNoError(err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -41,6 +36,6 @@ func runPutCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(args[0] == txid.AsFileName(), "transaction id does not correspond to the file name")
 	glb.Assertf(!glb.TxBytesStore().HasTxBytes(&txid), "txStore already contains transactions %s", tx.IDString())
 
-	_, err = glb.TxBytesStore().PersistTxBytesWithMetadata(txBytes, meta, tx.ID())
+	_, err = glb.TxBytesStore().PersistTxBytesWithMetadata(txBytes, nil, tx.ID())
 	glb.AssertNoError(err)
 }

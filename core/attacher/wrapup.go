@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lunfardo314/proxima/core/core_modules/branches"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
@@ -20,13 +19,11 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 
 	delta, frozen := a.CoverageDelta()
 	slotInflation := a.SlotInflation()
-	a.finals.TransactionMetadata = txmetadata.TransactionMetadata{
-		CoverageDelta:  util.Ref(delta),
-		FrozenCoverage: util.Ref(frozen),
-		LedgerCoverage: util.Ref(a.FinalLedgerCoverage(a.vid.Timestamp(), delta)),
-		SlotInflation:  util.Ref(slotInflation),
-		Supply:         util.Ref(a.BaselineSupply() + slotInflation),
-	}
+	a.finals.CoverageDelta = delta
+	a.finals.FrozenCoverage = frozen
+	a.finals.LedgerCoverage = a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
+	a.finals.SlotInflation = slotInflation
+	a.finals.Supply = a.BaselineSupply() + slotInflation
 	if a.vid.IsBranchTransaction() {
 		a.commitBranch()
 	}
@@ -65,7 +62,7 @@ func (a *milestoneAttacher) commitBranch() {
 	params := &multistate.RootRecordParams{
 		StemOutputID:  stemOID,
 		SeqID:         seqID,
-		SlotInflation: *a.finals.SlotInflation,
+		SlotInflation: a.finals.SlotInflation,
 	}
 
 	// submit to Branches as a pending (deferred) commit. Aggregates are passed
@@ -91,7 +88,7 @@ func (a *milestoneAttacher) commitBranch() {
 	a.RegisterBranchVertices(a.vid.ID(), previousBranchID, a.pastCone.PastConeBase.VertexSet())
 
 	// evidence branch slot eagerly (not deferred) — needed for network progress tracking
-	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(*a.finals.CoverageDelta, *a.finals.Supply, global.FractionHealthyBranch()))
+	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(a.finals.CoverageDelta, a.finals.Supply, global.FractionHealthyBranch()))
 
 	// stats still set locally for logging
 	a.finals.MutationStats = stats

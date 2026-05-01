@@ -75,7 +75,10 @@ func _makeBuckets(lastSize int) []float64 {
 	return ret
 }
 
-func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata, txidOpt ...base.TransactionID) (base.TransactionID, error) {
+// PersistTxBytesWithMetadata persists raw transaction bytes. The `metadata`
+// parameter is accepted for API compatibility but ignored — transaction
+// metadata is no longer persisted (see metadata-refactor §7).
+func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, _ *txmetadata.TransactionMetadata, txidOpt ...base.TransactionID) (base.TransactionID, error) {
 	var txid base.TransactionID
 	var err error
 	if len(txidOpt) > 0 {
@@ -90,16 +93,7 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 		return txid, nil
 	}
 
-	//concat in the buffer and the dispose
-	mdBytes := metadata.Bytes()
-
-	txBytesWithMetadata := make([]byte, len(mdBytes)+len(txBytes))
-	//txBytesWithMetadata := bytepool.GetArray(len(mdBytes) + len(txBytes))
-	copy(txBytesWithMetadata, mdBytes)
-	copy(txBytesWithMetadata[len(mdBytes):], txBytes)
-
-	//s.s.Set(txid[:], common.ConcatBytes(metadata.Bytes(), txBytes))
-	s.s.Set(txid[:], txBytesWithMetadata)
+	s.s.Set(txid[:], txBytes)
 
 	if s.metricsEnabled {
 		size := float64(len(txBytes))
@@ -110,8 +104,6 @@ func (s *SimpleTxBytesStore) PersistTxBytesWithMetadata(txBytes []byte, metadata
 			s.txBytesSeqNonBranchSizeHistogram.Observe(size)
 		}
 	}
-
-	//bytepool.DisposeArray(txBytesWithMetadata)
 	return txid, nil
 }
 
@@ -177,20 +169,20 @@ func (s DummyTxBytesStore) HasTxBytes(_ *base.TransactionID) bool {
 	return false
 }
 
+// LoadAndParseTransaction loads raw transaction bytes from the store and
+// parses them. Returns the parsed transaction; the second return value is
+// retained for caller compatibility but is always nil — persistent metadata
+// has been removed (see metadata-refactor §7).
 func LoadAndParseTransaction(store global.TxBytesGet, txid base.TransactionID) (*transaction.Transaction, *txmetadata.TransactionMetadata, error) {
-	txBytesWithMetadata := store.GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMetadata) == 0 {
+	txBytes := store.GetTxBytesWithMetadata(&txid)
+	if len(txBytes) == 0 {
 		return nil, nil, errors.New("transaction not found")
-	}
-	txBytes, metadata, err := txmetadata.ParseTxMetadata(txBytesWithMetadata)
-	if err != nil {
-		return nil, nil, err
 	}
 	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return nil, nil, err
 	}
-	return tx, metadata, nil
+	return tx, nil, nil
 }
 
 func LoadOutput(store global.TxBytesGet, oid base.OutputID) (*ledger.Output, error) {

@@ -33,12 +33,14 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		return
 	}
 
-	var txBytesWithMetadata, metadataBytes, txBytes []byte
-	var metadata *txmetadata.TransactionMetadata
+	// Wire format (post metadata-refactor §7): [txid(32)] [txBytes].
+	// The 1-byte length-prefixed metadata block has been removed; persistent
+	// transaction metadata is gone (deterministic aggregates live on the stem).
+	var msg, txBytes []byte
 	var txIDPrefix base.TransactionID
 
 	for {
-		txBytesWithMetadata, err = readFrame(stream)
+		msg, err = readFrame(stream)
 		ps.inMsgCounter.Inc()
 		ps.knownPeer(id, func(p *Peer) {
 			p.numIncomingTx++
@@ -46,14 +48,14 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		if err != nil {
 			return
 		}
-		if len(txBytesWithMetadata) < base.TransactionIDLength {
+		if len(msg) < base.TransactionIDLength {
 			// protocol violation
 			err = fmt.Errorf("gossip: wrong tx message from peer %s (txid prefix): at least 32 bytes expected", id.String())
 			ps.Log().Error(err)
 			ps.dropPeer(id, err.Error())
 			return
 		}
-		txIDPrefix, err = base.TransactionIDFromBytes(txBytesWithMetadata[:base.TransactionIDLength])
+		txIDPrefix, err = base.TransactionIDFromBytes(msg[:base.TransactionIDLength])
 		if err != nil {
 			// protocol violation
 			err = fmt.Errorf("gossip: wrong tx message from peer (txid prefix) %s: %v", id.String(), err)
@@ -61,30 +63,14 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 			ps.dropPeer(id, err.Error())
 			return
 		}
-		txBytesWithMetadata = txBytesWithMetadata[base.TransactionIDLength:]
-		metadataBytes, txBytes, err = txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-		if err != nil {
-			// protocol violation
-			err = fmt.Errorf("gossip: error while parsing tx message from peer %s: %v", id.String(), err)
-			ps.Log().Error(err)
-			ps.dropPeer(id, err.Error())
-			return
-		}
-		metadata, err = txmetadata.TransactionMetadataFromBytes(metadataBytes)
-		if err != nil {
-			// protocol violation
-			err = fmt.Errorf("gossip: error while parsing tx message metadata from peer %s: %v", id.String(), err)
-			ps.Log().Error(err)
-			ps.dropPeer(id, err.Error())
-			return
-		}
+		txBytes = msg[base.TransactionIDLength:]
 
 		ps.evidenceMessage()
 
 		ps.transactionsReceivedCounter.Inc()
-		ps.txBytesReceivedCounter.Add(float64(len(txBytesWithMetadata)))
+		ps.txBytesReceivedCounter.Add(float64(len(msg)))
 
-		go ps.onReceiveTx(id, txBytes, metadata, txIDPrefix)
+		go ps.onReceiveTx(id, txBytes, nil, txIDPrefix)
 	}
 }
 
@@ -119,5 +105,8 @@ type gossipMsgWrapper struct {
 }
 
 func (gm gossipMsgWrapper) Bytes() []byte {
-	return common.Concat(gm.txid[:], gm.metadata.Bytes(), gm.txBytes)
+	// Wire format (post metadata-refactor §7): [txid(32)] [txBytes]. The
+	// metadata field is accepted by the API but never serialised — it is
+	// runtime-only context (SourceType, TxBytesReceived).
+	return common.Concat(gm.txid[:], gm.txBytes)
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/peering"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -54,12 +53,8 @@ func (d *PullTxServer) consume(inp *Input) {
 		d.Tracef(TraceTag, "NOT FOUND %s, request from %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
 		return
 	}
-	metadataBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-	util.AssertNoError(err)
-	metadata, err := txmetadata.TransactionMetadataFromBytes(metadataBytes)
-	util.AssertNoError(err)
-
-	go d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytes, metadata, inp.TxID)
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+	go d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytesWithMetadata, nil, inp.TxID)
 	d.responseToPullCounter.Inc()
 
 	d.Tracef(TraceTag, "FOUND %s -> %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))

@@ -9,7 +9,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/core/workflow"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -149,12 +148,8 @@ func vertexDepsForTx(srv *wsServer, txidstr string) []byte {
 		return nil
 	}
 
-	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-	if err != nil {
-		return nil
-	}
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+	tx, err := transaction.ParseWithPartialValidation(txBytesWithMetadata)
 	if err != nil {
 		return nil
 	}
@@ -258,11 +253,14 @@ func (srv *wsServer) dagVertexStreamHandler(w http.ResponseWriter, r *http.Reque
 			txSlots[slot] = set.New[string]()
 		}
 
-		// Convert to vertex with extended data
+		// CoverageDelta / Supply used to come from event data's persistent
+		// metadata; after metadata-refactor §7 they live on the produced
+		// stem (branch txs only). VertexWithDependenciesExtended now skips
+		// them — Phase F can wire them back from the stem if needed.
 		vertexWD := api.VertexWithDependenciesExtended(
 			tx,
-			data.CoverageDelta,
-			data.Supply,
+			nil,
+			nil,
 			data.SeqName,
 		)
 

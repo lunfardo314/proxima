@@ -75,7 +75,7 @@ func runMilestoneAttacher(
 			seqName = msData.Name()
 		}
 		if tx := vid.GetTransaction(); tx != nil {
-			env.PostEventNewVertex(tx, &a.finals.TransactionMetadata, seqName)
+			env.PostEventNewVertex(tx, seqName)
 		}
 	}
 	// finished either way: good or bad
@@ -458,14 +458,14 @@ func (a *milestoneAttacher) logFinalStatusString(msData *seqdata.SequencerData) 
 		msg += fmt.Sprintf("BAD: err = '%v'", a.vid.GetError())
 	} else {
 		msg += fmt.Sprintf(", base: %s, cov/delta: %s/%s", a.finals.baseline.StringShort(),
-			util.Th(*a.finals.TransactionMetadata.LedgerCoverage), util.Th(*a.finals.TransactionMetadata.CoverageDelta))
+			util.Th(a.finals.LedgerCoverage), util.Th(a.finals.CoverageDelta))
 		if a.vid.IsBranchTransaction() {
 			if a.TopicVerbosityLevel("branch_attach") > 0 {
-				msg += fmt.Sprintf(", slot inflation: %s, supply: %s", util.Th(*a.finals.TransactionMetadata.SlotInflation), util.Th(*a.finals.TransactionMetadata.Supply))
+				msg += fmt.Sprintf(", slot inflation: %s, supply: %s", util.Th(a.finals.SlotInflation), util.Th(a.finals.Supply))
 			}
 		} else {
 			if a.TopicVerbosityLevel("seq_attach") > 0 {
-				msg += fmt.Sprintf(", slot inflation: %s", util.Th(*a.finals.TransactionMetadata.SlotInflation))
+				msg += fmt.Sprintf(", slot inflation: %s", util.Th(a.finals.SlotInflation))
 			}
 		}
 	}

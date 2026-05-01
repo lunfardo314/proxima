@@ -271,10 +271,9 @@ func (w *TxStoreWriter) evictIfNeededLocked() {
 	}
 }
 
-func combineTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata) []byte {
-	mdBytes := metadata.Bytes()
-	data := make([]byte, len(mdBytes)+len(txBytes))
-	copy(data, mdBytes)
-	copy(data[len(mdBytes):], txBytes)
-	return data
+// combineTxBytesWithMetadata used to prefix tx bytes with persistent metadata.
+// After metadata-refactor §7 the prefix is gone — txstore stores raw bytes —
+// so this helper is now a thin pass-through. Retained to keep call sites stable.
+func combineTxBytesWithMetadata(txBytes []byte, _ *txmetadata.TransactionMetadata) []byte {
+	return txBytes
 }

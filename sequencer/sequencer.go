@@ -587,7 +587,11 @@ func (seq *Sequencer) MaxTagAlongInputs() int {
 }
 
 // decideSubmitMilestone checks health and connectivity before submitting a milestone.
-func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata) bool {
+// Aggregates (CoverageDelta / Supply / TotalCoverage / SlotInflation) come from
+// the produced stem on branch txs (post metadata-refactor §7); for non-branch
+// txs we read the proposer-computed ledger coverage from `proposed` (passed by
+// the caller) since non-branch txs don't produce a stem.
+func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerCoverage uint64) bool {
 	if !seq.IsConnectedToNetwork() {
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
@@ -607,12 +611,15 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 			}
 			return false
 		}
-		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch())
+		// Read deterministic aggregates from the produced stem (§7).
+		stemOut := tx.FindStemProducedOutput()
+		stemLock, _ := stemOut.Output.StemLock()
+		healthy := global.IsHealthyCoverageDelta(stemLock.CoverageDelta, stemLock.TotalSupply, global.FractionHealthyBranch())
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, coverage: %s, inflation: %s",
 				tx.IDShortString(), ledger.TimeNow().String(), sd.Name(),
-				util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
+				util.Th(stemLock.TotalCoverage), util.Th(tx.InflationAmount()))
 			return true
 		}
 		if seq.wontSubmitBranchID != tx.ID() {
@@ -620,7 +627,7 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 			sd2 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 			seq.Log().Warnf("WON'T SUBMIT BRANCH %s. reason: insufficient coverage delta. Now: %s, name: %s, cov.delta: %s/%s, supply: %s, infl: %s, slot infl: %s",
 				tx.IDShortString(), ledger.TimeNow().String(), sd2.Name(),
-				util.Th(*meta.LedgerCoverage), util.Th(*meta.CoverageDelta), util.Th(*meta.Supply), util.Th(tx.InflationAmount()), util.Th(*meta.SlotInflation))
+				util.Th(stemLock.TotalCoverage), util.Th(stemLock.CoverageDelta), util.Th(stemLock.TotalSupply), util.Th(tx.InflationAmount()), util.Th(stemLock.SlotInflation))
 			seq.wontSubmitBranchID = tx.ID()
 		}
 		return false
@@ -629,7 +636,7 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 	sd3 := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 	seq.Log().Infof("SUBMIT SEQ TX %s. Now: %s, name: %s, endorse: %d, coverage: %s, inflation: %s",
 		tx.IDShortString(), ledger.TimeNow().String(), sd3.Name(), tx.NumEndorsements(),
-		util.Th(*meta.LedgerCoverage), util.Th(tx.InflationAmount()))
+		util.Th(ledgerCoverage), util.Th(tx.InflationAmount()))
 	return true
 }
 
@@ -735,7 +742,7 @@ func (seq *Sequencer) validateSequencerIDExists() bool {
 	return true
 }
 
-func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*transaction.Transaction, *txmetadata.TransactionMetadata, string, error) {
+func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*transaction.Transaction, *txmetadata.TransactionMetadata, uint64, string, error) {
 	// The target timestamp is a logical clock. The wall clock equivalent is informational —
 	// the real constraints are sequencer pace and slot boundaries (ledger time).
 	// task.Run uses a fixed BuildBudget (wall-clock), so the target can be in the past
@@ -747,7 +754,7 @@ func (seq *Sequencer) generateMilestoneForTarget(targetTs base.LedgerTime) (*tra
 
 	// Reject only if the target is so far in the past that the build budget wouldn't help.
 	if behind := targetWallClock.Sub(nowis); behind < -task.BuildBudget {
-		return nil, nil, "", fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
+		return nil, nil, 0, "", fmt.Errorf("sequencer: target %s (%v) is before current clock by %v: too late to generate milestone",
 			targetTs.String(), targetWallClock.Format("15:04:05.999"), behind)
 	}
 	return task.Run(seq, targetTs, seq.slotData)

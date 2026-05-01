@@ -50,7 +50,7 @@ type (
 
 	postEventEnvironment interface {
 		PostEventNewTransaction(vid *vertex.WrappedTx)
-		PostEventNewVertex(tx *transaction.Transaction, metadata *txmetadata.TransactionMetadata, seqName string)
+		PostEventNewVertex(tx *transaction.Transaction, seqName string)
 	}
 
 	Environment interface {
@@ -141,7 +141,14 @@ type (
 		numOutputs  int
 		numVertices int
 		baseline    base.TransactionID
-		txmetadata.TransactionMetadata
+		// Locally-computed aggregates, always populated by wrapUpAttacher.
+		// Used to live on TransactionMetadata as pointers signalling optional
+		// presence; here they are always present (metadata-refactor §7).
+		CoverageDelta  uint64
+		FrozenCoverage uint64
+		LedgerCoverage uint64
+		SlotInflation  uint64
+		Supply         uint64
 		vertex.MutationStats
 	}
 

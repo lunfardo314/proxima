@@ -240,7 +240,7 @@ func AttachTransaction(tx *transaction.Transaction, env Environment, opts ...Att
 		env.PostEventNewTransaction(vid)
 
 		if !vid.IsSequencerTransaction() {
-			env.PostEventNewVertex(tx, nil, "")
+			env.PostEventNewVertex(tx, "")
 		}
 	}
 	return

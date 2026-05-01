@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -225,15 +224,9 @@ func (srv *server) getTxBytes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txBytes, metadata, err := txmetadata.ParseTxMetadata(txBytesWithMetadata)
-	if err != nil {
-		api.WriteErr(w, fmt.Sprintf("error while parsing DB data: '%v'", err))
-		return
-	}
-
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
 	resp := api.TxBytes{
-		TxBytes:    hex.EncodeToString(txBytes),
-		TxMetadata: metadata.JSONAble(),
+		TxBytes: hex.EncodeToString(txBytesWithMetadata),
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
@@ -268,20 +261,14 @@ func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	txBytes, metadata, err := txmetadata.ParseTxMetadata(txBytesWithMetadata)
-	if err != nil {
-		api.WriteErr(w, fmt.Sprintf("error while parsing DB data: '%v'", err))
-		return
-	}
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+	tx, err := transaction.ParseWithPartialValidation(txBytesWithMetadata)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return
 	}
 
 	resp := api.JSONAbleFromTransaction(tx)
-	resp.TxMetadata = metadata.JSONAble()
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
@@ -315,13 +302,8 @@ func (srv *server) getVertexWithDependencies(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	_, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMetadata)
-	if err != nil {
-		api.WriteErr(w, fmt.Sprintf("error while parsing DB data: '%v'", err))
-		return
-	}
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+	tx, err := transaction.ParseWithPartialValidation(txBytesWithMetadata)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return

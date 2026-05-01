@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -358,12 +357,10 @@ func (st *auditState) loadAndParse(txid base.TransactionID) (*transaction.Transa
 	if len(txBytesWithMeta) == 0 {
 		return nil, false
 	}
-	txBytes, _, err := txmetadata.ParseTxMetadata(txBytesWithMeta)
-	if err != nil {
-		st.parseErrors++
-		return nil, false
-	}
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+	txBytes := txBytesWithMeta
 	var tx *transaction.Transaction
+	var err error
 	if auditValidate {
 		tx, err = transaction.Parse(txBytes)
 	} else {
@@ -504,11 +501,8 @@ func (st *auditState) validateOne(t *transaction.Transaction) {
 		if len(txBytesWithMeta) == 0 {
 			return nil, false
 		}
-		txBytes, _, err := txmetadata.ParseTxMetadata(txBytesWithMeta)
-		if err != nil {
-			return nil, false
-		}
-		producer, err := transaction.Parse(txBytes)
+		// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+		producer, err := transaction.Parse(txBytesWithMeta)
 		if err != nil {
 			return nil, false
 		}
@@ -626,19 +620,8 @@ func (st *auditState) emitProgress(currentSlot uint32) {
 
 func (st *auditState) queueWrite(t *transaction.Transaction) {
 	id := t.ID()
-	txBytes := t.Bytes()
-	var value []byte
-	if auditMeta {
-		// We intentionally re-fetch with metadata to keep the original meta
-		// bytes verbatim. Cheap on Badger (block-cache hit for a recent put).
-		value = st.src.GetTxBytesWithMetadata(&id)
-		if len(value) == 0 {
-			// shouldn't happen — we just got these bytes from the same store
-			value = append((*txmetadata.TransactionMetadata)(nil).Bytes(), txBytes...)
-		}
-	} else {
-		value = append((*txmetadata.TransactionMetadata)(nil).Bytes(), txBytes...)
-	}
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+	value := t.Bytes()
 	st.writeBatch[id] = value
 	st.bytesWritten += int64(len(value))
 	st.recordsWritten++

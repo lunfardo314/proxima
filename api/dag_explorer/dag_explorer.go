@@ -121,14 +121,13 @@ func (l *loader) load(txid base.TransactionID, depth int, isTip bool) {
 		return
 	}
 
-	txBytes, meta, err := txmetadata.ParseTxMetadata(txBytesWithMeta)
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+	tx, err := transaction.ParseWithPartialValidation(txBytesWithMeta)
 	if err != nil {
 		return
 	}
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
-	if err != nil {
-		return
-	}
+	var meta *txmetadata.TransactionMetadata // persistent metadata removed
+	_ = meta
 	l.txCache[txid] = tx
 
 	v := vertex{
@@ -148,12 +147,11 @@ func (l *loader) load(txid base.TransactionID, depth int, isTip bool) {
 			v.SeqChainID = seqData.SequencerID.StringShort()
 		}
 	}
-	if meta != nil {
-		v.LedgerCoverage = meta.LedgerCoverage
-		v.CoverageDelta = meta.CoverageDelta
-		v.Supply = meta.Supply
-		v.SlotInflation = meta.SlotInflation
-	}
+	// Coverage / supply aggregates used to come from persistent tx metadata;
+	// after metadata-refactor §7 they live on the produced stem (only branch
+	// txs carry them). Looking them up per-vertex is left to the dag_explorer
+	// hover detail (Phase F follow-up). For now the per-vertex view omits
+	// these fields.
 	l.data.Vertices = append(l.data.Vertices, v)
 
 	if depth <= 0 {
@@ -431,19 +429,8 @@ func serveTxDetail(w http.ResponseWriter, r *http.Request, store TxStore) {
 		return
 	}
 
-	metaBytes, txBytes, err := txmetadata.SplitTxBytesWithMetadata(txBytesWithMeta)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("metadata split error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	meta, err := txmetadata.TransactionMetadataFromBytes(metaBytes)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("metadata parse error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
+	tx, err := transaction.ParseWithPartialValidation(txBytesWithMeta)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("tx parse error: %v", err), http.StatusInternalServerError)
 		return
@@ -454,7 +441,7 @@ func serveTxDetail(w http.ResponseWriter, r *http.Request, store TxStore) {
 	})
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "--- transaction ---\n%s\n--- metadata ---\n%s", tx.String(), meta.String())
+	_, _ = fmt.Fprintf(w, "--- transaction ---\n%s", tx.String())
 }
 
 // parseShortTxID parses formats like:

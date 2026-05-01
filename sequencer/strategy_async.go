@@ -255,7 +255,7 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	seq.newTargetSet()
 	seq.slotData.NewTarget()
 
-	msTx, meta, _, err := seq.generateMilestoneForTarget(targetTs)
+	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(targetTs)
 
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
@@ -270,7 +270,7 @@ func (seq *Sequencer) tryBuildAndSubmit() bool {
 	util.Assertf(msTx != nil, "msTx != nil")
 
 	meta.TxBytesReceived = util.Ref(time.Now())
-	seq.submitMilestone(msTx, meta, targetTs)
+	seq.submitMilestone(msTx, meta, ledgerCoverage, targetTs)
 	seq.adjustBudget(true)
 	return true
 }
@@ -291,7 +291,7 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 	}
 	seq.slotData.NewTarget()
 
-	msTx, meta, _, err := seq.generateMilestoneForTarget(branchTs)
+	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(branchTs)
 
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
@@ -305,7 +305,7 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 	default:
 		util.Assertf(msTx != nil, "msTx != nil")
 		meta.TxBytesReceived = util.Ref(time.Now())
-		seq.submitMilestone(msTx, meta, branchTs)
+		seq.submitMilestone(msTx, meta, ledgerCoverage, branchTs)
 		seq.adjustBudget(true)
 	}
 
@@ -321,8 +321,8 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 }
 
 // submitMilestone sends a milestone to the network fire-and-forget and advances lastSubmittedTs optimistically.
-func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, targetTs base.LedgerTime) {
-	if !seq.decideSubmitMilestone(tx, meta) {
+func (seq *Sequencer) submitMilestone(tx *transaction.Transaction, meta *txmetadata.TransactionMetadata, ledgerCoverage uint64, targetTs base.LedgerTime) {
+	if !seq.decideSubmitMilestone(tx, ledgerCoverage) {
 		seq.lastSubmittedTs = targetTs
 		return
 	}

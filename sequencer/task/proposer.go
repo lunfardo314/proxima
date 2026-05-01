@@ -6,7 +6,6 @@ import (
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
-	"github.com/lunfardo314/proxima/util"
 )
 
 // finalize computes coverage, builds the transaction, and returns a finalProposal.
@@ -77,12 +76,7 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	}
 
 	slotInflation += tx.InflationAmount()
-	supply := baselineSupply + slotInflation
 
-	var frozenP *uint64
-	if frozen > 0 {
-		frozenP = util.Ref(frozen)
-	}
 	// extract predecessor timestamp from the built transaction
 	var predTs base.LedgerTime
 	if seqData := tx.SequencerTransactionData(); seqData != nil {
@@ -90,14 +84,13 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		predTs = predOID.Timestamp()
 	}
 
-	fp := &finalProposal{
+	_ = baselineSupply // kept for future expansion; supply currently lives on the produced stem
+
+	return &finalProposal{
 		tx:     tx,
 		txSize: len(tx.Bytes()),
 		txMetadata: &txmetadata.TransactionMetadata{
 			SourceTypeNonPersistent: txmetadata.SourceTypeSequencer,
-			CoverageDelta:           util.Ref(coverageDelta),
-			FrozenCoverage:          frozenP,
-			LedgerCoverage:          util.Ref(ledgerCoverage),
 		},
 		hrString:       hrString,
 		coverageDelta:  coverageDelta,
@@ -107,12 +100,5 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		source:         source,
 		predecessorTs:  predTs,
 		attachmentCost: pastConeAttachmentCost,
-	}
-
-	if tx.IsBranchTransaction() {
-		fp.txMetadata.LedgerCoverage = util.Ref(ledgerCoverage)
-		fp.txMetadata.Supply = util.Ref(supply)
-		fp.txMetadata.SlotInflation = util.Ref(slotInflation)
-	}
-	return fp, nil
+	}, nil
 }

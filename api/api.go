@@ -2,9 +2,9 @@ package api
 
 import (
 	"encoding/hex"
+	"encoding/json"
 
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
@@ -184,7 +184,10 @@ type (
 
 	TxBytes struct {
 		TxBytes    string                                  `json:"tx_bytes"`
-		TxMetadata *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
+		// TxMetadata used to mirror the persistent transaction metadata in JSON
+		// responses. Persistent metadata was removed (see metadata-refactor §7);
+		// the field is now always nil and kept only for wire compatibility.
+		TxMetadata json.RawMessage `json:"tx_metadata,omitempty"`
 	}
 
 	Bytecode struct {
@@ -249,7 +252,8 @@ type (
 		Inputs           []Input                                 `json:"inputs"`
 		Outputs          []ParsedOutput                          `json:"outputs"`
 		Endorsements     []string                                `json:"endorsements,omitempty"`
-		TxMetadata       *txmetadata.TransactionMetadataJSONAble `json:"tx_metadata,omitempty"`
+		// see TxBytes.TxMetadata above — kept as raw JSON for compat, always nil now.
+		TxMetadata json.RawMessage `json:"tx_metadata,omitempty"`
 	}
 
 	// VertexWithDependencies primary purpose is streaming vertices for DAG visualization
