@@ -1,5 +1,37 @@
 # Refactor: move global ledger values into the stem constraint; remove persistent TxMetadata
 
+## Status (2026-05-01)
+
+Phases A → E are shipped. Eight commits on `develop08`:
+
+| Commit     | Phase | What landed                                                                |
+|------------|-------|----------------------------------------------------------------------------|
+| `28ce40a1` | A1    | `healthyCoverageDelta` ledger function + Go wiring; sweep ~20 call sites    |
+| `f04f1725` | A2    | `StemLock` carries 7 new aggregates; arity 2→9; genesis stem populated      |
+| `f9cd47ce` | A3    | On-chain supply / coverage recurrences + healthiness in `lock_stem.easyfl` |
+| `46d92647` | B     | Sequencer task plumbs past-cone-aware aggregates into the produced stem    |
+| `929da629` | C     | `RootRecord` trimmed to {Root,SequencerID}; aggregates projected onto BD    |
+| `eef76c04` | D     | `enforceStemValues` (baselineRoot panic, others warn) + Phase B baselineRoot |
+| `ee2f19f6` | E     | Persistent TxMetadata removed; wire prefix gone; ~30 call sites swept       |
+
+Open follow-ups (next session):
+- **Phase A4** focused negative tests for the stem constraint (deferred; happy paths covered by `tests/`).
+- **Phase D escalation** — the attacher's non-baselineRoot mismatches currently log; once proposer/attacher past-cone reconciliation lands, escalate to panic per §9.6.
+- **Phase F** tooling/UI:
+  - `proxi db info` / `db roots` already read via `BranchData` (works) — verify printout shows the new aggregates with the right labels.
+  - `dag_explorer` per-vertex `CoverageDelta` / `Supply` fields are temporarily nil for non-branch vertices (TODO comment in `api/dag_explorer/dag_explorer.go`); for branch txs, wire them from the stem.
+  - `api/streaming/dag_vertex_server.go` `VertexWithDependenciesExtended` likewise passes nil for these — fold in the stem read.
+  - Update `CLAUDE.md` "Active Task" list with v0.8.x post-refactor pointers.
+- **Cleanup leftovers** worth doing as small commits:
+  - Remove the now-vestigial `TransactionMetadata` parameter from `txstore.PersistTxBytesWithMetadata` and rename to `PersistTxBytes`. The wrapper interface in `global` will need the rename too.
+  - Drop the `_ = baselineSupply` shim in `sequencer/task/proposer.go`.
+  - Re-evaluate whether the cache `branchDataWithLedgerCoverage` still earns its keep now that `Branches.LedgerCoverage` is a one-liner.
+  - The `combineTxBytesWithMetadata` helper in `core/core_modules/txstore_writer/txstore_writer.go` is now a pass-through — inline and delete.
+  - The `TxMetadata json.RawMessage` field on `api.TxBytes` / `api.TransactionJSONAble` is always nil; can be removed in a wire-format break.
+- **Recurrence sanity assert is currently logging-only** for non-baseline mismatches in `enforceStemValues` — re-classify per §9.6 once proposer/attacher view drift is reconciled.
+
+
+
 ## 1. Goal
 
 Several globally-deterministic values are currently kept in `multistate.RootRecord` (off-chain, in
