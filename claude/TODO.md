@@ -30,6 +30,8 @@ Revisit weird behavior with syncing after warm restart.
 - remove persistent TxMetadata as concept
 - refactor locks and indexing in the ledger, replace with tuple of indices pos 1 + the lock constraint pos 2 + chain pos 3. Remove lock serialization   
 - Expose Merkle proof in the Readable
+- delegation constants per chained account rather than  global
+- support native token constraints on the amounts vector
 - Remove plain data list element at the tx tuple level
 - I implement evidenceHash(hashPrefix, data) enforcer hasPrefix(hash(data), hashPrefix). Use it in the enforced script list at the txLevel.
 - Implement validateWithRedeemed(index of evidenceHash() bytecode, redeemed lib hash prefix, lib tuple index called function, args …). It will compare hashes and call library. The idea is not to run hash function for each revocation
@@ -37,8 +39,4 @@ Revisit weird behavior with syncing after warm restart.
 - Inclusion proof validation embedded opcode
 - Implement open lock as plain index data list value. The index will be the evaluated data. Unlockable by anybody. Consider randomization of the unlock slot, e.g. by hash(public key||UTXO ID||slot) mod 5 == 0
 Another option. Interpret open lock data as tuple of index values
-
-## Misc
-- 24 byte VCommitment
-
 
