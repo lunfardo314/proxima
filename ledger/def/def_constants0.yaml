@@ -89,3 +89,15 @@ functions:
       sym: proformaSupplyUpperBound
       description: "supply upper bound at slot $0, assuming constant inflation constants"
       source: add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))
+   -
+      sym: constHealthyCoverageNumerator
+      description: "numerator of the healthy-branch coverage fraction (default 7/12)"
+      source: u64/7
+   -
+      sym: constHealthyCoverageDenominator
+      description: "denominator of the healthy-branch coverage fraction (default 7/12)"
+      source: u64/12
+   -
+      sym: healthyCoverageDelta
+      description: "returns 1 (true) iff coverageDelta * denominator > supply * numerator (i.e. coverageDelta > (numerator/denominator) * supply). $0 = supply, $1 = coverageDelta"
+      source: lessThan(mul($0, constHealthyCoverageNumerator), mul($1, constHealthyCoverageDenominator))

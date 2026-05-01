@@ -251,7 +251,7 @@ func (s *Sync) syncLoop() {
 // This anchor is sent to sync sources so they can verify it's on their chain (fork detection).
 // Returns zero ID if no suitable anchor is found.
 func (s *Sync) findAnchorBranch() base.TransactionID {
-	lrb := multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch)
+	lrb := multistate.FindLatestReliableBranch(s.StateStore(), global.FractionHealthyBranch())
 	if lrb == nil {
 		s.Log().Warnf("[%s] findAnchorBranch: no reliable branch found", Name)
 		return base.TransactionID{}
@@ -318,7 +318,7 @@ func (s *Sync) syncTick() {
 	nowSlot := ledger.TimeNow().Slot
 
 	// find latest committed healthy slot
-	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore(), global.FractionHealthyBranch)
+	healthySlot, found := multistate.FindLatestHealthySlot(s.StateStore(), global.FractionHealthyBranch())
 	if !found {
 		s.Log().Warnf("[%s] no healthy slot found", Name)
 		return

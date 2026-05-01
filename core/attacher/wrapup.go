@@ -77,7 +77,7 @@ func (a *milestoneAttacher) commitBranch() {
 	a.RegisterBranchVertices(a.vid.ID(), previousBranchID, a.pastCone.PastConeBase.VertexSet())
 
 	// evidence branch slot eagerly (not deferred) — needed for network progress tracking
-	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(*a.finals.CoverageDelta, *a.finals.Supply, global.FractionHealthyBranch))
+	a.EvidenceBranchSlot(a.vid.Slot(), global.IsHealthyCoverageDelta(*a.finals.CoverageDelta, *a.finals.Supply, global.FractionHealthyBranch()))
 
 	// stats still set locally for logging
 	a.finals.MutationStats = stats

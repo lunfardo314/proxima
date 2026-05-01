@@ -39,6 +39,7 @@ type (
 		BranchCoverageLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchCoverageUpperBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchInflationBonusPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
+		HealthyCoverageDeltaPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
 	}
 )
 

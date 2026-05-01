@@ -56,7 +56,7 @@ func runFindTxCmd(_ *cobra.Command, _ []string) {
 		glb.Infof("branch id: %s", b.String())
 		root = rr.Root
 	} else {
-		lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+		lrb := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
 		glb.Assertf(lrb != nil, "can't find latest reliable branch (LRB)")
 		root = lrb.Root
 		glb.Infof("latest reliable branch will be used")

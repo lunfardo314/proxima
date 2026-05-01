@@ -613,3 +613,15 @@ func (l *Global) DeadlockCatchingDisabled() bool {
 func (l *Global) LogTx(_ time.Time, _ string, _ ...base.TransactionID) {
 	// no-op: actual logging happens at node level
 }
+
+// FractionHealthyBranch returns the healthy-branch coverage fraction
+// (numerator/denominator) for the latest ledger library — single source of
+// truth, sourced from the ledger constants `constHealthyCoverageNumerator` /
+// `constHealthyCoverageDenominator`.
+func FractionHealthyBranch() Fraction {
+	lib := ledger.L(base.MaxSlot)
+	return Fraction{
+		Numerator:   int(lib.HealthyCoverageNumerator),
+		Denominator: int(lib.HealthyCoverageDenominator),
+	}
+}

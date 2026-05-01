@@ -147,7 +147,7 @@ func (r *RootRecord) Lines(prefix ...string) *lines.Lines {
 		Add("supply:          %s", util.Th(r.Supply)).
 		Add("coverage delta:  %s (%s, %.2f%s)", util.Th(r.CoverageDelta), util.Th(r.FrozenCoverage), proc, "%").
 		Add("frozen coverage: %s", util.Th(r.FrozenCoverage)).
-		Add("healthy(%s):     %v", global.FractionHealthyBranch.String(), global.IsHealthyCoverageDelta(r.CoverageDelta, r.Supply, global.FractionHealthyBranch))
+		Add("healthy(%s):     %v", global.FractionHealthyBranch().String(), global.IsHealthyCoverageDelta(r.CoverageDelta, r.Supply, global.FractionHealthyBranch()))
 	return ret
 }
 

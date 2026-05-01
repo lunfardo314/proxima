@@ -29,7 +29,7 @@ func runChainsCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromDB()
 	defer glb.CloseDatabases()
 
-	branchData := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	branchData := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
 	if branchData == nil {
 		glb.Infof("no branches found")
 		return

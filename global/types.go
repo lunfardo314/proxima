@@ -169,21 +169,21 @@ var (
 		Denominator: 3,
 	}
 
-	Fraction7_12 = Fraction{
-		Numerator:   7,
-		Denominator: 12,
-	}
-
-	FractionHealthyBranch = Fraction7_12
-
 	ErrInterrupted = errors.New("interrupted by global stop")
 )
 
-// IsHealthyCoverageDelta coverage delta is healthy if it is bigger than the fraction of supply
+// IsHealthyCoverageDelta returns true iff `coverageDelta > (num/den) * supply`,
+// where the (num, den) values come from ledger constants (see
+// `constHealthyCoverageNumerator` / `constHealthyCoverageDenominator`).
+//
+// The cross-multiplication form `coverageDelta * den > supply * num` is
+// equivalent to the integer-division form for integer inputs, and is what the
+// on-chain `healthyCoverageDelta` EasyFL function evaluates inside the
+// stemLock constraint — so Go-side and on-chain checks agree bit-for-bit.
 func IsHealthyCoverageDelta(coverageDelta, supply uint64, fraction Fraction) bool {
-	return coverageDelta > (uint64(fraction.Numerator)*supply)/uint64(fraction.Denominator)
+	return coverageDelta*uint64(fraction.Denominator) > supply*uint64(fraction.Numerator)
 }
 
-func (f *Fraction) String() string {
+func (f Fraction) String() string {
 	return fmt.Sprintf("%d/%d", f.Numerator, f.Denominator)
 }

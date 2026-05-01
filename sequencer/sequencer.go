@@ -607,7 +607,7 @@ func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, meta *t
 			}
 			return false
 		}
-		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch)
+		healthy := global.IsHealthyCoverageDelta(*meta.CoverageDelta, *meta.Supply, global.FractionHealthyBranch())
 		if healthy {
 			sd := tx.SequencerTransactionData().SequencerOutputData.SequencerData
 			seq.Log().Infof("SUBMIT BRANCH %s. Now: %s, name: %s, coverage: %s, inflation: %s",

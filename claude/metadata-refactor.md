@@ -119,10 +119,12 @@ the stemLock constraint and from Go (via the precompiled-function path):
 
 ```
 // returns true iff the branch is healthy:
-//   coverageDelta * denominator > 2 * supply * numerator
+//   coverageDelta * denominator > supply * numerator
+//   (i.e. coverageDelta > (numerator/denominator) * supply, matching the
+//   existing 7/12 threshold without integer-division rounding loss)
 func healthyCoverageDelta :
-    lessThan(mul(mul(u64/2, $0), constHealthyCoverageNumerator),
-             mul($1,            constHealthyCoverageDenominator))
+    lessThan(mul($0, constHealthyCoverageNumerator),
+             mul($1, constHealthyCoverageDenominator))
 ```
 
 The Go-side `global.FractionHealthyBranch` and `global.IsHealthyCoverageDelta` are repointed to
@@ -158,7 +160,8 @@ require(equalUint(totalCoverage, add(rshift64(_predTotalCoverage, K), coverageDe
 require(lessThan(frozenCoverage, coverageDelta),
         !!!frozen_coverage_must_be_strictly_less_than_coverage_delta)
 
-// branch must be healthy (delegates to the EasyFL function declared above)
+// branch must be healthy (delegates to the EasyFL function declared above):
+//   coverageDelta * denominator > supply * numerator
 require(healthyCoverageDelta(totalSupply, coverageDelta),
         !!!branch_unhealthy)
 ```

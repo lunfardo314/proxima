@@ -76,7 +76,7 @@ func runBranchesCmd(_ *cobra.Command, args []string) {
 }
 
 func displayMainchain() {
-	branchData := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch)
+	branchData := multistate.FindLatestReliableBranch(glb.StateStore(), global.FractionHealthyBranch())
 	glb.Assertf(branchData != nil, "failed to find latest reliable branch")
 
 	count := 0

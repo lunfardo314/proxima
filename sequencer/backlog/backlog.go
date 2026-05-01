@@ -361,7 +361,7 @@ func (b *TagAlongBacklog) recreateMap() {
 func (b *TagAlongBacklog) LoadSequencerStartTips(seqID base.ChainID) error {
 	branchData := b.Branches().FindLatestReliableBranch()
 	if branchData == nil {
-		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch.String())
+		return fmt.Errorf("LoadSequencerStartTips: can't find latest reliable branch (LRB) with franction %s", global.FractionHealthyBranch().String())
 	}
 	loadedTxs := set.New[*vertex.WrappedTx]()
 	nowSlot := ledger.TimeNow().Slot

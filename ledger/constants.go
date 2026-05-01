@@ -64,6 +64,12 @@ type Constants struct {
 	// ---------- branch coverage related
 	// Branch coverage bounds are now slot-dependent functions accessed via Library methods:
 	// Library.BranchCoverageLowerBound(slot) and Library.BranchCoverageUpperBound(slot)
+	// ---------- healthy branch fraction (single source of truth) ----------
+	// The branch is "healthy" iff coverageDelta * Denominator > 2 * supply * Numerator.
+	// The same predicate is enforced inside the stemLock constraint via the
+	// `healthyCoverageDelta(supply, covDelta)` EasyFL function.
+	HealthyCoverageNumerator   uint64
+	HealthyCoverageDenominator uint64
 }
 
 // ConstantsFromLibrary loads all constants from library definition into a runtime structure
@@ -147,6 +153,13 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.AssertNoError(err)
 	util.Assertf(t64 < math.MaxUint32, "constTxIDStateTTLSlots: %d", t64)
 	ret.TxIDStateTTLSlots = uint32(t64)
+
+	// healthy-branch fraction (numerator / denominator) — single source of truth
+	ret.HealthyCoverageNumerator, err = _uint64FromConst(lib, "constHealthyCoverageNumerator")
+	util.AssertNoError(err)
+	ret.HealthyCoverageDenominator, err = _uint64FromConst(lib, "constHealthyCoverageDenominator")
+	util.AssertNoError(err)
+	util.Assertf(ret.HealthyCoverageDenominator > 0, "constHealthyCoverageDenominator must be > 0")
 
 	return ret
 }

@@ -736,7 +736,7 @@ func (srv *server) getMainChain(w http.ResponseWriter, r *http.Request) {
 	if maxDepth <= 0 {
 		maxDepth = 1
 	}
-	main, err := multistate.GetMainChain(srv.StateStore(), global.FractionHealthyBranch, maxDepth)
+	main, err := multistate.GetMainChain(srv.StateStore(), global.FractionHealthyBranch(), maxDepth)
 	if err != nil {
 		api.WriteErr(w, err.Error())
 		return
@@ -796,7 +796,7 @@ func (srv *server) getBranchList(w http.ResponseWriter, r *http.Request) {
 		maxEntries = v
 	}
 
-	lrb := multistate.FindLatestReliableBranch(srv.StateStore(), global.FractionHealthyBranch)
+	lrb := multistate.FindLatestReliableBranch(srv.StateStore(), global.FractionHealthyBranch())
 	if lrb == nil {
 		api.WriteErr(w, "can't find latest reliable branch")
 		return
