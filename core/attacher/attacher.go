@@ -725,3 +725,10 @@ func (a *attacher) CheckConflicts(ctx context.Context) (*vertex.WrappedOutput, e
 func (a *attacher) SlotInflation() uint64 {
 	return a.pastCone.SlotInflation()
 }
+
+// NumNewTransactionsInPastCone returns the count of new (non-rooted)
+// transactions in the past cone — i.e. txs that this branch is committing
+// for the first time. For the incremental attacher the tip is not included.
+func (a *attacher) NumNewTransactionsInPastCone() int {
+	return a.pastCone.NumNewTransactions()
+}

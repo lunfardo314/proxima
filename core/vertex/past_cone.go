@@ -1192,6 +1192,21 @@ func (pc *PastCone) NumVertices() int {
 	return len(pc.vertices)
 }
 
+// NumNewTransactions counts vertices in the past cone that are NOT in the
+// baseline state — i.e. transactions that THIS branch is committing for the
+// first time. Matches `MutationStats.NumTransactions` from Mutations(), but
+// without building the full mutation set.
+func (pc *PastCone) NumNewTransactions() int {
+	pc.Assertf(pc.delta == nil, "pc.delta == nil")
+	n := 0
+	for vid := range pc.vertices {
+		if pc.isNotInTheState(vid) {
+			n++
+		}
+	}
+	return n
+}
+
 func (pc *PastCone) Dispose() {
 	if pc == nil {
 		return

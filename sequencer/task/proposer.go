@@ -5,6 +5,7 @@ import (
 
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -33,6 +34,36 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	baselineSupply := p.BaselineSupply()
 
 	pastConeAttachmentCost := p.PastConeAttachmentCost()
+
+	// For branch transactions, plumb the past-cone-aware aggregates into the
+	// stem the builder is about to produce (Phase B of metadata-refactor).
+	// Non-branch txs don't produce a stem, so this is a no-op for them.
+	// TotalSupply / TotalCoverage are NOT passed — the txbuilder applies the
+	// on-chain recurrence using the predecessor stem to derive both.
+	if p.IsBranchTarget() {
+		// slotInflation must include this branch tx's own inflation (chain
+		// output's inflation slot, set at txbuilder.New).
+		stemSlotInflation := slotInflation + p.BranchInflationAmount()
+		// numTransactions is past-cone count + 1 (this branch tx).
+		numTx := uint32(p.NumNewTransactionsInPastCone()) + 1
+
+		// Predecessor branch's trie root (24 bytes). Empty for branches that
+		// extend past the snapshot edge — leave nil (Source() emits 24 zeros).
+		var baselineRoot []byte
+		if baselineID := p.BaselineBranch(); baselineID != nil {
+			if bd := p.Branches().Get(*baselineID); bd != nil && bd.Root != nil {
+				baselineRoot = bd.Root.Bytes()
+			}
+		}
+
+		p.SetStemAggregates(txbuilder_seq.StemAggregates{
+			CoverageDelta:   coverageDelta,
+			FrozenCoverage:  frozen,
+			SlotInflation:   stemSlotInflation,
+			NumTransactions: numTx,
+			BaselineRoot:    baselineRoot,
+		})
+	}
 
 	mkStart := time.Now()
 	tx, hrString, err := p.makeTx() // closes the attacher

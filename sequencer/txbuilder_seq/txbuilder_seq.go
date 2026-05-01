@@ -17,6 +17,31 @@ import (
 )
 
 type (
+	// StemAggregates holds the past-cone-aware aggregates the sequencer task
+	// (or the distribute path) plumbs into the produced StemLock. When the
+	// caller does not provide them, buildStemLock falls back to a local-input-
+	// only auto-compute (sufficient for single-tx past cones — distribute and
+	// most simple tests).
+	//
+	// All values describe the NEW branch being built (i.e. they include this
+	// transaction's contribution: its inflation, its consumed inputs, its tx).
+	//
+	// TotalSupply and TotalCoverage are NOT carried here — the txbuilder always
+	// derives them from the predecessor stem using the on-chain recurrence
+	// (totalSupply = predSupply + slotInflation; totalCoverage = (predCov >> K)
+	// + coverageDelta). This guarantees the produced stem satisfies the
+	// stemLock constraint regardless of which off-chain coverage estimator the
+	// caller used to compute its own coverage view.
+	StemAggregates struct {
+		CoverageDelta   uint64
+		FrozenCoverage  uint64
+		SlotInflation   uint64
+		NumTransactions uint32
+		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
+		// Empty / nil leaves Source() emitting 24 zero bytes (genesis convention).
+		BaselineRoot []byte
+	}
+
 	SeqTxBuilder struct {
 		*txbuilder.TxBuilder
 		*ledger.Library          // cached library for this transaction's slot
@@ -33,6 +58,7 @@ type (
 		vrfProof                 []byte
 		branchCoverageUpperBound uint64 // upper bound for branch coverage, 0 means no enforcement
 		enforceFreezeUpperBound  bool   // if true, check upper bound before each delegation freeze
+		stemAggregates           *StemAggregates // override for buildStemLock; nil → auto-compute
 	}
 
 	TxBuilderCommand interface {
@@ -182,6 +208,16 @@ func NewWithSequencerID(ts base.LedgerTime,
 		PublicKey:     privateKey.Public().(ed25519.PublicKey),
 		StateReader:   rdr,
 	})
+}
+
+// BranchInflationAmount returns the branch inflation bonus this txbuilder
+// will apply to its sequencer chain output (set at New time from VRF proof).
+// Valid only on branch txs (StemInput != nil); 0 otherwise.
+func (txb *SeqTxBuilder) BranchInflationAmount() uint64 {
+	if txb.stemInput == nil {
+		return 0
+	}
+	return uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 }
 
 func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
@@ -426,10 +462,20 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 	return nil
 }
 
-// buildStemLock assembles the new branch's StemLock with the global ledger
-// aggregates. Most aggregates are sourced from the txbuilder's locally observed
-// past-cone slice (this single transaction). For sequencer-task driven txs,
-// the caller can override via setStemAggregates… (added in Phase B).
+// SetStemAggregates plumbs past-cone-aware values into the stem build path.
+// When set, buildStemLock uses these values verbatim and asserts the supply/
+// coverage recurrences against the predecessor stem (B3 sanity check). When
+// unset, buildStemLock falls back to a local-input-only auto-compute that is
+// correct for single-tx past cones (distribute / simple tests).
+func (txb *SeqTxBuilder) SetStemAggregates(a StemAggregates) {
+	txb.stemAggregates = &a
+}
+
+// buildStemLock assembles the new branch's StemLock. The on-chain recurrence
+// drives TotalSupply / TotalCoverage in both paths so the produced stem always
+// satisfies the stemLock constraint. The remaining aggregates come either from
+// the caller (SetStemAggregates — past-cone-aware) or are auto-computed from
+// the txbuilder's local view (single-tx past cone — distribute / simple tests).
 func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	prevStem, ok := txb.stemInput.Output.StemLock()
 	util.Assertf(ok, "buildStemLock: stem input is not a stem output")
@@ -441,41 +487,48 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	util.Assertf(curSlot >= predBranchSlot, "buildStemLock: curSlot(%d) < predBranchSlot(%d)", curSlot, predBranchSlot)
 	k := uint64(curSlot - predBranchSlot)
 
-	// coverageDelta = sum of consumed token balances excluding the stem (which is 0).
-	// frozenCoverage = sum of frozen-coverage portions on consumed outputs.
-	var coverageDelta, frozenCoverage uint64
-	for _, o := range txb.ConsumedOutputs {
-		coverageDelta += o.TokenBalance()
-		// FrozenCoverage(0) is the "current epoch" frozen amount.
-		frozenCoverage += uint64(o.FrozenCoverage(0))
+	var coverageDelta, frozenCoverage, slotInflation uint64
+	var numTransactions uint32
+	var baselineRoot []byte
+
+	if a := txb.stemAggregates; a != nil {
+		coverageDelta = a.CoverageDelta
+		frozenCoverage = a.FrozenCoverage
+		slotInflation = a.SlotInflation
+		numTransactions = a.NumTransactions
+		baselineRoot = a.BaselineRoot
+	} else {
+		// Auto-compute fallback (single-tx past cone): coverageDelta / frozen /
+		// slotInflation come from THIS tx's inputs and inflation; numTransactions = 1.
+		for _, o := range txb.ConsumedOutputs {
+			coverageDelta += o.TokenBalance()
+			frozenCoverage += uint64(o.FrozenCoverage(0))
+		}
+		slotInflation = uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
+		numTransactions = 1
 	}
-	if frozenCoverage >= coverageDelta {
-		// Trustless-stats sanity: frozen must be strictly less than total delta.
-		// In simple paths this never fires; if it does, fall back to 0 to keep the
-		// constraint accepting the produced stem (bootstrap chain is exempt from
-		// healthiness anyway). Phase B will compute past-cone-aware values.
+
+	// Trustless-stats sanity (Phase B3): frozen must be strictly less than
+	// coverageDelta. In auto-compute paths we treat equality as a defensive
+	// reset to 0; in the override path equality means the caller miscounted —
+	// surface it loudly.
+	if txb.stemAggregates == nil && frozenCoverage >= coverageDelta {
 		frozenCoverage = 0
 	}
+	util.Assertf(frozenCoverage < coverageDelta || coverageDelta == 0,
+		"buildStemLock: FrozenCoverage(%d) must be strictly less than CoverageDelta(%d)",
+		frozenCoverage, coverageDelta)
 
-	// slotInflation: this txbuilder only knows this single tx's inflation
-	// (chain inflation amount + branch inflation bonus, both folded into the
-	// chain output's inflation slot). For multi-tx past cones, sequencer task
-	// will override via the higher layer in Phase B.
-	slotInflation := uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
-
-	// Apply recurrences (must match the on-chain enforcement in lock_stem.easyfl).
+	// On-chain recurrence — same formula the stemLock constraint enforces.
 	totalSupply := prevStem.TotalSupply + slotInflation
-	predTotalCoverage := prevStem.TotalCoverage
+	predTotalCov := prevStem.TotalCoverage
 	if k >= 64 {
-		predTotalCoverage = 0
+		predTotalCov = 0
 	} else {
-		predTotalCoverage >>= k
+		predTotalCov >>= k
 	}
-	totalCoverage := predTotalCoverage + coverageDelta
+	totalCoverage := predTotalCov + coverageDelta
 
-	// baselineRoot is enforced Go-side (per metadata-refactor §9.4), not in EasyFL.
-	// Until Phase B/D plumbs the predecessor branch's actual trie root, leave it
-	// as 24 zero bytes (Source() emits this fallback automatically).
 	return &ledger.StemLock{
 		PredecessorOutputID: txb.stemInput.ID,
 		VRFProof:            txb.vrfProof,
@@ -484,7 +537,8 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 		CoverageDelta:       coverageDelta,
 		FrozenCoverage:      frozenCoverage,
 		SlotInflation:       slotInflation,
-		NumTransactions:     1, // simple path: single-tx past cone. Phase B will refine.
+		NumTransactions:     numTransactions,
+		BaselineRoot:        baselineRoot,
 	}
 }
 
