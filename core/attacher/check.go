@@ -1,9 +1,11 @@
 package attacher
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/lunfardo314/proxima/core/vertex"
+	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -84,33 +86,66 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 	return
 }
 
-// consistentCoveragesFromMetadata checks consistency between calculated and provided the ledger coverage
-// If the transaction is close to the snapshot, calculated coverage usually is less than provided
-func consistentCoveragesFromMetadata(calculated, provided *uint64, slotsFromSnapshot uint32) bool {
-	if calculated == nil || provided == nil || *calculated == *provided {
-		return true
+// enforceStemValues compares the deterministic values declared on the produced
+// stem against what this attacher computed from its past cone (metadata-
+// refactor §6 D1, §9.6). Mismatch on baselineRoot is a hard error — it is
+// trivially deterministic from the predecessor branch's trie root and any
+// disagreement is an out-of-consensus condition that must escalate.
+//
+// The other aggregates (CoverageDelta / FrozenCoverage / SlotInflation /
+// NumTransactions / TotalSupply / TotalCoverage) are also expected to agree
+// in steady state, but proposer/attacher past-cone resolution timing can
+// legitimately differ in transient cases (the proposer publishes before all
+// endorsement past-cones are fully resolved; the milestone attacher walks
+// deeper). We log mismatches loudly and TODO escalate to panic once the
+// proposer-attacher view is reconciled.
+func isAllZero(b []byte) bool {
+	for _, x := range b {
+		if x != 0 {
+			return false
+		}
 	}
-	if slotsFromSnapshot < 64 {
-		return *calculated <= *provided
-	}
-	return false
+	return true
 }
 
-// checkConsistencyWithMetadata checks but not enforces
-func (a *milestoneAttacher) checkConsistencyWithMetadata() {
-	if a.providedMetadata == nil {
-		return
+func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) {
+	a.Assertf(a.vid.IsBranchTransaction(), "enforceStemValues: branch tx expected")
+
+	// baselineRoot: hard-deterministic when the stem carries one. A stem with
+	// an all-zero BaselineRoot signals "not provided" (test infra path) — log
+	// it but don't fail the branch, since the constraint only enforces
+	// mustSize($8, 24). When the stem provides a non-zero root, mismatch with
+	// the actual predecessor trie root is an out-of-consensus condition.
+	if !isAllZero(stemLock.BaselineRoot) {
+		if bd := a.Branches().Get(a.finals.baseline); bd != nil && bd.Root != nil {
+			want := bd.Root.Bytes()
+			a.Assertf(bytes.Equal(stemLock.BaselineRoot, want),
+				"enforceStemValues: stemLock.BaselineRoot != predecessor branch's trie root for %s\n  stem: %x\n  want: %x",
+				a.vid.IDShortString(), stemLock.BaselineRoot, want)
+		}
+	} else {
+		a.Log().Warnf("enforceStemValues[%s]: stem carries empty BaselineRoot (test or pre-Phase-D path)", a.vid.IDShortString())
 	}
-	msg := ""
-	slotsFromSnapshot := a.vid.Slot() - a.Branches().SnapshotSlot()
-	if !consistentCoveragesFromMetadata(a.finals.TransactionMetadata.LedgerCoverage, a.providedMetadata.LedgerCoverage, slotsFromSnapshot) {
-		msg = fmt.Sprintf("inconsistent ledger coverage in tx metadata (slots from snapshot %d)", slotsFromSnapshot)
-	} else if !a.providedMetadata.IsConsistentWithExceptCoverage(&a.finals.TransactionMetadata) {
-		msg = fmt.Sprintf("inconsistency in tx metadata")
+
+	delta, frozen := a.CoverageDelta()
+	slotInflation := a.SlotInflation()
+	supply := a.BaselineSupply() + slotInflation
+	totalCov := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
+	numTx := uint32(a.pastCone.NumNewTransactions())
+
+	mismatch := func(name string, computed, onStem uint64) {
+		if computed != onStem {
+			a.Log().Warnf("enforceStemValues[%s]: %s mismatch — computed %s, on stem %s",
+				a.vid.IDShortString(), name, util.Th(computed), util.Th(onStem))
+		}
 	}
-	if msg != "" {
-		a.Log().Warnf("%s of tx %s (source seq: %s, '%s'):\n   calculated metadata: %s\n   provided metadata: %s",
-			msg, a.vid.IDShortString(), a.vid.SequencerID.Load().StringShort(), a.vid.SequencerName(),
-			a.finals.TransactionMetadata.String(), a.providedMetadata.String())
+	mismatch("CoverageDelta", delta, stemLock.CoverageDelta)
+	mismatch("FrozenCoverage", frozen, stemLock.FrozenCoverage)
+	mismatch("SlotInflation", slotInflation, stemLock.SlotInflation)
+	mismatch("TotalSupply", supply, stemLock.TotalSupply)
+	mismatch("TotalCoverage", totalCov, stemLock.TotalCoverage)
+	if uint64(numTx) != uint64(stemLock.NumTransactions) {
+		a.Log().Warnf("enforceStemValues[%s]: NumTransactions mismatch — computed %d, on stem %d",
+			a.vid.IDShortString(), numTx, stemLock.NumTransactions)
 	}
 }

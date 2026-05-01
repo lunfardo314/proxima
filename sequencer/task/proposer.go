@@ -47,10 +47,13 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 		// numTransactions is past-cone count + 1 (this branch tx).
 		numTx := uint32(p.NumNewTransactionsInPastCone()) + 1
 
-		// Predecessor branch's trie root (24 bytes). Empty for branches that
-		// extend past the snapshot edge — leave nil (Source() emits 24 zeros).
+		// Predecessor branch's trie root (24 bytes). For pending baselines,
+		// trigger the commit first so bd.Root is populated. The proposal
+		// already pulls the baseline reader at construction time, but Get()
+		// reads a snapshot of the cache and may race that init.
 		var baselineRoot []byte
 		if baselineID := p.BaselineBranch(); baselineID != nil {
+			_ = p.Branches().GetStateReaderForTheBranch(*baselineID)
 			if bd := p.Branches().Get(*baselineID); bd != nil && bd.Root != nil {
 				baselineRoot = bd.Root.Bytes()
 			}

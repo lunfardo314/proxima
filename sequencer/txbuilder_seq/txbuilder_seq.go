@@ -59,6 +59,7 @@ type (
 		branchCoverageUpperBound uint64 // upper bound for branch coverage, 0 means no enforcement
 		enforceFreezeUpperBound  bool   // if true, check upper bound before each delegation freeze
 		stemAggregates           *StemAggregates // override for buildStemLock; nil → auto-compute
+		baselineRoot             []byte          // optional caller-supplied predecessor branch trie root
 	}
 
 	TxBuilderCommand interface {
@@ -507,6 +508,19 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 		slotInflation = uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
 		numTransactions = 1
 	}
+	// Fall back to deriving baselineRoot if the caller didn't supply it.
+	// Prefer the explicit txb.baselineRoot setter (used by the distribute
+	// path); otherwise read from the state reader the txbuilder is built on.
+	if len(baselineRoot) == 0 {
+		switch {
+		case len(txb.baselineRoot) > 0:
+			baselineRoot = txb.baselineRoot
+		case txb.rdr != nil:
+			if root := txb.rdr.Root(); root != nil {
+				baselineRoot = root.Bytes()
+			}
+		}
+	}
 
 	// Trustless-stats sanity (Phase B3): frozen must be strictly less than
 	// coverageDelta. In auto-compute paths we treat equality as a defensive
@@ -651,6 +665,10 @@ type MakeSimpleSequencerTransactionParams struct {
 	DoNotInflateMainChain bool
 	//
 	AttachmentBudget uint16
+	// BaselineRoot is the predecessor branch's trie root (24 bytes). Required
+	// for branch txs (StemInput != nil) so the produced stem's BaselineRoot
+	// matches what the attacher cross-checks (metadata-refactor §9.4).
+	BaselineRoot []byte
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
@@ -682,6 +700,11 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 	}
 	if par.SeqName != "" {
 		txb.SetName(par.SeqName)
+	}
+	if len(par.BaselineRoot) > 0 {
+		// Caller-supplied predecessor branch trie root — used by buildStemLock
+		// to populate the produced stem's BaselineRoot (metadata-refactor §9.4).
+		txb.baselineRoot = par.BaselineRoot
 	}
 	for _, endorsement := range par.Endorsements {
 		if err = txb.AddEndorsement(endorsement); err != nil {

@@ -30,7 +30,6 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	if a.vid.IsBranchTransaction() {
 		a.commitBranch()
 	}
-	a.checkConsistencyWithMetadata()
 }
 
 // commitBranch prepares a deferred branch commit. The actual DB write is deferred
@@ -51,6 +50,10 @@ func (a *milestoneAttacher) commitBranch() {
 	stemLock, ok := stemOutput.Output.StemLock()
 	util.Assertf(ok, "commitBranch: stem lock not found")
 	previousBranchID := stemLock.PredecessorOutputID.TransactionID()
+
+	// Cross-check the stem's declared deterministic values against what this
+	// attacher computed from its past cone (metadata-refactor §6 D1).
+	a.enforceStemValues(stemLock)
 
 	// build root record params for deferred commit. SlotInflation here is the
 	// updateTrie input/output amount invariant only (consumed + slotInflation

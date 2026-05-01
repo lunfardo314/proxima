@@ -65,7 +65,10 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 		return nil, err
 	}
 
-	// create origin branch transaction at the next slot after genesis time slot
+	// create origin branch transaction at the next slot after genesis time slot.
+	// BaselineRoot is the genesis trie root — required by the produced stem so
+	// the attacher can cross-check it against the predecessor branch's actual
+	// state root (metadata-refactor §9.4).
 	txBytes, err := MakeSimpleSequencerTransaction(MakeSimpleSequencerTransactionParams{
 		ChainInput: &ledger.OutputWithChainID{
 			OutputWithID: *initSupplyOutput,
@@ -82,6 +85,7 @@ func MakeDistributionTransaction(stateStore global.Store, originPrivateKey ed255
 		PrivateKey:            originPrivateKey,
 		PublicKey:             originPrivateKey.Public().(ed25519.PublicKey),
 		DoNotInflateMainChain: false,
+		BaselineRoot:          genesisRoot.Bytes(),
 	})
 	if err != nil {
 		return nil, err
