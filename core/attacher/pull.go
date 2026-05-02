@@ -55,12 +55,12 @@ func (a *attacher) pullIfNeededUnwrapped(virtualTx *vertex.VirtualTransaction, d
 	// then fall back to the txstore. Local lookups are cheap and not a DoS vector,
 	// unlike peer pulls which are depth-capped.
 	depID := deptVID.ID()
-	if tx, _ := a.TakeCachedTx(util.Ref(depID)); tx != nil {
+	if tx := a.TakeCachedTx(util.Ref(depID)); tx != nil {
 		a.CachedTxInSolicited(tx)
 		return true
 	}
-	if txBytesWithMetadata := a.GetTxBytesWithMetadata(util.Ref(depID)); len(txBytesWithMetadata) > 0 {
-		a.TxBytesFromStoreInSolicited(txBytesWithMetadata)
+	if txBytes := a.GetTxBytes(util.Ref(depID)); len(txBytes) > 0 {
+		a.TxBytesFromStoreInSolicited(txBytes)
 		return true
 	}
 	virtualTx.SetPullNeeded()

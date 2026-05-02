@@ -109,8 +109,8 @@ func (l *loader) load(txid base.TransactionID, depth int, isTip bool) {
 	}
 	l.visited[txid] = true
 
-	txBytesWithMeta := l.store.GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMeta) == 0 {
+	txBytes := l.store.GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		l.data.Vertices = append(l.data.Vertices, vertex{
 			ID:        hex.EncodeToString(txid.Bytes()),
 			ShortID:   txid.StringShort(),
@@ -122,7 +122,7 @@ func (l *loader) load(txid base.TransactionID, depth int, isTip bool) {
 	}
 
 	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
-	tx, err := transaction.ParseWithPartialValidation(txBytesWithMeta)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		return
 	}
@@ -423,14 +423,14 @@ func serveTxDetail(w http.ResponseWriter, r *http.Request, store TxStore) {
 		return
 	}
 
-	txBytesWithMeta := store.GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMeta) == 0 {
+	txBytes := store.GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		http.Error(w, "transaction not found", http.StatusNotFound)
 		return
 	}
 
 	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
-	tx, err := transaction.ParseWithPartialValidation(txBytesWithMeta)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("tx parse error: %v", err), http.StatusInternalServerError)
 		return

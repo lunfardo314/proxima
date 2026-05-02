@@ -3,7 +3,6 @@ package pull_tx_server
 import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/core/core_modules"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/peering"
@@ -14,10 +13,10 @@ type (
 	environment interface {
 		global.NodeGlobal
 		TxBytesStore() global.TxBytesStore
-		// GetTxBytesWithMetadata checks the write-behind buffer first, then the store.
-		GetTxBytesWithMetadata(txid *base.TransactionID) []byte
+		// GetTxBytes checks the write-behind buffer first, then the store.
+		GetTxBytes(txid *base.TransactionID) []byte
 		StateStore() global.Store
-		SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID) bool
+		SendTxBytesToPeer(id peer.ID, txBytes []byte, txid base.TransactionID) bool
 	}
 
 	Input struct {
@@ -48,13 +47,12 @@ func New(env environment) *PullTxServer {
 }
 
 func (d *PullTxServer) consume(inp *Input) {
-	txBytesWithMetadata := d.GetTxBytesWithMetadata(&inp.TxID)
-	if len(txBytesWithMetadata) == 0 {
+	txBytes := d.GetTxBytes(&inp.TxID)
+	if len(txBytes) == 0 {
 		d.Tracef(TraceTag, "NOT FOUND %s, request from %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))
 		return
 	}
-	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
-	go d.SendTxBytesWithMetadataToPeer(inp.PeerID, txBytesWithMetadata, nil, inp.TxID)
+	go d.SendTxBytesToPeer(inp.PeerID, txBytes, inp.TxID)
 	d.responseToPullCounter.Inc()
 
 	d.Tracef(TraceTag, "FOUND %s -> %s", inp.TxID.StringShort, peering.ShortPeerIDString(inp.PeerID))

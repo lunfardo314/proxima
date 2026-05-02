@@ -5,7 +5,6 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/unitrie/common"
 )
@@ -70,43 +69,20 @@ func (ps *Peers) gossipStreamHandler(stream network.Stream) {
 		ps.transactionsReceivedCounter.Inc()
 		ps.txBytesReceivedCounter.Add(float64(len(msg)))
 
-		go ps.onReceiveTx(id, txBytes, nil, txIDPrefix)
+		go ps.onReceiveTx(id, txBytes, txIDPrefix)
 	}
 }
 
-func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID, except ...peer.ID) {
+// Wire format (post metadata-refactor §7): [txid(32)] [txBytes].
+func gossipMsg(txid base.TransactionID, txBytes []byte) []byte {
+	return common.Concat(txid[:], txBytes)
+}
+
+func (ps *Peers) GossipTxBytesToPeers(txBytes []byte, txid base.TransactionID, except ...peer.ID) {
 	targets := ps.peerIDsAlive(except...)
-	ps.sendTxBytesWithMetadataToPeers(targets, txBytes, metadata, txid)
+	ps.sendMsgBytesOutMulti(targets, ps.lppProtocolGossip, gossipMsg(txid, txBytes))
 }
 
-func (ps *Peers) sendTxBytesWithMetadataToPeers(ids []peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID) {
-	msg := gossipMsgWrapper{
-		txid:     txid,
-		metadata: metadata,
-		txBytes:  txBytes,
-	}
-	ps.sendMsgBytesOutMulti(ids, ps.lppProtocolGossip, msg.Bytes())
-}
-
-func (ps *Peers) SendTxBytesWithMetadataToPeer(id peer.ID, txBytes []byte, metadata *txmetadata.TransactionMetadata, txid base.TransactionID) bool {
-	msg := gossipMsgWrapper{
-		txid:     txid,
-		metadata: metadata,
-		txBytes:  txBytes,
-	}
-	return ps.sendMsgBytesOut(id, ps.lppProtocolGossip, msg.Bytes())
-}
-
-// message wrapper
-type gossipMsgWrapper struct {
-	txid     base.TransactionID
-	metadata *txmetadata.TransactionMetadata
-	txBytes  []byte
-}
-
-func (gm gossipMsgWrapper) Bytes() []byte {
-	// Wire format (post metadata-refactor §7): [txid(32)] [txBytes]. The
-	// metadata field is accepted by the API but never serialised — it is
-	// runtime-only context (SourceType, TxBytesReceived).
-	return common.Concat(gm.txid[:], gm.txBytes)
+func (ps *Peers) SendTxBytesToPeer(id peer.ID, txBytes []byte, txid base.TransactionID) bool {
+	return ps.sendMsgBytesOut(id, ps.lppProtocolGossip, gossipMsg(txid, txBytes))
 }

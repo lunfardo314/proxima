@@ -444,7 +444,7 @@ func (s *Sync) syncTick() {
 			Name, windowEnd, window[0].Slot(), target.Slot(), len(s.branchList)-1)
 		for _, branchID := range window {
 			s.AddPulledTransaction(branchID)
-			if txBytes := s.TxBytesStore().GetTxBytesWithMetadata(&branchID); len(txBytes) > 0 {
+			if txBytes := s.TxBytesStore().GetTxBytes(&branchID); len(txBytes) > 0 {
 				if _, err := s.TxBytesFromStoreIn(txBytes); err != nil {
 					s.Log().Warnf("[%s] re-inject from txstore failed for %s: %v", Name, branchID.StringShort(), err)
 				}

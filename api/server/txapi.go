@@ -218,15 +218,15 @@ func (srv *server) getTxBytes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txBytesWithMetadata := srv.TxBytesStore().GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMetadata) == 0 {
+	txBytes := srv.TxBytesStore().GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		api.WriteErr(w, fmt.Sprintf("transaction %s has not been found in the txBytesStore", txid.String()))
 		return
 	}
 
 	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
 	resp := api.TxBytes{
-		TxBytes: hex.EncodeToString(txBytesWithMetadata),
+		TxBytes: hex.EncodeToString(txBytes),
 	}
 
 	respBin, err := json.MarshalIndent(resp, "", "  ")
@@ -255,14 +255,14 @@ func (srv *server) getParsedTransaction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	txBytesWithMetadata := srv.TxBytesStore().GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMetadata) == 0 {
+	txBytes := srv.TxBytesStore().GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		api.WriteErr(w, fmt.Sprintf("transaction %s has not been found in the txBytesStore", txid.String()))
 		return
 	}
 
 	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
-	tx, err := transaction.ParseWithPartialValidation(txBytesWithMetadata)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return
@@ -296,14 +296,14 @@ func (srv *server) getVertexWithDependencies(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	txBytesWithMetadata := srv.TxBytesStore().GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMetadata) == 0 {
+	txBytes := srv.TxBytesStore().GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		api.WriteErr(w, fmt.Sprintf("transaction %s has not been found in the txBytesStore", txid.String()))
 		return
 	}
 
 	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
-	tx, err := transaction.ParseWithPartialValidation(txBytesWithMetadata)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("internal error while parsing transaction: '%v'", err))
 		return

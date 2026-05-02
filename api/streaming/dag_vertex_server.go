@@ -143,13 +143,12 @@ func vertexDepsForTx(srv *wsServer, txidstr string) []byte {
 		return nil
 	}
 
-	txBytesWithMetadata := srv.TxBytesStore().GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMetadata) == 0 {
+	txBytes := srv.TxBytesStore().GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		return nil
 	}
 
-	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
-	tx, err := transaction.ParseWithPartialValidation(txBytesWithMetadata)
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		return nil
 	}

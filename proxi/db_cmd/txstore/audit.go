@@ -353,12 +353,10 @@ func runAuditCmd(_ *cobra.Command, args []string) {
 // the library-aware parser when --validate is set (Phase 3 will reuse the
 // parsed object), otherwise the library-agnostic parser.
 func (st *auditState) loadAndParse(txid base.TransactionID) (*transaction.Transaction, bool) {
-	txBytesWithMeta := st.src.GetTxBytesWithMetadata(&txid)
-	if len(txBytesWithMeta) == 0 {
+	txBytes := st.src.GetTxBytes(&txid)
+	if len(txBytes) == 0 {
 		return nil, false
 	}
-	// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
-	txBytes := txBytesWithMeta
 	var tx *transaction.Transaction
 	var err error
 	if auditValidate {
@@ -497,12 +495,11 @@ func (st *auditState) validateOne(t *transaction.Transaction) {
 		// Silent fresh load — producer is outside the audit window (below
 		// floor, typically) but we still need its output bytes to validate
 		// the consumer. Don't add to any set.
-		txBytesWithMeta := st.src.GetTxBytesWithMetadata(&producerID)
-		if len(txBytesWithMeta) == 0 {
+		txBytes := st.src.GetTxBytes(&producerID)
+		if len(txBytes) == 0 {
 			return nil, false
 		}
-		// txstore stores raw bytes (no metadata prefix; metadata-refactor §7).
-		producer, err := transaction.Parse(txBytesWithMeta)
+		producer, err := transaction.Parse(txBytes)
 		if err != nil {
 			return nil, false
 		}

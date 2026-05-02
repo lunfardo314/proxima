@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-func (a *milestoneAttacher) wrapUpAttacher() {
+func (a *milestoneAttacher) wrapUpAttacher() error {
 	a.finals.baseline = *a.pastCone.GetBaseline()
 	a.finals.numVertices = a.pastCone.NumVertices()
 
@@ -25,13 +25,17 @@ func (a *milestoneAttacher) wrapUpAttacher() {
 	a.finals.SlotInflation = slotInflation
 	a.finals.Supply = a.BaselineSupply() + slotInflation
 	if a.vid.IsBranchTransaction() {
-		a.commitBranch()
+		return a.commitBranch()
 	}
+	return nil
 }
 
 // commitBranch prepares a deferred branch commit. The actual DB write is deferred
 // until the branch state is requested via Branches.GetStateReaderForTheBranch().
-func (a *milestoneAttacher) commitBranch() {
+// Returns an error if the produced stem's declared aggregates disagree with
+// what the attacher computed from its past cone (metadata-refactor §6 D1,
+// §9.6 — the branch is invalidated rather than crashing the node).
+func (a *milestoneAttacher) commitBranch() error {
 	a.Assertf(a.vid.IsBranchTransaction(), "a.vid.IsBranchTransaction()")
 
 	// compute mutations from past cone (same as before)
@@ -49,8 +53,11 @@ func (a *milestoneAttacher) commitBranch() {
 	previousBranchID := stemLock.PredecessorOutputID.TransactionID()
 
 	// Cross-check the stem's declared deterministic values against what this
-	// attacher computed from its past cone (metadata-refactor §6 D1).
-	a.enforceStemValues(stemLock)
+	// attacher computed from its past cone (metadata-refactor §6 D1). Mismatch
+	// invalidates the branch — return the error so the runner marks it Bad.
+	if err := a.enforceStemValues(stemLock); err != nil {
+		return err
+	}
 
 	// build root record params for deferred commit. SlotInflation here is the
 	// updateTrie input/output amount invariant only (consumed + slotInflation
@@ -96,6 +103,7 @@ func (a *milestoneAttacher) commitBranch() {
 
 	branchID := a.vid.ID()
 	a.LogTx(time.Now(), fmt.Sprintf("included in pending branch %s", branchID.StringShort()), committedTxs...)
+	return nil
 }
 
 // extractBranchOutputs extracts stem and sequencer outputs from the branch transaction vertex.

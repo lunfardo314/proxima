@@ -79,7 +79,7 @@ func TestAttachCostBudgetChainWithinLimit(t *testing.T) {
 
 			// Store all but the last in txstore for pull
 			if i < chainLength-1 {
-				_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesChain[i], nil)
+				_, err = testData.txStore.PersistTxBytes(txBytesChain[i])
 				require.NoError(t, err)
 			}
 		}
@@ -143,7 +143,7 @@ func TestAttachCostBudgetShortChain(t *testing.T) {
 
 			// Store all but the last in txstore for pull
 			if i < chainLength-1 {
-				_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesChain[i], nil)
+				_, err = testData.txStore.PersistTxBytes(txBytesChain[i])
 				require.NoError(t, err)
 			}
 		}
@@ -469,7 +469,7 @@ func TestAttachCostBudgetExceededMilestoneAttacher(t *testing.T) {
 			}
 
 			// Store all transactions in txstore for pull
-			_, err = testData.txStore.PersistTxBytesWithMetadata(txBytesChain[i], nil)
+			_, err = testData.txStore.PersistTxBytes(txBytesChain[i])
 			require.NoError(t, err)
 		}
 

@@ -11,12 +11,19 @@ Phases A → E are shipped. Eight commits on `develop08`:
 | `f9cd47ce` | A3    | On-chain supply / coverage recurrences + healthiness in `lock_stem.easyfl` |
 | `46d92647` | B     | Sequencer task plumbs past-cone-aware aggregates into the produced stem    |
 | `929da629` | C     | `RootRecord` trimmed to {Root,SequencerID}; aggregates projected onto BD    |
-| `eef76c04` | D     | `enforceStemValues` (baselineRoot panic, others warn) + Phase B baselineRoot |
+| `eef76c04` | D     | `enforceStemValues` initial landing + Phase B baselineRoot                    |
+| (TBD)      | D'    | `enforceStemValues` invalidates branch tx (no panic) + highlighted warning   |
 | `ee2f19f6` | E     | Persistent TxMetadata removed; wire prefix gone; ~30 call sites swept       |
 
 Open follow-ups (next session):
 - **Phase A4** focused negative tests for the stem constraint (deferred; happy paths covered by `tests/`).
-- **Phase D escalation** — the attacher's non-baselineRoot mismatches currently log; once proposer/attacher past-cone reconciliation lands, escalate to panic per §9.6.
+- **Phase D' (done in this session)** — `enforceStemValues` no longer panics on
+  mismatch. It logs a highlighted `>>>>>>>> stem-value mismatch …` line per
+  field and returns an aggregated error; `wrapUpAttacher` / `commitBranch` now
+  return that error and the existing `runMilestoneAttacher` Bad-status path
+  marks the branch vertex Bad. This removes the DoS surface on the wire (a
+  malformed peer-supplied branch can no longer crash the node) while still
+  rejecting the branch loudly. §9.6 / §10 updated accordingly.
 - **Phase F** tooling/UI:
   - `proxi db info` / `db roots` already read via `BranchData` (works) — verify printout shows the new aggregates with the right labels.
   - `dag_explorer` per-vertex `CoverageDelta` / `Supply` fields are temporarily nil for non-branch vertices (TODO comment in `api/dag_explorer/dag_explorer.go`); for branch txs, wire them from the stem.
@@ -28,7 +35,6 @@ Open follow-ups (next session):
   - Re-evaluate whether the cache `branchDataWithLedgerCoverage` still earns its keep now that `Branches.LedgerCoverage` is a one-liner.
   - The `combineTxBytesWithMetadata` helper in `core/core_modules/txstore_writer/txstore_writer.go` is now a pass-through — inline and delete.
   - The `TxMetadata json.RawMessage` field on `api.TxBytes` / `api.TransactionJSONAble` is always nil; can be removed in a wire-format break.
-- **Recurrence sanity assert is currently logging-only** for non-baseline mismatches in `enforceStemValues` — re-classify per §9.6 once proposer/attacher view drift is reconciled.
 
 
 
@@ -276,11 +282,13 @@ After:
 2. **Attacher path**: validator independently computes the same set from its past cone. After
    wrap-up, it compares the computed values against the values declared in the produced stem.
    - `slotInflation`, `coverageDelta`, `frozenCoverage`, `numTransactions`, `baselineRoot`,
-     `totalCoverage`, `totalSupply` mismatch → **panic** (see §9.6: any mismatch means a major
-     bug or out-of-consensus condition; deterministic computation must agree).
+     `totalCoverage`, `totalSupply` mismatch → **branch tx is invalidated** (vertex marked
+     `Bad`) and a highlighted `>>>>>>>> stem-value mismatch …` line is logged per field.
+     Crashing the node would be a remote-DoS vector since the produced stem is peer-supplied;
+     rejection is the right action (see §9.6).
    - The recurrences (`totalSupply = predSupply + slotInflation`,
      `totalCoverage = (predTotalCoverage >> K) + coverageDelta`) are already enforced at EasyFL
-     stage 3, so the panic at the Go level catches inconsistency between Go-computed and
+     stage 3, so the Go-level rejection catches inconsistency between Go-computed and
      stem-declared base aggregates.
 3. The five stem-derived values are no longer written to `RootRecord`. `Update()` only persists
    `Root, SequencerID`.
@@ -371,9 +379,12 @@ C4. Migrate every consumer that touched removed `RootRecord` fields. Search hit 
 
 ### Phase D — Attacher
 
-D1. Replace `checkConsistencyWithMetadata` (advisory) with `enforceStemValues` (panic on
-    mismatch) for branch transactions. Compare attacher-computed values vs. the values inside
-    the produced stem. Per §9.6, mismatch is a major bug / out-of-consensus → panic.
+D1. Replace `checkConsistencyWithMetadata` (advisory) with `enforceStemValues` for branch
+    transactions. Compare attacher-computed values vs. the values inside the produced stem.
+    Per §9.6, mismatch returns an error; `commitBranch` / `wrapUpAttacher` propagate it so
+    the existing Bad-status path in `runMilestoneAttacher` invalidates the branch vertex and
+    logs the cause. Per-field cause is also logged with a highlighted prefix
+    (`>>>>>>>> stem-value mismatch …`).
 D2. For non-branch sequencer txs: nothing to enforce on stem (no stem produced); ledger coverage
     monotonicity checks (`check.go:31-85`) already use computed values — no change needed beyond
     swapping the source of `Branches.LedgerCoverage` to stem-read.
@@ -415,8 +426,14 @@ F3. Update CLAUDE.md memory (Active Task list + key learnings) only when phases 
 5. **Hard break vs soft window** — ✅ no compat. New testnet will be cut after all v0.8.x
    breaking changes have landed; further breaking changes are expected.
 6. **`LedgerCoverage` semantics** — ✅ identical recurrence; on-chain value is the only one.
-   Mismatch between Go-computed value and on-stem value → **panic** (it indicates either a node
-   bug or that the network has lost consensus on a deterministic value).
+   Mismatch between Go-computed value and on-stem value → **the branch transaction is invalidated**
+   (vertex marked `Bad`) and a highlighted warning (`>>>>>>>> stem-value mismatch …`) is logged.
+   We do **not** panic: the produced stem comes from the wire and a peer-supplied malformed
+   branch must not crash the node. Honest sequencers compute the same deterministic values,
+   so the invalidation only fires on bugs or hostile inputs. Implemented by
+   `enforceStemValues` returning an error → propagated through `commitBranch` /
+   `wrapUpAttacher` → `runMilestoneAttacher` calls `vid.SetTxStatusBad(err)` on the existing
+   error path.
 7. **Bootstrap-chain exemption from healthiness check** — ✅ exempt. The bootstrap chain is
    skipped, same as in the existing `_enforceBranchCoverageBounds`.
 8. **Healthiness check on genesis** — ✅ skipped at genesis. Genesis dispatch (§9.3) bypasses
@@ -438,11 +455,13 @@ F3. Update CLAUDE.md memory (Active Task list + key learnings) only when phases 
 - **Sequencer projection drift**: the sequencer must declare the *same* values the validators
   will compute. Past-cone projection is deterministic given the same input set; the sequencer
   must use the same baseline branch. Mitigated by the Phase B3 sanity assert.
-- **Panic on mismatch**: per §9.6, any deterministic-value mismatch panics. This is strict — it
-  means a malformed external branch could crash a node. Mitigation idea: keep the panic
-  classification only inside attacher wrap-up where the inputs are already validated and
-  trust-anchored to the past cone (the predecessor stem values are part of state). Capture as
-  follow-up if operationally too aggressive.
+- **Mismatch handling on the wire**: the produced stem is peer-supplied data, so a deterministic-value
+  mismatch must **not** panic — that would be a remote-DoS vector. Per §9.6 the policy is to
+  **invalidate the branch** (mark Bad) and emit a highlighted `>>>>>>>> stem-value mismatch …`
+  log line per field. The branch is then ignored by every consumer; honest sequencers will
+  publish a correct successor at the next branch slot. This bounds the blast radius of a
+  malformed branch to "one rejected vertex + a loud log" without giving up the strict-rejection
+  semantic.
 - **30-file fan-out for TxMetadata removal** — straightforward but tedious; do it last
   (Phase E) after the on-chain values are proven correct.
 

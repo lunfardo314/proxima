@@ -75,7 +75,7 @@ func ParseAndDisplayTxBytes(txBytes []byte) {
 }
 
 func ParseAndDisplayTxFromSore(txid base.TransactionID) {
-	txBytes := TxBytesStore().GetTxBytesWithMetadata(&txid)
+	txBytes := TxBytesStore().GetTxBytes(&txid)
 	Assertf(len(txBytes) > 0, "transaction not found: %s", txid.String())
 
 	tx, err := transaction.ParseWithPartialValidation(txBytes)

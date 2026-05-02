@@ -254,7 +254,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreFromGlobals(stateStore)
 	txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 	require.NoError(t, err)
-	_, err = ret.txStore.PersistTxBytesWithMetadata(txBytes, nil)
+	_, err = ret.txStore.PersistTxBytes(txBytes)
 	require.NoError(t, err)
 
 	ret.distributionBranchTx, err = transaction.ParseWithPartialValidation(txBytes)
@@ -317,7 +317,7 @@ func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner
 	ret.bootstrapChainID, genesisRoot = multistate.InitStateStoreFromGlobals(stateStore)
 	txBytes, err := txbuilder_seq.DistributeInitialSupply(stateStore, genesisPrivateKey, distrib)
 	require.NoError(t, err)
-	_, err = ret.txStore.PersistTxBytesWithMetadata(txBytes, nil)
+	_, err = ret.txStore.PersistTxBytes(txBytes)
 	require.NoError(t, err)
 
 	ret.distributionBranchTx, err = transaction.ParseWithPartialValidation(txBytes)
@@ -821,7 +821,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 
 func (td *longConflictTestData) storeTxBytes(txBytesMulti ...[]byte) {
 	for _, txBytes := range txBytesMulti {
-		_, err := td.wrk.TxBytesStore().PersistTxBytesWithMetadata(txBytes, nil)
+		_, err := td.wrk.TxBytesStore().PersistTxBytes(txBytes)
 		require.NoError(td.t, err)
 	}
 }
@@ -848,7 +848,7 @@ func (td *longConflictTestData) attachTransactions(txs ...*transaction.Transacti
 }
 
 func (td *longConflictTestData) txBytesToStore() {
-	_, err := td.txStore.PersistTxBytesWithMetadata(td.chainOriginsTx.Bytes(), nil)
+	_, err := td.txStore.PersistTxBytes(td.chainOriginsTx.Bytes())
 	require.NoError(td.t, err)
 
 	td.storeTxBytes(td.txBytesConflicting...)
@@ -1036,7 +1036,7 @@ func StartTestEnv() (*workflowDummyEnvironment, *base.TransactionID, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	txid, err := txBytesStore.PersistTxBytesWithMetadata(txBytes, nil)
+	txid, err := txBytesStore.PersistTxBytes(txBytes)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -30,15 +30,15 @@ type (
 		// RegisterBranchVertices records the vertex set of a branch's past cone for fine-grained pruning.
 		RegisterBranchVertices(branchID base.TransactionID, predecessorBranchID base.TransactionID, vertices set.Set[*vertex.WrappedTx])
 		TxBytesStore() global.TxBytesStore
-		// GetTxBytesWithMetadata checks the transaction cache first, then the store.
-		GetTxBytesWithMetadata(txid *base.TransactionID) []byte
+		// GetTxBytes checks the transaction cache first, then the store.
+		GetTxBytes(txid *base.TransactionID) []byte
 		// TakeCachedTx returns a pre-parsed transaction from the cache and removes it.
 		// Returns nil if not cached.
-		TakeCachedTx(txid *base.TransactionID) (*transaction.Transaction, *txmetadata.TransactionMetadata)
+		TakeCachedTx(txid *base.TransactionID) *transaction.Transaction
 		// CachedTxInSolicited sends a pre-parsed transaction to the solicit queue (fast-track, no rate control).
 		CachedTxInSolicited(tx *transaction.Transaction)
 		// TxBytesFromStoreInSolicited sends raw txstore bytes to the solicit queue (fallback for disk-only lookups).
-		TxBytesFromStoreInSolicited(txBytesWithMetadata []byte)
+		TxBytesFromStoreInSolicited(txBytes []byte)
 		AddPulledTransaction(txid base.TransactionID)
 	}
 

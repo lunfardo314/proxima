@@ -122,7 +122,7 @@ func TestSequencerAttachCostTagAlongChainExceedsBudget(t *testing.T) {
 		chainTxBytes[i] = txBytes
 
 		// Store in txstore (not attach yet)
-		_, err = testData.txStore.PersistTxBytesWithMetadata(txBytes, nil)
+		_, err = testData.txStore.PersistTxBytes(txBytes)
 		require.NoError(t, err)
 	}
 

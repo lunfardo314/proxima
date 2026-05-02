@@ -3,6 +3,7 @@ package attacher
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
@@ -88,43 +89,40 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 
 // enforceStemValues compares the deterministic values declared on the produced
 // stem against what this attacher computed from its past cone (metadata-
-// refactor §6 D1, §9.6). Mismatch on baselineRoot is a hard error — it is
-// trivially deterministic from the predecessor branch's trie root and any
-// disagreement is an out-of-consensus condition that must escalate.
+// refactor §6 D1, §9.6). On any mismatch the branch transaction is invalidated
+// (caller marks the vertex Bad) and a highlighted warning is logged. We do NOT
+// panic: the produced stem comes from the wire and a peer-supplied malformed
+// branch must not crash the node. The branch tx is simply rejected; future
+// past cones referencing it will fail validation as expected.
 //
-// The other aggregates (CoverageDelta / FrozenCoverage / SlotInflation /
-// NumTransactions / TotalSupply / TotalCoverage) are also expected to agree
-// in steady state, but proposer/attacher past-cone resolution timing can
-// legitimately differ in transient cases (the proposer publishes before all
-// endorsement past-cones are fully resolved; the milestone attacher walks
-// deeper). We log mismatches loudly and TODO escalate to panic once the
-// proposer-attacher view is reconciled.
-func isAllZero(b []byte) bool {
-	for _, x := range b {
-		if x != 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) {
+// baselineRoot: when the predecessor branch is known locally, the stem's
+// BaselineRoot must equal its trie root. When the predecessor is unknown
+// (pre-snapshot baseline, genesis edge case) the check is skipped — there is
+// nothing to compare against.
+//
+// Other aggregates (CoverageDelta / FrozenCoverage / SlotInflation /
+// NumTransactions / TotalSupply / TotalCoverage) are deterministic from the
+// past cone. By the time we reach wrap-up the past cone is fully resolved, so
+// any mismatch indicates either a malformed remote branch or a node bug.
+// Either way the right action is to reject the branch.
+func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
 	a.Assertf(a.vid.IsBranchTransaction(), "enforceStemValues: branch tx expected")
 
-	// baselineRoot: hard-deterministic when the stem carries one. A stem with
-	// an all-zero BaselineRoot signals "not provided" (test infra path) — log
-	// it but don't fail the branch, since the constraint only enforces
-	// mustSize($8, 24). When the stem provides a non-zero root, mismatch with
-	// the actual predecessor trie root is an out-of-consensus condition.
-	if !isAllZero(stemLock.BaselineRoot) {
-		if bd := a.Branches().Get(a.finals.baseline); bd != nil && bd.Root != nil {
-			want := bd.Root.Bytes()
-			a.Assertf(bytes.Equal(stemLock.BaselineRoot, want),
-				"enforceStemValues: stemLock.BaselineRoot != predecessor branch's trie root for %s\n  stem: %x\n  want: %x",
-				a.vid.IDShortString(), stemLock.BaselineRoot, want)
+	var mismatches []string
+	report := func(name string, computed, onStem any) {
+		mismatches = append(mismatches,
+			fmt.Sprintf("%s: computed=%v stem=%v", name, computed, onStem))
+		a.Log().Errorf(">>>>>>>> stem-value mismatch in branch %s: %s computed=%v stem=%v",
+			a.vid.IDShortString(), name, computed, onStem)
+	}
+
+	if bd := a.Branches().Get(a.finals.baseline); bd != nil && bd.Root != nil {
+		want := bd.Root.Bytes()
+		if !bytes.Equal(stemLock.BaselineRoot, want) {
+			report("BaselineRoot",
+				fmt.Sprintf("%x", want),
+				fmt.Sprintf("%x", stemLock.BaselineRoot))
 		}
-	} else {
-		a.Log().Warnf("enforceStemValues[%s]: stem carries empty BaselineRoot (test or pre-Phase-D path)", a.vid.IDShortString())
 	}
 
 	delta, frozen := a.CoverageDelta()
@@ -133,19 +131,28 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) {
 	totalCov := a.FinalLedgerCoverage(a.vid.Timestamp(), delta)
 	numTx := uint32(a.pastCone.NumNewTransactions())
 
-	mismatch := func(name string, computed, onStem uint64) {
-		if computed != onStem {
-			a.Log().Warnf("enforceStemValues[%s]: %s mismatch — computed %s, on stem %s",
-				a.vid.IDShortString(), name, util.Th(computed), util.Th(onStem))
-		}
+	if delta != stemLock.CoverageDelta {
+		report("CoverageDelta", util.Th(delta), util.Th(stemLock.CoverageDelta))
 	}
-	mismatch("CoverageDelta", delta, stemLock.CoverageDelta)
-	mismatch("FrozenCoverage", frozen, stemLock.FrozenCoverage)
-	mismatch("SlotInflation", slotInflation, stemLock.SlotInflation)
-	mismatch("TotalSupply", supply, stemLock.TotalSupply)
-	mismatch("TotalCoverage", totalCov, stemLock.TotalCoverage)
-	if uint64(numTx) != uint64(stemLock.NumTransactions) {
-		a.Log().Warnf("enforceStemValues[%s]: NumTransactions mismatch — computed %d, on stem %d",
-			a.vid.IDShortString(), numTx, stemLock.NumTransactions)
+	if frozen != stemLock.FrozenCoverage {
+		report("FrozenCoverage", util.Th(frozen), util.Th(stemLock.FrozenCoverage))
 	}
+	if slotInflation != stemLock.SlotInflation {
+		report("SlotInflation", util.Th(slotInflation), util.Th(stemLock.SlotInflation))
+	}
+	if supply != stemLock.TotalSupply {
+		report("TotalSupply", util.Th(supply), util.Th(stemLock.TotalSupply))
+	}
+	if totalCov != stemLock.TotalCoverage {
+		report("TotalCoverage", util.Th(totalCov), util.Th(stemLock.TotalCoverage))
+	}
+	if numTx != stemLock.NumTransactions {
+		report("NumTransactions", numTx, stemLock.NumTransactions)
+	}
+
+	if len(mismatches) == 0 {
+		return nil
+	}
+	return fmt.Errorf("branch %s rejected: stem-value mismatch [%s]",
+		a.vid.IDShortString(), strings.Join(mismatches, "; "))
 }

@@ -162,8 +162,13 @@ func (a *milestoneAttacher) run() error {
 		a.AssertNoError(err)
 	}
 
-	// finalizing touches
-	a.wrapUpAttacher()
+	// finalizing touches. wrapUpAttacher returns an error only for branch txs
+	// whose produced stem aggregates disagree with what this attacher computed
+	// from its past cone — in that case the branch is rejected (vid → Bad) by
+	// the caller in runMilestoneAttacher (metadata-refactor §6 D1, §9.6).
+	if err := a.wrapUpAttacher(); err != nil {
+		return err
+	}
 
 	a.pastCone.SetFlagsUp(a.vid, vertex.FlagPastConeVertexDefined)
 	if a.vid.IsBranchTransaction() {

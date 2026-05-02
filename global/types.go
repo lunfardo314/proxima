@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
@@ -30,17 +29,16 @@ type (
 // transaction store interface definitions
 type (
 	TxBytesGet interface {
-		// GetTxBytesWithMetadata return empty slice on absence, otherwise returns concatenated metadata bytes and transaction bytes
-		GetTxBytesWithMetadata(id *base.TransactionID) []byte
+		// GetTxBytes returns raw transaction bytes (empty on absence).
+		GetTxBytes(id *base.TransactionID) []byte
 		HasTxBytes(txid *base.TransactionID) bool
 	}
 	TxBytesPersist interface {
-		// PersistTxBytesWithMetadata saves txBytes prefixed with metadata bytes.
-		// metadata == nil is interpreted as empty metadata (one 0 byte as prefix)
-		// optionally, transaction ChainID can be provided to avoid the need to parse the transaction bytes. In the latter case txid is used as DB key as is
-		PersistTxBytesWithMetadata(txBytes []byte, metadata *txmetadata.TransactionMetadata, txid ...base.TransactionID) (base.TransactionID, error)
+		// PersistTxBytes saves raw transaction bytes. The transaction ID can
+		// be supplied explicitly to avoid re-parsing; otherwise it is parsed
+		// from the bytes.
+		PersistTxBytes(txBytes []byte, txid ...base.TransactionID) (base.TransactionID, error)
 		// PersistTxBytesBatch writes multiple transaction entries in a single DB transaction.
-		// Each entry is a TxBytesWithMetadata keyed by transaction ID.
 		// Implementation must not depend on map iteration order.
 		PersistTxBytesBatch(batch map[base.TransactionID][]byte) error
 	}
