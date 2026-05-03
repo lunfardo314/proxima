@@ -33,6 +33,12 @@ type (
 	// stemLock constraint regardless of which off-chain coverage estimator the
 	// caller used to compute its own coverage view.
 	StemAggregates struct {
+		// CoverageDelta / FrozenCoverage / SlotInflation describe the past cone
+		// EXCLUDING this branch transaction itself. buildStemLock adds the
+		// branch's own chain+branch inflation to SlotInflation and +1 to
+		// NumTransactions before populating the produced StemLock — this
+		// matches what the milestone attacher will compute when validating
+		// the branch (which DOES include the branch tx in its past cone).
 		CoverageDelta   uint64
 		FrozenCoverage  uint64
 		SlotInflation   uint64
@@ -493,10 +499,13 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	var baselineRoot []byte
 
 	if a := txb.stemAggregates; a != nil {
+		// Past-cone aggregates from the caller — fold in this branch tx's
+		// own chain+branch inflation and +1 transaction so the produced stem
+		// matches what the milestone attacher will later compute.
 		coverageDelta = a.CoverageDelta
 		frozenCoverage = a.FrozenCoverage
-		slotInflation = a.SlotInflation
-		numTransactions = a.NumTransactions
+		slotInflation = a.SlotInflation + uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
+		numTransactions = a.NumTransactions + 1
 		baselineRoot = a.BaselineRoot
 	} else {
 		// Auto-compute fallback (single-tx past cone): coverageDelta / frozen /
@@ -669,6 +678,12 @@ type MakeSimpleSequencerTransactionParams struct {
 	// for branch txs (StemInput != nil) so the produced stem's BaselineRoot
 	// matches what the attacher cross-checks (metadata-refactor §9.4).
 	BaselineRoot []byte
+	// StemAggregates, if non-nil, overrides buildStemLock's local-input-only
+	// auto-compute with past-cone-aware values. Set this in tests that build
+	// a branch transaction over a multi-tx past cone — the strict attacher
+	// check rejects single-tx auto-compute aggregates when the actual past
+	// cone has more than one new transaction (metadata-refactor §9.6).
+	StemAggregates *StemAggregates
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
@@ -705,6 +720,9 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		// Caller-supplied predecessor branch trie root — used by buildStemLock
 		// to populate the produced stem's BaselineRoot (metadata-refactor §9.4).
 		txb.baselineRoot = par.BaselineRoot
+	}
+	if par.StemAggregates != nil {
+		txb.SetStemAggregates(*par.StemAggregates)
 	}
 	for _, endorsement := range par.Endorsements {
 		if err = txb.AddEndorsement(endorsement); err != nil {

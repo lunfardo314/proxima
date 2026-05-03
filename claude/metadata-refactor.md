@@ -1,40 +1,55 @@
 # Refactor: move global ledger values into the stem constraint; remove persistent TxMetadata
 
-## Status (2026-05-01)
+## Status (2026-05-03)
 
-Phases A → E are shipped. Eight commits on `develop08`:
+All planned phases are shipped on `develop08`:
 
-| Commit     | Phase | What landed                                                                |
-|------------|-------|----------------------------------------------------------------------------|
-| `28ce40a1` | A1    | `healthyCoverageDelta` ledger function + Go wiring; sweep ~20 call sites    |
-| `f04f1725` | A2    | `StemLock` carries 7 new aggregates; arity 2→9; genesis stem populated      |
-| `f9cd47ce` | A3    | On-chain supply / coverage recurrences + healthiness in `lock_stem.easyfl` |
-| `46d92647` | B     | Sequencer task plumbs past-cone-aware aggregates into the produced stem    |
-| `929da629` | C     | `RootRecord` trimmed to {Root,SequencerID}; aggregates projected onto BD    |
-| `eef76c04` | D     | `enforceStemValues` initial landing + Phase B baselineRoot                    |
-| (TBD)      | D'    | `enforceStemValues` invalidates branch tx (no panic) + highlighted warning   |
-| `ee2f19f6` | E     | Persistent TxMetadata removed; wire prefix gone; ~30 call sites swept       |
+| Commit     | Phase | What landed                                                                  |
+|------------|-------|------------------------------------------------------------------------------|
+| `28ce40a1` | A1    | `healthyCoverageDelta` ledger function + Go wiring; sweep ~20 call sites     |
+| `f04f1725` | A2    | `StemLock` carries 7 new aggregates; arity 2→9; genesis stem populated       |
+| `f9cd47ce` | A3    | On-chain supply / coverage recurrences + healthiness in `lock_stem.easyfl`  |
+| `46d92647` | B     | Sequencer task plumbs past-cone-aware aggregates into the produced stem     |
+| `929da629` | C     | `RootRecord` trimmed to {Root,SequencerID}; aggregates projected onto BD     |
+| `eef76c04` | D     | `enforceStemValues` initial landing + Phase B baselineRoot                   |
+| `36e9505f` | D' + cleanup | `enforceStemValues` invalidates branch (no panic) + WithMetadata rename |
+| `ee2f19f6` | E     | Persistent TxMetadata removed; wire prefix gone; ~30 call sites swept        |
+| this commit | follow-ups | Past-cone-aware test stem aggregates; misc cleanups                     |
 
-Open follow-ups (next session):
-- **Phase A4** focused negative tests for the stem constraint (deferred; happy paths covered by `tests/`).
-- **Phase D' (done in this session)** — `enforceStemValues` no longer panics on
-  mismatch. It logs a highlighted `>>>>>>>> stem-value mismatch …` line per
-  field and returns an aggregated error; `wrapUpAttacher` / `commitBranch` now
-  return that error and the existing `runMilestoneAttacher` Bad-status path
-  marks the branch vertex Bad. This removes the DoS surface on the wire (a
-  malformed peer-supplied branch can no longer crash the node) while still
-  rejecting the branch loudly. §9.6 / §10 updated accordingly.
+What this commit added:
+- `txbuilder_seq.MakeSimpleSequencerTransactionParams.StemAggregates` — tests
+  building a branch over a multi-tx past cone can now pass past-cone-aware
+  values that the strict attacher accepts. `buildStemLock` itself folds in the
+  branch tx's own chain+branch inflation (+1 numTransactions), so callers
+  report only the past-cone slice. Production proposer simplified accordingly.
+- `tests.computeStemAggregates(...)` test helper — attaches the chain tip as a
+  non-branch sequencer tx, then uses production `IncrementalAttacher` to walk
+  the past cone and report aggregates the milestone attacher will agree with.
+  `makeBranch` and the matching site in `attach_test.go` now use it; the
+  previously skipped `TestAttachSeqChains` subtests pass and the
+  conflict-detection assertion in `TestAttachConflictsNAttachers...Conflict`
+  is back to the strict "conflicting branch endorsement" check.
+- `_ = baselineSupply` shim removed from `sequencer/task/proposer.go`.
+- `branchDataWithLedgerCoverage` renamed to `cachedBranchData`; the dead
+  `ledgerCoverage` field dropped (it was never read after Phase C).
+- `TxMetadata json.RawMessage` removed from `api.TxBytes` and
+  `api.TransactionJSONAble` — was always nil after Phase E.
+
+Open follow-ups:
+- **Phase A4** focused negative tests for the stem constraint (deferred;
+  happy paths covered by `tests/`). Negative tests can now inject bad
+  aggregates directly via `MakeSimpleSequencerTransactionParams.StemAggregates`.
 - **Phase F** tooling/UI:
-  - `proxi db info` / `db roots` already read via `BranchData` (works) — verify printout shows the new aggregates with the right labels.
-  - `dag_explorer` per-vertex `CoverageDelta` / `Supply` fields are temporarily nil for non-branch vertices (TODO comment in `api/dag_explorer/dag_explorer.go`); for branch txs, wire them from the stem.
-  - `api/streaming/dag_vertex_server.go` `VertexWithDependenciesExtended` likewise passes nil for these — fold in the stem read.
+  - `proxi db info` / `db roots` already read via `BranchData` (works) — verify
+    printout shows the new aggregates with the right labels.
+  - `dag_explorer` per-vertex `CoverageDelta` / `Supply` fields are temporarily
+    nil for non-branch vertices; for branch txs, wire them from the stem.
+  - `api/streaming/dag_vertex_server.go` `VertexWithDependenciesExtended`
+    likewise passes nil for these — fold in the stem read.
   - Update `CLAUDE.md` "Active Task" list with v0.8.x post-refactor pointers.
-- **Cleanup leftovers** worth doing as small commits:
-  - Remove the now-vestigial `TransactionMetadata` parameter from `txstore.PersistTxBytesWithMetadata` and rename to `PersistTxBytes`. The wrapper interface in `global` will need the rename too.
-  - Drop the `_ = baselineSupply` shim in `sequencer/task/proposer.go`.
-  - Re-evaluate whether the cache `branchDataWithLedgerCoverage` still earns its keep now that `Branches.LedgerCoverage` is a one-liner.
-  - The `combineTxBytesWithMetadata` helper in `core/core_modules/txstore_writer/txstore_writer.go` is now a pass-through — inline and delete.
-  - The `TxMetadata json.RawMessage` field on `api.TxBytes` / `api.TransactionJSONAble` is always nil; can be removed in a wire-format break.
+- **Test-suite flake** (pre-existing, not from this refactor): `TestIdle2`'s
+  in-test 30s deadline can slip when the full `tests/...` run is under heavy
+  CPU pressure. The test self-documents this in its godoc.
 
 
 

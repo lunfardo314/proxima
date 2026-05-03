@@ -811,14 +811,16 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 
 	stem := multistate.MakeSugared(testData.wrk.HeaviestStateForLatestTimeSlot()).GetStemOutput()
 	for i := range chainIn {
+		stemAggs := computeStemAggregates(t, testData.wrk, &chainIn[i].OutputWithID, testData.distributionBranchTxID, ts)
 		txBytesBranch[i], err = txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:       "seq",
-			StemInput:     stem,
-			ChainInput:    chainIn[i],
-			Timestamp:     ts,
-			SignatureType: base.SignatureTypeED25519,
-			PrivateKey:    testData.privKeyAux,
-			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
+			SeqName:        "seq",
+			StemInput:      stem,
+			ChainInput:     chainIn[i],
+			Timestamp:      ts,
+			SignatureType:  base.SignatureTypeED25519,
+			PrivateKey:     testData.privKeyAux,
+			PublicKey:      testData.privKeyAux.Public().(ed25519.PublicKey),
+			StemAggregates: &stemAggs,
 		})
 		require.NoError(t, err)
 
@@ -861,27 +863,10 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 
 	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
 	t.Logf("expected error: %v", vid.GetError())
-	// After metadata-refactor §9.6 a branch with mismatched stem aggregates is
-	// rejected at wrap-up (the simple test txbuilder doesn't walk the past cone).
-	// This dependency-side rejection now fires before the attacher's own
-	// "conflicting branch endorsement" check, so accept either path — both
-	// invalidate the conflicting transaction as the test intends.
-	err = vid.GetError()
-	require.True(t,
-		util.MustErrorWith(err, "conflicting branch endorsement") == nil ||
-			util.MustErrorWith(err, "stem-value mismatch") == nil,
-		"expected conflicting-endorsement or stem-value-mismatch rejection, got: %v", err)
+	require.NoError(t, util.MustErrorWith(vid.GetError(), "conflicting branch endorsement"))
 }
 
 func TestAttachSeqChains(t *testing.T) {
-	// After metadata-refactor §9.6 (strict stem-aggregate enforcement), branches
-	// built via MakeSimpleSequencerTransaction get rejected because the simple
-	// txbuilder uses single-tx auto-compute for CoverageDelta / SlotInflation /
-	// NumTransactions, whereas the attacher walks the multi-tx past cone. Honest
-	// production sequencers compute past-cone-aware aggregates via SetStemAggregates,
-	// so the policy is correct — this test needs a richer test txbuilder that walks
-	// the past cone itself. Tracked as a follow-up; skipping until that lands.
-	t.Skip("needs past-cone-aware stem aggregate computation in MakeSimpleSequencerTransaction (metadata-refactor follow-up)")
 	t.Run("no pull order normal", func(t *testing.T) {
 		//attacher.SetTraceOn()
 		const (
@@ -1060,14 +1045,17 @@ func TestAttachSeqChains(t *testing.T) {
 		require.True(t, distribBD != nil)
 
 		chainIn := testData.seqChain[0][len(testData.seqChain[0])-1].SequencerOutput().MustAsChainOutput()
+		targetTs := chainIn.Timestamp().NextSlotBoundary()
+		stemAggs := computeStemAggregates(t, testData.wrk, &chainIn.OutputWithID, testData.distributionBranchTxID, targetTs)
 		txBytesBranch, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-			SeqName:       "seq0",
-			ChainInput:    chainIn,
-			StemInput:     distribBD.Stem,
-			Timestamp:     chainIn.Timestamp().NextSlotBoundary(),
-			SignatureType: base.SignatureTypeED25519,
-			PrivateKey:    testData.privKeyAux,
-			PublicKey:     testData.privKeyAux.Public().(ed25519.PublicKey),
+			SeqName:        "seq0",
+			ChainInput:     chainIn,
+			StemInput:      distribBD.Stem,
+			Timestamp:      targetTs,
+			SignatureType:  base.SignatureTypeED25519,
+			PrivateKey:     testData.privKeyAux,
+			PublicKey:      testData.privKeyAux.Public().(ed25519.PublicKey),
+			StemAggregates: &stemAggs,
 		})
 		//txBytesBranch, err := txbuilder.MakeSequencerTransaction(txbuilder.MakeSequencerTransactionParamsOld{
 		//	SeqName:    "seq0",

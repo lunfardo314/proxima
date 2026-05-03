@@ -696,19 +696,93 @@ func (td *longConflictTestData) makeBranch(extend *ledger.OutputWithChainID, pre
 	td.t.Logf("extendTS: %s, prevBranchTS: %s", extend.Timestamp().String(), prevBranch.Timestamp().String())
 	require.True(td.t, extend.Timestamp().After(prevBranch.Timestamp()))
 
+	// Ensure prevBranch + any tag-along transfer chain is in the txstore so the
+	// chain tip we're about to attach (inside computeStemAggregates) can solidify
+	// its past cone all the way back to its baseline.
+	prevBranchID := prevBranch.ID()
+	if !td.wrk.TxBytesStore().HasTxBytes(&prevBranchID) {
+		_, err := td.wrk.TxBytesStore().PersistTxBytes(prevBranch.Bytes())
+		require.NoError(td.t, err)
+	}
+	for _, tx := range td.transferChain {
+		txid := tx.ID()
+		if td.wrk.TxBytesStore().HasTxBytes(&txid) {
+			continue
+		}
+		_, err := td.wrk.TxBytesStore().PersistTxBytes(tx.Bytes())
+		require.NoError(td.t, err)
+	}
+
+	targetTs := extend.Timestamp().NextSlotBoundary()
+	stemAggs := computeStemAggregates(td.t, td.wrk, &extend.OutputWithID, prevBranchID, targetTs)
+
 	txBytesBranch, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
-		SeqName:       "seq0",
-		ChainInput:    extend,
-		StemInput:     prevBranch.StemOutput(),
-		Timestamp:     extend.Timestamp().NextSlotBoundary(),
-		SignatureType: base.SignatureTypeED25519,
-		PrivateKey:    td.privKeyAux,
-		PublicKey:     td.privKeyAux.Public().(ed25519.PublicKey),
+		SeqName:        "seq0",
+		ChainInput:     extend,
+		StemInput:      prevBranch.StemOutput(),
+		Timestamp:      targetTs,
+		SignatureType:  base.SignatureTypeED25519,
+		PrivateKey:     td.privKeyAux,
+		PublicKey:      td.privKeyAux.Public().(ed25519.PublicKey),
+		StemAggregates: &stemAggs,
 	})
 	require.NoError(td.t, err)
 	tx, err := transaction.ParseWithPartialValidation(txBytesBranch)
 	require.NoError(td.t, err)
 	return tx
+}
+
+// computeStemAggregates returns past-cone-aware stem aggregates suitable for
+// MakeSimpleSequencerTransactionParams.StemAggregates when the test builds a
+// branch tx whose past cone spans more than one new transaction. It works by
+// attaching the chain tip as a non-branch sequencer transaction (no stem, so
+// the strict enforceStemValues check at wrap-up doesn't fire), then using the
+// production IncrementalAttacher to walk the past cone and report aggregates
+// that the milestone attacher will later compute identically when validating
+// the branch.
+//
+// chainTipOut: the chain output the branch will extend
+// baselineBranchID: the predecessor branch (i.e. the branch the StemInput points to)
+// targetTs: the branch's intended timestamp (slot boundary)
+func computeStemAggregates(
+	t *testing.T,
+	wrk *workflow.Workflow,
+	chainTipOut *ledger.OutputWithID,
+	baselineBranchID base.TransactionID,
+	targetTs base.LedgerTime,
+) txbuilder_seq.StemAggregates {
+	tipTxid := chainTipOut.ID.TransactionID()
+	tipTxBytes := wrk.TxBytesStore().GetTxBytes(&tipTxid)
+	require.True(t, len(tipTxBytes) > 0, "chain tip %s must already be in txstore", tipTxid.StringShort())
+	tipTx, err := transaction.ParseWithPartialValidation(tipTxBytes)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	vidTip := attacher.AttachTransaction(tipTx, wrk, attacher.WithAttachmentCallback(func(_ *vertex.WrappedTx, _ error) {
+		wg.Done()
+	}))
+	wg.Wait()
+	require.EqualValues(t, vertex.Good.String(), vidTip.GetTxStatus().String(),
+		"chain tip %s did not attach Good (err: %v)", tipTxid.StringShort(), vidTip.GetError())
+
+	extend := vidTip.SequencerWrappedOutput()
+	a, err := attacher.NewIncrementalAttacher("test-stem-aggregates", wrk, targetTs, extend)
+	require.NoError(t, err)
+	defer a.Close()
+
+	bd := wrk.Branches().Get(baselineBranchID)
+	require.NotNil(t, bd, "baseline branch %s not known", baselineBranchID.StringShort())
+	require.NotNil(t, bd.Root, "baseline branch %s has nil trie root", baselineBranchID.StringShort())
+
+	delta, frozen := a.CoverageDelta()
+	return txbuilder_seq.StemAggregates{
+		CoverageDelta:   delta,
+		FrozenCoverage:  frozen,
+		SlotInflation:   a.SlotInflation(),
+		NumTransactions: uint32(a.NumNewTransactionsInPastCone()),
+		BaselineRoot:    bd.Root.Bytes(),
+	}
 }
 
 func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Transaction, branch *transaction.Transaction) []*transaction.Transaction {

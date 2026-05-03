@@ -25,17 +25,16 @@ type (
 		RequestPrune()
 	}
 
-	branchDataWithLedgerCoverage struct {
+	cachedBranchData struct {
 		*multistate.BranchData
-		ledgerCoverage uint64
-		lastActive     time.Time
+		lastActive time.Time
 	}
 
 	Branches struct {
 		environment
 		mutex            sync.Mutex
 		snapshotBranchID base.TransactionID
-		m                map[base.TransactionID]branchDataWithLedgerCoverage
+		m                map[base.TransactionID]cachedBranchData
 
 		// Cache of state readers. Single state (trie) reader for the branch/root. When accessed through the cache,
 		// reading is highly optimized because each state reader keeps its trie cache, so consequent calls to
@@ -94,7 +93,7 @@ func New(env environment) *Branches {
 	ret := &Branches{
 		environment:      env,
 		snapshotBranchID: multistate.FetchSnapshotBranchID(env.StateStore()),
-		m:                make(map[base.TransactionID]branchDataWithLedgerCoverage),
+		m:                make(map[base.TransactionID]cachedBranchData),
 		stateReaders:     make(map[base.TransactionID]*cachedStateReader),
 		pending:          make(map[base.TransactionID]*PendingBranchCommit),
 		committing:       make(map[base.TransactionID]chan struct{}),
@@ -153,7 +152,7 @@ func (b *Branches) SnapshotSlot() uint32 {
 	return b.snapshotBranchID.Slot()
 }
 
-func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (branchDataWithLedgerCoverage, bool) {
+func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (cachedBranchData, bool) {
 	bd, ok := b.m[branchID]
 	if ok {
 		bd.lastActive = time.Now()
@@ -164,21 +163,20 @@ func (b *Branches) _getAndCacheNoLock(branchID base.TransactionID) (branchDataWi
 	if branchID.Slot() < b.snapshotBranchID.Slot() ||
 		(branchID.Slot() == b.snapshotBranchID.Slot() && branchID != b.snapshotBranchID) {
 		// the branch is impossible assuming the snapshot baseline
-		return branchDataWithLedgerCoverage{}, false
+		return cachedBranchData{}, false
 	}
 
 	// fetch branch from the database
 	if rd, found := multistate.FetchRootRecord(b.StateStore(), branchID); found {
 		bdRec := multistate.FetchBranchDataByRoot(b.StateStore(), rd)
-		bd = branchDataWithLedgerCoverage{
-			BranchData:     &bdRec,
-			ledgerCoverage: 0, // will be lazy-calculated when needed
-			lastActive:     time.Now(),
+		bd = cachedBranchData{
+			BranchData: &bdRec,
+			lastActive: time.Now(),
 		}
 		b.m[branchID] = bd
 		return bd, true
 	}
-	return branchDataWithLedgerCoverage{}, false
+	return cachedBranchData{}, false
 }
 
 // LedgerCoverage returns the total ledger coverage of the branch — read
@@ -275,7 +273,7 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 	// build BranchData with nil Root for immediate use by coverage/supply lookups.
 	// Stem-projected aggregates come from the PendingBranchCommit so callers see
 	// the same values they will see after commit.
-	bd := branchDataWithLedgerCoverage{
+	bd := cachedBranchData{
 		BranchData: &multistate.BranchData{
 			RootRecord: multistate.RootRecord{
 				// Root is nil — will be set when committed
@@ -291,8 +289,7 @@ func (b *Branches) AddPendingBranch(branchID base.TransactionID, pb *PendingBran
 			NumTransactions: pb.NumTransactions,
 			BaselineRoot:    pb.BaselineRoot,
 		},
-		ledgerCoverage: 0,
-		lastActive:     time.Now(),
+		lastActive: time.Now(),
 	}
 
 	b.m[branchID] = bd
