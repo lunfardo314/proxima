@@ -38,10 +38,13 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 }
 
 func GenesisStemOutput() *OutputWithID {
-	// Genesis stem aggregates (per metadata-refactor §9.3):
+	// Genesis stem aggregates:
 	//   TotalSupply   = constInitialSupply
 	//   TotalCoverage = TotalSupply
-	//   all deltas    = 0
+	//   CoverageDelta = TotalSupply  (mirrors pre-refactor RootRecord; required so
+	//                                 the genesis branch passes the LRB healthiness
+	//                                 check on a fresh node started from snapshot)
+	//   FrozenCoverage / SlotInflation / NumTransactions = 0
 	//   BaselineRoot  = TrieHashSize zero bytes
 	initialSupply := L(0).InitialSupply
 	return &OutputWithID{
@@ -52,6 +55,7 @@ func GenesisStemOutput() *OutputWithID {
 					PredecessorOutputID: base.OutputID{},
 					TotalSupply:         initialSupply,
 					TotalCoverage:       initialSupply,
+					CoverageDelta:       initialSupply,
 					BaselineRoot:        make([]byte, TrieHashSize),
 				})
 		}),
