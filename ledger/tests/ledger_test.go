@@ -37,7 +37,7 @@ func TestOutput(t *testing.T) {
 	t.Run("address", func(t *testing.T) {
 		addr := ledger.SigLockFromED25519PublicKey(pubKey)
 		t.Logf("address: %s", addr.String())
-		t.Logf("address hex: 0x%s", hex.EncodeToString(addr.Bytes()))
+		t.Logf("address hex: 0x%s", hex.EncodeToString(addr[:]))
 		out := ledger.OutputBasic(0, ledger.SigLockFromED25519PublicKey(pubKey))
 		outBack, err := ledger.OutputFromBytes(out.Bytes())
 		require.NoError(t, err)
@@ -45,9 +45,10 @@ func TestOutput(t *testing.T) {
 		t.Logf("output: %d bytes", len(out.Bytes()))
 		t.Logf("output:\n%s", out.Lines().String())
 
-		_, err = ledger.SigLockFromBytes(outBack.Lock().Bytes())
-		require.NoError(t, err)
-		require.EqualValues(t, out.Lock(), outBack.Lock())
+		// Round-trip: parsed lock must be a SigLock with the same holder.
+		parsed, ok := outBack.Lock().(ledger.SigLock)
+		require.True(t, ok)
+		require.EqualValues(t, addr, parsed)
 	})
 	t.Run("tokens", func(t *testing.T) {
 		out := ledger.OutputBasic(1337, ledger.SigLock{})
@@ -880,7 +881,7 @@ func TestGGG(t *testing.T) {
 	jan1 := time.Date(2023, 1, 1, 0, 0, 0, 0, loc)
 	t.Logf("Jan 1, 2023 UTC = %d", uint32(jan1.Unix()))
 
-	_, _, bin, err := lib.CompileExpression("sigLock(0x)")
+	_, _, bin, err := lib.CompileExpression("sigLock")
 	require.NoError(t, err)
 	prefix, err := lib.ParsePrefixBytecode(bin)
 	require.NoError(t, err)

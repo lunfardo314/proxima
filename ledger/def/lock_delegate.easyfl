@@ -1,3 +1,12 @@
+// delegateLock locks an output for a delegation: the target sequencer chain
+// can spend it (subject to freeze rules), and the master ed25519 holder can
+// revoke it back.
+//
+// The public lock symbol `delegateLock` is a 2-arg constraint — its bytecode
+// at the lock element carries (maxFrozenEpochs, inflationShare). The
+// (master, target) pair lives in the index-value tuple: position 0 =
+// masterID (master-first §4.1 convention), position 1 = targetChainID. The
+// wrapper threads both into `_delegateLock` (target-first arg ordering).
 
 func constDelegationSafeRevocationSlots  : 60  // 10 min
 func constDelegationEpochSlots : u32/700  // almost 2 hours
@@ -44,8 +53,10 @@ or(
 )
 
 // self is delegation output - does not depend on consumed/produced context
+// Target chainID is read from the index-value tuple at position 1
+// (master is at position 0 by §4.1 convention).
 
-func _selfTargetChainID : parseInlineDataArgument(self, 0, #delegateLock)
+func _selfTargetChainID : selfIndexValue(1)
 func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(4),0, #delegateLockState))
 func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(4), 1, #delegateLockState)
 func _selfIsMarkedFrozen : equal(_selfStateMark, 1)
@@ -197,7 +208,7 @@ func _masterUnlockedConsumed :
 and(
     equal(byte(selfUnlockParameters,1), 0xff),
     require(not(_consumedIsFrozenInTx), !!!frozen_output_cannot_be_unlocked_by_master),
-    sigLock($0),
+    _sigLock($0),
 )
 
 func _amountOnSuccessor : tokenBalanceByOutputPath(concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(chainConstraintIndex), 0)))
@@ -233,13 +244,15 @@ and(
 	  // output must be unlockable in principle
    _requireUnlockableByTheTarget,
 	  // target chain must be unlocked
-   require(chainLock($0), !!!delegation_target_chain_must_be_unlocked),
+   require(_chainLock($0), !!!delegation_target_chain_must_be_unlocked),
       // target cannot discontinue the chain
    require(not(equal(len(selfSiblingUnlockParams(chainConstraintIndex)), u64/0)), !!!target_cannot_discontinue_the_delegation_chain),
 	  // amount should not decrease
    require(lessOrEqualThan(selfTokenBalanceValue, _amountOnSuccessor), !!!delegated_amount_should_not_decrease),
-	  // delegation lock must be exactly equal
-   require(equal(successorConstraint(lockConstraintIndex), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_on_successor_must_be_exactly_the_same)
+	  // delegation lock at the lock element must match exactly
+   require(equal(successorConstraint(lockConstraintIndex), selfSiblingConstraint(lockConstraintIndex)), !!!delegation_lock_on_successor_must_be_exactly_the_same),
+      // and the index-value tuple (master, target) must match exactly too
+   require(equal(successorConstraint(indexValuesConstraintIndex), selfSiblingConstraint(indexValuesConstraintIndex)), !!!delegation_index_values_on_successor_must_be_exactly_the_same)
 )
 
 // $0 target chain ID (32 bytes)
@@ -260,18 +273,23 @@ func _validDelegationConsumed : and(
 // return uin64: isZero is constDelegationMaxFrozenEpochs, otherwise must be between 1 and constDelegationMaxFrozenEpochs inclusive
 func _adjustedMaxFrozenEpochs: if( isZero($0), uint8Bytes(constDelegationMaxFrozenEpochs), uint8Bytes($0))
 
-// Delegation lock output. Immutable
-// $0 target chain ID (32 bytes)
-// $1 master holder ID (32 bytes, blake2b hash of <sig type>+<public key>)
-// $2 max frozen epochs limit set by the delegator. If isZero, then default constDelegationMaxFrozenEpochs, otherwise must be <= constDelegationMaxFrozenEpochs
-// $3 required inflation share in promille (0-1000, z64).
+// _delegateLock validation logic, parameterised on:
+// $0 target chain ID (32 bytes)         — comes from the index-value tuple, position 1
+// $1 master holder ID (32 bytes)        — comes from the index-value tuple, position 0
+// $2 max frozen epochs (z64, optional)  — comes from the lock bytecode arg 0
+// $3 required inflation share in promille (z64) — comes from the lock bytecode arg 1
 //
 // Unlock parameters 2 bytes: first byte is used to unlock address or chain locks
 // Byte with index 1 must be 0xff for master unlock, otherwise it is target unlock
-func delegateLock: and(
+func _delegateLock: and(
 	require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
     or(
        _validDelegationProduced(_adjustedMaxFrozenEpochs($2), uint8Bytes($3)),
        _validDelegationConsumed($0, $1)
     )
 )
+
+// public 2-arg lock — target / master come from the index-value tuple.
+// $0 max frozen epochs (z64)            — lock bytecode arg 0
+// $1 required inflation share (z64)     — lock bytecode arg 1
+func delegateLock : _delegateLock(selfIndexValue(1), selfIndexValue(0), $0, $1)

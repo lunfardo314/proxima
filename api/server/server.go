@@ -217,7 +217,7 @@ func (srv *server) _getControlledOutputsWithFilter(r *http.Request, controller l
 
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) (errRet error) {
 		lrbid = rdr.GetStemOutput().ID.TransactionID()
-		err1 := rdr.IterateOutputsForAccount(controller, func(oid base.OutputID, o *ledger.Output) bool {
+		err1 := rdr.IterateOutputsForAccount(controller.ControllerID(), func(oid base.OutputID, o *ledger.Output) bool {
 			if filter(oid, o) {
 				outs = append(outs, &ledger.OutputWithID{
 					ID:     oid,
@@ -388,7 +388,7 @@ func (srv *server) getNonChainBalance(w http.ResponseWriter, r *http.Request) {
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
-		err1 := rdr.IterateOutputsForAccount(targetAddr, func(_ base.OutputID, o *ledger.Output) bool {
+		err1 := rdr.IterateOutputsForAccount(targetAddr.ControllerID(), func(_ base.OutputID, o *ledger.Output) bool {
 			if o.Lock().Name() != ledger.SigLockName {
 				return true
 			}
@@ -443,7 +443,7 @@ func (srv *server) getOutputsForAmount(w http.ResponseWriter, r *http.Request) {
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
-		err1 := rdr.IterateOutputsForAccount(targetAddr, func(oid base.OutputID, o *ledger.Output) bool {
+		err1 := rdr.IterateOutputsForAccount(targetAddr.ControllerID(), func(oid base.OutputID, o *ledger.Output) bool {
 			if o.Lock().Name() != ledger.SigLockName {
 				return true
 			}
@@ -550,7 +550,7 @@ func (srv *server) _getChainedOutputsFiltered(w http.ResponseWriter, r *http.Req
 		lrbid := rdr.GetStemOutput().ID.TransactionID()
 		resp.LRBID = lrbid.StringHex()
 
-		err1 = rdr.IterateChainsInAccount(accountable, func(oid base.OutputID, o *ledger.Output, _ base.ChainID) bool {
+		err1 = rdr.IterateChainsInAccount(accountable.ControllerID(), func(oid base.OutputID, o *ledger.Output, _ base.ChainID) bool {
 			if filter(oid, o) {
 				resp.Outputs[oid.StringHex()] = hex.EncodeToString(o.Bytes())
 			}

@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"fmt"
@@ -410,7 +411,19 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 		return false
 	}
 	lock := oReal.Lock()
-	if !ledger.LockIsControlledBy(lock, ledger.SigLockFromED25519PrivateKey(seq.controllerKey)) {
+	expectedHolder := ledger.SigLockFromED25519PrivateKey(seq.controllerKey)
+	// Match by the index-value tuple — any position whose bytes equal
+	// the expected holder counts (e.g. delegate's master at position 0,
+	// or sigLock's holder at position 0).
+	expectedID := expectedHolder.ControllerID()
+	matches := false
+	for _, v := range oReal.IndexValues() {
+		if bytes.Equal(v, expectedID) {
+			matches = true
+			break
+		}
+	}
+	if !matches {
 		seq.log.Errorf("checkSequencerStartOutput: provided private key does match sequencer lock %s", lock.String())
 		return false
 	}

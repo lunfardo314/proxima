@@ -108,11 +108,12 @@ func TestParseOutputData(t *testing.T) {
 	assert.Equal(t, oDataStr, ret.Data)
 	assert.Equal(t, amount, ret.Amount)
 	assert.Equal(t, chainID.StringHex(), ret.ChainID)
-	// Layout: [0] amounts, [1] index-values placeholder, [2] lock, [3] chain.
+	// Layout: [0] amounts, [1] index-values tuple (holderID), [2] lock
+	// (0-arg sigLock symbol — no embedded data), [3] chain constraint.
 	assert.Equal(t, 4, len(ret.Constraints))
 	assert.Equal(t, "amounts(31_415_926_535)", ret.Constraints[0])
-	assert.Equal(t, "index values: <empty>", ret.Constraints[1])
-	assert.Equal(t, addr.String(), ret.Constraints[2])
+	assert.Equal(t, "index values: [0x"+hex.EncodeToString(addr[:])+"]", ret.Constraints[1])
+	assert.Equal(t, ledger.SigLockName, ret.Constraints[2])
 	assert.Equal(t, cc.String(), ret.Constraints[3])
 }
 

@@ -79,7 +79,7 @@ func MakeChain(onChainAmount uint64) (*transaction.Transaction, base.ChainID, er
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,
 		Amount:           onChainAmount,
-		Target:           target.AsLock(),
+		Target:           target,
 	})
 }
 

@@ -114,7 +114,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	require.NoError(t, err)
 
 	// retrieve delegation output
-	delegOuts, err := env.u.SugaredStateReader().GetOutputsDelegatedToAccount2(ledger.ChainLockFromChainID(env.target))
+	delegOuts, err := env.u.SugaredStateReader().GetOutputsDelegatedToAccount2(env.target[:])
 	require.NoError(t, err)
 	require.EqualValues(t, 1, len(delegOuts))
 	env.delegatedOutput, _ = ledger.DelegationOutputFromOutputWithChainID(delegOuts[0])
@@ -294,7 +294,7 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "target should not be able to change delegation lock")
-	require.NoError(t, util.MustErrorWith(err, "delegation lock on successor must be exactly the same"))
+	require.NoError(t, util.MustErrorWith(err, "delegation index values on successor must be exactly the same"))
 }
 
 // TestClaudeDelegationTargetDiscontinuesChain verifies that the target sequencer

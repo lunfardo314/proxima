@@ -29,7 +29,6 @@ type (
 		Constants                          // Embedded ledger constants for this library version
 		definitionsYAML                    []byte
 		constraintByPrefix                 map[string]*constraintRecord
-		locksByName                        map[string]LockParser
 		upgradeChainData                   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
 		upgradeIndex                       uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
 		TxIntegrityValidatorPartialContext IntegrityValidator
@@ -48,7 +47,6 @@ func newLibrary(lib *easyfl.Library[*EvalContext], definitionsYAML []byte) *Libr
 		Library:            lib,
 		definitionsYAML:    definitionsYAML,
 		constraintByPrefix: make(map[string]*constraintRecord),
-		locksByName:        make(map[string]LockParser),
 	}
 	return ret
 }

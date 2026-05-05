@@ -1,12 +1,21 @@
+// tagAlong is a tiny fee output sent to a specific sequencer chain (target)
+// from a specific user (sender). The sequencer can spend it during the
+// tag-along window, or the sender can reclaim it after that window expires.
+//
+// The public lock symbol `tagAlong` is a 0-arg constraint — its bytecode at
+// the lock element carries no data. The (sender, target) pair lives only in
+// the index-value tuple: position 0 = senderID (master, by §4.1 convention),
+// position 1 = targetSequencerID. The wrapper threads them into `_tagAlong`
+// (which keeps the original target-first arg ordering).
 
 func constTagAlongSlots : u64/30  // 5 min
 func constTagAlongReclaimSlots : u64/390 // 5 min + 1 hour
 
 func selfInputSlotPace: sub(txSlot, slotOfInputByIndex(selfOutputIndex))
 
-// $0 - target sequencer ID, like in the chainLock
-// $1 - holder ID (32 bytes, blake2b hash of <sig type>+<public key>)
-func tagAlong :
+// $0 - target sequencer ID (32 bytes), supplied by the public wrapper
+// $1 - sender holder ID (32 bytes), supplied by the public wrapper
+func _tagAlong :
 or(
   and(
      selfIsProducedOutput,
@@ -27,13 +36,17 @@ or(
 		and(
 			 // unlockable by the target
 		   lessThan(selfInputSlotPace, constTagAlongSlots),
-		   require(chainLock($0), !!!unlock_window_error:_inside_tag_along_slots_must_be_unlocked_by_the_target)
+		   require(_chainLock($0), !!!unlock_window_error:_inside_tag_along_slots_must_be_unlocked_by_the_target)
 		),
 			 // unlockable by the sender
         require(
-           sigLock($1),
+           _sigLock($1),
            !!!unlock_window_error:_inside_reclaim_slots_must_be_unlocked_by_the_sender
         )
 	 )
   )
 )
+
+// public 0-arg lock — sender / target come from the index-value tuple
+// (sender at position 0 per §4.1 master-first convention; target at position 1).
+func tagAlong : _tagAlong(selfIndexValue(1), selfIndexValue(0))

@@ -126,6 +126,16 @@ functions:
     numArgs: 1
     source: "atPath(concat(selfOutputPath, $0))"
   -
+    sym: selfIndexValue
+    description: "$0 index of the value in the index-value tuple at output element index 1"
+    numArgs: 1
+    source: "atPath(concat(selfOutputPath, indexValuesConstraintIndex, $0))"
+  -
+    sym: consumedIndexValueByIndex
+    description: "$0 input index, $1 index of the value in the consumed input's index-value tuple"
+    numArgs: 2
+    source: "atPath(concat(pathToConsumedOutputs, $0, indexValuesConstraintIndex, $1))"
+  -
     sym: selfOutputBytes
     numArgs: 0
     source: "atPath(selfOutputPath)"

@@ -28,8 +28,11 @@ type (
 )
 
 const (
-	DelegateLockName       = "delegateLock"
-	DelegateLockTemplate   = DelegateLockName + "(0x%s, 0x%s, %s, z16/%d)"
+	DelegateLockName = "delegateLock"
+	// 2 args at output element index 2: maxFrozenEpochs, inflationShare.
+	// Target chainID and master holder ID live in the index-value tuple at
+	// output element index 1 (positions 1 and 0 respectively).
+	DelegateLockTemplate   = DelegateLockName + "(%s, z16/%d)"
 	DelegateLockTemplateHR = DelegateLockName + "(targetChainID=%s, master=%s, maxFreezeEpochs=%d, inflationShare=%d%%)"
 
 	DelegateLockStateName       = "delegateLockState"
@@ -60,32 +63,50 @@ func NewDelegateLock(targetChainID base.ChainID, masterID base.HolderID, maxFroz
 	}
 }
 
+// Source returns the EasyFL source representation of the 2-arg
+// delegateLock constraint that goes at output element index 2. Only
+// (maxFrozenEpochs, inflationShare) live in the bytecode; target chain
+// and master holder live in the index-value tuple at index 1.
 func (d *DelegateLock) Source() string {
 	m := "0x"
 	if d.MaxFrozenEpochs != 0 && d.MaxFrozenEpochs != byte(L(base.MaxSlot).MaxFrozenEpochs) {
 		m = fmt.Sprintf("%d", d.MaxFrozenEpochs)
 	}
-	return fmt.Sprintf(DelegateLockTemplate, hex.EncodeToString(d.Target[:]), hex.EncodeToString(d.MasterID[:]), m, d.RequiredInflationShare)
+	return fmt.Sprintf(DelegateLockTemplate, m, d.RequiredInflationShare)
 }
 
 func (d *DelegateLock) String() string {
 	return fmt.Sprintf(DelegateLockTemplateHR, d.Target.String(), hex.EncodeToString(d.MasterID[:]), d.MaxFrozenEpochs, d.RequiredInflationShare)
 }
 
+// Bytes returns the compiled bytecode of the 2-arg delegateLock
+// constraint at output element index 2.
 func (d *DelegateLock) Bytes() []byte {
 	return mustBinFromSource(d.Source())
 }
 
-func (d *DelegateLock) Controllers() []Controller {
-	targetLock := ChainLockFromChainID(d.Target)
-	if EqualControllers(targetLock, SigLock(d.MasterID)) {
-		return []Controller{targetLock}
-	}
-	return []Controller{targetLock, SigLock(d.MasterID)}
+func (d *DelegateLock) Name() string {
+	return DelegateLockName
 }
 
+// IndexValues returns [masterID, targetChainID]. Master is at position 0
+// per the §4.1 master-first convention.
+func (d *DelegateLock) IndexValues() [][]byte {
+	return [][]byte{d.MasterID[:], d.Target[:]}
+}
+
+// LockBytecode returns the compiled 2-arg delegateLock bytecode at
+// output element index 2 (carries maxFrozenEpochs and inflationShare).
+func (d *DelegateLock) LockBytecode() []byte {
+	return d.Bytes()
+}
+
+// DelegateLockFromBytesWithLib parses the 2-arg delegateLock bytecode at
+// output element index 2. Returns a partially-filled DelegateLock with
+// MaxFrozenEpochs and RequiredInflationShare set; the caller must fill
+// Target / MasterID from the output's index-value tuple at index 1.
 func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
-	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
+	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, fmt.Errorf("DelegateLockFromBytes: %w", err)
 	}
@@ -94,32 +115,19 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 	}
 	ret := &DelegateLock{}
 
-	// target chain ID (raw 32 bytes)
-	targetBin := easyfl.StripDataPrefix(args[0])
-	ret.Target, err = base.ChainIDFromBytes(targetBin)
-	if err != nil {
-		return nil, fmt.Errorf("DelegateLockFromBytes: wrong target chain ID: %w", err)
-	}
-	// master holder ID (raw 32 bytes)
-	masterIDbin := easyfl.StripDataPrefix(args[1])
-	if len(masterIDbin) != len(base.HolderID{}) {
-		return nil, fmt.Errorf("DelegateLockFromBytes: wrong master ID size")
-	}
-	copy(ret.MasterID[:], masterIDbin)
-
-	// max frozen epochs
-	a2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
-	if err != nil || a2 >= 256 {
+	// arg 0: max frozen epochs
+	a0, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
+	if err != nil || a0 >= 256 {
 		return nil, fmt.Errorf("DelegateLockFromBytes: wrong max frozen epochs: %v", err)
 	}
-	ret.MaxFrozenEpochs = byte(a2)
+	ret.MaxFrozenEpochs = byte(a0)
 	if ret.MaxFrozenEpochs == 0 {
 		// set default from the library for this slot
 		ret.MaxFrozenEpochs = byte(lib.MaxFrozenEpochs)
 	}
 
-	// required inflation share
-	ret.RequiredInflationShare, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[3]))
+	// arg 1: required inflation share
+	ret.RequiredInflationShare, err = easyfl_util.Uint16FromBytes(easyfl.StripDataPrefix(args[1]))
 	if err != nil {
 		return nil, fmt.Errorf("DelegateLockFromBytes: wrong required inflation share: %v", err)
 	}
@@ -127,26 +135,38 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 	return ret, nil
 }
 
-func (d *DelegateLock) Name() string {
-	return DelegateLockName
-}
-
-func (d *DelegateLock) Master() Controller {
-	return SigLock(d.MasterID)
+// DelegateLockFromOutputElements rebuilds a complete DelegateLock from
+// both output elements:
+//   - indexValuesBytes — bytes at output element index 1; expected
+//     (master, target) pair.
+//   - lockBytecode     — bytes at output element index 2; carries the
+//     2-arg delegateLock (maxFrozenEpochs, inflationShare).
+func DelegateLockFromOutputElements(indexValuesBytes, lockBytecode []byte, lib *Library) (*DelegateLock, error) {
+	ret, err := DelegateLockFromBytesWithLib(lockBytecode, lib)
+	if err != nil {
+		return nil, err
+	}
+	values, err := IndexValuesFromBytes(indexValuesBytes)
+	if err != nil {
+		return nil, fmt.Errorf("DelegateLockFromOutputElements: %w", err)
+	}
+	if len(values) != 2 {
+		return nil, fmt.Errorf("DelegateLockFromOutputElements: expected 2 index values, got %d", len(values))
+	}
+	if len(values[0]) != len(base.HolderID{}) {
+		return nil, fmt.Errorf("DelegateLockFromOutputElements: wrong master ID size: %d", len(values[0]))
+	}
+	copy(ret.MasterID[:], values[0])
+	if ret.Target, err = base.ChainIDFromBytes(values[1]); err != nil {
+		return nil, fmt.Errorf("DelegateLockFromOutputElements: wrong target chain ID: %w", err)
+	}
+	return ret, nil
 }
 
 func registerDelegateLock(lib *Library) {
-	lib.mustRegisterConstraint(DelegateLockName, 4, func(data []byte) (Constraint, error) {
+	lib.mustRegisterConstraint(DelegateLockName, 2, func(data []byte) (Constraint, error) {
 		// Use latest library version for library registration parsing
 		return DelegateLockFromBytesWithLib(data, lib)
-	})
-	lib.mustRegisterLockSerde(DelegateLockName, func(bytes []byte) (Lock, error) {
-		// Use latest library version for library registration parsing
-		ret, err := DelegateLockFromBytesWithLib(bytes, lib)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
 	})
 	lib.mustRegisterConstraint(DelegateLockStateName, 2, func(data []byte) (Constraint, error) {
 		return DelegateLockStateFromBytesWithLib(data, lib)
@@ -202,6 +222,10 @@ func (d DelegateLockState) Name() string {
 
 func init() {
 	registerInlineTest(func(lib *Library) {
+		// Round-trip the 2-arg delegateLock bytecode at output element
+		// index 2. Target and master are not in the bytecode anymore; they
+		// live in the index-value tuple at index 1 and are exercised
+		// elsewhere via DelegateLockFromOutputElements.
 		targetChainID := base.RandomChainID()
 		masterID := base.HolderID(SigLockRandom())
 		example := NewDelegateLock(targetChainID, masterID, 3, 10)
@@ -214,9 +238,6 @@ func init() {
 		util.Assertf(example.RequiredInflationShare == 10, "DelegateLockFromBytes: wrong back 4")
 
 		util.Assertf(EqualConstraints(example, exampleBack), "inconsistency 1 "+DelegateLockName)
-		exampleBack2, err := LockFromBytes(example.Bytes())
-		util.AssertNoError(err)
-		util.Assertf(EqualConstraints(example, exampleBack2), "inconsistency 2 "+DelegateLockName)
 
 		pref1, err := lib.ParsePrefixBytecode(example.Bytes())
 		util.AssertNoError(err)

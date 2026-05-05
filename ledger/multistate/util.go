@@ -6,9 +6,10 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
-// BalanceOnLock returns balance and number of outputs
-func BalanceOnLock(rdr StateIndexReader, account ledger.Controller) (uint64, int) {
-	oDatas, err := rdr.GetUTXOsForController(account.ControllerID())
+// BalanceOnLock returns balance and number of outputs indexed under the
+// given controller hash (typically a 32-byte holderID or chainID).
+func BalanceOnLock(rdr StateIndexReader, account ledger.ControllerID) (uint64, int) {
+	oDatas, err := rdr.GetUTXOsForController(account)
 	util.AssertNoError(err)
 
 	balance := uint64(0)

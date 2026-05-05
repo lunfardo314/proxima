@@ -654,8 +654,11 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs
 		return nil, nil, 0, nil
 	}
 	ret = util.PurgeSlice(ret, func(o *ledger.OutputWithID) bool {
-		master := o.Output.Lock().Master()
-		return master != nil && ledger.EqualControllers(account, master)
+		// "master" is the index value at position 0 of the index-value
+		// tuple (§4.1 master-first convention); the output is consumable
+		// by the wallet account iff that bytes match.
+		iv := o.Output.IndexValues()
+		return len(iv) > 0 && bytes.Equal(account.ControllerID(), iv[0])
 	})
 	ret = util.TrimSlice(ret, maxO)
 	sum := uint64(0)

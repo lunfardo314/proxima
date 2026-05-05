@@ -14,7 +14,7 @@ import (
 type WithdrawFromChainTxBuilderCommand struct {
 	ledger.TagAlongOutput
 	amount uint64
-	target ledger.Lock
+	target ledger.Controller
 }
 
 const (
@@ -49,19 +49,23 @@ func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: requested amount %d is less than minimum alowed", ret.amount)
 		return
 	}
-	// Uses latest library version - upgrade code must maintain backward-compatible parsing
-	if ret.target, err = ledger.LockFromBytesWithLib(o.RequestParams.Get(FieldWithdrawTarget), ledger.L(base.MaxSlot)); err != nil {
-		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: failed to parse lock: %w", err)
+	// Target is stored in the request as the wallet/CLI source string
+	// (`sigLock/<hex>` or `chainLock/<hex>`). See NewWithdrawRequestOutput.
+	targetSrc := string(o.RequestParams.Get(FieldWithdrawTarget))
+	c, err1 := ledger.ControllerFromSource(targetSrc)
+	if err1 != nil {
+		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: failed to parse target lock: %w", err1)
 		return
 	}
+	ret.target = c
 	return ret, true, nil
 }
 
-func NewWithdrawRequestOutput(withdrawFromChain base.ChainID, sender ledger.SigLock, fee, amount uint64, target ledger.Lock) *ledger.Output {
+func NewWithdrawRequestOutput(withdrawFromChain base.ChainID, sender ledger.SigLock, fee, amount uint64, target ledger.Controller) *ledger.Output {
 	par := base.NewSmallPersistentMap()
 	par.Set(FieldCmdCode, []byte{RequestCodeWithdrawFromSeq})
 	par.Set(FieldWithdrawAmount, easyfl_util.TrimmedLeadingZeroUint64(amount))
-	par.Set(FieldWithdrawTarget, target.Bytes())
+	par.Set(FieldWithdrawTarget, []byte(target.Source()))
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithTokenBalance(fee)
 		o.WithLock(&ledger.TagAlongLock{

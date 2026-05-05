@@ -499,7 +499,10 @@ func (t *TransferData) WithConstraintAtIndex(constr ledger.Constraint) *Transfer
 
 func (t *TransferData) UseOutputsAsInputs(outs ...*ledger.OutputWithID) error {
 	for _, o := range outs {
-		if !ledger.EqualConstraints(t.SourceAccount, o.Output.Lock()) {
+		// Output must be sig-locked by the same holder as t.SourceAccount,
+		// or chain-locked by the same chain — i.e. matching ControllerID.
+		lock := o.Output.Lock()
+		if c, ok := lock.(ledger.Controller); !ok || !ledger.EqualControllers(t.SourceAccount, c) {
 			return fmt.Errorf("UseOutputsAsInputs: output can't be consumed. Source account: %s, output: %s", t.SourceAccount.String(), o.Output.ToString())
 		}
 	}
@@ -673,7 +676,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	if availableTokens > amount+tagAlongFee {
 		remainderOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(availableTokens - amount - tagAlongFee)).
-				WithLock(par.SourceAccount.AsLock())
+				WithLock(par.SourceAccount)
 		})
 	}
 	if remainderOut != nil {

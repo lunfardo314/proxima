@@ -62,7 +62,7 @@ func runTransferCmd(_ *cobra.Command, args []string) {
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,
 		Amount:           amount,
-		Target:           target.AsLock(),
+		Target:           target,
 	})
 
 	if txCtx != nil {

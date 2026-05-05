@@ -66,7 +66,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	for i, t := range targets {
 		ctrl, err := ledger.ControllerFromSource(t.Target)
 		glb.Assertf(err == nil, "target #%d: %v", i, err)
-		parsed[i] = parsedTarget{lock: ctrl.AsLock(), amount: t.Amount}
+		parsed[i] = parsedTarget{lock: ctrl, amount: t.Amount}
 		totalAmount += t.Amount
 	}
 

@@ -212,7 +212,7 @@ func listChainOwners(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	glb.Infof("\n------ CHAINS BY THEIR CONTROLLERS ------")
 	for _, o := range chains {
 		if dlg, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-			ownerStr = dlg.Master().String()
+			ownerStr = ledger.SigLock(dlg.MasterID).String()
 		} else {
 			ownerStr = o.Output.Lock().String()
 		}

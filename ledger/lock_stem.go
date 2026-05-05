@@ -46,20 +46,17 @@ type (
 //go:embed def/lock_stem.easyfl
 var stemLockSource string
 
-var StemAccountID = ControllerID([]byte{0})
-
-func (st *StemLock) ControllerID() ControllerID {
-	return StemAccountID
-}
-
-func (st *StemLock) AsLock() Lock {
-	return st
-}
+// StemAccountID is the placeholder index value (single zero byte) used
+// for stem outputs in the controllers index. The stem index-value tuple
+// is ([0x00]).
+var StemAccountID = []byte{0}
 
 func (st *StemLock) Name() string {
 	return StemLockName
 }
 
+// Source returns the EasyFL source representation for the stemLock
+// constraint with all 9 args inlined — used for compilation to bytecode.
 func (st *StemLock) Source() string {
 	baselineRoot := st.BaselineRoot
 	if len(baselineRoot) == 0 {
@@ -79,6 +76,11 @@ func (st *StemLock) Source() string {
 	)
 }
 
+// Bytes returns the compiled bytecode of the stemLock constraint,
+// suitable for placement at output element index 2 of a stem output.
+// Stem is the only lock kind whose bytecode at index 2 carries data
+// (the 9 args); for sig/chain/tag the index-2 bytecode is a per-kind
+// constant (see SigLockBytecode / ChainLockBytecode / TagAlongBytecode).
 func (st *StemLock) Bytes() []byte {
 	return mustBinFromSource(st.Source())
 }
@@ -87,24 +89,23 @@ func (st *StemLock) String() string {
 	return st.Source()
 }
 
-func (st *StemLock) Controllers() []Controller {
-	return []Controller{st}
+// IndexValues returns the placeholder ([0x00]) — stem outputs are not
+// indexable by controller; the single byte mirrors the historical
+// StemAccountID marker for trie partition lookup.
+func (st *StemLock) IndexValues() [][]byte {
+	return [][]byte{{0}}
 }
 
-func (st *StemLock) Master() Controller {
-	return nil
+// LockBytecode returns the compiled stemLock bytecode with all 9 args
+// inlined. Stem is the only lock kind whose bytecode at output index 2
+// carries data.
+func (st *StemLock) LockBytecode() []byte {
+	return st.Bytes()
 }
 
 func registerStemLockConstraint(lib *Library) {
 	lib.mustRegisterConstraint(StemLockName, StemLockNumArgs, func(data []byte) (Constraint, error) {
 		return StemLockFromBytesWithLib(data, lib)
-	})
-	lib.mustRegisterLockSerde(StemLockName, func(bytes []byte) (Lock, error) {
-		ret, err := StemLockFromBytesWithLib(bytes, lib)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
 	})
 }
 

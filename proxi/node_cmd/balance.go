@@ -51,7 +51,7 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 	for _, o := range outs {
 		if oChain, err := o.AsChainOutput(); err == nil {
 			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-				if !ledger.EqualControllers(dOut.Master(), walletAccount) {
+				if !ledger.EqualControllers(ledger.SigLock(dOut.MasterID), walletAccount) {
 					// for delegation locks only count those which are owned by the wallet
 					continue
 				}

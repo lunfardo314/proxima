@@ -109,15 +109,15 @@ func TestAttachBasic(t *testing.T) {
 		require.True(t, rr.SlotInflation > 0)
 		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
-		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1.ControllerID())
 		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
-		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2.ControllerID())
 		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 2, n2)
 
-		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID[:])
 		require.EqualValues(t, 0, balChain)
 		require.EqualValues(t, 0, nChain)
 
@@ -174,15 +174,15 @@ func TestAttachBasic(t *testing.T) {
 		require.True(t, rr.SlotInflation > 0)
 		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
-		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1.ControllerID())
 		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
-		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2.ControllerID())
 		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 1, n2)
 
-		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID[:])
 		require.EqualValues(t, 0, balChain)
 		require.EqualValues(t, 0, nChain)
 
@@ -246,15 +246,15 @@ func TestAttachBasic(t *testing.T) {
 		require.True(t, rr.SlotInflation > 0)
 		require.EqualValues(t, ledger.DefaultInitialSupply+rr.SlotInflation, rr.Supply)
 
-		bal1, n1 := multistate.BalanceOnLock(rdr, addr1)
+		bal1, n1 := multistate.BalanceOnLock(rdr, addr1.ControllerID())
 		require.EqualValues(t, 1_000_000_000, int(bal1))
 		require.EqualValues(t, 1, n1)
 
-		bal2, n2 := multistate.BalanceOnLock(rdr, addr2)
+		bal2, n2 := multistate.BalanceOnLock(rdr, addr2.ControllerID())
 		require.EqualValues(t, 2_000_000_000, int(bal2))
 		require.EqualValues(t, 1, n2)
 
-		balChain, nChain := multistate.BalanceOnLock(rdr, ledger.ChainLockFromChainID(bootstrapChainID))
+		balChain, nChain := multistate.BalanceOnLock(rdr, bootstrapChainID[:])
 		require.EqualValues(t, 0, balChain)
 		require.EqualValues(t, 0, nChain)
 

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -124,7 +125,11 @@ func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lo
 	if err != nil {
 		return nil, Amounts{}, nil, err
 	}
-	if lock, err = LockFromBytesWithLib(lockBin, lib); err != nil {
+	indexValuesBin, err := ret.At(int(ConstraintIndexIndexValues))
+	if err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	if lock, err = LockFromOutputElementsWithLib(indexValuesBin, lockBin, lib); err != nil {
 		return nil, Amounts{}, nil, err
 	}
 	return ret, amounts, lock, nil
@@ -166,6 +171,17 @@ func (o *Output) ConstraintsRawBytes() [][]byte {
 		return true
 	})
 	return ret
+}
+
+// IndexValues returns the parsed index-value tuple at output element
+// index 1. Each non-empty entry produces one trie index entry under
+// TriePartitionControllers; empty entries are skipped.
+func (o *Output) IndexValues() [][]byte {
+	bin, err := o.At(int(ConstraintIndexIndexValues))
+	util.AssertNoError(err)
+	values, err := IndexValuesFromBytes(bin)
+	util.AssertNoError(err)
+	return values
 }
 
 // StemLock returns the stem lock if the output has one.
@@ -231,10 +247,45 @@ func (o *OutputWithChainID) AdjustedFrozenCoverage(txTs base.LedgerTime) int64 {
 	return o.Output.FrozenCoverage(byte(diff))
 }
 
-// WithLock sets the lock constraint on the output being built.
+// WithLock writes the lock onto the output: index-value tuple at output
+// element index 1 (from lock.IndexValues) and lock bytecode at output
+// element index 2 (from lock.LockBytecode).
 func (o *OutputBuilder) WithLock(lock Lock) *OutputBuilder {
-	o.PutConstraint(lock.Bytes(), ConstraintIndexLock)
+	o.PutConstraint(IndexValuesTupleBytes(lock.IndexValues()), ConstraintIndexIndexValues)
+	o.PutConstraint(lock.LockBytecode(), ConstraintIndexLock)
 	return o
+}
+
+// IndexValuesTupleBytes serialises a list of index values into the wire form of
+// the index-value tuple stored at output slot 1. Empty input → empty bytes
+// (no tuple), which is parsed as "this UTXO is not indexed".
+func IndexValuesTupleBytes(values [][]byte) []byte {
+	if len(values) == 0 {
+		return nil
+	}
+	t := tuples.EmptyTupleEditable(256)
+	for _, v := range values {
+		t.MustPush(v)
+	}
+	return t.Tuple().Bytes()
+}
+
+// IndexValuesFromBytes parses a serialised index-value tuple back to its
+// element slice. Empty bytes → empty slice (no entries).
+func IndexValuesFromBytes(data []byte) ([][]byte, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	t, err := tuples.TupleFromBytes(data, 256)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([][]byte, 0, t.NumElements())
+	t.ForEach(func(_ int, v []byte) bool {
+		ret = append(ret, v)
+		return true
+	})
+	return ret, nil
 }
 
 // Hex returns the output bytes as a hex string.
@@ -279,9 +330,11 @@ func (o *OutputBuilder) PutAmounts(amount ...int64) {
 	o.PutConstraint(NewAmounts(amount...).Bytes(), ConstraintIndexAmounts)
 }
 
-// PutLock sets the lock constraint at index 1.
+// PutLock writes the lock onto the output: index-value tuple at output
+// element index 1 and lock bytecode at output element index 2.
 func (o *OutputBuilder) PutLock(lock Lock) {
-	o.PutConstraint(lock.Bytes(), ConstraintIndexLock)
+	o.PutConstraint(IndexValuesTupleBytes(lock.IndexValues()), ConstraintIndexIndexValues)
+	o.PutConstraint(lock.LockBytecode(), ConstraintIndexLock)
 }
 
 // MustConstraintAt returns raw constraint bytecode at the given index. Panics if out of range.
@@ -298,9 +351,13 @@ func (o *OutputBuilder) NumConstraints() int {
 	return o.NumElements()
 }
 
-// Lock parses and returns the lock constraint at index 1.
+// Lock reconstructs the Lock from the output's index-value tuple
+// (element index 1) and lock bytecode (element index 2).
 func (o *Output) Lock() Lock {
-	ret, err := LockFromBytes(o.MustAt(int(ConstraintIndexLock)))
+	ret, err := LockFromOutputElements(
+		o.MustAt(int(ConstraintIndexIndexValues)),
+		o.MustAt(int(ConstraintIndexLock)),
+	)
 	util.AssertNoError(err)
 	return ret
 }
@@ -492,10 +549,19 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 		}
 		if i == int(ConstraintIndexIndexValues) {
 			// index-value tuple — pure data, not a constraint
-			if len(data) == 0 {
+			values, err := IndexValuesFromBytes(data)
+			if err != nil || len(values) == 0 {
 				ret.Add("%s%d: index values: <empty>", prefix, i)
 			} else {
-				ret.Add("%s%d: index values: %s", prefix, i, easyfl_util.Fmt(data))
+				parts := make([]string, len(values))
+				for j, v := range values {
+					if len(v) == 0 {
+						parts[j] = "<empty>"
+					} else {
+						parts[j] = "0x" + hex.EncodeToString(v)
+					}
+				}
+				ret.Add("%s%d: index values: [%s]", prefix, i, strings.Join(parts, ", "))
 			}
 			return true
 		}
@@ -527,7 +593,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 }
 
 // LinesPlainSource formats UTXO elements as EasyFL source, with amounts shown
-// as a parsed vector and the index-values tuple shown as a placeholder.
+// as a parsed vector and the index-values tuple decoded as a list.
 func (o *Output) LinesPlainSource() *lines.Lines {
 	ret := lines.New()
 	o.ForEach(func(i int, data []byte) bool {
@@ -541,10 +607,19 @@ func (o *Output) LinesPlainSource() *lines.Lines {
 			return true
 		}
 		if byte(i) == ConstraintIndexIndexValues {
-			if len(data) == 0 {
+			values, err := IndexValuesFromBytes(data)
+			if err != nil || len(values) == 0 {
 				ret.Add("index values: <empty>")
 			} else {
-				ret.Add("index values: " + easyfl_util.Fmt(data))
+				parts := make([]string, len(values))
+				for j, v := range values {
+					if len(v) == 0 {
+						parts[j] = "<empty>"
+					} else {
+						parts[j] = "0x" + hex.EncodeToString(v)
+					}
+				}
+				ret.Add("index values: [" + strings.Join(parts, ", ") + "]")
 			}
 			return true
 		}
@@ -574,10 +649,19 @@ func (o *Output) LinesPlainHR() *lines.Lines {
 			return true
 		}
 		if byte(i) == ConstraintIndexIndexValues {
-			if len(data) == 0 {
+			values, err := IndexValuesFromBytes(data)
+			if err != nil || len(values) == 0 {
 				ret.Add("index values: <empty>")
 			} else {
-				ret.Add("index values: " + easyfl_util.Fmt(data))
+				parts := make([]string, len(values))
+				for j, v := range values {
+					if len(v) == 0 {
+						parts[j] = "<empty>"
+					} else {
+						parts[j] = "0x" + hex.EncodeToString(v)
+					}
+				}
+				ret.Add("index values: [" + strings.Join(parts, ", ") + "]")
 			}
 			return true
 		}
@@ -772,9 +856,13 @@ func OutputsWithIDToString(outs ...*OutputWithID) string {
 	return ret.String()
 }
 
-// MustValidOutput panics if the lock constraint at the fixed lock index is not parseable.
+// MustValidOutput panics if the output's index-value tuple and lock
+// bytecode cannot be reconstructed into a known Lock.
 func (o *Output) MustValidOutput() {
-	_, err := LockFromBytes(o.MustConstraintAt(ConstraintIndexLock))
+	_, err := LockFromOutputElements(
+		o.MustConstraintAt(ConstraintIndexIndexValues),
+		o.MustConstraintAt(ConstraintIndexLock),
+	)
 	util.AssertNoError(err)
 }
 
@@ -959,11 +1047,11 @@ func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
 
 // TagAlongLock returns the tag-along lock if the output has one, otherwise nil.
 func (o *Output) TagAlongLock() *TagAlongLock {
-	ret, err := TagAlongLockFromBytesWithLib(o.MustAt(int(ConstraintIndexLock)), L(base.MaxSlot))
-	if err != nil {
-		return nil
+	lock := o.Lock()
+	if t, ok := lock.(*TagAlongLock); ok {
+		return t
 	}
-	return ret
+	return nil
 }
 
 // EnoughAmountForStorageDeposit returns an error if the token balance is below the minimum storage deposit.

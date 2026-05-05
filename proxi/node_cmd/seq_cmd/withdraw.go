@@ -49,7 +49,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Verbosef("tag-along fee: %s", util.Th(fee))
 
-	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*walletData.Sequencer, walletData.Account, fee, amount, targetLock.AsLock())
+	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*walletData.Sequencer, walletData.Account, fee, amount, targetLock)
 	ts := ledger.TimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)

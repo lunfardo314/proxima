@@ -381,11 +381,13 @@ func (tx *Transaction) scanProducedOutputs() error {
 
 	pathToOutput := easyfl_util.Concat(ledger.PathToProducedOutputs, 0)
 	pathToAmounts := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, ledger.ConstraintIndexAmounts)
+	pathToIndexValues := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, ledger.ConstraintIndexIndexValues)
 	pathToLock := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, ledger.ConstraintIndexLock)
 
 	for i := 0; i < numOutputs; i++ {
 		pathToOutput[len(ledger.PathToProducedOutputs)] = byte(i)
 		pathToAmounts[len(ledger.PathToProducedOutputs)] = byte(i)
+		pathToIndexValues[len(ledger.PathToProducedOutputs)] = byte(i)
 		pathToLock[len(ledger.PathToProducedOutputs)] = byte(i)
 
 		// check per-output size limit
@@ -399,8 +401,12 @@ func (tx *Transaction) scanProducedOutputs() error {
 			return fmt.Errorf("scanProducedOutputs: UTXO #%d: '%v'", i, err)
 		}
 
-		// just enforcing known lock at index 1
-		if _, err = ledger.LockFromBytesWithLib(tx.MustBytesAtPath(pathToLock), tx.Library); err != nil {
+		// enforce that the lock at output element index 2 is parseable
+		// from the index-value tuple (index 1) + lock bytecode (index 2).
+		if _, err = ledger.LockFromOutputElementsWithLib(
+			tx.MustBytesAtPath(pathToIndexValues),
+			tx.MustBytesAtPath(pathToLock),
+			tx.Library); err != nil {
 			return fmt.Errorf("scanProducedOutputs: UTXO #%d: '%v'", i, err)
 		}
 		if overflow := amounts.AddToVector(tx.producedAmountTotals); overflow {

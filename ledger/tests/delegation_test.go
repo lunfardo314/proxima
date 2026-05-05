@@ -99,7 +99,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 	}
 	var ok bool
 	if err = td.u.AddTransaction(txBytes); err == nil {
-		outs, err := td.u.SugaredStateReader().GetOutputsDelegatedToAccount2(ledger.ChainLockFromChainID(td.target))
+		outs, err := td.u.SugaredStateReader().GetOutputsDelegatedToAccount2(td.target[:])
 		require.NoError(td, err)
 		require.EqualValues(td, 1, len(outs))
 		td.delegatedOutput, ok = ledger.DelegationOutputFromOutputWithChainID(outs[0])

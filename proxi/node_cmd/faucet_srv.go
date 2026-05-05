@@ -263,7 +263,7 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Controller) (base.Tra
 		return base.TransactionID{}, fmt.Errorf("not enough tokens on the sequencer %s", glb.GetOwnSequencerID().String())
 	}
 
-	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*fct.walletData.Sequencer, fct.walletData.Account, fct.withdrawTagAlongFee, fct.cfg.amount, targetLock.AsLock())
+	tagAlongOut := txbuilder_seq.NewWithdrawRequestOutput(*fct.walletData.Sequencer, fct.walletData.Account, fct.withdrawTagAlongFee, fct.cfg.amount, targetLock)
 	ts := ledger.TimeNow()
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
@@ -290,7 +290,7 @@ func (fct *faucetServer) redrawFromAccount(targetLock ledger.Controller) (base.T
 		TagAlongSeqID:    fct.transferTagAlongSeqID,
 		TagAlongFee:      fct.transferTagAlongFee,
 		Amount:           fct.cfg.amount,
-		Target:           targetLock.AsLock(),
+		Target:           targetLock,
 	})
 
 	if err != nil {

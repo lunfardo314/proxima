@@ -1,3 +1,12 @@
+// chainLock unlocks an output to the controller of the chain whose chainID
+// equals the value at position 0 of the index-value tuple (output element
+// index 1).
+//
+// The public lock symbol `chainLock` is a 0-arg constraint — its bytecode at
+// the lock element carries no data. The chainID lives only in the
+// index-value tuple and is read via `selfIndexValue(0)` by the wrapper. The
+// underscored primitive `_chainLock` keeps the original validation logic
+// and takes the chainID as $0.
 
 // $0 - 1-byte input index (from unlock parameters)
 func _selfReferencedChainID :
@@ -23,9 +32,10 @@ func _validChainUnlock :
    equal($0, _selfReferencedChainIDAdjusted(_chainLockUnlock(selfUnlockParameters)))
 
 
-// $0 - chainID
+// $0 - chainID, supplied by the public 0-arg `chainLock` wrapper from the
+// index-value tuple at position 0.
 // Unlock parameters: 1 byte [unlocked chain output index]
-func chainLock :
+func _chainLock :
 or(
 	and(
 		selfIsProducedOutput,
@@ -38,13 +48,11 @@ or(
 	and(
 		selfIsConsumedOutput,
         greaterOrEqualThan(len(selfUnlockParameters), u64/1),
-		not(equal(byte(selfUnlockParameters,0), 0xff)),  // filter out signature unlock marker (was implicit with old 2-byte length check)
+		not(equal(byte(selfUnlockParameters,0), 0xff)),  // filter out signature unlock marker
 		not(equal(selfOutputIndex, byte(selfUnlockParameters,0))), // prevent self referencing
 		_validChainUnlock($0)
 	)
 )
 
-// short version of chainLock
-// $0 - chainID
-// Unlock parameters: 1 byte [unlocked chain output index]
-func c : chainLock($0)
+// public 0-arg lock — chainID comes from the index-value tuple.
+func chainLock : _chainLock(selfIndexValue(0))

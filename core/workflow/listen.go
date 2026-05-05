@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"bytes"
 	"sync"
 
 	"github.com/lunfardo314/proxima/core/vertex"
@@ -21,9 +22,17 @@ func (w *Workflow) ListenToControllerAccount(controller ledger.Controller, fun f
 		seqData := vid.SequencerTransactionData()
 		vid.RUnwrap(vertex.UnwrapOptions{Vertex: func(v *vertex.Vertex) {
 			v.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-				// skip stem outputs
-				if (seqData == nil || idx != seqData.StemOutputIndex) && ledger.LockIsControlledBy(o.Lock(), controller) {
-					indices = append(indices, idx)
+				// skip stem outputs; otherwise match outputs whose
+				// index-value tuple contains the controller's bytes.
+				if seqData != nil && idx == seqData.StemOutputIndex {
+					return true
+				}
+				cid := controller.ControllerID()
+				for _, v := range o.IndexValues() {
+					if bytes.Equal(v, cid) {
+						indices = append(indices, idx)
+						return true
+					}
 				}
 				return true
 			})

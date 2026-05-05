@@ -479,7 +479,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 	t.Logf("%s", ret.wrk.Info())
 
 	rdr := ret.wrk.HeaviestStateForLatestTimeSlot()
-	bal, _ := multistate.BalanceOnLock(rdr, ret.addr)
+	bal, _ := multistate.BalanceOnLock(rdr, ret.addr.ControllerID())
 	require.EqualValues(t, initBalance, int(bal))
 
 	oDatas, err := rdr.GetUTXOsForController(ret.addr.ControllerID())

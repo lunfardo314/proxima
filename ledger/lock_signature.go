@@ -6,54 +6,37 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"fmt"
+	"sync"
 
-	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 )
 
+// SigLock is a typed wrapper for the 32-byte ed25519 holder ID. The output
+// element at index 1 (index-value tuple) of a sig-locked output is
+// (holderID); the bytecode at index 2 is the per-kind constant
+// `sigLock` 0-arg call (sigLockBytecode).
 type SigLock base.HolderID
 
-const (
-	SigLockName     = "a"
-	sigLockTemplate = SigLockName + "(0x%s)"
-)
+const SigLockName = "sigLock"
 
 //go:embed def/lock_signature.easyfl
 var sigLockConstraintSource string
 
-// SigLockFromBytes parses an SigLock using the provided library.
-// Serde is library upgrade-independent
-func SigLockFromBytes(data []byte) (ret SigLock, err error) {
-	return SigLockFromBytesWithLib(data, L(base.MaxSlot))
-}
+// sigLockBytecode returns the bytecode of the public 0-arg `sigLock`
+// constraint that occupies output element index 2 of every sig-locked
+// output. The value is the same for all sig-locked outputs (the holder
+// data lives in the index-value tuple at index 1).
+var (
+	sigLockBytecodeOnce  sync.Once
+	sigLockBytecodeCache []byte
+)
 
-func SigLockFromBytesWithLib(data []byte, lib *Library) (ret SigLock, err error) {
-	var args [][]byte
-	var sym string
-	if sym, _, args, err = lib.ParseBytecodeOneLevel(data, 1); err != nil {
-		err = fmt.Errorf("SigLockFromBytes: %v", err)
-		return
-	}
-	if sym != SigLockName {
-		err = fmt.Errorf("SigLockFromBytes: not a SigLock")
-		return
-	}
-	addrBin := easyfl.StripDataPrefix(args[0])
-	if len(addrBin) != 32 {
-		err = fmt.Errorf("SigLockFromBytes: wrong data length")
-		return
-	}
-	copy(ret[:], addrBin)
-	return
-}
-
-func SigLockFromSource(src string) (SigLock, error) {
-	bytecode, err := binFromSource(src)
-	if err != nil {
-		return SigLock{}, fmt.Errorf("SigLockFromSource: %v", err)
-	}
-	return SigLockFromBytes(bytecode)
+func SigLockBytecode() []byte {
+	sigLockBytecodeOnce.Do(func() {
+		sigLockBytecodeCache = mustBinFromSource(SigLockName)
+	})
+	return sigLockBytecodeCache
 }
 
 func SigLockFromED25519PublicKey(pubKey ed25519.PublicKey) SigLock {
@@ -82,63 +65,45 @@ func SigLockRandom() (ret SigLock) {
 	return
 }
 
-func (a SigLock) Source() string {
-	return fmt.Sprintf(sigLockTemplate, hex.EncodeToString(a[:]))
-}
-
-func (a SigLock) Bytes() []byte {
-	return mustBinFromSource(a.Source())
-}
-
-func (a SigLock) Controllers() []Controller {
-	return []Controller{a}
-}
-
-func (a SigLock) ControllerID() ControllerID {
-	return a.Bytes()
-}
-
-func (a SigLock) Name() string {
-	return SigLockName
-}
-
+// String returns a human-readable representation of the sigLock holder.
 func (a SigLock) String() string {
-	return a.Source()
+	return fmt.Sprintf("sigLock(0x%s)", hex.EncodeToString(a[:]))
 }
 
 func (a SigLock) Short() string {
-	return fmt.Sprintf(sigLockTemplate, hex.EncodeToString(a[:])[:8]+"..")
+	return fmt.Sprintf("sigLock(0x%s..)", hex.EncodeToString(a[:])[:8])
 }
 
-func (a SigLock) AsLock() Lock {
-	return a
+// IndexValues returns the single 32-byte holder ID — the index-value
+// tuple of a sig-locked output is (holderID).
+func (a SigLock) IndexValues() [][]byte {
+	return [][]byte{a[:]}
 }
 
-func (a SigLock) Master() Controller {
-	return a
+func (a SigLock) Name() string               { return SigLockName }
+func (a SigLock) LockBytecode() []byte       { return SigLockBytecode() }
+func (a SigLock) ControllerID() ControllerID { return a[:] }
+
+// Source returns the wallet/CLI mini-syntax `sigLock/<64-hex>`.
+func (a SigLock) Source() string {
+	return SigLockName + "/" + hex.EncodeToString(a[:])
+}
+
+// SigLockFromSource parses the wallet/CLI mini-syntax `sigLock/<64-hex>`
+// into a SigLock. Replaces the previous EasyFL-source compilation path.
+func SigLockFromSource(src string) (SigLock, error) {
+	id, kind, err := ControllerIDFromSource(src)
+	if err != nil {
+		return SigLock{}, err
+	}
+	if kind != SigLockName {
+		return SigLock{}, fmt.Errorf("SigLockFromSource: expected sigLock kind, got %s", kind)
+	}
+	var ret SigLock
+	copy(ret[:], id)
+	return ret, nil
 }
 
 func registerAddressED25519Serde(lib *Library) {
-	lib.mustRegisterConstraint(SigLockName, 1, func(data []byte) (Constraint, error) {
-		return SigLockFromBytes(data)
-	})
-	lib.mustRegisterLockSerde(SigLockName, func(bytes []byte) (Lock, error) {
-		ret, err := SigLockFromBytes(bytes)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
-	})
-}
-
-func init() {
-	registerInlineTest(func(lib *Library) {
-		example := SigLock{}
-		addrBack, err := SigLockFromBytes(example.Bytes())
-		util.AssertNoError(err)
-		util.Assertf(addrBack == SigLock{}, "inconsistency "+SigLockName)
-
-		_, err = lib.ParsePrefixBytecode(example.Bytes())
-		util.AssertNoError(err)
-	})
+	lib.registerLockKind(SigLockName)
 }
