@@ -581,3 +581,111 @@ Touch points: `ledger/output.go` (`Output.Lines()`), proxi
 template. Sweep at the same time as Phase D, or earlier — earlier helps
 when debugging Phases B/C because the index-value tuple becomes inspectable
 immediately.
+
+---
+
+## 12. Related: drop unused unlock-parameter slots 0 and 1
+
+Each input today carries an unlock-parameter array indexed by the
+**output constraint index**. Two slots are structurally empty:
+
+- slot 0 (`amounts`) — pure data, nothing to unlock.
+- slot 1 (after §4, the **index-value tuple**) — also pure data.
+
+The array stores them as padding. A standard input pays at least 2 bytes
+just for the empty placeholders before the first meaningful unlock.
+
+Re-base the unlock array so its index `j` corresponds to output
+constraint `j + 2`. The two empty slots disappear; the wire encoding of
+each input shrinks by 2 bytes.
+
+| Output constraint index `i` | Old unlock-array index | New unlock-array index |
+|-----------------------------|------------------------|-------------------------|
+| 0 (amounts)                 | 0 (always empty)       | — (no slot)             |
+| 1 (index-value tuple)       | 1 (always empty)       | — (no slot)             |
+| 2 (lock)                    | 2                      | 0                       |
+| 3 (chain)                   | 3                      | 1                       |
+| 4 (first extra)             | 4                      | 2                       |
+| ...                         | ...                    | ...                     |
+
+### 12.1 Touch points
+
+**Go transaction builder** (`ledger/txbuilder/txbuilder.go`):
+
+- `PutUnlockParams(inputIndex, constraintIndex, data)` does the `i - 2`
+  subtraction internally so call sites keep speaking output-constraint
+  indices (`ConstraintIndexLock`, `ConstraintIndexChain`).
+- `PutSignatureUnlock`, `PutUnlockReference`, `PutStandardInputUnlocks`,
+  `PutUnlockParams` for chain transitions, delegate-lock unlock, etc.
+  all remain unchanged at the call site — only the internal storage
+  shifts.
+- The `UnlockParams` struct (`txbuilder.go:40-…`) still holds a
+  `tuples.MustPutAtIdxWithPadding`-backed array; its length now starts
+  at 0 for the first meaningful constraint.
+
+**Transaction model** (`ledger/transaction/`):
+
+- `Transaction.MustUnlockDataAt(idx)` (`tx.go:277`) and the
+  `TxUnlockData` validator branch (`validate.go:285`) read the array
+  by output-constraint index too — they get the same internal `i - 2`
+  shift, transparent to callers.
+- The pretty-printer (`util.go:148`) gains a label so dumps still
+  show "Unlock data at constraint i = ..." with `i` in
+  output-constraint terms (avoids surprising output by silently
+  re-numbering).
+
+**Context interface** (`ledger/def_embed.go:38`):
+
+```go
+UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
+```
+
+`constraintIdx` stays in output-constraint coordinates; the
+implementation adjusts internally. The single Go call site in
+`ledger/lock_delegate.go:277` keeps using `ConstraintIndexLock`.
+
+**EasyFL surface**:
+
+- `selfUnlockParameters` (the current constraint's unlock bytes) — the
+  primitive's binding fetches by `selfBlockIndex - 2` instead of
+  `selfBlockIndex`. No EasyFL source needs editing.
+- `selfSiblingUnlockParams(N)` (used by the delegate lock at
+  `lock_delegate.easyfl:60` and elsewhere) likewise translates
+  output-constraint `N` to array index `N - 2` internally.
+- `consumedConstraintByIndex` is unrelated — it reads constraint
+  bytecode, not unlock data.
+- `ensure.easyfl:5,12` reads `selfUnlockParameters` as a byte index;
+  the byte values are unchanged, only the storage location shifts.
+
+### 12.2 Validation
+
+- Inline transaction round-trip tests already check `tx.Bytes()` is
+  byte-equal after re-encoding; verify total tx size shrinks by
+  `2 × len(inputs)`.
+- `ledger/tests/...` tx-validation tests cover all locks (sig, chain,
+  stem, tag-along, delegate); the constraint-index translation must
+  preserve every unlock check.
+- A negative test: a transaction crafted with a 2-slot-padded unlock
+  array (old format) must be rejected as malformed.
+
+### 12.3 Scope and ordering
+
+This is a **wire-format** change for transactions — the byte layout of
+inputs shrinks. Like Phase C of the indexing refactor it is the kind of
+breaking surface that wants to ride the same testnet cut.
+
+Add as **Phase H**, sequenced after Phase E (EasyFL renames) so the
+underscored primitives and wrapper layout are settled before tweaking
+the unlock binding underneath them. Phase H is touch-light at call
+sites — Go callers all use `PutUnlockParams(idx, ConstraintIndexLock,
+...)` style and don't see the internal shift — but it requires
+careful binding work in the `selfUnlockParameters` /
+`selfSiblingUnlockParams` primitives so EasyFL semantics are
+preserved.
+
+Open question: keep `consumedConstraintByIndex` and friends in
+output-constraint coordinates (consistent with `selfBlockIndex`) so
+EasyFL authors never see the internal shift. That's the recommendation
+above. The alternative — exposing the shifted index in EasyFL — would
+let primitives drop the internal subtraction at the cost of breaking
+every existing reference.
