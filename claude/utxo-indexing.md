@@ -98,10 +98,12 @@ values come from**.
 | 4..   | extras        | extras                          |
 
 The lock and chain constraints both shift up by one. The new slot at index 1
-carries an EasyFL **tuple of byte slices**, one element per indexable value
-the lock wants to expose. The tuple may be empty (encoded as the empty tuple
-`0x80` in the EasyFL wire form, *not* an empty byte slice) — that means
-"this UTXO is not indexed".
+carries an EasyFL **tuple of byte slices**, each element a value to index
+this UTXO under. Empty elements (`0x`) are silently skipped — they don't
+produce trie entries and they aren't a validation error. So an entirely
+empty tuple, or a tuple where every entry is `0x`, is equivalent to "this
+UTXO is not indexed at all". This lets locks use fixed-arity tuples even
+when some positions are not meaningful in a given UTXO instance.
 
 Each non-empty element of the tuple becomes one trie index entry:
 
@@ -121,12 +123,13 @@ Go).
 | `stemLock`    | `(0x00)`                      | single zero byte (matches today's marker) |
 | `delegateLock`| `(masterHolderID, targetChainID)` | always two 32-byte values, master first |
 | `tagAlong`    | `(senderHolderID, targetChainID)` | always two 32-byte values, sender first |
-| custom lock   | any tuple of up to 256 non-empty byte values | author's choice, framework-agnostic |
+| custom lock   | any tuple of up to 256 byte values, empty entries skipped | author's choice, framework-agnostic |
 
-The hard limits come from the EasyFL tuple format itself: at most 256
-elements, each element must be non-empty bytes (`0x` is reserved as the
-"absent" marker and never indexed). The full tuple may also be empty —
-that means "this UTXO is not indexed at all".
+The hard limit comes from the EasyFL tuple format itself: at most 256
+elements. Individual elements may be empty bytes (`0x`); the indexer
+silently skips them rather than rejecting the output. The tuple as a
+whole may also be empty — equivalent to a tuple of all-empty entries:
+"this UTXO is not indexed at all".
 
 **Convention**: when a lock has multiple controllers, position 0 is the
 *master* (the unconditionally-unlocking party — wallet holder, delegation
@@ -476,21 +479,30 @@ one-arg constructor, and it bakes EasyFL surface syntax into every wallet
 input path.
 
 This refactor is a natural moment to switch user-typed lock arguments to a
-strictly human-readable parser-only format:
+strictly human-readable parser-only format. Each lock kind has a **short**
+prefix (one letter) and a **long** prefix (the lock's name), accepted as
+synonyms — pick whichever reads better in context:
 
-| Old (EasyFL source)        | New (parser-only)            |
-|----------------------------|-------------------------------|
-| `a(0x0102..)`              | `a/0102..`                    |
-| `c(0x0102..)`              | `c/0102..`                    |
-| `tagAlong(0xCC.., 0xSS..)` | `t/<targetChainID>/<senderHolderID>` |
-| `delegateLock(...)`        | `d/<targetChainID>/<masterHolderID>/<maxFrozen>/<inflationShareInPromille>` |
-| stem lock                  | not user-typeable (system-only) |
+| Old (EasyFL source)        | New (short)                    | New (long, synonym)                            |
+|----------------------------|--------------------------------|------------------------------------------------|
+| `a(0x0102..)`              | `a/0102..`                     | `sig/0102..`                                   |
+| `c(0x0102..)`              | `c/0102..`                     | `chainLock/0102..`                             |
+| `tagAlong(0xCC.., 0xSS..)` | `t/<targetChainID>`            | `tagAlong/<targetChainID>`                     |
+| `delegateLock(...)`        | `d/<targetChainID>[/<maxFrozen>[/<inflationShareInPromille>]]` | `delegate/<targetChainID>[/<maxFrozen>[/<inflationShareInPromille>]]` |
+| stem lock                  | not user-typeable (system-only)| not user-typeable (system-only)                |
 
-Wallet recognises the prefix (`a/`, `c/`, `t/`, `d/`), parses the
-slash-separated hex payload, and assembles the output positionally —
-populating the index-value tuple at slot 1 and the corresponding
-underscored bytecode (e.g. `_sigLock(...)`) at slot 2. The EasyFL compiler
-no longer sits at the user-input boundary.
+The shapes for `t/` and `d/` are deliberately shorter than the underlying
+constraint suggests: the wallet is always the sender (for tag-along) or the
+master (for delegate), so it fills those fields from the active wallet
+identity rather than asking the user to retype them. The bracketed
+suffixes on `d/` are optional — the wallet substitutes its configured
+defaults for `maxFrozen` and `inflationShareInPromille` when absent.
+
+Wallet recognises the prefix (short or long form), parses the
+slash-separated hex payload, fills in any wallet-derived fields, and
+assembles the output positionally — populating the index-value tuple at
+slot 1 and the corresponding underscored bytecode (e.g. `_sigLock(...)`)
+at slot 2. The EasyFL compiler no longer sits at the user-input boundary.
 
 Benefits
 
@@ -515,3 +527,57 @@ changes for §10. It can land independently of the indexing refactor (the
 underlying constraint bytecode is the same in both schemes), but doing it
 together keeps the two breaking surface areas aligned in one testnet
 cut. Add as Phase G after the migration plan.
+
+---
+
+## 11. Related: human-readable transaction dumps
+
+`Output.Lines()` and the various transaction pretty-printers (proxi
+`db txstore get`, the API `/api/v1/get_*` JSON variants that include a
+human-readable section, the DAG explorer view) currently print each
+constraint inline by its compiled name, e.g. `a(0x0102..)`.
+
+After the refactor the lock at index 2 is a thin public wrapper over an
+underscored primitive that reads from the index-value tuple at index 1.
+Printing only the public name (`sigLock`) hides where the indexed value
+actually lives; printing only the underscored primitive (`_sigLock(...)`)
+hides the abstraction. Print **both**, on dedicated lines.
+
+Suggested layout for an output:
+
+```
+output 0xCAFE..[2]
+  amounts:        [tokenBalance=1_000, ...]
+  index values:
+    [0] 0x0102.. (32 bytes)
+    [1] 0xDEAD.. (32 bytes)
+    [2] (empty, not indexed)
+  lock:           sigLock                ← public wrapper at slot 2
+                  _sigLock(0x0102..)     ← underlying primitive with index values inlined
+  chain:          ...                    (slot 3, when present)
+  extras: ...
+```
+
+The "underlying primitive with index values inlined" line is a printing
+convenience: the formatter walks the wrapper's bytecode, finds each
+`selfIndexValue(N)` call, and substitutes the bytes from element `N` of
+the index-value tuple. This is **not** a stored representation — the
+bytecode on disk is the wrapper call. Calling `Output.Bytes()` round-trips
+unchanged.
+
+For unknown / third-party wrappers the formatter falls back to printing
+the public name only (it has no way to know which arguments are meant to
+be index-value substitutions). The index-value tuple is always shown
+verbatim, so a human reader can still see the indexed values regardless
+of whether the wrapper is recognised.
+
+Empty entries in the index-value tuple are labelled explicitly
+(`(empty, not indexed)`) so a reader doesn't mistake an absent line for
+an indexable absence. This makes the silent-skip rule from §4 visible at
+the dump layer.
+
+Touch points: `ledger/output.go` (`Output.Lines()`), proxi
+`db txstore get`, the API server's pretty-printer, the DAG explorer
+template. Sweep at the same time as Phase D, or earlier — earlier helps
+when debugging Phases B/C because the index-value tuple becomes inspectable
+immediately.
