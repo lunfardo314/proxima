@@ -21,6 +21,36 @@ func _predVRFProof : parseInlineDataArgument( consumedConstraintByIndex($0,1), 1
 // `inputIDByIndex(selfOutputIndex)` is the predecessor stem's outputID.
 func _kSlotsBack : sub(txSlot, first4Bytes(inputIDByIndex(selfOutputIndex)))
 
+// _isGenesisStemPredID($0): true iff the predecessor-output-id field is the
+// genesis marker (33 zero bytes). Genesis has no predecessor; every other
+// stem declares the real outputID of its predecessor in this slot.
+func _isGenesisStemPredID : equal($0, 0x000000000000000000000000000000000000000000000000000000000000000000)
+
+// _enforceGenesisStemValues($0..$8): the 9 stem fields. If this stem is the
+// genesis stem, every aggregate must equal what the library prescribes for
+// slot 0. This makes the genesis state provable for backwards audit — a
+// verifier walking the tangle to the first branch transaction reruns stemLock
+// at the moment that transaction consumes genesis, and rejects any genesis
+// whose seed values diverge from constInitialSupply / library zeros.
+//
+// For non-genesis stems this clause short-circuits to true.
+func _enforceGenesisStemValues : or(
+   not(_isGenesisStemPredID($0)),
+   and(
+      require(equal($1, 0x),                     !!!genesis_vrfProof_must_be_empty),
+      require(equalUint($2, constInitialSupply), !!!genesis_totalSupply_must_equal_initialSupply),
+      require(equalUint($3, constInitialSupply), !!!genesis_totalCoverage_must_equal_initialSupply),
+      require(equalUint($4, constInitialSupply), !!!genesis_coverageDelta_must_equal_initialSupply),
+      require(equal($5, 0x),                     !!!genesis_frozenCoverage_must_be_zero),
+      require(equal($6, 0x),                     !!!genesis_slotInflation_must_be_zero),
+      require(equal($7, 0x),                     !!!genesis_numTransactions_must_be_zero),
+      require(
+         equal($8, 0x000000000000000000000000000000000000000000000000),
+         !!!genesis_baselineRoot_must_be_all_zero
+      )
+   )
+)
+
 // $0 - predecessor output id
 // $1 - VRF proof (signature data (sig type byte + signature proper) of message = <VRF proof from the stem predecessor> || <slot of the transaction>)
 // $2 - totalSupply (z64): Σ tokens on this branch's state
@@ -38,6 +68,7 @@ func stemLock: and(
 	require(isZero(selfTokenBalanceValue), !!!amount_must_be_zero),
 	mustSize($0, 33),
 	mustSize($8, 24),
+	_enforceGenesisStemValues($0, $1, $2, $3, $4, $5, $6, $7, $8),
     or(
        and(
           selfIsConsumedOutput,
