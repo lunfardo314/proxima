@@ -222,10 +222,11 @@ func (tx *Transaction) UnlockParams(consumedOutputIdx, constraintIdx byte) []byt
 	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, consumedOutputIdx, constraintIdx))
 }
 
-// runTuple treats the tuple as a collection of bytecodes, except at fixed slots:
+// runTuple treats the tuple as a collection of bytecodes, except at the two
+// fixed data positions:
 //   - index 0 (amounts): parsed as the amounts vector, no eval.
-//   - index 1 (index-value tuple): not bytecode — it is a tuple of indexable
-//     values. Phase A just skips it; Phase B will validate the tuple shape.
+//   - index 1 (index-value tuple): a tuple of indexable values used for
+//     trie indexing — pure data, never evaluated as bytecode.
 func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool *slicepool.SlicePool) error {
 	// no check for duplicates: makes no sense
 

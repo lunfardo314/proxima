@@ -1027,7 +1027,7 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 }
 
 // SeqMilestoneDataFixedIndex is the fixed tuple index of the sequencer
-// milestone data on a sequencer output. Layout under Phase A:
+// milestone data on a sequencer output. Output layout:
 // [0] amounts, [1] index-value tuple, [2] lock, [3] chain, [4] sequencer
 // constraint, [5] sequencer milestone data.
 const SeqMilestoneDataFixedIndex = 5

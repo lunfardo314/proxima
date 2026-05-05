@@ -94,6 +94,21 @@ The `EasyFL` serves also as serialization/deserializtion primitives.
 - ** TransactionID** (32 bytes): 5-byte timestamp + 1 byte of number of produced UTXOs + 26-bytes equal to the last 26 bytes of the 32-byte blake2b hash of the transaction essence bytes.
 - **OutputID** (33 bytes): TransactionID + 1-byte output index.
 
+### UTXO tuple layout
+
+A UTXO is a tuple of byte-slices. The first three positions are framework
+slots; positions 4+ are freeform per-lock extras.
+
+| Index | Content | Notes |
+|-------|---------|-------|
+| 0     | amounts vector       | token balance, inflation, frozen-coverage |
+| 1     | index-value tuple    | controllers / target / sender hashes used for trie indexing; iterated by the indexer. Each non-empty element produces one trie entry under `TriePartitionControllers`. Empty entries skipped. |
+| 2     | lock bytecode        | EasyFL bytecode validating the unlock policy. For sig/chain/tag this is a per-kind constant (0-arg public symbol like `sigLock`); for delegate it carries 2 policy args (maxFrozenEpochs, inflationShare); for stem it carries the 9 stem aggregates. |
+| 3     | chain constraint     | optional; present iff the output is a chain output |
+| 4..   | extras               | per-lock state (e.g. `delegateLockState` at 4 for delegations), sequencer constraint (4) + milestone data (5) for sequencer outputs, etc. |
+
+Design rationale and migration history: `claude/utxo-indexing.md`.
+
 ## Entry Points
 
 - `main.go` - Node entry point, creates `ProximaNode` via `node.New()`

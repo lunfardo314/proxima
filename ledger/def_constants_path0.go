@@ -93,7 +93,7 @@ var (
 // See claude/utxo-indexing.md §4.
 const (
 	ConstraintIndexAmounts     = byte(iota) // 0
-	ConstraintIndexIndexValues              // 1: tuple of indexable values for this UTXO (Phase A: empty placeholder)
+	ConstraintIndexIndexValues              // 1: tuple of indexable values (controllers / target / sender hashes) for trie indexing
 	ConstraintIndexLock                     // 2
 	ConstraintIndexChain                    // 3 (when present)
 )

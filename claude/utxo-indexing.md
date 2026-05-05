@@ -5,6 +5,22 @@ the low-level plumbing of how UTXOs are indexed in the trie state: the index
 keys come from the UTXO tuple itself rather than from Go-side `Lock`
 methods, which removes a hardcoded coupling between Go and EasyFL.
 
+## Status
+
+| Phase | Scope                                                              | Commit       |
+|-------|--------------------------------------------------------------------|--------------|
+| A     | tuple position shift, empty index-value tuple at slot 1            | `92ef2e75`   |
+| B'    | merged B + C + D + E: split lock data between tuple slots 1 and 2; drop lock (de)serialisation; flip the indexer to slot 1; drop the `Constraint`-as-Lock model; EasyFL public locks become 0-arg wrappers (delegate keeps 2 args, stem keeps 9 args); trie keys are now the bare 32-byte controller bytes (sigLock holder / chainLock chainID), not bytecoded constraints. | `45d54d7d`   |
+| F     | docs + cleanup of transitional comments                            | (this work)  |
+| G     | wallet/CLI lock syntax migration to `kind/<hex>`                   | deferred     |
+| H     | drop unused unlock-parameter slots 0 and 1                         | deferred     |
+
+The original §6 Phases B + C + D + E (incremental migration) were merged into
+Phase B' once it became clear that we could drop lock (de)serialisation
+entirely rather than carrying both representations through several
+intermediate states. The code/data analysis below is preserved as a record
+of what was changed and where.
+
 ---
 
 ## 1. Current architecture
