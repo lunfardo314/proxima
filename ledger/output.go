@@ -160,7 +160,7 @@ func OutputFromHexString(hexStr string, validateOpt ...func(*Output) error) (*Ou
 
 // ConstraintsRawBytes returns raw bytecode of all constraints in the output tuple.
 func (o *Output) ConstraintsRawBytes() [][]byte {
-	ret := make([][]byte, o.NumConstraints())
+	ret := make([][]byte, o.NumElements())
 	o.ForEach(func(i int, data []byte) bool {
 		ret[i] = data
 		return true
@@ -264,7 +264,7 @@ func (o *Output) CloneRaw() *Output {
 
 // MustPushConstraint appends a constraint bytecode and returns its index. Panics if >= 256.
 func (o *OutputBuilder) MustPushConstraint(c []byte) byte {
-	util.Assertf(o.NumConstraints() < 256, "too many constraints")
+	util.Assertf(o.NumElements() < 256, "too many UTXO elements")
 	o.MustPush(c)
 	return byte(o.NumElements() - 1)
 }
@@ -298,10 +298,6 @@ func (o *OutputBuilder) NumConstraints() int {
 	return o.NumElements()
 }
 
-func (o *Output) NumConstraints() int {
-	return o.NumElements()
-}
-
 // Lock parses and returns the lock constraint at index 1.
 func (o *Output) Lock() Lock {
 	ret, err := LockFromBytes(o.MustAt(int(ConstraintIndexLock)))
@@ -329,7 +325,7 @@ func (o *Output) TimeLock() (uint32, bool) {
 
 // ChainConstraint parses the chain constraint at fixed index 2. Returns nil if not found.
 func (o *Output) ChainConstraint() *ChainConstraint {
-	if o.NumConstraints() <= int(ConstraintIndexChain) {
+	if o.NumElements() <= int(ConstraintIndexChain) {
 		return nil
 	}
 	data, err := o.At(int(ConstraintIndexChain))
@@ -485,12 +481,21 @@ func (o *Output) String() string {
 func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	ret := lines.New()
 	o.ForEach(func(i int, data []byte) bool {
-		if i == 0 {
+		if i == int(ConstraintIndexAmounts) {
 			// amounts
 			if a, err := AmountsFromBytes(data); err != nil {
 				ret.Add("%s%d: amounts = '%v'", prefix, i, err)
 			} else {
 				ret.Add("%s%d: amounts = %s", prefix, i, a.String())
+			}
+			return true
+		}
+		if i == int(ConstraintIndexIndexValues) {
+			// index-value tuple — pure data, not a constraint
+			if len(data) == 0 {
+				ret.Add("%s%d: index values: <empty>", prefix, i)
+			} else {
+				ret.Add("%s%d: index values: %s", prefix, i, easyfl_util.Fmt(data))
 			}
 			return true
 		}
@@ -521,7 +526,8 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 	return ret
 }
 
-// LinesPlainSource formats constraints as EasyFL source, with amounts shown as a parsed vector.
+// LinesPlainSource formats UTXO elements as EasyFL source, with amounts shown
+// as a parsed vector and the index-values tuple shown as a placeholder.
 func (o *Output) LinesPlainSource() *lines.Lines {
 	ret := lines.New()
 	o.ForEach(func(i int, data []byte) bool {
@@ -531,6 +537,14 @@ func (o *Output) LinesPlainSource() *lines.Lines {
 				ret.Add(err.Error())
 			} else {
 				ret.Add("amounts" + a.String())
+			}
+			return true
+		}
+		if byte(i) == ConstraintIndexIndexValues {
+			if len(data) == 0 {
+				ret.Add("index values: <empty>")
+			} else {
+				ret.Add("index values: " + easyfl_util.Fmt(data))
 			}
 			return true
 		}
@@ -545,7 +559,8 @@ func (o *Output) LinesPlainSource() *lines.Lines {
 	return ret
 }
 
-// LinesPlainHR formats constraints as human-readable strings, with amounts shown as a parsed vector.
+// LinesPlainHR formats UTXO elements as human-readable strings, with amounts shown
+// as a parsed vector and the index-values tuple shown as a placeholder.
 func (o *Output) LinesPlainHR() *lines.Lines {
 	ret := lines.New()
 	o.ForEach(func(i int, data []byte) bool {
@@ -555,6 +570,14 @@ func (o *Output) LinesPlainHR() *lines.Lines {
 				ret.Add(err.Error())
 			} else {
 				ret.Add("amounts" + a.String())
+			}
+			return true
+		}
+		if byte(i) == ConstraintIndexIndexValues {
+			if len(data) == 0 {
+				ret.Add("index values: <empty>")
+			} else {
+				ret.Add("index values: " + easyfl_util.Fmt(data))
 			}
 			return true
 		}
@@ -749,9 +772,9 @@ func OutputsWithIDToString(outs ...*OutputWithID) string {
 	return ret.String()
 }
 
-// MustValidOutput panics if the lock constraint at index 1 is not parseable.
+// MustValidOutput panics if the lock constraint at the fixed lock index is not parseable.
 func (o *Output) MustValidOutput() {
-	_, err := LockFromBytes(o.MustConstraintAt(1))
+	_, err := LockFromBytes(o.MustConstraintAt(ConstraintIndexLock))
 	util.AssertNoError(err)
 }
 
@@ -915,12 +938,16 @@ func ParseChainConstraintsFromData(outs []*OutputDataWithID) ([]*OutputWithChain
 	return ret, nil
 }
 
-const SeqMilestoneDataFixedIndex = 4
+// SeqMilestoneDataFixedIndex is the fixed tuple index of the sequencer
+// milestone data on a sequencer output. Layout under Phase A:
+// [0] amounts, [1] index-value tuple, [2] lock, [3] chain, [4] sequencer
+// constraint, [5] sequencer milestone data.
+const SeqMilestoneDataFixedIndex = 5
 
-// ParseSequencerData parses the sequencer data from constraint index 4.
+// ParseSequencerData parses the sequencer data from constraint index 5.
 func ParseSequencerData(o *Output) (ret seqdata.SequencerData, err error) {
-	if o.NumConstraints() <= SeqMilestoneDataFixedIndex {
-		err = fmt.Errorf("ParseSequencerData: wrong number of constraints")
+	if o.NumElements() <= SeqMilestoneDataFixedIndex {
+		err = fmt.Errorf("ParseSequencerData: wrong number of UTXO elements")
 		return
 	}
 	data := easyfl.StripDataPrefix(o.MustConstraintAt(SeqMilestoneDataFixedIndex))

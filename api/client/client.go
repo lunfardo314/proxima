@@ -645,7 +645,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs
 
 	// ask a bit more descending outputs from server and the filter them out
 	ret, lrbid, err := c.GetAccountOutputsExt(account, "desc", func(_ *base.OutputID, o *ledger.Output) bool {
-		return o.NumConstraints() == 2
+		return o.NumElements() == 2
 	})
 	if err != nil {
 		return nil, nil, 0, err

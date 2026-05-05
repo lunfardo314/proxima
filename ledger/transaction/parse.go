@@ -380,8 +380,8 @@ func (tx *Transaction) scanProducedOutputs() error {
 	var amounts ledger.Amounts
 
 	pathToOutput := easyfl_util.Concat(ledger.PathToProducedOutputs, 0)
-	pathToAmounts := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, 0)
-	pathToLock := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, 1)
+	pathToAmounts := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, ledger.ConstraintIndexAmounts)
+	pathToLock := easyfl_util.Concat(ledger.PathToProducedOutputs, 0, ledger.ConstraintIndexLock)
 
 	for i := 0; i < numOutputs; i++ {
 		pathToOutput[len(ledger.PathToProducedOutputs)] = byte(i)

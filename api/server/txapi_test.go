@@ -108,10 +108,12 @@ func TestParseOutputData(t *testing.T) {
 	assert.Equal(t, oDataStr, ret.Data)
 	assert.Equal(t, amount, ret.Amount)
 	assert.Equal(t, chainID.StringHex(), ret.ChainID)
-	assert.Equal(t, 3, len(ret.Constraints))
+	// Layout: [0] amounts, [1] index-values placeholder, [2] lock, [3] chain.
+	assert.Equal(t, 4, len(ret.Constraints))
 	assert.Equal(t, "amounts(31_415_926_535)", ret.Constraints[0])
-	assert.Equal(t, addr.String(), ret.Constraints[1])
-	assert.Equal(t, cc.String(), ret.Constraints[2])
+	assert.Equal(t, "index values: <empty>", ret.Constraints[1])
+	assert.Equal(t, addr.String(), ret.Constraints[2])
+	assert.Equal(t, cc.String(), ret.Constraints[3])
 }
 
 func TestParseOutput(t *testing.T) {
@@ -147,7 +149,8 @@ func TestParseOutput(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, oDataStr, ret.Data)
-	assert.Equal(t, len(ret.Constraints), 2)
+	// Stem layout: [0] amounts, [1] index-values placeholder, [2] stem lock.
+	assert.Equal(t, 3, len(ret.Constraints))
 }
 
 func TestGetTXBytes(t *testing.T) {

@@ -291,7 +291,7 @@ func TestIndexDelegationOutOfRangeUnlockParams(t *testing.T) {
 	successorChainConstraint := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, 0, 0, env.seqChainOrigin.TransitionCounter+1, 0)
 	_, err = txb.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance()))
-		o.PutConstraint(successorChainConstraint.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -301,7 +301,7 @@ func TestIndexDelegationOutOfRangeUnlockParams(t *testing.T) {
 	require.NoError(t, err)
 
 	// ATTACK: delegation lock unlock params reference input 10 (doesn't exist)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(10), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(10), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce valid delegation successor

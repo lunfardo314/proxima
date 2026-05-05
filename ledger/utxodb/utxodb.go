@@ -472,7 +472,8 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 	var err1 error
 
 	err := u.SugaredStateReader().IterateOutputsForAccount(fromAccount, func(oid base.OutputID, o *ledger.Output) bool {
-		if o.NumConstraints() > 2 || o.Lock().Name() != ledger.SigLockName {
+		// only consume "vanilla" sigLock outputs: [0] amounts, [1] index-values, [2] lock.
+		if o.NumElements() > 3 || o.Lock().Name() != ledger.SigLockName {
 			return true
 		}
 		ins = append(ins, &ledger.OutputWithID{

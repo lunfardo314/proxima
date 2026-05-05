@@ -87,11 +87,15 @@ var (
 	PathToOtherData          = tuples.Path(TransactionTuple, TxOtherData)
 )
 
-// Mandatory output block indices
+// Mandatory output block indices.
+//
+// Layout: [0] amounts, [1] index-value tuple, [2] lock, [3] chain (when present).
+// See claude/utxo-indexing.md §4.
 const (
-	ConstraintIndexAmounts = byte(iota)
-	ConstraintIndexLock
-	ConstraintIndexChain // chain constraint is always at index 2
+	ConstraintIndexAmounts     = byte(iota) // 0
+	ConstraintIndexIndexValues              // 1: tuple of indexable values for this UTXO (Phase A: empty placeholder)
+	ConstraintIndexLock                     // 2
+	ConstraintIndexChain                    // 3 (when present)
 )
 
 func pathConstantsUpgrade0() string {
@@ -111,6 +115,7 @@ func pathConstantsUpgrade0() string {
 		PathToTimestamp.Hex(),
 		PathToOtherData.Hex(),
 		ConstraintIndexAmounts,
+		ConstraintIndexIndexValues,
 		ConstraintIndexLock,
 		ConstraintIndexChain,
 	)
@@ -176,6 +181,10 @@ functions:
       source: 0x%s
    -
       sym: amountsConstraintIndex
+      numArgs: 0
+      source: %d
+   -
+      sym: indexValuesConstraintIndex
       numArgs: 0
       source: %d
    -

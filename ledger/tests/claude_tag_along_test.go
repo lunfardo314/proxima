@@ -220,7 +220,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	require.NoError(t, err)
 	// provide unlock params referencing chain B (input 0, constraint 2)
 	// but the tag-along's $0 is chain A's ID -> mismatch
-	txb2.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+	txb2.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 	// produce chain B successor with stolen fee
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -264,7 +264,7 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		require.NoError(t, err)
 		// self-reference: tag-along unlock params point to itself
 		// EasyFL chainLock checks: not(equal(selfOutputIndex, byte(selfUnlockParameters,0)))
-		txb.PutUnlockParams(taIdx, 1, ledger.NewChainLockUnlockParams(taIdx))
+		txb.PutUnlockParams(taIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(taIdx))
 
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(env.seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
@@ -374,7 +374,7 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+	txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 	// produce chain output with inflated balance: chain_amount + fee + extra
 	extra := uint64(1_000_000)
@@ -469,7 +469,7 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+	txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 	expectedBalance := initialChainBalance + taFee
 	next := ledger.NewOutput(func(o *ledger.OutputBuilder) {

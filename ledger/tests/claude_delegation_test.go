@@ -150,7 +150,7 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	_, err = txb.ProduceOutput(delegSuccessor)
@@ -187,7 +187,7 @@ func TestClaudeDelegationWrongMasterUnlock(t *testing.T) {
 	require.NoError(t, err)
 
 	// mark as master unlock (byte 2 = 0xff)
-	txb.PutUnlockParams(0, 1, []byte{0xff, 0xff, 0xff})
+	txb.PutUnlockParams(0, ledger.ConstraintIndexLock, []byte{0xff, 0xff, 0xff})
 	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -229,7 +229,7 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce delegation successor with reduced amount
@@ -274,7 +274,7 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// produce delegation successor with MODIFIED lock (different master)
@@ -321,7 +321,7 @@ func TestClaudeDelegationTargetDiscontinuesChain(t *testing.T) {
 	predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
 	// target unlock (byte 2 = 0) but with chain termination unlock params
-	txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
@@ -467,7 +467,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "delegation with 5 constraints should be rejected")
-	require.NoError(t, util.MustErrorWith(err, "delegation must have exactly 4 constraints"))
+	require.NoError(t, util.MustErrorWith(err, "delegation must have exactly 5 UTXO elements"))
 }
 
 // TestClaudeDelegationSafeRevocationWindow verifies that the target sequencer
@@ -505,7 +505,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 
 		predIdx, err := txb.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 		require.NoError(t, err)
-		txb.PutUnlockParams(predIdx, 1, ledger.NewChainLockUnlockParams(0), 0)
+		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 		// produce valid delegation successor
@@ -535,7 +535,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		amount, _, err := txb.ConsumeOutputsNoUnlock(&env.delegatedOutput.OutputWithID)
 		require.NoError(t, err)
 
-		txb.PutUnlockParams(0, 1, []byte{0xff, 0xff})
+		txb.PutUnlockParams(0, ledger.ConstraintIndexLock, []byte{0xff, 0xff})
 		txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -655,7 +655,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	delegatedOut, err := env.delegatedOutput.MakeDelegationRevokeOutput(delegatedOutPar)
 	require.NoError(t, err)
 
-	txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(1, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	_, err = txb.ProduceOutput(delegatedOut)
@@ -691,7 +691,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	successorChainConstraint2 := ledger.NewChainConstraint(env.seqChainOrigin.ChainID, 0, env.seqChainOrigin.OriginSlot, 0, 0, env.seqChainOrigin.TransitionCounter+1, 0)
 	_, err = txb2.ProduceOutput(env.seqChainOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.seqChainOrigin.Output.TokenBalance()))
-		o.PutConstraint(successorChainConstraint2.Bytes(), 2)
+		o.PutConstraint(successorChainConstraint2.Bytes(), ledger.ConstraintIndexChain)
 	}))
 	require.NoError(t, err)
 	txb2.PutSignatureUnlock(0)
@@ -699,7 +699,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 
 	predIdx2, err := txb2.ConsumeOutput(env.delegatedOutput.Output, env.delegatedOutput.ID)
 	require.NoError(t, err)
-	txb2.PutUnlockParams(predIdx2, 1, ledger.NewChainLockUnlockParams(0), 0)
+	txb2.PutUnlockParams(predIdx2, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb2.PutUnlockParams(predIdx2, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(1))
 
 	// try to produce frozen successor from on-hold

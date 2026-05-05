@@ -266,7 +266,7 @@ func TestLimitsMaxUnlockParamsSize(t *testing.T) {
 	// Inject oversized unlock params for a non-lock constraint slot.
 	// Constraint index 2 (or any index beyond lock) is used for additional unlock data.
 	oversizedUnlock := make([]byte, transaction.MaxUnlockParamsSize+1)
-	txb.PutUnlockParams(0, 2, oversizedUnlock)
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, oversizedUnlock)
 
 	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(1_000_000_000)).WithLock(addr)

@@ -14,7 +14,7 @@ func _frozenCoverageOnSuccessor : parseInlineDataArgument(producedStemLockOfSelf
 func _slotInflationOnSuccessor  : parseInlineDataArgument(producedStemLockOfSelfTx, 6)
 
 // $0 - stem predecessor index
-func _predVRFProof : parseInlineDataArgument( consumedConstraintByIndex($0,1), 1, #stemLock)
+func _predVRFProof : parseInlineDataArgument( consumedConstraintByIndex($0, lockConstraintIndex), 1, #stemLock)
 
 // _kSlotsBack = txSlot - slotOf(this consumed stem). Evaluated only inside the
 // consumed branch of stemLock, where `self` IS the predecessor stem and
@@ -63,8 +63,8 @@ func _enforceGenesisStemValues : or(
 // does not require unlock parameters
 func stemLock: and(
 	require(isBranchTransaction, !!!must_be_a_branch_transaction),
-    require(equalUint(selfNumConstraints, 2), !!!stem_output_must_contain_exactly_2_constraints),
-	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
+    require(equalUint(selfNumConstraints, 3), !!!stem_output_must_contain_exactly_3_UTXO_elements),
+	require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
 	require(isZero(selfTokenBalanceValue), !!!amount_must_be_zero),
 	mustSize($0, 33),
 	mustSize($8, 24),

@@ -378,7 +378,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	}
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] -= int64(advance)
 	// unlock delegation lock as target. First byte is chain lock unlock, 2nd byte indicates it is target unlock
-	txb.PutUnlockParams(idx, 1, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
+	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), ledger.DelegationUnlockedByTarget)
 	// unlock chain
 	txb.PutUnlockParams(idx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(successorIdx))
 

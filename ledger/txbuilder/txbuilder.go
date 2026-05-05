@@ -650,7 +650,7 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	mainOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(par.Lock)
 		if o.NumConstraints()+len(par.AddConstraints) >= 256 {
-			err = fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: too many constraints")
+			err = fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: too many UTXO elements")
 			return
 		}
 		for _, constr := range par.AddConstraints {
@@ -886,7 +886,7 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 	mainOutput := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(par.Lock)
 		if o.NumConstraints()+len(par.AddConstraints) >= 256 {
-			err = fmt.Errorf("too many constraints")
+			err = fmt.Errorf("too many UTXO elements")
 			return
 		}
 		for _, constr := range par.AddConstraints {

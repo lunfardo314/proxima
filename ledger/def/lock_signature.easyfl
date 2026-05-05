@@ -25,7 +25,7 @@ func _referencedIndex : if( isZero(len($0)), 0xff, byte($0,0))
 // $0 - holder ID: blake2b hash of the (<sig type byte> + <public key>)
 // Unlock data is 1 byte with reference index to the previous input or signature unlock with 0xff
 func sigLock: and(
-	require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
+	require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
 	or(
 		and(
 			selfIsProducedOutput,

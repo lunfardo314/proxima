@@ -101,8 +101,9 @@ func parseAskStopDelegationOutput(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 	}
 	// check if 'ensureStopDelegation' constraint exists, if yes, sequencer will need to unlock it
 	if ens, idx := o.Output.EnsureStopDelegationConstraint(); idx != 0xff {
-		if idx != 3 || ens.ChainID != delegationID {
-			// wrong structure. Ensure revocation constraint expected at index 3
+		// expected layout: [0] amounts, [1] index-values, [2] tagAlongLock, [3] request data, [4] ensureStopDelegation.
+		if idx != 4 || ens.ChainID != delegationID {
+			// wrong structure. Ensure revocation constraint expected at index 4
 			// fix: bare return left cmd=nil, reason=nil -> nil pointer dereference in AddTagAlongInput
 			reason = fmt.Errorf("AskStopDelegationRequest: wrong ensureStopDelegation constraint (idx=%d)", idx)
 			return
@@ -153,7 +154,9 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 
 	if r.ensureStopDelegation != nil {
 		// unlock ensure revocation constraint
-		txb.PutUnlockParams(tagAlongOutputIdx, 3, []byte{revocationOutputIndex})
+		// ensureStopDelegation lives at the next slot after par.Bytes(): [0] amounts,
+		// [1] index-values, [2] tagAlongLock, [3] request data, [4] ensureStopDelegation.
+		txb.PutUnlockParams(tagAlongOutputIdx, 4, []byte{revocationOutputIndex})
 	}
 
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(r.Output.TokenBalance() + inflation)

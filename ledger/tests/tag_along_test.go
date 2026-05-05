@@ -108,7 +108,7 @@ func TestTagAlongSimple(t *testing.T) {
 
 		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
-		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+		txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 		// transit chain
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -356,7 +356,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 
 			_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 			require.NoError(t, err)
-			txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+			txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 			next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 				o.WithTokenBalance(seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
@@ -581,9 +581,9 @@ func TestTagAlongProduction(t *testing.T) {
 		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
 		txb.SignED25519(privKeySender)
 		_, _, _, err = txb.BytesWithValidation()
-		require.Error(t, err, "should reject more than 4 constraints")
-		require.True(t, strings.Contains(err.Error(), "no more than 4 constraints"),
-			"expected error containing 'no more than 4 constraints', got: %v", err)
+		require.Error(t, err, "should reject more than 5 UTXO elements")
+		require.True(t, strings.Contains(err.Error(), "no more than 5 UTXO elements"),
+			"expected error containing 'no more than 5 UTXO elements', got: %v", err)
 	})
 
 	t.Run("sender and target controller can be same", func(t *testing.T) {
@@ -861,7 +861,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 
 		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
-		txb.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+		txb.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithTokenBalance(seqOrigin.Output.TokenBalance() + taOuts[0].Output.TokenBalance())
@@ -1125,7 +1125,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 
 		_, err = txb2.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
-		txb2.PutUnlockParams(1, 1, ledger.NewChainLockUnlockParams(0))
+		txb2.PutUnlockParams(1, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0))
 
 		expectedBalance := initialChainBalance + fee
 		next := ledger.NewOutput(func(o *ledger.OutputBuilder) {

@@ -222,8 +222,10 @@ func (tx *Transaction) UnlockParams(consumedOutputIdx, constraintIdx byte) []byt
 	return tx.MustBytesAtPath(easyfl_util.Concat(ledger.PathToUnlockParams, consumedOutputIdx, constraintIdx))
 }
 
-// runTuple treats the tuple as a collection of bytecodes, except at index 0.
-// Index 0 contains vector of amounts, so it just checks if it is a correct tuple
+// runTuple treats the tuple as a collection of bytecodes, except at fixed slots:
+//   - index 0 (amounts): parsed as the amounts vector, no eval.
+//   - index 1 (index-value tuple): not bytecode — it is a tuple of indexable
+//     values. Phase A just skips it; Phase B will validate the tuple shape.
 func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool *slicepool.SlicePool) error {
 	// no check for duplicates: makes no sense
 
@@ -231,7 +233,7 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 	var err error
 
 	tu.ForEach(func(idx int, bytecode []byte) bool {
-		if idx == 0 {
+		if idx == int(ledger.ConstraintIndexAmounts) {
 			// tuple of amounts is expected
 			if _, err = ledger.AmountsFromBytes(bytecode); err != nil {
 				err = fmt.Errorf("amounts vector does not parse: '%v'. Path: %s", err, PathToString(evalPath))
@@ -239,7 +241,11 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 			}
 			return true
 		}
-		// not amount
+		if idx == int(ledger.ConstraintIndexIndexValues) {
+			// index-value tuple — pure data, never evaluated as bytecode.
+			return true
+		}
+		// not amount, not index-values
 		evalPath[len(evalPath)-1] = byte(idx)
 		var res []byte
 

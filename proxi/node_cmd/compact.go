@@ -55,7 +55,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 	walletData := glb.GetWalletData()
 	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputsExt(walletData.Account, "asc", func(_ *base.OutputID, o *ledger.Output) bool {
-		return o.NumConstraints() == 2
+		return o.NumElements() == 2
 	})
 	glb.AssertNoError(err)
 

@@ -29,7 +29,7 @@ func chainLock :
 or(
 	and(
 		selfIsProducedOutput,
-		require(equal(selfBlockIndex,1), !!!locks_must_be_at_block_1),
+		require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
         selfRequireEnoughStorageDeposit(selfOutputBytes),
 		require(equal(len($0),u64/32), !!!32-byte_long_argument_expected),
 		require(not(isZero($0)), !!!non_zero_argument_expected),   // to prevent common error

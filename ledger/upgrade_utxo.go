@@ -91,13 +91,13 @@ func ParseUpgradeUTXO(o *Output) (*UpgradeUTXOData, error) {
 		return nil, fmt.Errorf("upgrade UTXO must have 0 token balance, got %d", o.TokenBalance())
 	}
 
-	// Check we have at least 5 constraints (amount, lock, hash, prevHash, prevSlot)
-	if o.NumConstraints() < 5 {
-		return nil, fmt.Errorf("upgrade UTXO must have at least 5 constraints, got %d", o.NumConstraints())
+	// Check we have at least 6 UTXO elements (amount, index-values, lock, hash, prevHash, prevSlot)
+	if o.NumElements() < 6 {
+		return nil, fmt.Errorf("upgrade UTXO must have at least 6 UTXO elements, got %d", o.NumElements())
 	}
 
-	// Get the library hash from constraint 2
-	hashData, err := o.ConstraintAt(2)
+	// Get the library hash from constraint 3 (after amounts, index-values, lock)
+	hashData, err := o.ConstraintAt(3)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get library hash constraint: %w", err)
 	}
@@ -106,8 +106,8 @@ func ParseUpgradeUTXO(o *Output) (*UpgradeUTXOData, error) {
 		return nil, fmt.Errorf("upgrade UTXO library hash must be 32 bytes, got %d", len(rawHash))
 	}
 
-	// Get the previous library hash from constraint 3
-	prevHashData, err := o.ConstraintAt(3)
+	// Get the previous library hash from constraint 4
+	prevHashData, err := o.ConstraintAt(4)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get previous library hash constraint: %w", err)
 	}
@@ -116,8 +116,8 @@ func ParseUpgradeUTXO(o *Output) (*UpgradeUTXOData, error) {
 		return nil, fmt.Errorf("upgrade UTXO previous library hash must be 32 bytes, got %d", len(rawPrevHash))
 	}
 
-	// Get the previous upgrade slot from constraint 4
-	prevSlotData, err := o.ConstraintAt(4)
+	// Get the previous upgrade slot from constraint 5
+	prevSlotData, err := o.ConstraintAt(5)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get previous upgrade slot constraint: %w", err)
 	}

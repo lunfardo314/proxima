@@ -26,7 +26,8 @@ const (
 )
 
 func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (cmd TxBuilderCommand, isValid bool, err error) {
-	if o.Output.NumConstraints() != 3 {
+	// expected layout: [0] amounts, [1] index-values, [2] lock, [3] request data.
+	if o.Output.NumElements() != 4 {
 		// unexpected structure -> may be attack
 		err = fmt.Errorf("WithdrawFromChainTxBuilderCommand: parse failed, unexpected structure of the output")
 		return

@@ -60,7 +60,8 @@ func DelegationOutputFromOutputWithChainIDWithLib(o *OutputWithChainID, lib *Lib
 	util.Assertf(ok, "DelegationOutputFromOutputWithChainID: inconsistency")
 	ret.DelegateLock = *dLock
 
-	if data, err := o.Output.ConstraintAt(3); err == nil {
+	// DelegateLockState lives at index 4: [0] amounts, [1] index-values, [2] lock, [3] chain, [4] state.
+	if data, err := o.Output.ConstraintAt(4); err == nil {
 		ret.DelegateLockState, err = DelegateLockStateFromBytesWithLib(data, lib)
 	}
 	return

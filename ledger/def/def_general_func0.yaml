@@ -148,7 +148,7 @@ functions:
   -
     sym: selfIsChainedOutput
     numArgs: 0
-    source: "and(lessThan(u64/2, selfNumConstraints), equal(parseBytecode(selfSiblingConstraint(2), 0x), #chain))"
+    source: "and(lessThan(u64/3, selfNumConstraints), equal(parseBytecode(selfSiblingConstraint(chainConstraintIndex), 0x), #chain))"
   -
     sym: selfOutputIndex
     numArgs: 0
@@ -172,7 +172,7 @@ functions:
   -
     sym: selfHasLockType
     description: $0 is call prefix label. Returns true if current output has specific lock type
-    source: equal(parseBytecode(selfSiblingConstraint(1), 0x), $0)
+    source: equal(parseBytecode(selfSiblingConstraint(lockConstraintIndex), 0x), $0)
   -
     sym: signatureProper
     description: "$0 must be signatureData (<sig type byte>+<signature proper>+<public key>). Returns proper signature part, depending on the signature type"
