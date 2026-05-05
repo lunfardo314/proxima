@@ -66,19 +66,19 @@ const TraceTag = "apiServer"
 func (srv *server) registerHandlers() {
 	// GET request format: '/api/v1/get_ledger_definition?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
-	// GET request format: '/api/v1/get_utxo_controlled_by?controller=<EasyFL source form of the controller lock constraint>'
+	// GET request format: '/api/v1/get_utxo_controlled_by?controller=<sigLock|chainLock|a|c>/<64-hex>'
 	srv.addHandler(api.PathGetUTXOsControlledBy, srv.getUTXOsControlledBy)
-	// GET request format: '/api/v1/get_account_parsed_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	// GET request format: '/api/v1/get_account_parsed_outputs?accountable=<sigLock|chainLock|a|c>/<64-hex>'
 	srv.addHandler(api.PathGetAccountParsedOutputs, srv.getAccountParsedOutputs)
-	// GET request format: '/api/v1/get_account_simple_siglocked?addr=<a(0x....)>'
+	// GET request format: '/api/v1/get_account_simple_siglocked?addr=<sigLock|a>/<64-hex>'
 	srv.addHandler(api.PathGetAccountSimpleSiglockedOutputs, srv.getAccountSimpleSigLockedOutputs)
-	// GET request format: '/api/v1/get_outputs_for_amount?addr=<a(0x....)>&amount=<amount>'
+	// GET request format: '/api/v1/get_outputs_for_amount?addr=<sigLock|a>/<64-hex>&amount=<amount>'
 	srv.addHandler(api.PathGetOutputsForAmount, srv.getOutputsForAmount)
-	// GET request format: '/api/v1/get_nonchain_balance?addr=<a(0x....)>'
+	// GET request format: '/api/v1/get_nonchain_balance?addr=<sigLock|a>/<64-hex>'
 	srv.addHandler(api.PathGetNonChainBalance, srv.getNonChainBalance)
-	// GET request format: '/api/v1/get_chained_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	// GET request format: '/api/v1/get_chained_outputs?accountable=<sigLock|chainLock|a|c>/<64-hex>'
 	srv.addHandler(api.PathGetChainedOutputs, srv.getChainedOutputs)
-	// GET request format: '/api/v1/get_delegation_outputs?accountable=<EasyFL source form of the accountable lock constraint>'
+	// GET request format: '/api/v1/get_delegation_outputs?accountable=<sigLock|chainLock|a|c>/<64-hex>'
 	srv.addHandler(api.PathGetDelegationOutputs, srv.getDelegationOutputs)
 	// GET request format: '/api/v1/get_chain_output?chainid=<hex-encoded chain id>'
 	srv.addHandler(api.PathGetChainOutput, srv.getChainOutput)

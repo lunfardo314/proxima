@@ -93,8 +93,9 @@ type (
 		ControllerID() ControllerID
 		// Source returns the wallet/CLI mini-syntax `kind/<hex>` used
 		// to round-trip the controller through string APIs (URL
-		// parameters, request fields). Replaces the previous EasyFL
-		// `a(0x..)` / `c(0x..)` form. See ControllerFromSource.
+		// parameters, request fields). The reverse parser
+		// ControllerFromSource also accepts the short synonyms
+		// `a/<hex>` and `c/<hex>`.
 		Source() string
 	}
 
@@ -197,8 +198,8 @@ func EqualControllers(a, b Controller) bool {
 
 // ControllerFromSource parses a "kind/<hex>" mini-syntax used by the
 // wallet/CLI and returns the resulting Controller (SigLock or
-// ChainLock). This replaces the previous EasyFL-source compilation
-// path (`a(0x..)` / `c(0x..)`).
+// ChainLock). Accepts both long names (`sigLock/`, `chainLock/`) and
+// short synonyms (`a/`, `c/`).
 func ControllerFromSource(src string) (Controller, error) {
 	id, kind, err := ControllerIDFromSource(src)
 	if err != nil {
@@ -216,28 +217,37 @@ func ControllerFromSource(src string) (Controller, error) {
 }
 
 // ControllerIDFromSource parses a "kind/<hex>" mini-syntax used by the
-// wallet/CLI and returns the resulting ControllerID bytes plus the lock
-// kind name. Recognised forms:
+// wallet/CLI and returns the resulting ControllerID bytes plus the
+// canonical lock kind name. Recognised prefixes (short and long are
+// synonyms):
 //
-//	sigLock/<64-hex>         → 32-byte holder
-//	chainLock/<64-hex>       → 32-byte chain ID
+//	sigLock/<64-hex>   |  a/<64-hex>   → 32-byte holder
+//	chainLock/<64-hex> |  c/<64-hex>   → 32-byte chain ID
 //
 // This replaces the previous EasyFL-source compilation path
 // (`a(0x..)` / `c(0x..)`) — the public lock symbols are 0-arg now and
 // no longer parse the holder/chainID as an argument.
 func ControllerIDFromSource(src string) (ControllerID, string, error) {
-	for _, kind := range []string{SigLockName, ChainLockName} {
-		prefix := kind + "/"
-		if len(src) > len(prefix) && src[:len(prefix)] == prefix {
-			hexPart := src[len(prefix):]
+	prefixes := []struct {
+		prefix string
+		kind   string
+	}{
+		{SigLockName + "/", SigLockName},     // "sigLock/..."
+		{"a/", SigLockName},                  // short synonym
+		{ChainLockName + "/", ChainLockName}, // "chainLock/..."
+		{"c/", ChainLockName},                // short synonym
+	}
+	for _, p := range prefixes {
+		if len(src) > len(p.prefix) && src[:len(p.prefix)] == p.prefix {
+			hexPart := src[len(p.prefix):]
 			if len(hexPart) != 64 {
-				return nil, kind, fmt.Errorf("ControllerIDFromSource: %s expects 32-byte hex (got %d chars)", kind, len(hexPart))
+				return nil, p.kind, fmt.Errorf("ControllerIDFromSource: %s expects 32-byte hex (got %d chars)", p.kind, len(hexPart))
 			}
 			id, err := decodeHex32(hexPart)
 			if err != nil {
-				return nil, kind, fmt.Errorf("ControllerIDFromSource: %w", err)
+				return nil, p.kind, fmt.Errorf("ControllerIDFromSource: %w", err)
 			}
-			return id[:], kind, nil
+			return id[:], p.kind, nil
 		}
 	}
 	return nil, "", fmt.Errorf("ControllerIDFromSource: unrecognised lock source '%s'", src)
