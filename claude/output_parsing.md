@@ -1,5 +1,16 @@
 # Output parsing refactor
 
+> **Status:** Phase 1 shipped. `OutputFromBytes` is structural-only +
+> library-free; validation hooks (`WithAmountsParsed`,
+> `WithIndexValuesParsed`, `WithLockParsed`/`WithLockParsedAt`,
+> `WithFullValidation`/`WithFullValidationAt`) are available;
+> `OutputFromBytesWithLib` preserves backward-compat by auto-applying
+> `WithFullValidationAt(lib)`; `OutputFromBytesMain` /
+> `OutputFromBytesMainWithLib` are kept as backward-compat shims
+> marked Deprecated. Phases 2–4 (caller migration, deletion of the
+> Main shims, optional `*E` siblings) deferred.
+
+
 ## Motivation
 
 `OutputFromBytes(data, validateOpt...)` currently always does the

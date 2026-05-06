@@ -96,55 +96,53 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 	return &OutputBuilder{ret}, nil
 }
 
-// OutputFromBytesMain parses an output and returns its amounts and lock using the latest library.
-func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
-	return OutputFromBytesMainWithLib(data, L(base.MaxSlot))
-}
-
-// OutputFromBytesMainWithLib parses an output and returns its amounts and lock.
-func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lock, error) {
+// OutputFromBytes does a structural-only parse of an output. Without
+// validateOpt it does NOT require the ledger library to be initialised:
+// it only checks that the outer tuple decodes, has at least 3 elements
+// (`amounts | index-values | lock`), element 0 (amounts) decodes as a
+// sub-tuple, and element 1 (index-values) is empty or decodes as a
+// sub-tuple. Element 2 (lock bytecode) is present (the NumElements
+// check guarantees this) but not decoded — lock dispatch is library-
+// dependent and only happens through the WithLockParsed* hooks or via
+// on-demand methods like Output.Lock().
+//
+// validateOpt funcs run after the structural check and can pull in
+// heavier parsing (amounts vector validation, lock dispatch, …)
+// including library-dependent steps.
+//
+// Trusted-bytes callers (output read back from the local txstore /
+// state trie / a builder round-trip) typically don't need validateOpt:
+// downstream methods (Output.Lock, Output.Amounts) parse on demand
+// and panic on the impossible case of malformed bytes.
+//
+// Untrusted-bytes callers (incoming peer data, HTTP requests) should
+// pass WithFullValidation() (or WithLockParsed() / WithAmountsParsed()
+// individually) to surface bad input as an error here rather than
+// later as a panic from the on-demand methods.
+func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
 	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
 	if err != nil {
-		return nil, Amounts{}, nil, err
+		return nil, fmt.Errorf("OutputFromBytes: %w", err)
 	}
 	ret := &Output{arr}
-
-	var amounts Amounts
-	var lock Lock
-	if ret.NumElements() < 2 {
-		return nil, Amounts{}, nil, fmt.Errorf("at least 2 elements in the UTXO tuple are expected")
+	if ret.NumElements() < 3 {
+		return nil, fmt.Errorf("OutputFromBytes: at least 3 elements required (amounts | index-values | lock), got %d", ret.NumElements())
 	}
-	amountBin, err := ret.At(int(ConstraintIndexAmounts))
+	amountsBin, err := ret.At(int(ConstraintIndexAmounts))
 	if err != nil {
-		return nil, Amounts{}, nil, err
+		return nil, fmt.Errorf("OutputFromBytes: %w", err)
 	}
-	if amounts, err = AmountsFromBytes(amountBin); err != nil {
-		return nil, Amounts{}, nil, err
+	if _, err = tuples.TupleFromBytes(amountsBin, 256); err != nil {
+		return nil, fmt.Errorf("OutputFromBytes: amounts at index 0 not a valid sub-tuple: %w", err)
 	}
-	lockBin, err := ret.At(int(ConstraintIndexLock))
+	ivBin, err := ret.At(int(ConstraintIndexIndexValues))
 	if err != nil {
-		return nil, Amounts{}, nil, err
+		return nil, fmt.Errorf("OutputFromBytes: %w", err)
 	}
-	indexValuesBin, err := ret.At(int(ConstraintIndexIndexValues))
-	if err != nil {
-		return nil, Amounts{}, nil, err
-	}
-	if lock, err = LockFromOutputElementsWithLib(indexValuesBin, lockBin, lib); err != nil {
-		return nil, Amounts{}, nil, err
-	}
-	return ret, amounts, lock, nil
-}
-
-// OutputFromBytes parses an output from bytes using the latest library, with optional validation.
-func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
-	return OutputFromBytesWithLib(data, L(base.MaxSlot), validateOpt...)
-}
-
-// OutputFromBytesWithLib parses an output with optional validation using the given library.
-func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
-	ret, _, _, err := OutputFromBytesMainWithLib(data, lib)
-	if err != nil {
-		return nil, err
+	if len(ivBin) > 0 {
+		if _, err = tuples.TupleFromBytes(ivBin, 256); err != nil {
+			return nil, fmt.Errorf("OutputFromBytes: index-values at index 1 not a valid sub-tuple: %w", err)
+		}
 	}
 	for _, validate := range validateOpt {
 		if err = validate(ret); err != nil {
@@ -152,6 +150,132 @@ func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Outp
 		}
 	}
 	return ret, nil
+}
+
+// OutputFromBytesWithLib parses an output and runs full validation
+// (amounts + index-values + lock dispatch) against the given library
+// version, plus any extra validateOpt. Equivalent to
+// OutputFromBytes(data, WithFullValidationAt(lib), validateOpt...).
+//
+// Use plain OutputFromBytes when you don't need lock dispatch tied to
+// a specific library version — most callers eventually go through
+// Output.Lock() (which uses the latest library) on demand.
+func OutputFromBytesWithLib(data []byte, lib *Library, validateOpt ...func(*Output) error) (*Output, error) {
+	opts := append([]func(*Output) error{WithFullValidationAt(lib)}, validateOpt...)
+	return OutputFromBytes(data, opts...)
+}
+
+// OutputFromBytesMain is a backward-compat shim that returns the
+// parsed Output along with its amounts and lock (decoded with the
+// latest library). New code should call OutputFromBytes (with
+// WithFullValidation if needed) and use Output.Amounts / Output.Lock
+// on demand.
+//
+// Deprecated.
+func OutputFromBytesMain(data []byte) (*Output, Amounts, Lock, error) {
+	return OutputFromBytesMainWithLib(data, L(base.MaxSlot))
+}
+
+// OutputFromBytesMainWithLib is a backward-compat shim. New code
+// should call OutputFromBytesWithLib (or plain OutputFromBytes with
+// the validation hooks it actually needs) and unpack via methods on
+// Output.
+//
+// Deprecated.
+func OutputFromBytesMainWithLib(data []byte, lib *Library) (*Output, Amounts, Lock, error) {
+	o, err := OutputFromBytesWithLib(data, lib)
+	if err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	amountsBin, _ := o.At(int(ConstraintIndexAmounts))
+	amounts, err := AmountsFromBytes(amountsBin)
+	if err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	ivBin, _ := o.At(int(ConstraintIndexIndexValues))
+	lockBin, _ := o.At(int(ConstraintIndexLock))
+	lock, err := LockFromOutputElementsWithLib(ivBin, lockBin, lib)
+	if err != nil {
+		return nil, Amounts{}, nil, err
+	}
+	return o, amounts, lock, nil
+}
+
+// WithAmountsParsed validates that element 0 decodes as a well-formed
+// amounts vector (each element is a uint64). Library-free.
+func WithAmountsParsed() func(*Output) error {
+	return func(o *Output) error {
+		bin, err := o.At(int(ConstraintIndexAmounts))
+		if err != nil {
+			return fmt.Errorf("WithAmountsParsed: %w", err)
+		}
+		if _, err = AmountsFromBytes(bin); err != nil {
+			return fmt.Errorf("WithAmountsParsed: %w", err)
+		}
+		return nil
+	}
+}
+
+// WithIndexValuesParsed validates that element 1 decodes as a well-
+// formed index-value tuple (or is empty). Library-free.
+func WithIndexValuesParsed() func(*Output) error {
+	return func(o *Output) error {
+		bin, err := o.At(int(ConstraintIndexIndexValues))
+		if err != nil {
+			return fmt.Errorf("WithIndexValuesParsed: %w", err)
+		}
+		if _, err = IndexValuesFromBytes(bin); err != nil {
+			return fmt.Errorf("WithIndexValuesParsed: %w", err)
+		}
+		return nil
+	}
+}
+
+// WithLockParsed validates that element 2 dispatches to a known lock
+// kind using the latest library. Library-dependent.
+func WithLockParsed() func(*Output) error {
+	return WithLockParsedAt(L(base.MaxSlot))
+}
+
+// WithLockParsedAt is the explicit-library variant of WithLockParsed.
+func WithLockParsedAt(lib *Library) func(*Output) error {
+	return func(o *Output) error {
+		ivBin, err := o.At(int(ConstraintIndexIndexValues))
+		if err != nil {
+			return fmt.Errorf("WithLockParsedAt: %w", err)
+		}
+		lockBin, err := o.At(int(ConstraintIndexLock))
+		if err != nil {
+			return fmt.Errorf("WithLockParsedAt: %w", err)
+		}
+		if _, err = LockFromOutputElementsWithLib(ivBin, lockBin, lib); err != nil {
+			return fmt.Errorf("WithLockParsedAt: %w", err)
+		}
+		return nil
+	}
+}
+
+// WithFullValidation runs amounts + index-values + lock validation
+// using the latest library.
+func WithFullValidation() func(*Output) error {
+	return WithFullValidationAt(L(base.MaxSlot))
+}
+
+// WithFullValidationAt is the explicit-library variant of
+// WithFullValidation.
+func WithFullValidationAt(lib *Library) func(*Output) error {
+	amounts := WithAmountsParsed()
+	indexValues := WithIndexValuesParsed()
+	lock := WithLockParsedAt(lib)
+	return func(o *Output) error {
+		if err := amounts(o); err != nil {
+			return err
+		}
+		if err := indexValues(o); err != nil {
+			return err
+		}
+		return lock(o)
+	}
 }
 
 // OutputFromHexString parses an output from a hex-encoded string.
