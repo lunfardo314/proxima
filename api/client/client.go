@@ -500,6 +500,103 @@ func (c *APIClient) SubmitTransaction(txBytes []byte) error {
 	return nil
 }
 
+// GetOutputsParams carries the optional parameters of the unified
+// `get_outputs` endpoint. Zero-value fields fall through to server
+// defaults (max=200, sort_by=timestamp, sort_order=asc, lock_type=
+// sigLock, no for_amount, chained=false). String defaults are signaled
+// by the empty string; ForAmount == 0 means unset (any non-empty
+// result satisfies a zero minimum).
+type GetOutputsParams struct {
+	MaxOutputs int
+	SortBy     string
+	SortOrder  string
+	ForAmount  uint64
+	LockType   string
+	Chained    bool
+}
+
+// GetOutputsResult is the parsed return shape of GetOutputs. Outputs
+// are decoded with the latest ledger library; the API ships raw bytes.
+type GetOutputsResult struct {
+	Outputs         []*ledger.OutputWithID
+	AvailableAmount uint64
+	LimitExceeded   bool
+	LRBID           base.TransactionID
+}
+
+// GetOutputs queries the unified state-query endpoint described in
+// claude/get_outputs.md. indexValue is 1..255 raw bytes (the client
+// hex-encodes for the URL). Output parsing requires the ledger
+// library to be initialised in this process.
+func (c *APIClient) GetOutputs(indexValue []byte, params ...GetOutputsParams) (*GetOutputsResult, error) {
+	if len(indexValue) < 1 || len(indexValue) > 255 {
+		return nil, fmt.Errorf("GetOutputs: indexValue must be 1..255 bytes, got %d", len(indexValue))
+	}
+	var p GetOutputsParams
+	if len(params) > 0 {
+		p = params[0]
+	}
+	path := fmt.Sprintf(api.PathGetOutputs+"?index_value=%s", hex.EncodeToString(indexValue))
+	if p.MaxOutputs > 0 {
+		path += fmt.Sprintf("&max_outputs=%d", p.MaxOutputs)
+	}
+	if p.SortBy != "" {
+		path += "&sort_by=" + p.SortBy
+	}
+	if p.SortOrder != "" {
+		path += "&sort_order=" + p.SortOrder
+	}
+	if p.ForAmount > 0 {
+		path += fmt.Sprintf("&for_amount=%d", p.ForAmount)
+	}
+	if p.LockType != "" {
+		path += "&lock_type=" + p.LockType
+	}
+	if p.Chained {
+		path += "&chained=true"
+	}
+
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, err
+	}
+	var res api.GetOutputsResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return nil, fmt.Errorf("GetOutputs: unmarshal: %w; body: %s", err, string(body))
+	}
+	if res.Error.Error != "" {
+		return nil, fmt.Errorf("GetOutputs: from server: %s", res.Error.Error)
+	}
+
+	out := &GetOutputsResult{
+		AvailableAmount: res.AvailableAmount,
+		LimitExceeded:   res.LimitExceeded,
+	}
+	if res.LRBID != "" {
+		out.LRBID, err = base.TransactionIDFromHexString(res.LRBID)
+		if err != nil {
+			return nil, fmt.Errorf("GetOutputs: invalid lrbid %s: %w", res.LRBID, err)
+		}
+	}
+	out.Outputs = make([]*ledger.OutputWithID, 0, len(res.Outputs))
+	for _, item := range res.Outputs {
+		oid, err := base.OutputIDFromHexString(item.ID)
+		if err != nil {
+			return nil, fmt.Errorf("GetOutputs: invalid output id %s: %w", item.ID, err)
+		}
+		oData, err := hex.DecodeString(item.Data)
+		if err != nil {
+			return nil, fmt.Errorf("GetOutputs: invalid output data hex for %s: %w", item.ID, err)
+		}
+		o, err := ledger.OutputFromBytes(oData)
+		if err != nil {
+			return nil, fmt.Errorf("GetOutputs: parse output %s: %w", item.ID, err)
+		}
+		out.Outputs = append(out.Outputs, &ledger.OutputWithID{ID: oid, Output: o})
+	}
+	return out, nil
+}
+
 // GetAccountOutputs returns all UTXOs in the account
 func (c *APIClient) GetAccountOutputs(account ledger.Controller, filter ...func(oid *base.OutputID, o *ledger.Output) bool) ([]*ledger.OutputWithID, *base.TransactionID, error) {
 	return c.GetAccountOutputsExt(account, "", filter...)

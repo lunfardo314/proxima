@@ -18,6 +18,7 @@ const (
 	PrefixWebSocketV1 = "/wsapi/v1"
 
 	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
+	PathGetOutputs                       = PrefixAPIV1 + "/get_outputs"
 	PathGetUTXOsControlledBy             = PrefixAPIV1 + "/get_utxos_controlled_by"
 	PathGetAccountParsedOutputs          = PrefixAPIV1 + "/get_account_parsed_outputs"
 	PathGetAccountSimpleSiglockedOutputs = PrefixAPIV1 + "/get_account_simple_siglocked"
@@ -43,6 +44,24 @@ const (
 	PathGetInactive                      = PrefixAPIV1 + "/get_inactive"
 	PathGetBranchList                    = PrefixAPIV1 + "/get_branch_list"
 	PathGetSnapshotInfo                  = PrefixAPIV1 + "/get_snapshot_info"
+
+	// get_outputs parameter values
+	GetOutputsLockTypeAll            = "all"
+	GetOutputsLockTypeSigLock        = "sigLock"
+	GetOutputsLockTypeChainLock      = "chainLock"
+	GetOutputsLockTypeTagAlongMaster = "tagAlongMaster"
+	GetOutputsLockTypeTagAlongTarget = "tagAlongTarget"
+	GetOutputsLockTypeDelegateMaster = "delegateMaster"
+	GetOutputsLockTypeDelegateTarget = "delegateTarget"
+
+	GetOutputsSortByTimestamp = "timestamp"
+	GetOutputsSortByAmount    = "amount"
+
+	GetOutputsSortOrderAsc  = "asc"
+	GetOutputsSortOrderDesc = "desc"
+
+	GetOutputsDefaultMaxOutputs = 200
+	GetOutputsIterationCap      = 2000
 	// PathGetDashboard returns dashboard
 	PathGetDashboard = "/dashboard"
 	// PathGetPeersDashboard returns the peers dashboard (auto-refreshing peer info page)
@@ -97,6 +116,23 @@ type (
 		ID string `json:"id,omitempty"`
 		// hex-encoded output data
 		Data string `json:"data,omitempty"`
+	}
+
+	// GetOutputsResponse is returned by 'get_outputs'. Wire format is
+	// raw: each Outputs entry carries hex-encoded OutputID and hex-
+	// encoded output bytes. The Go API client parses Outputs into
+	// []ledger.OutputWithID. See claude/get_outputs.md.
+	GetOutputsResponse struct {
+		Error
+		Outputs []OutputDataWithID `json:"outputs,omitempty"`
+		// Sum of all amounts in the (possibly capped) filtered set,
+		// before truncation to max_outputs. When LimitExceeded is
+		// true, this is a partial view.
+		AvailableAmount uint64 `json:"available_amount,omitempty"`
+		// LimitExceeded is true when the server-side iteration cap
+		// (GetOutputsIterationCap) was hit before the lookup completed.
+		LimitExceeded bool   `json:"limit_exceeded,omitempty"`
+		LRBID         string `json:"lrbid,omitempty"`
 	}
 	// ChainOutput is returned by 'get_chain_output'
 	ChainOutput struct {

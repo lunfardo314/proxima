@@ -66,6 +66,9 @@ const TraceTag = "apiServer"
 func (srv *server) registerHandlers() {
 	// GET request format: '/api/v1/get_ledger_definition?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
+	// Unified state-query endpoint. See claude/get_outputs.md.
+	// GET '/api/v1/get_outputs?index_value=<hex>[&max_outputs=N][&sort_by=timestamp|amount][&sort_order=asc|desc][&for_amount=N][&lock_type=all|sigLock|chainLock|tagAlongMaster|tagAlongTarget|delegateMaster|delegateTarget][&chained=true|false]'
+	srv.addHandler(api.PathGetOutputs, srv.getOutputs)
 	// GET request format: '/api/v1/get_utxo_controlled_by?controller=<sigLock|chainLock|a|c>/<64-hex>'
 	srv.addHandler(api.PathGetUTXOsControlledBy, srv.getUTXOsControlledBy)
 	// GET request format: '/api/v1/get_account_parsed_outputs?accountable=<sigLock|chainLock|a|c>/<64-hex>'
@@ -1175,6 +1178,266 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 	}
 	_, err = w.Write(respBin)
 	util.AssertNoError(err)
+}
+
+// getOutputs is the unified state-query endpoint described in
+// claude/get_outputs.md. Single mandatory parameter `index_value`
+// (1..255 byte hex), optional sort/filter/limit parameters. Response
+// is api.GetOutputsResponse.
+func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	writeErr := func(msg string) {
+		respBin, err := json.MarshalIndent(&api.GetOutputsResponse{
+			Error: api.Error{Error: msg},
+		}, "", "  ")
+		util.AssertNoError(err)
+		_, _ = w.Write(respBin)
+	}
+
+	q := r.URL.Query()
+
+	indexValueLst, ok := q["index_value"]
+	if !ok || len(indexValueLst) != 1 || indexValueLst[0] == "" {
+		writeErr("get_outputs: missing required parameter 'index_value'")
+		return
+	}
+	indexValue, err := hex.DecodeString(indexValueLst[0])
+	if err != nil {
+		writeErr(fmt.Sprintf("get_outputs: invalid hex in 'index_value': %v", err))
+		return
+	}
+	if len(indexValue) < 1 || len(indexValue) > 255 {
+		writeErr(fmt.Sprintf("get_outputs: 'index_value' must be 1..255 bytes, got %d", len(indexValue)))
+		return
+	}
+
+	maxOutputs := api.GetOutputsDefaultMaxOutputs
+	if v, ok := q["max_outputs"]; ok && len(v) == 1 && v[0] != "" {
+		n, err := strconv.Atoi(v[0])
+		if err != nil || n <= 0 {
+			writeErr(fmt.Sprintf("get_outputs: invalid 'max_outputs': %s", v[0]))
+			return
+		}
+		maxOutputs = n
+	}
+
+	sortBy := api.GetOutputsSortByTimestamp
+	if v, ok := q["sort_by"]; ok && len(v) == 1 {
+		switch v[0] {
+		case api.GetOutputsSortByTimestamp, api.GetOutputsSortByAmount:
+			sortBy = v[0]
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'sort_by': %s", v[0]))
+			return
+		}
+	}
+
+	sortOrder := api.GetOutputsSortOrderAsc
+	if v, ok := q["sort_order"]; ok && len(v) == 1 {
+		switch v[0] {
+		case api.GetOutputsSortOrderAsc, api.GetOutputsSortOrderDesc:
+			sortOrder = v[0]
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'sort_order': %s", v[0]))
+			return
+		}
+	}
+
+	var forAmount uint64
+	if v, ok := q["for_amount"]; ok && len(v) == 1 && v[0] != "" && v[0] != "none" {
+		n, err := strconv.ParseUint(v[0], 10, 64)
+		if err != nil {
+			writeErr(fmt.Sprintf("get_outputs: invalid 'for_amount': %s", v[0]))
+			return
+		}
+		forAmount = n
+	}
+
+	lockType := api.GetOutputsLockTypeSigLock
+	if v, ok := q["lock_type"]; ok && len(v) == 1 {
+		switch v[0] {
+		case api.GetOutputsLockTypeAll,
+			api.GetOutputsLockTypeSigLock,
+			api.GetOutputsLockTypeChainLock,
+			api.GetOutputsLockTypeTagAlongMaster,
+			api.GetOutputsLockTypeTagAlongTarget,
+			api.GetOutputsLockTypeDelegateMaster,
+			api.GetOutputsLockTypeDelegateTarget:
+			lockType = v[0]
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'lock_type': %s", v[0]))
+			return
+		}
+	}
+
+	chainedOnly := false
+	if v, ok := q["chained"]; ok && len(v) == 1 {
+		switch v[0] {
+		case "true":
+			chainedOnly = true
+		case "false":
+			chainedOnly = false
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'chained': %s", v[0]))
+			return
+		}
+	}
+
+	resp := &api.GetOutputsResponse{}
+
+	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
+		lrbid := rdr.GetStemOutput().ID.TransactionID()
+		resp.LRBID = lrbid.StringHex()
+
+		// Step 1: trie iteration with cap. Collect raw {oid, odata}.
+		type rawHit struct {
+			oid   base.OutputID
+			odata []byte
+		}
+		hits := make([]rawHit, 0, 64)
+		err1 := rdr.IterateUTXOsForController(indexValue, func(oid base.OutputID, odata []byte) bool {
+			if len(hits) >= api.GetOutputsIterationCap {
+				resp.LimitExceeded = true
+				return false
+			}
+			hits = append(hits, rawHit{oid: oid, odata: odata})
+			return true
+		})
+		if err1 != nil {
+			return err1
+		}
+
+		// Step 2: hydrate to *Output (lib-free structural parse).
+		type parsedHit struct {
+			oid    base.OutputID
+			out    *ledger.Output
+			amount uint64
+		}
+		parsed := make([]parsedHit, 0, len(hits))
+		for _, h := range hits {
+			o, err := ledger.OutputFromBytes(h.odata)
+			if err != nil {
+				return fmt.Errorf("get_outputs: parse output %s: %w", h.oid.String(), err)
+			}
+			parsed = append(parsed, parsedHit{oid: h.oid, out: o, amount: o.TokenBalance()})
+		}
+
+		// Step 3 + 4: filter by lock_type + role and by chained.
+		filtered := parsed[:0]
+		for _, p := range parsed {
+			if !matchesLockType(p.out, indexValue, lockType) {
+				continue
+			}
+			isChained := p.out.ChainConstraint() != nil
+			if chainedOnly && !isChained {
+				continue
+			}
+			if !chainedOnly && isChained {
+				continue
+			}
+			filtered = append(filtered, p)
+		}
+
+		// Step 5: sort.
+		sortDesc := sortOrder == api.GetOutputsSortOrderDesc
+		sort.SliceStable(filtered, func(i, j int) bool {
+			var less bool
+			switch sortBy {
+			case api.GetOutputsSortByAmount:
+				less = filtered[i].amount < filtered[j].amount
+			default: // timestamp — by ledger time of OutputID
+				ti := filtered[i].oid.Timestamp()
+				tj := filtered[j].oid.Timestamp()
+				if ti == tj {
+					less = bytes.Compare(filtered[i].oid[:], filtered[j].oid[:]) < 0
+				} else {
+					less = ti.Before(tj)
+				}
+			}
+			if sortDesc {
+				return !less
+			}
+			return less
+		})
+
+		// Step 6: AvailableAmount over the (possibly capped) filtered set.
+		var avail uint64
+		for _, p := range filtered {
+			avail += p.amount
+		}
+		resp.AvailableAmount = avail
+
+		// Step 7: for_amount prefix. for_amount == 0 means unset.
+		out := filtered
+		if forAmount > 0 {
+			var sum uint64
+			cut := len(filtered)
+			for i, p := range filtered {
+				sum += p.amount
+				if sum >= forAmount {
+					cut = i + 1
+					break
+				}
+			}
+			// If unreachable (avail < forAmount), keep the full set;
+			// the caller detects shortfall from AvailableAmount.
+			if sum >= forAmount {
+				out = filtered[:cut]
+			}
+		}
+
+		// Step 8: truncate to max_outputs.
+		if len(out) > maxOutputs {
+			out = out[:maxOutputs]
+		}
+
+		resp.Outputs = make([]api.OutputDataWithID, 0, len(out))
+		for _, p := range out {
+			resp.Outputs = append(resp.Outputs, api.OutputDataWithID{
+				ID:   p.oid.StringHex(),
+				Data: p.out.Hex(),
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		writeErr(err.Error())
+		return
+	}
+
+	respBin, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		writeErr(err.Error())
+		return
+	}
+	_, err = w.Write(respBin)
+	util.AssertNoError(err)
+}
+
+// matchesLockType returns true iff the output's lock kind and the role
+// the indexValue plays inside it match the requested filter.
+func matchesLockType(o *ledger.Output, indexValue []byte, lockType string) bool {
+	if lockType == api.GetOutputsLockTypeAll {
+		return true
+	}
+	values := o.IndexValues()
+	name := o.Lock().Name()
+	switch lockType {
+	case api.GetOutputsLockTypeSigLock:
+		return name == ledger.SigLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
+	case api.GetOutputsLockTypeChainLock:
+		return name == ledger.ChainLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
+	case api.GetOutputsLockTypeTagAlongMaster:
+		return name == ledger.TagAlongLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
+	case api.GetOutputsLockTypeTagAlongTarget:
+		return name == ledger.TagAlongLockName && len(values) > 1 && bytes.Equal(values[1], indexValue)
+	case api.GetOutputsLockTypeDelegateMaster:
+		return name == ledger.DelegateLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
+	case api.GetOutputsLockTypeDelegateTarget:
+		return name == ledger.DelegateLockName && len(values) > 1 && bytes.Equal(values[1], indexValue)
+	}
+	return false
 }
 
 func (srv *server) withLRB(fun func(rdr multistate.SugaredStateReader) error) error {
