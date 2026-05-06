@@ -167,7 +167,7 @@ Each phase: implement → deploy to testnet → measure → tune parameters → 
    - Check non-seq per branch (should increase from 20-50 to 50-100)
    - Check sequencer tx count per slot (should decrease)
    - Monitor memory stability
-4. Compare Prometheus metrics before/after: `proxima_seq_endorsements_*`, `proxima_branch_tx_count`
+4. Compare Prometheus metrics before/after: `proxima_seq_endorsements_*`, `proxima_tx_confirmed_total`
 
 ## Key Metrics to Track per Experiment
 

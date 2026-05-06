@@ -60,7 +60,7 @@ type (
 		postEventEnvironment
 		ParseMilestoneData(msVID *vertex.WrappedTx) *seqdata.SequencerData
 		EvidencePastConeSize(sz int)
-		EvidenceBranchMutations(numMutations, numTxs int)
+		EvidenceBranchMutations(numMutations int)
 		DurationSinceLastMessageFromPeer() time.Duration
 		IsConnectedToNetwork() bool
 		Branches() *branches.Branches

@@ -38,7 +38,7 @@ type (
 		PullFromPeers(txid base.TransactionID) int
 		GetOwnSequencerID() *base.ChainID
 		EvidencePastConeSize(sz int)
-		EvidenceBranchMutations(numMutations, numTxs int)
+		EvidenceBranchMutations(numMutations int)
 		EvidenceNumberOfTxDependencies(n int)
 		SnapshotBranchID() base.TransactionID
 		DurationSinceLastMessageFromPeer() time.Duration

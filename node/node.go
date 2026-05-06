@@ -49,7 +49,6 @@ type (
 		lrbSlotsBehind        prometheus.Gauge
 		lrbCoverage           prometheus.Gauge
 		lrbSupply             prometheus.Gauge
-		lrbNumTx              prometheus.Gauge
 		pastConeSize          prometheus.Gauge
 		numTxDependencies     prometheus.Gauge
 		counterTxDependencies prometheus.Counter
@@ -58,7 +57,8 @@ type (
 		validationNumUTXO     prometheus.Gauge
 		branchInflationBonus  prometheus.Gauge
 		branchMutations       prometheus.Counter
-		branchTxCount         prometheus.Counter
+		txValidatedTotal      prometheus.Counter
+		txConfirmedTotal      prometheus.Counter
 	}
 )
 
@@ -313,6 +313,16 @@ func (p *ProximaNode) goLoggingSync() {
 		slotSyncThreshold    = 5
 	)
 
+	// txConfirmedTotal is bumped from here: the LRB is polled on every tick and
+	// non-negative deltas of lrb.NumTransactions are added to the counter.
+	// Negative deltas (caused by LRB lineage switches) are dropped; the counter
+	// resumes accruing on the next advance. The first observed value seeds the
+	// baseline so node restart does not spike the counter by the LRB total.
+	var (
+		prevLrbNumTx        uint32
+		lrbBaselineSet      bool
+	)
+
 	p.RepeatInBackground("logging_sync", syncLogPeriodDefault, func() bool {
 		start := time.Now()
 		lrb := p.GetLatestReliableBranch()
@@ -333,7 +343,15 @@ func (p *ProximaNode) goLoggingSync() {
 
 			p.lrbCoverage.Set(float64(cov))
 			p.lrbSupply.Set(float64(lrb.Supply))
-			p.lrbNumTx.Set(float64(lrb.NumTransactions))
+
+			if lrbBaselineSet {
+				if lrb.NumTransactions > prevLrbNumTx {
+					p.txConfirmedTotal.Add(float64(lrb.NumTransactions - prevLrbNumTx))
+				}
+			} else {
+				lrbBaselineSet = true
+			}
+			prevLrbNumTx = lrb.NumTransactions
 		}
 		return true
 	})
@@ -351,10 +369,6 @@ func (p *ProximaNode) registerMetrics() {
 	p.lrbSupply = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_lrb_supply",
 		Help: "total supply on the latest reliable branch (LRB)",
-	})
-	p.lrbNumTx = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxima_lrb_num_tx",
-		Help: "number of transactions committed on the latest reliable branch (LRB)",
 	})
 	p.pastConeSize = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxima_past_cone_size",
@@ -388,16 +402,19 @@ func (p *ProximaNode) registerMetrics() {
 		Name: "proxima_branch_mutations",
 		Help: "cumulative number of mutation commands in branch commits",
 	})
-	p.branchTxCount = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "proxima_branch_tx_count",
-		Help: "cumulative number of transactions in branch commits",
+	p.txValidatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_tx_validated_total",
+		Help: "cumulative number of transactions that passed Stage-3 constraint validation on this node (one increment per tx)",
+	})
+	p.txConfirmedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "proxima_tx_confirmed_total",
+		Help: "cumulative number of transactions confirmed in the latest reliable branch (LRB), accrued from non-negative deltas of lrb.NumTransactions on each LRB poll",
 	})
 
 	p.MetricsRegistry().MustRegister(
 		p.lrbCoverage,
 		p.lrbSlotsBehind,
 		p.lrbSupply,
-		p.lrbNumTx,
 		p.pastConeSize,
 		p.numTxDependencies,
 		p.counterTxDependencies,
@@ -406,7 +423,8 @@ func (p *ProximaNode) registerMetrics() {
 		p.validationNumUTXO,
 		p.branchInflationBonus,
 		p.branchMutations,
-		p.branchTxCount,
+		p.txValidatedTotal,
+		p.txConfirmedTotal,
 	)
 }
 
@@ -434,15 +452,15 @@ func (p *ProximaNode) IsConnectedToNetwork() bool {
 func (p *ProximaNode) EvidenceTxValidationStats(took time.Duration, numIn, numOut int) {
 	p.validationTimeNs.Set(float64(took.Nanoseconds()))
 	p.validationNumUTXO.Set(float64(numIn + numOut))
+	p.txValidatedTotal.Inc()
 }
 
 func (p *ProximaNode) EvidenceBranchInflationBonus(ib uint64) {
 	p.branchInflationBonus.Set(float64(ib))
 }
 
-func (p *ProximaNode) EvidenceBranchMutations(numMutations, numTxs int) {
+func (p *ProximaNode) EvidenceBranchMutations(numMutations int) {
 	p.branchMutations.Add(float64(numMutations))
-	p.branchTxCount.Add(float64(numTxs))
 }
 
 func (p *ProximaNode) CheckTxSenderConfig() (checkSeq, checkNonSeq bool) {

@@ -177,7 +177,7 @@ func (a *milestoneAttacher) run() error {
 			a.vid.IDShortString, a.pastCone.PastConeBase.Len())
 		a.vid.ConvertToDetached()
 		a.vid.SetTxStatusGood(a.pastCone.PastConeBase.CloneImmutable(), a.FinalLedgerCoverage(a.vid.Timestamp()))
-		a.EvidenceBranchMutations(a.finals.MutationStats.NumCreated+a.finals.MutationStats.NumDeleted, a.finals.MutationStats.NumTransactions)
+		a.EvidenceBranchMutations(a.finals.MutationStats.NumCreated + a.finals.MutationStats.NumDeleted)
 		// branch wrap-up freed a lot of state — nudge the async GC worker. Non-blocking:
 		// the worker decides whether to actually runtime.GC() based on heap threshold + rate limit.
 		a.MemoryPressureGC()

@@ -262,7 +262,6 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_lrb_coverage` | gauge | Ledger coverage of LRB |
 | `proxima_lrb_supply` | gauge | Total supply on LRB |
 | `proxima_lrb_slots_behind` | gauge | LRB slots behind current slot |
-| `proxima_lrb_num_tx` | gauge | Transactions committed on LRB |
 
 **Sequencer (only on sequencer nodes):**
 
@@ -281,6 +280,8 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 |--------|------|-------------|
 | `proxima_tx_validation_time_ns` | gauge | Last transaction validation time (ns) |
 | `proxima_tx_validation_num_utxo` | gauge | Inputs + outputs in last validated tx |
+| `proxima_tx_validated_total` | counter | Cumulative transactions that passed Stage-3 constraint validation on this node (one increment per tx). Use `rate()` for raw-processing TPS. Includes orphans/conflicted txs that validate but never settle. |
+| `proxima_tx_confirmed_total` | counter | Cumulative transactions confirmed in the LRB. Bumped from `goLoggingSync` (10s LRB poll) by `max(0, lrb.NumTransactions - prev)`. Lineage-switch decreases dropped. Use `rate()` over a few minutes for settled TPS. |
 | `proxima_glb_attachmentDurationMs` | gauge | Last attachment duration (ms) |
 | `proxima_glb_attachments_counter` | counter | Total attachments |
 | `proxima_txStore_txCounter` | counter | Transactions stored |
@@ -289,7 +290,6 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_txStore_txBytesSizeHistogram` | histogram | Raw transaction size distribution |
 | `proxima_txStore_txBytesSeqNonBranchSizeHistogram` | histogram | Seq non-branch tx size distribution |
 | `proxima_branch_mutations` | counter | Cumulative mutation commands in branch commits |
-| `proxima_branch_tx_count` | counter | Cumulative transactions in branch commits |
 | `proxima_branch_inflation_bonus` | gauge | Branch inflation bonus of last attached branch |
 | `proxima_num_tx_dependencies` | gauge | Inputs + endorsements in last transaction |
 | `proxima_counter_tx_dependencies` | counter | Cumulative inputs + endorsements |
@@ -344,8 +344,11 @@ rate(proxima_peering_txReceived[1m])
 # Branch commit rate
 rate(proxima_seq_branches[1m])
 
-# Committed TPS (transactions finalized per second)
-rate(proxima_branch_tx_count{instance="$instance"}[1m])
+# Raw TPS (transactions validated by this node per second; includes orphans)
+rate(proxima_tx_validated_total{instance="$instance"}[1m])
+
+# Settled TPS (transactions confirmed in the LRB per second; smooth over a few minutes)
+rate(proxima_tx_confirmed_total{instance="$instance"}[5m])
 
 # Branch mutations rate (state changes per second, scaled)
 rate(proxima_branch_mutations{instance="$instance"}[1m]) * 10
