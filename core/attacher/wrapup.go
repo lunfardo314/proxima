@@ -87,7 +87,7 @@ func (a *milestoneAttacher) commitBranch() error {
 		CoverageDelta:    stemLock.CoverageDelta,
 		FrozenCoverage:   stemLock.FrozenCoverage,
 		SlotInflation:    stemLock.SlotInflation,
-		NumTransactions:  stemLock.NumTransactions,
+		NumConfirmedTransactions:  stemLock.NumConfirmedTransactions,
 		BaselineRoot:     stemLock.BaselineRoot,
 	}, stemOutput, seqOutput)
 

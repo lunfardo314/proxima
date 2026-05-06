@@ -55,7 +55,7 @@ type (
 	// metadata-refactor (see claude/metadata-refactor.md §5), it carries only
 	// the trie root and the sequencer ChainID — every other deterministic
 	// aggregate (Supply, CoverageDelta, FrozenCoverage, SlotInflation,
-	// NumTransactions, TotalCoverage, BaselineRoot) lives inside the stem
+	// NumConfirmedTransactions, TotalCoverage, BaselineRoot) lives inside the stem
 	// output's stemLock constraint and is part of the trie commitment.
 	RootRecord struct {
 		Root        common.VCommitment
@@ -77,7 +77,7 @@ type (
 		CoverageDelta   uint64
 		FrozenCoverage  uint64
 		SlotInflation   uint64
-		NumTransactions uint32
+		NumConfirmedTransactions uint32
 		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
 		// nil at genesis. Held as raw bytes — callers that need a VCommitment
 		// reconstitute it via ledger.CommitmentModel.NewVectorCommitment().

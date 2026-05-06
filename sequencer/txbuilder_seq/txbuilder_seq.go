@@ -36,13 +36,13 @@ type (
 		// CoverageDelta / FrozenCoverage / SlotInflation describe the past cone
 		// EXCLUDING this branch transaction itself. buildStemLock adds the
 		// branch's own chain+branch inflation to SlotInflation and +1 to
-		// NumTransactions before populating the produced StemLock — this
+		// NumConfirmedTransactions before populating the produced StemLock — this
 		// matches what the milestone attacher will compute when validating
 		// the branch (which DOES include the branch tx in its past cone).
 		CoverageDelta   uint64
 		FrozenCoverage  uint64
 		SlotInflation   uint64
-		NumTransactions uint32
+		NumConfirmedTransactions uint32
 		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
 		// Empty / nil leaves Source() emitting 24 zero bytes (genesis convention).
 		BaselineRoot []byte
@@ -495,7 +495,7 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	k := uint64(curSlot - predBranchSlot)
 
 	var coverageDelta, frozenCoverage, slotInflation uint64
-	var numTransactions uint32
+	var numConfirmedTransactions uint32
 	var baselineRoot []byte
 
 	if a := txb.stemAggregates; a != nil {
@@ -505,17 +505,17 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 		coverageDelta = a.CoverageDelta
 		frozenCoverage = a.FrozenCoverage
 		slotInflation = a.SlotInflation + uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
-		numTransactions = a.NumTransactions + 1
+		numConfirmedTransactions = a.NumConfirmedTransactions + 1
 		baselineRoot = a.BaselineRoot
 	} else {
 		// Auto-compute fallback (single-tx past cone): coverageDelta / frozen /
-		// slotInflation come from THIS tx's inputs and inflation; numTransactions = 1.
+		// slotInflation come from THIS tx's inputs and inflation; numConfirmedTransactions = 1.
 		for _, o := range txb.ConsumedOutputs {
 			coverageDelta += o.TokenBalance()
 			frozenCoverage += uint64(o.FrozenCoverage(0))
 		}
 		slotInflation = uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
-		numTransactions = 1
+		numConfirmedTransactions = 1
 	}
 	// Fall back to deriving baselineRoot if the caller didn't supply it.
 	// Prefer the explicit txb.baselineRoot setter (used by the distribute
@@ -560,7 +560,7 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 		CoverageDelta:       coverageDelta,
 		FrozenCoverage:      frozenCoverage,
 		SlotInflation:       slotInflation,
-		NumTransactions:     numTransactions,
+		NumConfirmedTransactions:     numConfirmedTransactions,
 		BaselineRoot:        baselineRoot,
 	}
 }

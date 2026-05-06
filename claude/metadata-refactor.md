@@ -80,7 +80,7 @@ Values to move into `stemLock`:
 | Total coverage  | derived off-chain (`Branches.LedgerCoverage`)   | `stemLock` arg (stored explicitly)         |
 | Slot inflation  | `RootRecord.SlotInflation`                      | `stemLock` arg                             |
 | Frozen coverage | `RootRecord.FrozenCoverage`                     | `stemLock` arg (kept as "trustless stats") |
-| Num transactions | `RootRecord.NumTransactions`                   | `stemLock` arg (kept as "trustless stats")  |
+| Num transactions | `RootRecord.NumConfirmedTransactions`                   | `stemLock` arg (kept as "trustless stats")  |
 | Baseline root   | (only inside `RootRecord` of the predecessor)   | `stemLock` arg (predecessor's state root)  |
 
 Survivors in `RootRecord`:
@@ -246,7 +246,7 @@ type RootRecord struct {
 }
 ```
 
-`NumTransactions` is removed from `RootRecord` — it lives only on the stem now.
+`NumConfirmedTransactions` is removed from `RootRecord` — it lives only on the stem now.
 
 **`BranchData` (in-memory convenience type)** keeps the full set of values for code-readability
 and call-site compatibility, but the values come from parsing the stem output (already fetched
@@ -264,7 +264,7 @@ type BranchData struct {
     CoverageDelta   uint64
     FrozenCoverage  uint64
     SlotInflation   uint64
-    NumTransactions uint32
+    NumConfirmedTransactions uint32
     BaselineRoot    common.VCommitment
 }
 ```
@@ -430,7 +430,7 @@ F3. Update CLAUDE.md memory (Active Task list + key learnings) only when phases 
 
 1. **Stem field widths** — accept §3 layout. ✅ keep `frozenCoverage` as trustless stats.
    Compressed `z64/`/`z32/` encoding, not fixed-width.
-2. **`NumTransactions`** — ✅ moved to the stemLock only; removed from `RootRecord`. Read from
+2. **`NumConfirmedTransactions`** — ✅ moved to the stemLock only; removed from `RootRecord`. Read from
    the stem output (projected into `BranchData` at construction time, §5).
 3. **Genesis stem** — ✅ `totalCoverage = totalSupply`, all deltas = 0, `baselineRoot` = zero
    bytes. EasyFL produced-branch path detects genesis (e.g. via `equal(_predOutputID, ...)`

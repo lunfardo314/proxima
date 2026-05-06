@@ -44,7 +44,7 @@ func GenesisStemOutput() *OutputWithID {
 	//   CoverageDelta = TotalSupply  (mirrors pre-refactor RootRecord; required so
 	//                                 the genesis branch passes the LRB healthiness
 	//                                 check on a fresh node started from snapshot)
-	//   FrozenCoverage / SlotInflation / NumTransactions = 0
+	//   FrozenCoverage / SlotInflation / NumConfirmedTransactions = 0
 	//   BaselineRoot  = TrieHashSize zero bytes
 	initialSupply := L(0).InitialSupply
 	return &OutputWithID{

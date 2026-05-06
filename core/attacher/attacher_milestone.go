@@ -449,7 +449,7 @@ func (a *milestoneAttacher) logFinalStatusString(msData *seqdata.SequencerData) 
 
 	if a.vid.IsBranchTransaction() {
 		msg = fmt.Sprintf("--- BRANCH%s %s(in %d, tx: %d), i = %s",
-			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.MutationStats.NumTransactions,
+			msDataStr, a.vid.IDShortString(), a.finals.numInputs, a.finals.MutationStats.NumConfirmedTransactions,
 			util.Th(a.vid.InflationAmount()))
 	} else {
 		numEndorse := 0

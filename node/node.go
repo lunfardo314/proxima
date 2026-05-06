@@ -313,45 +313,40 @@ func (p *ProximaNode) goLoggingSync() {
 		slotSyncThreshold    = 5
 	)
 
-	// txConfirmedTotal is bumped from here: the LRB is polled on every tick and
-	// non-negative deltas of lrb.NumTransactions are added to the counter.
-	// Negative deltas (caused by LRB lineage switches) are dropped; the counter
-	// resumes accruing on the next advance. The first observed value seeds the
-	// baseline so node restart does not spike the counter by the LRB total.
-	var (
-		prevLrbNumTx        uint32
-		lrbBaselineSet      bool
-	)
+	// proxima_tx_confirmed_total is bumped here. lrb.NumConfirmedTransactions is the
+	// per-branch count of new (non-rooted) transactions this branch is committing
+	// — i.e. the slot's delta, not a cumulative total — so on each observed LRB
+	// advance to a higher slot we simply add lrb.NumConfirmedTransactions to the counter.
+	// During forking/lineage switches the LRB slot can stand still or wobble; the
+	// metric is approximate over those windows but they're rare in steady state.
+	var prevLRBSlot uint32
 
 	p.RepeatInBackground("logging_sync", syncLogPeriodDefault, func() bool {
 		start := time.Now()
 		lrb := p.GetLatestReliableBranch()
 		if lrb == nil {
 			p.Log().Warnf("[sync] can't find latest reliable branch")
+			return true
+		}
+		curSlot := ledger.TimeNow().Slot
+		lrbSlot := lrb.Stem.ID.Slot()
+		slotsBehind := curSlot - lrbSlot
+		p.lrbSlotsBehind.Set(float64(slotsBehind))
+		cov := p.workflow.Branches().LedgerCoverage(lrb.TxID())
+		msg := fmt.Sprintf("[sync] latest reliable branch is %d slots behind from now, current slot: %d, coverage: %s (%v)",
+			slotsBehind, curSlot, util.Th(cov), time.Since(start))
+		if slotsBehind <= slotSyncThreshold {
+			p.Log().Info(msg)
 		} else {
-			curSlot := ledger.TimeNow().Slot
-			slotsBehind := curSlot - lrb.Stem.ID.Slot()
-			p.lrbSlotsBehind.Set(float64(slotsBehind))
-			cov := p.workflow.Branches().LedgerCoverage(lrb.TxID())
-			msg := fmt.Sprintf("[sync] latest reliable branch is %d slots behind from now, current slot: %d, coverage: %s (%v)",
-				slotsBehind, curSlot, util.Th(cov), time.Since(start))
-			if slotsBehind <= slotSyncThreshold {
-				p.Log().Info(msg)
-			} else {
-				p.Log().Warn(msg)
-			}
+			p.Log().Warn(msg)
+		}
 
-			p.lrbCoverage.Set(float64(cov))
-			p.lrbSupply.Set(float64(lrb.Supply))
+		p.lrbCoverage.Set(float64(cov))
+		p.lrbSupply.Set(float64(lrb.Supply))
 
-			if lrbBaselineSet {
-				if lrb.NumTransactions > prevLrbNumTx {
-					p.txConfirmedTotal.Add(float64(lrb.NumTransactions - prevLrbNumTx))
-				}
-			} else {
-				lrbBaselineSet = true
-			}
-			prevLrbNumTx = lrb.NumTransactions
+		if lrbSlot > prevLRBSlot {
+			p.txConfirmedTotal.Add(float64(lrb.NumConfirmedTransactions))
+			prevLRBSlot = lrbSlot
 		}
 		return true
 	})
@@ -408,7 +403,7 @@ func (p *ProximaNode) registerMetrics() {
 	})
 	p.txConfirmedTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "proxima_tx_confirmed_total",
-		Help: "cumulative number of transactions confirmed in the latest reliable branch (LRB), accrued from non-negative deltas of lrb.NumTransactions on each LRB poll",
+		Help: "cumulative number of transactions confirmed in the latest reliable branch (LRB). On each observed LRB advance to a higher slot, lrb.NumConfirmedTransactions (per-branch slot delta) is added.",
 	})
 
 	p.MetricsRegistry().MustRegister(

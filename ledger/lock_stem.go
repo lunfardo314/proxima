@@ -37,7 +37,7 @@ type (
 		CoverageDelta   uint64
 		FrozenCoverage  uint64
 		SlotInflation   uint64
-		NumTransactions uint32
+		NumConfirmedTransactions uint32
 		// Predecessor branch's trie root (int(TrieHashSize) bytes). All-zero at genesis.
 		BaselineRoot []byte
 	}
@@ -71,7 +71,7 @@ func (st *StemLock) Source() string {
 		st.CoverageDelta,
 		st.FrozenCoverage,
 		st.SlotInflation,
-		st.NumTransactions,
+		st.NumConfirmedTransactions,
 		hex.EncodeToString(baselineRoot),
 	)
 }
@@ -121,14 +121,14 @@ func init() {
 			CoverageDelta:       100_000,
 			FrozenCoverage:      10_000,
 			SlotInflation:       1_000,
-			NumTransactions:     42,
+			NumConfirmedTransactions:     42,
 			BaselineRoot:        bytes.Repeat([]byte{0x55}, int(TrieHashSize)),
 		}
 		exampleBack, err := StemLockFromBytesWithLib(example.Bytes(), lib)
 		util.AssertNoError(err)
 		util.Assertf(bytes.Equal(example.Bytes(), exampleBack.Bytes()), "bytes.Equal(example.Bytes(), exampleBack.Bytes())")
 		util.Assertf(example.TotalSupply == exampleBack.TotalSupply, "TotalSupply roundtrip")
-		util.Assertf(example.NumTransactions == exampleBack.NumTransactions, "NumTransactions roundtrip")
+		util.Assertf(example.NumConfirmedTransactions == exampleBack.NumConfirmedTransactions, "NumConfirmedTransactions roundtrip")
 		util.Assertf(bytes.Equal(example.BaselineRoot, exampleBack.BaselineRoot), "BaselineRoot roundtrip")
 		_, err = lib.ParsePrefixBytecode(example.Bytes())
 		util.AssertNoError(err)
@@ -169,8 +169,8 @@ func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
 		return nil, fmt.Errorf("StemLockFromBytes: SlotInflation: %w", err)
 	}
 	// $7 — z32-encoded uint32; empty bytes mean zero.
-	if ret.NumTransactions, err = decodeOptionalUint32(args[7]); err != nil {
-		return nil, fmt.Errorf("StemLockFromBytes: NumTransactions: %w", err)
+	if ret.NumConfirmedTransactions, err = decodeOptionalUint32(args[7]); err != nil {
+		return nil, fmt.Errorf("StemLockFromBytes: NumConfirmedTransactions: %w", err)
 	}
 	// $8 — fixed-width 24-byte trie root.
 	baselineRoot := easyfl.StripDataPrefix(args[8])

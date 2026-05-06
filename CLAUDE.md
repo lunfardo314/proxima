@@ -281,7 +281,7 @@ Claude should proactively query Prometheus when analyzing node behavior, compari
 | `proxima_tx_validation_time_ns` | gauge | Last transaction validation time (ns) |
 | `proxima_tx_validation_num_utxo` | gauge | Inputs + outputs in last validated tx |
 | `proxima_tx_validated_total` | counter | Cumulative transactions that passed Stage-3 constraint validation on this node (one increment per tx). Use `rate()` for raw-processing TPS. Includes orphans/conflicted txs that validate but never settle. |
-| `proxima_tx_confirmed_total` | counter | Cumulative transactions confirmed in the LRB. Bumped from `goLoggingSync` (10s LRB poll) by `max(0, lrb.NumTransactions - prev)`. Lineage-switch decreases dropped. Use `rate()` over a few minutes for settled TPS. |
+| `proxima_tx_confirmed_total` | counter | Cumulative transactions confirmed in the LRB. Bumped from `goLoggingSync` (10s LRB poll): each time the LRB slot has advanced, `lrb.NumConfirmedTransactions` (per-branch slot delta) is added. Approximate during forking/lineage switches but those windows are rare. Use `rate()` over a few minutes for settled TPS. |
 | `proxima_glb_attachmentDurationMs` | gauge | Last attachment duration (ms) |
 | `proxima_glb_attachments_counter` | counter | Total attachments |
 | `proxima_txStore_txCounter` | counter | Transactions stored |

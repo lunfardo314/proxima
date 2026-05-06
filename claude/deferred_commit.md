@@ -30,7 +30,7 @@ All the DB update logic currently implemented as :
 		FrozenCoverage:  *a.finals.FrozenCoverage,
 		SlotInflation:   *a.finals.SlotInflation,
 		Supply:          *a.finals.Supply,
-		NumTransactions: uint32(a.finals.MutationStats.NumTransactions),
+		NumConfirmedTransactions: uint32(a.finals.MutationStats.NumConfirmedTransactions),
 	})
 ```
 must be moved to the Branches module. 

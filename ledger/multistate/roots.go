@@ -251,7 +251,7 @@ func FetchBranchData(store common.KVReader, branchTxID base.TransactionID) (Bran
 
 // FetchBranchDataByRoot returns existing branch data by root record. Aggregates
 // (Supply, TotalCoverage, CoverageDelta, FrozenCoverage, SlotInflation,
-// NumTransactions, BaselineRoot) are projected from the branch's stem output —
+// NumConfirmedTransactions, BaselineRoot) are projected from the branch's stem output —
 // they live inside the trie commitment now (see metadata-refactor §5).
 func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchData {
 	rdr, err := NewSugaredReadableState(store, rootData.Root, 0)
@@ -272,7 +272,7 @@ func FetchBranchDataByRoot(store common.KVReader, rootData RootRecord) BranchDat
 		bd.CoverageDelta = stemLock.CoverageDelta
 		bd.FrozenCoverage = stemLock.FrozenCoverage
 		bd.SlotInflation = stemLock.SlotInflation
-		bd.NumTransactions = stemLock.NumTransactions
+		bd.NumConfirmedTransactions = stemLock.NumConfirmedTransactions
 		bd.BaselineRoot = stemLock.BaselineRoot
 	}
 	return bd
@@ -608,7 +608,7 @@ func (br *BranchData) branchAggregateLines(prefix ...string) *lines.Lines {
 		Add("total coverage:  %s", util.Th(br.TotalCoverage)).
 		Add("frozen coverage: %s", util.Th(br.FrozenCoverage)).
 		Add("slot inflation:  %s", util.Th(br.SlotInflation)).
-		Add("num transactions: %d", br.NumTransactions).
+		Add("num confirmed transactions: %d", br.NumConfirmedTransactions).
 		Add("healthy(%s):     %v", global.FractionHealthyBranch().String(),
 			global.IsHealthyCoverageDelta(br.CoverageDelta, br.Supply, global.FractionHealthyBranch()))
 	return ret

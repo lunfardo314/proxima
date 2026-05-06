@@ -38,7 +38,7 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 	// Non-branch txs don't produce a stem, so this is a no-op for them.
 	// TotalSupply / TotalCoverage are NOT passed — the txbuilder applies the
 	// on-chain recurrence using the predecessor stem to derive both.
-	// SlotInflation / NumTransactions are PAST CONE only — buildStemLock
+	// SlotInflation / NumConfirmedTransactions are PAST CONE only — buildStemLock
 	// adds the branch tx's own inflation and +1 to match the attacher view.
 	if p.IsBranchTarget() {
 		// Predecessor branch's trie root (24 bytes). For pending baselines,
@@ -57,7 +57,7 @@ func (p *proposal) finalize(source string) (*finalProposal, error) {
 			CoverageDelta:   coverageDelta,
 			FrozenCoverage:  frozen,
 			SlotInflation:   slotInflation,
-			NumTransactions: uint32(p.NumNewTransactionsInPastCone()),
+			NumConfirmedTransactions: uint32(p.NumNewTransactionsInPastCone()),
 			BaselineRoot:    baselineRoot,
 		})
 	}

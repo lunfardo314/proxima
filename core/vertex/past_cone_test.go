@@ -901,12 +901,12 @@ func TestPastConeCloneForDebugOnly(t *testing.T) {
 // TestMutationStats tests the MutationStats structure.
 func TestMutationStats(t *testing.T) {
 	stats := MutationStats{
-		NumTransactions: 10,
+		NumConfirmedTransactions: 10,
 		NumDeleted:      3,
 		NumCreated:      7,
 	}
 
-	require.Equal(t, 10, stats.NumTransactions)
+	require.Equal(t, 10, stats.NumConfirmedTransactions)
 	require.Equal(t, 3, stats.NumDeleted)
 	require.Equal(t, 7, stats.NumCreated)
 }

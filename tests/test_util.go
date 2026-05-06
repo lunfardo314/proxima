@@ -780,7 +780,7 @@ func computeStemAggregates(
 		CoverageDelta:   delta,
 		FrozenCoverage:  frozen,
 		SlotInflation:   a.SlotInflation(),
-		NumTransactions: uint32(a.NumNewTransactionsInPastCone()),
+		NumConfirmedTransactions: uint32(a.NumNewTransactionsInPastCone()),
 		BaselineRoot:    bd.Root.Bytes(),
 	}
 }

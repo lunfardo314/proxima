@@ -32,7 +32,7 @@ type (
 		CoverageDelta   uint64 `json:"coverage_delta"`
 		FrozenCoverage  uint64 `json:"frozen_coverage"`
 		SlotInflation   uint64 `json:"slot_inflation"`
-		NumTransactions uint32 `json:"num_transactions"`
+		NumConfirmedTransactions uint32 `json:"num_confirmed_transactions"`
 		BaselineRoot    string `json:"baseline_root"`
 	}
 )
@@ -84,7 +84,7 @@ func (b *BranchDataJSONAble) LinesVerbose(prefix ...string) *lines.Lines {
 	ret := b.Lines(prefix...)
 	ret.Add("root: %s", b.Root.Root).
 		Add("slot inflation:   %s", util.Th(b.SlotInflation)).
-		Add("num transactions: %d", b.NumTransactions).
+		Add("num confirmed transactions: %d", b.NumConfirmedTransactions).
 		Add("baseline root:    %s", b.BaselineRoot)
 	return ret
 }
@@ -101,7 +101,7 @@ func (br *BranchData) JSONAble() *BranchDataJSONAble {
 		CoverageDelta:        br.CoverageDelta,
 		FrozenCoverage:       br.FrozenCoverage,
 		SlotInflation:        br.SlotInflation,
-		NumTransactions:      br.NumTransactions,
+		NumConfirmedTransactions:      br.NumConfirmedTransactions,
 		BaselineRoot:         hex.EncodeToString(br.BaselineRoot),
 	}
 }

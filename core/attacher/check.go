@@ -101,7 +101,7 @@ func (a *milestoneAttacher) _checkMonotonicityOfInputTransactions(v *vertex.Vert
 // nothing to compare against.
 //
 // Other aggregates (CoverageDelta / FrozenCoverage / SlotInflation /
-// NumTransactions / TotalSupply / TotalCoverage) are deterministic from the
+// NumConfirmedTransactions / TotalSupply / TotalCoverage) are deterministic from the
 // past cone. By the time we reach wrap-up the past cone is fully resolved, so
 // any mismatch indicates either a malformed remote branch or a node bug.
 // Either way the right action is to reject the branch.
@@ -146,8 +146,8 @@ func (a *milestoneAttacher) enforceStemValues(stemLock *ledger.StemLock) error {
 	if totalCov != stemLock.TotalCoverage {
 		report("TotalCoverage", util.Th(totalCov), util.Th(stemLock.TotalCoverage))
 	}
-	if numTx != stemLock.NumTransactions {
-		report("NumTransactions", numTx, stemLock.NumTransactions)
+	if numTx != stemLock.NumConfirmedTransactions {
+		report("NumConfirmedTransactions", numTx, stemLock.NumConfirmedTransactions)
 	}
 
 	if len(mismatches) == 0 {

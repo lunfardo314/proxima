@@ -688,7 +688,7 @@ func (pc *PastCone) producedIndices(vid *WrappedTx) []byte {
 }
 
 type MutationStats struct {
-	NumTransactions int
+	NumConfirmedTransactions int
 	NumDeleted      int
 	NumCreated      int
 }
@@ -734,7 +734,7 @@ func (pc *PastCone) Mutations() (muts *multistate.Mutations, stats MutationStats
 			var unspent set256.Set256
 			unspent.InsertAll(produced...)
 			muts.InsertAddTxMutation(vid.id, unspent)
-			stats.NumTransactions++
+			stats.NumConfirmedTransactions++
 			txs = append(txs, vid.id)
 
 			// ADD OUTPUT mutations only for not consumed outputs
@@ -1194,7 +1194,7 @@ func (pc *PastCone) NumVertices() int {
 
 // NumNewTransactions counts vertices in the past cone that are NOT in the
 // baseline state — i.e. transactions that THIS branch is committing for the
-// first time. Matches `MutationStats.NumTransactions` from Mutations(), but
+// first time. Matches `MutationStats.NumConfirmedTransactions` from Mutations(), but
 // without building the full mutation set.
 func (pc *PastCone) NumNewTransactions() int {
 	pc.Assertf(pc.delta == nil, "pc.delta == nil")
