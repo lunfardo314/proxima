@@ -151,19 +151,19 @@ func (p *proposal) insertTagAlongInputs() {
 			p.Backlog().AddToBlacklist(o.wOut)
 			p.taskData.WarnTopicf("tag_along", 0, "TAG_ALONG: output cannot be consumed PERMANENTLY, reason = '%v'\n%s",
 				err, o.o.LinesSource("     ").String())
-			p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: PERMANENTLY rejected, reason: %v", p.Name, err), o.o.ID.TransactionID())
+			p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s PERMANENTLY rejected, reason = '%v'", p.Name, o.o.ID.StringShort(), err), o.o.ID.TransactionID())
 		} else {
 			if err != nil {
 				if strings.Contains(err.Error(), "already consumed") {
 					p.Backlog().RemoveOutput(o.wOut)
 				}
 				p.taskData.WarnTopicf("tag_along", 1, "TAG_ALONG: output %s cannot be consumed as tag-along, reason = '%v'", o.o.ID.StringShort(), err)
-				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: temporarily skipped, reason: %v", p.Name, err), o.o.ID.TransactionID())
+				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s temporarily skipped, reason = '%v'", p.Name, o.o.ID.StringShort(), err), o.o.ID.TransactionID())
 			} else {
 				p.taskData.Assertf(cmd != nil, "cmd != nil")
 				p.taskData.LogTopicf("tag_along", 1, "TAG_ALONG: output %s has been added to '%s', cmd='%s'",
 					o.o.ID.StringShort(), p.Name, cmd.Lines().Join(", "))
-				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: consumed, cmd=%s", p.Name, cmd.Lines().Join(", ")), o.o.ID.TransactionID())
+				p.taskData.LogTx(time.Now(), fmt.Sprintf("tag-along[%s]: output %s consumed, cmd='%s'", p.Name, o.o.ID.StringShort(), cmd.Lines().Join(", ")), o.o.ID.TransactionID())
 				tagAlongsInserted++
 			}
 		}

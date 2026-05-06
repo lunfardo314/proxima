@@ -75,8 +75,9 @@ func New(env Environment) (*TagAlongBacklog, error) {
 			env.Tracef(TraceTag, "repeating output %s", wOut.IDStringShort)
 			return
 		}
+		oidShort := wOut.IDStringShort()
 		if !ret.checkCandidate(wOut) {
-			env.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: candidate rejected for output #%d", env.SequencerName(), wOut.Index), txid)
+			env.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s candidate rejected", env.SequencerName(), oidShort), txid)
 			return
 		}
 		// new output -> put it into the map
@@ -86,7 +87,7 @@ func New(env Environment) (*TagAlongBacklog, error) {
 		ret.outputCount++
 		//wOut.VID.Reference()
 		env.Tracef(TraceTag, "output included into input backlog: %s (total: %d)", wOut.IDStringShort, len(ret.outputs))
-		env.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: enrolled output #%d (total: %d)", env.SequencerName(), wOut.Index, len(ret.outputs)), txid)
+		env.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s enrolled (total: %d)", env.SequencerName(), oidShort, len(ret.outputs)), txid)
 	})
 
 	const (
@@ -210,7 +211,7 @@ func (b *TagAlongBacklog) AddToBlacklist(wOut vertex.WrappedOutput) {
 	if _, already := b.blacklist[oid]; !already {
 		b.blacklist[oid] = time.Now().Add(blacklistTTL)
 		delete(b.outputs, wOut)
-		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: blacklisted output #%d", b.SequencerName(), wOut.Index), wOut.VID.ID())
+		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s blacklisted", b.SequencerName(), wOut.IDStringShort()), wOut.VID.ID())
 	}
 }
 
@@ -223,7 +224,7 @@ func (b *TagAlongBacklog) RemoveOutput(wOut vertex.WrappedOutput) {
 	if _, exists := b.outputs[wOut]; exists {
 		delete(b.outputs, wOut)
 		b.removedOutputsSinceReset++
-		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: removed output #%d (already consumed)", b.SequencerName(), wOut.Index), wOut.VID.ID())
+		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s removed (already consumed)", b.SequencerName(), wOut.IDStringShort()), wOut.VID.ID())
 	}
 }
 
@@ -352,7 +353,7 @@ func (b *TagAlongBacklog) purgeBacklog() (int, int) {
 	b.mutex.Unlock()
 
 	for _, wOut := range toDelete {
-		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: purged output #%d (TTL/consumed)", b.SequencerName(), wOut.Index), wOut.VID.ID())
+		b.LogTx(time.Now(), fmt.Sprintf("backlog[%s]: output %s purged (TTL/consumed)", b.SequencerName(), wOut.IDStringShort()), wOut.VID.ID())
 	}
 
 	b.EvidenceBacklogSize(remaining)

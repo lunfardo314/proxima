@@ -293,20 +293,23 @@ func (seq *Sequencer) generateAndSubmitBranch(branchTs base.LedgerTime) bool {
 
 	msTx, meta, ledgerCoverage, _, err := seq.generateMilestoneForTarget(branchTs)
 
+	// Branch outcomes don't affect the tag-along budget: branches don't
+	// carry tag-along (or delegation) inputs at all (see proposer_base.go).
+	// A sequencer that's temporarily unable to propose branches (e.g.
+	// coverage out of bounds) should still service tag-aligns through
+	// its non-branch milestones — coupling the two starves the
+	// tag-along budget unnecessarily.
 	switch {
 	case errors.Is(err, task.ErrNotGoodEnough):
 		seq.slotData.NotGoodEnough()
 	case errors.Is(err, task.ErrNoProposals):
 		seq.slotData.NoProposals()
-		seq.adjustBudget(false)
 	case err != nil:
-		seq.adjustBudget(false)
 		seq.Log().Warnf("branch generation: %v (budget: %d/%d)", err, seq.budgetLevel, maxBudgetLevel)
 	default:
 		util.Assertf(msTx != nil, "msTx != nil")
 		meta.TxBytesReceived = util.Ref(time.Now())
 		seq.submitMilestone(msTx, meta, ledgerCoverage, branchTs)
-		seq.adjustBudget(true)
 	}
 
 	seq.Log().Infof("SLOT STATS: %s, budget: %d/%d", seq.slotData.Lines().Join(", "), seq.budgetLevel, maxBudgetLevel)
