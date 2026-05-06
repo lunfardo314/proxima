@@ -4,6 +4,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -58,14 +60,26 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 		return
 	}
 
-	dOuts, lrbid, err := glb.GetClient().GetDelegationOutputs(walletAccount)
+	res, err := glb.GetClient().GetOutputs(walletAccount.ControllerID(), client.GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeDelegateMaster,
+		Chained:    client.ChainedOnly(),
+		MaxOutputs: api.GetOutputsIterationCap,
+	})
 	glb.AssertNoError(err)
-	glb.PrintLRB(lrbid)
-	if len(dOuts) == 0 {
+	glb.PrintLRB(&res.LRBID)
+	if len(res.Outputs) == 0 {
 		glb.Infof("no delegation outputs controlled by %s has been found", walletAccount.String())
 		os.Exit(0)
 	}
 
+	dOuts := make([]ledger.DelegationOutput, 0, len(res.Outputs))
+	for _, o := range res.Outputs {
+		dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID)
+		if !ok {
+			continue
+		}
+		dOuts = append(dOuts, dOut)
+	}
 	glb.Infof("found %d delegation outputs controlled by %s:", len(dOuts), walletAccount.String())
 	for _, dOut := range dOuts {
 		targetID := dOut.Target

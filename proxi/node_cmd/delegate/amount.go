@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	apiclient "github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
@@ -103,19 +105,22 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	glb.Assertf(maxFreezeEpochs <= byte(lib.MaxFrozenEpochs), "wrong value of max freeze epochs")
 
 	client := glb.GetClient()
-	walletOutputs, lrbid, _, err := client.GetOutputsForAmount(walletData.Account, amount+feeAmount)
-	glb.AssertNoError(err)
-	glb.PrintLRB(lrbid)
-
-	sumIn := uint64(0)
-	walletOutputs = util.PurgeSlice(walletOutputs, func(o *ledger.OutputWithID) bool {
-		if sumIn >= amount+feeAmount {
-			return false
-		}
-		sumIn += o.Output.TokenBalance()
-		return true
+	needed := amount + feeAmount
+	res, err := client.GetOutputs(walletData.Account.ControllerID(), apiclient.GetOutputsParams{
+		LockType:  api.GetOutputsLockTypeSigLock,
+		Chained:   apiclient.NonChainedOnly(),
+		SortBy:    api.GetOutputsSortByAmount,
+		SortOrder: api.GetOutputsSortOrderDesc,
+		ForAmount: needed,
 	})
-	glb.Assertf(sumIn >= amount+feeAmount, "not enough tokens. Needed %s, got %s", util.Th(amount+feeAmount), util.Th(sumIn))
+	glb.AssertNoError(err)
+	glb.PrintLRB(&res.LRBID)
+	walletOutputs := res.Outputs
+	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens. Needed %s, got %s", util.Th(needed), util.Th(res.AvailableAmount))
+	sumIn := uint64(0)
+	for _, o := range walletOutputs {
+		sumIn += o.Output.TokenBalance()
+	}
 
 	txb := txbuilder.New()
 	_, inTs, err := txb.ConsumeOutputsNoUnlock(walletOutputs...)

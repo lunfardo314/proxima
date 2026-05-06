@@ -1,17 +1,26 @@
 # Unified state-query endpoint: `get_outputs`
 
-> **Status:** Phases 1 + 2 (scoped) shipped. The four proxi commands
-> listed in the plan (balance, utxos, transfer, setup_seq waitForFunds)
-> now go through `APIClient.GetOutputs`. Other callers
-> (fund.go, faucet_srv.go, delegate/{status,amount}.go, compact.go,
-> MakeCompactTransaction) still hit legacy client methods and need
-> migration before Phase 3 can delete the legacy server handlers and
-> client methods. Implementation notes:
+> **Status:** Phases 1 + 2 shipped. **All** proxi callers — balance,
+> utxos, transfer, setup_seq waitForFunds, fund, faucet_srv, compact,
+> delegate/{status,amount}, and `GetTransferableOutputs` (called by
+> `MakeCompactTransaction`) — now go through `APIClient.GetOutputs`.
+> The legacy client methods (`GetAccountOutputs`, `GetAccountOutputsExt`,
+> `GetAccountParsedOutputs`, `GetOutputsForAmount`, `GetNonChainBalance`,
+> `GetChainedOutputs`, `GetDelegationOutputs`,
+> `GetAccountSimpleSiglocked`, `GetUTXOsControlledBy`) and the
+> corresponding server handlers are unused by in-tree code; Phase 3
+> can delete them. Implementation notes:
 >
 > - `for_amount == 0` means unset on both sides (no flag).
 > - `chained` is tri-state: omit (or empty) → both; `true` → chained
 >   only; `false` → non-chained only. Client uses `*bool` with
 >   helpers `client.ChainedOnly()` / `client.NonChainedOnly()`.
+> - Pre-existing bug fixed in passing: `compact` and
+>   `GetTransferableOutputs` filtered for `NumElements()==2`, which
+>   never matched after Phase B' (post-B' minimum is 3:
+>   amounts | index-values | lock). Filter is now `NumElements()==3`
+>   on the post-`GetOutputs` result, restricting compaction to basic
+>   sigLock outputs without extras.
 
 ## Goal
 

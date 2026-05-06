@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
 )
 
@@ -54,10 +57,20 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		}
 	}
 	walletData := glb.GetWalletData()
-	walletOutputs, lrbid, err := glb.GetClient().GetAccountOutputsExt(walletData.Account, "asc", func(_ *base.OutputID, o *ledger.Output) bool {
-		return o.NumElements() == 2
+	res, err := glb.GetClient().GetOutputs(walletData.Account.ControllerID(), client.GetOutputsParams{
+		LockType:  api.GetOutputsLockTypeSigLock,
+		Chained:   client.NonChainedOnly(),
+		SortBy:    api.GetOutputsSortByAmount,
+		SortOrder: api.GetOutputsSortOrderAsc,
 	})
 	glb.AssertNoError(err)
+	// Restrict to "basic" sigLock outputs (amounts | index-values | lock,
+	// no extras like timelock); these are unlockable with a plain
+	// signature/reference and safe to compact in one transaction.
+	walletOutputs := util.PurgeSlice(res.Outputs, func(o *ledger.OutputWithID) bool {
+		return o.Output.NumElements() == 3
+	})
+	lrbid := &res.LRBID
 
 	glb.Infof("total %d UTXO(s) in %s\n", len(walletOutputs), walletData.Account.String())
 

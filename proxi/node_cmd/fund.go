@@ -5,6 +5,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -103,8 +105,17 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	}
 
 	// Fetch inputs
-	walletOutputs, _, _, err := glb.GetClient().GetOutputsForAmount(walletAccount, totalAmount+feeAmount)
+	needed := totalAmount + feeAmount
+	res, err := glb.GetClient().GetOutputs(walletAccount.ControllerID(), client.GetOutputsParams{
+		LockType:  api.GetOutputsLockTypeSigLock,
+		Chained:   client.NonChainedOnly(),
+		SortBy:    api.GetOutputsSortByAmount,
+		SortOrder: api.GetOutputsSortOrderDesc,
+		ForAmount: needed,
+	})
 	glb.AssertNoError(err)
+	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
+	walletOutputs := res.Outputs
 
 	// Build transaction
 	txb := txbuilder.New()

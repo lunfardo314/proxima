@@ -746,36 +746,37 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 	return ret, &lrbid, nil
 }
 
-// GetTransferableOutputs returns a reasonable maximum number of outputs owned by accountable with only 2 constraints and returns total
+// GetTransferableOutputs returns up to maxOutputs basic sigLock outputs
+// (amounts | index-values | lock, no extras) owned by account, sorted
+// descending by amount, plus the total balance.
 func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs ...int) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
 	maxO := 256
 	if len(maxOutputs) > 0 && maxOutputs[0] < 256 && maxOutputs[0] > 0 {
 		maxO = maxOutputs[0]
 	}
-
-	// ask a bit more descending outputs from server and the filter them out
-	ret, lrbid, err := c.GetAccountOutputsExt(account, "desc", func(_ *base.OutputID, o *ledger.Output) bool {
-		return o.NumElements() == 2
+	res, err := c.GetOutputs(account.ControllerID(), GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeSigLock,
+		Chained:    NonChainedOnly(),
+		SortBy:     api.GetOutputsSortByAmount,
+		SortOrder:  api.GetOutputsSortOrderDesc,
+		MaxOutputs: maxO,
 	})
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	if len(ret) == 0 {
+	if len(res.Outputs) == 0 {
 		return nil, nil, 0, nil
 	}
-	ret = util.PurgeSlice(ret, func(o *ledger.OutputWithID) bool {
-		// "master" is the index value at position 0 of the index-value
-		// tuple (§4.1 master-first convention); the output is consumable
-		// by the wallet account iff that bytes match.
-		iv := o.Output.IndexValues()
-		return len(iv) > 0 && bytes.Equal(account.ControllerID(), iv[0])
+	// Restrict to "basic" outputs (no extras beyond amounts | index-values
+	// | lock); these are unlockable with a plain signature/reference.
+	ret := util.PurgeSlice(res.Outputs, func(o *ledger.OutputWithID) bool {
+		return o.Output.NumElements() == 3
 	})
-	ret = util.TrimSlice(ret, maxO)
 	sum := uint64(0)
 	for _, o := range ret {
 		sum += o.Output.TokenBalance()
 	}
-	return ret, lrbid, sum, nil
+	return ret, &res.LRBID, sum, nil
 }
 
 // MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it

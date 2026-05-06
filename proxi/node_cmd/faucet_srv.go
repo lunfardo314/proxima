@@ -101,8 +101,14 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 		glb.Assertf(o.Output.TokenBalance() > fct.cfg.amount,
 			"not enough balance on own sequencer %s", fct.walletData.Sequencer.String())
 	} else {
-		_, _, _, err := fct.client.GetOutputsForAmount(walletData.Account, fct.cfg.amount+fct.transferTagAlongFee)
+		needed := fct.cfg.amount + fct.transferTagAlongFee
+		res, err := fct.client.GetOutputs(walletData.Account.ControllerID(), client.GetOutputsParams{
+			LockType:  api.GetOutputsLockTypeSigLock,
+			Chained:   client.NonChainedOnly(),
+			ForAmount: needed,
+		})
 		glb.AssertNoError(err)
+		glb.Assertf(res.AvailableAmount >= needed, "not enough tokens on wallet: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
 	}
 	fct.run()
 }
@@ -155,22 +161,29 @@ func (fct *faucetServer) checkBottom() error {
 				fct.walletData.Sequencer.String(), util.Th(abs), util.Th(o.Output.TokenBalance()))
 		}
 	} else {
-		balance, _, err := fct.client.GetNonChainBalance(fct.walletData.Account)
+		res, err := fct.client.GetOutputs(fct.walletData.Account.ControllerID(), client.GetOutputsParams{
+			LockType: api.GetOutputsLockTypeSigLock,
+			Chained:  client.NonChainedOnly(),
+		})
 		if err != nil {
 			return err
 		}
-		if balance < abs {
+		if res.AvailableAmount < abs {
 			return fmt.Errorf("not enough balance on source address %s. Must be at least %s, got %s",
-				fct.walletData.Account.String(), util.Th(abs), util.Th(balance))
+				fct.walletData.Account.String(), util.Th(abs), util.Th(res.AvailableAmount))
 		}
 	}
 	return nil
 }
 
 func (fct *faucetServer) displayFaucetConfig() {
-	walletBalance, lrbid, err := fct.client.GetNonChainBalance(fct.walletData.Account)
+	res, err := fct.client.GetOutputs(fct.walletData.Account.ControllerID(), client.GetOutputsParams{
+		LockType: api.GetOutputsLockTypeSigLock,
+		Chained:  client.NonChainedOnly(),
+	})
 	glb.AssertNoError(err)
-	glb.PrintLRB(lrbid)
+	walletBalance := res.AvailableAmount
+	glb.PrintLRB(&res.LRBID)
 
 	glb.Infof("faucet server configuration:")
 	glb.Infof("     amount per request:       %s", util.Th(fct.cfg.amount))
