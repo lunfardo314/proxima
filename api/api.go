@@ -19,13 +19,6 @@ const (
 
 	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
 	PathGetOutputs                       = PrefixAPIV1 + "/get_outputs"
-	PathGetUTXOsControlledBy             = PrefixAPIV1 + "/get_utxos_controlled_by"
-	PathGetAccountParsedOutputs          = PrefixAPIV1 + "/get_account_parsed_outputs"
-	PathGetAccountSimpleSiglockedOutputs = PrefixAPIV1 + "/get_account_simple_siglocked"
-	PathGetOutputsForAmount              = PrefixAPIV1 + "/get_outputs_for_amount"
-	PathGetNonChainBalance               = PrefixAPIV1 + "/get_nonchain_balance"
-	PathGetChainedOutputs                = PrefixAPIV1 + "/get_chain_outputs"
-	PathGetDelegationOutputs             = PrefixAPIV1 + "/get_delegation_outputs"
 	PathGetChainOutput                   = PrefixAPIV1 + "/get_chain_output"
 	PathGetOutput                        = PrefixAPIV1 + "/get_output"
 	PathSubmitTransaction                = PrefixAPIV1 + "/submit_tx"
@@ -101,16 +94,6 @@ type (
 		Error string `json:"error,omitempty"`
 	}
 
-	// OutputList is returned by 'get_account_outputs'
-	OutputList struct {
-		Error
-		// key is hex-encoded outputID bytes
-		// value is hex-encoded raw output data
-		Outputs map[string]string `json:"outputs,omitempty"`
-		// latest reliable branch used to extract outputs
-		LRBID string `json:"lrbid"`
-	}
-
 	OutputDataWithID struct {
 		// hex-encoded outputID
 		ID string `json:"id,omitempty"`
@@ -155,12 +138,6 @@ type (
 		OutputData string `json:"output_data,omitempty"`
 		// latest reliable branch used to extract output
 		LRBID string `json:"lrbid"`
-	}
-
-	ChainedOutputs struct {
-		Error
-		Outputs map[string]string `json:"outputs,omitempty"`
-		LRBID   string            `json:"lrbid"`
 	}
 
 	SyncInfo struct {
@@ -229,6 +206,11 @@ type (
 		Source string `json:"source"`
 	}
 
+	// ParsedOutput is the per-output shape returned by the txapi
+	// parse endpoints (parse_output, parse_output_data) and embedded
+	// in TransactionJSONAble.Outputs. Not used by the legacy state-
+	// query endpoints (those were retired with the get_outputs
+	// rollout).
 	ParsedOutput struct {
 		// raw hex-encoded output data
 		Data string `json:"data"`
@@ -240,15 +222,6 @@ type (
 		LockName string `json:"lock_name"`
 		// Chain id for chain outputs
 		ChainID string `json:"chain_id,omitempty"`
-	}
-	// ParsedOutputList is returned by 'get_account_parsed_outputs'
-	ParsedOutputList struct {
-		Error
-		// key is hex-encoded outputID bytes
-		// value is hex-encoded raw output data
-		Outputs map[string]ParsedOutput `json:"outputs,omitempty"`
-		// latest reliable branch used to extract outputs
-		LRBID string `json:"lrbid"`
 	}
 
 	Input struct {
@@ -340,12 +313,6 @@ type (
 		Error
 		Branches []string `json:"branches"`
 		LRBSlot  uint32   `json:"lrb_slot"`
-	}
-
-	Balance struct {
-		Error
-		Amount uint64 `json:"amount"`
-		LRBID  string `json:"lrbid"`
 	}
 
 	DelegationData struct {

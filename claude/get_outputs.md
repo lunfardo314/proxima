@@ -1,15 +1,24 @@
 # Unified state-query endpoint: `get_outputs`
 
-> **Status:** Phases 1 + 2 shipped. **All** proxi callers — balance,
-> utxos, transfer, setup_seq waitForFunds, fund, faucet_srv, compact,
-> delegate/{status,amount}, and `GetTransferableOutputs` (called by
-> `MakeCompactTransaction`) — now go through `APIClient.GetOutputs`.
-> The legacy client methods (`GetAccountOutputs`, `GetAccountOutputsExt`,
-> `GetAccountParsedOutputs`, `GetOutputsForAmount`, `GetNonChainBalance`,
-> `GetChainedOutputs`, `GetDelegationOutputs`,
-> `GetAccountSimpleSiglocked`, `GetUTXOsControlledBy`) and the
-> corresponding server handlers are unused by in-tree code; Phase 3
-> can delete them. Implementation notes:
+> **Status:** Phases 1 + 2 + 3 all shipped. The unified `get_outputs`
+> endpoint is the only state-query primitive. Legacy server handlers
+> (`get_utxos_controlled_by`, `get_account_parsed_outputs`,
+> `get_account_simple_siglocked`, `get_outputs_for_amount`,
+> `get_nonchain_balance`, `get_chained_outputs`,
+> `get_delegation_outputs`), their path constants, response types
+> (`OutputList`, `ParsedOutputList`, `ChainedOutputs`, `Balance`),
+> and client methods (`GetAccountOutputs`, `GetAccountOutputsExt`,
+> `GetAccountParsedOutputs`, `GetOutputsForAmount`,
+> `GetNonChainBalance`, `GetChainedOutputs`, `GetDelegationOutputs`,
+> `GetSimpleSigLockedOutputs`, `getAccountOutputs`,
+> `_getChainedOutputs`) have all been deleted. `get_chain_output`
+> (single chain lookup by chain ID) and `get_output` (single UTXO by
+> ID) survive — different shape. The `ParsedOutput` type is kept; it
+> is still used by the txapi parse endpoints
+> (`parse_output`, `parse_output_data`) and embedded in
+> `TransactionJSONAble.Outputs`.
+>
+> Implementation notes:
 >
 > - `for_amount == 0` means unset on both sides (no flag).
 > - `chained` is tri-state: omit (or empty) → both; `true` → chained
