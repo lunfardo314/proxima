@@ -3,6 +3,8 @@ package node_cmd
 import (
 	"sort"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -34,11 +36,16 @@ func runBalanceCmd(_ *cobra.Command, _ []string) {
 	glb.InitLedgerFromNode()
 	accountable := glb.MustGetTarget()
 
-	clnt := glb.GetClient()
-	outs, lrbid, err := clnt.GetAccountOutputs(accountable)
+	res, err := glb.GetClient().GetOutputs(accountable.ControllerID(), client.GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeAll,
+		MaxOutputs: api.GetOutputsIterationCap,
+	})
 	glb.AssertNoError(err)
-	glb.PrintLRB(lrbid)
-	displayBalanceTotals(outs, accountable)
+	if res.LimitExceeded {
+		glb.Infof("WARNING: server-side iteration cap of %d hit; results are partial", api.GetOutputsIterationCap)
+	}
+	glb.PrintLRB(&res.LRBID)
+	displayBalanceTotals(res.Outputs, accountable)
 }
 
 func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Controller) {

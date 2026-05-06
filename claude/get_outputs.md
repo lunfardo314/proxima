@@ -1,10 +1,17 @@
 # Unified state-query endpoint: `get_outputs`
 
-> **Status:** Phase 1 shipped. Server endpoint, response struct, Go
-> client method (`APIClient.GetOutputs`) all in place. Legacy
-> endpoints still alive — Phases 2 (proxi caller migration) and 3
-> (delete legacy) deferred. Implementation note: `for_amount == 0`
-> means unset on both sides (no flag).
+> **Status:** Phases 1 + 2 (scoped) shipped. The four proxi commands
+> listed in the plan (balance, utxos, transfer, setup_seq waitForFunds)
+> now go through `APIClient.GetOutputs`. Other callers
+> (fund.go, faucet_srv.go, delegate/{status,amount}.go, compact.go,
+> MakeCompactTransaction) still hit legacy client methods and need
+> migration before Phase 3 can delete the legacy server handlers and
+> client methods. Implementation notes:
+>
+> - `for_amount == 0` means unset on both sides (no flag).
+> - `chained` is tri-state: omit (or empty) → both; `true` → chained
+>   only; `false` → non-chained only. Client uses `*bool` with
+>   helpers `client.ChainedOnly()` / `client.NonChainedOnly()`.
 
 ## Goal
 
@@ -73,7 +80,7 @@ the requested sort **before** truncating / amount-summing.
 | `sort_order` | no | `asc` | `asc` \| `desc` | Sort direction. |
 | `for_amount` | no | `0` (unset) | uint | `0` is treated as unset (no minimum). When > 0, the server returns the smallest prefix (after sort) whose amount sum ≥ `for_amount`. If the full filtered set sums to less than `for_amount`, no error: `Outputs` carries everything available and `AvailableAmount < for_amount` signals the shortfall to the caller. |
 | `lock_type` | no | `sigLock` | see below | Filter by lock kind / role of the `index_value` in the UTXO. |
-| `chained` | no | `false` | `true` \| `false` | If `false`, exclude chained outputs (those carrying a chain constraint at index 3). If `true`, **only** chained outputs. |
+| `chained` | no | _omitted_ (any) | `true` \| `false` | Tri-state. Omit (or empty) → no chained filter (both chained and non-chained returned). `true` → only chained outputs. `false` → only non-chained outputs (those without a chain constraint at index 3). |
 
 ### `lock_type` values
 

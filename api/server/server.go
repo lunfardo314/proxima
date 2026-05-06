@@ -1271,13 +1271,17 @@ func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	chainedOnly := false
-	if v, ok := q["chained"]; ok && len(v) == 1 {
+	// tri-state: nil = no filter (both chained and non-chained);
+	// &true = only chained; &false = only non-chained.
+	var chainedFilter *bool
+	if v, ok := q["chained"]; ok && len(v) == 1 && v[0] != "" {
 		switch v[0] {
 		case "true":
-			chainedOnly = true
+			t := true
+			chainedFilter = &t
 		case "false":
-			chainedOnly = false
+			f := false
+			chainedFilter = &f
 		default:
 			writeErr(fmt.Sprintf("get_outputs: invalid 'chained': %s", v[0]))
 			return
@@ -1329,12 +1333,11 @@ func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
 			if !matchesLockType(p.out, indexValue, lockType) {
 				continue
 			}
-			isChained := p.out.ChainConstraint() != nil
-			if chainedOnly && !isChained {
-				continue
-			}
-			if !chainedOnly && isChained {
-				continue
+			if chainedFilter != nil {
+				isChained := p.out.ChainConstraint() != nil
+				if *chainedFilter != isChained {
+					continue
+				}
 			}
 			filtered = append(filtered, p)
 		}

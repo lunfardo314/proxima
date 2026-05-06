@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -98,15 +100,13 @@ func getChainIdForAccount(account ledger.Controller) *base.ChainID {
 
 func waitForFunds(accountable ledger.Controller, amount uint64) {
 	for {
-		sumOutsideChains := uint64(0)
-		outs, _, err := glb.GetClient().GetAccountOutputs(accountable)
+		res, err := glb.GetClient().GetOutputs(accountable.ControllerID(), client.GetOutputsParams{
+			LockType:  api.GetOutputsLockTypeSigLock,
+			Chained:   client.NonChainedOnly(),
+			ForAmount: amount,
+		})
 		glb.AssertNoError(err)
-		for _, o := range outs {
-			if o.Output.ChainConstraint() == nil {
-				sumOutsideChains += o.Output.TokenBalance()
-			}
-		}
-		if sumOutsideChains >= amount {
+		if res.AvailableAmount >= amount {
 			break
 		}
 		time.Sleep(1 * time.Second)

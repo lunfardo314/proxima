@@ -503,17 +503,26 @@ func (c *APIClient) SubmitTransaction(txBytes []byte) error {
 // GetOutputsParams carries the optional parameters of the unified
 // `get_outputs` endpoint. Zero-value fields fall through to server
 // defaults (max=200, sort_by=timestamp, sort_order=asc, lock_type=
-// sigLock, no for_amount, chained=false). String defaults are signaled
+// sigLock, no for_amount, chained=any). String defaults are signaled
 // by the empty string; ForAmount == 0 means unset (any non-empty
-// result satisfies a zero minimum).
+// result satisfies a zero minimum); Chained == nil means no chained
+// filter (return both chained and non-chained outputs).
 type GetOutputsParams struct {
 	MaxOutputs int
 	SortBy     string
 	SortOrder  string
 	ForAmount  uint64
 	LockType   string
-	Chained    bool
+	Chained    *bool
 }
+
+// ChainedOnly returns a *bool suitable for GetOutputsParams.Chained
+// to filter results to chained outputs only.
+func ChainedOnly() *bool { v := true; return &v }
+
+// NonChainedOnly returns a *bool suitable for GetOutputsParams.Chained
+// to filter results to non-chained outputs only.
+func NonChainedOnly() *bool { v := false; return &v }
 
 // GetOutputsResult is the parsed return shape of GetOutputs. Outputs
 // are decoded with the latest ledger library; the API ships raw bytes.
@@ -552,8 +561,12 @@ func (c *APIClient) GetOutputs(indexValue []byte, params ...GetOutputsParams) (*
 	if p.LockType != "" {
 		path += "&lock_type=" + p.LockType
 	}
-	if p.Chained {
-		path += "&chained=true"
+	if p.Chained != nil {
+		if *p.Chained {
+			path += "&chained=true"
+		} else {
+			path += "&chained=false"
+		}
 	}
 
 	body, err := c.getBody(path)
@@ -819,10 +832,21 @@ func (c *APIClient) TransferFromED25519Wallet(par TransferFromED25519WalletParam
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
 	}
 	walletAccount := ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)
-	walletOutputs, _, _, err := c.GetOutputsForAmount(walletAccount, par.Amount+par.TagAlongFee)
+	needed := par.Amount + par.TagAlongFee
+	res, err := c.GetOutputs(walletAccount.ControllerID(), GetOutputsParams{
+		LockType:  api.GetOutputsLockTypeSigLock,
+		Chained:   NonChainedOnly(),
+		SortBy:    api.GetOutputsSortByAmount,
+		SortOrder: api.GetOutputsSortOrderDesc,
+		ForAmount: needed,
+	})
 	if err != nil {
 		return nil, err
 	}
+	if res.AvailableAmount < needed {
+		return nil, fmt.Errorf("not enough tokens: have %d, need %d", res.AvailableAmount, needed)
+	}
+	walletOutputs := res.Outputs
 	txBytes, err := MakeTransferTransaction(MakeTransferTransactionParams{
 		Inputs:        walletOutputs,
 		Target:        par.Target,

@@ -1,7 +1,8 @@
 package node_cmd
 
 import (
-	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -25,32 +26,32 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 
 	accountable := glb.MustGetTarget()
 
-	outs, err := glb.GetClient().GetAccountParsedOutputs(accountable, 100)
+	res, err := glb.GetClient().GetOutputs(accountable.ControllerID(), client.GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeAll,
+		MaxOutputs: 100,
+	})
 	glb.AssertNoError(err)
 
-	if outs == nil || len(outs.Outputs) == 0 {
+	if len(res.Outputs) == 0 {
 		glb.Infof("no outputs found")
 		return
 	}
-	lrbid, err := base.TransactionIDFromHexString(outs.LRBID)
-	glb.AssertNoError(err)
-	glb.PrintLRB(&lrbid)
+	if res.LimitExceeded {
+		glb.Infof("WARNING: server-side iteration cap hit; results are partial")
+	}
+	glb.PrintLRB(&res.LRBID)
 
-	count := 0
-	for id, o := range outs.Outputs {
-		glb.Infof("\n-- output %d --", count)
-		count++
-		oid, err := base.OutputIDFromHexString(id)
-		glb.AssertNoError(err)
-		glb.Infof("   id %s, hex = %s", oid.String(), id)
-		glb.Infof("   amount: %s, lock name: '%s'", util.Th(o.Amount), o.LockName)
-		if o.ChainID != "" {
-			glb.Verbosef("   chain id: %s", o.ChainID)
+	for i, o := range res.Outputs {
+		glb.Infof("\n-- output %d --", i)
+		glb.Infof("   id %s, hex = %s", o.ID.String(), o.ID.StringHex())
+		glb.Infof("   amount: %s, lock name: '%s'", util.Th(o.Output.TokenBalance()), o.Output.Lock().Name())
+		if chainID, ok := o.ExtractChainID(); ok {
+			glb.Verbosef("   chain id: %s", chainID.StringHex())
 		}
-		glb.Verbosef("   raw data: %s (%d bytes) ", o.Data, len(o.Data)/2)
-		glb.Verbosef("   parsed constraints:")
+		glb.Verbosef("   raw data: %s (%d bytes) ", o.Output.Hex(), len(o.Output.Bytes()))
 		if glb.IsVerbose() {
-			for _, constraint := range o.Constraints {
+			glb.Infof("   parsed constraints:")
+			for _, constraint := range o.Output.LinesPlainSource().Slice() {
 				glb.Infof("        - %s", constraint)
 			}
 		}
