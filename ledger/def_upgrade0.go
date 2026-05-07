@@ -59,6 +59,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 func registerConstraints0(lib *Library) {
 	registerAddressED25519Serde(lib)
 	registerTimeLockConstraint(lib)
+	registerHTLCLock(lib)
 	registerStemLockConstraint(lib)
 	registerChainConstraint(lib)
 	registerSequencerConstraint(lib)

@@ -10,3 +10,48 @@ func timelock: and(
 		)
 	)
 )
+
+// htlc — hash-time-locked contract (bearer-preimage variant). Two paths:
+//   * preimage path (open before deadline): caller supplies preimage P in
+//     unlock parameters; constraint accepts iff blake2b(P) == hash. Anyone
+//     who knows P can spend.
+//   * signature path (open at/after deadline): tx must be signed by the
+//     reclaim holder.
+//
+// Layout:
+//   * index value 0 = reclaim holderID (32 bytes) — indexed for lookup
+//   * index value 1 = hash             (32 bytes) — indexed for lookup
+//   * lock arg $0  = deadline slot     (4 bytes)
+//
+// $0 reclaim holderID (32B), $1 hash (32B), $2 deadline slot (4B)
+func _htlc:
+or(
+  and(
+     selfIsProducedOutput,
+     require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
+     require(equal(len($0), u64/32), !!!htlc_holderID_must_be_32_bytes),
+     require(equal(len($1), u64/32), !!!htlc_hash_must_be_32_bytes),
+     require(mustValidTimeSlot($2), !!!htlc_invalid_deadline_slot),
+     selfRequireEnoughStorageDeposit(selfOutputBytes),
+     selfEnforceZeroAmountsInNonChainedOutput
+  ),
+  and(
+     selfIsConsumedOutput,
+     or(
+        // preimage path: txSlot < deadline AND blake2b(unlockParams) == hash
+        and(
+           lessThan(txSlot, $2),
+           equal(blake2b(selfUnlockParameters), $1)
+        ),
+        // signature path: txSlot >= deadline AND tx signed by holder
+        and(
+           lessOrEqualThan($2, txSlot),
+           equal($0, txHolderID(txSignatureData))
+        )
+     )
+  )
+)
+
+// public 1-arg lock — holder/hash come from the index-value tuple (holder
+// at position 0, hash at position 1). $0 is the deadline slot.
+func htlc : _htlc(selfIndexValue(0), selfIndexValue(1), $0)

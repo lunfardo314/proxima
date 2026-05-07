@@ -270,6 +270,22 @@ func (m *lockKindMarker) Bytes() []byte  { return m.bytecode }
 func (m *lockKindMarker) Source() string { return m.name }
 func (m *lockKindMarker) String() string { return m.name }
 
+// generalLock is the Lock returned by LockFromOutputElements for any lock
+// bytecode whose prefix is either unregistered or registered but has no
+// Go-typed dispatch — it faithfully carries the raw on-chain bytes
+// without claiming to interpret them. Reflects the refactor's premise
+// (claude/utxo-indexing.md §4) that slot 2 is arbitrary EasyFL bytecode.
+type generalLock struct {
+	name        string
+	bytecode    []byte
+	indexValues [][]byte
+}
+
+func (g *generalLock) Name() string          { return g.name }
+func (g *generalLock) String() string        { return g.name }
+func (g *generalLock) IndexValues() [][]byte { return g.indexValues }
+func (g *generalLock) LockBytecode() []byte  { return g.bytecode }
+
 // registerLockKind registers a 0-arg public lock symbol so that
 // `ConstraintFromBytesWithLib` recognises the bytecode at output element
 // index 2 and returns a typed marker.
@@ -318,13 +334,21 @@ func LockFromOutputElementsWithLib(indexValuesBytes, lockBytecode []byte, lib *L
 	if err != nil {
 		return nil, fmt.Errorf("LockFromOutputElements: cannot parse lock prefix: %w", err)
 	}
-	name, ok := NameByPrefixWithLib(prefix, lib)
-	if !ok {
-		return nil, fmt.Errorf("LockFromOutputElements: unknown lock prefix '%s'", easyfl_util.Fmt(prefix))
-	}
 	values, err := IndexValuesFromBytes(indexValuesBytes)
 	if err != nil {
 		return nil, fmt.Errorf("LockFromOutputElements: %w", err)
+	}
+	name, ok := NameByPrefixWithLib(prefix, lib)
+	if !ok {
+		// Per claude/utxo-indexing.md §4, slot 2 is arbitrary EasyFL
+		// bytecode; an unregistered prefix is not a parse error.
+		// Return an opaque Lock that faithfully reflects the on-chain
+		// bytes — callers needing typed fields must type-assert.
+		return &generalLock{
+			name:        "generalLock(0x" + hex.EncodeToString(prefix) + ")",
+			bytecode:    bytes.Clone(lockBytecode),
+			indexValues: values,
+		}, nil
 	}
 	switch name {
 	case SigLockName:
@@ -351,8 +375,16 @@ func LockFromOutputElementsWithLib(indexValuesBytes, lockBytecode []byte, lib *L
 		return ret, nil
 	case DelegateLockName:
 		return DelegateLockFromOutputElements(indexValuesBytes, lockBytecode, lib)
+	case HTLCName:
+		return HTLCFromOutputElements(indexValuesBytes, lockBytecode, lib)
 	}
-	return nil, fmt.Errorf("LockFromOutputElements: '%s' is not a known lock kind", name)
+	// Registered prefix exists but no Go-typed dispatch — treat as
+	// opaque, same as for unregistered prefixes.
+	return &generalLock{
+		name:        name,
+		bytecode:    bytes.Clone(lockBytecode),
+		indexValues: values,
+	}, nil
 }
 
 // LockFromOutputElements parses using the latest library.

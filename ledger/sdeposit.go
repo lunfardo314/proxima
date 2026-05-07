@@ -24,10 +24,18 @@ func DefaultStorageDeposit() uint64 {
 }
 
 func MinimumStorageDeposit(o *Output) uint64 {
-	if _locksExemptOfStorageDeposit.Contains(o.Lock().Name()) {
+	// Look up the lock name from the bytecode prefix only — avoids
+	// reconstructing a typed Lock just to read its name (which would
+	// fail for arbitrary EasyFL-only locks). Unknown locks are not
+	// exempt; they pay the standard storage deposit. See claude/TODO.md.
+	lib := L(base.MaxSlot)
+	lockBin := o.MustAt(int(ConstraintIndexLock))
+	prefix, err := lib.ParsePrefixBytecode(lockBin)
+	util.AssertNoError(err)
+	if name, ok := NameByPrefixWithLib(prefix, lib); ok && _locksExemptOfStorageDeposit.Contains(name) {
 		return 0
 	}
-	res, err := L(base.MaxSlot).EvalFromSource(nil, fmt.Sprintf("storageDeposit(u64/%d)", len(o.Bytes())))
+	res, err := lib.EvalFromSource(nil, fmt.Sprintf("storageDeposit(u64/%d)", len(o.Bytes())))
 	util.AssertNoError(err)
 	return binary.BigEndian.Uint64(res)
 }

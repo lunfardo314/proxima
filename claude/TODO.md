@@ -22,6 +22,25 @@ Revisit weird behavior with syncing after warm restart.
 - limit number of dagviz connection (it is already the case). Add clear message for the user if that is the case
 - Default of the dagviz connection time let be 20 min
 
+## Dust attack vector from arbitrary locks
+
+After the UTXO indexing refactor (slot 2 = arbitrary EasyFL bytecode), any
+EasyFL author can ship a lock that bypasses `selfRequireEnoughStorageDeposit` /
+`selfEnforceZeroAmountsInNonChainedOutput`. That opens a dust spam vector:
+cheap-to-create UTXOs accumulate indefinitely in the trie state.
+
+The library locks (`sigLock`, `chainLock`, `tagAlong`, `delegateLock`,
+`stemLock`, and the new `htlc`) all enforce these checks themselves, but we
+cannot rely on the lock to police itself once arbitrary locks are admitted.
+
+Action: enforce a minimum-storage-deposit and zero-non-chain-amounts rule on
+every produced UTXO at the **Go level** (i.e. unconditionally in the
+transaction validator), with a small exemption set (chained outputs already
+allow non-zero inflation/frozen coverage; stem may need its own carve-out).
+Likely lives next to `EnoughAmountForStorageDeposit` in `output.go` /
+`txbuilder/`. Drop the per-lock `selfRequireEnoughStorageDeposit` calls once
+the framework rule is authoritative.
+
 # Upcoming ledger refactor
 
 ## Needed for bridging
