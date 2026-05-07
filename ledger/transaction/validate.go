@@ -169,6 +169,18 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	if err != nil {
 		return err
 	}
+	// Enforce storage-deposit floor on every produced output (closes the
+	// dust-attack vector once arbitrary EasyFL locks are admissible at
+	// slot 2). Exemptions: stem, tagAlong. Done here, not inside
+	// runTuple/_runOutputs, because the parsed Output is already in
+	// hand and the check is per-output, not per-constraint.
+	for i, o := range outs {
+		min := tx.Library.MinimumStorageDeposit(o)
+		if o.TokenBalance() < min {
+			return fmt.Errorf("produced output %d: not enough token balance (%s) for the minimum storage deposit (%s)",
+				i, util.Th(o.TokenBalance()), util.Th(min))
+		}
+	}
 	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
 		return err
 	}

@@ -46,7 +46,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 		tagAlongLockConstraintSource,
 		ensureStopFreezeDelegationConstraintSource,
 		_txLayoutValidator0,
-		_miscCalculationsSource,
 	)
 	util.AssertNoError(err)
 

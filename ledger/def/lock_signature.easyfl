@@ -36,7 +36,6 @@ func _sigLock: and(
 		and(
 			selfIsProducedOutput,
 			equal(len($0), u64/32),
-  	        selfRequireEnoughStorageDeposit(selfOutputBytes),
 		    selfEnforceZeroAmountsInNonChainedOutput
 		),
 		and(

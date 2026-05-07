@@ -1,18 +1,18 @@
 package ledger
 
 import (
-	_ "embed"
 	"encoding/binary"
-	"fmt"
 
+	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 )
 
-//go:embed def/misc_calc.easyfl
-var _miscCalculationsSource string
-
+// _locksExemptOfStorageDeposit lists lock kinds that bypass the framework
+// storage-deposit floor. Stem and tagAlong outputs are intentionally
+// allowed to be small.
 var _locksExemptOfStorageDeposit = set.New(
 	StemLockName,
 	TagAlongLockName,
@@ -23,19 +23,48 @@ func DefaultStorageDeposit() uint64 {
 	return L(0).MinimumInflatableAmount0
 }
 
-func MinimumStorageDeposit(o *Output) uint64 {
-	// Look up the lock name from the bytecode prefix only — avoids
-	// reconstructing a typed Lock just to read its name (which would
-	// fail for arbitrary EasyFL-only locks). Unknown locks are not
-	// exempt; they pay the standard storage deposit. See claude/TODO.md.
-	lib := L(base.MaxSlot)
-	lockBin := o.MustAt(int(ConstraintIndexLock))
-	prefix, err := lib.ParsePrefixBytecode(lockBin)
+// StorageDeposit evaluates the EasyFL `storageDeposit($0)` schedule for an
+// output of `outputSizeBytes` bytes. Lazily precompiles and caches the
+// expression on the receiver library.
+func (lib *Library) StorageDeposit(outputSizeBytes uint64) uint64 {
+	expr := lib.StorageDepositPrecompiled.Load()
+	if expr == nil {
+		expr = lib.mustCompile("storageDeposit($0)", 1)
+		lib.StorageDepositPrecompiled.Store(expr)
+	}
+	var sizeBin [8]byte
+	binary.BigEndian.PutUint64(sizeBin[:], outputSizeBytes)
+	var res []byte
+	err := util.CatchPanicOrError(func() error {
+		res = easyfl.EvalExpressionWithSlicePool(nil, nil, expr, sizeBin[:])
+		return nil
+	})
 	util.AssertNoError(err)
-	if name, ok := NameByPrefixWithLib(prefix, lib); ok && _locksExemptOfStorageDeposit.Contains(name) {
+	return easyfl_util.MustUint64FromBytes(res)
+}
+
+// LockBytecodeIsStorageDepositExempt reports whether the lock bytecode at
+// output element index 2 belongs to the exempt set (stem, tagAlong). For
+// any other prefix — including arbitrary EasyFL locks — the output pays
+// the standard deposit.
+func (lib *Library) LockBytecodeIsStorageDepositExempt(lockBytecode []byte) bool {
+	prefix, err := lib.ParsePrefixBytecode(lockBytecode)
+	util.AssertNoError(err)
+	name, ok := NameByPrefixWithLib(prefix, lib)
+	return ok && _locksExemptOfStorageDeposit.Contains(name)
+}
+
+// MinimumStorageDeposit on Library uses this library's precompiled
+// storageDeposit schedule and exemption set.
+func (lib *Library) MinimumStorageDeposit(o *Output) uint64 {
+	if lib.LockBytecodeIsStorageDepositExempt(o.MustAt(int(ConstraintIndexLock))) {
 		return 0
 	}
-	res, err := lib.EvalFromSource(nil, fmt.Sprintf("storageDeposit(u64/%d)", len(o.Bytes())))
-	util.AssertNoError(err)
-	return binary.BigEndian.Uint64(res)
+	return lib.StorageDeposit(uint64(len(o.Bytes())))
+}
+
+// MinimumStorageDeposit (free fn) uses the latest library — kept for
+// existing callers that don't have a library version pinned.
+func MinimumStorageDeposit(o *Output) uint64 {
+	return L(base.MaxSlot).MinimumStorageDeposit(o)
 }

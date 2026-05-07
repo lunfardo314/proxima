@@ -32,7 +32,6 @@ or(
      require(equal(len($0), u64/32), !!!htlc_holderID_must_be_32_bytes),
      require(equal(len($1), u64/32), !!!htlc_hash_must_be_32_bytes),
      require(mustValidTimeSlot($2), !!!htlc_invalid_deadline_slot),
-     selfRequireEnoughStorageDeposit(selfOutputBytes),
      selfEnforceZeroAmountsInNonChainedOutput
   ),
   and(
