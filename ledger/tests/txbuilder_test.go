@@ -343,7 +343,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		par.TagAlongFee = inflationAmount + initAmount - 200
 		_, inflationAmount1, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
-		require.NoError(t, util.MustErrorWith(err, "not enough token balance", "for the minimum storage deposit"))
+		require.NoError(t, util.MustErrorWith(err, "storage deposit not met"))
 		//require.EqualValues(t, inflationAmount, inflationAmount1)
 
 		par.TagAlongFee = inflationAmount + 1

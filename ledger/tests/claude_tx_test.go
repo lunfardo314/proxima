@@ -459,7 +459,7 @@ func TestTxEdgeCaseMinimumStorageDeposit(t *testing.T) {
 	// Try to transfer just 1 token - way below minimum storage deposit
 	err = u.DoTransfer(par.WithTargetLock(dstAddr).WithAmount(1))
 	require.Error(t, err, "transfer below minimum storage deposit must fail")
-	require.NoError(t, util.MustErrorWith(err, "not enough token balance", "for the minimum storage deposit"))
+	require.NoError(t, util.MustErrorWith(err, "storage deposit not met"))
 	t.Logf("below-minimum deposit correctly rejected: %v", err)
 }
 

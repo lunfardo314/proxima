@@ -176,9 +176,10 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	// hand and the check is per-output, not per-constraint.
 	for i, o := range outs {
 		min := tx.Library.MinimumStorageDeposit(o)
-		if o.TokenBalance() < min {
-			return fmt.Errorf("produced output %d: not enough token balance (%s) for the minimum storage deposit (%s)",
-				i, util.Th(o.TokenBalance()), util.Th(min))
+		bal := o.TokenBalance()
+		if bal < min {
+			return fmt.Errorf("storage deposit not met at produced output %d: balance %s, required %s (%s short, output size %d bytes)",
+				i, util.Th(bal), util.Th(min), util.Th(min-bal), len(o.Bytes()))
 		}
 	}
 	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {

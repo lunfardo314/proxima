@@ -1182,9 +1182,10 @@ func (o *Output) TagAlongLock() *TagAlongLock {
 // EnoughAmountForStorageDeposit returns an error if the token balance is below the minimum storage deposit.
 func (o *Output) EnoughAmountForStorageDeposit() error {
 	m := MinimumStorageDeposit(o)
-	if o.TokenBalance() >= m {
+	bal := o.TokenBalance()
+	if bal >= m {
 		return nil
 	}
-	return fmt.Errorf("not enough token balance (%s) for the minimum storage deposit (%s) in the output (size %d bytes):\n%s",
-		util.Th(o.TokenBalance()), util.Th(m), len(o.Bytes()), o.LinesHR("     ").String())
+	return fmt.Errorf("storage deposit not met: balance %s, required %s (%s short, output size %d bytes)\n%s",
+		util.Th(bal), util.Th(m), util.Th(m-bal), len(o.Bytes()), o.LinesHR("     ").String())
 }
