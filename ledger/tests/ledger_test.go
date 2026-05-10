@@ -186,10 +186,9 @@ func TestTxID(t *testing.T) {
 		  	  atPath(pathToExplicitBaseline),
               atPath(pathToInputIDs), 
               atPath(pathToUnlockParams),
-              atPath(pathToProducedOutputs), 
+              atPath(pathToProducedOutputs),
               atPath(pathToEndorsements),
-              atPath(pathToTxConstraints), 
-              atPath(pathToOtherData)
+              atPath(pathToTxConstraints)
             )
          ),6,31))
 `

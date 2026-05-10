@@ -339,8 +339,6 @@ func PathToString(path []byte) string {
 					ret += ".explicitBaseline"
 				case ledger.TxEndorsements:
 					ret += ".endorsements"
-				case ledger.TxOtherData:
-					ret += ".otherData"
 				default:
 					ret += "WRONG[1]"
 				}

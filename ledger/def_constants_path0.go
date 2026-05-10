@@ -32,7 +32,6 @@ Constants which define validation context data tree branches. Structure of the d
        -- TxOutputs = 0x08          (path 0x0008)  -- contains up to 256 produced outputs
        -- TxEndorsements = 0x09     (path 0x0009)  -- list of transaction IDs of endorsed transactions
        -- TxConstraints = 0x0a      (path 0x000a)  -- reserved for transaction-level constraints
-       -- TxOtherData = 0x0b        (path 0x000b)  -- list of local libraries in binary form
   -- ConsumedTuple = 0x01
        -- ConsumedOutputsBranch = 0x00 (path 0x0100) -- all consumed outputs, up to 256
 
@@ -64,7 +63,6 @@ const (
 	TxOutputs
 	TxEndorsements
 	TxConstraints
-	TxOtherData
 	TxTreeTupleNumElements
 )
 
@@ -84,7 +82,6 @@ var (
 	PathToSignature          = tuples.Path(TransactionTuple, TxSignatureData)
 	PathToInputCommitment    = tuples.Path(TransactionTuple, TxInputCommitment)
 	PathToExplicitBaseline   = tuples.Path(TransactionTuple, TxExplicitBaseline)
-	PathToOtherData          = tuples.Path(TransactionTuple, TxOtherData)
 )
 
 // Mandatory output block indices.
@@ -113,7 +110,6 @@ func pathConstantsUpgrade0() string {
 		PathToEndorsements.Hex(),
 		PathToExplicitBaseline.Hex(),
 		PathToTimestamp.Hex(),
-		PathToOtherData.Hex(),
 		ConstraintIndexAmounts,
 		ConstraintIndexIndexValues,
 		ConstraintIndexLock,
@@ -173,10 +169,6 @@ functions:
       source: 0x%s
    -
       sym: pathToTimestamp
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToOtherData
       numArgs: 0
       source: 0x%s
    -

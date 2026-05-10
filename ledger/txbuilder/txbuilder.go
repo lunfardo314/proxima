@@ -33,7 +33,6 @@ type (
 		InputCommitment  [32]byte
 		Endorsements     []base.TransactionID
 		ExplicitBaseline *base.TransactionID
-		OtherData        [][]byte
 		// TxConstraints carries tx-level constraint bytecodes (one per
 		// element). Empty by default. Today's only consumer is the
 		// redeemScript local-script commitment.
@@ -57,7 +56,6 @@ func New() *TxBuilder {
 			Timestamp:          base.NilLedgerTime,
 			InputCommitment:    [32]byte{},
 			Endorsements:       make([]base.TransactionID, 0),
-			OtherData:          make([][]byte, 0),
 			TxConstraints:      make([][]byte, 0),
 		},
 	}
@@ -398,7 +396,6 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	elems[ledger.TxUnlockData] = unlockParams
 	elems[ledger.TxOutputs] = outputs
 	elems[ledger.TxEndorsements] = endorsements
-	elems[ledger.TxOtherData] = tuples.MakeTupleFromDataElements(tx.OtherData...)
 	return tuples.MakeTupleFromSerializableElements(elems...)
 }
 

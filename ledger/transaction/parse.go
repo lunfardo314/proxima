@@ -20,7 +20,6 @@ import (
 const (
 	MaxTransactionSize  = 65536 // 64KB, matches network/API limits
 	MaxOutputSize       = 8192  // 8KB per individual produced output
-	MaxOtherDataSize    = 4096  // 4KB total for TxOtherData field
 	MaxUnlockParamsSize = 1024  // 1KB per input's unlock params block
 )
 
@@ -224,11 +223,6 @@ func (tx *Transaction) scanPartialContext() (err error) {
 	}
 	if err = tx.scanProducedOutputs(); err != nil {
 		return err
-	}
-	// check other data total size
-	otherDataBytes := tx.MustBytesAtPath(ledger.PathToOtherData)
-	if len(otherDataBytes) > MaxOtherDataSize {
-		return fmt.Errorf("scanPartialContext: other data size %d exceeds maximum %d bytes", len(otherDataBytes), MaxOtherDataSize)
 	}
 	return nil
 }
