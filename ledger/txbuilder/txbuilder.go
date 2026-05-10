@@ -34,6 +34,10 @@ type (
 		Endorsements     []base.TransactionID
 		ExplicitBaseline *base.TransactionID
 		OtherData        [][]byte
+		// TxConstraints carries tx-level constraint bytecodes (one per
+		// element). Empty by default. Today's only consumer is the
+		// redeemScript local-script commitment.
+		TxConstraints [][]byte
 		ledger.SequencerDataBytes
 	}
 
@@ -54,8 +58,15 @@ func New() *TxBuilder {
 			InputCommitment:    [32]byte{},
 			Endorsements:       make([]base.TransactionID, 0),
 			OtherData:          make([][]byte, 0),
+			TxConstraints:      make([][]byte, 0),
 		},
 	}
+}
+
+// PushTxConstraint appends one tx-level constraint bytecode. Today the
+// only consumer is redeemScript; the slot is generic.
+func (txb *TxBuilder) PushTxConstraint(bytecode []byte) {
+	txb.TransactionData.TxConstraints = append(txb.TransactionData.TxConstraints, bytecode)
 }
 
 func (txb *TxBuilder) NumInputs() int {
@@ -365,7 +376,17 @@ func (tx *transactionData) ToTuple() *tuples.Tuple {
 	versionBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(versionBytes, ledger.L(tx.Timestamp.Slot).UpgradeIndex())
 	elems[ledger.TxVersion] = versionBytes
-	elems[ledger.TxConstraints] = nil
+	if len(tx.TxConstraints) == 0 {
+		// Backward-compat: empty list serialises as nil, matching the
+		// pre-feature encoding.
+		elems[ledger.TxConstraints] = nil
+	} else {
+		txc := tuples.EmptyTupleEditable(256)
+		for _, b := range tx.TxConstraints {
+			txc.MustPush(b)
+		}
+		elems[ledger.TxConstraints] = txc
+	}
 	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
 	if tx.SequencerOutputIndex != 0xff {
 		elems[ledger.TxSequencerDataBytes] = tx.SequencerDataBytes.Bytes()

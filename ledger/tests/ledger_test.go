@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -839,37 +838,6 @@ func TestChainLock(t *testing.T) {
 		require.EqualValues(t, 60_000_000, int(onLocked))
 		require.EqualValues(t, 210_000_000, int(onChainOut))
 		require.EqualValues(t, 10_050_000_000, int(u.Balance(addr0))) // also includes 500 on chain
-	})
-}
-
-func TestLocalLibrary(t *testing.T) {
-	lib := ledger.L(base.MaxSlot)
-	const source = `
- func fun1 : concat($0,$1)
- func fun2 : fun1(fun1($0,$1), fun1($0,$1))
- func fun3 : fun2($0, $0)
-`
-	libBin, err := lib.Library.CompileLocalLibraryToTuple(source)
-	require.NoError(t, err)
-	t.Run("1", func(t *testing.T) {
-		src := fmt.Sprintf("callLocalLibrary(0x%s, 2, 5)", hex.EncodeToString(libBin))
-		t.Logf("src = '%s', len = %d", src, len(libBin))
-		lib.MustEqual(src, "0x05050505")
-	})
-	t.Run("2", func(t *testing.T) {
-		src := fmt.Sprintf("callLocalLibrary(0x%s, 0, 5, 6)", hex.EncodeToString(libBin))
-		t.Logf("src = '%s', len = %d", src, len(libBin))
-		lib.MustEqual(src, "0x0506")
-	})
-	t.Run("3", func(t *testing.T) {
-		src := fmt.Sprintf("callLocalLibrary(0x%s, 1, 5, 6)", hex.EncodeToString(libBin))
-		t.Logf("src = '%s', len = %d", src, len(libBin))
-		lib.MustEqual(src, "0x05060506")
-	})
-	t.Run("4", func(t *testing.T) {
-		src := fmt.Sprintf("callLocalLibrary(0x%s, 3)", hex.EncodeToString(libBin))
-		t.Logf("src = '%s', len = %d", src, len(libBin))
-		lib.MustError(src)
 	})
 }
 

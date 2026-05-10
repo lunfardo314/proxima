@@ -37,6 +37,12 @@ type (
 		HolderID() (base.HolderID, error)
 		UnlockParameters(inputIdx, constraintIdx byte) ([]byte, error)
 		GetLibrary() *Library
+		// IsScriptRedeemed reports whether a local-script hash has been
+		// committed by a prior redeemScript constraint in this tx.
+		IsScriptRedeemed(h [32]byte) bool
+		// AddRedeemedScript records a local-script hash committed by a
+		// redeemScript constraint. Idempotent.
+		AddRedeemedScript(h [32]byte)
 	}
 
 	EvalContext struct {
@@ -143,6 +149,8 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"embeddedEnforceFrozenCoverageOnDelegateOutput":     evalEnforceFrozenCoverageOnDelegateOutput,
 	"embeddedEnforceFrozenCoverageOnNonDelegationChain": evalEnforceFrozenCoverageOnNonDelegationChain,
 	"embeddedIsInflationAndFrozenCoverageZero":          evalIsInflationAndFrozenCoverageZero,
+	"evalRedeemScript":                                  evalRedeemScript,
+	"evalCallRedeemer":                                  evalCallRedeemer,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.

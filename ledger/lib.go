@@ -3,6 +3,7 @@ package ledger
 import (
 	"crypto/ed25519"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,6 +41,11 @@ type (
 		BranchInflationBonusPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
 		HealthyCoverageDeltaPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
 		StorageDepositPrecompiled           atomic.Pointer[easyfl.Expression[*EvalContext]]
+		// compiledScriptCache is the library-level cache of decoded local
+		// scripts; populated by redeemScript, read by callRedeemer. See
+		// local_script_cache.go.
+		compiledScriptCache CompiledScriptCache
+		scriptCacheOnce     sync.Once
 	}
 )
 

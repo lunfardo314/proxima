@@ -115,6 +115,9 @@ func (tx *Transaction) evalBytecode(bytecode []byte, evalPath []byte, spool *sli
 }
 
 // validateTxLevelConstraints evaluates all transaction level constraints, if any.
+// Unlike runTuple — which treats index 0 / index 1 of an output tuple as
+// amounts / index-values data — every element of TxConstraints is plain
+// bytecode and is evaluated as a constraint.
 func (tx *Transaction) validateTxLevelConstraints(spool *slicepool.SlicePool) error {
 	txConstraintsBytes := tx.MustBytesAtPath(ledger.PathToTxConstraints)
 	if len(txConstraintsBytes) == 0 {
@@ -125,8 +128,24 @@ func (tx *Transaction) validateTxLevelConstraints(spool *slicepool.SlicePool) er
 	if err != nil {
 		return fmt.Errorf("parsing tx constraints: %v", err)
 	}
-	// assume there a tuple of tx level constraints
-	return tx.runTuple(tu, ledger.PathToTxConstraints, spool)
+	evalPath := easyfl_util.Concat(ledger.PathToTxConstraints, byte(0))
+	tu.ForEach(func(idx int, bytecode []byte) bool {
+		evalPath[len(evalPath)-1] = byte(idx)
+		var res []byte
+		res, err = tx.evalBytecode(bytecode, evalPath, spool)
+		if err != nil {
+			err = fmt.Errorf("tx-level constraint '%s' failed with error '%v'. Path: %s",
+				tx._constraintName(bytecode), err, PathToString(evalPath))
+			return false
+		}
+		if len(res) == 0 {
+			err = fmt.Errorf("tx-level constraint '%s' failed (returned empty). Path: %s",
+				tx._constraintName(bytecode), PathToString(evalPath))
+			return false
+		}
+		return true
+	})
+	return err
 }
 
 func (tx *Transaction) writeStateMutationsTo(mut common.KVWriter) {

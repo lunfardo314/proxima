@@ -63,5 +63,15 @@ functions:
     description: "returns true if inflation and frozen coverage amount are all zero"
     numArgs: 0
     embedded_as: embeddedIsInflationAndFrozenCoverageZero
+  -
+    sym: redeemScript
+    description: "tx-level constraint: commits to a local-script bin (arg 0 must be inline literal)"
+    numArgs: 1
+    embedded_as: evalRedeemScript
+  -
+    sym: callRedeemer
+    description: "invoke a previously-redeemed local script: callRedeemer(<32-byte-literal-hash>, <fnIdx-byte>, args...)"
+    numArgs: -1
+    embedded_as: evalCallRedeemer
 
 
