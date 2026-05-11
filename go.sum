@@ -162,6 +162,8 @@ github.com/lunfardo314/easyfl v0.0.0-20260511163050-9881cc4cac09 h1:xkzgIojwlSbK
 github.com/lunfardo314/easyfl v0.0.0-20260511163050-9881cc4cac09/go.mod h1:nA7EmFm4z4/y31Cs/VgF7dJkkMDmIdS4UxZ3hpnqBxQ=
 github.com/lunfardo314/easyfl v0.0.0-20260511165502-4b54a9678d51 h1:iq44R/P/YQ34ftqVywrzSDvoFUe2Z3cSPmWI11NmAs4=
 github.com/lunfardo314/easyfl v0.0.0-20260511165502-4b54a9678d51/go.mod h1:nA7EmFm4z4/y31Cs/VgF7dJkkMDmIdS4UxZ3hpnqBxQ=
+github.com/lunfardo314/easyfl v0.0.0-20260511183005-bea66fe5bd1f h1:OEApL7n8NPyNBiDo3BL6GDJD4fPUX774t87bD+kINDg=
+github.com/lunfardo314/easyfl v0.0.0-20260511183005-bea66fe5bd1f/go.mod h1:nA7EmFm4z4/y31Cs/VgF7dJkkMDmIdS4UxZ3hpnqBxQ=
 github.com/lunfardo314/unitrie v0.0.0-20260430152328-b888b7a3ad49 h1:deV0mXHHAZbEmVfGutb/xg3a7tUAfyrtiwrMPrZLvSw=
 github.com/lunfardo314/unitrie v0.0.0-20260430152328-b888b7a3ad49/go.mod h1:69UhxzxQ7UVhI9Knv50D/uVxsJseC7myW1DUlWelSo4=
 github.com/marcopolo/simnet v0.0.4 h1:50Kx4hS9kFGSRIbrt9xUS3NJX33EyPqHVmpXvaKLqrY=

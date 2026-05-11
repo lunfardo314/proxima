@@ -121,9 +121,15 @@ func evalCallRedeemer(par *easyfl.CallParams[*EvalContext]) []byte {
 	for i := 0; i < n; i++ {
 		args[i] = par.Arg(byte(i + 2))
 	}
-	out, err := s.Eval(par.GlobalData(), idx, args...)
+	// Thread the outer eval's slice pool through into the redeemed script
+	// (EvalInPool) so nested allocations land in one pool — and so the
+	// result is owned by that same pool and can be returned directly
+	// without a defensive copy via par.AllocData. Cuts allocations and
+	// the segment-pool churn dramatically for deeply nested covenants
+	// such as chess (chess() → chessGame → chessValidator).
+	out, err := s.EvalInPool(par.GlobalData(), par.Spool(), idx, args...)
 	if err != nil {
 		par.TracePanic("callRedeemer: eval failed: %v", err)
 	}
-	return par.AllocData(out...)
+	return out
 }
