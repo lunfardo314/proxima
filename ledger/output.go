@@ -812,29 +812,31 @@ func (o *OutputDataWithID) Parse(validOpt ...func(o *Output) error) (*OutputWith
 	}, nil
 }
 
-// ParseAsChainOutput parses raw output data as a chain output.
+// ParseAsChainOutput parses raw output data as a chain output. For origin
+// outputs whose serialised ChainID is NilChainID, the returned ChainID is
+// resolved as blake2b(outputID) so callers see the same value the chain
+// constraint enforces post-origin.
 func (o *OutputDataWithID) ParseAsChainOutput() (*OutputWithChainID, error) {
 	var chainConstr *ChainConstraint
-	var chainID base.ChainID
 
 	ret, err := o.Parse(func(oParsed *Output) error {
 		chainConstr = oParsed.ChainConstraint()
 		if chainConstr == nil {
 			return fmt.Errorf("can't find chain constraint")
 		}
-		chainID = chainConstr.ChainID
-		if chainID == base.NilChainID {
-			chainID = blake2b.Sum256(o.ID[:])
-		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	resolved := *chainConstr
+	if resolved.ChainID == base.NilChainID {
+		resolved.ChainID = blake2b.Sum256(o.ID[:])
+	}
 	return &OutputWithChainID{
 		OutputWithID: *ret,
 		ChainConstraintData: ChainConstraintData{
-			ChainConstraint: *chainConstr,
+			ChainConstraint: resolved,
 		},
 	}, nil
 }
