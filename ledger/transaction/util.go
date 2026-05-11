@@ -170,11 +170,10 @@ func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...strin
 		}
 	}
 
-	ret.Add("Inputs (%d consumed outputs): ", tx.NumInputs())
+	ret.Add("Inputs (%d): ", tx.NumInputs())
 	if tx.IsPartialContext() {
-		ret.Add("Inputs (%d). Consumed UTXOs N/A", tx.NumInputs())
+		ret.Add("Consumed UTXOs N/A", tx.NumInputs())
 	} else {
-		ret.Add("Inputs (%d)", tx.NumInputs())
 		tx.ForEachConsumedOutput(func(idx byte, o ledger.OutputWithID) bool {
 			unlockBin := tx.MustUnlockDataAt(idx)
 			ret.Add("  #%d: %s", idx, o.ID.String()).
