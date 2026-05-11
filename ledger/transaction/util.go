@@ -5,12 +5,14 @@ import (
 	"encoding/hex"
 	"slices"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"golang.org/x/crypto/blake2b"
 )
 
 func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
@@ -135,6 +137,39 @@ func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...strin
 		return true
 	})
 
+	// Tx-level constraints (path 0x000a). Decompile each and surface the
+	// content hash of every commitment. For `redeemScript(0x<bin>)` the
+	// hash printed is blake2b(bin) — the value that gets registered in
+	// the tx's redeemed-set and that callRedeemer literals must match.
+	// For any other tx-level constraint the hash is blake2b of the
+	// constraint bytecode (a stable identity for it).
+	//
+	// Printed before Inputs so the reader knows which local scripts the
+	// tx commits to before reading any callRedeemer call sites.
+	txConstraintsBin := tx.MustBytesAtPath(ledger.PathToTxConstraints)
+	if len(txConstraintsBin) == 0 {
+		ret.Add("TxConstraints (0):")
+	} else {
+		tcs, err := tuples.TupleFromBytes(txConstraintsBin)
+		if err != nil {
+			ret.Add("TxConstraints: parse error: %v", err)
+		} else {
+			ret.Add("TxConstraints (%d):", tcs.NumElements())
+			lib := ledger.L(base.MaxSlot)
+			tcs.ForEach(func(i int, bc []byte) bool {
+				hashLabel, hashHex := txConstraintHash(lib, bc)
+				src, err := lib.DecompileBytecode(bc)
+				if err != nil {
+					ret.Add("  %d: %d bytes (decompile err: %v)", i, len(bc), err)
+				} else {
+					ret.Add("  %d: %s  (%d bytes)", i, src, len(bc))
+				}
+				ret.Add("     %s: %s", hashLabel, hashHex)
+				return true
+			})
+		}
+	}
+
 	ret.Add("Inputs (%d consumed outputs): ", tx.NumInputs())
 	if tx.IsPartialContext() {
 		ret.Add("Inputs (%d). Consumed UTXOs N/A", tx.NumInputs())
@@ -188,6 +223,22 @@ func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger
 		return lines.New(prefix...).Add("Parse returned: %v", err)
 	}
 	return tx.Lines(inputLoader, prefix...)
+}
+
+// txConstraintHash returns a (label, hex) pair identifying the content of a
+// tx-level constraint. For `redeemScript(<bin>)` it returns blake2b(bin) —
+// the value registered in the tx's redeemed-set and the literal a
+// callRedeemer site must match. For any other tx-level constraint it
+// returns blake2b of the constraint bytecode itself.
+func txConstraintHash(lib *ledger.Library, bc []byte) (label, hexStr string) {
+	sym, _, args, err := lib.ParseBytecodeOneLevel(bc)
+	if err == nil && sym == ledger.SymRedeemScript && len(args) == 1 {
+		bin := easyfl.StripDataPrefix(args[0])
+		h := blake2b.Sum256(bin)
+		return "redeemed hash", hex.EncodeToString(h[:])
+	}
+	h := blake2b.Sum256(bc)
+	return "bytecode hash", hex.EncodeToString(h[:])
 }
 
 func UnlockDataToString(data []byte) string {
