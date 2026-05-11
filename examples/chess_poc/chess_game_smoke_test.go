@@ -53,7 +53,6 @@ func TestBinsCompile(t *testing.T) {
 	t.Logf("chess() lock      = %d bytes (%x)", len(bins.LockBytecode), bins.LockBytecode)
 	t.Logf("validator fnIdx   playerMove=%d  boardOK=%d  sideToMove=%d",
 		bins.playerMoveIdx, bins.boardOKIdx, bins.sideToMoveIdx)
-	t.Logf("game fnIdx        branchMove=%d  branchTieAccept=%d  branchResign=%d  branchTimeoutClaim=%d",
-		bins.branchIdx[0], bins.branchIdx[1], bins.branchIdx[2], bins.branchIdx[3])
-	t.Logf("game fnIdx        producedValidate=%d", bins.producedValidateIdx)
+	t.Logf("game fnIdx        chess=%d  (single public entry; everything else private)",
+		bins.chessEntryIdx)
 }

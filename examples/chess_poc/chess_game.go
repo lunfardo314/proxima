@@ -8,21 +8,21 @@
 //     chessValidator via callRedeemer. Branches: move / tie-accept /
 //     resign / timeout-claim. Source in chess_game.easyfl.
 //
-// The chess() lock is a small redeemer dispatcher built at init time and
-// placed at the lock element index of every chess UTXO. It branches on
-// selfIsProducedOutput:
+// The chess() lock is a tiny one-shot dispatcher placed at every chess
+// UTXO's lock element:
 //
-//   - produced: callRedeemer(<gHash>, <producedValidate idx>) — runs the
-//     chessGame produced-side handler (origin check / non-origin pass).
-//   - consumed: looks up the branch handler's fnIdx in a 4-byte literal
-//     table baked into the lock, indexed by the unlock byte selector
-//     (0x00 move, 0x01 tie-accept, 0x02 resign, 0x03 timeout-claim), and
-//     calls callRedeemer with that fnIdx — direct dispatch, no
-//     selectCaseByIndex wrapper inside chessGame.
+//     callRedeemer(<gHash>, <chess-entry idx>)
 //
-// Public dispatch surface relies on easyfl's underscore-private convention
-// (claude/local_script.md §4) — internal helpers in chess_game.easyfl all
-// start with `_` and so are unreachable via callRedeemer.
+// All produced/consumed branching and selector decoding lives inside the
+// chessGame script's single public `chess` function. That keeps the
+// per-UTXO lock bytecode ≈ 36 bytes — UTXOs persist much longer than the
+// tx that creates them, so the bytes saved per UTXO outweigh the slightly
+// fatter chessGame bin (committed only once per tx via redeemScript).
+//
+// Privacy surface relies on easyfl's underscore-private convention
+// (claude/local_script.md §4) — every chessGame function except `chess`
+// has a leading `_`, so callRedeemer cannot reach internal helpers or
+// branch handlers directly.
 package chess_poc
 
 import (
@@ -52,14 +52,14 @@ type Bins struct {
 	GameHash      [32]byte
 	LockBytecode  []byte // chess() lock — see package doc.
 
-	// chessValidator fn indices.
+	// chessValidator fn indices (consumed via callRedeemer from chessGame).
 	playerMoveIdx int
 	boardOKIdx    int
 	sideToMoveIdx int
 
-	// chessGame public fn indices. branchIdx[i] = idx for selector byte i.
-	branchIdx           [4]int
-	producedValidateIdx int
+	// chessGame's single public entry point. All branching and selector
+	// decoding happens inside this function (see chess_game.easyfl).
+	chessEntryIdx int
 }
 
 var (
@@ -127,60 +127,33 @@ func buildBins() (*Bins, error) {
 	}
 	gHash := blake2b.Sum256(gBin)
 
-	// 4) Look up chessGame's five public entry points. The four branch
-	//    handlers are indexed by unlock selector byte; producedValidate is
-	//    the produced-side entry. All five must fit in 1 byte (easyfl caps
-	//    fnIdx at 255 by construction).
-	branchNames := [4]string{"branchMove", "branchTieAccept", "branchResign", "branchTimeoutClaim"}
-	var branchIdx [4]int
-	for i, name := range branchNames {
-		idx, ok := gIdx[name]
-		if !ok {
-			return nil, fmt.Errorf("chess_poc: chessGame has no %s entry", name)
-		}
-		if idx > 0xff {
-			return nil, fmt.Errorf("chess_poc: chessGame %s fnIdx > 255: %d", name, idx)
-		}
-		branchIdx[i] = idx
-	}
-	producedValidate, ok := gIdx["producedValidate"]
+	// 4) Look up chessGame's single public entry point.
+	chessEntry, ok := gIdx["chess"]
 	if !ok {
-		return nil, fmt.Errorf("chess_poc: chessGame has no producedValidate entry")
+		return nil, fmt.Errorf("chess_poc: chessGame has no public `chess` entry")
 	}
-	if producedValidate > 0xff {
-		return nil, fmt.Errorf("chess_poc: chessGame producedValidate fnIdx > 255: %d", producedValidate)
+	if chessEntry > 0xff {
+		return nil, fmt.Errorf("chess_poc: chessGame `chess` fnIdx > 255: %d", chessEntry)
 	}
 
-	// 5) chess() lock bytecode. The lookup table baked into the lock maps
-	//    unlock byte 0 (the branch selector) → branch handler fnIdx. The
-	//    runtime computes byte(<table>, selector) to pick the dispatch.
-	table := []byte{byte(branchIdx[0]), byte(branchIdx[1]), byte(branchIdx[2]), byte(branchIdx[3])}
-	lockSrc := fmt.Sprintf(`if(
-		selfIsProducedOutput,
-		callRedeemer(0x%s, 0x%02x),
-		and(
-			require(equal(len(selfUnlockParameters), u64/1), !!!chess_unlock_must_be_1_byte),
-			require(lessThan(byte(selfUnlockParameters,0), 0x04), !!!chess_invalid_branch_selector),
-			callRedeemer(0x%s, byte(0x%s, byte(selfUnlockParameters,0)))
-		)
-	)`, hex.EncodeToString(gHash[:]), producedValidate,
-		hex.EncodeToString(gHash[:]), hex.EncodeToString(table))
+	// 5) chess() lock bytecode: a one-shot redeemer dispatch.
+	lockSrc := fmt.Sprintf("callRedeemer(0x%s, 0x%02x)",
+		hex.EncodeToString(gHash[:]), chessEntry)
 	_, _, lockBC, err := lib.CompileExpression(lockSrc)
 	if err != nil {
 		return nil, fmt.Errorf("chess_poc: compile chess() lock: %w", err)
 	}
 
 	return &Bins{
-		ValidatorBin:        vBin,
-		ValidatorHash:       vHash,
-		GameBin:             gBin,
-		GameHash:            gHash,
-		LockBytecode:        lockBC,
-		playerMoveIdx:       playerMove,
-		boardOKIdx:          boardOK,
-		sideToMoveIdx:       sideToMove,
-		branchIdx:           branchIdx,
-		producedValidateIdx: producedValidate,
+		ValidatorBin:  vBin,
+		ValidatorHash: vHash,
+		GameBin:       gBin,
+		GameHash:      gHash,
+		LockBytecode:  lockBC,
+		playerMoveIdx: playerMove,
+		boardOKIdx:    boardOK,
+		sideToMoveIdx: sideToMove,
+		chessEntryIdx: chessEntry,
 	}, nil
 }
 

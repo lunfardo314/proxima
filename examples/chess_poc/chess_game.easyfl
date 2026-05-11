@@ -230,7 +230,7 @@ func _cMoveOrdinary : and(
    )
 )
 
-func branchMove : and(
+func _branchMove : and(
    require(not(_chainTerminated), !!!chess_move_must_continue_chain),
    require(lessThan(txSlot, first4Bytes(_stDeadline(_selfChessState))), !!!chess_deadline_already_passed),
    if(
@@ -284,7 +284,7 @@ func _requireSplitPayout : and(
 // move, byte 68 of the predecessor board flipped to the opponent, so
 // sideToMove(predBoard) == the side accepting the tie. Signer must equal
 // that side's holder ID.
-func branchTieAccept : and(
+func _branchTieAccept : and(
    require(equal(len(_stBlack(_selfChessState)), u64/32), !!!chess_tieaccept_predecessor_must_be_past_acceptance),
    require(equal(byte(_stFlags(_selfChessState), 0), 0x01), !!!chess_tieaccept_predecessor_must_have_tieProposed),
    require(
@@ -296,7 +296,7 @@ func branchTieAccept : and(
    _requireSplitPayout(_stWhite(_selfChessState), _stBlack(_selfChessState), selfTokenBalanceValue)
 )
 
-func branchResign : and(
+func _branchResign : and(
    require(equal(len(_stBlack(_selfChessState)), u64/32), !!!chess_resign_predecessor_must_be_past_acceptance),
    require(
       equal(_signer, _pickSideHolder(_selfChessState, _vSideToMove(_stBoard(_selfChessState)))),
@@ -310,7 +310,7 @@ func branchResign : and(
    )
 )
 
-func branchTimeoutClaim : and(
+func _branchTimeoutClaim : and(
    require(lessOrEqualThan(first4Bytes(_stDeadline(_selfChessState)), txSlot), !!!chess_deadline_not_yet_reached),
    require(_chainTerminated, !!!chess_timeoutclaim_chain_must_terminate),
    if(
@@ -333,20 +333,37 @@ func branchTimeoutClaim : and(
 )
 
 // =========================================================================
-// Produced-side entry
+// Single public entry point: `chess`
 //
-// The chess() lock dispatches into the four branch* functions directly,
-// indexed by the unlock-byte selector via a baked-in lookup table — no
-// EasyFL-level dispatcher needed (see chess_game.go BuildLockBytecode).
+// chess() UTXOs carry a minimal lock — `callRedeemer(<gHash>, <chess-idx>)`
+// — and all dispatching happens here. That keeps the per-UTXO lock
+// bytecode tiny (~36 bytes) at the cost of a few extra bytes in the
+// chessGame bin, which is committed only once per tx via redeemScript.
 //
-// `producedValidate` is the chess() lock's produced-side handler: on
-// origin it runs §4.1(a) validation; on later transitions it returns
-// truthy because the predecessor's consumed-side check is authoritative
-// for successor structure.
+// Produced side: §4.1(a) origin validation on chain origin; trivial
+// accept otherwise (the predecessor's consumed-side check is
+// authoritative for successor structure on every later transition).
 //
-// Anything not exported here keeps a leading underscore — easyfl
-// LocalScript.Eval refuses to dispatch private functions, so they can
-// only be reached via intra-script calls.
+// Consumed side: unlock must be a 1-byte branch selector in 0..3;
+// selectCaseByIndex picks the matching internal branch handler.
+//
+// All other functions are private (`_`-prefixed) — easyfl's
+// LocalScript.Eval refuses to dispatch them via callRedeemer, so the
+// only externally reachable behaviour is what this dispatcher exposes.
 // =========================================================================
 
-func producedValidate : if(_selfChainIsOrigin, _validateOriginProduced, 0xff)
+func chess : if(
+   selfIsProducedOutput,
+   if(_selfChainIsOrigin, _validateOriginProduced, 0xff),
+   and(
+      require(equal(len(selfUnlockParameters), u64/1), !!!chess_unlock_must_be_1_byte),
+      require(lessThan(byte(selfUnlockParameters, 0), 0x04), !!!chess_invalid_branch_selector),
+      selectCaseByIndex(
+         byte(selfUnlockParameters, 0),
+         _branchMove,
+         _branchTieAccept,
+         _branchResign,
+         _branchTimeoutClaim
+      )
+   )
+)
