@@ -377,6 +377,8 @@ func LockFromOutputElementsWithLib(indexValuesBytes, lockBytecode []byte, lib *L
 		return DelegateLockFromOutputElements(indexValuesBytes, lockBytecode, lib)
 	case HTLCName:
 		return HTLCFromOutputElements(indexValuesBytes, lockBytecode, lib)
+	case SendWithDeadlineLockName:
+		return SendWithDeadlineLockFromOutputElements(indexValuesBytes, lockBytecode, lib)
 	}
 	// Registered prefix exists but no Go-typed dispatch — treat as
 	// opaque, same as for unregistered prefixes.
