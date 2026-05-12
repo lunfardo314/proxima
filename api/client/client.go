@@ -488,6 +488,215 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs
 	return ret, &res.LRBID, sum, nil
 }
 
+// SpendableOutputsParams controls GetSpendableOutputs filtering.
+//
+//   - IncludeSendWithDeadline = true (default behaviour at call sites that
+//     want it) augments the basic sigLock set with sendWithDeadline UTXOs
+//     the account can claim at TargetSlot:
+//       * master == account AND TargetSlot − createSlot ≥ acceptanceSlots
+//         (master-reclaim path), OR
+//       * target == account AND TargetSlot − createSlot < acceptanceSlots
+//         AND targetType == sigLock (target-accept path).
+//   - chainLock-target acceptance paths are excluded because they need a
+//     chain input in the same tx; that's a different flow than the simple
+//     spend implied by GetSpendableOutputs.
+//   - TargetSlot == 0 falls back to "now" (ledger.TimeNow().Slot()).
+//
+// All filtering is done client-side over a single GetOutputs call —
+// no server changes required.
+type SpendableOutputsParams struct {
+	IncludeSendWithDeadline bool
+	TargetSlot              uint32
+	MaxOutputs              int
+}
+
+// GetSpendableOutputs returns outputs the account can spend at TargetSlot,
+// optionally including sendWithDeadline UTXOs the account is currently
+// claim-eligible for. The base behaviour mirrors GetTransferableOutputs.
+func (c *APIClient) GetSpendableOutputs(account ledger.Controller, params SpendableOutputsParams) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
+	maxO := params.MaxOutputs
+	if maxO <= 0 || maxO > 256 {
+		maxO = 256
+	}
+	if !params.IncludeSendWithDeadline {
+		return c.GetTransferableOutputs(account, maxO)
+	}
+
+	targetSlot := params.TargetSlot
+	if targetSlot == 0 {
+		targetSlot = ledger.TimeNow().Slot
+	}
+
+	// One unfiltered query — the trie indexer returns any output whose
+	// index-value tuple contains account.ControllerID(), so this picks up
+	// sigLock and sendWithDeadline outputs (under either master or target)
+	// in one round trip.
+	res, err := c.GetOutputs(account.ControllerID(), GetOutputsParams{
+		LockType:   api.GetOutputsLockTypeAll,
+		Chained:    NonChainedOnly(),
+		SortBy:     api.GetOutputsSortByAmount,
+		SortOrder:  api.GetOutputsSortOrderDesc,
+		MaxOutputs: maxO,
+	})
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	var (
+		accountHID = account.ControllerID()
+		sum        uint64
+	)
+	ret := make([]*ledger.OutputWithID, 0, len(res.Outputs))
+	for _, o := range res.Outputs {
+		if !c.spendableForAccount(o, accountHID, targetSlot) {
+			continue
+		}
+		ret = append(ret, o)
+		sum += o.Output.TokenBalance()
+	}
+	return ret, &res.LRBID, sum, nil
+}
+
+// spendableForAccount decides whether the given output is spendable by
+// accountHID at targetSlot under a SINGLE-input signature unlock. Two
+// shapes qualify:
+//
+//   - 3-element output (amounts | indexValues | lock) locked by sigLock
+//     to accountHID — the legacy "transferable" case.
+//   - sendWithDeadline output where accountHID is master AND has reached
+//     the reclaim window, OR is the sigLock target AND we're still inside
+//     the acceptance window.
+//
+// chainLock-target acceptance is excluded because the spend tx must also
+// consume the controlling chain output (a separate flow).
+func (c *APIClient) spendableForAccount(o *ledger.OutputWithID, accountHID []byte, targetSlot uint32) bool {
+	if o == nil || o.Output == nil {
+		return false
+	}
+	lock := o.Output.Lock()
+
+	switch l := lock.(type) {
+	case ledger.SigLock:
+		// legacy "transferable" case: 3-element output owned by accountHID
+		if o.Output.NumElements() != 3 {
+			return false
+		}
+		return bytes.Equal(l[:], accountHID)
+	case *ledger.SendWithDeadlineLock:
+		createSlot := o.ID.Slot()
+		if targetSlot < createSlot {
+			return false
+		}
+		delta := targetSlot - createSlot
+		if bytes.Equal(l.MasterID[:], accountHID) {
+			return delta >= l.AcceptanceSlots // reclaim path (or public-cleanup overlap)
+		}
+		if bytes.Equal(l.TargetID[:], accountHID) && l.TargetType == ledger.SendWithDeadlineTargetSigLock {
+			return delta < l.AcceptanceSlots // accept path (sigLock target only)
+		}
+		return false
+	}
+	return false
+}
+
+// MakeClaimingCompactTransaction is like MakeCompactTransaction, but the
+// input set also includes consumable sendWithDeadline UTXOs — both
+// master-reclaim (account is master, Δ ≥ acceptanceSlots) and target-
+// accept (account is sigLock target, Δ < acceptanceSlots) paths — at
+// the given targetSlot. The produced output is a single sigLock back
+// to the wallet for the consolidated balance minus the tag-along fee.
+//
+// All inputs use the signature unlock (0xff) because:
+//   - on a plain sigLock input it satisfies `equal($holder, txHolderID(txSignatureData))`.
+//   - on a sendWithDeadline input the consumed-side dispatch lands in
+//     `_sigLock($master)` (reclaim) or `_sigLock($target)` (accept);
+//     both fall through `unlockedByReference` (which fails because the
+//     SWD lock bytecode ≠ sigLock bytecode) onto the same signature
+//     check, which matches the wallet's holderID.
+//
+// targetSlot == 0 falls back to ledger.TimeNow().Slot.
+func (c *APIClient) MakeClaimingCompactTransaction(
+	walletPrivateKey ed25519.PrivateKey,
+	tagAlongSeqID *base.ChainID,
+	tagAlongFee uint64,
+	targetSlot uint32,
+	maxInputs int,
+) (*transaction.Transaction, error) {
+	walletAccount := ledger.SigLockFromED25519PrivateKey(walletPrivateKey)
+
+	walletOutputs, _, inTotal, err := c.GetSpendableOutputs(walletAccount, SpendableOutputsParams{
+		IncludeSendWithDeadline: true,
+		TargetSlot:              targetSlot,
+		MaxOutputs:              maxInputs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(walletOutputs) <= 1 {
+		return nil, nil
+	}
+	if inTotal < tagAlongFee {
+		return nil, fmt.Errorf("not enough balance for the tag-along fee")
+	}
+
+	nowisTs := ledger.TimeNow()
+	if targetSlot != 0 {
+		// Caller-controlled slot; use it for the tx timestamp so the
+		// sendWithDeadline Δ checks line up with the filter.
+		nowisTs = base.T(targetSlot, 1)
+	}
+
+	txb := txbuilder.New()
+	for _, in := range walletOutputs {
+		_, err := txb.ConsumeOutput(in.Output, in.ID)
+		if err != nil {
+			return nil, fmt.Errorf("MakeClaimingCompactTransaction: consume: %w", err)
+		}
+	}
+	// Signature unlock on EVERY input (see method comment for why this
+	// works uniformly for sigLock and sendWithDeadline locks claimed by
+	// the wallet).
+	for i := range walletOutputs {
+		txb.PutSignatureUnlock(byte(i))
+	}
+
+	// Combined output back to the wallet.
+	mainAmount := inTotal - tagAlongFee
+	mainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(mainAmount).WithLock(walletAccount)
+	})
+	if _, err = txb.ProduceOutput(mainOut); err != nil {
+		return nil, err
+	}
+
+	if tagAlongFee > 0 {
+		if tagAlongSeqID == nil {
+			return nil, fmt.Errorf("tag-along sequencer not specified")
+		}
+		taOut := ledger.NewTagAlongOutput(tagAlongFee, *tagAlongSeqID, base.HolderID(walletAccount))
+		if _, err = txb.ProduceOutput(taOut); err != nil {
+			return nil, err
+		}
+	}
+
+	txb.TransactionData.Timestamp = nowisTs
+	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SignED25519(walletPrivateKey)
+
+	txBytes, _, _, err := txb.BytesWithValidation()
+	if err != nil {
+		return nil, err
+	}
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	if err != nil {
+		return tx, err
+	}
+	if err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(walletOutputs))); err != nil {
+		return tx, err
+	}
+	return tx, nil
+}
+
 // MakeCompactTransaction requests server and creates a compact transaction for ED25519 outputs in the form of transaction context. Does not submit it
 func (c *APIClient) MakeCompactTransaction(walletPrivateKey ed25519.PrivateKey, tagAlongSeqID *base.ChainID, tagAlongFee uint64, maxInputs ...int) (*transaction.Transaction, error) {
 	walletAccount := ledger.SigLockFromED25519PrivateKey(walletPrivateKey)
