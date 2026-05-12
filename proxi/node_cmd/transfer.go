@@ -14,10 +14,11 @@ import (
 
 func initTransferCmd() *cobra.Command {
 	transferCmd := &cobra.Command{
-		Use:   "transfer <amount>",
-		Short: `sends tokens from the wallet's account to the target`,
-		Args:  cobra.ExactArgs(1),
-		Run:   runTransferCmd,
+		Use:        "transfer <amount>",
+		Short:      `[deprecated] sends tokens from the wallet's account to the target — use 'send' instead`,
+		Args:       cobra.ExactArgs(1),
+		Run:        runTransferCmd,
+		Deprecated: "use 'proxi node send' (supports a/<hex> and c/<hex> targets and a --deadline mode).",
 	}
 
 	glb.AddFlagTarget(transferCmd)
