@@ -2,6 +2,7 @@ package node_cmd
 
 import (
 	"github.com/lunfardo314/proxima/proxi/glb"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/chess_cmd"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/delegate"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
 	"github.com/spf13/cobra"
@@ -68,6 +69,7 @@ func Init() *cobra.Command {
 		initTxLogCmd(),
 		initGetSnapshotCmd(),
 		initFundCmd(),
+		chess_cmd.Init(),
 	)
 	return nodeCmd
 }
