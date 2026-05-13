@@ -15,8 +15,7 @@ const SymToken = "token"
 
 // evalToken implements the token(<tag>, <foundryProducedIndex>) tx-level
 // constraint — the per-tag analogue of the PRXI conservation check. See
-// claude/native_token.md §4 and the Phase B section of the implementation
-// plan.
+// claude/native_token.md §4.
 //
 // Both args must be inline-data literals. Arg 0 (tag) is a 32-byte chain
 // ID. Arg 1 (foundryProducedIndex) is empty (sentinel) for pure
@@ -31,11 +30,16 @@ const SymToken = "token"
 //     this for the auditability check).
 //   - Sentinel form: enforces Σ consumed(tag) == Σ produced(tag).
 //   - Foundry-transit form: reads foundry(tag, supply) on the produced
-//     output at the given index; follows chain.PredecessorInputIndex to
-//     the consumed foundry; enforces
-//     Σ consumed(tag) + (producedSupply − consumedSupply) ==
-//     Σ produced(tag). Chain-input/output match for the foundry, policy
-//     script immutability and policy script evaluation belong to Phase C.
+//     output at the given index (and on the consumed predecessor when
+//     not origin), confirms the tag matches, and enforces the balance
+//     equation
+//       Σ consumed(tag) + (producedSupply − consumedSupply) == Σ produced(tag).
+//
+// Note: the tag-equals-chain-ID invariant, the policy-slot immutability
+// across the foundry transit, and the policy script's own evaluation are
+// enforced in EasyFL — by foundry() (immutability + chain-ID match) and
+// by the standard output-tuple validation pass which auto-evaluates the
+// policy bytecode at foundryPolicyConstraintIndex on the produced output.
 func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
 
@@ -94,7 +98,10 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 		return par.AllocData(0x01)
 	}
 
-	// Foundry transit: locate produced & consumed foundry outputs.
+	// Foundry transit: locate produced foundry, look up consumed
+	// foundry (when not origin), enforce the balance equation. The
+	// tag-equals-chain-ID invariant and the policy-slot immutability are
+	// enforced in EasyFL inside foundry() — see native_token.easyfl.
 	producedOut, err := ctx.ProducedOutputAt(foundryProducedIdx)
 	if err != nil {
 		par.TracePanic("token: produced foundry at idx %d: %v", foundryProducedIdx, err)
@@ -113,13 +120,13 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 			pf.Tag.String(), tag.String())
 	}
 
-	// Reach the consumed foundry through the chain constraint's
-	// predecessor. Origin foundries have no predecessor — treated as
-	// consumedSupply = 0.
 	pcc := producedOut.ChainConstraint()
 	if pcc == nil {
 		par.TracePanic("token: produced foundry %d has no chain constraint", foundryProducedIdx)
 	}
+
+	// Reach the consumed foundry through the chain predecessor. Origin
+	// foundries have no predecessor — treated as consumedSupply = 0.
 	var consumedSupply uint64
 	if !pcc.IsOrigin() {
 		consumedOut, err := ctx.ConsumedOutput(pcc.PredecessorInputIndex)

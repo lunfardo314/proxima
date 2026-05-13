@@ -1,17 +1,20 @@
-// Native (tagged) tokens. Phase A: parse-only constraints.
+// Native (tagged) tokens.
 //
 // - tokenAmount(tag, amount): extras carried by any non-foundry UTXO
 //   holding native tokens. tag is the foundry chain ID (32 bytes); amount
 //   is the carried quantity (uint64, > 0).
 // - foundry(tag, supply): extras at foundryConstraintIndex on a foundry
-//   output (the chain whose ID equals tag). Carries circulating supply.
-// - foundryPolicy(script): optional extras at foundryPolicyConstraintIndex,
-//   wraps the inline EasyFL bytecode of the issuance policy. The inner
-//   script is evaluated by the Go reconciler on foundry transit (Phase C),
-//   not by the constraint here.
+//   output (the chain whose ID equals tag). Carries circulating supply
+//   and enforces the tag-equals-chain-ID invariant and the policy-slot
+//   immutability across the foundry transit.
 //
-// Per-tag preservation, literal-arg enforcement of tokenAmount, foundry
-// transit semantics and policy-script evaluation all live in Phase B / C.
+// The policy script (if any) lives at foundryPolicyConstraintIndex as
+// raw EasyFL bytecode. It is auto-evaluated as part of the standard
+// output-tuple validation pass; immutability across transit is enforced
+// by foundry() below.
+//
+// Per-tag preservation, literal-arg enforcement of tokenAmount, and the
+// mint/burn balance equation live in the Go `token(...)` builtin.
 
 // $0 token tag (32 bytes, equal to the foundry chain ID)
 // $1 token amount (uint64, > 0)
@@ -24,22 +27,72 @@ or(
    )
 )
 
-// $0 token tag (32 bytes, equal to the foundry chain ID)
-// $1 circulating supply (uint64, z-encoded — at most 8 bytes after the data prefix)
+// _selfIsFoundryOrigin returns truthy iff the chain at chainConstraintIndex
+// is at origin (chain.ChainID == NilChainID). Same shape as
+// _selfIsDelegationOrigin in lock_delegate.easyfl.
+func _selfIsFoundryOrigin :
+   isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain))
+
+// _foundryPredInputIndex returns the consumed predecessor's input index
+// from the chain constraint's arg $1. Only meaningful when not origin.
+func _foundryPredInputIndex :
+   parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 1, #chain)
+
+// _consumedFoundryNumConstraints returns the NumElements of the consumed
+// predecessor output. Only meaningful when not origin.
+func _consumedFoundryNumConstraints :
+   tupleLenAtPath(concat(pathToConsumedOutputs, _foundryPredInputIndex))
+
+// _validFoundryPolicyImmutability enforces that the bytes at
+// foundryPolicyConstraintIndex are byte-equal across the foundry transit.
+// Slot 5 may be absent on both sides (no policy) or present on both sides
+// (with byte-equal bytecode). At origin there is no consumed predecessor —
+// no check, any policy (or none) is accepted.
+func _validFoundryPolicyImmutability :
+or(
+   _selfIsFoundryOrigin,
+   and(
+      // presence must match on both sides
+      or(
+         and(
+            lessOrEqualThan(_consumedFoundryNumConstraints, u64/5),
+            lessOrEqualThan(selfNumConstraints, u64/5)
+         ),
+         and(
+            lessOrEqualThan(u64/6, _consumedFoundryNumConstraints),
+            lessOrEqualThan(u64/6, selfNumConstraints)
+         )
+      ),
+      // if slot 5 is present, bytecode must be byte-equal
+      if(
+         lessOrEqualThan(u64/6, selfNumConstraints),
+         equal(
+            selfSiblingConstraint(foundryPolicyConstraintIndex),
+            consumedConstraintByIndex(_foundryPredInputIndex, foundryPolicyConstraintIndex)
+         ),
+         0xff
+      )
+   )
+)
+
+// $0 token tag (32 bytes)
+//   at origin: unconstrained (chain.ChainID is still NilChainID)
+//   at transit: must equal the chain ID at chainConstraintIndex
+// $1 circulating supply (uint64, z-encoded — at most 8 bytes after the
+//   data prefix)
 func foundry :
 or(
    not(selfIsProducedOutput),
    and(
       require(equal(len($0), u64/32), !!!foundry_tag_must_be_32_bytes_long),
-      require(lessOrEqualThan(len($1), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long)
+      require(lessOrEqualThan(len($1), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long),
+      require(
+         or(
+            _selfIsFoundryOrigin,
+            equal($0, parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain))
+         ),
+         !!!foundry_tag_must_equal_chain_ID_at_transit
+      ),
+      require(_validFoundryPolicyImmutability, !!!foundryPolicy_not_immutable_across_foundry_transit)
    )
-)
-
-// $0 inline EasyFL bytecode of the policy script
-// Inert at constraint-eval time. The Go reconciler evaluates the inner
-// script on foundry transit.
-func foundryPolicy :
-or(
-   not(selfIsProducedOutput),
-   require(not(isZero(len($0))), !!!foundryPolicy_script_must_be_non_empty)
 )

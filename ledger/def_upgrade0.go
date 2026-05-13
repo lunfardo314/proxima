@@ -71,7 +71,6 @@ func registerConstraints0(lib *Library) {
 	registerEnsureConstraints(lib)
 	registerTokenAmount(lib)
 	registerFoundry(lib)
-	registerFoundryPolicy(lib)
 
 	registerInlineTest(func(lib *Library) {
 		// inline tests - use L(base.MaxSlot) to get the current library
