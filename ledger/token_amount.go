@@ -31,12 +31,51 @@ func NewTokenAmount(tag base.ChainID, amount uint64) *TokenAmount {
 	return &TokenAmount{Tag: tag, Amount: amount}
 }
 
-// WithTokenAmount appends a tokenAmount(tag, amount) constraint at the
-// next free slot of the output being built. Multiple instances per UTXO
-// are allowed per claude/native_token.md §3.
+// WithTokenAmount appends a tokenAmount(tag, amount) constraint to the
+// output being built and, if slot 1 already carries a primary controller
+// (i.e. WithLock has been called and produced at least one index value),
+// appends a single 64-byte compound entry `controller || tag` to slot 1
+// — deduplicated. Mutate.go's indexer is untouched: it iterates slot 1
+// values and emits one trie entry per non-empty element under
+// TriePartitionControllers; the length byte (32 for the lock's own
+// controller, 64 for our compound key) lets a wallet prefix-iterate
+// "my UTXOs holding tag T" via key `holderID || tag` without ever
+// confusing it with a 32-byte single-controller entry.
+//
+// Multiple tokenAmount instances per UTXO are allowed per
+// claude/native_token.md §3; duplicate (controller, tag) pairs are
+// collapsed to a single compound entry in slot 1.
+//
+// IMPORTANT: call after WithLock. WithLock overwrites slot 1, so any
+// compound entry added before will be lost.
 func (o *OutputBuilder) WithTokenAmount(tag base.ChainID, amount uint64) *OutputBuilder {
 	o.MustPushConstraint(NewTokenAmount(tag, amount).Bytes())
+	o.addCompoundIndexValue(tag)
 	return o
+}
+
+// addCompoundIndexValue appends `slot-1[0] || tag` (64 bytes) to the
+// slot-1 index-value tuple, deduplicating by byte equality. No-op if
+// slot 1 is absent or its first entry is empty.
+func (o *OutputBuilder) addCompoundIndexValue(tag base.ChainID) {
+	bin, err := o.Tuple().At(int(ConstraintIndexIndexValues))
+	if err != nil || len(bin) == 0 {
+		return
+	}
+	current, err := IndexValuesFromBytes(bin)
+	if err != nil || len(current) == 0 || len(current[0]) == 0 {
+		return
+	}
+	compound := make([]byte, 0, len(current[0])+len(tag))
+	compound = append(compound, current[0]...)
+	compound = append(compound, tag[:]...)
+	for _, v := range current {
+		if bytes.Equal(v, compound) {
+			return
+		}
+	}
+	current = append(current, compound)
+	o.PutConstraint(IndexValuesTupleBytes(current), ConstraintIndexIndexValues)
 }
 
 func (t *TokenAmount) Name() string { return TokenAmountName }
