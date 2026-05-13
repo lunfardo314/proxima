@@ -167,10 +167,11 @@ the only gate, and the `<= S` cap, retirement freeze, etc. are
 applications that add a script.
 
 How the policy script reads foundry state:
-- No new tx-context accessors are needed. The script reads the consumed
-  and produced `foundry(tag, supply)` constraints via the ordinary
-  bytecode-parsing functions already available in EasyFL. That keeps the
-  EasyFL surface unchanged — the policy script is just a regular
+- No new tx-context accessors are needed. The script reads its sibling
+  `foundry(tag, supply)` constraint (and the consumed-side counterpart)
+  using standard EasyFL bytecode-parsing functions already in the
+  library — `parseBytecode`, `parseInlineData`,
+  `parseInlineDataArgument`, etc. The policy script is just a regular
   constraint that happens to be invoked on the foundry transit and that
   walks the input/output tuples it cares about by index.
 
@@ -192,10 +193,10 @@ Three new constraint shapes, all read by the Go reconciler:
   at **any non-reserved position** in the UTXO tuple; multiple
   occurrences allowed. ~41 bytes per instance (32 tag + 8 amount +
   overhead).
-- `foundry(tag, supply)` — extended EasyFL constraint at **tuple index 3**
-  on the foundry output (immediately after the chain constraint at
-  index 2). Carries the current circulating supply.
-- `policyScript` — **optional** EasyFL bytecode at **tuple index 4**,
+- `foundry(tag, supply)` — extended EasyFL constraint at **tuple index 4**
+  on the foundry output (the first extras slot after the chain
+  constraint at index 3). Carries the current circulating supply.
+- `policyScript` — **optional** EasyFL bytecode at **tuple index 5**,
   immediately after the foundry constraint. Immutable across foundry
   transits. Absent ⇒ no on-chain issuance policy beyond the
   controller's signature.
@@ -214,23 +215,153 @@ single mint/burn transaction.
 
 ---
 
-## Suggested order of attack
+## Implementation plan
 
-1. Implement `tokenAmount(...)` and `foundry(...)` as extended EasyFL
-   constraints at the agreed slots (`foundry` at index 3, `policyScript`
-   at index 4); parse-only — semantic checks live in the Go reconciler.
-2. Implement the Go-side `token(...)` builtin: per-tag aggregation,
-   cache on tx context, mismatch errors mirroring `redeem(...)`.
-3. Wire foundry transit checks: chain-input/output match, `policyScript`
-   immutability, optional script evaluation.
-4. Extend `validateOutputs` to invoke the per-tag pass and require
-   tag-declaration auditability at the TxConstraints level (every tag
-   appearing in any UTXO must have a matching `token(tag, ...)`).
-5. TxBuilder helpers + indexer entry (so wallets can `get_outputs` by
-   tag).
-6. CLI: `proxi node mint`, `proxi node send` extended to carry a tag.
-7. Tests, then end-to-end UTXODB flows (foundry create → mint → transfer
-   → burn → retire), with and without a policy script.
+The closest existing pattern is **`redeemScript`** — the Go-implemented,
+tx-level builtin at `ledger/local_script_builtins.go:19-65`, registered
+in `def_upgrade0.go:49`. `token(...)` mirrors it almost line-for-line:
+walk the inputs/outputs once, cache per-tag aggregates on the tx
+context, fail on mismatch. The rest of the plan flows from that.
+
+### Fixed decisions used below
+
+- **Slot indices.** `foundry` is at tuple index **4** (first extras
+  slot, immediately after `ConstraintIndexChain = 3` per
+  `ledger/def_constants_path0.go:91-96`). `policyScript` is at tuple
+  index **5**. Add named constants `ConstraintIndexFoundry = 4` and
+  `ConstraintIndexFoundryPolicy = 5` next to `ConstraintIndexChain`.
+- **Policy-script reading API.** No new EasyFL surface. The script
+  reads its sibling `foundry(tag, supply)` constraint (and its
+  counterpart on the consumed side) using the standard EasyFL
+  bytecode-parsing functions already in the library — `parseBytecode`,
+  `parseInlineData`, `parseInlineDataArgument`, etc. The policy script
+  is a regular constraint that happens to be invoked on the foundry
+  transit; it walks the input/output tuples it cares about by index.
+
+### Phase A — EasyFL surface (parse-only)
+
+New constraints, registered via `lib.mustRegisterConstraint(...)` in
+`registerConstraints0` (`ledger/def_upgrade0.go:57-71`):
+
+- `ledger/token_amount.go` — `TokenAmount` struct, `NewTokenAmount(tag,
+  amount)`, `TokenAmountFromBytes(bytes)` deserialiser. 2-arg constraint,
+  EasyFL source: assert `amount > 0`, expose `tag` and `amount` as
+  inline literals; otherwise inert.
+- `ledger/foundry.go` — `Foundry` struct, `NewFoundry(tag, supply)`,
+  deserialiser. 2-arg constraint. No semantic check beyond format; the
+  transit rules live in Phase C.
+- `ledger/foundry_policy.go` — wraps an arbitrary EasyFL script. 1-arg
+  constraint (the script bytecode), inert at parse time. The script is
+  evaluated by Phase C, not by the constraint itself.
+
+Output: parse-only constraints exist; transactions carrying them load
+but their semantic rules don't yet fire.
+
+### Phase B — `token(...)` Go builtin + per-tag tx-context cache
+
+Mirror `redeemScript`:
+
+- `ledger/token_builtin.go` (new): `evalToken(ctx)` Go function,
+  signature `(tag, foundryProducedIndex) → ()`. Registered via
+  `lib.mustRegisterBuiltinFunction("token", 2, evalToken)` next to
+  `redeemScript` in `def_upgrade0.go`.
+- Per-tx cache: extend `ledger/def_embed.go`'s `EvalContext` (where
+  `Library.compiledScriptCache` already lives) with a
+  `nativeTokenAggregator` map `tag → (consumedSum, producedSum,
+  foundryConsumedIdx, foundryProducedIdx)`. First `token(...)` call in
+  a tx populates the map by scanning all inputs and outputs once; later
+  calls hit the cache.
+- The builtin validates literal-shape of `tokenAmount` args during the
+  scan (see §3 of the design); a non-literal `tokenAmount(...)` for the
+  matched tag fails the tx.
+- Mismatch error mirrors the PRXI message: `"native token amount
+  mismatch for tag <hex>"`.
+
+### Phase C — foundry transit semantics
+
+Two distinct checks, triggered from `token(...)` when
+`foundryProducedIndex` is non-sentinel:
+
+1. **Chain match.** The consumed and produced foundry outputs share
+   the same chain ID == tag. Verified by reading the chain constraint
+   on both sides. Failure ⇒ `"foundry not transited for tag <hex>"`.
+2. **Policy script.**
+   - If the consumed foundry has no `policyScript`, the produced one
+     must also have none.
+   - If present, the produced bytecode must be byte-equal to the
+     consumed (immutability).
+   - Evaluate the script with the standard EvalContext; failure
+     surfaces as the script's own error.
+
+Both checks live in `ledger/token_builtin.go` (or a small
+`ledger/foundry_transit.go` helper) — no new EasyFL surface.
+
+### Phase D — `validateOutputs` hook + auditability
+
+In `ledger/transaction/validate.go:165-210`:
+
+- After the existing PRXI sum check, invoke the native-token pass:
+  for each tx-level `token(tag, ...)` constraint, ensure the cached
+  aggregator for that tag balances. Pure conservation if
+  `foundryProducedIndex` is sentinel; with foundry delta otherwise.
+- **Auditability:** scan inputs and outputs for any `tokenAmount(tag,
+  ...)`; for every tag observed, require a matching tx-level
+  `token(tag, ...)`. Missing declaration ⇒
+  `"undeclared native token tag <hex>"`. Same indexability property as
+  `redeemScript`'s commitment list.
+
+### Phase E — TxBuilder helpers
+
+In `ledger/txbuilder/`:
+
+- `MakeFoundryOrigin(tag, initialSupply, policyScript)` — emits a new
+  chain origin with the foundry constraint and (optionally) the policy
+  script bytecode.
+- `TransitFoundry(consumedFoundryIdx, newSupply)` — produces the
+  transited foundry output and a paired tx-level `token(tag, idx)`.
+- `AddTokenAmount(outputBuilder, tag, amount)` — puts a `tokenAmount`
+  constraint into the next free slot of the given output.
+- Convenience wrappers `Mint(tag, amount, recipient)` and `Burn(tag,
+  amount)` composed from the above.
+
+### Phase F — Indexer
+
+In `ledger/multistate/mutate.go`, extend the index-value tuple at output
+slot 1 to include the `tag` for any foundry output and for any output
+carrying one or more `tokenAmount` constraints (deduplicated). Reuses
+the existing `TriePartitionControllers` partition pattern so wallets
+can look up by tag through whatever `get_outputs`-by-key endpoint ships
+next.
+
+### Phase G — CLI
+
+In `proxi/node_cmd/`:
+
+- `foundry.go` (new subcommand tree): `create`, `mint`, `burn`,
+  `retire`.
+- `send.go` — add `--tag <hex>` flag that emits a `tokenAmount`
+  constraint on the produced output and a balancing tx-level
+  `token(tag, sentinel)` constraint.
+
+### Phase H — Tests (UTXODB)
+
+In `ledger/tests/native_token_test.go`:
+
+1. `tokenAmount` literal-arg enforcement (positive + negative).
+2. Pure conservation: transfer tag T between two sigLocks, both sides
+   balance.
+3. Mint: foundry transit increases supply by Δ; outputs gain Δ; with
+   and without `policyScript`.
+4. Burn: symmetric.
+5. Auditability: tx with a `tokenAmount` constraint but no matching
+   `token(...)` is rejected.
+6. Multi-tag tx: two `token(...)` constraints, two tags, both
+   independently balance.
+7. Policy script: `<= cap` reject when mint exceeds cap; accept at the
+   cap.
+8. Foundry retire: with empty script, allowed under controller
+   signature; with `produced.supply == consumed.supply` script, the
+   retire tx that drops supply to 0 is rejected.
 
 ---
 
@@ -243,9 +374,11 @@ single mint/burn transaction.
   overhead" baseline; the storage-deposit minimum handles the
   multi-tag-bloat case organically, so no hard cap on `tokenAmount`
   count per UTXO is needed.
-- `redeem(...)` in `ledger/` — closest existing analogue for
+- `redeemScript(...)` at `ledger/local_script_builtins.go:19-65`
+  (registered in `def_upgrade0.go:49`) — closest existing analogue for
   `token(...)`: tx-level builtin, Go implementation, per-tx cache,
-  auditability via tx-constraint declaration.
+  auditability via tx-constraint declaration. The implementation plan
+  below mirrors its shape directly.
 - `validateOutputs` in `ledger/transaction/` — single point currently
   enforcing PRXI conservation. Natural extension point for the per-tag
   reconciler.
