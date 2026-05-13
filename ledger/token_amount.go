@@ -31,6 +31,14 @@ func NewTokenAmount(tag base.ChainID, amount uint64) *TokenAmount {
 	return &TokenAmount{Tag: tag, Amount: amount}
 }
 
+// WithTokenAmount appends a tokenAmount(tag, amount) constraint at the
+// next free slot of the output being built. Multiple instances per UTXO
+// are allowed per claude/native_token.md §3.
+func (o *OutputBuilder) WithTokenAmount(tag base.ChainID, amount uint64) *OutputBuilder {
+	o.MustPushConstraint(NewTokenAmount(tag, amount).Bytes())
+	return o
+}
+
 func (t *TokenAmount) Name() string { return TokenAmountName }
 
 func (t *TokenAmount) Source() string {

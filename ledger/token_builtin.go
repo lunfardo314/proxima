@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -12,6 +13,19 @@ import (
 // SymToken is the public symbol of the tx-level native-token
 // preservation constraint.
 const SymToken = "token"
+
+// TokenSentinelBytecode returns the compiled bytecode for
+// `token(tag, 0x)` — pure-conservation form (no foundry transit).
+// Suitable for PushTxConstraint on the TxBuilder.
+func TokenSentinelBytecode(tag base.ChainID) []byte {
+	return mustBinFromSource(fmt.Sprintf("%s(0x%s, 0x)", SymToken, hex.EncodeToString(tag[:])))
+}
+
+// TokenFoundryBytecode returns the compiled bytecode for
+// `token(tag, foundryProducedIdx)` — foundry-transit form.
+func TokenFoundryBytecode(tag base.ChainID, foundryProducedIdx byte) []byte {
+	return mustBinFromSource(fmt.Sprintf("%s(0x%s, 0x%02x)", SymToken, hex.EncodeToString(tag[:]), foundryProducedIdx))
+}
 
 // evalToken implements the token(<tag>, <foundryProducedIndex>) tx-level
 // constraint — the per-tag analogue of the PRXI conservation check. See

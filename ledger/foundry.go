@@ -38,6 +38,14 @@ func NewFoundry(tag base.ChainID, supply uint64) *Foundry {
 	return &Foundry{Tag: tag, Supply: supply}
 }
 
+// NewFoundryOrigin returns a foundry constraint for the origin output of a
+// foundry chain. At origin the chain ID is still NilChainID; foundry()
+// EasyFL skips the tag-equals-chain-ID check at origin and starts
+// enforcing it from the first transit onwards.
+func NewFoundryOrigin(initialSupply uint64) *Foundry {
+	return NewFoundry(base.NilChainID, initialSupply)
+}
+
 func (f *Foundry) Name() string { return FoundryName }
 
 func (f *Foundry) Source() string {
