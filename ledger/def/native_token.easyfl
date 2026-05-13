@@ -1,0 +1,45 @@
+// Native (tagged) tokens. Phase A: parse-only constraints.
+//
+// - tokenAmount(tag, amount): extras carried by any non-foundry UTXO
+//   holding native tokens. tag is the foundry chain ID (32 bytes); amount
+//   is the carried quantity (uint64, > 0).
+// - foundry(tag, supply): extras at foundryConstraintIndex on a foundry
+//   output (the chain whose ID equals tag). Carries circulating supply.
+// - foundryPolicy(script): optional extras at foundryPolicyConstraintIndex,
+//   wraps the inline EasyFL bytecode of the issuance policy. The inner
+//   script is evaluated by the Go reconciler on foundry transit (Phase C),
+//   not by the constraint here.
+//
+// Per-tag preservation, literal-arg enforcement of tokenAmount, foundry
+// transit semantics and policy-script evaluation all live in Phase B / C.
+
+// $0 token tag (32 bytes, equal to the foundry chain ID)
+// $1 token amount (uint64, > 0)
+func tokenAmount :
+or(
+   not(selfIsProducedOutput),
+   and(
+      require(equal(len($0), u64/32), !!!tokenAmount_tag_must_be_32_bytes_long),
+      require(not(isZero($1)), !!!tokenAmount_amount_must_be_non_zero)
+   )
+)
+
+// $0 token tag (32 bytes, equal to the foundry chain ID)
+// $1 circulating supply (uint64, z-encoded — at most 8 bytes after the data prefix)
+func foundry :
+or(
+   not(selfIsProducedOutput),
+   and(
+      require(equal(len($0), u64/32), !!!foundry_tag_must_be_32_bytes_long),
+      require(lessOrEqualThan(len($1), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long)
+   )
+)
+
+// $0 inline EasyFL bytecode of the policy script
+// Inert at constraint-eval time. The Go reconciler evaluates the inner
+// script on foundry transit.
+func foundryPolicy :
+or(
+   not(selfIsProducedOutput),
+   require(not(isZero(len($0))), !!!foundryPolicy_script_must_be_non_empty)
+)

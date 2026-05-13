@@ -46,6 +46,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 		tagAlongLockConstraintSource,
 		sendWithDeadlineLockConstraintSource,
 		ensureStopFreezeDelegationConstraintSource,
+		nativeTokenSource,
 		_txLayoutValidator0,
 	)
 	util.AssertNoError(err)
@@ -68,6 +69,9 @@ func registerConstraints0(lib *Library) {
 	registerTagAlongLockConstraint(lib)
 	registerSendWithDeadlineLock(lib)
 	registerEnsureConstraints(lib)
+	registerTokenAmount(lib)
+	registerFoundry(lib)
+	registerFoundryPolicy(lib)
 
 	registerInlineTest(func(lib *Library) {
 		// inline tests - use L(base.MaxSlot) to get the current library
