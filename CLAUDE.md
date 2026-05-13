@@ -129,6 +129,7 @@ Design rationale and migration history: `claude/utxo-indexing.md`.
 
 - keep the code minimalist and as simple as possible 
 - do not introduce new abstractions, concepts or functions unless they are resued several times or improve readability    
+- **Enforce constraints in EasyFL when possible; reach for embedded Go only when the rule cannot be expressed in EasyFL.** UTXO and transaction invariants — immutability across transit, cross-slot equality, structural shape, signature/lock policies — live inside the constraint's own EasyFL body, the same way `chain()` enforces ChainID preservation or `delegateLock` enforces inflation share. Use Go (`evalXxx` builtins registered via `def_embed0.yaml`) only for things EasyFL genuinely cannot do efficiently: aggregation across arbitrary slot positions in many outputs (e.g. `redeemScript`, `token(...)`), arithmetic that needs Go-level overflow handling, or interaction with the per-tx context cache.
 - directory `claude` serves for Claude tasks with contexts
 - Only modify CLAUDE.md upon explicit user confirmation
 - in case of suspected inconsistencies between instructions in .md, ask clarifying questions

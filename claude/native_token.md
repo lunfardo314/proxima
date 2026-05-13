@@ -128,9 +128,17 @@ Requirements:
   code plus a normative prose description; no platform-specific
   arithmetic, fixed 64-bit semantics.
 
-`tokenAmount(...)` and `foundry(...)`, by contrast, are ordinary
-extended-EasyFL constraints — they are read by the Go reconciler, not
-evaluated for side effects.
+`tokenAmount(...)` is an ordinary extended-EasyFL constraint — read by
+the Go reconciler for aggregation; its body only enforces local format
+invariants (32-byte tag, non-zero amount).
+
+`foundry(tag, supply)` is an extended-EasyFL constraint with real
+semantic load: its body enforces the **tag-equals-chain-ID** invariant
+across transit and the **policy-slot immutability** across transit. The
+Go reconciler additionally reads it to extract the supply for the
+balance equation. See §5 below — the general rule is "enforce in EasyFL
+when possible; reach for Go only when the rule cannot be expressed
+there."
 
 ---
 
@@ -141,16 +149,25 @@ script slot on the foundry output**, enforced immutable across foundry
 transits. Concretely:
 
 - The foundry has a reserved fixed extras index for a **policy script**.
-- If the slot is **empty**, the foundry's controller has full discretion
+  The slot holds **raw EasyFL bytecode** — there is no wrapper
+  constraint. (Earlier drafts proposed a `foundryPolicy(script)`
+  wrapper; it was dropped because the slot position itself identifies
+  the policy slot and the wrapper added nothing.)
+- If the slot is **absent**, the foundry's controller has full discretion
   over mint/burn (subject only to the chain-controller's lock).
-- If the slot is **non-empty**, two things hold:
-  - The bytecode at this slot is **immutable** — every foundry transit
-    must produce the same bytes (same shape as how the chain origin slot
-    is fixed across the chain's life).
-  - The script is **evaluated on every foundry transit** and must
-    succeed. It receives access to the consumed and produced foundry
-    state (including the new supply value), so it can express rules
-    like:
+- If the slot is **present**, two things hold:
+  - The bytecode at this slot is **immutable** across the foundry
+    transit. Enforced inside `foundry()` itself in EasyFL (similar to
+    how chain enforces ChainID preservation), not in Go.
+  - The script is **evaluated automatically** by the standard
+    output-tuple validation pass — every non-amounts/non-index-values
+    slot of every produced output is compiled and evaluated; slot 5 is
+    no exception. The script's `selfXxx` accessors naturally resolve to
+    the producedFoundry output, and it can reach the consumed
+    predecessor via `consumedConstraintByIndex(selfChainPredInputIndex,
+    ...)` — same idiom that `delegateLock` uses to inspect its
+    predecessor.
+  - The script may express any rule, for example:
     - `<circulating supply> <= S` (hard cap)
     - `produced.supply == consumed.supply` (sealed / no further
       mint/burn, useful after retirement)
@@ -172,34 +189,40 @@ How the policy script reads foundry state:
   using standard EasyFL bytecode-parsing functions already in the
   library — `parseBytecode`, `parseInlineData`,
   `parseInlineDataArgument`, etc. The policy script is just a regular
-  constraint that happens to be invoked on the foundry transit and that
+  constraint that happens to live at slot 5 of a foundry output; it
   walks the input/output tuples it cares about by index.
 
 Foundry deletion (no produced foundry for a consumed one):
 - Whatever the policy script encodes wins. A script that wants to
   forbid retirement encodes that itself (e.g. requires the produced
   foundry to exist); a script that permits it does nothing special.
-  Empty script ⇒ deletion is governed only by the chain-controller's
-  signature. No hard-coded default in the Go reconciler.
+  Absent script ⇒ deletion is governed only by the chain-controller's
+  signature. No hard-coded default anywhere.
 
 ---
 
 ## Wire layout
 
-Three new constraint shapes, all read by the Go reconciler:
+Two new typed constraints + one raw-bytecode slot:
 
 - `tokenAmount(tag, amount)` — extended EasyFL constraint, inline-literal
   args. Carried by any non-foundry UTXO that holds native tokens. Lives
   at **any non-reserved position** in the UTXO tuple; multiple
   occurrences allowed. ~41 bytes per instance (32 tag + 8 amount +
-  overhead).
+  overhead). The body enforces local format only (32-byte tag, non-zero
+  amount); the literal-arg invariant is checked centrally by the
+  `token(...)` builtin during its scan.
 - `foundry(tag, supply)` — extended EasyFL constraint at **tuple index 4**
   on the foundry output (the first extras slot after the chain
-  constraint at index 3). Carries the current circulating supply.
-- `policyScript` — **optional** EasyFL bytecode at **tuple index 5**,
-  immediately after the foundry constraint. Immutable across foundry
-  transits. Absent ⇒ no on-chain issuance policy beyond the
-  controller's signature.
+  constraint at index 3). Carries the current circulating supply. The
+  body enforces format **and** the two foundry-transit invariants:
+  tag-equals-chain-ID at transit, and policy-slot (5) immutability
+  across transit.
+- **Policy slot** — **optional**, raw EasyFL bytecode at **tuple index 5**.
+  No wrapper constraint. Auto-evaluated as part of the standard
+  output-tuple validation pass (same mechanism that runs every other
+  constraint on a produced output). Immutability is enforced by
+  `foundry()`, not at this slot itself.
 
 `token(tag, foundryProducedIndex)` lives at the **transaction-constraint**
 level (alongside `redeem`), not at any UTXO slot. Both args inline
@@ -248,11 +271,12 @@ New constraints, registered via `lib.mustRegisterConstraint(...)` in
   EasyFL source: assert `amount > 0`, expose `tag` and `amount` as
   inline literals; otherwise inert.
 - `ledger/foundry.go` — `Foundry` struct, `NewFoundry(tag, supply)`,
-  deserialiser. 2-arg constraint. No semantic check beyond format; the
-  transit rules live in Phase C.
-- `ledger/foundry_policy.go` — wraps an arbitrary EasyFL script. 1-arg
-  constraint (the script bytecode), inert at parse time. The script is
-  evaluated by Phase C, not by the constraint itself.
+  deserialiser. 2-arg constraint. Body enforces format only at this
+  phase; the foundry-transit invariants (tag-equals-chain-ID, policy-
+  slot immutability) are added in Phase C.
+
+No wrapper constraint is registered for the policy slot — slot 5 is
+raw EasyFL bytecode, auto-evaluated by the standard validation pass.
 
 Output: parse-only constraints exist; transactions carrying them load
 but their semantic rules don't yet fire.
@@ -277,24 +301,36 @@ Mirror `redeemScript`:
 - Mismatch error mirrors the PRXI message: `"native token amount
   mismatch for tag <hex>"`.
 
-### Phase C — foundry transit semantics
+### Phase C — foundry transit semantics (in EasyFL)
 
-Two distinct checks, triggered from `token(...)` when
-`foundryProducedIndex` is non-sentinel:
+Following the general rule "**enforce in EasyFL when possible; reach
+for Go only when the rule cannot be expressed there**" (see CLAUDE.md),
+the foundry-transit invariants live in `foundry()`'s EasyFL body rather
+than in `evalToken`:
 
-1. **Chain match.** The consumed and produced foundry outputs share
-   the same chain ID == tag. Verified by reading the chain constraint
-   on both sides. Failure ⇒ `"foundry not transited for tag <hex>"`.
-2. **Policy script.**
-   - If the consumed foundry has no `policyScript`, the produced one
-     must also have none.
-   - If present, the produced bytecode must be byte-equal to the
-     consumed (immutability).
-   - Evaluate the script with the standard EvalContext; failure
-     surfaces as the script's own error.
+1. **Chain match.** Produced `foundry.tag` must equal `chain.ChainID` at
+   the same output. At origin (`chain.ChainID == NilChainID`) the check
+   is skipped — at first transit the chain ID becomes real and is
+   enforced from then on. Chain's own validation already propagates
+   `ChainID` across transits, so checking the produced side is enough.
+2. **Policy-slot immutability.** Slot 5 must agree on presence between
+   the consumed predecessor and the produced foundry; if both have it,
+   the bytecode must be byte-equal. At origin: no check (no
+   predecessor). Helpers `_selfIsFoundryOrigin`,
+   `_foundryPredInputIndex`, `_consumedFoundryNumConstraints`,
+   `_validFoundryPolicyImmutability` mirror the
+   `_selfIsDelegationOrigin` / `_chainPredecessorParam` pattern.
+3. **Policy-script evaluation.** Automatic — `runTuple` evaluates every
+   slot of every produced output as ordinary bytecode, so the policy at
+   slot 5 fires naturally during the standard validation pass. The
+   script's `selfXxx` accessors resolve to the producedFoundry; it can
+   reach the consumed predecessor through
+   `consumedConstraintByIndex(selfChainPredInputIndex, ...)`.
 
-Both checks live in `ledger/token_builtin.go` (or a small
-`ledger/foundry_transit.go` helper) — no new EasyFL surface.
+`evalToken` Go side only retains the defensive `pf.Tag ==
+requestedTag` / `cf.Tag == requestedTag` checks (so a `token()` call
+referring to the wrong produced index fails locally) and the balance
+equation itself.
 
 ### Phase D — `validateOutputs` hook + auditability
 
@@ -351,7 +387,7 @@ In `ledger/tests/native_token_test.go`:
 2. Pure conservation: transfer tag T between two sigLocks, both sides
    balance.
 3. Mint: foundry transit increases supply by Δ; outputs gain Δ; with
-   and without `policyScript`.
+   and without a policy script at slot 5.
 4. Burn: symmetric.
 5. Auditability: tx with a `tokenAmount` constraint but no matching
    `token(...)` is rejected.
@@ -359,9 +395,12 @@ In `ledger/tests/native_token_test.go`:
    independently balance.
 7. Policy script: `<= cap` reject when mint exceeds cap; accept at the
    cap.
-8. Foundry retire: with empty script, allowed under controller
-   signature; with `produced.supply == consumed.supply` script, the
-   retire tx that drops supply to 0 is rejected.
+8. Policy-slot immutability: a transit that flips slot 5 presence, or
+   changes slot 5 bytes between consumed and produced, fails inside
+   `foundry()` (not inside `token()`).
+9. Foundry retire: with no policy script, allowed under controller
+   signature; with `produced.supply == consumed.supply` script at
+   slot 5, the retire tx that drops supply to 0 is rejected.
 
 ---
 
