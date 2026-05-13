@@ -204,6 +204,15 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
 		return err
 	}
+	// Phase D: every observed tokenAmount(tag, ...) instance must be
+	// declared by a tx-level token(tag, ...) constraint. Run last, after
+	// every tx-level constraint and per-output constraint has executed
+	// — by this point the aggregator (if any token() fired) is
+	// authoritative; otherwise we trigger a one-shot scan to catch
+	// stray tokenAmount instances.
+	if err = tx.validateNativeTokenAuditability(); err != nil {
+		return err
+	}
 	return nil
 }
 

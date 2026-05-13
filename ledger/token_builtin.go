@@ -82,7 +82,7 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 	}
 
 	// Run the lazy aggregator scan (idempotent).
-	if err := scanNativeTokens(ctx); err != nil {
+	if err := ScanNativeTokens(ctx); err != nil {
 		par.TracePanic("token: %v", err)
 	}
 
@@ -167,13 +167,13 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 	return par.AllocData(0x01)
 }
 
-// scanNativeTokens walks every consumed and produced output once,
+// ScanNativeTokens walks every consumed and produced output once,
 // finds tokenAmount(tag, amount) constraints by bytecode prefix, and
 // accumulates per-tag sums on the per-tx aggregator. Idempotent: the
 // scan runs exactly once per tx, on the first token() call. Returns
 // error if any tokenAmount instance has non-literal args, a
 // malformed tag, a zero amount, or causes a sum overflow.
-func scanNativeTokens(ctx *EvalContext) error {
+func ScanNativeTokens(ctx *EvalContext) error {
 	agg := ctx.NativeTokenAggregator()
 	if agg.Scanned() {
 		return nil
@@ -181,27 +181,27 @@ func scanNativeTokens(ctx *EvalContext) error {
 	lib := ctx.GetLibrary()
 	prefix, err := lib.FunctionCallPrefixByName(TokenAmountName, 2)
 	if err != nil {
-		return fmt.Errorf("scanNativeTokens: get tokenAmount prefix: %w", err)
+		return fmt.Errorf("ScanNativeTokens: get tokenAmount prefix: %w", err)
 	}
 
 	// consumed outputs
 	for i := 0; i < ctx.NumInputs(); i++ {
 		o, err := ctx.ConsumedOutput(byte(i))
 		if err != nil {
-			return fmt.Errorf("scanNativeTokens: consumed[%d]: %w", i, err)
+			return fmt.Errorf("ScanNativeTokens: consumed[%d]: %w", i, err)
 		}
 		if err := scanOutputForTokenAmount(o, agg, true, prefix, lib); err != nil {
-			return fmt.Errorf("scanNativeTokens: consumed[%d]: %w", i, err)
+			return fmt.Errorf("ScanNativeTokens: consumed[%d]: %w", i, err)
 		}
 	}
 	// produced outputs
 	for i := 0; i < ctx.NumProducedOutputs(); i++ {
 		o, err := ctx.ProducedOutputAt(byte(i))
 		if err != nil {
-			return fmt.Errorf("scanNativeTokens: produced[%d]: %w", i, err)
+			return fmt.Errorf("ScanNativeTokens: produced[%d]: %w", i, err)
 		}
 		if err := scanOutputForTokenAmount(o, agg, false, prefix, lib); err != nil {
-			return fmt.Errorf("scanNativeTokens: produced[%d]: %w", i, err)
+			return fmt.Errorf("ScanNativeTokens: produced[%d]: %w", i, err)
 		}
 	}
 	agg.MarkScanned()
