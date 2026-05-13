@@ -73,5 +73,10 @@ functions:
     description: "invoke a previously-redeemed local script: callRedeemer(<32-byte-literal-hash>, <fnIdx-byte>, args...)"
     numArgs: -1
     embedded_as: evalCallRedeemer
+  -
+    sym: token
+    description: "tx-level native-token preservation: token(<32-byte-tag-literal>, <foundryProducedIndex-literal>) — empty arg 1 = sentinel (pure conservation), 1 byte = foundry transit"
+    numArgs: 2
+    embedded_as: evalToken
 
 

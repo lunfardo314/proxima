@@ -29,6 +29,9 @@ type (
 		IsBranchTransaction() bool
 		IsSequencerTransaction() bool
 		ID() base.TransactionID
+		NumInputs() int
+		NumProducedOutputs() int
+		ProducedOutputAt(idx byte) (*Output, error)
 		ProducedOutputWithIDAt(idx byte) (*OutputWithID, error)
 		Timestamp() base.LedgerTime
 		MustInputAt(idx byte) base.OutputID
@@ -43,6 +46,10 @@ type (
 		// AddRedeemedScript records a local-script hash committed by a
 		// redeemScript constraint. Idempotent.
 		AddRedeemedScript(h [32]byte)
+		// NativeTokenAggregator returns the per-tx per-tag native-token
+		// aggregator, allocating on first call. Populated lazily by the
+		// first token() builtin call in the tx.
+		NativeTokenAggregator() *NativeTokenAggregator
 	}
 
 	EvalContext struct {
@@ -151,6 +158,7 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"embeddedIsInflationAndFrozenCoverageZero":          evalIsInflationAndFrozenCoverageZero,
 	"evalRedeemScript":                                  evalRedeemScript,
 	"evalCallRedeemer":                                  evalCallRedeemer,
+	"evalToken":                                         evalToken,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.

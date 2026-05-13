@@ -45,6 +45,10 @@ type Transaction struct {
 	// linear scan is fine because typical txs have 0 entries (lazy alloc on
 	// first use) and feature-using txs have 1-2.
 	redeemedScripts [][32]byte
+	// nativeTokenAggregator is the per-tx per-tag aggregator populated
+	// lazily on the first token() builtin call. nil until first
+	// NativeTokenAggregator() invocation.
+	nativeTokenAggregator *ledger.NativeTokenAggregator
 }
 
 // ParseLibraryAgnostic parses tx bytes into a *Transaction without
