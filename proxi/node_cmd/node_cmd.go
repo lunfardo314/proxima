@@ -4,6 +4,7 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/chess_cmd"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/delegate"
+	"github.com/lunfardo314/proxima/proxi/node_cmd/foundry"
 	"github.com/lunfardo314/proxima/proxi/node_cmd/seq_cmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -71,6 +72,7 @@ func Init() *cobra.Command {
 		initGetSnapshotCmd(),
 		initFundCmd(),
 		chess_cmd.Init(),
+		foundry.Init(),
 	)
 	return nodeCmd
 }
