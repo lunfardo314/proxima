@@ -158,7 +158,21 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 		if err != nil {
 			par.TracePanic("token: parse consumed foundry: %v", err)
 		}
-		if cf.Tag != tag {
+		// The `tag` argument is always the real chain ID. On a non-origin
+		// transit the consumed foundry already carries that real chain
+		// ID, pinned by foundry()'s EasyFL body. On the FIRST transit the
+		// consumed predecessor is the foundry origin output, whose tag
+		// is still NilChainID — in that case derive the real chain ID
+		// from the predecessor's output ID and require the requested tag
+		// to match that derivation.
+		if cf.Tag == base.NilChainID {
+			predOid := ctx.MustInputAt(pcc.PredecessorInputIndex)
+			derived := base.MakeOriginChainID(predOid)
+			if derived != tag {
+				par.TracePanic("token: tag %s does not match the origin-derived chain ID %s of the consumed foundry",
+					tag.String(), derived.String())
+			}
+		} else if cf.Tag != tag {
 			par.TracePanic("token: consumed foundry tag %s does not match token tag %s",
 				cf.Tag.String(), tag.String())
 		}

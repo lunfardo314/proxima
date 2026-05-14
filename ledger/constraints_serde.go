@@ -350,24 +350,30 @@ func LockFromOutputElementsWithLib(indexValuesBytes, lockBytecode []byte, lib *L
 			indexValues: values,
 		}, nil
 	}
+	// Lock parsers require at least N primary index-value entries (one per
+	// controller / sender / target) and use values[0..N-1] only. Extra
+	// trailing entries are explicitly allowed: they carry indexing
+	// payloads such as the 64-byte `holderID || nativeTokenTag` compound
+	// pushed by `OutputBuilder.WithTokenAmount` (see Phase F of
+	// claude/native_token.md and feedback_indexing_via_slot1).
 	switch name {
 	case SigLockName:
-		if len(values) != 1 || len(values[0]) != 32 {
-			return nil, fmt.Errorf("LockFromOutputElements: %s expects 1 index value of 32 bytes", name)
+		if len(values) < 1 || len(values[0]) != 32 {
+			return nil, fmt.Errorf("LockFromOutputElements: %s expects at least 1 index value of 32 bytes", name)
 		}
 		var sig SigLock
 		copy(sig[:], values[0])
 		return sig, nil
 	case ChainLockName:
-		if len(values) != 1 || len(values[0]) != 32 {
-			return nil, fmt.Errorf("LockFromOutputElements: %s expects 1 index value of 32 bytes", name)
+		if len(values) < 1 || len(values[0]) != 32 {
+			return nil, fmt.Errorf("LockFromOutputElements: %s expects at least 1 index value of 32 bytes", name)
 		}
 		return ChainLock(append([]byte(nil), values[0]...)), nil
 	case StemLockName:
 		return StemLockFromBytesWithLib(lockBytecode, lib)
 	case TagAlongLockName:
-		if len(values) != 2 || len(values[0]) != 32 || len(values[1]) != 32 {
-			return nil, fmt.Errorf("LockFromOutputElements: %s expects 2 index values of 32 bytes each", name)
+		if len(values) < 2 || len(values[0]) != 32 || len(values[1]) != 32 {
+			return nil, fmt.Errorf("LockFromOutputElements: %s expects at least 2 index values of 32 bytes each", name)
 		}
 		ret := &TagAlongLock{}
 		copy(ret.SenderID[:], values[0])
