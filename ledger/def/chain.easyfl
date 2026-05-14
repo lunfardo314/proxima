@@ -82,7 +82,7 @@ func _chainSuccessorOutputIndex :
 func selfImmutableOnSuccessorIndex :
 or(
    not(selfIsConsumedOutput),
-   equal(len(_chainSuccessorOutputIndex), u64/0),
+   isZero(len(_chainSuccessorOutputIndex)),
    equal(
       selfSiblingConstraint($0),
       atPath(concat(pathToProducedOutputs, _chainSuccessorOutputIndex, $0))
