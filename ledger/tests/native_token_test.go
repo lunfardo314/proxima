@@ -106,17 +106,20 @@ func (e *foundryTestEnv) foundryInputData(t *testing.T, chainID base.ChainID) *l
 	}
 }
 
-// appendExtraFunding consumes the wallet's non-chain sigLock UTXOs that
-// are NOT already in the builder's consumed-input set, appending them
-// starting at the current input count and wiring each one to reference
-// the signature at sigInputIdx. Does NOT touch the unlock data at
-// sigInputIdx itself — the caller is responsible for
+// appendExtraFunding consumes the wallet's pure-PRXI sigLock UTXOs
+// (those carrying NO tokenAmount constraint) that are not already in
+// the builder's consumed-input set, appending them starting at the
+// current input count and wiring each one to reference the signature
+// at sigInputIdx. Does NOT touch the unlock data at sigInputIdx
+// itself — the caller is responsible for
 // `txb.PutSignatureUnlock(sigInputIdx)` separately.
 //
-// Filtering out already-consumed outputs is essential: tokenAmount-bearing
-// sigLock UTXOs are returned by getSourceOutputs as ordinary sigLock
-// outputs, and a test that explicitly consumed one as input 0 must not
-// have it re-consumed here.
+// Two filters are essential:
+//   - already-consumed outputs (tests that explicitly consumed a
+//     tokenAmount UTXO as input 0 must not have it re-consumed here)
+//   - tokenAmount-bearing UTXOs (re-consuming them in a mint/transit
+//     would add their amount to the consumed-side balance and require
+//     re-producing the tokens, breaking the simple flow we want here)
 func (e *foundryTestEnv) appendExtraFunding(t *testing.T, txb *txbuilder.TxBuilder, sigInputIdx byte) base.LedgerTime {
 	t.Helper()
 	already := make(map[base.OutputID]struct{}, len(txb.TransactionData.InputIDs))
@@ -129,12 +132,26 @@ func (e *foundryTestEnv) appendExtraFunding(t *testing.T, txb *txbuilder.TxBuild
 		if _, dup := already[o.ID]; dup {
 			continue
 		}
+		if outputCarriesTokenAmount(o.Output) {
+			continue
+		}
 		idx, err := txb.ConsumeOutput(o.Output, o.ID)
 		require.NoError(t, err)
 		require.NoError(t, txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, sigInputIdx))
 		maxTs = base.MaximumTime(maxTs, o.Timestamp())
 	}
 	return maxTs
+}
+
+// outputCarriesTokenAmount reports whether the output has any
+// tokenAmount(...) constraint among its bytecode positions.
+func outputCarriesTokenAmount(o *ledger.Output) bool {
+	for _, raw := range o.ConstraintsRawBytes() {
+		if _, err := ledger.TokenAmountFromBytes(raw); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // finishAndSubmit signs the builder, validates and submits the tx.
@@ -250,6 +267,84 @@ func TestFoundryFirstMint(t *testing.T) {
 	ta, err := findTokenAmount(t, tokenOut.Output, chainID)
 	require.NoError(t, err)
 	require.EqualValues(t, mintAmount, ta.Amount)
+}
+
+// TestFoundryMintToOtherAddress exercises `proxi node foundry mint -t <other>`:
+// the minted tokenAmount lands on a sigLock controlled by a key other than
+// the wallet's. The wallet still signs the foundry transit; the recipient
+// owns the new UTXO.
+func TestFoundryMintToOtherAddress(t *testing.T) {
+	const mintAmount = uint64(2_000_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+
+	// Recipient is a fresh ED25519 keypair the test wallet does NOT control.
+	_, _, recipient := e.u.GenerateAddress(42)
+
+	require.NoError(t, tryMintTo(t, e, chainID, mintAmount, recipient),
+		"mint to a separate sigLock target must validate")
+
+	// Foundry supply grew to mintAmount.
+	parsed, err := e.u.SugaredStateReader().GetChainOutputWithChainID(chainID)
+	require.NoError(t, err)
+	f, err := ledger.FoundryFromBytes(mustConstraintAt(t, parsed.Output, ledger.ConstraintIndexFoundry))
+	require.NoError(t, err)
+	require.EqualValues(t, mintAmount, f.Supply)
+
+	// The minted UTXO sits on `recipient`, not on e.addr.
+	recipientOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(recipient.ControllerID())
+	require.NoError(t, err)
+	var found *ledger.TokenAmount
+	for _, o := range recipientOuts {
+		if ta, err := findTokenAmount(t, o.Output, chainID); err == nil {
+			found = ta
+			break
+		}
+	}
+	require.NotNil(t, found, "recipient must hold the tokenAmount UTXO")
+	require.EqualValues(t, mintAmount, found.Amount)
+
+	// And the wallet does NOT hold any tokenAmount for this tag.
+	walletOuts := getSourceOutputs(t, e.u, e.addr)
+	for _, o := range walletOuts {
+		_, err := findTokenAmount(t, o.Output, chainID)
+		require.Error(t, err, "wallet must not own a tokenAmount for tag %s after minting to a third party", chainID.StringShort())
+	}
+}
+
+// TestFoundryMintMultipleTimes runs two back-to-back mints on the same
+// foundry. After the second mint the foundry supply must equal the sum
+// of the two mintAmounts, the wallet must hold both minted UTXOs
+// independently, and the foundry's tag must be the real chain ID.
+func TestFoundryMintMultipleTimes(t *testing.T) {
+	const firstMint = uint64(1_000_000)
+	const secondMint = uint64(750_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+
+	mintToSelf(t, e, chainID, firstMint)
+	mintToSelf(t, e, chainID, secondMint)
+
+	parsed, err := e.u.SugaredStateReader().GetChainOutputWithChainID(chainID)
+	require.NoError(t, err)
+	f, err := ledger.FoundryFromBytes(mustConstraintAt(t, parsed.Output, ledger.ConstraintIndexFoundry))
+	require.NoError(t, err)
+	require.EqualValues(t, chainID, f.Tag, "post-second-transit tag must still equal chain ID")
+	require.EqualValues(t, firstMint+secondMint, f.Supply,
+		"foundry supply must accumulate across mints")
+
+	// Wallet now holds two independent tokenAmount UTXOs for this tag.
+	walletOuts := getSourceOutputs(t, e.u, e.addr)
+	var sum uint64
+	for _, o := range walletOuts {
+		if ta, err := findTokenAmount(t, o.Output, chainID); err == nil {
+			sum += ta.Amount
+		}
+	}
+	require.EqualValues(t, firstMint+secondMint, sum,
+		"sum of tokenAmount UTXOs on the wallet must equal total minted")
 }
 
 // --------------------------------------------------------------------------
@@ -539,8 +634,18 @@ func mintToSelf(t *testing.T, e *foundryTestEnv, chainID base.ChainID, mintAmoun
 }
 
 // tryMintToSelf is the policy-test variant: it does NOT require success.
-// Returns the validation/submission error (nil on success).
+// Returns the validation/submission error (nil on success). Mints to the
+// test address.
 func tryMintToSelf(t *testing.T, e *foundryTestEnv, chainID base.ChainID, mintAmount uint64) error {
+	t.Helper()
+	return tryMintTo(t, e, chainID, mintAmount, e.addr)
+}
+
+// tryMintTo runs the same flow as the proxi `foundry mint` command:
+// TransitFoundry as input 0, signature unlock on input 0, wallet
+// sig-lock funding appended, tokenAmount(chainID, mintAmount) output to
+// `target`. Returns the validation/submission error (nil on success).
+func tryMintTo(t *testing.T, e *foundryTestEnv, chainID base.ChainID, mintAmount uint64, target ledger.Lock) error {
 	t.Helper()
 	in := e.foundryInputData(t, chainID)
 	fIn, err := ledger.FoundryFromBytes(mustConstraintAt(t, parseOutput(t, in), ledger.ConstraintIndexFoundry))
@@ -560,7 +665,7 @@ func tryMintToSelf(t *testing.T, e *foundryTestEnv, chainID base.ChainID, mintAm
 	ts = base.MaximumTime(ts, e.appendExtraFunding(t, txb, 0))
 
 	tokOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(100_000_000).WithLock(e.addr).WithTokenAmount(chainID, mintAmount)
+		o.WithTokenBalance(100_000_000).WithLock(target).WithTokenAmount(chainID, mintAmount)
 	})
 	require.NoError(t, tokOut.EnoughAmountForStorageDeposit())
 	_, err = txb.ProduceOutput(tokOut)

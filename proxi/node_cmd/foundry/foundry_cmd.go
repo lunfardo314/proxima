@@ -12,6 +12,7 @@ func Init() *cobra.Command {
 	}
 	foundryCmd.AddCommand(
 		initFoundryCreateCmd(),
+		initFoundryMintCmd(),
 	)
 	foundryCmd.InitDefaultHelpCmd()
 	return foundryCmd
