@@ -14,6 +14,7 @@ func Init() *cobra.Command {
 		initFoundryCreateCmd(),
 		initFoundryMintCmd(),
 		initFoundryBurnCmd(),
+		initFoundryRetireCmd(),
 	)
 	foundryCmd.InitDefaultHelpCmd()
 	return foundryCmd

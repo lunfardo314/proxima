@@ -689,6 +689,53 @@ func TestFoundryNonDestructibleAcceptsRetireAtZero(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// Retire (no policy)
+// --------------------------------------------------------------------------
+
+// TestFoundryRetireNoPolicyAtOrigin retires an origin foundry (supply
+// still 0, no policy attached). With no policy at index 5 the
+// chain-controller signature alone authorises retirement.
+func TestFoundryRetireNoPolicyAtOrigin(t *testing.T) {
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+
+	require.NoError(t, tryRetireFoundry(t, e, chainID), "retire at origin must validate")
+	_, err := e.u.StateReader().GetUTXOForChainID(chainID)
+	require.Error(t, err, "retired foundry chain must not be in state")
+}
+
+// TestFoundryRetireNoPolicyWithCirculating verifies that a foundry
+// without a policy can be retired even while circulating tokens
+// exist. The minted tokenAmount UTXO remains on the wallet but
+// becomes permanently un-burnable (there is no longer any foundry to
+// match its tag).
+func TestFoundryRetireNoPolicyWithCirculating(t *testing.T) {
+	const mintAmount = uint64(1_000_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+	mintToSelf(t, e, chainID, mintAmount)
+
+	require.NoError(t, tryRetireFoundry(t, e, chainID),
+		"retire with no policy must validate even when supply > 0")
+
+	_, err := e.u.StateReader().GetUTXOForChainID(chainID)
+	require.Error(t, err, "retired foundry chain must not be in state")
+
+	// The previously minted tokenAmount UTXO still sits on the wallet.
+	walletOuts := getSourceOutputs(t, e.u, e.addr)
+	var orphan *ledger.TokenAmount
+	for _, o := range walletOuts {
+		if ta, err := findTokenAmount(t, o.Output, chainID); err == nil {
+			orphan = ta
+			break
+		}
+	}
+	require.NotNil(t, orphan, "circulating tokenAmount UTXO must survive retire (now orphaned)")
+	require.EqualValues(t, mintAmount, orphan.Amount)
+}
+
+// --------------------------------------------------------------------------
 // selfImmutableOnSuccessorIndex: policy bytes must be byte-equal across
 // transit. A transit that drops the policy at index 5 is rejected.
 // --------------------------------------------------------------------------
