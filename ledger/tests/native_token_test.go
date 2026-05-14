@@ -500,6 +500,74 @@ func TestFoundryConservationTransfer(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// Burn (foundry-transit decreasing supply)
+// --------------------------------------------------------------------------
+
+// TestFoundryBurnPartialWithRemainder mints 1M, burns 600K. The wallet
+// keeps the remaining 400K as a fresh tokenAmount UTXO; the foundry's
+// supply drops by exactly the burn amount.
+func TestFoundryBurnPartialWithRemainder(t *testing.T) {
+	const mintAmount = uint64(1_000_000)
+	const burnAmount = uint64(600_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+	mintToSelf(t, e, chainID, mintAmount)
+
+	require.NoError(t, burnTokens(t, e, chainID, burnAmount), "partial burn must validate")
+
+	// Foundry supply == mintAmount - burnAmount.
+	parsed, err := e.u.SugaredStateReader().GetChainOutputWithChainID(chainID)
+	require.NoError(t, err)
+	f, err := ledger.FoundryFromBytes(mustConstraintAt(t, parsed.Output, ledger.ConstraintIndexFoundry))
+	require.NoError(t, err)
+	require.EqualValues(t, mintAmount-burnAmount, f.Supply)
+
+	// Wallet holds tokenAmount(chainID, mintAmount-burnAmount) as a
+	// single remainder UTXO.
+	walletOuts := getSourceOutputs(t, e.u, e.addr)
+	var walletTokenSum uint64
+	walletTokenCount := 0
+	for _, o := range walletOuts {
+		if ta, err := findTokenAmount(t, o.Output, chainID); err == nil {
+			walletTokenSum += ta.Amount
+			walletTokenCount++
+		}
+	}
+	require.EqualValues(t, mintAmount-burnAmount, walletTokenSum,
+		"wallet must keep exactly (mint - burn) tokens")
+	require.Equal(t, 1, walletTokenCount,
+		"wallet must hold exactly one tokenAmount remainder after a partial burn")
+}
+
+// TestFoundryBurnUnderMaxSupplyPolicy verifies that the foundryMaxSupply
+// policy does NOT block a burn (burns only reduce supply; the cap is
+// already satisfied). Mints to the cap, then burns half.
+func TestFoundryBurnUnderMaxSupplyPolicy(t *testing.T) {
+	const cap = uint64(500_000)
+	const burnAmount = uint64(200_000)
+	policy := ledger.FoundryMaxSupplyBytecode(cap)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, policy)
+	mintToSelf(t, e, chainID, cap)
+
+	require.NoError(t, burnTokens(t, e, chainID, burnAmount),
+		"burn under foundryMaxSupply must validate")
+
+	parsed, err := e.u.SugaredStateReader().GetChainOutputWithChainID(chainID)
+	require.NoError(t, err)
+	f, err := ledger.FoundryFromBytes(mustConstraintAt(t, parsed.Output, ledger.ConstraintIndexFoundry))
+	require.NoError(t, err)
+	require.EqualValues(t, cap-burnAmount, f.Supply)
+
+	// Policy bytes still byte-equal at index 5 (self-immutability holds).
+	embedded, err := parsed.Output.ConstraintAt(ledger.ConstraintIndexFoundryPolicy)
+	require.NoError(t, err)
+	require.Equal(t, policy, embedded)
+}
+
+// --------------------------------------------------------------------------
 // Auditability: an undeclared tokenAmount tag must be rejected
 // --------------------------------------------------------------------------
 
@@ -852,6 +920,78 @@ func sendTagged(t *testing.T, e *foundryTestEnv, chainID base.ChainID, amount ui
 
 	// Phase D auditability + Σ-conservation.
 	txb.DeclareTokenConservation(chainID)
+
+	_, _, err = e.finishAndSubmit(t, txb, ts)
+	return err
+}
+
+// burnTokens mirrors `proxi node foundry burn <chainID> <amount>`: it
+// consumes the wallet's tokenAmount(chainID, _) UTXOs totaling
+// >= burnAmount, transits the foundry with supply reduced by
+// burnAmount, and if consumed > burnAmount, produces a tokenAmount
+// remainder back to the wallet. Returns the validation/submission
+// error (nil on success).
+func burnTokens(t *testing.T, e *foundryTestEnv, chainID base.ChainID, burnAmount uint64) error {
+	t.Helper()
+	in := e.foundryInputData(t, chainID)
+	fIn, err := ledger.FoundryFromBytes(mustConstraintAt(t, parseOutput(t, in), ledger.ConstraintIndexFoundry))
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, fIn.Supply, burnAmount, "burn cannot exceed current foundry supply")
+
+	// Select tokenAmount UTXOs greedily.
+	walletOuts := getSourceOutputs(t, e.u, e.addr)
+	var (
+		selected []*ledger.OutputWithID
+		consumed uint64
+	)
+	for _, o := range walletOuts {
+		ta, err := findTokenAmount(t, o.Output, chainID)
+		if err != nil {
+			continue
+		}
+		selected = append(selected, o)
+		consumed += ta.Amount
+		if consumed >= burnAmount {
+			break
+		}
+	}
+	require.GreaterOrEqualf(t, consumed, burnAmount,
+		"wallet has %d tokenAmount(%s, _) tokens, need %d to burn",
+		consumed, chainID.StringShort(), burnAmount)
+
+	txb := txbuilder.New()
+	// Foundry is input 0 (TransitFoundry + chain unlock + token() decl).
+	_, err = txb.TransitFoundry(in, fIn.Supply-burnAmount)
+	require.NoError(t, err)
+	txb.PutSignatureUnlock(0)
+
+	// Consume tokenAmount inputs (1..N).
+	for _, o := range selected {
+		idx, err := txb.ConsumeOutput(o.Output, o.ID)
+		require.NoError(t, err)
+		require.NoError(t, txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, 0))
+	}
+
+	ts := in.ID.Timestamp().AddSlots(1)
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(1)
+	}
+	for _, o := range selected {
+		ts = base.MaximumTime(ts, o.Timestamp())
+	}
+	ts = base.MaximumTime(ts, e.appendExtraFunding(t, txb, 0))
+
+	// Token remainder back to wallet if needed.
+	if consumed > burnAmount {
+		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithTokenBalance(100_000_000).WithLock(e.addr).WithTokenAmount(chainID, consumed-burnAmount)
+		})
+		require.NoError(t, remainderOut.EnoughAmountForStorageDeposit())
+		_, err = txb.ProduceOutput(remainderOut)
+		require.NoError(t, err)
+	}
+
+	addRemainderIfNeeded(t, txb, e.addr)
 
 	_, _, err = e.finishAndSubmit(t, txb, ts)
 	return err
