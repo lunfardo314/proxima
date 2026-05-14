@@ -8,16 +8,18 @@ import (
 )
 
 // MakeFoundryOriginOutput builds a fresh foundry origin output: PRXI
-// amount + lock at slot 2, chain origin at slot 3, foundry(NilChainID,
-// initialSupply) at slot 4, and the optional raw policy bytecode at
-// slot 5. The chain ID is still NilChainID at origin — foundry()'s
+// amount + lock at index 2, chain origin at index 3, foundry(NilChainID,
+// initialSupply) at index 4, and the optional raw policy bytecode at
+// index 5. The chain ID is still NilChainID at origin — foundry()'s
 // EasyFL body skips the tag-equals-chain-ID check at origin and starts
 // enforcing it on the first transit, at which point the produced
 // foundry's tag becomes the real chain ID.
 //
-// initialSupply at origin is typically 0 (no real tag exists yet). The
-// helper leaves the value to the caller's discretion; downstream
-// auditability/balance rules still apply.
+// initialSupply at origin must typically be 0 (no real tag exists yet,
+// so no tokenAmount outputs can carry the real tag in the origin tx).
+// Minting happens at a later transit. foundry() does NOT enforce
+// immutability of index 5 across transit; the policy script (if any)
+// is responsible for self-locking via `selfImmutableOnSuccessorIndex`.
 func MakeFoundryOriginOutput(amount uint64, lock ledger.Lock, originSlot uint32, initialSupply uint64, policyScript []byte) *ledger.Output {
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(lock)
@@ -32,9 +34,10 @@ func MakeFoundryOriginOutput(amount uint64, lock ledger.Lock, originSlot uint32,
 // TransitFoundry consumes a foundry chain output and produces a
 // transited foundry output with the supply updated to newSupply. The
 // produced foundry inherits the consumed output's lock, amounts and
-// policy slot (slot 5); foundry()'s EasyFL body enforces that the
-// policy bytes are byte-equal across the transit, so callers must NOT
-// substitute a different policy here.
+// optional policy bytes at index 5. foundry() itself does NOT enforce
+// immutability of index 5; if the consumed policy script self-locks
+// (e.g. via `selfImmutableOnSuccessorIndex`), the unchanged carry-over
+// here will satisfy that check.
 //
 // Side effects on the builder:
 //   - the consumed foundry is added as an input;

@@ -18,9 +18,10 @@ var nativeTokenSource string
 // Foundry is the typed wrapper for the 2-arg `foundry(tag, supply)`
 // constraint. It lives at ConstraintIndexFoundry (= 4) on a foundry
 // output — a chained UTXO whose chain ID equals Tag. Carries the
-// circulating supply of the tag's native token. The tag-equals-chainID
-// invariant and the transit semantics live in Phase C; this Phase A
-// type is a parse-only data carrier. See claude/native_token.md §2.
+// circulating supply of the tag's native token. foundry()'s EasyFL
+// body enforces the tag-equals-chainID invariant at every transit (the
+// check is skipped at origin, where the chain ID is still NilChainID).
+// See claude/native_token.md §2.
 type Foundry struct {
 	// Tag is the foundry chain ID (must equal the chain ID at
 	// ConstraintIndexChain on the same output, enforced in Phase C).

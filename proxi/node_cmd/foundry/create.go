@@ -1,10 +1,8 @@
 package foundry
 
 import (
-	"encoding/hex"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
@@ -23,22 +21,33 @@ func initFoundryCreateCmd() *cobra.Command {
 		Short: "create a new foundry origin (chain origin + foundry constraint)",
 		Long: `Create a new foundry chain origin. The produced output carries:
   - amounts (PRXI on-chain balance)
-  - lock at slot 2 (the target chosen with -t / --target)
-  - chain origin at slot 3
-  - foundry(NilChainID, --initial-supply) at slot 4
-  - optional raw policy bytecode at slot 5 (use --policy 0x<hex>)
+  - lock at index 2 (target chosen with -t, defaults to wallet account)
+  - chain origin at index 3
+  - foundry(NilChainID, 0) at index 4
+  - optional predefined policy script bytecode at index 5
 
-The foundry's tag — and therefore the native-token tag — equals the
-chain ID, computed as blake2b(originOutputID). At origin the foundry
-records tag = NilChainID; the first foundry transit replaces it with
-the real chain ID and enforces the tag-equals-chain-ID invariant from
-then on.`,
+The foundry's tag (and therefore the native-token tag) equals the chain
+ID, computed as blake2b(originOutputID). At origin the foundry records
+tag = NilChainID and supply = 0; the first foundry transit ("mint")
+replaces the tag with the real chain ID and produces the initial circulating
+supply.
+
+Policy options (mutually exclusive — at most one of these flags):
+  --non-destructible      attach foundryNonDestructible. The foundry chain
+                          can only be discontinued when its supply is 0
+                          (all tokens must be burned back first). The
+                          policy script self-locks across every transit.
+  --max-supply N          attach foundryMaxSupply(N). On every transit the
+                          produced foundry supply must be <= N. Self-locks.
+
+If no policy flag is set, index 5 is left empty and the foundry is
+unconstrained beyond the foundry() invariants.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runFoundryCreateCmd,
 	}
 	glb.AddFlagTarget(cmd)
-	cmd.Flags().Uint64("initial-supply", 0, "initial circulating supply stored on the foundry at origin")
-	cmd.Flags().String("policy", "", "optional policy script bytecode (0x-prefixed hex); immutable across transits once set")
+	cmd.Flags().Bool("non-destructible", false, "attach the foundryNonDestructible predefined policy script")
+	cmd.Flags().Uint64("max-supply", 0, "attach the foundryMaxSupply(N) predefined policy script with cap N")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -50,16 +59,20 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 
 	onChainAmount, err := strconv.ParseUint(args[0], 10, 64)
 	glb.AssertNoError(err)
-	initialSupply, err := cmd.Flags().GetUint64("initial-supply")
+
+	nonDestructible, err := cmd.Flags().GetBool("non-destructible")
 	glb.AssertNoError(err)
-	policyHex, err := cmd.Flags().GetString("policy")
+	maxSupply, err := cmd.Flags().GetUint64("max-supply")
 	glb.AssertNoError(err)
+	glb.Assertf(!(nonDestructible && maxSupply > 0),
+		"--non-destructible and --max-supply are mutually exclusive: only one predefined policy script can be attached")
 
 	var policyBytes []byte
-	if policyHex != "" {
-		policyBytes, err = hex.DecodeString(strings.TrimPrefix(strings.TrimPrefix(policyHex, "0x"), "0X"))
-		glb.Assertf(err == nil, "failed parsing --policy: %v", err)
-		glb.Assertf(len(policyBytes) > 0, "--policy must decode to non-empty bytes (omit the flag to leave slot 5 absent)")
+	switch {
+	case nonDestructible:
+		policyBytes = ledger.FoundryNonDestructibleBytecode()
+	case maxSupply > 0:
+		policyBytes = ledger.FoundryMaxSupplyBytecode(maxSupply)
 	}
 
 	target := glb.MustGetTarget()
@@ -102,7 +115,11 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	foundryOut := txbuilder.MakeFoundryOriginOutput(onChainAmount, target, ts.Slot, initialSupply, policyBytes)
+	// At origin, supply is always 0 — the real chain ID is not known
+	// until the tx is finalised, so no tokenAmount outputs can be tagged
+	// in the same tx. Minting happens at a separate (later) foundry
+	// transit.
+	foundryOut := txbuilder.MakeFoundryOriginOutput(onChainAmount, target, ts.Slot, 0, policyBytes)
 	glb.AssertNoError(foundryOut.EnoughAmountForStorageDeposit())
 	foundryIdx, err := txb.ProduceOutput(foundryOut)
 	glb.AssertNoError(err)
@@ -134,11 +151,14 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 
 	glb.Infof("creating new foundry chain origin:")
 	glb.Infof("   on-chain balance:  %s", util.Th(onChainAmount))
-	glb.Infof("   initial supply:    %s", util.Th(initialSupply))
-	if len(policyBytes) > 0 {
-		glb.Infof("   policy script:     %d bytes", len(policyBytes))
-	} else {
-		glb.Infof("   policy script:     (none)")
+	glb.Infof("   initial supply:    0  (mint with a separate command)")
+	switch {
+	case nonDestructible:
+		glb.Infof("   policy:            foundryNonDestructible (%d bytes)", len(policyBytes))
+	case maxSupply > 0:
+		glb.Infof("   policy:            foundryMaxSupply(%s) (%d bytes)", util.Th(maxSupply), len(policyBytes))
+	default:
+		glb.Infof("   policy:            (none)")
 	}
 	glb.Infof("   chain controller:  %s", target.String())
 	glb.Infof("   tag-along fee:     %s to %s", util.Th(feeAmount), tagAlongSeqID.StringShort())

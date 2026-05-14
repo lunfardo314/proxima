@@ -49,11 +49,13 @@ func TokenFoundryBytecode(tag base.ChainID, foundryProducedIdx byte) []byte {
 //     equation
 //       Σ consumed(tag) + (producedSupply − consumedSupply) == Σ produced(tag).
 //
-// Note: the tag-equals-chain-ID invariant, the policy-slot immutability
-// across the foundry transit, and the policy script's own evaluation are
-// enforced in EasyFL — by foundry() (immutability + chain-ID match) and
-// by the standard output-tuple validation pass which auto-evaluates the
-// policy bytecode at foundryPolicyConstraintIndex on the produced output.
+// Note: the tag-equals-chain-ID invariant is enforced in EasyFL by
+// foundry(). Any extras after the foundry (e.g. an optional policy
+// script at foundryPolicyConstraintIndex) are auto-evaluated as part of
+// the standard output-tuple validation pass; foundry() does NOT enforce
+// immutability of those extras across transit — it is the policy
+// script's own responsibility to self-lock if desired (typically via
+// `selfImmutableOnSuccessorIndex(...)` in chain.easyfl).
 func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
 
@@ -114,8 +116,8 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 
 	// Foundry transit: locate produced foundry, look up consumed
 	// foundry (when not origin), enforce the balance equation. The
-	// tag-equals-chain-ID invariant and the policy-slot immutability are
-	// enforced in EasyFL inside foundry() — see native_token.easyfl.
+	// tag-equals-chain-ID invariant is enforced in EasyFL inside
+	// foundry() — see native_token.easyfl.
 	producedOut, err := ctx.ProducedOutputAt(foundryProducedIdx)
 	if err != nil {
 		par.TracePanic("token: produced foundry at idx %d: %v", foundryProducedIdx, err)

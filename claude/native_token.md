@@ -134,54 +134,59 @@ invariants (32-byte tag, non-zero amount).
 
 `foundry(tag, supply)` is an extended-EasyFL constraint with real
 semantic load: its body enforces the **tag-equals-chain-ID** invariant
-across transit and the **policy-slot immutability** across transit. The
-Go reconciler additionally reads it to extract the supply for the
-balance equation. See §5 below — the general rule is "enforce in EasyFL
-when possible; reach for Go only when the rule cannot be expressed
-there."
+across transit (skipped at origin where the chain ID is still
+NilChainID). The Go reconciler additionally reads it to extract the
+supply for the balance equation.
+
+`foundry()` does **not** enforce immutability of anything past index 4.
+Whatever lives at index 5+ — a policy script, additional data, or
+nothing — is up to the foundry owner. If a policy script wants to lock
+itself across every chain transit, it composes the universal helper
+`selfImmutableOnSuccessorIndex($0)` (in `chain.easyfl`) with its own
+body. The two predefined policy scripts shipped today
+(`foundryNonDestructible`, `foundryMaxSupply`) do exactly that.
 
 ---
 
-## Issuance policy — embedded immutable script
+## Issuance policy — optional bytecode at index 5
 
-The simplest mechanism is the most general one: an **optional EasyFL
-script slot on the foundry output**, enforced immutable across foundry
-transits. Concretely:
+The simplest mechanism is the most general one: any extra constraint(s)
+on the foundry output **past index 4**. By convention the canonical
+position for a single policy script is `ConstraintIndexFoundryPolicy =
+5`, but additional indices may hold whatever further data or scripts
+the owner wants. Concretely:
 
-- The foundry has a reserved fixed extras index for a **policy script**.
-  The slot holds **raw EasyFL bytecode** — there is no wrapper
+- The position holds **raw EasyFL bytecode** — there is no wrapper
   constraint. (Earlier drafts proposed a `foundryPolicy(script)`
-  wrapper; it was dropped because the slot position itself identifies
-  the policy slot and the wrapper added nothing.)
-- If the slot is **absent**, the foundry's controller has full discretion
-  over mint/burn (subject only to the chain-controller's lock).
-- If the slot is **present**, two things hold:
-  - The bytecode at this slot is **immutable** across the foundry
-    transit. Enforced inside `foundry()` itself in EasyFL (similar to
-    how chain enforces ChainID preservation), not in Go.
+  wrapper; it was dropped because the position itself identifies the
+  policy and the wrapper added nothing.)
+- If position 5 is **absent**, the foundry's controller has full
+  discretion over mint/burn (subject only to the chain-controller's
+  lock).
+- If position 5 is **present**:
   - The script is **evaluated automatically** by the standard
     output-tuple validation pass — every non-amounts/non-index-values
-    slot of every produced output is compiled and evaluated; slot 5 is
-    no exception. The script's `selfXxx` accessors naturally resolve to
-    the producedFoundry output, and it can reach the consumed
-    predecessor via `consumedConstraintByIndex(selfChainPredInputIndex,
-    ...)` — same idiom that `delegateLock` uses to inspect its
-    predecessor.
-  - The script may express any rule, for example:
-    - `<circulating supply> <= S` (hard cap)
-    - `produced.supply == consumed.supply` (sealed / no further
-      mint/burn, useful after retirement)
-    - rate-limited inflation (against the foundry's tracked
-      last-mint slot)
-    - burn-only, mint-only, etc.
+    position of every produced output is compiled and evaluated;
+    index 5 is no exception. The script's `selfXxx` accessors resolve
+    to the producedFoundry output, and on the consumed side they
+    resolve to the consumed predecessor.
+  - `foundry()` does **not** enforce immutability of these bytes. If the
+    script wants to lock itself across transit (the typical case), it
+    composes the universal helper
+    `selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)` with
+    its own body. The two predefined policies shipped today
+    (`foundryNonDestructible`, `foundryMaxSupply`) do this.
+  - The script may express any rule. Examples:
+    - `<circulating supply> <= S` — shipped as `foundryMaxSupply($0)`.
+    - "Retire only when supply is zero" — shipped as
+      `foundryNonDestructible`.
+    - Rate-limited inflation, burn-only, mint-only, etc. — write as
+      EasyFL.
 
-This collapses what was previously a `policyKind` byte plus several
-hard-coded variants into a single uniform mechanism. No new wire
-extension is needed to ship inflation caps, freeze-on-delete, or any
-other policy — it is all expressible as an EasyFL script. A foundry with
-no script is the minimum-viable launch: the controller's signature is
-the only gate, and the `<= S` cap, retirement freeze, etc. are
-applications that add a script.
+A foundry with no script is the minimum-viable launch: the
+controller's signature is the only gate. The two predefined policies
+plus the `selfImmutableOnSuccessorIndex` building block cover the
+common cases; richer rules are just EasyFL.
 
 How the policy script reads foundry state:
 - No new tx-context accessors are needed. The script reads its sibling
@@ -189,13 +194,12 @@ How the policy script reads foundry state:
   using standard EasyFL bytecode-parsing functions already in the
   library — `parseBytecode`, `parseInlineData`,
   `parseInlineDataArgument`, etc. The policy script is just a regular
-  constraint that happens to live at slot 5 of a foundry output; it
+  constraint that happens to live at position 5 of a foundry output; it
   walks the input/output tuples it cares about by index.
 
 Foundry deletion (no produced foundry for a consumed one):
-- Whatever the policy script encodes wins. A script that wants to
-  forbid retirement encodes that itself (e.g. requires the produced
-  foundry to exist); a script that permits it does nothing special.
+- Whatever the policy script encodes wins. `foundryNonDestructible`
+  requires the consumed foundry's supply to be 0 at chain discontinue.
   Absent script ⇒ deletion is governed only by the chain-controller's
   signature. No hard-coded default anywhere.
 
@@ -213,16 +217,17 @@ Two new typed constraints + one raw-bytecode slot:
   amount); the literal-arg invariant is checked centrally by the
   `token(...)` builtin during its scan.
 - `foundry(tag, supply)` — extended EasyFL constraint at **tuple index 4**
-  on the foundry output (the first extras slot after the chain
+  on the foundry output (the first extras position after the chain
   constraint at index 3). Carries the current circulating supply. The
-  body enforces format **and** the two foundry-transit invariants:
-  tag-equals-chain-ID at transit, and policy-slot (5) immutability
-  across transit.
-- **Policy slot** — **optional**, raw EasyFL bytecode at **tuple index 5**.
-  No wrapper constraint. Auto-evaluated as part of the standard
-  output-tuple validation pass (same mechanism that runs every other
-  constraint on a produced output). Immutability is enforced by
-  `foundry()`, not at this slot itself.
+  body enforces format **and** the tag-equals-chain-ID invariant at
+  every transit (skipped at origin).
+- **Policy script** — **optional**, raw EasyFL bytecode at **tuple
+  index 5** (`ConstraintIndexFoundryPolicy`). No wrapper constraint.
+  Auto-evaluated as part of the standard output-tuple validation pass.
+  `foundry()` does NOT enforce immutability of this position — it is
+  up to the script to self-lock via
+  `selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)` (the
+  predefined policies do this).
 
 `token(tag, foundryProducedIndex)` lives at the **transaction-constraint**
 level (alongside `redeem`), not at any UTXO slot. Both args inline
@@ -305,27 +310,28 @@ Mirror `redeemScript`:
 
 Following the general rule "**enforce in EasyFL when possible; reach
 for Go only when the rule cannot be expressed there**" (see CLAUDE.md),
-the foundry-transit invariants live in `foundry()`'s EasyFL body rather
-than in `evalToken`:
+the foundry's only transit invariant lives in `foundry()`'s EasyFL body
+rather than in `evalToken`:
 
 1. **Chain match.** Produced `foundry.tag` must equal `chain.ChainID` at
    the same output. At origin (`chain.ChainID == NilChainID`) the check
    is skipped — at first transit the chain ID becomes real and is
    enforced from then on. Chain's own validation already propagates
    `ChainID` across transits, so checking the produced side is enough.
-2. **Policy-slot immutability.** Slot 5 must agree on presence between
-   the consumed predecessor and the produced foundry; if both have it,
-   the bytecode must be byte-equal. At origin: no check (no
-   predecessor). Helpers `_selfIsFoundryOrigin`,
-   `_foundryPredInputIndex`, `_consumedFoundryNumConstraints`,
-   `_validFoundryPolicyImmutability` mirror the
-   `_selfIsDelegationOrigin` / `_chainPredecessorParam` pattern.
-3. **Policy-script evaluation.** Automatic — `runTuple` evaluates every
-   slot of every produced output as ordinary bytecode, so the policy at
-   slot 5 fires naturally during the standard validation pass. The
-   script's `selfXxx` accessors resolve to the producedFoundry; it can
-   reach the consumed predecessor through
-   `consumedConstraintByIndex(selfChainPredInputIndex, ...)`.
+2. **Policy-script evaluation.** Automatic — `runTuple` evaluates every
+   position of every produced output as ordinary bytecode, so the
+   policy at index 5 (if any) fires naturally during the standard
+   validation pass. The script's `selfXxx` accessors resolve to the
+   producedFoundry on the produced side and to the consumed
+   predecessor on the consumed side.
+3. **No foundry-enforced immutability past index 4.** Whether the
+   policy script (or any further data at index 6+) survives across a
+   transit is purely the policy's own concern. The universal helper
+   `selfImmutableOnSuccessorIndex($0)` (in `chain.easyfl`) provides
+   self-lock semantics: a constraint at position N that AND-s
+   `selfImmutableOnSuccessorIndex(u64/N)` cannot be replaced or
+   removed by any subsequent transit while it remains in the chain.
+   Used by `foundryNonDestructible` and `foundryMaxSupply`.
 
 `evalToken` Go side only retains the defensive `pf.Tag ==
 requestedTag` / `cf.Tag == requestedTag` checks (so a `token()` call
@@ -371,10 +377,27 @@ next.
 
 ### Phase G — CLI
 
-In `proxi/node_cmd/`:
+In `proxi/node_cmd/foundry/` (subpackage, mirrors `delegate/`):
 
-- `foundry.go` (new subcommand tree): `create`, `mint`, `burn`,
-  `retire`.
+- `create.go` — emit a foundry chain origin with `foundry(NilChainID,
+  0)`. Initial supply at origin is always 0; the real chain ID is not
+  known until the tx is finalised, so no tokenAmount outputs can be
+  tagged in the same tx. Minting happens at a later transit via
+  `mint`. Flags:
+  - `-t / --target <lock>` — foundry chain controller. Defaults to
+    the wallet account.
+  - `--non-destructible` — attach the `foundryNonDestructible`
+    predefined policy at index 5.
+  - `--max-supply N` — attach `foundryMaxSupply(N)` at index 5.
+  - The two policy flags are mutually exclusive; only one predefined
+    policy script can be attached. Arbitrary user-supplied bytecode is
+    not accepted in v1.
+- `mint.go` (TODO) — first or subsequent foundry transit that
+  increases supply and produces `tokenAmount(realTag, N)` outputs to a
+  target lock. Builds the paired tx-level `token(realTag,
+  producedFoundryIdx)`.
+- `burn.go` (TODO) — symmetric.
+- `retire.go` (TODO) — discontinue the foundry chain.
 - `send.go` — add `--tag <hex>` flag that emits a `tokenAmount`
   constraint on the produced output and a balancing tx-level
   `token(tag, sentinel)` constraint.
@@ -387,20 +410,23 @@ In `ledger/tests/native_token_test.go`:
 2. Pure conservation: transfer tag T between two sigLocks, both sides
    balance.
 3. Mint: foundry transit increases supply by Δ; outputs gain Δ; with
-   and without a policy script at slot 5.
+   and without a policy script at index 5.
 4. Burn: symmetric.
 5. Auditability: tx with a `tokenAmount` constraint but no matching
    `token(...)` is rejected.
 6. Multi-tag tx: two `token(...)` constraints, two tags, both
    independently balance.
-7. Policy script: `<= cap` reject when mint exceeds cap; accept at the
-   cap.
-8. Policy-slot immutability: a transit that flips slot 5 presence, or
-   changes slot 5 bytes between consumed and produced, fails inside
-   `foundry()` (not inside `token()`).
-9. Foundry retire: with no policy script, allowed under controller
-   signature; with `produced.supply == consumed.supply` script at
-   slot 5, the retire tx that drops supply to 0 is rejected.
+7. `foundryMaxSupply(N)`: reject when produced supply > N; accept at
+   the cap.
+8. `selfImmutableOnSuccessorIndex` (via either predefined policy):
+   a transit that replaces or removes the policy bytecode at index 5
+   is rejected from the consumed side; a transit that leaves it
+   byte-equal passes.
+9. `foundryNonDestructible`: chain discontinue while consumed supply
+   is non-zero is rejected; chain discontinue with consumed supply = 0
+   is allowed.
+10. Foundry retire (no policy script): allowed under controller
+    signature.
 
 ---
 

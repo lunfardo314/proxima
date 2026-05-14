@@ -55,6 +55,40 @@ func _chainPredecessorParam :
 		#chain
 	)
 
+// On the consumed side: returns the chain successor's produced output
+// index (1 byte). Returns empty bytes (0x) if the chain is being
+// discontinued at this consumed output. The chain's unlock parameters
+// always live at unlockParamsByConstraintIndex(consumedInputIndex,
+// chainConstraintIndex).
+func _chainSuccessorOutputIndex :
+   unlockParamsByConstraintIndex(concat(selfOutputIndex, chainConstraintIndex))
+
+// $0 - constraint index (1 byte) at which immutability is enforced
+//
+// Universal transit-time immutability helper. AND this into a
+// constraint body (typically passing $0 = own index so it self-locks)
+// to require byte-equality of that constraint position across every
+// chain transit.
+//
+// Behaviour:
+//   - on the produced side: no-op (passes)
+//   - on the consumed side at chain discontinue (no successor): no-op (passes)
+//   - on the consumed side with continuing chain: requires the produced
+//     successor's tuple element at index $0 to be byte-equal to MY
+//     (consumed) tuple element at index $0.
+//
+// The argument may be a constant (e.g. `foundryPolicyConstraintIndex`)
+// or a runtime value (e.g. parsed from selfUnlockParameters).
+func selfImmutableOnSuccessorIndex :
+or(
+   not(selfIsConsumedOutput),
+   equal(len(_chainSuccessorOutputIndex), u64/0),
+   equal(
+      selfSiblingConstraint($0),
+      atPath(concat(pathToProducedOutputs, _chainSuccessorOutputIndex, $0))
+   )
+)
+
 // $0 - chain ChainID
 func _validChainConsumed :
 or(

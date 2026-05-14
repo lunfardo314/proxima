@@ -5,13 +5,14 @@
 //   is the carried quantity (uint64, > 0).
 // - foundry(tag, supply): extras at foundryConstraintIndex on a foundry
 //   output (the chain whose ID equals tag). Carries circulating supply
-//   and enforces the tag-equals-chain-ID invariant and the policy-slot
-//   immutability across the foundry transit.
+//   and enforces the tag-equals-chain-ID invariant at every transit.
 //
-// The policy script (if any) lives at foundryPolicyConstraintIndex as
-// raw EasyFL bytecode. It is auto-evaluated as part of the standard
-// output-tuple validation pass; immutability across transit is enforced
-// by foundry() below.
+// The optional policy script at foundryPolicyConstraintIndex (if any) is
+// raw EasyFL bytecode and is auto-evaluated as part of the standard
+// output-tuple validation pass. foundry() does NOT enforce immutability
+// of that index across transit: it is up to the policy script itself to
+// self-lock (typically via `selfImmutableOnSuccessorIndex(...)`). Any
+// further extras after the foundry are not the foundry's concern.
 //
 // Per-tag preservation, literal-arg enforcement of tokenAmount, and the
 // mint/burn balance equation live in the Go `token(...)` builtin.
@@ -33,52 +34,10 @@ or(
 func _selfIsFoundryOrigin :
    isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain))
 
-// _foundryPredInputIndex returns the consumed predecessor's input index
-// from the chain constraint's arg $1. Only meaningful when not origin.
-func _foundryPredInputIndex :
-   parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 1, #chain)
-
-// _consumedFoundryNumConstraints returns the NumElements of the consumed
-// predecessor output. Only meaningful when not origin.
-func _consumedFoundryNumConstraints :
-   tupleLenAtPath(concat(pathToConsumedOutputs, _foundryPredInputIndex))
-
-// _validFoundryPolicyImmutability enforces that the bytes at
-// foundryPolicyConstraintIndex are byte-equal across the foundry transit.
-// Slot 5 may be absent on both sides (no policy) or present on both sides
-// (with byte-equal bytecode). At origin there is no consumed predecessor —
-// no check, any policy (or none) is accepted.
-func _validFoundryPolicyImmutability :
-or(
-   _selfIsFoundryOrigin,
-   and(
-      // presence must match on both sides
-      or(
-         and(
-            lessOrEqualThan(_consumedFoundryNumConstraints, u64/5),
-            lessOrEqualThan(selfNumConstraints, u64/5)
-         ),
-         and(
-            lessOrEqualThan(u64/6, _consumedFoundryNumConstraints),
-            lessOrEqualThan(u64/6, selfNumConstraints)
-         )
-      ),
-      // if slot 5 is present, bytecode must be byte-equal
-      if(
-         lessOrEqualThan(u64/6, selfNumConstraints),
-         equal(
-            selfSiblingConstraint(foundryPolicyConstraintIndex),
-            consumedConstraintByIndex(_foundryPredInputIndex, foundryPolicyConstraintIndex)
-         ),
-         0xff
-      )
-   )
-)
-
 // $0 token tag (32 bytes)
 //   at origin: unconstrained (chain.ChainID is still NilChainID)
 //   at transit: must equal the chain ID at chainConstraintIndex
-// $1 circulating supply (uint64, z-encoded — at most 8 bytes after the
+// $1 circulating supply (uint64, z-encoded - at most 8 bytes after the
 //   data prefix)
 func foundry :
 or(
@@ -92,7 +51,53 @@ or(
             equal($0, parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain))
          ),
          !!!foundry_tag_must_equal_chain_ID_at_transit
-      ),
-      require(_validFoundryPolicyImmutability, !!!foundryPolicy_not_immutable_across_foundry_transit)
+      )
+   )
+)
+
+// =====================================================================
+// Predefined foundry policy scripts.
+//
+// Each policy AND-s `selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)`
+// with its policy-specific check so that the policy script body is itself
+// immutable across every chain transit. Without that self-lock the
+// foundry owner could swap the policy out at any time.
+// =====================================================================
+
+// foundryNonDestructible: allow the foundry chain to be discontinued
+// only when the consumed foundry's supply is 0. All minted tokens must
+// have been burned back into the foundry before retirement.
+//
+// On the produced side and on the consumed side of a continuing chain
+// the body is a no-op; the self-immutability helper covers transit.
+func foundryNonDestructible :
+and(
+   selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex),
+   or(
+      not(selfIsConsumedOutput),
+      not(equal(len(_chainSuccessorOutputIndex), u64/0)),
+      require(
+         isZero(parseInlineDataArgument(selfSiblingConstraint(foundryConstraintIndex), 1, #foundry)),
+         !!!cannot_destroy_foundry_with_non_zero_supply
+      )
+   )
+)
+
+// $0 - max supply (uint64 literal, z-encoded, <=8 bytes after the
+//   inline-data prefix)
+// foundryMaxSupply($0): on every transit (including origin) requires
+// produced foundry supply <= $0.
+func foundryMaxSupply :
+and(
+   selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex),
+   or(
+      not(selfIsProducedOutput),
+      require(
+         lessOrEqualThan(
+            uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(foundryConstraintIndex), 1, #foundry)),
+            uint8Bytes($0)
+         ),
+         !!!foundry_supply_exceeds_max_supply
+      )
    )
 )
