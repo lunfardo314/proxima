@@ -3,6 +3,8 @@ package node_cmd
 import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -47,6 +49,25 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 		glb.Infof("   amount: %s, lock name: '%s'", util.Th(o.Output.TokenBalance()), o.Output.Lock().Name())
 		if chainID, ok := o.ExtractChainID(); ok {
 			glb.Verbosef("   chain id: %s", chainID.StringHex())
+		}
+		// Native-token annotations: mark foundries and list tokenAmount
+		// constraints, if any.
+		if fBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexFoundry); err == nil {
+			if f, err := ledger.FoundryFromBytes(fBytes); err == nil {
+				tag := f.Tag
+				if tag == base.NilChainID {
+					tag = base.MakeOriginChainID(o.ID)
+				}
+				glb.Infof("   foundry: tag=%s supply=%s", tag.String(), util.Th(f.Supply))
+				if p, err := o.Output.ConstraintAt(ledger.ConstraintIndexFoundryPolicy); err == nil && len(p) > 0 {
+					glb.Infof("      policy: %s", policyDescriptionLine(p))
+				}
+			}
+		}
+		for _, raw := range o.Output.ConstraintsRawBytes() {
+			if ta, err := ledger.TokenAmountFromBytes(raw); err == nil {
+				glb.Infof("   tokenAmount: tag=%s amount=%s", ta.Tag.String(), util.Th(ta.Amount))
+			}
 		}
 		glb.Verbosef("   raw data: %s (%d bytes) ", o.Output.Hex(), len(o.Output.Bytes()))
 		if glb.IsVerbose() {

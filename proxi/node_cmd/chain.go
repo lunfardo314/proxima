@@ -6,7 +6,10 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
+
+var chainCmdDecompilePolicy bool
 
 func initChainCmd() *cobra.Command {
 	getBalanceCmd := &cobra.Command{
@@ -16,6 +19,10 @@ func initChainCmd() *cobra.Command {
 		Run:   runChainCmd,
 	}
 	glb.AddFlagTarget(getBalanceCmd)
+	getBalanceCmd.PersistentFlags().BoolVarP(&chainCmdDecompilePolicy, "decompile", "D", false,
+		"if the chain is a foundry, also print its policy script (if any) in decompiled EasyFL source form")
+	err := viper.BindPFlag("decompile", getBalanceCmd.PersistentFlags().Lookup("decompile"))
+	glb.AssertNoError(err)
 	getBalanceCmd.InitDefaultHelpCmd()
 	return getBalanceCmd
 }
@@ -34,6 +41,14 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	seqData, isSequencer := out.Output.SequencerOutputData()
 
 	cc := out.Output.ChainConstraint()
+	isFoundry := false
+	var foundry *ledger.Foundry
+	if fBytes, err := out.Output.ConstraintAt(ledger.ConstraintIndexFoundry); err == nil {
+		if f, err := ledger.FoundryFromBytes(fBytes); err == nil {
+			isFoundry = true
+			foundry = f
+		}
+	}
 
 	glb.Infof("\nCHAIN OUTPUT DATA:\n-----------------")
 	glb.Infof("chain ID:             %s", chainID.String())
@@ -41,6 +56,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("token balance:        %s", util.Th(out.Output.TokenBalance()))
 	glb.Infof("is delegation output: %v", isDelegation)
 	glb.Infof("is sequencer output:  %v", isSequencer)
+	glb.Infof("is foundry output:    %v", isFoundry)
 	glb.Infof("is branch output:     %v", out.ID.IsBranchTransaction())
 	if cc != nil {
 		glb.Infof("origin slot:          %d", cc.OriginSlot)
@@ -63,4 +79,40 @@ func runChainCmd(_ *cobra.Command, args []string) {
 		glb.Infof("DELEGATION OUTPUT DATA (current slot is %d):\n-----------------", ledger.SlotNow())
 		glb.Infof("%s", dOut.LinesDelegationData().String())
 	}
+
+	if isFoundry {
+		printFoundryDetails(out, foundry, chainID)
+	}
+}
+
+// printFoundryDetails renders the FOUNDRY DATA section for `proxi node
+// chain <chainID>` when the resolved output is a foundry. Shows tag,
+// circulating supply, the optional policy script at index 5 with a
+// recognised description, and (when -D / --decompile is set) the
+// decompiled EasyFL source of the policy.
+func printFoundryDetails(out *ledger.OutputWithChainID, f *ledger.Foundry, chainID base.ChainID) {
+	glb.Infof("FOUNDRY DATA:\n-----------------")
+	// Tag at origin is still NilChainID; the real chain ID is derivable
+	// from the output ID and equals the resolved chainID we already have.
+	displayTag := f.Tag
+	if displayTag == base.NilChainID {
+		glb.Infof("foundry tag:          %s  (origin, will become %s at first transit)",
+			f.Tag.String(), chainID.String())
+	} else {
+		glb.Infof("foundry tag:          %s", f.Tag.String())
+	}
+	glb.Infof("circulating supply:   %s", util.Th(f.Supply))
+
+	var policy []byte
+	if p, err := out.Output.ConstraintAt(ledger.ConstraintIndexFoundryPolicy); err == nil {
+		policy = p
+	}
+	glb.Infof("policy:               %s", policyDescriptionLine(policy))
+	if len(policy) > 0 {
+		glb.Infof("policy bytes:         %d", len(policy))
+		if chainCmdDecompilePolicy {
+			printDecompiledPolicySource(policy, "    ")
+		}
+	}
+	glb.Infof("\n")
 }
