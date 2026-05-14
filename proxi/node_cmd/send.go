@@ -61,7 +61,15 @@ Pass --deadline to produce a sendWithDeadline output instead of a plain
 sigLock/chainLock output. The target then has --acceptance-slots to claim
 the funds; after that, this wallet can reclaim until --cleanup-slots,
 after which anyone can purge the output (see
-claude/send_with_deadline_lock.md).`,
+claude/send_with_deadline_lock.md).
+
+Pass --tag <chainID-hex> to transfer native tokens of that tag instead
+of (or in addition to) PRXI. The recipient output gains a
+tokenAmount(<tag>, <amount>) constraint; the tx pushes a sentinel
+token(<tag>, 0x) for Phase D auditability and Σ-conservation. The wallet
+must hold sufficient tokenAmount(<tag>, _) UTXOs to cover <amount>; any
+remainder is returned as a new tokenAmount UTXO. --tag is incompatible
+with --deadline.`,
 		Args: cobra.ExactArgs(1),
 		Run:  runSendCmd,
 	}
@@ -73,6 +81,8 @@ claude/send_with_deadline_lock.md).`,
 	sendCmd.Flags().Uint32("cleanup-slots", defaultCleanupSlots,
 		fmt.Sprintf("cleanup boundary in slots (only with --deadline; must exceed acceptance by ≥ %d)",
 			ledger.SendWithDeadlineMinReclaimSlots))
+	sendCmd.Flags().String("tag", "",
+		"native-token tag (foundry chain ID, hex); transfer <amount> tokens of this tag instead of PRXI")
 	sendCmd.InitDefaultHelpCmd()
 	return sendCmd
 }
@@ -89,6 +99,21 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	cleanupSlots, err := cmd.Flags().GetUint32("cleanup-slots")
 	glb.AssertNoError(err)
+	tagHex, err := cmd.Flags().GetString("tag")
+	glb.AssertNoError(err)
+
+	// Tagged native-token transfer is a separate flow (see
+	// send_tagged.go). It builds the tx by hand: tokenAmount inputs +
+	// PRXI funding + tokenAmount outputs + Phase D token() sentinel.
+	if tagHex != "" {
+		glb.Assertf(!deadlineMode, "--tag is incompatible with --deadline")
+		glb.Assertf(!cmd.Flags().Changed("acceptance-slots"),
+			"--acceptance-slots only applies with --deadline")
+		glb.Assertf(!cmd.Flags().Changed("cleanup-slots"),
+			"--cleanup-slots only applies with --deadline")
+		runSendTaggedCmd(amount, tagHex)
+		return
+	}
 
 	wallet := glb.GetWalletData()
 	glb.Infof("source: wallet account %s", wallet.Account.String())

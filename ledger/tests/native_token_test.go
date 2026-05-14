@@ -351,6 +351,105 @@ func TestFoundryMintMultipleTimes(t *testing.T) {
 // Pure conservation transfer (`token(tag, 0x)` sentinel form)
 // --------------------------------------------------------------------------
 
+// TestFoundrySendTaggedPartialWithRemainder mirrors `proxi node send
+// <amount> --tag <chainID>` with a single tokenAmount input that
+// exceeds the transfer amount. Verifies the recipient gets a
+// tokenAmount(tag, amount) UTXO, the wallet gets the (consumed - amount)
+// remainder as a new tokenAmount UTXO, and supply on the foundry stays
+// untouched.
+func TestFoundrySendTaggedPartialWithRemainder(t *testing.T) {
+	const mintAmount = uint64(1_000_000)
+	const sendAmount = uint64(300_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+	mintToSelf(t, e, chainID, mintAmount)
+
+	_, _, recipient := e.u.GenerateAddress(7)
+	require.NoError(t, sendTagged(t, e, chainID, sendAmount, recipient),
+		"tagged send must validate")
+
+	// Recipient holds tokenAmount(tag, sendAmount).
+	recipientOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(recipient.ControllerID())
+	require.NoError(t, err)
+	var got *ledger.TokenAmount
+	for _, o := range recipientOuts {
+		if ta, err := findTokenAmount(t, o.Output, chainID); err == nil {
+			got = ta
+			break
+		}
+	}
+	require.NotNil(t, got, "recipient must own the new tokenAmount UTXO")
+	require.EqualValues(t, sendAmount, got.Amount)
+
+	// Wallet now holds the remainder tokenAmount(tag, mintAmount - sendAmount).
+	walletOuts := getSourceOutputs(t, e.u, e.addr)
+	var walletTokenSum uint64
+	for _, o := range walletOuts {
+		if ta, err := findTokenAmount(t, o.Output, chainID); err == nil {
+			walletTokenSum += ta.Amount
+		}
+	}
+	require.EqualValues(t, mintAmount-sendAmount, walletTokenSum,
+		"wallet must keep the partial-send remainder as a new tokenAmount UTXO")
+
+	// Foundry supply unchanged (pure conservation: no transit happened).
+	parsed, err := e.u.SugaredStateReader().GetChainOutputWithChainID(chainID)
+	require.NoError(t, err)
+	f, err := ledger.FoundryFromBytes(mustConstraintAt(t, parsed.Output, ledger.ConstraintIndexFoundry))
+	require.NoError(t, err)
+	require.EqualValues(t, mintAmount, f.Supply,
+		"foundry supply must not change on a pure conservation transfer")
+}
+
+// TestFoundrySendTaggedConsumesMultipleInputs mints twice so the wallet
+// holds two independent tokenAmount UTXOs, then sends the full combined
+// balance. Verifies both inputs are consumed and the recipient receives
+// a single output for the total amount.
+func TestFoundrySendTaggedConsumesMultipleInputs(t *testing.T) {
+	const firstMint = uint64(400_000)
+	const secondMint = uint64(600_000)
+
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	chainID := e.createFoundryOrigin(t, 200_000_000, nil)
+	mintToSelf(t, e, chainID, firstMint)
+	mintToSelf(t, e, chainID, secondMint)
+
+	// Sanity: wallet has 2 tokenAmount UTXOs before the send.
+	walletOuts := getSourceOutputs(t, e.u, e.addr)
+	preCount := 0
+	for _, o := range walletOuts {
+		if _, err := findTokenAmount(t, o.Output, chainID); err == nil {
+			preCount++
+		}
+	}
+	require.Equal(t, 2, preCount, "wallet must hold 2 tokenAmount UTXOs for tag before the send")
+
+	_, _, recipient := e.u.GenerateAddress(13)
+	require.NoError(t, sendTagged(t, e, chainID, firstMint+secondMint, recipient),
+		"send of the full balance must consume both inputs and validate")
+
+	// Recipient gets one output for the total.
+	recipientOuts, err := e.u.SugaredStateReader().GetOutputsForAccount(recipient.ControllerID())
+	require.NoError(t, err)
+	var got *ledger.TokenAmount
+	for _, o := range recipientOuts {
+		if ta, err := findTokenAmount(t, o.Output, chainID); err == nil {
+			got = ta
+			break
+		}
+	}
+	require.NotNil(t, got)
+	require.EqualValues(t, firstMint+secondMint, got.Amount)
+
+	// Wallet no longer holds any tokenAmount for the tag.
+	walletOuts = getSourceOutputs(t, e.u, e.addr)
+	for _, o := range walletOuts {
+		_, err := findTokenAmount(t, o.Output, chainID)
+		require.Error(t, err, "wallet must hold no tokenAmount(tag, _) after a full-balance send")
+	}
+}
+
 // TestFoundryConservationTransfer mints, then in a separate tx transfers
 // half of the tokenAmount to a second address using the pure-conservation
 // `token(tag, 0x)` sentinel (no foundry transit).
@@ -672,6 +771,87 @@ func tryMintTo(t *testing.T, e *foundryTestEnv, chainID base.ChainID, mintAmount
 	require.NoError(t, err)
 
 	addRemainderIfNeeded(t, txb, e.addr)
+
+	_, _, err = e.finishAndSubmit(t, txb, ts)
+	return err
+}
+
+// sendTagged mirrors `proxi node send <amount> --tag <chainID>`: it
+// consumes wallet's tokenAmount(chainID, _) UTXOs totaling >= amount,
+// produces a sigLock-locked tokenAmount(chainID, amount) to `target`,
+// produces a tokenAmount remainder back to the wallet if needed, and
+// pushes a token(chainID, 0x) sentinel for conservation. Returns the
+// validation/submission error.
+//
+// Pure-PRXI funding inputs are appended via appendExtraFunding (which
+// already filters out tokenAmount-bearing UTXOs).
+func sendTagged(t *testing.T, e *foundryTestEnv, chainID base.ChainID, amount uint64, target ledger.Lock) error {
+	t.Helper()
+	require.NotZero(t, amount)
+
+	// Find wallet's tokenAmount(chainID, _) UTXOs.
+	walletOuts := getSourceOutputs(t, e.u, e.addr)
+	var (
+		tokenInputs []*ledger.OutputWithID
+		consumed    uint64
+	)
+	for _, o := range walletOuts {
+		ta, err := findTokenAmount(t, o.Output, chainID)
+		if err != nil {
+			continue
+		}
+		tokenInputs = append(tokenInputs, o)
+		consumed += ta.Amount
+		if consumed >= amount {
+			break
+		}
+	}
+	require.GreaterOrEqualf(t, consumed, amount,
+		"insufficient tokenAmount(%s, _) UTXOs on wallet: have %d, need %d",
+		chainID.StringShort(), consumed, amount)
+
+	txb := txbuilder.New()
+	// Consume tokenAmount inputs first (input 0..N-1).
+	_, inTs, err := txb.ConsumeOutputsNoUnlock(tokenInputs...)
+	require.NoError(t, err)
+	for i := range tokenInputs {
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			require.NoError(t, txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0))
+		}
+	}
+
+	// Append pure-PRXI funding (appendExtraFunding skips
+	// already-consumed and tokenAmount-bearing UTXOs).
+	ts := inTs.AddSlots(1)
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(1)
+	}
+	ts = base.MaximumTime(ts, e.appendExtraFunding(t, txb, 0))
+
+	// Recipient output: sigLock to target + tokenAmount(chainID, amount).
+	recipientOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(100_000_000).WithLock(target).WithTokenAmount(chainID, amount)
+	})
+	require.NoError(t, recipientOut.EnoughAmountForStorageDeposit())
+	_, err = txb.ProduceOutput(recipientOut)
+	require.NoError(t, err)
+
+	// Optional remainder back to the wallet.
+	if consumed > amount {
+		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithTokenBalance(100_000_000).WithLock(e.addr).WithTokenAmount(chainID, consumed-amount)
+		})
+		require.NoError(t, remainderOut.EnoughAmountForStorageDeposit())
+		_, err = txb.ProduceOutput(remainderOut)
+		require.NoError(t, err)
+	}
+
+	addRemainderIfNeeded(t, txb, e.addr)
+
+	// Phase D auditability + Σ-conservation.
+	txb.DeclareTokenConservation(chainID)
 
 	_, _, err = e.finishAndSubmit(t, txb, ts)
 	return err
