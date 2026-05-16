@@ -477,14 +477,14 @@ func TestFoundryConservationTransfer(t *testing.T) {
 	ts = base.MaximumTime(ts, e.appendExtraFunding(t, txb, 0))
 
 	out1 := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(50_000_000).WithLock(e.addr).WithTokenAmount(chainID, mintAmount/2)
+		o.WithTokenBalance(100_000_000).WithLock(e.addr).WithTokenAmount(chainID, mintAmount/2)
 	})
 	require.NoError(t, out1.EnoughAmountForStorageDeposit())
 	_, err = txb.ProduceOutput(out1)
 	require.NoError(t, err)
 
 	out2 := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(50_000_000).WithLock(addr2).WithTokenAmount(chainID, mintAmount/2)
+		o.WithTokenBalance(100_000_000).WithLock(addr2).WithTokenAmount(chainID, mintAmount/2)
 	})
 	require.NoError(t, out2.EnoughAmountForStorageDeposit())
 	_, err = txb.ProduceOutput(out2)

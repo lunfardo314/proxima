@@ -60,7 +60,32 @@ func (lib *Library) MinimumStorageDeposit(o *Output) uint64 {
 	if lib.LockBytecodeIsStorageDepositExempt(o.MustAt(int(ConstraintIndexLock))) {
 		return 0
 	}
-	return lib.StorageDeposit(uint64(len(o.Bytes())))
+	return lib.StorageDeposit(effectiveStorageSize(o))
+}
+
+// effectiveStorageSize is the cost-of-storage proxy fed into the
+// storageDeposit schedule. The UTXO contributes its own serialized bytes;
+// each entry in the index-values tuple at output element index 1
+// additionally costs one trie row of (length byte + value + 33-byte UTXO
+// ID) under TriePartitionControllers. The approximation charges:
+//
+//	utxoBytes + indexValuesTupleBytes + N * 33
+//
+// where indexValuesTupleBytes ~= sum(value lengths) + small tuple framing.
+// Slight under-count of the per-entry 1-byte partition-prefix + 1-byte
+// length framing is acceptable; we're billing for persistent state, not
+// counting bytes exactly.
+func effectiveStorageSize(o *Output) uint64 {
+	size := uint64(len(o.Bytes()))
+	ivBin, err := o.At(int(ConstraintIndexIndexValues))
+	if err != nil || len(ivBin) == 0 {
+		return size
+	}
+	values, err := IndexValuesFromBytes(ivBin)
+	if err != nil {
+		return size + uint64(len(ivBin))
+	}
+	return size + uint64(len(ivBin)) + uint64(len(values))*33
 }
 
 // MinimumStorageDeposit (free fn) uses the latest library — kept for
