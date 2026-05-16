@@ -788,3 +788,134 @@ func TestFoldAttackRejection(t *testing.T) {
 	require.Error(t, err, "fold attack must be rejected by the dex lock; tx string:\n%s", failed)
 	require.Contains(t, err.Error(), "callRedeemer")
 }
+
+// =============================================================================
+// TestMixedArbitrageMatch — a third-party arbitrageur lifts a sell order
+// AND a buy order (same tag, buyer's ask above seller's bid) in one tx,
+// pocketing the spread. Validates that mixing buy + sell in one consuming
+// tx works: the sell order's tokens flow through to the buyer's receipt;
+// the trader keeps the price spread in base tokens.
+// =============================================================================
+
+func TestMixedArbitrageMatch(t *testing.T) {
+	e := newDexEnv(t)
+	// Third address — the arbitrageur. Funded directly from faucet.
+	traderPriv, _, traderLock := e.u.GenerateAddress(3)
+	require.NoError(t, e.u.TokensFromFaucet(traderLock, 1_000_000_000))
+
+	const (
+		amount       = uint64(10)
+		priceSell    = uint64(40_000_000) // seller asks 40M / token
+		priceBuy     = uint64(60_000_000) // buyer bids  60M / token (spread = 20M)
+		timeoutSlots = uint32(50)
+		sellDeposit  = uint64(200_000_000)
+		buyDeposit   = uint64(1_500_000_000) // ≥ amount*priceBuy + receipt min deposit
+	)
+
+	// Seller mints tokens and posts a sell order.
+	tag, tokenUTXO := e.mintTokensFor(t, e.sellerPriv, e.sellerLock, e.sellerLock, amount)
+	sellOrder := e.postSellOrder(t, tag, tokenUTXO, amount, priceSell, timeoutSlots, sellDeposit)
+
+	// Buyer posts a matching buy order on the same tag.
+	buyerPure := pureSigLockOutputs(e.outputsOf(t, e.buyerLock))
+	require.NotEmpty(t, buyerPure)
+	buyTs := nextTs(buyerPure[0].Timestamp())
+	buyOrderTxb, err := BuildBuyOrder(BuildBuyOrderParams{
+		BuyerPrivKey:  e.buyerPriv,
+		BuyerSigLock:  e.buyerLock,
+		FundingInputs: buyerPure,
+		Tag:           tag,
+		Amount:        amount,
+		Price:         priceBuy,
+		TimeoutSlots:  timeoutSlots,
+		Deposit:       buyDeposit,
+		TxTimestamp:   buyTs,
+	})
+	require.NoError(t, err)
+	buyOrderTx := e.submit(t, buyOrderTxb)
+	buyOrder := loadOutput(t, e.u, outputIDFromTx(t, buyOrderTx, 0))
+
+	// Arbitrageur lifts both orders in one tx.
+	traderPure := pureSigLockOutputs(e.outputsOf(t, traderLock))
+	require.NotEmpty(t, traderPure)
+	fillTs := nextTs(base.MaximumTime(
+		base.MaximumTime(sellOrder.Timestamp(), buyOrder.Timestamp()),
+		traderPure[0].Timestamp(),
+	))
+
+	txb := txbuilder.New()
+	// Sell at input 0, buy at input 1, then trader funding.
+	sellInIdx, err := txb.ConsumeOutput(sellOrder.Output, sellOrder.ID)
+	require.NoError(t, err)
+	buyInIdx, err := txb.ConsumeOutput(buyOrder.Output, buyOrder.ID)
+	require.NoError(t, err)
+	for i, in := range traderPure {
+		idx, err := txb.ConsumeOutput(in.Output, in.ID)
+		require.NoError(t, err)
+		if i == 0 {
+			txb.PutSignatureUnlock(idx)
+		} else {
+			require.NoError(t, txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, byte(int(buyInIdx)+1)))
+		}
+	}
+
+	paymentToSeller := amount * priceSell // 400M — trader pays seller
+	paymentFromBuyer := amount * priceBuy // 600M — buyer pays trader (left on buy-order deposit minus the receipt remainder)
+
+	sellerHolder := ledger.SigLock(HolderIDOf(e.sellerPriv))
+	buyerHolder := ledger.SigLock(HolderIDOf(e.buyerPriv))
+
+	// Receipt to seller at output 0 (4 constraints, literal = sellInIdx).
+	sellerReceipt := buildReceiptOutputSell(sellDeposit+paymentToSeller, sellerHolder, byte(sellInIdx))
+	sellerReceiptIdx, err := txb.ProduceOutput(sellerReceipt)
+	require.NoError(t, err)
+	txb.PutUnlockParams(sellInIdx, ledger.ConstraintIndexLock, []byte{byte(sellerReceiptIdx)})
+
+	// Receipt to buyer at output 1 (5 constraints incl. tokenAmount,
+	// literal = buyInIdx). Tokens come from the sell order; trader is just
+	// a conduit.
+	buyerReceipt := buildReceiptOutputBuy(buyDeposit-paymentFromBuyer, buyerHolder, byte(buyInIdx), tag, amount)
+	buyerReceiptIdx, err := txb.ProduceOutput(buyerReceipt)
+	require.NoError(t, err)
+	txb.PutUnlockParams(buyInIdx, ledger.ConstraintIndexLock, []byte{byte(buyerReceiptIdx)})
+
+	// Trader keeps the spread (paymentFromBuyer - paymentToSeller) in base
+	// tokens, plus any change from their own funding inputs. Pack it all
+	// into one sigLock output.
+	consumed := txb.ConsumedAmount()
+	produced, _ := txb.ProducedAmount()
+	require.Greater(t, consumed, produced)
+	_, err = txb.ProduceOutput(ledger.OutputBasic(int64(consumed-produced), traderLock))
+	require.NoError(t, err)
+
+	txb.DeclareTokenConservation(tag)
+	require.NoError(t, pushRedeemScript(txb))
+	finaliseAndSign(txb, fillTs, traderPriv)
+
+	tx := e.submit(t, txb)
+	require.True(t, tx.IsScriptRedeemed(GetBins().Hash))
+
+	t.Logf("arbitrage tx:\n%s", tx.String())
+
+	// Verify outputs.
+	sellerOut := loadOutput(t, e.u, outputIDFromTx(t, tx, byte(sellerReceiptIdx)))
+	require.Equal(t, sellDeposit+paymentToSeller, sellerOut.Output.TokenBalance(),
+		"seller's receipt: deposit + sell-price * amount")
+
+	buyerOut := loadOutput(t, e.u, outputIDFromTx(t, tx, byte(buyerReceiptIdx)))
+	require.Equal(t, buyDeposit-paymentFromBuyer, buyerOut.Output.TokenBalance(),
+		"buyer's receipt: deposit - buy-price * amount")
+	require.Equal(t, amount, sumTokenAmountByTag(buyerOut.Output, tag),
+		"buyer's receipt must carry the X tokens")
+
+	// Trader's profit: paymentFromBuyer - paymentToSeller, sitting in
+	// the final sigLock output.
+	traderOut := loadOutput(t, e.u, outputIDFromTx(t, tx, 2))
+	traderFunded := uint64(0)
+	for _, in := range traderPure {
+		traderFunded += in.Output.TokenBalance()
+	}
+	expectedTraderOut := traderFunded + paymentFromBuyer - paymentToSeller
+	require.Equal(t, expectedTraderOut, traderOut.Output.TokenBalance(),
+		"trader's output: funding + spread")
+}

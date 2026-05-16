@@ -164,7 +164,9 @@ func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...strin
 				} else {
 					ret.Add("  %d: %s  (%d bytes)", i, src, len(bc))
 				}
-				ret.Add("     %s: %s", hashLabel, hashHex)
+				if hashLabel != "" {
+					ret.Add("     %s: %s", hashLabel, hashHex)
+				}
 				return true
 			})
 		}
@@ -225,10 +227,11 @@ func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger
 }
 
 // txConstraintHash returns a (label, hex) pair identifying the content of a
-// tx-level constraint. For `redeemScript(<bin>)` it returns blake2b(bin) —
-// the value registered in the tx's redeemed-set and the literal a
-// callRedeemer site must match. For any other tx-level constraint it
-// returns blake2b of the constraint bytecode itself.
+// tx-level constraint, but only when the value is operationally meaningful:
+// for `redeemScript(<bin>)` it returns blake2b(bin) — the literal a
+// callRedeemer site must match. For any other constraint it returns
+// ("", "") so the caller skips the line entirely (the constraint's source
+// is already printed and a blake2b of arbitrary bytecode adds no signal).
 func txConstraintHash(lib *ledger.Library, bc []byte) (label, hexStr string) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(bc)
 	if err == nil && sym == ledger.SymRedeemScript && len(args) == 1 {
@@ -236,8 +239,7 @@ func txConstraintHash(lib *ledger.Library, bc []byte) (label, hexStr string) {
 		h := blake2b.Sum256(bin)
 		return "redeemed hash", hex.EncodeToString(h[:])
 	}
-	h := blake2b.Sum256(bc)
-	return "bytecode hash", hex.EncodeToString(h[:])
+	return "", ""
 }
 
 func UnlockDataToString(data []byte) string {
