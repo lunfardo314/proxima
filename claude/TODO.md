@@ -59,3 +59,24 @@ the framework rule is authoritative.
 - Implement open lock as plain index data list value. The index will be the evaluated data. Unlockable by anybody. Consider randomization of the unlock slot, e.g. by hash(public key||UTXO ID||slot) mod 5 == 0
 Another option. Interpret open lock data as tuple of index values
 
+## Audit conditional locks: delegate to `sigLock` where fallback is sigLock-equivalent
+
+When a lock's conditional fallback path is meant to behave "like an ordinary
+sigLock for the issuer" (e.g. timeout reclaim, master-reclaim, etc.), the body
+should invoke `sigLock` (the public 0-arg constraint) — or `_sigLock($holder)`
+— rather than hand-rolling a `txHolderID == issuer` comparison. Calling the
+real thing picks up unlock-by-reference for free, keeps semantics in lockstep
+with sigLock as it evolves, and shrinks the lock body.
+
+Sweep candidates (read each, check fallback path):
+- `lock_tag_along.easyfl` — reclaim already uses `_sigLock($1)` ✓
+- `lock_send_with_deadline.easyfl` — master reclaim already uses `_sigLock($1)` ✓
+- `lock_delegate.easyfl` — open-window master path, on-hold paths, frozen paths
+- `timelock.easyfl` (htlc) — after-cutoff path
+- `lock_chain.easyfl`
+- Anywhere else with explicit holder-ID equality checks driving an unlock
+
+Reference: how it ended up in `examples/dex/dex.easyfl` — sell/buy order reclaim
+windows just call `sigLock`. Bundle shrank ~110 bytes vs. the hand-rolled
+version.
+
