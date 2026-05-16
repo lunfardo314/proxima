@@ -213,7 +213,7 @@ func (o *DelegationOutput) MakeDelegationFreezeOutput(txTs base.LedgerTime, free
 	ownTokenBalance := o.Output.TokenBalance() + o.InflationOneSlot()
 	successorTokenBalance := ownTokenBalance + advance
 
-	var amountsVector [15]int64
+	amountsVector := make([]int64, int(AmountIndexFrozenCoverage)+int(lib.MaxFrozenEpochs))
 	amountsVector[AmountIndexTokenBalance] = int64(successorTokenBalance)
 	amountsVector[AmountIndexInflation] = int64(o.InflationOneSlot())
 	for i := byte(0); i < byte(frozenEpochs); i++ {

@@ -60,7 +60,7 @@ type (
 		chainInput               *ledger.OutputWithChainID
 		stemInput                *ledger.OutputWithID // it is branch tx if != nil
 		doNotInflateMainChain    bool                 // default is inflate
-		chainOutAmounts          [15]int64
+		chainOutAmounts          []int64 // allocated in New(): AmountIndexFrozenCoverage + Library.MaxFrozenEpochs
 		vrfProof                 []byte
 		branchCoverageUpperBound uint64 // upper bound for branch coverage, 0 means no enforcement
 		enforceFreezeUpperBound  bool   // if true, check upper bound before each delegation freeze
@@ -103,6 +103,10 @@ func New(par Params) (*SeqTxBuilder, error) {
 		rdr:                   par.StateReader,
 		doNotInflateMainChain: par.DoNotInflateMainChain,
 	}
+	// Sized once from the library: token balance + inflation + per-epoch
+	// frozen-coverage slots. Library.MaxFrozenEpochs is fixed for a given
+	// ledger version, so a single allocation per builder suffices.
+	ret.chainOutAmounts = make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(ret.Library.MaxFrozenEpochs))
 
 	var err error
 	sd, err := ledger.ParseSequencerData(par.Predecessor.Output)

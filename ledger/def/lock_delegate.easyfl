@@ -9,8 +9,8 @@
 // wrapper threads both into `_delegateLock` (target-first arg ordering).
 
 func constDelegationSafeRevocationSlots  : 60  // 10 min
-func constDelegationEpochSlots : u32/700  // almost 2 hours
-func constDelegationMaxFrozenEpochs : 10   // ~20 hours
+func constDelegationEpochSlots : u32/600
+func constDelegationMaxFrozenEpochs : 20
 
 // $0 target chain ChainID
 // -> chainID[0:3] mod slots-in-epoch
