@@ -14,16 +14,25 @@ be enumerated directly from the trie by prefix-scanning that entry.
 
 ### Phased delivery
 
-1. **PoC inside `examples/dex`** — implemented as a single EasyFL local script
-   wired in via `redeemScript(<binary>)` on the consuming transaction and invoked
-   from the order UTXO's lock element through `callRedeemer(<scriptHash>,
-   <fnIdx>, args...)`. Zero ledger changes; per-consume cost is the script bytes
-   carried by the consuming tx. This validates the design and exercises
-   `redeemScript` / `callRedeemer` as a programmability vehicle.
-2. **Graduate to base ledger** — once stable, move the two constraints into
-   `ledger/def/lock_sell_order.easyfl` and `ledger/def/lock_buy_order.easyfl`,
-   register them as standard 0-/2-/3-arg public locks. UTXO layout and index
-   entries stay identical so previously-issued orders remain interpretable.
+1. **PoC inside `examples/dex` — SHIPPED.** Single EasyFL local script wired
+   in via `redeemScript(<binary>)` on the consuming transaction and invoked
+   from each order UTXO's lock element through `callRedeemer(<scriptHash>,
+   <fnIdx>, args...)`. Zero ledger changes; per-consume cost is the script
+   bytes carried by the consuming tx. This validates the design and exercises
+   `redeemScript` / `callRedeemer` as a programmability vehicle. Remains in
+   the repo as a reference implementation of the local-script pattern.
+2. **Graduate to base ledger — SHIPPED.** All three public symbols
+   (`sellOrder`, `buyOrder`, `randomizeConsumption`) plus the shared helpers
+   live in a single consolidated file `ledger/def/lock_dex_orders.easyfl`
+   (the originally-sketched split into `lock_sell_order.easyfl` /
+   `lock_buy_order.easyfl` would have duplicated the shared helpers — one
+   file is cleaner). Typed Go wrappers in `ledger/lock_dex_orders.go`,
+   registered alongside other locks from `def_upgrade0.go`. UTXO layout and
+   index-values entries are identical to the PoC, so the protocol is the
+   same on the wire — the only difference is that the lock element at
+   position 2 is the direct bytecode of `sellOrder(...)` / `buyOrder(...)`
+   instead of a `callRedeemer(...)` envelope, and no `redeemScript(<bin>)`
+   tx-level constraint is needed. Tests in `ledger/tests/dex_orders_test.go`.
 
 ## Atomic-swap mechanics
 
@@ -329,43 +338,40 @@ the tag-along + consolidation into a thinner, dex-agnostic follow-up.
 The lock layer does not care which of these patterns is used; this section
 is operational guidance, not a protocol rule.
 
-## Local-script PoC delivery
+## Implementation pointers
 
-Phase-1 ships under `examples/dex/`:
+### Phase-1 local-script PoC — `examples/dex/`
 
-- `examples/dex/dex.easyfl` — sources of `sellOrder`, `buyOrder`,
-  `randomizeConsumption`, plus internal helpers.
-- `examples/dex/compile.go` — compiles the EasyFL bundle once at start-up,
-  exposes the resulting binary and its blake2b hash via package-level
-  symbols.
-- The order UTXO's lock element (position 2) is
-  `callRedeemer(<hash literal>, <fnIdx>, <lock args...>)`.
-- The consuming transaction attaches the same binary via `redeemScript(<bin>)`
-  exactly once. All sellOrder/buyOrder consumes in that tx reuse the same
-  attached script.
+- `dex.easyfl` — sources of `sellOrder`, `buyOrder`, `randomizeConsumption`,
+  plus internal helpers.
+- `compile.go` — compiles the EasyFL bundle once at start-up, exposes the
+  binary + its blake2b hash via package-level symbols.
+- The order UTXO's lock element (position 2) is `callRedeemer(<hash
+  literal>, <fnIdx>, <lock args...>)`. The consuming transaction attaches
+  the same binary via `redeemScript(<bin>)` exactly once.
+- `builder.go` + `dex_test.go` exercise the full PoC.
 
-Caveats:
-- `<hash literal>` and `<fnIdx>` must be inline-data literals per
-  `callRedeemer` auditability rules. Lock args (`price`, `timeoutSlots`,
-  optionally `amount`) are passed positionally.
-- Per-consuming-tx bytes cost = size of the compiled dex script (rough
-  estimate ≈ 400–700 bytes for both locks + helpers). Acceptable for a PoC;
-  the graduation step eliminates this overhead.
-- The script body is identical to what the graduated base-library locks
-  would contain. Migrating in phase 2 is a wire change (the lock at
-  position 2 becomes `sellOrder(...)` instead of `callRedeemer(...)`), not
-  a logic change.
+The PoC is kept in-tree as a reference implementation of the redeemed-
+local-script pattern.
 
-Test plan for the PoC:
-- Happy-path sell-order match.
-- Happy-path buy-order match.
-- Reclaim after timeout (sell and buy).
-- Fold-attack rejection (two orders, shared receipt).
-- Wrong receipt-output count, wrong sigLock holder, wrong amount, missing
-  1-byte literal, wrong literal value — each should fail validation with a
-  distinct error message.
-- `randomizeConsumption(N)` gating: assert pass/fail across a sweep of
-  slots for a fixed holder.
+### Phase-2 graduation — `ledger/def/lock_dex_orders.easyfl`
+
+- The same EasyFL body lives as a base-library file (consolidated single
+  file rather than the originally-sketched per-lock split, because all
+  three symbols share helpers).
+- Typed Go wrappers `SellOrderLock` / `BuyOrderLock` in
+  `ledger/lock_dex_orders.go` implement the `Lock` interface; standard
+  `WithLock(&SellOrderLock{...})` builds the order UTXO. Registration is
+  in `def_upgrade0.go` alongside the other public locks.
+- `randomizeConsumption` is an additive constraint, not a Lock kind;
+  `ledger.RandomizeConsumptionBytecode(n)` returns its compiled bytecode.
+- Tests in `ledger/tests/dex_orders_test.go`.
+
+Migration from PoC to graduated form is a wire change only: the lock
+element at position 2 becomes `sellOrder(...)` / `buyOrder(...)` bytecode
+directly instead of a `callRedeemer(<hash>, <fnIdx>, ...)` envelope, and no
+`redeemScript(<bin>)` tx-level constraint is needed. UTXO layout, index-
+values entries, and consume-side semantics are identical.
 
 ## Followups (out of scope for v1)
 
@@ -381,6 +387,3 @@ Test plan for the PoC:
   give a trie-sorted order book (bids descending, asks ascending) for
   free; cost is 8 bytes per entry and freezing the price encoding. Easy to
   add later by extending the entry length to 45.
-- **Graduation to base ledger.** Move the two locks into `ledger/def/`,
-  register them as standard public symbols, drop the `callRedeemer`
-  wrapper.

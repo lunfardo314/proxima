@@ -45,6 +45,7 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 		delegateLockSource,
 		tagAlongLockConstraintSource,
 		sendWithDeadlineLockConstraintSource,
+		lockDexOrdersSource,
 		ensureStopFreezeDelegationConstraintSource,
 		nativeTokenSource,
 		_txLayoutValidator0,
@@ -68,6 +69,8 @@ func registerConstraints0(lib *Library) {
 	registerDelegateLock(lib)
 	registerTagAlongLockConstraint(lib)
 	registerSendWithDeadlineLock(lib)
+	registerSellOrderLock(lib)
+	registerBuyOrderLock(lib)
 	registerEnsureConstraints(lib)
 	registerTokenAmount(lib)
 	registerFoundry(lib)
