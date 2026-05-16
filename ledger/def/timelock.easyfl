@@ -42,10 +42,12 @@ or(
            lessThan(txSlot, $2),
            equal(blake2b(selfUnlockParameters), $1)
         ),
-        // signature path: txSlot >= deadline AND tx signed by holder
+        // signature path: txSlot >= deadline AND tx signed by holder.
+        // Delegates to _sigLock so unlock-by-reference works for free and
+        // keeps semantics in lockstep with sigLock.
         and(
            lessOrEqualThan($2, txSlot),
-           equal($0, txHolderID(txSignatureData))
+           _sigLock($0)
         )
      )
   )

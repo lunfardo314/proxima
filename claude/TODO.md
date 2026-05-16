@@ -59,24 +59,31 @@ the framework rule is authoritative.
 - Implement open lock as plain index data list value. The index will be the evaluated data. Unlockable by anybody. Consider randomization of the unlock slot, e.g. by hash(public key||UTXO ID||slot) mod 5 == 0
 Another option. Interpret open lock data as tuple of index values
 
-## Audit conditional locks: delegate to `sigLock` where fallback is sigLock-equivalent
+## Audit conditional locks: delegate to `sigLock` / `chainLock` where fallback is equivalent — DONE
 
 When a lock's conditional fallback path is meant to behave "like an ordinary
-sigLock for the issuer" (e.g. timeout reclaim, master-reclaim, etc.), the body
-should invoke `sigLock` (the public 0-arg constraint) — or `_sigLock($holder)`
-— rather than hand-rolling a `txHolderID == issuer` comparison. Calling the
-real thing picks up unlock-by-reference for free, keeps semantics in lockstep
-with sigLock as it evolves, and shrinks the lock body.
+sigLock for the issuer" (or chainLock for a chain), the body should invoke
+`sigLock` / `_sigLock($holder)` (or `chainLock` / `_chainLock($id)`) rather
+than hand-rolling a `txHolderID == issuer` / chain-id equality. Calling the
+real thing picks up unlock-by-reference for free, keeps semantics in lockstep,
+and shrinks the lock body.
 
-Sweep candidates (read each, check fallback path):
-- `lock_tag_along.easyfl` — reclaim already uses `_sigLock($1)` ✓
-- `lock_send_with_deadline.easyfl` — master reclaim already uses `_sigLock($1)` ✓
-- `lock_delegate.easyfl` — open-window master path, on-hold paths, frozen paths
-- `timelock.easyfl` (htlc) — after-cutoff path
-- `lock_chain.easyfl`
-- Anywhere else with explicit holder-ID equality checks driving an unlock
+Audit results:
 
-Reference: how it ended up in `examples/dex/dex.easyfl` — sell/buy order reclaim
-windows just call `sigLock`. Bundle shrank ~110 bytes vs. the hand-rolled
-version.
+- `lock_tag_along.easyfl` ✓ target window → `_chainLock($0)`, sender reclaim → `_sigLock($1)`.
+- `lock_send_with_deadline.easyfl` ✓ target window → `_sigLock`/`_chainLock` (per targetType), master reclaim → `_sigLock($1)`.
+- `lock_delegate.easyfl` ✓ master path → `_sigLock($1)`, target path → `_chainLock($0)`. Frozen/on-hold/safe-revocation gymnastics are delegation-specific, not redundant sigLock logic.
+- `lock_chain.easyfl` ✓ baseline; nothing to delegate.
+- `lock_signature.easyfl` ✓ baseline; nothing to delegate.
+- `lock_stem.easyfl` ✓ uses `signaturePublicKey(txSignatureData)` for VRF proof, stem-specific, not a sigLock fallback.
+- `timelock.easyfl` (htlc) ❌ → ✓ — signature path was `equal($0, txHolderID(txSignatureData))`; refactored to `_sigLock($0)`. Both HTLC tests still pass; reference-unlock now works on the post-deadline path for free.
+
+Produce-side `equal(masterID, txHolderID(txSignatureData))` checks in tagAlong /
+sendWithDeadline / dex order locks are NOT refactor candidates — they bind the
+issuer at create time, the lock element at output position 2 may not be sigLock,
+and sigLock's produce-side rules (e.g. `selfEnforceZeroAmountsInNonChainedOutput`)
+would be inappropriate to import wholesale.
+
+Reference: `examples/dex/dex.easyfl` — sell/buy order reclaim windows just call
+`sigLock`. Bundle shrank ~110 bytes vs. the hand-rolled version.
 
