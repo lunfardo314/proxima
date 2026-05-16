@@ -86,8 +86,10 @@ func nextTs(after base.LedgerTime) base.LedgerTime {
 func (e *dexEnv) mintTokensFor(t *testing.T, signer ed25519.PrivateKey, signerLock ledger.SigLock, recipient ledger.SigLock, amount uint64) (base.ChainID, *ledger.OutputWithID) {
 	t.Helper()
 
-	// 1) foundry origin (no policy).
-	originOuts := e.outputsOf(t, signerLock)
+	// 1) foundry origin (no policy). Use pure sigLock UTXOs only — previous
+	// mints may have left foundry/token UTXOs in the seller's account that
+	// would break this tx's chain-unlock arithmetic if reconsumed here.
+	originOuts := pureSigLockOutputs(e.outputsOf(t, signerLock))
 	require.NotEmpty(t, originOuts)
 	ts := nextTs(originOuts[0].ID.Timestamp())
 
@@ -556,5 +558,233 @@ func TestSellOrderUnderpaymentRejected(t *testing.T) {
 	// The dex lock's callRedeemer is the failing constraint. Inner !!! error
 	// strings don't bubble through the outer trace, so we just assert the
 	// constraint failed at the order's lock element (path .out[0].constraint[2]).
+	require.Contains(t, err.Error(), "callRedeemer")
+}
+
+// =============================================================================
+// Multi-order trade helpers
+//
+// To exercise multi-order consumption with manageable setup we use two
+// distinct tags (one per order), which avoids having to split a single
+// tokenAmount UTXO across two orders. The lock layer is tag-agnostic; this
+// keeps the test focused on multi-input mechanics rather than token math.
+// =============================================================================
+
+// postSellOrder posts a single sell-order UTXO and returns its loaded form.
+// Driven by the standard BuildSellOrder helper.
+func (e *dexEnv) postSellOrder(t *testing.T, tag base.ChainID, tokenUTXO *ledger.OutputWithID, amount, price uint64, timeoutSlots uint32, deposit uint64) *ledger.OutputWithID {
+	t.Helper()
+	pure := pureSigLockOutputs(e.outputsOf(t, e.sellerLock))
+	require.NotEmpty(t, pure)
+	ts := nextTs(base.MaximumTime(tokenUTXO.Timestamp(), pure[0].Timestamp()))
+
+	txb, err := BuildSellOrder(BuildSellOrderParams{
+		SellerPrivKey: e.sellerPriv,
+		SellerSigLock: e.sellerLock,
+		FundingInputs: append([]*ledger.OutputWithID{tokenUTXO}, pure...),
+		Tag:           tag,
+		Amount:        amount,
+		Price:         price,
+		TimeoutSlots:  timeoutSlots,
+		Deposit:       deposit,
+		TxTimestamp:   ts,
+	})
+	require.NoError(t, err)
+	tx := e.submit(t, txb)
+	return loadOutput(t, e.u, outputIDFromTx(t, tx, 0))
+}
+
+// =============================================================================
+// TestMultiSellOrderMatch — buyer lifts two sell orders (different tags) in
+// a single tx. Two distinct receipts go to the seller, two trader-side
+// tokenAmount outputs go to the buyer, conservation holds across both tags.
+// =============================================================================
+
+func TestMultiSellOrderMatch(t *testing.T) {
+	e := newDexEnv(t)
+
+	const (
+		amountA, amountB = uint64(7), uint64(13)
+		priceA, priceB   = uint64(40_000_000), uint64(60_000_000)
+		timeoutSlots     = uint32(50)
+		depositA         = uint64(200_000_000)
+		depositB         = uint64(200_000_000)
+	)
+
+	tagA, tokenA := e.mintTokensFor(t, e.sellerPriv, e.sellerLock, e.sellerLock, amountA)
+	tagB, tokenB := e.mintTokensFor(t, e.sellerPriv, e.sellerLock, e.sellerLock, amountB)
+	orderA := e.postSellOrder(t, tagA, tokenA, amountA, priceA, timeoutSlots, depositA)
+	orderB := e.postSellOrder(t, tagB, tokenB, amountB, priceB, timeoutSlots, depositB)
+
+	// Buyer's funding: pure-PRXI inputs from buyer's wallet.
+	buyerPure := pureSigLockOutputs(e.outputsOf(t, e.buyerLock))
+	require.NotEmpty(t, buyerPure)
+	fillTs := nextTs(base.MaximumTime(
+		base.MaximumTime(orderA.Timestamp(), orderB.Timestamp()),
+		buyerPure[0].Timestamp(),
+	))
+
+	// Build the multi-input fill tx by hand. Order A at input 0, order B
+	// at input 1, then buyer's funding inputs.
+	txb := txbuilder.New()
+	orderAIdx, err := txb.ConsumeOutput(orderA.Output, orderA.ID)
+	require.NoError(t, err)
+	orderBIdx, err := txb.ConsumeOutput(orderB.Output, orderB.ID)
+	require.NoError(t, err)
+	fundingTotal := uint64(0)
+	for i, in := range buyerPure {
+		idx, err := txb.ConsumeOutput(in.Output, in.ID)
+		require.NoError(t, err)
+		if i == 0 {
+			txb.PutSignatureUnlock(idx)
+		} else {
+			// Reference the first funding input (signature-bearing one).
+			require.NoError(t, txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, byte(int(orderBIdx)+1)))
+		}
+		fundingTotal += in.Output.TokenBalance()
+	}
+	paymentA := amountA * priceA
+	paymentB := amountB * priceB
+	require.GreaterOrEqual(t, fundingTotal, paymentA+paymentB)
+
+	// Receipt A at output 0 (for order A's holder), literal=orderAIdx.
+	sellerHolder := ledger.SigLock(HolderIDOf(e.sellerPriv))
+	receiptA := buildReceiptOutputSell(depositA+paymentA, sellerHolder, byte(orderAIdx))
+	receiptAIdx, err := txb.ProduceOutput(receiptA)
+	require.NoError(t, err)
+	txb.PutUnlockParams(orderAIdx, ledger.ConstraintIndexLock, []byte{byte(receiptAIdx)})
+
+	// Receipt B at output 1, literal=orderBIdx.
+	receiptB := buildReceiptOutputSell(depositB+paymentB, sellerHolder, byte(orderBIdx))
+	receiptBIdx, err := txb.ProduceOutput(receiptB)
+	require.NoError(t, err)
+	txb.PutUnlockParams(orderBIdx, ledger.ConstraintIndexLock, []byte{byte(receiptBIdx)})
+
+	// Buyer's token outputs — one per tag.
+	const dust = uint64(100_000_000)
+	for _, ta := range []struct {
+		tag    base.ChainID
+		amount uint64
+	}{{tagA, amountA}, {tagB, amountB}} {
+		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(dust))
+			o.WithLock(e.buyerLock)
+			o.WithTokenAmount(ta.tag, ta.amount)
+		})
+		_, err := txb.ProduceOutput(out)
+		require.NoError(t, err)
+	}
+
+	// Base-token change to buyer.
+	consumed := txb.ConsumedAmount()
+	produced, _ := txb.ProducedAmount()
+	if consumed > produced {
+		_, err = txb.ProduceOutput(ledger.OutputBasic(int64(consumed-produced), e.buyerLock))
+		require.NoError(t, err)
+	}
+
+	// One conservation sentinel per tag.
+	txb.DeclareTokenConservation(tagA)
+	txb.DeclareTokenConservation(tagB)
+	require.NoError(t, pushRedeemScript(txb))
+	finaliseAndSign(txb, fillTs, e.buyerPriv)
+
+	tx := e.submit(t, txb)
+	require.True(t, tx.IsScriptRedeemed(GetBins().Hash))
+
+	// Verify both receipts carry the expected amounts.
+	rA := loadOutput(t, e.u, outputIDFromTx(t, tx, byte(receiptAIdx)))
+	require.Equal(t, depositA+paymentA, rA.Output.TokenBalance())
+	rB := loadOutput(t, e.u, outputIDFromTx(t, tx, byte(receiptBIdx)))
+	require.Equal(t, depositB+paymentB, rB.Output.TokenBalance())
+}
+
+// =============================================================================
+// TestFoldAttackRejection — buyer attempts to lift two sell orders sharing a
+// single receipt output. The 1-byte literal at receipt position 3 can equal
+// only one consumed order's input index, so the other order's consume check
+// rejects the tx.
+// =============================================================================
+
+func TestFoldAttackRejection(t *testing.T) {
+	e := newDexEnv(t)
+
+	const (
+		amountA, amountB = uint64(7), uint64(13)
+		priceA, priceB   = uint64(40_000_000), uint64(60_000_000)
+		timeoutSlots     = uint32(50)
+		deposit          = uint64(200_000_000)
+	)
+
+	tagA, tokenA := e.mintTokensFor(t, e.sellerPriv, e.sellerLock, e.sellerLock, amountA)
+	tagB, tokenB := e.mintTokensFor(t, e.sellerPriv, e.sellerLock, e.sellerLock, amountB)
+	orderA := e.postSellOrder(t, tagA, tokenA, amountA, priceA, timeoutSlots, deposit)
+	orderB := e.postSellOrder(t, tagB, tokenB, amountB, priceB, timeoutSlots, deposit)
+
+	buyerPure := pureSigLockOutputs(e.outputsOf(t, e.buyerLock))
+	require.NotEmpty(t, buyerPure)
+	fillTs := nextTs(base.MaximumTime(
+		base.MaximumTime(orderA.Timestamp(), orderB.Timestamp()),
+		buyerPure[0].Timestamp(),
+	))
+
+	txb := txbuilder.New()
+	orderAIdx, err := txb.ConsumeOutput(orderA.Output, orderA.ID)
+	require.NoError(t, err)
+	orderBIdx, err := txb.ConsumeOutput(orderB.Output, orderB.ID)
+	require.NoError(t, err)
+	for i, in := range buyerPure {
+		idx, err := txb.ConsumeOutput(in.Output, in.ID)
+		require.NoError(t, err)
+		if i == 0 {
+			txb.PutSignatureUnlock(idx)
+		} else {
+			require.NoError(t, txb.PutUnlockReference(idx, ledger.ConstraintIndexLock, byte(int(orderBIdx)+1)))
+		}
+	}
+
+	// One "fat" receipt large enough for both payments. Literal = orderAIdx.
+	// Both orders unlock with K=0, pointing to this single receipt — so order
+	// B's check sees literal=orderAIdx but expects literal=orderBIdx.
+	sellerHolder := ledger.SigLock(HolderIDOf(e.sellerPriv))
+	fatReceipt := buildReceiptOutputSell(
+		2*deposit+amountA*priceA+amountB*priceB,
+		sellerHolder,
+		byte(orderAIdx),
+	)
+	receiptIdx, err := txb.ProduceOutput(fatReceipt)
+	require.NoError(t, err)
+	txb.PutUnlockParams(orderAIdx, ledger.ConstraintIndexLock, []byte{byte(receiptIdx)})
+	txb.PutUnlockParams(orderBIdx, ledger.ConstraintIndexLock, []byte{byte(receiptIdx)})
+
+	// Buyer's token outputs.
+	const dust = uint64(100_000_000)
+	for _, ta := range []struct {
+		tag    base.ChainID
+		amount uint64
+	}{{tagA, amountA}, {tagB, amountB}} {
+		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(dust))
+			o.WithLock(e.buyerLock)
+			o.WithTokenAmount(ta.tag, ta.amount)
+		})
+		_, err := txb.ProduceOutput(out)
+		require.NoError(t, err)
+	}
+
+	consumed := txb.ConsumedAmount()
+	produced, _ := txb.ProducedAmount()
+	if consumed > produced {
+		_, err = txb.ProduceOutput(ledger.OutputBasic(int64(consumed-produced), e.buyerLock))
+		require.NoError(t, err)
+	}
+
+	txb.DeclareTokenConservation(tagA)
+	txb.DeclareTokenConservation(tagB)
+	require.NoError(t, pushRedeemScript(txb))
+	finaliseAndSign(txb, fillTs, e.buyerPriv)
+
+	_, _, failed, err := txb.BytesWithValidation()
+	require.Error(t, err, "fold attack must be rejected by the dex lock; tx string:\n%s", failed)
 	require.Contains(t, err.Error(), "callRedeemer")
 }

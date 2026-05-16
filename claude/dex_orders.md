@@ -271,6 +271,64 @@ func randomizeConsumption :
   `lessOrEqualThan(u64/2, uint8Bytes($0))` and
   `lessOrEqualThan(uint8Bytes($0), u64/32)`.
 
+## Multi-order transactions
+
+The most common usage is one order per consuming tx, but the lock design
+does not require it. A trader can lift any number of orders in a single tx
+— all sells, all buys, or a mix (the natural shape of an arbitrage trade).
+
+### No extra machinery is needed
+
+Each consumed order's lock independently verifies the receipt at the index
+named in *its own* unlock parameter. The anti-fold defence — the 1-byte
+inline-data literal at receipt position 3 that must equal the consumed
+order's `selfOutputIndex` — already prevents two orders from sharing one
+receipt: distinct input indices ⇒ distinct required literal values ⇒ a
+single produced output cannot satisfy more than one order.
+
+So an N-order trade transaction simply has:
+
+- N order inputs at input indices `0..N-1` (plus the trader's own funding
+  inputs after).
+- N receipt outputs, each one carrying the right literal value and going to
+  the matching issuer.
+- The trader's own outputs collecting whatever they took out of the swaps
+  (N native-token outputs from N sell fills, N payment outputs from N buy
+  fills, or a mix).
+- One `redeemScript(dexBin)` constraint at the tx level — attached once,
+  serves every consumed order's `callRedeemer` dispatch.
+- One `token(tag, 0x)` conservation sentinel per distinct tag involved.
+
+### UTXO blowup at issuers
+
+N filled orders produce N small receipt UTXOs at the issuer side. Each
+carries its own storage deposit, so issuers who keep posting orders without
+consolidating end up with many short outputs locking non-trivial base-token
+deposits. Consolidation is a normal sigLock-only spend by the issuer — no
+dex logic involved — and is unrelated to the trading-tx batch the trader
+constructs.
+
+### Two-tx batch pattern for traders
+
+A trader filling N orders also produces N trader-side outputs (one per
+consumed order: the X tokens out of each filled sell, the X·Y base tokens
+out of each filled buy). Rather than carrying everything in one fat tx,
+the trader can split:
+
+- **Tx1** lifts the orders. Trader-side outputs land as N separate UTXOs.
+  Lean — no tag-along, no consolidation.
+- **Tx2** consumes Tx1's trader-side outputs (only — receipts going to
+  other issuers stay where they are) into one or a few consolidated UTXOs,
+  and pays the tag-along here.
+
+Submitted as a pair, Tx2's dependency on Tx1 ties their inclusion together.
+This keeps Tx1's bytes minimal (relevant because the tx is already heavy
+with N order inputs + N receipts + the dex binary attachment), and pushes
+the tag-along + consolidation into a thinner, dex-agnostic follow-up.
+
+The lock layer does not care which of these patterns is used; this section
+is operational guidance, not a protocol rule.
+
 ## Local-script PoC delivery
 
 Phase-1 ships under `examples/dex/`:
