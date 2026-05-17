@@ -554,7 +554,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		for step := 0; step < par.howManySteps; step++ {
 			ts = ts.AddSlots(1)
 			txSlot = ts.Slot
-			epoch := ledger.L(0).EpochFromSlotDirect(seqID, txSlot)
+			epoch := ledger.L(0).EpochFromSlotDirect(seqID, txSlot, ledger.L(0).DelegationEpochSlots)
 			if epochStats == nil || epochStats.epoch != epoch {
 				if epochStats != nil && par.prnEpochStats {
 					a := seqOut.Output.TokenBalance()
@@ -794,12 +794,12 @@ var _revokeSchedule = map[uint32][]struct{ d, s uint32 }{
 
 // postRevokeRequestsInEpoch creates revocation requests
 func (td *testWithUTXODBData) postRevokeRequestsInEpoch(slot uint32) int {
-	epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, slot)
+	epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, slot, ledger.L(0).DelegationEpochSlots)
 	lst, ok := _revokeSchedule[epoch]
 	if !ok {
 		return 0
 	}
-	firstSlot, _ := ledger.L(0).EpochLimits(td.seqID, epoch)
+	firstSlot, _ := ledger.L(0).EpochLimits(td.seqID, epoch, ledger.L(0).DelegationEpochSlots)
 	nrSlotInEpoch := slot - firstSlot + 1
 	nRequests := 0
 	for i := range lst {
@@ -852,7 +852,7 @@ func TestWithUTXODB(t *testing.T) {
 		ts = ts.AddSlots(1)
 		txSlot := ts.Slot
 
-		epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, ts.Slot)
+		epoch := ledger.L(0).EpochFromSlotDirect(td.seqID, ts.Slot, ledger.L(0).DelegationEpochSlots)
 		if stats == nil || epoch != stats.epoch {
 			if stats != nil {
 				t.Logf("%4d (%5d + %3d slots), freezes: %3d   maxTx: %5d    %s",

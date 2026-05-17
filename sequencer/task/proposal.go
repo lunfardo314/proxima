@@ -279,8 +279,13 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 
 	// Source epoch params from this sequencer's own delegationParams
 	// (Phase 4 of delegation_epoch_params). The SeqTxBuilder reads them
-	// in New() from the chain input.
+	// in New() from the chain input. A sequencer chain without
+	// delegationParams cannot accept delegations — early-return with
+	// nothing to freeze rather than dividing by zero in EpochFromSlot.
 	chainEpochSlots, chainMaxFrozenEpochs := p.SeqTxBuilder.ChainDelegationParams()
+	if chainMaxFrozenEpochs == 0 || chainEpochSlots == 0 {
+		return ret
+	}
 	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TransactionData.Timestamp.Slot, chainEpochSlots)
 
 	for e := txEpoch; e < txEpoch+uint32(chainMaxFrozenEpochs); e++ {

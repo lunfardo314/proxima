@@ -362,11 +362,18 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 
 	ts := td.auxOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 	amount := (td.auxOutput.Output.TokenBalance() - tagAlongFee) / uint64(n)
+	// Sequencer chains MUST carry delegationParams at index 6 to be a
+	// delegation target — the sequencer's startup check refuses to start
+	// without it, and (more fundamentally) the proposer's epoch math
+	// divides by zero. Attach the default delegationParams on every
+	// chain origin built here. Phase 4 of claude/delegation_epoch_params.md.
+	dp := ledger.NewDelegationParams(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 	for i := 0; i < n; i++ {
 		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(amount))
 			o.WithLock(td.addrAux)
-			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
+			o.PutConstraint(ledger.NewChainOrigin(ts.Slot).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(dp.Bytes(), ledger.ConstraintIndexDelegationParams)
 		})
 		_, err = txb.ProduceOutput(o)
 		require.NoError(td.t, err)
@@ -426,11 +433,16 @@ func (td *workflowTestData) makeChainOriginsWithAmounts(amounts []uint64) {
 	require.NoError(td.t, err)
 
 	ts := td.auxOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
+	// Same delegationParams attachment as makeChainOrigins — every
+	// sequencer chain in tests must accept delegations or the sequencer
+	// will refuse to start.
+	dp := ledger.NewDelegationParams(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 	for i := 0; i < n; i++ {
 		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(amounts[i]))
 			o.WithLock(td.addrAux)
-			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
+			o.PutConstraint(ledger.NewChainOrigin(ts.Slot).Bytes(), ledger.ConstraintIndexChain)
+			o.PutConstraint(dp.Bytes(), ledger.ConstraintIndexDelegationParams)
 		})
 		_, err = txb.ProduceOutput(o)
 		require.NoError(td.t, err)

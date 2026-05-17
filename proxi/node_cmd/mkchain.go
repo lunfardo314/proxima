@@ -14,13 +14,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Chain-origin flags shared by mkchain and setup_seq. AcceptDelegations
-// is the parsed effective opt-in flag (per the inverse --no-delegations
-// CLI flag plus the command default). See claude/delegation_epoch_params.md.
+// Chain-origin flags shared by mkchain and setup_seq.
+// See claude/delegation_epoch_params.md.
 var (
+	flagAcceptDelegations         bool
 	flagDelegationEpochSlots      uint32
 	flagDelegationMaxFrozenEpochs uint8
-	flagNoDelegations             bool
 )
 
 func initMakeChainCmd() *cobra.Command {
@@ -36,30 +35,26 @@ func initMakeChainCmd() *cobra.Command {
 	return makeChainCmd
 }
 
-// addDelegationParamsFlags wires --delegation-epoch-slots,
-// --delegation-max-frozen-epochs and --no-delegations onto the given
-// command. defaultOptIn controls whether delegationParams attaches by
-// default: sequencer setup wants default-on, regular mkchain wants
-// default-off (the user passes the flags explicitly).
+// addDelegationParamsFlags wires --accept-delegations,
+// --delegation-epoch-slots and --delegation-max-frozen-epochs onto the
+// given command. defaultOptIn controls --accept-delegations's default:
+// sequencer setup defaults to true (a sequencer that can't accept
+// delegations is useless and refused by the sequencer's startup
+// precondition); regular mkchain defaults to false.
 func addDelegationParamsFlags(cmd *cobra.Command, defaultOptIn bool) {
 	lib := ledger.L(0)
+	cmd.PersistentFlags().BoolVar(&flagAcceptDelegations, "accept-delegations", defaultOptIn,
+		"attach delegationParams at chain origin so the chain can accept delegations (sequencer chains REQUIRE this)")
 	cmd.PersistentFlags().Uint32Var(&flagDelegationEpochSlots, "delegation-epoch-slots", lib.DelegationEpochSlots,
-		"target delegation epoch length in slots (bounds enforced by EasyFL)")
+		"target delegation epoch length in slots (only consulted when --accept-delegations is set; bounds enforced by EasyFL)")
 	cmd.PersistentFlags().Uint8Var(&flagDelegationMaxFrozenEpochs, "delegation-max-frozen-epochs", uint8(lib.MaxFrozenEpochs),
-		"target maximum simultaneous frozen epochs (bounds enforced by EasyFL)")
-	if defaultOptIn {
-		cmd.PersistentFlags().BoolVar(&flagNoDelegations, "no-delegations", false,
-			"omit delegationParams (the chain cannot become a delegation target)")
-	} else {
-		cmd.PersistentFlags().BoolVar(&flagNoDelegations, "no-delegations", true,
-			"omit delegationParams (the chain cannot become a delegation target)")
-	}
+		"target maximum simultaneous frozen epochs (only consulted when --accept-delegations is set; bounds enforced by EasyFL)")
 }
 
 // chainOriginDelegationParams returns the *ledger.DelegationParams to
 // attach at chain origin based on the parsed flags, or nil to opt out.
 func chainOriginDelegationParams() *ledger.DelegationParams {
-	if flagNoDelegations {
+	if !flagAcceptDelegations {
 		return nil
 	}
 	return ledger.NewDelegationParams(flagDelegationEpochSlots, flagDelegationMaxFrozenEpochs)

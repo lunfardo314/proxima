@@ -15,6 +15,7 @@ const (
 
 func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithChainID {
 	oid := base.GenesisOutputID()
+	lib := L(0)
 	return &OutputWithChainID{
 		OutputWithID: OutputWithID{
 			ID: oid,
@@ -27,6 +28,14 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 				msData.SetName(BootstrapSequencerName)
 				idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(msData.Bytes()))
 				util.Assertf(idxMsData == SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
+
+				// Bootstrap sequencer must accept delegations (Phase 4 of
+				// claude/delegation_epoch_params.md). The sequencer's
+				// startup check refuses to start otherwise.
+				o.PutConstraint(
+					NewDelegationParams(lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs)).Bytes(),
+					ConstraintIndexDelegationParams,
+				)
 			}),
 		},
 		ChainConstraintData: ChainConstraintData{

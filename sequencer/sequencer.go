@@ -429,6 +429,26 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 	}
 	seq.log.Infof("checkSequencerStartOutput: sequencer controller is %s", lock.String())
 
+	// A sequencer chain MUST carry delegationParams at index 6 to be a
+	// delegation target. Without it the proposer's
+	// selectDelegationsToFreeze divides by zero (chainEpochSlots == 0)
+	// the first time a candidate delegation surfaces. Fail fast here.
+	// (Phase 4 of claude/delegation_epoch_params.md.)
+	dpBytes, dpErr := oReal.ConstraintAt(ledger.ConstraintIndexDelegationParams)
+	if dpErr != nil || len(dpBytes) == 0 {
+		seq.log.Errorf("checkSequencerStartOutput: sequencer chain output is missing delegationParams at index %d. "+
+			"Re-create the chain via `proxi node setup_seq` (default-on) or with `proxi node mkchain --accept-delegations`. "+
+			"Sequencer will not start.", ledger.ConstraintIndexDelegationParams)
+		return false
+	}
+	dp, err := ledger.DelegationParamsFromBytes(dpBytes)
+	if err != nil {
+		seq.log.Errorf("checkSequencerStartOutput: malformed delegationParams on sequencer chain output: %v. Sequencer will not start", err)
+		return false
+	}
+	seq.log.Infof("checkSequencerStartOutput: delegationParams epochSlots=%d, maxFrozenEpochs=%d",
+		dp.EpochSlots, dp.MaxFrozenEpochs)
+
 	amount := oReal.TokenBalance()
 	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",
 		wOut.IDStringShort(), util.Th(amount), util.PercentString(int(amount), int(ledger.L(0).InitialSupply)))
