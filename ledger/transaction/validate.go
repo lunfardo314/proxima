@@ -288,6 +288,13 @@ func (tx *Transaction) runTuple(tu *tuples.Tuple, ctxPath tuples.TreePath, spool
 			return true
 		}
 		// not amount, not index-values
+		// An empty bytecode at an extras position (>= ConstraintIndexChain)
+		// is a placeholder used to keep a downstream constraint at a fixed
+		// index (e.g. delegationParams at ConstraintIndexDelegationParams
+		// on a chain that doesn't use slot 4/5). Treat it as absent.
+		if len(bytecode) == 0 && idx >= int(ledger.ConstraintIndexChain) {
+			return true
+		}
 		evalPath[len(evalPath)-1] = byte(idx)
 		var res []byte
 

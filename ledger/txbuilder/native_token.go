@@ -20,6 +20,13 @@ import (
 // Minting happens at a later transit. foundry() does NOT enforce
 // immutability of index 5 across transit; the policy script (if any)
 // is responsible for self-locking via `selfImmutableOnSuccessorIndex`.
+// MakeFoundryOriginOutput builds a foundry chain origin output.
+// Foundries are never delegation targets — delegation targets are
+// always sequencer chains. A foundry's controller may DELEGATE the
+// foundry's token holdings to a sequencer by referencing the foundry
+// chain ID as the master in a separate delegation UTXO (chainLock
+// master path); the foundry chain output itself never carries
+// delegationParams. See claude/delegation_epoch_params.md.
 func MakeFoundryOriginOutput(amount uint64, lock ledger.Lock, originSlot uint32, initialSupply uint64, policyScript []byte) *ledger.Output {
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(lock)

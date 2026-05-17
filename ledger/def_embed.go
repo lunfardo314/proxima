@@ -155,6 +155,7 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalTupleLenAtPath":           evalTupleLenAtPath,
 	"embeddedEnforceFrozenCoverageOnDelegateOutput":     evalEnforceFrozenCoverageOnDelegateOutput,
 	"embeddedEnforceFrozenCoverageOnNonDelegationChain": evalEnforceFrozenCoverageOnNonDelegationChain,
+	"embeddedDelegationOriginCrossCheck":                evalDelegationOriginCrossCheck,
 	"embeddedIsInflationAndFrozenCoverageZero":          evalIsInflationAndFrozenCoverageZero,
 	"evalRedeemScript":                                  evalRedeemScript,
 	"evalCallRedeemer":                                  evalCallRedeemer,

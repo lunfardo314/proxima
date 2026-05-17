@@ -781,15 +781,27 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 
 		resp.TokenBalance = o.Output.TokenBalance()
 		resp.StorageDeposit = ledger.MinimumStorageDeposit(o.Output)
-		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
+		// Per Phase 3 of delegation_epoch_params: source epoch params from
+		// this sequencer chain's own delegationParams at index 6 (if
+		// attached); chains without it advertise the global defaults so
+		// API clients keep working.
+		epochSlots := lib.DelegationEpochSlots
+		maxFrozenEpochs := byte(lib.MaxFrozenEpochs)
+		if dpBytes, dpErr := o.Output.At(int(ledger.ConstraintIndexDelegationParams)); dpErr == nil && len(dpBytes) > 0 {
+			if dp, dpParseErr := ledger.DelegationParamsFromBytes(dpBytes); dpParseErr == nil {
+				epochSlots = dp.EpochSlots
+				maxFrozenEpochs = dp.MaxFrozenEpochs
+			}
+		}
+		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(maxFrozenEpochs)
 		resp.CumulativeChainInflation = cc.CumulativeChainInflation
 		resp.CumulativeBranchBonus = cc.CumulativeBranchBonus
 
 		resp.NowSlot = nowSlot
-		resp.CurrentEpoch = lib.EpochFromSlotDirect(seqID, nowSlot)
-		resp.NextEpochBoundarySlot = lib.LastSlotInEpochDirect(seqID, resp.CurrentEpoch)
-		resp.MaxFrozenEpochs = lib.MaxFrozenEpochs
-		resp.EpochDurationSlots = lib.DelegationEpochSlots
+		resp.CurrentEpoch = lib.EpochFromSlotDirect(seqID, nowSlot, epochSlots)
+		resp.NextEpochBoundarySlot = lib.LastSlotInEpochDirect(seqID, resp.CurrentEpoch, epochSlots)
+		resp.MaxFrozenEpochs = uint32(maxFrozenEpochs)
+		resp.EpochDurationSlots = epochSlots
 		resp.CoverageLowerBound = lib.BranchCoverageLowerBound(nowSlot)
 		resp.CoverageUpperBound = lib.BranchCoverageUpperBound(nowSlot)
 

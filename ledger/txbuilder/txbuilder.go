@@ -303,10 +303,28 @@ func (txb *TxBuilder) LoadInput(i byte) (*ledger.Output, error) {
 	return txb.ConsumedOutputs[i].Clone(), nil
 }
 
-// CalcFrozenCoverageDelta sums up frozen coverage vectors of all delegation outputs
+// CalcFrozenCoverageDelta sums up frozen coverage vectors of all delegation outputs.
+// The result is sized at the maximum TargetMaxFrozenEpochs observed across
+// all produced delegation outputs in this tx (Phase 4 of
+// delegation_epoch_params). All delegations in a sequencer's freeze tx
+// target the same chain, so this is effectively the chain's
+// maxFrozenEpochs.
 func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
-	lib := ledger.L(txb.TransactionData.Timestamp.Slot)
-	sum := make([]int64, lib.MaxFrozenEpochs+2)
+	maxLen := 0
+	for _, o := range txb.TransactionData.Outputs {
+		if o.Lock().Name() != ledger.DelegateLockName {
+			continue
+		}
+		n := o.Amounts().NumElements()
+		if n > maxLen {
+			maxLen = n
+		}
+	}
+	if maxLen < int(ledger.AmountIndexFrozenCoverage) {
+		// no delegation outputs (or all have no FC cells)
+		return nil, nil
+	}
+	sum := make([]int64, maxLen)
 	for _, o := range txb.TransactionData.Outputs {
 		if o.Lock().Name() == ledger.DelegateLockName {
 			if overflow := o.Amounts().AddToVector(sum); overflow {
@@ -314,27 +332,44 @@ func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 			}
 		}
 	}
-	return sum[2 : 2+lib.MaxFrozenEpochs], nil
+	return sum[ledger.AmountIndexFrozenCoverage:], nil
 }
 
+// MustPutFrozenCoverage adjusts the produced chain output's amounts
+// vector to carry forward the predecessor's frozen coverage (shifted
+// by the inter-tx epoch difference) plus the per-epoch deltas from
+// produced delegation outputs. Phase 4 of delegation_epoch_params:
+// epochSlots and maxFrozenEpochs come from this chain's own
+// delegationParams (at ConstraintIndexDelegationParams on the produced
+// chain output).
 func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
 	o := txb.TransactionData.Outputs[producedOutputIdx]
 
 	lib := ledger.L(targetTs.Slot)
-	a := make([]int64, lib.MaxFrozenEpochs+2)
-	a[0] = int64(o.TokenBalance())
-	a[1] = int64(o.Inflation())
-	copy(a[2:], frozenCoverageDeltaVector)
+
+	// Read this chain's delegationParams. Required: a chain receiving
+	// frozen coverage must opt in.
+	dpBytes, dpErr := o.At(int(ledger.ConstraintIndexDelegationParams))
+	util.Assertf(dpErr == nil && len(dpBytes) > 0,
+		"MustPutFrozenCoverage: produced chain output must carry delegationParams to receive frozen coverage")
+	dp, err := ledger.DelegationParamsFromBytesWithLib(dpBytes, lib)
+	util.AssertNoError(err)
+
+	a := make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(dp.MaxFrozenEpochs))
+	a[ledger.AmountIndexTokenBalance] = int64(o.TokenBalance())
+	a[ledger.AmountIndexInflation] = int64(o.Inflation())
+	copy(a[ledger.AmountIndexFrozenCoverage:], frozenCoverageDeltaVector)
 
 	// find the predecessor and adjust its vector
 	cc := o.ChainConstraint()
 	util.Assertf(cc != nil, "MustPutFrozenCoverage: inconsistency 1")
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
-	predVector := oPred.Amounts().FrozenCoverageVector(byte(lib.MaxFrozenEpochs))
+	predVector := oPred.Amounts().FrozenCoverageVector(dp.MaxFrozenEpochs)
 	predTs := txb.TransactionData.InputIDs[cc.PredecessorInputIndex].Timestamp()
-	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs)
+	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs,
+		dp.EpochSlots, dp.MaxFrozenEpochs)
 	for i := range frozenCoverageDeltaVector {
-		a[i+2] += predVectorAdjusted[i]
+		a[int(ledger.AmountIndexFrozenCoverage)+i] += predVectorAdjusted[i]
 	}
 
 	txb.TransactionData.Outputs[producedOutputIdx] = o.Clone(func(o *ledger.OutputBuilder) {
@@ -500,10 +535,27 @@ func (t *TransferData) WithTagAlong(target base.ChainID, fee uint64) *TransferDa
 func (t *TransferData) WithConstraintBinary(constr []byte, idx ...byte) *TransferData {
 	if len(idx) == 0 {
 		t.AddConstraints = append(t.AddConstraints, constr)
-	} else {
-		util.Assertf(idx[0] == 0xff || idx[0] < ledger.ConstraintIndexChain, "WithConstraintBinary: wrong constraint index")
-		t.AddConstraints[idx[0]] = constr
+		return t
 	}
+	// idx[0] == 0xff means "append"; idx[0] < ConstraintIndexChain (3)
+	// overwrites a mandatory pre-chain slot; idx[0] > ConstraintIndexChain
+	// places at a specific extras position (pads with empty placeholders
+	// if needed so the absolute output index is honoured by the
+	// downstream tuple builder).
+	if idx[0] == 0xff || idx[0] < ledger.ConstraintIndexChain {
+		t.AddConstraints[idx[0]] = constr
+		return t
+	}
+	util.Assertf(idx[0] > ledger.ConstraintIndexChain, "WithConstraintBinary: cannot overwrite the chain slot directly")
+	// `AddConstraints` is appended in order starting at ConstraintIndexChain;
+	// so the absolute output index of position `j` in the slice is
+	// `ConstraintIndexChain + j`. Pad up to the target position with
+	// nil entries that the output builder will skip.
+	target := int(idx[0] - ledger.ConstraintIndexChain)
+	for len(t.AddConstraints) <= target {
+		t.AddConstraints = append(t.AddConstraints, nil)
+	}
+	t.AddConstraints[target] = constr
 	return t
 }
 
@@ -561,8 +613,11 @@ func (t *TransferData) TotalAdjustedAmount() uint64 {
 
 	outTentative := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(math.MaxUint64 / 2)).WithLock(t.Lock)
-		for _, c := range t.AddConstraints {
-			o.MustPushConstraint(c)
+		for i, c := range t.AddConstraints {
+			if c == nil {
+				continue
+			}
+			o.PutConstraint(c, ledger.ConstraintIndexChain+byte(i))
 		}
 	})
 
@@ -674,8 +729,16 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 			err = fmt.Errorf("MakeSimpleTransferTransactionWithRemainder: too many UTXO elements")
 			return
 		}
-		for _, constr := range par.AddConstraints {
-			o.MustPushConstraint(constr)
+		// AddConstraints is indexed relative to ConstraintIndexChain (3):
+		// entry 0 lands at output index 3, entry 1 at 4, etc. Use
+		// PutConstraint with an explicit absolute index so nil padding
+		// slots remain empty rather than being pushed as zero-length
+		// elements.
+		for i, constr := range par.AddConstraints {
+			if constr == nil {
+				continue
+			}
+			o.PutConstraint(constr, ledger.ConstraintIndexChain+byte(i))
 		}
 	})
 	if err != nil {
@@ -910,8 +973,12 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 			err = fmt.Errorf("too many UTXO elements")
 			return
 		}
-		for _, constr := range par.AddConstraints {
-			o.MustPushConstraint(constr)
+		// Same indexing convention as MakeSimpleTransferTransactionWithRemainder.
+		for i, constr := range par.AddConstraints {
+			if constr == nil {
+				continue
+			}
+			o.PutConstraint(constr, ledger.ConstraintIndexChain+byte(i))
 		}
 	})
 	if err != nil {
@@ -986,6 +1053,13 @@ type MakeDelegationInitTransactionParams struct {
 	Inputs                 []*ledger.OutputWithID
 	TagAlongSequencer      base.ChainID
 	TagAlongFee            uint64
+	// TargetEpochSlots and TargetMaxFrozenEpochs are copies of the target
+	// chain's delegationParams (Phase 5 of
+	// claude/delegation_epoch_params.md). When both are zero, the
+	// builder falls back to the library defaults — keeps older tests
+	// that don't fetch per-target values working.
+	TargetEpochSlots      uint32
+	TargetMaxFrozenEpochs byte
 }
 
 func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]byte, error) {
@@ -1010,6 +1084,17 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: transaction pace constraint violated")
 	}
 
+	// Phase 5 of delegation_epoch_params: caller supplies the target's
+	// inline params. Fall back to library defaults when not supplied
+	// (legacy callers / tests using chains created with the defaults).
+	targetEpochSlots := par.TargetEpochSlots
+	if targetEpochSlots == 0 {
+		targetEpochSlots = lib.DelegationEpochSlots
+	}
+	targetMaxFrozenEpochs := par.TargetMaxFrozenEpochs
+	if targetMaxFrozenEpochs == 0 {
+		targetMaxFrozenEpochs = byte(lib.MaxFrozenEpochs)
+	}
 	delegateOutput := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
 		Amount:                 par.Amount,
 		MasterID:               par.MasterID,
@@ -1017,6 +1102,8 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		MaxFrozenEpochs:        par.MaxFrozenEpochs,
 		RequiredInflationShare: par.RequiredInflationShare,
 		StartSlot:              par.Timestamp.Slot,
+		EpochSlots:             targetEpochSlots,
+		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
 	})
 	if _, err = txb.ProduceOutput(delegateOutput); err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w", err)

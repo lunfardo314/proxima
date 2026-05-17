@@ -169,12 +169,16 @@ func evalTotalProduced(par *easyfl.CallParams[*EvalContext]) []byte {
 
 func evalIsInflationAndFrozenCoverageZero(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
-	lib := ctx.GetLibrary()
 	o := ctx.SelfOutput()
 
 	amounts := o.Amounts()
-	if amounts.NumElements() <= 1 ||
-		(amounts.InflationAmount() == 0 && amounts.IsFrozenCoverageZero(byte(lib.MaxFrozenEpochs))) {
+	// NewAmounts trims trailing zeros, so the tuple has no
+	// frozen-coverage cells iff NumElements <= AmountIndexFrozenCoverage.
+	// Combined with inflation == 0, that means the only non-zero amount
+	// (if any) is the token balance. Per-chain maxFrozenEpochs is not
+	// needed for this check.
+	if amounts.NumElements() <= int(AmountIndexFrozenCoverage) &&
+		(amounts.NumElements() <= int(AmountIndexInflation) || amounts.InflationAmount() == 0) {
 		return par.AllocData(0xff)
 	}
 	return nil

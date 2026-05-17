@@ -742,6 +742,12 @@ type TransferFromED25519WalletParams struct {
 	Amount           uint64
 	Target           ledger.Lock
 	MaxOutputs       int
+	// DelegationParams, if non-nil, attaches the delegationParams
+	// constraint at index 6 on the chain origin output, opting the
+	// chain into accepting delegations (Phase 5 of
+	// claude/delegation_epoch_params.md). Only consulted by
+	// MakeChainOrigin.
+	DelegationParams *ledger.DelegationParams
 }
 
 const minimumTransferAmount = uint64(1000)
@@ -848,6 +854,13 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 		o.WithTokenBalance(par.Amount).
 			WithLock(par.Target).
 			MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
+		if par.DelegationParams != nil {
+			// Attach the delegationParams constraint at its fixed index
+			// (Phase 5 of claude/delegation_epoch_params.md). The chain
+			// becomes a delegation target; immutability is enforced by
+			// selfImmutableOnSuccessorIndex(6) on the constraint body.
+			o.PutConstraint(par.DelegationParams.Bytes(), ledger.ConstraintIndexDelegationParams)
+		}
 	})
 	_, err = txb.ProduceOutput(chainOut)
 	util.AssertNoError(err)

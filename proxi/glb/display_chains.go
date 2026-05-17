@@ -59,7 +59,9 @@ func LinesDelegationOutputs(outs []ledger.DelegationOutput, currentSlot uint32, 
 				totalSlots := unfreeze - o.OriginSlot + 1
 				lib := ledger.L(currentSlot)
 				perYear := totalInflation * uint64(lib.SlotsPerYear()) / uint64(totalSlots)
-				lessShareForSafeRevocation := 1 - float64(lib.SafeRevocationSlots)/float64(uint32(o.MaxFrozenEpochs)*lib.DelegationEpochSlots+lib.SafeRevocationSlots)
+				// epochSlots is inlined into the delegation lock at origin
+				// (Phase 5 of claude/delegation_epoch_params.md).
+				lessShareForSafeRevocation := 1 - float64(lib.SafeRevocationSlots)/float64(uint32(o.MaxFrozenEpochs)*o.EpochSlots+lib.SafeRevocationSlots)
 				ln.Add("     estimated annualized inflation: %s/year (adj. %.2f%%)",
 					util.Th(uint64(float64(perYear)*lessShareForSafeRevocation)), lessShareForSafeRevocation*100)
 			}
@@ -75,6 +77,15 @@ func LinesChainOutputs(outs []ledger.OutputWithChainID, currentSlot uint32, pref
 		ln.Add("%34s  %20s   since slot: %d, last active %d slots ago, transitions: %d",
 			o.ChainID.String(), util.Th(o.Output.TokenBalance()), o.OriginSlot,
 			currentSlot-uint32(o.ID.Slot()), o.TransitionCounter)
+		// Surface delegationParams when attached (Phase 5 of
+		// claude/delegation_epoch_params.md): tells the operator
+		// whether the chain accepts delegations and on what cadence.
+		if dpBytes, err := o.Output.At(int(ledger.ConstraintIndexDelegationParams)); err == nil && len(dpBytes) > 0 {
+			if dp, dpErr := ledger.DelegationParamsFromBytes(dpBytes); dpErr == nil {
+				ln.Add("      delegationParams: epochSlots=%d, maxFrozenEpochs=%d",
+					dp.EpochSlots, dp.MaxFrozenEpochs)
+			}
+		}
 		if IsVerbose() {
 			totalInflation := o.CumulativeChainInflation + o.CumulativeBranchBonus
 			ln.Add("      cumulative inflation: %s", util.Th(totalInflation))

@@ -14,6 +14,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Chain-origin flags shared by mkchain and setup_seq. AcceptDelegations
+// is the parsed effective opt-in flag (per the inverse --no-delegations
+// CLI flag plus the command default). See claude/delegation_epoch_params.md.
+var (
+	flagDelegationEpochSlots      uint32
+	flagDelegationMaxFrozenEpochs uint8
+	flagNoDelegations             bool
+)
+
 func initMakeChainCmd() *cobra.Command {
 	makeChainCmd := &cobra.Command{
 		Use:   "mkchain <initial on-chain balance>",
@@ -21,9 +30,39 @@ func initMakeChainCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run:   runMakeChainCmd,
 	}
+	addDelegationParamsFlags(makeChainCmd, false /* default: opt-out for regular chains */)
 	makeChainCmd.InitDefaultHelpCmd()
 
 	return makeChainCmd
+}
+
+// addDelegationParamsFlags wires --delegation-epoch-slots,
+// --delegation-max-frozen-epochs and --no-delegations onto the given
+// command. defaultOptIn controls whether delegationParams attaches by
+// default: sequencer setup wants default-on, regular mkchain wants
+// default-off (the user passes the flags explicitly).
+func addDelegationParamsFlags(cmd *cobra.Command, defaultOptIn bool) {
+	lib := ledger.L(0)
+	cmd.PersistentFlags().Uint32Var(&flagDelegationEpochSlots, "delegation-epoch-slots", lib.DelegationEpochSlots,
+		"target delegation epoch length in slots (bounds enforced by EasyFL)")
+	cmd.PersistentFlags().Uint8Var(&flagDelegationMaxFrozenEpochs, "delegation-max-frozen-epochs", uint8(lib.MaxFrozenEpochs),
+		"target maximum simultaneous frozen epochs (bounds enforced by EasyFL)")
+	if defaultOptIn {
+		cmd.PersistentFlags().BoolVar(&flagNoDelegations, "no-delegations", false,
+			"omit delegationParams (the chain cannot become a delegation target)")
+	} else {
+		cmd.PersistentFlags().BoolVar(&flagNoDelegations, "no-delegations", true,
+			"omit delegationParams (the chain cannot become a delegation target)")
+	}
+}
+
+// chainOriginDelegationParams returns the *ledger.DelegationParams to
+// attach at chain origin based on the parsed flags, or nil to opt out.
+func chainOriginDelegationParams() *ledger.DelegationParams {
+	if flagNoDelegations {
+		return nil
+	}
+	return ledger.NewDelegationParams(flagDelegationEpochSlots, flagDelegationMaxFrozenEpochs)
 }
 
 func MakeChain(onChainAmount uint64) (*transaction.Transaction, base.ChainID, error) {
@@ -74,12 +113,20 @@ func MakeChain(onChainAmount uint64) (*transaction.Transaction, base.ChainID, er
 		return false
 	})
 
+	dp := chainOriginDelegationParams()
+	if dp != nil {
+		glb.Infof("   delegationParams: epochSlots=%d, maxFrozenEpochs=%d (chain can accept delegations)",
+			dp.EpochSlots, dp.MaxFrozenEpochs)
+	} else {
+		glb.Infof("   delegationParams: omitted (chain cannot accept delegations)")
+	}
 	return glb.GetClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
 		WalletPrivateKey: walletData.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,
 		Amount:           onChainAmount,
 		Target:           target,
+		DelegationParams: dp,
 	})
 }
 

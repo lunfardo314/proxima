@@ -70,7 +70,13 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	outs, err := env.u.DoTransferOutputs(par.
 		WithAmount(cdelegOnChainBalance).
 		WithTargetLock(env.seqAddr).
-		WithConstraint(ledger.NewChainOrigin(seqOriginTs.Slot)),
+		WithConstraint(ledger.NewChainOrigin(seqOriginTs.Slot)).
+		// Attach delegationParams at the fixed index so the chain can
+		// accept delegations (Phase 3 of delegation_epoch_params).
+		WithConstraint(ledger.NewDelegationParams(
+			ledger.L(0).DelegationEpochSlots,
+			byte(ledger.L(0).MaxFrozenEpochs),
+		), ledger.ConstraintIndexDelegationParams),
 	)
 	require.NoError(t, err)
 	chOuts, err := ledger.FilterChainOutputs(outs)
@@ -96,6 +102,8 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 		MaxFrozenEpochs:        maxFrozenEpochs,
 		RequiredInflationShare: inflationShare,
 		StartSlot:              delegTs.Slot,
+		EpochSlots:             ledger.L(0).DelegationEpochSlots,
+		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
 	})
 	_, err = txb.ProduceOutput(delegOut)
 	require.NoError(t, err)
@@ -279,7 +287,8 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 
 	// produce delegation successor with MODIFIED lock (different master)
 	attackerMasterID := base.HolderID(ledger.SigLockFromED25519PrivateKey(env.seqPrivateKey))
-	tamperedLock := ledger.NewDelegateLock(env.target, attackerMasterID, 4, 0)
+	tamperedLock := ledger.NewDelegateLock(env.target, attackerMasterID, 4, 0,
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 	cc := ledger.NewChainConstraint(env.delegatedOutput.ChainID, predIdx, env.delegatedOutput.OriginSlot, 0, 0, env.delegatedOutput.TransitionCounter+1, 0)
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(env.delegatedOutput.Output.TokenBalance()))
@@ -375,7 +384,8 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	txb.PutSignatureUnlock(0)
 
 	// manually build delegation origin with frozen state (bypassing helper)
-	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0)
+	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0,
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 	frozenOrigin := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(cdelegTokens))
 		o.WithLock(delegLock)
@@ -445,7 +455,8 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
 
-	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0)
+	delegLock := ledger.NewDelegateLock(target, base.HolderID(masterAddr), 4, 0,
+		ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 	// build delegation with extra constraint (5 total)
 	delegWithExtra := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(cdelegTokens))
@@ -600,6 +611,8 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 		MaxFrozenEpochs:        4,
 		RequiredInflationShare: 1001, // above max
 		StartSlot:              delegTs.Slot,
+		EpochSlots:             ledger.L(0).DelegationEpochSlots,
+		TargetMaxFrozenEpochs:  byte(ledger.L(0).MaxFrozenEpochs),
 	})
 	_, err = txb.ProduceOutput(delegOut)
 	require.NoError(t, err)

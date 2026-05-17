@@ -49,10 +49,18 @@ type Constants struct {
 	// -------------- delegation related
 	// number of slots where target cannot consume delegation output
 	SafeRevocationSlots uint32
-	// number of slot in the delegation epoch
+	// number of slot in the delegation epoch. Default value consulted by
+	// proxi when creating chains that opt in to accept delegations.
+	// The per-chain value is carried in the chain's delegationParams
+	// constraint (see claude/delegation_epoch_params.md).
 	DelegationEpochSlots uint32
-	// maximum number of frozen epochs
+	// maximum number of frozen epochs. Default value (see above).
 	MaxFrozenEpochs uint32
+	// Bounds enforced by the delegationParams constraint at chain origin.
+	DelegationEpochSlotsMin      uint32
+	DelegationEpochSlotsMax      uint32
+	DelegationMaxFrozenEpochsMin uint32
+	DelegationMaxFrozenEpochsMax uint32
 	// ---------- tag-along related
 	TagAlongSlots        uint32
 	TagAlongReclaimSlots uint32
@@ -130,6 +138,15 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	util.AssertNoError(err)
 	ret.MaxFrozenEpochs, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochs")
 	util.AssertNoError(err)
+	// Per-target delegation params bounds (claude/delegation_epoch_params.md)
+	ret.DelegationEpochSlotsMin, err = _uint32FromConst(lib, "constDelegationEpochSlotsMin")
+	util.AssertNoError(err)
+	ret.DelegationEpochSlotsMax, err = _uint32FromConst(lib, "constDelegationEpochSlotsMax")
+	util.AssertNoError(err)
+	ret.DelegationMaxFrozenEpochsMin, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochsMin")
+	util.AssertNoError(err)
+	ret.DelegationMaxFrozenEpochsMax, err = _uint32FromConst(lib, "constDelegationMaxFrozenEpochsMax")
+	util.AssertNoError(err)
 
 	// tag-along related
 	var t64 uint64
@@ -201,9 +218,11 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Tx integrity validator (partial context): '%s'", c.TxIntegrityValidatorPartialContextName).
 		Add("Tx integrity validator (full context): '%s'", c.TxIntegrityValidatorFullContextName)
 	epochDuration := time.Duration(c.DelegationEpochSlots) * c.SlotDuration()
-	ret.Add("Delegation epoch slots: %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)
+	ret.Add("Delegation epoch slots (default): %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)
+	ret.Add("Delegation epoch slots bounds: [%d, %d]", c.DelegationEpochSlotsMin, c.DelegationEpochSlotsMax)
 	maxFrozenDuration := time.Duration(c.MaxFrozenEpochs) * epochDuration
-	ret.Add("Maximum frozen delegation epochs: %d (%v)", c.MaxFrozenEpochs, maxFrozenDuration)
+	ret.Add("Maximum frozen delegation epochs (default): %d (%v)", c.MaxFrozenEpochs, maxFrozenDuration)
+	ret.Add("Maximum frozen delegation epochs bounds: [%d, %d]", c.DelegationMaxFrozenEpochsMin, c.DelegationMaxFrozenEpochsMax)
 	safeDuration := time.Duration(c.SafeRevocationSlots) * c.SlotDuration()
 	ret.Add("Safe revocation slots: %d (%v)", c.SafeRevocationSlots, safeDuration).
 		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).

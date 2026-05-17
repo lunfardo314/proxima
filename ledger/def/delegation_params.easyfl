@@ -1,0 +1,52 @@
+// delegationParams(epochSlots, maxFrozenEpochs)
+//
+// Opt-in sibling constraint at delegationParamsConstraintIndex (= 6) on a
+// chain output. A chain that carries it advertises its per-target
+// delegation cadence (epochSlots) and freeze depth (maxFrozenEpochs);
+// a chain without it cannot be a delegation target.
+//
+// Self-pinned by selfImmutableOnSuccessorIndex(delegationParamsConstraintIndex):
+// once attached at chain origin, both args are byte-equal across every
+// transit. Transit that would change (or drop) the constraint at index 6
+// fails. A chain that didn't attach delegationParams at origin can never
+// opt in later.
+//
+// Args:
+//   $0 epochSlots         (z32, ranged [constDelegationEpochSlotsMin, constDelegationEpochSlotsMax])
+//   $1 maxFrozenEpochs    (byte, ranged [constDelegationMaxFrozenEpochsMin, constDelegationMaxFrozenEpochsMax])
+//
+// Both ranges are enforced on the produced side; transit re-validates
+// the produced successor on every chain step, so the bounds check fires
+// once at origin and the byte-equality check covers every subsequent
+// step.
+
+func constDelegationEpochSlotsMin      : u32/500
+func constDelegationEpochSlotsMax      : u32/2000
+func constDelegationMaxFrozenEpochsMin : 8
+func constDelegationMaxFrozenEpochsMax : 32
+
+func delegationParams :
+and(
+   selfImmutableOnSuccessorIndex(delegationParamsConstraintIndex),
+   or(
+      not(selfIsProducedOutput),
+      and(
+         require(
+            lessOrEqualThan(uint8Bytes(constDelegationEpochSlotsMin), uint8Bytes($0)),
+            !!!delegationParams_epochSlots_below_minimum
+         ),
+         require(
+            lessOrEqualThan(uint8Bytes($0), uint8Bytes(constDelegationEpochSlotsMax)),
+            !!!delegationParams_epochSlots_above_maximum
+         ),
+         require(
+            lessOrEqualThan(uint8Bytes(constDelegationMaxFrozenEpochsMin), uint8Bytes($1)),
+            !!!delegationParams_maxFrozenEpochs_below_minimum
+         ),
+         require(
+            lessOrEqualThan(uint8Bytes($1), uint8Bytes(constDelegationMaxFrozenEpochsMax)),
+            !!!delegationParams_maxFrozenEpochs_above_maximum
+         )
+      )
+   )
+)

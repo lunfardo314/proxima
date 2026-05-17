@@ -48,6 +48,10 @@ unconstrained beyond the foundry() invariants.`,
 	glb.AddFlagTarget(cmd)
 	cmd.Flags().Bool("non-destructible", false, "attach the foundryNonDestructible predefined policy script")
 	cmd.Flags().Uint64("max-supply", 0, "attach the foundryMaxSupply(N) predefined policy script with cap N")
+	// Note: foundries are never delegation targets. The foundry's
+	// controller may delegate the foundry's holdings via a separate
+	// delegation UTXO that names the foundry chain ID as master; the
+	// foundry chain output itself never carries delegationParams.
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }

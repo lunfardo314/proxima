@@ -93,11 +93,15 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 
 	inflation := ledger.L(base.MaxSlot).ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
 
-	// tentatively checking maximum storage deposit
-	lib := ledger.L(ts.Slot)
+	// Phase 5 of delegation_epoch_params: source per-target epochSlots /
+	// maxFrozenEpochs from the target sequencer's own delegationParams,
+	// surfaced via SequencerTargetInfo (see api/server populating ti
+	// from the chain output's index-6 constraint in Phase 3).
+	epochSlots := ti.EpochDurationSlots
+	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
 	oOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
-		lock := ledger.NewDelegateLock(targetSeqID, base.HolderID(walletData.Account), byte(lib.MaxFrozenEpochs), effShare)
+		lock := ledger.NewDelegateLock(targetSeqID, base.HolderID(walletData.Account), targetMaxFrozenEpochs, effShare, epochSlots, targetMaxFrozenEpochs)
 		o.WithLock(lock)
 		cc := ledger.NewChainConstraint(chainID, 0, oIn.OriginSlot, oIn.CumulativeChainInflation+inflation, oIn.CumulativeBranchBonus, oIn.TransitionCounter+1, oIn.BranchCounter)
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)
@@ -107,7 +111,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 
 	oOut = ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(oIn.Output.TokenBalance()+inflation-feeAmount), int64(inflation))
-		lock := ledger.NewDelegateLock(targetSeqID, base.HolderID(walletData.Account), maxFreezeEpochs, effShare)
+		lock := ledger.NewDelegateLock(targetSeqID, base.HolderID(walletData.Account), maxFreezeEpochs, effShare, epochSlots, targetMaxFrozenEpochs)
 		o.WithLock(lock)
 		cc := ledger.NewChainConstraint(chainID, 0, oIn.OriginSlot, oIn.CumulativeChainInflation+inflation, oIn.CumulativeBranchBonus, oIn.TransitionCounter+1, oIn.BranchCounter)
 		o.PutConstraint(cc.Bytes(), ledger.ConstraintIndexChain)

@@ -26,6 +26,10 @@ func initSeqSetupCmd() *cobra.Command {
 		Args:    cobra.RangeArgs(1, 2),
 		Run:     runSeqSetupCmd,
 	}
+	// Sequencers default to attaching delegationParams (default-on);
+	// pass --no-delegations to create a sequencer chain that cannot
+	// accept delegations.
+	addDelegationParamsFlags(seqSendCmd, true)
 	seqSendCmd.InitDefaultHelpCmd()
 	return seqSendCmd
 }

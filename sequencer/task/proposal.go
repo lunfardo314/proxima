@@ -277,9 +277,13 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	ret := make([]_delegationToFreeze, 0)
 	nDelegationsByUnfreezeEpochMap := make(map[uint32]int)
 
-	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TransactionData.Timestamp.Slot)
+	// Source epoch params from this sequencer's own delegationParams
+	// (Phase 4 of delegation_epoch_params). The SeqTxBuilder reads them
+	// in New() from the chain input.
+	chainEpochSlots, chainMaxFrozenEpochs := p.SeqTxBuilder.ChainDelegationParams()
+	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TransactionData.Timestamp.Slot, chainEpochSlots)
 
-	for e := txEpoch; e < txEpoch+p.MaxFrozenEpochs; e++ {
+	for e := txEpoch; e < txEpoch+uint32(chainMaxFrozenEpochs); e++ {
 		nDelegationsByUnfreezeEpochMap[e] = 0
 	}
 

@@ -116,7 +116,12 @@ func Parse(txBytes []byte) (*Transaction, error) {
 		return nil, fmt.Errorf("tx.Parse: TxVersion mismatch: transaction has %d, library expects %d", txVersion, ret.Library.UpgradeIndex())
 	}
 
-	ret.producedAmountTotals = make([]int64, ret.Library.MaxFrozenEpochs+2)
+	// producedAmountTotals sums the amounts vectors of all produced
+	// outputs. After Phase 4 of delegation_epoch_params, each
+	// delegation can target a chain with its own maxFrozenEpochs (up to
+	// DelegationMaxFrozenEpochsMax). Size to that upper bound so any
+	// legitimate delegation in the tx fits.
+	ret.producedAmountTotals = make([]int64, ret.Library.DelegationMaxFrozenEpochsMax+uint32(ledger.AmountIndexFrozenCoverage))
 	return ret, nil
 }
 

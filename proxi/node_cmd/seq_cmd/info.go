@@ -95,8 +95,15 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 		return slots[i] < slots[j]
 	})
 	glb.Infof("\n---- unfreezes by slot ----")
+	// epochSlots is identical across every delegation targeting this
+	// sequencer (inlined and immutable). Pull it from the first
+	// delegation; fall back to the library default if there are none.
+	epochSlots := ledger.L(0).DelegationEpochSlots
+	if len(delegations) > 0 {
+		epochSlots = delegations[0].EpochSlots
+	}
 	for _, s := range slots {
-		epoch := ledger.L(s).EpochFromSlotDirect(seqID, s)
+		epoch := ledger.L(s).EpochFromSlotDirect(seqID, s, epochSlots)
 		glb.Infof("   %d: %d (epoch %d)", s, unfreezeBySlot[s], epoch)
 	}
 	glb.Infof("number of unlockable by master: %d", revocable)

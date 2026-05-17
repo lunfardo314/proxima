@@ -359,13 +359,25 @@ func (o *Output) InflatableAmount() uint64 {
 	return o.TokenBalance() + uint64(o.FrozenCoverage(0))
 }
 
-// AdjustedFrozenCoverage returns the frozen coverage adjusted for elapsed epochs since the predecessor.
+// AdjustedFrozenCoverage returns the frozen coverage adjusted for
+// elapsed epochs since the predecessor. Per Phase 3 of
+// delegation_epoch_params, epochSlots/maxFrozenEpochs are sourced from
+// this chain's own delegationParams (index 6) if attached; chains
+// without it carry no frozen coverage and return 0.
 func (o *OutputWithChainID) AdjustedFrozenCoverage(txTs base.LedgerTime) int64 {
 	predTs := o.ID.Timestamp()
 	util.Assertf(txTs.AfterOrEqual(predTs), "txTs.AfterOrEqual(predTs)")
 	lib := L(txTs.Slot)
-	diff := lib.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp())
-	if diff >= int(lib.MaxFrozenEpochs) {
+	dpBytes, err := o.Output.At(int(ConstraintIndexDelegationParams))
+	if err != nil || len(dpBytes) == 0 {
+		return 0
+	}
+	dp, err := DelegationParamsFromBytesWithLib(dpBytes, lib)
+	if err != nil {
+		return 0
+	}
+	diff := lib.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp(), dp.EpochSlots)
+	if diff >= int(dp.MaxFrozenEpochs) {
 		return 0
 	}
 	return o.Output.FrozenCoverage(byte(diff))

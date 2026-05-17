@@ -80,6 +80,18 @@ func runChainCmd(_ *cobra.Command, args []string) {
 		glb.Infof("%s", dOut.LinesDelegationData().String())
 	}
 
+	// Surface this chain's delegationParams when attached (Phase 5 of
+	// claude/delegation_epoch_params.md). Tells the operator whether
+	// this chain can be a delegation target and on what cadence.
+	if dpBytes, err := out.Output.ConstraintAt(ledger.ConstraintIndexDelegationParams); err == nil && len(dpBytes) > 0 {
+		if dp, dpErr := ledger.DelegationParamsFromBytes(dpBytes); dpErr == nil {
+			glb.Infof("DELEGATION PARAMS:\n-----------------")
+			glb.Infof("epoch slots:          %d", dp.EpochSlots)
+			glb.Infof("max frozen epochs:    %d", dp.MaxFrozenEpochs)
+			glb.Infof("\n")
+		}
+	}
+
 	if isFoundry {
 		printFoundryDetails(out, foundry, chainID)
 	}

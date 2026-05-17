@@ -160,9 +160,10 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	}
 
 	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(r.Output.TokenBalance() + inflation)
-	maxFrozenEpochs := byte(txb.MaxFrozenEpochs)
+	// add negative deltas to the sequencer totals. Vector size is this
+	// chain's chainMaxFrozenEpochs (Phase 4 of delegation_epoch_params).
+	maxFrozenEpochs := txb.chainMaxFrozenEpochs
 	a := oProduce.Amounts()
-	// add negative deltas to the sequencer totals
 	for i := byte(0); i < maxFrozenEpochs; i++ {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+i] += a.FrozenCoverageAt(i)
 	}

@@ -56,7 +56,7 @@ func estimateDelegation(ti *api.SequencerTargetInfo, delegatedAmount uint64, fro
 		est.effFrozenEpochs = byte(ti.MaxFrozenEpochs)
 	}
 
-	est.frozenSlots = lib.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, est.effFrozenEpochs)
+	est.frozenSlots = lib.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs)
 	est.projectedInflation = lib.ChainInflationMultiStep(delegatedAmount, slot, est.frozenSlots)
 	est.advance = calcAdvanceEstimate(est.projectedInflation, ti.ProfitMarginPml, ti.Greedy, requiredShare)
 
@@ -83,7 +83,7 @@ func estimateDelegation(ti *api.SequencerTargetInfo, delegatedAmount uint64, fro
 		} else {
 			// When not greedy: advance = inflation * seqTolerance / 1000 (share-independent).
 			// Suggest max delegation amount instead.
-			est.maxDelegationAmount = estimateMaxDelegationAmount(lib, est.availableForAdvance, targetSeqID, slot, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, requiredShare)
+			est.maxDelegationAmount = estimateMaxDelegationAmount(lib, est.availableForAdvance, targetSeqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, requiredShare)
 			est.hasMaxAmount = true
 		}
 	}
@@ -104,8 +104,8 @@ func calcAdvanceEstimate(projectedInflation uint64, profitMarginPml uint16, gree
 
 // estimateMaxDelegationAmount binary-searches for the largest delegation amount
 // whose advance fits within availableBalance
-func estimateMaxDelegationAmount(lib *ledger.Library, availableBalance uint64, targetSeqID base.ChainID, slot uint32, frozenEpochs byte, profitMarginPml uint16, greedy bool, requiredShare uint16) uint64 {
-	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, frozenEpochs)
+func estimateMaxDelegationAmount(lib *ledger.Library, availableBalance uint64, targetSeqID base.ChainID, slot uint32, epochSlots uint32, frozenEpochs byte, profitMarginPml uint16, greedy bool, requiredShare uint16) uint64 {
+	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, epochSlots, frozenEpochs)
 
 	advanceForAmount := func(amount uint64) uint64 {
 		infl := lib.ChainInflationMultiStep(amount, slot, frozenSlots)

@@ -2,34 +2,68 @@
 // can spend it (subject to freeze rules), and the master ed25519 holder can
 // revoke it back.
 //
-// The public lock symbol `delegateLock` is a 2-arg constraint — its bytecode
-// at the lock element carries (maxFrozenEpochs, inflationShare). The
+// The public lock symbol `delegateLock` is a 4-arg constraint — its bytecode
+// at the lock element carries:
+//   $0 maxFrozenEpochs       (z64, delegator's chosen depth; 0 = use target's max)
+//   $1 inflationShare        (z16, required inflation share in promille, 0..1000)
+//   $2 epochSlots            (z32, copy of target chain's delegationParams.epochSlots)
+//   $3 targetMaxFrozenEpochs (byte, copy of target chain's delegationParams.maxFrozenEpochs)
+//
 // (master, target) pair lives in the index-value tuple: position 0 =
-// masterID (master-first §4.1 convention), position 1 = targetChainID. The
-// wrapper threads both into `_delegateLock` (target-first arg ordering).
+// masterID (master-first §4.1 convention), position 1 = targetChainID.
+//
+// $2 and $3 are copies of the target chain's delegationParams (see
+// claude/delegation_epoch_params.md). They are inlined at delegation
+// origin and pinned byte-equal across every transit by the existing
+// _targetUnlockedConsumed rules. The target's delegationParams is itself
+// pinned by selfImmutableOnSuccessorIndex(6), so the inline copy can
+// never drift from truth once the origin cross-check passes.
+//
+// The constDelegationEpochSlots and constDelegationMaxFrozenEpochs ledger
+// constants are NO LONGER used by the lock body — they survive only as
+// proxi-side defaults consulted at chain creation. The lock body reads
+// per-target values from $2 and $3 instead.
 
 func constDelegationSafeRevocationSlots  : 60  // 10 min
+
+// Default values consulted by proxi-side tooling at chain creation time.
+// NOT used by the lock body — left here so ConstantsFromLibrary still
+// has a single source of truth for the defaults.
 func constDelegationEpochSlots : u32/600
 func constDelegationMaxFrozenEpochs : 20
 
+// Inline values parsed from this delegation's own lock bytecode.
+// `selfSiblingConstraint(lockConstraintIndex)` reads this output's lock
+// element (we're inside it); the inline-data accessors extract args 2/3.
+
+func _selfEpochSlots :
+   parseInlineDataArgument(selfSiblingConstraint(lockConstraintIndex), 2, #delegateLock)
+
+func _selfTargetMaxFrozenEpochs :
+   parseInlineDataArgument(selfSiblingConstraint(lockConstraintIndex), 3, #delegateLock)
+
 // $0 target chain ChainID
+// $1 epochSlots (uint32, ranged)
 // -> chainID[0:3] mod slots-in-epoch
-func delegationEpochOffset : mod( slice($0, 0, 3), constDelegationEpochSlots)
+func delegationEpochOffset : mod( slice($0, 0, 3), $1)
 
 // $0 target chain ChainID
 // $1 epoch
+// $2 epochSlots
 // -> epoch x slots-in-epoch + offs
-func lastSlotInDelegationEpoch : add( mul($1, constDelegationEpochSlots), delegationEpochOffset($0))
+func lastSlotInDelegationEpoch : add( mul($1, $2), delegationEpochOffset($0, $2))
 
 // $0 slot uint32
 // $1 delegationEpochOffset
+// $2 epochSlots
 // -> 1 + (slot-offs-1) / slots-in-epoch if offs <= slot, otherwise 0
 func _delegationEpochFromSlot :
-if( lessOrEqualThan($0, $1), u64/0, add(div(sub(sub($0,$1), u64/1), constDelegationEpochSlots), u64/1 ))
+if( lessOrEqualThan($0, $1), u64/0, add(div(sub(sub($0,$1), u64/1), $2), u64/1 ))
 
 // $0 target chain ChainID
 // $1 slot
-func delegationEpochFromSlot : _delegationEpochFromSlot(uint8Bytes($1), delegationEpochOffset($0))
+// $2 epochSlots
+func delegationEpochFromSlot : _delegationEpochFromSlot(uint8Bytes($1), delegationEpochOffset($0, $2), $2)
 
 func _selfIsDelegationOrigin : isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain))
 
@@ -63,9 +97,9 @@ func _selfIsMarkedFrozen : equal(_selfStateMark, 1)
 func _selfIsMarkedOnHold : equal(_selfStateMark, 2)
 func _selfIsMarkedUndef : and(not(_selfIsMarkedOnHold), not(_selfIsMarkedFrozen))
 
-func _successorEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
+func _successorEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot, _selfEpochSlots)
 
-func _selfLastSlotInLastFrozenEpoch : lastSlotInDelegationEpoch(_selfTargetChainID, _selfLastFrozenEpoch)
+func _selfLastSlotInLastFrozenEpoch : lastSlotInDelegationEpoch(_selfTargetChainID, _selfLastFrozenEpoch, _selfEpochSlots)
 
 func _consumedIsFrozenInTx :
 and(
@@ -126,10 +160,10 @@ require(
    !!!not_enough_inflation_advance
 )
 
-func _txEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot)
+func _txEpoch : delegationEpochFromSlot(_selfTargetChainID, txSlot, _selfEpochSlots)
 func _txFrozenEpochsProduced : add(sub(_selfLastFrozenEpoch, _txEpoch), u64/1)
 
-// $0 max frozen epochs (uint64)
+// $0 max frozen epochs (uint64) — already adjusted to target's cap if 0
 func _validLimitsProducedFrozen :
 and(
     require(
@@ -146,7 +180,7 @@ and(
     )
 )
 
-// $0 max frozen epochs (uint64)
+// $0 max frozen epochs (uint64) — adjusted
 // $1 required inflation share in promille (0-1000, uint64)
 func _validLimitsProduced :
 and(
@@ -174,7 +208,8 @@ and(
 	)
 )
 
-// $0 max frozen epochs uint64
+// $0 max frozen epochs uint64 — already adjusted
+// $1 target's max frozen epochs (uint64)
 func _validStructureProduced :
 and(
     require(
@@ -185,20 +220,30 @@ and(
     parseBytecode(selfSiblingConstraint(4), 0x, #delegateLockState),
     require(and(equal(len(_selfTargetChainID), u64/32), not(isZero(_selfTargetChainID))), !!!invalid_target_chain_id),
     require(
-       and(not(isZero($0)), lessOrEqualThan($0, uint8Bytes(constDelegationMaxFrozenEpochs))),
+       and(not(isZero($0)), lessOrEqualThan($0, $1)),
        !!!wrong_max_frozen_epochs_value
     )
 )
 
 // checks validity of the composition of the produced constraint
-// $0 max frozen epochs uint64
+// $0 max frozen epochs uint64 (adjusted)
 // $1 required inflation share in promille (0-1000, uint64)
+// $2 target's max frozen epochs (uint64)
 func _validDelegationProduced :
 and(
     selfIsProducedOutput,
-    _validStructureProduced($0),
+    _validStructureProduced($0, $2),
     _validLimitsProduced($0, $1),
-    embeddedEnforceFrozenCoverageOnDelegateOutput
+    embeddedEnforceFrozenCoverageOnDelegateOutput,
+    // At origin only, best-effort cross-check that inline $2/$3 of the
+    // lock body match the target chain's delegationParams (if the target
+    // chain output is among consumed inputs). Permits if target not
+    // present; wrong inline values only break the delegation for the
+    // delegator (master-revoke still works), no protocol-level harm.
+    or(
+       not(_selfIsDelegationOrigin),
+       embeddedDelegationOriginCrossCheck
+    )
 )
 
 // $0 master holder ID (32 bytes)
@@ -268,27 +313,36 @@ func _validDelegationConsumed : and(
    )
 )
 
-// $0 - max frozen epochs as set in the output
-// return uin64: isZero is constDelegationMaxFrozenEpochs, otherwise must be between 1 and constDelegationMaxFrozenEpochs inclusive
-func _adjustedMaxFrozenEpochs: if( isZero($0), uint8Bytes(constDelegationMaxFrozenEpochs), uint8Bytes($0))
+// $0 - delegator's chosen max frozen epochs (may be 0)
+// $1 - target's max frozen epochs (the cap; never 0 because delegationParams bounds enforce >= 8)
+// return uint64: $0 if non-zero, else $1
+func _adjustedMaxFrozenEpochs: if( isZero($0), uint8Bytes($1), uint8Bytes($0))
 
 // _delegateLock validation logic, parameterised on:
-// $0 target chain ID (32 bytes)         — comes from the index-value tuple, position 1
-// $1 master holder ID (32 bytes)        — comes from the index-value tuple, position 0
-// $2 max frozen epochs (z64, optional)  — comes from the lock bytecode arg 0
-// $3 required inflation share in promille (z64) — comes from the lock bytecode arg 1
+// $0 target chain ID (32 bytes)              — from the index-value tuple, position 1
+// $1 master holder ID (32 bytes)             — from the index-value tuple, position 0
+// $2 max frozen epochs (z64, optional)       — lock bytecode arg 0
+// $3 required inflation share in promille    — lock bytecode arg 1
+// $4 epochSlots (uint32)                     — lock bytecode arg 2 (copy of target's)
+// $5 targetMaxFrozenEpochs (byte)            — lock bytecode arg 3 (copy of target's)
 //
 // Unlock parameters 2 bytes: first byte is used to unlock address or chain locks
 // Byte with index 1 must be 0xff for master unlock, otherwise it is target unlock
 func _delegateLock: and(
 	require(equal(selfBlockIndex, lockConstraintIndex), !!!locks_must_be_at_lockConstraintIndex),
     or(
-       _validDelegationProduced(_adjustedMaxFrozenEpochs($2), uint8Bytes($3)),
+       _validDelegationProduced(
+          _adjustedMaxFrozenEpochs($2, $5),
+          uint8Bytes($3),
+          uint8Bytes($5)
+       ),
        _validDelegationConsumed($0, $1)
     )
 )
 
-// public 2-arg lock — target / master come from the index-value tuple.
-// $0 max frozen epochs (z64)            — lock bytecode arg 0
-// $1 required inflation share (z64)     — lock bytecode arg 1
-func delegateLock : _delegateLock(selfIndexValue(1), selfIndexValue(0), $0, $1)
+// public 4-arg lock — target / master come from the index-value tuple.
+// $0 max frozen epochs (z64)            — delegator's chosen depth
+// $1 required inflation share (z16)     — promille, 0..1000
+// $2 epochSlots (z32)                   — copy of target chain's delegationParams.epochSlots
+// $3 targetMaxFrozenEpochs (byte)       — copy of target chain's delegationParams.maxFrozenEpochs
+func delegateLock : _delegateLock(selfIndexValue(1), selfIndexValue(0), $0, $1, $2, $3)

@@ -102,7 +102,12 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	minimumAmount := lib.MinimumInflatableAmount0 + lib.ChainInflationMultiStep(lib.MinimumInflatableAmount0, 0, ts.Slot+10000)
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
-	glb.Assertf(maxFreezeEpochs <= byte(lib.MaxFrozenEpochs), "wrong value of max freeze epochs")
+	// Phase 5 of delegation_epoch_params: cap delegator's chosen depth
+	// against the target's own delegationParams.maxFrozenEpochs (not
+	// the library-wide default).
+	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
+	targetEpochSlots := ti.EpochDurationSlots
+	glb.Assertf(maxFreezeEpochs <= targetMaxFrozenEpochs, "wrong value of max freeze epochs: %d > target's max %d", maxFreezeEpochs, targetMaxFrozenEpochs)
 
 	client := glb.GetClient()
 	needed := amount + feeAmount
@@ -141,9 +146,11 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 		Amount:                 amount,
 		MasterID:               base.HolderID(walletData.Account),
 		Target:                 targetSeqID,
-		MaxFrozenEpochs:        byte(lib.MaxFrozenEpochs),
+		MaxFrozenEpochs:        targetMaxFrozenEpochs,
 		RequiredInflationShare: effShare,
 		StartSlot:              ts.Slot,
+		EpochSlots:             targetEpochSlots,
+		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
 	})
 	glb.AssertNoError(outDelegation.EnoughAmountForStorageDeposit())
 
@@ -154,6 +161,8 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 		MaxFrozenEpochs:        maxFreezeEpochs,
 		RequiredInflationShare: effShare,
 		StartSlot:              ts.Slot,
+		EpochSlots:             targetEpochSlots,
+		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
 	})
 
 	delegationOutputIdx, err := txb.ProduceOutput(outDelegation)

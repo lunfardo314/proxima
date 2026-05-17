@@ -88,15 +88,18 @@ var (
 //
 // Layout: [0] amounts, [1] index-value tuple, [2] lock, [3] chain (when
 // present), [4] foundry (on foundry outputs), [5] foundryPolicy
-// (optional, on foundry outputs).
-// See claude/utxo-indexing.md §4 and claude/native_token.md.
+// (optional, on foundry outputs), [6] delegationParams (optional, on
+// chain outputs opting in to accept delegations).
+// See claude/utxo-indexing.md §4, claude/native_token.md, and
+// claude/delegation_epoch_params.md.
 const (
-	ConstraintIndexAmounts        = byte(iota) // 0
-	ConstraintIndexIndexValues                 // 1: tuple of indexable values (controllers / target / sender hashes) for trie indexing
-	ConstraintIndexLock                        // 2
-	ConstraintIndexChain                       // 3 (when present)
-	ConstraintIndexFoundry                     // 4 (on foundry outputs)
-	ConstraintIndexFoundryPolicy               // 5 (optional, on foundry outputs)
+	ConstraintIndexAmounts          = byte(iota) // 0
+	ConstraintIndexIndexValues                   // 1: tuple of indexable values (controllers / target / sender hashes) for trie indexing
+	ConstraintIndexLock                          // 2
+	ConstraintIndexChain                         // 3 (when present)
+	ConstraintIndexFoundry                       // 4 (on foundry outputs)
+	ConstraintIndexFoundryPolicy                 // 5 (optional, on foundry outputs)
+	ConstraintIndexDelegationParams              // 6 (optional, on chain outputs opting in to accept delegations)
 )
 
 func pathConstantsUpgrade0() string {
@@ -120,6 +123,7 @@ func pathConstantsUpgrade0() string {
 		ConstraintIndexChain,
 		ConstraintIndexFoundry,
 		ConstraintIndexFoundryPolicy,
+		ConstraintIndexDelegationParams,
 	)
 }
 
@@ -199,6 +203,10 @@ functions:
       source: %d
    -
       sym: foundryPolicyConstraintIndex
+      numArgs: 0
+      source: %d
+   -
+      sym: delegationParamsConstraintIndex
       numArgs: 0
       source: %d
 `

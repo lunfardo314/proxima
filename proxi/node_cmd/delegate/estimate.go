@@ -62,7 +62,7 @@ func runEstimateCmd(cmd *cobra.Command, args []string) {
 	if amount == 0 && !est.shareRejected {
 		// amount=0 means "show me the max delegation this sequencer can accept"
 		lib := ledger.L(slot)
-		maxAmount := estimateMaxDelegationAmount(lib, est.availableForAdvance, seqID, slot, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, share)
+		maxAmount := estimateMaxDelegationAmount(lib, est.availableForAdvance, seqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, share)
 		glb.Infof("\nMax delegation amount at %d promille share: %s", share, util.Th(maxAmount))
 	}
 }

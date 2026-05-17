@@ -50,20 +50,27 @@ type (
 
 	SeqTxBuilder struct {
 		*txbuilder.TxBuilder
-		*ledger.Library          // cached library for this transaction's slot
-		origSeqData              *seqdata.SequencerData
-		rdr                      multistate.IndexedStateReader
-		nextSeqData              *seqdata.SequencerData
-		signatureType            byte
-		privateKey               []byte
-		publicKey                []byte
-		chainInput               *ledger.OutputWithChainID
-		stemInput                *ledger.OutputWithID // it is branch tx if != nil
-		doNotInflateMainChain    bool                 // default is inflate
-		chainOutAmounts          []int64 // allocated in New(): AmountIndexFrozenCoverage + Library.MaxFrozenEpochs
+		*ledger.Library // cached library for this transaction's slot
+		origSeqData     *seqdata.SequencerData
+		rdr             multistate.IndexedStateReader
+		nextSeqData     *seqdata.SequencerData
+		signatureType   byte
+		privateKey      []byte
+		publicKey       []byte
+		chainInput      *ledger.OutputWithChainID
+		stemInput       *ledger.OutputWithID // it is branch tx if != nil
+		// chainEpochSlots / chainMaxFrozenEpochs are this sequencer chain's
+		// own delegationParams values (Phase 4 of
+		// claude/delegation_epoch_params.md). Zero means the chain doesn't
+		// carry delegationParams and cannot accept delegations — in that
+		// case chainOutAmounts has no frozen-coverage cells.
+		chainEpochSlots          uint32
+		chainMaxFrozenEpochs     byte
+		doNotInflateMainChain    bool    // default is inflate
+		chainOutAmounts          []int64 // allocated in New(): AmountIndexFrozenCoverage + chainMaxFrozenEpochs
 		vrfProof                 []byte
-		branchCoverageUpperBound uint64 // upper bound for branch coverage, 0 means no enforcement
-		enforceFreezeUpperBound  bool   // if true, check upper bound before each delegation freeze
+		branchCoverageUpperBound uint64          // upper bound for branch coverage, 0 means no enforcement
+		enforceFreezeUpperBound  bool            // if true, check upper bound before each delegation freeze
 		stemAggregates           *StemAggregates // override for buildStemLock; nil → auto-compute
 		baselineRoot             []byte          // optional caller-supplied predecessor branch trie root
 	}
@@ -103,10 +110,21 @@ func New(par Params) (*SeqTxBuilder, error) {
 		rdr:                   par.StateReader,
 		doNotInflateMainChain: par.DoNotInflateMainChain,
 	}
-	// Sized once from the library: token balance + inflation + per-epoch
-	// frozen-coverage slots. Library.MaxFrozenEpochs is fixed for a given
-	// ledger version, so a single allocation per builder suffices.
-	ret.chainOutAmounts = make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(ret.Library.MaxFrozenEpochs))
+	// Read this sequencer chain's delegationParams (index 6 if attached).
+	// Absent → chain cannot accept delegations; frozen-coverage cells
+	// must remain empty.
+	if dpBytes, err := par.Predecessor.Output.At(int(ledger.ConstraintIndexDelegationParams)); err == nil && len(dpBytes) > 0 {
+		dp, dpErr := ledger.DelegationParamsFromBytesWithLib(dpBytes, ret.Library)
+		if dpErr != nil {
+			return nil, fmt.Errorf("SeqTxBuilder: invalid delegationParams on predecessor chain output: %w", dpErr)
+		}
+		ret.chainEpochSlots = dp.EpochSlots
+		ret.chainMaxFrozenEpochs = dp.MaxFrozenEpochs
+	}
+	// Sized once: token balance + inflation + per-epoch frozen-coverage
+	// slots. chainMaxFrozenEpochs is fixed for a chain's lifetime so a
+	// single allocation per builder suffices.
+	ret.chainOutAmounts = make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(ret.chainMaxFrozenEpochs))
 
 	var err error
 	sd, err := ledger.ParseSequencerData(par.Predecessor.Output)
@@ -162,20 +180,25 @@ func New(par Params) (*SeqTxBuilder, error) {
 	predAmounts := par.Predecessor.Output.Amounts()
 	ret.chainOutAmounts[ledger.AmountIndexTokenBalance] = int64(predAmounts.TokenBalance()) + ret.chainOutAmounts[ledger.AmountIndexInflation]
 
-	// frozen coverage at the predecessor adjusted to the epoch of the successor
-	diffEpochsInt := ret.DiffEpochs(par.Predecessor.ChainID, par.Timestamp, par.Predecessor.Timestamp())
-	util.Assertf(diffEpochsInt >= 0, "diffEpochsInt>=0")
-	diffEpochs := uint32(diffEpochsInt)
+	// frozen coverage at the predecessor adjusted to the epoch of the
+	// successor. Uses this chain's own delegationParams (Phase 4 of
+	// claude/delegation_epoch_params.md). Skip if chain doesn't accept
+	// delegations.
+	if ret.chainMaxFrozenEpochs > 0 {
+		diffEpochsInt := ret.DiffEpochs(par.Predecessor.ChainID, par.Timestamp, par.Predecessor.Timestamp(), ret.chainEpochSlots)
+		util.Assertf(diffEpochsInt >= 0, "diffEpochsInt>=0")
+		diffEpochs := uint32(diffEpochsInt)
 
-	maxFrozenEpochs := ret.MaxFrozenEpochs
-	predecessorFrozenCoverageAdjusted := func(i uint32) (result int64) {
-		if idx := i + diffEpochs; idx < maxFrozenEpochs {
-			result = predAmounts.FrozenCoverageAt(byte(idx))
+		maxFrozenEpochs := uint32(ret.chainMaxFrozenEpochs)
+		predecessorFrozenCoverageAdjusted := func(i uint32) (result int64) {
+			if idx := i + diffEpochs; idx < maxFrozenEpochs {
+				result = predAmounts.FrozenCoverageAt(byte(idx))
+			}
+			return
 		}
-		return
-	}
-	for i := uint32(0); i < ret.MaxFrozenEpochs; i++ {
-		ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
+		for i := uint32(0); i < maxFrozenEpochs; i++ {
+			ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
+		}
 	}
 
 	// initialize branch coverage bounds for delegation freeze checking
@@ -235,6 +258,15 @@ func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
 	return txb.chainInput
 }
 
+// ChainDelegationParams returns the (epochSlots, maxFrozenEpochs) values
+// inlined into this sequencer chain's delegationParams constraint at
+// origin (Phase 4 of claude/delegation_epoch_params.md). Both values
+// are 0 when the chain doesn't carry delegationParams (i.e. cannot
+// accept delegations).
+func (txb *SeqTxBuilder) ChainDelegationParams() (epochSlots uint32, maxFrozenEpochs byte) {
+	return txb.chainEpochSlots, txb.chainMaxFrozenEpochs
+}
+
 func (txb *SeqTxBuilder) IsSlotBoundary() bool {
 	return txb.TransactionData.Timestamp.IsSlotBoundary()
 }
@@ -291,7 +323,8 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 	if seqTolerance < delegatorRequirement {
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
-	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TransactionData.Timestamp.Slot, frozenEpochs)
+	// delegationIn carries inlined epochSlots; use it directly.
+	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TransactionData.Timestamp.Slot, delegationIn.EpochSlots, frozenEpochs)
 	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
@@ -321,7 +354,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
 		return
 	}
-	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TransactionData.Timestamp.Slot)
+	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TransactionData.Timestamp.Slot, delegationIn.EpochSlots)
 
 	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
 	var lastEpochToFreeze uint32
@@ -386,8 +419,10 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	// unlock chain
 	txb.PutUnlockParams(idx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(successorIdx))
 
-	// add frozen coverage to the sequencer output
-	a := delegationOut.Amounts().FrozenCoverageVector(byte(txb.Library.MaxFrozenEpochs))
+	// add frozen coverage to the sequencer output. Vector size is this
+	// chain's chainMaxFrozenEpochs — the delegation targets this chain
+	// so its TargetMaxFrozenEpochs equals our chainMaxFrozenEpochs.
+	a := delegationOut.Amounts().FrozenCoverageVector(txb.chainMaxFrozenEpochs)
 	for i, c := range a {
 		txb.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] += c
 	}
@@ -396,7 +431,12 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 }
 
 func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
-	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero(byte(txb.Library.MaxFrozenEpochs)) {
+	// Withdrawal output must carry no inflation and no frozen coverage.
+	// IsFrozenCoverageZero(N) reads positions [2 .. 2+N-1]; reading past
+	// NumElements returns 0 from Amount(), so passing the chain's
+	// chainMaxFrozenEpochs covers every position that could legitimately
+	// hold a non-zero FC cell on this chain.
+	if o.Inflation() != 0 || !o.Amounts().IsFrozenCoverageZero(txb.chainMaxFrozenEpochs) {
 		return fmt.Errorf("AddWithdrawOutput: only token balance can be non-zero")
 	}
 	amount := o.TokenBalance()
@@ -447,7 +487,13 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		o.MustPushConstraint(sequencerConstraint.Bytes())
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
 		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
-
+		// Carry forward delegationParams (Phase 4 of
+		// claude/delegation_epoch_params.md). Immutable across every
+		// chain transit by selfImmutableOnSuccessorIndex(6) on the
+		// constraint itself.
+		if dpBytes, dpErr := txb.chainInput.Output.At(int(ledger.ConstraintIndexDelegationParams)); dpErr == nil && len(dpBytes) > 0 {
+			o.PutConstraint(dpBytes, ledger.ConstraintIndexDelegationParams)
+		}
 	}))
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder: %w", err)

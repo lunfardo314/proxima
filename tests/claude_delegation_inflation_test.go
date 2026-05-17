@@ -66,7 +66,8 @@ func TestDelegationInflationMinimal(t *testing.T) {
 
 		_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.PutConstraint(delegOut.Output.Amounts().Bytes(), ledger.ConstraintIndexAmounts)
-			delegateLock := ledger.NewDelegateLock(seqID, base.HolderID(masterAddr), 1, 980)
+			delegateLock := ledger.NewDelegateLock(seqID, base.HolderID(masterAddr), 1, 980,
+				ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
 			o.WithLock(delegateLock)
 			o.PutConstraint(ledger.NewChainConstraint(delegChainID, 0, delegOut.OriginSlot, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
