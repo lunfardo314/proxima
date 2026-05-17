@@ -67,9 +67,16 @@ func DelegationOutputFromOutputWithChainIDWithLib(o *OutputWithChainID, lib *Lib
 	util.Assertf(ok, "DelegationOutputFromOutputWithChainID: inconsistency")
 	ret.DelegateLock = *dLock
 
-	// DelegateLockState lives at index 4: [0] amounts, [1] index-values, [2] lock, [3] chain, [4] state.
-	if data, err := o.Output.ConstraintAt(4); err == nil {
-		ret.DelegateLockState, err = DelegateLockStateFromBytesWithLib(data, lib)
+	// DelegateLockState lives at the LAST tuple position (Option C of
+	// claude/delegation_epoch_params.md). A plain delegation has 5
+	// elements with the state at index 4; a delegated foundry has
+	// 6 or 7 elements with foundry / foundryPolicy between chain (3)
+	// and the state.
+	n := o.Output.NumElements()
+	if n > 0 {
+		if data, err := o.Output.ConstraintAt(byte(n - 1)); err == nil {
+			ret.DelegateLockState, err = DelegateLockStateFromBytesWithLib(data, lib)
+		}
 	}
 	return
 }

@@ -42,6 +42,21 @@ func _selfEpochSlots :
 func _selfTargetMaxFrozenEpochs :
    parseInlineDataArgument(selfSiblingConstraint(lockConstraintIndex), 3, #delegateLock)
 
+// delegateLockState is pinned to the LAST tuple position on every
+// delegation output (Option C of claude/delegation_epoch_params.md).
+// The state's own body refuses unless selfBlockIndex equals the
+// computed last index; the delegateLock body looks it up via the
+// helpers below. This lets a delegation coexist with any number of
+// other constraints (foundry / foundryPolicy / future kinds) sitting
+// between chain (index 3) and the state.
+
+func _selfLastConstraintIndex : byte(sub(selfNumConstraints, u64/1), 7)
+
+// successor output path (same calculation as inside successorConstraint)
+func _successorOutputPath : concat(pathToProducedOutputs, byte(selfSiblingUnlockParams(chainConstraintIndex), 0))
+
+func _successorLastConstraintIndex : byte(sub(tupleLenAtPath(_successorOutputPath), u64/1), 7)
+
 // $0 target chain ChainID
 // $1 epochSlots (uint32, ranged)
 // -> chainID[0:3] mod slots-in-epoch
@@ -77,13 +92,20 @@ func successorConstraint : atPath(concat(pathToProducedOutputs, byte(selfSibling
 //  - 0x02 means 'on hold (stopped)'.
 //  - The rest values are invalid
 //
-// mutable part of the delegation output
+// mutable part of the delegation output. Must occupy the last tuple
+// position (Option C of claude/delegation_epoch_params.md). Any
+// constraints sitting between the chain at index 3 and the state at
+// the last index — typically foundry / foundryPolicy on a delegated
+// foundry chain — must check their own validity.
 func delegateLockState :
 or(
    // not checked in the consumed context
    not(selfIsProducedOutput),
    // 'produced' context
-   require(equal(len($1), u64/1), !!!delegateLockState_$1_must_be_1_byte),
+   and(
+      require(equal(len($1), u64/1), !!!delegateLockState_$1_must_be_1_byte),
+      require(equal(selfBlockIndex, _selfLastConstraintIndex), !!!delegateLockState_must_occupy_the_last_tuple_position),
+   ),
 )
 
 // self is delegation output - does not depend on consumed/produced context
@@ -91,8 +113,8 @@ or(
 // (master is at position 0 by §4.1 convention).
 
 func _selfTargetChainID : selfIndexValue(1)
-func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(4),0, #delegateLockState))
-func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(4), 1, #delegateLockState)
+func _selfLastFrozenEpoch : uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(_selfLastConstraintIndex),0, #delegateLockState))
+func _selfStateMark : parseInlineDataArgument(selfSiblingConstraint(_selfLastConstraintIndex), 1, #delegateLockState)
 func _selfIsMarkedFrozen : equal(_selfStateMark, 1)
 func _selfIsMarkedOnHold : equal(_selfStateMark, 2)
 func _selfIsMarkedUndef : and(not(_selfIsMarkedOnHold), not(_selfIsMarkedFrozen))
@@ -210,14 +232,22 @@ and(
 
 // $0 max frozen epochs uint64 — already adjusted
 // $1 target's max frozen epochs (uint64)
+//
+// Option C of claude/delegation_epoch_params.md: the delegateLockState
+// must occupy the last tuple position (its own body enforces that), so
+// the structure check just verifies the last constraint parses as a
+// delegateLockState. Any constraints sitting between chain (index 3)
+// and the state (index N-1) — typically `foundry` and `foundryPolicy`
+// when delegating a foundry chain — must check their own validity in
+// their own bodies; we no longer pin the exact number of elements.
 func _validStructureProduced :
 and(
-    require(
-	   equal(selfNumConstraints, u64/5),
-	   !!!delegation_must_have_exactly_5_UTXO_elements
-    ), // to prevent injection attacks
     selfIsChainedOutput,
-    parseBytecode(selfSiblingConstraint(4), 0x, #delegateLockState),
+    // parseBytecode panics if the last position doesn't carry a
+    // delegateLockState — that panic is the rejection path. The
+    // delegateLockState's own body separately enforces that it sits
+    // at the last index.
+    parseBytecode(selfSiblingConstraint(_selfLastConstraintIndex), 0x, #delegateLockState),
     require(and(equal(len(_selfTargetChainID), u64/32), not(isZero(_selfTargetChainID))), !!!invalid_target_chain_id),
     require(
        and(not(isZero($0)), lessOrEqualThan($0, $1)),
@@ -264,7 +294,7 @@ func _txInsideSafeRevocationWindow : and(
     lessThan(uint8Bytes(txSlot), add($0, constDelegationSafeRevocationSlots))
 )
 
-func _successorIsOnHold : equal(parseInlineDataArgument(successorConstraint(4), 1, #delegateLockState), 2)
+func _successorIsOnHold : equal(parseInlineDataArgument(successorConstraint(_successorLastConstraintIndex), 1, #delegateLockState), 2)
 
 func _requireUnlockableByTheTarget :
 and(

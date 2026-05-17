@@ -109,9 +109,50 @@ token balance without giving up the foundry-ness (mint/burn rights and,
 crucially, any `foundryNonDestructible` / `foundryMaxSupply` policy
 the foundry was created with).
 
-### The index-4 conflict (open design choice)
+### Foundry-delegation via last-position state (Option C — shipped)
 
-Delegation outputs today have a fixed shape:
+Solved by **Option C**: `delegateLockState` is pinned to the LAST tuple
+position of the delegation output, not to a fixed index. The state
+constraint's own body refuses unless `selfBlockIndex` equals
+`selfNumConstraints - 1`; the delegateLock body's sibling reads use the
+helper `_selfLastConstraintIndex` (= `byte(sub(selfNumConstraints, u64/1), 7)`)
+and the symmetric `_successorLastConstraintIndex` for transit
+references. `_validStructureProduced` drops the "exactly 5 elements"
+pin and verifies the last position parses as `#delegateLockState`
+(parseBytecode-based; failure surfaces as the VM's `wrong function
+code` panic — caught by the negative tests).
+
+Layouts that now work without any structural change:
+
+| Output | 0 | 1 | 2 | 3 | 4 | 5 | last |
+|---|---|---|---|---|---|---|---|
+| plain delegation | amounts | iv | delegateLock | chain | delegateLockState | — | 4 |
+| delegated foundry, no policy | amounts | iv | delegateLock | chain | foundry | delegateLockState | 5 |
+| delegated foundry + policy | amounts | iv | delegateLock | chain | foundry | foundryPolicy | 6 |
+| sequencer chain (delegation target) | amounts | iv | sigLock | chain | seqCon | milestone | delegationParams at 6 (state never appears here — sequencer chains aren't delegations) |
+
+Defence-in-depth: two `delegateLockState` instances in one output is
+naturally rejected (the first fails its "I must be last" check);
+spurious extras after the state fail both the state's check and the
+delegateLock structural check; a missing state surfaces as the
+parseBytecode panic on whatever sits at the last index. Backward
+compatibility with the original 5-element delegation layout is zero —
+`numConstraints - 1 == 4` already.
+
+Go-side: `DelegationOutputFromOutputWithChainIDWithLib` now reads
+the state from `ConstraintAt(byte(NumElements() - 1))` instead of the
+hard-coded index 4.
+
+`proxi node delegate chain` can now be pointed at a foundry chain
+output; the resulting transit replaces the lock at index 2 with
+`delegateLock`, preserves `foundry` at 4 (and `foundryPolicy` at 5 if
+present), and appends `delegateLockState` at the last position. The
+foundry's policy self-immutability check on index 5 still passes
+byte-equal across the transit.
+
+### Historical: the index-4 conflict (resolved by Option C)
+
+Delegation outputs originally had a fixed shape:
 
 ```
 0: amounts
@@ -134,47 +175,23 @@ positions must persist across every transit when a policy is attached
 which fails the moment a transit changes or drops index 5.
 
 So "delegate this foundry" (lock-only change, foundry constraint
-preserved) **cannot fit** into the current 5-element delegation
-layout. Two paths forward, pick one:
+preserved) **could not fit** into the original 5-element delegation
+layout. The chosen resolution is Option C (described above): pin
+`delegateLockState` to the LAST tuple position. The other two
+considered options:
 
-**Option A — Foundries cannot be delegated.** Accept the limitation.
-The user delegates *non-foundry* token holdings to a sequencer; the
-foundry chain stays a foundry. Simplest; no layout changes; no
-`_validStructureProduced` relaxation. Phase 6 adds a negative test
-that `proxi node delegate chain` on a foundry chain is rejected (the
-produced delegation output would either drop the foundry constraint
-or fail `_validStructureProduced`).
+- **Option A (rejected)** — accept that foundries cannot be
+  delegated. Simplest but loses the use case.
+- **Option B (rejected)** — assign `delegateLockState` a fixed new
+  index (e.g. 7) and pad positions 4–6 with empty bytecode on plain
+  delegations. Requires the empty-bytecode-at-extras rule (already
+  shipped in Phase 3) but introduces wasted bytes on plain
+  delegations and a fixed-index brittleness that re-emerges if
+  future constraint kinds want to land between chain and state.
 
-**Option B — Move `delegateLockState` to a free position and relax
-the 5-element check.** Concretely:
-
-- Reserve `ConstraintIndexDelegateLockState = 7` (after
-  `ConstraintIndexDelegationParams = 6`). On every delegation,
-  `delegateLockState` lives at index 7.
-- The delegateLock body changes every `selfSiblingConstraint(4)` /
-  `successorConstraint(4)` reference to point at index 7
-  (`delegateLockStateConstraintIndex` EasyFL symbol).
-- `_validStructureProduced` no longer pins `selfNumConstraints`;
-  instead it checks the specific positions it requires:
-  delegateLock at 2, chain at 3, delegateLockState at 7. Positions
-  4 / 5 / 6 are optional and only meaningful when they carry their
-  designated constraints (`foundry`, `foundryPolicy`,
-  `delegationParams` — but a delegation is not a target, so 6 is
-  always empty). The empty-bytecode-at-extras rule from Phase 3
-  validation makes this safe.
-- Foundry-delegations are then a single transit that swaps the lock
-  at index 2 from `sigLock` (or `chainLock`) to `delegateLock`,
-  preserves `foundry` at 4 and `foundryPolicy` at 5, attaches
-  `delegateLockState` at 7. The foundry's self-immutability check on
-  index 5 still passes (bytes unchanged).
-
-Option B costs: one new constraint index, a small EasyFL rewrite of
-the delegateLock body's siblings, and a relaxation of the
-"exactly-5" injection-prevention check (replaced by per-index
-positive assertions, which is arguably cleaner anyway). It removes
-the limitation for the canonical use case the user called out:
-*"issue full supply of native tokens then delegate the foundry,
-otherwise non-destructible"*.
+Option C is strictly more flexible than B (works for any future
+constraint kind that needs to sit between chain and state) and costs
+the same amount of EasyFL.
 
 **Recommendation: Option B** if the foundry-delegation use case is a
 first-class feature (the user's phrasing suggests it is). Option A

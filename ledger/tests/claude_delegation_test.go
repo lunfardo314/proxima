@@ -413,9 +413,12 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	require.Error(t, err, "delegation origin should not be created frozen")
 }
 
-// TestClaudeDelegationWrongConstraintCount verifies that a delegation output
-// with != 4 constraints is rejected. This prevents constraint injection attacks.
-// EasyFL: equal(selfNumConstraints, u64/4)
+// TestClaudeDelegationWrongConstraintCount verifies that a delegation
+// output with junk appended after the delegateLockState is rejected.
+// Per Option C of claude/delegation_epoch_params.md the state must
+// occupy the LAST tuple position; pushing more constraints after it
+// makes the state no longer last AND breaks the "last position parses
+// as delegateLockState" structure check.
 func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey, _, addr := u.GenerateAddresses(0, 2)
@@ -478,7 +481,12 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "delegation with 5 constraints should be rejected")
-	require.NoError(t, util.MustErrorWith(err, "delegation must have exactly 5 UTXO elements"))
+	// Per Option C the structure check on the delegateLock side reads
+	// the last tuple position via parseBytecode(..., #delegateLockState).
+	// Junk at the last position panics parseBytecode before any explicit
+	// `require` can fire, so the surfaced error is the panic from the
+	// EasyFL VM — sufficient to confirm the tx was rejected.
+	require.NoError(t, util.MustErrorWith(err, "wrong function code"))
 }
 
 // TestClaudeDelegationSafeRevocationWindow verifies that the target sequencer
