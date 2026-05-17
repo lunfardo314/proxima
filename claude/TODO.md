@@ -87,3 +87,58 @@ would be inappropriate to import wholesale.
 Reference: `examples/dex/dex.easyfl` — sell/buy order reclaim windows just call
 `sigLock`. Bundle shrank ~110 bytes vs. the hand-rolled version.
 
+## INVESTIGATE: intermittent FATAL "ledger coverage should not decrease along endorsement"
+
+Source: `core/attacher/check.go:50` inside `checkConsistencyBeforeWrapUp()`.
+Fires when the milestone attacher's recomputed `FinalLedgerCoverage` is less
+than the coverage of one of the endorsed (non-branch) milestones.
+
+Surfaced during `go test ./tests/...` in the delegation_epoch_params refactor
+session (2026-05-17). Behaviour observed:
+
+- Reproduced twice running `go test ./tests/... -count=1 -timeout 900s` without
+  `-v`, in concurrent multi-sequencer scenarios (boot + seq0..seq3, around
+  slot 13–15).
+- Did NOT repro on the immediately-following `-v` run on the same codebase
+  (`go test ./tests/... -count=1 -timeout 900s -v` — all 30+ tests green).
+- Verbosity-dependent reproduction strongly suggests a race / timing issue
+  rather than a deterministic logic bug. Output buffering and goroutine
+  scheduling differ subtly between -v and non-v runs.
+
+The FATAL is invoked from a goroutine inside `core/attacher.AttachTransaction`
+→ `runMilestoneAttacher` → `milestoneAttacher.run` → `checkConsistencyBeforeWrapUp`.
+On firing it calls `global.Fatalf` which crashes the whole test process
+(hence the surrounding integration-suite FAIL).
+
+Why this matters:
+
+- The invariant is a real protocol soundness property — endorsements must NOT
+  decrease coverage. If the check fires legitimately, something allowed an
+  endorsement to be issued against a lower-coverage milestone.
+- More likely: a transient stale-state read during the attacher's wrap-up
+  ordering (similar in spirit to `ErrAttacherTransientStaleState` already
+  handled a few lines above for cleared coverage). The check should perhaps
+  retry / bail with a transient error instead of FATAL-ing the process.
+
+Investigation entry points:
+
+- `core/attacher/check.go:35-55` — the loop walking endorsements. Note the
+  existing `ErrAttacherTransientStaleState` branch on `lcEnd == nil`. A
+  similar transient guard may be needed when `lcCalc` is read before all
+  inputs to `FinalLedgerCoverage` have stabilised.
+- `core/attacher/attacher_milestone.go:154` — caller. Compare how the
+  transient error is propagated up the stack vs. the current FATAL path.
+- The Phase 5b refactor (`delegateLockState` at last position) changed how
+  the chain's frozen-coverage vector is sourced for non-delegation chain
+  outputs. Unlikely to be the cause (the FATAL path doesn't touch
+  delegationParams; coverage is computed independently of per-target
+  params), but worth ruling out by reproducing the FATAL on `ba7d0559` (the
+  parent of the layout change).
+
+Reproduction hint: run `go test ./tests/... -count=1 -timeout 900s` (no -v)
+in a loop until it fires; capture the surrounding lines and the attacher
+dump (`---- attacher lines ----`) for the failing milestone.
+
+Not fixed in the delegation_epoch_params refactor; this TODO captures it
+for a focused follow-up.
+
