@@ -2,7 +2,16 @@
 
 ## Status
 
-**Active.** Refactor revived 2026-05-17 after the experience of bumping the
+**Shipped (2026-05-17, develop08).** Phases 1–6 + 5b (last-position
+delegateLockState, Option C) are merged. Commits on `develop08`:
+
+```
+9918f6cc ledger: phase 6 tests for delegation epoch params + foundry-delegation
+0951287e ledger: pin delegateLockState to last tuple position
+ba7d0559 ledger: per-target delegation epoch params (phases 1-5)
+```
+
+Refactor revived 2026-05-17 after the experience of bumping the
 globals (cfa509f4: `epochSlots 700→600`, `maxFrozenEpochs 10→20`) made it
 obvious that we don't know the right values yet and will likely need to
 move them again. Globals work fine until the day they're imprinted into
@@ -13,6 +22,12 @@ The change makes the two parameters a property of *the target chain
 output itself*, snapshotted immutably at chain origin. Globals survive
 only as proxi-side defaults for new chains; they have zero influence on
 chains that already exist.
+
+As a side effect of solving the foundry-delegation index-4 conflict,
+`delegateLockState` was pinned to the last tuple position (Option C);
+any chained output — including foundry chains with policies — can now
+be delegated to a sequencer via a single lock-only transit that
+appends the state at the last index.
 
 ## Context: how delegation params work today
 
