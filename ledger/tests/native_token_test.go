@@ -612,7 +612,7 @@ func TestFoundryAuditabilityRejectsUndeclared(t *testing.T) {
 	// NOTE: deliberately no DeclareTokenConservation call.
 	_, _, err = e.finishAndSubmit(t, txb, ts)
 	require.Error(t, err, "tokenAmount without declaration must be rejected")
-	require.NoError(t, util.MustErrorWith(err, "undeclared native token tag"))
+	require.NoError(t, util.MustErrorWith(err, "not declared at tx level"))
 	t.Logf("undeclared tag rejected: %v", err)
 }
 
@@ -1149,4 +1149,135 @@ func mustConstraintAt(t *testing.T, o *ledger.Output, idx byte) []byte {
 	b, err := o.ConstraintAt(idx)
 	require.NoError(t, err)
 	return b
+}
+
+// --------------------------------------------------------------------------
+// Mint-from-thin-air probes — make sure a UTXO carrying tokenAmount can
+// never appear in produced outputs unless a real foundry transit (or a
+// pure-conservation declaration with matching consumed balance) backs it.
+// --------------------------------------------------------------------------
+
+// buildFakeMintTx constructs a tx that consumes a wallet sigLock UTXO
+// (so the signature works) and produces a tokenAmount(fakeTag, fabricated)
+// output on the recipient. If withDeclaration is true, it also pushes
+// the pure-conservation `token(fakeTag, 0x)` constraint. Submission
+// error is returned for the caller to assert.
+func buildFakeMintTx(t *testing.T, e *foundryTestEnv, fakeTag base.ChainID, fabricated uint64, recipient ledger.Lock, withDeclaration bool) error {
+	t.Helper()
+	outs := getSourceOutputs(t, e.u, e.addr)
+
+	txb := txbuilder.New()
+	_, inTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+	require.NoError(t, err)
+	for i := range outs {
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			require.NoError(t, txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0))
+		}
+	}
+
+	ts := inTs.AddSlots(1)
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(1)
+	}
+
+	// Fabricate a tokenAmount-bearing UTXO out of thin air.
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(100_000_000).WithLock(recipient).WithTokenAmount(fakeTag, fabricated)
+	})
+	require.NoError(t, out.EnoughAmountForStorageDeposit())
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err)
+
+	addRemainderIfNeeded(t, txb, e.addr)
+
+	if withDeclaration {
+		txb.DeclareTokenConservation(fakeTag)
+	}
+
+	_, _, err = e.finishAndSubmit(t, txb, ts)
+	return err
+}
+
+// TestExploitProbeMintWithoutDeclaration tries to fabricate
+// tokenAmount(fakeTag, N) on a produced UTXO without any consumed
+// tokenAmount and WITHOUT any tx-level token(...) declaration. The
+// fakeTag is a randomly invented 32-byte value — no foundry exists for
+// it. tokenAmount()'s own body refuses to evaluate against an
+// undeclared tag, so the tx is rejected at the constraint itself.
+func TestExploitProbeMintWithoutDeclaration(t *testing.T) {
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	fakeTag := base.RandomChainID()
+	_, _, recipient := e.u.GenerateAddress(99)
+
+	err := buildFakeMintTx(t, e, fakeTag, 1_000_000, recipient, false)
+	require.Error(t, err, "fabricating tokenAmount with no consumed input and no token() declaration must be rejected")
+	t.Logf("mint-from-thin-air rejected: %v", err)
+}
+
+// TestExploitProbeOrdinaryTxWithFakeTokenAmount is the exact scenario
+// the user described: build an ordinary PRXI send-to-self tx, then
+// tack on a tokenAmount(0x1234..., 1000) onto the produced output. No
+// token() declaration anywhere. The tag is a fixed value
+// (0x1234...) with no associated foundry on-ledger. tokenAmount()'s
+// own body refuses to evaluate against an undeclared tag.
+func TestExploitProbeOrdinaryTxWithFakeTokenAmount(t *testing.T) {
+	e := newFoundryTestEnv(t, 10_000_000_000)
+
+	// Fixed fake tag: 0x1234...01 (32 bytes; arbitrary value, no foundry).
+	var fakeTag base.ChainID
+	fakeTag[0] = 0x12
+	fakeTag[1] = 0x34
+	fakeTag[31] = 0x01
+
+	outs := getSourceOutputs(t, e.u, e.addr)
+	txb := txbuilder.New()
+	_, inTs, err := txb.ConsumeOutputsNoUnlock(outs...)
+	require.NoError(t, err)
+	for i := range outs {
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			require.NoError(t, txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0))
+		}
+	}
+	ts := inTs.AddSlots(1)
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(1)
+	}
+
+	// Ordinary "send to owner" output. Same lock (e.addr) as the wallet —
+	// so this is a self-transfer. Tag the produced output with a fake
+	// tokenAmount(0x1234..., 1000).
+	out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(500_000_000).WithLock(e.addr).WithTokenAmount(fakeTag, 1000)
+	})
+	require.NoError(t, out.EnoughAmountForStorageDeposit())
+	_, err = txb.ProduceOutput(out)
+	require.NoError(t, err)
+
+	addRemainderIfNeeded(t, txb, e.addr)
+
+	// Deliberately NO token(...) declaration anywhere.
+	_, _, err = e.finishAndSubmit(t, txb, ts)
+	require.Error(t, err, "ordinary tx with fabricated tokenAmount must be rejected")
+	require.NoError(t, util.MustErrorWith(err, "not declared at tx level"))
+	t.Logf("ordinary tx + fake tokenAmount rejected: %v", err)
+}
+
+// TestExploitProbeMintWithSentinelDeclaration is the more interesting
+// case: declare `token(fakeTag, 0x)` (pure-conservation sentinel) so the
+// Phase D audit is satisfied — but produce tokenAmount(fakeTag, N) on
+// the output side with NO matching consumed tokenAmount. The balance
+// equation Σ consumed == Σ produced fails (0 != N), so token() must
+// panic. If it did not, the user could mint any tag's tokens at will.
+func TestExploitProbeMintWithSentinelDeclaration(t *testing.T) {
+	e := newFoundryTestEnv(t, 10_000_000_000)
+	fakeTag := base.RandomChainID()
+	_, _, recipient := e.u.GenerateAddress(101)
+
+	err := buildFakeMintTx(t, e, fakeTag, 1_000_000, recipient, true)
+	require.Error(t, err, "declaring a fake tag with no consumed balance must fail the token() balance equation")
+	t.Logf("fake-sentinel mint rejected: %v", err)
 }

@@ -1,19 +1,44 @@
-# Native tokens — design strategy
+# Native tokens — design and reference
 
-Status: **open design discussion**, no implementation. Started 2026-05-12.
-Updated 2026-05-13: foundry + `token(...)` / `tokenAmount(...)` shape.
+Status: **SHIPPED on develop08**. Started 2026-05-12; original
+implementation (Phase D Go-level audit pass) shipped 2026-05-14;
+**refactored to the "every constraint accounts for itself" model on
+2026-05-18** — the audit pass was deleted in favour of in-constraint
+enforcement; `foundry` reduced to 1-arg `foundry(supply)`; `tokenAmount`
+became a Go builtin.
 
-Goal: add native (tagged) tokens to the Proxima transaction model. A native
-token is identified by a **tag equal to a chain ID**. The chain whose ID is
-the tag is called the **foundry** of that token. The foundry's controller
-is the issuance authority: only a transaction that transits the foundry can
-mint or burn its tag. Outside of mint/burn, per-tag amounts are conserved
-across every transaction.
+Goal: add native (tagged) tokens to the Proxima transaction model. A
+native token is identified by a **tag equal to a chain ID**. The chain
+whose ID is the tag is called the **foundry** of that token. The
+foundry's controller is the issuance authority: only a transaction
+that transits the foundry can mint or burn its tag. Outside of
+mint/burn, per-tag amounts are conserved across every transaction.
 
-The current single-asset PRXI preservation is enforced in `validateOutputs`
-(the "mismatch between token amounts" check). Native tokens generalise
-this to per-tag preservation, with the foundry as the single point that
-can introduce a non-zero supply delta.
+PRXI preservation lives in `validateOutputs` ("mismatch between token
+amounts"); native tokens generalise it to per-tag preservation, with the
+foundry as the single point that can introduce a non-zero supply delta.
+
+---
+
+## Design principle: constraint-local enforcement
+
+A native token's invariants are split into **three local responsibilities
+plus one closing balance check**. No constraint is responsible for the
+whole-tx state; each one validates only what it can see, and the cache
+they share is just a running tally — there is no "audit pass" that
+walks the tx after the fact.
+
+| Responsibility | Lives in | Enforces |
+|---|---|---|
+| Declare a tag and its foundry-supply delta | `token(tag, foundryIdx)` (tx-level) | Tag well-formed; foundry-transit form: produced foundry's chain ID == tag, reach consumed predecessor, compute `Δ = producedSupply − consumedSupply` |
+| Account each native-token instance onto the cache | `tokenAmount(tag, amount)` (UTXO-level) | Both args inline literal; `amount > 0`; tag must already be declared; pre-check overflow then add `amount` to the per-tag consumed-or-produced sum |
+| Closing balance equation | `agg.CheckBalances()` at tail of `validateOutputs` | For each declared tag: `consumedSum + Δ == producedSum` (mint) or `consumedSum == producedSum + Δ` (burn) |
+
+The **only sequencing assumption** is that `token()` runs before
+`tokenAmount()` — which is structurally guaranteed because tx-level
+constraints fire before per-output constraints (see
+`validateTxLevelConstraints` and `_runOutputs` in
+`ledger/transaction/validate.go`).
 
 ---
 
@@ -21,429 +46,241 @@ can introduce a non-zero supply delta.
 
 ### 1. Tag identity — the chain ID is the tag
 
-A native token's tag **is** a chain ID. There is no separate policy object,
-no script hash, no registry. The chain whose ID equals the tag is the
-foundry for that tag.
+A native token's tag **is** a chain ID. There is no separate policy
+object, no script hash, no registry. The chain whose ID equals the tag
+is the foundry for that tag.
 
 Consequences:
-- Tag uniqueness is inherited from chain-ID uniqueness — no new collision
-  surface.
-- The foundry chain's existing constraints (sigLock / EasyFL covenants)
-  already gate who can authorise mint/burn — no new authority model.
-- Burning the foundry chain freezes total supply forever (or, depending on
-  the issuance-policy choice below, is forbidden while supply > 0). Either
-  rule gives us NFT-like and fixed-supply behaviour with no extra
-  machinery.
+- Tag uniqueness is inherited from chain-ID uniqueness — no new
+  collision surface.
+- The foundry chain's existing lock (sigLock / EasyFL covenants) already
+  gates who can authorise mint/burn — no new authority model.
+- Burning the foundry chain freezes total supply forever (or, depending
+  on the policy script, is forbidden while supply > 0). Either rule
+  gives NFT-like and fixed-supply behaviour with no extra machinery.
 
 ### 2. Foundry constraint — the per-tag header
 
-A foundry is a chained UTXO that carries, in addition to its chain
-constraint, a `foundry(...)` constraint at a fixed extras slot. The
-foundry constraint holds the global state of the tag:
+A foundry is a chained UTXO whose chain ID **is** the tag. It carries
+its supply in a 1-arg `foundry(supply)` constraint at
+`ConstraintIndexFoundry = 4` (first extras slot after `chain` at
+index 3):
 
-- total supply currently in circulation
-- issuance policy parameters (see open questions below)
-- any bookkeeping the policy needs (e.g. last-inflation slot, cap)
+```
+foundry(supply)        supply is z64-encoded uint64
+```
 
-A transaction that consumes the foundry produces a new foundry output for
-the same chain ID. The transit may change the recorded supply — that
-change is the **signed supply delta** for the tag in this transaction.
+The tag is **not** stored on the foundry — the sibling chain
+constraint's `ChainID` IS the tag. `chain()` enforces ChainID
+preservation across every transit, so the tag is invariant by chain's
+own rule. (Earlier 2-arg `foundry(tag, supply)` carried a redundant
+tag arg; refactored 2026-05-18.)
+
+The optional policy script at `ConstraintIndexFoundryPolicy = 5` is
+raw EasyFL bytecode auto-evaluated as part of the standard output-tuple
+validation pass. `foundry()` does NOT enforce immutability of that
+position — policy scripts self-lock via
+`selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)`. See
+"Issuance policy" below.
 
 ### 3. UTXO-side: `tokenAmount(tag, amount)`
 
-A regular (non-foundry) UTXO carries native tokens via an extended EasyFL
-constraint:
+A non-foundry UTXO that holds native tokens carries one or more
+`tokenAmount` constraints at any non-reserved positions in its tuple:
 
 ```
 tokenAmount(<tag>, <amount>)        amount > 0
 ```
 
-`tag` is a 32-byte chain ID; `amount` is the carried quantity.
+`tag` is a 32-byte chain ID; `amount` is uint64. **Both must be inline
+literals** — not the result of an EasyFL expression — so the per-tx
+cache can read them directly without sub-evaluation.
 
-Placement: `tokenAmount` does **not** live at a fixed extras slot. A UTXO
-may carry any number of `tokenAmount` constraints at any non-reserved
-positions in its tuple. The dominant case is zero (no constraint, zero
-overhead); the second-most-common case is one. Multi-tag UTXOs are
-allowed and need no special model — the storage-deposit minimum already
-disincentivises gratuitous UTXO bloat, so a hard "one tag per UTXO"
-restriction is unnecessary.
+Placement is free: multi-tag UTXOs are allowed; the dominant case is
+zero `tokenAmount` instances (no overhead). The storage-deposit minimum
+disincentivises gratuitous bloat.
 
-Both `tag` and `amount` must be **inline literals** in the bytecode — not
-results of EasyFL expressions. This keeps the Go reconciler trivial (the
-tag key is the raw bytes; the amount is read directly without
-evaluation).
+`tokenAmount` is a Go builtin (`evalTokenAmount`). At every invocation
+it enforces locally:
 
-Where this is enforced: **inside the `token(...)` builtin**, not by
-`tokenAmount` itself. When the reconciler walks inputs/outputs looking
-for `tokenAmount(tag, amount)` instances for a declared tag, it checks
-that both args are literal-shaped bytecode and fails validation
-otherwise. Concentrating the rule in `token(...)` keeps `tokenAmount`'s
-own bytecode trivial and means there is exactly one place that defines
-what a "valid native-token-bearing UTXO" looks like.
+1. arg 0 (tag) is inline-data literal, 32 bytes.
+2. arg 1 (amount) is inline-data literal, decodes to uint64 > 0.
+3. The tag must already be in the per-tx cache. If not, the constraint
+   fails — this is how "undeclared native token" is rejected, at the
+   constraint itself, no global audit needed.
 
-### 4. Tx-side: `token(tag, foundryProducedIndex)`
+Then, as a side effect, it adds `amount` to the per-tag
+`ConsumedSum` or `ProducedSum` (side derived from the eval path).
+The addition is pre-checked against `MaxUint64` at the call site;
+overflow fails the constraint.
 
-Preservation is enforced by a **transaction-level** constraint:
+### 4. Tx-side: `token(tag, foundryProducedIdx)`
 
 ```
-token(<tag>, <produced foundry index>)
+token(<tag>, <foundryProducedIdx>)
 ```
 
-Both arguments are inline literals. Semantics:
+A **fixed-arity-2** tx-level constraint (Go builtin `evalToken`). Both
+args inline literals:
 
-- The constraint traverses the transaction's consumed and produced outputs
-  and sums `tokenAmount(tag, ...)` quantities on each side.
-- If `<produced foundry index>` is absent (a sentinel value, e.g.
-  `0xFF`), the rule is **pure conservation**:
-  `Σ consumed(tag) == Σ produced(tag)`.
-- If `<produced foundry index>` points to a produced foundry output for
-  this `tag`, the rule is:
-  `Σ consumed(tag) + supplyDelta(foundry) == Σ produced(tag)`,
-  where `supplyDelta` is `producedFoundry.supply − consumedFoundry.supply`
-  (positive = mint, negative = burn). The constraint also verifies that
-  the indicated produced output is in fact the foundry for `tag` and that
-  the corresponding foundry input is consumed.
+- `tag`: 32-byte chain ID.
+- `foundryProducedIdx`: single byte. `0xFF` (`FoundryIdxNone`) is the
+  reserved sentinel meaning "no foundry transit; pure conservation".
+  Any other byte names a produced foundry output.
 
-Auditability — same pattern as `redeem(...)`:
-- A transaction must declare, at the `TxConstraints` level, every `tag`
-  that appears anywhere in its inputs or outputs.
-- If a `tokenAmount(tag, ...)` is present in any UTXO but no matching
-  `token(tag, ...)` exists at the tx level, validation fails.
-- This makes per-tag reasoning local and indexable: a verifier can list
-  the tags touched by a tx by scanning its tx-level constraints alone.
+What `token()` does — **only**:
 
-### 5. Implementation — Go, not EasyFL
+- Sentinel form: declare `(tag, deltaMag = 0, isBurn = false)`.
+- Foundry-transit form: locate the produced foundry; verify
+  `producedOut.ChainConstraint().ChainID == tag`; reach the consumed
+  predecessor via `pcc.PredecessorInputIndex`; read both supplies;
+  compute `deltaMag, isBurn` using only unsigned subtraction-of-smaller-
+  from-larger; declare `(tag, deltaMag, isBurn)`.
 
-`token(...)` aggregates over the full input/output set and matches by
-tag. Pure EasyFL cannot iterate efficiently over arbitrary slot
-positions; the constraint is therefore a **Go builtin** registered as an
-EasyFL function. Same model that `redeem()` uses today.
+Duplicate declarations for the same tag in one tx are rejected (a
+builder bug). `token()` does NOT enforce the balance equation — that
+falls to `tokenAmount` accounting + the closing check.
 
-Requirements:
-- Simple, well-documented Go: per-tag running totals on consumed and
-  produced sides, plus the foundry delta lookup.
-- The aggregation results are **cached** on the transaction context (one
-  pass for all tags in the tx), same caching pattern as `redeem()`.
-- Behaviour must be reproducible on other platforms — the spec is the Go
-  code plus a normative prose description; no platform-specific
-  arithmetic, fixed 64-bit semantics.
+Practical consequence of the `0xFF` sentinel: a foundry produced at
+output index 255 cannot be a transit target. With max-outputs = 256
+this caps foundry-transit txs to ≤ 255 outputs, which is fine.
 
-`tokenAmount(...)` is an ordinary extended-EasyFL constraint — read by
-the Go reconciler for aggregation; its body only enforces local format
-invariants (32-byte tag, non-zero amount).
+### 5. Closing balance check
 
-`foundry(tag, supply)` is an extended-EasyFL constraint with real
-semantic load: its body enforces the **tag-equals-chain-ID** invariant
-across transit (skipped at origin where the chain ID is still
-NilChainID). The Go reconciler additionally reads it to extract the
-supply for the balance equation.
+At the tail of `validateOutputs`, after all per-output constraints have
+fired and the per-tx cache is fully populated,
+`tx.nativeTokenAggregator.CheckBalances()` runs:
 
-`foundry()` does **not** enforce immutability of anything past index 4.
-Whatever lives at index 5+ — a policy script, additional data, or
-nothing — is up to the foundry owner. If a policy script wants to lock
-itself across every chain transit, it composes the universal helper
-`selfImmutableOnSuccessorIndex($0)` (in `chain.easyfl`) with its own
-body. The two predefined policy scripts shipped today
-(`foundryNonDestructible`, `foundryMaxSupply`) do exactly that.
+- **Mint** (or sentinel): `producedSum == consumedSum + deltaMag`
+- **Burn**: `consumedSum == producedSum + deltaMag`
+
+Each addition is pre-checked against `MaxUint64`. The call is gated on
+the aggregator being non-nil so txs that never touched native tokens
+pay zero cost. This is the only tx-wide step in the native-token
+pipeline; everything else is local-constraint.
+
+### 6. Implementation — Go builtins, foundry stays EasyFL
+
+Both `token` and `tokenAmount` are Go builtins:
+- iteration over UTXO slot positions is more natural in Go;
+- the per-tx cache is a Go `map` on the transaction object;
+- arithmetic with explicit overflow guards is awkward in EasyFL.
+
+`foundry(supply)` is the only native-token constraint with a real
+EasyFL body — and that body does almost nothing (just `len(supply) <=
+8` on the produced side). The serde wrapper (`Foundry` struct) lives
+in `ledger/foundry.go`.
 
 ---
 
 ## Issuance policy — optional bytecode at index 5
 
-The simplest mechanism is the most general one: any extra constraint(s)
-on the foundry output **past index 4**. By convention the canonical
-position for a single policy script is `ConstraintIndexFoundryPolicy =
-5`, but additional indices may hold whatever further data or scripts
-the owner wants. Concretely:
+`ConstraintIndexFoundryPolicy = 5` holds **raw EasyFL bytecode** (no
+wrapper constraint). The standard output-tuple validation pass
+evaluates it like any other constraint position; `selfXxx` accessors
+resolve to the producedFoundry (produced side) or consumed predecessor
+(consumed side).
 
-- The position holds **raw EasyFL bytecode** — there is no wrapper
-  constraint. (Earlier drafts proposed a `foundryPolicy(script)`
-  wrapper; it was dropped because the position itself identifies the
-  policy and the wrapper added nothing.)
-- If position 5 is **absent**, the foundry's controller has full
-  discretion over mint/burn (subject only to the chain-controller's
-  lock).
-- If position 5 is **present**:
-  - The script is **evaluated automatically** by the standard
-    output-tuple validation pass — every non-amounts/non-index-values
-    position of every produced output is compiled and evaluated;
-    index 5 is no exception. The script's `selfXxx` accessors resolve
-    to the producedFoundry output, and on the consumed side they
-    resolve to the consumed predecessor.
-  - `foundry()` does **not** enforce immutability of these bytes. If the
-    script wants to lock itself across transit (the typical case), it
-    composes the universal helper
-    `selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)` with
-    its own body. The two predefined policies shipped today
-    (`foundryNonDestructible`, `foundryMaxSupply`) do this.
-  - The script may express any rule. Examples:
-    - `<circulating supply> <= S` — shipped as `foundryMaxSupply($0)`.
-    - "Retire only when supply is zero" — shipped as
-      `foundryNonDestructible`.
-    - Rate-limited inflation, burn-only, mint-only, etc. — write as
-      EasyFL.
+`foundry()` does **not** lock this position across transits. Policies
+self-lock via `selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)`
+in their AND-composed body. Two predefined policies ship today:
 
-A foundry with no script is the minimum-viable launch: the
-controller's signature is the only gate. The two predefined policies
-plus the `selfImmutableOnSuccessorIndex` building block cover the
-common cases; richer rules are just EasyFL.
+- **`foundryNonDestructible`**: discontinue only when consumed supply is
+  zero — all minted tokens must be burned back before retiring the
+  foundry chain.
+- **`foundryMaxSupply(N)`**: produced supply must be ≤ N on every
+  transit.
 
-How the policy script reads foundry state:
-- No new tx-context accessors are needed. The script reads its sibling
-  `foundry(tag, supply)` constraint (and the consumed-side counterpart)
-  using standard EasyFL bytecode-parsing functions already in the
-  library — `parseBytecode`, `parseInlineData`,
-  `parseInlineDataArgument`, etc. The policy script is just a regular
-  constraint that happens to live at position 5 of a foundry output; it
-  walks the input/output tuples it cares about by index.
+Absent script ⇒ controller's lock is the only gate on mint/burn/retire.
+Foundry retire (no successor output) is governed entirely by whatever
+the policy says (or the chain controller's signature if there is no
+policy).
 
-Foundry deletion (no produced foundry for a consumed one):
-- Whatever the policy script encodes wins. `foundryNonDestructible`
-  requires the consumed foundry's supply to be 0 at chain discontinue.
-  Absent script ⇒ deletion is governed only by the chain-controller's
-  signature. No hard-coded default anywhere.
+Foundries are ordinary chained UTXOs — not sequencer outputs. They can
+be delegated through the standard chainLock-master path (the foundry's
+own holdings sit in a separate delegation UTXO), but the foundry chain
+output itself never carries `delegationParams`.
 
 ---
 
 ## Wire layout
 
-Two new typed constraints + one raw-bytecode slot:
-
-- `tokenAmount(tag, amount)` — extended EasyFL constraint, inline-literal
-  args. Carried by any non-foundry UTXO that holds native tokens. Lives
-  at **any non-reserved position** in the UTXO tuple; multiple
-  occurrences allowed. ~41 bytes per instance (32 tag + 8 amount +
-  overhead). The body enforces local format only (32-byte tag, non-zero
-  amount); the literal-arg invariant is checked centrally by the
-  `token(...)` builtin during its scan.
-- `foundry(tag, supply)` — extended EasyFL constraint at **tuple index 4**
-  on the foundry output (the first extras position after the chain
-  constraint at index 3). Carries the current circulating supply. The
-  body enforces format **and** the tag-equals-chain-ID invariant at
-  every transit (skipped at origin).
-- **Policy script** — **optional**, raw EasyFL bytecode at **tuple
-  index 5** (`ConstraintIndexFoundryPolicy`). No wrapper constraint.
-  Auto-evaluated as part of the standard output-tuple validation pass.
-  `foundry()` does NOT enforce immutability of this position — it is
-  up to the script to self-lock via
-  `selfImmutableOnSuccessorIndex(foundryPolicyConstraintIndex)` (the
-  predefined policies do this).
-
-`token(tag, foundryProducedIndex)` lives at the **transaction-constraint**
-level (alongside `redeem`), not at any UTXO slot. Both args inline
-literals.
-
-Foundries do **not** need to be sequencer outputs — they are ordinary
-chained UTXOs. They can in principle be delegated (and thus frozen via
-the delegate lock), but a delegated/frozen foundry must be unfrozen
-before it can be used for mint/burn; delegate state and the
-foundry/policy pair never need to coexist at the same slot indices in a
-single mint/burn transaction.
-
+| Position | What | Notes |
+|---|---|---|
+| `tokenAmount(tag, amount)` | UTXO-level Go builtin | Any non-reserved tuple position. Multiple per UTXO allowed. ~41 bytes per instance. |
+| `foundry(supply)` (at `ConstraintIndexFoundry = 4`) | UTXO-level EasyFL constraint | Lives on chained UTXOs only. Tag = sibling chain's ChainID; not stored. |
+| **Raw policy bytecode** (at `ConstraintIndexFoundryPolicy = 5`) | UTXO-level, optional | No wrapper. Self-locking is the policy's own job. |
+| `token(tag, foundryProducedIdx)` | Tx-level Go builtin | Lives in TxConstraints alongside `redeem`. `foundryProducedIdx == 0xFF` ⇒ pure conservation. |
 
 ---
 
-## Implementation plan
+## File / symbol map
 
-The closest existing pattern is **`redeemScript`** — the Go-implemented,
-tx-level builtin at `ledger/local_script_builtins.go:19-65`, registered
-in `def_upgrade0.go:49`. `token(...)` mirrors it almost line-for-line:
-walk the inputs/outputs once, cache per-tag aggregates on the tx
-context, fail on mismatch. The rest of the plan flows from that.
+- `ledger/native_token.go` — all native-token Go code in one file:
+  `NativeTokenAggregator`, `NativeTokenEntry`, `evalToken`,
+  `evalTokenAmount`, plus the `TokenAmount` serde wrapper and
+  `OutputBuilder.WithTokenAmount`.
+- `ledger/foundry.go` — `Foundry` struct and 1-arg `foundry(supply)`
+  serde wrapper.
+- `ledger/foundry_policies.go` — `FoundryNonDestructibleBytecode`,
+  `FoundryMaxSupplyBytecode(N)`.
+- `ledger/def/native_token.easyfl` — `foundry`, `foundryNonDestructible`,
+  `foundryMaxSupply` EasyFL bodies (tokenAmount is no longer here —
+  it's an embedded Go builtin).
+- `ledger/def/def_embed0.json` — registrations for `token` and
+  `tokenAmount` as embedded functions (`embeddedAs evalToken` /
+  `evalTokenAmount`).
+- `ledger/transaction/native_tokens.go` — `Transaction.NativeTokenAggregator()`
+  lazy-allocation helper. (The old `validateNativeTokenAuditability`
+  pass was deleted on 2026-05-18; its job is now done by
+  `CheckBalances` invoked from the tail of `validateOutputs`.)
+- `ledger/txbuilder/native_token.go` — `MakeFoundryOriginOutput`,
+  `TransitFoundry`, `DeclareTokenConservation`.
+- `proxi/node_cmd/foundry/` — CLI subpackage (`create`, `mint`, `burn`,
+  `retire`).
+- `proxi/node_cmd/send.go` — `--tag <hex>` flag (pure-conservation
+  `token(tag, 0xFF)` + tokenAmount-bearing recipient output).
 
-### Fixed decisions used below
+---
 
-- **Slot indices.** `foundry` is at tuple index **4** (first extras
-  slot, immediately after `ConstraintIndexChain = 3` per
-  `ledger/def_constants_path0.go:91-96`). `policyScript` is at tuple
-  index **5**. Add named constants `ConstraintIndexFoundry = 4` and
-  `ConstraintIndexFoundryPolicy = 5` next to `ConstraintIndexChain`.
-- **Policy-script reading API.** No new EasyFL surface. The script
-  reads its sibling `foundry(tag, supply)` constraint (and its
-  counterpart on the consumed side) using the standard EasyFL
-  bytecode-parsing functions already in the library — `parseBytecode`,
-  `parseInlineData`, `parseInlineDataArgument`, etc. The policy script
-  is a regular constraint that happens to be invoked on the foundry
-  transit; it walks the input/output tuples it cares about by index.
+## Tests
 
-### Phase A — EasyFL surface (parse-only)
+`ledger/tests/native_token_test.go` covers:
 
-New constraints, registered via `lib.mustRegisterConstraint(...)` in
-`registerConstraints0` (`ledger/def_upgrade0.go:57-71`):
-
-- `ledger/token_amount.go` — `TokenAmount` struct, `NewTokenAmount(tag,
-  amount)`, `TokenAmountFromBytes(bytes)` deserialiser. 2-arg constraint,
-  EasyFL source: assert `amount > 0`, expose `tag` and `amount` as
-  inline literals; otherwise inert.
-- `ledger/foundry.go` — `Foundry` struct, `NewFoundry(tag, supply)`,
-  deserialiser. 2-arg constraint. Body enforces format only at this
-  phase; the foundry-transit invariants (tag-equals-chain-ID, policy-
-  slot immutability) are added in Phase C.
-
-No wrapper constraint is registered for the policy slot — slot 5 is
-raw EasyFL bytecode, auto-evaluated by the standard validation pass.
-
-Output: parse-only constraints exist; transactions carrying them load
-but their semantic rules don't yet fire.
-
-### Phase B — `token(...)` Go builtin + per-tag tx-context cache
-
-Mirror `redeemScript`:
-
-- `ledger/token_builtin.go` (new): `evalToken(ctx)` Go function,
-  signature `(tag, foundryProducedIndex) → ()`. Registered via
-  `lib.mustRegisterBuiltinFunction("token", 2, evalToken)` next to
-  `redeemScript` in `def_upgrade0.go`.
-- Per-tx cache: extend `ledger/def_embed.go`'s `EvalContext` (where
-  `Library.compiledScriptCache` already lives) with a
-  `nativeTokenAggregator` map `tag → (consumedSum, producedSum,
-  foundryConsumedIdx, foundryProducedIdx)`. First `token(...)` call in
-  a tx populates the map by scanning all inputs and outputs once; later
-  calls hit the cache.
-- The builtin validates literal-shape of `tokenAmount` args during the
-  scan (see §3 of the design); a non-literal `tokenAmount(...)` for the
-  matched tag fails the tx.
-- Mismatch error mirrors the PRXI message: `"native token amount
-  mismatch for tag <hex>"`.
-
-### Phase C — foundry transit semantics (in EasyFL)
-
-Following the general rule "**enforce in EasyFL when possible; reach
-for Go only when the rule cannot be expressed there**" (see CLAUDE.md),
-the foundry's only transit invariant lives in `foundry()`'s EasyFL body
-rather than in `evalToken`:
-
-1. **Chain match.** Produced `foundry.tag` must equal `chain.ChainID` at
-   the same output. At origin (`chain.ChainID == NilChainID`) the check
-   is skipped — at first transit the chain ID becomes real and is
-   enforced from then on. Chain's own validation already propagates
-   `ChainID` across transits, so checking the produced side is enough.
-2. **Policy-script evaluation.** Automatic — `runTuple` evaluates every
-   position of every produced output as ordinary bytecode, so the
-   policy at index 5 (if any) fires naturally during the standard
-   validation pass. The script's `selfXxx` accessors resolve to the
-   producedFoundry on the produced side and to the consumed
-   predecessor on the consumed side.
-3. **No foundry-enforced immutability past index 4.** Whether the
-   policy script (or any further data at index 6+) survives across a
-   transit is purely the policy's own concern. The universal helper
-   `selfImmutableOnSuccessorIndex($0)` (in `chain.easyfl`) provides
-   self-lock semantics: a constraint at position N that AND-s
-   `selfImmutableOnSuccessorIndex(u64/N)` cannot be replaced or
-   removed by any subsequent transit while it remains in the chain.
-   Used by `foundryNonDestructible` and `foundryMaxSupply`.
-
-`evalToken` Go side only retains the defensive `pf.Tag ==
-requestedTag` / `cf.Tag == requestedTag` checks (so a `token()` call
-referring to the wrong produced index fails locally) and the balance
-equation itself.
-
-### Phase D — `validateOutputs` hook + auditability
-
-In `ledger/transaction/validate.go:165-210`:
-
-- After the existing PRXI sum check, invoke the native-token pass:
-  for each tx-level `token(tag, ...)` constraint, ensure the cached
-  aggregator for that tag balances. Pure conservation if
-  `foundryProducedIndex` is sentinel; with foundry delta otherwise.
-- **Auditability:** scan inputs and outputs for any `tokenAmount(tag,
-  ...)`; for every tag observed, require a matching tx-level
-  `token(tag, ...)`. Missing declaration ⇒
-  `"undeclared native token tag <hex>"`. Same indexability property as
-  `redeemScript`'s commitment list.
-
-### Phase E — TxBuilder helpers
-
-In `ledger/txbuilder/`:
-
-- `MakeFoundryOrigin(tag, initialSupply, policyScript)` — emits a new
-  chain origin with the foundry constraint and (optionally) the policy
-  script bytecode.
-- `TransitFoundry(consumedFoundryIdx, newSupply)` — produces the
-  transited foundry output and a paired tx-level `token(tag, idx)`.
-- `AddTokenAmount(outputBuilder, tag, amount)` — puts a `tokenAmount`
-  constraint into the next free slot of the given output.
-- Convenience wrappers `Mint(tag, amount, recipient)` and `Burn(tag,
-  amount)` composed from the above.
-
-### Phase F — Indexer
-
-In `ledger/multistate/mutate.go`, extend the index-value tuple at output
-slot 1 to include the `tag` for any foundry output and for any output
-carrying one or more `tokenAmount` constraints (deduplicated). Reuses
-the existing `TriePartitionControllers` partition pattern so wallets
-can look up by tag through whatever `get_outputs`-by-key endpoint ships
-next.
-
-### Phase G — CLI
-
-In `proxi/node_cmd/foundry/` (subpackage, mirrors `delegate/`):
-
-- `create.go` — emit a foundry chain origin with `foundry(NilChainID,
-  0)`. Initial supply at origin is always 0; the real chain ID is not
-  known until the tx is finalised, so no tokenAmount outputs can be
-  tagged in the same tx. Minting happens at a later transit via
-  `mint`. Flags:
-  - `-t / --target <lock>` — foundry chain controller. Defaults to
-    the wallet account.
-  - `--non-destructible` — attach the `foundryNonDestructible`
-    predefined policy at index 5.
-  - `--max-supply N` — attach `foundryMaxSupply(N)` at index 5.
-  - The two policy flags are mutually exclusive; only one predefined
-    policy script can be attached. Arbitrary user-supplied bytecode is
-    not accepted in v1.
-- `mint.go` (TODO) — first or subsequent foundry transit that
-  increases supply and produces `tokenAmount(realTag, N)` outputs to a
-  target lock. Builds the paired tx-level `token(realTag,
-  producedFoundryIdx)`.
-- `burn.go` (TODO) — symmetric.
-- `retire.go` (TODO) — discontinue the foundry chain.
-- `send.go` — add `--tag <hex>` flag that emits a `tokenAmount`
-  constraint on the produced output and a balancing tx-level
-  `token(tag, sentinel)` constraint.
-
-### Phase H — Tests (UTXODB)
-
-In `ledger/tests/native_token_test.go`:
-
-1. `tokenAmount` literal-arg enforcement (positive + negative).
-2. Pure conservation: transfer tag T between two sigLocks, both sides
-   balance.
-3. Mint: foundry transit increases supply by Δ; outputs gain Δ; with
-   and without a policy script at index 5.
-4. Burn: symmetric.
-5. Auditability: tx with a `tokenAmount` constraint but no matching
-   `token(...)` is rejected.
-6. Multi-tag tx: two `token(...)` constraints, two tags, both
-   independently balance.
-7. `foundryMaxSupply(N)`: reject when produced supply > N; accept at
-   the cap.
-8. `selfImmutableOnSuccessorIndex` (via either predefined policy):
-   a transit that replaces or removes the policy bytecode at index 5
-   is rejected from the consumed side; a transit that leaves it
-   byte-equal passes.
-9. `foundryNonDestructible`: chain discontinue while consumed supply
-   is non-zero is rejected; chain discontinue with consumed supply = 0
-   is allowed.
-10. Foundry retire (no policy script): allowed under controller
-    signature.
+- Foundry origin (no policy / `foundryNonDestructible` / `foundryMaxSupply`).
+- First mint (chain ID becomes real, supply grows, tokenAmount UTXO produced).
+- Mint to another address.
+- Multi-mint accumulation.
+- Pure-conservation transfer with remainder + multiple inputs.
+- Auditability: undeclared tag rejected by `tokenAmount` itself.
+- `foundryMaxSupply`: accept at cap, reject over cap, burn still allowed.
+- `foundryNonDestructible`: reject retire with supply > 0; accept with
+  supply == 0.
+- Foundry retire (no policy) succeeds under controller signature.
+- Policy-script self-immutability: a transit that drops the policy at
+  slot 5 is rejected.
+- **Exploit probes** added 2026-05-18:
+  - `TestExploitProbeMintWithoutDeclaration` — fabricate
+    `tokenAmount(fakeTag, N)` with no `token()` declaration → rejected
+    at the `tokenAmount` constraint ("not declared at tx level").
+  - `TestExploitProbeOrdinaryTxWithFakeTokenAmount` — same, in an
+    ordinary "send to self" tx shape.
+  - `TestExploitProbeMintWithSentinelDeclaration` — declare
+    `token(fakeTag, 0xFF)` and produce 1000 fakeTag tokens; rejected by
+    the closing balance check (consumed=0, produced=1000, Δ=0).
 
 ---
 
 ## Related references
 
-- `claude/utxo-indexing.md` — current UTXO tuple layout and the
-  index-value slot 1 design.
+- `claude/utxo-indexing.md` — UTXO tuple layout and the slot-1
+  index-value design used by `WithTokenAmount` to add compound
+  `controller || tag` entries.
 - `feedback_utxo_vs_tx_bytes.md` (auto-memory) — UTXOs persist longer
-  than the tx that creates them. Drives the "absent constraint = zero
-  overhead" baseline; the storage-deposit minimum handles the
-  multi-tag-bloat case organically, so no hard cap on `tokenAmount`
-  count per UTXO is needed.
-- `redeemScript(...)` at `ledger/local_script_builtins.go:19-65`
-  (registered in `def_upgrade0.go:49`) — closest existing analogue for
-  `token(...)`: tx-level builtin, Go implementation, per-tx cache,
-  auditability via tx-constraint declaration. The implementation plan
-  below mirrors its shape directly.
-- `validateOutputs` in `ledger/transaction/` — single point currently
-  enforcing PRXI conservation. Natural extension point for the per-tag
-  reconciler.
+  than the tx that creates them; drives the "absent constraint = zero
+  overhead" baseline.
+- `redeemScript(...)` at `ledger/local_script_builtins.go` — the
+  original tx-level Go builtin that `token` follows in shape.
+- `validateOutputs` in `ledger/transaction/validate.go` — the only
+  tx-wide validation point; native-token closing balance check is its
+  last step.

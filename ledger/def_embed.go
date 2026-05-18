@@ -160,6 +160,7 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalRedeemScript":                                  evalRedeemScript,
 	"evalCallRedeemer":                                  evalCallRedeemer,
 	"evalToken":                                         evalToken,
+	"evalTokenAmount":                                   evalTokenAmount,
 }
 
 // GetEmbeddedFunctionResolver returns the unified resolver for all upgrades.

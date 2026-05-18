@@ -1,12 +1,15 @@
 // Native (tagged) tokens.
 //
-// - tokenAmount(tag, amount): extras carried by any non-foundry UTXO
-//   holding native tokens. tag is the foundry chain ID (32 bytes); amount
-//   is the carried quantity (uint64, > 0).
-// - foundry(supply): extras at foundryConstraintIndex on a foundry
-//   output (a chained UTXO). Carries circulating supply only. The
-//   foundry's tag IS the sibling chain constraint's ChainID — there is
-//   no redundant tag arg here.
+// tokenAmount(tag, amount) is a Go-embedded UTXO-level constraint
+// (declared in def_embed0.json as embeddedAs evalTokenAmount). It
+// enforces locally: both args inline literals, amount > 0, tag must
+// have been declared at the tx level by a matching token(...) call;
+// then it accounts its amount onto the per-tag consumed/produced sum
+// at evaluation time.
+//
+// foundry(supply) is the only EasyFL-bodied native-token constraint
+// here. The foundry's tag IS the sibling chain constraint's ChainID,
+// so foundry stores only the circulating supply.
 //
 // The optional policy script at foundryPolicyConstraintIndex (if any) is
 // raw EasyFL bytecode and is auto-evaluated as part of the standard
@@ -15,19 +18,10 @@
 // self-lock (typically via `selfImmutableOnSuccessorIndex(...)`). Any
 // further extras after the foundry are not the foundry's concern.
 //
-// Per-tag preservation, literal-arg enforcement of tokenAmount, and the
-// mint/burn balance equation live in the Go `token(...)` builtin.
-
-// $0 token tag (32 bytes, equal to the foundry chain ID)
-// $1 token amount (uint64, > 0)
-func tokenAmount :
-or(
-   not(selfIsProducedOutput),
-   and(
-      require(equal(len($0), u64/32), !!!tokenAmount_tag_must_be_32_bytes_long),
-      require(not(isZero($1)), !!!tokenAmount_amount_must_be_non_zero)
-   )
-)
+// Per-tag preservation lives in the Go builtins: token() declares the
+// tag and its foundry supply delta; tokenAmount() accounts each
+// instance; and the tail of validateOutputs runs the closing balance
+// equation per declared tag.
 
 // $0 circulating supply (uint64, z-encoded - at most 8 bytes after the
 //   data prefix)

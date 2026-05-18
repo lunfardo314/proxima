@@ -204,14 +204,18 @@ func (tx *Transaction) validateOutputs(spool *slicepool.SlicePool) error {
 	if err = tx._runOutputs(ledger.PathToProducedOutputs, outs, spool); err != nil {
 		return err
 	}
-	// Phase D: every observed tokenAmount(tag, ...) instance must be
-	// declared by a tx-level token(tag, ...) constraint. Run last, after
-	// every tx-level constraint and per-output constraint has executed
-	// — by this point the aggregator (if any token() fired) is
-	// authoritative; otherwise we trigger a one-shot scan to catch
-	// stray tokenAmount instances.
-	if err = tx.validateNativeTokenAuditability(); err != nil {
-		return err
+	// Closing native-token balance check: for every tag declared by a
+	// tx-level token(...) call, assert
+	//   mint: producedSum == consumedSum + deltaMag
+	//   burn: consumedSum == producedSum + deltaMag
+	// The aggregator has already accumulated the per-side sums as each
+	// tokenAmount(tag, amount) constraint fired during _runOutputs;
+	// undeclared tags are impossible because tokenAmount itself fails
+	// when its tag has no entry. This is the only tx-wide step.
+	if tx.nativeTokenAggregator != nil {
+		if err = tx.nativeTokenAggregator.CheckBalances(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -94,9 +94,15 @@
     },
     {
       "sym": "token",
-      "description": "tx-level native-token preservation: token(<32-byte-tag-literal>, <foundryProducedIndex-literal>) — empty arg 1 = sentinel (pure conservation), 1 byte = foundry transit",
+      "description": "tx-level native-token declaration: token(<32-byte-tag-literal>, <1-byte-foundryProducedIdx-literal>). foundryProducedIdx == 0xFF means pure conservation (delta 0); any other byte names a produced foundry output for a mint/burn transit.",
       "numArgs": 2,
       "embeddedAs": "evalToken"
+    },
+    {
+      "sym": "tokenAmount",
+      "description": "UTXO-level native-token instance: tokenAmount(<32-byte-tag-literal>, <amount-uint64-literal>). Tag must be declared at tx level by token(). Accounts amount onto the per-tag consumed/produced sum at evaluation time.",
+      "numArgs": 2,
+      "embeddedAs": "evalTokenAmount"
     }
   ]
 }
