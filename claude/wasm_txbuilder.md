@@ -2,8 +2,11 @@
 
 Status: **design / analysis, no implementation**. Started 2026-05-18.
 
-Companion document: `easyfl/claude/tinygo_wasm.md` covers the easyfl
-side of the same refactor; this document covers Proxima.
+Sibling: [wasm_easyfl.md](wasm_easyfl.md) covers the easyfl-side audit
+and the Phase A–D execution plan that this Proxima-side plan depends
+on. The two together are the canonical multi-repo wasm refactor doc;
+both live under `proxima/claude/` because Proxima is the consumer
+driving the work.
 
 ---
 
