@@ -43,16 +43,21 @@ func TokenFoundryBytecode(tag base.ChainID, foundryProducedIdx byte) []byte {
 //   - Records the tag in the declared set on the tx (Phase D consumes
 //     this for the auditability check).
 //   - Sentinel form: enforces Σ consumed(tag) == Σ produced(tag).
-//   - Foundry-transit form: reads foundry(tag, supply) on the produced
-//     output at the given index (and on the consumed predecessor when
-//     not origin), confirms the tag matches, and enforces the balance
-//     equation
+//   - Foundry-transit form: reads the foundry's tag off the sibling
+//     chain constraint at the produced foundry output (the foundry has
+//     no tag arg of its own — the chain constraint IS the tag), confirms
+//     it matches `tag`, reads the produced foundry's supply from
+//     foundry(supply), reads the consumed predecessor's supply
+//     (origin = 0), and enforces the balance equation
 //       Σ consumed(tag) + (producedSupply − consumedSupply) == Σ produced(tag).
 //
-// Note: the tag-equals-chain-ID invariant is enforced in EasyFL by
-// foundry(). Any extras after the foundry (e.g. an optional policy
-// script at foundryPolicyConstraintIndex) are auto-evaluated as part of
-// the standard output-tuple validation pass; foundry() does NOT enforce
+// Note: chain() enforces ChainID preservation across every transit, so
+// once the produced chain.ChainID matches the requested tag, the
+// consumed predecessor's chain.ChainID is guaranteed to be the same
+// (real ID at later transits, derived from predOid at first transit).
+// Any extras after the foundry (e.g. an optional policy script at
+// foundryPolicyConstraintIndex) are auto-evaluated as part of the
+// standard output-tuple validation pass; foundry() does NOT enforce
 // immutability of those extras across transit — it is the policy
 // script's own responsibility to self-lock if desired (typically via
 // `selfImmutableOnSuccessorIndex(...)` in chain.easyfl).
@@ -114,13 +119,26 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 		return par.AllocData(0x01)
 	}
 
-	// Foundry transit: locate produced foundry, look up consumed
-	// foundry (when not origin), enforce the balance equation. The
-	// tag-equals-chain-ID invariant is enforced in EasyFL inside
-	// foundry() — see native_token.easyfl.
+	// Foundry transit: locate produced foundry, read tag off its sibling
+	// chain constraint, look up consumed foundry through the chain
+	// predecessor, enforce the balance equation. The foundry has no tag
+	// arg of its own — the chain constraint IS the tag, and chain()
+	// already enforces ChainID preservation across every transit.
 	producedOut, err := ctx.ProducedOutputAt(foundryProducedIdx)
 	if err != nil {
 		par.TracePanic("token: produced foundry at idx %d: %v", foundryProducedIdx, err)
+	}
+	pcc := producedOut.ChainConstraint()
+	if pcc == nil {
+		par.TracePanic("token: produced foundry %d has no chain constraint", foundryProducedIdx)
+	}
+	// At origin pcc.ChainID is still NilChainID, which cannot equal any
+	// real user-supplied tag — so this check also rejects token() calls
+	// pointing at an origin foundry output (origin txs never need them:
+	// initial supply is 0).
+	if pcc.ChainID != tag {
+		par.TracePanic("token: produced foundry chain ID %s does not match token tag %s",
+			pcc.ChainID.String(), tag.String())
 	}
 	pfBytes, err := producedOut.ConstraintAt(ConstraintIndexFoundry)
 	if err != nil {
@@ -131,53 +149,25 @@ func evalToken(par *easyfl.CallParams[*EvalContext]) []byte {
 	if err != nil {
 		par.TracePanic("token: parse produced foundry: %v", err)
 	}
-	if pf.Tag != tag {
-		par.TracePanic("token: produced foundry tag %s does not match token tag %s",
-			pf.Tag.String(), tag.String())
-	}
 
-	pcc := producedOut.ChainConstraint()
-	if pcc == nil {
-		par.TracePanic("token: produced foundry %d has no chain constraint", foundryProducedIdx)
+	// Reach the consumed foundry through the chain predecessor. The
+	// pcc.ChainID != tag check above already rejected pcc.IsOrigin()
+	// (origin chains have ChainID == NilChainID), so a real predecessor
+	// always exists here.
+	consumedOut, err := ctx.ConsumedOutput(pcc.PredecessorInputIndex)
+	if err != nil {
+		par.TracePanic("token: consumed foundry at input idx %d: %v", pcc.PredecessorInputIndex, err)
 	}
-
-	// Reach the consumed foundry through the chain predecessor. Origin
-	// foundries have no predecessor — treated as consumedSupply = 0.
-	var consumedSupply uint64
-	if !pcc.IsOrigin() {
-		consumedOut, err := ctx.ConsumedOutput(pcc.PredecessorInputIndex)
-		if err != nil {
-			par.TracePanic("token: consumed foundry at input idx %d: %v", pcc.PredecessorInputIndex, err)
-		}
-		cfBytes, err := consumedOut.ConstraintAt(ConstraintIndexFoundry)
-		if err != nil {
-			par.TracePanic("token: consumed foundry predecessor has no constraint at foundry slot %d: %v",
-				ConstraintIndexFoundry, err)
-		}
-		cf, err := FoundryFromBytesWithLib(cfBytes, ctx.GetLibrary())
-		if err != nil {
-			par.TracePanic("token: parse consumed foundry: %v", err)
-		}
-		// The `tag` argument is always the real chain ID. On a non-origin
-		// transit the consumed foundry already carries that real chain
-		// ID, pinned by foundry()'s EasyFL body. On the FIRST transit the
-		// consumed predecessor is the foundry origin output, whose tag
-		// is still NilChainID — in that case derive the real chain ID
-		// from the predecessor's output ID and require the requested tag
-		// to match that derivation.
-		if cf.Tag == base.NilChainID {
-			predOid := ctx.MustInputAt(pcc.PredecessorInputIndex)
-			derived := base.MakeOriginChainID(predOid)
-			if derived != tag {
-				par.TracePanic("token: tag %s does not match the origin-derived chain ID %s of the consumed foundry",
-					tag.String(), derived.String())
-			}
-		} else if cf.Tag != tag {
-			par.TracePanic("token: consumed foundry tag %s does not match token tag %s",
-				cf.Tag.String(), tag.String())
-		}
-		consumedSupply = cf.Supply
+	cfBytes, err := consumedOut.ConstraintAt(ConstraintIndexFoundry)
+	if err != nil {
+		par.TracePanic("token: consumed foundry predecessor has no constraint at foundry slot %d: %v",
+			ConstraintIndexFoundry, err)
 	}
+	cf, err := FoundryFromBytesWithLib(cfBytes, ctx.GetLibrary())
+	if err != nil {
+		par.TracePanic("token: parse consumed foundry: %v", err)
+	}
+	consumedSupply := cf.Supply
 
 	// Balance equation: consumedSum + (pf.Supply − consumedSupply) == producedSum.
 	// Split on mint vs burn to keep arithmetic in unsigned uint64.

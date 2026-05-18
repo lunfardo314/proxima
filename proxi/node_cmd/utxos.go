@@ -4,7 +4,6 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -51,13 +50,12 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 			glb.Verbosef("   chain id: %s", chainID.StringHex())
 		}
 		// Native-token annotations: mark foundries and list tokenAmount
-		// constraints, if any.
+		// constraints, if any. The foundry's tag IS its chain ID, read
+		// off the sibling chain constraint (ExtractChainID resolves
+		// origin to blake2b(oid)).
 		if fBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexFoundry); err == nil {
 			if f, err := ledger.FoundryFromBytes(fBytes); err == nil {
-				tag := f.Tag
-				if tag == base.NilChainID {
-					tag = base.MakeOriginChainID(o.ID)
-				}
+				tag, _ := o.ExtractChainID()
 				glb.Infof("   foundry: tag=%s supply=%s", tag.String(), util.Th(f.Supply))
 				if p, err := o.Output.ConstraintAt(ledger.ConstraintIndexFoundryPolicy); err == nil && len(p) > 0 {
 					glb.Infof("      policy: %s", policyDescriptionLine(p))

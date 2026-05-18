@@ -23,14 +23,14 @@ func initFoundryCreateCmd() *cobra.Command {
   - amounts (PRXI on-chain balance)
   - lock at index 2 (target chosen with -t, defaults to wallet account)
   - chain origin at index 3
-  - foundry(NilChainID, 0) at index 4
+  - foundry(0) at index 4
   - optional predefined policy script bytecode at index 5
 
-The foundry's tag (and therefore the native-token tag) equals the chain
-ID, computed as blake2b(originOutputID). At origin the foundry records
-tag = NilChainID and supply = 0; the first foundry transit ("mint")
-replaces the tag with the real chain ID and produces the initial circulating
-supply.
+The foundry's tag (and therefore the native-token tag) IS the sibling
+chain constraint's ChainID, computed as blake2b(originOutputID) at first
+transit. At origin the chain ID is still NilChainID; supply starts at 0.
+The first foundry transit ("mint") emits the initial circulating supply
+once the chain ID has become real.
 
 Policy options (mutually exclusive — at most one of these flags):
   --non-destructible      attach foundryNonDestructible. The foundry chain

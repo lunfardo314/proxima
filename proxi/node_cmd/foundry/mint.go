@@ -29,9 +29,9 @@ output and produces:
   - a tag-along output to the configured sequencer
   - any PRXI remainder back to the wallet
 
-After the first mint, the foundry's tag becomes the real chain ID
-(equal to <chainID>) and the tag-equals-chainID invariant is enforced
-on every subsequent transit. Any policy script attached at index 5 is
+After the first mint, the chain ID becomes real (equal to <chainID>);
+the foundry's tag is always that chain ID (the foundry constraint has
+no tag arg of its own). Any policy script attached at index 5 is
 evaluated as usual; foundryMaxSupply($0) will reject a mint that grows
 foundry.supply above its cap.
 

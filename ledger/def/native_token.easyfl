@@ -3,9 +3,10 @@
 // - tokenAmount(tag, amount): extras carried by any non-foundry UTXO
 //   holding native tokens. tag is the foundry chain ID (32 bytes); amount
 //   is the carried quantity (uint64, > 0).
-// - foundry(tag, supply): extras at foundryConstraintIndex on a foundry
-//   output (the chain whose ID equals tag). Carries circulating supply
-//   and enforces the tag-equals-chain-ID invariant at every transit.
+// - foundry(supply): extras at foundryConstraintIndex on a foundry
+//   output (a chained UTXO). Carries circulating supply only. The
+//   foundry's tag IS the sibling chain constraint's ChainID — there is
+//   no redundant tag arg here.
 //
 // The optional policy script at foundryPolicyConstraintIndex (if any) is
 // raw EasyFL bytecode and is auto-evaluated as part of the standard
@@ -28,31 +29,16 @@ or(
    )
 )
 
-// _selfIsFoundryOrigin returns truthy iff the chain at chainConstraintIndex
-// is at origin (chain.ChainID == NilChainID). Same shape as
-// _selfIsDelegationOrigin in lock_delegate.easyfl.
-func _selfIsFoundryOrigin :
-   isChainOriginID(parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain))
-
-// $0 token tag (32 bytes)
-//   at origin: unconstrained (chain.ChainID is still NilChainID)
-//   at transit: must equal the chain ID at chainConstraintIndex
-// $1 circulating supply (uint64, z-encoded - at most 8 bytes after the
+// $0 circulating supply (uint64, z-encoded - at most 8 bytes after the
 //   data prefix)
+//
+// The foundry's tag IS the sibling chain constraint's ChainID (the
+// foundry is identified by the chain it lives on); no tag arg is needed
+// or stored. token() reads the tag from the chain constraint.
 func foundry :
 or(
    not(selfIsProducedOutput),
-   and(
-      require(equal(len($0), u64/32), !!!foundry_tag_must_be_32_bytes_long),
-      require(lessOrEqualThan(len($1), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long),
-      require(
-         or(
-            _selfIsFoundryOrigin,
-            equal($0, parseInlineDataArgument(selfSiblingConstraint(chainConstraintIndex), 0, #chain))
-         ),
-         !!!foundry_tag_must_equal_chain_ID_at_transit
-      )
-   )
+   require(lessOrEqualThan(len($0), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long)
 )
 
 // =====================================================================
@@ -77,7 +63,7 @@ and(
       not(selfIsConsumedOutput),
       not(equal(len(_chainSuccessorOutputIndex), u64/0)),
       require(
-         isZero(parseInlineDataArgument(selfSiblingConstraint(foundryConstraintIndex), 1, #foundry)),
+         isZero(parseInlineDataArgument(selfSiblingConstraint(foundryConstraintIndex), 0, #foundry)),
          !!!cannot_destroy_foundry_with_non_zero_supply
       )
    )
@@ -94,7 +80,7 @@ and(
       not(selfIsProducedOutput),
       require(
          lessOrEqualThan(
-            uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(foundryConstraintIndex), 1, #foundry)),
+            uint8Bytes(parseInlineDataArgument(selfSiblingConstraint(foundryConstraintIndex), 0, #foundry)),
             uint8Bytes($0)
          ),
          !!!foundry_supply_exceeds_max_supply

@@ -98,21 +98,15 @@ func runChainCmd(_ *cobra.Command, args []string) {
 }
 
 // printFoundryDetails renders the FOUNDRY DATA section for `proxi node
-// chain <chainID>` when the resolved output is a foundry. Shows tag,
-// circulating supply, the optional policy script at index 5 with a
-// recognised description, and (when -D / --decompile is set) the
-// decompiled EasyFL source of the policy.
+// chain <chainID>` when the resolved output is a foundry. Shows tag
+// (= the chain ID), circulating supply, the optional policy script at
+// index 5 with a recognised description, and (when -D / --decompile is
+// set) the decompiled EasyFL source of the policy.
 func printFoundryDetails(out *ledger.OutputWithChainID, f *ledger.Foundry, chainID base.ChainID) {
 	glb.Infof("FOUNDRY DATA:\n-----------------")
-	// Tag at origin is still NilChainID; the real chain ID is derivable
-	// from the output ID and equals the resolved chainID we already have.
-	displayTag := f.Tag
-	if displayTag == base.NilChainID {
-		glb.Infof("foundry tag:          %s  (origin, will become %s at first transit)",
-			f.Tag.String(), chainID.String())
-	} else {
-		glb.Infof("foundry tag:          %s", f.Tag.String())
-	}
+	// The foundry's tag IS its chain ID — read from the chain
+	// constraint, not from a foundry arg.
+	glb.Infof("foundry tag:          %s", chainID.String())
 	glb.Infof("circulating supply:   %s", util.Th(f.Supply))
 
 	var policy []byte

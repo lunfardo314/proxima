@@ -202,7 +202,6 @@ func TestFoundryOriginNoPolicy(t *testing.T) {
 	require.NoError(t, err)
 	f, err := ledger.FoundryFromBytes(fBytes)
 	require.NoError(t, err)
-	require.EqualValues(t, base.NilChainID, f.Tag, "origin foundry tag must be NilChainID")
 	require.EqualValues(t, 0, f.Supply, "origin foundry supply must be 0")
 
 	_, err = parsed.Output.ConstraintAt(ledger.ConstraintIndexFoundryPolicy)
@@ -242,9 +241,10 @@ func TestFoundryOriginWithMaxSupplyPolicy(t *testing.T) {
 // --------------------------------------------------------------------------
 
 // TestFoundryFirstMint covers the canonical mint flow: starting from a
-// foundry origin with foundry(NilChainID, 0), the first transit produces
-// foundry(realChainID, mintAmount) and a tokenAmount(realChainID,
-// mintAmount) output on a sigLock to the test address. The
+// foundry origin with foundry(0) on a chain with ChainID=NilChainID,
+// the first transit produces foundry(mintAmount) on a chain whose ID
+// is now the real chain ID, plus a tokenAmount(realChainID, mintAmount)
+// output on a sigLock to the test address. The
 // `token(realChainID, foundryProducedIdx)` constraint pushed by
 // TransitFoundry enforces the balance equation.
 func TestFoundryFirstMint(t *testing.T) {
@@ -259,7 +259,9 @@ func TestFoundryFirstMint(t *testing.T) {
 	require.NoError(t, err)
 	f, err := ledger.FoundryFromBytes(mustConstraintAt(t, parsed.Output, ledger.ConstraintIndexFoundry))
 	require.NoError(t, err)
-	require.EqualValues(t, chainID, f.Tag, "post-transit foundry tag must equal chain ID")
+	// Foundry's tag IS the chain ID — verify via the sibling chain constraint.
+	require.EqualValues(t, chainID, parsed.Output.ChainConstraint().ChainID,
+		"post-transit chain ID must equal the foundry tag we mint with")
 	require.EqualValues(t, mintAmount, f.Supply)
 
 	// And the tokenAmount-bearing UTXO must now exist on the wallet.
@@ -331,7 +333,10 @@ func TestFoundryMintMultipleTimes(t *testing.T) {
 	require.NoError(t, err)
 	f, err := ledger.FoundryFromBytes(mustConstraintAt(t, parsed.Output, ledger.ConstraintIndexFoundry))
 	require.NoError(t, err)
-	require.EqualValues(t, chainID, f.Tag, "post-second-transit tag must still equal chain ID")
+	// Foundry's tag IS the chain ID — verify the chain ID is preserved
+	// across the second transit (chain() enforces this).
+	require.EqualValues(t, chainID, parsed.Output.ChainConstraint().ChainID,
+		"post-second-transit chain ID must equal the foundry tag")
 	require.EqualValues(t, firstMint+secondMint, f.Supply,
 		"foundry supply must accumulate across mints")
 
@@ -804,7 +809,7 @@ func TestFoundryPolicyImmutabilityRejectsRemoval(t *testing.T) {
 		// Keep supply at current so token() balance is identity.
 		fIn, err := ledger.FoundryFromBytes(mustConstraintAt(t, parsedIn, ledger.ConstraintIndexFoundry))
 		require.NoError(t, err)
-		o.PutConstraint(ledger.NewFoundry(chainID, fIn.Supply).Bytes(), ledger.ConstraintIndexFoundry)
+		o.PutConstraint(ledger.NewFoundry(fIn.Supply).Bytes(), ledger.ConstraintIndexFoundry)
 		// deliberately NO constraint at ConstraintIndexFoundryPolicy
 	})
 	succIdx, err := txb.ProduceOutput(successorOut)

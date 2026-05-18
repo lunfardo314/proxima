@@ -8,12 +8,11 @@ import (
 )
 
 // MakeFoundryOriginOutput builds a fresh foundry origin output: PRXI
-// amount + lock at index 2, chain origin at index 3, foundry(NilChainID,
-// initialSupply) at index 4, and the optional raw policy bytecode at
-// index 5. The chain ID is still NilChainID at origin — foundry()'s
-// EasyFL body skips the tag-equals-chain-ID check at origin and starts
-// enforcing it on the first transit, at which point the produced
-// foundry's tag becomes the real chain ID.
+// amount + lock at index 2, chain origin at index 3, foundry(initialSupply)
+// at index 4, and the optional raw policy bytecode at index 5. The
+// foundry's tag is the sibling chain constraint's ChainID — still
+// NilChainID at origin, becomes the real chain ID at first transit
+// (chain() enforces ID preservation thereafter).
 //
 // initialSupply at origin must typically be 0 (no real tag exists yet,
 // so no tokenAmount outputs can carry the real tag in the origin tx).
@@ -31,7 +30,7 @@ func MakeFoundryOriginOutput(amount uint64, lock ledger.Lock, originSlot uint32,
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(lock)
 		o.PutConstraint(ledger.NewChainOrigin(originSlot).Bytes(), ledger.ConstraintIndexChain)
-		o.PutConstraint(ledger.NewFoundryOrigin(initialSupply).Bytes(), ledger.ConstraintIndexFoundry)
+		o.PutConstraint(ledger.NewFoundry(initialSupply).Bytes(), ledger.ConstraintIndexFoundry)
 		if len(policyScript) > 0 {
 			o.PutConstraint(policyScript, ledger.ConstraintIndexFoundryPolicy)
 		}
@@ -76,12 +75,14 @@ func (txb *TxBuilder) TransitFoundry(inChainData *ledger.OutputDataWithChainID, 
 		cc.CumulativeChainInflation, cc.CumulativeBranchBonus,
 		cc.TransitionCounter+1, cc.BranchCounter,
 	)
-	newFoundry := ledger.NewFoundry(inChainData.ChainID, newSupply)
+	newFoundry := ledger.NewFoundry(newSupply)
 	chainOut := chainIN.Clone(func(o *ledger.OutputBuilder) {
 		o.PutConstraint(successor.Bytes(), ledger.ConstraintIndexChain)
 		o.PutConstraint(newFoundry.Bytes(), ledger.ConstraintIndexFoundry)
-		// Slot 5 (policy script) is carried over by Clone — foundry()
-		// EasyFL enforces byte-equality across the transit.
+		// Slot 5 (policy script) is carried over by Clone. foundry()
+		// itself does NOT enforce immutability there; if the consumed
+		// policy self-locks via selfImmutableOnSuccessorIndex (both
+		// shipped policies do), the carry-over here satisfies it.
 	})
 	producedIdx, err := txb.ProduceOutput(chainOut)
 	if err != nil {
