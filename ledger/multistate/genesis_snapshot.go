@@ -22,8 +22,8 @@ import (
 type GenesisSnapshotData struct {
 	// Identity contains minimal ledger identity (genesis time + description)
 	Identity *ledger.LedgerIdentity
-	// LibraryYAML is the compiled library YAML for slot 0
-	LibraryYAML []byte
+	// LibraryJSON is the compiled library JSON for slot 0
+	LibraryJSON []byte
 	// Constants contains parsed ledger constants
 	Constants *ledger.Constants
 	// BranchID is the genesis transaction ID
@@ -59,11 +59,11 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 		params = ledger.DefaultParameters(privateKey, genesisTimeUnix)
 	}
 
-	// Generate library YAML
-	libraryYAML := ledger.LibraryYAMLFromParameters(params, true)
+	// Generate library JSON
+	libraryJSON := ledger.LibraryJSONFromParameters(params, true)
 
 	// Parse library to get constants and validate
-	lib, err := ledger.ParseLibraryFromYAML(libraryYAML, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromJSON(libraryJSON, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse library: %w", err)
 	}
@@ -73,7 +73,7 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 	store := common.NewInMemoryKVStore()
 
 	// Store library in upgrade DB partition at slot 0
-	if err := WriteUpgradeLibrary(store, 0, libraryYAML); err != nil {
+	if err := WriteUpgradeLibrary(store, 0, libraryJSON); err != nil {
 		return nil, fmt.Errorf("failed to write upgrade library: %w", err)
 	}
 
@@ -125,7 +125,7 @@ func BuildGenesisSnapshotData(privateKey ed25519.PrivateKey, genesisTimeUnix uin
 
 	return &GenesisSnapshotData{
 		Identity:         identity,
-		LibraryYAML:      libraryYAML,
+		LibraryJSON:      libraryJSON,
 		Constants:        constants,
 		BranchID:         gStemOut.ID.TransactionID(),
 		RootRecord:       rootRecord,
@@ -178,8 +178,8 @@ func WriteGenesisSnapshot(data *GenesisSnapshotData, dir string, out ...io.Write
 
 	// Collect upgrade libraries (should be just slot 0 for genesis)
 	var upgradeLibraries []UpgradeLibraryEntry
-	IterateUpgradeLibraries(data.Store, func(slot uint32, yaml []byte) bool {
-		upgradeLibraries = append(upgradeLibraries, UpgradeLibraryEntry{Slot: slot, LibraryYAML: yaml})
+	IterateUpgradeLibraries(data.Store, func(slot uint32, jsonData []byte) bool {
+		upgradeLibraries = append(upgradeLibraries, UpgradeLibraryEntry{Slot: slot, LibraryJSON: jsonData})
 		return true
 	})
 
@@ -194,10 +194,10 @@ func WriteGenesisSnapshot(data *GenesisSnapshotData, dir string, out ...io.Write
 	// Write each upgrade library
 	for _, entry := range upgradeLibraries {
 		slotBytes := base.Slot2Bytes(entry.Slot)
-		if err := outFileStream.Write(slotBytes, entry.LibraryYAML); err != nil {
+		if err := outFileStream.Write(slotBytes, entry.LibraryJSON); err != nil {
 			return "", fmt.Errorf("failed to write upgrade library: %w", err)
 		}
-		_, _ = fmt.Fprintf(console, "[WriteGenesisSnapshot]   - slot %d: %d bytes\n", entry.Slot, len(entry.LibraryYAML))
+		_, _ = fmt.Fprintf(console, "[WriteGenesisSnapshot]   - slot %d: %d bytes\n", entry.Slot, len(entry.LibraryJSON))
 	}
 
 	// Write trie data
@@ -286,7 +286,7 @@ func (d *GenesisSnapshotData) GetConstants() *ledger.Constants {
 
 // GetLibraryHash returns the hash of the genesis library.
 func (d *GenesisSnapshotData) GetLibraryHash() ([32]byte, error) {
-	lib, err := ledger.ParseLibraryFromYAML(d.LibraryYAML, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromJSON(d.LibraryJSON, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return [32]byte{}, err
 	}

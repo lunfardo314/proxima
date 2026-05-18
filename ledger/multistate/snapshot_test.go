@@ -23,9 +23,9 @@ func TestSnapshotUpgradeLibraries_Format(t *testing.T) {
 	lib5000 := []byte("library YAML for slot 5000 - second upgrade")
 
 	entries := []UpgradeLibraryEntry{
-		{Slot: 0, LibraryYAML: lib0},
-		{Slot: 1000, LibraryYAML: lib1000},
-		{Slot: 5000, LibraryYAML: lib5000},
+		{Slot: 0, LibraryJSON: lib0},
+		{Slot: 1000, LibraryJSON: lib1000},
+		{Slot: 5000, LibraryJSON: lib5000},
 	}
 
 	// Verify entry structure
@@ -51,7 +51,7 @@ func TestSnapshotUpgradeLibraries_StorageRoundTrip(t *testing.T) {
 	// Iterate and collect (simulates what SaveSnapshot does)
 	var collected []UpgradeLibraryEntry
 	IterateUpgradeLibraries(store, func(slot uint32, yaml []byte) bool {
-		collected = append(collected, UpgradeLibraryEntry{Slot: slot, LibraryYAML: yaml})
+		collected = append(collected, UpgradeLibraryEntry{Slot: slot, LibraryJSON: yaml})
 		return true
 	})
 
@@ -60,7 +60,7 @@ func TestSnapshotUpgradeLibraries_StorageRoundTrip(t *testing.T) {
 	// Build map for order-independent verification
 	libMap := make(map[uint32][]byte)
 	for _, entry := range collected {
-		libMap[entry.Slot] = entry.LibraryYAML
+		libMap[entry.Slot] = entry.LibraryJSON
 	}
 
 	// Verify all slots are present
@@ -129,7 +129,7 @@ func TestSnapshotUpgradeLibraries_CountSerialization(t *testing.T) {
 
 func TestSnapshotUpgradeLibraries_VersionString(t *testing.T) {
 	// Verify version string is correct
-	require.Equal(t, "ver 1", snapshotFormatVersionString)
+	require.Equal(t, "ver 2", snapshotFormatVersionString)
 }
 
 func TestSnapshotUpgradeLibraries_TmpPrefix(t *testing.T) {
@@ -143,7 +143,7 @@ func TestSnapshotUpgradeLibraries_EmptyStore(t *testing.T) {
 
 	var collected []UpgradeLibraryEntry
 	IterateUpgradeLibraries(store, func(slot uint32, yaml []byte) bool {
-		collected = append(collected, UpgradeLibraryEntry{Slot: slot, LibraryYAML: yaml})
+		collected = append(collected, UpgradeLibraryEntry{Slot: slot, LibraryJSON: yaml})
 		return true
 	})
 
@@ -168,12 +168,12 @@ func TestSnapshotUpgradeLibraries_LargeYAML(t *testing.T) {
 	// Verify it's stored correctly
 	var collected []UpgradeLibraryEntry
 	IterateUpgradeLibraries(store, func(slot uint32, yaml []byte) bool {
-		collected = append(collected, UpgradeLibraryEntry{Slot: slot, LibraryYAML: yaml})
+		collected = append(collected, UpgradeLibraryEntry{Slot: slot, LibraryJSON: yaml})
 		return true
 	})
 
 	require.Len(t, collected, 1)
-	require.True(t, bytes.Equal(largeYAML, collected[0].LibraryYAML))
+	require.True(t, bytes.Equal(largeYAML, collected[0].LibraryJSON))
 }
 
 func TestSnapshotUpgradeLibraries_TmpFileFilter(t *testing.T) {

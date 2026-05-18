@@ -53,17 +53,17 @@ func runSnapshotCheckCmd(_ *cobra.Command, args []string) {
 	var slot0Library []byte
 	for _, entry := range ssData.upgradeLibraries {
 		if entry.Slot == 0 {
-			slot0Library = entry.LibraryYAML
+			slot0Library = entry.LibraryJSON
 			break
 		}
 	}
 	glb.Assertf(slot0Library != nil, "no slot 0 library in snapshot")
 
-	fromYAML, err := easyfl.ReadLibraryFromYAML(slot0Library)
+	fromJSON, err := easyfl.ReadLibraryFromJSON(slot0Library)
 	glb.AssertNoError(err)
 
 	h := ledger.L(base.MaxSlot).LibraryHash()
-	if fromYAML.Hash != hex.EncodeToString(h[:]) {
+	if fromJSON.Hash != hex.EncodeToString(h[:]) {
 		glb.Infof("ledger id hash in snapshot file %s is not equal to the ledger id hash on the node on '%s'.\nThe snapshot file CANNOT BE USED to start a node",
 			fname, viper.GetString("api.endpoint"))
 		return

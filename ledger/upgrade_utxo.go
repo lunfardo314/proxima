@@ -41,7 +41,7 @@ func BaseLibraryHash() [32]byte {
 //
 // Parameters:
 // - upgradeSlot: the slot number for this upgrade
-// - libraryHash: 32-byte hash of the compiled library YAML
+// - libraryHash: 32-byte hash of the compiled library JSON
 // - prevLibraryHash: 32-byte hash of the previous library (BaseLibraryHash() for slot 0)
 // - prevUpgradeSlot: slot of the previous upgrade (base.MaxSlot for slot 0)
 //

@@ -9,12 +9,12 @@ import (
 )
 
 var (
-	//go:embed def/def_embed0.yaml
-	_definitionsEmbeddedYAMLUpgrade0 string
-	//go:embed def/def_general_func0.yaml
-	_generalFunctionsYAMLUpgrade0 string
-	//go:embed def/def_helper_func0.yaml
-	_helperFunctionsYAMLUpgrade0 string
+	//go:embed def/def_embed0.json
+	_definitionsEmbeddedJSONUpgrade0 string
+	//go:embed def/def_general_func0.json
+	_generalFunctionsJSONUpgrade0 string
+	//go:embed def/def_helper_func0.json
+	_helperFunctionsJSONUpgrade0 string
 	//go:embed def/inflation.easyfl
 	inflation0 string
 	//go:embed def/tx_integrity_validator.easyfl
@@ -24,12 +24,12 @@ var (
 // upgrade0 makes library at genesis by applying upgrade to the base EasyFL library
 func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	resolver := GetEmbeddedFunctionResolver(lib)
-	err := lib.IntroduceUpdateYAMLMulti(resolver,
-		[]byte(_definitionsEmbeddedYAMLUpgrade0),
-		ConstantsYAMLFromParamsUpgrade0(par),
+	err := lib.IntroduceUpdateJSONMulti(resolver,
+		[]byte(_definitionsEmbeddedJSONUpgrade0),
+		ConstantsJSONFromParamsUpgrade0(par),
 		[]byte(pathConstantsUpgrade0()),
-		[]byte(_helperFunctionsYAMLUpgrade0),
-		[]byte(_generalFunctionsYAMLUpgrade0),
+		[]byte(_helperFunctionsJSONUpgrade0),
+		[]byte(_generalFunctionsJSONUpgrade0),
 	)
 	util.AssertNoError(err)
 

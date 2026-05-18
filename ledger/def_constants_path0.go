@@ -103,7 +103,7 @@ const (
 )
 
 func pathConstantsUpgrade0() string {
-	return fmt.Sprintf(_pathConstantsYAML,
+	return fmt.Sprintf(_pathConstantsJSON,
 		TransactionTuple,
 		PathToTxVersion.Hex(),
 		PathToTxConstraints.Hex(),
@@ -127,86 +127,30 @@ func pathConstantsUpgrade0() string {
 	)
 }
 
-const _pathConstantsYAML = `
-functions:
-   -
-      sym: pathToTransaction
-      numArgs: 0
-      source: %d
-   -
-      sym: pathToTxVersion
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToTxConstraints
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToConsumedOutputs
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToProducedOutputs
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToUnlockParams
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToInputIDs
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToSignatureData
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToSequencerDataBytes
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToInputCommitment
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToEndorsements
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToExplicitBaseline
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: pathToTimestamp
-      numArgs: 0
-      source: 0x%s
-   -
-      sym: amountsConstraintIndex
-      numArgs: 0
-      source: %d
-   -
-      sym: indexValuesConstraintIndex
-      numArgs: 0
-      source: %d
-   -
-      sym: lockConstraintIndex
-      numArgs: 0
-      source: %d
-   -
-      sym: chainConstraintIndex
-      numArgs: 0
-      source: %d
-   -
-      sym: foundryConstraintIndex
-      numArgs: 0
-      source: %d
-   -
-      sym: foundryPolicyConstraintIndex
-      numArgs: 0
-      source: %d
-   -
-      sym: delegationParamsConstraintIndex
-      numArgs: 0
-      source: %d
+// _pathConstantsJSON is consumed by easyfl.IntroduceUpdateJSONMulti.
+// Numeric (%d) and hex-string (%s) placeholders are filled by pathConstantsUpgrade0.
+const _pathConstantsJSON = `{
+  "functions": [
+    {"sym": "pathToTransaction",        "numArgs": 0, "source": "%d"},
+    {"sym": "pathToTxVersion",          "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToTxConstraints",      "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToConsumedOutputs",    "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToProducedOutputs",    "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToUnlockParams",       "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToInputIDs",           "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToSignatureData",      "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToSequencerDataBytes", "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToInputCommitment",    "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToEndorsements",       "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToExplicitBaseline",   "numArgs": 0, "source": "0x%s"},
+    {"sym": "pathToTimestamp",          "numArgs": 0, "source": "0x%s"},
+    {"sym": "amountsConstraintIndex",          "numArgs": 0, "source": "%d"},
+    {"sym": "indexValuesConstraintIndex",      "numArgs": 0, "source": "%d"},
+    {"sym": "lockConstraintIndex",             "numArgs": 0, "source": "%d"},
+    {"sym": "chainConstraintIndex",            "numArgs": 0, "source": "%d"},
+    {"sym": "foundryConstraintIndex",          "numArgs": 0, "source": "%d"},
+    {"sym": "foundryPolicyConstraintIndex",    "numArgs": 0, "source": "%d"},
+    {"sym": "delegationParamsConstraintIndex", "numArgs": 0, "source": "%d"}
+  ]
+}
 `

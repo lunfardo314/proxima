@@ -30,15 +30,18 @@ func LibraryFromParameters(idParams InitParameters, verbose ...bool) *Library {
 	return ret
 }
 
-func LibraryYAMLFromParameters(id InitParameters, compiled bool) []byte {
-	return LibraryFromParameters(id).ToYAML(compiled, "# Proxima ledger definitions")
+// LibraryJSONFromParameters builds the library from InitParameters and serializes
+// it to JSON. `compiled=true` includes funCodes, bytecodes, and the top-level hash.
+// The output is indented for human readability; storage paths use ToJSON(true, false).
+func LibraryJSONFromParameters(id InitParameters, compiled bool) []byte {
+	return LibraryFromParameters(id).ToJSON(compiled, true)
 }
 
-func ParseLibraryFromYAML(
-	yamlData []byte,
+func ParseLibraryFromJSON(
+	jsonData []byte,
 	getResolver ...func(lib *easyfl.Library[*EvalContext],
 	) func(sym string) easyfl.EmbeddedFunction[*EvalContext]) (*easyfl.Library[*EvalContext], error) {
-	lib, err := easyfl.NewLibraryFromYAML(yamlData, getResolver...)
+	lib, err := easyfl.NewLibraryFromJSON(jsonData, getResolver...)
 	if err != nil {
 		return nil, err
 	}

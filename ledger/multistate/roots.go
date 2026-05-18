@@ -21,9 +21,9 @@ const (
 	latestSlotDBPartition        = rootRecordDBPartition + 1
 	earliestSlotDBPartition      = latestSlotDBPartition + 1
 	restoreInProgressDBPartition = earliestSlotDBPartition + 1
-	// upgradeLibraryDBPartition stores compiled library YAMLs keyed by upgrade slot.
+	// upgradeLibraryDBPartition stores compiled library JSON blobs keyed by upgrade slot.
 	// Key: partition byte + 4-byte slot (big-endian)
-	// Value: compiled library YAML bytes
+	// Value: compiled library JSON bytes
 	upgradeLibraryDBPartition = restoreInProgressDBPartition + 1
 )
 

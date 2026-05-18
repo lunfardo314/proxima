@@ -23,35 +23,35 @@ func TestLoad(t *testing.T) {
 	t.Logf("------------------ Main constants (from global singleton) -------------------- \n%s", ledger.L(0).Lines("      ").String())
 }
 
-func TestLedgerToYAML(t *testing.T) {
+func TestLedgerToJSON(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	t.Run("compiled", func(t *testing.T) {
-		yamlData := lib.ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
-		t.Logf("\n%s", string(yamlData))
+		jsonData := lib.ToJSON(true, true)
+		t.Logf("\n%s", string(jsonData))
 	})
 	t.Run("not compiled", func(t *testing.T) {
-		yamlData := lib.ToYAML(false, "# ------------------- Proxima ledger definitions NOT COMPILED -------------------------")
-		t.Logf("\n%s", string(yamlData))
+		jsonData := lib.ToJSON(false, true)
+		t.Logf("\n%s", string(jsonData))
 	})
 }
 
-func TestLedgerToYAMLFile(t *testing.T) {
+func TestLedgerToJSONFile(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	lib.PrintLibraryStats()
 	h := lib.LibraryHash()
-	yamlData := lib.ToYAML(true, "# ------------------- Proxima ledger definitions COMPILED -------------------------")
-	t.Logf("Full library YAML size: %d bytes", len(yamlData))
-	//_ = os.WriteFile("ledger.yaml", yamlData, 0644)
-	libBack, err := easyfl.NewLibraryFromYAML[*ledger.EvalContext](yamlData)
+	jsonData := lib.ToJSON(true, true)
+	t.Logf("Full library JSON size: %d bytes", len(jsonData))
+	//_ = os.WriteFile("ledger.json", jsonData, 0644)
+	libBack, err := easyfl.NewLibraryFromJSON[*ledger.EvalContext](jsonData)
 	require.NoError(t, err)
 	require.EqualValues(t, h, libBack.LibraryHash())
 }
 
-func TestLedgerConstantsYAML(t *testing.T) {
+func TestLedgerConstantsJSON(t *testing.T) {
 	pk := testutil.GetTestingPrivateKey(1)
 	id := ledger.DefaultParameters(pk, uint32(time.Now().UnixNano()), "---- testing the description ----")
-	yamlData := ledger.ConstantsYAMLFromParamsUpgrade0(id)
-	t.Logf("\n%s", string(yamlData))
+	jsonData := ledger.ConstantsJSONFromParamsUpgrade0(id)
+	t.Logf("\n%s", string(jsonData))
 }
 
 func TestProxi(t *testing.T) {

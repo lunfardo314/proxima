@@ -359,13 +359,13 @@ type (
 	}
 
 	// LedgerDefinition is returned by 'get_ledger_definition'
-	// Contains the library YAML and upgrade UTXO chain data for a specific slot
+	// Contains the library JSON and upgrade UTXO chain data for a specific slot
 	LedgerDefinition struct {
 		Error
 		// UpgradeSlot is the upgrade slot this definition applies to
 		UpgradeSlot uint32 `json:"upgrade_slot"`
-		// LibraryYAML is the compiled library YAML (UTF-8 text)
-		LibraryYAML string `json:"library_yaml"`
+		// LibraryJSON is the compiled library serialized as JSON (UTF-8 text)
+		LibraryJSON string `json:"library_json"`
 		// LibraryHash is the hex-encoded hash of the library
 		LibraryHash string `json:"library_hash"`
 		// PrevLibraryHash is the hex-encoded hash of the previous library

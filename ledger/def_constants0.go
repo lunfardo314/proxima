@@ -74,10 +74,10 @@ func DefaultParameters(privateKey ed25519.PrivateKey, genesisTimeUnix uint32, de
 	}
 }
 
-//go:embed def/def_constants0.yaml
+//go:embed def/def_constants0.json
 var _definitionsLedgerConstantsTemplateUpgrade0 string
 
-// constantsTemplateData holds the values injected into the YAML template
+// constantsTemplateData holds the values injected into the JSON template
 type constantsTemplateData struct {
 	GenesisControllerPublicKeyHex string
 	GenesisTimeUnix               uint32
@@ -106,7 +106,7 @@ const (
 	DefaultHealthyCoverageDenominator = 12
 )
 
-func ConstantsYAMLFromParamsUpgrade0(par InitParameters) []byte {
+func ConstantsJSONFromParamsUpgrade0(par InitParameters) []byte {
 	num, den := par.HealthyCoverageNumerator, par.HealthyCoverageDenominator
 	if num == 0 && den == 0 {
 		num, den = DefaultHealthyCoverageNumerator, DefaultHealthyCoverageDenominator

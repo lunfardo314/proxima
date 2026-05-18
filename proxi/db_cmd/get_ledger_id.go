@@ -28,7 +28,7 @@ func dbGetLedgerIDCmd(_ *cobra.Command, _ []string) {
 	glb.Infof("Multi-state database: %s", dbName)
 	stateDB := badger_adaptor.MustCreateOrOpenBadgerDB(dbName)
 	stateStore := badger_adaptor.New(stateDB)
-	yamlData := multistate.LedgerIdentityBytesFromStore(stateStore)
+	idBytes := multistate.LedgerIdentityBytesFromStore(stateStore)
 	defer glb.CloseDatabases()
 
 	if glb.FileExists(glb.LedgerDefinitionsFileName) {
@@ -38,7 +38,7 @@ func dbGetLedgerIDCmd(_ *cobra.Command, _ []string) {
 		}
 	}
 
-	err := os.WriteFile(glb.LedgerDefinitionsFileName, yamlData, 0644)
+	err := os.WriteFile(glb.LedgerDefinitionsFileName, idBytes, 0644)
 	glb.AssertNoError(err)
 	glb.Infof("ledger definitions has been saved to '%s'", glb.LedgerDefinitionsFileName)
 }

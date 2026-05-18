@@ -29,21 +29,16 @@ func TestUpgrade_ForwardReference(t *testing.T) {
 	// funcCaller is listed BEFORE funcCallee — a forward reference.
 	// The new multi-phase Upgrade() resolves this because Phase 1 introduces
 	// stubs for all functions before Phase 2 compiles any of them.
-	yamlData := `
-functions:
-  -
-    sym: testFwdCaller
-    numArgs: 1
-    source: testFwdCallee($0)
-  -
-    sym: testFwdCallee
-    numArgs: 1
-    source: len($0)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+	jsonData := `{
+  "functions": [
+    {"sym": "testFwdCaller", "numArgs": 1, "source": "testFwdCallee($0)"},
+    {"sym": "testFwdCallee", "numArgs": 1, "source": "len($0)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.NoError(t, err)
 
 	// testFwdCaller(0x0102) should return len(0x0102) = 2
@@ -56,25 +51,17 @@ functions:
 func TestUpgrade_ForwardReference_ThreeFunc(t *testing.T) {
 	lib := cloneLib()
 
-	yamlData := `
-functions:
-  -
-    sym: testChainA
-    numArgs: 1
-    source: testChainB($0)
-  -
-    sym: testChainB
-    numArgs: 1
-    source: testChainC($0)
-  -
-    sym: testChainC
-    numArgs: 1
-    source: len($0)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+	jsonData := `{
+  "functions": [
+    {"sym": "testChainA", "numArgs": 1, "source": "testChainB($0)"},
+    {"sym": "testChainB", "numArgs": 1, "source": "testChainC($0)"},
+    {"sym": "testChainC", "numArgs": 1, "source": "len($0)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.NoError(t, err)
 
 	lib.MustEqual("testChainA(0xaabbcc)", "uint8Bytes(3)")
@@ -86,29 +73,18 @@ func TestUpgrade_ForwardReference_Diamond(t *testing.T) {
 	lib := cloneLib()
 
 	// A calls both B and C; B and C both call D. Listed in reverse dependency order.
-	yamlData := `
-functions:
-  -
-    sym: testDiamA
-    numArgs: 1
-    source: add(testDiamB($0), testDiamC($0))
-  -
-    sym: testDiamB
-    numArgs: 1
-    source: testDiamD($0)
-  -
-    sym: testDiamC
-    numArgs: 1
-    source: testDiamD($0)
-  -
-    sym: testDiamD
-    numArgs: 1
-    source: byte($0, 0)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+	jsonData := `{
+  "functions": [
+    {"sym": "testDiamA", "numArgs": 1, "source": "add(testDiamB($0), testDiamC($0))"},
+    {"sym": "testDiamB", "numArgs": 1, "source": "testDiamD($0)"},
+    {"sym": "testDiamC", "numArgs": 1, "source": "testDiamD($0)"},
+    {"sym": "testDiamD", "numArgs": 1, "source": "byte($0, 0)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.NoError(t, err)
 
 	// byte(0x0507, 0) = 5, so B and C each return 5, A returns add(5, 5) = 10
@@ -121,17 +97,15 @@ functions:
 func TestUpgrade_RecursionDetection_Self(t *testing.T) {
 	lib := cloneLib()
 
-	yamlData := `
-functions:
-  -
-    sym: testSelfRec
-    numArgs: 1
-    source: testSelfRec($0)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+	jsonData := `{
+  "functions": [
+    {"sym": "testSelfRec", "numArgs": 1, "source": "testSelfRec($0)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "recursion detected")
 }
@@ -141,21 +115,16 @@ functions:
 func TestUpgrade_RecursionDetection_Mutual(t *testing.T) {
 	lib := cloneLib()
 
-	yamlData := `
-functions:
-  -
-    sym: testMutA
-    numArgs: 1
-    source: testMutB($0)
-  -
-    sym: testMutB
-    numArgs: 1
-    source: testMutA($0)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+	jsonData := `{
+  "functions": [
+    {"sym": "testMutA", "numArgs": 1, "source": "testMutB($0)"},
+    {"sym": "testMutB", "numArgs": 1, "source": "testMutA($0)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "recursion detected")
 }
@@ -165,25 +134,17 @@ functions:
 func TestUpgrade_RecursionDetection_Indirect(t *testing.T) {
 	lib := cloneLib()
 
-	yamlData := `
-functions:
-  -
-    sym: testIndA
-    numArgs: 1
-    source: testIndB($0)
-  -
-    sym: testIndB
-    numArgs: 1
-    source: testIndC($0)
-  -
-    sym: testIndC
-    numArgs: 1
-    source: testIndA($0)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+	jsonData := `{
+  "functions": [
+    {"sym": "testIndA", "numArgs": 1, "source": "testIndB($0)"},
+    {"sym": "testIndB", "numArgs": 1, "source": "testIndC($0)"},
+    {"sym": "testIndC", "numArgs": 1, "source": "testIndA($0)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "recursion detected")
 }
@@ -200,17 +161,15 @@ func TestUpgrade_CloneSafeUpgrade(t *testing.T) {
 		// Clone and perform a valid upgrade on the clone
 		clone := origLib.Clone()
 
-		yamlData := `
-functions:
-  -
-    sym: testCloneFunc
-    numArgs: 2
-    source: add($0, $1)
-`
-		fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+		jsonData := `{
+  "functions": [
+    {"sym": "testCloneFunc", "numArgs": 2, "source": "add($0, $1)"}
+  ]
+}`
+		fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 		require.NoError(t, err)
 
-		err = clone.Upgrade(fromYAML)
+		err = clone.Upgrade(fromJSON)
 		require.NoError(t, err)
 
 		// Clone has the new function
@@ -227,21 +186,16 @@ functions:
 		// Clone and attempt an invalid upgrade (recursion)
 		clone := origLib.Clone()
 
-		yamlBad := `
-functions:
-  -
-    sym: testBadA
-    numArgs: 1
-    source: testBadB($0)
-  -
-    sym: testBadB
-    numArgs: 1
-    source: testBadA($0)
-`
-		fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlBad))
+		jsonBad := `{
+  "functions": [
+    {"sym": "testBadA", "numArgs": 1, "source": "testBadB($0)"},
+    {"sym": "testBadB", "numArgs": 1, "source": "testBadA($0)"}
+  ]
+}`
+		fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonBad))
 		require.NoError(t, err)
 
-		err = clone.Upgrade(fromYAML)
+		err = clone.Upgrade(fromJSON)
 		require.Error(t, err) // cycle detected
 
 		// Original is still completely intact
@@ -269,21 +223,16 @@ func TestUpgrade_BackwardCompatible(t *testing.T) {
 	lib := cloneLib()
 
 	// Sequential ordering: testSeqX defined before testSeqY which uses it
-	yamlData := `
-functions:
-  -
-    sym: testSeqX
-    numArgs: 2
-    source: add($0, $1)
-  -
-    sym: testSeqY
-    numArgs: 2
-    source: testSeqX($0, $1)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+	jsonData := `{
+  "functions": [
+    {"sym": "testSeqX", "numArgs": 2, "source": "add($0, $1)"},
+    {"sym": "testSeqY", "numArgs": 2, "source": "testSeqX($0, $1)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.NoError(t, err)
 
 	lib.MustEqual("testSeqX(3, 5)", "uint8Bytes(8)")
@@ -297,35 +246,27 @@ func TestUpgrade_ReplaceWithForwardRef(t *testing.T) {
 	lib := cloneLib()
 
 	// Step 1: add a function to later replace
-	yaml1 := `
-functions:
-  -
-    sym: testReplTarget
-    numArgs: 2
-    source: add($0, $1)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yaml1))
+	json1 := `{
+  "functions": [
+    {"sym": "testReplTarget", "numArgs": 2, "source": "add($0, $1)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(json1))
 	require.NoError(t, err)
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.NoError(t, err)
 	lib.MustEqual("testReplTarget(3, 5)", "uint8Bytes(8)")
 
 	// Step 2: replace testReplTarget to call a new testReplHelper (forward ref)
-	yaml2 := `
-functions:
-  -
-    sym: testReplTarget
-    numArgs: 2
-    replace: true
-    source: testReplHelper($0, $1)
-  -
-    sym: testReplHelper
-    numArgs: 2
-    source: mul($0, $1)
-`
-	fromYAML, err = easyfl.ReadLibraryFromYAML([]byte(yaml2))
+	json2 := `{
+  "functions": [
+    {"sym": "testReplTarget", "numArgs": 2, "replace": true, "source": "testReplHelper($0, $1)"},
+    {"sym": "testReplHelper", "numArgs": 2, "source": "mul($0, $1)"}
+  ]
+}`
+	fromJSON, err = easyfl.ReadLibraryFromJSON([]byte(json2))
 	require.NoError(t, err)
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.NoError(t, err)
 
 	// testReplTarget now delegates to testReplHelper (mul), so 3*5=15
@@ -340,35 +281,27 @@ func TestUpgrade_ReplaceInducedCycle(t *testing.T) {
 	lib := cloneLib()
 
 	// Step 1: add depB, then depA that calls depB
-	yaml1 := `
-functions:
-  -
-    sym: testDepB
-    numArgs: 1
-    source: byte($0, 0)
-  -
-    sym: testDepA
-    numArgs: 1
-    source: testDepB($0)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yaml1))
+	json1 := `{
+  "functions": [
+    {"sym": "testDepB", "numArgs": 1, "source": "byte($0, 0)"},
+    {"sym": "testDepA", "numArgs": 1, "source": "testDepB($0)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(json1))
 	require.NoError(t, err)
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.NoError(t, err)
 
 	// Step 2: replace depB to call depA — creates cycle depA->depB->depA
-	yaml2 := `
-functions:
-  -
-    sym: testDepB
-    numArgs: 1
-    replace: true
-    source: testDepA($0)
-`
-	fromYAML, err = easyfl.ReadLibraryFromYAML([]byte(yaml2))
+	json2 := `{
+  "functions": [
+    {"sym": "testDepB", "numArgs": 1, "replace": true, "source": "testDepA($0)"}
+  ]
+}`
+	fromJSON, err = easyfl.ReadLibraryFromJSON([]byte(json2))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "recursion detected")
 }
@@ -381,21 +314,16 @@ func TestUpgrade_ForwardRefUsingExistingLedgerFunctions(t *testing.T) {
 
 	// testCombA calls testCombB, testCombB uses the existing concat function,
 	// testCombA listed first (forward ref to testCombB)
-	yamlData := `
-functions:
-  -
-    sym: testCombA
-    numArgs: 2
-    source: len(testCombB($0, $1))
-  -
-    sym: testCombB
-    numArgs: 2
-    source: concat($0, $1)
-`
-	fromYAML, err := easyfl.ReadLibraryFromYAML([]byte(yamlData))
+	jsonData := `{
+  "functions": [
+    {"sym": "testCombA", "numArgs": 2, "source": "len(testCombB($0, $1))"},
+    {"sym": "testCombB", "numArgs": 2, "source": "concat($0, $1)"}
+  ]
+}`
+	fromJSON, err := easyfl.ReadLibraryFromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	err = lib.Upgrade(fromYAML)
+	err = lib.Upgrade(fromJSON)
 	require.NoError(t, err)
 
 	// concat(0x01, 0x02) = 0x0102, len(0x0102) = 2

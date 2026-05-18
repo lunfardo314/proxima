@@ -28,7 +28,7 @@ type (
 	Library            struct {
 		*easyfl.Library[*EvalContext]
 		Constants                          // Embedded ledger constants for this library version
-		definitionsYAML                    []byte
+		definitionsJSON                    []byte
 		constraintByPrefix                 map[string]*constraintRecord
 		upgradeChainData                   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
 		upgradeIndex                       uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
@@ -49,10 +49,10 @@ type (
 	}
 )
 
-func newLibrary(lib *easyfl.Library[*EvalContext], definitionsYAML []byte) *Library {
+func newLibrary(lib *easyfl.Library[*EvalContext], definitionsJSON []byte) *Library {
 	ret := &Library{
 		Library:            lib,
-		definitionsYAML:    definitionsYAML,
+		definitionsJSON:    definitionsJSON,
 		constraintByPrefix: make(map[string]*constraintRecord),
 	}
 	return ret
@@ -62,12 +62,14 @@ func newBaseLibrary() *Library {
 	return newLibrary(easyfl.NewBaseLibrary[*EvalContext](), nil)
 }
 
-// DefinitionsYAML returns the compiled library YAML definitions.
-func (lib *Library) DefinitionsYAML() []byte {
-	if len(lib.definitionsYAML) > 0 {
-		return lib.definitionsYAML
+// DefinitionsJSON returns the compiled library JSON definitions. The returned
+// bytes are compact JSON (canonical for storage and on-the-wire); callers that
+// want a human-readable form should re-serialize via easyfl.ToJSON(true, true).
+func (lib *Library) DefinitionsJSON() []byte {
+	if len(lib.definitionsJSON) > 0 {
+		return lib.definitionsJSON
 	}
-	return lib.Library.ToYAML(true, "# Proxima library upgraded from EasyFL base")
+	return lib.Library.ToJSON(true, false)
 }
 
 // UpgradeChainData returns the upgrade chain data for this library.

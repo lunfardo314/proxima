@@ -13,7 +13,7 @@ import (
 type InjectedUpgrade struct {
 	Slot        uint32
 	LibraryHash [32]byte
-	LibraryYAML []byte
+	LibraryJSON []byte
 }
 
 // InjectMissingUpgradeUTXOs checks for any upgrade slots up to branchSlot that
@@ -88,7 +88,7 @@ func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, 
 		injected = append(injected, InjectedUpgrade{
 			Slot:        upgradeSlot,
 			LibraryHash: libraryHash,
-			LibraryYAML: lib.ToYAML(false),
+			LibraryJSON: lib.ToJSON(false, false),
 		})
 	}
 

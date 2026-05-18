@@ -33,7 +33,7 @@ func runParseTx(_ *cobra.Command, args []string) {
 	ledgerIDData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
 	glb.AssertNoError(err)
 
-	ledger.MustInitLibraryCacheFromYAML(ledgerIDData)
+	ledger.MustInitLibraryCacheFromJSON(ledgerIDData)
 
 	glb.ParseAndDisplayTxBytes(txBytesWithMetadata)
 }

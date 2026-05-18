@@ -111,14 +111,13 @@ func (c *APIClient) GetLedgerDefinition(slot *uint32) (*api.LedgerDefinition, er
 	return &resp, nil
 }
 
-// GetLedgerDefinitionYAML retrieves raw ledger definition YAML from server for the latest slot.
-// This is a convenience method for backward compatibility.
-func (c *APIClient) GetLedgerDefinitionYAML() ([]byte, error) {
+// GetLedgerDefinitionJSON retrieves raw ledger definition JSON from server for the latest slot.
+func (c *APIClient) GetLedgerDefinitionJSON() ([]byte, error) {
 	resp, err := c.GetLedgerDefinition(nil)
 	if err != nil {
 		return nil, err
 	}
-	return []byte(resp.LibraryYAML), nil
+	return []byte(resp.LibraryJSON), nil
 }
 
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server

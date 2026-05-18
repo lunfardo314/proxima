@@ -29,7 +29,7 @@ func WriteEmptyRootWithLedgerIdentity(identity *ledger.LedgerIdentity, store glo
 // - Initial supply output (index 0)
 // - Stem output (index 1)
 // - Upgrade commitment UTXO (synthetic, index 255)
-// Also stores the library YAML in the upgrade DB partition at slot 0.
+// Also stores the library JSON in the upgrade DB partition at slot 0.
 // Returns root commitment to the genesis ledger state and genesis chainID.
 func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommitment) {
 	lib := ledger.L(0)
@@ -38,9 +38,9 @@ func InitStateStoreFromGlobals(store global.Store) (base.ChainID, common.VCommit
 	emptyRoot, err := WriteEmptyRootWithLedgerIdentity(identity, store)
 	util.AssertNoError(err)
 
-	// Store library YAML in upgrade DB partition at slot 0
-	libraryYAML := lib.DefinitionsYAML()
-	err = WriteUpgradeLibrary(store, 0, libraryYAML)
+	// Store library JSON in upgrade DB partition at slot 0
+	libraryJSON := lib.DefinitionsJSON()
+	err = WriteUpgradeLibrary(store, 0, libraryJSON)
 	util.AssertNoError(err)
 
 	genesisAddr := ledger.SigLockFromED25519PublicKey(lib.GenesisControllerPublicKey)
@@ -104,11 +104,11 @@ func ScanGenesisState(stateStore global.Store) (*ledger.Constants, common.VCommi
 	rdr := MustNewSugaredReadableState(stateStore, branchData.Root)
 
 	// Load library from upgrade DB partition (slot 0)
-	yamlData, found := GetUpgradeLibraryDirect(stateStore, 0)
+	jsonData, found := GetUpgradeLibraryDirect(stateStore, 0)
 	if !found {
 		return nil, nil, fmt.Errorf("ScanGenesisState: library not found in upgrade partition at slot 0")
 	}
-	lib, err := ledger.ParseLibraryFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver)
+	lib, err := ledger.ParseLibraryFromJSON(jsonData, ledger.GetEmbeddedFunctionResolver)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ScanGenesisState: failed to parse library: %w", err)
 	}
@@ -149,11 +149,11 @@ func storePendingUpgrade(stateStore global.Store, pending *ledger.UpgradeDefinit
 	}
 
 	// Find the previous library to build upon
-	prevSlot, prevYAML := findPreviousLibrary(stateStore, pending.Slot)
-	util.Assertf(prevYAML != nil, "no previous library found for pending upgrade at slot %d", pending.Slot)
+	prevSlot, prevJSON := findPreviousLibrary(stateStore, pending.Slot)
+	util.Assertf(prevJSON != nil, "no previous library found for pending upgrade at slot %d", pending.Slot)
 
 	// Build the upgraded library
-	newYAML, err := pending.Build(prevYAML)
+	newJSON, err := pending.Build(prevJSON)
 	util.Assertf(err == nil, "failed to build pending upgrade library at slot %d (based on slot %d): %v",
 		pending.Slot, prevSlot, err)
 
@@ -162,22 +162,22 @@ func storePendingUpgrade(stateStore global.Store, pending *ledger.UpgradeDefinit
 	// 1. The Build function is trusted code from the upgrade definition
 	// 2. It builds on top of the previous library, preserving identity
 	// 3. Identity validation is still enforced for external inputs via WriteUpgradeLibrary
-	err = WriteUpgradeLibraryUnchecked(stateStore, pending.Slot, newYAML)
+	err = WriteUpgradeLibraryUnchecked(stateStore, pending.Slot, newJSON)
 	util.AssertNoError(err)
 }
 
 // findPreviousLibrary finds the most recent library before the given slot.
-// Returns the slot and YAML data of the previous library.
+// Returns the slot and JSON data of the previous library.
 func findPreviousLibrary(stateStore global.Store, beforeSlot uint32) (uint32, []byte) {
 	var foundSlot uint32
-	var foundYAML []byte
+	var foundJSON []byte
 	found := false
 
-	IterateUpgradeLibraries(stateStore, func(slot uint32, yamlData []byte) bool {
+	IterateUpgradeLibraries(stateStore, func(slot uint32, jsonData []byte) bool {
 		if slot < beforeSlot {
 			if !found || slot > foundSlot {
 				foundSlot = slot
-				foundYAML = yamlData
+				foundJSON = jsonData
 				found = true
 			}
 		}
@@ -187,5 +187,5 @@ func findPreviousLibrary(stateStore global.Store, beforeSlot uint32) (uint32, []
 	if !found {
 		return 0, nil
 	}
-	return foundSlot, foundYAML
+	return foundSlot, foundJSON
 }

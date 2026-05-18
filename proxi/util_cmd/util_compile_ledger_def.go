@@ -30,14 +30,14 @@ func compileIDCmd() *cobra.Command {
 
 func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.Assertf(glb.FileExists(glb.LedgerDefinitionsFileName), "file %s does not exist", glb.LedgerDefinitionsFileName)
-	yamlData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
+	jsonData, err := os.ReadFile(glb.LedgerDefinitionsFileName)
 	glb.AssertNoError(err)
 
-	fromYAML, err := easyfl.ReadLibraryFromYAML(yamlData)
+	fromJSON, err := easyfl.ReadLibraryFromJSON(jsonData)
 	glb.AssertNoError(err)
 
-	if len(fromYAML.Hash) > 0 {
-		glb.Infof("ledger definition in %s are already compiled, library hash %s", glb.LedgerDefinitionsFileName, fromYAML.Hash)
+	if len(fromJSON.Hash) > 0 {
+		glb.Infof("ledger definition in %s are already compiled, library hash %s", glb.LedgerDefinitionsFileName, fromJSON.Hash)
 		prompt := fmt.Sprintf("recompile the library to the same file %s?", glb.LedgerDefinitionsFileName)
 		if !glb.YesNoPrompt(prompt, true) {
 			return
@@ -45,12 +45,13 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 	}
 
 	lib := easyfl.NewLibrary[*ledger.EvalContext]()
-	err = lib.UpgradeFromYAML(yamlData, ledger.GetEmbeddedFunctionResolver(lib))
+	err = lib.UpgradeFromJSON(jsonData, ledger.GetEmbeddedFunctionResolver(lib))
 	glb.AssertNoError(err)
 
-	yamlData1 := lib.ToYAML(true, "# compiled library of Proxima ledger definitions")
+	// indented JSON for human readability in the on-disk definitions file
+	jsonOut := lib.ToJSON(true, true)
 
-	err = os.WriteFile(glb.LedgerDefinitionsFileName, yamlData1, 0755)
+	err = os.WriteFile(glb.LedgerDefinitionsFileName, jsonOut, 0755)
 	glb.AssertNoError(err)
 
 	constants := ledger.ConstantsFromLibrary(lib)

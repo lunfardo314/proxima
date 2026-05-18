@@ -48,7 +48,7 @@ func InitLedgerFromNode() {
 	resp, err := clnt.GetLedgerDefinition(nil)
 	AssertNoError(err)
 
-	libraries[resp.UpgradeSlot] = []byte(resp.LibraryYAML)
+	libraries[resp.UpgradeSlot] = []byte(resp.LibraryJSON)
 	Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)
 
 	// Walk back through previous upgrades until we reach genesis (slot 0)
@@ -56,7 +56,7 @@ func InitLedgerFromNode() {
 		prevSlot := resp.PrevUpgradeSlot
 		resp, err = clnt.GetLedgerDefinition(&prevSlot)
 		AssertNoError(err)
-		libraries[resp.UpgradeSlot] = []byte(resp.LibraryYAML)
+		libraries[resp.UpgradeSlot] = []byte(resp.LibraryJSON)
 		Infof("fetched library for slot %d, hash = %s", resp.UpgradeSlot, resp.LibraryHash)
 	}
 

@@ -20,7 +20,7 @@ import (
 // Since upgrades are rare, no cache eviction is needed - node restart resets the cache.
 type LibraryCache struct {
 	mu    sync.RWMutex
-	store common.Traversable  // DB store for loading library YAMLs
+	store common.Traversable  // DB store for loading library JSON blobs
 	cache map[uint32]*Library // upgrade slot -> parsed library
 
 	// Fast-path: cache latest library directly (most common case)
@@ -29,7 +29,7 @@ type LibraryCache struct {
 
 	// Slot index loaded once from DB to avoid repeated traversal
 	upgradeSlots []uint32          // sorted ascending
-	slotToYAML   map[uint32][]byte // for lazy parsing
+	slotToJSON   map[uint32][]byte // for lazy parsing
 }
 
 // ResolverFactory creates an embedded function resolver for a library.
@@ -102,8 +102,8 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 	}
 
 	// Parse the library
-	yamlData := lc.slotToYAML[upgradeSlot]
-	lib := lc.parseLibrary(yamlData)
+	jsonData := lc.slotToJSON[upgradeSlot]
+	lib := lc.parseLibrary(jsonData)
 
 	// Set the upgrade chain data
 	chainData := &UpgradeChainData{
@@ -146,11 +146,11 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 // loadUpgradeSlots loads all upgrade slots from DB once.
 // Must be called with write lock held.
 func (lc *LibraryCache) loadUpgradeSlots() {
-	if lc.slotToYAML != nil {
+	if lc.slotToJSON != nil {
 		return // already loaded
 	}
 
-	lc.slotToYAML = make(map[uint32][]byte)
+	lc.slotToJSON = make(map[uint32][]byte)
 	lc.upgradeSlots = nil
 
 	prefix := []byte{upgradeLibraryDBPartition}
@@ -161,7 +161,7 @@ func (lc *LibraryCache) loadUpgradeSlots() {
 		slot, err := base.SlotFromBytes(k[1:])
 		util.AssertNoError(err)
 		lc.upgradeSlots = append(lc.upgradeSlots, slot)
-		lc.slotToYAML[slot] = v
+		lc.slotToJSON[slot] = v
 		return true
 	})
 
@@ -198,13 +198,13 @@ func (lc *LibraryCache) findUpgradeSlotForSlot(slot uint32) (upgradeSlot uint32,
 // Value: PartitionOther(2) + 1 + 1 + 1 + 1 = 6
 const upgradeLibraryDBPartition = 0x06
 
-// parseLibrary parses a library YAML using the unified embedded function resolver.
+// parseLibrary parses a library JSON blob using the unified embedded function resolver.
 // The upgradeSlot parameter is used for caching purposes.
-func (lc *LibraryCache) parseLibrary(yamlData []byte) *Library {
-	lib, err := ParseLibraryFromYAML(yamlData, GetEmbeddedFunctionResolver)
+func (lc *LibraryCache) parseLibrary(jsonData []byte) *Library {
+	lib, err := ParseLibraryFromJSON(jsonData, GetEmbeddedFunctionResolver)
 	util.AssertNoError(err)
 
-	result := newLibrary(lib, yamlData)
+	result := newLibrary(lib, jsonData)
 	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
 	registerConstraints0(result)
 	result.MustPreCompileTxIntegrityValidators()
@@ -212,7 +212,7 @@ func (lc *LibraryCache) parseLibrary(yamlData []byte) *Library {
 }
 
 // MustInitLibraryCache initializes the library cache with a state store.
-// The store is used for lazy loading of library YAMLs from the upgrade DB partition.
+// The store is used for lazy loading of library JSON blobs from the upgrade DB partition.
 func MustInitLibraryCache(store common.Traversable) {
 	var lib *Library
 
@@ -242,16 +242,16 @@ func MustInitLibraryCache(store common.Traversable) {
 	runInlineTests(lib)
 }
 
-// MustInitLibraryCacheFromYAML initializes the library cache from raw YAML bytes.
+// MustInitLibraryCacheFromJSON initializes the library cache from raw JSON bytes.
 // It creates a minimal in-memory store with a single library at slot 0.
 // Use this when no persistent state store is available (CLI tools, testing).
 // Unlike MustInitLibraryCache, this function allows re-initialization by resetting
 // any existing cache first (safe for testing where multiple init calls may occur).
-func MustInitLibraryCacheFromYAML(defYaml []byte) {
-	MustInitLibraryCacheFromMap(map[uint32][]byte{0: defYaml})
+func MustInitLibraryCacheFromJSON(defJSON []byte) {
+	MustInitLibraryCacheFromMap(map[uint32][]byte{0: defJSON})
 }
 
-// MustInitLibraryCacheFromMap initializes the library cache from a map of slot -> YAML.
+// MustInitLibraryCacheFromMap initializes the library cache from a map of slot -> library JSON.
 // Use this when the CLI needs to support multiple library versions (after upgrades).
 func MustInitLibraryCacheFromMap(libraries map[uint32][]byte) {
 	libraryCacheMutex.RLock()
@@ -266,7 +266,7 @@ func MustInitLibraryCacheFromMap(libraries map[uint32][]byte) {
 	MustInitLibraryCache(store)
 }
 
-// memLibraryStore is an in-memory Traversable store for library YAMLs keyed by upgrade slot.
+// memLibraryStore is an in-memory Traversable store for library JSON blobs keyed by upgrade slot.
 type memLibraryStore struct {
 	entries map[uint32][]byte
 }
@@ -418,7 +418,7 @@ func InitWithTestingLedgerData(opts ...ParametersOption) ed25519.PrivateKey {
 	}
 	lib := LibraryFromParameters(params)
 	lib.MustPreCompileTxIntegrityValidators()
-	MustInitLibraryCacheFromYAML(lib.ToYAML(true))
+	MustInitLibraryCacheFromJSON(lib.ToJSON(true, false))
 	return pk
 }
 

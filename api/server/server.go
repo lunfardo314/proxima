@@ -153,7 +153,7 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 
 	resp := api.LedgerDefinition{
 		UpgradeSlot:     chainData.UpgradeSlot,
-		LibraryYAML:     string(lib.DefinitionsYAML()),
+		LibraryJSON:     string(lib.DefinitionsJSON()),
 		LibraryHash:     hex.EncodeToString(chainData.LibraryHash[:]),
 		PrevLibraryHash: hex.EncodeToString(chainData.PrevLibraryHash[:]),
 		PrevUpgradeSlot: chainData.PrevUpgradeSlot,

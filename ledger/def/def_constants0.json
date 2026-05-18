@@ -1,0 +1,147 @@
+{
+  "versionData": "{\"txIntegrityValidatorPartialContext\":\"txIntegrityValidatorPartialContext0\", \"txIntegrityValidatorFullContext\":\"txIntegrityValidatorFullContext0\"}",
+  "functions": [
+    {
+      "sym": "constInitialSupply",
+      "description": "Initial number of tokens in the ledger",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "u64/1000000000000000"
+    },
+    {
+      "sym": "constGenesisControllerPublicKey",
+      "description": "Public key ED25519 of the genesis controller in hexadecimal format",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "0x{{.GenesisControllerPublicKeyHex}}"
+    },
+    {
+      "sym": "constGenesisTimeUnix",
+      "description": "Unix time in seconds when ledger was initiated. Timestamp 0|0 corresponds to the genesis time",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "u64/{{.GenesisTimeUnix}}"
+    },
+    {
+      "sym": "constTickDuration",
+      "description": "tick duration in nanoseconds. Default is 80ms",
+      "numArgs": 0,
+      "source": "u64/{{.TickDurationNano}}"
+    },
+    {
+      "sym": "constMaxTickValuePerSlot",
+      "description": "maximum value of ticks in the slot. Usually 127",
+      "numArgs": 0,
+      "source": "u64/{{.MaxTickValue}}"
+    },
+    {
+      "sym": "ticksPerSlot64",
+      "description": "number of ticks in the slot. Usually 128",
+      "numArgs": 0,
+      "source": "u64/{{.TicksPerSlot}}"
+    },
+    {
+      "sym": "constMaxNumberOfEndorsements",
+      "description": "up to 8 endorsements",
+      "numArgs": 0,
+      "source": "u64/8"
+    },
+    {
+      "sym": "constPreBranchConsolidationTicks",
+      "description": "number of last ticks in a slot when sequencer transaction cannot consume more than 2 UTXOs",
+      "numArgs": 0,
+      "source": "u64/25"
+    },
+    {
+      "sym": "constTransactionPace",
+      "description": "minimum number of ticks between non-sequencer transaction and its inputs",
+      "numArgs": 0,
+      "source": "u64/{{.TransactionPaceTicks}}"
+    },
+    {
+      "sym": "constTransactionPaceSequencer",
+      "description": "minimum number of ticks between sequencer transaction and its inputs and endorsed transactions",
+      "numArgs": 0,
+      "source": "u64/{{.TransactionPaceSequencerTicks}}"
+    },
+    {
+      "sym": "constAttachmentCostBudget",
+      "description": "maximum total attachment cost (pastCone + seqTx) for sequencer transaction validation",
+      "numArgs": 0,
+      "source": "u64/{{.AttachmentCostBudget}}"
+    },
+    {
+      "sym": "constTxIDStateTTLSlots",
+      "description": "number of slots to keep committed transaction IDs in the state before GC",
+      "numArgs": 0,
+      "source": "u64/{{.TxIDStateTTLSlots}}"
+    },
+    {
+      "sym": "constDescription",
+      "description": "arbitrary binary data",
+      "numArgs": 0,
+      "source": "0x{{.DescriptionHex}}"
+    },
+    {
+      "sym": "timeSlotSizeBytes",
+      "description": "constant for the storage deposit constraint",
+      "numArgs": 0,
+      "source": "4"
+    },
+    {
+      "sym": "timestampByteSize",
+      "description": "constant for the storage deposit constraint",
+      "numArgs": 0,
+      "source": "5"
+    },
+    {
+      "sym": "storageDeposit",
+      "description": "Returns the storage deposit for a UTXO with effective size $0. Effective size = utxoBytes + indexValuesTupleBytes + N*33, where N is the number of index-values entries (per-entry trie cost charged on top of the in-UTXO bytes). Computed Go-side in ledger.effectiveStorageSize.\n\nPiecewise-linear schedule (continuous at the kink, size = 100):\n  size <  100 -> deposit = size * 50_000\n  size >= 100 -> deposit = size * 50_000 + (size - 100) * 4 * 50_000\n\nAlgebraically simplified second branch to a single multiplication:\n  size * 50_000 + (size - 100) * 200_000\n    = size * 250_000 - 20_000_000",
+      "numArgs": 1,
+      "source": "if(lessThan($0,u64/100), mul($0,u64/50000), sub(mul($0,u64/250000),u64/20000000))"
+    },
+    {
+      "sym": "constBootstrapChainID",
+      "description": "chain ID of the bootstrap sequencer (blake2b hash of genesis output ID)",
+      "numArgs": 0,
+      "immutable": true,
+      "source": "0x9d2c6fedeb0f31a9a97d28c59b276402f6c8e78777b89a825e31496c08ef8d6d"
+    },
+    {
+      "sym": "branchCoverageLowerBound",
+      "description": "minimum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0",
+      "numArgs": 1,
+      "source": "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageLowerBound}}){{else}}div(proformaSupplyUpperBound($0), u64/1000){{end}}"
+    },
+    {
+      "sym": "branchCoverageUpperBound",
+      "description": "maximum sequencer coverage (tokenBalance + frozenCoverage) to issue a branch transaction at slot $0",
+      "numArgs": 1,
+      "source": "{{if .SetBranchCoverageBounds}}evalArg1($0, u64/{{.BranchCoverageUpperBound}}){{else}}div(proformaSupplyUpperBound($0), u64/10){{end}}"
+    },
+    {
+      "sym": "proformaSupplyUpperBound",
+      "description": "supply upper bound at slot $0, assuming constant inflation constants",
+      "numArgs": 1,
+      "source": "add(constInitialSupply, mul($0, add(constSlotInflationBase, constBranchInflationBonusBaseTail)))"
+    },
+    {
+      "sym": "constHealthyCoverageNumerator",
+      "description": "numerator of the healthy-branch coverage fraction (production default 7/12)",
+      "numArgs": 0,
+      "source": "u64/{{.HealthyCoverageNumerator}}"
+    },
+    {
+      "sym": "constHealthyCoverageDenominator",
+      "description": "denominator of the healthy-branch coverage fraction (production default 7/12)",
+      "numArgs": 0,
+      "source": "u64/{{.HealthyCoverageDenominator}}"
+    },
+    {
+      "sym": "healthyCoverageDelta",
+      "description": "returns 1 (true) iff coverageDelta * denominator > supply * numerator (i.e. coverageDelta > (numerator/denominator) * supply). $0 = supply, $1 = coverageDelta",
+      "numArgs": 2,
+      "source": "lessThan(mul($0, constHealthyCoverageNumerator), mul($1, constHealthyCoverageDenominator))"
+    }
+  ]
+}

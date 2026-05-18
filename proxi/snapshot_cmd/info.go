@@ -48,7 +48,7 @@ func runSnapshotInfoCmd(_ *cobra.Command, args []string) {
 	glb.Infof("root record:\n%s", kvStream.RootRecord.Lines("    ").String())
 	glb.Infof("upgrade libraries: %d", len(kvStream.UpgradeLibraries))
 	for _, entry := range kvStream.UpgradeLibraries {
-		glb.Infof("  - slot %d: %d bytes", entry.Slot, len(entry.LibraryYAML))
+		glb.Infof("  - slot %d: %d bytes", entry.Slot, len(entry.LibraryJSON))
 	}
 	constants, err := kvStream.GetLedgerConstants()
 	glb.AssertNoError(err)

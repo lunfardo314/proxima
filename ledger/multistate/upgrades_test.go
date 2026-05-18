@@ -9,21 +9,21 @@ import (
 )
 
 // Tests for the upgrade library storage layer.
-// These tests verify the DB partition for storing compiled library YAMLs.
+// These tests verify the DB partition for storing compiled library JSON blobs.
 
 func TestUpgradeLibraryStorage_WriteAndReadDirect(t *testing.T) {
 	// Test basic write and direct read of a library at a specific slot
 	store := common.NewInMemoryKVStore()
 
 	// Write a library at slot 0 (genesis upgrade)
-	libraryYAML := []byte("test library YAML for slot 0")
-	err := WriteUpgradeLibrary(store, 0, libraryYAML)
+	libraryJSON := []byte("test library JSON for slot 0")
+	err := WriteUpgradeLibrary(store, 0, libraryJSON)
 	require.NoError(t, err)
 
 	// Read it back directly
-	readYAML, found := GetUpgradeLibraryDirect(store, 0)
+	readJSON, found := GetUpgradeLibraryDirect(store, 0)
 	require.True(t, found, "should find library at slot 0")
-	require.Equal(t, libraryYAML, readYAML, "library YAML should match")
+	require.Equal(t, libraryJSON, readJSON, "library JSON should match")
 
 	// Try to read from a non-existent slot
 	_, found = GetUpgradeLibraryDirect(store, 100)
@@ -81,7 +81,7 @@ func TestUpgradeLibraryStorage_GetForSlot(t *testing.T) {
 
 	testCases := []struct {
 		querySlot        uint32
-		expectedYAML     []byte
+		expectedJSON     []byte
 		expectedUpgSlot  uint32
 		expectedFound    bool
 		description      string
@@ -101,10 +101,10 @@ func TestUpgradeLibraryStorage_GetForSlot(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			yaml, upgSlot, found := GetUpgradeLibraryForSlot(store, tc.querySlot)
+			jsonData, upgSlot, found := GetUpgradeLibraryForSlot(store, tc.querySlot)
 			require.Equal(t, tc.expectedFound, found, "found mismatch for slot %d", tc.querySlot)
 			if tc.expectedFound {
-				require.Equal(t, tc.expectedYAML, yaml, "YAML mismatch for slot %d", tc.querySlot)
+				require.Equal(t, tc.expectedJSON, jsonData, "JSON mismatch for slot %d", tc.querySlot)
 				require.Equal(t, tc.expectedUpgSlot, upgSlot, "upgrade slot mismatch for slot %d", tc.querySlot)
 			}
 		})
@@ -249,21 +249,21 @@ func TestUpgradeLibraryStorage_HasUpgradeLibrary(t *testing.T) {
 	require.False(t, HasUpgradeLibrary(store, 1000))
 }
 
-func TestUpgradeLibraryStorage_LargeYAML(t *testing.T) {
-	// Test with a larger YAML payload similar to real library size
+func TestUpgradeLibraryStorage_LargeJSON(t *testing.T) {
+	// Test with a larger JSON payload similar to real library size
 	store := common.NewInMemoryKVStore()
 
-	// Create a larger YAML (simulating a real compiled library)
-	largeYAML := make([]byte, 100*1024) // 100KB
-	for i := range largeYAML {
-		largeYAML[i] = byte(i % 256)
+	// Create a larger JSON blob (simulating a real compiled library)
+	largeJSON := make([]byte, 100*1024) // 100KB
+	for i := range largeJSON {
+		largeJSON[i] = byte(i % 256)
 	}
 
-	require.NoError(t, WriteUpgradeLibrary(store, 0, largeYAML))
+	require.NoError(t, WriteUpgradeLibrary(store, 0, largeJSON))
 
-	readYAML, found := GetUpgradeLibraryDirect(store, 0)
+	readJSON, found := GetUpgradeLibraryDirect(store, 0)
 	require.True(t, found)
-	require.Equal(t, largeYAML, readYAML)
+	require.Equal(t, largeJSON, readJSON)
 }
 
 // Tests for pending upgrade registration
@@ -272,21 +272,21 @@ func TestFindPreviousLibrary_Basic(t *testing.T) {
 	store := common.NewInMemoryKVStore()
 
 	// No libraries - should return nil
-	_, yaml := findPreviousLibrary(store, 100)
-	require.Nil(t, yaml, "should return nil when no libraries exist")
+	_, jsonData := findPreviousLibrary(store, 100)
+	require.Nil(t, jsonData, "should return nil when no libraries exist")
 
 	// Add genesis library
 	require.NoError(t, WriteUpgradeLibraryUnchecked(store, 0, []byte("v0")))
 
 	// Find previous for slot 100 - should return genesis
-	slot, yaml := findPreviousLibrary(store, 100)
-	require.NotNil(t, yaml)
+	slot, jsonData := findPreviousLibrary(store, 100)
+	require.NotNil(t, jsonData)
 	require.Equal(t, uint32(0), slot)
-	require.Equal(t, []byte("v0"), yaml)
+	require.Equal(t, []byte("v0"), jsonData)
 
 	// Find previous for slot 0 - should return nil (no library before 0)
-	_, yaml = findPreviousLibrary(store, 0)
-	require.Nil(t, yaml, "should return nil when looking for library before slot 0")
+	_, jsonData = findPreviousLibrary(store, 0)
+	require.Nil(t, jsonData, "should return nil when looking for library before slot 0")
 }
 
 func TestFindPreviousLibrary_MultipleUpgrades(t *testing.T) {
@@ -300,7 +300,7 @@ func TestFindPreviousLibrary_MultipleUpgrades(t *testing.T) {
 	testCases := []struct {
 		beforeSlot       uint32
 		expectedSlot     uint32
-		expectedYAML     []byte
+		expectedJSON     []byte
 		expectNil        bool
 		description      string
 	}{
@@ -317,13 +317,13 @@ func TestFindPreviousLibrary_MultipleUpgrades(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			slot, yaml := findPreviousLibrary(store, tc.beforeSlot)
+			slot, jsonData := findPreviousLibrary(store, tc.beforeSlot)
 			if tc.expectNil {
-				require.Nil(t, yaml, "expected nil for slot %d", tc.beforeSlot)
+				require.Nil(t, jsonData, "expected nil for slot %d", tc.beforeSlot)
 			} else {
-				require.NotNil(t, yaml, "expected non-nil for slot %d", tc.beforeSlot)
+				require.NotNil(t, jsonData, "expected non-nil for slot %d", tc.beforeSlot)
 				require.Equal(t, tc.expectedSlot, slot, "slot mismatch")
-				require.Equal(t, tc.expectedYAML, yaml, "YAML mismatch")
+				require.Equal(t, tc.expectedJSON, jsonData, "JSON mismatch")
 			}
 		})
 	}
@@ -338,9 +338,9 @@ func TestStorePendingUpgrade_NewUpgrade(t *testing.T) {
 	// Create a pending upgrade definition
 	pending := &ledger.UpgradeDefinition{
 		Slot: 1000,
-		Build: func(prevYAML []byte) ([]byte, error) {
+		Build: func(prevJSON []byte) ([]byte, error) {
 			// Simple build that appends to previous
-			return append(prevYAML, []byte(" + upgrade 1")...), nil
+			return append(prevJSON, []byte(" + upgrade 1")...), nil
 		},
 	}
 
@@ -348,9 +348,9 @@ func TestStorePendingUpgrade_NewUpgrade(t *testing.T) {
 	storePendingUpgrade(store, pending)
 
 	// Verify upgrade was stored
-	yaml, found := GetUpgradeLibraryDirect(store, 1000)
+	jsonData, found := GetUpgradeLibraryDirect(store, 1000)
 	require.True(t, found, "upgrade should be stored")
-	require.Equal(t, []byte("genesis library + upgrade 1"), yaml)
+	require.Equal(t, []byte("genesis library + upgrade 1"), jsonData)
 }
 
 func TestStorePendingUpgrade_AlreadyExists(t *testing.T) {
@@ -366,7 +366,7 @@ func TestStorePendingUpgrade_AlreadyExists(t *testing.T) {
 	// Create pending upgrade for same slot
 	pending := &ledger.UpgradeDefinition{
 		Slot: 1000,
-		Build: func(prevYAML []byte) ([]byte, error) {
+		Build: func(prevJSON []byte) ([]byte, error) {
 			buildCalled = true
 			return []byte("new upgrade"), nil
 		},
@@ -379,9 +379,9 @@ func TestStorePendingUpgrade_AlreadyExists(t *testing.T) {
 	require.False(t, buildCalled, "Build should not be called when upgrade exists")
 
 	// Original upgrade should still be there
-	yaml, found := GetUpgradeLibraryDirect(store, 1000)
+	jsonData, found := GetUpgradeLibraryDirect(store, 1000)
 	require.True(t, found)
-	require.Equal(t, []byte("existing upgrade"), yaml)
+	require.Equal(t, []byte("existing upgrade"), jsonData)
 }
 
 func TestStorePendingUpgrade_Simple(t *testing.T) {
@@ -393,7 +393,7 @@ func TestStorePendingUpgrade_Simple(t *testing.T) {
 	// Create pending upgrade
 	pending := &ledger.UpgradeDefinition{
 		Slot: 1000,
-		Build: func(prevYAML []byte) ([]byte, error) {
+		Build: func(prevJSON []byte) ([]byte, error) {
 			return []byte("new library"), nil
 		},
 	}
@@ -402,7 +402,7 @@ func TestStorePendingUpgrade_Simple(t *testing.T) {
 	storePendingUpgrade(store, pending)
 
 	// Upgrade should be stored
-	yaml, found := GetUpgradeLibraryDirect(store, 1000)
+	jsonData, found := GetUpgradeLibraryDirect(store, 1000)
 	require.True(t, found)
-	require.Equal(t, []byte("new library"), yaml)
+	require.Equal(t, []byte("new library"), jsonData)
 }

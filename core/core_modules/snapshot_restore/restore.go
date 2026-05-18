@@ -218,11 +218,11 @@ func RestoreFromSnapshot(snapshotPath string, opts RestoreOptions) (*RestoreStat
 
 	// Store all upgrade libraries in DB partition
 	for _, entry := range kvStream.UpgradeLibraries {
-		err = multistate.WriteUpgradeLibrary(stateStore, entry.Slot, entry.LibraryYAML)
+		err = multistate.WriteUpgradeLibrary(stateStore, entry.Slot, entry.LibraryJSON)
 		if err != nil {
 			return nil, fmt.Errorf("failed to write library for slot %d: %w", entry.Slot, err)
 		}
-		fmt.Fprintf(opts.Console, "  - wrote upgrade library slot %d: %d bytes\n", entry.Slot, len(entry.LibraryYAML))
+		fmt.Fprintf(opts.Console, "  - wrote upgrade library slot %d: %d bytes\n", entry.Slot, len(entry.LibraryJSON))
 	}
 
 	// Initialize empty root with minimal ledger identity
