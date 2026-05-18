@@ -1,6 +1,18 @@
 {
   "functions": [
     {
+      "sym": "blake2b",
+      "description": "returns 32 bytes of the blake2b-256 hash of the byte-concatenation of all arguments",
+      "numArgs": -1,
+      "embeddedAs": "evalBlake2b"
+    },
+    {
+      "sym": "validSignatureED25519",
+      "description": "validSignatureED25519($0,$1,$2) returns non-empty value if $1 is a valid ED25519 signature of message $0 under public key $2",
+      "numArgs": 3,
+      "embeddedAs": "evalValidSignatureED25519"
+    },
+    {
       "sym": "at",
       "description": "returns path in the transaction of the validity constraint being evaluated",
       "numArgs": 0,
