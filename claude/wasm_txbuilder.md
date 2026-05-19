@@ -1,11 +1,25 @@
 # WASM transaction-builder core — analysis and spec
 
-Status: **design / analysis, no implementation**. Started 2026-05-18;
-spec refreshed 2026-05-19 after the easyfl `engine`/`embed` split
-shipped.
+**Status: refactor finished 2026-05-19. Phases 0–6 shipped.** End
+state: `ledger/txcore` builds clean under TinyGo (`tinygo build
+-target=wasm`) and produces a 1.3 MB / **429 KB gzipped** wasm
+binary that contains a full compose+sign transaction builder. See
+"Final state" and "Future optimisation levers" below.
 
-Sibling: [wasm_easyfl.md](wasm_easyfl.md) covers the easyfl-side work
-this depends on (now shipped — Phases A + B + C, easyfl `c2f3713`).
+Sibling docs:
+- [wasm_easyfl.md](wasm_easyfl.md) — easyfl `engine` / `embed` split
+  (shipped, easyfl `c2f3713`).
+- [wasm_txbuilder_helpers.md](wasm_txbuilder_helpers.md) — analysis
+  of the next batch of wallet helpers (sequencer requests, chain,
+  delegation, native tokens, redeemers). Helpers are an *extension*
+  of the txcore refactor; their implementation is tracked separately.
+
+Separately tracked, **not** part of this refactor:
+- **Unified `/api/v1/submit` endpoint on the host** (originally
+  drafted as Phase 7 of this doc) — needs its own planning phase
+  before implementation. Independent of txcore changes.
+- **Proxi CLI refactor** to consume the new helpers / txcore where
+  appropriate — follow-up after the helpers ship.
 
 ---
 
@@ -622,50 +636,52 @@ TinyGo-runtime irreducibles: `fmt`, `reflectlite`, `strconv`,
   Pass `nil` (or a stub) instead of `rand.Reader`. Saves ~9 KB
   combined (math/rand + its data segment).
 
-### Phase 7 — Companion API on the host
+---
 
-Implement the unified `/api/v1/submit` endpoint described in the
-goal section: `tx` always required, `consumed_utxos` optional for
-full-context validation, `validate_only` optional to skip the actual
-submit. Independent of the wasm-core phases — can land in parallel.
+## Final state of the refactor
+
+Six phases shipped 2026-05-19. End state:
+
+| Phase | Commit | Outcome |
+|---|---|---|
+| 0 — Audit | (in spec doc) | Confirmed expected import-graph cost; catalogued CLI's compose API surface. |
+| 1 — Output + OutputBuilder | `8cb3e4a0` | txcore.Output / OutputBuilder embed `*tuples.{Tuple, TupleEditable}`. ledger.Output / OutputBuilder embed the txcore types and keep their typed methods. 125+ callsites unchanged. |
+| 2a — Tx tuple layout constants | `8ce70f03` | Wire-format constants in txcore; ledger re-exports. |
+| 2b — TxRawData + SerializeRawTx + UnlockParams | `9e48f13b` | Wire-format serialisation lives in txcore; ledger.txbuilder converts its typed view to TxRawData and calls into txcore. |
+| 2c — TxBuilder compose ops | `c4b69f3e` | Wallet-facing TxBuilder with raw-byte ops. |
+| 3 — Sign + tx-ID port | `4f466c07` | TxIDFromTree + HashEssence + SignED25519 in txcore. ledger/transaction's TxIDFromTransactionDataTree is a one-line delegate. |
+| 4 — Library + amounts + helpers (sigLock + tagAlong) | `9752c732` | Wallet helpers compose canonical bytes via lib.CompileExpression + cached lock bytecodes. Byte-identity tests vs ledger.* constructors. |
+| 5 — wasm probe + measurement | `7d7f28af` | TinyGo build green; 1.8 MB raw / 563 KB gzipped baseline. Cleared two TinyGo blockers along the way (unitrie/common.Concat in base, proxima/util.Assertf in base). |
+| 6 — drop proxima/util from base | `b5e1a3f0` | Inlined KeysSorted + Maximum. x/text drag (~85 KB raw) gone. 1.3 MB / 429 KB gzipped. |
+| (drive-by) — move SmallPersistentMap | `d3120cf4` | `ledger/base/smallkv.go` → `util/smallkv/`; renamed to idiomatic `Map` / `New` / `FromBytes`. ledger/base's proxima-side dep graph now only includes `easyfl/easyfl_util`. |
+
+**Wasm probe at `ledger/txcore/wasm/main.go`** exercises the compose
++ sign path; the wallet API surface verified end-to-end. Two test
+suites cover txcore (`txbuilder_test.go`, `helpers_test.go`) — 7
+tests including byte-identity round-trips for sigLock + tagAlong
+outputs against the existing typed ledger.* constructors.
 
 ---
 
-## Open questions
+## Future optimisation levers
 
-1. **Library JSON shape in the wasm bundle.** Full extended library
-   (matches host hash byte-for-byte) vs slimmed library. Default to
-   full for v1.
+Not blocking, not active. Pull when there's a concrete bundle-size
+budget the current 429 KB gzipped doesn't satisfy. Ordered by
+estimated payoff.
 
-2. **TinyGo `crypto/ed25519` reality check.** Confirm signing works
-   end-to-end in TinyGo wasm. Same for `golang.org/x/crypto/blake2b`
-   (asm fast path unavailable; pure-Go fallback must compile).
+| Lever | Saving (gzipped) | Effort |
+|---|---|---|
+| External crypto hooks (ed25519 + blake2b via host imports) | ~30-50 KB | moderate (host ABI contract) |
+| fmt stripping in compose path (replace `fmt.Errorf` / `fmt.Sprintf` with `errors.New` + manual concat or a tinyfmt) | ~10-15 KB | high (~30 call sites + maintenance) |
+| `math/rand` removal (ed25519 ignores the reader arg) | ~3 KB | trivial (1 line) |
+| `syscall/js` → custom raw wasm imports | ~2 KB | moderate; gives full host-ABI control |
+| `encoding/hex` replacement | ~1 KB | low |
 
-3. **`util/lines` and `proxima/util` cleanup.** Several constraint
-   wrappers call `util.Assertf`. Simplest: replace with
-   `if !cond { panic(msg) }` in compose-only code.
-
-4. **`unitrie/common.Concat`.** Used at exactly one compose-side
-   site (`SignED25519`). Replace with a local `append` chain — no
-   reason to pull in unitrie for byte concat.
-
-5. **Output identity.** `ledger.Output` keeps its current shape;
-   txcore exports the same struct, and the alias `ledger.Output =
-   txcore.Output` keeps existing callers untouched. Confirm during
-   Phase 1 that no embedded interface methods (`String`, `Lines*`)
-   are referenced from compose paths today.
-
-6. **Sequencer paths in `Output`.** Confirm during Phase 0 that no
-   non-sequencer compose path reaches `seqdata.SequencerData`.
-
-7. **Tests in the wasm path.** TinyGo's test runner is limited.
-   Keep using the standard Go toolchain to test `txcore` (it's pure
-   Go, just constrained). A small handful of JS-integration tests
-   in headless Chrome cover the wasm boundary.
-
-8. **Versioning / library hash.** A wasm bundle is pinned to one
-   extended-library version. Wallet UI detects host upgrade and
-   prompts user to update. Out of scope for this refactor.
+At 429 KB gzipped, the wallet binary is competitive with all-JS
+wallets (ethers.js 250 KB, Solana web3.js 150 KB, libsodium-wrappers
+140 KB). Further optimisation is real work for diminishing return;
+recommend waiting for actual UX evidence that load time is a
+problem.
 
 ---
 
