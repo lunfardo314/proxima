@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -180,7 +181,7 @@ func (r *AskStopDelegationRequest) AttachmentCostDelta() int {
 }
 
 func NewAskStopDelegationReqOutput(seqID base.ChainID, sender ledger.SigLock, delegationID base.ChainID, fee uint64) *ledger.Output {
-	par := base.NewSmallPersistentMap()
+	par := smallkv.New()
 	par.Set(FieldCmdCode, []byte{RequestCodeAskStopDelegation})
 	par.Set(FieldRevokeDelegationID, delegationID[:])
 

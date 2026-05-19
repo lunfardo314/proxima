@@ -6,6 +6,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -66,7 +67,7 @@ func (c *SetSequencerDataTxBuilderCommand) Lines(prefix ...string) *lines.Lines 
 }
 
 func NewSeqDataCommandOutput(seqID base.ChainID, sender ledger.SigLock, fee uint64, newParams *seqdata.SequencerData) *ledger.Output {
-	par := base.NewSmallPersistentMap()
+	par := smallkv.New()
 	par.Set(FieldCmdCode, []byte{RequestCodeSetSequencerData})
 	par.Set(FieldSetSequencerDataBinary, newParams.Bytes())
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {

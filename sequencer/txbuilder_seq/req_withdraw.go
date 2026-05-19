@@ -7,6 +7,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 )
@@ -62,7 +63,7 @@ func withdrawFromSeqRequestParser(txb *SeqTxBuilder, o *preParsedTagAlongOutput)
 }
 
 func NewWithdrawRequestOutput(withdrawFromChain base.ChainID, sender ledger.SigLock, fee, amount uint64, target ledger.Controller) *ledger.Output {
-	par := base.NewSmallPersistentMap()
+	par := smallkv.New()
 	par.Set(FieldCmdCode, []byte{RequestCodeWithdrawFromSeq})
 	par.Set(FieldWithdrawAmount, easyfl_util.TrimmedLeadingZeroUint64(amount))
 	par.Set(FieldWithdrawTarget, []byte(target.Source()))

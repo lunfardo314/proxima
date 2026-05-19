@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/smallkv"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -685,7 +686,7 @@ func (o *Output) _lines(prefix string, source bool, verbose bool) *lines.Lines {
 				ret.Add("%s%d: bytecode=%s (%v)", prefix, i, hex.EncodeToString(data), err)
 			} else {
 				ret.Add("%s%d: bytecode=%s (len=%d)", prefix, i, src, len(data))
-				if sm, err := base.SmallPersistentMapFromBytes(easyfl.StripDataPrefix(data)); err == nil {
+				if sm, err := smallkv.FromBytes(easyfl.StripDataPrefix(data)); err == nil {
 					ret.Add("        parsed small map data -> " + sm.Lines().Join(", "))
 				}
 			}

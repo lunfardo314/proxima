@@ -1,4 +1,4 @@
-package base
+package smallkv
 
 import (
 	"testing"
@@ -6,14 +6,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewSmallPersistentMap(t *testing.T) {
-	skv := NewSmallPersistentMap()
+func TestNew(t *testing.T) {
+	skv := New()
 	skv.Set(1, []byte("abc"))
 	skv.Set(3, []byte("def"))
 	skv.Set(100, []byte("---"))
 
 	skvBin := skv.Bytes()
-	skvBack, err := SmallPersistentMapFromBytes(skvBin)
+	skvBack, err := FromBytes(skvBin)
 	require.NoError(t, err)
 	require.EqualValues(t, skv.Len(), skvBack.Len())
 	require.EqualValues(t, 3, skvBack.Len())

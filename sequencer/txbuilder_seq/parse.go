@@ -6,6 +6,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/util/smallkv"
 )
 
 type (
@@ -13,7 +14,7 @@ type (
 		ledger.TagAlongOutput
 		SenderID      base.HolderID
 		RequestCode   byte
-		RequestParams *base.SmallPersistentMap
+		RequestParams *smallkv.Map
 	}
 
 	outputParser func(txb *SeqTxBuilder, o *preParsedTagAlongOutput) (cmd TxBuilderCommand, valid bool, err error)
@@ -60,8 +61,8 @@ func preParseOutputAsTagAlong(o ledger.OutputWithID) (ret preParsedTagAlongOutpu
 		}
 		// inline data is interpreted as a request parameters
 		requestData = easyfl.StripDataPrefix(requestData)
-		var p base.SmallPersistentMap
-		p, reason = base.SmallPersistentMapFromBytes(requestData)
+		var p smallkv.Map
+		p, reason = smallkv.FromBytes(requestData)
 		if reason != nil {
 			return
 		}
