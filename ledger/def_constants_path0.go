@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 
-	"github.com/lunfardo314/easyfl/tuples"
+	"github.com/lunfardo314/proxima/ledger/txcore"
 )
 
 /*
@@ -42,46 +42,49 @@ This way:
 	- the corresponding unlock-parameters is located at path 0x0007ii (replacing 2 byte path prefix with 0x0007)
 */
 
-// Top level tuple indices
+// Top level tuple indices — re-exported from ledger/txcore.
 const (
-	// TransactionTuple is nested tuples representing the transaction
-	TransactionTuple = byte(iota)
-	// ConsumedTuple is sub-tuple of consumed UTXOs
-	ConsumedTuple
+	// TransactionTuple is the nested tuple representing the transaction.
+	TransactionTuple = txcore.TransactionTuple
+	// ConsumedTuple is the sub-tuple of consumed UTXOs.
+	ConsumedTuple = txcore.ConsumedTuple
 )
 
-// Transaction subtree
+// Transaction subtree indices — re-exported from ledger/txcore.
+// The wire-format definitions live in ledger/txcore/tx_layout.go so
+// txcore (and the wasm wallet) can build / parse the tuple without
+// importing the full ledger package.
 const (
-	TxVersion = byte(iota) // uint16 big-endian, 2 bytes: library upgrade index
-	TxTimestamp
-	TxSequencerDataBytes
-	TxSignatureData
-	TxInputCommitment
-	TxExplicitBaseline
-	TxInputIDs
-	TxUnlockData
-	TxOutputs
-	TxEndorsements
-	TxConstraints
-	TxTreeTupleNumElements
+	TxVersion              = txcore.TxVersion
+	TxTimestamp            = txcore.TxTimestamp
+	TxSequencerDataBytes   = txcore.TxSequencerDataBytes
+	TxSignatureData        = txcore.TxSignatureData
+	TxInputCommitment      = txcore.TxInputCommitment
+	TxExplicitBaseline     = txcore.TxExplicitBaseline
+	TxInputIDs             = txcore.TxInputIDs
+	TxUnlockData           = txcore.TxUnlockData
+	TxOutputs              = txcore.TxOutputs
+	TxEndorsements         = txcore.TxEndorsements
+	TxConstraints          = txcore.TxConstraints
+	TxTreeTupleNumElements = txcore.TxTreeTupleNumElements
 )
 
-const ConsumedOutputsBranch = byte(0)
+const ConsumedOutputsBranch = txcore.ConsumedOutputsBranch
 
 var (
-	PathToRawTransaction     = tuples.Path(TransactionTuple)
-	PathToConsumedOutputs    = tuples.Path(ConsumedTuple, ConsumedOutputsBranch)
-	PathToTxVersion          = tuples.Path(TransactionTuple, TxVersion)
-	PathToTxConstraints      = tuples.Path(TransactionTuple, TxConstraints)
-	PathToProducedOutputs    = tuples.Path(TransactionTuple, TxOutputs)
-	PathToUnlockParams       = tuples.Path(TransactionTuple, TxUnlockData)
-	PathToInputIDs           = tuples.Path(TransactionTuple, TxInputIDs)
-	PathToEndorsements       = tuples.Path(TransactionTuple, TxEndorsements)
-	PathToSequencerDataBytes = tuples.Path(TransactionTuple, TxSequencerDataBytes)
-	PathToTimestamp          = tuples.Path(TransactionTuple, TxTimestamp)
-	PathToSignature          = tuples.Path(TransactionTuple, TxSignatureData)
-	PathToInputCommitment    = tuples.Path(TransactionTuple, TxInputCommitment)
-	PathToExplicitBaseline   = tuples.Path(TransactionTuple, TxExplicitBaseline)
+	PathToRawTransaction     = txcore.PathToRawTransaction
+	PathToConsumedOutputs    = txcore.PathToConsumedOutputs
+	PathToTxVersion          = txcore.PathToTxVersion
+	PathToTxConstraints      = txcore.PathToTxConstraints
+	PathToProducedOutputs    = txcore.PathToProducedOutputs
+	PathToUnlockParams       = txcore.PathToUnlockParams
+	PathToInputIDs           = txcore.PathToInputIDs
+	PathToEndorsements       = txcore.PathToEndorsements
+	PathToSequencerDataBytes = txcore.PathToSequencerDataBytes
+	PathToTimestamp          = txcore.PathToTimestamp
+	PathToSignature          = txcore.PathToSignature
+	PathToInputCommitment    = txcore.PathToInputCommitment
+	PathToExplicitBaseline   = txcore.PathToExplicitBaseline
 )
 
 // Mandatory output block indices.
