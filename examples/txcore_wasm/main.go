@@ -9,9 +9,12 @@
 //
 // What it shows:
 //
-//  1. Load the bundled library.json (snapshot of the host's compiled
-//     ledger library) — parses via encoding/json into the parsed
-//     descriptor type, no host call-out.
+//  1. Load the library.json (snapshot of the host's compiled ledger
+//     library). A production wallet normally downloads this from the
+//     node it talks to (HTTP API) and caches it locally; the demo
+//     embeds it via //go:embed only so `go run` / `tinygo build` are
+//     self-contained. Parsing goes through encoding/json into the
+//     descriptor type — no host call-out at compose time.
 //  2. Build a txcore.Library from that descriptor.
 //  3. Compose a one-input, one-output sigLock transfer using the
 //     txcore wallet helpers (NewSigLockOutput).
