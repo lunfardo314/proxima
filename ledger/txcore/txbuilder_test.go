@@ -1,0 +1,90 @@
+package txcore_test
+
+// Smoke tests for the wasm-wallet-facing txcore.TxBuilder. These don't
+// exercise validator semantics — they just verify the raw compose
+// surface produces the wire format the server-side parsers expect.
+
+import (
+	"testing"
+
+	"github.com/lunfardo314/easyfl/tuples"
+	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/stretchr/testify/require"
+)
+
+// TestTxBuilder_Empty checks the initial state of a fresh builder:
+// no inputs, no outputs, sequencer-output-index marked None so the
+// serializer omits the sequencer-data slot.
+func TestTxBuilder_Empty(t *testing.T) {
+	txb := txcore.New(0)
+	require.Equal(t, 0, txb.NumInputs())
+	require.Equal(t, 0, txb.NumOutputs())
+	require.Equal(t, txcore.SequencerOutputIndexNone, txb.TxData.SequencerOutputIndex)
+
+	// Serialise — empty tx should round-trip through the tuple
+	// machinery without panicking.
+	raw := txb.Bytes()
+	require.NotEmpty(t, raw)
+}
+
+// TestTxBuilder_ConsumeProduce exercises the basic compose flow:
+// register one input, one output, lay down a signature unlock at
+// input 0, set timestamp, compute input commitment, serialise.
+// Verifies the produced bytes parse back as a tuple of the expected
+// shape.
+func TestTxBuilder_ConsumeProduce(t *testing.T) {
+	txb := txcore.New(0)
+
+	// Build an empty-shell consumed output: amounts | empty-index-values | empty-lock.
+	consumed := txcore.NewOutputBuilder()
+	consumed.MustPushConstraint([]byte{0x01, 0x02, 0x03}) // pretend amounts
+	consumed.MustPushConstraint(nil)                       // index-values
+	consumed.MustPushConstraint([]byte{0x80})              // pretend lock (inline-data short prefix)
+	consumedBytes := consumed.Bytes()
+
+	var txid base.TransactionID
+	oid := base.MustNewOutputID(txid, 0)
+	require.Equal(t, byte(0), txb.ConsumeOutput(consumedBytes, oid))
+	require.Equal(t, 1, txb.NumInputs())
+
+	// Produced output (same shape).
+	produced := txcore.NewOutputBuilder()
+	produced.MustPushConstraint([]byte{0x04, 0x05, 0x06})
+	produced.MustPushConstraint(nil)
+	produced.MustPushConstraint([]byte{0x80})
+	producedBytes := produced.Bytes()
+	require.Equal(t, byte(0), txb.ProduceOutput(producedBytes))
+	require.Equal(t, 1, txb.NumOutputs())
+
+	txb.PutSignatureUnlock(0)
+	txb.SetTimestamp(base.T(0, 1))
+	txb.ComputeInputCommitment()
+
+	raw := txb.Bytes()
+	require.NotEmpty(t, raw)
+
+	// Parse back as the outer transaction-tree tuple and confirm
+	// the slot count matches the wire-format constant.
+	tree, err := tuples.TupleFromBytes(raw, txcore.MaxNumConstraints)
+	require.NoError(t, err)
+	require.Equal(t, int(txcore.TxTreeTupleNumElements), tree.NumElements())
+}
+
+// TestTxBuilder_UnlockReference checks that PutUnlockReference rejects
+// non-strictly-decreasing references (the validator enforces this; we
+// catch it client-side at compose time).
+func TestTxBuilder_UnlockReference(t *testing.T) {
+	txb := txcore.New(0)
+	var txid base.TransactionID
+	oid0 := base.MustNewOutputID(txid, 0)
+	oid1 := base.MustNewOutputID(txid, 1)
+	txb.ConsumeOutput([]byte{0x80}, oid0)
+	txb.ConsumeOutput([]byte{0x80}, oid1)
+
+	// Valid: input 1 references input 0.
+	require.NoError(t, txb.PutUnlockReference(1, txcore.ConstraintIndexLock, 0))
+
+	// Invalid: input 1 references input 1 (not strictly less).
+	require.Error(t, txb.PutUnlockReference(1, txcore.ConstraintIndexLock, 1))
+}

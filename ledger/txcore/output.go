@@ -157,3 +157,14 @@ func HashOutputs(outs ...*Output) [32]byte {
 	}
 	return blake2b.Sum256(arr.Bytes())
 }
+
+// HashOutputBytes is the raw-byte form of HashOutputs. Wallet code
+// already holds outputs as bytes when computing the input commitment;
+// this saves a round-trip through *Output.
+func HashOutputBytes(outBytes ...[]byte) [32]byte {
+	arr := tuples.EmptyTupleEditable(MaxNumConstraints)
+	for _, b := range outBytes {
+		arr.MustPush(b)
+	}
+	return blake2b.Sum256(arr.Bytes())
+}
