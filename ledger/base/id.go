@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -59,7 +59,7 @@ func NewTransactionID(ts LedgerTime, h TransactionIDShort, sequencerTxFlag bool)
 }
 
 func MustTransactionIDFromBytes(data []byte) (ret TransactionID) {
-	util.Assertf(len(data) == TransactionIDLength, "MustTransactionIDFromBytes: 32 bytes expected, got %d", len(data))
+	easyfl_util.Assertf(len(data) == TransactionIDLength, "MustTransactionIDFromBytes: 32 bytes expected, got %d", len(data))
 	copy(ret[:], data)
 	return
 }
@@ -260,7 +260,7 @@ func NewOutputID(id TransactionID, idx byte) (ret OutputID, err error) {
 
 func MustNewOutputID(id TransactionID, idx byte) OutputID {
 	ret, err := NewOutputID(id, idx)
-	util.AssertNoError(err)
+	easyfl_util.AssertNoError(err)
 	return ret
 }
 
@@ -288,7 +288,7 @@ func OutputIDFromHexString(str string) (ret OutputID, err error) {
 
 func MustOutputIndexFromIDBytes(data []byte) byte {
 	ret, err := OutputIDIndexFromBytes(data)
-	util.AssertNoError(err)
+	easyfl_util.AssertNoError(err)
 	return ret
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -48,7 +49,7 @@ func SlotFromBytes(data []byte) (ret uint32, err error) {
 
 // T creates new ledger time object
 func T(slot uint32, t byte) (ret LedgerTime) {
-	util.Assertf(t <= MaxTickValue, "NewLedgerTime: invalid tick value %d", t)
+	easyfl_util.Assertf(t <= MaxTickValue, "NewLedgerTime: invalid tick value %d", t)
 	ret = LedgerTime{Slot: slot, Tick: t}
 	return
 }
@@ -88,7 +89,7 @@ func (t LedgerTime) NextSlotBoundary() LedgerTime {
 	if t.IsSlotBoundary() {
 		return t
 	}
-	util.Assertf(t.Slot < MaxSlot, "t.Slot < MaxSlot")
+	easyfl_util.Assertf(t.Slot < MaxSlot, "t.Slot < MaxSlot")
 	return T(t.Slot+1, 0)
 }
 
@@ -158,7 +159,7 @@ func DiffTicks(t1, t2 LedgerTime) int64 {
 // AddTicks adds ticks to timestamp. Ticks can be negative
 func (t LedgerTime) AddTicks(ticks int) LedgerTime {
 	ret, err := LedgerTimeFromTicksSinceGenesis(t.TicksSinceGenesis() + int64(ticks))
-	util.AssertNoError(err)
+	easyfl_util.AssertNoError(err)
 	return ret
 }
 

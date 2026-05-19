@@ -52,7 +52,7 @@ func (m *SmallPersistentMap) Bytes() []byte {
 		return k1 < k2
 	})
 	for _, k := range sorted {
-		util.Assertf(len(m.m[k]) > 0, "len(m.m[k])>0")
+		easyfl_util.Assertf(len(m.m[k]) > 0, "len(m.m[k])>0")
 		arr.MustPush(easyfl_util.Concat(k, m.m[k]))
 	}
 	return arr.Bytes()

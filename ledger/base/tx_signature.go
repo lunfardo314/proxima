@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
-	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -66,7 +64,13 @@ func (s *Signature) String() string {
 }
 
 func HolderIDFromPublicKey(sigType byte, pubKey ed25519.PublicKey) HolderID {
-	return blake2b.Sum256(common.Concat(sigType, []byte(pubKey)))
+	// Avoid unitrie/common.Concat — that package transitively pulls
+	// testify (test-helper code in production) which breaks the
+	// TinyGo wasm build. Inline the 1+N byte concat.
+	buf := make([]byte, 0, 1+len(pubKey))
+	buf = append(buf, sigType)
+	buf = append(buf, pubKey...)
+	return blake2b.Sum256(buf)
 }
 
 func (s *Signature) HolderID() HolderID {
@@ -88,11 +92,11 @@ func (s *Signature) HolderIDHex() string {
 // ED25519
 
 func (s *Signature) MustPubicKeyED25519() ed25519.PublicKey {
-	util.Assertf(s.SignatureType == SignatureTypeED25519, "SignatureType ED25519 is expected")
+	easyfl_util.Assertf(s.SignatureType == SignatureTypeED25519, "SignatureType ED25519 is expected")
 	return s.SignatureBytes[ed25519.SignatureSize : ed25519.SignatureSize+ed25519.PublicKeySize]
 }
 
 func (s *Signature) MustSignatureDataED25519() []byte {
-	util.Assertf(s.SignatureType == SignatureTypeED25519, "SignatureType ED25519 is expected")
+	easyfl_util.Assertf(s.SignatureType == SignatureTypeED25519, "SignatureType ED25519 is expected")
 	return s.SignatureBytes[:ed25519.SignatureSize]
 }

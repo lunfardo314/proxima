@@ -501,13 +501,84 @@ txcore side and wiring it once at init.
 Add `ledger/txcore/wasm/main.go` with a JS-callable "build and sign"
 function. TinyGo-build it. Measure binary size.
 
-This is the gating phase: if the binary is too large, Phase 6 looks
-at `fmt`/`Trace` stripping or `encoding/hex` replacement. If size is
-OK, ship.
+**Status: shipped 2026-05-19.** Probe at
+`ledger/txcore/wasm/main.go` exercises the compose + sign path
+without invoking the library (raw lock-bytecode placeholder) — the
+FLOOR measurement for "what does the wasm txbuilder cost".
 
-### Phase 6 — `fmt` / Trace stripping (deferred)
+Build:
 
-Only if Phase 5 measurements demand it.
+```
+tinygo build -target=wasm -o /tmp/txcore.wasm ./ledger/txcore/wasm/
+```
+
+**Measured size (TinyGo 0.41.1, Go 1.26):**
+
+| Format | Size |
+|---|---|
+| Raw wasm | 1.8 MB |
+| gzip -9 | 563 KB |
+
+Two TinyGo-blockers had to be cleared before the build went green:
+
+- `ledger/base/tx_signature.go` used `unitrie/common.Concat` for a
+  trivial 1+N byte concat. `unitrie/common` transitively pulls
+  `stretchr/testify/require` (testify is referenced in unitrie's
+  production code), which in turn pulls `net/http`. TinyGo 0.41 on
+  Go 1.26 fails to compile `net/http/roundtrip_js.go`. Replaced the
+  Concat call with an inline `append` chain — drops the entire
+  testify→net/http pull from the wasm path.
+- `ledger/base/*.go` used `proxima/util.Assertf` / `AssertNoError`.
+  `proxima/util` drags `golang.org/x/text/message` + `language`
+  (used by `util.Th` for thousand-separator number formatting),
+  adding ~85 KB of locale tables. Switched base to
+  `easyfl_util.Assertf` / `AssertNoError` (same semantics, no
+  dependencies). `proxima/util` is still pulled into base via
+  `smallkv.KeysSorted` and `ledger_time.Maximum` — Phase 6 may
+  inline these if size budget demands further trimming.
+
+**Size breakdown (top contributors, raw bytes):**
+
+```
+fmt                17946     ← TinyGo's fmt impl
+internal/reflectlite 14805
+runtime            15282
+internal/strconv   11024     ← BE int formatting
+golang.org/x/text/internal/language  24585 (+ ~60K data)
+ledger/txcore      6677
+easyfl/tuples      5551
+easyfl/blake2b     4919
+math/rand (data)    4856     ← from time.Now() seed
+crypto/ed25519 + chain      ~4K
+ledger/base         659
+easyfl_util         656
+```
+
+x/text is the single largest non-stdlib drag (~85 KB combined).
+`fmt` + `reflectlite` + `strconv` + `runtime` are the irreducible
+TinyGo floor (~58 KB). The rest is our code (~25 KB).
+
+Wallet path verified end-to-end: TxBuilder ops compile, hash +
+ed25519 signing run, output bytes serialize. No host call-out
+needed.
+
+### Phase 6 — Size optimisation (optional)
+
+Open levers in order of payoff:
+
+- **Drop `proxima/util` from base.** Inline `KeysSorted` (4 lines
+  using `sort.Slice`) and `Maximum` (5 lines) at the 2-3 call sites
+  in base. Removes the x/text drag (~85 KB raw, ~30 KB gzipped).
+- **Drop `proxima/util/lines` from base.** `smallkv.Lines` is the
+  only user; either inline its 4-line builder pattern or accept
+  the small overhead. ~10-15 KB.
+- **fmt stripping.** Replace `fmt.Errorf` in base/txcore with
+  `errors.New` + `%`-free messages. Pulls fmt out entirely. ~17 KB.
+- **`encoding/hex` replacement.** Hand-rolled hex encode/decode
+  drops fmt's transitive pull (already counted above) and gains
+  another small win.
+
+Each is independent. Pick when there's a concrete budget to hit.
 
 ### Phase 7 — Companion API on the host
 
