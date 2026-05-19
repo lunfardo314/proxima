@@ -418,7 +418,7 @@ func InitWithTestingLedgerData(opts ...ParametersOption) ed25519.PrivateKey {
 	}
 	lib := LibraryFromParameters(params)
 	lib.MustPreCompileTxIntegrityValidators()
-	MustInitLibraryCacheFromJSON(lib.ToJSON(true, false))
+	MustInitLibraryCacheFromJSON(easyfl.ToJSON(lib.Library, true, false))
 	return pk
 }
 

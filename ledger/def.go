@@ -34,7 +34,7 @@ func LibraryFromParameters(idParams InitParameters, verbose ...bool) *Library {
 // it to JSON. `compiled=true` includes funCodes, bytecodes, and the top-level hash.
 // The output is indented for human readability; storage paths use ToJSON(true, false).
 func LibraryJSONFromParameters(id InitParameters, compiled bool) []byte {
-	return LibraryFromParameters(id).ToJSON(compiled, true)
+	return easyfl.ToJSON(LibraryFromParameters(id).Library, compiled, true)
 }
 
 func ParseLibraryFromJSON(

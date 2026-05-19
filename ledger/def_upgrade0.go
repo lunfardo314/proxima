@@ -24,7 +24,7 @@ var (
 // upgrade0 makes library at genesis by applying upgrade to the base EasyFL library
 func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 	resolver := GetEmbeddedFunctionResolver(lib)
-	err := lib.IntroduceUpdateJSONMulti(resolver,
+	err := easyfl.IntroduceUpdateJSONMulti(lib, resolver,
 		[]byte(_definitionsEmbeddedJSONUpgrade0),
 		ConstantsJSONFromParamsUpgrade0(par),
 		[]byte(pathConstantsUpgrade0()),

@@ -26,11 +26,11 @@ func TestLoad(t *testing.T) {
 func TestLedgerToJSON(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	t.Run("compiled", func(t *testing.T) {
-		jsonData := lib.ToJSON(true, true)
+		jsonData := easyfl.ToJSON(lib.Library, true, true)
 		t.Logf("\n%s", string(jsonData))
 	})
 	t.Run("not compiled", func(t *testing.T) {
-		jsonData := lib.ToJSON(false, true)
+		jsonData := easyfl.ToJSON(lib.Library, false, true)
 		t.Logf("\n%s", string(jsonData))
 	})
 }
@@ -39,7 +39,7 @@ func TestLedgerToJSONFile(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
 	lib.PrintLibraryStats()
 	h := lib.LibraryHash()
-	jsonData := lib.ToJSON(true, true)
+	jsonData := easyfl.ToJSON(lib.Library, true, true)
 	t.Logf("Full library JSON size: %d bytes", len(jsonData))
 	//_ = os.WriteFile("ledger.json", jsonData, 0644)
 	libBack, err := easyfl.NewLibraryFromJSON[*ledger.EvalContext](jsonData)

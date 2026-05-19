@@ -5,6 +5,7 @@ package multistate
 // from the baseline state and inject them into the mutations.
 
 import (
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 )
@@ -88,7 +89,7 @@ func InjectMissingUpgradeUTXOs(muts *Mutations, stateReader IndexedStateReader, 
 		injected = append(injected, InjectedUpgrade{
 			Slot:        upgradeSlot,
 			LibraryHash: libraryHash,
-			LibraryJSON: lib.ToJSON(false, false),
+			LibraryJSON: easyfl.ToJSON(lib.Library, false, false),
 		})
 	}
 

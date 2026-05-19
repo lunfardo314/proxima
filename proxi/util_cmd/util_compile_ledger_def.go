@@ -45,11 +45,11 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 	}
 
 	lib := easyfl.NewLibrary[*ledger.EvalContext]()
-	err = lib.UpgradeFromJSON(jsonData, ledger.GetEmbeddedFunctionResolver(lib))
+	err = easyfl.UpgradeFromJSON(lib, jsonData, ledger.GetEmbeddedFunctionResolver(lib))
 	glb.AssertNoError(err)
 
 	// indented JSON for human readability in the on-disk definitions file
-	jsonOut := lib.ToJSON(true, true)
+	jsonOut := easyfl.ToJSON(lib, true, true)
 
 	err = os.WriteFile(glb.LedgerDefinitionsFileName, jsonOut, 0755)
 	glb.AssertNoError(err)

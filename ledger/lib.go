@@ -69,7 +69,7 @@ func (lib *Library) DefinitionsJSON() []byte {
 	if len(lib.definitionsJSON) > 0 {
 		return lib.definitionsJSON
 	}
-	return lib.Library.ToJSON(true, false)
+	return easyfl.ToJSON(lib.Library, true, false)
 }
 
 // UpgradeChainData returns the upgrade chain data for this library.
