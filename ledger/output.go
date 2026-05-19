@@ -1,7 +1,6 @@
 package ledger
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"sort"
@@ -11,6 +10,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txcore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -18,14 +18,21 @@ import (
 )
 
 type (
-	// Output is an immutable UTXO: a tuple of constraint bytecodes.
+	// Output is an immutable UTXO. The raw container methods (Bytes,
+	// NumConstraints, MustConstraintAt, …) live on *txcore.Output and
+	// are reached via embedding. The typed convenience methods
+	// (Lock, ChainConstraint, Amounts, pretty-printers, …) are
+	// declared in this file and only available in the full build.
 	Output struct {
-		*tuples.Tuple
+		*txcore.Output
 	}
 
-	// OutputBuilder is a mutable Output under construction.
+	// OutputBuilder is a mutable Output under construction. Raw
+	// builder ops (MustPushConstraint, PutConstraint, NumConstraints,
+	// …) live on *txcore.OutputBuilder; typed convenience builders
+	// (WithAmounts, WithLock, …) are declared in this file.
 	OutputBuilder struct {
-		*tuples.TupleEditable
+		*txcore.OutputBuilder
 	}
 
 	// OutputWithID pairs a parsed Output with its OutputID.
@@ -74,10 +81,9 @@ type (
 
 // NewOutput creates an Output by invoking buildFun on a fresh OutputBuilder.
 func NewOutput(buildFun func(o *OutputBuilder)) *Output {
-	arr := tuples.EmptyTupleEditable(256)
-	builder := &OutputBuilder{arr}
+	builder := &OutputBuilder{OutputBuilder: txcore.NewOutputBuilder()}
 	buildFun(builder)
-	return &Output{arr.Tuple()}
+	return &Output{Output: builder.OutputBuilder.Output()}
 }
 
 // OutputBasic creates a minimal output with the given token amount and lock.
@@ -89,11 +95,11 @@ func OutputBasic(amount int64, lock Lock) *Output {
 
 // OutputBuilderFromBytes creates a mutable OutputBuilder from serialized output bytes.
 func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
-	ret, err := tuples.TupleFromBytesEditable(data, 256)
+	ret, err := txcore.OutputBuilderFromBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("OutputBuilderFromBytes: %v", err)
 	}
-	return &OutputBuilder{ret}, nil
+	return &OutputBuilder{OutputBuilder: ret}, nil
 }
 
 // OutputFromBytes does a structural-only parse of an output. Without
@@ -120,11 +126,11 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 // individually) to surface bad input as an error here rather than
 // later as a panic from the on-demand methods.
 func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
-	arr, err := tuples.TupleFromBytes(bytes.Clone(data), 256)
+	raw, err := txcore.OutputFromBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("OutputFromBytes: %w", err)
 	}
-	ret := &Output{arr}
+	ret := &Output{Output: raw}
 	if ret.NumElements() < 3 {
 		return nil, fmt.Errorf("OutputFromBytes: at least 3 elements required (amounts | index-values | lock), got %d", ret.NumElements())
 	}
@@ -424,11 +430,6 @@ func IndexValuesFromBytes(data []byte) ([][]byte, error) {
 	return ret, nil
 }
 
-// Hex returns the output bytes as a hex string.
-func (o *Output) Hex() string {
-	return hex.EncodeToString(o.Bytes())
-}
-
 // Clone creates a copy of the output, optionally applying modifications via buildFun.
 func (o *Output) Clone(buildFun ...func(o *OutputBuilder)) *Output {
 	if len(buildFun) == 0 {
@@ -439,26 +440,12 @@ func (o *Output) Clone(buildFun ...func(o *OutputBuilder)) *Output {
 	builder, err := OutputBuilderFromBytes(o.Bytes())
 	util.AssertNoError(err)
 	buildFun[0](builder)
-	return &Output{builder.Tuple()}
+	return &Output{Output: builder.OutputBuilder.Output()}
 }
 
 // CloneRaw creates a byte-level copy without lock validation (for special outputs like upgrade UTXOs).
 func (o *Output) CloneRaw() *Output {
-	arr, err := tuples.TupleFromBytes(bytes.Clone(o.Bytes()), 256)
-	util.AssertNoError(err)
-	return &Output{arr}
-}
-
-// MustPushConstraint appends a constraint bytecode and returns its index. Panics if >= 256.
-func (o *OutputBuilder) MustPushConstraint(c []byte) byte {
-	util.Assertf(o.NumElements() < 256, "too many UTXO elements")
-	o.MustPush(c)
-	return byte(o.NumElements() - 1)
-}
-
-// PutConstraint places constraint bytecode at the given index.
-func (o *OutputBuilder) PutConstraint(c []byte, idx byte) {
-	o.MustPutAtIdxWithPadding(idx, c)
+	return &Output{Output: o.Output.CloneRaw()}
 }
 
 // PutAmounts sets the amounts vector at constraint index 0.
@@ -471,20 +458,6 @@ func (o *OutputBuilder) PutAmounts(amount ...int64) {
 func (o *OutputBuilder) PutLock(lock Lock) {
 	o.PutConstraint(IndexValuesTupleBytes(lock.IndexValues()), ConstraintIndexIndexValues)
 	o.PutConstraint(lock.LockBytecode(), ConstraintIndexLock)
-}
-
-// MustConstraintAt returns raw constraint bytecode at the given index. Panics if out of range.
-func (o *Output) MustConstraintAt(idx byte) []byte {
-	return o.MustAt(int(idx))
-}
-
-// ConstraintAt returns raw constraint bytecode at the given index.
-func (o *Output) ConstraintAt(idx byte) ([]byte, error) {
-	return o.At(int(idx))
-}
-
-func (o *OutputBuilder) NumConstraints() int {
-	return o.NumElements()
 }
 
 // Lock reconstructs the Lock from the output's index-value tuple
@@ -1006,12 +979,13 @@ func (o *Output) MustValidOutput() {
 }
 
 // HashOutputs computes the blake2b hash of serialized outputs (used as input commitment).
+// Compose path delegates to txcore so the wasm wallet shares the same hash.
 func HashOutputs(outs ...*Output) [32]byte {
-	arr := tuples.EmptyTupleEditable(256)
-	for _, o := range outs {
-		arr.MustPush(o.Bytes())
+	raw := make([]*txcore.Output, len(outs))
+	for i, o := range outs {
+		raw[i] = o.Output
 	}
-	return blake2b.Sum256(arr.Bytes())
+	return txcore.HashOutputs(raw...)
 }
 
 // ParseAndSortOutputData parses, filters, and sorts outputs by token balance (ascending by default).
