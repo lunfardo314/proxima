@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/easyfl/easyfl_util/testutil"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/stretchr/testify/require"
@@ -82,6 +83,6 @@ func TestValidSignatureED25519(t *testing.T) {
 	})
 	t.Run("nil args panic", func(t *testing.T) {
 		_, err := lib.EvalFromSource(nil, "validSignatureED25519($0,$1,$2)", nil, nil, nil)
-		easyfl_util.RequireErrorWith(t, err, "bad public key length")
+		testutil.RequireErrorWith(t, err, "bad public key length")
 	})
 }

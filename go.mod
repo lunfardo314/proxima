@@ -8,7 +8,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/libp2p/go-libp2p v0.47.0
 	github.com/libp2p/go-libp2p-kad-dht v0.36.0
-	github.com/lunfardo314/easyfl v0.0.0-20260518124021-946e808995c5
+	github.com/lunfardo314/easyfl v0.0.0-20260519072132-2e16ad8a986a
 	github.com/lunfardo314/unitrie v0.0.0-20260430152328-b888b7a3ad49
 	github.com/multiformats/go-multiaddr v0.16.1
 	github.com/prometheus/client_golang v1.23.2
