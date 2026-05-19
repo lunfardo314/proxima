@@ -9,7 +9,6 @@ import (
 	"crypto/ed25519"
 
 	"github.com/lunfardo314/easyfl"
-	"github.com/lunfardo314/easyfl/easyfl_util"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -22,7 +21,6 @@ func evalBlake2b(par *easyfl.CallParams[*EvalContext]) []byte {
 		buf.Write(par.Arg(i))
 	}
 	ret := blake2b.Sum256(buf.Bytes())
-	par.Trace("blake2b: %d params -> %s", par.Arity(), easyfl_util.FmtLazy(ret[:]))
 	return par.AllocData(ret[:]...)
 }
 
@@ -36,11 +34,7 @@ func evalValidSignatureED25519(par *easyfl.CallParams[*EvalContext]) []byte {
 	pubKey := par.Arg(2)
 
 	if ed25519.Verify(pubKey, msg, signature) {
-		par.Trace("validSignatureED25519: msg=%s, sig=%s, pubKey=%s -> true",
-			easyfl_util.FmtLazy(msg), easyfl_util.FmtLazy(signature), easyfl_util.FmtLazy(pubKey))
 		return par.AllocData(0xff)
 	}
-	par.Trace("validSignatureED25519: msg=%s, sig=%s, pubKey=%s -> false",
-		easyfl_util.FmtLazy(msg), easyfl_util.FmtLazy(signature), easyfl_util.FmtLazy(pubKey))
 	return nil
 }

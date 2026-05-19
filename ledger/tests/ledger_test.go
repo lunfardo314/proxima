@@ -157,7 +157,7 @@ func TestTxID(t *testing.T) {
 
 	lib := ledger.L(0)
 	txID := ctx.ID()
-	dctx := lib.NewGlobalDataTracePrint(ledger.NewEvalContext(ctx))
+	dctx := lib.NewGlobalDataNoTrace(ledger.NewEvalContext(ctx))
 	res, err := lib.EvalFromSource(dctx, "atPath(pathToSequencerDataBytes)")
 	require.NoError(t, err)
 	require.EqualValues(t, 0, len(res))

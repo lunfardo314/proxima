@@ -11,7 +11,7 @@ import (
 )
 
 func updateValidateNoDebug(u *multistate.Updatable, txBytes []byte) (*transaction.Transaction, error) {
-	return updateValidateOptions(u, txBytes, transaction.TraceOptionNone, nil)
+	return updateValidate(u, txBytes, nil)
 }
 
 func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation ...func(ctx *transaction.Transaction, err error) error) (*transaction.Transaction, error) {
@@ -19,16 +19,15 @@ func updateValidateDebug(u *multistate.Updatable, txBytes []byte, onValidation .
 	if len(onValidation) > 0 {
 		fun = onValidation[0]
 	}
-	return updateValidateOptions(u, txBytes, transaction.TraceOptionFailedConstraints, fun)
+	return updateValidate(u, txBytes, fun)
 }
 
-// updateValidateNoDebug updates/mutates the ledger state by transaction. For testing mostly
-func updateValidateOptions(u *multistate.Updatable, txBytes []byte, traceOption int, onValidation func(tx *transaction.Transaction, err error) error) (*transaction.Transaction, error) {
+// updateValidate updates/mutates the ledger state by transaction. For testing mostly
+func updateValidate(u *multistate.Updatable, txBytes []byte, onValidation func(tx *transaction.Transaction, err error) error) (*transaction.Transaction, error) {
 	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return nil, err
 	}
-	tx.SetTraceOption(traceOption)
 
 	if err = tx.SetFullContext(tx.InputLoaderByIndex(u.Readable().GetUTXO)); err != nil {
 		return nil, err

@@ -154,6 +154,8 @@ github.com/libp2p/go-yamux/v5 v5.1.0 h1:8Qlxj4E9JGJAQVW6+uj2o7mqkqsIVlSUGmTWhlXz
 github.com/libp2p/go-yamux/v5 v5.1.0/go.mod h1:tgIQ07ObtRR/I0IWsFOyQIL9/dR5UXgc2s8xKmNZv1o=
 github.com/lunfardo314/easyfl v0.0.0-20260519072132-2e16ad8a986a h1:A1lCT3/UKYLVxeLF2RgnYT9KeZXbRvcR97c68Zd9l1M=
 github.com/lunfardo314/easyfl v0.0.0-20260519072132-2e16ad8a986a/go.mod h1:XjGR4UuUPDdBV1w/aKqoQjVsUj6wJAZhHhaZPWXH2MY=
+github.com/lunfardo314/easyfl v0.0.0-20260519073500-886b83208744 h1:DJ/IXiHLpitCmKXJPFunzgTHOFX/TypHpTba9HgkiSY=
+github.com/lunfardo314/easyfl v0.0.0-20260519073500-886b83208744/go.mod h1:XjGR4UuUPDdBV1w/aKqoQjVsUj6wJAZhHhaZPWXH2MY=
 github.com/lunfardo314/unitrie v0.0.0-20260430152328-b888b7a3ad49 h1:deV0mXHHAZbEmVfGutb/xg3a7tUAfyrtiwrMPrZLvSw=
 github.com/lunfardo314/unitrie v0.0.0-20260430152328-b888b7a3ad49/go.mod h1:69UhxzxQ7UVhI9Knv50D/uVxsJseC7myW1DUlWelSo4=
 github.com/marcopolo/simnet v0.0.4 h1:50Kx4hS9kFGSRIbrt9xUS3NJX33EyPqHVmpXvaKLqrY=

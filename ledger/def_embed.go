@@ -217,7 +217,6 @@ func evalRandomFromSeed(par *easyfl.CallParams[*EvalContext]) []byte {
 		return nil
 	})
 	if err != nil {
-		par.Trace("'randomFromSeed embedded' failed with: %v", err)
 		return nil
 	}
 	ret := par.Alloc(8)

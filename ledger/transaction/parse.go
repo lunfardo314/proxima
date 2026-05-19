@@ -32,7 +32,6 @@ type Transaction struct {
 	producedAmountTotals      []int64 // calculated by summing up amount vectors
 	totalConsumedTokenBalance int64
 	sequencerTransactionData  *ledger.SequencerTransactionData // if != nil it is sequencer milestone transaction
-	traceOption               int
 	partialContextValidated   bool
 	fullContextValidated      bool
 	// fullContextOnce serialises SetFullContext so concurrent attachers can't race
@@ -78,8 +77,7 @@ func ParseLibraryAgnostic(txBytes []byte) (*Transaction, error) {
 	}
 	ret := &Transaction{
 		// index 0 for transaction, index 1 for consumed outputs
-		Tree:        tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromDataElements(nil).AsTree()),
-		traceOption: TraceOptionNone,
+		Tree: tuples.TreeFromTreesReadOnly(txTree, tuples.MakeTupleFromDataElements(nil).AsTree()),
 	}
 	// partial context: dummy nil data instead of the tuple of consumed UTXOs
 	// create partial context with dummy consumed UTXOs
@@ -194,10 +192,6 @@ func IDFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, error) {
 		return base.TransactionID{}, err
 	}
 	return tx.ID(), nil
-}
-
-func (tx *Transaction) SetTraceOption(opt int) {
-	tx.traceOption = opt
 }
 
 // hashEssenceBytesFromTransactionDataTree hashes top tuple elements

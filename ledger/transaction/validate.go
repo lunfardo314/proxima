@@ -3,7 +3,6 @@ package transaction
 import (
 	"fmt"
 	"math"
-	"sync/atomic"
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
@@ -15,26 +14,11 @@ import (
 	"github.com/lunfardo314/unitrie/common"
 )
 
-const (
-	TraceOptionNone = iota
-	TraceOptionAll
-	TraceOptionFailedConstraints
-)
-
 func (tx *Transaction) makeEvalContext(path []byte) easyfl.GlobalData[*ledger.EvalContext] {
 	// Use the transaction's cached library for validation
 	dataCtx := ledger.NewEvalContext(tx)
 	dataCtx.SetEvalPath(path)
-	switch tx.traceOption {
-	case TraceOptionNone:
-		return tx.NewGlobalDataNoTrace(dataCtx)
-	case TraceOptionAll:
-		return tx.NewGlobalDataTracePrint(dataCtx)
-	case TraceOptionFailedConstraints:
-		return tx.Library.NewGlobalDataLog(dataCtx)
-	default:
-		panic("wrong trace option")
-	}
+	return tx.NewGlobalDataNoTrace(dataCtx)
 }
 
 // ValidatePartialContext runs all validation scripts (constraints) that only needs partial context,
@@ -417,40 +401,9 @@ func (tx *Transaction) _evalBytecode(bytecode []byte, path []byte, spool *slicep
 	if len(bytecode) == 0 {
 		return nil, fmt.Errorf("bytecode can't be empty")
 	}
-	var err error
-	evalCtx := tx.makeEvalContext(path)
-	if evalCtx.Trace() {
-		evalCtx.PutTrace(fmt.Sprintf("--- check constraint '%s' at path %s", tx._constraintName(bytecode), PathToString(path)))
-	}
-
-	var ret []byte
 	if bytecode[0] == 0 {
 		return nil, fmt.Errorf("binary code cannot begin with 0-byte")
 	}
-	ret, err = tx.EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
-
-	if evalCtx.Trace() {
-		if err != nil {
-			evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED with '%v'", tx._constraintName(bytecode), PathToString(path), err))
-			printTraceIfEnabled(evalCtx)
-		} else {
-			if len(ret) == 0 {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: FAILED", tx._constraintName(bytecode), PathToString(path)))
-				printTraceIfEnabled(evalCtx)
-			} else {
-				evalCtx.PutTrace(fmt.Sprintf("--- constraint '%s' at path %s: OK", tx._constraintName(bytecode), PathToString(path)))
-			}
-		}
-	}
-
-	return ret, err
-}
-
-// __printLogOnFail is a global var for controlling printing failed validation trace or not
-var __printLogOnFail atomic.Bool
-
-func printTraceIfEnabled(evalCtx easyfl.GlobalData[*ledger.EvalContext]) {
-	if __printLogOnFail.Load() {
-		evalCtx.(*easyfl.GlobalDataLog[*ledger.EvalContext]).PrintLog()
-	}
+	evalCtx := tx.makeEvalContext(path)
+	return tx.EvalFromBytecodeWithSlicePool(evalCtx, spool, bytecode)
 }
