@@ -7,7 +7,6 @@ import (
 	"math/rand"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
-	"github.com/lunfardo314/proxima/util"
 )
 
 // ledger time-related definitions and functions
@@ -169,9 +168,18 @@ func (t LedgerTime) AddSlots(slot uint32) LedgerTime {
 }
 
 func MaximumTime(ts ...LedgerTime) LedgerTime {
-	return util.Maximum(ts, func(ts1, ts2 LedgerTime) bool {
-		return ts1.Before(ts2)
-	})
+	// Inlined max-with-comparator: keeps base free of proxima/util,
+	// which transitively drags x/text into the TinyGo wasm wallet
+	// build. See claude/wasm_txbuilder.md Phase 6.
+	var ret LedgerTime
+	first := true
+	for _, t := range ts {
+		if first || ret.Before(t) {
+			ret = t
+			first = false
+		}
+	}
+	return ret
 }
 
 func RandomSlot() uint32 {

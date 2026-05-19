@@ -562,23 +562,65 @@ Wallet path verified end-to-end: TxBuilder ops compile, hash +
 ed25519 signing run, output bytes serialize. No host call-out
 needed.
 
-### Phase 6 — Size optimisation (optional)
+### Phase 6 — Size optimisation
 
-Open levers in order of payoff:
+**Status: partly shipped 2026-05-19.** The x/text drag — the largest
+non-stdlib contributor — was eliminated by dropping `proxima/util`
+from `ledger/base`.
 
-- **Drop `proxima/util` from base.** Inline `KeysSorted` (4 lines
-  using `sort.Slice`) and `Maximum` (5 lines) at the 2-3 call sites
-  in base. Removes the x/text drag (~85 KB raw, ~30 KB gzipped).
-- **Drop `proxima/util/lines` from base.** `smallkv.Lines` is the
-  only user; either inline its 4-line builder pattern or accept
-  the small overhead. ~10-15 KB.
-- **fmt stripping.** Replace `fmt.Errorf` in base/txcore with
-  `errors.New` + `%`-free messages. Pulls fmt out entirely. ~17 KB.
-- **`encoding/hex` replacement.** Hand-rolled hex encode/decode
-  drops fmt's transitive pull (already counted above) and gains
-  another small win.
+**Shipped:**
 
-Each is independent. Pick when there's a concrete budget to hit.
+- **`proxima/util` removed from `ledger/base`.** Inlined `KeysSorted`
+  (3 call sites in `smallkv.go` → one local `sortedKeys` helper)
+  and `Maximum` (1 call site in `ledger_time.go` → inlined max
+  loop). `util.Assertf` / `AssertNoError` were already replaced
+  with `easyfl_util` equivalents in Phase 5.
+- **`util/lines` DCE'd from the binary.** Still in the import graph
+  (because `SmallPersistentMap.Lines()` is exported), but TinyGo's
+  linker drops it because nothing reachable from the wallet probe
+  calls Lines(). No code change needed.
+
+**Measured (TinyGo 0.41.1, Go 1.26), after Phase 6:**
+
+| | Phase 5 (before) | Phase 6 (after) | Saved |
+|---|---|---|---|
+| Raw wasm | 1.8 MB | **1.3 MB** | ~500 KB |
+| gzip -9 | 563 KB | **429 KB** | ~134 KB |
+
+Updated size breakdown (top contributors, raw bytes):
+
+```
+fmt                17689     (irreducible without rewriting compose-path error handling)
+runtime            16084
+internal/reflectlite 14726
+internal/strconv   10749     (+ 13K data — used by fmt)
+crypto/internal/fips140/*  ~18K combined (used by ed25519)
+syscall/js          5462
+slices              5531
+easyfl/tuples       5700
+ledger/txcore       6387
+easyfl/blake2b      4919
+math/rand           4506     (+ 4856 data, used by ed25519 random source)
+ledger/base         2914
+easyfl_util          656
+```
+
+x/text is GONE. The remaining heavy hitters are all stdlib /
+TinyGo-runtime irreducibles: `fmt`, `reflectlite`, `strconv`,
+`runtime`, the FIPS crypto chain (ed25519), `math/rand`.
+
+**Remaining levers (deferred, by descending payoff):**
+
+- **fmt stripping.** Most `fmt.Errorf` / `fmt.Sprintf` calls in
+  base + txcore could be replaced with `errors.New` + manual
+  concatenation, dropping fmt + fmtsort + reflectlite (~34 KB
+  raw, ~12 KB gzipped). Significant churn (~30 call sites). Skip
+  unless wallet bundle size pressure is acute.
+- **`encoding/hex` replacement.** ~671 B; small.
+- **`math/rand` removal.** The ed25519 signer takes an `io.Reader`
+  for randomness; ed25519 ignores it for deterministic signing.
+  Pass `nil` (or a stub) instead of `rand.Reader`. Saves ~9 KB
+  combined (math/rand + its data segment).
 
 ### Phase 7 — Companion API on the host
 

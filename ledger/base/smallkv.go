@@ -5,12 +5,25 @@ import (
 	"encoding/hex"
 	"fmt"
 	"maps"
+	"sort"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
-	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 )
+
+// sortedKeys returns the byte keys of m in ascending order. Inlined
+// here (rather than reaching for proxima/util.KeysSorted) so base
+// doesn't pull proxima/util — which transitively drags x/text into
+// the TinyGo wasm wallet build. See claude/wasm_txbuilder.md Phase 6.
+func sortedKeys(m map[byte][]byte) []byte {
+	ret := make([]byte, 0, len(m))
+	for k := range m {
+		ret = append(ret, k)
+	}
+	sort.Slice(ret, func(i, j int) bool { return ret[i] < ret[j] })
+	return ret
+}
 
 type SmallPersistentMap struct {
 	m map[byte][]byte
@@ -48,10 +61,7 @@ func (m *SmallPersistentMap) Len() int {
 
 func (m *SmallPersistentMap) Bytes() []byte {
 	arr := tuples.EmptyTupleEditable(256)
-	sorted := util.KeysSorted(m.m, func(k1, k2 byte) bool {
-		return k1 < k2
-	})
-	for _, k := range sorted {
+	for _, k := range sortedKeys(m.m) {
 		easyfl_util.Assertf(len(m.m[k]) > 0, "len(m.m[k])>0")
 		arr.MustPush(easyfl_util.Concat(k, m.m[k]))
 	}
@@ -80,7 +90,7 @@ func SmallPersistentMapFromBytes(data []byte) (SmallPersistentMap, error) {
 
 func (m *SmallPersistentMap) Lines(prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
-	for _, k := range util.KeysSorted(m.m, func(k1, k2 byte) bool { return k1 < k2 }) {
+	for _, k := range sortedKeys(m.m) {
 		ln.Add("'%d': %s", k, hex.EncodeToString(m.Get(k)))
 	}
 	return ln
