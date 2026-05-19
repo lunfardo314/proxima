@@ -28,9 +28,9 @@ func main() {
 	params := ledger.DefaultParameters(priv, 1, "txcore wasm demo")
 	lib := ledger.LibraryFromParameters(params)
 
-	// compiled=true preserves funCodes + bytecodes + hash; indent=false
-	// for compact wire form (the demo decodes this verbatim).
-	jsonBytes := easyfl.ToJSON(lib.Library, true, false)
+	// compiled=true preserves funCodes + bytecodes + hash; indent=true
+	// produces a human-readable layout (the demo decodes either form).
+	jsonBytes := easyfl.ToJSON(lib.Library, true, true)
 
 	out, err := filepath.Abs("examples/txcore_wasm/library.json")
 	if err != nil {
