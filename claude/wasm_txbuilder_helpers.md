@@ -1,8 +1,20 @@
-# txcore — additional compose helpers (analysis)
+# txcore — additional compose helpers
+
+**Status: SHIPPED on develop08 (2026-05-19).** 16 helpers across 5
+thematic files, zero new wasm transitive imports beyond Phase 4.
+Wasm probe unchanged at 1.35 MB / 442 KB gzipped.
+
+| Phase | Scope | Commit |
+|---|---|---|
+| A | sequencer-request helpers (smallkv) | `4e010dec` |
+| B | chain origin / transition / unlock params | `1164b3c3` |
+| C | delegation lock / state / params | `e36ec35f` |
+| D | foundry + native-token + indexer side-effect | `628cbfa1` |
+| E | redeemScript / callRedeemer / LocalScriptHash | `152f5e28` |
 
 Sibling: [wasm_txbuilder.md](wasm_txbuilder.md). Phases 0–6 shipped a
 wasm-buildable txcore (compose + sign, sigLock + tagAlong helpers,
-1.3 MB / 429 KB gzipped binary). This document scopes the next set
+1.35 MB / 442 KB gzipped binary). This document scopes the next set
 of wallet-side helpers — driven by the actual sequencer-request +
 delegation flows in `sequencer/txbuilder_seq/req_*.go` and the
 `proxi node_cmd/delegate` CLI commands — and audits the dep-graph
@@ -456,71 +468,35 @@ func LocalScriptHash(bin []byte) [32]byte
 func (l *Library) NewCallRedeemerConstraint(scriptHash [32]byte, fnIdx byte, argsSrc ...string) ([]byte, error)
 ```
 
-## Implementation phases
+## Final state
 
-Three small commits, each independently green:
+All five phases landed in five small independent commits. Each
+commit carries byte-identity tests against the existing typed
+`ledger.*` constructors so wallet bytecode is bit-identical to the
+server's compose path.
 
-### A — sequencer-request helpers (smallkv on wallet path)
+| Phase | File | Commit | Tests |
+|---|---|---|---|
+| A | `ledger/txcore/helpers_seq.go` | `4e010dec` | 4 (3 byte-identity vs `sequencer/txbuilder_seq.New*ReqOutput`, 1 standalone `EnsureStopDelegation`) |
+| B | `ledger/txcore/helpers_chain.go` | `1164b3c3` | 5 (origin / transition / unlock-params / finish-chain / chain-lock unlock) |
+| C | `ledger/txcore/helpers_delegate.go` | `e36ec35f` | 3 (lock bytecode, lock state, delegation params) |
+| D | `ledger/txcore/helpers_native_token.go` | `628cbfa1` | 6 (foundry / token sentinel / token foundry / tokenAmount + 2 end-to-end output composition incl. dedup) |
+| E | `ledger/txcore/helpers_redeemer.go` | `152f5e28` | 4 (redeemScript / hash determinism / callRedeemer no-args + variadic / round-trip via TxBuilder) |
 
-- Add `NewSequencerRequestOutput` + `NewEnsureStopDelegationConstraint`
-  to `ledger/txcore/helpers.go` (or split into `helpers_seq.go`).
-- Add byte-identity tests against the ledger.* versions: build a
-  withdraw / set-seq-data / ask-stop-delegation output via txcore +
-  via `sequencer/txbuilder_seq.New*ReqOutput`, compare bytes.
+Phase C deferred the carrier-struct decision flagged in the design
+phase — `NewDelegateLockBytecode` ended up taking the 4 args
+directly (matching `ledger.DelegateLock.Source()` exactly), and
+chain transition kept the 7-arg signature. Both signatures map 1:1
+to the underlying constraint's args; carrier structs would have
+been one extra hop without simplification.
 
-### B — chain constraint + unlock-params helpers
-
-- Add `NewChainOrigin`, `NewChainTransition`, `ChainUnlockParams`,
-  `ChainLockUnlockParams` to `ledger/txcore/helpers_chain.go`.
-- Byte-identity tests against `ledger.NewChainOrigin` /
-  `NewChainConstraint`.
-
-### C — delegation helpers
-
-- Add `NewDelegateLockBytecode`, `NewDelegateLockOutput`,
-  `NewDelegationParams` to `ledger/txcore/helpers_delegate.go`.
-- Byte-identity tests against `ledger.NewDelegateLock`.
-
-### D — foundry + native-token helpers
-
-- Add `NewFoundryBytecode`, `TokenSentinel`, `TokenFoundry`,
-  `NewTokenAmountBytecode`, `AppendTokenAmountToOutput` to
-  `ledger/txcore/helpers_native_token.go`.
-- Byte-identity tests against `ledger.NewFoundry`,
-  `ledger.TokenSentinelBytecode`, `ledger.TokenFoundryBytecode`,
-  `ledger.NewTokenAmount`, plus an end-to-end test that builds an
-  output via the wallet helper (lock + token amount + compound
-  index value) and compares against `ledger.NewOutput(o.WithLock(...)
-  .WithTokenAmount(tag, amt))`.
-
-### E — redeemer helpers
-
-- Add `NewRedeemScriptConstraint`, `NewCallRedeemerConstraint`,
-  `LocalScriptHash` to `ledger/txcore/helpers_redeemer.go`.
-- Byte-identity tests against an inline `mustCompileExpr` of the
-  same source pattern that DEX / chess examples use.
-- Tests verify the LocalScript→bin→hash→callRedeemer round-trip:
-  compile a local-script, embed via redeemScript, push a
-  callRedeemer that references the same hash, parse back via
-  ledger to confirm the validator-side resolver picks it up.
-
-Each commit measures the wasm binary — it should stay at 1.3 MB /
-429 KB gzipped. If the smallkv import (in commit A) bumps anything,
-it's only because the smallkv code path is now reachable from the
-wasm probe; TinyGo DCE behaviour shouldn't change for util/lines
-specifically because Lines() is still unreachable.
-
-Commit B-D don't add new external imports. Commit E pulls
-`golang.org/x/crypto/blake2b` into txcore directly (it was already
-indirectly there via `output.go.HashOutputs`); no new code arrives
-in the binary.
-
-## Open question (for impl time)
-
-The `NewDelegateLockOutput` signature is 9 params. Probably worth a
-**`DelegationParams` carrier struct** as the API. Same for chain
-transition (7 params). Will decide at implementation time — out of
-scope here.
+**Wasm impact (measured):** the probe at `ledger/txcore/wasm/`
+stayed at 1.35 MB / 442 KB gzipped throughout. The new `*Library`
+methods are unreachable from the probe (it doesn't construct a
+Library), so TinyGo DCE drops them all. `golang.org/x/crypto/blake2b`
+was already linked via `sign.go` and `output.go`; `easyfl/tuples`
+was already linked via `output.go`. The only genuinely new import
+is `bytes` in the Phase D dedup path, which is negligible.
 
 ---
 
@@ -549,5 +525,8 @@ and redeem-script commits (`redeemScript(...)`). Future tx-level
 constraints can use the same pattern with no further txcore changes.
 
 **Effort:** 5 small commits (A–E), each with byte-identity tests
-against the existing typed ledger.* constructors. Wasm size budget:
-no measurable growth (binary stays at 1.3 MB / 429 KB gzipped).
+against the existing typed ledger.* constructors. Wasm size budget
+held: probe stays at 1.35 MB / 442 KB gzipped — methods on
+`*Library` are DCE'd when no `Library` is constructed in the probe,
+so the helpers cost zero wasm bytes until a wallet actually wires
+them in.
