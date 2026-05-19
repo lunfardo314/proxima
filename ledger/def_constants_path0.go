@@ -95,14 +95,15 @@ var (
 // chain outputs opting in to accept delegations).
 // See claude/utxo-indexing.md §4, claude/native_token.md, and
 // claude/delegation_epoch_params.md.
+// Output tuple slot indices — re-exported from ledger/txcore.
 const (
-	ConstraintIndexAmounts          = byte(iota) // 0
-	ConstraintIndexIndexValues                   // 1: tuple of indexable values (controllers / target / sender hashes) for trie indexing
-	ConstraintIndexLock                          // 2
-	ConstraintIndexChain                         // 3 (when present)
-	ConstraintIndexFoundry                       // 4 (on foundry outputs)
-	ConstraintIndexFoundryPolicy                 // 5 (optional, on foundry outputs)
-	ConstraintIndexDelegationParams              // 6 (optional, on chain outputs opting in to accept delegations)
+	ConstraintIndexAmounts          = txcore.ConstraintIndexAmounts
+	ConstraintIndexIndexValues      = txcore.ConstraintIndexIndexValues
+	ConstraintIndexLock             = txcore.ConstraintIndexLock
+	ConstraintIndexChain            = txcore.ConstraintIndexChain
+	ConstraintIndexFoundry          = txcore.ConstraintIndexFoundry
+	ConstraintIndexFoundryPolicy    = txcore.ConstraintIndexFoundryPolicy
+	ConstraintIndexDelegationParams = txcore.ConstraintIndexDelegationParams
 )
 
 func pathConstantsUpgrade0() string {

@@ -3,7 +3,6 @@ package txbuilder
 import (
 	"crypto"
 	"crypto/ed25519"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand"
@@ -14,9 +13,17 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txcore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/common"
 )
+
+// UnlockParams is re-exported from txcore so existing tests / sequencer
+// code referencing txbuilder.UnlockParams keep compiling.
+type UnlockParams = txcore.UnlockParams
+
+// NewUnlockBlock re-exported for the same reason.
+func NewUnlockBlock() *UnlockParams { return txcore.NewUnlockBlock() }
 
 type (
 	TxBuilder struct {
@@ -39,10 +46,6 @@ type (
 		TxConstraints [][]byte
 		ledger.SequencerDataBytes
 	}
-
-	UnlockParams struct {
-		array *tuples.TupleEditable
-	}
 )
 
 func New() *TxBuilder {
@@ -52,7 +55,7 @@ func New() *TxBuilder {
 			InputIDs:           make([]*base.OutputID, 0),
 			Outputs:            make([]*ledger.Output, 0),
 			UnlockBlocks:       make([]*UnlockParams, 0),
-			SequencerDataBytes: ledger.MustSequencerDataBytesFromBytes([]byte{0xff, 0xff, 0xff, 0xff}),
+			SequencerDataBytes: ledger.MustSequencerDataBytesFromBytes([]byte{0xff, 0xff}),
 			Timestamp:          base.NilLedgerTime,
 			InputCommitment:    [32]byte{},
 			Endorsements:       make([]base.TransactionID, 0),
@@ -150,7 +153,7 @@ func (txb *TxBuilder) ConsumeOutputsNoUnlock(outs ...*ledger.OutputWithID) (uint
 }
 
 func (txb *TxBuilder) PutUnlockParams(inputIndex, constraintIndex byte, unlockParamData []byte, additionalBytes ...byte) {
-	txb.TransactionData.UnlockBlocks[inputIndex].array.MustPutAtIdxWithPadding(constraintIndex, common.Concat(unlockParamData, additionalBytes))
+	txb.TransactionData.UnlockBlocks[inputIndex].PutAt(constraintIndex, common.Concat(unlockParamData, additionalBytes))
 }
 
 // PutSignatureUnlock marker 0xff references the signature of the transaction.
@@ -377,61 +380,36 @@ func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCovera
 	})
 }
 
-func (tx *transactionData) ToTuple() *tuples.Tuple {
-	unlockParams := tuples.EmptyTupleEditable(256)
-	inputIDs := tuples.EmptyTupleEditable(256)
-	outputs := tuples.EmptyTupleEditable(256)
-	endorsements := tuples.EmptyTupleEditable(256)
-	var explicitBaseline []byte
-	if tx.ExplicitBaseline != nil {
-		explicitBaseline = tx.ExplicitBaseline[:]
+// toRawTxData converts the typed transactionData into the raw, wire-
+// ready txcore.TxRawData shape. Server-side serialisation calls into
+// txcore so the wasm wallet shares the same byte-for-byte output.
+func (tx *transactionData) toRawTxData() *txcore.TxRawData {
+	outBytes := make([][]byte, len(tx.Outputs))
+	for i, o := range tx.Outputs {
+		outBytes[i] = o.Bytes()
 	}
-
-	for _, b := range tx.UnlockBlocks {
-		unlockParams.MustPush(b.Bytes())
-	}
-	for _, oid := range tx.InputIDs {
-		inputIDs.MustPush(oid[:])
-	}
-	for _, o := range tx.Outputs {
-		outputs.MustPush(o.Bytes())
-	}
-	for _, e := range tx.Endorsements {
-		endorsements.MustPush(e.Bytes())
-	}
-
-	total := uint64(0)
-	for _, o := range tx.Outputs {
-		total += o.TokenBalance()
-	}
-	elems := make([]any, ledger.TxTreeTupleNumElements)
-	// TxVersion: uint16 big-endian, library upgrade index for the transaction's slot
-	versionBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(versionBytes, ledger.L(tx.Timestamp.Slot).UpgradeIndex())
-	elems[ledger.TxVersion] = versionBytes
-	if len(tx.TxConstraints) == 0 {
-		// Backward-compat: empty list serialises as nil, matching the
-		// pre-feature encoding.
-		elems[ledger.TxConstraints] = nil
-	} else {
-		txc := tuples.EmptyTupleEditable(256)
-		for _, b := range tx.TxConstraints {
-			txc.MustPush(b)
-		}
-		elems[ledger.TxConstraints] = txc
-	}
-	elems[ledger.TxTimestamp] = tx.Timestamp.Bytes()
+	var seqData []byte
 	if tx.SequencerOutputIndex != 0xff {
-		elems[ledger.TxSequencerDataBytes] = tx.SequencerDataBytes.Bytes()
+		seqData = tx.SequencerDataBytes.Bytes()
 	}
-	elems[ledger.TxSignatureData] = tx.SignatureData
-	elems[ledger.TxInputCommitment] = tx.InputCommitment[:]
-	elems[ledger.TxExplicitBaseline] = explicitBaseline
-	elems[ledger.TxInputIDs] = inputIDs
-	elems[ledger.TxUnlockData] = unlockParams
-	elems[ledger.TxOutputs] = outputs
-	elems[ledger.TxEndorsements] = endorsements
-	return tuples.MakeTupleFromSerializableElements(elems...)
+	return &txcore.TxRawData{
+		UpgradeIndex:         ledger.L(tx.Timestamp.Slot).UpgradeIndex(),
+		Timestamp:            tx.Timestamp,
+		SequencerOutputIndex: tx.SequencerOutputIndex,
+		SequencerData:        seqData,
+		SignatureData:        tx.SignatureData,
+		InputCommitment:      tx.InputCommitment,
+		ExplicitBaseline:     tx.ExplicitBaseline,
+		InputIDs:             tx.InputIDs,
+		UnlockBlocks:         tx.UnlockBlocks,
+		OutputBytes:          outBytes,
+		Endorsements:         tx.Endorsements,
+		TxConstraints:        tx.TxConstraints,
+	}
+}
+
+func (tx *transactionData) ToTuple() *tuples.Tuple {
+	return txcore.SerializeRawTx(tx.toRawTxData())
 }
 
 func (tx *transactionData) Bytes() []byte {
@@ -1008,16 +986,6 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 }
 
 //---------------------------------------------------------
-
-func (u *UnlockParams) Bytes() []byte {
-	return u.array.Bytes()
-}
-
-func NewUnlockBlock() *UnlockParams {
-	return &UnlockParams{
-		array: tuples.EmptyTupleEditable(256),
-	}
-}
 
 func GetChainAccount(chainID base.ChainID, srdr multistate.IndexedStateReader, desc ...bool) (*ledger.OutputWithChainID, []*ledger.OutputWithID, error) {
 	chainOutData, err := srdr.GetUTXOForChainID(chainID)
