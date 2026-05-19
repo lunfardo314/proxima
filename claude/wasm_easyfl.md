@@ -1,4 +1,4 @@
-# EasyFL — TinyGo / WASM Compatibility (audit + plan)
+# EasyFL — Compose-Path Extraction for WASM (audit + plan)
 
 Sibling document: [wasm_txbuilder.md](wasm_txbuilder.md) covers the
 Proxima-side use of this work (the `ledger/txcore` wallet API). This
@@ -9,260 +9,260 @@ Started as `easyfl/claude/tinygo_wasm.md`; moved here on 2026-05-18 to
 keep the whole multi-repo refactor planned from Proxima (the only
 consumer driving it).
 
+**Rewritten 2026-05-19** under tightened design constraints (see
+`memory/feedback_wasm_refactor_constraints.md`):
+
+1. **No build tags.** One source per file.
+2. **Backward compatible.** Existing Proxima imports of
+   `github.com/lunfardo314/easyfl` must keep compiling.
+3. **Slicepool and tuples-tree mutex stay untouched** — left in place,
+   accept TinyGo's no-op semantics.
+4. **Embedded function bodies must be isolated** out of the compose
+   path so they (and the `fmt` they drag in) are not pulled into the
+   WASM binary.
+5. **JSON serde + blake2b live outside the minimal compose package.**
+   Wallets parse JSON in their own environment and supply already-
+   parsed descriptors.
+6. **Tracing must be revisited** as part of stripping `fmt` from the
+   eval-path Go code that wallet builds will inadvertently pull in
+   through the EmbeddedFunction signature.
+
 ---
 
 ## Goal
 
-Compile a **subset** of EasyFL to WebAssembly via TinyGo so it can run
-in browsers and other environments without the full Go runtime. Full
-functionality (JSON serde, optimized allocators, library hash) remains
-available only for the **Proxima backend** build, which keeps using
-the standard Go toolchain.
+Extract a minimal **compose-only** Go sub-package — `easyfl/core` —
+that contains everything the wasm wallet needs (source compile, source
+decompile, library construction from parsed descriptors, tuple
+primitives) and **nothing else**. In particular it must not:
 
-## Scope decisions (input to planning)
+- import `encoding/json`, `golang.org/x/crypto/blake2b`, or
+  `slicepool`;
+- reference any embedded function body (`evalConcat`, `evalSlice`, …),
+  so LLVM DCE drops them all from the WASM binary;
+- pull in `fmt` for anything other than `errors.New`-grade error
+  construction (no `fmt.Sprintf` on hot paths).
 
-| Concern | WASM subset | Proxima backend |
-|---|---|---|
-| Source compiler / bytecode evaluator | required | required |
-| YAML library serde (`gopkg.in/yaml.v3`) | **already gone** | already gone |
-| Crypto embedded fns (`blake2b`, `ed25519`) | **already gone** | provided by Proxima |
-| `slicepool` optimized allocator | **simplified** to pure `make`/`append` | kept |
-| `reflect` (one isolated call) | **removed** | n/a (also removed) |
-| `sync.RWMutex` in `tuples/tree.go` (lazy subtree) | **stripped or no-op** | kept |
+Existing `easyfl` package keeps every public symbol — via type aliases
+and re-exports of `easyfl/core` — so the Proxima backend keeps
+compiling unchanged.
 
-`blake2b` and `validSignatureED25519` were moved out of base easyfl on
-2026-05-18 (commit `946e808` on easyfl `develop`, commit `77b06206`
-on proxima `develop08`). The YAML→JSON cutover (the dominant blocker
-in the original audit) had already shipped before that.
+## Size-budget rationale
 
-What the wasm core needs from easyfl:
+Phase-A measurement is pending, but the structural reasoning:
 
-- Library construction from JSON (read-only after init).
-- Source compiler: source → bytecode.
-- Source **decompiler**: bytecode → source (for inspection in the
-  wallet UI).
-- Symbol-prefix lookup (`FunctionCallPrefixByName`).
-- The `tuples` sub-package (tuple builder + serialize).
-- `easyfl_util` (`Uint64FromBytes`, `Concat`, etc.).
-
-It does **not** need:
-
-- The evaluator (`eval.go`).
-- The slicepool (transactions are short-lived; allocation churn is
-  fine).
-- Embedded function dispatch.
-
-So the wasm core is a "compose+inspect-only" subset, even tighter
-than the standalone easyfl wasm subset.
-
-## Audit findings
-
-### Blockers (under TinyGo)
-
-#### B1. `gopkg.in/yaml.v3` — `serde_tools.go:15`
-
-**Resolved.** The YAML→JSON cutover shipped (project memory:
-`project_easyfl_json_persistence.md`). `library.yaml` is gone,
-`library.json` is the canonical asset, no `yaml.v3` dependency
-remains.
-
-#### B2. `reflect` — `library_embed.go:10, 93`
-
-Single isolated use:
-
-```go
-func isNil(p interface{}) bool {
-    return p == nil || (reflect.ValueOf(p).Kind() == reflect.Ptr && reflect.ValueOf(p).IsNil())
-}
-```
-
-Trivial to replace. Used only to guard typed-nil `GlobalData[T]`
-values. Open.
-
-#### B3. Crypto embedded functions — `library_embed.go`
-
-**Resolved 2026-05-18.** `blake2b` / `validSignatureED25519` moved
-out of base easyfl into proxima/`ledger/crypto_builtins.go`.
-`crypto/ed25519` and `golang.org/x/crypto/blake2b` imports gone from
-`library_embed.go`. (Also: `serde_tools.go` still uses
-`blake2b.Sum256` for `LibraryHash()` — that's the next item below.)
-
-### Risks (compile under TinyGo but worth attention)
-
-#### R1. `sync.Pool` / `sync.Mutex` / `sync.RWMutex`
-
-- `eval.go:52-53` — `callPool`, `varScopePool` (per-arity pool of
-  `[]*call[T]`)
-- `types.go:112-113` — `expressionArrayPool`, `expressionPool`
-- `slicepool/slicepool.go` — entire pool implementation
-- `tuples/tree.go:20` — `subtreeMutex sync.RWMutex` (lazy subtree
-  deserialization)
-
-Under TinyGo / single-threaded WASM these are stubs / no-ops. Code is
-correct but pools provide no reuse — net cost is allocation churn
-plus a tiny code-size overhead. Per scope decision, slicepool
-simplifies to direct allocation; the other `sync.Pool` sites in
-`eval.go` and `types.go` should be treated the same.
-
-For `tuples/tree.go`: under wasm the tuple is built and serialized
-single-threadedly — no readers can race writers, so the lock is
-dead weight. We want either a build-tag variant that strips the
-mutex entirely or confirmation that TinyGo's no-op `sync.RWMutex`
-is inlined to zero. Code-size concern, not correctness.
-
-#### R2. `fmt` usage
-
-Heavy in `compiler.go`, `eval.go`, `recursion.go`, `trace.go`,
-embedded function error reporting via `par.TracePanic(...)`. Works
-under TinyGo but adds significant binary size to WASM output
-(likely the dominant size contributor once YAML and crypto are
-gone).
-
-Mitigation options (deferred): swap `fmt.Errorf` for static error
-strings on hot paths; conditionally compile out `Trace` formatting
-on WASM builds.
-
-#### R3. Pure-Go crypto under TinyGo (only relevant if we *kept* it)
-
-Not a concern given the scope decision to move crypto out, but for
-reference: `golang.org/x/crypto/blake2b` and `crypto/ed25519` should
-work under TinyGo 0.31+ but need verification; blake2b has an asm
-fast path that TinyGo bypasses. **(Now Proxima's concern, not
-easyfl's.)**
-
-### Clean — no concerns
-
-Verified via grep across non-test files:
-
-- No goroutines (`go func`)
-- No `os` / `net` / `syscall` / `os/exec` / `os/signal`
-- No `unsafe`
-- No `cgo`
-- No `runtime.*` calls
-- `compiler.go` uses `go/token.IsIdentifier` (small, pure, supported)
-- `bufio.Scanner` with `MaxScanTokenSize` constant — fine
-- `encoding/binary`, `encoding/hex`, `strings`, `strconv`, `math` — fine
-
-## Per-file summary
-
-| File | Imports of concern | Action for WASM subset |
-|---|---|---|
-| `library.go` | none | keep |
-| `compiler.go` | none | keep |
-| `eval.go` | `sync.Pool` (callPool, varScopePool); `slicepool` | replace pools with direct alloc |
-| `types.go` | `sync.Pool` (expr arrays) | replace pools with direct alloc |
-| `library_embed.go` | `reflect` | remove reflect (crypto already gone) |
-| `serde_tools.go` | `blake2b` (LibraryHash) | move to sub-package |
-| `serde_json.go` | none of concern | move to sub-package |
-| `library_json.go` | `//go:embed library.json` (string only) | exclude or keep as string asset |
-| `local_script.go` | none | keep |
-| `recursion.go` | none | keep |
-| `trace.go` | `fmt` only | keep |
-| `slicepool/` | `sync.Pool`, `sync.Mutex` | build-tag-replace with direct-alloc shim |
-| `tuples/` | `sync.RWMutex` in tree.go | strip or accept no-op under wasm |
-| `easyfl_util/` | none | keep |
-| `chess/`, `claude/` | demos, inherit parent | not part of WASM build |
-
-## Locked-in design decisions
-
-These decisions were taken before detailed planning began and serve as
-the foundation for the refactor:
-
-1. **WASM scope: compile + evaluate.** The WASM build includes both
-   the source compiler and the bytecode evaluator. It does **not**
-   include library construction at runtime (no `Extend()` flows
-   exposed in WASM hosts) — the library is constructed once at
-   startup and treated as read-only thereafter.
-
-   *Proxima refinement:* the txcore subset is even tighter — it
-   needs the compiler and **decompiler** but **not** the evaluator.
-
-2. **Library loading: deferred.** The WASM subset is designed around
-   an abstract loader interface; the concrete on-the-wire format
-   (binary snapshot vs. programmatic construction) is picked during
-   implementation. Core must not depend on YAML. **(YAML dependency
-   already gone.)**
-
-3. **Factoring: sub-package split (Option B), with a localized build
-   tag for slicepool.** Crypto embedded functions moved to dedicated
-   sub-package (`easyfl/embed/crypto` was the original idea; the
-   actual outcome on 2026-05-18 was that they moved *out of easyfl
-   entirely* into Proxima's `ledger/crypto_builtins.go`, which is
-   the same net effect for the wasm build). JSON serde + LibraryHash
-   still need to move to a sub-package (`easyfl/serde`). The root
-   `easyfl` package becomes the TinyGo-clean subset. The
-   `easyfl/slicepool` sub-package stays in place but ships two
-   build-tagged implementations of the same public API (see decision
-   4 below). Proxima updates its imports for the serde piece; the
-   slicepool import path is unchanged.
-
-4. **Slicepool: two implementations of the same API, selected by
-   build tag.** The current `nil == pure allocation` pattern is fine
-   — no Go-interface abstraction in core. Public eval signatures
-   keep `*slicepool.SlicePool` as they are today. The
-   `easyfl/slicepool` sub-package contains two files:
-   - `slicepool.go` with `//go:build !tinygo` — current
-     segment-based `sync.Pool`-backed implementation, used by
-     Proxima.
-   - `slicepool_tinygo.go` with `//go:build tinygo` — pure-allocation
-     shim exposing the same `*SlicePool` type and method set (`New`,
-     `Alloc`, `AllocData`, `Dispose`). No `sync.Pool`, no
-     `sync.Mutex`, no segments. Methods just call `make`/`copy`.
-
-   This is the **only build tag in the project** (modulo a possible
-   identical split for `tuples/tree.go`'s mutex). Caller code in
-   core (eval, compiler, embedded functions) is unchanged. The WASM
-   binary contains no pooling machinery.
-
-5. **Tracing / `fmt`: keep as-is for now.** No API divergence in
-   this refactor. Binary size will be measured once the WASM build
-   is functional; if `fmt` is the dominant cost, trace stripping
-   can land as a follow-up.
+- Slicepool + `sync.Pool` + `sync.RWMutex` are noise (~few KB).
+- The **real** WASM-size drivers, if left reachable, are:
+  - The 30+ embedded function bodies kept alive by map-based dispatch
+    in `unboundEmbeddedFunctions[T]()`. They reach `par.Trace`,
+    `par.TracePanic`, `easyfl_util.FmtLazy`, ⇒ `fmt`.
+  - `encoding/json` (`serde_json.go`).
+  - `golang.org/x/crypto/blake2b` (`serde_tools.go`, for `LibraryHash`).
+- This refactor's job is to make sure the wasm import does not reach
+  any of them.
 
 ## Target package layout
 
 ```
-easyfl/                    (TinyGo-clean core, ~minimal deps)
-├── library.go             — Library[T], function registry
-├── compiler.go            — source → bytecode
-├── eval.go                — bytecode → result (used by backend only;
-│                            txcore doesn't import)
-├── types.go               — Expression[T], CallParams[T]
-├── library_embed.go       — non-crypto embedded fns; reflect removed
-├── local_script.go
-├── recursion.go
-├── trace.go
-└── …
-
-easyfl/serde/              — JSON + LibraryHash; depends on easyfl + blake2b
-├── json.go                — moved from serde_json.go
-└── hash.go                — LibraryHash, ValidateCompiled
-
-easyfl/slicepool/          — two implementations of the same API, build-tagged
-├── slicepool.go             — //go:build !tinygo  — optimized segment pool
-└── slicepool_tinygo.go      — //go:build tinygo   — pure-alloc shim
-
-easyfl/tuples/             — sync.RWMutex stripped or build-tag-replaced
-easyfl/easyfl_util/        — kept as-is
-easyfl/chess/, claude/     — demo packages; not in WASM build
+easyfl/
+├── core/                       NEW — minimal compose-only sub-package
+│   ├── library.go              Library type, register / lookup
+│   ├── compiler.go             source → bytecode
+│   ├── decompiler.go           bytecode → source (extracted from compiler.go)
+│   ├── types.go                Expression, funDescriptor, EmbeddedFunction
+│   ├── recursion.go
+│   ├── local_script.go         compose half (Compile, FromBytes, Function)
+│   ├── descriptor.go           FunDescriptor struct + Register API
+│   └── errors.go               static error messages, no fmt
+│
+├── embed/                      NEW — embedded function bodies
+│   ├── base.go                 evalConcat, evalSlice, evalByte, …
+│   ├── arithmetic.go           evalAddUint, evalSubUint, …
+│   ├── bitwise.go              evalBitwiseAND, …
+│   ├── tuples.go               evalAtTuple8, evalNumElementsOfTuple
+│   ├── parse.go                evalParseBytecode, evalParseInlineData, …
+│   └── registry.go             DefaultRegistry / RegisterBase
+│
+├── slicepool/                  UNCHANGED
+├── tuples/                     UNCHANGED
+├── easyfl_util/                UNCHANGED
+│
+├── library.go                  thin facade — NewBaseLibrary wires core+embed
+├── library_json.go             go:embed library.json (lives with backend)
+├── serde_json.go               JSON library load/save (backend-only)
+├── serde_tools.go              LibraryHash / ValidateCompiled (backend-only)
+├── eval.go                     CallParams, EvalExpression, ... (eval engine)
+├── trace.go                    GlobalData wrappers (trace.go is revisited; see below)
+└── local_script_eval.go        LocalScript.Eval / EvalInPool methods
 ```
 
-Sub-packages import the core. The core imports nothing from the
-sub-packages, so the WASM build can compile core in isolation.
+The wasm wallet does `import "github.com/lunfardo314/easyfl/core"`.
+That is the only easyfl import it ever needs. Proxima backend does
+`import "github.com/lunfardo314/easyfl"` exactly as today.
 
----
+## What `easyfl/core` exposes
 
-## Implementation plan (Phases A–D)
+Roughly (final shape decided during implementation):
 
-Strict ordering — each phase must build green before the next starts.
-This plan is the canonical execution sequence; the Proxima-side
-[wasm_txbuilder.md](wasm_txbuilder.md) phases (0–7) depend on Phase D
-of this plan landing.
+```go
+package core
 
-### Phase A — Probe (measurement-driven)
+// Type parameter T is the data context (= *EvalContext on Proxima).
+// Compose-only callers can use `any` if they never invoke Eval.
 
-Add a stub `easyfl/wasm/main.go` guarded by `//go:build tinygo` that
-does:
+type Library[T any] struct { ... }            // unchanged shape
+type Expression[T any] struct { ... }         // unchanged shape
+type EmbeddedFunction[T any] func(*CallParams[T]) []byte
+type CallParams[T any] struct { ... }         // unchanged shape
+
+// FunDescriptor is the wallet-facing registration shape:
+//   tag/funCode + arity + symbol + optional bytecode (extended fns).
+// Wallet parses library.json in its own environment, iterates entries,
+// and calls Register for each. The EmbeddedFunction pointer is OMITTED
+// at the public surface — set internally only by easyfl/embed.
+type FunDescriptor struct {
+    Sym       string
+    FunCode   uint16
+    NumParams int
+    Bytecode  []byte    // empty for embedded functions
+    Source    string    // optional; used for re-serialisation
+}
+
+func NewLibrary[T any]() *Library[T]
+func (lib *Library[T]) Register(desc FunDescriptor) error
+func (lib *Library[T]) RegisterEmbedded(desc FunDescriptor, fn EmbeddedFunction[T]) error
+
+func (lib *Library[T]) CompileExpression(source string) (*Expression[T], int, []byte, error)
+func (lib *Library[T]) ExpressionFromBytecode(code []byte) (*Expression[T], error)
+func (lib *Library[T]) DecompileBytecode(code []byte) (string, error)
+
+// LocalScript compose:
+func (lib *Library[T]) CompileLocalScript(source string) (LocalScriptBin, error)
+func (lib *Library[T]) LocalScriptFromBytes(bin LocalScriptBin) (*LocalScript[T], error)
+func (s *LocalScript[T]) Function(idx int) (*Expression[T], error)
+// (no Eval / EvalInPool here — those live in top-level easyfl)
+```
+
+Key point: the `*Library[T]` and `*Expression[T]` returned by `core` are
+**the same types** the eval path operates on. Top-level `easyfl` re-
+exports them via type alias:
+
+```go
+package easyfl
+
+type Library[T any] = core.Library[T]
+type Expression[T any] = core.Expression[T]
+type CallParams[T any] = core.CallParams[T]
+type GlobalData[T any] = core.GlobalData[T]
+type EmbeddedFunction[T any] = core.EmbeddedFunction[T]
+type FunDescriptor = core.FunDescriptor
+```
+
+so every existing `easyfl.Library`, `easyfl.Expression`, etc. used by
+Proxima code keeps compiling.
+
+## What `easyfl/embed` does
+
+Holds every embedded function body and exposes a registrar:
+
+```go
+package embed
+
+func RegisterBase[T any](lib *core.Library[T])
+```
+
+`RegisterBase` calls `lib.RegisterEmbedded(...)` for each base
+function (`evalConcat`, `evalSlice`, `evalAddUint`, …) with the right
+funCode/symbol/arity + function pointer. This is the only place that
+holds references to `evalConcat[T]` etc. — so importing only `core`
+keeps the bodies unreachable, and LLVM DCE drops them from the WASM
+binary together with all the `par.Trace(...)` / `par.TracePanic(...)`
+inside them.
+
+Top-level `easyfl.NewBaseLibrary[T]()` becomes:
+
+```go
+func NewBaseLibrary[T any]() *Library[T] {
+    lib := core.NewLibrary[T]()
+    embed.RegisterBase(lib)
+    return lib
+}
+```
+
+So existing callers (`ledger.lib.go` etc.) get the same wired-up
+library they had before.
+
+## Tracing revisit (in scope, modest)
+
+The eval-path tracing API is `CallParams.Trace`, `CallParams.TracePanic`,
+`CallParams.Require`, `CallParams.RequireNoError`. They live in
+`eval.go` and are called from inside embedded function bodies (33×
+`Trace`, 39× `TracePanic`/`Require` across `library_embed.go`,
+`compiler.go`).
+
+Today they all flow through `fmt.Sprintf`. After this refactor those
+callers all live inside `easyfl/embed`, which is fine to import `fmt`
+— it's never compiled into the wasm wallet binary. **So tracing
+doesn't *have* to move for the wasm budget.**
+
+But we want it minimal anyway:
+
+1. **Delete `par.Trace(...)` non-panic calls** entirely. They are
+   per-step verbose logging used only by `GlobalDataLog` /
+   `GlobalDataTracePrint`, and even there only to debug ledger
+   validation issues. `Tracef` in Proxima is the right tool for
+   investigative logging; per-call tracing inside embedded bodies is
+   dead weight. ~33 deletions across `library_embed.go`, `compiler.go`.
+2. **Keep `par.TracePanic` / `par.Require` / `par.RequireNoError`**,
+   but rename to `par.Panicf`, `par.Assertf`, `par.AssertNoError` and
+   simplify implementation to `panic(fmt.Sprintf(...))` with no trace
+   side-effect. `easyfl_util.Assertf` already does exactly this — we
+   may not need a separate helper at all; embedded bodies can just
+   call `easyfl_util.Assertf` directly.
+3. **Delete `GlobalDataNoTrace`, `GlobalDataLog`, `GlobalDataTracePrint`
+   and the `Trace()` / `PutTrace()` methods on `GlobalData[T]`.**
+   `GlobalData[T]` becomes `interface { Data() T; Library() *Library[T] }`.
+   Proxima's `validate.go` `traceOption` plumbing + `printTraceIfEnabled`
+   gets removed too.
+
+This is a separate, contained phase; it doesn't block the structural
+split but is easier done in the same wave because most of the changes
+land in the same files.
+
+## Per-file audit (target layout)
+
+| Current file | Goes to | Notes |
+|---|---|---|
+| `library.go` (types + ctor + register helpers) | split: types → `core/library.go`, `NewBaseLibrary` → top-level facade | |
+| `compiler.go` | `core/compiler.go`; decompile helpers → `core/decompiler.go` | |
+| `types.go` | `core/types.go` | `sync.Pool` for expressions stays inside core (TinyGo no-ops it). |
+| `local_script.go` | split: compose half → `core/local_script.go`; `Eval` / `EvalInPool` → top-level `local_script_eval.go` | |
+| `recursion.go` | `core/recursion.go` | |
+| `library_embed.go` | split: helpers (`isNil` etc.) into `core`; all 30 bodies → `embed/*.go`; registrar in `embed/registry.go` | `reflect` use in `isNil` removed (use `p == nil`). |
+| `eval.go` | top-level `easyfl/eval.go` | Stays exactly where it is. |
+| `trace.go` | top-level `easyfl/trace.go` | Trimmed per "Tracing revisit". |
+| `serde_json.go` | top-level `easyfl/serde_json.go` | Backend-only. |
+| `serde_tools.go` | top-level `easyfl/serde_tools.go` | Backend-only. |
+| `library_json.go` | top-level (`//go:embed library.json`) | Backend-only. Wallet receives JSON from API. |
+| `slicepool/` | **unchanged** | Per constraint 3. |
+| `tuples/` | **unchanged** | Per constraint 3. |
+| `easyfl_util/` | **unchanged** | Already TinyGo-clean. |
+
+`core` package's only stdlib imports should end up: `bufio`,
+`bytes`, `encoding/binary`, `encoding/hex`, `errors`, `io`,
+`math`, `strconv`, `strings`, `sync` (for the expression pool —
+TinyGo no-ops it), `unicode`, `go/token` (for `IsIdentifier`).
+No `fmt` beyond simple error wraps; no `encoding/json`; no `crypto/*`;
+no `reflect`.
+
+## Implementation plan
+
+All phases are committed independently. Each phase keeps the tree
+buildable+green for both easyfl and Proxima.
+
+### Phase A — TinyGo build probe (baseline)
+
+Add `easyfl/wasm/main.go`:
 
 ```go
 package main
@@ -275,138 +275,151 @@ func main() {
 }
 ```
 
-Run `tinygo build -target=wasm ./wasm/`. Catalogue every actual
-compile failure. The predictions above were made before the JSON
-cutover and the crypto move; we want ground truth before doing
-surgery. One commit.
+Run `tinygo build -target=wasm -o /tmp/easyfl.wasm ./wasm/`.
+Record the size. This is the **before** number for the full,
+unsplit easyfl. The Phase D measurement (after split) tells us the
+actual win.
 
-Likely findings (predicted, not guaranteed):
-- `reflect` in `library_embed.go:isNil` (B2).
-- `sync.Pool` in `eval.go` / `types.go` (R1) — TinyGo no-ops these so
-  probably fine, but binary-size penalty.
-- `slicepool/slicepool.go` may need the build-tag split.
-- Anything dragged by `serde_tools.go` (JSON loader + library hash).
+One commit. May fail to compile under TinyGo — catalogue everything.
 
-### Phase B — Knock out blockers in dependency order
+### Phase B — Tracing revisit (deletes only, no moves yet)
 
-In order, each on its own commit so we can revert independently.
+Lands first because it's the simplest, smallest, and reduces clutter
+the structural split has to navigate.
 
-**B1. Replace `reflect`.** One-liner in `library_embed.go:isNil`.
-Likely just `p == nil` for all known call sites — verify call sites
-first. (Or, if a generic-typed nil check is needed, use a tiny
-type-assertion-based helper.)
+- Delete `par.Trace(...)` non-panic calls from `library_embed.go`,
+  `compiler.go`, anywhere else in easyfl.
+- Replace `par.TracePanic(...)` / `par.Require(...)` / `par.RequireNoError`
+  call sites with `easyfl_util.Assertf` / direct `panic(fmt.Sprintf(...))`
+  in the embedded bodies. (We're still in `easyfl/embed`-future-territory,
+  so `fmt` is fine here.) Or keep the helpers — but strip the
+  `Trace()` side-effect.
+- Delete `GlobalDataLog`, `GlobalDataTracePrint`, `GlobalDataNoTrace`
+  types from `trace.go`. `GlobalData[T]` interface trimmed to
+  `{ Data() T; Library() *Library[T] }`.
+- Delete Proxima's `TraceOptionAll` / `TraceOptionFailedConstraints`
+  plumbing in `ledger/transaction/validate.go`, `parse.go`,
+  `ledger/utxodb/state_update.go`, `ledger/utxodb/utxodb.go`,
+  `ledger/tests/ledger_test.go`.
 
-**B2. Apply the slicepool build-tag split** exactly as drafted in
-decision #4 above:
-- `slicepool/slicepool.go` → `//go:build !tinygo` (current
-  implementation, unchanged)
-- `slicepool/slicepool_tinygo.go` → `//go:build tinygo` (pure-alloc
-  shim, ready to paste)
-- `slicepool/slicepool_test.go` → `//go:build !tinygo`
-No caller changes; the type and method set are identical.
+This is one easyfl commit + one proxima commit + an easyfl version
+bump.
 
-**B3. Strip the `sync.RWMutex` from `easyfl/tuples/tree.go`** lazy-
-subtree path under TinyGo. Two options — pick after Phase A measures
-the actual size impact:
-- Build-tag split (clean, mirrors slicepool).
-- Trust TinyGo's no-op `sync.RWMutex` and skip this step.
+### Phase C — Extract `easyfl/core` sub-package
 
-**B4. Extract `easyfl/serde` sub-package** (the only cross-repo step).
+Mechanical move of the compose-path files (library type, compiler,
+decompiler, types, recursion, local_script compose half) into
+`easyfl/core/`. Top-level `easyfl` keeps:
 
-Post the YAML cutover this is much smaller than the original audit
-predicted. The whole code that needs to move is essentially:
+- type aliases re-exporting all public types from `core`;
+- function re-exports for the small number of public free functions;
+- `eval.go`, `serde_*.go`, `trace.go`, `library_json.go`;
+- `local_script_eval.go` (split from current `local_script.go`).
 
-- `serde_json.go` → `serde/json.go`
-- `LibraryHash` / `ValidateCompiled` from `serde_tools.go` →
-  `serde/hash.go`
+`core` includes the helper that today is `library_embed.go`'s
+`isNil()` — replaced with `p == nil` after audit of `Trace()`
+removal (Phase B deletes most callers of `isNil` already).
 
-After this, core easyfl has no JSON loader, no library-hash code. The
-base library construction still works because `NewBaseLibrary` lives
-in `library.go` and only needs the registrar / compiler bits.
+Each Proxima file that imports `easyfl` keeps compiling unchanged.
+Run `go build ./...` and `go test ./ledger/...` to confirm.
 
-Proxima updates required (do in the same atomic step):
-- `ledger/lib_singleton.go` imports the new `LibraryHash` path.
-- `ledger/upgrade_utxo.go` imports the new `BaseLibraryHash` path.
-- Bump easyfl pseudo-version in `proxima/go.mod`.
+This is one big easyfl commit (the move is mechanical so a reviewer
+can audit it) + an easyfl version bump.
 
-Note: `library_json.go` (the `//go:embed library.json` declaration)
-stays in core — it's just a string asset.
+### Phase D — Extract `easyfl/embed` sub-package
 
-### Phase C — TinyGo build green + measure
+Move all 30+ embedded function bodies from `library_embed.go` to
+`easyfl/embed/*.go`. Replace `library_embed.go`'s top-level
+registration map with a call to `embed.RegisterBase(lib)` from
+`easyfl.NewBaseLibrary`.
 
-Re-run `tinygo build -target=wasm ./wasm/` from the stub entrypoint.
-Confirm it builds. Note binary size. If size is bigger than expected
-this is signal for whether Phase 6 of the proxima plan (fmt/Trace
-stripping) ever needs to land.
+After this commit:
+- `core` does not reference any concrete `evalConcat` etc.
+- `embed` references them all and is the only place importing `fmt`
+  (via `easyfl_util.Assertf` / `panic`) for these bodies.
+- `easyfl.NewBaseLibrary` produces the same fully-wired library as
+  before.
 
-Also: round-trip test — compile + decompile a non-trivial expression
-against a small library, in WASM, with results matching the
-standard-Go build.
+Run Proxima ledger tests; confirm everything still works.
 
-### Phase D — Update this spec
+### Phase E — Phase-A re-measure
 
-Flip each Phase A/B item's status to **DONE** with commit hash. Add a
-"TinyGo build green as of <commit>" line. Cross-link from
-`wasm_txbuilder.md` so the Proxima-side plan can start Phase 0 with
-the easyfl dependency satisfied.
+Build the wasm probe **importing `easyfl/core`** (not top-level
+`easyfl`) and re-run the tinygo build. Update the probe:
 
----
+```go
+package main
 
-## Remaining open items (to resolve during detailed planning)
+import "github.com/lunfardo314/easyfl/core"
 
-- ~~Slicepool TinyGo shim — exact API.~~ **Resolved.** Audit of all
-  callsites confirms production code only uses `New()`, `Alloc()`,
-  `AllocData()`, `Dispose()`, and the `*SlicePool` type. `Disable()`
-  is test-only and called from `library_test.go:18` — that test file
-  already imports `blake2b` and exercises YAML, so it is excluded
-  from the TinyGo build by the YAML/crypto sub-package split,
-  independent of slicepool. The TinyGo shim is exactly:
+func main() {
+    lib := core.NewLibrary[any]()
+    _, _, _, _ = lib.CompileExpression("concat(0x01, 0x02)")
+}
+```
 
-  ```go
-  //go:build tinygo
+Note this probe **cannot CompileExpression "concat"** without the
+function being registered; in practice the wasm wallet will iterate
+parsed library.json and call `lib.Register` first. The probe should
+be a real round-trip:
 
-  package slicepool
+```go
+func main() {
+    lib := core.NewLibrary[any]()
+    _ = lib.Register(core.FunDescriptor{Sym: "concat", FunCode: 64, NumParams: -1})
+    expr, _, _, _ := lib.CompileExpression("concat(0x01, 0x02)")
+    text, _ := lib.DecompileBytecode(/* serialized expr */)
+    _ = text
+}
+```
 
-  type SlicePool struct{}
+Compare size to Phase-A baseline. The target is "embed + fmt +
+json + blake2b" all dropped from the binary; the remainder should
+be compiler + decompiler + library registry + tuples + easyfl_util
++ TinyGo runtime.
 
-  func New() *SlicePool                              { return nil }
-  func (p *SlicePool) Alloc(size uint16) []byte      { return make([]byte, size) }
-  func (p *SlicePool) AllocData(data ...byte) []byte { ret := make([]byte, len(data)); copy(ret, data); return ret }
-  func (p *SlicePool) Dispose()                      {}
-  ```
+Document the numbers in this file.
 
-  `slicepool/slicepool_test.go` gets `//go:build !tinygo` since it
-  exercises the optimized segment allocator's internals.
+### Phase F — Wallet wiring (handover to wasm_txbuilder.md)
 
-- **Where `LibraryHash()` lives.** Used by `serde_tools.go` when
-  writing compiled JSON — naturally moves to `easyfl/serde`. Proxima
-  uses it independently in `lib_singleton.go` and `upgrade_utxo.go`;
-  Phase B4 updates those imports atomically.
+Update `wasm_txbuilder.md` Phase 0 to start from `easyfl/core` rather
+than top-level `easyfl`. Document the descriptor-feeding pattern for
+loading `library.json` parsed by the wallet's own JSON reader.
 
-- **Embedded function registration API.** Crypto fns no longer live
-  in easyfl, so `EmbeddedFunctions[T]` already returns no crypto
-  symbols. Proxima's `def_embed.go` resolver chains
-  `easyfl.EmbeddedFunctions(lib)` (base) with Proxima's own resolver
-  map (which includes `evalBlake2b` / `evalValidSignatureED25519`).
-  No further API change needed.
+## Backward compatibility
 
-- **`isNil()` replacement.** Confirm all callers of `isNil()` to
-  determine whether `p == nil` suffices, or a generic-typed `T`
-  constraint is needed. Phase B1.
+- Every `easyfl.<Symbol>` used by Proxima today keeps resolving via
+  type alias / function re-export.
+- The change in `GlobalData[T]` interface (Phase B) drops two methods
+  (`Trace`, `PutTrace`) — that is a **non-trivial** backcompat break
+  for any external code implementing the interface. The only known
+  implementers are `easyfl.GlobalData*` (which we delete) and Proxima's
+  `Transaction`-bound wrapper (which we update in the same commit).
+- `slicepool.Disable()` stays where it is (per "don't touch
+  slicepool"). The earlier feedback to make nil-pool transparent is
+  deferred; the existing `enabled`-gate is benign.
+- `library.json` location is unchanged.
 
-- **WASM entrypoint.** Lives at `easyfl/wasm/` (Phase A). The
-  Proxima-side wasm entrypoint will live at `ledger/txcore/wasm/`
-  (Proxima `wasm_txbuilder.md` Phase 5) and import this one as a
-  library, not as a binary.
+## Open items
 
-## Verification plan (once refactor lands)
+- Whether the `core` package should expose its own `FromBytecode`-only
+  variant of `LocalScript` for wallets that never compile from text
+  (read-only inspection of compiled lock scripts).
+- Whether wallet-side library descriptor loading should be table-
+  driven (a slice of descriptors) or function-by-function. Decide
+  during Phase F.
 
-1. `tinygo build -target=wasm -o easyfl.wasm ./wasm/` from the thin
-   WASM entrypoint package. Phase A produces the first such build;
-   Phase C re-runs it for size measurement.
-2. Binary-size budget check.
-3. Round-trip test: compile a non-trivial expression from source →
-   bytecode → decompile → source-equivalent, in WASM, with results
-   matching the standard-Go build.
-4. Conformance: run the existing `library_test.go` cases that don't
-   depend on YAML/crypto against the WASM build.
+## Verification
+
+1. `tinygo build -target=wasm -o /tmp/easyfl.wasm ./wasm/` succeeds
+   in Phase A (baseline) and Phase E (after split).
+2. Phase E binary is materially smaller than Phase A — expectation
+   is removal of `fmt`, `encoding/json`, `blake2b`, and all embedded
+   bodies. If the difference is < 100 KB, something is keeping
+   reachability we didn't predict; investigate before declaring
+   success.
+3. `go test ./...` on easyfl stays green through each phase.
+4. `go test ./ledger/...` on Proxima stays green through each phase.
+5. Round-trip in wasm: parse a small library.json (handed in as a Go
+   constant), register descriptors, compile a non-trivial expression,
+   decompile, compare text matches.
