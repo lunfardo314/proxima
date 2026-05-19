@@ -30,7 +30,7 @@ const (
 //	redeemScript(0x<bin>)
 //
 // `bin` is a LocalScriptBin produced by
-// l.Inner.CompileLocalScript(...) on the wallet side. Push the
+// l.CompileLocalScript(...) on the wallet side. Push the
 // result via TxBuilder.PushTxConstraint — it must sit at the
 // TxConstraints position to be honoured by the validator.
 func (l *Library) NewRedeemScriptConstraint(bin engine.LocalScriptBin) ([]byte, error) {

@@ -452,7 +452,8 @@ func (l *Library) AppendTokenAmountToOutput(b *OutputBuilder, tag base.ChainID, 
 // NewRedeemScriptConstraint emits the tx-level constraint
 //   redeemScript(0x<bin>)
 // bin is a LocalScriptBin (the wallet calls
-// l.Inner.CompileLocalScript(source) to produce it).
+// l.CompileLocalScript(source) to produce it — promoted from the
+// embedded *engine.Library[any]).
 func (l *Library) NewRedeemScriptConstraint(bin []byte) ([]byte, error)
 
 // LocalScriptHash returns blake2b.Sum256(bin) — the same hash

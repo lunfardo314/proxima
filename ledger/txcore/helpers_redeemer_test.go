@@ -23,7 +23,7 @@ import (
 func TestNewRedeemScriptConstraint_ByteIdentity(t *testing.T) {
 	lib := txcoreLibFromGlobal(t)
 
-	bin, err := lib.Inner.CompileLocalScript("func _f : 0")
+	bin, err := lib.CompileLocalScript("func _f : 0")
 	require.NoError(t, err)
 	require.NotEmpty(t, bin)
 
@@ -89,7 +89,7 @@ func TestRedeemerRoundTrip_ViaTxBuilder(t *testing.T) {
 	lib := txcoreLibFromGlobal(t)
 
 	// 1) Compile a real 1-function local script.
-	bin, err := lib.Inner.CompileLocalScript("func _square : mul($0, $0)")
+	bin, err := lib.CompileLocalScript("func _square : mul($0, $0)")
 	require.NoError(t, err)
 	require.NotEmpty(t, bin)
 	hash := txcore.LocalScriptHash(bin)
