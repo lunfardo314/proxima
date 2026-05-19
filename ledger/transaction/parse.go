@@ -9,8 +9,8 @@ import (
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txcore"
 	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
 )
 
 // Size limits for transaction elements.
@@ -133,49 +133,12 @@ func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
 	return tx, tx.ValidatePartialContext(true)
 }
 
-// TxIDFromTransactionDataTree takes raw tx bytes and validates timestamp, sequencer data bytes and makes transaction ID
-func TxIDFromTransactionDataTree(txTree *tuples.Tree) (ret base.TransactionID, err error) {
-	var tsBin []byte
-	if tsBin, err = txTree.BytesAtPath([]byte{ledger.TxTimestamp}); err != nil {
-		err = fmt.Errorf("can't parse timestamp: %w", err)
-		return
-	}
-	if _, err = base.LedgerTimeFromBytes(tsBin); err != nil {
-		err = fmt.Errorf("wrong timestamp: %w", err)
-		return
-	}
-	var seqBin []byte
-	seqBin, err = txTree.BytesAtPath([]byte{ledger.TxSequencerDataBytes})
-	if err != nil {
-		err = fmt.Errorf("can't get sequencer data bytes: %w", err)
-		return
-	}
-	seqDataBytes, err := ledger.SequencerDataBytesFromBytes(seqBin)
-	if err != nil {
-		err = fmt.Errorf("can't parse sequencer data bytes: %w", err)
-	}
-
-	isSeqTx := seqDataBytes != nil // is it a sequencer transaction
-	if ret, err = hashEssenceBytesFromTransactionDataTree(txTree); err != nil {
-		return
-	}
-	// replace first 5 bytes with transaction ID prefix and set the sequencer tx flag
-	copy(ret[:], tsBin)
-	if isSeqTx {
-		ret[base.TickByteIndex] |= base.SequencerBitMaskInTick
-	}
-	// set the number of produced outputs byte
-	nUTXO, err := txTree.NumElementsAtPath([]byte{ledger.TxOutputs})
-	if err != nil {
-		return
-	}
-	if nUTXO == 0 || nUTXO > 256 {
-		err = fmt.Errorf("wrong number of produced outputs")
-		return
-	}
-	ret[base.LedgerTimeByteLength] = byte(nUTXO - 1)
-	util.Assertf(len(seqBin) > 0 || !ret.IsSequencerTransaction(), "len(seqBin)>0||!ret.IsSequencerTransaction()")
-	return
+// TxIDFromTransactionDataTree is a thin compatibility shim that delegates
+// to txcore.TxIDFromTree (the canonical, wallet-shared implementation).
+// Server-side callers (Parse) use this so the byte-level txid math lives
+// in exactly one place.
+func TxIDFromTransactionDataTree(txTree *tuples.Tree) (base.TransactionID, error) {
+	return txcore.TxIDFromTree(txTree)
 }
 
 func IDAndTimestampFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, base.LedgerTime, error) {
@@ -194,25 +157,6 @@ func IDFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, error) {
 	return tx.ID(), nil
 }
 
-// hashEssenceBytesFromTransactionDataTree hashes top tuple elements
-// of the transaction except signature
-func hashEssenceBytesFromTransactionDataTree(txTree *tuples.Tree) (ret [32]byte, err error) {
-	hasher, err := blake2b.New256(nil)
-	util.AssertNoError(err)
-
-	var d []byte
-	for i := byte(0); i < ledger.TxTreeTupleNumElements; i++ {
-		if i != ledger.TxSignatureData {
-			d, err = txTree.BytesAtPath([]byte{i})
-			if err != nil {
-				return [32]byte{}, err
-			}
-			hasher.Write(d)
-		}
-	}
-	copy(ret[:], hasher.Sum(nil))
-	return
-}
 
 func (tx *Transaction) scanPartialContext() (err error) {
 	if err = tx.parseSequencerData(); err != nil {

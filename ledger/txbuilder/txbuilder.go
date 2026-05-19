@@ -419,7 +419,7 @@ func (tx *transactionData) Bytes() []byte {
 var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey) {
-	txid, err := transaction.TxIDFromTransactionDataTree(txb.TransactionData.ToTuple().AsTree())
+	txid, err := txcore.TxIDFromTree(txb.TransactionData.ToTuple().AsTree())
 	util.AssertNoError(err)
 	sig, err := privKey.Sign(rnd, txid[:], crypto.Hash(0))
 	util.AssertNoError(err)

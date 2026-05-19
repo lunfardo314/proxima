@@ -5,6 +5,7 @@ package txcore_test
 // surface produces the wire format the server-side parsers expect.
 
 import (
+	"crypto/ed25519"
 	"testing"
 
 	"github.com/lunfardo314/easyfl/tuples"
@@ -69,6 +70,41 @@ func TestTxBuilder_ConsumeProduce(t *testing.T) {
 	tree, err := tuples.TupleFromBytes(raw, txcore.MaxNumConstraints)
 	require.NoError(t, err)
 	require.Equal(t, int(txcore.TxTreeTupleNumElements), tree.NumElements())
+}
+
+// TestTxBuilder_SignED25519 verifies the signing path: derive the tx
+// ID from the tree, sign it, and check the wire SignatureData layout
+// (sig-type byte || sig || pubkey) plus signature verification.
+func TestTxBuilder_SignED25519(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	txb := txcore.New(0)
+
+	// One produced output (TxIDFromTree requires nUTXO > 0).
+	out := txcore.NewOutputBuilder()
+	out.MustPushConstraint([]byte{0x01})
+	out.MustPushConstraint(nil)
+	out.MustPushConstraint([]byte{0x80})
+	txb.ProduceOutput(out.Bytes())
+
+	txb.SetTimestamp(base.T(0, 1))
+	txb.SignED25519(priv)
+
+	sd := txb.TxData.SignatureData
+	require.Len(t, sd, 1+ed25519.SignatureSize+ed25519.PublicKeySize)
+	require.Equal(t, base.SignatureTypeED25519, sd[0])
+
+	sig := sd[1 : 1+ed25519.SignatureSize]
+	pubFromSD := sd[1+ed25519.SignatureSize:]
+	require.True(t, ed25519.PublicKey(pubFromSD).Equal(pub))
+
+	// Re-derive the txid from the bytes the wallet would emit and
+	// verify the sig against that.
+	raw := txb.Bytes()
+	txid, err := txcore.TxIDFromBytes(raw)
+	require.NoError(t, err)
+	require.True(t, ed25519.Verify(pub, txid[:], sig))
 }
 
 // TestTxBuilder_UnlockReference checks that PutUnlockReference rejects
