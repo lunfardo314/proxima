@@ -1,12 +1,11 @@
 # WASM transaction-builder core — analysis and spec
 
-Status: **design / analysis, no implementation**. Started 2026-05-18.
+Status: **design / analysis, no implementation**. Started 2026-05-18;
+spec refreshed 2026-05-19 after the easyfl `engine`/`embed` split
+shipped.
 
-Sibling: [wasm_easyfl.md](wasm_easyfl.md) covers the easyfl-side audit
-and the Phase A–D execution plan that this Proxima-side plan depends
-on. The two together are the canonical multi-repo wasm refactor doc;
-both live under `proxima/claude/` because Proxima is the consumer
-driving the work.
+Sibling: [wasm_easyfl.md](wasm_easyfl.md) covers the easyfl-side work
+this depends on (now shipped — Phases A + B + C, easyfl `c2f3713`).
 
 ---
 
@@ -21,60 +20,78 @@ any isolated frontend). The frontend's job is to:
 3. Sign it (ed25519 over the tx ID).
 
 The frontend does **not** validate the transaction locally. Validation
-is left to the host backend, reached through the REST API.
+is left to the host backend, reached through the REST API (see
+"Companion API" below).
 
-Out of scope for the wasm core (deliberately not a priority):
+**Out of scope for the wasm core** (deliberately not a priority):
 
 - Sequencer-specific compose operations. A wallet does not issue
   sequencer transactions, does not need to populate
-  `SequencerDataBytes`, and does not need `MakeSequencerTransaction`
-  or related helpers. Eliminating this path removes the
-  `proxima/sequencer/seqdata` import from `Output` entirely (see Layer
-  B below).
+  `SequencerDataBytes`, and does not need `MakeSequencerTransaction` /
+  `CalcFrozenCoverageDelta` / `MustPutFrozenCoverage`. Eliminating
+  these removes the `proxima/sequencer/seqdata` import from compose
+  paths.
+- Local validation. The host runs Stage-3.
 
-Practical constraint: today's `ledger/txbuilder` package transitively
-pulls in roughly everything in `proxima/ledger` plus
-`proxima/sequencer/seqdata`, `proxima/util/lines`,
-`proxima/ledger/multistate`, `proxima/ledger/transaction`, and
-`unitrie/common`. Compiling that to wasm via TinyGo would produce a
-binary far larger than is acceptable for a wallet, and several of
-those packages are not even TinyGo-compatible.
+Practical constraint: today's `ledger/txbuilder` transitively pulls in
+roughly everything in `proxima/ledger` plus `proxima/sequencer/seqdata`,
+`proxima/util/lines`, `proxima/ledger/multistate`,
+`proxima/ledger/transaction`, and `unitrie/common`. That's far larger
+than is acceptable for a wallet binary, and several of those packages
+are not TinyGo-compatible.
 
 Non-goal: rewriting the wallet UX, defining a new wire format, or
 shipping an actual wasm binary. Those follow the refactor.
 
-### Companion: dry-run validation API on the host
+---
 
-The wallet is "compose+sign only", but users still want pre-submission
-feedback ("will this transaction validate?"). This is a host-side
-concern, not a wasm-core concern, but it pairs naturally with the
-refactor so it's worth recording:
+## Companion API — unified submit endpoint
 
-Provide an HTTP endpoint that accepts a raw signed transaction PLUS
-the bytes of each consumed UTXO (the "full-context inputs"), runs the
-standard Stage-3 validator, and returns the verdict without side
-effects. This is the same flow `BuildTransactionWithValidation` runs
-today, lifted behind an API. The wallet POSTs to it before the real
-submit endpoint to surface errors early.
+The wallet is compose+sign only, but users want pre-submission
+feedback ("will this transaction validate?"). Rather than introduce a
+separate `/validate_dry_run` endpoint, **extend the existing submit
+endpoint** to subsume both flows in one call.
 
 Sketch:
 
 ```
-POST /api/v1/validate_dry_run
+POST /api/v1/submit
 {
-  "tx":            "<hex>",                  // raw tx bytes
-  "consumed_utxos": ["<hex>", "<hex>", ...]  // one per consumed input
+  "tx":             "<hex>",               // required, raw tx bytes
+  "consumed_utxos": ["<hex>", "<hex>", …], // optional, enables full-context validation
+  "validate_only":  false                  // optional; default false
 }
-->
-{ "ok": true }                  // success
-{ "ok": false, "error": "..." } // validator error
 ```
 
-The host already has every validator component; this is just a
-read-only thin wrapper around `transaction.Parse + SetFullContext +
-ValidateFullContext`, with the consumed UTXOs provided by the caller
-instead of looked up in state. Treat it as the natural follow-on
-deliverable for the refactor, not a blocker.
+Behaviour:
+
+1. **Parse + partial-context validate** (always, synchronous).
+   `transaction.Parse` + `ValidatePartialContext` covers tuple
+   structure, txID, input/endorsement scan, signature, partial-context
+   invariants. Fails fast on bad bytes.
+
+2. **Full-context validate** if `consumed_utxos` is supplied. The
+   handler treats them as the input loader, then runs
+   `ValidateFullContext` (same as `transaction.ValidateFullContext` —
+   input commitment, constraint scripts, ledger invariant).
+
+3. **Submit** unless `validate_only=true`. Submission is the existing
+   path (route into the workflow's `txinput_queue`).
+
+Response shape: `{ "ok": true, "tx_id": "<hex>" }` on success or
+`{ "ok": false, "stage": "parse|partial|full|submit", "error": "…" }`
+on failure.
+
+Why fold them together: the wallet's natural flow is "validate as
+much as I can, then submit if ok". Two endpoints means the wallet
+calls them sequentially with the same tx bytes; one endpoint with
+flags is the same logical operation with less round-tripping. Host
+already runs Parse + ValidatePartialContext at submit time — the only
+new code is honoring `consumed_utxos` for the full-context branch and
+`validate_only` for the early-return branch.
+
+Independent of the wasm refactor; lands on the host side and the
+wasm wallet calls it.
 
 ---
 
@@ -83,22 +100,21 @@ deliverable for the refactor, not a blocker.
 From the existing CLI consumers in `proxi/node_cmd/`:
 
 - `send` (PRXI transfer) — `New()` → `ConsumeOutput` × N →
-  `ProduceOutput(SigLock-output)` → optional tag-along →
-  `SignED25519` → bytes.
+  `ProduceOutput(SigLock-output)` → optional tag-along → `SignED25519`
+  → bytes.
 - `send_tagged` (native-token transfer) — same plus
   `tokenAmount(...)` extras on the produced output and a
   `token(tag, 0xFF)` pure-conservation declaration.
 - `foundry create / mint / burn / retire` — chain origin + transit
-  patterns using `MakeFoundryOriginOutput`, `TransitFoundry`,
-  `FinishChainUnlockParams`.
+  patterns using foundry helpers, `FinishChainUnlockParams`.
 - `delegate amount / chain` — delegation lock outputs.
 - `killchain` — `MakeEndChainTransaction`.
 - `fund` — multi-input PRXI consolidation.
 
-Every one of these is **compose + sign**; none requires validation
-locally. They differ only in which constraint kinds they assemble.
+Every one of these is compose + sign. They differ only in which
+constraint kinds they assemble.
 
-Use cases that are explicitly **not** wasm targets:
+Explicitly **not** wasm targets:
 
 - Sequencer milestones, branch transactions, sequencer freeze
   (delegation-freeze) transactions. These come from the running
@@ -106,63 +122,76 @@ Use cases that are explicitly **not** wasm targets:
 
 ---
 
-## Two layers of cost in the current stack
+## Two costs in the current stack
 
-### Layer A — TxBuilder shape
+### Cost A — TxBuilder shape
 
 `ledger/txbuilder` itself is ~1300 LOC and structurally compose-side.
 Heavy pieces are confined to a handful of methods:
 
 | Method | Purpose | In wasm core? |
 |---|---|---|
-| `New` / `PushTxConstraint` / `Push*` / `ConsumeOutput` / `ProduceOutput` / `PutUnlockParams` / `PutSignatureUnlock` / `PutUnlockReference` | builder ops | YES |
-| `transactionData.ToTuple` / `Bytes` | serialise tx essence | YES |
-| `SignED25519` | sign over tx ID | YES (needs blake2b + ed25519) |
+| `New` / `ConsumeOutput` / `ProduceOutput` / `PutUnlockParams` / `PutSignatureUnlock` / `PutUnlockReference` / `PushTxConstraint` / `Push*` | builder ops | **YES** |
+| `transactionData.ToTuple` / `Bytes` | serialise tx essence | **YES** |
+| `SignED25519` | sign over tx ID | **YES** (needs blake2b + ed25519) |
+| Common-element helpers (`NewSigLockOutput`, foundry/delegate convenience builders, tag-along, etc.) | wallet ergonomics | **YES** — inherited from full txbuilder |
 | `Transaction()` / `BuildTransactionWithValidation()` / `BytesWithValidation()` | round-trip parse + Stage-3 validate | **NO** — full-build only |
 | `GetChainAccount(...IndexedStateReader...)` | state-query helper | **NO** — wallet uses host API |
 | `LoadInput` | feeds the validator | **NO** |
 | `CalcFrozenCoverageDelta` / `MustPutFrozenCoverage` | sequencer freeze-tx convenience | **NO** — sequencer-only |
 
-Frozen coverage in particular is the sequencer's accounting, not the
-wallet's: when a delegation UTXO freezes, the *sequencer* that owns
-the chain runs the math and emits the freeze tx. A delegating wallet
-just creates `delegateLock` outputs; the coverage rollup is somebody
-else's job.
+txcore's `TxBuilder` is the universal low-level compose API: it lets
+the wallet construct *any* valid tx shape (any inputs, any outputs,
+arbitrary constraints, endorsements, tx-level constraints, sig). The
+common-element helpers (sigLock construction, common indices, chain
+origin, tag-along, delegate, foundry transit, native-token amounts)
+ride along **in the same package** — they're thin wrappers over the
+universal builder and the easyfl source-compiler, no separate
+"constraints" sub-package.
 
-So txbuilder is mostly already shaped right. The wasm core takes a
-strict subset: builder ops + tuple serialise + sign. Validation,
-state-query, and sequencer-only helpers stay in the full build.
+Sequencer-only and validation-side methods stay in the full
+`ledger/txbuilder` (which becomes a wrapper that re-exports txcore and
+adds the heavy pieces).
 
-Tuple thread-safety: `easyfl/tuples`' lazy-subtree deserialization
-uses `sync.RWMutex`. Inside the wasm core, transactions are built and
-serialized single-threadedly — no readers can race writers, so the
-lock is dead weight. We want either a build-tag variant that strips
-the mutex entirely or confirmation that TinyGo's no-op
-`sync.RWMutex` is inlined to zero. This is a code-size concern, not a
-correctness one. Aligns with `easyfl/claude/tinygo_wasm.md` R1.
+### Cost B — what `ledger.Output` drags in
 
-### Layer B — what `ledger.Output` drags in
+`ledger.Output` is needed on the compose side too — every
+`ConsumeOutput` / `ProduceOutput` takes one. But the current Output's
+companions transitively import:
 
-`ledger.Output` lives in `ledger/output.go` (1205 LOC) and is needed
-on the compose side too — every `ConsumeOutput` / `ProduceOutput`
-takes one. But `output.go` and its companions transitively import:
-
-- `proxima/sequencer/seqdata` (sequencer wire format) — **droppable
-  once sequencer compose paths leave the wasm scope.**
-- `proxima/util/lines` (pretty-print helpers; transitively pulls more)
-- `proxima/util` (assertions, errors, hex tools — mixed, some clean)
-- `proxima/util/testutil` (only at lib init time — fine)
-- `proxima/ledger/multistate` (only via the optional state-query
-  helpers; not needed at compose time)
-- the constraint serde wrappers (`chain.go`, `lock_*.go`, `foundry.go`,
+- `proxima/sequencer/seqdata` — **droppable** once sequencer compose
+  paths leave the wasm scope.
+- `proxima/util/lines` (pretty-printers; transitively pulls more).
+- `proxima/util` (assertions, errors, hex tools — mixed).
+- `proxima/ledger/multistate` (only via optional state-query helpers).
+- Constraint serde wrappers (`chain.go`, `lock_*.go`, `foundry.go`,
   `native_token.go`, `delegate*.go`, …) — each adds compile-time deps
-  on `easyfl` and `easyfl/easyfl_util` + helpers. Whether wasm needs
-  these at all is the central question of the next section.
+  on `easyfl` helpers.
+
+**Simpler OutputBuilder for txcore:** rather than porting the full
+`ledger.OutputBuilder` (which is monolithic and has constraint-kind-
+specific methods), txcore introduces a thin extension of
+`easyfl/tuples.TupleEditable`:
+
+```go
+// in ledger/txcore
+type OutputBuilder struct{ *tuples.TupleEditable }
+
+func NewOutputBuilder() *OutputBuilder
+func (b *OutputBuilder) PutAt(idx byte, data []byte)   // overwrite slot
+func (b *OutputBuilder) Append(data []byte) byte       // push, return idx
+func (b *OutputBuilder) Bytes() []byte                 // serialise
+func (b *OutputBuilder) Output() *Output               // wrap in Output value
+```
+
+That's the core. The constraint-helpers (`WithAmounts`, sig lock,
+chain origin, etc.) become free functions that compose canonical
+source via the loaded library, push into the builder, return the
+result. No constraint-specific state on the builder itself.
 
 The minimal compose-side surface for `Output` is:
-
-- The `Output` tuple (raw bytes + accessors used by builders).
-- The `OutputBuilder` (the `Clone(func(*OutputBuilder){...})` pattern).
+- The `Output` value (raw bytes + accessors used by builders).
+- The simpler `OutputBuilder` above.
 - `HashOutputs(...)` (blake2b over each output's bytes, concatenated).
 - Path constants (`ConstraintIndexLock`, `ConstraintIndexChain`,
   `ConstraintIndexAmounts`, `ConstraintIndexFoundry`,
@@ -170,196 +199,161 @@ The minimal compose-side surface for `Output` is:
 - `base.OutputID`, `base.TransactionID`, `base.ChainID`,
   `base.LedgerTime`, `base.HolderID`, `base.MakeOriginChainID`,
   `base.SignatureTypeED25519`, etc. — `ledger/base` is small and
-  already TinyGo-friendly modulo our own utilities.
+  already TinyGo-friendly.
 
 Pretty-printer / debugging accessors (`String`, `LinesPlainSource`,
-`LinesShort`, `_runOutputs`, etc.) stay in the full package.
+`LinesShort`, `_runOutputs`, etc.) stay in the full package as
+methods on the same Output type (separate files).
 
 ---
 
 ## Architectural pivot: compile-from-source as the primary path
 
-The first draft of this spec proposed porting every typed constraint
-wrapper (`Foundry`, `TokenAmount`, `SigLock`, `ChainConstraint`,
-`DelegateLock`, …) into the wasm core as convenience emitters. That
-is more than the wallet needs.
-
-**Fundamental observation:** a wallet *fundamentally* needs only
-"compile this EasyFL source expression with the loaded library, get
-bytes back". Every typed wrapper today is sugar over
+A wallet **fundamentally** needs only "compile this EasyFL source
+expression with the loaded library, get bytes back". Every typed
+wrapper today is sugar over:
 
 ```go
 mustBinFromSource(fmt.Sprintf("<symbol>(<arg0>, <arg1>, ...)"))
 ```
 
 — a Go-readable façade around what is, at the bytecode layer, just a
-call to `easyfl.Library.CompileExpression(source)`. Decoding works
-the same way: pure EasyFL decompile already turns bytecode back into
-source, no Go-side serde wrappers required for inspection.
+call to `easyfl/engine.Library.CompileExpression(source)`. Decoding
+works the same way: pure EasyFL decompile already turns bytecode back
+into source, no Go-side serde wrappers required for inspection.
 
-This means the wasm core can be **two layers**, not one:
-
-### Layer 1 (mandatory) — bare compile/decompile core
+txcore packages this as one cohesive surface:
 
 ```
 ledger/txcore/
-├── output.go                — minimal Output + OutputBuilder
-├── tx_data.go               — transactionData + ToTuple + Bytes
-├── txbuilder.go             — builder ops (compose only)
-├── sign.go                  — SignED25519 + TxIDFromBytes
-└── library/                 — TinyGo-clean library loader
-    ├── library.go           — Library wrapper (JSON load + compile)
-    └── library.json         — embedded definitions (host-canonical)
+├── output.go               — minimal Output + OutputBuilder
+├── tx_data.go              — transactionData + ToTuple + Bytes
+├── txbuilder.go            — universal builder ops (compose only)
+├── sign.go                 — SignED25519 + TxIDFromBytes
+├── library.go              — TinyGo-clean library loader (delegates to engine)
+├── library.json            — embedded definitions (host-canonical)
+└── helpers.go              — common-element wallet helpers
+   ├── NewSigLock(...)        — sigLock(addr) bytecode emitter
+   ├── NewChainOriginConstraint(...)
+   ├── NewChainConstraint(...)
+   ├── NewTagAlongOutput(...)
+   ├── NewDelegateLockOutput(...)
+   ├── NewFoundryTransit(...)
+   ├── NewTokenAmount(...) / NewTokenDeclare(...)
+   └── …                       — each is a thin compose function
 ```
 
-This layer:
-
-- knows nothing about typed constraints,
-- emits constraint bytes by taking source strings the caller hands it
-  (e.g. `sigLock(0xabcd...)`) and compiling against the loaded
-  library,
-- exposes `Library.Decompile(bytecode) → source` for inspection,
-- is what a strictly-minimal wallet would import.
-
-### Layer 2 (optional) — globally-known constraints
-
-```
-ledger/txcore/constraints/
-├── amounts.go               — NewAmounts(amount, inflation, frozen)
-├── chain.go                 — NewChainConstraint / NewChainOrigin
-├── lock_signature.go        — NewSigLock + ED25519-key derivation
-├── lock_tag_along.go        — NewTagAlongOutput
-├── lock_chain.go            — NewChainLock
-├── lock_delegate.go         — NewDelegateLock + DelegationParams
-├── foundry.go               — NewFoundry + foundry-policy bytecodes
-├── native_token.go          — NewTokenAmount + token() bytecode emit
-└── unlock_params.go         — NewChainUnlockParams, FinishChainUnlockParams
-```
-
-Pure syntactic sugar on top of Layer 1: each `New<Foo>` produces a
-canonical source string and calls into the Layer-1 compiler. No
-parser, no `register<Foo>`, no validation. A wallet UI that wants
-type-safe builders pulls Layer 2 in; a thin wallet that's content to
-hand-write source strings does not.
+All in **one** package. No separate Layer 1 / Layer 2 split — the
+helpers are inherent to the wasm builder's value proposition. They
+add zero transitive deps because each is just
+`library.CompileExpression("symbol(args)")` plus a put into the
+builder.
 
 The full `ledger` package keeps the **parsers / registrars / EasyFL
-bodies / validation** — that side is unchanged. Layer 2 sources are
-the same canonical strings the parsers expect, so emitters and
-parsers stay byte-for-byte compatible.
-
-Net effect on the wasm binary: Layer 1 is small (compiler + tuple
-serialise + sign + library loader); Layer 2 adds ~one short file per
-constraint kind, no transitive deps. The wallet picks how much to
-include.
-
-### Decompile for the inspection path
-
-When a wallet UI needs to render "what does this UTXO actually do?"
-it doesn't need typed `Foundry` / `TokenAmount` wrappers — it can
-call `library.Decompile(constraintBytes) → "foundry(z64/1000)"` and
-display the source. Layer 1 already supports this via the EasyFL
-decompile path. Layer 2 wrappers exist for *writers*, not readers.
+bodies / validation** — that side is unchanged. Helpers in txcore
+emit canonical source strings; the full package's parsers expect the
+same strings; they stay byte-for-byte compatible.
 
 ---
 
 ## Proposed package layout (Proxima side)
 
 ```
-ledger/                          (kept — full backend / validator,
-│                                 includes parsers + serdes +
-│                                 EasyFL bodies + validation)
+ledger/                          (kept — full backend / validator)
 ├── (everything as today)
+│   – validators, parsers, serdes, EasyFL bodies …
+│   – existing txbuilder/ is a thin wrapper over txcore for the
+│     server-side compose+validate+sequencer-helpers path.
 │
 └── txcore/                      NEW — TinyGo-clean compose+sign core
-    ├── (Layer 1: see above)
-    └── constraints/             OPTIONAL — Layer 2 emitter sugar
+    ├── output.go
+    ├── tx_data.go
+    ├── txbuilder.go
+    ├── sign.go
+    ├── library.go
+    ├── library.json
+    └── helpers.go               (or split per-kind files: lock.go,
+                                  chain.go, foundry.go, …)
 ```
 
 The full `ledger` package's existing `New<Foo>` constructors delegate
-to `txcore/constraints/<foo>.go` so there is **one source of truth**
-for each constraint's canonical bytecode source string. The full
-package retains its parsers, serdes, and EasyFL bodies; nothing in
-the runtime validator changes.
-
-Rejected alternative: keep these inside `ledger/` with `//go:build
-!heavy` tags. Sub-package factoring matches the easyfl side and
-the dependency direction is easier to reason about.
+to `txcore/helpers.go` so there's **one source of truth** for each
+constraint's canonical bytecode source string. The full package
+retains its parsers, serdes, and EasyFL bodies; nothing in the
+runtime validator changes.
 
 ---
 
-## EasyFL coordination (companion doc)
+## EasyFL coordination — what shipped
 
-The wasm core depends on easyfl reaching its TinyGo-clean state. Most
-of that is already planned in `easyfl/claude/tinygo_wasm.md`. Status
-update from this side:
+The easyfl side (`wasm_easyfl.md`) is done as of `c2f3713`:
 
-| `tinygo_wasm.md` item | Today |
+| Item | Status |
 |---|---|
-| YAML serde dropped from core | **DONE.** Easyfl shipped JSON persistence; `easyfl/library_yaml.go` is gone, `library.json` is the canonical asset. |
-| Crypto embedded fns moved out of core | **DONE 2026-05-18.** `blake2b` / `validSignatureED25519` no longer live in `easyfl/library_embed.go`; they're registered by Proxima at `ledger/crypto_builtins.go`. For wasm the wallet doesn't need them either — `blake2b` we call directly from Go, ed25519 only for signing. |
-| `reflect` removed from core | open |
-| `slicepool` build-tag split | open |
-| `easyfl/serde` sub-package (JSON serde + LibraryHash) | open — what's left of "serde tools" after the YAML drop is the JSON loader and the library hash. The wasm core only needs JSON load (no hash check against a stored value if we trust the embedded asset). |
-| `fmt` (R2 binary-size risk) | open — measure once first wasm binary is buildable |
-| `tuples` thread-safety | open — wasm wants the `sync.RWMutex` in `tuples/tree.go` stripped or build-tag-replaced; lazy-subtree deserialization is single-threaded under wasm. |
+| YAML → JSON cutover | shipped 2026-05-18 |
+| Crypto out of base library | shipped 2026-05-18 |
+| Tracing pruning, `reflect` removal from base, etc. | shipped Phase B |
+| Compose / eval / embed split | shipped Phase C (renamed compose → engine) |
 
-What the wasm core needs from easyfl:
+What txcore needs from easyfl:
 
-- Library construction from JSON (read-only after init).
-- Source compiler: source → bytecode.
-- Source **decompiler**: bytecode → source (for inspection in the
-  wallet UI).
-- Symbol-prefix lookup (`FunctionCallPrefixByName`) — needed by tx-
-  level constraint composition.
-- The `tuples` sub-package (tuple builder + serialize), ideally with
-  thread-safety stripped.
-- `easyfl_util` (`Uint64FromBytes`, `Concat`, etc.).
+- **`easyfl/engine`** — Library + CompileExpression + DecompileBytecode +
+  registration primitives. This is exactly what the wallet imports.
+- `easyfl/tuples` (tuple builder + serialize). Lazy-subtree
+  thread-safety: TinyGo no-ops `sync.RWMutex` — accept the no-op cost
+  rather than build-tag the file.
+- `easyfl/easyfl_util` (`Uint64FromBytes`, `Concat`, etc.).
 
 It does **not** need:
 
-- The evaluator (`eval.go`).
-- The slicepool (transactions are short-lived; allocation churn is
-  fine).
-- Embedded function dispatch.
+- `easyfl/embed` (no eval).
+- The top-level `easyfl` facade's JSON serde (wallet parses JSON in
+  its own environment, hands txcore a `*engine.LibraryFromJSON`).
 
-So the wasm core is a "compose+inspect-only" subset of the easyfl
-TinyGo subset — even tighter than what `tinygo_wasm.md` envisions for
-the standalone easyfl wasm build.
+txcore's library loader is:
+
+```go
+// in ledger/txcore/library.go
+import "github.com/lunfardo314/easyfl/engine"
+
+//go:embed library.json
+var embeddedLibraryJSON []byte
+
+// LoadEmbeddedLibrary parses the embedded library descriptor (a
+// wallet-side decision: it's bundled at build time, no host fetch).
+// The wallet's host wasm glue does the JSON parse and hands engine
+// the parsed descriptor.
+func LoadEmbeddedLibrary[T any]() (*engine.Library[T], error) { … }
+```
+
+For wasm minimality, the wallet can swap the embedded JSON for a
+slimmed version that drops unused entries. Open question deferred to
+Phase 5.
 
 ---
 
 ## Library-loading model
 
-The wasm binary embeds the canonical compiled `library.json` (proxima's
-extended library, not just easyfl base). This is the file the
-proxima-side upgrade chain produces today via
-`LibraryJSONFromParameters`.
+The wasm bundle embeds the canonical compiled library JSON. The host
+ships a new wasm bundle when it upgrades the extended library; the
+wallet always uses the matched library hash.
 
 At wasm-init time:
 
-1. Load that JSON into the easyfl `Library` (compiler-only path; no
-   evaluator wiring needed).
-2. **No constraint serdes to register on the wasm side** — that's the
-   pivot of the Layer-1/Layer-2 split. Layer 2 (optional) emitters
-   produce canonical source strings without any registration, since
-   they don't parse incoming bytecode.
+1. Parse the embedded JSON in the wallet's environment (or, for the
+   reference wallet, with Go's `encoding/json` since size budget
+   allows).
+2. Hand the parsed `*engine.LibraryFromJSON` to `engine.Library.Upgrade`
+   (no embed callback — wallet doesn't need eval bodies).
 
-No host call-out is needed; the library is constant within a wallet
-version. When Proxima upgrades the extended library, the wallet ships
-a new wasm bundle.
-
-Open: do we embed the **full** Proxima library JSON (extended), or a
-**slimmed** one with only the bytecode and metadata the wasm path
-actually compiles against? The full one is the safer default for v1
-(matches the host's library hash exactly, so the wallet can include
-it in submission metadata and the host can refuse mismatches);
-slimming can come later.
+The wallet does **not** register Go-side constraint serdes; bytecode
+emission is pure source compile, decoding is pure source decompile.
 
 ---
 
 ## Signing surface
 
-```
+```go
 // in ledger/txcore/sign.go
 func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey)
 ```
@@ -375,97 +369,59 @@ Implementation:
   `TransactionData.SignatureData`.
 
 Both `crypto/ed25519` and `golang.org/x/crypto/blake2b` are
-TinyGo-compatible (blake2b loses its asm fast path; acceptable). No
-host call-out.
+TinyGo-compatible (blake2b loses its asm fast path; acceptable).
 
 `TxIDFromTransactionDataTree` itself lives in
 `ledger/transaction/parse.go` today. The wasm core ports a stripped
-version of it (no parse validation, just hash + prefix bytes) — call
-it `TxIDFromBytes` and keep it tight. If the full-build path can use
-the txcore helper directly, delete the duplication from
-`transaction/parse.go`.
+version (no parse validation, just hash + prefix bytes) — call it
+`TxIDFromBytes`. If the full-build path can use the txcore helper
+directly, delete the duplication from `transaction/parse.go`.
 
 ---
 
 ## What the wallet API looks like
 
-### Layer 1 (bare compile-from-source)
-
 ```go
 import "github.com/lunfardo314/proxima/ledger/txcore"
 
-lib := txcore.LoadEmbeddedLibrary()
-
+lib, _ := txcore.LoadEmbeddedLibrary[any]()
 txb := txcore.New(lib)
 for i, oid := range inputIDs {
     txb.ConsumeOutput(consumedOutputs[i], oid)
 }
-sigLockSrc := fmt.Sprintf("sigLock(0x%s)", hex.EncodeToString(recipient[:]))
-sigLockBin, _ := lib.CompileExpression(sigLockSrc)
-out := txcore.NewOutput(func(o *txcore.OutputBuilder) {
-    o.WithAmounts(amount).PutConstraint(sigLockBin, txcore.ConstraintIndexLock)
-})
-txb.ProduceOutput(out)
-txb.TransactionData.Timestamp = ts
-txb.TransactionData.InputCommitment = txcore.HashOutputs(txb.ConsumedOutputs...)
-txb.SignED25519(privKey)
-rawTx := txb.TransactionData.Bytes() // -> POST to backend
-```
-
-### Layer 2 (typed-constraint sugar, optional)
-
-```go
-import (
-    "github.com/lunfardo314/proxima/ledger/txcore"
-    "github.com/lunfardo314/proxima/ledger/txcore/constraints"
-)
-
-lib := txcore.LoadEmbeddedLibrary()
-txb := txcore.New(lib)
-for i, oid := range inputIDs {
-    txb.ConsumeOutput(consumedOutputs[i], oid)
-}
-txb.ProduceOutput(constraints.NewSigLockOutput(amount, recipient))
+txb.ProduceOutput(txcore.NewSigLockOutput(amount, recipient))     // uses helper
+txb.ProduceOutput(txcore.NewTagAlongOutput(tagAlongAmount, seq))  // uses helper
 txb.TransactionData.Timestamp = ts
 txb.TransactionData.InputCommitment = txcore.HashOutputs(txb.ConsumedOutputs...)
 txb.SignED25519(privKey)
 rawTx := txb.TransactionData.Bytes()
 ```
 
-The wasm export wraps one of these as a single JS-callable function
-that takes JSON-shaped input (inputs, outputs, ts, optional
-endorsements, private key bytes) and returns the raw tx bytes. The
-wallet UI never sees the Go API directly.
+The wasm export wraps this as a single JS-callable function that
+takes JSON-shaped input (inputs, outputs, ts, optional endorsements,
+private key bytes) and returns the raw tx bytes. The wallet UI never
+sees the Go API directly.
+
+For wallets that want to compose arbitrary constraints without going
+through the helpers, the underlying `lib.CompileExpression(source)`
++ `OutputBuilder.PutAt(idx, bin)` path is fully exposed.
 
 ---
 
 ## What stays in `ledger` (full build, server-side)
 
 - All EasyFL bodies (`def/*.easyfl`).
-- The evaluator, the constraint validators, the closing balance
-  checks (e.g. `NativeTokenAggregator.CheckBalances`,
-  `validateOutputs`).
+- The evaluator, constraint validators, closing balance checks (e.g.
+  `NativeTokenAggregator.CheckBalances`, `validateOutputs`).
 - The typed-constraint **parsers** (`<Foo>FromBytes`) and their
-  `register<Foo>` calls. Layer 2 of the wasm core only emits; the
-  full-build side keeps the reading half.
+  `register<Foo>` calls. txcore helpers only emit; the full-build
+  side keeps the reading half.
 - All sequencer-related compose helpers
   (`MakeSequencerTransaction`, `CalcFrozenCoverageDelta`,
-  `MustPutFrozenCoverage`, …) — used by the running sequencer
-  process, never by a wallet.
+  `MustPutFrozenCoverage`, …).
 - `multistate`, snapshots, the persistent index machinery.
-- `proxi` CLI keeps using the **full** `txbuilder`, because for the
-  CLI a 5 MB binary that can also build+validate is fine, and we want
-  the CLI to catch builder bugs locally before submission.
-
-Sub-question: should `proxi` switch to `txcore` too, so the CLI is
-the canary for the wasm core? Arguments for: bug-for-bug parity
-between CLI and wallet. Argument against: the CLI today builds and
-**also** parses/round-trips the tx via `BytesWithValidation` to
-surface errors at compose time — that's a useful safety net that the
-wallet doesn't have (it can rely on the API to reject malformed txs,
-or the dry-run-validate endpoint described above). Tentative answer:
-leave `proxi` on the full builder for v1, revisit once the wasm core
-has settled.
+- `proxi` CLI keeps using the **full** `ledger/txbuilder` for v1; it
+  doubles as the canary for txcore once the refactor settles.
 
 ---
 
@@ -475,42 +431,46 @@ Strict ordering — each phase must build green before the next starts.
 
 ### Phase 0 — Audit verification
 
-- Build the current `ledger/txbuilder` import graph (`go list -deps`)
-  and confirm the high-cost imports we expect (`multistate`,
-  `transaction`, `sequencer/seqdata`, `util/lines`).
-- Build the import graph from the proxi CLI commands to confirm
-  which `txbuilder` methods they actually call (the table above is
-  the working set; this phase verifies it).
-- Confirm that no non-sequencer compose path touches
-  `sequencer/seqdata` or frozen-coverage helpers. If anything is
-  surprising here, the scope shrinks differently than predicted.
+- `go list -deps ./ledger/txbuilder/` and confirm the high-cost
+  imports we expect (`multistate`, `transaction`, `sequencer/seqdata`,
+  `util/lines`).
+- Catalogue which `txbuilder` methods the proxi CLI actually calls
+  (verify the working set table above).
+- Confirm no non-sequencer compose path touches `sequencer/seqdata`
+  or frozen-coverage helpers.
+- Catalogue which constraint-construction helpers the CLI uses
+  (`NewSigLockOutput`, `NewChainOrigin`, `NewTagAlongOutput`,
+  `NewDelegateLockOutput`, foundry transit, tokenAmount …) — these
+  are the helpers that move to txcore.
 
-### Phase 1 — Layer 1 skeleton: Output + OutputBuilder + library
+### Phase 1 — Output + OutputBuilder + library loader
 
-Extract a minimal `Output` (and `OutputBuilder`) into
-`ledger/txcore/output.go`. Drop the pretty-printer / debugging
-accessors — those stay in the full package as methods on the **same**
-`Output` type via separate `.go` files.
+Extract a minimal `Output` (raw bytes + accessors) and the new
+tuple-based `OutputBuilder` into `ledger/txcore/output.go`.
+
+Pretty-printer / debugging methods stay in the full package as
+methods on the **same** `Output` type via separate `.go` files.
 
 Aliasing approach: `ledger.Output = txcore.Output`. Methods declared
 in the full `ledger` package are only available in the full build —
-TinyGo never compiles them, so they don't pollute the wasm binary.
+TinyGo never compiles them. (Same trick the easyfl facade uses.)
 
-In the same phase, stand up `ledger/txcore/library/` with a thin
-wrapper that loads `library.json` and exposes compile / decompile /
-prefix-lookup. No evaluator, no constraint registrars.
+Stand up `ledger/txcore/library.go` with a thin wrapper that holds
+the parsed `*engine.Library` and offers `CompileExpression` /
+`DecompileBytecode`.
 
-### Phase 2 — Layer 1 builder: TxBuilder + transactionData
+### Phase 2 — TxBuilder + transactionData
 
 Move the compose-side TxBuilder methods into
 `ledger/txcore/txbuilder.go`. Leave behind in
 `ledger/txbuilder/txbuilder.go` a thin wrapper that re-exports
 `txcore.TxBuilder` and adds `BuildTransactionWithValidation`,
 `Transaction()`, `BytesWithValidation()`, `LoadInput`,
-`GetChainAccount` (the validation / state-query helpers).
+`GetChainAccount` (validation / state-query helpers).
+
 Sequencer-only helpers (`CalcFrozenCoverageDelta`,
-`MustPutFrozenCoverage`) stay where they are or migrate to the
-sequencer package — they were never on the wallet path.
+`MustPutFrozenCoverage`) stay in the full `ledger/txbuilder` or move
+to the sequencer package.
 
 `proxi` CLI continues to import `ledger/txbuilder` and gets the
 full-build wrapper unchanged.
@@ -518,116 +478,91 @@ full-build wrapper unchanged.
 ### Phase 3 — Sign / hash port
 
 Port `TxIDFromTransactionDataTree` into `txcore.TxIDFromBytes` (no
-validation, just the hash + prefix-byte logic). Implement
-`SignED25519` against it. Delete the duplication from
-`transaction/parse.go` if the full-build path can use the txcore
-helper directly.
+validation, just hash + prefix). Implement `SignED25519`. Delete the
+duplication from `transaction/parse.go` if the full-build path can
+use the txcore helper directly.
 
-### Phase 4 — Layer 2 emitters
+### Phase 4 — Compose-helpers move
 
-Move the pure "bytecode emitter" parts of the typed-constraint
-wrappers into `ledger/txcore/constraints/`. Each constraint wrapper
-today has roughly:
-
-- a `New<Foo>(...)` constructor,
-- a `Source()` string method,
-- a `Bytes()` method (= `mustBinFromSource(Source())`),
-- a parser `<Foo>FromBytes`,
-- a registrar `register<Foo>`.
-
-Of these, the constructor / Source / Bytes are compose-only and
-TinyGo-clean (assuming easyfl is). The parser + registrar stay in
-the full `ledger` package. The full package's `New<Foo>` re-exports
-the txcore one, so callers don't change.
+Inventory current `ledger/<foo>.go` constraint wrappers; for each
+extract the compose-only half — `New<Foo>` constructors that emit
+canonical source via the library — into `ledger/txcore/helpers.go`
+(or per-kind files). The parser + registrar stay in the full
+package; the full package's `New<Foo>` re-exports the txcore version
+so callers don't change.
 
 Risk: some constraint wrappers reach into types from the full
-package (e.g. `Foundry` referencing `mustBinFromSource` which uses
-`L(base.MaxSlot)`). That's solvable by exposing a `Library`
-accessor on the txcore side and wiring it once at init.
+package (e.g. `Foundry` referencing `mustBinFromSource` which calls
+`L(base.MaxSlot)`). Solvable by exposing a `Library` accessor on the
+txcore side and wiring it once at init.
 
-### Phase 5 — WASM entrypoint
+### Phase 5 — WASM entrypoint + measurement
 
-Add `ledger/txcore/wasm/` with a `main()` exporting a JS-callable
-"build and sign" function. TinyGo-build it. Measure binary size.
-This is the gating phase: if the binary is too large, Phase 6 starts
-on `fmt`/Trace stripping. If it's OK, ship it.
+Add `ledger/txcore/wasm/main.go` with a JS-callable "build and sign"
+function. TinyGo-build it. Measure binary size.
+
+This is the gating phase: if the binary is too large, Phase 6 looks
+at `fmt`/`Trace` stripping or `encoding/hex` replacement. If size is
+OK, ship.
 
 ### Phase 6 — `fmt` / Trace stripping (deferred)
 
-Only if Phase 5 measurements demand it. Likely candidates:
-`fmt.Errorf` → static strings on hot paths; Trace calls gated by a
-build tag.
+Only if Phase 5 measurements demand it.
 
-### Phase 7 (host-side) — `/validate_dry_run` endpoint
+### Phase 7 — Companion API on the host
 
-Wallet-side ergonomics: implement the dry-run validation endpoint
-described in the Goal section. Independent of the wasm-core phases —
-can land in parallel.
+Implement the unified `/api/v1/submit` endpoint described in the
+goal section: `tx` always required, `consumed_utxos` optional for
+full-context validation, `validate_only` optional to skip the actual
+submit. Independent of the wasm-core phases — can land in parallel.
 
 ---
 
 ## Open questions
 
 1. **Library JSON shape in the wasm bundle.** Full extended library
-   (matches host hash byte-for-byte) vs. slimmed library (smaller
-   bundle, but a separate codepath that must be kept in sync). Pick
+   (matches host hash byte-for-byte) vs slimmed library. Default to
    full for v1.
 
 2. **TinyGo `crypto/ed25519` reality check.** Confirm signing works
    end-to-end in TinyGo wasm. Same for `golang.org/x/crypto/blake2b`
-   (asm fast path is unavailable; pure-Go fallback must compile).
+   (asm fast path unavailable; pure-Go fallback must compile).
 
 3. **`util/lines` and `proxima/util` cleanup.** Several constraint
-   wrappers call `util.Assertf`. Move the assertion shim into
-   `easyfl_util` or duplicate a minimal `Assertf` inside `txcore`?
-   Simpler: replace `util.Assertf` with `if !cond { panic(msg) }`
-   inside compose-only code.
+   wrappers call `util.Assertf`. Simplest: replace with
+   `if !cond { panic(msg) }` in compose-only code.
 
 4. **`unitrie/common.Concat`.** Used at exactly one compose-side
    site (`SignED25519`). Replace with a local `append` chain — no
    reason to pull in unitrie for byte concat.
 
-5. **Tuple thread-safety in wasm.** Either strip the
-   `sync.RWMutex` in `easyfl/tuples/tree.go` behind a build tag, or
-   accept that TinyGo's no-op locks are good enough. Measure during
-   Phase 5.
+5. **Output identity.** `ledger.Output` keeps its current shape;
+   txcore exports the same struct, and the alias `ledger.Output =
+   txcore.Output` keeps existing callers untouched. Confirm during
+   Phase 1 that no embedded interface methods (`String`, `Lines*`)
+   are referenced from compose paths today.
 
 6. **Sequencer paths in `Output`.** Confirm during Phase 0 that no
-   non-sequencer compose path reaches `seqdata.SequencerData`. If
-   anything does, decide whether to move it or build-tag-gate it.
+   non-sequencer compose path reaches `seqdata.SequencerData`.
 
-7. **Tests in the wasm path.** TinyGo's test runner is limited. The
-   easiest path is to keep using the standard Go toolchain to test
-   `txcore` (since it's pure Go, just constrained), and only build —
-   not test — under TinyGo. A small handful of JS-integration tests
-   run in headless Chrome would cover the wasm boundary.
+7. **Tests in the wasm path.** TinyGo's test runner is limited.
+   Keep using the standard Go toolchain to test `txcore` (it's pure
+   Go, just constrained). A small handful of JS-integration tests
+   in headless Chrome cover the wasm boundary.
 
 8. **Versioning / library hash.** A wasm bundle is pinned to one
-   extended-library version. How does the wallet detect a host
-   upgrade and prompt the user to update? Two options:
-   - The wasm core exposes the library hash it was built with; the
-     wallet UI fetches the current host hash and compares.
-   - Submissions carry the wallet's library hash; the host rejects
-     mismatches with a clear error.
-   Out of scope for this refactor — pick during wallet integration.
-
-9. **Layer 1 vs Layer 2 default.** What does the "official"
-   reference wallet import? Layer 2 (typed sugar) is more ergonomic
-   but adds emitter code per constraint kind. Default to Layer 2 in
-   v1, drop down to Layer 1 only if the binary-size budget forces
-   it.
+   extended-library version. Wallet UI detects host upgrade and
+   prompts user to update. Out of scope for this refactor.
 
 ---
 
 ## Cross-references
 
-- `easyfl/claude/tinygo_wasm.md` — easyfl's side of the same refactor.
-  Several of its open items are tighter now (YAML serde dropped,
-  crypto moved out); the remaining work is `reflect` removal,
-  slicepool build-tag split, and tuple-tree thread-safety.
+- [wasm_easyfl.md](wasm_easyfl.md) — the easyfl-side restructure
+  this depends on. **Status: shipped 2026-05-19 as `c2f3713`.**
 - `claude/native_token.md` — refers to `token`/`tokenAmount` as Go
-  builtins; these end up emitter-only on the wasm side (the wallet
+  builtins; on the wasm side these become emitter-only (wallet
   pushes a `token(tag, 0xFF)` bytecode but never evaluates it).
 - `CLAUDE.md` working rules — "Enforce constraints in EasyFL when
-  possible" still applies; the txcore split is a packaging refactor,
-  not a behavioural one.
+  possible" still applies; txcore is a packaging refactor, not a
+  behavioural one.
