@@ -189,7 +189,7 @@ func makeClaimingCompactTransaction(
 	maxInputs int,
 ) (txBytes []byte, txid base.TransactionID, consumed [][]byte, err error) {
 	walletAccount := ledger.SigLockFromED25519PrivateKey(walletPrivateKey)
-	walletHolderID := base.HolderID(walletAccount)
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletPrivateKey)
 
 	walletOutputs, _, inTotal, err := glb.GetClient().GetSpendableOutputs(walletAccount, client.SpendableOutputsParams{
 		IncludeSendWithDeadline: true,
