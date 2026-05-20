@@ -6,8 +6,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lunfardo314/proxima/api"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -87,6 +90,9 @@ with --deadline.`,
 }
 
 func runSendCmd(cmd *cobra.Command, args []string) {
+	// InitLedgerFromNode is still needed for display (Output._lines
+	// uses the singleton via ledger.L). The wallet path itself does
+	// not depend on it for construction.
 	glb.InitLedgerFromNode()
 
 	amount, err := strconv.ParseUint(args[0], 10, 64)
@@ -101,9 +107,7 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 	tagHex, err := cmd.Flags().GetString("tag")
 	glb.AssertNoError(err)
 
-	// Tagged native-token transfer is a separate flow (see
-	// send_tagged.go). It builds the tx by hand: tokenAmount inputs +
-	// PRXI funding + tokenAmount outputs + Phase D token() sentinel.
+	// Tagged native-token transfer is a separate flow (see send_tagged.go).
 	if tagHex != "" {
 		glb.Assertf(!deadlineMode, "--tag is incompatible with --deadline")
 		glb.Assertf(!cmd.Flags().Changed("acceptance-slots"),
@@ -119,7 +123,6 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 
 	targetCtrl := glb.MustGetTarget()
 
-	// Resolve tag-along.
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified (set tag_along.sequencer_id)")
 	feeAmount := glb.GetTagAlongFee()
@@ -131,23 +134,121 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 		feeAmount = md.MinimumFee()
 	}
 
-	// Build the final Lock to put on the output.
-	var targetLock ledger.Lock
+	// Deadline mode keeps the legacy recipe path. The
+	// sendWithDeadlineLock helper is not in txbuildercore yet — see
+	// claude/proxi_txbuildercore.md Phase 1 helpers gap.
 	if deadlineMode {
-		targetLock = buildSendWithDeadlineLock(wallet, targetCtrl, acceptanceSlots, cleanupSlots)
-		glb.Infof("mode:   sendWithDeadline (acceptance=%d slots, cleanup=%d slots)",
-			acceptanceSlots, cleanupSlots)
-		glb.Infof("target: %s", describeSWDTarget(targetCtrl))
-	} else {
-		// Reject deadline-only flags on the plain path.
-		glb.Assertf(!cmd.Flags().Changed("acceptance-slots"),
-			"--acceptance-slots only applies with --deadline")
-		glb.Assertf(!cmd.Flags().Changed("cleanup-slots"),
-			"--cleanup-slots only applies with --deadline")
-		targetLock = targetCtrl
-		glb.Infof("mode:   plain transfer (target lock is %s)", targetCtrl.Name())
-		glb.Infof("target: %s", targetCtrl.String())
+		runSendCmdLegacyDeadline(wallet, targetCtrl, tagAlongSeqID, feeAmount, amount, acceptanceSlots, cleanupSlots)
+		return
 	}
+	glb.Assertf(!cmd.Flags().Changed("acceptance-slots"),
+		"--acceptance-slots only applies with --deadline")
+	glb.Assertf(!cmd.Flags().Changed("cleanup-slots"),
+		"--cleanup-slots only applies with --deadline")
+	glb.Infof("mode:   plain transfer (target lock is %s)", targetCtrl.Name())
+	glb.Infof("target: %s", targetCtrl.String())
+
+	prompt := fmt.Sprintf("send will cost %s of fees paid to tag-along sequencer %s. Proceed?",
+		util.Th(feeAmount), tagAlongSeqID.StringShort())
+	if !glb.YesNoPrompt(prompt, true) {
+		glb.Infof("exit")
+		os.Exit(0)
+	}
+
+	// Wasm-style wallet build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderID(ledger.SigLockFromED25519PrivateKey(wallet.PrivateKey))
+	needed := amount + feeAmount
+
+	// 1. Fetch sigLock inputs from the wallet via the API.
+	res, err := glb.GetClient().GetOutputs(wallet.Account.ControllerID(), client.GetOutputsParams{
+		LockType:  api.GetOutputsLockTypeSigLock,
+		Chained:   client.NonChainedOnly(),
+		SortBy:    api.GetOutputsSortByAmount,
+		SortOrder: api.GetOutputsSortOrderDesc,
+		ForAmount: needed,
+	})
+	glb.AssertNoError(err)
+	glb.Assertf(res.AvailableAmount >= needed,
+		"not enough tokens: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
+
+	// 2. Build the produced outputs (target + tag-along + optional remainder).
+	var targetOut *txbuildercore.Output
+	switch c := targetCtrl.(type) {
+	case ledger.SigLock:
+		targetOut, err = txbuildercore.NewSigLockOutput(lib, amount, base.HolderID(c))
+	case ledger.ChainLock:
+		var chainID base.ChainID
+		glb.Assertf(len(c) == 32, "chainLock target must carry a 32-byte chain ID, got %d", len(c))
+		copy(chainID[:], c)
+		targetOut, err = txbuildercore.NewChainLockOutput(lib, amount, chainID)
+	default:
+		glb.Assertf(false, "plain send only supports sigLock or chainLock targets, got %s", targetCtrl.Name())
+	}
+	glb.AssertNoError(err)
+
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(lib, feeAmount, *tagAlongSeqID, walletHolderID)
+	glb.AssertNoError(err)
+
+	var remainderOut *txbuildercore.Output
+	if res.AvailableAmount > needed {
+		remainderOut, err = txbuildercore.NewSigLockOutput(lib, res.AvailableAmount-needed, walletHolderID)
+		glb.AssertNoError(err)
+	}
+
+	// 3. Compose the transaction.
+	txb := txbuildercore.New(0)
+	consumedBytes := make([][]byte, 0, len(res.Outputs))
+	for i, in := range res.Outputs {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumedBytes = append(consumedBytes, b)
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+			glb.AssertNoError(err)
+		}
+	}
+	txb.ProduceOutput(targetOut.Bytes())
+	txb.ProduceOutput(tagAlongOut.Bytes())
+	if remainderOut != nil {
+		txb.ProduceOutput(remainderOut.Bytes())
+	}
+
+	// 4. Finalize. SetTimestamp also sets TxData.UpgradeIndex via the
+	//    glb-aware helper layer; here we use the txbuildercore raw
+	//    setter and lookup upgrade index separately if needed (the
+	//    ledger library passes upgrade index = 0 for now). Pace
+	//    constraint is enforced server-side at parse + partial
+	//    validation; using TimeNow() suffices for most paths.
+	txb.SetTimestamp(ledger.TimeNow())
+	txb.ComputeInputCommitment()
+	txb.SignED25519(wallet.PrivateKey)
+
+	txBytes := txb.Bytes()
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		os.Exit(1)
+	}
+	glb.Infof("transaction submitted successfully")
+
+	if glb.NoWait() {
+		return
+	}
+	// Derive the tx ID for inclusion tracking.
+	txID, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err)
+	glb.TrackTxInclusion(txID, time.Second)
+}
+
+// runSendCmdLegacyDeadline keeps the --deadline path on the legacy
+// glb.TransferFromED25519Wallet recipe. The wasm-style refactor for
+// sendWithDeadlineLock is deferred (no txbuildercore helper yet).
+func runSendCmdLegacyDeadline(wallet glb.WalletData, targetCtrl ledger.Controller, tagAlongSeqID *base.ChainID, feeAmount, amount uint64, acceptanceSlots, cleanupSlots uint32) {
+	targetLock := buildSendWithDeadlineLock(wallet, targetCtrl, acceptanceSlots, cleanupSlots)
+	glb.Infof("mode:   sendWithDeadline (acceptance=%d slots, cleanup=%d slots)",
+		acceptanceSlots, cleanupSlots)
+	glb.Infof("target: %s", describeSWDTarget(targetCtrl))
 
 	prompt := fmt.Sprintf("send will cost %s of fees paid to tag-along sequencer %s. Proceed?",
 		util.Th(feeAmount), tagAlongSeqID.StringShort())

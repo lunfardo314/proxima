@@ -25,6 +25,10 @@ const (
 	// TagAlongLockName is the symbol of the canonical tag-along lock
 	// function. Matches ledger/lock_tag_along.go.
 	TagAlongLockName = "tagAlong"
+
+	// ChainLockName is the symbol of the canonical chain-lock function.
+	// Matches ledger/lock_chain.go.
+	ChainLockName = "chainLock"
 )
 
 // lockBytecodeCache memoises the canonical lock bytecodes per-Library.
@@ -87,6 +91,26 @@ func NewSigLockOutput(lib *Library, amount uint64, holderID base.HolderID) (*Out
 	b.PutConstraint(EncodeTokenBalance(amount), ConstraintIndexAmounts)
 	b.PutConstraint(EncodeIndexValuesTuple([][]byte{holderID[:]}), ConstraintIndexIndexValues)
 	b.PutConstraint(sigLockBin, ConstraintIndexLock)
+	return b.Output(), nil
+}
+
+// NewChainLockOutput composes the canonical chainLock output:
+//
+//	slot 0 (amounts):       trimmed-uint64 encoding of `amount`
+//	slot 1 (index-values):  tuple holding `chainID` at position 0
+//	slot 2 (lock):          canonical chainLock bytecode (per-Library cache)
+//
+// chainID is the 32-byte chain identifier of the chain that controls
+// this output (the chain's controller is the spender).
+func NewChainLockOutput(lib *Library, amount uint64, chainID base.ChainID) (*Output, error) {
+	chainLockBin, err := cacheFor(lib).get(lib, ChainLockName)
+	if err != nil {
+		return nil, err
+	}
+	b := NewOutputBuilder()
+	b.PutConstraint(EncodeTokenBalance(amount), ConstraintIndexAmounts)
+	b.PutConstraint(EncodeIndexValuesTuple([][]byte{chainID[:]}), ConstraintIndexIndexValues)
+	b.PutConstraint(chainLockBin, ConstraintIndexLock)
 	return b.Output(), nil
 }
 

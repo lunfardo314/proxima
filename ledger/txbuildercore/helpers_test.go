@@ -78,6 +78,28 @@ func TestNewSigLockOutput_ByteIdentity(t *testing.T) {
 	require.Equal(t, server.Bytes(), wallet.Bytes())
 }
 
+// TestNewChainLockOutput_ByteIdentity verifies the txbuildercore
+// helper produces bytes byte-identical to ledger.NewOutput +
+// WithLock(ChainLock) for the same amount + chain id.
+func TestNewChainLockOutput_ByteIdentity(t *testing.T) {
+	lib := txbuildercoreLibFromGlobal(t)
+
+	var chainID base.ChainID
+	for i := range chainID {
+		chainID[i] = byte(i + 7)
+	}
+	const amount uint64 = 9_876_543
+
+	wallet, err := txbuildercore.NewChainLockOutput(lib, amount, chainID)
+	require.NoError(t, err)
+
+	server := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithTokenBalance(amount).WithLock(ledger.ChainLockFromChainID(chainID))
+	})
+
+	require.Equal(t, server.Bytes(), wallet.Bytes())
+}
+
 // TestNewTagAlongOutput_ByteIdentity verifies tag-along byte identity
 // between wallet and server compose paths.
 func TestNewTagAlongOutput_ByteIdentity(t *testing.T) {
