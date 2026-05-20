@@ -77,19 +77,6 @@ func (txb *TxBuilder) ConsumeOutput(out *ledger.Output, oid base.OutputID) (byte
 	return txb.TxBuilder.ConsumeOutput(out.Bytes(), oid), nil
 }
 
-func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.OutputID, chainInIdx byte) (byte, error) {
-	lock := o.Lock()
-	if lock.Name() != ledger.ChainLockName {
-		return 0, fmt.Errorf("not a chain lock")
-	}
-	idx, err := txb.ConsumeOutput(o, oid)
-	if err != nil {
-		return 0, err
-	}
-	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(chainInIdx))
-	return idx, nil
-}
-
 func (txb *TxBuilder) ConsumeOutputsUnlock(outs ...*ledger.OutputWithID) (uint64, base.LedgerTime, error) {
 	var err error
 	if len(outs) >= 256 {
@@ -150,17 +137,6 @@ func (txb *TxBuilder) ProduceOutput(o *ledger.Output) (byte, error) {
 	return txb.TxBuilder.ProduceOutput(o.Bytes()), nil
 }
 
-func (txb *TxBuilder) ProduceOutputs(outs ...*ledger.Output) (uint64, error) {
-	total := uint64(0)
-	for _, o := range outs {
-		if _, err := txb.ProduceOutput(o); err != nil {
-			return 0, err
-		}
-		total += o.TokenBalance()
-	}
-	return total, nil
-}
-
 func (txb *TxBuilder) ConsumedAmount() uint64 {
 	ret := uint64(0)
 	for _, o := range txb.ConsumedOutputs {
@@ -213,36 +189,6 @@ func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {
 		retInflation += o.Inflation()
 	}
 	return retTotal, retInflation
-}
-
-// InsertSimpleChainTransition inserts a simple chain transition. Takes output with chain constraint from parameters,
-// Produces identical output, only modifies timestamp. Unlocks chain-input lock with signature reference
-func (txb *TxBuilder) InsertSimpleChainTransition(inChainData *ledger.OutputDataWithChainID, _ base.LedgerTime) error {
-	// Use input's slot for parsing (output was created at that slot)
-	chainIN, err := ledger.OutputFromBytesWithLib(inChainData.Data, ledger.L(inChainData.ID.Slot()))
-	if err != nil {
-		return err
-	}
-	cc := chainIN.ChainConstraint()
-	if cc == nil {
-		return fmt.Errorf("can't find chain constrain in the output")
-	}
-	predecessorOutputIndex, err := txb.ConsumeOutput(chainIN, inChainData.ID)
-	if err != nil {
-		return err
-	}
-	successor := ledger.NewChainConstraint(inChainData.ChainID, predecessorOutputIndex, cc.OriginSlot, cc.CumulativeChainInflation, cc.CumulativeBranchBonus, cc.TransitionCounter+1, cc.BranchCounter)
-	chainOut := chainIN.Clone(func(out *ledger.OutputBuilder) {
-		out.PutConstraint(successor.Bytes(), ledger.ConstraintIndexChain)
-	})
-	successorOutputIndex, err := txb.ProduceOutput(chainOut)
-	if err != nil {
-		return err
-	}
-	txb.PutUnlockParams(predecessorOutputIndex, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(successorOutputIndex))
-	txb.PutSignatureUnlock(successorOutputIndex)
-
-	return nil
 }
 
 // LoadInput returns clone of the consumed output
@@ -339,7 +285,6 @@ type (
 		Amount           uint64
 		AdjustToMinimum  bool
 		AddConstraints   [][]byte
-		UnlockData       []*UnlockData
 		Endorsements     []base.TransactionID
 		ExplicitBaseline *base.TransactionID
 		TagAlong         *TagAlongData
@@ -366,12 +311,6 @@ type (
 		SeqID  base.ChainID
 		Amount uint64
 	}
-
-	UnlockData struct {
-		OutputIndex     byte
-		ConstraintIndex byte
-		Data            []byte
-	}
 )
 
 func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount ledger.Controller, ts base.LedgerTime) *TransferData {
@@ -385,7 +324,6 @@ func NewTransferData(senderKey ed25519.PrivateKey, sourceAccount ledger.Controll
 		SourceAccount:    sourceAccount,
 		Timestamp:        ts,
 		AddConstraints:   make([][]byte, 0),
-		UnlockData:       make([]*UnlockData, 0),
 		Endorsements:     make([]base.TransactionID, 0),
 	}
 }
@@ -440,10 +378,6 @@ func (t *TransferData) WithConstraint(constr ledger.Constraint, idx ...byte) *Tr
 	return t.WithConstraintBinary(constr.Bytes(), idx...)
 }
 
-func (t *TransferData) WithConstraintAtIndex(constr ledger.Constraint) *TransferData {
-	return t.WithConstraintBinary(constr.Bytes())
-}
-
 func (t *TransferData) UseOutputsAsInputs(outs ...*ledger.OutputWithID) error {
 	for _, o := range outs {
 		// Output must be sig-locked by the same holder as t.SourceAccount,
@@ -464,20 +398,6 @@ func (t *TransferData) MustWithInputs(outs ...*ledger.OutputWithID) *TransferDat
 
 func (t *TransferData) WithChainOutput(out *ledger.OutputWithChainID) *TransferData {
 	t.ChainOutput = out
-	return t
-}
-
-func (t *TransferData) WithUnlockData(consumedOutputIndex, constraintIndex byte, data []byte) *TransferData {
-	t.UnlockData = append(t.UnlockData, &UnlockData{
-		OutputIndex:     consumedOutputIndex,
-		ConstraintIndex: constraintIndex,
-		Data:            data,
-	})
-	return t
-}
-
-func (t *TransferData) WithEndorsements(ids ...base.TransactionID) *TransferData {
-	t.Endorsements = ids
 	return t
 }
 
@@ -661,9 +581,6 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 		}
 	}
 
-	for _, un := range par.UnlockData {
-		txb.PutUnlockParams(un.OutputIndex, un.ConstraintIndex, un.Data)
-	}
 	txb.SetTimestamp(adjustedTs)
 	txb.TxData.Endorsements = par.Endorsements
 	txb.ComputeInputCommitment()
