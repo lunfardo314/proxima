@@ -19,6 +19,7 @@ const (
 
 	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
 	PathGetLedgerConstants               = PrefixAPIV1 + "/ledger_constants"
+	PathEval                             = PrefixAPIV1 + "/eval"
 	PathGetOutputs                       = PrefixAPIV1 + "/get_outputs"
 	PathGetChainOutput                   = PrefixAPIV1 + "/get_chain_output"
 	PathGetOutput                        = PrefixAPIV1 + "/get_output"
@@ -101,6 +102,34 @@ type (
 	Error struct {
 		// empty string when no error
 		Error string `json:"error,omitempty"`
+	}
+
+	// EvalRequest is the JSON body of POST /api/v1/eval.
+	//
+	// `slot` selects the library version (0 / omitted → MaxSlot, i.e.
+	// "latest at request time"). `sources` is a list of CLOSED EasyFL
+	// formulas (no `$0`/`$1` args); each is evaluated independently.
+	// The response carries `results` in the same order; per-formula
+	// failures live in EvalResult.Error rather than failing the batch.
+	EvalRequest struct {
+		Slot    uint32   `json:"slot,omitempty"`
+		Sources []string `json:"sources"`
+	}
+
+	// EvalResult is one entry in EvalResponse.Results.
+	//   Value: hex string of the evaluation result bytes, no "0x"
+	//          prefix; empty when the formula failed.
+	//   Error: server-side eval/compile error message; mutually
+	//          exclusive with Value.
+	EvalResult struct {
+		Value string `json:"value,omitempty"`
+		Error string `json:"error,omitempty"`
+	}
+
+	// EvalResponse is the JSON body of the eval response.
+	EvalResponse struct {
+		Error
+		Results []EvalResult `json:"results,omitempty"`
 	}
 
 	// SubmitTxRequest is the JSON body of POST /api/v1/submit_tx.

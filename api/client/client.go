@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/global"
@@ -169,6 +170,83 @@ func (c *APIClient) GetLedgerConstants(slot *uint32) (*txbuildercore.Constants, 
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	return &consts, nil
+}
+
+// EvalResult is the in-process form of one entry in the /api/v1/eval
+// response. Value carries the raw evaluation bytes (hex-decoded);
+// Error is the server-side per-formula failure message. Exactly one
+// of the two is non-zero per entry.
+type EvalResult struct {
+	Value []byte
+	Error string
+}
+
+// Eval batches a list of closed EasyFL formulas to the server's
+// /api/v1/eval endpoint and returns one EvalResult per source in
+// input order. slot=0 means "latest at request time" (server-side
+// MaxSlot default).
+//
+// Per-formula compile / eval failures do NOT fail the batch; they
+// land in EvalResult.Error. Returns a non-nil error only on transport
+// or response-decoding failure.
+func (c *APIClient) Eval(slot uint32, sources []string) ([]EvalResult, error) {
+	reqBytes, err := json.Marshal(&api.EvalRequest{Slot: slot, Sources: sources})
+	if err != nil {
+		return nil, fmt.Errorf("marshal eval request: %w", err)
+	}
+	url := c.prefix + api.PathEval
+	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBytes))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.c.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var raw api.EvalResponse
+	if err = json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode eval response: %w (body=%s)", err, string(body))
+	}
+	if raw.Error.Error != "" {
+		return nil, fmt.Errorf("server error: %s", raw.Error.Error)
+	}
+	out := make([]EvalResult, len(raw.Results))
+	for i, r := range raw.Results {
+		if r.Error != "" {
+			out[i].Error = r.Error
+			continue
+		}
+		bin, decErr := hex.DecodeString(r.Value)
+		if decErr != nil {
+			return nil, fmt.Errorf("decode results[%d].value hex: %w", i, decErr)
+		}
+		out[i].Value = bin
+	}
+	return out, nil
+}
+
+// EvalU64 is the single-formula uint64 convenience wrapper around
+// Eval. Useful for "give me the value of <constName>" calls.
+// Returns the per-formula error verbatim when the server reports one.
+func (c *APIClient) EvalU64(slot uint32, source string) (uint64, error) {
+	results, err := c.Eval(slot, []string{source})
+	if err != nil {
+		return 0, err
+	}
+	if len(results) != 1 {
+		return 0, fmt.Errorf("EvalU64: expected 1 result, got %d", len(results))
+	}
+	if results[0].Error != "" {
+		return 0, fmt.Errorf("eval %q: %s", source, results[0].Error)
+	}
+	return easyfl_util.Uint64FromBytes(results[0].Value)
 }
 
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server

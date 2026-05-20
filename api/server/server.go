@@ -69,6 +69,9 @@ func (srv *server) registerHandlers() {
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
 	// GET request format: '/api/v1/ledger_constants?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerConstants, srv.getLedgerConstants)
+	// POST request format: '/api/v1/eval'. JSON body {slot, sources: [closed EasyFL formulas]}.
+	// See claude/wallet_eval_api.md.
+	srv.addHandler(api.PathEval, srv.eval)
 	// Unified state-query endpoint. See claude/get_outputs.md.
 	// GET '/api/v1/get_outputs?index_value=<hex>[&max_outputs=N][&sort_by=timestamp|amount][&sort_order=asc|desc][&for_amount=N][&lock_type=all|sigLock|chainLock|tagAlongMaster|tagAlongTarget|delegateMaster|delegateTarget][&chained=true|false]'
 	srv.addHandler(api.PathGetOutputs, srv.getOutputs)
@@ -191,6 +194,62 @@ func (srv *server) getLedgerConstants(w http.ResponseWriter, r *http.Request) {
 
 	walletConsts := ledger.L(slot).Constants.ToWalletConstants()
 	respBytes, err := json.Marshal(walletConsts)
+	if err != nil {
+		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
+		return
+	}
+	_, _ = w.Write(respBytes)
+}
+
+// eval evaluates a batch of CLOSED EasyFL formulas against the library
+// active at the requested slot (default MaxSlot). Per-formula failures
+// (compile error, eval panic, type error) land in EvalResult.Error;
+// the batch as a whole is HTTP 2xx as long as the request itself
+// parses. See claude/wallet_eval_api.md.
+func (srv *server) eval(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		api.WriteErr(w, fmt.Sprintf("read body: %v", err))
+		return
+	}
+	var req api.EvalRequest
+	if err = json.Unmarshal(bodyBytes, &req); err != nil {
+		api.WriteErr(w, fmt.Sprintf("bad JSON: %v", err))
+		return
+	}
+
+	slot := req.Slot
+	if slot == 0 {
+		slot = base.MaxSlot
+	}
+	lib := ledger.L(slot)
+
+	results := make([]api.EvalResult, len(req.Sources))
+	for i, src := range req.Sources {
+		var bin []byte
+		evalErr := util.CatchPanicOrError(func() error {
+			b, e := lib.EvalFromSource(nil, src)
+			if e != nil {
+				return e
+			}
+			bin = b
+			return nil
+		})
+		if evalErr != nil {
+			results[i].Error = evalErr.Error()
+			continue
+		}
+		results[i].Value = hex.EncodeToString(bin)
+	}
+
+	respBytes, err := json.Marshal(&api.EvalResponse{Results: results})
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
 		return
