@@ -281,7 +281,7 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Controller) (base.Tra
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
 	}
-	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(tagAlongOut, fct.walletData.PrivateKey, ts)
+	txBytes, txid, txString, err := glb.MakeSendOutputTransaction(tagAlongOut, fct.walletData.PrivateKey, ts)
 	if err != nil {
 		if txString != "" {
 			err = fmt.Errorf("error %v\n----------- failing tx ------------\n%s", err, txString)
@@ -298,7 +298,7 @@ func (fct *faucetServer) redrawFromChain(targetLock ledger.Controller) (base.Tra
 }
 
 func (fct *faucetServer) redrawFromAccount(targetLock ledger.Controller) (base.TransactionID, error) {
-	txCtx, err := glb.GetClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
+	txCtx, err := glb.TransferFromED25519Wallet(glb.TransferFromED25519WalletParams{
 		WalletPrivateKey: fct.walletData.PrivateKey,
 		TagAlongSeqID:    fct.transferTagAlongSeqID,
 		TagAlongFee:      fct.transferTagAlongFee,

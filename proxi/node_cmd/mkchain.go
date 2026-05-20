@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
@@ -115,7 +114,7 @@ func MakeChain(onChainAmount uint64) (*transaction.Transaction, base.ChainID, er
 	} else {
 		glb.Infof("   delegationParams: omitted (chain cannot accept delegations)")
 	}
-	return glb.GetClient().MakeChainOrigin(client.TransferFromED25519WalletParams{
+	return glb.MakeChainOrigin(glb.TransferFromED25519WalletParams{
 		WalletPrivateKey: walletData.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,

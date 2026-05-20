@@ -65,7 +65,7 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 
 	requestOutput := txbuilder_seq.NewAskStopDelegationReqOutput(targetID, walletData.Account, delegationID, compensation)
 
-	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(requestOutput, walletData.PrivateKey, ts)
+	txBytes, txid, txString, err := glb.MakeSendOutputTransaction(requestOutput, walletData.PrivateKey, ts)
 	if err != nil {
 		glb.Infof("error: %v", err)
 		if txString != "" {

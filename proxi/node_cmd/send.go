@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
@@ -157,7 +156,7 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	txCtx, err := glb.GetClient().TransferFromED25519Wallet(client.TransferFromED25519WalletParams{
+	txCtx, err := glb.TransferFromED25519Wallet(glb.TransferFromED25519WalletParams{
 		WalletPrivateKey: wallet.PrivateKey,
 		TagAlongSeqID:    tagAlongSeqID,
 		TagAlongFee:      feeAmount,

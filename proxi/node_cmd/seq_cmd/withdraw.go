@@ -54,7 +54,7 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
 	}
-	txBytes, txid, txString, err := glb.GetClient().MakeSendOutputTransaction(tagAlongOut, walletData.PrivateKey, ts)
+	txBytes, txid, txString, err := glb.MakeSendOutputTransaction(tagAlongOut, walletData.PrivateKey, ts)
 	if err != nil {
 		glb.Infof("error: %s", err)
 		if txString != "" {
