@@ -147,7 +147,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	tx, err := glb.GetClient().MakeClaimingCompactTransaction(
+	tx, err := glb.MakeClaimingCompactTransaction(
 		walletData.PrivateKey, tagAlongSeqID, feeAmount, targetSlot, maxNumberOfInputs)
 	if tx != nil {
 		glb.Verbosef("------- the compacting transaction -------- \n%s\n--------------------------", tx.String())
