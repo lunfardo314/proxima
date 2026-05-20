@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 )
@@ -314,4 +315,40 @@ func (c *Constants) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
 
 func (c *Constants) GenesisTimeUnixNano() int64 {
 	return time.Unix(int64(c.GenesisTimeUnix), 0).UnixNano()
+}
+
+// ToWalletConstants converts the host-side *Constants into the
+// wallet-side txbuildercore.Constants. Field set on the wallet side
+// is intentionally a subset (no server-internal validator names);
+// keep this adapter in sync as fields land on both sides. See
+// claude/wallet_eval_api.md (Phase A2).
+func (c *Constants) ToWalletConstants() *txbuildercore.Constants {
+	return &txbuildercore.Constants{
+		Hash:                         c.Hash,
+		Description:                  c.Description,
+		GenesisControllerPublicKey:   append(ed25519.PublicKey(nil), c.GenesisControllerPublicKey...),
+		GenesisTimeUnix:              c.GenesisTimeUnix,
+		TickDuration:                 c.TickDuration,
+		TicksPerSlot:                 c.TicksPerSlot,
+		InitialSupply:                c.InitialSupply,
+		SlotInflationBase:            c.SlotInflationBase,
+		MinimumInflatableAmount0:     c.MinimumInflatableAmount0,
+		TransactionPace:              c.TransactionPace,
+		TransactionPaceSequencer:     c.TransactionPaceSequencer,
+		MaxNumberOfEndorsements:      c.MaxNumberOfEndorsements,
+		PreBranchConsolidationTicks:  c.PreBranchConsolidationTicks,
+		SafeRevocationSlots:          c.SafeRevocationSlots,
+		DelegationEpochSlots:         c.DelegationEpochSlots,
+		MaxFrozenEpochs:              c.MaxFrozenEpochs,
+		DelegationEpochSlotsMin:      c.DelegationEpochSlotsMin,
+		DelegationEpochSlotsMax:      c.DelegationEpochSlotsMax,
+		DelegationMaxFrozenEpochsMin: c.DelegationMaxFrozenEpochsMin,
+		DelegationMaxFrozenEpochsMax: c.DelegationMaxFrozenEpochsMax,
+		TagAlongSlots:                c.TagAlongSlots,
+		TagAlongReclaimSlots:         c.TagAlongReclaimSlots,
+		AttachmentCostBudget:         c.AttachmentCostBudget,
+		TxIDStateTTLSlots:            c.TxIDStateTTLSlots,
+		HealthyCoverageNumerator:     c.HealthyCoverageNumerator,
+		HealthyCoverageDenominator:   c.HealthyCoverageDenominator,
+	}
 }

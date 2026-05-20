@@ -139,6 +139,38 @@ func (c *APIClient) GetLibrary(slot *uint32) (*txbuildercore.Library, error) {
 	return lib, nil
 }
 
+// GetLedgerConstants fetches the runtime ledger constants extracted
+// from the library active at the given slot (latest if slot is nil).
+// Returns a wallet-side *txbuildercore.Constants. The wallet does NOT
+// need the ledger.L() singleton to use these.
+//
+// On the wire the response is the JSON-marshalled Constants directly.
+// To detect the error-envelope shape ({"error": "..."}) emitted by
+// api.WriteErr on server-side parameter validation failures, the
+// payload is parsed once via a peek-then-decode pattern.
+func (c *APIClient) GetLedgerConstants(slot *uint32) (*txbuildercore.Constants, error) {
+	path := api.PathGetLedgerConstants
+	if slot != nil {
+		path = fmt.Sprintf("%s?slot=%d", api.PathGetLedgerConstants, *slot)
+	}
+	body, err := c.getBody(path)
+	if err != nil {
+		return nil, err
+	}
+	// Probe for an error envelope first.
+	var probe struct {
+		Error string `json:"error"`
+	}
+	if err = json.Unmarshal(body, &probe); err == nil && probe.Error != "" {
+		return nil, fmt.Errorf("server error: %s", probe.Error)
+	}
+	var consts txbuildercore.Constants
+	if err = json.Unmarshal(body, &consts); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+	return &consts, nil
+}
+
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server
 func (c *APIClient) GetChainOutputData(chainID base.ChainID) (*ledger.OutputDataWithID, base.TransactionID, error) {
 	path := fmt.Sprintf(api.PathGetChainOutput+"?chainid=%s", chainID.StringHex())

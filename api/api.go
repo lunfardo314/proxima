@@ -18,6 +18,7 @@ const (
 	PrefixWebSocketV1 = "/wsapi/v1"
 
 	PathGetLedgerDefinition              = PrefixAPIV1 + "/get_ledger_definition"
+	PathGetLedgerConstants               = PrefixAPIV1 + "/ledger_constants"
 	PathGetOutputs                       = PrefixAPIV1 + "/get_outputs"
 	PathGetChainOutput                   = PrefixAPIV1 + "/get_chain_output"
 	PathGetOutput                        = PrefixAPIV1 + "/get_output"

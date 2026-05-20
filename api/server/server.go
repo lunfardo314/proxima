@@ -67,6 +67,8 @@ const TraceTag = "apiServer"
 func (srv *server) registerHandlers() {
 	// GET request format: '/api/v1/get_ledger_definition?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
 	srv.addHandler(api.PathGetLedgerDefinition, srv.getLedgerDefinition)
+	// GET request format: '/api/v1/ledger_constants?slot=<slot>' (slot optional, defaults to MaxSlot for latest)
+	srv.addHandler(api.PathGetLedgerConstants, srv.getLedgerConstants)
 	// Unified state-query endpoint. See claude/get_outputs.md.
 	// GET '/api/v1/get_outputs?index_value=<hex>[&max_outputs=N][&sort_by=timestamp|amount][&sort_order=asc|desc][&for_amount=N][&lock_type=all|sigLock|chainLock|tagAlongMaster|tagAlongTarget|delegateMaster|delegateTarget][&chained=true|false]'
 	srv.addHandler(api.PathGetOutputs, srv.getOutputs)
@@ -168,6 +170,32 @@ func (srv *server) getLedgerDefinition(w http.ResponseWriter, r *http.Request) {
 	if _, err = w.Write(respBytes); err != nil {
 		srv.Log().Warnf("getLedgerDefinition: failed to write response: %v", err)
 	}
+}
+
+// getLedgerConstants returns the runtime ledger constants extracted
+// from the library active at the given slot (default MaxSlot). The
+// response body is the JSON-marshalled *txbuildercore.Constants;
+// see claude/wallet_eval_api.md.
+func (srv *server) getLedgerConstants(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	var slot uint32 = base.MaxSlot
+	if slotParam := r.URL.Query().Get("slot"); slotParam != "" {
+		slotVal, err := strconv.ParseUint(slotParam, 10, 32)
+		if err != nil {
+			api.WriteErr(w, "invalid slot parameter: must be non-negative 32-bit integer")
+			return
+		}
+		slot = uint32(slotVal)
+	}
+
+	walletConsts := ledger.L(slot).Constants.ToWalletConstants()
+	respBytes, err := json.Marshal(walletConsts)
+	if err != nil {
+		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))
+		return
+	}
+	_, _ = w.Write(respBytes)
 }
 
 func (srv *server) getChainOutput(w http.ResponseWriter, r *http.Request) {

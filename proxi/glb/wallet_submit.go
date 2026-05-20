@@ -17,6 +17,10 @@ var (
 	txLibOnce sync.Once
 	txLibPtr  *txbuildercore.Library
 	txLibErr  error
+
+	ledgerConstantsOnce sync.Once
+	ledgerConstantsPtr  *txbuildercore.Constants
+	ledgerConstantsErr  error
 )
 
 // GetTxLibrary returns the per-process wallet library, fetched lazily
@@ -29,6 +33,19 @@ func GetTxLibrary() *txbuildercore.Library {
 	})
 	AssertNoError(txLibErr)
 	return txLibPtr
+}
+
+// GetLedgerConstants returns the runtime ledger constants for the
+// latest library, fetched lazily on first call and cached for the
+// process lifetime. Sits next to GetTxLibrary; together they let a
+// proxi command run against a node without InitLedgerFromNode (the
+// ledger.L() singleton). See claude/wallet_eval_api.md.
+func GetLedgerConstants() *txbuildercore.Constants {
+	ledgerConstantsOnce.Do(func() {
+		ledgerConstantsPtr, ledgerConstantsErr = GetClient().GetLedgerConstants(nil)
+	})
+	AssertNoError(ledgerConstantsErr)
+	return ledgerConstantsPtr
 }
 
 // SubmitAndDisplay submits txBytes via the new /api/v1/submit_tx
