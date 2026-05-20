@@ -116,14 +116,15 @@ func fetchAndPrintBoard(chainID base.ChainID, banner string) *chess_poc.ChessGam
 	return gs
 }
 
-// submitAndTrack submits txBytes and (unless --nowait) tracks LRB
-// inclusion at the configured target depth. The default --depth is 1
-// per the user request: "waiting until confirmation of the tx with
-// LRB depth 1".
-func submitAndTrack(txBytes []byte, txid base.TransactionID) {
-	clnt := glb.GetClient()
-	err := clnt.SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
+// submitAndTrack submits txBytes via glb.SubmitAndDisplay
+// (validate_only=false) and (unless --nowait) tracks LRB inclusion.
+// consumedBytes is the wire-form of every input in input-index order;
+// passing it enables full-context validation server-side.
+func submitAndTrack(txBytes []byte, consumedBytes [][]byte, txid base.TransactionID) {
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		// SubmitAndDisplay already printed the error + failing tx lines.
+		return
+	}
 	glb.Infof("submitted tx %s", txid.StringShort())
 	if glb.NoWait() {
 		return
@@ -146,7 +147,7 @@ func runChessAction(label string, txb *txbuilder.TxBuilder, priv ed25519.Private
 	tx, err := txb.Transaction()
 	glb.AssertNoError(err)
 	glb.Verbosef("---- %s tx ----\n%s\n---------------", label, tx.IDString())
-	submitAndTrack(txb.Bytes(), tx.ID())
+	submitAndTrack(txb.Bytes(), txb.ConsumedOutputBytes(), tx.ID())
 	return tx.ID()
 }
 
