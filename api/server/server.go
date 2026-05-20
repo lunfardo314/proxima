@@ -1096,6 +1096,37 @@ func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// spendable=true post-filters the result set to outputs claimable
+	// by the given indexValue (treated as the wallet's holder ID)
+	// under a SINGLE-input signature unlock at target_slot. The slot
+	// is needed for the sendWithDeadline Δ check (accept-window vs
+	// reclaim-window). See claude/wallet_eval_api.md (Phase C3').
+	spendableFilter := false
+	if v, ok := q["spendable"]; ok && len(v) == 1 {
+		switch v[0] {
+		case "true":
+			spendableFilter = true
+		case "false", "":
+			// default
+		default:
+			writeErr(fmt.Sprintf("get_outputs: invalid 'spendable': %s", v[0]))
+			return
+		}
+	}
+
+	// target_slot is the slot the caller intends to use as the tx
+	// timestamp slot — sendWithDeadline Δ is measured against it.
+	// 0 / omitted → default to the server's current LRB slot.
+	var targetSlot uint32
+	if v, ok := q["target_slot"]; ok && len(v) == 1 && v[0] != "" {
+		n, err := strconv.ParseUint(v[0], 10, 32)
+		if err != nil {
+			writeErr(fmt.Sprintf("get_outputs: invalid 'target_slot': %s", v[0]))
+			return
+		}
+		targetSlot = uint32(n)
+	}
+
 	resp := &api.GetOutputsResponse{}
 
 	err = srv.withLRB(func(rdr multistate.SugaredStateReader) error {
@@ -1148,6 +1179,25 @@ func (srv *server) getOutputs(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			filtered = append(filtered, p)
+		}
+
+		// Step 4b: spendable filter (sigLock owned + claim-eligible
+		// sendWithDeadline at target_slot, defaulting to LRB slot).
+		// Lock dispatch uses the library active at that same slot.
+		// See claude/wallet_eval_api.md.
+		if spendableFilter {
+			slot := targetSlot
+			if slot == 0 {
+				slot = lrbid.Timestamp().Slot
+			}
+			lib := ledger.L(slot)
+			kept := filtered[:0]
+			for _, p := range filtered {
+				if isSpendableForAccount(p.out, p.oid, indexValue, slot, lib) {
+					kept = append(kept, p)
+				}
+			}
+			filtered = kept
 		}
 
 		// Step 5: sort.
@@ -1247,6 +1297,49 @@ func matchesLockType(o *ledger.Output, indexValue []byte, lockType string) bool 
 		return name == ledger.DelegateLockName && len(values) > 0 && bytes.Equal(values[0], indexValue)
 	case api.GetOutputsLockTypeDelegateTarget:
 		return name == ledger.DelegateLockName && len(values) > 1 && bytes.Equal(values[1], indexValue)
+	}
+	return false
+}
+
+// isSpendableForAccount returns true iff the output is claimable by
+// accountHID under a SINGLE-input signature unlock at targetSlot.
+// Two shapes qualify:
+//
+//   - 3-element output (amounts | indexValues | lock) locked by sigLock
+//     to accountHID — the legacy "transferable" case;
+//   - sendWithDeadline output where accountHID is master AND has
+//     reached the reclaim window (Δ ≥ acceptanceSlots), OR is the
+//     sigLock target AND is still inside the acceptance window
+//     (Δ < acceptanceSlots).
+//
+// chainLock-target acceptance is excluded — that flow needs the
+// controlling chain output as a separate input. Lock dispatch uses
+// `lib` so the library version matches the validating tx's slot.
+func isSpendableForAccount(o *ledger.Output, oid base.OutputID, accountHID []byte, targetSlot uint32, lib *ledger.Library) bool {
+	ivBin := o.MustAt(int(ledger.ConstraintIndexIndexValues))
+	lockBin := o.MustAt(int(ledger.ConstraintIndexLock))
+	lock, err := ledger.LockFromOutputElementsWithLib(ivBin, lockBin, lib)
+	if err != nil {
+		return false
+	}
+	switch l := lock.(type) {
+	case ledger.SigLock:
+		if o.NumElements() != 3 {
+			return false
+		}
+		return bytes.Equal(l[:], accountHID)
+	case *ledger.SendWithDeadlineLock:
+		createSlot := oid.Slot()
+		if targetSlot < createSlot {
+			return false
+		}
+		delta := targetSlot - createSlot
+		if bytes.Equal(l.MasterID[:], accountHID) {
+			return delta >= l.AcceptanceSlots
+		}
+		if bytes.Equal(l.TargetID[:], accountHID) && l.TargetType == ledger.SendWithDeadlineTargetSigLock {
+			return delta < l.AcceptanceSlots
+		}
 	}
 	return false
 }

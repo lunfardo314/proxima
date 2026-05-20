@@ -115,7 +115,7 @@ func appendCompoundIndexValue(b *OutputBuilder, tag base.ChainID) {
 	if err != nil || len(bin) == 0 {
 		return
 	}
-	current, err := decodeIndexValuesTuple(bin)
+	current, err := DecodeIndexValuesTuple(bin)
 	if err != nil || len(current) == 0 || len(current[0]) == 0 {
 		return
 	}
@@ -131,10 +131,10 @@ func appendCompoundIndexValue(b *OutputBuilder, tag base.ChainID) {
 	b.PutConstraint(EncodeIndexValuesTuple(current), ConstraintIndexIndexValues)
 }
 
-// decodeIndexValuesTuple is the inverse of EncodeIndexValuesTuple:
+// DecodeIndexValuesTuple is the inverse of EncodeIndexValuesTuple:
 // parse the serialised tuple at slot 1 back to its element slice.
 // Empty bytes -> empty slice. Mirrors ledger.IndexValuesFromBytes.
-func decodeIndexValuesTuple(data []byte) ([][]byte, error) {
+func DecodeIndexValuesTuple(data []byte) ([][]byte, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}

@@ -191,11 +191,13 @@ prebuild dozens of sugars; add only when a real caller appears.
 
 ## Phase C — Apply to `proxi node compact`
 
-Goal: `compact.go` no longer calls `glb.InitLedgerFromNode()`.
+Goal: `compact.go` no longer calls `glb.InitLedgerFromNode()`. No
+stopgaps — the singleton-bound helpers it transitively uses are
+ported, not lazily-initialised.
 
 ### C1. Drop the singleton call
 
-Remove line 46.
+Remove `glb.InitLedgerFromNode()` from `runCompactCmd`.
 
 ### C2. AttachmentCostBudget from constants
 
@@ -203,13 +205,39 @@ Remove line 46.
 budget := glb.GetLedgerConstants().AttachmentCostBudget
 ```
 
-(Replaces `ledger.L(targetSlot).AttachmentCostBudget`.)
+Replaces `ledger.L(targetSlot).AttachmentCostBudget`.
 
-### C3. Current slot from LRB
+### C3. `targetSlot` from the wallet, not the singleton
 
-`GetSpendableOutputs` already returns `LRBID *base.TransactionID`.
-Use `lrbid.Timestamp().Slot` for `targetSlot`. Drops
-`ledger.TimeNow()`.
+The caller passes a `targetSlot` — the slot it intends to use as
+the tx timestamp. The `sendWithDeadline` Δ check is meaningful
+only at a specific slot (accept-window vs reclaim-window), so the
+filter slot has to match the eventual tx slot.
+
+The wallet derives this slot from `glb.GetLedgerConstants()` —
+`Constants.LedgerTimeFromClockTime(time.Now()).Slot` is the
+singleton-free equivalent of `ledger.TimeNow().Slot`. Constants
+already arrived in Phase A.
+
+### C3'. Server-side filter on `get_outputs`
+
+Move the `spendableForAccount` logic to the server (it lives where
+the singleton lives). Add two query parameters on
+`/api/v1/get_outputs`:
+
+  - `spendable=true` — apply the filter;
+  - `target_slot=N` — the slot to use for the Δ check AND for the
+    library version that dispatches the lock. 0 / omitted → server's
+    current LRB slot.
+
+Lock dispatch uses `ledger.LockFromOutputElementsWithLib(iv,
+lockBin, ledger.L(target_slot))`, so the library version matches
+the validating tx's slot.
+
+The client's `GetSpendableOutputs` becomes a thin wrapper that sets
+`spendable=true` + `target_slot=params.TargetSlot`, no client-side
+dispatch, no `o.Output.Lock()` call. `SpendableOutputsParams.TargetSlot`
+is preserved.
 
 ### C4. Lock-kind dispatch via the wallet library
 
@@ -225,21 +253,42 @@ walletHolderID) LockKind` so other sites can reuse it later. Three
 kinds suffice for compact: `SigLockOwned`, `SWDMaster`,
 `SWDTargetSig`, `Other`.
 
-### C5. The legacy recipe — still needs the singleton
+### C5. Port `MakeClaimingCompactTransaction` to txbuildercore
 
-`glb.MakeClaimingCompactTransaction` reaches into
-`ledger/txbuilder` + `ledger.SigLockFromED25519PrivateKey` +
-`ledger.NewOutput`. It can stay singleton-bound for now; the goal of
-Phase C is to remove `InitLedgerFromNode` from the *site*. Until
-the recipe is ported to txbuildercore (Phase 1.3, deferred), the
-singleton must still be initialised somewhere — but that
-initialisation will live inside `MakeClaimingCompactTransaction`
-itself (lazy) rather than at every CLI command's entry point.
+The recipe is the last singleton dep on the site path. Its
+construction is small enough that the txbuildercore port is direct
+— no `sendWithDeadline` unlock helper needed because, for an
+input the WALLET is claiming, `PutSignatureUnlock(i)` covers all
+three input flavours uniformly:
 
-Concretely: add a one-time `glb.ensureLegacyLedgerInit()` call at
-the top of every legacy recipe in `wallet_recipes.go`. It checks
-whether the singleton is up; if not, initialises it. Callers stop
-needing the entry-point boilerplate.
+  - sigLock input: signature marker satisfies the holder check;
+  - SWD master-reclaim: consumed-side dispatch lands in
+    `_sigLock($master)`, falls through `unlockedByReference` (SWD
+    lock bytecode ≠ sigLock bytecode), then the same signature
+    check matches the wallet;
+  - SWD target-accept: same fall-through, into `_sigLock($target)`.
+
+Ported signature stays the same:
+
+```go
+func MakeClaimingCompactTransaction(walletPrivateKey ed25519.PrivateKey,
+    tagAlongSeqID *base.ChainID, tagAlongFee uint64, targetSlot uint32,
+    maxInputs int) (*transaction.Transaction, error)
+```
+
+Internally:
+- `txbuildercore.New(0)`;
+- iterate `c.GetSpendableOutputs(...)` (new server-filtered shape),
+  `ConsumeOutput(in.Output.Bytes(), in.ID)` + `PutSignatureUnlock(i)`;
+- `NewSigLockOutput(lib, sweepAmount, walletHolder)` (helper) for
+  the sweep output; `NewTagAlongOutput(lib, fee, seq, sender)` for
+  the fee;
+- `SetTimestamp(base.T(targetSlot, 1))`; `ComputeInputCommitment`;
+  `SignED25519`.
+
+NO ledger-singleton dependency. The recipe takes `*txbuildercore.Library`
+either as an arg or via `glb.GetTxLibrary()` from inside (compact is
+proxi-only, so internal `glb.GetTxLibrary` is fine).
 
 ### C6. Verification
 

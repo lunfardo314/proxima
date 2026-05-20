@@ -454,6 +454,15 @@ type GetOutputsParams struct {
 	ForAmount  uint64
 	LockType   string
 	Chained    *bool
+	// Spendable=true post-filters the result set to outputs claimable
+	// by `indexValue` (treated as the wallet's holder ID) under a
+	// single-input signature unlock at TargetSlot. Used by
+	// GetSpendableOutputs.
+	Spendable bool
+	// TargetSlot is consulted only when Spendable is true; it selects
+	// the slot for the sendWithDeadline Δ check AND the library
+	// version that dispatches the lock. 0 → server's current LRB slot.
+	TargetSlot uint32
 }
 
 // ChainedOnly returns a *bool suitable for GetOutputsParams.Chained
@@ -507,6 +516,12 @@ func (c *APIClient) GetOutputs(indexValue []byte, params ...GetOutputsParams) (*
 		} else {
 			path += "&chained=false"
 		}
+	}
+	if p.Spendable {
+		path += "&spendable=true"
+	}
+	if p.TargetSlot > 0 {
+		path += fmt.Sprintf("&target_slot=%d", p.TargetSlot)
 	}
 
 	body, err := c.getBody(path)
@@ -687,9 +702,16 @@ type SpendableOutputsParams struct {
 	MaxOutputs              int
 }
 
-// GetSpendableOutputs returns outputs the account can spend at TargetSlot,
-// optionally including sendWithDeadline UTXOs the account is currently
-// claim-eligible for. The base behaviour mirrors GetTransferableOutputs.
+// GetSpendableOutputs returns outputs the account can spend at
+// TargetSlot, optionally including sendWithDeadline UTXOs the account
+// is currently claim-eligible for. The base behaviour mirrors
+// GetTransferableOutputs.
+//
+// Server-side filtering: this is a thin wrapper around the unified
+// get_outputs endpoint with `spendable=true` + `target_slot=N`. The
+// server applies the spendable filter at the requested slot using the
+// library version active at that slot. No singleton dependency on the
+// client side.
 func (c *APIClient) GetSpendableOutputs(account ledger.Controller, params SpendableOutputsParams) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
 	maxO := params.MaxOutputs
 	if maxO <= 0 || maxO > 256 {
@@ -698,82 +720,19 @@ func (c *APIClient) GetSpendableOutputs(account ledger.Controller, params Spenda
 	if !params.IncludeSendWithDeadline {
 		return c.GetTransferableOutputs(account, maxO)
 	}
-
-	targetSlot := params.TargetSlot
-	if targetSlot == 0 {
-		targetSlot = ledger.TimeNow().Slot
-	}
-
-	// One unfiltered query — the trie indexer returns any output whose
-	// index-value tuple contains account.ControllerID(), so this picks up
-	// sigLock and sendWithDeadline outputs (under either master or target)
-	// in one round trip.
 	res, err := c.GetOutputs(account.ControllerID(), GetOutputsParams{
 		LockType:   api.GetOutputsLockTypeAll,
 		Chained:    NonChainedOnly(),
 		SortBy:     api.GetOutputsSortByAmount,
 		SortOrder:  api.GetOutputsSortOrderDesc,
 		MaxOutputs: maxO,
+		Spendable:  true,
+		TargetSlot: params.TargetSlot,
 	})
 	if err != nil {
 		return nil, nil, 0, err
 	}
-
-	var (
-		accountHID = account.ControllerID()
-		sum        uint64
-	)
-	ret := make([]*ledger.OutputWithID, 0, len(res.Outputs))
-	for _, o := range res.Outputs {
-		if !c.spendableForAccount(o, accountHID, targetSlot) {
-			continue
-		}
-		ret = append(ret, o)
-		sum += o.Output.TokenBalance()
-	}
-	return ret, &res.LRBID, sum, nil
-}
-
-// spendableForAccount decides whether the given output is spendable by
-// accountHID at targetSlot under a SINGLE-input signature unlock. Two
-// shapes qualify:
-//
-//   - 3-element output (amounts | indexValues | lock) locked by sigLock
-//     to accountHID — the legacy "transferable" case.
-//   - sendWithDeadline output where accountHID is master AND has reached
-//     the reclaim window, OR is the sigLock target AND we're still inside
-//     the acceptance window.
-//
-// chainLock-target acceptance is excluded because the spend tx must also
-// consume the controlling chain output (a separate flow).
-func (c *APIClient) spendableForAccount(o *ledger.OutputWithID, accountHID []byte, targetSlot uint32) bool {
-	if o == nil || o.Output == nil {
-		return false
-	}
-	lock := o.Output.Lock()
-
-	switch l := lock.(type) {
-	case ledger.SigLock:
-		// legacy "transferable" case: 3-element output owned by accountHID
-		if o.Output.NumElements() != 3 {
-			return false
-		}
-		return bytes.Equal(l[:], accountHID)
-	case *ledger.SendWithDeadlineLock:
-		createSlot := o.ID.Slot()
-		if targetSlot < createSlot {
-			return false
-		}
-		delta := targetSlot - createSlot
-		if bytes.Equal(l.MasterID[:], accountHID) {
-			return delta >= l.AcceptanceSlots // reclaim path (or public-cleanup overlap)
-		}
-		if bytes.Equal(l.TargetID[:], accountHID) && l.TargetType == ledger.SendWithDeadlineTargetSigLock {
-			return delta < l.AcceptanceSlots // accept path (sigLock target only)
-		}
-		return false
-	}
-	return false
+	return res.Outputs, &res.LRBID, res.AvailableAmount, nil
 }
 
 func (c *APIClient) Get(path string) ([]byte, error) {
