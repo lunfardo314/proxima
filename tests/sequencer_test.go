@@ -154,8 +154,6 @@ func TestIdle2(t *testing.T) {
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)
 
-	//testData.env.StartTracingTags(task.TraceTagBootProposer)
-
 	testData.startSequencersWithTimeout(maxSlots)
 	time.Sleep(20 * time.Second)
 	testData.stopAndWait()
