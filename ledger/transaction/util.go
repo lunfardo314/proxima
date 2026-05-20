@@ -15,7 +15,42 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
+// LibraryDecompiler is the minimal library surface needed by the
+// tx-level pretty-printer to decompile bytecode and parse one level
+// of bytecode tree. Both *ledger.Library (server / singleton path)
+// and *txbuildercore.Library (wallet path) can produce one via the
+// adapter helpers below — a function-of-values struct is used
+// instead of an interface because the underlying DecompileBytecode
+// method has a type-parameterised variadic (engine.LocalScript[T])
+// that prevents a common interface from forming.
+//
+// Output._lines still uses the typed-constraint serdes registered on
+// *ledger.Library (via ConstraintFromBytesWithLib) and therefore does
+// NOT participate in this abstraction — the wallet path can still
+// pretty-print outputs as long as proxi has initialised the ledger
+// library at startup. See claude/proxi_txbuildercore.md for context.
+type LibraryDecompiler struct {
+	DecompileBytecode     func(code []byte) (string, error)
+	ParseBytecodeOneLevel func(code []byte, expectedNumArgs ...int) (string, []byte, [][]byte, error)
+}
+
+// DecompilerFromLedgerLibrary builds a LibraryDecompiler from a
+// *ledger.Library. Used by the backward-compat Lines* methods.
+func DecompilerFromLedgerLibrary(lib *ledger.Library) LibraryDecompiler {
+	return LibraryDecompiler{
+		DecompileBytecode:     func(code []byte) (string, error) { return lib.DecompileBytecode(code) },
+		ParseBytecodeOneLevel: lib.ParseBytecodeOneLevel,
+	}
+}
+
 func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
+	return tx.LinesWithLib(DecompilerFromLedgerLibrary(ledger.L(base.MaxSlot)),inputLoaderByIndex, prefix...)
+}
+
+// LinesWithLib is the wallet-friendly form of Lines: the caller
+// supplies the decompiler. Existing callers can use Lines (which
+// resolves to the singleton).
+func (tx *Transaction) LinesWithLib(lib LibraryDecompiler, inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
 	if inputLoaderByIndex != nil {
 		if err := tx.SetFullContext(inputLoaderByIndex); err != nil {
 			ret := lines.New(prefix...)
@@ -23,7 +58,7 @@ func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, er
 			return ret
 		}
 	}
-	return tx.LinesHR(prefix...)
+	return tx.LinesHRWithLib(lib, prefix...)
 }
 
 func (tx *Transaction) ProducedTagAlongOutputs(targetID ...base.ChainID) []ledger.TagAlongOutput {
@@ -79,18 +114,32 @@ func (tx *Transaction) LinesShort(prefix ...string) *lines.Lines {
 }
 
 func (tx *Transaction) LinesSource(prefix ...string) *lines.Lines {
-	return tx._lines(func(o *ledger.Output, prefix ...string) *lines.Lines {
+	return tx.LinesSourceWithLib(DecompilerFromLedgerLibrary(ledger.L(base.MaxSlot)),prefix...)
+}
+
+// LinesSourceWithLib is the wallet-friendly form of LinesSource.
+// Output rendering still uses *ledger.Library internally (typed
+// constraint serdes); the lib parameter only affects how tx-level
+// constraints (TxConstraints slot) are decompiled.
+func (tx *Transaction) LinesSourceWithLib(lib LibraryDecompiler, prefix ...string) *lines.Lines {
+	return tx._lines(lib, func(o *ledger.Output, prefix ...string) *lines.Lines {
 		return o.LinesSource(prefix...)
 	}, prefix...)
 }
 
 func (tx *Transaction) LinesHR(prefix ...string) *lines.Lines {
-	return tx._lines(func(o *ledger.Output, prefix ...string) *lines.Lines {
+	return tx.LinesHRWithLib(DecompilerFromLedgerLibrary(ledger.L(base.MaxSlot)),prefix...)
+}
+
+// LinesHRWithLib is the wallet-friendly form of LinesHR. See
+// LinesSourceWithLib for the constraint-rendering caveat.
+func (tx *Transaction) LinesHRWithLib(lib LibraryDecompiler, prefix ...string) *lines.Lines {
+	return tx._lines(lib, func(o *ledger.Output, prefix ...string) *lines.Lines {
 		return o.LinesHR(prefix...)
 	}, prefix...)
 }
 
-func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...string) *lines.Lines, prefix ...string) *lines.Lines {
+func (tx *Transaction) _lines(lib LibraryDecompiler, utxoToLines func(o *ledger.Output, prefix ...string) *lines.Lines, prefix ...string) *lines.Lines {
 	txid := tx.ID()
 	ret := lines.New(prefix...)
 	ret.Add("Transaction ID: %s, size: %d", txid.String(), len(tx.Bytes()))
@@ -155,7 +204,6 @@ func (tx *Transaction) _lines(utxoToLines func(o *ledger.Output, prefix ...strin
 			ret.Add("TxConstraints: parse error: %v", err)
 		} else {
 			ret.Add("TxConstraints (%d):", tcs.NumElements())
-			lib := ledger.L(base.MaxSlot)
 			tcs.ForEach(func(i int, bc []byte) bool {
 				hashLabel, hashHex := txConstraintHash(lib, bc)
 				src, err := lib.DecompileBytecode(bc)
@@ -219,11 +267,18 @@ func (tx *Transaction) String() string {
 }
 
 func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
+	return LinesFromTransactionBytesWithLib(DecompilerFromLedgerLibrary(ledger.L(base.MaxSlot)),txBytes, inputLoader, prefix...)
+}
+
+// LinesFromTransactionBytesWithLib is the wallet-friendly form. The
+// caller supplies the decompiler; output-rendering still uses the
+// singleton internally (see LinesSourceWithLib).
+func LinesFromTransactionBytesWithLib(lib LibraryDecompiler, txBytes []byte, inputLoader func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
 	tx, err := Parse(txBytes)
 	if err != nil {
 		return lines.New(prefix...).Add("Parse returned: %v", err)
 	}
-	return tx.Lines(inputLoader, prefix...)
+	return tx.LinesWithLib(lib, inputLoader, prefix...)
 }
 
 // txConstraintHash returns a (label, hex) pair identifying the content of a
@@ -232,7 +287,7 @@ func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger
 // callRedeemer site must match. For any other constraint it returns
 // ("", "") so the caller skips the line entirely (the constraint's source
 // is already printed and a blake2b of arbitrary bytecode adds no signal).
-func txConstraintHash(lib *ledger.Library, bc []byte) (label, hexStr string) {
+func txConstraintHash(lib LibraryDecompiler, bc []byte) (label, hexStr string) {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(bc)
 	if err == nil && sym == ledger.SymRedeemScript && len(args) == 1 {
 		bin := easyfl.StripDataPrefix(args[0])

@@ -1,0 +1,82 @@
+package glb
+
+import (
+	"sync"
+
+	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
+)
+
+// Wallet-side foundation helpers for the wasm-style refactor. See
+// claude/proxi_txbuildercore.md (Phase 0.3) for context. Tx
+// construction sites use GetTxLibrary + SubmitAndDisplay; they do
+// NOT touch the ledger.L() singleton.
+
+var (
+	txLibOnce sync.Once
+	txLibPtr  *txbuildercore.Library
+	txLibErr  error
+)
+
+// GetTxLibrary returns the per-process wallet library, fetched lazily
+// from the connected node on first call (latest slot) and cached for
+// the lifetime of the proxi command process. Panics if the fetch
+// fails — wallet flows can't proceed without it.
+func GetTxLibrary() *txbuildercore.Library {
+	txLibOnce.Do(func() {
+		txLibPtr, txLibErr = GetClient().GetLibrary(nil)
+	})
+	AssertNoError(txLibErr)
+	return txLibPtr
+}
+
+// SubmitAndDisplay submits txBytes via the new /api/v1/submit_tx
+// endpoint (validate_only=false).
+//
+// consumedUTXOBytes is an optional variadic parameter — each entry is
+// the raw output wire-bytes for the corresponding tx input
+// (positionally aligned with the tx's InputIDs). When non-empty the
+// server runs full-context validation before submit. Passing no arg =
+// parse + partial-context validation only at submit time.
+//
+// On submit failure, prints the error + LinesHR (full detail) of the
+// failing tx and returns the error. On success, prints LinesHR only
+// when --verbose is on.
+//
+// Pretty-printing uses transaction.LinesFromTransactionBytesWithLib
+// with a decompiler built from the wallet library — no ledger.L()
+// singleton dependency at the surface, though Output rendering still
+// uses the singleton internally (see LibraryDecompiler doc).
+func SubmitAndDisplay(txBytes []byte, consumedUTXOBytes ...[]byte) error {
+	lib := GetTxLibrary()
+	var opts []client.SubmitOption
+	if len(consumedUTXOBytes) > 0 {
+		opts = append(opts, client.WithConsumedUTXOs(consumedUTXOBytes))
+	}
+
+	txID, err := GetClient().SubmitTransactionWithDetail(txBytes, opts...)
+	if err != nil {
+		Infof("\nFAILED to submit transaction: %v", err)
+		Infof("---------- failing tx --------\n%s", txDisplay(lib, txBytes))
+		return err
+	}
+
+	if IsVerbose() {
+		Infof("\n-------- tx OK %s (len = %d) -----------\n%s",
+			txID.StringHex(), len(txBytes), txDisplay(lib, txBytes))
+	}
+	return nil
+}
+
+// txDisplay renders the LinesHR form of a tx for log output. Uses the
+// wallet library for tx-level constraint decompilation; output
+// rendering inside Output._lines still reaches the singleton (see
+// transaction.LibraryDecompiler doc).
+func txDisplay(lib *txbuildercore.Library, txBytes []byte) string {
+	dec := transaction.LibraryDecompiler{
+		DecompileBytecode:     func(code []byte) (string, error) { return lib.DecompileBytecode(code) },
+		ParseBytecodeOneLevel: lib.ParseBytecodeOneLevel,
+	}
+	return transaction.LinesFromTransactionBytesWithLib(dec, txBytes, nil).String()
+}

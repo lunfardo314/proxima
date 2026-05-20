@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/global"
@@ -24,6 +25,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"golang.org/x/crypto/blake2b"
@@ -118,6 +120,27 @@ func (c *APIClient) GetLedgerDefinitionJSON() ([]byte, error) {
 		return nil, err
 	}
 	return []byte(resp.LibraryJSON), nil
+}
+
+// GetLibrary fetches the ledger library descriptor for the given slot
+// (latest if slot is nil) and constructs a wallet-side
+// *txbuildercore.Library ready for composing transactions. Does NOT
+// touch the ledger.L() singleton — the wallet caller owns the returned
+// library instance.
+func (c *APIClient) GetLibrary(slot *uint32) (*txbuildercore.Library, error) {
+	resp, err := c.GetLedgerDefinition(slot)
+	if err != nil {
+		return nil, err
+	}
+	desc, err := easyfl.ReadLibraryFromJSON([]byte(resp.LibraryJSON))
+	if err != nil {
+		return nil, fmt.Errorf("parse library JSON: %w", err)
+	}
+	lib, err := txbuildercore.NewLibrary(desc)
+	if err != nil {
+		return nil, fmt.Errorf("build txbuildercore.Library: %w", err)
+	}
+	return lib, nil
 }
 
 // getAccountOutputs fetches all outputs of the account. Optionally sorts them on the server
