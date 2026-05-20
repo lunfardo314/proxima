@@ -7,6 +7,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,5 +103,62 @@ func TestNewDelegationParams_ByteIdentity(t *testing.T) {
 		require.NoError(t, err)
 		serverBin := ledger.NewDelegationParams(c.epochSlots, c.maxFrozenEpochs).Bytes()
 		require.Equal(t, serverBin, walletBin, "epochSlots=%d maxFrozen=%d", c.epochSlots, c.maxFrozenEpochs)
+	}
+}
+
+// TestNewDelegationInitOutput_ByteIdentity verifies the wallet
+// composer produces a delegation chain-origin output byte-identical
+// to ledger.MakeDelegationInitOutput.
+func TestNewDelegationInitOutput_ByteIdentity(t *testing.T) {
+	lib := txbuildercoreLibFromGlobal(t)
+
+	var target base.ChainID
+	for i := range target {
+		target[i] = byte(i + 11)
+	}
+	var master base.HolderID
+	for i := range master {
+		master[i] = byte(i + 99)
+	}
+
+	cases := []struct {
+		name                   string
+		amount                 uint64
+		maxFrozenEpochs        byte
+		requiredInflationShare uint16
+		startSlot              uint32
+		epochSlots             uint32
+		targetMaxFrozenEpochs  byte
+	}{
+		{"zero max", 1_000_000, 0, 900, 1234, 600, 32},
+		{"max equal target", 5_000_000, 32, 750, 1, 500, 32},
+		{"max distinct", 12_345_678, 16, 850, 9999, 1800, 32},
+	}
+
+	for _, c := range cases {
+		walletOut, err := lib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
+			Amount:                 c.amount,
+			MasterID:               master,
+			Target:                 target,
+			MaxFrozenEpochs:        c.maxFrozenEpochs,
+			RequiredInflationShare: c.requiredInflationShare,
+			StartSlot:              c.startSlot,
+			EpochSlots:             c.epochSlots,
+			TargetMaxFrozenEpochs:  c.targetMaxFrozenEpochs,
+		})
+		require.NoError(t, err)
+
+		serverOut := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
+			Amount:                 c.amount,
+			MasterID:               master,
+			Target:                 target,
+			MaxFrozenEpochs:        c.maxFrozenEpochs,
+			RequiredInflationShare: c.requiredInflationShare,
+			StartSlot:              c.startSlot,
+			EpochSlots:             c.epochSlots,
+			TargetMaxFrozenEpochs:  c.targetMaxFrozenEpochs,
+		})
+
+		require.Equal(t, serverOut.Bytes(), walletOut.Bytes(), "case: %s", c.name)
 	}
 }

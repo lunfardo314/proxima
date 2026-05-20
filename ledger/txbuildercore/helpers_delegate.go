@@ -2,6 +2,8 @@ package txbuildercore
 
 import (
 	"fmt"
+
+	"github.com/lunfardo314/proxima/ledger/base"
 )
 
 // Delegation constraint symbols + source templates. The templates
@@ -73,4 +75,54 @@ func (l *Library) NewDelegateLockState(lastFrozenEpoch uint32, state byte) ([]by
 func (l *Library) NewDelegationParams(epochSlots uint32, maxFrozenEpochs byte) ([]byte, error) {
 	src := fmt.Sprintf(delegationParamsTemplate, epochSlots, maxFrozenEpochs)
 	return l.CompileExpression(src)
+}
+
+// DelegationInitOutputParams describes the inputs for
+// NewDelegationInitOutput. Mirrors ledger.MakeDelegateInitOutputParams
+// field-for-field.
+type DelegationInitOutputParams struct {
+	Amount                 uint64
+	MasterID               base.HolderID
+	Target                 base.ChainID
+	MaxFrozenEpochs        byte
+	RequiredInflationShare uint16
+	StartSlot              uint32
+	// EpochSlots and TargetMaxFrozenEpochs are copies of the target
+	// chain's delegationParams. See claude/delegation_epoch_params.md.
+	EpochSlots            uint32
+	TargetMaxFrozenEpochs byte
+}
+
+// NewDelegationInitOutput composes a chain-origin delegation output:
+//
+//	slot 0 (amounts):       trimmed-uint64 encoding of `par.Amount`
+//	                        (no frozen-coverage cells at origin)
+//	slot 1 (index-values):  tuple [masterID, target] (master-first)
+//	slot 2 (lock):          delegateLock bytecode with the 4 policy args
+//	slot 3 (chain):         chain-origin constraint for `par.StartSlot`
+//	slot 4 (lock state):    delegateLockState{0, 0} — zero / no freeze
+//
+// Mirrors ledger.MakeDelegationInitOutput byte-for-byte (verified by
+// the byte-identity test in helpers_delegate_test.go).
+func (l *Library) NewDelegationInitOutput(par DelegationInitOutputParams) (*Output, error) {
+	delegateLockBin, err := l.NewDelegateLockBytecode(par.MaxFrozenEpochs, par.RequiredInflationShare, par.EpochSlots, par.TargetMaxFrozenEpochs)
+	if err != nil {
+		return nil, err
+	}
+	chainOriginBin, err := l.NewChainOrigin(par.StartSlot)
+	if err != nil {
+		return nil, err
+	}
+	stateBin, err := l.NewDelegateLockState(0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	b := NewOutputBuilder()
+	b.PutConstraint(EncodeTokenBalance(par.Amount), ConstraintIndexAmounts)
+	b.PutConstraint(EncodeIndexValuesTuple([][]byte{par.MasterID[:], par.Target[:]}), ConstraintIndexIndexValues)
+	b.PutConstraint(delegateLockBin, ConstraintIndexLock)
+	b.PutConstraint(chainOriginBin, ConstraintIndexChain)
+	b.MustPushConstraint(stateBin)
+	return b.Output(), nil
 }
