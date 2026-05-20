@@ -21,6 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/exp/slices"
@@ -248,55 +249,132 @@ func (srv *server) getOutput(w http.ResponseWriter, r *http.Request) {
 	util.AssertNoError(err)
 }
 
-const (
-	maxTxUploadSize            = 64 * (1 << 10)
-	defaultTxAppendWaitTimeout = 10 * time.Second
-	maxTxAppendWaitTimeout     = 2 * time.Minute
-)
+// maxTxUploadSize bounds the JSON request body. Sized to hold a tx
+// plus up to 256 consumed_utxos at typical sizes plus JSON overhead.
+const maxTxUploadSize = 2 * (1 << 20) // 2 MiB
 
-func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
-	api.SetHeader(w)
-
-	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	timeout := defaultTxAppendWaitTimeout
-	lst, ok := r.URL.Query()["timeout"]
-	if ok {
-		wrong := len(lst) != 1
-		var timeoutSec int
-		var err error
-		if !wrong {
-			timeoutSec, err = strconv.Atoi(lst[0])
-			wrong = err != nil || timeoutSec < 0
-		}
-		if wrong {
-			api.WriteErr(w, "wrong 'timeout' parameter in request 'submit_wait'")
-			return
-		}
-		timeout = time.Duration(timeoutSec) * time.Second
-		if timeout > maxTxAppendWaitTimeout {
-			timeout = maxTxAppendWaitTimeout
-		}
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxTxUploadSize)
-	txBytes, err := io.ReadAll(r.Body)
+// writeSubmitResp serialises a SubmitTxResponse onto w. Failures fall
+// back to http.Error if JSON marshalling itself fails (should not
+// happen for this fixed shape).
+func writeSubmitResp(w http.ResponseWriter, resp api.SubmitTxResponse) {
+	respBytes, err := json.Marshal(&resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// tx tracing on server parameter
-	err = util.CatchPanicOrError(func() error {
-		srv.SubmitTxBytesFromAPI(slices.Clip(txBytes))
-		return nil
+	_, _ = w.Write(respBytes)
+}
+
+// writeSubmitErr writes a {ok:false, stage, error} response. Always
+// HTTP 200 — the failure is reported in the JSON body, consistent
+// with the rest of the API.
+func writeSubmitErr(w http.ResponseWriter, stage, msg string) {
+	writeSubmitResp(w, api.SubmitTxResponse{
+		OK:    false,
+		Stage: stage,
+		Error: msg,
 	})
-	if err != nil {
-		api.WriteErr(w, fmt.Sprintf("submit_tx: %v", err))
-		srv.Tracef(TraceTag, "submit transaction: '%v'", err)
+}
+
+// submitTx handles POST /api/v1/submit_tx. Body is a JSON
+// SubmitTxRequest. Pipeline (fail-fast):
+//
+//  1. Parse + partial-context validate (always). On failure:
+//     stage="parse".
+//  2. Full-context validate (only if consumed_utxos non-empty).
+//     The loader is built positionally from consumed_utxos[i] →
+//     tx.InputIDs[i]. On failure: stage="full".
+//  3. Submit (only if validate_only != true). Calls the existing
+//     async SubmitTxBytesFromAPI; success means enqueued. On
+//     panic/error: stage="submit".
+//
+// Success → {ok:true, tx_id:"<hex>"}.
+func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
+	api.SetHeader(w)
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	api.WriteOk(w)
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxTxUploadSize)
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeSubmitErr(w, api.SubmitStageParse, fmt.Sprintf("read body: %v", err))
+		return
+	}
+
+	var req api.SubmitTxRequest
+	if err = json.Unmarshal(bodyBytes, &req); err != nil {
+		writeSubmitErr(w, api.SubmitStageParse, fmt.Sprintf("bad JSON: %v", err))
+		return
+	}
+
+	txBytes, err := hex.DecodeString(req.TxBytes)
+	if err != nil {
+		writeSubmitErr(w, api.SubmitStageParse, fmt.Sprintf("tx_bytes hex: %v", err))
+		return
+	}
+
+	// Stage 1: parse + partial-context validate.
+	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	if err != nil {
+		writeSubmitErr(w, api.SubmitStageParse, err.Error())
+		return
+	}
+
+	// Stage 2: full-context validate (opt-in via consumed_utxos).
+	if len(req.ConsumedUTXOs) > 0 {
+		if len(req.ConsumedUTXOs) != tx.NumInputs() {
+			writeSubmitErr(w, api.SubmitStageFull,
+				fmt.Sprintf("consumed_utxos length %d does not match tx inputs %d",
+					len(req.ConsumedUTXOs), tx.NumInputs()))
+			return
+		}
+		decoded := make([][]byte, len(req.ConsumedUTXOs))
+		for i, s := range req.ConsumedUTXOs {
+			raw, decErr := hex.DecodeString(s)
+			if decErr != nil {
+				writeSubmitErr(w, api.SubmitStageFull,
+					fmt.Sprintf("consumed_utxos[%d] hex: %v", i, decErr))
+				return
+			}
+			decoded[i] = raw
+		}
+		loader := func(i byte) (*ledger.Output, error) {
+			if int(i) >= len(decoded) {
+				return nil, fmt.Errorf("consumed_utxos[%d] missing", i)
+			}
+			return ledger.OutputFromBytes(decoded[i])
+		}
+		if err = tx.SetFullContext(loader); err != nil {
+			writeSubmitErr(w, api.SubmitStageFull, err.Error())
+			return
+		}
+		if err = tx.ValidateFullContext(); err != nil {
+			writeSubmitErr(w, api.SubmitStageFull, err.Error())
+			return
+		}
+	}
+
+	// Stage 3: submit (async fire-and-forget) unless validate_only.
+	if !req.ValidateOnly {
+		err = util.CatchPanicOrError(func() error {
+			srv.SubmitTxBytesFromAPI(slices.Clip(txBytes))
+			return nil
+		})
+		if err != nil {
+			srv.Tracef(TraceTag, "submit transaction: '%v'", err)
+			writeSubmitErr(w, api.SubmitStageSubmit, err.Error())
+			return
+		}
+	}
+
+	txID := tx.ID()
+	writeSubmitResp(w, api.SubmitTxResponse{
+		OK:   true,
+		TxID: txID.StringHex(),
+	})
 }
 
 func (srv *server) getSyncInfo(w http.ResponseWriter, _ *http.Request) {

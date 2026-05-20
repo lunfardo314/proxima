@@ -88,9 +88,41 @@ const (
 	PathTxLogStatus = PrefixAPIV1 + "/txlog/status"
 )
 
+// Submit-stage values for SubmitTxResponse.Stage. Distinguishes which
+// step failed so wallet UIs can render appropriate feedback.
+const (
+	SubmitStageParse  = "parse"  // ParseWithPartialValidation (tuple/txID/scan/signature/partial-context invariants)
+	SubmitStageFull   = "full"   // SetFullContext / ValidateFullContext (input commitment, scripts, ledger invariant)
+	SubmitStageSubmit = "submit" // enqueue into txinput_queue
+)
+
 type (
 	Error struct {
 		// empty string when no error
+		Error string `json:"error,omitempty"`
+	}
+
+	// SubmitTxRequest is the JSON body of POST /api/v1/submit_tx.
+	//   tx_bytes        required, hex-encoded raw transaction wire-bytes.
+	//   consumed_utxos  optional; hex-encoded raw output bytes ordered to
+	//                   match the tx's InputIDs[i]. When non-empty,
+	//                   enables full-context validation.
+	//   validate_only   optional; when true, the handler runs validation
+	//                   stages and skips enqueueing into the workflow.
+	SubmitTxRequest struct {
+		TxBytes       string   `json:"tx_bytes"`
+		ConsumedUTXOs []string `json:"consumed_utxos,omitempty"`
+		ValidateOnly  bool     `json:"validate_only,omitempty"`
+	}
+
+	// SubmitTxResponse is the JSON response of POST /api/v1/submit_tx.
+	// On success: OK=true, TxID is the hex-encoded transaction ID.
+	// On failure: OK=false, Stage is one of SubmitStage* constants,
+	// Error is the failure message.
+	SubmitTxResponse struct {
+		OK    bool   `json:"ok"`
+		TxID  string `json:"tx_id,omitempty"`
+		Stage string `json:"stage,omitempty"`
 		Error string `json:"error,omitempty"`
 	}
 

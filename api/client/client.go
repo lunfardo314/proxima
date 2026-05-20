@@ -234,32 +234,81 @@ func (c *APIClient) GetOutputData(oid *base.OutputID) ([]byte, error) {
 	return oData, nil
 }
 
-func (c *APIClient) SubmitTransaction(txBytes []byte) error {
-	url := c.prefix + api.PathSubmitTransaction
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(txBytes))
-	if err != nil {
-		return err
+// SubmitOption tunes a SubmitTransactionWithDetail call.
+type SubmitOption func(*api.SubmitTxRequest)
+
+// WithConsumedUTXOs supplies hex-encoded raw output bytes for each
+// consumed input (positional match to the tx's InputIDs). When
+// supplied, the server runs full-context validation before submit.
+func WithConsumedUTXOs(consumed [][]byte) SubmitOption {
+	return func(req *api.SubmitTxRequest) {
+		hexed := make([]string, len(consumed))
+		for i, b := range consumed {
+			hexed[i] = hex.EncodeToString(b)
+		}
+		req.ConsumedUTXOs = hexed
 	}
-	resp, err := c.c.Do(req)
+}
+
+// WithValidateOnly makes the server run validation stages only and
+// skip enqueueing the transaction into the workflow.
+func WithValidateOnly() SubmitOption {
+	return func(req *api.SubmitTxRequest) {
+		req.ValidateOnly = true
+	}
+}
+
+// SubmitTransaction posts the tx bytes to /api/v1/submit_tx with no
+// additional validation options. Returns nil on success, or a
+// "from server (stage=...): ..." error on any failure. Backward-
+// compatible wrapper used by the legacy proxi call sites.
+func (c *APIClient) SubmitTransaction(txBytes []byte) error {
+	_, err := c.SubmitTransactionWithDetail(txBytes)
+	return err
+}
+
+// SubmitTransactionWithDetail posts the tx bytes to /api/v1/submit_tx
+// with optional SubmitOption modifiers (consumed_utxos for full-
+// context validation, validate_only for dry-run). On success returns
+// the parsed transaction ID. On failure returns a "from server
+// (stage=...): ..." error.
+func (c *APIClient) SubmitTransactionWithDetail(txBytes []byte, opts ...SubmitOption) (base.TransactionID, error) {
+	reqBody := api.SubmitTxRequest{
+		TxBytes: hex.EncodeToString(txBytes),
+	}
+	for _, opt := range opts {
+		opt(&reqBody)
+	}
+	reqBytes, err := json.Marshal(&reqBody)
 	if err != nil {
-		return err
+		return base.TransactionID{}, fmt.Errorf("marshal submit request: %w", err)
+	}
+
+	url := c.prefix + api.PathSubmitTransaction
+	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBytes))
+	if err != nil {
+		return base.TransactionID{}, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.c.Do(httpReq)
+	if err != nil {
+		return base.TransactionID{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return base.TransactionID{}, err
 	}
 
-	var res api.Error
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return err
+	var res api.SubmitTxResponse
+	if err = json.Unmarshal(body, &res); err != nil {
+		return base.TransactionID{}, fmt.Errorf("decode submit response: %w (body=%s)", err, string(body))
 	}
-	if res.Error != "" {
-		return fmt.Errorf("from server: %s", res.Error)
+	if !res.OK {
+		return base.TransactionID{}, fmt.Errorf("from server (stage=%s): %s", res.Stage, res.Error)
 	}
-	return nil
+	return base.TransactionIDFromHexString(res.TxID)
 }
 
 // GetOutputsParams carries the optional parameters of the unified

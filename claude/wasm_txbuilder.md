@@ -61,17 +61,21 @@ shipping an actual wasm binary. Those follow the refactor.
 
 ## Companion API — unified submit endpoint
 
+**Status: shipped.** See `docs/api.md` `submit_tx` section for the
+canonical reference. Below is the original design sketch retained
+for narrative context.
+
 The wallet is compose+sign only, but users want pre-submission
 feedback ("will this transaction validate?"). Rather than introduce a
 separate `/validate_dry_run` endpoint, **extend the existing submit
 endpoint** to subsume both flows in one call.
 
-Sketch:
+Sketch (kept path `/api/v1/submit_tx` to avoid breaking clients):
 
 ```
-POST /api/v1/submit
+POST /api/v1/submit_tx
 {
-  "tx":             "<hex>",               // required, raw tx bytes
+  "tx_bytes":       "<hex>",               // required, raw tx bytes
   "consumed_utxos": ["<hex>", "<hex>", …], // optional, enables full-context validation
   "validate_only":  false                  // optional; default false
 }
