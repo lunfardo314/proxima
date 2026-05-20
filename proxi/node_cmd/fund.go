@@ -1,7 +1,6 @@
 package node_cmd
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -147,7 +146,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 
 	// Produce target outputs (sigLock or chainLock based on target type).
 	for i, t := range parsed {
-		out, err := buildLockOutput(lib, t.amount, t.lock)
+		out, err := glb.BuildLockOutput(lib, t.amount, t.lock)
 		glb.Assertf(err == nil, "target #%d (%s): %v", i, t.lock.String(), err)
 		txb.ProduceOutput(out.Bytes())
 	}
@@ -182,18 +181,3 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	glb.TrackTxInclusion(txid, time.Second)
 }
 
-// buildLockOutput composes an output of `amount` PRXI locked to the
-// given controller (sigLock or chainLock). Returns an error if the
-// controller is of an unsupported lock type.
-func buildLockOutput(lib *txbuildercore.Library, amount uint64, lock ledger.Lock) (*txbuildercore.Output, error) {
-	switch c := lock.(type) {
-	case ledger.SigLock:
-		return txbuildercore.NewSigLockOutput(lib, amount, base.HolderID(c))
-	case ledger.ChainLock:
-		var chainID base.ChainID
-		copy(chainID[:], c)
-		return txbuildercore.NewChainLockOutput(lib, amount, chainID)
-	default:
-		return nil, fmt.Errorf("buildLockOutput: unsupported lock type %s", lock.Name())
-	}
-}

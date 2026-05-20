@@ -8,7 +8,7 @@ import (
 	apiclient "github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -55,23 +55,21 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 
 	client := glb.GetClient()
 
-	// Fetch the foundry chain output.
-	oData, lrbid, err := client.GetChainOutputData(chainID)
+	// Fetch the parsed foundry chain output.
+	foundryIn, lrbid, err := client.GetChainOutput(chainID)
 	glb.AssertNoError(err)
 	glb.PrintLRB(&lrbid)
 
-	foundryIn, err := ledger.OutputFromBytesWithLib(oData.Data, ledger.L(oData.ID.Slot()))
-	glb.AssertNoError(err)
-	fBytes, err := foundryIn.ConstraintAt(ledger.ConstraintIndexFoundry)
+	fBytes, err := foundryIn.Output.ConstraintAt(ledger.ConstraintIndexFoundry)
 	glb.Assertf(err == nil, "output %s has no foundry constraint at index %d: %v",
-		oData.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
+		foundryIn.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
 	fIn, err := ledger.FoundryFromBytes(fBytes)
 	glb.AssertNoError(err)
 	if fIn.Supply > 0 {
 		glb.Infof("WARNING: foundry supply is %s -- retirement will be rejected by foundryNonDestructible if attached",
 			util.Th(fIn.Supply))
 	}
-	foundryPRXI := foundryIn.TokenBalance()
+	foundryPRXI := foundryIn.Output.TokenBalance()
 
 	// Tag-along setup.
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
@@ -108,19 +106,25 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		"insufficient pure-PRXI wallet UTXOs to fund retire: need %s, have %s",
 		util.Th(feeAmount), util.Th(fundingSum))
 
-	// Build the tx. Foundry as input 0 (sigLock at index 2 covers it);
-	// chain unlock parameters set to "discontinue".
-	txb := txbuilder.New()
-	foundryInIdx, err := txb.ConsumeOutput(foundryIn, oData.ID)
-	glb.AssertNoError(err)
-	txb.PutSignatureUnlock(foundryInIdx)
-	txb.PutUnlockParams(foundryInIdx, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderID(wallet.Account)
+	txb := txbuildercore.New(0)
 
-	// Append funding inputs (1..N).
-	_, inTs, err := txb.ConsumeOutputsNoUnlock(fundingIns...)
-	glb.AssertNoError(err)
-	for i := range fundingIns {
-		err = txb.PutUnlockReference(byte(1+i), ledger.ConstraintIndexLock, 0)
+	// --- Input 0: the foundry output. Chain unlock = "discontinue"
+	// (empty unlock-params).
+	foundryInBytes := foundryIn.Output.Bytes()
+	txb.ConsumeOutput(foundryInBytes, foundryIn.ID)
+	consumedBytes := [][]byte{foundryInBytes}
+	txb.PutSignatureUnlock(0)
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, txbuildercore.FinishChainUnlockParams)
+
+	// --- Funding inputs at 1..N.
+	for i, in := range fundingIns {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumedBytes = append(consumedBytes, b)
+		err := txb.PutUnlockReference(byte(1+i), ledger.ConstraintIndexLock, 0)
 		glb.AssertNoError(err)
 	}
 
@@ -128,40 +132,38 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	foundryTs := oData.ID.Timestamp().AddTicks(int(ledger.L(oData.ID.Slot()).TransactionPace))
+	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(ledger.L(foundryIn.ID.Slot()).TransactionPace))
 	ts = base.MaximumTime(ts, foundryTs)
-	ts = base.MaximumTime(ts, inTs)
+	for _, in := range fundingIns {
+		ts = base.MaximumTime(ts, in.Timestamp())
+	}
 
-	// Move the foundry's on-chain PRXI to the target.
-	retiredOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(foundryPRXI).WithLock(target)
-	})
-	glb.AssertNoError(retiredOut.EnoughAmountForStorageDeposit())
-	_, err = txb.ProduceOutput(retiredOut)
+	// --- Move the foundry's on-chain PRXI to the target.
+	retiredOut, err := glb.BuildLockOutput(lib, foundryPRXI, target)
 	glb.AssertNoError(err)
+	txb.ProduceOutput(retiredOut.Bytes())
 
-	// Tag-along output.
-	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.HolderID(wallet.Account))
-	_, err = txb.ProduceOutput(outTagAlong)
+	// --- Tag-along output.
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(lib, feeAmount, *tagAlongSeqID, walletHolderID)
 	glb.AssertNoError(err)
+	txb.ProduceOutput(tagAlongOut.Bytes())
 
-	// PRXI remainder back to the wallet.
-	totalConsumed := txb.ConsumedAmount()
-	totalProduced, _ := txb.ProducedAmount()
-	if totalConsumed > totalProduced {
-		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(totalConsumed - totalProduced).WithLock(wallet.Account)
-		})
-		_, err = txb.ProduceOutput(remainder)
+	// --- PRXI remainder back to the wallet.
+	totalConsumed := foundryPRXI + fundingSum
+	totalProducedFixed := foundryPRXI + feeAmount
+	if totalConsumed > totalProducedFixed {
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumed-totalProducedFixed, walletHolderID)
 		glb.AssertNoError(err)
+		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(wallet.PrivateKey)
 
-	txBytes, txid, failedTx, err := txb.BytesWithValidation()
-	glb.Assertf(err == nil, "build failed: %v\n---------- failing tx --------\n%s", err, failedTx)
+	txBytes := txb.Bytes()
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err)
 
 	glb.Infof("retire plan:")
 	glb.Infof("   foundry chainID:  %s", chainID.String())
@@ -174,8 +176,9 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	err = client.SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		os.Exit(1)
+	}
 	glb.Infof("transaction submitted: %s", txid.String())
 
 	if glb.NoWait() {

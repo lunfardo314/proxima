@@ -9,7 +9,7 @@ import (
 	apiclient "github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -33,9 +33,9 @@ A foundry transit is built that:
   - tag-along output + PRXI remainder
 
 The token() balance equation is enforced via the same
-`+"`"+`token(<chainID>, foundryProducedIdx)`+"`"+` declaration that TransitFoundry
-pushes for mint -- the foundry-transit form already covers both
-directions (mint = supply grows, burn = supply shrinks).`,
+` + "`" + `token(<chainID>, foundryProducedIdx)` + "`" + ` declaration that the foundry
+transit pushes for mint -- the foundry-transit form already covers
+both directions (mint = supply grows, burn = supply shrinks).`,
 		Args: cobra.ExactArgs(2),
 		Run:  runFoundryBurnCmd,
 	}
@@ -58,16 +58,14 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 
 	client := glb.GetClient()
 
-	// Fetch the foundry chain output and read current supply.
-	oData, lrbid, err := client.GetChainOutputData(chainID)
+	// Fetch the parsed foundry chain output.
+	foundryIn, lrbid, err := client.GetChainOutput(chainID)
 	glb.AssertNoError(err)
 	glb.PrintLRB(&lrbid)
 
-	foundryIn, err := ledger.OutputFromBytesWithLib(oData.Data, ledger.L(oData.ID.Slot()))
-	glb.AssertNoError(err)
-	fBytes, err := foundryIn.ConstraintAt(ledger.ConstraintIndexFoundry)
+	fBytes, err := foundryIn.Output.ConstraintAt(ledger.ConstraintIndexFoundry)
 	glb.Assertf(err == nil, "output %s has no foundry constraint at index %d: %v",
-		oData.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
+		foundryIn.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
 	fIn, err := ledger.FoundryFromBytes(fBytes)
 	glb.AssertNoError(err)
 	glb.Assertf(amount <= fIn.Supply,
@@ -129,10 +127,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 
 	const remainderTokenPRXI uint64 = 100_000_000
 
-	// Estimate extra PRXI we need from pure-PRXI inputs. The foundry
-	// transit preserves the foundry's own PRXI. Consumed PRXI comes from
-	// the token inputs (their storage deposit); produced PRXI is the
-	// optional remainder + tag-along.
+	// Estimate extra PRXI we need from pure-PRXI inputs.
 	var consumedPRXIFromTokenIns uint64
 	for _, o := range selectedTokenIns {
 		consumedPRXIFromTokenIns += o.Output.TokenBalance()
@@ -161,25 +156,52 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 		"insufficient PRXI to fund burn: need %s extra, have %s in pure-PRXI sigLock UTXOs",
 		util.Th(neededExtraPRXI), util.Th(prxiSum))
 
-	// Build the tx.
-	txb := txbuilder.New()
-	in := &ledger.OutputDataWithChainID{
-		OutputDataWithID: *oData,
-		ChainID:          chainID,
-	}
-	// Foundry becomes input 0 (TransitFoundry handles chain unlock +
-	// token(chainID, succIdx) declaration).
-	_, err = txb.TransitFoundry(in, newSupply)
-	glb.AssertNoError(err)
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderID(wallet.Account)
+	txb := txbuildercore.New(0)
+
+	// --- Input 0: the foundry chain output.
+	foundryInBytes := foundryIn.Output.Bytes()
+	txb.ConsumeOutput(foundryInBytes, foundryIn.ID)
+	consumedBytes := [][]byte{foundryInBytes}
 	txb.PutSignatureUnlock(0)
 
-	// Append tokenAmount inputs + PRXI inputs.
+	// --- Compose the transited foundry output.
+	cc := &foundryIn.ChainConstraint
+	transitionBin, err := lib.NewChainTransition(
+		chainID,
+		0, // predInputIndex
+		cc.OriginSlot,
+		cc.CumulativeChainInflation,
+		cc.CumulativeBranchBonus,
+		cc.TransitionCounter+1,
+		cc.BranchCounter,
+	)
+	glb.AssertNoError(err)
+	newFoundryBin, err := lib.NewFoundryBytecode(newSupply)
+	glb.AssertNoError(err)
+
+	fb, err := txbuildercore.OutputBuilderFromBytes(foundryInBytes)
+	glb.AssertNoError(err)
+	fb.PutConstraint(transitionBin, ledger.ConstraintIndexChain)
+	fb.PutConstraint(newFoundryBin, ledger.ConstraintIndexFoundry)
+	foundryProducedIdx := txb.ProduceOutput(fb.Output().Bytes())
+
+	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, txbuildercore.ChainUnlockParams(foundryProducedIdx))
+
+	tokenDecl, err := lib.TokenFoundry(chainID, foundryProducedIdx)
+	glb.AssertNoError(err)
+	txb.PushTxConstraint(tokenDecl)
+
+	// --- Append tokenAmount inputs + PRXI inputs at indices 1..N.
 	rest := append([]*ledger.OutputWithID{}, selectedTokenIns...)
 	rest = append(rest, selectedPRXIIns...)
-	_, inTs, err := txb.ConsumeOutputsNoUnlock(rest...)
-	glb.AssertNoError(err)
-	for i := range rest {
-		err = txb.PutUnlockReference(byte(1+i), ledger.ConstraintIndexLock, 0)
+	for i, in := range rest {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumedBytes = append(consumedBytes, b)
+		err := txb.PutUnlockReference(byte(1+i), ledger.ConstraintIndexLock, 0)
 		glb.AssertNoError(err)
 	}
 
@@ -187,42 +209,47 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	foundryTs := oData.ID.Timestamp().AddTicks(int(ledger.L(oData.ID.Slot()).TransactionPace))
+	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(ledger.L(foundryIn.ID.Slot()).TransactionPace))
 	ts = base.MaximumTime(ts, foundryTs)
-	ts = base.MaximumTime(ts, inTs)
-
-	// Optional tokenAmount remainder back to the wallet.
-	if tokenRemainder > 0 {
-		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(remainderTokenPRXI).WithLock(wallet.Account).WithTokenAmount(chainID, tokenRemainder)
-		})
-		glb.AssertNoError(remainderOut.EnoughAmountForStorageDeposit())
-		_, err = txb.ProduceOutput(remainderOut)
-		glb.AssertNoError(err)
+	for _, in := range rest {
+		ts = base.MaximumTime(ts, in.Timestamp())
 	}
 
-	// Tag-along.
-	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.HolderID(wallet.Account))
-	_, err = txb.ProduceOutput(outTagAlong)
-	glb.AssertNoError(err)
-
-	// PRXI remainder.
-	totalConsumed := txb.ConsumedAmount()
-	totalProduced, _ := txb.ProducedAmount()
-	if totalConsumed > totalProduced {
-		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(totalConsumed - totalProduced).WithLock(wallet.Account)
-		})
-		_, err = txb.ProduceOutput(remainder)
+	// --- Optional tokenAmount remainder back to the wallet.
+	if tokenRemainder > 0 {
+		remainderBase, err := txbuildercore.NewSigLockOutput(lib, remainderTokenPRXI, walletHolderID)
 		glb.AssertNoError(err)
+		rb, err := txbuildercore.OutputBuilderFromBytes(remainderBase.Bytes())
+		glb.AssertNoError(err)
+		err = lib.AppendTokenAmountToOutput(rb, chainID, tokenRemainder)
+		glb.AssertNoError(err)
+		txb.ProduceOutput(rb.Output().Bytes())
+	}
+
+	// --- Tag-along.
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(lib, feeAmount, *tagAlongSeqID, walletHolderID)
+	glb.AssertNoError(err)
+	txb.ProduceOutput(tagAlongOut.Bytes())
+
+	// --- PRXI remainder back to wallet.
+	totalConsumedPRXI := foundryIn.Output.TokenBalance() + consumedPRXIFromTokenIns + prxiSum
+	totalProducedFixed := foundryIn.Output.TokenBalance() + feeAmount
+	if tokenRemainder > 0 {
+		totalProducedFixed += remainderTokenPRXI
+	}
+	if totalConsumedPRXI > totalProducedFixed {
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, totalConsumedPRXI-totalProducedFixed, walletHolderID)
+		glb.AssertNoError(err)
+		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(wallet.PrivateKey)
 
-	txBytes, txid, failedTx, err := txb.BytesWithValidation()
-	glb.Assertf(err == nil, "build failed: %v\n---------- failing tx --------\n%s", err, failedTx)
+	txBytes := txb.Bytes()
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err)
 
 	glb.Infof("burn plan:")
 	glb.Infof("   foundry chainID:    %s", chainID.String())
@@ -238,8 +265,9 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	err = client.SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		os.Exit(1)
+	}
 	glb.Infof("transaction submitted: %s", txid.String())
 
 	if glb.NoWait() {

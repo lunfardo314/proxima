@@ -150,7 +150,7 @@ func MakeChain(onChainAmount uint64) (*transaction.Transaction, base.ChainID, er
 	// Chain origin output: target lock + chain-origin constraint at slot 3
 	// + optional delegationParams at slot 6. Build by extending a base
 	// sigLock or chainLock output.
-	baseChainOut, err := buildLockOutput(lib, onChainAmount, target)
+	baseChainOut, err := glb.BuildLockOutput(lib, onChainAmount, target)
 	if err != nil {
 		return nil, base.NilChainID, err
 	}

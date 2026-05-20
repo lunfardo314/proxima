@@ -1,6 +1,7 @@
 package foundry
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -9,7 +10,7 @@ import (
 	apiclient "github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -48,10 +49,6 @@ unconstrained beyond the foundry() invariants.`,
 	glb.AddFlagTarget(cmd)
 	cmd.Flags().Bool("non-destructible", false, "attach the foundryNonDestructible predefined policy script")
 	cmd.Flags().Uint64("max-supply", 0, "attach the foundryMaxSupply(N) predefined policy script with cap N")
-	// Note: foundries are never delegation targets. The foundry's
-	// controller may delegate the foundry's holdings via a separate
-	// delegation UTXO that names the foundry chain ID as master; the
-	// foundry chain output itself never carries delegationParams.
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
@@ -70,14 +67,6 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Assertf(!(nonDestructible && maxSupply > 0),
 		"--non-destructible and --max-supply are mutually exclusive: only one predefined policy script can be attached")
-
-	var policyBytes []byte
-	switch {
-	case nonDestructible:
-		policyBytes = ledger.FoundryNonDestructibleBytecode()
-	case maxSupply > 0:
-		policyBytes = ledger.FoundryMaxSupplyBytecode(maxSupply)
-	}
 
 	target := glb.MustGetTarget()
 
@@ -106,48 +95,71 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 		ts = ts.AddTicks(10)
 	}
 
-	txb := txbuilder.New()
-	_, inTs, err := txb.ConsumeOutputsNoUnlock(walletOutputs...)
-	glb.AssertNoError(err)
-	ts = base.MaximumTime(inTs, ts)
-	for i := range walletOutputs {
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderID(walletData.Account)
+	txb := txbuildercore.New(0)
+
+	consumedBytes := make([][]byte, 0, len(walletOutputs))
+	consumedTotal := uint64(0)
+	for i, in := range walletOutputs {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumedBytes = append(consumedBytes, b)
+		consumedTotal += in.Output.TokenBalance()
 		if i == 0 {
 			txb.PutSignatureUnlock(0)
 		} else {
-			err = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+			err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
 			glb.AssertNoError(err)
 		}
+		ts = base.MaximumTime(ts, in.Timestamp())
 	}
 
-	// At origin, supply is always 0 — the real chain ID is not known
-	// until the tx is finalised, so no tokenAmount outputs can be tagged
-	// in the same tx. Minting happens at a separate (later) foundry
-	// transit.
-	foundryOut := txbuilder.MakeFoundryOriginOutput(onChainAmount, target, ts.Slot, 0, policyBytes)
-	glb.AssertNoError(foundryOut.EnoughAmountForStorageDeposit())
-	foundryIdx, err := txb.ProduceOutput(foundryOut)
-	glb.AssertNoError(err)
-
-	outTagAlong := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.HolderID(walletData.Account))
-	_, err = txb.ProduceOutput(outTagAlong)
-	glb.AssertNoError(err)
-
-	totalConsumed := txb.ConsumedAmount()
-	totalProduced, _ := txb.ProducedAmount()
-	if totalConsumed > totalProduced {
-		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(totalConsumed - totalProduced).WithLock(walletData.Account)
-		})
-		_, err = txb.ProduceOutput(remainder)
+	// Compile optional foundry policy bytecode via the wallet library.
+	var policyBytes []byte
+	switch {
+	case nonDestructible:
+		policyBytes, err = lib.CompileExpression(ledger.FoundryNonDestructibleName)
+		glb.AssertNoError(err)
+	case maxSupply > 0:
+		policyBytes, err = lib.CompileExpression(fmt.Sprintf("%s(u64/%d)", ledger.FoundryMaxSupplyName, maxSupply))
 		glb.AssertNoError(err)
 	}
 
-	txb.SetTimestamp(ts)
+	// Compose the foundry chain-origin output via OutputBuilder.
+	baseOut, err := glb.BuildLockOutput(lib, onChainAmount, target)
+	glb.AssertNoError(err)
+	fb, err := txbuildercore.OutputBuilderFromBytes(baseOut.Bytes())
+	glb.AssertNoError(err)
+	chainOriginBin, err := lib.NewChainOrigin(ts.Slot)
+	glb.AssertNoError(err)
+	fb.PutConstraint(chainOriginBin, ledger.ConstraintIndexChain)
+	foundryBin, err := lib.NewFoundryBytecode(0)
+	glb.AssertNoError(err)
+	fb.PutConstraint(foundryBin, ledger.ConstraintIndexFoundry)
+	if len(policyBytes) > 0 {
+		fb.PutConstraint(policyBytes, ledger.ConstraintIndexFoundryPolicy)
+	}
+	foundryIdx := txb.ProduceOutput(fb.Output().Bytes())
+
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(lib, feeAmount, *tagAlongSeqID, walletHolderID)
+	glb.AssertNoError(err)
+	txb.ProduceOutput(tagAlongOut.Bytes())
+
+	if consumedTotal > onChainAmount+feeAmount {
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, consumedTotal-onChainAmount-feeAmount, walletHolderID)
+		glb.AssertNoError(err)
+		txb.ProduceOutput(remainderOut.Bytes())
+	}
+
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 
-	txBytes, txid, failedTx, err := txb.BytesWithValidation()
-	glb.Assertf(err == nil, "build failed: %v\n---------- failing tx --------\n%s", err, failedTx)
+	txBytes := txb.Bytes()
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err)
 
 	foundryOid, err := base.NewOutputID(txid, foundryIdx)
 	glb.AssertNoError(err)
@@ -173,8 +185,9 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	err = client.SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		os.Exit(1)
+	}
 	glb.Infof("transaction submitted: %s", txid.String())
 
 	if glb.NoWait() {
