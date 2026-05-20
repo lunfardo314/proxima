@@ -9,8 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -117,69 +116,84 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
 	walletOutputs := res.Outputs
 
-	// Build transaction
-	txb := txbuilder.New()
-	inTotal, inTs, err := txb.ConsumeOutputsNoUnlock(walletOutputs...)
-	glb.AssertNoError(err)
-
+	// Track max input timestamp for pace validation.
+	inTs := base.NilLedgerTime
+	for _, in := range walletOutputs {
+		inTs = base.MaximumTime(inTs, in.Timestamp())
+	}
 	ts := ledger.TimeNow()
 	glb.Assertf(ledger.ValidTransactionPace(inTs, ts), "wrong time constraints")
-	glb.Assertf(inTotal >= totalAmount+feeAmount, "not enough balance: have %s, need %s", util.Th(inTotal), util.Th(totalAmount+feeAmount))
 
-	// Unlock inputs
-	for i := range walletOutputs {
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	walletHolderID := base.HolderID(walletAccount)
+	txb := txbuildercore.New(0)
+
+	consumedBytes := make([][]byte, 0, len(walletOutputs))
+	inTotal := uint64(0)
+	for i, in := range walletOutputs {
+		b := in.Output.Bytes()
+		txb.ConsumeOutput(b, in.ID)
+		consumedBytes = append(consumedBytes, b)
+		inTotal += in.Output.TokenBalance()
 		if i == 0 {
 			txb.PutSignatureUnlock(0)
 		} else {
-			_ = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+			err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+			glb.AssertNoError(err)
 		}
 	}
+	glb.Assertf(inTotal >= totalAmount+feeAmount, "not enough balance: have %s, need %s", util.Th(inTotal), util.Th(totalAmount+feeAmount))
 
-	// Produce target outputs
-	for _, t := range parsed {
-		out := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(t.amount).WithLock(t.lock)
-		})
-		_, err = txb.ProduceOutput(out)
-		glb.AssertNoError(err)
+	// Produce target outputs (sigLock or chainLock based on target type).
+	for i, t := range parsed {
+		out, err := buildLockOutput(lib, t.amount, t.lock)
+		glb.Assertf(err == nil, "target #%d (%s): %v", i, t.lock.String(), err)
+		txb.ProduceOutput(out.Bytes())
 	}
 
-	// Tag-along fee output
-	tagAlongOut := ledger.NewTagAlongOutput(feeAmount, *tagAlongSeqID, base.HolderID(walletAccount))
-	_, err = txb.ProduceOutput(tagAlongOut)
+	// Tag-along.
+	tagAlongOut, err := txbuildercore.NewTagAlongOutput(lib, feeAmount, *tagAlongSeqID, walletHolderID)
 	glb.AssertNoError(err)
+	txb.ProduceOutput(tagAlongOut.Bytes())
 
-	// Remainder
+	// Remainder back to wallet.
 	if inTotal > totalAmount+feeAmount {
-		remainderOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(inTotal - totalAmount - feeAmount).WithLock(walletAccount)
-		})
-		_, err = txb.ProduceOutput(remainderOut)
+		remainderOut, err := txbuildercore.NewSigLockOutput(lib, inTotal-totalAmount-feeAmount, walletHolderID)
 		glb.AssertNoError(err)
+		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
-	if err != nil {
-		glb.Fatalf("%v\n------ failing transaction -------\n%s", err, txString)
+	txBytes := txb.Bytes()
+	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
+		os.Exit(1)
 	}
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
 	glb.AssertNoError(err)
-	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(walletOutputs)))
-	glb.AssertNoError(err)
-
-	glb.Verbosef("-------- fund transaction ---------\n%s\n----------------", fmt.Sprintf("%s", tx.String()))
-
-	err = glb.GetClient().SubmitTransaction(txBytes)
-	glb.AssertNoError(err)
-	glb.Infof("transaction %s submitted successfully", tx.IDShortString())
+	glb.Infof("transaction %s submitted successfully", txid.String())
 
 	if glb.NoWait() {
 		return
 	}
-	glb.TrackTxInclusion(tx.ID(), time.Second)
+	glb.TrackTxInclusion(txid, time.Second)
+}
+
+// buildLockOutput composes an output of `amount` PRXI locked to the
+// given controller (sigLock or chainLock). Returns an error if the
+// controller is of an unsupported lock type.
+func buildLockOutput(lib *txbuildercore.Library, amount uint64, lock ledger.Lock) (*txbuildercore.Output, error) {
+	switch c := lock.(type) {
+	case ledger.SigLock:
+		return txbuildercore.NewSigLockOutput(lib, amount, base.HolderID(c))
+	case ledger.ChainLock:
+		var chainID base.ChainID
+		copy(chainID[:], c)
+		return txbuildercore.NewChainLockOutput(lib, amount, chainID)
+	default:
+		return nil, fmt.Errorf("buildLockOutput: unsupported lock type %s", lock.Name())
+	}
 }
