@@ -1,4 +1,4 @@
-package txcore_test
+package txbuildercore_test
 
 // Byte-identity tests for the Phase-E redeemer wallet helpers:
 // redeemScript / callRedeemer bytecode emission plus the
@@ -12,7 +12,7 @@ import (
 
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/blake2b"
 )
@@ -21,7 +21,7 @@ import (
 // script and verifies the wallet-emitted redeemScript bytecode
 // matches the inline reference compile of the same source.
 func TestNewRedeemScriptConstraint_ByteIdentity(t *testing.T) {
-	lib := txcoreLibFromGlobal(t)
+	lib := txbuildercoreLibFromGlobal(t)
 
 	bin, err := lib.CompileLocalScript("func _f : 0")
 	require.NoError(t, err)
@@ -30,7 +30,7 @@ func TestNewRedeemScriptConstraint_ByteIdentity(t *testing.T) {
 	walletBin, err := lib.NewRedeemScriptConstraint(bin)
 	require.NoError(t, err)
 
-	refSrc := fmt.Sprintf("%s(0x%s)", txcore.RedeemScriptName, hex.EncodeToString(bin))
+	refSrc := fmt.Sprintf("%s(0x%s)", txbuildercore.RedeemScriptName, hex.EncodeToString(bin))
 	refBin, err := lib.CompileExpression(refSrc)
 	require.NoError(t, err)
 	require.Equal(t, refBin, walletBin)
@@ -40,7 +40,7 @@ func TestNewRedeemScriptConstraint_ByteIdentity(t *testing.T) {
 // wrapper produces the expected canonical hash for a fixed input.
 func TestLocalScriptHash_Determinism(t *testing.T) {
 	bin := []byte{0xde, 0xad, 0xbe, 0xef}
-	got := txcore.LocalScriptHash(bin)
+	got := txbuildercore.LocalScriptHash(bin)
 	want := blake2b.Sum256(bin)
 	require.Equal(t, want, got)
 }
@@ -49,7 +49,7 @@ func TestLocalScriptHash_Determinism(t *testing.T) {
 // no-args and variadic-args forms; the wallet bytecode must match
 // the inline reference compile in either case.
 func TestNewCallRedeemerConstraint_ByteIdentity(t *testing.T) {
-	lib := txcoreLibFromGlobal(t)
+	lib := txbuildercoreLibFromGlobal(t)
 
 	var hash [32]byte
 	for i := range hash {
@@ -61,7 +61,7 @@ func TestNewCallRedeemerConstraint_ByteIdentity(t *testing.T) {
 	{
 		walletBin, err := lib.NewCallRedeemerConstraint(hash, fnIdx)
 		require.NoError(t, err)
-		refSrc := fmt.Sprintf("%s(0x%s, 0x%02x)", txcore.CallRedeemerName, hex.EncodeToString(hash[:]), fnIdx)
+		refSrc := fmt.Sprintf("%s(0x%s, 0x%02x)", txbuildercore.CallRedeemerName, hex.EncodeToString(hash[:]), fnIdx)
 		refBin, err := lib.CompileExpression(refSrc)
 		require.NoError(t, err)
 		require.Equal(t, refBin, walletBin)
@@ -72,7 +72,7 @@ func TestNewCallRedeemerConstraint_ByteIdentity(t *testing.T) {
 		walletBin, err := lib.NewCallRedeemerConstraint(hash, fnIdx, "z64/12345", "0xdeadbeef")
 		require.NoError(t, err)
 		refSrc := fmt.Sprintf("%s(0x%s, 0x%02x, z64/12345, 0xdeadbeef)",
-			txcore.CallRedeemerName, hex.EncodeToString(hash[:]), fnIdx)
+			txbuildercore.CallRedeemerName, hex.EncodeToString(hash[:]), fnIdx)
 		refBin, err := lib.CompileExpression(refSrc)
 		require.NoError(t, err)
 		require.Equal(t, refBin, walletBin)
@@ -86,13 +86,13 @@ func TestNewCallRedeemerConstraint_ByteIdentity(t *testing.T) {
 // integration concern — the host validator's resolver will pick up
 // the published bin as long as the wire bytes round-trip cleanly.
 func TestRedeemerRoundTrip_ViaTxBuilder(t *testing.T) {
-	lib := txcoreLibFromGlobal(t)
+	lib := txbuildercoreLibFromGlobal(t)
 
 	// 1) Compile a real 1-function local script.
 	bin, err := lib.CompileLocalScript("func _square : mul($0, $0)")
 	require.NoError(t, err)
 	require.NotEmpty(t, bin)
-	hash := txcore.LocalScriptHash(bin)
+	hash := txbuildercore.LocalScriptHash(bin)
 
 	// 2) Build the wallet bytecode for both constraints.
 	redeemBin, err := lib.NewRedeemScriptConstraint(bin)
@@ -103,12 +103,12 @@ func TestRedeemerRoundTrip_ViaTxBuilder(t *testing.T) {
 	// 3) Assemble a minimal tx: one produced output carrying the
 	//    callRedeemer constraint at slot 3, plus the redeemScript
 	//    constraint at tx level.
-	txb := txcore.New(0)
+	txb := txbuildercore.New(0)
 
-	out := txcore.NewOutputBuilder()
-	out.PutConstraint(txcore.EncodeTokenBalance(1_000), txcore.ConstraintIndexAmounts)
-	out.PutConstraint(txcore.EncodeIndexValuesTuple([][]byte{make([]byte, 32)}), txcore.ConstraintIndexIndexValues)
-	out.PutConstraint([]byte{0x80}, txcore.ConstraintIndexLock)
+	out := txbuildercore.NewOutputBuilder()
+	out.PutConstraint(txbuildercore.EncodeTokenBalance(1_000), txbuildercore.ConstraintIndexAmounts)
+	out.PutConstraint(txbuildercore.EncodeIndexValuesTuple([][]byte{make([]byte, 32)}), txbuildercore.ConstraintIndexIndexValues)
+	out.PutConstraint([]byte{0x80}, txbuildercore.ConstraintIndexLock)
 	out.MustPushConstraint(callBin)
 	txb.ProduceOutput(out.Bytes())
 
@@ -121,13 +121,13 @@ func TestRedeemerRoundTrip_ViaTxBuilder(t *testing.T) {
 	// 4) Parse the tx tree back. txb.Bytes() returns the
 	//    TransactionTuple subtree directly (not wrapped in the outer
 	//    2-tuple), matching the convention in txbuilder_test.go.
-	tree, err := tuples.TupleFromBytes(raw, txcore.MaxNumConstraints)
+	tree, err := tuples.TupleFromBytes(raw, txbuildercore.MaxNumConstraints)
 	require.NoError(t, err)
-	require.Equal(t, int(txcore.TxTreeTupleNumElements), tree.NumElements())
+	require.Equal(t, int(txbuildercore.TxTreeTupleNumElements), tree.NumElements())
 
-	txcBytes, err := tree.At(int(txcore.TxConstraints))
+	txcBytes, err := tree.At(int(txbuildercore.TxConstraints))
 	require.NoError(t, err)
-	txcSub, err := tuples.TupleFromBytes(txcBytes, txcore.MaxNumConstraints)
+	txcSub, err := tuples.TupleFromBytes(txcBytes, txbuildercore.MaxNumConstraints)
 	require.NoError(t, err)
 	require.Equal(t, 1, txcSub.NumElements())
 	gotRedeem, err := txcSub.At(0)
@@ -136,14 +136,14 @@ func TestRedeemerRoundTrip_ViaTxBuilder(t *testing.T) {
 
 	// 5) Reach the produced output's constraint at slot 3 and confirm
 	//    it round-trips byte-for-byte.
-	outsBytes, err := tree.At(int(txcore.TxOutputs))
+	outsBytes, err := tree.At(int(txbuildercore.TxOutputs))
 	require.NoError(t, err)
-	outsSub, err := tuples.TupleFromBytes(outsBytes, txcore.MaxNumConstraints)
+	outsSub, err := tuples.TupleFromBytes(outsBytes, txbuildercore.MaxNumConstraints)
 	require.NoError(t, err)
 	require.Equal(t, 1, outsSub.NumElements())
 	out0Bytes, err := outsSub.At(0)
 	require.NoError(t, err)
-	out0, err := tuples.TupleFromBytes(out0Bytes, txcore.MaxNumConstraints)
+	out0, err := tuples.TupleFromBytes(out0Bytes, txbuildercore.MaxNumConstraints)
 	require.NoError(t, err)
 	gotCall, err := out0.At(3)
 	require.NoError(t, err)

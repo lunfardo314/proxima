@@ -1,4 +1,4 @@
-package txcore
+package txbuildercore
 
 import (
 	"encoding/binary"
@@ -124,7 +124,7 @@ func SerializeRawTx(d *TxRawData) *tuples.Tuple {
 	elems[TxTimestamp] = d.Timestamp.Bytes()
 	if d.SequencerOutputIndex != SequencerOutputIndexNone {
 		easyfl_util.Assertf(len(d.SequencerData) == SequencerDataLen,
-			"txcore.SerializeRawTx: sequencer data must be %d bytes, got %d",
+			"txbuildercore.SerializeRawTx: sequencer data must be %d bytes, got %d",
 			SequencerDataLen, len(d.SequencerData))
 		elems[TxSequencerDataBytes] = d.SequencerData
 	}

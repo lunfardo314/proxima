@@ -1,6 +1,6 @@
-package txcore_test
+package txbuildercore_test
 
-// Byte-identity tests for the txcore Phase-A wallet helpers:
+// Byte-identity tests for the txbuildercore Phase-A wallet helpers:
 // sequencer-request output composition + ensureStopDelegation. Each
 // test composes a request output via the wallet helper and asserts
 // the bytes match the corresponding sequencer-side helper in
@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util/smallkv"
@@ -20,9 +20,9 @@ import (
 )
 
 // fixtures used by every test below.
-func seqRequestFixtures(t *testing.T) (lib *txcore.Library, target base.ChainID, sender ledger.SigLock, senderID base.HolderID) {
+func seqRequestFixtures(t *testing.T) (lib *txbuildercore.Library, target base.ChainID, sender ledger.SigLock, senderID base.HolderID) {
 	t.Helper()
-	lib = txcoreLibFromGlobal(t)
+	lib = txbuildercoreLibFromGlobal(t)
 	for i := range target {
 		target[i] = byte(i + 100)
 	}
@@ -118,7 +118,7 @@ func TestNewSequencerRequestOutput_AskStopDelegation(t *testing.T) {
 // TestNewEnsureStopDelegationConstraint_ByteIdentity checks the
 // ensureStopDelegation bytecode standalone matches the ledger.* path.
 func TestNewEnsureStopDelegationConstraint_ByteIdentity(t *testing.T) {
-	lib := txcoreLibFromGlobal(t)
+	lib := txbuildercoreLibFromGlobal(t)
 	var chainID base.ChainID
 	for i := range chainID {
 		chainID[i] = byte(i + 50)

@@ -1,4 +1,4 @@
-package txcore
+package txbuildercore
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ import (
 //
 // Wallet flow:
 //
-//	txb := txcore.New(upgradeIndex)
+//	txb := txbuildercore.New(upgradeIndex)
 //	for i, oid := range inputs {
 //	    txb.ConsumeOutput(consumedOutputBytes[i], oid)
 //	}

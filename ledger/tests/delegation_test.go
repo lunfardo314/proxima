@@ -8,7 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -719,7 +719,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(par.ts)
-	txb.SetSequencerData(0, txcore.SequencerOutputIndexNone)
+	txb.SetSequencerData(0, txbuildercore.SequencerOutputIndexNone)
 	txb.SignED25519(td.seqPrivateKey)
 
 	txBytes, _, txString, err := txb.BytesWithValidation()

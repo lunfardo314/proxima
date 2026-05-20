@@ -1,4 +1,4 @@
-package txcore
+package txbuildercore
 
 import (
 	"sync"
@@ -6,7 +6,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
-// Common-element wallet helpers. Each helper produces a *txcore.Output
+// Common-element wallet helpers. Each helper produces a *txbuildercore.Output
 // for one of the lock kinds the wallet routinely composes. The
 // canonical lock bytecode is the same for every output of a given
 // kind (the holder/target data lives in the index-value tuple at slot

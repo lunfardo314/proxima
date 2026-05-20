@@ -22,7 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -93,7 +93,7 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	originIdx, err := txb.ProduceOutput(chainOriginOut)
 	require.NoError(t, err)
 
-	txb.SetSequencerData(originIdx, txcore.SequencerOutputIndexNone)
+	txb.SetSequencerData(originIdx, txbuildercore.SequencerOutputIndexNone)
 	txb.SetTimestamp(originTs)
 
 	// Dummy endorsement required for sequencer chain origins
@@ -160,7 +160,7 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 	txb.PutSignatureUnlock(predIdx)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb.SetSequencerData(succIdx, txcore.SequencerOutputIndexNone)
+	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 
 	txb.PushEndorsements(endorsements...)
 

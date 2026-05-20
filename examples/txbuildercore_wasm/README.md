@@ -1,6 +1,6 @@
-# txcore_wasm — end-to-end wasm wallet demo
+# txbuildercore_wasm — end-to-end wasm wallet demo
 
-A minimal end-to-end demonstration of using `ledger/txcore` to compose
+A minimal end-to-end demonstration of using `ledger/txbuildercore` to compose
 and sign a Proxima transaction from a wasm-targeted Go binary. The
 flow matches what a browser wallet would do:
 
@@ -8,7 +8,7 @@ flow matches what a browser wallet would do:
    `//go:embed`; in production the host ships a new wasm binary
    whenever the library version changes).
 2. Parse it via `encoding/json` into `engine.LibraryFromJSON`.
-3. Build a `txcore.Library`.
+3. Build a `txbuildercore.Library`.
 4. Compose a transfer transaction:
    - one consumed sigLock output (synthesised here),
    - two produced outputs (recipient + change),
@@ -18,7 +18,7 @@ flow matches what a browser wallet would do:
 ## Run as a normal Go program
 
 ```sh
-go run ./examples/txcore_wasm/
+go run ./examples/txbuildercore_wasm/
 ```
 
 Output is the library hash, the sender / recipient holder IDs, and
@@ -27,13 +27,13 @@ the signed tx bytes in hex.
 ## Build to wasm (TinyGo)
 
 ```sh
-tinygo build -target=wasm -o /tmp/txcore_demo.wasm ./examples/txcore_wasm/
+tinygo build -target=wasm -o /tmp/txbuildercore_demo.wasm ./examples/txbuildercore_wasm/
 ```
 
 Approximate size (TinyGo 0.41.1, Go 1.26): **2.0 MB raw / 650 KB
 gzipped.** This is larger than the floor measured for the
 "transaction builder alone" wasm probe (1.3 MB / 429 KB gzipped at
-`ledger/txcore/wasm/main.go`) because the demo additionally pulls
+`ledger/txbuildercore/wasm/main.go`) because the demo additionally pulls
 in `encoding/json` for the library JSON parse and embeds the 93 KB
 library snapshot. A production wallet has two options to reduce
 that overhead:
@@ -56,7 +56,7 @@ ledger library, produced from the testing parameters. Regenerate
 when the ledger library changes:
 
 ```sh
-go run ./examples/txcore_wasm/genlib/
+go run ./examples/txbuildercore_wasm/genlib/
 ```
 
 The committed snapshot will then update with a new hash; the wasm
@@ -88,12 +88,12 @@ binary built against it commits to that hash.
   delegation, native tokens, redeemers, chain transitions, and
   sequencer-request encoding are inventoried in
   `claude/wasm_txbuilder_helpers.md` and tracked as a separate
-  extension of the txcore refactor.
+  extension of the txbuildercore refactor.
 
 ## Cross-references
 
 - [claude/wasm_txbuilder.md](../../claude/wasm_txbuilder.md) — the
-  txcore refactor spec (Phases 0-6 shipped).
+  txbuildercore refactor spec (Phases 0-6 shipped).
 - [claude/wasm_txbuilder_helpers.md](../../claude/wasm_txbuilder_helpers.md)
   — analysis of the next batch of wallet helpers.
 - [claude/wasm_easyfl.md](../../claude/wasm_easyfl.md) — the

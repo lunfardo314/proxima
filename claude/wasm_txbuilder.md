@@ -1,7 +1,7 @@
 # WASM transaction-builder core — analysis and spec
 
 **Status: refactor finished 2026-05-19. Phases 0–6 shipped.** End
-state: `ledger/txcore` builds clean under TinyGo (`tinygo build
+state: `ledger/txbuildercore` builds clean under TinyGo (`tinygo build
 -target=wasm`) and produces a 1.3 MB / **429 KB gzipped** wasm
 binary that contains a full compose+sign transaction builder. See
 "Final state" and "Future optimisation levers" below.
@@ -12,20 +12,20 @@ Sibling docs:
 - [wasm_txbuilder_helpers.md](wasm_txbuilder_helpers.md) — analysis
   of the next batch of wallet helpers (sequencer requests, chain,
   delegation, native tokens, redeemers). Helpers are an *extension*
-  of the txcore refactor; their implementation is tracked separately.
+  of the txbuildercore refactor; their implementation is tracked separately.
 
 Separately tracked, **not** part of this refactor:
 - **Unified `/api/v1/submit` endpoint on the host** (originally
   drafted as Phase 7 of this doc) — needs its own planning phase
-  before implementation. Independent of txcore changes.
-- **Proxi CLI refactor** to consume the new helpers / txcore where
+  before implementation. Independent of txbuildercore changes.
+- **Proxi CLI refactor** to consume the new helpers / txbuildercore where
   appropriate — follow-up after the helpers ship.
 
 ---
 
 ## Goal
 
-Expose a minimal Go package — `ledger/txcore` — that can be compiled
+Expose a minimal Go package — `ledger/txbuildercore` — that can be compiled
 with TinyGo to WebAssembly and run inside a browser-based wallet (or
 any isolated frontend). The frontend's job is to:
 
@@ -154,7 +154,7 @@ Heavy pieces are confined to a handful of methods:
 | `LoadInput` | feeds the validator | **NO** |
 | `CalcFrozenCoverageDelta` / `MustPutFrozenCoverage` | sequencer freeze-tx convenience | **NO** — sequencer-only |
 
-txcore's `TxBuilder` is the universal low-level compose API: it lets
+txbuildercore's `TxBuilder` is the universal low-level compose API: it lets
 the wallet construct *any* valid tx shape (any inputs, any outputs,
 arbitrary constraints, endorsements, tx-level constraints, sig). The
 common-element helpers (sigLock construction, common indices, chain
@@ -164,7 +164,7 @@ universal builder and the easyfl source-compiler, no separate
 "constraints" sub-package.
 
 Sequencer-only and validation-side methods stay in the full
-`ledger/txbuilder` (which becomes a wrapper that re-exports txcore and
+`ledger/txbuilder` (which becomes a wrapper that re-exports txbuildercore and
 adds the heavy pieces).
 
 ### Cost B — what `ledger.Output` drags in
@@ -182,13 +182,13 @@ companions transitively import:
   `native_token.go`, `delegate*.go`, …) — each adds compile-time deps
   on `easyfl` helpers.
 
-**Simpler OutputBuilder for txcore:** rather than porting the full
+**Simpler OutputBuilder for txbuildercore:** rather than porting the full
 `ledger.OutputBuilder` (which is monolithic and has constraint-kind-
-specific methods), txcore introduces a thin extension of
+specific methods), txbuildercore introduces a thin extension of
 `easyfl/tuples.TupleEditable`:
 
 ```go
-// in ledger/txcore
+// in ledger/txbuildercore
 type OutputBuilder struct{ *tuples.TupleEditable }
 
 func NewOutputBuilder() *OutputBuilder
@@ -236,10 +236,10 @@ call to `easyfl/engine.Library.CompileExpression(source)`. Decoding
 works the same way: pure EasyFL decompile already turns bytecode back
 into source, no Go-side serde wrappers required for inspection.
 
-txcore packages this as one cohesive surface:
+txbuildercore packages this as one cohesive surface:
 
 ```
-ledger/txcore/
+ledger/txbuildercore/
 ├── output.go               — minimal Output + OutputBuilder
 ├── tx_data.go              — transactionData + ToTuple + Bytes
 ├── txbuilder.go            — universal builder ops (compose only)
@@ -264,7 +264,7 @@ add zero transitive deps because each is just
 builder.
 
 The full `ledger` package keeps the **parsers / registrars / EasyFL
-bodies / validation** — that side is unchanged. Helpers in txcore
+bodies / validation** — that side is unchanged. Helpers in txbuildercore
 emit canonical source strings; the full package's parsers expect the
 same strings; they stay byte-for-byte compatible.
 
@@ -276,10 +276,10 @@ same strings; they stay byte-for-byte compatible.
 ledger/                          (kept — full backend / validator)
 ├── (everything as today)
 │   – validators, parsers, serdes, EasyFL bodies …
-│   – existing txbuilder/ is a thin wrapper over txcore for the
+│   – existing txbuilder/ is a thin wrapper over txbuildercore for the
 │     server-side compose+validate+sequencer-helpers path.
 │
-└── txcore/                      NEW — TinyGo-clean compose+sign core
+└── txbuildercore/                      NEW — TinyGo-clean compose+sign core
     ├── output.go
     ├── tx_data.go
     ├── txbuilder.go
@@ -291,7 +291,7 @@ ledger/                          (kept — full backend / validator)
 ```
 
 The full `ledger` package's existing `New<Foo>` constructors delegate
-to `txcore/helpers.go` so there's **one source of truth** for each
+to `txbuildercore/helpers.go` so there's **one source of truth** for each
 constraint's canonical bytecode source string. The full package
 retains its parsers, serdes, and EasyFL bodies; nothing in the
 runtime validator changes.
@@ -309,7 +309,7 @@ The easyfl side (`wasm_easyfl.md`) is done as of `c2f3713`:
 | Tracing pruning, `reflect` removal from base, etc. | shipped Phase B |
 | Compose / eval / embed split | shipped Phase C (renamed compose → engine) |
 
-What txcore needs from easyfl:
+What txbuildercore needs from easyfl:
 
 - **`easyfl/engine`** — Library + CompileExpression + DecompileBytecode +
   registration primitives. This is exactly what the wallet imports.
@@ -322,12 +322,12 @@ It does **not** need:
 
 - `easyfl/embed` (no eval).
 - The top-level `easyfl` facade's JSON serde (wallet parses JSON in
-  its own environment, hands txcore a `*engine.LibraryFromJSON`).
+  its own environment, hands txbuildercore a `*engine.LibraryFromJSON`).
 
-txcore's library loader is:
+txbuildercore's library loader is:
 
 ```go
-// in ledger/txcore/library.go
+// in ledger/txbuildercore/library.go
 import "github.com/lunfardo314/easyfl/engine"
 
 //go:embed library.json
@@ -368,7 +368,7 @@ emission is pure source compile, decoding is pure source decompile.
 ## Signing surface
 
 ```go
-// in ledger/txcore/sign.go
+// in ledger/txbuildercore/sign.go
 func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey)
 ```
 
@@ -388,7 +388,7 @@ TinyGo-compatible (blake2b loses its asm fast path; acceptable).
 `TxIDFromTransactionDataTree` itself lives in
 `ledger/transaction/parse.go` today. The wasm core ports a stripped
 version (no parse validation, just hash + prefix bytes) — call it
-`TxIDFromBytes`. If the full-build path can use the txcore helper
+`TxIDFromBytes`. If the full-build path can use the txbuildercore helper
 directly, delete the duplication from `transaction/parse.go`.
 
 ---
@@ -396,17 +396,17 @@ directly, delete the duplication from `transaction/parse.go`.
 ## What the wallet API looks like
 
 ```go
-import "github.com/lunfardo314/proxima/ledger/txcore"
+import "github.com/lunfardo314/proxima/ledger/txbuildercore"
 
-lib, _ := txcore.LoadEmbeddedLibrary[any]()
-txb := txcore.New(lib)
+lib, _ := txbuildercore.LoadEmbeddedLibrary[any]()
+txb := txbuildercore.New(lib)
 for i, oid := range inputIDs {
     txb.ConsumeOutput(consumedOutputs[i], oid)
 }
-txb.ProduceOutput(txcore.NewSigLockOutput(amount, recipient))     // uses helper
-txb.ProduceOutput(txcore.NewTagAlongOutput(tagAlongAmount, seq))  // uses helper
+txb.ProduceOutput(txbuildercore.NewSigLockOutput(amount, recipient))     // uses helper
+txb.ProduceOutput(txbuildercore.NewTagAlongOutput(tagAlongAmount, seq))  // uses helper
 txb.TransactionData.Timestamp = ts
-txb.TransactionData.InputCommitment = txcore.HashOutputs(txb.ConsumedOutputs...)
+txb.TransactionData.InputCommitment = txbuildercore.HashOutputs(txb.ConsumedOutputs...)
 txb.SignED25519(privKey)
 rawTx := txb.TransactionData.Bytes()
 ```
@@ -428,14 +428,14 @@ through the helpers, the underlying `lib.CompileExpression(source)`
 - The evaluator, constraint validators, closing balance checks (e.g.
   `NativeTokenAggregator.CheckBalances`, `validateOutputs`).
 - The typed-constraint **parsers** (`<Foo>FromBytes`) and their
-  `register<Foo>` calls. txcore helpers only emit; the full-build
+  `register<Foo>` calls. txbuildercore helpers only emit; the full-build
   side keeps the reading half.
 - All sequencer-related compose helpers
   (`MakeSequencerTransaction`, `CalcFrozenCoverageDelta`,
   `MustPutFrozenCoverage`, …).
 - `multistate`, snapshots, the persistent index machinery.
 - `proxi` CLI keeps using the **full** `ledger/txbuilder` for v1; it
-  doubles as the canary for txcore once the refactor settles.
+  doubles as the canary for txbuildercore once the refactor settles.
 
 ---
 
@@ -455,30 +455,30 @@ Strict ordering — each phase must build green before the next starts.
 - Catalogue which constraint-construction helpers the CLI uses
   (`NewSigLockOutput`, `NewChainOrigin`, `NewTagAlongOutput`,
   `NewDelegateLockOutput`, foundry transit, tokenAmount …) — these
-  are the helpers that move to txcore.
+  are the helpers that move to txbuildercore.
 
 ### Phase 1 — Output + OutputBuilder + library loader
 
 Extract a minimal `Output` (raw bytes + accessors) and the new
-tuple-based `OutputBuilder` into `ledger/txcore/output.go`.
+tuple-based `OutputBuilder` into `ledger/txbuildercore/output.go`.
 
 Pretty-printer / debugging methods stay in the full package as
 methods on the **same** `Output` type via separate `.go` files.
 
-Aliasing approach: `ledger.Output = txcore.Output`. Methods declared
+Aliasing approach: `ledger.Output = txbuildercore.Output`. Methods declared
 in the full `ledger` package are only available in the full build —
 TinyGo never compiles them. (Same trick the easyfl facade uses.)
 
-Stand up `ledger/txcore/library.go` with a thin wrapper that holds
+Stand up `ledger/txbuildercore/library.go` with a thin wrapper that holds
 the parsed `*engine.Library` and offers `CompileExpression` /
 `DecompileBytecode`.
 
 ### Phase 2 — TxBuilder + transactionData
 
 Move the compose-side TxBuilder methods into
-`ledger/txcore/txbuilder.go`. Leave behind in
+`ledger/txbuildercore/txbuilder.go`. Leave behind in
 `ledger/txbuilder/txbuilder.go` a thin wrapper that re-exports
-`txcore.TxBuilder` and adds `BuildTransactionWithValidation`,
+`txbuildercore.TxBuilder` and adds `BuildTransactionWithValidation`,
 `Transaction()`, `BytesWithValidation()`, `LoadInput`,
 `GetChainAccount` (validation / state-query helpers).
 
@@ -491,39 +491,39 @@ full-build wrapper unchanged.
 
 ### Phase 3 — Sign / hash port
 
-Port `TxIDFromTransactionDataTree` into `txcore.TxIDFromBytes` (no
+Port `TxIDFromTransactionDataTree` into `txbuildercore.TxIDFromBytes` (no
 validation, just hash + prefix). Implement `SignED25519`. Delete the
 duplication from `transaction/parse.go` if the full-build path can
-use the txcore helper directly.
+use the txbuildercore helper directly.
 
 ### Phase 4 — Compose-helpers move
 
 Inventory current `ledger/<foo>.go` constraint wrappers; for each
 extract the compose-only half — `New<Foo>` constructors that emit
-canonical source via the library — into `ledger/txcore/helpers.go`
+canonical source via the library — into `ledger/txbuildercore/helpers.go`
 (or per-kind files). The parser + registrar stay in the full
-package; the full package's `New<Foo>` re-exports the txcore version
+package; the full package's `New<Foo>` re-exports the txbuildercore version
 so callers don't change.
 
 Risk: some constraint wrappers reach into types from the full
 package (e.g. `Foundry` referencing `mustBinFromSource` which calls
 `L(base.MaxSlot)`). Solvable by exposing a `Library` accessor on the
-txcore side and wiring it once at init.
+txbuildercore side and wiring it once at init.
 
 ### Phase 5 — WASM entrypoint + measurement
 
-Add `ledger/txcore/wasm/main.go` with a JS-callable "build and sign"
+Add `ledger/txbuildercore/wasm/main.go` with a JS-callable "build and sign"
 function. TinyGo-build it. Measure binary size.
 
 **Status: shipped 2026-05-19.** Probe at
-`ledger/txcore/wasm/main.go` exercises the compose + sign path
+`ledger/txbuildercore/wasm/main.go` exercises the compose + sign path
 without invoking the library (raw lock-bytecode placeholder) — the
 FLOOR measurement for "what does the wasm txbuilder cost".
 
 Build:
 
 ```
-tinygo build -target=wasm -o /tmp/txcore.wasm ./ledger/txcore/wasm/
+tinygo build -target=wasm -o /tmp/txbuildercore.wasm ./ledger/txbuildercore/wasm/
 ```
 
 **Measured size (TinyGo 0.41.1, Go 1.26):**
@@ -559,7 +559,7 @@ internal/reflectlite 14805
 runtime            15282
 internal/strconv   11024     ← BE int formatting
 golang.org/x/text/internal/language  24585 (+ ~60K data)
-ledger/txcore      6677
+ledger/txbuildercore      6677
 easyfl/tuples      5551
 easyfl/blake2b     4919
 math/rand (data)    4856     ← from time.Now() seed
@@ -612,7 +612,7 @@ crypto/internal/fips140/*  ~18K combined (used by ed25519)
 syscall/js          5462
 slices              5531
 easyfl/tuples       5700
-ledger/txcore       6387
+ledger/txbuildercore       6387
 easyfl/blake2b      4919
 math/rand           4506     (+ 4856 data, used by ed25519 random source)
 ledger/base         2914
@@ -626,7 +626,7 @@ TinyGo-runtime irreducibles: `fmt`, `reflectlite`, `strconv`,
 **Remaining levers (deferred, by descending payoff):**
 
 - **fmt stripping.** Most `fmt.Errorf` / `fmt.Sprintf` calls in
-  base + txcore could be replaced with `errors.New` + manual
+  base + txbuildercore could be replaced with `errors.New` + manual
   concatenation, dropping fmt + fmtsort + reflectlite (~34 KB
   raw, ~12 KB gzipped). Significant churn (~30 call sites). Skip
   unless wallet bundle size pressure is acute.
@@ -645,19 +645,19 @@ Six phases shipped 2026-05-19. End state:
 | Phase | Commit | Outcome |
 |---|---|---|
 | 0 — Audit | (in spec doc) | Confirmed expected import-graph cost; catalogued CLI's compose API surface. |
-| 1 — Output + OutputBuilder | `8cb3e4a0` | txcore.Output / OutputBuilder embed `*tuples.{Tuple, TupleEditable}`. ledger.Output / OutputBuilder embed the txcore types and keep their typed methods. 125+ callsites unchanged. |
-| 2a — Tx tuple layout constants | `8ce70f03` | Wire-format constants in txcore; ledger re-exports. |
-| 2b — TxRawData + SerializeRawTx + UnlockParams | `9e48f13b` | Wire-format serialisation lives in txcore; ledger.txbuilder converts its typed view to TxRawData and calls into txcore. |
+| 1 — Output + OutputBuilder | `8cb3e4a0` | txbuildercore.Output / OutputBuilder embed `*tuples.{Tuple, TupleEditable}`. ledger.Output / OutputBuilder embed the txbuildercore types and keep their typed methods. 125+ callsites unchanged. |
+| 2a — Tx tuple layout constants | `8ce70f03` | Wire-format constants in txbuildercore; ledger re-exports. |
+| 2b — TxRawData + SerializeRawTx + UnlockParams | `9e48f13b` | Wire-format serialisation lives in txbuildercore; ledger.txbuilder converts its typed view to TxRawData and calls into txbuildercore. |
 | 2c — TxBuilder compose ops | `c4b69f3e` | Wallet-facing TxBuilder with raw-byte ops. |
-| 3 — Sign + tx-ID port | `4f466c07` | TxIDFromTree + HashEssence + SignED25519 in txcore. ledger/transaction's TxIDFromTransactionDataTree is a one-line delegate. |
+| 3 — Sign + tx-ID port | `4f466c07` | TxIDFromTree + HashEssence + SignED25519 in txbuildercore. ledger/transaction's TxIDFromTransactionDataTree is a one-line delegate. |
 | 4 — Library + amounts + helpers (sigLock + tagAlong) | `9752c732` | Wallet helpers compose canonical bytes via lib.CompileExpression + cached lock bytecodes. Byte-identity tests vs ledger.* constructors. |
 | 5 — wasm probe + measurement | `7d7f28af` | TinyGo build green; 1.8 MB raw / 563 KB gzipped baseline. Cleared two TinyGo blockers along the way (unitrie/common.Concat in base, proxima/util.Assertf in base). |
 | 6 — drop proxima/util from base | `b5e1a3f0` | Inlined KeysSorted + Maximum. x/text drag (~85 KB raw) gone. 1.3 MB / 429 KB gzipped. |
 | (drive-by) — move SmallPersistentMap | `d3120cf4` | `ledger/base/smallkv.go` → `util/smallkv/`; renamed to idiomatic `Map` / `New` / `FromBytes`. ledger/base's proxima-side dep graph now only includes `easyfl/easyfl_util`. |
 
-**Wasm probe at `ledger/txcore/wasm/main.go`** exercises the compose
+**Wasm probe at `ledger/txbuildercore/wasm/main.go`** exercises the compose
 + sign path; the wallet API surface verified end-to-end. Two test
-suites cover txcore (`txbuilder_test.go`, `helpers_test.go`) — 7
+suites cover txbuildercore (`txbuilder_test.go`, `helpers_test.go`) — 7
 tests including byte-identity round-trips for sigLock + tagAlong
 outputs against the existing typed ledger.* constructors.
 
@@ -693,5 +693,5 @@ problem.
   builtins; on the wasm side these become emitter-only (wallet
   pushes a `token(tag, 0xFF)` bytecode but never evaluates it).
 - `CLAUDE.md` working rules — "Enforce constraints in EasyFL when
-  possible" still applies; txcore is a packaging refactor, not a
+  possible" still applies; txbuildercore is a packaging refactor, not a
   behavioural one.

@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -505,7 +505,7 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 
 	if txb.stemInput == nil {
 		// Non-branch: stem index stays at the SequencerOutputIndexNone sentinel (0xff).
-		txb.SetSequencerData(chainOutIdx, txcore.SequencerOutputIndexNone)
+		txb.SetSequencerData(chainOutIdx, txbuildercore.SequencerOutputIndexNone)
 		return nil
 	}
 	// handle stem

@@ -1,4 +1,4 @@
-package txcore
+package txbuildercore
 
 import (
 	"fmt"

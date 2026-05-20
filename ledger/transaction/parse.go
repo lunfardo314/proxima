@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -134,11 +134,11 @@ func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
 }
 
 // TxIDFromTransactionDataTree is a thin compatibility shim that delegates
-// to txcore.TxIDFromTree (the canonical, wallet-shared implementation).
+// to txbuildercore.TxIDFromTree (the canonical, wallet-shared implementation).
 // Server-side callers (Parse) use this so the byte-level txid math lives
 // in exactly one place.
 func TxIDFromTransactionDataTree(txTree *tuples.Tree) (base.TransactionID, error) {
-	return txcore.TxIDFromTree(txTree)
+	return txbuildercore.TxIDFromTree(txTree)
 }
 
 func IDAndTimestampFromParsedTransactionBytes(txBytes []byte) (base.TransactionID, base.LedgerTime, error) {

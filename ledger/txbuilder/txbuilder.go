@@ -9,37 +9,37 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 )
 
-// UnlockParams is re-exported from txcore so existing tests / sequencer
+// UnlockParams is re-exported from txbuildercore so existing tests / sequencer
 // code referencing txbuilder.UnlockParams keep compiling.
-type UnlockParams = txcore.UnlockParams
+type UnlockParams = txbuildercore.UnlockParams
 
 // NewUnlockBlock re-exported for the same reason.
-func NewUnlockBlock() *UnlockParams { return txcore.NewUnlockBlock() }
+func NewUnlockBlock() *UnlockParams { return txbuildercore.NewUnlockBlock() }
 
-// TxBuilder is a thin server-side sugar layer over *txcore.TxBuilder.
-// All wire-format state lives in the embedded txcore.TxData; the two
+// TxBuilder is a thin server-side sugar layer over *txbuildercore.TxBuilder.
+// All wire-format state lives in the embedded txbuildercore.TxData; the two
 // typed buffers below mirror the consumed / produced outputs in their
 // *ledger.Output form so the typed APIs (validation, frozen-coverage,
 // chain helpers, recipes) can inspect them without re-parsing bytes.
 type TxBuilder struct {
-	*txcore.TxBuilder
+	*txbuildercore.TxBuilder
 	ConsumedOutputs []*ledger.Output
 	ProducedOutputs []*ledger.Output
 }
 
 func New() *TxBuilder {
 	return &TxBuilder{
-		TxBuilder:       txcore.New(0),
+		TxBuilder:       txbuildercore.New(0),
 		ConsumedOutputs: make([]*ledger.Output, 0),
 		ProducedOutputs: make([]*ledger.Output, 0),
 	}
 }
 
-// SetTimestamp shadows the embedded txcore.SetTimestamp to also set
+// SetTimestamp shadows the embedded txbuildercore.SetTimestamp to also set
 // TxData.UpgradeIndex from the slot's library version. This preserves
 // the deferred-derivation behaviour the old transactionData had in
 // toRawTxData — callers don't need to know about the upgrade-index
@@ -59,7 +59,7 @@ func (txb *TxBuilder) ReplaceProducedOutput(idx byte, o *ledger.Output) {
 }
 
 // ConsumeOutput appends a typed consumed output and forwards its raw
-// bytes to the embedded txcore.TxBuilder.
+// bytes to the embedded txbuildercore.TxBuilder.
 func (txb *TxBuilder) ConsumeOutput(out *ledger.Output, oid base.OutputID) (byte, error) {
 	if txb.NumInputs() >= 256 {
 		return 0, fmt.Errorf("too many consumed outputs")

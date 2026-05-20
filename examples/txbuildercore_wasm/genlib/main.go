@@ -1,7 +1,7 @@
-// Helper that regenerates examples/txcore_wasm/library.json from the
+// Helper that regenerates examples/txbuildercore_wasm/library.json from the
 // current ledger library. Run from the repo root:
 //
-//	go run ./examples/txcore_wasm/genlib/
+//	go run ./examples/txbuildercore_wasm/genlib/
 //
 // The output file is committed alongside main.go so the wasm demo
 // builds without a host call-out. Re-run whenever the ledger library
@@ -25,14 +25,14 @@ func main() {
 	// Build the ledger library using the same testing parameters the
 	// rest of the project uses for golden snapshots.
 	priv := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-	params := ledger.DefaultParameters(priv, 1, "txcore wasm demo")
+	params := ledger.DefaultParameters(priv, 1, "txbuildercore wasm demo")
 	lib := ledger.LibraryFromParameters(params)
 
 	// compiled=true preserves funCodes + bytecodes + hash; indent=true
 	// produces a human-readable layout (the demo decodes either form).
 	jsonBytes := easyfl.ToJSON(lib.Library, true, true)
 
-	out, err := filepath.Abs("examples/txcore_wasm/library.json")
+	out, err := filepath.Abs("examples/txbuildercore_wasm/library.json")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "abs path: %v\n", err)
 		os.Exit(1)

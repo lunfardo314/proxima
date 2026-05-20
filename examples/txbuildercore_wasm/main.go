@@ -1,9 +1,9 @@
-// txcore_wasm — end-to-end demo of composing + signing a Proxima
-// transaction entirely with ledger/txcore. Builds with standard Go
+// txbuildercore_wasm — end-to-end demo of composing + signing a Proxima
+// transaction entirely with ledger/txbuildercore. Builds with standard Go
 // and (the point) with TinyGo to WebAssembly:
 //
-//	go run ./examples/txcore_wasm/
-//	tinygo build -target=wasm -o /tmp/txcore_demo.wasm ./examples/txcore_wasm/
+//	go run ./examples/txbuildercore_wasm/
+//	tinygo build -target=wasm -o /tmp/txbuildercore_demo.wasm ./examples/txbuildercore_wasm/
 //
 // See README.md in this directory for the wasm-side glue notes.
 //
@@ -15,9 +15,9 @@
 //     embeds it via //go:embed only so `go run` / `tinygo build` are
 //     self-contained. Parsing goes through encoding/json into the
 //     descriptor type — no host call-out at compose time.
-//  2. Build a txcore.Library from that descriptor.
+//  2. Build a txbuildercore.Library from that descriptor.
 //  3. Compose a one-input, one-output sigLock transfer using the
-//     txcore wallet helpers (NewSigLockOutput).
+//     txbuildercore wallet helpers (NewSigLockOutput).
 //  4. Sign with ed25519.
 //  5. Print the raw tx hex.
 //
@@ -35,7 +35,7 @@ import (
 
 	"github.com/lunfardo314/easyfl/engine"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
 
 // library.json is the canonical compiled ledger library for this
@@ -43,7 +43,7 @@ import (
 // upgrades its library; the wasm binary and host library hashes
 // must match for the wallet's bytecode emission to be accepted.
 //
-// Regenerate with: go run ./examples/txcore_wasm/genlib/
+// Regenerate with: go run ./examples/txbuildercore_wasm/genlib/
 //
 //go:embed library.json
 var libraryJSON []byte
@@ -54,9 +54,9 @@ func main() {
 	if err := json.Unmarshal(libraryJSON, &desc); err != nil {
 		panic(fmt.Errorf("parse library.json: %w", err))
 	}
-	lib, err := txcore.NewLibrary(&desc)
+	lib, err := txbuildercore.NewLibrary(&desc)
 	if err != nil {
-		panic(fmt.Errorf("txcore.NewLibrary: %w", err))
+		panic(fmt.Errorf("txbuildercore.NewLibrary: %w", err))
 	}
 
 	// Two deterministic ed25519 keys: sender (signs) and recipient.
@@ -86,22 +86,22 @@ func main() {
 	)
 	changeAmount := consumedAmount - sendAmount
 
-	consumed, err := txcore.NewSigLockOutput(lib, consumedAmount, senderID)
+	consumed, err := txbuildercore.NewSigLockOutput(lib, consumedAmount, senderID)
 	if err != nil {
 		panic(fmt.Errorf("compose consumed: %w", err))
 	}
-	produced, err := txcore.NewSigLockOutput(lib, sendAmount, recipientID)
+	produced, err := txbuildercore.NewSigLockOutput(lib, sendAmount, recipientID)
 	if err != nil {
 		panic(fmt.Errorf("compose produced: %w", err))
 	}
-	change, err := txcore.NewSigLockOutput(lib, changeAmount, senderID)
+	change, err := txbuildercore.NewSigLockOutput(lib, changeAmount, senderID)
 	if err != nil {
 		panic(fmt.Errorf("compose change: %w", err))
 	}
 
 	// Step 4 — assemble + sign.
 	upgradeIndex := uint16(0) // wallet bakes this at build time
-	txb := txcore.New(upgradeIndex)
+	txb := txbuildercore.New(upgradeIndex)
 
 	var consumedTxID base.TransactionID // zero-id placeholder
 	consumedOID := base.MustNewOutputID(consumedTxID, 0)

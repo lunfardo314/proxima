@@ -1,6 +1,6 @@
-package txcore_test
+package txbuildercore_test
 
-// Smoke tests for the wasm-wallet-facing txcore.TxBuilder. These don't
+// Smoke tests for the wasm-wallet-facing txbuildercore.TxBuilder. These don't
 // exercise validator semantics — they just verify the raw compose
 // surface produces the wire format the server-side parsers expect.
 
@@ -10,7 +10,7 @@ import (
 
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,10 +18,10 @@ import (
 // no inputs, no outputs, sequencer-output-index marked None so the
 // serializer omits the sequencer-data slot.
 func TestTxBuilder_Empty(t *testing.T) {
-	txb := txcore.New(0)
+	txb := txbuildercore.New(0)
 	require.Equal(t, 0, txb.NumInputs())
 	require.Equal(t, 0, txb.NumOutputs())
-	require.Equal(t, txcore.SequencerOutputIndexNone, txb.TxData.SequencerOutputIndex)
+	require.Equal(t, txbuildercore.SequencerOutputIndexNone, txb.TxData.SequencerOutputIndex)
 
 	// Serialise — empty tx should round-trip through the tuple
 	// machinery without panicking.
@@ -35,10 +35,10 @@ func TestTxBuilder_Empty(t *testing.T) {
 // Verifies the produced bytes parse back as a tuple of the expected
 // shape.
 func TestTxBuilder_ConsumeProduce(t *testing.T) {
-	txb := txcore.New(0)
+	txb := txbuildercore.New(0)
 
 	// Build an empty-shell consumed output: amounts | empty-index-values | empty-lock.
-	consumed := txcore.NewOutputBuilder()
+	consumed := txbuildercore.NewOutputBuilder()
 	consumed.MustPushConstraint([]byte{0x01, 0x02, 0x03}) // pretend amounts
 	consumed.MustPushConstraint(nil)                       // index-values
 	consumed.MustPushConstraint([]byte{0x80})              // pretend lock (inline-data short prefix)
@@ -50,7 +50,7 @@ func TestTxBuilder_ConsumeProduce(t *testing.T) {
 	require.Equal(t, 1, txb.NumInputs())
 
 	// Produced output (same shape).
-	produced := txcore.NewOutputBuilder()
+	produced := txbuildercore.NewOutputBuilder()
 	produced.MustPushConstraint([]byte{0x04, 0x05, 0x06})
 	produced.MustPushConstraint(nil)
 	produced.MustPushConstraint([]byte{0x80})
@@ -67,9 +67,9 @@ func TestTxBuilder_ConsumeProduce(t *testing.T) {
 
 	// Parse back as the outer transaction-tree tuple and confirm
 	// the slot count matches the wire-format constant.
-	tree, err := tuples.TupleFromBytes(raw, txcore.MaxNumConstraints)
+	tree, err := tuples.TupleFromBytes(raw, txbuildercore.MaxNumConstraints)
 	require.NoError(t, err)
-	require.Equal(t, int(txcore.TxTreeTupleNumElements), tree.NumElements())
+	require.Equal(t, int(txbuildercore.TxTreeTupleNumElements), tree.NumElements())
 }
 
 // TestTxBuilder_SignED25519 verifies the signing path: derive the tx
@@ -79,10 +79,10 @@ func TestTxBuilder_SignED25519(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
-	txb := txcore.New(0)
+	txb := txbuildercore.New(0)
 
 	// One produced output (TxIDFromTree requires nUTXO > 0).
-	out := txcore.NewOutputBuilder()
+	out := txbuildercore.NewOutputBuilder()
 	out.MustPushConstraint([]byte{0x01})
 	out.MustPushConstraint(nil)
 	out.MustPushConstraint([]byte{0x80})
@@ -102,7 +102,7 @@ func TestTxBuilder_SignED25519(t *testing.T) {
 	// Re-derive the txid from the bytes the wallet would emit and
 	// verify the sig against that.
 	raw := txb.Bytes()
-	txid, err := txcore.TxIDFromBytes(raw)
+	txid, err := txbuildercore.TxIDFromBytes(raw)
 	require.NoError(t, err)
 	require.True(t, ed25519.Verify(pub, txid[:], sig))
 }
@@ -111,7 +111,7 @@ func TestTxBuilder_SignED25519(t *testing.T) {
 // non-strictly-decreasing references (the validator enforces this; we
 // catch it client-side at compose time).
 func TestTxBuilder_UnlockReference(t *testing.T) {
-	txb := txcore.New(0)
+	txb := txbuildercore.New(0)
 	var txid base.TransactionID
 	oid0 := base.MustNewOutputID(txid, 0)
 	oid1 := base.MustNewOutputID(txid, 1)
@@ -119,8 +119,8 @@ func TestTxBuilder_UnlockReference(t *testing.T) {
 	txb.ConsumeOutput([]byte{0x80}, oid1)
 
 	// Valid: input 1 references input 0.
-	require.NoError(t, txb.PutUnlockReference(1, txcore.ConstraintIndexLock, 0))
+	require.NoError(t, txb.PutUnlockReference(1, txbuildercore.ConstraintIndexLock, 0))
 
 	// Invalid: input 1 references input 1 (not strictly less).
-	require.Error(t, txb.PutUnlockReference(1, txcore.ConstraintIndexLock, 1))
+	require.Error(t, txb.PutUnlockReference(1, txbuildercore.ConstraintIndexLock, 1))
 }

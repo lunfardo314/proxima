@@ -1,7 +1,7 @@
-# txcore wasm — size assessment
+# txbuildercore wasm — size assessment
 
 **Measured:** 2026-05-20
-**Probe:** `./ledger/txcore/wasm/main.go` — exercises the full
+**Probe:** `./ledger/txbuildercore/wasm/main.go` — exercises the full
 compose + sign path (one consumed UTXO, one produced UTXO,
 signature unlock, ed25519 sign).
 **Toolchain:** TinyGo 0.41.1 + Go 1.26 (linux/amd64 host).
@@ -19,7 +19,7 @@ ship. Default-build size is debug bloat.
 ## Where the bytes go
 
 Code-section bytes from `tinygo build -size=full -target=wasm
--o /tmp/txcore_dbg.wasm ./ledger/txcore/wasm/` (default build —
+-o /tmp/txbuildercore_dbg.wasm ./ledger/txbuildercore/wasm/` (default build —
 attribution unavailable in `-no-debug` mode).
 
 ### Platform (≈354 KB)
@@ -56,7 +56,7 @@ Sub-breakdown of `crypto/internal/fips140/*`:
 
 | Package | Code (B) |
 |---|---:|
-| `github.com/lunfardo314/proxima/ledger/txcore` | 6 387 |
+| `github.com/lunfardo314/proxima/ledger/txbuildercore` | 6 387 |
 | `github.com/lunfardo314/easyfl/tuples` | 5 700 |
 | `github.com/lunfardo314/proxima/ledger/base` | 2 914 |
 | `github.com/lunfardo314/easyfl/easyfl_util` | 656 |
@@ -89,18 +89,18 @@ is needed unless targeting <50 KB.
 
 ```bash
 # Default (debug-built, slowest path, larger binary; matches the
-# numbers the txcore_wasm demo prints).
-tinygo build -target=wasm -o /tmp/txcore.wasm ./ledger/txcore/wasm/
-ls -la /tmp/txcore.wasm        # 1.35 MB
-gzip -c /tmp/txcore.wasm | wc -c  # 442 KB
+# numbers the txbuildercore_wasm demo prints).
+tinygo build -target=wasm -o /tmp/txbuildercore.wasm ./ledger/txbuildercore/wasm/
+ls -la /tmp/txbuildercore.wasm        # 1.35 MB
+gzip -c /tmp/txbuildercore.wasm | wc -c  # 442 KB
 
 # Size-optimised (what a shipped wallet should bundle).
-tinygo build -target=wasm -no-debug -opt=z -o /tmp/txcore_opt.wasm \
-    ./ledger/txcore/wasm/
-ls -la /tmp/txcore_opt.wasm    # 370 KB
-gzip -c /tmp/txcore_opt.wasm | wc -c  # 151 KB
+tinygo build -target=wasm -no-debug -opt=z -o /tmp/txbuildercore_opt.wasm \
+    ./ledger/txbuildercore/wasm/
+ls -la /tmp/txbuildercore_opt.wasm    # 370 KB
+gzip -c /tmp/txbuildercore_opt.wasm | wc -c  # 151 KB
 
 # Per-package attribution (only works with debug symbols).
-tinygo build -size=full -target=wasm -o /tmp/txcore_dbg.wasm \
-    ./ledger/txcore/wasm/
+tinygo build -size=full -target=wasm -o /tmp/txbuildercore_dbg.wasm \
+    ./ledger/txbuildercore/wasm/
 ```

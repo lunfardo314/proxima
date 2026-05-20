@@ -3,7 +3,7 @@ package ledger
 import (
 	"fmt"
 
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 )
 
 /*
@@ -42,49 +42,49 @@ This way:
 	- the corresponding unlock-parameters is located at path 0x0007ii (replacing 2 byte path prefix with 0x0007)
 */
 
-// Top level tuple indices — re-exported from ledger/txcore.
+// Top level tuple indices — re-exported from ledger/txbuildercore.
 const (
 	// TransactionTuple is the nested tuple representing the transaction.
-	TransactionTuple = txcore.TransactionTuple
+	TransactionTuple = txbuildercore.TransactionTuple
 	// ConsumedTuple is the sub-tuple of consumed UTXOs.
-	ConsumedTuple = txcore.ConsumedTuple
+	ConsumedTuple = txbuildercore.ConsumedTuple
 )
 
-// Transaction subtree indices — re-exported from ledger/txcore.
-// The wire-format definitions live in ledger/txcore/tx_layout.go so
-// txcore (and the wasm wallet) can build / parse the tuple without
+// Transaction subtree indices — re-exported from ledger/txbuildercore.
+// The wire-format definitions live in ledger/txbuildercore/tx_layout.go so
+// txbuildercore (and the wasm wallet) can build / parse the tuple without
 // importing the full ledger package.
 const (
-	TxVersion              = txcore.TxVersion
-	TxTimestamp            = txcore.TxTimestamp
-	TxSequencerDataBytes   = txcore.TxSequencerDataBytes
-	TxSignatureData        = txcore.TxSignatureData
-	TxInputCommitment      = txcore.TxInputCommitment
-	TxExplicitBaseline     = txcore.TxExplicitBaseline
-	TxInputIDs             = txcore.TxInputIDs
-	TxUnlockData           = txcore.TxUnlockData
-	TxOutputs              = txcore.TxOutputs
-	TxEndorsements         = txcore.TxEndorsements
-	TxConstraints          = txcore.TxConstraints
-	TxTreeTupleNumElements = txcore.TxTreeTupleNumElements
+	TxVersion              = txbuildercore.TxVersion
+	TxTimestamp            = txbuildercore.TxTimestamp
+	TxSequencerDataBytes   = txbuildercore.TxSequencerDataBytes
+	TxSignatureData        = txbuildercore.TxSignatureData
+	TxInputCommitment      = txbuildercore.TxInputCommitment
+	TxExplicitBaseline     = txbuildercore.TxExplicitBaseline
+	TxInputIDs             = txbuildercore.TxInputIDs
+	TxUnlockData           = txbuildercore.TxUnlockData
+	TxOutputs              = txbuildercore.TxOutputs
+	TxEndorsements         = txbuildercore.TxEndorsements
+	TxConstraints          = txbuildercore.TxConstraints
+	TxTreeTupleNumElements = txbuildercore.TxTreeTupleNumElements
 )
 
-const ConsumedOutputsBranch = txcore.ConsumedOutputsBranch
+const ConsumedOutputsBranch = txbuildercore.ConsumedOutputsBranch
 
 var (
-	PathToRawTransaction     = txcore.PathToRawTransaction
-	PathToConsumedOutputs    = txcore.PathToConsumedOutputs
-	PathToTxVersion          = txcore.PathToTxVersion
-	PathToTxConstraints      = txcore.PathToTxConstraints
-	PathToProducedOutputs    = txcore.PathToProducedOutputs
-	PathToUnlockParams       = txcore.PathToUnlockParams
-	PathToInputIDs           = txcore.PathToInputIDs
-	PathToEndorsements       = txcore.PathToEndorsements
-	PathToSequencerDataBytes = txcore.PathToSequencerDataBytes
-	PathToTimestamp          = txcore.PathToTimestamp
-	PathToSignature          = txcore.PathToSignature
-	PathToInputCommitment    = txcore.PathToInputCommitment
-	PathToExplicitBaseline   = txcore.PathToExplicitBaseline
+	PathToRawTransaction     = txbuildercore.PathToRawTransaction
+	PathToConsumedOutputs    = txbuildercore.PathToConsumedOutputs
+	PathToTxVersion          = txbuildercore.PathToTxVersion
+	PathToTxConstraints      = txbuildercore.PathToTxConstraints
+	PathToProducedOutputs    = txbuildercore.PathToProducedOutputs
+	PathToUnlockParams       = txbuildercore.PathToUnlockParams
+	PathToInputIDs           = txbuildercore.PathToInputIDs
+	PathToEndorsements       = txbuildercore.PathToEndorsements
+	PathToSequencerDataBytes = txbuildercore.PathToSequencerDataBytes
+	PathToTimestamp          = txbuildercore.PathToTimestamp
+	PathToSignature          = txbuildercore.PathToSignature
+	PathToInputCommitment    = txbuildercore.PathToInputCommitment
+	PathToExplicitBaseline   = txbuildercore.PathToExplicitBaseline
 )
 
 // Mandatory output block indices.
@@ -95,15 +95,15 @@ var (
 // chain outputs opting in to accept delegations).
 // See claude/utxo-indexing.md §4, claude/native_token.md, and
 // claude/delegation_epoch_params.md.
-// Output tuple slot indices — re-exported from ledger/txcore.
+// Output tuple slot indices — re-exported from ledger/txbuildercore.
 const (
-	ConstraintIndexAmounts          = txcore.ConstraintIndexAmounts
-	ConstraintIndexIndexValues      = txcore.ConstraintIndexIndexValues
-	ConstraintIndexLock             = txcore.ConstraintIndexLock
-	ConstraintIndexChain            = txcore.ConstraintIndexChain
-	ConstraintIndexFoundry          = txcore.ConstraintIndexFoundry
-	ConstraintIndexFoundryPolicy    = txcore.ConstraintIndexFoundryPolicy
-	ConstraintIndexDelegationParams = txcore.ConstraintIndexDelegationParams
+	ConstraintIndexAmounts          = txbuildercore.ConstraintIndexAmounts
+	ConstraintIndexIndexValues      = txbuildercore.ConstraintIndexIndexValues
+	ConstraintIndexLock             = txbuildercore.ConstraintIndexLock
+	ConstraintIndexChain            = txbuildercore.ConstraintIndexChain
+	ConstraintIndexFoundry          = txbuildercore.ConstraintIndexFoundry
+	ConstraintIndexFoundryPolicy    = txbuildercore.ConstraintIndexFoundryPolicy
+	ConstraintIndexDelegationParams = txbuildercore.ConstraintIndexDelegationParams
 )
 
 func pathConstantsUpgrade0() string {

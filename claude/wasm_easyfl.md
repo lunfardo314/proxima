@@ -1,7 +1,7 @@
 # EasyFL — WASM Compatibility (audit, plan, and final state)
 
 Sibling document: [wasm_txbuilder.md](wasm_txbuilder.md) covers the
-Proxima-side use of this work (the `ledger/txcore` wallet API).
+Proxima-side use of this work (the `ledger/txbuildercore` wallet API).
 
 Started as `easyfl/claude/tinygo_wasm.md`; moved here on 2026-05-18 to
 keep the whole multi-repo refactor planned from Proxima.
@@ -169,5 +169,5 @@ easyfl/                  back-compat facade
 ## Cross-link
 
 [wasm_txbuilder.md](wasm_txbuilder.md) — the Proxima-side
-`ledger/txcore` wallet API. Starts from the API surface
+`ledger/txbuildercore` wallet API. Starts from the API surface
 documented in "Recommended wallet API" above.

@@ -1,4 +1,4 @@
-# txcore — additional compose helpers
+# txbuildercore — additional compose helpers
 
 **Status: SHIPPED on develop08 (2026-05-19).** 16 helpers across 5
 thematic files, zero new wasm transitive imports beyond Phase 4.
@@ -13,16 +13,16 @@ Wasm probe unchanged at 1.35 MB / 442 KB gzipped.
 | E | redeemScript / callRedeemer / LocalScriptHash | `152f5e28` |
 
 Sibling: [wasm_txbuilder.md](wasm_txbuilder.md). Phases 0–6 shipped a
-wasm-buildable txcore (compose + sign, sigLock + tagAlong helpers,
+wasm-buildable txbuildercore (compose + sign, sigLock + tagAlong helpers,
 1.35 MB / 442 KB gzipped binary). This document scopes the next set
 of wallet-side helpers — driven by the actual sequencer-request +
 delegation flows in `sequencer/txbuilder_seq/req_*.go` and the
 `proxi node_cmd/delegate` CLI commands — and audits the dep-graph
 cost of adding each.
 
-The constraint: every helper goes into `ledger/txcore` (or a small
+The constraint: every helper goes into `ledger/txbuildercore` (or a small
 sibling sub-package). It compiles down to bytecode through the
-already-held `txcore.Library` and produces bytes / `*txcore.Output`.
+already-held `txbuildercore.Library` and produces bytes / `*txbuildercore.Output`.
 **Nothing in the wallet path should depend on `ledger`, on
 `proxima/util` (x/text drag), or on the typed constraint serdes.**
 
@@ -30,9 +30,9 @@ already-held `txcore.Library` and produces bytes / `*txcore.Output`.
 
 ## What the wallet needs and doesn't have
 
-### Already in txcore (Phase 4)
+### Already in txbuildercore (Phase 4)
 
-- `txcore.Library` — wraps `*engine.Library[any]`, compiles source.
+- `txbuildercore.Library` — wraps `*engine.Library[any]`, compiles source.
 - `NewSigLockOutput(lib, amount, holderID)` — sig-locked output.
 - `NewTagAlongOutput(lib, fee, target, sender)` — 3-slot tag-along.
 - `EncodeAmounts`, `EncodeIndexValuesTuple`.
@@ -224,7 +224,7 @@ For each missing helper, what does adding it pull in?
 
 ### `EnsureStopDelegation(lib, chainID) ([]byte, error)`
 
-- Imports: `engine` (already in txcore), `base` (ChainID type),
+- Imports: `engine` (already in txbuildercore), `base` (ChainID type),
   `encoding/hex`, `fmt`.
 - New deps: NONE.
 
@@ -253,14 +253,14 @@ For each missing helper, what does adding it pull in?
 
 - Imports: `engine`, `base`, `util/smallkv`,
   `engine.InlineDataBytecode` (already accessible).
-- **New dep: `util/smallkv`** for the txcore package.
+- **New dep: `util/smallkv`** for the txbuildercore package.
 
 util/smallkv's transitive deps: `easyfl_util`, `tuples`,
 `util/lines`, `util/lazyargs`. The wasm path already has
 `easyfl_util` and `tuples`. `util/lines` and `util/lazyargs` ARE
 new transitive imports — but they were already in the wasm dep graph
 before this conversation (TinyGo's DCE drops them from the binary
-when no reachable code calls Lines()). Adding txcore → smallkv
+when no reachable code calls Lines()). Adding txbuildercore → smallkv
 edge doesn't change the binary; util/lines stays unreachable from
 the actual wallet probe.
 
@@ -299,7 +299,7 @@ slice is the honest shape.
 
 `LocalScriptHash(bin []byte) [32]byte` — convenience: returns
 `blake2b.Sum256(bin)`, so the wallet doesn't need to import blake2b
-itself if it's already importing txcore.
+itself if it's already importing txbuildercore.
 
 - Imports: `engine` (CompileExpression + CompileLocalScript +
   LocalScriptBin), `encoding/hex`, `fmt`,
@@ -313,18 +313,18 @@ itself if it's already importing txcore.
 - **Don't import `ledger`.** That drags Lock parsers, EasyFL bodies,
   validators, x/text via util.Th, etc. — ~MB of weight.
 - **Don't add a typed `DelegateLock` struct or `ChainConstraint`
-  struct** in txcore. They'd require getters/setters and tempt
+  struct** in txbuildercore. They'd require getters/setters and tempt
   someone later to add parsers (which depend on `engine.ParseBytecodeOneLevel`
   etc. — fine — but also on `Lock.IndexValues()` typed methods
   which are in ledger). Stay free-function only.
-- **Don't pre-cache constraint bytecodes globally in txcore.** The
+- **Don't pre-cache constraint bytecodes globally in txbuildercore.** The
   existing Phase-4 helpers cache per-Library (via `lockCachesMu`
   map keyed by `*Library`). New helpers follow the same pattern.
 
 ## Proposed API
 
 ```go
-package txcore
+package txbuildercore
 
 // --- Sequencer-request encoding -------------------------------------
 
@@ -478,11 +478,11 @@ server's compose path.
 
 | Phase | File | Commit | Tests |
 |---|---|---|---|
-| A | `ledger/txcore/helpers_seq.go` | `4e010dec` | 4 (3 byte-identity vs `sequencer/txbuilder_seq.New*ReqOutput`, 1 standalone `EnsureStopDelegation`) |
-| B | `ledger/txcore/helpers_chain.go` | `1164b3c3` | 5 (origin / transition / unlock-params / finish-chain / chain-lock unlock) |
-| C | `ledger/txcore/helpers_delegate.go` | `e36ec35f` | 3 (lock bytecode, lock state, delegation params) |
-| D | `ledger/txcore/helpers_native_token.go` | `628cbfa1` | 6 (foundry / token sentinel / token foundry / tokenAmount + 2 end-to-end output composition incl. dedup) |
-| E | `ledger/txcore/helpers_redeemer.go` | `152f5e28` | 4 (redeemScript / hash determinism / callRedeemer no-args + variadic / round-trip via TxBuilder) |
+| A | `ledger/txbuildercore/helpers_seq.go` | `4e010dec` | 4 (3 byte-identity vs `sequencer/txbuilder_seq.New*ReqOutput`, 1 standalone `EnsureStopDelegation`) |
+| B | `ledger/txbuildercore/helpers_chain.go` | `1164b3c3` | 5 (origin / transition / unlock-params / finish-chain / chain-lock unlock) |
+| C | `ledger/txbuildercore/helpers_delegate.go` | `e36ec35f` | 3 (lock bytecode, lock state, delegation params) |
+| D | `ledger/txbuildercore/helpers_native_token.go` | `628cbfa1` | 6 (foundry / token sentinel / token foundry / tokenAmount + 2 end-to-end output composition incl. dedup) |
+| E | `ledger/txbuildercore/helpers_redeemer.go` | `152f5e28` | 4 (redeemScript / hash determinism / callRedeemer no-args + variadic / round-trip via TxBuilder) |
 
 Phase C deferred the carrier-struct decision flagged in the design
 phase — `NewDelegateLockBytecode` ended up taking the 4 args
@@ -491,7 +491,7 @@ chain transition kept the 7-arg signature. Both signatures map 1:1
 to the underlying constraint's args; carrier structs would have
 been one extra hop without simplification.
 
-**Wasm impact (measured):** the probe at `ledger/txcore/wasm/`
+**Wasm impact (measured):** the probe at `ledger/txbuildercore/wasm/`
 stayed at 1.35 MB / 442 KB gzipped throughout. The new `*Library`
 methods are unreachable from the probe (it doesn't construct a
 Library), so TinyGo DCE drops them all. `golang.org/x/crypto/blake2b`
@@ -505,7 +505,7 @@ is `bytes` in the Phase D dedup path, which is negligible.
 
 **Helper inventory** — 16 functions across 5 thematic groups:
 
-| Group | Count | New file in txcore |
+| Group | Count | New file in txbuildercore |
 |---|---|---|
 | Sequencer requests + ensureStopDelegation | 2 | `helpers_seq.go` |
 | Chain (origin / transition / unlock params) | 4 | `helpers_chain.go` |
@@ -519,11 +519,11 @@ util/lazyargs deps are already DCE'd by TinyGo). blake2b is already
 in the wasm path via HashOutputs.
 
 **TxConstraints "in general":** the underlying `TxBuilder.PushTxConstraint(bin)`
-plumbing has been in txcore since Phase 2c. The helpers above just
+plumbing has been in txbuildercore since Phase 2c. The helpers above just
 provide the canonical-source compilation for the three real tx-level
 constraint families today: native-token declarations (`token(...)`)
 and redeem-script commits (`redeemScript(...)`). Future tx-level
-constraints can use the same pattern with no further txcore changes.
+constraints can use the same pattern with no further txbuildercore changes.
 
 **Effort:** 5 small commits (A–E), each with byte-identity tests
 against the existing typed ledger.* constructors. Wasm size budget

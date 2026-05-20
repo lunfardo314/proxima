@@ -1,4 +1,4 @@
-// Package txcore is the TinyGo-clean compose + sign core of Proxima's
+// Package txbuildercore is the TinyGo-clean compose + sign core of Proxima's
 // transaction builder. It is the package the wasm wallet imports.
 //
 // Scope: raw container types (Output, OutputBuilder), low-level
@@ -8,7 +8,7 @@
 // only from the server build.
 //
 // Status: Phase 1 — Output + OutputBuilder. See claude/wasm_txbuilder.md.
-package txcore
+package txbuildercore
 
 import (
 	"bytes"
@@ -49,7 +49,7 @@ func NewOutputBuilder() *OutputBuilder {
 }
 
 // NewOutput builds an Output by invoking buildFun on a fresh
-// OutputBuilder. The closure receives the raw txcore.OutputBuilder.
+// OutputBuilder. The closure receives the raw txbuildercore.OutputBuilder.
 // For ledger-typed ergonomics use ledger.NewOutput.
 func NewOutput(buildFun func(o *OutputBuilder)) *Output {
 	b := NewOutputBuilder()
@@ -66,7 +66,7 @@ func NewOutput(buildFun func(o *OutputBuilder)) *Output {
 func OutputFromBytes(data []byte) (*Output, error) {
 	arr, err := tuples.TupleFromBytes(data, MaxNumConstraints)
 	if err != nil {
-		return nil, fmt.Errorf("txcore.OutputFromBytes: %v", err)
+		return nil, fmt.Errorf("txbuildercore.OutputFromBytes: %v", err)
 	}
 	return &Output{Tuple: arr}, nil
 }
@@ -76,7 +76,7 @@ func OutputFromBytes(data []byte) (*Output, error) {
 func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 	ret, err := tuples.TupleFromBytesEditable(data, MaxNumConstraints)
 	if err != nil {
-		return nil, fmt.Errorf("txcore.OutputBuilderFromBytes: %v", err)
+		return nil, fmt.Errorf("txbuildercore.OutputBuilderFromBytes: %v", err)
 	}
 	return &OutputBuilder{TupleEditable: ret}, nil
 }

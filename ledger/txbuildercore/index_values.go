@@ -1,4 +1,4 @@
-package txcore
+package txbuildercore
 
 import "github.com/lunfardo314/easyfl/tuples"
 

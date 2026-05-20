@@ -1,4 +1,4 @@
-package txcore_test
+package txbuildercore_test
 
 // Byte-identity tests for the Phase-C delegation helpers.
 
@@ -16,7 +16,7 @@ import (
 // uint8 literal). Server side compares against
 // ledger.NewDelegateLock(...).Bytes().
 func TestNewDelegateLockBytecode_ByteIdentity(t *testing.T) {
-	lib := txcoreLibFromGlobal(t)
+	lib := txbuildercoreLibFromGlobal(t)
 
 	var target base.ChainID
 	for i := range target {
@@ -61,7 +61,7 @@ func TestNewDelegateLockBytecode_ByteIdentity(t *testing.T) {
 // the same bytes as ledger.DelegateLockState{...}.Bytes() for a few
 // representative state values.
 func TestNewDelegateLockState_ByteIdentity(t *testing.T) {
-	lib := txcoreLibFromGlobal(t)
+	lib := txbuildercoreLibFromGlobal(t)
 
 	cases := []struct {
 		lastFrozenEpoch uint32
@@ -86,7 +86,7 @@ func TestNewDelegateLockState_ByteIdentity(t *testing.T) {
 // TestNewDelegationParams_ByteIdentity checks delegationParams
 // bytecode matches ledger.NewDelegationParams.
 func TestNewDelegationParams_ByteIdentity(t *testing.T) {
-	lib := txcoreLibFromGlobal(t)
+	lib := txbuildercoreLibFromGlobal(t)
 
 	cases := []struct {
 		epochSlots      uint32

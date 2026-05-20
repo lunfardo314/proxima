@@ -1,4 +1,4 @@
-package txcore
+package txbuildercore
 
 // Output tuple slot indices. Defines which constraint kind lives at
 // which position inside a single Output's constraint tuple. Wire format;

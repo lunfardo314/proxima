@@ -10,7 +10,7 @@ import (
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -20,20 +20,20 @@ import (
 
 type (
 	// Output is an immutable UTXO. The raw container methods (Bytes,
-	// NumConstraints, MustConstraintAt, …) live on *txcore.Output and
+	// NumConstraints, MustConstraintAt, …) live on *txbuildercore.Output and
 	// are reached via embedding. The typed convenience methods
 	// (Lock, ChainConstraint, Amounts, pretty-printers, …) are
 	// declared in this file and only available in the full build.
 	Output struct {
-		*txcore.Output
+		*txbuildercore.Output
 	}
 
 	// OutputBuilder is a mutable Output under construction. Raw
 	// builder ops (MustPushConstraint, PutConstraint, NumConstraints,
-	// …) live on *txcore.OutputBuilder; typed convenience builders
+	// …) live on *txbuildercore.OutputBuilder; typed convenience builders
 	// (WithAmounts, WithLock, …) are declared in this file.
 	OutputBuilder struct {
-		*txcore.OutputBuilder
+		*txbuildercore.OutputBuilder
 	}
 
 	// OutputWithID pairs a parsed Output with its OutputID.
@@ -82,7 +82,7 @@ type (
 
 // NewOutput creates an Output by invoking buildFun on a fresh OutputBuilder.
 func NewOutput(buildFun func(o *OutputBuilder)) *Output {
-	builder := &OutputBuilder{OutputBuilder: txcore.NewOutputBuilder()}
+	builder := &OutputBuilder{OutputBuilder: txbuildercore.NewOutputBuilder()}
 	buildFun(builder)
 	return &Output{Output: builder.OutputBuilder.Output()}
 }
@@ -96,7 +96,7 @@ func OutputBasic(amount int64, lock Lock) *Output {
 
 // OutputBuilderFromBytes creates a mutable OutputBuilder from serialized output bytes.
 func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
-	ret, err := txcore.OutputBuilderFromBytes(data)
+	ret, err := txbuildercore.OutputBuilderFromBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("OutputBuilderFromBytes: %v", err)
 	}
@@ -127,7 +127,7 @@ func OutputBuilderFromBytes(data []byte) (*OutputBuilder, error) {
 // individually) to surface bad input as an error here rather than
 // later as a panic from the on-demand methods.
 func OutputFromBytes(data []byte, validateOpt ...func(*Output) error) (*Output, error) {
-	raw, err := txcore.OutputFromBytes(data)
+	raw, err := txbuildercore.OutputFromBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("OutputFromBytes: %w", err)
 	}
@@ -980,13 +980,13 @@ func (o *Output) MustValidOutput() {
 }
 
 // HashOutputs computes the blake2b hash of serialized outputs (used as input commitment).
-// Compose path delegates to txcore so the wasm wallet shares the same hash.
+// Compose path delegates to txbuildercore so the wasm wallet shares the same hash.
 func HashOutputs(outs ...*Output) [32]byte {
-	raw := make([]*txcore.Output, len(outs))
+	raw := make([]*txbuildercore.Output, len(outs))
 	for i, o := range outs {
 		raw[i] = o.Output
 	}
-	return txcore.HashOutputs(raw...)
+	return txbuildercore.HashOutputs(raw...)
 }
 
 // ParseAndSortOutputData parses, filters, and sorts outputs by token balance (ascending by default).

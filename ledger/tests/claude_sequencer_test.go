@@ -22,7 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/ledger/txcore"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -78,7 +78,7 @@ func (e *sequencerTestEnv) buildSequencerOrigin(
 	originIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.SetSequencerData(originIdx, txcore.SequencerOutputIndexNone)
+	txb.SetSequencerData(originIdx, txbuildercore.SequencerOutputIndexNone)
 	txb.SetTimestamp(originTs)
 
 	// Dummy endorsement required for sequencer chain origins
@@ -145,7 +145,7 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 	txb.PutSignatureUnlock(predIdx)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb.SetSequencerData(succIdx, txcore.SequencerOutputIndexNone)
+	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 
 	txb.PushEndorsements(endorsements...)
 
@@ -192,7 +192,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	_, err = txb1.ProduceOutput(changeOut)
 	require.NoError(t, err)
 
-	txb1.SetSequencerData(chainIdx, txcore.SequencerOutputIndexNone)
+	txb1.SetSequencerData(chainIdx, txbuildercore.SequencerOutputIndexNone)
 	txb1.SetTimestamp(originTs)
 
 	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
@@ -253,7 +253,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 			ledger.NewChainUnlockParams(succIdx))
 		err = txb.PutUnlockReference(1, ledger.ConstraintIndexLock, 0)
 		require.NoError(t, err)
-		txb.SetSequencerData(succIdx, txcore.SequencerOutputIndexNone)
+		txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 		txb.SetTimestamp(succTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
@@ -284,7 +284,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		txb.PutSignatureUnlock(predIdx)
 		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 			ledger.NewChainUnlockParams(succIdx))
-		txb.SetSequencerData(succIdx, txcore.SequencerOutputIndexNone)
+		txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 		txb.SetTimestamp(succTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
@@ -441,7 +441,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	txb2.PutSignatureUnlock(predIdx)
 	txb2.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb2.SetSequencerData(succIdx, txcore.SequencerOutputIndexNone)
+	txb2.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 	// No endorsements — this should trigger the same-slot predecessor rejection
 	txb2.SetTimestamp(succTs)
 	txb2.ComputeInputCommitment()
