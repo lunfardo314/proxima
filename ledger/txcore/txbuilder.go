@@ -150,6 +150,15 @@ func (txb *TxBuilder) SetTimestamp(ts base.LedgerTime) {
 	txb.TxData.Timestamp = ts
 }
 
+// SetSequencerData sets the 2-byte sequencer-data slot. seqOutIdx
+// also becomes the SequencerOutputIndex discriminator; stemOutIdx is
+// the stem-output index used by branch transactions (pass
+// SequencerOutputIndexNone = 0xff for non-branch).
+func (txb *TxBuilder) SetSequencerData(seqOutIdx, stemOutIdx byte) {
+	txb.TxData.SequencerOutputIndex = seqOutIdx
+	txb.TxData.SequencerData = []byte{seqOutIdx, stemOutIdx}
+}
+
 // ComputeInputCommitment hashes the consumed-output bytes into
 // TxData.InputCommitment using the same algorithm the validator
 // expects (blake2b over the tuple-of-output-bytes).

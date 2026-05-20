@@ -49,15 +49,6 @@ func (txb *TxBuilder) SetTimestamp(ts base.LedgerTime) {
 	txb.TxData.UpgradeIndex = ledger.L(ts.Slot).UpgradeIndex()
 }
 
-// SetSequencerData sets the 2-byte sequencer-data slot. seqOutIdx
-// also becomes the SequencerOutputIndex discriminator; stemOutIdx is
-// the stem-output index used by branch transactions (pass
-// txcore.SequencerOutputIndexNone = 0xff for non-branch).
-func (txb *TxBuilder) SetSequencerData(seqOutIdx, stemOutIdx byte) {
-	txb.TxData.SequencerOutputIndex = seqOutIdx
-	txb.TxData.SequencerData = []byte{seqOutIdx, stemOutIdx}
-}
-
 // ReplaceProducedOutput overwrites the produced output at idx, syncing
 // both the typed buffer and the wire-format byte slice. Used by
 // callers that mutate a produced output after the initial Push (e.g.
