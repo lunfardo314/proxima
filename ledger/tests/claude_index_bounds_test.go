@@ -99,8 +99,8 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		require.NoError(t, err)
 
 		ts := base.MaximumTime(bobOuts[0].ID.Timestamp(), aliceOuts[0].ID.Timestamp()).AddSlots(1)
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyBob)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "cross-lock reference should be rejected")
@@ -140,8 +140,8 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		require.NoError(t, err)
 
 		ts := base.MaximumTime(aliceOuts2[0].ID.Timestamp(), aliceOuts2[1].ID.Timestamp()).AddSlots(1)
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyAlice)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err, "same-lock backward reference should be accepted")
@@ -207,8 +207,8 @@ func TestIndexSigLockReferenceToChainLocked(t *testing.T) {
 	require.NoError(t, err)
 
 	ts3 := base.MaximumTime(clOuts[0].ID.Timestamp(), sigOuts[0].ID.Timestamp()).AddSlots(1)
-	txb.TransactionData.Timestamp = ts3
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts3)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "sigLock reference to chainLock-ed input should be rejected")
@@ -264,8 +264,8 @@ func TestIndexTagAlongOutOfRangeUnlockParams(t *testing.T) {
 	// with constraint index 2. This should fail at consumedConstraintByIndex bounds check.
 	txb.PutUnlockParams(taIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(5))
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "tag-along with out-of-range unlock index should be rejected")
@@ -314,8 +314,8 @@ func TestIndexDelegationOutOfRangeUnlockParams(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "delegation with out-of-range unlock index should be rejected")
@@ -359,8 +359,8 @@ func TestIndexChainPredecessorNonExistentInput(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	outTs := chainIn.ID.Timestamp().AddSlots(1)
-	txb.TransactionData.Timestamp = outTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(outTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 	_, _, _, err = txb.BytesWithValidation()
 	// The consumed chain checks _chainSuccessorParam(1) against selfConstraintIndex.
@@ -438,8 +438,8 @@ func TestIndexChainLockSelfReference(t *testing.T) {
 	// The chainLock checks: not(equal(selfOutputIndex, byte(selfUnlockParameters,0)))
 	txb.PutUnlockParams(clIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(clIdx))
 
-	txb.TransactionData.Timestamp = ts3
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts3)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "chainLock self-reference should be rejected")

@@ -134,8 +134,8 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.Assertf(tagAlongIdx == 1, "tagAlongIdx==1")
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(oIn.Output)
+	txb.SetTimestamp(ts)
+	txb.TxData.InputCommitment = ledger.HashOutputs(oIn.Output)
 	txb.SignED25519(walletData.PrivateKey)
 
 	txBytes, txid, txString, err := txb.BytesWithValidation()

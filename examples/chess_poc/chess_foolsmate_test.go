@@ -140,7 +140,7 @@ func TestFoolsMate(t *testing.T) {
 		TxTimestamp:   ts1,
 	})
 	require.NoError(t, err)
-	originTx, err := e.submit(originTxb.TransactionData.Bytes())
+	originTx, err := e.submit(originTxb.Bytes())
 	require.NoError(t, err, "move 1 (white f3) must validate")
 	chainID = base.MakeOriginChainID(base.MustNewOutputID(originTx.ID(), 0))
 	traceState("1. f3 (origin)")
@@ -167,7 +167,7 @@ func TestFoolsMate(t *testing.T) {
 		TxTimestamp:   ts2,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(acceptTxb.TransactionData.Bytes())
+	_, err = e.submit(acceptTxb.Bytes())
 	require.NoError(t, err, "move 2 (black e5) must validate")
 	traceState("1... e5 (acceptance)")
 
@@ -192,7 +192,7 @@ func TestFoolsMate(t *testing.T) {
 		TxTimestamp:   ts3,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(move3Txb.TransactionData.Bytes())
+	_, err = e.submit(move3Txb.Bytes())
 	require.NoError(t, err, "move 3 (white g4) must validate")
 	traceState("2. g4")
 
@@ -219,7 +219,7 @@ func TestFoolsMate(t *testing.T) {
 		TxTimestamp:   ts4,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(move4Txb.TransactionData.Bytes())
+	_, err = e.submit(move4Txb.Bytes())
 	require.NoError(t, err, "move 4 (black Qh4#) must validate — black's queen takes the h4 diagonal")
 	traceState("2... Qh4#  (white in check, no legal reply)")
 
@@ -249,7 +249,7 @@ func TestFoolsMate(t *testing.T) {
 		TxTimestamp:     claimTs,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(claimTxb.TransactionData.Bytes())
+	_, err = e.submit(claimTxb.Bytes())
 	require.NoError(t, err, "black's timeout-claim after mating move must validate")
 
 	// Black should now hold a sigLock output with the full bounty.

@@ -126,8 +126,8 @@ func makeSWDEnv(t *testing.T, targetType byte, acceptanceSlots, cleanupSlots uin
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = swdTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(swdTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyMaster)
 
 	txBytes, txid, _, err := txb.BytesWithValidation()
@@ -159,11 +159,11 @@ func spendSWD(t *testing.T, env *swdEnv, delta uint32, signer ed25519.PrivateKey
 		o.WithTokenBalance(swdAmount).WithLock(payeeLock)
 	}))
 	require.NoError(t, err)
-	txb.TransactionData.Timestamp = base.T(env.swdCreateSlot+delta, 1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(base.T(env.swdCreateSlot+delta, 1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(signer)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	return env.u.AddTransaction(txBytes)
 }
 
@@ -199,10 +199,10 @@ func spendSWDViaChain(t *testing.T, env *swdEnv, delta uint32, chainOut *ledger.
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = base.T(env.swdCreateSlot+delta, 1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(base.T(env.swdCreateSlot+delta, 1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(signer)
-	return env.u.AddTransaction(txb.TransactionData.Bytes())
+	return env.u.AddTransaction(txb.Bytes())
 }
 
 // =============================================================================
@@ -348,10 +348,10 @@ func tryProduceBadSWD(t *testing.T, want string, tweak func(l *ledger.SendWithDe
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(1)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(priv)
-	err = u.AddTransaction(txb.TransactionData.Bytes())
+	err = u.AddTransaction(txb.Bytes())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), want)
 }
@@ -415,10 +415,10 @@ func TestSWDProduceRejectMasterMismatch(t *testing.T) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(1)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(signer)
-	err = u.AddTransaction(txb.TransactionData.Bytes())
+	err = u.AddTransaction(txb.Bytes())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "master hash check failed")
 }
@@ -475,10 +475,10 @@ func TestSWDProduceRejectZeroMasterID(t *testing.T) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(1)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(priv)
-	err = u.AddTransaction(txb.TransactionData.Bytes())
+	err = u.AddTransaction(txb.Bytes())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "non zero masterID expected")
 }
@@ -540,10 +540,10 @@ func TestSWDProduceRejectLockAtWrongSlot(t *testing.T) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(1)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(priv)
-	err = u.AddTransaction(txb.TransactionData.Bytes())
+	err = u.AddTransaction(txb.Bytes())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "locks must be at lockConstraintIndex")
 }
@@ -596,10 +596,10 @@ func TestSWDProduceRejectTooManyConstraints(t *testing.T) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(1)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(priv)
-	err = u.AddTransaction(txb.TransactionData.Bytes())
+	err = u.AddTransaction(txb.Bytes())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "too many UTXO elements")
 }

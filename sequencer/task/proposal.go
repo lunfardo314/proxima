@@ -286,7 +286,7 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	if chainMaxFrozenEpochs == 0 || chainEpochSlots == 0 {
 		return ret
 	}
-	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TransactionData.Timestamp.Slot, chainEpochSlots)
+	txEpoch := p.EpochFromSlotDirect(p.SequencerID(), p.TxData.Timestamp.Slot, chainEpochSlots)
 
 	for e := txEpoch; e < txEpoch+uint32(chainMaxFrozenEpochs); e++ {
 		nDelegationsByUnfreezeEpochMap[e] = 0
@@ -323,7 +323,7 @@ func (p *proposal) selectDelegationsToFreeze() []_delegationToFreeze {
 	}
 
 	for i := range ret {
-		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.TransactionData.Timestamp), nDelegationsByUnfreezeEpochMap)
+		ret[i].freezeUntilEpoch = optimalFreezeEpoch(ret[i].FreezeUntilMax(p.TxData.Timestamp), nDelegationsByUnfreezeEpochMap)
 		nDelegationsByUnfreezeEpochMap[ret[i].freezeUntilEpoch]++
 	}
 	return ret

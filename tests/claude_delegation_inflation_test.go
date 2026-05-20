@@ -73,8 +73,8 @@ func TestDelegationInflationMinimal(t *testing.T) {
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)
-		txb.TransactionData.Timestamp = delegOut.ID.Timestamp().AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(delegOut.ID.Timestamp().AddSlots(1))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(masterPrivateKey)
 		var txStr string
 		txBytes, _, txStr, err = txb.BytesWithValidation()

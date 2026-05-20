@@ -189,8 +189,8 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	totalAmountProduced, _ = txb.ProducedAmount()
 	glb.Assertf(totalAmountConsumed == totalAmountProduced, "totalAmountConsumed==totalAmountProduced")
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
 
 	txBytes, txid, failedTx, err := txb.BytesWithValidation()

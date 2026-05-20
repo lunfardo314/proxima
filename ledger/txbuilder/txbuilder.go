@@ -1,21 +1,16 @@
 package txbuilder
 
 import (
-	"crypto"
 	"crypto/ed25519"
 	"fmt"
 	"math"
-	"math/rand"
-	"time"
 
-	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txcore"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 // UnlockParams is re-exported from txcore so existing tests / sequencer
@@ -25,70 +20,61 @@ type UnlockParams = txcore.UnlockParams
 // NewUnlockBlock re-exported for the same reason.
 func NewUnlockBlock() *UnlockParams { return txcore.NewUnlockBlock() }
 
-type (
-	TxBuilder struct {
-		ConsumedOutputs []*ledger.Output
-		TransactionData *transactionData
-	}
-
-	transactionData struct {
-		InputIDs         []*base.OutputID
-		Outputs          []*ledger.Output
-		UnlockBlocks     []*UnlockParams
-		SignatureData    []byte
-		Timestamp        base.LedgerTime
-		InputCommitment  [32]byte
-		Endorsements     []base.TransactionID
-		ExplicitBaseline *base.TransactionID
-		// TxConstraints carries tx-level constraint bytecodes (one per
-		// element). Empty by default. Today's only consumer is the
-		// redeemScript local-script commitment.
-		TxConstraints [][]byte
-		ledger.SequencerDataBytes
-	}
-)
+// TxBuilder is a thin server-side sugar layer over *txcore.TxBuilder.
+// All wire-format state lives in the embedded txcore.TxData; the two
+// typed buffers below mirror the consumed / produced outputs in their
+// *ledger.Output form so the typed APIs (validation, frozen-coverage,
+// chain helpers, recipes) can inspect them without re-parsing bytes.
+type TxBuilder struct {
+	*txcore.TxBuilder
+	ConsumedOutputs []*ledger.Output
+	ProducedOutputs []*ledger.Output
+}
 
 func New() *TxBuilder {
 	return &TxBuilder{
+		TxBuilder:       txcore.New(0),
 		ConsumedOutputs: make([]*ledger.Output, 0),
-		TransactionData: &transactionData{
-			InputIDs:           make([]*base.OutputID, 0),
-			Outputs:            make([]*ledger.Output, 0),
-			UnlockBlocks:       make([]*UnlockParams, 0),
-			SequencerDataBytes: ledger.MustSequencerDataBytesFromBytes([]byte{0xff, 0xff}),
-			Timestamp:          base.NilLedgerTime,
-			InputCommitment:    [32]byte{},
-			Endorsements:       make([]base.TransactionID, 0),
-			TxConstraints:      make([][]byte, 0),
-		},
+		ProducedOutputs: make([]*ledger.Output, 0),
 	}
 }
 
-// PushTxConstraint appends one tx-level constraint bytecode. Today the
-// only consumer is redeemScript; the slot is generic.
-func (txb *TxBuilder) PushTxConstraint(bytecode []byte) {
-	txb.TransactionData.TxConstraints = append(txb.TransactionData.TxConstraints, bytecode)
+// SetTimestamp shadows the embedded txcore.SetTimestamp to also set
+// TxData.UpgradeIndex from the slot's library version. This preserves
+// the deferred-derivation behaviour the old transactionData had in
+// toRawTxData — callers don't need to know about the upgrade-index
+// field.
+func (txb *TxBuilder) SetTimestamp(ts base.LedgerTime) {
+	txb.TxBuilder.SetTimestamp(ts)
+	txb.TxData.UpgradeIndex = ledger.L(ts.Slot).UpgradeIndex()
 }
 
-func (txb *TxBuilder) NumInputs() int {
-	ret := len(txb.ConsumedOutputs)
-	util.Assertf(ret == len(txb.TransactionData.InputIDs), "ret==len(ctx.Transaction.InputIDs)")
-	return ret
+// SetSequencerData sets the 2-byte sequencer-data slot. seqOutIdx
+// also becomes the SequencerOutputIndex discriminator; stemOutIdx is
+// the stem-output index used by branch transactions (pass
+// txcore.SequencerOutputIndexNone = 0xff for non-branch).
+func (txb *TxBuilder) SetSequencerData(seqOutIdx, stemOutIdx byte) {
+	txb.TxData.SequencerOutputIndex = seqOutIdx
+	txb.TxData.SequencerData = []byte{seqOutIdx, stemOutIdx}
 }
 
-func (txb *TxBuilder) NumOutputs() int {
-	return len(txb.TransactionData.Outputs)
+// ReplaceProducedOutput overwrites the produced output at idx, syncing
+// both the typed buffer and the wire-format byte slice. Used by
+// callers that mutate a produced output after the initial Push (e.g.
+// chain-output post-processing in recipes / tests).
+func (txb *TxBuilder) ReplaceProducedOutput(idx byte, o *ledger.Output) {
+	txb.ProducedOutputs[idx] = o
+	txb.TxData.OutputBytes[idx] = o.Bytes()
 }
 
+// ConsumeOutput appends a typed consumed output and forwards its raw
+// bytes to the embedded txcore.TxBuilder.
 func (txb *TxBuilder) ConsumeOutput(out *ledger.Output, oid base.OutputID) (byte, error) {
 	if txb.NumInputs() >= 256 {
 		return 0, fmt.Errorf("too many consumed outputs")
 	}
 	txb.ConsumedOutputs = append(txb.ConsumedOutputs, out)
-	txb.TransactionData.InputIDs = append(txb.TransactionData.InputIDs, &oid)
-	txb.TransactionData.UnlockBlocks = append(txb.TransactionData.UnlockBlocks, NewUnlockBlock())
-
-	return byte(len(txb.ConsumedOutputs) - 1), nil
+	return txb.TxBuilder.ConsumeOutput(out.Bytes(), oid), nil
 }
 
 func (txb *TxBuilder) ConsumeTagAlongOutputUnlock(o *ledger.Output, oid base.OutputID, chainInIdx byte) (byte, error) {
@@ -142,7 +128,6 @@ func (txb *TxBuilder) ConsumeOutputsNoUnlock(outs ...*ledger.OutputWithID) (uint
 		if _, err := txb.ConsumeOutput(o.Output, o.ID); err != nil {
 			return 0, base.NilLedgerTime, err
 		}
-		// safe arithmetics
 		if o.Output.TokenBalance() > math.MaxUint64-retTotal {
 			return 0, base.NilLedgerTime, fmt.Errorf("arithmetic overflow when calculating total ")
 		}
@@ -152,45 +137,7 @@ func (txb *TxBuilder) ConsumeOutputsNoUnlock(outs ...*ledger.OutputWithID) (uint
 	return retTotal, retTs, nil
 }
 
-func (txb *TxBuilder) PutUnlockParams(inputIndex, constraintIndex byte, unlockParamData []byte, additionalBytes ...byte) {
-	txb.TransactionData.UnlockBlocks[inputIndex].PutAt(constraintIndex, common.Concat(unlockParamData, additionalBytes))
-}
-
-// PutSignatureUnlock marker 0xff references the signature of the transaction.
-// It can be distinguished from any reference because it cannot be strictly less than any other reference
-func (txb *TxBuilder) PutSignatureUnlock(inputIndex byte, additionalBytes ...byte) {
-	txb.PutUnlockParams(inputIndex, ledger.ConstraintIndexLock, append([]byte{0xff}, additionalBytes...))
-}
-
-// PutUnlockReference references some preceding output
-func (txb *TxBuilder) PutUnlockReference(inputIndex, constraintIndex, referencedInputIndex byte) error {
-	if referencedInputIndex >= inputIndex {
-		return fmt.Errorf("referenced input index must be strongly less than the unlocked output index")
-	}
-	txb.PutUnlockParams(inputIndex, constraintIndex, []byte{referencedInputIndex})
-	return nil
-}
-
-func (txb *TxBuilder) PutStandardInputUnlocks(n int) error {
-	util.Assertf(n > 0, "n > 0")
-	txb.PutSignatureUnlock(0)
-	for i := 1; i < n; i++ {
-		if err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (txb *TxBuilder) PushEndorsements(txid ...base.TransactionID) {
-	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid...)
-}
-
-func (txb *TxBuilder) PutExplicitBaseline(txid *base.TransactionID) {
-	txb.TransactionData.ExplicitBaseline = txid
-}
-
-// ProduceOutput adds produced output to the tx builder. Chacks storage deposit
+// ProduceOutput adds produced output to the tx builder. Checks storage deposit.
 func (txb *TxBuilder) ProduceOutput(o *ledger.Output) (byte, error) {
 	if err := o.EnoughAmountForStorageDeposit(); err != nil {
 		return 0, fmt.Errorf("TxBuilder:ProduceOutput: %v", err)
@@ -199,8 +146,8 @@ func (txb *TxBuilder) ProduceOutput(o *ledger.Output) (byte, error) {
 	if txb.NumOutputs() >= 256 {
 		return 0, fmt.Errorf("too many produced outputs")
 	}
-	txb.TransactionData.Outputs = append(txb.TransactionData.Outputs, o)
-	return byte(len(txb.TransactionData.Outputs) - 1), nil
+	txb.ProducedOutputs = append(txb.ProducedOutputs, o)
+	return txb.TxBuilder.ProduceOutput(o.Bytes()), nil
 }
 
 func (txb *TxBuilder) ProduceOutputs(outs ...*ledger.Output) (uint64, error) {
@@ -231,9 +178,9 @@ func (txb *TxBuilder) Transaction() (*transaction.Transaction, error) {
 }
 
 // BuildTransactionWithValidation builds transaction, parses it and validates with full context.
-// In case validation fails with full cotext, it may return err != nil and tx != nil
+// In case validation fails with full context, it may return err != nil and tx != nil
 func (txb *TxBuilder) BuildTransactionWithValidation() (*transaction.Transaction, error) {
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
 		return nil, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
@@ -261,7 +208,7 @@ func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string,
 func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {
 	retTotal := uint64(0)
 	retInflation := uint64(0)
-	for _, o := range txb.TransactionData.Outputs {
+	for _, o := range txb.ProducedOutputs {
 		retTotal += o.TokenBalance()
 		retInflation += o.Inflation()
 	}
@@ -314,7 +261,7 @@ func (txb *TxBuilder) LoadInput(i byte) (*ledger.Output, error) {
 // maxFrozenEpochs.
 func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 	maxLen := 0
-	for _, o := range txb.TransactionData.Outputs {
+	for _, o := range txb.ProducedOutputs {
 		if o.Lock().Name() != ledger.DelegateLockName {
 			continue
 		}
@@ -328,7 +275,7 @@ func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 		return nil, nil
 	}
 	sum := make([]int64, maxLen)
-	for _, o := range txb.TransactionData.Outputs {
+	for _, o := range txb.ProducedOutputs {
 		if o.Lock().Name() == ledger.DelegateLockName {
 			if overflow := o.Amounts().AddToVector(sum); overflow {
 				return nil, fmt.Errorf("CalcFrozenCoverageDelta: arithmetic overflow")
@@ -346,7 +293,7 @@ func (txb *TxBuilder) CalcFrozenCoverageDelta() ([]int64, error) {
 // delegationParams (at ConstraintIndexDelegationParams on the produced
 // chain output).
 func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
-	o := txb.TransactionData.Outputs[producedOutputIdx]
+	o := txb.ProducedOutputs[producedOutputIdx]
 
 	lib := ledger.L(targetTs.Slot)
 
@@ -368,64 +315,16 @@ func (txb *TxBuilder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCovera
 	util.Assertf(cc != nil, "MustPutFrozenCoverage: inconsistency 1")
 	oPred := txb.ConsumedOutputs[cc.PredecessorInputIndex]
 	predVector := oPred.Amounts().FrozenCoverageVector(dp.MaxFrozenEpochs)
-	predTs := txb.TransactionData.InputIDs[cc.PredecessorInputIndex].Timestamp()
+	predTs := txb.TxData.InputIDs[cc.PredecessorInputIndex].Timestamp()
 	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs,
 		dp.EpochSlots, dp.MaxFrozenEpochs)
 	for i := range frozenCoverageDeltaVector {
 		a[int(ledger.AmountIndexFrozenCoverage)+i] += predVectorAdjusted[i]
 	}
 
-	txb.TransactionData.Outputs[producedOutputIdx] = o.Clone(func(o *ledger.OutputBuilder) {
+	txb.ReplaceProducedOutput(producedOutputIdx, o.Clone(func(o *ledger.OutputBuilder) {
 		o.PutConstraint(ledger.NewAmounts(a[:]...).Bytes(), ledger.ConstraintIndexAmounts)
-	})
-}
-
-// toRawTxData converts the typed transactionData into the raw, wire-
-// ready txcore.TxRawData shape. Server-side serialisation calls into
-// txcore so the wasm wallet shares the same byte-for-byte output.
-func (tx *transactionData) toRawTxData() *txcore.TxRawData {
-	outBytes := make([][]byte, len(tx.Outputs))
-	for i, o := range tx.Outputs {
-		outBytes[i] = o.Bytes()
-	}
-	var seqData []byte
-	if tx.SequencerOutputIndex != 0xff {
-		seqData = tx.SequencerDataBytes.Bytes()
-	}
-	return &txcore.TxRawData{
-		UpgradeIndex:         ledger.L(tx.Timestamp.Slot).UpgradeIndex(),
-		Timestamp:            tx.Timestamp,
-		SequencerOutputIndex: tx.SequencerOutputIndex,
-		SequencerData:        seqData,
-		SignatureData:        tx.SignatureData,
-		InputCommitment:      tx.InputCommitment,
-		ExplicitBaseline:     tx.ExplicitBaseline,
-		InputIDs:             tx.InputIDs,
-		UnlockBlocks:         tx.UnlockBlocks,
-		OutputBytes:          outBytes,
-		Endorsements:         tx.Endorsements,
-		TxConstraints:        tx.TxConstraints,
-	}
-}
-
-func (tx *transactionData) ToTuple() *tuples.Tuple {
-	return txcore.SerializeRawTx(tx.toRawTxData())
-}
-
-func (tx *transactionData) Bytes() []byte {
-	return tx.ToTuple().Bytes()
-}
-
-var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-func (txb *TxBuilder) SignED25519(privKey ed25519.PrivateKey) {
-	txid, err := txcore.TxIDFromTree(txb.TransactionData.ToTuple().AsTree())
-	util.AssertNoError(err)
-	sig, err := privKey.Sign(rnd, txid[:], crypto.Hash(0))
-	util.AssertNoError(err)
-	pubKey := privKey.Public().(ed25519.PublicKey)
-	// signature data in the transaction is <sig type byte> + <signature proper> + <public key>
-	txb.TransactionData.SignatureData = common.Concat(base.SignatureTypeED25519, sig, []byte(pubKey))
+	}))
 }
 
 type (
@@ -765,12 +664,12 @@ func MakeSimpleTransferTransactionWithRemainder(par *TransferData, disableEndors
 	for _, un := range par.UnlockData {
 		txb.PutUnlockParams(un.OutputIndex, un.ConstraintIndex, un.Data)
 	}
-	txb.TransactionData.Timestamp = adjustedTs
-	txb.TransactionData.Endorsements = par.Endorsements
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(adjustedTs)
+	txb.TxData.Endorsements = par.Endorsements
+	txb.ComputeInputCommitment()
 	txb.SignED25519(par.SenderPrivateKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	var rem *ledger.OutputWithID
 	if remainderOut != nil {
 		if rem, err = transaction.OutputWithIDFromTransactionBytes(txBytes, remainderIndex); err != nil {
@@ -870,8 +769,8 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 		}
 	}
 
-	txb.TransactionData.Timestamp = par.Timestamp
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(par.Timestamp)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(par.PrivateKey)
 
 	inputLoader := func(i byte) (*ledger.Output, error) {
@@ -882,7 +781,7 @@ func MakeChainSuccessorTransaction(par *MakeChainSuccTransactionParams) ([]byte,
 			return consumedOutputs[i], nil
 		}
 	}
-	return txb.TransactionData.Bytes(), inflationAmount, inputLoader, nil
+	return txb.Bytes(), inflationAmount, inputLoader, nil
 }
 
 func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking ...bool) ([]byte, error) {
@@ -977,12 +876,11 @@ func MakeChainTransferTransaction(par *TransferData, disableEndorsementChecking 
 		util.AssertNoError(err)
 	}
 
-	txb.TransactionData.Timestamp = adjustedTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(adjustedTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(par.SenderPrivateKey)
 
-	txBytes := txb.TransactionData.Bytes()
-	return txBytes, nil
+	return txb.Bytes(), nil
 }
 
 //---------------------------------------------------------
@@ -1090,18 +988,13 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 		}
 	}
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = par.Timestamp
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(par.Timestamp)
 	txb.SignED25519(par.MasterPrivateKey)
 
 	txBytes, _, txString, err := txb.BytesWithValidation()
 	if err != nil {
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w\n----- failing tx --------\n%s", err, txString)
 	}
-	//txBytes := txb.TransactionData.Bytes()
-	//
-	//if err = transaction.ValidateTxBytes(txBytes, txb.LoadInput); err != nil {
-	//	return nil, err
-	//}
 	return txBytes, nil
 }

@@ -262,7 +262,7 @@ func TestAttachCostBudgetFanOutCostTracking(t *testing.T) {
 		}
 
 		txb := txbuilder.New()
-		txb.TransactionData.Timestamp = ts
+		txb.SetTimestamp(ts)
 
 		// Consume the input
 		_, err = txb.ConsumeOutput(sourceOutput.Output, sourceOutput.ID)
@@ -288,7 +288,7 @@ func TestAttachCostBudgetFanOutCostTracking(t *testing.T) {
 		require.NoError(t, err)
 
 		// Sign and build
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(testData.privKey)
 
 		txBytes, _, _, err := txb.BytesWithValidation()

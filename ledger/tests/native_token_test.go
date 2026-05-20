@@ -80,8 +80,8 @@ func (e *foundryTestEnv) createFoundryOrigin(t *testing.T, onChainAmount uint64,
 
 	addRemainderIfNeeded(t, txb, e.addr)
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
 	txBytes, txid, failedTx, err := txb.BytesWithValidation()
@@ -122,8 +122,8 @@ func (e *foundryTestEnv) foundryInputData(t *testing.T, chainID base.ChainID) *l
 //     re-producing the tokens, breaking the simple flow we want here)
 func (e *foundryTestEnv) appendExtraFunding(t *testing.T, txb *txbuilder.TxBuilder, sigInputIdx byte) base.LedgerTime {
 	t.Helper()
-	already := make(map[base.OutputID]struct{}, len(txb.TransactionData.InputIDs))
-	for _, oid := range txb.TransactionData.InputIDs {
+	already := make(map[base.OutputID]struct{}, len(txb.TxData.InputIDs))
+	for _, oid := range txb.TxData.InputIDs {
 		already[*oid] = struct{}{}
 	}
 	outs := getSourceOutputs(t, e.u, e.addr)
@@ -158,8 +158,8 @@ func outputCarriesTokenAmount(o *ledger.Output) bool {
 // Returns the submission error, the tx ID and the validated tx bytes.
 func (e *foundryTestEnv) finishAndSubmit(t *testing.T, txb *txbuilder.TxBuilder, ts base.LedgerTime) ([]byte, base.TransactionID, error) {
 	t.Helper()
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 	txBytes, txid, failedTx, err := txb.BytesWithValidation()
 	if err != nil {

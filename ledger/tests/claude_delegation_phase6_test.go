@@ -135,8 +135,8 @@ func TestDelegationParamsImmutable(t *testing.T) {
 	require.NoError(t, err)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err)
@@ -196,8 +196,8 @@ func newFoundryDelegationEnv(t *testing.T, policy []byte) *foundryDelegationEnv 
 	require.NoError(t, err)
 	addRemainderIfNeeded(t, txb, td.masterAddr)
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(td.masterPrivateKey)
 	txBytes, txid, failedTx, err := txb.BytesWithValidation()
 	require.NoError(t, err, "foundry origin build failed: %s", failedTx)
@@ -226,8 +226,8 @@ func newFoundryDelegationEnv(t *testing.T, policy []byte) *foundryDelegationEnv 
 		// 500_000_000 balance keeps covering the deposit, no
 		// additional funding strictly required).
 		settleTs := ts.AddTicks(int(ledger.L(0).TransactionPace))
-		settleTxb.TransactionData.Timestamp = settleTs
-		settleTxb.TransactionData.InputCommitment = ledger.HashOutputs(settleTxb.ConsumedOutputs...)
+		settleTxb.SetTimestamp(settleTs)
+		settleTxb.ComputeInputCommitment()
 		settleTxb.SignED25519(td.masterPrivateKey)
 		settleBytes, _, failed, err := settleTxb.BytesWithValidation()
 		require.NoError(t, err, "foundry tag-settle transit failed: %s", failed)
@@ -304,8 +304,8 @@ func (e *foundryDelegationEnv) delegateFoundryChain(t *testing.T) error {
 	require.NoError(t, err)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(td.masterPrivateKey)
 	txBytes, _, failedTx, err := txb.BytesWithValidation()
 	if err != nil {
@@ -428,8 +428,8 @@ func TestDelegateLockStateMustBeLast(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(td.masterPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "delegation with junk after delegateLockState must be rejected")

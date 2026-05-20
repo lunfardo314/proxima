@@ -113,8 +113,8 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = delegTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(delegTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.masterPrivateKey)
 	txBytes, _, _, err := txb.BytesWithValidation()
 	require.NoError(t, err)
@@ -168,8 +168,8 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	require.NoError(t, err)
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, ts)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	txBytes, _, _, err := txb.BytesWithValidation()
 	require.NoError(t, err)
@@ -204,8 +204,8 @@ func TestClaudeDelegationWrongMasterUnlock(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := env.delegatedOutput.Timestamp().AddSlots(1)
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	// sign with seq controller key, NOT master key
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
@@ -251,8 +251,8 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "target should not be able to reduce delegated amount")
@@ -298,8 +298,8 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "target should not be able to change delegation lock")
@@ -333,8 +333,8 @@ func TestClaudeDelegationTargetDiscontinuesChain(t *testing.T) {
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(0), 0)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "target should not be able to discontinue delegation chain")
@@ -400,8 +400,8 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = delegTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(delegTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	// The EasyFL checks in _validLimitsProducedFrozen fire in order:
@@ -476,8 +476,8 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = delegTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(delegTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "delegation with 5 constraints should be rejected")
@@ -537,8 +537,8 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-		txb.TransactionData.Timestamp = attackTs
+		txb.ComputeInputCommitment()
+		txb.SetTimestamp(attackTs)
 		txb.SignED25519(env.seqPrivateKey)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "target should not unlock during safe revocation window")
@@ -562,8 +562,8 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.TransactionData.Timestamp = masterTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(masterTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(env.masterPrivateKey)
 		_, _, _, err = txb.BytesWithValidation()
 		require.NoError(t, err, "master should unlock after safe revocation window")
@@ -629,8 +629,8 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = delegTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(delegTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txb.BytesWithValidation()
 	require.Error(t, err, "inflation share > 1000 should be rejected")
@@ -686,8 +686,8 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	require.NoError(t, err)
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, revokeTs)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = revokeTs
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(revokeTs)
 	txb.SignED25519(env.seqPrivateKey)
 	txBytes, _, _, err := txb.BytesWithValidation()
 	require.NoError(t, err)
@@ -733,8 +733,8 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
-	txb2.TransactionData.Timestamp = relockTs
+	txb2.ComputeInputCommitment()
+	txb2.SetTimestamp(relockTs)
 	txb2.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txb2.BytesWithValidation()
 	require.Error(t, err, "target should not re-freeze on-hold delegation")

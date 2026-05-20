@@ -130,13 +130,14 @@ func TestLimitsMaxOutputSize(t *testing.T) {
 
 	// Bypass builder's storage deposit check by appending directly.
 	// We want to test the validation-level size limit, not the builder check.
-	txb.TransactionData.Outputs = append(txb.TransactionData.Outputs, bigOut)
+	txb.ProducedOutputs = append(txb.ProducedOutputs, bigOut)
+	txb.TxData.OutputBytes = append(txb.TxData.OutputBytes, bigOut.Bytes())
 
 	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	// Parse succeeds (total size is fine), but partial validation catches oversized output
 	_, err = transaction.ParseWithPartialValidation(txBytes)
@@ -178,10 +179,10 @@ func TestLimitsMaxUnlockParamsSize(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	t.Logf("transaction with oversized unlock params: %d total bytes", len(txBytes))
 

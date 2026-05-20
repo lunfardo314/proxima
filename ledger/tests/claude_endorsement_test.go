@@ -22,6 +22,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txcore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -92,17 +93,17 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	originIdx, err := txb.ProduceOutput(chainOriginOut)
 	require.NoError(t, err)
 
-	txb.TransactionData.SequencerOutputIndex = originIdx
-	txb.TransactionData.Timestamp = originTs
+	txb.SetSequencerData(originIdx, txcore.SequencerOutputIndexNone)
+	txb.SetTimestamp(originTs)
 
 	// Dummy endorsement required for sequencer chain origins
 	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
 	txb.PushEndorsements(dummyEnd)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	originBytes := txb.TransactionData.Bytes()
+	originBytes := txb.Bytes()
 	err = e.u.AddTransaction(originBytes)
 	require.NoError(t, err)
 
@@ -159,15 +160,15 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 	txb.PutSignatureUnlock(predIdx)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb.TransactionData.SequencerOutputIndex = succIdx
+	txb.SetSequencerData(succIdx, txcore.SequencerOutputIndexNone)
 
 	txb.PushEndorsements(endorsements...)
 
-	txb.TransactionData.Timestamp = succTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(succTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	return txb.TransactionData.Bytes(), txb
+	return txb.Bytes(), txb
 }
 
 // --------------------------------------------------------------------------
@@ -199,11 +200,11 @@ func TestEndorsementNonSequencerRejected(t *testing.T) {
 	dummyEndorsement := base.NewTransactionID(ts.AddTicks(-2), base.TransactionIDShort{}, true)
 	txb.PushEndorsements(dummyEndorsement)
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	_, err = transaction.ParseWithPartialValidation(txBytes)
 	require.Error(t, err, "non-sequencer transaction with endorsements must be rejected")
 	require.NoError(t, util.MustErrorWith(err, "only sequencer transactions can endorse"))

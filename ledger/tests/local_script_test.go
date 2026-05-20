@@ -112,18 +112,18 @@ func buildTransferWith(
 	}
 
 	lib := ledger.L(maxTs.Slot)
-	txb.TransactionData.Timestamp = maxTs.AddTicks(int(lib.TransactionPace))
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(maxTs.AddTicks(int(lib.TransactionPace)))
+	txb.ComputeInputCommitment()
 
 	if customise != nil {
 		customise(txb)
 		// recompute commitment in case customise changed inputs (it
 		// shouldn't here but cheap to be safe).
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.ComputeInputCommitment()
 	}
 
 	txb.SignED25519(srcPrivKey)
-	return txb.TransactionData.Bytes()
+	return txb.Bytes()
 }
 
 // submitAndCapture submits txBytes to the utxodb and captures the parsed
@@ -210,10 +210,10 @@ func TestRedeemScript_InvalidBin(t *testing.T) {
 // Most callRedeemer tests need exactly this shape.
 func addExtraConstraint(t *testing.T, txb *txbuilder.TxBuilder, bc []byte) {
 	t.Helper()
-	require.Equal(t, 2, len(txb.TransactionData.Outputs), "buildTransferWith expected to produce 2 outputs (target + remainder)")
-	txb.TransactionData.Outputs[1] = txb.TransactionData.Outputs[1].Clone(func(o *ledger.OutputBuilder) {
+	require.Equal(t, 2, len(txb.ProducedOutputs), "buildTransferWith expected to produce 2 outputs (target + remainder)")
+	txb.ReplaceProducedOutput(1, txb.ProducedOutputs[1].Clone(func(o *ledger.OutputBuilder) {
 		o.MustPushConstraint(bc)
-	})
+	}))
 }
 
 // TestRedeemScript_OutsideTxConstraints: redeemScript called from a UTXO's

@@ -70,7 +70,7 @@ type benchScenario struct {
 // snapshot freezes a built tx into (bytes, consumed-outputs) so the
 // scenario survives further state mutation.
 func snapshot(name string, txb *txbuilder.TxBuilder) benchScenario {
-	bytes := txb.TransactionData.Bytes()
+	bytes := txb.Bytes()
 	consumed := make([]*ledger.Output, len(txb.ConsumedOutputs))
 	copy(consumed, txb.ConsumedOutputs)
 	return benchScenario{name: name, txBytes: bytes, consumed: consumed}
@@ -83,14 +83,14 @@ func buildBenchScenarios(b *testing.B) []benchScenario {
 	// ----- origin -----
 	originTxb, originChainID, boardAfterWhite := bbBuildOrigin(b, e, 50 /*TSlots*/)
 	originScn := snapshot("origin", originTxb)
-	if _, err := e.submit(originTxb.TransactionData.Bytes()); err != nil {
+	if _, err := e.submit(originTxb.Bytes()); err != nil {
 		b.Fatalf("submit origin: %v", err)
 	}
 
 	// ----- acceptance -----
 	acceptTxb, boardAfterBlack := bbBuildAcceptance(b, e, originChainID, boardAfterWhite)
 	acceptScn := snapshot("acceptance", acceptTxb)
-	if _, err := e.submit(acceptTxb.TransactionData.Bytes()); err != nil {
+	if _, err := e.submit(acceptTxb.Bytes()); err != nil {
 		b.Fatalf("submit acceptance: %v", err)
 	}
 
@@ -100,7 +100,7 @@ func buildBenchScenarios(b *testing.B) []benchScenario {
 
 	// ----- propose-tie move (submitted; needed as predecessor for tie-accept) -----
 	moveTieTxb, _ := bbBuildOrdinaryMove(b, e, originChainID, boardAfterBlack, true)
-	if _, err := e.submit(moveTieTxb.TransactionData.Bytes()); err != nil {
+	if _, err := e.submit(moveTieTxb.Bytes()); err != nil {
 		b.Fatalf("submit tie-propose move: %v", err)
 	}
 
@@ -326,7 +326,7 @@ func bbBuildPreacceptanceTimeout(b *testing.B) *txbuilder.TxBuilder {
 	if err != nil {
 		b.Fatalf("BuildOrigin (timeout env): %v", err)
 	}
-	if _, err := e.submit(originTxb.TransactionData.Bytes()); err != nil {
+	if _, err := e.submit(originTxb.Bytes()); err != nil {
 		b.Fatalf("submit origin (timeout env): %v", err)
 	}
 	originTx, _ := originTxb.Transaction()

@@ -484,11 +484,11 @@ func TestChain1(t *testing.T) {
 		txb.PutSignatureUnlock(consumedIndex) // it knows the lock is always at index 1
 
 		// finalize the transaction
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKey0)
 
-		txbytes := txb.TransactionData.Bytes()
+		txbytes := txb.Bytes()
 		err = u.AddTransaction(txbytes)
 		require.NoError(t, err)
 
@@ -597,8 +597,8 @@ func TestChain2(t *testing.T) {
 		}
 		txb.PutSignatureUnlock(0)
 
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 
 		txb.SignED25519(privKey0)
 
@@ -714,8 +714,8 @@ func TestChain3(t *testing.T) {
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 	txb.PutSignatureUnlock(0)
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 
 	txb.SignED25519(privKey0)
 

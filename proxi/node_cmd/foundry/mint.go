@@ -180,8 +180,8 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 	}
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(wallet.PrivateKey)
 
 	txBytes, txid, failedTx, err := txb.BytesWithValidation()

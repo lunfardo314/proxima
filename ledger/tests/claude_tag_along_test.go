@@ -89,8 +89,8 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 	require.NoError(t, err)
 
 	env.taTs = env.seqOrigin.ID.Timestamp().AddSlots(2)
-	txb.TransactionData.Timestamp = env.taTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeySender)
 	txBytes, _, _, err := txb.BytesWithValidation()
 	require.NoError(t, err)
@@ -138,8 +138,8 @@ func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = seqOrigin.ID.Timestamp().AddSlots(2)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKeyAlice)
 	_, _, _, err = txb.BytesWithValidation()
 	// Alice signed but sender ID is Bob's -> must fail
@@ -195,8 +195,8 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 		taTs = seqOriginB.ID.Timestamp()
 	}
 	taTs = taTs.AddSlots(2)
-	txb.TransactionData.Timestamp = taTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(taTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKeySender)
 	txBytes, _, _, err := txb.BytesWithValidation()
 	require.NoError(t, err)
@@ -232,8 +232,8 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	_, err = txb2.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb2.TransactionData.Timestamp = taTs.AddSlots(1)
-	txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
+	txb2.SetTimestamp(taTs.AddSlots(1))
+	txb2.ComputeInputCommitment()
 	txb2.SignED25519(privKeyTargetB)
 	_, _, _, err = txb2.BytesWithValidation()
 	// chain B references its own chain constraint, but tag-along $0 = chain A ID
@@ -275,8 +275,8 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		_, err = txb.ProduceOutput(next)
 		require.NoError(t, err)
 
-		txb.TransactionData.Timestamp = env.taTs.AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(env.taTs.AddSlots(1))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(env.privKeyTarget)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "self-referencing unlock params should be rejected")
@@ -329,8 +329,8 @@ func TestClaudeTagAlongPurgeWindowSettle(t *testing.T) {
 	require.NoError(t, err)
 
 	// purge window: slot pace >= TagAlongReclaimSlots (390)
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(ledger.L(0).TagAlongReclaimSlots)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongReclaimSlots))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyRandom)
 	txBytes, _, _, err := txb.BytesWithValidation()
 	require.NoError(t, err, "random party should consume tag-along in purge window")
@@ -388,8 +388,8 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 	_, err = txb.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
 	_, _, _, err = txb.BytesWithValidation()
 	// consumed = chain_amount + fee, produced = chain_amount + fee + extra -> mismatch
@@ -441,8 +441,8 @@ func TestClaudeTagAlongSenderHashForgeryOnReclaim(t *testing.T) {
 	require.NoError(t, err)
 
 	// reclaim window: TagAlongSlots <= pace < TagAlongReclaimSlots
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 10)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyRandom)
 	_, _, _, err = txb.BytesWithValidation()
 	// random party signed, but sigLock($1) checks against sender's HolderID -> mismatch
@@ -481,8 +481,8 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 	_, err = txb.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
 	txBytes, _, _, err := txb.BytesWithValidation()
 	require.NoError(t, err, "valid target consumption should pass validation")
@@ -539,8 +539,8 @@ func TestClaudeTagAlongSenderReclaimSettles(t *testing.T) {
 	require.NoError(t, err)
 
 	// reclaim window
-	txb.TransactionData.Timestamp = env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeySender)
 	txBytes, _, _, err := txb.BytesWithValidation()
 	require.NoError(t, err, "sender reclaim should pass validation")

@@ -139,7 +139,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.TransactionData.Outputs[*succIdx] = chainSucc
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txb.BytesWithValidation()
@@ -163,7 +163,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.TransactionData.Outputs[*succIdx] = chainSucc
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txb.BytesWithValidation()
@@ -260,7 +260,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.TransactionData.Outputs[*succIdx] = chainSucc
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txb.BytesWithValidation()
@@ -280,7 +280,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.TransactionData.Outputs[*succIdx] = chainSucc
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txb.BytesWithValidation()
@@ -314,7 +314,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.TransactionData.Outputs[*succIdx] = chainSucc
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txb.BytesWithValidation()
@@ -333,7 +333,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.TransactionData.Outputs[*succIdx] = chainSucc
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txb.BytesWithValidation()
@@ -396,7 +396,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.TransactionData.Outputs[*succIdx] = chainSucc
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txb.BytesWithValidation()
@@ -416,7 +416,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.TransactionData.Outputs[*succIdx] = chainSucc
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txb.BytesWithValidation()

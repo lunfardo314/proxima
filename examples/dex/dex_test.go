@@ -123,8 +123,8 @@ func (e *dexEnv) mintTokensFor(t *testing.T, signer ed25519.PrivateKey, signerLo
 		require.NoError(t, err)
 	}
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(signer)
 	originTx := e.submit(t, txb)
 
@@ -181,8 +181,8 @@ func (e *dexEnv) mintTokensFor(t *testing.T, signer ed25519.PrivateKey, signerLo
 		require.NoError(t, err)
 	}
 
-	txb2.TransactionData.Timestamp = ts2
-	txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
+	txb2.SetTimestamp(ts2)
+	txb2.ComputeInputCommitment()
 	txb2.SignED25519(signer)
 	mintTx := e.submit(t, txb2)
 

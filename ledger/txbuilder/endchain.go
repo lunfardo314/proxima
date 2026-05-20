@@ -48,8 +48,8 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 	txb.PutUnlockParams(consumedIndex, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	// finalize the transaction
-	txb.TransactionData.Timestamp = par.Timestamp
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(par.Timestamp)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(par.PrivateKey)
 
 	tx, err := txb.Transaction()

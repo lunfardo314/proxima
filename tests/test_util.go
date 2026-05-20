@@ -382,11 +382,11 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	_, err = txb.ProduceOutput(tagAlongOut)
 	require.NoError(td.t, err)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(td.privKeyAux)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	td.chainOriginsTx, err = transaction.ParseWithPartialValidation(txBytes)
 	require.NoError(td.t, err)
 
@@ -451,11 +451,11 @@ func (td *workflowTestData) makeChainOriginsWithAmounts(amounts []uint64) {
 	_, err = txb.ProduceOutput(tagAlongOut)
 	require.NoError(td.t, err)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(td.privKeyAux)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	td.chainOriginsTx, err = transaction.ParseWithPartialValidation(txBytes)
 	require.NoError(td.t, err)
 

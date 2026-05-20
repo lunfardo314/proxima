@@ -47,8 +47,8 @@ func pushRedeemScript(txb *txbuilder.TxBuilder) error {
 
 // finaliseAndSign sets timestamp, computes input commitment, and signs ed25519.
 func finaliseAndSign(txb *txbuilder.TxBuilder, ts base.LedgerTime, priv ed25519.PrivateKey) {
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(priv)
 }
 

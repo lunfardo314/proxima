@@ -146,7 +146,7 @@ func runChessAction(label string, txb *txbuilder.TxBuilder, priv ed25519.Private
 	tx, err := txb.Transaction()
 	glb.AssertNoError(err)
 	glb.Verbosef("---- %s tx ----\n%s\n---------------", label, tx.IDString())
-	submitAndTrack(txb.TransactionData.Bytes(), tx.ID())
+	submitAndTrack(txb.Bytes(), tx.ID())
 	return tx.ID()
 }
 

@@ -76,8 +76,8 @@ func buildChessOutput(amount uint64, state *ChessState, cc *ledger.ChainConstrai
 // finaliseAndSign sets timestamp, computes input commitment, signs ed25519.
 // txTs MUST be ≥ max(input timestamps) + TransactionPace.
 func finaliseAndSign(txb *txbuilder.TxBuilder, txTs base.LedgerTime, priv ed25519.PrivateKey) {
-	txb.TransactionData.Timestamp = txTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(txTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(priv)
 }
 

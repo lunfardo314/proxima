@@ -75,8 +75,8 @@ func TestTagAlongSimple(t *testing.T) {
 		require.NoError(t, err)
 
 		ts := seqOrigin.ID.Timestamp().AddSlots(1)
-		txb.TransactionData.Timestamp = ts.AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts.AddSlots(1))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 
 		txBytes, txid, txString, err := txb.BytesWithValidation()
@@ -120,8 +120,8 @@ func TestTagAlongSimple(t *testing.T) {
 		_, err = txb.ProduceOutput(next)
 		require.NoError(t, err)
 
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyTarget)
 		txBytes, _, txString, err := txb.BytesWithValidation()
 		if prntx {
@@ -176,8 +176,8 @@ func TestTagAlongSimple(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(reclaimerPrivateKey)
 		_, _, txString, err := txb.BytesWithValidation()
 		if prntx {
@@ -333,8 +333,8 @@ func TestTagAlongBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.TransactionData.Timestamp = taTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err)
@@ -367,8 +367,8 @@ func TestTagAlongBoundaries(t *testing.T) {
 			_, err = txb.ProduceOutput(next)
 			require.NoError(t, err)
 
-			txb.TransactionData.Timestamp = taTs.AddSlots(slotOffset)
-			txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+			txb.SetTimestamp(taTs.AddSlots(slotOffset))
+			txb.ComputeInputCommitment()
 			txb.SignED25519(privKeyTarget)
 			_, _, _, err := txb.BytesWithValidation()
 			return err
@@ -420,8 +420,8 @@ func TestTagAlongBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.TransactionData.Timestamp = taTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err)
@@ -468,8 +468,8 @@ func TestTagAlongBoundaries(t *testing.T) {
 			}))
 			require.NoError(t, err)
 
-			txb.TransactionData.Timestamp = taTs.AddSlots(slotOffset)
-			txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+			txb.SetTimestamp(taTs.AddSlots(slotOffset))
+			txb.ComputeInputCommitment()
 			txb.SignED25519(privKeyRandom)
 			_, _, _, err = txb.BytesWithValidation()
 			return err
@@ -522,8 +522,8 @@ func TestTagAlongProduction(t *testing.T) {
 		require.NoError(t, err)
 
 		// use timestamp after the consumed output
-		txb.TransactionData.Timestamp = outs[0].ID.Timestamp().AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(outs[0].ID.Timestamp().AddSlots(1))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "should reject zero chain ID")
@@ -577,8 +577,8 @@ func TestTagAlongProduction(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.TransactionData.Timestamp = seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "should reject more than 5 UTXO elements")
@@ -630,8 +630,8 @@ func TestTagAlongProduction(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.TransactionData.Timestamp = seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyController)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err, "tag-along where sender == target controller should be allowed")
@@ -697,8 +697,8 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.TransactionData.Timestamp = taTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err)
@@ -745,8 +745,8 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in tag-along window (slot 1)
-		txb.TransactionData.Timestamp = taTs.AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs.AddSlots(1))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "sender should NOT unlock during tag-along window")
@@ -792,8 +792,8 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in tag-along window (slot 1)
-		txb.TransactionData.Timestamp = taTs.AddSlots(1)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs.AddSlots(1))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyRandom)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "random should NOT unlock during tag-along window")
@@ -839,8 +839,8 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in reclaim window (middle of the window)
-		txb.TransactionData.Timestamp = taTs.AddSlots(ledger.L(0).TagAlongSlots + 10)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyRandom)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "random should NOT unlock during reclaim window")
@@ -873,8 +873,8 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in reclaim window (middle of the window)
-		txb.TransactionData.Timestamp = taTs.AddSlots(ledger.L(0).TagAlongSlots + 10)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyTarget)
 		_, _, _, err = txb.BytesWithValidation()
 		require.Error(t, err, "target should NOT unlock during reclaim window")
@@ -928,8 +928,8 @@ func TestTagAlongMultiple(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.TransactionData.Timestamp = seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err)
@@ -962,8 +962,8 @@ func TestTagAlongMultiple(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb2.TransactionData.Timestamp = seqOrigin.ID.Timestamp().AddSlots(3)
-		txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
+		txb2.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(3))
+		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeySender)
 		txBytes2, _, _, err := txb2.BytesWithValidation()
 		require.NoError(t, err)
@@ -1037,8 +1037,8 @@ func TestTagAlongMultiple(t *testing.T) {
 		if seqOrigin2.ID.Timestamp().After(ts) {
 			ts = seqOrigin2.ID.Timestamp()
 		}
-		txb.TransactionData.Timestamp = ts.AddSlots(2)
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts.AddSlots(2))
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err)
@@ -1105,8 +1105,8 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.TransactionData.Timestamp = taTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err)
@@ -1137,8 +1137,8 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		_, err = txb2.ProduceOutput(next)
 		require.NoError(t, err)
 
-		txb2.TransactionData.Timestamp = taTs.AddSlots(1)
-		txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
+		txb2.SetTimestamp(taTs.AddSlots(1))
+		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeyTarget)
 		txBytes2, _, _, err := txb2.BytesWithValidation()
 		require.NoError(t, err)
@@ -1208,8 +1208,8 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.TransactionData.Timestamp = taTs
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(taTs)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txb.BytesWithValidation()
 		require.NoError(t, err)
@@ -1252,8 +1252,8 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 
 		// reclaim in reclaim window
 		reclaimTs := taTs.AddSlots(ledger.L(0).TagAlongSlots + 1)
-		txb2.TransactionData.Timestamp = reclaimTs
-		txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
+		txb2.SetTimestamp(reclaimTs)
+		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeySender)
 		txBytes2, _, _, err := txb2.BytesWithValidation()
 		require.NoError(t, err)

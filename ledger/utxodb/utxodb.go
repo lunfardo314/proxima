@@ -221,10 +221,10 @@ func (u *UTXODB) makeTransactionTokensFromFaucetMulti(addrs []ledger.SigLock, am
 			return nil, err
 		}
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(u.faucetPrivateKey)
-	return txb.TransactionData.Bytes(), nil
+	return txb.Bytes(), nil
 }
 
 func (u *UTXODB) TokensFromFaucet(addr ledger.SigLock, amount ...uint64) error {
@@ -511,8 +511,8 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 			return err
 		}
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 	txBytes, _, txString, err := txb.BytesWithValidation()
 	if err != nil {

@@ -678,8 +678,8 @@ func (c *APIClient) MakeClaimingCompactTransaction(
 		}
 	}
 
-	txb.TransactionData.Timestamp = nowisTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(nowisTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(walletPrivateKey)
 
 	txBytes, _, _, err := txb.BytesWithValidation()
@@ -880,11 +880,11 @@ func (c *APIClient) MakeChainOrigin(par TransferFromED25519WalletParams) (*trans
 			return nil, [32]byte{}, err
 		}
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(par.WalletPrivateKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	if err != nil {
@@ -1139,8 +1139,8 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 		}
 	}
 
-	txb.TransactionData.Timestamp = par.Timestamp
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(par.Timestamp)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(par.PrivateKey)
 
 	txBytes, _, txString, err := txb.BytesWithValidation()
@@ -1286,8 +1286,8 @@ func (c *APIClient) MakeSendOutputTransaction(o *ledger.Output, privateKey ed255
 		return nil, base.TransactionID{}, "", err
 	}
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privateKey)
 
 	txBytes, txid, txString, err := txb.BytesWithValidation()

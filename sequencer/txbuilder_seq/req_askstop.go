@@ -119,7 +119,7 @@ func (r *AskStopDelegationRequest) Apply(txb *SeqTxBuilder) (valid bool, err err
 	if len(txb.ConsumedOutputs) > 254 {
 		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to consume")
 	}
-	if len(txb.TransactionData.Outputs) > 255 {
+	if len(txb.ProducedOutputs) > 255 {
 		return true, fmt.Errorf("AskStopDelegationRequest: too many outputs to produce")
 	}
 	inflation := txb.Library.ChainInflationOneSlot(r.delegation.Output.TokenBalance(), r.delegation.ID.Slot())

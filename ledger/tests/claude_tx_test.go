@@ -103,15 +103,15 @@ func buildValidTransferTxBytes(
 	// Timestamp
 	lib := ledger.L(maxTs.Slot)
 	ts := maxTs.AddTicks(int(lib.TransactionPace))
-	txb.TransactionData.Timestamp = ts
+	txb.SetTimestamp(ts)
 
 	// Input commitment (blake2b of consumed outputs tuple)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 
 	// Sign
 	txb.SignED25519(srcPrivKey)
 
-	return txb.TransactionData.Bytes(), txb
+	return txb.Bytes(), txb
 }
 
 // --------------------------------------------------------------------------
@@ -189,13 +189,13 @@ func TestTxDuplicateInputsRejected(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := outs[0].Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-	txb.TransactionData.Timestamp = ts
+	txb.SetTimestamp(ts)
 
 	// Input commitment: hash of the two (identical) consumed outputs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	// The transaction should fail partial validation because the EasyFL
 	// txIntegrityValidatorPartialContext0 checks:
@@ -279,13 +279,13 @@ func TestTxInputCommitmentWithWrongHash(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := maxTs.AddTicks(int(ledger.L(0).TransactionPace))
-	txb.TransactionData.Timestamp = ts
+	txb.SetTimestamp(ts)
 
 	// Set WRONG input commitment (all zeros)
-	txb.TransactionData.InputCommitment = [32]byte{}
+	txb.TxData.InputCommitment = [32]byte{}
 	txb.SignED25519(privKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	// The input commitment is part of the transaction essence (which is hashed for
 	// the txID). SignED25519 computes the txID from the current data and signs it,
@@ -388,13 +388,13 @@ func TestTxEdgeCaseNoInputs(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := ledger.TimeNow()
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = [32]byte{}
+	txb.SetTimestamp(ts)
+	txb.TxData.InputCommitment = [32]byte{}
 
 	privKey, _, _ := utxodb.NewUTXODB(genesisPrivateKey, true).GenerateAddress(1)
 	txb.SignED25519(privKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	// Should fail because there are no inputs
 	_, err = transaction.ParseWithPartialValidation(txBytes)
@@ -491,11 +491,11 @@ func TestTxEdgeCaseTimePaceConstraint(t *testing.T) {
 
 	// Set timestamp SAME as input - violates pace constraint
 	// (transaction must be at least TransactionPace ticks after its inputs)
-	txb.TransactionData.Timestamp = outs[0].Timestamp()
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(outs[0].Timestamp())
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 
 	_, err = transaction.ParseWithPartialValidation(txBytes)
 	require.Error(t, err, "transaction violating pace constraint must be rejected")
@@ -641,10 +641,10 @@ func validateFull(txBytes []byte, txb *txbuilder.TxBuilder) error {
 // Returns serialized transaction bytes.
 func buildAndSignTx(txb *txbuilder.TxBuilder, maxTs base.LedgerTime, privKey ed25519.PrivateKey) []byte {
 	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
-	return txb.TransactionData.Bytes()
+	return txb.Bytes()
 }
 
 // --------------------------------------------------------------------------

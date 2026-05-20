@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txcore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -239,8 +240,8 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	require.NoError(td, err)
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, par.ts)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = par.ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(par.ts)
 	txb.SignED25519(td.seqPrivateKey)
 
 	txBytes, _, txString, err := txb.BytesWithValidation()
@@ -318,8 +319,8 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 
 	txb.MustPutFrozenCoverage(succChainIdx, frozenCoverageDelta, ts)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(td.seqPrivateKey)
 
 	txBytes, _, txString, err := txb.BytesWithValidation()
@@ -378,8 +379,8 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	_, err = txb.ProduceOutput(ledger.NewTagAlongOutput(tagAlongFee, base.RandomChainID(), base.HolderID(td.masterAddr)))
 	require.NoError(td, err)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = ts
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(ts)
 	txb.SignED25519(td.masterPrivateKey)
 
 	txBytes, _, txString, err := txb.BytesWithValidation()
@@ -716,9 +717,9 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	dummyTxId := base.NewTransactionID(par.ts.AddTicks(-5), base.TransactionIDShort{}, true)
 	txb.PushEndorsements(dummyTxId)
 
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
-	txb.TransactionData.Timestamp = par.ts
-	txb.TransactionData.SequencerOutputIndex = 0
+	txb.ComputeInputCommitment()
+	txb.SetTimestamp(par.ts)
+	txb.SetSequencerData(0, txcore.SequencerOutputIndexNone)
 	txb.SignED25519(td.seqPrivateKey)
 
 	txBytes, _, txString, err := txb.BytesWithValidation()

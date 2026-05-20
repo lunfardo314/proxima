@@ -204,8 +204,8 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	// Phase D auditability + balance equation.
 	txb.DeclareTokenConservation(tag)
 
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(wallet.PrivateKey)
 
 	txBytes, txid, failedTx, err := txb.BytesWithValidation()

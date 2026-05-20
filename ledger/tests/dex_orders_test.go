@@ -141,8 +141,8 @@ func dexMintTokensFor(t *testing.T, e *dexEnv, signer ed25519.PrivateKey, signer
 		_, err = txb.ProduceOutput(ledger.OutputBasic(int64(change), signerLock))
 		require.NoError(t, err)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(signer)
 	originTx := dexSubmit(t, e, txb)
 
@@ -185,8 +185,8 @@ func dexMintTokensFor(t *testing.T, e *dexEnv, signer ed25519.PrivateKey, signer
 		_, err = txb2.ProduceOutput(ledger.OutputBasic(int64(consumed2-produced2), signerLock))
 		require.NoError(t, err)
 	}
-	txb2.TransactionData.Timestamp = ts2
-	txb2.TransactionData.InputCommitment = ledger.HashOutputs(txb2.ConsumedOutputs...)
+	txb2.SetTimestamp(ts2)
+	txb2.ComputeInputCommitment()
 	txb2.SignED25519(signer)
 	mintTx := dexSubmit(t, e, txb2)
 
@@ -271,8 +271,8 @@ func dexBuildSellOrder(t *testing.T, e *dexEnv, tag base.ChainID, tokenUTXO *led
 		require.NoError(t, err)
 	}
 	txb.DeclareTokenConservation(tag)
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.sellerPriv)
 	return dexSubmit(t, e, txb)
 }
@@ -307,8 +307,8 @@ func dexBuildBuyOrder(t *testing.T, e *dexEnv, tag base.ChainID, amount, price u
 		_, err = txb.ProduceOutput(ledger.OutputBasic(int64(change), e.buyerLock))
 		require.NoError(t, err)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.buyerPriv)
 	return dexSubmit(t, e, txb)
 }
@@ -401,8 +401,8 @@ func TestDex_SellOrderHappyPath(t *testing.T) {
 		require.NoError(t, err)
 	}
 	txb.DeclareTokenConservation(tag)
-	txb.TransactionData.Timestamp = fillTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(fillTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.buyerPriv)
 	tx := dexSubmit(t, e, txb)
 
@@ -447,8 +447,8 @@ func TestDex_BuyOrderHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	txb.DeclareTokenConservation(tag)
-	txb.TransactionData.Timestamp = fillTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(fillTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.sellerPriv)
 	tx := dexSubmit(t, e, txb)
 
@@ -488,8 +488,8 @@ func TestDex_SellOrderReclaim(t *testing.T) {
 	_, err = txb.ProduceOutput(out)
 	require.NoError(t, err)
 	txb.DeclareTokenConservation(tag)
-	txb.TransactionData.Timestamp = reclaimTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(reclaimTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.sellerPriv)
 	reclaimTx := dexSubmit(t, e, txb)
 
@@ -571,8 +571,8 @@ func TestDex_FoldAttackRejection(t *testing.T) {
 	}
 	txb.DeclareTokenConservation(tagA)
 	txb.DeclareTokenConservation(tagB)
-	txb.TransactionData.Timestamp = fillTs
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(fillTs)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.buyerPriv)
 
 	_, _, failed, err := txb.BytesWithValidation()

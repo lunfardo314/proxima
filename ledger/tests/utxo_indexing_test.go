@@ -133,11 +133,11 @@ func spendCustomLockedOutput(
 	if len(txSlotOverride) > 0 {
 		ts = base.T(txSlotOverride[0], 0)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(signer)
 
-	return u.AddTransaction(txb.TransactionData.Bytes())
+	return u.AddTransaction(txb.Bytes())
 }
 
 // utxoExistsAt confirms that calling GetUTXOIDsForController with the

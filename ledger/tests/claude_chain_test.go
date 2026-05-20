@@ -113,11 +113,11 @@ func (e *chainTestEnv) buildChainTransition(
 	}
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	return txb.TransactionData.Bytes(), txb
+	return txb.Bytes(), txb
 }
 
 // --------------------------------------------------------------------------
@@ -257,11 +257,11 @@ func TestChainTermination(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	err = e.u.AddTransaction(txBytes)
 	require.NoError(t, err, "chain termination must succeed")
 
@@ -303,8 +303,8 @@ func TestChainInvalidPredecessorReference(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
 	_, _, _, err = txb.BytesWithValidation()
@@ -343,8 +343,8 @@ func TestChainOriginSlotImmutability(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
 	_, _, _, err = txb.BytesWithValidation()
@@ -384,8 +384,8 @@ func TestChainTransitionCounterWrong(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
 	_, _, _, err = txb.BytesWithValidation()
@@ -424,8 +424,8 @@ func TestChainIDMismatch(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
 	_, _, _, err = txb.BytesWithValidation()
@@ -466,8 +466,8 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		txb.PutSignatureUnlock(predIdx)
 
 		ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
 		_, _, _, err = txb.BytesWithValidation()
@@ -503,8 +503,8 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		txb.PutSignatureUnlock(predIdx)
 
 		ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-		txb.TransactionData.Timestamp = ts
-		txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+		txb.SetTimestamp(ts)
+		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
 		_, _, _, err = txb.BytesWithValidation()
@@ -648,11 +648,11 @@ func TestChainLockValidUnlock(t *testing.T) {
 	if lockedOuts[0].ID.Timestamp().After(maxTs) {
 		maxTs = lockedOuts[0].ID.Timestamp()
 	}
-	txb.TransactionData.Timestamp = maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	err = e.u.AddTransaction(txBytes)
 	require.NoError(t, err, "valid chain-lock unlock must succeed")
 
@@ -746,8 +746,8 @@ func TestChainLockWrongChainID(t *testing.T) {
 	if lockedOuts[0].ID.Timestamp().After(maxTs) {
 		maxTs = lockedOuts[0].ID.Timestamp()
 	}
-	txb.TransactionData.Timestamp = maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
 	_, _, _, err = txb.BytesWithValidation()
@@ -839,8 +839,8 @@ func TestChainLockSelfReference(t *testing.T) {
 	if lockedOuts[0].ID.Timestamp().After(maxTs) {
 		maxTs = lockedOuts[0].ID.Timestamp()
 	}
-	txb.TransactionData.Timestamp = maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
 	_, _, _, err = txb.BytesWithValidation()

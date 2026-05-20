@@ -149,7 +149,7 @@ func TestFinalizeChainOrigins(t *testing.T) {
 // timeout in initMultiSequencerTest can slip when the CPU is busy with prior tests.
 func TestIdle2(t *testing.T) {
 	const (
-		maxSlots    = 50
+		maxSlots    = 30
 		nSequencers = 1 // in addition to bootstrap
 	)
 	testData := initMultiSequencerTest(t, nSequencers, true)

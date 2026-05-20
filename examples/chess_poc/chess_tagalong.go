@@ -77,7 +77,7 @@ func AttachTagAlong(txb *txbuilder.TxBuilder, p AttachTagAlongParams) error {
 
 	// Recompute input commitment over the now-extended consumed list,
 	// then re-sign. SignED25519 overwrites the previous signature data.
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(p.SignerPrivKey)
 	return nil
 }

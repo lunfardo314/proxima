@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/txcore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -141,7 +142,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", par.Timestamp.String())
 	}
 
-	ret.TransactionData.Timestamp = par.Timestamp
+	ret.SetTimestamp(par.Timestamp)
 
 	if ret.IsSlotBoundary() {
 		if par.Stem == nil {
@@ -155,7 +156,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 		util.Assertf(ok, "SequencerTxBuilderinconsistency: cannot find previous stem")
 
 		// sign concatenation of predecessor VRFProof with slot number and next VRF proof
-		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TransactionData.Timestamp.Slot))
+		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TxData.Timestamp.Slot))
 		ret.vrfProof = common.Concat(base.SignatureTypeED25519, ed25519.Sign(ret.privateKey, msg))
 	}
 
@@ -169,7 +170,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof, par.Timestamp.Slot))
 		} else {
 			// for non-branch
-			if ret.chainInput.Timestamp().Slot != ret.TransactionData.Timestamp.Slot {
+			if ret.chainInput.Timestamp().Slot != ret.TxData.Timestamp.Slot {
 				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.ChainInflationOneSlot(
 					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0)),
 					ret.chainInput.Timestamp().Slot,
@@ -268,7 +269,7 @@ func (txb *SeqTxBuilder) ChainDelegationParams() (epochSlots uint32, maxFrozenEp
 }
 
 func (txb *SeqTxBuilder) IsSlotBoundary() bool {
-	return txb.TransactionData.Timestamp.IsSlotBoundary()
+	return txb.TxData.Timestamp.IsSlotBoundary()
 }
 
 func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
@@ -276,8 +277,8 @@ func (txb *SeqTxBuilder) SetInflateMainChain(inflate bool) {
 }
 
 func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
-	txb.TransactionData.Endorsements = append(txb.TransactionData.Endorsements, txid)
-	if len(txb.TransactionData.Endorsements) > int(txb.MaxNumberOfEndorsements) {
+	txb.TxData.Endorsements = append(txb.TxData.Endorsements, txid)
+	if len(txb.TxData.Endorsements) > int(txb.MaxNumberOfEndorsements) {
 		return fmt.Errorf("SeqTxBuilder: too many endorsements")
 	}
 	return nil
@@ -324,8 +325,8 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 		return 0, fmt.Errorf("SeqTxBuilder.FreezeDelegation: advance required by delegator is loss-making for the sequencer")
 	}
 	// delegationIn carries inlined epochSlots; use it directly.
-	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TransactionData.Timestamp.Slot, delegationIn.EpochSlots, frozenEpochs)
-	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TransactionData.Timestamp.Slot, frozenSlots)
+	frozenSlots := txb.FrozenSlotsFromFrozenEpochs(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots, frozenEpochs)
+	projectedInflation := txb.Library.ChainInflationMultiStep(delegationIn.Output.TokenBalance(), txb.TxData.Timestamp.Slot, frozenSlots)
 
 	if txb.origSeqData.IsGreedy() {
 		return (projectedInflation * uint64(delegatorRequirement)) / 1000, nil
@@ -335,7 +336,7 @@ func (txb *SeqTxBuilder) calcAdvance(delegationIn *ledger.DelegationOutput, froz
 
 // FreezeDelegation makes delegated output frozen. Returned valid = false if output is permanently invalid and freezing should not be repeated again
 func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput, freezeUntilEpoch ...uint32) (successorIdx byte, valid bool, err error) {
-	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TransactionData.Timestamp.Slot) {
+	if !delegationIn.IsUnlockableByTargetForFreezing(txb.TxData.Timestamp.Slot) {
 		valid = true
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: output cannot be unlocked by the target for freezing:\n%s", delegationIn.LinesHRFull("   ").String())
 		return
@@ -345,18 +346,18 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many inputs")
 		return
 	}
-	if len(txb.TransactionData.Outputs) > 254 {
+	if len(txb.ProducedOutputs) > 254 {
 		valid = true
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: too many produced outputs")
 		return
 	}
 	if delegationIn.Target != txb.chainInput.ChainID {
-		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TransactionData.Timestamp.String())
+		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: cannot be unlocked by the sequencer at %s", txb.TxData.Timestamp.String())
 		return
 	}
-	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TransactionData.Timestamp.Slot, delegationIn.EpochSlots)
+	txEpoch := txb.EpochFromSlotDirect(delegationIn.Target, txb.TxData.Timestamp.Slot, delegationIn.EpochSlots)
 
-	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TransactionData.Timestamp)
+	freezeMaxEpoch := delegationIn.FreezeUntilMax(txb.TxData.Timestamp)
 	var lastEpochToFreeze uint32
 	if len(freezeUntilEpoch) > 0 && freezeUntilEpoch[0] <= freezeMaxEpoch && freezeUntilEpoch[0] >= txEpoch {
 		lastEpochToFreeze = freezeUntilEpoch[0]
@@ -372,7 +373,7 @@ func (txb *SeqTxBuilder) FreezeDelegation(delegationIn *ledger.DelegationOutput,
 	}
 	predIdx := byte(len(txb.ConsumedOutputs))
 	delegationOut, err := delegationIn.MakeDelegationFreezeOutput(
-		txb.TransactionData.Timestamp, lastEpochToFreeze, predIdx, advance)
+		txb.TxData.Timestamp, lastEpochToFreeze, predIdx, advance)
 	if err != nil {
 		err = fmt.Errorf("SeqTxBuilder.FreezeDelegation: %w", err)
 		return
@@ -501,9 +502,10 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 
 	// unlock sequencer chain constraint
 	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(chainOutIdx))
-	txb.TransactionData.SequencerOutputIndex = chainOutIdx
 
 	if txb.stemInput == nil {
+		// Non-branch: stem index stays at the SequencerOutputIndexNone sentinel (0xff).
+		txb.SetSequencerData(chainOutIdx, txcore.SequencerOutputIndexNone)
 		return nil
 	}
 	// handle stem
@@ -512,10 +514,11 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		o.WithAmounts(int64(txb.stemInput.Output.TokenBalance()))
 		o.WithLock(stemLock)
 	})
-	txb.TransactionData.StemOutputIndex, err = txb.ProduceOutput(stemOut)
+	stemIdx, err := txb.ProduceOutput(stemOut)
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder: %w", err)
 	}
+	txb.SetSequencerData(chainOutIdx, stemIdx)
 	return nil
 }
 
@@ -540,7 +543,7 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	// K = txSlot - predBranchSlot. Used by the totalCoverage halving recurrence.
 	predTxID := txb.stemInput.ID.TransactionID()
 	predBranchSlot := predTxID.Timestamp().Slot
-	curSlot := txb.TransactionData.Timestamp.Slot
+	curSlot := txb.TxData.Timestamp.Slot
 	util.Assertf(curSlot >= predBranchSlot, "buildStemLock: curSlot(%d) < predBranchSlot(%d)", curSlot, predBranchSlot)
 	k := uint64(curSlot - predBranchSlot)
 
@@ -619,7 +622,7 @@ func (txb *SeqTxBuilder) BuildTransactionWithValidation() (*transaction.Transact
 	if err := txb.buildSequencerAndStemOutputs(); err != nil {
 		return nil, fmt.Errorf("SeqTxBuilder: %w", err)
 	}
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(txb.privateKey)
 	return txb.TxBuilder.BuildTransactionWithValidation()
 }
@@ -628,7 +631,7 @@ func (txb *SeqTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, stri
 	if err := txb.buildSequencerAndStemOutputs(); err != nil {
 		return nil, [32]byte{}, "", fmt.Errorf("SeqTxBuilder: %w", err)
 	}
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(txb.privateKey)
 	return txb.TxBuilder.BytesWithValidation()
 }
@@ -637,10 +640,10 @@ func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) (*ledger.O
 	if err := txb.buildSequencerAndStemOutputs(); err != nil {
 		return nil, nil, fmt.Errorf("SeqTxBuilder: %w", err)
 	}
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(txb.privateKey)
 
-	return txb.TxBuilder.TransactionData.Bytes(), txb.TxBuilder.LoadInput, nil
+	return txb.TxBuilder.Bytes(), txb.TxBuilder.LoadInput, nil
 }
 
 func (txb *SeqTxBuilder) reservedInputs() (ret int) {
@@ -673,11 +676,11 @@ func (txb *SeqTxBuilder) AttachmentCost() int {
 }
 
 func (txb *SeqTxBuilder) Timestamp() base.LedgerTime {
-	return txb.TransactionData.Timestamp
+	return txb.TxData.Timestamp
 }
 
 func (txb *SeqTxBuilder) Slot() uint32 {
-	return txb.TransactionData.Timestamp.Slot
+	return txb.TxData.Timestamp.Slot
 }
 
 // CurrentBranchCoverage returns tokenBalance + frozenCoverage[epoch 0] of the sequencer chain output being built.

@@ -169,7 +169,7 @@ func TestOriginHappyPath(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	tx, err := e.submit(txb.TransactionData.Bytes())
+	tx, err := e.submit(txb.Bytes())
 	require.NoError(t, err, "origin tx must validate")
 	require.NotNil(t, tx)
 	require.True(t, tx.IsScriptRedeemed(GetBins().ValidatorHash))
@@ -218,7 +218,7 @@ func TestAcceptanceHappyPath(t *testing.T) {
 		TxTimestamp:   txTs1,
 	})
 	require.NoError(t, err)
-	originTx, err := e.submit(originTxb.TransactionData.Bytes())
+	originTx, err := e.submit(originTxb.Bytes())
 	require.NoError(t, err)
 	chainID := base.MakeOriginChainID(base.MustNewOutputID(originTx.ID(), 0))
 
@@ -244,7 +244,7 @@ func TestAcceptanceHappyPath(t *testing.T) {
 		TxTimestamp:   txTs2,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(acceptTxb.TransactionData.Bytes())
+	_, err = e.submit(acceptTxb.Bytes())
 	require.NoError(t, err, "acceptance tx must validate")
 
 	// Verify successor state.
@@ -287,7 +287,7 @@ func playGame(t *testing.T, e *chessEnv, stake, accept uint64) (*ledger.OutputWi
 		TxTimestamp:   txTs1,
 	})
 	require.NoError(t, err)
-	originTx, err := e.submit(originTxb.TransactionData.Bytes())
+	originTx, err := e.submit(originTxb.Bytes())
 	require.NoError(t, err)
 	chainID := base.MakeOriginChainID(base.MustNewOutputID(originTx.ID(), 0))
 
@@ -311,7 +311,7 @@ func playGame(t *testing.T, e *chessEnv, stake, accept uint64) (*ledger.OutputWi
 		TxTimestamp:   txTs2,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(acceptTxb.TransactionData.Bytes())
+	_, err = e.submit(acceptTxb.Bytes())
 	require.NoError(t, err)
 
 	successor := loadChainOutput(t, e.u, chainID)
@@ -346,7 +346,7 @@ func TestOrdinaryMoveHappyPath(t *testing.T) {
 		TxTimestamp:   txTs,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(txb.TransactionData.Bytes())
+	_, err = e.submit(txb.Bytes())
 	require.NoError(t, err, "ordinary move tx must validate")
 
 	updated := loadChainOutput(t, e.u, chainID)
@@ -410,7 +410,7 @@ func TestTxSizeGate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	txBytes := txb.TransactionData.Bytes()
+	txBytes := txb.Bytes()
 	t.Logf("ordinary-move tx size = %d bytes (limit = %d)", len(txBytes), networkMaxTxBytes)
 	require.Less(t, len(txBytes), networkMaxTxBytes,
 		"Phase-1 gate: chess move tx must fit under network max")
@@ -436,7 +436,7 @@ func TestResignHappyPath(t *testing.T) {
 		TxTimestamp:     txTs,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(txb.TransactionData.Bytes())
+	_, err = e.submit(txb.Bytes())
 	require.NoError(t, err, "resign tx must validate")
 
 	// Black should hold a sigLock output with the full bounty.
@@ -483,7 +483,7 @@ func TestTieAcceptHappyPath(t *testing.T) {
 		TxTimestamp:   txTs1,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(moveTxb.TransactionData.Bytes())
+	_, err = e.submit(moveTxb.Bytes())
 	require.NoError(t, err)
 
 	// Now black accepts the tie.
@@ -504,7 +504,7 @@ func TestTieAcceptHappyPath(t *testing.T) {
 		TxTimestamp:     txTs2,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(tieTxb.TransactionData.Bytes())
+	_, err = e.submit(tieTxb.Bytes())
 	require.NoError(t, err, "tie-accept tx must validate")
 
 	// Bounty = 400_000_001; white = ceil(/2) = 200_000_001; black = floor(/2) = 200_000_000.
@@ -551,7 +551,7 @@ func TestPreAcceptanceTimeoutClaim(t *testing.T) {
 		TxTimestamp:   txTs1,
 	})
 	require.NoError(t, err)
-	originTx, err := e.submit(originTxb.TransactionData.Bytes())
+	originTx, err := e.submit(originTxb.Bytes())
 	require.NoError(t, err)
 	chainID := base.MakeOriginChainID(base.MustNewOutputID(originTx.ID(), 0))
 
@@ -569,7 +569,7 @@ func TestPreAcceptanceTimeoutClaim(t *testing.T) {
 		TxTimestamp:     claimTs,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(txb.TransactionData.Bytes())
+	_, err = e.submit(txb.Bytes())
 	require.NoError(t, err, "pre-acceptance timeout-claim must validate")
 
 	// White should hold a sigLock output with the recovered stake.
@@ -611,7 +611,7 @@ func TestMove_WrongSignerRejected(t *testing.T) {
 		TxTimestamp:   txTs1,
 	})
 	require.NoError(t, err)
-	originTx, err := e.submit(originTxb.TransactionData.Bytes())
+	originTx, err := e.submit(originTxb.Bytes())
 	require.NoError(t, err)
 	chainID := base.MakeOriginChainID(base.MustNewOutputID(originTx.ID(), 0))
 
@@ -637,7 +637,7 @@ func TestMove_WrongSignerRejected(t *testing.T) {
 		TxTimestamp:   txTs2,
 	})
 	require.NoError(t, err)
-	_, err = e.submit(txb.TransactionData.Bytes())
+	_, err = e.submit(txb.Bytes())
 	require.Error(t, err, "white cannot accept their own game")
 	// The exact !!!err message is not surfaced by the callRedeemer wrapper, but
 	// the path-to-failure must be the chess() lock at the consumed UTXO.
@@ -712,11 +712,11 @@ func TestCallRedeemer_PrivateFnRejected(t *testing.T) {
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(1)
 	}
-	txb.TransactionData.Timestamp = ts
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
 	txb.SignED25519(e.whitePriv)
 
-	_, err = e.submit(txb.TransactionData.Bytes())
+	_, err = e.submit(txb.Bytes())
 	require.Error(t, err, "callRedeemer of a private helper must be rejected")
 	require.Contains(t, err.Error(), "private")
 }

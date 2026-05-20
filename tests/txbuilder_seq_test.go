@@ -744,8 +744,8 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		}))
 		require.NoError(t, err)
 	}
-	txb.TransactionData.Timestamp = ts1.AddSlots(1)
-	txb.TransactionData.InputCommitment = ledger.HashOutputs(txb.ConsumedOutputs...)
+	txb.SetTimestamp(ts1.AddSlots(1))
+	txb.ComputeInputCommitment()
 	txb.SignED25519(ret.masterPrivateKey)
 
 	var txString string
