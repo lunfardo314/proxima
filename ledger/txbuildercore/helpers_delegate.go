@@ -3,7 +3,20 @@ package txbuildercore
 import (
 	"fmt"
 
+	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
+)
+
+// DelegateLockState byte values carried by the
+// delegateLockState(_, state) constraint. Mirror
+// ledger.DelegateLockStateFrozen / .DelegateLockStateOnHold; the
+// default zero value (DelegateLockStateNormal) is not exported on
+// either side because it has no special semantics — every state
+// other than Frozen/OnHold is "normal".
+const (
+	DelegateLockStateFrozen byte = 1
+	DelegateLockStateOnHold byte = 2
 )
 
 // Delegation constraint symbols + source templates. The templates
@@ -125,4 +138,133 @@ func (l *Library) NewDelegationInitOutput(par DelegationInitOutputParams) (*Outp
 	b.PutConstraint(chainOriginBin, ConstraintIndexChain)
 	b.MustPushConstraint(stateBin)
 	return b.Output(), nil
+}
+
+// DelegateLockStateView is the wallet-side decoded form of the
+// delegateLockState(lastFrozenEpoch, state) constraint.
+type DelegateLockStateView struct {
+	LastFrozenEpoch uint32
+	State           byte // 0 = normal, 1 = Frozen, 2 = OnHold
+}
+
+// ParseDelegateLockState decodes a delegateLockState constraint
+// bytecode. Pure byte parse via the wallet library — no eval.
+func (l *Library) ParseDelegateLockState(data []byte) (DelegateLockStateView, error) {
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
+	if err != nil {
+		return DelegateLockStateView{}, fmt.Errorf("ParseDelegateLockState: %w", err)
+	}
+	if sym != DelegateLockStateName {
+		return DelegateLockStateView{}, fmt.Errorf("ParseDelegateLockState: expected %s, got %s", DelegateLockStateName, sym)
+	}
+	frBytes := easyfl.StripDataPrefix(args[0])
+	fr, err := easyfl_util.Uint32FromBytes(frBytes)
+	if err != nil {
+		return DelegateLockStateView{}, fmt.Errorf("ParseDelegateLockState: arg 0: %w", err)
+	}
+	stBytes := easyfl.StripDataPrefix(args[1])
+	if len(stBytes) != 1 {
+		return DelegateLockStateView{}, fmt.Errorf("ParseDelegateLockState: arg 1 must be 1 byte, got %d", len(stBytes))
+	}
+	return DelegateLockStateView{LastFrozenEpoch: fr, State: stBytes[0]}, nil
+}
+
+// DelegationOutputView is the wallet-side decoded form of a
+// delegate-lock output, carrying just enough to compute the
+// frozen-slot UX guard. The DelegateLockState constraint is read
+// from the LAST output element (Option C of
+// claude/delegation_epoch_params.md); a plain delegation has it at
+// element index 4, a delegated foundry has it at 5 or 6.
+type DelegationOutputView struct {
+	OriginSlot      uint32       // output creation slot (oid.Slot())
+	Target          base.ChainID // index-values[1]
+	EpochSlots      uint32       // delegateLock arg 2 (z32/epochSlots)
+	LastFrozenEpoch uint32       // delegateLockState arg 0
+	State           byte         // delegateLockState arg 1 (0 / Frozen / OnHold)
+}
+
+// ParseDelegationOutput decodes a parsed output if it carries a
+// delegateLock at slot 2. Returns (view, true, nil) on success;
+// (nil, false, nil) when the output is not a delegation. Errors only
+// on malformed bytes that look like delegation (right symbol, wrong
+// arg shape).
+func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*DelegationOutputView, bool, error) {
+	if o == nil || o.NumElements() < 5 {
+		// every delegation output has at least 5 elements (amounts,
+		// index-values, lock, chain, state).
+		return nil, false, nil
+	}
+	lockBin, err := o.ConstraintAt(ConstraintIndexLock)
+	if err != nil {
+		return nil, false, err
+	}
+	sym, _, args, err := l.ParseBytecodeOneLevel(lockBin, 4)
+	if err != nil || sym != DelegateLockName {
+		return nil, false, nil
+	}
+	if len(args) < 3 {
+		return nil, false, fmt.Errorf("ParseDelegationOutput: delegateLock with %d args, expected ≥3", len(args))
+	}
+	epochSlotsBytes := easyfl.StripDataPrefix(args[2])
+	epochSlots, err := easyfl_util.Uint32FromBytes(epochSlotsBytes)
+	if err != nil {
+		return nil, false, fmt.Errorf("ParseDelegationOutput: epochSlots: %w", err)
+	}
+
+	ivBin, err := o.ConstraintAt(ConstraintIndexIndexValues)
+	if err != nil {
+		return nil, false, err
+	}
+	vals, err := DecodeIndexValuesTuple(ivBin)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(vals) < 2 || len(vals[1]) != 32 {
+		return nil, false, fmt.Errorf("ParseDelegationOutput: target chainID not at index-values[1]")
+	}
+	var target base.ChainID
+	copy(target[:], vals[1])
+
+	// DelegateLockState lives at the LAST element (Option C).
+	n := o.NumElements()
+	stateBin, err := o.ConstraintAt(byte(n - 1))
+	if err != nil {
+		return nil, false, err
+	}
+	state, err := l.ParseDelegateLockState(stateBin)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return &DelegationOutputView{
+		OriginSlot:      oid.Slot(),
+		Target:          target,
+		EpochSlots:      epochSlots,
+		LastFrozenEpoch: state.LastFrozenEpoch,
+		State:           state.State,
+	}, true, nil
+}
+
+// IsInFrozenSlot reports whether the delegation output is in a frozen
+// slot at txSlot — the master cannot unlock it then. Mirrors
+// ledger.DelegationOutput.IsInFrozenSlot. Pure arithmetic against the
+// Constants epoch grid; no library eval.
+func (v *DelegationOutputView) IsInFrozenSlot(txSlot uint32, c *Constants) bool {
+	if txSlot < v.OriginSlot {
+		return false
+	}
+	if v.State != DelegateLockStateFrozen {
+		return false
+	}
+	return txSlot <= c.LastSlotInEpochDirect(v.Target, v.LastFrozenEpoch, v.EpochSlots)
+}
+
+// UnfreezeSlot returns the first slot at which the delegation is no
+// longer frozen, or 0 when the output isn't marked frozen. Mirrors
+// ledger.DelegationOutput.UnfreezeSlot.
+func (v *DelegationOutputView) UnfreezeSlot(c *Constants) uint32 {
+	if v.State != DelegateLockStateFrozen {
+		return 0
+	}
+	return c.LastSlotInEpochDirect(v.Target, v.LastFrozenEpoch, v.EpochSlots) + 1
 }

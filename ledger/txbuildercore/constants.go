@@ -2,6 +2,7 @@ package txbuildercore
 
 import (
 	"crypto/ed25519"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -216,4 +217,34 @@ func (c *Constants) LedgerTimeFromClockTime(t time.Time) base.LedgerTime {
 // inputs are allowed at that timestamp.
 func (c *Constants) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
 	return ts.Tick > base.MaxTickValue-c.PreBranchConsolidationTicks
+}
+
+// EpochOffsetSlotsDirect returns the per-target slot offset of the
+// delegation epoch grid. Each chain's ChainID defines its own grid;
+// the offset spreads delegation-output consumption across sequencers.
+// Pure arithmetic — first 4 bytes of targetID interpreted as a big-
+// endian uint32, modulo epochSlots. Mirrors
+// ledger.Constants.EpochOffsetSlotsDirect.
+func (c *Constants) EpochOffsetSlotsDirect(targetID base.ChainID, epochSlots uint32) uint32 {
+	return binary.BigEndian.Uint32(targetID[:4]) % epochSlots
+}
+
+// EpochLimits returns (firstSlot, lastSlot) of the given delegation
+// epoch on the target chain's grid. Epoch 0 has firstSlot == 0;
+// every other epoch is `epochSlots` wide. Mirrors
+// ledger.Constants.EpochLimits.
+func (c *Constants) EpochLimits(targetID base.ChainID, epoch, epochSlots uint32) (firstSlot, lastSlot uint32) {
+	offs := c.EpochOffsetSlotsDirect(targetID, epochSlots)
+	lastSlot = epoch*epochSlots + offs
+	if epoch > 0 {
+		firstSlot = lastSlot - epochSlots + 1
+	}
+	return
+}
+
+// LastSlotInEpochDirect is the last slot of a delegation epoch on the
+// target's grid. Mirrors ledger.Constants.LastSlotInEpochDirect.
+func (c *Constants) LastSlotInEpochDirect(targetID base.ChainID, epoch, epochSlots uint32) uint32 {
+	_, lastSlot := c.EpochLimits(targetID, epoch, epochSlots)
+	return lastSlot
 }
