@@ -20,8 +20,6 @@ func initNodeInfoCmd() *cobra.Command {
 }
 
 func runNodeInfoCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
-
 	nodeInfo, err := glb.GetClient().GetNodeInfo()
 	glb.AssertNoError(err)
 	glb.Infof("\nNode:\n%s", nodeInfo.Lines("    ").String())

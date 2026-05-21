@@ -19,8 +19,6 @@ func initSyncInfoCmd() *cobra.Command {
 }
 
 func runSyncInfoCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
-	//
 	syncInfo, err := glb.GetClient().GetSyncInfo()
 	glb.AssertNoError(err)
 	glb.Infof("  node synced:  %v", syncInfo.Synced)
