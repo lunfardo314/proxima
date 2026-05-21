@@ -58,7 +58,7 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 					if f, err := lib.ParseFoundryBytecode(fBytes); err == nil {
 						glb.Infof("   foundry: tag=%s supply=%s", chainID.String(), util.Th(f.Supply))
 						if p, err := o.Output.ConstraintAt(ledger.ConstraintIndexFoundryPolicy); err == nil && len(p) > 0 {
-							glb.Infof("      policy: %s", policyDescriptionLine(p))
+							glb.Infof("      policy: %s", policyDescriptionLine(p, lib))
 						}
 					}
 				}

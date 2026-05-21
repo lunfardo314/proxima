@@ -3,11 +3,13 @@ package node_cmd
 import (
 	"bytes"
 	"sort"
+	"time"
 
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/spf13/cobra"
@@ -43,7 +45,6 @@ func initBalanceCmd() *cobra.Command {
 }
 
 func runBalanceCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
 	accountable := glb.MustGetTarget()
 
 	res, err := glb.GetClient().GetOutputsForControllerID(accountable.ControllerID(), client.GetOutputsParams{
@@ -59,31 +60,64 @@ func runBalanceCmd(_ *cobra.Command, _ []string) {
 }
 
 func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Controller) {
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+	clnt := glb.GetClient()
+
 	var sumOnNonDelegationChains, sumOutsideChains, sumDelegation uint64
 	var numNonChains int
 
-	delegations := make([]ledger.DelegationOutput, 0)
-	otherChains := make([]ledger.OutputWithChainID, 0)
+	delegations := make([]glb.DelegationOutputDisplayItem, 0)
+	otherChains := make([]glb.ChainOutputDisplayItem, 0)
 
+	walletHID := walletAccount.ControllerID()
 	for _, o := range outs {
-		if oChain, err := o.AsChainOutput(); err == nil {
-			if dOut, ok := ledger.AsDelegationOutput(o.Output, o.ID); ok {
-				if !ledger.EqualControllers(ledger.SigLock(dOut.MasterID), walletAccount) {
-					// for delegation locks only count those which are owned by the wallet
-					continue
-				}
-				sumDelegation += o.Output.TokenBalance()
-				delegations = append(delegations, dOut)
-			} else {
-				sumOnNonDelegationChains += o.Output.TokenBalance()
-				otherChains = append(otherChains, *oChain)
-			}
-		} else {
+		chainBin, chainErr := o.Output.ConstraintAt(ledger.ConstraintIndexChain)
+		isChain := chainErr == nil && len(chainBin) > 0
+		if !isChain {
 			numNonChains++
 			sumOutsideChains += o.Output.TokenBalance()
+			continue
 		}
+		// Chain output — either a delegation, foundry, or plain chain.
+		if dview, isDelegation, err := lib.ParseDelegationOutput(o.Output.Output, o.ID); err == nil && isDelegation {
+			if !bytes.Equal(dview.MasterID[:], walletHID) {
+				// only count delegations whose master is the wallet
+				continue
+			}
+			sumDelegation += o.Output.TokenBalance()
+			delegations = append(delegations, glb.DelegationOutputDisplayItem{
+				View:    dview,
+				Balance: o.Output.TokenBalance(),
+			})
+			continue
+		}
+		// Non-delegation chain output.
+		cc, err := lib.ParseChainConstraint(chainBin)
+		if err != nil {
+			continue
+		}
+		chainID := cc.ChainID
+		if chainID == base.NilChainID {
+			chainID = base.MakeOriginChainID(o.ID)
+		}
+		var dp *txbuildercore.DelegationParamsView
+		if dpBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexDelegationParams); err == nil && len(dpBytes) > 0 {
+			if parsed, err := lib.ParseDelegationParams(dpBytes); err == nil {
+				dp = parsed
+			}
+		}
+		sumOnNonDelegationChains += o.Output.TokenBalance()
+		otherChains = append(otherChains, glb.ChainOutputDisplayItem{
+			ChainID:          chainID,
+			OutputID:         o.ID,
+			Balance:          o.Output.TokenBalance(),
+			ChainConstraint:  cc,
+			DelegationParams: dp,
+		})
 	}
-	currentSlot := ledger.TimeNow().Slot
+
+	currentSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
 	glb.Infof("Current slot is %d", currentSlot)
 	glb.Infof("\nSUMMARY controlled by %s:", walletAccount.String())
 	glb.Infof("    on %2d non-chain outputs:            %s", numNonChains, util.Th(sumOutsideChains))
@@ -97,21 +131,23 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 	} else {
 		if sortBySafeRevocation {
 			sort.Slice(delegations, func(i, j int) bool {
-				return delegations[i].UnfreezeSlot() < delegations[j].UnfreezeSlot()
+				return delegations[i].View.UnfreezeSlot(consts) < delegations[j].View.UnfreezeSlot(consts)
 			})
 		} else {
 			sort.Slice(delegations, func(i, j int) bool {
-				return delegations[i].Output.TokenBalance() > delegations[j].Output.TokenBalance()
+				return delegations[i].Balance > delegations[j].Balance
 			})
 		}
-		glb.Infof("\nDELEGATIONS (%d):\n\n%s\n", len(delegations), glb.LinesDelegationOutputs(delegations, currentSlot, sumOutsideChains, "  ").String())
+		glb.Infof("\nDELEGATIONS (%d):\n\n%s\n", len(delegations),
+			glb.LinesDelegationOutputs(delegations, currentSlot, sumOutsideChains, consts, clnt, "  ").String())
 	}
 	if len(otherChains) > 0 {
-		glb.Infof("\nNON-DELEGATION CHAINS (%d):\n\n%s\n", len(otherChains), glb.LinesChainOutputs(otherChains, currentSlot, "  ").String())
+		glb.Infof("\nNON-DELEGATION CHAINS (%d):\n\n%s\n", len(otherChains),
+			glb.LinesChainOutputs(otherChains, currentSlot, "  ").String())
 	}
 
-	displayNativeTokens(outs)
-	displayFoundries(outs)
+	displayNativeTokens(outs, lib)
+	displayFoundries(outs, lib)
 }
 
 // foundrySummary describes one foundry output controlled by the wallet.
@@ -123,13 +159,14 @@ type foundrySummary struct {
 }
 
 // displayNativeTokens scans every output for tokenAmount(tag, amount)
-// constraints and reports the per-tag sum.
-func displayNativeTokens(outs []*ledger.OutputWithID) {
+// constraints and reports the per-tag sum. Uses the wallet library's
+// ParseTokenAmountBytecode — no ledger.L() singleton.
+func displayNativeTokens(outs []*ledger.OutputWithID, lib *txbuildercore.Library) {
 	totals := make(map[base.ChainID]uint64)
 	utxoCount := make(map[base.ChainID]int)
 	for _, o := range outs {
 		for _, raw := range o.Output.ConstraintsRawBytes() {
-			ta, err := ledger.TokenAmountFromBytes(raw)
+			ta, err := lib.ParseTokenAmountBytecode(raw)
 			if err != nil {
 				continue
 			}
@@ -166,27 +203,27 @@ func displayNativeTokens(outs []*ledger.OutputWithID) {
 
 // displayFoundries finds every output carrying a foundry(...) constraint
 // at ConstraintIndexFoundry and reports its chain ID, current supply,
-// and whether an immutable policy script sits at index 5.
-func displayFoundries(outs []*ledger.OutputWithID) {
+// and whether an immutable policy script sits at index 5. Wallet
+// library used for both foundry-supply parsing and chain-ID
+// resolution — no ledger.L() singleton.
+func displayFoundries(outs []*ledger.OutputWithID, lib *txbuildercore.Library) {
 	var foundries []foundrySummary
 	for _, o := range outs {
 		fBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexFoundry)
+		if err != nil || len(fBytes) == 0 {
+			continue
+		}
+		f, err := lib.ParseFoundryBytecode(fBytes)
 		if err != nil {
 			continue
 		}
-		f, err := ledger.FoundryFromBytes(fBytes)
+		chainBin, err := o.Output.ConstraintAt(ledger.ConstraintIndexChain)
+		if err != nil || len(chainBin) == 0 {
+			continue
+		}
+		chainID, err := lib.ParseChainConstraintChainID(chainBin, o.ID)
 		if err != nil {
 			continue
-		}
-		cc := o.Output.ChainConstraint()
-		if cc == nil {
-			continue
-		}
-		// At origin the chain ID is still NilChainID; the real chain ID
-		// is derivable from the output ID.
-		chainID := cc.ChainID
-		if chainID == base.NilChainID {
-			chainID = base.MakeOriginChainID(o.ID)
 		}
 		var policy []byte
 		if p, err := o.Output.ConstraintAt(ledger.ConstraintIndexFoundryPolicy); err == nil {
@@ -213,9 +250,9 @@ func displayFoundries(outs []*ledger.OutputWithID) {
 	glb.Infof("\nFOUNDRIES (%d):", len(foundries))
 	for _, f := range foundries {
 		glb.Infof("    %s  supply %s  policy: %s  (out %s)",
-			f.chainID.String(), util.Th(f.supply), policyDescriptionLine(f.policy), f.outputID.StringShort())
+			f.chainID.String(), util.Th(f.supply), policyDescriptionLine(f.policy, lib), f.outputID.StringShort())
 		if decompilePolicy && len(f.policy) > 0 {
-			printDecompiledPolicySource(f.policy, "        ")
+			printDecompiledPolicySource(f.policy, lib, "        ")
 		}
 	}
 }
@@ -224,24 +261,17 @@ func displayFoundries(outs []*ledger.OutputWithID) {
 // foundry policy bytes at index 5 of a foundry output. Recognises the
 // two predefined policies; falls back to a "custom (...)" description
 // for anything else. Returns "no policy" for empty/absent bytecode.
-func policyDescriptionLine(policy []byte) string {
+// Wallet-library based — no ledger.L() singleton.
+func policyDescriptionLine(policy []byte, lib *txbuildercore.Library) string {
 	if len(policy) == 0 {
 		return "no policy"
 	}
-	if bytes.Equal(policy, ledger.FoundryNonDestructibleBytecode()) {
-		return ledger.FoundryNonDestructibleName
-	}
-	// Try foundryMaxSupply($0) — bytecode is parametric so we can't
-	// compare bytes directly; identify by name via the library and
-	// print the cap if it's parseable.
-	return describePolicy(policy)
+	return describePolicy(policy, lib)
 }
 
 // printDecompiledPolicySource decompiles the policy bytecode and prints
-// it as a single indented line. Used by --decompile / -D flags on
-// `balance` and `chain`.
-func printDecompiledPolicySource(policy []byte, indent string) {
-	lib := ledger.L(base.MaxSlot)
+// it as a single indented line. Used by --decompile / -D flags.
+func printDecompiledPolicySource(policy []byte, lib *txbuildercore.Library, indent string) {
 	src, err := lib.DecompileBytecode(policy)
 	if err != nil {
 		glb.Infof("%ssource: <decompile failed: %v>", indent, err)
@@ -250,11 +280,12 @@ func printDecompiledPolicySource(policy []byte, indent string) {
 	glb.Infof("%ssource: %s", indent, src)
 }
 
-// describePolicy returns a short human-readable label for an unknown
-// policy bytecode, attempting to recognise the foundryMaxSupply(N)
-// case by parsing the first-level call.
-func describePolicy(policy []byte) string {
-	lib := ledger.L(base.MaxSlot)
+// describePolicy returns a short human-readable label for a policy
+// bytecode by parsing the first-level call. Recognises the two
+// predefined policies (foundryNonDestructible, foundryMaxSupply(N))
+// and prints the cap for the parametric one; everything else is
+// labeled "custom (<symbol>)".
+func describePolicy(policy []byte, lib *txbuildercore.Library) string {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(policy)
 	if err != nil {
 		return "custom (unparseable)"

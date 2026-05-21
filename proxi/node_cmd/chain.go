@@ -113,11 +113,12 @@ func printFoundryDetails(out *ledger.OutputWithChainID, f *ledger.Foundry, chain
 	if p, err := out.Output.ConstraintAt(ledger.ConstraintIndexFoundryPolicy); err == nil {
 		policy = p
 	}
-	glb.Infof("policy:               %s", policyDescriptionLine(policy))
+	lib := glb.GetTxLibrary()
+	glb.Infof("policy:               %s", policyDescriptionLine(policy, lib))
 	if len(policy) > 0 {
 		glb.Infof("policy bytes:         %d", len(policy))
 		if chainCmdDecompilePolicy {
-			printDecompiledPolicySource(policy, "    ")
+			printDecompiledPolicySource(policy, lib, "    ")
 		}
 	}
 	glb.Infof("\n")
