@@ -209,14 +209,15 @@ func (l *Library) ParseDelegateLockState(data []byte) (DelegateLockStateView, er
 // delegation has it at element index 4, a delegated foundry has it
 // at 5 or 6.
 type DelegationOutputView struct {
-	OriginSlot               uint32        // output creation slot (oid.Slot())
-	ChainID                  base.ChainID  // delegation's own chainID (computed for origin)
-	MasterID                 base.HolderID // index-values[0]
-	Target                   base.ChainID  // index-values[1]
-	MaxFrozenEpochs          byte          // delegateLock arg 0 (caller-supplied cap)
-	EpochSlots               uint32        // delegateLock arg 2 (z32/epochSlots)
-	LastFrozenEpoch          uint32        // delegateLockState arg 0
-	State                    byte          // delegateLockState arg 1 (0 / Frozen / OnHold)
+	OriginSlot             uint32        // output creation slot (oid.Slot())
+	ChainID                base.ChainID  // delegation's own chainID (computed for origin)
+	MasterID               base.HolderID // index-values[0]
+	Target                 base.ChainID  // index-values[1]
+	MaxFrozenEpochs        byte          // delegateLock arg 0 (caller-supplied cap)
+	RequiredInflationShare uint16        // delegateLock arg 1 (z16 promille)
+	EpochSlots             uint32        // delegateLock arg 2 (z32/epochSlots)
+	LastFrozenEpoch        uint32        // delegateLockState arg 0
+	State                  byte          // delegateLockState arg 1 (0 / Frozen / OnHold)
 	// Chain-constraint metadata (mirrors ChainConstraintView fields).
 	// Useful for the standard status-line display + annualized
 	// inflation estimate.
@@ -263,6 +264,12 @@ func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*Delegati
 	if maxFrozenEpochs == 0 {
 		maxFrozenEpochs = byte(a3)
 	}
+	// arg 1: required inflation share (z16 promille)
+	requiredShare64, err := easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[1]))
+	if err != nil {
+		return nil, false, fmt.Errorf("ParseDelegationOutput: requiredInflationShare: %w", err)
+	}
+	requiredShare := uint16(requiredShare64)
 	// arg 2: epochSlots (z32)
 	epochSlotsBytes := easyfl.StripDataPrefix(args[2])
 	epochSlots, err := easyfl_util.Uint32FromBytes(epochSlotsBytes)
@@ -319,6 +326,7 @@ func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*Delegati
 		MasterID:                 master,
 		Target:                   target,
 		MaxFrozenEpochs:          maxFrozenEpochs,
+		RequiredInflationShare:   requiredShare,
 		EpochSlots:               epochSlots,
 		LastFrozenEpoch:          state.LastFrozenEpoch,
 		State:                    state.State,

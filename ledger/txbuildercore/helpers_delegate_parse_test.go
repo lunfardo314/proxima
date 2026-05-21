@@ -120,6 +120,7 @@ func TestParseDelegationOutput_FromInit(t *testing.T) {
 			require.Equal(t, master, view.MasterID)
 			require.Equal(t, target, view.Target)
 			require.Equal(t, c.expect, view.MaxFrozenEpochs)
+			require.Equal(t, requiredShare, view.RequiredInflationShare)
 			require.Equal(t, epochSlots, view.EpochSlots)
 			// Init output starts at the zero state.
 			require.Equal(t, uint32(0), view.LastFrozenEpoch)
