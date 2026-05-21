@@ -76,6 +76,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	targetSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
 
 	// Peek at what's claimable so we can show a useful summary up front.
+	// GetSpendableOutputs depend on the library singleton because output parsing depends on that
 	walletOutputs, lrbid, totalAmount, err := glb.GetClient().GetSpendableOutputs(walletData.Account, client.SpendableOutputsParams{
 		IncludeSendWithDeadline: true,
 		TargetSlot:              targetSlot,
@@ -83,7 +84,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	})
 	glb.AssertNoError(err)
 
-	// Sort descending by amount and cap (mirrors the legacy behaviour).
+	// Sort descending by amount and cap (mirrors the legacy behavior).
 	sort.Slice(walletOutputs, func(i, j int) bool {
 		return walletOutputs[i].Output.TokenBalance() > walletOutputs[j].Output.TokenBalance()
 	})
@@ -100,18 +101,19 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	// Quick breakdown so the user sees what's being swept — uses the
 	// wallet library's bytecode parser, no ledger singleton.
 	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletData.Account)
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 	var sigCount, swdMasterCount, swdTargetCount int
 	for _, o := range walletOutputs {
-		ivBin := o.Output.MustConstraintAt(1)
-		lockBin := o.Output.MustConstraintAt(2)
-		switch glb.ClassifyLock(lib, ivBin, lockBin, walletHolderID) {
-		case glb.LockKindSig:
+		lockType, err := lib.ClassifyLock(o.Bytes(), walletHolderID)
+		glb.AssertNoError(err)
+		switch lockType {
+		case txbuildercore.LockKindSig:
 			sigCount++
-		case glb.LockKindSWDMaster:
+		case txbuildercore.LockKindSWDMaster:
 			swdMasterCount++
-		case glb.LockKindSWDTargetSig:
+		case txbuildercore.LockKindSWDTargetSig:
 			swdTargetCount++
+		default:
 		}
 	}
 	glb.Infof("claiming %d UTXO(s) into one sigLock back to %s",
@@ -149,7 +151,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	txBytes, txid, consumed, err := makeClaimingCompactTransaction(
-		walletData.PrivateKey, walletHolderID, walletOutputs,
+		walletData.PrivateKey, walletOutputs,
 		tagAlongSeqID, feeAmount, targetSlot)
 	glb.AssertNoError(err)
 	glb.Assertf(txBytes != nil, "something wrong: empty compact tx")
@@ -186,19 +188,18 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 // Inputs:
 //   - walletPrivateKey: signs the tx.
 //   - walletHolderID:   destination of the sweep output (and the
-//                       tag-along sender).
+//     tag-along sender).
 //   - walletOutputs:    pre-fetched spendable set; the caller is
-//                       responsible for the GetSpendableOutputs call
-//                       so the UX summary and the build see the
-//                       same snapshot.
+//     responsible for the GetSpendableOutputs call
+//     so the UX summary and the build see the
+//     same snapshot.
 //   - tagAlongSeqID / tagAlongFee: tag-along target + amount; the
-//                       fee output is omitted when fee == 0.
+//     fee output is omitted when fee == 0.
 //   - targetSlot:       tx timestamp slot. MUST match the slot used
-//                       for the spendable filter (the SWD Δ check
-//                       needs them to agree).
+//     for the spendable filter (the SWD Δ check
+//     needs them to agree).
 func makeClaimingCompactTransaction(
 	walletPrivateKey ed25519.PrivateKey,
-	walletHolderID base.HolderID,
 	walletOutputs []*ledger.OutputWithID,
 	tagAlongSeqID *base.ChainID,
 	tagAlongFee uint64,
@@ -224,6 +225,7 @@ func makeClaimingCompactTransaction(
 		return nil, base.TransactionID{}, nil, fmt.Errorf("not enough balance for the tag-along fee")
 	}
 
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletPrivateKey)
 	mainOut, err := txbuildercore.NewSigLockOutput(lib, inTotal-tagAlongFee, walletHolderID)
 	if err != nil {
 		return nil, base.TransactionID{}, nil, err

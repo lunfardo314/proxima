@@ -161,7 +161,7 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 	needed := amount + feeAmount
 
 	// 1. Fetch sigLock inputs from the wallet via the API.
-	res, err := glb.GetClient().GetOutputs(wallet.Account.ControllerID(), client.GetOutputsParams{
+	res, err := glb.GetClient().GetOutputsForControllerID(wallet.Account.ControllerID(), client.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   client.NonChainedOnly(),
 		SortBy:    api.GetOutputsSortByAmount,
@@ -285,8 +285,8 @@ func runSendCmdLegacyDeadline(wallet glb.WalletData, targetCtrl ledger.Controlle
 // SendWithDeadlineLock. The master is the wallet's holderID; the target
 // is derived from the Controller kind:
 //
-//   sigLock target   → targetType=0x00, targetID = holder ID
-//   chainLock target → targetType=0x01, targetID = chain ID
+//	sigLock target   → targetType=0x00, targetID = holder ID
+//	chainLock target → targetType=0x01, targetID = chain ID
 func buildSendWithDeadlineLock(wallet glb.WalletData, target ledger.Controller, acceptanceSlots, cleanupSlots uint32) *ledger.SendWithDeadlineLock {
 	masterID := base.HolderID(ledger.SigLockFromED25519PrivateKey(wallet.PrivateKey))
 

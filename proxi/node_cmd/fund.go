@@ -104,7 +104,7 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 
 	// Fetch inputs
 	needed := totalAmount + feeAmount
-	res, err := glb.GetClient().GetOutputs(walletAccount.ControllerID(), client.GetOutputsParams{
+	res, err := glb.GetClient().GetOutputsForControllerID(walletAccount.ControllerID(), client.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   client.NonChainedOnly(),
 		SortBy:    api.GetOutputsSortByAmount,
@@ -180,4 +180,3 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	}
 	glb.TrackTxInclusion(txid, time.Second)
 }
-

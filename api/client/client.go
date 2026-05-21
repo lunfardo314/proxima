@@ -473,8 +473,11 @@ func ChainedOnly() *bool { v := true; return &v }
 // to filter results to non-chained outputs only.
 func NonChainedOnly() *bool { v := false; return &v }
 
-// GetOutputsResult is the parsed return shape of GetOutputs. Outputs
-// are decoded with the latest ledger library; the API ships raw bytes.
+// GetOutputsResult is the parsed return shape of
+// GetOutputsForControllerID. Outputs are structurally parsed
+// (txbuildercore.OutputFromBytes — no ledger library required);
+// methods that dispatch on lock kind (Output.Lock, etc.) still need
+// the ledger singleton at the caller.
 type GetOutputsResult struct {
 	Outputs         []*ledger.OutputWithID
 	AvailableAmount uint64
@@ -482,13 +485,15 @@ type GetOutputsResult struct {
 	LRBID           base.TransactionID
 }
 
-// GetOutputs queries the unified state-query endpoint described in
-// claude/get_outputs.md. indexValue is 1..255 raw bytes (the client
-// hex-encodes for the URL). Output parsing requires the ledger
-// library to be initialised in this process.
-func (c *APIClient) GetOutputs(indexValue []byte, params ...GetOutputsParams) (*GetOutputsResult, error) {
+// GetOutputsForControllerID queries the unified state-query endpoint
+// described in claude/get_outputs.md. indexValue is 1..255 raw bytes
+// (the client hex-encodes for the URL); typically the wallet's
+// holder ID (sigLock / chainLock / delegateLock / tagAlongLock
+// controller). Output bytes returned by the server are structurally
+// parsed here (no ledger singleton required).
+func (c *APIClient) GetOutputsForControllerID(indexValue []byte, params ...GetOutputsParams) (*GetOutputsResult, error) {
 	if len(indexValue) < 1 || len(indexValue) > 255 {
-		return nil, fmt.Errorf("GetOutputs: indexValue must be 1..255 bytes, got %d", len(indexValue))
+		return nil, fmt.Errorf("GetOutputsForControllerID: indexValue must be 1..255 bytes, got %d", len(indexValue))
 	}
 	var p GetOutputsParams
 	if len(params) > 0 {
@@ -530,10 +535,10 @@ func (c *APIClient) GetOutputs(indexValue []byte, params ...GetOutputsParams) (*
 	}
 	var res api.GetOutputsResponse
 	if err = json.Unmarshal(body, &res); err != nil {
-		return nil, fmt.Errorf("GetOutputs: unmarshal: %w; body: %s", err, string(body))
+		return nil, fmt.Errorf("GetOutputsForControllerID: unmarshal: %w; body: %s", err, string(body))
 	}
 	if res.Error.Error != "" {
-		return nil, fmt.Errorf("GetOutputs: from server: %s", res.Error.Error)
+		return nil, fmt.Errorf("GetOutputsForControllerID: from server: %s", res.Error.Error)
 	}
 
 	out := &GetOutputsResult{
@@ -543,22 +548,22 @@ func (c *APIClient) GetOutputs(indexValue []byte, params ...GetOutputsParams) (*
 	if res.LRBID != "" {
 		out.LRBID, err = base.TransactionIDFromHexString(res.LRBID)
 		if err != nil {
-			return nil, fmt.Errorf("GetOutputs: invalid lrbid %s: %w", res.LRBID, err)
+			return nil, fmt.Errorf("GetOutputsForControllerID: invalid lrbid %s: %w", res.LRBID, err)
 		}
 	}
 	out.Outputs = make([]*ledger.OutputWithID, 0, len(res.Outputs))
 	for _, item := range res.Outputs {
 		oid, err := base.OutputIDFromHexString(item.ID)
 		if err != nil {
-			return nil, fmt.Errorf("GetOutputs: invalid output id %s: %w", item.ID, err)
+			return nil, fmt.Errorf("GetOutputsForControllerID: invalid output id %s: %w", item.ID, err)
 		}
 		oData, err := hex.DecodeString(item.Data)
 		if err != nil {
-			return nil, fmt.Errorf("GetOutputs: invalid output data hex for %s: %w", item.ID, err)
+			return nil, fmt.Errorf("GetOutputsForControllerID: invalid output data hex for %s: %w", item.ID, err)
 		}
 		o, err := ledger.OutputFromBytes(oData)
 		if err != nil {
-			return nil, fmt.Errorf("GetOutputs: parse output %s: %w", item.ID, err)
+			return nil, fmt.Errorf("GetOutputsForControllerID: parse output %s: %w", item.ID, err)
 		}
 		out.Outputs = append(out.Outputs, &ledger.OutputWithID{ID: oid, Output: o})
 	}
@@ -655,7 +660,7 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs
 	if len(maxOutputs) > 0 && maxOutputs[0] < 256 && maxOutputs[0] > 0 {
 		maxO = maxOutputs[0]
 	}
-	res, err := c.GetOutputs(account.ControllerID(), GetOutputsParams{
+	res, err := c.GetOutputsForControllerID(account.ControllerID(), GetOutputsParams{
 		LockType:   api.GetOutputsLockTypeSigLock,
 		Chained:    NonChainedOnly(),
 		SortBy:     api.GetOutputsSortByAmount,
@@ -682,27 +687,27 @@ func (c *APIClient) GetTransferableOutputs(account ledger.Controller, maxOutputs
 
 // SpendableOutputsParams controls GetSpendableOutputs filtering.
 //
-//   - IncludeSendWithDeadline = true (default behaviour at call sites that
-//     want it) augments the basic sigLock set with sendWithDeadline UTXOs
-//     the account can claim at TargetSlot:
-//       * master == account AND TargetSlot − createSlot ≥ acceptanceSlots
-//         (master-reclaim path), OR
-//       * target == account AND TargetSlot − createSlot < acceptanceSlots
-//         AND targetType == sigLock (target-accept path).
-//   - chainLock-target acceptance paths are excluded because they need a
-//     chain input in the same tx; that's a different flow than the simple
-//     spend implied by GetSpendableOutputs.
-//   - TargetSlot == 0 falls back to "now" (ledger.TimeNow().Slot()).
+//   - IncludeSendWithDeadline = true augments the basic sigLock set
+//     with sendWithDeadline UTXOs the account can claim at TargetSlot:
+//   - master == account AND TargetSlot − createSlot ≥ acceptanceSlots
+//     (master-reclaim path), OR
+//   - target == account AND TargetSlot − createSlot < acceptanceSlots
+//     AND targetType == sigLock (target-accept path).
+//   - chainLock-target acceptance paths are excluded because they need
+//     a chain input in the same tx; that's a different flow than the
+//     simple spend implied by GetSpendableOutputs.
+//   - TargetSlot == 0 → server defaults to its current LRB slot.
 //
-// All filtering is done client-side over a single GetOutputs call —
-// no server changes required.
+// Filtering happens server-side over a single GetOutputsForControllerID
+// call (`spendable=true` + `target_slot=N`). The server uses the
+// library active at target_slot for lock dispatch.
 type SpendableOutputsParams struct {
 	IncludeSendWithDeadline bool
 	TargetSlot              uint32
 	MaxOutputs              int
 }
 
-// GetSpendableOutputs returns outputs the account can spend at
+// GetSpendableOutputs returns outputs the controller (siglock or chainlock) can spend at
 // TargetSlot, optionally including sendWithDeadline UTXOs the account
 // is currently claim-eligible for. The base behaviour mirrors
 // GetTransferableOutputs.
@@ -712,15 +717,15 @@ type SpendableOutputsParams struct {
 // server applies the spendable filter at the requested slot using the
 // library version active at that slot. No singleton dependency on the
 // client side.
-func (c *APIClient) GetSpendableOutputs(account ledger.Controller, params SpendableOutputsParams) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
+func (c *APIClient) GetSpendableOutputs(controller ledger.Controller, params SpendableOutputsParams) ([]*ledger.OutputWithID, *base.TransactionID, uint64, error) {
 	maxO := params.MaxOutputs
 	if maxO <= 0 || maxO > 256 {
 		maxO = 256
 	}
 	if !params.IncludeSendWithDeadline {
-		return c.GetTransferableOutputs(account, maxO)
+		return c.GetTransferableOutputs(controller, maxO)
 	}
-	res, err := c.GetOutputs(account.ControllerID(), GetOutputsParams{
+	res, err := c.GetOutputsForControllerID(controller.ControllerID(), GetOutputsParams{
 		LockType:   api.GetOutputsLockTypeAll,
 		Chained:    NonChainedOnly(),
 		SortBy:     api.GetOutputsSortByAmount,

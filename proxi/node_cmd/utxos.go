@@ -27,7 +27,7 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 
 	accountable := glb.MustGetTarget()
 
-	res, err := glb.GetClient().GetOutputs(accountable.ControllerID(), client.GetOutputsParams{
+	res, err := glb.GetClient().GetOutputsForControllerID(accountable.ControllerID(), client.GetOutputsParams{
 		LockType:   api.GetOutputsLockTypeAll,
 		MaxOutputs: 100,
 	})

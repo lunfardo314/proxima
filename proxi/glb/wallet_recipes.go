@@ -135,7 +135,7 @@ func TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transactio
 	c := GetClient()
 	walletAccount := ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)
 	needed := par.Amount + par.TagAlongFee
-	res, err := c.GetOutputs(walletAccount.ControllerID(), client.GetOutputsParams{
+	res, err := c.GetOutputsForControllerID(walletAccount.ControllerID(), client.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   client.NonChainedOnly(),
 		SortBy:    api.GetOutputsSortByAmount,
@@ -326,4 +326,3 @@ func MakeSendOutputTransaction(o *ledger.Output, privateKey ed25519.PrivateKey, 
 	}
 	return txBytes, txid, txString, nil
 }
-

@@ -60,7 +60,7 @@ func runDelegationStatusCmd(_ *cobra.Command, args []string) {
 		return
 	}
 
-	res, err := glb.GetClient().GetOutputs(walletAccount.ControllerID(), client.GetOutputsParams{
+	res, err := glb.GetClient().GetOutputsForControllerID(walletAccount.ControllerID(), client.GetOutputsParams{
 		LockType:   api.GetOutputsLockTypeDelegateMaster,
 		Chained:    client.ChainedOnly(),
 		MaxOutputs: api.GetOutputsIterationCap,

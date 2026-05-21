@@ -81,7 +81,7 @@ func runFoundryBurnCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	// Fetch wallet sigLock UTXOs and split into token / pure-PRXI buckets.
-	res, err := client.GetOutputs(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
+	res, err := client.GetOutputsForControllerID(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   apiclient.NonChainedOnly(),
 		SortBy:    api.GetOutputsSortByAmount,

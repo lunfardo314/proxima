@@ -67,7 +67,7 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	//   - tokenInputs: those carrying tokenAmount(tag, _)
 	//   - prxiInputs: those carrying no tokenAmount constraint at all
 	//   - others (tokenAmount of a different tag): skipped
-	res, err := client.GetOutputs(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
+	res, err := client.GetOutputsForControllerID(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   apiclient.NonChainedOnly(),
 		SortBy:    api.GetOutputsSortByAmount,

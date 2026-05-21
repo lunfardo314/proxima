@@ -86,7 +86,7 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	// under 100M; we pick the wallet funding to cover that + the fee.
 	const mintedOutputAmount uint64 = 100_000_000
 	needed := mintedOutputAmount + feeAmount
-	res, err := client.GetOutputs(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
+	res, err := client.GetOutputsForControllerID(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   apiclient.NonChainedOnly(),
 		SortBy:    api.GetOutputsSortByAmount,

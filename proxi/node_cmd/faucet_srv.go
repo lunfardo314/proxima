@@ -102,7 +102,7 @@ func runFaucetServerCmd(_ *cobra.Command, _ []string) {
 			"not enough balance on own sequencer %s", fct.walletData.Sequencer.String())
 	} else {
 		needed := fct.cfg.amount + fct.transferTagAlongFee
-		res, err := fct.client.GetOutputs(walletData.Account.ControllerID(), client.GetOutputsParams{
+		res, err := fct.client.GetOutputsForControllerID(walletData.Account.ControllerID(), client.GetOutputsParams{
 			LockType:  api.GetOutputsLockTypeSigLock,
 			Chained:   client.NonChainedOnly(),
 			ForAmount: needed,
@@ -161,7 +161,7 @@ func (fct *faucetServer) checkBottom() error {
 				fct.walletData.Sequencer.String(), util.Th(abs), util.Th(o.Output.TokenBalance()))
 		}
 	} else {
-		res, err := fct.client.GetOutputs(fct.walletData.Account.ControllerID(), client.GetOutputsParams{
+		res, err := fct.client.GetOutputsForControllerID(fct.walletData.Account.ControllerID(), client.GetOutputsParams{
 			LockType: api.GetOutputsLockTypeSigLock,
 			Chained:  client.NonChainedOnly(),
 		})
@@ -177,7 +177,7 @@ func (fct *faucetServer) checkBottom() error {
 }
 
 func (fct *faucetServer) displayFaucetConfig() {
-	res, err := fct.client.GetOutputs(fct.walletData.Account.ControllerID(), client.GetOutputsParams{
+	res, err := fct.client.GetOutputsForControllerID(fct.walletData.Account.ControllerID(), client.GetOutputsParams{
 		LockType: api.GetOutputsLockTypeSigLock,
 		Chained:  client.NonChainedOnly(),
 	})

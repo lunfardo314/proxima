@@ -111,7 +111,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 
 	client := glb.GetClient()
 	needed := amount + feeAmount
-	res, err := client.GetOutputs(walletData.Account.ControllerID(), apiclient.GetOutputsParams{
+	res, err := client.GetOutputsForControllerID(walletData.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   apiclient.NonChainedOnly(),
 		SortBy:    api.GetOutputsSortByAmount,

@@ -104,7 +104,7 @@ func getChainIdForAccount(account ledger.Controller) *base.ChainID {
 
 func waitForFunds(accountable ledger.Controller, amount uint64) {
 	for {
-		res, err := glb.GetClient().GetOutputs(accountable.ControllerID(), client.GetOutputsParams{
+		res, err := glb.GetClient().GetOutputsForControllerID(accountable.ControllerID(), client.GetOutputsParams{
 			LockType:  api.GetOutputsLockTypeSigLock,
 			Chained:   client.NonChainedOnly(),
 			ForAmount: amount,

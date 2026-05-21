@@ -79,7 +79,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 
 	// Fetch wallet pure-PRXI sigLock UTXOs for tag-along fee + remainder
 	// storage deposit. Skip tokenAmount-bearing UTXOs.
-	res, err := client.GetOutputs(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
+	res, err := client.GetOutputsForControllerID(wallet.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
 		Chained:   apiclient.NonChainedOnly(),
 		SortBy:    api.GetOutputsSortByAmount,
