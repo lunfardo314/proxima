@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/ledger/base"
 )
@@ -47,6 +49,69 @@ const FoundryIdxNone byte = 0xFF
 // at slot 4 of a foundry chain output.
 func (l *Library) NewFoundryBytecode(supply uint64) ([]byte, error) {
 	return l.CompileExpression(fmt.Sprintf(foundryTemplate, supply))
+}
+
+// FoundryView is the wallet-side decoded form of the 1-arg
+// foundry(z64/supply) constraint. The tag is implicit — it equals
+// the sibling chain constraint's ChainID at slot 3 of the same
+// output; the wallet reads it from the parsed chain output's
+// ChainID, not from the foundry constraint itself.
+type FoundryView struct {
+	Supply uint64
+}
+
+// ParseFoundryBytecode decodes a foundry constraint bytecode. Pure
+// byte parse — no eval. Mirrors ledger.FoundryFromBytesWithLib but
+// stays singleton-free.
+func (l *Library) ParseFoundryBytecode(data []byte) (FoundryView, error) {
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 1)
+	if err != nil {
+		return FoundryView{}, fmt.Errorf("ParseFoundryBytecode: %w", err)
+	}
+	if sym != FoundryName {
+		return FoundryView{}, fmt.Errorf("ParseFoundryBytecode: expected %s, got %s", FoundryName, sym)
+	}
+	supply, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
+	if err != nil {
+		return FoundryView{}, fmt.Errorf("ParseFoundryBytecode: supply: %w", err)
+	}
+	return FoundryView{Supply: supply}, nil
+}
+
+// TokenAmountView is the wallet-side decoded form of the 2-arg
+// tokenAmount(tag, amount) constraint that accounts a value of tag T
+// on an output. Multiple tokenAmount entries per UTXO are allowed
+// (one per tag carried). Mirrors ledger.TokenAmount.
+type TokenAmountView struct {
+	Tag    base.ChainID
+	Amount uint64
+}
+
+// ParseTokenAmountBytecode decodes a tokenAmount constraint bytecode.
+// Pure byte parse — no eval. Mirrors
+// ledger.TokenAmountFromBytesWithLib. Returns an error when the
+// amount is 0 (the server-side parser rejects that too, since a
+// zero-amount tokenAmount entry has no useful semantics).
+func (l *Library) ParseTokenAmountBytecode(data []byte) (TokenAmountView, error) {
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
+	if err != nil {
+		return TokenAmountView{}, fmt.Errorf("ParseTokenAmountBytecode: %w", err)
+	}
+	if sym != TokenAmountName {
+		return TokenAmountView{}, fmt.Errorf("ParseTokenAmountBytecode: expected %s, got %s", TokenAmountName, sym)
+	}
+	tag, err := base.ChainIDFromBytes(easyfl.StripDataPrefix(args[0]))
+	if err != nil {
+		return TokenAmountView{}, fmt.Errorf("ParseTokenAmountBytecode: tag: %w", err)
+	}
+	amount, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[1]))
+	if err != nil {
+		return TokenAmountView{}, fmt.Errorf("ParseTokenAmountBytecode: amount: %w", err)
+	}
+	if amount == 0 {
+		return TokenAmountView{}, fmt.Errorf("ParseTokenAmountBytecode: amount must be > 0")
+	}
+	return TokenAmountView{Tag: tag, Amount: amount}, nil
 }
 
 // TokenSentinel emits the tx-level pure-conservation native-token
