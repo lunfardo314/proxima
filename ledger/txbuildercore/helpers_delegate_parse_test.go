@@ -70,7 +70,9 @@ func TestConstants_EpochMath_Parity(t *testing.T) {
 
 // TestParseDelegationOutput_FromInit builds a known delegation-init
 // output via ledger.MakeDelegationInitOutput, parses the bytes with
-// the wallet helper, and verifies the recovered fields match.
+// the wallet helper, and verifies the recovered fields match. Covers
+// both the "delegator picked a custom max" branch and the "delegator
+// passed 0 → fall back to target's" branch.
 func TestParseDelegationOutput_FromInit(t *testing.T) {
 	lib := txbuildercoreLibFromGlobal(t)
 
@@ -79,40 +81,51 @@ func TestParseDelegationOutput_FromInit(t *testing.T) {
 	for i := range master {
 		master[i] = byte(i + 100)
 	}
+
 	const (
-		amount                 uint64 = 5_000_000
-		maxFrozen              byte   = 16
-		requiredShare          uint16 = 850
-		startSlot              uint32 = 1234
-		epochSlots             uint32 = 600
-		targetMaxFrozenEpochs  byte   = 32
+		amount                uint64 = 5_000_000
+		requiredShare         uint16 = 850
+		startSlot             uint32 = 1234
+		epochSlots            uint32 = 600
+		targetMaxFrozenEpochs byte   = 32
 	)
-	serverOut := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
-		Amount:                 amount,
-		MasterID:               master,
-		Target:                 target,
-		MaxFrozenEpochs:        maxFrozen,
-		RequiredInflationShare: requiredShare,
-		StartSlot:              startSlot,
-		EpochSlots:             epochSlots,
-		TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
-	})
-
-	// Synthesise an OutputID with a known creation slot so the
-	// wallet view's OriginSlot is testable.
-	oid := outputIDAtSlot(startSlot)
-
-	walletOut, err := txbuildercore.OutputFromBytes(serverOut.Bytes())
-	require.NoError(t, err)
-	view, ok, err := lib.ParseDelegationOutput(walletOut, oid)
-	require.NoError(t, err)
-	require.True(t, ok, "init output must parse as a delegation output")
-	require.Equal(t, startSlot, view.OriginSlot)
-	require.Equal(t, target, view.Target)
-	require.Equal(t, epochSlots, view.EpochSlots)
-	// Init output starts at the zero state.
-	require.Equal(t, uint32(0), view.LastFrozenEpoch)
-	require.Equal(t, byte(0), view.State)
+	cases := []struct {
+		name      string
+		maxFrozen byte // delegator's chosen max; 0 → falls back to target's
+		expect    byte // expected DelegationOutputView.MaxFrozenEpochs
+	}{
+		{"custom max", 16, 16},
+		{"zero → target's", 0, targetMaxFrozenEpochs},
+		{"== target's → also stored as target's", targetMaxFrozenEpochs, targetMaxFrozenEpochs},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			serverOut := ledger.MakeDelegationInitOutput(ledger.MakeDelegateInitOutputParams{
+				Amount:                 amount,
+				MasterID:               master,
+				Target:                 target,
+				MaxFrozenEpochs:        c.maxFrozen,
+				RequiredInflationShare: requiredShare,
+				StartSlot:              startSlot,
+				EpochSlots:             epochSlots,
+				TargetMaxFrozenEpochs:  targetMaxFrozenEpochs,
+			})
+			oid := outputIDAtSlot(startSlot)
+			walletOut, err := txbuildercore.OutputFromBytes(serverOut.Bytes())
+			require.NoError(t, err)
+			view, ok, err := lib.ParseDelegationOutput(walletOut, oid)
+			require.NoError(t, err)
+			require.True(t, ok, "init output must parse as a delegation output")
+			require.Equal(t, startSlot, view.OriginSlot)
+			require.Equal(t, master, view.MasterID)
+			require.Equal(t, target, view.Target)
+			require.Equal(t, c.expect, view.MaxFrozenEpochs)
+			require.Equal(t, epochSlots, view.EpochSlots)
+			// Init output starts at the zero state.
+			require.Equal(t, uint32(0), view.LastFrozenEpoch)
+			require.Equal(t, byte(0), view.State)
+		})
+	}
 }
 
 // TestParseDelegationOutput_NonDelegationReturnsFalse confirms the
@@ -198,6 +211,136 @@ func TestDelegationOutputView_IsInFrozenSlot_Parity(t *testing.T) {
 
 	// UnfreezeSlot parity (LastFrozenEpoch + 1).
 	require.Equal(t, dOut.UnfreezeSlot(), view.UnfreezeSlot(walletC), "UnfreezeSlot parity")
+}
+
+// TestConstants_EpochFromSlotDirect_Parity covers the wallet-side
+// EpochFromSlotDirect against the server-side version at a range of
+// slots including the boundary cases (slot ≤ offset, slot in epoch
+// 0, slot right at the first boundary, slot deep in a later epoch).
+func TestConstants_EpochFromSlotDirect_Parity(t *testing.T) {
+	target := chainIDFixture()
+	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+	serverC := &ledger.L(base.MaxSlot).Constants
+
+	const epochSlots uint32 = 600
+	offs := serverC.EpochOffsetSlotsDirect(target, epochSlots)
+	slots := []uint32{
+		0,
+		offs,                  // boundary: still in epoch 0
+		offs + 1,              // first slot of epoch 1
+		offs + epochSlots,     // last slot of epoch 1
+		offs + epochSlots + 1, // first slot of epoch 2
+		offs + epochSlots*42 + 17,
+	}
+	for _, s := range slots {
+		require.Equal(t,
+			serverC.EpochFromSlotDirect(target, s, epochSlots),
+			walletC.EpochFromSlotDirect(target, s, epochSlots),
+			"slot %d", s)
+	}
+}
+
+// TestDelegationOutputView_SafeRevocationWindow_Parity builds a
+// frozen delegation, parses it, and verifies both the window endpoints
+// and the IsInSafeRevocationWindow predicate match the server-side
+// computation across sampled slots.
+func TestDelegationOutputView_SafeRevocationWindow_Parity(t *testing.T) {
+	lib := txbuildercoreLibFromGlobal(t)
+	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+
+	target := chainIDFixture()
+	var master base.HolderID
+	for i := range master {
+		master[i] = byte(i + 50)
+	}
+	const (
+		amount          uint64 = 5_000_000
+		startSlot       uint32 = 1234
+		epochSlots      uint32 = 600
+		lastFrozenEpoch uint32 = 4
+	)
+	swapped := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(amount))
+		o.WithLock(ledger.NewDelegateLock(target, master, 16, 850, epochSlots, 32))
+		o.PutConstraint(ledger.NewChainOrigin(startSlot).Bytes(), ledger.ConstraintIndexChain)
+		o.MustPushConstraint(ledger.DelegateLockState{
+			LastFrozenEpoch: lastFrozenEpoch,
+			State:           ledger.DelegateLockStateFrozen,
+		}.Bytes())
+	})
+	oid := outputIDAtSlot(startSlot)
+
+	dOut, ok := ledger.AsDelegationOutput(swapped, oid)
+	require.True(t, ok)
+
+	walletOut, err := txbuildercore.OutputFromBytes(swapped.Bytes())
+	require.NoError(t, err)
+	view, ok, err := lib.ParseDelegationOutput(walletOut, oid)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// Window endpoint parity.
+	wantFrom, wantTo, wantApplicable := dOut.SafeRevocationWindow()
+	gotFrom, gotTo, gotApplicable := view.SafeRevocationWindow(walletC)
+	require.Equal(t, wantApplicable, gotApplicable)
+	require.Equal(t, wantFrom, gotFrom)
+	require.Equal(t, wantTo, gotTo)
+	require.True(t, gotApplicable, "frozen output must have an applicable safe-revocation window")
+
+	// Sample slots around the window edges.
+	for _, s := range []uint32{
+		gotFrom - 1,
+		gotFrom,         // first slot in window
+		gotFrom + 1,
+		(gotFrom + gotTo) / 2,
+		gotTo,           // last slot in window
+		gotTo + 1,
+		gotTo + 100,
+	} {
+		require.Equal(t, dOut.IsInSafeRevocationWindow(s), view.IsInSafeRevocationWindow(s, walletC),
+			"IsInSafeRevocationWindow parity at slot %d", s)
+	}
+
+	// State convenience aliases.
+	require.True(t, view.IsMarkedFrozen())
+	require.False(t, view.IsMarkedOnHold())
+}
+
+// TestDelegationOutputView_SafeRevocationWindow_NotApplicable returns
+// (0, 0, false) when the output's state isn't Frozen. Sampled across
+// the zero state and the OnHold state.
+func TestDelegationOutputView_SafeRevocationWindow_NotApplicable(t *testing.T) {
+	lib := txbuildercoreLibFromGlobal(t)
+	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+
+	target := chainIDFixture()
+	var master base.HolderID
+	for i := range master {
+		master[i] = byte(i + 50)
+	}
+	const (
+		amount     uint64 = 5_000_000
+		startSlot  uint32 = 1234
+		epochSlots uint32 = 600
+	)
+	for _, state := range []byte{0, ledger.DelegateLockStateOnHold} {
+		swapped := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(amount))
+			o.WithLock(ledger.NewDelegateLock(target, master, 16, 850, epochSlots, 32))
+			o.PutConstraint(ledger.NewChainOrigin(startSlot).Bytes(), ledger.ConstraintIndexChain)
+			o.MustPushConstraint(ledger.DelegateLockState{State: state}.Bytes())
+		})
+		oid := outputIDAtSlot(startSlot)
+		walletOut, err := txbuildercore.OutputFromBytes(swapped.Bytes())
+		require.NoError(t, err)
+		view, ok, err := lib.ParseDelegationOutput(walletOut, oid)
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		_, _, applicable := view.SafeRevocationWindow(walletC)
+		require.False(t, applicable, "state %d", state)
+		require.False(t, view.IsInSafeRevocationWindow(startSlot+10, walletC))
+	}
 }
 
 // outputIDAtSlot returns a synthetic OutputID whose Slot() == slot.

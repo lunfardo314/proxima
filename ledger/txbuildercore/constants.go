@@ -248,3 +248,14 @@ func (c *Constants) LastSlotInEpochDirect(targetID base.ChainID, epoch, epochSlo
 	_, lastSlot := c.EpochLimits(targetID, epoch, epochSlots)
 	return lastSlot
 }
+
+// EpochFromSlotDirect returns which delegation epoch (on the target's
+// grid) `slot` belongs to. Slots before the first epoch boundary
+// belong to epoch 0. Mirrors ledger.Constants.EpochFromSlotDirect.
+func (c *Constants) EpochFromSlotDirect(targetID base.ChainID, slot, epochSlots uint32) uint32 {
+	offs := c.EpochOffsetSlotsDirect(targetID, epochSlots)
+	if slot > offs {
+		return (slot-offs-1)/epochSlots + 1
+	}
+	return 0
+}

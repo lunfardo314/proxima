@@ -1,5 +1,19 @@
 package seq_cmd
 
+// TODO: refactor to wasm-style (no ledger.L singleton). Read-only
+// command but still reaches into ledger.AsDelegationOutput,
+// DelegationOutput.IsInFrozenSlot / UnfreezeSlot /
+// IsInSafeRevocationWindow, glb.DelegationStatusString and
+// ledger.L(0).{DelegationEpochSlots,EpochFromSlotDirect}. The
+// wallet-side pieces are ready: lib.ParseDelegationOutput +
+// DelegationOutputView (IsInFrozenSlot / UnfreezeSlot /
+// SafeRevocationWindow / IsInSafeRevocationWindow /
+// IsMarkedFrozen / IsMarkedOnHold) + Constants.EpochFromSlotDirect.
+// What remains is porting the glb display helpers
+// (DelegationStatusString, LinesDelegationOutputs) to take
+// DelegationOutputView + Constants instead of ledger.DelegationOutput,
+// and adding a wallet-side RevocationCompensationEstimate.
+
 import (
 	"fmt"
 	"sort"
