@@ -175,15 +175,18 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 // Intended as the reference template for other proxi tx-construction
 // sites.
 //
-// All inputs use the signature unlock (0xff). It works uniformly
-// across the three input flavors the wallet can claim:
-//   - sigLock: the holder check matches the wallet's signature data;
-//   - sendWithDeadline master-reclaim: consumed-side dispatch lands
-//     in `_sigLock($master)`, falls through `unlockedByReference`
-//     (because the SWD lock bytecode ≠ sigLock bytecode), then the
-//     same signature check matches the wallet;
-//   - sendWithDeadline target-accept (sigLock target): same fallthrough,
-//     into `_sigLock($target)`.
+// Input unlock pattern: PutSignatureUnlock(0) on input 0 (carries
+// the tx signature) + PutUnlockReference(i, ConstraintIndexLock, 0)
+// on the rest. The reference path makes `_sigLock` succeed in
+// `unlockedByReference` for the homogeneous sigLock inputs — same
+// lock bytecode + same holderID — skipping one
+// txHolderID(txSignatureData) per referenced input.
+//
+// For SWD inputs the reference path's lock-bytecode-equality check
+// fails (SWD ≠ sigLock), so `_sigLock` falls through to the holder
+// check against the tx signer — same outcome as if we had used a
+// signature unlock on that input. Net effect: pure savings on the
+// homogeneous sigLock portion, neutral on the mixed SWD portion.
 //
 // Inputs:
 //   - walletPrivateKey: signs the tx.
@@ -214,8 +217,13 @@ func makeClaimingCompactTransaction(
 		b := in.Output.Bytes()
 		txb.ConsumeOutput(b, in.ID)
 		consumed = append(consumed, b)
-		// unlock by reference does not improve anything
-		txb.PutSignatureUnlock(byte(i))
+		if i == 0 {
+			txb.PutSignatureUnlock(0)
+		} else {
+			if err = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0); err != nil {
+				return nil, base.TransactionID{}, nil, err
+			}
+		}
 		inTotal += in.Output.TokenBalance()
 	}
 	if inTotal < tagAlongFee {
