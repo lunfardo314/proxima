@@ -100,3 +100,7 @@ func (s *Signature) MustSignatureDataED25519() []byte {
 	easyfl_util.Assertf(s.SignatureType == SignatureTypeED25519, "SignatureType ED25519 is expected")
 	return s.SignatureBytes[:ed25519.SignatureSize]
 }
+
+func HolderIDFromED25519PrivateKey(privateKey ed25519.PrivateKey) HolderID {
+	return HolderIDFromPublicKey(SignatureTypeED25519, privateKey.Public().(ed25519.PublicKey))
+}

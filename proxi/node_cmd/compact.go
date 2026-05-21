@@ -149,7 +149,8 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 
 	txBytes, txid, consumed, err := makeClaimingCompactTransaction(
-		walletData.PrivateKey, tagAlongSeqID, feeAmount, targetSlot, maxNumberOfInputs)
+		walletData.PrivateKey, walletHolderID, walletOutputs,
+		tagAlongSeqID, feeAmount, targetSlot)
 	glb.AssertNoError(err)
 	glb.Assertf(txBytes != nil, "something wrong: empty compact tx")
 
@@ -164,47 +165,45 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	}
 }
 
-// makeClaimingCompactTransaction builds (but does NOT submit) the
-// claim-sweep tx: it consumes all spendable wallet UTXOs at targetSlot
-// — sigLock-owned outputs plus sendWithDeadline outputs the wallet can
-// currently claim (master-reclaim and sigLock target-accept paths) —
-// into a single sigLock output back to the wallet (minus the
-// tag-along fee).
+// makeClaimingCompactTransaction is the pure wasm-wallet compose
+// helper for `proxi node compact`: it consumes the supplied spendable
+// wallet UTXOs (sigLock-owned + claim-eligible sendWithDeadline) into
+// a single sigLock output back to the wallet (minus the tag-along
+// fee). No I/O; no ledger.L() singleton; no ledger/txbuilder sugar.
+// Intended as the reference template for other proxi tx-construction
+// sites.
 //
-// All inputs use the signature unlock (0xff) because:
-//   - on a plain sigLock input it satisfies the holder check;
-//   - on a sendWithDeadline input the consumed-side dispatch lands in
-//     `_sigLock($master)` (reclaim) or `_sigLock($target)` (accept);
-//     both fall through `unlockedByReference` (which fails because
-//     the SWD lock bytecode ≠ sigLock bytecode) onto the same
-//     signature check, which matches the wallet's holderID.
+// All inputs use the signature unlock (0xff). It works uniformly
+// across the three input flavours the wallet can claim:
+//   - sigLock: the holder check matches the wallet's signature data;
+//   - sendWithDeadline master-reclaim: consumed-side dispatch lands
+//     in `_sigLock($master)`, falls through `unlockedByReference`
+//     (because the SWD lock bytecode ≠ sigLock bytecode), then the
+//     same signature check matches the wallet;
+//   - sendWithDeadline target-accept (sigLock target): same fall-
+//     through, into `_sigLock($target)`.
 //
-// Built entirely on txbuildercore + the wallet helpers — no ledger
-// singleton dependency.
+// Inputs:
+//   - walletPrivateKey: signs the tx.
+//   - walletHolderID:   destination of the sweep output (and the
+//                       tag-along sender).
+//   - walletOutputs:    pre-fetched spendable set; the caller is
+//                       responsible for the GetSpendableOutputs call
+//                       so the UX summary and the build see the
+//                       same snapshot.
+//   - tagAlongSeqID / tagAlongFee: tag-along target + amount; the
+//                       fee output is omitted when fee == 0.
+//   - targetSlot:       tx timestamp slot. MUST match the slot used
+//                       for the spendable filter (the SWD Δ check
+//                       needs them to agree).
 func makeClaimingCompactTransaction(
 	walletPrivateKey ed25519.PrivateKey,
+	walletHolderID base.HolderID,
+	walletOutputs []*ledger.OutputWithID,
 	tagAlongSeqID *base.ChainID,
 	tagAlongFee uint64,
 	targetSlot uint32,
-	maxInputs int,
 ) (txBytes []byte, txid base.TransactionID, consumed [][]byte, err error) {
-	walletAccount := ledger.SigLockFromED25519PrivateKey(walletPrivateKey)
-	walletHolderID := base.HolderIDFromED25519PrivateKey(walletPrivateKey)
-
-	walletOutputs, _, inTotal, err := glb.GetClient().GetSpendableOutputs(walletAccount, client.SpendableOutputsParams{
-		IncludeSendWithDeadline: true,
-		TargetSlot:              targetSlot,
-		MaxOutputs:              maxInputs,
-	})
-	if err != nil {
-		return nil, base.TransactionID{}, nil, err
-	}
-	if len(walletOutputs) <= 1 {
-		return nil, base.TransactionID{}, nil, nil
-	}
-	if inTotal < tagAlongFee {
-		return nil, base.TransactionID{}, nil, fmt.Errorf("not enough balance for the tag-along fee")
-	}
 	if tagAlongFee > 0 && tagAlongSeqID == nil {
 		return nil, base.TransactionID{}, nil, fmt.Errorf("tag-along sequencer not specified")
 	}
@@ -212,12 +211,17 @@ func makeClaimingCompactTransaction(
 	lib := glb.GetTxLibrary()
 	txb := txbuildercore.New(0)
 
+	inTotal := uint64(0)
 	consumed = make([][]byte, 0, len(walletOutputs))
 	for i, in := range walletOutputs {
 		b := in.Output.Bytes()
 		txb.ConsumeOutput(b, in.ID)
 		consumed = append(consumed, b)
 		txb.PutSignatureUnlock(byte(i))
+		inTotal += in.Output.TokenBalance()
+	}
+	if inTotal < tagAlongFee {
+		return nil, base.TransactionID{}, nil, fmt.Errorf("not enough balance for the tag-along fee")
 	}
 
 	mainOut, err := txbuildercore.NewSigLockOutput(lib, inTotal-tagAlongFee, walletHolderID)
