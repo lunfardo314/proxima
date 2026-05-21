@@ -185,6 +185,18 @@ func (c *Constants) SlotDuration() time.Duration {
 	return c.TickDuration * time.Duration(base.TicksPerSlot)
 }
 
+// SlotsPerDay returns the number of slots in a 24-hour wall-clock day.
+// Pure arithmetic on SlotDuration. Mirrors ledger.Constants.SlotsPerDay.
+func (c *Constants) SlotsPerDay() int {
+	return int(24 * time.Hour / c.SlotDuration())
+}
+
+// SlotsPerYear returns the number of slots in a 365-day year. Mirrors
+// ledger.Constants.SlotsPerYear.
+func (c *Constants) SlotsPerYear() int {
+	return 365 * c.SlotsPerDay()
+}
+
 // GenesisTime returns the genesis Unix-seconds value as a time.Time.
 func (c *Constants) GenesisTime() time.Time {
 	return time.Unix(int64(c.GenesisTimeUnix), 0)

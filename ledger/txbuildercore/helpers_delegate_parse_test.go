@@ -387,6 +387,81 @@ func TestDelegationOutputView_SafeRevocationWindow_NotApplicable(t *testing.T) {
 	}
 }
 
+// TestParseChainConstraint_Origin_Parity verifies the wallet parser
+// extracts the same fields from a chain-origin constraint as the
+// server-side ledger.ChainConstraintFromBytesWithLib.
+func TestParseChainConstraint_Origin_Parity(t *testing.T) {
+	lib := txbuildercoreLibFromGlobal(t)
+	const startSlot uint32 = 1234
+	bin := ledger.NewChainOrigin(startSlot).Bytes()
+
+	view, err := lib.ParseChainConstraint(bin)
+	require.NoError(t, err)
+	require.Equal(t, base.NilChainID, view.ChainID)
+	require.Equal(t, byte(0xff), view.PredecessorInputIndex)
+	require.Equal(t, startSlot, view.OriginSlot)
+	require.Equal(t, uint64(0), view.CumulativeChainInflation)
+	require.Equal(t, uint64(0), view.CumulativeBranchBonus)
+	require.Equal(t, uint64(0), view.TransitionCounter)
+	require.Equal(t, uint32(0), view.BranchCounter)
+}
+
+// TestParseChainConstraint_Transit_Parity covers the transit case
+// across a few non-zero arg combinations.
+func TestParseChainConstraint_Transit_Parity(t *testing.T) {
+	lib := txbuildercoreLibFromGlobal(t)
+	var chainID base.ChainID
+	for i := range chainID {
+		chainID[i] = byte(i + 1)
+	}
+	cases := []struct {
+		predIdx     byte
+		originSlot  uint32
+		cumChain    uint64
+		cumBranch   uint64
+		transitions uint64
+		branches    uint32
+	}{
+		{0, 1, 0, 0, 1, 0},
+		{3, 1234, 100_000, 50_000, 7, 2},
+		{255, 1 << 30, 1 << 40, 1 << 38, 1 << 16, 1 << 15},
+	}
+	for _, c := range cases {
+		cc := ledger.NewChainConstraint(chainID, c.predIdx, c.originSlot, c.cumChain, c.cumBranch, c.transitions, c.branches)
+		bin := cc.Bytes()
+		view, err := lib.ParseChainConstraint(bin)
+		require.NoError(t, err)
+		require.Equal(t, chainID, view.ChainID)
+		require.Equal(t, c.predIdx, view.PredecessorInputIndex)
+		require.Equal(t, c.originSlot, view.OriginSlot)
+		require.Equal(t, c.cumChain, view.CumulativeChainInflation)
+		require.Equal(t, c.cumBranch, view.CumulativeBranchBonus)
+		require.Equal(t, c.transitions, view.TransitionCounter)
+		require.Equal(t, c.branches, view.BranchCounter)
+	}
+}
+
+// TestParseDelegationParams_Parity checks the 2-arg wallet parser
+// against the server-side ledger.DelegationParamsFromBytes.
+func TestParseDelegationParams_Parity(t *testing.T) {
+	lib := txbuildercoreLibFromGlobal(t)
+	cases := []struct {
+		epochSlots      uint32
+		maxFrozenEpochs byte
+	}{
+		{600, 20},
+		{500, 8},
+		{2000, 32},
+	}
+	for _, c := range cases {
+		bin := ledger.NewDelegationParams(c.epochSlots, c.maxFrozenEpochs).Bytes()
+		view, err := lib.ParseDelegationParams(bin)
+		require.NoError(t, err)
+		require.Equal(t, c.epochSlots, view.EpochSlots)
+		require.Equal(t, c.maxFrozenEpochs, view.MaxFrozenEpochs)
+	}
+}
+
 // outputIDAtSlot returns a synthetic OutputID whose Slot() == slot.
 // Other bytes are zero — enough for the helpers under test, which
 // only read the slot.

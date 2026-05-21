@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
@@ -87,4 +89,70 @@ var FinishChainUnlockParams = []byte{}
 // Mirrors ledger.NewChainLockUnlockParams.
 func ChainLockUnlockParams(predChainInputIdx byte) []byte {
 	return []byte{predChainInputIdx}
+}
+
+// ChainConstraintView is the wallet-side decoded form of the 7-arg
+// chain constraint at output element index 2 of any chain-style
+// output. Mirrors ledger.ChainConstraint field-for-field; ChainID
+// for chain origins is left as base.NilChainID — callers that need
+// the resolved chainID should use Library.ParseChainConstraintChainID
+// instead.
+type ChainConstraintView struct {
+	ChainID                  base.ChainID // NilChainID for origin
+	PredecessorInputIndex    byte         // 0xff for origin
+	OriginSlot               uint32
+	CumulativeChainInflation uint64
+	CumulativeBranchBonus    uint64
+	TransitionCounter        uint64
+	BranchCounter            uint32
+}
+
+// ParseChainConstraint decodes a chain constraint bytecode. Pure byte
+// parse — no eval. Mirrors ledger.ChainConstraintFromBytesWithLib.
+func (l *Library) ParseChainConstraint(data []byte) (*ChainConstraintView, error) {
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 7)
+	if err != nil {
+		return nil, fmt.Errorf("ParseChainConstraint: %w", err)
+	}
+	if sym != ChainConstraintName {
+		return nil, fmt.Errorf("ParseChainConstraint: expected %s, got %s", ChainConstraintName, sym)
+	}
+	ret := &ChainConstraintView{}
+	if ret.ChainID, err = base.ChainIDFromBytes(easyfl.StripDataPrefix(args[0])); err != nil {
+		return nil, fmt.Errorf("ParseChainConstraint: chainID: %w", err)
+	}
+	args1 := easyfl.StripDataPrefix(args[1])
+	switch len(args1) {
+	case 0:
+		ret.PredecessorInputIndex = 0xff // origin sentinel
+	case 1:
+		ret.PredecessorInputIndex = args1[0]
+	default:
+		return nil, fmt.Errorf("ParseChainConstraint: predecessor reference length %d", len(args1))
+	}
+	if ret.OriginSlot, err = easyfl_util.Uint32FromBytes(easyfl.StripDataPrefix(args[2])); err != nil {
+		return nil, fmt.Errorf("ParseChainConstraint: originSlot: %w", err)
+	}
+	// args 3..5 are z64 (empty bytes → 0); arg 6 is z32 (same).
+	if v := easyfl.StripDataPrefix(args[3]); len(v) > 0 {
+		if ret.CumulativeChainInflation, err = easyfl_util.Uint64FromBytes(v); err != nil {
+			return nil, fmt.Errorf("ParseChainConstraint: cumChainInflation: %w", err)
+		}
+	}
+	if v := easyfl.StripDataPrefix(args[4]); len(v) > 0 {
+		if ret.CumulativeBranchBonus, err = easyfl_util.Uint64FromBytes(v); err != nil {
+			return nil, fmt.Errorf("ParseChainConstraint: cumBranchBonus: %w", err)
+		}
+	}
+	if v := easyfl.StripDataPrefix(args[5]); len(v) > 0 {
+		if ret.TransitionCounter, err = easyfl_util.Uint64FromBytes(v); err != nil {
+			return nil, fmt.Errorf("ParseChainConstraint: transitionCounter: %w", err)
+		}
+	}
+	if v := easyfl.StripDataPrefix(args[6]); len(v) > 0 {
+		if ret.BranchCounter, err = easyfl_util.Uint32FromBytes(v); err != nil {
+			return nil, fmt.Errorf("ParseChainConstraint: branchCounter: %w", err)
+		}
+	}
+	return ret, nil
 }

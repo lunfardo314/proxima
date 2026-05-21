@@ -90,6 +90,38 @@ func (l *Library) NewDelegationParams(epochSlots uint32, maxFrozenEpochs byte) (
 	return l.CompileExpression(src)
 }
 
+// DelegationParamsView is the wallet-side decoded form of the 2-arg
+// delegationParams constraint. Mirrors ledger.DelegationParams.
+type DelegationParamsView struct {
+	EpochSlots      uint32
+	MaxFrozenEpochs byte
+}
+
+// ParseDelegationParams decodes a delegationParams constraint
+// bytecode. Pure byte parse — no eval. Mirrors
+// ledger.DelegationParamsFromBytesWithLib.
+func (l *Library) ParseDelegationParams(data []byte) (*DelegationParamsView, error) {
+	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
+	if err != nil {
+		return nil, fmt.Errorf("ParseDelegationParams: %w", err)
+	}
+	if sym != DelegationParamsName {
+		return nil, fmt.Errorf("ParseDelegationParams: expected %s, got %s", DelegationParamsName, sym)
+	}
+	e0, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
+	if err != nil || e0 > 0xFFFFFFFF {
+		return nil, fmt.Errorf("ParseDelegationParams: epochSlots out of range: %v", err)
+	}
+	e1, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[1]))
+	if err != nil || e1 >= 256 {
+		return nil, fmt.Errorf("ParseDelegationParams: maxFrozenEpochs out of range: %v", err)
+	}
+	return &DelegationParamsView{
+		EpochSlots:      uint32(e0),
+		MaxFrozenEpochs: byte(e1),
+	}, nil
+}
+
 // DelegationInitOutputParams describes the inputs for
 // NewDelegationInitOutput. Mirrors ledger.MakeDelegateInitOutputParams
 // field-for-field.
@@ -177,14 +209,22 @@ func (l *Library) ParseDelegateLockState(data []byte) (DelegateLockStateView, er
 // delegation has it at element index 4, a delegated foundry has it
 // at 5 or 6.
 type DelegationOutputView struct {
-	OriginSlot      uint32        // output creation slot (oid.Slot())
-	ChainID         base.ChainID  // delegation's own chainID (computed for origin)
-	MasterID        base.HolderID // index-values[0]
-	Target          base.ChainID  // index-values[1]
-	MaxFrozenEpochs byte          // delegateLock arg 0 (caller-supplied cap)
-	EpochSlots      uint32        // delegateLock arg 2 (z32/epochSlots)
-	LastFrozenEpoch uint32        // delegateLockState arg 0
-	State           byte          // delegateLockState arg 1 (0 / Frozen / OnHold)
+	OriginSlot               uint32        // output creation slot (oid.Slot())
+	ChainID                  base.ChainID  // delegation's own chainID (computed for origin)
+	MasterID                 base.HolderID // index-values[0]
+	Target                   base.ChainID  // index-values[1]
+	MaxFrozenEpochs          byte          // delegateLock arg 0 (caller-supplied cap)
+	EpochSlots               uint32        // delegateLock arg 2 (z32/epochSlots)
+	LastFrozenEpoch          uint32        // delegateLockState arg 0
+	State                    byte          // delegateLockState arg 1 (0 / Frozen / OnHold)
+	// Chain-constraint metadata (mirrors ChainConstraintView fields).
+	// Useful for the standard status-line display + annualized
+	// inflation estimate.
+	ChainOriginSlot          uint32 // chain constraint arg 2 (z32)
+	TransitionCounter        uint64 // chain constraint arg 5 (z64)
+	BranchCounter            uint32 // chain constraint arg 6 (z32)
+	CumulativeChainInflation uint64 // chain constraint arg 3 (z64)
+	CumulativeBranchBonus    uint64 // chain constraint arg 4 (z64)
 }
 
 // ParseDelegationOutput decodes a parsed output if it carries a
@@ -257,54 +297,51 @@ func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*Delegati
 		return nil, false, err
 	}
 
-	// ChainID — for a transit chain the chain constraint's arg 0
-	// carries the explicit chainID; for a chain origin the arg is
-	// NilChainID and the real chainID is blake2b(oid).
+	// Chain constraint at slot 3 — full parse for metadata. For a
+	// transit chain arg 0 carries the explicit chainID; for an origin
+	// it's NilChainID and the real chainID is blake2b(oid).
 	chainBin, err := o.ConstraintAt(ConstraintIndexChain)
 	if err != nil {
 		return nil, false, err
 	}
-	chainID, err := l.ParseChainConstraintChainID(chainBin, oid)
+	cc, err := l.ParseChainConstraint(chainBin)
 	if err != nil {
 		return nil, false, err
 	}
+	chainID := cc.ChainID
+	if chainID == base.NilChainID {
+		chainID = base.MakeOriginChainID(oid)
+	}
 
 	return &DelegationOutputView{
-		OriginSlot:      oid.Slot(),
-		ChainID:         chainID,
-		MasterID:        master,
-		Target:          target,
-		MaxFrozenEpochs: maxFrozenEpochs,
-		EpochSlots:      epochSlots,
-		LastFrozenEpoch: state.LastFrozenEpoch,
-		State:           state.State,
+		OriginSlot:               oid.Slot(),
+		ChainID:                  chainID,
+		MasterID:                 master,
+		Target:                   target,
+		MaxFrozenEpochs:          maxFrozenEpochs,
+		EpochSlots:               epochSlots,
+		LastFrozenEpoch:          state.LastFrozenEpoch,
+		State:                    state.State,
+		ChainOriginSlot:          cc.OriginSlot,
+		TransitionCounter:        cc.TransitionCounter,
+		BranchCounter:            cc.BranchCounter,
+		CumulativeChainInflation: cc.CumulativeChainInflation,
+		CumulativeBranchBonus:    cc.CumulativeBranchBonus,
 	}, true, nil
 }
 
-// ParseChainConstraintChainID extracts the chainID from a chain
-// constraint's first arg. Arg 0 == NilChainID means this is a chain
-// origin output — the real chainID is computed from the OutputID
-// (blake2b). Pure byte parse — no eval. Useful for any wallet-side
-// path that needs to recover the chainID of a chain output without
-// the ledger.L() singleton (utxos / balance / allchains display
-// helpers).
+// ParseChainConstraintChainID extracts the chainID of a chain output,
+// resolving the origin case (NilChainID → blake2b(oid)). Thin wrapper
+// over ParseChainConstraint for sites that need only the chainID.
 func (l *Library) ParseChainConstraintChainID(chainBin []byte, oid base.OutputID) (base.ChainID, error) {
-	sym, _, args, err := l.ParseBytecodeOneLevel(chainBin, 7)
+	cc, err := l.ParseChainConstraint(chainBin)
 	if err != nil {
-		return base.NilChainID, fmt.Errorf("parseChainConstraintChainID: %w", err)
+		return base.NilChainID, err
 	}
-	if sym != ChainConstraintName {
-		return base.NilChainID, fmt.Errorf("parseChainConstraintChainID: expected %s, got %s", ChainConstraintName, sym)
-	}
-	idBytes := easyfl.StripDataPrefix(args[0])
-	id, err := base.ChainIDFromBytes(idBytes)
-	if err != nil {
-		return base.NilChainID, fmt.Errorf("parseChainConstraintChainID: %w", err)
-	}
-	if id == base.NilChainID {
+	if cc.ChainID == base.NilChainID {
 		return base.MakeOriginChainID(oid), nil
 	}
-	return id, nil
+	return cc.ChainID, nil
 }
 
 // IsInFrozenSlot reports whether the delegation output is in a frozen
