@@ -10,8 +10,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/util"
-	"golang.org/x/crypto/blake2b"
 )
 
 // Legacy high-level recipe helpers moved out of api/client into proxi
@@ -24,7 +22,7 @@ import (
 const minimumTransferAmount = uint64(1000)
 
 // TransferFromED25519WalletParams is the parameter object for
-// TransferFromED25519Wallet and MakeChainOrigin.
+// TransferFromED25519Wallet.
 type TransferFromED25519WalletParams struct {
 	WalletPrivateKey ed25519.PrivateKey
 	TagAlongSeqID    *base.ChainID
@@ -32,12 +30,6 @@ type TransferFromED25519WalletParams struct {
 	Amount           uint64
 	Target           ledger.Lock
 	MaxOutputs       int
-	// DelegationParams, if non-nil, attaches the delegationParams
-	// constraint at index 6 on the chain origin output, opting the
-	// chain into accepting delegations (Phase 5 of
-	// claude/delegation_epoch_params.md). Only consulted by
-	// MakeChainOrigin.
-	DelegationParams *ledger.DelegationParams
 }
 
 // MakeTransferTransactionParams is the parameter object for
@@ -178,101 +170,6 @@ func TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transactio
 	}
 	err = c.SubmitTransaction(txBytes)
 	return tx, err
-}
-
-// MakeChainOrigin creates a chain-origin output and submits the
-// origin transaction. Returns the parsed tx plus the new chain ID.
-func MakeChainOrigin(par TransferFromED25519WalletParams) (*transaction.Transaction, base.ChainID, error) {
-	if par.Amount < minimumTransferAmount {
-		return nil, base.NilChainID, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
-	}
-	c := GetClient()
-	walletAccount := ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)
-
-	ts := ledger.TimeNow()
-	inps, _, totalInputs, err := c.GetTransferableOutputs(walletAccount)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
-	if totalInputs < par.Amount+par.TagAlongFee {
-		return nil, [32]byte{}, fmt.Errorf("not enough source balance %s", util.Th(totalInputs))
-	}
-
-	totalInputs = 0
-	inps = util.PurgeSlice(inps, func(o *ledger.OutputWithID) bool {
-		if totalInputs < par.Amount+par.TagAlongFee {
-			totalInputs += o.Output.TokenBalance()
-			return true
-		}
-		return false
-	})
-
-	txb := txbuilder.New()
-	_, ts1, err := txb.ConsumeOutputsNoUnlock(inps...)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
-	ts = base.MaximumTime(ts1.AddTicks(int(ledger.L(base.MaxSlot).TransactionPace)), ts)
-
-	err = txb.PutStandardInputUnlocks(len(inps))
-	util.AssertNoError(err)
-
-	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-		o.WithTokenBalance(par.Amount).
-			WithLock(par.Target).
-			MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
-		if par.DelegationParams != nil {
-			// Attach the delegationParams constraint at its fixed index
-			// (Phase 5 of claude/delegation_epoch_params.md). The chain
-			// becomes a delegation target; immutability is enforced by
-			// selfImmutableOnSuccessorIndex(6) on the constraint body.
-			o.PutConstraint(par.DelegationParams.Bytes(), ledger.ConstraintIndexDelegationParams)
-		}
-	})
-	_, err = txb.ProduceOutput(chainOut)
-	util.AssertNoError(err)
-
-	if par.TagAlongFee > 0 {
-		tagAlongFeeOut := ledger.NewTagAlongOutput(par.TagAlongFee, *par.TagAlongSeqID, base.HolderID(ledger.SigLockFromED25519PrivateKey(par.WalletPrivateKey)))
-		if _, err = txb.ProduceOutput(tagAlongFeeOut); err != nil {
-			return nil, [32]byte{}, err
-		}
-	}
-
-	if totalInputs > par.Amount+par.TagAlongFee {
-		remainder := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithTokenBalance(totalInputs - par.Amount - par.TagAlongFee).
-				WithLock(walletAccount)
-		})
-		if _, err = txb.ProduceOutput(remainder); err != nil {
-			return nil, [32]byte{}, err
-		}
-	}
-	txb.SetTimestamp(ts)
-	txb.ComputeInputCommitment()
-	txb.SignED25519(par.WalletPrivateKey)
-
-	txBytes := txb.Bytes()
-
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
-	if err != nil {
-		return tx, [32]byte{}, err
-	}
-	err = tx.SetFullContext(tx.InputLoaderByIndex(transaction.PickOutputFromListFunc(inps)))
-	if err != nil {
-		return tx, [32]byte{}, err
-	}
-	err = c.SubmitTransaction(txBytes)
-	if err != nil {
-		return tx, [32]byte{}, err
-	}
-	oChain, err := transaction.OutputWithIDFromTransactionBytes(txBytes, 0)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
-
-	chainID := blake2b.Sum256(oChain.ID[:])
-	return tx, chainID, err
 }
 
 // MakeSendOutputTransaction builds a transaction that produces a
