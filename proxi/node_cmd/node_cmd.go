@@ -65,7 +65,10 @@ func Init() *cobra.Command {
 		// ledger/txbuilder sugar). Commented off until ported to
 		// txbuildercore; file kept under proxi/node_cmd/faucet_srv.go.
 		// initFaucetServerCmd(),
-		initGetFundsCmd(),
+		// initGetFundsCmd: client for the disabled faucet server above.
+		// Commented off in lock-step; revive together when the faucet is
+		// ported to txbuildercore. File kept under faucet_get.go.
+		// initGetFundsCmd(),
 		initLastSeqCmd(),
 		delegate.Init(),
 		initAllChainsCmd(),

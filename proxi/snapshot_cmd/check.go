@@ -1,3 +1,9 @@
+// SINGLETON-DEPENDENT: check.go calls glb.InitLedgerFromNode() and uses
+// the singleton-bound multistate parser to walk a snapshot file. The
+// snapshot reader currently expects ledger.L() initialised because the
+// SnapshotKVIterator decodes records via the typed multistate.Branch
+// parsers. Wasm-style port would need a wallet-side snapshot reader.
+// Left as-is.
 package snapshot_cmd
 
 import (

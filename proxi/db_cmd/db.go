@@ -1,3 +1,10 @@
+// Package db_cmd hosts the `proxi db <subcommand>` CLI.
+//
+// SINGLETON-DEPENDENT BY DESIGN: every subcommand here opens the local
+// BadgerDB directly (no node API) and walks the multistate via typed
+// parsers that need ledger.L() initialised. There is no node to fetch
+// /ledger_constants from, so these commands legitimately stay on the
+// singleton path. Not part of the wasm-style refactor.
 package db_cmd
 
 import (

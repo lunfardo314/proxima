@@ -40,6 +40,19 @@ func GetClient(endpoint ...string) *client.APIClient {
 	return client.NewWithGoogleDNS(endp, timeout...)
 }
 
+// InitLedgerFromNode populates the global ledger.L() singleton with
+// the library JSON(s) fetched from the node. After the wasm-style
+// refactor most proxi commands no longer call this; they go through
+// glb.GetTxLibrary() + glb.GetLedgerConstants() instead.
+//
+// Surviving callers (singleton-dependent on purpose):
+//   - proxi/node_cmd/chess_cmd/* — kept as the in-tree typed-builder
+//     + singleton reference; chess_poc itself uses ledger.L() internally.
+//   - proxi/util_cmd/inflation.go — eval-bound ChainInflationMultiStep.
+//   - proxi/snapshot_cmd/check.go — typed multistate snapshot parsers.
+//   - proxi/glb/wallet_recipes.go (TransferFromED25519Wallet /
+//     MakeSendOutputTransaction) — only reachable via the disabled
+//     faucet server (proxi/node_cmd/faucet_srv.go).
 func InitLedgerFromNode() {
 	clnt := GetClient()
 

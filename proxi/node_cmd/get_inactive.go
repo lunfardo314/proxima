@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"sort"
 	"strconv"
+	"time"
 
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -24,7 +24,7 @@ func initGetInactiveCmd() *cobra.Command {
 }
 
 func runGetInactiveCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
+	consts := glb.GetLedgerConstants()
 
 	lrbRootRecord, _, err := glb.GetClient().GetLatestReliableBranch()
 	glb.AssertNoError(err)
@@ -37,7 +37,7 @@ func runGetInactiveCmd(_ *cobra.Command, args []string) {
 	outs, err := glb.GetClient().GetInactiveUTXOs(slotsBack)
 	glb.AssertNoError(err)
 
-	glb.Infof("\n-- current slot: %d", ledger.SlotNow())
+	glb.Infof("\n-- current slot: %d", consts.LedgerTimeFromClockTime(time.Now()).Slot)
 	glb.Infof("-- inactive UTXOs since slot %d:\n", outs.SinceSlot)
 
 	type oBin struct {
