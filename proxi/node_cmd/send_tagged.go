@@ -13,6 +13,9 @@ import (
 	"github.com/lunfardo314/proxima/util"
 )
 
+// send_tagged.go: native-token send. Singleton-free build path —
+// uses txbuildercore + the wallet library; no ledger.L() lookups.
+
 // runSendTaggedCmd handles `proxi node send <amount> --tag <chainID>`.
 // Builds a pure-conservation native-token transfer tx via the
 // wasm-style wallet pipeline (txbuildercore + helpers):
@@ -62,6 +65,8 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	const remainderTokenPRXI uint64 = 100_000_000
 
 	client := glb.GetClient()
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
 
 	// Fetch wallet sigLock UTXOs (non-chained). Split into:
 	//   - tokenInputs: those carrying tokenAmount(tag, _)
@@ -82,12 +87,12 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 		prxiInputs  []*ledger.OutputWithID
 	)
 	for _, o := range res.Outputs {
-		if ta, found := pickTokenAmount(o.Output, tag); found {
+		if ta, found := pickTokenAmount(lib, o.Output, tag); found {
 			tokenInputs = append(tokenInputs, o)
 			tokenSum += ta.Amount
 			continue
 		}
-		if outputCarriesAnyTokenAmount(o.Output) {
+		if outputCarriesAnyTokenAmount(lib, o.Output) {
 			continue
 		}
 		prxiInputs = append(prxiInputs, o)
@@ -103,7 +108,7 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	)
 	for _, o := range tokenInputs {
 		selectedTokenIns = append(selectedTokenIns, o)
-		ta, _ := pickTokenAmount(o.Output, tag)
+		ta, _ := pickTokenAmount(lib, o.Output, tag)
 		consumedTokenSum += ta.Amount
 		if consumedTokenSum >= amount {
 			break
@@ -153,7 +158,6 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	// =============================================================
 	// Wasm-style build via txbuildercore + helpers.
 	// =============================================================
-	lib := glb.GetTxLibrary()
 	txb := txbuildercore.New(0)
 
 	consumedBytes := make([][]byte, 0, len(allInputs))
@@ -205,8 +209,9 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	glb.AssertNoError(err)
 	txb.PushTxConstraint(tokenSentinelBin)
 
-	// Pick a timestamp respecting input pace.
-	ts := ledger.TimeNow()
+	// Pick a timestamp respecting input pace. Wallet-side clock math
+	// via the Constants struct — no ledger singleton.
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
@@ -279,22 +284,22 @@ func buildTokenLockedOutput(lib *txbuildercore.Library, prxi uint64, targetCtrl 
 }
 
 // pickTokenAmount returns the first tokenAmount(tag, _) constraint found
-// on the output, or (nil, false) if none.
-func pickTokenAmount(o *ledger.Output, tag base.ChainID) (*ledger.TokenAmount, bool) {
+// on the output. Singleton-free — uses the wallet library.
+func pickTokenAmount(lib *txbuildercore.Library, o *ledger.Output, tag base.ChainID) (txbuildercore.TokenAmountView, bool) {
 	for _, raw := range o.ConstraintsRawBytes() {
-		ta, err := ledger.TokenAmountFromBytes(raw)
+		ta, err := lib.ParseTokenAmountBytecode(raw)
 		if err == nil && ta.Tag == tag {
 			return ta, true
 		}
 	}
-	return nil, false
+	return txbuildercore.TokenAmountView{}, false
 }
 
 // outputCarriesAnyTokenAmount reports whether the output has any
 // tokenAmount(...) constraint regardless of tag.
-func outputCarriesAnyTokenAmount(o *ledger.Output) bool {
+func outputCarriesAnyTokenAmount(lib *txbuildercore.Library, o *ledger.Output) bool {
 	for _, raw := range o.ConstraintsRawBytes() {
-		if _, err := ledger.TokenAmountFromBytes(raw); err == nil {
+		if _, err := lib.ParseTokenAmountBytecode(raw); err == nil {
 			return true
 		}
 	}
