@@ -1,6 +1,7 @@
 package node_cmd
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/keystore"
@@ -35,7 +37,6 @@ func initSeqSetupCmd() *cobra.Command {
 }
 
 func runSeqSetupCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
@@ -82,23 +83,42 @@ func runSeqSetupCmd(_ *cobra.Command, args []string) {
 	}
 }
 
+// getChainIdForAccount scans all chain outputs and returns the
+// ChainID of any non-delegation chain whose controller equals the
+// given account. Pure wallet-side lock-symbol + index-values parse;
+// no ledger.L() singleton.
 func getChainIdForAccount(account ledger.Controller) *base.ChainID {
+	lib := glb.GetTxLibrary()
 	clnt := glb.GetClient()
 	chains, _, err := clnt.GetAllChains()
 	glb.AssertNoError(err)
+	accountHID := account.ControllerID()
 	for _, o := range chains {
-		lock := o.Output.Lock()
-
-		if o.Output.Lock().Name() == ledger.DelegateLockName {
-			// only sequencer chain
+		lockBin, err := o.Output.ConstraintAt(ledger.ConstraintIndexLock)
+		if err != nil {
 			continue
 		}
-
-		if account.String() == lock.String() {
+		sym, _, _, err := lib.ParseBytecodeOneLevel(lockBin)
+		if err != nil || sym == txbuildercore.DelegateLockName {
+			// only non-delegation chain outputs (sigLock / chainLock /
+			// foundry) qualify as candidates for "this is my chain".
+			continue
+		}
+		// For sigLock / chainLock the controller bytes live at
+		// index-values[0]. Comparing raw bytes avoids reaching for
+		// any typed Lock dispatch.
+		ivBin, err := o.Output.ConstraintAt(ledger.ConstraintIndexIndexValues)
+		if err != nil {
+			continue
+		}
+		vals, err := txbuildercore.DecodeIndexValuesTuple(ivBin)
+		if err != nil || len(vals) == 0 {
+			continue
+		}
+		if bytes.Equal(vals[0], accountHID) {
 			return &o.ChainID
 		}
 	}
-
 	return nil
 }
 

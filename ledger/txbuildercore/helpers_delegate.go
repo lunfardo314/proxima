@@ -264,7 +264,7 @@ func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*Delegati
 	if err != nil {
 		return nil, false, err
 	}
-	chainID, err := parseChainConstraintChainID(l, chainBin, oid)
+	chainID, err := l.ParseChainConstraintChainID(chainBin, oid)
 	if err != nil {
 		return nil, false, err
 	}
@@ -281,11 +281,14 @@ func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*Delegati
 	}, true, nil
 }
 
-// parseChainConstraintChainID extracts the chainID from a chain
+// ParseChainConstraintChainID extracts the chainID from a chain
 // constraint's first arg. Arg 0 == NilChainID means this is a chain
 // origin output — the real chainID is computed from the OutputID
-// (blake2b). Pure byte parse — no eval.
-func parseChainConstraintChainID(l *Library, chainBin []byte, oid base.OutputID) (base.ChainID, error) {
+// (blake2b). Pure byte parse — no eval. Useful for any wallet-side
+// path that needs to recover the chainID of a chain output without
+// the ledger.L() singleton (utxos / balance / allchains display
+// helpers).
+func (l *Library) ParseChainConstraintChainID(chainBin []byte, oid base.OutputID) (base.ChainID, error) {
 	sym, _, args, err := l.ParseBytecodeOneLevel(chainBin, 7)
 	if err != nil {
 		return base.NilChainID, fmt.Errorf("parseChainConstraintChainID: %w", err)

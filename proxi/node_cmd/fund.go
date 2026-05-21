@@ -46,8 +46,6 @@ Example distribute.yaml:
 }
 
 func runFundCmd(_ *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
-
 	targetsFile := viper.GetString("fund.targets")
 	data, err := os.ReadFile(targetsFile)
 	glb.AssertNoError(err)
@@ -115,17 +113,20 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	glb.Assertf(res.AvailableAmount >= needed, "not enough tokens: have %s, need %s", util.Th(res.AvailableAmount), util.Th(needed))
 	walletOutputs := res.Outputs
 
-	// Track max input timestamp for pace validation.
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+
+	// Track max input timestamp for pace validation. ledger.ValidTransactionPace
+	// inlines as: tx_ts - max(in_ts) ≥ TransactionPace ticks.
 	inTs := base.NilLedgerTime
 	for _, in := range walletOutputs {
 		inTs = base.MaximumTime(inTs, in.Timestamp())
 	}
-	ts := ledger.TimeNow()
-	glb.Assertf(ledger.ValidTransactionPace(inTs, ts), "wrong time constraints")
+	ts := consts.LedgerTimeFromClockTime(time.Now())
+	glb.Assertf(base.DiffTicks(ts, inTs) >= int64(consts.TransactionPace), "wrong time constraints")
 
-	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletAccount)
 	txb := txbuildercore.New(0)
 
 	consumedBytes := make([][]byte, 0, len(walletOutputs))
