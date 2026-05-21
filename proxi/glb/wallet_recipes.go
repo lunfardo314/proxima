@@ -128,6 +128,13 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 // TransferFromED25519Wallet runs a complete sig-lock transfer flow:
 // fetches the wallet's available outputs, builds the tx via
 // MakeTransferTransaction, and submits via the (legacy) client.SubmitTransaction.
+//
+// Deprecated: this recipe still reaches for ledger/txbuilder + ledger.NewOutput
+// and needs the ledger.L() singleton initialised. New sites should compose via
+// txbuildercore + the wallet helpers and submit via glb.SubmitAndDisplay
+// (see proxi/node_cmd/{compact,send}.go for the canonical template). Last
+// remaining caller is proxi/node_cmd/faucet_srv.go (currently disabled),
+// which will be ported when the faucet is revived.
 func TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction.Transaction, error) {
 	if par.Amount < minimumTransferAmount {
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
