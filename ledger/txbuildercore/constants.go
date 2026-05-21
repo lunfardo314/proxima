@@ -259,3 +259,37 @@ func (c *Constants) EpochFromSlotDirect(targetID base.ChainID, slot, epochSlots 
 	}
 	return 0
 }
+
+// CoveredSlotsInCurrentEpoch returns how many slots remain in the
+// current epoch (the one `slot` belongs to) on the target's grid,
+// counting `slot` itself. Mirrors
+// ledger.Constants.CoveredSlotsInCurrentEpoch.
+func (c *Constants) CoveredSlotsInCurrentEpoch(targetID base.ChainID, slot, epochSlots uint32) uint32 {
+	last := c.LastSlotInEpochDirect(targetID, c.EpochFromSlotDirect(targetID, slot, epochSlots), epochSlots)
+	if slot > last {
+		// Should never happen given how EpochFromSlotDirect places `slot`;
+		// the server-side equivalent asserts.
+		return 0
+	}
+	return last - slot + 1
+}
+
+// FrozenSlotsFromFrozenEpochs returns the total number of slots a
+// delegation output stays frozen if its freeze depth is
+// `frozenEpochs` (≥ 1). It covers the rest of the current epoch
+// (CoveredSlotsInCurrentEpoch) plus `frozenEpochs-1` full epochs.
+// Mirrors ledger.Constants.FrozenSlotsFromFrozenEpochs.
+func (c *Constants) FrozenSlotsFromFrozenEpochs(targetID base.ChainID, txSlot, epochSlots uint32, frozenEpochs byte) uint32 {
+	if frozenEpochs == 0 {
+		return 0
+	}
+	return c.CoveredSlotsInCurrentEpoch(targetID, txSlot, epochSlots) + uint32(frozenEpochs-1)*epochSlots
+}
+
+// ClockTime maps a base.LedgerTime back to a wall-clock time using
+// the genesis Unix time + tick duration. Inverse of
+// LedgerTimeFromClockTime. Mirrors ledger.ClockTime, which reaches
+// into the singleton for the same two values.
+func (c *Constants) ClockTime(t base.LedgerTime) time.Time {
+	return c.GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * c.TickDuration)
+}

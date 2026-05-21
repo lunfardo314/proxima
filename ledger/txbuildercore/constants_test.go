@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/stretchr/testify/require"
 )
@@ -90,4 +91,25 @@ func TestConstants_PureFunctions(t *testing.T) {
 
 	// One slot worth of wall-clock time.
 	require.Equal(t, time.Duration(128)*100*time.Millisecond, c.SlotDuration())
+}
+
+// TestConstants_ClockTime_RoundTrip verifies that LedgerTimeFromClockTime
+// and ClockTime are mutual inverses for arbitrary ledger times.
+func TestConstants_ClockTime_RoundTrip(t *testing.T) {
+	c := &txbuildercore.Constants{
+		GenesisTimeUnix: 1_700_000_000,
+		TickDuration:    100 * time.Millisecond,
+		TicksPerSlot:    128,
+	}
+	for _, lt := range []base.LedgerTime{
+		base.T(0, 0),
+		base.T(0, 5),
+		base.T(1, 0),
+		base.T(42, 17),
+		base.T(1<<20, 100),
+	} {
+		clock := c.ClockTime(lt)
+		back := c.LedgerTimeFromClockTime(clock)
+		require.Equal(t, lt, back, "round-trip slot=%d tick=%d", lt.Slot, lt.Tick)
+	}
 }

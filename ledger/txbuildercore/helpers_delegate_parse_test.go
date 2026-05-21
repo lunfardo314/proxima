@@ -213,6 +213,47 @@ func TestDelegationOutputView_IsInFrozenSlot_Parity(t *testing.T) {
 	require.Equal(t, dOut.UnfreezeSlot(), view.UnfreezeSlot(walletC), "UnfreezeSlot parity")
 }
 
+// TestConstants_CoveredSlotsInCurrentEpoch_Parity samples slots inside
+// and at the boundaries of a couple of epochs.
+func TestConstants_CoveredSlotsInCurrentEpoch_Parity(t *testing.T) {
+	target := chainIDFixture()
+	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+	serverC := &ledger.L(base.MaxSlot).Constants
+
+	const epochSlots uint32 = 600
+	offs := serverC.EpochOffsetSlotsDirect(target, epochSlots)
+	for _, s := range []uint32{
+		0, 1, offs, offs + 1, offs + epochSlots/2, offs + epochSlots,
+		offs + epochSlots + 1, offs + epochSlots*42 + 17,
+	} {
+		require.Equal(t,
+			serverC.CoveredSlotsInCurrentEpoch(target, s, epochSlots),
+			walletC.CoveredSlotsInCurrentEpoch(target, s, epochSlots),
+			"slot %d", s)
+	}
+}
+
+// TestConstants_FrozenSlotsFromFrozenEpochs_Parity covers the
+// (frozenEpochs, txSlot) matrix.
+func TestConstants_FrozenSlotsFromFrozenEpochs_Parity(t *testing.T) {
+	target := chainIDFixture()
+	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+	serverC := &ledger.L(base.MaxSlot).Constants
+
+	const epochSlots uint32 = 600
+	offs := serverC.EpochOffsetSlotsDirect(target, epochSlots)
+	for _, fe := range []byte{1, 2, 4, 16, 32} {
+		for _, s := range []uint32{
+			1, offs + 1, offs + epochSlots/2, offs + epochSlots, offs + epochSlots*7,
+		} {
+			require.Equal(t,
+				serverC.FrozenSlotsFromFrozenEpochs(target, s, epochSlots, fe),
+				walletC.FrozenSlotsFromFrozenEpochs(target, s, epochSlots, fe),
+				"fe=%d slot=%d", fe, s)
+		}
+	}
+}
+
 // TestConstants_EpochFromSlotDirect_Parity covers the wallet-side
 // EpochFromSlotDirect against the server-side version at a range of
 // slots including the boundary cases (slot ≤ offset, slot in epoch
