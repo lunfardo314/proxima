@@ -53,19 +53,20 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 		glb.Assertf(2 <= maxNumberOfInputs && maxNumberOfInputs <= 256, "parameter must be >= 2 and <= 256")
 	}
 
-	var tagAlongSeqID *base.ChainID
+	// manage tag along data
+
+	tagAlongSeqID := glb.GetTagAlongSequencerID()
+	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
+
+	sd, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
+	glb.AssertNoError(err)
+
 	feeAmount := glb.GetTagAlongFee()
-	if feeAmount > 0 {
-		tagAlongSeqID = glb.GetTagAlongSequencerID()
-		glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
-
-		sd, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
-		glb.AssertNoError(err)
-
-		if sd.MinimumFee() > feeAmount {
-			feeAmount = sd.MinimumFee()
-		}
+	if sd.MinimumFee() > feeAmount {
+		// assume fee asked by the sequencer
+		feeAmount = sd.MinimumFee()
 	}
+
 	walletData := glb.GetWalletData()
 
 	// Wallet-derived "now" — wall-clock mapped through the genesis +
@@ -76,7 +77,6 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 	targetSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
 
 	// Peek at what's claimable so we can show a useful summary up front.
-	// GetSpendableOutputs depend on the library singleton because output parsing depends on that
 	walletOutputs, lrbid, totalAmount, err := glb.GetClient().GetSpendableOutputs(walletData.Account, client.SpendableOutputsParams{
 		IncludeSendWithDeadline: true,
 		TargetSlot:              targetSlot,
@@ -152,7 +152,7 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 
 	txBytes, txid, consumed, err := makeClaimingCompactTransaction(
 		walletData.PrivateKey, walletOutputs,
-		tagAlongSeqID, feeAmount, targetSlot)
+		*tagAlongSeqID, feeAmount, targetSlot)
 	glb.AssertNoError(err)
 	glb.Assertf(txBytes != nil, "something wrong: empty compact tx")
 
@@ -176,38 +176,34 @@ func runCompactCmd(_ *cobra.Command, args []string) {
 // sites.
 //
 // All inputs use the signature unlock (0xff). It works uniformly
-// across the three input flavours the wallet can claim:
+// across the three input flavors the wallet can claim:
 //   - sigLock: the holder check matches the wallet's signature data;
 //   - sendWithDeadline master-reclaim: consumed-side dispatch lands
 //     in `_sigLock($master)`, falls through `unlockedByReference`
 //     (because the SWD lock bytecode ≠ sigLock bytecode), then the
 //     same signature check matches the wallet;
-//   - sendWithDeadline target-accept (sigLock target): same fall-
-//     through, into `_sigLock($target)`.
+//   - sendWithDeadline target-accept (sigLock target): same fallthrough,
+//     into `_sigLock($target)`.
 //
 // Inputs:
 //   - walletPrivateKey: signs the tx.
-//   - walletHolderID:   destination of the sweep output (and the
-//     tag-along sender).
 //   - walletOutputs:    pre-fetched spendable set; the caller is
 //     responsible for the GetSpendableOutputs call
 //     so the UX summary and the build see the
 //     same snapshot.
-//   - tagAlongSeqID / tagAlongFee: tag-along target + amount; the
-//     fee output is omitted when fee == 0.
+//   - tagAlongSeqID / tagAlongFee: tag-along target + amount. The
+//     fee output is always produced; the caller is expected to
+//     enforce fee > 0.
 //   - targetSlot:       tx timestamp slot. MUST match the slot used
 //     for the spendable filter (the SWD Δ check
 //     needs them to agree).
 func makeClaimingCompactTransaction(
 	walletPrivateKey ed25519.PrivateKey,
 	walletOutputs []*ledger.OutputWithID,
-	tagAlongSeqID *base.ChainID,
+	tagAlongSeqID base.ChainID,
 	tagAlongFee uint64,
 	targetSlot uint32,
 ) (txBytes []byte, txid base.TransactionID, consumed [][]byte, err error) {
-	if tagAlongFee > 0 && tagAlongSeqID == nil {
-		return nil, base.TransactionID{}, nil, fmt.Errorf("tag-along sequencer not specified")
-	}
 
 	lib := glb.GetTxLibrary()
 	txb := txbuildercore.New(0)
@@ -218,6 +214,7 @@ func makeClaimingCompactTransaction(
 		b := in.Output.Bytes()
 		txb.ConsumeOutput(b, in.ID)
 		consumed = append(consumed, b)
+		// unlock by reference does not improve anything
 		txb.PutSignatureUnlock(byte(i))
 		inTotal += in.Output.TokenBalance()
 	}
@@ -232,15 +229,13 @@ func makeClaimingCompactTransaction(
 	}
 	txb.ProduceOutput(mainOut.Bytes())
 
-	if tagAlongFee > 0 {
-		taOut, err := txbuildercore.NewTagAlongOutput(lib, tagAlongFee, *tagAlongSeqID, walletHolderID)
-		if err != nil {
-			return nil, base.TransactionID{}, nil, err
-		}
-		txb.ProduceOutput(taOut.Bytes())
+	taOut, err := txbuildercore.NewTagAlongOutput(lib, tagAlongFee, tagAlongSeqID, walletHolderID)
+	if err != nil {
+		return nil, base.TransactionID{}, nil, err
 	}
+	txb.ProduceOutput(taOut.Bytes())
 
-	txb.SetTimestamp(base.T(targetSlot, 1))
+	txb.SetTimestamp(base.T(targetSlot, 10))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletPrivateKey)
 
