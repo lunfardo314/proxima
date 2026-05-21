@@ -50,9 +50,10 @@ func GetClient(endpoint ...string) *client.APIClient {
 //     + singleton reference; chess_poc itself uses ledger.L() internally.
 //   - proxi/util_cmd/inflation.go — eval-bound ChainInflationMultiStep.
 //   - proxi/snapshot_cmd/check.go — typed multistate snapshot parsers.
-//   - proxi/glb/wallet_recipes.go (TransferFromED25519Wallet /
-//     MakeSendOutputTransaction) — only reachable via the disabled
-//     faucet server (proxi/node_cmd/faucet_srv.go).
+//
+// proxi/glb/wallet_recipes.go and proxi/node_cmd/faucet_{srv,get}.go
+// also call into it but are themselves commented off; they'll come
+// back together when the faucet is ported to txbuildercore.
 func InitLedgerFromNode() {
 	clnt := GetClient()
 

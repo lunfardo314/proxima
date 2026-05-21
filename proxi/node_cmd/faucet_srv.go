@@ -1,5 +1,15 @@
 package node_cmd
 
+// DISABLED — `proxi node faucet` long-running server. Built on the
+// (now also disabled) glb.TransferFromED25519Wallet +
+// glb.MakeSendOutputTransaction wallet recipes, which use
+// ledger/txbuilder + the ledger.L() singleton. Registration was
+// already commented off in node_cmd.go; the body is commented off
+// here in lockstep with proxi/glb/wallet_recipes.go and the
+// matching client (faucet_get.go). Revive together when the faucet
+// is ported to the wasm-style txbuildercore pipeline.
+
+/*
 import (
 	"encoding/json"
 	"fmt"
@@ -406,3 +416,4 @@ func (fct *faucetServer) run() {
 	glb.Infof("\nrunning proxi faucet server on %s. Press Ctrl-C to stop..\n", sport)
 	glb.AssertNoError(http.ListenAndServe(sport, nil))
 }
+*/

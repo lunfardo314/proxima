@@ -59,15 +59,14 @@ func Init() *cobra.Command {
 		initSyncInfoCmd(),
 		initPeersInfoCmd(),
 		initReliableBranchCmd(),
-		// initFaucetServerCmd is the long-running `proxi node faucet`
-		// server. Still on the legacy glb.TransferFromED25519Wallet +
-		// glb.MakeSendOutputTransaction recipes (singleton init +
-		// ledger/txbuilder sugar). Commented off until ported to
-		// txbuildercore; file kept under proxi/node_cmd/faucet_srv.go.
+		// `proxi node faucet` (initFaucetServerCmd) and its client
+		// `proxi node getfunds` (initGetFundsCmd) — both disabled.
+		// Bodies of faucet_srv.go / faucet_get.go and the legacy
+		// glb.TransferFromED25519Wallet / glb.MakeSendOutputTransaction
+		// recipes in proxi/glb/wallet_recipes.go are commented off
+		// together. Revive the trio when the faucet is ported to the
+		// wasm-style txbuildercore pipeline.
 		// initFaucetServerCmd(),
-		// initGetFundsCmd: client for the disabled faucet server above.
-		// Commented off in lock-step; revive together when the faucet is
-		// ported to txbuildercore. File kept under faucet_get.go.
 		// initGetFundsCmd(),
 		initLastSeqCmd(),
 		delegate.Init(),

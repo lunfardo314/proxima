@@ -1,5 +1,21 @@
 package glb
 
+// DISABLED — legacy proxi wallet recipes (TransferFromED25519Wallet /
+// MakeTransferTransaction / MakeSendOutputTransaction +
+// TransferFromED25519WalletParams / MakeTransferTransactionParams).
+//
+// These were the sigLock-transfer + send-output sugar built on
+// ledger/txbuilder + ledger.NewOutput + the ledger.L() singleton. The
+// only reachable call sites were inside the faucet server
+// (proxi/node_cmd/faucet_srv.go), which is itself disabled in
+// lockstep below. The whole file is commented off rather than deleted
+// so it can be revived alongside faucet_srv when the faucet is ported
+// to the wasm-style txbuildercore pipeline. Until then, new sites
+// should compose via txbuildercore + the wallet helpers and submit
+// via glb.SubmitAndDisplay (canonical templates:
+// proxi/node_cmd/{compact,send}.go).
+
+/*
 import (
 	"crypto/ed25519"
 	"fmt"
@@ -11,13 +27,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 )
-
-// Legacy high-level recipe helpers moved out of api/client into proxi
-// glb. These were originally on *client.APIClient; they remained
-// proxi-specific wallet sugar and are scheduled for replacement by
-// the wasm-style txbuildercore + helpers pipeline during Phase 1 of
-// the refactor (see claude/proxi_txbuildercore.md). Kept here
-// temporarily so per-site Phase 1 work can land incrementally.
 
 const minimumTransferAmount = uint64(1000)
 
@@ -120,13 +129,6 @@ func MakeTransferTransaction(par MakeTransferTransactionParams) ([]byte, error) 
 // TransferFromED25519Wallet runs a complete sig-lock transfer flow:
 // fetches the wallet's available outputs, builds the tx via
 // MakeTransferTransaction, and submits via the (legacy) client.SubmitTransaction.
-//
-// Deprecated: this recipe still reaches for ledger/txbuilder + ledger.NewOutput
-// and needs the ledger.L() singleton initialised. New sites should compose via
-// txbuildercore + the wallet helpers and submit via glb.SubmitAndDisplay
-// (see proxi/node_cmd/{compact,send}.go for the canonical template). Last
-// remaining caller is proxi/node_cmd/faucet_srv.go (currently disabled),
-// which will be ported when the faucet is revived.
 func TransferFromED25519Wallet(par TransferFromED25519WalletParams) (*transaction.Transaction, error) {
 	if par.Amount < minimumTransferAmount {
 		return nil, fmt.Errorf("minimum transfer amount is %d", minimumTransferAmount)
@@ -230,3 +232,4 @@ func MakeSendOutputTransaction(o *ledger.Output, privateKey ed25519.PrivateKey, 
 	}
 	return txBytes, txid, txString, nil
 }
+*/
