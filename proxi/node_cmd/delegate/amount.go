@@ -56,7 +56,6 @@ func initDelegateAmountCmd() *cobra.Command {
 }
 
 func runDelegateAmountCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
@@ -79,10 +78,14 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 
 	glb.Assertf(requiredShare <= 1000, "required inflation share must be 0-1000 promille")
 
-	ti, err := glb.GetClient().GetSequencerTargetInfo(targetSeqID)
+	consts := glb.GetLedgerConstants()
+	client := glb.GetClient()
+
+	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
 
-	est := estimateDelegation(ti, amount, maxFreezeEpochs, requiredShare, targetSeqID, ledger.SlotNow())
+	nowSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	est := estimateDelegation(consts, client, ti, amount, maxFreezeEpochs, requiredShare, targetSeqID, nowSlot)
 	effShare := confirmDelegationEstimate(est, amount, requiredShare, targetSeqID)
 
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
@@ -94,12 +97,18 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
 
-	ts := ledger.TimeNow()
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	lib := ledger.L(ts.Slot)
-	minimumAmount := lib.MinimumInflatableAmount0 + lib.ChainInflationMultiStep(lib.MinimumInflatableAmount0, 0, ts.Slot+10000)
+	// "Minimum inflatable" floor for the chosen amount — projected
+	// inflation over ts.Slot+10_000 slots starting from slot 0,
+	// computed server-side via /eval (no singleton on the wallet).
+	inflMin, err := client.EvalU64(0,
+		fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)",
+			consts.MinimumInflatableAmount0, 0, ts.Slot+10000))
+	glb.AssertNoError(err)
+	minimumAmount := consts.MinimumInflatableAmount0 + inflMin
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
 	// Phase 5 of delegation_epoch_params: cap delegator's chosen depth
@@ -109,7 +118,6 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	targetEpochSlots := ti.EpochDurationSlots
 	glb.Assertf(maxFreezeEpochs <= targetMaxFrozenEpochs, "wrong value of max freeze epochs: %d > target's max %d", maxFreezeEpochs, targetMaxFrozenEpochs)
 
-	client := glb.GetClient()
 	needed := amount + feeAmount
 	res, err := client.GetOutputsForControllerID(walletData.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
@@ -129,7 +137,7 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 
 	// Wasm-style build via txbuildercore + helpers.
 	txLib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletData.Account)
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 	txb := txbuildercore.New(0)
 
 	consumedBytes := make([][]byte, 0, len(walletOutputs))

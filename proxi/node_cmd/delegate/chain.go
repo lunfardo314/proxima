@@ -44,7 +44,6 @@ func initDelegationSubmitCmd() *cobra.Command {
 }
 
 func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
@@ -75,26 +74,34 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Verbosef("tag-along fee: %s", util.Th(feeAmount))
 
-	ts := ledger.TimeNow()
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+	client := glb.GetClient()
+
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	client := glb.GetClient()
 	oIn, _, err := client.GetChainOutput(chainID)
 	glb.AssertNoError(err)
 
 	ti, err := client.GetSequencerTargetInfo(targetSeqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", targetSeqID.StringShort(), err)
 
-	est := estimateDelegation(ti, oIn.Output.TokenBalance(), maxFreezeEpochs, requiredShare, targetSeqID, ts.Slot)
+	est := estimateDelegation(consts, client, ti, oIn.Output.TokenBalance(), maxFreezeEpochs, requiredShare, targetSeqID, ts.Slot)
 	effShare := confirmDelegationEstimate(est, oIn.Output.TokenBalance(), requiredShare, targetSeqID)
 
-	dOut, isDelegation := ledger.AsDelegationOutput(oIn.Output, oIn.ID)
-	glb.Assertf(!isDelegation || dOut.IsUnlockableByMaster(ts.Slot), "chain is delegation output NOT unlockable by master")
+	// If the input is a delegation output, ensure the master can still
+	// unlock it at ts.Slot. Pure wallet-side parse + Constants math.
+	if view, isDelegation, err := lib.ParseDelegationOutput(oIn.Output.Output, oIn.ID); err != nil {
+		glb.AssertNoError(err)
+	} else if isDelegation {
+		glb.Assertf(!view.IsInFrozenSlot(ts.Slot, consts),
+			"chain is delegation output NOT unlockable by master at slot %d", ts.Slot)
+	}
 
-	// Inflation calc still goes through the ledger singleton (the wallet
-	// path keeps InitLedgerFromNode for now per the refactor plan).
-	inflation := ledger.L(base.MaxSlot).ChainInflationOneSlot(oIn.Output.TokenBalance(), oIn.ID.Slot())
+	// One-slot inflation projection, evaluated server-side via /eval.
+	inflation := evalChainInflationMultiStep(client, oIn.Output.TokenBalance(), oIn.ID.Slot(), 1)
 
 	// Phase 5 of delegation_epoch_params: source per-target epochSlots /
 	// maxFrozenEpochs from the target sequencer's own delegationParams.
@@ -102,8 +109,7 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
 
 	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletData.Account)
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 	txb := txbuildercore.New(0)
 
 	// Consume the predecessor chain output as input 0.

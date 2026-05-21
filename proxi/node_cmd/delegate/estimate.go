@@ -2,8 +2,8 @@ package delegate
 
 import (
 	"strconv"
+	"time"
 
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
@@ -37,8 +37,6 @@ Examples:
 }
 
 func runEstimateCmd(cmd *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
-
 	seqID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
@@ -51,18 +49,19 @@ func runEstimateCmd(cmd *cobra.Command, args []string) {
 
 	epochs, _ := cmd.Flags().GetUint8("epochs")
 
-	ti, err := glb.GetClient().GetSequencerTargetInfo(seqID)
+	consts := glb.GetLedgerConstants()
+	client := glb.GetClient()
+	ti, err := client.GetSequencerTargetInfo(seqID)
 	glb.Assertf(err == nil, "cannot retrieve target info for %s: %v", seqID.String(), err)
 
-	slot := ledger.SlotNow()
-	est := estimateDelegation(ti, amount, epochs, share, seqID, slot)
+	slot := consts.LedgerTimeFromClockTime(time.Now()).Slot
+	est := estimateDelegation(consts, client, ti, amount, epochs, share, seqID, slot)
 
 	glb.Infof("%s", est.displayLines(amount, share, seqID).String())
 
 	if amount == 0 && !est.shareRejected {
 		// amount=0 means "show me the max delegation this sequencer can accept"
-		lib := ledger.L(slot)
-		maxAmount := estimateMaxDelegationAmount(lib, est.availableForAdvance, seqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, share)
+		maxAmount := estimateMaxDelegationAmount(consts, client, est.availableForAdvance, seqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, share)
 		glb.Infof("\nMax delegation amount at %d promille share: %s", share, util.Th(maxAmount))
 	}
 }

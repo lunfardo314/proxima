@@ -5,8 +5,9 @@ import (
 	"os"
 
 	"github.com/lunfardo314/proxima/api"
-	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/api/client"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -30,11 +31,14 @@ type delegationEstimate struct {
 	hasMaxAmount        bool
 }
 
-// estimateDelegation computes the advance and checks affordability using target_info data.
-// When unaffordable and greedy, suggests max affordable share.
-// When unaffordable and not greedy, suggests max delegation amount.
-func estimateDelegation(ti *api.SequencerTargetInfo, delegatedAmount uint64, frozenEpochs byte, requiredShare uint16, targetSeqID base.ChainID, slot uint32) *delegationEstimate {
-	lib := ledger.L(slot)
+// estimateDelegation computes the advance and checks affordability
+// using target_info data. When unaffordable and greedy, suggests max
+// affordable share. When unaffordable and not greedy, suggests max
+// delegation amount.
+//
+// Inflation is computed server-side via /eval (consts handles the
+// epoch arithmetic locally). No ledger.L() singleton.
+func estimateDelegation(consts *txbuildercore.Constants, clnt *client.APIClient, ti *api.SequencerTargetInfo, delegatedAmount uint64, frozenEpochs byte, requiredShare uint16, targetSeqID base.ChainID, slot uint32) *delegationEstimate {
 	est := &delegationEstimate{
 		seqName:         ti.Name,
 		profitMarginPml: ti.ProfitMarginPml,
@@ -56,8 +60,8 @@ func estimateDelegation(ti *api.SequencerTargetInfo, delegatedAmount uint64, fro
 		est.effFrozenEpochs = byte(ti.MaxFrozenEpochs)
 	}
 
-	est.frozenSlots = lib.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs)
-	est.projectedInflation = lib.ChainInflationMultiStep(delegatedAmount, slot, est.frozenSlots)
+	est.frozenSlots = consts.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs)
+	est.projectedInflation = evalChainInflationMultiStep(clnt, delegatedAmount, slot, est.frozenSlots)
 	est.advance = calcAdvanceEstimate(est.projectedInflation, ti.ProfitMarginPml, ti.Greedy, requiredShare)
 
 	if ti.TokenBalance > ti.StorageDeposit {
@@ -83,12 +87,23 @@ func estimateDelegation(ti *api.SequencerTargetInfo, delegatedAmount uint64, fro
 		} else {
 			// When not greedy: advance = inflation * seqTolerance / 1000 (share-independent).
 			// Suggest max delegation amount instead.
-			est.maxDelegationAmount = estimateMaxDelegationAmount(lib, est.availableForAdvance, targetSeqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, requiredShare)
+			est.maxDelegationAmount = estimateMaxDelegationAmount(consts, clnt, est.availableForAdvance, targetSeqID, slot, ti.EpochDurationSlots, est.effFrozenEpochs, ti.ProfitMarginPml, ti.Greedy, requiredShare)
 			est.hasMaxAmount = true
 		}
 	}
 
 	return est
+}
+
+// evalChainInflationMultiStep delegates chainInflationMultiStep
+// evaluation to the node via /eval (slot=0 = latest library). Panics
+// via glb.AssertNoError on transport / per-formula failure; the
+// caller is a one-shot CLI flow where this is acceptable.
+func evalChainInflationMultiStep(clnt *client.APIClient, amount uint64, slot, forSlots uint32) uint64 {
+	src := fmt.Sprintf("chainInflationMultiStep(u64/%d, u64/%d, u64/%d)", amount, slot, forSlots)
+	ret, err := clnt.EvalU64(0, src)
+	glb.AssertNoError(err)
+	return ret
 }
 
 // calcAdvanceEstimate mirrors the sequencer's calcAdvance logic.
@@ -102,13 +117,15 @@ func calcAdvanceEstimate(projectedInflation uint64, profitMarginPml uint16, gree
 	return (projectedInflation * uint64(seqTolerance)) / 1000
 }
 
-// estimateMaxDelegationAmount binary-searches for the largest delegation amount
-// whose advance fits within availableBalance
-func estimateMaxDelegationAmount(lib *ledger.Library, availableBalance uint64, targetSeqID base.ChainID, slot uint32, epochSlots uint32, frozenEpochs byte, profitMarginPml uint16, greedy bool, requiredShare uint16) uint64 {
-	frozenSlots := lib.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, epochSlots, frozenEpochs)
+// estimateMaxDelegationAmount binary-searches for the largest
+// delegation amount whose advance fits within availableBalance.
+// Each search step issues one /eval call for the inflation estimate;
+// the search converges in ≤ ~70 iterations.
+func estimateMaxDelegationAmount(consts *txbuildercore.Constants, clnt *client.APIClient, availableBalance uint64, targetSeqID base.ChainID, slot uint32, epochSlots uint32, frozenEpochs byte, profitMarginPml uint16, greedy bool, requiredShare uint16) uint64 {
+	frozenSlots := consts.FrozenSlotsFromFrozenEpochs(targetSeqID, slot, epochSlots, frozenEpochs)
 
 	advanceForAmount := func(amount uint64) uint64 {
-		infl := lib.ChainInflationMultiStep(amount, slot, frozenSlots)
+		infl := evalChainInflationMultiStep(clnt, amount, slot, frozenSlots)
 		return calcAdvanceEstimate(infl, profitMarginPml, greedy, requiredShare)
 	}
 

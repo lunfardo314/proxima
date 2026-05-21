@@ -178,6 +178,7 @@ func (l *Library) ParseDelegateLockState(data []byte) (DelegateLockStateView, er
 // at 5 or 6.
 type DelegationOutputView struct {
 	OriginSlot      uint32        // output creation slot (oid.Slot())
+	ChainID         base.ChainID  // delegation's own chainID (computed for origin)
 	MasterID        base.HolderID // index-values[0]
 	Target          base.ChainID  // index-values[1]
 	MaxFrozenEpochs byte          // delegateLock arg 0 (caller-supplied cap)
@@ -256,8 +257,21 @@ func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*Delegati
 		return nil, false, err
 	}
 
+	// ChainID — for a transit chain the chain constraint's arg 0
+	// carries the explicit chainID; for a chain origin the arg is
+	// NilChainID and the real chainID is blake2b(oid).
+	chainBin, err := o.ConstraintAt(ConstraintIndexChain)
+	if err != nil {
+		return nil, false, err
+	}
+	chainID, err := parseChainConstraintChainID(l, chainBin, oid)
+	if err != nil {
+		return nil, false, err
+	}
+
 	return &DelegationOutputView{
 		OriginSlot:      oid.Slot(),
+		ChainID:         chainID,
 		MasterID:        master,
 		Target:          target,
 		MaxFrozenEpochs: maxFrozenEpochs,
@@ -265,6 +279,29 @@ func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*Delegati
 		LastFrozenEpoch: state.LastFrozenEpoch,
 		State:           state.State,
 	}, true, nil
+}
+
+// parseChainConstraintChainID extracts the chainID from a chain
+// constraint's first arg. Arg 0 == NilChainID means this is a chain
+// origin output — the real chainID is computed from the OutputID
+// (blake2b). Pure byte parse — no eval.
+func parseChainConstraintChainID(l *Library, chainBin []byte, oid base.OutputID) (base.ChainID, error) {
+	sym, _, args, err := l.ParseBytecodeOneLevel(chainBin, 7)
+	if err != nil {
+		return base.NilChainID, fmt.Errorf("parseChainConstraintChainID: %w", err)
+	}
+	if sym != ChainConstraintName {
+		return base.NilChainID, fmt.Errorf("parseChainConstraintChainID: expected %s, got %s", ChainConstraintName, sym)
+	}
+	idBytes := easyfl.StripDataPrefix(args[0])
+	id, err := base.ChainIDFromBytes(idBytes)
+	if err != nil {
+		return base.NilChainID, fmt.Errorf("parseChainConstraintChainID: %w", err)
+	}
+	if id == base.NilChainID {
+		return base.MakeOriginChainID(oid), nil
+	}
+	return id, nil
 }
 
 // IsInFrozenSlot reports whether the delegation output is in a frozen

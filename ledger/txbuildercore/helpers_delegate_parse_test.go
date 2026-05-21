@@ -124,6 +124,9 @@ func TestParseDelegationOutput_FromInit(t *testing.T) {
 			// Init output starts at the zero state.
 			require.Equal(t, uint32(0), view.LastFrozenEpoch)
 			require.Equal(t, byte(0), view.State)
+			// Init output: chain constraint carries NilChainID; the
+			// view fills in MakeOriginChainID(oid).
+			require.Equal(t, base.MakeOriginChainID(oid), view.ChainID)
 		})
 	}
 }

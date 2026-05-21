@@ -31,7 +31,6 @@ func initRevokeDelegationCmd() *cobra.Command {
 }
 
 func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 
 	glb.Infof("wallet account is: %s", walletData.Account.String())
@@ -39,35 +38,41 @@ func runRevokeDelegationCmd(_ *cobra.Command, args []string) {
 	delegationID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+
 	clnt := glb.GetClient()
 	out, _, err := clnt.GetChainOutput(delegationID)
 	glb.AssertNoError(err)
-	dOut, ok := ledger.AsDelegationOutput(out.Output, out.ID)
-	glb.Assertf(ok, "not a delegation output:\n%s", out.String())
+	view, ok, err := lib.ParseDelegationOutput(out.Output.Output, out.ID)
+	glb.AssertNoError(err)
+	glb.Assertf(ok, "not a delegation output: %s", delegationID.String())
 	if glb.IsVerbose() {
 		glb.Infof("delegation output:\n%s", out.String())
 	}
 
-	glb.Assertf(dOut.MasterID == base.HolderID(walletData.Account), "this wallet is not a master controller of the delegation %s", delegationID.String())
+	glb.Assertf(view.MasterID == walletHolderID, "this wallet is not a master controller of the delegation %s", delegationID.String())
 
-	targetID := dOut.Target
+	targetID := view.Target
 	glb.Infof("delegation target ID: %s", targetID.String())
 
-	ts := ledger.TimeNow()
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(5)
 	}
-	glb.Assertf(!dOut.IsUnlockableByMaster(ts.Slot), "delegation is unlockable by master, no need for revocation")
-	unfreeze := dOut.UnfreezeSlot()
-	glb.Assertf(unfreeze > uint32(ts.Slot)+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
+	// `askstop` is meaningful only while the master CANNOT unlock the
+	// delegation directly (i.e. it's in a frozen slot). Otherwise the
+	// master can just consume the output.
+	glb.Assertf(view.IsInFrozenSlot(ts.Slot, consts), "delegation is unlockable by master, no need for revocation")
+	unfreeze := view.UnfreezeSlot(consts)
+	glb.Assertf(unfreeze > ts.Slot+6, "delegation is not frozen or safe revocation window is very close, just wait up to a minute")
 
-	compensation := dOut.RevocationCompensationEstimate(ts.Slot)
+	// Compensation = projected inflation over the remaining freeze
+	// window, evaluated server-side via /eval.
+	compensation := evalChainInflationMultiStep(clnt, out.Output.TokenBalance(), ts.Slot, unfreeze-ts.Slot+1)
 	const minimumFee = 50
 	glb.Assertf(compensation >= minimumFee, "estimated compensation is even less than minimum fee %d", minimumFee)
-
-	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletData.Account)
 
 	// Pull wallet inputs (all sigLock-controlled outputs).
 	walletOutputs, _, amountInWallet, err := clnt.GetTransferableOutputs(walletData.Account, 255)
