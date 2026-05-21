@@ -33,7 +33,6 @@ func initSeqWithdrawCmd() *cobra.Command {
 }
 
 func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer id")
 	glb.Infof("sequencer id (source): %s", walletData.Sequencer.String())
@@ -56,9 +55,10 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 
 	// Wasm-style build via txbuildercore + helpers.
 	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletData.Account)
+	consts := glb.GetLedgerConstants()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 
-	ts := ledger.TimeNow()
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
 	}

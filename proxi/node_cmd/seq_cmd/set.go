@@ -38,7 +38,6 @@ func initSeqSetCmd() *cobra.Command {
 }
 
 func runSeqSetCmd(cmd *cobra.Command, _ []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 	glb.Assertf(walletData.Sequencer != nil, "can't get own sequencer id")
 
@@ -111,9 +110,10 @@ func runSeqSetCmd(cmd *cobra.Command, _ []string) {
 
 	// Wasm-style build via txbuildercore + helpers.
 	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletData.Account)
+	consts := glb.GetLedgerConstants()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 
-	ts := ledger.TimeNow()
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(12)
 	}
