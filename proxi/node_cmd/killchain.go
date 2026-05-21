@@ -26,28 +26,22 @@ func initKillChainCmd() *cobra.Command {
 }
 
 func runKillChainCmd(_ *cobra.Command, args []string) {
-	//cmd.DebugFlags()
-	glb.InitLedgerFromNode()
-
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.AssertNoError(err)
 
 	walletData := glb.GetWalletData()
 
-	var tagAlongSeqID base.ChainID
-	feeAmount := glb.GetTagAlongFee()
-	glb.Assertf(feeAmount > 0, "tag-along fee must be > 0")
+	tagAlongSeqIDPtr := glb.GetTagAlongSequencerID()
+	glb.Assertf(tagAlongSeqIDPtr != nil, "tag-along sequencer not specified")
+	tagAlongSeqID := *tagAlongSeqIDPtr
+
 	clnt := glb.GetClient()
-
-	pTagAlongSeqID := glb.GetTagAlongSequencerID()
-	glb.Assertf(pTagAlongSeqID != nil, "tag-along sequencer not specified")
-	tagAlongSeqID = *pTagAlongSeqID
-
-	md, err := clnt.GetSequencerData(tagAlongSeqID)
+	sd, err := clnt.GetSequencerData(tagAlongSeqID)
 	glb.AssertNoError(err)
 
-	if md.MinimumFee() > feeAmount {
-		feeAmount = md.MinimumFee()
+	feeAmount := glb.GetTagAlongFee()
+	if sd.MinimumFee() > feeAmount {
+		feeAmount = sd.MinimumFee()
 	}
 	glb.Assertf(feeAmount > 0, "tag-along fee must be > 0")
 
@@ -60,24 +54,31 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	out, _, err := clnt.GetChainOutput(chainID)
 	glb.AssertNoError(err)
 
-	ts := ledger.TimeNow()
+	// Wallet-derived "now" — singleton-free.
+	consts := glb.GetLedgerConstants()
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	dOut, isDelegation := ledger.AsDelegationOutput(out.Output, out.ID)
 
-	if isDelegation && dOut.IsInFrozenSlot(ts.Slot) {
-		unfreeze := dOut.UnfreezeSlot()
+	// Delegation frozen-slot UX guard. If this is a delegation output
+	// in a frozen slot, the master cannot unlock it — bail with a
+	// helpful message rather than submit a tx that the server will
+	// reject. Pure wallet-side parse via lib.ParseDelegationOutput +
+	// Constants epoch math.
+	lib := glb.GetTxLibrary()
+	if view, isDelegation, err := lib.ParseDelegationOutput(out.Output.Output, out.ID); err != nil {
+		glb.AssertNoError(err)
+	} else if isDelegation && view.IsInFrozenSlot(ts.Slot, consts) {
+		unfreeze := view.UnfreezeSlot(consts)
 		glb.Infof("in the current slot %d the delegation output cannot be unlocked by the master lock because it is frozen until slot %d",
 			ts.Slot, unfreeze)
 		glb.Infof("safe revocation window is %d slots from now: slots %d - %d",
-			unfreeze-uint32(ts.Slot), ts.Slot, unfreeze)
-		glb.Infof("===============\n%s", dOut.LinesHRFull("     ").String())
+			unfreeze-ts.Slot, ts.Slot, unfreeze)
 		return
 	}
-	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletData.Account)
+
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
 	txb := txbuildercore.New(0)
 
 	// Consume the chain output as input 0.
