@@ -43,8 +43,6 @@ UTXOs and become permanently un-burnable.`,
 }
 
 func runFoundryRetireCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
-
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.Assertf(err == nil, "failed to parse chainID %q: %v", args[0], err)
 
@@ -53,6 +51,8 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 
 	target := glb.MustGetTarget()
 
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
 	client := glb.GetClient()
 
 	// Fetch the parsed foundry chain output.
@@ -63,7 +63,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 	fBytes, err := foundryIn.Output.ConstraintAt(ledger.ConstraintIndexFoundry)
 	glb.Assertf(err == nil, "output %s has no foundry constraint at index %d: %v",
 		foundryIn.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
-	fIn, err := ledger.FoundryFromBytes(fBytes)
+	fIn, err := lib.ParseFoundryBytecode(fBytes)
 	glb.AssertNoError(err)
 	if fIn.Supply > 0 {
 		glb.Infof("WARNING: foundry supply is %s -- retirement will be rejected by foundryNonDestructible if attached",
@@ -107,8 +107,7 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		util.Th(feeAmount), util.Th(fundingSum))
 
 	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(wallet.Account)
+	walletHolderID := base.HolderIDFromED25519PrivateKey(wallet.PrivateKey)
 	txb := txbuildercore.New(0)
 
 	// --- Input 0: the foundry output. Chain unlock = "discontinue"
@@ -128,11 +127,11 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 	}
 
-	ts := ledger.TimeNow()
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(ledger.L(foundryIn.ID.Slot()).TransactionPace))
+	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(consts.TransactionPace))
 	ts = base.MaximumTime(ts, foundryTs)
 	for _, in := range fundingIns {
 		ts = base.MaximumTime(ts, in.Timestamp())

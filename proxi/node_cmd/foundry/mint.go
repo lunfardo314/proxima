@@ -46,8 +46,6 @@ be the wallet's sigLock).`,
 }
 
 func runFoundryMintCmd(_ *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
-
 	chainID, err := base.ChainIDFromHexString(args[0])
 	glb.Assertf(err == nil, "failed to parse chainID %q: %v", args[0], err)
 
@@ -67,10 +65,13 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 	glb.PrintLRB(&lrbid)
 
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+
 	fBytes, err := foundryIn.Output.ConstraintAt(ledger.ConstraintIndexFoundry)
 	glb.Assertf(err == nil, "output %s has no foundry constraint at index %d: %v",
 		foundryIn.ID.StringShort(), ledger.ConstraintIndexFoundry, err)
-	fIn, err := ledger.FoundryFromBytes(fBytes)
+	fIn, err := lib.ParseFoundryBytecode(fBytes)
 	glb.AssertNoError(err)
 	glb.Infof("foundry current supply: %s", util.Th(fIn.Supply))
 	newSupply := fIn.Supply + amount
@@ -118,8 +119,7 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 		util.Th(needed), util.Th(availableForPRXI))
 
 	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(wallet.Account)
+	walletHolderID := base.HolderIDFromED25519PrivateKey(wallet.PrivateKey)
 	txb := txbuildercore.New(0)
 
 	// --- Input 0: the foundry chain output.
@@ -170,12 +170,12 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 	}
 
-	// Timestamp = max(foundry input ts + pace, funding inputs ts, ledger now).
-	ts := ledger.TimeNow()
+	// Timestamp = max(now, foundry input ts + pace, funding inputs ts).
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(ledger.L(foundryIn.ID.Slot()).TransactionPace))
+	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(consts.TransactionPace))
 	ts = base.MaximumTime(ts, foundryTs)
 	for _, in := range walletOutputs {
 		ts = base.MaximumTime(ts, in.Timestamp())
@@ -237,10 +237,12 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 }
 
 // outputCarriesTokenAmount reports whether the output has any
-// tokenAmount(...) constraint among its bytecode positions.
+// tokenAmount(...) constraint among its bytecode positions. Uses the
+// wallet-library parser — no ledger.L() singleton.
 func outputCarriesTokenAmount(o *ledger.Output) bool {
+	lib := glb.GetTxLibrary()
 	for _, raw := range o.ConstraintsRawBytes() {
-		if _, err := ledger.TokenAmountFromBytes(raw); err == nil {
+		if _, err := lib.ParseTokenAmountBytecode(raw); err == nil {
 			return true
 		}
 	}

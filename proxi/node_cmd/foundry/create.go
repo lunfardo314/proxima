@@ -54,7 +54,6 @@ unconstrained beyond the foundry() invariants.`,
 }
 
 func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
-	glb.InitLedgerFromNode()
 	walletData := glb.GetWalletData()
 	glb.Infof("wallet account: %s", walletData.Account.String())
 
@@ -90,14 +89,15 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 		util.Th(needed), util.Th(res.AvailableAmount))
 	walletOutputs := res.Outputs
 
-	ts := ledger.TimeNow()
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+
+	ts := consts.LedgerTimeFromClockTime(time.Now())
 	if ts.IsSlotBoundary() {
 		ts = ts.AddTicks(10)
 	}
-
-	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	walletHolderID := base.HolderID(walletData.Account)
 	txb := txbuildercore.New(0)
 
 	consumedBytes := make([][]byte, 0, len(walletOutputs))
