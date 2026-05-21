@@ -125,6 +125,71 @@ Design rationale and migration history: `claude/utxo-indexing.md`.
 7. `startSequencer()` - Optional sequencer
 8. `startAPIServer()` - REST API
 
+## proxi CLI: wasm-style wallet architecture
+
+`proxi` is modeled as an **external wasm wallet**: it does NOT depend
+on the in-process `ledger.L()` singleton for tx construction or display.
+Everything it needs is fetched over the API and held in per-process
+wallet state.
+
+**Per-process wallet state** (in `proxi/glb/`):
+
+| Helper | What it gives you |
+|--------|-------------------|
+| `glb.GetLedgerConstants()` | `*txbuildercore.Constants` — slot/tick math, clock conversion, epoch limits, pace, etc. Fetched from `/api/v1/ledger_constants`. |
+| `glb.GetTxLibrary()` | `*txbuildercore.Library` — compile / parse-bytecode-one-level / decompile bytecode + the wallet helper methods (`ParseChainConstraint`, `ParseDelegationOutput`, `ParseFoundryBytecode`, `ParseTokenAmountBytecode`, `ParseDelegationParams`). Fetched via `client.GetLibrary` (walks the upgrade chain). |
+| `glb.SubmitAndDisplay(txBytes, consumedUTXOBytes…)` | Submits via `/api/v1/submit_tx`; on failure prints the failing tx pretty-form using the wallet library. |
+| `client.Eval` / `client.EvalU64` | Batched closed-formula evaluator for things the wallet can't compute locally (e.g. `chainInflationMultiStep`). |
+
+**Compose recipes** live in `ledger/txbuildercore/helpers_*.go`:
+`NewSigLockOutput`, `NewChainLockOutput`, `NewTagAlongOutput`,
+`NewChainOrigin`, `NewChainTransition`, `NewDelegateLockBytecode` +
+`NewDelegateLockState` + `NewDelegationParams`, `NewFoundryBytecode` +
+`TokenFoundry` + `TokenSentinel` + `NewTokenAmountBytecode` +
+`AppendTokenAmountToOutput`, `NewSequencerRequestOutput` +
+`NewEnsureStopDelegationConstraint`, `NewRedeemScriptConstraint`.
+Wallet-side parsers return `*View` value types (`ChainConstraintView`,
+`DelegationOutputView`, `DelegationParamsView`, `FoundryView`,
+`TokenAmountView`) — pure byte parses, no eval, no singleton.
+
+**Canonical templates** to copy when writing a new site:
+- write path: `proxi/node_cmd/{send,compact,mkchain,killchain,fund}.go`
+- read-only display: `proxi/node_cmd/{balance,chain,utxos,allchains}.go`
+  + `proxi/node_cmd/seq_cmd/info.go`
+- delegation / foundry / sequencer write paths:
+  `proxi/node_cmd/delegate/`, `proxi/node_cmd/foundry/`,
+  `proxi/node_cmd/seq_cmd/`
+
+**Intentionally singleton-dependent** (NOT refactor candidates):
+- `proxi/db_cmd/*` — operate on the local BadgerDB directly, no node
+  API available. Singleton-dependent by design.
+- `proxi/node_cmd/chess_cmd/*` + `examples/chess_poc/*` — kept as the
+  in-tree typed-builder + singleton reference. `chess_poc` itself uses
+  `ledger.L()` + `*txbuilder.TxBuilder`.
+- `proxi/util_cmd/inflation.go` — eval-bound
+  `ChainInflationMultiStep`. Could route through `client.EvalU64`
+  but left on the singleton for now.
+- `proxi/snapshot_cmd/check.go` — typed multistate snapshot parsers.
+
+**Disabled bundle** (commented off; revive together when the faucet
+is ported to txbuildercore):
+- `proxi/glb/wallet_recipes.go` — legacy
+  `TransferFromED25519Wallet` / `MakeSendOutputTransaction` /
+  `MakeTransferTransaction` recipes.
+- `proxi/node_cmd/faucet_srv.go` — long-running faucet server.
+- `proxi/node_cmd/faucet_get.go` — `proxi node getfunds` client.
+
+**`InitLedgerFromNode`** still exists in `proxi/glb/node.go` for the
+chess/inflation/snapshot trio; the docstring lists the surviving
+callers. Most proxi commands should never call it.
+
+Key working rule for any new proxi site: **never reach for
+`ledger.L()` from a CLI command**. Take what you need from
+`glb.GetTxLibrary()` / `glb.GetLedgerConstants()` / `client.Eval*`.
+If something genuinely cannot be expressed wallet-side (e.g. a new
+eval-bound formula), add an entry to the closed-formula list of
+`/api/v1/eval` rather than reaching for the singleton.
+
 ## Working Rules
 
 - keep the code minimalist and as simple as possible 
