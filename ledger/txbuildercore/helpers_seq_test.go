@@ -20,7 +20,7 @@ import (
 )
 
 // fixtures used by every test below.
-func seqRequestFixtures(t *testing.T) (lib *txbuildercore.Library, target base.ChainID, sender ledger.SigLock, senderID base.HolderID) {
+func seqRequestFixtures(t *testing.T) (lib *txbuildercore.Library[any], target base.ChainID, sender ledger.SigLock, senderID base.HolderID) {
 	t.Helper()
 	lib = txbuildercoreLibFromGlobal(t)
 	for i := range target {

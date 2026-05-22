@@ -205,7 +205,7 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 // target is derived from the Controller kind (sigLock holder bytes
 // for sigLock targets, raw chainID bytes for chainLock targets).
 func buildSendWithDeadlineOutput(
-	lib *txbuildercore.Library,
+	lib *txbuildercore.Library[any],
 	targetCtrl ledger.Controller,
 	masterID base.HolderID,
 	amount uint64,

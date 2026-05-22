@@ -38,7 +38,7 @@ const (
 // chooses how the on-chain script unlocks the target side
 // (SendWithDeadlineTargetSigLock → sigLock holder; ...TargetChainLock
 // → controller of the chain whose chainID == target).
-func (l *Library) NewSendWithDeadlineLockBytecode(
+func (l *Library[any]) NewSendWithDeadlineLockBytecode(
 	targetType byte,
 	acceptanceSlots, cleanupSlots uint32,
 ) ([]byte, error) {
@@ -67,7 +67,7 @@ type SendWithDeadlineOutputParams struct {
 // Mirrors ledger.NewOutput(o.WithTokenBalance(...).WithLock(swd))
 // byte-for-byte; verified by the byte-identity test in
 // helpers_swd_test.go.
-func (l *Library) NewSendWithDeadlineOutput(par SendWithDeadlineOutputParams) (*Output, error) {
+func (l *Library[any]) NewSendWithDeadlineOutput(par SendWithDeadlineOutputParams) (*Output, error) {
 	lockBin, err := l.NewSendWithDeadlineLockBytecode(par.TargetType, par.AcceptanceSlots, par.CleanupSlots)
 	if err != nil {
 		return nil, err

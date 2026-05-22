@@ -1,8 +1,6 @@
 package txbuildercore
 
 import (
-	"sync"
-
 	"github.com/lunfardo314/proxima/ledger/base"
 )
 
@@ -31,47 +29,23 @@ const (
 	ChainLockName = "chainLock"
 )
 
-// lockBytecodeCache memoises the canonical lock bytecodes per-Library.
-// The bytecode is a per-kind constant (sigLock, tagAlong, chainLock,
-// …) — every output of that kind shares it. Compiling once and
-// caching avoids paying the parse / compile cost per output.
-type lockBytecodeCache struct {
-	mu    sync.Mutex
-	cache map[string][]byte
-}
-
-func newLockBytecodeCache() *lockBytecodeCache {
-	return &lockBytecodeCache{cache: map[string][]byte{}}
-}
-
-func (c *lockBytecodeCache) get(lib *Library, name string) ([]byte, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if b, ok := c.cache[name]; ok {
+// lockBytecode returns the canonical bytecode for lock name, compiling
+// once and caching per-Library. The cache is initialised on first use.
+func (l *Library[T]) lockBytecode(name string) ([]byte, error) {
+	l.lockCacheMu.Lock()
+	defer l.lockCacheMu.Unlock()
+	if l.lockCache == nil {
+		l.lockCache = map[string][]byte{}
+	}
+	if b, ok := l.lockCache[name]; ok {
 		return b, nil
 	}
-	b, err := lib.CompileExpression(name)
+	b, err := l.CompileExpression(name)
 	if err != nil {
 		return nil, err
 	}
-	c.cache[name] = b
+	l.lockCache[name] = b
 	return b, nil
-}
-
-// Cache is the per-Library bytecode cache. Wallets normally have one
-// Library instance, but multiple are supported.
-var lockCachesMu sync.Mutex
-var lockCaches = map[*Library]*lockBytecodeCache{}
-
-func cacheFor(lib *Library) *lockBytecodeCache {
-	lockCachesMu.Lock()
-	defer lockCachesMu.Unlock()
-	c, ok := lockCaches[lib]
-	if !ok {
-		c = newLockBytecodeCache()
-		lockCaches[lib] = c
-	}
-	return c
 }
 
 // NewSigLockOutput composes the canonical sigLock output:
@@ -82,8 +56,8 @@ func cacheFor(lib *Library) *lockBytecodeCache {
 //
 // holderID is the 32-byte hash of (sigType || publicKey) — see
 // base.HolderIDFromPublicKey.
-func NewSigLockOutput(lib *Library, amount uint64, holderID base.HolderID) (*Output, error) {
-	sigLockBin, err := cacheFor(lib).get(lib, SigLockName)
+func NewSigLockOutput(lib *Library[any], amount uint64, holderID base.HolderID) (*Output, error) {
+	sigLockBin, err := lib.lockBytecode(SigLockName)
 	if err != nil {
 		return nil, err
 	}
@@ -102,8 +76,8 @@ func NewSigLockOutput(lib *Library, amount uint64, holderID base.HolderID) (*Out
 //
 // chainID is the 32-byte chain identifier of the chain that controls
 // this output (the chain's controller is the spender).
-func NewChainLockOutput(lib *Library, amount uint64, chainID base.ChainID) (*Output, error) {
-	chainLockBin, err := cacheFor(lib).get(lib, ChainLockName)
+func NewChainLockOutput(lib *Library[any], amount uint64, chainID base.ChainID) (*Output, error) {
+	chainLockBin, err := lib.lockBytecode(ChainLockName)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +94,8 @@ func NewChainLockOutput(lib *Library, amount uint64, chainID base.ChainID) (*Out
 //	slot 1 (index-values):  tuple [senderID, targetSequencerID]
 //	                        (sender at position 0 per §4.1 master-first)
 //	slot 2 (lock):          canonical tagAlong bytecode (per-Library cache)
-func NewTagAlongOutput(lib *Library, fee uint64, targetSequencerID base.ChainID, senderID base.HolderID) (*Output, error) {
-	tagAlongBin, err := cacheFor(lib).get(lib, TagAlongLockName)
+func NewTagAlongOutput(lib *Library[any], fee uint64, targetSequencerID base.ChainID, senderID base.HolderID) (*Output, error) {
+	tagAlongBin, err := lib.lockBytecode(TagAlongLockName)
 	if err != nil {
 		return nil, err
 	}

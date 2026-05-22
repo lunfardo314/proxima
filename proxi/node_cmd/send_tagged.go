@@ -256,7 +256,7 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 // from NewSigLockOutput / NewChainLockOutput; AppendTokenAmountToOutput
 // adds the constraint + the dedup'd controller||tag compound entry to
 // slot 1 (mirroring ledger.OutputBuilder.WithTokenAmount byte-for-byte).
-func buildTokenLockedOutput(lib *txbuildercore.Library, prxi uint64, targetCtrl ledger.Controller, tag base.ChainID, amount uint64) (*txbuildercore.Output, error) {
+func buildTokenLockedOutput(lib *txbuildercore.Library[any], prxi uint64, targetCtrl ledger.Controller, tag base.ChainID, amount uint64) (*txbuildercore.Output, error) {
 	var baseOut *txbuildercore.Output
 	var err error
 	switch c := targetCtrl.(type) {
@@ -285,7 +285,7 @@ func buildTokenLockedOutput(lib *txbuildercore.Library, prxi uint64, targetCtrl 
 
 // pickTokenAmount returns the first tokenAmount(tag, _) constraint found
 // on the output. Singleton-free — uses the wallet library.
-func pickTokenAmount(lib *txbuildercore.Library, o *ledger.Output, tag base.ChainID) (txbuildercore.TokenAmountView, bool) {
+func pickTokenAmount(lib *txbuildercore.Library[any], o *ledger.Output, tag base.ChainID) (txbuildercore.TokenAmountView, bool) {
 	for _, raw := range o.ConstraintsRawBytes() {
 		ta, err := lib.ParseTokenAmountBytecode(raw)
 		if err == nil && ta.Tag == tag {
@@ -297,7 +297,7 @@ func pickTokenAmount(lib *txbuildercore.Library, o *ledger.Output, tag base.Chai
 
 // outputCarriesAnyTokenAmount reports whether the output has any
 // tokenAmount(...) constraint regardless of tag.
-func outputCarriesAnyTokenAmount(lib *txbuildercore.Library, o *ledger.Output) bool {
+func outputCarriesAnyTokenAmount(lib *txbuildercore.Library[any], o *ledger.Output) bool {
 	for _, raw := range o.ConstraintsRawBytes() {
 		if _, err := lib.ParseTokenAmountBytecode(raw); err == nil {
 			return true

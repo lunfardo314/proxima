@@ -47,7 +47,7 @@ const FoundryIdxNone byte = 0xFF
 
 // NewFoundryBytecode emits the 1-arg foundry(z64/supply) constraint
 // at slot 4 of a foundry chain output.
-func (l *Library) NewFoundryBytecode(supply uint64) ([]byte, error) {
+func (l *Library[any]) NewFoundryBytecode(supply uint64) ([]byte, error) {
 	return l.CompileExpression(fmt.Sprintf(foundryTemplate, supply))
 }
 
@@ -63,7 +63,7 @@ type FoundryView struct {
 // ParseFoundryBytecode decodes a foundry constraint bytecode. Pure
 // byte parse — no eval. Mirrors ledger.FoundryFromBytesWithLib but
 // stays singleton-free.
-func (l *Library) ParseFoundryBytecode(data []byte) (FoundryView, error) {
+func (l *Library[any]) ParseFoundryBytecode(data []byte) (FoundryView, error) {
 	sym, _, args, err := l.ParseBytecodeOneLevel(data, 1)
 	if err != nil {
 		return FoundryView{}, fmt.Errorf("ParseFoundryBytecode: %w", err)
@@ -92,7 +92,7 @@ type TokenAmountView struct {
 // ledger.TokenAmountFromBytesWithLib. Returns an error when the
 // amount is 0 (the server-side parser rejects that too, since a
 // zero-amount tokenAmount entry has no useful semantics).
-func (l *Library) ParseTokenAmountBytecode(data []byte) (TokenAmountView, error) {
+func (l *Library[any]) ParseTokenAmountBytecode(data []byte) (TokenAmountView, error) {
 	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return TokenAmountView{}, fmt.Errorf("ParseTokenAmountBytecode: %w", err)
@@ -122,7 +122,7 @@ func (l *Library) ParseTokenAmountBytecode(data []byte) (TokenAmountView, error)
 // Push via TxBuilder.PushTxConstraint when the tx moves tokens of
 // tag T without touching any foundry (the closing balance equation
 // must be exact: in == out for tag T).
-func (l *Library) TokenSentinel(tag base.ChainID) ([]byte, error) {
+func (l *Library[any]) TokenSentinel(tag base.ChainID) ([]byte, error) {
 	return l.TokenFoundry(tag, FoundryIdxNone)
 }
 
@@ -134,7 +134,7 @@ func (l *Library) TokenSentinel(tag base.ChainID) ([]byte, error) {
 // Push when the tx mints / burns via the produced foundry at the
 // given output index. foundryProducedIdx == FoundryIdxNone (0xFF)
 // is the pure-conservation form (equivalent to TokenSentinel).
-func (l *Library) TokenFoundry(tag base.ChainID, foundryProducedIdx byte) ([]byte, error) {
+func (l *Library[any]) TokenFoundry(tag base.ChainID, foundryProducedIdx byte) ([]byte, error) {
 	src := fmt.Sprintf(tokenSourceTemplate, hex.EncodeToString(tag[:]), foundryProducedIdx)
 	return l.CompileExpression(src)
 }
@@ -144,7 +144,7 @@ func (l *Library) TokenFoundry(tag base.ChainID, foundryProducedIdx byte) ([]byt
 // UTXO are allowed (one per tag carried). Use
 // AppendTokenAmountToOutput to also mirror the compound-index-value
 // side-effect ledger.OutputBuilder.WithTokenAmount applies.
-func (l *Library) NewTokenAmountBytecode(tag base.ChainID, amount uint64) ([]byte, error) {
+func (l *Library[any]) NewTokenAmountBytecode(tag base.ChainID, amount uint64) ([]byte, error) {
 	src := fmt.Sprintf(tokenAmountTemplate, hex.EncodeToString(tag[:]), amount)
 	return l.CompileExpression(src)
 }
@@ -162,7 +162,7 @@ func (l *Library) NewTokenAmountBytecode(tag base.ChainID, amount uint64) ([]byt
 // IMPORTANT: call AFTER the lock has been written to slot 1.
 // WithLock overwrites slot 1; a compound entry added before would
 // be lost.
-func (l *Library) AppendTokenAmountToOutput(b *OutputBuilder, tag base.ChainID, amount uint64) error {
+func (l *Library[any]) AppendTokenAmountToOutput(b *OutputBuilder, tag base.ChainID, amount uint64) error {
 	bin, err := l.NewTokenAmountBytecode(tag, amount)
 	if err != nil {
 		return err

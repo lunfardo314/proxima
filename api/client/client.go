@@ -124,7 +124,7 @@ func (c *APIClient) GetLedgerDefinitionJSON() ([]byte, error) {
 // *txbuildercore.Library ready for composing transactions. Does NOT
 // touch the ledger.L() singleton — the wallet caller owns the returned
 // library instance.
-func (c *APIClient) GetLibrary(slot *uint32) (*txbuildercore.Library, error) {
+func (c *APIClient) GetLibrary(slot *uint32) (*txbuildercore.Library[any], error) {
 	resp, err := c.GetLedgerDefinition(slot)
 	if err != nil {
 		return nil, err

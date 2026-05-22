@@ -127,7 +127,7 @@ func runSeqInfoCmd(_ *cobra.Command, args []string) {
 // printSequencerOutputSummary writes a wallet-side summary of the
 // sequencer's chain output: chain metadata + balance + the controller
 // lock symbol. Replaces the singleton-bound seqUTXO.LinesHR dump.
-func printSequencerOutputSummary(lib *txbuildercore.Library, seqUTXO *ledger.OutputWithChainID, seqDataStr string) {
+func printSequencerOutputSummary(lib *txbuildercore.Library[any], seqUTXO *ledger.OutputWithChainID, seqDataStr string) {
 	glb.Infof("\n---- the chain output %s ----", seqDataStr)
 	glb.Infof("    chain ID:        %s", seqUTXO.ChainID.String())
 	glb.Infof("    output ID:       %s", seqUTXO.ID.String())

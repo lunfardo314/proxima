@@ -83,7 +83,7 @@ type chainInfo struct {
 	lockBin     []byte
 }
 
-func parseChainInfo(o *ledger.OutputWithChainID, lib *txbuildercore.Library) chainInfo {
+func parseChainInfo(o *ledger.OutputWithChainID, lib *txbuildercore.Library[any]) chainInfo {
 	ci := chainInfo{o: o}
 	ci.lockBin, _ = o.Output.ConstraintAt(ledger.ConstraintIndexLock)
 
@@ -103,7 +103,7 @@ func parseChainInfo(o *ledger.OutputWithChainID, lib *txbuildercore.Library) cha
 	return ci
 }
 
-func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library, currentSlot uint32) {
+func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], currentSlot uint32) {
 	perc := func(denom, num uint64) string {
 		return fmt.Sprintf("%.2f%%", 100*float64(denom)/float64(num))
 	}
@@ -188,7 +188,7 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	glb.Infof("total ADJUSTED supply:         %s", util.Th(ledger.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
 }
 
-func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Library) {
+func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Library[any]) {
 	count := 0
 	counter := 0
 	for _, o := range chains {
@@ -229,7 +229,7 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Li
 	glb.Infof("\ntotal %d chains", count)
 }
 
-func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library, currentSlot uint32) {
+func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], currentSlot uint32) {
 	glb.Infof("\nshow sequencers only = %v", showSequencersOnly)
 	glb.Infof("show delegations only = %v", showDelegationsOnly)
 
@@ -242,7 +242,7 @@ func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.Br
 	}
 }
 
-func listChainOwners(chains []*ledger.OutputWithChainID, _ *multistate.BranchDataJSONAble, lib *txbuildercore.Library) {
+func listChainOwners(chains []*ledger.OutputWithChainID, _ *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any]) {
 	m := make(map[string][]*ledger.OutputWithChainID)
 	infos := make(map[base.ChainID]chainInfo, len(chains))
 
@@ -301,7 +301,7 @@ func listChainOwners(chains []*ledger.OutputWithChainID, _ *multistate.BranchDat
 // `Output.Lock().String()`. Singleton-free: uses the wallet library
 // to decompile the lock bytecode at index 2 to its EasyFL source
 // form. Stable per-lock so it works as an owner-grouping key.
-func formatLockBytecode(lockBin []byte, lib *txbuildercore.Library) string {
+func formatLockBytecode(lockBin []byte, lib *txbuildercore.Library[any]) string {
 	if len(lockBin) == 0 {
 		return "<no-lock>"
 	}

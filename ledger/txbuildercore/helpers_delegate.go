@@ -58,7 +58,7 @@ const (
 // or maxFrozenEpochs == targetMaxFrozenEpochs (the "use target's"
 // shorthand the validator accepts); otherwise the byte literal of
 // maxFrozenEpochs. Mirrors ledger.DelegateLock.Source().
-func (l *Library) NewDelegateLockBytecode(
+func (l *Library[any]) NewDelegateLockBytecode(
 	maxFrozenEpochs byte,
 	requiredInflationShare uint16,
 	epochSlots uint32,
@@ -76,7 +76,7 @@ func (l *Library) NewDelegateLockBytecode(
 // bytecode (slot 4 of a delegation output). At chain origin the
 // wallet uses (0, 0) — the zero state. The validator updates it on
 // every transit; the wallet just needs to write the zero value.
-func (l *Library) NewDelegateLockState(lastFrozenEpoch uint32, state byte) ([]byte, error) {
+func (l *Library[any]) NewDelegateLockState(lastFrozenEpoch uint32, state byte) ([]byte, error) {
 	src := fmt.Sprintf(delegateLockStateTemplate, lastFrozenEpoch, state)
 	return l.CompileExpression(src)
 }
@@ -85,7 +85,7 @@ func (l *Library) NewDelegateLockState(lastFrozenEpoch uint32, state byte) ([]by
 // bytecode (slot 6 of a chain output that opts in to accept
 // delegations). Attachable only at chain origin; pinned across every
 // chain transit via selfImmutableOnSuccessorIndex.
-func (l *Library) NewDelegationParams(epochSlots uint32, maxFrozenEpochs byte) ([]byte, error) {
+func (l *Library[any]) NewDelegationParams(epochSlots uint32, maxFrozenEpochs byte) ([]byte, error) {
 	src := fmt.Sprintf(delegationParamsTemplate, epochSlots, maxFrozenEpochs)
 	return l.CompileExpression(src)
 }
@@ -100,7 +100,7 @@ type DelegationParamsView struct {
 // ParseDelegationParams decodes a delegationParams constraint
 // bytecode. Pure byte parse — no eval. Mirrors
 // ledger.DelegationParamsFromBytesWithLib.
-func (l *Library) ParseDelegationParams(data []byte) (*DelegationParamsView, error) {
+func (l *Library[any]) ParseDelegationParams(data []byte) (*DelegationParamsView, error) {
 	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return nil, fmt.Errorf("ParseDelegationParams: %w", err)
@@ -149,7 +149,7 @@ type DelegationInitOutputParams struct {
 //
 // Mirrors ledger.MakeDelegationInitOutput byte-for-byte (verified by
 // the byte-identity test in helpers_delegate_test.go).
-func (l *Library) NewDelegationInitOutput(par DelegationInitOutputParams) (*Output, error) {
+func (l *Library[any]) NewDelegationInitOutput(par DelegationInitOutputParams) (*Output, error) {
 	delegateLockBin, err := l.NewDelegateLockBytecode(par.MaxFrozenEpochs, par.RequiredInflationShare, par.EpochSlots, par.TargetMaxFrozenEpochs)
 	if err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ type DelegateLockStateView struct {
 
 // ParseDelegateLockState decodes a delegateLockState constraint
 // bytecode. Pure byte parse via the wallet library — no eval.
-func (l *Library) ParseDelegateLockState(data []byte) (DelegateLockStateView, error) {
+func (l *Library[any]) ParseDelegateLockState(data []byte) (DelegateLockStateView, error) {
 	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return DelegateLockStateView{}, fmt.Errorf("ParseDelegateLockState: %w", err)
@@ -233,7 +233,7 @@ type DelegationOutputView struct {
 // (nil, false, nil) when the output is not a delegation. Errors only
 // on malformed bytes that look like delegation (right symbol, wrong
 // arg shape).
-func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*DelegationOutputView, bool, error) {
+func (l *Library[any]) ParseDelegationOutput(o *Output, oid base.OutputID) (*DelegationOutputView, bool, error) {
 	if o == nil || o.NumElements() < 5 {
 		// every delegation output has at least 5 elements (amounts,
 		// index-values, lock, chain, state).
@@ -341,7 +341,7 @@ func (l *Library) ParseDelegationOutput(o *Output, oid base.OutputID) (*Delegati
 // ParseChainConstraintChainID extracts the chainID of a chain output,
 // resolving the origin case (NilChainID → blake2b(oid)). Thin wrapper
 // over ParseChainConstraint for sites that need only the chainID.
-func (l *Library) ParseChainConstraintChainID(chainBin []byte, oid base.OutputID) (base.ChainID, error) {
+func (l *Library[any]) ParseChainConstraintChainID(chainBin []byte, oid base.OutputID) (base.ChainID, error) {
 	cc, err := l.ParseChainConstraint(chainBin)
 	if err != nil {
 		return base.NilChainID, err

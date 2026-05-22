@@ -23,10 +23,10 @@ func init() {
 }
 
 // txbuildercoreLibFromGlobal serialises the current ledger.L() singleton to
-// JSON, parses it back, and constructs a txbuildercore.Library. This mimics
+// JSON, parses it back, and constructs a txbuildercore.Library[any]. This mimics
 // what the wallet does at init time (parse bundled library.json,
 // build a Library) while reusing the test environment's library.
-func txbuildercoreLibFromGlobal(t *testing.T) *txbuildercore.Library {
+func txbuildercoreLibFromGlobal(t *testing.T) *txbuildercore.Library[any] {
 	t.Helper()
 	lib := ledger.L(base.MaxSlot)
 	jsonBytes := easyfl.ToJSON(lib.Library, true, false)

@@ -15,7 +15,7 @@ import (
 
 var (
 	txLibOnce sync.Once
-	txLibPtr  *txbuildercore.Library
+	txLibPtr  *txbuildercore.Library[any]
 	txLibErr  error
 
 	ledgerConstantsOnce sync.Once
@@ -27,7 +27,7 @@ var (
 // from the connected node on first call (latest slot) and cached for
 // the lifetime of the proxi command process. Panics if the fetch
 // fails — wallet flows can't proceed without it.
-func GetTxLibrary() *txbuildercore.Library {
+func GetTxLibrary() *txbuildercore.Library[any] {
 	txLibOnce.Do(func() {
 		txLibPtr, txLibErr = GetClient().GetLibrary(nil)
 	})
@@ -64,7 +64,7 @@ func GetLedgerConstants() *txbuildercore.Constants {
 // Pretty-printing uses transaction.LinesFromTransactionBytesWithLib
 // with a decompiler built from the wallet library — no ledger.L()
 // singleton dependency at the surface, though Output rendering still
-// uses the singleton internally (see LibraryDecompiler doc).
+// uses the singleton internally (see transaction.Decompiler doc).
 func SubmitAndDisplay(txBytes []byte, consumedUTXOBytes ...[]byte) error {
 	lib := GetTxLibrary()
 	var opts []client.SubmitOption
@@ -89,11 +89,7 @@ func SubmitAndDisplay(txBytes []byte, consumedUTXOBytes ...[]byte) error {
 // txDisplay renders the LinesHR form of a tx for log output. Uses the
 // wallet library for tx-level constraint decompilation; output
 // rendering inside Output._lines still reaches the singleton (see
-// transaction.LibraryDecompiler doc).
-func txDisplay(lib *txbuildercore.Library, txBytes []byte) string {
-	dec := transaction.LibraryDecompiler{
-		DecompileBytecode:     func(code []byte) (string, error) { return lib.DecompileBytecode(code) },
-		ParseBytecodeOneLevel: lib.ParseBytecodeOneLevel,
-	}
-	return transaction.LinesFromTransactionBytesWithLib(dec, txBytes, nil).String()
+// transaction.Decompiler doc).
+func txDisplay(lib *txbuildercore.Library[any], txBytes []byte) string {
+	return transaction.LinesFromTransactionBytesWithLib(lib, txBytes, nil).String()
 }

@@ -156,7 +156,7 @@ func printDelegationViewLines(view *txbuildercore.DelegationOutputView, currentS
 // (= the chain ID), circulating supply, the optional policy script at
 // index 5 with a recognised description, and (when -D / --decompile is
 // set) the decompiled EasyFL source of the policy.
-func printFoundryDetails(out *ledger.OutputWithChainID, f txbuildercore.FoundryView, chainID base.ChainID, lib *txbuildercore.Library) {
+func printFoundryDetails(out *ledger.OutputWithChainID, f txbuildercore.FoundryView, chainID base.ChainID, lib *txbuildercore.Library[any]) {
 	glb.Infof("FOUNDRY DATA:\n-----------------")
 	// The foundry's tag IS its chain ID — read from the chain
 	// constraint, not from a foundry arg.

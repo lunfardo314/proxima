@@ -25,7 +25,7 @@ const EnsureStopDelegationName = "ensureStopDelegation"
 //	ensureStopDelegation(0x<chainID>)
 //
 // for use at slot 4 of an ask-stop-delegation request output.
-func (l *Library) NewEnsureStopDelegationConstraint(chainID base.ChainID) ([]byte, error) {
+func (l *Library[any]) NewEnsureStopDelegationConstraint(chainID base.ChainID) ([]byte, error) {
 	src := EnsureStopDelegationName + "(0x" + hex.EncodeToString(chainID[:]) + ")"
 	return l.CompileExpression(src)
 }
@@ -43,7 +43,7 @@ func (l *Library) NewEnsureStopDelegationConstraint(chainID base.ChainID) ([]byt
 // `extras` appends one constraint per byte slice at slots 4, 5, …
 // in declaration order. ask-stop-delegation uses one extra (the
 // ensureStopDelegation constraint).
-func (l *Library) NewSequencerRequestOutput(
+func (l *Library[any]) NewSequencerRequestOutput(
 	fee uint64,
 	target base.ChainID,
 	sender base.HolderID,
@@ -51,7 +51,7 @@ func (l *Library) NewSequencerRequestOutput(
 	params *smallkv.Map,
 	extras ...[]byte,
 ) (*Output, error) {
-	tagAlongBin, err := cacheFor(l).get(l, TagAlongLockName)
+	tagAlongBin, err := l.lockBytecode(TagAlongLockName)
 	if err != nil {
 		return nil, err
 	}

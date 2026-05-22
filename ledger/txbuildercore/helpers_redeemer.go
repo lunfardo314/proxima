@@ -33,7 +33,7 @@ const (
 // l.CompileLocalScript(...) on the wallet side. Push the
 // result via TxBuilder.PushTxConstraint — it must sit at the
 // TxConstraints position to be honoured by the validator.
-func (l *Library) NewRedeemScriptConstraint(bin engine.LocalScriptBin) ([]byte, error) {
+func (l *Library[any]) NewRedeemScriptConstraint(bin engine.LocalScriptBin) ([]byte, error) {
 	src := fmt.Sprintf(redeemScriptTemplate, hex.EncodeToString(bin))
 	return l.CompileExpression(src)
 }
@@ -61,7 +61,7 @@ func LocalScriptHash(bin engine.LocalScriptBin) [32]byte {
 //
 // The wallet does not need to know the callee's expected types
 // beyond the literal it emits.
-func (l *Library) NewCallRedeemerConstraint(scriptHash [32]byte, fnIdx byte, argsSrc ...string) ([]byte, error) {
+func (l *Library[any]) NewCallRedeemerConstraint(scriptHash [32]byte, fnIdx byte, argsSrc ...string) ([]byte, error) {
 	var src string
 	if len(argsSrc) == 0 {
 		src = fmt.Sprintf(callRedeemerNoArgsTemplate, hex.EncodeToString(scriptHash[:]), fnIdx)

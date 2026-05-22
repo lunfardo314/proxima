@@ -161,7 +161,7 @@ type foundrySummary struct {
 // displayNativeTokens scans every output for tokenAmount(tag, amount)
 // constraints and reports the per-tag sum. Uses the wallet library's
 // ParseTokenAmountBytecode — no ledger.L() singleton.
-func displayNativeTokens(outs []*ledger.OutputWithID, lib *txbuildercore.Library) {
+func displayNativeTokens(outs []*ledger.OutputWithID, lib *txbuildercore.Library[any]) {
 	totals := make(map[base.ChainID]uint64)
 	utxoCount := make(map[base.ChainID]int)
 	for _, o := range outs {
@@ -206,7 +206,7 @@ func displayNativeTokens(outs []*ledger.OutputWithID, lib *txbuildercore.Library
 // and whether an immutable policy script sits at index 5. Wallet
 // library used for both foundry-supply parsing and chain-ID
 // resolution — no ledger.L() singleton.
-func displayFoundries(outs []*ledger.OutputWithID, lib *txbuildercore.Library) {
+func displayFoundries(outs []*ledger.OutputWithID, lib *txbuildercore.Library[any]) {
 	var foundries []foundrySummary
 	for _, o := range outs {
 		fBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexFoundry)
@@ -262,7 +262,7 @@ func displayFoundries(outs []*ledger.OutputWithID, lib *txbuildercore.Library) {
 // two predefined policies; falls back to a "custom (...)" description
 // for anything else. Returns "no policy" for empty/absent bytecode.
 // Wallet-library based — no ledger.L() singleton.
-func policyDescriptionLine(policy []byte, lib *txbuildercore.Library) string {
+func policyDescriptionLine(policy []byte, lib *txbuildercore.Library[any]) string {
 	if len(policy) == 0 {
 		return "no policy"
 	}
@@ -271,7 +271,7 @@ func policyDescriptionLine(policy []byte, lib *txbuildercore.Library) string {
 
 // printDecompiledPolicySource decompiles the policy bytecode and prints
 // it as a single indented line. Used by --decompile / -D flags.
-func printDecompiledPolicySource(policy []byte, lib *txbuildercore.Library, indent string) {
+func printDecompiledPolicySource(policy []byte, lib *txbuildercore.Library[any], indent string) {
 	src, err := lib.DecompileBytecode(policy)
 	if err != nil {
 		glb.Infof("%ssource: <decompile failed: %v>", indent, err)
@@ -285,7 +285,7 @@ func printDecompiledPolicySource(policy []byte, lib *txbuildercore.Library, inde
 // predefined policies (foundryNonDestructible, foundryMaxSupply(N))
 // and prints the cap for the parametric one; everything else is
 // labeled "custom (<symbol>)".
-func describePolicy(policy []byte, lib *txbuildercore.Library) string {
+func describePolicy(policy []byte, lib *txbuildercore.Library[any]) string {
 	sym, _, args, err := lib.ParseBytecodeOneLevel(policy)
 	if err != nil {
 		return "custom (unparseable)"

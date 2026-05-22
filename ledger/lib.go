@@ -72,6 +72,14 @@ func (lib *Library) DefinitionsJSON() []byte {
 	return easyfl.ToJSON(lib.Library, true, false)
 }
 
+// Decompile is the non-generic facade over engine.Library.DecompileBytecode
+// (called without local-script substitution). Its signature matches the
+// one on txbuildercore.Library so both library types satisfy the
+// transaction.Decompiler interface used by the tx display path.
+func (lib *Library) Decompile(code []byte) (string, error) {
+	return lib.Library.DecompileBytecode(code)
+}
+
 // UpgradeChainData returns the upgrade chain data for this library.
 // Returns nil if the library was not loaded from the DB (e.g., created in-memory for testing).
 func (lib *Library) UpgradeChainData() *UpgradeChainData {

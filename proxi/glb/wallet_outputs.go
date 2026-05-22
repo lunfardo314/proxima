@@ -12,7 +12,7 @@ import (
 // given controller (sigLock or chainLock). Returns an error if the
 // controller is of an unsupported lock type. Shared across proxi
 // sites that need to produce a basic locked output.
-func BuildLockOutput(lib *txbuildercore.Library, amount uint64, lock ledger.Lock) (*txbuildercore.Output, error) {
+func BuildLockOutput(lib *txbuildercore.Library[any], amount uint64, lock ledger.Lock) (*txbuildercore.Output, error) {
 	switch c := lock.(type) {
 	case ledger.SigLock:
 		return txbuildercore.NewSigLockOutput(lib, amount, base.HolderID(c))

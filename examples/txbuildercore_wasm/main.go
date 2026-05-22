@@ -15,7 +15,7 @@
 //     embeds it via //go:embed only so `go run` / `tinygo build` are
 //     self-contained. Parsing goes through encoding/json into the
 //     descriptor type — no host call-out at compose time.
-//  2. Build a txbuildercore.Library from that descriptor.
+//  2. Build a txbuildercore.Library[any] from that descriptor.
 //  3. Compose a one-input, one-output sigLock transfer using the
 //     txbuildercore wallet helpers (NewSigLockOutput).
 //  4. Sign with ed25519.

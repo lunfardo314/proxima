@@ -50,7 +50,7 @@ const (
 // LockKindOther is returned both for unrecognised locks and for
 // classification errors (malformed bytes, mismatched arg shapes).
 // Callers that need a hard error path should classify themselves.
-func (l *Library) ClassifyLock(utxoBytes []byte, walletHolderID base.HolderID) (LockKind, error) {
+func (l *Library[any]) ClassifyLock(utxoBytes []byte, walletHolderID base.HolderID) (LockKind, error) {
 	o, err := OutputFromBytes(utxoBytes)
 	if err != nil {
 		return LockKindOther, err

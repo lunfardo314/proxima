@@ -31,7 +31,7 @@ const (
 // The empty predecessor reference (`0x`) is the origin sentinel.
 // At origin the chain ID is unknown (it's derived from the output ID
 // after the tx settles), so NilChainID — all zeros — goes in.
-func (l *Library) NewChainOrigin(startSlot uint32) ([]byte, error) {
+func (l *Library[any]) NewChainOrigin(startSlot uint32) ([]byte, error) {
 	src := fmt.Sprintf(chainConstraintTemplateOrigin,
 		hex.EncodeToString(base.NilChainID[:]),
 		"", // empty predRefHex — origin sentinel
@@ -49,7 +49,7 @@ func (l *Library) NewChainOrigin(startSlot uint32) ([]byte, error) {
 //
 // predIdx is the 1-byte input index of the consumed predecessor
 // chain output.
-func (l *Library) NewChainTransition(
+func (l *Library[any]) NewChainTransition(
 	chainID base.ChainID,
 	predInputIndex byte,
 	originSlot uint32,
@@ -109,7 +109,7 @@ type ChainConstraintView struct {
 
 // ParseChainConstraint decodes a chain constraint bytecode. Pure byte
 // parse — no eval. Mirrors ledger.ChainConstraintFromBytesWithLib.
-func (l *Library) ParseChainConstraint(data []byte) (*ChainConstraintView, error) {
+func (l *Library[any]) ParseChainConstraint(data []byte) (*ChainConstraintView, error) {
 	sym, _, args, err := l.ParseBytecodeOneLevel(data, 7)
 	if err != nil {
 		return nil, fmt.Errorf("ParseChainConstraint: %w", err)
