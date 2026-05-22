@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -602,7 +603,7 @@ func TestChain2(t *testing.T) {
 
 		txb.SignED25519(privKey0)
 
-		txBytes, _, txString, err := txb.BytesWithValidation()
+		txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 		if err != nil {
 			t.Logf("\n---- error: %v", err)
 			return txString, err
@@ -719,7 +720,7 @@ func TestChain3(t *testing.T) {
 
 	txb.SignED25519(privKey0)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 	if err != nil {
 		t.Logf("error: %v\n---------------------------\n%s", err, txString)
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set"
 	"github.com/lunfardo314/proxima/util/testutil"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,7 +76,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1 slot", func(t *testing.T) {
 		ts := predTs.AddSlots(1)
 		txb := newTxb(ts)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -83,7 +84,7 @@ func TestBase(t *testing.T) {
 	t.Run("+100 slots", func(t *testing.T) {
 		ts := predTs.AddSlots(100)
 		txb := newTxb(ts)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -91,7 +92,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1000 slots", func(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -99,7 +100,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1 slot frozen 1 epoch", func(t *testing.T) {
 		ts := predTs.AddSlots(1)
 		txb := newTxb(ts, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -107,7 +108,7 @@ func TestBase(t *testing.T) {
 	t.Run("+100 slots frozen 1 epoch", func(t *testing.T) {
 		ts := predTs.AddSlots(100)
 		txb := newTxb(ts, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -115,7 +116,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1000 slots frozen 1 epoch", func(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -123,7 +124,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1 slot frozen 4 epochs", func(t *testing.T) {
 		ts := predTs.AddSlots(1)
 		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -131,7 +132,7 @@ func TestBase(t *testing.T) {
 	t.Run("+100 slots frozen 4 epochs", func(t *testing.T) {
 		ts := predTs.AddSlots(100)
 		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -139,7 +140,7 @@ func TestBase(t *testing.T) {
 	t.Run("+1000 slots frozen 4 epochs", func(t *testing.T) {
 		ts := predTs.AddSlots(1000)
 		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -147,7 +148,7 @@ func TestBase(t *testing.T) {
 	t.Run("+2000 slots frozen 4 epochs", func(t *testing.T) {
 		ts := predTs.AddSlots(2000)
 		txb := newTxb(ts, 11_000_000, 11_000_000, 11_000_000, 11_000_000)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -164,7 +165,7 @@ func TestBase(t *testing.T) {
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -182,7 +183,7 @@ func TestBase(t *testing.T) {
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -201,7 +202,7 @@ func TestBase(t *testing.T) {
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -217,7 +218,7 @@ func TestBase(t *testing.T) {
 		_, _, err := txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -236,7 +237,7 @@ func TestBase(t *testing.T) {
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -261,7 +262,7 @@ func TestBase(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -282,7 +283,7 @@ func TestBase(t *testing.T) {
 		_, _, err = txb.AddTagAlongInput(tagAlongOut)
 		require.NoError(t, err)
 
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		t.Logf("\n--------- tx --------\n%s", txString)
 
 		require.NoError(t, err)
@@ -374,7 +375,7 @@ func TestFreezeOneStep(t *testing.T) {
 				return
 			}
 
-			txBytes, _, txString, errTx := txb.BytesWithValidation()
+			txBytes, _, txString, errTx := txbtest.BuildAndValidate(txb)
 			if prnTx {
 				if errTx != nil {
 					t.Logf("------- ERROR: %v\n--------- failing tx --------\n%s", errTx, txString)
@@ -595,7 +596,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 				}
 				epochStats.nFreezes++
 			}
-			txBytes, txid, txString, errTx := txb.BytesWithValidation()
+			txBytes, txid, txString, errTx := txbtest.BuildAndValidate(txb)
 
 			if epochStats.maxTxBytes < len(txBytes) {
 				epochStats.maxTxBytes = len(txBytes)
@@ -701,7 +702,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	rndTxid := base.RandomTransactionID(true, 2, base.T(ts.Slot, 0))
 	err = txbSeq.AddEndorsement(rndTxid)
 	require.NoError(t, err)
-	txBytes, _, _, err := txbSeq.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txbSeq)
 	require.NoError(t, err)
 	err = ret.u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -749,7 +750,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	txb.SignED25519(ret.masterPrivateKey)
 
 	var txString string
-	txBytes, _, txString, err = txb.BytesWithValidation()
+	txBytes, _, txString, err = txbtest.BuildAndValidate(txb)
 	if err != nil {
 		t.Logf("--------- failing tx --------------\n%s", txString)
 	}
@@ -896,7 +897,7 @@ func TestWithUTXODB(t *testing.T) {
 				t.Logf("   %s tag-along output has been added", o.ID.StringShort())
 			}
 		}
-		txBytes, _, txString, err := txb.BytesWithValidation()
+		txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 		if err != nil {
 			t.Logf("--------- failing tx --------------\n%s", txString)
 		}

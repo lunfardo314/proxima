@@ -21,6 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ed25519"
 )
@@ -116,7 +117,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	txb.SetTimestamp(delegTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.masterPrivateKey)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
 	err = env.u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -171,7 +172,7 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
 	err = env.u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -208,7 +209,7 @@ func TestClaudeDelegationWrongMasterUnlock(t *testing.T) {
 	txb.ComputeInputCommitment()
 	// sign with seq controller key, NOT master key
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "wrong master should not unlock delegation")
 }
 
@@ -254,7 +255,7 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to reduce delegated amount")
 	require.NoError(t, util.MustErrorWith(err, "delegated amount should not decrease"))
 }
@@ -301,7 +302,7 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to change delegation lock")
 	require.NoError(t, util.MustErrorWith(err, "delegation index values on successor must be exactly the same"))
 }
@@ -336,7 +337,7 @@ func TestClaudeDelegationTargetDiscontinuesChain(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to discontinue delegation chain")
 	require.NoError(t, util.MustErrorWith(err, "target cannot discontinue the delegation chain"))
 }
@@ -403,7 +404,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	txb.SetTimestamp(delegTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	// The EasyFL checks in _validLimitsProducedFrozen fire in order:
 	// 1. last_frozen_epoch_cannot_be_in_the_past
 	// 2. frozen_epochs_cannot_exceed_maximum_set_by_delegator
@@ -479,7 +480,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	txb.SetTimestamp(delegTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "delegation with 5 constraints should be rejected")
 	// Per Option C the structure check on the delegateLock side reads
 	// the last tuple position via parseBytecode(..., #delegateLockState).
@@ -540,7 +541,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		txb.ComputeInputCommitment()
 		txb.SetTimestamp(attackTs)
 		txb.SignED25519(env.seqPrivateKey)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "target should not unlock during safe revocation window")
 		require.NoError(t, util.MustErrorWith(err, "delegation cannot be unlocked by the target in safe revocation window"))
 	})
@@ -565,7 +566,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		txb.SetTimestamp(masterTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(env.masterPrivateKey)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.NoError(t, err, "master should unlock after safe revocation window")
 	})
 }
@@ -632,7 +633,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	txb.SetTimestamp(delegTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "inflation share > 1000 should be rejected")
 	require.NoError(t, util.MustErrorWith(err, "max required inflation share must be in promille less or equal than 1000"))
 }
@@ -689,7 +690,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(revokeTs)
 	txb.SignED25519(env.seqPrivateKey)
-	txBytes, _, _, err := txb.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
 	err = env.u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -736,7 +737,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	txb2.ComputeInputCommitment()
 	txb2.SetTimestamp(relockTs)
 	txb2.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb2.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb2)
 	require.Error(t, err, "target should not re-freeze on-hold delegation")
 	require.NoError(t, util.MustErrorWith(err, "on hold delegation cannot be unlocked by the target"))
 }

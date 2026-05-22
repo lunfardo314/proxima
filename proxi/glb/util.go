@@ -81,8 +81,12 @@ func ParseAndDisplayTxFromSore(txid base.TransactionID) {
 	tx, err := transaction.ParseWithPartialValidation(txBytes)
 	AssertNoError(err)
 
-	err = tx.SetFullContext(func(i byte) (*ledger.Output, error) {
-		return txstore.LoadOutput(TxBytesStore(), tx.MustInputAt(i))
+	err = tx.SetFullContext(func(i byte) ([]byte, error) {
+		o, err := txstore.LoadOutput(TxBytesStore(), tx.MustInputAt(i))
+		if err != nil {
+			return nil, err
+		}
+		return o.Bytes(), nil
 	})
 	AssertNoError(err)
 	Infof("--- transaction ---\n%s", tx.String())

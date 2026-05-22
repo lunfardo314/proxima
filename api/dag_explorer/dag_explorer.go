@@ -21,7 +21,6 @@ import (
 	"github.com/lunfardo314/proxima/api"
 	"github.com/lunfardo314/proxima/core/txmetadata"
 	"github.com/lunfardo314/proxima/global"
-	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/txstore"
@@ -436,8 +435,12 @@ func serveTxDetail(w http.ResponseWriter, r *http.Request, store TxStore) {
 		return
 	}
 
-	_ = tx.SetFullContext(func(i byte) (*ledger.Output, error) {
-		return txstore.LoadOutput(store, tx.MustInputAt(i))
+	_ = tx.SetFullContext(func(i byte) ([]byte, error) {
+		o, err := txstore.LoadOutput(store, tx.MustInputAt(i))
+		if err != nil {
+			return nil, err
+		}
+		return o.Bytes(), nil
 	})
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

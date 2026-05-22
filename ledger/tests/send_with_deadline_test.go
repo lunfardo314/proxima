@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
@@ -130,7 +131,7 @@ func makeSWDEnv(t *testing.T, targetType byte, acceptanceSlots, cleanupSlots uin
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyMaster)
 
-	txBytes, txid, _, err := txb.BytesWithValidation()
+	txBytes, txid, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "swd produce tx must validate")
 	require.NoError(t, env.u.AddTransaction(txBytes))
 

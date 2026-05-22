@@ -2,6 +2,7 @@ package txbuilder
 
 import (
 	"crypto/ed25519"
+	"fmt"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
@@ -52,9 +53,13 @@ func MakeEndChainTransaction(par EndChainParams) (*transaction.Transaction, erro
 	txb.ComputeInputCommitment()
 	txb.SignED25519(par.PrivateKey)
 
-	tx, err := txb.Transaction()
+	tx, err := transaction.ParseAndValidate(txb.Bytes(), txb.LoadInputBytes)
 	if err != nil {
-		return nil, err
+		txString := ""
+		if tx != nil {
+			txString = tx.String()
+		}
+		return nil, fmt.Errorf("MakeEndChainTransaction: %w\n==== failing transaction ====\n%s", err, txString)
 	}
 	return tx, nil
 }

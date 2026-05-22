@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
@@ -138,7 +139,7 @@ func TestDelegationParamsImmutable(t *testing.T) {
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err)
 	// selfImmutableOnSuccessorIndex fails — the equality check on
 	// position 6 returns false, which trips the surrounding AND inside
@@ -199,7 +200,7 @@ func newFoundryDelegationEnv(t *testing.T, policy []byte) *foundryDelegationEnv 
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(td.masterPrivateKey)
-	txBytes, txid, failedTx, err := txb.BytesWithValidation()
+	txBytes, txid, failedTx, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "foundry origin build failed: %s", failedTx)
 	require.NoError(t, td.u.AddTransaction(txBytes))
 
@@ -229,7 +230,7 @@ func newFoundryDelegationEnv(t *testing.T, policy []byte) *foundryDelegationEnv 
 		settleTxb.SetTimestamp(settleTs)
 		settleTxb.ComputeInputCommitment()
 		settleTxb.SignED25519(td.masterPrivateKey)
-		settleBytes, _, failed, err := settleTxb.BytesWithValidation()
+		settleBytes, _, failed, err := txbtest.BuildAndValidate(settleTxb)
 		require.NoError(t, err, "foundry tag-settle transit failed: %s", failed)
 		require.NoError(t, td.u.AddTransaction(settleBytes))
 	}
@@ -307,7 +308,7 @@ func (e *foundryDelegationEnv) delegateFoundryChain(t *testing.T) error {
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(td.masterPrivateKey)
-	txBytes, _, failedTx, err := txb.BytesWithValidation()
+	txBytes, _, failedTx, err := txbtest.BuildAndValidate(txb)
 	if err != nil {
 		t.Logf("foundry-delegate build failed:\n%s", failedTx)
 		return err
@@ -431,6 +432,6 @@ func TestDelegateLockStateMustBeLast(t *testing.T) {
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(td.masterPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "delegation with junk after delegateLockState must be rejected")
 }

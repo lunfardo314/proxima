@@ -9,6 +9,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
@@ -56,7 +57,7 @@ func (e *dexEnv) outputsOf(t *testing.T, lock ledger.SigLock) []*ledger.OutputWi
 
 func (e *dexEnv) submit(t *testing.T, txb *txbuilder.TxBuilder) *transaction.Transaction {
 	t.Helper()
-	txBytes, _, failed, err := txb.BytesWithValidation()
+	txBytes, _, failed, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "build/validate failed:\n%s", failed)
 	var captured *transaction.Transaction
 	require.NoError(t, e.u.AddTransaction(txBytes, func(tx *transaction.Transaction, e error) error {
@@ -553,7 +554,7 @@ func TestSellOrderUnderpaymentRejected(t *testing.T) {
 	require.NoError(t, pushRedeemScript(txb))
 	finaliseAndSign(txb, fillTs, e.buyerPriv)
 
-	_, _, failedTx, err := txb.BytesWithValidation()
+	_, _, failedTx, err := txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "underpayment must be rejected by the dex lock; tx string:\n%s", failedTx)
 	// The dex lock's callRedeemer is the failing constraint. Inner !!! error
 	// strings don't bubble through the outer trace, so we just assert the
@@ -784,7 +785,7 @@ func TestFoldAttackRejection(t *testing.T) {
 	require.NoError(t, pushRedeemScript(txb))
 	finaliseAndSign(txb, fillTs, e.buyerPriv)
 
-	_, _, failed, err := txb.BytesWithValidation()
+	_, _, failed, err := txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "fold attack must be rejected by the dex lock; tx string:\n%s", failed)
 	require.Contains(t, err.Error(), "callRedeemer")
 }

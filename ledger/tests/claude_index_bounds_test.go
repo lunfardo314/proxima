@@ -27,6 +27,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,7 +103,7 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyBob)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "cross-lock reference should be rejected")
 		t.Logf("cross-lock reference rejected: %v", err)
 	})
@@ -143,7 +144,7 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyAlice)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err, "same-lock backward reference should be accepted")
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err, "valid reference tx should settle")
@@ -210,7 +211,7 @@ func TestIndexSigLockReferenceToChainLocked(t *testing.T) {
 	txb.SetTimestamp(ts3)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "sigLock reference to chainLock-ed input should be rejected")
 	t.Logf("cross-type lock reference rejected: %v", err)
 }
@@ -267,7 +268,7 @@ func TestIndexTagAlongOutOfRangeUnlockParams(t *testing.T) {
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "tag-along with out-of-range unlock index should be rejected")
 	t.Logf("tag-along out-of-range unlock rejected: %v", err)
 }
@@ -317,7 +318,7 @@ func TestIndexDelegationOutOfRangeUnlockParams(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "delegation with out-of-range unlock index should be rejected")
 	t.Logf("delegation out-of-range unlock rejected: %v", err)
 }
@@ -362,7 +363,7 @@ func TestIndexChainPredecessorNonExistentInput(t *testing.T) {
 	txb.SetTimestamp(outTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	// The consumed chain checks _chainSuccessorParam(1) against selfConstraintIndex.
 	// Since the successor's predecessor data claims input 5 but the actual consumed
 	// input is at index 0, the crosscheck fails.
@@ -441,7 +442,7 @@ func TestIndexChainLockSelfReference(t *testing.T) {
 	txb.SetTimestamp(ts3)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "chainLock self-reference should be rejected")
 	t.Logf("chainLock self-reference rejected: %v", err)
 }

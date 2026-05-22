@@ -10,6 +10,7 @@ import (
 	chess_poc "github.com/lunfardo314/proxima/examples/chess_poc"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
 )
@@ -144,7 +145,7 @@ func runChessAction(label string, txb *txbuilder.TxBuilder, priv ed25519.Private
 	})
 	glb.AssertNoError(err)
 
-	tx, err := txb.Transaction()
+	tx, err := transaction.ParseAndValidate(txb.Bytes(), txb.LoadInputBytes)
 	glb.AssertNoError(err)
 	glb.Verbosef("---- %s tx ----\n%s\n---------------", label, tx.IDString())
 	submitAndTrack(txb.Bytes(), txb.ConsumedOutputBytes(), tx.ID())

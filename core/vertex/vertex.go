@@ -42,14 +42,15 @@ func (v *Vertex) UnReferenceDependencies() {
 	v.BaselineBranchID = nil
 }
 
-// InputLoaderByIndex returns consumed output at index i or nil (if input is orphaned or inaccessible in the virtualTx)
-func (v *Vertex) InputLoaderByIndex(i byte) (*ledger.Output, error) {
+// InputLoaderByIndex returns raw bytes of the consumed output at index i,
+// or an error if the input is orphaned or inaccessible in the virtualTx.
+func (v *Vertex) InputLoaderByIndex(i byte) ([]byte, error) {
 	o := v.GetConsumedOutput(i)
 	if o == nil {
 		oid := v.MustInputAt(i)
 		return nil, fmt.Errorf("InputLoaderByIndex: consumed output %s at index %d is not available", oid.StringShort(), i)
 	}
-	return o, nil
+	return o.Bytes(), nil
 }
 
 // GetConsumedOutput return produced output, is available. Returns nil if unavailable for any reason
@@ -168,7 +169,7 @@ func (v *Vertex) SetOfInputTransactions() set.Set[*WrappedTx] {
 }
 
 func (v *Vertex) Lines(prefix ...string) *lines.Lines {
-	return v.Transaction.Lines(func(i byte) (*ledger.Output, error) {
+	return v.Transaction.Lines(func(i byte) ([]byte, error) {
 		if v.Inputs[i] == nil {
 			return nil, fmt.Errorf("input #%d not solid", i)
 		}
@@ -176,7 +177,11 @@ func (v *Vertex) Lines(prefix ...string) *lines.Lines {
 		if err != nil {
 			return nil, fmt.Errorf("input #%d: %v", i, err)
 		}
-		return v.Inputs[i].OutputAt(inpOid.Index())
+		o, err := v.Inputs[i].OutputAt(inpOid.Index())
+		if err != nil {
+			return nil, err
+		}
+		return o.Bytes(), nil
 	}, prefix...)
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
@@ -244,7 +245,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	txb.SetTimestamp(par.ts)
 	txb.SignED25519(td.seqPrivateKey)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 	if err != nil {
 		if par.prntx {
 			err = fmt.Errorf("error: '%v'\n---------------- failing tx --------------\n%s", err, txString)
@@ -323,7 +324,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	txb.SetTimestamp(ts)
 	txb.SignED25519(td.seqPrivateKey)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 	if err != nil {
 		if prntx {
 			err = fmt.Errorf("error: '%v'\n---------------- failing tx --------------\n%s", err, txString)
@@ -383,7 +384,7 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	txb.SetTimestamp(ts)
 	txb.SignED25519(td.masterPrivateKey)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 	if err != nil {
 		if prntx {
 			td.Logf("error: %v\n--------- failing tx -------\n%s", err, txString)
@@ -722,7 +723,7 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	txb.SetSequencerData(0, txbuildercore.SequencerOutputIndexNone)
 	txb.SignED25519(td.seqPrivateKey)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 	if err != nil {
 		if par.prntx {
 			err = fmt.Errorf("error: '%v'\n---------------- failing tx --------------\n%s", err, txString)

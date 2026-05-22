@@ -133,6 +133,28 @@ func ParseWithPartialValidation(txBytes []byte) (*Transaction, error) {
 	return tx, tx.ValidatePartialContext(true)
 }
 
+// ParseAndValidate parses txBytes with partial-context validation and,
+// if loader != nil, additionally promotes the transaction to full
+// context (SetFullContext) and runs full-context validation. The parsed
+// tx is returned even when full-context validation fails so callers can
+// render the failing tx for diagnostics; on parse failure tx is nil.
+func ParseAndValidate(txBytes []byte, loader func(i byte) ([]byte, error)) (*Transaction, error) {
+	tx, err := ParseWithPartialValidation(txBytes)
+	if err != nil {
+		return nil, err
+	}
+	if loader == nil {
+		return tx, nil
+	}
+	if err = tx.SetFullContext(loader); err != nil {
+		return tx, err
+	}
+	if err = tx.ValidateFullContext(); err != nil {
+		return tx, err
+	}
+	return tx, nil
+}
+
 // TxIDFromTransactionDataTree is a thin compatibility shim that delegates
 // to txbuildercore.TxIDFromTree (the canonical, wallet-shared implementation).
 // Server-side callers (Parse) use this so the byte-level txid math lives

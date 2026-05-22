@@ -360,17 +360,17 @@ func TestOrdinaryMoveHappyPath(t *testing.T) {
 	// constraint at 3 and chessState tuple-literal at 4, plus change),
 	// tx-level constraints (the two redeemScript commitments decompiled),
 	// and the signature.
-	parsedTx, err := txb.Transaction()
+	parsedTx, err := transaction.ParseAndValidate(txb.Bytes(), txb.LoadInputBytes)
 	require.NoError(t, err)
 	// Inputs of an already-applied move tx aren't in state anymore (the
 	// chess UTXO has been spent). Use the builder's snapshot of consumed
 	// outputs as the loader source instead.
 	consumed := txb.ConsumedOutputs
-	loader := func(i byte) (*ledger.Output, error) {
+	loader := func(i byte) ([]byte, error) {
 		if int(i) >= len(consumed) {
 			return nil, fmt.Errorf("input %d: out of range (%d consumed)", i, len(consumed))
 		}
-		return consumed[i], nil
+		return consumed[i].Bytes(), nil
 	}
 	t.Logf("chess move tx:\n%s", parsedTx.Lines(loader, "  ").String())
 }

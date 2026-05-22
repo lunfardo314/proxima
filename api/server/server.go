@@ -428,11 +428,11 @@ func (srv *server) submitTx(w http.ResponseWriter, r *http.Request) {
 			}
 			decoded[i] = raw
 		}
-		loader := func(i byte) (*ledger.Output, error) {
+		loader := func(i byte) ([]byte, error) {
 			if int(i) >= len(decoded) {
 				return nil, fmt.Errorf("consumed_utxos[%d] missing", i)
 			}
-			return ledger.OutputFromBytes(decoded[i])
+			return decoded[i], nil
 		}
 		if err = tx.SetFullContext(loader); err != nil {
 			writeSubmitErr(w, api.SubmitStageFull, err.Error())

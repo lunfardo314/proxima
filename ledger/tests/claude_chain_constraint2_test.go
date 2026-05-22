@@ -21,6 +21,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -142,7 +143,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
-		_, _, _, err := txb.BytesWithValidation()
+		_, _, _, err := txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "counter=0 on first transition must be rejected")
 		require.NoError(t, util.MustErrorWith(err, "wrong transition counter"))
 		t.Logf("counter=0 rejected: %v", err)
@@ -166,7 +167,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
-		_, _, _, err := txb.BytesWithValidation()
+		_, _, _, err := txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "counter=2 on first transition must be rejected")
 		require.NoError(t, util.MustErrorWith(err, "wrong transition counter"))
 		t.Logf("counter=2 (skip) rejected: %v", err)
@@ -263,7 +264,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
-		_, _, _, err := txb.BytesWithValidation()
+		_, _, _, err := txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "wrong cumulative chain inflation must be rejected")
 		require.NoError(t, util.MustErrorWith(err, "wrong cumulative chain inflation"))
 		t.Logf("wrong cumulative chain inflation rejected: %v", err)
@@ -283,7 +284,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
-		_, _, _, err := txb.BytesWithValidation()
+		_, _, _, err := txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "large bogus cumulative inflation must be rejected")
 		require.NoError(t, util.MustErrorWith(err, "wrong cumulative chain inflation"))
 		t.Logf("large bogus inflation rejected: %v", err)
@@ -317,7 +318,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
-		_, _, _, err := txb.BytesWithValidation()
+		_, _, _, err := txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "wrong cumulative branch bonus must be rejected")
 		require.NoError(t, util.MustErrorWith(err, "wrong cumulative branch bonus"))
 		t.Logf("wrong branch bonus rejected: %v", err)
@@ -336,7 +337,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
-		_, _, _, err := txb.BytesWithValidation()
+		_, _, _, err := txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "large bogus branch bonus must be rejected")
 		require.NoError(t, util.MustErrorWith(err, "wrong cumulative branch bonus"))
 		t.Logf("large bogus branch bonus rejected: %v", err)
@@ -399,7 +400,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
-		_, _, _, err := txb.BytesWithValidation()
+		_, _, _, err := txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "all three wrong cumulatives must be rejected")
 		// Should fail on whichever check runs first (chain inflation)
 		t.Logf("all three wrong rejected: %v", err)
@@ -419,7 +420,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
-		_, _, _, err := txb.BytesWithValidation()
+		_, _, _, err := txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "wrong inflation+bonus with correct counter must be rejected")
 		require.NoError(t, util.MustErrorWith(err, "wrong cumulative chain inflation"))
 		t.Logf("inflation+bonus wrong rejected: %v", err)

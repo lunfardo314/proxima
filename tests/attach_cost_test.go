@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -291,7 +292,7 @@ func TestAttachCostBudgetFanOutCostTracking(t *testing.T) {
 		txb.ComputeInputCommitment()
 		txb.SignED25519(testData.privKey)
 
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err)
 
 		tx, err := transaction.ParseWithPartialValidation(txBytes)

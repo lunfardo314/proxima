@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
-	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
@@ -618,32 +617,18 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	}
 }
 
-func (txb *SeqTxBuilder) BuildTransactionWithValidation() (*transaction.Transaction, error) {
-	if err := txb.buildSequencerAndStemOutputs(); err != nil {
-		return nil, fmt.Errorf("SeqTxBuilder: %w", err)
-	}
-	txb.ComputeInputCommitment()
-	txb.SignED25519(txb.privateKey)
-	return txb.TxBuilder.BuildTransactionWithValidation()
-}
-
-func (txb *SeqTxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
-	if err := txb.buildSequencerAndStemOutputs(); err != nil {
-		return nil, [32]byte{}, "", fmt.Errorf("SeqTxBuilder: %w", err)
-	}
-	txb.ComputeInputCommitment()
-	txb.SignED25519(txb.privateKey)
-	return txb.TxBuilder.BytesWithValidation()
-}
-
-func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) (*ledger.Output, error), error) {
+// BytesWithInputLoader finalises the sequencer transaction (sequencer
+// and stem outputs, input commitment, signature) and returns its raw
+// bytes together with a bytes-loader suitable for
+// transaction.ParseAndValidate.
+func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) ([]byte, error), error) {
 	if err := txb.buildSequencerAndStemOutputs(); err != nil {
 		return nil, nil, fmt.Errorf("SeqTxBuilder: %w", err)
 	}
 	txb.ComputeInputCommitment()
 	txb.SignED25519(txb.privateKey)
 
-	return txb.TxBuilder.Bytes(), txb.TxBuilder.LoadInput, nil
+	return txb.TxBuilder.Bytes(), txb.TxBuilder.LoadInputBytes, nil
 }
 
 func (txb *SeqTxBuilder) reservedInputs() (ret int) {
@@ -740,7 +725,7 @@ type MakeSimpleSequencerTransactionParams struct {
 }
 
 // MakeSimpleSequencerTransactionWithInputLoader usually used in tests
-func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransactionParams) ([]byte, func(i byte) (*ledger.Output, error), error) {
+func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransactionParams) ([]byte, func(i byte) ([]byte, error), error) {
 	if !ledger.ValidSequencerPace(par.ChainInput.Timestamp(), par.Timestamp) {
 		return nil, nil, fmt.Errorf("MakeSequencerTransactionWithInputLoader: sequencer pace constraint violated with chain input")
 	}

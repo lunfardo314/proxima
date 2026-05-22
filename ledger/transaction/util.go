@@ -43,14 +43,14 @@ func DecompilerFromLedgerLibrary(lib *ledger.Library) LibraryDecompiler {
 	}
 }
 
-func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
-	return tx.LinesWithLib(DecompilerFromLedgerLibrary(ledger.L(base.MaxSlot)),inputLoaderByIndex, prefix...)
+func (tx *Transaction) Lines(inputLoaderByIndex func(i byte) ([]byte, error), prefix ...string) *lines.Lines {
+	return tx.LinesWithLib(DecompilerFromLedgerLibrary(ledger.L(base.MaxSlot)), inputLoaderByIndex, prefix...)
 }
 
 // LinesWithLib is the wallet-friendly form of Lines: the caller
 // supplies the decompiler. Existing callers can use Lines (which
 // resolves to the singleton).
-func (tx *Transaction) LinesWithLib(lib LibraryDecompiler, inputLoaderByIndex func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
+func (tx *Transaction) LinesWithLib(lib LibraryDecompiler, inputLoaderByIndex func(i byte) ([]byte, error), prefix ...string) *lines.Lines {
 	if inputLoaderByIndex != nil {
 		if err := tx.SetFullContext(inputLoaderByIndex); err != nil {
 			ret := lines.New(prefix...)
@@ -266,14 +266,14 @@ func (tx *Transaction) String() string {
 	return tx.LinesHR().String()
 }
 
-func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
-	return LinesFromTransactionBytesWithLib(DecompilerFromLedgerLibrary(ledger.L(base.MaxSlot)),txBytes, inputLoader, prefix...)
+func LinesFromTransactionBytes(txBytes []byte, inputLoader func(i byte) ([]byte, error), prefix ...string) *lines.Lines {
+	return LinesFromTransactionBytesWithLib(DecompilerFromLedgerLibrary(ledger.L(base.MaxSlot)), txBytes, inputLoader, prefix...)
 }
 
 // LinesFromTransactionBytesWithLib is the wallet-friendly form. The
 // caller supplies the decompiler; output-rendering still uses the
 // singleton internally (see LinesSourceWithLib).
-func LinesFromTransactionBytesWithLib(lib LibraryDecompiler, txBytes []byte, inputLoader func(i byte) (*ledger.Output, error), prefix ...string) *lines.Lines {
+func LinesFromTransactionBytesWithLib(lib LibraryDecompiler, txBytes []byte, inputLoader func(i byte) ([]byte, error), prefix ...string) *lines.Lines {
 	tx, err := Parse(txBytes)
 	if err != nil {
 		return lines.New(prefix...).Add("Parse returned: %v", err)

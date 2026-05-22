@@ -25,6 +25,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,7 +85,7 @@ func (e *foundryTestEnv) createFoundryOrigin(t *testing.T, onChainAmount uint64,
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	txBytes, txid, failedTx, err := txb.BytesWithValidation()
+	txBytes, txid, failedTx, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "foundry-origin build/validation failed: %s", failedTx)
 
 	require.NoError(t, e.u.AddTransaction(txBytes))
@@ -161,7 +162,7 @@ func (e *foundryTestEnv) finishAndSubmit(t *testing.T, txb *txbuilder.TxBuilder,
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
-	txBytes, txid, failedTx, err := txb.BytesWithValidation()
+	txBytes, txid, failedTx, err := txbtest.BuildAndValidate(txb)
 	if err != nil {
 		t.Logf("validation failed: %s", failedTx)
 		return nil, txid, err

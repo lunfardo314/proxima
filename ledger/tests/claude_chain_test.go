@@ -19,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/blake2b"
 )
@@ -307,7 +308,7 @@ func TestChainInvalidPredecessorReference(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err)
 	t.Logf("wrong predecessor input index rejected: %v", err)
 }
@@ -347,7 +348,7 @@ func TestChainOriginSlotImmutability(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "changing origin slot must be rejected")
 	require.NoError(t, util.MustErrorWith(err, "origin slot mismatch"))
 	t.Logf("origin slot mismatch enforced: %v", err)
@@ -388,7 +389,7 @@ func TestChainTransitionCounterWrong(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "wrong transition counter must be rejected")
 	t.Logf("wrong transition counter rejected: %v", err)
 }
@@ -428,7 +429,7 @@ func TestChainIDMismatch(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "chain ID mismatch must be rejected")
 	require.NoError(t, util.MustErrorWith(err, "chain ID mismatch with successor"))
 	t.Logf("chain ID mismatch rejected: %v", err)
@@ -470,7 +471,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err)
 		t.Logf("successor output index out of range rejected: %v", err)
 	})
@@ -507,7 +508,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "orphaned successor with discontinuation unlock must be rejected")
 		require.NoError(t, util.MustErrorWith(err, "predecessor reference crosscheck failed"))
 		t.Logf("orphaned successor correctly rejected: %v", err)
@@ -750,7 +751,7 @@ func TestChainLockWrongChainID(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "unlocking with wrong chain must be rejected")
 	// The chainLock constraint on the consumed chain-locked output fails because
 	// chain B's chain ID doesn't match the lock's chain ID (chain A)
@@ -843,7 +844,7 @@ func TestChainLockSelfReference(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
-	_, _, _, err = txb.BytesWithValidation()
+	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "self-referencing chain-lock must be rejected")
 	t.Logf("self-referencing correctly rejected: %v", err)
 }

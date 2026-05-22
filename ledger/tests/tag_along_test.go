@@ -12,6 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,7 +80,7 @@ func TestTagAlongSimple(t *testing.T) {
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 
-		txBytes, txid, txString, err := txb.BytesWithValidation()
+		txBytes, txid, txString, err := txbtest.BuildAndValidate(txb)
 		if prntx {
 			t.Logf("------------- tag-along tx --------------\n%s", txString)
 		}
@@ -123,7 +124,7 @@ func TestTagAlongSimple(t *testing.T) {
 		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyTarget)
-		txBytes, _, txString, err := txb.BytesWithValidation()
+		txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
 		if prntx {
 			t.Logf("----------------- transit tx ------------------\n%s", txString)
 		}
@@ -179,7 +180,7 @@ func TestTagAlongSimple(t *testing.T) {
 		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(reclaimerPrivateKey)
-		_, _, txString, err := txb.BytesWithValidation()
+		_, _, txString, err := txbtest.BuildAndValidate(txb)
 		if prntx {
 			t.Logf("------------- reclaim tx --------------\n%s", txString)
 		}
@@ -336,7 +337,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
@@ -370,7 +371,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 			txb.SetTimestamp(taTs.AddSlots(slotOffset))
 			txb.ComputeInputCommitment()
 			txb.SignED25519(privKeyTarget)
-			_, _, _, err := txb.BytesWithValidation()
+			_, _, _, err := txbtest.BuildAndValidate(txb)
 			return err
 		}
 
@@ -423,7 +424,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
@@ -471,7 +472,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 			txb.SetTimestamp(taTs.AddSlots(slotOffset))
 			txb.ComputeInputCommitment()
 			txb.SignED25519(privKeyRandom)
-			_, _, _, err = txb.BytesWithValidation()
+			_, _, _, err = txbtest.BuildAndValidate(txb)
 			return err
 		}
 
@@ -525,7 +526,7 @@ func TestTagAlongProduction(t *testing.T) {
 		txb.SetTimestamp(outs[0].ID.Timestamp().AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "should reject zero chain ID")
 		require.True(t, strings.Contains(err.Error(), "non zero argument expected"),
 			"expected error containing 'non zero argument expected', got: %v", err)
@@ -580,7 +581,7 @@ func TestTagAlongProduction(t *testing.T) {
 		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "should reject more than 5 UTXO elements")
 		require.True(t, strings.Contains(err.Error(), "no more than 5 UTXO elements"),
 			"expected error containing 'no more than 5 UTXO elements', got: %v", err)
@@ -633,7 +634,7 @@ func TestTagAlongProduction(t *testing.T) {
 		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyController)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err, "tag-along where sender == target controller should be allowed")
 
 		err = u.AddTransaction(txBytes)
@@ -700,7 +701,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
@@ -748,7 +749,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		txb.SetTimestamp(taTs.AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "sender should NOT unlock during tag-along window")
 		require.True(t, strings.Contains(err.Error(), "inside tag along slots must be unlocked by the target"))
 	})
@@ -795,7 +796,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		txb.SetTimestamp(taTs.AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyRandom)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "random should NOT unlock during tag-along window")
 		require.True(t, strings.Contains(err.Error(), "unlock window error") || strings.Contains(err.Error(), "inside tag along slots must be unlocked by the target"))
 	})
@@ -842,7 +843,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		txb.SetTimestamp(taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyRandom)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "random should NOT unlock during reclaim window")
 		require.True(t, strings.Contains(err.Error(), "unlock window error") || strings.Contains(err.Error(), "inside reclaim slots must be unlocked by the sender"))
 	})
@@ -876,7 +877,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		txb.SetTimestamp(taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyTarget)
-		_, _, _, err = txb.BytesWithValidation()
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "target should NOT unlock during reclaim window")
 		require.True(t, strings.Contains(err.Error(), "inside reclaim slots must be unlocked by the sender"))
 	})
@@ -931,7 +932,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
@@ -965,7 +966,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		txb2.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(3))
 		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeySender)
-		txBytes2, _, _, err := txb2.BytesWithValidation()
+		txBytes2, _, _, err := txbtest.BuildAndValidate(txb2)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes2)
 		require.NoError(t, err)
@@ -1040,7 +1041,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		txb.SetTimestamp(ts.AddSlots(2))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
@@ -1108,7 +1109,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
@@ -1140,7 +1141,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		txb2.SetTimestamp(taTs.AddSlots(1))
 		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeyTarget)
-		txBytes2, _, _, err := txb2.BytesWithValidation()
+		txBytes2, _, _, err := txbtest.BuildAndValidate(txb2)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes2)
 		require.NoError(t, err)
@@ -1211,7 +1212,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
-		txBytes, _, _, err := txb.BytesWithValidation()
+		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes)
 		require.NoError(t, err)
@@ -1255,7 +1256,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		txb2.SetTimestamp(reclaimTs)
 		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeySender)
-		txBytes2, _, _, err := txb2.BytesWithValidation()
+		txBytes2, _, _, err := txbtest.BuildAndValidate(txb2)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes2)
 		require.NoError(t, err)

@@ -136,42 +136,6 @@ func (txb *TxBuilder) ConsumedAmount() uint64 {
 	return ret
 }
 
-func (txb *TxBuilder) Transaction() (*transaction.Transaction, error) {
-	txBytes, _, txString, err := txb.BytesWithValidation()
-	if err != nil {
-		return nil, fmt.Errorf("%w\n==== failing transaction ====\n%s", err, txString)
-	}
-	return transaction.ParseWithPartialValidation(txBytes)
-}
-
-// BuildTransactionWithValidation builds transaction, parses it and validates with full context.
-// In case validation fails with full context, it may return err != nil and tx != nil
-func (txb *TxBuilder) BuildTransactionWithValidation() (*transaction.Transaction, error) {
-	txBytes := txb.Bytes()
-	tx, err := transaction.ParseWithPartialValidation(txBytes)
-	if err != nil {
-		return nil, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
-	}
-	if err = tx.SetFullContext(txb.LoadInput); err != nil {
-		return tx, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
-	}
-	if err = tx.ValidateFullContext(); err != nil {
-		return tx, fmt.Errorf("TxBuilder resulted in invalid transaction: %v", err)
-	}
-	return tx, nil
-}
-
-func (txb *TxBuilder) BytesWithValidation() ([]byte, base.TransactionID, string, error) {
-	tx, err := txb.BuildTransactionWithValidation()
-	if err != nil {
-		if tx == nil {
-			return nil, base.TransactionID{}, "", err
-		}
-		return tx.Bytes(), tx.ID(), tx.String(), err
-	}
-	return tx.Bytes(), tx.ID(), tx.String(), nil
-}
-
 func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {
 	retTotal := uint64(0)
 	retInflation := uint64(0)
@@ -182,12 +146,14 @@ func (txb *TxBuilder) ProducedAmount() (uint64, uint64) {
 	return retTotal, retInflation
 }
 
-// LoadInput returns clone of the consumed output
-func (txb *TxBuilder) LoadInput(i byte) (*ledger.Output, error) {
+// LoadInputBytes returns the raw bytes of the i-th consumed output.
+// This is the loader shape expected by transaction.SetFullContext /
+// transaction.ParseAndValidate.
+func (txb *TxBuilder) LoadInputBytes(i byte) ([]byte, error) {
 	if int(i) >= len(txb.ConsumedOutputs) {
 		return nil, fmt.Errorf("can't load input #%d", i)
 	}
-	return txb.ConsumedOutputs[i].Clone(), nil
+	return txb.ConsumedOutputs[i].Bytes(), nil
 }
 
 // CalcFrozenCoverageDelta sums up frozen coverage vectors of all delegation outputs.
@@ -900,8 +866,13 @@ func MakeDelegationInitTransaction(par MakeDelegationInitTransactionParams) ([]b
 	txb.SetTimestamp(par.Timestamp)
 	txb.SignED25519(par.MasterPrivateKey)
 
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes := txb.Bytes()
+	tx, err := transaction.ParseAndValidate(txBytes, txb.LoadInputBytes)
 	if err != nil {
+		txString := ""
+		if tx != nil {
+			txString = tx.String()
+		}
 		return nil, fmt.Errorf("MakeInitDelegationTransaction: %w\n----- failing tx --------\n%s", err, txString)
 	}
 	return txBytes, nil

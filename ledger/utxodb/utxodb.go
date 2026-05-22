@@ -514,8 +514,13 @@ func (u *UTXODB) SendOutput(privKey ed25519.PrivateKey, o *ledger.Output, ts bas
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
-	txBytes, _, txString, err := txb.BytesWithValidation()
+	txBytes := txb.Bytes()
+	tx, err := transaction.ParseAndValidate(txBytes, txb.LoadInputBytes)
 	if err != nil {
+		txString := ""
+		if tx != nil {
+			txString = tx.String()
+		}
 		return fmt.Errorf("error: %v\n%s", err, txString)
 	}
 	err = u.AddTransaction(txBytes)

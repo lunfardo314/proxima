@@ -237,9 +237,9 @@ func TestTxInputCommitmentPreventsFakedUTXO(t *testing.T) {
 	})
 
 	// Set full context with the faked output
-	err = tx.SetFullContext(func(i byte) (*ledger.Output, error) {
+	err = tx.SetFullContext(func(i byte) ([]byte, error) {
 		// Return the faked output for every input
-		return fakedOutput, nil
+		return fakedOutput.Bytes(), nil
 	})
 	require.NoError(t, err)
 
@@ -294,7 +294,7 @@ func TestTxInputCommitmentWithWrongHash(t *testing.T) {
 	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
 
-	err = tx.SetFullContext(txb.LoadInput)
+	err = tx.SetFullContext(txb.LoadInputBytes)
 	require.NoError(t, err)
 
 	err = tx.ValidateFullContext()
@@ -422,7 +422,7 @@ func TestTxEdgeCaseInputCommitmentCorrectness(t *testing.T) {
 		"input commitment must equal blake2b hash of consumed outputs tuple")
 
 	// Now verify via full context that the commitment matches
-	err = tx.SetFullContext(txb.LoadInput)
+	err = tx.SetFullContext(txb.LoadInputBytes)
 	require.NoError(t, err)
 
 	consumedHash := tx.ConsumedOutputHash()
@@ -534,7 +534,7 @@ func TestTxInputCommitmentMultipleInputs(t *testing.T) {
 	// First verify it validates correctly
 	tx, err := transaction.Parse(txBytes)
 	require.NoError(t, err)
-	err = tx.SetFullContext(txb.LoadInput)
+	err = tx.SetFullContext(txb.LoadInputBytes)
 	require.NoError(t, err)
 	err = tx.ValidateFullContext()
 	require.NoError(t, err, "valid multi-input transaction must pass")
@@ -547,11 +547,11 @@ func TestTxInputCommitmentMultipleInputs(t *testing.T) {
 		o.WithAmounts(int64(initAmount * 10)).WithLock(addr) // inflated
 	})
 
-	err = tx2.SetFullContext(func(i byte) (*ledger.Output, error) {
+	err = tx2.SetFullContext(func(i byte) ([]byte, error) {
 		if i == 2 { // tamper with input #2
-			return tamperedOutput, nil
+			return tamperedOutput.Bytes(), nil
 		}
-		return txb.LoadInput(i)
+		return txb.LoadInputBytes(i)
 	})
 	require.NoError(t, err)
 
@@ -631,7 +631,7 @@ func validateFull(txBytes []byte, txb *txbuilder.TxBuilder) error {
 	if err != nil {
 		return err
 	}
-	if err = tx.SetFullContext(txb.LoadInput); err != nil {
+	if err = tx.SetFullContext(txb.LoadInputBytes); err != nil {
 		return err
 	}
 	return tx.ValidateFullContext()

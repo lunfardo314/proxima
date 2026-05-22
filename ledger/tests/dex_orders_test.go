@@ -12,6 +12,7 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
@@ -79,7 +80,7 @@ func dexNextTs(after base.LedgerTime) base.LedgerTime {
 
 func dexSubmit(t *testing.T, e *dexEnv, txb *txbuilder.TxBuilder) *transaction.Transaction {
 	t.Helper()
-	txBytes, _, failed, err := txb.BytesWithValidation()
+	txBytes, _, failed, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "build/validate failed:\n%s", failed)
 	var captured *transaction.Transaction
 	require.NoError(t, e.u.AddTransaction(txBytes, func(tx *transaction.Transaction, e error) error {
@@ -575,7 +576,7 @@ func TestDex_FoldAttackRejection(t *testing.T) {
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.buyerPriv)
 
-	_, _, failed, err := txb.BytesWithValidation()
+	_, _, failed, err := txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "fold attack must be rejected; tx string:\n%s", failed)
 	require.Contains(t, err.Error(), "sellOrder")
 }

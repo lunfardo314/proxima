@@ -9,6 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,7 +44,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 	require.NoError(t, err)
 	err = txbSeq.AddEndorsement(base.RandomTransactionID(true, 2, base.T(ts.Slot, 0)))
 	require.NoError(t, err)
-	txBytes, _, _, err := txbSeq.BytesWithValidation()
+	txBytes, _, _, err := txbtest.BuildAndValidate(txbSeq)
 	require.NoError(t, err)
 	err = u.AddTransaction(txBytes)
 	require.NoError(t, err)
@@ -77,7 +78,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 		txb.ComputeInputCommitment()
 		txb.SignED25519(masterPrivateKey)
 		var txStr string
-		txBytes, _, txStr, err = txb.BytesWithValidation()
+		txBytes, _, txStr, err = txbtest.BuildAndValidate(txb)
 		if err != nil {
 			t.Logf("FAILED to create delegation output:\n%s", txStr)
 		}
@@ -112,7 +113,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		txBytes, _, txStr, err := txb.BytesWithValidation()
+		txBytes, _, txStr, err := txbtest.BuildAndValidate(txb)
 		if err != nil {
 			t.Logf("FAILED at step %d:\n%s", step, txStr)
 			t.Logf("seqOut amounts: %s", seqOut.Output.Amounts().String())

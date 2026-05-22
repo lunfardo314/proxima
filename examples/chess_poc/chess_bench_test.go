@@ -43,8 +43,8 @@ func BenchmarkChessTxValidation(b *testing.B) {
 				if err != nil {
 					b.Fatalf("Parse: %v", err)
 				}
-				if err = tx.SetFullContext(func(idx byte) (*ledger.Output, error) {
-					return s.consumed[idx], nil
+				if err = tx.SetFullContext(func(idx byte) ([]byte, error) {
+					return s.consumed[idx].Bytes(), nil
 				}); err != nil {
 					b.Fatalf("SetFullContext: %v", err)
 				}
@@ -196,7 +196,7 @@ func bbBuildOrigin(b *testing.B, e *chessEnv, tslots uint32) (*txbuilder.TxBuild
 	if err != nil {
 		b.Fatalf("BuildOrigin: %v", err)
 	}
-	tx, err := txb.Transaction()
+	tx, err := transaction.ParseAndValidate(txb.Bytes(), txb.LoadInputBytes)
 	if err != nil {
 		b.Fatalf("Transaction: %v", err)
 	}
@@ -329,7 +329,7 @@ func bbBuildPreacceptanceTimeout(b *testing.B) *txbuilder.TxBuilder {
 	if _, err := e.submit(originTxb.Bytes()); err != nil {
 		b.Fatalf("submit origin (timeout env): %v", err)
 	}
-	originTx, _ := originTxb.Transaction()
+	originTx, _ := transaction.ParseAndValidate(originTxb.Bytes(), originTxb.LoadInputBytes)
 	chainID := base.MakeOriginChainID(base.MustNewOutputID(originTx.ID(), 0))
 
 	origin := loadChainOutputForBench(b, e, chainID)

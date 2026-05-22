@@ -255,7 +255,11 @@ func (p *proposal) insertInputs() {
 func (p *proposal) makeTx() (*transaction.Transaction, string, error) {
 	p.Close()
 
-	tx, err := p.BuildTransactionWithValidation()
+	txBytes, loader, err := p.BytesWithInputLoader()
+	if err != nil {
+		return nil, "", err
+	}
+	tx, err := transaction.ParseAndValidate(txBytes, loader)
 	if err != nil {
 		if tx != nil {
 			return tx, tx.String(), err
