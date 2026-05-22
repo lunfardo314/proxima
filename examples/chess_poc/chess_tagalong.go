@@ -4,9 +4,9 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 )
 
 // AttachTagAlongParams collects everything AttachTagAlong needs to extend
@@ -41,7 +41,7 @@ type AttachTagAlongParams struct {
 // Keeping this as a post-processor (instead of folding tag-along into
 // every Build*) keeps the covenant builders untangled from network
 // concerns — UTXODB tests still call Build* directly and skip this step.
-func AttachTagAlong(txb *txbuilder.TxBuilder, p AttachTagAlongParams) error {
+func AttachTagAlong(txb *exhelp.Builder, p AttachTagAlongParams) error {
 	if p.FundingInput == nil {
 		return fmt.Errorf("AttachTagAlong: FundingInput required")
 	}

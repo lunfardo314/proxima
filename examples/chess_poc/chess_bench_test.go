@@ -4,10 +4,10 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 )
 
@@ -69,7 +69,7 @@ type benchScenario struct {
 
 // snapshot freezes a built tx into (bytes, consumed-outputs) so the
 // scenario survives further state mutation.
-func snapshot(name string, txb *txbuilder.TxBuilder) benchScenario {
+func snapshot(name string, txb *exhelp.Builder) benchScenario {
 	bytes := txb.Bytes()
 	consumed := make([]*ledger.Output, len(txb.ConsumedOutputs))
 	copy(consumed, txb.ConsumedOutputs)
@@ -175,7 +175,7 @@ func bbTs(after base.LedgerTime) base.LedgerTime {
 	return ts
 }
 
-func bbBuildOrigin(b *testing.B, e *chessEnv, tslots uint32) (*txbuilder.TxBuilder, base.ChainID, []byte) {
+func bbBuildOrigin(b *testing.B, e *chessEnv, tslots uint32) (*exhelp.Builder, base.ChainID, []byte) {
 	b.Helper()
 	const sqE2, sqE4 = 12, 28
 	spec := movePawnPush2Spec(sqE2, sqE4, pWP)
@@ -204,7 +204,7 @@ func bbBuildOrigin(b *testing.B, e *chessEnv, tslots uint32) (*txbuilder.TxBuild
 	return txb, chainID, boardAfter
 }
 
-func bbBuildAcceptance(b *testing.B, e *chessEnv, chainID base.ChainID, boardAfterWhite []byte) (*txbuilder.TxBuilder, []byte) {
+func bbBuildAcceptance(b *testing.B, e *chessEnv, chainID base.ChainID, boardAfterWhite []byte) (*exhelp.Builder, []byte) {
 	b.Helper()
 	const sqE7, sqE5 = 52, 36
 	spec := movePawnPush2Spec(sqE7, sqE5, pBP)
@@ -230,7 +230,7 @@ func bbBuildAcceptance(b *testing.B, e *chessEnv, chainID base.ChainID, boardAft
 	return txb, boardAfter
 }
 
-func bbBuildOrdinaryMove(b *testing.B, e *chessEnv, chainID base.ChainID, prevBoard []byte, proposeTie bool) (*txbuilder.TxBuilder, []byte) {
+func bbBuildOrdinaryMove(b *testing.B, e *chessEnv, chainID base.ChainID, prevBoard []byte, proposeTie bool) (*exhelp.Builder, []byte) {
 	b.Helper()
 	// White plays d2-d4.
 	const sqD2, sqD4 = 11, 27
@@ -258,7 +258,7 @@ func bbBuildOrdinaryMove(b *testing.B, e *chessEnv, chainID base.ChainID, prevBo
 	return txb, boardAfter
 }
 
-func bbBuildTieAccept(b *testing.B, e *chessEnv, chainID base.ChainID) *txbuilder.TxBuilder {
+func bbBuildTieAccept(b *testing.B, e *chessEnv, chainID base.ChainID) *exhelp.Builder {
 	b.Helper()
 	prev := loadChainOutputForBench(b, e, chainID)
 	ts := bbTs(prev.ID.Timestamp())
@@ -275,7 +275,7 @@ func bbBuildTieAccept(b *testing.B, e *chessEnv, chainID base.ChainID) *txbuilde
 	return txb
 }
 
-func bbBuildResign(b *testing.B, e *chessEnv, chainID base.ChainID) *txbuilder.TxBuilder {
+func bbBuildResign(b *testing.B, e *chessEnv, chainID base.ChainID) *exhelp.Builder {
 	b.Helper()
 	prev := loadChainOutputForBench(b, e, chainID)
 	prevState, err := readChessStateFromOutput(prev.Output)
@@ -303,7 +303,7 @@ func bbBuildResign(b *testing.B, e *chessEnv, chainID base.ChainID) *txbuilder.T
 	return txb
 }
 
-func bbBuildPreacceptanceTimeout(b *testing.B) *txbuilder.TxBuilder {
+func bbBuildPreacceptanceTimeout(b *testing.B) *exhelp.Builder {
 	b.Helper()
 	e := newBenchEnv(b)
 

@@ -8,10 +8,10 @@ import (
 
 	"github.com/lunfardo314/proxima/api/client"
 	chess_poc "github.com/lunfardo314/proxima/examples/chess_poc"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/proxi/glb"
 )
 
@@ -135,7 +135,7 @@ func submitAndTrack(txBytes []byte, consumedBytes [][]byte, txid base.Transactio
 
 // runChessAction is the common pipeline for "build txb, attach tag-along,
 // submit + track". Returns the final tx ID.
-func runChessAction(label string, txb *txbuilder.TxBuilder, priv ed25519.PrivateKey, walletLock ledger.SigLock, seqID base.ChainID, fee uint64, fundingInput *ledger.OutputWithID) base.TransactionID {
+func runChessAction(label string, txb *exhelp.Builder, priv ed25519.PrivateKey, walletLock ledger.SigLock, seqID base.ChainID, fee uint64, fundingInput *ledger.OutputWithID) base.TransactionID {
 	err := chess_poc.AttachTagAlong(txb, chess_poc.AttachTagAlongParams{
 		SignerPrivKey: priv,
 		FundingInput:  fundingInput,

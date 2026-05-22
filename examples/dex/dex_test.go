@@ -8,12 +8,12 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,7 +55,7 @@ func (e *dexEnv) outputsOf(t *testing.T, lock ledger.SigLock) []*ledger.OutputWi
 	return outs
 }
 
-func (e *dexEnv) submit(t *testing.T, txb *txbuilder.TxBuilder) *transaction.Transaction {
+func (e *dexEnv) submit(t *testing.T, txb *exhelp.Builder) *transaction.Transaction {
 	t.Helper()
 	txBytes, _, failed, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "build/validate failed:\n%s", failed)
@@ -94,7 +94,7 @@ func (e *dexEnv) mintTokensFor(t *testing.T, signer ed25519.PrivateKey, signerLo
 	require.NotEmpty(t, originOuts)
 	ts := nextTs(originOuts[0].ID.Timestamp())
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, inTs, err := txb.ConsumeOutputsNoUnlock(originOuts...)
 	require.NoError(t, err)
 	ts = base.MaximumTime(inTs.AddTicks(int(ledger.L(inTs.Slot).TransactionPace)), ts)
@@ -108,7 +108,7 @@ func (e *dexEnv) mintTokensFor(t *testing.T, signer ed25519.PrivateKey, signerLo
 			require.NoError(t, txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0))
 		}
 	}
-	foundryOut := txbuilder.MakeFoundryOriginOutput(200_000_000, signerLock, ts.Slot, 0, nil)
+	foundryOut := exhelp.MakeFoundryOriginOutput(200_000_000, signerLock, ts.Slot, 0, nil)
 	require.NoError(t, foundryOut.EnoughAmountForStorageDeposit())
 	foundryIdx, err := txb.ProduceOutput(foundryOut)
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func (e *dexEnv) mintTokensFor(t *testing.T, signer ed25519.PrivateKey, signerLo
 		},
 		ChainID: tag,
 	}
-	txb2 := txbuilder.New()
+	txb2 := exhelp.New()
 	_, err = txb2.TransitFoundry(foundryData, amount)
 	require.NoError(t, err)
 	txb2.PutSignatureUnlock(0)
@@ -504,7 +504,7 @@ func TestSellOrderUnderpaymentRejected(t *testing.T) {
 	require.NotEmpty(t, buyerPure)
 	fillTs := nextTs(base.MaximumTime(orderUTXO.Timestamp(), buyerPure[0].Timestamp()))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	orderInIdx, err := txb.ConsumeOutput(orderUTXO.Output, orderUTXO.ID)
 	require.NoError(t, err)
 	fundingTotal := uint64(0)
@@ -627,7 +627,7 @@ func TestMultiSellOrderMatch(t *testing.T) {
 
 	// Build the multi-input fill tx by hand. Order A at input 0, order B
 	// at input 1, then buyer's funding inputs.
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	orderAIdx, err := txb.ConsumeOutput(orderA.Output, orderA.ID)
 	require.NoError(t, err)
 	orderBIdx, err := txb.ConsumeOutput(orderB.Output, orderB.ID)
@@ -729,7 +729,7 @@ func TestFoldAttackRejection(t *testing.T) {
 		buyerPure[0].Timestamp(),
 	))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	orderAIdx, err := txb.ConsumeOutput(orderA.Output, orderA.ID)
 	require.NoError(t, err)
 	orderBIdx, err := txb.ConsumeOutput(orderB.Output, orderB.ID)
@@ -844,7 +844,7 @@ func TestMixedArbitrageMatch(t *testing.T) {
 		traderPure[0].Timestamp(),
 	))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	// Sell at input 0, buy at input 1, then trader funding.
 	sellInIdx, err := txb.ConsumeOutput(sellOrder.Output, sellOrder.ID)
 	require.NoError(t, err)

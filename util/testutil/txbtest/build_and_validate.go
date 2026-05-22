@@ -8,6 +8,7 @@ package txbtest
 import (
 	"fmt"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuilder"
@@ -26,6 +27,9 @@ func BuildAndValidate(txb any) ([]byte, base.TransactionID, string, error) {
 	var loader func(i byte) ([]byte, error)
 	switch v := txb.(type) {
 	case *txbuilder.TxBuilder:
+		txBytes = v.Bytes()
+		loader = v.LoadInputBytes
+	case *exhelp.Builder:
 		txBytes = v.Bytes()
 		loader = v.LoadInputBytes
 	case *txbuilder_seq.SeqTxBuilder:

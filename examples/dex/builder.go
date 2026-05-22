@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 )
 
 // =============================================================================
@@ -15,7 +15,7 @@ import (
 // claude/dex_orders.md.
 //
 // Convention: each Build* function below takes the inputs explicitly so
-// callers control coin selection, and returns the *txbuilder.TxBuilder ready
+// callers control coin selection, and returns the *exhelp.Builder ready
 // to sign + serialise (finalisation/signing is done inside).
 // =============================================================================
 
@@ -36,7 +36,7 @@ func orderIndexEntry(tag base.ChainID, sideByte byte) []byte {
 // pushRedeemScript attaches the dex local-script binary onto the tx via
 // redeemScript(<bin>). Required on every tx that creates, fills, or reclaims
 // an order UTXO.
-func pushRedeemScript(txb *txbuilder.TxBuilder) error {
+func pushRedeemScript(txb *exhelp.Builder) error {
 	bc, err := RedeemScriptConstraint()
 	if err != nil {
 		return err
@@ -46,7 +46,7 @@ func pushRedeemScript(txb *txbuilder.TxBuilder) error {
 }
 
 // finaliseAndSign sets timestamp, computes input commitment, and signs ed25519.
-func finaliseAndSign(txb *txbuilder.TxBuilder, ts base.LedgerTime, priv ed25519.PrivateKey) {
+func finaliseAndSign(txb *exhelp.Builder, ts base.LedgerTime, priv ed25519.PrivateKey) {
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(priv)
@@ -74,7 +74,7 @@ type BuildSellOrderParams struct {
 }
 
 // BuildSellOrder creates a sell-order UTXO and signs the tx.
-func BuildSellOrder(p BuildSellOrderParams) (*txbuilder.TxBuilder, error) {
+func BuildSellOrder(p BuildSellOrderParams) (*exhelp.Builder, error) {
 	if p.Amount == 0 || p.Price == 0 || p.Deposit == 0 {
 		return nil, fmt.Errorf("BuildSellOrder: amount/price/deposit must be positive")
 	}
@@ -82,7 +82,7 @@ func BuildSellOrder(p BuildSellOrderParams) (*txbuilder.TxBuilder, error) {
 		return nil, fmt.Errorf("BuildSellOrder: TimeoutSlots %d below floor (12)", p.TimeoutSlots)
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	totalBase, _, err := txb.ConsumeOutputsUnlock(p.FundingInputs...)
 	if err != nil {
 		return nil, fmt.Errorf("BuildSellOrder: consume inputs: %w", err)
@@ -148,7 +148,7 @@ type BuildBuyOrderParams struct {
 	TxTimestamp base.LedgerTime
 }
 
-func BuildBuyOrder(p BuildBuyOrderParams) (*txbuilder.TxBuilder, error) {
+func BuildBuyOrder(p BuildBuyOrderParams) (*exhelp.Builder, error) {
 	if p.Amount == 0 || p.Price == 0 || p.Deposit == 0 {
 		return nil, fmt.Errorf("BuildBuyOrder: amount/price/deposit must be positive")
 	}
@@ -156,7 +156,7 @@ func BuildBuyOrder(p BuildBuyOrderParams) (*txbuilder.TxBuilder, error) {
 		return nil, fmt.Errorf("BuildBuyOrder: TimeoutSlots %d below floor (12)", p.TimeoutSlots)
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	totalBase, _, err := txb.ConsumeOutputsUnlock(p.FundingInputs...)
 	if err != nil {
 		return nil, fmt.Errorf("BuildBuyOrder: consume inputs: %w", err)
@@ -216,7 +216,7 @@ type BuildFillSellOrderParams struct {
 	TxTimestamp   base.LedgerTime
 }
 
-func BuildFillSellOrder(p BuildFillSellOrderParams) (*txbuilder.TxBuilder, error) {
+func BuildFillSellOrder(p BuildFillSellOrderParams) (*exhelp.Builder, error) {
 	order := p.OrderUTXO.Output
 	originalBase := order.TokenBalance()
 	tokenAmt, price, err := parseSellOrder(order)
@@ -229,7 +229,7 @@ func BuildFillSellOrder(p BuildFillSellOrderParams) (*txbuilder.TxBuilder, error
 		return nil, fmt.Errorf("BuildFillSellOrder: read issuer: %w", err)
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	// Order goes in first (input 0) so the literal-equals-input-index check
 	// reads selfOutputIndex == 0.
@@ -311,7 +311,7 @@ type BuildFillBuyOrderParams struct {
 	TxTimestamp base.LedgerTime
 }
 
-func BuildFillBuyOrder(p BuildFillBuyOrderParams) (*txbuilder.TxBuilder, error) {
+func BuildFillBuyOrder(p BuildFillBuyOrderParams) (*exhelp.Builder, error) {
 	order := p.OrderUTXO.Output
 	originalBase := order.TokenBalance()
 	tag, amount, price, err := parseBuyOrder(order)
@@ -328,7 +328,7 @@ func BuildFillBuyOrder(p BuildFillBuyOrderParams) (*txbuilder.TxBuilder, error) 
 		return nil, fmt.Errorf("BuildFillBuyOrder: read issuer: %w", err)
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	orderInIdx, err := txb.ConsumeOutput(order, p.OrderUTXO.ID)
 	if err != nil {
@@ -409,8 +409,8 @@ type BuildReclaimOrderParams struct {
 	TxTimestamp base.LedgerTime
 }
 
-func BuildReclaimOrder(p BuildReclaimOrderParams) (*txbuilder.TxBuilder, error) {
-	txb := txbuilder.New()
+func BuildReclaimOrder(p BuildReclaimOrderParams) (*exhelp.Builder, error) {
+	txb := exhelp.New()
 	orderInIdx, err := txb.ConsumeOutput(p.OrderUTXO.Output, p.OrderUTXO.ID)
 	if err != nil {
 		return nil, fmt.Errorf("BuildReclaimOrder: consume order: %w", err)

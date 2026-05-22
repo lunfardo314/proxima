@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
 )
@@ -687,7 +687,7 @@ func TestCallRedeemer_PrivateFnRejected(t *testing.T) {
 	_, _, callBC, err := lib.CompileExpression(callSrc)
 	require.NoError(t, err)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsUnlock(wOuts...)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, total, uint64(100_000_000))

@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -17,7 +17,7 @@ import (
 // chess_poc.md §5.
 //
 // Convention: each Build* function below takes the funding inputs explicitly
-// so callers control coin selection, and returns the *txbuilder.TxBuilder
+// so callers control coin selection, and returns the *exhelp.Builder
 // ready to sign + serialise.
 // =============================================================================
 
@@ -31,7 +31,7 @@ func HolderIDOf(priv ed25519.PrivateKey) base.HolderID {
 
 // pushRedeemConstraints adds the two redeemScript constraints (chessValidator
 // + chessGame) to the tx. Must be called on every chess covenant tx.
-func pushRedeemConstraints(txb *txbuilder.TxBuilder) error {
+func pushRedeemConstraints(txb *exhelp.Builder) error {
 	bins := GetBins()
 	lib := ledger.L(base.MaxSlot)
 
@@ -75,7 +75,7 @@ func buildChessOutput(amount uint64, state *ChessState, cc *ledger.ChainConstrai
 
 // finaliseAndSign sets timestamp, computes input commitment, signs ed25519.
 // txTs MUST be ≥ max(input timestamps) + TransactionPace.
-func finaliseAndSign(txb *txbuilder.TxBuilder, txTs base.LedgerTime, priv ed25519.PrivateKey) {
+func finaliseAndSign(txb *exhelp.Builder, txTs base.LedgerTime, priv ed25519.PrivateKey) {
 	txb.SetTimestamp(txTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(priv)
@@ -97,7 +97,7 @@ type BuildOriginParams struct {
 	TxTimestamp   base.LedgerTime      // tx timestamp; deadline = TxTimestamp.Slot + TSlots
 }
 
-func BuildOrigin(p BuildOriginParams) (*txbuilder.TxBuilder, error) {
+func BuildOrigin(p BuildOriginParams) (*exhelp.Builder, error) {
 	if p.Stake == 0 {
 		return nil, fmt.Errorf("BuildOrigin: stake must be > 0")
 	}
@@ -111,7 +111,7 @@ func BuildOrigin(p BuildOriginParams) (*txbuilder.TxBuilder, error) {
 		return nil, fmt.Errorf("BuildOrigin: BoardAfter must be 69 bytes")
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsUnlock(p.FundingInputs...)
 	if err != nil {
 		return nil, fmt.Errorf("BuildOrigin: consume inputs: %w", err)
@@ -168,7 +168,7 @@ type BuildAcceptanceParams struct {
 	TxTimestamp   base.LedgerTime
 }
 
-func BuildAcceptance(p BuildAcceptanceParams) (*txbuilder.TxBuilder, error) {
+func BuildAcceptance(p BuildAcceptanceParams) (*exhelp.Builder, error) {
 	if p.OriginUTXO == nil {
 		return nil, fmt.Errorf("BuildAcceptance: OriginUTXO required")
 	}
@@ -181,7 +181,7 @@ func BuildAcceptance(p BuildAcceptanceParams) (*txbuilder.TxBuilder, error) {
 		return nil, fmt.Errorf("BuildAcceptance: parse predecessor: %w", err)
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	// Consume the chess UTXO first (input index 0).
 	chessInIdx, err := txb.ConsumeOutput(p.OriginUTXO.Output, p.OriginUTXO.ID)
@@ -270,7 +270,7 @@ type BuildMoveParams struct {
 	TxTimestamp  base.LedgerTime
 }
 
-func BuildMove(p BuildMoveParams) (*txbuilder.TxBuilder, error) {
+func BuildMove(p BuildMoveParams) (*exhelp.Builder, error) {
 	predState, err := readChessStateFromOutput(p.PrevUTXO.Output)
 	if err != nil {
 		return nil, fmt.Errorf("BuildMove: parse predecessor: %w", err)
@@ -280,7 +280,7 @@ func BuildMove(p BuildMoveParams) (*txbuilder.TxBuilder, error) {
 		return nil, fmt.Errorf("BuildMove: NewAmount %d < predecessor %d", p.NewAmount, predAmount)
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	chessInIdx, err := txb.ConsumeOutput(p.PrevUTXO.Output, p.PrevUTXO.ID)
 	if err != nil {
 		return nil, fmt.Errorf("BuildMove: consume chess UTXO: %w", err)
@@ -371,8 +371,8 @@ func buildTermination(
 	branchSelector byte,
 	payouts []termPayout,
 	txTs base.LedgerTime,
-) (*txbuilder.TxBuilder, error) {
-	txb := txbuilder.New()
+) (*exhelp.Builder, error) {
+	txb := exhelp.New()
 	chessInIdx, err := txb.ConsumeOutput(prevUTXO.Output, prevUTXO.ID)
 	if err != nil {
 		return nil, fmt.Errorf("buildTermination: consume chess UTXO: %w", err)
@@ -421,7 +421,7 @@ type BuildTieAcceptParams struct {
 	TxTimestamp     base.LedgerTime
 }
 
-func BuildTieAccept(p BuildTieAcceptParams) (*txbuilder.TxBuilder, error) {
+func BuildTieAccept(p BuildTieAcceptParams) (*exhelp.Builder, error) {
 	amount := p.PrevUTXO.Output.TokenBalance()
 	whiteShare := (amount + 1) / 2
 	blackShare := amount / 2
@@ -438,7 +438,7 @@ type BuildResignParams struct {
 	TxTimestamp     base.LedgerTime
 }
 
-func BuildResign(p BuildResignParams) (*txbuilder.TxBuilder, error) {
+func BuildResign(p BuildResignParams) (*exhelp.Builder, error) {
 	return buildTermination(p.ResignerPrivKey, p.PrevUTXO, BranchResign,
 		[]termPayout{{Lock: p.OpponentLock, Amount: p.PrevUTXO.Output.TokenBalance()}},
 		p.TxTimestamp)
@@ -453,7 +453,7 @@ type BuildTimeoutClaimParams struct {
 	TxTimestamp     base.LedgerTime
 }
 
-func BuildTimeoutClaim(p BuildTimeoutClaimParams) (*txbuilder.TxBuilder, error) {
+func BuildTimeoutClaim(p BuildTimeoutClaimParams) (*exhelp.Builder, error) {
 	return buildTermination(p.ClaimantPrivKey, p.PrevUTXO, BranchTimeoutClaim,
 		[]termPayout{{Lock: p.ClaimantLock, Amount: p.PrevUTXO.Output.TokenBalance()}},
 		p.TxTimestamp)
