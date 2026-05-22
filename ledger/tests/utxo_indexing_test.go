@@ -15,9 +15,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/blake2b"
@@ -115,7 +115,7 @@ func spendCustomLockedOutput(
 ) error {
 	t.Helper()
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	idx, err := txb.ConsumeOutput(in.Output, in.ID)
 	require.NoError(t, err)
 	txb.PutUnlockParams(idx, ledger.ConstraintIndexLock, unlockParams)

@@ -21,10 +21,10 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -57,7 +57,7 @@ func buildValidTransferTxBytes(
 	srcAddr ledger.SigLock,
 	dstAddr ledger.SigLock,
 	amount uint64,
-) ([]byte, *txbuilder.TxBuilder) {
+) ([]byte, *exhelp.Builder) {
 	t.Helper()
 
 	// Collect inputs from state
@@ -69,7 +69,7 @@ func buildValidTransferTxBytes(
 	require.NoError(t, err)
 	require.True(t, len(outs) > 0, "source address must have UTXOs")
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	require.True(t, total >= amount, "not enough funds")
@@ -103,7 +103,7 @@ func buildValidTransferTxBytes(
 	// Timestamp
 	lib := ledger.L(maxTs.Slot)
 	ts := maxTs.AddTicks(int(lib.TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 
 	// Input commitment (blake2b of consumed outputs tuple)
 	txb.ComputeInputCommitment()
@@ -168,7 +168,7 @@ func TestTxDuplicateInputsRejected(t *testing.T) {
 	require.True(t, len(outs) > 0)
 
 	// Build transaction with the SAME input duplicated
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	// Consume same output twice
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 	require.NoError(t, err)
@@ -189,7 +189,7 @@ func TestTxDuplicateInputsRejected(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := outs[0].Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 
 	// Input commitment: hash of the two (identical) consumed outputs
 	txb.ComputeInputCommitment()
@@ -267,7 +267,7 @@ func TestTxInputCommitmentWithWrongHash(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -279,7 +279,7 @@ func TestTxInputCommitmentWithWrongHash(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := maxTs.AddTicks(int(ledger.L(0).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 
 	// Set WRONG input commitment (all zeros)
 	txb.TxData.InputCommitment = [32]byte{}
@@ -378,7 +378,7 @@ func TestTxSignatureMatchesButLockMismatch(t *testing.T) {
 func TestTxEdgeCaseNoInputs(t *testing.T) {
 	_, _, dstAddr := utxodb.NewUTXODB(genesisPrivateKey, true).GenerateAddress(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	// Produce an output without consuming anything
 	targetOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
@@ -388,7 +388,7 @@ func TestTxEdgeCaseNoInputs(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := ledger.TimeNow()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.TxData.InputCommitment = [32]byte{}
 
 	privKey, _, _ := utxodb.NewUTXODB(genesisPrivateKey, true).GenerateAddress(1)
@@ -478,7 +478,7 @@ func TestTxEdgeCaseTimePaceConstraint(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err = txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -491,7 +491,7 @@ func TestTxEdgeCaseTimePaceConstraint(t *testing.T) {
 
 	// Set timestamp SAME as input - violates pace constraint
 	// (transaction must be at least TransactionPace ticks after its inputs)
-	txb.SetTimestamp(outs[0].Timestamp())
+	txb.SetTimestamp(outs[0].Timestamp())
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 
@@ -626,7 +626,7 @@ func getSourceOutputs(t *testing.T, u *utxodb.UTXODB, addr ledger.SigLock) []*le
 
 // validateFull parses transaction bytes, sets full context using the builder's
 // consumed outputs, and runs full validation. Returns nil on success.
-func validateFull(txBytes []byte, txb *txbuilder.TxBuilder) error {
+func validateFull(txBytes []byte, txb *exhelp.Builder) error {
 	tx, err := transaction.Parse(txBytes)
 	if err != nil {
 		return err
@@ -639,9 +639,9 @@ func validateFull(txBytes []byte, txb *txbuilder.TxBuilder) error {
 
 // buildAndSignTx sets timestamp, input commitment, and signs the transaction.
 // Returns serialized transaction bytes.
-func buildAndSignTx(txb *txbuilder.TxBuilder, maxTs base.LedgerTime, privKey ed25519.PrivateKey) []byte {
+func buildAndSignTx(txb *exhelp.Builder, maxTs base.LedgerTime, privKey ed25519.PrivateKey) []byte {
 	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 	return txb.Bytes()
@@ -675,7 +675,7 @@ func TestTxAmountProduceMoreThanConsumed(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, srcAddr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -708,7 +708,7 @@ func TestTxAmountProduceLessThanConsumed(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, srcAddr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -739,7 +739,7 @@ func TestTxAmountOffByOne(t *testing.T) {
 		_, _, dstAddr := u.GenerateAddress(2)
 
 		outs := getSourceOutputs(t, u, srcAddr)
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -763,7 +763,7 @@ func TestTxAmountOffByOne(t *testing.T) {
 		_, _, dstAddr := u.GenerateAddress(2)
 
 		outs := getSourceOutputs(t, u, srcAddr)
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -796,7 +796,7 @@ func TestTxAmountConservationMultipleOutputs(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, srcAddr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -848,7 +848,7 @@ func TestTxAmountMultipleOutputsExcess(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, srcAddr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -906,7 +906,7 @@ func TestTxTheftSpendWithWrongKey(t *testing.T) {
 	aliceOuts := getSourceOutputs(t, u, aliceAddr)
 
 	// Bob builds a transaction consuming Alice's output
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(aliceOuts...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -954,7 +954,7 @@ func TestTxTheftUnlockReferenceDifferentLock(t *testing.T) {
 	aliceOuts := getSourceOutputs(t, u, aliceAddr)
 
 	// Build transaction consuming both: Bob's (input 0) and Alice's (input 1)
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(bobOuts[0].Output, bobOuts[0].ID)
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(aliceOuts[0].Output, aliceOuts[0].ID)
@@ -1163,7 +1163,7 @@ func TestTxOverflowConsumedBalance(t *testing.T) {
 		o.WithAmounts(hugeAmount).WithLock(addr)
 	})
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(fakeOut1, outs[0].ID)
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(fakeOut2, outs[1].ID)
@@ -1204,7 +1204,7 @@ func TestTxOverflowProducedBalance(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, addr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -1247,7 +1247,7 @@ func TestTxOverflowSingleMaxAmount(t *testing.T) {
 	// MaxInt64 - 1: largest non-overflowing single output
 	// (conservation check fails since consumed is only 100M, but no overflow)
 	t.Run("max_minus_one_no_overflow", func(t *testing.T) {
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -1271,7 +1271,7 @@ func TestTxOverflowSingleMaxAmount(t *testing.T) {
 
 	// MaxInt64 itself triggers overflow in AddToVector (conservative check: >= not >)
 	t.Run("exact_max_overflows", func(t *testing.T) {
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -1291,7 +1291,7 @@ func TestTxOverflowSingleMaxAmount(t *testing.T) {
 
 	// Two outputs with MaxInt64/2: their sum equals MaxInt64, should overflow
 	t.Run("two_half_max_overflow", func(t *testing.T) {
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -1338,7 +1338,7 @@ func TestTxOverflowConservationCheckSafe(t *testing.T) {
 		o.WithAmounts(consumedAmount).WithLock(addr)
 	})
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err := txb.ConsumeOutput(fakeOut, outs[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)

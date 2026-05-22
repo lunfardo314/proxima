@@ -13,7 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/stretchr/testify/require"
 )
@@ -107,12 +107,12 @@ func TestAttachDeadlockConcurrentAttachers(t *testing.T) {
 			ts = ts.AddTicks(1)
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, ts).
+		td := utxodb.NewTransferData(testData.privKey, testData.addr, ts).
 			MustWithInputs(sourceOutput).
 			WithAmount(100_000_000).
 			WithTargetLock(testData.addr)
 
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(td)
+		txBytes, err := utxodb.MakeSimpleTransferTransaction(td)
 		require.NoError(t, err)
 
 		const numConcurrent = 10
@@ -194,12 +194,12 @@ func TestAttachDeadlockSolidificationDeadline(t *testing.T) {
 			ts1 = ts1.AddTicks(1)
 		}
 
-		td1 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts1).
+		td1 := utxodb.NewTransferData(testData.privKey, testData.addr, ts1).
 			MustWithInputs(sourceOutput).
 			WithAmount(5_000_000_000).
 			WithTargetLock(testData.addr)
 
-		txBytes1, err := txbuilder.MakeSimpleTransferTransaction(td1)
+		txBytes1, err := utxodb.MakeSimpleTransferTransaction(td1)
 		require.NoError(t, err)
 
 		tx1, err := transaction.ParseWithPartialValidation(txBytes1)
@@ -212,12 +212,12 @@ func TestAttachDeadlockSolidificationDeadline(t *testing.T) {
 			ts2 = ts2.AddTicks(1)
 		}
 
-		td2 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts2).
+		td2 := utxodb.NewTransferData(testData.privKey, testData.addr, ts2).
 			MustWithInputs(output1).
 			WithAmount(100_000_000).
 			WithTargetLock(testData.addr)
 
-		txBytes2, err := txbuilder.MakeSimpleTransferTransaction(td2)
+		txBytes2, err := utxodb.MakeSimpleTransferTransaction(td2)
 		require.NoError(t, err)
 
 		// Attach second transaction - should eventually fail due to missing input

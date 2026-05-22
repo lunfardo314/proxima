@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
-	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ed25519"
 )
@@ -104,7 +104,7 @@ func (td *testData) delegationOriginDirect(ts base.LedgerTime, revoked bool, max
 	if revoked {
 		s = ledger.DelegateLockStateOnHold
 	}
-	txBytes, err = txbuilder.MakeSimpleTransferTransaction(
+	txBytes, err = utxodb.MakeSimpleTransferTransaction(
 		par.WithAmount(delegatedTokens).
 			WithTargetLock(delegationLock).
 			WithConstraint(ledger.NewChainOrigin(ts.Slot)).
@@ -163,7 +163,7 @@ func (td *testData) initDelegationUTXOMake(ts base.LedgerTime, maxFrozenEpochs b
 	outs, availableTokens := td.u.SugaredStateReader().GetOutputsLockedInAddressED25519ForAmount(td.masterAddr, delegatedTokens+tagAlongFee)
 	require.True(td, availableTokens >= delegatedTokens+tagAlongFee)
 
-	txBytes, err := txbuilder.MakeDelegationInitTransaction(txbuilder.MakeDelegationInitTransactionParams{
+	txBytes, err := utxodb.MakeDelegationInitTransaction(utxodb.MakeDelegationInitTransactionParams{
 		Timestamp:              ts,
 		Amount:                 delegatedTokens,
 		MasterID:               base.HolderID(td.masterAddr),
@@ -211,7 +211,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 		return err
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
 	require.NoError(td, err)
@@ -242,7 +242,7 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, par.ts)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(par.ts)
+	txb.SetTimestamp(par.ts)
 	txb.SignED25519(td.seqPrivateKey)
 
 	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
@@ -280,7 +280,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	td.Logf(">>>> revoke -----\nts = %s, diffSlots = %d, diffEpochs = %d\n-----\n%s",
 		ts.String(), diffSlots, diffEpochs, td.delegatedOutput.LinesSourceFull("   ").String())
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID)
 	require.NoError(td, err)
@@ -321,7 +321,7 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	txb.MustPutFrozenCoverage(succChainIdx, frozenCoverageDelta, ts)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(td.seqPrivateKey)
 
 	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
@@ -362,7 +362,7 @@ func (td *testData) timestampSlotsForward(slots uint32) base.LedgerTime {
 
 func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error {
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	amount, _, err := txb.ConsumeOutputsNoUnlock(&td.delegatedOutput.OutputWithID)
 	require.NoError(td, err)
@@ -381,7 +381,7 @@ func (td *testData) discontinueDelegation(ts base.LedgerTime, prntx bool) error 
 	require.NoError(td, err)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(td.masterPrivateKey)
 
 	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
@@ -664,7 +664,7 @@ type transitRawParams struct {
 }
 
 func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err error) {
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	_, _, err = txb.ConsumeOutputsNoUnlock(&td.seqChainOrigin.OutputWithID, &td.delegatedOutput.OutputWithID)
 	util.AssertNoError(err)
@@ -719,8 +719,8 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	txb.PushEndorsements(dummyTxId)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(par.ts)
-	txb.SetSequencerData(0, txbuildercore.SequencerOutputIndexNone)
+	txb.SetTimestamp(par.ts)
+	txb.SetSequencerData(0, txbuildercore.SequencerOutputIndexNone)
 	txb.SignED25519(td.seqPrivateKey)
 
 	txBytes, _, txString, err := txbtest.BuildAndValidate(txb)

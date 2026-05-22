@@ -18,10 +18,10 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
@@ -58,7 +58,7 @@ func (e *sequencerTestEnv) buildSequencerOrigin(
 
 	outs := getSourceOutputs(t, e.u, e.addr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	for i := range outs {
@@ -78,8 +78,8 @@ func (e *sequencerTestEnv) buildSequencerOrigin(
 	originIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
 
-	txb.SetSequencerData(originIdx, txbuildercore.SequencerOutputIndexNone)
-	txb.SetTimestamp(originTs)
+	txb.SetSequencerData(originIdx, txbuildercore.SequencerOutputIndexNone)
+	txb.SetTimestamp(originTs)
 
 	// Dummy endorsement required for sequencer chain origins
 	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
@@ -125,13 +125,13 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 	chainID base.ChainID,
 	succTs base.LedgerTime,
 	endorsements []base.TransactionID,
-) ([]byte, *txbuilder.TxBuilder) {
+) ([]byte, *exhelp.Builder) {
 	t.Helper()
 
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -145,11 +145,11 @@ func (e *sequencerTestEnv) buildSequencerSuccessor(
 	txb.PutSignatureUnlock(predIdx)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 
 	txb.PushEndorsements(endorsements...)
 
-	txb.SetTimestamp(succTs)
+	txb.SetTimestamp(succTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -171,7 +171,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	originTs := base.T(outs[0].ID.Slot()+1, 20)
 
 	// Build chain origin that produces chain output (10B) + change output (10B)
-	txb1 := txbuilder.New()
+	txb1 := exhelp.New()
 	total, _, err := txb1.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb1.PutSignatureUnlock(0)
@@ -192,8 +192,8 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	_, err = txb1.ProduceOutput(changeOut)
 	require.NoError(t, err)
 
-	txb1.SetSequencerData(chainIdx, txbuildercore.SequencerOutputIndexNone)
-	txb1.SetTimestamp(originTs)
+	txb1.SetSequencerData(chainIdx, txbuildercore.SequencerOutputIndexNone)
+	txb1.SetTimestamp(originTs)
 
 	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
 	txb1.PushEndorsements(dummyEnd)
@@ -233,7 +233,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		succTs := base.T(chainIn.ID.Slot(), 110)
 
 		cc := chainIn.Output.ChainConstraint()
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(changeIn.Output, changeIn.ID)
@@ -253,8 +253,8 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 			ledger.NewChainUnlockParams(succIdx))
 		err = txb.PutUnlockReference(1, ledger.ConstraintIndexLock, 0)
 		require.NoError(t, err)
-		txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
-		txb.SetTimestamp(succTs)
+		txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+		txb.SetTimestamp(succTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
@@ -270,7 +270,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		succTs := base.T(chainIn.ID.Slot(), 110)
 
 		cc := chainIn.Output.ChainConstraint()
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
@@ -284,8 +284,8 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 		txb.PutSignatureUnlock(predIdx)
 		txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 			ledger.NewChainUnlockParams(succIdx))
-		txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
-		txb.SetTimestamp(succTs)
+		txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+		txb.SetTimestamp(succTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
@@ -385,7 +385,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	// Create a non-sequencer chain origin at tick 15 in the next slot
 	chainOriginTs := base.T(outs[0].ID.Slot()+1, 15)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -399,7 +399,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	require.NoError(t, err)
 
 	// NOT a sequencer tx — don't set SequencerOutputIndex
-	txb.SetTimestamp(chainOriginTs)
+	txb.SetTimestamp(chainOriginTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -425,7 +425,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 
 	cc := chainIn.Output.ChainConstraint()
 
-	txb2 := txbuilder.New()
+	txb2 := exhelp.New()
 	predIdx, err := txb2.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -441,9 +441,9 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	txb2.PutSignatureUnlock(predIdx)
 	txb2.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb2.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+	txb2.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 	// No endorsements — this should trigger the same-slot predecessor rejection
-	txb2.SetTimestamp(succTs)
+	txb2.SetTimestamp(succTs)
 	txb2.ComputeInputCommitment()
 	txb2.SignED25519(e.privKey)
 

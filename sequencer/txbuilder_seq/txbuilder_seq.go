@@ -8,7 +8,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
@@ -39,9 +38,9 @@ type (
 		// NumConfirmedTransactions before populating the produced StemLock — this
 		// matches what the milestone attacher will compute when validating
 		// the branch (which DOES include the branch tx in its past cone).
-		CoverageDelta   uint64
-		FrozenCoverage  uint64
-		SlotInflation   uint64
+		CoverageDelta            uint64
+		FrozenCoverage           uint64
+		SlotInflation            uint64
 		NumConfirmedTransactions uint32
 		// 24-byte trie root of the predecessor branch (per metadata-refactor §3).
 		// Empty / nil leaves Source() emitting 24 zero bytes (genesis convention).
@@ -49,7 +48,13 @@ type (
 	}
 
 	SeqTxBuilder struct {
-		*txbuilder.TxBuilder
+		*txbuildercore.TxBuilder
+		// Typed mirrors of consumed / produced outputs — bytes live in
+		// the embedded core builder; these slices let sequencer code
+		// inspect amounts, locks and chain constraints without
+		// re-parsing each output.
+		ConsumedOutputs []*ledger.Output
+		ProducedOutputs []*ledger.Output
 		*ledger.Library // cached library for this transaction's slot
 		origSeqData     *seqdata.SequencerData
 		rdr             multistate.IndexedStateReader
@@ -85,13 +90,13 @@ type (
 		AttachmentCostDelta() int
 	}
 	Params struct {
-		Timestamp                base.LedgerTime
-		Predecessor              *ledger.OutputWithChainID
-		Stem                     *ledger.OutputWithID
-		SignatureType            byte
-		PrivateKey               []byte
-		PublicKey                []byte
-		StateReader              multistate.IndexedStateReader
+		Timestamp             base.LedgerTime
+		Predecessor           *ledger.OutputWithChainID
+		Stem                  *ledger.OutputWithID
+		SignatureType         byte
+		PrivateKey            []byte
+		PublicKey             []byte
+		StateReader           multistate.IndexedStateReader
 		DoNotInflateMainChain bool
 	}
 )
@@ -106,7 +111,9 @@ func New(par Params) (*SeqTxBuilder, error) {
 		publicKey:             par.PublicKey,
 		chainInput:            par.Predecessor,
 		stemInput:             par.Stem,
-		TxBuilder:             txbuilder.New(),
+		TxBuilder:             txbuildercore.New(0),
+		ConsumedOutputs:       make([]*ledger.Output, 0),
+		ProducedOutputs:       make([]*ledger.Output, 0),
 		rdr:                   par.StateReader,
 		doNotInflateMainChain: par.DoNotInflateMainChain,
 	}
@@ -141,7 +148,7 @@ func New(par Params) (*SeqTxBuilder, error) {
 		return nil, fmt.Errorf("SeqTxBuilder: pace constraint violated: %s", par.Timestamp.String())
 	}
 
-	ret.SetTimestamp(par.Timestamp)
+	ret.SetTimestamp(par.Timestamp)
 
 	if ret.IsSlotBoundary() {
 		if par.Stem == nil {
@@ -285,7 +292,7 @@ func (txb *SeqTxBuilder) AddEndorsement(txid base.TransactionID) error {
 
 // AddSimpleInput output must have 2 constraints and lock must be address25519 or chainLock
 func (txb *SeqTxBuilder) AddSimpleInput(o ledger.OutputWithID) error {
-	idx, err := txb.TxBuilder.ConsumeOutput(o.Output, o.ID)
+	idx, err := txb.ConsumeOutput(o.Output, o.ID)
 	if err != nil {
 		return fmt.Errorf("AddSimpleInput: %v", err)
 	}
@@ -605,15 +612,15 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 	totalCoverage := predTotalCov + coverageDelta
 
 	return &ledger.StemLock{
-		PredecessorOutputID: txb.stemInput.ID,
-		VRFProof:            txb.vrfProof,
-		TotalSupply:         totalSupply,
-		TotalCoverage:       totalCoverage,
-		CoverageDelta:       coverageDelta,
-		FrozenCoverage:      frozenCoverage,
-		SlotInflation:       slotInflation,
-		NumConfirmedTransactions:     numConfirmedTransactions,
-		BaselineRoot:        baselineRoot,
+		PredecessorOutputID:      txb.stemInput.ID,
+		VRFProof:                 txb.vrfProof,
+		TotalSupply:              totalSupply,
+		TotalCoverage:            totalCoverage,
+		CoverageDelta:            coverageDelta,
+		FrozenCoverage:           frozenCoverage,
+		SlotInflation:            slotInflation,
+		NumConfirmedTransactions: numConfirmedTransactions,
+		BaselineRoot:             baselineRoot,
 	}
 }
 
@@ -628,7 +635,7 @@ func (txb *SeqTxBuilder) BytesWithInputLoader() ([]byte, func(i byte) ([]byte, e
 	txb.ComputeInputCommitment()
 	txb.SignED25519(txb.privateKey)
 
-	return txb.TxBuilder.Bytes(), txb.TxBuilder.LoadInputBytes, nil
+	return txb.TxBuilder.Bytes(), txb.LoadInputBytes, nil
 }
 
 func (txb *SeqTxBuilder) reservedInputs() (ret int) {
@@ -740,12 +747,12 @@ func MakeSimpleSequencerTransactionWithInputLoader(par MakeSimpleSequencerTransa
 		}
 	}
 	txb, err := New(Params{
-		Timestamp:                par.Timestamp,
-		Predecessor:              par.ChainInput,
-		Stem:                     par.StemInput,
-		SignatureType:            par.SignatureType,
-		PrivateKey:               par.PrivateKey,
-		PublicKey:                par.PublicKey,
+		Timestamp:             par.Timestamp,
+		Predecessor:           par.ChainInput,
+		Stem:                  par.StemInput,
+		SignatureType:         par.SignatureType,
+		PrivateKey:            par.PrivateKey,
+		PublicKey:             par.PublicKey,
 		DoNotInflateMainChain: par.DoNotInflateMainChain,
 	})
 	if err != nil {

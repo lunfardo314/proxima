@@ -12,7 +12,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/util/testutil"
 	"github.com/stretchr/testify/require"
@@ -89,13 +89,13 @@ func TestSequencerAttachCostTagAlongChainExceedsBudget(t *testing.T) {
 
 		if i == chainLength-1 {
 			// Last transaction: create a tag-along output for the bootstrap sequencer
-			tData := txbuilder.NewTransferData(testData.privKeyFaucet, testData.addrFaucet, ts).
+			tData := utxodb.NewTransferData(testData.privKeyFaucet, testData.addrFaucet, ts).
 				MustWithInputs(prevOutput).
 				WithTargetLock(targetAddr).
 				WithAmount(100_000_000).
 				WithTagAlong(testData.bootstrapChainID, tagAlongFee)
 
-			txBytes, remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
+			txBytes, remainder, err = utxodb.MakeSimpleTransferTransactionWithRemainder(tData)
 			require.NoError(t, err)
 
 			tx, err := transaction.ParseWithPartialValidation(txBytes)
@@ -109,12 +109,12 @@ func TestSequencerAttachCostTagAlongChainExceedsBudget(t *testing.T) {
 			_ = remainder
 		} else {
 			// Regular transfer
-			tData := txbuilder.NewTransferData(testData.privKeyFaucet, testData.addrFaucet, ts).
+			tData := utxodb.NewTransferData(testData.privKeyFaucet, testData.addrFaucet, ts).
 				MustWithInputs(prevOutput).
 				WithTargetLock(targetAddr).
 				WithAmount(100_000_000)
 
-			txBytes, remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
+			txBytes, remainder, err = utxodb.MakeSimpleTransferTransactionWithRemainder(tData)
 			require.NoError(t, err)
 			prevOutput = remainder
 		}
@@ -234,13 +234,13 @@ func TestSequencerAttachCostManyTagAlongsExceedBudget(t *testing.T) {
 			ts = ts.AddTicks(1)
 		}
 
-		tData := txbuilder.NewTransferData(testData.privKeyFaucet, testData.addrFaucet, ts).
+		tData := utxodb.NewTransferData(testData.privKeyFaucet, testData.addrFaucet, ts).
 			MustWithInputs(remainder).
 			WithTargetLock(targetAddr).
 			WithAmount(sendAmount).
 			WithTagAlong(testData.bootstrapChainID, tagAlongAmount)
 
-		txBytes, newRemainder, err := txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
+		txBytes, newRemainder, err := utxodb.MakeSimpleTransferTransactionWithRemainder(tData)
 		require.NoError(t, err)
 
 		tx, err := transaction.ParseWithPartialValidation(txBytes)
@@ -366,13 +366,13 @@ func TestSequencerAttachCostBudgetBaseline(t *testing.T) {
 			ts = ts.AddTicks(1)
 		}
 
-		tData := txbuilder.NewTransferData(testData.privKeyFaucet, testData.addrFaucet, ts).
+		tData := utxodb.NewTransferData(testData.privKeyFaucet, testData.addrFaucet, ts).
 			MustWithInputs(remainder).
 			WithTargetLock(targetAddr).
 			WithAmount(sendAmount).
 			WithTagAlong(testData.bootstrapChainID, tagAlongFee)
 
-		txBytes, newRemainder, err := txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
+		txBytes, newRemainder, err := utxodb.MakeSimpleTransferTransactionWithRemainder(tData)
 		require.NoError(t, err)
 
 		txid, err := testData.wrk.TxBytesInForTests(txBytes)

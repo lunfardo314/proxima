@@ -21,10 +21,10 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/blake2b"
@@ -72,7 +72,7 @@ func buildTransferWith(
 	srcPrivKey ed25519.PrivateKey,
 	srcAddr, dstAddr ledger.SigLock,
 	amount uint64,
-	customise func(txb *txbuilder.TxBuilder),
+	customise func(txb *exhelp.Builder),
 ) []byte {
 	t.Helper()
 
@@ -84,7 +84,7 @@ func buildTransferWith(
 	require.NoError(t, err)
 	require.True(t, len(outs) > 0)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	require.True(t, total >= amount)
@@ -112,7 +112,7 @@ func buildTransferWith(
 	}
 
 	lib := ledger.L(maxTs.Slot)
-	txb.SetTimestamp(maxTs.AddTicks(int(lib.TransactionPace)))
+	txb.SetTimestamp(maxTs.AddTicks(int(lib.TransactionPace)))
 	txb.ComputeInputCommitment()
 
 	if customise != nil {
@@ -154,7 +154,7 @@ func TestRedeemScript_HappyPath(t *testing.T) {
 
 	redeemBC := mustCompileExpr(t, fmt.Sprintf("redeemScript(0x%s)", hex.EncodeToString(bin)))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 	})
 
@@ -178,7 +178,7 @@ func TestRedeemScript_FormulaBinRejected(t *testing.T) {
 	// concat(0xde, 0xad) is a real call — IsInlineData() returns false.
 	formulaBC := mustCompileExpr(t, "redeemScript(concat(0xde, 0xad))")
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(formulaBC)
 	})
 
@@ -196,7 +196,7 @@ func TestRedeemScript_InvalidBin(t *testing.T) {
 
 	badBC := mustCompileExpr(t, "redeemScript(0xdeadbeef)")
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(badBC)
 	})
 
@@ -208,7 +208,7 @@ func TestRedeemScript_InvalidBin(t *testing.T) {
 // addExtraConstraint appends bc as an extra constraint on the second
 // produced output (the change-back) without disturbing its amount/lock.
 // Most callRedeemer tests need exactly this shape.
-func addExtraConstraint(t *testing.T, txb *txbuilder.TxBuilder, bc []byte) {
+func addExtraConstraint(t *testing.T, txb *exhelp.Builder, bc []byte) {
 	t.Helper()
 	require.Equal(t, 2, len(txb.ProducedOutputs), "buildTransferWith expected to produce 2 outputs (target + remainder)")
 	txb.ReplaceProducedOutput(1, txb.ProducedOutputs[1].Clone(func(o *ledger.OutputBuilder) {
@@ -227,7 +227,7 @@ func TestRedeemScript_OutsideTxConstraints(t *testing.T) {
 	bin, _ := compileBin(t, `func id_outside : $0`)
 	redeemBC := mustCompileExpr(t, fmt.Sprintf("redeemScript(0x%s)", hex.EncodeToString(bin)))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		addExtraConstraint(t, txb, redeemBC)
 	})
 
@@ -246,7 +246,7 @@ func TestRedeemScript_Idempotent(t *testing.T) {
 	bin, hash := compileBin(t, `func id : $0`)
 	redeemBC := mustCompileExpr(t, fmt.Sprintf("redeemScript(0x%s)", hex.EncodeToString(bin)))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 		txb.PushTxConstraint(redeemBC)
 	})
@@ -305,14 +305,14 @@ func TestRedeemScript_CrossTxCacheReuse(t *testing.T) {
 	startPuts := atomic.LoadInt64(&counting.puts)
 
 	// Tx 1
-	tx1 := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	tx1 := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 	})
 	_, err := submitAndCapture(u, tx1)
 	require.NoError(t, err)
 
 	// Tx 2 — also redeems the same bin.
-	tx2 := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	tx2 := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 	})
 	_, err = submitAndCapture(u, tx2)
@@ -337,7 +337,7 @@ func TestCallRedeemer_HappyPath(t *testing.T) {
 	redeemBC := mustCompileExpr(t, fmt.Sprintf("redeemScript(0x%s)", hex.EncodeToString(bin)))
 	callBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x00, 0x42)", hex.EncodeToString(hash[:])))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 		addExtraConstraint(t, txb, callBC)
 	})
@@ -356,7 +356,7 @@ func TestCallRedeemer_NotRedeemed(t *testing.T) {
 	_, hash := compileBin(t, `func id_not_redeemed : $0`)
 	callBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x00, 0x42)", hex.EncodeToString(hash[:])))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		// No PushTxConstraint — hash never enters the commitment list.
 		addExtraConstraint(t, txb, callBC)
 	})
@@ -377,7 +377,7 @@ func TestCallRedeemer_HashFormulaRejected(t *testing.T) {
 	// blake2b(0x00) is a real call returning 32 bytes — IsInlineData() is false.
 	badBC := mustCompileExpr(t, "callRedeemer(blake2b(0x00), 0x00)")
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		addExtraConstraint(t, txb, badBC)
 	})
 
@@ -395,7 +395,7 @@ func TestCallRedeemer_HashWrongSize(t *testing.T) {
 	short := make([]byte, 31)
 	badBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x00)", hex.EncodeToString(short)))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		addExtraConstraint(t, txb, badBC)
 	})
 
@@ -414,7 +414,7 @@ func TestCallRedeemer_IdxNot1Byte(t *testing.T) {
 	// idx = 0x0000 (2 bytes).
 	badBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x0000, 0x42)", hex.EncodeToString(hash[:])))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 		addExtraConstraint(t, txb, badBC)
 	})
@@ -433,7 +433,7 @@ func TestCallRedeemer_IdxOutOfRange(t *testing.T) {
 	redeemBC := mustCompileExpr(t, fmt.Sprintf("redeemScript(0x%s)", hex.EncodeToString(bin)))
 	badBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x05, 0x42)", hex.EncodeToString(hash[:])))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 		addExtraConstraint(t, txb, badBC)
 	})
@@ -454,7 +454,7 @@ func TestCallRedeemer_WrongArity(t *testing.T) {
 	// Pass only 0 forwarded args (call site has just <hash>, <fnIdx>).
 	badBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x00)", hex.EncodeToString(hash[:])))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 		addExtraConstraint(t, txb, badBC)
 	})
@@ -486,7 +486,7 @@ func TestCallRedeemer_CrossScriptComposition(t *testing.T) {
 	redeem2BC := mustCompileExpr(t, fmt.Sprintf("redeemScript(0x%s)", hex.EncodeToString(bin2)))
 	callBC := mustCompileExpr(t, fmt.Sprintf("callRedeemer(0x%s, 0x00, 0x42)", hex.EncodeToString(h1[:])))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeem1BC)
 		txb.PushTxConstraint(redeem2BC)
 		addExtraConstraint(t, txb, callBC)
@@ -508,7 +508,7 @@ func TestRedeemerDeterminism(t *testing.T) {
 	bin, hash := compileBin(t, `func id : $0`)
 	redeemBC := mustCompileExpr(t, fmt.Sprintf("redeemScript(0x%s)", hex.EncodeToString(bin)))
 
-	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *txbuilder.TxBuilder) {
+	txBytes := buildTransferWith(t, u, priv, addr, dst, 100_000_000, func(txb *exhelp.Builder) {
 		txb.PushTxConstraint(redeemBC)
 	})
 

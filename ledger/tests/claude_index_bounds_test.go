@@ -22,9 +22,9 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -84,7 +84,7 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		// Bob signs and tries to spend Alice's UTXO by referencing his own input.
 		// Input 0: Bob's UTXO (signature unlock works)
 		// Input 1: Alice's UTXO (reference to input 0 — locks differ, signature fails)
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err := txb.ConsumeOutput(bobOuts[0].Output, bobOuts[0].ID)
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(aliceOuts[0].Output, aliceOuts[0].ID)
@@ -100,7 +100,7 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		require.NoError(t, err)
 
 		ts := base.MaximumTime(bobOuts[0].ID.Timestamp(), aliceOuts[0].ID.Timestamp()).AddSlots(1)
-		txb.SetTimestamp(ts)
+		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyBob)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -125,7 +125,7 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		}
 		require.True(t, len(aliceOuts2) >= 2, "need at least 2 outputs")
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err := txb.ConsumeOutput(aliceOuts2[0].Output, aliceOuts2[0].ID)
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(aliceOuts2[1].Output, aliceOuts2[1].ID)
@@ -141,7 +141,7 @@ func TestIndexSigLockCrossLockReference(t *testing.T) {
 		require.NoError(t, err)
 
 		ts := base.MaximumTime(aliceOuts2[0].ID.Timestamp(), aliceOuts2[1].ID.Timestamp()).AddSlots(1)
-		txb.SetTimestamp(ts)
+		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyAlice)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -187,7 +187,7 @@ func TestIndexSigLockReferenceToChainLocked(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, len(clOuts) > 0)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	// input 0: chainLock-ed output
 	_, err = txb.ConsumeOutput(clOuts[0].Output, clOuts[0].ID)
 	require.NoError(t, err)
@@ -208,7 +208,7 @@ func TestIndexSigLockReferenceToChainLocked(t *testing.T) {
 	require.NoError(t, err)
 
 	ts3 := base.MaximumTime(clOuts[0].ID.Timestamp(), sigOuts[0].ID.Timestamp()).AddSlots(1)
-	txb.SetTimestamp(ts3)
+	txb.SetTimestamp(ts3)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -241,7 +241,7 @@ func TestIndexTagAlongOutOfRangeUnlockParams(t *testing.T) {
 
 	ts := base.MaximumTime(chainIn.Timestamp(), taOut.ID.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	// consume chain (input 0)
 	_ = chainIn.Output.ChainConstraint()
@@ -265,7 +265,7 @@ func TestIndexTagAlongOutOfRangeUnlockParams(t *testing.T) {
 	// with constraint index 2. This should fail at consumedConstraintByIndex bounds check.
 	txb.PutUnlockParams(taIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(5))
 
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -285,7 +285,7 @@ func TestIndexDelegationOutOfRangeUnlockParams(t *testing.T) {
 
 	ts := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -316,7 +316,7 @@ func TestIndexDelegationOutOfRangeUnlockParams(t *testing.T) {
 	require.NoError(t, err)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "delegation with out-of-range unlock index should be rejected")
@@ -343,7 +343,7 @@ func TestIndexChainPredecessorNonExistentInput(t *testing.T) {
 
 	_ = chainIn.Output.ChainConstraint()
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -360,7 +360,7 @@ func TestIndexChainPredecessorNonExistentInput(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	outTs := chainIn.ID.Timestamp().AddSlots(1)
-	txb.SetTimestamp(outTs)
+	txb.SetTimestamp(outTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -414,7 +414,7 @@ func TestIndexChainLockSelfReference(t *testing.T) {
 	_ = chainIn.Output.ChainConstraint()
 	ts3 := base.MaximumTime(chainIn.Timestamp(), clOut.ID.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	// input 0: chain
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
@@ -439,7 +439,7 @@ func TestIndexChainLockSelfReference(t *testing.T) {
 	// The chainLock checks: not(equal(selfOutputIndex, byte(selfUnlockParameters,0)))
 	txb.PutUnlockParams(clIdx, ledger.ConstraintIndexLock, ledger.NewChainLockUnlockParams(clIdx))
 
-	txb.SetTimestamp(ts3)
+	txb.SetTimestamp(ts3)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)

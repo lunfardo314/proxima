@@ -17,12 +17,12 @@ package tests
 import (
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -117,7 +117,7 @@ func TestDelegationParamsImmutable(t *testing.T) {
 	// successor's index 6; byte mismatch fails.
 	newDP := ledger.NewDelegationParams(origDP.EpochSlots+1, origDP.MaxFrozenEpochs)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chOrigin.Output, chOrigin.ID)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, predIdx)
@@ -178,7 +178,7 @@ func newFoundryDelegationEnv(t *testing.T, policy []byte) *foundryDelegationEnv 
 		ts = ts.AddTicks(1)
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, inTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	ts = base.MaximumTime(inTs, ts)
@@ -191,7 +191,7 @@ func newFoundryDelegationEnv(t *testing.T, policy []byte) *foundryDelegationEnv 
 	}
 
 	const foundryOnChain = uint64(500_000_000)
-	foundryOut := txbuilder.MakeFoundryOriginOutput(foundryOnChain, td.masterAddr, ts.Slot, 0, policy)
+	foundryOut := exhelp.MakeFoundryOriginOutput(foundryOnChain, td.masterAddr, ts.Slot, 0, policy)
 	require.NoError(t, foundryOut.EnoughAmountForStorageDeposit())
 	foundryIdx, err := txb.ProduceOutput(foundryOut)
 	require.NoError(t, err)
@@ -214,7 +214,7 @@ func newFoundryDelegationEnv(t *testing.T, policy []byte) *foundryDelegationEnv 
 	// byte-equal across this transit, exercising the policy's
 	// selfImmutableOnSuccessorIndex(5) check.
 	{
-		settleTxb := txbuilder.New()
+		settleTxb := exhelp.New()
 		fIn := &ledger.OutputDataWithChainID{
 			OutputDataWithID: ledger.OutputDataWithID{ID: foundryOid, Data: foundryOut.Bytes()},
 			ChainID:          chainID,
@@ -273,7 +273,7 @@ func (e *foundryDelegationEnv) delegateFoundryChain(t *testing.T) error {
 		byte(lib.MaxFrozenEpochs),
 	)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chIn.Output, chIn.ID)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, predIdx)
@@ -403,7 +403,7 @@ func TestDelegateLockStateMustBeLast(t *testing.T) {
 	delLock := ledger.NewDelegateLock(td.target, base.HolderID(td.masterAddr), 4, 0,
 		lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	idx, err := txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, idx)

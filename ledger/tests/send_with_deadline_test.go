@@ -21,11 +21,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -114,7 +114,7 @@ func makeSWDEnv(t *testing.T, targetType byte, acceptanceSlots, cleanupSlots uin
 	// Build a tx that produces the swd output + change from master's funding.
 	masterOuts, err = env.u.SugaredStateReader().GetOutputsForAccount(env.addrMaster.ControllerID())
 	require.NoError(t, err)
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -148,7 +148,7 @@ func makeSWDEnv(t *testing.T, targetType byte, acceptanceSlots, cleanupSlots uin
 // parameters on the swd input. payeeLock receives the funds.
 func spendSWD(t *testing.T, env *swdEnv, delta uint32, signer ed25519.PrivateKey, payeeLock ledger.SigLock, unlockParams []byte) error {
 	t.Helper()
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err := txb.ConsumeOutput(env.swdOut.Output, env.swdOut.ID)
 	require.NoError(t, err)
 	if len(unlockParams) > 0 {
@@ -174,7 +174,7 @@ func spendSWD(t *testing.T, env *swdEnv, delta uint32, signer ed25519.PrivateKey
 // the tag-along consume-via-chain pattern.
 func spendSWDViaChain(t *testing.T, env *swdEnv, delta uint32, chainOut *ledger.OutputWithChainID, signer ed25519.PrivateKey, payeeLock ledger.SigLock) error {
 	t.Helper()
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	// chain input
 	_, err := txb.ConsumeOutput(chainOut.Output, chainOut.ID)
 	require.NoError(t, err)
@@ -335,7 +335,7 @@ func tryProduceBadSWD(t *testing.T, want string, tweak func(l *ledger.SendWithDe
 	}
 	tweak(lock)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -402,7 +402,7 @@ func TestSWDProduceRejectMasterMismatch(t *testing.T) {
 		CleanupSlots:    1030,
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -462,7 +462,7 @@ func TestSWDProduceRejectZeroMasterID(t *testing.T) {
 		CleanupSlots:    1030,
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -510,7 +510,7 @@ func TestSWDProduceRejectLockAtWrongSlot(t *testing.T) {
 		CleanupSlots:    1030,
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -574,7 +574,7 @@ func TestSWDProduceRejectTooManyConstraints(t *testing.T) {
 		CleanupSlots:    1030,
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)

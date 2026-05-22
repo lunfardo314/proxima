@@ -18,7 +18,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
 )
@@ -902,8 +901,8 @@ func TestPastConeCloneForDebugOnly(t *testing.T) {
 func TestMutationStats(t *testing.T) {
 	stats := MutationStats{
 		NumConfirmedTransactions: 10,
-		NumDeleted:      3,
-		NumCreated:      7,
+		NumDeleted:               3,
+		NumCreated:               7,
 	}
 
 	require.Equal(t, 10, stats.NumConfirmedTransactions)
@@ -1231,7 +1230,7 @@ func createTestTransaction(t *testing.T, u *utxodb.UTXODB, addrIdx int) *Wrapped
 	require.NoError(t, err)
 
 	_, _, addr2 := u.GenerateAddress(addrIdx + 1000)
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(par.WithAmount(100_000_000).WithTargetLock(addr2))
 	require.NoError(t, err)
 
 	tx, err := transaction.Parse(txBytes)
@@ -1579,7 +1578,7 @@ func TestPastConeBaseClone(t *testing.T) {
 	require.Equal(t, 3, len(clone.vertices))
 
 	clone.addVirtuallyConsumedOutput(WrappedOutput{VID: vid2, Index: 1})
-	require.Equal(t, 1, len(pb.virtuallyConsumed))  // only vid1
+	require.Equal(t, 1, len(pb.virtuallyConsumed))    // only vid1
 	require.Equal(t, 2, len(clone.virtuallyConsumed)) // vid1 + vid2
 
 	// Mutate original's virtuallyConsumed, clone unaffected

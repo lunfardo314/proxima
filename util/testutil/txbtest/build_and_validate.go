@@ -1,8 +1,7 @@
 // Package txbtest is a test-only convenience layer around the
-// txbuilder + transaction.ParseAndValidate combination. Tests use it to
-// keep their build-and-validate call sites a single line; production
-// code calls transaction.ParseAndValidate directly with the loader of
-// its choice.
+// transaction.ParseAndValidate sugar. Tests use it to keep their
+// build-and-validate call sites a single line; production code calls
+// transaction.ParseAndValidate directly with the loader of its choice.
 package txbtest
 
 import (
@@ -11,24 +10,20 @@ import (
 	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 )
 
 // BuildAndValidate finalises the builder (sequencer-side: stem outputs,
-// commitment, signature; plain: as-is) and runs
+// commitment, signature; plain exhelp.Builder: as-is) and runs
 // transaction.ParseAndValidate against its bytes. Returns (bytes, id,
 // pretty-string, err); on parse failure id is zero and pretty-string is
 // empty. On full-context failure tx is still rendered for diagnostics.
 //
-// txb must be *txbuilder.TxBuilder or *txbuilder_seq.SeqTxBuilder.
+// txb must be *exhelp.Builder or *txbuilder_seq.SeqTxBuilder.
 func BuildAndValidate(txb any) ([]byte, base.TransactionID, string, error) {
 	var txBytes []byte
 	var loader func(i byte) ([]byte, error)
 	switch v := txb.(type) {
-	case *txbuilder.TxBuilder:
-		txBytes = v.Bytes()
-		loader = v.LoadInputBytes
 	case *exhelp.Builder:
 		txBytes = v.Bytes()
 		loader = v.LoadInputBytes

@@ -13,10 +13,10 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -103,7 +103,7 @@ func TestLimitsMaxOutputSize(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, addr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -134,7 +134,7 @@ func TestLimitsMaxOutputSize(t *testing.T) {
 	txb.TxData.OutputBytes = append(txb.TxData.OutputBytes, bigOut.Bytes())
 
 	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 	txBytes := txb.Bytes()
@@ -160,7 +160,7 @@ func TestLimitsMaxUnlockParamsSize(t *testing.T) {
 
 	outs := getSourceOutputs(t, u, addr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, maxTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 
@@ -179,7 +179,7 @@ func TestLimitsMaxUnlockParamsSize(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 	txBytes := txb.Bytes()

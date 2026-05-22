@@ -16,9 +16,9 @@ package tests
 import (
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -91,7 +91,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	require.NoError(t, err)
 	delegTs := env.seqChainOrigin.Timestamp().AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -114,7 +114,7 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	}))
 	require.NoError(t, err)
 
-	txb.SetTimestamp(delegTs)
+	txb.SetTimestamp(delegTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.masterPrivateKey)
 	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -144,7 +144,7 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	delegSuccessor, err := env.delegatedOutput.MakeDelegationFreezeOutput(ts, freezeUntilEpoch, 1, requiredAdvance, true)
 	require.NoError(t, err)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err = txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -170,7 +170,7 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, ts)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestClaudeDelegationWrongMasterUnlock(t *testing.T) {
 	env := setupDelegEnv(t, 4, 0)
 
 	// attacker (seq controller) tries to unlock as master
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	amount, _, err := txb.ConsumeOutputsNoUnlock(&env.delegatedOutput.OutputWithID)
 	require.NoError(t, err)
 
@@ -205,7 +205,7 @@ func TestClaudeDelegationWrongMasterUnlock(t *testing.T) {
 	require.NoError(t, err)
 
 	ts := env.delegatedOutput.Timestamp().AddSlots(1)
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	// sign with seq controller key, NOT master key
 	txb.SignED25519(env.seqPrivateKey)
@@ -221,7 +221,7 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 
 	ts := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -253,7 +253,7 @@ func TestClaudeDelegationTargetReducesAmount(t *testing.T) {
 	require.NoError(t, err)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to reduce delegated amount")
@@ -268,7 +268,7 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 
 	ts := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -300,7 +300,7 @@ func TestClaudeDelegationTargetChangesLock(t *testing.T) {
 	require.NoError(t, err)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to change delegation lock")
@@ -315,7 +315,7 @@ func TestClaudeDelegationTargetDiscontinuesChain(t *testing.T) {
 
 	ts := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -335,7 +335,7 @@ func TestClaudeDelegationTargetDiscontinuesChain(t *testing.T) {
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.FinishChainUnlockParams)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err, "target should not be able to discontinue delegation chain")
@@ -379,7 +379,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -401,7 +401,7 @@ func TestClaudeDelegationOriginCannotBeFrozen(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.SetTimestamp(delegTs)
+	txb.SetTimestamp(delegTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -454,7 +454,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -477,7 +477,7 @@ func TestClaudeDelegationWrongConstraintCount(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.SetTimestamp(delegTs)
+	txb.SetTimestamp(delegTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -510,7 +510,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		// use a slot right in the middle of safe revocation window
 		attackTs := base.T(unfreezeSlot+safeRevSlots/2, 5)
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 		require.NoError(t, err)
 
@@ -539,7 +539,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		require.NoError(t, err)
 
 		txb.ComputeInputCommitment()
-		txb.SetTimestamp(attackTs)
+		txb.SetTimestamp(attackTs)
 		txb.SignED25519(env.seqPrivateKey)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
 		require.Error(t, err, "target should not unlock during safe revocation window")
@@ -551,7 +551,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		// slot after safe revocation window ends
 		masterTs := base.T(unfreezeSlot+safeRevSlots+10, 5)
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		amount, _, err := txb.ConsumeOutputsNoUnlock(&env.delegatedOutput.OutputWithID)
 		require.NoError(t, err)
 
@@ -563,7 +563,7 @@ func TestClaudeDelegationSafeRevocationWindow(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.SetTimestamp(masterTs)
+		txb.SetTimestamp(masterTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(env.masterPrivateKey)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -608,7 +608,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	require.NoError(t, err)
 	delegTs := chOuts[0].Timestamp().AddSlots(1)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(masterOuts[0].Output, masterOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -630,7 +630,7 @@ func TestClaudeDelegationInflationShareAbove1000(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.SetTimestamp(delegTs)
+	txb.SetTimestamp(delegTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(masterPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -653,7 +653,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	revokeTs := base.T(unfreezeSlot-10, 5) // inside freeze but before unfreeze
 	// for revocation inside freeze, target can only put on hold
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err := txb.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -688,7 +688,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, revokeTs)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(revokeTs)
+	txb.SetTimestamp(revokeTs)
 	txb.SignED25519(env.seqPrivateKey)
 	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err)
@@ -706,7 +706,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	// now target tries to re-freeze the on-hold delegation
 	relockTs := base.MaximumTime(env.seqChainOrigin.Timestamp(), env.delegatedOutput.Timestamp()).AddSlots(1)
 
-	txb2 := txbuilder.New()
+	txb2 := exhelp.New()
 	_, _, err = txb2.ConsumeOutputsNoUnlock(&env.seqChainOrigin.OutputWithID)
 	require.NoError(t, err)
 
@@ -735,7 +735,7 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	require.NoError(t, err)
 
 	txb2.ComputeInputCommitment()
-	txb2.SetTimestamp(relockTs)
+	txb2.SetTimestamp(relockTs)
 	txb2.SignED25519(env.seqPrivateKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb2)
 	require.Error(t, err, "target should not re-freeze on-hold delegation")

@@ -18,10 +18,10 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
@@ -68,7 +68,7 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	// at tick 15 (5-tick gap > TransactionPaceSequencer in tests = 3)
 	originTs := base.T(outs[0].ID.Slot()+1, 20)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	for i := range outs {
@@ -93,8 +93,8 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	originIdx, err := txb.ProduceOutput(chainOriginOut)
 	require.NoError(t, err)
 
-	txb.SetSequencerData(originIdx, txbuildercore.SequencerOutputIndexNone)
-	txb.SetTimestamp(originTs)
+	txb.SetSequencerData(originIdx, txbuildercore.SequencerOutputIndexNone)
+	txb.SetTimestamp(originTs)
 
 	// Dummy endorsement required for sequencer chain origins
 	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
@@ -139,13 +139,13 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 	chainID base.ChainID,
 	succTs base.LedgerTime,
 	endorsements []base.TransactionID,
-) ([]byte, *txbuilder.TxBuilder) {
+) ([]byte, *exhelp.Builder) {
 	t.Helper()
 
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc, "output must have chain constraint")
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -160,11 +160,11 @@ func (e *endorsementTestEnv) buildSequencerSuccessor(
 	txb.PutSignatureUnlock(predIdx)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain,
 		ledger.NewChainUnlockParams(succIdx))
-	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
 
 	txb.PushEndorsements(endorsements...)
 
-	txb.SetTimestamp(succTs)
+	txb.SetTimestamp(succTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -185,7 +185,7 @@ func TestEndorsementNonSequencerRejected(t *testing.T) {
 	ts := outs[0].ID.Timestamp().AddTicks(int(ledger.L(outs[0].ID.Slot()).TransactionPace))
 
 	// Build a regular (non-sequencer) transfer with a dummy endorsement
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	total, _, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -200,7 +200,7 @@ func TestEndorsementNonSequencerRejected(t *testing.T) {
 	dummyEndorsement := base.NewTransactionID(ts.AddTicks(-2), base.TransactionIDShort{}, true)
 	txb.PushEndorsements(dummyEndorsement)
 
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 

@@ -10,14 +10,14 @@
 package exhelp
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"math"
-
-	"crypto/ed25519"
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
+	"github.com/lunfardo314/proxima/util"
 )
 
 // Builder embeds *txbuildercore.TxBuilder and mirrors consumed /
@@ -87,6 +87,83 @@ func (b *Builder) ConsumeOutputsUnlock(outs ...*ledger.OutputWithID) (uint64, ba
 		maxTs = base.MaximumTime(maxTs, o.Timestamp())
 	}
 	return total, maxTs, nil
+}
+
+// ReplaceProducedOutput overwrites the produced output at idx, syncing
+// both the typed buffer and the wire-format byte slice. Used by
+// callers that mutate a produced output after the initial Push (e.g.
+// frozen-coverage post-processing on a chain output).
+func (b *Builder) ReplaceProducedOutput(idx byte, o *ledger.Output) {
+	b.ProducedOutputs[idx] = o
+	b.TxData.OutputBytes[idx] = o.Bytes()
+}
+
+// CalcFrozenCoverageDelta sums up frozen-coverage vectors of all
+// produced delegation outputs in this tx. The result is sized at the
+// max NumElements observed across them (effectively the chain's
+// maxFrozenEpochs since all delegations in a freeze tx target the
+// same chain). Returns nil if no delegation output has any FC cells.
+func (b *Builder) CalcFrozenCoverageDelta() ([]int64, error) {
+	maxLen := 0
+	for _, o := range b.ProducedOutputs {
+		if o.Lock().Name() != ledger.DelegateLockName {
+			continue
+		}
+		n := o.Amounts().NumElements()
+		if n > maxLen {
+			maxLen = n
+		}
+	}
+	if maxLen < int(ledger.AmountIndexFrozenCoverage) {
+		return nil, nil
+	}
+	sum := make([]int64, maxLen)
+	for _, o := range b.ProducedOutputs {
+		if o.Lock().Name() == ledger.DelegateLockName {
+			if overflow := o.Amounts().AddToVector(sum); overflow {
+				return nil, fmt.Errorf("CalcFrozenCoverageDelta: arithmetic overflow")
+			}
+		}
+	}
+	return sum[ledger.AmountIndexFrozenCoverage:], nil
+}
+
+// MustPutFrozenCoverage adjusts the produced chain output's amounts
+// vector to carry forward the predecessor's frozen coverage (shifted
+// by the inter-tx epoch difference) plus the per-epoch deltas from
+// produced delegation outputs. epochSlots and maxFrozenEpochs come
+// from the chain's own delegationParams (at
+// ConstraintIndexDelegationParams on the produced chain output).
+func (b *Builder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
+	o := b.ProducedOutputs[producedOutputIdx]
+
+	lib := ledger.L(targetTs.Slot)
+
+	dpBytes, dpErr := o.At(int(ledger.ConstraintIndexDelegationParams))
+	util.Assertf(dpErr == nil && len(dpBytes) > 0,
+		"MustPutFrozenCoverage: produced chain output must carry delegationParams to receive frozen coverage")
+	dp, err := ledger.DelegationParamsFromBytesWithLib(dpBytes, lib)
+	util.AssertNoError(err)
+
+	a := make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(dp.MaxFrozenEpochs))
+	a[ledger.AmountIndexTokenBalance] = int64(o.TokenBalance())
+	a[ledger.AmountIndexInflation] = int64(o.Inflation())
+	copy(a[ledger.AmountIndexFrozenCoverage:], frozenCoverageDeltaVector)
+
+	cc := o.ChainConstraint()
+	util.Assertf(cc != nil, "MustPutFrozenCoverage: inconsistency 1")
+	oPred := b.ConsumedOutputs[cc.PredecessorInputIndex]
+	predVector := oPred.Amounts().FrozenCoverageVector(dp.MaxFrozenEpochs)
+	predTs := b.TxData.InputIDs[cc.PredecessorInputIndex].Timestamp()
+	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs,
+		dp.EpochSlots, dp.MaxFrozenEpochs)
+	for i := range frozenCoverageDeltaVector {
+		a[int(ledger.AmountIndexFrozenCoverage)+i] += predVectorAdjusted[i]
+	}
+
+	b.ReplaceProducedOutput(producedOutputIdx, o.Clone(func(o *ledger.OutputBuilder) {
+		o.PutConstraint(ledger.NewAmounts(a[:]...).Bytes(), ledger.ConstraintIndexAmounts)
+	}))
 }
 
 // ConsumeOutputsNoUnlock consumes a sequence of outputs without

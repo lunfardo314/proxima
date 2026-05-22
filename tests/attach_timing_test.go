@@ -9,7 +9,7 @@ import (
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/stretchr/testify/require"
 )
@@ -48,12 +48,12 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 			exactPaceTs = exactPaceTs.AddTicks(1)
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, exactPaceTs).
+		td := utxodb.NewTransferData(testData.privKey, testData.addr, exactPaceTs).
 			MustWithInputs(sourceOutput).
 			WithAmount(1_000_000_000). // Use higher amount for minimum storage deposit
 			WithTargetLock(testData.addr)
 
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(td)
+		txBytes, err := utxodb.MakeSimpleTransferTransaction(td)
 		require.NoError(t, err)
 
 		// Non-sequencer transactions are attached immediately without waiting for callback
@@ -214,12 +214,12 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 
 		require.EqualValues(t, base.MaxTickValue, lastTickTs.Tick, "should be at tick 127")
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, lastTickTs).
+		td := utxodb.NewTransferData(testData.privKey, testData.addr, lastTickTs).
 			MustWithInputs(sourceOutput).
 			WithAmount(100_000_000).
 			WithTargetLock(testData.addr)
 
-		txBytes, err := txbuilder.MakeSimpleTransferTransaction(td)
+		txBytes, err := utxodb.MakeSimpleTransferTransaction(td)
 		require.NoError(t, err)
 
 		// Non-sequencer transactions are attached immediately without waiting for callback
@@ -253,12 +253,12 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 			ts1 = ts1.AddTicks(1)
 		}
 
-		td1 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts1).
+		td1 := utxodb.NewTransferData(testData.privKey, testData.addr, ts1).
 			MustWithInputs(sourceOutput).
 			WithAmount(5_000_000_000).
 			WithTargetLock(testData.addr)
 
-		txBytes1, err := txbuilder.MakeSimpleTransferTransaction(td1)
+		txBytes1, err := utxodb.MakeSimpleTransferTransaction(td1)
 		require.NoError(t, err)
 
 		// Non-sequencer transactions are attached immediately without waiting for callback
@@ -270,12 +270,12 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 		output1 := vid1.MustOutputWithIDAt(0)
 		ts2 := base.T(ts1.Slot+1, ledger.L(0).TransactionPace+1) // Next slot
 
-		td2 := txbuilder.NewTransferData(testData.privKey, testData.addr, ts2).
+		td2 := utxodb.NewTransferData(testData.privKey, testData.addr, ts2).
 			MustWithInputs(&output1).
 			WithAmount(100_000_000).
 			WithTargetLock(testData.addr)
 
-		txBytes2, err := txbuilder.MakeSimpleTransferTransaction(td2)
+		txBytes2, err := utxodb.MakeSimpleTransferTransaction(td2)
 		require.NoError(t, err)
 
 		vid2, err := attacher.AttachTransactionFromBytes(txBytes2, testData.wrk)
@@ -339,4 +339,3 @@ func TestAttachTimingPreBranchConsolidation(t *testing.T) {
 			ledger.L(0).PreBranchConsolidationTicks, boundaryTick)
 	})
 }
-

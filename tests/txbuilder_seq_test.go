@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
@@ -717,7 +717,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		//t.Logf("delegation %d: %s", i, out.ChainID.String())
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	var ts1 base.LedgerTime
 	for i := range ret.delegationIDs {
 		out := ret.delegationChain(i)
@@ -745,7 +745,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 		}))
 		require.NoError(t, err)
 	}
-	txb.SetTimestamp(ts1.AddSlots(1))
+	txb.SetTimestamp(ts1.AddSlots(1))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(ret.masterPrivateKey)
 

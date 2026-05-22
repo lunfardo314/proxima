@@ -14,12 +14,13 @@ import (
 	"github.com/lunfardo314/proxima/core/core_modules/tippool"
 	"github.com/lunfardo314/proxima/core/vertex"
 	"github.com/lunfardo314/proxima/core/workflow"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
@@ -356,7 +357,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	require.NoError(td.t, err)
 	td.t.Logf("auxiliary output id: %s", td.auxOutput.IDShort())
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err = txb.ConsumeOutputsUnlock(td.auxOutput)
 	require.NoError(td.t, err)
 
@@ -383,7 +384,7 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	require.NoError(td.t, err)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(td.privKeyAux)
 
 	txBytes := txb.Bytes()
@@ -428,7 +429,7 @@ func (td *workflowTestData) makeChainOriginsWithAmounts(amounts []uint64) {
 	require.NoError(td.t, err)
 	td.t.Logf("auxiliary output id: %s, balance: %s", td.auxOutput.IDShort(), util.Th(td.auxOutput.Output.TokenBalance()))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, _, err = txb.ConsumeOutputsUnlock(td.auxOutput)
 	require.NoError(td.t, err)
 
@@ -452,7 +453,7 @@ func (td *workflowTestData) makeChainOriginsWithAmounts(amounts []uint64) {
 	require.NoError(td.t, err)
 
 	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.SignED25519(td.privKeyAux)
 
 	txBytes := txb.Bytes()
@@ -515,7 +516,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 	ret.txBytesConflicting = make([][]byte, nConflicts)
 
 	ts := ret.forkOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-	td := txbuilder.NewTransferData(ret.privKey, ret.addr, ts).
+	td := utxodb.NewTransferData(ret.privKey, ret.addr, ts).
 		MustWithInputs(ret.forkOutput)
 
 	require.True(t, base.ValidTime(td.Timestamp))
@@ -527,7 +528,7 @@ func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, ta
 		} else {
 			td.WithTargetLock(ret.addr)
 		}
-		ret.txBytesConflicting[i], err = txbuilder.MakeTransferTransaction(td)
+		ret.txBytesConflicting[i], err = utxodb.MakeTransferTransaction(td)
 		require.NoError(t, err)
 	}
 	require.EqualValues(t, nConflicts, len(ret.txBytesConflicting))
@@ -789,11 +790,11 @@ func computeStemAggregates(
 
 	delta, frozen := a.CoverageDelta()
 	return txbuilder_seq.StemAggregates{
-		CoverageDelta:   delta,
-		FrozenCoverage:  frozen,
-		SlotInflation:   a.SlotInflation(),
+		CoverageDelta:            delta,
+		FrozenCoverage:           frozen,
+		SlotInflation:            a.SlotInflation(),
 		NumConfirmedTransactions: uint32(a.NumNewTransactionsInPastCone()),
-		BaselineRoot:    bd.Root.Bytes(),
+		BaselineRoot:             bd.Root.Bytes(),
 	}
 }
 
@@ -834,7 +835,7 @@ func (td *longConflictTestData) extendToNextSlot(prevSlot [][]*transaction.Trans
 const transferAmount = 50_000_000
 
 func (td *longConflictTestData) spendToChain(o *ledger.OutputWithID, chainID base.ChainID) *transaction.Transaction {
-	txBytes, err := txbuilder.MakeSimpleTransferTransaction(txbuilder.NewTransferData(td.privKey, td.addr, o.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))).
+	txBytes, err := utxodb.MakeSimpleTransferTransaction(utxodb.NewTransferData(td.privKey, td.addr, o.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))).
 		WithAmount(transferAmount).
 		MustWithInputs(o).
 		WithTargetLock(ledger.ChainLockFromChainID(chainID)))
@@ -874,7 +875,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 			}
 			ts := originOut.Timestamp().AddTicks(int(ledger.L(0).TransactionPace) * (i + 1))
 
-			trd := txbuilder.NewTransferData(td.privKey, td.addr, ts)
+			trd := utxodb.NewTransferData(td.privKey, td.addr, ts)
 			trd.WithAmount(originOut.Output.TokenBalance())
 			trd.MustWithInputs(prev)
 			if i < howLong-1 {
@@ -890,7 +891,7 @@ func initLongConflictTestData(t *testing.T, nConflicts int, nChains int, howLong
 					}
 				}
 			}
-			ret.txSequences[seqNr][i], err = txbuilder.MakeSimpleTransferTransaction(trd)
+			ret.txSequences[seqNr][i], err = utxodb.MakeSimpleTransferTransaction(trd)
 			require.NoError(t, err)
 
 			tx, err := transaction.ParseWithPartialValidation(ret.txSequences[seqNr][i])
@@ -1033,7 +1034,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 		seqID := par.tagAlongSeqID[i%len(par.tagAlongSeqID)]
 		par.perChainID[seqID] = par.perChainID[seqID] + 1
 
-		tData := txbuilder.NewTransferData(par.privateKey, sourceAddr, ts).
+		tData := utxodb.NewTransferData(par.privateKey, sourceAddr, ts).
 			MustWithInputs(par.remainder).
 			WithTargetLock(par.target).
 			WithAmount(par.sendAmount)
@@ -1042,7 +1043,7 @@ func makeTransfers(par *spammerParams) [][]byte {
 			tData.WithTagAlong(seqID, par.tagAlongFee)
 		}
 
-		ret[i], par.remainder, err = txbuilder.MakeSimpleTransferTransactionWithRemainder(tData)
+		ret[i], par.remainder, err = utxodb.MakeSimpleTransferTransactionWithRemainder(tData)
 		util.AssertNoError(err)
 
 		tx, err := transaction.ParseWithPartialValidation(ret[i])

@@ -4,9 +4,9 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -36,7 +36,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 		Timestamp:     ts,
 		Predecessor:   seqChainOrig,
 		Stem:          nil,
-		SignatureType:  base.SignatureTypeED25519,
+		SignatureType: base.SignatureTypeED25519,
 		PrivateKey:    targetPrivateKey,
 		PublicKey:     targetPrivateKey.Public().(ed25519.PublicKey),
 		StateReader:   nil,
@@ -59,7 +59,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 	// Convert chain origin to delegation with DelegateLock
 	delegOut := delegChainOrig
 	{
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err = txb.ConsumeOutput(delegOut.Output, delegOut.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -74,7 +74,7 @@ func TestDelegationInflationMinimal(t *testing.T) {
 			o.MustPushConstraint(ledger.DelegateLockState{}.Bytes())
 		}))
 		require.NoError(t, err)
-		txb.SetTimestamp(delegOut.ID.Timestamp().AddSlots(1))
+		txb.SetTimestamp(delegOut.ID.Timestamp().AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(masterPrivateKey)
 		var txStr string

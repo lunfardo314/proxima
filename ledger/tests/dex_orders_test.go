@@ -11,12 +11,12 @@ import (
 	"testing"
 
 	"github.com/lunfardo314/easyfl"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
-	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
+	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,7 +78,7 @@ func dexNextTs(after base.LedgerTime) base.LedgerTime {
 	return ts
 }
 
-func dexSubmit(t *testing.T, e *dexEnv, txb *txbuilder.TxBuilder) *transaction.Transaction {
+func dexSubmit(t *testing.T, e *dexEnv, txb *exhelp.Builder) *transaction.Transaction {
 	t.Helper()
 	txBytes, _, failed, err := txbtest.BuildAndValidate(txb)
 	require.NoError(t, err, "build/validate failed:\n%s", failed)
@@ -116,7 +116,7 @@ func dexMintTokensFor(t *testing.T, e *dexEnv, signer ed25519.PrivateKey, signer
 	require.NotEmpty(t, originOuts)
 	ts := dexNextTs(originOuts[0].ID.Timestamp())
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, inTs, err := txb.ConsumeOutputsNoUnlock(originOuts...)
 	require.NoError(t, err)
 	ts = base.MaximumTime(inTs.AddTicks(int(ledger.L(inTs.Slot).TransactionPace)), ts)
@@ -130,7 +130,7 @@ func dexMintTokensFor(t *testing.T, e *dexEnv, signer ed25519.PrivateKey, signer
 			require.NoError(t, txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0))
 		}
 	}
-	foundryOut := txbuilder.MakeFoundryOriginOutput(200_000_000, signerLock, ts.Slot, 0, nil)
+	foundryOut := exhelp.MakeFoundryOriginOutput(200_000_000, signerLock, ts.Slot, 0, nil)
 	foundryIdx, err := txb.ProduceOutput(foundryOut)
 	require.NoError(t, err)
 
@@ -156,7 +156,7 @@ func dexMintTokensFor(t *testing.T, e *dexEnv, signer ed25519.PrivateKey, signer
 		OutputDataWithID: ledger.OutputDataWithID{ID: foundryOid, Data: foundryOut.Bytes()},
 		ChainID:          tag,
 	}
-	txb2 := txbuilder.New()
+	txb2 := exhelp.New()
 	_, err = txb2.TransitFoundry(foundryData, amount)
 	require.NoError(t, err)
 	txb2.PutSignatureUnlock(0)
@@ -248,7 +248,7 @@ func dexBuildSellOrder(t *testing.T, e *dexEnv, tag base.ChainID, tokenUTXO *led
 	ts := dexNextTs(base.MaximumTime(tokenUTXO.Timestamp(), pure[0].Timestamp()))
 
 	inputs := append([]*ledger.OutputWithID{tokenUTXO}, pure...)
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	totalBase, _, err := txb.ConsumeOutputsUnlock(inputs...)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, totalBase, deposit)
@@ -285,7 +285,7 @@ func dexBuildBuyOrder(t *testing.T, e *dexEnv, tag base.ChainID, amount, price u
 	require.NotEmpty(t, pure)
 	ts := dexNextTs(pure[0].Timestamp())
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	totalBase, _, err := txb.ConsumeOutputsUnlock(pure...)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, totalBase, deposit)
@@ -368,7 +368,7 @@ func TestDex_SellOrderHappyPath(t *testing.T) {
 	require.NotEmpty(t, buyerPure)
 	fillTs := dexNextTs(base.MaximumTime(orderUTXO.Timestamp(), buyerPure[0].Timestamp()))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	orderInIdx, err := txb.ConsumeOutput(orderUTXO.Output, orderUTXO.ID)
 	require.NoError(t, err)
 	fundingTotal := uint64(0)
@@ -429,7 +429,7 @@ func TestDex_BuyOrderHappyPath(t *testing.T) {
 
 	fillTs := dexNextTs(base.MaximumTime(orderUTXO.Timestamp(), tokenUTXO.Timestamp()))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	orderInIdx, err := txb.ConsumeOutput(orderUTXO.Output, orderUTXO.ID)
 	require.NoError(t, err)
 	tokInIdx, err := txb.ConsumeOutput(tokenUTXO.Output, tokenUTXO.ID)
@@ -475,7 +475,7 @@ func TestDex_SellOrderReclaim(t *testing.T) {
 	orderUTXO := dexLoadOutput(t, e, dexOidFromTx(t, orderTx, 0))
 
 	reclaimTs := base.T(orderUTXO.Timestamp().Slot+timeoutSlots+1, 1)
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	orderInIdx, err := txb.ConsumeOutput(orderUTXO.Output, orderUTXO.ID)
 	require.NoError(t, err)
 	txb.PutUnlockParams(orderInIdx, ledger.ConstraintIndexLock, []byte{0xff})
@@ -526,7 +526,7 @@ func TestDex_FoldAttackRejection(t *testing.T) {
 		buyerPure[0].Timestamp(),
 	))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	orderAIdx, err := txb.ConsumeOutput(orderA.Output, orderA.ID)
 	require.NoError(t, err)
 	orderBIdx, err := txb.ConsumeOutput(orderB.Output, orderB.ID)

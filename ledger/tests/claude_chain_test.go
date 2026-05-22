@@ -14,9 +14,9 @@ import (
 	"crypto/ed25519"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -78,14 +78,14 @@ func (e *chainTestEnv) buildChainTransition(
 	t *testing.T,
 	chainIn *ledger.OutputWithID,
 	chainData *ledger.OutputWithChainID,
-	modifier func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte),
-) ([]byte, *txbuilder.TxBuilder) {
+	modifier func(txb *exhelp.Builder, predIdx byte, succIdx *byte),
+) ([]byte, *exhelp.Builder) {
 	t.Helper()
 
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc, "output must have a chain constraint")
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -114,7 +114,7 @@ func (e *chainTestEnv) buildChainTransition(
 	}
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -242,7 +242,7 @@ func TestChainTermination(t *testing.T) {
 
 	// Build a transaction that terminates the chain:
 	// consume the chain output, produce a non-chain output, set chain unlock to empty (discontinue)
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -258,7 +258,7 @@ func TestChainTermination(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -288,7 +288,7 @@ func TestChainInvalidPredecessorReference(t *testing.T) {
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -304,7 +304,7 @@ func TestChainInvalidPredecessorReference(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -328,7 +328,7 @@ func TestChainOriginSlotImmutability(t *testing.T) {
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -344,7 +344,7 @@ func TestChainOriginSlotImmutability(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -369,7 +369,7 @@ func TestChainTransitionCounterWrong(t *testing.T) {
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -385,7 +385,7 @@ func TestChainTransitionCounterWrong(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -408,7 +408,7 @@ func TestChainIDMismatch(t *testing.T) {
 	cc := chainIn.Output.ChainConstraint()
 	require.NotNil(t, cc)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 	require.NoError(t, err)
 
@@ -425,7 +425,7 @@ func TestChainIDMismatch(t *testing.T) {
 	txb.PutSignatureUnlock(predIdx)
 
 	ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -451,7 +451,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		cc := chainIn.Output.ChainConstraint()
 		require.NotNil(t, cc)
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
@@ -467,7 +467,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		txb.PutSignatureUnlock(predIdx)
 
 		ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-		txb.SetTimestamp(ts)
+		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
@@ -487,7 +487,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		cc := chainIn.Output.ChainConstraint()
 		require.NotNil(t, cc)
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		predIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
 		require.NoError(t, err)
 
@@ -504,7 +504,7 @@ func TestChainInvalidUnlockParams(t *testing.T) {
 		txb.PutSignatureUnlock(predIdx)
 
 		ts := chainIn.ID.Timestamp().AddTicks(int(ledger.L(chainIn.ID.Slot()).TransactionPace))
-		txb.SetTimestamp(ts)
+		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(e.privKey)
 
@@ -610,7 +610,7 @@ func TestChainLockValidUnlock(t *testing.T) {
 
 	// Build transaction: consume chain output + chain-locked output,
 	// produce chain successor + target output
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	// Input 0: chain output
 	chainIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
@@ -649,7 +649,7 @@ func TestChainLockValidUnlock(t *testing.T) {
 	if lockedOuts[0].ID.Timestamp().After(maxTs) {
 		maxTs = lockedOuts[0].ID.Timestamp()
 	}
-	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
+	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -708,7 +708,7 @@ func TestChainLockWrongChainID(t *testing.T) {
 	require.True(t, len(lockedOuts) > 0)
 
 	// Build transaction: try to unlock chain-locked-to-A output via chain B
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	// Input 0: chain B output (wrong chain)
 	chainIdx, err := txb.ConsumeOutput(chainInB.Output, chainInB.ID)
@@ -747,7 +747,7 @@ func TestChainLockWrongChainID(t *testing.T) {
 	if lockedOuts[0].ID.Timestamp().After(maxTs) {
 		maxTs = lockedOuts[0].ID.Timestamp()
 	}
-	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
+	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -800,7 +800,7 @@ func TestChainLockSelfReference(t *testing.T) {
 	require.True(t, len(lockedOuts) > 0)
 
 	// Build transaction where the chain-locked output tries to reference itself
-	txb := txbuilder.New()
+	txb := exhelp.New()
 
 	// Input 0: chain output
 	chainIdx, err := txb.ConsumeOutput(chainIn.Output, chainIn.ID)
@@ -840,7 +840,7 @@ func TestChainLockSelfReference(t *testing.T) {
 	if lockedOuts[0].ID.Timestamp().After(maxTs) {
 		maxTs = lockedOuts[0].ID.Timestamp()
 	}
-	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
+	txb.SetTimestamp(maxTs.AddTicks(int(ledger.L(maxTs.Slot).TransactionPace)))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 

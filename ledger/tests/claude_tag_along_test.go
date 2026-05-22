@@ -19,9 +19,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -74,7 +74,7 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 	env.targetChainID = env.seqOrigin.ChainID
 
 	// create tag-along output from sender to target chain
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	outs, err := env.u.SugaredStateReader().GetOutputsForAccount(env.addrSender.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -90,7 +90,7 @@ func setupTagAlongEnv(t *testing.T) *tagAlongTestEnv {
 	require.NoError(t, err)
 
 	env.taTs = env.seqOrigin.ID.Timestamp().AddSlots(2)
-	txb.SetTimestamp(env.taTs)
+	txb.SetTimestamp(env.taTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeySender)
 	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -122,7 +122,7 @@ func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Alice signs a tx but puts Bob's HolderID as the sender
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	outs, err := u.SugaredStateReader().GetOutputsForAccount(addrAlice.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -139,7 +139,7 @@ func TestClaudeTagAlongSpoofedSenderID(t *testing.T) {
 	}))
 	require.NoError(t, err)
 
-	txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+	txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKeyAlice)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -176,7 +176,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	require.NoError(t, err)
 
 	// create tag-along targeting chain A
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	senderOuts, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 	require.NoError(t, err)
 	_, err = txb.ConsumeOutput(senderOuts[0].Output, senderOuts[0].ID)
@@ -196,7 +196,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 		taTs = seqOriginB.ID.Timestamp()
 	}
 	taTs = taTs.AddSlots(2)
-	txb.SetTimestamp(taTs)
+	txb.SetTimestamp(taTs)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKeySender)
 	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -209,7 +209,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	require.EqualValues(t, 1, len(taOuts))
 
 	// chain B tries to consume the tag-along targeted at chain A
-	txb2 := txbuilder.New()
+	txb2 := exhelp.New()
 	// consume chain B's origin
 	_, err = txb2.ConsumeOutput(seqOriginB.Output, seqOriginB.ID)
 	require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestClaudeTagAlongWrongSequencerConsumes(t *testing.T) {
 	_, err = txb2.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb2.SetTimestamp(taTs.AddSlots(1))
+	txb2.SetTimestamp(taTs.AddSlots(1))
 	txb2.ComputeInputCommitment()
 	txb2.SignED25519(privKeyTargetB)
 	_, _, _, err = txbtest.BuildAndValidate(txb2)
@@ -255,7 +255,7 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		taOuts := env.u.SugaredStateReader().GetTagAlongBacklog(env.targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -276,7 +276,7 @@ func TestClaudeTagAlongManipulatedUnlockParams(t *testing.T) {
 		_, err = txb.ProduceOutput(next)
 		require.NoError(t, err)
 
-		txb.SetTimestamp(env.taTs.AddSlots(1))
+		txb.SetTimestamp(env.taTs.AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(env.privKeyTarget)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -313,7 +313,7 @@ func TestClaudeTagAlongPurgeWindowSettle(t *testing.T) {
 
 	initialRandomBalance := maxOut.Output.TokenBalance()
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -330,7 +330,7 @@ func TestClaudeTagAlongPurgeWindowSettle(t *testing.T) {
 	require.NoError(t, err)
 
 	// purge window: slot pace >= TagAlongReclaimSlots (390)
-	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongReclaimSlots))
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongReclaimSlots))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyRandom)
 	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -367,7 +367,7 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 	taOuts := env.u.SugaredStateReader().GetTagAlongBacklog(env.targetChainID)
 	require.EqualValues(t, 1, len(taOuts))
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -389,7 +389,7 @@ func TestClaudeTagAlongTargetBalanceTampering(t *testing.T) {
 	_, err = txb.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb.SetTimestamp(env.taTs.AddSlots(1))
+	txb.SetTimestamp(env.taTs.AddSlots(1))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -425,7 +425,7 @@ func TestClaudeTagAlongSenderHashForgeryOnReclaim(t *testing.T) {
 		return 0
 	})
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -442,7 +442,7 @@ func TestClaudeTagAlongSenderHashForgeryOnReclaim(t *testing.T) {
 	require.NoError(t, err)
 
 	// reclaim window: TagAlongSlots <= pace < TagAlongReclaimSlots
-	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyRandom)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -462,7 +462,7 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 
 	initialChainBalance := env.seqOrigin.Output.TokenBalance()
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err := txb.ConsumeOutput(env.seqOrigin.Output, env.seqOrigin.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -482,7 +482,7 @@ func TestClaudeTagAlongValidTargetConsumptionSettles(t *testing.T) {
 	_, err = txb.ProduceOutput(next)
 	require.NoError(t, err)
 
-	txb.SetTimestamp(env.taTs.AddSlots(1))
+	txb.SetTimestamp(env.taTs.AddSlots(1))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeyTarget)
 	txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -523,7 +523,7 @@ func TestClaudeTagAlongSenderReclaimSettles(t *testing.T) {
 
 	preReclaimBalance := maxOut.Output.TokenBalance()
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -540,7 +540,7 @@ func TestClaudeTagAlongSenderReclaimSettles(t *testing.T) {
 	require.NoError(t, err)
 
 	// reclaim window
-	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 1))
+	txb.SetTimestamp(env.taTs.AddSlots(ledger.L(0).TagAlongSlots + 1))
 	txb.ComputeInputCommitment()
 	txb.SignED25519(env.privKeySender)
 	txBytes, _, _, err := txbtest.BuildAndValidate(txb)

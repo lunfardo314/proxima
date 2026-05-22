@@ -15,7 +15,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
+	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
@@ -356,11 +356,11 @@ func TestAttachConflicts1Attacher(t *testing.T) {
 			inTS = append(inTS, o.Timestamp())
 		}
 
-		td := txbuilder.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPace)))
+		td := utxodb.NewTransferData(testData.privKey, testData.addr, base.MaximumTime(inTS...).AddTicks(int(ledger.L(0).TransactionPace)))
 		td.WithAmount(amount).
 			WithTargetLock(ledger.ChainLockFromChainID(testData.bootstrapChainID)).
 			MustWithInputs(testData.conflictingOutputs...)
-		txBytesConflicting, err := txbuilder.MakeSimpleTransferTransaction(td)
+		txBytesConflicting, err := utxodb.MakeSimpleTransferTransaction(td)
 		require.NoError(t, err)
 
 		vidConflicting, err := attacher.AttachTransactionFromBytes(txBytesConflicting, testData.wrk)
@@ -859,7 +859,6 @@ func TestAttachConflictsNAttachersOneForkBranchesConflict(t *testing.T) {
 	require.EqualValues(t, status, vertex.Bad)
 	testData.stopAndWait()
 	testData.logDAGInfo()
-
 
 	require.EqualValues(t, vid.GetTxStatus(), vertex.Bad)
 	t.Logf("expected error: %v", vid.GetError())

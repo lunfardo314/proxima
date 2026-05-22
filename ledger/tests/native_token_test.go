@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -60,7 +60,7 @@ func (e *foundryTestEnv) createFoundryOrigin(t *testing.T, onChainAmount uint64,
 		ts = ts.AddTicks(1)
 	}
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, inTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	ts = base.MaximumTime(inTs, ts)
@@ -74,14 +74,14 @@ func (e *foundryTestEnv) createFoundryOrigin(t *testing.T, onChainAmount uint64,
 		}
 	}
 
-	foundryOut := txbuilder.MakeFoundryOriginOutput(onChainAmount, e.addr, ts.Slot, 0, policy)
+	foundryOut := exhelp.MakeFoundryOriginOutput(onChainAmount, e.addr, ts.Slot, 0, policy)
 	require.NoError(t, foundryOut.EnoughAmountForStorageDeposit())
 	foundryIdx, err := txb.ProduceOutput(foundryOut)
 	require.NoError(t, err)
 
 	addRemainderIfNeeded(t, txb, e.addr)
 
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 
@@ -121,7 +121,7 @@ func (e *foundryTestEnv) foundryInputData(t *testing.T, chainID base.ChainID) *l
 //   - tokenAmount-bearing UTXOs (re-consuming them in a mint/transit
 //     would add their amount to the consumed-side balance and require
 //     re-producing the tokens, breaking the simple flow we want here)
-func (e *foundryTestEnv) appendExtraFunding(t *testing.T, txb *txbuilder.TxBuilder, sigInputIdx byte) base.LedgerTime {
+func (e *foundryTestEnv) appendExtraFunding(t *testing.T, txb *exhelp.Builder, sigInputIdx byte) base.LedgerTime {
 	t.Helper()
 	already := make(map[base.OutputID]struct{}, len(txb.TxData.InputIDs))
 	for _, oid := range txb.TxData.InputIDs {
@@ -157,9 +157,9 @@ func outputCarriesTokenAmount(o *ledger.Output) bool {
 
 // finishAndSubmit signs the builder, validates and submits the tx.
 // Returns the submission error, the tx ID and the validated tx bytes.
-func (e *foundryTestEnv) finishAndSubmit(t *testing.T, txb *txbuilder.TxBuilder, ts base.LedgerTime) ([]byte, base.TransactionID, error) {
+func (e *foundryTestEnv) finishAndSubmit(t *testing.T, txb *exhelp.Builder, ts base.LedgerTime) ([]byte, base.TransactionID, error) {
 	t.Helper()
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(e.privKey)
 	txBytes, txid, failedTx, err := txbtest.BuildAndValidate(txb)
@@ -172,7 +172,7 @@ func (e *foundryTestEnv) finishAndSubmit(t *testing.T, txb *txbuilder.TxBuilder,
 
 // addRemainderIfNeeded appends a wallet-locked sigLock output carrying
 // any leftover PRXI (consumed - already-produced).
-func addRemainderIfNeeded(t *testing.T, txb *txbuilder.TxBuilder, lock ledger.Lock) {
+func addRemainderIfNeeded(t *testing.T, txb *exhelp.Builder, lock ledger.Lock) {
 	t.Helper()
 	totalConsumed := txb.ConsumedAmount()
 	totalProduced, _ := txb.ProducedAmount()
@@ -470,7 +470,7 @@ func TestFoundryConservationTransfer(t *testing.T) {
 	_, _, addr2 := e.u.GenerateAddress(2)
 
 	// Input 0: the tokenAmount-bearing sigLock UTXO.
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err := txb.ConsumeOutput(tokenOut.Output, tokenOutID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -590,7 +590,7 @@ func TestFoundryAuditabilityRejectsUndeclared(t *testing.T) {
 
 	_, _, addr2 := e.u.GenerateAddress(2)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, err := txb.ConsumeOutput(tokenOut.Output, tokenOutID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(0)
@@ -786,7 +786,7 @@ func TestFoundryPolicyImmutabilityRejectsRemoval(t *testing.T) {
 	in := e.foundryInputData(t, chainID)
 	parsedIn := parseOutput(t, in)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(parsedIn, in.ID)
 	require.NoError(t, err)
 	txb.PutSignatureUnlock(predIdx)
@@ -871,7 +871,7 @@ func tryMintTo(t *testing.T, e *foundryTestEnv, chainID base.ChainID, mintAmount
 	fIn, err := ledger.FoundryFromBytes(mustConstraintAt(t, parseOutput(t, in), ledger.ConstraintIndexFoundry))
 	require.NoError(t, err)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	// Foundry becomes input 0, wired with chain unlock by TransitFoundry.
 	_, err = txb.TransitFoundry(in, fIn.Supply+mintAmount)
 	require.NoError(t, err)
@@ -931,7 +931,7 @@ func sendTagged(t *testing.T, e *foundryTestEnv, chainID base.ChainID, amount ui
 		"insufficient tokenAmount(%s, _) UTXOs on wallet: have %d, need %d",
 		chainID.StringShort(), consumed, amount)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	// Consume tokenAmount inputs first (input 0..N-1).
 	_, inTs, err := txb.ConsumeOutputsNoUnlock(tokenInputs...)
 	require.NoError(t, err)
@@ -1012,7 +1012,7 @@ func burnTokens(t *testing.T, e *foundryTestEnv, chainID base.ChainID, burnAmoun
 		"wallet has %d tokenAmount(%s, _) tokens, need %d to burn",
 		consumed, chainID.StringShort(), burnAmount)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	// Foundry is input 0 (TransitFoundry + chain unlock + token() decl).
 	_, err = txb.TransitFoundry(in, fIn.Supply-burnAmount)
 	require.NoError(t, err)
@@ -1061,7 +1061,7 @@ func burnAll(t *testing.T, e *foundryTestEnv, chainID base.ChainID, burnAmount u
 
 	tokenOutID, tokenOut := findTokenOutput(t, e, chainID)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	// Input 0: foundry (via TransitFoundry, with chain unlock wired).
 	_, err = txb.TransitFoundry(in, fIn.Supply-burnAmount)
 	require.NoError(t, err)
@@ -1094,7 +1094,7 @@ func tryRetireFoundry(t *testing.T, e *foundryTestEnv, chainID base.ChainID) err
 	in := e.foundryInputData(t, chainID)
 	parsedIn := parseOutput(t, in)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(parsedIn, in.ID)
 	require.NoError(t, err)
 
@@ -1167,7 +1167,7 @@ func buildFakeMintTx(t *testing.T, e *foundryTestEnv, fakeTag base.ChainID, fabr
 	t.Helper()
 	outs := getSourceOutputs(t, e.u, e.addr)
 
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, inTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	for i := range outs {
@@ -1233,7 +1233,7 @@ func TestExploitProbeOrdinaryTxWithFakeTokenAmount(t *testing.T) {
 	fakeTag[31] = 0x01
 
 	outs := getSourceOutputs(t, e.u, e.addr)
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	_, inTs, err := txb.ConsumeOutputsNoUnlock(outs...)
 	require.NoError(t, err)
 	for i := range outs {

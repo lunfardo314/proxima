@@ -17,9 +17,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
 	"github.com/stretchr/testify/require"
@@ -131,7 +131,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 		chainIn := e.getChainOutput(t, chainOut.ChainID)
 
 		_, txb := e.buildChainTransition(t, chainIn, chainOut,
-			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
+			func(txb *exhelp.Builder, predIdx byte, succIdx *byte) {
 				// Replace successor with counter=0 (should be 1)
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
@@ -140,7 +140,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.ReplaceProducedOutput(*succIdx, chainSucc)
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txbtest.BuildAndValidate(txb)
@@ -156,7 +156,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 		chainIn := e.getChainOutput(t, chainOut.ChainID)
 
 		_, txb := e.buildChainTransition(t, chainIn, chainOut,
-			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
+			func(txb *exhelp.Builder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
 					0, 0, 2, 0, // counter=2 is wrong (skips 1)
@@ -164,7 +164,7 @@ func TestChainTransitionCounterIncrement(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.ReplaceProducedOutput(*succIdx, chainSucc)
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txbtest.BuildAndValidate(txb)
@@ -253,7 +253,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 		// Non-branch, same-slot tx: inflation should be 0.
 		// Setting $3 = 1000 (wrong) should be rejected.
 		_, txb := e.buildChainTransition(t, chainIn, chainOut,
-			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
+			func(txb *exhelp.Builder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
 					1000, 0, 1, 0, // cumulative inflation = 1000 is wrong
@@ -261,7 +261,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.ReplaceProducedOutput(*succIdx, chainSucc)
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txbtest.BuildAndValidate(txb)
@@ -273,7 +273,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 	t.Run("inflation_large_value", func(t *testing.T) {
 		// Try a very large inflation value
 		_, txb := e.buildChainTransition(t, chainIn, chainOut,
-			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
+			func(txb *exhelp.Builder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
 					999_999_999, 0, 1, 0,
@@ -281,7 +281,7 @@ func TestChainWrongCumulativeInflation(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.ReplaceProducedOutput(*succIdx, chainSucc)
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txbtest.BuildAndValidate(txb)
@@ -307,7 +307,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 		// Non-branch tx: branch bonus should remain 0.
 		// Setting $4 = 500 (wrong) should be rejected.
 		_, txb := e.buildChainTransition(t, chainIn, chainOut,
-			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
+			func(txb *exhelp.Builder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
 					0, 500, 1, 0, // branch bonus = 500 is wrong on non-branch
@@ -315,7 +315,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.ReplaceProducedOutput(*succIdx, chainSucc)
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txbtest.BuildAndValidate(txb)
@@ -326,7 +326,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 
 	t.Run("bonus_large_value", func(t *testing.T) {
 		_, txb := e.buildChainTransition(t, chainIn, chainOut,
-			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
+			func(txb *exhelp.Builder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
 					0, 999_999_999, 1, 0,
@@ -334,7 +334,7 @@ func TestChainWrongCumulativeBranchBonus(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.ReplaceProducedOutput(*succIdx, chainSucc)
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txbtest.BuildAndValidate(txb)
@@ -389,7 +389,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 	t.Run("all_three_wrong", func(t *testing.T) {
 		// $3=100, $4=50, $5=5 — all wrong
 		_, txb := e.buildChainTransition(t, chainIn, chainOut,
-			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
+			func(txb *exhelp.Builder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
 					100, 50, 5, 0,
@@ -397,7 +397,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.ReplaceProducedOutput(*succIdx, chainSucc)
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txbtest.BuildAndValidate(txb)
@@ -409,7 +409,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 	t.Run("inflation_and_bonus_wrong_counter_correct", func(t *testing.T) {
 		// $3=100, $4=50, $5=1 — counter correct but inflation/bonus wrong
 		_, txb := e.buildChainTransition(t, chainIn, chainOut,
-			func(txb *txbuilder.TxBuilder, predIdx byte, succIdx *byte) {
+			func(txb *exhelp.Builder, predIdx byte, succIdx *byte) {
 				wrongCC := ledger.NewChainConstraint(
 					chainOut.ChainID, predIdx, chainIn.Output.ChainConstraint().OriginSlot,
 					100, 50, 1, 0,
@@ -417,7 +417,7 @@ func TestChainMultipleWrongCumulatives(t *testing.T) {
 				chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 					out.PutConstraint(wrongCC.Bytes(), ledger.ConstraintIndexChain)
 				})
-				txb.ReplaceProducedOutput(*succIdx, chainSucc)
+				txb.ReplaceProducedOutput(*succIdx, chainSucc)
 			},
 		)
 		_, _, _, err := txbtest.BuildAndValidate(txb)

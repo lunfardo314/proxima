@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/lunfardo314/easyfl/easyfl_util"
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -150,7 +150,7 @@ func TestTxID(t *testing.T) {
 		WithTargetLock(addr1).
 		WithConstraint(ledger.NewTimelock(timelockSlot))
 	par.AdjustToMinimum = true
-	txBytes, err := txbuilder.MakeTransferTransaction(par)
+	txBytes, err := utxodb.MakeTransferTransaction(par)
 	require.NoError(t, err)
 
 	ctx, err := u.TxFullContextFromBytes(txBytes)
@@ -218,7 +218,7 @@ func TestTimelock(t *testing.T) {
 		par.WithAmount(200_000_000).
 			WithTargetLock(addr1).
 			WithConstraint(ledger.NewTimelock(timelockSlot))
-		txBytes, err := txbuilder.MakeTransferTransaction(par)
+		txBytes, err := utxodb.MakeTransferTransaction(par)
 		require.NoError(t, err)
 
 		err = u.AddTransaction(txBytes)
@@ -284,7 +284,7 @@ func TestTimelock(t *testing.T) {
 		ts := ledger.TimeNow()
 		par, err := u.MakeTransferInputData(privKey0, nil, ts)
 		require.NoError(t, err)
-		txBytes, err := txbuilder.MakeTransferTransaction(par.
+		txBytes, err := utxodb.MakeTransferTransaction(par.
 			WithAmount(30_000_000).
 			WithTargetLock(addr1).
 			WithConstraint(ledger.NewTimelock(ts.Slot + 1)),
@@ -459,7 +459,7 @@ func TestChain1(t *testing.T) {
 		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 
 		// create transaction builder
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		// consume predecessor chain output. It will be the only input to the transaction
 		consumedIndex, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
@@ -485,7 +485,7 @@ func TestChain1(t *testing.T) {
 		txb.PutSignatureUnlock(consumedIndex) // it knows the lock is always at index 1
 
 		// finalize the transaction
-		txb.SetTimestamp(ts)
+		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKey0)
 
@@ -555,7 +555,7 @@ func TestChain2(t *testing.T) {
 		require.NotNil(t, cc)
 
 		ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 		require.NoError(t, err)
 
@@ -598,7 +598,7 @@ func TestChain2(t *testing.T) {
 		}
 		txb.PutSignatureUnlock(0)
 
-		txb.SetTimestamp(ts)
+		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 
 		txb.SignED25519(privKey0)
@@ -700,7 +700,7 @@ func TestChain3(t *testing.T) {
 	require.NotNil(t, cc)
 
 	ts := chainIN.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-	txb := txbuilder.New()
+	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chainIN.Output, chainIN.ID)
 	require.NoError(t, err)
 
@@ -715,7 +715,7 @@ func TestChain3(t *testing.T) {
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 	txb.PutSignatureUnlock(0)
 
-	txb.SetTimestamp(ts)
+	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 
 	txb.SignED25519(privKey0)
@@ -822,7 +822,7 @@ func TestChainLock(t *testing.T) {
 		par, err := u.MakeTransferInputData(privKey0, chainAddr, ts)
 		par.WithAmount(40_000_000).WithTargetLock(addr0)
 		require.NoError(t, err)
-		txBytes, err := txbuilder.MakeTransferTransaction(par)
+		txBytes, err := utxodb.MakeTransferTransaction(par)
 		require.NoError(t, err)
 
 		v, err := u.TxFullContextFromBytes(txBytes)

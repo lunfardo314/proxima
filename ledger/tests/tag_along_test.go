@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -56,7 +56,7 @@ func TestTagAlongSimple(t *testing.T) {
 		targetChainID = seqOrigin.ChainID
 
 		// sender creates tx with tag-along to the target chain
-		txb := txbuilder.New()
+		txb := exhelp.New()
 
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
@@ -76,7 +76,7 @@ func TestTagAlongSimple(t *testing.T) {
 		require.NoError(t, err)
 
 		ts := seqOrigin.ID.Timestamp().AddSlots(1)
-		txb.SetTimestamp(ts.AddSlots(1))
+		txb.SetTimestamp(ts.AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 
@@ -101,7 +101,7 @@ func TestTagAlongSimple(t *testing.T) {
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err = txb.ConsumeOutput(seqOrigin.Output, seqOrigin.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -121,7 +121,7 @@ func TestTagAlongSimple(t *testing.T) {
 		_, err = txb.ProduceOutput(next)
 		require.NoError(t, err)
 
-		txb.SetTimestamp(ts)
+		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyTarget)
 		txBytes, _, txString, err := txbtest.BuildAndValidate(txb)
@@ -137,7 +137,7 @@ func TestTagAlongSimple(t *testing.T) {
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -177,7 +177,7 @@ func TestTagAlongSimple(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		txb.SetTimestamp(ts)
+		txb.SetTimestamp(ts)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(reclaimerPrivateKey)
 		_, _, txString, err := txbtest.BuildAndValidate(txb)
@@ -318,7 +318,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		targetChainID := seqOrigin.ChainID
 
 		// create tag-along output
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -334,7 +334,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.SetTimestamp(taTs)
+		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -349,7 +349,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 				return nil
 			}
 
-			txb := txbuilder.New()
+			txb := exhelp.New()
 			_, err = txb.ConsumeOutput(seqOrigin.Output, seqOrigin.ID)
 			require.NoError(t, err)
 			txb.PutSignatureUnlock(0)
@@ -368,7 +368,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 			_, err = txb.ProduceOutput(next)
 			require.NoError(t, err)
 
-			txb.SetTimestamp(taTs.AddSlots(slotOffset))
+			txb.SetTimestamp(taTs.AddSlots(slotOffset))
 			txb.ComputeInputCommitment()
 			txb.SignED25519(privKeyTarget)
 			_, _, _, err := txbtest.BuildAndValidate(txb)
@@ -405,7 +405,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		targetChainID := seqOrigin.ChainID
 
 		// create tag-along output
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -421,7 +421,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.SetTimestamp(taTs)
+		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -444,7 +444,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 			})
 			require.True(t, len(reclaimerOuts) > 0)
 
-			txb := txbuilder.New()
+			txb := exhelp.New()
 			_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 			require.NoError(t, err)
 			txb.PutSignatureUnlock(0)
@@ -469,7 +469,7 @@ func TestTagAlongBoundaries(t *testing.T) {
 			}))
 			require.NoError(t, err)
 
-			txb.SetTimestamp(taTs.AddSlots(slotOffset))
+			txb.SetTimestamp(taTs.AddSlots(slotOffset))
 			txb.ComputeInputCommitment()
 			txb.SignED25519(privKeyRandom)
 			_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -505,7 +505,7 @@ func TestTagAlongProduction(t *testing.T) {
 		privKeySender := privKeys[0]
 		addrSender := addrs[0]
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -523,7 +523,7 @@ func TestTagAlongProduction(t *testing.T) {
 		require.NoError(t, err)
 
 		// use timestamp after the consumed output
-		txb.SetTimestamp(outs[0].ID.Timestamp().AddSlots(1))
+		txb.SetTimestamp(outs[0].ID.Timestamp().AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -550,7 +550,7 @@ func TestTagAlongProduction(t *testing.T) {
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -578,7 +578,7 @@ func TestTagAlongProduction(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -605,7 +605,7 @@ func TestTagAlongProduction(t *testing.T) {
 		require.NoError(t, err)
 		targetChainID := seqOrigin.ChainID
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrController.ControllerID())
 		require.NoError(t, err)
 		// find a non-chain output to consume
@@ -631,7 +631,7 @@ func TestTagAlongProduction(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyController)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -682,7 +682,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		targetChainID := seqOrigin.ChainID
 
 		// create tag-along output
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -698,7 +698,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.SetTimestamp(taTs)
+		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -715,7 +715,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err := txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -746,7 +746,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in tag-along window (slot 1)
-		txb.SetTimestamp(taTs.AddSlots(1))
+		txb.SetTimestamp(taTs.AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -767,7 +767,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 			return o.Output.Lock().Name() == ledger.SigLockName
 		})
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -793,7 +793,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in tag-along window (slot 1)
-		txb.SetTimestamp(taTs.AddSlots(1))
+		txb.SetTimestamp(taTs.AddSlots(1))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyRandom)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -814,7 +814,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 			return o.Output.Lock().Name() == ledger.SigLockName
 		})
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err = txb.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -840,7 +840,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in reclaim window (middle of the window)
-		txb.SetTimestamp(taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
+		txb.SetTimestamp(taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyRandom)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -854,7 +854,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		_, err := txb.ConsumeOutput(seqOrigin.Output, seqOrigin.ID)
 		require.NoError(t, err)
 		txb.PutSignatureUnlock(0)
@@ -874,7 +874,7 @@ func TestTagAlongNegativeUnlock(t *testing.T) {
 		require.NoError(t, err)
 
 		// try to unlock in reclaim window (middle of the window)
-		txb.SetTimestamp(taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
+		txb.SetTimestamp(taTs.AddSlots(ledger.L(0).TagAlongSlots + 10))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeyTarget)
 		_, _, _, err = txbtest.BuildAndValidate(txb)
@@ -914,7 +914,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		targetChainID := seqOrigin.ChainID
 
 		// create first tag-along output
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -929,7 +929,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
+		txb.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(2))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -938,7 +938,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		require.NoError(t, err)
 
 		// create second tag-along output
-		txb2 := txbuilder.New()
+		txb2 := exhelp.New()
 		outs2, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		// find the non-tag-along output
@@ -963,7 +963,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		}))
 		require.NoError(t, err)
 
-		txb2.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(3))
+		txb2.SetTimestamp(seqOrigin.ID.Timestamp().AddSlots(3))
 		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeySender)
 		txBytes2, _, _, err := txbtest.BuildAndValidate(txb2)
@@ -1014,7 +1014,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		targetChainID2 := seqOrigin2.ChainID
 
 		// create tag-along outputs to both chains in single tx
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -1038,7 +1038,7 @@ func TestTagAlongMultiple(t *testing.T) {
 		if seqOrigin2.ID.Timestamp().After(ts) {
 			ts = seqOrigin2.ID.Timestamp()
 		}
-		txb.SetTimestamp(ts.AddSlots(2))
+		txb.SetTimestamp(ts.AddSlots(2))
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -1090,7 +1090,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		initialChainBalance := seqOrigin.Output.TokenBalance()
 
 		// create tag-along output
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		_, err = txb.ConsumeOutput(outs[0].Output, outs[0].ID)
@@ -1106,7 +1106,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.SetTimestamp(taTs)
+		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -1118,7 +1118,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		txb2 := txbuilder.New()
+		txb2 := exhelp.New()
 		_, err = txb2.ConsumeOutput(seqOrigin.Output, seqOrigin.ID)
 		require.NoError(t, err)
 		txb2.PutSignatureUnlock(0)
@@ -1138,7 +1138,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		_, err = txb2.ProduceOutput(next)
 		require.NoError(t, err)
 
-		txb2.SetTimestamp(taTs.AddSlots(1))
+		txb2.SetTimestamp(taTs.AddSlots(1))
 		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeyTarget)
 		txBytes2, _, _, err := txbtest.BuildAndValidate(txb2)
@@ -1184,7 +1184,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		}
 
 		// create tag-along output
-		txb := txbuilder.New()
+		txb := exhelp.New()
 		outs, err := u.SugaredStateReader().GetOutputsForAccount(addrSender.ControllerID())
 		require.NoError(t, err)
 		var senderOut *ledger.OutputWithID
@@ -1209,7 +1209,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		require.NoError(t, err)
 
 		taTs := seqOrigin.ID.Timestamp().AddSlots(2)
-		txb.SetTimestamp(taTs)
+		txb.SetTimestamp(taTs)
 		txb.ComputeInputCommitment()
 		txb.SignED25519(privKeySender)
 		txBytes, _, _, err := txbtest.BuildAndValidate(txb)
@@ -1221,7 +1221,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 		taOuts := u.SugaredStateReader().GetTagAlongBacklog(targetChainID)
 		require.EqualValues(t, 1, len(taOuts))
 
-		txb2 := txbuilder.New()
+		txb2 := exhelp.New()
 		_, err = txb2.ConsumeOutput(taOuts[0].Output, taOuts[0].ID)
 		require.NoError(t, err)
 		txb2.PutSignatureUnlock(0)
@@ -1253,7 +1253,7 @@ func TestTagAlongBalanceVerification(t *testing.T) {
 
 		// reclaim in reclaim window
 		reclaimTs := taTs.AddSlots(ledger.L(0).TagAlongSlots + 1)
-		txb2.SetTimestamp(reclaimTs)
+		txb2.SetTimestamp(reclaimTs)
 		txb2.ComputeInputCommitment()
 		txb2.SignED25519(privKeySender)
 		txBytes2, _, _, err := txbtest.BuildAndValidate(txb2)

@@ -9,7 +9,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuilder"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/stretchr/testify/require"
@@ -96,7 +95,7 @@ func TestBasics(t *testing.T) {
 		t.Logf("ts = %s, %s", ts.String(), ts.Hex())
 		par, err := u.MakeTransferInputData(privKey, nil, ts)
 		require.NoError(t, err)
-		txBytes, err := txbuilder.MakeTransferTransaction(par.
+		txBytes, err := utxodb.MakeTransferTransaction(par.
 			WithAmount(u.Balance(addr)).
 			WithTargetLock(addr),
 		)
@@ -237,7 +236,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		target, err := u.CreateChainOrigin(privKeys[1], ts)
 		require.NoError(t, err)
-		par := txbuilder.MakeChainSuccTransactionParams{
+		par := utxodb.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
 			Timestamp:            chainInput.Timestamp().AddSlots(1),
 			EnforceProfitability: false,
@@ -245,15 +244,15 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			TagAlongSequencer:    target.ChainID,
 			PrivateKey:           privKeys[0],
 		}
-		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		_, _, _, err = utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 
 		par.Timestamp = base.T(100000, 0)
-		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		_, _, _, err = utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, util.MustErrorWith(err, "timestamp is on slot boundary"))
 
 		par.Timestamp = par.ChainInput.Timestamp()
-		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		_, _, _, err = utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, util.MustErrorWith(err, "is inconsistent with latest chain output timestamp"))
 
 	})
@@ -280,7 +279,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
 		require.NoError(t, err)
 
-		par := txbuilder.MakeChainSuccTransactionParams{
+		par := utxodb.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
 			Timestamp:            chainInput.Timestamp().AddSlots(1),
 			EnforceProfitability: false,
@@ -288,7 +287,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			TagAlongSequencer:    target.ChainID,
 			PrivateKey:           privKeys[0],
 		}
-		txBytes, inflation, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
+		txBytes, inflation, _, err := utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 		err = u.AddTransaction(txBytes, func(tx *transaction.Transaction, err error) error {
 			if err != nil {
@@ -321,7 +320,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
 		require.NoError(t, err)
-		par := txbuilder.MakeChainSuccTransactionParams{
+		par := utxodb.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
 			Timestamp:            chainInput.Timestamp().AddSlots(1),
 			EnforceProfitability: false,
@@ -329,31 +328,31 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			TagAlongSequencer:    target.ChainID,
 			PrivateKey:           privKeys[0],
 		}
-		_, inflationAmount, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
+		_, inflationAmount, _, err := utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 
 		par.TagAlongFee = inflationAmount
-		_, inflationAmount1, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
+		_, inflationAmount1, _, err := utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 		require.EqualValues(t, inflationAmount, inflationAmount1)
 
 		par.TagAlongFee = inflationAmount + initAmount + fee
-		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		_, _, _, err = utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, util.MustErrorWith(err, "not enough tokens"))
 
 		par.TagAlongFee = inflationAmount + initAmount - 200
-		_, inflationAmount1, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		_, inflationAmount1, _, err = utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, util.MustErrorWith(err, "storage deposit not met"))
 		//require.EqualValues(t, inflationAmount, inflationAmount1)
 
 		par.TagAlongFee = inflationAmount + 1
 		par.EnforceProfitability = true
-		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		_, _, _, err = utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, util.MustErrorWith(err, "not profitable"))
 
 		par.TagAlongFee = inflationAmount
 		par.EnforceProfitability = true
-		txBytes, _, _, err := txbuilder.MakeChainSuccessorTransaction(&par)
+		txBytes, _, _, err := utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, err)
 
 		err = u.AddTransaction(txBytes)
@@ -389,7 +388,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 		target, err := u.CreateChainOrigin(privKeys[1], ts.AddSlots(1))
 		require.NoError(t, err)
 
-		par := txbuilder.MakeChainSuccTransactionParams{
+		par := utxodb.MakeChainSuccTransactionParams{
 			ChainInput:           chainInput,
 			Timestamp:            chainInput.Timestamp().AddSlots(slots),
 			EnforceProfitability: true,
@@ -397,7 +396,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			TagAlongSequencer:    target.ChainID,
 			PrivateKey:           privKeys[0],
 		}
-		_, _, _, err = txbuilder.MakeChainSuccessorTransaction(&par)
+		_, _, _, err = utxodb.MakeChainSuccessorTransaction(&par)
 		require.NoError(t, util.MustErrorWith(err, "chain transition is not profitable"))
 	})
 	t.Run("benchmark tx validation", func(t *testing.T) {
@@ -410,7 +409,7 @@ func TestChainSuccessorTransaction(t *testing.T) {
 
 		type txWithInputLoader struct {
 			txBytes     []byte
-			inputLoader func(i byte) (*ledger.Output, error)
+			inputLoader func(i byte) ([]byte, error)
 		}
 
 		txs := make([]txWithInputLoader, numAddr)
@@ -437,13 +436,13 @@ func TestChainSuccessorTransaction(t *testing.T) {
 			} else {
 				ts = chainOrig.Timestamp().AddSlots(1)
 			}
-			par := txbuilder.MakeChainSuccTransactionParams{
+			par := utxodb.MakeChainSuccTransactionParams{
 				ChainInput:        chainOrig,
 				Timestamp:         ts,
 				PrivateKey:        privKeys[i],
 				ReturnInputLoader: true,
 			}
-			txBytes, _, inputLoader, err := txbuilder.MakeChainSuccessorTransaction(&par)
+			txBytes, _, inputLoader, err := utxodb.MakeChainSuccessorTransaction(&par)
 			require.NoError(t, err)
 
 			txs[i] = txWithInputLoader{
