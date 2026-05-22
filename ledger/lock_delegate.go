@@ -119,7 +119,7 @@ func (d *DelegateLock) LockBytecode() []byte {
 // TargetMaxFrozenEpochs set; the caller must fill Target / MasterID from
 // the output's index-value tuple at index 1.
 func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, error) {
-	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 4)
+	sym, _, args, err := lib.Library.ParseBytecodeOneLevel(data, 4)
 	if err != nil {
 		return nil, fmt.Errorf("DelegateLockFromBytes: %w", err)
 	}
@@ -204,7 +204,7 @@ func registerDelegateLock(lib *Library) {
 //--------------------------- delegationLockState
 
 func DelegateLockStateFromBytesWithLib(data []byte, lib *Library) (DelegateLockState, error) {
-	sym, _, args, err := lib.ParseBytecodeOneLevel(data, 2)
+	sym, _, args, err := lib.Library.ParseBytecodeOneLevel(data, 2)
 	if err != nil {
 		return DelegateLockState{}, fmt.Errorf("DelegateLockStateFromBytes: %w", err)
 	}
@@ -277,10 +277,10 @@ func init() {
 		util.AssertNoError(err)
 		util.Assertf(back2.MaxFrozenEpochs == 20, "DelegateLockFromBytes: defaulted maxFrozenEpochs from target")
 
-		pref1, err := lib.ParsePrefixBytecode(example.Bytes())
+		pref1, err := lib.Library.ParsePrefixBytecode(example.Bytes())
 		util.AssertNoError(err)
 
-		pref2, err := lib.EvalFromSource(nil, "#"+DelegateLockName)
+		pref2, err := lib.Library.EvalFromSource(nil, "#"+DelegateLockName)
 		util.AssertNoError(err)
 		util.Assertf(bytes.Equal(pref1, pref2), "bytes.Equal(pref1, pref2)")
 		util.Assertf(example.Source() == exampleBack.Source(), "example.Source()==exampleBack.Source()")
