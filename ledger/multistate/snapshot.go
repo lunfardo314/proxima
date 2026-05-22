@@ -14,6 +14,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
 	"github.com/lunfardo314/unitrie/common"
@@ -301,7 +302,7 @@ func OpenSnapshotFileStream(fname string) (*SnapshotFileStream, error) {
 
 // GetLedgerConstants parses constants from the first upgrade library (slot 0).
 // This is a convenience method for code that needs constants during restore.
-func (s *SnapshotFileStream) GetLedgerConstants() (*ledger.Constants, error) {
+func (s *SnapshotFileStream) GetLedgerConstants() (*txbuildercore.Constants, error) {
 	if len(s.UpgradeLibraries) == 0 {
 		return nil, fmt.Errorf("no upgrade libraries in snapshot")
 	}
@@ -312,7 +313,7 @@ func (s *SnapshotFileStream) GetLedgerConstants() (*ledger.Constants, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse library: %v", err)
 			}
-			var constants *ledger.Constants
+			var constants *txbuildercore.Constants
 			err = util.CatchPanicOrError(func() error {
 				constants = ledger.ConstantsFromLibrary(lib)
 				return nil

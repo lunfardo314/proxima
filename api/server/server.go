@@ -192,7 +192,7 @@ func (srv *server) getLedgerConstants(w http.ResponseWriter, r *http.Request) {
 		slot = uint32(slotVal)
 	}
 
-	walletConsts := ledger.L(slot).Constants.ToWalletConstants()
+	walletConsts := ledger.L(slot).Constants
 	respBytes, err := json.Marshal(walletConsts)
 	if err != nil {
 		api.WriteErr(w, fmt.Sprintf("failed to marshal response: %v", err))

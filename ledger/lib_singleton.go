@@ -205,7 +205,8 @@ func (lc *LibraryCache) parseLibrary(jsonData []byte) *Library {
 	util.AssertNoError(err)
 
 	result := newLibrary(lib, jsonData)
-	result.Constants = *ConstantsFromLibrary(lib) // Initialize constants for this library version
+	result.Constants = ConstantsFromLibrary(lib)
+	result.TxIntegrityValidatorPartialContextName, result.TxIntegrityValidatorFullContextName = VersionDataIntegrityValidatorNames(lib.VersionData)
 	registerConstraints0(result)
 	result.MustPreCompileTxIntegrityValidators()
 	return result

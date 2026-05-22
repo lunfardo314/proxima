@@ -10,6 +10,7 @@ import (
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
 	"github.com/lunfardo314/easyfl/slicepool"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil"
 )
@@ -27,13 +28,18 @@ type (
 	IntegrityValidator func(ctx easyfl.GlobalData[*EvalContext], spool *slicepool.SlicePool) error
 	Library            struct {
 		*easyfl.Library[*EvalContext]
-		Constants                          // Embedded ledger constants for this library version
-		definitionsJSON                    []byte
-		constraintByPrefix                 map[string]*constraintRecord
-		upgradeChainData                   *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
-		upgradeIndex                       uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
-		TxIntegrityValidatorPartialContext IntegrityValidator
-		TxIntegrityValidatorFullContext    IntegrityValidator
+		*txbuildercore.Constants                                          // ledger constants for this library version (wallet-shared shape)
+		definitionsJSON                        []byte
+		constraintByPrefix                     map[string]*constraintRecord
+		upgradeChainData                       *UpgradeChainData // Cached upgrade chain data, set when loaded from DB
+		upgradeIndex                           uint16            // 0-based ordinal position in upgrade chain (genesis=0, first upgrade=1, etc.)
+		// Names of the EasyFL functions implementing the tx integrity
+		// validator (partial and full context). Used at lib load to
+		// compile them into the pointers below. Server-only.
+		TxIntegrityValidatorPartialContextName string
+		TxIntegrityValidatorFullContextName    string
+		TxIntegrityValidatorPartialContext     IntegrityValidator
+		TxIntegrityValidatorFullContext        IntegrityValidator
 		// precompiled expressions for optimization
 		BranchInflationBonusBasePrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchCoverageLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
@@ -101,7 +107,7 @@ func (lib *Library) UpgradeIndex() uint16 {
 
 // MustPreCompileTxIntegrityValidators sets tx layout validator for the initialized library
 func (lib *Library) MustPreCompileTxIntegrityValidators() {
-	if lib.Constants.TxIntegrityValidatorPartialContextName == "" {
+	if lib.TxIntegrityValidatorPartialContextName == "" {
 		lib.TxIntegrityValidatorPartialContext = func(_ easyfl.GlobalData[*EvalContext], _ *slicepool.SlicePool) error {
 			panic("tx integrity validator (partial context) has not beed initialized")
 		}

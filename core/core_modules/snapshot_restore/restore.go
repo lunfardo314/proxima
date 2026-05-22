@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/unitrie/adaptors/badger_adaptor"
 	"github.com/lunfardo314/unitrie/common"
@@ -32,7 +33,7 @@ type RestoreStats struct {
 	ChainCount      int
 	AccountsCount   int
 	Duration        time.Duration
-	LedgerConstants *ledger.Constants // constants from restored snapshot
+	LedgerConstants *txbuildercore.Constants // constants from restored snapshot
 }
 
 // RestoreOptions configures the restore operation

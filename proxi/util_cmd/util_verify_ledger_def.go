@@ -46,5 +46,5 @@ func runGenVerifyLedgerIDCommand(_ *cobra.Command, _ []string) {
 		}
 	}
 	glb.Infof("ledger ID data in '%s' is OK. Size: %d bytes\nMain ledger parameters:\n-------------------\n%s",
-		glb.LedgerDefinitionsFileName, len(jsonData), constants.String())
+		glb.LedgerDefinitionsFileName, len(jsonData), ledger.ConstantsStringFromLibrary(lib))
 }

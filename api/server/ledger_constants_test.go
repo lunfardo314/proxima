@@ -34,7 +34,7 @@ func TestGetLedgerConstants_Default(t *testing.T) {
 	var got txbuildercore.Constants
 	require.NoError(t, json.Unmarshal(data, &got))
 
-	want := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+	want := ledger.L(base.MaxSlot).Constants
 	require.Equal(t, *want, got)
 
 	// Sanity: AttachmentCostBudget is positive on a real library.

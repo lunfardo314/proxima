@@ -13,6 +13,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -92,7 +93,7 @@ type _snapshotFileData struct {
 	branchID         base.TransactionID
 	rootRecord       multistate.RootRecord
 	upgradeLibraries []multistate.UpgradeLibraryEntry
-	ledgerIDParams   *ledger.Constants
+	ledgerIDParams   *txbuildercore.Constants
 }
 
 func readASnapshotFile(fname string) (*_snapshotFileData, error) {

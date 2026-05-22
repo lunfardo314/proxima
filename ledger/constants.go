@@ -1,8 +1,6 @@
 package ledger
 
 import (
-	"crypto/ed25519"
-	"encoding/hex"
 	"encoding/json"
 	"math"
 	"time"
@@ -15,87 +13,15 @@ import (
 	"github.com/lunfardo314/proxima/util/lines"
 )
 
-// Constants contains constant values of the ledger
-type Constants struct {
-	Hash [32]byte
-	//
-	TxIntegrityValidatorPartialContextName string
-	TxIntegrityValidatorFullContextName    string
-	// arbitrary string up 255 bytes
-	Description string
-	// genesis time unix seconds
-	GenesisTimeUnix uint32
-	// ED25519 public key of the controller
-	GenesisControllerPublicKey ed25519.PublicKey
-	// time tick duration in nanoseconds
-	TickDuration time.Duration
-	TicksPerSlot uint64
-	// initial supply of tokens
-	InitialSupply uint64
-	// ----------- begin inflation-related
-	SlotInflationBase        uint64 // inflation of the total initial supply in slot 0
-	MinimumInflatableAmount0 uint64 // initial supply / slot inflation base
-	// ----------- end inflation-related
-	// number of ticks between non-sequencer transactions
-	TransactionPace byte
-	// number of ticks between sequencer transactions
-	TransactionPaceSequencer byte
-	// limit maximum number of endorsements. For determinism
-	MaxNumberOfEndorsements uint64
-	// PreBranchConsolidationTicks enforces endorsement-only constraint for specified amount of ticks
-	// before the slot boundary. It means, sequencer transaction can have only one input, its own predecessor
-	// for any transaction with timestamp ticks > MaxTickValueInSlot - PreBranchConsolidationTicks
-	// value 0 of PreBranchConsolidationTicks effectively means no constraint
-	PreBranchConsolidationTicks uint8
-	// -------------- delegation related
-	// number of slots where target cannot consume delegation output
-	SafeRevocationSlots uint32
-	// number of slot in the delegation epoch. Default value consulted by
-	// proxi when creating chains that opt in to accept delegations.
-	// The per-chain value is carried in the chain's delegationParams
-	// constraint (see claude/delegation_epoch_params.md).
-	DelegationEpochSlots uint32
-	// maximum number of frozen epochs. Default value (see above).
-	MaxFrozenEpochs uint32
-	// Bounds enforced by the delegationParams constraint at chain origin.
-	DelegationEpochSlotsMin      uint32
-	DelegationEpochSlotsMax      uint32
-	DelegationMaxFrozenEpochsMin uint32
-	DelegationMaxFrozenEpochsMax uint32
-	// ---------- tag-along related
-	TagAlongSlots        uint32
-	TagAlongReclaimSlots uint32
-	// ---------- attachment related
-	AttachmentCostBudget int
-	// ---------- GC related
-	// number of slots to keep committed transaction IDs in state before GC
-	TxIDStateTTLSlots uint32
-	// ---------- branch coverage related
-	// Branch coverage bounds are now slot-dependent functions accessed via Library methods:
-	// Library.BranchCoverageLowerBound(slot) and Library.BranchCoverageUpperBound(slot)
-	// ---------- healthy branch fraction (single source of truth) ----------
-	// The branch is "healthy" iff coverageDelta * Denominator > 2 * supply * Numerator.
-	// The same predicate is enforced inside the stemLock constraint via the
-	// `healthyCoverageDelta(supply, covDelta)` EasyFL function.
-	HealthyCoverageNumerator   uint64
-	HealthyCoverageDenominator uint64
-}
-
-// ConstantsFromLibrary loads all constants from library definition into a runtime structure
-func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
-	ret := &Constants{Hash: lib.LibraryHash()}
+// ConstantsFromLibrary loads all runtime constants from the supplied
+// EasyFL library by evaluating its named constant expressions. Returns
+// the wallet-shaped struct; the two server-only validator names live on
+// *Library directly and are populated by the caller from the same
+// VersionData payload.
+func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *txbuildercore.Constants {
+	ret := &txbuildercore.Constants{Hash: lib.LibraryHash()}
 	var err error
 	var res []byte
-
-	if len(lib.VersionData) > 0 {
-		var marshalled map[string]string
-		err = json.Unmarshal(lib.VersionData, &marshalled)
-		util.AssertNoError(err, "unmarshalling version data JSON")
-		ret.TxIntegrityValidatorPartialContextName = marshalled["txIntegrityValidatorPartialContext"]
-		util.Assertf(ret.TxIntegrityValidatorPartialContextName != "", "txIntegrityValidatorPartialContext not specified")
-		ret.TxIntegrityValidatorFullContextName = marshalled["txIntegrityValidatorFullContext"]
-		util.Assertf(ret.TxIntegrityValidatorFullContextName != "", "txIntegrityValidatorFullContext not specified")
-	}
 
 	ret.InitialSupply, err = _uint64FromConst(lib, "constInitialSupply")
 	util.AssertNoError(err)
@@ -182,6 +108,23 @@ func ConstantsFromLibrary(lib *easyfl.Library[*EvalContext]) *Constants {
 	return ret
 }
 
+// VersionDataIntegrityValidatorNames extracts the
+// (partialContextName, fullContextName) pair from the library's
+// VersionData JSON blob. Server-side initialisation only.
+func VersionDataIntegrityValidatorNames(versionData []byte) (partialName, fullName string) {
+	if len(versionData) == 0 {
+		return "", ""
+	}
+	var marshalled map[string]string
+	err := json.Unmarshal(versionData, &marshalled)
+	util.AssertNoError(err, "unmarshalling version data JSON")
+	partialName = marshalled["txIntegrityValidatorPartialContext"]
+	util.Assertf(partialName != "", "txIntegrityValidatorPartialContext not specified")
+	fullName = marshalled["txIntegrityValidatorFullContext"]
+	util.Assertf(fullName != "", "txIntegrityValidatorFullContext not specified")
+	return partialName, fullName
+}
+
 func _uint64FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint64, error) {
 	res, err := lib.EvalFromSource(nil, constName)
 	if err != nil {
@@ -198,14 +141,51 @@ func _uint32FromConst(lib *easyfl.Library[*EvalContext], constName string) (uint
 	return easyfl_util.Uint32FromBytes(res)
 }
 
-func (c *Constants) Lines(prefix ...string) *lines.Lines {
+// OriginChainID returns the chain ID derived from the genesis output ID.
+func OriginChainID() base.ChainID {
+	oid := base.GenesisOutputID()
+	return base.MakeOriginChainID(oid)
+}
+
+// GenesisControlledAddress returns the SigLock of the genesis controller
+// (derived from this library's GenesisControllerPublicKey).
+func (lib *Library) GenesisControlledAddress() SigLock {
+	return SigLockFromED25519PublicKey(lib.GenesisControllerPublicKey)
+}
+
+// ConstantsLines renders the runtime constants of this library in a
+// human-readable form.
+func (lib *Library) ConstantsLines(prefix ...string) *lines.Lines {
+	return constantsLines(lib.Constants, lib.TxIntegrityValidatorPartialContextName, lib.TxIntegrityValidatorFullContextName, prefix...)
+}
+
+// ConstantsString is the indented String form of ConstantsLines.
+func (lib *Library) ConstantsString() string {
+	return lib.ConstantsLines("    ").String()
+}
+
+// ConstantsLinesFromLibrary renders the runtime constants of a
+// freshly-parsed library. Used by offline proxi utilities that don't
+// build a full *ledger.Library wrapper.
+func ConstantsLinesFromLibrary(lib *easyfl.Library[*EvalContext], prefix ...string) *lines.Lines {
+	partialName, fullName := VersionDataIntegrityValidatorNames(lib.VersionData)
+	return constantsLines(ConstantsFromLibrary(lib), partialName, fullName, prefix...)
+}
+
+// ConstantsStringFromLibrary is the indented String form of
+// ConstantsLinesFromLibrary.
+func ConstantsStringFromLibrary(lib *easyfl.Library[*EvalContext]) string {
+	return ConstantsLinesFromLibrary(lib, "    ").String()
+}
+
+func constantsLines(c *txbuildercore.Constants, partialName, fullName string, prefix ...string) *lines.Lines {
 	originChainID := OriginChainID()
 	ret := lines.New(prefix...).
-		Add("Library hash: %s", hex.EncodeToString(c.Hash[:])).
+		Add("Library hash: %x", c.Hash[:]).
 		Add("Description: '%s'", c.Description).
 		Add("Initial supply: %s", util.Th(c.InitialSupply)).
-		Add("Genesis controller public key: %s", hex.EncodeToString(c.GenesisControllerPublicKey)).
-		Add("Genesis controller address: %s", c.GenesisControlledAddress().String()).
+		Add("Genesis controller public key: %x", []byte(c.GenesisControllerPublicKey)).
+		Add("Genesis controller address: %s", SigLockFromED25519PublicKey(c.GenesisControllerPublicKey).String()).
 		Add("Genesis Unix time: %d (%s)", c.GenesisTimeUnix, c.GenesisTime().Format(time.DateTime)).
 		Add("Tick duration: %v", c.TickDuration).
 		Add("Ticks per slot: %d", c.TicksPerSlot).
@@ -216,8 +196,8 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Transaction pace: %d", c.TransactionPace).
 		Add("Sequencer pace: %d", c.TransactionPaceSequencer).
 		Add("Max number of endorsements: %d", c.MaxNumberOfEndorsements).
-		Add("Tx integrity validator (partial context): '%s'", c.TxIntegrityValidatorPartialContextName).
-		Add("Tx integrity validator (full context): '%s'", c.TxIntegrityValidatorFullContextName)
+		Add("Tx integrity validator (partial context): '%s'", partialName).
+		Add("Tx integrity validator (full context): '%s'", fullName)
 	epochDuration := time.Duration(c.DelegationEpochSlots) * c.SlotDuration()
 	ret.Add("Delegation epoch slots (default): %d, epoch duration: %v", c.DelegationEpochSlots, epochDuration)
 	ret.Add("Delegation epoch slots bounds: [%d, %d]", c.DelegationEpochSlotsMin, c.DelegationEpochSlotsMax)
@@ -229,19 +209,15 @@ func (c *Constants) Lines(prefix ...string) *lines.Lines {
 		Add("Bootstrap sequencer ID (calculated): %s", originChainID.String()).
 		Add("Attachment cost budget: %d", c.AttachmentCostBudget).
 		Add("TxID state TTL slots: %d (%v)", c.TxIDStateTTLSlots, time.Duration(c.TxIDStateTTLSlots)*c.SlotDuration())
-
 	return ret
 }
 
-func (c *Constants) TimeConstantsToString() string {
+// TimeConstantsToString prints diagnostic timing info derived from this
+// library's tick / slot / genesis constants.
+func (lib *Library) TimeConstantsToString() string {
+	c := lib.Constants
 	nowis := time.Now()
 	timestampNowis := c.LedgerTimeFromClockTime(nowis)
-
-	// TODO sometimes fails
-	//util.Assertf(util.Abs(nowis.UnixNano()-timestampNowis.UnixNano()) < int64(TickDuration()),
-	//	"nowis.UnixNano()(%d)-timestampNowis.UnixNano()(%d) = %d < int64(TickDuration())(%d)",
-	//	nowis.UnixNano(), timestampNowis.UnixNano(), nowis.UnixNano()-timestampNowis.UnixNano(), int64(TickDuration()))
-
 	maxYears := base.MaxSlot / (c.SlotsPerDay() * 365)
 	return lines.New().
 		Add("TickDuration = %v", c.TickDuration).
@@ -264,91 +240,3 @@ func (c *Constants) TimeConstantsToString() string {
 		String()
 }
 
-func (c *Constants) String() string {
-	return c.Lines("    ").String()
-}
-
-func OriginChainID() base.ChainID {
-	oid := base.GenesisOutputID()
-	return base.MakeOriginChainID(oid)
-}
-
-func (c *Constants) GenesisControlledAddress() SigLock {
-	return SigLockFromED25519PublicKey(c.GenesisControllerPublicKey)
-}
-
-func (c *Constants) GenesisTime() time.Time {
-	return time.Unix(int64(c.GenesisTimeUnix), 0)
-}
-
-func (c *Constants) SlotDuration() time.Duration {
-	return c.TickDuration * time.Duration(base.TicksPerSlot)
-}
-
-func (c *Constants) SlotsPerDay() int {
-	return int(24 * time.Hour / c.SlotDuration())
-}
-
-func (c *Constants) SlotsPerYear() int {
-	return 365 * c.SlotsPerDay()
-}
-
-func (c *Constants) TicksPerYear() int {
-	return c.SlotsPerYear() * base.TicksPerSlot
-}
-
-// TimeToTicksSinceGenesis converts time value into ticks since genesis
-func (c *Constants) TimeToTicksSinceGenesis(nowis time.Time) int64 {
-	timeSinceGenesis := nowis.Sub(c.GenesisTime())
-	return int64(timeSinceGenesis / c.TickDuration)
-}
-
-func (c *Constants) LedgerTimeFromClockTime(nowis time.Time) base.LedgerTime {
-	ret, err := base.LedgerTimeFromTicksSinceGenesis(c.TimeToTicksSinceGenesis(nowis))
-	util.AssertNoError(err)
-	return ret
-}
-
-func (c *Constants) IsPreBranchConsolidationTimestamp(ts base.LedgerTime) bool {
-	return ts.Tick > base.MaxTickValue-c.PreBranchConsolidationTicks
-}
-
-func (c *Constants) GenesisTimeUnixNano() int64 {
-	return time.Unix(int64(c.GenesisTimeUnix), 0).UnixNano()
-}
-
-// ToWalletConstants converts the host-side *Constants into the
-// wallet-side txbuildercore.Constants. Field set on the wallet side
-// is intentionally a subset (no server-internal validator names);
-// keep this adapter in sync as fields land on both sides. See
-// claude/wallet_eval_api.md (Phase A2).
-func (c *Constants) ToWalletConstants() *txbuildercore.Constants {
-	return &txbuildercore.Constants{
-		Hash:                         c.Hash,
-		Description:                  c.Description,
-		GenesisControllerPublicKey:   append(ed25519.PublicKey(nil), c.GenesisControllerPublicKey...),
-		GenesisTimeUnix:              c.GenesisTimeUnix,
-		TickDuration:                 c.TickDuration,
-		TicksPerSlot:                 c.TicksPerSlot,
-		InitialSupply:                c.InitialSupply,
-		SlotInflationBase:            c.SlotInflationBase,
-		MinimumInflatableAmount0:     c.MinimumInflatableAmount0,
-		TransactionPace:              c.TransactionPace,
-		TransactionPaceSequencer:     c.TransactionPaceSequencer,
-		MaxNumberOfEndorsements:      c.MaxNumberOfEndorsements,
-		PreBranchConsolidationTicks:  c.PreBranchConsolidationTicks,
-		SafeRevocationSlots:          c.SafeRevocationSlots,
-		DelegationEpochSlots:         c.DelegationEpochSlots,
-		MaxFrozenEpochs:              c.MaxFrozenEpochs,
-		DelegationEpochSlotsMin:      c.DelegationEpochSlotsMin,
-		DelegationEpochSlotsMax:      c.DelegationEpochSlotsMax,
-		DelegationMaxFrozenEpochsMin: c.DelegationMaxFrozenEpochsMin,
-		DelegationMaxFrozenEpochsMax: c.DelegationMaxFrozenEpochsMax,
-		TagAlongSlots:                c.TagAlongSlots,
-		TagAlongReclaimSlots:         c.TagAlongReclaimSlots,
-		AttachmentCostBudget:         c.AttachmentCostBudget,
-		TxIDStateTTLSlots:            c.TxIDStateTTLSlots,
-		HealthyCoverageNumerator:     c.HealthyCoverageNumerator,
-		HealthyCoverageDenominator:   c.HealthyCoverageDenominator,
-	}
-}

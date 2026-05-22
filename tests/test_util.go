@@ -229,7 +229,7 @@ const (
 
 func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowTestData {
 	util.Assertf(nChains > 0, "nChains > 0")
-	t.Logf("genesis state id: %s", ledger.L(0).String())
+	t.Logf("genesis state id: %s", ledger.L(0).ConstantsString())
 
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, uint64(nChains*initBalance+tagAlongFee), initBalance)
 	ret := &workflowTestData{
@@ -294,7 +294,7 @@ func initWorkflowTest(t *testing.T, nChains int, startPruner ...bool) *workflowT
 // initWorkflowTestWithAuxBalance is like initWorkflowTest but with an explicit auxiliary address balance.
 // Used when chain origins need non-uniform amounts that don't fit the standard nChains*initBalance formula.
 func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner ...bool) *workflowTestData {
-	t.Logf("genesis state id: %s", ledger.L(0).String())
+	t.Logf("genesis state id: %s", ledger.L(0).ConstantsString())
 
 	distrib, privKeys, addrs := inittest.GenesisParamsWithPreDistribution(initBalance, auxBalance, initBalance)
 	ret := &workflowTestData{

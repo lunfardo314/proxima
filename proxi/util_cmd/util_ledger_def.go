@@ -49,6 +49,5 @@ func runGenLedgerIDCommand(_ *cobra.Command, _ []string) {
 	glb.Infof("new ledger identity data has been stored in the file '%s'", glb.LedgerDefinitionsFileName)
 	h := lib.LibraryHash()
 	glb.Infof("calculated library hash: %s", hex.EncodeToString(h[:]))
-	constants := ledger.ConstantsFromLibrary(lib)
-	glb.Infof("main ledger constants:\n--------------\n%s\n", constants.String())
+	glb.Infof("main ledger constants:\n--------------\n%s\n", ledger.ConstantsStringFromLibrary(lib))
 }

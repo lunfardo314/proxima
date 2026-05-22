@@ -54,6 +54,5 @@ func runGenCompileLedgerIDCommand(_ *cobra.Command, _ []string) {
 	err = os.WriteFile(glb.LedgerDefinitionsFileName, jsonOut, 0755)
 	glb.AssertNoError(err)
 
-	constants := ledger.ConstantsFromLibrary(lib)
-	glb.Infof("---- main library constants:\n%s", constants.String())
+	glb.Infof("---- main library constants:\n%s", ledger.ConstantsStringFromLibrary(lib))
 }

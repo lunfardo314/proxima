@@ -15,6 +15,7 @@ import (
 
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/unitrie/common"
 )
 
@@ -25,7 +26,7 @@ type GenesisSnapshotData struct {
 	// LibraryJSON is the compiled library JSON for slot 0
 	LibraryJSON []byte
 	// Constants contains parsed ledger constants
-	Constants *ledger.Constants
+	Constants *txbuildercore.Constants
 	// BranchID is the genesis transaction ID
 	BranchID base.TransactionID
 	// RootRecord contains the genesis root record
@@ -280,7 +281,7 @@ func CreateGenesisSnapshot(privateKey ed25519.PrivateKey, genesisTimeUnix uint32
 }
 
 // GetConstants returns the ledger constants from the genesis snapshot data.
-func (d *GenesisSnapshotData) GetConstants() *ledger.Constants {
+func (d *GenesisSnapshotData) GetConstants() *txbuildercore.Constants {
 	return d.Constants
 }
 

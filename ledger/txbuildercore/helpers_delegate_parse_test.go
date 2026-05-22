@@ -35,8 +35,8 @@ func chainIDFixture() base.ChainID {
 // at a few representative inputs.
 func TestConstants_EpochMath_Parity(t *testing.T) {
 	target := chainIDFixture()
-	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
-	serverC := &ledger.L(base.MaxSlot).Constants
+	walletC := ledger.L(base.MaxSlot).Constants
+	serverC := ledger.L(base.MaxSlot).Constants
 
 	cases := []struct {
 		name       string
@@ -156,7 +156,7 @@ func TestParseDelegationOutput_NonDelegationReturnsFalse(t *testing.T) {
 // around the freeze boundary.
 func TestDelegationOutputView_IsInFrozenSlot_Parity(t *testing.T) {
 	lib := txbuildercoreLibFromGlobal(t)
-	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+	walletC := ledger.L(base.MaxSlot).Constants
 
 	target := chainIDFixture()
 	var master base.HolderID
@@ -221,8 +221,8 @@ func TestDelegationOutputView_IsInFrozenSlot_Parity(t *testing.T) {
 // and at the boundaries of a couple of epochs.
 func TestConstants_CoveredSlotsInCurrentEpoch_Parity(t *testing.T) {
 	target := chainIDFixture()
-	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
-	serverC := &ledger.L(base.MaxSlot).Constants
+	walletC := ledger.L(base.MaxSlot).Constants
+	serverC := ledger.L(base.MaxSlot).Constants
 
 	const epochSlots uint32 = 600
 	offs := serverC.EpochOffsetSlotsDirect(target, epochSlots)
@@ -241,8 +241,8 @@ func TestConstants_CoveredSlotsInCurrentEpoch_Parity(t *testing.T) {
 // (frozenEpochs, txSlot) matrix.
 func TestConstants_FrozenSlotsFromFrozenEpochs_Parity(t *testing.T) {
 	target := chainIDFixture()
-	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
-	serverC := &ledger.L(base.MaxSlot).Constants
+	walletC := ledger.L(base.MaxSlot).Constants
+	serverC := ledger.L(base.MaxSlot).Constants
 
 	const epochSlots uint32 = 600
 	offs := serverC.EpochOffsetSlotsDirect(target, epochSlots)
@@ -264,8 +264,8 @@ func TestConstants_FrozenSlotsFromFrozenEpochs_Parity(t *testing.T) {
 // 0, slot right at the first boundary, slot deep in a later epoch).
 func TestConstants_EpochFromSlotDirect_Parity(t *testing.T) {
 	target := chainIDFixture()
-	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
-	serverC := &ledger.L(base.MaxSlot).Constants
+	walletC := ledger.L(base.MaxSlot).Constants
+	serverC := ledger.L(base.MaxSlot).Constants
 
 	const epochSlots uint32 = 600
 	offs := serverC.EpochOffsetSlotsDirect(target, epochSlots)
@@ -291,7 +291,7 @@ func TestConstants_EpochFromSlotDirect_Parity(t *testing.T) {
 // computation across sampled slots.
 func TestDelegationOutputView_SafeRevocationWindow_Parity(t *testing.T) {
 	lib := txbuildercoreLibFromGlobal(t)
-	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+	walletC := ledger.L(base.MaxSlot).Constants
 
 	target := chainIDFixture()
 	var master base.HolderID
@@ -356,7 +356,7 @@ func TestDelegationOutputView_SafeRevocationWindow_Parity(t *testing.T) {
 // the zero state and the OnHold state.
 func TestDelegationOutputView_SafeRevocationWindow_NotApplicable(t *testing.T) {
 	lib := txbuildercoreLibFromGlobal(t)
-	walletC := ledger.L(base.MaxSlot).Constants.ToWalletConstants()
+	walletC := ledger.L(base.MaxSlot).Constants
 
 	target := chainIDFixture()
 	var master base.HolderID

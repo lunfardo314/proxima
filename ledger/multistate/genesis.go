@@ -6,6 +6,7 @@ import (
 	"github.com/lunfardo314/proxima/global"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/set256"
 	"github.com/lunfardo314/unitrie/common"
@@ -82,7 +83,7 @@ func genesisUpdateMutations(genesisOut, genesisStemOut, dustOut, upgradeOut *led
 
 // ScanGenesisState scans the genesis state and returns constants and root commitment.
 // It loads the library from the upgrade DB partition (slot 0).
-func ScanGenesisState(stateStore global.Store) (*ledger.Constants, common.VCommitment, error) {
+func ScanGenesisState(stateStore global.Store) (*txbuildercore.Constants, common.VCommitment, error) {
 	var genesisRootRecord RootRecord
 
 	// expecting a single branch in the genesis state

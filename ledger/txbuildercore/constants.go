@@ -305,3 +305,38 @@ func (c *Constants) FrozenSlotsFromFrozenEpochs(targetID base.ChainID, txSlot, e
 func (c *Constants) ClockTime(t base.LedgerTime) time.Time {
 	return c.GenesisTime().Add(time.Duration(t.TicksSinceGenesis()) * c.TickDuration)
 }
+
+// TicksPerYear returns the total tick count per year.
+func (c *Constants) TicksPerYear() int {
+	return c.SlotsPerYear() * base.TicksPerSlot
+}
+
+// DiffEpochs returns epoch(ts1) - epoch(ts2) on the target's delegation
+// epoch grid (signed; ts1 < ts2 returns negative).
+func (c *Constants) DiffEpochs(targetID base.ChainID, ts1, ts2 base.LedgerTime, epochSlots uint32) int {
+	epoch1 := c.EpochFromSlotDirect(targetID, ts1.Slot, epochSlots)
+	epoch2 := c.EpochFromSlotDirect(targetID, ts2.Slot, epochSlots)
+	return int(epoch1) - int(epoch2)
+}
+
+// AdjustFrozenCoverageVector shifts the predecessor's frozen-coverage
+// vector forward by DiffEpochs(succTs, predTs) epochs and clamps the
+// result to maxFrozenEpochs cells. Entries that fall off the front
+// are dropped. Used by sequencer-side compose when carrying frozen
+// coverage across an epoch boundary; semantics described in
+// claude/delegation_epoch_params.md. Panics if succTs predates
+// predTs.
+func (c *Constants) AdjustFrozenCoverageVector(targetID base.ChainID, vect []int64, predTs, succTs base.LedgerTime, epochSlots uint32, maxFrozenEpochs byte) []int64 {
+	shift := c.DiffEpochs(targetID, succTs, predTs, epochSlots)
+	if shift < 0 {
+		panic(fmt.Sprintf("AdjustFrozenCoverageVector: wrong order of timestamps %s and %s", predTs.String(), succTs.String()))
+	}
+	ret := make([]int64, maxFrozenEpochs)
+	if shift >= int(maxFrozenEpochs) {
+		return ret
+	}
+	for i, v := range vect[shift:] {
+		ret[i] = v
+	}
+	return ret
+}

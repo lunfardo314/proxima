@@ -51,7 +51,7 @@ func runDbInfoCmd(_ *cobra.Command, _ []string) {
 
 	glb.Infof("ledger library hash: %s", hex.EncodeToString(h[:]))
 	glb.Verbosef("\n----------------- Ledger state identity ----------------")
-	glb.Verbosef("%s", lib.Constants.String())
+	glb.Verbosef("%s", lib.ConstantsString())
 
 	// Display upgrade history summary
 	glb.Infof("\n--------------- Ledger upgrades summary ----------------")

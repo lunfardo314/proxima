@@ -17,6 +17,6 @@ func TestTimeConstSet(t *testing.T) {
 	MustInitLibraryCacheFromJSON(libraryID)
 	t.Logf("\n%s", L(0).TimeConstantsToString())
 	require.EqualValues(t, d, TickDuration())
-	t.Logf("------------------\n%s", L(0).String())
+	t.Logf("------------------\n%s", L(0).ConstantsString())
 	t.Logf("------------------\n%s", L(0).TimeConstantsToString())
 }
