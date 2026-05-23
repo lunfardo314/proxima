@@ -625,7 +625,7 @@ func (seq *Sequencer) MaxTagAlongInputs() int {
 // txs we read the proposer-computed ledger coverage from `proposed` (passed by
 // the caller) since non-branch txs don't produce a stem.
 func (seq *Sequencer) decideSubmitMilestone(tx *transaction.Transaction, ledgerCoverage uint64) bool {
-	if !seq.IsConnectedToNetwork() {
+	if !seq.config.Standalone && !seq.IsConnectedToNetwork() {
 		if seq.wontSubmitBranchID != tx.ID() {
 			// prevent excess logging of the same message
 			seq.Log().Warnf("WON'T SUBMIT BRANCH %s: node is disconnected from the network", tx.IDShortString())

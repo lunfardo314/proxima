@@ -20,9 +20,9 @@ import (
 var configFileTemplate string
 
 var (
-	includeSeq   bool
-	includeBoot  bool
-	includeTrace bool
+	includeSeq        bool
+	includeStandalone bool
+	includeTrace      bool
 )
 
 func initNodeConfigCmd() *cobra.Command {
@@ -33,12 +33,12 @@ func initNodeConfigCmd() *cobra.Command {
 		Run:   runNodeConfigCommand,
 	}
 
-	initNodeConfig.PersistentFlags().BoolVarP(&includeSeq, "sequencer", "s", false, "include sequencer config template")
+	initNodeConfig.PersistentFlags().BoolVarP(&includeSeq, "sequencer", "s", false, "include generic sequencer config template (disabled, placeholder chain ID)")
 	err := viper.BindPFlag("sequencer", initNodeConfig.PersistentFlags().Lookup("sequencer"))
 	glb.AssertNoError(err)
 
-	initNodeConfig.PersistentFlags().BoolVarP(&includeBoot, "boot", "b", false, "include enabled bootstrap sequencer config")
-	err = viper.BindPFlag("boot", initNodeConfig.PersistentFlags().Lookup("boot"))
+	initNodeConfig.PersistentFlags().BoolVar(&includeStandalone, "standalone", false, "include enabled bootstrap sequencer config with standalone=true (single-node dev network)")
+	err = viper.BindPFlag("standalone", initNodeConfig.PersistentFlags().Lookup("standalone"))
 	glb.AssertNoError(err)
 
 	initNodeConfig.PersistentFlags().BoolVarP(&includeTrace, "trace", "t", false, "include trace_tags and txlogger config sections (disabled)")
@@ -59,7 +59,6 @@ type configFileData struct {
 	HostPrivateKey string
 	HostID         string
 	HostPort       int
-	Bootstrap      bool
 	APIPort        int
 	StaticPeers    []struct {
 		Name      string
@@ -71,6 +70,7 @@ type configFileData struct {
 	SeqName          string
 	SeqEnable        string
 	SeqChainID       string
+	Standalone       bool
 }
 
 func runNodeConfigCommand(_ *cobra.Command, _ []string) {
@@ -90,20 +90,20 @@ func runNodeConfigCommand(_ *cobra.Command, _ []string) {
 		HostPrivateKey:   hex.EncodeToString(privateKey),
 		HostID:           hid.String(),
 		HostPort:         peeringPort,
-		Bootstrap:        false,
 		APIPort:          apiPort,
 		StaticPeers:      nil,
 		MaxDynamicPeers:  defaultMaxDynamicPeers,
 		IncludeTrace:     includeTrace,
-		IncludeSequencer: includeSeq || includeBoot,
+		IncludeSequencer: includeSeq || includeStandalone,
 		SeqName:          "",
 		SeqEnable:        "false",
 		SeqChainID:       "<sequencer id hex encoded>",
 	}
-	if includeBoot {
+	if includeStandalone {
 		data.SeqName = "boot"
 		data.SeqEnable = "true"
 		data.SeqChainID = ledger.BoostrapSequencerIDHex
+		data.Standalone = true
 	}
 	err = templ.Execute(&buf, data)
 	glb.AssertNoError(err)
