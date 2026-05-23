@@ -108,7 +108,7 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 	// Set the upgrade chain data
 	chainData := &UpgradeChainData{
 		UpgradeSlot:     upgradeSlot,
-		LibraryHash:     lib.LibraryHash(),
+		LibraryHash:     lib.Library.LibraryHash(),
 		PrevUpgradeSlot: prevUpgradeSlot,
 	}
 
@@ -119,7 +119,7 @@ func (lc *LibraryCache) getOrLoad(slot uint32) *Library {
 		lc.mu.Unlock()
 		prevLib := lc.getOrLoad(prevUpgradeSlot)
 		lc.mu.Lock()
-		chainData.PrevLibraryHash = prevLib.LibraryHash()
+		chainData.PrevLibraryHash = prevLib.Library.LibraryHash()
 	}
 
 	lib.SetUpgradeChainData(chainData)
