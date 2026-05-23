@@ -100,12 +100,12 @@ func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified")
 
-	sd, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
+	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
 
 	feeAmount := glb.GetTagAlongFee()
-	if sd.MinimumFee() > feeAmount {
-		feeAmount = sd.MinimumFee()
+	if seqMinFee > feeAmount {
+		feeAmount = seqMinFee
 	}
 
 	glb.Infof("Creating new chain origin:")

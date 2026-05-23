@@ -52,10 +52,10 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified (set tag_along.sequencer_id)")
 	feeAmount := glb.GetTagAlongFee()
 	glb.Assertf(feeAmount > 0, "tag-along fee not configured (set tag_along.fee)")
-	md, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
+	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
-	if md.MinimumFee() > feeAmount {
-		feeAmount = md.MinimumFee()
+	if seqMinFee > feeAmount {
+		feeAmount = seqMinFee
 	}
 
 	// Storage-deposit budgets for newly produced outputs. We size on the

@@ -127,13 +127,13 @@ func runSendCmd(cmd *cobra.Command, args []string) {
 	tagAlongSeqID := glb.GetTagAlongSequencerID()
 	glb.Assertf(tagAlongSeqID != nil, "tag-along sequencer not specified (set tag_along.sequencer_id)")
 
-	sd, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
+	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
 
 	feeAmount := glb.GetTagAlongFee()
-	if sd.MinimumFee() > feeAmount {
+	if seqMinFee > feeAmount {
 		// assume fee asked by the sequencer
-		feeAmount = sd.MinimumFee()
+		feeAmount = seqMinFee
 	}
 	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0. Fee-less option not supported yet")
 

@@ -74,10 +74,10 @@ func runFundCmd(_ *cobra.Command, _ []string) {
 	feeAmount := glb.GetTagAlongFee()
 	glb.Assertf(feeAmount > 0, "tag-along fee is configured 0")
 
-	md, err := glb.GetClient().GetSequencerData(*tagAlongSeqID)
+	seqMinFee, err := glb.GetSequencerMinimumFee(*tagAlongSeqID)
 	glb.AssertNoError(err)
-	if md.MinimumFee() > feeAmount {
-		feeAmount = md.MinimumFee()
+	if seqMinFee > feeAmount {
+		feeAmount = seqMinFee
 	}
 
 	// Number of outputs: targets + fee + possible remainder
