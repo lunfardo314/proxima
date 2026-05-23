@@ -96,7 +96,8 @@
       "sym": "redeemScript",
       "description": "tx-level constraint: commits to a local-script bin (arg 0 must be inline literal)",
       "numArgs": 1,
-      "embeddedAs": "evalRedeemScript"
+      "embeddedAs": "evalRedeemScript",
+      "short": true
     },
     {
       "sym": "callRedeemer",
@@ -108,13 +109,15 @@
       "sym": "token",
       "description": "tx-level native-token declaration: token(<32-byte-tag-literal>, <1-byte-foundryProducedIdx-literal>). foundryProducedIdx == 0xFF means pure conservation (delta 0); any other byte names a produced foundry output for a mint/burn transit.",
       "numArgs": 2,
-      "embeddedAs": "evalToken"
+      "embeddedAs": "evalToken",
+      "short": true
     },
     {
       "sym": "tokenAmount",
       "description": "UTXO-level native-token instance: tokenAmount(<32-byte-tag-literal>, <amount-uint64-literal>). Tag must be declared at tx level by token(). Accounts amount onto the per-tag consumed/produced sum at evaluation time.",
       "numArgs": 2,
-      "embeddedAs": "evalTokenAmount"
+      "embeddedAs": "evalTokenAmount",
+      "short": true
     }
   ]
 }

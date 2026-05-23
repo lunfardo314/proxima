@@ -16,7 +16,7 @@ func TestLoad(t *testing.T) {
 	par, _ := ledger.GetTestingLedgerParams()
 	lib := ledger.LibraryFromParameters(par, true)
 
-	t.Logf("------------------ Version data: '\n%s'", string(lib.VersionData))
+	t.Logf("------------------ Version data: '\n%s'", string(lib.Library.VersionData))
 	t.Logf("------------------ Main constants (defaults)\n%s", ledger.ConstantsStringFromLibrary(lib.Library))
 	t.Logf("------------------ Time-related constants\n%s", ledger.L(0).TimeConstantsToString())
 	t.Logf("------------------ Main constants (from global singleton) -------------------- \n%s", ledger.L(0).ConstantsLines("      ").String())
@@ -36,8 +36,8 @@ func TestLedgerToJSON(t *testing.T) {
 
 func TestLedgerToJSONFile(t *testing.T) {
 	lib := ledger.L(base.MaxSlot)
-	lib.PrintLibraryStats()
-	h := lib.LibraryHash()
+	lib.Library.PrintLibraryStats()
+	h := lib.Library.LibraryHash()
 	jsonData := easyfl.ToJSON(lib.Library, true, true)
 	t.Logf("Full library JSON size: %d bytes", len(jsonData))
 	//_ = os.WriteFile("ledger.json", jsonData, 0644)

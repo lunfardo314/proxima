@@ -7,9 +7,8 @@
 //   - foundry-delegation: a foundry chain is delegated to a sequencer by
 //     swapping the lock at index 2 to delegateLock, preserving the
 //     foundry (and any foundryPolicy) byte-equal, and appending
-//     delegateLockState at the last tuple position (Option C — last-
-//     position state). The foundryNonDestructible policy's
-//     selfImmutableOnSuccessorIndex(5) check still passes byte-equal
+//     delegateLockState at the last tuple position.
+//     The foundryNonDestructible policy's selfImmutableOnSuccessorIndex(5) check still passes byte-equal
 //     across the transit.
 
 package tests
