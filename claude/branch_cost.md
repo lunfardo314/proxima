@@ -139,10 +139,52 @@ we want.
 
 ## Implementation
 
+### Protocol
+
 - Enforce `B = (blake2b(P) mod M) + 1` on the stem output in pure EasyFL.
 - Remove the VRF signature element from the stem output.
-- The current sequencer does not need a mining loop; mining is an optional, sequencer-side
-  change that can be added later without further protocol work.
-- Reducing per-branch DB-commit cost (delta compression, batched flushes, async commit) is
-  complementary and worth tracking as a separate implementation item — not a substitute for
-  the throttle.
+- Add a **nonce** to the stem as an inline data constraint in `u64/` format (fixed 8-byte
+  value). Mining increments the nonce by 1 each iteration; the starting value is
+  irrelevant (any nonce yields a valid hash).
+
+### Mining loop (sequencer-side)
+
+Mining is implemented as part of `txbuilder_seq` transaction creation.
+
+- Iteration loop: increment the nonce inline-data constraint, re-sign the transaction,
+  re-hash, compute `B`, keep the best `B` seen so far.
+- Exit predicate: the caller supplies a closure
+  `func(iteration int, inflationBonus uint64) bool` — returning `true` ends mining and the
+  best `B` seen is published.
+  - The closure is invoked only when a new best supersedes the previous one.
+  - `iteration` is the iteration count at which the latest improvement occurred (not the
+    total iteration count so far).
+  - `inflationBonus` is the best `B` seen so far; it is **strictly increasing** across
+    successive invocations.
+  - A closure that always returns `true` means *no mining* — the first sample is published.
+
+### Sequencer configuration
+
+Reasonable, non-exclusive configuration knobs that translate into exit closures:
+
+- **No mining.** Publish the first sample.
+- **Max iterations.** Stop after a configured number of iterations regardless of result.
+- **Target threshold.** Stop when the best `B` reaches or exceeds a configured value.
+- **Time budget.** Stop after a configured wall-clock duration.
+
+Knobs may be set simultaneously; mining stops as soon as *any* configured condition fires
+(the combined closure is the OR of the individual stop predicates).
+
+### Test suite and benchmarks
+
+- Unit tests for the closure-driven mining loop: no-mining path, max-iterations exit,
+  threshold exit, time-budget exit, and combinations.
+- Benchmarks that simulate mining and print summary statistics — e.g. iterations and wall
+  time required to reach the last 1%, 0.1%, 0.01% of `M`. The output is used to calibrate
+  reasonable defaults for the sequencer config knobs against measured per-iteration cost.
+
+### Complementary work (not required by this spec)
+
+Reducing per-branch DB-commit cost (delta compression, batched flushes, async commit) is
+worth tracking as a separate implementation item. It is complementary to the throttle, not
+a substitute.
