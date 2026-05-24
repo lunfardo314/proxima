@@ -15,12 +15,22 @@ import (
 
 const (
 	StemLockName = "stemLock"
-	// 9 args: predOutputID, vrfProof, totalSupply, totalCoverage, coverageDelta,
+	// 8 args: predOutputID, totalSupply, totalCoverage, coverageDelta,
 	// frozenCoverage, slotInflation, numTransactions, baselineRoot.
-	stemTemplate = StemLockName + "(0x%s,0x%s,z64/%d,z64/%d,z64/%d,z64/%d,z64/%d,z32/%d,0x%s)"
+	// totalSupply and slotInflation are trustless analytics (their
+	// supply-recurrence enforcement was dropped together with the move of
+	// the mining nonce / signature to TxConstraints).
+	stemTemplate = StemLockName + "(0x%s,z64/%d,z64/%d,z64/%d,z64/%d,z64/%d,z32/%d,0x%s)"
 
 	// StemLockNumArgs is the on-bytecode arity of the stemLock constraint.
-	StemLockNumArgs = 9
+	StemLockNumArgs = 8
+
+	// TxConstraintBranchNonceIdx is the position of the branch-mining nonce
+	// inline-data entry within TxConstraints (branch txs only).
+	TxConstraintBranchNonceIdx byte = 0
+	// TxConstraintBranchMiningSigIdx is the position of the branch-mining
+	// signature S inline-data entry within TxConstraints (branch txs only).
+	TxConstraintBranchMiningSigIdx byte = 1
 )
 
 type (
@@ -29,14 +39,15 @@ type (
 	// state (see metadata-refactor plan §3).
 	StemLock struct {
 		PredecessorOutputID base.OutputID
-		VRFProof            []byte
-		// Aggregates over the branch's past cone. Verified on-chain via the
-		// stemLock constraint recurrences (see lock_stem.easyfl).
-		TotalSupply     uint64
-		TotalCoverage   uint64
-		CoverageDelta   uint64
-		FrozenCoverage  uint64
-		SlotInflation   uint64
+		// Aggregates over the branch's past cone. Some are still verified
+		// on-chain via stemLock recurrences (see lock_stem.easyfl); others
+		// (TotalSupply, SlotInflation) are trustless analytics — see
+		// claude/branch_cost.md.
+		TotalSupply              uint64
+		TotalCoverage            uint64
+		CoverageDelta            uint64
+		FrozenCoverage           uint64
+		SlotInflation            uint64
 		NumConfirmedTransactions uint32
 		// Predecessor branch's trie root (int(TrieHashSize) bytes). All-zero at genesis.
 		BaselineRoot []byte
@@ -65,7 +76,6 @@ func (st *StemLock) Source() string {
 	}
 	return fmt.Sprintf(stemTemplate,
 		hex.EncodeToString(st.PredecessorOutputID[:]),
-		hex.EncodeToString(st.VRFProof),
 		st.TotalSupply,
 		st.TotalCoverage,
 		st.CoverageDelta,
@@ -114,15 +124,14 @@ func init() {
 		txid := base.RandomTransactionID(true, 1)
 		predID := base.MustNewOutputID(txid, byte(txid.NumProducedOutputs()-1))
 		example := StemLock{
-			PredecessorOutputID: predID,
-			VRFProof:            []byte{0x01, 0x02, 0x03},
-			TotalSupply:         1_000_000,
-			TotalCoverage:       500_000,
-			CoverageDelta:       100_000,
-			FrozenCoverage:      10_000,
-			SlotInflation:       1_000,
-			NumConfirmedTransactions:     42,
-			BaselineRoot:        bytes.Repeat([]byte{0x55}, int(TrieHashSize)),
+			PredecessorOutputID:      predID,
+			TotalSupply:              1_000_000,
+			TotalCoverage:            500_000,
+			CoverageDelta:            100_000,
+			FrozenCoverage:           10_000,
+			SlotInflation:            1_000,
+			NumConfirmedTransactions: 42,
+			BaselineRoot:             bytes.Repeat([]byte{0x55}, int(TrieHashSize)),
 		}
 		exampleBack, err := StemLockFromBytesWithLib(example.Bytes(), lib)
 		util.AssertNoError(err)
@@ -150,30 +159,29 @@ func StemLockFromBytesWithLib(data []byte, lib *Library) (*StemLock, error) {
 	}
 	ret := &StemLock{
 		PredecessorOutputID: oid,
-		VRFProof:            easyfl.StripDataPrefix(args[1]),
 	}
-	// $2..$6 — z64-encoded uint64; empty bytes mean zero.
-	if ret.TotalSupply, err = decodeOptionalUint64(args[2]); err != nil {
+	// $1..$5 — z64-encoded uint64; empty bytes mean zero.
+	if ret.TotalSupply, err = decodeOptionalUint64(args[1]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: TotalSupply: %w", err)
 	}
-	if ret.TotalCoverage, err = decodeOptionalUint64(args[3]); err != nil {
+	if ret.TotalCoverage, err = decodeOptionalUint64(args[2]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: TotalCoverage: %w", err)
 	}
-	if ret.CoverageDelta, err = decodeOptionalUint64(args[4]); err != nil {
+	if ret.CoverageDelta, err = decodeOptionalUint64(args[3]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: CoverageDelta: %w", err)
 	}
-	if ret.FrozenCoverage, err = decodeOptionalUint64(args[5]); err != nil {
+	if ret.FrozenCoverage, err = decodeOptionalUint64(args[4]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: FrozenCoverage: %w", err)
 	}
-	if ret.SlotInflation, err = decodeOptionalUint64(args[6]); err != nil {
+	if ret.SlotInflation, err = decodeOptionalUint64(args[5]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: SlotInflation: %w", err)
 	}
-	// $7 — z32-encoded uint32; empty bytes mean zero.
-	if ret.NumConfirmedTransactions, err = decodeOptionalUint32(args[7]); err != nil {
+	// $6 — z32-encoded uint32; empty bytes mean zero.
+	if ret.NumConfirmedTransactions, err = decodeOptionalUint32(args[6]); err != nil {
 		return nil, fmt.Errorf("StemLockFromBytes: NumConfirmedTransactions: %w", err)
 	}
-	// $8 — fixed-width 24-byte trie root.
-	baselineRoot := easyfl.StripDataPrefix(args[8])
+	// $7 — fixed-width 24-byte trie root.
+	baselineRoot := easyfl.StripDataPrefix(args[7])
 	if len(baselineRoot) != int(TrieHashSize) {
 		return nil, fmt.Errorf("StemLockFromBytes: BaselineRoot must be %d bytes, got %d", int(TrieHashSize), len(baselineRoot))
 	}

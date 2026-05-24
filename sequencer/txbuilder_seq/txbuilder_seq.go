@@ -2,6 +2,7 @@ package txbuilder_seq
 
 import (
 	"crypto/ed25519"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/lunfardo314/easyfl"
@@ -12,7 +13,6 @@ import (
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
-	"github.com/lunfardo314/unitrie/common"
 )
 
 type (
@@ -73,7 +73,9 @@ type (
 		chainMaxFrozenEpochs     byte
 		doNotInflateMainChain    bool    // default is inflate
 		chainOutAmounts          []int64 // allocated in New(): AmountIndexFrozenCoverage + chainMaxFrozenEpochs
-		vrfProof                 []byte
+		nonce                    uint64  // mining nonce; placed on the produced stem at z64 arg 1
+		miningSig                []byte  // mining signature S = sign(canonicalP); placed at stem output index 3
+		branchInflationBonus     uint64  // B = blake2b(P||S) mod M + 1; placed at sequencer output amounts[1]
 		branchCoverageUpperBound uint64          // upper bound for branch coverage, 0 means no enforcement
 		enforceFreezeUpperBound  bool            // if true, check upper bound before each delegation freeze
 		stemAggregates           *StemAggregates // override for buildStemLock; nil → auto-compute
@@ -156,26 +158,15 @@ func New(par Params) (*SeqTxBuilder, error) {
 		}
 	}
 
-	if ret.stemInput != nil {
-		// calculate VRF proof for the branch
-		prevStem, ok := ret.stemInput.Output.StemLock()
-		util.Assertf(ok, "SequencerTxBuilderinconsistency: cannot find previous stem")
-
-		// sign concatenation of predecessor VRFProof with slot number and next VRF proof
-		msg := common.Concat(prevStem.VRFProof, base.Slot2Bytes(ret.TxData.Timestamp.Slot))
-		ret.vrfProof = common.Concat(base.SignatureTypeED25519, ed25519.Sign(ret.privateKey, msg))
-	}
-
 	// form initial amounts vector
-
+	//
+	// For a branch transaction, the branch inflation bonus B = blake2b(P || S) mod M + 1
+	// is computed in buildSequencerAndStemOutputs after the placeholder tx bytes are
+	// assembled (P is the tx with the whole seq output and the stem mining-sig zeroed).
+	// Until then, chainOutAmounts[AmountIndexInflation] stays 0 for branch txs.
 	if !ret.doNotInflateMainChain {
-		// calculate main chain inflation amount
-		if ret.IsSlotBoundary() {
-			// from VRF proof for branch
-			util.Assertf(len(ret.vrfProof) > 0, "len(vrfProof)>0")
-			ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.BranchInflationBonus(ret.vrfProof, par.Timestamp.Slot))
-		} else {
-			// for non-branch
+		if !ret.IsSlotBoundary() {
+			// non-branch: chain inflation per slot delta
 			if ret.chainInput.Timestamp().Slot != ret.TxData.Timestamp.Slot {
 				ret.chainOutAmounts[ledger.AmountIndexInflation] = int64(ret.Library.ChainInflationOneSlot(
 					ret.chainInput.Output.TokenBalance()+uint64(ret.chainInput.Output.FrozenCoverage(0)),
@@ -457,30 +448,24 @@ func (txb *SeqTxBuilder) AddWithdrawOutput(o *ledger.Output) error {
 	return nil
 }
 
-func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
-	// sequencer input
-	txb.PutSignatureUnlock(0)
-
-	// sequencer produced output
-	chainOutIdx, err := txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+// buildSequencerOutput materialises the sequencer chain output given the
+// current chainOutAmounts state and branch-bonus delta. Called twice for
+// branch txs: first with branchBonus=0 (placeholder), then again with the
+// computed B after mining is done.
+func (txb *SeqTxBuilder) buildSequencerOutput(branchBonus uint64) *ledger.Output {
+	totalInflation := uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
+	var chainInflation uint64
+	if txb.stemInput == nil {
+		// non-branch: all inflation is chain inflation
+		chainInflation = totalInflation
+	}
+	var branchCounterInc uint32
+	if txb.stemInput != nil {
+		branchCounterInc = 1
+	}
+	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.PutAmounts(txb.chainOutAmounts[:]...)
 		o.PutLock(txb.chainInput.Output.Lock())
-
-		// chain constraint at fixed index 2
-		// compute cumulative inflation values for the chain constraint
-		totalInflation := uint64(txb.chainOutAmounts[ledger.AmountIndexInflation])
-		var chainInflation, branchBonus uint64
-		if txb.stemInput != nil {
-			// branch transaction: all inflation is branch bonus
-			branchBonus = totalInflation
-		} else {
-			// non-branch transaction: all inflation is chain inflation
-			chainInflation = totalInflation
-		}
-		var branchCounterInc uint32
-		if txb.stemInput != nil {
-			branchCounterInc = 1
-		}
 		chainOutConstraint := ledger.NewChainConstraint(
 			txb.chainInput.ChainID, 0, txb.chainInput.OriginSlot,
 			txb.chainInput.CumulativeChainInflation+chainInflation,
@@ -489,7 +474,6 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 			txb.chainInput.BranchCounter+branchCounterInc,
 		)
 		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
-		// sequencer constraint (no parameters)
 		sequencerConstraint := ledger.NewSequencerConstraint()
 		o.MustPushConstraint(sequencerConstraint.Bytes())
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
@@ -501,7 +485,16 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		if dpBytes, dpErr := txb.chainInput.Output.At(int(ledger.ConstraintIndexDelegationParams)); dpErr == nil && len(dpBytes) > 0 {
 			o.PutConstraint(dpBytes, ledger.ConstraintIndexDelegationParams)
 		}
-	}))
+	})
+}
+
+func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
+	// sequencer input
+	txb.PutSignatureUnlock(0)
+
+	// sequencer produced output. branchBonus starts at 0; for branch txs it
+	// gets patched to the real B below after canonical P / S / B are computed.
+	chainOutIdx, err := txb.ProduceOutput(txb.buildSequencerOutput(0))
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder: %w", err)
 	}
@@ -525,6 +518,52 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 		return fmt.Errorf("SeqTxBuilder: %w", err)
 	}
 	txb.SetSequencerData(chainOutIdx, stemIdx)
+
+	// ----- branch-mining: compute nonce / S / B and patch in -----
+	// Nonce at TxConstraints[0]; mining-signature S at TxConstraints[1].
+	// Nonce is always 8 bytes (big-endian u64); 0 means "no mining baseline".
+	// A non-empty bytecode is required so the inline-data constraint at this
+	// position evaluates to non-empty (constraints must return non-empty).
+	var nonceBytes [8]byte
+	binary.BigEndian.PutUint64(nonceBytes[:], txb.nonce)
+	txb.TxBuilder.PushTxConstraint(easyfl.InlineDataBytecode(nonceBytes[:]))
+	// Placeholder S: 64 zero bytes wrapped — same wire size as real ED25519.
+	// Will be replaced after we compute the real signature.
+	placeholderSig := make([]byte, ed25519.SignatureSize)
+	txb.TxBuilder.PushTxConstraint(easyfl.InlineDataBytecode(placeholderSig))
+
+	// Input commitment must be set before serializing for P (it's part of
+	// the tx tuple and would otherwise differ between sequencer and validator).
+	txb.ComputeInputCommitment()
+
+	partialTx := txb.TxBuilder.Bytes()
+	p, err := ledger.CanonicalBranchPreImage(partialTx, chainOutIdx, stemIdx)
+	if err != nil {
+		return fmt.Errorf("SeqTxBuilder: canonical P: %w", err)
+	}
+	s := ed25519.Sign(txb.privateKey, p)
+	b := txb.Library.BranchInflationBonusFromCanonicalPAndS(p, s, txb.TxData.Timestamp.Slot)
+	txb.miningSig = s
+	txb.branchInflationBonus = b
+
+	// Fold B into chain output amounts and rebuild the sequencer output.
+	txb.chainOutAmounts[ledger.AmountIndexInflation] = int64(b)
+	txb.chainOutAmounts[ledger.AmountIndexTokenBalance] += int64(b)
+	txb.TxBuilder.TxData.OutputBytes[chainOutIdx] = txb.buildSequencerOutput(b).Bytes()
+
+	// Rebuild the stem output with B-aware slotInflation / TotalSupply.
+	// buildStemLock reads chainOutAmounts[AmountIndexInflation], which is now
+	// = B, so the new stem aggregates match what the attacher will compute.
+	stemLockWithB := txb.buildStemLock()
+	stemOutWithB := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+		o.WithAmounts(int64(txb.stemInput.Output.TokenBalance()))
+		o.WithLock(stemLockWithB)
+	})
+	txb.TxBuilder.TxData.OutputBytes[stemIdx] = stemOutWithB.Bytes()
+
+	// Replace the placeholder S in TxConstraints with the real signature.
+	txb.TxBuilder.TxData.TxConstraints[ledger.TxConstraintBranchMiningSigIdx] = easyfl.InlineDataBytecode(s)
+
 	return nil
 }
 
@@ -613,7 +652,6 @@ func (txb *SeqTxBuilder) buildStemLock() *ledger.StemLock {
 
 	return &ledger.StemLock{
 		PredecessorOutputID:      txb.stemInput.ID,
-		VRFProof:                 txb.vrfProof,
 		TotalSupply:              totalSupply,
 		TotalCoverage:            totalCoverage,
 		CoverageDelta:            coverageDelta,

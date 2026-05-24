@@ -80,16 +80,10 @@ func runChainStats() {
 			return true
 		}
 
-		// check consistency
-		stemConstraint, ok := br.Stem.Output.StemLock()
-		glb.Assertf(ok, "stem lock not found in %s hex=%s", br.Stem.ID.String(), br.Stem.ID.StringHex())
-
-		bibCalc := lib.BranchInflationBonus(stemConstraint.VRFProof, br.Slot())
-		glb.Assertf(bib == bibCalc, "provided vs calculated inflation mismatch %s != %s in %s",
-			util.Th(bib), util.Th(bibCalc), br.Lines("        ").String())
-		bibDirect := lib.BranchInflationBonus(stemConstraint.VRFProof, br.Slot())
-		glb.Assertf(bib == bibDirect, "provided vs directly calculated inflation mismatch: %s != %s in %s",
-			util.Th(bib), util.Th(bibDirect), br.Lines("        ").String())
+		// Consistency check (bib == recomputed B) was dropped when the
+		// branch-inflation-bonus formula moved from VRF to the canonical
+		// pre-image. Recomputing now requires the full producing-tx bytes,
+		// not available from BranchData alone.
 		bucketNo := bib * _numBuckets / maxInflation
 		buckets[bucketNo]++
 		maxBib = max(maxBib, bib)

@@ -8,8 +8,57 @@ func constSlotInflationBase: u64/33000000
 // minimum amount which gives non-zero inflation in the slot 0 (3030303 at slot 0)
 func minimumInflatableAmount0: div(constInitialSupply, constSlotInflationBase)
 
-// calculates deterministic pseudo-random value of branch inflation bonus based on VRF in $0 and slot $1
-func branchInflationBonus : add(randomFromSeed($0, branchInflationBonusBase($1)), u64/1)
+// --- canonical pre-image P for branch-inflation-bonus mining --------------
+// P is the producing transaction bytes with four fields zeroed:
+//   1) the whole sequencer output (multiple fields on it depend on B —
+//      amounts[0]=pred+B, amounts[1]=B, chain.cumulativeBranchBonus=pred+B —
+//      so zero the entire output to break the circularity in one cut)
+//   2) the whole stem output (its stemLock carries slotInflation and
+//      TotalSupply, which are also B-dependent in the canonical sequencer
+//      flow — zeroing the output lets the sequencer fill them correctly
+//      after B is known)
+//   3) TxConstraints[1] (the mining signature S) — S depends on P
+//   4) the transaction signature (TxSignatureData, tx-tuple index 3)
+// Built via nested replaceTupleElement calls; used by branchInflationBonus
+// to compute B = blake2b(P || S) mod M + 1. The nonce at TxConstraints[0]
+// stays in P — varying it is what makes mining work.
+
+// outputs tuple with sequencer and stem outputs zeroed entirely
+func _canonicalOutputs :
+  replaceTupleElement(
+    replaceTupleElement(
+      atPath(pathToProducedOutputs),
+      txSequencerOutputIndex, 0x
+    ),
+    txStemOutputIndex, 0x
+  )
+
+// TxConstraints with the mining-signature S (index 1) zeroed
+func _canonicalTxConstraints :
+  replaceTupleElement(
+    atPath(pathToTxConstraints),
+    1, 0x
+  )
+
+// miningSigOnTx: the raw ED25519 signature S = sign(canonicalP) under the
+// sequencer's controller key. Lives at TxConstraints[1] (branch txs only).
+func miningSigOnTx : parseInlineData(atPath(concat(pathToTxConstraints, 1)))
+
+// canonical pre-image P: tx-tuple bytes with outputs (idx 8), TxConstraints
+// (idx 10) and tx-signature (idx 3) all replaced with their canonicalised
+// versions.
+func canonicalP :
+  replaceTupleElement(
+    replaceTupleElement(
+      replaceTupleElement(txBytes, 8, _canonicalOutputs),
+      10, _canonicalTxConstraints
+    ),
+    3, 0x
+  )
+
+// branchInflationBonus: B = blake2b(P || S) mod M + 1
+// Reads P and S from the current tx context.
+func branchInflationBonus : add(randomFromSeed(concat(canonicalP, miningSigOnTx), branchInflationBonusBase(txSlot)), u64/1)
 
 // calculates one-slot inflation in slot $0 of amount $1
 func chainInflationOneSlot: div($0,add(minimumInflatableAmount0,$1))

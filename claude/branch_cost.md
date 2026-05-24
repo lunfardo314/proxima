@@ -57,34 +57,79 @@ adopts next slot*, with the bonus as the prize.
 
 ## Particular solution
 
-Let `P` denote the bytes of the producing transaction `T` with the bonus field on the stem
-output replaced by zero. Enforce on the stem output:
+Both the **nonce** and the **mining signature `S`** are carried as inline-data entries
+in the transaction-level constraints tuple (`TxConstraints`), outside any output:
+
+- `TxConstraints[0]` = `InlineDataBytecode(nonce_bytes)` (8-byte big-endian `u64`;
+  `0` means "no mining baseline"; mining iterates `nonce++`)
+- `TxConstraints[1]` = `InlineDataBytecode(S_bytes)` (raw 64-byte ED25519 signature)
+
+Let `P` denote the canonical pre-image: the bytes of the producing transaction `T` with
+four fields replaced by `0x`:
+
+- the **whole sequencer output** (many fields B-dependent — see below),
+- the **whole stem output** (its `stemLock` carries `slotInflation`/`TotalSupply` which are
+  B-dependent in the canonical sequencer flow; zeroing lets the sequencer fill them
+  correctly after `B` is known),
+- `TxConstraints[1]` (the mining signature `S`), and
+- the transaction signature (`TxSignatureData`).
+
+The sequencer output is zeroed because multiple fields on it depend on `B` — token balance
+(`amounts[0] = pred + B`), inflation (`amounts[1] = B`), chain constraint's
+`cumulativeBranchBonus` (`pred + B`). Zeroing the whole output removes all B-dependent
+fields in one cut; chain-identity is still bound to `P` via the sequencer's pubkey through
+`S` and via the other tx data (inputs, timestamp, other produced outputs).
+
+The supply-recurrence check (`TotalSupply_new == TotalSupply_pred + slotInflation`) inside
+`stemLock` is **kept** in the off-chain attacher (which has full past-cone visibility) but
+**dropped** from the on-chain EasyFL constraint. The sequencer rebuilds the stem output
+*after* computing `B` so the stem aggregates match what the attacher recomputes.
+
+Let `S = sign(P)` — a deterministic ED25519 signature over `P` by the sequencer's
+controller key. Enforce on the stem output:
 
 ```
-B = (blake2b(P) mod M) + 1
+B = (blake2b(P || S) mod M) + 1
 ```
 
-Remove the VRF signature from the stem output — no longer needed.
+The transaction signature itself is unchanged from today: it signs the standard tx essence,
+which contains `B`, `S`, and the nonce in their final positions. `S` is a *separate*
+signature carried in the tx alongside the nonce and verified independently.
 
-`B` becomes _mineable_. Let `K` denote the number of mining iterations beyond the free
-baseline:
+Remove the VRF signature from the stem output — no longer needed. The former VRF position
+in the stemLock inline data carries the **nonce**. The **mining signature `S`** is added
+as a separate constraint on the stem output at constraint index 3 (sibling to the stemLock
+at index 2), bumping the stem output's constraint count from 3 to 4. This lets `S` be
+zeroed via a single output-tuple-level `replaceTupleElement` rather than requiring a
+bytecode-level replacement primitive.
 
-- `K = 0`: no mining. One free evaluation of the formula on `T`, uniform on `[1, M]`,
-  `E[B] = M/2`.
-- `K > 0`: vary a nonce, re-sign, re-hash, keep the best `B` seen across `K + 1` samples.
-  Then `E[B] = M · (K + 1) / (K + 2)`, which approaches `M` slowly — the remaining distance
-  `M − E[B] = M / (K + 2)` halves only when `K` roughly doubles. This is the "explosive"
-  character of the marginal cost.
+`B` becomes _mineable_. Let `K` denote the number of mining iterations beyond the baseline:
 
-Each mining attempt requires a fresh ED25519 signature, which dominates per-attempt cost
+- `K = 0`: no mining. One evaluation — compute `S = sign(P)` for the default nonce, derive
+  `B`. The result is uniform on `[1, M]` with `E[B] = M/2`.
+- `K > 0`: vary the nonce, recompute `P`, recompute `S = sign(P)`, recompute `B`, keep the
+  best `(nonce, S, B)` seen across `K + 1` samples. Then `E[B] = M · (K + 1) / (K + 2)`,
+  which approaches `M` slowly — the remaining distance `M − E[B] = M / (K + 2)` halves
+  only when `K` roughly doubles. This is the "explosive" character of the marginal cost.
+
+Each iteration requires a fresh ED25519 signature for `S`, which dominates per-attempt cost
 (~50× a blake2b). This is a deliberate property: signing is much harder to accelerate with
 specialized hardware than pure hashing, blunting the standard PoW path to ASIC
-centralization.
+centralization. Total signing cost for a branch is `K + 2` signatures: `K + 1` for the
+mining loop and one final tx signature once the best `(nonce, S, B)` triple is fixed.
 
 ### Validation
 
-Validation is a single recomputation: zero the bonus field in `T`, hash, `mod M`, add 1,
-compare against the claimed `B`. Cheap, deterministic, expressible in pure EasyFL.
+Three checks:
+
+1. Verify the transaction signature over the standard tx essence — unchanged from today.
+2. Construct `P` by zeroing the three carve-out fields; verify `S` is a valid ED25519
+   signature of `P` under the sequencer's controller key.
+3. Verify `B == blake2b(P || S) mod M + 1`.
+
+All three are deterministic and expressible in EasyFL. Constructing `P` from `T` requires
+a small embedded helper, `replaceTupleElement(tupleBytes, index, newValue)`, used to zero
+each of the four carve-out fields.
 
 ### Lazy commitment is the actual throttle
 
@@ -141,18 +186,30 @@ we want.
 
 ### Protocol
 
-- Enforce `B = (blake2b(P) mod M) + 1` on the stem output in pure EasyFL.
-- Remove the VRF signature element from the stem output.
-- Add a **nonce** to the stem as an inline data constraint in `u64/` format (fixed 8-byte
-  value). Mining increments the nonce by 1 each iteration; the starting value is
-  irrelevant (any nonce yields a valid hash).
+- Enforce `B = (blake2b(P || S) mod M) + 1` on a branch tx in pure EasyFL, with `S`
+  verified as a valid ED25519 signature of `P` under the sequencer's controller key.
+- Remove the VRF signature element from the stem output entirely. `stemLock` goes from
+  9 args back to 8 (drops the former VRF/nonce slot).
+- Place **nonce** and **mining signature `S`** as inline-data entries in `TxConstraints`:
+  - `TxConstraints[0]` = nonce (z64; empty when not mining)
+  - `TxConstraints[1]` = `S` (raw ED25519 signature; always present on branch txs)
+- Stem output stays at 3 constraints. No structural change to outputs.
+- Drop the supply recurrence in `stemLock` (`TotalSupply_new == pred + slotInflation`).
+  `slotInflation` and `TotalSupply` become trustless analytics; sequencers fill them with
+  B-independent values.
+- Add an embedded function `replaceTupleElement(tupleBytes, index, newValue) → tupleBytes`
+  used by the EasyFL validation code to construct `P` from the producing tx (out-of-bounds
+  index is a validator-side fatal error; `newValue` may be empty).
 
 ### Mining loop (sequencer-side)
 
 Mining is implemented as part of `txbuilder_seq` transaction creation.
 
-- Iteration loop: increment the nonce inline-data constraint, re-sign the transaction,
-  re-hash, compute `B`, keep the best `B` seen so far.
+- Iteration loop: increment the nonce inline-data constraint, recompute `P`, compute
+  `S = sign(P)`, compute `B = blake2b(P || S) mod M + 1`, keep the best `(nonce, S, B)`
+  seen so far.
+- After the loop ends: place the best nonce, `S`, and `B` into the tx; sign the standard
+  tx essence to produce the final transaction signature.
 - Exit predicate: the caller supplies a closure
   `func(iteration int, inflationBonus uint64) bool` — returning `true` ends mining and the
   best `B` seen is published.

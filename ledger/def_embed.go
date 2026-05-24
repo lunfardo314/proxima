@@ -153,6 +153,7 @@ var _unboundedEmbedded = map[string]easyfl.EmbeddedFunction[*EvalContext]{
 	"evalTxID":                     evalTxID,
 	"evalTupleHasDuplicatesAtPath": evalTupleHasDuplicatesAtPath,
 	"evalTupleLenAtPath":           evalTupleLenAtPath,
+	"evalReplaceTupleElement":      evalReplaceTupleElement,
 	"embeddedEnforceFrozenCoverageOnDelegateOutput":     evalEnforceFrozenCoverageOnDelegateOutput,
 	"embeddedEnforceFrozenCoverageOnNonDelegationChain": evalEnforceFrozenCoverageOnNonDelegationChain,
 	"embeddedDelegationOriginCrossCheck":                evalDelegationOriginCrossCheck,
@@ -252,6 +253,30 @@ func evalTupleHasDuplicatesAtPath(par *easyfl.CallParams[*EvalContext]) []byte {
 		return []byte{0xff}
 	}
 	return nil
+}
+
+// evalReplaceTupleElement: replaceTupleElement($0, $1, $2)
+// Returns serialized tuple $0 with element at index $1 replaced by $2.
+// Out-of-bounds index is fatal; $2 may be empty.
+func evalReplaceTupleElement(par *easyfl.CallParams[*EvalContext]) []byte {
+	tupleBytes := par.Arg(0)
+	idx, err := easyfl_util.ByteFromBytes(par.Arg(1))
+	if err != nil {
+		par.TracePanic("evalReplaceTupleElement: %v", err)
+		return nil
+	}
+	newValue := par.Arg(2)
+	editable, err := tuples.TupleFromBytesEditable(tupleBytes)
+	if err != nil {
+		par.TracePanic("evalReplaceTupleElement: %v", err)
+		return nil
+	}
+	if int(idx) >= editable.NumElements() {
+		par.TracePanic("evalReplaceTupleElement: index %d out of range, tuple has %d elements", idx, editable.NumElements())
+		return nil
+	}
+	editable.MustPutAtIdx(idx, newValue)
+	return par.AllocData(editable.Bytes()...)
 }
 
 // arg 0 and arg 1 are timestamps (5 bytes each)
