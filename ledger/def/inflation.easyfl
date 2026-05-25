@@ -56,9 +56,14 @@ func canonicalP :
     3, 0x
   )
 
-// branchInflationBonus: B = blake2b(P || S) mod M + 1
-// Reads P and S from the current tx context.
-func branchInflationBonus : add(randomFromSeed(concat(canonicalP, miningSigOnTx), branchInflationBonusBase(txSlot)), u64/1)
+// branchInflationBonus($0): B = blake2b($0 || S) mod M + 1
+// $0 must be canonicalP. Caller is responsible for computing it once per
+// validation and threading it through — the formula is identical no matter
+// how many times it is invoked, but evaluating canonicalP is expensive
+// (4 nested replaceTupleElement passes over the tx tuple), so callers
+// MUST share a single evaluation across all references within the same
+// constraint.
+func branchInflationBonus : add(randomFromSeed(concat($0, miningSigOnTx), branchInflationBonusBase(txSlot)), u64/1)
 
 // calculates one-slot inflation in slot $0 of amount $1
 func chainInflationOneSlot: div($0,add(minimumInflatableAmount0,$1))
