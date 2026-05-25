@@ -1,11 +1,19 @@
 package glb
 
 import (
+	"encoding/hex"
+	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/api/client"
+	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
+	"github.com/lunfardo314/proxima/util"
+	"github.com/lunfardo314/proxima/util/lines"
 )
 
 // Wallet-side foundation helpers for the wasm-style refactor. See
@@ -61,10 +69,10 @@ func GetLedgerConstants() *txbuildercore.Constants {
 // failing tx and returns the error. On success, prints LinesHR only
 // when --verbose is on.
 //
-// Pretty-printing uses transaction.LinesFromTransactionBytesWithLib
-// with a decompiler built from the wallet library — no ledger.L()
-// singleton dependency at the surface, though Output rendering still
-// uses the singleton internally (see transaction.Decompiler doc).
+// Pretty-printing is fully wallet-side: it uses ParseLibraryAgnostic
+// (no ledger.L() singleton) and the per-process wallet library for
+// every bytecode decompilation. The wallet does NOT need (and does
+// not call) InitLedgerFromNode to display its own transactions.
 func SubmitAndDisplay(txBytes []byte, consumedUTXOBytes ...[]byte) error {
 	lib := GetTxLibrary()
 	var opts []client.SubmitOption
@@ -75,21 +83,179 @@ func SubmitAndDisplay(txBytes []byte, consumedUTXOBytes ...[]byte) error {
 	txID, err := GetClient().SubmitTransactionWithDetail(txBytes, opts...)
 	if err != nil {
 		Infof("\nFAILED to submit transaction: %v", err)
-		Infof("---------- failing tx --------\n%s", txDisplay(lib, txBytes))
+		Infof("---------- failing tx --------\n%s", txDisplay(lib, txBytes, consumedUTXOBytes...))
 		return err
 	}
 
 	if IsVerbose() {
 		Infof("\n-------- tx OK %s (len = %d) -----------\n%s",
-			txID.StringHex(), len(txBytes), txDisplay(lib, txBytes))
+			txID.StringHex(), len(txBytes), txDisplay(lib, txBytes, consumedUTXOBytes...))
 	}
 	return nil
 }
 
-// txDisplay renders the LinesHR form of a tx for log output. Uses the
-// wallet library for tx-level constraint decompilation; output
-// rendering inside Output._lines still reaches the singleton (see
-// transaction.Decompiler doc).
-func txDisplay(lib *txbuildercore.Library[any], txBytes []byte) string {
-	return transaction.LinesFromTransactionBytesWithLib(lib, txBytes, nil).String()
+// txDisplay renders a wallet-side LinesHR-style summary of a tx without
+// touching the ledger.L() singleton. Uses transaction.ParseLibraryAgnostic
+// for the tx skeleton and the supplied wallet library for every
+// bytecode decompilation (tx-level constraints, output constraints,
+// chain-constraint parse for the produced-output chainID display).
+//
+// Output bytes are decoded structurally via ledger.OutputFromBytes
+// (no validation). Each output's constraints are decompiled
+// individually via lib.Decompile so the display works against any
+// well-formed branch of the library — no lock-dispatch or
+// constraint-record lookup required.
+func txDisplay(lib *txbuildercore.Library[any], txBytes []byte, consumedBytes ...[]byte) string {
+	tx, err := transaction.ParseLibraryAgnostic(txBytes)
+	if err != nil {
+		return fmt.Sprintf("ParseLibraryAgnostic returned: %v\n  raw (%d bytes): %s",
+			err, len(txBytes), hex.EncodeToString(txBytes))
+	}
+	ln := lines.New()
+	txid := tx.ID()
+	ln.Add("Transaction ID: %s, size: %d", txid.String(), len(txBytes))
+	ln.Add("Timestamp: %s", tx.Timestamp().String())
+	ln.Add("IsBranch: %v", tx.IsBranchTransaction())
+	ln.Add("IsSequencer: %v", tx.IsSequencerTransaction())
+	if sig, err := tx.Signature(); err == nil {
+		ln.Add("Signature: %s", sig.String())
+	} else {
+		ln.Add("Signature: err='%v'", err)
+	}
+	if explicitBaseline, ok := tx.ExplicitBaseline(); ok {
+		ln.Add("Explicit baseline: %s", explicitBaseline.String())
+	}
+	ln.Add("Endorsements (%d):", tx.NumEndorsements())
+	tx.ForEachEndorsement(func(idx byte, eTxid base.TransactionID) bool {
+		ln.Add("  %d: %s", idx, eTxid.String())
+		return true
+	})
+
+	// Tx-level constraints — decompile via wallet library.
+	txConstraintsBin := tx.MustBytesAtPath(ledger.PathToTxConstraints)
+	if len(txConstraintsBin) == 0 {
+		ln.Add("TxConstraints (0):")
+	} else if tcs, err := tuples.TupleFromBytes(txConstraintsBin); err != nil {
+		ln.Add("TxConstraints: parse error: %v", err)
+	} else {
+		ln.Add("TxConstraints (%d):", tcs.NumElements())
+		tcs.ForEach(func(i int, bc []byte) bool {
+			if src, derr := lib.Decompile(bc); derr == nil {
+				ln.Add("  %d: %s  (%d bytes)", i, src, len(bc))
+			} else {
+				ln.Add("  %d: %d bytes (decompile err: %v)", i, len(bc), derr)
+			}
+			return true
+		})
+	}
+
+	// Inputs: print outputID + (when supplied) the full consumed-UTXO
+	// rendering so the user sees the same context the server validated
+	// against. consumedBytes is positionally aligned with InputIDs.
+	ln.Add("Inputs (%d):", tx.NumInputs())
+	tx.ForEachInputID(func(idx byte, oid base.OutputID) bool {
+		ln.Add("  #%d: %s", idx, oid.String())
+		if int(idx) < len(consumedBytes) && len(consumedBytes[idx]) > 0 {
+			renderOutputBytes(ln, lib, consumedBytes[idx], "       ", oid)
+		}
+		return true
+	})
+
+	// Produced outputs: walk the raw bytes (singleton-free) and
+	// decompile each constraint via the wallet library. For chain
+	// outputs, surface the resolved chainID (origin → blake2b(oid)).
+	ln.Add("Outputs (%d produced):", tx.NumProducedOutputs())
+	totalSum := uint64(0)
+	tx.ForEachProducedOutputData(func(idx byte, oData []byte) bool {
+		oid := base.MustNewOutputID(txid, idx)
+		ln.Add("  #%d %s", idx, oid.String())
+		if o := renderOutputBytes(ln, lib, oData, "       ", oid); o != nil {
+			totalSum += o.TokenBalance()
+		}
+		return true
+	})
+	ln.Add("TOTAL produced token balance: %s", util.Th(totalSum))
+	return ln.String()
+}
+
+// renderOutputBytes appends a wallet-side rendering of an output to ln
+// at the given prefix. Decompiles each constraint via the wallet
+// library, handles amounts / index-values specially, and surfaces the
+// chainID for chain outputs (resolving origin via blake2b(outputID)).
+// Returns the parsed Output (so callers can sum balances), or nil on
+// parse error.
+func renderOutputBytes(ln *lines.Lines, lib *txbuildercore.Library[any], data []byte, prefix string, oid base.OutputID) *ledger.Output {
+	ln.Add("%sbytes (%d): %s", prefix, len(data), hex.EncodeToString(data))
+	o, err := ledger.OutputFromBytes(data)
+	if err != nil {
+		ln.Add("%sparse error: %v", prefix, err)
+		return nil
+	}
+	for j, raw := range o.ConstraintsRawBytes() {
+		if len(raw) == 0 {
+			continue
+		}
+		switch byte(j) {
+		case ledger.ConstraintIndexAmounts:
+			ln.Add("%s[%d] amounts = %s", prefix, j, formatAmounts(raw))
+		case ledger.ConstraintIndexIndexValues:
+			ln.Add("%s[%d] index values: %s", prefix, j, formatIndexValues(raw))
+		default:
+			if src, derr := lib.Decompile(raw); derr == nil {
+				ln.Add("%s[%d] %s", prefix, j, src)
+			} else {
+				ln.Add("%s[%d] %d bytes (decompile err: %v)", prefix, j, len(raw), derr)
+			}
+		}
+	}
+	if chainBin, cerr := o.ConstraintAt(ledger.ConstraintIndexChain); cerr == nil && len(chainBin) > 0 {
+		if cc, ccerr := lib.ParseChainConstraint(chainBin); ccerr == nil {
+			cid := cc.ChainID
+			origin := ""
+			if cid == base.NilChainID {
+				cid = base.MakeOriginChainID(oid)
+				origin = " (origin)"
+			}
+			ln.Add("%schainID: %s%s", prefix, cid.StringShort(), origin)
+		}
+	}
+	return o
+}
+
+// formatAmounts pretty-prints the amounts vector at constraint slot 0.
+// Singleton-free: ledger.AmountsFromBytes is a structural byte parse.
+func formatAmounts(raw []byte) string {
+	a, err := ledger.AmountsFromBytes(raw)
+	if err != nil {
+		return fmt.Sprintf("(parse error: %v; %d bytes hex: %s)", err, len(raw), hex.EncodeToString(raw))
+	}
+	parts := make([]string, 0, 4)
+	parts = append(parts, util.Th(a.TokenBalance()))
+	if infl := a.InflationAmount(); infl != 0 {
+		parts = append(parts, "inflation: "+util.Th(infl))
+	}
+	for i := byte(0); ; i++ {
+		fc := a.FrozenCoverageAt(i)
+		if fc == 0 {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("frozen[%d]: %s", i, util.Th(uint64(fc))))
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
+}
+
+// formatIndexValues pretty-prints the index-value tuple at constraint
+// slot 1. Each element is hex-encoded so the controllers / hashes are
+// human-readable.
+func formatIndexValues(raw []byte) string {
+	t, err := tuples.TupleFromBytes(raw)
+	if err != nil {
+		return fmt.Sprintf("(parse error: %v; %d bytes hex: %s)", err, len(raw), hex.EncodeToString(raw))
+	}
+	parts := make([]string, 0, t.NumElements())
+	t.ForEach(func(_ int, v []byte) bool {
+		parts = append(parts, "0x"+hex.EncodeToString(v))
+		return true
+	})
+	return "[" + strings.Join(parts, ", ") + "]"
 }

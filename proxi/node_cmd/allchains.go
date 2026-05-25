@@ -66,7 +66,7 @@ func runAllChainsCmd(_ *cobra.Command, _ []string) {
 	if byOwners {
 		listChainOwners(chains, rr, lib)
 	} else {
-		listChains(chains, rr, lib, currentSlot)
+		listChains(chains, rr, lib, consts, currentSlot)
 	}
 }
 
@@ -103,7 +103,7 @@ func parseChainInfo(o *ledger.OutputWithChainID, lib *txbuildercore.Library[any]
 	return ci
 }
 
-func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], currentSlot uint32) {
+func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, currentSlot uint32) {
 	perc := func(denom, num uint64) string {
 		return fmt.Sprintf("%.2f%%", 100*float64(denom)/float64(num))
 	}
@@ -178,14 +178,14 @@ func listChainsShort(chains []*ledger.OutputWithChainID, lrbRootRecord *multista
 	}
 
 	glb.Infof("-----------------------")
-	glb.Infof("total number of chains:        %d", count)
-	glb.Infof("total on sequencer balance:    %s (%s of supply)", util.Th(totalOnSeqBalance), perc(totalOnSeqBalance, lrbRootRecord.Supply))
-	glb.Infof("total frozen (delegated):      %s (%s of supply)", util.Th(totalFrozen), perc(totalFrozen, lrbRootRecord.Supply))
-	glb.Infof("total active coverage delta:   %s (%s of supply)", util.Th(totalOnSeqBalance+totalFrozen), perc(totalOnSeqBalance+totalFrozen, lrbRootRecord.Supply))
+	glb.Infof("total number of chained accounts: %d", count)
+	glb.Infof("total on sequencer accounts:      %s (%s of supply)", util.Th(totalOnSeqBalance), perc(totalOnSeqBalance, lrbRootRecord.Supply))
+	glb.Infof("total frozen (delegated):         %s (%s of supply)", util.Th(totalFrozen), perc(totalFrozen, lrbRootRecord.Supply))
+	glb.Infof("total active coverage delta:      %s (%s of supply)", util.Th(totalOnSeqBalance+totalFrozen), perc(totalOnSeqBalance+totalFrozen, lrbRootRecord.Supply))
 	inactive := lrbRootRecord.Supply - totalOnSeqBalance - totalFrozen
-	glb.Infof("total inactive coverage delta: %s (%s of supply)", util.Th(inactive), perc(inactive, lrbRootRecord.Supply))
-	glb.Infof("total supply:                  %s", util.Th(lrbRootRecord.Supply))
-	glb.Infof("total ADJUSTED supply:         %s", util.Th(ledger.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
+	glb.Infof("total inactive coverage delta:    %s (%s of supply)", util.Th(inactive), perc(inactive, lrbRootRecord.Supply))
+	glb.Infof("total supply:                     %s", util.Th(lrbRootRecord.Supply))
+	glb.Infof("total ADJUSTED supply:            %s", util.Th(consts.AdjustedAmount(lrbRootRecord.Supply, currentSlot)))
 }
 
 func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Library[any]) {
@@ -229,7 +229,7 @@ func listChainsVerbose(chains []*ledger.OutputWithChainID, lib *txbuildercore.Li
 	glb.Infof("\ntotal %d chains", count)
 }
 
-func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], currentSlot uint32) {
+func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.BranchDataJSONAble, lib *txbuildercore.Library[any], consts *txbuildercore.Constants, currentSlot uint32) {
 	glb.Infof("\nshow sequencers only = %v", showSequencersOnly)
 	glb.Infof("show delegations only = %v", showDelegationsOnly)
 
@@ -238,7 +238,7 @@ func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.Br
 		listChainsVerbose(chains, lib)
 	} else {
 		glb.Infof("----------------- CHAIN OUTPUTS (short) -------------------")
-		listChainsShort(chains, lrbRootRecord, lib, currentSlot)
+		listChainsShort(chains, lrbRootRecord, lib, consts, currentSlot)
 	}
 }
 

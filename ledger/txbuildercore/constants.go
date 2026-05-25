@@ -319,6 +319,15 @@ func (c *Constants) DiffEpochs(targetID base.ChainID, ts1, ts2 base.LedgerTime, 
 	return int(epoch1) - int(epoch2)
 }
 
+// AdjustedAmount returns 'amount' adjusted to the maximum inflation,
+// i.e. the value A such that A inflated to its maximum over 'slot' slots
+// reaches 'amount'. When amount == totalSupply this gives the initialSupply.
+// Wallet-side mirror of ledger.AdjustedAmount; computed purely from
+// MinimumInflatableAmount0 so it is singleton-free.
+func (c *Constants) AdjustedAmount(amount uint64, slot uint32) uint64 {
+	return c.MinimumInflatableAmount0 * (amount / (c.MinimumInflatableAmount0 + uint64(slot)))
+}
+
 // AdjustFrozenCoverageVector shifts the predecessor's frozen-coverage
 // vector forward by DiffEpochs(succTs, predTs) epochs and clamps the
 // result to maxFrozenEpochs cells. Entries that fall off the front

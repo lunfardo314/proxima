@@ -230,7 +230,10 @@ func chooseRandomSequencerForDelegation() (base.ChainID, error) {
 		}
 	}
 	m := make(map[base.ChainID]uint64)
-	currentSlot := ledger.SlotNow()
+	// Wallet-side "now" — singleton-free (ledger.SlotNow() reaches the
+	// ledger.L() singleton).
+	consts := glb.GetLedgerConstants()
+	currentSlot := consts.LedgerTimeFromClockTime(time.Now()).Slot
 	for seqID, out := range outs {
 		if out.ID.Slot()+6 >= currentSlot {
 			// skip inactive sequencers

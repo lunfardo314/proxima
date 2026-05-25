@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lunfardo314/easyfl"
@@ -26,6 +27,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
+	"golang.org/x/crypto/blake2b"
 )
 
 const apiDefaultClientTimeout = 7 * time.Second
@@ -33,6 +35,143 @@ const apiDefaultClientTimeout = 7 * time.Second
 type APIClient struct {
 	c      http.Client
 	prefix string
+
+	// walletLib is a lazily-fetched txbuildercore.Library used to parse
+	// chain constraints (and any other bytecode-level structures the
+	// client needs to surface to callers) WITHOUT touching the global
+	// ledger.L() singleton. The wasm-style proxi wallet design forbids
+	// the singleton; this field is how the client honours that — it
+	// pulls the same library JSON the wallet would, on first need,
+	// and caches it for the client's lifetime.
+	walletLibOnce sync.Once
+	walletLib     *txbuildercore.Library[any]
+	walletLibErr  error
+}
+
+// walletLibrary returns the lazily-fetched wallet-side library bound to
+// this client. Used internally to parse on-wire output bytes (chain
+// constraints in particular) without depending on the ledger.L() singleton.
+func (c *APIClient) walletLibrary() (*txbuildercore.Library[any], error) {
+	c.walletLibOnce.Do(func() {
+		c.walletLib, c.walletLibErr = c.GetLibrary(nil)
+	})
+	return c.walletLib, c.walletLibErr
+}
+
+// parseAsChainOutput wraps raw output bytes + ID into an OutputWithChainID
+// using the client's wallet library (singleton-free). The chain constraint
+// is read via lib.ParseChainConstraint; for chain-origin outputs the
+// ChainID is resolved as blake2b(outputID) to match the constraint's
+// post-origin enforcement.
+func (c *APIClient) parseAsChainOutput(oData ledger.OutputDataWithID) (*ledger.OutputWithChainID, error) {
+	o, err := ledger.OutputFromBytes(oData.Data)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsChainOutput: %w", err)
+	}
+	lib, err := c.walletLibrary()
+	if err != nil {
+		return nil, fmt.Errorf("parseAsChainOutput: wallet library: %w", err)
+	}
+	cc, err := parseChainConstraintFromOutput(o, lib)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsChainOutput: %w", err)
+	}
+	resolvedChainID := cc.ChainID
+	if resolvedChainID == base.NilChainID {
+		resolvedChainID = blake2b.Sum256(oData.ID[:])
+	}
+	return &ledger.OutputWithChainID{
+		OutputWithID:        ledger.OutputWithID{Output: o, ID: oData.ID},
+		ChainConstraintData: chainConstraintDataFromView(cc, resolvedChainID),
+	}, nil
+}
+
+// parseAsSequencerOutput wraps raw output bytes + ID into an
+// OutputWithSequencerData using the client's wallet library
+// (singleton-free). Returns ok=false if the output is not a sequencer
+// output (no chain constraint or no sequencer constraint at extras).
+func (c *APIClient) parseAsSequencerOutput(oData ledger.OutputDataWithID) (*ledger.OutputWithSequencerData, error) {
+	o, err := ledger.OutputFromBytes(oData.Data)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsSequencerOutput: %w", err)
+	}
+	lib, err := c.walletLibrary()
+	if err != nil {
+		return nil, fmt.Errorf("parseAsSequencerOutput: wallet library: %w", err)
+	}
+	cc, err := parseChainConstraintFromOutput(o, lib)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsSequencerOutput: %w", err)
+	}
+	resolvedChainID := cc.ChainID
+	if resolvedChainID == base.NilChainID {
+		resolvedChainID = blake2b.Sum256(oData.ID[:])
+	}
+	// Sequencer-output sanity: must carry the sequencer constraint
+	// somewhere after the chain constraint. The constraint itself is
+	// a no-arg marker (`sequencer`), so we just verify the symbol via
+	// the wallet library's bytecode parser.
+	hasSeq := false
+	for i := int(ledger.ConstraintIndexChain) + 1; i < o.NumElements(); i++ {
+		bin, _ := o.At(i)
+		if len(bin) == 0 {
+			continue
+		}
+		sym, _, _, perr := lib.ParseBytecodeOneLevel(bin)
+		if perr == nil && sym == ledger.SequencerConstraintName {
+			hasSeq = true
+			break
+		}
+	}
+	if !hasSeq {
+		return nil, fmt.Errorf("parseAsSequencerOutput: not a sequencer output: %s", oData.ID.String())
+	}
+	// Sequencer milestone data is a singleton-free byte parse off the
+	// inline-data constraint at SeqMilestoneDataFixedIndex.
+	var seqData *seqdata.SequencerData
+	if sd, err := ledger.ParseSequencerData(o); err == nil {
+		seqData = &sd
+	}
+	ccData := chainConstraintDataFromView(cc, resolvedChainID)
+	return &ledger.OutputWithSequencerData{
+		OutputWithID: ledger.OutputWithID{Output: o, ID: oData.ID},
+		SequencerOutputData: ledger.SequencerOutputData{
+			SequencerConstraint: ledger.NewSequencerConstraint(),
+			ChainConstraint:     &ccData.ChainConstraint,
+			AmountOnChain:       o.TokenBalance(),
+			SequencerData:       seqData,
+		},
+	}, nil
+}
+
+// parseChainConstraintFromOutput is the shared chain-constraint byte-parse
+// used by parseAsChainOutput and parseAsSequencerOutput. Returns an error
+// if the output has no constraint at the chain slot.
+func parseChainConstraintFromOutput(o *ledger.Output, lib *txbuildercore.Library[any]) (*txbuildercore.ChainConstraintView, error) {
+	chainBin, err := o.ConstraintAt(ledger.ConstraintIndexChain)
+	if err != nil || len(chainBin) == 0 {
+		return nil, fmt.Errorf("no chain constraint at index %d", ledger.ConstraintIndexChain)
+	}
+	return lib.ParseChainConstraint(chainBin)
+}
+
+// chainConstraintDataFromView projects a wallet-side ChainConstraintView
+// into the singleton-coupled ledger.ChainConstraintData shape that
+// OutputWithChainID / OutputWithSequencerData carry on the wire-facing
+// types. Pure field copy; ChainID is taken from the resolved value (origin
+// outputs collapse NilChainID → blake2b(outputID) at the call site).
+func chainConstraintDataFromView(cc *txbuildercore.ChainConstraintView, resolvedChainID base.ChainID) ledger.ChainConstraintData {
+	return ledger.ChainConstraintData{
+		ChainConstraint: ledger.ChainConstraint{
+			ChainID:                  resolvedChainID,
+			PredecessorInputIndex:    cc.PredecessorInputIndex,
+			OriginSlot:               cc.OriginSlot,
+			CumulativeChainInflation: cc.CumulativeChainInflation,
+			CumulativeBranchBonus:    cc.CumulativeBranchBonus,
+			TransitionCounter:        cc.TransitionCounter,
+			BranchCounter:            cc.BranchCounter,
+		},
+	}
 }
 
 // not useful, too big delays with DNS names
@@ -290,13 +429,14 @@ func (c *APIClient) GetChainOutputData(chainID base.ChainID) (*ledger.OutputData
 	}, lrb, nil
 }
 
-// GetChainOutput returns parsed output for the chain id
+// GetChainOutput returns parsed output for the chain id. Singleton-free:
+// the chain constraint is parsed via the client's wallet library.
 func (c *APIClient) GetChainOutput(chainID base.ChainID) (*ledger.OutputWithChainID, base.TransactionID, error) {
 	oData, lrbid, err := c.GetChainOutputData(chainID)
 	if err != nil {
 		return nil, base.TransactionID{}, err
 	}
-	o, err := oData.ParseAsChainOutput()
+	o, err := c.parseAsChainOutput(*oData)
 	if err != nil {
 		return nil, base.TransactionID{}, err
 	}
@@ -633,31 +773,25 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 	}
 
 	ret := make([]*ledger.OutputWithChainID, 0, len(res.Chains))
-	// The wire format already exposes the chainID as the map key — no need
-	// to re-parse the chain constraint here (which used to require the
-	// ledger.L() singleton via ledger.AsOutputWithChainID). Callers that
-	// need other chain-constraint fields (cumulative inflation, transition
-	// counter, ...) re-parse on the wallet side via
-	// glb.GetTxLibrary().ParseChainConstraint(...).
+	// Parse each chain output via the wallet library — no ledger.L()
+	// singleton. The map key carries the chainID over the wire but we
+	// still re-derive it from the constraint so callers see the full
+	// chain-constraint metadata (cumulative inflation, counters, etc.),
+	// matching what ledger.AsOutputWithChainID used to return.
 	for chainIDHex, ci := range res.Chains {
-		chainID, err := base.ChainIDFromHexString(chainIDHex)
-		if err != nil {
-			return nil, nil, fmt.Errorf("GetAllChains: invalid chain ID key %q: %w", chainIDHex, err)
-		}
-		o, err := ledger.OutputFromHexString(ci.Data)
-		if err != nil {
-			return nil, nil, err
-		}
 		oid, err := base.OutputIDFromHexString(ci.ID)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("GetAllChains: outputID for %s: %w", chainIDHex, err)
 		}
-		ret = append(ret, &ledger.OutputWithChainID{
-			OutputWithID: ledger.OutputWithID{Output: o, ID: oid},
-			ChainConstraintData: ledger.ChainConstraintData{
-				ChainConstraint: ledger.ChainConstraint{ChainID: chainID},
-			},
-		})
+		oData, err := hex.DecodeString(ci.Data)
+		if err != nil {
+			return nil, nil, fmt.Errorf("GetAllChains: output data for %s: %w", chainIDHex, err)
+		}
+		parsed, err := c.parseAsChainOutput(ledger.OutputDataWithID{ID: oid, Data: oData})
+		if err != nil {
+			return nil, nil, fmt.Errorf("GetAllChains: %w", err)
+		}
+		ret = append(ret, parsed)
 	}
 	return ret, &lrbid, nil
 }
@@ -1062,24 +1196,19 @@ func (c *APIClient) GetAllSequencerOutputs() (map[base.ChainID]ledger.OutputWith
 		if err != nil {
 			return nil, nil, err
 		}
-		o, err := ledger.OutputFromHexString(data.Data)
+		oData, err := hex.DecodeString(data.Data)
 		if err != nil {
 			return nil, nil, err
 		}
-		seqOutData, isSeqOut := o.SequencerOutputData()
-		if !isSeqOut {
-			return nil, nil, fmt.Errorf("not a sequencer output: %s", data.ID)
+		parsed, err := c.parseAsSequencerOutput(ledger.OutputDataWithID{ID: seqOutID, Data: oData})
+		if err != nil {
+			return nil, nil, fmt.Errorf("GetAllSequencerOutputs: %w", err)
 		}
-		if seqID != seqOutData.ChainConstraint.ChainID {
-			return nil, nil, fmt.Errorf("inconsistency: chain IDs does not match")
+		if seqID != parsed.SequencerOutputData.ChainConstraint.ChainID {
+			return nil, nil, fmt.Errorf("inconsistency: chain IDs do not match (server: %s, parsed: %s)",
+				seqID.String(), parsed.SequencerOutputData.ChainConstraint.ChainID.String())
 		}
-		ret[seqID] = ledger.OutputWithSequencerData{
-			OutputWithID: ledger.OutputWithID{
-				Output: o,
-				ID:     seqOutID,
-			},
-			SequencerOutputData: *seqOutData,
-		}
+		ret[seqID] = *parsed
 	}
 	return ret, &lrbid, nil
 }
