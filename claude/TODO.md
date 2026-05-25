@@ -17,6 +17,51 @@ This file contains TODO list for future Claude sessions.
 Revisit weird behavior with syncing after warm restart. 
 - forward syncing may be interfering when there's no need of it
 
+## Sequencer self-attachment latency threshold (96 ms)
+
+`selfAttachmentLatencyToleranceTicks = 12` in `sequencer/strategy_async.go`,
+i.e. 96 ms at the default 8 ms tick. Multiple factory tests
+(`TestFactoryNonDecreasingCoverage` etc.) log `sequencer throttled:
+self-attachment latency 200+ ms exceeds tolerance 96 ms` warnings during
+normal operation — branches still attach and the tests pass, but the
+sequencer pauses submissions until the pending milestone clears.
+
+The 200 ms observed wall-clock is pulse-cycle-related
+(`pulseInterval = pace × tickDuration`), not the raw validation work —
+the canonical-P / EasyFL hot path was profiled during the branch_cost.md
+work and proven to take much less. See "Lessons learned" in
+`claude/branch_cost.md` for the profile evidence.
+
+The threshold (12 ticks) looks tight for default config: a single missed
+pulse pushes any pending milestone over the limit. Investigate:
+
+- whether the threshold should be widened (e.g. 16–24 ticks);
+- whether `pulseInterval` itself can be tightened;
+- whether the throttle should distinguish "pending milestone genuinely
+  not attaching" vs "pending milestone attached but next pulse hasn't
+  fired yet";
+- whether the warning should be suppressed under normal-noise conditions
+  to avoid alarming readers.
+
+## Cheaper branches (orthogonal to branch-cost design)
+
+Per-branch DB-commit and validation cost reduction. Independent of
+whatever spam-control direction the branch-issuance-cost question is
+eventually answered with — see `claude/branch_cost.md` § "Future
+directions" item 4. Concrete sub-items:
+
+- **State-delta compression** on persisted branch commits.
+- **Batched / async commit** of branch ledger-state deltas.
+- **Reduce EasyFL hot paths** that fire on every produced sequencer /
+  stem output (e.g. canonical-P-style nested tuple manipulation if a
+  mineable-bonus design returns).
+- **Profile-driven tuning of the sequencer self-attachment latency
+  threshold** (see the "96 ms self-attachment latency" entry above —
+  same root cause from a different angle).
+
+Net effect: even with `O(N)` branches per slot, per-node steady-state
+cost stays bounded as `N` grows.
+
 ## Tools
 
 - limit number of dagviz connection (it is already the case). Add clear message for the user if that is the case
