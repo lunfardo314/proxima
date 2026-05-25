@@ -245,3 +245,61 @@ Knobs may be set simultaneously; mining stops as soon as *any* configured condit
 Reducing per-branch DB-commit cost (delta compression, batched flushes, async commit) is
 worth tracking as a separate implementation item. It is complementary to the throttle, not
 a substitute.
+
+## Main finding (session 2026-05-25)
+
+After landing PR 1 (`9132ad84` — mineable bonus protocol bedrock, no mining loop yet) and
+the canonical-P arg-threading optimization (`2942f4b2`), the design's core weakness became
+explicit:
+
+**Mining optionally *increases* a sequencer's cost for issuing a branch — it does NOT
+prevent a malicious sequencer from spamming the network with `K = 0` branches that
+knowingly fail.**
+
+Concretely: a spammer pays one signature per branch (no mining iterations, no capex),
+issues a `K = 0` branch with a uniformly-random `B = M/2` expected, knows it will almost
+certainly lose the lottery, but the branch still costs every node in the network:
+
+- parse + Stage 1 / 2 validation,
+- attachment to memDAG (Stage 3),
+- past-cone solidification,
+- the entire constraint pipeline including canonical-P construction and ED25519 verify.
+
+Lazy commitment (the actual DB-write throttle in the original argument) does kick in: the
+spam branch never gets referenced as baseline and never reaches the DB. **But all the
+work up to the DB-commit happens on every node, with the multiplicative constant only
+"small" in the average case** — under adversarial load with N malicious sequencers the
+constant matters and the cost is genuinely `O(N)`.
+
+So the equilibrium argument ("when `E[B] < C(B)` rational sequencers skip") only governs
+*rational* sequencers. Irrational / adversarial ones can spam at near-zero cost because
+the protocol-level mining cost is *opt-in*.
+
+### Where this leaves the design
+
+Two paths:
+
+1. **Leave the design as is.** Accept that protocol-level cost is opt-in and that
+   spam-resistance comes from off-protocol mechanisms (peer-level rate limiting, sender
+   reputation in `txsenders`, memDAG GC). The mineable-bonus design then serves only as a
+   competitive layer for *honest* sequencers seeking higher branch bonus — a fairness
+   refinement, not a spam control. Question: is the added complexity (canonical-P
+   construction, extra ED25519 verify, dropped supply recurrence, trustless-analytics
+   stemLock fields) worth that narrow benefit?
+
+2. **Make the cost mandatory.** Replace the opt-in capex race with an obligatory delay
+   that every branch tx must demonstrate. A **VDF** (Verifiable Delay Function) is the
+   natural primitive: takes wall-clock `T` time to compute, trivial to verify, cannot be
+   parallelised away by capex. Every branch tx carries a VDF proof of `T` over (e.g.) the
+   canonical pre-image plus a slot-bound seed; validators reject branches without a fresh
+   proof. This bounds branch issuance rate by wall-clock, not by sequencer count or stake.
+   Cost: VDF setup and parameter governance are non-trivial, and validation cost (though
+   cheap per branch) accumulates network-wide.
+
+A possible middle option — proof of stake-bound rate (e.g. one branch per slot per
+stake-weight quantum) — is in principle simpler but reintroduces a permissioned feel that
+contradicts Proxima's permissionless-economic-fairness narrative.
+
+The choice is open. The work to date (commits `e2724613`, `cbf4cf82`, `9132ad84`,
+`2942f4b2`) is fully revertible as a single contiguous range if option 1 is rejected and a
+VDF or other mandatory-cost design supersedes it.
