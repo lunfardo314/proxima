@@ -84,9 +84,9 @@ func TestNewDelegateLockState_ByteIdentity(t *testing.T) {
 	}
 }
 
-// TestNewDelegationParams_ByteIdentity checks delegationParams
-// bytecode matches ledger.NewDelegationParams.
-func TestNewDelegationParams_ByteIdentity(t *testing.T) {
+// TestNewSequencerConstraintBytecode_ByteIdentity checks the wallet's
+// sequencer-constraint bytecode matches ledger.NewSequencerConstraint.
+func TestNewSequencerConstraintBytecode_ByteIdentity(t *testing.T) {
 	lib := txbuildercoreLibFromGlobal(t)
 
 	cases := []struct {
@@ -99,9 +99,9 @@ func TestNewDelegationParams_ByteIdentity(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		walletBin, err := lib.NewDelegationParams(c.epochSlots, c.maxFrozenEpochs)
+		walletBin, err := lib.NewSequencerConstraintBytecode(c.epochSlots, c.maxFrozenEpochs)
 		require.NoError(t, err)
-		serverBin := ledger.NewDelegationParams(c.epochSlots, c.maxFrozenEpochs).Bytes()
+		serverBin := ledger.NewSequencerConstraint(c.epochSlots, c.maxFrozenEpochs).Bytes()
 		require.Equal(t, serverBin, walletBin, "epochSlots=%d maxFrozen=%d", c.epochSlots, c.maxFrozenEpochs)
 	}
 }

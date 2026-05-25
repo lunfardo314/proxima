@@ -398,7 +398,7 @@ func TestBranchCoverageBounds(t *testing.T) {
 
 	// Create chain origins with specified amounts
 	testData.makeChainOriginsWithAmounts(chainAmounts)
-	chainOriginsTxID, err := testData.wrk.TxBytesInForTests(testData.chainOriginsTx.Bytes())
+	chainOriginsTxID, err := testData.txBytesInForTestsChainOrigins()
 	require.NoError(t, err)
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 
@@ -488,7 +488,7 @@ func initMultiSequencerTest(t *testing.T, nSequencers int, startPruner ...bool) 
 	require.NoError(t, err)
 
 	testData.makeChainOrigins(nSequencers)
-	chainOriginsTxID, err := testData.wrk.TxBytesInForTests(testData.chainOriginsTx.Bytes())
+	chainOriginsTxID, err := testData.txBytesInForTestsChainOrigins()
 	require.NoError(t, err)
 	require.EqualValues(t, nSequencers, len(testData.chainOrigins))
 

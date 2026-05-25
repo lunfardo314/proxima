@@ -131,21 +131,21 @@ func (b *Builder) CalcFrozenCoverageDelta() ([]int64, error) {
 // MustPutFrozenCoverage adjusts the produced chain output's amounts
 // vector to carry forward the predecessor's frozen coverage (shifted
 // by the inter-tx epoch difference) plus the per-epoch deltas from
-// produced delegation outputs. epochSlots and maxFrozenEpochs come
-// from the chain's own delegationParams (at
-// ConstraintIndexDelegationParams on the produced chain output).
+// produced delegation outputs. epochSlots and maxFrozenEpochs are
+// read from the produced output's sequencer constraint at
+// SequencerConstraintFixedIndex.
 func (b *Builder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDeltaVector []int64, targetTs base.LedgerTime) {
 	o := b.ProducedOutputs[producedOutputIdx]
 
 	lib := ledger.L(targetTs.Slot)
 
-	dpBytes, dpErr := o.At(int(ledger.ConstraintIndexDelegationParams))
-	util.Assertf(dpErr == nil && len(dpBytes) > 0,
-		"MustPutFrozenCoverage: produced chain output must carry delegationParams to receive frozen coverage")
-	dp, err := ledger.DelegationParamsFromBytesWithLib(dpBytes, lib)
+	seqBytes, seqErr := o.At(int(ledger.SequencerConstraintFixedIndex))
+	util.Assertf(seqErr == nil && len(seqBytes) > 0,
+		"MustPutFrozenCoverage: produced chain output must be a sequencer chain (carry the sequencer constraint) to receive frozen coverage")
+	seq, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib)
 	util.AssertNoError(err)
 
-	a := make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(dp.MaxFrozenEpochs))
+	a := make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(seq.MaxFrozenEpochs))
 	a[ledger.AmountIndexTokenBalance] = int64(o.TokenBalance())
 	a[ledger.AmountIndexInflation] = int64(o.Inflation())
 	copy(a[ledger.AmountIndexFrozenCoverage:], frozenCoverageDeltaVector)
@@ -153,10 +153,10 @@ func (b *Builder) MustPutFrozenCoverage(producedOutputIdx byte, frozenCoverageDe
 	cc := o.ChainConstraint()
 	util.Assertf(cc != nil, "MustPutFrozenCoverage: inconsistency 1")
 	oPred := b.ConsumedOutputs[cc.PredecessorInputIndex]
-	predVector := oPred.Amounts().FrozenCoverageVector(dp.MaxFrozenEpochs)
+	predVector := oPred.Amounts().FrozenCoverageVector(seq.MaxFrozenEpochs)
 	predTs := b.TxData.InputIDs[cc.PredecessorInputIndex].Timestamp()
 	predVectorAdjusted := lib.AdjustFrozenCoverageVector(cc.ChainID, predVector, predTs, targetTs,
-		dp.EpochSlots, dp.MaxFrozenEpochs)
+		seq.EpochSlots, seq.MaxFrozenEpochs)
 	for i := range frozenCoverageDeltaVector {
 		a[int(ledger.AmountIndexFrozenCoverage)+i] += predVectorAdjusted[i]
 	}
@@ -250,9 +250,11 @@ func (b *Builder) FinaliseAndSign(ts base.LedgerTime, priv ed25519.PrivateKey) {
 // transited foundry output with the supply updated to newSupply. Wires
 // chain unlock between input and output and pushes a
 // `token(chainID, foundryProducedIdx)` constraint onto TxConstraints.
-// foundry() itself does not enforce slot-5 immutability across transit;
-// callers wishing immutability rely on the policy script's
-// self-locking (e.g. selfImmutableOnSuccessorIndex).
+// The foundry constraint itself self-locks at foundryConstraintIndex
+// (slot 4) across every transit — the successor MUST also carry a
+// foundry constraint at that slot, only the supply arg may differ.
+// The optional foundry policy at slot 5 is self-locked separately by
+// the policy body (typically via selfImmutableOnSuccessorIndex).
 func (b *Builder) TransitFoundry(inChainData *ledger.OutputDataWithChainID, newSupply uint64) (byte, error) {
 	chainIN, err := ledger.OutputFromBytesWithLib(inChainData.Data, ledger.L(inChainData.ID.Slot()))
 	if err != nil {
@@ -292,9 +294,9 @@ func (b *Builder) TransitFoundry(inChainData *ledger.OutputDataWithChainID, newS
 // amounts + lock at index 2, chain origin at index 3, foundry(supply)
 // at index 4, and optional policy bytecode at index 5. initialSupply
 // is typically 0 at origin (no real tag exists yet — minting happens
-// at a later transit). foundry() itself does not enforce slot-5
-// immutability across transit; the policy script (if any) is
-// responsible for self-locking via selfImmutableOnSuccessorIndex.
+// at a later transit). The foundry constraint pins itself at slot 4
+// across every transit (cannot be dropped or moved); any policy at
+// slot 5 self-locks via selfImmutableOnSuccessorIndex.
 func MakeFoundryOriginOutput(amount uint64, lock ledger.Lock, originSlot uint32, initialSupply uint64, policyScript []byte) *ledger.Output {
 	return ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(amount)).WithLock(lock)

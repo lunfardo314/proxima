@@ -367,24 +367,25 @@ func (o *Output) InflatableAmount() uint64 {
 }
 
 // AdjustedFrozenCoverage returns the frozen coverage adjusted for
-// elapsed epochs since the predecessor. Per Phase 3 of
-// delegation_epoch_params, epochSlots/maxFrozenEpochs are sourced from
-// this chain's own delegationParams (index 6) if attached; chains
-// without it carry no frozen coverage and return 0.
+// elapsed epochs since the predecessor. epochSlots/maxFrozenEpochs are
+// sourced from this chain's own sequencer constraint if attached
+// (sequencer chains always accept delegations with those immutable
+// params); regular chains have no sequencer constraint, carry no
+// frozen coverage, and return 0.
 func (o *OutputWithChainID) AdjustedFrozenCoverage(txTs base.LedgerTime) int64 {
 	predTs := o.ID.Timestamp()
 	util.Assertf(txTs.AfterOrEqual(predTs), "txTs.AfterOrEqual(predTs)")
 	lib := L(txTs.Slot)
-	dpBytes, err := o.Output.At(int(ConstraintIndexDelegationParams))
-	if err != nil || len(dpBytes) == 0 {
+	seqBytes, err := o.Output.At(int(SequencerConstraintFixedIndex))
+	if err != nil || len(seqBytes) == 0 {
 		return 0
 	}
-	dp, err := DelegationParamsFromBytesWithLib(dpBytes, lib)
+	seq, err := SequencerConstraintFromBytesWithLib(seqBytes, lib)
 	if err != nil {
 		return 0
 	}
-	diff := lib.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp(), dp.EpochSlots)
-	if diff >= int(dp.MaxFrozenEpochs) {
+	diff := lib.DiffEpochs(o.ChainID, txTs, o.ID.Timestamp(), seq.EpochSlots)
+	if diff >= int(seq.MaxFrozenEpochs) {
 		return 0
 	}
 	return o.Output.FrozenCoverage(byte(diff))

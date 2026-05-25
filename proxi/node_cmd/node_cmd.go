@@ -55,7 +55,6 @@ func Init() *cobra.Command {
 		initKillChainCmd(),
 		initNodeInfoCmd(),
 		seq_cmd.Init(),
-		initSeqSetupCmd(),
 		initSyncInfoCmd(),
 		initPeersInfoCmd(),
 		initReliableBranchCmd(),

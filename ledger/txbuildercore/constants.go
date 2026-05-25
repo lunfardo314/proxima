@@ -50,8 +50,9 @@ type Constants struct {
 	// PreBranchConsolidationTicks enforces endorsement-only constraint
 	// for that many ticks before the slot boundary.
 	PreBranchConsolidationTicks byte
-	// Delegation parameters (defaults + bounds; per-chain values live
-	// inside each chain's delegationParams constraint).
+	// Delegation parameters (defaults + bounds; per-chain values are
+	// inlined as the two args of the chain's sequencer constraint at
+	// SequencerConstraintFixedIndex).
 	SafeRevocationSlots          uint32
 	DelegationEpochSlots         uint32
 	MaxFrozenEpochs              uint32

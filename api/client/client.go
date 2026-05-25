@@ -107,24 +107,16 @@ func (c *APIClient) parseAsSequencerOutput(oData ledger.OutputDataWithID) (*ledg
 	if resolvedChainID == base.NilChainID {
 		resolvedChainID = blake2b.Sum256(oData.ID[:])
 	}
-	// Sequencer-output sanity: must carry the sequencer constraint
-	// somewhere after the chain constraint. The constraint itself is
-	// a no-arg marker (`sequencer`), so we just verify the symbol via
-	// the wallet library's bytecode parser.
-	hasSeq := false
-	for i := int(ledger.ConstraintIndexChain) + 1; i < o.NumElements(); i++ {
-		bin, _ := o.At(i)
-		if len(bin) == 0 {
-			continue
-		}
-		sym, _, _, perr := lib.ParseBytecodeOneLevel(bin)
-		if perr == nil && sym == ledger.SequencerConstraintName {
-			hasSeq = true
-			break
-		}
-	}
-	if !hasSeq {
+	// Sequencer-output sanity: must carry the 2-arg sequencer constraint
+	// at the fixed slot. Parse it via the wallet library so the
+	// (epochSlots, maxFrozenEpochs) values are surfaced to callers.
+	seqBin, err := o.ConstraintAt(ledger.SequencerConstraintFixedIndex)
+	if err != nil || len(seqBin) == 0 {
 		return nil, fmt.Errorf("parseAsSequencerOutput: not a sequencer output: %s", oData.ID.String())
+	}
+	seqView, err := lib.ParseSequencerConstraint(seqBin)
+	if err != nil {
+		return nil, fmt.Errorf("parseAsSequencerOutput: %w", err)
 	}
 	// Sequencer milestone data is a singleton-free byte parse off the
 	// inline-data constraint at SeqMilestoneDataFixedIndex.
@@ -136,7 +128,7 @@ func (c *APIClient) parseAsSequencerOutput(oData ledger.OutputDataWithID) (*ledg
 	return &ledger.OutputWithSequencerData{
 		OutputWithID: ledger.OutputWithID{Output: o, ID: oData.ID},
 		SequencerOutputData: ledger.SequencerOutputData{
-			SequencerConstraint: ledger.NewSequencerConstraint(),
+			SequencerConstraint: ledger.NewSequencerConstraint(seqView.EpochSlots, seqView.MaxFrozenEpochs),
 			ChainConstraint:     &ccData.ChainConstraint,
 			AmountOnChain:       o.TokenBalance(),
 			SequencerData:       seqData,

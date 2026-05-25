@@ -946,16 +946,17 @@ func (srv *server) getSequencerTargetInfo(w http.ResponseWriter, r *http.Request
 
 		resp.TokenBalance = o.Output.TokenBalance()
 		resp.StorageDeposit = ledger.MinimumStorageDeposit(o.Output)
-		// Per Phase 3 of delegation_epoch_params: source epoch params from
-		// this sequencer chain's own delegationParams at index 6 (if
-		// attached); chains without it advertise the global defaults so
-		// API clients keep working.
+		// Epoch params from this sequencer chain's sequencer constraint
+		// (which is what makes it a sequencer chain in the first place).
+		// Sequencer chains always carry the constraint; non-sequencer
+		// chains never reach this code path. Defaults preserved as a
+		// safety fallback only.
 		epochSlots := lib.DelegationEpochSlots
 		maxFrozenEpochs := byte(lib.MaxFrozenEpochs)
-		if dpBytes, dpErr := o.Output.At(int(ledger.ConstraintIndexDelegationParams)); dpErr == nil && len(dpBytes) > 0 {
-			if dp, dpParseErr := ledger.DelegationParamsFromBytes(dpBytes); dpParseErr == nil {
-				epochSlots = dp.EpochSlots
-				maxFrozenEpochs = dp.MaxFrozenEpochs
+		if seqBytes, seqErr := o.Output.At(int(ledger.SequencerConstraintFixedIndex)); seqErr == nil && len(seqBytes) > 0 {
+			if seq, sErr := ledger.SequencerConstraintFromBytesWithLib(seqBytes, lib); sErr == nil {
+				epochSlots = seq.EpochSlots
+				maxFrozenEpochs = seq.MaxFrozenEpochs
 			}
 		}
 		resp.FrozenCoverage = o.Output.Amounts().FrozenCoverageVector(maxFrozenEpochs)

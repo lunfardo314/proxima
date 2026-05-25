@@ -429,25 +429,26 @@ func (seq *Sequencer) checkSequencerStartOutput(wOut vertex.WrappedOutput) bool 
 	}
 	seq.log.Infof("checkSequencerStartOutput: sequencer controller is %s", lock.String())
 
-	// A sequencer chain MUST carry delegationParams at index 6 to be a
-	// delegation target. Without it the proposer's
-	// selectDelegationsToFreeze divides by zero (chainEpochSlots == 0)
-	// the first time a candidate delegation surfaces. Fail fast here.
-	// (Phase 4 of claude/delegation_epoch_params.md.)
-	dpBytes, dpErr := oReal.ConstraintAt(ledger.ConstraintIndexDelegationParams)
-	if dpErr != nil || len(dpBytes) == 0 {
-		seq.log.Errorf("checkSequencerStartOutput: sequencer chain output is missing delegationParams at index %d. "+
-			"Re-create the chain via `proxi node setup_seq` (default-on) or with `proxi node mkchain --accept-delegations`. "+
-			"Sequencer will not start.", ledger.ConstraintIndexDelegationParams)
+	// A sequencer chain MUST carry the sequencer constraint at the
+	// fixed slot — that's what makes it a sequencer chain in the first
+	// place. The constraint also carries the immutable delegation
+	// params. Without it the proposer's selectDelegationsToFreeze
+	// divides by zero (chainEpochSlots == 0) the first time a
+	// candidate delegation surfaces. Fail fast here.
+	seqBytes, seqErr := oReal.ConstraintAt(ledger.SequencerConstraintFixedIndex)
+	if seqErr != nil || len(seqBytes) == 0 {
+		seq.log.Errorf("checkSequencerStartOutput: chain output is not a sequencer chain (missing sequencer constraint at index %d). "+
+			"Re-create the chain via `proxi node seq init`. Sequencer will not start.",
+			ledger.SequencerConstraintFixedIndex)
 		return false
 	}
-	dp, err := ledger.DelegationParamsFromBytes(dpBytes)
+	seqConstr, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, ledger.L(wOut.VID.Slot()))
 	if err != nil {
-		seq.log.Errorf("checkSequencerStartOutput: malformed delegationParams on sequencer chain output: %v. Sequencer will not start", err)
+		seq.log.Errorf("checkSequencerStartOutput: malformed sequencer constraint on chain output: %v. Sequencer will not start", err)
 		return false
 	}
-	seq.log.Infof("checkSequencerStartOutput: delegationParams epochSlots=%d, maxFrozenEpochs=%d",
-		dp.EpochSlots, dp.MaxFrozenEpochs)
+	seq.log.Infof("checkSequencerStartOutput: sequencer constraint epochSlots=%d, maxFrozenEpochs=%d",
+		seqConstr.EpochSlots, seqConstr.MaxFrozenEpochs)
 
 	amount := oReal.TokenBalance()
 	seq.log.Infof("sequencer start output %s has amount %s (%s%% of the initial supply)",

@@ -90,20 +90,22 @@ var (
 // Mandatory output block indices.
 //
 // Layout: [0] amounts, [1] index-value tuple, [2] lock, [3] chain (when
-// present), [4] foundry (on foundry outputs), [5] foundryPolicy
-// (optional, on foundry outputs), [6] delegationParams (optional, on
-// chain outputs opting in to accept delegations).
+// present), [4] chain-type marker — `foundry(supply)` on foundry chains
+// or `sequencer(epochSlots, maxFrozenEpochs)` on sequencer chains; the
+// two are mutually exclusive at origin and dispatched by constraint
+// symbol — [5] foundryPolicy (optional, foundry-only), [6..] freeform
+// per-output extras (delegateLockState at last position on delegation
+// outputs; milestone data on sequencer milestones).
 // See claude/utxo-indexing.md §4, claude/native_token.md, and
 // claude/delegation_epoch_params.md.
 // Output tuple slot indices — re-exported from ledger/txbuildercore.
 const (
-	ConstraintIndexAmounts          = txbuildercore.ConstraintIndexAmounts
-	ConstraintIndexIndexValues      = txbuildercore.ConstraintIndexIndexValues
-	ConstraintIndexLock             = txbuildercore.ConstraintIndexLock
-	ConstraintIndexChain            = txbuildercore.ConstraintIndexChain
-	ConstraintIndexFoundry          = txbuildercore.ConstraintIndexFoundry
-	ConstraintIndexFoundryPolicy    = txbuildercore.ConstraintIndexFoundryPolicy
-	ConstraintIndexDelegationParams = txbuildercore.ConstraintIndexDelegationParams
+	ConstraintIndexAmounts       = txbuildercore.ConstraintIndexAmounts
+	ConstraintIndexIndexValues   = txbuildercore.ConstraintIndexIndexValues
+	ConstraintIndexLock          = txbuildercore.ConstraintIndexLock
+	ConstraintIndexChain         = txbuildercore.ConstraintIndexChain
+	ConstraintIndexFoundry       = txbuildercore.ConstraintIndexFoundry
+	ConstraintIndexFoundryPolicy = txbuildercore.ConstraintIndexFoundryPolicy
 )
 
 func pathConstantsUpgrade0() string {
@@ -127,7 +129,6 @@ func pathConstantsUpgrade0() string {
 		ConstraintIndexChain,
 		ConstraintIndexFoundry,
 		ConstraintIndexFoundryPolicy,
-		ConstraintIndexDelegationParams,
 	)
 }
 
@@ -153,8 +154,7 @@ const _pathConstantsJSON = `{
     {"sym": "lockConstraintIndex",             "numArgs": 0, "source": "%d"},
     {"sym": "chainConstraintIndex",            "numArgs": 0, "source": "%d"},
     {"sym": "foundryConstraintIndex",          "numArgs": 0, "source": "%d"},
-    {"sym": "foundryPolicyConstraintIndex",    "numArgs": 0, "source": "%d"},
-    {"sym": "delegationParamsConstraintIndex", "numArgs": 0, "source": "%d"}
+    {"sym": "foundryPolicyConstraintIndex",    "numArgs": 0, "source": "%d"}
   ]
 }
 `

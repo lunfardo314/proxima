@@ -48,31 +48,12 @@ func (td *testData) init() {
 	err = td.u.TokensFromFaucet(seqControllerAddr, tokensFromFaucetSeqController)
 	require.NoError(td, err)
 
-	// create chain for sequencer
-	// Use NilLedgerTime first to populate inputs, then derive timestamp from actual input
-	par, err := td.u.MakeTransferInputData(td.seqPrivateKey, nil, base.NilLedgerTime)
-	require.NoError(td, err)
-	par.Timestamp = par.Inputs[0].ID.Timestamp().AddSlots(1)
-	outs, err := td.u.DoTransferOutputs(par.
-		WithAmount(seqOnChainBalance).
-		WithTargetLock(seqControllerAddr).
-		WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)).
-		// Per Phase 3 of delegation_epoch_params, the chain must attach
-		// delegationParams at the dedicated index in order to accept
-		// delegations (carry frozen-coverage receipts). Use the library
-		// defaults for tests.
-		WithConstraint(ledger.NewDelegationParams(
-			ledger.L(0).DelegationEpochSlots,
-			byte(ledger.L(0).MaxFrozenEpochs),
-		), ledger.ConstraintIndexDelegationParams),
-	)
-	require.NoError(td, err)
-	require.EqualValues(td, 2, len(outs))
-	chOuts, err := ledger.FilterChainOutputs(outs)
-	require.NoError(td, err)
-	require.EqualValues(td, 1, len(chOuts))
-
-	td.seqChainOrigin = *chOuts[0]
+	// Build a sequencer chain origin via a proper sequencer transaction.
+	// The sequencer constraint at slot 4 requires the producing tx to be
+	// a sequencer tx (SetSequencerData) and chain origins must endorse
+	// another sequencer tx (use a dummy endorsement that wouldn't validate
+	// in a real network but satisfies the in-memory constraint).
+	td.seqChainOrigin = mustMakeSequencerChainOrigin(td.T, td.u, td.seqPrivateKey, seqControllerAddr, seqOnChainBalance)
 	td.Logf("seq chain origin:\n%s", td.seqChainOrigin.String())
 
 	td.target = td.seqChainOrigin.ChainID
@@ -241,6 +222,13 @@ func (td *testData) transitChainWithDelegationWithMake(n int, par transitWithMak
 	require.NoError(td, err)
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, par.ts)
 
+	// The seq chain successor at seqChainIdx carries the sequencer
+	// constraint at slot 4, which requires the producing tx to be a
+	// sequencer tx. Dummy endorsement satisfies _crossSlotPredecessorCase.
+	txb.SetSequencerData(seqChainIdx, txbuildercore.SequencerOutputIndexNone)
+	dummyTxId := base.NewTransactionID(par.ts.AddTicks(-5), base.TransactionIDShort{}, true)
+	txb.PushEndorsements(dummyTxId)
+
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(par.ts)
 	txb.SignED25519(td.seqPrivateKey)
@@ -319,6 +307,12 @@ func (td *testData) revokeDelegation(ts base.LedgerTime, inflate, prntx bool) (e
 	require.NoError(td, err)
 
 	txb.MustPutFrozenCoverage(succChainIdx, frozenCoverageDelta, ts)
+
+	// Sequencer-chain successor at succChainIdx requires this tx to be a
+	// sequencer tx; cross-slot predecessor case needs an endorsement.
+	txb.SetSequencerData(succChainIdx, txbuildercore.SequencerOutputIndexNone)
+	dummyTxId := base.NewTransactionID(ts.AddTicks(-5), base.TransactionIDShort{}, true)
+	txb.PushEndorsements(dummyTxId)
 
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(ts)
@@ -675,14 +669,14 @@ func (td *testData) transitChainWithDelegationRaw(par transitRawParams) (err err
 	// Carry over the delegationParams constraint at its fixed index so
 	// the chain's immutability check (selfImmutableOnSuccessorIndex(6))
 	// passes across transit. Phase 3 of delegation_epoch_params.
-	dpBytes, _ := td.seqChainOrigin.Output.At(int(ledger.ConstraintIndexDelegationParams))
+	dpBytes, _ := td.seqChainOrigin.Output.At(int(ledger.SequencerConstraintFixedIndex))
 	_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(amounts...)
 		o.WithLock(td.seqChainOrigin.Output.Lock())
 		o.PutConstraint(successorChainConstraint.Bytes(), ledger.ConstraintIndexChain)
-		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 		if len(dpBytes) > 0 {
-			o.PutConstraint(dpBytes, ledger.ConstraintIndexDelegationParams)
+			o.PutConstraint(dpBytes, ledger.SequencerConstraintFixedIndex)
 		}
 	}))
 	util.AssertNoError(err)

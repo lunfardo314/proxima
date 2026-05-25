@@ -20,6 +20,7 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/peering"
 	"github.com/lunfardo314/proxima/sequencer"
@@ -208,7 +209,12 @@ type workflowTestData struct {
 	conflictingOutputs     []*ledger.OutputWithID
 	chainOrigins           []*ledger.OutputWithChainID
 	pkController           []ed25519.PrivateKey
-	chainOriginsTx         *transaction.Transaction
+	// chainOriginTxs holds the sequencer chain-origin transactions, one
+	// per produced chain. Each is its own sequencer tx (single sequencer
+	// output, endorses distributionBranchTxID) — that's required by the
+	// sequencer-constraint-at-origin rule: a sequencer chain origin tx
+	// can only produce ONE sequencer chain.
+	chainOriginTxs         []*transaction.Transaction
 	seqChain               [][]*transaction.Transaction
 	transferChain          []*transaction.Transaction
 	bootstrapSeq           testSequencer
@@ -343,7 +349,14 @@ func initWorkflowTestWithAuxBalance(t *testing.T, auxBalance uint64, startPruner
 	return ret
 }
 
-// makes chain origins transaction from aux output
+// makeChainOrigins creates N sequencer chain origins from the
+// controller's aux output. Each origin is its own sequencer
+// transaction (endorses distributionBranchTxID): a sequencer chain
+// must carry the sequencer constraint from origin, so its origin tx
+// is itself a sequencer tx — and a transaction can have at most one
+// sequencer output, so creating N sequencer chain origins requires N
+// txs. The aux balance is split equally between the chains; leftover
+// dust + tagAlong fee stays as sigLock change after the last tx.
 func (td *workflowTestData) makeChainOrigins(n int) {
 	if n == 0 {
 		return
@@ -357,64 +370,122 @@ func (td *workflowTestData) makeChainOrigins(n int) {
 	require.NoError(td.t, err)
 	td.t.Logf("auxiliary output id: %s", td.auxOutput.IDShort())
 
-	txb := exhelp.New()
-	_, _, err = txb.ConsumeOutputsUnlock(td.auxOutput)
-	require.NoError(td.t, err)
-
-	ts := td.auxOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
 	amount := (td.auxOutput.Output.TokenBalance() - tagAlongFee) / uint64(n)
-	// Sequencer chains MUST carry delegationParams at index 6 to be a
-	// delegation target — the sequencer's startup check refuses to start
-	// without it, and (more fundamentally) the proposer's epoch math
-	// divides by zero. Attach the default delegationParams on every
-	// chain origin built here. Phase 4 of claude/delegation_epoch_params.md.
-	dp := ledger.NewDelegationParams(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
-	for i := 0; i < n; i++ {
-		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(int64(amount))
-			o.WithLock(td.addrAux)
-			o.PutConstraint(ledger.NewChainOrigin(ts.Slot).Bytes(), ledger.ConstraintIndexChain)
-			o.PutConstraint(dp.Bytes(), ledger.ConstraintIndexDelegationParams)
-		})
-		_, err = txb.ProduceOutput(o)
-		require.NoError(td.t, err)
+	amounts := make([]uint64, n)
+	for i := range amounts {
+		amounts[i] = amount
 	}
-	tagAlongOut := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID, base.HolderID(ledger.SigLockFromED25519PrivateKey(td.privKeyAux)))
-	_, err = txb.ProduceOutput(tagAlongOut)
-	require.NoError(td.t, err)
-
-	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
-	txb.SignED25519(td.privKeyAux)
-
-	txBytes := txb.Bytes()
-	td.chainOriginsTx, err = transaction.ParseWithPartialValidation(txBytes)
-	require.NoError(td.t, err)
-
-	const printChainOriginsTx = false
-	if printChainOriginsTx {
-		td.t.Logf("chain origins transaction:\n%s", td.chainOriginsTx.String())
-	}
-
-	td.chainOrigins = make([]*ledger.OutputWithChainID, n)
-	td.chainOriginsTx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-		if int(idx) >= n {
-			return true
-		}
-		otmp := ledger.OutputWithID{
-			ID:     oid,
-			Output: o,
-		}
-		ochain, err := otmp.AsChainOutput()
-		require.NoError(td.t, err)
-		td.chainOrigins[idx] = ochain
-		td.t.Logf("chain origin %s : %s, lock: %s", oid.StringShort(), td.chainOrigins[idx].ChainID.String(), td.chainOrigins[idx].Output.Lock().String())
-		return true
-	})
+	td.makeChainOriginsViaSeqTxs(amounts)
 }
 
-// makeChainOriginsWithAmounts creates chain origins from aux output with specified amounts per chain.
-// The aux output balance must equal sum(amounts) + tagAlongFee.
+// makeChainOriginsViaSeqTxs issues N independent sequencer
+// transactions (one per produced sequencer chain origin). Each tx
+// consumes the leftover sigLock change from the previous tx (or the
+// aux output for i==0), produces the sequencer chain origin with the
+// sequencer constraint at slot 4, and writes back the remaining
+// change to the aux address. Each tx endorses distributionBranchTxID
+// to satisfy _noChainPredecessorCase.
+func (td *workflowTestData) makeChainOriginsViaSeqTxs(amounts []uint64) {
+	n := len(amounts)
+	td.chainOrigins = make([]*ledger.OutputWithChainID, n)
+	td.chainOriginTxs = make([]*transaction.Transaction, 0, n)
+
+	source := td.auxOutput
+	srcAddr := td.addrAux
+	srcPriv := td.privKeyAux
+
+	for i := 0; i < n; i++ {
+		txb := exhelp.New()
+		_, _, err := txb.ConsumeOutputsNoUnlock(source)
+		require.NoError(td.t, err)
+		txb.PutSignatureUnlock(0)
+
+		// Sequencer chain origin output.
+		seqC := ledger.NewSequencerConstraint(
+			ledger.L(0).DelegationEpochSlots,
+			byte(ledger.L(0).MaxFrozenEpochs),
+		)
+		chainOutAmount := amounts[i]
+		// Last tx absorbs the tagAlong fee; intermediate txs pass it
+		// forward as change.
+		change := source.Output.TokenBalance() - chainOutAmount
+		if i == n-1 {
+			require.GreaterOrEqual(td.t, change, uint64(tagAlongFee), "not enough source balance for tagAlong fee")
+			change -= tagAlongFee
+		}
+
+		ts := source.ID.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
+		if ts.IsSlotBoundary() {
+			ts = ts.AddTicks(1)
+		}
+		// Sequencer tx pace vs. predecessor endorsement.
+		ts = base.MaximumTime(ts, td.distributionBranchTxID.Timestamp().AddTicks(int(ledger.L(0).TransactionPaceSequencer)))
+
+		chainOriginOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(chainOutAmount)).WithLock(srcAddr)
+			o.MustPushConstraint(ledger.NewChainOrigin(ts.Slot).Bytes())
+			o.MustPushConstraint(seqC.Bytes())
+		})
+		chainIdx, err := txb.ProduceOutput(chainOriginOut)
+		require.NoError(td.t, err)
+
+		var changeIdx byte
+		var changeProduced bool
+		if change > 0 {
+			changeIdx, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+				o.WithAmounts(int64(change)).WithLock(srcAddr)
+			}))
+			require.NoError(td.t, err)
+			changeProduced = true
+		}
+		if i == n-1 {
+			tagAlong := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID,
+				base.HolderID(ledger.SigLockFromED25519PrivateKey(srcPriv)))
+			_, err = txb.ProduceOutput(tagAlong)
+			require.NoError(td.t, err)
+		}
+
+		txb.SetSequencerData(chainIdx, txbuildercore.SequencerOutputIndexNone)
+		txb.SetTimestamp(ts)
+		txb.TxData.Endorsements = append(txb.TxData.Endorsements, td.distributionBranchTxID)
+		txb.ComputeInputCommitment()
+		txb.SignED25519(srcPriv)
+
+		txBytes := txb.Bytes()
+		tx, err := transaction.ParseWithPartialValidation(txBytes)
+		require.NoError(td.t, err)
+		td.chainOriginTxs = append(td.chainOriginTxs, tx)
+
+		// Resolve produced chain origin from the parsed tx.
+		oid, err := base.NewOutputID(tx.ID(), chainIdx)
+		require.NoError(td.t, err)
+		producedOut, err := tx.ProducedOutputWithIDAt(chainIdx)
+		require.NoError(td.t, err)
+		chainOut, err := producedOut.AsChainOutput()
+		require.NoError(td.t, err)
+		td.chainOrigins[i] = chainOut
+		td.t.Logf("chain origin %s : %s, lock: %s",
+			oid.StringShort(), chainOut.ChainID.String(), chainOut.Output.Lock().String())
+
+		if changeProduced {
+			changeOid, err := base.NewOutputID(tx.ID(), changeIdx)
+			require.NoError(td.t, err)
+			source = &ledger.OutputWithID{
+				ID: changeOid,
+				Output: ledger.NewOutput(func(o *ledger.OutputBuilder) {
+					o.WithAmounts(int64(change)).WithLock(srcAddr)
+				}),
+			}
+		} else {
+			source = nil // last iteration; no further consumption needed
+		}
+	}
+}
+
+// makeChainOriginsWithAmounts creates sequencer chain origins from
+// the aux output with specified amounts per chain. The aux output
+// balance must equal sum(amounts) + tagAlongFee. One sequencer tx per
+// chain — see makeChainOriginsViaSeqTxs.
 func (td *workflowTestData) makeChainOriginsWithAmounts(amounts []uint64) {
 	n := len(amounts)
 	if n == 0 {
@@ -429,54 +500,7 @@ func (td *workflowTestData) makeChainOriginsWithAmounts(amounts []uint64) {
 	require.NoError(td.t, err)
 	td.t.Logf("auxiliary output id: %s, balance: %s", td.auxOutput.IDShort(), util.Th(td.auxOutput.Output.TokenBalance()))
 
-	txb := exhelp.New()
-	_, _, err = txb.ConsumeOutputsUnlock(td.auxOutput)
-	require.NoError(td.t, err)
-
-	ts := td.auxOutput.Timestamp().AddTicks(int(ledger.L(0).TransactionPace))
-	// Same delegationParams attachment as makeChainOrigins — every
-	// sequencer chain in tests must accept delegations or the sequencer
-	// will refuse to start.
-	dp := ledger.NewDelegationParams(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
-	for i := 0; i < n; i++ {
-		o := ledger.NewOutput(func(o *ledger.OutputBuilder) {
-			o.WithAmounts(int64(amounts[i]))
-			o.WithLock(td.addrAux)
-			o.PutConstraint(ledger.NewChainOrigin(ts.Slot).Bytes(), ledger.ConstraintIndexChain)
-			o.PutConstraint(dp.Bytes(), ledger.ConstraintIndexDelegationParams)
-		})
-		_, err = txb.ProduceOutput(o)
-		require.NoError(td.t, err)
-	}
-	tagAlongOut := ledger.NewTagAlongOutput(tagAlongFee, td.bootstrapChainID, base.HolderID(ledger.SigLockFromED25519PrivateKey(td.privKeyAux)))
-	_, err = txb.ProduceOutput(tagAlongOut)
-	require.NoError(td.t, err)
-
-	txb.ComputeInputCommitment()
-	txb.SetTimestamp(ts)
-	txb.SignED25519(td.privKeyAux)
-
-	txBytes := txb.Bytes()
-	td.chainOriginsTx, err = transaction.ParseWithPartialValidation(txBytes)
-	require.NoError(td.t, err)
-
-	td.chainOrigins = make([]*ledger.OutputWithChainID, n)
-	td.chainOriginsTx.ForEachProducedOutput(func(idx byte, o *ledger.Output, oid base.OutputID) bool {
-		if int(idx) >= n {
-			return true
-		}
-		otmp := ledger.OutputWithID{
-			ID:     oid,
-			Output: o,
-		}
-		ochain, err := otmp.AsChainOutput()
-		require.NoError(td.t, err)
-		td.chainOrigins[idx] = ochain
-		td.t.Logf("chain origin %s : %s, amount: %s, lock: %s",
-			oid.StringShort(), td.chainOrigins[idx].ChainID.String(),
-			util.Th(amounts[idx]), td.chainOrigins[idx].Output.Lock().String())
-		return true
-	})
+	td.makeChainOriginsViaSeqTxs(amounts)
 }
 
 func initWorkflowTestWithConflicts(t *testing.T, nConflicts int, nChains int, targetLockChain bool) *workflowTestData {
@@ -560,23 +584,34 @@ func (td *workflowTestData) stopAndWait(timeout ...time.Duration) bool {
 func (td *longConflictTestData) makeSeqBeginnings(withConflictingFees bool) {
 	util.Assertf(len(td.chainOrigins) == len(td.conflictingOutputs), "td.chainOrigins)==len(td.conflictingOutputs)")
 	td.seqChain = make([][]*transaction.Transaction, len(td.chainOrigins))
+
+	// All seqChain[i][0] share a unified timestamp = max(latest chain
+	// origin, latest extra input) + paceSeq. This keeps downstream
+	// makeSeqChains's strict-monotonicity-of-endorsements arithmetic
+	// working even though chain origins are now staggered (one
+	// sequencer tx per origin).
+	unifiedTs := base.NilLedgerTime
+	for i, chainOrigin := range td.chainOrigins {
+		unifiedTs = base.MaximumTime(unifiedTs, chainOrigin.Timestamp())
+		if withConflictingFees {
+			unifiedTs = base.MaximumTime(unifiedTs, td.terminalOutputs[i].Timestamp())
+		}
+	}
+	unifiedTs = unifiedTs.AddTicks(int(ledger.L(0).TransactionPaceSequencer))
+
 	var additionalIn []*ledger.OutputWithID
 	for i, chainOrigin := range td.chainOrigins {
-		var ts base.LedgerTime
 		if withConflictingFees {
 			additionalIn = []*ledger.OutputWithID{td.terminalOutputs[i]}
-			ts = base.MaximumTime(chainOrigin.Timestamp(), td.terminalOutputs[i].Timestamp())
 		} else {
 			additionalIn = nil
-			ts = chainOrigin.Timestamp()
 		}
-		ts = ts.AddTicks(int(ledger.L(0).TransactionPaceSequencer))
 
 		td.seqChain[i] = make([]*transaction.Transaction, 0)
 		txBytes, err := txbuilder_seq.MakeSimpleSequencerTransaction(txbuilder_seq.MakeSimpleSequencerTransactionParams{
 			SeqName:          "1",
 			ChainInput:       chainOrigin,
-			Timestamp:        ts,
+			Timestamp:        unifiedTs,
 			Endorsements:     []base.TransactionID{td.distributionBranchTxID},
 			SignatureType:    base.SignatureTypeED25519,
 			PrivateKey:       td.privKeyAux,
@@ -934,9 +969,49 @@ func (td *longConflictTestData) attachTransactions(txs ...*transaction.Transacti
 	}
 }
 
+// attachChainOriginTxs feeds every sequencer-origin tx into the
+// attacher. Returns the first error (if any).
+func (td *workflowTestData) attachChainOriginTxs() error {
+	for _, tx := range td.chainOriginTxs {
+		if _, err := attacher.AttachTransactionFromBytes(tx.Bytes(), td.wrk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// persistChainOriginTxs writes every sequencer-origin tx into the
+// txstore. Returns the first error (if any).
+func (td *workflowTestData) persistChainOriginTxs() error {
+	for _, tx := range td.chainOriginTxs {
+		if _, err := td.txStore.PersistTxBytes(tx.Bytes()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// txBytesInForTestsChainOrigins drives every sequencer-origin tx
+// through the workflow's TxBytesInForTests entry. Returns the txid of
+// the last one (used as the "chain origins txid" by sequencer-test
+// expectations).
+func (td *workflowTestData) txBytesInForTestsChainOrigins() (base.TransactionID, error) {
+	var last base.TransactionID
+	for _, tx := range td.chainOriginTxs {
+		id, err := td.wrk.TxBytesInForTests(tx.Bytes())
+		if err != nil {
+			return base.TransactionID{}, err
+		}
+		last = id
+	}
+	return last, nil
+}
+
 func (td *longConflictTestData) txBytesToStore() {
-	_, err := td.txStore.PersistTxBytes(td.chainOriginsTx.Bytes())
-	require.NoError(td.t, err)
+	for _, tx := range td.chainOriginTxs {
+		_, err := td.txStore.PersistTxBytes(tx.Bytes())
+		require.NoError(td.t, err)
+	}
 
 	td.storeTxBytes(td.txBytesConflicting...)
 	for _, txSeq := range td.txSequences {
@@ -945,8 +1020,10 @@ func (td *longConflictTestData) txBytesToStore() {
 }
 
 func (td *longConflictTestData) txBytesAttach() {
-	_, err := attacher.AttachTransactionFromBytes(td.chainOriginsTx.Bytes(), td.wrk)
-	require.NoError(td.t, err)
+	for _, tx := range td.chainOriginTxs {
+		_, err := attacher.AttachTransactionFromBytes(tx.Bytes(), td.wrk)
+		require.NoError(td.t, err)
+	}
 
 	td.attachTxBytes(td.txBytesConflicting...)
 	for _, txSeq := range td.txSequences {

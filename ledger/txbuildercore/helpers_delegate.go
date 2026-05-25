@@ -39,12 +39,6 @@ const (
 	DelegateLockStateName = "delegateLockState"
 
 	delegateLockStateTemplate = DelegateLockStateName + "(z32/%d, %d)"
-
-	// DelegationParamsName is the 2-arg constraint at slot 6 of a
-	// chain output opting in to accept delegations.
-	DelegationParamsName = "delegationParams"
-
-	delegationParamsTemplate = DelegationParamsName + "(z32/%d, %d)"
 )
 
 // NewDelegateLockBytecode emits the 4-arg delegateLock constraint
@@ -79,47 +73,6 @@ func (l *Library[any]) NewDelegateLockBytecode(
 func (l *Library[any]) NewDelegateLockState(lastFrozenEpoch uint32, state byte) ([]byte, error) {
 	src := fmt.Sprintf(delegateLockStateTemplate, lastFrozenEpoch, state)
 	return l.CompileExpression(src)
-}
-
-// NewDelegationParams emits the 2-arg delegationParams constraint
-// bytecode (slot 6 of a chain output that opts in to accept
-// delegations). Attachable only at chain origin; pinned across every
-// chain transit via selfImmutableOnSuccessorIndex.
-func (l *Library[any]) NewDelegationParams(epochSlots uint32, maxFrozenEpochs byte) ([]byte, error) {
-	src := fmt.Sprintf(delegationParamsTemplate, epochSlots, maxFrozenEpochs)
-	return l.CompileExpression(src)
-}
-
-// DelegationParamsView is the wallet-side decoded form of the 2-arg
-// delegationParams constraint. Mirrors ledger.DelegationParams.
-type DelegationParamsView struct {
-	EpochSlots      uint32
-	MaxFrozenEpochs byte
-}
-
-// ParseDelegationParams decodes a delegationParams constraint
-// bytecode. Pure byte parse — no eval. Mirrors
-// ledger.DelegationParamsFromBytesWithLib.
-func (l *Library[any]) ParseDelegationParams(data []byte) (*DelegationParamsView, error) {
-	sym, _, args, err := l.ParseBytecodeOneLevel(data, 2)
-	if err != nil {
-		return nil, fmt.Errorf("ParseDelegationParams: %w", err)
-	}
-	if sym != DelegationParamsName {
-		return nil, fmt.Errorf("ParseDelegationParams: expected %s, got %s", DelegationParamsName, sym)
-	}
-	e0, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[0]))
-	if err != nil || e0 > 0xFFFFFFFF {
-		return nil, fmt.Errorf("ParseDelegationParams: epochSlots out of range: %v", err)
-	}
-	e1, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[1]))
-	if err != nil || e1 >= 256 {
-		return nil, fmt.Errorf("ParseDelegationParams: maxFrozenEpochs out of range: %v", err)
-	}
-	return &DelegationParamsView{
-		EpochSlots:      uint32(e0),
-		MaxFrozenEpochs: byte(e1),
-	}, nil
 }
 
 // DelegationInitOutputParams describes the inputs for

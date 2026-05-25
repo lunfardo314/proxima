@@ -564,7 +564,7 @@ func TestAttachConflictsNAttachersSeqStartTx(t *testing.T) {
 	testData := initLongConflictTestData(t, nConflicts, nChains, howLong)
 	testData.makeSeqBeginnings(false)
 
-	_, err := testData.txStore.PersistTxBytes(testData.chainOriginsTx.Bytes())
+	err := testData.persistChainOriginTxs()
 	require.NoError(t, err)
 
 	submitted := make([]*vertex.WrappedTx, nChains)

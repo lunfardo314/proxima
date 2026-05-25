@@ -22,20 +22,18 @@ func GenesisOutput(initialSupply uint64, controllerAddress SigLock) *OutputWithC
 			Output: NewOutput(func(o *OutputBuilder) {
 				o.WithAmounts(int64(initialSupply)).WithLock(controllerAddress)
 				o.PutConstraint(NewChainOrigin(0).Bytes(), ConstraintIndexChain)
-				o.MustPushConstraint(NewSequencerConstraint().Bytes())
+				// Sequencer constraint carries the delegation params
+				// (epochSlots, maxFrozenEpochs) directly — chain type is
+				// fixed at origin to "sequencer chain that always
+				// accepts delegations with these immutable params".
+				idxSeq := o.MustPushConstraint(
+					NewSequencerConstraint(lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs)).Bytes())
+				util.Assertf(idxSeq == SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 
 				msData := seqdata.New()
 				msData.SetName(BootstrapSequencerName)
 				idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(msData.Bytes()))
 				util.Assertf(idxMsData == SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
-
-				// Bootstrap sequencer must accept delegations (Phase 4 of
-				// claude/delegation_epoch_params.md). The sequencer's
-				// startup check refuses to start otherwise.
-				o.PutConstraint(
-					NewDelegationParams(lib.DelegationEpochSlots, byte(lib.MaxFrozenEpochs)).Bytes(),
-					ConstraintIndexDelegationParams,
-				)
 			}),
 		},
 		ChainConstraintData: ChainConstraintData{

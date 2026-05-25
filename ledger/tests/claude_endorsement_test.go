@@ -88,7 +88,7 @@ func (e *endorsementTestEnv) setupSequencerChain(t *testing.T) (
 	chainOriginOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(total)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 	})
 	originIdx, err := txb.ProduceOutput(chainOriginOut)
 	require.NoError(t, err)

@@ -110,14 +110,15 @@ func runChainCmd(_ *cobra.Command, args []string) {
 		glb.Infof("\n")
 	}
 
-	// Surface this chain's delegationParams when attached (Phase 5 of
-	// claude/delegation_epoch_params.md). Tells the operator whether
-	// this chain can be a delegation target and on what cadence.
-	if dpBytes, err := out.Output.ConstraintAt(ledger.ConstraintIndexDelegationParams); err == nil && len(dpBytes) > 0 {
-		if dp, dpErr := lib.ParseDelegationParams(dpBytes); dpErr == nil {
-			glb.Infof("DELEGATION PARAMS:\n-----------------")
-			glb.Infof("epoch slots:          %d", dp.EpochSlots)
-			glb.Infof("max frozen epochs:    %d", dp.MaxFrozenEpochs)
+	// Surface the sequencer constraint when attached. Its presence
+	// marks this chain as a sequencer chain (the only kind of chain
+	// that can be a delegation target); its two immutable args define
+	// the cadence on which it admits delegations.
+	if seqBytes, err := out.Output.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
+		if seqView, seqErr := lib.ParseSequencerConstraint(seqBytes); seqErr == nil {
+			glb.Infof("SEQUENCER CHAIN PARAMS:\n-----------------")
+			glb.Infof("epoch slots:          %d", seqView.EpochSlots)
+			glb.Infof("max frozen epochs:    %d", seqView.MaxFrozenEpochs)
 			glb.Infof("\n")
 		}
 	}

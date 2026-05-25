@@ -110,8 +110,14 @@ func (seq *Sequencer) _collectConsumed(ms *vertex.WrappedTx) set.Set[base.Output
 					return true
 				})
 				if seqData := v.SequencerTransactionData(); seqData != nil {
-					// continue along own predecessors in the cache
-					msPred = v.Inputs[seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex]
+					// continue along own predecessors in the cache.
+					// Sequencer chain origins have no chain predecessor
+					// (PredecessorInputIndex == 0xff): stop the walk.
+					predIdx := seqData.SequencerOutputData.ChainConstraint.PredecessorInputIndex
+					if predIdx == 0xff || int(predIdx) >= len(v.Inputs) {
+						return
+					}
+					msPred = v.Inputs[predIdx]
 					if _, predIsOwnMilestone := seq.ownMilestones[msPred]; !predIsOwnMilestone {
 						msPred = nil
 					}

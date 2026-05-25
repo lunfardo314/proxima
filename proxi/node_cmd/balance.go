@@ -101,19 +101,19 @@ func displayBalanceTotals(outs []*ledger.OutputWithID, walletAccount ledger.Cont
 		if chainID == base.NilChainID {
 			chainID = base.MakeOriginChainID(o.ID)
 		}
-		var dp *txbuildercore.DelegationParamsView
-		if dpBytes, err := o.Output.ConstraintAt(ledger.ConstraintIndexDelegationParams); err == nil && len(dpBytes) > 0 {
-			if parsed, err := lib.ParseDelegationParams(dpBytes); err == nil {
-				dp = parsed
+		var seqView *txbuildercore.SequencerConstraintView
+		if seqBytes, err := o.Output.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
+			if parsed, err := lib.ParseSequencerConstraint(seqBytes); err == nil {
+				seqView = parsed
 			}
 		}
 		sumOnNonDelegationChains += o.Output.TokenBalance()
 		otherChains = append(otherChains, glb.ChainOutputDisplayItem{
-			ChainID:          chainID,
-			OutputID:         o.ID,
-			Balance:          o.Output.TokenBalance(),
-			ChainConstraint:  cc,
-			DelegationParams: dp,
+			ChainID:             chainID,
+			OutputID:            o.ID,
+			Balance:             o.Output.TokenBalance(),
+			ChainConstraint:     cc,
+			SequencerConstraint: seqView,
 		})
 	}
 

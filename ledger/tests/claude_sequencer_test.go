@@ -73,7 +73,7 @@ func (e *sequencerTestEnv) buildSequencerOrigin(
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(total)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 	})
 	originIdx, err := txb.ProduceOutput(chainOut)
 	require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestSequencerPreBranchConsolidation(t *testing.T) {
 	chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 		o.WithAmounts(int64(chainAmount)).WithLock(e.addr)
 		o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
-		o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 	})
 	chainIdx, err := txb1.ProduceOutput(chainOut)
 	require.NoError(t, err)
@@ -433,7 +433,7 @@ func TestSequencerSameSlotNonSeqPredecessor(t *testing.T) {
 	// Clone chain output and ADD sequencer constraint
 	chainSucc := chainIn.Output.Clone(func(out *ledger.OutputBuilder) {
 		out.PutConstraint(nextCC.Bytes(), ledger.ConstraintIndexChain)
-		out.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+		out.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 	})
 	succIdx, err := txb2.ProduceOutput(chainSucc)
 	require.NoError(t, err)

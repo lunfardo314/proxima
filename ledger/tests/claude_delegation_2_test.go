@@ -19,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -41,16 +42,50 @@ func TestDelegationParamsBoundsRejection(t *testing.T) {
 		privKey, _, addr := u.GenerateAddress(1)
 		require.NoError(t, u.TokensFromFaucet(addr, 10_000_000_000))
 
-		par, err := u.MakeTransferInputData(privKey, nil, base.NilLedgerTime)
+		// Build sequencer chain origin with custom (epochSlots,
+		// maxFrozenEpochs) in the sequencer constraint at slot 4. The
+		// origin tx must be a sequencer tx with an endorsement.
+		outs, err := u.StateReader().GetUTXOsForController(addr.ControllerID())
 		require.NoError(t, err)
-		par.Timestamp = par.Inputs[0].ID.Timestamp().AddSlots(1)
-		_, err = u.DoTransferOutputs(par.
-			WithAmount(200_000_000).
-			WithTargetLock(addr).
-			WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)).
-			WithConstraint(ledger.NewDelegationParams(epochSlots, maxFrozenEpochs),
-				ledger.ConstraintIndexDelegationParams),
-		)
+		require.NotEmpty(t, outs)
+		parsed := make([]*ledger.OutputWithID, len(outs))
+		for i, od := range outs {
+			parsed[i], err = od.Parse()
+			require.NoError(t, err)
+		}
+		originTs := parsed[0].ID.Timestamp().AddSlots(1)
+
+		txb := exhelp.New()
+		total, _, err := txb.ConsumeOutputsNoUnlock(parsed...)
+		require.NoError(t, err)
+		for i := range parsed {
+			if i == 0 {
+				txb.PutSignatureUnlock(0)
+			} else {
+				err = txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
+				require.NoError(t, err)
+			}
+		}
+		chainOut := ledger.NewOutput(func(o *ledger.OutputBuilder) {
+			o.WithAmounts(int64(200_000_000)).WithLock(addr)
+			o.MustPushConstraint(ledger.NewChainOrigin(originTs.Slot).Bytes())
+			o.MustPushConstraint(ledger.NewSequencerConstraint(epochSlots, maxFrozenEpochs).Bytes())
+		})
+		chainIdx, err := txb.ProduceOutput(chainOut)
+		require.NoError(t, err)
+		if total > 200_000_000 {
+			_, err = txb.ProduceOutput(ledger.NewOutput(func(o *ledger.OutputBuilder) {
+				o.WithAmounts(int64(total - 200_000_000)).WithLock(addr)
+			}))
+			require.NoError(t, err)
+		}
+		txb.SetSequencerData(chainIdx, txbuildercore.SequencerOutputIndexNone)
+		txb.SetTimestamp(originTs)
+		dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
+		txb.PushEndorsements(dummyEnd)
+		txb.ComputeInputCommitment()
+		txb.SignED25519(privKey)
+		_, _, _, err = txbtest.BuildAndValidate(txb)
 		return err
 	}
 
@@ -64,19 +99,19 @@ func TestDelegationParamsBoundsRejection(t *testing.T) {
 	})
 	t.Run("epochSlots_too_small", func(t *testing.T) {
 		err := tryOrigin(t, lib.DelegationEpochSlotsMin-1, byte(lib.MaxFrozenEpochs))
-		require.NoError(t, util.MustErrorWith(err, "delegationParams epochSlots below minimum"))
+		require.NoError(t, util.MustErrorWith(err, "sequencer epochSlots below minimum"))
 	})
 	t.Run("epochSlots_too_big", func(t *testing.T) {
 		err := tryOrigin(t, lib.DelegationEpochSlotsMax+1, byte(lib.MaxFrozenEpochs))
-		require.NoError(t, util.MustErrorWith(err, "delegationParams epochSlots above maximum"))
+		require.NoError(t, util.MustErrorWith(err, "sequencer epochSlots above maximum"))
 	})
 	t.Run("maxFrozenEpochs_too_small", func(t *testing.T) {
 		err := tryOrigin(t, lib.DelegationEpochSlots, byte(lib.DelegationMaxFrozenEpochsMin-1))
-		require.NoError(t, util.MustErrorWith(err, "delegationParams maxFrozenEpochs below minimum"))
+		require.NoError(t, util.MustErrorWith(err, "sequencer maxFrozenEpochs below minimum"))
 	})
 	t.Run("maxFrozenEpochs_too_big", func(t *testing.T) {
 		err := tryOrigin(t, lib.DelegationEpochSlots, byte(lib.DelegationMaxFrozenEpochsMax+1))
-		require.NoError(t, util.MustErrorWith(err, "delegationParams maxFrozenEpochs above maximum"))
+		require.NoError(t, util.MustErrorWith(err, "sequencer maxFrozenEpochs above maximum"))
 	})
 }
 
@@ -84,37 +119,21 @@ func TestDelegationParamsBoundsRejection(t *testing.T) {
 // delegationParams: immutability across chain transit
 // --------------------------------------------------------------------------
 
-// TestDelegationParamsImmutable verifies a sequencer chain that carries
-// delegationParams at index 6 cannot be transited to a successor that
-// changes those bytes. selfImmutableOnSuccessorIndex(6) on the
-// delegationParams constraint enforces this.
+// TestDelegationParamsImmutable verifies a sequencer chain cannot be
+// transited to a successor that changes the sequencer constraint's args
+// (epochSlots / maxFrozenEpochs). selfImmutableOnSuccessorIndex(selfBlockIndex)
+// at the sequencer constraint position enforces this.
 func TestDelegationParamsImmutable(t *testing.T) {
 	u := utxodb.NewUTXODB(genesisPrivateKey, true)
 	privKey, _, addr := u.GenerateAddress(1)
 	require.NoError(t, u.TokensFromFaucet(addr, 10_000_000_000))
 
-	par, err := u.MakeTransferInputData(privKey, nil, base.NilLedgerTime)
-	require.NoError(t, err)
-	par.Timestamp = par.Inputs[0].ID.Timestamp().AddSlots(1)
+	chOrigin := mustMakeSequencerChainOrigin(t, u, privKey, addr, 200_000_000)
 
-	origDP := ledger.NewDelegationParams(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
-	outs, err := u.DoTransferOutputs(par.
-		WithAmount(200_000_000).
-		WithTargetLock(addr).
-		WithConstraint(ledger.NewChainOrigin(par.Timestamp.Slot)).
-		WithConstraint(origDP, ledger.ConstraintIndexDelegationParams),
-	)
-	require.NoError(t, err)
-	chOuts, err := ledger.FilterChainOutputs(outs)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, len(chOuts))
-	chOrigin := chOuts[0]
-
-	// Transit the chain, attempting to replace delegationParams with a
-	// different (still in-bounds) value. selfImmutableOnSuccessorIndex(6)
-	// on the consumed side reads our delegationParams and the produced
-	// successor's index 6; byte mismatch fails.
-	newDP := ledger.NewDelegationParams(origDP.EpochSlots+1, origDP.MaxFrozenEpochs)
+	// Transit the chain, attempting to replace the sequencer constraint
+	// args with a different (still in-bounds) value.
+	origDP := ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs))
+	newDP := ledger.NewSequencerConstraint(origDP.EpochSlots+1, origDP.MaxFrozenEpochs)
 
 	txb := exhelp.New()
 	predIdx, err := txb.ConsumeOutput(chOrigin.Output, chOrigin.ID)
@@ -128,24 +147,27 @@ func TestDelegationParamsImmutable(t *testing.T) {
 		chOrigin.TransitionCounter+1, chOrigin.BranchCounter)
 	succ := chOrigin.Output.Clone(func(o *ledger.OutputBuilder) {
 		o.PutConstraint(successorCC.Bytes(), ledger.ConstraintIndexChain)
-		// Replace delegationParams with the mutated one.
-		o.PutConstraint(newDP.Bytes(), ledger.ConstraintIndexDelegationParams)
+		// Replace the sequencer constraint with the mutated one.
+		o.PutConstraint(newDP.Bytes(), ledger.SequencerConstraintFixedIndex)
 	})
 	succIdx, err := txb.ProduceOutput(succ)
 	require.NoError(t, err)
 	txb.PutUnlockParams(predIdx, ledger.ConstraintIndexChain, ledger.NewChainUnlockParams(succIdx))
 
+	txb.SetSequencerData(succIdx, txbuildercore.SequencerOutputIndexNone)
+	dummyEnd := base.NewTransactionID(ts.AddTicks(-5), base.TransactionIDShort{}, true)
+	txb.PushEndorsements(dummyEnd)
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 	_, _, _, err = txbtest.BuildAndValidate(txb)
 	require.Error(t, err)
-	// selfImmutableOnSuccessorIndex fails — the equality check on
-	// position 6 returns false, which trips the surrounding AND inside
-	// delegationParams (no explicit !!! message, the constraint just
+	// selfImmutableOnSuccessorIndex fails — the equality check returns
+	// false, which trips the surrounding AND inside the sequencer
+	// constraint body (no explicit !!! message, the constraint just
 	// returns falsy and the chain's evaluation framework reports the
 	// constraint failure).
-	require.NoError(t, util.MustErrorWith(err, "delegationParams"))
+	require.NoError(t, util.MustErrorWith(err, "sequencer"))
 }
 
 // --------------------------------------------------------------------------

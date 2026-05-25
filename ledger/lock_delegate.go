@@ -22,9 +22,8 @@ type (
 		MaxFrozenEpochs        byte
 		RequiredInflationShare uint16 // in promille, <= 1000
 		// EpochSlots and TargetMaxFrozenEpochs are copies of the target
-		// chain's delegationParams, inlined at delegation origin and
-		// pinned byte-equal across every transit. See
-		// claude/delegation_epoch_params.md.
+		// sequencer chain's sequencer constraint args, inlined at
+		// delegation origin and pinned byte-equal across every transit.
 		EpochSlots            uint32
 		TargetMaxFrozenEpochs byte
 	}
@@ -141,14 +140,14 @@ func DelegateLockFromBytesWithLib(data []byte, lib *Library) (*DelegateLock, err
 		return nil, fmt.Errorf("DelegateLockFromBytes: wrong required inflation share: %v", err)
 	}
 
-	// arg 2: epochSlots (copy of target's delegationParams.epochSlots)
+	// arg 2: epochSlots (copy of target's sequencer constraint epochSlots)
 	a2, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[2]))
 	if err != nil || a2 > math.MaxUint32 {
 		return nil, fmt.Errorf("DelegateLockFromBytes: wrong epochSlots: %v", err)
 	}
 	ret.EpochSlots = uint32(a2)
 
-	// arg 3: targetMaxFrozenEpochs (copy of target's delegationParams.maxFrozenEpochs)
+	// arg 3: targetMaxFrozenEpochs (copy of target's sequencer constraint maxFrozenEpochs)
 	a3, err := easyfl_util.Uint64FromBytes(easyfl.StripDataPrefix(args[3]))
 	if err != nil || a3 >= 256 {
 		return nil, fmt.Errorf("DelegateLockFromBytes: wrong targetMaxFrozenEpochs: %v", err)
@@ -379,7 +378,8 @@ func evalEnforceFrozenCoverageOnDelegateOutput(par *easyfl.CallParams[*EvalConte
 // evalDelegationOriginCrossCheck is the embedded EasyFL function that, at
 // delegation origin, looks for the target chain output among consumed
 // inputs and verifies the lock's inline (epochSlots,
-// targetMaxFrozenEpochs) match the target chain's delegationParams.
+// targetMaxFrozenEpochs) match the target chain's sequencer constraint
+// args at SequencerConstraintFixedIndex.
 //
 // Best-effort: if the target chain output is not present among consumed
 // inputs, this returns pass without verifying. Rationale: the typical
@@ -424,20 +424,25 @@ func evalDelegationOriginCrossCheck(par *easyfl.CallParams[*EvalContext]) []byte
 		if !ok || withChainID.ChainID != dLock.Target {
 			continue
 		}
-		// Target chain output found. Verify it carries delegationParams
-		// at index 6 and that the values match the inline copy.
-		dpBytes, err := consumed.At(int(ConstraintIndexDelegationParams))
-		par.Require(err == nil && len(dpBytes) > 0,
-			"evalDelegationOriginCrossCheck: target chain output %s does not carry delegationParams; chain is not a valid delegation target",
+		// Target chain output found. Verify it is a sequencer chain
+		// (carries the sequencer constraint at the fixed slot) and
+		// that the lock's inline (epochSlots, maxFrozenEpochs) copies
+		// match the sequencer constraint's own args. The sequencer
+		// constraint is the only thing on the target side that can
+		// admit delegations: a chain without it is a regular chain
+		// and cannot be a delegation target.
+		seqBytes, err := consumed.At(int(SequencerConstraintFixedIndex))
+		par.Require(err == nil && len(seqBytes) > 0,
+			"evalDelegationOriginCrossCheck: target chain output %s is not a sequencer chain; not a valid delegation target",
 			withChainID.ChainID.String)
-		dp, err := DelegationParamsFromBytesWithLib(dpBytes, lib)
+		seq, err := SequencerConstraintFromBytesWithLib(seqBytes, lib)
 		par.RequireNoError(err)
-		par.Require(dp.EpochSlots == dLock.EpochSlots,
-			"evalDelegationOriginCrossCheck: inline epochSlots (%d) != target's delegationParams.epochSlots (%d)",
-			dLock.EpochSlots, dp.EpochSlots)
-		par.Require(dp.MaxFrozenEpochs == dLock.TargetMaxFrozenEpochs,
-			"evalDelegationOriginCrossCheck: inline targetMaxFrozenEpochs (%d) != target's delegationParams.maxFrozenEpochs (%d)",
-			dLock.TargetMaxFrozenEpochs, dp.MaxFrozenEpochs)
+		par.Require(seq.EpochSlots == dLock.EpochSlots,
+			"evalDelegationOriginCrossCheck: inline epochSlots (%d) != target sequencer.epochSlots (%d)",
+			dLock.EpochSlots, seq.EpochSlots)
+		par.Require(seq.MaxFrozenEpochs == dLock.TargetMaxFrozenEpochs,
+			"evalDelegationOriginCrossCheck: inline targetMaxFrozenEpochs (%d) != target sequencer.maxFrozenEpochs (%d)",
+			dLock.TargetMaxFrozenEpochs, seq.MaxFrozenEpochs)
 		return par.AllocData(0xff)
 	}
 	// Target not in consumed; best-effort permits.

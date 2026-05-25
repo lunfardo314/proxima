@@ -106,7 +106,7 @@ func TestAttachTimingPaceBoundaries(t *testing.T) {
 		defer testData.stopAndWait()
 
 		testData.makeChainOrigins(nChains)
-		_, err := attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
+		err := testData.attachChainOriginTxs()
 		require.NoError(t, err)
 
 		chainOrigin := testData.chainOrigins[0]
@@ -151,7 +151,7 @@ func TestAttachTimingSlotBoundaries(t *testing.T) {
 		require.NoError(t, err)
 
 		testData.makeChainOrigins(1)
-		_, err = attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
+		err = testData.attachChainOriginTxs()
 		require.NoError(t, err)
 
 		chainOrigin := testData.chainOrigins[0]

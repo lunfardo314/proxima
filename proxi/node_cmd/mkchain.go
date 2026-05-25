@@ -14,85 +14,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Chain-origin flags shared by mkchain and setup_seq.
-// See claude/delegation_epoch_params.md.
-var (
-	flagAcceptDelegations         bool
-	flagDelegationEpochSlots      uint32
-	flagDelegationMaxFrozenEpochs uint8
-)
-
 func initMakeChainCmd() *cobra.Command {
 	makeChainCmd := &cobra.Command{
 		Use:   "mkchain <initial on-chain balance>",
-		Short: `creates new chain origin (not a sequencer)`,
+		Short: `creates new chain origin (regular chain; not a sequencer)`,
 		Args:  cobra.ExactArgs(1),
 		Run:   runMakeChainCmd,
 	}
-	addDelegationParamsFlags(makeChainCmd, false /* default: opt-out for regular chains */)
 	makeChainCmd.InitDefaultHelpCmd()
-
 	return makeChainCmd
 }
 
-// addDelegationParamsFlags wires --accept-delegations,
-// --delegation-epoch-slots and --delegation-max-frozen-epochs onto the
-// given command. defaultOptIn controls --accept-delegations's default:
-// sequencer setup defaults to true (a sequencer that can't accept
-// delegations is useless and refused by the sequencer's startup
-// precondition); regular mkchain defaults to false.
+// MakeChain creates a regular (non-sequencer) chain origin: it can be
+// owned, transited, used as a delegation source, but cannot be a
+// delegation TARGET. Chain type is fixed at origin — to create a
+// sequencer chain that accepts delegations, use `proxi node seq init`
+// instead.
 //
-// The two numeric flag defaults are 0 sentinels meaning "use the
-// server's library values". Real values are resolved at Run time via
-// glb.GetLedgerConstants() — see chainOriginDelegationParams.
-// Registering with 0 sentinels avoids reaching for the ledger
-// singleton at cobra-init time (which used to panic when the
-// singleton wasn't yet populated; `proxi node mkchain --help` on a
-// fresh clone hit that path).
-func addDelegationParamsFlags(cmd *cobra.Command, defaultOptIn bool) {
-	cmd.PersistentFlags().BoolVar(&flagAcceptDelegations, "accept-delegations", defaultOptIn,
-		"attach delegationParams at chain origin so the chain can accept delegations (sequencer chains REQUIRE this)")
-	cmd.PersistentFlags().Uint32Var(&flagDelegationEpochSlots, "delegation-epoch-slots", 0,
-		"target delegation epoch length in slots (0 = use server default; only consulted when --accept-delegations is set)")
-	cmd.PersistentFlags().Uint8Var(&flagDelegationMaxFrozenEpochs, "delegation-max-frozen-epochs", 0,
-		"target maximum simultaneous frozen epochs (0 = use server default; only consulted when --accept-delegations is set)")
-}
-
-// delegationParamsValues is the small (epochSlots, maxFrozenEpochs)
-// pair the chain-origin output's delegationParams constraint carries.
-// Kept as a local struct (instead of *ledger.DelegationParams) so the
-// flag-resolution path doesn't touch the ledger singleton.
-type delegationParamsValues struct {
-	EpochSlots      uint32
-	MaxFrozenEpochs byte
-}
-
-// resolveChainOriginDelegationParams reads the flags + the live
-// server constants and returns the delegationParams to attach at
-// chain origin — or nil to opt out. Flag 0 sentinels are filled in
-// from glb.GetLedgerConstants().
-func resolveChainOriginDelegationParams() *delegationParamsValues {
-	if !flagAcceptDelegations {
-		return nil
-	}
-	consts := glb.GetLedgerConstants()
-	epochSlots := flagDelegationEpochSlots
-	if epochSlots == 0 {
-		epochSlots = consts.DelegationEpochSlots
-	}
-	maxFrozen := flagDelegationMaxFrozenEpochs
-	if maxFrozen == 0 {
-		maxFrozen = byte(consts.MaxFrozenEpochs)
-	}
-	return &delegationParamsValues{EpochSlots: epochSlots, MaxFrozenEpochs: maxFrozen}
-}
-
-// MakeChain is the entry point used both by `proxi node mkchain` and
-// by `proxi node setup_seq`. It builds + submits a chain-origin tx
-// for `onChainAmount` to the wallet's currently configured target
-// lock, returning the new chain ID + the tx ID for downstream
-// inclusion tracking. Pure wasm-style: no ledger.L() singleton, no
-// ledger/txbuilder sugar.
+// Builds + submits a chain-origin tx for `onChainAmount` to the wallet's
+// currently configured target lock, returning the new chain ID + the tx
+// ID for downstream inclusion tracking. Pure wasm-style: no ledger.L()
+// singleton, no ledger/txbuilder sugar.
 func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid base.TransactionID, err error) {
 	walletData := glb.GetWalletData()
 	target := glb.MustGetTarget()
@@ -141,14 +83,6 @@ func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid
 		return false
 	})
 
-	dp := resolveChainOriginDelegationParams()
-	if dp != nil {
-		glb.Infof("   delegationParams: epochSlots=%d, maxFrozenEpochs=%d (chain can accept delegations)",
-			dp.EpochSlots, dp.MaxFrozenEpochs)
-	} else {
-		glb.Infof("   delegationParams: omitted (chain cannot accept delegations)")
-	}
-
 	// Wallet-derived "now" — wall-clock mapped through genesis +
 	// tick-duration; pace-enforced against each input timestamp.
 	consts := glb.GetLedgerConstants()
@@ -163,7 +97,7 @@ func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid
 	var consumed [][]byte
 	var chainOutIdx byte
 	txBytes, txid, chainOutIdx, consumed, err = makeChainOriginTransaction(
-		walletData.PrivateKey, inps, target, onChainAmount, dp,
+		walletData.PrivateKey, inps, target, onChainAmount,
 		*tagAlongSeqID, feeAmount, ts)
 	glb.AssertNoError(err)
 
@@ -177,10 +111,10 @@ func MakeChain(onChainAmount uint64) (txBytes []byte, chainID base.ChainID, txid
 }
 
 // makeChainOriginTransaction is the pure wasm-wallet compose helper:
-// consumes the supplied wallet sigLock inputs and produces the chain
-// origin (target lock + chainOrigin at slot 3 + optional delegationParams
-// at slot 6), a tag-along output, and a PRXI remainder back to the
-// wallet. No I/O; no ledger.L() singleton; no ledger/txbuilder sugar.
+// consumes the supplied wallet sigLock inputs and produces a regular
+// chain origin (target lock + chainOrigin at slot 3), a tag-along
+// output, and a PRXI remainder back to the wallet. No I/O; no
+// ledger.L() singleton; no ledger/txbuilder sugar.
 //
 // Input unlock pattern matches the compact/send template:
 // PutSignatureUnlock(0) on input 0 + PutUnlockReference(i,
@@ -191,7 +125,6 @@ func makeChainOriginTransaction(
 	walletOutputs []*ledger.OutputWithID,
 	target ledger.Lock,
 	onChainAmount uint64,
-	dp *delegationParamsValues,
 	tagAlongSeqID base.ChainID,
 	tagAlongFee uint64,
 	ts base.LedgerTime,
@@ -216,9 +149,8 @@ func makeChainOriginTransaction(
 		}
 	}
 
-	// Chain-origin output: target lock + chainOrigin at slot 3 +
-	// optional delegationParams at slot 6. Built by extending a base
-	// sigLock or chainLock output.
+	// Chain-origin output: target lock + chainOrigin at slot 3. Built by
+	// extending a base sigLock or chainLock output.
 	baseChainOut, err := glb.BuildLockOutput(lib, onChainAmount, target)
 	if err != nil {
 		return nil, base.TransactionID{}, 0, nil, err
@@ -232,13 +164,6 @@ func makeChainOriginTransaction(
 		return nil, base.TransactionID{}, 0, nil, err
 	}
 	chainOriginBuilder.MustPushConstraint(chainOriginBin)
-	if dp != nil {
-		dpBin, err := lib.NewDelegationParams(dp.EpochSlots, dp.MaxFrozenEpochs)
-		if err != nil {
-			return nil, base.TransactionID{}, 0, nil, err
-		}
-		chainOriginBuilder.PutConstraint(dpBin, ledger.ConstraintIndexDelegationParams)
-	}
 	chainOutIdx = txb.ProduceOutput(chainOriginBuilder.Output().Bytes())
 
 	if tagAlongFee > 0 {

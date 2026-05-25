@@ -1,3 +1,24 @@
+// sequencer(epochSlots, maxFrozenEpochs)
+//
+// Marker constraint that turns a chain output into a sequencer chain.
+// Carries the delegation parameters that used to live in the now-deleted
+// standalone delegationParams constraint:
+//
+//   $0 epochSlots         (z32, ranged [constDelegationEpochSlotsMin, constDelegationEpochSlotsMax])
+//   $1 maxFrozenEpochs    (byte, ranged [constDelegationMaxFrozenEpochsMin, constDelegationMaxFrozenEpochsMax])
+//
+// Both args are immutable across every chain transit
+// (selfImmutableOnSuccessorIndex on this constraint's own slot). Once a
+// chain is a sequencer chain, it always accepts delegations with these
+// exact params and cannot lose its sequencer status — only chain
+// destruction is possible. A regular chain (no sequencer constraint at
+// origin) can never gain one later.
+//
+// The sibling chain constraint is always at index 2; the sequencer
+// constraint sits at the slot immediately after the lock-area extras
+// (currently slot 4, established by sequencer-side compose). The
+// position is locked by selfImmutableOnSuccessorIndex.
+
 // $0 chain predecessor input index
 func _inputSameSlot :
 equal(
@@ -41,11 +62,6 @@ or(
 	and( not(_inputSameSlot($0)), _crossSlotPredecessorCase)
 )
 
-func zeroTickOnBranchOnly : or(
-	not(isZero(txTick)),
-	isBranchTransaction
-)
-
 // enforces the sequencer transaction with more than 1 input not is in the pre branch consolidation ticks zone
 // Checks: txTick <= constMaxTickValuePerSlot - constPreBranchConsolidationTicks
 func checkPreBranchConsolidationTicks :
@@ -63,17 +79,53 @@ or(
    )
 )
 
-// no parameters - chain constraint is always at index 2
+// Bound checks for the delegation params. Same bounds the old
+// standalone delegationParams enforced.
+func constDelegationEpochSlotsMin      : u32/500
+func constDelegationEpochSlotsMax      : u32/2000
+func constDelegationMaxFrozenEpochsMin : 8
+func constDelegationMaxFrozenEpochsMax : 32
+
+// $0 - epochSlots
+// $1 - maxFrozenEpochs
+func _validDelegationParamsBounds :
+and(
+   require(
+      lessOrEqualThan(uint8Bytes(constDelegationEpochSlotsMin), uint8Bytes($0)),
+      !!!sequencer_epochSlots_below_minimum
+   ),
+   require(
+      lessOrEqualThan(uint8Bytes($0), uint8Bytes(constDelegationEpochSlotsMax)),
+      !!!sequencer_epochSlots_above_maximum
+   ),
+   require(
+      lessOrEqualThan(uint8Bytes(constDelegationMaxFrozenEpochsMin), uint8Bytes($1)),
+      !!!sequencer_maxFrozenEpochs_below_minimum
+   ),
+   require(
+      lessOrEqualThan(uint8Bytes($1), uint8Bytes(constDelegationMaxFrozenEpochsMax)),
+      !!!sequencer_maxFrozenEpochs_above_maximum
+   )
+)
+
+// $0 - epochSlots (z32; [500, 2000])
+// $1 - maxFrozenEpochs (byte; [8, 32])
+// chain constraint is always at index 2
 func sequencer: and(
+    // Position immutable across transit: cannot add, remove, or move.
+    // This is what makes "sequencer chain" a permanent type — once a
+    // chain origin is created with `sequencer`, it is a sequencer
+    // chain forever (or destroyed).
+    selfImmutableOnSuccessorIndex(selfBlockIndex),
     or(
-        selfIsConsumedOutput,
-		and(
-			// produced
-			require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction),
-            require(zeroTickOnBranchOnly, !!!non-branch_sequencer_transaction_can't_be_on_slot_boundary),
-			checkPreBranchConsolidationTicks,
+        and(
+            selfIsProducedOutput,
+            _validDelegationParamsBounds($0, $1),
+            require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction),
+            checkPreBranchConsolidationTicks,
             // check chain's past
-			_sequencer( selfChainPredInputIndex )
-		)
+            _sequencer( selfChainPredInputIndex )
+        ),
+        selfIsConsumedOutput
     )
 )

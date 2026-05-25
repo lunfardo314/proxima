@@ -26,10 +26,10 @@ type (
 		RequiredInflationShare uint16
 		StartSlot              uint32
 		// EpochSlots and TargetMaxFrozenEpochs are copies of the target
-		// chain's delegationParams. The caller (typically proxi) fetches
-		// the target chain's delegationParams and forwards the values
-		// here so they can be inlined into the delegateLock body. See
-		// claude/delegation_epoch_params.md.
+		// sequencer chain's sequencer constraint args. The caller
+		// (typically proxi) fetches them from the target's sequencer
+		// constraint at SequencerConstraintFixedIndex and forwards
+		// them here so they can be inlined into the delegateLock body.
 		EpochSlots            uint32
 		TargetMaxFrozenEpochs byte
 	}

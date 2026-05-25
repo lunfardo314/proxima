@@ -111,9 +111,9 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	minimumAmount := consts.MinimumInflatableAmount0 + inflMin
 	glb.Assertf(amount >= minimumAmount, "amount is too small, must be at least %s", util.Th(minimumAmount))
 
-	// Phase 5 of delegation_epoch_params: cap delegator's chosen depth
-	// against the target's own delegationParams.maxFrozenEpochs (not
-	// the library-wide default).
+	// Cap the delegator's chosen depth against the target sequencer
+	// chain's own maxFrozenEpochs (carried by its sequencer constraint
+	// — see SequencerConstraintFixedIndex), not the library-wide default.
 	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
 	targetEpochSlots := ti.EpochDurationSlots
 	glb.Assertf(maxFreezeEpochs <= targetMaxFrozenEpochs, "wrong value of max freeze epochs: %d > target's max %d", maxFreezeEpochs, targetMaxFrozenEpochs)

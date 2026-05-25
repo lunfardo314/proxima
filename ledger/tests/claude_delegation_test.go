@@ -19,6 +19,7 @@ import (
 	"github.com/lunfardo314/proxima/examples/exhelp"
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
+	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/testutil/txbtest"
@@ -61,29 +62,9 @@ func setupDelegEnv(t *testing.T, maxFrozenEpochs byte, inflationShare uint16) *d
 	err = env.u.TokensFromFaucet(env.seqAddr, cdelegInitAmount)
 	require.NoError(t, err)
 
-	// create chain for sequencer
-	seqOuts, err := env.u.SugaredStateReader().GetOutputsForAccount(env.seqAddr.ControllerID())
-	require.NoError(t, err)
-	seqOriginTs := seqOuts[0].ID.Timestamp().AddSlots(1)
-
-	par, err := env.u.MakeTransferInputData(env.seqPrivateKey, nil, seqOriginTs)
-	require.NoError(t, err)
-	outs, err := env.u.DoTransferOutputs(par.
-		WithAmount(cdelegOnChainBalance).
-		WithTargetLock(env.seqAddr).
-		WithConstraint(ledger.NewChainOrigin(seqOriginTs.Slot)).
-		// Attach delegationParams at the fixed index so the chain can
-		// accept delegations (Phase 3 of delegation_epoch_params).
-		WithConstraint(ledger.NewDelegationParams(
-			ledger.L(0).DelegationEpochSlots,
-			byte(ledger.L(0).MaxFrozenEpochs),
-		), ledger.ConstraintIndexDelegationParams),
-	)
-	require.NoError(t, err)
-	chOuts, err := ledger.FilterChainOutputs(outs)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, len(chOuts))
-	env.seqChainOrigin = *chOuts[0]
+	// Sequencer chain origin must be created via a proper sequencer tx
+	// (sequencer constraint at slot 4 requires SetSequencerData + endorsement).
+	env.seqChainOrigin = mustMakeSequencerChainOrigin(t, env.u, env.seqPrivateKey, env.seqAddr, cdelegOnChainBalance)
 	env.target = env.seqChainOrigin.ChainID
 
 	// create delegation output
@@ -168,6 +149,12 @@ func (env *delegTestEnv) freezeDelegation(t *testing.T, frozenEpochs byte) {
 	fcDelta, err := txb.CalcFrozenCoverageDelta()
 	require.NoError(t, err)
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, ts)
+
+	// Sequencer chain successor at seqChainIdx requires sequencer tx
+	// setup (SetSequencerData + cross-slot endorsement).
+	txb.SetSequencerData(seqChainIdx, txbuildercore.SequencerOutputIndexNone)
+	dummyTxId := base.NewTransactionID(ts.AddTicks(-5), base.TransactionIDShort{}, true)
+	txb.PushEndorsements(dummyTxId)
 
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(ts)
@@ -686,6 +673,11 @@ func TestClaudeDelegationOnHoldTargetRelock(t *testing.T) {
 	fcDelta, err := txb.CalcFrozenCoverageDelta()
 	require.NoError(t, err)
 	txb.MustPutFrozenCoverage(seqChainIdx, fcDelta, revokeTs)
+
+	// Sequencer chain transit requires sequencer tx + endorsement.
+	txb.SetSequencerData(seqChainIdx, txbuildercore.SequencerOutputIndexNone)
+	dummyTxId := base.NewTransactionID(revokeTs.AddTicks(-5), base.TransactionIDShort{}, true)
+	txb.PushEndorsements(dummyTxId)
 
 	txb.ComputeInputCommitment()
 	txb.SetTimestamp(revokeTs)

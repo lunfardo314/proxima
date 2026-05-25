@@ -48,7 +48,6 @@ func upgrade0(lib *easyfl.Library[*EvalContext], par InitParameters) {
 		lockDexOrdersSource,
 		ensureStopFreezeDelegationConstraintSource,
 		nativeTokenSource,
-		delegationParamsSource,
 		_txLayoutValidator0,
 	)
 	util.AssertNoError(err)
@@ -75,7 +74,6 @@ func registerConstraints0(lib *Library) {
 	registerEnsureConstraints(lib)
 	registerTokenAmount(lib)
 	registerFoundry(lib)
-	registerDelegationParams(lib)
 
 	registerInlineTest(func(lib *Library) {
 		// inline tests - use L(base.MaxSlot) to get the current library

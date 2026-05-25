@@ -103,8 +103,9 @@ func runDelegationSubmitCmd(_ *cobra.Command, args []string) {
 	// One-slot inflation projection, evaluated server-side via /eval.
 	inflation := evalChainInflationMultiStep(client, oIn.Output.TokenBalance(), oIn.ID.Slot(), 1)
 
-	// Phase 5 of delegation_epoch_params: source per-target epochSlots /
-	// maxFrozenEpochs from the target sequencer's own delegationParams.
+	// Source per-target epochSlots / maxFrozenEpochs from the target
+	// sequencer chain's own sequencer constraint (the host returns them
+	// in SequencerTargetInfo).
 	epochSlots := ti.EpochDurationSlots
 	targetMaxFrozenEpochs := byte(ti.MaxFrozenEpochs)
 

@@ -24,8 +24,8 @@ func TestDelegationInflationMinimal(t *testing.T) {
 
 	initTs := base.T(1000, 50)
 
-	// Create sequencer chain origin
-	seqChainOrig, err := u.CreateChainOrigin(targetPrivateKey, initTs, seqInitBalance)
+	// Create sequencer chain origin (with sequencer constraint at slot 4)
+	seqChainOrig, err := u.CreateSequencerChainOrigin(targetPrivateKey, initTs, seqInitBalance)
 	require.NoError(t, err)
 	seqID := seqChainOrig.ChainID
 	t.Logf("seqID: %s", seqID.String())

@@ -48,7 +48,7 @@ func TestBase(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -333,7 +333,7 @@ func TestFreezeOneStep(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(amounts...).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
@@ -511,7 +511,7 @@ func TestFreezeMultipleSteps(t *testing.T) {
 		predChain := ledger.NewOutput(func(o *ledger.OutputBuilder) {
 			o.WithAmounts(int64(seqInitBalance)).WithLock(addr)
 			o.PutConstraint(ledger.NewChainConstraint(seqID, 0, 1000, 0, 0, 1, 0).Bytes(), ledger.ConstraintIndexChain)
-			_ = o.MustPushConstraint(ledger.NewSequencerConstraint().Bytes())
+			_ = o.MustPushConstraint(ledger.NewSequencerConstraint(ledger.L(0).DelegationEpochSlots, byte(ledger.L(0).MaxFrozenEpochs)).Bytes())
 			_ = o.MustPushConstraint(easyfl.InlineDataBytecode(sd.Bytes()))
 		})
 
@@ -684,7 +684,7 @@ func newTestWithUTXODBData(t *testing.T, nDelegations int) (*testWithUTXODBData,
 	initTs := base.T(1000, 50)
 
 	// sequencer chain origin
-	seqChainOrig, err := ret.u.CreateChainOrigin(ret.targetPrivateKey, initTs, seqInitBalance)
+	seqChainOrig, err := ret.u.CreateSequencerChainOrigin(ret.targetPrivateKey, initTs, seqInitBalance)
 	require.NoError(t, err)
 	ret.seqID = seqChainOrig.ChainID
 	t.Logf("seqID: %s", ret.seqID.String())

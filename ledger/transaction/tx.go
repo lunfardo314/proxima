@@ -502,7 +502,11 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 
 // BaselineDirection is the input, endorsement or explicit baseline of the sequencer transaction where to look for a baseline branch
 // It is not a baseline yet, (but it can be one).
-// It is assumed tx is a sequencer transaction and not the origin of the sequencer chain
+//
+// Sequencer chain origins (idx == 0xff) have no chain predecessor;
+// _noChainPredecessorCase in def/sequencer.easyfl already requires
+// such txs to be non-branch and to carry at least one endorsement. The
+// endorsement is therefore the canonical baseline direction.
 func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	util.Assertf(tx.IsSequencerTransaction(), "tx.IsSequencerTransaction()")
 	var ok bool
@@ -510,7 +514,14 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 		return
 	}
 	predOid, idx := tx.SequencerChainPredecessor()
-	util.Assertf(idx != 0xff, "inconsistency: sequencer milestone cannot be a chain origin. %s hex = %s", tx.IDShortString, tx.IDStringHex)
+	if idx == 0xff {
+		// Sequencer chain origin — no chain predecessor. The EasyFL
+		// sequencer constraint guarantees at least one endorsement on
+		// this path; use it.
+		util.Assertf(tx.NumEndorsements() > 0, "sequencer chain origin must have endorsements\n>>>>>>>>>>>>>>>>>>\n%s", tx.String())
+		ret = tx.MustEndorsementAt(0)
+		return
+	}
 
 	if predOid.Slot() == tx.Slot() {
 		if predOid.IsSequencerTransaction() {

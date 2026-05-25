@@ -442,9 +442,9 @@ func TestParseChainConstraint_Transit_Parity(t *testing.T) {
 	}
 }
 
-// TestParseDelegationParams_Parity checks the 2-arg wallet parser
-// against the server-side ledger.DelegationParamsFromBytes.
-func TestParseDelegationParams_Parity(t *testing.T) {
+// TestParseSequencerConstraint_Parity checks the 2-arg wallet parser
+// against the server-side ledger.SequencerConstraintFromBytesWithLib.
+func TestParseSequencerConstraint_Parity(t *testing.T) {
 	lib := txbuildercoreLibFromGlobal(t)
 	cases := []struct {
 		epochSlots      uint32
@@ -455,8 +455,8 @@ func TestParseDelegationParams_Parity(t *testing.T) {
 		{2000, 32},
 	}
 	for _, c := range cases {
-		bin := ledger.NewDelegationParams(c.epochSlots, c.maxFrozenEpochs).Bytes()
-		view, err := lib.ParseDelegationParams(bin)
+		bin := ledger.NewSequencerConstraint(c.epochSlots, c.maxFrozenEpochs).Bytes()
+		view, err := lib.ParseSequencerConstraint(bin)
 		require.NoError(t, err)
 		require.Equal(t, c.epochSlots, view.EpochSlots)
 		require.Equal(t, c.maxFrozenEpochs, view.MaxFrozenEpochs)

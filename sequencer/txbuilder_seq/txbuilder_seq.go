@@ -65,10 +65,10 @@ type (
 		chainInput      *ledger.OutputWithChainID
 		stemInput       *ledger.OutputWithID // it is branch tx if != nil
 		// chainEpochSlots / chainMaxFrozenEpochs are this sequencer chain's
-		// own delegationParams values (Phase 4 of
-		// claude/delegation_epoch_params.md). Zero means the chain doesn't
-		// carry delegationParams and cannot accept delegations — in that
-		// case chainOutAmounts has no frozen-coverage cells.
+		// own immutable delegation params, carried as the two args of the
+		// sequencer constraint at slot 4. Read once in New() and asserted
+		// non-zero (every sequencer chain has the constraint, locked at
+		// origin).
 		chainEpochSlots          uint32
 		chainMaxFrozenEpochs     byte
 		doNotInflateMainChain    bool    // default is inflate
@@ -117,25 +117,28 @@ func New(par Params) (*SeqTxBuilder, error) {
 		rdr:                   par.StateReader,
 		doNotInflateMainChain: par.DoNotInflateMainChain,
 	}
-	// Read this sequencer chain's delegationParams (index 6 if attached).
-	// Absent → chain cannot accept delegations; frozen-coverage cells
-	// must remain empty.
-	if dpBytes, err := par.Predecessor.Output.At(int(ledger.ConstraintIndexDelegationParams)); err == nil && len(dpBytes) > 0 {
-		dp, dpErr := ledger.DelegationParamsFromBytesWithLib(dpBytes, ret.Library)
-		if dpErr != nil {
-			return nil, fmt.Errorf("SeqTxBuilder: invalid delegationParams on predecessor chain output: %w", dpErr)
-		}
-		ret.chainEpochSlots = dp.EpochSlots
-		ret.chainMaxFrozenEpochs = dp.MaxFrozenEpochs
+	// Read this sequencer chain's immutable delegation params from the
+	// sequencer constraint at slot 4. The constraint is mandatory on
+	// every sequencer chain (locked at origin) — its absence is a
+	// programming error: SeqTxBuilder must not be invoked on a regular
+	// chain.
+	seqBytes, err := par.Predecessor.Output.At(int(ledger.SequencerConstraintFixedIndex))
+	if err != nil || len(seqBytes) == 0 {
+		return nil, fmt.Errorf("SeqTxBuilder: predecessor chain output %s is not a sequencer chain (no sequencer constraint at slot %d)",
+			par.Predecessor.ID.StringShort(), ledger.SequencerConstraintFixedIndex)
 	}
+	seq, err := ledger.SequencerConstraintFromBytesWithLib(seqBytes, ret.Library)
+	if err != nil {
+		return nil, fmt.Errorf("SeqTxBuilder: invalid sequencer constraint on predecessor chain output: %w", err)
+	}
+	ret.chainEpochSlots = seq.EpochSlots
+	ret.chainMaxFrozenEpochs = seq.MaxFrozenEpochs
 	// Sized once: token balance + inflation + per-epoch frozen-coverage
 	// slots. chainMaxFrozenEpochs is fixed for a chain's lifetime so a
 	// single allocation per builder suffices.
 	ret.chainOutAmounts = make([]int64, int(ledger.AmountIndexFrozenCoverage)+int(ret.chainMaxFrozenEpochs))
 
-	var err error
 	sd, err := ledger.ParseSequencerData(par.Predecessor.Output)
-
 	if err != nil {
 		ret.origSeqData = seqdata.New()
 	} else {
@@ -187,25 +190,22 @@ func New(par Params) (*SeqTxBuilder, error) {
 	predAmounts := par.Predecessor.Output.Amounts()
 	ret.chainOutAmounts[ledger.AmountIndexTokenBalance] = int64(predAmounts.TokenBalance()) + ret.chainOutAmounts[ledger.AmountIndexInflation]
 
-	// frozen coverage at the predecessor adjusted to the epoch of the
-	// successor. Uses this chain's own delegationParams (Phase 4 of
-	// claude/delegation_epoch_params.md). Skip if chain doesn't accept
-	// delegations.
-	if ret.chainMaxFrozenEpochs > 0 {
-		diffEpochsInt := ret.DiffEpochs(par.Predecessor.ChainID, par.Timestamp, par.Predecessor.Timestamp(), ret.chainEpochSlots)
-		util.Assertf(diffEpochsInt >= 0, "diffEpochsInt>=0")
-		diffEpochs := uint32(diffEpochsInt)
+	// Frozen coverage at the predecessor adjusted to the epoch of the
+	// successor. Uses this chain's own immutable delegation params from
+	// the sequencer constraint.
+	diffEpochsInt := ret.DiffEpochs(par.Predecessor.ChainID, par.Timestamp, par.Predecessor.Timestamp(), ret.chainEpochSlots)
+	util.Assertf(diffEpochsInt >= 0, "diffEpochsInt>=0")
+	diffEpochs := uint32(diffEpochsInt)
 
-		maxFrozenEpochs := uint32(ret.chainMaxFrozenEpochs)
-		predecessorFrozenCoverageAdjusted := func(i uint32) (result int64) {
-			if idx := i + diffEpochs; idx < maxFrozenEpochs {
-				result = predAmounts.FrozenCoverageAt(byte(idx))
-			}
-			return
+	maxFrozenEpochs := uint32(ret.chainMaxFrozenEpochs)
+	predecessorFrozenCoverageAdjusted := func(i uint32) (result int64) {
+		if idx := i + diffEpochs; idx < maxFrozenEpochs {
+			result = predAmounts.FrozenCoverageAt(byte(idx))
 		}
-		for i := uint32(0); i < maxFrozenEpochs; i++ {
-			ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
-		}
+		return
+	}
+	for i := uint32(0); i < maxFrozenEpochs; i++ {
+		ret.chainOutAmounts[ledger.AmountIndexFrozenCoverage+byte(i)] = predecessorFrozenCoverageAdjusted(i)
 	}
 
 	// initialize branch coverage bounds for delegation freeze checking
@@ -266,10 +266,10 @@ func (txb *SeqTxBuilder) ChainInput() *ledger.OutputWithChainID {
 }
 
 // ChainDelegationParams returns the (epochSlots, maxFrozenEpochs) values
-// inlined into this sequencer chain's delegationParams constraint at
-// origin (Phase 4 of claude/delegation_epoch_params.md). Both values
-// are 0 when the chain doesn't carry delegationParams (i.e. cannot
-// accept delegations).
+// inlined into this sequencer chain's sequencer constraint at origin.
+// Both are guaranteed non-zero (constraint is mandatory on every
+// sequencer chain and bounds-checked in EasyFL: epochSlots ∈ [500,
+// 2000], maxFrozenEpochs ∈ [8, 32]).
 func (txb *SeqTxBuilder) ChainDelegationParams() (epochSlots uint32, maxFrozenEpochs byte) {
 	return txb.chainEpochSlots, txb.chainMaxFrozenEpochs
 }
@@ -489,18 +489,15 @@ func (txb *SeqTxBuilder) buildSequencerAndStemOutputs() error {
 			txb.chainInput.BranchCounter+branchCounterInc,
 		)
 		o.PutConstraint(chainOutConstraint.Bytes(), ledger.ConstraintIndexChain)
-		// sequencer constraint (no parameters)
-		sequencerConstraint := ledger.NewSequencerConstraint()
-		o.MustPushConstraint(sequencerConstraint.Bytes())
+		// Sequencer constraint carries the immutable delegation params
+		// (epochSlots, maxFrozenEpochs). Args byte-equal across every
+		// transit (selfImmutableOnSuccessorIndex on the constraint
+		// itself), so we re-emit what the predecessor carried.
+		sequencerConstraint := ledger.NewSequencerConstraint(txb.chainEpochSlots, txb.chainMaxFrozenEpochs)
+		idxSeq := o.MustPushConstraint(sequencerConstraint.Bytes())
+		util.Assertf(idxSeq == ledger.SequencerConstraintFixedIndex, "idxSeq == SequencerConstraintFixedIndex")
 		idxMsData := o.MustPushConstraint(easyfl.InlineDataBytecode(txb.nextSeqData.Bytes()))
 		util.Assertf(idxMsData == ledger.SeqMilestoneDataFixedIndex, "idxMsData == SeqMilestoneDataFixedIndex")
-		// Carry forward delegationParams (Phase 4 of
-		// claude/delegation_epoch_params.md). Immutable across every
-		// chain transit by selfImmutableOnSuccessorIndex(6) on the
-		// constraint itself.
-		if dpBytes, dpErr := txb.chainInput.Output.At(int(ledger.ConstraintIndexDelegationParams)); dpErr == nil && len(dpBytes) > 0 {
-			o.PutConstraint(dpBytes, ledger.ConstraintIndexDelegationParams)
-		}
 	}))
 	if err != nil {
 		return fmt.Errorf("SeqTxBuilder: %w", err)

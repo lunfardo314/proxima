@@ -210,11 +210,11 @@ func init() {
 }
 
 // evalEnforceFrozenCoverageOnNonDelegationChain runs on every produced
-// chain output that is not a delegation. Per Phase 3 of
-// delegation_epoch_params, the frozen-coverage vector size is sourced
-// from THIS chain's delegationParams constraint at index 6 (if
-// attached). Chains without delegationParams cannot be delegation
-// targets, so their frozen-coverage vector must be empty (= all-zero).
+// chain output that is not a delegation. The frozen-coverage vector
+// size is sourced from THIS chain's sequencer constraint at slot 4
+// (if attached). Regular chains carry no sequencer constraint, cannot
+// be delegation targets, and must therefore carry an empty (= all-zero)
+// frozen-coverage vector.
 func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalContext]) []byte {
 	ctx := par.DataContext()
 	par.Require(ctx.SelfIsProducedOutput(), "evalEnforceFrozenCoverageOnNonDelegationChain: produced output expected")
@@ -225,17 +225,20 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 	cc := o.ChainConstraint()
 	par.Require(cc != nil, "evalEnforceFrozenCoverageOnNonDelegationChain: chained output is expected")
 
-	// Read this chain's own delegationParams (if any). Absent =>
-	// chain cannot be a delegation target; any non-zero frozen coverage
-	// is a structural violation.
-	dpBytes, dpErr := o.At(int(ConstraintIndexDelegationParams))
+	// Read this chain's own sequencer constraint (if any). Absent =>
+	// chain is a regular chain — cannot be a delegation target; any
+	// non-zero frozen coverage is a structural violation. Present =>
+	// chain is a sequencer chain that always accepts delegations with
+	// the constraint's immutable (epochSlots, maxFrozenEpochs).
+	// Probe slot 4 for the sequencer constraint. Absent or any other
+	// constraint => regular chain (cannot be a delegation target).
 	var epochSlots uint32
 	var maxFrozenEpochs byte
-	if dpErr == nil && len(dpBytes) > 0 {
-		dp, err := DelegationParamsFromBytesWithLib(dpBytes, lib)
-		par.RequireNoError(err)
-		epochSlots = dp.EpochSlots
-		maxFrozenEpochs = dp.MaxFrozenEpochs
+	if seqBytes, seqErr := o.At(int(SequencerConstraintFixedIndex)); seqErr == nil && len(seqBytes) > 0 {
+		if seq, err := SequencerConstraintFromBytesWithLib(seqBytes, lib); err == nil {
+			epochSlots = seq.EpochSlots
+			maxFrozenEpochs = seq.MaxFrozenEpochs
+		}
 	}
 
 	// produced output
@@ -251,7 +254,7 @@ func evalEnforceFrozenCoverageOnNonDelegationChain(par *easyfl.CallParams[*EvalC
 		// trailing zeros, so NumElements > AmountIndexFrozenCoverage
 		// implies at least one non-zero cell at or past that index.
 		par.Require(amounts.NumElements() <= int(AmountIndexFrozenCoverage),
-			"evalEnforceFrozenCoverageOnNonDelegationChain: chain without delegationParams must carry no frozen coverage")
+			"evalEnforceFrozenCoverageOnNonDelegationChain: regular chain (no sequencer constraint) must carry no frozen coverage")
 		return par.AllocData(0xff)
 	}
 

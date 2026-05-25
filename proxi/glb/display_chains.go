@@ -105,20 +105,23 @@ func LinesDelegationOutputs(
 }
 
 // ChainOutputDisplayItem pairs a parsed chain-constraint view with
-// the output ID + token balance. DelegationParams is non-nil when the
-// chain output carries a delegationParams constraint at slot 6.
+// the output ID + token balance. SequencerConstraint is non-nil when
+// the chain output is a sequencer chain (the constraint carries the
+// chain's immutable delegation params at slot 4).
 type ChainOutputDisplayItem struct {
-	ChainID          base.ChainID // resolved (origin → blake2b(oid))
-	OutputID         base.OutputID
-	Balance          uint64
-	ChainConstraint  *txbuildercore.ChainConstraintView
-	DelegationParams *txbuildercore.DelegationParamsView
+	ChainID             base.ChainID // resolved (origin → blake2b(oid))
+	OutputID            base.OutputID
+	Balance             uint64
+	ChainConstraint     *txbuildercore.ChainConstraintView
+	SequencerConstraint *txbuildercore.SequencerConstraintView
 }
 
 // LinesChainOutputs renders a multi-line summary of non-delegation
 // chain outputs. Verbose mode adds the cumulative-inflation
-// breakdown. delegationParams (if present at the output) is shown on
-// its own line in both verbose and non-verbose modes.
+// breakdown. The sequencer constraint (if present) is shown on its
+// own line in both verbose and non-verbose modes — it tells the
+// operator that this is a sequencer chain and on what cadence it
+// admits delegations.
 func LinesChainOutputs(items []ChainOutputDisplayItem, currentSlot uint32, prefix ...string) *lines.Lines {
 	ln := lines.New(prefix...)
 	for _, item := range items {
@@ -126,9 +129,9 @@ func LinesChainOutputs(items []ChainOutputDisplayItem, currentSlot uint32, prefi
 		ln.Add("%34s  %20s   since slot: %d, last active %d slots ago, transitions: %d",
 			item.ChainID.String(), util.Th(item.Balance), cc.OriginSlot,
 			currentSlot-uint32(item.OutputID.Slot()), cc.TransitionCounter)
-		if item.DelegationParams != nil {
-			ln.Add("      delegationParams: epochSlots=%d, maxFrozenEpochs=%d",
-				item.DelegationParams.EpochSlots, item.DelegationParams.MaxFrozenEpochs)
+		if item.SequencerConstraint != nil {
+			ln.Add("      sequencer chain: epochSlots=%d, maxFrozenEpochs=%d",
+				item.SequencerConstraint.EpochSlots, item.SequencerConstraint.MaxFrozenEpochs)
 		}
 		if IsVerbose() {
 			totalInflation := cc.CumulativeChainInflation + cc.CumulativeBranchBonus

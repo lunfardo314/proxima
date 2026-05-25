@@ -35,7 +35,7 @@ func TestAttachDeadlockContextCancellation(t *testing.T) {
 		require.NoError(t, err)
 
 		testData.makeChainOrigins(1)
-		_, err = attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
+		err = testData.attachChainOriginTxs()
 		require.NoError(t, err)
 
 		chainOrigin := testData.chainOrigins[0]
@@ -250,7 +250,7 @@ func TestAttachDeadlockShutdownDuringAttachment(t *testing.T) {
 		require.NoError(t, err)
 
 		testData.makeChainOrigins(5)
-		_, err = attacher.AttachTransactionFromBytes(testData.chainOriginsTx.Bytes(), testData.wrk)
+		err = testData.attachChainOriginTxs()
 		require.NoError(t, err)
 
 		// Start multiple attachments

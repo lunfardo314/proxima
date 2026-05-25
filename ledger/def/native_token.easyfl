@@ -29,10 +29,40 @@
 // The foundry's tag IS the sibling chain constraint's ChainID (the
 // foundry is identified by the chain it lives on); no tag arg is needed
 // or stored. token() reads the tag from the chain constraint.
+//
+// Position immutability: a chain that carries a foundry constraint at
+// origin is a foundry chain for life — it cannot drop the foundry, nor
+// move it off `foundryConstraintIndex`. Enforced by:
+//   - requiring `selfBlockIndex == foundryConstraintIndex` (origin and
+//     every transit produce-side); this fixes the constraint to slot 4
+//     of any foundry chain output;
+//   - on the consumed side with a continuing chain, parseBytecode panics
+//     unless the successor's slot at `foundryConstraintIndex` is also a
+//     foundry constraint (symbol-only check — the supply arg is allowed
+//     to differ, since mint/burn legitimately change it).
+// The foundry chain *can* still be delegated (lock at slot 2 swapped to
+// delegateLock, delegateLockState appended at the last tuple position);
+// the foundry constraint stays at slot 4 byte-shape preserved except
+// for the supply.
 func foundry :
-or(
-   not(selfIsProducedOutput),
-   require(lessOrEqualThan(len($0), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long)
+and(
+   require(equal(selfBlockIndex, foundryConstraintIndex), !!!foundry_must_be_at_foundryConstraintIndex),
+   or(
+      not(selfIsConsumedOutput),
+      isZero(len(_chainSuccessorOutputIndex)),
+      // parseBytecode panics if successor's slot at foundryConstraintIndex
+      // isn't a foundry call. Wrap in not(isZero(len(...))) so the OR
+      // branch evaluates to a truthy value when the parse succeeds.
+      not(isZero(len(parseBytecode(
+         atPath(concat(pathToProducedOutputs, _chainSuccessorOutputIndex, foundryConstraintIndex)),
+         0x,
+         #foundry
+      ))))
+   ),
+   or(
+      not(selfIsProducedOutput),
+      require(lessOrEqualThan(len($0), u64/8), !!!foundry_supply_must_be_at_most_8_bytes_long)
+   )
 )
 
 // =====================================================================
