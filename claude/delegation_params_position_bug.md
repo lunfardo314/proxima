@@ -118,30 +118,69 @@ This pins down the failure and gives a green-on-fix signal.
 
 ### Step 3 — Lock the "no conversion" invariant
 
-- The sequencer constraint must be **immutable across every chain
-  transit** — `selfImmutableOnSuccessorIndex(sequencerConstraintIndex)`
-  on the constraint body. This already follows from the existing
-  chain-output rules but should be made explicit on the sequencer
-  constraint itself once the delegation params live on it.
-- A chain origin's type is fixed at origin and cannot change. The
-  sequencer constraint must be present at origin (set by the same tx
-  that creates the chain), not added later by a "first milestone"
-  step.
+Once the sequencer constraint is present on a chain output, it must
+be **immutable across every subsequent transit** —
+`selfImmutableOnSuccessorIndex(sequencerConstraintIndex)` on the
+constraint body. This already follows from the existing chain-output
+rules but should be made explicit on the sequencer constraint itself
+once the delegation params live on it.
+
+**Open design question — when does the sequencer constraint first
+appear on the chain?** Two viable answers, with trade-offs:
+
+- **(A) On the first sequencer milestone (current convention,
+  unchanged).** Chain origin is a plain chain (`sigLock` + `chain`,
+  nothing else). The first sequencer-milestone tx adds the sequencer
+  constraint, at which point its args (including the new delegation
+  params) are locked in for the chain's lifetime. Before that
+  milestone runs, the chain is just a regular chain and can never
+  accept delegations. The "no conversion" rule applies *from the
+  point the sequencer constraint is first attached* — never
+  removable, args never editable.
+  - Pro: no protocol change; matches every existing flow.
+  - Pro: makes the failing-case state (`setup_seq` ran, sequencer
+    never started) just a regular chain — no `delegationParams` to
+    fail against, no inconsistency.
+  - Con: still admits a one-shot "promotion" event (origin → first
+    milestone) which is a kind of conversion. Whether the user's
+    "no conversion" intent includes this is a design choice to
+    confirm.
+
+- **(B) At chain origin.** The sequencer constraint, with its
+  delegation params, is present from byte zero on the chain origin
+  output; promotion at first milestone goes away. Pure "type fixed
+  at origin" semantics.
+  - Pro: matches the user's "no conversion" intent literally.
+  - Con: significant protocol change. Every existing flow that
+    creates a sequencer chain — genesis, distribute, `setup_seq` —
+    has to emit the sequencer constraint at origin. The first
+    sequencer milestone's logic changes (no longer "the milestone
+    that promotes"; just a normal transit).
+  - Con: changes interpretation of the existing `chain origin`
+    output shape on the wire.
+
+**This decision should be made explicitly before code lands.** A
+narrow first-pass implementation that picks (A) ships fast and fixes
+the user-observed bug. (B) is the cleaner long-term shape but is a
+protocol-level decision worth its own discussion.
 
 ### Step 4 — proxi mitigations
 
-- `setup_seq`: emit the sequencer constraint at chain origin (so the
-  chain is a sequencer chain from byte zero). Drop
-  `addDelegationParamsFlags` from setup_seq — the new sequencer
-  constraint carries the params; the existing `flagDelegationEpochSlots`
-  / `flagDelegationMaxFrozenEpochs` either feed into the sequencer
-  constraint args or move to per-chain config.
+Under either design (A) or (B):
+
+- `setup_seq`: drop `addDelegationParamsFlags` — the new sequencer
+  constraint carries the params. The two numeric flags
+  (`--delegation-epoch-slots`, `--delegation-max-frozen-epochs`)
+  either feed into the sequencer constraint args (under A: emitted on
+  the first sequencer milestone; under B: emitted at origin) or move
+  to per-chain config.
 - `mkchain`: drop `addDelegationParamsFlags` entirely. A regular chain
   has no delegation parameters and no sequencer constraint, period.
 - `dlg chain`: pre-check that the source chain has a sequencer
-  constraint and refuse if not (a regular chain cannot become a
-  delegation source either — verify with the user before locking this
-  in; the bug report concerned the reverse direction).
+  constraint and refuse if not — verify with the user before locking
+  this in; the bug report concerned the reverse direction (delegating
+  a non-sequencer chain that happened to carry stale
+  delegationParams).
 
 ### Step 5 — Migration / breaking change posture
 
