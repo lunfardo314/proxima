@@ -301,5 +301,113 @@ stake-weight quantum) — is in principle simpler but reintroduces a permissione
 contradicts Proxima's permissionless-economic-fairness narrative.
 
 The choice is open. The work to date (commits `e2724613`, `cbf4cf82`, `9132ad84`,
-`2942f4b2`) is fully revertible as a single contiguous range if option 1 is rejected and a
-VDF or other mandatory-cost design supersedes it.
+`2942f4b2`, `97cfc1a7`) is fully revertible as a single contiguous range if option 1 is
+rejected and a VDF or other mandatory-cost design supersedes it.
+
+> **Decision (2026-05-25):** the PR 1 code was reverted on `develop08`; the spec above is
+> kept for the historical record. The implementation lives in the git history at the
+> contiguous range above and can be cherry-picked back if a future direction requires it.
+
+## Lessons learned
+
+Empirical findings from designing and implementing PR 1 that should inform any
+follow-on attempt:
+
+- **B-circularity is a cascade, not a single field.** Each design iteration uncovered
+  another field that depended on `B` and therefore had to be carved out of `P`:
+  inflation amount → token balance (`pred + B`) → `chain.cumulativeBranchBonus`
+  (`pred + B`) → `stemLock.slotInflation` (past-cone + B) → `stemLock.TotalSupply`
+  (transitive via `slotInflation`). The final design zeroed **both produced outputs in
+  full** (seq output and stem output) to break the cascade in one cut. Any future
+  design with a B-derived field must trace the dependency closure end-to-end before
+  picking a pre-image shape.
+
+- **Pure-EasyFL canonical-P construction works**, but only by zeroing whole tuple
+  elements with `replaceTupleElement`. Zeroing a single inline-data arg inside a
+  bytecode-wrapped constraint would have required a new bytecode-aware primitive; we
+  avoided that by structurally moving the auxiliary fields (nonce, mining signature
+  `S`) out of `stemLock` into `TxConstraints[0]` / `TxConstraints[1]`.
+
+- **Move tx-level auxiliary data into `TxConstraints`.** Whenever a value is logically
+  tx-wide rather than output-specific (e.g. mining nonce, mining signature), putting it
+  as an `InlineDataBytecode` entry in `TxConstraints` with a documented index is
+  cleaner than nesting it inside an output's lock or constraint inline args. Tuple-
+  level zeroing for pre-image construction is then trivial.
+
+- **`stemLock` cannot enforce the supply recurrence in a mineable world.** The
+  recurrence `TotalSupply_new == TotalSupply_pred + slotInflation` requires
+  `slotInflation` to include this tx's `B`, which makes both fields B-dependent.
+  Dropping the on-chain check (treating them as trustless analytics) was the only
+  workable path; the off-chain attacher (`core/attacher/check.go`) still cross-checks
+  to recover the invariant. Future designs should consider whether the off-chain
+  attacher should also relax that check, or whether stemLock should reorganise its
+  fields entirely.
+
+- **EasyFL `if` is lazy; arg-binding gives memoisation.** A reference to an expression
+  is re-evaluated on each occurrence; binding the expression to a function argument
+  evaluates it once. This was used in the `2942f4b2` optimisation to compute
+  `canonicalP` once per chain constraint and thread it via a new `$7` arg. It is the
+  general pattern for cross-call-site sharing inside one constraint evaluation.
+
+- **Sequencer-side build needs a two-pass shape.** Because `B` can only be computed
+  after most of the tx is laid out, the sequencer must (a) build outputs with `B = 0`
+  placeholders, (b) serialize to derive `P`, (c) sign for `S`, (d) compute `B`, (e)
+  rebuild the affected outputs (`seq output` carries `B` in amounts and the chain
+  constraint; `stem output` carries `slotInflation`/`TotalSupply`) and patch in the
+  real `S` at `TxConstraints[1]`. The PR 1 implementation handled this via direct
+  manipulation of `TxBuilder.TxData.OutputBytes[idx]`. A future implementation can use
+  the same shape.
+
+- **The 96 ms self-attachment latency threshold is pulse-cycle-related, not raw
+  validation work.** The throttle warnings observed on factory tests
+  (`TestFactoryNonDecreasingCoverage`) reflect a pulse cycle equal to
+  `pace × tickDuration = 96 ms`. The canonical-P optimisation `2942f4b2` cut
+  inner replacements from ~60 to ~24 per genesis-distribute tx (4× reduction, verified
+  by a counter test) but did not move the throttle latency at all. Profile-driven perf
+  work on canonical-P is therefore largely a red herring; the throttle parameter or
+  the surrounding pulse logic is the real lever.
+
+- **Mining as an opt-in protocol cost does not solve spam.** This is the most important
+  finding and is detailed under "Main finding" above. Adversarial sequencers issuing
+  `K = 0` branches pay one signature per branch and cost every node the full parse +
+  validate + attach pipeline. Lazy commitment skips the DB write, but not the
+  in-memory work. Any future design intended to bound branch-issuance rate must make
+  the cost **mandatory**, not opt-in.
+
+## Future directions
+
+Concrete next-step options for the branch-issuance-cost problem, in rough order from
+"do nothing" to "deeper protocol change":
+
+1. **Stay with VRF.** Current state of `develop08` after this revert. Per-issuer bonus
+   is uniform; no protocol-level cost differentiation; spam-resistance is entirely
+   off-protocol (peer-level rate limiting, sender reputation in `txsenders`, memDAG
+   GC). Simplest and least-controversial; the problem statement ("marginal cost of
+   issuing a branch is close to zero") remains unsolved.
+
+2. **Resurrect the opt-in capex race (PR 1).** Cherry-pick the
+   `e2724613..97cfc1a7` range back. Useful if the team decides that capex-driven
+   bonus differentiation is worth pursuing as a fairness feature even though it does
+   not solve spam. Would still need the perf clean-up and the PR 2 mining loop.
+
+3. **Mandatory cost via VDF (Verifiable Delay Function).** Each branch tx carries a
+   VDF proof of duration `T` over a deterministic seed (e.g. branch-tx-essence-hash +
+   slot). Validators reject branches without a fresh proof. Properties:
+   - bounds branch-issuance rate by wall-clock, not by capex or stake;
+   - parallelisation-resistant by construction (the defining property of a VDF);
+   - verification is cheap (logarithmic in `T`).
+   Open questions: VDF parameter governance (changing `T` over time), library /
+   implementation choice (Wesolowski vs Pietrzak; class-group setup), accommodating
+   small slot durations (Proxima's slot is ~10 s — `T` must fit comfortably inside).
+
+4**Cheaper branches (orthogonal).** Reduce per-branch DB-commit and validation cost
+   so that even with `O(N)` branches per slot the cost stays bounded:
+   - state-delta compression,
+   - batched / async commit,
+   - canonical-P-style EasyFL paths reduced or moved off the per-tx hot path,
+   - profile-driven tuning of the sequencer self-attachment latency threshold (which,
+     per the lesson above, is the actual bottleneck on the current default tick rate).
+   Independent of which spam-control direction is chosen. The original spec already
+   notes this as complementary work.
+
+Decision left to a future session.

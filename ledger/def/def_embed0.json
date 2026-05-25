@@ -69,12 +69,6 @@
       "embeddedAs": "evalTupleHasDuplicatesAtPath"
     },
     {
-      "sym": "replaceTupleElement",
-      "description": "replaceTupleElement($0, $1, $2): returns serialized tuple $0 with element at index $1 (1 byte) replaced by $2. Out-of-bounds index is fatal. $2 may be empty.",
-      "numArgs": 3,
-      "embeddedAs": "evalReplaceTupleElement"
-    },
-    {
       "sym": "embeddedEnforceFrozenCoverageOnDelegateOutput",
       "description": "enforces amounts on delegate output",
       "numArgs": 0,

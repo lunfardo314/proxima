@@ -44,6 +44,7 @@ type (
 		BranchInflationBonusBasePrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchCoverageLowerBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
 		BranchCoverageUpperBoundPrecompiled atomic.Pointer[easyfl.Expression[*EvalContext]]
+		BranchInflationBonusPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
 		HealthyCoverageDeltaPrecompiled     atomic.Pointer[easyfl.Expression[*EvalContext]]
 		StorageDepositPrecompiled           atomic.Pointer[easyfl.Expression[*EvalContext]]
 		// compiledScriptCache is the library-level cache of decoded local

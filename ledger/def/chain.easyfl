@@ -114,14 +114,13 @@ or(
    )
 )
 
-// $0 - predecessor input index, $1 - cumulative chain inflation value on current output,
-// $2 - canonicalP (empty on non-branch, used only on the branch path).
+// $0 - predecessor input index, $1 - cumulative chain inflation value on current output
 // Chain inflation = inflation_amount on non-branch, inflation_amount - branchInflationBonus on branch
 func _validCumulativeChainInflation :
 if(
   isBranchTransaction,
   require(
-    equalUint($1, add(_chainPredecessorParam($0, 3), sub(selfInflationAmount, branchInflationBonus($2)))),
+    equalUint($1, add(_chainPredecessorParam($0, 3), sub(selfInflationAmount, branchInflationBonus(vrfProofOnSuccessor, txSlot)))),
     !!!wrong_cumulative_chain_inflation
   ),
   require(
@@ -130,13 +129,12 @@ if(
   )
 )
 
-// $0 - predecessor input index, $1 - cumulative branch inflation bonus on current output,
-// $2 - canonicalP (empty on non-branch, used only on the branch path).
+// $0 - predecessor input index, $1 - cumulative branch inflation bonus on current output
 func _validCumulativeBranchBonus :
 if(
   isBranchTransaction,
   require(
-    equalUint($1, add(_chainPredecessorParam($0, 4), branchInflationBonus($2))),
+    equalUint($1, add(_chainPredecessorParam($0, 4), branchInflationBonus(vrfProofOnSuccessor, txSlot))),
     !!!wrong_cumulative_branch_bonus
   ),
   require(
@@ -181,37 +179,29 @@ func chain : and(
       // chain constraint must be at index 2
    require(equal(selfBlockIndex, chainConstraintIndex), !!!chain_constraint_must_be_at_index_2),
    require(equal(len($0),u64/32), !!!chainID_must_be_32_bytes_long),
-      // Threads canonicalP through the produced-side sub-checks so it is
-      // evaluated once per chain constraint validation instead of once
-      // per branchInflationBonus call. Non-branch txs short-circuit the
-      // canonicalP evaluation via `if` laziness.
-   _chainProducedOrConsumed($0,$1,$2,$3,$4,$5,$6, if(isBranchTransaction, canonicalP, 0x))
-)
-
-// Same args as chain($0..$6); $7 - canonicalP (empty on non-branch).
-func _chainProducedOrConsumed :
-or(
-   and(
-      selfIsProducedOutput,
-      _validChainProduced($0,$1,$2,$3,$4,$5,$6),
-      or(
-         isChainOriginID($0),
-         and(
-            _validCumulativeChainInflation($1,$3,$7),
-            _validCumulativeBranchBonus($1,$4,$7),
-            _validTransitionCounter($1,$5),
-            _validBranchCounter($1,$6)
+   or(
+      and(
+         selfIsProducedOutput,
+         _validChainProduced($0,$1,$2,$3,$4,$5,$6),
+         or(
+            isChainOriginID($0),
+            and(
+               _validCumulativeChainInflation($1,$3),
+               _validCumulativeBranchBonus($1,$4),
+               _validTransitionCounter($1,$5),
+               _validBranchCounter($1,$6)
+            )
+         ),
+         _validInflationAmount($0, $1, selfInflationAmount),
+         or(
+            selfHasLockType(#delegateLock),
+            embeddedEnforceFrozenCoverageOnNonDelegationChain
          )
       ),
-      _validInflationAmount($0, $1, selfInflationAmount, $7),
-      or(
-         selfHasLockType(#delegateLock),
-         embeddedEnforceFrozenCoverageOnNonDelegationChain
+      and(
+         selfIsConsumedOutput,
+         _validChainConsumed($0)
       )
-   ),
-   and(
-      selfIsConsumedOutput,
-      _validChainConsumed($0)
    )
 )
 
@@ -235,27 +225,25 @@ if(
 
 // $0 - chain ChainID
 // $1 - predecessor input index (1 byte, or 0x empty for origin)
-// $2 - inflation amount value
-// $3 - canonicalP (empty on non-branch, used only on the branch path)
+// $2 inflation amount value
 func _validInflationAmount :
 or(
   and(isChainOriginID($0), isZero($2)),
   and(not(isBranchTransaction), isZero($2)),
   require(
-     equalUint( _expectedInflationAmount($1, $3), $2),
+     equalUint( _expectedInflationAmount($1), $2),
      !!!chain_constraint:_wrong_inflation_amount
   )
 )
 
 // $0 - predecessor output (input) index
-// $1 - canonicalP (empty on non-branch, used only on the branch path)
 func _expectedInflationAmount:
 if(
   isZero(sub(txSlot, slotOfInputByIndex($0))),
   u64/0,
   if(
      isBranchTransaction,
-     branchInflationBonus($1),
+     branchInflationBonus(vrfProofOnSuccessor, txSlot),
      chainInflationOneSlot(_predecessorInflatableAmount, slotOfInputByIndex($0))
   )
 )

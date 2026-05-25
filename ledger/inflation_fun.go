@@ -6,7 +6,6 @@ import (
 
 	"github.com/lunfardo314/easyfl"
 	"github.com/lunfardo314/easyfl/easyfl_util"
-	"github.com/lunfardo314/easyfl/tuples"
 	"github.com/lunfardo314/proxima/util"
 )
 
@@ -115,65 +114,22 @@ func (lib *Library) IsHealthyCoverageDelta(coverageDelta, supply uint64) bool {
 	return len(res) > 0
 }
 
-// BranchInflationBonusFromCanonicalPAndS computes the branch inflation bonus
-// B = blake2b(P || S) mod M + 1 for the given canonical pre-image P, mining
-// signature S, and slot. M = BranchInflationBonusBase(slot).
-//
-// This is the Go-side equivalent of the EasyFL branchInflationBonus formula.
-// Called by both the sequencer (during construction / mining) and by any
-// tool wanting to verify a stored branch's bonus.
-func (lib *Library) BranchInflationBonusFromCanonicalPAndS(p, s []byte, slot uint32) uint64 {
-	scale := lib.BranchInflationBonusBase(slot)
-	seed := make([]byte, 0, len(p)+len(s))
-	seed = append(seed, p...)
-	seed = append(seed, s...)
-	return RandomFromSeed(seed, scale) + 1
-}
+// BranchInflationBonus calculates the inflation bonus for a branch using the given proof.
+// Uses the library for the specified slot.
+func (lib *Library) BranchInflationBonus(proof []byte, slot uint32) uint64 {
+	expr := lib.BranchInflationBonusPrecompiled.Load()
+	if expr == nil {
+		expr = lib.mustCompile("branchInflationBonus($0, $1)", 2)
+		lib.BranchInflationBonusPrecompiled.Store(expr)
+	}
+	var slotBin [4]byte
+	var res []byte
 
-// CanonicalBranchPreImage constructs P from the bytes of a branch
-// transaction by zeroing four fields:
-//   - the whole sequencer output (entry at seqOutputIdx in TxOutputs);
-//   - the whole stem output (entry at stemOutputIdx in TxOutputs);
-//   - TxConstraints[TxConstraintBranchMiningSigIdx] (the mining signature S);
-//   - the transaction signature (TxSignatureData).
-//
-// The returned bytes are the canonical pre-image that both the sequencer
-// (at construction time) and the validator (at validation time) compute
-// independently; they must match for the branch-inflation-bonus formula
-// B = blake2b(P || S) mod M + 1 to round-trip correctly.
-func CanonicalBranchPreImage(txBytes []byte, seqOutputIdx, stemOutputIdx byte) ([]byte, error) {
-	txParsed, err := tuples.TupleFromBytes(txBytes)
-	if err != nil {
-		return nil, fmt.Errorf("CanonicalBranchPreImage: parse tx: %w", err)
-	}
-	txTuple, err := tuples.TupleFromBytesEditable(txBytes)
-	if err != nil {
-		return nil, fmt.Errorf("CanonicalBranchPreImage: parse tx editable: %w", err)
-	}
-	// 1+2) zero whole sequencer output and whole stem output (inside TxOutputs)
-	outputsBytes, err := txParsed.At(int(TxOutputs))
-	if err != nil {
-		return nil, fmt.Errorf("CanonicalBranchPreImage: read outputs: %w", err)
-	}
-	outputsTuple, err := tuples.TupleFromBytesEditable(outputsBytes)
-	if err != nil {
-		return nil, fmt.Errorf("CanonicalBranchPreImage: parse outputs: %w", err)
-	}
-	outputsTuple.MustPutAtIdx(seqOutputIdx, nil)
-	outputsTuple.MustPutAtIdx(stemOutputIdx, nil)
-	txTuple.MustPutAtIdx(TxOutputs, outputsTuple.Bytes())
-	// 3) zero mining-signature entry in TxConstraints
-	tcBytes, err := txParsed.At(int(TxConstraints))
-	if err != nil {
-		return nil, fmt.Errorf("CanonicalBranchPreImage: read TxConstraints: %w", err)
-	}
-	tcTuple, err := tuples.TupleFromBytesEditable(tcBytes)
-	if err != nil {
-		return nil, fmt.Errorf("CanonicalBranchPreImage: parse TxConstraints editable: %w", err)
-	}
-	tcTuple.MustPutAtIdx(TxConstraintBranchMiningSigIdx, nil)
-	txTuple.MustPutAtIdx(TxConstraints, tcTuple.Bytes())
-	// 4) zero tx signature
-	txTuple.MustPutAtIdx(TxSignatureData, nil)
-	return txTuple.Bytes(), nil
+	binary.BigEndian.PutUint32(slotBin[:], slot)
+	err := util.CatchPanicOrError(func() error {
+		res = easyfl.EvalExpressionWithSlicePool(nil, nil, expr, proof, slotBin[:])
+		return nil
+	})
+	util.AssertNoError(err)
+	return easyfl_util.MustUint64FromBytes(res)
 }
