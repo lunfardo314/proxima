@@ -51,7 +51,16 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	out, _, err := clnt.GetChainOutput(chainID)
+	// GetChainOutputData returns the raw output bytes + ID without going
+	// through ledger.ChainConstraintFromBytesWithLib (which assumes the
+	// ledger.L() singleton). The chain-constraint parse is not needed here —
+	// we only consume the output and read its token balance — so we keep
+	// the wallet path singleton-free by parsing structurally with
+	// ledger.OutputFromBytes (library-free) and going through the wallet
+	// library only for the delegation guard below.
+	outData, _, err := clnt.GetChainOutputData(chainID)
+	glb.AssertNoError(err)
+	parsedOut, err := ledger.OutputFromBytes(outData.Data)
 	glb.AssertNoError(err)
 
 	// Wallet-derived "now" — singleton-free.
@@ -67,7 +76,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	// reject. Pure wallet-side parse via lib.ParseDelegationOutput +
 	// Constants epoch math.
 	lib := glb.GetTxLibrary()
-	if view, isDelegation, err := lib.ParseDelegationOutput(out.Output.Output, out.ID); err != nil {
+	if view, isDelegation, err := lib.ParseDelegationOutput(parsedOut.Output, outData.ID); err != nil {
 		glb.AssertNoError(err)
 	} else if isDelegation && view.IsInFrozenSlot(ts.Slot, consts) {
 		unfreeze := view.UnfreezeSlot(consts)
@@ -82,8 +91,8 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	txb := txbuildercore.New(0)
 
 	// Consume the chain output as input 0.
-	chainInBytes := out.Output.Bytes()
-	txb.ConsumeOutput(chainInBytes, out.ID)
+	chainInBytes := outData.Data
+	txb.ConsumeOutput(chainInBytes, outData.ID)
 	consumedBytes := [][]byte{chainInBytes}
 
 	// Master-unlock byte (0xff) satisfies the delegation lock's master
@@ -93,7 +102,7 @@ func runKillChainCmd(_ *cobra.Command, args []string) {
 	txb.PutUnlockParams(0, ledger.ConstraintIndexChain, txbuildercore.FinishChainUnlockParams)
 
 	// Sweep all funds back to the wallet under sigLock (minus tag-along fee).
-	chainBal := out.Output.TokenBalance()
+	chainBal := parsedOut.TokenBalance()
 	glb.Assertf(chainBal > feeAmount, "chain balance %s does not cover tag-along fee %s", chainBal, feeAmount)
 	sweepOut, err := txbuildercore.NewSigLockOutput(lib, chainBal-feeAmount, walletHolderID)
 	glb.AssertNoError(err)

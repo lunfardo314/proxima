@@ -633,7 +633,17 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 	}
 
 	ret := make([]*ledger.OutputWithChainID, 0, len(res.Chains))
-	for _, ci := range res.Chains {
+	// The wire format already exposes the chainID as the map key — no need
+	// to re-parse the chain constraint here (which used to require the
+	// ledger.L() singleton via ledger.AsOutputWithChainID). Callers that
+	// need other chain-constraint fields (cumulative inflation, transition
+	// counter, ...) re-parse on the wallet side via
+	// glb.GetTxLibrary().ParseChainConstraint(...).
+	for chainIDHex, ci := range res.Chains {
+		chainID, err := base.ChainIDFromHexString(chainIDHex)
+		if err != nil {
+			return nil, nil, fmt.Errorf("GetAllChains: invalid chain ID key %q: %w", chainIDHex, err)
+		}
 		o, err := ledger.OutputFromHexString(ci.Data)
 		if err != nil {
 			return nil, nil, err
@@ -642,12 +652,12 @@ func (c *APIClient) GetAllChains() ([]*ledger.OutputWithChainID, *base.Transacti
 		if err != nil {
 			return nil, nil, err
 		}
-
-		cData, ok := ledger.AsOutputWithChainID(o, oid)
-		if !ok {
-			return nil, nil, fmt.Errorf("invalid chain constraint")
-		}
-		ret = append(ret, &cData)
+		ret = append(ret, &ledger.OutputWithChainID{
+			OutputWithID: ledger.OutputWithID{Output: o, ID: oid},
+			ChainConstraintData: ledger.ChainConstraintData{
+				ChainConstraint: ledger.ChainConstraint{ChainID: chainID},
+			},
+		})
 	}
 	return ret, &lrbid, nil
 }

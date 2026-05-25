@@ -157,11 +157,31 @@ func (p *ProximaNode) initTxLogger() {
 	// Configure on/off API gate
 	p.txLogOnOffAPI = viper.GetBool("txlogger.enable_on_off_api")
 
-	// Auto-enable if configured
+	// Auto-enable if configured.
+	//
+	// Diagnostics for the common silent-no-op trap: enable_on_start=true with a
+	// missing / unknown / "off" level used to skip silently and leave the logger
+	// disabled with no log line. Now: an explicit "off" warns and leaves
+	// disabled (the config is internally contradictory); empty / unknown level
+	// warns and defaults to "all" (matches the config-template default and the
+	// user's evident intent).
 	if viper.GetBool("txlogger.enable_on_start") {
 		levelStr := viper.GetString("txlogger.level")
 		level := parseTxLogLevel(levelStr)
-		if level != global.TxLogLevelOff {
+		switch {
+		case levelStr == "off":
+			p.Log().Warnf(`txlogger: enable_on_start=true but level="off" — contradictory config, leaving disabled`)
+		default:
+			if level == global.TxLogLevelOff {
+				// Empty or unknown string → default to "all".
+				if levelStr == "" {
+					p.Log().Warnf(`txlogger: enable_on_start=true but level is unset — defaulting to "all"`)
+				} else {
+					p.Log().Warnf(`txlogger: enable_on_start=true but level=%q is not recognised (valid: off/branch/sequencer/non_sequencer/all) — defaulting to "all"`, levelStr)
+				}
+				level = global.TxLogLevelAllTransactions
+				levelStr = "all"
+			}
 			p.txLogger.TxLogEnable(level)
 			p.Log().Infof("transaction logger auto-enabled with level: %s", levelStr)
 		}
