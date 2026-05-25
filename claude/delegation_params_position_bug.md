@@ -1,215 +1,181 @@
-# delegationParams cross-chain transition bug — investigation handoff
+# delegationParams design flaw + setup_seq default-attach bug — investigation handoff
 
-## Verified facts (not speculation)
+## What actually happened (verified)
 
-### What the server actually reports
+### The proxi setup_seq default
 
-From `proxi node dlg chain 842099a962e2...` failure:
+`proxi node setup_seq <name> <amount>` calls
+`addDelegationParamsFlags(seqSendCmd, true)` at
+`proxi/node_cmd/setup_seq.go:34` — **default is `--accept-delegations =
+true`** for setup_seq (unlike `mkchain` which defaults to false at
+`mkchain.go:32`). Both share the same package-level flag variable
+`flagAcceptDelegations`.
 
-```
-constraint 'delegationParams' failed with error
-'panic: evalAtPath: path=[0 8 0 6] -> Tuple.At(6): index is out of range. Num elements: 5'.
-Path: @.consumed.[0].out[0].constraint[6]
-```
+When the user runs `proxi node setup_seq <name> <amount>`, `MakeChain`
+is called at `setup_seq.go:61`. Inside `MakeChain`,
+`resolveChainOriginDelegationParams()` reads `flagAcceptDelegations`
+(= `true` from the default) and produces a chain-origin output that
+**carries delegationParams from the very first commit** — without the
+user explicitly setting any flag.
 
-`Path: @.consumed.[0].out[0].constraint[6]` is the **constraint that is
-running** — the consumed chain-origin output's `delegationParams` at
-slot 6. Its body trips on `evalAtPath([0 8 0 6])` — i.e., **the produced
-successor's** TransactionTuple(0) → TxOutputs(8) → output[0] →
-constraint[6]. The produced output has 5 elements (0..4), so slot 6 is
-out of range.
-
-### The consumed UTXO's actual layout (from server-side display)
-
-```
-   0: amounts = (6_000_000_000)
-   1: index values: [<wallet holderID>]
-   2: sigLock
-   3: chain(ORIGIN, ...)
-   4: bytecode= (unexpected EOF)
-   5: bytecode= (unexpected EOF)
-   6: delegationParams(epochSlots=600, maxFrozenEpochs=20)
-```
-
-This chain has `delegationParams` at slot 6. It is NOT a sequencer
-chain (slots 4 and 5 are empty placeholders, not `sequencer` /
-`seqMilestoneData`).
-
-### The produced delegation output's actual layout
-
-From wallet-side display:
+### Server-side display of the consumed UTXO (failing tx)
 
 ```
-[0] amounts = (6_000_000_196, inflation: 197)
-[1] index values: [<master>, <target>]
-[2] delegateLock(0x,0x0384,0x0258,20)
-[3] chain(<chainID>, 0, 165, 197, 0x, 1, 0x)
-[4] delegateLockState(0x,0)
+0: amounts = (6_000_000_000)
+1: index values: [<wallet holderID>]
+2: sigLock
+3: chain(ORIGIN, predInputIdx=empty, originSlot=165, ...)
+4: bytecode= (unexpected EOF)
+5: bytecode= (unexpected EOF)
+6: delegationParams(epochSlots=600, maxFrozenEpochs=20)
 ```
 
-5 constraints; `delegateLockState` at the last position (index 4).
+Note: slots 4 and 5 are EMPTY. Sequencer-milestone outputs put
+`sequencer` at slot 4 and milestone data at slot 5. **This chain
+origin has delegationParams attached but NO sequencer constraint — an
+inconsistent state under the user's design intent** (see next
+section).
 
-### What the code enforces
+### The failure mechanism
 
-- **`delegateLockState_must_occupy_the_last_tuple_position`** —
-  `ledger/def/lock_delegate.easyfl:107`:
-  ```
-  require(equal(selfBlockIndex, _selfLastConstraintIndex),
-          !!!delegateLockState_must_occupy_the_last_tuple_position)
-  ```
-  So on a delegation output, `delegateLockState` MUST be last.
-  → The produced output cannot place anything after `delegateLockState`.
+The chain origin's `delegationParams` at slot 6 enforces
+`selfImmutableOnSuccessorIndex(delegationParamsConstraintIndex = 6)`
+(`ledger/def/delegation_params.easyfl:28-52`). When the user
+`proxi node dlg chain ...` produces a delegation output with
+`delegateLock` + `chain` + `delegateLockState` (last), the produced
+output has 5 elements total, no constraint at slot 6, and the
+predecessor's immutability check trips:
 
-- **`delegationParams` is pinned to slot 6 and immutable across transits** —
-  `ledger/def/delegation_params.easyfl:28-52`:
-  ```
-  func delegationParams :
-  and(
-     selfImmutableOnSuccessorIndex(delegationParamsConstraintIndex),
-     ...
-  )
-  ```
-  `selfImmutableOnSuccessorIndex` walks into the chain successor's
-  constraint at the same index. With `delegationParamsConstraintIndex =
-  6` and the produced output having only 5 elements → "Tuple.At(6):
-  index is out of range".
+```
+panic: evalAtPath: path=[0 8 0 6] -> Tuple.At(6): index is out of range. Num elements: 5
+```
 
-- **`mkchain` defaults `--accept-delegations` to `false`** —
-  `proxi/node_cmd/mkchain.go:32`:
-  ```
-  addDelegationParamsFlags(makeChainCmd, false /* default: opt-out for regular chains */)
-  ```
-  → A bare `proxi node mkchain` does NOT attach delegationParams. The
-  failing chain must have been created with `--accept-delegations` set
-  explicitly (or `proxi node setup_seq` was used, which defaults the
-  flag to `true`).
+`delegateLockState` is required to be last (`lock_delegate.easyfl:107`
+`!!!delegateLockState_must_occupy_the_last_tuple_position`), so the
+produced delegation output cannot legally carry forward
+delegationParams at slot 6.
 
-### So what is actually broken
+## User's design intent (verified during this session)
 
-The chain `842099a962e2...` is a NON-sequencer chain that was tagged
-with `delegationParams` at origin (advertising "I can be a delegation
-target"). The user is now trying to delegate THIS chain to a
-sequencer — i.e., reuse it as a delegation SOURCE.
+> "we either have sequencer chain and it always accepts delegation
+> with immutable parameters, or it is not a sequencer chain and will
+> never be. Conversion between the two types makes no sense and
+> should not be possible. chain can only be destroyed."
+>
+> "This leads to the idea that natural place for delegation parameters
+> is 'sequencer' constraint, so we do not need separate function for
+> delegationParams."
 
-The produced delegation output (delegateLock + chain + delegateLockState)
-cannot carry `delegationParams` forward, because:
-- delegateLockState must be last, and
-- there's no semantic place for delegationParams on a delegation
-  output anyway — the chain is no longer a delegation target.
+Concretely:
 
-But the consumed chain's `delegationParams` constraint enforces
-*immutability across transit* via `selfImmutableOnSuccessorIndex`. The
-constraint cannot distinguish "transit to another regular chain step"
-from "transit to a delegation-source step". Result: any attempt to
-delegate a chain that carries `delegationParams` panics with the
-above error.
-
-## Two interlocking design issues
-
-**(a) `delegationParams` makes no semantic sense on a non-sequencer
-chain.** It declares the chain as a delegation TARGET, but only
-sequencer chains can actually be targets (a non-sequencer chain has no
-inflation to share). Today nothing prevents attaching delegationParams
-to a non-sequencer chain (mkchain --accept-delegations on a regular
-chain is silently accepted).
-
-**(b) `delegationParams` self-immutability doesn't allow for a
-delegation-source transit.** Even if delegationParams were correctly
-attached only to sequencer chains, you couldn't ever convert such a
-chain back to a non-target form — selfImmutableOnSuccessorIndex would
-require carrying delegationParams across every transit. For the
-specific case of a CHAIN that DELEGATES to ANOTHER chain, that's a
-distinct role from "I accept delegations"; the constraint shape needs
-to either allow the source-role transit or refuse to be attached to
-chains that might one day become sources.
-
-## User's design direction (from this session)
-
-> "delegateLockState [is] expected last in the utxo, on delegated utxo"
-
-Confirmed at `lock_delegate.easyfl:107`.
-
-> "I suspect delegationParams appears on the delegated output that was
-> never meant to be a delegation target."
-
-Confirmed: the consumed chain has delegationParams but is not a
-sequencer chain.
-
-> "Probably default when creating chain, delegation params absent."
-
-Confirmed: `mkchain.go:32` defaults to `false`.
-
-> "Also, consider constraining delegationParams to sequencer chains
-> only. To enforce that, we may require index of the 'sequencer'
-> constraint as one of args of delegationParams. In general,
-> delegationParams should enforce valid environment by itself."
-
-This is the proposed architectural fix.
+- A chain is **typed at origin** as either:
+  - **Sequencer chain** — always accepts delegations, with immutable
+    `(epochSlots, maxFrozenEpochs)` baked into the `sequencer`
+    constraint itself.
+  - **Regular chain** — never accepts delegations, never carries any
+    delegation parameters.
+- **No type conversion is allowed.** A regular chain cannot become a
+  sequencer chain later; a sequencer chain cannot lose its sequencer
+  constraint. The only terminal action is chain destruction.
+- The separate `delegationParams` constraint is obsolete: its two args
+  fold into the `sequencer` constraint as additional args.
 
 ## Plan for the next session
 
-1. **Reproduce in a ledger-level test.**
-   - Build a chain origin with `delegationParams` attached (the way
-     `mkchain --accept-delegations` would build it) but without a
-     `sequencer` constraint.
-   - Build a delegation tx that consumes that chain and produces a
-     delegation output with `delegateLockState` at the last position
-     and no constraint at slot 6.
-   - Submit through `ValidateFullContext` and confirm the same
-     `Tuple.At(6): index is out of range. Num elements: 5` panic.
+### Step 1 — Reproduce in a ledger-level test
 
-2. **Propose the fix** (architectural, per user direction):
-   - Add a `sequencer` constraint index arg to `delegationParams`:
-     `delegationParams(epochSlots, maxFrozenEpochs, seqConstraintIdx)`.
-   - In the constraint body, parse the sibling at `seqConstraintIdx`
-     and require it to be the `sequencer` constraint (via
-     `parseBytecode(..., #sequencer)` or equivalent). Reject if not.
-   - With this enforced, `mkchain --accept-delegations` on a regular
-     chain becomes structurally impossible: the chain origin would
-     fail validation at construction time because no sequencer
-     constraint is present.
+Build a self-contained test in `ledger/tests/` that:
 
-3. **Decide on the immutability semantics** for the legitimate
-   sequencer-chain case. Options:
-   - Keep `selfImmutableOnSuccessorIndex` but also enforce sequencer
-     presence on every transit — then any tx that drops the sequencer
-     constraint must also drop delegationParams (consistent state).
-   - Move to a softer "immutable on TRANSITION between sequencer-chain
-     steps; absent on non-sequencer transits" rule. Likely more
-     complex.
+1. Creates a chain-origin output with `delegationParams` at slot 6
+   AND no sequencer constraint at slots 4/5 (the layout produced by
+   `setup_seq` before any sequencer milestone runs).
+2. Builds a delegation tx that consumes this output and produces a
+   delegation output with `delegateLockState` at the last position.
+3. Runs `tx.ValidateFullContext` and asserts the panic message
+   `Tuple.At(6): index is out of range. Num elements: 5` (or the
+   equivalent post-fix expected error).
 
-4. **Wallet-side mitigation in the meantime.**
-   - At `mkchain`, refuse `--accept-delegations` when not also setting
-     up a sequencer (or warn loudly).
-   - At `proxi node dlg chain`, pre-check the source chain for
-     delegationParams presence and reject with a clear error before
-     submitting the doomed tx.
+This pins down the failure and gives a green-on-fix signal.
 
-## Useful pointers for the next session
+### Step 2 — Architectural fix (per user direction)
 
-- The constraint code:
-  - `ledger/def/delegation_params.easyfl` — the constraint to extend.
-  - `ledger/def/lock_delegate.easyfl:53` — `_selfLastConstraintIndex`
-    helper (already does `selfNumConstraints - 1`); the same pattern
-    can be used in `delegationParams` to find the sequencer
-    constraint instead of taking the index as an arg.
-  - `ledger/def/sequencer.easyfl` — definition of `sequencer`
-    constraint and `SeqMilestoneDataFixedIndex` for the milestone-data
-    sibling.
+**Fold delegation parameters into the `sequencer` constraint.**
 
-- Wallet compose:
-  - `proxi/node_cmd/mkchain.go:32,52-58` — default flag, --accept-delegations wiring.
-  - `proxi/node_cmd/setup_seq.go` — sequencer-setup path that defaults
-    delegationParams to `true`.
-  - `proxi/node_cmd/delegate/chain.go` — the delegate-chain submit path
-    where the failure originates.
+- Extend the `sequencer` constraint with two args:
+  `sequencer(epochSlots, maxFrozenEpochs)` — both immutable, both
+  ranged with the existing `constDelegationEpochSlots*` /
+  `constDelegationMaxFrozenEpochs*` bounds.
+- Delete the standalone `delegationParams` EasyFL constraint,
+  `ledger/delegation_params.go`, the
+  `ConstraintIndexDelegationParams` slot constant, and the wallet-side
+  `NewDelegationParams` / `ParseDelegationParams` helpers (or — minimum
+  scope — leave the helpers as deprecated wrappers; cleaner is delete).
+- Update sequencer-side compose so the sequencer constraint emitted
+  from genesis and from `setup_seq` carries the two values.
+- Update consumers that read `delegationParams` (e.g. `lock_delegate`
+  for target-chain epoch math) to read from the sequencer constraint
+  instead.
 
-- Display path is now wallet-side and singleton-free (commit
-  `03d73bdb`); failures will render full consumed-UTXO context for the
-  failing tx, making reproduction easy.
+### Step 3 — Lock the "no conversion" invariant
+
+- The sequencer constraint must be **immutable across every chain
+  transit** — `selfImmutableOnSuccessorIndex(sequencerConstraintIndex)`
+  on the constraint body. This already follows from the existing
+  chain-output rules but should be made explicit on the sequencer
+  constraint itself once the delegation params live on it.
+- A chain origin's type is fixed at origin and cannot change. The
+  sequencer constraint must be present at origin (set by the same tx
+  that creates the chain), not added later by a "first milestone"
+  step.
+
+### Step 4 — proxi mitigations
+
+- `setup_seq`: emit the sequencer constraint at chain origin (so the
+  chain is a sequencer chain from byte zero). Drop
+  `addDelegationParamsFlags` from setup_seq — the new sequencer
+  constraint carries the params; the existing `flagDelegationEpochSlots`
+  / `flagDelegationMaxFrozenEpochs` either feed into the sequencer
+  constraint args or move to per-chain config.
+- `mkchain`: drop `addDelegationParamsFlags` entirely. A regular chain
+  has no delegation parameters and no sequencer constraint, period.
+- `dlg chain`: pre-check that the source chain has a sequencer
+  constraint and refuse if not (a regular chain cannot become a
+  delegation source either — verify with the user before locking this
+  in; the bug report concerned the reverse direction).
+
+### Step 5 — Migration / breaking change posture
+
+Per `develop08` convention, no backwards compatibility is preserved
+across this refactor. Any on-chain state with the old
+`delegationParams` constraint at slot 6 will be unreadable post-fix.
+Acceptable on develop08; if a different branch needs migration, fork
+the change.
+
+## Verified code citations for the next session
+
+- `proxi/node_cmd/setup_seq.go:34` — `addDelegationParamsFlags(seqSendCmd, true)` (the proximate bug source).
+- `proxi/node_cmd/mkchain.go:32` — `addDelegationParamsFlags(makeChainCmd, false)` (correctly opt-out for regular chains).
+- `proxi/node_cmd/mkchain.go:74-88` — `resolveChainOriginDelegationParams` reads the shared `flagAcceptDelegations`.
+- `proxi/node_cmd/mkchain.go:144,236` — `dp := resolveChainOriginDelegationParams()` + emission via `lib.NewDelegationParams`.
+- `proxi/node_cmd/setup_seq.go:61` — `MakeChain(amount)` from setup_seq (same shared flag).
+- `ledger/def/delegation_params.easyfl:28-52` — constraint to delete.
+- `ledger/def/lock_delegate.easyfl:107` — `delegateLockState` last-position rule (verified, unchanged by the fix).
+- `ledger/def/sequencer.easyfl` — the sequencer constraint to extend.
+- `ledger/delegation_params.go` — Go-side type to delete.
+- `ledger/txbuildercore/helpers_delegate.go:84-` — `NewDelegationParams` to delete.
+
+## Useful context
+
+- Display path is wallet-side and singleton-free as of `03d73bdb`.
+  The wallet-side `txDisplay` in `proxi/glb/wallet_submit.go` now
+  prints full consumed-UTXO context on submit failure, making the
+  reproduction trivial to visualise.
+- The bootstrap sequencer chain is created at genesis
+  (`ledger/genesis.go:36`) with `NewDelegationParams(...)`. The fix
+  needs to update genesis to emit the new sequencer-constraint shape.
 
 ## Don't do in the next session
 
-- The wider proxi singleton sweep — already complete in `03d73bdb`.
-- The mineable-branch-inflation work — reverted on develop08 (see
-  the `project_branch_inflation_mining.md` memory).
+- Mineable-branch-inflation work — reverted (see
+  `project_branch_inflation_mining.md` memory).
+- The wider proxi singleton sweep — complete in `03d73bdb`.
