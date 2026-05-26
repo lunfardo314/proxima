@@ -415,108 +415,121 @@ func MakeOriginChainID(originOutputID OutputID) ChainID {
 	return blake2b.Sum256(originOutputID[:])
 }
 
-// String2 returns a deterministically parseable human-readable form of the transaction ID:
-// <prefix><slot>-<tick>-<maxOutputIndex>-<hash hex 26 bytes>
-// prefix: 'b' for branch, 's' for sequencer non-branch, 't' for non-sequencer
-func (txid *TransactionID) String2() string {
+// StringDashed returns a deterministically parseable human-readable form of the transaction ID:
+//
+//	[s]<slot>-<tick>-<hex of TransactionIDShort, 27 bytes = 54 hex chars>
+//
+// The leading 's' indicates the sequencer bit is set (sequencer transactions, including
+// branches). Non-sequencer transactions have no prefix. The 27-byte hash part starts with
+// the maxOutputIndex byte followed by the 26-byte blake2b hash tail.
+func (txid *TransactionID) StringDashed() string {
 	if txid == nil {
 		return "<nil>"
 	}
 	ts := txid.Timestamp()
-	isSeq := txid.IsSequencerTransaction()
-	var prefix byte
-	switch {
-	case isSeq && ts.Tick == 0:
-		prefix = 'b'
-	case isSeq:
-		prefix = 's'
-	default:
-		prefix = 't'
-	}
-	maxOutIdx := txid[MaxOutputIndexPositionInTxID]
-	hash := txid[TransactionIDLength-TransactionHashLength:]
-	return fmt.Sprintf("%c%d-%d-%d-%s", prefix, ts.Slot, ts.Tick, maxOutIdx, hex.EncodeToString(hash))
+	short := txid.ShortID()
+	return fmt.Sprintf("%s%d-%d-%s", dashedSeqPrefix(txid.IsSequencerTransaction()), ts.Slot, ts.Tick, hex.EncodeToString(short[:]))
 }
 
-// TransactionIDFromString2 parses the format produced by String2
-func TransactionIDFromString2(s string) (ret TransactionID, err error) {
-	if len(s) < 3 {
-		return ret, errors.New("TransactionIDFromString2: string too short")
+// StringDashedShort is the non-parseable shortened form: keeps the first 6 bytes of
+// the 27-byte short ID (maxOutputIndex byte + 5 hash bytes).
+func (txid *TransactionID) StringDashedShort() string {
+	if txid == nil {
+		return "<nil>"
 	}
-	prefix := s[0]
+	ts := txid.Timestamp()
+	short := txid.ShortID()
+	return fmt.Sprintf("%s%d-%d-%s..", dashedSeqPrefix(txid.IsSequencerTransaction()), ts.Slot, ts.Tick, hex.EncodeToString(short[:6]))
+}
+
+// StringDashedVeryShort is the non-parseable very-short form: keeps the first 4 bytes
+// of the 27-byte short ID (maxOutputIndex byte + 3 hash bytes). Collisions possible.
+func (txid *TransactionID) StringDashedVeryShort() string {
+	if txid == nil {
+		return "<nil>"
+	}
+	ts := txid.Timestamp()
+	short := txid.ShortID()
+	return fmt.Sprintf("%s%d-%d-%s..", dashedSeqPrefix(txid.IsSequencerTransaction()), ts.Slot, ts.Tick, hex.EncodeToString(short[:4]))
+}
+
+func dashedSeqPrefix(isSeq bool) string {
+	if isSeq {
+		return "s"
+	}
+	return ""
+}
+
+// TransactionIDFromStringDashed parses the format produced by StringDashed
+func TransactionIDFromStringDashed(s string) (ret TransactionID, err error) {
+	if len(s) == 0 {
+		return ret, errors.New("TransactionIDFromStringDashed: empty string")
+	}
+	rest := s
 	var isSeq bool
-	switch prefix {
-	case 'b':
+	if s[0] == 's' {
 		isSeq = true
-	case 's':
-		isSeq = true
-	case 't':
-		isSeq = false
-	default:
-		return ret, fmt.Errorf("TransactionIDFromString2: invalid prefix '%c'", prefix)
+		rest = s[1:]
 	}
 
-	parts := strings.SplitN(s[1:], "-", 4)
-	if len(parts) != 4 {
-		return ret, errors.New("TransactionIDFromString2: expected 4 dash-separated fields after prefix")
+	parts := strings.SplitN(rest, "-", 3)
+	if len(parts) != 3 {
+		return ret, errors.New("TransactionIDFromStringDashed: expected <slot>-<tick>-<hex> after optional 's' prefix")
 	}
 
 	slot, e := strconv.ParseUint(parts[0], 10, 32)
 	if e != nil {
-		return ret, fmt.Errorf("TransactionIDFromString2: bad slot: %w", e)
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: bad slot: %w", e)
 	}
 	tick, e := strconv.ParseUint(parts[1], 10, 8)
 	if e != nil {
-		return ret, fmt.Errorf("TransactionIDFromString2: bad tick: %w", e)
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: bad tick: %w", e)
 	}
-	maxOutIdx, e := strconv.ParseUint(parts[2], 10, 8)
+	shortBytes, e := hex.DecodeString(parts[2])
 	if e != nil {
-		return ret, fmt.Errorf("TransactionIDFromString2: bad maxOutputIndex: %w", e)
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: bad hash hex: %w", e)
 	}
-	hashBytes, e := hex.DecodeString(parts[3])
-	if e != nil {
-		return ret, fmt.Errorf("TransactionIDFromString2: bad hash hex: %w", e)
-	}
-	if len(hashBytes) != TransactionHashLength {
-		return ret, fmt.Errorf("TransactionIDFromString2: hash must be %d bytes, got %d", TransactionHashLength, len(hashBytes))
-	}
-
-	// validate prefix vs tick consistency
-	if prefix == 'b' && tick != 0 {
-		return ret, fmt.Errorf("TransactionIDFromString2: branch prefix 'b' but tick=%d (must be 0)", tick)
+	if len(shortBytes) != TransactionIDShortLength {
+		return ret, fmt.Errorf("TransactionIDFromStringDashed: hash must be %d bytes, got %d", TransactionIDShortLength, len(shortBytes))
 	}
 
 	ts := T(uint32(slot), byte(tick))
 	var h TransactionIDShort
-	h[0] = byte(maxOutIdx)
-	copy(h[1:], hashBytes)
+	copy(h[:], shortBytes)
 	return NewTransactionID(ts, h, isSeq), nil
 }
 
-// String2 returns a deterministically parseable human-readable form of the output ID:
-// <txid String2>-<output index>
-func (oid *OutputID) String2() string {
+// StringDashed returns the parseable form of the output ID: <txid StringDashed>#<output index>
+func (oid *OutputID) StringDashed() string {
 	txid := oid.TransactionID()
-	return fmt.Sprintf("%s-%d", txid.String2(), oid.Index())
+	return fmt.Sprintf("%s#%d", txid.StringDashed(), oid.Index())
 }
 
-// OutputIDFromString2 parses the format produced by OutputID.String2
-func OutputIDFromString2(s string) (ret OutputID, err error) {
-	// find last '-' — that's the output index separator
-	lastDash := strings.LastIndex(s, "-")
-	if lastDash < 0 {
-		return ret, errors.New("OutputIDFromString2: no dash found")
-	}
-	txidStr := s[:lastDash]
-	idxStr := s[lastDash+1:]
+// StringDashedShort is the non-parseable shortened form of the output ID
+func (oid *OutputID) StringDashedShort() string {
+	txid := oid.TransactionID()
+	return fmt.Sprintf("%s#%d", txid.StringDashedShort(), oid.Index())
+}
 
-	txid, e := TransactionIDFromString2(txidStr)
-	if e != nil {
-		return ret, fmt.Errorf("OutputIDFromString2: %w", e)
+// StringDashedVeryShort is the non-parseable very-short form of the output ID
+func (oid *OutputID) StringDashedVeryShort() string {
+	txid := oid.TransactionID()
+	return fmt.Sprintf("%s#%d", txid.StringDashedVeryShort(), oid.Index())
+}
+
+// OutputIDFromStringDashed parses the format produced by OutputID.StringDashed
+func OutputIDFromStringDashed(s string) (ret OutputID, err error) {
+	hashIdx := strings.LastIndex(s, "#")
+	if hashIdx < 0 {
+		return ret, errors.New("OutputIDFromStringDashed: no '#' found")
 	}
-	idx, e := strconv.ParseUint(idxStr, 10, 8)
+	txid, e := TransactionIDFromStringDashed(s[:hashIdx])
 	if e != nil {
-		return ret, fmt.Errorf("OutputIDFromString2: bad output index: %w", e)
+		return ret, fmt.Errorf("OutputIDFromStringDashed: %w", e)
+	}
+	idx, e := strconv.ParseUint(s[hashIdx+1:], 10, 8)
+	if e != nil {
+		return ret, fmt.Errorf("OutputIDFromStringDashed: bad output index: %w", e)
 	}
 	return MustNewOutputID(txid, byte(idx)), nil
 }
