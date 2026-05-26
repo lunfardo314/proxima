@@ -341,7 +341,8 @@ func earliestStoredSlot(store TxStore) (uint32, bool) {
 }
 
 // serveFindTx searches for transactions matching a prefix.
-// Accepts short format like "220942|36" or "220942|36sq]0066f7" or plain hex prefix.
+// Accepts the dashed short format ("220942-36", "s220942-36-0066f7", "220942") or a plain
+// hex prefix of the raw transaction-id bytes.
 func serveFindTx(w http.ResponseWriter, r *http.Request, store TxStore) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
@@ -356,7 +357,7 @@ func serveFindTx(w http.ResponseWriter, r *http.Request, store TxStore) {
 
 	var results []findResult
 
-	// try to parse short format: [slot|tickTYPE]hash.. or slot|tick
+	// try to parse the dashed short format: [s]slot[-tick[-hashPrefix]]
 	if slot, tick, hashPrefix, ok := parseShortTxID(q); ok {
 		prefix := base.Slot2Bytes(slot)
 		store.Iterator(prefix).IterateKeys(func(k []byte) bool {
@@ -386,7 +387,7 @@ func serveFindTx(w http.ResponseWriter, r *http.Request, store TxStore) {
 		// try as hex prefix: iterate all keys that start with decoded hex prefix
 		prefixBytes, err := hex.DecodeString(q)
 		if err != nil || len(prefixBytes) == 0 {
-			http.Error(w, "cannot parse query: use slot|tick, [slot|tick]hash, or hex prefix", http.StatusBadRequest)
+			http.Error(w, "cannot parse query: use slot, slot-tick, [s]slot-tick-hashPrefix, or a hex byte prefix", http.StatusBadRequest)
 			return
 		}
 		store.Iterator(prefixBytes).IterateKeys(func(k []byte) bool {
@@ -447,60 +448,49 @@ func serveTxDetail(w http.ResponseWriter, r *http.Request, store TxStore) {
 	_, _ = fmt.Fprintf(w, "--- transaction ---\n%s", tx.String())
 }
 
-// parseShortTxID parses formats like:
+// parseShortTxID parses the dashed short form of a TxID prefix. Accepted shapes:
 //
-//	"220942|36" → slot=220942, tick=36, hashPrefix=""
-//	"220942|36sq]0066f7" → slot=220942, tick=36, hashPrefix="0066f7"
-//	"[220942|36sq]0066f7" → same with leading bracket stripped
+//	"220942"               → slot=220942, tick=255 (any), hashPrefix=""
+//	"220942-36"            → slot=220942, tick=36,   hashPrefix=""
+//	"220942-36-0066f7"     → slot=220942, tick=36,   hashPrefix="0066f7"
+//	"s220942-36-0066f7"    → same; the leading 's' (sequencer marker) is informational
+//	"s220942-36-0066f7..#2" → trailing "..", "#<idx>" (output-id suffix) are stripped
 //
-// Returns tick=255 if no tick specified. Returns ok=false if not parseable.
+// Returns tick=255 when the tick component is absent. Returns ok=false if not parseable.
 func parseShortTxID(s string) (slot uint32, tick byte, hashPrefix string, ok bool) {
-	s = strings.TrimPrefix(s, "[")
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "s") // sequencer marker is informational here
 
-	// find the pipe separator
-	pipeIdx := strings.Index(s, "|")
-	if pipeIdx < 1 {
-		// try plain number as slot
-		n, err := strconv.ParseUint(s, 10, 32)
-		if err != nil {
-			return 0, 0, "", false
-		}
-		return uint32(n), 255, "", true
-	}
+	parts := strings.SplitN(s, "-", 3)
 
-	// parse slot
-	slotN, err := strconv.ParseUint(s[:pipeIdx], 10, 32)
+	// parse slot (always present)
+	slotN, err := strconv.ParseUint(parts[0], 10, 32)
 	if err != nil {
 		return 0, 0, "", false
 	}
 	slot = uint32(slotN)
 
-	rest := s[pipeIdx+1:]
-
-	// extract tick: digits at the start
-	tickEnd := 0
-	for tickEnd < len(rest) && rest[tickEnd] >= '0' && rest[tickEnd] <= '9' {
-		tickEnd++
-	}
-	if tickEnd == 0 {
+	if len(parts) == 1 {
 		return slot, 255, "", true
 	}
-	tickN, err := strconv.ParseUint(rest[:tickEnd], 10, 8)
-	if err != nil {
+
+	// parse tick (any non-empty 0..127 value)
+	tickN, err := strconv.ParseUint(parts[1], 10, 8)
+	if err != nil || tickN > 127 {
 		return slot, 255, "", true
 	}
 	tick = byte(tickN)
-	rest = rest[tickEnd:]
 
-	// skip type suffix like "sq]" or "br]" or "]"
-	if idx := strings.Index(rest, "]"); idx >= 0 {
-		rest = rest[idx+1:]
-	} else {
-		rest = ""
+	if len(parts) < 3 {
+		return slot, tick, "", true
 	}
 
-	// remaining is hash prefix (hex chars), strip trailing ".."
-	hashPrefix = strings.TrimRight(strings.TrimSpace(rest), ".")
+	// hash prefix: strip an optional output-id suffix ("#<digits>") and trailing ".." from short forms.
+	rest := parts[2]
+	if hashIdx := strings.Index(rest, "#"); hashIdx >= 0 {
+		rest = rest[:hashIdx]
+	}
+	hashPrefix = strings.TrimRight(rest, ".")
 	return slot, tick, hashPrefix, true
 }
 
