@@ -79,18 +79,14 @@ func runChainCmd(_ *cobra.Command, args []string) {
 		util.Th(cc.CumulativeChainInflation+cc.CumulativeBranchBonus),
 		util.Th(cc.CumulativeChainInflation), util.Th(cc.CumulativeBranchBonus))
 	if glb.IsVerbose() {
-		// Per-slot decompiled source — wallet library, no singleton.
+		// Per-index pretty form — wallet library for bytecode positions, structural
+		// parse for amounts (index 0) and index-values (index 1).
 		glb.Infof("constraints:")
 		for j, raw := range out.Output.ConstraintsRawBytes() {
 			if len(raw) == 0 {
 				continue
 			}
-			src, err := lib.DecompileBytecode(raw)
-			if err != nil {
-				glb.Infof("      [%d] <decompile error: %v>", j, err)
-			} else {
-				glb.Infof("      [%d] %s", j, src)
-			}
+			glb.Infof("      [%d] %s", j, glb.FormatConstraintAtIndex(lib, byte(j), raw))
 		}
 	}
 	glb.Infof("\n")

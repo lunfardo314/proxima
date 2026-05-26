@@ -72,19 +72,13 @@ func runGetOutputsCmd(_ *cobra.Command, _ []string) {
 		glb.Verbosef("   raw data: %s (%d bytes) ", o.Output.Hex(), len(o.Output.Bytes()))
 		if glb.IsVerbose() {
 			glb.Infof("   parsed constraints:")
-			// Decompile every constraint slot via the wallet library.
-			// Singleton-free; produces raw EasyFL source rather than the
-			// typed pretty-form ConstraintFromBytesWithLib emits.
+			// Per-index pretty form — wallet library for bytecode positions, structural
+			// parse for amounts (index 0) and index-values (index 1).
 			for j, raw := range o.Output.ConstraintsRawBytes() {
 				if len(raw) == 0 {
 					continue
 				}
-				src, err := lib.DecompileBytecode(raw)
-				if err != nil {
-					glb.Infof("        [%d] <decompile error: %v>", j, err)
-				} else {
-					glb.Infof("        [%d] %s", j, src)
-				}
+				glb.Infof("        [%d] %s", j, glb.FormatConstraintAtIndex(lib, byte(j), raw))
 			}
 		}
 	}

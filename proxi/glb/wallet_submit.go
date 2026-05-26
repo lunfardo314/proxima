@@ -195,18 +195,7 @@ func renderOutputBytes(ln *lines.Lines, lib *txbuildercore.Library[any], data []
 		if len(raw) == 0 {
 			continue
 		}
-		switch byte(j) {
-		case ledger.ConstraintIndexAmounts:
-			ln.Add("%s[%d] amounts = %s", prefix, j, formatAmounts(raw))
-		case ledger.ConstraintIndexIndexValues:
-			ln.Add("%s[%d] index values: %s", prefix, j, formatIndexValues(raw))
-		default:
-			if src, derr := lib.Decompile(raw); derr == nil {
-				ln.Add("%s[%d] %s", prefix, j, src)
-			} else {
-				ln.Add("%s[%d] %d bytes (decompile err: %v)", prefix, j, len(raw), derr)
-			}
-		}
+		ln.Add("%s[%d] %s", prefix, j, FormatConstraintAtIndex(lib, byte(j), raw))
 	}
 	if chainBin, cerr := o.ConstraintAt(ledger.ConstraintIndexChain); cerr == nil && len(chainBin) > 0 {
 		if cc, ccerr := lib.ParseChainConstraint(chainBin); ccerr == nil {
@@ -220,6 +209,33 @@ func renderOutputBytes(ln *lines.Lines, lib *txbuildercore.Library[any], data []
 		}
 	}
 	return o
+}
+
+// FormatConstraintAtIndex returns a one-line pretty form of the raw bytes at
+// the given constraint index of an output. Index 0 (amounts vector) and index 1
+// (index-values tuple) are NOT bytecode — they are structurally parsed; indices
+// 2+ are decompiled via the wallet library. Empty `raw` is reported as such
+// instead of failing decompile.
+//
+// Use this everywhere an output is dumped index-by-index, instead of calling
+// lib.DecompileBytecode on every position — feeding the amounts/index-values
+// bytes through the bytecode decoder produces confusing "wrong function code"
+// errors.
+func FormatConstraintAtIndex(lib *txbuildercore.Library[any], idx byte, raw []byte) string {
+	if len(raw) == 0 {
+		return "<empty>"
+	}
+	switch idx {
+	case ledger.ConstraintIndexAmounts:
+		return "amounts = " + formatAmounts(raw)
+	case ledger.ConstraintIndexIndexValues:
+		return "index values: " + formatIndexValues(raw)
+	}
+	src, err := lib.Decompile(raw)
+	if err != nil {
+		return fmt.Sprintf("<decompile error: %v>", err)
+	}
+	return src
 }
 
 // formatAmounts pretty-prints the amounts vector at constraint slot 0.
@@ -246,7 +262,8 @@ func formatAmounts(raw []byte) string {
 
 // formatIndexValues pretty-prints the index-value tuple at constraint
 // slot 1. Each element is hex-encoded so the controllers / hashes are
-// human-readable.
+// human-readable. No `0x` prefix on entries — these are raw indexed bytes,
+// not EasyFL inline-data literals.
 func formatIndexValues(raw []byte) string {
 	t, err := tuples.TupleFromBytes(raw)
 	if err != nil {
@@ -254,7 +271,7 @@ func formatIndexValues(raw []byte) string {
 	}
 	parts := make([]string, 0, t.NumElements())
 	t.ForEach(func(_ int, v []byte) bool {
-		parts = append(parts, "0x"+hex.EncodeToString(v))
+		parts = append(parts, hex.EncodeToString(v))
 		return true
 	})
 	return "[" + strings.Join(parts, ", ") + "]"

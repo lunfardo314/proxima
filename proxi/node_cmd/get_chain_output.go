@@ -36,11 +36,6 @@ func runGetChainOutputCmd(_ *cobra.Command, args []string) {
 		if len(raw) == 0 {
 			continue
 		}
-		src, err := lib.DecompileBytecode(raw)
-		if err != nil {
-			glb.Infof("    [%d] <decompile error: %v>", j, err)
-		} else {
-			glb.Infof("    [%d] %s", j, src)
-		}
+		glb.Infof("    [%d] %s", j, glb.FormatConstraintAtIndex(lib, byte(j), raw))
 	}
 }
