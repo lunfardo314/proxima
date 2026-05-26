@@ -3,7 +3,6 @@ package seq_cmd
 import (
 	"crypto/ed25519"
 	"encoding/hex"
-	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -120,14 +119,17 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 		sdProvided = true
 	}
 
-	waitForFunds(glb.MustGetTarget(), amount)
+	// Resolve the target once up front: MustGetTarget logs the resolved address,
+	// and the prior code called it twice (here + inside makeSequencerChainOrigin),
+	// producing two identical "wallet account (default as a target): …" lines.
+	target := glb.MustGetTarget()
+	waitForFunds(target, amount)
 
 	var initialSeqData *seqdata.SequencerData
 	if sdProvided {
 		initialSeqData = &sd
 	}
-	cid, txid, err := makeSequencerChainOrigin(amount, epochSlots, maxFrozenEpochs, initialSeqData)
-	glb.AssertNoError(err)
+	cid, txid := makeSequencerChainOrigin(target, amount, epochSlots, maxFrozenEpochs, initialSeqData)
 	glb.Infof("new sequencer chain id is %s", cid.String())
 	if !glb.NoWait() {
 		glb.TrackTxInclusion(txid, time.Second)
@@ -139,19 +141,24 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 
 // makeSequencerChainOrigin composes and submits a sequencer transaction whose
 // first produced output is the new sequencer chain origin. The sequencer
-// constraint at slot 4 carries (epochSlots, maxFrozenEpochs); if
-// initialSeqData is non-nil, its encoded JSON is pushed at slot 5 as inline
-// milestone data. The tx endorses the tag-along sequencer's latest milestone
-// (the cheapest sequencer-tx endorsement available to the wallet, required by
-// _noChainPredecessorCase in def/sequencer.easyfl).
+// constraint at slot 4 carries (epochSlots, maxFrozenEpochs); if initialSeqData
+// is non-nil, its encoded JSON is pushed at slot 5 as inline milestone data.
+//
+// The tx has NO endorsements — _noChainPredecessorCase in def/sequencer.easyfl
+// explicitly forbids them. The chain origin is naturally pulled into the tangle
+// via its tag-along output (consumed by the tag-along sequencer).
+//
+// On submit failure SubmitAndDisplay has already printed the error and the
+// failing-tx pretty-form; this helper exits(1) directly so the CLI doesn't
+// print the error a second time.
 func makeSequencerChainOrigin(
+	target ledger.Lock,
 	onChainAmount uint64,
 	epochSlots uint32,
 	maxFrozenEpochs byte,
 	initialSeqData *seqdata.SequencerData,
-) (chainID base.ChainID, txid base.TransactionID, err error) {
+) (chainID base.ChainID, txid base.TransactionID) {
 	walletData := glb.GetWalletData()
-	target := glb.MustGetTarget()
 	clnt := glb.GetClient()
 	consts := glb.GetLedgerConstants()
 
@@ -163,13 +170,6 @@ func makeSequencerChainOrigin(
 	feeAmount := glb.GetTagAlongFee()
 	if seqMinFee > feeAmount {
 		feeAmount = seqMinFee
-	}
-
-	// Endorsement target: latest milestone of the tag-along sequencer
-	// (the only sequencer chain the wallet is guaranteed to know about).
-	endorseTxid, err := latestSequencerMilestone(clnt, *tagAlongSeqID)
-	if err != nil {
-		return base.NilChainID, base.TransactionID{}, err
 	}
 
 	glb.Infof("Creating new sequencer chain origin:")
@@ -184,7 +184,6 @@ func makeSequencerChainOrigin(
 	} else {
 		glb.Infof("   initial sequencer data: (none)")
 	}
-	glb.Infof("   endorsing tag-along sequencer milestone: %s", endorseTxid.StringShort())
 
 	if !glb.YesNoPrompt("proceed?:", true, glb.BypassYesNoPrompt()) {
 		glb.Infof("exit")
@@ -208,14 +207,11 @@ func makeSequencerChainOrigin(
 		return false
 	})
 
-	// Wallet-derived "now" — pace-enforced against the latest input and
-	// the endorsed milestone (same-slot endorsements require the
-	// endorsement to be strictly older than the tx).
+	// Wallet-derived "now" — pace-enforced against the latest input.
 	ts := consts.LedgerTimeFromClockTime(time.Now())
 	for _, in := range inps {
 		ts = base.MaximumTime(ts, in.Timestamp().AddTicks(int(consts.TransactionPace)))
 	}
-	ts = base.MaximumTime(ts, endorseTxid.Timestamp().AddTicks(int(consts.TransactionPaceSequencer)))
 	if ts.IsSlotBoundary() {
 		// Sequencer origin cannot be a branch (tick==0) — see
 		// _noChainPredecessorCase.
@@ -224,32 +220,30 @@ func makeSequencerChainOrigin(
 
 	txBytes, txid, chainOutIdx, consumed, err := composeSequencerChainOriginTx(
 		walletData.PrivateKey, inps, target, onChainAmount,
-		*tagAlongSeqID, feeAmount, ts, endorseTxid,
+		*tagAlongSeqID, feeAmount, ts,
 		epochSlots, maxFrozenEpochs, initialSeqData,
 	)
-	if err != nil {
-		return base.NilChainID, base.TransactionID{}, err
-	}
+	glb.AssertNoError(err)
 	if err = glb.SubmitAndDisplay(txBytes, consumed...); err != nil {
-		return base.NilChainID, base.TransactionID{}, err
+		// SubmitAndDisplay already printed the failure detail.
+		os.Exit(1)
 	}
 
 	chainOid := base.MustNewOutputID(txid, chainOutIdx)
 	chainID = base.MakeOriginChainID(chainOid)
-	return chainID, txid, nil
+	return chainID, txid
 }
 
-// composeSequencerChainOriginTx is the pure wasm-wallet compose helper
-// for the sequencer-chain-origin tx. It mirrors makeChainOriginTransaction
-// but additionally:
-//   - attaches the 2-arg sequencer constraint at slot 4 of the chain
-//     origin output;
-//   - if initialSeqData is non-nil, pushes its JSON bytes as an inline-data
-//     constraint at slot 5 (sequencer milestone data);
-//   - calls SetSequencerData(chainOutIdx, SequencerOutputIndexNone) so
-//     the tx is marked as a sequencer transaction (selfOutputIndex ==
-//     txSequencerOutputIndex check passes);
-//   - endorses one sequencer tx (required by _noChainPredecessorCase).
+// composeSequencerChainOriginTx is the pure wasm-wallet compose helper for the
+// sequencer-chain-origin tx. The produced tx is a REGULAR WALLET TX (no `s` bit,
+// no SequencerData slot) that emits a chain-origin output carrying:
+//   - the 2-arg sequencer constraint at slot 4 (with epochSlots, maxFrozenEpochs);
+//   - optional sequencer milestone data at slot 5 (when initialSeqData != nil).
+//
+// The easyfl `sequencer` constraint skips the milestone-index check when the
+// sibling chain constraint is an origin, so SetSequencerData is intentionally NOT
+// called. No endorsements either — the origin reaches the tangle via its
+// tag-along output.
 func composeSequencerChainOriginTx(
 	walletPrivateKey ed25519.PrivateKey,
 	walletOutputs []*ledger.OutputWithID,
@@ -258,7 +252,6 @@ func composeSequencerChainOriginTx(
 	tagAlongSeqID base.ChainID,
 	tagAlongFee uint64,
 	ts base.LedgerTime,
-	endorseTxid base.TransactionID,
 	epochSlots uint32,
 	maxFrozenEpochs byte,
 	initialSeqData *seqdata.SequencerData,
@@ -324,11 +317,10 @@ func composeSequencerChainOriginTx(
 	}
 
 	txb.SetTimestamp(ts)
-	// Mark as sequencer tx so the sequencer constraint's check
-	// `selfOutputIndex == txSequencerOutputIndex` passes for the chain
-	// origin output. Non-branch → stem index is SequencerOutputIndexNone.
-	txb.SetSequencerData(chainOutIdx, txbuildercore.SequencerOutputIndexNone)
-	txb.TxData.Endorsements = append(txb.TxData.Endorsements, endorseTxid)
+	// No SetSequencerData call: the tx is a regular wallet tx producing a chain-origin
+	// output. The easyfl `sequencer` constraint skips the milestone-index check when the
+	// chain constraint is an origin (selfChainPredInputIndex == 0x). No endorsements
+	// either — the origin is naturally pulled into the tangle via its tag-along output.
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletPrivateKey)
 
@@ -338,23 +330,6 @@ func composeSequencerChainOriginTx(
 		return nil, base.TransactionID{}, 0, nil, err
 	}
 	return txBytes, txid, chainOutIdx, consumed, nil
-}
-
-// latestSequencerMilestone fetches the tag-along sequencer's latest
-// milestone TxID via /last_known_milestones. The wallet asserts the
-// chosen sequencer is alive in the host's tippool — if it isn't, the
-// host has no candidate for us to endorse and the call must fail.
-func latestSequencerMilestone(clnt *client.APIClient, seqID base.ChainID) (base.TransactionID, error) {
-	tips, err := clnt.GetLastKnownSequencerData()
-	if err != nil {
-		return base.TransactionID{}, err
-	}
-	tip, ok := tips[seqID.StringHex()]
-	if !ok || tip.LatestMilestoneTxID == "" {
-		return base.TransactionID{}, fmt.Errorf("tag-along sequencer %s has no known milestone — cannot endorse",
-			seqID.StringShort())
-	}
-	return base.TransactionIDFromHexString(tip.LatestMilestoneTxID)
 }
 
 func waitForFunds(accountable ledger.Controller, amount uint64) {

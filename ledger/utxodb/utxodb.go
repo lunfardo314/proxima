@@ -11,7 +11,6 @@ import (
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/sequencer/txbuilder_seq"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/lines"
@@ -716,10 +715,11 @@ func (u *UTXODB) CreateSequencerChainOrigin(controllerPrivateKey ed25519.Private
 		}
 	}
 
-	txb.SetSequencerData(chainIdx, txbuildercore.SequencerOutputIndexNone)
+	// No SetSequencerData call: the producing tx is a regular wallet tx (no `s` bit).
+	// The easyfl `sequencer` constraint skips the milestone-index check at origin.
+	// No endorsements either — the origin doesn't anchor itself; the consumer of the
+	// resulting chain output (next sequencer tx) does.
 	txb.SetTimestamp(originTs)
-	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
-	txb.TxData.Endorsements = append(txb.TxData.Endorsements, dummyEnd)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(controllerPrivateKey)
 

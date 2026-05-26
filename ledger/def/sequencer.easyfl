@@ -20,19 +20,7 @@
 // position is locked by selfImmutableOnSuccessorIndex.
 
 // $0 chain predecessor input index
-func _inputSameSlot :
-equal(
-	txSlot,
-	slotOfInputByIndex($0)
-)
-
-// no param
-// the tx is origin of both chain and sequencer
-func _noChainPredecessorCase :
-and(
-	require(not(isBranchTransaction),     !!!sequencer_chain_origin_can't_be_on_branch_transaction),
-	require(not(isZero(numEndorsements)), !!!sequencer_chain_origin_must_endorse_another_sequencer_transaction)
-)
+func _inputSameSlot : equal( txSlot, slotOfInputByIndex($0) )
 
 // $0 chain predecessor input index
 // chain predecessor is on the same slot
@@ -43,7 +31,7 @@ require(
 )
 
 // $0 chain predecessor input index
-// chain predecessor is on past time slot
+// chain predecessor is on a past slot
 func _crossSlotPredecessorCase :
 require(
 	or(
@@ -55,11 +43,26 @@ require(
 )
 
 // $0 chain predecessor input index
+//
+// Chain ORIGIN outputs ($0 == 0x, equivalently ChainID == 0x000…) have no
+// tx-level requirement: the producing tx is a regular wallet tx (or another
+// sequencer milestone spawning new chains) and baseline anchoring is the
+// consumer's problem. Chain TRANSITIONS still dispatch to the
+// baseline guarantee rules. Baseline direction will be possible to chose deterministically:
+// - if predecessor is on the same slot, it must either be sequencer tx (it is the direction),
+//   or otherwise it must have at least 1 endorsement (baseline direction is at index 0).
+// - otherwise (cross slot predecessor case):
+// -- on branch transaction baseline direction is itself
+// -- otherwise endorsement at index 0 is the direction
+// -- otherwise explicit baseline must be specified
 func _sequencer :
 or(
-	and( equal($0, 0x), _noChainPredecessorCase ),
-	and( _inputSameSlot($0), _sameSlotPredecessorCase($0)),
-	and( not(_inputSameSlot($0)), _crossSlotPredecessorCase)
+	equal($0, 0x),
+	if(
+	  _inputSameSlot($0),
+	  _sameSlotPredecessorCase($0),
+	  _crossSlotPredecessorCase
+	)
 )
 
 // enforces the sequencer transaction with more than 1 input not is in the pre branch consolidation ticks zone
@@ -111,6 +114,12 @@ and(
 // $0 - epochSlots (z32; [500, 2000])
 // $1 - maxFrozenEpochs (byte; [8, 32])
 // chain constraint is always at index 2
+//
+// The "self is the tx's milestone output" check (selfOutputIndex == txSequencerOutputIndex)
+// fires only for chain TRANSITIONS, never for chain ORIGINS. Rationale: a single tx is
+// allowed to produce many new sequencer chain origins (a wallet "batch-spawn", or a
+// sequencer milestone spawning new chains on request). Transitions remain capped at one
+// per tx by the single-byte txSequencerOutputIndex marker.
 func sequencer: and(
     // Position immutable across transit: cannot add, remove, or move.
     // This is what makes "sequencer chain" a permanent type — once a
@@ -121,7 +130,11 @@ func sequencer: and(
         and(
             selfIsProducedOutput,
             _validDelegationParamsBounds($0, $1),
-            require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction),
+            // selfChainPredInputIndex == 0x => chain origin output (no transition check needed).
+            or(
+                equal(selfChainPredInputIndex, 0x),
+                require(equal(selfOutputIndex, txSequencerOutputIndex), !!!inconsistent_sequencer_output_index_on_transaction)
+            ),
             checkPreBranchConsolidationTicks,
             // check chain's past
             _sequencer( selfChainPredInputIndex )

@@ -150,10 +150,17 @@ func (txb *TxBuilder) SetTimestamp(ts base.LedgerTime) {
 	txb.TxData.Timestamp = ts
 }
 
-// SetSequencerData sets the 2-byte sequencer-data slot. seqOutIdx
-// also becomes the SequencerOutputIndex discriminator; stemOutIdx is
-// the stem-output index used by branch transactions (pass
-// SequencerOutputIndexNone = 0xff for non-branch).
+// SetSequencerData declares this tx is a sequencer milestone. seqOutIdx is the
+// produced-output index that carries the milestone's chain TRANSITION; stemOutIdx
+// is the stem-output index for branch transactions (pass SequencerOutputIndexNone
+// = 0xff for non-branch). Setting the data flips the txID's `s` bit at sign time
+// and triggers the easyfl `sequencer` constraint's "selfOutputIndex ==
+// txSequencerOutputIndex" check on the produced milestone.
+//
+// MUST NOT be called for txs that only produce chain ORIGIN outputs — origin txs
+// are regular wallet transactions (no `s` bit, no SequencerData slot). The easyfl
+// sequencer constraint skips the milestone-index check for origins, so a single
+// tx can produce many sequencer chain origins without calling this helper.
 func (txb *TxBuilder) SetSequencerData(seqOutIdx, stemOutIdx byte) {
 	txb.TxData.SequencerOutputIndex = seqOutIdx
 	txb.TxData.SequencerData = []byte{seqOutIdx, stemOutIdx}

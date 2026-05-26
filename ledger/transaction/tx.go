@@ -500,13 +500,17 @@ func (tx *Transaction) StateMutations() *multistate.Mutations {
 	return ret
 }
 
-// BaselineDirection is the input, endorsement or explicit baseline of the sequencer transaction where to look for a baseline branch
-// It is not a baseline yet, (but it can be one).
+// BaselineDirection returns the txid to walk from to find this sequencer tx's
+// baseline branch. It is not the baseline itself but a direction into the DAG.
 //
-// Sequencer chain origins (idx == 0xff) have no chain predecessor;
-// _noChainPredecessorCase in def/sequencer.easyfl already requires
-// such txs to be non-branch and to carry at least one endorsement. The
-// endorsement is therefore the canonical baseline direction.
+// Chain ORIGINS are wallet txs, NOT sequencer milestones, so they never enter
+// this function (the SequencerChainPredecessor idx==0xff case is unreachable).
+// For every sequencer milestone (chain transition), the easyfl `_sequencer`
+// rule (see def/sequencer.easyfl) guarantees a usable baseline source:
+//   - explicit baseline if set;
+//   - same-slot sequencer predecessor (its txid);
+//   - branch tx: the chain predecessor (cross-slot);
+//   - otherwise: at least one endorsement (endorsement[0]).
 func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 	util.Assertf(tx.IsSequencerTransaction(), "tx.IsSequencerTransaction()")
 	var ok bool
@@ -514,21 +518,13 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 		return
 	}
 	predOid, idx := tx.SequencerChainPredecessor()
-	if idx == 0xff {
-		// Sequencer chain origin — no chain predecessor. The EasyFL
-		// sequencer constraint guarantees at least one endorsement on
-		// this path; use it.
-		util.Assertf(tx.NumEndorsements() > 0, "sequencer chain origin must have endorsements\n>>>>>>>>>>>>>>>>>>\n%s", tx.String())
-		ret = tx.MustEndorsementAt(0)
-		return
-	}
+	util.Assertf(idx != 0xff,
+		"BaselineDirection: sequencer milestone with chain-origin predecessor (idx==0xff) — origins must be wallet txs:\n%s", tx.String())
 
-	if predOid.Slot() == tx.Slot() {
-		if predOid.IsSequencerTransaction() {
-			// predecessor is a sequencer in the same-slot
-			ret = predOid.TransactionID()
-			return
-		}
+	if predOid.Slot() == tx.Slot() && predOid.IsSequencerTransaction() {
+		// predecessor is a sequencer milestone in the same slot
+		ret = predOid.TransactionID()
+		return
 	}
 	// the predecessor is cross-slot, or it is not a sequencer transaction.
 	if tx.IsBranchTransaction() {
@@ -536,7 +532,8 @@ func (tx *Transaction) BaselineDirection() (ret base.TransactionID) {
 		ret = predOid.TransactionID()
 		return
 	}
-	// it enforces at least one endorsement
+	// _sequencer cross-slot rule guarantees an endorsement here (explicit-baseline
+	// was handled above).
 	util.Assertf(tx.NumEndorsements() > 0, "tx.NumEndorsements()>0\n>>>>>>>>>>>>>>>>>>\n%s", tx.String())
 	ret = tx.MustEndorsementAt(0)
 	return

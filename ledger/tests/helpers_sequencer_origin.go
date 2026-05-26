@@ -7,24 +7,17 @@ import (
 	"github.com/lunfardo314/proxima/ledger"
 	"github.com/lunfardo314/proxima/ledger/base"
 	"github.com/lunfardo314/proxima/ledger/transaction"
-	"github.com/lunfardo314/proxima/ledger/txbuildercore"
 	"github.com/lunfardo314/proxima/ledger/utxodb"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ed25519"
 )
 
-// mustMakeSequencerChainOrigin issues a sequencer transaction that
-// produces a sequencer chain origin holding `amount` tokens locked to
-// `addr`. Any leftover input balance is returned as change locked to
-// the same address. The producing tx satisfies the sequencer constraint
-// at slot 4 by:
-//   - setting sequencer data (txSequencerOutputIndex == chain output index)
-//   - endorsing a dummy sequencer tx (chain origin has no predecessor,
-//     so _noChainPredecessorCase requires an endorsement)
-//
-// The dummy endorsement passes Stage-3 validation in utxodb because
-// utxodb does not enforce endorsement-target existence; this is a
-// test-only shortcut.
+// mustMakeSequencerChainOrigin issues a sequencer transaction that produces a
+// sequencer chain origin holding `amount` tokens locked to `addr`. Any leftover
+// input balance is returned as change locked to the same address. The producing
+// tx satisfies the sequencer constraint at slot 4 by setting sequencer data
+// (txSequencerOutputIndex == chain output index). _noChainPredecessorCase
+// FORBIDS endorsements at chain origin, so the tx is endorsement-free.
 func mustMakeSequencerChainOrigin(
 	t *testing.T,
 	u *utxodb.UTXODB,
@@ -76,10 +69,11 @@ func mustMakeSequencerChainOrigin(
 		require.NoError(t, err)
 	}
 
-	txb.SetSequencerData(chainIdx, txbuildercore.SequencerOutputIndexNone)
+	// No SetSequencerData call: the producing tx is a regular wallet tx (no `s` bit).
+	// The easyfl `sequencer` constraint skips the milestone-index check at chain origin.
+	// No endorsements either — the origin is pulled into the tangle via its tag-along
+	// (or via a sequencer transitioning the chain output in a follow-up tx).
 	txb.SetTimestamp(originTs)
-	dummyEnd := base.NewTransactionID(originTs.AddTicks(-5), base.TransactionIDShort{}, true)
-	txb.PushEndorsements(dummyEnd)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(privKey)
 
