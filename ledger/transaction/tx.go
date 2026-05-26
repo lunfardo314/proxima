@@ -86,19 +86,19 @@ func (tx *Transaction) ID() base.TransactionID {
 	return tx.txid
 }
 
-// IDString returns human-readable form of the transaction ID
+// IDString returns human-readable form of the transaction ID (dashed form).
 func (tx *Transaction) IDString() string {
-	return base.TransactionIDString(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
+	return tx.txid.String()
 }
 
-// IDShortString returns shortened human-readable form of the transaction ID
+// IDShortString returns shortened human-readable form of the transaction ID (dashed form).
 func (tx *Transaction) IDShortString() string {
-	return base.TransactionIDStringShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
+	return tx.txid.StringShort()
 }
 
-// IDVeryShortString returns very short human-readable form of the transaction ID
+// IDVeryShortString returns very short human-readable form of the transaction ID (dashed form).
 func (tx *Transaction) IDVeryShortString() string {
-	return base.TransactionIDStringVeryShort(tx.timestamp, tx.txid.ShortID(), tx.txid.IsSequencerTransaction())
+	return tx.txid.StringVeryShort()
 }
 
 // IDStringHex returns hex encoded bytes of the raw txid bytes

@@ -106,21 +106,40 @@ func (t LedgerTime) Bytes() []byte {
 	return ret[:]
 }
 
+// String returns the dashed form "<slot>-<tick>". The previous pipe form is StringLegacy.
 func (t LedgerTime) String() string {
+	return fmt.Sprintf("%d-%d", t.Slot, t.Tick)
+}
+
+// Short returns the dashed short form "<slot%1000>-<tick>". The previous dotted+pipe
+// form is ShortLegacy.
+func (t LedgerTime) Short() string {
+	return fmt.Sprintf("%d-%d", t.Slot%1000, t.Tick)
+}
+
+// AsFileName matches String — the dashed form is filename-safe on Linux and Windows.
+// The previous underscore form is AsFileNameLegacy.
+func (t LedgerTime) AsFileName() string {
+	return t.String()
+}
+
+// StringLegacy returns the original pipe-separated form "<slot>|<tick>".
+func (t LedgerTime) StringLegacy() string {
 	return fmt.Sprintf("%d|%d", t.Slot, t.Tick)
+}
+
+// ShortLegacy returns the original dot-prefixed short form ".<slot%1000>|<tick>".
+func (t LedgerTime) ShortLegacy() string {
+	return fmt.Sprintf(".%d|%d", t.Slot%1000, t.Tick)
+}
+
+// AsFileNameLegacy returns the original underscore-separated form "<slot>_<tick>".
+func (t LedgerTime) AsFileNameLegacy() string {
+	return fmt.Sprintf("%d_%d", t.Slot, t.Tick)
 }
 
 func (t LedgerTime) Source() string {
 	return fmt.Sprintf("0x%s", hex.EncodeToString(t.Bytes()))
-}
-
-func (t LedgerTime) AsFileName() string {
-	return fmt.Sprintf("%d_%d", t.Slot, t.Tick)
-}
-
-func (t LedgerTime) Short() string {
-	e := t.Slot % 1000
-	return fmt.Sprintf(".%d|%d", e, t.Tick)
 }
 
 func (t LedgerTime) After(t1 LedgerTime) bool {
