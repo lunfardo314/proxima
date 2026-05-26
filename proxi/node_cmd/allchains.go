@@ -234,10 +234,10 @@ func listChains(chains []*ledger.OutputWithChainID, lrbRootRecord *multistate.Br
 	glb.Infof("show delegations only = %v", showDelegationsOnly)
 
 	if glb.IsVerbose() {
-		glb.Infof("----------------- CHAIN OUTPUTS -------------------")
+		glb.Infof("----------------- CHAINED OUTPUTS -------------------")
 		listChainsVerbose(chains, lib)
 	} else {
-		glb.Infof("----------------- CHAIN OUTPUTS (short) -------------------")
+		glb.Infof("----------------- CHAINED OUTPUTS (short) -------------------")
 		listChainsShort(chains, lrbRootRecord, lib, consts, currentSlot)
 	}
 }
