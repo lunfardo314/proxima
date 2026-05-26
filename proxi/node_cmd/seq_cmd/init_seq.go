@@ -2,7 +2,6 @@ package seq_cmd
 
 import (
 	"crypto/ed25519"
-	"encoding/hex"
 	"os"
 	"strconv"
 	"time"
@@ -16,17 +15,25 @@ import (
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/sequencer/seqdata"
 	"github.com/lunfardo314/proxima/util"
-	"github.com/lunfardo314/proxima/util/keystore"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 )
 
 func initSeqInitCmd() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "init <amount> [<flags>]",
-		Short: `creates a new sequencer chain origin and updates proxi.yaml / proxima.yaml`,
-		Long: `Creates a fresh sequencer chain whose origin output holds <amount> tokens via
-a sequencer transaction endorsing the tag-along sequencer's latest milestone.
+		Use:   "init_genesis <amount> [<flags>]",
+		Short: `creates a new sequencer chain origin output (wallet-side); does NOT touch proxima.yaml`,
+		Long: `Creates a fresh sequencer chain whose origin output holds <amount> tokens.
+The producing transaction is a regular wallet tx (no `+"`s`"+` bit, no endorsements);
+the new chain reaches the tangle via its tag-along output.
+
+This command is the WALLET-SIDE concern only:
+  - submits the chain-origin transaction;
+  - records the new chain ID in proxi.yaml (wallet.sequencer_id).
+
+The NODE-SIDE configuration (proxima.yaml's sequencer section + controller
+key file) is the operator's manual job — edit proxima.yaml directly, and
+copy/symlink/encrypt the controller key file as you see fit.
 
 Optional flags fall into two groups:
 
@@ -136,7 +143,9 @@ func runSeqInitCmd(cmd *cobra.Command, args []string) {
 	}
 
 	updateWalletConfig(cid)
-	updateNodeConfig(sd.Name(), walletData.PrivateKey, cid)
+	glb.Infof("\nproxi.yaml updated: wallet.sequencer_id = %s", cid.StringHex())
+	glb.Infof("Next step (manual): edit proxima.yaml's `sequencer` section on the node — set")
+	glb.Infof("  chain_id, controller_key_file, enable: true, and any operational flags you want.")
 }
 
 // makeSequencerChainOrigin composes and submits a sequencer transaction whose
@@ -365,45 +374,3 @@ func updateWalletConfig(chainId base.ChainID) {
 	glb.AssertNoError(err)
 }
 
-func updateNodeConfig(name string, key ed25519.PrivateKey, chainId base.ChainID) {
-	publicKey := key.Public().(ed25519.PublicKey)
-	sid := base.HolderIDFromPublicKey(base.SignatureTypeED25519, publicKey)
-	holderID := hex.EncodeToString(sid[:])
-	seqKeyFile := keystore.DefaultKeyFile
-
-	ks, err := keystore.NewUnencrypted(keystore.KeyTypeED25519, key, publicKey, holderID)
-	glb.AssertNoError(err)
-
-	if glb.YesNoPrompt("Encrypt the sequencer key file with a passphrase?", false) {
-		passphrase := glb.ReadPassphraseConfirm()
-		ks, err = keystore.EncryptKeystore(ks, passphrase, "")
-		glb.AssertNoError(err)
-		glb.Infof("Key encrypted.")
-	}
-
-	err = ks.SaveToFile(seqKeyFile)
-	glb.AssertNoError(err)
-	glb.Infof("sequencer controller key saved to '%s'", seqKeyFile)
-
-	data, err := os.ReadFile("proxima.yaml")
-	glb.AssertNoError(err)
-
-	var config map[string]interface{}
-	err = yaml.Unmarshal(data, &config)
-	glb.AssertNoError(err)
-
-	if sequencer, ok := config["sequencer"].(map[interface{}]interface{}); ok {
-		sequencer["name"] = name
-		sequencer["enable"] = true
-		sequencer["chain_id"] = chainId.StringHex()
-		sequencer["controller_key_file"] = seqKeyFile
-		delete(sequencer, "controller_key")
-	} else {
-		glb.Infof("!!! Error sequencer key not found")
-	}
-
-	modifiedData, err := yaml.Marshal(&config)
-	glb.AssertNoError(err)
-	err = os.WriteFile("proxima.yaml", modifiedData, 0600)
-	glb.AssertNoError(err)
-}
