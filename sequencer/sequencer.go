@@ -123,10 +123,13 @@ func New(env Environment, seqID base.ChainID, controllerKey ed25519.PrivateKey, 
 	out := viper.GetString("logger.output") + ".seq"
 	global.MaintainLogs(out, viper.GetString("logger.previous"), viper.GetInt("logger.keep_latest_logs"))
 
-	displayName := cfg.SequencerName
-	if displayName == "" {
-		displayName = seqID.StringHex()[:4]
-	}
+	// Resolve the sequencer's display name with priority:
+	//   1. on-chain name from milestone data (slot 5) — primary; set at genesis to
+	//      "boot" for the bootstrap chain, by `proxi node seq set-params --name …`
+	//      otherwise;
+	//   2. proxima.yaml `sequencer.name` — fallback when on-chain name is empty;
+	//   3. first 4 hex chars of the seqID — last resort.
+	displayName := resolveSequencerDisplayName(env, seqID, cfg.SequencerName)
 	logName := "[SEQ:" + displayName + "]"
 	var log *zap.SugaredLogger
 	if cfg.SeparateLog {
@@ -182,6 +185,62 @@ func NewFromConfig(glb *workflow.Workflow) (*Sequencer, error) {
 		return nil, nil
 	}
 	return New(glb, seqID, nil, cfg...)
+}
+
+// resolveSequencerDisplayName picks the name used in the "[SEQ:NAME]" logger
+// prefix. The on-chain milestone data (slot 5 of the sequencer chain output)
+// is the primary source — that's where `proxi node seq set-params --name …`
+// writes it, and where genesis seeds the bootstrap sequencer with "boot".
+// The yaml-supplied name is used only when the on-chain field is empty, and
+// the seqID hex prefix is the last-resort fallback.
+//
+// The state read is best-effort: if the LRB isn't reachable or the chain
+// output can't be parsed at startup, we silently fall through to the yaml /
+// hex-prefix paths instead of failing sequencer startup.
+func resolveSequencerDisplayName(env Environment, seqID base.ChainID, yamlName string) string {
+	if onChain := onChainSequencerName(env, seqID); onChain != "" {
+		return truncateName(onChain)
+	}
+	if yamlName != "" {
+		return truncateName(yamlName)
+	}
+	return seqID.StringHex()[:4]
+}
+
+// onChainSequencerName reads the sequencer's SeqName from milestone data on the
+// latest reliable branch. Returns "" on any error or when the field is absent.
+// The lookup is best-effort: some Environment implementations (notably the test
+// dummyEnv before an LRB is established) panic inside LatestReliableState() via
+// multistate.MustNewReadable. recover() catches those so sequencer startup
+// continues with the yaml / hex-prefix fallback.
+func onChainSequencerName(env Environment, seqID base.ChainID) (name string) {
+	defer func() {
+		if r := recover(); r != nil {
+			name = ""
+		}
+	}()
+	rdr, err := env.LatestReliableState()
+	if err != nil {
+		return ""
+	}
+	chainOut, err := rdr.GetChainOutputWithID(seqID)
+	if err != nil {
+		return ""
+	}
+	sd, err := ledger.ParseSequencerData(chainOut.Output)
+	if err != nil {
+		return ""
+	}
+	return sd.Name()
+}
+
+// truncateName matches the 6-char cap WithName applies to yaml-supplied names,
+// so the on-chain path stays consistent with the historical bound.
+func truncateName(name string) string {
+	if len(name) > 6 {
+		return name[:6]
+	}
+	return name
 }
 
 func (seq *Sequencer) Start() {
