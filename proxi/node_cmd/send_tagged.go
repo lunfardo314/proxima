@@ -209,19 +209,6 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 	glb.AssertNoError(err)
 	txb.PushTxConstraint(tokenSentinelBin)
 
-	// Pick a timestamp respecting input pace. Wallet-side clock math
-	// via the Constants struct — no ledger singleton.
-	ts := consts.LedgerTimeFromClockTime(time.Now())
-	if ts.IsSlotBoundary() {
-		ts = ts.AddTicks(10)
-	}
-	ts = base.MaximumTime(ts, inTs)
-	txb.SetTimestamp(ts)
-	txb.ComputeInputCommitment()
-	txb.SignED25519(wallet.PrivateKey)
-
-	txBytes := txb.Bytes()
-
 	glb.Infof("tagged send plan:")
 	glb.Infof("   amount sent:        %s tokens of tag %s", util.Th(amount), tag.StringShort())
 	glb.Infof("   tokenAmount inputs: %d (sum %s)", len(selectedTokenIns), util.Th(consumedTokenSum))
@@ -236,6 +223,20 @@ func runSendTaggedCmd(amount uint64, tagHex string) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}
+
+	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
+	// submission rather than the moment we offered the prompt; otherwise a
+	// slow confirmation makes the tx "born stale".
+	ts := consts.LedgerTimeFromClockTime(time.Now())
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(10)
+	}
+	ts = base.MaximumTime(ts, inTs)
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(wallet.PrivateKey)
+
+	txBytes := txb.Bytes()
 
 	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
 		os.Exit(1)

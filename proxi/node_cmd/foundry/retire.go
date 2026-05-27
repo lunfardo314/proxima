@@ -127,16 +127,6 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 	}
 
-	ts := consts.LedgerTimeFromClockTime(time.Now())
-	if ts.IsSlotBoundary() {
-		ts = ts.AddTicks(10)
-	}
-	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(consts.TransactionPace))
-	ts = base.MaximumTime(ts, foundryTs)
-	for _, in := range fundingIns {
-		ts = base.MaximumTime(ts, in.Timestamp())
-	}
-
 	// --- Move the foundry's on-chain PRXI to the target.
 	retiredOut, err := glb.BuildLockOutput(lib, foundryPRXI, target)
 	glb.AssertNoError(err)
@@ -156,14 +146,6 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	txb.SetTimestamp(ts)
-	txb.ComputeInputCommitment()
-	txb.SignED25519(wallet.PrivateKey)
-
-	txBytes := txb.Bytes()
-	txid, err := txbuildercore.TxIDFromBytes(txBytes)
-	glb.AssertNoError(err)
-
 	glb.Infof("retire plan:")
 	glb.Infof("   foundry chainID:  %s", chainID.String())
 	glb.Infof("   foundry supply:   %s (will be destroyed)", util.Th(fIn.Supply))
@@ -174,6 +156,26 @@ func runFoundryRetireCmd(_ *cobra.Command, args []string) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}
+
+	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
+	// submission rather than the moment we offered the prompt; otherwise a
+	// slow confirmation makes the tx "born stale".
+	ts := consts.LedgerTimeFromClockTime(time.Now())
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(10)
+	}
+	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(consts.TransactionPace))
+	ts = base.MaximumTime(ts, foundryTs)
+	for _, in := range fundingIns {
+		ts = base.MaximumTime(ts, in.Timestamp())
+	}
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(wallet.PrivateKey)
+
+	txBytes := txb.Bytes()
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err)
 
 	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
 		os.Exit(1)

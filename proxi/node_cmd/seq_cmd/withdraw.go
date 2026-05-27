@@ -105,6 +105,22 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
+	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", util.Th(amount), walletData.Sequencer.String())
+	if !glb.YesNoPrompt(prompt, true) {
+		glb.Infof("exit")
+		os.Exit(0)
+	}
+
+	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
+	// submission rather than the moment we offered the prompt; otherwise a
+	// slow confirmation makes the tx "born stale".
+	ts = consts.LedgerTimeFromClockTime(time.Now())
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(12)
+	}
+	for _, in := range walletOutputs {
+		ts = base.MaximumTime(ts, in.Timestamp())
+	}
 	txb.SetTimestamp(ts)
 	txb.ComputeInputCommitment()
 	txb.SignED25519(walletData.PrivateKey)
@@ -113,11 +129,6 @@ func runSeqWithdrawCmd(_ *cobra.Command, args []string) {
 	txid, err := txbuildercore.TxIDFromBytes(txBytes)
 	glb.AssertNoError(err)
 
-	prompt := fmt.Sprintf("\nwithdraw %s from sequencer %s?", util.Th(amount), walletData.Sequencer.String())
-	if !glb.YesNoPrompt(prompt, true) {
-		glb.Infof("exit")
-		os.Exit(0)
-	}
 	glb.Infof("submitting the transaction...")
 
 	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {

@@ -170,17 +170,6 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 		glb.AssertNoError(err)
 	}
 
-	// Timestamp = max(now, foundry input ts + pace, funding inputs ts).
-	ts := consts.LedgerTimeFromClockTime(time.Now())
-	if ts.IsSlotBoundary() {
-		ts = ts.AddTicks(10)
-	}
-	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(consts.TransactionPace))
-	ts = base.MaximumTime(ts, foundryTs)
-	for _, in := range walletOutputs {
-		ts = base.MaximumTime(ts, in.Timestamp())
-	}
-
 	// --- Mint output: sigLock-locked tokenAmount-bearing UTXO to the target.
 	mintBase, err := glb.BuildLockOutput(lib, mintedOutputAmount, target)
 	glb.AssertNoError(err)
@@ -204,14 +193,6 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 		txb.ProduceOutput(remainderOut.Bytes())
 	}
 
-	txb.SetTimestamp(ts)
-	txb.ComputeInputCommitment()
-	txb.SignED25519(wallet.PrivateKey)
-
-	txBytes := txb.Bytes()
-	txid, err := txbuildercore.TxIDFromBytes(txBytes)
-	glb.AssertNoError(err)
-
 	glb.Infof("mint plan:")
 	glb.Infof("   foundry chainID:    %s", chainID.String())
 	glb.Infof("   supply: %s -> %s", util.Th(fIn.Supply), util.Th(newSupply))
@@ -224,6 +205,28 @@ func runFoundryMintCmd(_ *cobra.Command, args []string) {
 		glb.Infof("exit")
 		os.Exit(0)
 	}
+
+	// Stamp + sign AFTER the prompt so the timestamp reflects the moment of
+	// submission, not the moment the user was offered the prompt. Otherwise
+	// a slow confirmation makes the tx "born stale" and the boot sequencer
+	// purges its tag-along output from the backlog before it can be drained.
+	// Timestamp = max(now, foundry input ts + pace, funding inputs ts).
+	ts := consts.LedgerTimeFromClockTime(time.Now())
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(10)
+	}
+	foundryTs := foundryIn.ID.Timestamp().AddTicks(int(consts.TransactionPace))
+	ts = base.MaximumTime(ts, foundryTs)
+	for _, in := range walletOutputs {
+		ts = base.MaximumTime(ts, in.Timestamp())
+	}
+	txb.SetTimestamp(ts)
+	txb.ComputeInputCommitment()
+	txb.SignED25519(wallet.PrivateKey)
+
+	txBytes := txb.Bytes()
+	txid, err := txbuildercore.TxIDFromBytes(txBytes)
+	glb.AssertNoError(err)
 
 	if err := glb.SubmitAndDisplay(txBytes, consumedBytes...); err != nil {
 		os.Exit(1)

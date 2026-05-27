@@ -135,6 +135,29 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 		sumIn += o.Output.TokenBalance()
 	}
 
+	// Precompute the input timestamp floor (pure data, no clock).
+	var maxInputTs base.LedgerTime
+	for _, in := range walletOutputs {
+		maxInputTs = base.MaximumTime(maxInputTs, in.Timestamp())
+	}
+
+	prompt := fmt.Sprintf("delegate amount %s to sequencer %s (share %d promille, plus tag-along fee %s)?",
+		util.Th(amount), targetSeqID.String(), effShare, util.Th(feeAmount))
+	if !glb.YesNoPrompt(prompt, true) {
+		glb.Infof("exit")
+		os.Exit(0)
+	}
+
+	// Stamp + build + sign AFTER the prompt so the timestamp reflects the
+	// moment of submission. The delegation output embeds a chain origin whose
+	// originSlot must equal the tx slot (chain.easyfl), so the output is
+	// composed with the finalised slot here.
+	ts = consts.LedgerTimeFromClockTime(time.Now())
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(10)
+	}
+	ts = base.MaximumTime(ts, maxInputTs)
+
 	// Wasm-style build via txbuildercore + helpers.
 	txLib := glb.GetTxLibrary()
 	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
@@ -153,7 +176,6 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 			err := txb.PutUnlockReference(byte(i), ledger.ConstraintIndexLock, 0)
 			glb.AssertNoError(err)
 		}
-		ts = base.MaximumTime(ts, in.Timestamp())
 	}
 
 	delegationOut, err := txLib.NewDelegationInitOutput(txbuildercore.DelegationInitOutputParams{
@@ -187,13 +209,6 @@ func runDelegateAmountCmd(_ *cobra.Command, args []string) {
 	txBytes := txb.Bytes()
 	txid, err := txbuildercore.TxIDFromBytes(txBytes)
 	glb.AssertNoError(err)
-
-	prompt := fmt.Sprintf("delegate amount %s to sequencer %s (share %d promille, plus tag-along fee %s)?",
-		util.Th(amount), targetSeqID.String(), effShare, util.Th(feeAmount))
-	if !glb.YesNoPrompt(prompt, true) {
-		glb.Infof("exit")
-		os.Exit(0)
-	}
 
 	delegationOid, err := base.NewOutputID(txid, delegationOutputIdx)
 	glb.AssertNoError(err)
