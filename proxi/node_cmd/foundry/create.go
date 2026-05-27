@@ -3,7 +3,6 @@ package foundry
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/lunfardo314/proxima/api"
@@ -18,7 +17,7 @@ import (
 
 func initFoundryCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create <on-chain balance>",
+		Use:   "create",
 		Short: "create a new foundry origin (chain origin + foundry constraint)",
 		Long: `Create a new foundry chain origin. The produced output carries:
   - amounts (PRXI on-chain balance)
@@ -26,6 +25,9 @@ func initFoundryCreateCmd() *cobra.Command {
   - chain origin at index 3
   - foundry(0) at index 4
   - optional predefined policy script bytecode at index 5
+
+On-chain balance defaults to twice the minimum storage deposit for the
+produced foundry-origin output; override with --balance.
 
 The foundry's tag (and therefore the native-token tag) IS the sibling
 chain constraint's ChainID, computed as blake2b(originOutputID) at first
@@ -43,21 +45,22 @@ Policy options (mutually exclusive — at most one of these flags):
 
 If no policy flag is set, index 5 is left empty and the foundry is
 unconstrained beyond the foundry() invariants.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.NoArgs,
 		Run:  runFoundryCreateCmd,
 	}
 	glb.AddFlagTarget(cmd)
 	cmd.Flags().Bool("non-destructible", false, "attach the foundryNonDestructible predefined policy script")
 	cmd.Flags().Uint64("max-supply", 0, "attach the foundryMaxSupply(N) predefined policy script with cap N")
+	cmd.Flags().Uint64("balance", 0, "explicit on-chain balance in PRXI; 0 (default) uses 2x minimum storage deposit")
 	cmd.InitDefaultHelpCmd()
 	return cmd
 }
 
-func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
+func runFoundryCreateCmd(cmd *cobra.Command, _ []string) {
 	walletData := glb.GetWalletData()
 	glb.Infof("wallet account: %s", walletData.Account.String())
 
-	onChainAmount, err := strconv.ParseUint(args[0], 10, 64)
+	balanceFlag, err := cmd.Flags().GetUint64("balance")
 	glb.AssertNoError(err)
 
 	nonDestructible, err := cmd.Flags().GetBool("non-destructible")
@@ -75,6 +78,59 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 	glb.AssertNoError(err)
 
 	client := glb.GetClient()
+
+	// Wasm-style build via txbuildercore + helpers.
+	lib := glb.GetTxLibrary()
+	consts := glb.GetLedgerConstants()
+	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
+
+	ts := consts.LedgerTimeFromClockTime(time.Now())
+	if ts.IsSlotBoundary() {
+		ts = ts.AddTicks(10)
+	}
+
+	// Compile optional foundry policy bytecode via the wallet library.
+	var policyBytes []byte
+	switch {
+	case nonDestructible:
+		policyBytes, err = lib.CompileExpression(ledger.FoundryNonDestructibleName)
+		glb.AssertNoError(err)
+	case maxSupply > 0:
+		policyBytes, err = lib.CompileExpression(fmt.Sprintf("%s(u64/%d)", ledger.FoundryMaxSupplyName, maxSupply))
+		glb.AssertNoError(err)
+	}
+
+	// buildFoundryOriginOutput composes the foundry chain-origin output for the
+	// given on-chain balance. Called twice when --balance is omitted: once with
+	// a placeholder to size the storage deposit, then again with the doubled
+	// deposit as the final amount.
+	buildFoundryOriginOutput := func(amount uint64) *txbuildercore.Output {
+		baseOut, err := glb.BuildLockOutput(lib, amount, target)
+		glb.AssertNoError(err)
+		fb, err := txbuildercore.OutputBuilderFromBytes(baseOut.Bytes())
+		glb.AssertNoError(err)
+		chainOriginBin, err := lib.NewChainOrigin(ts.Slot)
+		glb.AssertNoError(err)
+		fb.PutConstraint(chainOriginBin, ledger.ConstraintIndexChain)
+		foundryBin, err := lib.NewFoundryBytecode(0)
+		glb.AssertNoError(err)
+		fb.PutConstraint(foundryBin, ledger.ConstraintIndexFoundry)
+		if len(policyBytes) > 0 {
+			fb.PutConstraint(policyBytes, ledger.ConstraintIndexFoundryPolicy)
+		}
+		return fb.Output()
+	}
+
+	onChainAmount := balanceFlag
+	defaultedFromDeposit := false
+	if onChainAmount == 0 {
+		// Probe the storage deposit using a placeholder amount; the 2x doubling
+		// covers the few-byte size delta when the real amount is encoded.
+		deposit := computeStorageDeposit(client, buildFoundryOriginOutput(1))
+		onChainAmount = 2 * deposit
+		defaultedFromDeposit = true
+	}
+
 	needed := onChainAmount + feeAmount
 	res, err := client.GetOutputsForControllerID(walletData.Account.ControllerID(), apiclient.GetOutputsParams{
 		LockType:  api.GetOutputsLockTypeSigLock,
@@ -89,15 +145,6 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 		util.Th(needed), util.Th(res.AvailableAmount))
 	walletOutputs := res.Outputs
 
-	// Wasm-style build via txbuildercore + helpers.
-	lib := glb.GetTxLibrary()
-	consts := glb.GetLedgerConstants()
-	walletHolderID := base.HolderIDFromED25519PrivateKey(walletData.PrivateKey)
-
-	ts := consts.LedgerTimeFromClockTime(time.Now())
-	if ts.IsSlotBoundary() {
-		ts = ts.AddTicks(10)
-	}
 	txb := txbuildercore.New(0)
 
 	consumedBytes := make([][]byte, 0, len(walletOutputs))
@@ -116,32 +163,7 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 		ts = base.MaximumTime(ts, in.Timestamp())
 	}
 
-	// Compile optional foundry policy bytecode via the wallet library.
-	var policyBytes []byte
-	switch {
-	case nonDestructible:
-		policyBytes, err = lib.CompileExpression(ledger.FoundryNonDestructibleName)
-		glb.AssertNoError(err)
-	case maxSupply > 0:
-		policyBytes, err = lib.CompileExpression(fmt.Sprintf("%s(u64/%d)", ledger.FoundryMaxSupplyName, maxSupply))
-		glb.AssertNoError(err)
-	}
-
-	// Compose the foundry chain-origin output via OutputBuilder.
-	baseOut, err := glb.BuildLockOutput(lib, onChainAmount, target)
-	glb.AssertNoError(err)
-	fb, err := txbuildercore.OutputBuilderFromBytes(baseOut.Bytes())
-	glb.AssertNoError(err)
-	chainOriginBin, err := lib.NewChainOrigin(ts.Slot)
-	glb.AssertNoError(err)
-	fb.PutConstraint(chainOriginBin, ledger.ConstraintIndexChain)
-	foundryBin, err := lib.NewFoundryBytecode(0)
-	glb.AssertNoError(err)
-	fb.PutConstraint(foundryBin, ledger.ConstraintIndexFoundry)
-	if len(policyBytes) > 0 {
-		fb.PutConstraint(policyBytes, ledger.ConstraintIndexFoundryPolicy)
-	}
-	foundryIdx := txb.ProduceOutput(fb.Output().Bytes())
+	foundryIdx := txb.ProduceOutput(buildFoundryOriginOutput(onChainAmount).Bytes())
 
 	tagAlongOut, err := txbuildercore.NewTagAlongOutput(lib, feeAmount, *tagAlongSeqID, walletHolderID)
 	glb.AssertNoError(err)
@@ -166,7 +188,11 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 	chainID := base.MakeOriginChainID(foundryOid)
 
 	glb.Infof("creating new foundry chain origin:")
-	glb.Infof("   on-chain balance:  %s", util.Th(onChainAmount))
+	if defaultedFromDeposit {
+		glb.Infof("   on-chain balance:  %s  (default: 2x min storage deposit)", util.Th(onChainAmount))
+	} else {
+		glb.Infof("   on-chain balance:  %s", util.Th(onChainAmount))
+	}
 	glb.Infof("   initial supply:    0  (mint with a separate command)")
 	switch {
 	case nonDestructible:
@@ -194,4 +220,22 @@ func runFoundryCreateCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 	glb.TrackTxInclusion(txid, time.Second)
+}
+
+// computeStorageDeposit returns the minimum storage deposit for the given
+// output. Effective size matches ledger.effectiveStorageSize:
+//
+//	utxoBytes + indexValuesTupleBytes + N*33
+//
+// then the schedule (`storageDeposit($0)`) is evaluated server-side via /eval.
+func computeStorageDeposit(c *apiclient.APIClient, out *txbuildercore.Output) uint64 {
+	size := uint64(len(out.Bytes()))
+	if ivBin, err := out.ConstraintAt(ledger.ConstraintIndexIndexValues); err == nil && len(ivBin) > 0 {
+		values, err := ledger.IndexValuesFromBytes(ivBin)
+		glb.AssertNoError(err)
+		size += uint64(len(ivBin)) + uint64(len(values))*33
+	}
+	deposit, err := c.EvalU64(0, fmt.Sprintf("storageDeposit(u64/%d)", size))
+	glb.AssertNoError(err)
+	return deposit
 }
