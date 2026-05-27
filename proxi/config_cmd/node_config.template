@@ -115,13 +115,14 @@ trace_tags:
 #   max_connections: 5
 #   # connection rotation timeout in minutes (default: 5)
 #   connection_ttl_minutes: 5
-
+{{end}}
+{{if .IncludeTxLogger}}
 # Transaction logger
 txlogger:
-  enable_on_start: false
+  enable_on_start: {{if .TxLoggerEnabled}}true{{else}}false{{end}}
   level: "all"
   ttl_hours: 1
-  enable_on_off_api: false
+  enable_on_off_api: {{if .TxLoggerEnabled}}true{{else}}false{{end}}
 {{end}}
 {{if .IncludeSequencer}}{{template "sequencer_block" .}}{{end}}
 # Sync configuration (sequential branch-by-branch catch-up)

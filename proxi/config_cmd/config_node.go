@@ -2,16 +2,20 @@ package config_cmd
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	_ "embed"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"text/template"
+	"time"
 
 	p2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/lunfardo314/proxima/ledger"
+	"github.com/lunfardo314/proxima/ledger/multistate"
 	"github.com/lunfardo314/proxima/proxi/glb"
 	"github.com/lunfardo314/proxima/util"
 	"github.com/lunfardo314/proxima/util/keystore"
@@ -79,6 +83,8 @@ type configFileData struct {
 	}
 	MaxDynamicPeers   int
 	IncludeTrace      bool
+	IncludeTxLogger   bool
+	TxLoggerEnabled   bool
 	IncludeSequencer  bool
 	SeqName           string
 	HasSeqName        bool
@@ -104,6 +110,15 @@ func runConfigNodeCommand(_ *cobra.Command, _ []string) {
 
 	glb.Assertf(!glb.FileExists(proximaNodeProfile), "file %s already exists", proximaNodeProfile)
 
+	// In --standalone we need the wallet key to build the genesis snapshot.
+	// Load it (and prompt for passphrase if needed) before asking for host
+	// entropy so we fail early on a misconfigured wallet.
+	var walletKey ed25519.PrivateKey
+	if includeStandalone {
+		glb.TryReadInConfig()
+		walletKey = glb.MustGetPrivateKey()
+	}
+
 	privateKey := glb.AskEntropyGenEd25519PrivateKey("please enter at least 10 random seed symbols for the private key and ID of the peering host and press ENTER:", 10)
 	pklpp, err := p2pcrypto.UnmarshalEd25519PrivateKey(privateKey)
 	util.AssertNoError(err)
@@ -118,6 +133,8 @@ func runConfigNodeCommand(_ *cobra.Command, _ []string) {
 		StaticPeers:       nil,
 		MaxDynamicPeers:   defaultMaxDynamicPeers,
 		IncludeTrace:      includeTrace,
+		IncludeTxLogger:   includeTrace,
+		TxLoggerEnabled:   false,
 		IncludeSequencer:  includeSequencer,
 		SeqName:           seqName,
 		HasSeqName:        seqName != "",
@@ -133,6 +150,8 @@ func runConfigNodeCommand(_ *cobra.Command, _ []string) {
 		data.SeqEnable = "true"
 		data.SeqChainID = ledger.BoostrapSequencerIDHex
 		data.Standalone = true
+		data.IncludeTxLogger = true
+		data.TxLoggerEnabled = true
 	}
 
 	var buf bytes.Buffer
@@ -143,6 +162,29 @@ func runConfigNodeCommand(_ *cobra.Command, _ []string) {
 	glb.AssertNoError(err)
 
 	glb.Infof("initial Proxima node configuration file has been saved as '%s'", proximaNodeProfile)
+
+	if includeStandalone {
+		createStandaloneGenesisSnapshot(walletKey)
+	}
+}
+
+// createStandaloneGenesisSnapshot writes a genesis snapshot for a single-node
+// developer ledger into the current directory. Called from the --standalone path.
+func createStandaloneGenesisSnapshot(privateKey ed25519.PrivateKey) {
+	genesisTimeUnix := uint32(time.Now().Unix())
+	description := fmt.Sprintf("Proxima standalone developer ledger %s",
+		time.Unix(int64(genesisTimeUnix), 0).UTC().Format("2006.01.02 15:04:05"))
+
+	glb.Infof("Creating genesis snapshot for standalone developer ledger...")
+	glb.Infof("  Description: '%s'", description)
+
+	data, err := multistate.BuildGenesisSnapshotData(privateKey, genesisTimeUnix, description)
+	glb.AssertNoError(err)
+
+	fpath, err := multistate.WriteGenesisSnapshot(data, ".", os.Stdout)
+	glb.AssertNoError(err)
+
+	glb.Infof("Genesis snapshot created: %s", fpath)
 }
 
 // updateSequencerSection adds or replaces the `sequencer:` section in an existing

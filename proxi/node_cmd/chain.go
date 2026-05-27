@@ -50,10 +50,14 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	dview, isDelegation, err := lib.ParseDelegationOutput(out.Output.Output, out.ID)
 	glb.AssertNoError(err)
 
-	// Sequencer classification — wallet-side via the OutputID's
-	// sequencer bit + a singleton-free ledger.ParseSequencerData
-	// (verified pure byte parse).
-	isSequencer := out.ID.IsSequencerTransaction()
+	// Sequencer classification: the output is a sequencer output iff it carries
+	// the sequencer constraint at the fixed index. The OutputID's sequencer bit
+	// reflects the producing transaction kind, not whether this particular output
+	// is a sequencer chain output.
+	hasSequencerConstraint := false
+	if seqBytes, err := out.Output.ConstraintAt(ledger.SequencerConstraintFixedIndex); err == nil && len(seqBytes) > 0 {
+		hasSequencerConstraint = true
+	}
 
 	// Foundry classification.
 	isFoundry := false
@@ -70,7 +74,11 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	glb.Infof("output ID:            %s", out.ID.String())
 	glb.Infof("token balance:        %s", util.Th(out.Output.TokenBalance()))
 	glb.Infof("is delegation output: %v", isDelegation)
-	glb.Infof("is sequencer output:  %v", isSequencer)
+	if hasSequencerConstraint {
+		glb.Infof("is sequencer output:  true (origin)")
+	} else {
+		glb.Infof("is sequencer output:  false")
+	}
 	glb.Infof("is foundry output:    %v", isFoundry)
 	glb.Infof("is branch output:     %v", out.ID.IsBranchTransaction())
 	glb.Infof("origin slot:          %d", cc.OriginSlot)
@@ -91,7 +99,7 @@ func runChainCmd(_ *cobra.Command, args []string) {
 	}
 	glb.Infof("\n")
 
-	if isSequencer {
+	if hasSequencerConstraint {
 		if seqData, err := ledger.ParseSequencerData(out.Output); err == nil {
 			glb.Infof("SEQUENCER DATA:\n-----------------")
 			glb.Infof("%s", seqData.Lines("    ").String())
